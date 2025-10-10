@@ -24,7 +24,7 @@ RUN mkdir -p /etc/vulkan/icd.d && \
     "file_format_version" : "1.0.0",
     "ICD": {
         "library_path": "libGLX_nvidia.so.0",
-        "api_version" : "1.4.328.1"
+        "api_version" : "${VULKAN_VERSION}"
     }
 }
 EOF
@@ -45,7 +45,7 @@ RUN mkdir -p /etc/vulkan/implicit_layer.d/ && \
         "name": "VK_LAYER_NV_optimus",
         "type": "INSTANCE",
         "library_path": "libGLX_nvidia.so.0",
-        "api_version" : "1.4.328.1",
+        "api_version" : "${VULKAN_VERSION}",
         "implementation_version" : "1",
         "description" : "NVIDIA Optimus layer",
         "functions": {
@@ -115,39 +115,13 @@ RUN wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key a
     wget -qO /etc/apt/sources.list.d/lunarg-vulkan-${VULKAN_VERSION}-noble.list https://packages.lunarg.com/vulkan/${VULKAN_VERSION}/lunarg-vulkan-${VULKAN_VERSION}-noble.list
 
 # --------- Install Vulkan SDK per-architecture ---------
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-      apt-get update && \
-      apt-get install -y --no-install-recommends vulkan-sdk \
-      vulkan-validationlayers \
-      vulkan-tools \
-      libgl1 \      
-      libvulkan1 \
-      mesa-vulkan-drivers \
-      vulkan-utils \
-      spirv-tools \
-      glslang-tools \
-      libvulkan-dev && \
-      rm -rf /var/lib/apt/lists/*; \
-    else \
-      apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        libglm-dev cmake libxcb-dri3-0 libxcb-present0 libpciaccess0 \
-        libpng-dev libxcb-keysyms1-dev libxcb-dri3-dev libx11-dev \
-        git python-is-python3 bison libx11-xcb-dev liblz4-dev libzstd-dev \
-        ocaml-core ninja-build pkg-config libxml2-dev wayland-protocols \
-        python3-jsonschema clang-format qtbase5-dev qt6-base-dev \
-        g++ g++-13 g++-13-aarch64-linux-gnu g++-aarch64-linux-gnu libffi-dev \
-        libstdc++-13-dev libwayland-bin libwayland-cursor0 libwayland-dev \
-        libwayland-egl1 libxcb-ewmh2 libxcb-render0-dev libxrandr-dev libxrandr2 libxrender-dev \
-        libxcb-ewmh-dev libxcb-randr0-dev && \
-      rm -rf /var/lib/apt/lists/* && \
-      wget -q https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}.0/linux/vulkansdk-linux-x86_64-${VULKAN_VERSION}.0.tar.xz && \
-      tar -xf vulkansdk-linux-x86_64-${VULKAN_VERSION}.0.tar.xz && \
-      cd ${VULKAN_VERSION}.0 && \
-      chmod +x vulkansdk && \
-      ./vulkansdk -j "$(nproc)" glslang vulkan-tools vulkan-headers vulkan-loader vulkan-validationlayers shaderc spirv-headers spirv-tools vulkan-extensionlayer volk vma vcv vul slang && \
-      echo "${PWD}/aarch64/bin" >> /etc/profile.d/vulkan-sdk.sh; \
-    fi
+# copy script into image
+COPY scripts/setup-dependencies.sh /tmp/setup-dependencies.sh
+
+# make it executable, run it in one RUN (so apt update/install cache is kept together)
+RUN chmod +x /tmp/setup-dependencies.sh \
+ && /tmp/setup-dependencies.sh \
+ && rm -f /tmp/setup-dependencies.sh
 
 # --------- Install compiler, test & graphics deps ---------
 RUN apt-get update && \
