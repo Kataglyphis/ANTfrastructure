@@ -109,7 +109,7 @@ RUN chmod +x /tmp/setup-dependencies.sh \
  && rm -f /tmp/setup-dependencies.sh
 
 # --------- Install compiler, test & graphics deps ---------
-RUN apt-get update && \
+RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
       build-essential \
       ninja-build sccache ccache \
