@@ -99,22 +99,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # (Optional) Verify installation
 RUN rustc --version && cargo --version
 
-# --------- Install Kitware CMake ---------
-RUN mkdir -p /usr/share/keyrings && \
-    wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
-      | gpg --dearmor \
-      | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null && \
-    echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu noble main" \
-      | tee /etc/apt/sources.list.d/kitware.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends cmake && \
-    rm -rf /var/lib/apt/lists/*
-
-# --------- Add LunarG key & repo for Vulkan SDK ---------
-RUN wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key add - && \
-    wget -qO /etc/apt/sources.list.d/lunarg-vulkan-${VULKAN_VERSION}-noble.list https://packages.lunarg.com/vulkan/${VULKAN_VERSION}/lunarg-vulkan-${VULKAN_VERSION}-noble.list
-
-# --------- Install Vulkan SDK per-architecture ---------
+# --------- Install Vulkan SDK and Deps per-architecture ---------
 # copy script into image
 COPY ./linux/scripts/setup-dependencies.sh /tmp/setup-dependencies.sh
 
