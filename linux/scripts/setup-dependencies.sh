@@ -48,10 +48,10 @@ echo "Installing core tools..."
 $SUDO apt-get install -y wget curl gpg lsb-release ca-certificates gnupg apt-transport-https
 # for debian packaging
 $SUDO apt-get install -y dpkg-dev fakeroot binutils
-$SUDO apt update
-$SUDO apt install google-perftools libgoogle-perftools-dev
+$SUDO apt update -y
+$SUDO apt install -y google-perftools libgoogle-perftools-dev
 # optional: für Flamegraphs
-$SUDO apt install graphviz
+$SUDO apt install -y graphviz
 
 # -----------------------------------------------------------------------------
 # Install CMake (latest from Kitware)
@@ -77,13 +77,13 @@ export DEBIAN_FRONTEND=noninteractive
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
     
 # minimal prerequisites
-sudo apt-get update
+sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates
 
 # Add the LLVM apt repo using the official helper (non-interactive)
 wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${LLVM_WANTED}" all
 
-sudo apt-get update
+sudo apt-get update -y
 
 # clang
 if [ -x "/usr/bin/clang-${CLANG_WANTED}" ]; then
