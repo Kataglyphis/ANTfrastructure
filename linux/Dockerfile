@@ -116,7 +116,7 @@ RUN wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key a
 
 # --------- Install Vulkan SDK per-architecture ---------
 # copy script into image
-COPY scripts/setup-dependencies.sh /tmp/setup-dependencies.sh
+COPY ./scripts/setup-dependencies.sh /tmp/setup-dependencies.sh
 
 # make it executable, run it in one RUN (so apt update/install cache is kept together)
 RUN chmod +x /tmp/setup-dependencies.sh \
