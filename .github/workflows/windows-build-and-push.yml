@@ -34,7 +34,7 @@ jobs:
           $IMAGE_NAME = 'ghcr.io/kataglyphis/kataglyphis-beschleuniger-windows2025'
           $TAG = '${{ github.sha }}'
           Write-Host "Building $($IMAGE_NAME):$TAG"
-          docker build --pull --no-cache -t "$($IMAGE_NAME):$TAG" -f ./docker/windows/Dockerfile .
+          docker build --pull --no-cache -t "$($IMAGE_NAME):$TAG" -f ./windows/Dockerfile .
           docker tag "$($IMAGE_NAME):$TAG" "$($IMAGE_NAME):latest"
 
       - name: Push image to GHCR
