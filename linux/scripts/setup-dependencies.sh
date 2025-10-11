@@ -253,6 +253,13 @@ else
 fi
 
 if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+  # The vulkansdk script may call apt-get internally, so we need to ensure
+  # it's non-interactive. We can patch it or pre-install dependencies.
+  # Let's pre-install the dependencies it needs:
+  echo "Pre-installing dependencies for Vulkan SDK build on ARM64..."
+  $SUDO apt-get install -y "${APT_OPTS[@]}" \
+    ocaml-core ocaml-dune ocaml-findlib ocaml-tools python-is-python3 \
+    libxcb-glx0-dev
   cd "${VULKAN_VERSION}"
   chmod +x vulkansdk
   ./vulkansdk -j $(nproc) \
