@@ -1,0 +1,46 @@
+name: Build & publish Windows image to GHCR
+
+# Trigger on pushes to main and tags
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*.*.*'
+
+# Allow workflow to push packages
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push-windows:
+    if: "!contains(github.event.head_commit.message, '[skip windows docker]')"
+    # must run on a Windows runner for Windows container builds
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5.0.0
+
+      - name: Login to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.TOKEN }}
+
+      - name: Build Windows container image
+        # adjust Dockerfile path and context as needed
+        run: |
+          IMAGE_NAME=ghcr.io/kataglyphis/kataglyphis-beschleuniger-windows2025
+          TAG=${{ github.sha }}
+          echo "Building $IMAGE_NAME:$TAG"
+          docker build --pull --no-cache -t $IMAGE_NAME:$TAG -f ./docker/windows/Dockerfile .
+          docker tag $IMAGE_NAME:$TAG $IMAGE_NAME:latest
+
+      - name: Push image to GHCR
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/my-windows-app
+          TAG=${{ github.sha }}
+          docker push $IMAGE_NAME:$TAG
+          docker push $IMAGE_NAME:latest
