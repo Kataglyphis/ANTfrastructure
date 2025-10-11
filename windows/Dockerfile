@@ -66,45 +66,6 @@ RUN `
     scoop install llvm nano cmake cppcheck sccache main/ninja 
 # ---------------------------------------------------------------
 
-# 0. Ensure our temp folder exists
-RUN New-Item -ItemType Directory -Path C:\temp -Force
-
-# copy script from build context into image
-COPY windows/scripts/setup-dependencies.ps1 C:\temp\setup-dependencies.ps1
-
-# run it with powershell, then delete the script
-RUN powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\temp\setup-dependencies.ps1" ; `
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ; `
-    del C:\temp\setup-dependencies.ps1
-
-# 1. Download the SDK installer using the build arg
-RUN Invoke-WebRequest `
-      -Uri "https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}/windows/VulkanSDK-${VULKAN_VERSION}-Installer.exe" `
-      -OutFile "C:\\temp\\VulkanSDK-${VULKAN_VERSION}-Installer.exe" `
-    ; 
-
-# 2. Run silent installation (core + copy-only to avoid registry changes)
-RUN & "C:\\temp\\VulkanSDK-${VULKAN_VERSION}-Installer.exe" `
-      --accept-licenses `
-      --default-answer `
-      --confirm-command install `
-      copy_only=1
-
-# 3. Set Vulkan environment variables (persisted at image build time)
-ENV VULKAN_SDK="C:\\VulkanSDK\\${VULKAN_VERSION}"
-RUN setx /M PATH $($Env:PATH + ';C:\\VulkanSDK\\' + '${VULKAN_VERSION}' + '\\Bin')
-
-# Download and run rustup-init.exe silently, then clean up
-RUN Invoke-WebRequest `
-      -Uri "https://win.rustup.rs/" `
-      -OutFile "C:\\temp\\rustup-init.exe" `
-    ;
-   
-RUN & "C:\\temp\\rustup-init.exe" -y;
-
-# (Optional) verify installation
-RUN rustc --version; cargo --version
-
 # avoids problems with shared ownership when shared volume 
 RUN git config --global --add safe.directory '*'
 
