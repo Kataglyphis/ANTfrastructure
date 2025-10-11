@@ -13,6 +13,9 @@ set -euo pipefail
 #   vulkan-version (optional): e.g. "1.3.296" (default: 1.3.296)
 # -----------------------------------------------------------------------------
 
+# Set non-interactive mode for all apt operations
+export DEBIAN_FRONTEND=noninteractive
+
 # Default Vulkan version
 VULKAN_VERSION="1.4.321.1"
 if [ "$#" -gt 1 ]; then
