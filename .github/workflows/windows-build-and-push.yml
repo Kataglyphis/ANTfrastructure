@@ -30,17 +30,17 @@ jobs:
           password: ${{ secrets.TOKEN }}
 
       - name: Build Windows container image
-        # adjust Dockerfile path and context as needed
         run: |
-          IMAGE_NAME=ghcr.io/kataglyphis/kataglyphis-beschleuniger-windows2025
-          TAG=${{ github.sha }}
-          echo "Building $IMAGE_NAME:$TAG"
-          docker build --pull --no-cache -t $IMAGE_NAME:$TAG -f ./docker/windows/Dockerfile .
-          docker tag $IMAGE_NAME:$TAG $IMAGE_NAME:latest
+          $IMAGE_NAME = 'ghcr.io/kataglyphis/kataglyphis-beschleuniger-windows2025'
+          $TAG = '${{ github.sha }}'
+          Write-Host "Building $($IMAGE_NAME):$TAG"
+          docker build --pull --no-cache -t "$($IMAGE_NAME):$TAG" -f ./docker/windows/Dockerfile .
+          docker tag "$($IMAGE_NAME):$TAG" "$($IMAGE_NAME):latest"
 
       - name: Push image to GHCR
         run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/my-windows-app
-          TAG=${{ github.sha }}
-          docker push $IMAGE_NAME:$TAG
-          docker push $IMAGE_NAME:latest
+          $IMAGE_NAME = "ghcr.io/${{ github.repository_owner }}/my-windows-app"
+          $TAG = '${{ github.sha }}'
+          docker push "$($IMAGE_NAME):$TAG"
+          docker push "$($IMAGE_NAME):latest"
+
