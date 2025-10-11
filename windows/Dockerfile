@@ -6,6 +6,8 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2025
 # Build-time variable for the Vulkan SDK version (default can be overridden).
 ARG VULKAN_VERSION=1.4.328.1
 
+# Set shell to PowerShell
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 RUN docker version
 # Should show "OS/Arch: windows/amd64" under Server
 
