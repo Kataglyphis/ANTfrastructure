@@ -77,46 +77,46 @@ export DEBIAN_FRONTEND=noninteractive
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
     
 # minimal prerequisites
-sudo apt-get update -y
-sudo apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates
+$SUDO sudo apt-get update -y
+$SUDO sudo apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates
 
 # Add the LLVM apt repo using the official helper (non-interactive)
-wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${LLVM_WANTED}" all
+wget -qO- https://apt.llvm.org/llvm.sh | $SUDO sudo bash -s -- "${LLVM_WANTED}" all
 
-sudo apt-get update -y
+$SUDO sudo apt-get update -y
 
 # clang
 if [ -x "/usr/bin/clang-${CLANG_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-"${CLANG_WANTED}" 100
-  sudo update-alternatives --set clang /usr/bin/clang-"${CLANG_WANTED}"
+  $SUDO sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-"${CLANG_WANTED}" 100
+  $SUDO sudo update-alternatives --set clang /usr/bin/clang-"${CLANG_WANTED}"
 fi
 
 # clang++
 if [ -x "/usr/bin/clang++-${CLANG_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-"${CLANG_WANTED}" 100
-  sudo update-alternatives --set clang++ /usr/bin/clang++-"${CLANG_WANTED}"
+  $SUDO sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-"${CLANG_WANTED}" 100
+  $SUDO sudo update-alternatives --set clang++ /usr/bin/clang++-"${CLANG_WANTED}"
 fi
 
 # clang-tidy
 if [ -x "/usr/bin/clang-tidy-${CLANG_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-"${CLANG_WANTED}" 100
+  $SUDO sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-"${CLANG_WANTED}" 100
 fi
 
 # clang-format
 if [ -x "/usr/bin/clang-format-${CLANG_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-"${CLANG_WANTED}" 100
+  $SUDO sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-"${CLANG_WANTED}" 100
 fi
 
 # llvm-profdata
 if [ -x "/usr/bin/llvm-profdata-${CLANG_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/llvm-profdata llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}" 100
-  sudo update-alternatives --set llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}"
+  $SUDO sudo update-alternatives --install /usr/bin/llvm-profdata llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}" 100
+  $SUDO sudo update-alternatives --set llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}"
 fi
 
 # llvm-cov
 if [ -x "/usr/bin/llvm-cov-${CLANG_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/llvm-cov llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}" 100
-  sudo update-alternatives --set llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}"
+  $SUDO sudo update-alternatives --install /usr/bin/llvm-cov llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}" 100
+  $SUDO sudo update-alternatives --set llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}"
 fi
 
 # Verify
@@ -125,25 +125,25 @@ clang++ --version
 
 # Install latest GCC
 GCC_WANTED=14  # or 13, adjust as needed
-sudo apt-get install -y --no-install-recommends \
+$SUDO sudo apt-get install -y --no-install-recommends \
   gcc-"${GCC_WANTED}" \
   g++-"${GCC_WANTED}" \
   gfortran-"${GCC_WANTED}"
 
 # Set GCC as default using update-alternatives
 if [ -x "/usr/bin/gcc-${GCC_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-"${GCC_WANTED}" 100
-  sudo update-alternatives --set gcc /usr/bin/gcc-"${GCC_WANTED}"
+  $SUDO sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-"${GCC_WANTED}" 100
+  $SUDO sudo update-alternatives --set gcc /usr/bin/gcc-"${GCC_WANTED}"
 fi
 
 if [ -x "/usr/bin/g++-${GCC_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-"${GCC_WANTED}" 100
-  sudo update-alternatives --set g++ /usr/bin/g++-"${GCC_WANTED}"
+  $SUDO sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-"${GCC_WANTED}" 100
+  $SUDO sudo update-alternatives --set g++ /usr/bin/g++-"${GCC_WANTED}"
 fi
 
 if [ -x "/usr/bin/gcov-${GCC_WANTED}" ]; then
-  sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-"${GCC_WANTED}" 100
-  sudo update-alternatives --set gcov /usr/bin/gcov-"${GCC_WANTED}"
+  $SUDO sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-"${GCC_WANTED}" 100
+  $SUDO sudo update-alternatives --set gcov /usr/bin/gcov-"${GCC_WANTED}"
 fi
 
 # Verify
