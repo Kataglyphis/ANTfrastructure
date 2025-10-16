@@ -115,13 +115,24 @@ This enumeration also includes submodules.
 <!-- GETTING STARTED -->
 ## Getting Started
 
+### Linux
+#### Multi Arch Build
+##### Setup
+
+```bash
+docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker buildx create --name mybuilder --use
+docker buildx inspect --bootstrap
+docker buildx build --platform linux/amd64,linux/arm64 -t kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile  .
+```
+
 ### Prerequisites
 
 ### Installation
 
 1. Clone the repo
    ```sh
-   git clone --recurse-submodules git@github.com:Kataglyphis/....git
+   git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-DockerHub.git
    ```
 
 ## Tests
@@ -167,6 +178,9 @@ Project Link: [https://github.com/Kataglyphis/...](https://github.com/Kataglyphi
 
 Some very helpful literature, tutorials, etc. 
 
+
+## Troubleshooting
+1. 
 <!-- CMake/C++
 * [Cpp best practices](https://github.com/cpp-best-practices/cppbestpractices)
 

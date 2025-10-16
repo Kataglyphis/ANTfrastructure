@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+
+# --- make apt non-interactive and robust for docker builds -------------------
+export DEBIAN_FRONTEND=noninteractive
+export TZ=Etc/UTC                # avoid tzdata prompts if tzdata gets pulled
+APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+APT_FLAGS=(-yq --no-install-recommends "${APT_OPTS[@]}")
+
 # -----------------------------------------------------------------------------
 # setup-dependencies.sh
 #
@@ -12,9 +19,6 @@ set -euo pipefail
 #   ./setup-dependencies.sh [vulkan-version]
 #   vulkan-version (optional): e.g. "1.3.296" (default: 1.3.296)
 # -----------------------------------------------------------------------------
-
-# Set non-interactive mode for all apt operations
-export DEBIAN_FRONTEND=noninteractive
 
 # Default Vulkan version
 VULKAN_VERSION="1.4.321.1"
@@ -48,13 +52,13 @@ $SUDO apt-get update -y
 
 # Install basic tools
 echo "Installing core tools..."
-$SUDO apt-get install -y wget curl gpg lsb-release ca-certificates gnupg apt-transport-https
+$SUDO apt-get install "${APT_FLAGS[@]}" -y wget curl gpg lsb-release ca-certificates gnupg apt-transport-https
 # for debian packaging
-$SUDO apt-get install -y dpkg-dev fakeroot binutils
+$SUDO apt-get install "${APT_FLAGS[@]}" -y dpkg-dev fakeroot binutils
 $SUDO apt update -y
-$SUDO apt install -y google-perftools libgoogle-perftools-dev
+$SUDO apt-get install "${APT_FLAGS[@]}" -y google-perftools libgoogle-perftools-dev
 # optional: für Flamegraphs
-$SUDO apt install -y graphviz
+$SUDO apt-get install "${APT_FLAGS[@]}" -y graphviz
 
 # -----------------------------------------------------------------------------
 # Install CMake (latest from Kitware)
@@ -70,7 +74,7 @@ wget -qO - https://apt.kitware.com/keys/kitware-archive-latest.asc \
 echo "deb [signed-by=$KITWARE_KEY] https://apt.kitware.com/ubuntu $DISTRO main" \
 | $SUDO tee /etc/apt/sources.list.d/kitware.list >/dev/null
 $SUDO apt-get update -y
-$SUDO apt-get install -y cmake
+$SUDO apt-get install "${APT_FLAGS[@]}" -y cmake
 cmake --version
 
 # desired tool versions
@@ -80,46 +84,46 @@ export DEBIAN_FRONTEND=noninteractive
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
     
 # minimal prerequisites
-$SUDO sudo apt-get update -y
-$SUDO sudo apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates
+$SUDO apt-get update -y
+$SUDO apt-get install "${APT_FLAGS[@]}" -y --no-install-recommends wget gnupg lsb-release ca-certificates
 
 # Add the LLVM apt repo using the official helper (non-interactive)
-wget -qO- https://apt.llvm.org/llvm.sh | $SUDO sudo bash -s -- "${LLVM_WANTED}" all
+wget -qO- https://apt.llvm.org/llvm.sh | $SUDO bash -s -- "${LLVM_WANTED}" all
 
-$SUDO sudo apt-get update -y
+$SUDO apt-get update
 
 # clang
 if [ -x "/usr/bin/clang-${CLANG_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-"${CLANG_WANTED}" 100
-  $SUDO sudo update-alternatives --set clang /usr/bin/clang-"${CLANG_WANTED}"
+  $SUDO update-alternatives --install /usr/bin/clang clang /usr/bin/clang-"${CLANG_WANTED}" 100
+  $SUDO update-alternatives --set clang /usr/bin/clang-"${CLANG_WANTED}"
 fi
 
 # clang++
 if [ -x "/usr/bin/clang++-${CLANG_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-"${CLANG_WANTED}" 100
-  $SUDO sudo update-alternatives --set clang++ /usr/bin/clang++-"${CLANG_WANTED}"
+  $SUDO update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-"${CLANG_WANTED}" 100
+  $SUDO update-alternatives --set clang++ /usr/bin/clang++-"${CLANG_WANTED}"
 fi
 
 # clang-tidy
 if [ -x "/usr/bin/clang-tidy-${CLANG_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-"${CLANG_WANTED}" 100
+  $SUDO update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-"${CLANG_WANTED}" 100
 fi
 
 # clang-format
 if [ -x "/usr/bin/clang-format-${CLANG_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-"${CLANG_WANTED}" 100
+  $SUDO update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-"${CLANG_WANTED}" 100
 fi
 
 # llvm-profdata
 if [ -x "/usr/bin/llvm-profdata-${CLANG_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/llvm-profdata llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}" 100
-  $SUDO sudo update-alternatives --set llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}"
+  $SUDO update-alternatives --install /usr/bin/llvm-profdata llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}" 100
+  $SUDO update-alternatives --set llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}"
 fi
 
 # llvm-cov
 if [ -x "/usr/bin/llvm-cov-${CLANG_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/llvm-cov llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}" 100
-  $SUDO sudo update-alternatives --set llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}"
+  $SUDO update-alternatives --install /usr/bin/llvm-cov llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}" 100
+  $SUDO update-alternatives --set llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}"
 fi
 
 # Verify
@@ -128,48 +132,30 @@ clang++ --version
 
 # Install latest GCC
 GCC_WANTED=14  # or 13, adjust as needed
-$SUDO sudo apt-get install -y --no-install-recommends \
+$SUDO apt-get install "${APT_FLAGS[@]}" -y --no-install-recommends \
   gcc-"${GCC_WANTED}" \
   g++-"${GCC_WANTED}" \
   gfortran-"${GCC_WANTED}"
 
 # Set GCC as default using update-alternatives
 if [ -x "/usr/bin/gcc-${GCC_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-"${GCC_WANTED}" 100
-  $SUDO sudo update-alternatives --set gcc /usr/bin/gcc-"${GCC_WANTED}"
+  $SUDO update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-"${GCC_WANTED}" 100
+  $SUDO update-alternatives --set gcc /usr/bin/gcc-"${GCC_WANTED}"
 fi
 
 if [ -x "/usr/bin/g++-${GCC_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-"${GCC_WANTED}" 100
-  $SUDO sudo update-alternatives --set g++ /usr/bin/g++-"${GCC_WANTED}"
+  $SUDO update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-"${GCC_WANTED}" 100
+  $SUDO update-alternatives --set g++ /usr/bin/g++-"${GCC_WANTED}"
 fi
 
 if [ -x "/usr/bin/gcov-${GCC_WANTED}" ]; then
-  $SUDO sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-"${GCC_WANTED}" 100
-  $SUDO sudo update-alternatives --set gcov /usr/bin/gcov-"${GCC_WANTED}"
+  $SUDO update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-"${GCC_WANTED}" 100
+  $SUDO update-alternatives --set gcov /usr/bin/gcov-"${GCC_WANTED}"
 fi
 
 # Verify
 gcc --version
 g++ --version
-
-# -----------------------------------------------------------------------------
-# Vulkan SDK Installation Function for Tarball
-# -----------------------------------------------------------------------------
-verify_vulkan_version() {
-  local version="$1"
-  echo "Attempting to verify Vulkan SDK version ${version} availability..."
-  
-  # Try to access the download page to see if version exists
-  local test_url="https://sdk.lunarg.com/sdk/download/${version}/linux/"
-  if ! curl -sSf --connect-timeout 10 "$test_url" >/dev/null 2>&1; then
-    echo "Warning: Could not verify version ${version} exists at ${test_url}" >&2
-    echo "This might be due to network issues or the version may not exist." >&2
-    echo "Common available versions include: 1.3.290, 1.3.296, 1.3.280, etc." >&2
-    echo "Check https://vulkan.lunarg.com/ for available versions." >&2
-    echo "Continuing with download attempt..." >&2
-  fi
-}
 
 install_vulkan_tarball() {
   local version="$1"
@@ -177,12 +163,9 @@ install_vulkan_tarball() {
   
   echo "Installing Vulkan SDK ${version} via tarball for ${ARCH}..."
   
-  # Verify version availability
-  verify_vulkan_version "$version"
-  
   # Install prerequisite packages for tarball installation
   echo "Installing tarball prerequisites..."
-  $SUDO apt-get install -y xz-utils libglm-dev libxcb-dri3-0 \
+  $SUDO apt-get install "${APT_FLAGS[@]}" -y xz-utils libglm-dev libxcb-dri3-0 \
     libxcb-present0 libpciaccess0 libpng-dev libxcb-keysyms1-dev \
     libxcb-dri3-dev libx11-dev g++ gcc libwayland-dev \
     libxrandr-dev libxcb-randr0-dev libxcb-ewmh-dev git \
@@ -253,15 +236,15 @@ else
 fi
 
 if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
-  # The vulkansdk script may call apt-get internally, so we need to ensure
-  # it's non-interactive. We can patch it or pre-install dependencies.
-  # Let's pre-install the dependencies it needs:
-  echo "Pre-installing dependencies for Vulkan SDK build on ARM64..."
-  $SUDO apt-get install -y "${APT_OPTS[@]}" \
-    ocaml-core ocaml-dune ocaml-findlib ocaml-tools python-is-python3 \
-    libxcb-glx0-dev
   cd "${VULKAN_VERSION}"
   chmod +x vulkansdk
+  echo "Running .vulkansdk to build SDK components from source... means we are not on x86_64"
+  echo "Add the non user interaction flag -y to avoid prompts"
+  sed -E -i.bak \
+    -e '/\bapt(-get)?[[:space:]]+install\b/ { /(-y|--assume-yes|--assumeyes|--yes)/! s/(\bapt(-get)?[[:space:]]+install\b)/\1 -y/ }' \
+    -e '/\bdnf[[:space:]]+install\b/     { /(-y|--assumeyes|--assume-yes|--yes)/! s/(\bdnf[[:space:]]+install\b)/\1 -y/ }' \
+    -e '/\bpacman[[:space:]]+-S\b/         { /(--noconfirm|-y)/! s/(\bpacman[[:space:]]+-S\b)/\1 -y/ }' \
+    ./vulkansdk
   ./vulkansdk -j $(nproc) \
     glslang vulkan-tools vulkan-headers vulkan-loader \
     vulkan-validationlayers shaderc spirv-headers spirv-tools \
@@ -272,7 +255,7 @@ fi
 # Install additional dependencies
 # -----------------------------------------------------------------------------
 echo "Installing GLFW, rendering, and build-tool dependencies..."
-$SUDO apt-get install -y \
+$SUDO apt-get install "${APT_FLAGS[@]}" -y \
   libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libglu1-mesa-dev \
   freeglut3-dev mesa-common-dev mesa-utils wayland-protocols libwayland-dev \
   libxkbcommon-dev libglx-mesa0 ninja-build ccache sccache iwyu graphviz \

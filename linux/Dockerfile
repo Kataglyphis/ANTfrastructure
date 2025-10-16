@@ -10,6 +10,7 @@ ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
 
 ENV DEBIAN_FRONTEND=noninteractive \
+    DEBCONF_NONINTERACTIVE_SEEN=true \
     APT_LISTCHANGES_FRONTEND=none \
     BUILD_TYPE=${BUILD_TYPE} \
     VULKAN_VERSION=${VULKAN_VERSION} \
@@ -63,7 +64,7 @@ RUN mkdir -p /etc/vulkan/implicit_layer.d/ && \
 EOF
 
 # --------- Common prerequisites ---------
-RUN apt-get update && \
+RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
