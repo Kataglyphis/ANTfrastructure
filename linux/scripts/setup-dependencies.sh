@@ -245,7 +245,8 @@ if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
     -e '/\bdnf[[:space:]]+install\b/     { /(-y|--assumeyes|--assume-yes|--yes)/! s/(\bdnf[[:space:]]+install\b)/\1 -y/ }' \
     -e '/\bpacman[[:space:]]+-S\b/         { /(--noconfirm|-y)/! s/(\bpacman[[:space:]]+-S\b)/\1 -y/ }' \
     ./vulkansdk
-  ./vulkansdk -j $(nproc) \
+  # $(nproc)
+  ./vulkansdk -j 16 \
     glslang vulkan-tools vulkan-headers vulkan-loader \
     vulkan-validationlayers shaderc spirv-headers spirv-tools \
     vulkan-extensionlayer volk vma vcv vul slang

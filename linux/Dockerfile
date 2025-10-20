@@ -4,6 +4,7 @@ FROM ubuntu:24.04 AS base
 # --------- Build args & env ---------
 ARG BUILD_TYPE=Debug
 ARG VULKAN_VERSION=1.4.328.1
+ARG GSTREAMER_VERSION=1.26.7
 ARG TARGETARCH
 
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -14,6 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     APT_LISTCHANGES_FRONTEND=none \
     BUILD_TYPE=${BUILD_TYPE} \
     VULKAN_VERSION=${VULKAN_VERSION} \
+    GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     WORKDIR=/workspace
 
 RUN apt-get update && apt-get upgrade -y \
@@ -108,6 +110,17 @@ COPY ./linux/scripts/setup-dependencies.sh /tmp/setup-dependencies.sh
 RUN chmod +x /tmp/setup-dependencies.sh \
  && /tmp/setup-dependencies.sh \
  && rm -f /tmp/setup-dependencies.sh
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+RUN export PATH="$HOME/.local/bin:$PATH"  # ensure 'uv' is on PATH
+# --------- Build and install GStreamer ---------
+# copy script into image
+COPY ./linux/scripts/setup-gstreamer.sh /tmp/setup-gstreamer.sh
+
+# make it executable, run it in one RUN (so apt update/install cache is kept together)
+RUN chmod +x /tmp/setup-gstreamer.sh \
+ && /tmp/setup-gstreamer.sh \
+ && rm -f /tmp/setup-gstreamer.sh
 
 # --------- Install compiler, test & graphics deps ---------
 RUN apt-get update -y && \

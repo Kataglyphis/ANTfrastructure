@@ -116,6 +116,13 @@ This enumeration also includes submodules.
 ## Getting Started
 
 ### Linux
+
+#### Build
+
+```bash
+docker build -t kataglyphis/kataglyphis_beschleuniger_test:latest -f linux/Dockerfile  .
+```
+
 #### Multi Arch Build
 ##### Setup
 
