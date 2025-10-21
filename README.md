@@ -121,6 +121,8 @@ This enumeration also includes submodules.
 
 ```bash
 docker build -t kataglyphis/kataglyphis_beschleuniger_test:latest -f linux/Dockerfile  .
+# on windows u must expose ports one by one
+docker run -it --rm -p 8443:8443 kataglyphis/kataglyphis_beschleuniger_test:latest
 ```
 
 #### Multi Arch Build

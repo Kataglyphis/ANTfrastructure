@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# -------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
-# -------------------------------------------------------
+# ------------------------------------------------------------------------------
 GSTREAMER_VERSION="${1:-1.26.7}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
@@ -11,55 +11,17 @@ EXTRA_MESON_ARGS="${4:-}"
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
-# -------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Install broad dependency set to enable most plugins
-# -------------------------------------------------------
-export DEBIAN_FRONTEND=noninteractive
-export PATH="$HOME/.local/bin:$PATH"  # ensure 'uv' is on PATH
-
-uv --version
-
+# ------------------------------------------------------------------------------
 apt-get install -y \
-  build-essential git cmake meson ninja-build pkg-config \
-  python3 python3-venv python3-dev \
   flex bison \
-  libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
-  libgsl-dev libunwind-dev libdw-dev libnsl-dev
-
-# apt-get install -y pkg-config build-essential \
-#   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-#   libsoup2.4-dev libnice-dev libssl-dev
-
-# apt-get install -y libgstreamer1.0-dev \
-#                 libgstreamer-plugins-base1.0-dev \
-#                 libgstreamer-plugins-bad1.0-dev \
-#                 gstreamer1.0-plugins-base \
-#                 gstreamer1.0-plugins-good \
-#                 gstreamer1.0-plugins-bad \
-#                 gstreamer1.0-plugins-ugly \
-#                 gstreamer1.0-libav \
-#                 gstreamer1.0-tools
-
-apt-get update -y
-apt-get install -y --no-install-recommends \
-  ca-certificates gnupg lsb-release software-properties-common \
-  build-essential meson ninja-build pkg-config \
-  python3 python3-pip git curl
+  libglib2.0-dev liborc-0.4-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
+  libgsl-dev libunwind-dev libdw-dev libnsl-dev gobject-introspection
 
 # Enable source repos so build-dep works
 CODENAME=$(lsb_release -sc)
-add-apt-repository -y "deb-src http://archive.ubuntu.com/ubuntu ${CODENAME} main restricted universe multiverse"
-add-apt-repository -y "deb-src http://archive.ubuntu.com/ubuntu ${CODENAME}-updates main restricted universe multiverse"
 apt-get update -y
-
-# Install build-deps for the distro GStreamer packages
-apt-get build-dep -y gstreamer1.0 gst-plugins-base1.0 gst-plugins-good1.0 \
-  gst-plugins-bad1.0 gst-plugins-ugly1.0 gst-libav1.0 gst-rtsp-server1.0 || true
-
-# Core + introspection
-apt-get install -y --no-install-recommends \
-  libglib2.0-dev liborc-0.4-dev \
-  gobject-introspection libgirepository1.0-dev
 
 # Audio I/O and DSP
 apt-get install -y --no-install-recommends \
@@ -116,9 +78,9 @@ fi
 
 rm -rf /var/lib/apt/lists/*
 
-# -------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Install Astral uv, create venv, install Meson/Ninja
-# -------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 mkdir -p "${GSTREAMER_PREFIX}"
 uv venv "${VENV_DIR}"
@@ -134,11 +96,9 @@ uv pip install -U meson ninja
 meson --version
 ninja --version
 
-rm -rf /var/lib/apt/lists/*
-
-# -------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Build GStreamer from monorepo
-# -------------------------------------------------------
+# ------------------------------------------------------------------------------
 GSTREAMER_VERSION="${1:-1.26.7}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
@@ -177,15 +137,18 @@ fi
 echo ""
 echo "Setting up Meson build..."
 
-uv run meson setup builddir \
-  --prefix="${GSTREAMER_PREFIX}" \
-  -Dbuildtype="${BUILD_TYPE_LOWER}" \
-  -Dgpl=enabled \
-  ${EXTRA_MESON_ARGS} \
-  > /dev/null 2>&1 || {
-  echo "ERROR: Meson setup failed (retrying with verbose output)"
-  uv run  meson setup builddir --prefix="${GSTREAMER_PREFIX}" -Dbuildtype="${BUILD_TYPE_LOWER}" -Dgpl=enabled ${EXTRA_MESON_ARGS}
-  exit 1
+MESON_FLAGS=(
+  "--prefix=${GSTREAMER_PREFIX}"
+  "-Dbuildtype=${BUILD_TYPE_LOWER}"
+  "-Dgpl=enabled"
+  "-Dgtk_doc=disabled"
+  "-Dexamples=disabled"
+  "-Dtests=disabled"
+  "-Drs=enabled"
+)
+uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} || {
+  echo "Meson setup failed; printing verbose output..."
+  uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} -Dwarning_level=2
 }
 
 echo "Updating subprojects..."
@@ -203,6 +166,37 @@ uv run meson install -C builddir > /dev/null 2>&1 || {
   exit 1
 }
 
+# --------------------------------------------------------------------
+# Build gst-plugins-rs net/webrtc under /opt
+# --------------------------------------------------------------------
+# Ensure GStreamer is discoverable for cargo builds
+if [ -d "${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig" ]; then
+  export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
+  export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
+elif [ -d "${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu/pkgconfig" ]; then
+  export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
+  export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}"
+else
+  export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+fi
+
+PLUGIN_RS_DIR="/opt/gst-plugins-rs"
+if [ -d "${PLUGIN_RS_DIR}" ]; then
+  cd "${PLUGIN_RS_DIR}"
+  git fetch origin --tags
+  git checkout "gstreamer-${GSTREAMER_VERSION}"
+else
+  git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${PLUGIN_RS_DIR}"
+  cd "${PLUGIN_RS_DIR}"
+fi
+
+cd net/webrtc
+CARGO_FLAGS=()
+[ "${BUILD_TYPE_LOWER}" = "release" ] && CARGO_FLAGS+=(--release)
+cargo build "${CARGO_FLAGS[@]}"
+echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly."
+
 echo "Cleaning up..."
 cd /
 rm -rf "${BUILD_DIR}"
@@ -215,6 +209,6 @@ echo "=========================================="
 echo ""
 echo "Add these environment variables to your shell:"
 echo "  export PATH=\"${GSTREAMER_PREFIX}/bin:\${PATH}\""
-echo "  export PKG_CONFIG_PATH=\"${GSTREAMER_PREFIX}/lib/pkgconfig:\${PKG_CONFIG_PATH}\""
+echo "  export PKG_CONFIG_PATH=\"${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig:\${PKG_CONFIG_PATH}\""
 echo "  export LD_LIBRARY_PATH=\"${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu:\${LD_LIBRARY_PATH}\""
 echo "  export GST_PLUGIN_PATH=\"${GSTREAMER_PREFIX}/lib/gstreamer-1.0:\${GST_PLUGIN_PATH}\""
