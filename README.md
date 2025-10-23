@@ -129,10 +129,10 @@ docker run -it --rm -p 8443:8443 kataglyphis/kataglyphis_beschleuniger_test:late
 ##### Setup
 
 ```bash
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker run --rm --privileged tonistiigi/binfmt --install all
 docker buildx create --name mybuilder --use
 docker buildx inspect --bootstrap
-docker buildx build --platform linux/amd64,linux/arm64 -t kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile  .
+docker buildx build --platform linux/amd64,linux/arm64 -t kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile  . --push
 ```
 
 ### Prerequisites
