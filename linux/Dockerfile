@@ -33,6 +33,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PKG_CONFIG_PATH="" \
     LD_LIBRARY_PATH="" \
     GST_PLUGIN_PATH="" \ 
+    GI_TYPELIB_PATH="" \
     GSTREAMER_PREFIX=/opt/gstreamer \
     TARGETARCH=${TARGETARCH} \
     LLVM_WANTED=${LLVM_WANTED} \
@@ -119,12 +120,12 @@ EOF
 # ------------------------------------------------------------------------------
 ENV CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
-    RUSTC_WRAPPER=/usr/bin/sccache \
+    # RUSTC_WRAPPER=/usr/bin/sccache \
     PATH=/usr/local/cargo/bin:/root/.local/bin:$PATH
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
+    curl -sSf https://sh.rustup.rs | sh -s -- -y && \
     rustc --version && \
     cargo --version && \
     cargo install --locked cargo-c
@@ -141,9 +142,9 @@ COPY --chmod=0755 linux/scripts /opt/setup-scripts/scripts/
 
 # Run individual steps with CLI args; keep apt cache mounts for speed.
 # Order: install base/cmake/extras, then set toolchains (gcc/llvm), then Vulkan.
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
-    /opt/setup-scripts/setup-dependencies.sh base && \
+# --mount=type=cache,target=/var/cache/apt \
+#     --mount=type=cache,target=/var/lib/apt \
+RUN /opt/setup-scripts/setup-dependencies.sh base && \
     /opt/setup-scripts/setup-dependencies.sh cmake && \
     /opt/setup-scripts/setup-dependencies.sh extras && \
     /opt/setup-scripts/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc && \
@@ -164,7 +165,8 @@ RUN set -eux; \
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 ENV PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${PKG_CONFIG_PATH}"
 ENV LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/multiarch:${LD_LIBRARY_PATH}"
-ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
+ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGIN_PATH}"
+ENV GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0:${GI_TYPELIB_PATH}"
 
 COPY --chmod=0755 linux/scripts/setup-gstreamer.sh /usr/local/bin/setup-gstreamer.sh
 RUN /usr/local/bin/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"

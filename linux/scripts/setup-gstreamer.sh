@@ -145,6 +145,8 @@ MESON_FLAGS=(
   "-Dexamples=disabled"
   "-Dtests=disabled"
   "-Drs=enabled"
+  "-Dintrospection=enabled"
+  "-Dglib:introspection=enabled"
 )
 uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} || {
   echo "Meson setup failed; printing verbose output..."

@@ -129,10 +129,22 @@ docker run -it --rm -p 8443:8443 kataglyphis/kataglyphis_beschleuniger_test:late
 ##### Setup
 
 ```bash
+cat > /tmp/buildkitd.toml <<'TOML'
+# limit BuildKit worker parallelism to 2 (set to 1 on very small machines)
+[worker.oci]
+  max-parallelism = 2
+TOML
+```
+
+```bash
+docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --bootstrap
+```
+
+```bash
 docker run --rm --privileged tonistiigi/binfmt --install all
 docker buildx create --name mybuilder --use
 docker buildx inspect --bootstrap
-docker buildx build --platform linux/amd64,linux/arm64 -t kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile  . --push
+docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile  . --push
 ```
 
 ### Prerequisites
