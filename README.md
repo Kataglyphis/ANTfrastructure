@@ -15,6 +15,10 @@
 
 <h4 align="center">A template <a href="https://jonasheinle.de" target="_blank"></a>.</h4>
 
+> **Important** add current user to docker group
+> sudo usermod -aG docker $USER
+> You can only docker push to ghcr.io without sudo docker
+
 <!-- [![Linux build](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Linux.yml/badge.svg)](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Linux.yml)
 [![Windows build](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Windows.yml/badge.svg)](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Windows.yml)
 [![TopLang](https://img.shields.io/github/languages/top/Kataglyphis/GraphicsEngineVulkan)]() -->
