@@ -141,7 +141,8 @@ TOML
 ```
 
 ```bash
-docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --bootstrap
+docker buildx rm mybuilder 2>/dev/null || true
+docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --
 ```
 
 ```bash
