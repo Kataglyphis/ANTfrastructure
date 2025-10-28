@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1.19
 FROM ubuntu:24.04 AS base
 
 # ------------------------------------------------------------------------------
