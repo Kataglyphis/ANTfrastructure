@@ -141,15 +141,17 @@ TOML
 ```
 
 ```bash
+nerdctl build --platform=arm64 --output type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true -f linux/Dockerfile .
+```
+
+```bash
 docker buildx rm mybuilder 2>/dev/null || true
 docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --
 ```
 
 ```bash
-docker run --rm --privileged tonistiigi/binfmt --install all
-docker buildx create --name mybuilder --use
-docker buildx inspect --bootstrap
-docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile  . --push
+nerdctl run --rm --privileged tonistiigi/binfmt --install all
+nerdctl build --platform linux/amd64,linux/arm64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
 ```
 
 ### Prerequisites

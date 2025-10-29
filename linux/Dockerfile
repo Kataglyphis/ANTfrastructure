@@ -51,13 +51,15 @@ RUN apt-get update && apt-get upgrade -y
 # ------------------------------------------------------------------------------
 
 RUN apt-get update -y && \
+    ARCH="$(dpkg --print-architecture)" && \
     apt-get install -y --no-install-recommends \
         nano tmux vim \
         sudo curl ca-certificates gnupg wget xz-utils libssl-dev git \
         build-essential ninja-build make sccache ccache \
-        clang clang-format clang-tidy lld lldb llvm llvm-dev libclang-dev libclang-rt-dev \
+        clang clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev \
         pkg-config lsb-release software-properties-common \
-        meson python3 python3-venv python3-dev python3-pip
+        meson python3 python3-venv python3-dev python3-pip \
+        $([ "$ARCH" != "riscv64" ] && echo "lldb")
 
 # ------------------------------------------------------------------------------
 # Install Graphics/Docs Deps --no-install-recommends
