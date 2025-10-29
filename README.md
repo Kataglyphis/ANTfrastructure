@@ -131,6 +131,8 @@ docker run -it --rm -p 8443:8443 kataglyphis/kataglyphis_beschleuniger_test:late
 
 #### Multi Arch Build
 ##### Setup
+Always build with --platform=
+$ docker buildx imagetools create --tag ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest_multiarch   ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest   ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd64
 
 ```bash
 cat > /tmp/buildkitd.toml <<'TOML'
