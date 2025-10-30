@@ -157,10 +157,18 @@ echo "Updating subprojects..."
 uv run meson subprojects update > /dev/null 2>&1 || true
 
 echo "Compiling GStreamer (this may take a while)..."
-uv run meson compile -C builddir > /dev/null 2>&1 || {
+
+echo "Compiling GStreamer..."
+if ! uv run meson compile -C builddir -v --jobs "${JOBS}" | tee /tmp/meson-compile.log; then
   echo "ERROR: Meson compile failed"
+  echo "==> Letzte Zeilen der Compile-Logs:"
+  tail -n 200 /tmp/meson-compile.log || true
+  echo "==> Meson log:"
+  tail -n +1 builddir/meson-logs/meson-log.txt || true
+  # Prüfe OOM
+  dmesg | tail -n 100 | grep -i -E "out of memory|killed process" || true
   exit 1
-}
+fi
 
 echo "Installing GStreamer..."
 uv run meson install -C builddir > /dev/null 2>&1 || {
@@ -178,6 +186,9 @@ if [ -d "${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig" ]; then
 elif [ -d "${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu/pkgconfig" ]; then
   export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
   export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}"
+elif [ -d "${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu/pkgconfig" ]; then
+  export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
+  export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu:${LD_LIBRARY_PATH:-}"
 else
   export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
   export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib:${LD_LIBRARY_PATH:-}"

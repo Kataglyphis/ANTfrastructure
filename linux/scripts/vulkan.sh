@@ -25,6 +25,7 @@ install_vulkan_sdk() {
   case "$ARCH" in
     x86_64) arch_suffix="x86_64" ;;
     aarch64|arm64) arch_suffix="aarch64" ;;
+    riscv64|riscv|rv64*) arch_suffix="riscv64" ;;
     *) die "Unknown or unsupported architecture: $ARCH" ;;
   esac
 
