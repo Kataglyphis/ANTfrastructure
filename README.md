@@ -131,6 +131,12 @@ docker run -it --rm -p 8443:8443 kataglyphis/kataglyphis_beschleuniger_test:late
 
 #### Multi Arch Build
 
+#### RICV64
+
+```bash
+nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.25.90 --no-cache -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile  .
+```
+
 ##### Setup
 Always build with --platform=
 ```bash

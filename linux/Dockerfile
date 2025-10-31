@@ -6,7 +6,7 @@ FROM ubuntu:24.04 AS base
 # ------------------------------------------------------------------------------
 ARG BUILD_TYPE=Release
 ARG VULKAN_VERSION=1.4.328.1
-ARG GSTREAMER_VERSION=1.26.7
+ARG GSTREAMER_VERSION=1.26.7 
 
 # Toolchain versions (override at build time)
 ARG LLVM_WANTED=21

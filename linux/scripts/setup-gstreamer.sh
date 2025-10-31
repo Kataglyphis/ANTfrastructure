@@ -158,6 +158,39 @@ uv run meson subprojects update > /dev/null 2>&1 || true
 
 echo "Compiling GStreamer (this may take a while)..."
 
+# Memory per compile job in MB — anpassen bei Bedarf (1500..3000)
+PER_JOB_MB=1500
+
+# CPU threads
+CORES=$(nproc --all)
+
+# Verfügbaren RAM in MB holen (fallback 2048 MB)
+AVAIL_MB=$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo)
+[ -z "$AVAIL_MB" ] && AVAIL_MB=2048
+
+# Max Jobs begrenzt durch RAM
+MAX_BY_MEM=$(( AVAIL_MB / PER_JOB_MB ))
+[ "$MAX_BY_MEM" -lt 1 ] && MAX_BY_MEM=1
+
+# JOBS = min(CORES, MAX_BY_MEM)
+if [ "$CORES" -lt "$MAX_BY_MEM" ]; then
+  JOBS=$CORES
+else
+  JOBS=$MAX_BY_MEM
+fi
+
+# Reserve one core for system if possible
+if [ "$JOBS" -gt 1 ]; then
+  JOBS=$((JOBS - 1))
+fi
+
+# Ensure at least 1
+[ "$JOBS" -lt 1 ] && JOBS=1
+
+export JOBS
+echo "Using JOBS=$JOBS (cores=$CORES, avail_mb=${AVAIL_MB}, per_job_mb=${PER_JOB_MB})"
+
+
 echo "Compiling GStreamer..."
 if ! uv run meson compile -C builddir -v --jobs "${JOBS}" | tee /tmp/meson-compile.log; then
   echo "ERROR: Meson compile failed"
