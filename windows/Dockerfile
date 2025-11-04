@@ -1,10 +1,12 @@
 # escape=`
 
 # Use the latest Windows Server Core 2022 image.
-FROM mcr.microsoft.com/windows/servercore:ltsc2025
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 # Build-time variable for the Vulkan SDK version (default can be overridden).
 ARG VULKAN_VERSION=1.4.328.1
+
+ENV VULKAN_VERSION=$VULKAN_VERSION
 
 # Restore the default Windows shell for correct batch processing.
 SHELL ["cmd", "/S", "/C"]
@@ -50,49 +52,52 @@ RUN `
 
 
 RUN `
-    curl -L -o Git-64-bit.exe "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.2/Git-2.47.1.2-64-bit.exe" `
+    curl -L -o Git-64-bit.exe "https://github.com/git-for-windows/git/releases/download/v2.51.2.windows.1/Git-2.51.2-64-bit.exe" `
     && start /wait Git-64-bit.exe /SILENT /NORESTART `
     && del Git-64-bit.exe
 
 # after your Git install…
-# ---------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Install Scoop (admin mode) plus llvm & nano in one single RUN
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
 
 RUN `
     irm get.scoop.sh -outfile 'install.ps1' ; `
     .\install.ps1 -RunAsAdmin ;  `
+    scoop bucket add extras; `
     # install llvm & nano
-    scoop install llvm nano cmake cppcheck sccache main/ninja 
-# ---------------------------------------------------------------
+    scoop install llvm nano cmake cppcheck sccache main/ninja extras/nsis wixtoolset
+# -----------------------------------------------------------------------------
 
 # 0. Ensure our temp folder exists
 RUN New-Item -ItemType Directory -Path C:\temp -Force
 
 # copy script from build context into image
-COPY windows/scripts/setup-dependencies.ps1 C:\temp\setup-dependencies.ps1
+# COPY windows/scripts/setup-dependencies.ps1 C:\temp\setup-dependencies.ps1
 
-# run it with powershell, then delete the script
-RUN powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\temp\setup-dependencies.ps1" ; `
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ; `
-    del C:\temp\setup-dependencies.ps1
+# # run it with powershell, then delete the script
+# RUN powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\temp\setup-dependencies.ps1" ; `
+#     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ; `
+#     del C:\temp\setup-dependencies.ps1
 
-# 1. Download the SDK installer using the build arg
-RUN Invoke-WebRequest `
-      -Uri "https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}/windows/VulkanSDK-${VULKAN_VERSION}-Installer.exe" `
-      -OutFile "C:\\temp\\VulkanSDK-${VULKAN_VERSION}-Installer.exe" `
-    ; 
+RUN $ProgressPreference='SilentlyContinue'; `
+    $v = $env:VULKAN_VERSION; `
+    $url = 'https://sdk.lunarg.com/sdk/download/' + $v + '/windows/vulkansdk-windows-X64-' + $v + '.exe'; `
+    Invoke-WebRequest -Headers @{ 'Referer' = 'https://vulkan.lunarg.com/sdk/home' } `
+                      -Uri $url `
+                      -OutFile \"C:\temp\VulkanSDK-$v-Installer.exe\"
 
-# 2. Run silent installation (core + copy-only to avoid registry changes)
-RUN & "C:\\temp\\VulkanSDK-${VULKAN_VERSION}-Installer.exe" `
+# 2. Run silent installation
+
+RUN & "C:\temp\VulkanSDK-$($env:VULKAN_VERSION)-Installer.exe" `
       --accept-licenses `
       --default-answer `
       --confirm-command install `
       copy_only=1
 
 # 3. Set Vulkan environment variables (persisted at image build time)
-ENV VULKAN_SDK="C:\\VulkanSDK\\${VULKAN_VERSION}"
-RUN setx /M PATH $($Env:PATH + ';C:\\VulkanSDK\\' + '${VULKAN_VERSION}' + '\\Bin')
+ENV VULKAN_SDK=C:\VulkanSDK\${VULKAN_VERSION}
+ENV PATH="C:\VulkanSDK\${VULKAN_VERSION}\Bin;${PATH}"
 
 # Download and run rustup-init.exe silently, then clean up
 RUN Invoke-WebRequest `
@@ -101,6 +106,8 @@ RUN Invoke-WebRequest `
     ;
    
 RUN & "C:\\temp\\rustup-init.exe" -y;
+
+RUN powershell -c "irm https://astral.sh/uv/install.ps1 | more"
 
 # (Optional) verify installation
 RUN rustc --version; cargo --version

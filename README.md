@@ -165,6 +165,15 @@ nerdctl run --rm --privileged tonistiigi/binfmt --install all
 nerdctl build --platform linux/amd64,linux/arm64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
 ```
 
+### Windows
+
+```powershell
+C:\PATH_TO_NERDCTL\nerdctl.exe build --platform windows/amd64 `
+  --progress=plain --no-cache `
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:win_amd64 `
+  -f windows/Dockerfile .
+```
+
 ### Prerequisites
 
 ### Installation
