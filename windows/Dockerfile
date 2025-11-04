@@ -101,11 +101,10 @@ ENV PATH="C:\VulkanSDK\${VULKAN_VERSION}\Bin;${PATH}"
 
 # Download and run rustup-init.exe silently, then clean up
 RUN Invoke-WebRequest `
-      -Uri "https://win.rustup.rs/" `
-      -OutFile "C:\\temp\\rustup-init.exe" `
-    ;
+      -Uri 'https://win.rustup.rs/' `
+      -OutFile 'C:\temp\rustup-init.exe'
    
-RUN & "C:\\temp\\rustup-init.exe" -y;
+RUN & 'C:\temp\rustup-init.exe' -y
 
 RUN powershell -c "irm https://astral.sh/uv/install.ps1 | more"
 
