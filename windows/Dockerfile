@@ -1,12 +1,19 @@
 # escape=`
+# Improved Windows Server Core Dockerfile for Visual Studio Build Tools, Vulkan SDK, Git, Rust, and utilities.
+# Notes:
+# - Combines steps to reduce layers and cleans up installers to keep image smaller.
+# - Uses Start-Process -Wait -PassThru to surface installer exit codes and fail fast on errors.
+# - Sets VULKAN_SDK and updates PATH at build time.
 
 # Use the latest Windows Server Core 2022 image.
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 # Build-time variable for the Vulkan SDK version (default can be overridden).
 ARG VULKAN_VERSION=1.4.328.1
-
 ENV VULKAN_VERSION=$VULKAN_VERSION
+ENV TEMP_DIR="C:\\temp"
+
+LABEL maintainer="contact@jonasheinle.de"
 
 # Restore the default Windows shell for correct batch processing.
 SHELL ["cmd", "/S", "/C"]
@@ -59,7 +66,7 @@ RUN `
 # after your Git install…
 # -----------------------------------------------------------------------------
 # Install Scoop (admin mode) plus llvm & nano in one single RUN
-SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 RUN `
     irm get.scoop.sh -outfile 'install.ps1' ; `
@@ -70,7 +77,8 @@ RUN `
 # -----------------------------------------------------------------------------
 
 # 0. Ensure our temp folder exists
-RUN New-Item -ItemType Directory -Path C:\temp -Force
+# prepare temp dir
+RUN New-Item -ItemType Directory -Path $env:TEMP_DIR -Force | Out-Null;
 
 # copy script from build context into image
 # COPY windows/scripts/setup-dependencies.ps1 C:\temp\setup-dependencies.ps1
@@ -82,14 +90,18 @@ RUN New-Item -ItemType Directory -Path C:\temp -Force
 
 RUN $ProgressPreference='SilentlyContinue'; `
     $v = $env:VULKAN_VERSION; `
+    $temp_folder =$env:TEMP_DIR; `
     $url = 'https://sdk.lunarg.com/sdk/download/' + $v + '/windows/vulkansdk-windows-X64-' + $v + '.exe'; `
     Invoke-WebRequest -Headers @{ 'Referer' = 'https://vulkan.lunarg.com/sdk/home' } `
                       -Uri $url `
-                      -OutFile \"C:\temp\VulkanSDK-$v-Installer.exe\"
+                      -OutFile \"$temp_folder\VulkanSDK-$v-Installer.exe\"
 
 # 2. Run silent installation
 
-RUN & "C:\temp\VulkanSDK-$($env:VULKAN_VERSION)-Installer.exe" `
+RUN $ProgressPreference='SilentlyContinue'; `
+    $v = $env:VULKAN_VERSION; `
+    $temp_folder =$env:TEMP_DIR; `
+    & \"$temp_folder\VulkanSDK-$v-Installer.exe\" `
       --accept-licenses `
       --default-answer `
       --confirm-command install `
@@ -99,12 +111,9 @@ RUN & "C:\temp\VulkanSDK-$($env:VULKAN_VERSION)-Installer.exe" `
 ENV VULKAN_SDK=C:\VulkanSDK\${VULKAN_VERSION}
 ENV PATH="C:\VulkanSDK\${VULKAN_VERSION}\Bin;${PATH}"
 
-# Download and run rustup-init.exe silently, then clean up
-RUN Invoke-WebRequest `
-      -Uri 'https://win.rustup.rs/' `
-      -OutFile 'C:\temp\rustup-init.exe'
-   
-RUN & 'C:\temp\rustup-init.exe' -y
+# copy script and run it
+COPY windows/scripts/install-rustup.ps1 C:\temp\install-rustup.ps1
+RUN powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\temp\install-rustup.ps1" ;
 
 RUN powershell -c "irm https://astral.sh/uv/install.ps1 | more"
 
