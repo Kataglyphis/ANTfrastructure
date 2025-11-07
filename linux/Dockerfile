@@ -6,7 +6,7 @@ FROM ubuntu:24.04 AS base
 # ------------------------------------------------------------------------------
 ARG BUILD_TYPE=Release
 ARG VULKAN_VERSION=1.4.328.1
-ARG GSTREAMER_VERSION=1.26.7 
+ARG GSTREAMER_VERSION=1.27.2
 
 # Toolchain versions (override at build time)
 ARG LLVM_WANTED=21
@@ -70,7 +70,7 @@ RUN apt-get update -y && \
         nano tmux vim \
         sudo curl ca-certificates gnupg wget xz-utils libssl-dev git \
         build-essential ninja-build make sccache ccache \
-        clang clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev \
+        clang libc++-18-dev libc++abi-18-dev clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev \
         pkg-config lsb-release software-properties-common \
         meson python3 python3-venv python3-dev python3-pip \
         $([ "$ARCH" != "riscv64" ] && echo "lldb")
