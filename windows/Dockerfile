@@ -5,123 +5,89 @@
 # - Uses Start-Process -Wait -PassThru to surface installer exit codes and fail fast on errors.
 # - Sets VULKAN_SDK and updates PATH at build time.
 
-# Use the latest Windows Server Core 2022 image.
-FROM mcr.microsoft.com/windows/servercore:ltsc2022
+# Use the latest Windows Server Core 2025 image.
+FROM mcr.microsoft.com/windows/servercore:ltsc2025
 
 # Build-time variable for the Vulkan SDK version (default can be overridden).
 ARG VULKAN_VERSION=1.4.328.1
+ARG GST_VERSION=1.26.7
+ARG ARCH=x86_64
+ARG FLAVOR=msvc
 ENV VULKAN_VERSION=$VULKAN_VERSION
+# Build-time variable for the Vulkan SDK verison (default can be overridden).
 ENV TEMP_DIR="C:\\temp"
 
 LABEL maintainer="contact@jonasheinle.de"
 
-# Restore the default Windows shell for correct batch processing.
-SHELL ["cmd", "/S", "/C"]
-
-RUN `
-    # Download the Build Tools bootstrapper.
-    curl -SL --output vs_buildtools.exe https://aka.ms/vs/17/release/vs_buildtools.exe `
-    `
-    # Install Build Tools (same as before)...
-    && (start /w vs_buildtools.exe --quiet --wait --norestart --nocache `
-    --installPath "%ProgramFiles(x86)%\Microsoft Visual Studio\2022\BuildTools" `
-    --add Microsoft.VisualStudio.Workload.AzureBuildTools `
-    --add Microsoft.Component.MSBuild `
-    --add Microsoft.VisualStudio.Component.CoreBuildTools `
-    --add Microsoft.VisualStudio.Component.Roslyn.Compiler `
-    --add Microsoft.VisualStudio.Component.Roslyn.LanguageServices `
-    --add Microsoft.VisualStudio.Component.TextTemplating `
-    --add Microsoft.VisualStudio.Component.VC.ASAN `
-    --add Microsoft.VisualStudio.Component.VC.ATL `
-    --add Microsoft.VisualStudio.Component.VC.ATLMFC `
-    --add Microsoft.VisualStudio.Component.VC.CLI.Support `
-    --add Microsoft.VisualStudio.Component.VC.CMake.Project `
-    --add Microsoft.VisualStudio.Component.VC.CoreBuildTools `
-    --add Microsoft.VisualStudio.Component.VC.CoreIde `
-    --add Microsoft.VisualStudio.Component.VC.Redist.14.Latest `
-    --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-    --add Microsoft.VisualStudio.Component.Windows10SDK `
-    --add Microsoft.VisualStudio.Component.Windows11SDK.26100 `
-    --add Microsoft.VisualStudio.ComponentGroup.NativeDesktop.Core `
-    --add Microsoft.VisualStudio.Component.Llvm.ClangToolset `
-    --add Microsoft.VisualStudio.Workload.MSBuildTools `
-    --add Microsoft.VisualStudio.Workload.UniversalBuildTools `
-    --add Microsoft.VisualStudio.Workload.VCTools `
-    --add Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools `
-    --remove Microsoft.VisualStudio.Component.Windows10SDK.10240 `
-    --remove Microsoft.VisualStudio.Component.Windows10SDK.10586 `
-    --remove Microsoft.VisualStudio.Component.Windows10SDK.14393 `
-    --remove Microsoft.VisualStudio.Component.Windows81SDK `
-    || IF "%ERRORLEVEL%"=="3010" EXIT 0) `
-    `
-    # Cleanup
-    && del /q vs_buildtools.exe
-
-
-RUN `
-    curl -L -o Git-64-bit.exe "https://github.com/git-for-windows/git/releases/download/v2.51.2.windows.1/Git-2.51.2-64-bit.exe" `
-    && start /wait Git-64-bit.exe /SILENT /NORESTART `
-    && del Git-64-bit.exe
-
-# after your Git install…
-# -----------------------------------------------------------------------------
-# Install Scoop (admin mode) plus llvm & nano in one single RUN
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
+# Create temp dir and copy script into image
+RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null
+
+# Copy the install script into the image
+COPY windows\scripts\setup-vs.ps1 C:\temp\setup-vs.ps1
+
+# Run the installer script. Use -ExecutionPolicy Bypass so the script runs during build.
+# You may pass parameters directly to the script; below we pass Docker ARGs as script params.
+RUN powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\setup-vs.ps1 `
+    -TempDir "$env:TEMP_DIR"
+
 RUN `
+    Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/v2.51.2.windows.1/Git-2.51.2-64-bit.exe" -OutFile "Git-64-bit.exe"; `
+    Start-Process -FilePath "Git-64-bit.exe" -ArgumentList "/SILENT", "/NORESTART" -Wait; `
+    Remove-Item "Git-64-bit.exe" -Force
+
+RUN `
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 ; `
     irm get.scoop.sh -outfile 'install.ps1' ; `
     .\install.ps1 -RunAsAdmin ;  `
+    scoop bucket add main; `
     scoop bucket add extras; `
+    scoop install main/rustup; `
+    scoop install main/rust; `
+    scoop install main/vulkan@$env:VULKAN_VERSION; `
     # install llvm & nano
-    scoop install llvm nano cmake cppcheck sccache main/ninja extras/nsis wixtoolset
+    scoop install llvm nano cmake cppcheck sccache main/ninja extras/nsis wixtoolset main/uv
 # -----------------------------------------------------------------------------
 
-# 0. Ensure our temp folder exists
-# prepare temp dir
-RUN New-Item -ItemType Directory -Path $env:TEMP_DIR -Force | Out-Null;
+RUN $ErrorActionPreference='Stop'; `
+    $base = ('https://gstreamer.freedesktop.org/data/pkg/windows/{0}/{1}/' -f $env:GST_VERSION, $env:FLAVOR); `
+    $msiRuntime = ('gstreamer-1.0-{0}-{1}-{2}.msi' -f $env:FLAVOR, $env:ARCH, $env:GST_VERSION); `
+    $msiDevel   = ('gstreamer-1.0-devel-{0}-{1}-{2}.msi' -f $env:FLAVOR, $env:ARCH, $env:GST_VERSION); `
+    Invoke-WebRequest ($base + $msiRuntime) -OutFile (Join-Path $env:TEMP $msiRuntime); `
+    Start-Process msiexec -ArgumentList @('/i', (Join-Path $env:TEMP $msiRuntime), '/qn', '/norestart') -Wait; `
+    Invoke-WebRequest ($base + $msiDevel) -OutFile (Join-Path $env:TEMP $msiDevel); `
+    Start-Process msiexec -ArgumentList @('/i', (Join-Path $env:TEMP $msiDevel), '/qn', '/norestart') -Wait; `
+    Remove-Item (Join-Path $env:TEMP $msiRuntime), (Join-Path $env:TEMP $msiDevel) -Force
 
-# copy script from build context into image
-# COPY windows/scripts/setup-dependencies.ps1 C:\temp\setup-dependencies.ps1
+# Correct GStreamer location
+ENV GSTREAMER_BIN C:\Program Files\gstreamer\1.0\msvc_x86_64\bin
 
-# # run it with powershell, then delete the script
-# RUN powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\temp\setup-dependencies.ps1" ; `
-#     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ; `
-#     del C:\temp\setup-dependencies.ps1
+# Scoop/Git/Vulkan
 
-RUN $ProgressPreference='SilentlyContinue'; `
-    $v = $env:VULKAN_VERSION; `
-    $temp_folder =$env:TEMP_DIR; `
-    $url = 'https://sdk.lunarg.com/sdk/download/' + $v + '/windows/vulkansdk-windows-X64-' + $v + '.exe'; `
-    Invoke-WebRequest -Headers @{ 'Referer' = 'https://vulkan.lunarg.com/sdk/home' } `
-                      -Uri $url `
-                      -OutFile \"$temp_folder\VulkanSDK-$v-Installer.exe\"
+ENV SCOOP_USER_SHIMS C:\Users\ContainerAdministrator\scoop\shims
+ENV SCOOP_GLOBAL_SHIMS C:\ProgramData\scoop\shims
+ENV GIT_CMD           C:\Program Files\Git\cmd
+ENV GIT_BIN           C:\Program Files\Git\bin
+ENV GIT_USRBIN        C:\Program Files\Git\usr\bin
+ENV VULKAN_SDK        C:\Users\ContainerAdministrator\scoop\apps\vulkan\current
 
-# 2. Run silent installation
+# Windows-Standardpfade (damit powershell/where.exe gefunden werden)
 
-RUN $ProgressPreference='SilentlyContinue'; `
-    $v = $env:VULKAN_VERSION; `
-    $temp_folder =$env:TEMP_DIR; `
-    & \"$temp_folder\VulkanSDK-$v-Installer.exe\" `
-      --accept-licenses `
-      --default-answer `
-      --confirm-command install `
-      copy_only=1
+ENV WIN_BASE_PATH C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH
 
-# 3. Set Vulkan environment variables (persisted at image build time)
-ENV VULKAN_SDK=C:\VulkanSDK\${VULKAN_VERSION}
-ENV PATH="C:\VulkanSDK\${VULKAN_VERSION}\Bin;${PATH}"
+# Einmal sauber setzen (zwei-Argument-Form, $VAR-Expansion)
 
-# copy script and run it
-COPY windows/scripts/install-rustup.ps1 C:\temp\install-rustup.ps1
-RUN powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\temp\install-rustup.ps1" ;
+ENV PATH $GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
-RUN powershell -c "irm https://astral.sh/uv/install.ps1 | more"
-
-# (Optional) verify installation
-RUN rustc --version; cargo --version
+# Existenz prüfen und dann Auflösung über PATH testen
+RUN $ErrorActionPreference='Stop'; `
+    foreach ($c in 'gst-launch-1.0.exe','powershell','git','cmake','rustc','cargo','ninja','uv', 'vulkaninfoSDK', 'glslc') { `
+        & where.exe $c | Out-Host; `
+    }
 
 # avoids problems with shared ownership when shared volume 
-RUN git config --global --add safe.directory '*'
+# RUN git config --global --add safe.directory '*'
 
 # Define the entry point for the docker container.
 ENTRYPOINT ["C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools\\VsDevCmd.bat","-arch=amd64" , "&&", "powershell.exe", "-NoLogo", "-ExecutionPolicy", "Bypass"]
