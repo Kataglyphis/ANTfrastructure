@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -i
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
@@ -10,6 +10,8 @@ BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 VENV_DIR="${GSTREAMER_PREFIX}/.venv"
+
+export PATH="/home/bigjuicyjones/.local/bin/uv:$PATH"
 
 # ------------------------------------------------------------------------------
 # Install broad dependency set to enable most plugins
