@@ -52,6 +52,8 @@ try {
         '--add','Microsoft.VisualStudio.Workload.MSBuildTools',
         '--add','Microsoft.VisualStudio.Workload.UniversalBuildTools',
         '--add','Microsoft.VisualStudio.Workload.VCTools',
+        '--add','Microsoft.VisualStudio.Component.VC.Llvm.Clang',
+        '--add','Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset',
         '--add','Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools',
         '--remove','Microsoft.VisualStudio.Component.Windows10SDK.10240',
         '--remove','Microsoft.VisualStudio.Component.Windows10SDK.10586',
