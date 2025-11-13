@@ -185,6 +185,15 @@ RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
     ln -s "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
 
+# first remove apt gstreamer old ...
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*'; \
+    apt-get autoremove --purge -y; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
+    ldconfig 
+
 # GStreamer-ENV vars; without nothing works ....
 # I set them before running the setup script so that the script can use them too
 # So gst-plugins-rs can be built correctly
@@ -202,7 +211,21 @@ RUN /usr/local/bin/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "
 # This writes an ld.so conf file and runs ldconfig so the runtime linker will 
 # find your GStreamer libs without requiring LD_LIBRARY_PATH at runtime.
 RUN printf "%s\n" "/opt/gstreamer/lib/x86_64-linux-gnu" "/opt/gstreamer/lib/multiarch" \
-    > /etc/ld.so.conf.d/gstreamer.conf && ldconfig
+    > /etc/ld.so.conf.d/gstreamerg
+
+# this installs deps for building GUIs and utility
+# for python binary package creation
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      build-essential clang cmake ninja-build pkg-config \
+      libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
+      libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
+      libasound2-dev libpulse-dev libdbus-1-dev \
+      file dpkg-dev fakeroot binutils valgrind; \
+    echo "PATH (this step): $PATH"; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # --------- Workspace ---------
 WORKDIR ${WORKDIR}
