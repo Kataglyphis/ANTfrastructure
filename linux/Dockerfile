@@ -84,6 +84,11 @@ RUN apt-get install -y  \
       libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
 
 # ------------------------------------------------------------------------------
+# Adding for perforance analysis tools (perf)
+# ------------------------------------------------------------------------------        
+RUN apt-get install -y linux-tools-common linux-tools-generic
+
+# ------------------------------------------------------------------------------
 # Vulkan specific configs (Vulkan ICD configs)
 # ------------------------------------------------------------------------------
 

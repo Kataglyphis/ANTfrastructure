@@ -13,6 +13,7 @@ ARG VULKAN_VERSION=1.4.328.1
 ARG GST_VERSION=1.26.7
 ARG ARCH=x86_64
 ARG FLAVOR=msvc
+
 ENV VULKAN_VERSION=$VULKAN_VERSION
 # Build-time variable for the Vulkan SDK verison (default can be overridden).
 ENV TEMP_DIR="C:\\temp"
@@ -47,8 +48,15 @@ RUN `
     scoop install main/rust; `
     scoop install main/vulkan@$env:VULKAN_VERSION; `
     # install llvm & nano
-    scoop install llvm nano cmake cppcheck sccache main/ninja extras/nsis wixtoolset main/uv
+    scoop install llvm nano cmake cppcheck sccache main/ninja extras/nsis main/uv
 # -----------------------------------------------------------------------------
+
+# making the WiX packaging tool available for cmake
+RUN dotnet tool install --tool-path C:\WiX wix --version 4.0.4
+
+ENV GST_VERSION=$GST_VERSION
+ENV ARCH=$ARCH
+ENV FLAVOR=$FLAVOR
 
 RUN $ErrorActionPreference='Stop'; `
     $base = ('https://gstreamer.freedesktop.org/data/pkg/windows/{0}/{1}/' -f $env:GST_VERSION, $env:FLAVOR); `
@@ -65,20 +73,25 @@ ENV GSTREAMER_BIN C:\Program Files\gstreamer\1.0\msvc_x86_64\bin
 
 # Scoop/Git/Vulkan
 
+ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop
+ENV SCOOP_GLOBAL=C:\ProgramData\scoop
 ENV SCOOP_USER_SHIMS C:\Users\ContainerAdministrator\scoop\shims
 ENV SCOOP_GLOBAL_SHIMS C:\ProgramData\scoop\shims
 ENV GIT_CMD           C:\Program Files\Git\cmd
 ENV GIT_BIN           C:\Program Files\Git\bin
 ENV GIT_USRBIN        C:\Program Files\Git\usr\bin
 ENV VULKAN_SDK        C:\Users\ContainerAdministrator\scoop\apps\vulkan\current
-
+ENV WIX               C:\WiX
 # Windows-Standardpfade (damit powershell/where.exe gefunden werden)
 
 ENV WIN_BASE_PATH C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH
 
 # Einmal sauber setzen (zwei-Argument-Form, $VAR-Expansion)
 
-ENV PATH $GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+ENV PATH $WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+
+RUN where.exe wix.exe
+RUN C:\WiX\wix.exe extension add --global WixToolset.UI.wixext/4.0.4
 
 # Existenz prüfen und dann Auflösung über PATH testen
 RUN $ErrorActionPreference='Stop'; `
@@ -87,7 +100,7 @@ RUN $ErrorActionPreference='Stop'; `
     }
 
 # avoids problems with shared ownership when shared volume 
-# RUN git config --global --add safe.directory '*'
+RUN git config --global --add safe.directory '*'
 
 # Define the entry point for the docker container.
 ENTRYPOINT ["C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools\\VsDevCmd.bat","-arch=amd64" , "&&", "powershell.exe", "-NoLogo", "-ExecutionPolicy", "Bypass"]

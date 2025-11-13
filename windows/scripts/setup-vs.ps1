@@ -45,7 +45,7 @@ try {
         '--add','Microsoft.VisualStudio.Component.VC.CoreIde',
         '--add','Microsoft.VisualStudio.Component.VC.Redist.14.Latest',
         '--add','Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
-        '--add','Microsoft.VisualStudio.Component.Windows10SDK',
+        '--add','Microsoft.VisualStudio.Component.Windows11SDK.22621',
         '--add','Microsoft.VisualStudio.Component.Windows11SDK.26100',
         '--add','Microsoft.VisualStudio.ComponentGroup.NativeDesktop.Core',
         '--add','Microsoft.VisualStudio.Component.Llvm.ClangToolset',
@@ -54,11 +54,7 @@ try {
         '--add','Microsoft.VisualStudio.Workload.VCTools',
         '--add','Microsoft.VisualStudio.Component.VC.Llvm.Clang',
         '--add','Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset',
-        '--add','Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools',
-        '--remove','Microsoft.VisualStudio.Component.Windows10SDK.10240',
-        '--remove','Microsoft.VisualStudio.Component.Windows10SDK.10586',
-        '--remove','Microsoft.VisualStudio.Component.Windows10SDK.14393',
-        '--remove','Microsoft.VisualStudio.Component.Windows81SDK'
+        '--add','Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools'
     )
 
     Write-Host "Starte Installation der Visual Studio Build Tools ..."
