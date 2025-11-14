@@ -13,6 +13,14 @@ VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
 export PATH="/home/bigjuicyjones/.local/bin/uv:$PATH"
 
+# ensure universe/multiverse enabled and apt lists present for packages the script will install
+set -eux; \
+apt-get update; \
+apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg; \
+add-apt-repository -y universe; \
+add-apt-repository -y multiverse || true; \
+apt-get update
+
 # ------------------------------------------------------------------------------
 # Install broad dependency set to enable most plugins
 # ------------------------------------------------------------------------------

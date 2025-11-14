@@ -6,7 +6,6 @@ FROM ubuntu:24.04 AS base
 # ------------------------------------------------------------------------------
 ARG BUILD_TYPE=Release
 ARG VULKAN_VERSION=1.4.328.1
-ARG GSTREAMER_VERSION=1.27.2
 
 # Toolchain versions (override at build time)
 ARG LLVM_WANTED=21
@@ -42,13 +41,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     APT_LISTCHANGES_FRONTEND=none \
     BUILD_TYPE=${BUILD_TYPE} \
     VULKAN_VERSION=${VULKAN_VERSION} \
-    GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     WORKDIR=/workspace \ 
     PKG_CONFIG_PATH="" \
     LD_LIBRARY_PATH="" \
-    GST_PLUGIN_PATH="" \ 
-    GI_TYPELIB_PATH="" \
-    GSTREAMER_PREFIX=/opt/gstreamer \
     TARGETARCH=${TARGETARCH} \
     LLVM_WANTED=${LLVM_WANTED} \
     CLANG_WANTED=${CLANG_WANTED} \
@@ -181,6 +176,12 @@ RUN set -eux; \
 # ------------------------------------------------------------------------------
 # Build and install gstreamer from source
 # ------------------------------------------------------------------------------
+ARG GSTREAMER_VERSION=1.26.7
+ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GST_PLUGIN_PATH="" \
+    GI_TYPELIB_PATH="" \
+    GSTREAMER_PREFIX=/opt/gstreamer
+
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
     ln -s "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true

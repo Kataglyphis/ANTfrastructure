@@ -2,7 +2,7 @@
   <br>
   <a href="https://jonasheinle.de"><img src="images/logo.png" alt="logo" width="200"></a>
   <br>
-  Cataglyphis template
+  Kataglyphis-DockerHub
   <br>
 </h1>
 
@@ -13,7 +13,7 @@
   <a href="https://jonasheinle.de"><img src="images/glm_logo.png" alt="VulkanEngine" width="200"></a>
 </h1> -->
 
-<h4 align="center">A template <a href="https://jonasheinle.de" target="_blank"></a>.</h4>
+<h4 align="center">Useful Docker templates.<a href="https://jonasheinle.de" target="_blank"></a>.</h4>
 
 > **Important** add current user to docker group
 > sudo usermod -aG docker $USER
@@ -152,7 +152,7 @@ TOML
 ```
 
 ```bash
-nerdctl build --platform=arm64 --output type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true -f linux/Dockerfile .
+nerdctl build --platform=linux/arm64,linux/amd64 --output type=image,"name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest_multiarch","push=true" -f linux/Dockerfile . 
 ```
 
 ```bash
@@ -162,7 +162,7 @@ docker buildx create --name mybuilder --driver docker-container --buildkitd-conf
 
 ```bash
 nerdctl run --rm --privileged tonistiigi/binfmt --install all
-nerdctl build --platform linux/amd64,linux/arm64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
+nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
 ```
 
 ### Windows

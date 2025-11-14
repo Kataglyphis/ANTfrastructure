@@ -10,7 +10,7 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2025
 
 # Build-time variable for the Vulkan SDK version (default can be overridden).
 ARG VULKAN_VERSION=1.4.328.1
-ARG GST_VERSION=1.26.7
+ARG GST_VERSION=1.26.8
 ARG ARCH=x86_64
 ARG FLAVOR=msvc
 
@@ -82,15 +82,20 @@ ENV GIT_BIN           C:\Program Files\Git\bin
 ENV GIT_USRBIN        C:\Program Files\Git\usr\bin
 ENV VULKAN_SDK        C:\Users\ContainerAdministrator\scoop\apps\vulkan\current
 ENV WIX               C:\WiX
+ENV LLVM_USER_BIN     C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin
+ENV LLVM_GLOBAL_BIN   C:\ProgramData\scoop\apps\llvm\current\bin
+
 # Windows-Standardpfade (damit powershell/where.exe gefunden werden)
 
 ENV WIN_BASE_PATH C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH
 
 # Einmal sauber setzen (zwei-Argument-Form, $VAR-Expansion)
 
-ENV PATH $WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+ENV PATH $LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
 RUN where.exe wix.exe
+RUN where clang-cl.exe 
+RUN where lld-link.exe
 RUN C:\WiX\wix.exe extension add --global WixToolset.UI.wixext/4.0.4
 
 # Existenz prüfen und dann Auflösung über PATH testen
