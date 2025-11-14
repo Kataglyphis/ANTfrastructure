@@ -6,7 +6,6 @@ FROM ubuntu:24.04 AS base
 # ------------------------------------------------------------------------------
 ARG BUILD_TYPE=Release
 ARG VULKAN_VERSION=1.4.328.1
-ARG GSTREAMER_VERSION=1.27.2
 
 # Toolchain versions (override at build time)
 ARG LLVM_WANTED=21
@@ -42,13 +41,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     APT_LISTCHANGES_FRONTEND=none \
     BUILD_TYPE=${BUILD_TYPE} \
     VULKAN_VERSION=${VULKAN_VERSION} \
-    GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     WORKDIR=/workspace \ 
     PKG_CONFIG_PATH="" \
     LD_LIBRARY_PATH="" \
-    GST_PLUGIN_PATH="" \ 
-    GI_TYPELIB_PATH="" \
-    GSTREAMER_PREFIX=/opt/gstreamer \
     TARGETARCH=${TARGETARCH} \
     LLVM_WANTED=${LLVM_WANTED} \
     CLANG_WANTED=${CLANG_WANTED} \
@@ -82,6 +77,11 @@ RUN apt-get install -y  \
       doxygen iwyu graphviz gcovr libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
       libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils wayland-protocols \
       libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
+
+# ------------------------------------------------------------------------------
+# Adding for perforance analysis tools (perf)
+# ------------------------------------------------------------------------------        
+RUN apt-get install -y linux-tools-common linux-tools-generic
 
 # ------------------------------------------------------------------------------
 # Vulkan specific configs (Vulkan ICD configs)
@@ -176,9 +176,24 @@ RUN set -eux; \
 # ------------------------------------------------------------------------------
 # Build and install gstreamer from source
 # ------------------------------------------------------------------------------
+ARG GSTREAMER_VERSION=1.26.7
+ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GST_PLUGIN_PATH="" \
+    GI_TYPELIB_PATH="" \
+    GSTREAMER_PREFIX=/opt/gstreamer
+
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
     ln -s "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
+
+# first remove apt gstreamer old ...
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*'; \
+    apt-get autoremove --purge -y; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
+    ldconfig 
 
 # GStreamer-ENV vars; without nothing works ....
 # I set them before running the setup script so that the script can use them too
@@ -197,7 +212,21 @@ RUN /usr/local/bin/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "
 # This writes an ld.so conf file and runs ldconfig so the runtime linker will 
 # find your GStreamer libs without requiring LD_LIBRARY_PATH at runtime.
 RUN printf "%s\n" "/opt/gstreamer/lib/x86_64-linux-gnu" "/opt/gstreamer/lib/multiarch" \
-    > /etc/ld.so.conf.d/gstreamer.conf && ldconfig
+    > /etc/ld.so.conf.d/gstreamerg
+
+# this installs deps for building GUIs and utility
+# for python binary package creation
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      build-essential clang cmake ninja-build pkg-config \
+      libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
+      libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
+      libasound2-dev libpulse-dev libdbus-1-dev \
+      file dpkg-dev fakeroot binutils valgrind; \
+    echo "PATH (this step): $PATH"; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # --------- Workspace ---------
 WORKDIR ${WORKDIR}
