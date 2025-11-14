@@ -2,7 +2,7 @@
   <br>
   <a href="https://jonasheinle.de"><img src="images/logo.png" alt="logo" width="200"></a>
   <br>
-  Cataglyphis template
+  Kataglyphis-DockerHub
   <br>
 </h1>
 
@@ -13,7 +13,8 @@
   <a href="https://jonasheinle.de"><img src="images/glm_logo.png" alt="VulkanEngine" width="200"></a>
 </h1> -->
 
-<h4 align="center">A template <a href="https://jonasheinle.de" target="_blank"></a>.</h4>
+<h4 align="center">Find Docker templates for aarch64 
+x86_64 and RISCV <a href="https://jonasheinle.de" target="_blank"></a>.</h4>
 
 > **Important** add current user to docker group
 > sudo usermod -aG docker $USER
