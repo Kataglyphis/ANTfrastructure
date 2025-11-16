@@ -234,4 +234,4 @@ RUN set -eux; \
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 
-ENTRYPOINT ["/bin/bash"]
+CMD ["/bin/bash"]
