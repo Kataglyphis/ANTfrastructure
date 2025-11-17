@@ -13,7 +13,9 @@
   <a href="https://jonasheinle.de"><img src="images/glm_logo.png" alt="VulkanEngine" width="200"></a>
 </h1> -->
 
-<h4 align="center">Useful Docker templates.<a href="https://jonasheinle.de" target="_blank"></a>.</h4>
+
+<h4 align="center">Find Docker templates for aarch64 
+x86_64 and RISCV <a href="https://jonasheinle.de" target="_blank"></a>.</h4>
 
 > **Important** add current user to docker group
 > sudo usermod -aG docker $USER
@@ -152,7 +154,13 @@ TOML
 ```
 
 ```bash
-nerdctl build --platform=linux/arm64,linux/amd64 --output type=image,"name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest_multiarch","push=true" -f linux/Dockerfile . 
+nerdctl run --rm --privileged tonistiigi/binfmt --install all
+
+sudo nerdctl build \
+  --platform=linux/arm64,linux/amd64,linux/riscv64 \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest_multiarch \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest_multiarch,push=true' \
+  -f linux/Dockerfile .
 ```
 
 ```bash

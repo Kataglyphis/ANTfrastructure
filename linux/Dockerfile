@@ -223,13 +223,15 @@ RUN triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)" && \
 # this installs deps for building GUIs and utility
 # for python binary package creation
 RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       build-essential clang cmake ninja-build pkg-config \
       libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
       libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
       libasound2-dev libpulse-dev libdbus-1-dev \
-      file dpkg-dev fakeroot binutils valgrind; \
+      file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
+    echo "Detected arch: $arch"; \
     echo "PATH (this step): $PATH"; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
@@ -238,4 +240,4 @@ RUN set -eux; \
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 
-ENTRYPOINT ["/bin/bash"]
+CMD ["/bin/bash"]

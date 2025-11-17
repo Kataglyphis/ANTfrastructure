@@ -147,6 +147,13 @@ fi
 echo ""
 echo "Setting up Meson build..."
 
+# detect host architecture (examples: x86_64, aarch64, riscv64)
+HOST_ARCH="$(uname -m)"
+
+# treat riscv* as RISC-V; also handle dpkg architecture strings if you prefer:
+# DEB_ARCH="$(dpkg --print-architecture 2>/dev/null || true)" 
+
+# Build Meson flags, conditionally enable Rust bindings (rs) except on RISC-V
 MESON_FLAGS=(
   "--prefix=${GSTREAMER_PREFIX}"
   "-Dbuildtype=${BUILD_TYPE_LOWER}"
@@ -154,10 +161,24 @@ MESON_FLAGS=(
   "-Dgtk_doc=disabled"
   "-Dexamples=disabled"
   "-Dtests=disabled"
-  "-Drs=enabled"
   "-Dintrospection=enabled"
   "-Dglib:introspection=enabled"
 )
+
+# Only enable Rust bindings on non-RISC-V hosts
+# for now libsodium needs to updated to work 
+# with RISCV
+case "${HOST_ARCH}" in
+  riscv*|*riscv*)
+    echo "Host arch '${HOST_ARCH}' detected: skipping -Drs (Rust bindings) in Meson flags"
+    MESON_FLAGS+=("-Drs=disabled")
+    ;;
+  *)
+    MESON_FLAGS+=("-Drs=enabled")
+    ;;
+esac
+
+
 uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} || {
   echo "Meson setup failed; printing verbose output..."
   uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} -Dwarning_level=2
@@ -205,7 +226,7 @@ echo "Compiling GStreamer..."
 if ! uv run meson compile -C builddir -v --jobs "${JOBS}" | tee /tmp/meson-compile.log; then
   echo "ERROR: Meson compile failed"
   echo "==> Letzte Zeilen der Compile-Logs:"
-  tail -n 200 /tmp/meson-compile.log || true
+  tail -n 20000 /tmp/meson-compile.log || true
   echo "==> Meson log:"
   tail -n +1 builddir/meson-logs/meson-log.txt || true
   # Prüfe OOM
