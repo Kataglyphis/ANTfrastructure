@@ -186,15 +186,7 @@ RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
     ln -s "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
 
-# first remove apt gstreamer old ...
-RUN set -eux; \
-    apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*'; \
-    apt-get autoremove --purge -y; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*; \
-    ldconfig 
-
+    
 # GStreamer-ENV vars; without nothing works ....
 # I set them before running the setup script so that the script can use them too
 # So gst-plugins-rs can be built correctly
@@ -207,12 +199,26 @@ ENV GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0:${GI_TYP
 COPY --chmod=0755 linux/scripts/setup-gstreamer.sh /usr/local/bin/setup-gstreamer.sh
 RUN /usr/local/bin/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
 # Multiarch-Libdir ermitteln und auf einen stabilen Symlink zeigen lassen
+    
+# Something in my setup-gstreamer.sh causes apt to install gstreamer packages ...
+# Until i have nvestigate ehat exactly this is causing it, i just remove any
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*'; \
+    apt-get autoremove --purge -y; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
+    ldconfig 
 
 # after building & installing GStreamer into /opt/gstreamer
 # This writes an ld.so conf file and runs ldconfig so the runtime linker will 
 # find your GStreamer libs without requiring LD_LIBRARY_PATH at runtime.
-RUN printf "%s\n" "/opt/gstreamer/lib/x86_64-linux-gnu" "/opt/gstreamer/lib/multiarch" \
-    > /etc/ld.so.conf.d/gstreamerg
+RUN triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)" && \
+    printf "%s\n" \
+      "/opt/gstreamer/lib/${triplet}" \
+      "/opt/gstreamer/lib/multiarch" \
+    > /etc/ld.so.conf.d/gstreamer && \
+    ldconfig
 
 # this installs deps for building GUIs and utility
 # for python binary package creation
