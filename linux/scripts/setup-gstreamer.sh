@@ -161,6 +161,7 @@ MESON_FLAGS=(
   "-Dgtk_doc=disabled"
   "-Dexamples=disabled"
   "-Dtests=disabled"
+  "-Dpython=enabled"
   "-Dintrospection=enabled"
   "-Dglib:introspection=enabled"
 )
@@ -289,3 +290,10 @@ echo "  export PATH=\"${GSTREAMER_PREFIX}/bin:\${PATH}\""
 echo "  export PKG_CONFIG_PATH=\"${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig:\${PKG_CONFIG_PATH}\""
 echo "  export LD_LIBRARY_PATH=\"${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu:\${LD_LIBRARY_PATH}\""
 echo "  export GST_PLUGIN_PATH=\"${GSTREAMER_PREFIX}/lib/gstreamer-1.0:\${GST_PLUGIN_PATH}\""
+
+# echo "Add Python GObject bindings"
+# apt-get update && apt-get install -y --no-install-recommends \
+#     python3-gi \
+#     python3-gi-cairo \
+#     libgirepository-1.0-dev \
+#     gobject-introspection
