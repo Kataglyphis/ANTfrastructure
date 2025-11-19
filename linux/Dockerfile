@@ -213,11 +213,21 @@ RUN set -eux; \
 # after building & installing GStreamer into /opt/gstreamer
 # This writes an ld.so conf file and runs ldconfig so the runtime linker will 
 # find your GStreamer libs without requiring LD_LIBRARY_PATH at runtime.
-RUN triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)" && \
-    printf "%s\n" \
-      "/opt/gstreamer/lib/${triplet}" \
-      "/opt/gstreamer/lib/multiarch" \
-    > /etc/ld.so.conf.d/gstreamer && \
+# --- make GStreamer visible system-wide for pkg-config + runtime ----
+# create system pkgconfig dir if missing and link gstreamer .pc files there
+RUN set -eux; \
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+    SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
+    GST_PKGCONF_DIR="/opt/gstreamer/lib/${triplet}/pkgconfig"; \
+    mkdir -p "${SYS_PKGCONF_DIR}"; \
+    if [ -d "${GST_PKGCONF_DIR}" ]; then \
+      # create symlinks to .pc files so pkg-config finds them without extra env
+      for pc in "${GST_PKGCONF_DIR}"/*.pc; do \
+        ln -snf "$pc" "${SYS_PKGCONF_DIR}/$(basename "$pc")"; \
+      done; \
+    fi; \
+    # also ensure libs are visible to runtime linker
+    printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
     ldconfig
 
 # this installs deps for building GUIs and utility
