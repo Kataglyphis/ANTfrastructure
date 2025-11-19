@@ -213,11 +213,21 @@ RUN set -eux; \
 # after building & installing GStreamer into /opt/gstreamer
 # This writes an ld.so conf file and runs ldconfig so the runtime linker will 
 # find your GStreamer libs without requiring LD_LIBRARY_PATH at runtime.
-RUN triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)" && \
-    printf "%s\n" \
-      "/opt/gstreamer/lib/${triplet}" \
-      "/opt/gstreamer/lib/multiarch" \
-    > /etc/ld.so.conf.d/gstreamer && \
+# --- make GStreamer visible system-wide for pkg-config + runtime ----
+# create system pkgconfig dir if missing and link gstreamer .pc files there
+RUN set -eux; \
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+    SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
+    GST_PKGCONF_DIR="/opt/gstreamer/lib/${triplet}/pkgconfig"; \
+    mkdir -p "${SYS_PKGCONF_DIR}"; \
+    if [ -d "${GST_PKGCONF_DIR}" ]; then \
+      # create symlinks to .pc files so pkg-config finds them without extra env
+      for pc in "${GST_PKGCONF_DIR}"/*.pc; do \
+        ln -snf "$pc" "${SYS_PKGCONF_DIR}/$(basename "$pc")"; \
+      done; \
+    fi; \
+    # also ensure libs are visible to runtime linker
+    printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
     ldconfig
 
 # this installs deps for building GUIs and utility
@@ -235,6 +245,61 @@ RUN set -eux; \
     echo "PATH (this step): $PATH"; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------------------
+# GStreamer environment variables - SET AT RUNTIME via entrypoint
+# ------------------------------------------------------------------------------
+# Create an entrypoint script that sets architecture-dependent paths dynamically
+RUN cat > /usr/local/bin/gstreamer-env.sh <<'ENVSCRIPT'
+#!/bin/bash
+# Dynamically set GStreamer paths based on runtime architecture
+
+GSTREAMER_PREFIX="/opt/gstreamer"
+_arch="$(uname -m)"
+
+case "${_arch}" in
+  x86_64)
+    MULTIARCH_DIR="lib/x86_64-linux-gnu"
+    SYSTEM_LIB="/usr/lib/x86_64-linux-gnu"
+    ;;
+  aarch64|arm64)
+    MULTIARCH_DIR="lib/aarch64-linux-gnu"
+    SYSTEM_LIB="/usr/lib/aarch64-linux-gnu"
+    ;;
+  i386|i486|i586|i686)
+    MULTIARCH_DIR="lib/i386-linux-gnu"
+    SYSTEM_LIB="/usr/lib/i386-linux-gnu"
+    ;;
+  riscv64)
+    MULTIARCH_DIR="lib/riscv64-linux-gnu"
+    SYSTEM_LIB="/usr/lib/riscv64-linux-gnu"
+    ;;
+  *)
+    # Fallback - try to detect multiarch triplet
+    TRIPLET="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || echo 'unknown')"
+    if [ "$TRIPLET" != "unknown" ]; then
+      MULTIARCH_DIR="lib/${TRIPLET}"
+      SYSTEM_LIB="/usr/lib/${TRIPLET}"
+    else
+      MULTIARCH_DIR="lib/multiarch"
+      SYSTEM_LIB="/usr/lib"
+    fi
+    ;;
+esac
+
+export PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
+export PKG_CONFIG_PATH="${SYSTEM_LIB}/pkgconfig:${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/pkgconfig:${PKG_CONFIG_PATH}"
+export LD_LIBRARY_PATH="${SYSTEM_LIB}:${GSTREAMER_PREFIX}/${MULTIARCH_DIR}:${LD_LIBRARY_PATH}"
+export GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/gstreamer-1.0:${GST_PLUGIN_PATH}"
+export GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/girepository-1.0:${GI_TYPELIB_PATH}"
+
+exec "$@"
+ENVSCRIPT
+
+RUN chmod +x /usr/local/bin/gstreamer-env.sh
+
+# Set the entrypoint to source the environment script
+ENTRYPOINT ["/usr/local/bin/gstreamer-env.sh"]
 
 # --------- Workspace ---------
 WORKDIR ${WORKDIR}

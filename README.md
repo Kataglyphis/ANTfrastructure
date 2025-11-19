@@ -156,10 +156,12 @@ TOML
 ```bash
 nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
+sudo nerdctl login ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -u Kataglyphis
+
 sudo nerdctl build \
   --platform=linux/arm64,linux/amd64,linux/riscv64 \
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest_multiarch \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest_multiarch,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
   -f linux/Dockerfile .
 ```
 
