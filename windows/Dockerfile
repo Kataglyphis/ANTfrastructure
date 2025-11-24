@@ -33,8 +33,9 @@ COPY windows\scripts\setup-vs.ps1 C:\temp\setup-vs.ps1
 RUN powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\setup-vs.ps1 `
     -TempDir "$env:TEMP_DIR"
 
+# scoop needs GIT :)))
 RUN `
-    Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/v2.51.2.windows.1/Git-2.51.2-64-bit.exe" -OutFile "Git-64-bit.exe"; `
+    Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/v2.52.0.windows.1/Git-2.52.0-64-bit.exe" -OutFile "Git-64-bit.exe"; `
     Start-Process -FilePath "Git-64-bit.exe" -ArgumentList "/SILENT", "/NORESTART" -Wait; `
     Remove-Item "Git-64-bit.exe" -Force
 
@@ -108,4 +109,4 @@ RUN $ErrorActionPreference='Stop'; `
 RUN git config --global --add safe.directory '*'
 
 # Define the entry point for the docker container.
-ENTRYPOINT ["C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools\\VsDevCmd.bat","-arch=amd64" , "&&", "powershell.exe", "-NoLogo", "-ExecutionPolicy", "Bypass"]
+ENTRYPOINT ["C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat","-arch=amd64" , "&&", "powershell.exe", "-NoLogo", "-ExecutionPolicy", "Bypass"]
