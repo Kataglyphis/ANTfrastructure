@@ -11,7 +11,7 @@ EXTRA_MESON_ARGS="${4:-}"
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
-export PATH="/home/bigjuicyjones/.local/bin/uv:$PATH"
+export PATH="${HOME}/.local/bin:${PATH}"
 
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 set -eux; \

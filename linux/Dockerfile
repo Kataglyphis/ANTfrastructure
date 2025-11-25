@@ -2,65 +2,48 @@
 FROM ubuntu:24.04 AS base
 
 # ------------------------------------------------------------------------------
-# Build args & env
+# Build-Argumente
 # ------------------------------------------------------------------------------
 ARG BUILD_TYPE=Release
 ARG VULKAN_VERSION=1.4.328.1
-
-# Toolchain versions (override at build time)
 ARG LLVM_WANTED=21
 ARG CLANG_WANTED=21
 ARG GCC_WANTED=14
-
-# Docker/BuildKit-provided arch arg; export to ENV for scripts
 ARG TARGETARCH
 
-# build-time metadata (define BEFORE LABEL so expansion works)
-ARG BUILD_DATE=""
-ARG VCS_REF=""
-ARG BUILD_BY="CI"
-LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
-      org.opencontainers.image.description="My beschleuniger image for 2D AI" \
-      org.opencontainers.image.version="${BUILD_TYPE}" \
-      org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \
-      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
-      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
-      org.opencontainers.image.licenses="MIT"
-
-# Use bash for RUN (arrays, pipefail-friendly)
+# ------------------------------------------------------------------------------
+# Shell
+# ------------------------------------------------------------------------------
 SHELL ["bash", "-lc"]
 
-# allow nvidia GPUs to work
+# ------------------------------------------------------------------------------
+# GPU-ENV
+# ------------------------------------------------------------------------------
 ENV NVIDIA_DRIVER_CAPABILITIES=all \
     NVIDIA_VISIBLE_DEVICES=all
 
+# ------------------------------------------------------------------------------
+# Basis-ENV
+# ------------------------------------------------------------------------------
 ENV DEBIAN_FRONTEND=noninteractive \
-    DEBCONF_NONINTERACTIVE_SEEN=true \
     APT_LISTCHANGES_FRONTEND=none \
-    BUILD_TYPE=${BUILD_TYPE} \
-    VULKAN_VERSION=${VULKAN_VERSION} \
-    WORKDIR=/workspace \ 
-    PKG_CONFIG_PATH="" \
-    LD_LIBRARY_PATH="" \
-    TARGETARCH=${TARGETARCH} \
-    LLVM_WANTED=${LLVM_WANTED} \
-    CLANG_WANTED=${CLANG_WANTED} \
-    GCC_WANTED=${GCC_WANTED}
+    WORKDIR=/workspace \
+    PATH=/usr/local/cargo/bin:/root/.local/bin:$PATH \
+    CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    CCACHE_DIR=/var/cache/ccache \
+    CCACHE_MAXSIZE=30G \
+    RUSTC_WRAPPER=/usr/bin/sccache \
+    SCCACHE_DIR=/var/cache/sccache
 
 # ------------------------------------------------------------------------------
-# Update package registry and upgrade existing packages
+# Basis-Pakete (ein RUN, BuildKit-Caches)
 # ------------------------------------------------------------------------------
-
-RUN apt-get update && apt-get upgrade -y
-
-# ------------------------------------------------------------------------------
-# Common prerequisites
-# ------------------------------------------------------------------------------
-
-RUN apt-get update -y && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
     ARCH="$(dpkg --print-architecture)" && \
+    apt-get update; \
     apt-get install -y --no-install-recommends \
         nano tmux vim \
         sudo curl ca-certificates gnupg wget xz-utils libssl-dev git \
@@ -68,12 +51,16 @@ RUN apt-get update -y && \
         clang libc++-18-dev libc++abi-18-dev clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev \
         pkg-config lsb-release software-properties-common \
         meson python3 python3-venv python3-dev python3-pip \
-        $([ "$ARCH" != "riscv64" ] && echo "lldb")
+        $([ "$ARCH" != "riscv64" ] && echo "lldb"); \
+    rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Install Graphics/Docs Deps --no-install-recommends
 # ------------------------------------------------------------------------------
-RUN apt-get install -y  \ 
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update -y && \
+    apt-get install -y  \ 
       doxygen iwyu graphviz gcovr libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
       libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils wayland-protocols \
       libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
@@ -81,13 +68,16 @@ RUN apt-get install -y  \
 # ------------------------------------------------------------------------------
 # Adding for perforance analysis tools (perf)
 # ------------------------------------------------------------------------------        
-RUN apt-get install -y linux-tools-common linux-tools-generic
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update -y && \
+    apt-get install -y linux-tools-common linux-tools-generic
 
 # ------------------------------------------------------------------------------
-# Vulkan specific configs (Vulkan ICD configs)
+# Vulkan ICD/Layer-JSONs
 # ------------------------------------------------------------------------------
-
-RUN mkdir -p /etc/vulkan/icd.d && \
+RUN set -eux; \
+    mkdir -p /etc/vulkan/icd.d; \
     cat > /etc/vulkan/icd.d/nvidia_icd.json <<EOF
 {
     "file_format_version" : "1.0.0",
@@ -97,7 +87,8 @@ RUN mkdir -p /etc/vulkan/icd.d && \
     }
 }
 EOF
-RUN mkdir -p /usr/share/glvnd/egl_vendor.d && \
+RUN set -eux; \
+    mkdir -p /usr/share/glvnd/egl_vendor.d; \
     cat > /usr/share/glvnd/egl_vendor.d/10_nvidia.json <<EOF
 {
     "file_format_version" : "1.0.0",
@@ -106,7 +97,8 @@ RUN mkdir -p /usr/share/glvnd/egl_vendor.d && \
     }
 }
 EOF
-RUN mkdir -p /etc/vulkan/implicit_layer.d/ && \
+RUN set -eux; \
+    mkdir -p /etc/vulkan/implicit_layer.d/; \
     cat > /etc/vulkan/implicit_layer.d/nvidia_layers.json <<EOF
 {
     "file_format_version" : "1.0.0",
@@ -132,107 +124,115 @@ RUN mkdir -p /etc/vulkan/implicit_layer.d/ && \
 EOF
 
 # ------------------------------------------------------------------------------
-# Install Rust via rustup (official method) and setup uv package manager
+# Rust via rustup + cargo-c
 # ------------------------------------------------------------------------------
-ENV CARGO_HOME=/usr/local/cargo \
-    RUSTUP_HOME=/usr/local/rustup \
-    # RUSTC_WRAPPER=/usr/bin/sccache \
-    PATH=/usr/local/cargo/bin:/root/.local/bin:$PATH
-
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    curl -sSf https://sh.rustup.rs | sh -s -- -y && \
-    rustc --version && \
-    cargo --version && \
+    set -eux; \
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
+    rustc --version; \
+    cargo --version; \
     cargo install --locked cargo-c
 
-# uv (persist PATH via ENV above)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# ------------------------------------------------------------------------------
+# uv installieren
+# ------------------------------------------------------------------------------
+RUN --mount=type=cache,target=/root/.cache/uv \
+    set -eux; \
+    curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # ------------------------------------------------------------------------------
-# Install Vulkan SDK and Deps per-architecture
+# Compiler-Caches initialisieren
 # ------------------------------------------------------------------------------
-# Copy main and helpers into the paths setup-dependencies.sh expects
-COPY --chmod=0755 linux/scripts/setup-dependencies.sh /opt/setup-scripts/setup-dependencies.sh
-COPY --chmod=0755 linux/scripts /opt/setup-scripts/scripts/
 
-# Run individual steps with CLI args; keep apt cache mounts for speed.
-# Order: install base/cmake/extras, then set toolchains (gcc/llvm), then Vulkan.
-# --mount=type=cache,target=/var/cache/apt \
-#     --mount=type=cache,target=/var/lib/apt \
-RUN set -eux; \
-    /opt/setup-scripts/setup-dependencies.sh base && \
-    /opt/setup-scripts/setup-dependencies.sh cmake && \
-    /opt/setup-scripts/setup-dependencies.sh extras && \
-    /opt/setup-scripts/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc && \
-    if [ "${TARGETARCH:-$(uname -m)}" = "riscv64" ]; then \
-      echo "Skipping llvm/clang install on RISC-V (${TARGETARCH:-$(uname -m)})"; \
-    else \
-      /opt/setup-scripts/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
-      fi && \
-    /opt/setup-scripts/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan && \
-    /opt/setup-scripts/setup-dependencies.sh verify
+RUN --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    ccache -M "${CCACHE_MAXSIZE}" || true
 
 # ------------------------------------------------------------------------------
-# Build and install gstreamer from source
+# Abhängigkeiten & Toolchains (Skripte per Bind-Mount aus dem Build-Kontext)
+# ------------------------------------------------------------------------------
+
+ARG LLVM_WANTED CLANG_WANTED GCC_WANTED VULKAN_VERSION TARGETARCH
+RUN --mount=type=bind,src=linux/scripts,dst=/opt/setup-scripts/scripts,ro \
+    --mount=type=bind,src=linux/scripts/setup-dependencies.sh,dst=/opt/setup-scripts/setup-dependencies.sh,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    bash /opt/setup-scripts/setup-dependencies.sh base; \
+    bash /opt/setup-scripts/setup-dependencies.sh cmake; \
+    bash /opt/setup-scripts/setup-dependencies.sh extras; \
+    bash /opt/setup-scripts/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
+    if [ "${TARGETARCH:-$(uname -m)}" != "riscv64" ]; then \
+      bash /opt/setup-scripts/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
+    fi; \
+    bash /opt/setup-scripts/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
+    bash /opt/setup-scripts/setup-dependencies.sh verify
+
+# ------------------------------------------------------------------------------
+# GStreamer-Build: ENV + Setup
 # ------------------------------------------------------------------------------
 ARG GSTREAMER_VERSION=1.26.7
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GSTREAMER_PREFIX=/opt/gstreamer \
     GST_PLUGIN_PATH="" \
-    GI_TYPELIB_PATH="" \
-    GSTREAMER_PREFIX=/opt/gstreamer
+    GI_TYPELIB_PATH=""
 
+# Multiarch-Libdir-Symlink (stabiler Pfad)
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
-    ln -s "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
+    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
+    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
 
-    
-# GStreamer-ENV vars; without nothing works ....
-# I set them before running the setup script so that the script can use them too
-# So gst-plugins-rs can be built correctly
+# GStreamer-ENV für Build-Schritt
+ENV PKG_CONFIG_PATH="" \
+    LD_LIBRARY_PATH=""
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 ENV PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${PKG_CONFIG_PATH}"
 ENV LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/multiarch:${LD_LIBRARY_PATH}"
 ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGIN_PATH}"
 ENV GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0:${GI_TYPELIB_PATH}"
 
-COPY --chmod=0755 linux/scripts/setup-gstreamer.sh /usr/local/bin/setup-gstreamer.sh
-RUN /usr/local/bin/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
-# Multiarch-Libdir ermitteln und auf einen stabilen Symlink zeigen lassen
-    
-# Something in my setup-gstreamer.sh causes apt to install gstreamer packages ...
-# Until i have nvestigate ehat exactly this is causing it, i just remove any
+# GStreamer aus Skript (Bind-Mount), mit Caches
+RUN --mount=type=bind,src=linux/scripts/setup-gstreamer.sh,dst=/usr/local/bin/setup-gstreamer.sh,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    bash /usr/local/bin/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
+
+# GStreamer-Pakete, die evtl. via apt reinkamen, entfernen
 RUN set -eux; \
     apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*'; \
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' || true; \
     apt-get autoremove --purge -y; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
-    ldconfig 
+    ldconfig
 
-# after building & installing GStreamer into /opt/gstreamer
-# This writes an ld.so conf file and runs ldconfig so the runtime linker will 
-# find your GStreamer libs without requiring LD_LIBRARY_PATH at runtime.
-# --- make GStreamer visible system-wide for pkg-config + runtime ----
-# create system pkgconfig dir if missing and link gstreamer .pc files there
+# GStreamer systemweit für pkg-config sichtbar machen
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
     SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
     GST_PKGCONF_DIR="/opt/gstreamer/lib/${triplet}/pkgconfig"; \
     mkdir -p "${SYS_PKGCONF_DIR}"; \
     if [ -d "${GST_PKGCONF_DIR}" ]; then \
-      # create symlinks to .pc files so pkg-config finds them without extra env
       for pc in "${GST_PKGCONF_DIR}"/*.pc; do \
         ln -snf "$pc" "${SYS_PKGCONF_DIR}/$(basename "$pc")"; \
       done; \
     fi; \
-    # also ensure libs are visible to runtime linker
     printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
     ldconfig
 
-# this installs deps for building GUIs and utility
-# for python binary package creation
-RUN set -eux; \
+# Zusätzliche GUI-/Utility-/Python packaging-Deps (optional)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
     arch="$(dpkg --print-architecture)"; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -247,35 +247,19 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
-# GStreamer environment variables - SET AT RUNTIME via entrypoint
+# Laufzeit-ENV für GStreamer (ENTRYPOINT)
 # ------------------------------------------------------------------------------
-# Create an entrypoint script that sets architecture-dependent paths dynamically
 RUN cat > /usr/local/bin/gstreamer-env.sh <<'ENVSCRIPT'
 #!/bin/bash
-# Dynamically set GStreamer paths based on runtime architecture
-
+set -euo pipefail
 GSTREAMER_PREFIX="/opt/gstreamer"
 _arch="$(uname -m)"
-
 case "${_arch}" in
-  x86_64)
-    MULTIARCH_DIR="lib/x86_64-linux-gnu"
-    SYSTEM_LIB="/usr/lib/x86_64-linux-gnu"
-    ;;
-  aarch64|arm64)
-    MULTIARCH_DIR="lib/aarch64-linux-gnu"
-    SYSTEM_LIB="/usr/lib/aarch64-linux-gnu"
-    ;;
-  i386|i486|i586|i686)
-    MULTIARCH_DIR="lib/i386-linux-gnu"
-    SYSTEM_LIB="/usr/lib/i386-linux-gnu"
-    ;;
-  riscv64)
-    MULTIARCH_DIR="lib/riscv64-linux-gnu"
-    SYSTEM_LIB="/usr/lib/riscv64-linux-gnu"
-    ;;
+  x86_64)   MULTIARCH_DIR="lib/x86_64-linux-gnu"; SYSTEM_LIB="/usr/lib/x86_64-linux-gnu" ;;
+  aarch64|arm64) MULTIARCH_DIR="lib/aarch64-linux-gnu"; SYSTEM_LIB="/usr/lib/aarch64-linux-gnu" ;;
+  i386|i486|i586|i686) MULTIARCH_DIR="lib/i386-linux-gnu"; SYSTEM_LIB="/usr/lib/i386-linux-gnu" ;;
+  riscv64)  MULTIARCH_DIR="lib/riscv64-linux-gnu"; SYSTEM_LIB="/usr/lib/riscv64-linux-gnu" ;;
   *)
-    # Fallback - try to detect multiarch triplet
     TRIPLET="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || echo 'unknown')"
     if [ "$TRIPLET" != "unknown" ]; then
       MULTIARCH_DIR="lib/${TRIPLET}"
@@ -286,23 +270,35 @@ case "${_arch}" in
     fi
     ;;
 esac
-
 export PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
-export PKG_CONFIG_PATH="${SYSTEM_LIB}/pkgconfig:${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/pkgconfig:${PKG_CONFIG_PATH}"
-export LD_LIBRARY_PATH="${SYSTEM_LIB}:${GSTREAMER_PREFIX}/${MULTIARCH_DIR}:${LD_LIBRARY_PATH}"
-export GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/gstreamer-1.0:${GST_PLUGIN_PATH}"
-export GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/girepository-1.0:${GI_TYPELIB_PATH}"
-
+export PKG_CONFIG_PATH="${SYSTEM_LIB}/pkgconfig:${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/pkgconfig:${PKG_CONFIG_PATH:-}"
+export LD_LIBRARY_PATH="${SYSTEM_LIB}:${GSTREAMER_PREFIX}/${MULTIARCH_DIR}:${LD_LIBRARY_PATH:-}"
+export GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/gstreamer-1.0:${GST_PLUGIN_PATH:-}"
+export GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/girepository-1.0:${GI_TYPELIB_PATH:-}"
 exec "$@"
 ENVSCRIPT
-
 RUN chmod +x /usr/local/bin/gstreamer-env.sh
 
-# Set the entrypoint to source the environment script
-ENTRYPOINT ["/usr/local/bin/gstreamer-env.sh"]
+# ------------------------------------------------------------------------------
+# OCI-Labels (dynamisch) – am Ende, damit Cache stabil bleibt
+# ------------------------------------------------------------------------------
+ARG BUILD_DATE="" VCS_REF="" BUILD_BY="CI"
+LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
+      org.opencontainers.image.description="My beschleuniger image for 2D AI" \
+      org.opencontainers.image.version="${BUILD_TYPE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \
+      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
+      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
+      org.opencontainers.image.licenses="MIT"
 
-# --------- Workspace ---------
+# ------------------------------------------------------------------------------
+# Workspace & EntryPoint
+# ------------------------------------------------------------------------------
+
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 
+ENTRYPOINT ["/usr/local/bin/gstreamer-env.sh"]
 CMD ["/bin/bash"]

@@ -166,6 +166,21 @@ sudo nerdctl build \
 ```
 
 ```bash
+sudo docker buildx build \
+  -f linux/Dockerfile \
+  --platform linux/amd64,linux/arm64,linux/riscv64 \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:$(git rev-parse --short HEAD) \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
+  --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+  --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
+  --build-arg BUILD_BY="local" \
+  --push \
+  .
+```
+
+```bash
 docker buildx rm mybuilder 2>/dev/null || true
 docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --
 ```
