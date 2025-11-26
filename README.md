@@ -195,7 +195,7 @@ nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/katagl
 ```powershell
 C:\PATH_TO_NERDCTL\nerdctl.exe build --platform windows/amd64 `
   --progress=plain --no-cache `
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:win_amd64 `
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
   -f windows/Dockerfile .
 ```
 
