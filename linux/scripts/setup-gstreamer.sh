@@ -33,6 +33,9 @@ apt-get install -y \
 CODENAME=$(lsb_release -sc)
 apt-get update -y
 
+# For using GTK video sinks
+apt-get install -y --no-install-recommends libgtk-3-dev libgtk-4-dev glslc glslang-tools
+
 # Audio I/O and DSP
 apt-get install -y --no-install-recommends \
   libasound2-dev libpulse-dev libjack-dev libpipewire-0.3-dev \
@@ -159,6 +162,7 @@ MESON_FLAGS=(
   "-Dbuildtype=${BUILD_TYPE_LOWER}"
   "-Dgpl=enabled"
   "-Dgtk_doc=disabled"
+  "-Dgtk=enabled"
   "-Dexamples=disabled"
   "-Dtests=disabled"
   "-Dpython=enabled"
