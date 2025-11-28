@@ -89,6 +89,9 @@ if ! pkg-config --exists nv-codec-headers; then
   rm -rf /tmp/nv-codec-headers
 fi
 
+# libcamera support; needed for raspberry pi cam
+apt install libcamera-dev libcamera-tools
+
 rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
@@ -163,6 +166,7 @@ MESON_FLAGS=(
   "-Dgpl=enabled"
   "-Dgtk_doc=disabled"
   "-Dgtk=enabled"
+  "-Dlibcamera=enabled" 
   "-Dexamples=disabled"
   "-Dtests=disabled"
   "-Dpython=enabled"
