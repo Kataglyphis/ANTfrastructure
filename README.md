@@ -190,6 +190,21 @@ nerdctl run --rm --privileged tonistiigi/binfmt --install all
 nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
 ```
 
+Run with frontend display support:
+```bash
+nerdctl run --rm -it \
+  -e DISPLAY=$DISPLAY \
+  -e WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+  -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+  -e PULSE_SERVER=$PULSE_SERVER \
+  -v /mnt/wslg:/mnt/wslg \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -v $XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR \
+  -v "$(pwd)":/workspace \
+  --workdir /workspace \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+```
+
 ### Windows
 
 ```powershell
