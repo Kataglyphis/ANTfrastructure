@@ -39,9 +39,9 @@ install_vulkan_sdk() {
   log "Extracting Vulkan SDK to ${VULKAN_INSTALL_ROOT}/${version}..."
 
   # make a safe tempdir, extract there
-  tmpd="$(mktemp -d)"
+  tmpd="$(mktemp -d -t vulkan-sdk-XXXXXX 2>/dev/null || mktemp -d -t vulkan)" || die "mktemp failed"
   tar -xJf "$tarball" -C "$tmpd" || die "tar extraction failed"
-  
+
   # ensure install root exists and is writable (use sudo if not root)
   sudo mkdir -p "$VULKAN_INSTALL_ROOT" || die "Failed to create ${VULKAN_INSTALL_ROOT}"
 
