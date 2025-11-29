@@ -1,6 +1,7 @@
 #!/bin/bash -i
 set -euo pipefail
 
+
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
@@ -11,95 +12,107 @@ EXTRA_MESON_ARGS="${4:-}"
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
+# this is for uv
 export PATH="${HOME}/.local/bin:${PATH}"
+
+# just trust every folder
+set -eux; \
+git config --global --add safe.directory '*'
 
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 set -eux; \
-apt-get update; \
-apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg; \
-add-apt-repository -y universe; \
-add-apt-repository -y multiverse || true; \
-apt-get update
+sudo apt-get update; \
+#apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg; \
+#add-apt-repository -y universe; \
+#add-apt-repository -y multiverse || true; \
+sudo apt-get update
 
 # ------------------------------------------------------------------------------
 # Install broad dependency set to enable most plugins
 # ------------------------------------------------------------------------------
-apt-get install -y \
+sudo apt-get install -y \
   flex bison \
   libglib2.0-dev liborc-0.4-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
   libgsl-dev libunwind-dev libdw-dev libnsl-dev gobject-introspection
 
 # Enable source repos so build-dep works
 CODENAME=$(lsb_release -sc)
-apt-get update -y
+sudo apt-get update -y
 
 # For using GTK video sinks
-apt-get install -y --no-install-recommends libgtk-3-dev libgtk-4-dev glslc glslang-tools
+sudo apt-get install -y --no-install-recommends libgtk-3-dev libgtk-4-dev glslc glslang-tools
 
 # Audio I/O and DSP
-apt-get install -y --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
   libasound2-dev libpulse-dev libjack-dev libpipewire-0.3-dev \
   libsndfile1-dev libsamplerate0-dev
 
 # Video capture / devices
-apt-get install -y --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
   libv4l-dev libusb-1.0-0-dev libdc1394-dev libraw1394-dev \
   libcdio-dev libcdparanoia-dev
 
 # Graphics stacks (X11/Wayland/OpenGL/EGL/GLES/DRM/VA)
-apt-get install -y --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
   libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxrandr-dev libxv-dev \
   libwayland-dev wayland-protocols libxkbcommon-dev \
   libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libglu1-mesa-dev \
   libdrm-dev libva-dev
 
 # Images / formats
-apt-get install -y --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
   libjpeg-dev libpng-dev libtiff-dev libwebp-dev \
-  libopenexr-3-dev || apt-get install -y --no-install-recommends libopenexr-dev
+  libopenexr-3-dev || sudo apt-get install -y --no-install-recommends libopenexr-dev
 
 # Codecs (audio)
-apt-get install -y --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
   libogg-dev libvorbis-dev libtheora-dev libopus-dev libflac-dev \
   libmpg123-dev libmp3lame-dev libtwolame-dev libspeex-dev libspeexdsp-dev \
   libwavpack-dev libgsm1-dev
 
 # Codecs (video)
-apt-get install -y --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
   libvpx-dev libaom-dev libdav1d-dev \
   libx264-dev libx265-dev libopenh264-dev \
   libsvtav1-dev || true
 
 # FFmpeg (for gst-libav)
-apt-get install -y --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
   libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev \
   libswscale-dev libswresample-dev
 
 # Networking / RTP / WebRTC / crypto
-apt-get install -y --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
   libsoup-3.0-dev libcurl4-openssl-dev libxml2-dev \
   zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
   libsrtp2-dev libnice-dev libssl-dev libusrsctp-dev || true
 
 # NVIDIA codec headers (enable nvcodec plugin)
-apt-get install -y --no-install-recommends nv-codec-headers || true
-if ! pkg-config --exists nv-codec-headers; then
-  git clone https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers
-  make -C /tmp/nv-codec-headers install
-  rm -rf /tmp/nv-codec-headers
+# Only install NVIDIA codec headers if an NVIDIA GPU is present
+if lspci | grep -i nvidia > /dev/null 2>&1; then
+  sudo apt-get install -y --no-install-recommends nv-codec-headers
+  if ! pkg-config --exists nv-codec-headers; then
+    git clone https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers
+    make -C /tmp/nv-codec-headers install
+    sudo rm -rf /tmp/nv-codec-headers
+  fi
+else
+  echo "No NVIDIA GPU detected, skipping nv-codec-headers installation"
 fi
 
 # libcamera support; needed for raspberry pi cam
-apt install libcamera-dev libcamera-tools
+sudo apt install -y --no-install-recommends libcamera-dev libcamera-tools
 
-rm -rf /var/lib/apt/lists/*
+sudo rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Install Astral uv, create venv, install Meson/Ninja
 # ------------------------------------------------------------------------------
 
-mkdir -p "${GSTREAMER_PREFIX}"
+sudo mkdir -p "${GSTREAMER_PREFIX}"
+sudo chown -R $USER:$USER "${GSTREAMER_PREFIX}"
 uv venv "${VENV_DIR}"
+
 # Activate venv so 'meson' and 'ninja' from the venv are used
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
@@ -111,6 +124,69 @@ uv pip install -U meson ninja
 # Optional: verify
 meson --version
 ninja --version
+
+# ---------- build libcamera from source (optional) ----------
+# Insert after Meson/Ninja are installed (they're installed into the venv above).
+: "${LIBCAMERA_SRC:=/tmp/libcamera}"
+: "${LIBCAMERA_PREFIX:=/usr}"        # system install by default; change to /opt/libcamera if you prefer
+: "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
+: "${LIBCAMERA_GIT:=https://git.libcamera.org/libcamera/libcamera.git}"
+
+# If libcamera pkg-config already exists, skip build
+if pkg-config --exists libcamera >/dev/null 2>&1; then
+  echo "libcamera already available via pkg-config — skipping libcamera build."
+else
+  echo "Preparing to build libcamera (src=${LIBCAMERA_SRC}, prefix=${LIBCAMERA_PREFIX})"
+
+  # Ensure required runtime/build deps are present (keep minimal required packages)
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update -y
+    sudo apt-get install -y --no-install-recommends \
+      libyaml-dev python3-yaml python3-ply python3-jinja2 \
+      ninja-build pkg-config libudev-dev libevent-dev || true
+    # Note: your script already installs many of the optional deps like libjpeg-dev/libtiff-dev/libdrm-dev
+  else
+    echo "apt-get not present — make sure libcamera build deps are installed manually."
+  fi
+
+  # clone or update
+  if [ -d "${LIBCAMERA_SRC}/.git" ]; then
+    echo "Updating existing libcamera checkout..."
+    cd "${LIBCAMERA_SRC}"
+    git fetch --depth 1 origin || true
+    git checkout origin/HEAD || true
+  else
+    git clone --depth 1 "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}" || { echo "Failed cloning libcamera"; false; }
+    cd "${LIBCAMERA_SRC}"
+  fi
+
+  # configure & build with meson (use the venv meson)
+  mkdir -p "${LIBCAMERA_BUILD_DIR}"
+  # use prefix so you can install to a non-system path if you prefer (or leave as /usr)
+  meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" || {
+    echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
+    exit 1
+  }
+
+  # build & install
+  ninja -C "${LIBCAMERA_BUILD_DIR}" || { echo "ninja build failed"; exit 1; }
+
+  # install: if not root, try sudo; if you want staged install, set DESTDIR
+  if [ "$EUID" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo ninja -C "${LIBCAMERA_BUILD_DIR}" install
+    else
+      echo "Not root and sudo missing — cannot run 'ninja install'. Install libcamera manually or set LIBCAMERA_PREFIX to a writable path."
+      exit 1
+    fi
+  else
+    ninja -C "${LIBCAMERA_BUILD_DIR}" install
+  fi
+
+  echo "libcamera installed to ${LIBCAMERA_PREFIX} (pkg-config should now find it)."
+fi
+# ---------- end libcamera build block ----------
+
 
 # ------------------------------------------------------------------------------
 # Build GStreamer from monorepo
@@ -129,9 +205,12 @@ echo "Build Type: ${BUILD_TYPE_LOWER}"
 echo "=========================================="
 
 mkdir -p "${GSTREAMER_PREFIX}"
-BUILD_DIR="/tmp/gstreamer-build"
-mkdir -p "${BUILD_DIR}"
+sudo chown $USER:$USER "${GSTREAMER_PREFIX}"
+# do not write directlly into tmp; its reserved for apt
+BUILD_DIR="/opt/tmp/gstreamer-build"
+sudo mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
+sudo chown -R $USER:$USER "${BUILD_DIR}"
 
 if [ -d "gstreamer" ]; then
   echo "Updating existing GStreamer repository..."
@@ -166,7 +245,6 @@ MESON_FLAGS=(
   "-Dgpl=enabled"
   "-Dgtk_doc=disabled"
   "-Dgtk=enabled"
-  "-Dlibcamera=enabled" 
   "-Dexamples=disabled"
   "-Dtests=disabled"
   "-Dpython=enabled"
@@ -273,8 +351,11 @@ if [ -d "${PLUGIN_RS_DIR}" ]; then
   git fetch origin --tags
   git checkout "gstreamer-${GSTREAMER_VERSION}"
 else
+  sudo mkdir "${PLUGIN_RS_DIR}"
+  sudo chown $USER:$USER "${PLUGIN_RS_DIR}"
   git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${PLUGIN_RS_DIR}"
   cd "${PLUGIN_RS_DIR}"
+  sudo chown $USER:$USER "${PLUGIN_RS_DIR}"
 fi
 
 cd net/webrtc
@@ -285,7 +366,7 @@ echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly
 
 echo "Cleaning up..."
 cd /
-rm -rf "${BUILD_DIR}"
+sudo rm -rf "${BUILD_DIR}"
 
 echo ""
 echo "=========================================="
@@ -305,3 +386,4 @@ echo "  export GST_PLUGIN_PATH=\"${GSTREAMER_PREFIX}/lib/gstreamer-1.0:\${GST_PL
 #     python3-gi-cairo \
 #     libgirepository-1.0-dev \
 #     gobject-introspection
+

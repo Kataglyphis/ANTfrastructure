@@ -1,0 +1,29 @@
++ git config --global --add safe.directory '*'
++ set -eux
++ sudo apt-get update
+Get:1 http://deb.debian.org/debian trixie InRelease [140 kB]
+Get:3 http://archive.raspberrypi.com/debian trixie InRelease [54.8 kB]
+Err:1 http://deb.debian.org/debian trixie InRelease
+  Splitting up /var/lib/apt/lists/partial/deb.debian.org_debian_dists_trixie_InRelease into data and signature failed
+Get:4 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
+Err:4 http://deb.debian.org/debian trixie-updates InRelease
+  Splitting up /var/lib/apt/lists/partial/deb.debian.org_debian_dists_trixie-updates_InRelease into data and signature failed
+Err:3 http://archive.raspberrypi.com/debian trixie InRelease
+  Splitting up /var/lib/apt/lists/partial/archive.raspberrypi.com_debian_dists_trixie_InRelease into data and signature failed
+Get:5 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
+Err:5 http://deb.debian.org/debian-security trixie-security InRelease
+  Splitting up /var/lib/apt/lists/partial/deb.debian.org_debian-security_dists_trixie-security_InRelease into data and signature failed
+Get:2 https://apt.llvm.org/unstable llvm-toolchain-21 InRelease [6,830 B]
+Err:2 https://apt.llvm.org/unstable llvm-toolchain-21 InRelease
+  Splitting up /var/lib/apt/lists/partial/apt.llvm.org_unstable_dists_llvm-toolchain-21_InRelease into data and signature failed
+Reading package lists...
+W: OpenPGP signature verification failed: http://deb.debian.org/debian trixie InRelease: Splitting up /var/lib/apt/lists/partial/deb.debian.org_debian_dists_trixie_InRelease into data and signature failed
+E: The repository 'http://deb.debian.org/debian trixie InRelease' is not signed.
+W: OpenPGP signature verification failed: http://deb.debian.org/debian trixie-updates InRelease: Splitting up /var/lib/apt/lists/partial/deb.debian.org_debian_dists_trixie-updates_InRelease into data and signature failed
+E: The repository 'http://deb.debian.org/debian trixie-updates InRelease' is not signed.
+W: OpenPGP signature verification failed: http://archive.raspberrypi.com/debian trixie InRelease: Splitting up /var/lib/apt/lists/partial/archive.raspberrypi.com_debian_dists_trixie_InRelease into data and signature failed
+E: The repository 'http://archive.raspberrypi.com/debian trixie InRelease' is not signed.
+W: OpenPGP signature verification failed: http://deb.debian.org/debian-security trixie-security InRelease: Splitting up /var/lib/apt/lists/partial/deb.debian.org_debian-security_dists_trixie-security_InRelease into data and signature failed
+E: The repository 'http://deb.debian.org/debian-security trixie-security InRelease' is not signed.
+W: OpenPGP signature verification failed: https://apt.llvm.org/unstable llvm-toolchain-21 InRelease: Splitting up /var/lib/apt/lists/partial/apt.llvm.org_unstable_dists_llvm-toolchain-21_InRelease into data and signature failed
+E: The repository 'http://apt.llvm.org/unstable llvm-toolchain-21 InRelease' is not signed.
