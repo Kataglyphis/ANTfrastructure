@@ -4,15 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source modules
-source "$SCRIPT_DIR/scripts/common.sh"
-source "$SCRIPT_DIR/scripts/repos.sh"
-source "$SCRIPT_DIR/scripts/core.sh"
-source "$SCRIPT_DIR/scripts/cmake.sh"
-source "$SCRIPT_DIR/scripts/llvm.sh"
-source "$SCRIPT_DIR/scripts/gcc.sh"
-source "$SCRIPT_DIR/scripts/vulkan.sh"
-source "$SCRIPT_DIR/scripts/extras.sh"
-source "$SCRIPT_DIR/scripts/verify.sh"
+source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/repos.sh"
+source "$SCRIPT_DIR/core.sh"
+source "$SCRIPT_DIR/cmake.sh"
+source "$SCRIPT_DIR/llvm.sh"
+source "$SCRIPT_DIR/gcc.sh"
+source "$SCRIPT_DIR/vulkan.sh"
+source "$SCRIPT_DIR/extras.sh"
+source "$SCRIPT_DIR/verify.sh"
 
 usage() {
   cat <<EOF
