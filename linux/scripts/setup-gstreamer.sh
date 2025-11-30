@@ -1,11 +1,10 @@
 #!/bin/bash -i
 set -euo pipefail
 
-
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.26.7}"
+GSTREAMER_VERSION="${1:-1.26.8}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -14,6 +13,9 @@ VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
 # this is for uv
 export PATH="${HOME}/.local/bin:${PATH}"
+
+# set the gst paths accordingly
+source ./linux/scripts/gstreamer-env.sh
 
 # just trust every folder
 set -eux; \
@@ -101,7 +103,7 @@ else
 fi
 
 # libcamera support; needed for raspberry pi cam
-sudo apt install -y --no-install-recommends libcamera-dev libcamera-tools
+# sudo apt install -y --no-install-recommends libcamera-dev libcamera-tools
 
 sudo rm -rf /var/lib/apt/lists/*
 
@@ -124,69 +126,6 @@ uv pip install -U meson ninja
 # Optional: verify
 meson --version
 ninja --version
-
-# ---------- build libcamera from source (optional) ----------
-# Insert after Meson/Ninja are installed (they're installed into the venv above).
-: "${LIBCAMERA_SRC:=/tmp/libcamera}"
-: "${LIBCAMERA_PREFIX:=/usr}"        # system install by default; change to /opt/libcamera if you prefer
-: "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
-: "${LIBCAMERA_GIT:=https://git.libcamera.org/libcamera/libcamera.git}"
-
-# If libcamera pkg-config already exists, skip build
-if pkg-config --exists libcamera >/dev/null 2>&1; then
-  echo "libcamera already available via pkg-config — skipping libcamera build."
-else
-  echo "Preparing to build libcamera (src=${LIBCAMERA_SRC}, prefix=${LIBCAMERA_PREFIX})"
-
-  # Ensure required runtime/build deps are present (keep minimal required packages)
-  if command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update -y
-    sudo apt-get install -y --no-install-recommends \
-      libyaml-dev python3-yaml python3-ply python3-jinja2 \
-      ninja-build pkg-config libudev-dev libevent-dev || true
-    # Note: your script already installs many of the optional deps like libjpeg-dev/libtiff-dev/libdrm-dev
-  else
-    echo "apt-get not present — make sure libcamera build deps are installed manually."
-  fi
-
-  # clone or update
-  if [ -d "${LIBCAMERA_SRC}/.git" ]; then
-    echo "Updating existing libcamera checkout..."
-    cd "${LIBCAMERA_SRC}"
-    git fetch --depth 1 origin || true
-    git checkout origin/HEAD || true
-  else
-    git clone --depth 1 "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}" || { echo "Failed cloning libcamera"; false; }
-    cd "${LIBCAMERA_SRC}"
-  fi
-
-  # configure & build with meson (use the venv meson)
-  mkdir -p "${LIBCAMERA_BUILD_DIR}"
-  # use prefix so you can install to a non-system path if you prefer (or leave as /usr)
-  meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" || {
-    echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
-    exit 1
-  }
-
-  # build & install
-  ninja -C "${LIBCAMERA_BUILD_DIR}" || { echo "ninja build failed"; exit 1; }
-
-  # install: if not root, try sudo; if you want staged install, set DESTDIR
-  if [ "$EUID" -ne 0 ]; then
-    if command -v sudo >/dev/null 2>&1; then
-      sudo ninja -C "${LIBCAMERA_BUILD_DIR}" install
-    else
-      echo "Not root and sudo missing — cannot run 'ninja install'. Install libcamera manually or set LIBCAMERA_PREFIX to a writable path."
-      exit 1
-    fi
-  else
-    ninja -C "${LIBCAMERA_BUILD_DIR}" install
-  fi
-
-  echo "libcamera installed to ${LIBCAMERA_PREFIX} (pkg-config should now find it)."
-fi
-# ---------- end libcamera build block ----------
-
 
 # ------------------------------------------------------------------------------
 # Build GStreamer from monorepo
@@ -243,6 +182,9 @@ MESON_FLAGS=(
   "--prefix=${GSTREAMER_PREFIX}"
   "-Dbuildtype=${BUILD_TYPE_LOWER}"
   "-Dgpl=enabled"
+  "-Ddoc=disabled"
+  "-Dbase=enabled"
+  "-Dgood=enabled"
   "-Dgtk_doc=disabled"
   "-Dgtk=enabled"
   "-Dexamples=disabled"
@@ -251,7 +193,16 @@ MESON_FLAGS=(
   "-Dintrospection=enabled"
   "-Dglib:introspection=enabled"
 )
-
+# "-Dbase=enabled"
+# "-Dgood=enabled"
+# "-Dauto_features=disabled"
+# "-Dlibav=enabled"
+# "-Ddevtools=disabled"
+# "-Dges=enabled"
+# "-Dugly=enabled"
+# "-Dbad=enabled"
+# "-Dtools=enabled"
+# "-Drtsp_server=enabled"
 # Only enable Rust bindings on non-RISC-V hosts
 # for now libsodium needs to updated to work 
 # with RISCV
@@ -379,11 +330,3 @@ echo "  export PATH=\"${GSTREAMER_PREFIX}/bin:\${PATH}\""
 echo "  export PKG_CONFIG_PATH=\"${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig:\${PKG_CONFIG_PATH}\""
 echo "  export LD_LIBRARY_PATH=\"${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu:\${LD_LIBRARY_PATH}\""
 echo "  export GST_PLUGIN_PATH=\"${GSTREAMER_PREFIX}/lib/gstreamer-1.0:\${GST_PLUGIN_PATH}\""
-
-# echo "Add Python GObject bindings"
-# apt-get update && apt-get install -y --no-install-recommends \
-#     python3-gi \
-#     python3-gi-cairo \
-#     libgirepository-1.0-dev \
-#     gobject-introspection
-

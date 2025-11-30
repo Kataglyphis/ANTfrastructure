@@ -207,6 +207,19 @@ RUN --mount=type=bind,src=linux/scripts/setup-gstreamer.sh,dst=/usr/local/bin/se
     set -eux; \
     bash /usr/local/bin/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
 
+# GStreamer aus Skript (Bind-Mount), mit Caches
+RUN --mount=type=bind,src=linux/scripts/build-libcamera.sh,dst=/usr/local/bin/build-libcamera.sh,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    bash /usr/local/bin/build-libcamera.sh.sh
+
 # GStreamer-Pakete, die evtl. via apt reinkamen, entfernen
 RUN set -eux; \
     apt-get update; \
