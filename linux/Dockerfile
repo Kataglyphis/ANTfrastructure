@@ -20,7 +20,8 @@ SHELL ["bash", "-lc"]
 # GPU-ENV
 # ------------------------------------------------------------------------------
 ENV NVIDIA_DRIVER_CAPABILITIES=all \
-    NVIDIA_VISIBLE_DEVICES=all
+    NVIDIA_VISIBLE_DEVICES=all \
+    VULKAN_VERSION=${VULKAN_VERSION}
 
 # ------------------------------------------------------------------------------
 # Basis-ENV
@@ -218,7 +219,7 @@ RUN --mount=type=bind,src=linux/scripts/build-libcamera.sh,dst=/usr/local/bin/bu
     --mount=type=cache,target=/var/cache/ccache \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
-    bash /usr/local/bin/build-libcamera.sh.sh
+    bash /usr/local/bin/build-libcamera.sh
 
 # GStreamer-Pakete, die evtl. via apt reinkamen, entfernen
 RUN set -eux; \
@@ -264,7 +265,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ------------------------------------------------------------------------------
 COPY linux/scripts/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 RUN chmod +x /usr/local/bin/gstreamer-env.sh
-
+COPY linux/scripts/libcamera-env.sh /usr/local/bin/libcamera-env.sh
+RUN chmod +x /usr/local/bin/libcamera-env.sh
+COPY linux/scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 # ------------------------------------------------------------------------------
 # OCI-Labels (dynamisch) – am Ende, damit Cache stabil bleibt
 # ------------------------------------------------------------------------------
@@ -286,5 +290,5 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 
-ENTRYPOINT ["/usr/local/bin/gstreamer-env.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/bin/bash"]

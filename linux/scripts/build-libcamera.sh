@@ -5,7 +5,7 @@ set -euo pipefail
 : "${LIBCAMERA_SRC:=/tmp/libcamera}"
 : "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
 : "${LIBCAMERA_GIT:=https://git.libcamera.org/libcamera/libcamera.git}"
-: "${LIBCAMERA_PREFIX:=${GSTREAMER_PREFIX:-/opt/gstreamer}}"
+: "${LIBCAMERA_PREFIX:=/opt/libcamera}"
 : "${BUILD_TYPE_LOWER:=release}"
 
 echo "build-libcamera: src=${LIBCAMERA_SRC} builddir=${LIBCAMERA_BUILD_DIR} prefix=${LIBCAMERA_PREFIX} buildtype=${BUILD_TYPE_LOWER}"

@@ -187,21 +187,20 @@ MESON_FLAGS=(
   "-Dgood=enabled"
   "-Dgtk_doc=disabled"
   "-Dgtk=enabled"
+  "-Dges=enabled"                                       # "-Dugly=enabled"
+  "-Dbad=enabled"
+  "-Dtools=enabled"
+  "-Dlibav=enabled"
+  "-Ddevtools=enabled"
   "-Dexamples=disabled"
   "-Dtests=disabled"
   "-Dpython=enabled"
   "-Dintrospection=enabled"
   "-Dglib:introspection=enabled"
 )
-# "-Dbase=enabled"
-# "-Dgood=enabled"
+# dont use auto features
 # "-Dauto_features=disabled"
-# "-Dlibav=enabled"
-# "-Ddevtools=disabled"
-# "-Dges=enabled"
 # "-Dugly=enabled"
-# "-Dbad=enabled"
-# "-Dtools=enabled"
 # "-Drtsp_server=enabled"
 # Only enable Rust bindings on non-RISC-V hosts
 # for now libsodium needs to updated to work 
