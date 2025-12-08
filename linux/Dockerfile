@@ -156,7 +156,7 @@ RUN --mount=type=cache,target=/var/cache/ccache \
 # ------------------------------------------------------------------------------
 
 ARG LLVM_WANTED CLANG_WANTED GCC_WANTED VULKAN_VERSION TARGETARCH
-RUN --mount=type=bind,src=linux/scripts,dst=/opt/setup-scripts/scripts,ro \
+RUN --mount=type=bind,src=linux/scripts,dst=/opt/setup-scripts,ro \
     --mount=type=bind,src=linux/scripts/setup-dependencies.sh,dst=/opt/setup-scripts/setup-dependencies.sh,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
@@ -196,7 +196,7 @@ ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGI
 ENV GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0:${GI_TYPELIB_PATH}"
 
 # GStreamer aus Skript (Bind-Mount), mit Caches
-RUN --mount=type=bind,src=linux/scripts/setup-gstreamer.sh,dst=/usr/local/bin/setup-gstreamer.sh,ro \
+RUN --mount=type=bind,src=linux,dst=/opt/linux,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     --mount=type=cache,target=/root/.cache/uv \
@@ -206,10 +206,12 @@ RUN --mount=type=bind,src=linux/scripts/setup-gstreamer.sh,dst=/usr/local/bin/se
     --mount=type=cache,target=/var/cache/ccache \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
-    bash /usr/local/bin/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
+    export USER=root; \
+    cd /opt && \
+    bash /opt/linux/scripts/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
 
 # GStreamer aus Skript (Bind-Mount), mit Caches
-RUN --mount=type=bind,src=linux/scripts/build-libcamera.sh,dst=/usr/local/bin/build-libcamera.sh,ro \
+RUN --mount=type=bind,src=linux,dst=/opt/linux,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     --mount=type=cache,target=/root/.cache/uv \
@@ -219,7 +221,8 @@ RUN --mount=type=bind,src=linux/scripts/build-libcamera.sh,dst=/usr/local/bin/bu
     --mount=type=cache,target=/var/cache/ccache \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
-    bash /usr/local/bin/build-libcamera.sh
+    cd /opt && \
+    bash /opt/linux/scripts/build-libcamera.sh
 
 # GStreamer-Pakete, die evtl. via apt reinkamen, entfernen
 RUN set -eux; \
@@ -250,7 +253,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     arch="$(dpkg --print-architecture)"; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-      build-essential clang cmake ninja-build pkg-config \
+      build-essential clang ninja-build pkg-config \
       libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
       libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
       libasound2-dev libpulse-dev libdbus-1-dev \
@@ -259,6 +262,78 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     echo "PATH (this step): $PATH"; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
+
+
+# ------------------------------------------------------------------------------
+# Android SDK & NDK (only for x86_64)
+# ------------------------------------------------------------------------------
+ARG ANDROID_SDK_VERSION=13114758
+# https://github.com/android/ndk/releases/tag/r29
+ARG ANDROID_NDK_VERSION=29.0.14206865
+ARG ANDROID_COMPILE_SDK=36
+ARG ANDROID_BUILD_TOOLS=35.0.0
+ARG ANDROID_CMAKE_VERSION=4.2.0
+
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_NDK_HOME=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
+    ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION}
+
+# Add Android tools to PATH
+ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
+
+RUN set -eux; \
+    if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
+      dpkg --add-architecture i386; \
+      # Install Java (required for Android SDK)
+      apt-get update; \
+      # https://developer.android.com/studio/install?hl=de#64bit-libs
+      apt-get install -y --no-install-recommends \ 
+        libc6:i386 libncurses6:i386 libstdc++6:i386 \
+        lib32z1 libbz2-1.0:i386; \
+      apt-get install -y --no-install-recommends \
+      # Java 25 is actually not yet officially supported by any stable Gradle version
+      openjdk-21-jdk \
+      unzip; \
+      \
+      # Download and install Android command line tools
+      mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
+      cd /tmp; \
+      wget -q "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip"; \
+      unzip -q commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip; \
+      mv cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest"; \
+      rm commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip; \
+      \
+      # Accept licenses
+      yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true; \
+      \
+      # Install Android SDK components
+      ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+        "platform-tools" \
+        "platforms;android-${ANDROID_COMPILE_SDK}" \
+        "build-tools;${ANDROID_BUILD_TOOLS}" \
+        "ndk;${ANDROID_NDK_VERSION}" \
+        "extras;android;m2repository" \
+        "extras;google;m2repository"; \
+      \
+      # Clean up
+      apt-get clean; \
+      rm -rf /var/lib/apt/lists/* /tmp/*; \
+    else \
+      echo "Skipping Android SDK/NDK installation on non-x86_64 architecture"; \
+    fi
+
+# Create NDK standalone toolchains symlinks for easier access
+RUN set -eux; \
+    if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
+      if [ -d "${ANDROID_NDK_HOME}" ]; then \
+        # Create convenient symlinks
+        ln -sf "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64" "${ANDROID_NDK_HOME}/toolchain"; \
+      fi; \
+    fi
+
+# https://gstreamer.freedesktop.org/documentation/installing/for-android-development.html?gi-language=c
+ENV GSTREAMER_ROOT_ANDROID=${GSTREAMER_PREFIX}
 
 # ------------------------------------------------------------------------------
 # Laufzeit-ENV für GStreamer (ENTRYPOINT)

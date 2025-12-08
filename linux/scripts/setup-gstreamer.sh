@@ -22,19 +22,18 @@ set -eux; \
 git config --global --add safe.directory '*'
 
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
+# we need to get rid of old orc modules on the system
 set -eux; \
 sudo apt-get update; \
-#apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg; \
-#add-apt-repository -y universe; \
-#add-apt-repository -y multiverse || true; \
-sudo apt-get update
+apt-get purge -y 'liborc*' 'orc-tools' || true && \
+apt-get autoremove -y
 
 # ------------------------------------------------------------------------------
 # Install broad dependency set to enable most plugins
 # ------------------------------------------------------------------------------
 sudo apt-get install -y \
   flex bison \
-  libglib2.0-dev liborc-0.4-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
+  libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
   libgsl-dev libunwind-dev libdw-dev libnsl-dev gobject-introspection
 
 # Enable source repos so build-dep works
@@ -187,21 +186,21 @@ MESON_FLAGS=(
   "-Dgood=enabled"
   "-Dgtk_doc=disabled"
   "-Dgtk=enabled"
-  "-Dges=enabled"                                       # "-Dugly=enabled"
+  "-Dugly=enabled"
+  "-Dges=enabled"                                       
   "-Dbad=enabled"
   "-Dtools=enabled"
   "-Dlibav=enabled"
   "-Ddevtools=enabled"
   "-Dexamples=disabled"
   "-Dtests=disabled"
+  "-Drtsp_server=enabled"
   "-Dpython=enabled"
   "-Dintrospection=enabled"
   "-Dglib:introspection=enabled"
 )
 # dont use auto features
 # "-Dauto_features=disabled"
-# "-Dugly=enabled"
-# "-Drtsp_server=enabled"
 # Only enable Rust bindings on non-RISC-V hosts
 # for now libsodium needs to updated to work 
 # with RISCV
