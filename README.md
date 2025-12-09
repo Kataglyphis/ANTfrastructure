@@ -165,10 +165,11 @@ sudo nerdctl build \
   -f linux/Dockerfile .
 ```
 
+# ,linux/riscv64
 ```bash
 sudo docker buildx build \
   -f linux/Dockerfile \
-  --platform linux/amd64,linux/arm64,linux/riscv64 \
+  --platform linux/amd64,linux/arm64 \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:$(git rev-parse --short HEAD) \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
