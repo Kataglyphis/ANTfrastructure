@@ -25,7 +25,7 @@ git config --global --add safe.directory '*'
 # we need to get rid of old orc modules on the system
 set -eux; \
 sudo apt-get update; \
-apt-get purge -y 'liborc*' 'orc-tools' || true && \
+apt-get purge -y 'liborc*' || true && \
 apt-get autoremove -y
 
 # ------------------------------------------------------------------------------

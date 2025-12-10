@@ -185,7 +185,7 @@ sudo docker buildx build \
   --push \
   .
 ```
-
+cat ~/.docker/config.json
 ```bash
 docker buildx rm mybuilder 2>/dev/null || true
 docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --
@@ -236,7 +236,15 @@ C:\PATH_TO_NERDCTL\nerdctl.exe build --platform windows/amd64 `
 Upcoming :)
 <!-- See the [open issues](https://github.com/othneildrew/Best-README-Template/issues) for a list of proposed features (and known issues). -->
 
-
+## Trobuleshoots
+- **__Symptom__**: Caching is  weird; Can not find files etc.  
+  **__Solution__**:   
+   ```bash
+     # change this line
+     RUSTC_WRAPPER= /usr/bin/sccache \ 
+     # to 
+     RUSTC_WRAPPER= \ 
+   ```
 
 <!-- CONTRIBUTING -->
 ## Contributing

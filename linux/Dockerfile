@@ -34,9 +34,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/usr/local/rustup \
     CCACHE_DIR=/var/cache/ccache \
     CCACHE_MAXSIZE=30G \
-    RUSTC_WRAPPER=/usr/bin/sccache \
+    RUSTC_WRAPPER= \ 
     SCCACHE_DIR=/var/cache/sccache
-
+# # /usr/bin/sccache \
 # ------------------------------------------------------------------------------
 # Basis-Pakete (ein RUN, BuildKit-Caches)
 # ------------------------------------------------------------------------------
