@@ -8,8 +8,6 @@
   <h4>Docker templates for GPU-friendly Linux dev stacks, a slim nginx webserver, and a Windows build image. 🐳 </h4>
 </div>
 
-
-
 > ⚠️ **Important:** add the current user to the docker group
 > ```bash
 > sudo usermod -aG docker $USER
