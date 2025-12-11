@@ -45,6 +45,16 @@ Docker templates for GPU-friendly Linux dev stacks, a slim nginx webserver, and 
 
 This project ships ready-to-build Dockerfiles for multiple targets in a single repo.
 
+Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/pkgs/container/kataglyphis_beschleuniger) — published multi-arch images (Linux base, Torch add-on, webserver) and Windows build image.
+
+Published images and tag hints:
+
+| Image | Platforms | Tag examples | Description |
+| --- | --- | --- | --- |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest`, `<git-sha>`, `amd64`, `arm64`, `riscv64` | Base Linux toolchain image with Clang/GCC, Rust, Vulkan, GStreamer, Android SDK/NDK. |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver | linux/amd64, linux/arm64 (as pushed) | `webserver`, `webserver-<git-sha>` | Minimal nginx static webserver image. |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 | windows/amd64 | `winamd64`, `winamd64-<git-sha>` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX. |
+
 Images in this repository:
 - 📦 **linux/Dockerfile:** Ubuntu 24.04 toolchain image (Clang/GCC, Rust, Vulkan, GStreamer, Android SDK/NDK for x86_64).
 - 🔥 **linux/torch/Dockerfile:** Torch/Python add-on on top of the base image.
