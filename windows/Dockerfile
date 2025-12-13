@@ -64,7 +64,6 @@ RUN `
     scoop install main/7zip; `
     scoop config use_external_7zip true; `
     scoop install main/rustup; `
-    scoop install main/rust; `
     scoop install main/vulkan@$env:VULKAN_VERSION; `
     scoop install --global extras/flutter; `
     # install llvm & nano
@@ -101,6 +100,16 @@ RUN where.exe wix.exe
 RUN where clang-cl.exe 
 RUN where lld-link.exe
 RUN C:\WiX\wix.exe extension add --global WixToolset.UI.wixext/4.0.4
+
+RUN $ErrorActionPreference = 'Stop'; `
+    # ensure rustup / rust toolchain present (scoop should have installed it) and select MSVC toolchain
+    rustup self update; `
+    rustup toolchain install stable-x86_64-pc-windows-msvc --no-self-update; `
+    rustup default stable-x86_64-pc-windows-msvc; `
+    # add commonly-needed components
+    rustup component add rust-src clippy rustfmt llvm-tools-preview; `
+    # add the MSVC target (usually same as toolchain but useful to be explicit)
+    rustup target add x86_64-pc-windows-msvc;
 
 # Existenz prüfen und dann Auflösung über PATH testen
 RUN $ErrorActionPreference='Stop'; `
