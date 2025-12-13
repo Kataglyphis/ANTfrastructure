@@ -91,7 +91,12 @@ ENV WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Win
 
 # Einmal sauber setzen (zwei-Argument-Form, $VAR-Expansion)
 
-ENV PATH=$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+# --- add these (place after your other ENV lines) ---
+ENV USERPROFILE="C:\\Users\\ContainerAdministrator"
+ENV CARGO_HOME="$USERPROFILE\\.cargo"
+ENV CARGO_BIN="$CARGO_HOME\\bin"
+
+ENV PATH=$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
 # check if flutter is correctly installed
 RUN where.exe flutter
@@ -110,6 +115,11 @@ RUN $ErrorActionPreference = 'Stop'; `
     rustup component add rust-src clippy rustfmt llvm-tools-preview; `
     # add the MSVC target (usually same as toolchain but useful to be explicit)
     rustup target add x86_64-pc-windows-msvc;
+
+RUN where.exe cargo; `
+    where.exe rustc; `
+    cargo --version; `
+    rustc --version
 
 # Existenz prüfen und dann Auflösung über PATH testen
 RUN $ErrorActionPreference='Stop'; `
