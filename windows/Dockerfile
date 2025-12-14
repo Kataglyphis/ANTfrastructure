@@ -46,9 +46,11 @@ RUN $ErrorActionPreference='Stop'; `
     $base = ('https://gstreamer.freedesktop.org/data/pkg/windows/{0}/{1}/' -f $env:GST_VERSION, $env:FLAVOR); `
     $msiRuntime = ('gstreamer-1.0-{0}-{1}-{2}.msi' -f $env:FLAVOR, $env:ARCH, $env:GST_VERSION); `
     $msiDevel   = ('gstreamer-1.0-devel-{0}-{1}-{2}.msi' -f $env:FLAVOR, $env:ARCH, $env:GST_VERSION); `
-    Invoke-WebRequest ($base + $msiRuntime) -OutFile (Join-Path $env:TEMP $msiRuntime); `
+    $runtimeUrl = $base + $msiRuntime; `
+    $develUrl = $base + $msiDevel; `
+    curl.exe -L -o (Join-Path $env:TEMP $msiRuntime) $runtimeUrl; `
     Start-Process msiexec -ArgumentList @('/i', (Join-Path $env:TEMP $msiRuntime), '/qn', '/norestart') -Wait; `
-    Invoke-WebRequest ($base + $msiDevel) -OutFile (Join-Path $env:TEMP $msiDevel); `
+    curl.exe -L -o (Join-Path $env:TEMP $msiDevel) $develUrl; `
     Start-Process msiexec -ArgumentList @('/i', (Join-Path $env:TEMP $msiDevel), '/qn', '/norestart') -Wait; `
     Remove-Item (Join-Path $env:TEMP $msiRuntime), (Join-Path $env:TEMP $msiDevel) -Force
 
