@@ -332,8 +332,24 @@ RUN set -eux; \
       fi; \
     fi
 
+# Download and install GStreamer for Android
 # https://gstreamer.freedesktop.org/documentation/installing/for-android-development.html?gi-language=c
-ENV GSTREAMER_ROOT_ANDROID=${GSTREAMER_PREFIX}
+RUN set -eux; \
+    if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
+      apt-get update; \
+      apt-get install -y --no-install-recommends xz-utils; \
+      \
+      mkdir -p /opt/android/gstreamer; \
+      cd /tmp; \
+      wget -q "https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz"; \
+      tar -xf gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz -C /opt/android/gstreamer; \
+      rm gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz; \
+      \
+      apt-get clean; \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
 
 # ------------------------------------------------------------------------------
 # Laufzeit-ENV für GStreamer (ENTRYPOINT)
