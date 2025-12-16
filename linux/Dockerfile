@@ -174,7 +174,7 @@ RUN --mount=type=bind,src=linux/scripts,dst=/opt/setup-scripts,ro \
 # ------------------------------------------------------------------------------
 # GStreamer-Build: ENV + Setup
 # ------------------------------------------------------------------------------
-ARG GSTREAMER_VERSION=1.26.7
+ARG GSTREAMER_VERSION=1.26.9
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GSTREAMER_PREFIX=/opt/gstreamer \
     GST_PLUGIN_PATH="" \
@@ -272,7 +272,7 @@ ARG ANDROID_SDK_VERSION=13114758
 ARG ANDROID_NDK_VERSION=29.0.14206865
 ARG ANDROID_COMPILE_SDK=36
 ARG ANDROID_BUILD_TOOLS=35.0.0
-ARG ANDROID_CMAKE_VERSION=4.2.0
+ARG ANDROID_CMAKE_VERSION=4.1.2
 
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
@@ -309,6 +309,7 @@ RUN set -eux; \
       \
       # Install Android SDK components
       ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+        "cmake;${ANDROID_CMAKE_VERSION}" \
         "platform-tools" \
         "platforms;android-${ANDROID_COMPILE_SDK}" \
         "build-tools;${ANDROID_BUILD_TOOLS}" \
