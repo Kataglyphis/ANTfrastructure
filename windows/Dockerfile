@@ -94,9 +94,9 @@ ENV WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Win
 # Einmal sauber setzen (zwei-Argument-Form, $VAR-Expansion)
 
 # --- add these (place after your other ENV lines) ---
-ENV USERPROFILE="C:\\Users\\ContainerAdministrator"
-ENV CARGO_HOME="$USERPROFILE\\.cargo"
-ENV CARGO_BIN="$CARGO_HOME\\bin"
+ENV USERPROFILE=C:\Users\ContainerAdministrator
+ENV CARGO_HOME=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo
+ENV CARGO_BIN=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo\bin
 
 ENV PATH=$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
