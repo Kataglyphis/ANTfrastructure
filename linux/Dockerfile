@@ -167,8 +167,8 @@ RUN --mount=type=bind,src=linux/scripts,dst=/opt/setup-scripts,ro \
     bash /opt/setup-scripts/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
     if [ "${TARGETARCH:-$(uname -m)}" != "riscv64" ]; then \
       bash /opt/setup-scripts/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
+      bash /opt/setup-scripts/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
     fi; \
-    bash /opt/setup-scripts/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
     bash /opt/setup-scripts/setup-dependencies.sh verify
 
 # ------------------------------------------------------------------------------

@@ -236,7 +236,7 @@ C:\PATH_TO_NERDCTL\nerdctl.exe build --platform windows/amd64 `
 
 1. Clone the repo:
    ```bash
-   git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-DockerHub.git
+   git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
    ```
 
 ## Tests 🧪
