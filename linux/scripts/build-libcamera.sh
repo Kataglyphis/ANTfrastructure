@@ -46,8 +46,12 @@ fi
 mkdir -p "${LIBCAMERA_BUILD_DIR}"
 
 # configure & build
+# NOTE: pycamera (Python bindings) is disabled to avoid conflicts with GStreamer's
+# plugin scanner. The libcamerasrc GStreamer element does NOT require Python bindings.
+# The Python error "TypeError: PyModule_AddObjectRef() first argument must be a module"
+# occurs when gst-plugin-scanner tries to load the pycamera module.
 meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
-  -Dgstreamer=enabled -Dpycamera=enabled || {
+  -Dgstreamer=enabled -Dpycamera=disabled || {
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
     exit 1
   }

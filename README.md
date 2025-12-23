@@ -106,9 +106,9 @@ Handy extras that pair well with the images.
 #### Build
 
 ```bash
-docker build -t kataglyphis/kataglyphis_beschleuniger_test:latest -f linux/Dockerfile .
+sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 # on Windows you must expose ports one by one
-docker run -it --rm -p 8443:8443 kataglyphis/kataglyphis_beschleuniger_test:latest
+sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 #### Multi-Arch Build 🌍

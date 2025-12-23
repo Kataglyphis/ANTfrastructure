@@ -34,7 +34,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/usr/local/rustup \
     CCACHE_DIR=/var/cache/ccache \
     CCACHE_MAXSIZE=30G \
-    RUSTC_WRAPPER= \ 
+    RUSTC_WRAPPER= \
     SCCACHE_DIR=/var/cache/sccache
 # # /usr/bin/sccache \
 # ------------------------------------------------------------------------------
@@ -61,7 +61,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update -y && \
-    apt-get install -y  \ 
+    apt-get install -y \
       doxygen iwyu graphviz gcovr libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
       libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils wayland-protocols \
       libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
