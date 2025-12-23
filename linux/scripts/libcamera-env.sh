@@ -5,10 +5,27 @@
 #   source ./libcamera-env.sh /opt/libcamera-custom
 
 # allow override by env var or one positional arg
-if [ $# -ge 1 ]; then
-  LIBCAMERA_PREFIX="$1"
+# If this file is sourced, avoid accidentally using the caller's positional
+# parameters (which can contain unrelated values). Detect whether the script
+# is being sourced and ignore a first positional argument that clearly looks
+# like the script filename itself (e.g. "/usr/local/bin/libcamera-env.sh").
+if [ -n "${BASH_SOURCE:-}" ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  # Being sourced
+  if [ $# -ge 1 ]; then
+    case "$1" in
+      */libcamera-env.sh|libcamera-env.sh)
+        LIBCAMERA_PREFIX="${LIBCAMERA_PREFIX:-/opt/libcamera}"
+        ;;
+      *)
+        LIBCAMERA_PREFIX="$1"
+        ;;
+    esac
+  else
+    LIBCAMERA_PREFIX="${LIBCAMERA_PREFIX:-/opt/libcamera}"
+  fi
 else
-  LIBCAMERA_PREFIX="${LIBCAMERA_PREFIX:-/opt/libcamera}"
+  # Executed as a script: accept $1 or env override, default to /opt/libcamera
+  LIBCAMERA_PREFIX="${1:-${LIBCAMERA_PREFIX:-/opt/libcamera}}"
 fi
 
 # ensure we have a non-empty prefix
