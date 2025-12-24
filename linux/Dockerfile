@@ -34,7 +34,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/usr/local/rustup \
     CCACHE_DIR=/var/cache/ccache \
     CCACHE_MAXSIZE=30G \
-    RUSTC_WRAPPER= \ 
+    RUSTC_WRAPPER= \
     SCCACHE_DIR=/var/cache/sccache
 # # /usr/bin/sccache \
 # ------------------------------------------------------------------------------
@@ -61,7 +61,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update -y && \
-    apt-get install -y  \ 
+    apt-get install -y \
       doxygen iwyu graphviz gcovr libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
       libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils wayland-protocols \
       libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
@@ -167,8 +167,8 @@ RUN --mount=type=bind,src=linux/scripts,dst=/opt/setup-scripts,ro \
     bash /opt/setup-scripts/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
     if [ "${TARGETARCH:-$(uname -m)}" != "riscv64" ]; then \
       bash /opt/setup-scripts/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
+      bash /opt/setup-scripts/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
     fi; \
-    bash /opt/setup-scripts/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
     bash /opt/setup-scripts/setup-dependencies.sh verify
 
 # ------------------------------------------------------------------------------
