@@ -8,12 +8,20 @@ set -euo pipefail
 : "${LIBCAMERA_PREFIX:=/opt/libcamera}"
 : "${BUILD_TYPE_LOWER:=release}"
 
+# libcamera-apps (contains libcamera-hello, libcamera-vid, etc.)
+# https://www.raspberrypi.com/documentation/computers/camera_software.html#building-libcamera-and-rpicam-apps
+: "${LIBCAMERA_APPS_SRC:=/tmp/libcamera-apps}"
+: "${LIBCAMERA_APPS_BUILD_DIR:=${LIBCAMERA_APPS_SRC}/build}"
+: "${LIBCAMERA_APPS_GIT:=https://github.com/raspberrypi/libcamera-apps.git}"
+
 echo "build-libcamera: src=${LIBCAMERA_SRC} builddir=${LIBCAMERA_BUILD_DIR} prefix=${LIBCAMERA_PREFIX} buildtype=${BUILD_TYPE_LOWER}"
 
 source ./linux/scripts/gstreamer-env.sh
 
 sudo apt update
-sudo apt install -y pybind11-dev python3-pybind11 python3-dev
+sudo apt install -y pybind11-dev python3-pybind11 python3-dev \
+  libboost-program-options-dev libdrm-dev libexif-dev libjpeg-dev libpng-dev \
+  libtiff-dev libavcodec-dev libavdevice-dev libavformat-dev libswresample-dev
 
 # If libcamera already present via pkg-config, skip
 if pkg-config --exists libcamera >/dev/null 2>&1; then
@@ -47,7 +55,7 @@ mkdir -p "${LIBCAMERA_BUILD_DIR}"
 
 # configure & build
 meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
-  -Dgstreamer=enabled -Dpycamera=enabled || {
+  -Dgstreamer=enabled -Dpycamera=enabled -Ddocumentation=disabled || {
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
     exit 1
   }

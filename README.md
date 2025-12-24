@@ -268,6 +268,15 @@ Contributions are what make the open source community such an amazing place to l
 4. Push to the branch (`git push origin feature/AmazingFeature`).
 5. Open a pull request.
 
+## Raspberry Pi Camera
+
+[rpi-cam sources](https://www.raspberrypi.com/documentation/computers/camera_software.html#rpicam-apps)
+
+```bash
+# list if camera is available
+v4l2-ctl --list-devices
+```
+
 ## License 📄
 
 Add your license details here.

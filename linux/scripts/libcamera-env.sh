@@ -94,6 +94,16 @@ if [ -d "${PREFIX}/share/python" ]; then
   _prepend_unique PYTHONPATH "${PREFIX}/share/python"
 fi
 
+# GStreamer plugin path for libcamerasrc
+for p in \
+  "${PREFIX}/lib/gstreamer-1.0" \
+  "${PREFIX}/lib64/gstreamer-1.0" \
+; do
+  if [ -d "$p" ]; then
+    _prepend_unique GST_PLUGIN_PATH "$p"
+  fi
+done
+
 # Export LIBCAMERA_PREFIX for convenience
 export LIBCAMERA_PREFIX="$PREFIX"
 
