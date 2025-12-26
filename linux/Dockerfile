@@ -187,11 +187,13 @@ RUN set -eux; \
     ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
 
 # GStreamer-ENV für Build-Schritt
+# Ensure /usr/local (onnxruntime install prefix) is visible to pkg-config/cmake
 ENV PKG_CONFIG_PATH="" \
     LD_LIBRARY_PATH=""
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
-ENV PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${PKG_CONFIG_PATH}"
-ENV LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/multiarch:${LD_LIBRARY_PATH}"
+ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${PKG_CONFIG_PATH}"
+ENV CMAKE_PREFIX_PATH="/usr/local:${CMAKE_PREFIX_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${LD_LIBRARY_PATH}"
 ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGIN_PATH}"
 ENV GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0:${GI_TYPELIB_PATH}"
 
@@ -207,6 +209,29 @@ RUN --mount=type=bind,src=linux,dst=/opt/linux,ro \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
     export USER=root; \
+    # Build and install ONNX Runtime (CPU, shared lib) so gst-plugins-bad can detect it
+    apt-get update; \
+    apt-get install -y --no-install-recommends git cmake python3-dev python3-pip build-essential pkg-config wget ca-certificates; \
+    git clone --depth 1 --branch v1.23.2 https://github.com/microsoft/onnxruntime.git /opt/onnxruntime; \
+    cd /opt/onnxruntime; \
+    python3 -m pip install --no-cache-dir flatbuffers || true; \
+    # Pfade sind Platzhalter — passe an dein Image an
+    ./build.sh \
+    --config Release \
+    --build_shared_lib \
+    --parallel \
+    --allow_running_as_root \
+    --use_dnnl \
+    --use_xnnpack \
+    --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/local/cuda \
+    --use_tensorrt --tensorrt_home /opt/tensorrt \
+    --use_rocm --rocm_home /opt/rocm \
+    --use_openvino --openvino_home /opt/intel/openvino \
+    --skip_onnx_tests --skip_tests; \
+    cmake --install build/Linux/Release --prefix /usr/local || true; \
+    rm -rf /opt/onnxruntime; \
+    ldconfig; \
+    # Continue with GStreamer setup
     cd /opt && \
     bash /opt/linux/scripts/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
 

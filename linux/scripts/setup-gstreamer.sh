@@ -189,6 +189,7 @@ MESON_FLAGS=(
   "-Dugly=enabled"
   "-Dges=enabled"                                       
   "-Dbad=enabled"
+  "-Dgst-plugins-bad:onnx=enabled"
   "-Dtools=enabled"
   "-Dlibav=enabled"
   "-Ddevtools=enabled"
