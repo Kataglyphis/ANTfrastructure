@@ -197,6 +197,16 @@ ENV LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${LD_LIBRA
 ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGIN_PATH}"
 ENV GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0:${GI_TYPELIB_PATH}"
 
+# ------------------------------------------------------------------------------
+# Libcamera-Build: ENV
+# ------------------------------------------------------------------------------
+ENV LIBCAMERA_PREFIX=/opt/libcamera
+ENV PATH="${LIBCAMERA_PREFIX}/bin:${PATH}"
+ENV PKG_CONFIG_PATH="${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH}"
+ENV LD_LIBRARY_PATH="${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${LD_LIBRARY_PATH}"
+# Include libcamera's GStreamer plugin in GST_PLUGIN_PATH
+ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
+
 # GStreamer aus Skript (Bind-Mount), mit Caches
 RUN --mount=type=bind,src=linux,dst=/opt/linux,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -270,6 +280,12 @@ RUN set -eux; \
       done; \
     fi; \
     printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
+    ldconfig
+
+# libcamera systemweit für ld.so sichtbar machen
+RUN set -eux; \
+    printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \
+    printf "%s\n" "/opt/libcamera/lib64" >> /etc/ld.so.conf.d/libcamera.conf; \
     ldconfig
 
 # Zusätzliche GUI-/Utility-/Python packaging-Deps (optional)
