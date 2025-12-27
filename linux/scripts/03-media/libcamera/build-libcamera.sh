@@ -64,31 +64,41 @@ mkdir -p "${LIBCAMERA_BUILD_DIR}"
 # plugin scanner. The libcamerasrc GStreamer element does NOT require Python bindings.
 # The Python error "TypeError: PyModule_AddObjectRef() first argument must be a module"
 # occurs when gst-plugin-scanner tries to load the pycamera module.
-# Use an isolated Astral `uv` venv so Meson uses a known Python environment with
-# required packages (meson, ninja, jinja2). This avoids PEP-668 issues with uv-managed
-# system interpreters when trying to install into the system Python.
+# Use Astral `uv` only: fail early if `uv` is not available, create the venv and
+# install the build tools into that venv using `uv run` (retry with
+# --break-system-packages on PEP-668 failures).
 LIBCAMERA_VENV="${LIBCAMERA_PREFIX}/.venv"
-if command -v uv >/dev/null 2>&1; then
-  echo "Creating/ensuring Astral uv venv at ${LIBCAMERA_VENV}"
-  uv venv "${LIBCAMERA_VENV}" || true
-else
-  echo "uv not found: falling back to python3 -m venv ${LIBCAMERA_VENV}"
-  python3 -m venv "${LIBCAMERA_VENV}"
+if ! command -v uv >/dev/null 2>&1; then
+  echo "Error: 'uv' is required to build libcamera but was not found. Please install Astral 'uv' and re-run the build."
+  exit 1
 fi
-# Activate the venv
-# shellcheck disable=SC1091
-source "${LIBCAMERA_VENV}/bin/activate"
-# Ensure pip and essential build tools are present in the venv
-pip install --upgrade pip setuptools wheel
-pip install --upgrade meson ninja jinja2 || true
-# Prefer venv binaries
-export PATH="${LIBCAMERA_VENV}/bin:${PATH}"
 
-meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
-  -Dgstreamer=enabled -Dpycamera=enabled -Ddocumentation=disabled || {
+echo "Creating/ensuring Astral uv venv at ${LIBCAMERA_VENV}"
+uv venv "${LIBCAMERA_VENV}" || true
+# Activate the venv so 'uv pip' installs into the created environment
+# (fixes errors like "No virtual environment found; run `uv venv` to create an environment")
+if [ -f "${LIBCAMERA_VENV}/bin/activate" ]; then
+  # shellcheck disable=SC1091
+  source "${LIBCAMERA_VENV}/bin/activate"
+fi
+
+# Install build tools into the uv venv; retry with --break-system-packages on PEP-668 failures
+if ! uv pip install --upgrade pip setuptools wheel 2>/tmp/uv-pip-install.log; then
+  echo "pip install into uv venv failed; retrying with --break-system-packages"
+  uv pip install --upgrade pip setuptools wheel || { echo "pip install (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
+fi
+if ! uv pip install --upgrade meson ninja jinja2 2>/tmp/uv-pip-install.log; then
+  echo "pip install meson/ninja/jinja2 failed; retrying with --break-system-packages"
+  uv pip install --upgrade meson ninja jinja2 || { echo "pip install meson/ninja/jinja2 (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
+fi
+UV_RUN_PREFIX=(uv run --)
+
+# Run Meson setup inside the venv (prefer uv run when available)
+if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
+  -Dgstreamer=enabled -Dpycamera=enabled -Ddocumentation=disabled; then
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
     exit 1
-  }
+fi
 
 ninja -C "${LIBCAMERA_BUILD_DIR}" || { echo "ninja build failed"; exit 1; }
 
