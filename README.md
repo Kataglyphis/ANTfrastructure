@@ -149,7 +149,7 @@ sudo nerdctl build \
   --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
   --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
   --build-arg BUILD_BY="local" \
-  -f linux/Dockerfile .
+  -f linux/Dockerfile . 2>&1 | tee -a output.log
 ```
 
 ##### Build & push (docker buildx)
@@ -255,7 +255,7 @@ Upcoming :)
   # change this line
   RUSTC_WRAPPER= /usr/bin/sccache \ 
   # to 
-  RUSTC_WRAPPER= \ 
+  RUSTC_WRAPPER="" \ 
   ```
 
 ## Contributing 🤝

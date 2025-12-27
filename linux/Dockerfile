@@ -34,9 +34,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/usr/local/rustup \
     CCACHE_DIR=/var/cache/ccache \
     CCACHE_MAXSIZE=30G \
-    RUSTC_WRAPPER= \
+    RUSTC_WRAPPER="" \
     SCCACHE_DIR=/var/cache/sccache
-# # /usr/bin/sccache \
+
+# ==============================================================================
+# LAYER 1: Core utilities (most stable - changes ~once per year)
+# ==============================================================================
+COPY linux/scripts/01-core/ /opt/scripts/core/
+
 # ------------------------------------------------------------------------------
 # Basis-Pakete (ein RUN, BuildKit-Caches)
 # ------------------------------------------------------------------------------
@@ -56,7 +61,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
-# Install Graphics/Docs Deps --no-install-recommends
+# Install Graphics/Docs Deps
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
@@ -67,7 +72,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
 
 # ------------------------------------------------------------------------------
-# Adding for perforance analysis tools (perf)
+# Performance analysis tools (perf)
 # ------------------------------------------------------------------------------        
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
@@ -88,6 +93,7 @@ RUN set -eux; \
     }
 }
 EOF
+
 RUN set -eux; \
     mkdir -p /usr/share/glvnd/egl_vendor.d; \
     cat > /usr/share/glvnd/egl_vendor.d/10_nvidia.json <<EOF
@@ -98,6 +104,7 @@ RUN set -eux; \
     }
 }
 EOF
+
 RUN set -eux; \
     mkdir -p /etc/vulkan/implicit_layer.d/; \
     cat > /etc/vulkan/implicit_layer.d/nvidia_layers.json <<EOF
@@ -145,31 +152,33 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ------------------------------------------------------------------------------
 # Compiler-Caches initialisieren
 # ------------------------------------------------------------------------------
-
 RUN --mount=type=cache,target=/var/cache/ccache \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
     ccache -M "${CCACHE_MAXSIZE}" || true
 
-# ------------------------------------------------------------------------------
-# Abhängigkeiten & Toolchains (Skripte per Bind-Mount aus dem Build-Kontext)
-# ------------------------------------------------------------------------------
+# ==============================================================================
+# LAYER 2: Toolchain setup (changes occasionally - every few months)
+# ==============================================================================
+COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 
 ARG LLVM_WANTED CLANG_WANTED GCC_WANTED VULKAN_VERSION TARGETARCH
-RUN --mount=type=bind,src=linux/scripts,dst=/opt/setup-scripts,ro \
-    --mount=type=bind,src=linux/scripts/setup-dependencies.sh,dst=/opt/setup-scripts/setup-dependencies.sh,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
-    bash /opt/setup-scripts/setup-dependencies.sh base; \
-    bash /opt/setup-scripts/setup-dependencies.sh cmake; \
-    bash /opt/setup-scripts/setup-dependencies.sh extras; \
-    bash /opt/setup-scripts/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
+    # Source common utilities if needed
+    [ -f /opt/scripts/core/common.sh ] && source /opt/scripts/core/common.sh || true; \
+    # Run dependency setup
+    bash /opt/scripts/toolchain/setup-dependencies.sh base; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh cmake; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh extras; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
     if [ "${TARGETARCH:-$(uname -m)}" != "riscv64" ]; then \
-      bash /opt/setup-scripts/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
-      bash /opt/setup-scripts/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
+      bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
+      bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
     fi; \
-    bash /opt/setup-scripts/setup-dependencies.sh verify
+    bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
 # ------------------------------------------------------------------------------
 # GStreamer-Build: ENV + Setup
@@ -180,14 +189,13 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GST_PLUGIN_PATH="" \
     GI_TYPELIB_PATH=""
 
-# Multiarch-Libdir-Symlink (stabiler Pfad)
+# Multiarch-Libdir-Symlink
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
     mkdir -p "/opt/gstreamer/lib/${triplet}"; \
     ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
 
-# GStreamer-ENV für Build-Schritt
-# Ensure /usr/local (onnxruntime install prefix) is visible to pkg-config/cmake
+# GStreamer-ENV
 ENV PKG_CONFIG_PATH="" \
     LD_LIBRARY_PATH=""
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
@@ -204,12 +212,17 @@ ENV LIBCAMERA_PREFIX=/opt/libcamera
 ENV PATH="${LIBCAMERA_PREFIX}/bin:${PATH}"
 ENV PKG_CONFIG_PATH="${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH}"
 ENV LD_LIBRARY_PATH="${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${LD_LIBRARY_PATH}"
-# Include libcamera's GStreamer plugin in GST_PLUGIN_PATH
 ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
 
-# GStreamer aus Skript (Bind-Mount), mit Caches
-RUN --mount=type=bind,src=linux,dst=/opt/linux,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+# ==============================================================================
+# LAYER 3: Media stack (changes when updating GStreamer/libcamera versions)
+# ==============================================================================
+COPY linux/scripts/03-media/ /opt/scripts/media/
+
+# ------------------------------------------------------------------------------
+# ONNX Runtime + GStreamer build
+# ------------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
@@ -219,35 +232,37 @@ RUN --mount=type=bind,src=linux,dst=/opt/linux,ro \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
     export USER=root; \
-    # Build and install ONNX Runtime (CPU, shared lib) so gst-plugins-bad can detect it
-    apt-get update; \
-    apt-get install -y --no-install-recommends git cmake python3-dev python3-pip build-essential pkg-config wget ca-certificates; \
+    # Node.js for GStreamer
+    curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get update && \
+    apt-get install -y nodejs && \
+    # ONNX Runtime dependencies
+    apt-get install -y --no-install-recommends git cmake python3-dev python3-pip build-essential pkg-config wget ca-certificates zlib1g-dev protobuf-compiler libprotobuf-dev; \
+    # Build ONNX Runtime
     git clone --depth 1 --branch v1.23.2 https://github.com/microsoft/onnxruntime.git /opt/onnxruntime; \
     cd /opt/onnxruntime; \
-    python3 -m pip install --no-cache-dir flatbuffers || true; \
-    # Pfade sind Platzhalter — passe an dein Image an
-    ./build.sh \
+    export PATH="/root/.local/bin:${PATH}"; \
+    command -v uv >/dev/null || (curl -LsSf https://astral.sh/uv/install.sh | sh); \
+    uv python install 3.12 --default || true; \
+    uv pip install flatbuffers || true; \
+    uv run -- ./build.sh \
     --config Release \
     --build_shared_lib \
     --parallel \
     --allow_running_as_root \
-    --use_dnnl \
     --use_xnnpack \
-    --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/local/cuda \
-    --use_tensorrt --tensorrt_home /opt/tensorrt \
-    --use_rocm --rocm_home /opt/rocm \
-    --use_openvino --openvino_home /opt/intel/openvino \
     --skip_onnx_tests --skip_tests; \
     cmake --install build/Linux/Release --prefix /usr/local || true; \
     rm -rf /opt/onnxruntime; \
     ldconfig; \
-    # Continue with GStreamer setup
+    # GStreamer build
     cd /opt && \
-    bash /opt/linux/scripts/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
+    bash /opt/scripts/media/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
 
-# GStreamer aus Skript (Bind-Mount), mit Caches
-RUN --mount=type=bind,src=linux,dst=/opt/linux,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+# ------------------------------------------------------------------------------
+# Libcamera build
+# ------------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
@@ -257,9 +272,16 @@ RUN --mount=type=bind,src=linux,dst=/opt/linux,ro \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
     cd /opt && \
-    bash /opt/linux/scripts/build-libcamera.sh
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-venv python3-jinja2 python3-yaml python3-ply \
+        ninja-build meson pkg-config \
+        libudev-dev libevent-dev libyaml-dev; \
+    export PATH="/root/.local/bin:${PATH}"; \
+    bash /opt/scripts/media/build-libcamera.sh
 
-# GStreamer-Pakete, die evtl. via apt reinkamen, entfernen
+# ------------------------------------------------------------------------------
+# Cleanup and system configuration
+# ------------------------------------------------------------------------------
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' || true; \
@@ -268,7 +290,6 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*; \
     ldconfig
 
-# GStreamer systemweit für pkg-config sichtbar machen
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
     SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
@@ -282,13 +303,14 @@ RUN set -eux; \
     printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
     ldconfig
 
-# libcamera systemweit für ld.so sichtbar machen
 RUN set -eux; \
     printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \
     printf "%s\n" "/opt/libcamera/lib64" >> /etc/ld.so.conf.d/libcamera.conf; \
     ldconfig
 
-# Zusätzliche GUI-/Utility-/Python packaging-Deps (optional)
+# ------------------------------------------------------------------------------
+# Additional dependencies
+# ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     arch="$(dpkg --print-architecture)"; \
@@ -299,17 +321,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
       libasound2-dev libpulse-dev libdbus-1-dev \
       file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
-    echo "Detected arch: $arch"; \
-    echo "PATH (this step): $PATH"; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
-
 
 # ------------------------------------------------------------------------------
 # Android SDK & NDK (only for x86_64)
 # ------------------------------------------------------------------------------
 ARG ANDROID_SDK_VERSION=13114758
-# https://github.com/android/ndk/releases/tag/r29
 ARG ANDROID_NDK_VERSION=29.0.14206865
 ARG ANDROID_COMPILE_SDK=36
 ARG ANDROID_BUILD_TOOLS=35.0.0
@@ -320,35 +338,25 @@ ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_NDK_HOME=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
     ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION}
 
-# Add Android tools to PATH
 ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
 RUN set -eux; \
     if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
       dpkg --add-architecture i386; \
-      # Install Java (required for Android SDK)
       apt-get update; \
-      # https://developer.android.com/studio/install?hl=de#64bit-libs
       apt-get install -y --no-install-recommends \ 
         libc6:i386 libncurses6:i386 libstdc++6:i386 \
         lib32z1 libbz2-1.0:i386; \
       apt-get install -y --no-install-recommends \
-      # Java 25 is actually not yet officially supported by any stable Gradle version
       openjdk-21-jdk \
       unzip; \
-      \
-      # Download and install Android command line tools
       mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
       cd /tmp; \
       wget -q "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip"; \
       unzip -q commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip; \
       mv cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest"; \
       rm commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip; \
-      \
-      # Accept licenses
       yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true; \
-      \
-      # Install Android SDK components
       ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
         "cmake;${ANDROID_CMAKE_VERSION}" \
         "platform-tools" \
@@ -357,53 +365,49 @@ RUN set -eux; \
         "ndk;${ANDROID_NDK_VERSION}" \
         "extras;android;m2repository" \
         "extras;google;m2repository"; \
-      \
-      # Clean up
       apt-get clean; \
       rm -rf /var/lib/apt/lists/* /tmp/*; \
     else \
       echo "Skipping Android SDK/NDK installation on non-x86_64 architecture"; \
     fi
 
-# Create NDK standalone toolchains symlinks for easier access
 RUN set -eux; \
     if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
       if [ -d "${ANDROID_NDK_HOME}" ]; then \
-        # Create convenient symlinks
         ln -sf "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64" "${ANDROID_NDK_HOME}/toolchain"; \
       fi; \
     fi
 
-# Download and install GStreamer for Android
-# https://gstreamer.freedesktop.org/documentation/installing/for-android-development.html?gi-language=c
 RUN set -eux; \
     if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
       apt-get update; \
       apt-get install -y --no-install-recommends xz-utils; \
-      \
       mkdir -p /opt/android/gstreamer; \
       cd /tmp; \
       wget -q "https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz"; \
       tar -xf gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz -C /opt/android/gstreamer; \
       rm gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz; \
-      \
       apt-get clean; \
       rm -rf /var/lib/apt/lists/*; \
     fi
 
 ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
 
-# ------------------------------------------------------------------------------
-# Laufzeit-ENV für GStreamer (ENTRYPOINT)
-# ------------------------------------------------------------------------------
-COPY linux/scripts/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
+# ==============================================================================
+# LAYER 4: Runtime scripts (most volatile - changes frequently)
+# Copy LAST to maximize cache hits
+# ==============================================================================
+COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 RUN chmod +x /usr/local/bin/gstreamer-env.sh
-COPY linux/scripts/libcamera-env.sh /usr/local/bin/libcamera-env.sh
+
+COPY linux/scripts/04-runtime/libcamera-env.sh /usr/local/bin/libcamera-env.sh
 RUN chmod +x /usr/local/bin/libcamera-env.sh
-COPY linux/scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+
+COPY linux/scripts/04-runtime/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+
 # ------------------------------------------------------------------------------
-# OCI-Labels (dynamisch) – am Ende, damit Cache stabil bleibt
+# OCI-Labels
 # ------------------------------------------------------------------------------
 ARG BUILD_DATE="" VCS_REF="" BUILD_BY="CI"
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
@@ -419,7 +423,6 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
 # ------------------------------------------------------------------------------
 # Workspace & EntryPoint
 # ------------------------------------------------------------------------------
-
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 

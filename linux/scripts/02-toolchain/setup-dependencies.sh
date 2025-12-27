@@ -3,16 +3,31 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source modules
-source "$SCRIPT_DIR/common.sh"
-source "$SCRIPT_DIR/repos.sh"
-source "$SCRIPT_DIR/core.sh"
-source "$SCRIPT_DIR/cmake.sh"
-source "$SCRIPT_DIR/llvm.sh"
-source "$SCRIPT_DIR/gcc.sh"
-source "$SCRIPT_DIR/vulkan.sh"
-source "$SCRIPT_DIR/extras.sh"
-source "$SCRIPT_DIR/verify.sh"
+# Source modules (search toolchain first, then fall back to ../core or /opt/scripts/core)
+source_module(){
+  local name="$1"
+  if [ -f "$SCRIPT_DIR/$name" ]; then
+    source "$SCRIPT_DIR/$name"
+  elif [ -f "$(dirname "$SCRIPT_DIR")/core/$name" ]; then
+    source "$(dirname "$SCRIPT_DIR")/core/$name"
+  elif [ -f "/opt/scripts/core/$name" ]; then
+    source "/opt/scripts/core/$name"
+  else
+    echo "Error: required module '$name' not found in $SCRIPT_DIR or core" >&2
+    exit 1
+  fi
+}
+
+# Source required modules
+source_module common.sh
+source_module repos.sh
+source_module core.sh
+source_module cmake.sh
+source_module llvm.sh
+source_module gcc.sh
+source_module vulkan.sh
+source_module extras.sh
+source_module verify.sh
 
 usage() {
   cat <<EOF
