@@ -21,7 +21,8 @@ if [ -f /usr/local/bin/gstreamer-env.sh ]; then
   source /usr/local/bin/gstreamer-env.sh
 else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  source "${SCRIPT_DIR}/../04-runtime/gstreamer-env.sh"
+  # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/media/* subfolders
+  source "${SCRIPT_DIR}/../../04-runtime/gstreamer-env.sh"
 fi
 
 sudo apt update
@@ -90,6 +91,16 @@ fi
 if ! uv pip install --upgrade meson ninja jinja2 2>/tmp/uv-pip-install.log; then
   echo "pip install meson/ninja/jinja2 failed; retrying with --break-system-packages"
   uv pip install --upgrade meson ninja jinja2 || { echo "pip install meson/ninja/jinja2 (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
+fi
+# Ensure PyYAML is available inside the uv venv so Meson can import 'yaml'
+if ! uv pip install --upgrade pyyaml 2>/tmp/uv-pip-install.log; then
+  echo "pip install pyyaml failed; retrying with --break-system-packages"
+  uv pip install --upgrade pyyaml || { echo "pip install pyyaml (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
+fi
+# Ensure PLY is available inside the uv venv so Meson can import 'ply' if needed
+if ! uv pip install --upgrade ply 2>/tmp/uv-pip-install.log; then
+  echo "pip install ply failed; retrying with --break-system-packages"
+  uv pip install --upgrade ply || { echo "pip install ply (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
 fi
 UV_RUN_PREFIX=(uv run --)
 

@@ -20,7 +20,8 @@ if [ -f /usr/local/bin/gstreamer-env.sh ]; then
   source /usr/local/bin/gstreamer-env.sh
 else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  source "${SCRIPT_DIR}/../04-runtime/gstreamer-env.sh"
+  # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/media/* subfolders
+  source "${SCRIPT_DIR}/../../04-runtime/gstreamer-env.sh"
 fi
 
 # just trust every folder

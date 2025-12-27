@@ -218,9 +218,9 @@ ENV LD_LIBRARY_PATH="${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${LD_LIBR
 ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
 
 # ==============================================================================
-# LAYER 3: Media stack (changes when updating GStreamer/libcamera versions)
+# LAYER 3: Media stack; GStreamer only (changes when updating GStreamer)
 # ==============================================================================
-COPY linux/scripts/03-media/ /opt/scripts/media/
+COPY linux/scripts/03-media/gstreamer/ /opt/scripts/media/gstreamer/
 
 # Make gstreamer env helper available early so /opt/scripts/media/gstreamer/setup-gstreamer.sh
 # can source it during the ONNX + GStreamer build step (the runtime scripts are
@@ -267,6 +267,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # GStreamer build
     cd /opt && \
     bash /opt/scripts/media/gstreamer/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
+
+
+# ==============================================================================
+# LAYER 3: Media stack; Libcamera only (changes when updating GStreamer)
+# ==============================================================================
+COPY linux/scripts/03-media/gstreamer/ /opt/scripts/media/gstreamer/
+COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
 
 # ------------------------------------------------------------------------------
 # Libcamera build
