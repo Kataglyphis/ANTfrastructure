@@ -64,29 +64,25 @@ mkdir -p "${LIBCAMERA_BUILD_DIR}"
 # plugin scanner. The libcamerasrc GStreamer element does NOT require Python bindings.
 # The Python error "TypeError: PyModule_AddObjectRef() first argument must be a module"
 # occurs when gst-plugin-scanner tries to load the pycamera module.
-# Ensure the Python that Meson will use has the 'jinja2' module available. Some builds
-# install an alternate python interpreter under /root/.local/bin which doesn't see
-# system packages provided by 'python3-jinja2'. If missing, install into the interpreter's
-# user site via pip so Meson can proceed.
-PYTHON_BIN="$(command -v python3 || true)"
-if [ -n "${PYTHON_BIN}" ]; then
-  if ! "${PYTHON_BIN}" -c 'import jinja2' >/dev/null 2>&1; then
-    echo "jinja2 not found for ${PYTHON_BIN}; attempting to install via pip (user site)"
-    if "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1; then
-      "${PYTHON_BIN}" -m pip install --user jinja2 || true
-    else
-      echo "pip not available for ${PYTHON_BIN}; installing python3-pip and retrying"
-      if command -v sudo >/dev/null 2>&1; then
-        sudo apt-get update -y || true
-        sudo apt-get install -y python3-pip || true
-      else
-        apt-get update -y || true
-        apt-get install -y python3-pip || true
-      fi
-      "${PYTHON_BIN}" -m pip install --user jinja2 || true
-    fi
-  fi
+# Use an isolated Astral `uv` venv so Meson uses a known Python environment with
+# required packages (meson, ninja, jinja2). This avoids PEP-668 issues with uv-managed
+# system interpreters when trying to install into the system Python.
+LIBCAMERA_VENV="${LIBCAMERA_PREFIX}/.venv"
+if command -v uv >/dev/null 2>&1; then
+  echo "Creating/ensuring Astral uv venv at ${LIBCAMERA_VENV}"
+  uv venv "${LIBCAMERA_VENV}" || true
+else
+  echo "uv not found: falling back to python3 -m venv ${LIBCAMERA_VENV}"
+  python3 -m venv "${LIBCAMERA_VENV}"
 fi
+# Activate the venv
+# shellcheck disable=SC1091
+source "${LIBCAMERA_VENV}/bin/activate"
+# Ensure pip and essential build tools are present in the venv
+pip install --upgrade pip setuptools wheel
+pip install --upgrade meson ninja jinja2 || true
+# Prefer venv binaries
+export PATH="${LIBCAMERA_VENV}/bin:${PATH}"
 
 meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
   -Dgstreamer=enabled -Dpycamera=enabled -Ddocumentation=disabled || {
