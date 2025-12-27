@@ -167,8 +167,11 @@ ARG LLVM_WANTED CLANG_WANTED GCC_WANTED VULKAN_VERSION TARGETARCH
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
-    # Source common utilities if needed
-    [ -f /opt/scripts/core/common.sh ] && source /opt/scripts/core/common.sh || true; \
+    # Ensure core modules are available in toolchain dir (create symlinks for missing modules)
+    for f in /opt/scripts/core/*.sh; do \
+      dst="/opt/scripts/toolchain/$(basename \"$f\")"; \
+      [ -f "$dst" ] || ln -s "$f" "$dst"; \
+    done; \
     # Run dependency setup
     bash /opt/scripts/toolchain/setup-dependencies.sh base; \
     bash /opt/scripts/toolchain/setup-dependencies.sh cmake; \
@@ -218,6 +221,12 @@ ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
 # LAYER 3: Media stack (changes when updating GStreamer/libcamera versions)
 # ==============================================================================
 COPY linux/scripts/03-media/ /opt/scripts/media/
+
+# Make gstreamer env helper available early so /opt/scripts/media/setup-gstreamer.sh
+# can source it during the ONNX + GStreamer build step (the runtime scripts are
+# copied later in the Dockerfile).
+COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
+RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
 
 # ------------------------------------------------------------------------------
 # ONNX Runtime + GStreamer build
@@ -276,7 +285,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         python3 python3-venv python3-jinja2 python3-yaml python3-ply \
         ninja-build meson pkg-config \
         libudev-dev libevent-dev libyaml-dev; \
-    export PATH="/root/.local/bin:${PATH}"; \
+    # Ensure Meson uses the system Python (avoid uv-managed /root/.local/bin/python3 which
+    # may be externally-managed and reject pip installs via PEP 668). Put /usr/bin first
+    # so the system interpreter (with system packages like python3-jinja2) is used.
+    export PATH="/usr/bin:/bin:/usr/sbin:/usr/local/bin:${PATH}"; \
     bash /opt/scripts/media/build-libcamera.sh
 
 # ------------------------------------------------------------------------------

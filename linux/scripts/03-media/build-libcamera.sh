@@ -16,7 +16,13 @@ set -euo pipefail
 
 echo "build-libcamera: src=${LIBCAMERA_SRC} builddir=${LIBCAMERA_BUILD_DIR} prefix=${LIBCAMERA_PREFIX} buildtype=${BUILD_TYPE_LOWER}"
 
-source ./linux/scripts/gstreamer-env.sh
+# Prefer the installed helper if available, otherwise source relative to this script
+if [ -f /usr/local/bin/gstreamer-env.sh ]; then
+  source /usr/local/bin/gstreamer-env.sh
+else
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  source "${SCRIPT_DIR}/../04-runtime/gstreamer-env.sh"
+fi
 
 sudo apt update
 sudo apt install -y pybind11-dev python3-pybind11 python3-dev \
@@ -58,6 +64,30 @@ mkdir -p "${LIBCAMERA_BUILD_DIR}"
 # plugin scanner. The libcamerasrc GStreamer element does NOT require Python bindings.
 # The Python error "TypeError: PyModule_AddObjectRef() first argument must be a module"
 # occurs when gst-plugin-scanner tries to load the pycamera module.
+# Ensure the Python that Meson will use has the 'jinja2' module available. Some builds
+# install an alternate python interpreter under /root/.local/bin which doesn't see
+# system packages provided by 'python3-jinja2'. If missing, install into the interpreter's
+# user site via pip so Meson can proceed.
+PYTHON_BIN="$(command -v python3 || true)"
+if [ -n "${PYTHON_BIN}" ]; then
+  if ! "${PYTHON_BIN}" -c 'import jinja2' >/dev/null 2>&1; then
+    echo "jinja2 not found for ${PYTHON_BIN}; attempting to install via pip (user site)"
+    if "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1; then
+      "${PYTHON_BIN}" -m pip install --user jinja2 || true
+    else
+      echo "pip not available for ${PYTHON_BIN}; installing python3-pip and retrying"
+      if command -v sudo >/dev/null 2>&1; then
+        sudo apt-get update -y || true
+        sudo apt-get install -y python3-pip || true
+      else
+        apt-get update -y || true
+        apt-get install -y python3-pip || true
+      fi
+      "${PYTHON_BIN}" -m pip install --user jinja2 || true
+    fi
+  fi
+fi
+
 meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
   -Dgstreamer=enabled -Dpycamera=enabled -Ddocumentation=disabled || {
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"

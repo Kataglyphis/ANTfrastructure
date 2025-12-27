@@ -15,7 +15,13 @@ VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 export PATH="${HOME}/.local/bin:${PATH}"
 
 # set the gst paths accordingly
-source ./linux/scripts/gstreamer-env.sh
+# Prefer the installed helper if available, otherwise source relative to this script
+if [ -f /usr/local/bin/gstreamer-env.sh ]; then
+  source /usr/local/bin/gstreamer-env.sh
+else
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  source "${SCRIPT_DIR}/../04-runtime/gstreamer-env.sh"
+fi
 
 # just trust every folder
 set -eux; \
