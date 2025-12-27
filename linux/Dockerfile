@@ -222,7 +222,7 @@ ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
 # ==============================================================================
 COPY linux/scripts/03-media/ /opt/scripts/media/
 
-# Make gstreamer env helper available early so /opt/scripts/media/setup-gstreamer.sh
+# Make gstreamer env helper available early so /opt/scripts/media/gstreamer/setup-gstreamer.sh
 # can source it during the ONNX + GStreamer build step (the runtime scripts are
 # copied later in the Dockerfile).
 COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
@@ -266,7 +266,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ldconfig; \
     # GStreamer build
     cd /opt && \
-    bash /opt/scripts/media/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
+    bash /opt/scripts/media/gstreamer/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
 
 # ------------------------------------------------------------------------------
 # Libcamera build
@@ -281,15 +281,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
     cd /opt && \
-    apt-get update && apt-get install -y --no-install-recommends \
-        python3 python3-venv python3-jinja2 python3-yaml python3-ply \
-        ninja-build meson pkg-config \
-        libudev-dev libevent-dev libyaml-dev; \
-    # Ensure Meson uses the system Python (avoid uv-managed /root/.local/bin/python3 which
-    # may be externally-managed and reject pip installs via PEP 668). Put /usr/bin first
-    # so the system interpreter (with system packages like python3-jinja2) is used.
-    export PATH="/usr/bin:/bin:/usr/sbin:/usr/local/bin:${PATH}"; \
-    bash /opt/scripts/media/build-libcamera.sh
+    bash /opt/scripts/media/libcamera/build-libcamera.sh
 
 # ------------------------------------------------------------------------------
 # Cleanup and system configuration
