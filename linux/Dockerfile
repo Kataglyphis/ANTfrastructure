@@ -362,7 +362,8 @@ RUN set -eux; \
       openjdk-21-jdk \
       unzip; \
       mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
-      cd /tmp; \
+      mkdir tmp2; \
+      cd /tmp2; \
       wget -q "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip"; \
       unzip -q commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip; \
       mv cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest"; \
@@ -394,7 +395,8 @@ RUN set -eux; \
       apt-get update; \
       apt-get install -y --no-install-recommends xz-utils; \
       mkdir -p /opt/android/gstreamer; \
-      cd /tmp; \
+      mkdir -p tmp2; \
+      cd /tmp2; \
       wget -q "https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz"; \
       tar -xf gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz -C /opt/android/gstreamer; \
       rm gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz; \

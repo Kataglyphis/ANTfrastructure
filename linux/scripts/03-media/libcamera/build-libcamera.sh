@@ -106,7 +106,7 @@ UV_RUN_PREFIX=(uv run --)
 
 # Run Meson setup inside the venv (prefer uv run when available)
 if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
-  -Dgstreamer=enabled -Dpycamera=enabled -Ddocumentation=disabled; then
+  -Dgstreamer=enabled -Dpycamera=disabled -Ddocumentation=disabled; then
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
     exit 1
 fi

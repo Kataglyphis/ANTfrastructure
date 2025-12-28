@@ -258,6 +258,10 @@ Upcoming :)
   RUSTC_WRAPPER="" \ 
   ```
 
+  - **Symptom:** no space left on this device 
+  **Solution:**
+  Don't write to `tmp/` folder! This is stupid.  Write to tmp2 f.e.  
+
 ## Contributing 🤝
 
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are greatly appreciated.
