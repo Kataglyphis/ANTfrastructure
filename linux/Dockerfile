@@ -220,7 +220,7 @@ ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
 # ==============================================================================
 # LAYER 3: Media stack; GStreamer only (changes when updating GStreamer)
 # ==============================================================================
-COPY linux/scripts/03-media/gstreamer/ /opt/scripts/media/gstreamer/
+COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
 
 # Make gstreamer env helper available early so /opt/scripts/media/gstreamer/setup-gstreamer.sh
 # can source it during the ONNX + GStreamer build step (the runtime scripts are
@@ -266,13 +266,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ldconfig; \
     # GStreamer build
     cd /opt && \
-    bash /opt/scripts/media/gstreamer/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
+    bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
 
 
 # ==============================================================================
 # LAYER 3: Media stack; Libcamera only (changes when updating GStreamer)
 # ==============================================================================
-COPY linux/scripts/03-media/gstreamer/ /opt/scripts/media/gstreamer/
+COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
 COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
 
 # ------------------------------------------------------------------------------
@@ -351,6 +351,9 @@ ENV ANDROID_HOME=/opt/android-sdk \
 
 ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
+COPY linux/scripts/03-media/gstreamer/android /opt/scripts/media/gstreamer/android
+RUN chmod +x /opt/scripts/media/gstreamer/android/build-android-from-source.sh
+
 RUN set -eux; \
     if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
       dpkg --add-architecture i386; \
@@ -377,6 +380,23 @@ RUN set -eux; \
         "ndk;${ANDROID_NDK_VERSION}" \
         "extras;android;m2repository" \
         "extras;google;m2repository"; \
+      # If the repository contains a build script to cross-compile GStreamer for Android, run it and enable ONNX plugin
+      if [ -x /opt/scripts/media/gstreamer/android/build-android-from-source.sh ]; then \
+        echo "Found script build-android-from-source.sh -> building GStreamer for Android from source (with ONNX inference plugin)"; \
+        /opt/scripts/media/gstreamer/android/build-android-from-source.sh \
+          --gst-version="${GSTREAMER_VERSION}" \
+          --android-sdk="${ANDROID_HOME}" \
+          --android-ndk="${ANDROID_NDK_HOME}" \
+          --prefix="/opt/android/gstreamer" \
+          --with-onnx-inference; \
+      else \
+        echo "No build script found; falling back to downloading prebuilt GStreamer Android universal"; \
+        apt-get install -y --no-install-recommends xz-utils; \
+        mkdir -p /opt/android/gstreamer; \
+        wget -q "https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz"; \
+        tar -xf gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz -C /opt/android/gstreamer; \
+        rm gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz; \
+      fi; \
       apt-get clean; \
       rm -rf /var/lib/apt/lists/* /tmp/*; \
     else \
@@ -388,20 +408,6 @@ RUN set -eux; \
       if [ -d "${ANDROID_NDK_HOME}" ]; then \
         ln -sf "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64" "${ANDROID_NDK_HOME}/toolchain"; \
       fi; \
-    fi
-
-RUN set -eux; \
-    if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
-      apt-get update; \
-      apt-get install -y --no-install-recommends xz-utils; \
-      mkdir -p /opt/android/gstreamer; \
-      mkdir -p tmp2; \
-      cd /tmp2; \
-      wget -q "https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz"; \
-      tar -xf gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz -C /opt/android/gstreamer; \
-      rm gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz; \
-      apt-get clean; \
-      rm -rf /var/lib/apt/lists/*; \
     fi
 
 ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
