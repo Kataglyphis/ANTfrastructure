@@ -1,7 +1,9 @@
 ```bash
 sudo nerdctl build -t mysite:latest -f linux/webserver/Dockerfile .
 ```
-sudo nerdctl run -d --net=host --name mysite -p 8080:80 mysite:latest
+```bash
+sudo nerdctl run -d --name mysite -p 8443:8443 -p 8080:80 mysite:latest
+```
 # open http://localhost:8080
 
 =======
@@ -10,9 +12,11 @@ sudo nerdctl run -d --net=host --name mysite -p 8080:80 mysite:latest
 sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
 
 # Run mit Volume-Mount für dist UND nginx.conf
-
+```bash
 sudo nerdctl run -d --name kataglyphis-webserver \
   -p 8080:80 \
+  -p 8443:8443 \
   -v "$(pwd)/linux/webserver/dist:/var/www/html" \
   -v "$(pwd)/linux/webserver/nginx.conf:/etc/nginx/nginx.conf:ro" \
   kataglyphis-webserver:latest
+```
