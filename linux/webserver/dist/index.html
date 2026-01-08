@@ -23,9 +23,15 @@
 
     <!-- iOS meta tags & icons -->
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="kataglyphis-webfrontendproject">
     <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+    <!-- For rust web assembly -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+    <meta http-equiv="Cross-Origin-Resource-Policy" content="cross-origin">
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="favicon.png" />
@@ -38,9 +44,15 @@
 
     <link rel="stylesheet" type="text/css" href="css/cookie.css">
     <link rel="stylesheet" type="text/css" href="css/loading_animation.css">
+    <link rel="stylesheet" type="text/css" href="css/fonts.css">
     <style>
         :root {
             --kPrimaryColor: rgb(105, 240, 174);
+        }
+
+        /* Fallback font families for better character support */
+        body {
+            font-family: 'Roboto', 'Noto Sans', system-ui, -apple-system, sans-serif;
         }
     </style>
 
@@ -80,14 +92,19 @@
             setMessage(userLanguage.substring(0, 2), 'loading-message', messageDe, messageEn);
         </script>
     </div>
-
+    <script>
+        if (!window.SharedArrayBuffer) {
+            console.warn('SharedArrayBuffer nicht verfügbar');
+        } else {
+            console.log('SharedArrayBuffer verfügbar');
+        }
+    </script>
     <!-- Load ESM and attach to window -->
     <script type="module">
         import GstWebRTCAPI from './javascript/webrtc/gstwebrtc-api-3.0.0.esm.js';
         window.GstWebRTCAPI = GstWebRTCAPI;
         console.log('GstWebRTCAPI attached:', typeof window.GstWebRTCAPI);
     </script>
-
     <script src="flutter_bootstrap.js" async></script>
 </body>
 

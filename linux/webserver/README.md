@@ -20,3 +20,10 @@ sudo nerdctl run -d --name kataglyphis-webserver \
   -v "$(pwd)/linux/webserver/nginx.conf:/etc/nginx/nginx.conf:ro" \
   kataglyphis-webserver:latest
 ```
+
+```bash
+docker exec kataglyphis-webserver nginx -t
+docker exec kataglyphis-webserver nginx -s reload
+```
+
+Reload browser with cache: F5 !!

@@ -186,7 +186,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ------------------------------------------------------------------------------
 # GStreamer-Build: ENV + Setup
 # ------------------------------------------------------------------------------
-ARG GSTREAMER_VERSION=1.26.9
+ARG GSTREAMER_VERSION=1.26.10
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GSTREAMER_PREFIX=/opt/gstreamer \
     GST_PLUGIN_PATH="" \
@@ -272,7 +272,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ==============================================================================
 # LAYER 3: Media stack; Libcamera only (changes when updating GStreamer)
 # ==============================================================================
-COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
 COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
 
 # ------------------------------------------------------------------------------
@@ -446,4 +445,5 @@ WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
 CMD ["/bin/bash"]
