@@ -83,53 +83,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Vulkan ICD/Layer-JSONs
 # ------------------------------------------------------------------------------
 RUN set -eux; \
-    mkdir -p /etc/vulkan/icd.d; \
-    cat > /etc/vulkan/icd.d/nvidia_icd.json <<EOF
-{
-    "file_format_version" : "1.0.0",
-    "ICD": {
-        "library_path": "libGLX_nvidia.so.0",
-        "api_version" : "${VULKAN_VERSION}"
-    }
-}
-EOF
+    mkdir -p /etc/vulkan/icd.d /usr/share/glvnd/egl_vendor.d /etc/vulkan/implicit_layer.d
+
+COPY linux/vulkan/nvidia_icd.json.in /tmp/nvidia_icd.json.in
+COPY linux/vulkan/10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+COPY linux/vulkan/nvidia_layers.json.in /tmp/nvidia_layers.json.in
 
 RUN set -eux; \
-    mkdir -p /usr/share/glvnd/egl_vendor.d; \
-    cat > /usr/share/glvnd/egl_vendor.d/10_nvidia.json <<EOF
-{
-    "file_format_version" : "1.0.0",
-    "ICD" : {
-        "library_path" : "libEGL_nvidia.so.0"
-    }
-}
-EOF
-
-RUN set -eux; \
-    mkdir -p /etc/vulkan/implicit_layer.d/; \
-    cat > /etc/vulkan/implicit_layer.d/nvidia_layers.json <<EOF
-{
-    "file_format_version" : "1.0.0",
-    "layer": {
-        "name": "VK_LAYER_NV_optimus",
-        "type": "INSTANCE",
-        "library_path": "libGLX_nvidia.so.0",
-        "api_version" : "${VULKAN_VERSION}",
-        "implementation_version" : "1",
-        "description" : "NVIDIA Optimus layer",
-        "functions": {
-            "vkGetInstanceProcAddr": "vk_optimusGetInstanceProcAddr",
-            "vkGetDeviceProcAddr": "vk_optimusGetDeviceProcAddr"
-        },
-        "enable_environment": {
-            "__NV_PRIME_RENDER_OFFLOAD": "1"
-        },
-        "disable_environment": {
-            "DISABLE_LAYER_NV_OPTIMUS_1": ""
-        }
-    }
-}
-EOF
+    sed "s|@@VULKAN_VERSION@@|${VULKAN_VERSION}|g" /tmp/nvidia_icd.json.in > /etc/vulkan/icd.d/nvidia_icd.json; \
+    sed "s|@@VULKAN_VERSION@@|${VULKAN_VERSION}|g" /tmp/nvidia_layers.json.in > /etc/vulkan/implicit_layer.d/nvidia_layers.json; \
+    rm -f /tmp/nvidia_icd.json.in /tmp/nvidia_layers.json.in
 
 # ------------------------------------------------------------------------------
 # Rust via rustup + cargo-c
@@ -200,7 +163,8 @@ RUN set -eux; \
 
 # GStreamer-ENV
 ENV PKG_CONFIG_PATH="" \
-    LD_LIBRARY_PATH=""
+    LD_LIBRARY_PATH="" \
+    CMAKE_PREFIX_PATH=""
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${PKG_CONFIG_PATH}"
 ENV CMAKE_PREFIX_PATH="/usr/local:${CMAKE_PREFIX_PATH}"
@@ -222,14 +186,18 @@ ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
 # ==============================================================================
 COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
 
+# ONNX Runtime build helper
+COPY linux/scripts/03-media/onnxruntime /opt/scripts/media/onnxruntime
+RUN chmod +x /opt/scripts/media/onnxruntime/build-onnxruntime.sh || true
+
 # Make gstreamer env helper available early so /opt/scripts/media/gstreamer/setup-gstreamer.sh
-# can source it during the ONNX + GStreamer build step (the runtime scripts are
+# can source it during the ONNX and GStreamer build steps (the runtime scripts are
 # copied later in the Dockerfile).
 COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
 RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
 
 # ------------------------------------------------------------------------------
-# ONNX Runtime + GStreamer build
+# ONNX Runtime build
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
@@ -241,32 +209,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
     export USER=root; \
-    # Node.js for GStreamer
-    curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
-    apt-get update && \
-    apt-get install -y nodejs && \
-    # ONNX Runtime dependencies
-    apt-get install -y --no-install-recommends git cmake python3-dev python3-pip build-essential pkg-config wget ca-certificates zlib1g-dev protobuf-compiler libprotobuf-dev; \
-    # Build ONNX Runtime
-    git clone --depth 1 --branch v1.23.2 https://github.com/microsoft/onnxruntime.git /opt/onnxruntime; \
-    cd /opt/onnxruntime; \
-    export PATH="/root/.local/bin:${PATH}"; \
-    command -v uv >/dev/null || (curl -LsSf https://astral.sh/uv/install.sh | sh); \
-    uv python install 3.12 --default || true; \
-    uv pip install flatbuffers || true; \
-    uv run -- ./build.sh \
-    --config Release \
-    --build_shared_lib \
-    --parallel \
-    --allow_running_as_root \
-    --use_xnnpack \
-    --skip_onnx_tests --skip_tests; \
-    cmake --install build/Linux/Release --prefix /usr/local || true; \
-    rm -rf /opt/onnxruntime; \
-    ldconfig; \
-    # GStreamer build
-    cd /opt && \
-    bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
+  bash /opt/scripts/media/onnxruntime/build-onnxruntime.sh
+
+# ------------------------------------------------------------------------------
+# GStreamer build
+# ------------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt \
+  set -eux; \
+  export USER=root; \
+  # Node.js for GStreamer
+  curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
+  apt-get update && \
+  apt-get install -y nodejs && \
+  cd /opt && \
+  bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
 
 
 # ==============================================================================
