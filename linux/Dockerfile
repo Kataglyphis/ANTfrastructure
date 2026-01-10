@@ -72,12 +72,44 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
 
 # ------------------------------------------------------------------------------
+# Additional dependencies; for frontend dev (with f.e. flutter/dart)
+# ------------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    arch="$(dpkg --print-architecture)"; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+    build-essential clang ninja-build pkg-config \
+    libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
+    libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
+    libasound2-dev libpulse-dev libdbus-1-dev \
+    file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------------------
 # Performance analysis tools (perf)
 # ------------------------------------------------------------------------------        
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update -y && \
     apt-get install -y linux-tools-common linux-tools-generic
+
+# ------------------------------------------------------------------------------
+# Install Node.js (different for RISC-V vs. other architectures)
+# ------------------------------------------------------------------------------ 
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    ARCH=$(dpkg --print-architecture); \
+    if [ "$ARCH" = "riscv64" ]; then \
+        echo "RISC-V detected: Installing Node.js from default apt repo"; \
+        apt-get update && apt-get install -y nodejs npm; \
+    else \
+        echo "Non-RISC-V architecture: Installing Node.js from NodeSource"; \
+        curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
+        apt-get update && apt-get install -y nodejs; \
+    fi
 
 # ------------------------------------------------------------------------------
 # Vulkan ICD/Layer-JSONs
@@ -214,21 +246,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ------------------------------------------------------------------------------
 # GStreamer build
 # ------------------------------------------------------------------------------
-# Step 1: Install Node.js based on architecture
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    set -eux; \
-    ARCH=$(dpkg --print-architecture); \
-    if [ "$ARCH" = "riscv64" ]; then \
-        echo "RISC-V detected: Installing Node.js from default apt repo"; \
-        apt-get update && apt-get install -y nodejs npm; \
-    else \
-        echo "Non-RISC-V architecture: Installing Node.js from NodeSource"; \
-        curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
-        apt-get update && apt-get install -y nodejs; \
-    fi
-
-# Step 2: Build GStreamer
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
@@ -289,22 +306,6 @@ RUN set -eux; \
     ldconfig
 
 # ------------------------------------------------------------------------------
-# Additional dependencies
-# ------------------------------------------------------------------------------
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    arch="$(dpkg --print-architecture)"; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-      build-essential clang ninja-build pkg-config \
-      libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
-      libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
-      libasound2-dev libpulse-dev libdbus-1-dev \
-      file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
-
-# ------------------------------------------------------------------------------
 # Android SDK & NDK (only for x86_64)
 # ------------------------------------------------------------------------------
 ARG ANDROID_SDK_VERSION=13114758
@@ -321,63 +322,11 @@ ENV ANDROID_HOME=/opt/android-sdk \
 ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
 COPY linux/scripts/03-media/gstreamer/android /opt/scripts/media/gstreamer/android
-RUN chmod +x /opt/scripts/media/gstreamer/android/build-android-from-source.sh
+RUN chmod +x /opt/scripts/media/gstreamer/android/build-android-from-source.sh \
+    && chmod +x /opt/scripts/media/gstreamer/android/setup-android-sdk-ndk.sh
 
 RUN set -eux; \
-    if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
-      dpkg --add-architecture i386; \
-      apt-get update; \
-      apt-get install -y --no-install-recommends \ 
-        libc6:i386 libncurses6:i386 libstdc++6:i386 \
-        lib32z1 libbz2-1.0:i386; \
-      apt-get install -y --no-install-recommends \
-      openjdk-21-jdk \
-      unzip; \
-      mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
-      mkdir tmp2; \
-      cd /tmp2; \
-      wget -q "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip"; \
-      unzip -q commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip; \
-      mv cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest"; \
-      rm commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip; \
-      yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true; \
-      ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
-        "cmake;${ANDROID_CMAKE_VERSION}" \
-        "platform-tools" \
-        "platforms;android-${ANDROID_COMPILE_SDK}" \
-        "build-tools;${ANDROID_BUILD_TOOLS}" \
-        "ndk;${ANDROID_NDK_VERSION}" \
-        "extras;android;m2repository" \
-        "extras;google;m2repository"; \
-      # If the repository contains a build script to cross-compile GStreamer for Android, run it and enable ONNX plugin
-      if [ -x /opt/scripts/media/gstreamer/android/build-android-from-source.sh ]; then \
-        echo "Found script build-android-from-source.sh -> building GStreamer for Android from source (with ONNX inference plugin)"; \
-        /opt/scripts/media/gstreamer/android/build-android-from-source.sh \
-          --gst-version="${GSTREAMER_VERSION}" \
-          --android-sdk="${ANDROID_HOME}" \
-          --android-ndk="${ANDROID_NDK_HOME}" \
-          --prefix="/opt/android/gstreamer" \
-          --with-onnx-inference; \
-      else \
-        echo "No build script found; falling back to downloading prebuilt GStreamer Android universal"; \
-        apt-get install -y --no-install-recommends xz-utils; \
-        mkdir -p /opt/android/gstreamer; \
-        wget -q "https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz"; \
-        tar -xf gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz -C /opt/android/gstreamer; \
-        rm gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz; \
-      fi; \
-      apt-get clean; \
-      rm -rf /var/lib/apt/lists/* /tmp/*; \
-    else \
-      echo "Skipping Android SDK/NDK installation on non-x86_64 architecture"; \
-    fi
-
-RUN set -eux; \
-    if [ "${TARGETARCH:-$(uname -m)}" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
-      if [ -d "${ANDROID_NDK_HOME}" ]; then \
-        ln -sf "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64" "${ANDROID_NDK_HOME}/toolchain"; \
-      fi; \
-    fi
+        /opt/scripts/media/gstreamer/android/setup-android-sdk-ndk.sh
 
 ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
 
