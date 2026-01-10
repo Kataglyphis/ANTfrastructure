@@ -1,15 +1,17 @@
 ```bash
-sudo nerdctl build -t mysite:latest -f linux/webserver/Dockerfile .
+sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
 ```
 ```bash
-sudo nerdctl run -d --name mysite -p 8443:8443 -p 8080:80 mysite:latest
+sudo nerdctl run -d --name mysite -p 8443:8443 -p 8080:80 kataglyphis-webserver:latest
 ```
 # open http://localhost:8080
 
 =======
 # Build
 
+```bash
 sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
+```
 
 # Run mit Volume-Mount für dist UND nginx.conf
 ```bash

@@ -26,6 +26,51 @@ done
 export DEBIAN_FRONTEND=noninteractive
 export DEBCONF_NONINTERACTIVE_SEEN=true
 
+# ------------------------------------------------------------------------------
+# Concurrency limiting (similar to the desktop GStreamer build)
+# ------------------------------------------------------------------------------
+# You can override by exporting JOBS (or set ANDROID_GSTREAMER_PER_JOB_MB)
+PER_JOB_MB="${ANDROID_GSTREAMER_PER_JOB_MB:-1500}"
+
+if [ -z "${JOBS:-}" ]; then
+    CORES="$(nproc --all)"
+
+    # Available RAM in MB (fallback 2048 MB)
+    AVAIL_MB="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo)"
+    [ -z "${AVAIL_MB}" ] && AVAIL_MB=2048
+
+    MAX_BY_MEM=$(( AVAIL_MB / PER_JOB_MB ))
+    [ "${MAX_BY_MEM}" -lt 1 ] && MAX_BY_MEM=1
+
+    # JOBS = min(CORES, MAX_BY_MEM)
+    if [ "${CORES}" -lt "${MAX_BY_MEM}" ]; then
+        JOBS="${CORES}"
+    else
+        JOBS="${MAX_BY_MEM}"
+    fi
+
+    # Reserve one core for system if possible
+    if [ "${JOBS}" -gt 1 ]; then
+        JOBS=$((JOBS - 1))
+    fi
+
+    [ "${JOBS}" -lt 1 ] && JOBS=1
+fi
+
+export JOBS
+export CMAKE_BUILD_PARALLEL_LEVEL="${JOBS}"
+export MAKEFLAGS="-j${JOBS}"
+export NINJAFLAGS="-j${JOBS}"
+
+# Cargo/Rust build parallelism (important for gst-plugins-rs)
+export CARGO_BUILD_JOBS="${JOBS}"
+# Codegen units begrenzen = weniger RAM pro Crate
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS="${JOBS}"
+# Optional: LTO deaktivieren spart RAM bei Release-Builds
+# export CARGO_PROFILE_RELEASE_LTO="false"
+
+echo "Using JOBS=${JOBS} (CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}, CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}, per_job_mb=${PER_JOB_MB})"
+
 # 3. Pre-install dependencies
 echo "==> Pre-installing dependencies..."
 apt-get update
@@ -152,6 +197,16 @@ echo "    API Level: ${ANDROID_API_LEVEL} (using ${DISTRO_VERSION})"
 echo "    Cerbero Home: ${CERBERO_HOME}"
 echo "    Prefix: ${CERBERO_PREFIX}"
 
+# Try to pass the job limit through Cerbero's CLI if supported (different Cerbero versions vary).
+CERBERO_JOBS_ARGS=()
+if uv run ./cerbero-uninstalled --help 2>&1 | grep -q -- '--jobs'; then
+    CERBERO_JOBS_ARGS+=(--jobs "${JOBS}")
+elif uv run ./cerbero-uninstalled --help 2>&1 | grep -q -- '-j'; then
+    CERBERO_JOBS_ARGS+=(-j "${JOBS}")
+else
+    echo "==> Note: Cerbero CLI has no --jobs/-j; relying on env (MAKEFLAGS/CMAKE_BUILD_PARALLEL_LEVEL/NINJAFLAGS)"
+fi
+
 # 11. Execute build
 (
     unset RUSTUP_HOME CARGO_HOME RUSTC_WRAPPER
@@ -163,17 +218,27 @@ echo "    Prefix: ${CERBERO_PREFIX}"
     export ANDROID_NDK_HOME="${ANDROID_NDK}"
     
     echo "==> Running Cerbero Bootstrap..."
-    uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc bootstrap
+    uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc "${CERBERO_JOBS_ARGS[@]}" bootstrap
     
     echo "==> Building GStreamer..."
-    uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc package gstreamer-1.0
+    uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc "${CERBERO_JOBS_ARGS[@]}" package gstreamer-1.0
 )
 
 # 12. Extract package
 mkdir -p "$INSTALL_PATH"
 
 echo "==> Searching for package..."
-PACKAGE_FILE=$(find . -name "gstreamer-1.0-*android*.tar.*" -type f 2>/dev/null | head -n 1)
+PACKAGE_FILE=""
+while IFS= read -r candidate; do
+    case "${candidate}" in
+        *-runtime.tar.*) ;; # prefer non-runtime if available
+        *) PACKAGE_FILE="${candidate}"; break ;;
+    esac
+done < <(find . -name "gstreamer-1.0-*android*.tar.*" -type f 2>/dev/null | sort)
+
+if [ -z "${PACKAGE_FILE}" ]; then
+    PACKAGE_FILE=$(find . -name "gstreamer-1.0-*android*.tar.*" -type f 2>/dev/null | sort | head -n 1)
+fi
 
 if [ -z "$PACKAGE_FILE" ]; then
     echo "Error: Package not found. Listing all tar files:"
@@ -182,6 +247,16 @@ if [ -z "$PACKAGE_FILE" ]; then
 fi
 
 echo "==> Extracting: $PACKAGE_FILE"
+
+# Avoid "Cannot open: Not a directory" due to previous partial extractions
+if [ -z "${INSTALL_PATH}" ] || [ "${INSTALL_PATH}" = "/" ]; then
+    echo "Refusing to extract into unsafe INSTALL_PATH='${INSTALL_PATH}'"
+    exit 1
+fi
+
+rm -rf "${INSTALL_PATH}"
+mkdir -p "${INSTALL_PATH}"
+
 tar -xf "$PACKAGE_FILE" -C "$INSTALL_PATH" --strip-components=1
 
 echo ""
@@ -189,3 +264,13 @@ echo "==> ✓ Success!"
 echo "==> GStreamer ${GST_VERSION} for Android ${TARGET_ARCH} (API ${ANDROID_API_LEVEL})"
 echo "==> Installed to: $INSTALL_PATH"
 echo ""
+
+# ------------------------------------------------------------------------------
+# Cleanup Cerbero build directory (~10-15 GB)
+# The built GStreamer is now extracted to $INSTALL_PATH, so we no longer need
+# the Cerbero sources, build artifacts, and packaged tarballs.
+# ------------------------------------------------------------------------------
+echo "==> Cleaning up Cerbero build directory..."
+CERBERO_SIZE=$(du -sh /opt/cerbero 2>/dev/null | cut -f1 || echo "unknown")
+rm -rf /opt/cerbero
+echo "==> Cleanup complete. Freed ${CERBERO_SIZE} of disk space."
