@@ -214,17 +214,30 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ------------------------------------------------------------------------------
 # GStreamer build
 # ------------------------------------------------------------------------------
+# Step 1: Install Node.js based on architecture
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-  --mount=type=cache,target=/var/lib/apt \
-  set -eux; \
-  export USER=root; \
-  # Node.js for GStreamer
-  curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
-  apt-get update && \
-  apt-get install -y nodejs && \
-  cd /opt && \
-  bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh "$GSTREAMER_VERSION" "$GSTREAMER_PREFIX" "$BUILD_TYPE"
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    ARCH=$(dpkg --print-architecture); \
+    if [ "$ARCH" = "riscv64" ]; then \
+        echo "RISC-V detected: Installing Node.js from default apt repo"; \
+        apt-get update && apt-get install -y nodejs npm; \
+    else \
+        echo "Non-RISC-V architecture: Installing Node.js from NodeSource"; \
+        curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
+        apt-get update && apt-get install -y nodejs; \
+    fi
 
+# Step 2: Build GStreamer
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    export USER=root; \
+    cd /opt && \
+    bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
+        "$GSTREAMER_VERSION" \
+        "$GSTREAMER_PREFIX" \
+        "$BUILD_TYPE"
 
 # ==============================================================================
 # LAYER 3: Media stack; Libcamera only (changes when updating GStreamer)
