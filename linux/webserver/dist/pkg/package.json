@@ -1,0 +1,9 @@
+{
+  "name": "kataglyphis_rustprojecttemplate",
+  "version": "0.1.0",
+  "files": [
+    "kataglyphis_rustprojecttemplate_bg.wasm",
+    "kataglyphis_rustprojecttemplate.js"
+  ],
+  "browser": "kataglyphis_rustprojecttemplate.js"
+}
