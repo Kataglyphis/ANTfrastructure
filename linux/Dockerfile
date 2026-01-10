@@ -5,7 +5,7 @@ FROM ubuntu:24.04 AS base
 # Build-Argumente
 # ------------------------------------------------------------------------------
 ARG BUILD_TYPE=Release
-ARG VULKAN_VERSION=1.4.328.1
+ARG VULKAN_VERSION=1.4.335.0
 ARG LLVM_WANTED=21
 ARG CLANG_WANTED=21
 ARG GCC_WANTED=14
