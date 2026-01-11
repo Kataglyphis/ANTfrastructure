@@ -56,6 +56,18 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   protobuf-compiler \
   libprotobuf-dev
 
+# Install Emscripten for WebAssembly builds
+EMSDK_DIR="/opt/emsdk"
+if [ ! -d "${EMSDK_DIR}" ]; then
+  git clone --depth 1 https://github.com/emscripten-core/emsdk.git "${EMSDK_DIR}"
+  cd "${EMSDK_DIR}"
+  ./emsdk install latest
+  ./emsdk activate latest
+fi
+
+# Source emsdk environment
+source "${EMSDK_DIR}/emsdk_env.sh"
+
 # Build ONNX Runtime
 rm -rf "${ORT_SRC_DIR}"
 git clone --depth 1 --branch "${ORT_VERSION}" "${ORT_REPO}" "${ORT_SRC_DIR}"
@@ -67,6 +79,10 @@ command -v uv >/dev/null || (curl -LsSf https://astral.sh/uv/install.sh | sh)
 uv python install 3.12 --default || true
 uv pip install flatbuffers || true
 
+# Detect architecture
+ARCH="$(uname -m)"
+
+# Build native version (x86_64 or other architectures)
 uv run -- ./build.sh \
   --config Release \
   --build_shared_lib \
@@ -77,5 +93,41 @@ uv run -- ./build.sh \
 
 cmake --install build/Linux/Release --prefix /usr/local || true
 
+# Build WebAssembly version (only on x86_64)
+if [ "${ARCH}" = "x86_64" ]; then
+  echo "Building WebAssembly version for browser..."
+  
+  # Clean previous build
+  rm -rf build/wasm
+  
+  # Build WASM with common web optimizations
+  uv run -- ./build.sh \
+    --config Release \
+    --build_wasm \
+    --parallel "${JOBS}" \
+    --allow_running_as_root \
+    --skip_tests \
+    --disable_wasm_exception_catching \
+    --enable_wasm_simd \
+    --enable_wasm_threads
+  
+  # Copy WASM artifacts to a known location
+  WASM_OUTPUT_DIR="/usr/local/lib/onnxruntime-web"
+  mkdir -p "${WASM_OUTPUT_DIR}"
+  
+  if [ -d "build/wasm/Release" ]; then
+    cp -r build/wasm/Release/*.{wasm,js} "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+    echo "WebAssembly build artifacts copied to ${WASM_OUTPUT_DIR}"
+  fi
+else
+  echo "Skipping WebAssembly build (not x86_64 architecture: ${ARCH})"
+fi
+
 rm -rf "${ORT_SRC_DIR}"
 ldconfig
+
+echo "Build complete!"
+echo "Native libraries installed to /usr/local"
+if [ "${ARCH}" = "x86_64" ]; then
+  echo "WebAssembly files available at /usr/local/lib/onnxruntime-web"
+fi
