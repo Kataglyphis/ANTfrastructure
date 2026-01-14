@@ -216,11 +216,9 @@ ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
 # ==============================================================================
 # LAYER 3: Media stack; GStreamer only (changes when updating GStreamer)
 # ==============================================================================
-COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
-
 # ONNX Runtime build helper
-COPY linux/scripts/03-media/onnxruntime /opt/scripts/media/onnxruntime
-RUN chmod +x /opt/scripts/media/onnxruntime/build-onnxruntime.sh || true
+COPY linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
+RUN chmod +x /opt/scripts/media/onnxruntime/build/*.sh /opt/scripts/media/onnxruntime/build/lib/*.sh || true
 
 # Make gstreamer env helper available early so /opt/scripts/media/gstreamer/setup-gstreamer.sh
 # can source it during the ONNX and GStreamer build steps (the runtime scripts are
@@ -228,28 +226,83 @@ RUN chmod +x /opt/scripts/media/onnxruntime/build-onnxruntime.sh || true
 COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
 RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
 
+# ----------------------------------------------------------------------------
+# ONNX Runtime build args
+# ----------------------------------------------------------------------------
+ARG ONNXRUNTIME_VERSION=v1.23.2
+ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
+ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
+
 # ------------------------------------------------------------------------------
-# ONNX Runtime build
+# ONNX Runtime build (split into steps for better Docker layer caching)
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/var/cache/ccache \
-    --mount=type=cache,target=/var/cache/sccache \
-    set -eux; \
+        --mount=type=cache,target=/var/lib/apt \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt \
+        --mount=type=cache,target=/root/.cache/uv \
+        --mount=type=cache,target=/root/.cache/pip \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/20-fetch.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        --mount=type=cache,target=/usr/local/cargo/registry \
+        --mount=type=cache,target=/usr/local/cargo/git \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/30-build-native.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/40-build-wasm.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN set -eux; \
+        export USER=root; \
+    bash /opt/scripts/media/onnxruntime/build/50-build-js.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+# pkg-config generator is copied AFTER heavy ONNX build steps to improve Docker caching
+COPY linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
+RUN chmod +x /opt/scripts/media/onnxruntime/runtime/*.sh || true
+
+RUN set -eux; \
     export USER=root; \
-  bash /opt/scripts/media/onnxruntime/build-onnxruntime.sh
+    bash /opt/scripts/media/onnxruntime/runtime/31-generate-pkgconfig-native.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
 # ------------------------------------------------------------------------------
 # GStreamer build
 # ------------------------------------------------------------------------------
+COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     export USER=root; \
+    export PKG_CONFIG_PATH="/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig:${PKG_CONFIG_PATH}"; \
     cd /opt && \
     bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
         "$GSTREAMER_VERSION" \

@@ -65,7 +65,8 @@ sudo apt-get install -y --no-install-recommends \
   libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxrandr-dev libxv-dev \
   libwayland-dev wayland-protocols libxkbcommon-dev \
   libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libglu1-mesa-dev \
-  libdrm-dev libva-dev
+  libdrm-dev libgbm-dev libva-dev \
+  libudev-dev
 
 # Images / formats
 sudo apt-get install -y --no-install-recommends \
@@ -267,7 +268,9 @@ echo "Using JOBS=$JOBS (cores=$CORES, avail_mb=${AVAIL_MB}, per_job_mb=${PER_JOB
 
 
 echo "Compiling GStreamer..."
-if ! uv run meson compile -C builddir -v --jobs "${JOBS}" | tee /tmp/meson-compile.log; then
+# NOTE: Avoid `-v` here: Docker build output is capped and verbose logs hide the *real* error.
+# We still capture the full output (stdout+stderr) to /tmp/meson-compile.log for debugging.
+if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
   echo "ERROR: Meson compile failed"
   echo "==> Letzte Zeilen der Compile-Logs:"
   tail -n 20000 /tmp/meson-compile.log || true
@@ -279,10 +282,14 @@ if ! uv run meson compile -C builddir -v --jobs "${JOBS}" | tee /tmp/meson-compi
 fi
 
 echo "Installing GStreamer..."
-uv run meson install -C builddir > /dev/null 2>&1 || {
+if ! uv run meson install -C builddir; then
   echo "ERROR: Meson install failed"
+  echo "==> Meson log:"
+  tail -n +1 builddir/meson-logs/meson-log.txt || true
+  echo "==> Meson install log (if present):"
+  tail -n +1 builddir/meson-logs/install-log.txt || true
   exit 1
-}
+fi
 
 # --------------------------------------------------------------------
 # Build gst-plugins-rs net/webrtc under /opt
@@ -318,7 +325,29 @@ fi
 cd net/webrtc
 CARGO_FLAGS=()
 [ "${BUILD_TYPE_LOWER}" = "release" ] && CARGO_FLAGS+=(--release)
-cargo build "${CARGO_FLAGS[@]}"
+
+# Limit Rust build parallelism (cargo can be very memory hungry)
+# Allow override via env: CARGO_BUILD_JOBS or RUST_PER_JOB_MB
+RUST_PER_JOB_MB="${RUST_PER_JOB_MB:-2500}"
+RUST_CORES="$(nproc --all 2>/dev/null || echo 1)"
+RUST_AVAIL_MB="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
+[ -z "${RUST_AVAIL_MB}" ] && RUST_AVAIL_MB=2048
+RUST_MAX_BY_MEM=$(( RUST_AVAIL_MB / RUST_PER_JOB_MB ))
+[ "${RUST_MAX_BY_MEM}" -lt 1 ] && RUST_MAX_BY_MEM=1
+if [ "${RUST_CORES}" -lt "${RUST_MAX_BY_MEM}" ]; then
+  RUST_JOBS="${RUST_CORES}"
+else
+  RUST_JOBS="${RUST_MAX_BY_MEM}"
+fi
+if [ "${RUST_JOBS}" -gt 1 ]; then
+  RUST_JOBS=$((RUST_JOBS - 1))
+fi
+[ "${RUST_JOBS}" -lt 1 ] && RUST_JOBS=1
+
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${RUST_JOBS}}"
+echo "Building gst-plugins-rs with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (cores=${RUST_CORES}, avail_mb=${RUST_AVAIL_MB}, per_job_mb=${RUST_PER_JOB_MB})"
+
+cargo build "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}"
 echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly."
 
 echo "Cleaning up..."

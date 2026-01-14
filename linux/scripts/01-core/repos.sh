@@ -11,8 +11,17 @@ add_kitware_repo() {
 }
 
 add_llvm_repo() {
-  log "Adding LLVM apt repo via helper (version ${LLVM_WANTED})"
+  log "Adding LLVM apt repo (version ${LLVM_WANTED})"
   apt_install wget gnupg lsb-release ca-certificates
-  wget -qO- https://apt.llvm.org/llvm.sh | $SUDO bash -s -- "${LLVM_WANTED}" all
+
+  # Install repo signing key
+  # Fingerprint (from apt.llvm.org): 6084 F3CF 814B 57C1 CF12 EFD5 15CF 4D18 AF4F 7421
+  $SUDO mkdir -p /etc/apt/trusted.gpg.d
+  wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | $SUDO tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+
+  # Add versioned repository for the current distro codename (e.g. jammy, noble, bookworm)
+  $SUDO mkdir -p /etc/apt/sources.list.d
+  echo "deb http://apt.llvm.org/${DISTRO}/ llvm-toolchain-${DISTRO}-${LLVM_WANTED} main" | $SUDO tee /etc/apt/sources.list.d/apt.llvm.org.list >/dev/null
+
   APT_UPDATED="" # force refresh
 }

@@ -166,7 +166,7 @@ sudo docker buildx build \
   --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
   --build-arg BUILD_BY="local" \
   --push \
-  .
+  . 2>&1 | tee -a output.log
 ```
 
 ##### Reset builder
