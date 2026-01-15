@@ -178,6 +178,39 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     fi; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
+# ==============================================================================
+# LAYER 2.5: Frameworks; TVM (heavy, but stable enough to cache)
+# ==============================================================================
+COPY linux/scripts/05-frameworks/ /opt/scripts/frameworks/
+RUN chmod +x /opt/scripts/frameworks/*.sh || true
+
+ARG TVM_REF=v0.22.0
+ARG TVM_BUILD_TYPE=${BUILD_TYPE}
+ARG TVM_USE_VULKAN=1
+ARG TVM_INSTALL_PYTHON=1
+
+ENV TVM_REF=${TVM_REF} \
+        TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
+    TVM_USE_VULKAN=${TVM_USE_VULKAN}
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt \
+        --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        --mount=type=cache,target=/root/.cache/uv \
+        --mount=type=cache,target=/root/.cache/pip \
+        set -eux; \
+        arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+        if [ "${TVM_INSTALL_PYTHON}" = "1" ]; then \
+            py_flag=""; \
+        else \
+            py_flag="--no-python"; \
+        fi; \
+        bash /opt/scripts/frameworks/tvm.sh \
+            --ref "${TVM_REF}" \
+            --build-type "${TVM_BUILD_TYPE}" \
+            ${py_flag}
+
 # ------------------------------------------------------------------------------
 # GStreamer-Build: ENV + Setup
 # ------------------------------------------------------------------------------
