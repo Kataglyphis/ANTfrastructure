@@ -128,48 +128,6 @@ detect_clang_tools() {
   echo "${clang_bin} ${clangxx_bin}"
 }
 
-gcc_multiarch() {
-  # e.g. x86_64-linux-gnu
-  local gcc_bin
-  gcc_bin="$(command -v "gcc-${GCC_WANTED}" 2>/dev/null || command -v gcc 2>/dev/null || echo "")"
-  if [ -n "$gcc_bin" ]; then
-    "$gcc_bin" -print-multiarch 2>/dev/null || true
-  fi
-}
-
-gcc_cxx_include_paths() {
-  # Colon-separated list suitable for CPLUS_INCLUDE_PATH.
-  # TVM's LLVM integration adds /usr/lib/llvm-*/include as an -isystem path.
-  # On Ubuntu, that directory can ship a libc++abi cxxabi.h which conflicts with
-  # GCC/libstdc++ headers. For Clang, CPLUS_INCLUDE_PATH is searched early and
-  # ensures <cxxabi.h> resolves to libstdc++.
-  local v="${GCC_WANTED}"
-  local ma
-  ma="$(gcc_multiarch)"
-  if [ -n "$ma" ] && [ -d "/usr/include/${ma}/c++/${v}" ]; then
-    echo "/usr/include/c++/${v}:/usr/include/${ma}/c++/${v}:/usr/include/c++/${v}/backward"
-  elif [ -d "/usr/include/c++/${v}" ]; then
-    echo "/usr/include/c++/${v}:/usr/include/c++/${v}/backward"
-  else
-    echo ""
-  fi
-}
-
-gcc_cxx_include_flags() {
-  # Return -I flags for GCC/libstdc++ include dirs.
-  # Using -I (not -isystem) ensures these headers win over LLVM's -isystem include dir.
-  local v="${GCC_WANTED}"
-  local ma
-  ma="$(gcc_multiarch)"
-  if [ -n "$ma" ] && [ -d "/usr/include/${ma}/c++/${v}" ]; then
-    echo "-I/usr/include/c++/${v} -I/usr/include/${ma}/c++/${v} -I/usr/include/c++/${v}/backward"
-  elif [ -d "/usr/include/c++/${v}" ]; then
-    echo "-I/usr/include/c++/${v} -I/usr/include/c++/${v}/backward"
-  else
-    echo ""
-  fi
-}
-
 detect_spirv_tools_library() {
   # TVM's Vulkan build requires the SPIRV-Tools *library*.
   local candidates=()
@@ -199,46 +157,6 @@ detect_spirv_tools_library() {
 
   echo ""
   return 1
-}
-
-disable_llvm_cxxabi_header_if_present() {
-  # Some Ubuntu LLVM packages ship a libc++abi-flavoured cxxabi.h in LLVM's include dir.
-  # TVM (via dmlc-core) includes <cxxabi.h>, and Clang may pick LLVM's copy first,
-  # which can conflict with GCC/libstdc++ headers.
-  #
-  # This function temporarily moves that header aside for the duration of the build.
-  local llvm_config_bin="${1:-}"
-  [ -n "$llvm_config_bin" ] || return 0
-  command -v "$llvm_config_bin" >/dev/null 2>&1 || return 0
-
-  local incdir
-  incdir="$("$llvm_config_bin" --includedir 2>/dev/null || true)"
-  [ -n "$incdir" ] || return 0
-
-  local header="${incdir}/cxxabi.h"
-  local backup="${incdir}/cxxabi.h.disabled-by-kataglyphis"
-
-  [ -f "$header" ] || return 0
-  [ -f "$backup" ] && return 0
-
-  if [ "$(id -u)" -ne 0 ]; then
-    require_sudo
-    sudo mv "$header" "$backup"
-  else
-    mv "$header" "$backup"
-  fi
-
-  export TVM_LLVM_CXXABI_BACKUP="$backup"
-  log "Temporarily disabled LLVM cxxabi.h to avoid GCC/libstdc++ conflicts"
-
-  trap 'if [ -n "${TVM_LLVM_CXXABI_BACKUP:-}" ] && [ -f "${TVM_LLVM_CXXABI_BACKUP}" ]; then
-          orig="${TVM_LLVM_CXXABI_BACKUP%.disabled-by-kataglyphis}";
-          if [ "$(id -u)" -ne 0 ]; then
-            sudo mv "${TVM_LLVM_CXXABI_BACKUP}" "$orig";
-          else
-            mv "${TVM_LLVM_CXXABI_BACKUP}" "$orig";
-          fi;
-        fi' EXIT
 }
 
 is_under_opt_vulkan() {
@@ -413,10 +331,6 @@ main() {
     log "Using LLVM: $llvm_config"
   fi
 
-  if [ -n "$llvm_config" ]; then
-    disable_llvm_cxxabi_header_if_present "$llvm_config"
-  fi
-
   if [ "$do_clean" -eq 1 ]; then
     log "Cleaning build directory: $build_dir"
     rm -rf "$build_dir"
@@ -424,33 +338,17 @@ main() {
 
   mkdir -p "$build_dir"
 
-  # Decide toolchain and stdlib mode.
-  read -r clang_bin clangxx_bin <<<"$(detect_clang_tools)"
+  # Decide toolchain.
+  # Default to GCC/G++ to avoid known LLVM-packaging header conflicts with clang++ on Ubuntu.
+  local gcc_bin="gcc-${GCC_WANTED}"
+  local gxx_bin="g++-${GCC_WANTED}"
+  command -v "$gcc_bin" >/dev/null 2>&1 || gcc_bin="gcc"
+  command -v "$gxx_bin" >/dev/null 2>&1 || gxx_bin="g++"
+
   local desired_cc
   local desired_cxx
-  desired_cc="$(command -v "${CC:-$clang_bin}" 2>/dev/null || echo "${CC:-$clang_bin}")"
-  desired_cxx="$(command -v "${CXX:-$clangxx_bin}" 2>/dev/null || echo "${CXX:-$clangxx_bin}")"
-
-  # LLVM can inject an alternative cxxabi.h via its include directory.
-  # Ensure we consistently use GCC/libstdc++ headers when building with Clang.
-  if [ -n "$llvm_config" ]; then
-    case "$desired_cxx" in
-      *clang++*)
-        local gcc_include_paths=""
-        gcc_include_paths="$(gcc_cxx_include_paths)"
-        if [ -n "$gcc_include_paths" ]; then
-          if [ -n "${CPLUS_INCLUDE_PATH:-}" ]; then
-            export CPLUS_INCLUDE_PATH="${gcc_include_paths}:${CPLUS_INCLUDE_PATH}"
-          else
-            export CPLUS_INCLUDE_PATH="${gcc_include_paths}"
-          fi
-          log "Applied GCC libstdc++ header precedence via CPLUS_INCLUDE_PATH"
-        else
-          log "Warning: could not determine GCC C++ include dirs; build may hit cxxabi.h conflicts"
-        fi
-        ;;
-    esac
-  fi
+  desired_cc="$(command -v "${CC:-$gcc_bin}" 2>/dev/null || echo "${CC:-$gcc_bin}")"
+  desired_cxx="$(command -v "${CXX:-$gxx_bin}" 2>/dev/null || echo "${CXX:-$gxx_bin}")"
 
   log "Configuring CMake (type=$build_type)"
   local cmake_args=(
@@ -485,23 +383,6 @@ main() {
     cmake_args+=( -DUSE_LLVM="$llvm_config" )
   fi
 
-  # Ensure GCC/libstdc++ headers take precedence over LLVM's libc++abi cxxabi.h.
-  if [ -n "$llvm_config" ]; then
-    case "$desired_cxx" in
-      *clang++*)
-        local gcc_includes=""
-        gcc_includes="$(gcc_cxx_include_flags)"
-        if [ -n "$gcc_includes" ]; then
-          if [ -n "${CMAKE_CXX_FLAGS:-}" ]; then
-            cmake_args+=( -DCMAKE_CXX_FLAGS="${gcc_includes} ${CMAKE_CXX_FLAGS}" )
-          else
-            cmake_args+=( -DCMAKE_CXX_FLAGS="${gcc_includes}" )
-          fi
-        fi
-        ;;
-    esac
-  fi
-
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
 
   log "Building TVM (jobs=$jobs)"
@@ -519,14 +400,12 @@ main() {
     python -m pip install -U pip setuptools wheel
     python -m pip install -U numpy cloudpickle decorator psutil scipy attrs
 
-    # TVM v0.22+ depends on tvm_ffi (vendored as a submodule).
-    # Install it first so `import tvm` works in the self-check below.
-    if [ -d "$tvm_dir/3rdparty/tvm-ffi/python" ]; then
-      python -m pip install -e "$tvm_dir/3rdparty/tvm-ffi/python"
-    elif [ -f "$tvm_dir/3rdparty/tvm-ffi/pyproject.toml" ] || [ -f "$tvm_dir/3rdparty/tvm-ffi/setup.py" ]; then
-      python -m pip install -e "$tvm_dir/3rdparty/tvm-ffi"
+    # TVM depends on tvm-ffi for Python bindings.
+    # Upstream docs: `cd 3rdparty/tvm-ffi; pip install .`
+    if [ -f "$tvm_dir/3rdparty/tvm-ffi/pyproject.toml" ] || [ -f "$tvm_dir/3rdparty/tvm-ffi/setup.py" ]; then
+      python -m pip install "$tvm_dir/3rdparty/tvm-ffi"
     else
-      log "Warning: tvm-ffi python package not found; tvm import may fail"
+      die "tvm-ffi is missing or not a Python project at $tvm_dir/3rdparty/tvm-ffi"
     fi
 
     # Install TVM python bindings (editable) and point it at the built libs
