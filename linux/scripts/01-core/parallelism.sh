@@ -68,11 +68,65 @@ compute_jobs() {
 _mem_available_mb() {
   local avail_mb
   avail_mb="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
+
+  local cgroup_mb
+  cgroup_mb="$(_cgroup_mem_remaining_mb)"
+  if [ -n "${cgroup_mb}" ]; then
+    if [ -z "${avail_mb}" ] || [ "${cgroup_mb}" -lt "${avail_mb}" ] 2>/dev/null; then
+      avail_mb="${cgroup_mb}"
+    fi
+  fi
+
   if [ -z "${avail_mb}" ]; then
     echo ""
   else
     echo "${avail_mb}"
   fi
+}
+
+_cgroup_mem_remaining_mb() {
+  # Returns approximate remaining memory under cgroup limits (in MB), if set.
+  # Works for cgroup v2 and v1. Returns empty if unlimited/unknown.
+  local max="" current="" remaining_bytes=""
+
+  # cgroup v2
+  if [ -r /sys/fs/cgroup/memory.max ]; then
+    max="$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "")"
+    if [ -n "${max}" ] && [ "${max}" != "max" ] 2>/dev/null; then
+      if [ -r /sys/fs/cgroup/memory.current ]; then
+        current="$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo "")"
+      fi
+      if [ -n "${current}" ] && [ "${current}" -ge 0 ] 2>/dev/null; then
+        remaining_bytes=$(( max - current ))
+        [ "${remaining_bytes}" -lt 0 ] 2>/dev/null && remaining_bytes=0
+        echo $(( remaining_bytes / 1024 / 1024 ))
+        return 0
+      fi
+      echo $(( max / 1024 / 1024 ))
+      return 0
+    fi
+  fi
+
+  # cgroup v1
+  if [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+    max="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || echo "")"
+    # Some kernels report a huge number when effectively unlimited.
+    if [ -n "${max}" ] && [ "${max}" -gt 0 ] 2>/dev/null && [ "${max}" -lt 9223372036854771712 ] 2>/dev/null; then
+      if [ -r /sys/fs/cgroup/memory/memory.usage_in_bytes ]; then
+        current="$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || echo "")"
+      fi
+      if [ -n "${current}" ] && [ "${current}" -ge 0 ] 2>/dev/null; then
+        remaining_bytes=$(( max - current ))
+        [ "${remaining_bytes}" -lt 0 ] 2>/dev/null && remaining_bytes=0
+        echo $(( remaining_bytes / 1024 / 1024 ))
+        return 0
+      fi
+      echo $(( max / 1024 / 1024 ))
+      return 0
+    fi
+  fi
+
+  echo ""
 }
 
 compute_jobs_with_mem_cap() {

@@ -155,6 +155,14 @@ sudo nerdctl build \
 ##### Build & push (docker buildx)
 
 ```bash
+docker buildx create --name wsl-limited --use --driver docker-container --driver-opt memory=12g --driver-opt cpu-period=100000 --driver-opt cpu-quota=800000
+```
+
+```bash
+--builder wsl-limited
+```
+
+```bash
 sudo docker buildx build \
   -f linux/Dockerfile \
   --platform linux/amd64,linux/arm64 \

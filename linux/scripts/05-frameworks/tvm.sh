@@ -30,7 +30,6 @@ Options:
   --workdir DIR        Directory to clone into (default: /opt/src if writable, else $HOME/src)
   --prefix DIR         Install prefix for 'cmake --install' (default: <workdir>/tvm-install)
   --ref REF            Git ref (branch/tag/commit) to checkout (default: main)
-  --jobs N             Parallel build jobs (default: auto; respects cgroup CPU quota)
   --build-type TYPE    CMake build type (default: Release)
   --llvm-config PATH   Path to llvm-config binary (auto-detect if unset)
   --use-vulkan         Enable Vulkan runtime/codegen in TVM (default)
@@ -40,13 +39,15 @@ Options:
   -h, --help           Show this help
 
 Environment overrides:
-  TVM_WORKDIR, TVM_PREFIX, TVM_REF, TVM_JOBS, TVM_BUILD_TYPE, TVM_LLVM_CONFIG
+  TVM_WORKDIR, TVM_PREFIX, TVM_REF, TVM_BUILD_TYPE, TVM_LLVM_CONFIG
+  TVM_JOBS (optional override for parallel build jobs)
+  TVM_MB_PER_JOB (optional; default: 2000)
 
 Examples:
   ./tvm.sh
   ./tvm.sh --ref v0.16.0
   ./tvm.sh --llvm-config /usr/bin/llvm-config-21
-  ./tvm.sh --clean --jobs 8
+  ./tvm.sh --clean
 EOF
 }
 
@@ -329,10 +330,11 @@ main() {
   local workdir="${TVM_WORKDIR:-$(pick_default_workdir)}"
   local ref="${TVM_REF:-main}"
   local build_type="${TVM_BUILD_TYPE:-Release}"
-  local jobs_arg="${TVM_JOBS:-}"
   local llvm_config="${TVM_LLVM_CONFIG:-}"
   local prefix="${TVM_PREFIX:-}"
   local use_vulkan="${TVM_USE_VULKAN:-1}"
+  local requested_jobs="${TVM_JOBS:-}"
+  local mb_per_job="${TVM_MB_PER_JOB:-2000}"
   local do_clean=0
   local do_apt=1
   local do_python=1
@@ -342,7 +344,6 @@ main() {
       --workdir)     workdir="$2"; shift 2 ;;
       --prefix)      prefix="$2"; shift 2 ;;
       --ref)         ref="$2"; shift 2 ;;
-      --jobs)        jobs_arg="$2"; shift 2 ;;
       --build-type)  build_type="$2"; shift 2 ;;
       --llvm-config) llvm_config="$2"; shift 2 ;;
       --use-vulkan)  use_vulkan=1; shift ;;
@@ -355,7 +356,7 @@ main() {
   done
 
   local jobs
-  jobs="$(compute_jobs "${jobs_arg}")"
+  jobs="$(compute_jobs_with_mem_cap "${requested_jobs}" "${mb_per_job}")"
 
   mkdir -p "$workdir"
   local tvm_dir="$workdir/tvm"
@@ -459,7 +460,7 @@ main() {
 
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
 
-  log "Building TVM (jobs=$jobs)"
+  log "Building TVM (jobs=$jobs, mb_per_job=$mb_per_job)"
   cmake --build "$build_dir" --parallel "$jobs"
 
   log "Installing TVM to $prefix"
