@@ -65,35 +65,43 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
-    apt-get update -y && \
-    apt-get install -y \
-      doxygen iwyu graphviz gcovr libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-      libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils wayland-protocols \
-      libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
+        set -eux; \
+        apt-get update -y; \
+        apt-get install -y --no-install-recommends \
+            doxygen iwyu graphviz gcovr \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils \
+            wayland-protocols libwayland-dev libxkbcommon-dev \
+            libglx-mesa0 libosmesa6-dev; \
+        apt-get clean; \
+        rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Additional dependencies; for frontend dev (with f.e. flutter/dart)
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
-    arch="$(dpkg --print-architecture)"; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-    build-essential clang ninja-build pkg-config \
-    libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
-    libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
-    libasound2-dev libpulse-dev libdbus-1-dev \
-    file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
+        set -eux; \
+        arch="$(dpkg --print-architecture)"; \
+        apt-get update -y; \
+        apt-get install -y --no-install-recommends \
+            libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
+            libpango1.0-dev libx11-dev libx11-xcb-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev \
+            file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
+        apt-get clean; \
+        rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Performance analysis tools (perf)
 # ------------------------------------------------------------------------------        
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
-    apt-get update -y && \
-    apt-get install -y linux-tools-common linux-tools-generic
+    set -eux; \
+    apt-get update -y; \
+    apt-get install -y --no-install-recommends linux-tools-common linux-tools-generic; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Install Node.js (different for RISC-V vs. other architectures)
@@ -104,12 +112,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ARCH=$(dpkg --print-architecture); \
     if [ "$ARCH" = "riscv64" ]; then \
         echo "RISC-V detected: Installing Node.js from default apt repo"; \
-        apt-get update && apt-get install -y nodejs npm; \
+        apt-get update && apt-get install -y --no-install-recommends nodejs npm; \
     else \
         echo "Non-RISC-V architecture: Installing Node.js from NodeSource"; \
         curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
-        apt-get update && apt-get install -y nodejs; \
-    fi
+        apt-get update && apt-get install -y --no-install-recommends nodejs; \
+    fi; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Vulkan ICD/Layer-JSONs
@@ -167,8 +177,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       dst="/opt/scripts/toolchain/$(basename \"$f\")"; \
       [ -f "$dst" ] || ln -s "$f" "$dst"; \
     done; \
-    # Run dependency setup
-    bash /opt/scripts/toolchain/setup-dependencies.sh base; \
+    # Run dependency setup (base packages already installed earlier in the Dockerfile)
     bash /opt/scripts/toolchain/setup-dependencies.sh cmake; \
     bash /opt/scripts/toolchain/setup-dependencies.sh extras; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
@@ -273,7 +282,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         --mount=type=cache,target=/var/lib/apt \
         set -eux; \
         export USER=root; \
-        bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
+    SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
             --ort-version "${ONNXRUNTIME_VERSION}" \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"

@@ -12,9 +12,7 @@ parse_common_args "$@"
 detect_jobs
 
 # ----------------------------
-
 # Performance: Cache architecture detection
-
 # ----------------------------
 
 readonly TARGET_ARCH="${TARGET_ARCH:-$(uname -m 2>/dev/null || echo unknown)}"
@@ -100,9 +98,7 @@ create_symlinks() {
 }
 
 # ----------------------------
-
 # Early exit check
-
 # ----------------------------
 
 if [[ "${BUILD_NATIVE_CPU}" != "true" ]]; then
@@ -111,9 +107,7 @@ if [[ "${BUILD_NATIVE_CPU}" != "true" ]]; then
 fi
 
 # ----------------------------
-
 # Build configuration
-
 # ----------------------------
 
 declare -a NATIVE_CPU_EXTRA_ARGS=()
@@ -199,9 +193,7 @@ case "${TARGET_ARCH}" in
 esac
 
 # ----------------------------
-
 # Build execution
-
 # ----------------------------
 
 BUILD_SH="${ORT_SRC_DIR}/build.sh"
