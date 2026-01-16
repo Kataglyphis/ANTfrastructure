@@ -3,35 +3,24 @@ set -euo pipefail
 
 GSTREAMER_PREFIX="${GSTREAMER_PREFIX:-/opt/gstreamer}"
 
-_arch="$(uname -m)"
-case "${_arch}" in
-  x86_64)
-    MULTIARCH_DIR="lib/x86_64-linux-gnu"
-    SYSTEM_LIB="/usr/lib/x86_64-linux-gnu"
-    ;;
-  aarch64|arm64)
-    MULTIARCH_DIR="lib/aarch64-linux-gnu"
-    SYSTEM_LIB="/usr/lib/aarch64-linux-gnu"
-    ;;
-  i386|i486|i586|i686)
-    MULTIARCH_DIR="lib/i386-linux-gnu"
-    SYSTEM_LIB="/usr/lib/i386-linux-gnu"
-    ;;
-  riscv64)
-    MULTIARCH_DIR="lib/riscv64-linux-gnu"
-    SYSTEM_LIB="/usr/lib/riscv64-linux-gnu"
-    ;;
-  *)
-    TRIPLET="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || echo 'unknown')"
-    if [ "$TRIPLET" != "unknown" ]; then
-      MULTIARCH_DIR="lib/${TRIPLET}"
-      SYSTEM_LIB="/usr/lib/${TRIPLET}"
-    else
-      MULTIARCH_DIR="lib/multiarch"
-      SYSTEM_LIB="/usr/lib"
-    fi
-    ;;
-esac
+TRIPLET=""
+if [ -f /opt/scripts/core/platform.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/platform.sh
+  TRIPLET="$(deb_multiarch_triplet)"
+fi
+
+if [ -z "${TRIPLET}" ]; then
+  TRIPLET="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || echo '')"
+fi
+
+if [ -n "${TRIPLET}" ]; then
+  MULTIARCH_DIR="lib/${TRIPLET}"
+  SYSTEM_LIB="/usr/lib/${TRIPLET}"
+else
+  MULTIARCH_DIR="lib/multiarch"
+  SYSTEM_LIB="/usr/lib"
+fi
 
 export PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 export PKG_CONFIG_PATH="${SYSTEM_LIB}/pkgconfig:${GSTREAMER_PREFIX}/${MULTIARCH_DIR}/pkgconfig:${PKG_CONFIG_PATH:-}"

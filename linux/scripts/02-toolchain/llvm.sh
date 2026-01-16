@@ -102,33 +102,25 @@ install_llvm_clang() {
   done
 
   # Show versions (non-fatal)
-  _tool_version() {
-    local cmd="$1"
-    shift || true
-    if command -v "$cmd" >/dev/null 2>&1; then
-      "$cmd" "$@" || true
-    fi
-  }
-
-  _tool_version clang --version
-  _tool_version clang++ --version
-  _tool_version clangd --version
-  _tool_version clang-format --version
-  _tool_version clang-tidy --version
-  _tool_version lld --version
-  _tool_version lldb --version
-  _tool_version llvm-config --version
+  tool_version clang --version
+  tool_version clang++ --version
+  tool_version clangd --version
+  tool_version clang-format --version
+  tool_version clang-tidy --version
+  tool_version lld --version
+  tool_version lldb --version
+  tool_version llvm-config --version
 
   # Useful LLVM/MLIR/BOLT/Flang tools (present depending on installed packages)
-  _tool_version llvm-ar --version
-  _tool_version llvm-nm --version
-  _tool_version llvm-objdump --version
-  _tool_version llvm-profdata --version
-  _tool_version opt --version
-  _tool_version llc --version
-  _tool_version mlir-opt --version
-  _tool_version bolt --version
-  _tool_version flang --version
-  _tool_version flang-new --version
+  tool_version llvm-ar --version
+  tool_version llvm-nm --version
+  tool_version llvm-objdump --version
+  tool_version llvm-profdata --version
+  tool_version opt --version
+  tool_version llc --version
+  tool_version mlir-opt --version
+  tool_version bolt --version
+  tool_version flang --version
+  tool_version flang-new --version
 }
 

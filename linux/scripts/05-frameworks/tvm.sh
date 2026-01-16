@@ -3,29 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source modules (search local repo first, then Docker image layout)
-source_module() {
-  local name="$1"
-  local candidates=(
-    "$SCRIPT_DIR/$name"
-    "$SCRIPT_DIR/../01-core/$name"
-    "$SCRIPT_DIR/../02-toolchain/$name"
-    "/opt/scripts/core/$name"
-    "/opt/scripts/toolchain/$name"
-  )
-
-  local c
-  for c in "${candidates[@]}"; do
-    if [ -f "$c" ]; then
-      # shellcheck disable=SC1090
-      source "$c"
-      return 0
-    fi
-  done
-
-  echo "Error: required module '$name' not found (searched: ${candidates[*]})" >&2
+# shellcheck disable=SC1091
+if [ -f "${SCRIPT_DIR}/../01-core/modules.sh" ]; then
+  source "${SCRIPT_DIR}/../01-core/modules.sh"
+elif [ -f "/opt/scripts/core/modules.sh" ]; then
+  source "/opt/scripts/core/modules.sh"
+else
+  echo "Error: modules.sh not found (expected ${SCRIPT_DIR}/../01-core/modules.sh or /opt/scripts/core/modules.sh)" >&2
   exit 1
-}
+fi
 
 source_module common.sh
 source_module repos.sh
@@ -126,6 +112,87 @@ detect_clang_tools() {
   fi
 
   echo "${clang_bin} ${clangxx_bin}"
+}
+
+maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
+  # Problem:
+  # TVM's LLVM integration adds `-isystem /usr/lib/llvm-XX/include` to the compile command.
+  # On Ubuntu, that directory may contain a top-level `cxxabi.h` that conflicts with
+  # GCC's libstdc++ headers (see __cxa_init_primary_exception conflict).
+  #
+  # Requirement from user: do not "move/delete" LLVM headers; instead ensure GCC headers
+  # are preferred.
+  #
+  # Approach:
+  # Create a tiny shim include dir that provides `cxxabi.h` forwarding to GCC's header,
+  # then wrap the compiler to inject `-I<shim>` as the first argument so it wins over
+  # `-isystem /usr/lib/llvm-XX/include`.
+  #
+  # Prints: "<wrapped_cc> <wrapped_cxx>" (or original compilers if no action needed)
+  local llvm_config_path="$1"
+  local build_dir="$2"
+  local real_cc="$3"
+  local real_cxx="$4"
+
+  local out_cc="$real_cc"
+  local out_cxx="$real_cxx"
+
+  if [ -z "$llvm_config_path" ] || ! command -v "$llvm_config_path" >/dev/null 2>&1; then
+    echo "$out_cc $out_cxx"
+    return 0
+  fi
+
+  local llvm_includedir
+  llvm_includedir="$($llvm_config_path --includedir 2>/dev/null || true)"
+  if [ -z "$llvm_includedir" ] || [ ! -f "$llvm_includedir/cxxabi.h" ]; then
+    echo "$out_cc $out_cxx"
+    return 0
+  fi
+
+  # Determine GCC major version (used for the include path we forward to).
+  local gcc_major=""
+  if command -v "$real_cxx" >/dev/null 2>&1; then
+    gcc_major="$($real_cxx -dumpversion 2>/dev/null | cut -d. -f1 || true)"
+  fi
+  [ -n "$gcc_major" ] || gcc_major="14"
+
+  local shim_root="$build_dir/.kataglyphis-include-shim"
+  local shim_include="$shim_root/include"
+  mkdir -p "$shim_include"
+
+  # Forward to GCC's libstdc++ cxxabi.h explicitly.
+  cat >"$shim_include/cxxabi.h" <<EOF
+#pragma once
+#include </usr/include/c++/${gcc_major}/cxxabi.h>
+EOF
+
+  local wrapper_dir="$shim_root/wrappers"
+  mkdir -p "$wrapper_dir"
+
+  local wrapper_cc="$wrapper_dir/cc"
+  local wrapper_cxx="$wrapper_dir/cxx"
+
+  cat >"$wrapper_cc" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$real_cc" -I"$shim_include" "\$@"
+EOF
+
+  cat >"$wrapper_cxx" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$real_cxx" -I"$shim_include" "\$@"
+EOF
+
+  chmod +x "$wrapper_cc" "$wrapper_cxx"
+
+  # IMPORTANT: this function's stdout is captured by the caller to determine CC/CXX.
+  # Do not print log lines to stdout here, otherwise CMake receives strings like "[INFO]".
+  log "Workaround: preferring GCC cxxabi.h over LLVM's ($llvm_includedir/cxxabi.h) via compiler wrapper" >&2
+  out_cc="$wrapper_cc"
+  out_cxx="$wrapper_cxx"
+
+  echo "$out_cc $out_cxx"
 }
 
 detect_spirv_tools_library() {
@@ -349,6 +416,13 @@ main() {
   local desired_cxx
   desired_cc="$(command -v "${CC:-$gcc_bin}" 2>/dev/null || echo "${CC:-$gcc_bin}")"
   desired_cxx="$(command -v "${CXX:-$gxx_bin}" 2>/dev/null || echo "${CXX:-$gxx_bin}")"
+
+  # If LLVM injects an include dir containing a conflicting cxxabi.h, prefer GCC's header.
+  # This does not change the chosen C++ standard library; it only fixes header precedence.
+  local wrapped
+  wrapped="$(maybe_wrap_compiler_to_prefer_gcc_cxxabi_header "$llvm_config" "$build_dir" "$desired_cc" "$desired_cxx")"
+  desired_cc="${wrapped%% *}"
+  desired_cxx="${wrapped#* }"
 
   log "Configuring CMake (type=$build_type)"
   local cmake_args=(

@@ -3,20 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source modules (search toolchain first, then fall back to ../core or /opt/scripts/core)
-source_module(){
-  local name="$1"
-  if [ -f "$SCRIPT_DIR/$name" ]; then
-    source "$SCRIPT_DIR/$name"
-  elif [ -f "$(dirname "$SCRIPT_DIR")/core/$name" ]; then
-    source "$(dirname "$SCRIPT_DIR")/core/$name"
-  elif [ -f "/opt/scripts/core/$name" ]; then
-    source "/opt/scripts/core/$name"
-  else
-    echo "Error: required module '$name' not found in $SCRIPT_DIR or core" >&2
-    exit 1
-  fi
-}
+# shellcheck disable=SC1091
+if [ -f "${SCRIPT_DIR}/../01-core/modules.sh" ]; then
+  source "${SCRIPT_DIR}/../01-core/modules.sh"
+elif [ -f "/opt/scripts/core/modules.sh" ]; then
+  source "/opt/scripts/core/modules.sh"
+else
+  echo "Error: modules.sh not found (expected ${SCRIPT_DIR}/../01-core/modules.sh or /opt/scripts/core/modules.sh)" >&2
+  exit 1
+fi
 
 # Source required modules
 source_module common.sh

@@ -2,9 +2,92 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*"; }
-err()  { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*"; exit 1; }
+# Prefer shared platform helpers if available (container layout or repo layout)
+_ONNX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LOGGING_CANDIDATES=(
+  "/opt/scripts/core/logging.sh"
+  "${_ONNX_LIB_DIR}/../../../../01-core/logging.sh"
+)
+_PLATFORM_CANDIDATES=(
+  "/opt/scripts/core/platform.sh"
+  "${_ONNX_LIB_DIR}/../../../../01-core/platform.sh"
+)
+_PARALLEL_CANDIDATES=(
+  "/opt/scripts/core/parallelism.sh"
+  "${_ONNX_LIB_DIR}/../../../../01-core/parallelism.sh"
+)
+
+for f in "${_LOGGING_CANDIDATES[@]}"; do
+  if [ -f "${f}" ]; then
+    # shellcheck disable=SC1090
+    source "${f}"
+    break
+  fi
+done
+for f in "${_PLATFORM_CANDIDATES[@]}"; do
+  if [ -f "${f}" ]; then
+    # shellcheck disable=SC1090
+    source "${f}"
+    break
+  fi
+done
+for f in "${_PARALLEL_CANDIDATES[@]}"; do
+  if [ -f "${f}" ]; then
+    # shellcheck disable=SC1090
+    source "${f}"
+    break
+  fi
+done
+
+# Fallback loggers if shared logging is not present
+if ! command -v info >/dev/null 2>&1; then
+  info() { printf '[INFO] %s\n' "$*"; }
+fi
+if ! command -v warn >/dev/null 2>&1; then
+  warn() { printf '[WARN] %s\n' "$*" >&2; }
+fi
+if ! command -v err >/dev/null 2>&1; then
+  err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
+fi
+
+# Fallbacks if shared helpers are not present
+if ! command -v arch_oci >/dev/null 2>&1; then
+  arch_oci() {
+    local raw="${TARGETARCH:-${TARGET_ARCH:-}}"
+    if [ -z "${raw}" ]; then
+      raw="$(uname -m 2>/dev/null || echo unknown)"
+    fi
+    case "${raw}" in
+      amd64|x86_64) printf '%s' "amd64" ;;
+      arm64|aarch64) printf '%s' "arm64" ;;
+      *) printf '%s' "${raw}" ;;
+    esac
+  }
+fi
+if ! command -v is_amd64_arch >/dev/null 2>&1; then
+  is_amd64_arch() { [ "$(arch_oci)" = "amd64" ]; }
+fi
+if ! command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
+  compute_jobs_with_mem_cap() {
+    local requested="${1:-}"
+    local mb_per_job="${2:-2000}"
+    local cores avail_mb max_by_mem jobs
+    cores="$(nproc --all 2>/dev/null || echo 1)"
+    jobs="${cores}"
+    if [ -n "${requested}" ]; then
+      jobs="${requested}"
+    fi
+    avail_mb="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
+    [ -z "${avail_mb}" ] && avail_mb=2048
+    max_by_mem=$(( avail_mb / mb_per_job ))
+    [ "${max_by_mem}" -lt 1 ] && max_by_mem=1
+    if [ "${jobs}" -gt "${max_by_mem}" ] 2>/dev/null; then
+      jobs="${max_by_mem}"
+    fi
+    [ "${jobs}" -lt 1 ] && jobs=1
+    echo "${jobs}"
+  }
+fi
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || err "Required command not found in PATH: $1"
@@ -114,13 +197,7 @@ detect_jobs() {
     return 0
   fi
 
-  local cores avail_mb max_by_mem
-  cores="$(nproc --all || echo 1)"
-  avail_mb="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo || true)"
-  [ -z "${avail_mb}" ] && avail_mb=2048
-  max_by_mem=$(( avail_mb / 2000 ))
-  JOBS=$(( cores < max_by_mem ? cores : max_by_mem ))
-  [ "${JOBS}" -lt 1 ] && JOBS=1
+  JOBS="$(compute_jobs_with_mem_cap "" 2000)"
   export JOBS
   info "Using JOBS=${JOBS}"
 }
@@ -136,19 +213,4 @@ pc_numeric_version_from_ort_version() {
   fi
 }
 
-detect_target_arch() {
-  local raw="${TARGETARCH:-${TARGET_ARCH:-}}"
-  if [ -z "${raw}" ]; then
-    raw="$(uname -m 2>/dev/null || echo unknown)"
-  fi
-
-  case "${raw}" in
-    amd64|x86_64) printf '%s' "amd64" ;;
-    arm64|aarch64) printf '%s' "arm64" ;;
-    *) printf '%s' "${raw}" ;;
-  esac
-}
-
-is_amd64_arch() {
-  [ "$(detect_target_arch)" = "amd64" ]
-}
+detect_target_arch() { arch_oci; }
