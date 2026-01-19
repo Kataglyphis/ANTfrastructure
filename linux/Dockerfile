@@ -8,7 +8,8 @@ ARG BUILD_TYPE=Release
 ARG VULKAN_VERSION=1.4.335.0
 ARG LLVM_WANTED=21
 ARG CLANG_WANTED=21
-ARG GCC_WANTED=14
+ARG GCC_WANTED=15
+ARG GCC_VERSION=15.2.0
 ARG TARGETARCH
 
 # ------------------------------------------------------------------------------
@@ -157,7 +158,7 @@ RUN --mount=type=cache,target=/var/cache/ccache \
 # ==============================================================================
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 
-ARG LLVM_WANTED CLANG_WANTED GCC_WANTED VULKAN_VERSION TARGETARCH
+ARG LLVM_WANTED CLANG_WANTED GCC_WANTED GCC_VERSION VULKAN_VERSION TARGETARCH
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
