@@ -150,12 +150,58 @@ maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
     return 0
   fi
 
-  # Determine GCC major version (used for the include path we forward to).
+  # Determine GCC version and where its libstdc++ headers live.
+  # When GCC is installed from source into a custom prefix (e.g. /opt/gcc-15.2.0),
+  # libstdc++ headers are not under /usr/include/c++/<major>.
   local gcc_major=""
+  local gcc_full=""
   if command -v "$real_cxx" >/dev/null 2>&1; then
-    gcc_major="$($real_cxx -dumpversion 2>/dev/null | cut -d. -f1 || true)"
+    gcc_full="$($real_cxx -dumpfullversion -dumpversion 2>/dev/null || true)"
+    [ -n "$gcc_full" ] || gcc_full="$($real_cxx -dumpversion 2>/dev/null || true)"
+    gcc_major="${gcc_full%%.*}"
   fi
   [ -n "$gcc_major" ] || gcc_major="14"
+
+  local real_cxx_path="${real_cxx}"
+  if [ -x "$real_cxx" ]; then
+    real_cxx_path="$real_cxx"
+  elif command -v "$real_cxx" >/dev/null 2>&1; then
+    real_cxx_path="$(command -v "$real_cxx")"
+  fi
+  if command -v readlink >/dev/null 2>&1; then
+    real_cxx_path="$(readlink -f "$real_cxx_path" 2>/dev/null || echo "$real_cxx_path")"
+  fi
+
+  local gcc_prefix=""
+  case "$real_cxx_path" in
+    */bin/*) gcc_prefix="${real_cxx_path%/bin/*}" ;;
+  esac
+
+  local gcc_cxxabi_header=""
+  local -a cxxabi_candidates=(
+    "/usr/include/c++/${gcc_full}/cxxabi.h"
+    "/usr/include/c++/${gcc_major}/cxxabi.h"
+  )
+  if [ -n "$gcc_prefix" ]; then
+    cxxabi_candidates+=(
+      "${gcc_prefix}/include/c++/${gcc_full}/cxxabi.h"
+      "${gcc_prefix}/include/c++/${gcc_major}/cxxabi.h"
+    )
+  fi
+
+  local c
+  for c in "${cxxabi_candidates[@]}"; do
+    if [ -n "$c" ] && [ -r "$c" ]; then
+      gcc_cxxabi_header="$c"
+      break
+    fi
+  done
+
+  if [ -z "$gcc_cxxabi_header" ]; then
+    log "Workaround skipped: could not locate GCC libstdc++ cxxabi.h (needed to override $llvm_includedir/cxxabi.h)" >&2
+    echo "$out_cc $out_cxx"
+    return 0
+  fi
 
   local shim_root="$build_dir/.kataglyphis-include-shim"
   local shim_include="$shim_root/include"
@@ -164,7 +210,7 @@ maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
   # Forward to GCC's libstdc++ cxxabi.h explicitly.
   cat >"$shim_include/cxxabi.h" <<EOF
 #pragma once
-#include </usr/include/c++/${gcc_major}/cxxabi.h>
+#include <${gcc_cxxabi_header}>
 EOF
 
   local wrapper_dir="$shim_root/wrappers"

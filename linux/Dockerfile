@@ -55,7 +55,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         nano tmux vim \
         sudo curl ca-certificates gnupg wget xz-utils libssl-dev git \
         build-essential ninja-build make sccache ccache \
-        clang libc++-18-dev libc++abi-18-dev clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev \
+        libc++-18-dev libc++abi-18-dev \
+        $([ "$ARCH" != "riscv64" ] && echo "clang clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev") \
         pkg-config lsb-release software-properties-common \
         meson python3 python3-venv python3-dev python3-pip \
         $([ "$ARCH" != "riscv64" ] && echo "lldb"); \
@@ -182,10 +183,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     bash /opt/scripts/toolchain/setup-dependencies.sh cmake; \
     bash /opt/scripts/toolchain/setup-dependencies.sh extras; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
-    if [ "${TARGETARCH:-$(uname -m)}" != "riscv64" ]; then \
-      bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
-      bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
-    fi; \
+        if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
+            # riscv64: apt.llvm.org doesn't provide the desired prebuilt clang/llvm packages.
+            # Build Clang/LLVM from source instead (non-interactive).
+            bash /opt/scripts/toolchain/build-clang21-riscv.sh "/usr/local/llvm-${LLVM_WANTED}" --no-bootstrap; \
+        else \
+            bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
+            bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
+        fi; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
 # ==============================================================================

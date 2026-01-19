@@ -180,6 +180,7 @@ sudo docker buildx build \
 ##### Reset builder
 
 ```bash
+docker buildx ls
 docker buildx rm mybuilder 2>/dev/null || true
 docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --
 ```
