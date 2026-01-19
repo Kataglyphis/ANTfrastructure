@@ -80,7 +80,16 @@ PREFIX="$LIBCAMERA_PREFIX"
 
 # Detect multiarch triplet if possible (for proper library paths)
 MULTIARCH_TRIPLET=""
-if command -v dpkg-architecture >/dev/null 2>&1; then
+
+# Prefer shared helper if present (Docker image layout)
+if [ -f /opt/scripts/core/platform.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/platform.sh
+  MULTIARCH_TRIPLET="$(deb_multiarch_triplet)"
+fi
+
+# Fallback to system tool
+if [ -z "${MULTIARCH_TRIPLET}" ] && command -v dpkg-architecture >/dev/null 2>&1; then
   MULTIARCH_TRIPLET="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
 fi
 

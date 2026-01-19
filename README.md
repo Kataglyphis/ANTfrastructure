@@ -155,6 +155,14 @@ sudo nerdctl build \
 ##### Build & push (docker buildx)
 
 ```bash
+docker buildx create --name wsl-limited --use --driver docker-container --driver-opt memory=12g --driver-opt cpu-period=100000 --driver-opt cpu-quota=800000
+```
+
+```bash
+--builder wsl-limited
+```
+
+```bash
 sudo docker buildx build \
   -f linux/Dockerfile \
   --platform linux/amd64,linux/arm64 \
@@ -166,7 +174,7 @@ sudo docker buildx build \
   --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
   --build-arg BUILD_BY="local" \
   --push \
-  .
+  . 2>&1 | tee -a output.log
 ```
 
 ##### Reset builder

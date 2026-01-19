@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # common.sh - shared helpers and configuration
 
+_COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Side-effect free helpers
+# shellcheck disable=SC1090
+[ -f "${_COMMON_SH_DIR}/logging.sh" ] && source "${_COMMON_SH_DIR}/logging.sh"
+# shellcheck disable=SC1090
+[ -f "${_COMMON_SH_DIR}/platform.sh" ] && source "${_COMMON_SH_DIR}/platform.sh"
+# shellcheck disable=SC1090
+[ -f "${_COMMON_SH_DIR}/parallelism.sh" ] && source "${_COMMON_SH_DIR}/parallelism.sh"
+
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
@@ -16,8 +26,13 @@ APT_FLAGS=(-yq --no-install-recommends "${APT_OPTS[@]}")
 SUDO=""
 APT_UPDATED=""
 
-log() { printf '[INFO] %s\n' "$*"; }
-die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
+tool_version() {
+  local cmd="$1"
+  shift || true
+  if command -v "$cmd" >/dev/null 2>&1; then
+    "$cmd" "$@" || true
+  fi
+}
 
 require_sudo() {
   if [ "${EUID:-$(id -u)}" -ne 0 ]; then

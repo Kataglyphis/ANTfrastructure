@@ -70,8 +70,7 @@ install_vulkan_sdk() {
         -e '/\bpacman[[:space:]]+-S\b/         { /(--noconfirm|-y)/! s/(\bpacman[[:space:]]+-S\b)/\1 -y/ }' \
         ./vulkansdk
       log "Building selected SDK components..."
-      JOBS=$(nproc)
-      [ "$JOBS" -lt 1 ] && JOBS=1
+      JOBS="$(compute_jobs "${JOBS:-}")"
       sudo ./vulkansdk -j "$JOBS" \
         glslang vulkan-tools vulkan-headers vulkan-loader \
         vulkan-validationlayers shaderc spirv-headers spirv-tools \

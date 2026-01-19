@@ -66,35 +66,43 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
-    apt-get update -y && \
-    apt-get install -y \
-      doxygen iwyu graphviz gcovr libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-      libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils wayland-protocols \
-      libwayland-dev libxkbcommon-dev libglx-mesa0 libosmesa6-dev
+        set -eux; \
+        apt-get update -y; \
+        apt-get install -y --no-install-recommends \
+            doxygen iwyu graphviz gcovr \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils \
+            wayland-protocols libwayland-dev libxkbcommon-dev \
+            libglx-mesa0 libosmesa6-dev; \
+        apt-get clean; \
+        rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Additional dependencies; for frontend dev (with f.e. flutter/dart)
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
-    arch="$(dpkg --print-architecture)"; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-    build-essential clang ninja-build pkg-config \
-    libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
-    libpango1.0-dev libx11-dev libx11-xcb-dev libxkbcommon-dev \
-    libasound2-dev libpulse-dev libdbus-1-dev \
-    file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
+        set -eux; \
+        arch="$(dpkg --print-architecture)"; \
+        apt-get update -y; \
+        apt-get install -y --no-install-recommends \
+            libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
+            libpango1.0-dev libx11-dev libx11-xcb-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev \
+            file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
+        apt-get clean; \
+        rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Performance analysis tools (perf)
 # ------------------------------------------------------------------------------        
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
-    apt-get update -y && \
-    apt-get install -y linux-tools-common linux-tools-generic
+    set -eux; \
+    apt-get update -y; \
+    apt-get install -y --no-install-recommends linux-tools-common linux-tools-generic; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Install Node.js (different for RISC-V vs. other architectures)
@@ -105,12 +113,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ARCH=$(dpkg --print-architecture); \
     if [ "$ARCH" = "riscv64" ]; then \
         echo "RISC-V detected: Installing Node.js from default apt repo"; \
-        apt-get update && apt-get install -y nodejs npm; \
+        apt-get update && apt-get install -y --no-install-recommends nodejs npm; \
     else \
         echo "Non-RISC-V architecture: Installing Node.js from NodeSource"; \
         curl -sL https://deb.nodesource.com/setup_24.x | bash - && \
-        apt-get update && apt-get install -y nodejs; \
-    fi
+        apt-get update && apt-get install -y --no-install-recommends nodejs; \
+    fi; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Vulkan ICD/Layer-JSONs
@@ -168,8 +178,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       dst="/opt/scripts/toolchain/$(basename \"$f\")"; \
       [ -f "$dst" ] || ln -s "$f" "$dst"; \
     done; \
-    # Run dependency setup
-    bash /opt/scripts/toolchain/setup-dependencies.sh base; \
+    # Run dependency setup (base packages already installed earlier in the Dockerfile)
     bash /opt/scripts/toolchain/setup-dependencies.sh cmake; \
     bash /opt/scripts/toolchain/setup-dependencies.sh extras; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
@@ -178,6 +187,39 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
     fi; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
+
+# ==============================================================================
+# LAYER 2.5: Frameworks; TVM (heavy, but stable enough to cache)
+# ==============================================================================
+COPY linux/scripts/05-frameworks/ /opt/scripts/frameworks/
+RUN chmod +x /opt/scripts/frameworks/*.sh || true
+
+ARG TVM_REF=v0.22.0
+ARG TVM_BUILD_TYPE=${BUILD_TYPE}
+ARG TVM_USE_VULKAN=1
+ARG TVM_INSTALL_PYTHON=1
+
+ENV TVM_REF=${TVM_REF} \
+    TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
+    TVM_USE_VULKAN=${TVM_USE_VULKAN}
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt \
+        --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        --mount=type=cache,target=/root/.cache/uv \
+        --mount=type=cache,target=/root/.cache/pip \
+        set -eux; \
+        arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+        if [ "${TVM_INSTALL_PYTHON}" = "1" ]; then \
+            py_flag=""; \
+        else \
+            py_flag="--no-python"; \
+        fi; \
+        bash /opt/scripts/frameworks/tvm.sh \
+            --ref "${TVM_REF}" \
+            --build-type "${TVM_BUILD_TYPE}" \
+            ${py_flag}
 
 # ------------------------------------------------------------------------------
 # GStreamer-Build: ENV + Setup
@@ -217,11 +259,9 @@ ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
 # ==============================================================================
 # LAYER 3: Media stack; GStreamer only (changes when updating GStreamer)
 # ==============================================================================
-COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
-
 # ONNX Runtime build helper
-COPY linux/scripts/03-media/onnxruntime /opt/scripts/media/onnxruntime
-RUN chmod +x /opt/scripts/media/onnxruntime/build-onnxruntime.sh || true
+COPY linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
+RUN chmod +x /opt/scripts/media/onnxruntime/build/*.sh /opt/scripts/media/onnxruntime/build/lib/*.sh || true
 
 # Make gstreamer env helper available early so /opt/scripts/media/gstreamer/setup-gstreamer.sh
 # can source it during the ONNX and GStreamer build steps (the runtime scripts are
@@ -229,28 +269,83 @@ RUN chmod +x /opt/scripts/media/onnxruntime/build-onnxruntime.sh || true
 COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
 RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
 
+# ----------------------------------------------------------------------------
+# ONNX Runtime build args
+# ----------------------------------------------------------------------------
+ARG ONNXRUNTIME_VERSION=v1.23.2
+ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
+ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
+
 # ------------------------------------------------------------------------------
-# ONNX Runtime build
+# ONNX Runtime build (split into steps for better Docker layer caching)
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/var/cache/ccache \
-    --mount=type=cache,target=/var/cache/sccache \
-    set -eux; \
+        --mount=type=cache,target=/var/lib/apt \
+        set -eux; \
+        export USER=root; \
+    SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt \
+        --mount=type=cache,target=/root/.cache/uv \
+        --mount=type=cache,target=/root/.cache/pip \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/20-fetch.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        --mount=type=cache,target=/usr/local/cargo/registry \
+        --mount=type=cache,target=/usr/local/cargo/git \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/30-build-native.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/40-build-wasm.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN set -eux; \
+        export USER=root; \
+    bash /opt/scripts/media/onnxruntime/build/50-build-js.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+# pkg-config generator is copied AFTER heavy ONNX build steps to improve Docker caching
+COPY linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
+RUN chmod +x /opt/scripts/media/onnxruntime/runtime/*.sh || true
+
+RUN set -eux; \
     export USER=root; \
-  bash /opt/scripts/media/onnxruntime/build-onnxruntime.sh
+    bash /opt/scripts/media/onnxruntime/runtime/31-generate-pkgconfig-native.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
 # ------------------------------------------------------------------------------
 # GStreamer build
 # ------------------------------------------------------------------------------
+COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     export USER=root; \
+    export PKG_CONFIG_PATH="/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig:${PKG_CONFIG_PATH}"; \
     cd /opt && \
     bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
         "$GSTREAMER_VERSION" \
