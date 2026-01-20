@@ -108,6 +108,272 @@ done
 require_sudo
 detect_system || true
 
+# ====== START: exhaustive preflight tests for riscv clang build ======
+# Insert this block after require_sudo and detect_system (i.e. before heavy work).
+
+# Minimum required CMake version (tunable)
+MIN_CMAKE_MAJOR=3
+MIN_CMAKE_MINOR=20
+
+# Minimum recommended free disk (MB) and RAM (MB)
+RECOMMENDED_DISK_MB=30000   # 30 GB free recommended
+RECOMMENDED_RAM_MB=16000    # 16 GB recommended (more for bootstrap/LTO)
+
+# Helper: version compare (returns 0 if $1 >= $2)
+ver_ge() {
+  # usage: ver_ge "3.22.1" "3.20"
+  [ "$#" -eq 2 ] || return 2
+  printf '%s\n%s\n' "$1" "$2" | awk -F. '{
+    for(i=1;i<=3;i++){ a[i]=($i==""?0:$i) }
+    split($0,_, "\n")
+  }' >/dev/null 2>&1
+  # simpler numeric compare:
+  dpkg --compare-versions "$1" ge "$2"
+}
+
+# Print header helper
+_test_header() { info "---- preflight: $* ----"; }
+
+# 1) Safe working directory
+preflight_check_workdir() {
+  _test_header "workdir safety"
+  if [ -z "${WD:-}" ] || [ "${WD}" = "/" ]; then
+    die "Refusing to run with unsafe working directory: ${WD:-<empty>}"
+  fi
+  info "WD OK: ${WD}"
+}
+
+# 2) Basic tool presence and minimal versions
+preflight_check_tools() {
+  _test_header "tools: git cmake ninja python3 cc ld as file strip"
+  local missing=()
+  for t in git cmake ninja python3 /usr/bin/cc ld as file strip; do
+    if ! command -v "${t}" >/dev/null 2>&1; then
+      missing+=("${t}")
+    fi
+  done
+  if [ ${#missing[@]} -ne 0 ]; then
+    die "Missing required tools: ${missing[*]}. Install them (e.g. apt-get install git cmake ninja-build python3 build-essential binutils file)."
+  fi
+
+  # cmake version
+  cmake_ver="$(cmake --version | head -n1 | awk '{print $3}')"
+  if ! ver_ge "${cmake_ver}" "${MIN_CMAKE_MAJOR}.${MIN_CMAKE_MINOR}"; then
+    warn "CMake ${cmake_ver} < recommended ${MIN_CMAKE_MAJOR}.${MIN_CMAKE_MINOR}. Consider installing newer CMake."
+  else
+    info "CMake OK: ${cmake_ver}"
+  fi
+
+  info "git: $(git --version | head -n1)"
+  info "ninja: $(ninja --version 2>/dev/null || echo 'ninja: unknown')"
+}
+
+# 3) Disk & tmp mount checks
+preflight_check_disk_tmp() {
+  _test_header "disk & tmp"
+  local avail_mb
+  avail_mb=$(df --output=avail -m "${WD}" 2>/dev/null | tail -n1 || echo 0)
+  if [ "${avail_mb:-0}" -lt "${RECOMMENDED_DISK_MB}" ]; then
+    warn "Low free space in ${WD}: ${avail_mb} MB available; ${RECOMMENDED_DISK_MB} MB recommended."
+  else
+    info "Disk: ${avail_mb} MB available in ${WD}"
+  fi
+
+  # check /tmp exec
+  tmp_exec_test="/tmp/preflight_exec_test_$$"
+  cat > "${tmp_exec_test}.c" <<'C'
+int main(void){return 0;}
+C
+  if ! gcc "${tmp_exec_test}.c" -o "${tmp_exec_test}" >/dev/null 2>&1; then
+    warn "Building small executable in current environment failed; /tmp might be noexec or gcc missing for the host arch."
+  else
+    if ! "${tmp_exec_test}" >/dev/null 2>&1; then
+      warn "Executable in /tmp failed to run; /tmp may be mounted nosuid/noexec or QEMU/binfmt not configured for riscv."
+    else
+      info "/tmp exec test OK"
+    fi
+  fi
+  rm -f "${tmp_exec_test}.c" "${tmp_exec_test}" || true
+}
+
+# 4) Memory & swap checks
+preflight_check_memory() {
+  _test_header "memory & swap"
+  local mem_mb swap_mb
+  mem_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+  swap_mb=$(awk '/SwapTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+  info "RAM: ${mem_mb} MB, SWAP: ${swap_mb} MB"
+  if [ "${mem_mb:-0}" -lt "${RECOMMENDED_RAM_MB}" ]; then
+    warn "System RAM < ${RECOMMENDED_RAM_MB}MB; full bootstrap or LTO builds may OOM. Consider --no-bootstrap, adding swap, or building on beefier hardware."
+  fi
+}
+
+# 5) Arch and runtime executable test (critical)
+preflight_check_arch_and_run() {
+  _test_header "architecture & runability of riscv binaries"
+  local host_arch dpkg_arch uname_m
+  dpkg_arch="$(dpkg --print-architecture 2>/dev/null || true)"
+  uname_m="$(uname -m 2>/dev/null || true)"
+  info "dpkg arch=${dpkg_arch}, uname -m=${uname_m}, expected riscv64"
+
+  if [ "${dpkg_arch}" != "riscv64" ] && [ "${uname_m}" != "riscv64" ]; then
+    warn "Host reports non-riscv arch. You may be cross-building in a non-riscv environment. CMake will compile-and-run tests which require qemu/binfmt for emulation."
+  fi
+
+  # try compile small riscv test using /usr/bin/cc (may be a riscv cross compiler or native)
+  cat > "${BUILD_DIR}/cctest.c" <<'C'
+#include <stdio.h>
+int main(void){ puts("hello"); return 0; }
+C
+  set +e
+  /usr/bin/cc "${BUILD_DIR}/cctest.c" -o "${BUILD_DIR}/cctest" &> "${BUILD_DIR}/cctest.log"
+  cc_ret=$?
+  set -e
+  if [ "${cc_ret}" -ne 0 ]; then
+    echo "[ERROR] /usr/bin/cc failed to produce a test binary. See ${BUILD_DIR}/cctest.log:"
+    sed -n '1,200p' "${BUILD_DIR}/cctest.log" || true
+    die "C compiler is not able to compile a simple test program. Likely missing libc dev files (libc6-dev:riscv64) or cross-compiler mismatch."
+  fi
+
+  # If binary exists, check file/exec
+  if [ -f "${BUILD_DIR}/cctest" ]; then
+    file_out="$(file -b "${BUILD_DIR}/cctest" 2>/dev/null || true)"
+    info "Test binary type: ${file_out}"
+    # Try run; if Exec format error, qemu/binfmt missing
+    set +e
+    "${BUILD_DIR}/cctest" >/dev/null 2>&1
+    run_ret=$?
+    set -e
+    if [ "${run_ret}" -eq 126 ] || [ "${run_ret}" -eq 127 ]; then
+      warn "Test binary produced but failed to run (exit ${run_ret}). Might be 'Exec format error' — QEMU/binfmt missing."
+      if command -v qemu-riscv64 >/dev/null 2>&1 || command -v qemu-riscv64-static >/dev/null 2>&1; then
+        info "qemu-user is present on the system."
+      else
+        warn "qemu-user-static not found. To run riscv binaries on a non-riscv host, install qemu-user-static and register binfmt (binfmt-support). Example: apt-get install -y qemu-user-static binfmt-support"
+      fi
+      # Dump binfmt status
+      if [ -d /proc/sys/fs/binfmt_misc ]; then
+        info "binfmt_misc entries:"
+        ls /proc/sys/fs/binfmt_misc || true
+        grep -i riscv /proc/sys/fs/binfmt_misc/* 2>/dev/null || true
+      fi
+      die "Cannot run produced riscv test binary in this environment; enable QEMU/binfmt or build on native riscv."
+    else
+      info "Test program compiled and ran successfully."
+    fi
+  else
+    die "Test binary not found after compilation; aborting."
+  fi
+  rm -f "${BUILD_DIR}/cctest.c" "${BUILD_DIR}/cctest" "${BUILD_DIR}/cctest.log" || true
+}
+
+# 6) Check for libc dev files and crt objects
+preflight_check_libc_crt() {
+  _test_header "libc dev / crt objects"
+  local found=0
+  for p in /usr/lib/*/crt1.o /usr/lib/*/crti.o /usr/lib/*/crtn.o /usr/lib/crt1.o; do
+    if [ -f "${p}" ]; then found=1; break; fi
+  done
+  if [ "${found}" -eq 0 ]; then
+    warn "crt1.o/crti.o/crtn.o not found in /usr/lib; install libc6-dev or libc6-dev:riscv64."
+  else
+    info "CRT files present."
+  fi
+}
+
+# 7) binutils / linker / assembler presence & sanity
+preflight_check_binutils() {
+  _test_header "binutils/linker/assembler"
+  for t in ld as objdump; do
+    if ! command -v "${t}" >/dev/null 2>&1; then
+      die "Required binutils tool not found: ${t}. Install binutils."
+    fi
+  done
+  info "ld: $(ld --version | head -n1 2>/dev/null || echo 'unknown')"
+  info "as: $(as --version | head -n1 2>/dev/null || echo 'unknown')"
+}
+
+# 8) LLD presence if we plan to use it
+preflight_check_lld() {
+  _test_header "lld presence (requested linker)"
+  if [[ " ${CMAKE_FLAGS[*]} " == *"LLVM_USE_LINKER=lld"* ]]; then
+    if ! command -v ld.lld >/dev/null 2>&1 && ! command -v lld >/dev/null 2>&1; then
+      warn "lld requested (CMAKE_FLAGS contains LLVM_USE_LINKER=lld) but lld not found in PATH. CMake may still build without forcing lld but performance/compatibility may differ."
+    else
+      info "lld found: $(ld.lld --version 2>/dev/null | head -n1 || lld --version 2>/dev/null | head -n1 || echo 'unknown')"
+    fi
+  fi
+}
+
+# 9) Git tag existence (avoids shallow clone surprises)
+preflight_check_git_tag() {
+  _test_header "git tag availability: ${LLVM_TAG}"
+  if git ls-remote --tags https://github.com/llvm/llvm-project.git "${LLVM_TAG}" | grep -q "${LLVM_TAG}"; then
+    info "Tag ${LLVM_TAG} exists on remote."
+  else
+    warn "Tag ${LLVM_TAG} not found on remote; clone may fail or fallback to default branch."
+  fi
+}
+
+# 10) Environment considerations (CC/CXX/LD flags, sandbox)
+preflight_check_env() {
+  _test_header "environment variables"
+  for v in CC CXX AR RANLIB LD LDFLAGS CFLAGS CXXFLAGS; do
+    if [ -n "${!v:-}" ]; then
+      warn "Environment variable ${v} is set (value='${!v}'). This may influence the build."
+    fi
+  done
+}
+
+# 11) Strip / file required if DO_STRIP
+preflight_check_strip_tools() {
+  _test_header "strip/file availability (for DO_STRIP)"
+  if [[ "${DO_STRIP}" == "1" ]]; then
+    for t in file strip readelf; do
+      if ! command -v "${t}" >/dev/null 2>&1; then
+        warn "Tool '${t}' not found but DO_STRIP=1. Stripping will be skipped or may be unsafe."
+      fi
+    done
+  fi
+}
+
+# 12) ulimit check
+preflight_check_ulimit() {
+  _test_header "ulimit"
+  local nproc_ulimit open_ulimit stack_kb
+  open_ulimit="$(ulimit -n || echo unknown)"
+  stack_kb="$(ulimit -s || echo unknown)"
+  info "ulimit -n (open files): ${open_ulimit}; ulimit -s (stack KB): ${stack_kb}"
+  if [ "${open_ulimit}" != "unknown" ] && [ "${open_ulimit}" -lt 1024 ]; then
+    warn "ulimit -n is low (<1024); builds may open many files."
+  fi
+}
+
+# Run all preflight checks
+run_preflight_checks() {
+  preflight_check_workdir
+  preflight_check_tools
+  preflight_check_disk_tmp
+  preflight_check_memory
+  # ensure BUILD_DIR exists so cctest has somewhere to write
+  mkdir -p "${BUILD_DIR}"
+  preflight_check_arch_and_run
+  preflight_check_libc_crt
+  preflight_check_binutils
+  preflight_check_lld
+  preflight_check_git_tag
+  preflight_check_env
+  preflight_check_strip_tools
+  preflight_check_ulimit
+  info "Preflight checks completed."
+}
+
+# Call the checks now
+run_preflight_checks
+
+# ====== END: exhaustive preflight tests ======
+
+
 if [ -n "${ARCH:-}" ] && [ "${ARCH}" != "riscv64" ] && [ "${ARCH}" != "riscv" ]; then
   warn "Detected arch=${ARCH}; this script is intended for riscv64. Proceeding anyway."
 fi
@@ -137,7 +403,7 @@ info "Proceeding (non-interactive)."
 
 info "Installing build prerequisites (apt packages)..."
 apt_install \
-  build-essential git cmake ninja-build python3 python3-distutils python3-pip \
+  build-essential git cmake ninja-build python3 python3-pip \
   libedit-dev libncurses5-dev zlib1g-dev libxml2-dev libssl-dev pkg-config \
   libffi-dev curl ca-certificates lld file binutils ccache
 

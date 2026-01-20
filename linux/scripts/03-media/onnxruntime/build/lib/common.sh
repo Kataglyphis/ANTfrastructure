@@ -205,11 +205,24 @@ detect_jobs() {
 pc_numeric_version_from_ort_version() {
   local v="$1"
   local out
-  out="$(printf '%s' "${v}" | sed -E 's/^v//' | sed -E 's/[^0-9.].*$//')"
-  if [ -z "${out}" ]; then
-    printf '%s' "0.0.0"
+  
+  # Check if this is the main branch
+  if [ "${v}" = "main" ] || [ "${v}" = "master" ]; then
+    # Fetch version from GitHub
+    out="$(curl -sL https://raw.githubusercontent.com/microsoft/onnxruntime/main/VERSION_NUMBER | tr -d '\n\r' | sed -E 's/[^0-9.].*//')"
+    if [ -z "${out}" ]; then
+      printf '%s' "0.0.0"
+    else
+      printf '%s' "${out}"
+    fi
   else
-    printf '%s' "${out}"
+    # Original logic for version tags
+    out="$(printf '%s' "${v}" | sed -E 's/^v//' | sed -E 's/[^0-9.].*$//')"
+    if [ -z "${out}" ]; then
+      printf '%s' "0.0.0"
+    else
+      printf '%s' "${out}"
+    fi
   fi
 }
 

@@ -277,7 +277,8 @@ RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
 # ----------------------------------------------------------------------------
 # ONNX Runtime build args
 # ----------------------------------------------------------------------------
-ARG ONNXRUNTIME_VERSION=v1.23.2
+# v1.23.2
+ARG ONNXRUNTIME_VERSION=main
 ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
 ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
 
