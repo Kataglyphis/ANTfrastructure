@@ -186,7 +186,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
             # riscv64: apt.llvm.org doesn't provide the desired prebuilt clang/llvm packages.
             # Build Clang/LLVM from source instead (non-interactive).
-            bash /opt/scripts/toolchain/build-clang21-riscv.sh "/usr/local/llvm-${LLVM_WANTED}" --no-bootstrap; \
+            echo "NOTICE: Detected riscv64 architecture." >&2
+            echo "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64." >&2
+            echo "This script will build LLVM/Clang from source (non-interactive) and install to the chosen prefix." >&2
+            echo "Building LLVM/Clang from source may require many CPU hours, significant RAM and disk space." >&2
+            echo "If you prefer not to build from source, run this script on a different architecture or supply a prebuilt toolchain." >&2
         else \
             bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
             bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
