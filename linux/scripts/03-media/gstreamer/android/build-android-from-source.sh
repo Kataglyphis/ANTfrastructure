@@ -85,13 +85,70 @@ apt-get install -y --no-install-recommends \
     libegl1-mesa-dev git xutils-dev ccache python3-setuptools \
     libssl-dev
 
-# 4. Setup Cerbero
+# 4. Setup Cerbero with fallback mechanism
 cd /opt
 if [ ! -d "cerbero" ]; then
-    git clone --depth 1 --branch "$GST_VERSION" \
-        https://gitlab.freedesktop.org/gstreamer/cerbero.git
+    # First, clone without depth to allow fallback branch checkout
+    git clone https://gitlab.freedesktop.org/gstreamer/cerbero.git
+    cd cerbero
+    
+    # Try to checkout the specific tag
+    echo "==> Attempting to checkout tag: $GST_VERSION"
+    if git checkout "$GST_VERSION" 2>/dev/null; then
+        echo "==> Successfully checked out tag: $GST_VERSION"
+    else
+        echo "==> Tag $GST_VERSION not found, attempting fallback..."
+        
+        # Extract major.minor version (e.g., "1.26" from "1.26.10")
+        MAJOR_MINOR=$(echo "$GST_VERSION" | grep -oE '^[0-9]+\.[0-9]+')
+        
+        if [ -z "$MAJOR_MINOR" ]; then
+            echo "Error: Could not extract major.minor version from $GST_VERSION"
+            exit 1
+        fi
+        
+        echo "==> Extracted version prefix: $MAJOR_MINOR"
+        
+        # Fetch all branches to ensure we have remote branches available
+        git fetch --all
+        
+        # Try to find a matching branch (e.g., "1.26" or "origin/1.26")
+        BRANCH_FOUND=false
+        
+        # Check local branches first
+        if git show-ref --verify --quiet "refs/heads/$MAJOR_MINOR"; then
+            echo "==> Found local branch: $MAJOR_MINOR"
+            git checkout "$MAJOR_MINOR"
+            BRANCH_FOUND=true
+        # Check remote branches
+        elif git show-ref --verify --quiet "refs/remotes/origin/$MAJOR_MINOR"; then
+            echo "==> Found remote branch: origin/$MAJOR_MINOR"
+            git checkout -b "$MAJOR_MINOR" "origin/$MAJOR_MINOR"
+            BRANCH_FOUND=true
+        else
+            # Try to find any tag matching the major.minor version
+            echo "==> Searching for tags matching $MAJOR_MINOR..."
+            MATCHING_TAG=$(git tag -l "${MAJOR_MINOR}*" | sort -V | tail -n 1)
+            
+            if [ -n "$MATCHING_TAG" ]; then
+                echo "==> Found matching tag: $MATCHING_TAG"
+                git checkout "$MATCHING_TAG"
+                BRANCH_FOUND=true
+            fi
+        fi
+        
+        if [ "$BRANCH_FOUND" = false ]; then
+            echo "Error: Could not find tag $GST_VERSION or branch/tag matching $MAJOR_MINOR"
+            echo "Available tags:"
+            git tag -l | head -20
+            echo "Available branches:"
+            git branch -r | head -20
+            exit 1
+        fi
+    fi
+else
+    cd cerbero
 fi
-cd cerbero
 
 # 5. Setup Python Virtual Environment
 export UV_PYTHON=python3.12

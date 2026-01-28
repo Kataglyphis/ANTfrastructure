@@ -41,6 +41,7 @@ apt-get autoremove -y
 sudo apt-get install -y \
   flex bison \
   libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
+  libjson-glib-dev python3-gi python3-gi-cairo python-gi-dev \
   libgsl-dev libunwind-dev libdw-dev libnsl-dev gobject-introspection
 
 # Enable source repos so build-dep works
@@ -222,6 +223,19 @@ case "${HOST_ARCH}" in
     MESON_FLAGS+=("-Drs=enabled")
     ;;
 esac
+
+# --- begin patch: ensure meson won't use fallback subprojects by default ---
+# Allow overriding by setting MESON_WRAP_MODE in the environment
+MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
+
+# Append wrap-mode to EXTRA_MESON_ARGS if not already present
+case " ${EXTRA_MESON_ARGS} " in
+  *" --wrap-mode="*) ;;
+  *)
+    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --wrap-mode=${MESON_WRAP_MODE}"
+    ;;
+esac
+# --- end patch ---
 
 
 uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} || {

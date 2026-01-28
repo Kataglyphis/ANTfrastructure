@@ -174,28 +174,35 @@ ARG LLVM_WANTED CLANG_WANTED GCC_WANTED GCC_VERSION VULKAN_VERSION TARGETARCH
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
-    # Ensure core modules are available in toolchain dir (create symlinks for missing modules)
+    # Ensure core modules are available in toolchain dir
     for f in /opt/scripts/core/*.sh; do \
       dst="/opt/scripts/toolchain/$(basename \"$f\")"; \
       [ -f "$dst" ] || ln -s "$f" "$dst"; \
     done; \
-    # Run dependency setup (base packages already installed earlier in the Dockerfile)
+    # Run dependency setup
     bash /opt/scripts/toolchain/setup-dependencies.sh cmake; \
     bash /opt/scripts/toolchain/setup-dependencies.sh extras; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
-        if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
-            # riscv64: apt.llvm.org doesn't provide the desired prebuilt clang/llvm packages.
-            # Build Clang/LLVM from source instead (non-interactive).
-            echo "NOTICE: Detected riscv64 architecture." >&2
-            echo "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64." >&2
-            echo "This script will build LLVM/Clang from source (non-interactive) and install to the chosen prefix." >&2
-            echo "Building LLVM/Clang from source may require many CPU hours, significant RAM and disk space." >&2
-            echo "If you prefer not to build from source, run this script on a different architecture or supply a prebuilt toolchain." >&2
-        else \
-            bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
-            bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
-        fi; \
+    # IMPORTANT: Source the environment after GCC installation
+    if [ -f "/etc/environment" ]; then \
+      set -a; \
+      . /etc/environment; \
+      set +a; \
+    fi; \
+    if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
+        echo "NOTICE: Detected riscv64 architecture." >&2; \
+        echo "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64." >&2; \
+    else \
+        bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
+        bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
+    fi; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
+
+# Set ENV vars for subsequent layers (critical for Docker multi-stage builds)
+ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
+    PKG_CONFIG_PATH="/opt/gcc-${GCC_VERSION}/lib64/pkgconfig:/opt/gcc-${GCC_VERSION}/lib/pkgconfig:${PKG_CONFIG_PATH}" \
+    LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib:${LD_LIBRARY_PATH}"
+
 
 # ==============================================================================
 # LAYER 2.5: Frameworks; TVM (heavy, but stable enough to cache)
@@ -212,28 +219,28 @@ ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
     TVM_USE_VULKAN=${TVM_USE_VULKAN}
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-        --mount=type=cache,target=/var/lib/apt \
-        --mount=type=cache,target=/var/cache/ccache \
-        --mount=type=cache,target=/var/cache/sccache \
-        --mount=type=cache,target=/root/.cache/uv \
-        --mount=type=cache,target=/root/.cache/pip \
-        set -eux; \
-        arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
-        if [ "${TVM_INSTALL_PYTHON}" = "1" ]; then \
-            py_flag=""; \
-        else \
-            py_flag="--no-python"; \
-        fi; \
-        bash /opt/scripts/frameworks/tvm.sh \
-            --ref "${TVM_REF}" \
-            --build-type "${TVM_BUILD_TYPE}" \
-            ${py_flag}
+#RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+#        --mount=type=cache,target=/var/lib/apt \
+#        --mount=type=cache,target=/var/cache/ccache \
+#        --mount=type=cache,target=/var/cache/sccache \
+#        --mount=type=cache,target=/root/.cache/uv \
+#        --mount=type=cache,target=/root/.cache/pip \
+#        set -eux; \
+#        arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+#        if [ "${TVM_INSTALL_PYTHON}" = "1" ]; then \
+#            py_flag=""; \
+#        else \
+#            py_flag="--no-python"; \
+#        fi; \
+#        bash /opt/scripts/frameworks/tvm.sh \
+#            --ref "${TVM_REF}" \
+#            --build-type "${TVM_BUILD_TYPE}" \
+#            ${py_flag}
 
 # ------------------------------------------------------------------------------
 # GStreamer-Build: ENV + Setup
 # ------------------------------------------------------------------------------
-ARG GSTREAMER_VERSION=1.26.10
+ARG GSTREAMER_VERSION=1.28.0
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GSTREAMER_PREFIX=/opt/gstreamer \
     GST_PLUGIN_PATH="" \
@@ -264,6 +271,15 @@ ENV PATH="${LIBCAMERA_PREFIX}/bin:${PATH}"
 ENV PKG_CONFIG_PATH="${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH}"
 ENV LD_LIBRARY_PATH="${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${LD_LIBRARY_PATH}"
 ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
+
+# Fix for GCC 15 missing libgcc_s and libstdc++ symlinks
+RUN set -eux; \
+    # 1. Fix libgcc_s
+    find /usr -name "libgcc_s.so.1" -print -exec ln -sf {} /usr/lib/libgcc_s.so \; ; \
+    # 2. Fix libstdc++
+    find /usr -name "libstdc++.so.6" -print -exec ln -sf {} /usr/lib/libstdc++.so \; ; \
+    # 3. Verify links were created (optional debug step)
+    ls -l /usr/lib/libgcc_s.so /usr/lib/libstdc++.so
 
 # ==============================================================================
 # LAYER 3: Media stack; GStreamer only (changes when updating GStreamer)

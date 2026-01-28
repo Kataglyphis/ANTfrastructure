@@ -11,6 +11,8 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
+sudo apt-get update && sudo apt-get install -y libgcc-s1
+
 # ----------------------------
 # Performance: Cache architecture detection
 # ----------------------------
@@ -164,7 +166,7 @@ case "${TARGET_ARCH}" in
     }
 
     # RVV configuration
-    if [[ "${ENABLE_RVV}" == "true" ]]; then
+      if [[ "${ENABLE_RVV}" == "true" ]]; then
       declare -A RVV_MARCH_MAP=(
         ["1.0"]="rv64gcv"
         ["0.7"]="rv64gcv0p7"
@@ -172,16 +174,16 @@ case "${TARGET_ARCH}" in
       )
       RVV_MARCH="${RVV_MARCH_MAP[${RVV_VERSION}]:-rv64gcv}"
       [[ -z "${RVV_MARCH_MAP[${RVV_VERSION}]:-}" ]] && warn "Unknown RVV_VERSION=${RVV_VERSION}, using 1.0"
-      
+
       info "Using RVV ${RVV_VERSION} (march=${RVV_MARCH})"
       CMAKE_EXTRA_DEFINES+=(
-        "CMAKE_C_FLAGS=-march=${RVV_MARCH} -mtune=generic-rv64"
-        "CMAKE_CXX_FLAGS=-march=${RVV_MARCH} -mtune=generic-rv64"
+        "CMAKE_C_FLAGS=-march=${RVV_MARCH}"
+        "CMAKE_CXX_FLAGS=-march=${RVV_MARCH}"
       )
     else
       CMAKE_EXTRA_DEFINES+=(
-        "CMAKE_C_FLAGS=-march=rv64gc -mtune=generic-rv64"
-        "CMAKE_CXX_FLAGS=-march=rv64gc -mtune=generic-rv64"
+        "CMAKE_C_FLAGS=-march=rv64gc"
+        "CMAKE_CXX_FLAGS=-march=rv64gc"
       )
     fi
 
