@@ -10,7 +10,7 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2025
 
 # Build-time variable for the Vulkan SDK version (default can be overridden).
 ARG VULKAN_VERSION=1.4.335.0
-ARG GST_VERSION=1.26.10
+ARG GST_VERSION=1.28.0
 ARG ARCH=x86_64
 ARG FLAVOR=msvc
 
@@ -43,16 +43,16 @@ RUN `
 RUN dotnet tool install --tool-path C:\WiX wix --version 4.0.4
 
 RUN $ErrorActionPreference='Stop'; `
-    $base = ('https://gstreamer.freedesktop.org/data/pkg/windows/{0}/{1}/' -f $env:GST_VERSION, $env:FLAVOR); `
-    $msiRuntime = ('gstreamer-1.0-{0}-{1}-{2}.msi' -f $env:FLAVOR, $env:ARCH, $env:GST_VERSION); `
-    $msiDevel   = ('gstreamer-1.0-devel-{0}-{1}-{2}.msi' -f $env:FLAVOR, $env:ARCH, $env:GST_VERSION); `
-    $runtimeUrl = $base + $msiRuntime; `
-    $develUrl = $base + $msiDevel; `
-    curl.exe -L -o (Join-Path $env:TEMP $msiRuntime) $runtimeUrl; `
-    Start-Process msiexec -ArgumentList @('/i', (Join-Path $env:TEMP $msiRuntime), '/qn', '/norestart') -Wait; `
-    curl.exe -L -o (Join-Path $env:TEMP $msiDevel) $develUrl; `
-    Start-Process msiexec -ArgumentList @('/i', (Join-Path $env:TEMP $msiDevel), '/qn', '/norestart') -Wait; `
-    Remove-Item (Join-Path $env:TEMP $msiRuntime), (Join-Path $env:TEMP $msiDevel) -Force
+    $base = 'https://gstreamer.freedesktop.org/data/pkg/windows/{0}/{1}/' -f $env:GST_VERSION, $env:FLAVOR; `
+    $exeInstaller = 'gstreamer-1.0-{0}-{1}-{2}.exe' -f $env:FLAVOR, $env:ARCH, $env:GST_VERSION; `
+    $installerUrl = $base + $exeInstaller; `
+    $installerPath = 'C:\temp\gstreamer.exe'; `
+    Write-Host "Downloading GStreamer EXE..."; `
+    curl.exe -L -o $installerPath $installerUrl; `
+    Write-Host "Installing GStreamer..."; `
+    Start-Process -FilePath $installerPath -ArgumentList '/S', '/D=C:\gstreamer' -Wait -PassThru; `
+    Remove-Item $installerPath -Force; `
+    Write-Host "GStreamer installation completed."
 
 # Correct GStreamer location
 ENV GSTREAMER_BIN C:\Program Files\gstreamer\1.0\msvc_x86_64\bin
