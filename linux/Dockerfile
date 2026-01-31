@@ -59,6 +59,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         $([ "$ARCH" != "riscv64" ] && echo "clang clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev") \
         pkg-config lsb-release software-properties-common \
         meson python3 python3-venv python3-dev python3-pip \
+        patchelf unzip zip \
         $([ "$ARCH" != "riscv64" ] && echo "lldb"); \
     rm -rf /var/lib/apt/lists/*
 
