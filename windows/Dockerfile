@@ -42,17 +42,28 @@ RUN `
 # making the WiX packaging tool available for cmake
 RUN dotnet tool install --tool-path C:\WiX wix --version 4.0.4
 
-RUN $ErrorActionPreference='Stop'; `
+COPY windows\scripts\setup-gstreamer.ps1 C:\temp\setup-gstreamer.ps1
+
+# -----------------------------------------------------------------------------
+# Install GStreamer using the robust script
+# -----------------------------------------------------------------------------
+RUN `
+    # Construct the download URL dynamically based on build ARGs
     $base = 'https://gstreamer.freedesktop.org/data/pkg/windows/{0}/{1}/' -f $env:GST_VERSION, $env:FLAVOR; `
     $exeInstaller = 'gstreamer-1.0-{0}-{1}-{2}.exe' -f $env:FLAVOR, $env:ARCH, $env:GST_VERSION; `
-    $installerUrl = $base + $exeInstaller; `
-    $installerPath = 'C:\temp\gstreamer.exe'; `
-    Write-Host "Downloading GStreamer EXE..."; `
-    curl.exe -L -o $installerPath $installerUrl; `
-    Write-Host "Installing GStreamer..."; `
-    Start-Process -FilePath $installerPath -ArgumentList '/S', '/D=C:\gstreamer' -Wait -PassThru; `
-    Remove-Item $installerPath -Force; `
-    Write-Host "GStreamer installation completed."
+    $url = $base + $exeInstaller; `
+    `
+    Write-Host "Installing GStreamer from $url ..."; `
+    `
+    # Run the helper script
+    C:\temp\setup-gstreamer.ps1 `
+        -Url $url `
+        -InstallDir 'C:\gstreamer' `
+        -LogDir 'C:\temp\logs' `
+        -SkipPathUpdate `
+        -AutoRemoveInstaller; `
+    `
+    Write-Host 'GStreamer installation script finished.'
 
 # Correct GStreamer location
 ENV GSTREAMER_BIN C:\Program Files\gstreamer\1.0\msvc_x86_64\bin
