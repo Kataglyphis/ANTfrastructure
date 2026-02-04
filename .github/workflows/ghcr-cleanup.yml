@@ -17,29 +17,92 @@ jobs:
       - name: Delete old untagged GHCR versions (keep newest 3)
         uses: actions/github-script@v7
         with:
-          github-token: ${{ github.token }}
+          # Use a PAT if you need to manage org packages not granting Actions access to this repo.
+          # Otherwise the default GITHUB_TOKEN is enough.
+          github-token: ${{ secrets.GHCR_TOKEN || github.token }}
           script: |
-            const org = 'Kataglyphis';
+            const owner = context.repo.owner;
             const packageType = 'container';
             const packageName = 'kataglyphis_beschleuniger';
             const keepUntagged = 3;
 
-            const perPage = 100;
-            const versions = [];
-            for (let page = 1; ; page++) {
-              const { data } = await github.request(
-                'GET /orgs/{org}/packages/{package_type}/{package_name}/versions',
-                {
-                  org,
+            async function isOrganization(name) {
+              try {
+                await github.request('GET /orgs/{org}', { org: name });
+                return true;
+              } catch (e) {
+                if (e?.status === 404) return false;
+                throw e;
+              }
+            }
+
+            const ownerIsOrg = await isOrganization(owner);
+
+            function listVersionsRequestParams(page) {
+              if (ownerIsOrg) {
+                return {
+                  method: 'GET',
+                  url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions',
+                  org: owner,
                   package_type: packageType,
                   package_name: packageName,
-                  per_page: perPage,
+                  per_page: 100,
                   page,
+                };
+              }
+              return {
+                method: 'GET',
+                url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions',
+                username: owner,
+                package_type: packageType,
+                package_name: packageName,
+                per_page: 100,
+                page,
+              };
+            }
+
+            function deleteVersionRequestParams(versionId) {
+              if (ownerIsOrg) {
+                return {
+                  method: 'DELETE',
+                  url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}',
+                  org: owner,
+                  package_type: packageType,
+                  package_name: packageName,
+                  package_version_id: versionId,
+                };
+              }
+              return {
+                method: 'DELETE',
+                url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}',
+                username: owner,
+                package_type: packageType,
+                package_name: packageName,
+                package_version_id: versionId,
+              };
+            }
+
+            const versions = [];
+            for (let page = 1; ; page++) {
+              let data;
+              try {
+                ({ data } = await github.request(listVersionsRequestParams(page)));
+              } catch (e) {
+                if (e?.status === 404) {
+                  core.setFailed(
+                    `Package not found or not accessible via token. Owner=${owner} (org=${ownerIsOrg}), package=${packageName}.\n` +
+                    `Fix options:\n` +
+                    `1) In GHCR package settings → Manage Actions access: grant this repository Admin access, OR\n` +
+                    `2) Create a PAT with scopes read:packages + delete:packages and add it as Actions secret GHCR_TOKEN.\n` +
+                    `Original error: ${e.message}`
+                  );
+                  return;
                 }
-              );
+                throw e;
+              }
               if (!Array.isArray(data) || data.length === 0) break;
               versions.push(...data);
-              if (data.length < perPage) break;
+              if (data.length < 100) break;
             }
 
             const untagged = versions
@@ -53,15 +116,7 @@ jobs:
             let skipped404 = 0;
             for (const v of toDelete) {
               try {
-                await github.request(
-                  'DELETE /orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}',
-                  {
-                    org,
-                    package_type: packageType,
-                    package_name: packageName,
-                    package_version_id: v.id,
-                  }
-                );
+                await github.request(deleteVersionRequestParams(v.id));
                 deleted++;
               } catch (e) {
                 // Registry is eventually consistent; tolerate missing versions.
