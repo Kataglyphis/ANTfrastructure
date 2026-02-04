@@ -119,7 +119,7 @@ jobs:
                 await github.request(deleteVersionRequestParams(v.id));
                 deleted++;
               } catch (e) {
-                // Registry is eventually consistent; tolerate missing versions.
+                // 404 can mean eventual consistency *or* missing delete permissions (GitHub sometimes hides authorization as 404).
                 if (e?.status === 404) {
                   skipped404++;
                   continue;
@@ -128,4 +128,14 @@ jobs:
               }
             }
 
-            core.info(`Deleted ${deleted} untagged versions (ignored ${skipped404} already-missing versions).`);
+            core.info(`Deleted ${deleted} untagged versions (got ${skipped404} x 404 on delete).`);
+
+            if (toDelete.length > 0 && deleted === 0 && skipped404 === toDelete.length) {
+              core.setFailed(
+                `All delete attempts returned 404. This usually means the token cannot delete package versions.\n` +
+                `Fix options:\n` +
+                `1) GHCR package settings → Manage Actions access: grant this repository Admin access, OR\n` +
+                `2) Create a PAT with scopes read:packages + delete:packages and add it as Actions secret GHCR_TOKEN.\n` +
+                `Owner=${owner} (org=${ownerIsOrg}), package=${packageName}.`
+              );
+            }
