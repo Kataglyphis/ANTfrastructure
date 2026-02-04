@@ -1,0 +1,25 @@
+name: ghcr-cleanup
+
+on:
+  schedule:
+    # Weekly cleanup (Sunday 03:00 UTC)
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old untagged GHCR versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: kataglyphis_beschleuniger
+          package-type: container
+          # Safety net: keep at least the newest N versions.
+          min-versions-to-keep: 3
+          # Most of the "old" space typically comes from previous manifests after moving tags like "latest".
+          delete-only-untagged-versions: true

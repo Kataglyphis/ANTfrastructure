@@ -11,6 +11,7 @@ ENV PATH=${VENV}/bin:${PATH}
 
 # System-Site-Packages explizit hinzufügen:
 
+ENV PYTHONPATH=/usr/lib/python3/dist-packages
 ENV PYTHONPATH=/usr/lib/python3/dist-packages:${PYTHONPATH}
 
 # PyGObject via apt (visible in venv due to --system-site-packages)
