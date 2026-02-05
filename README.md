@@ -75,10 +75,10 @@ Linux image stages (for faster incremental rebuilds):
 Build only a specific stage (useful during development):
 
 ```bash
-docker buildx build -f linux/Dockerfile --target os-deps -t local/kataglyphis:os-deps .
-docker buildx build -f linux/Dockerfile --target toolchain -t local/kataglyphis:toolchain .
-docker buildx build -f linux/Dockerfile --target media -t local/kataglyphis:media .
-docker buildx build -f linux/Dockerfile --target final -t local/kataglyphis:latest .
+sudo nerdctl build -f linux/Dockerfile --target os-deps -t local/kataglyphis:os-deps . 2>&1 | tee -a output.log
+sudo nerdctl build -f linux/Dockerfile --target toolchain -t local/kataglyphis:toolchain . 2>&1 | tee -a output.log
+sudo nerdctl build -f linux/Dockerfile --target media -t local/kataglyphis:media . 2>&1 | tee -a output.log
+sudo nerdctl build -f linux/Dockerfile --target final -t local/kataglyphis:latest . 2>&1 | tee -a output.log
 ```
 
 What you get:
@@ -134,7 +134,7 @@ sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleun
 ##### RICV64 example
 
 ```bash
-nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.25.90 --no-cache -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile .
+nerdctl build --platform linux/riscv64 --target final --build-arg GSTREAMER_VERSION=1.25.90 --no-cache -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile .
 ```
 
 ##### Setup essentials
@@ -161,6 +161,7 @@ sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 sudo nerdctl build \
   --platform=linux/arm64,linux/amd64,linux/riscv64 \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+  --target final \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
@@ -207,7 +208,7 @@ docker buildx create --name mybuilder --driver docker-container --buildkitd-conf
 
 ```bash
 nerdctl run --rm --privileged tonistiigi/binfmt --install all
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
+nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 --target final -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
 ```
 
 ### Torch Add-on (Linux) 🔥
