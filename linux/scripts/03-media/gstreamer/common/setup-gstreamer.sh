@@ -367,6 +367,7 @@ echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly
 echo "Cleaning up..."
 cd /
 sudo rm -rf "${BUILD_DIR}"
+sudo rm -rf "${VENV_DIR}" || true
 
 echo ""
 echo "=========================================="

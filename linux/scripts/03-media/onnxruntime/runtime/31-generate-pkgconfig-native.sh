@@ -64,3 +64,7 @@ EOF
 }
 
 generate_pkgconfig
+
+if [ -n "${ORT_SRC_DIR:-}" ] && [ -d "${ORT_SRC_DIR}" ]; then
+  rm -rf "${ORT_SRC_DIR}" || true
+fi

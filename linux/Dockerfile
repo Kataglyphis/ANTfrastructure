@@ -110,7 +110,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     apt-get update -y; \
-    apt-get install -y --no-install-recommends linux-tools-common linux-tools-generic; \
+    apt-get install -y --no-install-recommends linux-tools-common; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
@@ -217,18 +217,20 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
 # Set ENV vars for subsequent layers (critical for Docker multi-stage builds)
+ENV PKG_CONFIG_PATH="" \
+    LD_LIBRARY_PATH=""
 ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
     PKG_CONFIG_PATH="/opt/gcc-${GCC_VERSION}/lib64/pkgconfig:/opt/gcc-${GCC_VERSION}/lib/pkgconfig:${PKG_CONFIG_PATH}" \
     LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib:${LD_LIBRARY_PATH}"
 
-# Fix for GCC 15 missing libgcc_s and libstdc++ symlinks
-RUN set -eux; \
-    # 1. Fix libgcc_s
-    find /usr -name "libgcc_s.so.1" -print -exec ln -sf {} /usr/lib/libgcc_s.so \; ; \
-    # 2. Fix libstdc++
-    find /usr -name "libstdc++.so.6" -print -exec ln -sf {} /usr/lib/libstdc++.so \; ; \
-    # 3. Verify links were created (optional debug step)
-    ls -l /usr/lib/libgcc_s.so /usr/lib/libstdc++.so
+# # Fix for GCC 15 missing libgcc_s and libstdc++ symlinks
+# RUN set -eux; \
+#     # 1. Fix libgcc_s
+#     find /usr -name "libgcc_s.so.1" -print -exec ln -sf {} /usr/lib/libgcc_s.so \; ; \
+#     # 2. Fix libstdc++
+#     find /usr -name "libstdc++.so.6" -print -exec ln -sf {} /usr/lib/libstdc++.so \; ; \
+#     # 3. Verify links were created (optional debug step)
+#     ls -l /usr/lib/libgcc_s.so /usr/lib/libstdc++.so
 
 
 # ==============================================================================
