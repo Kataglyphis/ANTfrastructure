@@ -91,7 +91,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
             libpango1.0-dev libx11-dev libx11-xcb-dev \
             libasound2-dev libpulse-dev libdbus-1-dev \
-            file dpkg-dev fakeroot binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
+            file dpkg-dev fakeroot patchelf binutils $( [ "$arch" != "riscv64" ] && echo valgrind || true ); \
         apt-get clean; \
         rm -rf /var/lib/apt/lists/*
 

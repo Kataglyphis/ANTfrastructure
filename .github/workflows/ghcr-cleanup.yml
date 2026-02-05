@@ -1,0 +1,141 @@
+name: ghcr-cleanup
+
+on:
+  schedule:
+    # Weekly cleanup (Sunday 03:00 UTC)
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old untagged GHCR versions (keep newest 3)
+        uses: actions/github-script@v7
+        with:
+          # Use a PAT if you need to manage org packages not granting Actions access to this repo.
+          # Otherwise the default GITHUB_TOKEN is enough.
+          github-token: ${{ secrets.GHCR_TOKEN || github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const packageType = 'container';
+            const packageName = 'kataglyphis_beschleuniger';
+            const keepUntagged = 3;
+
+            async function isOrganization(name) {
+              try {
+                await github.request('GET /orgs/{org}', { org: name });
+                return true;
+              } catch (e) {
+                if (e?.status === 404) return false;
+                throw e;
+              }
+            }
+
+            const ownerIsOrg = await isOrganization(owner);
+
+            function listVersionsRequestParams(page) {
+              if (ownerIsOrg) {
+                return {
+                  method: 'GET',
+                  url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions',
+                  org: owner,
+                  package_type: packageType,
+                  package_name: packageName,
+                  per_page: 100,
+                  page,
+                };
+              }
+              return {
+                method: 'GET',
+                url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions',
+                username: owner,
+                package_type: packageType,
+                package_name: packageName,
+                per_page: 100,
+                page,
+              };
+            }
+
+            function deleteVersionRequestParams(versionId) {
+              if (ownerIsOrg) {
+                return {
+                  method: 'DELETE',
+                  url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}',
+                  org: owner,
+                  package_type: packageType,
+                  package_name: packageName,
+                  package_version_id: versionId,
+                };
+              }
+              return {
+                method: 'DELETE',
+                url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}',
+                username: owner,
+                package_type: packageType,
+                package_name: packageName,
+                package_version_id: versionId,
+              };
+            }
+
+            const versions = [];
+            for (let page = 1; ; page++) {
+              let data;
+              try {
+                ({ data } = await github.request(listVersionsRequestParams(page)));
+              } catch (e) {
+                if (e?.status === 404) {
+                  core.setFailed(
+                    `Package not found or not accessible via token. Owner=${owner} (org=${ownerIsOrg}), package=${packageName}.\n` +
+                    `Fix options:\n` +
+                    `1) In GHCR package settings → Manage Actions access: grant this repository Admin access, OR\n` +
+                    `2) Create a PAT with scopes read:packages + delete:packages and add it as Actions secret GHCR_TOKEN.\n` +
+                    `Original error: ${e.message}`
+                  );
+                  return;
+                }
+                throw e;
+              }
+              if (!Array.isArray(data) || data.length === 0) break;
+              versions.push(...data);
+              if (data.length < 100) break;
+            }
+
+            const untagged = versions
+              .filter(v => (v?.metadata?.container?.tags ?? []).length === 0)
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            const toDelete = untagged.slice(keepUntagged);
+            core.info(`Found ${versions.length} total versions; ${untagged.length} untagged; deleting ${toDelete.length}, keeping ${Math.min(keepUntagged, untagged.length)} untagged.`);
+
+            let deleted = 0;
+            let skipped404 = 0;
+            for (const v of toDelete) {
+              try {
+                await github.request(deleteVersionRequestParams(v.id));
+                deleted++;
+              } catch (e) {
+                // 404 can mean eventual consistency *or* missing delete permissions (GitHub sometimes hides authorization as 404).
+                if (e?.status === 404) {
+                  skipped404++;
+                  continue;
+                }
+                throw e;
+              }
+            }
+
+            core.info(`Deleted ${deleted} untagged versions (got ${skipped404} x 404 on delete).`);
+
+            if (toDelete.length > 0 && deleted === 0 && skipped404 === toDelete.length) {
+              core.setFailed(
+                `All delete attempts returned 404. This usually means the token cannot delete package versions.\n` +
+                `Fix options:\n` +
+                `1) GHCR package settings → Manage Actions access: grant this repository Admin access, OR\n` +
+                `2) Create a PAT with scopes read:packages + delete:packages and add it as Actions secret GHCR_TOKEN.\n` +
+                `Owner=${owner} (org=${ownerIsOrg}), package=${packageName}.`
+              );
+            }

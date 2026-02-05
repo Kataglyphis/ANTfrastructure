@@ -9,6 +9,11 @@ RUN --mount=type=cache,target=/root/.cache/uv uv venv --system-site-packages "${
 ENV VIRTUAL_ENV=${VENV}
 ENV PATH=${VENV}/bin:${PATH}
 
+# System-Site-Packages explizit hinzufügen:
+
+ENV PYTHONPATH=/usr/lib/python3/dist-packages
+ENV PYTHONPATH=/usr/lib/python3/dist-packages:${PYTHONPATH}
+
 # PyGObject via apt (visible in venv due to --system-site-packages)
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
