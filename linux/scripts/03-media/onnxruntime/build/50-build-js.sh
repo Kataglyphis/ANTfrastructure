@@ -33,5 +33,11 @@ npm run build || true
 cp -v "${ORT_SRC_DIR}/js/web/dist"/*.js "${WASM_OUTPUT_DIR}/" || true
 cp -v "${ORT_SRC_DIR}/js/web/dist"/*.mjs "${WASM_OUTPUT_DIR}/" || true
 
+rm -rf "${ORT_SRC_DIR}/js/node_modules" \
+	"${ORT_SRC_DIR}/js/common/node_modules" \
+	"${ORT_SRC_DIR}/js/web/node_modules" \
+	/root/.npm \
+	/root/.cache/npm || true
+
 info "JS build finished. Artifacts in ${WASM_OUTPUT_DIR}"
 ls -F "${WASM_OUTPUT_DIR}" || true

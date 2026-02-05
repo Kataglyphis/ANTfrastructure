@@ -133,3 +133,5 @@ else
 fi
 
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."
+
+rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" "${LIBCAMERA_PREFIX}/.venv" /tmp/uv-pip-install.log || true
