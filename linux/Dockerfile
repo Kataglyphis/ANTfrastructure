@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1.19
-FROM ubuntu:24.04 AS base
 
 # ------------------------------------------------------------------------------
-# Build-Argumente
+# Global build args (available to all stages)
 # ------------------------------------------------------------------------------
 ARG BUILD_TYPE=Release
 ARG VULKAN_VERSION=1.4.335.0
@@ -10,6 +9,16 @@ ARG LLVM_WANTED=21
 ARG CLANG_WANTED=21
 ARG GCC_WANTED=15
 ARG GCC_VERSION=15.2.0
+ARG TARGETARCH
+
+# ------------------------------------------------------------------------------
+# STAGE 1: OS + stable dependencies (rarely changes)
+# This stage intentionally avoids COPY of scripts to keep apt layers cacheable.
+# ------------------------------------------------------------------------------
+FROM ubuntu:24.04 AS os-deps
+
+ARG BUILD_TYPE
+ARG VULKAN_VERSION
 ARG TARGETARCH
 
 # ------------------------------------------------------------------------------
@@ -39,9 +48,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     SCCACHE_DIR=/var/cache/sccache
 
 # ==============================================================================
-# LAYER 1: Core utilities (most stable - changes ~once per year)
+# OS dependencies
 # ==============================================================================
-COPY linux/scripts/01-core/ /opt/scripts/core/
 
 # ------------------------------------------------------------------------------
 # Basis-Pakete (ein RUN, BuildKit-Caches)
@@ -165,44 +173,62 @@ RUN --mount=type=cache,target=/var/cache/ccache \
     set -eux; \
     ccache -M "${CCACHE_MAXSIZE}" || true
 
-# ==============================================================================
-# LAYER 2: Toolchain setup (changes occasionally - every few months)
-# ==============================================================================
+# ------------------------------------------------------------------------------
+# STAGE 2: Toolchain setup (changes occasionally)
+# Script changes should not invalidate Stage 1.
+# ------------------------------------------------------------------------------
+FROM os-deps AS toolchain
+
+ARG LLVM_WANTED
+ARG CLANG_WANTED
+ARG GCC_WANTED
+ARG GCC_VERSION
+ARG VULKAN_VERSION
+ARG TARGETARCH
+
+COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 
-ARG LLVM_WANTED CLANG_WANTED GCC_WANTED GCC_VERSION VULKAN_VERSION TARGETARCH
-
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    set -eux; \
-    # Ensure core modules are available in toolchain dir
-    for f in /opt/scripts/core/*.sh; do \
-      dst="/opt/scripts/toolchain/$(basename \"$f\")"; \
-      [ -f "$dst" ] || ln -s "$f" "$dst"; \
-    done; \
-    # Run dependency setup
-    bash /opt/scripts/toolchain/setup-dependencies.sh cmake; \
-    bash /opt/scripts/toolchain/setup-dependencies.sh extras; \
-    bash /opt/scripts/toolchain/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
-    # IMPORTANT: Source the environment after GCC installation
-    if [ -f "/etc/environment" ]; then \
-      set -a; \
-      . /etc/environment; \
-      set +a; \
-    fi; \
-    if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
-        echo "NOTICE: Detected riscv64 architecture." >&2; \
-        echo "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64." >&2; \
-    else \
-        bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
-        bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
-    fi; \
-    bash /opt/scripts/toolchain/setup-dependencies.sh verify
+        --mount=type=cache,target=/var/lib/apt \
+        set -eux; \
+        # Ensure core modules are available in toolchain dir
+        for f in /opt/scripts/core/*.sh; do \
+            dst="/opt/scripts/toolchain/$(basename \"$f\")"; \
+            [ -f "$dst" ] || ln -s "$f" "$dst"; \
+        done; \
+        # Run dependency setup
+        bash /opt/scripts/toolchain/setup-dependencies.sh cmake; \
+        bash /opt/scripts/toolchain/setup-dependencies.sh extras; \
+        bash /opt/scripts/toolchain/setup-dependencies.sh --gcc "${GCC_WANTED}" gcc; \
+        # IMPORTANT: Source the environment after GCC installation
+        if [ -f "/etc/environment" ]; then \
+            set -a; \
+            . /etc/environment; \
+            set +a; \
+        fi; \
+        if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
+                echo "NOTICE: Detected riscv64 architecture." >&2; \
+                echo "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64." >&2; \
+        else \
+                bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
+                bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
+        fi; \
+        bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
 # Set ENV vars for subsequent layers (critical for Docker multi-stage builds)
 ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
     PKG_CONFIG_PATH="/opt/gcc-${GCC_VERSION}/lib64/pkgconfig:/opt/gcc-${GCC_VERSION}/lib/pkgconfig:${PKG_CONFIG_PATH}" \
     LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib:${LD_LIBRARY_PATH}"
+
+# Fix for GCC 15 missing libgcc_s and libstdc++ symlinks
+RUN set -eux; \
+    # 1. Fix libgcc_s
+    find /usr -name "libgcc_s.so.1" -print -exec ln -sf {} /usr/lib/libgcc_s.so \; ; \
+    # 2. Fix libstdc++
+    find /usr -name "libstdc++.so.6" -print -exec ln -sf {} /usr/lib/libstdc++.so \; ; \
+    # 3. Verify links were created (optional debug step)
+    ls -l /usr/lib/libgcc_s.so /usr/lib/libstdc++.so
 
 
 # ==============================================================================
@@ -239,9 +265,17 @@ ENV TVM_REF=${TVM_REF} \
 #            ${py_flag}
 
 # ------------------------------------------------------------------------------
+# STAGE 3: Media stack (ONNX Runtime, GStreamer, Libcamera)
+# ------------------------------------------------------------------------------
+FROM toolchain AS media
+
+ARG BUILD_TYPE
+ARG TARGETARCH
+ARG GSTREAMER_VERSION=1.28.0
+
+# ------------------------------------------------------------------------------
 # GStreamer-Build: ENV + Setup
 # ------------------------------------------------------------------------------
-ARG GSTREAMER_VERSION=1.28.0
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GSTREAMER_PREFIX=/opt/gstreamer \
     GST_PLUGIN_PATH="" \
@@ -272,15 +306,6 @@ ENV PATH="${LIBCAMERA_PREFIX}/bin:${PATH}"
 ENV PKG_CONFIG_PATH="${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH}"
 ENV LD_LIBRARY_PATH="${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${LD_LIBRARY_PATH}"
 ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
-
-# Fix for GCC 15 missing libgcc_s and libstdc++ symlinks
-RUN set -eux; \
-    # 1. Fix libgcc_s
-    find /usr -name "libgcc_s.so.1" -print -exec ln -sf {} /usr/lib/libgcc_s.so \; ; \
-    # 2. Fix libstdc++
-    find /usr -name "libstdc++.so.6" -print -exec ln -sf {} /usr/lib/libstdc++.so \; ; \
-    # 3. Verify links were created (optional debug step)
-    ls -l /usr/lib/libgcc_s.so /usr/lib/libstdc++.so
 
 # ==============================================================================
 # LAYER 3: Media stack; GStreamer only (changes when updating GStreamer)
@@ -429,8 +454,10 @@ RUN set -eux; \
     ldconfig
 
 # ------------------------------------------------------------------------------
-# Android SDK & NDK (only for x86_64)
+# STAGE 4: Android SDK/NDK (only for x86_64)
 # ------------------------------------------------------------------------------
+FROM media AS android
+
 ARG ANDROID_SDK_VERSION=13114758
 ARG ANDROID_NDK_VERSION=29.0.14206865
 ARG ANDROID_COMPILE_SDK=36
@@ -452,6 +479,11 @@ RUN set -eux; \
         /opt/scripts/media/gstreamer/android/setup-android-sdk-ndk.sh
 
 ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
+
+# ------------------------------------------------------------------------------
+# STAGE 5: Final image (runtime scripts copied last)
+# ------------------------------------------------------------------------------
+FROM android AS final
 
 # ==============================================================================
 # LAYER 4: Runtime scripts (most volatile - changes frequently)

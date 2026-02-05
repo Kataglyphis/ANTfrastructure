@@ -64,6 +64,23 @@ Images in this repository:
 - 🌐 **linux/webserver/Dockerfile:** Minimal nginx static webserver (config at linux/webserver/nginx.conf).
 - 🪟 **windows/Dockerfile:** Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
 
+Linux image stages (for faster incremental rebuilds):
+
+- `os-deps`: Ubuntu base + stable apt dependencies (no project scripts copied).
+- `toolchain`: GCC/LLVM/Vulkan toolchain setup via scripts.
+- `media`: ONNX Runtime + GStreamer + Libcamera builds.
+- `android`: Android SDK/NDK setup (x86_64 only).
+- `final`: runtime scripts + entrypoint (default build output).
+
+Build only a specific stage (useful during development):
+
+```bash
+docker buildx build -f linux/Dockerfile --target os-deps -t local/kataglyphis:os-deps .
+docker buildx build -f linux/Dockerfile --target toolchain -t local/kataglyphis:toolchain .
+docker buildx build -f linux/Dockerfile --target media -t local/kataglyphis:media .
+docker buildx build -f linux/Dockerfile --target final -t local/kataglyphis:latest .
+```
+
 What you get:
 - ✅ Multi-arch builds via buildx/nerdctl.
 - 🎮 Vulkan + toolchains ready for GPU passthrough.
@@ -72,9 +89,9 @@ What you get:
 
 ### Key Features ✨
 
-- 🪟 Windows Server 2025 x64 **Clang 21.7.0** and **MSVC Build Tools 2026**.
-- 🐧 Ubuntu 24.04 x64 **Clang 21.7.0**.
-- 🐧 Ubuntu 24.04 ARM **Clang 21.7.0**.
+- 🪟 Windows Server 2025 x64 **Clang 21.8.0** and **MSVC Build Tools 2026**.
+- 🐧 Ubuntu 24.04 x64 **Clang 21.8.0**.
+- 🐧 Ubuntu 24.04 ARM **Clang 21.8.0**.
 
 <div align="center">
 
@@ -137,9 +154,9 @@ TOML
 ```
 
 ```bash
-nerdctl run --rm --privileged tonistiigi/binfmt --install all
-
 sudo nerdctl login ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -u Kataglyphis
+
+sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 sudo nerdctl build \
   --platform=linux/arm64,linux/amd64,linux/riscv64 \
