@@ -105,12 +105,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # ------------------------------------------------------------------------------
 # Performance analysis tools (perf)
+# linux-tools-generic; this is not possible in docker builds
 # ------------------------------------------------------------------------------        
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     apt-get update -y; \
-    apt-get install -y --no-install-recommends linux-tools-common linux-tools-generic; \
+    apt-get install -y --no-install-recommends linux-tools-common; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
