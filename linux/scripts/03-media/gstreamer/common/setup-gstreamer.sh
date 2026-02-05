@@ -4,7 +4,7 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.26.8}"
+GSTREAMER_VERSION="${1:-1.28.0}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -376,7 +376,5 @@ echo "Installed to: ${GSTREAMER_PREFIX}"
 echo "=========================================="
 echo ""
 echo "Add these environment variables to your shell:"
-echo "  export PATH=\"${GSTREAMER_PREFIX}/bin:\${PATH}\""
-echo "  export PKG_CONFIG_PATH=\"${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig:\${PKG_CONFIG_PATH}\""
-echo "  export LD_LIBRARY_PATH=\"${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu:\${LD_LIBRARY_PATH}\""
-echo "  export GST_PLUGIN_PATH=\"${GSTREAMER_PREFIX}/lib/gstreamer-1.0:\${GST_PLUGIN_PATH}\""
+echo "For setting up env:"
+echo "Have a look into: ExternalLib\Kataglyphis-ContainerHub\linux\scripts\04-runtime\gstreamer-env.sh"
