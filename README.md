@@ -64,6 +64,23 @@ Images in this repository:
 - 🌐 **linux/webserver/Dockerfile:** Minimal nginx static webserver (config at linux/webserver/nginx.conf).
 - 🪟 **windows/Dockerfile:** Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
 
+Linux image stages (for faster incremental rebuilds):
+
+- `os-deps`: Ubuntu base + stable apt dependencies (no project scripts copied).
+- `toolchain`: GCC/LLVM/Vulkan toolchain setup via scripts.
+- `media`: ONNX Runtime + GStreamer + Libcamera builds.
+- `android`: Android SDK/NDK setup (x86_64 only).
+- `final`: runtime scripts + entrypoint (default build output).
+
+Build only a specific stage (useful during development):
+
+```bash
+sudo nerdctl build -f linux/Dockerfile --target os-deps -t local/kataglyphis:os-deps . 2>&1 | tee -a output.log
+sudo nerdctl build -f linux/Dockerfile --target toolchain -t local/kataglyphis:toolchain . 2>&1 | tee -a output.log
+sudo nerdctl build -f linux/Dockerfile --target media -t local/kataglyphis:media . 2>&1 | tee -a output.log
+sudo nerdctl build -f linux/Dockerfile --target final -t local/kataglyphis:latest . 2>&1 | tee -a output.log
+```
+
 What you get:
 - ✅ Multi-arch builds via buildx/nerdctl.
 - 🎮 Vulkan + toolchains ready for GPU passthrough.
@@ -72,9 +89,9 @@ What you get:
 
 ### Key Features ✨
 
-- 🪟 Windows Server 2025 x64 **Clang 21.7.0** and **MSVC Build Tools 2026**.
-- 🐧 Ubuntu 24.04 x64 **Clang 21.7.0**.
-- 🐧 Ubuntu 24.04 ARM **Clang 21.7.0**.
+- 🪟 Windows Server 2025 x64 **Clang 21.8.0** and **MSVC Build Tools 2026**.
+- 🐧 Ubuntu 24.04 x64 **Clang 21.8.0**.
+- 🐧 Ubuntu 24.04 ARM **Clang 21.8.0**.
 
 <div align="center">
 
@@ -117,7 +134,7 @@ sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleun
 ##### RICV64 example
 
 ```bash
-nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.25.90 --no-cache -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile .
+nerdctl build --platform linux/riscv64 --target final --build-arg GSTREAMER_VERSION=1.25.90 --no-cache -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile .
 ```
 
 ##### Setup essentials
@@ -137,13 +154,14 @@ TOML
 ```
 
 ```bash
-nerdctl run --rm --privileged tonistiigi/binfmt --install all
-
 sudo nerdctl login ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -u Kataglyphis
+
+sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 sudo nerdctl build \
   --platform=linux/arm64,linux/amd64,linux/riscv64 \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+  --target final \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
@@ -190,7 +208,7 @@ docker buildx create --name mybuilder --driver docker-container --buildkitd-conf
 
 ```bash
 nerdctl run --rm --privileged tonistiigi/binfmt --install all
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
+nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 --target final -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -f linux/Dockerfile .
 ```
 
 ### Torch Add-on (Linux) 🔥
