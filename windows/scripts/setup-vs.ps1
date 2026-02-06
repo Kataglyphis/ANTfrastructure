@@ -72,32 +72,56 @@ try {
 
     $args = @(
         '--quiet',
-        '--wait','--norestart','--nocache',
-        '--add','Microsoft.VisualStudio.Workload.AzureBuildTools',
-        '--add','Microsoft.Component.MSBuild',
-        '--add','Microsoft.VisualStudio.Component.CoreBuildTools',
-        '--add','Microsoft.VisualStudio.Component.Roslyn.Compiler',
-        '--add','Microsoft.VisualStudio.Component.Roslyn.LanguageServices',
-        '--add','Microsoft.VisualStudio.Component.TextTemplating',
-        '--add','Microsoft.VisualStudio.Component.VC.ASAN',
-        '--add','Microsoft.VisualStudio.Component.VC.ATL',
-        '--add','Microsoft.VisualStudio.Component.VC.ATLMFC',
-        '--add','Microsoft.VisualStudio.Component.VC.CLI.Support',
-        '--add','Microsoft.VisualStudio.Component.VC.CMake.Project',
-        '--add','Microsoft.VisualStudio.Component.VC.CoreBuildTools',
-        '--add','Microsoft.VisualStudio.Component.VC.CoreIde',
-        '--add','Microsoft.VisualStudio.Component.VC.Redist.14.Latest',
-        '--add','Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
-        '--add','Microsoft.VisualStudio.Component.Windows11SDK.22621',
-        '--add','Microsoft.VisualStudio.Component.Windows11SDK.26100',
-        '--add','Microsoft.VisualStudio.ComponentGroup.NativeDesktop.Core',
-        '--add','Microsoft.VisualStudio.Component.Llvm.ClangToolset',
-        '--add','Microsoft.VisualStudio.Component.VC.Llvm.Clang',
-        '--add','Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset',
-        '--add','Microsoft.VisualStudio.Workload.MSBuildTools',
-        '--add','Microsoft.VisualStudio.Workload.UniversalBuildTools',
-        '--add','Microsoft.VisualStudio.Workload.VCTools',
-        '--add','Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools'
+        '--wait', '--norestart', '--nocache',
+
+        # Workloads
+
+        '--add', 'Microsoft.VisualStudio.Workload.MSBuildTools',              # Core MSBuild toolset
+        '--add', 'Microsoft.VisualStudio.Workload.VCTools',                   # C++ desktop build tools
+        #'--add', 'Microsoft.VisualStudio.Workload.AzureBuildTools',          # Azure development build tools
+        '--add', 'Microsoft.VisualStudio.Workload.UniversalBuildTools',       # UWP build tools
+        #'--add', 'Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools', # .NET desktop build tools
+
+        # Core Build Components
+
+        '--add', 'Microsoft.Component.MSBuild',                              # MSBuild compiler
+        '--add', 'Microsoft.VisualStudio.Component.CoreBuildTools',          # Core build utilities
+        # '--add', 'Microsoft.VisualStudio.Component.TextTemplating',        # T4 text template engine
+        
+        # Windows SDK & Native Desktop
+
+        '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.26100',      # Windows 11 SDK (26100)
+        '--add','Microsoft.VisualStudio.Workload.NativeDesktop',             # Native desktop dependencies
+
+        # LLVM/Clang
+
+        '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang',           # Clang compiler for Windows
+        '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset',    # Clang-cl toolset
+
+        # VC++ Analysis & Tools
+        
+        '--add', 'Microsoft.VisualStudio.Component.VC.ASAN',                 # AddressSanitizer (memory debugging)
+        '--add', 'Microsoft.VisualStudio.Component.VC.CMake.Project',        # CMake tools for Windows
+        
+        # VC++ Core
+        
+        '--add', 'Microsoft.VisualStudio.Component.VC.CoreBuildTools',       # C++ core build tools
+        '--add', 'Microsoft.VisualStudio.Component.VC.CoreIde',              # C++ core IDE features
+        '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'         # MSVC v143 compiler (x86/x64)
+        # '--add', 'Microsoft.VisualStudio.Component.VC.Redist.14.Latest',   # C++ redistributable
+        
+        # VC++ Libraries
+        
+        # '--add', 'Microsoft.VisualStudio.Component.VC.ATL',                 # Active Template Library
+        # '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',              # MFC library support
+        # '--add', 'Microsoft.VisualStudio.Component.VC.CLI.Support'          # C++/CLI support
+        
+        
+        # .NET
+        '--add','Microsoft.NetCore.Component.SDK'                             # .NET SDK (dotnet tools)
+        # '--add', 'Microsoft.VisualStudio.Component.Roslyn.Compiler',        # C#/VB managed compiler
+        # '--add', 'Microsoft.VisualStudio.Component.Roslyn.LanguageServices' # C#/VB language services
+
     )
 
     Write-Host "Starte Installation der Visual Studio Build Tools ..."
