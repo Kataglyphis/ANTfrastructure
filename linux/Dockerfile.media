@@ -1,0 +1,188 @@
+# syntax=docker/dockerfile:1.19
+
+ARG BASE_IMAGE=local/kataglyphis:toolchain
+FROM ${BASE_IMAGE}
+
+ARG BUILD_TYPE=Release
+ARG TARGETARCH
+ARG GSTREAMER_VERSION=1.28.0
+
+SHELL ["bash", "-lc"]
+
+# ------------------------------------------------------------------------------
+# GStreamer build: env + setup
+# ------------------------------------------------------------------------------
+ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GSTREAMER_PREFIX=/opt/gstreamer \
+    GST_PLUGIN_PATH="" \
+    GI_TYPELIB_PATH=""
+
+# Multiarch libdir symlink
+RUN set -eux; \
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
+    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
+
+# GStreamer env
+ENV PKG_CONFIG_PATH="" \
+    LD_LIBRARY_PATH="" \
+    CMAKE_PREFIX_PATH=""
+ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
+ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${PKG_CONFIG_PATH}"
+ENV CMAKE_PREFIX_PATH="/usr/local:${CMAKE_PREFIX_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${LD_LIBRARY_PATH}"
+ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGIN_PATH}"
+ENV GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0:${GI_TYPELIB_PATH}"
+
+# ------------------------------------------------------------------------------
+# Libcamera build: env
+# ------------------------------------------------------------------------------
+ENV LIBCAMERA_PREFIX=/opt/libcamera
+ENV PATH="${LIBCAMERA_PREFIX}/bin:${PATH}"
+ENV PKG_CONFIG_PATH="${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH}"
+ENV LD_LIBRARY_PATH="${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${LD_LIBRARY_PATH}"
+ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
+
+# ==============================================================================
+# Media stack; ONNX Runtime + GStreamer
+# ==============================================================================
+# ONNX Runtime build helper
+COPY linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
+RUN chmod +x /opt/scripts/media/onnxruntime/build/*.sh /opt/scripts/media/onnxruntime/build/lib/*.sh || true
+
+# Make gstreamer env helper available early so setup-gstreamer.sh can source it
+COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
+RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
+
+# ----------------------------------------------------------------------------
+# ONNX Runtime build args
+# ----------------------------------------------------------------------------
+# v1.23.2
+ARG ONNXRUNTIME_VERSION=main
+ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
+ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
+
+# ------------------------------------------------------------------------------
+# ONNX Runtime build (split into steps for better Docker layer caching)
+# ------------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt \
+        set -eux; \
+        export USER=root; \
+    SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+        --mount=type=cache,target=/var/lib/apt \
+        --mount=type=cache,target=/root/.cache/uv \
+        --mount=type=cache,target=/root/.cache/pip \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/20-fetch.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        --mount=type=cache,target=/usr/local/cargo/registry \
+        --mount=type=cache,target=/usr/local/cargo/git \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/30-build-native.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        set -eux; \
+        export USER=root; \
+        bash /opt/scripts/media/onnxruntime/build/40-build-wasm.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN set -eux; \
+        export USER=root; \
+    bash /opt/scripts/media/onnxruntime/build/50-build-js.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+# pkg-config generator is copied AFTER heavy ONNX build steps to improve caching
+COPY linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
+RUN chmod +x /opt/scripts/media/onnxruntime/runtime/*.sh || true
+
+RUN set -eux; \
+    export USER=root; \
+    bash /opt/scripts/media/onnxruntime/runtime/31-generate-pkgconfig-native.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+# ------------------------------------------------------------------------------
+# GStreamer build
+# ------------------------------------------------------------------------------
+COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    export USER=root; \
+    export PKG_CONFIG_PATH="/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig:${PKG_CONFIG_PATH}"; \
+    cd /opt && \
+    bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
+        "$GSTREAMER_VERSION" \
+        "$GSTREAMER_PREFIX" \
+        "$BUILD_TYPE"
+
+# ==============================================================================
+# Media stack; Libcamera only
+# ==============================================================================
+COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
+
+# ------------------------------------------------------------------------------
+# Libcamera build
+# ------------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    cd /opt && \
+    bash /opt/scripts/media/libcamera/build-libcamera.sh
+
+# ------------------------------------------------------------------------------
+# Cleanup and system configuration
+# ------------------------------------------------------------------------------
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' || true; \
+    apt-get autoremove --purge -y; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
+    ldconfig
+
+RUN set -eux; \
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+    SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
+    GST_PKGCONF_DIR="/opt/gstreamer/lib/${triplet}/pkgconfig"; \
+    mkdir -p "${SYS_PKGCONF_DIR}"; \
+    if [ -d "${GST_PKGCONF_DIR}" ]; then \
+      for pc in "${GST_PKGCONF_DIR}"/*.pc; do \
+        ln -snf "$pc" "${SYS_PKGCONF_DIR}/$(basename "$pc")"; \
+      done; \
+    fi; \
+    printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
+    ldconfig
+
+RUN set -eux; \
+    printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \
+    printf "%s\n" "/opt/libcamera/lib64" >> /etc/ld.so.conf.d/libcamera.conf; \
+    ldconfig
