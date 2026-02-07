@@ -1,0 +1,61 @@
+# .github/workflows/build-docs.yml
+name: Build Docs
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+    secrets:
+      SERVER:
+        required: true
+      USERNAME:
+        required: true
+      PW:
+        required: true
+jobs:
+  build-docs:
+    name: Build Documentation
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install uv (Astral)
+        uses: astral-sh/setup-uv@v7.2.0
+        with:
+          python-version: 3.14
+          enable-cache: true
+
+      # Optional: install Python pinned by project if you want: `uv python install`
+      - name: Install project dependencies with uv (use lock if present)
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv.lock found — using locked sync"
+            uv sync --locked --dev --all-extras
+          else
+            echo "No uv.lock found — performing non-locked sync"
+            uv sync --dev --all-extras
+          fi
+
+      - name: Copy docs
+        run: |
+          cp README.md docs/source/README.md
+          cp CHANGELOG.md docs/source/CHANGELOG.md
+
+      - name: Build web page
+        run: |
+          cd docs
+          make html
+
+      - name: 📂 Sync files to domain
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        with:
+          server: ${{ secrets.SERVER }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.PW }}
+          local-dir: "./docs/build/html/"
