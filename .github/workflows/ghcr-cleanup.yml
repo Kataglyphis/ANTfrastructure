@@ -1,16 +1,35 @@
-- name: Cleanup GHCR versions (Keep last 3 per tag)
+name: ghcr-cleanup
+
+on:
+  schedule:
+    # Weekly cleanup (Sunday 03:00 UTC)
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old GHCR versions (Keep last 3 per tag)
         uses: actions/github-script@v7
         with:
+          # Use a PAT if you need to manage org packages not granting Actions access to this repo.
+          # Otherwise the default GITHUB_TOKEN is enough.
           github-token: ${{ secrets.GHCR_TOKEN || github.token }}
           script: |
             const owner = context.repo.owner;
             const packageType = 'container';
             const packageName = 'kataglyphis_beschleuniger';
-            // Config
+            
+            // Configuration
             const keepPerTag = 3;    // Keep 3 versions for every unique tag
-            const keepUntagged = 3;  // Keep 3 newest untagged (dangling) images
+            const keepUntagged = 3;  // Keep 3 newest untagged images
 
-            // --- Helper Functions (IsOrg, Request Params) ---
+            // --- Helper Functions ---
             async function isOrganization(name) {
               try {
                 await github.request('GET /orgs/{org}', { org: name });
@@ -20,6 +39,7 @@
                 throw e;
               }
             }
+
             const ownerIsOrg = await isOrganization(owner);
 
             function listVersionsRequestParams(page) {
@@ -48,6 +68,7 @@
             }
 
             // --- 1. Fetch all versions ---
+            core.info('Fetching versions...');
             const versions = [];
             for (let page = 1; ; page++) {
               let data;
@@ -55,7 +76,7 @@
                 ({ data } = await github.request(listVersionsRequestParams(page)));
               } catch (e) {
                 if (e?.status === 404) {
-                   core.info('Package not found. Nothing to clean.');
+                   core.setFailed(`Package ${packageName} not found.`);
                    return;
                 }
                 throw e;
@@ -64,17 +85,17 @@
               versions.push(...data);
               if (data.length < 100) break;
             }
-            core.info(`Fetched ${versions.length} total versions.`);
+            core.info(`Found ${versions.length} total versions.`);
 
             // --- 2. Determine which versions to KEEP ---
             const versionsToKeep = new Set();
-            const mapTagToVersions = {}; // { 'latest': [v1, v2], 'v1.0': [v2] }
+            const mapTagToVersions = {}; 
             const untaggedVersions = [];
 
-            // Sort all versions by date desc (newest first) once
+            // Sort by date desc (newest first)
             versions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-            // Bucketize
+            // Group versions by their tags
             for (const v of versions) {
               const tags = v.metadata?.container?.tags || [];
               if (tags.length === 0) {
@@ -87,34 +108,32 @@
               }
             }
 
-            // A. Keep top X for each Tag
+            // Logic: Keep top X for each Tag
             for (const tag in mapTagToVersions) {
               const tagVersions = mapTagToVersions[tag];
+              // Take the first 3 (newest)
               const keepers = tagVersions.slice(0, keepPerTag);
               keepers.forEach(v => versionsToKeep.add(v.id));
             }
 
-            // B. Keep top X for Untagged (optional, but good practice)
+            // Logic: Keep top X for Untagged (optional, prevents deleting actively pushed untagged images)
             const untaggedKeepers = untaggedVersions.slice(0, keepUntagged);
             untaggedKeepers.forEach(v => versionsToKeep.add(v.id));
 
-            core.info(`Identified ${versionsToKeep.size} unique versions to KEEP (covering ${Object.keys(mapTagToVersions).length} tags).`);
+            core.info(`Keeping ${versionsToKeep.size} versions (across ${Object.keys(mapTagToVersions).length} tags + untagged).`);
 
-            // --- 3. Determine which versions to DELETE ---
-            // If a version ID is NOT in the keep set, it goes.
+            // --- 3. Delete the rest ---
             const toDelete = versions.filter(v => !versionsToKeep.has(v.id));
-            
-            core.info(`Deleting ${toDelete.length} versions...`);
+            core.info(`Deleting ${toDelete.length} old versions...`);
 
-            // --- 4. Execute Deletes ---
-            let deleted = 0;
+            let deletedCount = 0;
             for (const v of toDelete) {
               try {
                 await github.request(deleteVersionRequestParams(v.id));
-                deleted++;
+                deletedCount++;
               } catch (e) {
                 if (e?.status === 404) continue; // Already gone
                 core.warning(`Failed to delete version ${v.id}: ${e.message}`);
               }
             }
-            core.info(`Successfully deleted ${deleted} versions.`);
+            core.info(`Successfully deleted ${deletedCount} versions.`);
