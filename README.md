@@ -72,31 +72,6 @@ Linux image chain (built as separate images for caching):
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
 - `linux/Dockerfile`: runtime scripts + entrypoint (final image).
 
-Build images sequentially (recommended for cache reuse across images):
-
-```bash
-sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -f linux/Dockerfile.os-deps -t local/kataglyphis:os-deps \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -f linux/Dockerfile.toolchain --build-arg BASE_IMAGE=local/kataglyphis:os-deps -t local/kataglyphis:toolchain \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -f linux/Dockerfile.media --build-arg BASE_IMAGE=local/kataglyphis:toolchain -t local/kataglyphis:media \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -f linux/Dockerfile.android --build-arg BASE_IMAGE=local/kataglyphis:media -t local/kataglyphis:android \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -f linux/Dockerfile --build-arg BASE_IMAGE=local/kataglyphis:android -t local/kataglyphis:latest \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  . 2>&1 | tee -a output.log
-```
-
 What you get:
 - ✅ Multi-arch builds via buildx/nerdctl.
 - 🎮 Vulkan + toolchains ready for GPU passthrough.
@@ -230,37 +205,37 @@ sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=true' \
   -f linux/Dockerfile.os-deps \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  .
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-os-deps,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-os-deps \
+  . 2>&1 | tee -a output.log
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain,push=true' \
   -f linux/Dockerfile.toolchain \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  .
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain \
+  . 2>&1 | tee -a output.log
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media,push=true' \
   -f linux/Dockerfile.media \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  .
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media \
+  . 2>&1 | tee -a output.log
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android,push=true' \
   -f linux/Dockerfile.android \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  .
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android \
+  . 2>&1 | tee -a output.log
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
   -f linux/Dockerfile \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  .
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-latest,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-latest \
+  . 2>&1 | tee -a output.log
 ```
 
 ### Torch Add-on (Linux) 🔥

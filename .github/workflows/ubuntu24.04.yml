@@ -1,0 +1,18 @@
+# .github/workflows/ubuntu-24.04.yml
+name: Ubuntu 24.04 Workflow
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  build-docs:
+    uses: ./.github/workflows/build-docs.yml
+    with:
+      runner: ubuntu-24.04
+    secrets:
+      SERVER: ${{ secrets.SERVER }}
+      USERNAME: ${{ secrets.USERNAME }}
+      PW: ${{ secrets.PW }}

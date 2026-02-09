@@ -14,7 +14,7 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete old untagged GHCR versions (keep newest 3)
+      - name: Delete old GHCR versions (Keep last 3 per tag)
         uses: actions/github-script@v7
         with:
           # Use a PAT if you need to manage org packages not granting Actions access to this repo.
@@ -24,8 +24,12 @@ jobs:
             const owner = context.repo.owner;
             const packageType = 'container';
             const packageName = 'kataglyphis_beschleuniger';
-            const keepUntagged = 3;
+            
+            // Configuration
+            const keepPerTag = 3;    // Keep 3 versions for every unique tag
+            const keepUntagged = 3;  // Keep 3 newest untagged images
 
+            // --- Helper Functions ---
             async function isOrganization(name) {
               try {
                 await github.request('GET /orgs/{org}', { org: name });
@@ -39,49 +43,32 @@ jobs:
             const ownerIsOrg = await isOrganization(owner);
 
             function listVersionsRequestParams(page) {
-              if (ownerIsOrg) {
-                return {
-                  method: 'GET',
-                  url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions',
-                  org: owner,
-                  package_type: packageType,
-                  package_name: packageName,
-                  per_page: 100,
-                  page,
-                };
-              }
-              return {
-                method: 'GET',
-                url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions',
-                username: owner,
+              const params = {
                 package_type: packageType,
                 package_name: packageName,
                 per_page: 100,
-                page,
+                page
               };
+              if (ownerIsOrg) {
+                return { ...params, method: 'GET', url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions', org: owner };
+              }
+              return { ...params, method: 'GET', url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions', username: owner };
             }
 
             function deleteVersionRequestParams(versionId) {
-              if (ownerIsOrg) {
-                return {
-                  method: 'DELETE',
-                  url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}',
-                  org: owner,
-                  package_type: packageType,
-                  package_name: packageName,
-                  package_version_id: versionId,
-                };
-              }
-              return {
-                method: 'DELETE',
-                url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}',
-                username: owner,
+              const params = {
                 package_type: packageType,
                 package_name: packageName,
-                package_version_id: versionId,
+                package_version_id: versionId
               };
+              if (ownerIsOrg) {
+                return { ...params, method: 'DELETE', url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}', org: owner };
+              }
+              return { ...params, method: 'DELETE', url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}', username: owner };
             }
 
+            // --- 1. Fetch all versions ---
+            core.info('Fetching versions...');
             const versions = [];
             for (let page = 1; ; page++) {
               let data;
@@ -89,14 +76,8 @@ jobs:
                 ({ data } = await github.request(listVersionsRequestParams(page)));
               } catch (e) {
                 if (e?.status === 404) {
-                  core.setFailed(
-                    `Package not found or not accessible via token. Owner=${owner} (org=${ownerIsOrg}), package=${packageName}.\n` +
-                    `Fix options:\n` +
-                    `1) In GHCR package settings → Manage Actions access: grant this repository Admin access, OR\n` +
-                    `2) Create a PAT with scopes read:packages + delete:packages and add it as Actions secret GHCR_TOKEN.\n` +
-                    `Original error: ${e.message}`
-                  );
-                  return;
+                   core.setFailed(`Package ${packageName} not found.`);
+                   return;
                 }
                 throw e;
               }
@@ -104,38 +85,55 @@ jobs:
               versions.push(...data);
               if (data.length < 100) break;
             }
+            core.info(`Found ${versions.length} total versions.`);
 
-            const untagged = versions
-              .filter(v => (v?.metadata?.container?.tags ?? []).length === 0)
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            // --- 2. Determine which versions to KEEP ---
+            const versionsToKeep = new Set();
+            const mapTagToVersions = {}; 
+            const untaggedVersions = [];
 
-            const toDelete = untagged.slice(keepUntagged);
-            core.info(`Found ${versions.length} total versions; ${untagged.length} untagged; deleting ${toDelete.length}, keeping ${Math.min(keepUntagged, untagged.length)} untagged.`);
+            // Sort by date desc (newest first)
+            versions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-            let deleted = 0;
-            let skipped404 = 0;
-            for (const v of toDelete) {
-              try {
-                await github.request(deleteVersionRequestParams(v.id));
-                deleted++;
-              } catch (e) {
-                // 404 can mean eventual consistency *or* missing delete permissions (GitHub sometimes hides authorization as 404).
-                if (e?.status === 404) {
-                  skipped404++;
-                  continue;
+            // Group versions by their tags
+            for (const v of versions) {
+              const tags = v.metadata?.container?.tags || [];
+              if (tags.length === 0) {
+                untaggedVersions.push(v);
+              } else {
+                for (const tag of tags) {
+                  if (!mapTagToVersions[tag]) mapTagToVersions[tag] = [];
+                  mapTagToVersions[tag].push(v);
                 }
-                throw e;
               }
             }
 
-            core.info(`Deleted ${deleted} untagged versions (got ${skipped404} x 404 on delete).`);
-
-            if (toDelete.length > 0 && deleted === 0 && skipped404 === toDelete.length) {
-              core.setFailed(
-                `All delete attempts returned 404. This usually means the token cannot delete package versions.\n` +
-                `Fix options:\n` +
-                `1) GHCR package settings → Manage Actions access: grant this repository Admin access, OR\n` +
-                `2) Create a PAT with scopes read:packages + delete:packages and add it as Actions secret GHCR_TOKEN.\n` +
-                `Owner=${owner} (org=${ownerIsOrg}), package=${packageName}.`
-              );
+            // Logic: Keep top X for each Tag
+            for (const tag in mapTagToVersions) {
+              const tagVersions = mapTagToVersions[tag];
+              // Take the first 3 (newest)
+              const keepers = tagVersions.slice(0, keepPerTag);
+              keepers.forEach(v => versionsToKeep.add(v.id));
             }
+
+            // Logic: Keep top X for Untagged (optional, prevents deleting actively pushed untagged images)
+            const untaggedKeepers = untaggedVersions.slice(0, keepUntagged);
+            untaggedKeepers.forEach(v => versionsToKeep.add(v.id));
+
+            core.info(`Keeping ${versionsToKeep.size} versions (across ${Object.keys(mapTagToVersions).length} tags + untagged).`);
+
+            // --- 3. Delete the rest ---
+            const toDelete = versions.filter(v => !versionsToKeep.has(v.id));
+            core.info(`Deleting ${toDelete.length} old versions...`);
+
+            let deletedCount = 0;
+            for (const v of toDelete) {
+              try {
+                await github.request(deleteVersionRequestParams(v.id));
+                deletedCount++;
+              } catch (e) {
+                if (e?.status === 404) continue; // Already gone
+                core.warning(`Failed to delete version ${v.id}: ${e.message}`);
+              }
+            }
+            core.info(`Successfully deleted ${deletedCount} versions.`);
