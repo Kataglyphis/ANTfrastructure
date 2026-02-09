@@ -79,7 +79,7 @@ try {
         '--add', 'Microsoft.VisualStudio.Workload.MSBuildTools',              # Core MSBuild toolset
         '--add', 'Microsoft.VisualStudio.Workload.VCTools',                   # C++ desktop build tools
         #'--add', 'Microsoft.VisualStudio.Workload.AzureBuildTools',          # Azure development build tools
-        '--add', 'Microsoft.VisualStudio.Workload.UniversalBuildTools',       # UWP build tools
+        #'--add', 'Microsoft.VisualStudio.Workload.UniversalBuildTools',       # UWP build tools
         #'--add', 'Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools', # .NET desktop build tools
 
         # Core Build Components
@@ -91,7 +91,8 @@ try {
         # Windows SDK & Native Desktop
 
         '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.26100',      # Windows 11 SDK (26100)
-        '--add','Microsoft.VisualStudio.Workload.NativeDesktop',             # Native desktop dependencies
+        # '--add','Microsoft.VisualStudio.Workload.NativeDesktop',           # only for full GUI functionality 
+                                                                             # NOT for CICD
 
         # LLVM/Clang
 
@@ -107,7 +108,7 @@ try {
         
         '--add', 'Microsoft.VisualStudio.Component.VC.CoreBuildTools',       # C++ core build tools
         '--add', 'Microsoft.VisualStudio.Component.VC.CoreIde',              # C++ core IDE features
-        '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'         # MSVC v143 compiler (x86/x64)
+        # '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'         # MSVC v143 compiler (x86/x64)
         # '--add', 'Microsoft.VisualStudio.Component.VC.Redist.14.Latest',   # C++ redistributable
         
         # VC++ Libraries
