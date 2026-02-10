@@ -1,0 +1,78 @@
+# syntax=docker/dockerfile:1.19
+FROM ghcr.io/kataglyphis/kataglyphis_beschleuniger:android
+SHELL ["bash", "-lc"]
+ENV VENV=/opt/venv
+
+# Initialize the venv
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} uv venv --python=3.13 "${VENV}"
+ENV VIRTUAL_ENV=${VENV}
+ENV PATH=${VENV}/bin:${PATH}
+
+# Define the version once
+ARG PYTHON_VERSION=3.13.12                           
+# Run the build using the variable
+RUN wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz -O /tmp/Python-${PYTHON_VERSION}.tgz \
+    && tar -xf /tmp/Python-${PYTHON_VERSION}.tgz -C /tmp \
+    && cd /tmp/Python-${PYTHON_VERSION} \
+    && ./configure --enable-shared --enable-optimizations --prefix=/usr/local \
+    && make -j$(nproc) \
+    && make altinstall \
+    # Add the lib path to the system linker
+    && echo "/usr/local/lib" > /etc/ld.so.conf.d/python-${PYTHON_VERSION}.conf \
+    && ldconfig \
+    # Clean up
+    && cd / \
+    && rm -rf /tmp/Python-${PYTHON_VERSION} /tmp/Python-${PYTHON_VERSION}.tgz \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# libarrow for mlflow feom source build
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update && \
+    apt-get install -y libgirepository-2.0-dev && \
+    apt-get install -y --no-install-recommends \
+      python3-gi python3-dev libpython3-dev \
+      gir1.2-glib-2.0 gir1.2-gtk-3.0 \
+      git libopenblas-dev liblapack-dev \
+      # wxPython / GTK3 Dependencies (CRITICAL)
+      libgtk-3-dev \
+      libglib2.0-dev:$(dpkg --print-architecture) \
+      libglib2.0-dev \
+      libjpeg-dev \
+      libtiff-dev \
+      libpng-dev \
+      libsdl2-dev \
+      libnotify-dev \
+      libsm-dev \
+      libxtst-dev \
+      freeglut3-dev \
+      libxxf86vm-dev \
+      libegl1-mesa-dev \
+      libglu1-mesa-dev \
+      pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    git clone https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git && \
+    cd Kataglyphis-Orchestr-ANT-ion && \
+    git checkout v0.0.3 && \
+    source ${VENV}/bin/activate && \
+    # ---------------------------------------------------------
+    # Architektur-Check: Flag nur für riscv64 setzen
+    # ---------------------------------------------------------
+    if [ "$(uname -m)" = "riscv64" ]; then \
+        UV_OPTS='--no-binary-package opencv-python'; \
+    else \
+        UV_OPTS=''; \
+    fi && \
+    # ---------------------------------------------------------
+    # Variable $UV_OPTS wird hier eingefügt
+    uv sync --active $UV_OPTS --extra "ml-ai" --extra "frontend" && \
+    uv pip install PyGObject && \
+    # 6. Verify
+    python -c "import gi, cv2, numpy, contourpy; \
+      print('gi OK'); print('numpy', numpy.__version__);"
+
+WORKDIR /opt/Kataglyphis-Orchestr-ANT-ion

@@ -10,6 +10,17 @@ ARG GSTREAMER_VERSION=1.28.0
 SHELL ["bash", "-lc"]
 
 # ------------------------------------------------------------------------------
+# [NEW] RISC-V Specific Toolchain Setup
+# ------------------------------------------------------------------------------
+# Since ENV cannot be conditional, we write to a profile script.
+# Because SHELL is set to "bash -lc", this script will be sourced 
+# at the start of every subsequent RUN instruction.
+RUN if [ "$TARGETARCH" = "riscv64" ]; then \
+        echo 'export LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh && \
+        echo 'export LD_LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh; \
+    fi
+
+# ------------------------------------------------------------------------------
 # GStreamer build: env + setup
 # ------------------------------------------------------------------------------
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \

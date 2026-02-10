@@ -56,6 +56,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
         echo "NOTICE: Detected riscv64 architecture." >&2; \
         echo "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64." >&2; \
+        export LD_LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LD_LIBRARY_PATH; \
+        export LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:${LIBRARY_PATH:-}; \
         bash /opt/scripts/toolchain/build-clang21-riscv.sh /usr/local/llvm-21; \
     else \
         bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
