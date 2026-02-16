@@ -37,6 +37,19 @@ function New-TimestampedFilePath {
     return (Join-Path $resolvedDirectory "$Prefix-$timestamp$Suffix")
 }
 
+function Resolve-NormalizedPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$BasePath,
+        [Parameter(Mandatory)]
+        [string]$RelativePath
+    )
+
+    $sanitizedRelative = $RelativePath -replace '/', '\\'
+    $combinedPath = Join-Path $BasePath $sanitizedRelative
+    return [System.IO.Path]::GetFullPath($combinedPath)
+}
+
 function ConvertTo-ParameterList {
     param(
         [object]$Value
@@ -57,5 +70,6 @@ Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'New-TimestampedFilePath',
+    'Resolve-NormalizedPath',
     'ConvertTo-ParameterList'
 )

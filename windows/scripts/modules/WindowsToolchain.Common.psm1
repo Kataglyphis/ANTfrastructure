@@ -4,7 +4,9 @@ function Invoke-ToolchainChecks {
     param(
         [Parameter(Mandatory)]
         [pscustomobject]$Context,
-        [hashtable]$ToolArguments
+        [hashtable]$ToolArguments,
+        [string[]]$RequiredTools = @(),
+        [switch]$FailOnMissingRequiredTools
     )
 
     $tools = if ($ToolArguments -and $ToolArguments.Count -gt 0) {
@@ -19,9 +21,27 @@ function Invoke-ToolchainChecks {
         }
     }
 
+    $failedTools = New-Object System.Collections.Generic.List[string]
+
     foreach ($tool in $tools.Keys) {
-        Invoke-BuildOptional -Context $Context -Name $tool -Script {
-            Invoke-BuildExternal -Context $Context -File $tool -Parameters $tools[$tool]
+        $toolFailed = $false
+
+        try {
+            Invoke-BuildExternal -Context $Context -File $tool -Parameters $tools[$tool] | Out-Null
+        } catch {
+            Write-BuildLogWarning -Context $Context -Message "$tool failed, continuing. Details: $($_.Exception.Message)"
+            $toolFailed = $true
+        }
+
+        if ($toolFailed) {
+            $failedTools.Add($tool) | Out-Null
+        }
+    }
+
+    if ($FailOnMissingRequiredTools -and $RequiredTools.Count -gt 0) {
+        $failedRequired = @($RequiredTools | Where-Object { $failedTools -contains $_ })
+        if ($failedRequired.Count -gt 0) {
+            throw "Required toolchain checks failed: $($failedRequired -join ', ')"
         }
     }
 }
