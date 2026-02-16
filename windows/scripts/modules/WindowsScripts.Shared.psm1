@@ -13,6 +13,21 @@ function Resolve-DirectoryPath {
     return (Resolve-Path -Path $Path).Path
 }
 
+function Resolve-WorkspacePath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    try {
+        return (Resolve-Path -Path $Path -ErrorAction Stop).Path
+    } catch {
+        Write-Host "Workspace path doesn't exist, creating: $Path"
+        New-Item -ItemType Directory -Force -Path $Path | Out-Null
+        return (Resolve-Path -Path $Path -ErrorAction Stop).Path
+    }
+}
+
 function New-Timestamp {
     param(
         [string]$Format = 'yyyyMMdd-HHmmss'
@@ -68,6 +83,7 @@ function ConvertTo-ParameterList {
 
 Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
+    'Resolve-WorkspacePath',
     'New-Timestamp',
     'New-TimestampedFilePath',
     'Resolve-NormalizedPath',

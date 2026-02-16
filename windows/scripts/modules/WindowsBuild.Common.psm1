@@ -17,11 +17,15 @@ function New-BuildContext {
     )
 
     $logDirPath = Resolve-DirectoryPath -Path (Join-Path $Workspace $LogDir)
-    $logPath = New-TimestampedFilePath -Directory $logDirPath -Prefix 'build-windows' -Suffix '.log' -TimestampFormat 'yyyyMMdd-HHmmss'
+    $timestamp = New-Timestamp -Format 'yyyyMMdd-HHmmss'
+    $logPath = Join-Path $logDirPath "build-windows-$timestamp.log"
+    $summaryPath = Join-Path $logDirPath "build-summary-$timestamp.json"
 
     [pscustomobject]@{
         Workspace  = $Workspace
         LogPath    = $logPath
+        SummaryPath = $summaryPath
+        StartedAt  = (Get-Date).ToString('o')
         LogWriter  = $null
         StopOnError = [bool]$StopOnError
         Results    = @{
@@ -177,7 +181,7 @@ function Invoke-BuildExternal {
     $global:LASTEXITCODE = 0
 
     try {
-        & $File $parameterList 2>&1 | ForEach-Object {
+        & $File @parameterList 2>&1 | ForEach-Object {
             if ($null -eq $_) { return }
             Write-BuildLog -Context $Context -Message ([string]$_)
         }
@@ -296,6 +300,31 @@ function Write-BuildSummary {
         Write-BuildLogWarning -Context $Context -Message "Pipeline completed with errors!"
     } else {
         Write-BuildLogSuccess -Context $Context -Message "Pipeline completed successfully!"
+    }
+
+    try {
+        $summary = [ordered]@{
+            startedAt = $Context.StartedAt
+            finishedAt = (Get-Date).ToString('o')
+            workspace = $Context.Workspace
+            logPath = $Context.LogPath
+            summaryPath = $Context.SummaryPath
+            totals = [ordered]@{
+                total = $total
+                succeeded = $Context.Results.Succeeded.Count
+                failed = $Context.Results.Failed.Count
+                successRate = $successRate
+            }
+            succeededSteps = @($Context.Results.Succeeded)
+            failedSteps = @($Context.Results.Failed)
+            errors = $Context.Results.Errors
+        }
+
+        $summaryJson = $summary | ConvertTo-Json -Depth 8
+        Set-Content -Path $Context.SummaryPath -Value $summaryJson -Encoding UTF8
+        Write-BuildLog -Context $Context -Message "Machine-readable summary available at: $($Context.SummaryPath)"
+    } catch {
+        Write-BuildLogWarning -Context $Context -Message "Failed to write JSON summary: $($_.Exception.Message)"
     }
 }
 

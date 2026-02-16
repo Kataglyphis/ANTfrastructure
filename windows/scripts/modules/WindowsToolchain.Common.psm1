@@ -6,7 +6,8 @@ function Invoke-ToolchainChecks {
         [pscustomobject]$Context,
         [hashtable]$ToolArguments,
         [string[]]$RequiredTools = @(),
-        [switch]$FailOnMissingRequiredTools
+        [switch]$FailOnMissingRequiredTools,
+        [string[]]$ToolOrder = @('cmake', 'clang-cl', 'flutter', 'cargo', 'ninja')
     )
 
     $tools = if ($ToolArguments -and $ToolArguments.Count -gt 0) {
@@ -23,7 +24,19 @@ function Invoke-ToolchainChecks {
 
     $failedTools = New-Object System.Collections.Generic.List[string]
 
-    foreach ($tool in $tools.Keys) {
+    $orderedTools = New-Object System.Collections.Generic.List[string]
+    foreach ($tool in $ToolOrder) {
+        if ($tools.ContainsKey($tool)) {
+            $orderedTools.Add($tool) | Out-Null
+        }
+    }
+
+    $remainingTools = @($tools.Keys | Where-Object { $orderedTools -notcontains $_ } | Sort-Object)
+    foreach ($tool in $remainingTools) {
+        $orderedTools.Add($tool) | Out-Null
+    }
+
+    foreach ($tool in $orderedTools) {
         $toolFailed = $false
 
         try {
