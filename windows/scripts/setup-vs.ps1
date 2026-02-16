@@ -119,7 +119,8 @@ try {
         
         
         # .NET
-        '--add','Microsoft.NetCore.Component.SDK'                             # .NET SDK (dotnet tools)
+        '--add','Microsoft.NetCore.Component.SDK',                            # .NET SDK (dotnet tools)
+        '--add','Microsoft.VisualStudio.Component.NuGet.BuildTools'           # NuGet Package Manager / restore tools
         # '--add', 'Microsoft.VisualStudio.Component.Roslyn.Compiler',        # C#/VB managed compiler
         # '--add', 'Microsoft.VisualStudio.Component.Roslyn.LanguageServices' # C#/VB language services
 
