@@ -1,5 +1,25 @@
 Set-StrictMode -Version Latest
 
+function Get-ForwardSwitchValue {
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ForwardParameters,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    if (-not $ForwardParameters.ContainsKey($Name)) {
+        return $false
+    }
+
+    $value = $ForwardParameters[$Name]
+    if ($value -is [System.Management.Automation.SwitchParameter]) {
+        return $value.IsPresent
+    }
+
+    return [bool]$value
+}
+
 function Invoke-BuildCodeQL {
     param(
         [Parameter(Mandatory)]
@@ -15,6 +35,12 @@ function Invoke-BuildCodeQL {
 
     Write-BuildLog -Context $Context -Message "=== CodeQL Mode Active ==="
 
+    $cleanCodeQLDb = Get-ForwardSwitchValue -ForwardParameters $ForwardParameters -Name 'CleanCodeQLDb'
+    $codeQLDownload = Get-ForwardSwitchValue -ForwardParameters $ForwardParameters -Name 'CodeQLDownload'
+
+    Write-BuildLog -Context $Context -Message "CodeQL cleanup enabled: $cleanCodeQLDb"
+    Write-BuildLog -Context $Context -Message "CodeQL download enabled: $codeQLDownload"
+
     $codeQLUrl = 'https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-win64.zip'
     $codeQLDir = Join-Path $Workspace 'codeql-cli'
     $codeQLExe = Join-Path $codeQLDir 'codeql\codeql.exe'
@@ -27,15 +53,19 @@ function Invoke-BuildCodeQL {
         Expand-Archive -Path $zipPath -DestinationPath $codeQLDir -Force
     }
 
-    Write-BuildLog -Context $Context -Message 'Downloading query packs for all languages...'
-    foreach ($lang in $Languages) {
-        $queryPack = "codeql/$lang-queries"
-        Write-BuildLog -Context $Context -Message "Downloading Query Pack: $queryPack..."
-        & $codeQLExe pack download $queryPack
+    if ($codeQLDownload) {
+        Write-BuildLog -Context $Context -Message 'Downloading query packs for all languages...'
+        foreach ($lang in $Languages) {
+            $queryPack = "codeql/$lang-queries"
+            Write-BuildLog -Context $Context -Message "Downloading Query Pack: $queryPack..."
+            & $codeQLExe pack download $queryPack
 
-        if ($LASTEXITCODE -ne 0) {
-            Write-BuildLogWarning -Context $Context -Message "Failed to download $queryPack, continuing..."
+            if ($LASTEXITCODE -ne 0) {
+                Write-BuildLogWarning -Context $Context -Message "Failed to download $queryPack, continuing..."
+            }
         }
+    } else {
+        Write-BuildLog -Context $Context -Message 'Skipping query pack download (CodeQLDownload not set).'
     }
 
     $innerArgs = @{}
@@ -59,8 +89,16 @@ function Invoke-BuildCodeQL {
     $innerCommand = "cmd /c powershell -NoProfile -ExecutionPolicy Bypass -File `"$BuildScriptPath`" $innerParameterString"
 
     $dbClusterDir = Join-Path $Workspace 'codeql-db-cluster'
+    $shouldCreateDbCluster = $true
+
     if (Test-Path $dbClusterDir) {
-        Remove-Item -Recurse -Force $dbClusterDir
+        if ($cleanCodeQLDb) {
+            Write-BuildLog -Context $Context -Message "Cleaning existing CodeQL DB cluster: $dbClusterDir"
+            Remove-Item -Recurse -Force $dbClusterDir
+        } else {
+            Write-BuildLog -Context $Context -Message "Keeping existing CodeQL DB cluster (CleanCodeQLDb not set): $dbClusterDir"
+            $shouldCreateDbCluster = $false
+        }
     }
 
     $languageArgs = @()
@@ -68,21 +106,28 @@ function Invoke-BuildCodeQL {
         $languageArgs += "--language=$lang"
     }
 
-    $createArgs = @(
-        'database', 'create', $dbClusterDir,
-        '--db-cluster'
-    ) + $languageArgs + @(
-        "--command=$innerCommand",
-        '--no-run-unnecessary-builds',
-        "--source-root=$Workspace",
-        '--overwrite'
-    )
+    if ($shouldCreateDbCluster) {
+        $createArgs = @(
+            'database', 'create', $dbClusterDir,
+            '--db-cluster'
+        ) + $languageArgs + @(
+            "--command=$innerCommand",
+            '--no-run-unnecessary-builds',
+            "--source-root=$Workspace"
+        )
 
-    Write-BuildLog -Context $Context -Message "Creating database cluster with languages: $($Languages -join ', ')"
-    & $codeQLExe @createArgs
+        if ($cleanCodeQLDb) {
+            $createArgs += '--overwrite'
+        }
 
-    if ($LASTEXITCODE -ne 0) {
-        throw 'CodeQL Database Cluster creation failed'
+        Write-BuildLog -Context $Context -Message "Creating database cluster with languages: $($Languages -join ', ')"
+        & $codeQLExe @createArgs
+
+        if ($LASTEXITCODE -ne 0) {
+            throw 'CodeQL Database Cluster creation failed'
+        }
+    } else {
+        Write-BuildLog -Context $Context -Message 'Skipping database creation and reusing existing CodeQL DB cluster.'
     }
 
     $resultsDir = Join-Path $Workspace 'codeql-results'
@@ -102,9 +147,12 @@ function Invoke-BuildCodeQL {
             'database', 'analyze', $langDbDir,
             $querySuite,
             '--format=sarif-latest',
-            "--output=$sarifOutput",
-            '--download'
+            "--output=$sarifOutput"
         )
+
+        if ($codeQLDownload) {
+            $analyzeArgs += '--download'
+        }
 
         & $codeQLExe @analyzeArgs
 
@@ -115,9 +163,12 @@ function Invoke-BuildCodeQL {
                 'database', 'analyze', $langDbDir,
                 $fallbackQueryPack,
                 '--format=sarif-latest',
-                "--output=$sarifOutput",
-                '--download'
+                "--output=$sarifOutput"
             )
+
+            if ($codeQLDownload) {
+                $fallbackArgs += '--download'
+            }
 
             & $codeQLExe @fallbackArgs
             if ($LASTEXITCODE -ne 0) {

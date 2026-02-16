@@ -7,6 +7,13 @@ if (-not (Test-Path $sharedModulePath)) {
 
 Import-Module $sharedModulePath -Force
 
+$loggingModulePath = Join-Path $PSScriptRoot 'WindowsLogging.Common.psm1'
+if (-not (Test-Path $loggingModulePath)) {
+    throw "Required logging module not found: $loggingModulePath"
+}
+
+Import-Module $loggingModulePath -Force
+
 function New-BuildContext {
     param(
         [Parameter(Mandatory)]
@@ -16,19 +23,17 @@ function New-BuildContext {
         [switch]$StopOnError
     )
 
-    $logDirPath = Resolve-DirectoryPath -Path (Join-Path $Workspace $LogDir)
-    $timestamp = New-Timestamp -Format 'yyyyMMdd-HHmmss'
-    $logPath = Join-Path $logDirPath "build-windows-$timestamp.log"
-    $summaryPath = Join-Path $logDirPath "build-summary-$timestamp.json"
+    $baseContext = New-LogContext -Workspace $Workspace -LogDir $LogDir -LogFilePrefix 'build-windows'
+    $summaryPath = $baseContext.LogPath -replace 'build-windows-', 'build-summary-' -replace '\.log$', '.json'
 
     [pscustomobject]@{
-        Workspace  = $Workspace
-        LogPath    = $logPath
+        Workspace   = $baseContext.Workspace
+        LogPath     = $baseContext.LogPath
         SummaryPath = $summaryPath
-        StartedAt  = (Get-Date).ToString('o')
-        LogWriter  = $null
+        StartedAt   = $baseContext.StartedAt
+        LogWriter   = $baseContext.LogWriter
         StopOnError = [bool]$StopOnError
-        Results    = @{
+        Results     = @{
             Succeeded = New-Object System.Collections.Generic.List[string]
             Failed    = New-Object System.Collections.Generic.List[string]
             Errors    = @{}
@@ -42,21 +47,7 @@ function Open-BuildLog {
         [pscustomobject]$Context
     )
 
-    $parentDir = Split-Path -Parent $Context.LogPath
-    if ($parentDir) {
-        Resolve-DirectoryPath -Path $parentDir | Out-Null
-    }
-
-    $fileStream = New-Object System.IO.FileStream(
-        $Context.LogPath,
-        [System.IO.FileMode]::Append,
-        [System.IO.FileAccess]::Write,
-        [System.IO.FileShare]::ReadWrite
-    )
-
-    $writer = New-Object System.IO.StreamWriter($fileStream, [System.Text.Encoding]::UTF8)
-    $writer.AutoFlush = $true
-    $Context.LogWriter = $writer
+    Open-LogWriter -Context $Context
 }
 
 function Close-BuildLog {
@@ -65,15 +56,7 @@ function Close-BuildLog {
         [pscustomobject]$Context
     )
 
-    if ($Context.LogWriter) {
-        try {
-            $Context.LogWriter.Flush()
-            $Context.LogWriter.Dispose()
-        } catch {
-        } finally {
-            $Context.LogWriter = $null
-        }
-    }
+    Close-LogWriter -Context $Context
 }
 
 function Write-BuildLog {
@@ -85,11 +68,7 @@ function Write-BuildLog {
         [string]$Message
     )
 
-    Write-Host $Message
-    if ($Context.LogWriter) {
-        $timestamp = Get-Date -Format "HH:mm:ss"
-        $Context.LogWriter.WriteLine("[$timestamp] $Message")
-    }
+    Write-ContextLog -Context $Context -Message $Message -Level Info
 }
 
 function Write-BuildLogWarning {
@@ -101,18 +80,7 @@ function Write-BuildLogWarning {
         [string]$Message
     )
 
-    if ($Message) {
-        Write-Warning $Message
-        if ($Context.LogWriter) {
-            $timestamp = Get-Date -Format "HH:mm:ss"
-            $Context.LogWriter.WriteLine("[$timestamp] WARNING: $Message")
-        }
-    } else {
-        Write-Host ""
-        if ($Context.LogWriter) {
-            $Context.LogWriter.WriteLine("")
-        }
-    }
+    Write-ContextLog -Context $Context -Message $Message -Level Warning
 }
 
 function Write-BuildLogError {
@@ -124,18 +92,7 @@ function Write-BuildLogError {
         [string]$Message
     )
 
-    if ($Message) {
-        Write-Host $Message -ForegroundColor Red
-        if ($Context.LogWriter) {
-            $timestamp = Get-Date -Format "HH:mm:ss"
-            $Context.LogWriter.WriteLine("[$timestamp] ERROR: $Message")
-        }
-    } else {
-        Write-Host ""
-        if ($Context.LogWriter) {
-            $Context.LogWriter.WriteLine("")
-        }
-    }
+    Write-ContextLog -Context $Context -Message $Message -Level Error
 }
 
 function Write-BuildLogSuccess {
@@ -147,18 +104,7 @@ function Write-BuildLogSuccess {
         [string]$Message
     )
 
-    if ($Message) {
-        Write-Host $Message -ForegroundColor Green
-        if ($Context.LogWriter) {
-            $timestamp = Get-Date -Format "HH:mm:ss"
-            $Context.LogWriter.WriteLine("[$timestamp] SUCCESS: $Message")
-        }
-    } else {
-        Write-Host ""
-        if ($Context.LogWriter) {
-            $Context.LogWriter.WriteLine("")
-        }
-    }
+    Write-ContextLog -Context $Context -Message $Message -Level Success
 }
 
 function Invoke-BuildExternal {
