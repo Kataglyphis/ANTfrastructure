@@ -79,26 +79,35 @@ function Write-ContextLog {
         [string]$Level = 'Info'
     )
 
+    $suppressConsoleOutput = $false
+    if ($null -ne $Context.PSObject.Properties['SuppressConsoleOutput']) {
+        $suppressConsoleOutput = [bool]$Context.SuppressConsoleOutput
+    }
+
     if (-not $Message) {
-        Write-Host ''
+        if (-not $suppressConsoleOutput) {
+            Write-Host ''
+        }
         if ($Context.LogWriter) {
             $Context.LogWriter.WriteLine('')
         }
         return
     }
 
-    switch ($Level) {
-        'Warning' {
-            Write-Warning $Message
-        }
-        'Error' {
-            Write-Host $Message -ForegroundColor Red
-        }
-        'Success' {
-            Write-Host $Message -ForegroundColor Green
-        }
-        default {
-            Write-Host $Message
+    if (-not $suppressConsoleOutput) {
+        switch ($Level) {
+            'Warning' {
+                Write-Warning $Message
+            }
+            'Error' {
+                Write-Host $Message -ForegroundColor Red
+            }
+            'Success' {
+                Write-Host $Message -ForegroundColor Green
+            }
+            default {
+                Write-Host $Message
+            }
         }
     }
 

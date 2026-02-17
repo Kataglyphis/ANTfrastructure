@@ -32,6 +32,7 @@ function New-BuildContext {
         SummaryPath = $summaryPath
         StartedAt   = $baseContext.StartedAt
         LogWriter   = $baseContext.LogWriter
+        SuppressConsoleOutput = $false
         StopOnError = [bool]$StopOnError
         Results     = @{
             Succeeded = New-Object System.Collections.Generic.List[string]
