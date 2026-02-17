@@ -14,7 +14,7 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete old GHCR versions (Keep last 3 per tag)
+      - name: Delete old GHCR versions
         uses: actions/github-script@v7
         with:
           # Use a PAT if you need to manage org packages not granting Actions access to this repo.
@@ -25,9 +25,11 @@ jobs:
             const packageType = 'container';
             const packageName = 'kataglyphis_beschleuniger';
             
-            // Configuration
-            const keepPerTag = 3;    // Keep 3 versions for every unique tag
-            const keepUntagged = 3;  // Keep 3 newest untagged images
+            // --- CONFIGURATION ---
+            const keepPerTag = 3;      // Keep 3 versions for every unique tag
+            const keepUntagged = 50;   // Keep 50 newest untagged images (buffers multi-arch layers)
+            const minAgeDays = 14;     // SAFETY NET: Never delete anything younger than 14 days
+            // ---------------------
 
             // --- Helper Functions ---
             async function isOrganization(name) {
@@ -39,9 +41,9 @@ jobs:
                 throw e;
               }
             }
-
+            
             const ownerIsOrg = await isOrganization(owner);
-
+            
             function listVersionsRequestParams(page) {
               const params = {
                 package_type: packageType,
@@ -54,7 +56,7 @@ jobs:
               }
               return { ...params, method: 'GET', url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions', username: owner };
             }
-
+            
             function deleteVersionRequestParams(versionId) {
               const params = {
                 package_type: packageType,
@@ -91,12 +93,22 @@ jobs:
             const versionsToKeep = new Set();
             const mapTagToVersions = {}; 
             const untaggedVersions = [];
+            const now = new Date();
 
             // Sort by date desc (newest first)
             versions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-            // Group versions by their tags
+            // Group versions
             for (const v of versions) {
+              const createdDate = new Date(v.created_at);
+              const ageInDays = (now - createdDate) / (1000 * 60 * 60 * 24);
+
+              // Rule 1: Always keep very recent versions (Safety Net)
+              if (ageInDays < minAgeDays) {
+                versionsToKeep.add(v.id);
+                // We continue processing to populate maps, but this ID is now safe.
+              }
+
               const tags = v.metadata?.container?.tags || [];
               if (tags.length === 0) {
                 untaggedVersions.push(v);
@@ -108,19 +120,26 @@ jobs:
               }
             }
 
-            // Logic: Keep top X for each Tag
+            // Rule 2: Keep top X for each Tag
             for (const tag in mapTagToVersions) {
               const tagVersions = mapTagToVersions[tag];
-              // Take the first 3 (newest)
               const keepers = tagVersions.slice(0, keepPerTag);
               keepers.forEach(v => versionsToKeep.add(v.id));
             }
 
-            // Logic: Keep top X for Untagged (optional, prevents deleting actively pushed untagged images)
-            const untaggedKeepers = untaggedVersions.slice(0, keepUntagged);
-            untaggedKeepers.forEach(v => versionsToKeep.add(v.id));
+            // Rule 3: Keep top X for Untagged 
+            // (Only count those not already kept by the Age Rule)
+            let untaggedCount = 0;
+            for (const v of untaggedVersions) {
+                if (versionsToKeep.has(v.id)) continue; // Already kept by age rule
+                
+                if (untaggedCount < keepUntagged) {
+                    versionsToKeep.add(v.id);
+                    untaggedCount++;
+                }
+            }
 
-            core.info(`Keeping ${versionsToKeep.size} versions (across ${Object.keys(mapTagToVersions).length} tags + untagged).`);
+            core.info(`Keeping ${versionsToKeep.size} versions (Age < ${minAgeDays} days OR Top ${keepPerTag} per tag OR Top ${keepUntagged} untagged).`);
 
             // --- 3. Delete the rest ---
             const toDelete = versions.filter(v => !versionsToKeep.has(v.id));
