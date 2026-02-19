@@ -289,20 +289,35 @@ function Remove-BuildRoot {
     }
 
     Write-BuildLog -Context $Context -Message "Terminating potentially locking processes..."
-    @("flutter", "dart", "msbuild", "devenv", "ninja", "cmake") | ForEach-Object {
-        Get-Process $_ -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    $processNames = @(
+        "flutter", "dart",
+        "msbuild", "devenv",
+        "ninja", "cmake", "ctest",
+        "cl", "link",
+        "clang", "clang-cl", "lld-link",
+        "vstest.console", "testhost",
+        "cargo", "rustc"
+    )
+
+    foreach ($name in $processNames) {
+        Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     }
 
     Start-Sleep -Seconds 3
 
-    for ($i = 1; $i -le 3; $i++) {
+    for ($i = 1; $i -le 8; $i++) {
         try {
             Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
             Write-BuildLog -Context $Context -Message "Build directory removed: $Path"
             return $true
         } catch {
-            Write-BuildLogWarning -Context $Context -Message "Attempt $i/3 failed: $($_.Exception.Message)"
-            if ($i -lt 3) { Start-Sleep -Seconds 2 }
+            Write-BuildLogWarning -Context $Context -Message "Attempt $i/8 failed: $($_.Exception.Message)"
+
+            foreach ($name in $processNames) {
+                Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            }
+
+            if ($i -lt 8) { Start-Sleep -Seconds 2 }
         }
     }
 
