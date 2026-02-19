@@ -40,7 +40,7 @@ RUN `
     Remove-Item "Git-64-bit.exe" -Force
 
 # making the WiX packaging tool available for cmake
-RUN dotnet tool install --tool-path C:\WiX wix --version 4.0.4
+RUN dotnet tool install --tool-path C:\WiX wix --version 4.0.6
 
 COPY windows\scripts\Setup-Gstreamer.ps1 C:\temp\Setup-Gstreamer.ps1
 
