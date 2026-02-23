@@ -6,8 +6,32 @@
 Kataglyphis-ContainerHub documentation
 ======================================
 
-This repository provides Docker templates for Linux (GPU-friendly dev stack), a slim nginx webserver,
-and a Windows build image.
+.. rst-class:: hero-section
+
+Docker templates for Linux GPU development stacks, a slim nginx webserver, and a Windows build image.
+
+- Multi-stage Linux images for reproducible caching
+- Windows toolchain container for CI and local builds
+- Optional media and Android layers for specialized workloads
+
+.. grid:: 2
+   :gutter: 2
+
+   .. grid-item-card:: Linux Dockerfiles
+
+      Multi-stage Linux images: ``os-deps`` → ``toolchain`` → ``media`` → ``android`` → ``final``.
+
+   .. grid-item-card:: Windows Dockerfile
+
+      Build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter and WiX.
+
+   .. grid-item-card:: Build Commands
+
+      Ready-to-use examples for ``docker buildx`` and ``nerdctl`` workflows.
+
+   .. grid-item-card:: CI-Friendly Docs
+
+      Documentation site designed for readability in light and dark mode.
 
 Linux: multi-stage Dockerfile
 -----------------------------
