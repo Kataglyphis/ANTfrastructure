@@ -9,7 +9,7 @@
 FROM mcr.microsoft.com/windows/servercore:ltsc2025
 
 # Build-time variable for the Vulkan SDK version (default can be overridden).
-ARG VULKAN_VERSION=1.4.335.0
+ARG VULKAN_VERSION=1.4.341.1
 ARG GST_VERSION=1.28.0
 ARG ARCH=x86_64
 ARG FLAVOR=msvc
