@@ -9,7 +9,7 @@
 FROM mcr.microsoft.com/windows/servercore:ltsc2025
 
 # Build-time variable for the Vulkan SDK version (default can be overridden).
-ARG VULKAN_VERSION=1.4.335.0
+ARG VULKAN_VERSION=1.4.341.1
 ARG GST_VERSION=1.28.0
 ARG ARCH=x86_64
 ARG FLAVOR=msvc
@@ -25,11 +25,11 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null
 
 # Copy the install script into the image
-COPY windows\scripts\Setup-VS.ps1 C:\temp\Setup-VS.ps1
+COPY windows\scripts\setup-vs.ps1 C:\temp\setup-vs.ps1
 
 # Run the installer script. Use -ExecutionPolicy Bypass so the script runs during build.
 # You may pass parameters directly to the script; below we pass Docker ARGs as script params.
-RUN powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\Setup-VS.ps1 `
+RUN powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\setup-vs.ps1 `
     -TempDir "$env:TEMP_DIR"
 
 # scoop needs GIT :)))
@@ -42,7 +42,8 @@ RUN `
 # making the WiX packaging tool available for cmake
 RUN dotnet tool install --tool-path C:\WiX wix --version 4.0.6
 
-COPY windows\scripts\Setup-Gstreamer.ps1 C:\temp\Setup-Gstreamer.ps1
+COPY windows\scripts\setup-gstreamer.ps1 C:\temp\setup-gstreamer.ps1
+COPY windows\scripts\modules C:\temp\modules
 
 # -----------------------------------------------------------------------------
 # Install GStreamer using the robust script
@@ -56,7 +57,7 @@ RUN `
     Write-Host "Installing GStreamer from $url ..."; `
     `
     # Run the helper script
-    C:\temp\Setup-Gstreamer.ps1 `
+    C:\temp\setup-gstreamer.ps1 `
         -Url $url `
         -InstallDir 'C:\gstreamer' `
         -LogDir 'C:\temp\logs' `
