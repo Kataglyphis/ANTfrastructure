@@ -53,7 +53,7 @@ try {
         $scoopShims = "C:\Users\ContainerAdministrator\scoop\shims"
         if (-not ($env:PATH -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ieq $scoopShims })) {
             Write-BuildLog -Context $Context -Message "Prepending scoop shims to PATH: $scoopShims"
-            $global:env:PATH = "$scoopShims;$env:PATH"
+            $env:PATH = "$scoopShims;$env:PATH"
         } else {
             Write-BuildLog -Context $Context -Message "Scoop shims already in PATH"
         }
