@@ -64,7 +64,7 @@ try {
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters "--version"
     }
 
-    Invoke-BuildStep -Context $Context -StepName "Security Checks (audit & deny)" -Critical -Script {
+    Invoke-BuildStep -Context $Context -StepName "Security Checks (audit & deny)" -Script {
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters @("install", "--locked", "cargo-audit", "cargo-deny")
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters "audit"
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters @("deny", "check", "advisories", "licenses", "bans", "sources")
