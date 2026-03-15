@@ -13,7 +13,11 @@ RUN groupadd -r nginx || true \
  && chown -R nginx:nginx /var/www/html /var/cache/nginx
 
 # Put your full config into the real global path
-COPY ./linux/webserver/nginx.conf /etc/nginx/nginx.conf
+COPY ./webserver/nginx.conf /etc/nginx/nginx.conf
+
+# Copy website files
+COPY ./webserver/dist/ /var/www/html/
+RUN chown -R nginx:nginx /var/www/html && chmod -R 755 /var/www/html
 
 # Copy SSL certificates (these will be generated separately)
 # Create a placeholder script to generate self-signed cert if none exists
