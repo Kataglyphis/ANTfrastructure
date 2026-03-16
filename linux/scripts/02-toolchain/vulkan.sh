@@ -59,11 +59,11 @@ install_vulkan_sdk() {
   sudo chmod -R a+rX "${target_dir}"
   log "Extracted to: ${target_dir}"
   log "To use in a shell: source ${target_dir}/setup-env.sh"
-  if [ "$arch_suffix" = "aarch64" ]; then
+  if [[ "$arch_suffix" == "aarch64" || "$arch_suffix" == "riscv64" ]]; then
     (
       cd "${target_dir}"
       sudo chmod +x vulkansdk
-      log "Patching vulkansdk for non-interactive installs on ARM"
+      log "Patching vulkansdk for non-interactive installs on ${arch_suffix}"
       sudo sed -E -i.bak \
         -e '/\bapt(-get)?[[:space:]]+install\b/ { /(-y|--assume-yes|--assumeyes|--yes)/! s/(\bapt(-get)?[[:space:]]+install\b)/\1 -y/ }' \
         -e '/\bdnf[[:space:]]+install\b/     { /(-y|--assumeyes|--assume-yes|--yes)/! s/(\bdnf[[:space:]]+install\b)/\1 -y/ }' \

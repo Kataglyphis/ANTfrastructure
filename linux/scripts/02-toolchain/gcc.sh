@@ -25,11 +25,10 @@ install_gcc() {
     fi
     
     log "Building GCC ${full_version} from source..."
-    GCC_VERSION="${full_version}" \
-      PREFIX="${PREFIX:-/opt/gcc-${full_version}}" \
+    PREFIX="${PREFIX:-/opt/gcc-${full_version}}" \
       BUILD_DIR="${BUILD_DIR:-${HOME}/tmp2/gcc-build-${full_version}}" \
       JOBS="${JOBS:-$(nproc)}" \
-      bash "${builder}"
+      bash "${builder}" --version "${full_version}"
     return 0
   fi
 
