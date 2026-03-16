@@ -3,83 +3,116 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 022
 
-# build-clang21-riscv.sh
-# MODIFIED: Disabled Tests/Examples + Dynamic RAM config + Root-Fix
+# build-clang.sh
+# Build LLVM/Clang from source for any architecture (RISC-V, ARM64, x86_64, etc.)
+# Usage: build-clang.sh --version 22 [options]
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_HELPERS_LOADED=""
-if [ -f "${_SCRIPT_DIR}/common.sh" ]; then
-    source "${_SCRIPT_DIR}/common.sh"
-    _HELPERS_LOADED=1
-elif [ -f "${_SCRIPT_DIR}/../01-core/common.sh" ]; then
-    source "${_SCRIPT_DIR}/../01-core/common.sh"
-    _HELPERS_LOADED=1
-fi
 
-if [ -z "${_HELPERS_LOADED}" ]; then
-    info() { printf '[INFO] %s\n' "$*"; }
-    warn() { printf '[WARN] %s\n' "$*" >&2; }
-    err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
-    die()  { err "$@"; }
-    require_sudo() {
-        if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-            command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
-            SUDO="sudo"
-        else
-            SUDO=""
-        fi
-    }
-    apt_install() {
-        ${SUDO:-} apt-get update -y
-        ${SUDO:-} apt-get install -y --no-install-recommends "$@"
-    }
-    detect_system() { :; }
+# Source shared helpers (prefer symlinked location for Docker builds)
+# shellcheck disable=SC1090
+if [ -f "${_SCRIPT_DIR}/common.sh" ]; then
+  source "${_SCRIPT_DIR}/common.sh"
+elif [ -f "${_SCRIPT_DIR}/../01-core/common.sh" ]; then
+  source "${_SCRIPT_DIR}/../01-core/common.sh"
+elif [ -f "/opt/scripts/core/common.sh" ]; then
+  source "/opt/scripts/core/common.sh"
+else
+  # Minimal fallbacks when core helpers aren't available
+  info() { printf '[INFO] %s\n' "$*"; }
+  warn() { printf '[WARN] %s\n' "$*" >&2; }
+  err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
+  die()  { err "$@"; }
+  require_sudo() {
+    if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+      command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
+      SUDO="sudo"
+    else
+      SUDO=""
+    fi
+  }
+  apt_install() {
+    ${SUDO:-} apt-get update -qq
+    ${SUDO:-} apt-get install -y --no-install-recommends "$@"
+  }
+  detect_system() { :; }
 fi
 
 on_err() {
-    local line="${1:-?}"
-    local cmd="${2:-?}"
-    err "Command failed (line ${line}): ${cmd}"
+  local line="${1:-?}"
+  local cmd="${2:-?}"
+  err "Command failed (line ${line}): ${cmd}"
 }
 trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
 
 usage() {
-    cat <<'USAGE'
-Usage: ./build-clang21-riscv.sh [PREFIX] [options]
+  cat <<'USAGE'
+Usage: build-clang.sh --version <N> [options]
+
+Build LLVM/Clang from source for any architecture.
+
+Options:
+  --version N       LLVM/Clang major version (required, e.g., 21, 22)
+  --release X.Y.Z   LLVM release version (optional, auto-detected if not specified)
+  --prefix DIR      Install prefix (default: /usr/local/llvm-<version>)
+  --tag TAG         Git tag to use (optional, overrides --release)
+  --bootstrap       Enable bootstrap build (default for non-RISC-V)
+  --no-bootstrap    Disable bootstrap build (default for RISC-V)
+  --no-strip        Do not strip binaries after install
+  --keep-src        Keep source directory after build
+  --keep-build      Keep build directory after install
+  --jobs N          Number of parallel jobs (auto-detected if not specified)
+  --targets LIST    LLVM targets to build (default: native; e.g., "RISCV;X86;AArch64")
+  -h, --help        Show this help message
+
+Examples:
+  build-clang.sh --version 22
+  build-clang.sh --version 21 --release 21.1.8 --prefix /opt/llvm-21
+  build-clang.sh --version 22 --no-bootstrap --jobs 4
+  build-clang.sh --version 22 --targets "RISCV;X86;AArch64"
+
 USAGE
 }
 
 # --- Default Values ---
-PREFIX="/usr/local/llvm-21"
+LLVM_VERSION=""
+LLVM_RELEASE=""
+LLVM_TAG=""
+PREFIX=""
 ARCH="$(uname -m)"
+NUM_JOBS=""
 
-# Default settings
 if [ "$ARCH" = "riscv64" ]; then
     BOOTSTRAP="OFF"
-    info "RISC-V detected: Defaulting to NO-BOOTSTRAP to save time."
 else
     BOOTSTRAP="ON"
 fi
 
-LLVM_TAG="llvmorg-21.1.8"
 DO_STRIP="1"
 KEEP_SRC="0"
 KEEP_BUILD="0"
 
-if [ "${1:-}" != "" ] && [[ "${1}" != -* ]]; then
-    PREFIX="$1"
-    shift || true
-fi
-
 # Parse options
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --no-bootstrap) BOOTSTRAP="OFF"; shift ;; 
-        --bootstrap)    BOOTSTRAP="ON"; shift ;;
-        --no-strip) DO_STRIP="0"; shift ;; 
-        --keep-src) KEEP_SRC="1"; shift ;; 
-        --keep-build) KEEP_BUILD="1"; shift ;; 
-        --tag) LLVM_TAG="$2"; shift 2 ;; 
+        --version)
+            LLVM_VERSION="$2"; shift 2 ;;
+        --release)
+            LLVM_RELEASE="$2"; shift 2 ;;
+        --prefix)
+            PREFIX="$2"; shift 2 ;;
+        --tag)
+            LLVM_TAG="$2"; shift 2 ;;
+        --no-bootstrap)
+            BOOTSTRAP="OFF"; shift ;;
+        --bootstrap)
+            BOOTSTRAP="ON"; shift ;;
+        --no-strip)
+            DO_STRIP="0"; shift ;;
+        --keep-src)
+            KEEP_SRC="1"; shift ;;
+        --keep-build)
+            KEEP_BUILD="1"; shift ;;
         --jobs|-j)
             if [ -n "${2:-}" ] && [[ "$2" =~ ^[0-9]+$ ]]; then
                 NUM_JOBS="$2"
@@ -88,15 +121,44 @@ while [ "$#" -gt 0 ]; do
                 die "--jobs requires a numeric argument"
             fi
             ;;
-        -h|--help) usage; exit 0 ;; 
-        *) die "Unknown option: $1" ;; 
+        -h|--help)
+            usage; exit 0 ;;
+        *)
+            die "Unknown option: $1" ;;
     esac
 done
+
+# --- Validate and compute values ---
+if [ -z "${LLVM_VERSION:-}" ]; then
+    die "Missing required option: --version (e.g., --version 22)"
+fi
+
+if [ "$ARCH" = "riscv64" ]; then
+    info "RISC-V detected: Defaulting to NO-BOOTSTRAP to save time."
+fi
+
+# Compute release version if not specified
+if [ -z "${LLVM_RELEASE:-}" ]; then
+    # Default to .1.0 for new major versions, can be overridden
+    LLVM_RELEASE="${LLVM_VERSION}.1.0"
+fi
+
+# Compute LLVM_TAG if not specified
+if [ -z "${LLVM_TAG:-}" ]; then
+    LLVM_TAG="llvmorg-${LLVM_RELEASE}"
+fi
+
+# Set default prefix if not specified
+if [ -z "${PREFIX:-}" ]; then
+    PREFIX="/usr/local/llvm-${LLVM_VERSION}"
+fi
+
+info "Building LLVM/Clang ${LLVM_VERSION} (${LLVM_TAG})"
+info "Install prefix: ${PREFIX}"
 
 # --- Initialization & WORKDIR FIX ---
 WD="$(pwd)"
 
-# FIX: Check if we are in Root (/) and move to a safe place if so
 if [ "${WD}" = "/" ]; then
     warn "Detected execution from Root (/). Creating safe workspace in /tmp/llvm-work..."
     mkdir -p /tmp/llvm-work
@@ -124,7 +186,6 @@ run_preflight_checks() {
     info "---- preflight: disk space ----"
     local avail_mb
     avail_mb=$(df --output=avail -m "${WD}" 2>/dev/null | tail -n1 || echo 0)
-    # FIX: Use if-statement to avoid crash if space is SUFFICIENT
     if [ "${avail_mb}" -lt 15000 ]; then
         warn "Low disk: ${avail_mb}MB"
     fi
@@ -136,7 +197,6 @@ if [ -n "${NUM_JOBS:-}" ] && [[ "${NUM_JOBS}" =~ ^[0-9]+$ ]]; then
 elif [ -n "${CLANG_NUM_JOBS:-}" ] && [[ "${CLANG_NUM_JOBS}" =~ ^[0-9]+$ ]]; then
     NUM_JOBS="${CLANG_NUM_JOBS}"
 else
-    # Auto-Calculate based on RAM
     if [ -f /proc/meminfo ]; then
         TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
         TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
@@ -146,7 +206,6 @@ else
 
     AVAIL_CORES=$(nproc || echo 1)
     
-    # Logic: 2000MB per Job
     MEM_LIMIT_JOBS=$((TOTAL_MEM_MB / 2000))
     if [ "$MEM_LIMIT_JOBS" -lt 1 ]; then MEM_LIMIT_JOBS=1; fi
 
@@ -169,7 +228,6 @@ apt_install build-essential git cmake ninja-build python3 libedit-dev \
     libncurses5-dev zlib1g-dev libxml2-dev libssl-dev pkg-config \
     libffi-dev curl ca-certificates file binutils ccache
 
-# Try to install LLD gently
 if ${SUDO} apt-get install -y lld >/dev/null 2>&1; then
     info "LLD installed successfully."
     HAS_LLD=1
@@ -181,19 +239,17 @@ fi
 run_preflight_checks
 
 if [[ ! -d "${SRC_DIR}" ]]; then
-  info "Cloning llvm-project ${LLVM_TAG}..."
-  git clone --depth 1 --branch "${LLVM_TAG}" https://github.com/llvm/llvm-project.git "${SRC_DIR}"
+    info "Cloning llvm-project ${LLVM_TAG}..."
+    git clone --depth 1 --branch "${LLVM_TAG}" https://github.com/llvm/llvm-project.git "${SRC_DIR}"
 fi
 
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
-# Check architecture: Force default linker (BFD) on RISC-V to fix GCC 15 compat
 if [ "$(uname -m)" = "riscv64" ]; then
     LINKER_FLAG=""
 else
-    # Standard logic for other architectures
     if [ "$HAS_LLD" = "1" ]; then
         LINKER_FLAG="-DLLVM_USE_LINKER=lld"
     elif command -v ld.gold >/dev/null 2>&1; then
@@ -203,13 +259,11 @@ else
     fi
 fi
 
-# FIX: Try to find GCC/G++ specifically if CC not set
 if [ -z "${CC:-}" ]; then
     if command -v gcc >/dev/null 2>&1; then export CC=gcc; fi
     if command -v g++ >/dev/null 2>&1; then export CXX=g++; fi
 fi
 
-# NEW: Explicitly disable Tests, Examples and Benchmarks
 CMAKE_FLAGS=(
     -G Ninja
     -DCMAKE_BUILD_TYPE=Release
@@ -264,4 +318,4 @@ if [[ "${WD}" == "/tmp/llvm-work" ]]; then
     rm -rf "/tmp/llvm-work"
 fi
 
-info "Done. Clang 21 installed at ${INSTALL_DIR}"
+info "Done. Clang ${LLVM_VERSION} installed at ${INSTALL_DIR}"

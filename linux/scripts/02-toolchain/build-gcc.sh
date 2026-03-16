@@ -3,31 +3,28 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 022
 
-# build-and-make-default-gcc15.sh
-# Builds GCC 15.x from source and registers it as the system default via update-alternatives.
+# build-gcc.sh
+# Builds GCC from source and registers it as the system default via update-alternatives.
 # Default build directory is $HOME/tmp2/gcc-build-<version> (no /tmp usage).
 #
 # Usage:
-#   ./build-and-make-default-gcc15.sh
-#   GCC_VERSION=15.2.0 PREFIX=/opt/gcc-15 BUILD_DIR="$HOME/tmp2/mybuild" JOBS=4 ./build-and-make-default-gcc15.sh
+#   ./build-gcc.sh --version 15.2.0
+#   ./build-gcc.sh --version 14.2.0 --prefix /opt/gcc-14 --jobs 8
+#   GCC_VERSION=15.2.0 ./build-gcc.sh
+#   GCC_VERSION=15.2.0 PREFIX=/opt/gcc-15 BUILD_DIR="$HOME/tmp2/mybuild" JOBS=4 ./build-gcc.sh
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-_HELPERS_LOADED=""
-# Prefer shared helpers (common.sh sources parallelism.sh). In Docker builds, core scripts
-# are often symlinked into this directory.
+# Source shared helpers (prefer symlinked location for Docker builds)
 # shellcheck disable=SC1090
 if [ -f "${_SCRIPT_DIR}/common.sh" ]; then
   source "${_SCRIPT_DIR}/common.sh"
-  _HELPERS_LOADED=1
 elif [ -f "${_SCRIPT_DIR}/../01-core/common.sh" ]; then
-  # shellcheck disable=SC1090
   source "${_SCRIPT_DIR}/../01-core/common.sh"
-  _HELPERS_LOADED=1
-fi
-
-# Minimal fallbacks when core helpers aren't available.
-if [ -z "${_HELPERS_LOADED}" ]; then
+elif [ -f "/opt/scripts/core/common.sh" ]; then
+  source "/opt/scripts/core/common.sh"
+else
+  # Minimal fallbacks when core helpers aren't available
   info() { printf '[INFO] %s\n' "$*"; }
   warn() { printf '[WARN] %s\n' "$*" >&2; }
   err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
@@ -41,7 +38,7 @@ if [ -z "${_HELPERS_LOADED}" ]; then
     fi
   }
   apt_install() {
-    ${SUDO:-} apt-get update -y
+    ${SUDO:-} apt-get update -qq
     ${SUDO:-} apt-get install -y --no-install-recommends "$@"
   }
   detect_system() { :; }
@@ -57,31 +54,71 @@ trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
 usage() {
   cat <<'USAGE'
 Usage:
-  ./build-and-make-default-gcc15.sh [options]
+  ./build-gcc.sh --version <X.Y.Z> [options]
+  ./build-gcc.sh -v <X.Y.Z> [options]
 
-Options (all also configurable via ENV):
-  --keep-build         Do not delete BUILD_DIR at the end
-  -h, --help           Show this help
+Options:
+  --version, -v <version>   GCC version to build (required, e.g., 15.2.0, 14.2.0)
+  --prefix <dir>            Install prefix (default: /opt/gcc-<version>)
+  --build-dir <dir>         Build directory (default: $HOME/tmp2/gcc-build-<version>)
+  --jobs, -j <n>            Parallel jobs (auto-detected if not specified)
+  --keep-build              Do not delete BUILD_DIR at the end
+  -h, --help                Show this help
 
-Environment:
-  GCC_VERSION              GCC version to build (default: 15.2.0)
-  BUILD_DIR                Build directory (default: $HOME/tmp2/gcc-build-<version>)
-  PREFIX                   Install prefix (default: /opt/gcc-<version>)
-  JOBS                     Requested parallel jobs (will be capped by cgroup CPU/mem when helpers exist)
-  GCC_BUILD_MB_PER_JOB     Memory cap per job for parallel build (default: 2500)
+Environment (overrides CLI args):
+  GCC_VERSION               GCC version to build
+  PREFIX                    Install prefix
+  BUILD_DIR                 Build directory
+  JOBS                      Parallel jobs
+  GCC_BUILD_MB_PER_JOB      Memory cap per job for parallel build (default: 2500)
 USAGE
 }
 
-KEEP_BUILD="${KEEP_BUILD:-0}"
+KEEP_BUILD="0"
+GCC_VERSION=""
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --keep-build) KEEP_BUILD=1; shift ;;
-    -h|--help) usage; exit 0 ;;
-    *) die "Unknown option: $1" ;;
+    --version|-v)
+      GCC_VERSION="$2"
+      shift 2
+      ;;
+    --prefix)
+      PREFIX="$2"
+      shift 2
+      ;;
+    --build-dir)
+      BUILD_DIR="$2"
+      shift 2
+      ;;
+    --jobs|-j)
+      JOBS="$2"
+      shift 2
+      ;;
+    --keep-build)
+      KEEP_BUILD=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "Unknown option: $1"
+      ;;
   esac
 done
 
-GCC_VERSION="${GCC_VERSION:-15.2.0}"
+# Fallback to environment variable if not set via CLI
+GCC_VERSION="${GCC_VERSION:-${GCC_VERSION_ENV:-}}"
+if [ -z "${GCC_VERSION}" ]; then
+  die "GCC version is required. Use --version <X.Y.Z> or set GCC_VERSION environment variable."
+fi
+
+# Validate version format
+if ! [[ "${GCC_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  warn "GCC_VERSION '${GCC_VERSION}' does not match expected format X.Y.Z (e.g., 15.2.0)"
+fi
 
 # DEFAULT: use a tmp2 directory in the user's home — avoids /tmp entirely
 BUILD_DIR="${BUILD_DIR:-${HOME}/tmp2/gcc-build-${GCC_VERSION}}"

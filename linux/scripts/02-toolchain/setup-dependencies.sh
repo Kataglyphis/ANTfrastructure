@@ -38,10 +38,10 @@ EOF
 
 main() {
   # Defaults (can be overridden by args)
-  LLVM_WANTED="${LLVM_WANTED:-21}"
-  CLANG_WANTED="${CLANG_WANTED:-21}"
+  LLVM_WANTED="${LLVM_WANTED:-22}"
+  CLANG_WANTED="${CLANG_WANTED:-22}"
   GCC_WANTED="${GCC_WANTED:-14}"
-  VULKAN_VERSION_DEFAULT="${VULKAN_VERSION_DEFAULT:-1.4.328.1}"
+  VULKAN_VERSION_DEFAULT="${VULKAN_VERSION_DEFAULT:-1.4.341.1}"
 
   local cmd="all"
   local arch_override=""

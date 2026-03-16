@@ -23,6 +23,23 @@ git submodule sync --recursive || true
 git submodule update --init --recursive
 
 # ----------------------------
+# Clone GenAI repo if enabled
+# ----------------------------
+if [[ "${BUILD_GENAI}" == "true" ]]; then
+  if [ ! -d "${GENAI_SRC_DIR}" ]; then
+    info "Cloning ONNX Runtime GenAI ${GENAI_VERSION} into ${GENAI_SRC_DIR}"
+    git clone --branch "${GENAI_VERSION}" --depth 1 "${GENAI_REPO}" "${GENAI_SRC_DIR}"
+  else
+    info "GenAI source directory exists at ${GENAI_SRC_DIR}"
+  fi
+  
+  cd "${GENAI_SRC_DIR}"
+  git submodule sync --recursive || true
+  git submodule update --init --recursive
+  cd "${ORT_SRC_DIR}"
+fi
+
+# ----------------------------
 # Python env (uv venv) to avoid PEP 668 issues
 # ----------------------------
 if [ "${USE_UV_VENV}" = "true" ]; then

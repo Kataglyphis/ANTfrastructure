@@ -72,8 +72,8 @@ if command -v apt-get >/dev/null 2>&1; then
   sudo apt-get install -y cmake
   cmake --version
 
-  LLVM_WANTED=21
-  CLANG_WANTED=21
+  LLVM_WANTED=22
+  CLANG_WANTED=22
   GCC_WANTED=14
   export DEBIAN_FRONTEND=noninteractive
 
