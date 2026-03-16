@@ -58,11 +58,13 @@ Options:
   --tag TAG         Git tag to use (optional, overrides --release)
   --bootstrap       Enable bootstrap build (default for non-RISC-V)
   --no-bootstrap    Disable bootstrap build (default for RISC-V)
+  --lto             Enable LTO ( ThinLTO for Release builds)
   --no-strip        Do not strip binaries after install
   --keep-src        Keep source directory after build
   --keep-build      Keep build directory after install
   --jobs N          Number of parallel jobs (auto-detected if not specified)
   --targets LIST    LLVM targets to build (default: native; e.g., "RISCV;X86;AArch64")
+  --ccache          Use ccache for faster rebuilds
   -h, --help        Show this help message
 
 Examples:
@@ -81,6 +83,7 @@ LLVM_TAG=""
 PREFIX=""
 ARCH="$(uname -m)"
 NUM_JOBS=""
+LLVM_TARGETS=""
 
 if [ "$ARCH" = "riscv64" ]; then
     BOOTSTRAP="OFF"
@@ -91,6 +94,8 @@ fi
 DO_STRIP="1"
 KEEP_SRC="0"
 KEEP_BUILD="0"
+USE_CCACHE="0"
+ENABLE_LTO="OFF"
 
 # Parse options
 while [ "$#" -gt 0 ]; do
@@ -107,12 +112,18 @@ while [ "$#" -gt 0 ]; do
             BOOTSTRAP="OFF"; shift ;;
         --bootstrap)
             BOOTSTRAP="ON"; shift ;;
+        --lto)
+            ENABLE_LTO="Thin"; shift ;;
         --no-strip)
             DO_STRIP="0"; shift ;;
         --keep-src)
             KEEP_SRC="1"; shift ;;
         --keep-build)
             KEEP_BUILD="1"; shift ;;
+        --targets)
+            LLVM_TARGETS="$2"; shift 2 ;;
+        --ccache)
+            USE_CCACHE="1"; shift ;;
         --jobs|-j)
             if [ -n "${2:-}" ] && [[ "$2" =~ ^[0-9]+$ ]]; then
                 NUM_JOBS="$2"
@@ -137,6 +148,28 @@ if [ "$ARCH" = "riscv64" ]; then
     info "RISC-V detected: Defaulting to NO-BOOTSTRAP to save time."
 fi
 
+if [ -z "${LLVM_TARGETS:-}" ]; then
+    case "$ARCH" in
+        x86_64|amd64)    LLVM_TARGETS="X86" ;;
+        aarch64|arm64)   LLVM_TARGETS="AArch64" ;;
+        riscv64|riscv32) LLVM_TARGETS="RISCV" ;;
+        arm*)            LLVM_TARGETS="ARM" ;;
+        *)               LLVM_TARGETS="Native" ;;
+    esac
+fi
+
+if [ "$USE_CCACHE" = "1" ]; then
+    if ! command -v ccache >/dev/null 2>&1; then
+        warn "ccache not found, installing..."
+        apt_install ccache
+    fi
+    CCACHE_DIR="${CCACHE_DIR:-${HOME}/.cache/ccache}"
+    mkdir -p "${CCACHE_DIR}"
+    export CCACHE_DIR
+    export CC="ccache gcc"
+    export CXX="ccache g++"info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
+fi
+
 # Compute release version if not specified
 if [ -z "${LLVM_RELEASE:-}" ]; then
     # Default to .1.0 for new major versions, can be overridden
@@ -155,6 +188,8 @@ fi
 
 info "Building LLVM/Clang ${LLVM_VERSION} (${LLVM_TAG})"
 info "Install prefix: ${PREFIX}"
+info "Target arch: LLVM_TARGETS=${LLVM_TARGETS}"
+info "LTO: ${ENABLE_LTO}, Assertions: OFF, Bootstrap: ${BOOTSTRAP}"
 
 # --- Initialization & WORKDIR FIX ---
 WD="$(pwd)"
@@ -264,16 +299,23 @@ if [ -z "${CC:-}" ]; then
     if command -v g++ >/dev/null 2>&1; then export CXX=g++; fi
 fi
 
+if [ "$USE_CCACHE" = "1" ]; then
+    CCACHE_FLAGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+else
+    CCACHE_FLAGS=""
+fi
+
 CMAKE_FLAGS=(
     -G Ninja
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
     -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;compiler-rt"
-    -DLLVM_TARGETS_TO_BUILD="RISCV"
-    -DLLVM_ENABLE_LTO=OFF
-    -DLLVM_ENABLE_ASSERTIONS=ON
+    -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}"
+    -DLLVM_ENABLE_LTO=${ENABLE_LTO}
+    -DLLVM_ENABLE_ASSERTIONS=OFF
     -DCLANG_ENABLE_BOOTSTRAP=${BOOTSTRAP}
     ${LINKER_FLAG}
+    ${CCACHE_FLAGS}
     -DLLVM_ENABLE_TERMINFO=OFF
     -DLLVM_INCLUDE_TESTS=OFF
     -DLLVM_INCLUDE_EXAMPLES=OFF
@@ -281,7 +323,7 @@ CMAKE_FLAGS=(
     -DCLANG_INCLUDE_TESTS=OFF
 )
 
-echo "==> Configuring with: ${LINKER_FLAG} and Bootstrap=${BOOTSTRAP}"
+echo "==> Configuring: LTO=${ENABLE_LTO}, Bootstrap=${BOOTSTRAP}, Targets=${LLVM_TARGETS}"
 cmake "${CMAKE_FLAGS[@]}" "${SRC_DIR}/llvm"
 
 echo "==> Building..."

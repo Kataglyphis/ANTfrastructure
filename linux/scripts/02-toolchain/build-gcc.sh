@@ -63,6 +63,8 @@ Options:
   --build-dir <dir>         Build directory (default: $HOME/tmp2/gcc-build-<version>)
   --jobs, -j <n>            Parallel jobs (auto-detected if not specified)
   --keep-build              Do not delete BUILD_DIR at the end
+  --no-strip                Do not strip binaries after install
+  --ccache                  Use ccache for faster rebuilds
   -h, --help                Show this help
 
 Environment (overrides CLI args):
@@ -75,6 +77,8 @@ USAGE
 }
 
 KEEP_BUILD="0"
+DO_STRIP="1"
+USE_CCACHE="0"
 GCC_VERSION=""
 
 while [ "$#" -gt 0 ]; do
@@ -91,12 +95,20 @@ while [ "$#" -gt 0 ]; do
       BUILD_DIR="$2"
       shift 2
       ;;
-    --jobs|-j)
+    --jobs,-j)
       JOBS="$2"
       shift 2
       ;;
     --keep-build)
       KEEP_BUILD=1
+      shift
+      ;;
+    --no-strip)
+      DO_STRIP="0"
+      shift
+      ;;
+    --ccache)
+      USE_CCACHE="1"
       shift
       ;;
     -h|--help)
@@ -140,6 +152,18 @@ else
   JOBS="${JOBS_REQUESTED:-$(nproc || echo 1)}"
 fi
 
+if [ "${USE_CCACHE}" = "1" ]; then
+  if ! command -v ccache >/dev/null 2>&1; then
+    warn "ccache not found, installing..."
+    apt_install ccache
+  fi
+  CCACHE_DIR="${CCACHE_DIR:-${HOME}/.cache/ccache}"
+  mkdir -p "${CCACHE_DIR}"export CCACHE_DIR
+  export CC="ccache gcc"
+  export CXX="ccache g++"
+  info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
+fi
+
 TARBALL="gcc-${GCC_VERSION}.tar.xz"
 DOWNLOAD_BASE="https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}"
 TARBALL_URL="${DOWNLOAD_BASE}/${TARBALL}"
@@ -150,6 +174,10 @@ info "=== Build & set GCC ${GCC_VERSION} as system default ==="
 info "Prefix: ${PREFIX}"
 info "Build dir: ${BUILD_DIR}"
 info "Parallel jobs: ${JOBS}"
+info "Strip binaries: ${DO_STRIP:-1}"
+if [ "${USE_CCACHE}" = "1" ]; then
+  info "ccache: enabled"
+fi
 info ""
 
 # 1) Install build deps (Ubuntu/Debian)
@@ -174,7 +202,8 @@ apt_install \
   libncurses-dev \
   libelf-dev \
   patch \
-  git
+  git \
+  gnupg
 
 # 2) Prepare build directory (no /tmp used)
 mkdir -p "${BUILD_DIR}"
@@ -207,8 +236,31 @@ fi
 
 # Optional: download signature for manual GPG verification
 if wget -q --spider "${SIG_URL}"; then
-  echo "Signature available at ${SIG_URL} (downloading). You can verify with gpg if you wish."
+  echo "Signature available at ${SIG_URL} (downloading)..."
   wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}" || true
+  
+  # GPG verification (GCC Release Signing Key)
+  GCC_RELEASE_KEY="D3A93CAD751C2AF4F8C7AD536D4525099671F567"
+  echo "Attempting GPG verification..."
+  if command -v gpg >/dev/null 2>&1; then
+    # Import GCC release key if not present
+    if ! gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
+      echo "Importing GCC release signing key..."
+      gpg --keyserver keyserver.ubuntu.com --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
+      gpg --keyserver pgp.mit.edu --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
+      echo "Warning: Could not import GPG key, skipping signature verification"
+    fi
+    
+    if gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
+      if gpg --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null; then
+        echo "GPG signature verified successfully."
+      else
+        echo "WARNING: GPG verification FAILED. Proceeding with caution." >&2
+      fi
+    fi
+  else
+    echo "Warning: gpg not installed, skipping signature verification" >&2
+  fi
 else
   echo "No .sig found or accessible."
 fi
@@ -305,6 +357,12 @@ if [ -x "${GCOV_BIN}" ]; then ${SUDO} update-alternatives --set gcov "${GCOV_BIN
 if [ -x "${GFORTRAN_BIN}" ]; then ${SUDO} update-alternatives --set gfortran "${GFORTRAN_BIN}" || true; fi
 
 echo "update-alternatives registration complete."
+
+# 6e) Strip binaries if requested
+if [ "${DO_STRIP}" = "1" ]; then
+  info "Stripping binaries in ${PREFIX}..."
+  ${SUDO} find "${PREFIX}" -type f -executable -exec sh -c 'file "$1" | grep -qE "ELF.*executable|ELF.*shared object" && strip --strip-all "$1"' _ {} \; 2>/dev/null || true
+fi
 
 # 6) Add library path to loader and run ldconfig
 CONF_FILE="/etc/ld.so.conf.d/gcc-${GCC_VERSION}.conf"
