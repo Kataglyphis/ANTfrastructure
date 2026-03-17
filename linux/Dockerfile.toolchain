@@ -47,9 +47,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # 3. ENVIRONMENT CONFIGURATION
 # We apply ENV vars here so subsequent RUN instructions (LLVM/Vulkan)
 # automatically use the new GCC without needing to source /etc/environment.
+# LIBRARY_PATH is needed at link time (for the linker to find libgcc_s, etc.)
+# LD_LIBRARY_PATH is needed at runtime (for the dynamic loader)
 ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
     PKG_CONFIG_PATH="/opt/gcc-${GCC_VERSION}/lib64/pkgconfig:/opt/gcc-${GCC_VERSION}/lib/pkgconfig" \
-    LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib"
+    LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
+    LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib"
 
 # 4. LLVM / CLANG (Heavy Layer)
 # If this fails, Docker restores the image state at 'Step 3' instantly.
