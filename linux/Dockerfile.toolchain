@@ -68,14 +68,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     fi
 
 # 5. VULKAN (Heavy Layer)
-# Logic preserved: Only run if NOT riscv64
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
-    if [ "${TARGETARCH:-$(dpkg --print-architecture)}" != "riscv64" ]; then \
-        bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
-    fi
+    bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan
 
 # 6. VERIFICATION
 RUN bash /opt/scripts/toolchain/setup-dependencies.sh verify
