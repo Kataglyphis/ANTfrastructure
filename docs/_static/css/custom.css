@@ -75,3 +75,7 @@ html[data-theme="dark"] .bd-sidebar-primary .nav-link.active {
   background: #233a2f !important;
   border-left: 3px solid var(--brand-accent) !important;
 }
+
+html[data-theme="dark"] .hero-section {
+  color: #000000 !important;
+}
