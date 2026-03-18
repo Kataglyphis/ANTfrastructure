@@ -147,6 +147,10 @@ uv_sync_project() {
     sync_args+=(--no-build-isolation-package wxpython)
   fi
   
+  if [ $active -eq 1 ]; then
+    sync_args+=(--active)
+  fi
+  
   uv "${sync_args[@]}"
 }
 
