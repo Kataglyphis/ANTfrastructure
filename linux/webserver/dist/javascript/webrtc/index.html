@@ -513,7 +513,7 @@
       const signalingProtocol = window.location.protocol.startsWith("https") ? "wss" : "ws";
       const gstWebRTCConfig = {
         meta: { name: `WebClient-${Date.now()}` },
-        signalingServerUrl: `${signalingProtocol}://${window.location.hostname}:8443`,
+        signalingServerUrl: `${signalingProtocol}://${window.location.hostname}/webrtc-ws`,
       };
 
       const api = new GstWebRTCAPI(gstWebRTCConfig);

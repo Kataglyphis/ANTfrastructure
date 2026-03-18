@@ -15,16 +15,31 @@ detect_jobs
 if [ "${SKIP_DEP_INSTALL}" != "true" ]; then
   info "Installing OS packages (apt-get)..."
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y
+  apt-get update -qq
 
+  # Base packages
   apt-get install -y --no-install-recommends \
     git ca-certificates curl wget build-essential pkg-config \
     python3 python3-dev python3-venv cmake ninja-build zlib1g-dev \
-    protobuf-compiler libprotobuf-dev gnupg lsb-release libssl-dev \
-    nodejs
+    protobuf-compiler libprotobuf-dev gnupg lsb-release libssl-dev
 
-  # `ninja-build` provides the `ninja` binary; avoid `pip install` here because
-  # many modern distros use PEP 668 (externally-managed Python environments).
+  # Node.js: different for RISC-V vs. other architectures
+  ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
+  if [ "$ARCH" = "riscv64" ]; then
+    info "RISC-V detected: Installing Node.js from default apt repo"
+    apt-get install -y --no-install-recommends nodejs npm || {
+      warn "npm not found after installing nodejs"
+    }
+  else
+    info "Non-RISC-V architecture: Installing Node.js from NodeSource"
+    if [ ! -f /tmp/nodesource/.setup_done ]; then
+      curl -sL https://deb.nodesource.com/setup_24.x | bash -
+      mkdir -p /tmp/nodesource
+      touch /tmp/nodesource/.setup_done
+    fi
+    apt-get update -qq
+    apt-get install -y --no-install-recommends nodejs
+  fi
 else
   info "Skipping apt deps install (SKIP_DEP_INSTALL=true)"
 fi

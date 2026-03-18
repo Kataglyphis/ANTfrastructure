@@ -1,0 +1,211 @@
+# syntax=docker/dockerfile:1.19
+
+# ==============================================================================
+# Dockerfile.nvidia  —  Optional NVIDIA GPU library layer
+#
+# Position in the chain:
+#   :toolchain  →  THIS (:toolchain-nvidia)  →  :media-nvidia  →  :android-nvidia  →  :nvidia
+#
+# What this installs on top of the standard toolchain image:
+#   • CUDA Toolkit (nvcc, cudart, NVCC headers)          — CUDA_VERSION
+#   • cuDNN (Deep Neural Network library)                 — CUDNN_VERSION
+#   • TensorRT (inference optimizer + runtime)            — TENSORRT_VERSION
+#   • NCCL (multi-GPU collective comms)                   — from CUDA repo
+#   • cuBLAS, cuSPARSE, cuFFT  (CUDA math libraries)     — from CUDA repo
+#   • NVTX (Nsight profiler headers)                      — from CUDA repo
+#   • CUDA Firmware / driver-independent libs             — from CUDA repo
+#
+# The STANDARD build chain (Dockerfile.os-deps → Dockerfile.toolchain →
+# Dockerfile.media → Dockerfile.android → Dockerfile) is UNCHANGED.
+# This file is ONLY used when building the -nvidia variants.
+#
+# Usage:
+#   docker buildx build \
+#     --build-arg BASE_IMAGE=local/kataglyphis:toolchain \
+#     -t local/kataglyphis:toolchain-nvidia \
+#     -f linux/Dockerfile.nvidia .
+# ==============================================================================
+
+ARG BASE_IMAGE=local/kataglyphis:toolchain
+FROM ${BASE_IMAGE}
+
+# ------------------------------------------------------------------------------
+# Version ARGs — override at build time as needed
+# ------------------------------------------------------------------------------
+# CUDA 13.1 requires driver >= 590.44.01 (Linux)
+ARG CUDA_VERSION=13.1.1
+ARG CUDA_VERSION_MAJOR_MINOR=13-1
+
+# cuDNN 9.x is compatible with CUDA 13.x
+ARG CUDNN_VERSION=9
+
+# TensorRT 10.x is the latest series compatible with CUDA 13.x
+ARG TENSORRT_VERSION=10
+
+# NCCL, cuBLAS, cuSPARSE, cuFFT are pinned to the same CUDA major/minor
+ARG CUDA_MATH_LIBS_VERSION=${CUDA_VERSION_MAJOR_MINOR}
+
+ARG TARGETARCH
+
+LABEL org.opencontainers.image.title="Kataglyphis Toolchain NVIDIA" \
+      org.opencontainers.image.description="NVIDIA GPU library layer: CUDA, cuDNN, TensorRT, NCCL, math libs, NVTX"
+
+SHELL ["bash", "-lc"]
+
+# ==============================================================================
+# 1. Add NVIDIA CUDA apt repository (keyring method)
+#    cuda-keyring package sets up /etc/apt/sources.list.d/cuda-ubuntu2404-x86_64.list
+#    and installs the GPG key automatically.
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "${ARCH}" in \
+      amd64)   CUDA_ARCH="x86_64" ;; \
+      arm64)   CUDA_ARCH="sbsa" ;; \
+      *)       echo "WARNING: CUDA packages may not be available for arch ${ARCH}" >&2; CUDA_ARCH="${ARCH}" ;; \
+    esac; \
+    KEYRING_PKG="cuda-keyring_1.1-1_all.deb"; \
+    KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/${CUDA_ARCH}/${KEYRING_PKG}"; \
+    curl -fSsL "${KEYRING_URL}" -o "/tmp/${KEYRING_PKG}"; \
+    dpkg -i "/tmp/${KEYRING_PKG}"; \
+    rm "/tmp/${KEYRING_PKG}"; \
+    apt-get update -qq
+
+# ==============================================================================
+# 2. CUDA Toolkit
+#    Includes: nvcc, cudart, CUDA headers, nvtx, cuda-libraries-dev
+#    We install the meta-packages which pull in the correct versioned packages.
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    apt-get install -y --no-install-recommends \
+        cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \
+        cuda-libraries-${CUDA_VERSION_MAJOR_MINOR} \
+        cuda-libraries-dev-${CUDA_VERSION_MAJOR_MINOR} \
+        cuda-nvtx-${CUDA_VERSION_MAJOR_MINOR} \
+        cuda-command-line-tools-${CUDA_VERSION_MAJOR_MINOR}; \
+    rm -rf /var/lib/apt/lists/*
+
+# ==============================================================================
+# 3. cuDNN
+#    libcudnn9-cuda-13:  runtime lib
+#    libcudnn9-dev-cuda-13:  headers + static lib
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends \
+        libcudnn${CUDNN_VERSION}-cuda-${CUDA_MAJOR} \
+        libcudnn${CUDNN_VERSION}-dev-cuda-${CUDA_MAJOR}; \
+    rm -rf /var/lib/apt/lists/*
+
+# ==============================================================================
+# 4. TensorRT
+#    tensorrt meta-package pulls in libnvinfer, libnvonnxparsers, libnvcaffeparser,
+#    libnvinfer-plugin, libnvinfer-dispatch, libnvinfer-lean, and their dev packages.
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends \
+        tensorrt-dev; \
+    rm -rf /var/lib/apt/lists/*
+
+# ==============================================================================
+# 5. NCCL  (multi-GPU collective communications)
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends \
+        libnccl2 \
+        libnccl-dev; \
+    rm -rf /var/lib/apt/lists/*
+
+# ==============================================================================
+# 6. CUDA Math Libraries: cuBLAS, cuSPARSE, cuFFT
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends \
+        libcublas-${CUDA_VERSION_MAJOR_MINOR} \
+        libcublas-dev-${CUDA_VERSION_MAJOR_MINOR} \
+        libcusparse-${CUDA_VERSION_MAJOR_MINOR} \
+        libcusparse-dev-${CUDA_VERSION_MAJOR_MINOR} \
+        libcufft-${CUDA_VERSION_MAJOR_MINOR} \
+        libcufft-dev-${CUDA_VERSION_MAJOR_MINOR}; \
+    rm -rf /var/lib/apt/lists/*
+
+# ==============================================================================
+# 7. CUDA firmware / driver-independent libraries
+#    libcuda.so stub for link-time, libcuda-compat for forward-compat
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends \
+        cuda-cudart-dev-${CUDA_VERSION_MAJOR_MINOR} \
+        cuda-compat-${CUDA_VERSION_MAJOR_MINOR}; \
+    rm -rf /var/lib/apt/lists/*
+
+# ==============================================================================
+# 8. Environment variables for CUDA
+#    /usr/local/cuda is the canonical symlink created by the cuda-toolkit package.
+# ==============================================================================
+ENV CUDA_HOME=/usr/local/cuda \
+    CUDA_ROOT=/usr/local/cuda \
+    CUDNN_HOME=/usr/local/cuda \
+    TENSORRT_HOME=/usr/local/tensorrt
+
+ENV PATH="${CUDA_HOME}/bin:${PATH}"
+ENV LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${CUDA_HOME}/lib64/stubs:${TENSORRT_HOME}/lib:${LD_LIBRARY_PATH:-}"
+ENV PKG_CONFIG_PATH="${CUDA_HOME}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
+ENV LIBRARY_PATH="${CUDA_HOME}/lib64/stubs:${LIBRARY_PATH:-}"
+
+# ==============================================================================
+# 9. Locate TensorRT and symlink to /usr/local/tensorrt for a stable path
+#    TensorRT installs to /usr on Ubuntu. We create a canonical symlink so
+#    downstream build scripts can rely on TENSORRT_HOME=/usr/local/tensorrt.
+# ==============================================================================
+RUN set -eux; \
+    if [ ! -f /usr/local/tensorrt/include/NvInfer.h ]; then \
+        if [ -f /usr/include/NvInfer.h ]; then \
+            mkdir -p /usr/local/tensorrt; \
+            ln -snf /usr/include  /usr/local/tensorrt/include; \
+            ARCH="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+            ln -snf "/usr/lib/${ARCH}" /usr/local/tensorrt/lib; \
+        fi; \
+    fi; \
+    ldconfig
+
+# ==============================================================================
+# 10. Verification
+# ==============================================================================
+RUN set -eux; \
+    nvcc --version; \
+    echo "--- cuDNN ---"; \
+    if pkg-config --exists libcudnn 2>/dev/null; then \
+        pkg-config --modversion libcudnn || true; \
+    else \
+        find /usr -name "cudnn_version.h" 2>/dev/null | head -1 | xargs -r grep "CUDNN_MAJOR\|CUDNN_MINOR\|CUDNN_PATCHLEVEL" || true; \
+    fi; \
+    echo "--- TensorRT ---"; \
+    find /usr/include /usr/local/tensorrt/include -name "NvInferVersion.h" 2>/dev/null | head -1 \
+        | xargs -r grep "NV_TENSORRT_MAJOR\|NV_TENSORRT_MINOR\|NV_TENSORRT_PATCH" || true; \
+    echo "--- NCCL ---"; \
+    find /usr/include /usr/local/cuda -name "nccl.h" 2>/dev/null | head -1 \
+        | xargs -r grep "NCCL_MAJOR\|NCCL_MINOR" || true; \
+    echo "--- CUDA libs ---"; \
+    ldconfig -p | grep -E "libcublas|libcusparse|libcufft|libcudnn|libnvinfer|libnccl" | head -20 || true; \
+    echo "NVIDIA layer verified."

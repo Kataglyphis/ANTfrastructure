@@ -1,10 +1,10 @@
-#!/bin/bash -i
+#!/usr/bin/env bash
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.28.0}"
+GSTREAMER_VERSION="${1:-1.28.1}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -98,11 +98,25 @@ sudo apt-get install -y --no-install-recommends \
   libsrtp2-dev libnice-dev libssl-dev libusrsctp-dev || true
 
 # NVIDIA codec headers (enable nvcodec plugin)
-# Only install NVIDIA codec headers if an NVIDIA GPU is present
-if lspci | grep -i nvidia > /dev/null 2>&1; then
-  sudo apt-get install -y --no-install-recommends nv-codec-headers
-  if ! pkg-config --exists nv-codec-headers; then
-    git clone https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers
+# Only install if NVIDIA GPU present OR explicitly requested via env var
+# Note: lspci won't work in Docker builds, so check /dev/dri or NVIDIA env vars
+NVIDIA_GPU="${NVIDIA_CODEC_HEADERS:-auto}"
+if [ "${NVIDIA_GPU}" = "auto" ]; then
+  if lspci 2>/dev/null | grep -qi nvidia; then
+    NVIDIA_GPU="yes"
+  elif [ -d /dev/dri ] && ls /dev/dri/card* 2>/dev/null | head -1 | xargs -r cat 2>/dev/null | grep -q NVIDIA; then
+    NVIDIA_GPU="yes"
+  elif [ -n "${NVIDIA_DRIVER_CAPABILITIES:-}" ] || [ -n "${NVIDIA_VISIBLE_DEVICES:-}" ]; then
+    NVIDIA_GPU="yes"
+  else
+    NVIDIA_GPU="no"
+  fi
+fi
+
+if [ "${NVIDIA_GPU}" = "yes" ]; then
+  sudo apt-get install -y --no-install-recommends nv-codec-headers || true
+  if ! pkg-config --exists nv-codec-headers 2>/dev/null; then
+    git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers
     make -C /tmp/nv-codec-headers install
     sudo rm -rf /tmp/nv-codec-headers
   fi
@@ -120,7 +134,7 @@ sudo rm -rf /var/lib/apt/lists/*
 # ------------------------------------------------------------------------------
 
 sudo mkdir -p "${GSTREAMER_PREFIX}"
-sudo chown -R $USER:$USER "${GSTREAMER_PREFIX}"
+sudo chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"
 uv venv "${VENV_DIR}"
 
 # Activate venv so 'meson' and 'ninja' from the venv are used
@@ -138,7 +152,7 @@ ninja --version
 # ------------------------------------------------------------------------------
 # Build GStreamer from monorepo
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.26.7}"
+GSTREAMER_VERSION="${1:-1.28.1}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -152,12 +166,12 @@ echo "Build Type: ${BUILD_TYPE_LOWER}"
 echo "=========================================="
 
 mkdir -p "${GSTREAMER_PREFIX}"
-sudo chown $USER:$USER "${GSTREAMER_PREFIX}"
+sudo chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true
 # do not write directlly into tmp; its reserved for apt
 BUILD_DIR="/opt/tmp/gstreamer-build"
 sudo mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
-sudo chown -R $USER:$USER "${BUILD_DIR}"
+sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true
 
 if [ -d "gstreamer" ]; then
   echo "Updating existing GStreamer repository..."
@@ -330,10 +344,10 @@ if [ -d "${PLUGIN_RS_DIR}" ]; then
   git checkout "gstreamer-${GSTREAMER_VERSION}"
 else
   sudo mkdir "${PLUGIN_RS_DIR}"
-  sudo chown $USER:$USER "${PLUGIN_RS_DIR}"
+  sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
   git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${PLUGIN_RS_DIR}"
   cd "${PLUGIN_RS_DIR}"
-  sudo chown $USER:$USER "${PLUGIN_RS_DIR}"
+  sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
 fi
 
 cd net/webrtc

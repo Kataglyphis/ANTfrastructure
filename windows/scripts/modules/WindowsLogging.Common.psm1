@@ -16,7 +16,8 @@ function New-LogContext {
         [string]$LogFilePrefix = 'session'
     )
 
-    $logDirPath = Resolve-DirectoryPath -Path (Join-Path $Workspace $LogDir)
+    $effectiveLogDir = if ([System.IO.Path]::IsPathRooted($LogDir)) { $LogDir } else { Join-Path $Workspace $LogDir }
+    $logDirPath = Resolve-DirectoryPath -Path $effectiveLogDir
     $timestamp = New-Timestamp -Format 'yyyyMMdd-HHmmss'
     $logPath = Join-Path $logDirPath "$LogFilePrefix-$timestamp.log"
 

@@ -1,0 +1,19 @@
+services:
+  webserver:
+    build:
+      context: .
+      dockerfile: webserver/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+
+  beschleuniger:
+    image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+    ports:
+      - "8443:8443"
+    volumes:
+      - ../../../Kataglyphis_NativeInferencePlugin/native/KataglyphisCppInference:/KataglyphisCppInference:ro
+      - ./scripts/04-runtime/start-webrtc-signalling.sh:/usr/local/bin/start-webrtc-signalling.sh:ro
+    command: ["/usr/local/bin/start-webrtc-signalling.sh"]
+    restart: unless-stopped

@@ -101,16 +101,20 @@ Options:
   --ort-version <tag>           ONNX Runtime git tag/branch to checkout (default: ${ORT_VERSION})
   --build-type <cfg>            Native CPU build type: Release|RelWithDebInfo|Debug|MinSizeRel (default: ${NATIVE_CPU_CONFIG})
   --wasm-config <cfg>           WASM build type: Release|RelWithDebInfo|Debug|MinSizeRel (default: ${WASM_CONFIG})
+  --genai-version <tag>          ONNX Runtime GenAI git tag/branch to checkout (default: ${GENAI_VERSION})
+  --genai-config <cfg>           GenAI build type: Release|RelWithDebInfo|Debug|MinSizeRel (default: ${GENAI_CONFIG})
+  --skip-genai                   Skip GenAI build (default: enabled)
   -h, --help                    Show this help
 
 Notes:
   - CLI args override environment variables.
-  - You can also set ORT_VERSION, NATIVE_CPU_CONFIG, WASM_CONFIG via env.
+  - GenAI is built by default. Use --skip-genai or BUILD_GENAI=false to disable.
+  - You can also set ORT_VERSION, NATIVE_CPU_CONFIG, WASM_CONFIG, GENAI_VERSION, GENAI_CONFIG via env.
 EOF
 }
 
 init_defaults() {
-  ORT_VERSION="${ORT_VERSION:-v1.23.2}"
+  ORT_VERSION="${ORT_VERSION:-v1.24.3}"
   ORT_REPO="${ORT_REPO:-https://github.com/microsoft/onnxruntime.git}"
   ORT_SRC_DIR="${ORT_SRC_DIR:-/opt/onnxruntime}"
 
@@ -128,6 +132,14 @@ init_defaults() {
   BUILD_ACL_EP="${BUILD_ACL_EP:-false}"
   ACL_HOME="${ACL_HOME:-}"
   ACL_LIBS="${ACL_LIBS:-}"
+
+  BUILD_GENAI="${BUILD_GENAI:-true}"
+  GENAI_VERSION="${GENAI_VERSION:-v0.6.0}"
+  GENAI_REPO="${GENAI_REPO:-https://github.com/microsoft/onnxruntime-genai.git}"
+  GENAI_SRC_DIR="${GENAI_SRC_DIR:-${ORT_SRC_DIR}-genai}"
+  GENAI_BUILD_DIR="${GENAI_BUILD_DIR:-${GENAI_SRC_DIR}/build}"
+  GENAI_OUTPUT_DIR="${GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}"
+  GENAI_CONFIG="${GENAI_CONFIG:-Release}"
 
   USE_UV_VENV="${USE_UV_VENV:-true}"
   UV_VENV_DIR="${UV_VENV_DIR:-${ORT_SRC_DIR}/.venv}"
@@ -159,6 +171,24 @@ parse_common_args() {
         WASM_CONFIG="$2"
         shift 2
         ;;
+      --genai-version)
+        [ $# -ge 2 ] || err "--genai-version requires a value"
+        GENAI_VERSION="$2"
+        shift 2
+        ;;
+      --genai-config)
+        [ $# -ge 2 ] || err "--genai-config requires a value"
+        GENAI_CONFIG="$2"
+        shift 2
+        ;;
+      --build-genai)
+        BUILD_GENAI="true"
+        shift
+        ;;
+      --skip-genai)
+        BUILD_GENAI="false"
+        shift
+        ;;
       -h|--help)
         usage_common
         exit 0
@@ -171,11 +201,13 @@ parse_common_args() {
 
   validate_build_type "${NATIVE_CPU_CONFIG}" "--build-type"
   validate_build_type "${WASM_CONFIG}" "--wasm-config"
+  validate_build_type "${GENAI_CONFIG}" "--genai-config"
 
   export ORT_VERSION ORT_REPO ORT_SRC_DIR
   export WASM_OUTPUT_DIR WASM_CONFIG BUILD_DIR
   export NATIVE_CPU_BUILD_DIR NATIVE_CPU_OUTPUT_DIR NATIVE_CPU_CONFIG
   export BUILD_NATIVE_CPU BUILD_DNNL_EP BUILD_XNNPACK_EP BUILD_ACL_EP ACL_HOME ACL_LIBS
+  export BUILD_GENAI GENAI_VERSION GENAI_REPO GENAI_SRC_DIR GENAI_BUILD_DIR GENAI_OUTPUT_DIR GENAI_CONFIG
   export USE_UV_VENV UV_VENV_DIR
   export CMAKE_POLICY_VERSION_MINIMUM
   export SKIP_DEP_INSTALL ENABLE_ASYNCIFY ASYNCIFY_STACK_SIZE
