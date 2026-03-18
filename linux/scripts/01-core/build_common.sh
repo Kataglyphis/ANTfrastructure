@@ -271,7 +271,8 @@ EOF
 
   if command -v jq >/dev/null 2>&1; then
     echo "$summary_json" > "$_BUILD_SUMMARY_FILE"
-    build_log "Machine-readable summary available at:$_BUILD_SUMMARY_FILE"fi
+    build_log "Machine-readable summary available at:$_BUILD_SUMMARY_FILE"
+  fi
 
   if [ ${#_BUILD_FAILED[@]} -gt 0 ]; then
     build_warn "Pipeline completed with errors!"
