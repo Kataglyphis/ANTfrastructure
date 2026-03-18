@@ -272,44 +272,44 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:toolchain
 | `linux/Dockerfile.nvidia-final` | Entrypoint image, tagged `:nvidia` |
 | `linux/scripts/03-media/onnxruntime/build/30-build-native-nvidia.sh` | ORT build script with CUDA, TensorRT, cuDNN EPs |
 
-**Sequential build (local, amd64):**
+**Sequential build (nerdctl, local, amd64):**
 
 ```bash
 # Step 1: standard os-deps + toolchain (shared with standard build)
-docker buildx build -t local/kataglyphis:os-deps      -f linux/Dockerfile.os-deps .
-docker buildx build -t local/kataglyphis:toolchain     -f linux/Dockerfile.toolchain \
+sudo nerdctl build -t local/kataglyphis:os-deps -f linux/Dockerfile.os-deps .
+sudo nerdctl build -t local/kataglyphis:toolchain -f linux/Dockerfile.toolchain \
   --build-arg BASE_IMAGE=local/kataglyphis:os-deps .
 
 # Step 2: NVIDIA layer (new — optional, only for GPU builds)
-docker buildx build -t local/kataglyphis:toolchain-nvidia -f linux/Dockerfile.nvidia \
+sudo nerdctl build -t local/kataglyphis:toolchain-nvidia -f linux/Dockerfile.nvidia \
   --build-arg BASE_IMAGE=local/kataglyphis:toolchain .
 
 # Step 3: media-nvidia (GStreamer nvcodec + ORT with CUDA/TRT/cuDNN EPs)
-docker buildx build -t local/kataglyphis:media-nvidia  -f linux/Dockerfile.media-nvidia \
+sudo nerdctl build -t local/kataglyphis:media-nvidia -f linux/Dockerfile.media-nvidia \
   --build-arg BASE_IMAGE=local/kataglyphis:toolchain-nvidia .
 
 # Step 4: android-nvidia
-docker buildx build -t local/kataglyphis:android-nvidia -f linux/Dockerfile.android-nvidia \
+sudo nerdctl build -t local/kataglyphis:android-nvidia -f linux/Dockerfile.android-nvidia \
   --build-arg BASE_IMAGE=local/kataglyphis:media-nvidia .
 
 # Step 5: final nvidia image
-docker buildx build -t local/kataglyphis:nvidia        -f linux/Dockerfile.nvidia-final \
+sudo nerdctl build -t local/kataglyphis:nvidia -f linux/Dockerfile.nvidia-final \
   --build-arg BASE_IMAGE=local/kataglyphis:android-nvidia .
 ```
 
 **Run with GPU access:**
 
 ```bash
-docker run --rm -it --gpus all local/kataglyphis:nvidia
+sudo nerdctl run --rm -it --gpus all local/kataglyphis:nvidia
 
-# or with nerdctl + nvidia runtime
-nerdctl run --rm -it --runtime=nvidia local/kataglyphis:nvidia
+# or with nvidia runtime explicitly
+sudo nerdctl run --rm -it --runtime=nvidia local/kataglyphis:nvidia
 ```
 
 **Version overrides** (all have sensible defaults):
 
 ```bash
-docker buildx build -t local/kataglyphis:toolchain-nvidia -f linux/Dockerfile.nvidia \
+sudo nerdctl build -t local/kataglyphis:toolchain-nvidia -f linux/Dockerfile.nvidia \
   --build-arg CUDA_VERSION=13.1.1 \
   --build-arg CUDA_VERSION_MAJOR_MINOR=13-1 \
   --build-arg CUDNN_VERSION=9 \
