@@ -216,7 +216,8 @@ build_summary() {
   if [ ${#_BUILD_SUCCEEDED[@]} -gt 0 ]; then
     build_success "SUCCEEDED (${#_BUILD_SUCCEEDED[@]}):"
     for step in "${_BUILD_SUCCEEDED[@]}"; do
-      build_success "  [OK] $step"done
+      build_success "  [OK] $step"
+    done
   fi
 
   build_log ""
