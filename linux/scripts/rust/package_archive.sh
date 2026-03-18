@@ -62,4 +62,4 @@ rm "$ArchiveDir/$Binary"
 
 info "Archive created successfully: $ArchiveName"
 
-echo "ARCHIVE_PATH=$ArchiveName" >> "$GITHUB_OUTPUT" 2>/dev/null || true
+[ -n "${GITHUB_OUTPUT:-}" ] && echo "ARCHIVE_PATH=$ArchiveName" >> "$GITHUB_OUTPUT"
