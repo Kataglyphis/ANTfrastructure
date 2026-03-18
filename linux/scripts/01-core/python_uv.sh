@@ -130,7 +130,7 @@ uv_sync_project() {
     esac
   done
   
-  local sync_args=(-v sync --dev --all-extras)
+  local sync_args=(sync --dev --all-extras)
   
   if [ $use_locked -eq 1 ] || [ -f uv.lock ]; then
     if [ -f uv.lock ]; then
@@ -139,10 +139,6 @@ uv_sync_project() {
     sync_args+=(--locked)
   else
     info "No uv.lock found — performing non-locked sync"
-  fi
-  
-  if [ $active -eq 1 ]; then
-    sync_args=(--active "${sync_args[@]}")
   fi
   
   if [ $no_wxpython -eq 1 ]; then
