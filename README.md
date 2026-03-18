@@ -32,6 +32,7 @@
     - [RICV64](#ricv64)
     - [Setup](#setup)
     - [Torch Add-on](#torch-add-on-linux)
+    - [NVIDIA GPU Build](#nvidia-gpu-build-linux)
     - [Webserver](#webserver-linux)
   - [Windows](#windows)
   - [Prerequisites](#prerequisites)
@@ -72,6 +73,13 @@ Linux image chain (built as separate images for caching):
 - `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
 - `linux/Dockerfile`: runtime scripts + entrypoint (final image).
+
+Optional NVIDIA GPU image chain (inserts after `:toolchain`, standard chain unchanged):
+
+- `linux/Dockerfile.nvidia`: CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX.
+- `linux/Dockerfile.media-nvidia`: Media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs.
+- `linux/Dockerfile.android-nvidia`: Android SDK/NDK on top of media-nvidia.
+- `linux/Dockerfile.nvidia-final`: Final entrypoint image (`:nvidia` tag).
 
 What you get:
 - ✅ Multi-arch builds via buildx/nerdctl.
@@ -246,7 +254,85 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
   . 2>&1 | tee -a output.log
 ```
 
-### Torch Add-on (Linux) 🔥
+### NVIDIA GPU Build (Linux)
+
+> **Requirements:**
+> - Host driver >= 590.44 (for CUDA 13.1).
+> - `nvidia-container-toolkit` installed and configured on the host.
+> - `--runtime=nvidia` or `--gpus all` passed to `docker run`.
+
+The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:toolchain` and before the media stage. The standard build chain is completely unchanged.
+
+**New files:**
+| File | Purpose |
+|---|---|
+| `linux/Dockerfile.nvidia` | Installs CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
+| `linux/Dockerfile.media-nvidia` | Media stack: `NVIDIA_CODEC_HEADERS=yes` + ORT with CUDA/TRT/cuDNN EPs |
+| `linux/Dockerfile.android-nvidia` | Android SDK/NDK on top of media-nvidia |
+| `linux/Dockerfile.nvidia-final` | Entrypoint image, tagged `:nvidia` |
+| `linux/scripts/03-media/onnxruntime/build/30-build-native-nvidia.sh` | ORT build script with CUDA, TensorRT, cuDNN EPs |
+
+**Sequential build (local, amd64):**
+
+```bash
+# Step 1: standard os-deps + toolchain (shared with standard build)
+docker buildx build -t local/kataglyphis:os-deps      -f linux/Dockerfile.os-deps .
+docker buildx build -t local/kataglyphis:toolchain     -f linux/Dockerfile.toolchain \
+  --build-arg BASE_IMAGE=local/kataglyphis:os-deps .
+
+# Step 2: NVIDIA layer (new — optional, only for GPU builds)
+docker buildx build -t local/kataglyphis:toolchain-nvidia -f linux/Dockerfile.nvidia \
+  --build-arg BASE_IMAGE=local/kataglyphis:toolchain .
+
+# Step 3: media-nvidia (GStreamer nvcodec + ORT with CUDA/TRT/cuDNN EPs)
+docker buildx build -t local/kataglyphis:media-nvidia  -f linux/Dockerfile.media-nvidia \
+  --build-arg BASE_IMAGE=local/kataglyphis:toolchain-nvidia .
+
+# Step 4: android-nvidia
+docker buildx build -t local/kataglyphis:android-nvidia -f linux/Dockerfile.android-nvidia \
+  --build-arg BASE_IMAGE=local/kataglyphis:media-nvidia .
+
+# Step 5: final nvidia image
+docker buildx build -t local/kataglyphis:nvidia        -f linux/Dockerfile.nvidia-final \
+  --build-arg BASE_IMAGE=local/kataglyphis:android-nvidia .
+```
+
+**Run with GPU access:**
+
+```bash
+docker run --rm -it --gpus all local/kataglyphis:nvidia
+
+# or with nerdctl + nvidia runtime
+nerdctl run --rm -it --runtime=nvidia local/kataglyphis:nvidia
+```
+
+**Version overrides** (all have sensible defaults):
+
+```bash
+docker buildx build -t local/kataglyphis:toolchain-nvidia -f linux/Dockerfile.nvidia \
+  --build-arg CUDA_VERSION=13.1.1 \
+  --build-arg CUDA_VERSION_MAJOR_MINOR=13-1 \
+  --build-arg CUDNN_VERSION=9 \
+  --build-arg TENSORRT_VERSION=10 \
+  .
+```
+
+**Key differences from the standard build:**
+
+| Feature | Standard build | NVIDIA build |
+|---|---|---|
+| CUDA Toolkit | Not installed | CUDA 13.1 |
+| cuDNN | Not installed | cuDNN 9 |
+| TensorRT | Not installed | TensorRT 10 |
+| NCCL | Not installed | Installed |
+| cuBLAS/cuSPARSE/cuFFT | Not installed | Installed |
+| NVTX | Not installed | Installed |
+| GStreamer nvcodec | Auto-detected (off in builds) | Always enabled |
+| ORT native EP | CPU only | CPU + CUDA + TensorRT + cuDNN |
+| ORT output dir | `/usr/local/lib/onnxruntime-cpu` | Both cpu and `/usr/local/lib/onnxruntime-gpu` |
+| Image tag | `:latest` | `:nvidia` |
+
+### Torch Add-on (Linux)
 
 Builds on the base image:
 
