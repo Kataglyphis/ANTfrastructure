@@ -70,21 +70,33 @@ install_vulkan_sdk() {
         -e '/\bpacman[[:space:]]+-S\b/         { /(--noconfirm|-y)/! s/(\bpacman[[:space:]]+-S\b)/\1 -y/ }' \
         ./vulkansdk
 
-      # Ensure libgcc_s is findable by the linker for riscv64/aarch64 builds
-      # The custom GCC install puts libgcc_s in /opt/gcc-*/lib64, but CMake subprocesses
-      # may not inherit LIBRARY_PATH. Create symlinks in /usr/lib as a fallback.
+      # Ensure libgcc_s and libstdc++ are findable by the linker for riscv64/aarch64 builds
+      # The custom GCC install puts runtime libs in /opt/gcc-*/lib64, but CMake subprocesses
+      # may not inherit LIBRARY_PATH. Create symlinks in architecture-specific paths.
+      # Multiarch path: /usr/lib/<arch>-linux-gnu/ (e.g., /usr/lib/riscv64-linux-gnu/)
+      ARCH_LIB_DIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "${ARCH}-linux-gnu")"
+      sudo mkdir -p "${ARCH_LIB_DIR}" /usr/lib
+      
       if [[ -n "${LIBRARY_PATH:-}" ]]; then
-        log "Setting up libgcc_s symlinks for linking..."
+        log "Setting up GCC runtime library symlinks for linking..."
         for libdir in ${LIBRARY_PATH//:/ }; do
-          if [[ -f "${libdir}/libgcc_s.so.1" ]] && [[ ! -e /usr/lib/libgcc_s.so.1 ]]; then
-            sudo ln -sf "${libdir}/libgcc_s.so.1" /usr/lib/libgcc_s.so.1
-            sudo ln -sf "${libdir}/libgcc_s.so" /usr/lib/libgcc_s.so 2>/dev/null || \
-              sudo ln -sf libgcc_s.so.1 /usr/lib/libgcc_s.so
-            log "Symlinked libgcc_s from ${libdir} to /usr/lib"
-            break
-          fi
+          for lib in libgcc_s.so.1 libgcc_s.so libstdc++.so.6 libstdc++.so; do
+            if [[ -f "${libdir}/${lib}" ]]; then
+              # Symlink to multiarch directory (primary linker search path)
+              if [[ ! -e "${ARCH_LIB_DIR}/${lib}" ]]; then
+                sudo ln -sf "${libdir}/${lib}" "${ARCH_LIB_DIR}/${lib}" 2>/dev/null || true
+              fi
+              # Also symlink to /usr/lib as fallback
+              if [[ ! -e "/usr/lib/${lib}" ]]; then
+                sudo ln -sf "${libdir}/${lib}" "/usr/lib/${lib}" 2>/dev/null || true
+              fi
+            fi
+          done
         done
+        log "Symlinked GCC runtime libraries to ${ARCH_LIB_DIR} and /usr/lib"
       fi
+      # Run ldconfig to update linker cache
+      sudo ldconfig 2>/dev/null || true
 
       log "Building selected SDK components..."
       JOBS="$(compute_jobs "${JOBS:-}")"
@@ -94,7 +106,6 @@ install_vulkan_sdk() {
         vulkan-validationlayers shaderc spirv-headers spirv-tools
         vulkan-extensionlayer volk vma vcv vul
         spirv-cross spirv-reflect gfxreconstruct vulkan-profiles
-        vulkan-utility-libraries robin-hood-hashing
       )
       # slang is not yet ported to riscv64, skip it on that architecture
       if [[ "$arch_suffix" != "riscv64" ]]; then

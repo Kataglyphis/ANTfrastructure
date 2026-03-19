@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.19
 
-ARG BASE_IMAGE=local/kataglyphis:toolchain
+ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
 
 ARG BUILD_TYPE=Release
