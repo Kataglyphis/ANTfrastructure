@@ -68,13 +68,12 @@ RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
 # ----------------------------------------------------------------------------
 # ONNX Runtime build args
 # ----------------------------------------------------------------------------
-# v1.23.2
-ARG ONNXRUNTIME_VERSION=v1.24.1
+ARG ONNXRUNTIME_VERSION=v1.24.4
 ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
 ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
 
 # GenAI build args
-ARG ONNXRUNTIME_GENAI_VERSION=v0.6.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.12.1
 ARG ONNXRUNTIME_GENAI_BUILD_TYPE=Release
 ARG BUILD_GENAI=true
 
@@ -117,6 +116,21 @@ RUN --mount=type=cache,target=/var/cache/ccache \
             --ort-version "${ONNXRUNTIME_VERSION}" \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+# Verify ONNX Runtime native build artifacts exist
+RUN set -eux; \
+        lib_dir="${NATIVE_CPU_OUTPUT_DIR}/lib"; \
+        if [ ! -d "${lib_dir}" ]; then \
+            echo "ERROR: ONNX Runtime lib directory not found: ${lib_dir}"; \
+            exit 1; \
+        fi; \
+        if [ -z "$(ls -A ${lib_dir}/*.so* 2>/dev/null)" ]; then \
+            echo "ERROR: No .so files found in ${lib_dir}"; \
+            ls -la "${lib_dir}" || true; \
+            exit 1; \
+        fi; \
+        echo "ONNX Runtime native build verified:"; \
+        ls -la "${lib_dir}"
 
 # GenAI build (after native CPU build)
 RUN --mount=type=cache,target=/var/cache/ccache \

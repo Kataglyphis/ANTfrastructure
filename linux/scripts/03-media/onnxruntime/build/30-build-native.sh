@@ -71,6 +71,13 @@ find "${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" -maxdepth 1 -type f \
   \( -name "libonnxruntime*.so*" -o -name "libonnxruntime_providers_*.so*" \) \
   -exec cp -t "${NATIVE_CPU_OUTPUT_DIR}/lib/" {} + 2>/dev/null || true
 
+# Create unversioned symlink for libonnxruntime.so (required by GenAI CMake)
+onnx_lib="$(find "${NATIVE_CPU_OUTPUT_DIR}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
+if [[ -n "${onnx_lib}" ]] && [[ ! -e "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]]; then
+  ln -sf "$(basename "${onnx_lib}")" "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so"
+  info "Created symlink: libonnxruntime.so -> $(basename "${onnx_lib}")"
+fi
+
 # Create symlinks in /usr/local/lib
 find "${NATIVE_CPU_OUTPUT_DIR}/lib" -type f -name "lib*.so*" -print0 2>/dev/null | \
   xargs -0 -r ln -sf -t /usr/local/lib/ 2>/dev/null || true

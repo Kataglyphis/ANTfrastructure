@@ -14,8 +14,31 @@ detect_jobs
 }
 
 # Validate native CPU build completed (GenAI depends on ORT)
-if [[ ! -d "${NATIVE_CPU_OUTPUT_DIR}/lib" ]] || [[ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/lib"/*.so* 2>/dev/null)" ]]; then
-  err "Native CPU build artifacts not found at ${NATIVE_CPU_OUTPUT_DIR}/lib. Run 30-build-native.sh first."
+info "Checking for ONNX Runtime at: ${NATIVE_CPU_OUTPUT_DIR}"
+info "NATIVE_CPU_OUTPUT_DIR=${NATIVE_CPU_OUTPUT_DIR}"
+
+if [[ ! -d "${NATIVE_CPU_OUTPUT_DIR}/lib" ]]; then
+  err "Native CPU build lib directory not found at ${NATIVE_CPU_OUTPUT_DIR}/lib. Run 30-build-native.sh first."
+fi
+
+info "Contents of ${NATIVE_CPU_OUTPUT_DIR}/lib:"
+ls -la "${NATIVE_CPU_OUTPUT_DIR}/lib/" || true
+
+if [[ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/lib"/*.so* 2>/dev/null)" ]]; then
+  err "No .so files found in ${NATIVE_CPU_OUTPUT_DIR}/lib. Run 30-build-native.sh first."
+fi
+
+# Check specifically for libonnxruntime.so (may be a symlink)
+if [[ ! -e "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]] && [[ ! -L "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]]; then
+  warn "libonnxruntime.so symlink not found, checking for versioned libraries..."
+  # Try to create symlink from versioned library
+  versioned_lib="$(find "${NATIVE_CPU_OUTPUT_DIR}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
+  if [[ -n "${versioned_lib}" ]]; then
+    ln -sf "$(basename "${versioned_lib}")" "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so"
+    info "Created symlink: ${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so -> $(basename "${versioned_lib}")"
+  else
+    err "No libonnxruntime.so* files found in ${NATIVE_CPU_OUTPUT_DIR}/lib"
+  fi
 fi
 
 # Check GenAI source exists
