@@ -31,8 +31,8 @@ uv venv "${VENV_DIR}"
 source "${VENV_DIR}/bin/activate"
 
 # Install Python build dependencies with uv
-info "Installing Python build dependencies (numpy, wheel, setuptools)"
-uv pip install numpy wheel setuptools
+info "Installing Python build dependencies (numpy, wheel, setuptools, requests)"
+uv pip install numpy wheel setuptools requests
 
 info "Using Python: $(which python3)"
 info "NumPy version: $(python3 -c 'import numpy; print(numpy.__version__)')"
