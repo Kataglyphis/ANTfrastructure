@@ -120,7 +120,7 @@ function Invoke-BuildExternal {
 
     $parameterList = ConvertTo-ParameterList -Value $Parameters
 
-    $cmdLine = if ($parameterList -and $parameterList.Count) { "$File $($parameterList -join ' ')" } else { $File }
+    $cmdLine = if ($parameterList -and $parameterList.Count) { "`"$File`" $($parameterList -join ' ')" } else { "`"$File`"" }
     Write-BuildLog -Context $Context -Message "CMD: $cmdLine"
 
     $previousErrorActionPreference = $ErrorActionPreference
@@ -128,12 +128,55 @@ function Invoke-BuildExternal {
     $global:LASTEXITCODE = 0
 
     try {
-        & $File @parameterList 2>&1 | ForEach-Object {
-            if ($null -eq $_) { return }
-            Write-BuildLog -Context $Context -Message ([string]$_)
+        # Use Start-Process for reliable execution of paths with spaces
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $File
+        $psi.Arguments = ($parameterList | ForEach-Object {
+            # Quote arguments that contain spaces
+            if ($_ -match '\s') { "`"$_`"" } else { $_ }
+        }) -join ' '
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.CreateNoWindow = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $psi
+
+        # Capture output asynchronously to avoid deadlocks
+        $outputBuilder = New-Object System.Text.StringBuilder
+        $errorBuilder = New-Object System.Text.StringBuilder
+
+        $outputHandler = {
+            if (-not [String]::IsNullOrEmpty($EventArgs.Data)) {
+                $Event.MessageData.AppendLine($EventArgs.Data) | Out-Null
+            }
         }
 
-        $exitCode = $LASTEXITCODE
+        $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action $outputHandler -MessageData $outputBuilder
+        $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action $outputHandler -MessageData $errorBuilder
+
+        $process.Start() | Out-Null
+        $process.BeginOutputReadLine()
+        $process.BeginErrorReadLine()
+        $process.WaitForExit()
+
+        Unregister-Event -SourceIdentifier $outputEvent.Name
+        Unregister-Event -SourceIdentifier $errorEvent.Name
+
+        # Log captured output
+        $outputBuilder.ToString() -split "`r?`n" | ForEach-Object {
+            if (-not [String]::IsNullOrWhiteSpace($_)) {
+                Write-BuildLog -Context $Context -Message $_
+            }
+        }
+        $errorBuilder.ToString() -split "`r?`n" | ForEach-Object {
+            if (-not [String]::IsNullOrWhiteSpace($_)) {
+                Write-BuildLog -Context $Context -Message $_
+            }
+        }
+
+        $exitCode = $process.ExitCode
         if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
             throw "Command failed with exit code ${exitCode}: $cmdLine"
         }
