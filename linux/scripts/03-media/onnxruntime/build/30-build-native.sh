@@ -74,20 +74,19 @@ if [[ -d "${NATIVE_CPU_BUILD_DIR}/include" ]]; then
   info "Copied generated headers from ${NATIVE_CPU_BUILD_DIR}/include"
 fi
 
-# Flatten headers for GenAI - it expects onnxruntime_c_api.h at include/ root
+# Flatten headers for GenAI - it expects headers at include/ root
 # ONNX Runtime has them at include/onnxruntime/core/session/
 for search_dir in "${ORT_SRC_DIR}" "${NATIVE_CPU_BUILD_DIR}"; do
   if [[ ! -d "${search_dir}/include" ]]; then
     continue
   fi
-  for hdr in onnxruntime_c_api.h onnxruntime_cxx_api.h onnxruntime_cxx_inline.h onnxruntime_session_options_config_keys.h; do
-    found_hdr="$(find "${search_dir}/include" -name "${hdr}" -type f 2>/dev/null | head -1)" || continue
-    if [[ -n "${found_hdr}" ]] && [[ -f "${found_hdr}" ]]; then
-      cp "${found_hdr}" "${NATIVE_CPU_OUTPUT_DIR}/include/"
-      info "Copied ${hdr} to ${NATIVE_CPU_OUTPUT_DIR}/include/"
-    fi
+  # Copy all ONNX Runtime C API header files from nested directories to include root
+  find "${search_dir}/include" -name "onnxruntime*.h" -type f 2>/dev/null | while read -r hdr; do
+    cp "${hdr}" "${NATIVE_CPU_OUTPUT_DIR}/include/" 2>/dev/null || true
   done
 done
+info "Listing copied headers:"
+ls -la "${NATIVE_CPU_OUTPUT_DIR}/include/"*.h 2>/dev/null || warn "No .h files found in include directory"
 
 # Verify critical headers
 if [[ -f "${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_c_api.h" ]]; then

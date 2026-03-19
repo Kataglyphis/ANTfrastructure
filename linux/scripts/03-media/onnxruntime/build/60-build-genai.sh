@@ -60,8 +60,8 @@ uv venv "${VENV_DIR}"
 source "${VENV_DIR}/bin/activate"
 
 # Install Python build dependencies with uv
-info "Installing Python build dependencies (numpy, wheel, setuptools, requests)"
-uv pip install numpy wheel setuptools requests
+info "Installing Python build dependencies (pip, numpy, wheel, setuptools, requests)"
+uv pip install pip numpy wheel setuptools requests
 
 info "Using Python: $(which python3)"
 info "NumPy version: $(python3 -c 'import numpy; print(numpy.__version__)')"
@@ -80,7 +80,8 @@ python3 build.py \
   --config "${GENAI_CONFIG}" \
   --ort_home "${NATIVE_CPU_OUTPUT_DIR}" \
   --parallel \
-  --skip_tests
+  --skip_tests \
+  --skip_examples
 
 # Deactivate virtual environment
 deactivate
