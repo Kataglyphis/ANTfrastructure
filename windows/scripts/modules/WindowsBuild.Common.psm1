@@ -128,17 +128,55 @@ function Invoke-BuildExternal {
     $global:LASTEXITCODE = 0
 
     try {
-        & $File @parameterList 2>&1 | ForEach-Object {
-            if ($null -eq $_) { return }
-            Write-BuildLog -Context $Context -Message ([string]$_)
-        }
+        # Create temp files for capturing output
+        $stdOutFile = [System.IO.Path]::GetTempFileName()
+        $stdErrFile = [System.IO.Path]::GetTempFileName()
 
-        $exitCode = $LASTEXITCODE
-        if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
-            throw "Command failed with exit code ${exitCode}: $cmdLine"
-        }
+        try {
+            # Use Start-Process for reliable execution of paths containing spaces
+            # This avoids issues with the & operator and cmd.exe path parsing
+            $startProcessArgs = @{
+                FilePath = $File
+                Wait = $true
+                NoNewWindow = $true
+                PassThru = $true
+                RedirectStandardOutput = $stdOutFile
+                RedirectStandardError = $stdErrFile
+            }
 
-        return $exitCode
+            if ($parameterList -and $parameterList.Count -gt 0) {
+                $startProcessArgs.ArgumentList = $parameterList
+            }
+
+            $process = Start-Process @startProcessArgs
+
+            # Log captured output
+            if (Test-Path $stdOutFile) {
+                Get-Content $stdOutFile | ForEach-Object {
+                    if (-not [String]::IsNullOrWhiteSpace($_)) {
+                        Write-BuildLog -Context $Context -Message $_
+                    }
+                }
+            }
+            if (Test-Path $stdErrFile) {
+                Get-Content $stdErrFile | ForEach-Object {
+                    if (-not [String]::IsNullOrWhiteSpace($_)) {
+                        Write-BuildLog -Context $Context -Message $_
+                    }
+                }
+            }
+
+            $exitCode = $process.ExitCode
+            if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
+                throw "Command failed with exit code ${exitCode}: $cmdLine"
+            }
+
+            return $exitCode
+        } finally {
+            # Clean up temp files
+            if (Test-Path $stdOutFile) { Remove-Item $stdOutFile -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $stdErrFile) { Remove-Item $stdErrFile -Force -ErrorAction SilentlyContinue }
+        }
     } finally {
         $ErrorActionPreference = $previousErrorActionPreference
     }

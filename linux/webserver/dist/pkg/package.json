@@ -1,6 +1,12 @@
 {
   "name": "kataglyphis_rustprojecttemplate",
+  "description": "Rust project template with optional GUI, ONNX backends, profiling, packaging, and CI workflows.",
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kataglyphis/Kataglyphis-RustProjectTemplate"
+  },
   "files": [
     "kataglyphis_rustprojecttemplate_bg.wasm",
     "kataglyphis_rustprojecttemplate.js"
