@@ -120,7 +120,7 @@ function Invoke-BuildExternal {
 
     $parameterList = ConvertTo-ParameterList -Value $Parameters
 
-    $cmdLine = if ($parameterList -and $parameterList.Count) { "`"$File`" $($parameterList -join ' ')" } else { "`"$File`"" }
+    $cmdLine = if ($parameterList -and $parameterList.Count) { "$File $($parameterList -join ' ')" } else { $File }
     Write-BuildLog -Context $Context -Message "CMD: $cmdLine"
 
     $previousErrorActionPreference = $ErrorActionPreference
@@ -128,60 +128,55 @@ function Invoke-BuildExternal {
     $global:LASTEXITCODE = 0
 
     try {
-        # Use Start-Process for reliable execution of paths with spaces
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $File
-        $psi.Arguments = ($parameterList | ForEach-Object {
-            # Quote arguments that contain spaces
-            if ($_ -match '\s') { "`"$_`"" } else { $_ }
-        }) -join ' '
-        $psi.UseShellExecute = $false
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.CreateNoWindow = $true
+        # Create temp files for capturing output
+        $stdOutFile = [System.IO.Path]::GetTempFileName()
+        $stdErrFile = [System.IO.Path]::GetTempFileName()
 
-        $process = New-Object System.Diagnostics.Process
-        $process.StartInfo = $psi
-
-        # Capture output asynchronously to avoid deadlocks
-        $outputBuilder = New-Object System.Text.StringBuilder
-        $errorBuilder = New-Object System.Text.StringBuilder
-
-        $outputHandler = {
-            if (-not [String]::IsNullOrEmpty($EventArgs.Data)) {
-                $Event.MessageData.AppendLine($EventArgs.Data) | Out-Null
+        try {
+            # Use Start-Process for reliable execution of paths containing spaces
+            # This avoids issues with the & operator and cmd.exe path parsing
+            $startProcessArgs = @{
+                FilePath = $File
+                Wait = $true
+                NoNewWindow = $true
+                PassThru = $true
+                RedirectStandardOutput = $stdOutFile
+                RedirectStandardError = $stdErrFile
             }
-        }
 
-        $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action $outputHandler -MessageData $outputBuilder
-        $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action $outputHandler -MessageData $errorBuilder
-
-        $process.Start() | Out-Null
-        $process.BeginOutputReadLine()
-        $process.BeginErrorReadLine()
-        $process.WaitForExit()
-
-        Unregister-Event -SourceIdentifier $outputEvent.Name
-        Unregister-Event -SourceIdentifier $errorEvent.Name
-
-        # Log captured output
-        $outputBuilder.ToString() -split "`r?`n" | ForEach-Object {
-            if (-not [String]::IsNullOrWhiteSpace($_)) {
-                Write-BuildLog -Context $Context -Message $_
+            if ($parameterList -and $parameterList.Count -gt 0) {
+                $startProcessArgs.ArgumentList = $parameterList
             }
-        }
-        $errorBuilder.ToString() -split "`r?`n" | ForEach-Object {
-            if (-not [String]::IsNullOrWhiteSpace($_)) {
-                Write-BuildLog -Context $Context -Message $_
+
+            $process = Start-Process @startProcessArgs
+
+            # Log captured output
+            if (Test-Path $stdOutFile) {
+                Get-Content $stdOutFile | ForEach-Object {
+                    if (-not [String]::IsNullOrWhiteSpace($_)) {
+                        Write-BuildLog -Context $Context -Message $_
+                    }
+                }
             }
-        }
+            if (Test-Path $stdErrFile) {
+                Get-Content $stdErrFile | ForEach-Object {
+                    if (-not [String]::IsNullOrWhiteSpace($_)) {
+                        Write-BuildLog -Context $Context -Message $_
+                    }
+                }
+            }
 
-        $exitCode = $process.ExitCode
-        if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
-            throw "Command failed with exit code ${exitCode}: $cmdLine"
-        }
+            $exitCode = $process.ExitCode
+            if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
+                throw "Command failed with exit code ${exitCode}: $cmdLine"
+            }
 
-        return $exitCode
+            return $exitCode
+        } finally {
+            # Clean up temp files
+            if (Test-Path $stdOutFile) { Remove-Item $stdOutFile -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $stdErrFile) { Remove-Item $stdErrFile -Force -ErrorAction SilentlyContinue }
+        }
     } finally {
         $ErrorActionPreference = $previousErrorActionPreference
     }
