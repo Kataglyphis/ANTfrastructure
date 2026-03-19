@@ -275,7 +275,21 @@ function Write-BuildSummary {
     $total = $Context.Results.Succeeded.Count + $Context.Results.Failed.Count
     $successRate = if ($total -gt 0) { [math]::Round(($Context.Results.Succeeded.Count / $total) * 100, 1) } else { 0 }
     Write-BuildLog -Context $Context -Message "Total: $total steps, $($Context.Results.Succeeded.Count) succeeded, $($Context.Results.Failed.Count) failed ($($successRate)% success rate)"
-    Write-BuildLog -Context $Context -Message ""
+
+    if ($Context.Results.Failed.Count -gt 0) {
+        Write-BuildLog -Context $Context -Message ""
+        Write-BuildLog -Context $Context -Message ("=" * 60)
+        Write-BuildLogError -Context $Context -Message "=== ERROR DETAILS ==="
+        Write-BuildLog -Context $Context -Message ("=" * 60)
+        $errorIndex = 1
+        foreach ($step in $Context.Results.Failed) {
+            Write-BuildLogError -Context $Context -Message ""
+            Write-BuildLogError -Context $Context -Message "[$errorIndex/$($Context.Results.Failed.Count)] $step"
+            Write-BuildLogError -Context $Context -Message "    $($Context.Results.Errors[$step])"
+            $errorIndex++
+        }
+        Write-BuildLog -Context $Context -Message ""
+    }
 
     if ($Context.LogPath) {
         Write-BuildLog -Context $Context -Message "Full log available at: $($Context.LogPath)"
