@@ -61,9 +61,43 @@ find "${NATIVE_CPU_BUILD_DIR}" -name "*.whl" -type f 2>/dev/null | while read -r
   ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels/$(basename "${whl}")"
 done || info "No wheels found in ${NATIVE_CPU_BUILD_DIR}"
 
-# Copy headers
-cp -a "${ORT_SRC_DIR}/include" "${NATIVE_CPU_OUTPUT_DIR}/" 2>/dev/null || \
-  warn "Include directory not found at ${ORT_SRC_DIR}/include"
+# Copy headers from source
+mkdir -p "${NATIVE_CPU_OUTPUT_DIR}/include"
+if [[ -d "${ORT_SRC_DIR}/include" ]]; then
+  cp -a "${ORT_SRC_DIR}/include/." "${NATIVE_CPU_OUTPUT_DIR}/include/" 2>/dev/null || true
+  info "Copied headers from ${ORT_SRC_DIR}/include"
+fi
+
+# Copy generated headers from build directory
+if [[ -d "${NATIVE_CPU_BUILD_DIR}/include" ]]; then
+  cp -a "${NATIVE_CPU_BUILD_DIR}/include/." "${NATIVE_CPU_OUTPUT_DIR}/include/" 2>/dev/null || true
+  info "Copied generated headers from ${NATIVE_CPU_BUILD_DIR}/include"
+fi
+
+# Flatten headers for GenAI - it expects onnxruntime_c_api.h at include/ root
+# ONNX Runtime has them at include/onnxruntime/core/session/
+for search_dir in "${ORT_SRC_DIR}" "${NATIVE_CPU_BUILD_DIR}"; do
+  if [[ ! -d "${search_dir}/include" ]]; then
+    continue
+  fi
+  for hdr in onnxruntime_c_api.h onnxruntime_cxx_api.h onnxruntime_cxx_inline.h onnxruntime_session_options_config_keys.h; do
+    found_hdr="$(find "${search_dir}/include" -name "${hdr}" -type f 2>/dev/null | head -1)" || continue
+    if [[ -n "${found_hdr}" ]] && [[ -f "${found_hdr}" ]]; then
+      cp "${found_hdr}" "${NATIVE_CPU_OUTPUT_DIR}/include/"
+      info "Copied ${hdr} to ${NATIVE_CPU_OUTPUT_DIR}/include/"
+    fi
+  done
+done
+
+# Verify critical headers
+if [[ -f "${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_c_api.h" ]]; then
+  info "Found onnxruntime_c_api.h in include directory"
+else
+  warn "onnxruntime_c_api.h not found - GenAI build may fail"
+  warn "Searching for onnxruntime_c_api.h..."
+  find "${ORT_SRC_DIR}" -name "onnxruntime_c_api.h" 2>/dev/null | head -5 || true
+  find "${NATIVE_CPU_BUILD_DIR}" -name "onnxruntime_c_api.h" 2>/dev/null | head -5 || true
+fi
 
 # Copy libraries
 mkdir -p "${NATIVE_CPU_OUTPUT_DIR}/lib"
