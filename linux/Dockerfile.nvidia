@@ -4,9 +4,9 @@
 # Dockerfile.nvidia  —  Optional NVIDIA GPU library layer
 #
 # Position in the chain:
-#   :toolchain  →  THIS (:toolchain-nvidia)  →  :media-nvidia  →  :android-nvidia  →  :nvidia
+#   :sdk  →  THIS (:toolchain-nvidia)  →  :media-nvidia  →  :android-nvidia  →  :nvidia
 #
-# What this installs on top of the standard toolchain image:
+# What this installs on top of the standard SDK image:
 #   • CUDA Toolkit (nvcc, cudart, NVCC headers)          — CUDA_VERSION
 #   • cuDNN (Deep Neural Network library)                 — CUDNN_VERSION
 #   • TensorRT (inference optimizer + runtime)            — TENSORRT_VERSION
@@ -15,18 +15,19 @@
 #   • NVTX (Nsight profiler headers)                      — from CUDA repo
 #   • CUDA Firmware / driver-independent libs             — from CUDA repo
 #
-# The STANDARD build chain (Dockerfile.os-deps → Dockerfile.toolchain →
-# Dockerfile.media → Dockerfile.android → Dockerfile) is UNCHANGED.
+# The STANDARD build chain (Dockerfile.os-deps → Dockerfile.compiler →
+# Dockerfile.sdk → Dockerfile.media → Dockerfile.android → Dockerfile)
+# is UNCHANGED.
 # This file is ONLY used when building the -nvidia variants.
 #
 # Usage:
 #   docker buildx build \
-#     --build-arg BASE_IMAGE=local/kataglyphis:toolchain \
+#     --build-arg BASE_IMAGE=local/kataglyphis:sdk \
 #     -t local/kataglyphis:toolchain-nvidia \
 #     -f linux/Dockerfile.nvidia .
 # ==============================================================================
 
-ARG BASE_IMAGE=local/kataglyphis:toolchain
+ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
 
 # ------------------------------------------------------------------------------

@@ -69,7 +69,8 @@ Images in this repository:
 Linux image chain (built as separate images for caching):
 
 - `linux/Dockerfile.os-deps`: Ubuntu base + stable apt dependencies (no project scripts copied).
-- `linux/Dockerfile.toolchain`: GCC/LLVM/Vulkan toolchain setup via scripts.
+- `linux/Dockerfile.compiler`: GCC + LLVM/Clang compiler toolchain.
+- `linux/Dockerfile.sdk`: Vulkan SDK layer on top of compiler.
 - `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
 - `linux/Dockerfile`: runtime scripts + entrypoint (final image).
@@ -163,7 +164,7 @@ sudo nerdctl login ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -u Katag
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 sudo nerdctl build \
-  --platform=linux/arm64,linux/amd64,linux/riscv64 \
+  --platform=linux/arm64,linux/amd64,linux/arm64,linux/riscv64 \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
@@ -187,7 +188,7 @@ docker buildx create --name wsl-limited --use --driver docker-container --driver
 ```bash
 sudo docker buildx build \
   -f linux/Dockerfile \
-  --platform linux/amd64,linux/riscv64 \
+  --platform linux/amd64,linux/arm64,linux/riscv64 \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:$(git rev-parse --short HEAD) \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
@@ -211,41 +212,48 @@ docker buildx create --name mybuilder --driver docker-container --buildkitd-conf
 
 ```bash
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
-sudo nerdctl build --platform linux/amd64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=true' \
   -f linux/Dockerfile.os-deps \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-os-deps,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-os-deps \
   . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain,push=true' \
-  -f linux/Dockerfile.toolchain \
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler,push=true' \
+  -f linux/Dockerfile.compiler \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler \
   . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media \
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk,push=true' \
+  -f linux/Dockerfile.sdk \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-sdk,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-sdk \
+  . 2>&1 | tee -a output.log
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media,push=true' \
   -f linux/Dockerfile.media \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media \
   . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android,push=true' \
   -f linux/Dockerfile.android \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android \
   . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch \
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch,push=true' \
   -f linux/Dockerfile \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch \
   . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
   -f linux/Dockerfile \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
@@ -261,7 +269,7 @@ sudo nerdctl build --platform linux/amd64,linux/riscv64 -t ghcr.io/kataglyphis/k
 > - `nvidia-container-toolkit` installed and configured on the host.
 > - `--runtime=nvidia` or `--gpus all` passed to `docker run`.
 
-The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:toolchain` and before the media stage. The standard build chain is completely unchanged.
+The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and before the media stage. The standard build chain is completely unchanged.
 
 **New files:**
 | File | Purpose |
@@ -275,11 +283,11 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:toolchain
 **Sequential build (nerdctl):**
 
 ```bash
-# Step 1: NVIDIA layer (builds on top of existing :toolchain from standard chain)
+# Step 1: NVIDIA layer (builds on top of existing :sdk from standard chain)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
   -f linux/Dockerfile.nvidia \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia \
   . 2>&1 | tee -a output.log
@@ -327,7 +335,7 @@ sudo nerdctl run --rm -it --runtime=nvidia ghcr.io/kataglyphis/kataglyphis_besch
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
   -f linux/Dockerfile.nvidia \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
   --build-arg CUDA_VERSION=13.1.1 \
   --build-arg CUDA_VERSION_MAJOR_MINOR=13-1 \
   --build-arg CUDNN_VERSION=9 \

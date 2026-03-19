@@ -7,7 +7,7 @@
 
   <h4>Collecting Rust best practices.</h4>
 </div>
-  
+
 <div align="center">
   <a href="https://jonasheinle.de">
     <img src="images/Rust.gif" alt="Rust" width="400" />
@@ -16,12 +16,14 @@
 
 [![Rust workflow on Ubuntu-24.04 (x86_64/ARM)](https://github.com/Kataglyphis/Kataglyphis-RustProjectTemplate/actions/workflows/rust_ubuntu24_04.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-RustProjectTemplate/actions/workflows/rust_ubuntu24_04.yml)
 [![Rust workflow on Windows 2025](https://github.com/Kataglyphis/Kataglyphis-RustProjectTemplate/actions/workflows/rust_windows2025.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-RustProjectTemplate/actions/workflows/rust_windows2025.yml)
+[![CodeQL](https://github.com/Kataglyphis/Kataglyphis-RustProjectTemplate/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-RustProjectTemplate/actions/workflows/github-code-scanning/codeql)
 
 For **__official docs__** follow this [link](https://rust.jonasheinle.de).
 
 <!-- [![Linux build](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Linux.yml/badge.svg)](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Linux.yml)
 [![Windows build](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Windows.yml/badge.svg)](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Windows.yml)
-[![TopLang](https://img.shields.io/github/languages/top/Kataglyphis/GraphicsEngineVulkan)]() -->
+-->
+[![TopLang](https://img.shields.io/github/languages/top/Kataglyphis/Kataglyphis-RustProjectTemplate)]() 
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 [![Twitter](https://img.shields.io/twitter/follow/Cataglyphis_?style=social)](https://twitter.com/Cataglyphis_)
  
@@ -82,9 +84,9 @@ If you just want the newest versions allowed by your current constraints (update
 
 Update all:
 ```bash
+# update packages
 cargo update
-
-Update versions in Cargo.toml
+# update versions in Cargo.toml
 cargo install cargo-edit
 cargo upgrade --dry-run --verbose
 cargo upgrade --incompatible
@@ -115,6 +117,85 @@ cargo upgrade --incompatible
 cargo run -- read --path ../README.md
 ```
 
+### Windows: GStreamer + ONNX Overlay (WGPU)
+
+Build + Run (CPU via tract):
+
+```bash
+cargo run --bin kataglyphis_rustprojecttemplate --features gui_windows,onnx_tract -- gui --backend dx12
+```
+
+Build + Run (ONNX Runtime + DirectML):
+
+```bash
+cargo run --bin kataglyphis_rustprojecttemplate --features gui_windows,onnxruntime_directml -- gui --backend dx12
+```
+
+Build + Run (ONNX Runtime + CUDA, NVIDIA):
+
+```bash
+# PowerShell
+$env:KATAGLYPHIS_ORT_DEVICE="cuda"
+cargo run --bin kataglyphis_rustprojecttemplate --features gui_windows,onnxruntime_cuda -- gui --backend dx12
+
+# CMD
+set KATAGLYPHIS_ORT_DEVICE=cuda
+cargo run --bin kataglyphis_rustprojecttemplate --features gui_windows,onnxruntime_cuda -- gui --backend dx12
+```
+
+Optional environment variables:
+
+- `KATAGLYPHIS_ONNX_MODEL` – Pfad zum ONNX-Modell (Default: models/yolov10m.onnx)
+- `KATAGLYPHIS_ONNX_BACKEND` – `tract` oder `ort` (Default: automatisch)
+- `KATAGLYPHIS_ORT_DEVICE` – `cpu` | `auto` | `cuda` (Default: `cpu`)
+- `KATAGLYPHIS_PREPROCESS` – `letterbox` | `stretch` (Default: `stretch`)
+- `KATAGLYPHIS_SWAP_XY` – setze `1`, falls die Modell-Ausgabe X/Y vertauscht (Default: `0`)
+- `KATAGLYPHIS_SCORE_THRESHOLD` – Score-Schwelle für Erkennung (Default: `0.5`)
+- `KATAGLYPHIS_INFER_EVERY_MS` – Inferenz-Intervall in ms (Default: `100`, `0` = jedes Frame)
+
+CUDA Hinweise:
+- Benötigt NVIDIA-Treiber + CUDA/cuDNN Runtime auf dem System.
+- Wenn CUDA-Init fehlschlägt, kann `KATAGLYPHIS_ORT_DEVICE=auto` genutzt werden (fällt auf CPU zurück).
+
+Overlay:
+- Zeigt FPS, Inferenz-Latenz, CPU/RSS und eine CPU-Historie.
+- Inferenz kann im Overlay ein-/ausgeschaltet werden.
+
+### Resource usage logging (CPU/GPU/RAM)
+
+```bash
+cargo run --features gui_windows,onnxruntime_directml -- --resource-log --resource-log-interval-ms 1000 --resource-log-gpu=true gui
+```
+
+Optional: zusätzlich in Datei schreiben
+
+```bash
+cargo run --features gui_windows,onnxruntime_directml -- --resource-log --resource-log-file .\resource.log gui
+```
+
+### Burn / PyTorch-Replacement Demos
+
+Diese Demos sind als separates Binary integriert und per Feature gated.
+
+```bash
+cargo run --features burn_demos --bin burn-demos -- --help
+```
+
+Beispiele:
+
+```bash
+cargo run --features burn_demos --bin burn-demos -- tensor-demo
+
+cargo run --features burn_demos --bin burn-demos -- linear-regression --epochs 50 --steps-per-epoch 50 --lr 0.02 --batch-size 256
+
+cargo run --features burn_demos --bin burn-demos -- xor --epochs 2000 --lr 0.05
+
+cargo run --features burn_demos --bin burn-demos -- two-moons --epochs 200 --steps-per-epoch 50 --lr 0.01 --batch-size 256
+
+# ONNX Runtime YOLOv10m Demo (Default model: models/yolov10m.onnx)
+cargo run --features burn_demos --bin burn-demos -- onnx-yolov10 --runs 1 --print-topk 3
+```
+
 ### Windows
 ```bash
 cargo run --features gui_windows -- gui --backend dx12
@@ -124,6 +205,102 @@ cargo run --features gui_windows -- gui --backend vulkan
 
 # Auto-select (wgpu PRIMARY)
 cargo run --features gui_windows -- gui --backend primary
+```
+
+### Windows MSIX packaging
+
+Voraussetzungen:
+- Windows SDK (inkl. `makeappx` und `signtool`)
+- PowerShell 5.1+ oder PowerShell 7+
+
+MSIX bauen (inkl. Release-Build):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1
+```
+
+MSIX bauen und mit einer vorhandenen PFX signieren:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1 `
+  -CertificatePath .\certs\my-signing-cert.pfx `
+  -CertificatePassword "<PASSWORD>"
+```
+
+MSIX bauen und Testzertifikat automatisch erzeugen:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1 `
+  -CreateTestCertificate `
+  -CertificatePassword "<TEST_CERT_PASSWORD>"
+```
+
+Output:
+- Paket: `dist\msix\Kataglyphis.RustProjectTemplate_<VERSION>_x64.msix`
+- Staging-Inhalt: `dist\msix\staging\`
+
+Wichtige Parameter:
+- `-Binary` (Default: `kataglyphis_rustprojecttemplate`)
+- `-Features` (Default: `gui_windows,onnxruntime_directml`)
+- `-Version` (Format: `Major.Minor.Build[.Revision]`)
+- `-Publisher` (muss zum Signaturzertifikat passen, z. B. `CN=Kataglyphis`)
+- `-SkipBuild` (packt vorhandenen Release-Build erneut)
+
+MSIX installieren (mit Testzertifikat):
+
+1. PowerShell **als Administrator** öffnen.
+2. Zertifikat in vertrauenswürdige Stores importieren.
+3. Paket installieren.
+
+```powershell
+$certPath = "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate.testcert.pfx"
+$msixPath = "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate_0.1.0.0_x64.msix"
+$pwd = ConvertTo-SecureString "<TEST_CERT_PASSWORD>" -AsPlainText -Force
+
+Import-PfxCertificate -FilePath $certPath -Password $pwd -CertStoreLocation "Cert:\\LocalMachine\\Root"
+Import-PfxCertificate -FilePath $certPath -Password $pwd -CertStoreLocation "Cert:\\LocalMachine\\TrustedPeople"
+
+Add-AppxPackage -Path $msixPath
+```
+
+Installationsprüfung:
+
+```powershell
+Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate" | Select-Object Name, PackageFullName, Status
+```
+
+Troubleshooting:
+- `0x800B0109`: Zertifikatskette ist nicht vertrauenswürdig. Zertifikat wie oben in `LocalMachine\\Root` und `LocalMachine\\TrustedPeople` importieren (Admin erforderlich).
+- `Import-PfxCertificate: Zugriff verweigert`: PowerShell nicht als Administrator gestartet.
+- Details zum letzten Deploy-Fehler anzeigen:
+
+```powershell
+Get-AppxLog -ActivityID <ACTIVITY_ID>
+```
+
+App nach Installation starten:
+
+- Über das Startmenü nach `Kataglyphis RustProjectTemplate` suchen und starten.
+- Oder per PowerShell:
+
+```powershell
+$pkg = Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate"
+Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!App"
+```
+
+MSIX Update / Reinstall:
+
+- Neue Version mit höherer `-Version` bauen und signieren.
+- Dann erneut installieren:
+
+```powershell
+Add-AppxPackage -Path "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate_<NEW_VERSION>_x64.msix"
+```
+
+MSIX deinstallieren:
+
+```powershell
+Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate" | Remove-AppxPackage
 ```
 
 ### Linux
