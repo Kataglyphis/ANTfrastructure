@@ -374,5 +374,11 @@ Export-ModuleMember -Function @(
     'Invoke-BuildOptional',
     'Invoke-BuildStep',
     'Write-BuildSummary',
-    'Remove-BuildRoot'
+    'Remove-BuildRoot',
+    'Resolve-WorkspacePath',
+    'Resolve-DirectoryPath',
+    'New-Timestamp',
+    'New-TimestampedFilePath',
+    'Resolve-NormalizedPath',
+    'ConvertTo-ParameterList'
 )
