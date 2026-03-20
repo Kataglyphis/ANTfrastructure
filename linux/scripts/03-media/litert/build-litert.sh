@@ -25,12 +25,15 @@ install_dependencies() {
         cmake \
         git \
         pkg-config \
-        python3 \
-        python3-pip \
-        python3-numpy \
         curl \
         unzip
     rm -rf /var/lib/apt/lists/*
+
+    echo "[INFO] Setting up Python via uv venv..."
+    export PATH="${HOME}/.local/bin:${PATH}"
+    uv venv /opt/venv-litert --python 3.12
+    source /opt/venv-litert/bin/activate
+    uv pip install numpy
 }
 
 fetch_litert() {
@@ -47,6 +50,10 @@ fetch_litert() {
 configure_litert() {
     echo "[INFO] Configuring LiteRT build..."
 
+    if [ -f /opt/venv-litert/bin/activate ]; then
+        source /opt/venv-litert/bin/activate
+    fi
+
     cd "${LITERT_SRC}/litert"
 
     local preset="default"
@@ -59,10 +66,10 @@ configure_litert() {
     cmake --preset "${preset}" \
         -DCMAKE_INSTALL_PREFIX="${LITERT_PREFIX}" \
         -DCMAKE_INSTALL_LIBDIR=lib \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DLITERT_AUTO_BUILD_TFLITE=ON \
         -DLITERT_ENABLE_GPU=OFF \
-        -DLITERT_ENABLE_NPU=OFF \
-        -DBUILD_SHARED_LIBS=ON
+        -DLITERT_ENABLE_NPU=OFF
 }
 
 build_litert() {
@@ -90,10 +97,9 @@ install_litert() {
 
     cd "${LITERT_SRC}/litert"
 
-    cmake --build "${build_dir}" --target install || {
-        echo "[INFO] Install target not available, installing manually..."
-        install_manual
-    }
+    cmake --build "${build_dir}" --target install || true
+
+    install_manual
 
     ldconfig || true
 }
@@ -110,11 +116,35 @@ install_manual() {
     mkdir -p "${lib_dir}"
     mkdir -p "${include_dir}"
 
+    echo "[INFO] Copying shared libraries..."
     find "${build_dir}" -name "*.so*" -exec cp -v {} "${lib_dir}/" \; 2>/dev/null || true
+
+    echo "[INFO] Copying static libraries..."
     find "${build_dir}" -name "*.a" -exec cp -v {} "${lib_dir}/" \; 2>/dev/null || true
 
+    # Create symlinks for tensorflow-lite compatibility
+    # LiteRT builds libLiteRt.so, but GStreamer expects libtensorflow-lite.so
+    # Handle both versioned and unversioned libraries
+    for lib in "${lib_dir}"/libLiteRt.so*; do
+        [ -f "${lib}" ] || continue
+        libname=$(basename "${lib}")
+        tfname=$(echo "${libname}" | sed 's/libLiteRt/libtensorflow-lite/')
+        ln -sf "${libname}" "${lib_dir}/${tfname}"
+        echo "[INFO] Created symlink: ${tfname} -> ${libname}"
+    done
+
+    echo "[INFO] Copying headers..."
     cp -rv "${LITERT_SRC}/litert/c" "${include_dir}/" 2>/dev/null || true
+    mkdir -p "${include_dir}/tensorflow/lite"
     cp -rv "${LITERT_SRC}/tflite/c" "${include_dir}/tensorflow/lite/" 2>/dev/null || true
+    cp -rv "${LITERT_SRC}/tflite/core" "${include_dir}/tensorflow/lite/" 2>/dev/null || true
+
+    local static_libs=""
+    for lib in "${lib_dir}"/*.a; do
+        [ -f "${lib}" ] || continue
+        libname=$(basename "${lib}" .a)
+        static_libs="${static_libs} -l${libname}"
+    done
 
     mkdir -p "${lib_dir}/pkgconfig"
 
@@ -127,7 +157,8 @@ includedir=\${prefix}/include
 Name: LiteRT
 Description: Google LiteRT Runtime Library
 Version: ${LITERT_VERSION}
-Libs: -L\${libdir} -lLiteRt -ltensorflowlite
+Libs: -L\${libdir} -lLiteRt -ltensorflow-lite
+Libs.private: ${static_libs}
 Cflags: -I\${includedir}
 EOF
 
@@ -140,7 +171,8 @@ includedir=\${prefix}/include
 Name: TensorFlow Lite
 Description: TensorFlow Lite Library (via LiteRT)
 Version: ${LITERT_VERSION}
-Libs: -L\${libdir} -ltensorflowlite
+Libs: -L\${libdir} -ltensorflow-lite
+Libs.private: ${static_libs} -lpthread -ldl
 Cflags: -I\${includedir}
 EOF
 }

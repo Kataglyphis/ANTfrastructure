@@ -282,7 +282,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     export USER=root; \
-    export PKG_CONFIG_PATH="${NATIVE_CPU_OUTPUT_DIR}/runtime/lib/pkgconfig:${PKG_CONFIG_PATH}"; \
+    export PKG_CONFIG_PATH="${LITERT_OUTPUT_DIR}/lib/pkgconfig:${NATIVE_CPU_OUTPUT_DIR}/runtime/lib/pkgconfig:${PKG_CONFIG_PATH}"; \
+    export LD_LIBRARY_PATH="${LITERT_OUTPUT_DIR}/lib:${LD_LIBRARY_PATH}"; \
     cd /opt && \
     bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
         "$GSTREAMER_VERSION" \
