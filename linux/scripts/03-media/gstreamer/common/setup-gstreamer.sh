@@ -28,6 +28,49 @@ fi
 set -eux; \
 git config --global --add safe.directory '*'
 
+# --- Debug/logging helpers -------------------------------------------------
+LOG_DIR="/tmp/gstreamer-build-logs-$(date +%s)"
+mkdir -p "${LOG_DIR}"
+
+dump_debug_info() {
+  echo "=== GStreamer build debug info ==="
+  echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  echo "Host: $(uname -a)"
+  echo "GStreamer version: ${GSTREAMER_VERSION:-unset}"
+  echo "GStreamer prefix: ${GSTREAMER_PREFIX:-unset}"
+  echo "Build type: ${BUILD_TYPE:-unset}"
+  echo "MESON_WRAP_MODE: ${MESON_WRAP_MODE:-unset}"
+  echo "Environment snapshot:"; env | sort
+  echo "--- Resource usage ---"
+  free -h || true
+  df -h || true
+  ulimit -a || true
+  echo "--- Tool versions ---"
+  which python3 || true; python3 --version 2>&1 || true
+  which pip  || true; pip --version 2>&1 || true
+  which meson || true; meson --version 2>&1 || true
+  which ninja || true; ninja --version 2>&1 || true
+  which rustc || true; rustc --version 2>&1 || true
+  which cargo || true; cargo --version 2>&1 || true
+  which clang || true; clang --version 2>&1 || true
+  which cc || true; cc --version 2>&1 || true
+  which pkg-config || true; pkg-config --version 2>&1 || true
+  echo "=== end debug info ==="
+}
+
+save_logs() {
+  echo "Collecting logs to ${LOG_DIR}..."
+  cp -a /tmp/meson-compile.log "${LOG_DIR}/" 2>/dev/null || true
+  cp -a builddir/meson-logs/* "${LOG_DIR}/" 2>/dev/null || true
+  cp -a /tmp/meson-setup.log "${LOG_DIR}/" 2>/dev/null || true
+  cp -a /tmp/meson-setup-fallback.log "${LOG_DIR}/" 2>/dev/null || true
+  cp -a /tmp/gstreamer-debug-info.log "${LOG_DIR}/" 2>/dev/null || true
+  ls -la "${LOG_DIR}" || true
+  echo "Logs preserved in ${LOG_DIR}"
+}
+
+trap save_logs EXIT
+
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 # we need to get rid of old orc modules on the system
 set -eux; \
@@ -210,8 +253,11 @@ MESON_FLAGS=(
   "-Dgtk_doc=disabled"
   "-Dgtk=enabled"
   "-Dugly=enabled"
-  "-Dges=enabled"                                       
+  "-Dges=enabled"
+  # --- ML / Inference / LiteRT support ---
   "-Dbad=enabled"
+  "-Dgst-plugins-bad:tflite=enabled"
+  "-Dgst-plugins-bad:opencv=enabled"
   "-Dgst-plugins-bad:onnx=enabled"
   "-Dtools=enabled"
   "-Dlibav=enabled"
@@ -252,10 +298,14 @@ esac
 # --- end patch ---
 
 
-uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} || {
+# Dump debug info and save to /tmp for collection
+dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
+
+# Run meson setup and capture full output
+if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
   echo "Meson setup failed; printing verbose output..."
-  uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} -Dwarning_level=2
-}
+  uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1 || true
+fi
 
 echo "Updating subprojects..."
 uv run meson subprojects update > /dev/null 2>&1 || true
@@ -375,6 +425,10 @@ fi
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${RUST_JOBS}}"
 echo "Building gst-plugins-rs with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (cores=${RUST_CORES}, avail_mb=${RUST_AVAIL_MB}, per_job_mb=${RUST_PER_JOB_MB})"
 
+# Build all gst-plugins-rs packages (do not exclude plugins by default).
+# Previously we temporarily excluded gst-plugin-whisper to work around
+# bindgen pregenerated-layout mismatches. That exclusion has been reverted
+# so the build attempts to compile all plugins (including whisper).
 cargo build "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}"
 echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly."
 

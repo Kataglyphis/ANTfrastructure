@@ -1,6 +1,111 @@
 # syntax=docker/dockerfile:1.19
 
 ARG BASE_IMAGE=local/kataglyphis:compiler
+
+# Build ONNX Runtime / ONNX Runtime GenAI in an isolated, cacheable stage.
+# This stage is intentionally narrow in its inputs (only the ONNX build scripts)
+# so that unrelated changes (GStreamer, Vulkan, etc.) do not invalidate its cache.
+FROM ${BASE_IMAGE} AS ai-sdks
+
+# ONNX build args (scoped to the ai-sdks stage)
+ARG ONNXRUNTIME_VERSION=v1.24.4
+ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
+ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
+ARG ONNXRUNTIME_GENAI_VERSION=v0.12.1
+ARG ONNXRUNTIME_GENAI_BUILD_TYPE=Release
+ARG BUILD_GENAI=true
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR}
+ENV GENAI_OUTPUT_DIR=${ONNXRUNTIME_GENAI_OUTPUT_DIR}
+
+SHELL ["bash", "-lc"]
+
+# Copy only the minimal ONNX build scripts and tools required for building.
+COPY --chmod=+x linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
+
+# Install ONNX deps (apt), fetch sources, and perform the heavy builds.
+# Use cache mounts to preserve apt, pip, ccache, sccache and cargo caches between builds.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    export USER=root; \
+    SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    set -eux; \
+    export USER=root; \
+    bash /opt/scripts/media/onnxruntime/build/20-fetch.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    set -eux; \
+    export USER=root; \
+    bash /opt/scripts/media/onnxruntime/build/30-build-native.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+# Verify ONNX Runtime native build artifacts exist
+RUN set -eux; \
+    lib_dir="${NATIVE_CPU_OUTPUT_DIR}/lib"; \
+    if [ ! -d "${lib_dir}" ]; then \
+        echo "ERROR: ONNX Runtime lib directory not found: ${lib_dir}"; \
+        exit 1; \
+    fi; \
+    if [ -z "$(ls -A ${lib_dir}/*.so* 2>/dev/null)" ]; then \
+        echo "ERROR: No .so files found in ${lib_dir}"; \
+        ls -la "${lib_dir}" || true; \
+        exit 1; \
+    fi; \
+    echo "ONNX Runtime native build verified:"; \
+    ls -la "${lib_dir}"
+
+# GenAI and WASM/JS builds
+RUN --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    set -eux; \
+    export USER=root; \
+    BUILD_GENAI="${BUILD_GENAI}" \
+    bash /opt/scripts/media/onnxruntime/build/60-build-genai.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --genai-version "${ONNXRUNTIME_GENAI_VERSION}" \
+        --genai-config "${ONNXRUNTIME_GENAI_BUILD_TYPE}"
+
+RUN --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    export USER=root; \
+    bash /opt/scripts/media/onnxruntime/build/40-build-wasm.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+RUN set -eux; \
+    export USER=root; \
+    bash /opt/scripts/media/onnxruntime/build/50-build-js.sh \
+        --ort-version "${ONNXRUNTIME_VERSION}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+# Leave artifacts in the expected output directories (/usr/local/lib/onnxruntime-*)
+
+### End ai-sdks stage
+
 FROM ${BASE_IMAGE}
 
 ARG BUILD_TYPE=Release
@@ -16,6 +121,25 @@ SHELL ["bash", "-lc"]
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup
 # ------------------------------------------------------------------------------
+
+# Copy ONNX artifacts built in the ai-sdks stage into the SDK image.
+# This creates a standalone layer containing only ONNX build outputs that
+# BuildKit can cache independently from later framework work.
+COPY --from=ai-sdks /usr/local/lib/onnxruntime-cpu /usr/local/lib/onnxruntime-cpu
+COPY --from=ai-sdks /usr/local/lib/onnxruntime-genai /usr/local/lib/onnxruntime-genai || true
+
+# Copy the small runtime/pkg-config generator and run it here so it can pick
+# up the ONNX artifacts we copied above. Keeping this step separate keeps the
+# heavy ONNX builds isolated in ai-sdks while allowing small, frequent changes
+# to runtime scripts without invalidating the ONNX build cache.
+COPY --chmod=+x linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
+RUN chmod +x /opt/scripts/media/onnxruntime/runtime/*.sh || true
+RUN set -eux; \
+    export USER=root; \
+    bash /opt/scripts/media/onnxruntime/runtime/31-generate-pkgconfig-native.sh \
+        --ort-version "${ONNXRUNTIME_VERSION:-v1.24.4}" \
+        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE:-Release}" \
+        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE:-Release}"
 
 # 5. VULKAN (Heavy Layer)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

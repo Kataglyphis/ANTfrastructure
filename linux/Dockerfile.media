@@ -176,7 +176,8 @@ RUN set -eux; \
 # ------------------------------------------------------------------------------
 # GStreamer build
 # ------------------------------------------------------------------------------
-COPY linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
+COPY linux/scripts/03-media/gstreamer/common/setup-gstreamer.sh /opt/scripts/media/gstreamer/common/setup-gstreamer.sh
+RUN chmod +x /opt/scripts/media/gstreamer/common/setup-gstreamer.sh
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
