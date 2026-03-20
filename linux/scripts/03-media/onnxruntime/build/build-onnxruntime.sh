@@ -28,6 +28,9 @@ else
   info "Skipping all web builds (WASM/JS) on non-amd64 architecture (arch=$(detect_target_arch))"
 fi
 
+# Build LiteRT helper (build from source and collect artifacts)
+bash "${SCRIPT_DIR}/70-build-litert.sh" "$@" || info "LiteRT build script failed or was skipped"
+
 info "Complete build finished. Artifacts:"
 info "  - Native CPU: ${NATIVE_CPU_OUTPUT_DIR}"
 if [[ "${BUILD_GENAI}" == "true" ]]; then

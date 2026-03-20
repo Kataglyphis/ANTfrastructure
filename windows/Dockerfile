@@ -91,6 +91,27 @@ ENV ONNX_LIB="C:\onnx\Microsoft.ML.OnnxRuntime.${ONNX_VERSION}\runtimes\win-x64\
 ENV ONNX_GENAI_INCLUDE="C:\onnx\Microsoft.ML.OnnxRuntimeGenAI.${ONNX_GENAI_VERSION}\build\native\include"
 ENV ONNX_GENAI_LIB="C:\onnx\Microsoft.ML.OnnxRuntimeGenAI.${ONNX_GENAI_VERSION}\runtimes\win-x64\native"
 
+# Change this from ARG to ENV so it evaluates reliably in the shell
+ENV OPENCV_VERSION="4.13.0"
+ENV OPENCV_ROOT="C:\opencv"
+ENV OPENCV_DIR="C:\opencv\build"
+
+# Pre-built MSVC binaries usually reside in the vc16 folder for OpenCV 4.x
+ENV OPENCV_BIN="C:\opencv\build\x64\vc16\bin"
+ENV OPENCV_LIB="C:\opencv\build\x64\vc16\lib"
+ENV OPENCV_INCLUDE="C:\opencv\build\include"
+
+# -----------------------------------------------------------------------------
+# Install OpenCV (Placed AFTER the ENV PATH setup)
+# -----------------------------------------------------------------------------
+RUN Write-Host 'Downloading OpenCV...' ; `
+    $opencvUrl = 'https://github.com/opencv/opencv/releases/download/{0}/opencv-{0}-windows.exe' -f $env:OPENCV_VERSION ; `
+    Invoke-WebRequest -Uri $opencvUrl -OutFile C:\temp\opencv.exe ; `
+    Write-Host 'Extracting OpenCV using 7-Zip (bypassing GUI hang)...' ; `
+    7z.exe x C:\temp\opencv.exe -oC:\ -y -bsp1 ; `
+    Remove-Item C:\temp\opencv.exe -Force ; `
+    Write-Host 'OpenCV extracted successfully.'
+
 # -----------------------------------------------------------------------------
 # Environment Variables Setup
 # -----------------------------------------------------------------------------
@@ -112,8 +133,8 @@ ENV USERPROFILE=C:\Users\ContainerAdministrator
 ENV CARGO_HOME=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo
 ENV CARGO_BIN=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo\bin
 
-# Add ONNX_LIB and ONNX_GENAI_LIB to PATH so the DLLs are found at runtime
-ENV PATH=$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$ONNX_LIB;$ONNX_GENAI_LIB;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+# Add ONNX, GenAI, and OpenCV DLL paths to PATH so they are found at runtime
+ENV PATH=$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$ONNX_LIB;$ONNX_GENAI_LIB;$OPENCV_BIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
 # -----------------------------------------------------------------------------
 # Tool Verification & Configuration
@@ -159,7 +180,26 @@ RUN $ErrorActionPreference='Stop'; `
     Write-Host ('Found ONNX DLL: {0}' -f $onnxDlls[0].FullName) ; `
     Write-Host 'ONNX verification passed! :)))'
 
+# -----------------------------------------------------------------------------
+# OpenCV Validation (Headers, Libs, DLLs)
+# -----------------------------------------------------------------------------
+RUN $ErrorActionPreference='Stop'; `
+    Write-Host 'Verifying OpenCV C++ resources...' ; `
+    $cvHeaders = Get-ChildItem -Path $env:OPENCV_INCLUDE -Filter 'opencv.hpp' -Recurse ; `
+    $cvLibs    = Get-ChildItem -Path $env:OPENCV_LIB -Filter 'opencv_world*.lib' -Recurse ; `
+    $cvDlls    = Get-ChildItem -Path $env:OPENCV_BIN -Filter 'opencv_world*.dll' -Recurse ; `
+    `
+    if (-not $cvHeaders) { throw 'OpenCV headers missing!' } `
+    if (-not $cvLibs) { throw 'OpenCV import libs missing!' } `
+    if (-not $cvDlls) { throw 'OpenCV dlls missing!' } `
+    `
+    Write-Host ('Found OpenCV Header: {0}' -f $cvHeaders[0].FullName) ; `
+    Write-Host ('Found OpenCV Lib: {0}' -f $cvLibs[0].FullName) ; `
+    Write-Host ('Found OpenCV DLL: {0}' -f $cvDlls[0].FullName) ; `
+    Write-Host 'OpenCV verification passed! :)))'
+
 # avoids problems with shared ownership when shared volume 
 RUN git config --global --add safe.directory '*'
 
 ENTRYPOINT ["C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat","-arch=amd64" , "&&", "powershell.exe", "-NoLogo", "-ExecutionPolicy", "Bypass"]
+

@@ -16,8 +16,6 @@ SHELL ["bash", "-lc"]
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup
 # ------------------------------------------------------------------------------
-
-# 5. VULKAN (Heavy Layer)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     --mount=type=tmpfs,target=/tmp \
