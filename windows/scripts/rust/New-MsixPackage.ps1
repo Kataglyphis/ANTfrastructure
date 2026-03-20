@@ -78,7 +78,10 @@ function Resolve-Executable([string]$Name) {
             Where-Object { $_.FullName -match "\\x64\\" -or $_.FullName -match "/x64/" } |
             Sort-Object FullName -Descending
 
-        if ($candidates -and $candidates.Count -gt 0) { return $candidates[0].FullName }
+        if ($candidates -and $candidates.Count -gt 0) { 
+            $fso = New-Object -ComObject Scripting.FileSystemObject
+            return $fso.GetFile($candidates[0].FullName).ShortPath
+        }
     }
     return $null
 }

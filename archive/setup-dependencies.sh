@@ -160,6 +160,12 @@ g++ --version
 install_vulkan_tarball() {
   local version="$1"
   local arch_suffix="x86_64"
+  case "$ARCH" in
+    x86_64) arch_suffix="x86_64" ;;
+    aarch64|arm64) arch_suffix="aarch64" ;;
+    riscv64|riscv|rv64*) arch_suffix="riscv64" ;;
+    *) echo "Unknown or unsupported architecture: $ARCH" >&2; exit 1 ;;
+  esac
   
   echo "Installing Vulkan SDK ${version} via tarball for ${ARCH}..."
   
@@ -229,13 +235,13 @@ install_vulkan_tarball() {
 # -----------------------------------------------------------------------------
 echo "Installing Vulkan SDK version ${VULKAN_VERSION} via tarball for architecture $ARCH..."
 
-if [ "$ARCH" == "x86_64" ] || [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+if [ "$ARCH" == "x86_64" ] || [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]] || [[ "$ARCH" == "riscv64" || "$ARCH" == "riscv" || "$ARCH" == rv64* ]]; then
   install_vulkan_tarball "$VULKAN_VERSION"
 else
   echo "Unknown or unsupported architecture: $ARCH. Skipping Vulkan SDK." >&2
 fi
 
-if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" || "$ARCH" == "riscv64" || "$ARCH" == "riscv" || "$ARCH" == rv64* ]]; then
   cd "${VULKAN_VERSION}"
   chmod +x vulkansdk
   echo "Running .vulkansdk to build SDK components from source... means we are not on x86_64"

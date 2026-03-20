@@ -1,5 +1,5 @@
 Param(
-    [string]$VulkanVersion = '1.4.328.1',
+    [string]$VulkanVersion = '1.4.341.1',
     [string]$ClangVersion  = '21.1.1',
     [string]$VulkanSdkPath = 'C:\VulkanSDK'
 )

@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.19
 
-ARG BASE_IMAGE=local/kataglyphis:toolchain
+ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
 
 ARG BUILD_TYPE=Release
 ARG TARGETARCH
-ARG GSTREAMER_VERSION=1.28.0
+ARG GSTREAMER_VERSION=1.28.1
 
 SHELL ["bash", "-lc"]
 
@@ -68,10 +68,20 @@ RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
 # ----------------------------------------------------------------------------
 # ONNX Runtime build args
 # ----------------------------------------------------------------------------
-# v1.23.2
-ARG ONNXRUNTIME_VERSION=main
+ARG ONNXRUNTIME_VERSION=v1.24.4
 ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
 ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
+
+# GenAI build args
+ARG ONNXRUNTIME_GENAI_VERSION=v0.12.1
+ARG ONNXRUNTIME_GENAI_BUILD_TYPE=Release
+ARG BUILD_GENAI=true
+
+# Output directories
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR}
+ENV GENAI_OUTPUT_DIR=${ONNXRUNTIME_GENAI_OUTPUT_DIR}
 
 # ------------------------------------------------------------------------------
 # ONNX Runtime build (split into steps for better Docker layer caching)
@@ -106,6 +116,35 @@ RUN --mount=type=cache,target=/var/cache/ccache \
             --ort-version "${ONNXRUNTIME_VERSION}" \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+
+# Verify ONNX Runtime native build artifacts exist
+RUN set -eux; \
+        lib_dir="${NATIVE_CPU_OUTPUT_DIR}/lib"; \
+        if [ ! -d "${lib_dir}" ]; then \
+            echo "ERROR: ONNX Runtime lib directory not found: ${lib_dir}"; \
+            exit 1; \
+        fi; \
+        if [ -z "$(ls -A ${lib_dir}/*.so* 2>/dev/null)" ]; then \
+            echo "ERROR: No .so files found in ${lib_dir}"; \
+            ls -la "${lib_dir}" || true; \
+            exit 1; \
+        fi; \
+        echo "ONNX Runtime native build verified:"; \
+        ls -la "${lib_dir}"
+
+# GenAI build (after native CPU build)
+RUN --mount=type=cache,target=/var/cache/ccache \
+        --mount=type=cache,target=/var/cache/sccache \
+        --mount=type=cache,target=/root/.cache/uv \
+        --mount=type=cache,target=/root/.cache/pip \
+        set -eux; \
+        export USER=root; \
+        BUILD_GENAI="${BUILD_GENAI}" \
+        bash /opt/scripts/media/onnxruntime/build/60-build-genai.sh \
+            --ort-version "${ONNXRUNTIME_VERSION}" \
+            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+            --genai-version "${ONNXRUNTIME_GENAI_VERSION}" \
+            --genai-config "${ONNXRUNTIME_GENAI_BUILD_TYPE}"
 
 RUN --mount=type=cache,target=/var/cache/ccache \
         --mount=type=cache,target=/var/cache/sccache \
@@ -142,7 +181,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     export USER=root; \
-    export PKG_CONFIG_PATH="/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig:${PKG_CONFIG_PATH}"; \
+    export PKG_CONFIG_PATH="${NATIVE_CPU_OUTPUT_DIR}/runtime/lib/pkgconfig:${PKG_CONFIG_PATH}"; \
     cd /opt && \
     bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
         "$GSTREAMER_VERSION" \
@@ -168,6 +207,26 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -eux; \
     cd /opt && \
     bash /opt/scripts/media/libcamera/build-libcamera.sh
+
+# ==============================================================================
+# Media stack; FFmpeg (latest from source)
+# ==============================================================================
+COPY linux/scripts/03-media/ffmpeg/ /opt/scripts/media/ffmpeg/
+RUN chmod +x /opt/scripts/media/ffmpeg/*.sh || true
+
+ENV FFMPEG_PREFIX=/opt/ffmpeg
+ENV PATH="${FFMPEG_PREFIX}/bin:${PATH}"
+ENV PKG_CONFIG_PATH="${FFMPEG_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+ENV LD_LIBRARY_PATH="${FFMPEG_PREFIX}/lib:${LD_LIBRARY_PATH}"
+
+# ------------------------------------------------------------------------------
+# FFmpeg build
+# ------------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    cd /opt && \
+    bash /opt/scripts/media/ffmpeg/build-ffmpeg.sh
 
 # ------------------------------------------------------------------------------
 # Cleanup and system configuration
@@ -196,4 +255,5 @@ RUN set -eux; \
 RUN set -eux; \
     printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \
     printf "%s\n" "/opt/libcamera/lib64" >> /etc/ld.so.conf.d/libcamera.conf; \
+    printf "%s\n" "/opt/ffmpeg/lib" > /etc/ld.so.conf.d/ffmpeg.conf; \
     ldconfig

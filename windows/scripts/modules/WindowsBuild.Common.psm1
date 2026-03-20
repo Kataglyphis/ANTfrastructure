@@ -128,17 +128,55 @@ function Invoke-BuildExternal {
     $global:LASTEXITCODE = 0
 
     try {
-        & $File @parameterList 2>&1 | ForEach-Object {
-            if ($null -eq $_) { return }
-            Write-BuildLog -Context $Context -Message ([string]$_)
-        }
+        # Create temp files for capturing output
+        $stdOutFile = [System.IO.Path]::GetTempFileName()
+        $stdErrFile = [System.IO.Path]::GetTempFileName()
 
-        $exitCode = $LASTEXITCODE
-        if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
-            throw "Command failed with exit code ${exitCode}: $cmdLine"
-        }
+        try {
+            # Use Start-Process for reliable execution of paths containing spaces
+            # This avoids issues with the & operator and cmd.exe path parsing
+            $startProcessArgs = @{
+                FilePath = $File
+                Wait = $true
+                NoNewWindow = $true
+                PassThru = $true
+                RedirectStandardOutput = $stdOutFile
+                RedirectStandardError = $stdErrFile
+            }
 
-        return $exitCode
+            if ($parameterList -and $parameterList.Count -gt 0) {
+                $startProcessArgs.ArgumentList = $parameterList
+            }
+
+            $process = Start-Process @startProcessArgs
+
+            # Log captured output
+            if (Test-Path $stdOutFile) {
+                Get-Content $stdOutFile | ForEach-Object {
+                    if (-not [String]::IsNullOrWhiteSpace($_)) {
+                        Write-BuildLog -Context $Context -Message $_
+                    }
+                }
+            }
+            if (Test-Path $stdErrFile) {
+                Get-Content $stdErrFile | ForEach-Object {
+                    if (-not [String]::IsNullOrWhiteSpace($_)) {
+                        Write-BuildLog -Context $Context -Message $_
+                    }
+                }
+            }
+
+            $exitCode = $process.ExitCode
+            if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
+                throw "Command failed with exit code ${exitCode}: $cmdLine"
+            }
+
+            return $exitCode
+        } finally {
+            # Clean up temp files
+            if (Test-Path $stdOutFile) { Remove-Item $stdOutFile -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $stdErrFile) { Remove-Item $stdErrFile -Force -ErrorAction SilentlyContinue }
+        }
     } finally {
         $ErrorActionPreference = $previousErrorActionPreference
     }
@@ -237,7 +275,21 @@ function Write-BuildSummary {
     $total = $Context.Results.Succeeded.Count + $Context.Results.Failed.Count
     $successRate = if ($total -gt 0) { [math]::Round(($Context.Results.Succeeded.Count / $total) * 100, 1) } else { 0 }
     Write-BuildLog -Context $Context -Message "Total: $total steps, $($Context.Results.Succeeded.Count) succeeded, $($Context.Results.Failed.Count) failed ($($successRate)% success rate)"
-    Write-BuildLog -Context $Context -Message ""
+
+    if ($Context.Results.Failed.Count -gt 0) {
+        Write-BuildLog -Context $Context -Message ""
+        Write-BuildLog -Context $Context -Message ("=" * 60)
+        Write-BuildLogError -Context $Context -Message "=== ERROR DETAILS ==="
+        Write-BuildLog -Context $Context -Message ("=" * 60)
+        $errorIndex = 1
+        foreach ($step in $Context.Results.Failed) {
+            Write-BuildLogError -Context $Context -Message ""
+            Write-BuildLogError -Context $Context -Message "[$errorIndex/$($Context.Results.Failed.Count)] $step"
+            Write-BuildLogError -Context $Context -Message "    $($Context.Results.Errors[$step])"
+            $errorIndex++
+        }
+        Write-BuildLog -Context $Context -Message ""
+    }
 
     if ($Context.LogPath) {
         Write-BuildLog -Context $Context -Message "Full log available at: $($Context.LogPath)"

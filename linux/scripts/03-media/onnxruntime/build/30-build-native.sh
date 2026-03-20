@@ -61,15 +61,55 @@ find "${NATIVE_CPU_BUILD_DIR}" -name "*.whl" -type f 2>/dev/null | while read -r
   ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels/$(basename "${whl}")"
 done || info "No wheels found in ${NATIVE_CPU_BUILD_DIR}"
 
-# Copy headers
-cp -a "${ORT_SRC_DIR}/include" "${NATIVE_CPU_OUTPUT_DIR}/" 2>/dev/null || \
-  warn "Include directory not found at ${ORT_SRC_DIR}/include"
+# Copy headers from source
+mkdir -p "${NATIVE_CPU_OUTPUT_DIR}/include"
+if [[ -d "${ORT_SRC_DIR}/include" ]]; then
+  cp -a "${ORT_SRC_DIR}/include/." "${NATIVE_CPU_OUTPUT_DIR}/include/" 2>/dev/null || true
+  info "Copied headers from ${ORT_SRC_DIR}/include"
+fi
+
+# Copy generated headers from build directory
+if [[ -d "${NATIVE_CPU_BUILD_DIR}/include" ]]; then
+  cp -a "${NATIVE_CPU_BUILD_DIR}/include/." "${NATIVE_CPU_OUTPUT_DIR}/include/" 2>/dev/null || true
+  info "Copied generated headers from ${NATIVE_CPU_BUILD_DIR}/include"
+fi
+
+# Flatten headers for GenAI - it expects headers at include/ root
+# ONNX Runtime has them at include/onnxruntime/core/session/
+for search_dir in "${ORT_SRC_DIR}" "${NATIVE_CPU_BUILD_DIR}"; do
+  if [[ ! -d "${search_dir}/include" ]]; then
+    continue
+  fi
+  # Copy all ONNX Runtime C API header files from nested directories to include root
+  find "${search_dir}/include" -name "onnxruntime*.h" -type f 2>/dev/null | while read -r hdr; do
+    cp "${hdr}" "${NATIVE_CPU_OUTPUT_DIR}/include/" 2>/dev/null || true
+  done
+done
+info "Listing copied headers:"
+ls -la "${NATIVE_CPU_OUTPUT_DIR}/include/"*.h 2>/dev/null || warn "No .h files found in include directory"
+
+# Verify critical headers
+if [[ -f "${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_c_api.h" ]]; then
+  info "Found onnxruntime_c_api.h in include directory"
+else
+  warn "onnxruntime_c_api.h not found - GenAI build may fail"
+  warn "Searching for onnxruntime_c_api.h..."
+  find "${ORT_SRC_DIR}" -name "onnxruntime_c_api.h" 2>/dev/null | head -5 || true
+  find "${NATIVE_CPU_BUILD_DIR}" -name "onnxruntime_c_api.h" 2>/dev/null | head -5 || true
+fi
 
 # Copy libraries
 mkdir -p "${NATIVE_CPU_OUTPUT_DIR}/lib"
 find "${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" -maxdepth 1 -type f \
   \( -name "libonnxruntime*.so*" -o -name "libonnxruntime_providers_*.so*" \) \
   -exec cp -t "${NATIVE_CPU_OUTPUT_DIR}/lib/" {} + 2>/dev/null || true
+
+# Create unversioned symlink for libonnxruntime.so (required by GenAI CMake)
+onnx_lib="$(find "${NATIVE_CPU_OUTPUT_DIR}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
+if [[ -n "${onnx_lib}" ]] && [[ ! -e "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]]; then
+  ln -sf "$(basename "${onnx_lib}")" "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so"
+  info "Created symlink: libonnxruntime.so -> $(basename "${onnx_lib}")"
+fi
 
 # Create symlinks in /usr/local/lib
 find "${NATIVE_CPU_OUTPUT_DIR}/lib" -type f -name "lib*.so*" -print0 2>/dev/null | \

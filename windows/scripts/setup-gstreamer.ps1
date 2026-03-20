@@ -7,7 +7,7 @@
     modules/WindowsInstaller.Common.psm1.
 #>
 param(
-    [string]$Url = 'https://gstreamer.freedesktop.org/data/pkg/windows/1.28.0/msvc/gstreamer-1.0-msvc-x86_64-1.28.0.exe',
+    [string]$Url = 'https://gstreamer.freedesktop.org/data/pkg/windows/1.28.1/msvc/gstreamer-1.0-msvc-x86_64-1.28.1.exe',
     [string]$InstallDir = 'C:\gstreamer',
     [string]$LogDir = 'C:\temp',
     [switch]$ForceInteractiveOnFail,   # if set, run interactive installer if silent attempts fail

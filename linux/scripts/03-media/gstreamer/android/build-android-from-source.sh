@@ -2,7 +2,7 @@
 set -eux
 
 # 1. Parse Arguments
-GST_VERSION="1.26.9"
+GST_VERSION="1.28.1"
 ANDROID_SDK="/opt/android-sdk"
 ANDROID_NDK="/opt/android-sdk/ndk/29.0.14206865"
 INSTALL_PATH="/opt/android/gstreamer"

@@ -4,12 +4,16 @@ SHELL ["bash", "-lc"]
 ENV VENV=/opt/venv
 
 # Initialize the venv
-RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} uv venv --python=3.13 "${VENV}"
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    uv venv --python=3.13 "${VENV}"
 ENV VIRTUAL_ENV=${VENV}
 ENV PATH=${VENV}/bin:${PATH}
+ENV UV_LOCK_TIMEOUT=3600
+ENV PIP_DEFAULT_TIMEOUT=1200
+ENV UV_HTTP_TIMEOUT=1200
 
 # Define the version once
-ARG PYTHON_VERSION=3.13.12                           
+ARG PYTHON_VERSION=3.13.12
 # Run the build using the variable
 RUN wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz -O /tmp/Python-${PYTHON_VERSION}.tgz \
     && tar -xf /tmp/Python-${PYTHON_VERSION}.tgz -C /tmp \
@@ -26,9 +30,8 @@ RUN wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VER
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# libarrow for mlflow feom source build
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     apt-get update && \
     apt-get install -y libgirepository-2.0-dev && \
     apt-get install -y --no-install-recommends \
@@ -51,25 +54,25 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libegl1-mesa-dev \
       libglu1-mesa-dev \
       pkg-config \
+      # ADDED: Matplotlib build dependencies to avoid meson timeouts
+      libfreetype6-dev \
+      libqhull-dev \
+      libharfbuzz-dev \
+      libfribidi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt
-RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     git clone https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git && \
     cd Kataglyphis-Orchestr-ANT-ion && \
-    git checkout v0.0.3 && \
+    git checkout v0.0.13 && \
     source ${VENV}/bin/activate && \
-    # ---------------------------------------------------------
-    # Architektur-Check: Flag nur für riscv64 setzen
-    # ---------------------------------------------------------
-    if [ "$(uname -m)" = "riscv64" ]; then \
-        UV_OPTS='--no-binary-package opencv-python'; \
-    else \
-        UV_OPTS=''; \
-    fi && \
+    # Remove conflicting system headers to force use of PyPI version
+    apt-get remove -y pybind11-dev python3-pybind11 || true && \
     # ---------------------------------------------------------
     # Variable $UV_OPTS wird hier eingefügt
-    uv sync --active $UV_OPTS --extra "ml-ai" --extra "frontend" && \
+    uv sync --active --extra "ml-ai" --extra "pytorch-cpu" --extra "test" --extra "frontend" --extra "docs" && \
     uv pip install PyGObject && \
     # 6. Verify
     python -c "import gi, cv2, numpy, contourpy; \

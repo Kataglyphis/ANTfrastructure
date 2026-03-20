@@ -15,13 +15,13 @@ export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 # Defaults (overridden by CLI or ENV)
-LLVM_WANTED=${LLVM_WANTED:-21}
-CLANG_WANTED=${CLANG_WANTED:-21}
+LLVM_WANTED=${LLVM_WANTED:-22}
+CLANG_WANTED=${CLANG_WANTED:-22}
 GCC_WANTED=${GCC_WANTED:-14}
-VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-1.4.328.1}
+VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-1.4.341.1}
 
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
-APT_FLAGS=(-yq --no-install-recommends "${APT_OPTS[@]}")
+APT_FLAGS=(-qq --no-install-recommends "${APT_OPTS[@]}")
 
 SUDO=""
 APT_UPDATED=""
@@ -69,12 +69,12 @@ detect_system() {
 
 apt_update_once() {
   if [ -z "${APT_UPDATED}" ]; then
-    $SUDO apt-get update -y
+    $SUDO apt-get update -qq
     APT_UPDATED=1
   fi
 }
 
 apt_install() {
   apt_update_once
-  $SUDO apt-get install "${APT_FLAGS[@]}" "$@"
+  $SUDO apt-get install -y "${APT_FLAGS[@]}" "$@"
 }

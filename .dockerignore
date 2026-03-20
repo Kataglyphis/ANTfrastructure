@@ -1,0 +1,7 @@
+.git
+output.log
+*.log
+.codacy
+archive
+README.md
+docs

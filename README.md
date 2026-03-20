@@ -32,6 +32,7 @@
     - [RICV64](#ricv64)
     - [Setup](#setup)
     - [Torch Add-on](#torch-add-on-linux)
+    - [NVIDIA GPU Build](#nvidia-gpu-build-linux)
     - [Webserver](#webserver-linux)
   - [Windows](#windows)
   - [Prerequisites](#prerequisites)
@@ -68,10 +69,18 @@ Images in this repository:
 Linux image chain (built as separate images for caching):
 
 - `linux/Dockerfile.os-deps`: Ubuntu base + stable apt dependencies (no project scripts copied).
-- `linux/Dockerfile.toolchain`: GCC/LLVM/Vulkan toolchain setup via scripts.
+- `linux/Dockerfile.compiler`: GCC + LLVM/Clang compiler toolchain.
+- `linux/Dockerfile.sdk`: Vulkan SDK layer on top of compiler.
 - `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
 - `linux/Dockerfile`: runtime scripts + entrypoint (final image).
+
+Optional NVIDIA GPU image chain (inserts after `:toolchain`, standard chain unchanged):
+
+- `linux/Dockerfile.nvidia`: CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX.
+- `linux/Dockerfile.media-nvidia`: Media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs.
+- `linux/Dockerfile.android-nvidia`: Android SDK/NDK on top of media-nvidia.
+- `linux/Dockerfile.nvidia-final`: Final entrypoint image (`:nvidia` tag).
 
 What you get:
 - ✅ Multi-arch builds via buildx/nerdctl.
@@ -126,7 +135,7 @@ sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleun
 ##### RICV64 example
 
 ```bash
-nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.25.90 --no-cache \
+nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.28.1 --no-cache \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile.media \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
@@ -155,7 +164,7 @@ sudo nerdctl login ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -u Katag
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 sudo nerdctl build \
-  --platform=linux/arm64,linux/amd64,linux/riscv64 \
+  --platform=linux/arm64,linux/amd64,linux/arm64,linux/riscv64 \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
@@ -209,17 +218,24 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-os-deps,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-os-deps \
   . 2>&1 | tee -a output.log
-sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain,push=true' \
-  -f linux/Dockerfile.toolchain \
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler,push=true' \
+  -f linux/Dockerfile.compiler \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler \
+  . 2>&1 | tee -a output.log
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk,push=true' \
+  -f linux/Dockerfile.sdk \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-sdk,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-sdk \
   . 2>&1 | tee -a output.log
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media,push=true' \
   -f linux/Dockerfile.media \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media \
   . 2>&1 | tee -a output.log
@@ -246,7 +262,105 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
   . 2>&1 | tee -a output.log
 ```
 
-### Torch Add-on (Linux) 🔥
+### NVIDIA GPU Build (Linux)
+
+> **Requirements:**
+> - Host driver >= 590.44 (for CUDA 13.1).
+> - `nvidia-container-toolkit` installed and configured on the host.
+> - `--runtime=nvidia` or `--gpus all` passed to `docker run`.
+
+The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and before the media stage. The standard build chain is completely unchanged.
+
+**New files:**
+| File | Purpose |
+|---|---|
+| `linux/Dockerfile.nvidia` | Installs CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
+| `linux/Dockerfile.media-nvidia` | Media stack: `NVIDIA_CODEC_HEADERS=yes` + ORT with CUDA/TRT/cuDNN EPs |
+| `linux/Dockerfile.android-nvidia` | Android SDK/NDK on top of media-nvidia |
+| `linux/Dockerfile.nvidia-final` | Entrypoint image, tagged `:nvidia` |
+| `linux/scripts/03-media/onnxruntime/build/30-build-native-nvidia.sh` | ORT build script with CUDA, TensorRT, cuDNN EPs |
+
+**Sequential build (nerdctl):**
+
+```bash
+# Step 1: NVIDIA layer (builds on top of existing :sdk from standard chain)
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
+  -f linux/Dockerfile.nvidia \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia \
+  . 2>&1 | tee -a output.log
+
+# Step 2: media-nvidia (GStreamer nvcodec + ORT with CUDA/TRT/cuDNN EPs)
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia,push=true' \
+  -f linux/Dockerfile.media-nvidia \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-nvidia,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-nvidia \
+  . 2>&1 | tee -a output.log
+
+# Step 3: android-nvidia
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia,push=true' \
+  -f linux/Dockerfile.android-nvidia \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-nvidia,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-nvidia \
+  . 2>&1 | tee -a output.log
+
+# Step 4: final nvidia image
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia,push=true' \
+  -f linux/Dockerfile.nvidia-final \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia \
+  . 2>&1 | tee -a output.log
+```
+
+**Run with GPU access:**
+
+```bash
+sudo nerdctl run --rm -it --gpus all ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia
+
+# or with nvidia runtime explicitly
+sudo nerdctl run --rm -it --runtime=nvidia ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia
+```
+
+**Version overrides** (all have sensible defaults):
+
+```bash
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
+  -f linux/Dockerfile.nvidia \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
+  --build-arg CUDA_VERSION=13.1.1 \
+  --build-arg CUDA_VERSION_MAJOR_MINOR=13-1 \
+  --build-arg CUDNN_VERSION=9 \
+  --build-arg TENSORRT_VERSION=10 \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia \
+  . 2>&1 | tee -a output.log
+```
+
+**Key differences from the standard build:**
+
+| Feature | Standard build | NVIDIA build |
+|---|---|---|
+| CUDA Toolkit | Not installed | CUDA 13.1 |
+| cuDNN | Not installed | cuDNN 9 |
+| TensorRT | Not installed | TensorRT 10 |
+| NCCL | Not installed | Installed |
+| cuBLAS/cuSPARSE/cuFFT | Not installed | Installed |
+| NVTX | Not installed | Installed |
+| GStreamer nvcodec | Auto-detected (off in builds) | Always enabled |
+| ORT native EP | CPU only | CPU + CUDA + TensorRT + cuDNN |
+| ORT output dir | `/usr/local/lib/onnxruntime-cpu` | Both cpu and `/usr/local/lib/onnxruntime-gpu` |
+| Image tag | `:latest` | `:nvidia` |
+
+### Torch Add-on (Linux)
 
 Builds on the base image:
 
