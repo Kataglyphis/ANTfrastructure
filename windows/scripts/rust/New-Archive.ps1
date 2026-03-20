@@ -34,13 +34,13 @@
 
 param(
     [string]$Workspace = $env:WORKSPACE,
-    [string]$Binary,
+    [string]$Binary = $env:BINARY,
     [string]$BinaryFile,
     [string]$Version = $env:VERSION,
     [string]$ArchiveName,
     [string]$ArchiveDir = "dist",
-    [string]$Platform,
-    [string]$Arch
+    [string]$Platform = $env:PLATFORM,
+    [string]$Arch = $env:ARCH
 )
 
 $ErrorActionPreference = "Stop"
