@@ -11,7 +11,7 @@ EXTRA_MESON_ARGS="${4:-}"
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
-# this is for uv
+# this is for uv 
 export PATH="${HOME}/.local/bin:${PATH}"
 
 # set the gst paths accordingly

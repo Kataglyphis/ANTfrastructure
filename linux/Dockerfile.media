@@ -39,7 +39,7 @@ ENV PKG_CONFIG_PATH="" \
     LD_LIBRARY_PATH="" \
     CMAKE_PREFIX_PATH=""
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
-ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${PKG_CONFIG_PATH}"
+ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:/opt/opencv4/lib/pkgconfig:${PKG_CONFIG_PATH}"
 ENV CMAKE_PREFIX_PATH="/usr/local:${CMAKE_PREFIX_PATH}"
 ENV LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${LD_LIBRARY_PATH}"
 ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGIN_PATH}"
@@ -173,6 +173,37 @@ RUN set -eux; \
         --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
         --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
+# ==============================================================================
+# Media stack; OpenCV (inherited from SDK layer)
+# ==============================================================================
+# OpenCV is built in the SDK layer (Dockerfile.sdk) and inherited here.
+# Environment variables are already set in the SDK image.
+# Verify OpenCV is available BEFORE GStreamer build.
+RUN set -eux; \
+    echo "Verifying OpenCV installation..."; \
+    echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"; \
+    echo "Contents of /opt/opencv4:"; \
+    ls -la /opt/opencv4/ 2>/dev/null || echo "Directory /opt/opencv4 not found"; \
+    echo "Contents of /opt/opencv4/lib:"; \
+    ls -la /opt/opencv4/lib/ 2>/dev/null || echo "Directory /opt/opencv4/lib not found"; \
+    echo "Contents of /opt/opencv4/lib/pkgconfig:"; \
+    ls -la /opt/opencv4/lib/pkgconfig/ 2>/dev/null || echo "Directory /opt/opencv4/lib/pkgconfig not found"; \
+    if [ -f /opt/opencv4/lib/pkgconfig/opencv4.pc ]; then \
+        echo "Found opencv4.pc at /opt/opencv4/lib/pkgconfig/opencv4.pc"; \
+    elif [ -f /opt/opencv4/lib/x86_64-linux-gnu/pkgconfig/opencv4.pc ]; then \
+        echo "Found opencv4.pc at multiarch location"; \
+    else \
+        echo "opencv4.pc not found, searching for it..."; \
+        find /opt/opencv4 -name "*.pc" 2>/dev/null || true; \
+        echo "ERROR: opencv4.pc not found anywhere in /opt/opencv4"; \
+        exit 1; \
+    fi; \
+    pkg-config --exists opencv4 && echo "OpenCV found: $(pkg-config --modversion opencv4)" || { \
+        echo "ERROR: OpenCV not found via pkg-config"; \
+        echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"; \
+        exit 1; \
+    }
+
 # ------------------------------------------------------------------------------
 # GStreamer build
 # ------------------------------------------------------------------------------
@@ -257,4 +288,5 @@ RUN set -eux; \
     printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \
     printf "%s\n" "/opt/libcamera/lib64" >> /etc/ld.so.conf.d/libcamera.conf; \
     printf "%s\n" "/opt/ffmpeg/lib" > /etc/ld.so.conf.d/ffmpeg.conf; \
+    printf "%s\n" "/opt/opencv4/lib" > /etc/ld.so.conf.d/opencv.conf; \
     ldconfig
