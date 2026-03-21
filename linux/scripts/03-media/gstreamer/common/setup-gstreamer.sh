@@ -82,14 +82,50 @@ apt-get autoremove -y
 # Install broad dependency set to enable most plugins
 # ------------------------------------------------------------------------------
 sudo apt-get install -y \
+  build-essential g++ \
+  libc++-dev libc++abi-dev \
   flex bison \
   libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
   libjson-glib-dev python3-gi python3-gi-cairo python-gi-dev \
-  libgsl-dev libunwind-dev libdw-dev libnsl-dev gobject-introspection
+  libgsl-dev libdw-dev libnsl-dev gobject-introspection
+
+# Some distributions provide a libunwind package with a numeric suffix which
+# conflicts with the generic "libunwind-dev" package (for example
+# "libunwind-18-dev"). Try installing the generic package and fall back to
+# a known alternative if the generic package is unavailable.
+if ! sudo apt-get install -y libunwind-dev 2>/dev/null; then
+  # If a versioned libunwind dev package is already installed (e.g. libunwind-22-dev), don't try to install another one.
+  INSTALLED_ALTS=$(dpkg -l 2>/dev/null | awk '{print $2}' | grep -E '^libunwind-[0-9]+-dev$' || true)
+  if [ -n "${INSTALLED_ALTS}" ]; then
+    echo "Detected installed libunwind package(s): ${INSTALLED_ALTS}; skipping installation."
+  else
+    # Try to find any available libunwind versioned -dev package (eg. libunwind-18-dev, libunwind-22-dev)
+    echo "libunwind-dev not available; searching for versioned libunwind-*-dev packages..."
+    mapfile -t _alts < <(apt-cache search libunwind 2>/dev/null | awk '{print $1}' | grep -E '^libunwind-[0-9]+-dev$' || true)
+    if [ "${#_alts[@]}" -gt 0 ]; then
+      echo "Found libunwind packages: ${_alts[*]}; installing ${_alts[0]}"
+      sudo apt-get install -y "${_alts[0]}" || true
+    else
+      echo "No versioned libunwind-dev package found; continuing without explicit libunwind package (may be satisfied by other packages)"
+    fi
+  fi
+fi
 
 # Enable source repos so build-dep works
 CODENAME=$(lsb_release -sc)
 sudo apt-get update -y
+
+# Helper: check whether a package is available in APT (returns 0 if present)
+apt_package_exists() {
+  apt-cache show "$1" >/dev/null 2>&1
+}
+
+# Ensure xmllint is available (used by meson/xml preprocessing); small package
+if ! apt_package_exists libxml2-utils; then
+  echo "libxml2-utils not available in APT lists; will continue without xmllint"
+else
+  sudo apt-get install -y --no-install-recommends libxml2-utils
+fi
 
 # For using GTK video sinks
 sudo apt-get install -y --no-install-recommends libgtk-3-dev libgtk-4-dev glslc glslang-tools
@@ -114,8 +150,17 @@ sudo apt-get install -y --no-install-recommends \
 
 # Images / formats
 sudo apt-get install -y --no-install-recommends \
-  libjpeg-dev libpng-dev libtiff-dev libwebp-dev \
-  libopenexr-3-dev || sudo apt-get install -y --no-install-recommends libopenexr-dev
+  libjpeg-dev libpng-dev libtiff-dev libwebp-dev
+
+# Install OpenEXR development headers: prefer libopenexr-3-dev when present,
+# otherwise fall back to libopenexr-dev if available.
+if apt_package_exists libopenexr-3-dev; then
+  sudo apt-get install -y --no-install-recommends libopenexr-3-dev
+elif apt_package_exists libopenexr-dev; then
+  sudo apt-get install -y --no-install-recommends libopenexr-dev
+else
+  echo "Warning: no libopenexr-* package found in APT; continuing without explicit OpenEXR dev package"
+fi
 
 # Codecs (audio)
 sudo apt-get install -y --no-install-recommends \
@@ -157,7 +202,13 @@ if [ "${NVIDIA_GPU}" = "auto" ]; then
 fi
 
 if [ "${NVIDIA_GPU}" = "yes" ]; then
-  sudo apt-get install -y --no-install-recommends nv-codec-headers || true
+  # Prefer package if available, otherwise fall back to upstream repo
+  if apt_package_exists nv-codec-headers; then
+    sudo apt-get install -y --no-install-recommends nv-codec-headers || true
+  else
+    echo "nv-codec-headers not present in APT; falling back to building and installing from source"
+  fi
+
   if ! pkg-config --exists nv-codec-headers 2>/dev/null; then
     git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers
     make -C /tmp/nv-codec-headers install

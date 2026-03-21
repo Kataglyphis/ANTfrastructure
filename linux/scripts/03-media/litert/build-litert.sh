@@ -135,9 +135,13 @@ install_manual() {
 
     echo "[INFO] Copying headers..."
     cp -rv "${LITERT_SRC}/litert/c" "${include_dir}/" 2>/dev/null || true
-    mkdir -p "${include_dir}/tensorflow/lite"
-    cp -rv "${LITERT_SRC}/tflite/c" "${include_dir}/tensorflow/lite/" 2>/dev/null || true
-    cp -rv "${LITERT_SRC}/tflite/core" "${include_dir}/tensorflow/lite/" 2>/dev/null || true
+    cp -rv "${LITERT_SRC}/tflite" "${include_dir}/" 2>/dev/null || true
+    mkdir -p "${include_dir}/tensorflow/lite/c"
+    ln -sf "${include_dir}/tflite/c/c_api.h" "${include_dir}/tensorflow/lite/c/c_api.h" 2>/dev/null || true
+    ln -sf "${include_dir}/tflite/c/c_api_experimental.h" "${include_dir}/tensorflow/lite/c/c_api_experimental.h" 2>/dev/null || true
+    ln -sf "${include_dir}/tflite/c/c_api_opaque.h" "${include_dir}/tensorflow/lite/c/c_api_opaque.h" 2>/dev/null || true
+    ln -sf "${include_dir}/tflite/c/common.h" "${include_dir}/tensorflow/lite/c/common.h" 2>/dev/null || true
+    ln -sf "${include_dir}/tflite/c/builtin_op_kernels.h" "${include_dir}/tensorflow/lite/c/builtin_op_kernels.h" 2>/dev/null || true
 
     local static_libs=""
     for lib in "${lib_dir}"/*.a; do

@@ -155,8 +155,10 @@ fetch_opencv() {
     # Contrib modules (optional)
     if [ "${WITH_CONTRIB}" = "true" ]; then
         echo "Fetching OpenCV contrib modules..."
-        local contrib_dir="${OPENCV_SRC}/modules_contrib"
-        
+        # Use the conventional opencv_contrib directory name so CMake's
+        # OPENCV_EXTRA_MODULES_PATH is the expected path
+        local contrib_dir="${OPENCV_SRC}/opencv_contrib"
+
         if [ -d "${contrib_dir}/.git" ]; then
             cd "${contrib_dir}"
             git fetch --tags || true
@@ -165,7 +167,7 @@ fetch_opencv() {
             git clone "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" || { echo "Failed cloning OpenCV contrib"; exit 1; }
             cd "${contrib_dir}"
         fi
-        
+
         git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout contrib version ${OPENCV_VERSION}"; exit 1; }
         echo "OpenCV contrib version: $(git describe --tags 2>/dev/null || echo 'unknown')"
     fi
@@ -212,10 +214,14 @@ configure_opencv() {
         "-DWITH_OPENCL=ON"
         "-DWITH_IPP=ON"
     )
+
+    # Ensure tracking contrib module is explicitly enabled (some builds/platforms
+    # may not build it by default even when contrib modules are available).
+    cmake_opts+=("-DBUILD_opencv_tracking=ON")
     
     # Contrib modules
     if [ "${WITH_CONTRIB}" = "true" ]; then
-        cmake_opts+=("-DOPENCV_EXTRA_MODULES_PATH=${OPENCV_SRC}/modules_contrib/modules")
+        cmake_opts+=("-DOPENCV_EXTRA_MODULES_PATH=${OPENCV_SRC}/opencv_contrib/modules")
         cmake_opts+=("-DBUILD_opencv_python3=${WITH_PYTHON}")
     fi
     
@@ -274,6 +280,42 @@ install_opencv() {
         sudo ldconfig || true
     else
         ldconfig || true
+    fi
+
+    # Some packaging environments install versioned .so files without the
+    # unversioned symlink (libopencv_tracking.so). Create a symlink if the
+    # versioned library exists but the unversioned name is missing so downstream
+    # linkers can find the library via -lopencv_tracking.
+    # Ensure unversioned symlinks exist for contrib libraries (search lib and lib64)
+    # Use sudo when available so this works whether the script ran as root or
+    # invoked via sudo during `make install`.
+    SUDO=""
+    if command -v sudo >/dev/null 2>&1; then
+        SUDO=sudo
+    fi
+
+    for libdir in "${OPENCV_PREFIX}/lib" "${OPENCV_PREFIX}/lib64"; do
+        if [ -d "${libdir}" ]; then
+            pushd "${libdir}" >/dev/null 2>&1 || true
+            # Find any libopencv_tracking shared object (versioned or unversioned).
+            candidate="$(ls -1 libopencv_tracking.so* 2>/dev/null | head -n1 || true)"
+            if [ -n "${candidate}" ]; then
+                if [ ! -e libopencv_tracking.so ]; then
+                    echo "Creating symlink ${libdir}/libopencv_tracking.so -> ${candidate}"
+                    ${SUDO} ln -sf "${candidate}" libopencv_tracking.so || true
+                fi
+            fi
+            popd >/dev/null 2>&1 || true
+        fi
+    done
+
+    # Sanity-check: fail early if tracking library is still missing
+    if ! (ls "${OPENCV_PREFIX}/lib/libopencv_tracking.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_tracking.so" >/dev/null 2>&1); then
+        echo "ERROR: libopencv_tracking was not found after install. Listing installed libs for debugging:"
+        ${SUDO} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
+        ${SUDO} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
+        echo "Failing build so the image build doesn't continue with a broken OpenCV install."
+        exit 1
     fi
 }
 

@@ -1,91 +1,40 @@
 # syntax=docker/dockerfile:1.19
 
+# ==============================================================================
+# Base stage - common setup
+# ==============================================================================
 ARG BASE_IMAGE=local/kataglyphis:sdk
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS base
 
-ARG BUILD_TYPE=Release
 ARG TARGETARCH
-ARG GSTREAMER_VERSION=1.28.1
-
 SHELL ["bash", "-lc"]
 
-# ------------------------------------------------------------------------------
-# [NEW] RISC-V Specific Toolchain Setup
-# ------------------------------------------------------------------------------
-# Since ENV cannot be conditional, we write to a profile script.
-# Because SHELL is set to "bash -lc", this script will be sourced 
-# at the start of every subsequent RUN instruction.
 RUN if [ "$TARGETARCH" = "riscv64" ]; then \
         echo 'export LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh && \
         echo 'export LD_LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh; \
     fi
 
-# ------------------------------------------------------------------------------
-# GStreamer build: env + setup
-# ------------------------------------------------------------------------------
-ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
-    GSTREAMER_PREFIX=/opt/gstreamer \
-    GST_PLUGIN_PATH="" \
-    GI_TYPELIB_PATH=""
-
-# Multiarch libdir symlink
-RUN set -eux; \
-    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
-    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
-    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
-
-# GStreamer env
-ENV PKG_CONFIG_PATH="" \
-    LD_LIBRARY_PATH="" \
-    CMAKE_PREFIX_PATH=""
-ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
-ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:/opt/opencv4/lib/pkgconfig:${PKG_CONFIG_PATH}"
-ENV CMAKE_PREFIX_PATH="/usr/local:${CMAKE_PREFIX_PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${LD_LIBRARY_PATH}"
-ENV GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGIN_PATH}"
-ENV GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0:${GI_TYPELIB_PATH}"
-
-# ------------------------------------------------------------------------------
-# Libcamera build: env
-# ------------------------------------------------------------------------------
-ENV LIBCAMERA_PREFIX=/opt/libcamera
-ENV PATH="${LIBCAMERA_PREFIX}/bin:${PATH}"
-ENV PKG_CONFIG_PATH="${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH}"
-ENV LD_LIBRARY_PATH="${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${LD_LIBRARY_PATH}"
-ENV GST_PLUGIN_PATH="${LIBCAMERA_PREFIX}/lib/gstreamer-1.0:${GST_PLUGIN_PATH}"
-
 # ==============================================================================
-# Media stack; ONNX Runtime + GStreamer
+# ONNX Runtime stage
 # ==============================================================================
-# ONNX Runtime build helper
-COPY linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
-RUN chmod +x /opt/scripts/media/onnxruntime/build/*.sh /opt/scripts/media/onnxruntime/build/lib/*.sh || true
+FROM base AS onnxruntime
 
-# Make gstreamer env helper available early so setup-gstreamer.sh can source it
-COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
-RUN chmod +x /opt/scripts/04-runtime/gstreamer-env.sh || true
-
-# ----------------------------------------------------------------------------
-# ONNX Runtime build args
-# ----------------------------------------------------------------------------
 ARG ONNXRUNTIME_VERSION=v1.24.4
 ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
 ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
-
-# GenAI build args
 ARG ONNXRUNTIME_GENAI_VERSION=v0.12.1
 ARG ONNXRUNTIME_GENAI_BUILD_TYPE=Release
 ARG BUILD_GENAI=true
-
-# Output directories
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+
 ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR}
 ENV GENAI_OUTPUT_DIR=${ONNXRUNTIME_GENAI_OUTPUT_DIR}
 
-# ------------------------------------------------------------------------------
-# ONNX Runtime build (split into steps for better Docker layer caching)
-# ------------------------------------------------------------------------------
+COPY linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
+COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
+RUN chmod +x /opt/scripts/media/onnxruntime/build/*.sh /opt/scripts/media/onnxruntime/build/lib/*.sh /opt/scripts/04-runtime/gstreamer-env.sh || true
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         --mount=type=cache,target=/var/lib/apt \
         set -eux; \
@@ -117,7 +66,6 @@ RUN --mount=type=cache,target=/var/cache/ccache \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
-# Verify ONNX Runtime native build artifacts exist
 RUN set -eux; \
         lib_dir="${NATIVE_CPU_OUTPUT_DIR}/lib"; \
         if [ ! -d "${lib_dir}" ]; then \
@@ -132,7 +80,6 @@ RUN set -eux; \
         echo "ONNX Runtime native build verified:"; \
         ls -la "${lib_dir}"
 
-# GenAI build (after native CPU build)
 RUN --mount=type=cache,target=/var/cache/ccache \
         --mount=type=cache,target=/var/cache/sccache \
         --mount=type=cache,target=/root/.cache/uv \
@@ -162,7 +109,6 @@ RUN set -eux; \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
-# pkg-config generator is copied AFTER heavy ONNX build steps to improve caching
 COPY linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
 RUN chmod +x /opt/scripts/media/onnxruntime/runtime/*.sh || true
 
@@ -174,17 +120,50 @@ RUN set -eux; \
         --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
 # ==============================================================================
-# Media stack; OpenCV
+# LiteRT stage
 # ==============================================================================
+FROM base AS litert
+
+ARG LITERT_VERSION=v2.1.3
+ARG LITERT_BUILD_TYPE=Release
+ARG LITERT_OUTPUT_DIR=/usr/local
+
+COPY linux/scripts/03-media/litert /opt/scripts/media/litert
+RUN chmod +x /opt/scripts/media/litert/*.sh || true
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    export USER=root; \
+    bash /opt/scripts/media/litert/build-litert.sh "${LITERT_VERSION}"
+
+RUN set -eux; \
+    if [ -f "${LITERT_OUTPUT_DIR}/lib/pkgconfig/litert.pc" ]; then \
+        echo "LiteRT pkg-config found:"; \
+        cat "${LITERT_OUTPUT_DIR}/lib/pkgconfig/litert.pc"; \
+    fi; \
+    if [ -f "${LITERT_OUTPUT_DIR}/lib/pkgconfig/tensorflow-lite.pc" ]; then \
+        echo "TensorFlow Lite (via LiteRT) pkg-config found:"; \
+        cat "${LITERT_OUTPUT_DIR}/lib/pkgconfig/tensorflow-lite.pc"; \
+    fi; \
+    ls -la "${LITERT_OUTPUT_DIR}/lib"/*lite* 2>/dev/null || echo "Warning: LiteRT libraries may not be in expected location"; \
+    ldconfig
+
+# ==============================================================================
+# OpenCV stage
+# ==============================================================================
+FROM base AS opencv
+
 ARG OPENCV_VERSION=4.13.0
 ARG OPENCV_BUILD_TYPE=Release
 ARG OPENCV_WITH_CONTRIB=true
 ARG OPENCV_WITH_PYTHON=true
 ARG OPENCV_OUTPUT_DIR=/opt/opencv4
+
 ENV OPENCV_PREFIX=${OPENCV_OUTPUT_DIR}
-ENV PATH="${OPENCV_PREFIX}/bin:${PATH}"
 ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
-ENV LD_LIBRARY_PATH="${OPENCV_PREFIX}/lib:${LD_LIBRARY_PATH}"
 
 COPY linux/scripts/03-media/opencv /opt/scripts/media/opencv
 RUN chmod +x /opt/scripts/media/opencv/*.sh || true
@@ -213,9 +192,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libpng-dev \
         libtiff-dev \
         libopenexr-dev \
-        libunwind-dev \
         libgstreamer1.0-dev \
         libgstreamer-plugins-base1.0-dev \
+        libunwind-dev \
         libdc1394-dev \
         python3-dev \
         python3-numpy \
@@ -234,7 +213,6 @@ RUN --mount=type=cache,target=/var/cache/ccache \
         --with-python "${OPENCV_WITH_PYTHON}" \
         --skip-dep-install
 
-# Verify OpenCV installation
 RUN set -eux; \
     pkg-config --exists opencv4 && echo "OpenCV found: $(pkg-config --modversion opencv4)" || { \
         echo "ERROR: OpenCV not found via pkg-config"; \
@@ -243,96 +221,111 @@ RUN set -eux; \
     }
 
 # ==============================================================================
-# Media stack; LiteRT (TensorFlow Lite successor)
+# FFmpeg stage
 # ==============================================================================
-ARG LITERT_VERSION=v2.1.3
-ARG LITERT_BUILD_TYPE=Release
-ARG LITERT_OUTPUT_DIR=/usr/local
+FROM base AS ffmpeg
 
-COPY linux/scripts/03-media/litert /opt/scripts/media/litert
-RUN chmod +x /opt/scripts/media/litert/*.sh || true
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    --mount=type=cache,target=/var/cache/ccache \
-    --mount=type=cache,target=/var/cache/sccache \
-    set -eux; \
-    export USER=root; \
-    bash /opt/scripts/media/litert/build-litert.sh "${LITERT_VERSION}"
-
-# Verify LiteRT/TensorFlow Lite installation
-RUN set -eux; \
-    if [ -f "${LITERT_OUTPUT_DIR}/lib/pkgconfig/litert.pc" ]; then \
-        echo "LiteRT pkg-config found:"; \
-        cat "${LITERT_OUTPUT_DIR}/lib/pkgconfig/litert.pc"; \
-    fi; \
-    if [ -f "${LITERT_OUTPUT_DIR}/lib/pkgconfig/tensorflow-lite.pc" ]; then \
-        echo "TensorFlow Lite (via LiteRT) pkg-config found:"; \
-        cat "${LITERT_OUTPUT_DIR}/lib/pkgconfig/tensorflow-lite.pc"; \
-    fi; \
-    ls -la "${LITERT_OUTPUT_DIR}/lib"/*lite* 2>/dev/null || echo "Warning: LiteRT libraries may not be in expected location"; \
-    ldconfig
-
-# ------------------------------------------------------------------------------
-# GStreamer build
-# ------------------------------------------------------------------------------
-COPY linux/scripts/03-media/gstreamer/common/setup-gstreamer.sh /opt/scripts/media/gstreamer/common/setup-gstreamer.sh
-RUN chmod +x /opt/scripts/media/gstreamer/common/setup-gstreamer.sh
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    set -eux; \
-    export USER=root; \
-    export PKG_CONFIG_PATH="${LITERT_OUTPUT_DIR}/lib/pkgconfig:${NATIVE_CPU_OUTPUT_DIR}/runtime/lib/pkgconfig:${PKG_CONFIG_PATH}"; \
-    export LD_LIBRARY_PATH="${LITERT_OUTPUT_DIR}/lib:${LD_LIBRARY_PATH}"; \
-    cd /opt && \
-    bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
-        "$GSTREAMER_VERSION" \
-        "$GSTREAMER_PREFIX" \
-        "$BUILD_TYPE"
-
-# ==============================================================================
-# Media stack; Libcamera only
-# ==============================================================================
-COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
-
-# ------------------------------------------------------------------------------
-# Libcamera build
-# ------------------------------------------------------------------------------
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/var/cache/ccache \
-    --mount=type=cache,target=/var/cache/sccache \
-    set -eux; \
-    cd /opt && \
-    bash /opt/scripts/media/libcamera/build-libcamera.sh
-
-# ==============================================================================
-# Media stack; FFmpeg (latest from source)
-# ==============================================================================
 COPY linux/scripts/03-media/ffmpeg/ /opt/scripts/media/ffmpeg/
 RUN chmod +x /opt/scripts/media/ffmpeg/*.sh || true
 
 ENV FFMPEG_PREFIX=/opt/ffmpeg
-ENV PATH="${FFMPEG_PREFIX}/bin:${PATH}"
-ENV PKG_CONFIG_PATH="${FFMPEG_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
-ENV LD_LIBRARY_PATH="${FFMPEG_PREFIX}/lib:${LD_LIBRARY_PATH}"
 
-# ------------------------------------------------------------------------------
-# FFmpeg build
-# ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     cd /opt && \
     bash /opt/scripts/media/ffmpeg/build-ffmpeg.sh
 
-# ------------------------------------------------------------------------------
-# Cleanup and system configuration
-# ------------------------------------------------------------------------------
+# ==============================================================================
+# GStreamer stage (depends on onnxruntime + litert)
+# ==============================================================================
+FROM base AS gstreamer
+
+ARG GSTREAMER_VERSION=1.28.1
+ARG BUILD_TYPE=Release
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG LITERT_OUTPUT_DIR=/usr/local
+ARG OPENCV_OUTPUT_DIR=/opt/opencv4
+ARG GSTREAMER_PREFIX=/opt/gstreamer
+
+ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
+    GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
+    GSTREAMER_VERSION=${GSTREAMER_VERSION}
+
+COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --from=onnxruntime /usr/local/lib/onnxruntime-genai /usr/local/lib/onnxruntime-genai
+# Bring LiteRT artifacts (libraries, headers and pkgconfig) into the gstreamer stage
+COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
+COPY --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
+COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
+# Make OpenCV available to the gstreamer build (pkg-config + libs)
+COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+
+RUN set -eux; \
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
+    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
+
+ENV PKG_CONFIG_PATH="${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LITERT_OUTPUT_DIR}/lib/pkgconfig:${ONNXRUNTIME_OUTPUT_DIR}/runtime/lib/pkgconfig"
+ENV LD_LIBRARY_PATH="${OPENCV_OUTPUT_DIR}/lib:${LITERT_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
+ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
+
+COPY linux/scripts/03-media/gstreamer/common/setup-gstreamer.sh /opt/scripts/media/gstreamer/common/setup-gstreamer.sh
+COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
+RUN chmod +x /opt/scripts/media/gstreamer/common/setup-gstreamer.sh /usr/local/bin/gstreamer-env.sh
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    export USER=root; \
+    cd /opt && \
+    # Prefer using system-provided libraries where available to avoid circular
+    # subproject includes. Do not force Meson to build wrapped fallbacks here;
+    # the setup script can still be overridden via MESON_WRAP_MODE if needed.
+    bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
+        "$GSTREAMER_VERSION" \
+        "$GSTREAMER_PREFIX" \
+        "$BUILD_TYPE"
+
+# ==============================================================================
+# Final stage - combine all artifacts
+# ==============================================================================
+FROM base AS final
+
+ARG GSTREAMER_VERSION=1.28.1
+ARG OPENCV_OUTPUT_DIR=/opt/opencv4
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+ARG LITERT_OUTPUT_DIR=/usr/local
+ARG GSTREAMER_PREFIX=/opt/gstreamer
+
+ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
+    GST_PLUGIN_PATH="" \
+    GI_TYPELIB_PATH="" \
+    OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
+    FFMPEG_PREFIX=/opt/ffmpeg \
+    LIBCAMERA_PREFIX=/opt/libcamera
+
+COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
+COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
+COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
+COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
+COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+
+RUN set -eux; \
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
+    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
+
+ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}" \
+    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
+    LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${OPENCV_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib" \
+    GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
+    GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
+
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' || true; \
@@ -354,9 +347,28 @@ RUN set -eux; \
     printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
     ldconfig
 
+COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
+COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
+RUN chmod +x /usr/local/bin/gstreamer-env.sh /opt/scripts/media/libcamera/*.sh || true
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/var/cache/ccache \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    cd /opt && \
+    bash /opt/scripts/media/libcamera/build-libcamera.sh
+
 RUN set -eux; \
     printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \
     printf "%s\n" "/opt/libcamera/lib64" >> /etc/ld.so.conf.d/libcamera.conf; \
     printf "%s\n" "/opt/ffmpeg/lib" > /etc/ld.so.conf.d/ffmpeg.conf; \
     printf "%s\n" "/opt/opencv4/lib" > /etc/ld.so.conf.d/opencv.conf; \
+    printf "%s\n" "/usr/local/lib/onnxruntime-cpu/lib" > /etc/ld.so.conf.d/onnxruntime.conf; \
+    printf "%s\n" "/usr/local/lib/onnxruntime-genai/lib" >> /etc/ld.so.conf.d/onnxruntime.conf; \
+    printf "%s\n" "/usr/local/lib" >> /etc/ld.so.conf.d/litert.conf; \
     ldconfig
