@@ -258,8 +258,45 @@ COPY --from=onnxruntime /usr/local/lib/onnxruntime-genai /usr/local/lib/onnxrunt
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
 COPY --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
-# Make OpenCV available to the gstreamer build (pkg-config + libs)
-COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+    # Make OpenCV available to the gstreamer build (pkg-config + libs)
+    COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+
+    # Ensure OpenCV shared libraries are visible to the system linker during
+    # the GStreamer build. Some build steps ignore -L ordering, so copy all
+    # libopencv*.so* into /usr/lib and multiarch /usr/lib/<triplet> before
+    # building GStreamer.
+    RUN set -eux; \
+        triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
+        for libdir in "${OPENCV_OUTPUT_DIR}/lib" "${OPENCV_OUTPUT_DIR}/lib64"; do \
+            if [ -d "$libdir" ]; then \
+                cd "$libdir"; \
+                for f in libopencv_*.so*; do \
+                    [ -e "$f" ] || continue; \
+                    src="$libdir/$f"; \
+                    if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then \
+                        install -m 0644 -D "$src" "/usr/lib/$triplet/$(basename "$f" | sed 's/\..*$/.so/')" || true; \
+                    fi; \
+                    install -m 0644 -D "$src" "/usr/lib/$(basename "$f" | sed 's/\..*$/.so/')" || true; \
+                done; \
+            fi; \
+        done; \
+        ldconfig || true
+
+    # Create a linker script in /usr/lib so `-lopencv_tracking` always resolves
+    # to the versioned library in /opt/opencv4/lib even if the build system
+    # doesn't respect -L ordering.
+    RUN set -eux; \
+        tracking_candidate="$(ls -1 ${OPENCV_OUTPUT_DIR}/lib/libopencv_tracking.so* 2>/dev/null | head -n1 || true)"; \
+        if [ -n "$tracking_candidate" ]; then \
+            echo "Found tracking lib: $tracking_candidate"; \
+            script=/usr/lib/libopencv_tracking.so; \
+            echo "INPUT($tracking_candidate)" > "$script" || true; \
+            if [ -d "/usr/lib/$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)" ]; then \
+                mkdir -p "/usr/lib/$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)" || true; \
+                echo "INPUT($tracking_candidate)" > "/usr/lib/$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)/libopencv_tracking.so" || true; \
+            fi; \
+        fi; \
+        ldconfig || true
 
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
@@ -311,7 +348,30 @@ COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
-COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+    COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+
+    # Same symlink fix in the final stage to be extra robust (also create
+    # system-level symlinks so runtime/linker lookups succeed).
+    RUN set -eux; \
+        for libdir in "${OPENCV_OUTPUT_DIR}/lib" "${OPENCV_OUTPUT_DIR}/lib64"; do \
+            if [ -d "$libdir" ]; then \
+                cd "$libdir"; \
+                candidate=$(ls -1 libopencv_tracking.so* 2>/dev/null | head -n1 || true); \
+                if [ -n "$candidate" ]; then \
+                    if [ ! -e libopencv_tracking.so ]; then \
+                        echo "Creating symlink $libdir/libopencv_tracking.so -> $candidate"; \
+                        ln -sf "$candidate" libopencv_tracking.so || true; \
+                    fi; \
+                    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
+                    if [ -z "$triplet" ]; then triplet=""; fi; \
+                    if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then \
+                        ln -sf "$libdir/$candidate" "/usr/lib/$triplet/libopencv_tracking.so" || true; \
+                    fi; \
+                    ln -sf "$libdir/$candidate" "/usr/lib/libopencv_tracking.so" || true; \
+                fi; \
+            fi; \
+        done; \
+        ldconfig || true
 COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 
