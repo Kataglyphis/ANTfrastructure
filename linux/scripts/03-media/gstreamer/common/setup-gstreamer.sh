@@ -9,19 +9,36 @@ GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
 
+append_meson_arg() {
+  local arg="$1"
+  case " ${EXTRA_MESON_ARGS} " in
+    *" ${arg} "*|*" ${arg}"*)
+      ;;
+    *)
+      EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} ${arg}"
+      ;;
+  esac
+}
+
 # Allow callers to provide MESON_ARGS (preferred) to control Meson options.
 # If MESON_ARGS is set in the environment, use it verbatim; otherwise fall
-# back to the caller-provided fourth positional arg (EXTRA_MESON_ARGS). If
-# neither is provided, enable all gst-plugins-rs auto features but disable
-# the `burn` plugin explicitly.
+# back to the caller-provided fourth positional arg (EXTRA_MESON_ARGS).
+# If neither is provided, enable all gst-plugins-rs auto features and disable
+# the plugins that are known to cause trouble.
 if [ -n "${MESON_ARGS:-}" ]; then
   EXTRA_MESON_ARGS="${MESON_ARGS}"
 elif [ -z "${EXTRA_MESON_ARGS}" ]; then
   EXTRA_MESON_ARGS="-Dgst-plugins-rs:auto_plugin_features=enabled \
     -Dgst-plugins-rs:burn=disabled \
-    -Dgst-plugins-rs:sodium-source=built-in \
-    -Dgst-plugins-rs:whisper=disabled"
+    -Dgst-plugins-rs:whisper=disabled \
+    -Dgst-plugins-rs:sodium-source=built-in"
 fi
+
+# Always enforce these, even if MESON_ARGS was supplied externally.
+append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
+append_meson_arg "-Dgst-plugins-rs:burn=disabled"
+append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
+append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 VENV_DIR="${GSTREAMER_PREFIX}/.venv"
@@ -119,7 +136,6 @@ if ! sudo apt-get install -y libunwind-dev 2>/dev/null; then
   if [ -n "${INSTALLED_ALTS}" ]; then
     echo "Detected installed libunwind package(s): ${INSTALLED_ALTS}; skipping installation."
   else
-    # Try to find any available libunwind versioned -dev package (eg. libunwind-18-dev, libunwind-22-dev)
     echo "libunwind-dev not available; searching for versioned libunwind-*-dev packages..."
     mapfile -t _alts < <(apt-cache search libunwind 2>/dev/null | awk '{print $1}' | grep -E '^libunwind-[0-9]+-dev$' || true)
     if [ "${#_alts[@]}" -gt 0 ]; then
@@ -281,6 +297,12 @@ if [ -n "${MESON_ARGS:-}" ]; then
   EXTRA_MESON_ARGS="${MESON_ARGS}"
 fi
 
+# Enforce the gst-plugins-rs args again here so they survive external MESON_ARGS.
+append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
+append_meson_arg "-Dgst-plugins-rs:burn=disabled"
+append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
+append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
+
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 
 echo "=========================================="
@@ -348,11 +370,6 @@ MESON_FLAGS=(
   "-Dglib:introspection=enabled"
 )
 
-# dont use auto features
-# "-Dauto_features=disabled"
-# Only enable Rust bindings on non-RISC-V hosts
-# for now libsodium needs to updated to work
-# with RISCV
 case "${HOST_ARCH}" in
   riscv*|*riscv*)
     echo "Host arch '${HOST_ARCH}' detected: skipping -Drs (Rust bindings) in Meson flags"
@@ -363,17 +380,9 @@ case "${HOST_ARCH}" in
     ;;
 esac
 
-# Prefer a targeted exclusion of the failing whisper plugin instead of
-# unconditionally disabling all Rust bindings. We patch the gst-plugins-rs
-# helpers (cargo_wrapper.py / dependencies.py) so Meson's cargo invocations
-# omit `gst-plugin-whisper`. Only fall back to disabling Rust entirely if
-# a future change proves necessary.
-
 # --- begin patch: ensure meson won't use fallback subprojects by default ---
-# Allow overriding by setting MESON_WRAP_MODE in the environment
 MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
 
-# Append wrap-mode to EXTRA_MESON_ARGS if not already present
 case " ${EXTRA_MESON_ARGS} " in
   *" --wrap-mode="*) ;;
   *)
@@ -385,7 +394,6 @@ esac
 # Dump debug info and save to /tmp for collection
 dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
 
-# No global cargo exclusion flags set by default.
 # Run meson setup and capture full output
 if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
   echo "Meson setup failed; printing verbose output..."
@@ -397,7 +405,7 @@ uv run meson subprojects update > /dev/null 2>&1 || true
 
 echo "Compiling GStreamer (this may take a while)..."
 
-# Memory per compile job in MB — anpassen bei Bedarf (1500..3000)
+# Memory per compile job in MB
 PER_JOB_MB=1500
 
 # CPU threads
@@ -430,15 +438,12 @@ export JOBS
 echo "Using JOBS=$JOBS (cores=$CORES, avail_mb=${AVAIL_MB}, per_job_mb=${PER_JOB_MB})"
 
 echo "Compiling GStreamer..."
-# NOTE: Avoid `-v` here: Docker build output is capped and verbose logs hide the real error.
-# We still capture the full output (stdout+stderr) to /tmp/meson-compile.log for debugging.
 if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
   echo "ERROR: Meson compile failed"
   echo "==> Letzte Zeilen der Compile-Logs:"
   tail -n 20000 /tmp/meson-compile.log || true
   echo "==> Meson log:"
   tail -n +1 builddir/meson-logs/meson-log.txt || true
-  # Prüfe OOM
   dmesg | tail -n 100 | grep -i -E "out of memory|killed process" || true
   exit 1
 fi
@@ -476,25 +481,19 @@ if [ -d "${PLUGIN_RS_DIR}" ]; then
   cd "${PLUGIN_RS_DIR}"
   git fetch origin --tags
   git checkout "gstreamer-${GSTREAMER_VERSION}"
-  # No source-time patching of gst-plugins-rs performed here. If you want to
-  # permanently remove a plugin from the subproject, edit the subproject
-  # repository directly (preferred) or use Meson options in the subproject
-  # to restrict which Rust plugins are built.
 else
-  sudo mkdir "${PLUGIN_RS_DIR}"
+  sudo mkdir -p "${PLUGIN_RS_DIR}"
   sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
   git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${PLUGIN_RS_DIR}"
   cd "${PLUGIN_RS_DIR}"
   sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
 fi
 
-# Build gst-plugins-rs packages. By default we delegate to cargo to build
-# the plugins listed by the subproject.
+# Build gst-plugins-rs packages.
 CARGO_FLAGS=()
 [ "${BUILD_TYPE_LOWER}" = "release" ] && CARGO_FLAGS+=(--release)
 
 # Limit Rust build parallelism (cargo can be very memory hungry)
-# Allow override via env: CARGO_BUILD_JOBS or RUST_PER_JOB_MB
 RUST_PER_JOB_MB="${RUST_PER_JOB_MB:-2500}"
 RUST_CORES="$(nproc --all 2>/dev/null || echo 1)"
 RUST_AVAIL_MB="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
@@ -516,11 +515,58 @@ echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS
 
 cd "${PLUGIN_RS_DIR}"
 
-# cargo supports --workspace for the whole workspace
-if ! cargo build --workspace --exclude gst-plugin-whisper "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}"; then
+# Detect libcsound presence and dynamically exclude csound-related crates
+# when the system libcsound isn't available. This avoids cargo trying to
+# compile csound-sys which errors out if libcsound is missing.
+HAS_CSOUND=0
+if pkg-config --exists csound 2>/dev/null; then
+  HAS_CSOUND=1
+elif [ -f /usr/lib/libcsound64.so ] || [ -f /usr/lib/libcsound.so ] || [ -f /usr/lib64/libcsound64.so ]; then
+  HAS_CSOUND=1
+fi
+
+CSOUND_EXCLUDES=()
+if [ "${HAS_CSOUND}" -eq 0 ]; then
+  echo "libcsound not found: excluding csound-related workspace crates from cargo build"
+  # try to discover package names mentioning 'csound' and exclude them
+  if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+    CSOUND_PKG_NAMES=$(python3 - <<'PY'
+import sys, json
+try:
+    j=json.load(sys.stdin)
+    names=[p.get('name','') for p in j.get('packages',[])]
+    print(' '.join([n for n in names if 'csound' in n]))
+except Exception:
+    pass
+PY
+)
+    if [ -n "${CSOUND_PKG_NAMES}" ]; then
+      for n in ${CSOUND_PKG_NAMES}; do
+        CSOUND_EXCLUDES+=(--exclude "${n}")
+      done
+      echo "Excluding: ${CSOUND_PKG_NAMES}"
+    else
+      # fallback to a likely crate name used historically
+      CSOUND_EXCLUDES+=(--exclude gst-plugin-csound)
+      echo "No csound package names found via cargo metadata; excluding gst-plugin-csound"
+    fi
+  fi
+else
+  echo "libcsound detected; building all workspace members"
+fi
+
+DEFAULT_EXCLUDES=(--exclude gst-plugin-burn --exclude gst-plugin-whisper)
+BUILD_CMD=(cargo build --workspace "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}")
+BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
+if [ "${#CSOUND_EXCLUDES[@]}" -gt 0 ]; then
+  BUILD_CMD+=("${CSOUND_EXCLUDES[@]}")
+fi
+
+if ! "${BUILD_CMD[@]}"; then
   echo "ERROR: cargo build for gst-plugins-rs failed"
   exit 1
 fi
+
 echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly."
 
 echo "Cleaning up..."
@@ -536,4 +582,4 @@ echo "=========================================="
 echo ""
 echo "Add these environment variables to your shell:"
 echo "For setting up env:"
-echo "Have a look into: ExternalLib\\Kataglyphis-ContainerHub\\linux\\scripts\\04-runtime\\gstreamer-env.sh"
+echo "Have a look into: ExternalLib\Kataglyphis-ContainerHub\linux\scripts\04-runtime\gstreamer-env.sh"
