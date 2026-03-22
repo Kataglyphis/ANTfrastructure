@@ -19,15 +19,15 @@ if [ -n "${MESON_ARGS:-}" ]; then
 elif [ -z "${EXTRA_MESON_ARGS}" ]; then
   EXTRA_MESON_ARGS="-Dgst-plugins-rs:auto_plugin_features=enabled \
     -Dgst-plugins-rs:burn=disabled \
-    -Dgst-plugins-rs:sodium-source=built-in"
+    -Dgst-plugins-rs:sodium-source=built-in \
+    -Dgst-plugins-rs:whisper=disabled"
 fi
+
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
-# this is for uv 
+# this is for uv
 export PATH="${HOME}/.local/bin:${PATH}"
-
-
 
 # set the gst paths accordingly
 # Prefer the installed helper if available, otherwise source relative to this script
@@ -40,7 +40,7 @@ else
 fi
 
 # just trust every folder
-set -eux; \
+set -eux
 git config --global --add safe.directory '*'
 
 # --- Debug/logging helpers -------------------------------------------------
@@ -55,7 +55,8 @@ dump_debug_info() {
   echo "GStreamer prefix: ${GSTREAMER_PREFIX:-unset}"
   echo "Build type: ${BUILD_TYPE:-unset}"
   echo "MESON_WRAP_MODE: ${MESON_WRAP_MODE:-unset}"
-  echo "Environment snapshot:"; env | sort
+  echo "Environment snapshot:"
+  env | sort
   echo "--- Resource usage ---"
   free -h || true
   df -h || true
@@ -88,10 +89,15 @@ trap save_logs EXIT
 
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 # we need to get rid of old orc modules on the system
-set -eux; \
-sudo apt-get update; \
-apt-get purge -y 'liborc*' || true && \
+set -eux
+sudo apt-get update
+apt-get purge -y 'liborc*' || true
 apt-get autoremove -y
+
+# Helper: check whether a package is available in APT (returns 0 if present)
+apt_package_exists() {
+  apt-cache show "$1" >/dev/null 2>&1
+}
 
 # ------------------------------------------------------------------------------
 # Install broad dependency set to enable most plugins
@@ -109,7 +115,6 @@ sudo apt-get install -y \
 # "libunwind-18-dev"). Try installing the generic package and fall back to
 # a known alternative if the generic package is unavailable.
 if ! sudo apt-get install -y libunwind-dev 2>/dev/null; then
-  # If a versioned libunwind dev package is already installed (e.g. libunwind-22-dev), don't try to install another one.
   INSTALLED_ALTS=$(dpkg -l 2>/dev/null | awk '{print $2}' | grep -E '^libunwind-[0-9]+-dev$' || true)
   if [ -n "${INSTALLED_ALTS}" ]; then
     echo "Detected installed libunwind package(s): ${INSTALLED_ALTS}; skipping installation."
@@ -129,11 +134,6 @@ fi
 # Enable source repos so build-dep works
 CODENAME=$(lsb_release -sc)
 sudo apt-get update -y
-
-# Helper: check whether a package is available in APT (returns 0 if present)
-apt_package_exists() {
-  apt-cache show "$1" >/dev/null 2>&1
-}
 
 # Ensure xmllint is available (used by meson/xml preprocessing); small package
 if ! apt_package_exists libxml2-utils; then
@@ -175,6 +175,14 @@ elif apt_package_exists libopenexr-dev; then
   sudo apt-get install -y --no-install-recommends libopenexr-dev
 else
   echo "Warning: no libopenexr-* package found in APT; continuing without explicit OpenEXR dev package"
+fi
+
+# VVdeC / vvdec dependency for gst-plugins-rs vvdec plugin
+# Keep the plugin enabled and install the system package instead.
+if apt_package_exists libvvdec-dev; then
+  sudo apt-get install -y --no-install-recommends libvvdec-dev
+else
+  echo "Warning: libvvdec-dev not found in APT; vvdec plugin stays enabled, but Meson may fail unless the package is available in your Ubuntu repositories."
 fi
 
 # Codecs (audio)
@@ -283,7 +291,7 @@ echo "=========================================="
 
 mkdir -p "${GSTREAMER_PREFIX}"
 sudo chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true
-# do not write directlly into tmp; its reserved for apt
+# do not write directly into tmp; its reserved for apt
 BUILD_DIR="/opt/tmp/gstreamer-build"
 sudo mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
@@ -306,22 +314,11 @@ else
   cd gstreamer
 fi
 
-# Note: previous attempts to patch the upstream cargo wrapper were removed
-# to avoid invasive runtime modifications. Do not modify upstream helper
-# scripts here; prefer editing the subproject or building selected plugins
-# separately when needed.
-
 echo ""
 echo "Setting up Meson build..."
 
-# Note: we do not patch subproject helpers here. Upstream cargo wrapper
-# scripts are left intact so Meson controls subproject build behaviour.
-
 # detect host architecture (examples: x86_64, aarch64, riscv64)
 HOST_ARCH="$(uname -m)"
-
-# treat riscv* as RISC-V; also handle dpkg architecture strings if you prefer:
-# DEB_ARCH="$(dpkg --print-architecture 2>/dev/null || true)" 
 
 # Build Meson flags, conditionally enable Rust bindings (rs) except on RISC-V
 MESON_FLAGS=(
@@ -350,10 +347,11 @@ MESON_FLAGS=(
   "-Dintrospection=enabled"
   "-Dglib:introspection=enabled"
 )
+
 # dont use auto features
 # "-Dauto_features=disabled"
 # Only enable Rust bindings on non-RISC-V hosts
-# for now libsodium needs to updated to work 
+# for now libsodium needs to updated to work
 # with RISCV
 case "${HOST_ARCH}" in
   riscv*|*riscv*)
@@ -384,7 +382,6 @@ case " ${EXTRA_MESON_ARGS} " in
 esac
 # --- end patch ---
 
-
 # Dump debug info and save to /tmp for collection
 dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
 
@@ -397,10 +394,6 @@ fi
 
 echo "Updating subprojects..."
 uv run meson subprojects update > /dev/null 2>&1 || true
-
-# Note: removed earlier runtime patches to subproject helpers. We no longer
-# modify Meson's checked-out subprojects at runtime — prefer fixing the
-# subproject source or using Meson options to select which plugins to build.
 
 echo "Compiling GStreamer (this may take a while)..."
 
@@ -436,9 +429,8 @@ fi
 export JOBS
 echo "Using JOBS=$JOBS (cores=$CORES, avail_mb=${AVAIL_MB}, per_job_mb=${PER_JOB_MB})"
 
-
 echo "Compiling GStreamer..."
-# NOTE: Avoid `-v` here: Docker build output is capped and verbose logs hide the *real* error.
+# NOTE: Avoid `-v` here: Docker build output is capped and verbose logs hide the real error.
 # We still capture the full output (stdout+stderr) to /tmp/meson-compile.log for debugging.
 if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
   echo "ERROR: Meson compile failed"
@@ -497,9 +489,7 @@ else
 fi
 
 # Build gst-plugins-rs packages. By default we delegate to cargo to build
-# the plugins listed by the subproject. We want to build the entire
-# workspace but explicitly exclude the 'gst-plugin-burn' package so it
-# is never built here (the burn plugin is intentionally disabled).
+# the plugins listed by the subproject.
 CARGO_FLAGS=()
 [ "${BUILD_TYPE_LOWER}" = "release" ] && CARGO_FLAGS+=(--release)
 
@@ -524,13 +514,10 @@ fi
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${RUST_JOBS}}"
 echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (cores=${RUST_CORES}, avail_mb=${RUST_AVAIL_MB}, per_job_mb=${RUST_PER_JOB_MB})"
 
-# Build the entire gst-plugins-rs workspace from the repository root, but
-# exclude the 'gst-plugin-burn' package to honor the user's request to not
-# install burn. Running from the workspace root ensures Cargo sees all
-# workspace members and dependency relationships.
 cd "${PLUGIN_RS_DIR}"
-# cargo supports --workspace and --exclude to skip specific packages
-if ! cargo build --workspace --exclude gst-plugin-burn "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}"; then
+
+# cargo supports --workspace for the whole workspace
+if ! cargo build --workspace --exclude gst-plugin-whisper "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}"; then
   echo "ERROR: cargo build for gst-plugins-rs failed"
   exit 1
 fi
@@ -549,4 +536,4 @@ echo "=========================================="
 echo ""
 echo "Add these environment variables to your shell:"
 echo "For setting up env:"
-echo "Have a look into: ExternalLib\Kataglyphis-ContainerHub\linux\scripts\04-runtime\gstreamer-env.sh"
+echo "Have a look into: ExternalLib\\Kataglyphis-ContainerHub\\linux\\scripts\\04-runtime\\gstreamer-env.sh"
