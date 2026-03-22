@@ -8,11 +8,26 @@ GSTREAMER_VERSION="${1:-1.28.1}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
+
+# Allow callers to provide MESON_ARGS (preferred) to control Meson options.
+# If MESON_ARGS is set in the environment, use it verbatim; otherwise fall
+# back to the caller-provided fourth positional arg (EXTRA_MESON_ARGS). If
+# neither is provided, enable all gst-plugins-rs auto features but disable
+# the `burn` plugin explicitly.
+if [ -n "${MESON_ARGS:-}" ]; then
+  EXTRA_MESON_ARGS="${MESON_ARGS}"
+elif [ -z "${EXTRA_MESON_ARGS}" ]; then
+  EXTRA_MESON_ARGS="-Dgst-plugins-rs:auto_plugin_features=enabled \
+    -Dgst-plugins-rs:burn=disabled \
+    -Dgst-plugins-rs:sodium-source=built-in"
+fi
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
 # this is for uv 
 export PATH="${HOME}/.local/bin:${PATH}"
+
+
 
 # set the gst paths accordingly
 # Prefer the installed helper if available, otherwise source relative to this script
@@ -251,6 +266,13 @@ GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
 
+# Honor MESON_ARGS env var (if present) at this later re-evaluation point as
+# well. This allows callers to export MESON_ARGS or pass a fourth positional
+# argument; MESON_ARGS takes precedence.
+if [ -n "${MESON_ARGS:-}" ]; then
+  EXTRA_MESON_ARGS="${MESON_ARGS}"
+fi
+
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 
 echo "=========================================="
@@ -284,8 +306,16 @@ else
   cd gstreamer
 fi
 
+# Note: previous attempts to patch the upstream cargo wrapper were removed
+# to avoid invasive runtime modifications. Do not modify upstream helper
+# scripts here; prefer editing the subproject or building selected plugins
+# separately when needed.
+
 echo ""
 echo "Setting up Meson build..."
+
+# Note: we do not patch subproject helpers here. Upstream cargo wrapper
+# scripts are left intact so Meson controls subproject build behaviour.
 
 # detect host architecture (examples: x86_64, aarch64, riscv64)
 HOST_ARCH="$(uname -m)"
@@ -335,6 +365,12 @@ case "${HOST_ARCH}" in
     ;;
 esac
 
+# Prefer a targeted exclusion of the failing whisper plugin instead of
+# unconditionally disabling all Rust bindings. We patch the gst-plugins-rs
+# helpers (cargo_wrapper.py / dependencies.py) so Meson's cargo invocations
+# omit `gst-plugin-whisper`. Only fall back to disabling Rust entirely if
+# a future change proves necessary.
+
 # --- begin patch: ensure meson won't use fallback subprojects by default ---
 # Allow overriding by setting MESON_WRAP_MODE in the environment
 MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
@@ -352,6 +388,7 @@ esac
 # Dump debug info and save to /tmp for collection
 dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
 
+# No global cargo exclusion flags set by default.
 # Run meson setup and capture full output
 if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
   echo "Meson setup failed; printing verbose output..."
@@ -360,6 +397,10 @@ fi
 
 echo "Updating subprojects..."
 uv run meson subprojects update > /dev/null 2>&1 || true
+
+# Note: removed earlier runtime patches to subproject helpers. We no longer
+# modify Meson's checked-out subprojects at runtime — prefer fixing the
+# subproject source or using Meson options to select which plugins to build.
 
 echo "Compiling GStreamer (this may take a while)..."
 
@@ -443,6 +484,10 @@ if [ -d "${PLUGIN_RS_DIR}" ]; then
   cd "${PLUGIN_RS_DIR}"
   git fetch origin --tags
   git checkout "gstreamer-${GSTREAMER_VERSION}"
+  # No source-time patching of gst-plugins-rs performed here. If you want to
+  # permanently remove a plugin from the subproject, edit the subproject
+  # repository directly (preferred) or use Meson options in the subproject
+  # to restrict which Rust plugins are built.
 else
   sudo mkdir "${PLUGIN_RS_DIR}"
   sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
@@ -451,7 +496,10 @@ else
   sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
 fi
 
-cd net/webrtc
+# Build gst-plugins-rs packages. By default we delegate to cargo to build
+# the plugins listed by the subproject. We want to build the entire
+# workspace but explicitly exclude the 'gst-plugin-burn' package so it
+# is never built here (the burn plugin is intentionally disabled).
 CARGO_FLAGS=()
 [ "${BUILD_TYPE_LOWER}" = "release" ] && CARGO_FLAGS+=(--release)
 
@@ -474,13 +522,18 @@ fi
 [ "${RUST_JOBS}" -lt 1 ] && RUST_JOBS=1
 
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${RUST_JOBS}}"
-echo "Building gst-plugins-rs with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (cores=${RUST_CORES}, avail_mb=${RUST_AVAIL_MB}, per_job_mb=${RUST_PER_JOB_MB})"
+echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (cores=${RUST_CORES}, avail_mb=${RUST_AVAIL_MB}, per_job_mb=${RUST_PER_JOB_MB})"
 
-# Build all gst-plugins-rs packages (do not exclude plugins by default).
-# Previously we temporarily excluded gst-plugin-whisper to work around
-# bindgen pregenerated-layout mismatches. That exclusion has been reverted
-# so the build attempts to compile all plugins (including whisper).
-cargo build "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}"
+# Build the entire gst-plugins-rs workspace from the repository root, but
+# exclude the 'gst-plugin-burn' package to honor the user's request to not
+# install burn. Running from the workspace root ensures Cargo sees all
+# workspace members and dependency relationships.
+cd "${PLUGIN_RS_DIR}"
+# cargo supports --workspace and --exclude to skip specific packages
+if ! cargo build --workspace --exclude gst-plugin-burn "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}"; then
+  echo "ERROR: cargo build for gst-plugins-rs failed"
+  exit 1
+fi
 echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly."
 
 echo "Cleaning up..."
