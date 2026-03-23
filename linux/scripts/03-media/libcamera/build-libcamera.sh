@@ -28,7 +28,8 @@ fi
 sudo apt update
 sudo apt install -y pybind11-dev python3-pybind11 python3-dev \
   libboost-program-options-dev libdrm-dev libexif-dev libjpeg-dev libpng-dev \
-  libtiff-dev libavcodec-dev libavdevice-dev libavformat-dev libswresample-dev
+  libtiff-dev libavcodec-dev libavdevice-dev libavformat-dev libswresample-dev \
+  libunwind-dev libdw-dev || true
 
 # If libcamera already present via pkg-config, skip
 if pkg-config --exists libcamera >/dev/null 2>&1; then
@@ -41,7 +42,7 @@ if command -v apt-get >/dev/null 2>&1; then
   sudo apt-get update -y
   sudo apt-get install -y --no-install-recommends \
     libyaml-dev python3-yaml python3-ply python3-jinja2 \
-    ninja-build pkg-config libudev-dev libevent-dev || true
+    ninja-build pkg-config libudev-dev libevent-dev libunwind-dev libdw-dev || true
 else
   echo "apt-get not found — ensure libcamera build deps are installed manually."
 fi
@@ -106,7 +107,7 @@ UV_RUN_PREFIX=(uv run --)
 
 # Run Meson setup inside the venv (prefer uv run when available)
 if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
-  -Dgstreamer=enabled -Dpycamera=disabled -Ddocumentation=disabled; then
+  -Dgstreamer=enabled -Dpycamera=disabled -Ddocumentation=disabled -Dtests=disabled; then
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
     exit 1
 fi

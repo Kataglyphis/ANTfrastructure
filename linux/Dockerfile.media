@@ -311,13 +311,16 @@ ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 COPY linux/scripts/03-media/gstreamer/common/setup-gstreamer.sh /opt/scripts/media/gstreamer/common/setup-gstreamer.sh
 COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 RUN chmod +x /opt/scripts/media/gstreamer/common/setup-gstreamer.sh /usr/local/bin/gstreamer-env.sh
+COPY linux/scripts/03-media/gstreamer/common/install-vvdec.sh /opt/scripts/media/gstreamer/common/install-vvdec.sh
+RUN chmod +x /opt/scripts/media/gstreamer/common/install-vvdec.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     export USER=root; \
     apt-get update; \
-    apt-get install -y --no-install-recommends libcsound64 libcsound64-dev || true; \
+    # Ensure basic build tooling present for building vvdec
+    apt-get install -y --no-install-recommends build-essential cmake git pkg-config libcsound64 libcsound64-dev || true; \
     rm -rf /var/lib/apt/lists/*; \
     cd /opt && \
     # Prefer using system-provided libraries where available to avoid circular
@@ -329,7 +332,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # and exclude csound-related gst-plugins-rs workspace members from the
     # cargo build. This avoids cargo attempting to compile csound-sys when
     # libcsound isn't available in the build image.
-    MESON_ARGS="-Dgst-plugins-rs:vvdec=disabled -Dgst-plugins-rs:csound=disabled" bash /opt/scripts/media/gstreamer/common/setup-gstreamer.nocsound.sh \
+    # Build and install vvdec from source before building gst-plugins-rs so
+    # pkg-config can discover libvvdec during cargo build.
+    /opt/scripts/media/gstreamer/common/install-vvdec.sh && \
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}" && \
+    MESON_ARGS="-Dgst-plugins-rs:vvdec=disabled -Dgst-plugins-rs:csound=disabled" bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \
         "$BUILD_TYPE"
