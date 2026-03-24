@@ -26,13 +26,26 @@ install_dependencies() {
         git \
         pkg-config \
         curl \
-        unzip
+        unzip \
+        python3-dev \
+        gfortran \
+        libopenblas-dev \
+        liblapack-dev \
+        libatlas-base-dev \
+        ninja-build
     rm -rf /var/lib/apt/lists/*
 
     echo "[INFO] Setting up Python via uv venv..."
     export PATH="${HOME}/.local/bin:${PATH}"
     uv venv /opt/venv-litert --python 3.12
     source /opt/venv-litert/bin/activate
+
+    # Ensure pip/build tooling is up-to-date so numpy can build wheels when
+    # prebuilt wheels are not available for the target architecture (eg.
+    # riscv64). Installing cython/pybind11 helps avoid build failures when
+    # numpy needs to compile C extensions from source.
+    uv pip install --upgrade pip setuptools wheel
+    uv pip install cython pybind11
     uv pip install numpy
 }
 

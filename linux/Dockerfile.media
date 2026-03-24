@@ -35,8 +35,8 @@ COPY linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/bui
 COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
 RUN chmod +x /opt/scripts/media/onnxruntime/build/*.sh /opt/scripts/media/onnxruntime/build/lib/*.sh /opt/scripts/04-runtime/gstreamer-env.sh || true
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-        --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+        --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
         set -eux; \
         export USER=root; \
     SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
@@ -44,10 +44,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-        --mount=type=cache,target=/var/lib/apt \
-        --mount=type=cache,target=/root/.cache/uv \
-        --mount=type=cache,target=/root/.cache/pip \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+        --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+        --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+        --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         set -eux; \
         export USER=root; \
         bash /opt/scripts/media/onnxruntime/build/20-fetch.sh \
@@ -55,10 +55,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
-RUN --mount=type=cache,target=/var/cache/ccache \
-        --mount=type=cache,target=/var/cache/sccache \
-        --mount=type=cache,target=/usr/local/cargo/registry \
-        --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+        --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+        --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+        --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
         set -eux; \
         export USER=root; \
         bash /opt/scripts/media/onnxruntime/build/30-build-native.sh \
@@ -80,10 +80,10 @@ RUN set -eux; \
         echo "ONNX Runtime native build verified:"; \
         ls -la "${lib_dir}"
 
-RUN --mount=type=cache,target=/var/cache/ccache \
-        --mount=type=cache,target=/var/cache/sccache \
-        --mount=type=cache,target=/root/.cache/uv \
-        --mount=type=cache,target=/root/.cache/pip \
+RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+        --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+        --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+        --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         set -eux; \
         export USER=root; \
         BUILD_GENAI="${BUILD_GENAI}" \
@@ -93,8 +93,8 @@ RUN --mount=type=cache,target=/var/cache/ccache \
             --genai-version "${ONNXRUNTIME_GENAI_VERSION}" \
             --genai-config "${ONNXRUNTIME_GENAI_BUILD_TYPE}"
 
-RUN --mount=type=cache,target=/var/cache/ccache \
-        --mount=type=cache,target=/var/cache/sccache \
+RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+        --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         set -eux; \
         export USER=root; \
         bash /opt/scripts/media/onnxruntime/build/40-build-wasm.sh \
@@ -131,10 +131,10 @@ ARG LITERT_OUTPUT_DIR=/usr/local
 COPY linux/scripts/03-media/litert /opt/scripts/media/litert
 RUN chmod +x /opt/scripts/media/litert/*.sh || true
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    --mount=type=cache,target=/var/cache/ccache \
-    --mount=type=cache,target=/var/cache/sccache \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
     export USER=root; \
     bash /opt/scripts/media/litert/build-litert.sh "${LITERT_VERSION}"
@@ -168,8 +168,8 @@ ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 COPY linux/scripts/03-media/opencv /opt/scripts/media/opencv
 RUN chmod +x /opt/scripts/media/opencv/*.sh || true
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -201,8 +201,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         python3-pip; \
     rm -rf /var/lib/apt/lists/*
 
-RUN --mount=type=cache,target=/var/cache/ccache \
-    --mount=type=cache,target=/var/cache/sccache \
+RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
     export USER=root; \
     bash /opt/scripts/media/opencv/build-opencv.sh \
@@ -319,8 +319,25 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -eux; \
     export USER=root; \
     apt-get update; \
-    # Ensure basic build tooling present for building vvdec
-    apt-get install -y --no-install-recommends build-essential cmake git pkg-config libcsound64 libcsound64-dev || true; \
+    # Ensure basic build tooling present for building vvdec and GTK/Cairo checks
+    # Install core packages first, then attempt to install X protocol headers.
+    apt-get install -y --no-install-recommends \
+        build-essential cmake git pkg-config libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-core-dev libsodium-dev; \
+    # Some base images may not provide the `xorgproto` package name. Try a few
+    # alternatives and fail early if none are available so the error is clear.
+    # Try several package names that supply X protocol headers / pkg-config files.
+    # Some distros omit the older 'xorgproto' name; install multiple candidates
+    # (don't abort if one already succeeded) so xproto.pc ends up provided.
+    (apt-get install -y --no-install-recommends xorgproto) || true; \
+    apt-get update || true; \
+    apt-get install -y --no-install-recommends xorg-dev || true; \
+    apt-get install -y --no-install-recommends x11proto-core-dev x11proto-dev || true; \
+    # Ensure pkg-config metadata directories updated
+    update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true; \
+    # libcsound packages are optional and may not exist on all distros; tolerate
+    # their absence but keep other installs strict so missing critical packages
+    # fail the build early.
+    apt-get install -y --no-install-recommends libcsound64 libcsound64-dev || true; \
     rm -rf /var/lib/apt/lists/*; \
     cd /opt && \
     # Prefer using system-provided libraries where available to avoid circular
@@ -335,8 +352,41 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # Build and install vvdec from source before building gst-plugins-rs so
     # pkg-config can discover libvvdec during cargo build.
     /opt/scripts/media/gstreamer/common/install-vvdec.sh && \
-    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}" && \
-    MESON_ARGS="-Dgst-plugins-rs:vvdec=disabled -Dgst-plugins-rs:csound=disabled" bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
+    # Prefer system libsodium (avoid compiling libsodium-sys for riscv64)
+    export SODIUM_USE_PKG_CONFIG=1; \
+    export PKG_CONFIG_ALLOW_CROSS=1; \
+    export PKG_CONFIG_SYSROOT_DIR="${PKG_CONFIG_SYSROOT_DIR:-/}"; \
+    # Ensure pkg-config searches the correct multiarch pkgconfig directory for
+    # the current architecture. Some images hardcode riscv paths which breaks
+    # pkg-config lookups on other arches (cairo.pc lives under the multiarch
+    # pkgconfig directory, e.g. /usr/lib/x86_64-linux-gnu/pkgconfig).
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
+    if [ -n "$triplet" ]; then \
+      export PKG_CONFIG_LIBDIR="/usr/lib/$triplet/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_LIBDIR:-}"; \
+    else \
+      export PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_LIBDIR:-}"; \
+    fi; \
+    export SODIUM_SHARED=1; \
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"; \
+    # Sanity check: ensure cairo is visible via pkg-config before running Meson.
+    # Some base images may be missing xorgproto/x11proto packages which are
+    # required to resolve cairo's X11-related pkg-config dependencies. Try a
+    # quick installation of common X protocol dev packages and retry once. If
+    # cairo still isn't discoverable, emit a warning and continue so the
+    # downstream setup script can run additional diagnostics and attempts.
+    if ! pkg-config --exists cairo; then \
+      echo "WARNING: cairo not found via pkg-config; attempting to install xorgproto/x11proto packages" >&2; \
+      apt-get update || true; \
+      apt-get install -y --no-install-recommends xorgproto xorg-dev x11proto-core-dev || true; \
+      if ! pkg-config --exists cairo; then \
+        echo "WARNING: cairo still not found via pkg-config after retry; continuing (Meson may fail)" >&2; \
+        echo "PKG_CONFIG_LIBDIR=${PKG_CONFIG_LIBDIR}" >&2; \
+        pkg-config --cflags --libs cairo || true; \
+      else \
+        echo "cairo found via pkg-config after installing xorgproto/x11proto" >&2; \
+      fi; \
+    fi; \
+    MESON_ARGS="-Dgst-plugins-rs:vvdec=disabled -Dgst-plugins-rs:csound=disabled -Dgst-plugins-rs:skia=disabled" bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \
         "$BUILD_TYPE"
@@ -428,14 +478,14 @@ COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
 COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 RUN chmod +x /usr/local/bin/gstreamer-env.sh /opt/scripts/media/libcamera/*.sh || true
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/var/cache/ccache \
-    --mount=type=cache,target=/var/cache/sccache \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
     cd /opt && \
     bash /opt/scripts/media/libcamera/build-libcamera.sh

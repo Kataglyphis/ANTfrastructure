@@ -124,6 +124,7 @@ sudo apt-get install -y \
   libc++-dev libc++abi-dev \
   flex bison \
   libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
+  libcairo2-dev \
   libjson-glib-dev python3-gi python3-gi-cairo python-gi-dev \
   libgsl-dev libdw-dev libnsl-dev gobject-introspection
 
@@ -394,6 +395,57 @@ esac
 # Dump debug info and save to /tmp for collection
 dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
 
+# Ensure PKG_CONFIG_LIBDIR includes the system multiarch pkgconfig directory
+# Some base images omit this which makes pkg-config unable to find xproto/cairo
+DEB_HOST_MULTIARCH_DIR="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+if [ -n "${DEB_HOST_MULTIARCH_DIR}" ]; then
+  SYS_PKGCONF_DIR="/usr/lib/${DEB_HOST_MULTIARCH_DIR}/pkgconfig"
+else
+  SYS_PKGCONF_DIR="/usr/lib/pkgconfig"
+fi
+# Prepend system pkgconfig dirs if not already present
+PKG_CONFIG_LIBDIR="${SYS_PKGCONF_DIR}:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_LIBDIR:-}"
+export PKG_CONFIG_LIBDIR
+
+# Some distributions install .pc files under /usr/share/pkgconfig; include it
+# when present so pkg-config can find xproto/cairo/etc even when PKG_CONFIG_LIBDIR
+# is set (PKG_CONFIG_LIBDIR overrides pkg-config defaults).
+if [ -d /usr/share/pkgconfig ]; then
+  PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:/usr/share/pkgconfig"
+  export PKG_CONFIG_LIBDIR
+fi
+
+# Extra debug: check pkg-config visibility for cairo before Meson runs
+echo "--- cairo / pkg-config debug ---" | tee /tmp/gstreamer-cairo-debug.txt
+echo "PKG_CONFIG PATH: PKG_CONFIG_PATH='${PKG_CONFIG_PATH:-}'" | tee -a /tmp/gstreamer-cairo-debug.txt
+echo "PKG_CONFIG LIBDIR: PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}'" | tee -a /tmp/gstreamer-cairo-debug.txt
+echo "DEB_HOST_MULTIARCH: $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)" | tee -a /tmp/gstreamer-cairo-debug.txt
+which pkg-config || true | tee -a /tmp/gstreamer-cairo-debug.txt
+pkg-config --version 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
+for p in "/usr/lib/${DEB_HOST_MULTIARCH:-}/pkgconfig" /usr/lib/pkgconfig /usr/local/lib/pkgconfig; do
+  echo "listing: $p" | tee -a /tmp/gstreamer-cairo-debug.txt
+  ls -la "$p" 2>/dev/null | sed -n '1,20p' | tee -a /tmp/gstreamer-cairo-debug.txt || true
+  [ -f "$p/cairo.pc" ] && echo "FOUND: $p/cairo.pc" | tee -a /tmp/gstreamer-cairo-debug.txt || true
+done
+pkg-config --cflags --libs cairo 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
+
+# If cairo isn't visible when PKG_CONFIG_LIBDIR is set, try a fallback by
+# unsetting PKG_CONFIG_LIBDIR (this lets pkg-config use its compiled-in
+# defaults which often include /usr/share/pkgconfig). If that succeeds, use
+# the fallback for subsequent Meson setup.
+if ! pkg-config --exists cairo 2>/dev/null; then
+  echo "cairo not found with PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}' — trying fallback by unsetting PKG_CONFIG_LIBDIR" | tee -a /tmp/gstreamer-cairo-debug.txt || true
+  if env -u PKG_CONFIG_LIBDIR pkg-config --exists cairo 2>/dev/null; then
+    echo "Fallback: cairo found after unsetting PKG_CONFIG_LIBDIR; proceeding using fallback search paths" | tee -a /tmp/gstreamer-cairo-debug.txt || true
+    # Unset for the rest of the script so Meson will see the cairo pkg-config
+    unset PKG_CONFIG_LIBDIR
+    export PKG_CONFIG_LIBDIR=""
+  else
+    echo "Fallback also failed: cairo still not found" | tee -a /tmp/gstreamer-cairo-debug.txt || true
+  fi
+fi
+echo "--- end cairo debug ---" | tee -a /tmp/gstreamer-cairo-debug.txt
+
 # Run meson setup and capture full output
 if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
   echo "Meson setup failed; printing verbose output..."
@@ -560,6 +612,41 @@ BUILD_CMD=(cargo build --workspace "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOB
 BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
 if [ "${#CSOUND_EXCLUDES[@]}" -gt 0 ]; then
   BUILD_CMD+=("${CSOUND_EXCLUDES[@]}")
+fi
+
+# If Meson args disabled skia, exclude skia-related workspace crates from the
+# cargo build to avoid pulling in skia-bindings (which requires GN/Chromium
+# toolchain helpers like fetch-gn). This mirrors the meson configuration and
+# prevents cargo from attempting to build skia when the meson plugin is off.
+if echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
+  echo "skia disabled via Meson args: excluding skia-related workspace crates from cargo build"
+  if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+    SKIA_PKG_NAMES=$(python3 - <<'PY'
+import sys, json
+try:
+    j=json.load(sys.stdin)
+    names=[p.get('name','') for p in j.get('packages',[])]
+    print(' '.join([n for n in names if 'skia' in n]))
+except Exception:
+    pass
+PY
+)
+    if [ -n "${SKIA_PKG_NAMES}" ]; then
+      for n in ${SKIA_PKG_NAMES}; do
+        BUILD_CMD+=(--exclude "${n}")
+      done
+      echo "Excluding skia packages: ${SKIA_PKG_NAMES}"
+    else
+      # Fallback to a likely crate name used historically
+      BUILD_CMD+=(--exclude gst-plugin-skia)
+      BUILD_CMD+=(--exclude gst-plugin-skia-sys)
+      echo "No skia package names found via cargo metadata; excluding gst-plugin-skia and gst-plugin-skia-sys"
+    fi
+  else
+    BUILD_CMD+=(--exclude gst-plugin-skia)
+    BUILD_CMD+=(--exclude gst-plugin-skia-sys)
+    echo "cargo metadata unavailable; excluding gst-plugin-skia and gst-plugin-skia-sys by default"
+  fi
 fi
 
 if ! "${BUILD_CMD[@]}"; then

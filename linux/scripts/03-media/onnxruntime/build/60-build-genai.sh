@@ -7,11 +7,27 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
-# Early exit check
+# Early exit check - ensure output dir exists even when skipping so Docker
+# COPY --from=onnxruntime won't fail when the GenAI build is intentionally
+# skipped (e.g. BUILD_GENAI=false).
 [[ "${BUILD_GENAI}" != "true" ]] && {
   info "Skipping GenAI build (BUILD_GENAI=${BUILD_GENAI})"
+  mkdir -p "${GENAI_OUTPUT_DIR}" "${GENAI_OUTPUT_DIR}/lib" "${GENAI_OUTPUT_DIR}/include" "${GENAI_OUTPUT_DIR}/wheels" || true
+  echo "[INFO] Created placeholder GenAI output dir: ${GENAI_OUTPUT_DIR}" || true
   exit 0
 }
+
+# Architecture guard: GenAI is not supported on riscv64. If we're building on
+# riscv64, skip this stage with an informative message so the overall image
+# build can continue.
+ARCH="$(arch_oci 2>/dev/null || uname -m 2>/dev/null || echo unknown)"
+if [ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "risc-v" ]; then
+  info "Skipping onnxruntime-genai on ${ARCH} because it is not supported"
+  # Create placeholder output directories so later Dockerfile COPYs succeed
+  mkdir -p "${GENAI_OUTPUT_DIR}" "${GENAI_OUTPUT_DIR}/lib" "${GENAI_OUTPUT_DIR}/include" "${GENAI_OUTPUT_DIR}/wheels" || true
+  echo "[INFO] Created placeholder GenAI output dir for unsupported arch: ${GENAI_OUTPUT_DIR}" || true
+  exit 0
+fi
 
 # Validate native CPU build completed (GenAI depends on ORT)
 info "Checking for ONNX Runtime at: ${NATIVE_CPU_OUTPUT_DIR}"

@@ -25,6 +25,7 @@ set -euo pipefail
 : "${WITH_PYTHON:=true}"
 : "${WITH_JAVA:=false}"
 : "${SKIP_DEP_INSTALL:=false}"
+: "${WITH_IPP:=ON}"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -183,6 +184,15 @@ configure_opencv() {
     mkdir -p "${build_dir}"
     cd "${build_dir}"
     
+    # Disable IPP automatically on non-x86 hosts because OpenCV bundles
+    # prebuilt ippicv libraries for x86 which will fail when linking on
+    # architectures like aarch64 or riscv. Allow explicit override via
+    # the WITH_IPP env var (set to "ON" or "OFF").
+    if [ "$(uname -m)" != "x86_64" ] && [ "${WITH_IPP}" = "ON" ]; then
+        echo "Non-x86 host detected ($(uname -m)) - disabling Intel IPP to avoid x86 prebuilt libs"
+        WITH_IPP="OFF"
+    fi
+
     # Build cmake options array
     local cmake_opts=(
         "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
@@ -212,7 +222,7 @@ configure_opencv() {
         "-DWITH_DC1394=ON"
         "-DWITH_1394=ON"
         "-DWITH_OPENCL=ON"
-        "-DWITH_IPP=ON"
+        "-DWITH_IPP=${WITH_IPP}"
     )
 
     # Ensure tracking contrib module is explicitly enabled (some builds/platforms

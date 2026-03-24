@@ -1,6 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Error handler: print useful logs when a build step fails (meson/ninja/pip)
+on_error() {
+  local rc=${1:-1}
+  echo "ERROR: build failed (exit code ${rc})"
+  if [ -f "${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt" ]; then
+    echo "----- BEGIN meson-log.txt -----"
+    sed -n '1,200p' "${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt" || true
+    echo "..."
+    sed -n '201,400p' "${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt" || true
+    echo "----- END meson-log.txt -----"
+  fi
+  if [ -f /tmp/uv-pip-install.log ]; then
+    echo "----- BEGIN /tmp/uv-pip-install.log -----"
+    sed -n '1,200p' /tmp/uv-pip-install.log || true
+    echo "----- END /tmp/uv-pip-install.log -----"
+  fi
+  if [ -d "${LIBCAMERA_BUILD_DIR}" ]; then
+    echo "Running: ninja -C \"${LIBCAMERA_BUILD_DIR}\" -v (to show the failing command)"
+    ninja -C "${LIBCAMERA_BUILD_DIR}" -v || true
+  fi
+  exit ${rc}
+}
+trap 'on_error $?' ERR
+
 # Defaults (can be overridden via env vars)
 : "${LIBCAMERA_SRC:=/tmp/libcamera}"
 : "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
@@ -106,13 +130,29 @@ fi
 UV_RUN_PREFIX=(uv run --)
 
 # Run Meson setup inside the venv (prefer uv run when available)
+## Ensure GoogleTest is available so libcamera test targets (if enabled) can
+## compile. On Debian/Ubuntu libgtest-dev provides sources under /usr/src/googletest
+## which we need to build and install into the system library path.
+if [ ! -f /usr/include/gtest/gtest.h ]; then
+  sudo apt-get update -y || true
+  sudo apt-get install -y --no-install-recommends libgtest-dev cmake || true
+  if [ -d /usr/src/googletest ]; then
+    mkdir -p /tmp/gtest-build
+    cmake -S /usr/src/googletest -B /tmp/gtest-build -DCMAKE_BUILD_TYPE=Release
+    cmake --build /tmp/gtest-build --target install -j"$(nproc)" || true
+    rm -rf /tmp/gtest-build
+  fi
+fi
+
 if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
-  -Dgstreamer=enabled -Dpycamera=disabled -Ddocumentation=disabled -Dtests=disabled; then
+  -Dgstreamer=enabled -Dpycamera=disabled -Ddocumentation=disabled; then
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
     exit 1
 fi
 
-ninja -C "${LIBCAMERA_BUILD_DIR}" || { echo "ninja build failed"; exit 1; }
+# Build with verbose ninja so failures are easier to diagnose. on_error trap
+# will further print relevant logs when an error occurs.
+ninja -C "${LIBCAMERA_BUILD_DIR}" -v || { echo "ninja build failed"; exit 1; }
 
 # install (use sudo if not root)
 if [ "$EUID" -ne 0 ]; then
