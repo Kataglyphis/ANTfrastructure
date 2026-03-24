@@ -567,52 +567,44 @@ echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS
 
 cd "${PLUGIN_RS_DIR}"
 
-# Detect libcsound presence and dynamically exclude csound-related crates
-# when the system libcsound isn't available. This avoids cargo trying to
-# compile csound-sys which errors out if libcsound is missing.
-HAS_CSOUND=0
-if pkg-config --exists csound 2>/dev/null; then
-  HAS_CSOUND=1
-elif [ -f /usr/lib/libcsound64.so ] || [ -f /usr/lib/libcsound.so ] || [ -f /usr/lib64/libcsound64.so ]; then
-  HAS_CSOUND=1
-fi
+# Always attempt to install Csound development packages when possible.
+# This simplifies behaviour: rather than conditionally building csound
+# plugins or producing an error, we try to install the system packages via
+# APT and continue. If installation fails we'll print a warning but not
+# abort the entire build.
+run_as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+    return $?
+  fi
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo "$@"
+    return $?
+  fi
+  return 2
+}
 
-CSOUND_EXCLUDES=()
-if [ "${HAS_CSOUND}" -eq 0 ]; then
-  echo "libcsound not found: excluding csound-related workspace crates from cargo build"
-  # try to discover package names mentioning 'csound' and exclude them
-  if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
-    CSOUND_PKG_NAMES=$(python3 - <<'PY'
-import sys, json
-try:
-    j=json.load(sys.stdin)
-    names=[p.get('name','') for p in j.get('packages',[])]
-    print(' '.join([n for n in names if 'csound' in n]))
-except Exception:
-    pass
-PY
-)
-    if [ -n "${CSOUND_PKG_NAMES}" ]; then
-      for n in ${CSOUND_PKG_NAMES}; do
-        CSOUND_EXCLUDES+=(--exclude "${n}")
-      done
-      echo "Excluding: ${CSOUND_PKG_NAMES}"
-    else
-      # fallback to a likely crate name used historically
-      CSOUND_EXCLUDES+=(--exclude gst-plugin-csound)
-      echo "No csound package names found via cargo metadata; excluding gst-plugin-csound"
-    fi
+if command -v apt-get >/dev/null 2>&1; then
+  echo "Attempting to install Csound development packages via APT..."
+  run_as_root apt-get update || true
+  # Install user-facing csound packages and development headers that cargo
+  # crates expect (installing several common package names to cover
+  # distribution differences).
+  run_as_root apt-get install -y --no-install-recommends \
+    csound csound-utils libcsound64 libcsound64-dev libcsound-dev pd-csound || true
+
+  if pkg-config --exists csound 2>/dev/null; then
+    echo "libcsound detected via pkg-config after install: building all workspace members"
+  else
+    echo "Warning: libcsound pkg-config not available after APT install; csound-related crates may fail to build." >&2
   fi
 else
-  echo "libcsound detected; building all workspace members"
+  echo "APT not available: skipping automatic Csound installation. If you need csound-related plugins, please install the libcsound development package." >&2
 fi
 
 DEFAULT_EXCLUDES=(--exclude gst-plugin-burn --exclude gst-plugin-whisper)
 BUILD_CMD=(cargo build --workspace "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}")
 BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
-if [ "${#CSOUND_EXCLUDES[@]}" -gt 0 ]; then
-  BUILD_CMD+=("${CSOUND_EXCLUDES[@]}")
-fi
 
 # If Meson args disabled skia, exclude skia-related workspace crates from the
 # cargo build to avoid pulling in skia-bindings (which requires GN/Chromium
