@@ -64,6 +64,33 @@ try {
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters "--version"
     }
 
+    # Read extra cargo args from environment (e.g. "--features with_cxxbridge")
+    $ExtraCargoArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:EXTRA_CARGO_ARGS)) {
+        $ExtraCargoArgs = $env:EXTRA_CARGO_ARGS -split ' '
+        Write-BuildLog -Context $Context -Message "Extra cargo args: $($ExtraCargoArgs -join ' ')"
+    }
+
+    function Combine-Params {
+        param(
+            [array]$Base,
+            [array]$Extra
+        )
+        if ($Extra.Length -eq 0) { return $Base }
+        $sepIndex = [array]::IndexOf($Base, '--')
+        if ($sepIndex -ge 0) {
+            if ($sepIndex -gt 0) {
+                $head = $Base[0..($sepIndex - 1)]
+            } else {
+                $head = @()
+            }
+            $tail = $Base[$sepIndex..($Base.Length - 1)]
+            return ,($head + $Extra + $tail)
+        } else {
+            return ,($Base + $Extra)
+        }
+    }
+
     Invoke-BuildStep -Context $Context -StepName "Security Checks (audit & deny)" -Script {
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters @("install", "--locked", "cargo-audit", "cargo-deny")
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters "audit"
@@ -72,25 +99,35 @@ try {
 
     Invoke-BuildStep -Context $Context -StepName "Format Check (cargo fmt)" -Critical -Script {
         Invoke-BuildExternal -Context $Context -File "rustup" -Parameters @("component", "add", "rustfmt")
-        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters @("fmt", "--all", "--", "--check")
+        $fmtParams = @("fmt", "--all", "--", "--check")
+        $fmtParams = Combine-Params -Base $fmtParams -Extra $ExtraCargoArgs
+        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $fmtParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Linting (cargo clippy)" -Critical -Script {
         Invoke-BuildExternal -Context $Context -File "rustup" -Parameters @("component", "add", "clippy")
-        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters @("clippy", "--all-targets", "--all-features", "--", "-D", "warnings")
+        $clippyParams = @("clippy", "--all-targets", "--all-features", "--", "-D", "warnings")
+        $clippyParams = Combine-Params -Base $clippyParams -Extra $ExtraCargoArgs
+        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $clippyParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Unit Tests" -Critical -Script {
-        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters @("test", "--all", "--verbose")
+        $testParams = @("test", "--all", "--verbose")
+        $testParams = Combine-Params -Base $testParams -Extra $ExtraCargoArgs
+        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $testParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Benchmarks" -Script {
         # Benchmarks might fail if not configured, leaving as non-critical
-        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters "bench"
+        $benchParams = @("bench")
+        $benchParams = Combine-Params -Base $benchParams -Extra $ExtraCargoArgs
+        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $benchParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Release Build" -Critical -Script {
-        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters @("build", "--release")
+        $buildParams = @("build", "--release")
+        $buildParams = Combine-Params -Base $buildParams -Extra $ExtraCargoArgs
+        Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $buildParams
     }
 
     Write-BuildSummary -Context $Context

@@ -6,10 +6,12 @@ source "$SCRIPT_DIR/../01-core/logging.sh"
 
 info "Adding rustfmt component and checking formatting..."
 rustup component add rustfmt
-cargo fmt --all -- --check
+# Forward any args (e.g. --features with_cxxbridge) to cargo fmt before the '--' separator
+cargo fmt --all "$@" -- --check
 
 info "Adding clippy component and running clippy checks..."
 rustup component add clippy
-cargo clippy --all-targets --all-features -- -D warnings
+# Forward any args to cargo clippy (placed before the '--' which separates Rust flags)
+cargo clippy --all-targets --all-features "$@" -- -D warnings
 
 info "Formatting and clippy checks completed successfully."

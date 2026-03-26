@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../01-core/logging.sh"
 
 AUTO_YES="${1:-}"
+shift || true
 
 info "[1/4] Updating lockfile packages..."
 cargo update
@@ -21,8 +22,12 @@ proceed_upgrade() {
 }
 
 if [[ "$AUTO_YES" == "--yes" ]]; then
-	proceed_upgrade
-	exit 0
+    proceed_upgrade
+    exit 0
+fi
+
+if [[ "$#" -gt 0 ]]; then
+    warn "Extra args supplied to cargo_update.sh are ignored: $*"
 fi
 
 if [[ -t 0 ]]; then
