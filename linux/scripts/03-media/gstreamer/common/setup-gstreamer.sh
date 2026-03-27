@@ -603,8 +603,60 @@ else
 fi
 
 DEFAULT_EXCLUDES=(--exclude gst-plugin-burn --exclude gst-plugin-whisper)
+
+# Proactively exclude csound-related crates on architectures known to cause
+# csound-sys/va_list binding issues (riscv/aarch64/arm64). Detect using several
+# probes (HOST_ARCH, TARGETARCH, dpkg queries, and the kernel machine name) so
+# we don't accidentally miss a Docker/CI context that sets one but not others.
+ARCH_FOR_EXCLUDES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
+if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|aarch64|arm64'; then
+  DEFAULT_EXCLUDES+=(--exclude gst-plugin-csound --exclude csound --exclude csound-sys)
+  echo "Host arch detected in (${ARCH_FOR_EXCLUDES}): added csound-related excludes to DEFAULT_EXCLUDES"
+fi
 BUILD_CMD=(cargo build --workspace "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}")
 BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
+
+# If host is RISC-V or ARM64 (aarch64/arm64), exclude csound-related workspace
+# crates from the cargo build. Csound crates (csound-sys -> va_list) currently
+# fail to compile on some RISC-V and ARM64 toolchains (due to c_char
+# signedness / platform differences), so always exclude them on these arches
+# even if system csound packages are present.
+#
+# Use multiple detection methods (uname, TARGETARCH, dpkg) because Docker
+# build contexts sometimes set TARGETARCH or use different uname values.
+ARCH_PROBES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|aarch64|arm64'; then
+  echo "Host arch detected in (${ARCH_PROBES}): excluding csound-related workspace crates from cargo build"
+  if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+    CS_PKG_NAMES=$(python3 - <<'PY'
+import sys, json
+try:
+    j = json.load(sys.stdin)
+    names = [p.get('name','') for p in j.get('packages', [])]
+    print(' '.join([n for n in names if 'csound' in n]))
+except Exception:
+    pass
+PY
+)
+    if [ -n "${CS_PKG_NAMES}" ]; then
+      for n in ${CS_PKG_NAMES}; do
+        BUILD_CMD+=(--exclude "${n}")
+      done
+      echo "Excluding csound packages: ${CS_PKG_NAMES}"
+    else
+      # Fallback to likely crate names
+      BUILD_CMD+=(--exclude gst-plugin-csound)
+      BUILD_CMD+=(--exclude csound)
+      BUILD_CMD+=(--exclude csound-sys)
+      echo "No csound package names found via cargo metadata; excluding gst-plugin-csound, csound and csound-sys"
+    fi
+  else
+    BUILD_CMD+=(--exclude gst-plugin-csound)
+    BUILD_CMD+=(--exclude csound)
+    BUILD_CMD+=(--exclude csound-sys)
+    echo "cargo metadata unavailable; excluding gst-plugin-csound, csound and csound-sys by default"
+  fi
+fi
 
 # If Meson args disabled skia, exclude skia-related workspace crates from the
 # cargo build to avoid pulling in skia-bindings (which requires GN/Chromium
