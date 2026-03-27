@@ -24,9 +24,9 @@ run_step "Install security tooling (cargo-audit, cargo-deny)" \
    cargo install --locked cargo-audit cargo-deny
 
 run_step "Run vulnerability audit (cargo audit)" \
-   cargo audit
+   bash -c 'cargo audit "$@"' --
 
 run_step "Run policy checks (cargo deny: advisories, licenses, bans, sources)" \
-   cargo deny check advisories licenses bans sources
+   bash -c 'cargo deny check advisories licenses bans sources "$@"' --
 
 info "Security checks completed successfully"

@@ -30,22 +30,24 @@ if [ "$SkipSecurity" != "true" ]; then
   ' || build_warn "Security checks completed with warnings"
 fi
 
-build_run_step "Format Check" bash -c '
+  build_run_step "Format Check" bash -c '
   rustup component add rustfmt 2>/dev/null || true
-  cargo fmt --all -- --check
-'
+  # Forward any args passed to Build-Linux.sh into cargo fmt (not common for this wrapper)
+  cargo fmt --all "$@" -- --check
+' 
 
-build_run_step "Linting (cargo clippy)" bash -c '
+  build_run_step "Linting (cargo clippy)" bash -c '
   rustup component add clippy 2>/dev/null || true
-  cargo clippy --all-targets --all-features -- -D warnings
+  # Forward args into cargo clippy in case callers want to pass feature flags
+  cargo clippy --all-targets --all-features "$@" -- -D warnings
 '
 
-build_run_step "Unit Tests" cargo test --all --verbose
+  build_run_step "Unit Tests" bash -c 'cargo test --all --verbose "$@"'
 
 if [ "$SkipBench" != "true" ]; then
-  build_run_step "Benchmarks" cargo bench || build_warn "Benchmarks skipped or failed"
+  build_run_step "Benchmarks" bash -c 'cargo bench "$@"' || build_warn "Benchmarks skipped or failed"
 fi
 
-build_run_step "Release Build" cargo build --release
+  build_run_step "Release Build" bash -c 'cargo build --release "$@"'
 
 build_finish 0

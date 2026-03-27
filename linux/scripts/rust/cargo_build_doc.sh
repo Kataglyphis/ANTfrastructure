@@ -35,7 +35,8 @@ fi
 
 # Generate documentation without dependencies
 info "Generating rust documentation (cargo doc --no-deps)..."
-cargo doc --no-deps
+# Forward args to cargo doc (e.g. --features with_cxxbridge)
+cargo doc --no-deps "$@"
 
 # Provide a redirect from the root doc directory to the crate's docs
 if [ -f "./resources/web/redirect/index.html" ]; then
