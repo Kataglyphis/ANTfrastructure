@@ -76,13 +76,25 @@ configure_litert() {
 
     echo "[INFO] Using preset: ${preset}"
 
+    # Disable ruy profiler/instrumentation and related tooling to avoid
+    # linking against ruy_profiler_instrumentation (not present in some
+    # build environments / submodule combinations). Keep RUY_PROFILER=OFF
+    # for compatibility but also set several explicit ruy-related flags so
+    # CMake won't accidentally pull in the instrumentation library.
     cmake --preset "${preset}" \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DRUY_PROFILER=OFF \
+        -DRUY_ENABLE_INSTRUMENTATION=OFF \
+        -DRUY_PROFILER_INSTRUMENTATION=OFF \
+        -DRUY_BUILD_TOOLS=OFF \
+        -DRUY_BUILD_TESTING=OFF \
         -DCMAKE_INSTALL_PREFIX="${LITERT_PREFIX}" \
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DLITERT_AUTO_BUILD_TFLITE=ON \
         -DLITERT_ENABLE_GPU=OFF \
-        -DLITERT_ENABLE_NPU=OFF
+        -DLITERT_ENABLE_NPU=OFF \
+        -DTFLITE_ENABLE_RUY=OFF
 }
 
 build_litert() {
