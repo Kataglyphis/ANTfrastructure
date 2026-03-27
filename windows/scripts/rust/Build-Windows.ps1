@@ -64,11 +64,17 @@ try {
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters "--version"
     }
 
-    # Read extra cargo args from environment (e.g. "--features with_cxxbridge")
+    # Read extra cargo args from environment (e.g. "--features with_cxxbridge").
+    # If none provided, default to enabling the `with_cxxbridge` feature so CI
+    # runs with the same feature set as expected by tests.
     $ExtraCargoArgs = @()
     if (-not [string]::IsNullOrWhiteSpace($env:EXTRA_CARGO_ARGS)) {
         $ExtraCargoArgs = $env:EXTRA_CARGO_ARGS -split ' '
         Write-BuildLog -Context $Context -Message "Extra cargo args: $($ExtraCargoArgs -join ' ')"
+    } else {
+        # Default: enable the with_cxxbridge feature unless explicitly overridden
+        $ExtraCargoArgs = @('--features', 'with_cxxbridge')
+        Write-BuildLog -Context $Context -Message "No EXTRA_CARGO_ARGS specified; defaulting to: $($ExtraCargoArgs -join ' ')"
     }
 
     function Combine-Params {
