@@ -467,6 +467,11 @@ COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
+    # Ensure TensorFlow Lite headers installed by the litert stage are
+    # available in the final image so downstream builds (libcamera) can
+    # include <tensorflow/lite/...>. Copy the include tree from the
+    # litert stage into /usr/local/include.
+    COPY --from=litert ${LITERT_OUTPUT_DIR}/include /usr/local/include
     COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 
     # Same symlink fix in the final stage to be extra robust (also create
