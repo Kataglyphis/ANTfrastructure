@@ -540,7 +540,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
     cd /opt && \
-    bash /opt/scripts/media/libcamera/build-libcamera.sh
+    # Ensure TensorFlow Lite headers under /usr/local/include/tflite are
+    # visible to builds that include <tensorflow/...>. Use wrapper which
+    # creates a compat symlink if necessary before invoking the real script.
+    bash /opt/scripts/media/libcamera/build-libcamera-wrapper.sh
 
 RUN set -eux; \
     printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \
