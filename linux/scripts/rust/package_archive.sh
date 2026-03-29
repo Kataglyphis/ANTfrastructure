@@ -106,6 +106,9 @@ create_deb() {
     fi
 
     mkdir -p "$DEB_DIR/DEBIAN"
+    # Write the control file in parts to avoid inserting an empty blank line
+    # when there are no Depends. A blank line would terminate the control
+    # paragraph and cause dpkg-deb to parse multiple package stanzas.
     cat > "$DEB_DIR/DEBIAN/control" <<EOF
 Package: $pkgname
 Version: $vers_safe
@@ -113,7 +116,13 @@ Section: utils
 Priority: optional
 Architecture: $deb_arch
 Maintainer: $deb_maintainer
-$( [ -n "$deb_depends" ] && echo "Depends: $deb_depends" )
+EOF
+
+    if [ -n "$deb_depends" ]; then
+        echo "Depends: $deb_depends" >> "$DEB_DIR/DEBIAN/control"
+    fi
+
+    cat >> "$DEB_DIR/DEBIAN/control" <<EOF
 Description: $pkgname (packaged from CI)
 EOF
 
