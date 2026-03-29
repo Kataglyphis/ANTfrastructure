@@ -23,6 +23,7 @@ set -euo pipefail
 : "${NPROC:=$(nproc)}"
 : "${WITH_CONTRIB:=true}"
 : "${WITH_PYTHON:=true}"
+: "${OPENCV_PYTHON_VERSION:=3.14}"
 : "${WITH_JAVA:=false}"
 : "${SKIP_DEP_INSTALL:=false}"
 : "${WITH_IPP:=ON}"
@@ -116,12 +117,17 @@ install_dependencies() {
             libgstreamer-plugins-base1.0-dev \
             libdc1394-dev || true
         
-        if [ "${WITH_PYTHON}" = "true" ]; then
-            apt-get install -y --no-install-recommends \
-                python3-dev \
-                python3-numpy \
-                python3-pip || true
-        fi
+    if [ "${WITH_PYTHON}" = "true" ]; then
+        # Allow building against a specific Python version, defaulting to
+        # ${OPENCV_PYTHON_VERSION}. Users can override by setting
+        # OPENCV_PYTHON_VERSION=3.14 in the environment.
+        PYVER_MAJOR_MINOR="${OPENCV_PYTHON_VERSION%.*}"
+        apt-get install -y --no-install-recommends \
+                "python${OPENCV_PYTHON_VERSION}-dev" || true
+        # Fallback to generic python3-dev and tools if explicit package name
+        # isn't available in older distros.
+        apt-get install -y --no-install-recommends python3-dev python3-numpy python3-pip || true
+    fi
         
         if [ "${WITH_JAVA}" = "true" ]; then
             apt-get install -y --no-install-recommends \
@@ -237,7 +243,13 @@ configure_opencv() {
     
     # Python bindings
     if [ "${WITH_PYTHON}" = "true" ]; then
-        cmake_opts+=("-DPYTHON3_EXECUTABLE=$(which python3 2>/dev/null || echo python3)")
+        # Use explicit python executable if available (eg. python3.14)
+        PY_EXEC="$(command -v python${OPENCV_PYTHON_VERSION} 2>/dev/null || command -v python3 2>/dev/null || true)"
+        if [ -n "${PY_EXEC}" ]; then
+            cmake_opts+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
+        else
+            cmake_opts+=("-DPYTHON3_EXECUTABLE=python3")
+        fi
     fi
     
     # Java bindings
@@ -326,6 +338,21 @@ install_opencv() {
         ${SUDO} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
         echo "Failing build so the image build doesn't continue with a broken OpenCV install."
         exit 1
+    fi
+
+    # Attempt to build/capture Python wheel for OpenCV
+    mkdir -p "${OPENCV_PREFIX}/wheels"
+    if [ "${WITH_PYTHON}" = "true" ]; then
+        echo "Attempting to create OpenCV wheel using the selected Python"
+        # Try using the python executable chosen during configure; fall back to python3
+        PYEXEC="$(command -v python${OPENCV_PYTHON_VERSION} 2>/dev/null || command -v python3 2>/dev/null || true)"
+        if [ -n "${PYEXEC}" ]; then
+            # Many OpenCV builds place the Python wheel under build/lib/python*/site-packages
+            # Try to use pip wheel against the source tree (if opportunity exists)
+            ${PYEXEC} -m pip wheel -w "${OPENCV_PREFIX}/wheels" "${OPENCV_SRC}" || echo "Could not wheel OpenCV via pip; wheel may not be available"
+        else
+            echo "No suitable python executable found to build OpenCV wheel"
+        fi
     fi
 }
 

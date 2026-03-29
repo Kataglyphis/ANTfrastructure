@@ -37,7 +37,10 @@ install_dependencies() {
 
     echo "[INFO] Setting up Python via uv venv..."
     export PATH="${HOME}/.local/bin:${PATH}"
-    uv venv /opt/venv-litert --python 3.12
+    # Allow overriding python version for wheel builds. Set LITERT_PYTHON_VERSION
+    # env var to e.g. 3.14 to create a venv using that interpreter.
+    : "${LITERT_PYTHON_VERSION:=3.14}"
+    uv venv /opt/venv-litert --python "${LITERT_PYTHON_VERSION}"
     source /opt/venv-litert/bin/activate
 
     # Ensure pip/build tooling is up-to-date so numpy can build wheels when
@@ -76,14 +79,13 @@ configure_litert() {
 
     echo "[INFO] Using preset: ${preset}"
 
-    # Disable ruy profiler/instrumentation and related tooling to avoid
+    # Enable ruy but keep its profiler/instrumentation disabled to avoid
     # linking against ruy_profiler_instrumentation (not present in some
-    # build environments / submodule combinations). Keep RUY_PROFILER=OFF
-    # for compatibility but also set several explicit ruy-related flags so
-    # CMake won't accidentally pull in the instrumentation library.
+    # build environments / submodule combinations). Explicitly set
+    # RUY_PROFILER=0 so the profiler is disabled while ruy remains enabled.
     cmake --preset "${preset}" \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-        -DRUY_PROFILER=OFF \
+        -DRUY_PROFILER=0 \
         -DRUY_ENABLE_INSTRUMENTATION=OFF \
         -DRUY_PROFILER_INSTRUMENTATION=OFF \
         -DRUY_BUILD_TOOLS=OFF \
@@ -94,7 +96,7 @@ configure_litert() {
         -DLITERT_AUTO_BUILD_TFLITE=ON \
         -DLITERT_ENABLE_GPU=OFF \
         -DLITERT_ENABLE_NPU=OFF \
-        -DTFLITE_ENABLE_RUY=OFF
+        -DTFLITE_ENABLE_RUY=ON
 }
 
 build_litert() {
@@ -127,6 +129,19 @@ install_litert() {
     install_manual
 
     ldconfig || true
+
+    # Try to build a Python wheel if the project exposes a Python package
+    mkdir -p "${LITERT_PREFIX}/wheels"
+    if [ -f "${LITERT_SRC}/pyproject.toml" ] || [ -f "${LITERT_SRC}/setup.py" ] || [ -d "${LITERT_SRC}/python" ]; then
+        echo "[INFO] Detected Python packaging in LiteRT source - attempting to build wheel"
+        if command -v python >/dev/null 2>&1; then
+            python -m pip wheel -w "${LITERT_PREFIX}/wheels" "${LITERT_SRC}" || echo "[WARN] pip wheel failed for LiteRT source"
+        else
+            echo "[WARN] No python found in PATH to build LiteRT wheel"
+        fi
+    else
+        echo "[INFO] No Python packaging detected for LiteRT; skipping wheel build"
+    fi
 }
 
 install_manual() {

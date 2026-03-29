@@ -4,7 +4,7 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.28.1}"
+GSTREAMER_VERSION="${1:-1.29.1}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -30,14 +30,13 @@ if [ -n "${MESON_ARGS:-}" ]; then
 elif [ -z "${EXTRA_MESON_ARGS}" ]; then
   EXTRA_MESON_ARGS="-Dgst-plugins-rs:auto_plugin_features=enabled \
     -Dgst-plugins-rs:burn=disabled \
-    -Dgst-plugins-rs:whisper=disabled \
     -Dgst-plugins-rs:sodium-source=built-in"
 fi
 
 # Always enforce these, even if MESON_ARGS was supplied externally.
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
 append_meson_arg "-Dgst-plugins-rs:burn=disabled"
-append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
+# Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
@@ -261,6 +260,16 @@ fi
 # libcamera support; needed for raspberry pi cam
 # sudo apt install -y --no-install-recommends libcamera-dev libcamera-tools
 
+# Some projects (litert/TFLite) install headers under /usr/local/include/tflite
+# while other code expects /usr/local/include/tensorflow/... header layout.
+# Create a compat symlink so includes like <tensorflow/lite/interpreter.h>
+# resolve correctly. Place this before libcamera/build steps so downstream
+# builds (e.g. libcamera) see the expected headers.
+if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then
+  echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"
+  sudo ln -s /usr/local/include/tflite /usr/local/include/tensorflow || true
+fi
+
 sudo rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
@@ -286,7 +295,7 @@ ninja --version
 # ------------------------------------------------------------------------------
 # Build GStreamer from monorepo
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.28.1}"
+GSTREAMER_VERSION="${1:-1.29.1}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -301,7 +310,7 @@ fi
 # Enforce the gst-plugins-rs args again here so they survive external MESON_ARGS.
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
 append_meson_arg "-Dgst-plugins-rs:burn=disabled"
-append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
+# whisper left enabled — do not force-disable here
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
@@ -340,7 +349,7 @@ fi
 echo ""
 echo "Setting up Meson build..."
 
-# detect host architecture (examples: x86_64, aarch64, riscv64)
+# detect host architecture (examples: x86_64, aarch64, riscv64, armv7l)
 HOST_ARCH="$(uname -m)"
 
 # Build Meson flags, conditionally enable Rust bindings (rs) except on RISC-V
@@ -375,6 +384,15 @@ case "${HOST_ARCH}" in
   riscv*|*riscv*)
     echo "Host arch '${HOST_ARCH}' detected: skipping -Drs (Rust bindings) in Meson flags"
     MESON_FLAGS+=("-Drs=disabled")
+    ;;
+  aarch64*|arm*)
+    echo "Host arch '${HOST_ARCH}' detected: enabling -Drs (Rust bindings) but disabling csound"
+    MESON_FLAGS+=("-Drs=enabled")
+    append_meson_arg "-Dgst-plugins-rs:csound=disabled"
+    # Disable Whisper plugin on ARM architectures — it is resource-heavy and
+    # known to cause issues on some ARM toolchains/platforms.
+    append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
+    echo "Disabling gst-plugins-rs whisper plugin for ARM host arch"
     ;;
   *)
     MESON_FLAGS+=("-Drs=enabled")
@@ -585,47 +603,53 @@ run_as_root() {
 }
 
 if command -v apt-get >/dev/null 2>&1; then
-  echo "Attempting to install Csound development packages via APT..."
-  run_as_root apt-get update || true
-  # Install user-facing csound packages and development headers that cargo
-  # crates expect (installing several common package names to cover
-  # distribution differences).
-  run_as_root apt-get install -y --no-install-recommends \
-    csound csound-utils libcsound64 libcsound64-dev libcsound-dev pd-csound || true
-
-  if pkg-config --exists csound 2>/dev/null; then
-    echo "libcsound detected via pkg-config after install: building all workspace members"
+  # Check if architecture shouldn't build Csound
+  ARCH_FOR_APT="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
+  if echo "${ARCH_FOR_APT}" | grep -qi -E 'riscv|aarch64|arm64|arm'; then
+    echo "Skipping Csound APT install on ARM/RISC-V architecture."
   else
-    echo "Warning: libcsound pkg-config not available after APT install; csound-related crates may fail to build." >&2
+    echo "Attempting to install Csound development packages via APT..."
+    run_as_root apt-get update || true
+    # Install user-facing csound packages and development headers that cargo
+    # crates expect (installing several common package names to cover
+    # distribution differences).
+    run_as_root apt-get install -y --no-install-recommends \
+      csound csound-utils libcsound64 libcsound64-dev libcsound-dev pd-csound || true
+
+    if pkg-config --exists csound 2>/dev/null; then
+      echo "libcsound detected via pkg-config after install: building all workspace members"
+    else
+      echo "Warning: libcsound pkg-config not available after APT install; csound-related crates may fail to build." >&2
+    fi
   fi
 else
   echo "APT not available: skipping automatic Csound installation. If you need csound-related plugins, please install the libcsound development package." >&2
 fi
 
-DEFAULT_EXCLUDES=(--exclude gst-plugin-burn --exclude gst-plugin-whisper)
+DEFAULT_EXCLUDES=(--exclude gst-plugin-burn)
 
 # Proactively exclude csound-related crates on architectures known to cause
-# csound-sys/va_list binding issues (riscv/aarch64/arm64). Detect using several
+# csound-sys/va_list binding issues (riscv/aarch64/arm64/arm). Detect using several
 # probes (HOST_ARCH, TARGETARCH, dpkg queries, and the kernel machine name) so
 # we don't accidentally miss a Docker/CI context that sets one but not others.
 ARCH_FOR_EXCLUDES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
-if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|aarch64|arm64'; then
+if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|aarch64|arm64|arm'; then
   DEFAULT_EXCLUDES+=(--exclude gst-plugin-csound --exclude csound --exclude csound-sys)
   echo "Host arch detected in (${ARCH_FOR_EXCLUDES}): added csound-related excludes to DEFAULT_EXCLUDES"
 fi
 BUILD_CMD=(cargo build --workspace "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}")
 BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
 
-# If host is RISC-V or ARM64 (aarch64/arm64), exclude csound-related workspace
+# If host is RISC-V or ARM64 (aarch64/arm64) or 32-bit ARM, exclude csound-related workspace
 # crates from the cargo build. Csound crates (csound-sys -> va_list) currently
-# fail to compile on some RISC-V and ARM64 toolchains (due to c_char
+# fail to compile on some RISC-V and ARM toolchains (due to c_char
 # signedness / platform differences), so always exclude them on these arches
 # even if system csound packages are present.
 #
 # Use multiple detection methods (uname, TARGETARCH, dpkg) because Docker
 # build contexts sometimes set TARGETARCH or use different uname values.
 ARCH_PROBES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
-if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|aarch64|arm64'; then
+if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|aarch64|arm64|arm'; then
   echo "Host arch detected in (${ARCH_PROBES}): excluding csound-related workspace crates from cargo build"
   if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
     CS_PKG_NAMES=$(python3 - <<'PY'
@@ -690,6 +714,40 @@ PY
     BUILD_CMD+=(--exclude gst-plugin-skia)
     BUILD_CMD+=(--exclude gst-plugin-skia-sys)
     echo "cargo metadata unavailable; excluding gst-plugin-skia and gst-plugin-skia-sys by default"
+  fi
+fi
+
+# If this is a Release build on ARM architectures, exclude the Whisper plugin
+# from the cargo build. Whisper can be resource heavy and often fails on some
+# ARM toolchains in release mode, so exclude it proactively for stability.
+if [ "${BUILD_TYPE_LOWER}" = "release" ]; then
+  if echo "${ARCH_PROBES}" | grep -qi -E 'aarch64|arm64|arm|armv7l'; then
+    echo "Release build on ARM detected in (${ARCH_PROBES}): excluding whisper-related workspace crates from cargo build"
+    if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+      WHISPER_PKG_NAMES=$(python3 - <<'PY'
+import sys, json
+try:
+    j = json.load(sys.stdin)
+    names = [p.get('name','') for p in j.get('packages', [])]
+    print(' '.join([n for n in names if 'whisper' in n]))
+except Exception:
+    pass
+PY
+)
+      if [ -n "${WHISPER_PKG_NAMES}" ]; then
+        for n in ${WHISPER_PKG_NAMES}; do
+          BUILD_CMD+=(--exclude "${n}")
+        done
+        echo "Excluding whisper packages: ${WHISPER_PKG_NAMES}"
+      else
+        # Fallback to a likely crate name
+        BUILD_CMD+=(--exclude gst-plugin-whisper)
+        echo "No whisper package names found via cargo metadata; excluding gst-plugin-whisper"
+      fi
+    else
+      BUILD_CMD+=(--exclude gst-plugin-whisper)
+      echo "cargo metadata unavailable; excluding gst-plugin-whisper by default"
+    fi
   fi
 fi
 

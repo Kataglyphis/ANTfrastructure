@@ -533,6 +533,16 @@ main() {
     export TVM_LIBRARY_PATH="$build_dir"
     python -m pip install -e "$tvm_dir/python"
 
+    # Attempt to build a wheel for TVM python package and copy next to native artifacts
+    TVM_WHEEL_DIR="${prefix}/wheels"
+    mkdir -p "$TVM_WHEEL_DIR"
+    if [ -f "$tvm_dir/pyproject.toml" ] || [ -f "$tvm_dir/python/setup.py" ]; then
+      log "Building TVM wheel into $TVM_WHEEL_DIR"
+      python -m pip wheel -w "$TVM_WHEEL_DIR" "$tvm_dir/python" || log "Warning: TVM wheel build failed"
+    else
+      log "TVM python package not detected for wheel build; skipped"
+    fi
+
     python - <<'PY'
 import tvm
 print("tvm imported OK; version=", tvm.__version__)

@@ -23,8 +23,14 @@ _PYTHON_UV_LOADED=1
 _MODULE_DIR="${BASH_SOURCE[0]%/*}"
 source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" >&2; exit 1; }
 
-declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14t}"
-declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.13}"
+# Add known experimental Python versions here so callers can test/build
+# against newer interpreter releases (eg. 3.14). Keep DEFAULT_PYTHON_VERSION
+# conservative to avoid surprising CI consumers; callers can still override
+# by passing an explicit python version to `uv_venv_create` or setting
+# the PYTHON_VERSION env var in build scripts.
+declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14 3.14t}"
+# Make Python 3.14 the default interpreter used when callers don't specify one.
+declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.14}"
 declare -g _CURRENT_VENV_PATH=""
 
 timestamp() {
@@ -63,6 +69,44 @@ uv_ensure_installed() {
   info "uv version: $(uv --version)"
 }
 
+# Ensure a given Python interpreter is available, attempting to install it via
+# Astral uv if it's missing. The function is conservative: it strips any
+# non-digit/dot suffix from the requested version to form an executable name
+# like `python3.14`, then tries `uv install python@<version>` and re-checks.
+uv_ensure_python_available() {
+  local req_version="$1"
+  # Normalize version to numeric+dot only for executable name
+  local exe_ver
+  exe_ver="$(printf '%s' "$req_version" | sed 's/[^0-9.]//g')"
+  [ -n "$exe_ver" ] || exe_ver="$req_version"
+
+  local exe_name="python${exe_ver}"
+  if command -v "${exe_name}" >/dev/null 2>&1; then
+    info "Found interpreter: ${exe_name}"
+    return 0
+  fi
+
+  info "Interpreter ${exe_name} not found. Trying to install via uv..."
+  uv_ensure_installed
+
+  # Try uv install; don't fail the entire script if uv cannot install — emit
+  # a warning and let callers decide how to proceed.
+  if uv install "python@${exe_ver}" 2>/dev/null; then
+    info "uv installed python@${exe_ver}; re-checking for ${exe_name}"
+    # Ensure uv's bin is on PATH (uv install may place runtimes in ~/.local)
+    export PATH="$HOME/.local/bin:$PATH"
+    if command -v "${exe_name}" >/dev/null 2>&1; then
+      info "Successfully installed ${exe_name} via uv"
+      return 0
+    fi
+  else
+    warn "uv could not install python@${exe_ver} (uv install failed)"
+  fi
+
+  warn "Interpreter ${exe_name} still not available. Ensure Python ${req_version} is installed on the system or provide an explicit path when creating the venv."
+  return 1
+}
+
 uv_venv_create() {
   local venv_path="$1"
   local python_version="${2:-$DEFAULT_PYTHON_VERSION}"
@@ -75,6 +119,12 @@ uv_venv_create() {
     rm -rf "$venv_path"
   fi
   
+  # Try to ensure requested Python is available via uv (if possible) before
+  # creating the venv. If uv cannot provide the interpreter, uv venv will
+  # still attempt to create the venv with whatever python is available and
+  # may fail; callers can override by passing an explicit python path.
+  uv_ensure_python_available "$python_version" || true
+
   uv venv "$venv_path" --python="$python_version" $clear_flag
   _CURRENT_VENV_PATH="$venv_path"
 }

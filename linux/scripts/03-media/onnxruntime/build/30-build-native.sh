@@ -17,10 +17,11 @@ detect_jobs
 sudo apt-get update && sudo apt-get install -y libgcc-s1
 
 # Create Python virtual environment with uv
+: "${ORT_PYTHON_VERSION:=3.14}"
 VENV_DIR="${NATIVE_CPU_BUILD_DIR}/venv"
-info "Creating Python virtual environment with uv at ${VENV_DIR}"
+info "Creating Python virtual environment with uv at ${VENV_DIR} (python=${ORT_PYTHON_VERSION})"
 mkdir -p "$(dirname "${VENV_DIR}")"
-uv venv "${VENV_DIR}"
+uv venv "${VENV_DIR}" --python "${ORT_PYTHON_VERSION}"
 source "${VENV_DIR}/bin/activate"
 
 # Install Python build dependencies with uv
@@ -60,6 +61,19 @@ find "${NATIVE_CPU_BUILD_DIR}" -name "*.whl" -type f 2>/dev/null | while read -r
   cp "${whl}" "${NATIVE_CPU_OUTPUT_DIR}/wheels/"
   ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels/$(basename "${whl}")"
 done || info "No wheels found in ${NATIVE_CPU_BUILD_DIR}"
+
+# Additionally, try building a wheel from source if the ORT build did not produce one
+if [ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
+  info "No wheels found from ONNX Runtime build; attempting to build wheel via pip"
+  if [ -f "${ORT_SRC_DIR}/pyproject.toml" ] || [ -f "${ORT_SRC_DIR}/setup.py" ]; then
+    info "Building wheel from ORT python package"
+    mkdir -p "${NATIVE_CPU_OUTPUT_DIR}/wheels"
+    python -m pip wheel -w "${NATIVE_CPU_OUTPUT_DIR}/wheels" "${ORT_SRC_DIR}" || info "pip wheel failed for ORT source"
+    info "Wheels after pip wheel:"; ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
+  else
+    info "ORT python packaging not detected; skipping pip wheel"
+  fi
+fi
 
 # Copy headers from source
 mkdir -p "${NATIVE_CPU_OUTPUT_DIR}/include"

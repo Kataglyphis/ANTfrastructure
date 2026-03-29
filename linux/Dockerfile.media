@@ -241,7 +241,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ==============================================================================
 FROM base AS gstreamer
 
-ARG GSTREAMER_VERSION=1.28.1
+ARG GSTREAMER_VERSION=1.29.1
 ARG BUILD_TYPE=Release
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG LITERT_OUTPUT_DIR=/usr/local
@@ -448,7 +448,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ==============================================================================
 FROM base AS final
 
-ARG GSTREAMER_VERSION=1.28.1
+ARG GSTREAMER_VERSION=1.29.1
 ARG OPENCV_OUTPUT_DIR=/opt/opencv4
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
