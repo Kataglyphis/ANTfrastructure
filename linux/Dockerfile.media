@@ -472,6 +472,14 @@ COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
     # include <tensorflow/lite/...>. Copy the include tree from the
     # litert stage into /usr/local/include.
     COPY --from=litert ${LITERT_OUTPUT_DIR}/include /usr/local/include
+    # Ensure tflite headers are present and provide compat symlink for
+    # includes that expect the tensorflow/... layout. Do this in the Docker
+    # layer so it's always available during the subsequent build step.
+    RUN set -eux; \
+      if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then \
+        echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"; \
+        ln -s /usr/local/include/tflite /usr/local/include/tensorflow || true; \
+      fi
     COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 
     # Same symlink fix in the final stage to be extra robust (also create
