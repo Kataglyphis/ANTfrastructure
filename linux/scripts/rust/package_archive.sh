@@ -171,15 +171,27 @@ create_appimage() {
     cp "target/release/$BinaryFile" "$APPDIR/usr/bin/$Binary"
     chmod +x "$APPDIR/usr/bin/$Binary"
 
-    # Minimal .desktop
+    # Minimal .desktop (placed where AppImage tooling expects it)
     mkdir -p "$APPDIR/usr/share/applications"
-    cat > "$APPDIR/$Binary.desktop" <<EOF
+    cat > "$APPDIR/usr/share/applications/$Binary.desktop" <<EOF
 [Desktop Entry]
 Name=$Binary
 Exec=$Binary
+Icon=$Binary
 Type=Application
 Categories=Utility;
 EOF
+
+    # If a repo-provided icon exists, include it in common locations so
+    # appimagetool can find it (it looks for IconName.{png,svg,xpm}).
+    if [ -f "packaging/flatpak/icon.png" ]; then
+        mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+        cp "packaging/flatpak/icon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$Binary.png"
+        # also place a top-level copy which appimagetool will also detect
+        cp "packaging/flatpak/icon.png" "$APPDIR/$Binary.png"
+        chmod 0644 "$APPDIR/usr/share/icons/hicolor/256x256/apps/$Binary.png" || true
+        chmod 0644 "$APPDIR/$Binary.png" || true
+    fi
 
     out_appimage="$ArchiveDir/${Binary}-${Version//\//-}.AppImage"
     appimagetool "$APPDIR" "$out_appimage"
