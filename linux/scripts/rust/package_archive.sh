@@ -185,17 +185,46 @@ ensure_appimagetool() {
         "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
     )
 
+    # Map expected token from `file` output to the chosen ARCH_SUFFIX
+    case "$ARCH_SUFFIX" in
+        aarch64) expected_token="aarch64" ;;
+        x86_64) expected_token="x86-64" ;;
+        *) expected_token="" ;;
+    esac
+
     for url in "${urls[@]}"; do
+        tmpf=$(mktemp /tmp/appimagetool.XXXXXX) || tmpf="/tmp/appimagetool.tmp"
         if command -v curl >/dev/null 2>&1; then
-            if curl -fSL -o /usr/local/bin/appimagetool "$url" 2>/dev/null; then
-                chmod +x /usr/local/bin/appimagetool || true
-                return 0
+            if ! curl -fSL -o "$tmpf" "$url" 2>/dev/null; then
+                rm -f "$tmpf" || true
+                continue
             fi
         else
-            if wget -q -O /usr/local/bin/appimagetool "$url" 2>/dev/null; then
-                chmod +x /usr/local/bin/appimagetool || true
-                return 0
+            if ! wget -q -O "$tmpf" "$url" 2>/dev/null; then
+                rm -f "$tmpf" || true
+                continue
             fi
+        fi
+
+        chmod +x "$tmpf" || true
+
+        # Validate architecture if `file` is available
+        if command -v file >/dev/null 2>&1 && [ -n "$expected_token" ]; then
+            file_out=$(file -L "$tmpf" 2>/dev/null || true)
+            if ! echo "$file_out" | grep -qi "$expected_token"; then
+                rm -f "$tmpf" || true
+                continue
+            fi
+        fi
+
+        # Move into place if possible
+        if mv "$tmpf" /usr/local/bin/appimagetool 2>/dev/null; then
+            chmod +x /usr/local/bin/appimagetool || true
+            return 0
+        else
+            warn "Downloaded appimagetool to $tmpf but cannot move to /usr/local/bin (permission denied). Keeping $tmpf for potential manual use."
+            # keep tmp file as fallback; signal success so caller can use it
+            return 0
         fi
     done
 
