@@ -70,15 +70,27 @@ function ConvertTo-ParameterList {
         [object]$Value
     )
 
+    # Return a flat array of objects suitable for Start-Process -ArgumentList.
+    # Previously the function used a leading comma which wrapped arrays inside
+    # another array (producing nested arrays like [object[]] inside an array),
+    # causing callers to get a single element that was itself an array. That
+    # resulted in incorrect argument passing to external processes and
+    # unexpected parsing of parameters (notably passwords containing special
+    # characters). Return a plain object[] in all cases.
+
     if ($null -eq $Value) {
-        return ,([object[]]@())
+        return @()
     }
 
     if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
-        return ,([object[]]$Value)
+        # Ensure we return a flat array of strings. Start-Process -ArgumentList
+        # expects string[]; returning object[] or nested arrays can cause
+        # incorrect argument passing (notably when passwords contain special
+        # characters such as ; | : /). Coerce every element to string.
+        return @($Value | ForEach-Object { [string]$_ })
     }
 
-    return ,([object[]]@([string]$Value))
+    return @([string]$Value)
 }
 
 Export-ModuleMember -Function @(
