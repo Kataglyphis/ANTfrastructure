@@ -172,6 +172,7 @@ create_appimage() {
     chmod +x "$APPDIR/usr/bin/$Binary"
 
     # Minimal .desktop (placed where AppImage tooling expects it)
+[ - Minimal .desktop so appimagetool can detect the AppDir -]
     mkdir -p "$APPDIR/usr/share/applications"
     cat > "$APPDIR/usr/share/applications/$Binary.desktop" <<EOF
 [Desktop Entry]
@@ -181,6 +182,11 @@ Icon=$Binary
 Type=Application
 Categories=Utility;
 EOF
+
+# Also place a top-level copy which appimagetool will detect as the main
+# desktop file (some appimagetool versions require a .desktop in AppDir/).
+    cp "$APPDIR/usr/share/applications/$Binary.desktop" "$APPDIR/$Binary.desktop" || true
+    chmod 0644 "$APPDIR/$Binary.desktop" || true
 
     # If a repo-provided icon exists, include it in common locations so
     # appimagetool can find it (it looks for IconName.{png,svg,xpm}).
