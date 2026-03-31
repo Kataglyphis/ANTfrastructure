@@ -472,6 +472,22 @@ COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
     # include <tensorflow/lite/...>. Copy the include tree from the
     # litert stage into /usr/local/include.
     COPY --from=litert ${LITERT_OUTPUT_DIR}/include /usr/local/include
+    # Ensure flatbuffers headers are available at a consistent path
+    RUN set -eux; \
+        if [ -f /usr/local/include/flatbuffers/flatbuffers.h ]; then \
+            echo "flatbuffers headers present"; \
+        else \
+            # Try to locate any flatbuffers.h under the copied include tree
+            fbpath=$(find /usr/local/include -type f -name flatbuffers.h -print -quit 2>/dev/null || true); \
+            if [ -n "$fbpath" ]; then \
+                srcdir=$(dirname "$fbpath"); \
+                mkdir -p /usr/local/include/flatbuffers; \
+                cp -rv "$srcdir"/* /usr/local/include/flatbuffers/ || true; \
+                echo "Copied flatbuffers headers from $srcdir"; \
+            else \
+                echo "Warning: flatbuffers.h not found under /usr/local/include after copying litert"; \
+            fi; \
+        fi
     # Ensure tflite headers are present and provide compat symlink for
     # includes that expect the tensorflow/... layout. Do this in the Docker
     # layer so it's always available during the subsequent build step.
@@ -539,6 +555,18 @@ RUN set -eux; \
     printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
     ldconfig
 
+# ==============================================================================
+# libcamera stage
+# ==============================================================================
+FROM base AS libcamera
+
+# Bring in tflite headers and libraries required for compilation
+COPY --from=litert /usr/local/include /usr/local/include
+COPY --from=litert /usr/local/lib /usr/local/lib
+# Bring in GStreamer built in the previous stage so libcamera's Meson
+# configuration can find gstreamer-* pkg-config files and runtime libraries.
+COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+
 COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
 COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 RUN chmod +x /usr/local/bin/gstreamer-env.sh /opt/scripts/media/libcamera/*.sh || true
@@ -553,10 +581,117 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
     cd /opt && \
-    # Ensure TensorFlow Lite headers under /usr/local/include/tflite are
-    # visible to builds that include <tensorflow/...>. Use wrapper which
-    # creates a compat symlink if necessary before invoking the real script.
+    # Ensure GStreamer development packages are available for libcamera's Meson
+    # configuration so "gstreamer-video-1.0" can be found.
+    apt-get update; \
+    # FlatBuffers headers should have been copied from the litert stage into
+    # /usr/local/include. Emit diagnostics and fail early if the header is
+    # missing so the cause is clear (avoid obscure compile errors later).
+    if [ -f /usr/local/include/flatbuffers/flatbuffers.h ]; then \
+        echo "Found FlatBuffers header:"; \
+        sed -n '1,120p' /usr/local/include/flatbuffers/flatbuffers.h | sed -n '1,120p' || true; \
+        grep -n "FLATBUFFERS_VERSION_MAJOR" /usr/local/include/flatbuffers/flatbuffers.h || true; \
+    else \
+        echo "ERROR: /usr/local/include/flatbuffers/flatbuffers.h not found" >&2; \
+        echo "Listing /usr/local/include:" >&2; \
+        ls -la /usr/local/include || true; \
+        exit 1; \
+    fi; \
+    if [ -f /usr/local/include/tflite/converter/schema/schema_generated.h ]; then \
+        echo "TFLite schema check (expected FlatBuffers version):"; \
+        grep -n "static_assert(FLATBUFFERS_VERSION_MAJOR" /usr/local/include/tflite/converter/schema/schema_generated.h || true; \
+    fi; \
     bash /opt/scripts/media/libcamera/build-libcamera-wrapper.sh
+
+# ==============================================================================
+# Final stage - combine all artifacts
+# ==============================================================================
+FROM base AS final
+
+ARG GSTREAMER_VERSION=1.29.1
+ARG OPENCV_OUTPUT_DIR=/opt/opencv4
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+ARG LITERT_OUTPUT_DIR=/usr/local
+ARG GSTREAMER_PREFIX=/opt/gstreamer
+
+ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
+    GST_PLUGIN_PATH="" \
+    GI_TYPELIB_PATH="" \
+    OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
+    FFMPEG_PREFIX=/opt/ffmpeg \
+    LIBCAMERA_PREFIX=/opt/libcamera
+
+# Bring in compiled binaries/artifacts from all stages
+COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
+COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
+COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
+COPY --from=litert ${LITERT_OUTPUT_DIR}/include /usr/local/include
+COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
+COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+COPY --from=libcamera /opt/libcamera /opt/libcamera
+
+# Replicate the symlinks you needed for compatibility
+RUN set -eux; \
+    if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then \
+        echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"; \
+        ln -s /usr/local/include/tflite /usr/local/include/tensorflow || true; \
+    fi
+
+RUN set -eux; \
+    for libdir in "${OPENCV_OUTPUT_DIR}/lib" "${OPENCV_OUTPUT_DIR}/lib64"; do \
+        if [ -d "$libdir" ]; then \
+            cd "$libdir"; \
+            candidate=$(ls -1 libopencv_tracking.so* 2>/dev/null | head -n1 || true); \
+            if [ -n "$candidate" ]; then \
+                if [ ! -e libopencv_tracking.so ]; then \
+                    ln -sf "$candidate" libopencv_tracking.so || true; \
+                fi; \
+                triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
+                if [ -z "$triplet" ]; then triplet=""; fi; \
+                if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then \
+                    ln -sf "$libdir/$candidate" "/usr/lib/$triplet/libopencv_tracking.so" || true; \
+                fi; \
+                ln -sf "$libdir/$candidate" "/usr/lib/libopencv_tracking.so" || true; \
+            fi; \
+        fi; \
+    done; \
+    ldconfig || true
+
+RUN set -eux; \
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
+    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
+
+ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}" \
+    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
+    LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${OPENCV_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib" \
+    GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
+    GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
+
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' || true; \
+    apt-get autoremove --purge -y; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
+    ldconfig
+
+RUN set -eux; \
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
+    SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
+    GST_PKGCONF_DIR="/opt/gstreamer/lib/${triplet}/pkgconfig"; \
+    mkdir -p "${SYS_PKGCONF_DIR}"; \
+    if [ -d "${GST_PKGCONF_DIR}" ]; then \
+        for pc in "${GST_PKGCONF_DIR}"/*.pc; do \
+            ln -snf "$pc" "${SYS_PKGCONF_DIR}/$(basename "$pc")"; \
+        done; \
+    fi; \
+    printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
+    ldconfig
 
 RUN set -eux; \
     printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \

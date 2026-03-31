@@ -173,15 +173,74 @@ install_manual() {
         echo "[INFO] Created symlink: ${tfname} -> ${libname}"
     done
 
-    echo "[INFO] Copying headers..."
-    cp -rv "${LITERT_SRC}/litert/c" "${include_dir}/" 2>/dev/null || true
-    cp -rv "${LITERT_SRC}/tflite" "${include_dir}/" 2>/dev/null || true
+    echo "[INFO] Copying headers (C++ and C API)..."
+    cd "${LITERT_SRC}"
+    
+    # 1. Copy ALL headers (C and C++) preserving the directory structure
+    if [ -d "tensorflow/lite" ]; then
+        echo "[INFO] Found tensorflow/lite source layout..."
+        find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -exec cp --parents {} "${include_dir}/" \;
+    elif [ -d "litert" ]; then
+        echo "[INFO] Found litert source layout..."
+        find litert -type f \( -name "*.h" -o -name "*.hpp" \) -exec cp --parents {} "${include_dir}/" \;
+        
+        # General compatibility symlink
+        mkdir -p "${include_dir}/tensorflow"
+        ln -snf "${include_dir}/litert" "${include_dir}/tensorflow/lite"
+    fi
+    
+    # 2. Restore explicit C API copies and symlinks for strict compatibility
+    echo "[INFO] Ensuring strict C API compatibility..."
+    cp -rv "litert/c" "${include_dir}/" 2>/dev/null || true
+    cp -rv "tflite" "${include_dir}/" 2>/dev/null || true
+    
     mkdir -p "${include_dir}/tensorflow/lite/c"
-    ln -sf "${include_dir}/tflite/c/c_api.h" "${include_dir}/tensorflow/lite/c/c_api.h" 2>/dev/null || true
-    ln -sf "${include_dir}/tflite/c/c_api_experimental.h" "${include_dir}/tensorflow/lite/c/c_api_experimental.h" 2>/dev/null || true
-    ln -sf "${include_dir}/tflite/c/c_api_opaque.h" "${include_dir}/tensorflow/lite/c/c_api_opaque.h" 2>/dev/null || true
-    ln -sf "${include_dir}/tflite/c/common.h" "${include_dir}/tensorflow/lite/c/common.h" 2>/dev/null || true
-    ln -sf "${include_dir}/tflite/c/builtin_op_kernels.h" "${include_dir}/tensorflow/lite/c/builtin_op_kernels.h" 2>/dev/null || true
+    
+    # Safely link specific C API headers depending on where they were found
+    for header in c_api.h c_api_experimental.h c_api_opaque.h common.h builtin_op_kernels.h; do
+        if [ -f "${include_dir}/litert/c/${header}" ]; then
+            ln -sf "${include_dir}/litert/c/${header}" "${include_dir}/tensorflow/lite/c/${header}"
+        elif [ -f "${include_dir}/tflite/c/${header}" ]; then
+            ln -sf "${include_dir}/tflite/c/${header}" "${include_dir}/tensorflow/lite/c/${header}"
+        fi
+    done
+    
+    # 3. Flatbuffers (Required by the C++ API)
+    # CMake builds may place FlatBuffers headers in different locations
+    # depending on the subproject naming. Check common locations and
+    # fall back to searching for the header if needed.
+    fb_found=0
+    if [ -d "${LITERT_SRC}/litert/cmake_build/_deps/flatbuffers-src/include" ]; then
+        echo "[INFO] Copying flatbuffers headers from _deps/flatbuffers-src/include..."
+        cp -rv "${LITERT_SRC}/litert/cmake_build/_deps/flatbuffers-src/include"/* "${include_dir}/" 2>/dev/null || true
+        fb_found=1
+    fi
+    if [ -d "${LITERT_SRC}/litert/cmake_build/flatbuffers-flatc/include" ]; then
+        echo "[INFO] Copying flatbuffers headers from flatbuffers-flatc/include..."
+        cp -rv "${LITERT_SRC}/litert/cmake_build/flatbuffers-flatc/include"/* "${include_dir}/" 2>/dev/null || true
+        fb_found=1
+    fi
+    # Also check for an installed location within the build tree
+    if [ -d "${LITERT_SRC}/litert/cmake_build/flatbuffers-flatc/include/flatbuffers" ]; then
+        echo "[INFO] Copying flatbuffers headers from flatbuffers-flatc/include/flatbuffers..."
+        mkdir -p "${include_dir}/flatbuffers" || true
+        cp -rv "${LITERT_SRC}/litert/cmake_build/flatbuffers-flatc/include/flatbuffers"/* "${include_dir}/flatbuffers/" 2>/dev/null || true
+        fb_found=1
+    fi
+    # Final fallback: search for the flatbuffers.h file and copy its directory
+    if [ "$fb_found" -eq 0 ]; then
+        fbheader=$(find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h" -print -quit 2>/dev/null || true)
+        if [ -n "$fbheader" ]; then
+            fbdir=$(dirname "$fbheader")
+            echo "[INFO] Found flatbuffers header at $fbheader; copying from $fbdir..."
+            mkdir -p "${include_dir}/flatbuffers" || true
+            cp -rv "$fbdir"/* "${include_dir}/flatbuffers/" 2>/dev/null || true
+            fb_found=1
+        fi
+    fi
+    if [ "$fb_found" -eq 0 ]; then
+        echo "[WARN] FlatBuffers headers not found in expected build locations; some targets may fail to compile" || true
+    fi
 
     local static_libs=""
     for lib in "${lib_dir}"/*.a; do

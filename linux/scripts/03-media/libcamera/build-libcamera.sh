@@ -33,7 +33,6 @@ trap 'on_error $?' ERR
 : "${BUILD_TYPE_LOWER:=release}"
 
 # libcamera-apps (contains libcamera-hello, libcamera-vid, etc.)
-# https://www.raspberrypi.com/documentation/computers/camera_software.html#building-libcamera-and-rpicam-apps
 : "${LIBCAMERA_APPS_SRC:=/tmp/libcamera-apps}"
 : "${LIBCAMERA_APPS_BUILD_DIR:=${LIBCAMERA_APPS_SRC}/build}"
 : "${LIBCAMERA_APPS_GIT:=https://github.com/raspberrypi/libcamera-apps.git}"
@@ -45,7 +44,6 @@ if [ -f /usr/local/bin/gstreamer-env.sh ]; then
   source /usr/local/bin/gstreamer-env.sh
 else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/media/* subfolders
   source "${SCRIPT_DIR}/../../04-runtime/gstreamer-env.sh"
 fi
 
@@ -64,6 +62,7 @@ fi
 # Ensure minimal build deps (apt-based distros)
 if command -v apt-get >/dev/null 2>&1; then
   sudo apt-get update -y
+  # NOTE: libtensorflow-lite-dev REMOVED to avoid overriding custom litert build
   sudo apt-get install -y --no-install-recommends \
     libyaml-dev python3-yaml python3-ply python3-jinja2 \
     ninja-build pkg-config libudev-dev libevent-dev libunwind-dev libdw-dev || true
@@ -86,13 +85,6 @@ fi
 mkdir -p "${LIBCAMERA_BUILD_DIR}"
 
 # configure & build
-# NOTE: pycamera (Python bindings) is disabled to avoid conflicts with GStreamer's
-# plugin scanner. The libcamerasrc GStreamer element does NOT require Python bindings.
-# The Python error "TypeError: PyModule_AddObjectRef() first argument must be a module"
-# occurs when gst-plugin-scanner tries to load the pycamera module.
-# Use Astral `uv` only: fail early if `uv` is not available, create the venv and
-# install the build tools into that venv using `uv run` (retry with
-# --break-system-packages on PEP-668 failures).
 LIBCAMERA_VENV="${LIBCAMERA_PREFIX}/.venv"
 if ! command -v uv >/dev/null 2>&1; then
   echo "Error: 'uv' is required to build libcamera but was not found. Please install Astral 'uv' and re-run the build."
@@ -101,8 +93,6 @@ fi
 
 echo "Creating/ensuring Astral uv venv at ${LIBCAMERA_VENV}"
 uv venv "${LIBCAMERA_VENV}" || true
-# Activate the venv so 'uv pip' installs into the created environment
-# (fixes errors like "No virtual environment found; run `uv venv` to create an environment")
 if [ -f "${LIBCAMERA_VENV}/bin/activate" ]; then
   # shellcheck disable=SC1091
   source "${LIBCAMERA_VENV}/bin/activate"
@@ -117,22 +107,17 @@ if ! uv pip install --upgrade meson ninja jinja2 2>/tmp/uv-pip-install.log; then
   echo "pip install meson/ninja/jinja2 failed; retrying with --break-system-packages"
   uv pip install --upgrade meson ninja jinja2 || { echo "pip install meson/ninja/jinja2 (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
 fi
-# Ensure PyYAML is available inside the uv venv so Meson can import 'yaml'
 if ! uv pip install --upgrade pyyaml 2>/tmp/uv-pip-install.log; then
   echo "pip install pyyaml failed; retrying with --break-system-packages"
   uv pip install --upgrade pyyaml || { echo "pip install pyyaml (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
 fi
-# Ensure PLY is available inside the uv venv so Meson can import 'ply' if needed
 if ! uv pip install --upgrade ply 2>/tmp/uv-pip-install.log; then
   echo "pip install ply failed; retrying with --break-system-packages"
   uv pip install --upgrade ply || { echo "pip install ply (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
 fi
 UV_RUN_PREFIX=(uv run --)
 
-# Run Meson setup inside the venv (prefer uv run when available)
-## Ensure GoogleTest is available so libcamera test targets (if enabled) can
-## compile. On Debian/Ubuntu libgtest-dev provides sources under /usr/src/googletest
-## which we need to build and install into the system library path.
+# Ensure GoogleTest is available
 if [ ! -f /usr/include/gtest/gtest.h ]; then
   sudo apt-get update -y || true
   sudo apt-get install -y --no-install-recommends libgtest-dev cmake || true
@@ -150,8 +135,6 @@ if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBC
     exit 1
 fi
 
-# Build with verbose ninja so failures are easier to diagnose. on_error trap
-# will further print relevant logs when an error occurs.
 ninja -C "${LIBCAMERA_BUILD_DIR}" -v || { echo "ninja build failed"; exit 1; }
 
 # install (use sudo if not root)

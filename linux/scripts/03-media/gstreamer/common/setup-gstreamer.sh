@@ -384,6 +384,10 @@ case "${HOST_ARCH}" in
   riscv*|*riscv*)
     echo "Host arch '${HOST_ARCH}' detected: skipping -Drs (Rust bindings) in Meson flags"
     MESON_FLAGS+=("-Drs=disabled")
+    # Disable Whisper plugin on RISC-V as well — whisper can be resource-heavy
+    # and may cause toolchain/platform issues similar to ARM.
+    append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
+    echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"
     ;;
   aarch64*|arm*)
     echo "Host arch '${HOST_ARCH}' detected: enabling -Drs (Rust bindings) but disabling csound"
@@ -605,7 +609,7 @@ run_as_root() {
 if command -v apt-get >/dev/null 2>&1; then
   # Check if architecture shouldn't build Csound
   ARCH_FOR_APT="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
-  if echo "${ARCH_FOR_APT}" | grep -qi -E 'riscv|aarch64|arm64|arm'; then
+  if echo "${ARCH_FOR_APT}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
     echo "Skipping Csound APT install on ARM/RISC-V architecture."
   else
     echo "Attempting to install Csound development packages via APT..."
@@ -633,7 +637,7 @@ DEFAULT_EXCLUDES=(--exclude gst-plugin-burn)
 # probes (HOST_ARCH, TARGETARCH, dpkg queries, and the kernel machine name) so
 # we don't accidentally miss a Docker/CI context that sets one but not others.
 ARCH_FOR_EXCLUDES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
-if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|aarch64|arm64|arm'; then
+if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
   DEFAULT_EXCLUDES+=(--exclude gst-plugin-csound --exclude csound --exclude csound-sys)
   echo "Host arch detected in (${ARCH_FOR_EXCLUDES}): added csound-related excludes to DEFAULT_EXCLUDES"
 fi
@@ -649,7 +653,7 @@ BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
 # Use multiple detection methods (uname, TARGETARCH, dpkg) because Docker
 # build contexts sometimes set TARGETARCH or use different uname values.
 ARCH_PROBES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
-if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|aarch64|arm64|arm'; then
+if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
   echo "Host arch detected in (${ARCH_PROBES}): excluding csound-related workspace crates from cargo build"
   if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
     CS_PKG_NAMES=$(python3 - <<'PY'
@@ -717,12 +721,13 @@ PY
   fi
 fi
 
-# If this is a Release build on ARM architectures, exclude the Whisper plugin
-# from the cargo build. Whisper can be resource heavy and often fails on some
-# ARM toolchains in release mode, so exclude it proactively for stability.
+# If this is a Release build on ARM or RISC-V architectures, exclude the
+# Whisper plugin from the cargo build. Whisper can be resource heavy and may
+# fail on some ARM and RISC-V toolchains in release mode, so exclude it
+# proactively for stability.
 if [ "${BUILD_TYPE_LOWER}" = "release" ]; then
-  if echo "${ARCH_PROBES}" | grep -qi -E 'aarch64|arm64|arm|armv7l'; then
-    echo "Release build on ARM detected in (${ARCH_PROBES}): excluding whisper-related workspace crates from cargo build"
+  if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
+    echo "Release build on ARM/RISC-V detected in (${ARCH_PROBES}): excluding whisper-related workspace crates from cargo build"
     if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
       WHISPER_PKG_NAMES=$(python3 - <<'PY'
 import sys, json
