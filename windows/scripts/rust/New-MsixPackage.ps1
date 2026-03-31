@@ -78,6 +78,8 @@ function Resolve-Executable([string]$Name) {
             Where-Object { $_.FullName -match "\\x64\\" -or $_.FullName -match "/x64/" } |
             Sort-Object FullName -Descending
 
+        # Coerce to array to ensure .Count is available and indexing works
+        $candidates = @($candidates)
         if ($candidates -and $candidates.Count -gt 0) { 
             $fso = New-Object -ComObject Scripting.FileSystemObject
             return $fso.GetFile($candidates[0].FullName).ShortPath
@@ -87,7 +89,7 @@ function Resolve-Executable([string]$Name) {
 }
 
 function Normalize-Version([string]$RawVersion) {
-    $segments = $RawVersion.Split('.')
+    $segments = @($RawVersion.Split('.'))
     if ($segments.Count -eq 3) { return "$RawVersion.0" }
     if ($segments.Count -ne 4) { throw "Version '$RawVersion' is invalid. Use Major.Minor.Build or Major.Minor.Build.Revision" }
     return $RawVersion
@@ -243,6 +245,7 @@ try {
 
                 try {
                     $storeOut = & certutil -store My $thumb 2>&1
+                    $storeOut = @($storeOut)
                     Write-BuildLog -Context $Context -Message ("DEBUG: certutil -store output:`n$($storeOut -join "`n")")
                 } catch {
                     Write-BuildLogWarning -Context $Context -Message "certutil -store failed: $($_.Exception.Message)"
@@ -253,7 +256,7 @@ try {
                 $sigOut = & $signtoolExe @args 2>&1
                 $exit = $LASTEXITCODE
                 Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
-                if ($sigOut) { Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+                if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
             } catch {
                 Write-BuildLogWarning -Context $Context -Message "Import/sign by thumbprint failed, falling back to direct signtool invocation. Details: $($_.Exception.Message)"
                 $args = @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, "/v", $packageFile)
@@ -306,6 +309,7 @@ try {
                 for ($i = 0; $i -lt 6; $i++) { Start-Sleep -Milliseconds 300 }
                 try {
                     $storeOut = & certutil -store My $thumb 2>&1
+                    $storeOut = @($storeOut)
                     Write-BuildLog -Context $Context -Message ("DEBUG: certutil -store output:`n$($storeOut -join "`n")")
                 } catch {
                     Write-BuildLogWarning -Context $Context -Message "certutil -store failed: $($_.Exception.Message)"
@@ -315,7 +319,7 @@ try {
                 $sigOut = & $signtoolExe @args 2>&1
                 $exit = $LASTEXITCODE
                 Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
-                if ($sigOut) { Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+                if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
             } catch {
                 Write-BuildLogWarning -Context $Context -Message "Import/sign by thumbprint failed, falling back to direct signtool invocation. Details: $($_.Exception.Message)"
                 $args = @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, "/v", $packageFile)
@@ -323,7 +327,7 @@ try {
                 $sigOut = & $signtoolExe @args 2>&1
                 $exit = $LASTEXITCODE
                 Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
-                if ($sigOut) { Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+                if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
             } finally {
                 try {
                     if ($thumbprint) {

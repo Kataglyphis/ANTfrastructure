@@ -62,7 +62,8 @@ function Remove-UvProjectEnvironment {
         }
 
         $lastError = $null
-        if ($removeErrors -and $removeErrors.Count) {
+        $removeErrors = @($removeErrors)
+        if ($removeErrors -and $removeErrors.Count -gt 0) {
             $lastError = $removeErrors[-1].Exception.Message
         }
 

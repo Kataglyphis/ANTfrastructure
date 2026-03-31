@@ -174,6 +174,7 @@ function Invoke-SilentInstallWithStrategies {
 
     Resolve-DirectoryPath -Path $InstallDir | Out-Null
 
+    $StrategyList = @($StrategyList)
     $strategies = if ($StrategyList -and $StrategyList.Count -gt 0) {
         $StrategyList
     } else {

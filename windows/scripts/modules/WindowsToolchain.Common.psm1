@@ -10,15 +10,25 @@ function Invoke-ToolchainChecks {
         [string[]]$ToolOrder = @('cmake', 'clang-cl', 'flutter', 'cargo', 'ninja')
     )
 
-    $tools = if ($ToolArguments -and $ToolArguments.Count -gt 0) {
-        $ToolArguments
-    } else {
-        @{
-            'cmake'    = @('--version')
-            'clang-cl' = @('--version')
-            'flutter'  = @('--version')
-            'cargo'    = @('--version')
-            'ninja'    = @('--version')
+    # Default tool commands
+    $tools = @{
+        'cmake'    = @('--version')
+        'clang-cl' = @('--version')
+        'flutter'  = @('--version')
+        'cargo'    = @('--version')
+        'ninja'    = @('--version')
+    }
+
+    # If ToolArguments was provided and looks like a collection with a Count, use it.
+    # Avoid accessing .Count on objects that may be $null or don't expose that property
+    if ($ToolArguments) {
+        try {
+            $ta = @($ToolArguments)
+            if ($ta.Count -gt 0) {
+                $tools = $ToolArguments
+            }
+        } catch {
+            # If accessing Count fails, ignore and keep defaults
         }
     }
 
@@ -51,10 +61,13 @@ function Invoke-ToolchainChecks {
         }
     }
 
-    if ($FailOnMissingRequiredTools -and $RequiredTools.Count -gt 0) {
-        $failedRequired = @($RequiredTools | Where-Object { $failedTools -contains $_ })
+    if ($FailOnMissingRequiredTools) {
+        if ($RequiredTools) {
+            $failedRequired = @($RequiredTools | Where-Object { $failedTools -contains $_ })
+        $failedRequired = @($failedRequired)
         if ($failedRequired.Count -gt 0) {
             throw "Required toolchain checks failed: $($failedRequired -join ', ')"
+        }
         }
     }
 }
