@@ -78,6 +78,8 @@ function Resolve-Executable([string]$Name) {
             Where-Object { $_.FullName -match "\\x64\\" -or $_.FullName -match "/x64/" } |
             Sort-Object FullName -Descending
 
+        # Coerce to array to ensure .Count is available and indexing works
+        $candidates = @($candidates)
         if ($candidates -and $candidates.Count -gt 0) { 
             $fso = New-Object -ComObject Scripting.FileSystemObject
             return $fso.GetFile($candidates[0].FullName).ShortPath
@@ -87,7 +89,7 @@ function Resolve-Executable([string]$Name) {
 }
 
 function Normalize-Version([string]$RawVersion) {
-    $segments = $RawVersion.Split('.')
+    $segments = @($RawVersion.Split('.'))
     if ($segments.Count -eq 3) { return "$RawVersion.0" }
     if ($segments.Count -ne 4) { throw "Version '$RawVersion' is invalid. Use Major.Minor.Build or Major.Minor.Build.Revision" }
     return $RawVersion
@@ -213,7 +215,69 @@ try {
             Export-PfxCertificate -Cert $cert -FilePath $CertificatePath -Password $securePassword | Out-Null
 
             Write-BuildLog -Context $Context -Message "Signing package with generated test certificate..."
-            Invoke-BuildExternal -Context $Context -File $signtoolExe -Parameters @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, $packageFile)
+            try {
+                # Import cert and sign by thumbprint to avoid command-line quoting issues
+                $x509 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+                $x509.Import($CertificatePath, $CertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet)
+
+                # Debug: file and cert metadata
+                try {
+                    if (Test-Path $CertificatePath) {
+                        $fi = Get-Item $CertificatePath
+                        Write-BuildLog -Context $Context -Message "PFX exists: $CertificatePath (Length=$($fi.Length) LastWrite=$($fi.LastWriteTime))"
+                        try { $hash = (Get-FileHash -Path $CertificatePath -Algorithm SHA256).Hash; Write-BuildLog -Context $Context -Message "PFX SHA256: $hash" } catch { Write-BuildLog -Context $Context -Message "Get-FileHash failed: $($_.Exception.Message)" }
+                    }
+                    Write-BuildLog -Context $Context -Message "Certificate Thumbprint (imported): $($x509.Thumbprint)"
+                    Write-BuildLog -Context $Context -Message "HasPrivateKey: $($x509.HasPrivateKey)"
+                } catch { Write-BuildLog -Context $Context -Message "Certificate debug logging failed: $($_.Exception.Message)" }
+
+                $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My','CurrentUser')
+                $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                $store.Add($x509)
+                $store.Close()
+
+                $thumbprint = $x509.Thumbprint
+                $thumb = $thumbprint
+                Write-BuildLog -Context $Context -Message "Imported certificate thumbprint: $thumb"
+
+                # Allow the system a brief moment to register the imported cert
+                for ($i = 0; $i -lt 6; $i++) { Start-Sleep -Milliseconds 300 }
+
+                try {
+                    $storeOut = & certutil -store My $thumb 2>&1
+                    $storeOut = @($storeOut)
+                    Write-BuildLog -Context $Context -Message ("DEBUG: certutil -store output:`n$($storeOut -join "`n")")
+                } catch {
+                    Write-BuildLogWarning -Context $Context -Message "certutil -store failed: $($_.Exception.Message)"
+                }
+
+                $args = @("sign", "/fd", "SHA256", "/sha1", $thumb, "/v", $packageFile)
+                Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $signtoolExe $($args -join ' ')"
+                $sigOut = & $signtoolExe @args 2>&1
+                $exit = $LASTEXITCODE
+                Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
+                if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+            } catch {
+                Write-BuildLogWarning -Context $Context -Message "Import/sign by thumbprint failed, falling back to direct signtool invocation. Details: $($_.Exception.Message)"
+                $args = @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, "/v", $packageFile)
+                Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $signtoolExe $($args -join ' ')"
+                $sigOut = & $signtoolExe @args 2>&1
+                $exit = $LASTEXITCODE
+                Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
+                if ($sigOut) { Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+            } finally {
+                try {
+                    if ($thumbprint) {
+                        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My','CurrentUser')
+                        $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                        $toRemove = $store.Certificates | Where-Object { $_.Thumbprint -eq $thumbprint }
+                        foreach ($c in $toRemove) { $store.Remove($c) }
+                        $store.Close()
+                    }
+                } catch {
+                    Write-BuildLogWarning -Context $Context -Message "Failed to remove imported certificate: $($_.Exception.Message)"
+                }
+            }
         }
         elseif (-not [string]::IsNullOrWhiteSpace($CertificatePath)) {
             if ([string]::IsNullOrWhiteSpace($CertificatePassword)) {
@@ -221,7 +285,62 @@ try {
             }
 
             Write-BuildLog -Context $Context -Message "Signing package with provided certificate..."
-            Invoke-BuildExternal -Context $Context -File $signtoolExe -Parameters @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, $packageFile)
+            try {
+                $x509 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+                $x509.Import($CertificatePath, $CertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet)
+                try {
+                    if (Test-Path $CertificatePath) {
+                        $fi = Get-Item $CertificatePath
+                        Write-BuildLog -Context $Context -Message "PFX exists: $CertificatePath (Length=$($fi.Length) LastWrite=$($fi.LastWriteTime))"
+                        try { $hash = (Get-FileHash -Path $CertificatePath -Algorithm SHA256).Hash; Write-BuildLog -Context $Context -Message "PFX SHA256: $hash" } catch { Write-BuildLog -Context $Context -Message "Get-FileHash failed: $($_.Exception.Message)" }
+                    }
+                    Write-BuildLog -Context $Context -Message "Certificate Thumbprint (imported): $($x509.Thumbprint)"
+                    Write-BuildLog -Context $Context -Message "HasPrivateKey: $($x509.HasPrivateKey)"
+                } catch { Write-BuildLog -Context $Context -Message "Certificate debug logging failed: $($_.Exception.Message)" }
+
+                $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My','CurrentUser')
+                $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                $store.Add($x509)
+                $store.Close()
+
+                $thumbprint = $x509.Thumbprint
+                $thumb = $thumbprint
+                Write-BuildLog -Context $Context -Message "Imported certificate thumbprint: $thumb"
+                for ($i = 0; $i -lt 6; $i++) { Start-Sleep -Milliseconds 300 }
+                try {
+                    $storeOut = & certutil -store My $thumb 2>&1
+                    $storeOut = @($storeOut)
+                    Write-BuildLog -Context $Context -Message ("DEBUG: certutil -store output:`n$($storeOut -join "`n")")
+                } catch {
+                    Write-BuildLogWarning -Context $Context -Message "certutil -store failed: $($_.Exception.Message)"
+                }
+                $args = @("sign", "/fd", "SHA256", "/sha1", $thumb, "/v", $packageFile)
+                Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $signtoolExe $($args -join ' ')"
+                $sigOut = & $signtoolExe @args 2>&1
+                $exit = $LASTEXITCODE
+                Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
+                if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+            } catch {
+                Write-BuildLogWarning -Context $Context -Message "Import/sign by thumbprint failed, falling back to direct signtool invocation. Details: $($_.Exception.Message)"
+                $args = @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, "/v", $packageFile)
+                Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $signtoolExe $($args -join ' ')"
+                $sigOut = & $signtoolExe @args 2>&1
+                $exit = $LASTEXITCODE
+                Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
+                if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+            } finally {
+                try {
+                    if ($thumbprint) {
+                        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('My','CurrentUser')
+                        $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                        $toRemove = $store.Certificates | Where-Object { $_.Thumbprint -eq $thumbprint }
+                        foreach ($c in $toRemove) { $store.Remove($c) }
+                        $store.Close()
+                    }
+                } catch {
+                    Write-BuildLogWarning -Context $Context -Message "Failed to remove imported certificate: $($_.Exception.Message)"
+                }
+            }
         }
         else {
             Write-BuildLogWarning -Context $Context -Message "MSIX created but not signed. Installation will typically fail until it is signed."

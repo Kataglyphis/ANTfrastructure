@@ -120,6 +120,11 @@ function Invoke-BuildExternal {
 
     $parameterList = ConvertTo-ParameterList -Value $Parameters
 
+    # Coerce to an array to ensure .Count property exists even when ConvertTo-ParameterList
+    # returns a scalar or unexpected type. This prevents errors like "The property
+    # 'Count' cannot be found on this object." when callers pass strings.
+    $parameterList = @($parameterList)
+
     $cmdLine = if ($parameterList -and $parameterList.Count) { "$File $($parameterList -join ' ')" } else { $File }
     Write-BuildLog -Context $Context -Message "CMD: $cmdLine"
 
