@@ -16,24 +16,10 @@ RUN groupadd -r nginx || true \
 COPY ./webserver/nginx.conf /etc/nginx/nginx.conf
 
 # Copy website files
-COPY ./webserver/dist/ /var/www/html/
-RUN chown -R nginx:nginx /var/www/html && chmod -R 755 /var/www/html
+COPY --chown=nginx:nginx --chmod=755 ./webserver/dist/ /var/www/html/
 
-# Copy SSL certificates (these will be generated separately)
-# Create a placeholder script to generate self-signed cert if none exists
-RUN echo '#!/bin/bash\n\
-if [ ! -f /etc/nginx/ssl/cert.pem ] || [ ! -f /etc/nginx/ssl/key.pem ]; then\n\
-  echo "Generating self-signed SSL certificate..."\n\
-  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \\\n\
-    -keyout /etc/nginx/ssl/key.pem \\\n\
-    -out /etc/nginx/ssl/cert.pem \\\n\
-    -subj "/C=DE/ST=Baden-Wurttemberg/L=Stuttgart/O=Development/CN=localhost"\n\
-  chmod 600 /etc/nginx/ssl/key.pem\n\
-  chmod 644 /etc/nginx/ssl/cert.pem\n\
-  echo "SSL certificate generated successfully"\n\
-fi\n\
-exec nginx -g "daemon off;"' > /docker-entrypoint.sh \
- && chmod +x /docker-entrypoint.sh
+# Copy entrypoint script to generate self-signed cert if none exists
+COPY --chmod=755 ./webserver/entrypoint.sh /docker-entrypoint.sh
 
 # Send logs to stdout/stderr for Docker friendliness
 RUN ln -sf /dev/stdout /var/log/nginx/access.log \

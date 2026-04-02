@@ -4,6 +4,7 @@ ARG BASE_IMAGE=local/kataglyphis:android
 FROM ${BASE_IMAGE}
 
 ARG BUILD_TYPE=Release
+ARG ENABLE_NVIDIA=false
 
 SHELL ["bash", "-lc"]
 
@@ -11,14 +12,7 @@ SHELL ["bash", "-lc"]
 # Runtime scripts (most volatile - changes frequently)
 # Copy LAST to maximize cache hits
 # ==============================================================================
-COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
-RUN chmod +x /usr/local/bin/gstreamer-env.sh
-
-COPY linux/scripts/04-runtime/libcamera-env.sh /usr/local/bin/libcamera-env.sh
-RUN chmod +x /usr/local/bin/libcamera-env.sh
-
-COPY linux/scripts/04-runtime/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
 
 # ------------------------------------------------------------------------------
 # OCI-Labels
@@ -37,6 +31,7 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
 # ------------------------------------------------------------------------------
 # Workspace & EntryPoint
 # ------------------------------------------------------------------------------
+ARG WORKDIR=/workspace
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 

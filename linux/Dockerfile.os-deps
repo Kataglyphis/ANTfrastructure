@@ -69,7 +69,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         file dpkg-dev fakeroot binutils \
         $([ "$ARCH" != "riscv64" ] && echo "valgrind") \
         linux-tools-common; \
-    rm -rf /var/lib/apt/lists/*
+
 
 # ------------------------------------------------------------------------------
 # Install Node.js (different for RISC-V vs. other architectures)
@@ -91,7 +91,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         fi; \
         apt-get update -qq && apt-get install -y --no-install-recommends nodejs; \
     fi; \
-    rm -rf /var/lib/apt/lists/*
+
 
 # ------------------------------------------------------------------------------
 # Vulkan ICD/Layer-JSONs
@@ -117,7 +117,17 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --target "${RUST_TARGET}"; \
     rustc --version; \
     cargo --version; \
-    cargo install --locked cargo-c
+    cargo install --locked cargo-c; \
+    # Install clippy for the default toolchain (useful for linting)
+    rustup component add clippy || true; \
+    # Install a nightly toolchain for the current arch and add rust-src
+    # so code which requires rust-src (e.g. some IDEs or rust-analyzer setups)
+    # can use the nightly sysroot. RUST_TARGET is e.g. x86_64 / aarch64.
+    RUST_TOOLCHAIN="nightly-${RUST_TARGET}-unknown-linux-gnu"; \
+    rustup toolchain install "${RUST_TOOLCHAIN}" || true; \
+    rustup component add rust-src --toolchain "${RUST_TOOLCHAIN}" || true; \
+    # Add wasm target for nightly (alias 'nightly' is sufficient here)
+    rustup target add wasm32-unknown-unknown --toolchain nightly || true
 
 # ------------------------------------------------------------------------------
 # uv install

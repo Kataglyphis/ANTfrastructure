@@ -17,8 +17,10 @@ setup_flutter() {
 	wget -q "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/${archive}"
 
 	# Extract to specified directory
-	sudo mkdir -p "${install_dir}"
-	sudo tar xf "${archive}" -C "${install_dir}"
+	local SUDO=""
+	if [ "$EUID" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+	$SUDO mkdir -p "${install_dir}"
+	$SUDO tar xf "${archive}" -C "${install_dir}"
 
 	# Remove downloaded archive to keep things clean
 	rm -f "${archive}"
@@ -40,7 +42,7 @@ setup_flutter() {
 	export PATH="${flutter_path}/bin:$PATH"
 
 	# Clean up unnecessary cache
-	sudo rm -rf "${flutter_path}/bin/cache"
+	$SUDO rm -rf "${flutter_path}/bin/cache"
 
 	# Verify installation
 	flutter --version

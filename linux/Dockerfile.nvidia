@@ -75,90 +75,34 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update -qq
 
 # ==============================================================================
-# 2. CUDA Toolkit
-#    Includes: nvcc, cudart, CUDA headers, nvtx, cuda-libraries-dev
-#    We install the meta-packages which pull in the correct versioned packages.
+# 2. NVIDIA Components
+#    Combined installation of CUDA Toolkit, cuDNN, TensorRT, NCCL, Math Libraries,
+#    and CUDA firmware to minimize image size and metadata overhead.
 # ==============================================================================
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
+    CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
+    apt-get update -qq; \
     apt-get install -y --no-install-recommends \
         cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \
         cuda-libraries-${CUDA_VERSION_MAJOR_MINOR} \
         cuda-libraries-dev-${CUDA_VERSION_MAJOR_MINOR} \
         cuda-nvtx-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-command-line-tools-${CUDA_VERSION_MAJOR_MINOR}; \
-    rm -rf /var/lib/apt/lists/*
-
-# ==============================================================================
-# 3. cuDNN
-#    libcudnn9-cuda-13:  runtime lib
-#    libcudnn9-dev-cuda-13:  headers + static lib
-# ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    set -eux; \
-    CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
-    apt-get update -qq; \
-    apt-get install -y --no-install-recommends \
+        cuda-command-line-tools-${CUDA_VERSION_MAJOR_MINOR} \
         libcudnn${CUDNN_VERSION}-cuda-${CUDA_MAJOR} \
-        libcudnn${CUDNN_VERSION}-dev-cuda-${CUDA_MAJOR}; \
-    rm -rf /var/lib/apt/lists/*
-
-# ==============================================================================
-# 4. TensorRT
-#    tensorrt meta-package pulls in libnvinfer, libnvonnxparsers, libnvcaffeparser,
-#    libnvinfer-plugin, libnvinfer-dispatch, libnvinfer-lean, and their dev packages.
-# ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    set -eux; \
-    CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
-    apt-get update -qq; \
-    apt-get install -y --no-install-recommends \
-        tensorrt-dev; \
-    rm -rf /var/lib/apt/lists/*
-
-# ==============================================================================
-# 5. NCCL  (multi-GPU collective communications)
-# ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    set -eux; \
-    apt-get update -qq; \
-    apt-get install -y --no-install-recommends \
+        libcudnn${CUDNN_VERSION}-dev-cuda-${CUDA_MAJOR} \
+        tensorrt-dev \
         libnccl2 \
-        libnccl-dev; \
-    rm -rf /var/lib/apt/lists/*
-
-# ==============================================================================
-# 6. CUDA Math Libraries: cuBLAS, cuSPARSE, cuFFT
-# ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    set -eux; \
-    apt-get update -qq; \
-    apt-get install -y --no-install-recommends \
+        libnccl-dev \
         libcublas-${CUDA_VERSION_MAJOR_MINOR} \
         libcublas-dev-${CUDA_VERSION_MAJOR_MINOR} \
         libcusparse-${CUDA_VERSION_MAJOR_MINOR} \
         libcusparse-dev-${CUDA_VERSION_MAJOR_MINOR} \
         libcufft-${CUDA_VERSION_MAJOR_MINOR} \
-        libcufft-dev-${CUDA_VERSION_MAJOR_MINOR}; \
-    rm -rf /var/lib/apt/lists/*
-
-# ==============================================================================
-# 7. CUDA firmware / driver-independent libraries
-#    libcuda.so stub for link-time, libcuda-compat for forward-compat
-# ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
-    set -eux; \
-    apt-get update -qq; \
-    apt-get install -y --no-install-recommends \
+        libcufft-dev-${CUDA_VERSION_MAJOR_MINOR} \
         cuda-cudart-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-compat-${CUDA_VERSION_MAJOR_MINOR}; \
-    rm -rf /var/lib/apt/lists/*
+        cuda-compat-${CUDA_VERSION_MAJOR_MINOR}
 
 # ==============================================================================
 # 8. Environment variables for CUDA

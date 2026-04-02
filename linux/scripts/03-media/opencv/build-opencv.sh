@@ -387,3 +387,10 @@ main() {
 }
 
 main "$@"
+
+# Validation step
+pkg-config --exists opencv4 && echo "OpenCV found: $(pkg-config --modversion opencv4)" || {
+    echo "ERROR: OpenCV not found via pkg-config"
+    echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
+    exit 1
+}

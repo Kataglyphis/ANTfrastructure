@@ -7,12 +7,22 @@ ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE} AS base
 
 ARG TARGETARCH
+ARG ENABLE_NVIDIA=false
+ENV ENABLE_NVIDIA=${ENABLE_NVIDIA}
+
 SHELL ["bash", "-lc"]
+
+ENV USER=root
 
 RUN if [ "$TARGETARCH" = "riscv64" ]; then \
         echo 'export LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh && \
         echo 'export LD_LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh; \
     fi
+
+# If NVIDIA is enabled, force NVIDIA codec headers on so GStreamer nvcodec plugin is built
+ENV NVIDIA_CODEC_HEADERS=${ENABLE_NVIDIA:+yes}
+# If NVIDIA is enabled, extend LD_LIBRARY_PATH for CUDA/TensorRT libs
+ENV LD_LIBRARY_PATH=${ENABLE_NVIDIA:+"${CUDA_HOME}/lib64:${TENSORRT_HOME}/lib:${LD_LIBRARY_PATH}"}
 
 # ==============================================================================
 # ONNX Runtime stage
@@ -31,14 +41,12 @@ ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
 ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR}
 ENV GENAI_OUTPUT_DIR=${ONNXRUNTIME_GENAI_OUTPUT_DIR}
 
-COPY linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
-COPY linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
-RUN chmod +x /opt/scripts/media/onnxruntime/build/*.sh /opt/scripts/media/onnxruntime/build/lib/*.sh /opt/scripts/04-runtime/gstreamer-env.sh || true
+COPY --chmod=755 linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
+COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
         --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
         set -eux; \
-        export USER=root; \
     SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
             --ort-version "${ONNXRUNTIME_VERSION}" \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
@@ -49,7 +57,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         set -eux; \
-        export USER=root; \
         bash /opt/scripts/media/onnxruntime/build/20-fetch.sh \
             --ort-version "${ONNXRUNTIME_VERSION}" \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
@@ -60,32 +67,28 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
         set -eux; \
-        export USER=root; \
         bash /opt/scripts/media/onnxruntime/build/30-build-native.sh \
             --ort-version "${ONNXRUNTIME_VERSION}" \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
-RUN set -eux; \
-        lib_dir="${NATIVE_CPU_OUTPUT_DIR}/lib"; \
-        if [ ! -d "${lib_dir}" ]; then \
-            echo "ERROR: ONNX Runtime lib directory not found: ${lib_dir}"; \
-            exit 1; \
-        fi; \
-        if [ -z "$(ls -A ${lib_dir}/*.so* 2>/dev/null)" ]; then \
-            echo "ERROR: No .so files found in ${lib_dir}"; \
-            ls -la "${lib_dir}" || true; \
-            exit 1; \
-        fi; \
-        echo "ONNX Runtime native build verified:"; \
-        ls -la "${lib_dir}"
+RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+        --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+        --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+        --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+        set -eux; \
+        if [ "$ENABLE_NVIDIA" = "true" ]; then \
+            bash /opt/scripts/media/onnxruntime/build/30-build-native-nvidia.sh \
+                --ort-version "${ONNXRUNTIME_VERSION}" \
+                --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
+                --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"; \
+        fi
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         set -eux; \
-        export USER=root; \
         BUILD_GENAI="${BUILD_GENAI}" \
         bash /opt/scripts/media/onnxruntime/build/60-build-genai.sh \
             --ort-version "${ONNXRUNTIME_VERSION}" \
@@ -96,24 +99,20 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         set -eux; \
-        export USER=root; \
         bash /opt/scripts/media/onnxruntime/build/40-build-wasm.sh \
             --ort-version "${ONNXRUNTIME_VERSION}" \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
 RUN set -eux; \
-        export USER=root; \
     bash /opt/scripts/media/onnxruntime/build/50-build-js.sh \
             --ort-version "${ONNXRUNTIME_VERSION}" \
             --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
             --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
 
-COPY linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
-RUN chmod +x /opt/scripts/media/onnxruntime/runtime/*.sh || true
+COPY --chmod=755 linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
 
 RUN set -eux; \
-    export USER=root; \
     bash /opt/scripts/media/onnxruntime/runtime/31-generate-pkgconfig-native.sh \
         --ort-version "${ONNXRUNTIME_VERSION}" \
         --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
@@ -128,28 +127,14 @@ ARG LITERT_VERSION=v2.1.3
 ARG LITERT_BUILD_TYPE=Release
 ARG LITERT_OUTPUT_DIR=/usr/local
 
-COPY linux/scripts/03-media/litert /opt/scripts/media/litert
-RUN chmod +x /opt/scripts/media/litert/*.sh || true
+COPY --chmod=755 linux/scripts/03-media/litert /opt/scripts/media/litert
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
-    export USER=root; \
     bash /opt/scripts/media/litert/build-litert.sh "${LITERT_VERSION}"
-
-RUN set -eux; \
-    if [ -f "${LITERT_OUTPUT_DIR}/lib/pkgconfig/litert.pc" ]; then \
-        echo "LiteRT pkg-config found:"; \
-        cat "${LITERT_OUTPUT_DIR}/lib/pkgconfig/litert.pc"; \
-    fi; \
-    if [ -f "${LITERT_OUTPUT_DIR}/lib/pkgconfig/tensorflow-lite.pc" ]; then \
-        echo "TensorFlow Lite (via LiteRT) pkg-config found:"; \
-        cat "${LITERT_OUTPUT_DIR}/lib/pkgconfig/tensorflow-lite.pc"; \
-    fi; \
-    ls -la "${LITERT_OUTPUT_DIR}/lib"/*lite* 2>/dev/null || echo "Warning: LiteRT libraries may not be in expected location"; \
-    ldconfig
 
 # ==============================================================================
 # OpenCV stage
@@ -165,8 +150,7 @@ ARG OPENCV_OUTPUT_DIR=/opt/opencv4
 ENV OPENCV_PREFIX=${OPENCV_OUTPUT_DIR}
 ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
-COPY linux/scripts/03-media/opencv /opt/scripts/media/opencv
-RUN chmod +x /opt/scripts/media/opencv/*.sh || true
+COPY --chmod=755 linux/scripts/03-media/opencv /opt/scripts/media/opencv
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
@@ -198,13 +182,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         libdc1394-dev \
         python3-dev \
         python3-numpy \
-        python3-pip; \
-    rm -rf /var/lib/apt/lists/*
+        python3-pip
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
-    export USER=root; \
     bash /opt/scripts/media/opencv/build-opencv.sh \
         --opencv-version "${OPENCV_VERSION}" \
         --prefix "${OPENCV_OUTPUT_DIR}" \
@@ -213,20 +195,12 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --with-python "${OPENCV_WITH_PYTHON}" \
         --skip-dep-install
 
-RUN set -eux; \
-    pkg-config --exists opencv4 && echo "OpenCV found: $(pkg-config --modversion opencv4)" || { \
-        echo "ERROR: OpenCV not found via pkg-config"; \
-        echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"; \
-        exit 1; \
-    }
-
 # ==============================================================================
 # FFmpeg stage
 # ==============================================================================
 FROM base AS ffmpeg
 
-COPY linux/scripts/03-media/ffmpeg/ /opt/scripts/media/ffmpeg/
-RUN chmod +x /opt/scripts/media/ffmpeg/*.sh || true
+COPY --chmod=755 linux/scripts/03-media/ffmpeg/ /opt/scripts/media/ffmpeg/
 
 ENV FFMPEG_PREFIX=/opt/ffmpeg
 
@@ -255,49 +229,14 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
 
 COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=onnxruntime /usr/local/lib/onnxruntime-genai /usr/local/lib/onnxruntime-genai
-# Bring LiteRT artifacts (libraries, headers and pkgconfig) into the gstreamer stage
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
 COPY --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
-    # Make OpenCV available to the gstreamer build (pkg-config + libs)
-    COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --chmod=755 linux/scripts/03-media/opencv/fix-symlinks.sh /opt/scripts/media/opencv/fix-symlinks.sh
 
-    # Ensure OpenCV shared libraries are visible to the system linker during
-    # the GStreamer build. Some build steps ignore -L ordering, so copy all
-    # libopencv*.so* into /usr/lib and multiarch /usr/lib/<triplet> before
-    # building GStreamer.
-    RUN set -eux; \
-        triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
-        for libdir in "${OPENCV_OUTPUT_DIR}/lib" "${OPENCV_OUTPUT_DIR}/lib64"; do \
-            if [ -d "$libdir" ]; then \
-                cd "$libdir"; \
-                for f in libopencv_*.so*; do \
-                    [ -e "$f" ] || continue; \
-                    src="$libdir/$f"; \
-                    if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then \
-                        install -m 0644 -D "$src" "/usr/lib/$triplet/$(basename "$f" | sed 's/\..*$/.so/')" || true; \
-                    fi; \
-                    install -m 0644 -D "$src" "/usr/lib/$(basename "$f" | sed 's/\..*$/.so/')" || true; \
-                done; \
-            fi; \
-        done; \
-        ldconfig || true
-
-    # Create a linker script in /usr/lib so `-lopencv_tracking` always resolves
-    # to the versioned library in /opt/opencv4/lib even if the build system
-    # doesn't respect -L ordering.
-    RUN set -eux; \
-        tracking_candidate="$(ls -1 ${OPENCV_OUTPUT_DIR}/lib/libopencv_tracking.so* 2>/dev/null | head -n1 || true)"; \
-        if [ -n "$tracking_candidate" ]; then \
-            echo "Found tracking lib: $tracking_candidate"; \
-            script=/usr/lib/libopencv_tracking.so; \
-            echo "INPUT($tracking_candidate)" > "$script" || true; \
-            if [ -d "/usr/lib/$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)" ]; then \
-                mkdir -p "/usr/lib/$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)" || true; \
-                echo "INPUT($tracking_candidate)" > "/usr/lib/$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)/libopencv_tracking.so" || true; \
-            fi; \
-        fi; \
-        ldconfig || true
+RUN set -eux; \
+    bash /opt/scripts/media/opencv/fix-symlinks.sh "${OPENCV_OUTPUT_DIR}"
 
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
@@ -308,120 +247,18 @@ ENV PKG_CONFIG_PATH="${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LITERT_OUTPUT_DIR}/lib
 ENV LD_LIBRARY_PATH="${OPENCV_OUTPUT_DIR}/lib:${LITERT_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 
-COPY linux/scripts/03-media/gstreamer/common/setup-gstreamer.sh /opt/scripts/media/gstreamer/common/setup-gstreamer.sh
-COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
-RUN chmod +x /opt/scripts/media/gstreamer/common/setup-gstreamer.sh /usr/local/bin/gstreamer-env.sh
-COPY linux/scripts/03-media/gstreamer/common/install-vvdec.sh /opt/scripts/media/gstreamer/common/install-vvdec.sh
-RUN chmod +x /opt/scripts/media/gstreamer/common/install-vvdec.sh
+COPY --chmod=755 linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
+COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
-    export USER=root; \
-    apt-get update; \
-    # Ensure basic build tooling present for building vvdec and GTK/Cairo checks
-    # Install core packages first, then attempt to install X protocol headers.
-    apt-get install -y --no-install-recommends \
-        build-essential cmake git pkg-config libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-core-dev libsodium-dev; \
-    # Some base images may not provide the `xorgproto` package name. Try a few
-    # alternatives and fail early if none are available so the error is clear.
-    (apt-get install -y --no-install-recommends xorgproto) || true; \
-    apt-get update || true; \
-    apt-get install -y --no-install-recommends xorg-dev || true; \
-    apt-get install -y --no-install-recommends x11proto-core-dev x11proto-dev || true; \
-    # Ensure pkg-config metadata directories updated
-    update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true; \
-    # Install Csound packages required for building csound-related plugins.
-    apt-get update; \
-    # Skip installing Csound on RISC-V targets where APT packages are often unavailable.
-    if echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then \
-      echo "Skipping Csound APT install on TARGETARCH=${TARGETARCH:-unset}"; \
-    else \
-      apt-get install -y --no-install-recommends \
-        csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || \
-      { echo "ERROR: required Csound packages not found in APT; please add an appropriate repo or package name." >&2; exit 1; }; \
-    fi; \
-    # Some Debian packages do not provide a pkg-config .pc file for Csound.
-    # Create a minimal csound.pc in the appropriate multiarch pkgconfig
-    # directory so downstream pkg-config checks succeed. Only create the
-    # stub when not building for riscv targets (we skipped installing Csound
-    # packages above for riscv), otherwise creating a stub may mask missing
-    # package problems on supported arches.
-    if ! echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then \
-      triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
-      if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then \
-        pcdir="/usr/lib/$triplet/pkgconfig"; \
-        libdir="/usr/lib/$triplet"; \
-      else \
-        pcdir="/usr/lib/pkgconfig"; \
-        libdir="/usr/lib"; \
-      fi; \
-      mkdir -p "$pcdir"; \
-      # Write a minimal csound.pc with the computed libdir. Keep ${prefix}
-      # and ${libdir}/${includedir} in the file as pkg-config variables.
-      printf '%s\n' \
-        "prefix=/usr" \
-        "exec_prefix=\${prefix}" \
-        "libdir=${libdir}" \
-        "includedir=/usr/include/csound" \
-        "" \
-        "Name: Csound" \
-        "Description: Csound audio and music processing system" \
-        "Version: 6.18.1" \
-        "Libs: -L\${libdir} -lcsound64" \
-        "Cflags: -I\${includedir}" \
-        > "$pcdir/csound.pc" || true; \
-      # Verify that pkg-config can discover csound; fail with diagnostics if not.
-      if ! pkg-config --exists csound 2>/dev/null; then \
-        echo "" >&2; \
-        echo "ERROR: csound pkg-config (.pc) not found after installing Csound packages." >&2; \
-        echo "dpkg multiarch triplet: ${triplet:-unset}" >&2; \
-        echo "PKG_CONFIG_LIBDIR=${PKG_CONFIG_LIBDIR:-unset}" >&2; \
-        echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-unset}" >&2; \
-        echo "Listing likely pkgconfig directories:" >&2; \
-        for d in "/usr/lib/${triplet:-}/pkgconfig" /usr/lib/pkgconfig /usr/local/lib/pkgconfig; do \
-          echo "-- $d --" >&2; ls -la "$d" 2>/dev/null | sed -n '1,200p' >&2 || true; \
-        done; \
-        echo "pkg-config output (if any):" >&2; \
-        pkg-config --cflags --libs csound 2>/dev/null || true; \
-        echo "APT policy for csound packages:" >&2; apt-cache policy libcsound64-dev libcsound-dev csound || true; \
-        echo "If these packages are provided by a non-default repository, enable it (for example: add-apt-repository universe) and re-run the build." >&2; \
-        exit 1; \
-      fi; \
-      if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then \
-        CSOUND_LIB_DIR="/usr/lib/$triplet"; \
-      else \
-        CSOUND_LIB_DIR="/usr/lib"; \
-      fi; \
-      echo "Setting CSOUND_LIB_DIR=$CSOUND_LIB_DIR"; \
-      export CSOUND_LIB_DIR; \
-      # Persist for later stages / shells
-      echo "CSOUND_LIB_DIR=$CSOUND_LIB_DIR" >> /etc/environment; \
-    else \
-      echo "Skipping creation of csound.pc stub for riscv target"; \
-    fi; \
-    rm -rf /var/lib/apt/lists/*; \
     cd /opt && \
-    # Prefer using system-provided libraries where available to avoid circular
-    # subproject includes. Do not force Meson to build wrapped fallbacks here;
-    # the setup script can still be overridden via MESON_WRAP_MODE if needed.
-    # Disable the gst-plugins-rs vvdec plugin via MESON_ARGS to avoid requiring
-    # libvvdec in the build environment.
-    # Use the nocsound wrapper script which will detect absence of libcsound
-    # and exclude csound-related gst-plugins-rs workspace members from the
-    # cargo build. This avoids cargo attempting to compile csound-sys when
-    # libcsound isn't available in the build image.
-    # Build and install vvdec from source before building gst-plugins-rs so
-    # pkg-config can discover libvvdec during cargo build.
+    bash /opt/scripts/media/gstreamer/common/pre-setup.sh && \
     /opt/scripts/media/gstreamer/common/install-vvdec.sh && \
-    # Prefer system libsodium (avoid compiling libsodium-sys for riscv64)
     export SODIUM_USE_PKG_CONFIG=1; \
     export PKG_CONFIG_ALLOW_CROSS=1; \
     export PKG_CONFIG_SYSROOT_DIR="${PKG_CONFIG_SYSROOT_DIR:-/}"; \
-    # Ensure pkg-config searches the correct multiarch pkgconfig directory for
-    # the current architecture. Some images hardcode riscv paths which breaks
-    # pkg-config lookups on other arches (cairo.pc lives under the multiarch
-    # pkgconfig directory, e.g. /usr/lib/x86_64-linux-gnu/pkgconfig).
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
     if [ -n "$triplet" ]; then \
       export PKG_CONFIG_LIBDIR="/usr/lib/$triplet/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_LIBDIR:-}"; \
@@ -430,158 +267,31 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     fi; \
     export SODIUM_SHARED=1; \
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"; \
-    # Sanity check: ensure cairo is visible via pkg-config before running Meson.
-    # Some base images may be missing xorgproto/x11proto packages which are
-    # required to resolve cairo's X11-related pkg-config dependencies. Try a
-    # quick installation of common X protocol dev packages and retry once. If
-    # cairo still isn't discoverable, emit a warning and continue so the
-    # downstream setup script can run additional diagnostics and attempts.
     if ! pkg-config --exists cairo; then \
       echo "WARNING: cairo not found via pkg-config; attempting to install xorgproto/x11proto packages" >&2; \
       apt-get update || true; \
       apt-get install -y --no-install-recommends xorgproto xorg-dev x11proto-core-dev || true; \
       if ! pkg-config --exists cairo; then \
         echo "WARNING: cairo still not found via pkg-config after retry; continuing (Meson may fail)" >&2; \
-        echo "PKG_CONFIG_LIBDIR=${PKG_CONFIG_LIBDIR}" >&2; \
         pkg-config --cflags --libs cairo || true; \
-      else \
-        echo "cairo found via pkg-config after installing xorgproto/x11proto" >&2; \
       fi; \
     fi; \
-    # Enable vvdec and csound plugins; keep skia disabled by default to avoid
-    # pulling the Chromium toolchain unless explicitly needed.
     MESON_ARGS="-Dgst-plugins-rs:skia=disabled" bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \
         "$BUILD_TYPE"
 
 # ==============================================================================
-# Final stage - combine all artifacts
-# ==============================================================================
-FROM base AS final
-
-ARG GSTREAMER_VERSION=1.29.1
-ARG OPENCV_OUTPUT_DIR=/opt/opencv4
-ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
-ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
-ARG LITERT_OUTPUT_DIR=/usr/local
-ARG GSTREAMER_PREFIX=/opt/gstreamer
-
-ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
-    GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
-    GST_PLUGIN_PATH="" \
-    GI_TYPELIB_PATH="" \
-    OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
-    FFMPEG_PREFIX=/opt/ffmpeg \
-    LIBCAMERA_PREFIX=/opt/libcamera
-
-COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
-COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
-COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
-COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
-    # Ensure TensorFlow Lite headers installed by the litert stage are
-    # available in the final image so downstream builds (libcamera) can
-    # include <tensorflow/lite/...>. Copy the include tree from the
-    # litert stage into /usr/local/include.
-    COPY --from=litert ${LITERT_OUTPUT_DIR}/include /usr/local/include
-    # Ensure flatbuffers headers are available at a consistent path
-    RUN set -eux; \
-        if [ -f /usr/local/include/flatbuffers/flatbuffers.h ]; then \
-            echo "flatbuffers headers present"; \
-        else \
-            # Try to locate any flatbuffers.h under the copied include tree
-            fbpath=$(find /usr/local/include -type f -name flatbuffers.h -print -quit 2>/dev/null || true); \
-            if [ -n "$fbpath" ]; then \
-                srcdir=$(dirname "$fbpath"); \
-                mkdir -p /usr/local/include/flatbuffers; \
-                cp -rv "$srcdir"/* /usr/local/include/flatbuffers/ || true; \
-                echo "Copied flatbuffers headers from $srcdir"; \
-            else \
-                echo "Warning: flatbuffers.h not found under /usr/local/include after copying litert"; \
-            fi; \
-        fi
-    # Ensure tflite headers are present and provide compat symlink for
-    # includes that expect the tensorflow/... layout. Do this in the Docker
-    # layer so it's always available during the subsequent build step.
-    RUN set -eux; \
-      if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then \
-        echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"; \
-        ln -s /usr/local/include/tflite /usr/local/include/tensorflow || true; \
-      fi
-    COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
-
-    # Same symlink fix in the final stage to be extra robust (also create
-    # system-level symlinks so runtime/linker lookups succeed).
-    RUN set -eux; \
-        for libdir in "${OPENCV_OUTPUT_DIR}/lib" "${OPENCV_OUTPUT_DIR}/lib64"; do \
-            if [ -d "$libdir" ]; then \
-                cd "$libdir"; \
-                candidate=$(ls -1 libopencv_tracking.so* 2>/dev/null | head -n1 || true); \
-                if [ -n "$candidate" ]; then \
-                    if [ ! -e libopencv_tracking.so ]; then \
-                        echo "Creating symlink $libdir/libopencv_tracking.so -> $candidate"; \
-                        ln -sf "$candidate" libopencv_tracking.so || true; \
-                    fi; \
-                    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
-                    if [ -z "$triplet" ]; then triplet=""; fi; \
-                    if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then \
-                        ln -sf "$libdir/$candidate" "/usr/lib/$triplet/libopencv_tracking.so" || true; \
-                    fi; \
-                    ln -sf "$libdir/$candidate" "/usr/lib/libopencv_tracking.so" || true; \
-                fi; \
-            fi; \
-        done; \
-        ldconfig || true
-COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
-COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
-
-RUN set -eux; \
-    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
-    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
-    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
-
-ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}" \
-    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
-    LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${OPENCV_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib" \
-    GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
-    GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
-
-RUN set -eux; \
-    apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' || true; \
-    apt-get autoremove --purge -y; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*; \
-    ldconfig
-
-RUN set -eux; \
-    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
-    SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
-    GST_PKGCONF_DIR="/opt/gstreamer/lib/${triplet}/pkgconfig"; \
-    mkdir -p "${SYS_PKGCONF_DIR}"; \
-    if [ -d "${GST_PKGCONF_DIR}" ]; then \
-      for pc in "${GST_PKGCONF_DIR}"/*.pc; do \
-        ln -snf "$pc" "${SYS_PKGCONF_DIR}/$(basename "$pc")"; \
-      done; \
-    fi; \
-    printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
-    ldconfig
-
-# ==============================================================================
 # libcamera stage
 # ==============================================================================
 FROM base AS libcamera
 
-# Bring in tflite headers and libraries required for compilation
 COPY --from=litert /usr/local/include /usr/local/include
 COPY --from=litert /usr/local/lib /usr/local/lib
-# Bring in GStreamer built in the previous stage so libcamera's Meson
-# configuration can find gstreamer-* pkg-config files and runtime libraries.
 COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 
-COPY linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
-COPY linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
-RUN chmod +x /usr/local/bin/gstreamer-env.sh /opt/scripts/media/libcamera/*.sh || true
+COPY --chmod=755 linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
+COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
@@ -593,12 +303,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
     cd /opt && \
-    # Ensure GStreamer development packages are available for libcamera's Meson
-    # configuration so "gstreamer-video-1.0" can be found.
     apt-get update; \
-    # FlatBuffers headers should have been copied from the litert stage into
-    # /usr/local/include. Emit diagnostics and fail early if the header is
-    # missing so the cause is clear (avoid obscure compile errors later).
     if [ -f /usr/local/include/flatbuffers/flatbuffers.h ]; then \
         echo "Found FlatBuffers header:"; \
         sed -n '1,120p' /usr/local/include/flatbuffers/flatbuffers.h | sed -n '1,120p' || true; \
@@ -635,18 +340,24 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     FFMPEG_PREFIX=/opt/ffmpeg \
     LIBCAMERA_PREFIX=/opt/libcamera
 
-# Bring in compiled binaries/artifacts from all stages
 COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
+# Only copy ONNX Runtime GPU artifact if built (it would only be in the build stage if enabled)
+# For multistage we need to be careful as the GPU output dir might not exist.
+# A safe way is to copy wildcards or use a dedicated intermediate.
+COPY --from=onnxruntime /usr/local/lib/onnxruntime-gp[u] /usr/local/lib/onnxruntime-gpu/
+
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
+COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/libtensor* ${LITERT_OUTPUT_DIR}/lib/
 COPY --from=litert ${LITERT_OUTPUT_DIR}/include /usr/local/include
 COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+COPY --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 COPY --from=libcamera /opt/libcamera /opt/libcamera
+COPY --chmod=755 linux/scripts/03-media/opencv/fix-symlinks.sh /opt/scripts/media/opencv/fix-symlinks.sh
 
-# Replicate the symlinks you needed for compatibility
 RUN set -eux; \
     if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then \
         echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"; \
@@ -654,24 +365,7 @@ RUN set -eux; \
     fi
 
 RUN set -eux; \
-    for libdir in "${OPENCV_OUTPUT_DIR}/lib" "${OPENCV_OUTPUT_DIR}/lib64"; do \
-        if [ -d "$libdir" ]; then \
-            cd "$libdir"; \
-            candidate=$(ls -1 libopencv_tracking.so* 2>/dev/null | head -n1 || true); \
-            if [ -n "$candidate" ]; then \
-                if [ ! -e libopencv_tracking.so ]; then \
-                    ln -sf "$candidate" libopencv_tracking.so || true; \
-                fi; \
-                triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
-                if [ -z "$triplet" ]; then triplet=""; fi; \
-                if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then \
-                    ln -sf "$libdir/$candidate" "/usr/lib/$triplet/libopencv_tracking.so" || true; \
-                fi; \
-                ln -sf "$libdir/$candidate" "/usr/lib/libopencv_tracking.so" || true; \
-            fi; \
-        fi; \
-    done; \
-    ldconfig || true
+    bash /opt/scripts/media/opencv/fix-symlinks.sh "${OPENCV_OUTPUT_DIR}"
 
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
@@ -689,7 +383,6 @@ RUN set -eux; \
     DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' || true; \
     apt-get autoremove --purge -y; \
     apt-get clean; \
-    rm -rf /var/lib/apt/lists/*; \
     ldconfig
 
 RUN set -eux; \
@@ -713,4 +406,8 @@ RUN set -eux; \
     printf "%s\n" "/usr/local/lib/onnxruntime-cpu/lib" > /etc/ld.so.conf.d/onnxruntime.conf; \
     printf "%s\n" "/usr/local/lib/onnxruntime-genai/lib" >> /etc/ld.so.conf.d/onnxruntime.conf; \
     printf "%s\n" "/usr/local/lib" >> /etc/ld.so.conf.d/litert.conf; \
+    if [ "$ENABLE_NVIDIA" = "true" ]; then \
+        printf "%s\n" "${CUDA_HOME}/lib64" > /etc/ld.so.conf.d/cuda.conf; \
+        printf "%s\n" "${TENSORRT_HOME}/lib" > /etc/ld.so.conf.d/tensorrt.conf; \
+    fi; \
     ldconfig

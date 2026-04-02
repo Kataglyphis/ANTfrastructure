@@ -1,14 +1,17 @@
 # syntax=docker/dockerfile:1.19
 
-ARG BASE_IMAGE=local/kataglyphis:media
-FROM ${BASE_IMAGE}
+ARG ENABLE_NVIDIA=false
+
+FROM local/kataglyphis:media AS base-false
+FROM local/kataglyphis:media-nvidia AS base-true
+
+FROM base-${ENABLE_NVIDIA}
 
 ARG ANDROID_SDK_VERSION=14742923
 ARG ANDROID_NDK_VERSION=29.0.14206865
 ARG ANDROID_COMPILE_SDK=36
 ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
- #4.1.2
 
 SHELL ["bash", "-lc"]
 

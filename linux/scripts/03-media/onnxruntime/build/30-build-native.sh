@@ -135,3 +135,17 @@ info "Build complete. Artifacts in ${NATIVE_CPU_OUTPUT_DIR}"
 info "Wheels in ${NATIVE_CPU_OUTPUT_DIR}/wheels"
 ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
 ls -lh "${NATIVE_CPU_OUTPUT_DIR}/lib"/*.so* 2>/dev/null | head -20 || true
+
+# Validation step
+lib_dir="${NATIVE_CPU_OUTPUT_DIR}/lib"
+if [ ! -d "${lib_dir}" ]; then
+    echo "ERROR: ONNX Runtime lib directory not found: ${lib_dir}"
+    exit 1
+fi
+if [ -z "$(ls -A ${lib_dir}/*.so* 2>/dev/null)" ]; then
+    echo "ERROR: No .so files found in ${lib_dir}"
+    ls -la "${lib_dir}" || true
+    exit 1
+fi
+echo "ONNX Runtime native build verified:"
+ls -la "${lib_dir}"

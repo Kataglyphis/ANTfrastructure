@@ -75,12 +75,12 @@ Linux image chain (built as separate images for caching):
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
 - `linux/Dockerfile`: runtime scripts + entrypoint (final image).
 
-Optional NVIDIA GPU image chain (inserts after `:toolchain`, standard chain unchanged):
+Optional NVIDIA GPU image chain (built by passing `--build-arg ENABLE_NVIDIA=true` to standard Dockerfiles):
 
-- `linux/Dockerfile.nvidia`: CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX.
-- `linux/Dockerfile.media-nvidia`: Media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs.
-- `linux/Dockerfile.android-nvidia`: Android SDK/NDK on top of media-nvidia.
-- `linux/Dockerfile.nvidia-final`: Final entrypoint image (`:nvidia` tag).
+- `linux/Dockerfile.nvidia`: CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
+- `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
+- `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
+- `linux/Dockerfile`: Final entrypoint image (`:nvidia` tag).
 
 What you get:
 - ✅ Multi-arch builds via buildx/nerdctl.
@@ -269,15 +269,15 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
 > - `nvidia-container-toolkit` installed and configured on the host.
 > - `--runtime=nvidia` or `--gpus all` passed to `docker run`.
 
-The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and before the media stage. The standard build chain is completely unchanged.
+The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and before the media stage. Subsequent stages reuse the standard Dockerfiles by passing `--build-arg ENABLE_NVIDIA=true`.
 
-**New files:**
+**Files involved:**
 | File | Purpose |
 |---|---|
 | `linux/Dockerfile.nvidia` | Installs CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
-| `linux/Dockerfile.media-nvidia` | Media stack: `NVIDIA_CODEC_HEADERS=yes` + ORT with CUDA/TRT/cuDNN EPs |
-| `linux/Dockerfile.android-nvidia` | Android SDK/NDK on top of media-nvidia |
-| `linux/Dockerfile.nvidia-final` | Entrypoint image, tagged `:nvidia` |
+| `linux/Dockerfile.media` | Media stack: conditionally builds ORT with CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true` |
+| `linux/Dockerfile.android` | Conditionally builds on top of the NVIDIA media image |
+| `linux/Dockerfile` | Conditionally tags the final entrypoint image |
 | `linux/scripts/03-media/onnxruntime/build/30-build-native-nvidia.sh` | ORT build script with CUDA, TensorRT, cuDNN EPs |
 
 **Sequential build (nerdctl):**
@@ -295,7 +295,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 # Step 2: media-nvidia (GStreamer nvcodec + ORT with CUDA/TRT/cuDNN EPs)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia,push=true' \
-  -f linux/Dockerfile.media-nvidia \
+  -f linux/Dockerfile.media \
+  --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-nvidia \
@@ -304,7 +305,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 # Step 3: android-nvidia
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia,push=true' \
-  -f linux/Dockerfile.android-nvidia \
+  -f linux/Dockerfile.android \
+  --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-nvidia \
@@ -313,7 +315,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 # Step 4: final nvidia image
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia,push=true' \
-  -f linux/Dockerfile.nvidia-final \
+  -f linux/Dockerfile \
+  --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia \
