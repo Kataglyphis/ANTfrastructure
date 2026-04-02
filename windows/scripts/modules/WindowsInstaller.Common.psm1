@@ -1,11 +1,12 @@
 Set-StrictMode -Version Latest
 
-$sharedModulePath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-if (-not (Test-Path $sharedModulePath)) {
-    throw "Required shared module not found: $sharedModulePath"
-}
+# Ensure shared helpers are available (Get-MyLibraryModulesRoot etc.)
+try {
+    $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+    if (Test-Path $sharedPath) { . $sharedPath }
+} catch {}
 
-Import-Module $sharedModulePath -Force
+Import-Module Kataglyphis.Scripts.Common -Force
 
 function New-StructuredLogContext {
     param(
