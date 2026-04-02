@@ -274,6 +274,21 @@ fi
     export ANDROID_SDK_ROOT="${ANDROID_SDK}"
     export ANDROID_NDK_HOME="${ANDROID_NDK}"
     
+    # Ensure apt runs non-interactively and pre-install common build deps
+    # Cerbero's bootstrap may invoke apt-get without -y which prompts; pre-install
+    # the packages it requests so the bootstrap won't stop for confirmation.
+    echo "==> Installing system packages required by Cerbero (non-interactive)"
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        autoconf automake autopoint autotools-dev binutils bison build-essential \
+        ccache cmake curl flex g++ gettext git gperf libasound2-dev libclang-dev \
+        libcurl4-openssl-dev libdrm-dev libegl1-mesa-dev libgl1-mesa-dev \
+        libglu1-mesa-dev libpulse-dev libssl-dev libtool libva-dev libx11-dev \
+        libx11-xcb-dev libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev \
+        libxi-dev libxrandr-dev libxrender-dev libxtst-dev libxv-dev make nasm \
+        ninja-build pkg-config python3-dev python3-setuptools x11proto-record-dev \
+        xutils-dev || true
+
     echo "==> Running Cerbero Bootstrap..."
     uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc "${CERBERO_JOBS_ARGS[@]}" bootstrap
     
