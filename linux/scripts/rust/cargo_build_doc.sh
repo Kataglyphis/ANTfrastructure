@@ -29,13 +29,14 @@ fi
 
 if [ -n "$EXT_CSS" ] && [ -f "./resources/web/rustdoc-mapping.css" ]; then
     info "Combining CSS files for custom rustdoc theme..."
-    cat "$EXT_CSS" ./resources/web/rustdoc-mapping.css > ./combined-theme.css
-    export RUSTDOCFLAGS="--extend-css ./combined-theme.css"
+    # Write combined theme directly into resources/web so it lives with other web assets
+    cat "$EXT_CSS" ./resources/web/rustdoc-mapping.css > ./resources/web/combined-theme.css
+    export RUSTDOCFLAGS="--extend-css ./resources/web/combined-theme.css"
 fi
 
 # Generate documentation without dependencies
 info "Generating rust documentation (cargo doc --no-deps)..."
-# Forward args to cargo doc (e.g. --features with_cxxbridge)
+# Forward args to cargo doc (e.g. --features <feature>)
 cargo doc --no-deps "$@"
 
 # Provide a redirect from the root doc directory to the crate's docs
