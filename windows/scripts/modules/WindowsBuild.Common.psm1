@@ -1,13 +1,12 @@
 Set-StrictMode -Version Latest
 
-# Ensure shared helpers are available (Get-MyLibraryModulesRoot etc.)
-try {
-    $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-    if (Test-Path $sharedPath) { . $sharedPath }
-} catch {}
+# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, ConvertTo-ParameterList, etc.)
+$sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+Import-Module $sharedPath -Force
 
-Import-Module Kataglyphis.Scripts.Common -Force
-Import-Module Kataglyphis.Scripts.Logging -Force
+# Import logging helpers (New-LogContext, Write-ContextLog, etc.)
+$loggingPath = Join-Path $PSScriptRoot 'WindowsLogging.Common.psm1'
+Import-Module $loggingPath -Force
 
 function New-BuildContext {
     param(
