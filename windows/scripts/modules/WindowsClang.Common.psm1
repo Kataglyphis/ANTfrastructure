@@ -1,5 +1,11 @@
 Set-StrictMode -Version Latest
 
+# Ensure shared helpers are available (Get-MyLibraryModulesRoot etc.)
+try {
+    $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+    if (Test-Path $sharedPath) { . $sharedPath }
+} catch {}
+
 function Get-CompileCommandsDatabase {
   param(
     [Parameter(Mandatory)]

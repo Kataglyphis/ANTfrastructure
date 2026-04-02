@@ -1,18 +1,13 @@
 Set-StrictMode -Version Latest
 
-$sharedModulePath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-if (-not (Test-Path $sharedModulePath)) {
-    throw "Required shared module not found: $sharedModulePath"
-}
+# Ensure shared helpers are available (Get-MyLibraryModulesRoot etc.)
+try {
+    $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+    if (Test-Path $sharedPath) { . $sharedPath }
+} catch {}
 
-Import-Module $sharedModulePath -Force
-
-$loggingModulePath = Join-Path $PSScriptRoot 'WindowsLogging.Common.psm1'
-if (-not (Test-Path $loggingModulePath)) {
-    throw "Required logging module not found: $loggingModulePath"
-}
-
-Import-Module $loggingModulePath -Force
+Import-Module Kataglyphis.Scripts.Common -Force
+Import-Module Kataglyphis.Scripts.Logging -Force
 
 function New-BuildContext {
     param(

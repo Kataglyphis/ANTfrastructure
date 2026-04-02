@@ -1,5 +1,11 @@
 Set-StrictMode -Version Latest
 
+# Ensure shared helpers are available (Get-MyLibraryModulesRoot etc.)
+try {
+    $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+    if (Test-Path $sharedPath) { . $sharedPath }
+} catch {}
+
 function Resolve-WindowsSdkToolPath {
   param(
     [Parameter(Mandatory)]
@@ -7,6 +13,11 @@ function Resolve-WindowsSdkToolPath {
     [AllowNull()]
     [string]$OverridePath
   )
+
+  # Prefer canonical helper if available
+  if (Get-Command -Name Kataglyphis_Resolve-WindowsSdkToolPath -ErrorAction SilentlyContinue) {
+    return Kataglyphis_Resolve-WindowsSdkToolPath -ToolName $ToolName -OverridePath $OverridePath
+  }
 
   if (-not [string]::IsNullOrWhiteSpace($OverridePath)) {
     if (Test-Path $OverridePath) {
@@ -65,6 +76,10 @@ function Resolve-WindowsSdkToolPath {
 function ConvertTo-XmlEscapedText {
   param([AllowNull()][string]$Value)
 
+  if (Get-Command -Name Kataglyphis_ConvertTo-XmlEscapedText -ErrorAction SilentlyContinue) {
+    return Kataglyphis_ConvertTo-XmlEscapedText -Value $Value
+  }
+
   if ($null -eq $Value) { return '' }
   return [System.Security.SecurityElement]::Escape($Value)
 }
@@ -76,6 +91,10 @@ function Expand-XmlTemplateTokens {
     [Parameter(Mandatory)]
     [hashtable]$TokenMap
   )
+
+  if (Get-Command -Name Kataglyphis_Expand-XmlTemplateTokens -ErrorAction SilentlyContinue) {
+    return Kataglyphis_Expand-XmlTemplateTokens -Template $Template -TokenMap $TokenMap
+  }
 
   $expanded = $Template
   foreach ($token in $TokenMap.Keys) {
@@ -94,6 +113,10 @@ function New-TransparentPng {
     [Parameter(Mandatory)]
     [int]$Height
   )
+
+  if (Get-Command -Name Kataglyphis_New-TransparentPng -ErrorAction SilentlyContinue) {
+    return Kataglyphis_New-TransparentPng -Path $Path -Width $Width -Height $Height
+  }
 
   Add-Type -AssemblyName System.Drawing
   $bmp = New-Object System.Drawing.Bitmap($Width, $Height)
