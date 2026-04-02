@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../01-core/logging.sh"
 
 info "Adding rustfmt component and checking formatting..."
 rustup component add rustfmt
-# Forward any args (e.g. --features with_cxxbridge) to cargo fmt before the '--' separator
+# Forward any args (e.g. --features <feature>) to cargo fmt before the '--' separator
 cargo fmt --all "$@" -- --check
 
 info "Adding clippy component and running clippy checks..."

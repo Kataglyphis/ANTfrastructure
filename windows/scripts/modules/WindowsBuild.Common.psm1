@@ -1,18 +1,13 @@
 Set-StrictMode -Version Latest
 
-$sharedModulePath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-if (-not (Test-Path $sharedModulePath)) {
-    throw "Required shared module not found: $sharedModulePath"
-}
+# Ensure shared helpers are available (Get-MyLibraryModulesRoot etc.)
+try {
+    $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+    if (Test-Path $sharedPath) { . $sharedPath }
+} catch {}
 
-Import-Module $sharedModulePath -Force
-
-$loggingModulePath = Join-Path $PSScriptRoot 'WindowsLogging.Common.psm1'
-if (-not (Test-Path $loggingModulePath)) {
-    throw "Required logging module not found: $loggingModulePath"
-}
-
-Import-Module $loggingModulePath -Force
+Import-Module Kataglyphis.Scripts.Common -Force
+Import-Module Kataglyphis.Scripts.Logging -Force
 
 function New-BuildContext {
     param(
@@ -155,25 +150,30 @@ function Invoke-BuildExternal {
 
             $process = Start-Process @startProcessArgs
 
-            # Log captured output
+            # Read captured output into variables for logging and diagnostics
+            $capturedStdOut = @()
+            $capturedStdErr = @()
             if (Test-Path $stdOutFile) {
-                Get-Content $stdOutFile | ForEach-Object {
-                    if (-not [String]::IsNullOrWhiteSpace($_)) {
-                        Write-BuildLog -Context $Context -Message $_
-                    }
-                }
+                $capturedStdOut = Get-Content $stdOutFile
             }
             if (Test-Path $stdErrFile) {
-                Get-Content $stdErrFile | ForEach-Object {
-                    if (-not [String]::IsNullOrWhiteSpace($_)) {
-                        Write-BuildLog -Context $Context -Message $_
-                    }
-                }
+                $capturedStdErr = Get-Content $stdErrFile
+            }
+
+            # Log captured output (preserve order: stdout then stderr)
+            foreach ($line in $capturedStdOut) {
+                if (-not [String]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
+            }
+            foreach ($line in $capturedStdErr) {
+                if (-not [String]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
             }
 
             $exitCode = $process.ExitCode
             if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
-                throw "Command failed with exit code ${exitCode}: $cmdLine"
+                # Include captured output in the thrown error to make logs self-contained
+                $stdOutText = if ($capturedStdOut) { ($capturedStdOut -join "`n") } else { '<no stdout>' }
+                $stdErrText = if ($capturedStdErr) { ($capturedStdErr -join "`n") } else { '<no stderr>' }
+                throw "Command failed with exit code ${exitCode}: $cmdLine`n--- STDOUT ---`n$stdOutText`n--- STDERR ---`n$stdErrText"
             }
 
             return $exitCode

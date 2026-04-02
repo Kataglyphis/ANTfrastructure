@@ -8,7 +8,7 @@ info "Installing cargo-tarpaulin..."
 cargo install cargo-tarpaulin
 
 info "Running coverage with tarpaulin..."
-# Forward any arguments (for example: --features with_cxxbridge) to cargo-tarpaulin
+# Forward any arguments (for example: --features <feature>) to cargo-tarpaulin
 cargo tarpaulin --ignore-tests --out Html --out Xml --engine llvm "$@"
 
 info "Coverage report generated successfully."
