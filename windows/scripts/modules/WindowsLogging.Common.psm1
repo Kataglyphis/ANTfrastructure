@@ -1,23 +1,130 @@
 Set-StrictMode -Version Latest
 
-# Reuse shared helpers defined in WindowsScripts.Shared.psm1 to avoid duplicating
-# Get-MyLibraryModulesRoot and related logic across multiple module files.
-try {
-    $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-    if (Test-Path $sharedPath) { . $sharedPath }
-} catch {
-    # Non-fatal; we'll still attempt the module import fallback below.
+# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
+$sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+Import-Module $sharedPath -Force
+
+function New-LogContext {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Workspace,
+        [Parameter(Mandatory)]
+        [string]$LogDir,
+        [string]$LogFilePrefix = 'session'
+    )
+
+    $effectiveLogDir = if ([System.IO.Path]::IsPathRooted($LogDir)) { $LogDir } else { Join-Path $Workspace $LogDir }
+    $logDirPath = Resolve-DirectoryPath -Path $effectiveLogDir
+    $timestamp = New-Timestamp -Format 'yyyyMMdd-HHmmss'
+    $logPath = Join-Path $logDirPath "$LogFilePrefix-$timestamp.log"
+
+    [pscustomobject]@{
+        Workspace = $Workspace
+        LogPath   = $logPath
+        StartedAt = (Get-Date).ToString('o')
+        LogWriter = $null
+    }
 }
 
-try {
-    Import-Module Kataglyphis.Scripts.Logging -Force -ErrorAction Stop
-} catch {
-    # Get-MyLibraryModulesRoot should be available from the shared script; if not, the
-    # fallback walk-up still works because the shared script defines it.
-    $modulesRoot = Get-MyLibraryModulesRoot
-    if ($modulesRoot) {
-        $psm1 = Join-Path $modulesRoot 'Kataglyphis.Scripts.Logging\Kataglyphis.Scripts.Logging.psm1'
-        if (Test-Path $psm1) { Import-Module $psm1 -Force; return }
+function Open-LogWriter {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context
+    )
+
+    $parentDir = Split-Path -Parent $Context.LogPath
+    if ($parentDir) {
+        Resolve-DirectoryPath -Path $parentDir | Out-Null
     }
-    throw $_
+
+    $fileStream = New-Object System.IO.FileStream(
+        $Context.LogPath,
+        [System.IO.FileMode]::Append,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::ReadWrite
+    )
+
+    $writer = New-Object System.IO.StreamWriter($fileStream, [System.Text.Encoding]::UTF8)
+    $writer.AutoFlush = $true
+    $Context.LogWriter = $writer
 }
+
+function Close-LogWriter {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context
+    )
+
+    if ($Context.LogWriter) {
+        try {
+            $Context.LogWriter.Flush()
+            $Context.LogWriter.Dispose()
+        } catch {
+        } finally {
+            $Context.LogWriter = $null
+        }
+    }
+}
+
+function Write-ContextLog {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string]$Message,
+        [ValidateSet('Info', 'Warning', 'Error', 'Success')]
+        [string]$Level = 'Info'
+    )
+
+    $suppressConsoleOutput = $false
+    if ($null -ne $Context.PSObject.Properties['SuppressConsoleOutput']) {
+        $suppressConsoleOutput = [bool]$Context.SuppressConsoleOutput
+    }
+
+    if (-not $Message) {
+        if (-not $suppressConsoleOutput) {
+            Write-Host ''
+        }
+        if ($Context.LogWriter) {
+            $Context.LogWriter.WriteLine('')
+        }
+        return
+    }
+
+    if (-not $suppressConsoleOutput) {
+        switch ($Level) {
+            'Warning' {
+                Write-Warning $Message
+            }
+            'Error' {
+                Write-Host $Message -ForegroundColor Red
+            }
+            'Success' {
+                Write-Host $Message -ForegroundColor Green
+            }
+            default {
+                Write-Host $Message
+            }
+        }
+    }
+
+    if ($Context.LogWriter) {
+        $timestamp = Get-Date -Format 'HH:mm:ss'
+        $prefix = switch ($Level) {
+            'Warning' { 'WARNING: ' }
+            'Error' { 'ERROR: ' }
+            'Success' { 'SUCCESS: ' }
+            default { '' }
+        }
+
+        $Context.LogWriter.WriteLine("[$timestamp] $prefix$Message")
+    }
+}
+
+Export-ModuleMember -Function @(
+    'New-LogContext',
+    'Open-LogWriter',
+    'Close-LogWriter',
+    'Write-ContextLog'
+)
