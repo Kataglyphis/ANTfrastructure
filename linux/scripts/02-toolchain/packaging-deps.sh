@@ -19,7 +19,7 @@ declare -F error >/dev/null 2>&1 || error() { printf '[ERROR] %s\n' "$*" >&2; }
 CLEANUP_FILES=()
 cleanup() {
     for f in "${CLEANUP_FILES[@]}"; do
-        [ -f "$f" ] && rm -f "$f"
+        if [ -f "$f" ]; then rm -f "$f"; fi
     done
 }
 trap cleanup EXIT

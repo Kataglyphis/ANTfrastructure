@@ -45,10 +45,7 @@ fi
 if [ "${USE_UV_VENV}" = "true" ]; then
   require_cmd uv
 
-  info "Setting up uv venv at ${UV_VENV_DIR}"
-  uv venv "${UV_VENV_DIR}"
-  export VIRTUAL_ENV="${UV_VENV_DIR}"
-  export PATH="${UV_VENV_DIR}/bin:${PATH}"
+  info "Using existing uv venv (expected at /opt/python/.venv)"
 
   if [ -f "${ORT_SRC_DIR}/requirements.txt" ]; then
     info "Installing ONNX Runtime Python requirements via uv"

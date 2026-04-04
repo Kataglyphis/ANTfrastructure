@@ -40,7 +40,6 @@ append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
-VENV_DIR="${GSTREAMER_PREFIX}/.venv"
 
 # this is for uv
 export PATH="${HOME}/.local/bin:${PATH}"
@@ -106,9 +105,9 @@ trap save_logs EXIT
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 # we need to get rid of old orc modules on the system
 set -eux
-sudo apt-get update
-apt-get purge -y 'liborc*' || true
-apt-get autoremove -y
+
+
+
 
 # Helper: check whether a package is available in APT (returns 0 if present)
 apt_package_exists() {
@@ -118,7 +117,7 @@ apt_package_exists() {
 # ------------------------------------------------------------------------------
 # Install broad dependency set to enable most plugins
 # ------------------------------------------------------------------------------
-sudo apt-get install -y \
+
   build-essential g++ \
   libc++-dev libc++abi-dev \
   flex bison \
@@ -126,54 +125,38 @@ sudo apt-get install -y \
   libcairo2-dev \
   libjson-glib-dev python3-gi python3-gi-cairo python-gi-dev \
   libgsl-dev libdw-dev libnsl-dev gobject-introspection \
-  libunwind-dev libgtk-4-dev
+  libgtk-4-dev
 
-# Some distributions provide a libunwind package with a numeric suffix which
-# conflicts with the generic "libunwind-dev" package (for example
-# "libunwind-18-dev"). Try installing the generic package and fall back to
-# a known alternative if the generic package is unavailable.
-if ! sudo apt-get install -y libunwind-dev 2>/dev/null; then
-  INSTALLED_ALTS=$(dpkg -l 2>/dev/null | awk '{print $2}' | grep -E '^libunwind-[0-9]+-dev$' || true)
-  if [ -n "${INSTALLED_ALTS}" ]; then
-    echo "Detected installed libunwind package(s): ${INSTALLED_ALTS}; skipping installation."
-  else
-    echo "libunwind-dev not available; searching for versioned libunwind-*-dev packages..."
-    mapfile -t _alts < <(apt-cache search libunwind 2>/dev/null | awk '{print $1}' | grep -E '^libunwind-[0-9]+-dev$' || true)
-    if [ "${#_alts[@]}" -gt 0 ]; then
-      echo "Found libunwind packages: ${_alts[*]}; installing ${_alts[0]}"
-      sudo apt-get install -y "${_alts[0]}" || true
-    else
-      echo "No versioned libunwind-dev package found; continuing without explicit libunwind package (may be satisfied by other packages)"
-    fi
-  fi
-fi
+# Force removal of any versioned libunwind to avoid conflicts, then install generic
+
+
 
 # Enable source repos so build-dep works
 CODENAME=$(lsb_release -sc)
-sudo apt-get update -y
+
 
 # Ensure xmllint is available (used by meson/xml preprocessing); small package
 if ! apt_package_exists libxml2-utils; then
   echo "libxml2-utils not available in APT lists; will continue without xmllint"
 else
-  sudo apt-get install -y --no-install-recommends libxml2-utils
+  
 fi
 
 # For using GTK video sinks
-sudo apt-get install -y --no-install-recommends libgtk-3-dev libgtk-4-dev glslc glslang-tools
+
 
 # Audio I/O and DSP
-sudo apt-get install -y --no-install-recommends \
+
   libasound2-dev libpulse-dev libjack-dev libpipewire-0.3-dev \
   libsndfile1-dev libsamplerate0-dev
 
 # Video capture / devices
-sudo apt-get install -y --no-install-recommends \
+
   libv4l-dev libusb-1.0-0-dev libdc1394-dev libraw1394-dev \
   libcdio-dev libcdparanoia-dev
 
 # Graphics stacks (X11/Wayland/OpenGL/EGL/GLES/DRM/VA)
-sudo apt-get install -y --no-install-recommends \
+
   libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxrandr-dev libxv-dev \
   libwayland-dev wayland-protocols libxkbcommon-dev \
   libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libglu1-mesa-dev \
@@ -181,15 +164,15 @@ sudo apt-get install -y --no-install-recommends \
   libudev-dev
 
 # Images / formats
-sudo apt-get install -y --no-install-recommends \
+
   libjpeg-dev libpng-dev libtiff-dev libwebp-dev
 
 # Install OpenEXR development headers: prefer libopenexr-3-dev when present,
 # otherwise fall back to libopenexr-dev if available.
 if apt_package_exists libopenexr-3-dev; then
-  sudo apt-get install -y --no-install-recommends libopenexr-3-dev
+  
 elif apt_package_exists libopenexr-dev; then
-  sudo apt-get install -y --no-install-recommends libopenexr-dev
+  
 else
   echo "Warning: no libopenexr-* package found in APT; continuing without explicit OpenEXR dev package"
 fi
@@ -197,30 +180,30 @@ fi
 # VVdeC / vvdec dependency for gst-plugins-rs vvdec plugin
 # Keep the plugin enabled and install the system package instead.
 if apt_package_exists libvvdec-dev; then
-  sudo apt-get install -y --no-install-recommends libvvdec-dev
+  
 else
   echo "Warning: libvvdec-dev not found in APT; vvdec plugin stays enabled, but Meson may fail unless the package is available in your Ubuntu repositories."
 fi
 
 # Codecs (audio)
-sudo apt-get install -y --no-install-recommends \
+
   libogg-dev libvorbis-dev libtheora-dev libopus-dev libflac-dev \
   libmpg123-dev libmp3lame-dev libtwolame-dev libspeex-dev libspeexdsp-dev \
   libwavpack-dev libgsm1-dev
 
 # Codecs (video)
-sudo apt-get install -y --no-install-recommends \
+
   libvpx-dev libaom-dev libdav1d-dev \
   libx264-dev libx265-dev libopenh264-dev \
   libsvtav1-dev || true
 
 # FFmpeg (for gst-libav)
-sudo apt-get install -y --no-install-recommends \
+
   libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev \
   libswscale-dev libswresample-dev
 
 # Networking / RTP / WebRTC / crypto
-sudo apt-get install -y --no-install-recommends \
+
   libsoup-3.0-dev libcurl4-openssl-dev libxml2-dev \
   zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
   libsrtp2-dev libnice-dev libssl-dev libusrsctp-dev || true
@@ -244,7 +227,7 @@ fi
 if [ "${NVIDIA_GPU}" = "yes" ]; then
   # Prefer package if available, otherwise fall back to upstream repo
   if apt_package_exists nv-codec-headers; then
-    sudo apt-get install -y --no-install-recommends nv-codec-headers || true
+    
   else
     echo "nv-codec-headers not present in APT; falling back to building and installing from source"
   fi
@@ -274,18 +257,15 @@ fi
 sudo rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
-# Install Astral uv, create venv, install Meson/Ninja
+# Install Astral uv, use existing venv, install Meson/Ninja
 # ------------------------------------------------------------------------------
 
 sudo mkdir -p "${GSTREAMER_PREFIX}"
 sudo chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"
-uv venv "${VENV_DIR}"
 
-# Activate venv so 'meson' and 'ninja' from the venv are used
-# shellcheck disable=SC1091
-source "${VENV_DIR}/bin/activate"
+echo "Using existing Python venv (expected at /opt/python/.venv)..."
 
-# Install Meson/Ninja in the venv
+# Install Meson/Ninja in the existing venv
 uv pip install -U pip setuptools wheel
 uv pip install -U meson ninja
 
@@ -423,8 +403,10 @@ dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
 DEB_HOST_MULTIARCH_DIR="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
 if [ -n "${DEB_HOST_MULTIARCH_DIR}" ]; then
   SYS_PKGCONF_DIR="/usr/lib/${DEB_HOST_MULTIARCH_DIR}/pkgconfig"
+  export CSOUND_LIB_DIR="/usr/lib/${DEB_HOST_MULTIARCH_DIR}"
 else
   SYS_PKGCONF_DIR="/usr/lib/pkgconfig"
+  export CSOUND_LIB_DIR="/usr/lib"
 fi
 # Prepend system pkgconfig dirs if not already present
 PKG_CONFIG_LIBDIR="${SYS_PKGCONF_DIR}:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_LIBDIR:-}"
@@ -607,18 +589,18 @@ run_as_root() {
   return 2
 }
 
-if command -v apt-get >/dev/null 2>&1; then
+if command -v 
   # Check if architecture shouldn't build Csound
   ARCH_FOR_APT="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
   if echo "${ARCH_FOR_APT}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
     echo "Skipping Csound APT install on ARM/RISC-V architecture."
   else
     echo "Attempting to install Csound development packages via APT..."
-    run_as_root apt-get update || true
+    run_as_root 
     # Install user-facing csound packages and development headers that cargo
     # crates expect (installing several common package names to cover
     # distribution differences).
-    run_as_root apt-get install -y --no-install-recommends \
+    run_as_root 
       csound csound-utils libcsound64 libcsound64-dev libcsound-dev pd-csound || true
 
     if pkg-config --exists csound 2>/dev/null; then
@@ -767,7 +749,6 @@ echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly
 echo "Cleaning up..."
 cd /
 sudo rm -rf "${BUILD_DIR}"
-sudo rm -rf "${VENV_DIR}" || true
 
 echo ""
 echo "=========================================="

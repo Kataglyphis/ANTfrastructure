@@ -69,11 +69,7 @@ info "Found onnxruntime_c_api.h at ${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_
 info ">>> GenAI build: ${GENAI_CONFIG} (${JOBS} parallel jobs)"
 
 # Create Python virtual environment with uv
-VENV_DIR="${GENAI_BUILD_DIR}/venv"
-info "Creating Python virtual environment with uv at ${VENV_DIR}"
-mkdir -p "$(dirname "${VENV_DIR}")"
-uv venv "${VENV_DIR}"
-source "${VENV_DIR}/bin/activate"
+info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 
 # Install Python build dependencies with uv
 info "Installing Python build dependencies (pip, numpy, wheel, setuptools, requests)"
@@ -99,9 +95,6 @@ python3 build.py \
   --skip_tests \
   --skip_examples
 
-# Deactivate virtual environment
-deactivate
-
 # Copy wheel files
 info "Searching for GenAI wheel files..."
 find "${GENAI_SRC_DIR}/build" -name "*.whl" -type f 2>/dev/null | while read -r whl; do
@@ -115,7 +108,11 @@ if [ -z "$(ls -A "${GENAI_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
   info "No GenAI wheels found; attempting pip wheel build from source"
   if [ -f "${GENAI_SRC_DIR}/pyproject.toml" ] || [ -f "${GENAI_SRC_DIR}/setup.py" ]; then
     mkdir -p "${GENAI_OUTPUT_DIR}/wheels"
-    python -m pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
+    if command -v uv >/dev/null 2>&1; then
+      uv pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
+    else
+      python -m pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
+    fi
     info "Wheels after pip wheel:"; ls -lh "${GENAI_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
   else
     info "GenAI python packaging not detected; skipping pip wheel"

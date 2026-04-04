@@ -1,27 +1,15 @@
 #!/usr/bin/env bash
 set -eux
-apt-get update
 # Ensure basic build tooling present for building vvdec and GTK/Cairo checks
 # Install core packages first, then attempt to install X protocol headers.
-apt-get install -y --no-install-recommends \
-    build-essential cmake git pkg-config libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-core-dev libsodium-dev
 # Some base images may not provide the \`xorgproto\` package name. Try a few
 # alternatives and fail early if none are available so the error is clear.
-(apt-get install -y --no-install-recommends xorgproto) || true
-apt-get update || true
-apt-get install -y --no-install-recommends xorg-dev || true
-apt-get install -y --no-install-recommends x11proto-core-dev x11proto-dev || true
 # Ensure pkg-config metadata directories updated
 update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # Install Csound packages required for building csound-related plugins.
-apt-get update
 # Skip installing Csound on RISC-V targets where APT packages are often unavailable.
 if echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
   echo "Skipping Csound APT install on TARGETARCH=${TARGETARCH:-unset}"
-else
-  apt-get install -y --no-install-recommends \
-    csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || \
-  { echo "ERROR: required Csound packages not found in APT; please add an appropriate repo or package name." >&2; exit 1; }
 fi
 # Some Debian packages do not provide a pkg-config .pc file for Csound.
 # Create a minimal csound.pc in the appropriate multiarch pkgconfig
@@ -66,8 +54,6 @@ if ! echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
     done
     echo "pkg-config output (if any):" >&2
     pkg-config --cflags --libs csound 2>/dev/null || true
-    echo "APT policy for csound packages:" >&2; apt-cache policy libcsound64-dev libcsound-dev csound || true
-    echo "If these packages are provided by a non-default repository, enable it (for example: add-apt-repository universe) and re-run the build." >&2
     exit 1
   fi
   if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then

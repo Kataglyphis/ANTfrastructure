@@ -125,7 +125,7 @@ uv_venv_create() {
   # may fail; callers can override by passing an explicit python path.
   uv_ensure_python_available "$python_version" || true
 
-  uv venv "$venv_path" --python="$python_version" $clear_flag
+  uv venv --seed "$venv_path" --python="$python_version" $clear_flag
   _CURRENT_VENV_PATH="$venv_path"
 }
 

@@ -47,11 +47,7 @@ else
   source "${SCRIPT_DIR}/../../04-runtime/gstreamer-env.sh"
 fi
 
-sudo apt update
-sudo apt install -y pybind11-dev python3-pybind11 python3-dev \
-  libboost-program-options-dev libdrm-dev libexif-dev libjpeg-dev libpng-dev \
-  libtiff-dev libavcodec-dev libavdevice-dev libavformat-dev libswresample-dev \
-  libunwind-dev libdw-dev || true
+
 
 # If libcamera already present via pkg-config, skip
 if pkg-config --exists libcamera >/dev/null 2>&1; then
@@ -60,16 +56,6 @@ if pkg-config --exists libcamera >/dev/null 2>&1; then
 fi
 
 # Ensure minimal build deps (apt-based distros)
-if command -v apt-get >/dev/null 2>&1; then
-  sudo apt-get update -y
-  # NOTE: libtensorflow-lite-dev REMOVED to avoid overriding custom litert build
-  sudo apt-get install -y --no-install-recommends \
-    libyaml-dev python3-yaml python3-ply python3-jinja2 \
-    ninja-build pkg-config libudev-dev libevent-dev libunwind-dev libdw-dev || true
-else
-  echo "apt-get not found — ensure libcamera build deps are installed manually."
-fi
-
 # clone or update
 if [ -d "${LIBCAMERA_SRC}/.git" ]; then
   echo "Updating existing libcamera checkout..."
@@ -85,18 +71,12 @@ fi
 mkdir -p "${LIBCAMERA_BUILD_DIR}"
 
 # configure & build
-LIBCAMERA_VENV="${LIBCAMERA_PREFIX}/.venv"
 if ! command -v uv >/dev/null 2>&1; then
   echo "Error: 'uv' is required to build libcamera but was not found. Please install Astral 'uv' and re-run the build."
   exit 1
 fi
 
-echo "Creating/ensuring Astral uv venv at ${LIBCAMERA_VENV}"
-uv venv "${LIBCAMERA_VENV}" || true
-if [ -f "${LIBCAMERA_VENV}/bin/activate" ]; then
-  # shellcheck disable=SC1091
-  source "${LIBCAMERA_VENV}/bin/activate"
-fi
+echo "Using existing Astral uv venv (expected at /opt/python/.venv)"
 
 # Install build tools into the uv venv; retry with --break-system-packages on PEP-668 failures
 if ! uv pip install --upgrade pip setuptools wheel 2>/tmp/uv-pip-install.log; then
@@ -119,8 +99,6 @@ UV_RUN_PREFIX=(uv run --)
 
 # Ensure GoogleTest is available
 if [ ! -f /usr/include/gtest/gtest.h ]; then
-  sudo apt-get update -y || true
-  sudo apt-get install -y --no-install-recommends libgtest-dev cmake || true
   if [ -d /usr/src/googletest ]; then
     mkdir -p /tmp/gtest-build
     cmake -S /usr/src/googletest -B /tmp/gtest-build -DCMAKE_BUILD_TYPE=Release
@@ -130,7 +108,7 @@ if [ ! -f /usr/include/gtest/gtest.h ]; then
 fi
 
 if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
-  -Dgstreamer=enabled -Dpycamera=disabled -Ddocumentation=disabled; then
+  -Dgstreamer=enabled -Dpycamera=enabled -Ddocumentation=disabled; then
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
     exit 1
 fi
@@ -158,4 +136,33 @@ fi
 
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."
 
-rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" "${LIBCAMERA_PREFIX}/.venv" /tmp/uv-pip-install.log || true
+echo "Attempting to create libcamera Python wheel"
+PYCAMERA_DIR=$(find "${LIBCAMERA_PREFIX}" -type d -name "libcamera" | grep "site-packages" | head -n 1 || true)
+if [ -n "${PYCAMERA_DIR}" ] && [ -d "${PYCAMERA_DIR}" ]; then
+  echo "Found pycamera at ${PYCAMERA_DIR}. Building wheel..."
+  mkdir -p "${LIBCAMERA_PREFIX}/wheels"
+  WHEEL_DIR=$(mktemp -d)
+  cp -r "${PYCAMERA_DIR}" "${WHEEL_DIR}/"
+  
+  cat << 'EOF' > "${WHEEL_DIR}/setup.py"
+from setuptools import setup, Distribution
+class BinaryDistribution(Distribution):
+    def has_ext_modules(self): return True
+setup(
+    name="libcamera",
+    version="0.3.0",
+    packages=["libcamera"],
+    package_data={"libcamera": ["*.so"]},
+    include_package_data=True,
+    distclass=BinaryDistribution,
+)
+EOF
+  pushd "${WHEEL_DIR}" >/dev/null
+  uv pip wheel . -w "${LIBCAMERA_PREFIX}/wheels" || python3 -m pip wheel . -w "${LIBCAMERA_PREFIX}/wheels" || echo "Failed to build wheel"
+  popd >/dev/null
+  rm -rf "${WHEEL_DIR}"
+else
+  echo "pycamera site-packages directory not found."
+fi
+
+rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" /tmp/uv-pip-install.log || true

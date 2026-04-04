@@ -163,10 +163,12 @@ gcov --version || true
 which gcov || true
 
 echo "Installing gcovr (coverage reporting tool)..."
-if command -v pip3 >/dev/null 2>&1; then
-  pip3 install --upgrade --user gcovr
+if command -v uv >/dev/null 2>&1; then
+  uv pip install --system gcovr || uv tool install gcovr
+elif command -v pip3 >/dev/null 2>&1; then
+  pip3 install --upgrade --break-system-packages --user gcovr || pip3 install --upgrade --user gcovr
 elif command -v pip >/dev/null 2>&1; then
-  pip install --upgrade --user gcovr
+  pip install --upgrade --break-system-packages --user gcovr || pip install --upgrade --user gcovr
 else
   echo "pip not found. Skipping gcovr installation."
 fi

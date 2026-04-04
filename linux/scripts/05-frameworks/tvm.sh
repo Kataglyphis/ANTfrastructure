@@ -514,31 +514,31 @@ main() {
 
   if [ "$do_python" -eq 1 ]; then
     log "Setting up Python venv + editable TVM install"
-    python3 -m venv "$tvm_dir/.venv"
+    uv venv --seed "$tvm_dir/.venv"
     # shellcheck disable=SC1091
     source "$tvm_dir/.venv/bin/activate"
 
-    python -m pip install -U pip setuptools wheel
-    python -m pip install -U numpy cloudpickle decorator psutil scipy attrs
+    uv pip install -U pip setuptools wheel
+    uv pip install -U numpy cloudpickle decorator psutil scipy attrs
 
     # TVM depends on tvm-ffi for Python bindings.
     # Upstream docs: `cd 3rdparty/tvm-ffi; pip install .`
     if [ -f "$tvm_dir/3rdparty/tvm-ffi/pyproject.toml" ] || [ -f "$tvm_dir/3rdparty/tvm-ffi/setup.py" ]; then
-      python -m pip install "$tvm_dir/3rdparty/tvm-ffi"
+      uv pip install "$tvm_dir/3rdparty/tvm-ffi"
     else
       die "tvm-ffi is missing or not a Python project at $tvm_dir/3rdparty/tvm-ffi"
     fi
 
     # Install TVM python bindings (editable) and point it at the built libs
     export TVM_LIBRARY_PATH="$build_dir"
-    python -m pip install -e "$tvm_dir/python"
+    uv pip install -e "$tvm_dir/python"
 
     # Attempt to build a wheel for TVM python package and copy next to native artifacts
     TVM_WHEEL_DIR="${prefix}/wheels"
     mkdir -p "$TVM_WHEEL_DIR"
     if [ -f "$tvm_dir/pyproject.toml" ] || [ -f "$tvm_dir/python/setup.py" ]; then
       log "Building TVM wheel into $TVM_WHEEL_DIR"
-      python -m pip wheel -w "$TVM_WHEEL_DIR" "$tvm_dir/python" || log "Warning: TVM wheel build failed"
+      uv pip wheel -w "$TVM_WHEEL_DIR" "$tvm_dir/python" || log "Warning: TVM wheel build failed"
     else
       log "TVM python package not detected for wheel build; skipped"
     fi

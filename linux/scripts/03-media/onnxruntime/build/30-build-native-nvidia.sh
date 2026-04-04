@@ -93,11 +93,7 @@ info "cuDNN header: ${CUDNN_H}"
 # --------------------------------------------------------------------------
 sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgcc-s1
 
-VENV_DIR="${NATIVE_GPU_BUILD_DIR}/venv"
-info "Creating Python virtual environment with uv at ${VENV_DIR}"
-mkdir -p "$(dirname "${VENV_DIR}")"
-uv venv "${VENV_DIR}"
-source "${VENV_DIR}/bin/activate"
+info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 uv pip install numpy wheel setuptools
 
 # --------------------------------------------------------------------------
@@ -141,8 +137,6 @@ mkdir -p "${NATIVE_GPU_OUTPUT_DIR}"/{lib,include,wheels}
   --cuda_home          "${CUDA_HOME}" \
   --cudnn_home         "${CUDNN_HOME}" \
   --tensorrt_home      "${TENSORRT_HOME}"
-
-deactivate
 
 # --------------------------------------------------------------------------
 # Collect artifacts

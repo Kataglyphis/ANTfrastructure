@@ -48,8 +48,6 @@ ARG CUDA_MATH_LIBS_VERSION=${CUDA_VERSION_MAJOR_MINOR}
 
 ARG TARGETARCH
 
-LABEL org.opencontainers.image.title="Kataglyphis Toolchain NVIDIA" \
-      org.opencontainers.image.description="NVIDIA GPU library layer: CUDA, cuDNN, TensorRT, NCCL, math libs, NVTX"
 
 SHELL ["bash", "-lc"]
 
@@ -58,8 +56,8 @@ SHELL ["bash", "-lc"]
 #    cuda-keyring package sets up /etc/apt/sources.list.d/cuda-ubuntu2404-x86_64.list
 #    and installs the GPG key automatically.
 # ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
     ARCH="$(dpkg --print-architecture)"; \
     case "${ARCH}" in \
@@ -79,8 +77,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 #    Combined installation of CUDA Toolkit, cuDNN, TensorRT, NCCL, Math Libraries,
 #    and CUDA firmware to minimize image size and metadata overhead.
 # ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
     CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
     apt-get update -qq; \
@@ -154,3 +152,5 @@ RUN set -eux; \
     echo "--- CUDA libs ---"; \
     ldconfig -p | grep -E "libcublas|libcusparse|libcufft|libcudnn|libnvinfer|libnccl" | head -20 || true; \
     echo "NVIDIA layer verified."
+LABEL org.opencontainers.image.title="Kataglyphis Toolchain NVIDIA" \
+      org.opencontainers.image.description="NVIDIA GPU library layer: CUDA, cuDNN, TensorRT, NCCL, math libs, NVTX"

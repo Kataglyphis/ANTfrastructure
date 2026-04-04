@@ -8,16 +8,14 @@ ARG VULKAN_VERSION=1.4.341.1
 ARG TARGETARCH
 ARG TARGETPLATFORM
 
-LABEL org.opencontainers.image.title="Kataglyphis SDK"
-LABEL org.opencontainers.image.description="SDK layer with Vulkan on top of compiler toolchain"
 
 SHELL ["bash", "-lc"]
 
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup
 # ------------------------------------------------------------------------------
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan
@@ -40,12 +38,12 @@ ENV TVM_REF=${TVM_REF} \
     TVM_USE_VULKAN=${TVM_USE_VULKAN}
 
 # Uncomment below to enable TVM build
-# RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-#     --mount=type=cache,target=/var/lib/apt \
-#     --mount=type=cache,target=/var/cache/ccache \
-#     --mount=type=cache,target=/var/cache/sccache \
-#     --mount=type=cache,target=/root/.cache/uv \
-#     --mount=type=cache,target=/root/.cache/pip \
+# RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+#     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+#     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+#     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+#     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+#     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
 #     --mount=type=tmpfs,target=/tmp \
 #     set -eux; \
 #     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
@@ -58,3 +56,5 @@ ENV TVM_REF=${TVM_REF} \
 #         --ref "${TVM_REF}" \
 #         --build-type "${TVM_BUILD_TYPE}" \
 #         ${py_flag}
+LABEL org.opencontainers.image.title="Kataglyphis SDK"
+LABEL org.opencontainers.image.description="SDK layer with Vulkan on top of compiler toolchain"

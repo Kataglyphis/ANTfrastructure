@@ -13,43 +13,7 @@ echo "[INFO] Using JOBS=${NPROC}"
 echo "[INFO] Install prefix: ${LITERT_PREFIX}"
 
 install_dependencies() {
-    if [ "${SKIP_DEP_INSTALL}" = "true" ]; then
-        echo "[INFO] Skipping dependency installation (SKIP_DEP_INSTALL=true)"
-        return 0
-    fi
-
-    echo "[INFO] Installing build dependencies..."
-    apt-get update
-    apt-get install -y --no-install-recommends \
-        build-essential \
-        cmake \
-        git \
-        pkg-config \
-        curl \
-        unzip \
-        python3-dev \
-        gfortran \
-        libopenblas-dev \
-        liblapack-dev \
-        libatlas-base-dev \
-        ninja-build
-    rm -rf /var/lib/apt/lists/*
-
-    echo "[INFO] Setting up Python via uv venv..."
-    export PATH="${HOME}/.local/bin:${PATH}"
-    # Allow overriding python version for wheel builds. Set LITERT_PYTHON_VERSION
-    # env var to e.g. 3.14 to create a venv using that interpreter.
-    : "${LITERT_PYTHON_VERSION:=3.14}"
-    uv venv /opt/venv-litert --python "${LITERT_PYTHON_VERSION}"
-    source /opt/venv-litert/bin/activate
-
-    # Ensure pip/build tooling is up-to-date so numpy can build wheels when
-    # prebuilt wheels are not available for the target architecture (eg.
-    # riscv64). Installing cython/pybind11 helps avoid build failures when
-    # numpy needs to compile C extensions from source.
-    uv pip install --upgrade pip setuptools wheel
-    uv pip install cython pybind11
-    uv pip install numpy
+    echo "[INFO] Dependencies should be installed prior to running this script."
 }
 
 fetch_litert() {
@@ -65,10 +29,6 @@ fetch_litert() {
 
 configure_litert() {
     echo "[INFO] Configuring LiteRT build..."
-
-    if [ -f /opt/venv-litert/bin/activate ]; then
-        source /opt/venv-litert/bin/activate
-    fi
 
     cd "${LITERT_SRC}/litert"
 
@@ -134,7 +94,9 @@ install_litert() {
     mkdir -p "${LITERT_PREFIX}/wheels"
     if [ -f "${LITERT_SRC}/pyproject.toml" ] || [ -f "${LITERT_SRC}/setup.py" ] || [ -d "${LITERT_SRC}/python" ]; then
         echo "[INFO] Detected Python packaging in LiteRT source - attempting to build wheel"
-        if command -v python >/dev/null 2>&1; then
+        if command -v uv >/dev/null 2>&1; then
+            uv pip wheel -w "${LITERT_PREFIX}/wheels" "${LITERT_SRC}" || echo "[WARN] pip wheel failed for LiteRT source"
+        elif command -v python >/dev/null 2>&1; then
             python -m pip wheel -w "${LITERT_PREFIX}/wheels" "${LITERT_SRC}" || echo "[WARN] pip wheel failed for LiteRT source"
         else
             echo "[WARN] No python found in PATH to build LiteRT wheel"

@@ -1,34 +1,18 @@
 # syntax=docker/dockerfile:1.19
 FROM ghcr.io/kataglyphis/kataglyphis_beschleuniger:android
+
+ARG TARGETARCH
 SHELL ["bash", "-lc"]
 ENV VENV=/opt/venv
 
 # Initialize the venv
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    uv venv --python=3.13 "${VENV}"
+    uv venv --seed --python=3.14 "${VENV}"
 ENV VIRTUAL_ENV=${VENV}
 ENV PATH=${VENV}/bin:${PATH}
 ENV UV_LOCK_TIMEOUT=3600
 ENV PIP_DEFAULT_TIMEOUT=1200
 ENV UV_HTTP_TIMEOUT=1200
-
-# Define the version once
-ARG PYTHON_VERSION=3.13.12
-# Run the build using the variable
-RUN wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz -O /tmp/Python-${PYTHON_VERSION}.tgz \
-    && tar -xf /tmp/Python-${PYTHON_VERSION}.tgz -C /tmp \
-    && cd /tmp/Python-${PYTHON_VERSION} \
-    && ./configure --enable-shared --enable-optimizations --prefix=/usr/local \
-    && make -j$(nproc) \
-    && make altinstall \
-    # Add the lib path to the system linker
-    && echo "/usr/local/lib" > /etc/ld.so.conf.d/python-${PYTHON_VERSION}.conf \
-    && ldconfig \
-    # Clean up
-    && cd / \
-    && rm -rf /tmp/Python-${PYTHON_VERSION} /tmp/Python-${PYTHON_VERSION}.tgz \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \

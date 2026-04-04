@@ -23,47 +23,7 @@ echo "build-ffmpeg: src=${FFMPEG_SRC} prefix=${FFMPEG_PREFIX} buildtype=${BUILD_
 # Install build dependencies
 # ------------------------------------------------------------------------------
 install_dependencies() {
-    echo "Installing FFmpeg build dependencies..."
-    
-    if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update -y
-        sudo apt-get install -y --no-install-recommends \
-            autoconf \
-            automake \
-            build-essential \
-            cmake \
-            git \
-            libtool \
-            pkg-config \
-            texinfo \
-            wget \
-            yasm \
-            nasm \
-            libass-dev \
-            libfreetype6-dev \
-            libgnutls28-dev \
-            libmp3lame-dev \
-            libsdl2-dev \
-            libva-dev \
-            libvdpau-dev \
-            libvorbis-dev \
-            libxcb1-dev \
-            libxcb-shm0-dev \
-            libxcb-xfixes0-dev \
-            zlib1g-dev \
-            libx264-dev \
-            libx265-dev \
-            libnuma-dev \
-            libvpx-dev \
-            libfdk-aac-dev \
-            libopus-dev \
-            libaom-dev \
-            libdav1d-dev \
-            libsvtav1-dev \
-            libsvtav1enc-dev || true
-    else
-        echo "apt-get not found - ensure FFmpeg build deps are installed manually."
-    fi
+    echo "Dependencies should be installed prior to running this script."
 }
 
 # ------------------------------------------------------------------------------
