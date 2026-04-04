@@ -90,7 +90,7 @@ if echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
   echo "Skipping Csound APT install on TARGETARCH=${TARGETARCH:-unset}"
 else
   apt-get install -y --no-install-recommends \
-    csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound libcsound-dev || true
+    csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || true
 fi
 
 # NVIDIA
