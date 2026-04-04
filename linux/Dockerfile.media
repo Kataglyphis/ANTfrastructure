@@ -242,7 +242,7 @@ ENV PKG_CONFIG_PATH="${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LITERT_OUTPUT_DIR}/lib
 ENV LD_LIBRARY_PATH="${OPENCV_OUTPUT_DIR}/lib:${LITERT_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 
-COPY --chmod=755 linux/scripts/03-media/gstreamer/common /opt/scripts/media/gstreamer/common
+COPY --chmod=755 linux/scripts/03-media/gstreamer /opt/scripts/media/gstreamer
 COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
