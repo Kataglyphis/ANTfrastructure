@@ -105,12 +105,16 @@ install_litert() {
         export PYTHON="$(which python3)"
         if [ -n "${PYTHON}" ]; then
             echo "[INFO] Building wheel via build_pip_package_with_cmake.sh..."
-            # build_pip_package_with_cmake.sh copies setup_with_binary.py and 
-            # actually runs cmake natively to produce _pywrap_tensorflow_interpreter_wrapper.so
-            # Since we already built some things, this script might rebuild or we just let it.
-            # We must set TENSORFLOW_TARGET=native
+            # build_pip_package_with_cmake.sh uses these env vars to locate tensorflow/lite
+            export TENSORFLOW_DIR="${LITERT_SRC}"
+            export TENSORFLOW_LITE_DIR="${LITERT_SRC}/tflite"
             export TENSORFLOW_TARGET="native"
-            # It expects to write to out directory or gen directory. Let's just run it:
+            
+            # create missing directories if they don't exist so the script doesn't fail
+            mkdir -p "${LITERT_SRC}/tensorflow/lite/tools/pip_package"
+            mkdir -p "${LITERT_SRC}/tensorflow/lite/python"
+            
+            # run the script
             bash build_pip_package_with_cmake.sh native || echo "[WARN] pip wheel failed for LiteRT source"
             
             # The wheels are created in tflite/tools/pip_package/gen/tflite_pip/python3/dist/
