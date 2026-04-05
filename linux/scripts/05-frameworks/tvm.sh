@@ -538,7 +538,7 @@ main() {
     mkdir -p "$TVM_WHEEL_DIR"
     if [ -f "$tvm_dir/pyproject.toml" ] || [ -f "$tvm_dir/python/setup.py" ]; then
       log "Building TVM wheel into $TVM_WHEEL_DIR"
-      uv pip wheel -w "$TVM_WHEEL_DIR" "$tvm_dir/python" || log "Warning: TVM wheel build failed"
+      python3 -m pip wheel -w "$TVM_WHEEL_DIR" "$tvm_dir/python" || log "Warning: TVM wheel build failed"
     else
       log "TVM python package not detected for wheel build; skipped"
     fi

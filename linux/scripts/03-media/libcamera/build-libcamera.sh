@@ -158,7 +158,7 @@ setup(
 )
 EOF
   pushd "${WHEEL_DIR}" >/dev/null
-  uv pip wheel . -w "${LIBCAMERA_PREFIX}/wheels" || python3 -m pip wheel . -w "${LIBCAMERA_PREFIX}/wheels" || echo "Failed to build wheel"
+  python3 -m pip wheel . -w "${LIBCAMERA_PREFIX}/wheels" || echo "Failed to build wheel"
   popd >/dev/null
   rm -rf "${WHEEL_DIR}"
 else

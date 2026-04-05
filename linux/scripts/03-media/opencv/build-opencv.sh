@@ -308,18 +308,10 @@ install_opencv() {
                     echo "Could not find cv2 python directory to bundle into wheel. The wheel might be empty!"
                 fi
                 pushd "${OPENCV_SRC}/modules/python/package" >/dev/null
-                if command -v uv >/dev/null 2>&1; then
-                    uv pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
-                else
-                    ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
-                fi
+                ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
                 popd >/dev/null
             else
-                if command -v uv >/dev/null 2>&1; then
-                    uv pip wheel -w "${OPENCV_PREFIX}/wheels" "${OPENCV_SRC}" || echo "Could not wheel OpenCV via pip; wheel may not be available"
-                else
-                    ${PYEXEC} -m pip wheel -w "${OPENCV_PREFIX}/wheels" "${OPENCV_SRC}" || echo "Could not wheel OpenCV via pip; wheel may not be available"
-                fi
+                ${PYEXEC} -m pip wheel -w "${OPENCV_PREFIX}/wheels" "${OPENCV_SRC}" || echo "Could not wheel OpenCV via pip; wheel may not be available"
             fi
         else
             echo "No suitable python executable found to build OpenCV wheel"
