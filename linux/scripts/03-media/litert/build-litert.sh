@@ -92,17 +92,35 @@ install_litert() {
 
     # Try to build a Python wheel if the project exposes a Python package
     mkdir -p "${LITERT_PREFIX}/wheels"
-    if [ -f "${LITERT_SRC}/pyproject.toml" ] || [ -f "${LITERT_SRC}/setup.py" ] || [ -d "${LITERT_SRC}/python" ]; then
+    
+    local pip_pkg_dir="${LITERT_SRC}/tflite/tools/pip_package"
+    if [ -d "${pip_pkg_dir}" ]; then
         echo "[INFO] Detected Python packaging in LiteRT source - attempting to build wheel"
-        if command -v uv >/dev/null 2>&1; then
-            uv pip wheel -w "${LITERT_PREFIX}/wheels" "${LITERT_SRC}" || echo "[WARN] pip wheel failed for LiteRT source"
-        elif command -v python >/dev/null 2>&1; then
-            python -m pip wheel -w "${LITERT_PREFIX}/wheels" "${LITERT_SRC}" || echo "[WARN] pip wheel failed for LiteRT source"
+        
+        # We need to make sure the environment is set up for the pip package builder
+        pushd "${pip_pkg_dir}" > /dev/null
+        
+        # The Litert script build_pip_package_with_cmake.sh builds the wheel.
+        # It requires PYTHON environment variable
+        export PYTHON="$(which python3)"
+        if [ -n "${PYTHON}" ]; then
+            # We don't want to use their script directly because it tries to run cmake again
+            # We already built litert, let's just use the setup.py they provide
+            
+            # The setup_with_binary.py requires some specific directory structures
+            # We will use uv pip wheel if available
+            echo "[INFO] Attempting to wheel via pip..."
+            if command -v uv >/dev/null 2>&1; then
+                uv pip wheel . -w "${LITERT_PREFIX}/wheels" || echo "[WARN] pip wheel failed for LiteRT source"
+            else
+                ${PYTHON} -m pip wheel . -w "${LITERT_PREFIX}/wheels" || echo "[WARN] pip wheel failed for LiteRT source"
+            fi
         else
             echo "[WARN] No python found in PATH to build LiteRT wheel"
         fi
+        popd > /dev/null
     else
-        echo "[INFO] No Python packaging detected for LiteRT; skipping wheel build"
+        echo "[INFO] No Python packaging detected for LiteRT at ${pip_pkg_dir}; skipping wheel build"
     fi
 }
 
