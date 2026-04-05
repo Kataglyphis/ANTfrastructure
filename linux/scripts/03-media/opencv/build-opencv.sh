@@ -300,7 +300,13 @@ install_opencv() {
                 echo "Building python wheel from modules/python/package..."
                 export OPENCV_VERSION="${OPENCV_VERSION}"
                 # We need to copy the cv2 generated site-packages content so it bundles correctly
-                cp -r "${OPENCV_PREFIX}/lib/python${OPENCV_PYTHON_VERSION}/site-packages/cv2" "${OPENCV_SRC}/modules/python/package/" || true
+                CV2_DIR=$(find "${OPENCV_PREFIX}" -type d -name "cv2" -path "*/python*/cv2" | head -n 1)
+                if [ -n "${CV2_DIR}" ]; then
+                    echo "Found cv2 python bindings at: ${CV2_DIR}"
+                    cp -r "${CV2_DIR}" "${OPENCV_SRC}/modules/python/package/" || true
+                else
+                    echo "Could not find cv2 python directory to bundle into wheel. The wheel might be empty!"
+                fi
                 pushd "${OPENCV_SRC}/modules/python/package" >/dev/null
                 if command -v uv >/dev/null 2>&1; then
                     uv pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
