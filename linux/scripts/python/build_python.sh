@@ -8,7 +8,7 @@ echo "Building Python ${PYTHON_VERSION} from source..."
 wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "/tmp/Python-${PYTHON_VERSION}.tgz"
 tar -xf "/tmp/Python-${PYTHON_VERSION}.tgz" -C /tmp
 cd "/tmp/Python-${PYTHON_VERSION}"
-./configure --enable-shared --enable-optimizations --prefix=/usr/local
+./configure --enable-shared --enable-optimizations --prefix=/usr/local --disable-gil
 make -j$(nproc)
 make altinstall
 

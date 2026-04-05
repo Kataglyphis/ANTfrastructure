@@ -1,9 +1,11 @@
 # syntax=docker/dockerfile:1.19
 
 ARG ENABLE_NVIDIA=false
+ARG BASE_IMAGE=local/kataglyphis:media
+ARG BASE_IMAGE_NVIDIA=local/kataglyphis:media-nvidia
 
-FROM local/kataglyphis:media AS base-false
-FROM local/kataglyphis:media-nvidia AS base-true
+FROM ${BASE_IMAGE} AS base-false
+FROM ${BASE_IMAGE_NVIDIA} AS base-true
 
 FROM base-${ENABLE_NVIDIA}
 

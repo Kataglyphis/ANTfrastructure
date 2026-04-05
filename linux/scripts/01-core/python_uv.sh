@@ -30,7 +30,7 @@ source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" 
 # the PYTHON_VERSION env var in build scripts.
 declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14 3.14t}"
 # Make Python 3.14 the default interpreter used when callers don't specify one.
-declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.14}"
+declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.14t}"
 declare -g _CURRENT_VENV_PATH=""
 
 timestamp() {

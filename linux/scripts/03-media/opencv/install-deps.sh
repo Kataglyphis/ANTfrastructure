@@ -3,7 +3,7 @@ set -euo pipefail
 
 : "${WITH_PYTHON:=true}"
 : "${WITH_JAVA:=false}"
-: "${OPENCV_PYTHON_VERSION:=3.14}"
+: "${OPENCV_PYTHON_VERSION:=3.14t}"
 
 echo "Installing OpenCV build dependencies..."
 
