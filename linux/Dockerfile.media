@@ -341,6 +341,12 @@ COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTP
 # For multistage we need to be careful as the GPU output dir might not exist.
 # A safe way is to copy wildcards or use a dedicated intermediate.
 COPY --from=onnxruntime /usr/local/lib/onnxruntime-gp[u] /usr/local/lib/onnxruntime-gpu/
+# Handle potential nested directory from wildcard copy
+RUN set -eux; \
+    if [ -d "/usr/local/lib/onnxruntime-gpu/onnxruntime-gpu" ]; then \
+        mv /usr/local/lib/onnxruntime-gpu/onnxruntime-gpu/* /usr/local/lib/onnxruntime-gpu/ || true; \
+        rm -rf /usr/local/lib/onnxruntime-gpu/onnxruntime-gpu; \
+    fi
 
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
