@@ -104,17 +104,17 @@ install_litert() {
         # It requires PYTHON environment variable
         export PYTHON="$(which python3)"
         if [ -n "${PYTHON}" ]; then
-            # We don't want to use their script directly because it tries to run cmake again
-            # We already built litert, let's just use the setup.py they provide
+            echo "[INFO] Building wheel via build_pip_package_with_cmake.sh..."
+            # build_pip_package_with_cmake.sh copies setup_with_binary.py and 
+            # actually runs cmake natively to produce _pywrap_tensorflow_interpreter_wrapper.so
+            # Since we already built some things, this script might rebuild or we just let it.
+            # We must set TENSORFLOW_TARGET=native
+            export TENSORFLOW_TARGET="native"
+            # It expects to write to out directory or gen directory. Let's just run it:
+            bash build_pip_package_with_cmake.sh native || echo "[WARN] pip wheel failed for LiteRT source"
             
-            # The setup_with_binary.py requires some specific directory structures
-            # We will use uv pip wheel if available
-            echo "[INFO] Attempting to wheel via pip..."
-            if command -v uv >/dev/null 2>&1; then
-                uv pip wheel . -w "${LITERT_PREFIX}/wheels" || echo "[WARN] pip wheel failed for LiteRT source"
-            else
-                ${PYTHON} -m pip wheel . -w "${LITERT_PREFIX}/wheels" || echo "[WARN] pip wheel failed for LiteRT source"
-            fi
+            # The wheels are created in tflite/tools/pip_package/gen/tflite_pip/python3/dist/
+            find "gen/tflite_pip" -name "*.whl" -type f -exec cp -v {} "${LITERT_PREFIX}/wheels/" \; 2>/dev/null || echo "[WARN] No wheels found after build script"
         else
             echo "[WARN] No python found in PATH to build LiteRT wheel"
         fi
