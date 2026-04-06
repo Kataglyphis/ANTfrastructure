@@ -118,6 +118,9 @@ install_litert() {
             sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
             sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
             
+            # fix cmake policy error
+            sed -i 's|cmake "${TENSORFLOW_LITE_DIR}"|cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "${TENSORFLOW_LITE_DIR}"|g' build_pip_package_with_cmake.sh
+            
             # run the script
             bash build_pip_package_with_cmake.sh native || echo "[WARN] pip wheel failed for LiteRT source"
             
