@@ -114,6 +114,10 @@ install_litert() {
             mkdir -p "${LITERT_SRC}/tensorflow"
             ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
             
+            # fix build_pip_package_with_cmake.sh path resolution and version
+            sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
+            sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
+            
             # run the script
             bash build_pip_package_with_cmake.sh native || echo "[WARN] pip wheel failed for LiteRT source"
             
