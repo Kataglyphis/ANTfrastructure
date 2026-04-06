@@ -118,9 +118,14 @@ install_litert() {
             sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
             sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
             
-            # fix cmake policy error
-            sed -i 's|cmake "${TENSORFLOW_LITE_DIR}"|cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "${TENSORFLOW_LITE_DIR}"|g' build_pip_package_with_cmake.sh
-            sed -i 's|cmake \\|cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \\|g' build_pip_package_with_cmake.sh
+            # fix cmake policy error and inject required flags to match main build
+            local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON"
+            
+            sed -i "s|cmake \"\${TENSORFLOW_LITE_DIR}\"|cmake ${extra_cmake_flags} \"\${TENSORFLOW_LITE_DIR}\"|g" build_pip_package_with_cmake.sh
+            sed -i "s|cmake \\\\|cmake ${extra_cmake_flags} \\\\|g" build_pip_package_with_cmake.sh
+            
+            # remove -march=native from build flags to avoid multi-arch issues
+            sed -i 's|-march=native ||g' build_pip_package_with_cmake.sh
             
             # run the script
             bash build_pip_package_with_cmake.sh native > pip_build.log 2>&1 || {
