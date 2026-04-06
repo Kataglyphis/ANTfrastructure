@@ -110,9 +110,9 @@ install_litert() {
             export TENSORFLOW_LITE_DIR="${LITERT_SRC}/tflite"
             export TENSORFLOW_TARGET="native"
             
-            # create missing directories if they don't exist so the script doesn't fail
-            mkdir -p "${LITERT_SRC}/tensorflow/lite/tools/pip_package"
-            mkdir -p "${LITERT_SRC}/tensorflow/lite/python"
+            # create missing directories and symlinks to satisfy hardcoded paths in pip script
+            mkdir -p "${LITERT_SRC}/tensorflow"
+            ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
             
             # run the script
             bash build_pip_package_with_cmake.sh native || echo "[WARN] pip wheel failed for LiteRT source"

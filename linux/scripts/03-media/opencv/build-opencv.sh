@@ -81,13 +81,6 @@ done
 echo "build-opencv: version=${OPENCV_VERSION} prefix=${OPENCV_PREFIX} buildtype=${BUILD_TYPE}"
 
 # ------------------------------------------------------------------------------
-# Install build dependencies
-# ------------------------------------------------------------------------------
-install_dependencies() {
-    echo "Dependencies should be installed prior to running this script."
-}
-
-# ------------------------------------------------------------------------------
 # Fetch OpenCV source
 # ------------------------------------------------------------------------------
 fetch_opencv() {
@@ -198,6 +191,11 @@ configure_opencv() {
     if [ "${WITH_PYTHON}" = "true" ]; then
         PY_EXEC="$(which python3)"
         cmake_opts+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
+        # Explicitly set library and include paths since FindPython3 might not find free-threaded (t) libraries
+        if [ -f "/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so" ]; then
+            cmake_opts+=("-DPYTHON3_LIBRARY=/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so")
+            cmake_opts+=("-DPYTHON3_INCLUDE_DIR=/usr/local/include/python${OPENCV_PYTHON_VERSION}")
+        fi
     fi
     
     # Java bindings
@@ -234,56 +232,36 @@ install_opencv() {
     local build_dir="${OPENCV_SRC}/build"
     cd "${build_dir}"
     
+    SUDO_CMD=""
     if [ "$EUID" -ne 0 ]; then
         if command -v sudo >/dev/null 2>&1; then
-            sudo make install
+            SUDO_CMD="sudo"
         else
             echo "Not root and sudo missing - cannot install; exiting"
             exit 1
         fi
-    else
-        make install
-    fi
-    
-    # Update ld cache
-    if command -v sudo >/dev/null 2>&1; then
-        sudo ldconfig || true
-    else
-        ldconfig || true
     fi
 
-    # Some packaging environments install versioned .so files without the
-    # unversioned symlink (libopencv_tracking.so). Create a symlink if the
-    # versioned library exists but the unversioned name is missing so downstream
-    # linkers can find the library via -lopencv_tracking.
+    ${SUDO_CMD} make install
+    ${SUDO_CMD} ldconfig || true
+
     # Ensure unversioned symlinks exist for contrib libraries (search lib and lib64)
-    # Use sudo when available so this works whether the script ran as root or
-    # invoked via sudo during `make install`.
-    SUDO=""
-    if command -v sudo >/dev/null 2>&1; then
-        SUDO=sudo
-    fi
-
     for libdir in "${OPENCV_PREFIX}/lib" "${OPENCV_PREFIX}/lib64"; do
         if [ -d "${libdir}" ]; then
-            pushd "${libdir}" >/dev/null 2>&1 || true
-            # Find any libopencv_tracking shared object (versioned or unversioned).
-            candidate="$(ls -1 libopencv_tracking.so* 2>/dev/null | head -n1 || true)"
-            if [ -n "${candidate}" ]; then
-                if [ ! -e libopencv_tracking.so ]; then
-                    echo "Creating symlink ${libdir}/libopencv_tracking.so -> ${candidate}"
-                    ${SUDO} ln -sf "${candidate}" libopencv_tracking.so || true
-                fi
+            local candidate
+            candidate=$(find "${libdir}" -maxdepth 1 -name "libopencv_tracking.so*" | head -n 1)
+            if [ -n "${candidate}" ] && [ ! -e "${libdir}/libopencv_tracking.so" ]; then
+                echo "Creating symlink ${libdir}/libopencv_tracking.so -> ${candidate}"
+                ${SUDO_CMD} ln -sf "$(basename "${candidate}")" "${libdir}/libopencv_tracking.so" || true
             fi
-            popd >/dev/null 2>&1 || true
         fi
     done
 
     # Sanity-check: fail early if tracking library is still missing
     if ! (ls "${OPENCV_PREFIX}/lib/libopencv_tracking.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_tracking.so" >/dev/null 2>&1); then
         echo "ERROR: libopencv_tracking was not found after install. Listing installed libs for debugging:"
-        ${SUDO} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
-        ${SUDO} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
+        ${SUDO_CMD} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
+        ${SUDO_CMD} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
         echo "Failing build so the image build doesn't continue with a broken OpenCV install."
         exit 1
     fi
@@ -294,12 +272,10 @@ install_opencv() {
         echo "Attempting to create OpenCV wheel using the selected Python"
         PYEXEC="$(which python3)"
         if [ -n "${PYEXEC}" ]; then
-            # The OpenCV cmake build doesn't natively support running `pip wheel` directly on the source tree
-            # However, the python loader provides a package we can wheel if we copy it to a standalone directory
             if [ -f "${OPENCV_SRC}/modules/python/package/setup.py" ]; then
                 echo "Building python wheel from modules/python/package..."
-                export OPENCV_VERSION="${OPENCV_VERSION}"
-                # We need to copy the cv2 generated site-packages content so it bundles correctly
+                export OPENCV_VERSION="$(pkg-config --modversion opencv4 2>/dev/null || echo 4.10.0)"
+                
                 CV2_DIR=$(find "${OPENCV_PREFIX}" -type d -name "cv2" -path "*/python*/cv2" | head -n 1)
                 if [ -n "${CV2_DIR}" ]; then
                     echo "Found cv2 python bindings at: ${CV2_DIR}"
@@ -307,9 +283,20 @@ install_opencv() {
                 else
                     echo "Could not find cv2 python directory to bundle into wheel. The wheel might be empty!"
                 fi
+                
                 pushd "${OPENCV_SRC}/modules/python/package" >/dev/null
                 ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
                 popd >/dev/null
+
+                # Fix the wheel tags to match the current Python interpreter
+                local wheel_file
+                wheel_file=$(ls "${OPENCV_PREFIX}/wheels/"*opencv*"-py3-none-any.whl" 2>/dev/null | head -n 1 || true)
+                if [ -n "${wheel_file}" ]; then
+                    echo "Retagging wheel ${wheel_file} to match platform/ABI..."
+                    local tags
+                    tags=$(${PYEXEC} -c "import packaging.tags; t=next(packaging.tags.sys_tags()); print(f'--python-tag {t.interpreter} --abi-tag {t.abi} --platform-tag {t.platform}')")
+                    ${PYEXEC} -m wheel tags "${wheel_file}" ${tags} --remove || true
+                fi
             else
                 ${PYEXEC} -m pip wheel -w "${OPENCV_PREFIX}/wheels" "${OPENCV_SRC}" || echo "Could not wheel OpenCV via pip; wheel may not be available"
             fi
@@ -331,12 +318,18 @@ cleanup() {
 # Main
 # ------------------------------------------------------------------------------
 main() {
-    install_dependencies
     fetch_opencv
     configure_opencv
     build_opencv
     install_opencv
     cleanup
+    
+    # Validation step
+    pkg-config --exists opencv4 && echo "OpenCV found via pkg-config: $(pkg-config --modversion opencv4)" || {
+        echo "ERROR: OpenCV not found via pkg-config"
+        echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-}"
+        exit 1
+    }
     
     echo "OpenCV ${OPENCV_VERSION} installed successfully to ${OPENCV_PREFIX}"
     echo "Libraries:"
@@ -350,10 +343,3 @@ main() {
 }
 
 main "$@"
-
-# Validation step
-pkg-config --exists opencv4 && echo "OpenCV found: $(pkg-config --modversion opencv4)" || {
-    echo "ERROR: OpenCV not found via pkg-config"
-    echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
-    exit 1
-}
