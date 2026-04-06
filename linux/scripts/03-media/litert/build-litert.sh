@@ -120,9 +120,18 @@ install_litert() {
             
             # fix cmake policy error
             sed -i 's|cmake "${TENSORFLOW_LITE_DIR}"|cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "${TENSORFLOW_LITE_DIR}"|g' build_pip_package_with_cmake.sh
+            sed -i 's|cmake \\|cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \\|g' build_pip_package_with_cmake.sh
             
             # run the script
-            bash build_pip_package_with_cmake.sh native || echo "[WARN] pip wheel failed for LiteRT source"
+            bash build_pip_package_with_cmake.sh native > pip_build.log 2>&1 || {
+                echo "[WARN] pip wheel failed for LiteRT source. Last 1000 lines of log:"
+                tail -n 1000 pip_build.log
+                exit 1
+            }
+            
+            # Print the log if it succeeds so we can debug anyway!
+            echo "[INFO] pip wheel success! Last 50 lines of log:"
+            tail -n 50 pip_build.log
             
             # The wheels are created in tflite/tools/pip_package/gen/tflite_pip/python3/dist/
             find "gen/tflite_pip" -name "*.whl" -type f -exec cp -v {} "${LITERT_PREFIX}/wheels/" \; 2>/dev/null || echo "[WARN] No wheels found after build script"
