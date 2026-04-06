@@ -14,7 +14,7 @@ set -euo pipefail
 # ==============================================================================
 
 # Defaults (can be overridden via env vars or arguments)
-: "${OPENCV_VERSION:=4.13.0}"
+: "${OPENCV_VERSION:=4.x}"
 : "${OPENCV_SRC:=/tmp/opencv}"
 : "${OPENCV_PREFIX:=/opt/opencv}"
 : "${OPENCV_REPO:=https://github.com/opencv/opencv.git}"
@@ -23,7 +23,7 @@ set -euo pipefail
 : "${NPROC:=$(nproc)}"
 : "${WITH_CONTRIB:=true}"
 : "${WITH_PYTHON:=true}"
-: "${OPENCV_PYTHON_VERSION:=3.14}"
+: "${OPENCV_PYTHON_VERSION:=3.14t}"
 : "${WITH_JAVA:=false}"
 : "${SKIP_DEP_INSTALL:=false}"
 : "${WITH_IPP:=ON}"
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
-            echo "  --opencv-version VERSION  OpenCV version to build (default: 4.13.0)"
+            echo "  --opencv-version VERSION  OpenCV version to build (default: 4.x)"
             echo "  --prefix PATH             Installation prefix (default: /opt/opencv)"
             echo "  --build-type TYPE         Build type: Release/Debug (default: Release)"
             echo "  --with-contrib BOOL       Build with contrib modules (default: true)"

@@ -17,7 +17,7 @@ detect_jobs
 sudo apt-get update && sudo apt-get install -y libgcc-s1
 
 # Create Python virtual environment with uv
-: "${ORT_PYTHON_VERSION:=3.14}"
+: "${ORT_PYTHON_VERSION:=3.14t}"
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 
 # Install Python build dependencies with uv

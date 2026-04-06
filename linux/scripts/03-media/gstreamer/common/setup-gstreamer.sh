@@ -26,8 +26,10 @@ append_meson_arg() {
 # If neither is provided, enable all gst-plugins-rs auto features and disable
 # the plugins that are known to cause trouble.
 if [ -n "${MESON_ARGS:-}" ]; then
+  :
   EXTRA_MESON_ARGS="${MESON_ARGS}"
 elif [ -z "${EXTRA_MESON_ARGS}" ]; then
+  :
   EXTRA_MESON_ARGS="-Dgst-plugins-rs:auto_plugin_features=enabled \
     -Dgst-plugins-rs:burn=disabled \
     -Dgst-plugins-rs:sodium-source=built-in"
@@ -47,8 +49,10 @@ export PATH="${HOME}/.local/bin:${PATH}"
 # set the gst paths accordingly
 # Prefer the installed helper if available, otherwise source relative to this script
 if [ -f /usr/local/bin/gstreamer-env.sh ]; then
+  :
   source /usr/local/bin/gstreamer-env.sh
 else
+  :
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/media/* subfolders
   source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
@@ -118,14 +122,7 @@ apt_package_exists() {
 # Install broad dependency set to enable most plugins
 # ------------------------------------------------------------------------------
 
-  build-essential g++ \
-  libc++-dev libc++abi-dev \
-  flex bison \
-  libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
-  libcairo2-dev \
-  libjson-glib-dev python3-gi python3-gi-cairo python-gi-dev \
-  libgsl-dev libdw-dev libnsl-dev gobject-introspection \
-  libgtk-4-dev
+
 
 # Force removal of any versioned libunwind to avoid conflicts, then install generic
 
@@ -137,8 +134,10 @@ CODENAME=$(lsb_release -sc)
 
 # Ensure xmllint is available (used by meson/xml preprocessing); small package
 if ! apt_package_exists libxml2-utils; then
+  :
   echo "libxml2-utils not available in APT lists; will continue without xmllint"
 else
+  :
   
 fi
 
@@ -147,97 +146,99 @@ fi
 
 # Audio I/O and DSP
 
-  libasound2-dev libpulse-dev libjack-dev libpipewire-0.3-dev \
-  libsndfile1-dev libsamplerate0-dev
+
 
 # Video capture / devices
 
-  libv4l-dev libusb-1.0-0-dev libdc1394-dev libraw1394-dev \
-  libcdio-dev libcdparanoia-dev
+
 
 # Graphics stacks (X11/Wayland/OpenGL/EGL/GLES/DRM/VA)
 
-  libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxrandr-dev libxv-dev \
-  libwayland-dev wayland-protocols libxkbcommon-dev \
-  libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libglu1-mesa-dev \
-  libdrm-dev libgbm-dev libva-dev \
-  libudev-dev
+
 
 # Images / formats
 
-  libjpeg-dev libpng-dev libtiff-dev libwebp-dev
+
 
 # Install OpenEXR development headers: prefer libopenexr-3-dev when present,
 # otherwise fall back to libopenexr-dev if available.
 if apt_package_exists libopenexr-3-dev; then
+  :
   
 elif apt_package_exists libopenexr-dev; then
+  :
   
 else
+  :
   echo "Warning: no libopenexr-* package found in APT; continuing without explicit OpenEXR dev package"
 fi
 
 # VVdeC / vvdec dependency for gst-plugins-rs vvdec plugin
 # Keep the plugin enabled and install the system package instead.
 if apt_package_exists libvvdec-dev; then
+  :
   
 else
+  :
   echo "Warning: libvvdec-dev not found in APT; vvdec plugin stays enabled, but Meson may fail unless the package is available in your Ubuntu repositories."
 fi
 
 # Codecs (audio)
 
-  libogg-dev libvorbis-dev libtheora-dev libopus-dev libflac-dev \
-  libmpg123-dev libmp3lame-dev libtwolame-dev libspeex-dev libspeexdsp-dev \
-  libwavpack-dev libgsm1-dev
+
 
 # Codecs (video)
 
-  libvpx-dev libaom-dev libdav1d-dev \
-  libx264-dev libx265-dev libopenh264-dev \
-  libsvtav1-dev || true
+
 
 # FFmpeg (for gst-libav)
 
-  libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev \
-  libswscale-dev libswresample-dev
+
 
 # Networking / RTP / WebRTC / crypto
 
-  libsoup-3.0-dev libcurl4-openssl-dev libxml2-dev \
-  zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
-  libsrtp2-dev libnice-dev libssl-dev libusrsctp-dev || true
+
 
 # NVIDIA codec headers (enable nvcodec plugin)
 # Only install if NVIDIA GPU present OR explicitly requested via env var
 # Note: lspci won't work in Docker builds, so check /dev/dri or NVIDIA env vars
 NVIDIA_GPU="${NVIDIA_CODEC_HEADERS:-auto}"
 if [ "${NVIDIA_GPU}" = "auto" ]; then
+  :
   if lspci 2>/dev/null | grep -qi nvidia; then
+  :
     NVIDIA_GPU="yes"
   elif [ -d /dev/dri ] && ls /dev/dri/card* 2>/dev/null | head -1 | xargs -r cat 2>/dev/null | grep -q NVIDIA; then
+  :
     NVIDIA_GPU="yes"
   elif [ -n "${NVIDIA_DRIVER_CAPABILITIES:-}" ] || [ -n "${NVIDIA_VISIBLE_DEVICES:-}" ]; then
+  :
     NVIDIA_GPU="yes"
   else
+  :
     NVIDIA_GPU="no"
   fi
 fi
 
 if [ "${NVIDIA_GPU}" = "yes" ]; then
+  :
   # Prefer package if available, otherwise fall back to upstream repo
   if apt_package_exists nv-codec-headers; then
+  :
     
   else
+  :
     echo "nv-codec-headers not present in APT; falling back to building and installing from source"
   fi
 
   if ! pkg-config --exists nv-codec-headers 2>/dev/null; then
+  :
     git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers
     make -C /tmp/nv-codec-headers install
     sudo rm -rf /tmp/nv-codec-headers
   fi
 else
+  :
   echo "No NVIDIA GPU detected, skipping nv-codec-headers installation"
 fi
 
@@ -250,6 +251,7 @@ fi
 # resolve correctly. Place this before libcamera/build steps so downstream
 # builds (e.g. libcamera) see the expected headers.
 if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then
+  :
   echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"
   sudo ln -s /usr/local/include/tflite /usr/local/include/tensorflow || true
 fi
@@ -285,6 +287,7 @@ EXTRA_MESON_ARGS="${4:-}"
 # well. This allows callers to export MESON_ARGS or pass a fourth positional
 # argument; MESON_ARGS takes precedence.
 if [ -n "${MESON_ARGS:-}" ]; then
+  :
   EXTRA_MESON_ARGS="${MESON_ARGS}"
 fi
 
@@ -311,6 +314,7 @@ cd "${BUILD_DIR}"
 sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true
 
 if [ -d "gstreamer" ]; then
+  :
   echo "Updating existing GStreamer repository..."
   cd gstreamer
   git fetch origin
@@ -319,6 +323,7 @@ if [ -d "gstreamer" ]; then
     exit 1
   }
 else
+  :
   echo "Cloning GStreamer repository..."
   git clone --depth 1 --branch "${GSTREAMER_VERSION}" https://github.com/GStreamer/gstreamer.git || {
     echo "ERROR: Failed to clone GStreamer repository"
@@ -402,9 +407,11 @@ dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
 # Some base images omit this which makes pkg-config unable to find xproto/cairo
 DEB_HOST_MULTIARCH_DIR="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
 if [ -n "${DEB_HOST_MULTIARCH_DIR}" ]; then
+  :
   SYS_PKGCONF_DIR="/usr/lib/${DEB_HOST_MULTIARCH_DIR}/pkgconfig"
   export CSOUND_LIB_DIR="/usr/lib/${DEB_HOST_MULTIARCH_DIR}"
 else
+  :
   SYS_PKGCONF_DIR="/usr/lib/pkgconfig"
   export CSOUND_LIB_DIR="/usr/lib"
 fi
@@ -416,6 +423,7 @@ export PKG_CONFIG_LIBDIR
 # when present so pkg-config can find xproto/cairo/etc even when PKG_CONFIG_LIBDIR
 # is set (PKG_CONFIG_LIBDIR overrides pkg-config defaults).
 if [ -d /usr/share/pkgconfig ]; then
+  :
   PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:/usr/share/pkgconfig"
   export PKG_CONFIG_LIBDIR
 fi
@@ -439,13 +447,16 @@ pkg-config --cflags --libs cairo 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt ||
 # defaults which often include /usr/share/pkgconfig). If that succeeds, use
 # the fallback for subsequent Meson setup.
 if ! pkg-config --exists cairo 2>/dev/null; then
+  :
   echo "cairo not found with PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}' — trying fallback by unsetting PKG_CONFIG_LIBDIR" | tee -a /tmp/gstreamer-cairo-debug.txt || true
   if env -u PKG_CONFIG_LIBDIR pkg-config --exists cairo 2>/dev/null; then
+  :
     echo "Fallback: cairo found after unsetting PKG_CONFIG_LIBDIR; proceeding using fallback search paths" | tee -a /tmp/gstreamer-cairo-debug.txt || true
     # Unset for the rest of the script so Meson will see the cairo pkg-config
     unset PKG_CONFIG_LIBDIR
     export PKG_CONFIG_LIBDIR=""
   else
+  :
     echo "Fallback also failed: cairo still not found" | tee -a /tmp/gstreamer-cairo-debug.txt || true
   fi
 fi
@@ -453,6 +464,7 @@ echo "--- end cairo debug ---" | tee -a /tmp/gstreamer-cairo-debug.txt
 
 # Run meson setup and capture full output
 if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
+  :
   echo "Meson setup failed; printing verbose output..."
   uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1 || true
 fi
@@ -478,13 +490,16 @@ MAX_BY_MEM=$(( AVAIL_MB / PER_JOB_MB ))
 
 # JOBS = min(CORES, MAX_BY_MEM)
 if [ "$CORES" -lt "$MAX_BY_MEM" ]; then
+  :
   JOBS=$CORES
 else
+  :
   JOBS=$MAX_BY_MEM
 fi
 
 # Reserve one core for system if possible
 if [ "$JOBS" -gt 1 ]; then
+  :
   JOBS=$((JOBS - 1))
 fi
 
@@ -496,6 +511,7 @@ echo "Using JOBS=$JOBS (cores=$CORES, avail_mb=${AVAIL_MB}, per_job_mb=${PER_JOB
 
 echo "Compiling GStreamer..."
 if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
+  :
   echo "ERROR: Meson compile failed"
   echo "==> Letzte Zeilen der Compile-Logs:"
   tail -n 20000 /tmp/meson-compile.log || true
@@ -507,6 +523,7 @@ fi
 
 echo "Installing GStreamer..."
 if ! uv run meson install -C builddir; then
+  :
   echo "ERROR: Meson install failed"
   echo "==> Meson log:"
   tail -n +1 builddir/meson-logs/meson-log.txt || true
@@ -520,25 +537,31 @@ fi
 # --------------------------------------------------------------------
 # Ensure GStreamer is discoverable for cargo builds
 if [ -d "${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig" ]; then
+  :
   export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
   export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
 elif [ -d "${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu/pkgconfig" ]; then
+  :
   export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
   export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}"
 elif [ -d "${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu/pkgconfig" ]; then
+  :
   export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
   export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu:${LD_LIBRARY_PATH:-}"
 else
+  :
   export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
   export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 fi
 
 PLUGIN_RS_DIR="/opt/gst-plugins-rs"
 if [ -d "${PLUGIN_RS_DIR}" ]; then
+  :
   cd "${PLUGIN_RS_DIR}"
   git fetch origin --tags
   git checkout "gstreamer-${GSTREAMER_VERSION}"
 else
+  :
   sudo mkdir -p "${PLUGIN_RS_DIR}"
   sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
   git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${PLUGIN_RS_DIR}"
@@ -558,11 +581,14 @@ RUST_AVAIL_MB="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo
 RUST_MAX_BY_MEM=$(( RUST_AVAIL_MB / RUST_PER_JOB_MB ))
 [ "${RUST_MAX_BY_MEM}" -lt 1 ] && RUST_MAX_BY_MEM=1
 if [ "${RUST_CORES}" -lt "${RUST_MAX_BY_MEM}" ]; then
+  :
   RUST_JOBS="${RUST_CORES}"
 else
+  :
   RUST_JOBS="${RUST_MAX_BY_MEM}"
 fi
 if [ "${RUST_JOBS}" -gt 1 ]; then
+  :
   RUST_JOBS=$((RUST_JOBS - 1))
 fi
 [ "${RUST_JOBS}" -lt 1 ] && RUST_JOBS=1
@@ -579,37 +605,42 @@ cd "${PLUGIN_RS_DIR}"
 # abort the entire build.
 run_as_root() {
   if [ "$(id -u)" -eq 0 ]; then
+  :
     "$@"
     return $?
   fi
   if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  :
     sudo "$@"
     return $?
   fi
   return 2
 }
 
-if command -v 
+if false; then
+  :
   # Check if architecture shouldn't build Csound
   ARCH_FOR_APT="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
   if echo "${ARCH_FOR_APT}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
+  :
     echo "Skipping Csound APT install on ARM/RISC-V architecture."
   else
+  :
     echo "Attempting to install Csound development packages via APT..."
-    run_as_root 
-    # Install user-facing csound packages and development headers that cargo
+        # Install user-facing csound packages and development headers that cargo
     # crates expect (installing several common package names to cover
     # distribution differences).
-    run_as_root 
-      csound csound-utils libcsound64 libcsound64-dev libcsound-dev pd-csound || true
-
+    
     if pkg-config --exists csound 2>/dev/null; then
+  :
       echo "libcsound detected via pkg-config after install: building all workspace members"
     else
+  :
       echo "Warning: libcsound pkg-config not available after APT install; csound-related crates may fail to build." >&2
     fi
   fi
 else
+  :
   echo "APT not available: skipping automatic Csound installation. If you need csound-related plugins, please install the libcsound development package." >&2
 fi
 
@@ -621,6 +652,7 @@ DEFAULT_EXCLUDES=(--exclude gst-plugin-burn)
 # we don't accidentally miss a Docker/CI context that sets one but not others.
 ARCH_FOR_EXCLUDES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
 if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
+  :
   DEFAULT_EXCLUDES+=(--exclude gst-plugin-csound --exclude csound --exclude csound-sys)
   echo "Host arch detected in (${ARCH_FOR_EXCLUDES}): added csound-related excludes to DEFAULT_EXCLUDES"
 fi
@@ -637,8 +669,10 @@ BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
 # build contexts sometimes set TARGETARCH or use different uname values.
 ARCH_PROBES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
 if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
+  :
   echo "Host arch detected in (${ARCH_PROBES}): excluding csound-related workspace crates from cargo build"
   if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+  :
     CS_PKG_NAMES=$(python3 - <<'PY'
 import sys, json
 try:
@@ -650,11 +684,13 @@ except Exception:
 PY
 )
     if [ -n "${CS_PKG_NAMES}" ]; then
+  :
       for n in ${CS_PKG_NAMES}; do
         BUILD_CMD+=(--exclude "${n}")
       done
       echo "Excluding csound packages: ${CS_PKG_NAMES}"
     else
+  :
       # Fallback to likely crate names
       BUILD_CMD+=(--exclude gst-plugin-csound)
       BUILD_CMD+=(--exclude csound)
@@ -662,6 +698,7 @@ PY
       echo "No csound package names found via cargo metadata; excluding gst-plugin-csound, csound and csound-sys"
     fi
   else
+  :
     BUILD_CMD+=(--exclude gst-plugin-csound)
     BUILD_CMD+=(--exclude csound)
     BUILD_CMD+=(--exclude csound-sys)
@@ -674,8 +711,10 @@ fi
 # toolchain helpers like fetch-gn). This mirrors the meson configuration and
 # prevents cargo from attempting to build skia when the meson plugin is off.
 if echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
+  :
   echo "skia disabled via Meson args: excluding skia-related workspace crates from cargo build"
   if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+  :
     SKIA_PKG_NAMES=$(python3 - <<'PY'
 import sys, json
 try:
@@ -687,17 +726,20 @@ except Exception:
 PY
 )
     if [ -n "${SKIA_PKG_NAMES}" ]; then
+  :
       for n in ${SKIA_PKG_NAMES}; do
         BUILD_CMD+=(--exclude "${n}")
       done
       echo "Excluding skia packages: ${SKIA_PKG_NAMES}"
     else
+  :
       # Fallback to a likely crate name used historically
       BUILD_CMD+=(--exclude gst-plugin-skia)
       BUILD_CMD+=(--exclude gst-plugin-skia-sys)
       echo "No skia package names found via cargo metadata; excluding gst-plugin-skia and gst-plugin-skia-sys"
     fi
   else
+  :
     BUILD_CMD+=(--exclude gst-plugin-skia)
     BUILD_CMD+=(--exclude gst-plugin-skia-sys)
     echo "cargo metadata unavailable; excluding gst-plugin-skia and gst-plugin-skia-sys by default"
@@ -709,9 +751,12 @@ fi
 # fail on some ARM and RISC-V toolchains in release mode, so exclude it
 # proactively for stability.
 if [ "${BUILD_TYPE_LOWER}" = "release" ]; then
+  :
   if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
+  :
     echo "Release build on ARM/RISC-V detected in (${ARCH_PROBES}): excluding whisper-related workspace crates from cargo build"
     if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+  :
       WHISPER_PKG_NAMES=$(python3 - <<'PY'
 import sys, json
 try:
@@ -723,16 +768,19 @@ except Exception:
 PY
 )
       if [ -n "${WHISPER_PKG_NAMES}" ]; then
+  :
         for n in ${WHISPER_PKG_NAMES}; do
           BUILD_CMD+=(--exclude "${n}")
         done
         echo "Excluding whisper packages: ${WHISPER_PKG_NAMES}"
       else
+  :
         # Fallback to a likely crate name
         BUILD_CMD+=(--exclude gst-plugin-whisper)
         echo "No whisper package names found via cargo metadata; excluding gst-plugin-whisper"
       fi
     else
+  :
       BUILD_CMD+=(--exclude gst-plugin-whisper)
       echo "cargo metadata unavailable; excluding gst-plugin-whisper by default"
     fi
@@ -740,6 +788,7 @@ PY
 fi
 
 if ! "${BUILD_CMD[@]}"; then
+  :
   echo "ERROR: cargo build for gst-plugins-rs failed"
   exit 1
 fi
