@@ -111,6 +111,21 @@ configure_ffmpeg() {
         configure_opts+=("--enable-vdpau")
     fi
     
+    # NVIDIA Hardware acceleration
+    if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+        echo "Enabling NVIDIA CUDA and NVENC/NVDEC support in FFmpeg..."
+        configure_opts+=("--enable-nvenc")
+        configure_opts+=("--enable-nvdec")
+        configure_opts+=("--enable-cuvid")
+        configure_opts+=("--enable-ffnvcodec")
+        configure_opts+=("--enable-cuda-nvcc")
+        
+        # Explicitly pass CUDA include and lib directories so FFmpeg can find CUDA headers
+        CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+        configure_opts+=("--extra-cflags=-I${CUDA_HOME}/include")
+        configure_opts+=("--extra-ldflags=-L${CUDA_HOME}/lib64")
+    fi
+    
     ./configure "${configure_opts[@]}" || { echo "FFmpeg configure failed"; exit 1; }
 }
 

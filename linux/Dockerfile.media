@@ -23,6 +23,10 @@ RUN if [ "$TARGETARCH" = "riscv64" ]; then \
 ENV NVIDIA_CODEC_HEADERS=${ENABLE_NVIDIA:+yes}
 # If NVIDIA is enabled, extend LD_LIBRARY_PATH for CUDA/TensorRT libs
 ENV LD_LIBRARY_PATH=${ENABLE_NVIDIA:+"${CUDA_HOME}/lib64:${TENSORRT_HOME}/lib:${LD_LIBRARY_PATH}"}
+RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
+        echo "export PATH=${CUDA_HOME}/bin:\$PATH" >> /etc/profile.d/cuda.sh; \
+    fi
+ENV PATH="${CUDA_HOME}/bin:${PATH}"
 
 # Build Python from source
 ARG PYTHON_VERSION=3.14.3

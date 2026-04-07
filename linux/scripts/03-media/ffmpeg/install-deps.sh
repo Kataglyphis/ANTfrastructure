@@ -38,3 +38,12 @@ apt-get install -y --no-install-recommends \
     libdav1d-dev \
     libsvtav1-dev \
     libsvtav1enc-dev
+
+if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+    echo "Installing nv-codec-headers for FFmpeg NVIDIA acceleration..."
+    git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers
+    cd /tmp/nv-codec-headers
+    make install
+    cd -
+    rm -rf /tmp/nv-codec-headers
+fi

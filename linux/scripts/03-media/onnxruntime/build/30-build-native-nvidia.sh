@@ -31,13 +31,31 @@ init_nvidia_defaults() {
 
   # TensorRT: prefer TENSORRT_HOME, fall back to standard paths
   TENSORRT_HOME="${TENSORRT_HOME:-/usr/local/tensorrt}"
-  if [ ! -d "${TENSORRT_HOME}" ]; then
-    for candidate in /usr /usr/local; do
-      if [ -f "${candidate}/include/NvInfer.h" ]; then
-        TENSORRT_HOME="${candidate}"
-        break
+  if [ ! -d "${TENSORRT_HOME}" ] || [ ! -f "${TENSORRT_HOME}/include/NvInfer.h" ]; then
+    TRT_INC=$(find /usr/include /usr/local -name "NvInfer.h" -print -quit 2>/dev/null || true)
+    if [ -n "$TRT_INC" ]; then
+      # Make a local symlink so TENSORRT_HOME has /include and /lib
+      mkdir -p /tmp/tensorrt/include /tmp/tensorrt/lib
+      ln -snf "$(dirname "$TRT_INC")"/* /tmp/tensorrt/include/
+      ARCH="$(uname -m)"
+      case "$ARCH" in
+        x86_64) DEB_ARCH="x86_64-linux-gnu" ;;
+        aarch64) DEB_ARCH="aarch64-linux-gnu" ;;
+        *) DEB_ARCH="$ARCH" ;;
+      esac
+      if [ -d "/usr/lib/${DEB_ARCH}" ]; then
+        ln -snf /usr/lib/${DEB_ARCH}/libnvinfer* /tmp/tensorrt/lib/ 2>/dev/null || true
       fi
-    done
+      ln -snf /usr/lib/libnvinfer* /tmp/tensorrt/lib/ 2>/dev/null || true
+      TENSORRT_HOME="/tmp/tensorrt"
+    else
+      for candidate in /usr /usr/local; do
+        if [ -f "${candidate}/include/NvInfer.h" ]; then
+          TENSORRT_HOME="${candidate}"
+          break
+        fi
+      done
+    fi
   fi
 
   # cuDNN: usually ships as part of CUDA or in /usr/lib/x86_64-linux-gnu

@@ -123,9 +123,10 @@ ENV LIBRARY_PATH="${CUDA_HOME}/lib64/stubs:${LIBRARY_PATH:-}"
 # ==============================================================================
 RUN set -eux; \
     if [ ! -f /usr/local/tensorrt/include/NvInfer.h ]; then \
-        if [ -f /usr/include/NvInfer.h ]; then \
+        TRT_INC=$(find /usr/include -name "NvInfer.h" -print -quit 2>/dev/null || true); \
+        if [ -n "$TRT_INC" ]; then \
             mkdir -p /usr/local/tensorrt; \
-            ln -snf /usr/include  /usr/local/tensorrt/include; \
+            ln -snf "$(dirname "$TRT_INC")" /usr/local/tensorrt/include; \
             ARCH="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
             ln -snf "/usr/lib/${ARCH}" /usr/local/tensorrt/lib; \
         fi; \

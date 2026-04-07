@@ -207,6 +207,29 @@ configure_opencv() {
         cmake_opts+=("-DBUILD_opencv_java=OFF")
     fi
     
+    # Hardware acceleration options
+    if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+        echo "Enabling NVIDIA CUDA and cuDNN support in OpenCV..."
+        # CUDA path should be available from base image (typically /usr/local/cuda)
+        cmake_opts+=("-DWITH_CUDA=ON")
+        cmake_opts+=("-DCUDA_FAST_MATH=ON")
+        cmake_opts+=("-DWITH_CUDNN=ON")
+        cmake_opts+=("-DOPENCV_DNN_CUDA=ON")
+        cmake_opts+=("-DWITH_CUBLAS=ON")
+        cmake_opts+=("-DWITH_NVCUVID=ON")
+        cmake_opts+=("-DWITH_TENSORRT=ON")
+        
+        # Explicitly provide the CUDA library stub so we can build without a GPU present
+        if [ -f "/usr/local/cuda/lib64/stubs/libcuda.so" ]; then
+            cmake_opts+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/lib64/stubs/libcuda.so")
+        elif [ -f "/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so" ]; then
+            cmake_opts+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so")
+        else
+            # fallback if stub isn't found
+            cmake_opts+=("-DBUILD_opencv_cudacodec=OFF")
+        fi
+    fi
+
     echo "CMake options: ${cmake_opts[*]}"
     cmake "${OPENCV_SRC}" "${cmake_opts[@]}" || { echo "OpenCV configure failed"; exit 1; }
 }
