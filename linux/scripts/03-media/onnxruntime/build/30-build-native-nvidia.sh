@@ -95,9 +95,18 @@ for candidate in \
     "${CUDNN_HOME}/include/cudnn.h" \
     "${CUDNN_HOME}/include/cudnn_version.h" \
     /usr/include/cudnn.h \
-    /usr/local/include/cudnn.h; do
+    /usr/local/include/cudnn.h \
+    /usr/include/x86_64-linux-gnu/cudnn.h \
+    /usr/include/x86_64-linux-gnu/cudnn_version.h \
+    /usr/include/aarch64-linux-gnu/cudnn.h \
+    /usr/include/aarch64-linux-gnu/cudnn_version.h; do
   if [ -f "${candidate}" ]; then
     CUDNN_H="${candidate}"
+    if [[ "${candidate}" == "/usr/include/"* ]]; then
+      CUDNN_HOME="/usr"
+    elif [[ "${candidate}" == "/usr/local/include/"* ]]; then
+      CUDNN_HOME="/usr/local"
+    fi
     break
   fi
 done
