@@ -13,7 +13,10 @@ ARG VULKAN_VERSION=1.4.341.1
 ARG GST_VERSION=1.28.1
 ARG ARCH=x86_64
 ARG FLAVOR=msvc
-ARG CUDA_VERSION=12.9
+ARG CUDA_VERSION=12.9.0
+ARG CUDA_VERSION_MAJOR_MINOR=12.9
+ARG CUDNN_VERSION=9.10.1.4
+ARG TENSORRT_VERSION=10.12.0.2
 
 # "Max" (latest stable) versions for ONNX Runtime and GenAI workloads
 ARG ONNX_VERSION=1.24.4
@@ -72,8 +75,7 @@ RUN [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::Sec
     scoop install main/rustup; `
     scoop install main/vulkan@$env:VULKAN_VERSION; `
     scoop install --global extras/flutter; `
-    scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget; `
-    scoop install versions/cuda$env:CUDA_VERSION;
+    scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget;
 
 # -----------------------------------------------------------------------------
 # Install CMake Nightly
@@ -86,6 +88,50 @@ RUN Write-Host ('Downloading CMake nightly from {0}...' -f $env:CMAKE_NIGHTLY_UR
     Start-Process msiexec.exe -ArgumentList '/i', 'C:\temp\cmake-nightly.msi', '/quiet', '/norestart', 'ADD_CMAKE_TO_PATH=System' -Wait -NoNewWindow ; `
     Remove-Item C:\temp\cmake-nightly.msi -Force ; `
     Write-Host 'CMake nightly installation complete.'
+
+# -----------------------------------------------------------------------------
+# Install NVIDIA CUDA Toolkit (Official Silent Install)
+# -----------------------------------------------------------------------------
+ENV CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
+
+RUN Write-Host ('Downloading CUDA Toolkit {0}...' -f $env:CUDA_VERSION) ; `
+    $cudaUrl = 'https://developer.download.nvidia.com/compute/cuda/{0}/network_installers/cuda_{0}_windows_network.exe' -f $env:CUDA_VERSION ; `
+    Write-Host ('Download URL: {0}' -f $cudaUrl) ; `
+    Invoke-WebRequest -Uri $cudaUrl -OutFile C:\temp\cuda_installer.exe ; `
+    Write-Host 'Installing CUDA Toolkit silently (this may take several minutes)...' ; `
+    $ver = $env:CUDA_VERSION_MAJOR_MINOR ; `
+    $components = @('-s', ('nvcc_' + $ver), ('cudart_' + $ver), ('cuobjdump_' + $ver), ('nvprune_' + $ver), ('cupti_' + $ver), ('cublas_' + $ver), ('cufft_' + $ver), ('curand_' + $ver), ('cusolver_' + $ver), ('cusparse_' + $ver), ('npp_' + $ver), ('nvjpeg_' + $ver), ('nvrtc_' + $ver), ('thrust_' + $ver), ('nvml_dev_' + $ver), ('visual_studio_integration_' + $ver)) ; `
+    $proc = Start-Process -FilePath C:\temp\cuda_installer.exe -ArgumentList $components -Wait -PassThru ; `
+    if ($proc.ExitCode -ne 0) { throw ('CUDA installation failed with exit code: {0}' -f $proc.ExitCode) } ; `
+    Remove-Item C:\temp\cuda_installer.exe -Force ; `
+    Write-Host 'CUDA Toolkit installation complete.'
+
+# -----------------------------------------------------------------------------
+# Install NVIDIA cuDNN
+# -----------------------------------------------------------------------------
+ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
+
+RUN Write-Host ('Downloading cuDNN {0}...' -f $env:CUDNN_VERSION) ; `
+    $cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-{0}_cuda{1}-archive.zip' -f $env:CUDNN_VERSION, ($env:CUDA_VERSION_MAJOR_MINOR -replace '\..*','') ; `
+    Write-Host ('Download URL: {0}' -f $cudnnUrl) ; `
+    Invoke-WebRequest -Uri $cudnnUrl -OutFile C:\temp\cudnn.zip ; `
+    Write-Host 'Extracting cuDNN...' ; `
+    Expand-Archive -Path C:\temp\cudnn.zip -DestinationPath C:\temp\cudnn_extracted -Force ; `
+    $cudnnDir = Get-ChildItem -Path C:\temp\cudnn_extracted -Directory | Select-Object -First 1 ; `
+    New-Item -Path $env:CUDNN_ROOT -ItemType Directory -Force | Out-Null ; `
+    Copy-Item -Path (Join-Path $cudnnDir.FullName '*') -Destination $env:CUDNN_ROOT -Recurse -Force ; `
+    Remove-Item C:\temp\cudnn.zip -Force ; `
+    Remove-Item C:\temp\cudnn_extracted -Recurse -Force ; `
+    Write-Host 'cuDNN installation complete.'
+
+# -----------------------------------------------------------------------------
+# Install NVIDIA TensorRT (SKIPPED - requires NVIDIA Developer login for ZIP download)
+# -----------------------------------------------------------------------------
+# To install TensorRT manually:
+# 1. Download ZIP from https://developer.nvidia.com/tensorrt (requires login)
+# 2. Extract to C:\TensorRT
+# 3. Add C:\TensorRT\lib to PATH
+# ENV TENSORRT_ROOT="C:\TensorRT"
 
 # -----------------------------------------------------------------------------
 # Install ONNX Runtime & GenAI
@@ -176,7 +222,6 @@ ENV VULKAN_SDK=C:\Users\ContainerAdministrator\scoop\apps\vulkan\current
 ENV WIX=C:\WiX
 ENV LLVM_USER_BIN=C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin
 ENV LLVM_GLOBAL_BIN=C:\ProgramData\scoop\apps\llvm\current\bin
-ENV CUDA_ROOT=C:\Users\ContainerAdministrator\scoop\apps\cuda\current
 ENV CMAKE_BIN="C:\Program Files\CMake\bin"
 ENV WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH
 
@@ -185,7 +230,7 @@ ENV CARGO_HOME=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo
 ENV CARGO_BIN=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo\bin
 
 ENV PATH=$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$GSTREAMER_BIN;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$ONNX_LIB;$ONNX_GENAI_LIB;$ONNX_DIRECTML_LIB;$ONNX_CUDA_LIB;$OPENCV_BIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
-ENV PATH=$CUDA_ROOT\bin;$PATH
+ENV PATH=$CUDA_ROOT\bin;$CUDNN_ROOT\bin;$TENSORRT_ROOT\lib;$PATH
 
 # -----------------------------------------------------------------------------
 # Tool Verification & Configuration
@@ -212,18 +257,37 @@ RUN foreach ($c in 'gst-launch-1.0.exe','powershell','git','cmake','rustc','carg
     }
 
 # -----------------------------------------------------------------------------
-# CUDA Verification
+# CUDA, cuDNN, and TensorRT Verification
 # -----------------------------------------------------------------------------
 RUN Write-Host 'Verifying CUDA Toolkit installation...' ; `
+    Write-Host ('CUDA_ROOT = {0}' -f $env:CUDA_ROOT) ; `
     if (-not (Get-Command nvcc -ErrorAction SilentlyContinue)) { Write-Host 'nvcc not found on PATH; attempting to probe common CUDA locations...' } ; `
-    if (Get-Command nvcc -ErrorAction SilentlyContinue) { nvcc --version | Out-Host ; & where.exe nvcc } else { Write-Host 'nvcc not found; CUDA compiler not available.' } ; `
+    if (Get-Command nvcc -ErrorAction SilentlyContinue) { nvcc --version | Out-Host ; & where.exe nvcc } else { throw 'nvcc not found; CUDA compiler not available.' } ; `
     $cudaBins = @($env:CUDA_ROOT, (Join-Path $env:CUDA_ROOT 'bin'), (Join-Path $env:CUDA_ROOT 'lib\x64')) | Where-Object { Test-Path $_ } ; `
     $found = $false ; `
     foreach ($p in $cudaBins) { `
         $dlls = Get-ChildItem -Path $p -Filter 'cudart*.dll' -Recurse -ErrorAction SilentlyContinue ; `
         if ($dlls) { Write-Host ('Found CUDA runtime DLL: {0}' -f $dlls[0].FullName) ; $found = $true ; break } `
     } ; `
-    if (-not $found) { Write-Host ('CUDA runtime DLLs (cudart*.dll) not found under ' + $env:CUDA_ROOT + '; CUDA may not be installed.') } else { Write-Host 'CUDA verification passed!'}
+    if (-not $found) { throw ('CUDA runtime DLLs (cudart*.dll) not found under ' + $env:CUDA_ROOT + '; CUDA installation failed.') } ; `
+    Write-Host 'CUDA Toolkit verification passed!'
+
+RUN Write-Host 'Verifying cuDNN installation...' ; `
+    Write-Host ('CUDNN_ROOT = {0}' -f $env:CUDNN_ROOT) ; `
+    if (-not (Test-Path $env:CUDNN_ROOT)) { throw ('cuDNN directory not found at {0}' -f $env:CUDNN_ROOT) } ; `
+    $cudnnHeaders = Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue ; `
+    $cudnnLibs = Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue ; `
+    $cudnnDlls = Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue ; `
+    if (-not $cudnnHeaders) { throw 'cuDNN headers (cudnn.h) not found!' } ; `
+    if (-not $cudnnLibs) { throw 'cuDNN import libs (cudnn*.lib) not found!' } ; `
+    if (-not $cudnnDlls) { throw 'cuDNN DLLs (cudnn*.dll) not found!' } ; `
+    Write-Host ('Found cuDNN Header: {0}' -f $cudnnHeaders[0].FullName) ; `
+    Write-Host ('Found cuDNN Lib: {0}' -f $cudnnLibs[0].FullName) ; `
+    Write-Host ('Found cuDNN DLL: {0}' -f $cudnnDlls[0].FullName) ; `
+    Write-Host ('cuDNN DLL count: {0}' -f ($cudnnDlls | Measure-Object).Count) ; `
+    Write-Host 'cuDNN verification passed!'
+
+# TensorRT verification skipped - TensorRT not installed (requires manual download)
 
 # -----------------------------------------------------------------------------
 # ONNX Validation (Headers, Libs, DLLs)
