@@ -108,11 +108,7 @@ if [ -z "$(ls -A "${GENAI_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
   info "No GenAI wheels found; attempting pip wheel build from source"
   if [ -f "${GENAI_SRC_DIR}/pyproject.toml" ] || [ -f "${GENAI_SRC_DIR}/setup.py" ]; then
     mkdir -p "${GENAI_OUTPUT_DIR}/wheels"
-    if command -v uv >/dev/null 2>&1; then
-      uv pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
-    else
-      python -m pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
-    fi
+    python3 -m pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
     info "Wheels after pip wheel:"; ls -lh "${GENAI_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
   else
     info "GenAI python packaging not detected; skipping pip wheel"

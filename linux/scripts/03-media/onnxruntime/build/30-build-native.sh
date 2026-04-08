@@ -61,11 +61,7 @@ if [ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
   if [ -f "${ORT_SRC_DIR}/pyproject.toml" ] || [ -f "${ORT_SRC_DIR}/setup.py" ]; then
     info "Building wheel from ORT python package"
     mkdir -p "${NATIVE_CPU_OUTPUT_DIR}/wheels"
-    if command -v uv >/dev/null 2>&1; then
-      uv pip wheel -w "${NATIVE_CPU_OUTPUT_DIR}/wheels" "${ORT_SRC_DIR}" || info "pip wheel failed for ORT source"
-    else
-      python -m pip wheel -w "${NATIVE_CPU_OUTPUT_DIR}/wheels" "${ORT_SRC_DIR}" || info "pip wheel failed for ORT source"
-    fi
+    python3 -m pip wheel -w "${NATIVE_CPU_OUTPUT_DIR}/wheels" "${ORT_SRC_DIR}" || info "pip wheel failed for ORT source"
     info "Wheels after pip wheel:"; ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
   else
     info "ORT python packaging not detected; skipping pip wheel"

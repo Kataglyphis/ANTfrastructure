@@ -92,17 +92,60 @@ install_litert() {
 
     # Try to build a Python wheel if the project exposes a Python package
     mkdir -p "${LITERT_PREFIX}/wheels"
-    if [ -f "${LITERT_SRC}/pyproject.toml" ] || [ -f "${LITERT_SRC}/setup.py" ] || [ -d "${LITERT_SRC}/python" ]; then
+    
+    local pip_pkg_dir="${LITERT_SRC}/tflite/tools/pip_package"
+    if [ -d "${pip_pkg_dir}" ]; then
         echo "[INFO] Detected Python packaging in LiteRT source - attempting to build wheel"
-        if command -v uv >/dev/null 2>&1; then
-            uv pip wheel -w "${LITERT_PREFIX}/wheels" "${LITERT_SRC}" || echo "[WARN] pip wheel failed for LiteRT source"
-        elif command -v python >/dev/null 2>&1; then
-            python -m pip wheel -w "${LITERT_PREFIX}/wheels" "${LITERT_SRC}" || echo "[WARN] pip wheel failed for LiteRT source"
+        
+        # We need to make sure the environment is set up for the pip package builder
+        pushd "${pip_pkg_dir}" > /dev/null
+        
+        # The Litert script build_pip_package_with_cmake.sh builds the wheel.
+        # It requires PYTHON environment variable
+        export PYTHON="$(which python3)"
+        if [ -n "${PYTHON}" ]; then
+            echo "[INFO] Building wheel via build_pip_package_with_cmake.sh..."
+            # build_pip_package_with_cmake.sh uses these env vars to locate tensorflow/lite
+            export TENSORFLOW_DIR="${LITERT_SRC}"
+            export TENSORFLOW_LITE_DIR="${LITERT_SRC}/tflite"
+            export TENSORFLOW_TARGET="native"
+            
+            # create missing directories and symlinks to satisfy hardcoded paths in pip script
+            mkdir -p "${LITERT_SRC}/tensorflow"
+            ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
+            
+            # fix build_pip_package_with_cmake.sh path resolution and version
+            sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
+            sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
+            
+            # fix cmake policy error and inject required flags to match main build
+            local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON"
+            
+            sed -i "s|cmake \"\${TENSORFLOW_LITE_DIR}\"|cmake ${extra_cmake_flags} \"\${TENSORFLOW_LITE_DIR}\"|g" build_pip_package_with_cmake.sh
+            sed -i "s|cmake \\\\|cmake ${extra_cmake_flags} \\\\|g" build_pip_package_with_cmake.sh
+            
+            # remove -march=native from build flags to avoid multi-arch issues
+            sed -i 's|-march=native ||g' build_pip_package_with_cmake.sh
+            
+            # run the script
+            bash build_pip_package_with_cmake.sh native > pip_build.log 2>&1 || {
+                echo "[WARN] pip wheel failed for LiteRT source. Last 1000 lines of log:"
+                tail -n 1000 pip_build.log
+                exit 1
+            }
+            
+            # Print the log if it succeeds so we can debug anyway!
+            echo "[INFO] pip wheel success! Last 50 lines of log:"
+            tail -n 50 pip_build.log
+            
+            # The wheels are created in tflite/tools/pip_package/gen/tflite_pip/python3/dist/
+            find "gen/tflite_pip" -name "*.whl" -type f -exec cp -v {} "${LITERT_PREFIX}/wheels/" \; 2>/dev/null || echo "[WARN] No wheels found after build script"
         else
             echo "[WARN] No python found in PATH to build LiteRT wheel"
         fi
+        popd > /dev/null
     else
-        echo "[INFO] No Python packaging detected for LiteRT; skipping wheel build"
+        echo "[INFO] No Python packaging detected for LiteRT at ${pip_pkg_dir}; skipping wheel build"
     fi
 }
 
