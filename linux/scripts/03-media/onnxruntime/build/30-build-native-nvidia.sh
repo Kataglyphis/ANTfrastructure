@@ -163,7 +163,14 @@ mkdir -p "${NATIVE_GPU_OUTPUT_DIR}"/{lib,include,wheels}
   --use_full_protobuf \
   --cuda_home          "${CUDA_HOME}" \
   --cudnn_home         "${CUDNN_HOME}" \
-  --tensorrt_home      "${TENSORRT_HOME}"
+  --tensorrt_home      "${TENSORRT_HOME}" \
+  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=80;86;89;90a" \
+  --use_xnnpack \
+  --enable_lto \
+  --use_mimalloc \
+  --use_lock_free_queue \
+  --use_webgpu \
+  --use_external_dawn
 
 # --------------------------------------------------------------------------
 # Collect artifacts
@@ -179,11 +186,28 @@ done || info "No wheels found in ${NATIVE_GPU_BUILD_DIR}"
 cp -a "${ORT_SRC_DIR}/include" "${NATIVE_GPU_OUTPUT_DIR}/" 2>/dev/null || \
   warn "Include directory not found at ${ORT_SRC_DIR}/include"
 
+# Flatten headers for GenAI - it expects headers at include/ root
+for search_dir in "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"; do
+  if [[ ! -d "${search_dir}/include" ]]; then
+    continue
+  fi
+  find "${search_dir}/include" -name "onnxruntime*.h" -type f 2>/dev/null | while read -r hdr; do
+    cp "${hdr}" "${NATIVE_GPU_OUTPUT_DIR}/include/" 2>/dev/null || true
+  done
+done
+
 # Copy libraries
 mkdir -p "${NATIVE_GPU_OUTPUT_DIR}/lib"
 find "${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" -maxdepth 1 -type f \
   \( -name "libonnxruntime*.so*" -o -name "libonnxruntime_providers_*.so*" \) \
   -exec cp -t "${NATIVE_GPU_OUTPUT_DIR}/lib/" {} + 2>/dev/null || true
+
+# Create unversioned symlink for libonnxruntime.so (required by GenAI CMake)
+onnx_lib="$(find "${NATIVE_GPU_OUTPUT_DIR}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
+if [[ -n "${onnx_lib}" ]] && [[ ! -e "${NATIVE_GPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]]; then
+  ln -sf "$(basename "${onnx_lib}")" "${NATIVE_GPU_OUTPUT_DIR}/lib/libonnxruntime.so"
+  info "Created symlink: libonnxruntime.so -> $(basename "${onnx_lib}")"
+fi
 
 # Symlink into /usr/local/lib for discovery
 find "${NATIVE_GPU_OUTPUT_DIR}/lib" -type f -name "lib*.so*" -print0 2>/dev/null | \

@@ -56,6 +56,7 @@ configure_litert() {
         -DLITERT_AUTO_BUILD_TFLITE=ON \
         -DLITERT_ENABLE_GPU=OFF \
         -DLITERT_ENABLE_NPU=OFF \
+        -DTFLITE_ENABLE_XNNPACK=ON \
         -DTFLITE_ENABLE_RUY=ON
 }
 
@@ -117,6 +118,9 @@ install_litert() {
             # fix build_pip_package_with_cmake.sh path resolution and version
             sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
             sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
+            
+            # Export the new official LiteRT name so the wheel matches PyPI
+            export WHEEL_PROJECT_NAME="ai_edge_litert"
             
             # fix cmake policy error and inject required flags to match main build
             local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON"

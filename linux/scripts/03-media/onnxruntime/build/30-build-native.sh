@@ -35,17 +35,31 @@ info "NumPy version: $(python3 -c 'import numpy; print(numpy.__version__)')"
 # Prepare directories
 mkdir -p "${NATIVE_CPU_OUTPUT_DIR}"/{lib,include,wheels}
 
-# Execute build
-"${BUILD_SH}" \
-  --build_dir "${NATIVE_CPU_BUILD_DIR}" \
-  --config "${NATIVE_CPU_CONFIG}" \
-  --build_shared_lib \
-  --parallel "${JOBS}" \
-  --build_wheel \
-  --compile_no_warning_as_error \
-  --skip_submodule_sync \
-  --skip_tests \
+BUILD_ARGS=(
+  --build_dir "${NATIVE_CPU_BUILD_DIR}"
+  --config "${NATIVE_CPU_CONFIG}"
+  --build_shared_lib
+  --parallel "${JOBS}"
+  --build_wheel
+  --compile_no_warning_as_error
+  --skip_submodule_sync
+  --skip_tests
   --allow_running_as_root
+  --use_xnnpack
+  --use_mimalloc
+  --use_lock_free_queue
+)
+
+if [[ "$(uname -m)" != "riscv64" ]]; then
+  BUILD_ARGS+=(
+    --enable_lto
+    --use_webgpu
+    --use_external_dawn
+  )
+fi
+
+# Execute build
+"${BUILD_SH}" "${BUILD_ARGS[@]}"
 
 # Copy wheel files
 info "Searching for wheel files..."

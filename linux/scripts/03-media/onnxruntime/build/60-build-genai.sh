@@ -88,6 +88,18 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   ORT_HOME="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"
   info "Building onnxruntime-genai with GPU ORT from ${ORT_HOME}"
 
+  # Ensure libonnxruntime.so exists in the GPU ORT home (often it's just versioned)
+  if [[ ! -e "${ORT_HOME}/lib/libonnxruntime.so" ]] && [[ ! -L "${ORT_HOME}/lib/libonnxruntime.so" ]]; then
+    warn "libonnxruntime.so not found in ${ORT_HOME}/lib, attempting to create symlink..."
+    versioned_lib="$(find "${ORT_HOME}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
+    if [[ -n "${versioned_lib}" ]]; then
+      ln -sf "$(basename "${versioned_lib}")" "${ORT_HOME}/lib/libonnxruntime.so"
+      info "Created symlink: ${ORT_HOME}/lib/libonnxruntime.so -> $(basename "${versioned_lib}")"
+    else
+      warn "No versioned libonnxruntime.so found in ${ORT_HOME}/lib!"
+    fi
+  fi
+
   python3 build.py \
     --config "${GENAI_CONFIG}" \
     --ort_home "${ORT_HOME}" \
@@ -96,8 +108,8 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     --skip_examples \
     --use_cuda \
     --cuda_home "${CUDA_HOME:-/usr/local/cuda}" \
-    --use_tensorrt \
-    --tensorrt_home "${TENSORRT_HOME:-/usr/local/tensorrt}"
+    --use_trt_rtx \
+    --use_guidance
 else
   ORT_HOME="${NATIVE_CPU_OUTPUT_DIR}"
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
@@ -107,7 +119,8 @@ else
     --ort_home "${ORT_HOME}" \
     --parallel \
     --skip_tests \
-    --skip_examples
+    --skip_examples \
+    --use_guidance
 fi
 
 # Copy wheel files

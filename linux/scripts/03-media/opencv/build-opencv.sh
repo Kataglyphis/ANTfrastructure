@@ -23,7 +23,7 @@ set -euo pipefail
 : "${NPROC:=$(nproc)}"
 : "${WITH_CONTRIB:=true}"
 : "${WITH_PYTHON:=true}"
-: "${OPENCV_PYTHON_VERSION:=3.14t}"
+: "${OPENCV_PYTHON_VERSION:=3.14}"
 : "${WITH_JAVA:=false}"
 : "${SKIP_DEP_INSTALL:=false}"
 : "${WITH_IPP:=ON}"
@@ -171,15 +171,37 @@ configure_opencv() {
         "-DWITH_JPEG=ON"
         "-DWITH_PNG=ON"
         "-DWITH_TIFF=ON"
+        "-DWITH_WEBP=ON"
         "-DWITH_DC1394=ON"
         "-DWITH_1394=ON"
         "-DWITH_OPENCL=ON"
+        "-DWITH_OPENGL=ON"
+        "-DWITH_VULKAN=ON"
+        "-DWITH_PROTOBUF=ON"
+        "-DWITH_LIBV4L=ON"
+        "-DWITH_ITT=ON"
         "-DWITH_IPP=${WITH_IPP}"
     )
 
     # Ensure tracking contrib module is explicitly enabled (some builds/platforms
     # may not build it by default even when contrib modules are available).
     cmake_opts+=("-DBUILD_opencv_tracking=ON")
+
+    # Help CMake find the Vulkan SDK if it's installed in the default location
+    if [ -d "/opt/vulkan" ]; then
+        local vulkan_ver
+        vulkan_ver=$(ls /opt/vulkan | sort -V | tail -n 1)
+        if [ -n "$vulkan_ver" ]; then
+            # LunarG SDK tarball consistently uses "x86_64" in the path regardless of actual host architecture
+            local vulkan_sdk="/opt/vulkan/${vulkan_ver}/x86_64"
+            if [ -d "$vulkan_sdk" ]; then
+                export VULKAN_SDK="$vulkan_sdk"
+                export PATH="$vulkan_sdk/bin:$PATH"
+                export LD_LIBRARY_PATH="$vulkan_sdk/lib:${LD_LIBRARY_PATH:-}"
+                export VK_LAYER_PATH="$vulkan_sdk/etc/vulkan/explicit_layer.d"
+            fi
+        fi
+    fi
     
     # Contrib modules
     if [ "${WITH_CONTRIB}" = "true" ]; then
@@ -308,6 +330,7 @@ install_opencv() {
                 fi
                 
                 pushd "${OPENCV_SRC}/modules/python/package" >/dev/null
+                sed -i -e "s/package_name = 'opencv'/package_name = 'opencv_python'/g" -e 's/package_name="opencv"/package_name="opencv_python"/g' setup.py || true
                 ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
                 popd >/dev/null
 

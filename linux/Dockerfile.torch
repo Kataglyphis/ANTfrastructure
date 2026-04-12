@@ -7,7 +7,7 @@ ENV VENV=/opt/venv
 
 # Initialize the venv
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    uv venv --seed --python=3.14 "${VENV}"
+    uv venv --seed --python="cpython-3.14" "${VENV}"
 ENV VIRTUAL_ENV=${VENV}
 ENV PATH=${VENV}/bin:${PATH}
 ENV UV_LOCK_TIMEOUT=3600
@@ -48,18 +48,39 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 WORKDIR /opt
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     git clone https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git && \
     cd Kataglyphis-Orchestr-ANT-ion && \
-    git checkout v0.0.13 && \
+    git checkout v0.0.17 && \
     source ${VENV}/bin/activate && \
     # Remove conflicting system headers to force use of PyPI version
     apt-get remove -y pybind11-dev python3-pybind11 || true && \
+    ls -la /opt/wheels && \
+    pushd /opt/wheels > /dev/null && \
+    find . -name "*litert*.whl" -o -name "*tflite*.whl" | while read fname; do \
+        uvx --from wheel wheel tags --python-tag cp314 --abi-tag cp314 --remove "$fname"; \
+    done || true && \
+    popd > /dev/null && \
+    mv /opt/wheels /opt/wheels_fixed && \
+    sed -i 's|/opt/wheels|/opt/wheels_fixed|g' pyproject.toml || true && \
     # ---------------------------------------------------------
     # Variable $UV_OPTS wird hier eingefügt
-    uv sync --active --extra "ml-ai" --extra "pytorch-cpu" --extra "test" --extra "frontend" --extra "docs" && \
-    uv pip install PyGObject && \
+    uv lock --find-links /opt/wheels_fixed && \
+    # Install your local opencv wheel FIRST, blocking PyPI
+    uv sync --no-cache --active --extra "ml-ai" --extra "pytorch-cpu" --extra "test" --extra "frontend" --extra "docs" \
+        --find-links "/opt/wheels_fixed" && \
+    uv pip install --no-cache PyGObject && \
+    # Fix OpenCV missing binary extension from the broken wheel
+    echo "Fixing OpenCV binary extension..." && \
+    GLOBAL_CV2_SO=$(find /opt/opencv4/lib/python3.14/site-packages/cv2 -name "cv2*.so" | head -n 1) && \
+    if [ -n "$GLOBAL_CV2_SO" ]; then \
+        echo "Found global cv2.so at $GLOBAL_CV2_SO. Linking to venv..." && \
+        mkdir -p /opt/venv/lib/python3.14/site-packages/cv2/python-3.14 && \
+        ln -sf "$GLOBAL_CV2_SO" "/opt/venv/lib/python3.14/site-packages/cv2/python-3.14/" || true; \
+    fi && \
+    find /opt/venv/lib -name "cv2*.so" -o -name "*.so" | grep cv2 | while read sofile; do echo "Found SO: $sofile"; ldd "$sofile" || true; done || true && \
     # 6. Verify
-    python -c "import gi, cv2, numpy, contourpy; \
+    uv run --active python -c "import gi, cv2, numpy, contourpy; \
       print('gi OK'); print('numpy', numpy.__version__);"
 
 WORKDIR /opt/Kataglyphis-Orchestr-ANT-ion

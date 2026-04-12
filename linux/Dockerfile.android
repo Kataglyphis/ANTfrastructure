@@ -25,10 +25,25 @@ ENV ANDROID_HOME=/opt/android-sdk \
 ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
 COPY linux/scripts/03-media/gstreamer/android /opt/scripts/media/gstreamer/android
+COPY linux/scripts/03-media/onnxruntime/android /opt/scripts/media/onnxruntime/android
+COPY linux/scripts/03-media/litert/android /opt/scripts/media/litert/android
+COPY linux/scripts/03-media/opencv/android /opt/scripts/media/opencv/android
+
 RUN chmod +x /opt/scripts/media/gstreamer/android/build-android-from-source.sh \
-    && chmod +x /opt/scripts/media/gstreamer/android/setup-android-sdk-ndk.sh
+    && chmod +x /opt/scripts/media/gstreamer/android/setup-android-sdk-ndk.sh \
+    && chmod +x /opt/scripts/media/onnxruntime/android/build-android.sh \
+    && chmod +x /opt/scripts/media/litert/android/build-android.sh \
+    && chmod +x /opt/scripts/media/opencv/android/build-android.sh
 
 RUN set -eux; \
         /opt/scripts/media/gstreamer/android/setup-android-sdk-ndk.sh
 
+RUN set -eux; \
+        /opt/scripts/media/onnxruntime/android/build-android.sh && \
+        /opt/scripts/media/litert/android/build-android.sh && \
+        /opt/scripts/media/opencv/android/build-android.sh
+
 ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
+ENV ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime
+ENV LITERT_ROOT_ANDROID=/opt/android/litert
+ENV OPENCV_ROOT_ANDROID=/opt/android/opencv
