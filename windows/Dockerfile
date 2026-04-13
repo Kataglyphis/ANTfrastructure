@@ -10,7 +10,7 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2025
 
 # Build-time variable for the Vulkan SDK version (default can be overridden).
 ARG VULKAN_VERSION=1.4.341.1
-ARG GST_VERSION=1.28.1
+ARG GST_VERSION=1.28.2
 ARG ARCH=x86_64
 ARG FLAVOR=msvc
 ARG CUDA_VERSION=12.9.0
@@ -20,7 +20,7 @@ ARG TENSORRT_VERSION=10.12.0.2
 
 # "Max" (latest stable) versions for ONNX Runtime and GenAI workloads
 ARG ONNX_VERSION=1.24.4
-ARG ONNX_GENAI_VERSION=0.12.1
+ARG ONNX_GENAI_VERSION=0.12.2
 # We install both GPU providers (DirectML and CUDA) by default so the image supports both.
 ARG ONNX_GPU_VARIANT=both
 
@@ -80,7 +80,7 @@ RUN [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::Sec
 # -----------------------------------------------------------------------------
 # Install CMake Nightly
 # -----------------------------------------------------------------------------
-ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/dev/cmake-4.3.20260404-g6e39564-windows-x86_64.msi
+ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/dev/cmake-4.3.20260412-gade6d6c-windows-x86_64.msi
 
 RUN Write-Host ('Downloading CMake nightly from {0}...' -f $env:CMAKE_NIGHTLY_URL) ; `
     Invoke-WebRequest -Uri $env:CMAKE_NIGHTLY_URL -OutFile C:\temp\cmake-nightly.msi ; `
@@ -349,7 +349,13 @@ RUN Write-Host 'Verifying OpenCV C++ resources...' ; `
     Write-Host ('Found OpenCV DLL: {0}' -f $cvDlls[0].FullName) ; `
     Write-Host 'OpenCV verification passed! :)))'
 
-RUN git config --global --add safe.directory '*'
+# Enable Win32 long paths (>260 chars) at OS level 
+RUN Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' ` 
+ -Name 'LongPathsEnabled' -Value 1 -Type DWord 
+
+# avoids problems with shared ownership when shared volume 
+RUN git config --global --add safe.directory '*'; ` 
+ git config --global core.longpaths true
 
 ENTRYPOINT ["C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat","-arch=amd64" , "&&", "powershell.exe", "-NoLogo", "-ExecutionPolicy", "Bypass"]
 
