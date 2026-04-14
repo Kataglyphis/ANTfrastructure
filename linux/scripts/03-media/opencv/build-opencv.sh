@@ -324,7 +324,24 @@ install_opencv() {
                 CV2_DIR=$(find "${OPENCV_PREFIX}" -type d -name "cv2" -path "*/python*/cv2" | head -n 1)
                 if [ -n "${CV2_DIR}" ]; then
                     echo "Found cv2 python bindings at: ${CV2_DIR}"
+                    # Copy the cv2 module into the package directory
                     cp -r "${CV2_DIR}" "${OPENCV_SRC}/modules/python/package/" || true
+                    
+                    # In addition, we need to ensure the compiled .so is properly placed
+                    # inside the cv2 package folder before building the wheel
+                    echo "Hunting for compiled cv2*.so to bundle inside the wheel..."
+                    SO_FILE=$(find "${OPENCV_PREFIX}" "${OPENCV_SRC}/build" /usr /opt -type f -name "cv2*.so" 2>/dev/null | head -n 1 || true)
+                    if [ -n "${SO_FILE}" ]; then
+                        echo "Found compiled extension: ${SO_FILE}"
+                        # Try to copy it directly into the cv2 directory we just copied
+                        cp "${SO_FILE}" "${OPENCV_SRC}/modules/python/package/cv2/" || true
+                        
+                        # Python 3.14 might expect it inside a python-3.14 subdirectory
+                        mkdir -p "${OPENCV_SRC}/modules/python/package/cv2/python-3.14"
+                        cp "${SO_FILE}" "${OPENCV_SRC}/modules/python/package/cv2/python-3.14/" || true
+                    else
+                        echo "WARNING: Could not find any cv2*.so extension! The wheel will be incomplete."
+                    fi
                 else
                     echo "Could not find cv2 python directory to bundle into wheel. The wheel might be empty!"
                 fi

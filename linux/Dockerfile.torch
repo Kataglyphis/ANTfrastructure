@@ -53,42 +53,25 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     git clone https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git && \
     cd Kataglyphis-Orchestr-ANT-ion && \
     git checkout v0.0.17 && \
-    sed -i '/find-links/d' pyproject.toml && \
     source ${VENV}/bin/activate && \
     # Remove conflicting system headers to force use of PyPI version
     apt-get remove -y pybind11-dev python3-pybind11 || true && \
-    ls -la /opt/wheels && \
-    pushd /opt/wheels > /dev/null && \
-    find . -name "*litert*.whl" -o -name "*tflite*.whl" | while read fname; do \
-        uvx --from wheel wheel tags --python-tag cp314 --abi-tag cp314 --remove "$fname"; \
-    done || true && \
-    popd > /dev/null && \
-    mv /opt/wheels /opt/wheels_fixed && \
-    sed -i 's|/opt/wheels|/opt/wheels_fixed|g' pyproject.toml || true && \
     # ---------------------------------------------------------
     # Variable $UV_OPTS wird hier eingefügt
-    uv lock && \
-    # find-links /opt/wheels_fixed_void && \ 
-    # --find-links /opt/wheels_fixed && \
-    # Install your local opencv wheel FIRST, blocking PyPI
-    # UV_NO_CACHE=1 CC=gcc CXX=g++ uv sync --active && \
-    #--extra "ml-ai" --extra "pytorch-cpu" --extra "test" --extra "frontend" --extra "docs" \
-        #--find-links "/opt/wheels_fixed" && \
-    UV_NO_CACHE=1 CC=gcc CXX=g++ uv pip install PyGObject && \
-    # Fix OpenCV missing binary extension from the broken wheel
-    echo "Fixing OpenCV binary extension..." && \
-    GLOBAL_CV2_SO=$(find /opt/opencv4/lib/python3.14/site-packages/cv2 -name "cv2*.so" | head -n 1) && \
-    if [ -n "$GLOBAL_CV2_SO" ]; then \
-        echo "Found global cv2.so at $GLOBAL_CV2_SO. Linking to venv..." && \
-        mkdir -p /opt/venv/lib/python3.14/site-packages/cv2/python-3.14 && \
-        ln -sf "$GLOBAL_CV2_SO" "/opt/venv/lib/python3.14/site-packages/cv2/python-3.14/" || true; \
-    fi && \
-    find /opt/venv/lib -name "cv2*.so" -o -name "*.so" | grep cv2 | while read sofile; do echo "Found SO: $sofile"; ldd "$sofile" || true; done || true && \
-    echo "--- DEBUGGING PYGOBJECT ---" && \
-    find /opt/venv/lib -name "gi*" || true && \
-    ls -la /opt/venv/lib/python3.14/site-packages/ || true && \
+    rm -rf /root/.cache/uv/* && \
+    rm -f uv.lock && \
+    echo "Debugging local wheels:" && ls -la /opt/wheels || true && \
+    uv pip install /opt/wheels/ai_edge_litert*.whl || true && \
+    echo -e '\n[tool.uv]\nconstraint-dependencies = ["ai-edge-litert==2.1.3", "numpy==2.4.4"]' >> pyproject.toml && \
+    uv lock --find-links /opt/wheels && \
+    uv sync --find-links /opt/wheels --active --extra "ml-ai" --extra "pytorch-cpu" --extra "test" --extra "frontend" --extra "docs" && \
+    uv pip uninstall opencv-python-headless opencv-contrib-python opencv-contrib-python-headless || true && \
+    uv pip install --force-reinstall /opt/wheels/*.whl && \
+    uv pip install PyGObject && \
+    # Debug OpenCV shared libraries to see what might be missing
+    find /opt/venv -name "cv2*.so" -exec ldd {} \; || true && \
     # 6. Verify
-    uv run --active python -c "import gi, cv2, numpy, contourpy; \
-      print('gi OK'); print('numpy', numpy.__version__);"
+    uv run --active python -c "import gi, numpy, contourpy; print('gi OK'); print('numpy', numpy.__version__);" && \
+    uv run --active python -c "import os; os.environ['OPENCV_LOG_LEVEL']='DEBUG'; import cv2; print('cv2', cv2.__version__);"
 
 WORKDIR /opt/Kataglyphis-Orchestr-ANT-ion

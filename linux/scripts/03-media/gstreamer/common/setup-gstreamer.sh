@@ -395,7 +395,8 @@ MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
 case " ${EXTRA_MESON_ARGS} " in
   *" --wrap-mode="*) ;;
   *)
-    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --wrap-mode=${MESON_WRAP_MODE}"
+    # Use fallback specifically for pygobject since we are using a custom python build
+    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --wrap-mode=${MESON_WRAP_MODE} --force-fallback-for=pygobject"
     ;;
 esac
 # --- end patch ---
@@ -416,7 +417,10 @@ else
   export CSOUND_LIB_DIR="/usr/lib"
 fi
 # Prepend system pkgconfig dirs if not already present
-PKG_CONFIG_LIBDIR="${SYS_PKGCONF_DIR}:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_LIBDIR:-}"
+PKG_CONFIG_LIBDIR="${SYS_PKGCONF_DIR}:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig"
+if [ -n "${PKG_CONFIG_LIBDIR_ORIG:-}" ]; then
+  PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:${PKG_CONFIG_LIBDIR_ORIG}"
+fi
 export PKG_CONFIG_LIBDIR
 
 # Some distributions install .pc files under /usr/share/pkgconfig; include it
@@ -450,11 +454,9 @@ if ! pkg-config --exists cairo 2>/dev/null; then
   :
   echo "cairo not found with PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}' — trying fallback by unsetting PKG_CONFIG_LIBDIR" | tee -a /tmp/gstreamer-cairo-debug.txt || true
   if env -u PKG_CONFIG_LIBDIR pkg-config --exists cairo 2>/dev/null; then
-  :
     echo "Fallback: cairo found after unsetting PKG_CONFIG_LIBDIR; proceeding using fallback search paths" | tee -a /tmp/gstreamer-cairo-debug.txt || true
     # Unset for the rest of the script so Meson will see the cairo pkg-config
     unset PKG_CONFIG_LIBDIR
-    export PKG_CONFIG_LIBDIR=""
   else
   :
     echo "Fallback also failed: cairo still not found" | tee -a /tmp/gstreamer-cairo-debug.txt || true
@@ -463,6 +465,9 @@ fi
 echo "--- end cairo debug ---" | tee -a /tmp/gstreamer-cairo-debug.txt
 
 # Run meson setup and capture full output
+# First, install pycairo beforehand so that pygobject fallback can find it (needs cairo properly set up in pkgconfig)
+uv pip install -U pycairo
+
 if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
   :
   echo "Meson setup failed; printing verbose output..."

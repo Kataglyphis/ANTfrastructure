@@ -95,6 +95,10 @@ if ! uv pip install --upgrade ply 2>/tmp/uv-pip-install.log; then
   echo "pip install ply failed; retrying with --break-system-packages"
   uv pip install --upgrade ply || { echo "pip install ply (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
 fi
+if ! uv pip install --upgrade pybind11 2>/tmp/uv-pip-install.log; then
+  echo "pip install pybind11 failed; retrying with --break-system-packages"
+  uv pip install --upgrade pybind11 || { echo "pip install pybind11 (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
+fi
 UV_RUN_PREFIX=(uv run --)
 
 # Ensure GoogleTest is available

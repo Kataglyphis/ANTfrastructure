@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euxo pipefail
 
 # Robust installer script for vvdec
 # - clones the repo
@@ -16,28 +16,27 @@ cd "${TMPDIR}"
 
 # Prefer CMake build flow which is supported by vvdec
 mkdir -p build
-cmake -S . -B build -DENABLE_SHARED=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PREFIX}"
+cmake -S . -B build -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_INSTALL_LIBDIR="lib"
 cmake --build build --target install -- -j"$(nproc)"
 
 # Ensure pkgconfig dir exists
 mkdir -p "${PREFIX}/lib/pkgconfig"
 
-## Create a simple pkg-config file if upstream did not install one
+## Create a robust pkg-config file directly
 PKGFILE="${PREFIX}/lib/pkgconfig/libvvdec.pc"
-if [ ! -f "${PKGFILE}" ]; then
-  cat > "${PKGFILE}" <<PCF
+cat > "${PKGFILE}" <<EOF
 prefix=${PREFIX}
-exec_prefix=
-libdir=${PREFIX}/lib
-includedir=${PREFIX}/include
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
 
 Name: libvvdec
 Description: VVC/vvdec video decoder library
-Version: 3.0
-Libs: -L${libdir} -lvvdec
-Cflags: -I${includedir}
-PCF
-fi
+Version: 3.2.0
+Libs: -L\${libdir} -lvvdec
+Libs.private: -lstdc++ -lm -lgcc
+Cflags: -I\${includedir}
+EOF
 
 cd /
 rm -rf "${TMPDIR}"

@@ -4,7 +4,7 @@ apt-get update
 # Ensure basic build tooling present for building vvdec and GTK/Cairo checks
 # Install core packages first, then attempt to install X protocol headers.
 apt-get install -y --no-install-recommends \
-    build-essential cmake git pkg-config libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-core-dev libsodium-dev
+    build-essential cmake git pkg-config libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-core-dev libsodium-dev python3-gi gobject-introspection libgirepository1.0-dev
 # Some base images may not provide the \`xorgproto\` package name. Try a few
 # alternatives and fail early if none are available so the error is clear.
 (apt-get install -y --no-install-recommends xorgproto) || true
