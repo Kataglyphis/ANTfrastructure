@@ -30,12 +30,18 @@ ENV PATH="${CUDA_HOME}/bin:${PATH}"
 
 # Build Python from source
 ARG PYTHON_VERSION=3.14.3
+ENV PYTHON_VERSION=${PYTHON_VERSION}
+# Override build scripts' default (3.14t) to ensure non-threaded ABI
+ENV ORT_PYTHON_VERSION=3.14 \
+    OPENCV_PYTHON_VERSION=3.14 \
+    UV_PYTHON=3.14
+
 COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
 RUN /opt/scripts/python/build_python.sh ${PYTHON_VERSION}
 
 # Create a shared Python virtual environment for all subsequent stages using uv
 ENV VIRTUAL_ENV=/opt/python/.venv
-RUN uv venv --seed --python python3.14 ${VIRTUAL_ENV}
+RUN uv venv --seed --python /usr/local/bin/python3.14 ${VIRTUAL_ENV}
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 # Install core Python build dependencies using uv
@@ -427,3 +433,14 @@ RUN set -eux; \
         printf "%s\n" "${TENSORRT_HOME}/lib" > /etc/ld.so.conf.d/tensorrt.conf; \
     fi; \
     ldconfig
+
+RUN set -eux; \
+    PY_TAG="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"; \
+    echo "Verifying wheels in /opt/wheels have the correct tag ($PY_TAG or generic)..."; \
+    for wheel in /opt/wheels/*.whl; do \
+        if [ ! -e "$wheel" ]; then continue; fi; \
+        case $(basename "$wheel") in \
+            *"$PY_TAG-"*|*py3-none-any*|*py2.py3-none-any*|*py3-none-*) ;; \
+            *) echo "Error: Wheel $wheel does not have the correct tag (expected ${PY_TAG}- or generic py3)"; exit 1 ;; \
+        esac; \
+    done
