@@ -25,7 +25,7 @@ apt-get install -y \
   flex bison \
   libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
   libcairo2-dev \
-  libjson-glib-dev python3-gi python3-gi-cairo python-gi-dev \
+  libjson-glib-dev 
   libgsl-dev libdw-dev libnsl-dev gobject-introspection \
   libgtk-4-dev
 

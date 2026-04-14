@@ -11,7 +11,6 @@ apt-get install -y --no-install-recommends \
     pkg-config \
     curl \
     unzip \
-    python3-dev \
     gfortran \
     libopenblas-dev \
     liblapack-dev \

@@ -20,7 +20,7 @@ if [ "${SKIP_DEP_INSTALL}" != "true" ]; then
   # Base packages
   apt-get install -y --no-install-recommends \
     git ca-certificates curl wget build-essential pkg-config \
-    python3 python3-dev python3-venv cmake ninja-build zlib1g-dev \
+    cmake ninja-build zlib1g-dev \
     protobuf-compiler libprotobuf-dev gnupg lsb-release libssl-dev
 
   # Node.js: different for RISC-V vs. other architectures

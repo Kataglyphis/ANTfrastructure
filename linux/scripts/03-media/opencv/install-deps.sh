@@ -34,9 +34,7 @@ apt-get install -y --no-install-recommends \
     libdc1394-dev
 
 if [ "${WITH_PYTHON}" = "true" ]; then
-    PYVER_MAJOR_MINOR="${OPENCV_PYTHON_VERSION%.*}"
-    apt-get install -y --no-install-recommends "python${OPENCV_PYTHON_VERSION}-dev" || true
-    apt-get install -y --no-install-recommends python3-dev python3-numpy python3-pip || true
+    echo "[INFO] Python dependencies are satisfied via source build and uv."
 fi
 
 if [ "${WITH_JAVA}" = "true" ]; then
