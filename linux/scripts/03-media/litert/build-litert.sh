@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LITERT_VERSION="${1:-v2.1.3}"
+LITERT_VERSION="${1:-v2.1.4}"
 : "${LITERT_SRC:=/tmp/litert}"
 : "${LITERT_PREFIX:=/usr/local}"
 : "${BUILD_TYPE:=Release}"

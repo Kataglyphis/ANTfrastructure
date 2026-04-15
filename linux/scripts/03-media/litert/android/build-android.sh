@@ -11,7 +11,7 @@ if ! is_x86_64; then
   exit 0
 fi
 
-LITERT_VERSION="${1:-v2.1.3}"
+LITERT_VERSION="${1:-v2.1.4}"
 INSTALL_DIR="/opt/android/litert"
 
 export DEBIAN_FRONTEND=noninteractive

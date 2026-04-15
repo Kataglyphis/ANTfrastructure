@@ -149,7 +149,7 @@ RUN set -eux; \
 # ==============================================================================
 FROM base AS litert
 
-ARG LITERT_VERSION=v2.1.3
+ARG LITERT_VERSION=v2.1.4
 ARG LITERT_BUILD_TYPE=Release
 ARG LITERT_OUTPUT_DIR=/usr/local
 
