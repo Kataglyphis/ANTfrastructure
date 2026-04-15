@@ -436,6 +436,26 @@ RUN set -eux; \
     fi; \
     ldconfig
 
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    set -eux; \
+    uv pip install auditwheel patchelf; \
+    export LD_LIBRARY_PATH="$(find /opt /usr/local -type d -name 'lib*' -o -name '*linux-gnu*' | sort -u | paste -sd ':' -):${LD_LIBRARY_PATH:-}"; \
+    mkdir -p /opt/wheels/repaired; \
+    for wheel in /opt/wheels/*.whl; do \
+        if [ ! -e "$wheel" ]; then continue; fi; \
+        case $(basename "$wheel") in \
+            *none-any.whl) cp "$wheel" /opt/wheels/repaired/ ;; \
+            opencv_python*.whl) \
+                echo "Skipping OpenCV python wheel repair as it does not contain standard wheel layout. Bundling libraries directly during build."; \
+                cp "$wheel" /opt/wheels/repaired/ \
+                ;; \
+            *) auditwheel repair "$wheel" -w /opt/wheels/repaired/ || cp "$wheel" /opt/wheels/repaired/ ;; \
+        esac; \
+    done; \
+    rm /opt/wheels/*.whl; \
+    mv /opt/wheels/repaired/*.whl /opt/wheels/; \
+    rmdir /opt/wheels/repaired
+
 RUN set -eux; \
     PY_TAG="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"; \
     echo "Verifying wheels in /opt/wheels have the correct tag ($PY_TAG or generic)..."; \
