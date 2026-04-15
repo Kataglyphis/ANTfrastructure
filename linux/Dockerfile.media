@@ -445,10 +445,6 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         if [ ! -e "$wheel" ]; then continue; fi; \
         case $(basename "$wheel") in \
             *none-any.whl) cp "$wheel" /opt/wheels/repaired/ ;; \
-            opencv_python*.whl) \
-                echo "Skipping OpenCV python wheel repair as it does not contain standard wheel layout. Bundling libraries directly during build."; \
-                cp "$wheel" /opt/wheels/repaired/ \
-                ;; \
             *) auditwheel repair "$wheel" -w /opt/wheels/repaired/ || cp "$wheel" /opt/wheels/repaired/ ;; \
         esac; \
     done; \

@@ -347,7 +347,25 @@ install_opencv() {
                 fi
                 
                 pushd "${OPENCV_SRC}/modules/python/package" >/dev/null
-                sed -i -e "s/package_name = 'opencv'/package_name = 'opencv-python'/g" -e 's/package_name="opencv"/package_name="opencv-python"/g' setup.py || true
+                
+                # Overwrite setup.py to properly package the .so file and force a platform wheel tag
+                cat << EOF > setup.py
+from setuptools import setup
+from setuptools.dist import Distribution
+
+class BinaryDistribution(Distribution):
+    def has_ext_modules(self):
+        return True
+
+setup(
+    name='opencv-python',
+    version='${OPENCV_VERSION}',
+    packages=['cv2'],
+    package_data={'cv2': ['*.so', '*/*.so', '*.py']},
+    include_package_data=True,
+    distclass=BinaryDistribution,
+)
+EOF
                 
                 ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
                 popd >/dev/null
