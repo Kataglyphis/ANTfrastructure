@@ -347,7 +347,8 @@ install_opencv() {
                 fi
                 
                 pushd "${OPENCV_SRC}/modules/python/package" >/dev/null
-                sed -i -e "s/package_name = 'opencv'/package_name = 'opencv_python'/g" -e 's/package_name="opencv"/package_name="opencv_python"/g' setup.py || true
+                sed -i -e "s/package_name = 'opencv'/package_name = 'opencv-python'/g" -e 's/package_name="opencv"/package_name="opencv-python"/g' setup.py || true
+                
                 ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
                 popd >/dev/null
 
