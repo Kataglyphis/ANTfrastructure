@@ -71,6 +71,11 @@ install_apt_deps() {
     if try_or_sudo env DEBIAN_FRONTEND=noninteractive \
             apt-get install -y --no-install-recommends "${pkgs[@]}"; then
         info "Packaging prerequisites installed"
+        
+        info "Adding flathub remote and installing flatpak runtimes"
+        try_or_sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+        try_or_sudo flatpak install -y flathub org.freedesktop.Sdk//24.08 || true
+        try_or_sudo flatpak install -y flathub org.freedesktop.Platform//24.08 || true
     else
         warn "Could not install all packaging prerequisites; continuing"
     fi
