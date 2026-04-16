@@ -1,5 +1,10 @@
 # syntax=docker/dockerfile:1.19
+
+# Global Version Arguments
+ARG LITERT_VERSION="2.1.4"
 FROM ghcr.io/kataglyphis/kataglyphis_beschleuniger:android
+
+ARG LITERT_VERSION
 
 ARG TARGETARCH
 SHELL ["bash", "-lc"]
@@ -62,10 +67,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     rm -f uv.lock && \
     echo "Debugging local wheels:" && ls -la /opt/wheels || true && \
     uv pip install /opt/wheels/ai_edge_litert*.whl || true && \
-    echo -e '\n[tool.uv]\nconstraint-dependencies = ["ai-edge-litert==2.1.4", "numpy==2.4.4"]' >> pyproject.toml && \
+    sed -i 's/"onnxruntime"/"onnxruntime-webgpu"/g' pyproject.toml && \
+    sed -i 's/"onnxruntime>=.*"/"onnxruntime-webgpu"/g' pyproject.toml && \
+    sed -i 's/"opencv-python-headless"/"opencv-contrib-python"/g' pyproject.toml && \
+    sed -i 's/"opencv-python-headless>=.*"/"opencv-contrib-python"/g' pyproject.toml && \
+    echo -e "\n[tool.uv]\nconstraint-dependencies = [\"ai-edge-litert==${LITERT_VERSION}\", \"numpy==2.4.4\"]" >> pyproject.toml && \
     uv lock --find-links /opt/wheels && \
     uv sync --find-links /opt/wheels --active --extra "ml-ai" --extra "pytorch-cpu" --extra "test" --extra "frontend" --extra "docs" && \
-    uv pip uninstall opencv-python-headless opencv-contrib-python opencv-contrib-python-headless || true && \
+    uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless || true && \
     uv pip install --force-reinstall /opt/wheels/*.whl && \
     uv pip install PyGObject && \
     # Debug OpenCV shared libraries to see what might be missing

@@ -1,5 +1,14 @@
 # syntax=docker/dockerfile:1.19
 
+# Global Version Arguments
+ARG PYTHON_VERSION="3.14.3"
+ARG ONNXRUNTIME_VERSION="v1.24.4"
+ARG ONNXRUNTIME_GENAI_VERSION="v0.12.2"
+ARG LITERT_VERSION="v2.1.4"
+ARG OPENCV_VERSION="4.x"
+ARG GSTREAMER_VERSION="1.29.1"
+
+
 # ==============================================================================
 # Base stage - common setup
 # ==============================================================================
@@ -29,7 +38,7 @@ RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
 ENV PATH="${CUDA_HOME}/bin:${PATH}"
 
 # Build Python from source
-ARG PYTHON_VERSION=3.14.3
+ARG PYTHON_VERSION
 ARG PYTHON_MAJOR_MINOR=3.14
 ENV PYTHON_VERSION=${PYTHON_VERSION}
 ENV PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}
@@ -55,10 +64,10 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
 # ==============================================================================
 FROM base AS onnxruntime
 
-ARG ONNXRUNTIME_VERSION=v1.24.4
+ARG ONNXRUNTIME_VERSION
 ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
 ARG ONNXRUNTIME_WASM_BUILD_TYPE=Release
-ARG ONNXRUNTIME_GENAI_VERSION=v0.12.2
+ARG ONNXRUNTIME_GENAI_VERSION
 ARG ONNXRUNTIME_GENAI_BUILD_TYPE=Release
 ARG BUILD_GENAI=true
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
@@ -149,7 +158,7 @@ RUN set -eux; \
 # ==============================================================================
 FROM base AS litert
 
-ARG LITERT_VERSION=v2.1.4
+ARG LITERT_VERSION
 ARG LITERT_BUILD_TYPE=Release
 ARG LITERT_OUTPUT_DIR=/usr/local
 
@@ -170,7 +179,7 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
 # ==============================================================================
 FROM base AS opencv
 
-ARG OPENCV_VERSION=4.x
+ARG OPENCV_VERSION
 ARG OPENCV_BUILD_TYPE=Release
 ARG OPENCV_WITH_CONTRIB=true
 ARG OPENCV_WITH_PYTHON=true
@@ -222,7 +231,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 # ==============================================================================
 FROM base AS gstreamer
 
-ARG GSTREAMER_VERSION=1.29.1
+ARG GSTREAMER_VERSION
 ARG BUILD_TYPE=Release
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG LITERT_OUTPUT_DIR=/usr/local
@@ -332,7 +341,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 # ==============================================================================
 FROM base AS final
 
-ARG GSTREAMER_VERSION=1.29.1
+ARG GSTREAMER_VERSION
 ARG OPENCV_OUTPUT_DIR=/opt/opencv4
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai

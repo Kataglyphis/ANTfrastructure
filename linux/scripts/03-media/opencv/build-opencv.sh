@@ -269,6 +269,85 @@ build_opencv() {
 }
 
 # ------------------------------------------------------------------------------
+# Build OpenCV Python Wheel (using official opencv-python repo)
+# ------------------------------------------------------------------------------
+build_opencv_python_wheel() {
+    echo "====================================================================="
+    echo "Building opencv-python wheel from official repository..."
+    echo "====================================================================="
+    
+    local py_repo_src="/tmp/opencv-python-repo"
+    rm -rf "${py_repo_src}"
+    
+    # Clone the official repo (it manages OpenCV submodules automatically)
+    git clone --recursive https://github.com/opencv/opencv-python.git "${py_repo_src}"
+    pushd "${py_repo_src}" >/dev/null
+    
+    # Max features: include contrib modules, disable headless (keep GUI)
+    export ENABLE_CONTRIB=1
+    export ENABLE_HEADLESS=0
+    
+    local py_cmake_args=(
+        "-DWITH_TBB=ON"
+        "-DWITH_EIGEN=ON"
+        "-DWITH_GTK=ON"
+        "-DWITH_V4L=ON"
+        "-DWITH_FFMPEG=ON"
+        "-DWITH_GSTREAMER=ON"
+        "-DWITH_OPENEXR=ON"
+        "-DWITH_JPEG=ON"
+        "-DWITH_PNG=ON"
+        "-DWITH_TIFF=ON"
+        "-DWITH_WEBP=ON"
+        "-DWITH_DC1394=ON"
+        "-DWITH_1394=ON"
+        "-DWITH_OPENCL=ON"
+        "-DWITH_OPENGL=ON"
+        "-DWITH_VULKAN=ON"
+        "-DWITH_PROTOBUF=ON"
+        "-DWITH_LIBV4L=ON"
+        "-DWITH_ITT=ON"
+        "-DBUILD_opencv_tracking=ON"
+    )
+    
+    if [ "$(uname -m)" != "x86_64" ]; then
+        py_cmake_args+=("-DWITH_IPP=OFF")
+    fi
+    
+    if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+        echo "Enabling NVIDIA CUDA support for opencv-python wheel..."
+        py_cmake_args+=("-DWITH_CUDA=ON")
+        py_cmake_args+=("-DCUDA_FAST_MATH=ON")
+        py_cmake_args+=("-DWITH_CUDNN=ON")
+        py_cmake_args+=("-DOPENCV_DNN_CUDA=ON")
+        py_cmake_args+=("-DWITH_CUBLAS=ON")
+        
+        # Add stub library path if no GPU during build
+        if [ -f "/usr/local/cuda/lib64/stubs/libcuda.so" ]; then
+            py_cmake_args+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/lib64/stubs/libcuda.so")
+        elif [ -f "/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so" ]; then
+            py_cmake_args+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so")
+        else
+            py_cmake_args+=("-DBUILD_opencv_cudacodec=OFF")
+        fi
+    fi
+    
+    export CMAKE_ARGS="${py_cmake_args[*]}"
+    echo "CMAKE_ARGS for python wheel: ${CMAKE_ARGS}"
+    
+    PYEXEC="$(which python3)"
+    # Ensure build dependencies are installed
+    ${PYEXEC} -m pip install wheel scikit-build cmake ninja numpy packaging || uv pip install wheel scikit-build cmake ninja numpy packaging
+    
+    mkdir -p "${OPENCV_PREFIX}/wheels"
+    
+    echo "Building wheel via scikit-build... (this will take a while as it compiles OpenCV again)"
+    ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" --verbose || echo "Failed to build opencv-python wheel"
+    
+    popd >/dev/null
+}
+
+# ------------------------------------------------------------------------------
 # Install OpenCV
 # ------------------------------------------------------------------------------
 install_opencv() {
@@ -310,82 +389,6 @@ install_opencv() {
         echo "Failing build so the image build doesn't continue with a broken OpenCV install."
         exit 1
     fi
-
-    # Attempt to build/capture Python wheel for OpenCV
-    mkdir -p "${OPENCV_PREFIX}/wheels"
-    if [ "${WITH_PYTHON}" = "true" ]; then
-        echo "Attempting to create OpenCV wheel using the selected Python"
-        PYEXEC="$(which python3)"
-        if [ -n "${PYEXEC}" ]; then
-            if [ -f "${OPENCV_SRC}/modules/python/package/setup.py" ]; then
-                echo "Building python wheel from modules/python/package..."
-                export OPENCV_VERSION="$(pkg-config --modversion opencv4 2>/dev/null || echo 4.10.0)"
-                
-                CV2_DIR=$(find "${OPENCV_PREFIX}" -type d -name "cv2" -path "*/python*/cv2" | head -n 1)
-                if [ -n "${CV2_DIR}" ]; then
-                    echo "Found cv2 python bindings at: ${CV2_DIR}"
-                    # Copy the cv2 module into the package directory
-                    cp -r "${CV2_DIR}" "${OPENCV_SRC}/modules/python/package/" || true
-                    
-                    # In addition, we need to ensure the compiled .so is properly placed
-                    # inside the cv2 package folder before building the wheel
-                    echo "Hunting for compiled cv2*.so to bundle inside the wheel..."
-                    SO_FILE=$(find "${OPENCV_PREFIX}" "${OPENCV_SRC}/build" /usr /opt -type f -name "cv2*.so" 2>/dev/null | head -n 1 || true)
-                    if [ -n "${SO_FILE}" ]; then
-                        echo "Found compiled extension: ${SO_FILE}"
-                        # Try to copy it directly into the cv2 directory we just copied
-                        cp "${SO_FILE}" "${OPENCV_SRC}/modules/python/package/cv2/" || true
-                        
-                        # Python 3.14 might expect it inside a python-3.14 subdirectory
-                        mkdir -p "${OPENCV_SRC}/modules/python/package/cv2/python-3.14"
-                        cp "${SO_FILE}" "${OPENCV_SRC}/modules/python/package/cv2/python-3.14/" || true
-                    else
-                        echo "WARNING: Could not find any cv2*.so extension! The wheel will be incomplete."
-                    fi
-                else
-                    echo "Could not find cv2 python directory to bundle into wheel. The wheel might be empty!"
-                fi
-                
-                pushd "${OPENCV_SRC}/modules/python/package" >/dev/null
-                
-                # Overwrite setup.py to properly package the .so file and force a platform wheel tag
-                cat << EOF > setup.py
-from setuptools import setup
-from setuptools.dist import Distribution
-
-class BinaryDistribution(Distribution):
-    def has_ext_modules(self):
-        return True
-
-setup(
-    name='opencv-python',
-    version='${OPENCV_VERSION}',
-    packages=['cv2'],
-    package_data={'cv2': ['*.so', '*/*.so', '*.py']},
-    include_package_data=True,
-    distclass=BinaryDistribution,
-)
-EOF
-                
-                ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" || echo "Could not wheel OpenCV via pip"
-                popd >/dev/null
-
-                # Fix the wheel tags to match the current Python interpreter
-                local wheel_file
-                wheel_file=$(ls "${OPENCV_PREFIX}/wheels/"*opencv*"-py3-none-any.whl" 2>/dev/null | head -n 1 || true)
-                if [ -n "${wheel_file}" ]; then
-                    echo "Retagging wheel ${wheel_file} to match platform/ABI..."
-                    local tags
-                    tags=$(${PYEXEC} -c "import packaging.tags; t=next(packaging.tags.sys_tags()); print(f'--python-tag {t.interpreter} --abi-tag {t.abi} --platform-tag {t.platform}')")
-                    ${PYEXEC} -m wheel tags "${wheel_file}" ${tags} --remove || true
-                fi
-            else
-                ${PYEXEC} -m pip wheel -w "${OPENCV_PREFIX}/wheels" "${OPENCV_SRC}" || echo "Could not wheel OpenCV via pip; wheel may not be available"
-            fi
-        else
-            echo "No suitable python executable found to build OpenCV wheel"
-        fi
-    fi
 }
 
 # ------------------------------------------------------------------------------
@@ -404,6 +407,11 @@ main() {
     configure_opencv
     build_opencv
     install_opencv
+    
+    if [ "${WITH_PYTHON}" = "true" ]; then
+        build_opencv_python_wheel
+    fi
+    
     cleanup
     
     # Validation step
