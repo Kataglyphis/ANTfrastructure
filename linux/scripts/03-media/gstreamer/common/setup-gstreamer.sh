@@ -1,6 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ==============================================================================
+# setup-gstreamer.sh - Build GStreamer from source with all plugins
+# ==============================================================================
+#
+# Build Acceleration:
+#   USE_CCACHE=true              Enable ccache for C/C++ (default: true)
+#   USE_SCCACHE=true             Enable sccache for Rust (default: true)
+#   USE_LLD=true                 Use lld linker (default: true)
+#   AGGRESSIVE_PARALLELISM=true  Use lower memory caps (default: false)
+# ==============================================================================
+
+# Source build acceleration and parallelism helpers if available
+_SETUP_GST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for helper in \
+    "/opt/scripts/core/compiler-cache.sh" \
+    "${_SETUP_GST_DIR}/../../../../01-core/compiler-cache.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        setup_ccache
+        setup_sccache
+        setup_lld_linker
+        break
+    fi
+done
+
+# Source parallelism helpers
+for helper in \
+    "/opt/scripts/core/parallelism.sh" \
+    "${_SETUP_GST_DIR}/../../../../01-core/parallelism.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
@@ -479,40 +516,34 @@ uv run meson subprojects update > /dev/null 2>&1 || true
 
 echo "Compiling GStreamer (this may take a while)..."
 
-# Memory per compile job in MB
-PER_JOB_MB=1500
-
-# CPU threads
-CORES=$(nproc --all)
-
-# Verfügbaren RAM in MB holen (fallback 2048 MB)
-AVAIL_MB=$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo)
-[ -z "$AVAIL_MB" ] && AVAIL_MB=2048
-
-# Max Jobs begrenzt durch RAM
-MAX_BY_MEM=$(( AVAIL_MB / PER_JOB_MB ))
-[ "$MAX_BY_MEM" -lt 1 ] && MAX_BY_MEM=1
-
-# JOBS = min(CORES, MAX_BY_MEM)
-if [ "$CORES" -lt "$MAX_BY_MEM" ]; then
-  :
-  JOBS=$CORES
+# Calculate parallel jobs using shared helper if available, otherwise fallback
+if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
+  # Use AGGRESSIVE_PARALLELISM-aware helper
+  # Default: 1500MB/job, Aggressive: 1000MB/job for GStreamer
+  if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
+    JOBS=$(compute_jobs_with_mem_cap "" 1000)
+  else
+    JOBS=$(compute_jobs_with_mem_cap "" 1500)
+  fi
 else
-  :
-  JOBS=$MAX_BY_MEM
+  # Fallback to inline calculation
+  PER_JOB_MB=1500
+  [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ] && PER_JOB_MB=1000
+  CORES=$(nproc --all)
+  AVAIL_MB=$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo)
+  [ -z "$AVAIL_MB" ] && AVAIL_MB=2048
+  MAX_BY_MEM=$(( AVAIL_MB / PER_JOB_MB ))
+  [ "$MAX_BY_MEM" -lt 1 ] && MAX_BY_MEM=1
+  if [ "$CORES" -lt "$MAX_BY_MEM" ]; then
+    JOBS=$CORES
+  else
+    JOBS=$MAX_BY_MEM
+  fi
+  [ "$JOBS" -lt 1 ] && JOBS=1
 fi
-
-# Reserve one core for system if possible
-if [ "$JOBS" -gt 1 ]; then
-  :
-  JOBS=$((JOBS - 1))
-fi
-
-# Ensure at least 1
-[ "$JOBS" -lt 1 ] && JOBS=1
 
 export JOBS
-echo "Using JOBS=$JOBS (cores=$CORES, avail_mb=${AVAIL_MB}, per_job_mb=${PER_JOB_MB})"
+echo "Using JOBS=$JOBS (AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
 echo "Compiling GStreamer..."
 if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
@@ -579,27 +610,31 @@ CARGO_FLAGS=()
 [ "${BUILD_TYPE_LOWER}" = "release" ] && CARGO_FLAGS+=(--release)
 
 # Limit Rust build parallelism (cargo can be very memory hungry)
-RUST_PER_JOB_MB="${RUST_PER_JOB_MB:-2500}"
-RUST_CORES="$(nproc --all 2>/dev/null || echo 1)"
-RUST_AVAIL_MB="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
-[ -z "${RUST_AVAIL_MB}" ] && RUST_AVAIL_MB=2048
-RUST_MAX_BY_MEM=$(( RUST_AVAIL_MB / RUST_PER_JOB_MB ))
-[ "${RUST_MAX_BY_MEM}" -lt 1 ] && RUST_MAX_BY_MEM=1
-if [ "${RUST_CORES}" -lt "${RUST_MAX_BY_MEM}" ]; then
-  :
-  RUST_JOBS="${RUST_CORES}"
+# Use shared helper if available
+if command -v compute_rust_jobs >/dev/null 2>&1; then
+  RUST_JOBS=$(compute_rust_jobs)
 else
-  :
-  RUST_JOBS="${RUST_MAX_BY_MEM}"
+  # Fallback to inline calculation
+  if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
+    RUST_PER_JOB_MB="${RUST_PER_JOB_MB:-1800}"
+  else
+    RUST_PER_JOB_MB="${RUST_PER_JOB_MB:-2500}"
+  fi
+  RUST_CORES="$(nproc --all 2>/dev/null || echo 1)"
+  RUST_AVAIL_MB="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
+  [ -z "${RUST_AVAIL_MB}" ] && RUST_AVAIL_MB=2048
+  RUST_MAX_BY_MEM=$(( RUST_AVAIL_MB / RUST_PER_JOB_MB ))
+  [ "${RUST_MAX_BY_MEM}" -lt 1 ] && RUST_MAX_BY_MEM=1
+  if [ "${RUST_CORES}" -lt "${RUST_MAX_BY_MEM}" ]; then
+    RUST_JOBS="${RUST_CORES}"
+  else
+    RUST_JOBS="${RUST_MAX_BY_MEM}"
+  fi
+  [ "${RUST_JOBS}" -lt 1 ] && RUST_JOBS=1
 fi
-if [ "${RUST_JOBS}" -gt 1 ]; then
-  :
-  RUST_JOBS=$((RUST_JOBS - 1))
-fi
-[ "${RUST_JOBS}" -lt 1 ] && RUST_JOBS=1
 
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${RUST_JOBS}}"
-echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (cores=${RUST_CORES}, avail_mb=${RUST_AVAIL_MB}, per_job_mb=${RUST_PER_JOB_MB})"
+echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
 cd "${PLUGIN_RS_DIR}"
 

@@ -11,7 +11,25 @@ set -euo pipefail
 #   ./build-opencv.sh [--opencv-version VERSION]
 #
 # Defaults can be overridden via environment variables or arguments.
+#
+# Build Acceleration:
+#   USE_CCACHE=true     Enable ccache for faster rebuilds (default: true)
+#   USE_LLD=true        Use lld linker for faster linking (default: true)
 # ==============================================================================
+
+# Source build acceleration helpers if available
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for helper in \
+    "/opt/scripts/core/compiler-cache.sh" \
+    "${SCRIPT_DIR}/../../../01-core/compiler-cache.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        setup_ccache
+        setup_lld_linker
+        break
+    fi
+done
 
 # Defaults (can be overridden via env vars or arguments)
 : "${OPENCV_VERSION:=4.x}"
@@ -182,6 +200,21 @@ configure_opencv() {
         "-DWITH_ITT=ON"
         "-DWITH_IPP=${WITH_IPP}"
     )
+
+    # Add lld linker flags if available
+    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+        cmake_opts+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
+        cmake_opts+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
+        cmake_opts+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
+        echo "Using lld linker for faster linking"
+    fi
+
+    # Add ccache if available
+    if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+        cmake_opts+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+        cmake_opts+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+        echo "Using ccache for faster compilation"
+    fi
 
     # Ensure tracking contrib module is explicitly enabled (some builds/platforms
     # may not build it by default even when contrib modules are available).
