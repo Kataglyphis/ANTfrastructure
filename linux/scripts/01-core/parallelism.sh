@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # parallelism.sh - build parallelism helpers (CPU quota + optional memory cap)
+#
+# Environment Variables:
+#   AGGRESSIVE_PARALLELISM  - Set to "true" for lower memory caps (faster builds)
+#   PARALLEL_JOBS           - Override all auto-detection with explicit job count
+#   DEFAULT_MB_PER_JOB      - Override default memory per job (default: 2000 or 1200 if aggressive)
 
 _cgroup_cpu_quota_cores() {
   local quota=""
@@ -132,8 +137,25 @@ _cgroup_mem_remaining_mb() {
 compute_jobs_with_mem_cap() {
   # Usage: compute_jobs_with_mem_cap [requested] [mb_per_job]
   # Defaults to ~2000MB/job to avoid OOM on build steps.
+  # Set AGGRESSIVE_PARALLELISM=true for lower memory caps (1200MB/job).
+  # Set PARALLEL_JOBS=N to override all auto-detection.
   local requested="${1:-}"
-  local mb_per_job="${2:-2000}"
+  local mb_per_job="${2:-}"
+
+  # Allow explicit override via PARALLEL_JOBS
+  if [ -n "${PARALLEL_JOBS:-}" ]; then
+    echo "${PARALLEL_JOBS}"
+    return 0
+  fi
+
+  # Determine default memory per job based on AGGRESSIVE_PARALLELISM
+  if [ -z "${mb_per_job}" ]; then
+    if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
+      mb_per_job="${DEFAULT_MB_PER_JOB:-1200}"
+    else
+      mb_per_job="${DEFAULT_MB_PER_JOB:-2000}"
+    fi
+  fi
 
   local jobs
   jobs="$(compute_jobs "${requested}")"
@@ -150,4 +172,19 @@ compute_jobs_with_mem_cap() {
 
   [ "${jobs}" -lt 1 ] && jobs=1
   echo "${jobs}"
+}
+
+# Compute jobs for Rust/Cargo builds (typically need more memory)
+# Usage: compute_rust_jobs [requested]
+compute_rust_jobs() {
+  local requested="${1:-}"
+  local mb_per_job
+
+  if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
+    mb_per_job="${RUST_MB_PER_JOB:-1800}"
+  else
+    mb_per_job="${RUST_MB_PER_JOB:-2500}"
+  fi
+
+  compute_jobs_with_mem_cap "${requested}" "${mb_per_job}"
 }

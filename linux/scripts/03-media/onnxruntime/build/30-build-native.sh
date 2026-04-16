@@ -4,6 +4,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 
+# Source build acceleration helpers if available
+for helper in \
+    "/opt/scripts/core/compiler-cache.sh" \
+    "${SCRIPT_DIR}/../../../../01-core/compiler-cache.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        setup_ccache
+        setup_lld_linker
+        break
+    fi
+done
+
 parse_common_args "$@"
 detect_jobs
 
@@ -56,6 +69,32 @@ if [[ "$(uname -m)" != "riscv64" ]]; then
     --use_webgpu
     --use_external_dawn
   )
+fi
+
+# Add lld linker for faster linking
+if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+  BUILD_ARGS+=(
+    --cmake_extra_defines
+    CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
+    CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld
+    CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld
+  )
+  info "Using lld linker for faster linking"
+fi
+
+# Add ccache for faster compilation
+# Note: Only add if CMAKE_C_COMPILER_LAUNCHER is not already set by compiler-cache.sh
+if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+  if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
+    BUILD_ARGS+=(
+      --cmake_extra_defines
+      CMAKE_C_COMPILER_LAUNCHER=ccache
+      CMAKE_CXX_COMPILER_LAUNCHER=ccache
+    )
+    info "Using ccache for faster compilation (via cmake_extra_defines)"
+  else
+    info "ccache already configured via environment (CMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER})"
+  fi
 fi
 
 # Execute build

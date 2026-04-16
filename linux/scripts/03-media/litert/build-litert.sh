@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ==============================================================================
+# build-litert.sh - Build and install LiteRT from source
+# ==============================================================================
+#
+# Build Acceleration:
+#   USE_CCACHE=true     Enable ccache for faster rebuilds (default: true)
+#   USE_LLD=true        Use lld linker for faster linking (default: true)
+# ==============================================================================
+
+# Source build acceleration helpers if available
+SCRIPT_DIR_LITERT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for helper in \
+    "/opt/scripts/core/compiler-cache.sh" \
+    "${SCRIPT_DIR_LITERT}/../../../01-core/compiler-cache.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        setup_ccache
+        setup_lld_linker
+        break
+    fi
+done
+
 LITERT_VERSION="${1:-v2.1.4}"
 : "${LITERT_SRC:=/tmp/litert}"
 : "${LITERT_PREFIX:=/usr/local}"
@@ -39,26 +62,55 @@ configure_litert() {
 
     echo "[INFO] Using preset: ${preset}"
 
+    # Build CMake arguments array
+    local cmake_args=(
+        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+        "-DRUY_PROFILER=0"
+        "-DRUY_ENABLE_INSTRUMENTATION=OFF"
+        "-DRUY_PROFILER_INSTRUMENTATION=OFF"
+        "-DRUY_BUILD_TOOLS=OFF"
+        "-DRUY_BUILD_TESTING=OFF"
+        "-DCMAKE_INSTALL_PREFIX=${LITERT_PREFIX}"
+        "-DCMAKE_INSTALL_LIBDIR=lib"
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+        "-DLITERT_AUTO_BUILD_TFLITE=ON"
+        "-DLITERT_ENABLE_GPU=OFF"
+        "-DLITERT_ENABLE_NPU=OFF"
+        "-DTFLITE_ENABLE_XNNPACK=ON"
+        "-DTFLITE_ENABLE_RUY=ON"
+        "-DPython3_EXECUTABLE=$(which python3)"
+    )
+
+    # Add lld linker flags if available
+    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+        cmake_args+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
+        cmake_args+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
+        cmake_args+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
+        echo "[INFO] Using lld linker for faster linking"
+    fi
+
+    # Add ccache if available
+    # Only add if CMAKE_C_COMPILER_LAUNCHER is not already set by compiler-cache.sh
+    if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+        if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
+            cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+            cmake_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+            # Explicitly disable ccache for ASM files - ccache cannot handle assembly
+            # and will fail with "invalid option -- 'D'" when processing .S files
+            cmake_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
+            echo "[INFO] Using ccache for faster compilation (C/C++ only, not ASM)"
+        else
+            echo "[INFO] ccache already configured via environment"
+            # Still need to disable ASM launcher to prevent ccache from being used for .S files
+            cmake_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
+        fi
+    fi
+
     # Enable ruy but keep its profiler/instrumentation disabled to avoid
     # linking against ruy_profiler_instrumentation (not present in some
     # build environments / submodule combinations). Explicitly set
     # RUY_PROFILER=0 so the profiler is disabled while ruy remains enabled.
-    cmake --preset "${preset}" \
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-        -DRUY_PROFILER=0 \
-        -DRUY_ENABLE_INSTRUMENTATION=OFF \
-        -DRUY_PROFILER_INSTRUMENTATION=OFF \
-        -DRUY_BUILD_TOOLS=OFF \
-        -DRUY_BUILD_TESTING=OFF \
-        -DCMAKE_INSTALL_PREFIX="${LITERT_PREFIX}" \
-        -DCMAKE_INSTALL_LIBDIR=lib \
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -DLITERT_AUTO_BUILD_TFLITE=ON \
-        -DLITERT_ENABLE_GPU=OFF \
-        -DLITERT_ENABLE_NPU=OFF \
-        -DTFLITE_ENABLE_XNNPACK=ON \
-        -DTFLITE_ENABLE_RUY=ON \
-        -DPython3_EXECUTABLE="$(which python3)"
+    cmake --preset "${preset}" "${cmake_args[@]}"
 }
 
 build_litert() {

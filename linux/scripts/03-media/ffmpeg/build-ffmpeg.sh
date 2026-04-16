@@ -8,7 +8,25 @@ set -euo pipefail
 # commonly used codecs and features enabled.
 #
 # Defaults can be overridden via environment variables.
+#
+# Build Acceleration:
+#   USE_CCACHE=true     Enable ccache for faster rebuilds (default: true)
+#   USE_LLD=true        Use lld linker for faster linking (default: true)
 # ==============================================================================
+
+# Source build acceleration helpers if available
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for helper in \
+    "/opt/scripts/core/compiler-cache.sh" \
+    "${SCRIPT_DIR}/../../../01-core/compiler-cache.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        setup_ccache
+        setup_lld_linker
+        break
+    fi
+done
 
 # Defaults (can be overridden via env vars)
 : "${FFMPEG_SRC:=/tmp/ffmpeg}"
@@ -124,6 +142,19 @@ configure_ffmpeg() {
         CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
         configure_opts+=("--extra-cflags=-I${CUDA_HOME}/include")
         configure_opts+=("--extra-ldflags=-L${CUDA_HOME}/lib64")
+    fi
+
+    # Use lld linker for faster linking if available
+    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+        configure_opts+=("--extra-ldflags=-fuse-ld=lld")
+        echo "Using lld linker for faster linking"
+    fi
+
+    # Use ccache if available
+    if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+        configure_opts+=("--cc=ccache gcc")
+        configure_opts+=("--cxx=ccache g++")
+        echo "Using ccache for faster compilation"
     fi
     
     ./configure "${configure_opts[@]}" || { echo "FFmpeg configure failed"; exit 1; }
