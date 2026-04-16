@@ -57,8 +57,11 @@ try_or_sudo() {
 install_apt_deps() {
     local -a pkgs=(
         ca-certificates curl wget xz-utils
+        dpkg
         libfuse2 libfuse3-3
         flatpak flatpak-builder
+        elfutils
+        dbus-user-session
         build-essential appstream apt-utils
     )
 
@@ -136,6 +139,40 @@ ensure_appimagetool() {
     info "appimagetool is now available: $dest"
 }
 
+# ── Flatpak Runtime/SDK installation ──────────────────────────────────
+
+install_flatpak_runtime() {
+    if ! command -v flatpak >/dev/null 2>&1; then
+        warn "flatpak not found; skipping runtime/SDK installation"
+        return 1
+    fi
+
+    local runtime_version="24.08"
+
+    info "Adding Flathub repository (if not present)"
+    if ! flatpak remote-list | grep -q flathub; then
+        if ! try_or_sudo flatpak remote-add --if-not-exists flathub \
+                https://dl.flathub.org/repo/flathub.flatpakrepo; then
+            warn "Failed to add Flathub repository"
+            return 1
+        fi
+    fi
+
+    info "Installing Freedesktop Platform runtime $runtime_version"
+    if ! try_or_sudo flatpak install -y --noninteractive flathub \
+            org.freedesktop.Platform//"$runtime_version"; then
+        warn "Failed to install org.freedesktop.Platform//$runtime_version"
+    fi
+
+    info "Installing Freedesktop SDK $runtime_version"
+    if ! try_or_sudo flatpak install -y --noninteractive flathub \
+            org.freedesktop.Sdk//"$runtime_version"; then
+        warn "Failed to install org.freedesktop.Sdk//$runtime_version"
+    fi
+
+    info "Flatpak runtime/SDK installation complete"
+}
+
 # ── Main ───────────────────────────────────────────────────────────────
 
 info "Running packaging dependency preflight (best-effort)"
@@ -145,6 +182,8 @@ if command -v apt-get >/dev/null 2>&1; then
 else
     warn "apt-get not found; skipping apt-based dependency installation"
 fi
+
+install_flatpak_runtime || true
 
 ensure_appimagetool || true
 
