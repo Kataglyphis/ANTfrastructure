@@ -128,6 +128,91 @@ build_litert() {
     }
 }
 
+build_tflite_c_api() {
+    echo "[INFO] Building TensorFlow Lite C API library..."
+
+    local c_api_src="${LITERT_SRC}/tflite/c"
+    if [ ! -d "${c_api_src}" ]; then
+        echo "[WARN] TFLite C API source not found at ${c_api_src}; skipping C API build"
+        return 0
+    fi
+
+    # The C API CMakeLists.txt expects TF_SOURCE_DIR to contain tensorflow/lite
+    # but LiteRT uses tflite/ instead. Create the compatibility symlink.
+    echo "[INFO] Creating tensorflow/lite symlink for C API build compatibility..."
+    mkdir -p "${LITERT_SRC}/tensorflow"
+    ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
+
+    local c_api_build="${LITERT_SRC}/tflite_c_build"
+    mkdir -p "${c_api_build}"
+    cd "${c_api_build}"
+
+    local cmake_args=(
+        "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
+        "-DCMAKE_INSTALL_PREFIX=${LITERT_PREFIX}"
+        "-DCMAKE_INSTALL_LIBDIR=lib"
+        "-DTFLITE_C_BUILD_SHARED_LIBS=ON"
+        "-DTF_SOURCE_DIR=${LITERT_SRC}"
+        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+    )
+
+    # Add lld linker flags if available
+    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+        cmake_args+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
+        cmake_args+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
+        cmake_args+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
+    fi
+
+    # Add ccache if available
+    if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+        if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
+            cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+            cmake_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+            cmake_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
+        fi
+    fi
+
+    echo "[INFO] Configuring TFLite C API..."
+    echo "[INFO] C API source: ${c_api_src}"
+    echo "[INFO] TF_SOURCE_DIR: ${LITERT_SRC}"
+    echo "[INFO] Expected tensorflow/lite at: ${LITERT_SRC}/tensorflow/lite"
+    ls -la "${LITERT_SRC}/tensorflow/lite" 2>/dev/null || echo "[WARN] tensorflow/lite symlink may not exist"
+    
+    if ! cmake "${c_api_src}" "${cmake_args[@]}"; then
+        echo "[ERROR] TFLite C API cmake configure failed!"
+        echo "[ERROR] This is required for GStreamer tflite plugin support."
+        echo "[ERROR] Check the cmake output above for details."
+        return 1
+    fi
+
+    echo "[INFO] Building TFLite C API..."
+    if ! cmake --build . -j"${NPROC}"; then
+        echo "[WARN] TFLite C API parallel build failed, trying single-threaded..."
+        if ! cmake --build . -j1; then
+            echo "[ERROR] TFLite C API build failed!"
+            return 1
+        fi
+    fi
+
+    echo "[INFO] Installing TFLite C API..."
+    if ! cmake --install .; then
+        # Manual install if cmake install fails
+        echo "[INFO] Manual install of TFLite C API library..."
+        find . -name "libtensorflowlite_c*.so*" -exec cp -v {} "${LITERT_PREFIX}/lib/" \; 2>/dev/null || true
+    fi
+
+    # Verify the library was built
+    if [ -f "${LITERT_PREFIX}/lib/libtensorflowlite_c.so" ] || \
+       ls "${c_api_build}"/libtensorflowlite_c*.so* 2>/dev/null; then
+        echo "[INFO] TFLite C API build complete - libtensorflowlite_c.so available"
+    else
+        echo "[WARN] libtensorflowlite_c.so not found after build!"
+        echo "[INFO] Checking build directory for any .so files:"
+        find "${c_api_build}" -name "*.so*" -ls 2>/dev/null || echo "No .so files found"
+    fi
+}
+
 install_litert() {
     echo "[INFO] Installing LiteRT to ${LITERT_PREFIX}..."
 
@@ -245,29 +330,41 @@ install_manual() {
     elif [ -d "litert" ]; then
         echo "[INFO] Found litert source layout..."
         find litert -type f \( -name "*.h" -o -name "*.hpp" \) -exec cp --parents {} "${include_dir}/" \;
-        
-        # General compatibility symlink
-        mkdir -p "${include_dir}/tensorflow"
-        ln -snf "${include_dir}/litert" "${include_dir}/tensorflow/lite"
     fi
     
-    # 2. Restore explicit C API copies and symlinks for strict compatibility
+    # 2. Copy tflite directory (contains TensorFlow Lite C++ compatibility headers)
+    # This is CRITICAL for libcamera's awb_nn.cpp which needs tensorflow/lite/interpreter.h
+    echo "[INFO] Copying tflite C++ compatibility headers..."
+    if [ -d "tflite" ]; then
+        cp -rv "tflite" "${include_dir}/" 2>/dev/null || true
+        echo "[INFO] tflite headers copied to ${include_dir}/tflite"
+    fi
+    
+    # 3. Copy litert/c headers for C API compatibility
     echo "[INFO] Ensuring strict C API compatibility..."
     cp -rv "litert/c" "${include_dir}/" 2>/dev/null || true
-    cp -rv "tflite" "${include_dir}/" 2>/dev/null || true
     
-    mkdir -p "${include_dir}/tensorflow/lite/c"
+    # 4. Create tensorflow/lite -> tflite symlink for compatibility
+    # libcamera and other projects expect headers at <tensorflow/lite/interpreter.h>
+    # but LiteRT provides them at <tflite/interpreter.h>
+    # NOTE: Since this is a symlink, tensorflow/lite/c will automatically resolve
+    # to tflite/c which should already have the C API headers from the tflite copy
+    echo "[INFO] Creating tensorflow/lite compatibility symlink..."
+    mkdir -p "${include_dir}/tensorflow"
+    rm -rf "${include_dir}/tensorflow/lite"  # Remove any existing symlink or directory
+    ln -snf "${include_dir}/tflite" "${include_dir}/tensorflow/lite"
+    echo "[INFO] Created symlink: ${include_dir}/tensorflow/lite -> ${include_dir}/tflite"
     
-    # Safely link specific C API headers depending on where they were found
-    for header in c_api.h c_api_experimental.h c_api_opaque.h common.h builtin_op_kernels.h; do
-        if [ -f "${include_dir}/litert/c/${header}" ]; then
-            ln -sf "${include_dir}/litert/c/${header}" "${include_dir}/tensorflow/lite/c/${header}"
-        elif [ -f "${include_dir}/tflite/c/${header}" ]; then
-            ln -sf "${include_dir}/tflite/c/${header}" "${include_dir}/tensorflow/lite/c/${header}"
-        fi
-    done
+    # Verify the symlink works for the critical header
+    if [ -f "${include_dir}/tensorflow/lite/interpreter.h" ]; then
+        echo "[INFO] Verified: tensorflow/lite/interpreter.h is accessible"
+    else
+        echo "[WARN] tensorflow/lite/interpreter.h is NOT accessible via symlink!"
+        echo "[INFO] Contents of ${include_dir}/tflite:"
+        ls -la "${include_dir}/tflite" 2>/dev/null || echo "  (directory not found)"
+    fi
     
-    # 3. Flatbuffers (Required by the C++ API)
+    # 5. Flatbuffers (Required by the C++ API)
     # CMake builds may place FlatBuffers headers in different locations
     # depending on the subproject naming. Check common locations and
     # fall back to searching for the header if needed.
@@ -340,6 +437,22 @@ Libs: -L\${libdir} -ltensorflow-lite
 Libs.private: ${static_libs} -lpthread -ldl
 Cflags: -I\${includedir}
 EOF
+
+    # Create pkg-config file for the C API (tensorflowlite_c)
+    # GStreamer's tflite plugin prefers this library
+    cat > "${lib_dir}/pkgconfig/tensorflowlite_c.pc" <<EOF
+prefix=${LITERT_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+
+Name: TensorFlow Lite C API
+Description: TensorFlow Lite C API Library (via LiteRT)
+Version: ${LITERT_VERSION}
+Libs: -L\${libdir} -ltensorflowlite_c
+Libs.private: -lpthread -ldl
+Cflags: -I\${includedir}
+EOF
 }
 
 verify_installation() {
@@ -383,6 +496,7 @@ main() {
     fetch_litert
     configure_litert
     build_litert
+    build_tflite_c_api
     install_litert
     verify_installation
     cleanup
