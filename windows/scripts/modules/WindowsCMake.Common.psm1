@@ -291,6 +291,7 @@ function Invoke-CmakeConfigureAndBuild {
                     Write-BuildLog -Context $Context -Message "DEBUG: Copied $($dll.Name) to $binDir"
                 }
                 $SanitizerDllsCopied = $true
+                break
             }
         }
         
