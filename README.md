@@ -319,6 +319,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   -f linux/Dockerfile.torch \
   --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
+  --build-arg ONNX_PACKAGE="onnxruntime-gpu" \
+  --build-arg PYTORCH_EXTRA="pytorch-gpu" \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-nvidia \
   . 2>&1 | tee -a output.log
@@ -371,6 +373,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 | NVTX | Not installed | Installed |
 | GStreamer nvcodec | Auto-detected (off in builds) | Always enabled |
 | ORT native EP | CPU only | CPU + CUDA + TensorRT + cuDNN |
+| ORT Python Package | `onnxruntime-webgpu` | `onnxruntime-gpu` (via `ONNX_PACKAGE`) |
+| PyTorch Extra | `pytorch-cpu` | `pytorch-gpu` (via `PYTORCH_EXTRA`) |
 | ORT output dir | `/usr/local/lib/onnxruntime-cpu` | Both cpu and `/usr/local/lib/onnxruntime-gpu` |
 | Image tag | `:latest` | `:nvidia` |
 

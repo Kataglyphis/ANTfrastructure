@@ -5,6 +5,8 @@ ARG LITERT_VERSION="2.1.4"
 FROM ghcr.io/kataglyphis/kataglyphis_beschleuniger:android
 
 ARG LITERT_VERSION
+ARG ONNX_PACKAGE="onnxruntime-webgpu"
+ARG PYTORCH_EXTRA="pytorch-cpu"
 
 ARG TARGETARCH
 SHELL ["bash", "-lc"]
@@ -67,13 +69,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     rm -f uv.lock && \
     echo "Debugging local wheels:" && ls -la /opt/wheels || true && \
     uv pip install /opt/wheels/ai_edge_litert*.whl || true && \
-    sed -i 's/"onnxruntime"/"onnxruntime-webgpu"/g' pyproject.toml && \
-    sed -i 's/"onnxruntime>=.*"/"onnxruntime-webgpu"/g' pyproject.toml && \
+    if [ "${ONNX_PACKAGE}" = "onnxruntime-gpu" ]; then rm -f /opt/wheels/*webgpu*.whl || true; else rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*genai*.whl || true; fi && \
+    sed -i "s/\"onnxruntime\"/\"${ONNX_PACKAGE}\"/g" pyproject.toml && \
+    sed -i "s/\"onnxruntime>=.*\"/\"${ONNX_PACKAGE}\"/g" pyproject.toml && \
     sed -i 's/"opencv-python-headless"/"opencv-contrib-python"/g' pyproject.toml && \
     sed -i 's/"opencv-python-headless>=.*"/"opencv-contrib-python"/g' pyproject.toml && \
     echo -e "\n[tool.uv]\nconstraint-dependencies = [\"ai-edge-litert==${LITERT_VERSION}\", \"numpy==2.4.4\"]" >> pyproject.toml && \
     uv lock --find-links /opt/wheels && \
-    uv sync --find-links /opt/wheels --active --extra "ml-ai" --extra "pytorch-cpu" --extra "test" --extra "frontend" --extra "docs" && \
+    uv sync --find-links /opt/wheels --active --extra "ml-ai" --extra "${PYTORCH_EXTRA}" --extra "test" --extra "frontend" --extra "docs" && \
     uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless || true && \
     uv pip install --force-reinstall /opt/wheels/*.whl && \
     uv pip install PyGObject && \
