@@ -8,6 +8,7 @@ FROM ${BASE_IMAGE}
 ARG LITERT_VERSION
 ARG ONNX_PACKAGE="onnxruntime-webgpu"
 ARG PYTORCH_EXTRA="pytorch-cpu"
+ARG ENABLE_NVIDIA="false"
 
 ARG TARGETARCH
 SHELL ["bash", "-lc"]
@@ -71,20 +72,29 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     echo "Debugging local wheels:" && ls -la /opt/wheels || true && \
     uv pip install /opt/wheels/ai_edge_litert*.whl || true && \
     if [ "${ONNX_PACKAGE}" = "onnxruntime-gpu" ]; then rm -f /opt/wheels/*webgpu*.whl || true; else rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*genai*.whl || true; fi && \
+    sed -i "s/\"onnxruntime; /\"${ONNX_PACKAGE}; /g" pyproject.toml && \
     sed -i "s/\"onnxruntime\"/\"${ONNX_PACKAGE}\"/g" pyproject.toml && \
     sed -i "s/\"onnxruntime>=.*\"/\"${ONNX_PACKAGE}\"/g" pyproject.toml && \
-    sed -i 's/"opencv-python-headless"/"opencv-contrib-python"/g' pyproject.toml && \
-    sed -i 's/"opencv-python-headless>=.*"/"opencv-contrib-python"/g' pyproject.toml && \
+    sed -i 's/"opencv-python; /"opencv-contrib-python; /g' pyproject.toml && \
+    sed -i 's/"opencv-python"/"opencv-contrib-python"/g' pyproject.toml && \
     echo -e "\n[tool.uv]\nconstraint-dependencies = [\"ai-edge-litert==${LITERT_VERSION}\", \"numpy==2.4.4\"]" >> pyproject.toml && \
     uv lock --find-links /opt/wheels && \
     uv sync --find-links /opt/wheels --active --extra "ml-ai" --extra "${PYTORCH_EXTRA}" --extra "test" --extra "frontend" --extra "docs" && \
-    uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless || true && \
+    uv pip uninstall onnxruntime opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless || true && \
     uv pip install --force-reinstall /opt/wheels/*.whl && \
     uv pip install PyGObject && \
     # Debug OpenCV shared libraries to see what might be missing
     find /opt/venv -name "cv2*.so" -exec ldd {} \; || true && \
     # 6. Verify
     uv run --active python -c "import gi, numpy, contourpy; print('gi OK'); print('numpy', numpy.__version__);" && \
-    uv run --active python -c "import os; os.environ['OPENCV_LOG_LEVEL']='DEBUG'; import cv2; print('cv2', cv2.__version__);"
+    uv run --active python -c "import os; os.environ['OPENCV_LOG_LEVEL']='DEBUG'; import cv2; print('cv2', cv2.__version__);" && \
+    if [ "${ENABLE_NVIDIA}" = "true" ]; then \
+        echo "Testing GPU Support (Build checks only, not runtime)" && \
+        rm -f /usr/local/tensorrt/lib/libstdc++.so* || true && \
+        uv run --active python -c "import torch; cuda_ver = torch.version.cuda; print(f'PyTorch CUDA Build Version: {cuda_ver}'); assert cuda_ver is not None, 'ERROR: PyTorch was NOT built with CUDA!'" && \
+        uv run --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CUDAExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have CUDAExecutionProvider!'"; \
+    fi && \
+    echo "Installed packages in the virtual environment:" && \
+    uv pip list
 
 WORKDIR /opt/Kataglyphis-Orchestr-ANT-ion
