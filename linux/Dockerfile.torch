@@ -2,7 +2,8 @@
 
 # Global Version Arguments
 ARG LITERT_VERSION="2.1.4"
-FROM ghcr.io/kataglyphis/kataglyphis_beschleuniger:android
+ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:android"
+FROM ${BASE_IMAGE}
 
 ARG LITERT_VERSION
 ARG ONNX_PACKAGE="onnxruntime-webgpu"
