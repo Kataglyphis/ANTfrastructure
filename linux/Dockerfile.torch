@@ -9,6 +9,7 @@ ARG LITERT_VERSION
 ARG ONNX_PACKAGE="onnxruntime-webgpu"
 ARG PYTORCH_EXTRA="pytorch-cpu"
 ARG ENABLE_NVIDIA="false"
+ARG ENABLE_AMD="false"
 
 ARG TARGETARCH
 SHELL ["bash", "-lc"]
@@ -71,7 +72,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     rm -f uv.lock && \
     echo "Debugging local wheels:" && ls -la /opt/wheels || true && \
     uv pip install /opt/wheels/ai_edge_litert*.whl || true && \
-    if [ "${ONNX_PACKAGE}" = "onnxruntime-gpu" ]; then rm -f /opt/wheels/*webgpu*.whl || true; else rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*genai*.whl || true; fi && \
+    if [ "${ONNX_PACKAGE}" = "onnxruntime-gpu" ] || [ "${ONNX_PACKAGE}" = "onnxruntime-rocm" ]; then rm -f /opt/wheels/*webgpu*.whl || true; else rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_rocm-*.whl /opt/wheels/*genai*.whl || true; fi && \
     sed -i "s/\"onnxruntime; /\"${ONNX_PACKAGE}; /g" pyproject.toml && \
     sed -i "s/\"onnxruntime\"/\"${ONNX_PACKAGE}\"/g" pyproject.toml && \
     sed -i "s/\"onnxruntime>=.*\"/\"${ONNX_PACKAGE}\"/g" pyproject.toml && \
