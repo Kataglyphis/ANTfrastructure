@@ -182,7 +182,6 @@ BUILD_ARGS=(
   --cuda_home          "${CUDA_HOME}"
   --cudnn_home         "${CUDNN_HOME}"
   --tensorrt_home      "${TENSORRT_HOME}"
-  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=80;86;89;90a"
   --use_xnnpack
   --enable_lto
   --use_mimalloc
@@ -191,25 +190,33 @@ BUILD_ARGS=(
   --use_external_dawn
 )
 
+CMAKE_EXTRA_DEFINES=(
+  "CMAKE_CUDA_ARCHITECTURES=80;86;89;90a"
+)
+
 # Add lld linker for faster linking
 if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
-  BUILD_ARGS+=(
-    --cmake_extra_defines
-    CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
-    CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld
-    CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld
+  CMAKE_EXTRA_DEFINES+=(
+    "CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld"
+    "CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld"
+    "CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld"
   )
   info "Using lld linker for faster linking"
 fi
 
 # Add ccache for faster compilation
 if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-  BUILD_ARGS+=(
-    --cmake_extra_defines
-    CMAKE_C_COMPILER_LAUNCHER=ccache
-    CMAKE_CXX_COMPILER_LAUNCHER=ccache
+  CMAKE_EXTRA_DEFINES+=(
+    "CMAKE_C_COMPILER_LAUNCHER=ccache"
+    "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
   )
   info "Using ccache for faster compilation"
+fi
+
+if [ ${#CMAKE_EXTRA_DEFINES[@]} -gt 0 ]; then
+  BUILD_ARGS+=(
+    --cmake_extra_defines "${CMAKE_EXTRA_DEFINES[@]}"
+  )
 fi
 
 "${BUILD_SH}" "${BUILD_ARGS[@]}"

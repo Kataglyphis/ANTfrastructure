@@ -112,30 +112,35 @@ BUILD_ARGS=(
 
   --use_webgpu
   --use_external_dawn
-  --cmake_extra_defines
-  migraphx_DIR="${ROCM_HOME}/lib/cmake/migraphx"
+)
+
+CMAKE_EXTRA_DEFINES=(
+  "migraphx_DIR=${ROCM_HOME}/lib/cmake/migraphx"
 )
 
 # Add lld linker for faster linking
 if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
-  BUILD_ARGS+=(
-    --cmake_extra_defines
-    CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
-    CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld
-    CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld
+  CMAKE_EXTRA_DEFINES+=(
+    "CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld"
+    "CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld"
+    "CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld"
   )
   info "Using lld linker for faster linking"
 fi
 
 # Add ccache for faster compilation
 if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-  BUILD_ARGS+=(
-    --cmake_extra_defines
-    CMAKE_C_COMPILER_LAUNCHER=ccache
-    CMAKE_CXX_COMPILER_LAUNCHER=ccache
-    migraphx_DIR=/opt/rocm/lib/cmake/migraphx
+  CMAKE_EXTRA_DEFINES+=(
+    "CMAKE_C_COMPILER_LAUNCHER=ccache"
+    "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
   )
   info "Using ccache for faster compilation"
+fi
+
+if [ ${#CMAKE_EXTRA_DEFINES[@]} -gt 0 ]; then
+  BUILD_ARGS+=(
+    --cmake_extra_defines "${CMAKE_EXTRA_DEFINES[@]}"
+  )
 fi
 
 "${BUILD_SH}" "${BUILD_ARGS[@]}"
