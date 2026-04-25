@@ -257,6 +257,32 @@ function Invoke-CmakeConfigureAndBuild {
 
         $ClangRootPaths += "C:\Program Files\LLVM"
         $ClangRootPaths += "C:\Program Files (x86)\LLVM"
+
+        # Use clang-cl --print-resource-dir to locate sanitizer runtime DLLs reliably
+        if ($ClangCmd) {
+            try {
+                $resourceDir = & $ClangCmd.Source '--print-resource-dir' 2>$null
+                if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($resourceDir)) {
+                    $resourceDir = $resourceDir.Trim()
+                    $ClangRootPaths += Split-Path (Split-Path $resourceDir)
+                    $ClangRootPaths += $resourceDir
+                }
+            } catch {
+                Write-BuildLog -Context $Context -Message "DEBUG: Could not query clang resource dir: $_"
+            }
+        }
+
+        # Add scoop-managed LLVM installations
+        $scoopDir = if (-not [string]::IsNullOrWhiteSpace($env:SCOOP)) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
+        if (Test-Path (Join-Path $scoopDir 'apps\llvm')) {
+            Get-ChildItem -Path (Join-Path $scoopDir 'apps\llvm') -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { $ClangRootPaths += $_.FullName }
+        }
+        $globalScoopDir = if (-not [string]::IsNullOrWhiteSpace($env:SCOOP_GLOBAL)) { $env:SCOOP_GLOBAL } else { 'C:\ProgramData\scoop' }
+        if (Test-Path (Join-Path $globalScoopDir 'apps\llvm')) {
+            Get-ChildItem -Path (Join-Path $globalScoopDir 'apps\llvm') -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { $ClangRootPaths += $_.FullName }
+        }
         
         # Add MSVC VC Tools path for MSVC ASAN dlls
         $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -275,10 +301,16 @@ function Invoke-CmakeConfigureAndBuild {
         foreach ($RootPath in $ClangRootPaths) {
             if (-not (Test-Path $RootPath)) { continue }
 
-            # Check LLVM paths
-            $SanitizerDlls = Get-ChildItem -Path "$RootPath\lib\clang\*\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue
+            # Check LLVM paths (versioned resource dir layout, e.g. lib/clang/<ver>/lib/windows/)
+            # Include both sanitizer DLLs (*san*) and the ASan dynamic runtime thunk
+            $SanitizerDlls = Get-ChildItem -Path "$RootPath\lib\clang\*\lib\windows\clang_rt.asan_dynamic*.dll" -ErrorAction SilentlyContinue
+            $otherSanDlls = Get-ChildItem -Path "$RootPath\lib\clang\*\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue
+            $SanitizerDlls = @($SanitizerDlls) + @($otherSanDlls) | Select-Object -Unique
             if (-not $SanitizerDlls) {
-                $SanitizerDlls = Get-ChildItem -Path "$RootPath\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue
+                # Flat LLVM lib layout (e.g. scoop installs: lib/windows/)
+                $SanitizerDlls = Get-ChildItem -Path "$RootPath\lib\windows\clang_rt.asan_dynamic*.dll" -ErrorAction SilentlyContinue
+                $otherSanDlls = Get-ChildItem -Path "$RootPath\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue
+                $SanitizerDlls = @($SanitizerDlls) + @($otherSanDlls) | Select-Object -Unique
             }
             # Check MSVC paths
             if (-not $SanitizerDlls) {

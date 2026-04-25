@@ -113,9 +113,23 @@ function Initialize-UvVenvPython {
     Invoke-BuildExternal -Context $Context -File $File -Parameters $Parameters | Out-Null
   }
 
-  if (-not (Test-Path $venvPython)) {
+  $venvNeedsCreation = -not (Test-Path $venvPython)
+  if (-not $venvNeedsCreation) {
+    try {
+      & $venvPython '-c' 'import sys; sys.exit(0)' 2>$null | Out-Null
+      if ($LASTEXITCODE -ne 0) {
+        & $logWarning "Existing venv at $venvPath is not functional; recreating."
+        $venvNeedsCreation = $true
+      }
+    } catch {
+      & $logWarning "Existing venv at $venvPath is not functional; recreating."
+      $venvNeedsCreation = $true
+    }
+  }
+
+  if ($venvNeedsCreation) {
     New-UvProjectEnvironment -Workspace $WorkspacePath -PythonVersion $PythonVersion -EnvName $EnvName `
-      -CommandRunner $commandRunner -LogInfo $logInfo -LogWarning $logWarning
+      -CommandRunner $commandRunner -LogInfo $logInfo -LogWarning $logWarning | Out-Null
     $env:UV_PROJECT_ENVIRONMENT = $venvPath
   }
 
