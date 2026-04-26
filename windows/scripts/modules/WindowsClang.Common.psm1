@@ -53,7 +53,12 @@ function Invoke-ClangTidyFixStep {
     [string]$WorkspacePath,
     [Parameter(Mandatory)]
     [string]$BuildRoot,
-    [string[]]$Checks = @('--checks=-misc-include-cleaner'),
+    # Do not force project-specific clang-tidy checks by default. Leave the
+    # checks list empty so callers can opt-in or provide their own set of
+    # --checks arguments. The ContainerHub previously enforced
+    # --checks=-misc-include-cleaner which caused issues for some clang-tidy
+    # versions (crashes); remove the imposed flag to avoid that.
+    [string[]]$Checks = @(),
     [switch]$Fix
   )
 
