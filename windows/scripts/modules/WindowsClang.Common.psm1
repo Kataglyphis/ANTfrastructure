@@ -80,6 +80,8 @@ function Invoke-ClangTidyFixStep {
   }
 
   $baseParams = @('-p', $BuildRoot) + $Checks
+  # Restrict analysis to the source directory to avoid noise from ExternalLib headers
+  $baseParams += "--header-filter=$([regex]::Escape($srcDir)).*"
   if ($Fix) { $baseParams += '--fix' }
 
   foreach ($tidyFile in $tidyFiles) {
