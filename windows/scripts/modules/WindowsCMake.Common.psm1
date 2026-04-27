@@ -126,6 +126,31 @@ function Invoke-CmakeConfigureAndBuild {
   $sccachePath = Get-Command 'sccache' -ErrorAction SilentlyContinue
   if ($sccachePath) {
     Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $($sccachePath.Source)"
+
+    # Unless the caller explicitly requested disabling sccache, enable
+    # compiler/runtime wrapper environment variables so CMake/cargo will
+    # use the sccache executable for compiler invocations. Use the fully
+    # resolved sccache path to avoid PATH lookup issues in constrained
+    # environments (containers/CI).
+    if (-not $DisableSccache) {
+      $sccacheExe = $sccachePath.Source
+      Write-BuildLog -Context $Context -Message "DEBUG: Enabling sccache wrappers using: $sccacheExe"
+      $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
+      $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
+      $env:RUSTC_WRAPPER = $sccacheExe
+      $env:CC_WRAPPER = $sccacheExe
+      $env:CXX_WRAPPER = $sccacheExe
+
+      if (-not $env:SCCACHE_MAX_JOBS) {
+        # Default cache concurrency to CPU count when not already set.
+        $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString()
+        Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$($env:SCCACHE_MAX_JOBS)"
+      } else {
+        Write-BuildLog -Context $Context -Message "DEBUG: SCCACHE_MAX_JOBS already set to: $env:SCCACHE_MAX_JOBS"
+      }
+    } else {
+      Write-BuildLog -Context $Context -Message "DEBUG: sccache wrappers remain disabled (DisableSccache=true)"
+    }
     
     # Log all sccache-related environment variables
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache environment variables ---"

@@ -184,7 +184,22 @@ function Invoke-ClangFormatStep {
 
   $clangFormat = Get-Command 'clang-format' -ErrorAction SilentlyContinue
   if (-not $clangFormat) {
-    throw 'clang-format not found on PATH.'
+    $commonPaths = @(
+      'C:\Program Files\LLVM\bin\clang-format.exe',
+      'C:\Program Files (x86)\LLVM\bin\clang-format.exe'
+    )
+    foreach ($path in $commonPaths) {
+      if (Test-Path $path) {
+        $clangFormatSource = $path
+        break
+      }
+    }
+
+    if (-not $clangFormatSource) {
+      throw 'clang-format not found on PATH or in common installation locations.'
+    }
+  } else {
+    $clangFormatSource = $clangFormat.Source
   }
 
   $cppFiles = @(Get-ProjectCppFiles -WorkspacePath $WorkspacePath)
@@ -194,7 +209,7 @@ function Invoke-ClangFormatStep {
   }
 
   foreach ($cppFile in $cppFiles) {
-    Invoke-BuildExternal -Context $Context -File $clangFormat.Source -Parameters @('-i', $cppFile) | Out-Null
+    Invoke-BuildExternal -Context $Context -File $clangFormatSource -Parameters @('-i', $cppFile) | Out-Null
   }
 }
 
