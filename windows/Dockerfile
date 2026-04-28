@@ -19,8 +19,12 @@ ARG CUDNN_VERSION=9.10.1.4
 ARG TENSORRT_VERSION=10.12.0.2
 
 # "Max" (latest stable) versions for ONNX Runtime and GenAI workloads
-ARG ONNX_VERSION=1.24.4
-ARG ONNX_GENAI_VERSION=0.12.2
+ARG ONNX_VERSION=1.25.0
+ARG ONNX_GENAI_VERSION=0.13.1
+# Some ONNX provider packages (DirectML) may lag the core runtime on NuGet.
+# Provide a separate build arg so we can pin the DirectML provider to a compatible
+# version (defaults to 1.24.4 to avoid missing-package errors for 1.25.0).
+ARG ONNX_DIRECTML_VERSION=1.24.4
 # We install both GPU providers (DirectML and CUDA) by default so the image supports both.
 ARG ONNX_GPU_VARIANT=both
 
@@ -39,7 +43,7 @@ COPY windows\scripts\setup-vs.ps1 C:\temp\setup-vs.ps1
 RUN powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\setup-vs.ps1 -TempDir $env:TEMP_DIR
 
 # scoop needs GIT :)))
-RUN Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.53.0.windows.2/Git-2.53.0.2-64-bit.exe' -OutFile 'Git-64-bit.exe'; `
+RUN Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/Git-2.54.0-64-bit.exe' -OutFile 'Git-64-bit.exe'; `
     Start-Process -FilePath 'Git-64-bit.exe' -ArgumentList '/SILENT', '/NORESTART' -Wait; `
     Remove-Item 'Git-64-bit.exe' -Force
 
@@ -80,7 +84,7 @@ RUN [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::Sec
 # -----------------------------------------------------------------------------
 # Install CMake Nightly
 # -----------------------------------------------------------------------------
-ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/dev/cmake-4.3.20260412-gade6d6c-windows-x86_64.msi
+ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/dev/cmake-4.3.20260425-gedeedd9-windows-x86_64.msi
 
 RUN Write-Host ('Downloading CMake nightly from {0}...' -f $env:CMAKE_NIGHTLY_URL) ; `
     Invoke-WebRequest -Uri $env:CMAKE_NIGHTLY_URL -OutFile C:\temp\cmake-nightly.msi ; `
@@ -144,7 +148,7 @@ RUN Write-Host 'Downloading ONNX Runtime and GenAI packages...' ; `
     nuget install Microsoft.ML.OnnxRuntime -Version $env:ONNX_VERSION -OutputDirectory . ; `
     nuget install Microsoft.ML.OnnxRuntimeGenAI -Version $env:ONNX_GENAI_VERSION -OutputDirectory . ; `
     Write-Host 'Installing ONNX Runtime DirectML GPU package...' ; `
-    nuget install Microsoft.ML.OnnxRuntime.DirectML -Version $env:ONNX_VERSION -OutputDirectory . ; `
+    nuget install Microsoft.ML.OnnxRuntime.DirectML -Version $env:ONNX_DIRECTML_VERSION -OutputDirectory . ; `
     Write-Host 'Installing ONNX Runtime CUDA GPU package...' ; `
     nuget install Microsoft.ML.OnnxRuntime.Gpu -Version $env:ONNX_VERSION -OutputDirectory . ; `
     # Attempt to install GenAI GPU provider packages if available for this GenAI version
@@ -157,7 +161,7 @@ RUN Write-Host 'Downloading ONNX Runtime and GenAI packages...' ; `
 
 RUN New-Item -Path C:\temp\onnxpkg -ItemType Directory -Force | Out-Null ; `
     Write-Host 'Installing Microsoft.ML.OnnxRuntime.DirectML into C:\temp\onnxpkg ...' ; `
-    nuget install Microsoft.ML.OnnxRuntime.DirectML -Version $env:ONNX_VERSION -OutputDirectory C:\temp\onnxpkg
+    nuget install Microsoft.ML.OnnxRuntime.DirectML -Version $env:ONNX_DIRECTML_VERSION -OutputDirectory C:\temp\onnxpkg
 
 ENV ONNX_INCLUDE="C:\onnx\Microsoft.ML.OnnxRuntime.${ONNX_VERSION}\build\native\include"
 ENV ONNX_LIB="C:\onnx\Microsoft.ML.OnnxRuntime.${ONNX_VERSION}\runtimes\win-x64\native"
@@ -173,7 +177,7 @@ ENV ONNX_GENAI_CUDA_LIB=""
 RUN Write-Host 'Probing ONNX packages for GPU providers (DirectML/CUDA) including GenAI-specific providers...' ; `
     $root = 'C:\onnx' ; `
     # DirectML for the core runtime (replaces onnxruntime.dll)
-    $dmlDir = 'C:\onnx\Microsoft.ML.OnnxRuntime.DirectML.{0}\runtimes\win-x64\native' -f $env:ONNX_VERSION ; `
+    $dmlDir = 'C:\onnx\Microsoft.ML.OnnxRuntime.DirectML.{0}\runtimes\win-x64\native' -f $env:ONNX_DIRECTML_VERSION ; `
     $dmlDllPath = '{0}\onnxruntime.dll' -f $dmlDir ; `
     if (Test-Path $dmlDllPath) { Write-Host ('Found DirectML provider in: {0}' -f $dmlDir) ; setx ONNX_DIRECTML_LIB $dmlDir /M } else { Write-Host 'DirectML provider not found; ONNX_DIRECTML_LIB will remain empty.' } ; `
     # DirectML for GenAI (if packaged separately)
@@ -316,7 +320,7 @@ RUN Write-Host 'Verifying ONNX Runtime and GenAI C++ resources (verbose, strict)
     $variant = '' ; if ($env:ONNX_GPU_VARIANT) { $variant = $env:ONNX_GPU_VARIANT.ToLower() } ; `
     `
     # Verify DirectML
-    $dmlPath = 'C:\onnx\Microsoft.ML.OnnxRuntime.DirectML.{0}\runtimes\win-x64\native\onnxruntime.dll' -f $env:ONNX_VERSION ; `
+    $dmlPath = 'C:\onnx\Microsoft.ML.OnnxRuntime.DirectML.{0}\runtimes\win-x64\native\onnxruntime.dll' -f $env:ONNX_DIRECTML_VERSION ; `
     if (Test-Path $dmlPath) { Write-Host ('Found ONNX DirectML runtime DLL: {0}' -f $dmlPath) } `
     elseif ($variant -match 'directml' -or $variant -match 'both') { `
         Write-Host ('ERROR: DirectML onnxruntime.dll required but not found at {0}.' -f $dmlPath) ; `
