@@ -494,6 +494,8 @@ nerdctl run --rm -it \
 
 ### Windows 🪟
 
+> **Important (Antivirus):** On Windows, **exclude your development folder from antivirus scanning**. Real-time protection can lock files during builds (especially during CMake FetchContent and cargo builds), causing intermittent failures with errors like "Failed to remove directory" or "(os error 32)". Add your project directory to your antivirus exclusion list.
+
 ```powershell
 C:\PATH_TO_NERDCTL\nerdctl.exe build --platform windows/amd64 `
   --progress=plain --no-cache `

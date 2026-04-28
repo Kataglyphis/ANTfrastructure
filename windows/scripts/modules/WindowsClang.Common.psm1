@@ -74,6 +74,17 @@ function Invoke-ClangTidyFixStep {
     Where-Object { $_.Extension -in @('.cpp', '.cc', '.cxx') } |
     Select-Object -ExpandProperty FullName)
 
+  $filteredFiles = @()
+  foreach ($f in $tidyFiles) {
+    $content = Get-Content $f -Raw -ErrorAction SilentlyContinue
+    if ($content -match '^import\s+kataglyphis') {
+      Write-BuildLog -Context $Context -Message "Skipping clang-tidy for $f (uses C++20 module syntax)"
+      continue
+    }
+    $filteredFiles += $f
+  }
+  $tidyFiles = $filteredFiles
+
   if ($tidyFiles.Count -eq 0) {
     Write-BuildLog -Context $Context -Message 'No C/C++ source files found under Src for clang-tidy.'
     return
