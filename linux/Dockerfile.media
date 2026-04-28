@@ -26,12 +26,14 @@ FROM ${BASE_IMAGE} AS base
 
 ARG TARGETARCH
 ARG ENABLE_NVIDIA=false
+ARG ENABLE_AMD=false
 ARG AGGRESSIVE_PARALLELISM
 ARG USE_LLD
 ARG USE_CCACHE
 ARG USE_SCCACHE
 
 ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
+    ENABLE_AMD=${ENABLE_AMD} \
     AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM} \
     USE_LLD=${USE_LLD} \
     USE_CCACHE=${USE_CCACHE} \
@@ -54,6 +56,13 @@ RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
         echo "export PATH=${CUDA_HOME}/bin:\$PATH" >> /etc/profile.d/cuda.sh; \
     fi
 ENV PATH="${CUDA_HOME}/bin:${PATH}"
+
+# If AMD is enabled, extend LD_LIBRARY_PATH for ROCm libs
+ENV LD_LIBRARY_PATH=${ENABLE_AMD:+"/opt/rocm/lib:/opt/rocm/lib64:${LD_LIBRARY_PATH}"}
+RUN if [ "${ENABLE_AMD}" = "true" ]; then \
+        echo "export PATH=/opt/rocm/bin:\$PATH" >> /etc/profile.d/rocm.sh; \
+    fi
+ENV PATH="${ENABLE_AMD:+"/opt/rocm/bin:"}${PATH}"
 
 # Build Python from source
 ARG PYTHON_VERSION
@@ -139,6 +148,10 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
                 --ort-version "${ONNXRUNTIME_VERSION}" \
                 --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
                 --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"; \
+        elif [ "$ENABLE_AMD" = "true" ]; then \
+            bash /opt/scripts/media/onnxruntime/build/30-build-native-amd.sh \
+                --ort-version "${ONNXRUNTIME_VERSION}" \
+                --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}"; \
         fi
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -465,6 +478,9 @@ RUN set -eux; \
     if [ "$ENABLE_NVIDIA" = "true" ]; then \
         printf "%s\n" "${CUDA_HOME}/lib64" > /etc/ld.so.conf.d/cuda.conf; \
         printf "%s\n" "${TENSORRT_HOME}/lib" > /etc/ld.so.conf.d/tensorrt.conf; \
+    elif [ "$ENABLE_AMD" = "true" ]; then \
+        printf "%s\n" "/opt/rocm/lib" > /etc/ld.so.conf.d/rocm.conf; \
+        printf "%s\n" "/opt/rocm/lib64" >> /etc/ld.so.conf.d/rocm.conf; \
     fi; \
     ldconfig
 

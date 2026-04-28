@@ -5,6 +5,7 @@ FROM ${BASE_IMAGE}
 
 ARG BUILD_TYPE=Release
 ARG ENABLE_NVIDIA=false
+ARG ENABLE_AMD=false
 
 SHELL ["bash", "-lc"]
 

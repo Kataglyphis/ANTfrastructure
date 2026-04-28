@@ -33,6 +33,7 @@
     - [Setup](#setup)
     - [Torch Add-on](#torch-add-on-linux)
     - [NVIDIA GPU Build](#nvidia-gpu-build-linux)
+    - [AMD GPU Build](#amd-gpu-build-linux)
     - [Webserver](#webserver-linux)
   - [Windows](#windows)
   - [Prerequisites](#prerequisites)
@@ -320,7 +321,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
   --build-arg ONNX_PACKAGE="onnxruntime-gpu" \
-  --build-arg PYTORCH_EXTRA="pytorch-gpu" \
+  --build-arg PYTORCH_EXTRA="pytorch-cu130" \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-nvidia \
   . 2>&1 | tee -a output.log
@@ -374,7 +375,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 | GStreamer nvcodec | Auto-detected (off in builds) | Always enabled |
 | ORT native EP | CPU only | CPU + CUDA + TensorRT + cuDNN |
 | ORT Python Package | `onnxruntime-webgpu` | `onnxruntime-gpu` (via `ONNX_PACKAGE`) |
-| PyTorch Extra | `pytorch-cpu` | `pytorch-gpu` (via `PYTORCH_EXTRA`) |
+| PyTorch Extra | `pytorch-cpu` | `pytorch-cu130` (via `PYTORCH_EXTRA`) |
 | ORT output dir | `/usr/local/lib/onnxruntime-cpu` | Both cpu and `/usr/local/lib/onnxruntime-gpu` |
 | Image tag | `:latest` | `:nvidia` |
 
@@ -384,6 +385,84 @@ Builds on the base image:
 
 ```bash
 docker build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/torch/Dockerfile .
+```
+
+### AMD GPU Build (Linux)
+
+> **Requirements:**
+> - Host driver >= 6.0 (for ROCm 6.1).
+> - `--device=/dev/kfd --device=/dev/dri` passed to `docker run`.
+
+The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before the media stage. Subsequent stages reuse the standard Dockerfiles by passing `--build-arg ENABLE_AMD=true`.
+
+**Files involved:**
+| File | Purpose |
+|---|---|
+| `linux/Dockerfile.amd` | Installs ROCm Toolkit, MIOpen, RCCL, rocBLAS, rocFFT |
+| `linux/Dockerfile.media` | Media stack: conditionally builds ORT with ROCm EP when `ENABLE_AMD=true` |
+| `linux/Dockerfile.android` | Conditionally builds on top of the AMD media image |
+| `linux/Dockerfile` | Conditionally tags the final entrypoint image |
+| `linux/scripts/03-media/onnxruntime/build/30-build-native-amd.sh` | ORT build script with ROCm EP |
+
+**Sequential build (nerdctl):**
+
+```bash
+# Step 1: AMD layer (builds on top of existing :sdk from standard chain)
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd,push=true' \
+  -f linux/Dockerfile.amd \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-amd,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-amd \
+  . 2>&1 | tee -a output.log
+
+# Step 2: media-amd
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd,push=true' \
+  -f linux/Dockerfile.media \
+  --build-arg ENABLE_AMD=true \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-amd,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-amd \
+  . 2>&1 | tee -a output.log
+
+# Step 3: android-amd
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd,push=true' \
+  -f linux/Dockerfile.android \
+  --build-arg ENABLE_AMD=true \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-amd,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-amd \
+  . 2>&1 | tee -a output.log
+
+# Step 4: torch-amd
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd,push=true' \
+  -f linux/Dockerfile.torch \
+  --build-arg ENABLE_AMD=true \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd \
+  --build-arg ONNX_PACKAGE="onnxruntime-rocm" \
+  --build-arg PYTORCH_EXTRA="pytorch-rocm" \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-amd,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-amd \
+  . 2>&1 | tee -a output.log
+
+# Step 5: final amd image
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd,push=true' \
+  -f linux/Dockerfile \
+  --build-arg ENABLE_AMD=true \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-amd,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-amd \
+  . 2>&1 | tee -a output.log
+```
+
+**Run with GPU access:**
+
+```bash
+sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd
 ```
 
 ### Webserver (Linux) 🌐
@@ -414,6 +493,8 @@ nerdctl run --rm -it \
 ```
 
 ### Windows 🪟
+
+> **Important (Antivirus):** On Windows, **exclude your development folder from antivirus scanning**. Real-time protection can lock files during builds (especially during CMake FetchContent and cargo builds), causing intermittent failures with errors like "Failed to remove directory" or "(os error 32)". Add your project directory to your antivirus exclusion list.
 
 ```powershell
 C:\PATH_TO_NERDCTL\nerdctl.exe build --platform windows/amd64 `
