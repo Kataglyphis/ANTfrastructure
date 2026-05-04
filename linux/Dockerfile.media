@@ -51,8 +51,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
     bash /tmp/use-fast-ubuntu-mirror.sh
 
 RUN if [ "$TARGETARCH" = "riscv64" ]; then \
-        echo 'export LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh && \
-        echo 'export LD_LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh; \
+        echo 'export LIBRARY_PATH=/opt/gcc-16.1.0/lib64:/opt/gcc-16.1.0/lib:$LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh && \
+        echo 'export LD_LIBRARY_PATH=/opt/gcc-16.1.0/lib64:/opt/gcc-16.1.0/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh; \
     fi
 
 # If NVIDIA is enabled, force NVIDIA codec headers on so GStreamer nvcodec plugin is built

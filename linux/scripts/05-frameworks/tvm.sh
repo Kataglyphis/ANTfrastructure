@@ -89,7 +89,7 @@ install_deps() {
   require_sudo
   detect_system
 
-  # Ensure the requested toolchains are installed/selected (defaults: clang 21, gcc 14)
+  # Ensure the requested toolchains are installed/selected (defaults: clang 22, gcc 16)
   install_core_tools
   install_llvm_clang
   install_gcc
@@ -151,7 +151,7 @@ maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
   fi
 
   # Determine GCC version and where its libstdc++ headers live.
-  # When GCC is installed from source into a custom prefix (e.g. /opt/gcc-15.2.0),
+  # When GCC is installed from source into a custom prefix (e.g. /opt/gcc-16.1.0),
   # libstdc++ headers are not under /usr/include/c++/<major>.
   local gcc_major=""
   local gcc_full=""

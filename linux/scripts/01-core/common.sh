@@ -17,7 +17,7 @@ export TZ=Etc/UTC
 # Defaults (overridden by CLI or ENV)
 LLVM_WANTED=${LLVM_WANTED:-22}
 CLANG_WANTED=${CLANG_WANTED:-22}
-GCC_WANTED=${GCC_WANTED:-14}
+GCC_WANTED=${GCC_WANTED:-16}
 VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-1.4.341.1}
 
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)

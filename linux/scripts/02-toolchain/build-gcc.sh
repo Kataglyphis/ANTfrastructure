@@ -8,10 +8,10 @@ umask 022
 # Default build directory is $HOME/tmp2/gcc-build-<version> (no /tmp usage).
 #
 # Usage:
-#   ./build-gcc.sh --version 15.2.0
+#   ./build-gcc.sh --version 16.1.0
 #   ./build-gcc.sh --version 14.2.0 --prefix /opt/gcc-14 --jobs 8
-#   GCC_VERSION=15.2.0 ./build-gcc.sh
-#   GCC_VERSION=15.2.0 PREFIX=/opt/gcc-15 BUILD_DIR="$HOME/tmp2/mybuild" JOBS=4 ./build-gcc.sh
+#   GCC_VERSION=16.1.0 ./build-gcc.sh
+#   GCC_VERSION=16.1.0 PREFIX=/opt/gcc-16 BUILD_DIR="$HOME/tmp2/mybuild" JOBS=4 ./build-gcc.sh
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -58,7 +58,7 @@ Usage:
   ./build-gcc.sh -v <X.Y.Z> [options]
 
 Options:
-  --version, -v <version>   GCC version to build (required, e.g., 15.2.0, 14.2.0)
+  --version, -v <version>   GCC version to build (required, e.g., 16.1.0, 14.2.0)
   --prefix <dir>            Install prefix (default: /opt/gcc-<version>)
   --build-dir <dir>         Build directory (default: $HOME/tmp2/gcc-build-<version>)
   --jobs, -j <n>            Parallel jobs (auto-detected if not specified)
@@ -129,7 +129,7 @@ fi
 
 # Validate version format
 if ! [[ "${GCC_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  warn "GCC_VERSION '${GCC_VERSION}' does not match expected format X.Y.Z (e.g., 15.2.0)"
+  warn "GCC_VERSION '${GCC_VERSION}' does not match expected format X.Y.Z (e.g., 16.1.0)"
 fi
 
 # DEFAULT: use a tmp2 directory in the user's home — avoids /tmp entirely

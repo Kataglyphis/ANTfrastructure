@@ -87,15 +87,19 @@ install_gcc() {
   log "Installing GCC ${GCC_WANTED}"
 
   local gcc_major="${GCC_WANTED%%.*}"
-  local gcc_minor="${GCC_WANTED#*.}"
-  local gcc_patch="${GCC_VERSION:-${gcc_minor}}"
+  local default_full_version
+  case "${gcc_major}" in
+    16) default_full_version="16.1.0" ;;
+    15) default_full_version="15.2.0" ;;
+    *) default_full_version="${gcc_major}.2.0" ;;
+  esac
+  local full_version="${GCC_VERSION:-${default_full_version}}"
 
   # In cross mode, keep the host compiler native and install target-specific
   # GNU toolchains under their triplet names (for example aarch64-linux-gnu-gcc).
   if [ "${BUILD_MODE:-native}" = "cross" ]; then
-    local full_version="${GCC_VERSION:-${gcc_major}.${gcc_patch:-2.0}}"
     if [[ ! "${full_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      full_version="${gcc_major}.2.0"
+      full_version="${default_full_version}"
     fi
 
     install_cross_gcc_targets "${full_version}"
@@ -113,10 +117,9 @@ install_gcc() {
     fi
     chmod +x "${builder}" || true
     
-    # Determine full version (e.g., 15.2.0 from GCC_WANTED=15)
-    local full_version="${GCC_VERSION:-${gcc_major}.${gcc_patch:-2.0}}"
+    # Determine full version (e.g., 16.1.0 from GCC_WANTED=16)
     if [[ ! "${full_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      full_version="${gcc_major}.2.0"
+      full_version="${default_full_version}"
     fi
     
     log "Building GCC ${full_version} from source..."

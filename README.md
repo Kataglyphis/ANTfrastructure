@@ -286,11 +286,13 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
   . 2>&1 | tee -a output.log
 ```
 
-##### Cross-Compiler builder (nerdctl, amd64 host)
+##### Cross-Compiler builder (nerdctl, amd64 host; amd64/arm64/riscv64 targets)
 
 The existing multi-platform build above stays unchanged. Treat it as the compatibility lane for the current QEMU/binfmt-based end-to-end build.
 
-The cross-compiler path below is additive. It does not replace the existing QEMU workflow. Instead, it prepares an amd64-hosted builder image for a future artifact-based multi-architecture endbuild.
+The cross-compiler path below is additive. It does not replace the existing QEMU workflow. Instead, it prepares a single amd64-hosted builder image that contains cross toolchains for amd64, arm64, and riscv64 for a future artifact-based multi-architecture endbuild.
+
+This lane intentionally builds only a `linux/amd64` container image. The three architectures are the compiler targets installed inside that image via `CROSS_TARGETS=amd64,arm64,riscv64`, not three separate compiler container manifests.
 
 For the cross-compiler path, bootstrap the base image locally first. This avoids depending on a remote `os-deps` intermediate tag that may have been cleaned up in GHCR.
 
@@ -314,7 +316,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   . 2>&1 | tee -a output.log
 ```
 
-Then build the dedicated amd64-hosted compiler image in cross mode:
+Then build the dedicated amd64-hosted compiler image in cross mode for amd64, arm64, and riscv64 targets:
 
 ```bash
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
@@ -328,6 +330,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 ```
 
 The commands above already push the intermediary images to GHCR.
+
+Expected result: the build log ends with `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64`. That is correct for this cross lane because the builder container itself runs on amd64 while shipping cross compilers for all three target architectures.
 
 Or let the helper do the push too:
 
@@ -383,7 +387,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 This is intentionally the current end of the manual cross-image sequence. `media`, `android`, `torch`, and the final `:latest` image still use the existing QEMU/binfmt lane until their host-side artifact builds exist.
 
-This image is an amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding target compilers like `aarch64-linux-gnu-gcc` and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-arm64` and `clang-riscv64` for host-side cross builds.
+This image is a single amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding target compilers like `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-amd64`, `clang-arm64`, and `clang-riscv64` for host-side cross builds.
 
 ##### SDK rootfs artifacts (first host-side build step)
 

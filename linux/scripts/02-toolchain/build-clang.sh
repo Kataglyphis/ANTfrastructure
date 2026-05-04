@@ -78,7 +78,7 @@ USAGE
 
 # --- Default Values ---
 LLVM_VERSION=""
-LLVM_RELEASE=""
+LLVM_RELEASE="${LLVM_RELEASE:-}"
 LLVM_TAG=""
 PREFIX=""
 ARCH="$(uname -m)"
@@ -172,8 +172,10 @@ fi
 
 # Compute release version if not specified
 if [ -z "${LLVM_RELEASE:-}" ]; then
-    # Default to .1.0 for new major versions, can be overridden
-    LLVM_RELEASE="${LLVM_VERSION}.1.0"
+    case "${LLVM_VERSION}" in
+        22) LLVM_RELEASE="22.1.4" ;;
+        *)  LLVM_RELEASE="${LLVM_VERSION}.1.0" ;;
+    esac
 fi
 
 # Compute LLVM_TAG if not specified

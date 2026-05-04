@@ -122,8 +122,9 @@ install_vulkan_sdk() {
       else
         sdk_components+=( vcv )
       fi
-      # slang is not yet ported to riscv64, skip it on that architecture
-      if [[ "$arch_suffix" != "riscv64" ]]; then
+      if [ "${BUILD_MODE:-native}" = "cross" ]; then
+        log "Skipping slang in cross mode; its build generates target helper binaries that the amd64 artifact builder cannot execute"
+      elif [[ "$arch_suffix" != "riscv64" ]]; then
         sdk_components+=( slang )
       else
         log "Skipping slang on riscv64 (not yet ported)"

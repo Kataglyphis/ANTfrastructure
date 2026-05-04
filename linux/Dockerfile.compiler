@@ -5,14 +5,15 @@ FROM ${BASE_IMAGE}
 
 ARG LLVM_WANTED=22
 ARG CLANG_WANTED=22
-ARG GCC_WANTED=15
-ARG GCC_VERSION=15.2.0
+ARG LLVM_RELEASE=22.1.4
+ARG GCC_WANTED=16
+ARG GCC_VERSION=16.1.0
 ARG TARGETARCH
 ARG TARGETPLATFORM
 ARG BUILDARCH
 ARG BUILDPLATFORM
 ARG BUILD_MODE=native
-ARG CROSS_TARGETS=arm64,riscv64
+ARG CROSS_TARGETS=amd64,arm64,riscv64
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 
@@ -81,7 +82,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         echo "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64." >&2; \
         export LD_LIBRARY_PATH=/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib:$LD_LIBRARY_PATH; \
         export LIBRARY_PATH=/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib:${LIBRARY_PATH:-}; \
-        bash /opt/scripts/toolchain/build-clang.sh --version "${LLVM_WANTED}" --release "22.1.2"; \
+        bash /opt/scripts/toolchain/build-clang.sh --version "${LLVM_WANTED}" --release "${LLVM_RELEASE}"; \
     else \
         bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
     fi

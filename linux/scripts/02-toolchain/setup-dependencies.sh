@@ -29,10 +29,10 @@ usage() {
 Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|extras|verify>
 
 Examples:
-  $0 --llvm 21 --clang 21 --gcc 14 cmake
-  $0 --llvm 21 --clang 21 --gcc 14 llvm
+  $0 --llvm 22 --clang 22 --gcc 16 cmake
+  $0 --llvm 22 --clang 22 --gcc 16 llvm
   $0 --vulkan-version 1.4.328.1 vulkan
-  $0 --llvm 21 --clang 21 --gcc 14 --vulkan-version 1.4.328.1 all
+  $0 --llvm 22 --clang 22 --gcc 16 --vulkan-version 1.4.328.1 all
 EOF
 }
 
@@ -40,7 +40,7 @@ main() {
   # Defaults (can be overridden by args)
   LLVM_WANTED="${LLVM_WANTED:-22}"
   CLANG_WANTED="${CLANG_WANTED:-22}"
-  GCC_WANTED="${GCC_WANTED:-14}"
+  GCC_WANTED="${GCC_WANTED:-16}"
   VULKAN_VERSION_DEFAULT="${VULKAN_VERSION_DEFAULT:-1.4.341.1}"
 
   local cmd="all"
