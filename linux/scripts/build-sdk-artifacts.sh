@@ -9,6 +9,8 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
 ARCHITECTURES="${ARCHITECTURES:-arm64,riscv64}"
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-local/kataglyphis:sdk-artifact}"
+USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-http://de.archive.ubuntu.com/ubuntu/}"
 
 usage() {
   cat <<'EOF'
@@ -25,6 +27,9 @@ Options:
   --architectures LIST   Comma-separated list (default: arm64,riscv64)
   --output-root DIR      Export directory root (default: out/linux-sdk)
   --compiler-image TAG   Cross compiler image to use as base
+  --fast-ubuntu-mirror   Replace security.ubuntu.com during Docker builds
+  --fast-ubuntu-mirror-url URL
+                         Mirror URL to use with --fast-ubuntu-mirror
   --vulkan-version VER   Vulkan SDK version to build
   -h, --help             Show this help text
 
@@ -35,6 +40,8 @@ Environment overrides:
   COMPILER_IMAGE         Cross compiler image to use as base
   VULKAN_VERSION         Vulkan SDK version
   IMAGE_PREFIX           Prefix for local artifact image tags
+  USE_FAST_UBUNTU_MIRROR Set to true to replace security.ubuntu.com
+  FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
 EOF
 }
 
@@ -60,7 +67,11 @@ ensure_compiler_image() {
   fi
 
   log "Cross compiler image missing; bootstrapping it first"
-  run bash "${REPO_ROOT}/linux/scripts/build-cross-compiler.sh"
+  local -a bootstrap_args=()
+  if [ "${USE_FAST_UBUNTU_MIRROR}" = "true" ]; then
+    bootstrap_args+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")
+  fi
+  run bash "${REPO_ROOT}/linux/scripts/build-cross-compiler.sh" "${bootstrap_args[@]}"
 
   image_exists "${COMPILER_IMAGE}" || {
     printf '[ERROR] Required compiler image not available after bootstrap: %s\n' "${COMPILER_IMAGE}" >&2
@@ -71,6 +82,10 @@ ensure_compiler_image() {
 build_sdk_image() {
   local arch="$1"
   local tag="$2"
+  local -a mirror_build_args=(
+    --build-arg "USE_FAST_UBUNTU_MIRROR=${USE_FAST_UBUNTU_MIRROR}"
+    --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
+  )
 
   run "${NERDCTL_BIN}" build \
     --platform linux/amd64 \
@@ -80,6 +95,7 @@ build_sdk_image() {
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${arch}" \
     --build-arg VULKAN_VERSION="${VULKAN_VERSION}" \
+    "${mirror_build_args[@]}" \
     .
 }
 
@@ -126,6 +142,15 @@ main() {
         ;;
       --compiler-image)
         COMPILER_IMAGE="$2"
+        shift 2
+        ;;
+      --fast-ubuntu-mirror)
+        USE_FAST_UBUNTU_MIRROR=true
+        shift
+        ;;
+      --fast-ubuntu-mirror-url)
+        USE_FAST_UBUNTU_MIRROR=true
+        FAST_UBUNTU_MIRROR_URL="$2"
         shift 2
         ;;
       --vulkan-version)

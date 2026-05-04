@@ -24,8 +24,15 @@ FROM ${BASE_IMAGE}
 
 ARG ROCM_VERSION=6.1.2
 ARG UBUNTU_VERSION=noble
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 
 SHELL ["bash", "-lc"]
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
 
 # Install prerequisites and add ROCm repository
 RUN apt-get update && apt-get install -y --no-install-recommends \

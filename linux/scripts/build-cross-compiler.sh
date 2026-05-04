@@ -9,6 +9,8 @@ BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-local/kataglyphis:os-deps}"
 COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-local/kataglyphis:compiler-cross-amd64}"
 COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 CROSS_TARGETS="${CROSS_TARGETS:-arm64,riscv64}"
+USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-http://de.archive.ubuntu.com/ubuntu/}"
 
 REBUILD_BASE=0
 PUSH_IMAGE=0
@@ -23,6 +25,9 @@ image first and then uses it for the compiler build.
 
 Options:
   --cross-targets LIST   Comma-separated target list (default: arm64,riscv64)
+  --fast-ubuntu-mirror   Replace security.ubuntu.com during Docker builds
+  --fast-ubuntu-mirror-url URL
+                         Mirror URL to use with --fast-ubuntu-mirror
   --rebuild-base         Always rebuild local os-deps instead of trying pull first
   --push                 Tag and push the finished compiler image to GHCR
   -h, --help             Show this help text
@@ -33,6 +38,8 @@ Environment overrides:
   BASE_LOCAL_TAG         Local os-deps tag (default: local/kataglyphis:os-deps)
   COMPILER_LOCAL_TAG     Local compiler tag
   COMPILER_REMOTE_TAG    Remote compiler tag used with --push
+  USE_FAST_UBUNTU_MIRROR Set to true to replace security.ubuntu.com
+  FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
 EOF
 }
 
@@ -52,6 +59,11 @@ image_exists() {
 }
 
 ensure_base_image() {
+  local -a mirror_build_args=(
+    --build-arg "USE_FAST_UBUNTU_MIRROR=${USE_FAST_UBUNTU_MIRROR}"
+    --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
+  )
+
   if [ "${REBUILD_BASE}" -eq 0 ] && image_exists "${BASE_LOCAL_TAG}"; then
     log "Using existing local base image: ${BASE_LOCAL_TAG}"
     return 0
@@ -72,10 +84,16 @@ ensure_base_image() {
     --platform linux/amd64 \
     -t "${BASE_LOCAL_TAG}" \
     -f linux/Dockerfile.os-deps \
+    "${mirror_build_args[@]}" \
     .
 }
 
 build_cross_compiler() {
+  local -a mirror_build_args=(
+    --build-arg "USE_FAST_UBUNTU_MIRROR=${USE_FAST_UBUNTU_MIRROR}"
+    --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
+  )
+
   run "${NERDCTL_BIN}" build \
     --platform linux/amd64 \
     -t "${COMPILER_LOCAL_TAG}" \
@@ -83,6 +101,7 @@ build_cross_compiler() {
     --build-arg BASE_IMAGE="${BASE_LOCAL_TAG}" \
     --build-arg BUILD_MODE=cross \
     --build-arg CROSS_TARGETS="${CROSS_TARGETS}" \
+    "${mirror_build_args[@]}" \
     .
 }
 
@@ -96,6 +115,15 @@ main() {
     case "$1" in
       --cross-targets)
         CROSS_TARGETS="$2"
+        shift 2
+        ;;
+      --fast-ubuntu-mirror)
+        USE_FAST_UBUNTU_MIRROR=true
+        shift
+        ;;
+      --fast-ubuntu-mirror-url)
+        USE_FAST_UBUNTU_MIRROR=true
+        FAST_UBUNTU_MIRROR_URL="$2"
         shift 2
         ;;
       --rebuild-base)

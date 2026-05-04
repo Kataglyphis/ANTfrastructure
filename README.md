@@ -76,6 +76,26 @@ Linux image chain (built as separate images for caching):
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
 - `linux/Dockerfile`: runtime scripts + entrypoint (final image).
 
+Optional Ubuntu apt mirror workaround:
+
+- Add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to Ubuntu-based Linux Docker builds when `archive.ubuntu.com` or `security.ubuntu.com` is slow.
+- Override the mirror with `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` if needed.
+- Helper scripts expose the same behavior via `--fast-ubuntu-mirror` and `--fast-ubuntu-mirror-url`.
+- Generic usage:
+
+```bash
+sudo nerdctl build \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
+  -f <dockerfile> \
+  .
+```
+
+- Supported Dockerfiles:
+  `linux/Dockerfile.os-deps`, `linux/Dockerfile.compiler`, `linux/Dockerfile.sdk`, `linux/Dockerfile.media`, `linux/Dockerfile.android`, `linux/Dockerfile`, `linux/Dockerfile.nvidia`, `linux/Dockerfile.amd`, `linux/Dockerfile.torch`, `linux/Dockerfile.sdk-artifact`
+- Not supported / not needed:
+  `linux/webserver/Dockerfile` is not wired for this flag, `linux/Dockerfile.runtime-artifact` is copy-only and does not run apt, and `windows/Dockerfile` does not use apt.
+
 Optional NVIDIA GPU image chain (built by passing `--build-arg ENABLE_NVIDIA=true` to standard Dockerfiles):
 
 - `linux/Dockerfile.nvidia`: CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
@@ -212,6 +232,8 @@ docker buildx create --name mybuilder --driver docker-container --buildkitd-conf
 
 ##### Sequential build (nerdctl)
 
+If apt stalls on `archive.ubuntu.com` or `security.ubuntu.com`, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to the Ubuntu-based build commands in this sequence.
+
 ```bash
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
@@ -275,8 +297,10 @@ For the cross-compiler path, bootstrap the base image locally first. This avoids
 Fastest entry point:
 
 ```bash
-./linux/scripts/build-cross-compiler.sh
+./linux/scripts/build-cross-compiler.sh --fast-ubuntu-mirror
 ```
+
+Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`http://de.archive.ubuntu.com/ubuntu/`).
 
 The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps`; if the registry manifest is broken or missing, it falls back to building `local/kataglyphis:os-deps` locally and then builds `local/kataglyphis:compiler-cross-amd64`.
 
@@ -285,6 +309,7 @@ Build the local amd64 base image:
 ```bash
 sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:os-deps \
   -f linux/Dockerfile.os-deps \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
   . 2>&1 | tee -a output.log
 ```
 
@@ -293,6 +318,7 @@ Then build the dedicated amd64-only compiler image in cross mode:
 ```bash
 sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:compiler-cross-amd64 \
   -f linux/Dockerfile.compiler \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BUILD_MODE=cross \
   --build-arg CROSS_TARGETS=arm64,riscv64 \
   . 2>&1 | tee -a output.log
@@ -308,7 +334,7 @@ sudo nerdctl push ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-a
 Or let the helper do the push too:
 
 ```bash
-./linux/scripts/build-cross-compiler.sh --push
+./linux/scripts/build-cross-compiler.sh --fast-ubuntu-mirror --push
 ```
 
 Manual staged build with plain `nerdctl` (current cross lane):
@@ -316,10 +342,12 @@ Manual staged build with plain `nerdctl` (current cross lane):
 ```bash
 sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:os-deps \
   -f linux/Dockerfile.os-deps \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
   . 2>&1 | tee -a output.log
 
 sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:compiler-cross-amd64 \
   -f linux/Dockerfile.compiler \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BASE_IMAGE=local/kataglyphis:os-deps \
   --build-arg BUILD_MODE=cross \
   --build-arg CROSS_TARGETS=arm64,riscv64 \
@@ -327,6 +355,7 @@ sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:compiler-cross-am
 
 sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:sdk-artifact-arm64 \
   -f linux/Dockerfile.sdk-artifact \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BASE_IMAGE=local/kataglyphis:compiler-cross-amd64 \
   --build-arg BUILD_MODE=cross \
   --build-arg TARGET_ARCH=arm64 \
@@ -334,6 +363,7 @@ sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:sdk-artifact-arm6
 
 sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:sdk-artifact-riscv64 \
   -f linux/Dockerfile.sdk-artifact \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BASE_IMAGE=local/kataglyphis:compiler-cross-amd64 \
   --build-arg BUILD_MODE=cross \
   --build-arg TARGET_ARCH=riscv64 \
@@ -351,8 +381,10 @@ The first additive artifact path is now the SDK stage. It builds target-specific
 Build the first SDK artifacts for arm64 and riscv64:
 
 ```bash
-./linux/scripts/build-sdk-artifacts.sh
+./linux/scripts/build-sdk-artifacts.sh --fast-ubuntu-mirror
 ```
+
+Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror.
 
 Expected output layout:
 
@@ -414,6 +446,8 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 | `linux/scripts/03-media/onnxruntime/build/30-build-native-nvidia.sh` | ORT build script with CUDA, TensorRT, cuDNN EPs |
 
 **Sequential build (nerdctl):**
+
+If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to each Ubuntu-based build command below. The helper rewrites both `archive.ubuntu.com` and `security.ubuntu.com`.
 
 ```bash
 # Step 1: NVIDIA layer (builds on top of existing :sdk from standard chain)
@@ -537,6 +571,8 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 
 **Sequential build (nerdctl):**
 
+If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to each Ubuntu-based build command below. The helper rewrites both `archive.ubuntu.com` and `security.ubuntu.com`.
+
 ```bash
 # Step 1: AMD layer (builds on top of existing :sdk from standard chain)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd \
@@ -606,6 +642,8 @@ docker run -d --name kataglyphis-webserver \
   -v "$(pwd)/linux/webserver/nginx.conf:/etc/nginx/nginx.conf:ro" \
   kataglyphis-webserver:latest
 ```
+
+`linux/webserver/Dockerfile` does not currently expose the fast Ubuntu mirror build flag.
 
 Run with frontend display support:
 

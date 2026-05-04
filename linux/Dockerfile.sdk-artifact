@@ -9,8 +9,15 @@ ARG VULKAN_VERSION=1.4.341.1
 ARG TARGET_ARCH=arm64
 ARG BUILDARCH
 ARG BUILDPLATFORM
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 
 SHELL ["bash", "-lc"]
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
 
 ENV BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH} \

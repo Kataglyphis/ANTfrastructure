@@ -12,8 +12,15 @@ ARG ENABLE_NVIDIA="false"
 ARG ENABLE_AMD="false"
 
 ARG TARGETARCH
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 SHELL ["bash", "-lc"]
 ENV VENV=/opt/venv
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
 
 # Initialize the venv
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \

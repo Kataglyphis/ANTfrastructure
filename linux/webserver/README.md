@@ -1,6 +1,9 @@
 ```bash
 sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
 ```
+
+`linux/webserver/Dockerfile` does not currently expose the fast Ubuntu mirror build flag used by the main Linux image chain.
+
 ```bash
 sudo nerdctl run -d --name mysite -p 8443:8443 -p 8080:80 kataglyphis-webserver:latest
 ```
@@ -12,6 +15,8 @@ sudo nerdctl run -d --name mysite -p 8443:8443 -p 8080:80 kataglyphis-webserver:
 ```bash
 sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
 ```
+
+`linux/webserver/Dockerfile` does not currently expose the fast Ubuntu mirror build flag used by the main Linux image chain.
 
 # Run mit Volume-Mount für dist UND nginx.conf
 ```bash

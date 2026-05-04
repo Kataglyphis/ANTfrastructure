@@ -11,6 +11,8 @@ ARG ANDROID_NDK_VERSION=29.0.14206865
 ARG ANDROID_COMPILE_SDK=36
 ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 
 SHELL ["bash", "-lc"]
 
@@ -23,6 +25,10 @@ ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tool
 
 COPY linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh
 RUN chmod +x /opt/scripts/setup-android-sdk-ndk.sh
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
 RUN set -eux; /opt/scripts/setup-android-sdk-ndk.sh
 
 COPY linux/scripts/03-media/gstreamer/android /opt/scripts/media/gstreamer/android

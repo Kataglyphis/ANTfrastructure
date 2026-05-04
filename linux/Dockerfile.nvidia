@@ -47,9 +47,16 @@ ARG TENSORRT_VERSION=10
 ARG CUDA_MATH_LIBS_VERSION=${CUDA_VERSION_MAJOR_MINOR}
 
 ARG TARGETARCH
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 
 
 SHELL ["bash", "-lc"]
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
 
 # ==============================================================================
 # 1. Add NVIDIA CUDA apt repository (keyring method)
