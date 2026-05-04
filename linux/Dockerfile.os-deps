@@ -35,12 +35,9 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all \
 ENV DEBIAN_FRONTEND=noninteractive \
     APT_LISTCHANGES_FRONTEND=none \
     WORKDIR=/workspace \
-    PATH=/usr/local/cargo/bin:/root/.local/bin:$PATH \
-    CARGO_HOME=/usr/local/cargo \
-    RUSTUP_HOME=/usr/local/rustup \
+    PATH=/root/.local/bin:$PATH \
     CCACHE_DIR=/var/cache/ccache \
     CCACHE_MAXSIZE=30G \
-    RUSTC_WRAPPER="" \
     SCCACHE_DIR=/var/cache/sccache
 
 # ==============================================================================
@@ -111,37 +108,6 @@ RUN set -eux; \
     sed "s|@@VULKAN_VERSION@@|${VULKAN_VERSION}|g" /tmp/vulkan/nvidia_icd.json.in > /etc/vulkan/icd.d/nvidia_icd.json; \
     sed "s|@@VULKAN_VERSION@@|${VULKAN_VERSION}|g" /tmp/vulkan/nvidia_layers.json.in > /etc/vulkan/implicit_layer.d/nvidia_layers.json; \
     rm -rf /tmp/vulkan
-
-# ------------------------------------------------------------------------------
-# Rust via rustup + cargo-c
-# Uses TARGETARCH to install appropriate stdlib for cross-compilation contexts.
-# ------------------------------------------------------------------------------
-RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
-    --mount=type=cache,target=/root/.cache/rustup,id=rustup-cache-${TARGETARCH} \
-    set -eux; \
-    ARCH="${TARGETARCH:-$(dpkg --print-architecture)}"; \
-    case "${ARCH}" in \
-        amd64) RUST_ARCH="x86_64" ;; \
-        arm64) RUST_ARCH="aarch64" ;; \
-        riscv64) RUST_ARCH="riscv64gc" ;; \
-        *) RUST_ARCH="${ARCH}" ;; \
-    esac; \
-    RUST_TARGET="${RUST_ARCH}-unknown-linux-gnu"; \
-    curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
-    rustc --version; \
-    cargo --version; \
-    cargo install --locked cargo-c; \
-    # Install clippy for the default toolchain (useful for linting)
-    rustup component add clippy || true; \
-    # Install a nightly toolchain for the current arch and add rust-src
-    # so code which requires rust-src (e.g. some IDEs or rust-analyzer setups)
-    # can use the nightly sysroot. RUST_TARGET is e.g. x86_64 / aarch64.
-    RUST_TOOLCHAIN="nightly-${RUST_TARGET}"; \
-    rustup toolchain install "${RUST_TOOLCHAIN}" || true; \
-    rustup component add rust-src --toolchain "${RUST_TOOLCHAIN}" || true; \
-    # Add wasm target for nightly (alias 'nightly' is sufficient here)
-    rustup target add wasm32-unknown-unknown --toolchain nightly || true
 
 # ------------------------------------------------------------------------------
 # uv install

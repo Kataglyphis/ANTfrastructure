@@ -28,7 +28,24 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
 ENV BUILD_MODE=${BUILD_MODE} \
     BUILDARCH=${BUILDARCH} \
     BUILDPLATFORM=${BUILDPLATFORM} \
-    CROSS_TARGETS=${CROSS_TARGETS}
+    CROSS_TARGETS=${CROSS_TARGETS} \
+    PATH="/usr/local/cargo/bin:${PATH}" \
+    CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    RUSTC_WRAPPER="" \
+    PKG_CONFIG_ALLOW_CROSS=1 \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc \
+    CC_x86_64_unknown_linux_gnu=gcc \
+    CXX_x86_64_unknown_linux_gnu=g++ \
+    AR_x86_64_unknown_linux_gnu=ar \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ \
+    AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar \
+    CC_riscv64gc_unknown_linux_gnu=riscv64-linux-gnu-gcc \
+    CXX_riscv64gc_unknown_linux_gnu=riscv64-linux-gnu-g++ \
+    AR_riscv64gc_unknown_linux_gnu=riscv64-linux-gnu-ar
 
 # ------------------------------------------------------------------------------
 # Toolchain setup
@@ -86,5 +103,45 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     else \
         bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
     fi
+
+# 5. RUST / CARGO
+# Install the host Rust toolchain in the compiler layer and add the target stdlibs
+# plus Cargo linker hints needed by the amd64-hosted cross build lane.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/rustup,id=rustup-cache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    host_arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "${host_arch}" in \
+        amd64|x86_64) host_rust_target="x86_64-unknown-linux-gnu" ;; \
+        arm64|aarch64) host_rust_target="aarch64-unknown-linux-gnu" ;; \
+        riscv64) host_rust_target="riscv64gc-unknown-linux-gnu" ;; \
+        *) echo "Unsupported Rust host architecture: ${host_arch}" >&2; exit 1 ;; \
+    esac; \
+    if [ "${BUILD_MODE}" = "cross" ]; then \
+        rust_targets="${CROSS_TARGETS}"; \
+    else \
+        rust_targets="${host_arch}"; \
+    fi; \
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
+    rustc --version; \
+    cargo --version; \
+    cargo install --locked cargo-c; \
+    rustup component add clippy || true; \
+    nightly_toolchain="nightly-${host_rust_target}"; \
+    rustup toolchain install "${nightly_toolchain}" || true; \
+    rustup component add rust-src --toolchain "${nightly_toolchain}" || true; \
+    rustup target add wasm32-unknown-unknown --toolchain "${nightly_toolchain}" || true; \
+    for target in ${rust_targets//,/ }; do \
+        case "${target}" in \
+            amd64|x86_64) rust_target="x86_64-unknown-linux-gnu" ;; \
+            arm64|aarch64) rust_target="aarch64-unknown-linux-gnu" ;; \
+            riscv64) rust_target="riscv64gc-unknown-linux-gnu" ;; \
+            *) echo "Unsupported Rust target: ${target}" >&2; exit 1 ;; \
+        esac; \
+        rustup target add "${rust_target}"; \
+        rustup target add --toolchain "${nightly_toolchain}" "${rust_target}" || true; \
+    done
 LABEL org.opencontainers.image.title="Kataglyphis Compiler"
 LABEL org.opencontainers.image.description="Compiler toolchain with GCC and LLVM/Clang"
