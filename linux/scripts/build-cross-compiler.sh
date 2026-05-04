@@ -5,8 +5,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps}"
-BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-docker.io/local/kataglyphis:os-deps}"
-COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-docker.io/local/kataglyphis:compiler-cross-amd64}"
+BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps}"
+COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 CROSS_TARGETS="${CROSS_TARGETS:-arm64,riscv64}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
@@ -35,7 +35,7 @@ Options:
 Environment overrides:
   NERDCTL_BIN            nerdctl executable to use
   BASE_REMOTE_TAG        Remote base tag to try before local bootstrap
-  BASE_LOCAL_TAG         Local os-deps tag (default: docker.io/local/kataglyphis:os-deps)
+  BASE_LOCAL_TAG         Local os-deps tag (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps)
   COMPILER_LOCAL_TAG     Local compiler tag
   COMPILER_REMOTE_TAG    Remote compiler tag used with --push
   USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security Ubuntu mirrors
@@ -72,7 +72,9 @@ ensure_base_image() {
   if [ "${REBUILD_BASE}" -eq 0 ]; then
     log "Trying to pull remote base image: ${BASE_REMOTE_TAG}"
     if run "${NERDCTL_BIN}" pull --platform linux/amd64 "${BASE_REMOTE_TAG}"; then
-      run "${NERDCTL_BIN}" tag "${BASE_REMOTE_TAG}" "${BASE_LOCAL_TAG}"
+      if [ "${BASE_REMOTE_TAG}" != "${BASE_LOCAL_TAG}" ]; then
+        run "${NERDCTL_BIN}" tag "${BASE_REMOTE_TAG}" "${BASE_LOCAL_TAG}"
+      fi
       return 0
     fi
     log "Remote base image unavailable; bootstrapping ${BASE_LOCAL_TAG} locally"
@@ -108,7 +110,9 @@ build_cross_compiler() {
 }
 
 push_cross_compiler() {
-  run "${NERDCTL_BIN}" tag "${COMPILER_LOCAL_TAG}" "${COMPILER_REMOTE_TAG}"
+  if [ "${COMPILER_LOCAL_TAG}" != "${COMPILER_REMOTE_TAG}" ]; then
+    run "${NERDCTL_BIN}" tag "${COMPILER_LOCAL_TAG}" "${COMPILER_REMOTE_TAG}"
+  fi
   run "${NERDCTL_BIN}" push "${COMPILER_REMOTE_TAG}"
 }
 

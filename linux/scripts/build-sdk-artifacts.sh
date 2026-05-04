@@ -4,11 +4,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-COMPILER_IMAGE="${COMPILER_IMAGE:-docker.io/local/kataglyphis:compiler-cross-amd64}"
+COMPILER_IMAGE="${COMPILER_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
 ARCHITECTURES="${ARCHITECTURES:-arm64,riscv64}"
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-docker.io/local/kataglyphis:sdk-artifact}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-http://de.archive.ubuntu.com/ubuntu/}"
 
