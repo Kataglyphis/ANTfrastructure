@@ -1,6 +1,44 @@
 #!/usr/bin/env bash
 # llvm.sh - LLVM/Clang toolchain
 
+llvm_cross_triplet() {
+  case "$1" in
+    arm64|aarch64) printf '%s' "aarch64-linux-gnu" ;;
+    riscv64) printf '%s' "riscv64-linux-gnu" ;;
+    amd64|x86_64) printf '%s' "x86_64-linux-gnu" ;;
+    *) return 1 ;;
+  esac
+}
+
+install_cross_clang_wrappers() {
+  local targets_raw="${CROSS_TARGETS:-arm64,riscv64}"
+  local target triplet sysroot wrapper
+
+  [ "${BUILD_MODE:-native}" = "cross" ] || return 0
+
+  for target in ${targets_raw//,/ }; do
+    triplet="$(llvm_cross_triplet "$target")" || {
+      log "Skipping unsupported LLVM cross target: ${target}"
+      continue
+    }
+    sysroot="/usr/${triplet}"
+
+    wrapper="/usr/local/bin/clang-${target}"
+    cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+exec /usr/bin/clang --target=${triplet} --sysroot=${sysroot} "\$@"
+EOF
+    chmod +x "${wrapper}"
+
+    wrapper="/usr/local/bin/clang++-${target}"
+    cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+exec /usr/bin/clang++ --target=${triplet} --sysroot=${sysroot} "\$@"
+EOF
+    chmod +x "${wrapper}"
+  done
+}
+
 apt_has_package() {
   local pkg="$1"
   apt-cache show "$pkg" >/dev/null 2>&1
@@ -122,5 +160,7 @@ install_llvm_clang() {
   tool_version bolt --version
   tool_version flang --version
   tool_version flang-new --version
+
+  install_cross_clang_wrappers
 }
 

@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1.19
+
+ARG BASE_IMAGE=local/kataglyphis:compiler-cross-amd64
+FROM ${BASE_IMAGE}
+
+ARG BUILD_TYPE=Release
+ARG BUILD_MODE=cross
+ARG VULKAN_VERSION=1.4.341.1
+ARG TARGET_ARCH=arm64
+ARG BUILDARCH
+ARG BUILDPLATFORM
+
+SHELL ["bash", "-lc"]
+
+ENV BUILD_MODE=${BUILD_MODE} \
+    TARGET_ARCH=${TARGET_ARCH} \
+    BUILDARCH=${BUILDARCH} \
+    BUILDPLATFORM=${BUILDPLATFORM}
+
+# Refresh the setup scripts from the workspace so the artifact build does not
+# depend on how old the cached compiler-cross image is.
+COPY linux/scripts/01-core/ /opt/scripts/core/
+COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-artifact-amd64 \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-sdk-artifact-amd64 \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    for f in /opt/scripts/core/*.sh; do \
+        dst="/opt/scripts/toolchain/$(basename "$f")"; \
+        [ -f "$dst" ] || ln -s "$f" "$dst"; \
+    done; \
+    case "${TARGET_ARCH}" in \
+        amd64) \
+            export CC=gcc CXX=g++ AR=ar RANLIB=ranlib STRIP=strip ;; \
+        arm64) \
+            triplet="aarch64-linux-gnu" ;; \
+        riscv64) \
+            triplet="riscv64-linux-gnu" ;; \
+        *) \
+            echo "Unsupported TARGET_ARCH=${TARGET_ARCH}" >&2; exit 1 ;; \
+    esac; \
+    if [ -n "${triplet:-}" ]; then \
+        mkdir -p /opt/cross-bin; \
+        ln -sf "$(command -v ${triplet}-gcc)" /opt/cross-bin/gcc; \
+        ln -sf "$(command -v ${triplet}-g++)" /opt/cross-bin/g++; \
+        ln -sf "$(command -v ${triplet}-gcc)" /opt/cross-bin/cc; \
+        ln -sf "$(command -v ${triplet}-g++)" /opt/cross-bin/c++; \
+        ln -sf "$(command -v ${triplet}-ar)" /opt/cross-bin/ar; \
+        ln -sf "$(command -v ${triplet}-ranlib)" /opt/cross-bin/ranlib; \
+        ln -sf "$(command -v ${triplet}-strip)" /opt/cross-bin/strip; \
+        if command -v "clang-${TARGET_ARCH}" >/dev/null 2>&1; then \
+            ln -sf "$(command -v clang-${TARGET_ARCH})" /opt/cross-bin/clang; \
+        fi; \
+        if command -v "clang++-${TARGET_ARCH}" >/dev/null 2>&1; then \
+            ln -sf "$(command -v clang++-${TARGET_ARCH})" /opt/cross-bin/clang++; \
+        fi; \
+        export PATH="/opt/cross-bin:${PATH}"; \
+        export CC="${triplet}-gcc" CXX="${triplet}-g++" AR="${triplet}-ar" RANLIB="${triplet}-ranlib" STRIP="${triplet}-strip"; \
+        export TARGETARCH="${TARGET_ARCH}" TARGETPLATFORM="linux/${TARGET_ARCH}"; \
+        export PKG_CONFIG_LIBDIR="/usr/${triplet}/lib/pkgconfig:/usr/lib/${triplet}/pkgconfig"; \
+        export PKG_CONFIG_PATH="${PKG_CONFIG_LIBDIR}:${PKG_CONFIG_PATH:-}"; \
+    fi; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
+
+RUN set -eux; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
+
+LABEL org.opencontainers.image.title="Kataglyphis SDK Artifact Builder"
+LABEL org.opencontainers.image.description="SDK artifact image that builds a target-specific Vulkan SDK rootfs on an amd64 host"

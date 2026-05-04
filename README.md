@@ -264,6 +264,137 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
   . 2>&1 | tee -a output.log
 ```
 
+##### Cross-Compiler builder (nerdctl, amd64 host)
+
+The existing multi-platform build above stays unchanged. Treat it as the compatibility lane for the current QEMU/binfmt-based end-to-end build.
+
+The cross-compiler path below is additive. It does not replace the existing QEMU workflow. Instead, it prepares an amd64-hosted builder image for a future artifact-based multi-architecture endbuild.
+
+For the cross-compiler path, bootstrap the base image locally first. This avoids depending on a remote `os-deps` intermediate tag that may have been cleaned up in GHCR.
+
+Fastest entry point:
+
+```bash
+./linux/scripts/build-cross-compiler.sh
+```
+
+The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps`; if the registry manifest is broken or missing, it falls back to building `local/kataglyphis:os-deps` locally and then builds `local/kataglyphis:compiler-cross-amd64`.
+
+Build the local amd64 base image:
+
+```bash
+sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:os-deps \
+  -f linux/Dockerfile.os-deps \
+  . 2>&1 | tee -a output.log
+```
+
+Then build the dedicated amd64-only compiler image in cross mode:
+
+```bash
+sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:compiler-cross-amd64 \
+  -f linux/Dockerfile.compiler \
+  --build-arg BUILD_MODE=cross \
+  --build-arg CROSS_TARGETS=arm64,riscv64 \
+  . 2>&1 | tee -a output.log
+```
+
+Optional push to GHCR after the local build succeeds:
+
+```bash
+sudo nerdctl tag local/kataglyphis:compiler-cross-amd64 ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64
+sudo nerdctl push ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64
+```
+
+Or let the helper do the push too:
+
+```bash
+./linux/scripts/build-cross-compiler.sh --push
+```
+
+Manual staged build with plain `nerdctl` (current cross lane):
+
+```bash
+sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:os-deps \
+  -f linux/Dockerfile.os-deps \
+  . 2>&1 | tee -a output.log
+
+sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:compiler-cross-amd64 \
+  -f linux/Dockerfile.compiler \
+  --build-arg BASE_IMAGE=local/kataglyphis:os-deps \
+  --build-arg BUILD_MODE=cross \
+  --build-arg CROSS_TARGETS=arm64,riscv64 \
+  . 2>&1 | tee -a output.log
+
+sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:sdk-artifact-arm64 \
+  -f linux/Dockerfile.sdk-artifact \
+  --build-arg BASE_IMAGE=local/kataglyphis:compiler-cross-amd64 \
+  --build-arg BUILD_MODE=cross \
+  --build-arg TARGET_ARCH=arm64 \
+  . 2>&1 | tee -a output.log
+
+sudo nerdctl build --platform linux/amd64 -t local/kataglyphis:sdk-artifact-riscv64 \
+  -f linux/Dockerfile.sdk-artifact \
+  --build-arg BASE_IMAGE=local/kataglyphis:compiler-cross-amd64 \
+  --build-arg BUILD_MODE=cross \
+  --build-arg TARGET_ARCH=riscv64 \
+  . 2>&1 | tee -a output.log
+```
+
+This is intentionally the current end of the manual cross-image sequence. `media`, `android`, `torch`, and the final `:latest` image still use the existing QEMU/binfmt lane until their host-side artifact builds exist.
+
+This image is an amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding target compilers like `aarch64-linux-gnu-gcc` and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-arm64` and `clang-riscv64` for host-side cross builds.
+
+##### SDK rootfs artifacts (first host-side build step)
+
+The first additive artifact path is now the SDK stage. It builds target-specific SDK root filesystems on a fast amd64 host and exports them to disk, while the existing QEMU/binfmt multi-platform build above remains unchanged.
+
+Build the first SDK artifacts for arm64 and riscv64:
+
+```bash
+./linux/scripts/build-sdk-artifacts.sh
+```
+
+Expected output layout:
+
+```text
+out/linux-sdk/arm64/rootfs/
+out/linux-sdk/arm64/artifact.env
+out/linux-sdk/riscv64/rootfs/
+out/linux-sdk/riscv64/artifact.env
+```
+
+This helper uses `linux/Dockerfile.sdk-artifact` and the amd64-hosted cross compiler image. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU endbuild, but it does not yet replace the full `:latest` pipeline.
+
+##### Cross-artifacts to multi-arch manifest (experimental)
+
+The new end-goal path is split into two steps so the old QEMU lane keeps working:
+
+1. Keep the existing multi-platform build for compatibility.
+2. Build target rootfs artifacts host-side with the cross builder.
+3. Assemble one runtime image per architecture.
+4. Publish a single multi-architecture manifest.
+
+The additive runtime Dockerfile for this path is [linux/Dockerfile.runtime-artifact](linux/Dockerfile.runtime-artifact). It is copy-only and meant for prebuilt rootfs trees.
+
+Expected artifact layout:
+
+```text
+out/linux-runtime/amd64/rootfs/
+out/linux-runtime/arm64/rootfs/
+out/linux-runtime/riscv64/rootfs/
+```
+
+Once these rootfs artifacts exist, build one image per architecture and create a single manifest with nerdctl:
+
+```bash
+./linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --artifacts-root out/linux-runtime \
+  --push
+```
+
+This helper only adds a second lane. It does not modify the current QEMU-based multi-platform build commands above.
+
 ### NVIDIA GPU Build (Linux)
 
 > **Requirements:**

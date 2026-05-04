@@ -9,9 +9,18 @@ ARG GCC_WANTED=15
 ARG GCC_VERSION=15.2.0
 ARG TARGETARCH
 ARG TARGETPLATFORM
+ARG BUILDARCH
+ARG BUILDPLATFORM
+ARG BUILD_MODE=native
+ARG CROSS_TARGETS=arm64,riscv64
 
 
 SHELL ["bash", "-lc"]
+
+ENV BUILD_MODE=${BUILD_MODE} \
+    BUILDARCH=${BUILDARCH} \
+    BUILDPLATFORM=${BUILDPLATFORM} \
+    CROSS_TARGETS=${CROSS_TARGETS}
 
 # ------------------------------------------------------------------------------
 # Toolchain setup
@@ -57,7 +66,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
-    if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
+    if [ "${BUILD_MODE}" = "cross" ]; then \
+        echo "NOTICE: BUILD_MODE=cross; installing host LLVM/Clang for cross-targets ${CROSS_TARGETS}" >&2; \
+        bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${LLVM_WANTED}" --clang "${CLANG_WANTED}" llvm; \
+    elif [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "riscv64" ]; then \
         echo "NOTICE: Detected riscv64 architecture." >&2; \
         echo "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64." >&2; \
         export LD_LIBRARY_PATH=/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib:$LD_LIBRARY_PATH; \
