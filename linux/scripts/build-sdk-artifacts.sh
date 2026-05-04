@@ -4,11 +4,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-COMPILER_IMAGE="${COMPILER_IMAGE:-local/kataglyphis:compiler-cross-amd64}"
+COMPILER_IMAGE="${COMPILER_IMAGE:-docker.io/local/kataglyphis:compiler-cross-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
 ARCHITECTURES="${ARCHITECTURES:-arm64,riscv64}"
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-local/kataglyphis:sdk-artifact}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-docker.io/local/kataglyphis:sdk-artifact}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-http://de.archive.ubuntu.com/ubuntu/}"
 
@@ -40,7 +40,7 @@ Environment overrides:
   COMPILER_IMAGE         Cross compiler image to use as base
   VULKAN_VERSION         Vulkan SDK version
   IMAGE_PREFIX           Prefix for local artifact image tags
-  USE_FAST_UBUNTU_MIRROR Set to true to replace security.ubuntu.com
+  USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
 EOF
 }
@@ -90,6 +90,7 @@ build_sdk_image() {
   run "${NERDCTL_BIN}" build \
     --platform linux/amd64 \
     -t "${tag}" \
+    --output "type=image,name=${tag},push=false" \
     -f linux/Dockerfile.sdk-artifact \
     --build-arg BASE_IMAGE="${COMPILER_IMAGE}" \
     --build-arg BUILD_MODE=cross \

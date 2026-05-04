@@ -5,8 +5,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps}"
-BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-local/kataglyphis:os-deps}"
-COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-local/kataglyphis:compiler-cross-amd64}"
+BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-docker.io/local/kataglyphis:os-deps}"
+COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-docker.io/local/kataglyphis:compiler-cross-amd64}"
 COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 CROSS_TARGETS="${CROSS_TARGETS:-arm64,riscv64}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
@@ -35,10 +35,10 @@ Options:
 Environment overrides:
   NERDCTL_BIN            nerdctl executable to use
   BASE_REMOTE_TAG        Remote base tag to try before local bootstrap
-  BASE_LOCAL_TAG         Local os-deps tag (default: local/kataglyphis:os-deps)
+  BASE_LOCAL_TAG         Local os-deps tag (default: docker.io/local/kataglyphis:os-deps)
   COMPILER_LOCAL_TAG     Local compiler tag
   COMPILER_REMOTE_TAG    Remote compiler tag used with --push
-  USE_FAST_UBUNTU_MIRROR Set to true to replace security.ubuntu.com
+  USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
 EOF
 }
@@ -83,6 +83,7 @@ ensure_base_image() {
   run "${NERDCTL_BIN}" build \
     --platform linux/amd64 \
     -t "${BASE_LOCAL_TAG}" \
+    --output "type=image,name=${BASE_LOCAL_TAG},push=false" \
     -f linux/Dockerfile.os-deps \
     "${mirror_build_args[@]}" \
     .
@@ -97,6 +98,7 @@ build_cross_compiler() {
   run "${NERDCTL_BIN}" build \
     --platform linux/amd64 \
     -t "${COMPILER_LOCAL_TAG}" \
+    --output "type=image,name=${COMPILER_LOCAL_TAG},push=false" \
     -f linux/Dockerfile.compiler \
     --build-arg BASE_IMAGE="${BASE_LOCAL_TAG}" \
     --build-arg BUILD_MODE=cross \
