@@ -90,7 +90,7 @@ build_sdk_image() {
   run "${NERDCTL_BIN}" build \
     --platform linux/amd64 \
     -t "${tag}" \
-    --output "type=image,name=${tag},push=false" \
+    --output "type=image,name=${tag},push=true" \
     -f linux/Dockerfile.sdk-artifact \
     --build-arg BASE_IMAGE="${COMPILER_IMAGE}" \
     --build-arg BUILD_MODE=cross \

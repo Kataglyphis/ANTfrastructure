@@ -302,13 +302,13 @@ Fastest entry point:
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`http://de.archive.ubuntu.com/ubuntu/`).
 
-The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps`; if the registry manifest is broken or missing, it falls back to building `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps` locally with `--output type=image,...` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way.
+The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps`; if the registry manifest is broken or missing, it falls back to rebuilding `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps` with `--output type=image,...,push=true` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way so the next stage can resolve it from GHCR.
 
 Build the local amd64 base image:
 
 ```bash
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=false' \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=true' \
   -f linux/Dockerfile.os-deps \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   . 2>&1 | tee -a output.log
@@ -318,7 +318,7 @@ Then build the dedicated amd64-only compiler image in cross mode:
 
 ```bash
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=false' \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
   -f linux/Dockerfile.compiler \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -327,11 +327,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   . 2>&1 | tee -a output.log
 ```
 
-Optional push to GHCR after the local build succeeds:
-
-```bash
-sudo nerdctl push ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64
-```
+The commands above already push the intermediary images to GHCR.
 
 Or let the helper do the push too:
 
@@ -343,13 +339,13 @@ Manual staged build with plain `nerdctl` (current cross lane):
 
 ```bash
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=false' \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=true' \
   -f linux/Dockerfile.os-deps \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   . 2>&1 | tee -a output.log
 
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=false' \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
   -f linux/Dockerfile.compiler \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
@@ -358,7 +354,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   . 2>&1 | tee -a output.log
 
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-arm64 \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-arm64,push=false' \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-arm64,push=true' \
   -f linux/Dockerfile.sdk-artifact \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
@@ -367,7 +363,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   . 2>&1 | tee -a output.log
 
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-riscv64 \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-riscv64,push=false' \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-riscv64,push=true' \
   -f linux/Dockerfile.sdk-artifact \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \

@@ -85,7 +85,7 @@ ensure_base_image() {
   run "${NERDCTL_BIN}" build \
     --platform linux/amd64 \
     -t "${BASE_LOCAL_TAG}" \
-    --output "type=image,name=${BASE_LOCAL_TAG},push=false" \
+    --output "type=image,name=${BASE_LOCAL_TAG},push=true" \
     -f linux/Dockerfile.os-deps \
     "${mirror_build_args[@]}" \
     .
@@ -100,7 +100,7 @@ build_cross_compiler() {
   run "${NERDCTL_BIN}" build \
     --platform linux/amd64 \
     -t "${COMPILER_LOCAL_TAG}" \
-    --output "type=image,name=${COMPILER_LOCAL_TAG},push=false" \
+    --output "type=image,name=${COMPILER_LOCAL_TAG},push=true" \
     -f linux/Dockerfile.compiler \
     --build-arg BASE_IMAGE="${BASE_LOCAL_TAG}" \
     --build-arg BUILD_MODE=cross \
