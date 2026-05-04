@@ -8,7 +8,7 @@ BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleunige
 BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps}"
 COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
-CROSS_TARGETS="${CROSS_TARGETS:-arm64,riscv64}"
+CROSS_TARGETS="${CROSS_TARGETS:-amd64,arm64,riscv64}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-http://de.archive.ubuntu.com/ubuntu/}"
 
@@ -24,7 +24,7 @@ If the remote os-deps image is unavailable, the script builds a local amd64 base
 image first and then uses it for the compiler build.
 
 Options:
-  --cross-targets LIST   Comma-separated target list (default: arm64,riscv64)
+  --cross-targets LIST   Comma-separated target list (default: amd64,arm64,riscv64)
   --fast-ubuntu-mirror   Replace security.ubuntu.com during Docker builds
   --fast-ubuntu-mirror-url URL
                          Mirror URL to use with --fast-ubuntu-mirror

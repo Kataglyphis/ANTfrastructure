@@ -11,7 +11,7 @@ llvm_cross_triplet() {
 }
 
 install_cross_clang_wrappers() {
-  local targets_raw="${CROSS_TARGETS:-arm64,riscv64}"
+  local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
   local target triplet sysroot wrapper
 
   [ "${BUILD_MODE:-native}" = "cross" ] || return 0
@@ -163,4 +163,3 @@ install_llvm_clang() {
 
   install_cross_clang_wrappers
 }
-

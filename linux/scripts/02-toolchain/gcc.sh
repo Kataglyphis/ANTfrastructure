@@ -34,7 +34,7 @@ gcc_cross_triplet() {
 
 install_cross_gcc_targets() {
   local full_version="$1"
-  local targets_raw="${CROSS_TARGETS:-arm64,riscv64}"
+  local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
   local target triplet compat_prefix
 
   log "Installing cross GCC toolchains for ${targets_raw}"

@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 COMPILER_IMAGE="${COMPILER_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
-ARCHITECTURES="${ARCHITECTURES:-arm64,riscv64}"
+ARCHITECTURES="${ARCHITECTURES:-amd64,arm64,riscv64}"
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
@@ -20,11 +20,12 @@ Builds target-specific SDK artifact images on an amd64 host and exports their
 root filesystems into per-architecture output directories.
 
 Expected result:
+  out/linux-sdk/amd64/rootfs/
   out/linux-sdk/arm64/rootfs/
   out/linux-sdk/riscv64/rootfs/
 
 Options:
-  --architectures LIST   Comma-separated list (default: arm64,riscv64)
+  --architectures LIST   Comma-separated list (default: amd64,arm64,riscv64)
   --output-root DIR      Export directory root (default: out/linux-sdk)
   --compiler-image TAG   Cross compiler image to use as base
   --fast-ubuntu-mirror   Replace security.ubuntu.com during Docker builds

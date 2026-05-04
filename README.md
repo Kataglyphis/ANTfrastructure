@@ -314,7 +314,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   . 2>&1 | tee -a output.log
 ```
 
-Then build the dedicated amd64-only compiler image in cross mode:
+Then build the dedicated amd64-hosted compiler image in cross mode:
 
 ```bash
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
@@ -323,7 +323,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BUILD_MODE=cross \
-  --build-arg CROSS_TARGETS=arm64,riscv64 \
+  --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
   . 2>&1 | tee -a output.log
 ```
 
@@ -350,7 +350,16 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
   --build-arg BUILD_MODE=cross \
-  --build-arg CROSS_TARGETS=arm64,riscv64 \
+  --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
+  . 2>&1 | tee -a output.log
+
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-amd64 \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-amd64,push=true' \
+  -f linux/Dockerfile.sdk-artifact \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
+  --build-arg BUILD_MODE=cross \
+  --build-arg TARGET_ARCH=amd64 \
   . 2>&1 | tee -a output.log
 
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-arm64 \
@@ -378,9 +387,9 @@ This image is an amd64 builder image, not a replacement for the full multi-platf
 
 ##### SDK rootfs artifacts (first host-side build step)
 
-The first additive artifact path is now the SDK stage. It builds target-specific SDK root filesystems on a fast amd64 host and exports them to disk, while the existing QEMU/binfmt multi-platform build above remains unchanged.
+The first additive artifact path is now the SDK stage. It builds target-specific SDK root filesystems for amd64, arm64, and riscv64 on a fast amd64 host and exports them to disk, while the existing QEMU/binfmt multi-platform build above remains unchanged.
 
-Build the first SDK artifacts for arm64 and riscv64:
+Build the first SDK artifacts for amd64, arm64, and riscv64:
 
 ```bash
 ./linux/scripts/build-sdk-artifacts.sh --fast-ubuntu-mirror
@@ -391,6 +400,8 @@ Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror.
 Expected output layout:
 
 ```text
+out/linux-sdk/amd64/rootfs/
+out/linux-sdk/amd64/artifact.env
 out/linux-sdk/arm64/rootfs/
 out/linux-sdk/arm64/artifact.env
 out/linux-sdk/riscv64/rootfs/
