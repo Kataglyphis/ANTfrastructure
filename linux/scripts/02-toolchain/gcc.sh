@@ -23,11 +23,20 @@ gcc_apt_install_available() {
   fi
 }
 
+gcc_canonical_cross_target() {
+  case "$1" in
+    amd64|x86_64) printf '%s' "amd64" ;;
+    arm64|aarch64) printf '%s' "arm64" ;;
+    riscv64) printf '%s' "riscv64" ;;
+    *) return 1 ;;
+  esac
+}
+
 gcc_cross_triplet() {
   case "$1" in
-    arm64|aarch64) printf '%s' "aarch64-linux-gnu" ;;
+    arm64) printf '%s' "aarch64-linux-gnu" ;;
     riscv64) printf '%s' "riscv64-linux-gnu" ;;
-    amd64|x86_64) printf '%s' "x86_64-linux-gnu" ;;
+    amd64) printf '%s' "x86_64-linux-gnu" ;;
     *) return 1 ;;
   esac
 }
@@ -35,12 +44,23 @@ gcc_cross_triplet() {
 install_cross_gcc_targets() {
   local full_version="$1"
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local target triplet compat_prefix
+  local target normalized_target triplet compat_prefix tool
 
   log "Installing cross GCC toolchains for ${targets_raw}"
   for target in ${targets_raw//,/ }; do
-    case "$target" in
-      arm64|aarch64)
+    normalized_target="$(gcc_canonical_cross_target "$target")" || die "Unsupported cross target: ${target}"
+
+    case "$normalized_target" in
+      amd64)
+        gcc_apt_install_available \
+          binutils-x86-64-linux-gnu \
+          gcc-x86-64-linux-gnu \
+          g++-x86-64-linux-gnu \
+          cpp-x86-64-linux-gnu \
+          libc6-dev-amd64-cross \
+          linux-libc-dev-amd64-cross
+        ;;
+      arm64)
         gcc_apt_install_available \
           binutils-aarch64-linux-gnu \
           gcc-aarch64-linux-gnu \
@@ -58,18 +78,16 @@ install_cross_gcc_targets() {
           libc6-dev-riscv64-cross \
           linux-libc-dev-riscv64-cross
         ;;
-      amd64|x86_64)
-        log "Skipping cross compiler install for host target ${target}"
-        continue
-        ;;
       *)
-        die "Unsupported cross target: ${target}"
+        die "Unsupported cross target: ${normalized_target}"
         ;;
     esac
 
-    triplet="$(gcc_cross_triplet "$target")" || die "Unsupported cross target: ${target}"
-    command -v "${triplet}-gcc" >/dev/null 2>&1 || die "Expected cross compiler not found: ${triplet}-gcc"
-    log "Installed cross compiler: ${triplet}-gcc"
+    triplet="$(gcc_cross_triplet "$normalized_target")" || die "Unsupported cross target: ${normalized_target}"
+    for tool in gcc g++ ar; do
+      command -v "${triplet}-${tool}" >/dev/null 2>&1 || die "Expected cross compiler not found: ${triplet}-${tool}"
+    done
+    log "Installed cross compiler commands for ${normalized_target}: ${triplet}-gcc ${triplet}-g++ ${triplet}-ar"
   done
 
   compat_prefix="/opt/gcc-${full_version}"

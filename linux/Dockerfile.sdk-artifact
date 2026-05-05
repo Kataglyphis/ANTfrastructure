@@ -33,6 +33,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-art
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-sdk-artifact-amd64 \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
+    case "${TARGET_ARCH}" in \
+        *,*) \
+            echo "TARGET_ARCH must be a single architecture for linux/Dockerfile.sdk-artifact: ${TARGET_ARCH}" >&2; \
+            echo "Use TARGET_ARCH=${TARGET_ARCH} ./linux/scripts/build-sdk-artifacts.sh --fast-ubuntu-mirror, ./linux/scripts/build-sdk-artifacts.sh --target-arches ${TARGET_ARCH}, or loop over one TARGET_ARCH per nerdctl build." >&2; \
+            exit 1 ;; \
+        x86_64) \
+            TARGET_ARCH="amd64" ;; \
+        aarch64) \
+            TARGET_ARCH="arm64" ;; \
+        riscv64|riscv|rv64*) \
+            TARGET_ARCH="riscv64" ;; \
+    esac; \
     for f in /opt/scripts/core/*.sh; do \
         dst="/opt/scripts/toolchain/$(basename "$f")"; \
         [ -f "$dst" ] || ln -s "$f" "$dst"; \

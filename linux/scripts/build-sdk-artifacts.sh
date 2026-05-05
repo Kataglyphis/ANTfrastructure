@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 COMPILER_IMAGE="${COMPILER_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
-ARCHITECTURES="${ARCHITECTURES:-amd64,arm64,riscv64}"
+TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-amd64,arm64,riscv64}}}"
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
@@ -25,18 +25,21 @@ Expected result:
   out/linux-sdk/riscv64/rootfs/
 
 Options:
-  --architectures LIST   Comma-separated list (default: amd64,arm64,riscv64)
+  --target-arches LIST   Comma-separated target list (default: amd64,arm64,riscv64)
+  --architectures LIST   Alias for --target-arches
   --output-root DIR      Export directory root (default: out/linux-sdk)
   --compiler-image TAG   Cross compiler image to use as base
   --fast-ubuntu-mirror   Replace security.ubuntu.com during Docker builds
   --fast-ubuntu-mirror-url URL
-                         Mirror URL to use with --fast-ubuntu-mirror
+                          Mirror URL to use with --fast-ubuntu-mirror
   --vulkan-version VER   Vulkan SDK version to build
   -h, --help             Show this help text
 
 Environment overrides:
   NERDCTL_BIN            nerdctl executable to use
-  ARCHITECTURES          Comma-separated architecture list
+  TARGET_ARCHES          Comma-separated target list
+  TARGET_ARCH            Alias for TARGET_ARCHES
+  ARCHITECTURES          Alias for TARGET_ARCHES
   OUTPUT_ROOT            Root directory for exported rootfs artifacts
   COMPILER_IMAGE         Cross compiler image to use as base
   VULKAN_VERSION         Vulkan SDK version
@@ -44,6 +47,36 @@ Environment overrides:
   USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
 EOF
+}
+
+canonical_target_arch() {
+  case "$1" in
+    amd64|x86_64) printf '%s' "amd64" ;;
+    arm64|aarch64) printf '%s' "arm64" ;;
+    riscv64|riscv|rv64*) printf '%s' "riscv64" ;;
+    *) return 1 ;;
+  esac
+}
+
+normalize_target_arches() {
+  local raw_arches="$1"
+  local raw_arch normalized_arch
+  local -a normalized_arches=()
+
+  for raw_arch in ${raw_arches//,/ }; do
+    normalized_arch="$(canonical_target_arch "${raw_arch}")" || {
+      printf '[ERROR] Unsupported target architecture: %s\n' "${raw_arch}" >&2
+      exit 1
+    }
+    normalized_arches+=("${normalized_arch}")
+  done
+
+  if [ "${#normalized_arches[@]}" -eq 0 ]; then
+    printf '[ERROR] At least one target architecture is required\n' >&2
+    exit 1
+  fi
+
+  printf '%s' "${normalized_arches[*]}" | tr ' ' ','
 }
 
 log() {
@@ -135,7 +168,11 @@ main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --architectures)
-        ARCHITECTURES="$2"
+        TARGET_ARCHES="$2"
+        shift 2
+        ;;
+      --target-arches)
+        TARGET_ARCHES="$2"
         shift 2
         ;;
       --output-root)
@@ -172,11 +209,13 @@ main() {
   done
 
   cd "${REPO_ROOT}"
+  TARGET_ARCHES="$(normalize_target_arches "${TARGET_ARCHES}")"
   ensure_compiler_image
+  log "Building SDK artifacts for target arches: ${TARGET_ARCHES}"
 
   local arch
   local tag
-  for arch in ${ARCHITECTURES//,/ }; do
+  for arch in ${TARGET_ARCHES//,/ }; do
     tag="${IMAGE_PREFIX}-${arch}"
     build_sdk_image "${arch}" "${tag}"
     export_rootfs "${arch}" "${tag}"

@@ -21,7 +21,7 @@ install_vulkan_sdk() {
   install_vulkan_prereqs
   local arch_suffix="x86_64"
   case "$ARCH" in
-    x86_64) arch_suffix="x86_64" ;;
+    x86_64|amd64) arch_suffix="x86_64" ;;
     aarch64|arm64) arch_suffix="aarch64" ;;
     riscv64|riscv|rv64*) arch_suffix="riscv64" ;;
     *) die "Unknown or unsupported architecture: $ARCH" ;;

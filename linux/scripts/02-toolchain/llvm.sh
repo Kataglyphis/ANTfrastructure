@@ -10,32 +10,48 @@ llvm_cross_triplet() {
   esac
 }
 
+llvm_canonical_cross_target() {
+  case "$1" in
+    amd64|x86_64) printf '%s' "amd64" ;;
+    arm64|aarch64) printf '%s' "arm64" ;;
+    riscv64) printf '%s' "riscv64" ;;
+    *) return 1 ;;
+  esac
+}
+
 install_cross_clang_wrappers() {
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local target triplet sysroot wrapper
+  local target target_label triplet sysroot wrapper
 
   [ "${BUILD_MODE:-native}" = "cross" ] || return 0
 
   for target in ${targets_raw//,/ }; do
-    triplet="$(llvm_cross_triplet "$target")" || {
+    target_label="$(llvm_canonical_cross_target "$target")" || {
+      log "Skipping unsupported LLVM cross target: ${target}"
+      continue
+    }
+    triplet="$(llvm_cross_triplet "$target_label")" || {
       log "Skipping unsupported LLVM cross target: ${target}"
       continue
     }
     sysroot="/usr/${triplet}"
+    [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
 
-    wrapper="/usr/local/bin/clang-${target}"
+    wrapper="/usr/local/bin/clang-${target_label}"
     cat > "${wrapper}" <<EOF
 #!/usr/bin/env bash
-exec /usr/bin/clang --target=${triplet} --sysroot=${sysroot} "\$@"
+exec /usr/bin/clang --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=/usr "\$@"
 EOF
     chmod +x "${wrapper}"
+    log "Installed LLVM wrapper: $(basename "${wrapper}")"
 
-    wrapper="/usr/local/bin/clang++-${target}"
+    wrapper="/usr/local/bin/clang++-${target_label}"
     cat > "${wrapper}" <<EOF
 #!/usr/bin/env bash
-exec /usr/bin/clang++ --target=${triplet} --sysroot=${sysroot} "\$@"
+exec /usr/bin/clang++ --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=/usr "\$@"
 EOF
     chmod +x "${wrapper}"
+    log "Installed LLVM wrapper: $(basename "${wrapper}")"
   done
 }
 

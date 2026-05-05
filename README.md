@@ -299,7 +299,7 @@ For the cross-compiler path, bootstrap the base image locally first. This avoids
 Fastest entry point:
 
 ```bash
-./linux/scripts/build-cross-compiler.sh --fast-ubuntu-mirror
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror
 ```
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`http://de.archive.ubuntu.com/ubuntu/`).
@@ -336,7 +336,7 @@ Expected result: the build log ends with `ghcr.io/kataglyphis/kataglyphis_beschl
 Or let the helper do the push too:
 
 ```bash
-./linux/scripts/build-cross-compiler.sh --fast-ubuntu-mirror --push
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror --push
 ```
 
 Manual staged build with plain `nerdctl` (current cross lane):
@@ -357,33 +357,20 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
   . 2>&1 | tee -a output.log
 
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-amd64 \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-amd64,push=true' \
-  -f linux/Dockerfile.sdk-artifact \
-  --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
-  --build-arg BUILD_MODE=cross \
-  --build-arg TARGET_ARCH=amd64 \
-  . 2>&1 | tee -a output.log
-
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-arm64 \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-arm64,push=true' \
-  -f linux/Dockerfile.sdk-artifact \
-  --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
-  --build-arg BUILD_MODE=cross \
-  --build-arg TARGET_ARCH=arm64 \
-  . 2>&1 | tee -a output.log
-
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-riscv64 \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-riscv64,push=true' \
-  -f linux/Dockerfile.sdk-artifact \
-  --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
-  --build-arg BUILD_MODE=cross \
-  --build-arg TARGET_ARCH=riscv64 \
-  . 2>&1 | tee -a output.log
+TARGET_ARCHES=(amd64 arm64 riscv64)
+for target_arch in "${TARGET_ARCHES[@]}"; do
+  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
+    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch},push=true" \
+    -f linux/Dockerfile.sdk-artifact \
+    --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
+    --build-arg BUILD_MODE=cross \
+    --build-arg TARGET_ARCH="${target_arch}" \
+    . 2>&1 | tee -a output.log
+done
 ```
+
+`linux/Dockerfile.sdk-artifact` still consumes one `TARGET_ARCH` per `nerdctl build`. The array above is the manual fan-out that runs the same amd64-hosted build three times, once for `amd64`, `arm64`, and `riscv64`.
 
 This is intentionally the current end of the manual cross-image sequence. `media`, `android`, `torch`, and the final `:latest` image still use the existing QEMU/binfmt lane until their host-side artifact builds exist.
 
@@ -396,10 +383,12 @@ The first additive artifact path is now the SDK stage. It builds target-specific
 Build the first SDK artifacts for amd64, arm64, and riscv64:
 
 ```bash
-./linux/scripts/build-sdk-artifacts.sh --fast-ubuntu-mirror
+./linux/scripts/build-sdk-artifacts.sh --target-arches amd64,arm64,riscv64 --fast-ubuntu-mirror
 ```
 
 Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror.
+
+The helper accepts `TARGET_ARCHES=amd64,arm64,riscv64`, `TARGET_ARCH=amd64,arm64,riscv64`, or `--target-arches amd64,arm64,riscv64` and then fans that list out into one `TARGET_ARCH=<arch>` build per target.
 
 Expected output layout:
 
