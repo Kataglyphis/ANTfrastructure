@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+    # shellcheck disable=SC1091
+    source /opt/scripts/core/cross-env.sh
+fi
+
 : "${WITH_PYTHON:=true}"
 : "${WITH_JAVA:=false}"
 : "${OPENCV_PYTHON_VERSION:=3.14t}"
@@ -8,7 +13,7 @@ set -euo pipefail
 echo "Installing OpenCV build dependencies..."
 
 apt-get update -y
-apt-get install -y --no-install-recommends \
+install_host_packages \
     build-essential \
     cmake \
     git \
@@ -16,7 +21,9 @@ apt-get install -y --no-install-recommends \
     wget \
     unzip \
     libtbb-dev \
-    libeigen3-dev \
+    libeigen3-dev
+
+install_target_packages \
     libgtk-3-dev \
     libavcodec-dev \
     libavformat-dev \

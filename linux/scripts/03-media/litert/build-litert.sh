@@ -13,6 +13,16 @@ set -euo pipefail
 # Source build acceleration helpers if available
 SCRIPT_DIR_LITERT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
+    "/opt/scripts/core/cross-env.sh" \
+    "${SCRIPT_DIR_LITERT}/../../../01-core/cross-env.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
+for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
     "${SCRIPT_DIR_LITERT}/../../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
@@ -80,6 +90,10 @@ configure_litert() {
         "-DTFLITE_ENABLE_RUY=ON"
         "-DPython3_EXECUTABLE=$(which python3)"
     )
+
+    if command -v append_cmake_cross_args >/dev/null 2>&1; then
+        append_cmake_cross_args cmake_args
+    fi
 
     # Add lld linker flags if available
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
@@ -157,6 +171,10 @@ build_tflite_c_api() {
         "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
     )
 
+    if command -v append_cmake_cross_args >/dev/null 2>&1; then
+        append_cmake_cross_args cmake_args
+    fi
+
     # Add lld linker flags if available
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
         cmake_args+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
@@ -230,6 +248,11 @@ install_litert() {
     ldconfig || true
 
     # Try to build a Python wheel if the project exposes a Python package
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        echo "[INFO] Skipping LiteRT wheel build in cross mode"
+        return 0
+    fi
+
     mkdir -p "${LITERT_PREFIX}/wheels"
     
     local pip_pkg_dir="${LITERT_SRC}/tflite/tools/pip_package"

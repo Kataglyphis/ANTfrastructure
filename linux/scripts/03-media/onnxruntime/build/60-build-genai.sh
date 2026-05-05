@@ -29,6 +29,12 @@ if [ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "risc-v" ]; then
   exit 0
 fi
 
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  info "Skipping onnxruntime-genai in cross mode; the build emits target wheels and host-run validation"
+  mkdir -p "${GENAI_OUTPUT_DIR}" "${GENAI_OUTPUT_DIR}/lib" "${GENAI_OUTPUT_DIR}/include" "${GENAI_OUTPUT_DIR}/wheels" || true
+  exit 0
+fi
+
 # Validate native CPU build completed (GenAI depends on ORT)
 info "Checking for ONNX Runtime at: ${NATIVE_CPU_OUTPUT_DIR}"
 info "NATIVE_CPU_OUTPUT_DIR=${NATIVE_CPU_OUTPUT_DIR}"

@@ -1,28 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-is_x86_64() {
-  local arch
-  arch="${TARGETARCH:-}"
-  case "${arch}" in
-    amd64|x86_64) return 0 ;;
-  esac
+if [ -f /opt/scripts/core/platform.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/platform.sh
+fi
 
-  arch="$(uname -m || true)"
-  case "${arch}" in
-    x86_64|amd64) return 0 ;;
-  esac
+build_arch() {
+  if command -v build_arch_oci >/dev/null 2>&1; then
+    build_arch_oci
+    return 0
+  fi
 
-  arch="$(dpkg --print-architecture 2>/dev/null || true)"
-  case "${arch}" in
-    amd64) return 0 ;;
-  esac
+  if [ -n "${BUILDARCH:-}" ]; then
+    printf '%s' "${BUILDARCH}"
+    return 0
+  fi
 
-  return 1
+  if command -v dpkg >/dev/null 2>&1; then
+    dpkg --print-architecture 2>/dev/null && return 0
+  fi
+
+  uname -m || true
 }
 
-if ! is_x86_64; then
-  echo "Skipping Android SDK/NDK installation on non-x86_64 architecture"
+if [ "$(build_arch)" != "amd64" ]; then
+  echo "Skipping Android SDK/NDK installation on non-amd64 build host"
   exit 0
 fi
 

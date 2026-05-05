@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
 set -eux
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+    # shellcheck disable=SC1091
+    source /opt/scripts/core/cross-env.sh
+fi
+
 # Ensure OpenCV shared libraries are visible to the system linker during
 # the GStreamer build. Some build steps ignore -L ordering, so copy all
 # libopencv*.so* into /usr/lib and multiarch /usr/lib/<triplet> before
 # building GStreamer.
 OPENCV_OUTPUT_DIR="${1:-/opt/opencv4}"
 
-triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+triplet=""
+if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
+    triplet="$(cross_target_triplet)"
+fi
+if [ -z "$triplet" ]; then
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+fi
 for libdir in "${OPENCV_OUTPUT_DIR}/lib" "${OPENCV_OUTPUT_DIR}/lib64"; do
     if [ -d "$libdir" ]; then
         cd "$libdir"

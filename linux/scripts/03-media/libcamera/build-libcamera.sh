@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/cross-env.sh
+fi
+
 # Error handler: print useful logs when a build step fails (meson/ninja/pip)
 on_error() {
   local rc=${1:-1}
@@ -76,6 +81,10 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
+if command -v setup_linux_cross_env >/dev/null 2>&1; then
+  setup_linux_cross_env
+fi
+
 echo "Using existing Astral uv venv (expected at /opt/python/.venv)"
 
 # Install build tools into the uv venv; retry with --break-system-packages on PEP-668 failures
@@ -111,8 +120,18 @@ if [ ! -f /usr/include/gtest/gtest.h ]; then
   fi
 fi
 
-if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" --prefix="${LIBCAMERA_PREFIX}" --buildtype="${BUILD_TYPE_LOWER}" \
-  -Dgstreamer=enabled -Dpycamera=enabled -Ddocumentation=disabled; then
+MESON_SETUP_ARGS=(
+  --prefix="${LIBCAMERA_PREFIX}"
+  --buildtype="${BUILD_TYPE_LOWER}"
+  -Dgstreamer=enabled
+  -Dpycamera=enabled
+  -Ddocumentation=disabled
+)
+if command -v append_meson_cross_flags >/dev/null 2>&1; then
+  append_meson_cross_flags MESON_SETUP_ARGS
+fi
+
+if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" "${MESON_SETUP_ARGS[@]}"; then
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"
     exit 1
 fi
@@ -139,6 +158,12 @@ else
 fi
 
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  echo "Skipping libcamera Python wheel build in cross mode"
+  rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" /tmp/uv-pip-install.log || true
+  exit 0
+fi
 
 echo "Attempting to create libcamera Python wheel"
 PYCAMERA_DIR=$(find "${LIBCAMERA_PREFIX}" -type d -name "libcamera" | grep "site-packages" | head -n 1 || true)

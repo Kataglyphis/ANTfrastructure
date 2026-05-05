@@ -20,6 +20,16 @@ set -euo pipefail
 # Source build acceleration helpers if available
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
+    "/opt/scripts/core/cross-env.sh" \
+    "${SCRIPT_DIR}/../../../01-core/cross-env.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
+for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
     "${SCRIPT_DIR}/../../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
@@ -139,6 +149,18 @@ fetch_opencv() {
     fi
 }
 
+target_machine() {
+    if command -v cross_target_arch >/dev/null 2>&1; then
+        cross_target_arch
+        return 0
+    fi
+    if [ -n "${TARGET_ARCH:-${TARGETARCH:-}}" ]; then
+        printf '%s' "${TARGET_ARCH:-${TARGETARCH}}"
+        return 0
+    fi
+    uname -m
+}
+
 # ------------------------------------------------------------------------------
 # Configure OpenCV build
 # ------------------------------------------------------------------------------
@@ -153,8 +175,8 @@ configure_opencv() {
     # prebuilt ippicv libraries for x86 which will fail when linking on
     # architectures like aarch64 or riscv. Allow explicit override via
     # the WITH_IPP env var (set to "ON" or "OFF").
-    if [ "$(uname -m)" != "x86_64" ] && [ "${WITH_IPP}" = "ON" ]; then
-        echo "Non-x86 host detected ($(uname -m)) - disabling Intel IPP to avoid x86 prebuilt libs"
+    if [ "$(target_machine)" != "amd64" ] && [ "$(target_machine)" != "x86_64" ] && [ "${WITH_IPP}" = "ON" ]; then
+        echo "Non-x86 target detected ($(target_machine)) - disabling Intel IPP to avoid x86 prebuilt libs"
         WITH_IPP="OFF"
     fi
 
@@ -200,6 +222,10 @@ configure_opencv() {
         "-DWITH_ITT=ON"
         "-DWITH_IPP=${WITH_IPP}"
     )
+
+    if command -v append_cmake_cross_args >/dev/null 2>&1; then
+        append_cmake_cross_args cmake_opts
+    fi
 
     # Add lld linker flags if available
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
@@ -343,7 +369,7 @@ build_opencv_python_wheel() {
         "-DBUILD_opencv_tracking=ON"
     )
     
-    if [ "$(uname -m)" != "x86_64" ]; then
+    if [ "$(target_machine)" != "amd64" ] && [ "$(target_machine)" != "x86_64" ]; then
         py_cmake_args+=("-DWITH_IPP=OFF")
     fi
     
@@ -441,7 +467,7 @@ main() {
     build_opencv
     install_opencv
     
-    if [ "${WITH_PYTHON}" = "true" ]; then
+    if [ "${WITH_PYTHON}" = "true" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
         build_opencv_python_wheel
     fi
     
@@ -458,10 +484,12 @@ main() {
     echo "Libraries:"
     ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null | head -20 || echo "Could not list libraries"
     
-    if [ "${WITH_PYTHON}" = "true" ]; then
+    if [ "${WITH_PYTHON}" = "true" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
         echo ""
         echo "Python bindings:"
         python3 -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null || echo "Could not import cv2"
+    elif [ "${WITH_PYTHON}" = "true" ]; then
+        echo "Skipping Python import validation in cross mode"
     fi
 }
 

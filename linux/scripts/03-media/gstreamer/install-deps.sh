@@ -1,28 +1,33 @@
 #!/usr/bin/env bash
 set -eux
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/cross-env.sh
+fi
+
 echo "Installing GStreamer build dependencies..."
 
 apt-get update
 
 # Pre-setup dependencies
-apt-get install -y --no-install-recommends \
+install_host_packages build-essential cmake git pkg-config
+install_target_packages \
     build-essential cmake git pkg-config libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev \
     libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev \
     x11proto-core-dev libsodium-dev
 
-(apt-get install -y --no-install-recommends xorgproto) || true
-apt-get install -y --no-install-recommends xorg-dev || true
-apt-get install -y --no-install-recommends x11proto-core-dev x11proto-dev || true
+(install_target_packages xorgproto) || true
+install_target_packages xorg-dev || true
+install_target_packages x11proto-core-dev x11proto-dev || true
 
 # Setup-gstreamer dependencies
 apt-get purge -y 'liborc*' || true
 apt-get autoremove -y
 
-apt-get install -y \
-  build-essential g++ \
+install_host_packages build-essential g++ flex bison
+install_target_packages \
   libc++-dev libc++abi-dev \
-  flex bison \
   libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
   libcairo2-dev \
   libjson-glib-dev \
@@ -30,10 +35,10 @@ apt-get install -y \
   libgtk-4-dev
 
 apt-get purge -y 'libunwind-[0-9]*-dev' || true
-apt-get install -y libunwind-dev
+install_target_packages libunwind-dev
 
-apt-get install -y --no-install-recommends libxml2-utils || true
-apt-get install -y --no-install-recommends libgtk-3-dev libgtk-4-dev glslc glslang-tools
+install_host_packages libxml2-utils || true
+install_target_packages libgtk-3-dev libgtk-4-dev glslc glslang-tools
 
 # Audio I/O and DSP
 apt-get install -y --no-install-recommends \
@@ -89,7 +94,7 @@ apt-get install -y --no-install-recommends \
 if echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
   echo "Skipping Csound APT install on TARGETARCH=${TARGETARCH:-unset}"
 else
-  apt-get install -y --no-install-recommends \
+  install_target_packages \
     csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || true
 fi
 
@@ -102,7 +107,7 @@ if [ "${NVIDIA_GPU}" = "auto" ]; then
   else NVIDIA_GPU="no"; fi
 fi
 if [ "${NVIDIA_GPU}" = "yes" ]; then
-  apt-get install -y --no-install-recommends nv-codec-headers || true
+  install_host_packages nv-codec-headers || true
 fi
 
 rm -rf /var/lib/apt/lists/*

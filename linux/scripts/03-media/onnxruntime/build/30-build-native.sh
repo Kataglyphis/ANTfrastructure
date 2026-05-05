@@ -29,6 +29,10 @@ detect_jobs
 # Install dependencies
 sudo apt-get update && sudo apt-get install -y libgcc-s1
 
+if command -v setup_linux_cross_env >/dev/null 2>&1; then
+  setup_linux_cross_env
+fi
+
 # Create Python virtual environment with uv
 : "${ORT_PYTHON_VERSION:=3.14t}"
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
@@ -63,11 +67,27 @@ BUILD_ARGS=(
   --use_lock_free_queue
 )
 
-if [[ "$(uname -m)" != "riscv64" ]]; then
+if [[ "$(arch_oci 2>/dev/null || uname -m)" != "riscv64" ]]; then
   BUILD_ARGS+=(
     --enable_lto
     --use_webgpu
     --use_external_dawn
+  )
+fi
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  BUILD_ARGS+=(
+    --cmake_extra_defines
+    CMAKE_SYSTEM_NAME=Linux
+    CMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}"
+    CMAKE_C_COMPILER="${CC}"
+    CMAKE_CXX_COMPILER="${CXX}"
+    CMAKE_ASM_COMPILER="${CC}"
+    CMAKE_SYSROOT=/
+    CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+    CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
+    CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+    CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
   )
 fi
 
@@ -109,7 +129,7 @@ find "${NATIVE_CPU_BUILD_DIR}" -name "*.whl" -type f 2>/dev/null | while read -r
 done || info "No wheels found in ${NATIVE_CPU_BUILD_DIR}"
 
 # Additionally, try building a wheel from source if the ORT build did not produce one
-if [ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
+if [ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
   info "No wheels found from ONNX Runtime build; attempting to build wheel via pip"
   if [ -f "${ORT_SRC_DIR}/pyproject.toml" ] || [ -f "${ORT_SRC_DIR}/setup.py" ]; then
     info "Building wheel from ORT python package"

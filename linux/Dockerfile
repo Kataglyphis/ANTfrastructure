@@ -6,6 +6,9 @@ FROM ${BASE_IMAGE}
 ARG BUILD_TYPE=Release
 ARG ENABLE_NVIDIA=false
 ARG ENABLE_AMD=false
+ARG BUILD_MODE=native
+ARG TARGET_ARCH
+ARG TARGETARCH
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 
@@ -15,6 +18,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
     USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
     FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
     bash /tmp/use-fast-ubuntu-mirror.sh && \
+    if [ "${BUILD_MODE}" = "cross" ]; then exit 0; fi && \
     sudo apt update && sudo apt install -y libtbb-dev
 
 # ==============================================================================

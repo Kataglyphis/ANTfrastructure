@@ -15,16 +15,21 @@ detect_jobs
 if [ "${SKIP_DEP_INSTALL}" != "true" ]; then
   info "Installing OS packages (apt-get)..."
   export DEBIAN_FRONTEND=noninteractive
+  if command -v cross_prepare_foreign_arch >/dev/null 2>&1 && cross_build_enabled; then
+    cross_prepare_foreign_arch
+  fi
   apt-get update -qq
 
   # Base packages
-  apt-get install -y --no-install-recommends \
+  install_host_packages \
     git ca-certificates curl wget build-essential pkg-config \
     cmake ninja-build zlib1g-dev \
-    protobuf-compiler libprotobuf-dev gnupg lsb-release libssl-dev
+    protobuf-compiler gnupg lsb-release libssl-dev
+
+  install_target_packages libprotobuf-dev
 
   # Node.js: different for RISC-V vs. other architectures
-  ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
+  ARCH="$(arch_oci 2>/dev/null || dpkg --print-architecture 2>/dev/null || uname -m)"
   if [ "$ARCH" = "riscv64" ]; then
     info "RISC-V detected: Installing Node.js from default apt repo"
     apt-get install -y --no-install-recommends nodejs npm || {

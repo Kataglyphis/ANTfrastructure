@@ -60,12 +60,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-art
             echo "Unsupported TARGET_ARCH=${TARGET_ARCH}" >&2; exit 1 ;; \
     esac; \
     if [ -n "${triplet:-}" ]; then \
+        gcc_major="${GCC_WANTED:-16}"; \
+        gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"; \
+        runtime_libdir="${gcc_prefix}/lib/gcc/${triplet}/${gcc_major}"; \
+        target_libdir="${gcc_prefix}/${triplet}/lib"; \
         mkdir -p /opt/cross-bin; \
         ln -sf "$(command -v ${triplet}-gcc)" /opt/cross-bin/gcc; \
         ln -sf "$(command -v ${triplet}-g++)" /opt/cross-bin/g++; \
         ln -sf "$(command -v ${triplet}-gcc)" /opt/cross-bin/cc; \
         ln -sf "$(command -v ${triplet}-g++)" /opt/cross-bin/c++; \
+        ln -sf "$(command -v ${triplet}-as)" /opt/cross-bin/as; \
+        ln -sf "$(command -v ${triplet}-ld)" /opt/cross-bin/ld; \
         ln -sf "$(command -v ${triplet}-ar)" /opt/cross-bin/ar; \
+        ln -sf "$(command -v ${triplet}-nm)" /opt/cross-bin/nm; \
         ln -sf "$(command -v ${triplet}-ranlib)" /opt/cross-bin/ranlib; \
         ln -sf "$(command -v ${triplet}-strip)" /opt/cross-bin/strip; \
         ln -sf "$(command -v ${triplet}-objcopy)" /opt/cross-bin/objcopy; \
@@ -76,10 +83,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-art
             ln -sf "$(command -v clang++-${TARGET_ARCH})" /opt/cross-bin/clang++; \
         fi; \
         export PATH="/opt/cross-bin:${PATH}"; \
-        export CC="${triplet}-gcc" CXX="${triplet}-g++" AR="${triplet}-ar" RANLIB="${triplet}-ranlib" STRIP="${triplet}-strip" OBJCOPY="${triplet}-objcopy"; \
+        export CC="${triplet}-gcc" CXX="${triplet}-g++" AS="${triplet}-as" LD="${triplet}-ld" AR="${triplet}-ar" NM="${triplet}-nm" RANLIB="${triplet}-ranlib" STRIP="${triplet}-strip" OBJCOPY="${triplet}-objcopy"; \
         export TARGETARCH="${TARGET_ARCH}" TARGETPLATFORM="linux/${TARGET_ARCH}"; \
         export PKG_CONFIG_LIBDIR="/usr/${triplet}/lib/pkgconfig:/usr/lib/${triplet}/pkgconfig"; \
         export PKG_CONFIG_PATH="${PKG_CONFIG_LIBDIR}:${PKG_CONFIG_PATH:-}"; \
+        if [ -d "${runtime_libdir}" ]; then export LIBRARY_PATH="${runtime_libdir}:${target_libdir}:${LIBRARY_PATH:-}"; fi; \
+        if [ -d "${runtime_libdir}" ]; then export LD_LIBRARY_PATH="${runtime_libdir}:${target_libdir}:${LD_LIBRARY_PATH:-}"; fi; \
     fi; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
 

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/cross-env.sh
+fi
+
 # Robust installer script for vvdec
 # - clones the repo
 # - builds shared library with CMake
@@ -16,7 +21,16 @@ cd "${TMPDIR}"
 
 # Prefer CMake build flow which is supported by vvdec
 mkdir -p build
-cmake -S . -B build -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_INSTALL_LIBDIR="lib"
+cmake_args=(
+  -DBUILD_SHARED_LIBS=ON
+  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_INSTALL_PREFIX="${PREFIX}"
+  -DCMAKE_INSTALL_LIBDIR="lib"
+)
+if command -v append_cmake_cross_args >/dev/null 2>&1; then
+  append_cmake_cross_args cmake_args
+fi
+cmake -S . -B build "${cmake_args[@]}"
 cmake --build build --target install -- -j"$(nproc)"
 
 # Ensure pkgconfig dir exists

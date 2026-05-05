@@ -41,64 +41,170 @@ gcc_cross_triplet() {
   esac
 }
 
-install_cross_gcc_targets() {
+gcc_cross_libc_arch() {
+  case "$1" in
+    arm64) printf '%s' "arm64" ;;
+    riscv64) printf '%s' "riscv64" ;;
+    amd64) printf '%s' "amd64" ;;
+    *) return 1 ;;
+  esac
+}
+
+gcc_reported_version() {
+  local tool="$1"
+  local version=""
+
+  command -v "$tool" >/dev/null 2>&1 || return 1
+  version="$("$tool" -dumpfullversion -dumpversion 2>/dev/null || true)"
+  version="${version%%[[:space:]]*}"
+  [ -n "${version}" ] || return 1
+  printf '%s' "${version}"
+}
+
+install_cross_gcc_sysroot_packages() {
+  local normalized_target="$1"
+  local triplet
+
+  triplet="$(gcc_cross_triplet "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
+
+  case "${normalized_target}" in
+    amd64)
+      gcc_apt_install_available \
+        binutils-x86-64-linux-gnu
+      ;;
+    arm64)
+      gcc_apt_install_available \
+        binutils-aarch64-linux-gnu \
+        libc6-dev-arm64-cross \
+        linux-libc-dev-arm64-cross
+      ;;
+    riscv64)
+      gcc_apt_install_available \
+        binutils-riscv64-linux-gnu \
+        libc6-dev-riscv64-cross \
+        linux-libc-dev-riscv64-cross
+      ;;
+    *)
+      die "Unsupported cross target: ${normalized_target}"
+      ;;
+  esac
+
+  if [ "${normalized_target}" != "amd64" ]; then
+    [ -d "/usr/${triplet}/include" ] || die "Expected cross headers not found: /usr/${triplet}/include"
+    [ -d "/usr/${triplet}/lib" ] || die "Expected cross libs not found: /usr/${triplet}/lib"
+    log "Prepared cross sysroot packages for ${normalized_target}: /usr/${triplet}"
+  fi
+
+  [ -x "/usr/bin/${triplet}-as" ] || die "Expected cross binutils not found: /usr/bin/${triplet}-as"
+}
+
+stage_cross_gcc_sysroot_libs() {
+  local prefix="$1"
+  local triplet="$2"
+  local src_dir="/usr/${triplet}/lib"
+  local dst_dir="${prefix}/${triplet}/lib"
+  local entry base
+
+  [ -d "${src_dir}" ] || return 0
+
+  $SUDO mkdir -p "${dst_dir}"
+  for entry in "${src_dir}"/*; do
+    [ -e "${entry}" ] || continue
+    base="$(basename "${entry}")"
+    if [ ! -e "${dst_dir}/${base}" ]; then
+      $SUDO ln -sfn "${entry}" "${dst_dir}/${base}"
+    fi
+  done
+  log "Staged target sysroot libs for ${triplet} into ${dst_dir}"
+}
+
+build_source_cross_gcc_targets() {
   local full_version="$1"
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local target normalized_target triplet compat_prefix tool
+  local gcc_major="${full_version%%.*}"
+  local prefix="/opt/gcc-${full_version}"
+  local script_dir builder
+  local requested_major="${full_version%%.*}"
+  local target normalized_target triplet compat_prefix tool actual_tool actual_version
 
-  log "Installing cross GCC toolchains for ${targets_raw}"
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  builder="${script_dir}/build-gcc.sh"
+  [ -f "${builder}" ] || die "GCC build script not found: ${builder}"
+  chmod +x "${builder}" || true
+
+  log "Building host GCC ${full_version} from source for cross mode"
+  PREFIX="${prefix}" \
+    BUILD_DIR="${HOME}/tmp2/gcc-build-${full_version}-native" \
+    JOBS="${JOBS:-$(nproc)}" \
+    bash "${builder}" --version "${full_version}"
+
+  log "Building cross GCC toolchains from source for ${targets_raw}"
   for target in ${targets_raw//,/ }; do
     normalized_target="$(gcc_canonical_cross_target "$target")" || die "Unsupported cross target: ${target}"
-
-    case "$normalized_target" in
-      amd64)
-        gcc_apt_install_available \
-          binutils-x86-64-linux-gnu \
-          gcc-x86-64-linux-gnu \
-          g++-x86-64-linux-gnu \
-          cpp-x86-64-linux-gnu \
-          libc6-dev-amd64-cross \
-          linux-libc-dev-amd64-cross
-        ;;
-      arm64)
-        gcc_apt_install_available \
-          binutils-aarch64-linux-gnu \
-          gcc-aarch64-linux-gnu \
-          g++-aarch64-linux-gnu \
-          cpp-aarch64-linux-gnu \
-          libc6-dev-arm64-cross \
-          linux-libc-dev-arm64-cross
-        ;;
-      riscv64)
-        gcc_apt_install_available \
-          binutils-riscv64-linux-gnu \
-          gcc-riscv64-linux-gnu \
-          g++-riscv64-linux-gnu \
-          cpp-riscv64-linux-gnu \
-          libc6-dev-riscv64-cross \
-          linux-libc-dev-riscv64-cross
-        ;;
-      *)
-        die "Unsupported cross target: ${normalized_target}"
-        ;;
-    esac
+    install_cross_gcc_sysroot_packages "${normalized_target}"
 
     triplet="$(gcc_cross_triplet "$normalized_target")" || die "Unsupported cross target: ${normalized_target}"
+    if [ "${normalized_target}" = "amd64" ]; then
+      for tool in gcc g++ gcov; do
+        [ -x "${prefix}/bin/${tool}" ] || die "Expected host GCC tool not found: ${prefix}/bin/${tool}"
+      done
+      $SUDO ln -sfn "${prefix}/bin/gcc" "${prefix}/bin/${triplet}-gcc"
+      $SUDO ln -sfn "${prefix}/bin/g++" "${prefix}/bin/${triplet}-g++"
+      $SUDO ln -sfn "${prefix}/bin/cpp" "${prefix}/bin/${triplet}-cpp"
+      $SUDO ln -sfn "${prefix}/bin/gcov" "${prefix}/bin/${triplet}-gcov"
+      $SUDO ln -sfn "${prefix}/bin/gcc-ar" "${prefix}/bin/${triplet}-gcc-ar"
+      $SUDO ln -sfn "${prefix}/bin/gcc-nm" "${prefix}/bin/${triplet}-gcc-nm"
+      $SUDO ln -sfn "${prefix}/bin/gcc-ranlib" "${prefix}/bin/${triplet}-gcc-ranlib"
+      for tool in as ld ar nm ranlib strip objcopy; do
+        command -v "${triplet}-${tool}" >/dev/null 2>&1 || die "Expected cross binutils not found: ${triplet}-${tool}"
+        $SUDO ln -sfn "$(command -v ${triplet}-${tool})" "${prefix}/bin/${triplet}-${tool}"
+      done
+    else
+      stage_cross_gcc_sysroot_libs "${prefix}" "${triplet}"
+      log "Building source cross GCC ${full_version} for ${triplet}"
+      PREFIX="${prefix}" \
+        BUILD_DIR="${HOME}/tmp2/gcc-build-${full_version}-${triplet}" \
+        JOBS="${JOBS:-$(nproc)}" \
+        bash "${builder}" \
+          --version "${full_version}" \
+          --target "${triplet}" \
+          --languages c,c++ \
+          --sysroot / \
+          --native-system-header-dir "/usr/${triplet}/include" \
+          --disable-bootstrap \
+          --skip-system-registration
+
+      for tool in gcc g++ gcc-ar gcc-nm gcc-ranlib; do
+        [ -x "${prefix}/bin/${triplet}-${tool}" ] || die "Expected cross GCC tool not found: ${prefix}/bin/${triplet}-${tool}"
+      done
+      [ -x "${prefix}/bin/${triplet}-cpp" ] || true
+      for tool in as ld ar nm ranlib strip objcopy; do
+        command -v "${triplet}-${tool}" >/dev/null 2>&1 || die "Expected cross binutils not found: ${triplet}-${tool}"
+        $SUDO ln -sfn "$(command -v ${triplet}-${tool})" "${prefix}/bin/${triplet}-${tool}"
+      done
+      stage_cross_gcc_sysroot_libs "${prefix}" "${triplet}"
+    fi
+
     for tool in gcc g++ ar; do
-      command -v "${triplet}-${tool}" >/dev/null 2>&1 || die "Expected cross compiler not found: ${triplet}-${tool}"
+      [ -x "${prefix}/bin/${triplet}-${tool}" ] || die "Expected cross compiler not found: ${prefix}/bin/${triplet}-${tool}"
     done
     log "Installed cross compiler commands for ${normalized_target}: ${triplet}-gcc ${triplet}-g++ ${triplet}-ar"
+
+    actual_tool="${prefix}/bin/${triplet}-g++"
+    actual_version="$(gcc_reported_version "${actual_tool}" || true)"
+    if [ -n "${actual_version}" ]; then
+      if [ -n "${requested_major}" ] && [ "${actual_version%%.*}" != "${requested_major}" ]; then
+        warn "Cross mode requested GCC ${full_version}, but ${triplet}-g++ resolves to ${actual_tool} (GCC ${actual_version})."
+      else
+        log "Cross compiler version for ${normalized_target}: ${actual_tool} (${actual_version})"
+      fi
+    fi
   done
 
   compat_prefix="/opt/gcc-${full_version}"
-  if [ -e "${compat_prefix}" ] && [ ! -L "${compat_prefix}" ]; then
-    warn "Compatibility prefix already exists and is not a symlink: ${compat_prefix}"
-    return 0
+  if [ ! -d "${compat_prefix}/bin" ]; then
+    die "Expected GCC install prefix not found after cross build: ${compat_prefix}/bin"
   fi
-
-  $SUDO mkdir -p /opt
-  $SUDO ln -sfn /usr "${compat_prefix}"
-  log "Created compatibility GCC prefix for cross mode: ${compat_prefix} -> /usr"
 }
 
 install_gcc() {
@@ -120,7 +226,7 @@ install_gcc() {
       full_version="${default_full_version}"
     fi
 
-    install_cross_gcc_targets "${full_version}"
+    build_source_cross_gcc_targets "${full_version}"
     gcc --version || true
     return 0
   fi

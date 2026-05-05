@@ -15,6 +15,16 @@ set -euo pipefail
 # Source build acceleration and parallelism helpers if available
 _SETUP_GST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
+    "/opt/scripts/core/cross-env.sh" \
+    "${_SETUP_GST_DIR}/../../../../01-core/cross-env.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
+for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
     "${_SETUP_GST_DIR}/../../../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
@@ -372,8 +382,13 @@ fi
 echo ""
 echo "Setting up Meson build..."
 
-# detect host architecture (examples: x86_64, aarch64, riscv64, armv7l)
+# detect build and target architecture
 HOST_ARCH="$(uname -m)"
+TARGET_MACHINE_ARCH="${TARGET_ARCH:-${TARGETARCH:-${HOST_ARCH}}}"
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  setup_linux_cross_env
+  TARGET_MACHINE_ARCH="$(cross_target_arch)"
+fi
 
 # Build Meson flags, conditionally enable Rust bindings (rs) except on RISC-V
 MESON_FLAGS=(
@@ -403,9 +418,9 @@ MESON_FLAGS=(
   "-Dglib:introspection=enabled"
 )
 
-case "${HOST_ARCH}" in
+case "${TARGET_MACHINE_ARCH}" in
   riscv*|*riscv*)
-    echo "Host arch '${HOST_ARCH}' detected: skipping -Drs (Rust bindings) in Meson flags"
+    echo "Target arch '${TARGET_MACHINE_ARCH}' detected: skipping -Drs (Rust bindings) in Meson flags"
     MESON_FLAGS+=("-Drs=disabled")
     # Disable Whisper plugin on RISC-V as well — whisper can be resource-heavy
     # and may cause toolchain/platform issues similar to ARM.
@@ -413,7 +428,7 @@ case "${HOST_ARCH}" in
     echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"
     ;;
   aarch64*|arm*)
-    echo "Host arch '${HOST_ARCH}' detected: enabling -Drs (Rust bindings) but disabling csound"
+    echo "Target arch '${TARGET_MACHINE_ARCH}' detected: enabling -Drs (Rust bindings) but disabling csound"
     MESON_FLAGS+=("-Drs=enabled")
     append_meson_arg "-Dgst-plugins-rs:csound=disabled"
     # Disable Whisper plugin on ARM architectures — it is resource-heavy and
@@ -425,6 +440,10 @@ case "${HOST_ARCH}" in
     MESON_FLAGS+=("-Drs=enabled")
     ;;
 esac
+
+if command -v append_meson_cross_flags >/dev/null 2>&1; then
+  append_meson_cross_flags MESON_FLAGS
+fi
 
 # --- begin patch: ensure meson won't use fallback subprojects by default ---
 MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
@@ -443,7 +462,13 @@ dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
 
 # Ensure PKG_CONFIG_LIBDIR includes the system multiarch pkgconfig directory
 # Some base images omit this which makes pkg-config unable to find xproto/cairo
-DEB_HOST_MULTIARCH_DIR="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+DEB_HOST_MULTIARCH_DIR=""
+if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
+  DEB_HOST_MULTIARCH_DIR="$(cross_target_triplet)"
+fi
+if [ -z "${DEB_HOST_MULTIARCH_DIR}" ]; then
+  DEB_HOST_MULTIARCH_DIR="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+fi
 if [ -n "${DEB_HOST_MULTIARCH_DIR}" ]; then
   :
   SYS_PKGCONF_DIR="/usr/lib/${DEB_HOST_MULTIARCH_DIR}/pkgconfig"
@@ -690,7 +715,7 @@ DEFAULT_EXCLUDES=(--exclude gst-plugin-burn)
 # csound-sys/va_list binding issues (riscv/aarch64/arm64/arm). Detect using several
 # probes (HOST_ARCH, TARGETARCH, dpkg queries, and the kernel machine name) so
 # we don't accidentally miss a Docker/CI context that sets one but not others.
-ARCH_FOR_EXCLUDES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
+ARCH_FOR_EXCLUDES="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
 if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
   :
   DEFAULT_EXCLUDES+=(--exclude gst-plugin-csound --exclude csound --exclude csound-sys)
@@ -698,6 +723,9 @@ if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; 
 fi
 BUILD_CMD=(cargo build --workspace "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}")
 BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  BUILD_CMD+=(--target "${CARGO_BUILD_TARGET}")
+fi
 
 # If host is RISC-V or ARM64 (aarch64/arm64) or 32-bit ARM, exclude csound-related workspace
 # crates from the cargo build. Csound crates (csound-sys -> va_list) currently
@@ -707,7 +735,7 @@ BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
 #
 # Use multiple detection methods (uname, TARGETARCH, dpkg) because Docker
 # build contexts sometimes set TARGETARCH or use different uname values.
-ARCH_PROBES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+ARCH_PROBES="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
 if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
   :
   echo "Host arch detected in (${ARCH_PROBES}): excluding csound-related workspace crates from cargo build"

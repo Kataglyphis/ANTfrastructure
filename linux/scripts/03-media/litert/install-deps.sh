@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+    # shellcheck disable=SC1091
+    source /opt/scripts/core/cross-env.sh
+fi
+
 echo "[INFO] Installing LiteRT dependencies..."
 
 apt-get update
-apt-get install -y --no-install-recommends \
+install_host_packages \
     build-essential \
     cmake \
     git \
@@ -12,10 +17,12 @@ apt-get install -y --no-install-recommends \
     curl \
     unzip \
     gfortran \
+    ninja-build
+
+install_target_packages \
     libopenblas-dev \
     liblapack-dev \
-    libatlas-base-dev \
-    ninja-build
+    libatlas-base-dev
 
 rm -rf /var/lib/apt/lists/*
 

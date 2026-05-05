@@ -17,6 +17,16 @@ set -euo pipefail
 # Source build acceleration helpers if available
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
+    "/opt/scripts/core/cross-env.sh" \
+    "${SCRIPT_DIR}/../../../01-core/cross-env.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
+for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
     "${SCRIPT_DIR}/../../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
@@ -102,6 +112,18 @@ configure_ffmpeg() {
         "--enable-libx265"
         "--enable-gnutls"
     )
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        setup_linux_cross_env
+        configure_opts+=(
+            "--arch=$(cross_target_arch)"
+            "--target-os=linux"
+            "--cross-prefix=${CROSS_TARGET_TRIPLET}-"
+            "--pkg-config=pkg-config"
+        )
+        configure_opts+=("--extra-cflags=--sysroot=/")
+        configure_opts+=("--extra-ldflags=--sysroot=/")
+    fi
     
     # Optional codecs - add if libraries are available
     if pkg-config --exists fdk-aac 2>/dev/null; then
@@ -152,9 +174,17 @@ configure_ffmpeg() {
 
     # Use ccache if available
     if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-        configure_opts+=("--cc=ccache gcc")
-        configure_opts+=("--cxx=ccache g++")
+        if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+            configure_opts+=("--cc=ccache ${CC}")
+            configure_opts+=("--cxx=ccache ${CXX}")
+        else
+            configure_opts+=("--cc=ccache gcc")
+            configure_opts+=("--cxx=ccache g++")
+        fi
         echo "Using ccache for faster compilation"
+    elif command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        configure_opts+=("--cc=${CC}")
+        configure_opts+=("--cxx=${CXX}")
     fi
     
     ./configure "${configure_opts[@]}" || { echo "FFmpeg configure failed"; exit 1; }

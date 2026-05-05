@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -eux
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/cross-env.sh
+fi
 apt-get update
 # Ensure basic build tooling present for building vvdec and GTK/Cairo checks
 # Install core packages first, then attempt to install X protocol headers.
@@ -30,7 +34,13 @@ fi
 # packages above for riscv), otherwise creating a stub may mask missing
 # package problems on supported arches.
 if ! echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
-  triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+  triplet=""
+  if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
+    triplet="$(cross_target_triplet)"
+  fi
+  if [ -z "$triplet" ]; then
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+  fi
   if [ -n "$triplet" ] && [ -d "/usr/lib/$triplet" ]; then
     pcdir="/usr/lib/$triplet/pkgconfig"
     libdir="/usr/lib/$triplet"

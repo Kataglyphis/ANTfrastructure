@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+    # shellcheck disable=SC1091
+    source /opt/scripts/core/cross-env.sh
+fi
+
 echo "Installing FFmpeg build dependencies..."
 
 apt-get update -y
-apt-get install -y --no-install-recommends \
+install_host_packages \
     autoconf \
     automake \
     build-essential \
@@ -15,7 +20,9 @@ apt-get install -y --no-install-recommends \
     texinfo \
     wget \
     yasm \
-    nasm \
+    nasm
+
+install_target_packages \
     libass-dev \
     libfreetype6-dev \
     libgnutls28-dev \

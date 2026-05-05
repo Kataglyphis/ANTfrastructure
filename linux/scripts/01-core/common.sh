@@ -26,6 +26,15 @@ APT_FLAGS=(-qq --no-install-recommends "${APT_OPTS[@]}")
 SUDO=""
 APT_UPDATED=""
 
+_common_arch_to_uname() {
+  case "$1" in
+    amd64) printf '%s' "x86_64" ;;
+    arm64) printf '%s' "aarch64" ;;
+    386) printf '%s' "i386" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 tool_version() {
   local cmd="$1"
   shift || true
@@ -44,16 +53,11 @@ require_sudo() {
 }
 
 detect_system() {
-  # Prefer Docker's TARGETARCH if present; map to uname-style
-  local mapped=""
-  if [ -n "${TARGETARCH:-}" ]; then
-    case "$TARGETARCH" in
-      amd64)  mapped="x86_64" ;;
-      arm64)  mapped="aarch64" ;;
-      *)      mapped="$TARGETARCH" ;;
-    esac
-  fi
-  ARCH="${mapped:-$(uname -m)}"
+  local target_arch build_arch
+  target_arch="$(arch_oci)"
+  build_arch="$(build_arch_oci)"
+  ARCH="$(_common_arch_to_uname "${target_arch}")"
+  HOST_ARCH="$(_common_arch_to_uname "${build_arch}")"
 
   if command -v lsb_release >/dev/null 2>&1; then
     DISTRO="$(lsb_release -cs)"
@@ -63,8 +67,8 @@ detect_system() {
   else
     DISTRO="jammy"
   fi
-  export ARCH DISTRO
-  log "Detected arch=${ARCH} distro=${DISTRO}"
+  export ARCH HOST_ARCH DISTRO
+  log "Detected arch=${ARCH} host_arch=${HOST_ARCH} distro=${DISTRO}"
 }
 
 apt_update_once() {

@@ -304,7 +304,14 @@ Fastest entry point:
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`http://de.archive.ubuntu.com/ubuntu/`).
 
-The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps`; if the registry manifest is broken or missing, it falls back to rebuilding `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps` with `--output type=image,...,push=true` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way so the next stage can resolve it from GHCR.
+The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps`; if the registry manifest is broken or missing, it falls back to rebuilding `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps` with `--output type=image,...,push=true` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way so the next stage can resolve it from GHCR. In `BUILD_MODE=cross`, that compiler image now builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
+
+If you only need the downstream SDK or media cross stages and want to reuse the published compiler image, pull it first:
+
+```bash
+sudo nerdctl pull --platform linux/amd64 \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64
+```
 
 Build the local amd64 base image:
 
@@ -331,7 +338,13 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 The commands above already push the intermediary images to GHCR.
 
-Expected result: the build log ends with `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64`. That is correct for this cross lane because the builder container itself runs on amd64 while shipping cross compilers for all three target architectures.
+Expected compiler result inside that image:
+
+- `gcc` and `g++` resolve to `/opt/gcc-16.1.0/bin/*` and report GCC 16.x on the amd64 host compiler path.
+- `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc` resolve to `/opt/gcc-16.1.0/bin/*` and report GCC 16.x.
+- `clang-amd64`, `clang-arm64`, and `clang-riscv64` still exist, but now point Clang at `/opt/gcc-16.1.0` as the GCC toolchain root.
+
+Expected result: the build log ends with `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64`. That is correct for this cross lane because the builder container itself runs on amd64 while shipping source-built GCC 16 host and cross compilers for all three target architectures.
 
 Or let the helper do the push too:
 
@@ -339,9 +352,13 @@ Or let the helper do the push too:
 ./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror --push
 ```
 
-Manual staged build with plain `nerdctl` (current cross lane):
+Manual staged build with plain `nerdctl` (current GCC 16 cross lane):
+
+Run these commands from the repository root. Keep every trailing `\` as the last character on its line, and keep the final `.` because it is the Docker build context.
 
 ```bash
+set -o pipefail
+
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=true' \
   -f linux/Dockerfile.os-deps \
@@ -357,8 +374,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
   . 2>&1 | tee -a output.log
 
-TARGET_ARCHES=(amd64 arm64 riscv64)
-for target_arch in "${TARGET_ARCHES[@]}"; do
+for target_arch in amd64 arm64 riscv64; do
   sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch},push=true" \
     -f linux/Dockerfile.sdk-artifact \
@@ -368,13 +384,64 @@ for target_arch in "${TARGET_ARCHES[@]}"; do
     --build-arg TARGET_ARCH="${target_arch}" \
     . 2>&1 | tee -a output.log
 done
+
+for target_arch in amd64 arm64 riscv64; do
+  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch}" \
+    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch},push=true" \
+    -f linux/Dockerfile.media \
+    --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
+    --build-arg BUILD_MODE=cross \
+    --build-arg TARGET_ARCH="${target_arch}" \
+    . 2>&1 | tee -a output.log
+done
+
+for target_arch in amd64 arm64 riscv64; do
+  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
+    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch},push=true" \
+    -f linux/Dockerfile.android \
+    --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch}" \
+    --build-arg BUILD_MODE=cross \
+    --build-arg TARGET_ARCH="${target_arch}" \
+    . 2>&1 | tee -a output.log
+done
+
+for target_arch in amd64 arm64 riscv64; do
+  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-cross-${target_arch}" \
+    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-cross-${target_arch},push=true" \
+    -f linux/Dockerfile.torch \
+    --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
+    --build-arg BUILD_MODE=cross \
+    --build-arg TARGET_ARCH="${target_arch}" \
+    . 2>&1 | tee -a output.log
+done
+
+for target_arch in amd64 arm64 riscv64; do
+  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${target_arch}" \
+    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${target_arch},push=true" \
+    -f linux/Dockerfile \
+    --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
+    --build-arg BUILD_MODE=cross \
+    --build-arg TARGET_ARCH="${target_arch}" \
+    . 2>&1 | tee -a output.log
+done
 ```
 
-`linux/Dockerfile.sdk-artifact` still consumes one `TARGET_ARCH` per `nerdctl build`. The array above is the manual fan-out that runs the same amd64-hosted build three times, once for `amd64`, `arm64`, and `riscv64`.
+`linux/Dockerfile.sdk-artifact` still consumes one `TARGET_ARCH` per `nerdctl build`. The loops above intentionally fan that out one target at a time for `amd64`, `arm64`, and `riscv64`.
 
-This is intentionally the current end of the manual cross-image sequence. `media`, `android`, `torch`, and the final `:latest` image still use the existing QEMU/binfmt lane until their host-side artifact builds exist.
+The later cross builds above are additive and still intentionally conservative:
 
-This image is a single amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding target compilers like `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-amd64`, `clang-arm64`, and `clang-riscv64` for host-side cross builds.
+- `media-cross-${target_arch}` now runs the native C/C++ stages with target compilers and target pkg-config/sysroot settings on the amd64 host.
+- `android-cross-${target_arch}` now keys off the amd64 build host for SDK/NDK setup while still selecting the requested Android target ABI from `TARGET_ARCH`.
+- `torch-cross-${target_arch}` is currently a structural cross stage only. It preserves the image chain but skips the live Python environment assembly because target wheels cannot be safely installed and imported inside an amd64 build container.
+- `latest-cross-${target_arch}` is currently a thin wrapper over the cross Android image and skips the final apt-only host mutation in cross mode.
+
+The existing multi-platform sequential `media`, `android`, `torch`, and `latest` commands above still remain supported and unchanged.
+
+This image is a single amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding source-built GCC 16 target compilers like `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-amd64`, `clang-arm64`, and `clang-riscv64` for host-side cross builds.
 
 ##### SDK rootfs artifacts (first host-side build step)
 
@@ -387,6 +454,13 @@ Build the first SDK artifacts for amd64, arm64, and riscv64:
 ```
 
 Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror.
+
+If you want this helper to reuse the published compiler image instead of bootstrapping it locally, pull the compiler tag first:
+
+```bash
+sudo nerdctl pull --platform linux/amd64 \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64
+```
 
 The helper accepts `TARGET_ARCHES=amd64,arm64,riscv64`, `TARGET_ARCH=amd64,arm64,riscv64`, or `--target-arches amd64,arm64,riscv64` and then fans that list out into one `TARGET_ARCH=<arch>` build per target.
 
@@ -401,7 +475,7 @@ out/linux-sdk/riscv64/rootfs/
 out/linux-sdk/riscv64/artifact.env
 ```
 
-This helper uses `linux/Dockerfile.sdk-artifact` and the amd64-hosted cross compiler image. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU endbuild, but it does not yet replace the full `:latest` pipeline.
+This helper uses `linux/Dockerfile.sdk-artifact` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.1.0` rather than the Ubuntu 24.04 system GCC 13 toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU endbuild, but it does not yet replace the full `:latest` pipeline.
 
 ##### Cross-artifacts to multi-arch manifest (experimental)
 

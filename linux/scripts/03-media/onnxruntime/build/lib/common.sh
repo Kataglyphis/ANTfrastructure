@@ -12,6 +12,10 @@ _PLATFORM_CANDIDATES=(
   "/opt/scripts/core/platform.sh"
   "${_ONNX_LIB_DIR}/../../../../01-core/platform.sh"
 )
+_CROSS_ENV_CANDIDATES=(
+  "/opt/scripts/core/cross-env.sh"
+  "${_ONNX_LIB_DIR}/../../../../01-core/cross-env.sh"
+)
 _PARALLEL_CANDIDATES=(
   "/opt/scripts/core/parallelism.sh"
   "${_ONNX_LIB_DIR}/../../../../01-core/parallelism.sh"
@@ -25,6 +29,13 @@ for f in "${_LOGGING_CANDIDATES[@]}"; do
   fi
 done
 for f in "${_PLATFORM_CANDIDATES[@]}"; do
+  if [ -f "${f}" ]; then
+    # shellcheck disable=SC1090
+    source "${f}"
+    break
+  fi
+done
+for f in "${_CROSS_ENV_CANDIDATES[@]}"; do
   if [ -f "${f}" ]; then
     # shellcheck disable=SC1090
     source "${f}"
@@ -66,6 +77,12 @@ if ! command -v arch_oci >/dev/null 2>&1; then
 fi
 if ! command -v is_amd64_arch >/dev/null 2>&1; then
   is_amd64_arch() { [ "$(arch_oci)" = "amd64" ]; }
+fi
+if ! command -v build_arch_oci >/dev/null 2>&1; then
+  build_arch_oci() { arch_oci; }
+fi
+if ! command -v cross_build_enabled >/dev/null 2>&1; then
+  cross_build_enabled() { return 1; }
 fi
 if ! command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
   compute_jobs_with_mem_cap() {
