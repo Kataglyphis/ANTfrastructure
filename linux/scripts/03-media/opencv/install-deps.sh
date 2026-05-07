@@ -23,6 +23,18 @@ install_host_packages \
     libtbb-dev \
     libeigen3-dev
 
+install_optional_target_packages() {
+    local pkg
+
+    [ "$#" -gt 0 ] || return 0
+
+    for pkg in "$@"; do
+        if ! install_target_packages "${pkg}"; then
+            echo "Skipping optional target package ${pkg} because apt could not resolve it for $(cross_target_arch 2>/dev/null || echo target)."
+        fi
+    done
+}
+
 target_packages=(
     libavcodec-dev
     libavformat-dev
@@ -42,6 +54,7 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
     echo "Skipping libgtk-3-dev for cross builds because libpango1.0-dev is not multiarch-coinstallable."
     if [ "$(cross_target_arch)" = "riscv64" ]; then
         echo "Skipping GStreamer dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
+        echo "Installing riscv64 target OpenCV codec/video deps on a best-effort basis because Ubuntu Ports currently has broken dependency sets for some packages (for example FFmpeg/libpng)."
     else
         target_packages+=(libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev)
     fi
@@ -49,7 +62,11 @@ else
     target_packages=(libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev "${target_packages[@]}")
 fi
 
-install_target_packages "${target_packages[@]}"
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ "$(cross_target_arch)" = "riscv64" ]; then
+    install_optional_target_packages "${target_packages[@]}"
+else
+    install_target_packages "${target_packages[@]}"
+fi
 
 if [ "${WITH_PYTHON}" = "true" ]; then
     echo "[INFO] Python dependencies are satisfied via source build and uv."

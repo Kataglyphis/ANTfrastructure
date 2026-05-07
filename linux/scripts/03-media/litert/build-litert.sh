@@ -402,11 +402,13 @@ build_tflite_c_api() {
     fi
 
     echo "[INFO] Installing TFLite C API..."
+    mkdir -p "${LITERT_PREFIX}/lib"
     if ! cmake --install .; then
-        # Manual install if cmake install fails
-        echo "[INFO] Manual install of TFLite C API library..."
-        find . -name "libtensorflowlite_c*.so*" -exec cp -v {} "${LITERT_PREFIX}/lib/" \; 2>/dev/null || true
+        echo "[WARN] TFLite C API cmake install failed; falling back to manual library copy..."
     fi
+    # Some LiteRT revisions build libtensorflowlite_c.so without an install
+    # rule. Copy it explicitly so downstream cross stages can link against it.
+    find . -name "libtensorflowlite_c*.so*" -exec cp -av {} "${LITERT_PREFIX}/lib/" \; 2>/dev/null || true
 
     # Verify the library was built
     if [ -f "${LITERT_PREFIX}/lib/libtensorflowlite_c.so" ] || \

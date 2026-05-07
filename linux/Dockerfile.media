@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.19
 
 # Global Version Arguments
-ARG PYTHON_VERSION="3.14.3"
-ARG ONNXRUNTIME_VERSION="v1.24.4"
-ARG ONNXRUNTIME_GENAI_VERSION="v0.12.2"
+ARG PYTHON_VERSION="3.14.4"
+ARG ONNXRUNTIME_VERSION="v1.25.1"
+ARG ONNXRUNTIME_GENAI_VERSION="v0.13.1"
 ARG LITERT_VERSION="v2.1.4"
 ARG OPENCV_VERSION="4.x"
 ARG GSTREAMER_VERSION="1.29.1"
@@ -303,6 +303,7 @@ ARG GSTREAMER_PREFIX=/opt/gstreamer
 ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    FFMPEG_PREFIX=/opt/ffmpeg \
     CSOUND_LIB_DIR=/usr/lib
 
 COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
@@ -311,6 +312,7 @@ COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
 COPY --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
 COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --chmod=755 linux/scripts/03-media/opencv/fix-symlinks.sh /opt/scripts/media/opencv/fix-symlinks.sh
 
 RUN set -eux; \
@@ -321,9 +323,9 @@ RUN set -eux; \
     mkdir -p "/opt/gstreamer/lib/${triplet}"; \
     ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
 
-ENV PKG_CONFIG_PATH="${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LITERT_OUTPUT_DIR}/lib/pkgconfig:${ONNXRUNTIME_OUTPUT_DIR}/runtime/lib/pkgconfig"
-ENV LD_LIBRARY_PATH="${OPENCV_OUTPUT_DIR}/lib:${LITERT_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
-ENV LIBRARY_PATH="${LITERT_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
+ENV PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LITERT_OUTPUT_DIR}/lib/pkgconfig:${ONNXRUNTIME_OUTPUT_DIR}/runtime/lib/pkgconfig"
+ENV LD_LIBRARY_PATH="/opt/ffmpeg/lib:${OPENCV_OUTPUT_DIR}/lib:${LITERT_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
+ENV LIBRARY_PATH="/opt/ffmpeg/lib:${LITERT_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
 ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 
 COPY --chmod=755 linux/scripts/03-media/gstreamer /opt/scripts/media/gstreamer

@@ -16,6 +16,12 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
   is_riscv64_cross=true
 fi
 
+prefer_toolchain_vulkan=false
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   [ -d "${VULKAN_PREFIX:-/opt/vulkan}" ]; then
+  prefer_toolchain_vulkan=true
+fi
+
 # Pre-setup dependencies
 install_host_packages build-essential cmake git pkg-config g++ flex bison
 
@@ -55,6 +61,14 @@ gst_target_packages=(
   libgsl-dev
   libdw-dev
   libnsl-dev
+  libexpat1-dev
+  libfontconfig-dev
+  libfribidi-dev
+  libfreetype-dev
+  libpixman-1-dev
+  # GLib fallback still needs target libffi.pc when libglib2.0-dev is skipped on riscv64.
+  libffi-dev
+  libpcre2-dev
 )
 
 if [ "${is_riscv64_cross}" = "true" ]; then
@@ -93,19 +107,42 @@ apt-get install -y --no-install-recommends \
   libcdio-dev libcdparanoia-dev
 
 # Graphics stacks
-apt-get install -y --no-install-recommends \
+# GTK and several video sinks probe these through the target-only pkg-config
+# view during cross builds, so install the graphics development packages on the
+# target side as well. Prefer the toolchain Vulkan SDK headers for cross builds
+# and only install the target runtime loader to avoid distro header conflicts.
+graphics_target_packages=(
   libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxrandr-dev libxv-dev \
-  libwayland-dev wayland-protocols libxkbcommon-dev \
+  libxi-dev libxcursor-dev libxinerama-dev \
+  libwayland-dev wayland-protocols libxkbcommon-dev libxkbcommon-x11-dev \
   libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libglu1-mesa-dev \
-  libdrm-dev libgbm-dev libva-dev \
+  libdrm-dev libgbm-dev libva-dev libepoxy-dev \
   libudev-dev
+)
+
+if [ "${prefer_toolchain_vulkan}" = "true" ]; then
+  echo "Using toolchain Vulkan SDK from ${VULKAN_PREFIX:-/opt/vulkan}; installing target libvulkan1 instead of libvulkan-dev."
+  graphics_target_packages+=(libvulkan1)
+else
+  graphics_target_packages+=(libvulkan-dev)
+fi
+
+install_target_packages "${graphics_target_packages[@]}"
+
+if [ "${is_riscv64_cross}" = "true" ]; then
+  echo "Skipping libgudev-1.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy its libglib2.0-dev helper dependency chain."
+else
+  install_target_packages libgudev-1.0-dev
+fi
 
 # Images / formats
-apt-get install -y --no-install-recommends \
-  libjpeg-dev libpng-dev libtiff-dev libwebp-dev
+# GTK/gdk-pixbuf probe these through the target-only pkg-config view during
+# cross builds, so install the image development packages on the target side.
+install_target_packages \
+  libjpeg-turbo8-dev libpng-dev libtiff-dev libwebp-dev
 
-apt-get install -y --no-install-recommends libopenexr-3-dev || \
-apt-get install -y --no-install-recommends libopenexr-dev || true
+install_target_packages libopenexr-3-dev || \
+install_target_packages libopenexr-dev || true
 
 apt-get install -y --no-install-recommends libvvdec-dev || true
 
@@ -122,15 +159,20 @@ apt-get install -y --no-install-recommends \
   libsvtav1-dev || true
 
 # FFmpeg (for gst-libav)
-apt-get install -y --no-install-recommends \
-  libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev \
-  libswscale-dev libswresample-dev
+if [ -f /opt/ffmpeg/lib/pkgconfig/libavcodec.pc ]; then
+  echo "Using staged FFmpeg build from /opt/ffmpeg for gst-libav; skipping distro FFmpeg dev packages."
+else
+  apt-get install -y --no-install-recommends \
+    libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev \
+    libswscale-dev libswresample-dev
+fi
 
 # Networking / crypto
-apt-get install -y --no-install-recommends \
-  libsoup-3.0-dev libcurl4-openssl-dev libxml2-dev \
+apt-get install -y --no-install-recommends libsoup-3.0-dev libnice-dev || true
+install_target_packages \
+  libcurl4-openssl-dev libxml2-dev \
   zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
-  libsrtp2-dev libnice-dev libssl-dev libusrsctp-dev || true
+  libsrtp2-dev libssl-dev libusrsctp-dev || true
 
 # Csound conditionally
 if echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then

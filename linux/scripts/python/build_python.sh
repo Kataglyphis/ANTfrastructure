@@ -6,7 +6,7 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   source /opt/scripts/core/cross-env.sh
 fi
 
-PYTHON_VERSION=${1:-3.14.3}
+PYTHON_VERSION=${1:-3.14.4}
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   echo "Skipping source-built host Python in cross mode; using target Python from the base rootfs"

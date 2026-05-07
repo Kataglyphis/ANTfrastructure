@@ -276,9 +276,13 @@ append_cmake_cross_args() {
 
 ensure_meson_cross_file() {
   local path="${1:-/tmp/meson-cross-$(cross_target_arch).ini}"
+  local triplet pkg_config_libdir
 
   cross_build_enabled || return 0
   setup_linux_cross_env
+
+  triplet="$(cross_target_triplet)"
+  pkg_config_libdir="/usr/${triplet}/lib/pkgconfig:/usr/lib/${triplet}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
 
   cat > "${path}" <<EOF
 [binaries]
@@ -292,7 +296,7 @@ cmake = 'cmake'
 [properties]
 needs_exe_wrapper = true
 sys_root = '/'
-pkg_config_libdir = '${PKG_CONFIG_LIBDIR}'
+pkg_config_libdir = '${pkg_config_libdir}'
 
 [host_machine]
 system = 'linux'
@@ -304,10 +308,78 @@ EOF
   export MESON_CROSS_FILE="${path}"
 }
 
+ensure_meson_native_file() {
+  local path="${1:-/tmp/meson-native-$(cross_build_arch).ini}"
+  local host_path build_triplet native_cc native_cxx native_ar native_strip native_pkg_config native_cmake native_pkg_config_libdir
+  local native_wrapper_dir native_cc_wrapper native_cxx_wrapper
+
+  cross_build_enabled || return 0
+
+  host_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  build_triplet="$(build_deb_multiarch_triplet)"
+  native_cc="$(PATH="${host_path}" command -v gcc || PATH="${host_path}" command -v cc || true)"
+  native_cxx="$(PATH="${host_path}" command -v g++ || PATH="${host_path}" command -v c++ || true)"
+  native_ar="$(PATH="${host_path}" command -v ar || true)"
+  native_strip="$(PATH="${host_path}" command -v strip || true)"
+  native_pkg_config="$(PATH="${host_path}" command -v pkg-config || true)"
+  native_cmake="$(PATH="${host_path}" command -v cmake || true)"
+  if [ -n "${build_triplet}" ]; then
+    native_pkg_config_libdir="/usr/lib/${build_triplet}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+  else
+    native_pkg_config_libdir="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+  fi
+
+  native_wrapper_dir="${MESON_NATIVE_TOOLCHAIN_DIR:-/tmp/meson-native-toolchain}"
+  mkdir -p "${native_wrapper_dir}"
+
+  if [ -n "${native_cc}" ]; then
+    native_cc_wrapper="${native_wrapper_dir}/native-cc"
+    cat > "${native_cc_wrapper}" <<EOF
+#!/usr/bin/env bash
+exec env PATH="${host_path}" "${native_cc}" -B/usr/bin/ "\$@"
+EOF
+    chmod +x "${native_cc_wrapper}"
+    native_cc="${native_cc_wrapper}"
+  fi
+
+  if [ -n "${native_cxx}" ]; then
+    native_cxx_wrapper="${native_wrapper_dir}/native-cxx"
+    cat > "${native_cxx_wrapper}" <<EOF
+#!/usr/bin/env bash
+exec env PATH="${host_path}" "${native_cxx}" -B/usr/bin/ "\$@"
+EOF
+    chmod +x "${native_cxx_wrapper}"
+    native_cxx="${native_cxx_wrapper}"
+  fi
+
+  cat > "${path}" <<EOF
+[binaries]
+c = '${native_cc}'
+cpp = '${native_cxx}'
+ar = '${native_ar}'
+strip = '${native_strip}'
+pkg-config = '${native_pkg_config}'
+cmake = '${native_cmake}'
+
+[properties]
+pkg_config_libdir = '${native_pkg_config_libdir}'
+EOF
+
+  export MESON_NATIVE_FILE="${path}"
+}
+
 append_meson_cross_flags() {
   local -n _out="$1"
 
   cross_build_enabled || return 0
   ensure_meson_cross_file
   _out+=(--cross-file "${MESON_CROSS_FILE}")
+}
+
+append_meson_native_flags() {
+  local -n _out="$1"
+
+  cross_build_enabled || return 0
+  ensure_meson_native_file
+  _out+=(--native-file "${MESON_NATIVE_FILE}")
 }

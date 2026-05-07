@@ -130,6 +130,9 @@ MESON_SETUP_ARGS=(
 if command -v append_meson_cross_flags >/dev/null 2>&1; then
   append_meson_cross_flags MESON_SETUP_ARGS
 fi
+if command -v append_meson_native_flags >/dev/null 2>&1; then
+  append_meson_native_flags MESON_SETUP_ARGS
+fi
 
 if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" "${MESON_SETUP_ARGS[@]}"; then
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"

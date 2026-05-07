@@ -24,6 +24,14 @@ for helper in \
     fi
 done
 
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+    # Meson's C++ dependency checks (for example GLib's builtin iconv probe)
+    # currently fail under lld on the riscv64 cross path when g++ links
+    # libstdc++. Keep the linker on the toolchain default for this build.
+    export USE_LLD=false
+fi
+
 for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
     "${_SETUP_GST_DIR}/../../../../01-core/compiler-cache.sh"; do
@@ -65,6 +73,26 @@ append_meson_arg() {
       EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} ${arg}"
       ;;
   esac
+}
+
+append_env_flag() {
+  local var_name="$1"
+  local flag="$2"
+  local current="${!var_name:-}"
+
+  case " ${current} " in
+    *" ${flag} "*)
+      return 0
+      ;;
+  esac
+
+  if [ -n "${current}" ]; then
+    printf -v "${var_name}" '%s %s' "${current}" "${flag}"
+  else
+    printf -v "${var_name}" '%s' "${flag}"
+  fi
+
+  export "${var_name}"
 }
 
 # Allow callers to provide MESON_ARGS (preferred) to control Meson options.
@@ -318,8 +346,21 @@ echo "Using existing Python venv (expected at /opt/python/.venv)..."
 uv pip install -U pip setuptools wheel
 uv pip install -U meson ninja
 # pycairo is a host Python build dependency for pygobject fallback. Install it
-# before any cross toolchain exports so Meson uses the native compiler here.
-uv pip install -U pycairo
+# with host pkg-config paths so cross-target overrides do not hide xorgproto
+# metadata required by cairo's x11 dependency chain.
+HOST_MULTIARCH="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+HOST_PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
+if [ -n "${HOST_MULTIARCH}" ]; then
+  HOST_PKG_CONFIG_LIBDIR="/usr/lib/${HOST_MULTIARCH}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+else
+  HOST_PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+fi
+env \
+  PKG_CONFIG_ALLOW_CROSS= \
+  PKG_CONFIG_SYSROOT_DIR= \
+  PKG_CONFIG_LIBDIR="${HOST_PKG_CONFIG_LIBDIR}" \
+  PKG_CONFIG_PATH="${HOST_PKG_CONFIG_PATH}" \
+  uv pip install -U pycairo
 
 # Optional: verify
 meson --version
@@ -418,18 +459,33 @@ MESON_FLAGS=(
   "-Drtsp_server=enabled"
   "-Dpython=enabled"
   "-Dintrospection=enabled"
-  "-Dglib:introspection=enabled"
+  # Keep GLib subproject introspection on GStreamer's upstream default so
+  # fallback GLib builds do not need a separate cross gobject-introspection pkg.
 )
 
 case "${TARGET_MACHINE_ARCH}" in
   riscv*|*riscv*)
     echo "Target arch '${TARGET_MACHINE_ARCH}' detected: keeping GTK, Python and introspection enabled while skipping -Drs (Rust bindings)"
     MESON_FLAGS+=("-Drs=disabled")
+    MESON_FLAGS+=("-Ddevtools=disabled")
     # Ubuntu Ports currently cannot satisfy the riscv64 target GLib helper
     # dependency chain via APT, so rely on GStreamer's bundled Meson wraps for
     # the GLib/cairo/pango/GTK/introspection stack instead of the target
     # sysroot packages.
-    append_meson_arg "--force-fallback-for=glib-2.0,gobject-2.0,gio-2.0,gio-unix-2.0,gmodule-2.0,gmodule-no-export-2.0,gmodule-export-2.0,gthread-2.0,cairo,cairo-gobject,pango,pangoft2,pangocairo,pangoxft,gdk-pixbuf-2.0,gobject-introspection-1.0,pygobject-3.0,graphene-1.0,graphene-gobject-1.0,gtk4,gtk4-x11,gtk4-wayland"
+    append_meson_arg "--force-fallback-for=glib-2.0,gobject-2.0,gio-2.0,gio-unix-2.0,gmodule-2.0,gmodule-no-export-2.0,gmodule-export-2.0,gthread-2.0,cairo,cairo-gobject,pango,pangoft2,pangocairo,pangoxft,harfbuzz,gdk-pixbuf-2.0,pygobject-3.0,graphene-1.0,graphene-gobject-1.0,gtk4,gtk4-x11,gtk4-wayland"
+    # Pango's fallback currently requires gobject-introspection >= 1.83.2,
+    # while Ubuntu Noble provides 1.80.x, so disable Pango introspection on
+    # the riscv64 cross path and keep GI enabled for the top-level project.
+    append_meson_arg "-Dpango:introspection=disabled"
+    append_meson_arg "-Dharfbuzz:introspection=disabled"
+    # gdk-pixbuf 2.44 enables the optional glycin loader on Linux by default,
+    # but glycin is not present in this cross sysroot and is not needed for the
+    # GTK stack to configure successfully.
+    append_meson_arg "-Dgdk-pixbuf:glycin=disabled"
+    append_meson_arg "-Dgdk-pixbuf:man=false"
+    # gst-devtools pulls in json-glib and gtk+-3.0 from the target sysroot.
+    # Those packages are in the same unsatisfied Ubuntu Ports helper chain we
+    # already bypass for riscv64 cross builds, so disable devtools on this path.
     # Disable Whisper plugin on RISC-V as well — whisper can be resource-heavy
     # and may cause toolchain/platform issues similar to ARM.
     append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
@@ -452,6 +508,9 @@ esac
 if command -v append_meson_cross_flags >/dev/null 2>&1; then
   append_meson_cross_flags MESON_FLAGS
 fi
+if command -v append_meson_native_flags >/dev/null 2>&1; then
+  append_meson_native_flags MESON_FLAGS
+fi
 
 # --- begin patch: ensure meson won't use fallback subprojects by default ---
 MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
@@ -467,7 +526,7 @@ case " ${EXTRA_MESON_ARGS} " in
   *" --force-fallback-for="*) ;;
   *)
     # Use fallback specifically for pygobject since we are using a custom python build.
-    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --force-fallback-for=pygobject"
+    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --force-fallback-for=pygobject-3.0"
     ;;
 esac
 # --- end patch ---
@@ -507,6 +566,61 @@ if [ -d /usr/share/pkgconfig ]; then
   :
   PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:/usr/share/pkgconfig"
   export PKG_CONFIG_LIBDIR
+fi
+
+# Debian/Ubuntu multiarch leaves several foreign-arch headers under
+# /usr/include/<triplet> and the shared /usr/include tree. Add both after the
+# target sysroot includes so Meson's cross compile checks can still resolve
+# headers such as ffi.h and X11/XKBlib.h without overriding target-specific
+# headers from the compiler sysroot.
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ -n "${DEB_HOST_MULTIARCH_DIR}" ] && [ -d "/usr/include/${DEB_HOST_MULTIARCH_DIR}" ]; then
+  append_env_flag CPPFLAGS "-idirafter /usr/include/${DEB_HOST_MULTIARCH_DIR}"
+  append_env_flag CFLAGS "-idirafter /usr/include/${DEB_HOST_MULTIARCH_DIR}"
+  append_env_flag CXXFLAGS "-idirafter /usr/include/${DEB_HOST_MULTIARCH_DIR}"
+fi
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ -d /usr/include ]; then
+  append_env_flag CPPFLAGS "-idirafter /usr/include"
+  append_env_flag CFLAGS "-idirafter /usr/include"
+  append_env_flag CXXFLAGS "-idirafter /usr/include"
+fi
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ -n "${DEB_HOST_MULTIARCH_DIR}" ]; then
+  append_env_flag LDFLAGS "-L/usr/lib/${DEB_HOST_MULTIARCH_DIR}"
+  append_env_flag LDFLAGS "-Wl,-rpath-link,/usr/lib/${DEB_HOST_MULTIARCH_DIR}"
+fi
+
+# gst-plugins-bad's tflite Meson logic uses cc.find_library()/has_header()
+# directly instead of pkg-config, so feed the resolved include and library
+# directories into the compiler flags explicitly for cross builds.
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  TFLITE_PKG_CONFIG_NAME=""
+  for dep in tensorflowlite_c tensorflow-lite; do
+    if pkg-config --exists "${dep}" 2>/dev/null; then
+      TFLITE_PKG_CONFIG_NAME="${dep}"
+      break
+    fi
+  done
+
+  if [ -n "${TFLITE_PKG_CONFIG_NAME}" ]; then
+    TFLITE_INCLUDEDIR="$(pkg-config --variable=includedir "${TFLITE_PKG_CONFIG_NAME}" 2>/dev/null || true)"
+    TFLITE_LIBDIR="$(pkg-config --variable=libdir "${TFLITE_PKG_CONFIG_NAME}" 2>/dev/null || true)"
+
+    if [ -n "${TFLITE_INCLUDEDIR}" ]; then
+      # Keep /usr/local includes behind the target sysroot so generic Meson
+      # probes (for example iconv from glibc) do not get rewritten by host-side
+      # compatibility headers that may also live under /usr/local/include.
+      append_env_flag CPPFLAGS "-idirafter ${TFLITE_INCLUDEDIR}"
+      append_env_flag CFLAGS "-idirafter ${TFLITE_INCLUDEDIR}"
+      append_env_flag CXXFLAGS "-idirafter ${TFLITE_INCLUDEDIR}"
+    fi
+    if [ -n "${TFLITE_LIBDIR}" ]; then
+      append_env_flag LDFLAGS "-L${TFLITE_LIBDIR}"
+      append_env_flag LDFLAGS "-Wl,-rpath-link,${TFLITE_LIBDIR}"
+    fi
+
+    echo "Resolved ${TFLITE_PKG_CONFIG_NAME} for Meson probes: includedir='${TFLITE_INCLUDEDIR:-}' libdir='${TFLITE_LIBDIR:-}'"
+  fi
 fi
 
 # Extra debug: check pkg-config visibility for cairo before Meson runs
