@@ -161,6 +161,27 @@ target_machine() {
     uname -m
 }
 
+resolve_cross_archive_tool() {
+    local tool="$1"
+    local preferred="${CROSS_TARGET_TRIPLET}-gcc-${tool}"
+    local fallback="${CROSS_TARGET_TRIPLET}-${tool}"
+    local resolved
+
+    resolved="$(command -v "${preferred}" 2>/dev/null || true)"
+    if [ -n "${resolved}" ]; then
+        printf '%s' "${resolved}"
+        return 0
+    fi
+
+    resolved="$(command -v "${fallback}" 2>/dev/null || true)"
+    if [ -n "${resolved}" ]; then
+        printf '%s' "${resolved}"
+        return 0
+    fi
+
+    printf '%s' "${fallback}"
+}
+
 # ------------------------------------------------------------------------------
 # Configure OpenCV build
 # ------------------------------------------------------------------------------
@@ -168,6 +189,12 @@ configure_opencv() {
     echo "Configuring OpenCV build..."
     
     local build_dir="${OPENCV_SRC}/build"
+    local with_gtk="ON"
+    local with_gstreamer="ON"
+    local with_opengl="ON"
+    local target_zlib_include=""
+    local target_zlib_library=""
+    local target_shared_include_fallback=""
     mkdir -p "${build_dir}"
     cd "${build_dir}"
     
@@ -178,6 +205,20 @@ configure_opencv() {
     if [ "$(target_machine)" != "amd64" ] && [ "$(target_machine)" != "x86_64" ] && [ "${WITH_IPP}" = "ON" ]; then
         echo "Non-x86 target detected ($(target_machine)) - disabling Intel IPP to avoid x86 prebuilt libs"
         WITH_IPP="OFF"
+    fi
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        # GTK pulls target-side Pango GIR files that are not coinstallable with the host arch.
+        with_gtk="OFF"
+        with_opengl="OFF"
+        # Debian/Ubuntu multiarch keeps zlib.h in the shared include directory.
+        target_zlib_include="/usr/include"
+        target_zlib_library="/usr/lib/$(cross_target_triplet)/libz.so"
+        target_shared_include_fallback="-idirafter /usr/include"
+        if [ "$(cross_target_arch)" = "riscv64" ]; then
+            # Ubuntu Ports cannot currently satisfy the target GStreamer/GLib dev chain for riscv64 cross builds.
+            with_gstreamer="OFF"
+        fi
     fi
 
     if [ "${WITH_PYTHON}" = "true" ]; then
@@ -203,10 +244,10 @@ configure_opencv() {
         "-DINSTALL_PYTHON_EXAMPLES=OFF"
         "-DWITH_TBB=ON"
         "-DWITH_EIGEN=ON"
-        "-DWITH_GTK=ON"
+        "-DWITH_GTK=${with_gtk}"
         "-DWITH_V4L=ON"
         "-DWITH_FFMPEG=ON"
-        "-DWITH_GSTREAMER=ON"
+        "-DWITH_GSTREAMER=${with_gstreamer}"
         "-DWITH_OPENEXR=ON"
         "-DWITH_JPEG=ON"
         "-DWITH_PNG=ON"
@@ -215,7 +256,7 @@ configure_opencv() {
         "-DWITH_DC1394=ON"
         "-DWITH_1394=ON"
         "-DWITH_OPENCL=ON"
-        "-DWITH_OPENGL=ON"
+        "-DWITH_OPENGL=${with_opengl}"
         "-DWITH_VULKAN=ON"
         "-DWITH_PROTOBUF=ON"
         "-DWITH_LIBV4L=ON"
@@ -225,6 +266,25 @@ configure_opencv() {
 
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
         append_cmake_cross_args cmake_opts
+    fi
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        # OpenCV's mixed vendored/system dependency graph needs access to the
+        # target sysroot headers and libraries under /usr while still finding
+        # generated build artifacts in the normal build tree.
+        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH")
+        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH")
+        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+        cmake_opts+=("-DCMAKE_AR=$(resolve_cross_archive_tool ar)")
+        cmake_opts+=("-DCMAKE_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        cmake_opts+=("-DCMAKE_C_COMPILER_AR=$(resolve_cross_archive_tool ar)")
+        cmake_opts+=("-DCMAKE_CXX_COMPILER_AR=$(resolve_cross_archive_tool ar)")
+        cmake_opts+=("-DCMAKE_C_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        cmake_opts+=("-DCMAKE_CXX_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        cmake_opts+=("-DZLIB_INCLUDE_DIR=${target_zlib_include}")
+        cmake_opts+=("-DZLIB_LIBRARY=${target_zlib_library}")
+        cmake_opts+=("-DCMAKE_C_FLAGS=${target_shared_include_fallback}")
+        cmake_opts+=("-DCMAKE_CXX_FLAGS=${target_shared_include_fallback}")
     fi
 
     # Add lld linker flags if available
@@ -324,7 +384,14 @@ build_opencv() {
     local build_dir="${OPENCV_SRC}/build"
     cd "${build_dir}"
     
-    make -j"${NPROC}" || { echo "OpenCV build failed"; exit 1; }
+    if make -j"${NPROC}"; then
+        return 0
+    fi
+
+    echo "OpenCV parallel build failed; rerunning serial verbose build for diagnostics..."
+    make -j1 VERBOSE=1 || true
+    echo "OpenCV build failed"
+    exit 1
 }
 
 # ------------------------------------------------------------------------------

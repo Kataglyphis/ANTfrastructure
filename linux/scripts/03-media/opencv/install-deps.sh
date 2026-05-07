@@ -23,22 +23,33 @@ install_host_packages \
     libtbb-dev \
     libeigen3-dev
 
-install_target_packages \
-    libgtk-3-dev \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    libv4l-dev \
-    libxvidcore-dev \
-    libx264-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libtiff-dev \
-    libopenexr-dev \
-    libgstreamer1.0-dev \
-    libgstreamer-plugins-base1.0-dev \
-    libunwind-dev \
+target_packages=(
+    libavcodec-dev
+    libavformat-dev
+    libswscale-dev
+    libv4l-dev
+    libxvidcore-dev
+    libx264-dev
+    libjpeg-dev
+    libpng-dev
+    libtiff-dev
+    libopenexr-dev
+    libunwind-dev
     libdc1394-dev
+)
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    echo "Skipping libgtk-3-dev for cross builds because libpango1.0-dev is not multiarch-coinstallable."
+    if [ "$(cross_target_arch)" = "riscv64" ]; then
+        echo "Skipping GStreamer dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
+    else
+        target_packages+=(libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev)
+    fi
+else
+    target_packages=(libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev "${target_packages[@]}")
+fi
+
+install_target_packages "${target_packages[@]}"
 
 if [ "${WITH_PYTHON}" = "true" ]; then
     echo "[INFO] Python dependencies are satisfied via source build and uv."

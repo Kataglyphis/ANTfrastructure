@@ -57,7 +57,6 @@ BUILD_ARGS=(
   --config "${NATIVE_CPU_CONFIG}"
   --build_shared_lib
   --parallel "${JOBS}"
-  --build_wheel
   --compile_no_warning_as_error
   --skip_submodule_sync
   --skip_tests
@@ -76,6 +75,7 @@ if [[ "$(arch_oci 2>/dev/null || uname -m)" != "riscv64" ]]; then
 fi
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  info "Skipping ONNX Runtime wheel build in cross mode; target Python headers/wheels are not safely buildable in the amd64 host container"
   BUILD_ARGS+=(
     --cmake_extra_defines
     CMAKE_SYSTEM_NAME=Linux
@@ -88,7 +88,12 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
     CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+    onnxruntime_ENABLE_PYTHON=OFF
+    onnxruntime_BUILD_UNIT_TESTS=OFF
+    onnxruntime_GENERATE_TEST_REPORTS=OFF
   )
+else
+  BUILD_ARGS+=(--build_wheel)
 fi
 
 # Add lld linker for faster linking
@@ -118,7 +123,13 @@ if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; th
 fi
 
 # Execute build
-"${BUILD_SH}" "${BUILD_ARGS[@]}"
+if ! "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
+  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    warn "ONNX Runtime build failed; rerunning single-threaded verbose build for diagnostics"
+    cmake --build "${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" --config "${NATIVE_CPU_CONFIG}" --parallel 1 --verbose || true
+  fi
+  exit 1
+fi
 
 # Copy wheel files
 info "Searching for wheel files..."

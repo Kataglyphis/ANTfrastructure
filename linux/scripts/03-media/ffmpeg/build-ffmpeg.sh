@@ -84,6 +84,306 @@ fetch_ffmpeg() {
     echo "FFmpeg version: $(git describe --tags 2>/dev/null || echo 'unknown')"
 }
 
+# Mirror FFmpeg's own configure probes so optional libraries are only forced on
+# when the current compiler, sysroot, and linker can actually use them.
+split_shell_words() {
+    local -n out_ref="$1"
+    local words="${2:-}"
+
+    out_ref=()
+    [ -n "${words}" ] || return 0
+
+    # pkg-config emits whitespace-delimited flags that are safe to re-split here.
+    # shellcheck disable=SC2206
+    out_ref=(${words})
+}
+
+ffmpeg_collect_pkg_config_flags() {
+    local pkg_spec="$1"
+    local mode="$2"
+    local pkg
+
+    pkg="${pkg_spec%% *}"
+    pkg-config --exists "${pkg_spec}" >/dev/null 2>&1 || return 1
+    pkg-config "${mode}" "${pkg}" 2>/dev/null
+}
+
+ffmpeg_write_includes() {
+    local headers="$1"
+    local header
+    local -a header_list=()
+
+    split_shell_words header_list "${headers}"
+    for header in "${header_list[@]}"; do
+        if [[ "${header}" == *.h ]]; then
+            printf '#include <%s>\n' "${header}"
+        else
+            printf '#include %s\n' "${header}"
+        fi
+    done
+}
+
+ffmpeg_probe_compiler() {
+    if [ -n "${CC:-}" ]; then
+        printf '%s' "${CC}"
+    elif command -v gcc >/dev/null 2>&1; then
+        printf '%s' "gcc"
+    else
+        printf '%s' "cc"
+    fi
+}
+
+resolve_ffmpeg_host_compiler() {
+    local triplet=""
+    local candidate
+
+    if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
+        triplet="$(build_deb_multiarch_triplet)"
+    fi
+
+    for candidate in \
+        "/usr/bin/${triplet}-gcc" \
+        /usr/bin/gcc \
+        /usr/bin/cc; do
+        [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+    done
+
+    command -v gcc 2>/dev/null || command -v cc 2>/dev/null || true
+}
+
+prepare_ffmpeg_host_compiler_wrapper() {
+    local compiler="$1"
+    local wrapper_dir="${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain}"
+    local wrapper="${wrapper_dir}/host-gcc"
+
+    mkdir -p "${wrapper_dir}"
+    cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
+EOF
+    chmod +x "${wrapper}"
+    printf '%s' "${wrapper}"
+}
+
+ffmpeg_try_cpp_condition() {
+    local headers="$1"
+    local condition="$2"
+    local cflags_string="${3:-}"
+    local compiler_string probe_dir source_file output_file
+    local -a compiler_cmd=()
+    local -a cflags=()
+    local -a cmd=()
+
+    compiler_string="$(ffmpeg_probe_compiler)"
+    split_shell_words compiler_cmd "${compiler_string}"
+    split_shell_words cflags "${cflags_string}"
+
+    probe_dir="$(mktemp -d)"
+    source_file="${probe_dir}/probe.c"
+    output_file="${probe_dir}/probe.o"
+
+    {
+        ffmpeg_write_includes "${headers}"
+        printf '#if !(%s)\n' "${condition}"
+        printf '#error condition failed\n'
+        printf '#endif\n'
+        printf 'int ffmpeg_probe_condition = 0;\n'
+    } > "${source_file}"
+
+    cmd=("${compiler_cmd[@]}")
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        cmd+=("--sysroot=/")
+    fi
+    cmd+=("${cflags[@]}" "-c" "${source_file}" "-o" "${output_file}")
+
+    if "${cmd[@]}" >/dev/null 2>&1; then
+        rm -rf "${probe_dir}"
+        return 0
+    fi
+
+    rm -rf "${probe_dir}"
+    return 1
+}
+
+ffmpeg_try_link_probe() {
+    local headers="$1"
+    local symbols="$2"
+    local cflags_string="${3:-}"
+    local libs_string="${4:-}"
+    local compiler_string probe_dir source_file output_file
+    local -a compiler_cmd=()
+    local -a cflags=()
+    local -a libs=()
+    local -a cmd=()
+    local -a symbol_list=()
+
+    compiler_string="$(ffmpeg_probe_compiler)"
+    split_shell_words compiler_cmd "${compiler_string}"
+    split_shell_words cflags "${cflags_string}"
+    split_shell_words libs "${libs_string}"
+    split_shell_words symbol_list "${symbols}"
+
+    probe_dir="$(mktemp -d)"
+    source_file="${probe_dir}/probe.c"
+    output_file="${probe_dir}/probe"
+
+    {
+        local symbol
+        ffmpeg_write_includes "${headers}"
+        for symbol in "${symbol_list[@]}"; do
+            printf 'long ffmpeg_probe_%s(void) { return (long)%s; }\n' "${symbol//[^A-Za-z0-9_]/_}" "${symbol}"
+        done
+        printf 'int main(void) { return 0'
+        for symbol in "${symbol_list[@]}"; do
+            printf ' | ((int)(ffmpeg_probe_%s() & 0xFFFF))' "${symbol//[^A-Za-z0-9_]/_}"
+        done
+        printf '; }\n'
+    } > "${source_file}"
+
+    cmd=("${compiler_cmd[@]}")
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        cmd+=("--sysroot=/")
+    fi
+    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+        cmd+=("-fuse-ld=lld")
+    fi
+    cmd+=("${cflags[@]}" "${source_file}" "-o" "${output_file}" "${libs[@]}")
+
+    if "${cmd[@]}" >/dev/null 2>&1; then
+        rm -rf "${probe_dir}"
+        return 0
+    fi
+
+    rm -rf "${probe_dir}"
+    return 1
+}
+
+ffmpeg_try_pkg_config_probe() {
+    local pkg_spec="$1"
+    local headers="$2"
+    local symbols="$3"
+    local cflags libs
+
+    cflags="$(ffmpeg_collect_pkg_config_flags "${pkg_spec}" --cflags)" || return 1
+    libs="$(ffmpeg_collect_pkg_config_flags "${pkg_spec}" --libs)" || return 1
+
+    ffmpeg_try_link_probe "${headers}" "${symbols}" "${cflags}" "${libs}"
+}
+
+ffmpeg_probe_pkg_config_feature() {
+    local feature="$1"
+    local pkg_spec="$2"
+    local headers="$3"
+    local symbol="$4"
+
+    if ffmpeg_try_pkg_config_probe "${pkg_spec}" "${headers}" "${symbol}"; then
+        return 0
+    fi
+
+    echo "Skipping ${feature}: FFmpeg-style pkg-config probe failed for ${pkg_spec}."
+    return 1
+}
+
+ffmpeg_probe_library_feature() {
+    local feature="$1"
+    local headers="$2"
+    local symbol="$3"
+    local libs_string="${4:-}"
+
+    if ffmpeg_try_link_probe "${headers}" "${symbol}" "" "${libs_string}"; then
+        return 0
+    fi
+
+    echo "Skipping ${feature}: FFmpeg-style link probe failed."
+    return 1
+}
+
+ffmpeg_probe_libmp3lame() {
+    ffmpeg_probe_library_feature "libmp3lame" "lame/lame.h" "lame_set_VBR_quality" "-lmp3lame -lm"
+}
+
+ffmpeg_probe_libopus() {
+    ffmpeg_probe_pkg_config_feature "libopus" "opus" "opus_multistream.h" "opus_multistream_decoder_create opus_multistream_surround_encoder_create"
+}
+
+ffmpeg_probe_libvorbis() {
+    if ffmpeg_probe_pkg_config_feature "libvorbis" "vorbis" "vorbis/codec.h" "vorbis_info_init" &&
+       ffmpeg_probe_pkg_config_feature "libvorbisenc" "vorbisenc" "vorbis/vorbisenc.h" "vorbis_encode_init"; then
+        return 0
+    fi
+
+    echo "Skipping libvorbis: FFmpeg-style codec and encoder probes did not both pass."
+    return 1
+}
+
+ffmpeg_probe_libvpx_variant() {
+    local feature="$1"
+    local headers="$2"
+    local symbols="$3"
+
+    ffmpeg_try_pkg_config_probe "vpx >= 1.4.0" "${headers}" "${symbols}" || \
+        ffmpeg_try_link_probe "${headers}" "${symbols}" "" "-lvpx -lm -lpthread"
+}
+
+ffmpeg_probe_libvpx() {
+    local passed=1
+
+    ffmpeg_probe_libvpx_variant "libvpx_vp8_decoder" "vpx/vpx_decoder.h vpx/vp8dx.h" "vpx_codec_vp8_dx VPX_IMG_FMT_HIGHBITDEPTH" && passed=0
+    ffmpeg_probe_libvpx_variant "libvpx_vp8_encoder" "vpx/vpx_encoder.h vpx/vp8cx.h" "vpx_codec_vp8_cx VPX_IMG_FMT_HIGHBITDEPTH" && passed=0
+    ffmpeg_probe_libvpx_variant "libvpx_vp9_decoder" "vpx/vpx_decoder.h vpx/vp8dx.h" "vpx_codec_vp9_dx VPX_IMG_FMT_HIGHBITDEPTH" && passed=0
+    ffmpeg_probe_libvpx_variant "libvpx_vp9_encoder" "vpx/vpx_encoder.h vpx/vp8cx.h" "vpx_codec_vp9_cx VPX_IMG_FMT_HIGHBITDEPTH" && passed=0
+
+    if [ "${passed}" -eq 0 ]; then
+        return 0
+    fi
+
+    echo "Skipping libvpx: FFmpeg-style decoder and encoder probes failed."
+    return 1
+}
+
+ffmpeg_probe_libx264() {
+    if ffmpeg_probe_pkg_config_feature "libx264" "x264" "stdint.h x264.h" "x264_encoder_encode" &&
+       ffmpeg_try_cpp_condition "x264.h" "X264_BUILD >= 155"; then
+        return 0
+    fi
+
+    echo "Skipping libx264: FFmpeg-style pkg-config or build-version probe failed."
+    return 1
+}
+
+ffmpeg_probe_libx265() {
+    if ffmpeg_probe_pkg_config_feature "libx265" "x265" "x265.h" "x265_api_get" &&
+       ffmpeg_try_cpp_condition "x265.h" "X265_BUILD >= 89"; then
+        return 0
+    fi
+
+    echo "Skipping libx265: FFmpeg-style pkg-config or build-version probe failed."
+    return 1
+}
+
+ffmpeg_probe_vdpau() {
+    if ! ffmpeg_try_cpp_condition "vdpau/vdpau.h" "defined VDP_DECODER_PROFILE_MPEG4_PART2_ASP"; then
+        echo "Skipping vdpau: FFmpeg-style header probe failed."
+        return 1
+    fi
+
+    ffmpeg_probe_library_feature "vdpau" "vdpau/vdpau.h vdpau/vdpau_x11.h" "vdp_device_create_x11" "-lvdpau -lX11"
+}
+
+ffmpeg_probe_libfdk_aac() {
+    if ffmpeg_try_pkg_config_probe "fdk-aac" "fdk-aac/aacenc_lib.h" "aacEncOpen"; then
+        return 0
+    fi
+
+    if ffmpeg_try_link_probe "fdk-aac/aacenc_lib.h" "aacEncOpen" "" "-lfdk-aac"; then
+        echo "Enabling libfdk-aac without pkg-config metadata."
+        return 0
+    fi
+
+    echo "Skipping libfdk-aac: FFmpeg-style pkg-config and direct link probes failed."
+    return 1
+}
+
 # ------------------------------------------------------------------------------
 # Configure FFmpeg build
 # ------------------------------------------------------------------------------
@@ -102,52 +402,96 @@ configure_ffmpeg() {
         "--disable-static"
         "--disable-debug"
         "--disable-doc"
-        "--enable-libass"
-        "--enable-libfreetype"
-        "--enable-libmp3lame"
-        "--enable-libopus"
-        "--enable-libvorbis"
-        "--enable-libvpx"
-        "--enable-libx264"
-        "--enable-libx265"
-        "--enable-gnutls"
     )
 
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        local host_cc
+
         setup_linux_cross_env
+        host_cc="$(resolve_ffmpeg_host_compiler)"
+        if [ -n "${host_cc}" ]; then
+            host_cc="$(prepare_ffmpeg_host_compiler_wrapper "${host_cc}")"
+        fi
         configure_opts+=(
             "--arch=$(cross_target_arch)"
             "--target-os=linux"
+            "--enable-cross-compile"
             "--cross-prefix=${CROSS_TARGET_TRIPLET}-"
             "--pkg-config=pkg-config"
         )
+        if [ -n "${host_cc}" ]; then
+            configure_opts+=("--host-cc=${host_cc}")
+            echo "Using native host C compiler for FFmpeg build tools: ${host_cc}"
+        fi
         configure_opts+=("--extra-cflags=--sysroot=/")
         configure_opts+=("--extra-ldflags=--sysroot=/")
+        if [ "$(cross_target_arch)" = "riscv64" ]; then
+            # Avoid cross-detecting host SDL when the target SDL dev package is unavailable.
+            configure_opts+=("--disable-sdl2" "--disable-ffplay")
+        fi
+    fi
+
+    if ffmpeg_probe_pkg_config_feature "libfreetype" "freetype2" "ft2build.h FT_FREETYPE_H" "FT_Init_FreeType"; then
+        configure_opts+=("--enable-libfreetype")
+    fi
+
+    if ffmpeg_probe_libmp3lame; then
+        configure_opts+=("--enable-libmp3lame")
+    fi
+
+    if ffmpeg_probe_libopus; then
+        configure_opts+=("--enable-libopus")
+    fi
+
+    if ffmpeg_probe_libvorbis; then
+        configure_opts+=("--enable-libvorbis")
+    fi
+
+    if ffmpeg_probe_libvpx; then
+        configure_opts+=("--enable-libvpx")
+    fi
+
+    if ffmpeg_probe_libx264; then
+        configure_opts+=("--enable-libx264")
+    fi
+
+    if ffmpeg_probe_libx265; then
+        configure_opts+=("--enable-libx265")
     fi
     
     # Optional codecs - add if libraries are available
-    if pkg-config --exists fdk-aac 2>/dev/null; then
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ "$(cross_target_arch)" = "riscv64" ]; then
+        echo "Skipping gnutls for riscv64 cross builds because FFmpeg's configure probe does not currently pass in this environment."
+    elif ffmpeg_probe_pkg_config_feature "gnutls" "gnutls" "gnutls/gnutls.h" "gnutls_global_init"; then
+        configure_opts+=("--enable-gnutls")
+    fi
+
+    if ffmpeg_probe_pkg_config_feature "libass" "libass >= 0.11.0" "ass/ass.h" "ass_library_init"; then
+        configure_opts+=("--enable-libass")
+    fi
+
+    if ffmpeg_probe_libfdk_aac; then
         configure_opts+=("--enable-libfdk-aac")
     fi
     
-    if pkg-config --exists aom 2>/dev/null; then
+    if ffmpeg_probe_pkg_config_feature "libaom" "aom >= 2.0.0" "aom/aom_codec.h" "aom_codec_version"; then
         configure_opts+=("--enable-libaom")
     fi
     
-    if pkg-config --exists dav1d 2>/dev/null; then
+    if ffmpeg_probe_pkg_config_feature "libdav1d" "dav1d >= 1.0.0" "dav1d/dav1d.h" "dav1d_version"; then
         configure_opts+=("--enable-libdav1d")
     fi
     
-    if pkg-config --exists SvtAv1Enc 2>/dev/null; then
+    if ffmpeg_probe_pkg_config_feature "libsvtav1" "SvtAv1Enc >= 0.9.0" "EbSvtAv1Enc.h" "svt_av1_enc_init_handle"; then
         configure_opts+=("--enable-libsvtav1")
     fi
     
     # Hardware acceleration (if available)
-    if pkg-config --exists libva 2>/dev/null; then
+    if ffmpeg_probe_pkg_config_feature "vaapi" "libva >= 0.35.0" "va/va.h" "vaInitialize"; then
         configure_opts+=("--enable-vaapi")
     fi
     
-    if pkg-config --exists vdpau 2>/dev/null; then
+    if ffmpeg_probe_vdpau; then
         configure_opts+=("--enable-vdpau")
     fi
     
@@ -187,7 +531,14 @@ configure_ffmpeg() {
         configure_opts+=("--cxx=${CXX}")
     fi
     
-    ./configure "${configure_opts[@]}" || { echo "FFmpeg configure failed"; exit 1; }
+    if ! ./configure "${configure_opts[@]}"; then
+        echo "FFmpeg configure failed"
+        if [ -f "ffbuild/config.log" ]; then
+            echo "Last 200 lines of ffbuild/config.log:"
+            tail -n 200 "ffbuild/config.log" || true
+        fi
+        exit 1
+    fi
 }
 
 # ------------------------------------------------------------------------------

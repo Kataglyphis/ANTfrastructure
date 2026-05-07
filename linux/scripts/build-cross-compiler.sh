@@ -4,8 +4,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps}"
-BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps}"
+BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:base}"
+BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:base}"
 COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 CROSS_TARGETS="${CROSS_TARGETS:-amd64,arm64,riscv64}"
@@ -20,7 +20,7 @@ usage() {
 Usage: build-cross-compiler.sh [options]
 
 Builds an amd64-hosted cross-compiler image with nerdctl.
-If the remote os-deps image is unavailable, the script builds a local amd64 base
+If the remote base image is unavailable, the script builds a local amd64 base
 image first and then uses it for the compiler build.
 
 Options:
@@ -28,14 +28,14 @@ Options:
   --fast-ubuntu-mirror   Replace security.ubuntu.com during Docker builds
   --fast-ubuntu-mirror-url URL
                          Mirror URL to use with --fast-ubuntu-mirror
-  --rebuild-base         Always rebuild local os-deps instead of trying pull first
+  --rebuild-base         Always rebuild the local base image instead of trying pull first
   --push                 Tag and push the finished compiler image to GHCR
   -h, --help             Show this help text
 
 Environment overrides:
   NERDCTL_BIN            nerdctl executable to use
   BASE_REMOTE_TAG        Remote base tag to try before local bootstrap
-  BASE_LOCAL_TAG         Local os-deps tag (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps)
+  BASE_LOCAL_TAG         Local base tag (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger:base)
   COMPILER_LOCAL_TAG     Local compiler tag
   COMPILER_REMOTE_TAG    Remote compiler tag used with --push
   USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security Ubuntu mirrors
@@ -86,7 +86,7 @@ ensure_base_image() {
     --platform linux/amd64 \
     -t "${BASE_LOCAL_TAG}" \
     --output "type=image,name=${BASE_LOCAL_TAG},push=true" \
-    -f linux/Dockerfile.os-deps \
+    -f linux/Dockerfile.base \
     "${mirror_build_args[@]}" \
     .
 }

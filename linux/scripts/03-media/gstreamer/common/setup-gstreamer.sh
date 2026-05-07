@@ -317,6 +317,9 @@ echo "Using existing Python venv (expected at /opt/python/.venv)..."
 # Install Meson/Ninja in the existing venv
 uv pip install -U pip setuptools wheel
 uv pip install -U meson ninja
+# pycairo is a host Python build dependency for pygobject fallback. Install it
+# before any cross toolchain exports so Meson uses the native compiler here.
+uv pip install -U pycairo
 
 # Optional: verify
 meson --version
@@ -420,8 +423,13 @@ MESON_FLAGS=(
 
 case "${TARGET_MACHINE_ARCH}" in
   riscv*|*riscv*)
-    echo "Target arch '${TARGET_MACHINE_ARCH}' detected: skipping -Drs (Rust bindings) in Meson flags"
+    echo "Target arch '${TARGET_MACHINE_ARCH}' detected: keeping GTK, Python and introspection enabled while skipping -Drs (Rust bindings)"
     MESON_FLAGS+=("-Drs=disabled")
+    # Ubuntu Ports currently cannot satisfy the riscv64 target GLib helper
+    # dependency chain via APT, so rely on GStreamer's bundled Meson wraps for
+    # the GLib/cairo/pango/GTK/introspection stack instead of the target
+    # sysroot packages.
+    append_meson_arg "--force-fallback-for=glib-2.0,gobject-2.0,gio-2.0,gio-unix-2.0,gmodule-2.0,gmodule-no-export-2.0,gmodule-export-2.0,gthread-2.0,cairo,cairo-gobject,pango,pangoft2,pangocairo,pangoxft,gdk-pixbuf-2.0,gobject-introspection-1.0,pygobject-3.0,graphene-1.0,graphene-gobject-1.0,gtk4,gtk4-x11,gtk4-wayland"
     # Disable Whisper plugin on RISC-V as well — whisper can be resource-heavy
     # and may cause toolchain/platform issues similar to ARM.
     append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
@@ -451,8 +459,15 @@ MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
 case " ${EXTRA_MESON_ARGS} " in
   *" --wrap-mode="*) ;;
   *)
-    # Use fallback specifically for pygobject since we are using a custom python build
-    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --wrap-mode=${MESON_WRAP_MODE} --force-fallback-for=pygobject"
+    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --wrap-mode=${MESON_WRAP_MODE}"
+    ;;
+esac
+
+case " ${EXTRA_MESON_ARGS} " in
+  *" --force-fallback-for="*) ;;
+  *)
+    # Use fallback specifically for pygobject since we are using a custom python build.
+    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --force-fallback-for=pygobject"
     ;;
 esac
 # --- end patch ---
@@ -514,22 +529,24 @@ pkg-config --cflags --libs cairo 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt ||
 # the fallback for subsequent Meson setup.
 if ! pkg-config --exists cairo 2>/dev/null; then
   :
-  echo "cairo not found with PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}' — trying fallback by unsetting PKG_CONFIG_LIBDIR" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-  if env -u PKG_CONFIG_LIBDIR pkg-config --exists cairo 2>/dev/null; then
-    echo "Fallback: cairo found after unsetting PKG_CONFIG_LIBDIR; proceeding using fallback search paths" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-    # Unset for the rest of the script so Meson will see the cairo pkg-config
-    unset PKG_CONFIG_LIBDIR
+  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+     command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+    echo "cairo not found in target pkg-config paths on riscv64 cross build; keeping PKG_CONFIG_LIBDIR intact and relying on Meson subproject fallback" | tee -a /tmp/gstreamer-cairo-debug.txt || true
   else
-  :
-    echo "Fallback also failed: cairo still not found" | tee -a /tmp/gstreamer-cairo-debug.txt || true
+    echo "cairo not found with PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}' — trying fallback by unsetting PKG_CONFIG_LIBDIR" | tee -a /tmp/gstreamer-cairo-debug.txt || true
+    if env -u PKG_CONFIG_LIBDIR pkg-config --exists cairo 2>/dev/null; then
+      echo "Fallback: cairo found after unsetting PKG_CONFIG_LIBDIR; proceeding using fallback search paths" | tee -a /tmp/gstreamer-cairo-debug.txt || true
+      # Unset for the rest of the script so Meson will see the cairo pkg-config
+      unset PKG_CONFIG_LIBDIR
+    else
+    :
+      echo "Fallback also failed: cairo still not found" | tee -a /tmp/gstreamer-cairo-debug.txt || true
+    fi
   fi
 fi
 echo "--- end cairo debug ---" | tee -a /tmp/gstreamer-cairo-debug.txt
 
 # Run meson setup and capture full output
-# First, install pycairo beforehand so that pygobject fallback can find it (needs cairo properly set up in pkgconfig)
-uv pip install -U pycairo
-
 if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
   :
   echo "Meson setup failed; printing verbose output..."

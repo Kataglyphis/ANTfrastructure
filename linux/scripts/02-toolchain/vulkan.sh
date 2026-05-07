@@ -117,13 +117,28 @@ install_vulkan_sdk() {
 
       SDK_ARCHDIR="${target_dir}/$(uname -m)"
       if [[ -d "${SDK_ARCHDIR}" ]]; then
+        local target_include_dir="/usr/${target_triplet}/include"
         log "Preferring Vulkan SDK headers and CMake packages from ${SDK_ARCHDIR}"
         export CMAKE_PREFIX_PATH="${SDK_ARCHDIR}:${SDK_ARCHDIR}/share/cmake:${SDK_ARCHDIR}/lib/cmake${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
         if [[ -d "${SDK_ARCHDIR}/include" ]]; then
           # ValidationLayers enables Linux WSI preprocessor paths from pkg-config,
           # but does not add the corresponding XCB/X11/Wayland include roots itself.
-          # Cross GCC does not search /usr/include by default, so expose it explicitly
-          # after the SDK headers to keep Vulkan headers pinned to the extracted SDK.
+          # Cross GCC searches /usr/${target_triplet}/include by default, so mirror
+          # those host-side WSI headers there and keep /usr/include as a fallback.
+          sudo mkdir -p /usr/include /usr/local/include "${target_include_dir}"
+          for entry in X11 xcb; do
+            if [[ -e "/usr/include/${entry}" && ! -e "${target_include_dir}/${entry}" ]]; then
+              sudo ln -s "/usr/include/${entry}" "${target_include_dir}/${entry}"
+            fi
+          done
+          local header base
+          for header in /usr/include/wayland*.h /usr/include/xf86drm*.h; do
+            [[ -e "${header}" ]] || continue
+            base="$(basename "${header}")"
+            if [[ ! -e "${target_include_dir}/${base}" ]]; then
+              sudo ln -s "${header}" "${target_include_dir}/${base}"
+            fi
+          done
           export CMAKE_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${CMAKE_INCLUDE_PATH:+:${CMAKE_INCLUDE_PATH}}"
           export CPATH="${SDK_ARCHDIR}/include:/usr/include${CPATH:+:${CPATH}}"
           export C_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${C_INCLUDE_PATH:+:${C_INCLUDE_PATH}}"
@@ -133,18 +148,18 @@ install_vulkan_sdk() {
         # Replace distro header directories outright: ln -sfn does not overwrite an existing real directory.
         if [[ -d "${SDK_ARCHDIR}/include/vulkan" ]]; then
           log "Replacing standard Vulkan include paths with SDK headers"
-          sudo mkdir -p /usr/include /usr/local/include "/usr/${target_triplet}/include"
-          sudo rm -rf /usr/include/vulkan /usr/local/include/vulkan "/usr/${target_triplet}/include/vulkan"
+          sudo mkdir -p /usr/include /usr/local/include "${target_include_dir}"
+          sudo rm -rf /usr/include/vulkan /usr/local/include/vulkan "${target_include_dir}/vulkan"
           sudo ln -s "${SDK_ARCHDIR}/include/vulkan" /usr/include/vulkan
           sudo ln -s "${SDK_ARCHDIR}/include/vulkan" /usr/local/include/vulkan
-          sudo ln -s "${SDK_ARCHDIR}/include/vulkan" "/usr/${target_triplet}/include/vulkan"
+          sudo ln -s "${SDK_ARCHDIR}/include/vulkan" "${target_include_dir}/vulkan"
         fi
         if [[ -d "${SDK_ARCHDIR}/include/vk_video" ]]; then
-          sudo mkdir -p /usr/include /usr/local/include "/usr/${target_triplet}/include"
-          sudo rm -rf /usr/include/vk_video /usr/local/include/vk_video "/usr/${target_triplet}/include/vk_video"
+          sudo mkdir -p /usr/include /usr/local/include "${target_include_dir}"
+          sudo rm -rf /usr/include/vk_video /usr/local/include/vk_video "${target_include_dir}/vk_video"
           sudo ln -s "${SDK_ARCHDIR}/include/vk_video" /usr/include/vk_video
           sudo ln -s "${SDK_ARCHDIR}/include/vk_video" /usr/local/include/vk_video
-          sudo ln -s "${SDK_ARCHDIR}/include/vk_video" "/usr/${target_triplet}/include/vk_video"
+          sudo ln -s "${SDK_ARCHDIR}/include/vk_video" "${target_include_dir}/vk_video"
         fi
       fi
 
@@ -179,7 +194,7 @@ install_vulkan_sdk() {
         log "Skipping slang on riscv64 (not yet ported)"
       fi
 
-      sudo --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH \
+      sudo --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH \
         ./vulkansdk -j "$JOBS" "${sdk_components[@]}"
     )
   fi

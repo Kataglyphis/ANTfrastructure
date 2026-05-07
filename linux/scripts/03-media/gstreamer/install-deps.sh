@@ -10,14 +10,38 @@ echo "Installing GStreamer build dependencies..."
 
 apt-get update
 
-# Pre-setup dependencies
-install_host_packages build-essential cmake git pkg-config
-install_target_packages \
-    build-essential cmake git pkg-config libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev \
-    libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev \
-    x11proto-core-dev libsodium-dev
+is_riscv64_cross=false
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+  is_riscv64_cross=true
+fi
 
-(install_target_packages xorgproto) || true
+# Pre-setup dependencies
+install_host_packages build-essential cmake git pkg-config g++ flex bison
+
+pre_setup_target_packages=(
+  libx11-dev
+  libxext-dev
+  libxrender-dev
+  libxau-dev
+  libxdmcp-dev
+  libxfixes-dev
+  libsodium-dev
+)
+
+if [ "${is_riscv64_cross}" = "true" ]; then
+  echo "Skipping libcairo2-dev, libpango1.0-dev and libgdk-pixbuf2.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
+else
+  pre_setup_target_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev "${pre_setup_target_packages[@]}")
+fi
+
+install_target_packages "${pre_setup_target_packages[@]}"
+
+# X11 proto headers are shipped as Architecture: all packages here, so do not
+# route them through install_target_packages or apt may insist on a nonexistent
+# :riscv64 variant.
+apt-get install -y --no-install-recommends x11proto-dev
+
 install_target_packages xorg-dev || true
 install_target_packages x11proto-core-dev x11proto-dev || true
 
@@ -25,20 +49,38 @@ install_target_packages x11proto-core-dev x11proto-dev || true
 apt-get purge -y 'liborc*' || true
 apt-get autoremove -y
 
-install_host_packages build-essential g++ flex bison
-install_target_packages \
-  libc++-dev libc++abi-dev \
-  libglib2.0-dev libgirepository1.0-dev gir1.2-gstreamer-1.0 \
-  libcairo2-dev \
-  libjson-glib-dev \
-  libgsl-dev libdw-dev libnsl-dev gobject-introspection \
-  libgtk-4-dev
+gst_target_packages=(
+  libc++-dev
+  libc++abi-dev
+  libgsl-dev
+  libdw-dev
+  libnsl-dev
+)
+
+if [ "${is_riscv64_cross}" = "true" ]; then
+  echo "Skipping target GLib/GTK/introspection/cairo packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their helper dependency chain."
+else
+  gst_target_packages+=(
+    libcairo2-dev
+    libglib2.0-dev
+    libgirepository1.0-dev
+    gir1.2-gstreamer-1.0
+    libjson-glib-dev
+    libgtk-4-dev
+  )
+fi
+
+install_target_packages "${gst_target_packages[@]}"
 
 apt-get purge -y 'libunwind-[0-9]*-dev' || true
 install_target_packages libunwind-dev
 
-install_host_packages libxml2-utils || true
-install_target_packages libgtk-3-dev libgtk-4-dev glslc glslang-tools
+install_host_packages libxml2-utils glslc glslang-tools gobject-introspection || true
+if [ "${is_riscv64_cross}" = "true" ]; then
+  echo "Skipping target GTK dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
+else
+  install_target_packages libgtk-3-dev libgtk-4-dev
+fi
 
 # Audio I/O and DSP
 apt-get install -y --no-install-recommends \

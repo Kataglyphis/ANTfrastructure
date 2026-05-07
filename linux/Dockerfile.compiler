@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.19
 
-ARG BASE_IMAGE=local/kataglyphis:os-deps
+ARG BASE_IMAGE=local/kataglyphis:base
 FROM ${BASE_IMAGE}
 
 ARG LLVM_WANTED=22

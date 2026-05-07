@@ -19,7 +19,7 @@ Docker templates for Linux GPU development stacks, a slim nginx webserver, and a
 
    .. grid-item-card:: Linux Dockerfiles
 
-      Multi-stage Linux images: ``os-deps`` → ``toolchain`` → ``media`` → ``android`` → ``final``.
+      Multi-stage Linux images: ``base`` → ``toolchain`` → ``media`` → ``android`` → ``final``.
 
    .. grid-item-card:: Windows Dockerfile
 
@@ -41,7 +41,7 @@ avoid rebuilding the whole world when only scripts change.
 
 Stages:
 
-- ``os-deps``: Ubuntu base + stable apt dependencies (no project scripts copied).
+- ``base``: Ubuntu base + stable apt dependencies (no project scripts copied).
 - ``toolchain``: GCC/LLVM/Vulkan toolchain setup via scripts.
 - ``media``: ONNX Runtime + GStreamer + Libcamera builds.
 - ``android``: Android SDK/NDK setup (x86_64 only).
@@ -51,7 +51,7 @@ Build only a specific stage (useful during development):
 
 .. code-block:: bash
 
-   docker buildx build -f linux/Dockerfile --target os-deps -t local/kataglyphis:os-deps .
+   docker buildx build -f linux/Dockerfile.base -t local/kataglyphis:base .
    docker buildx build -f linux/Dockerfile --target toolchain -t local/kataglyphis:toolchain .
    docker buildx build -f linux/Dockerfile --target media -t local/kataglyphis:media .
    docker buildx build -f linux/Dockerfile --target final -t local/kataglyphis:latest .
@@ -60,4 +60,3 @@ Build only a specific stage (useful during development):
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
-

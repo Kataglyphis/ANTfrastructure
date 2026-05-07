@@ -53,6 +53,68 @@ cross_target_upper_rust() {
   cross_target_rust_triple | tr '[:lower:]-' '[:upper:]_'
 }
 
+cross_target_uses_ubuntu_ports() {
+  case "$(cross_target_arch)" in
+    arm64|armhf|ppc64el|riscv64|s390x) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+cross_configure_foreign_arch_apt_sources() {
+  local target_arch build_arch distro ports_url host_sources ports_sources tmp
+
+  cross_build_enabled || return 0
+  cross_target_uses_ubuntu_ports || return 0
+
+  target_arch="$(cross_target_arch)"
+  build_arch="$(cross_build_arch)"
+  distro="${DISTRO:-${UBUNTU_CODENAME:-${VERSION_CODENAME:-noble}}}"
+  ports_url="${UBUNTU_PORTS_MIRROR_URL:-http://ports.ubuntu.com/ubuntu-ports/}"
+  host_sources="/etc/apt/sources.list.d/ubuntu.sources"
+  ports_sources="/etc/apt/sources.list.d/ubuntu-ports-${target_arch}.sources"
+
+  case "${ports_url}" in
+    */) ;;
+    *) ports_url="${ports_url}/" ;;
+  esac
+
+  if [ -f "${host_sources}" ]; then
+    tmp="$(mktemp)"
+    awk -v arch="${build_arch}" '
+      BEGIN { in_stanza=0; has_arch=0 }
+      /^[[:space:]]*$/ {
+        if (in_stanza && !has_arch) print "Architectures: " arch
+        print
+        in_stanza=0
+        has_arch=0
+        next
+      }
+      /^[[:space:]]*#/ {
+        print
+        next
+      }
+      {
+        in_stanza=1
+      }
+      /^Architectures:[[:space:]]*/ {
+        print "Architectures: " arch
+        has_arch=1
+        next
+      }
+      {
+        print
+      }
+      END {
+        if (in_stanza && !has_arch) print "Architectures: " arch
+      }
+    ' "${host_sources}" > "${tmp}"
+    mv "${tmp}" "${host_sources}"
+  fi
+
+  printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nArchitectures: %s\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' \
+    "${ports_url}" "${distro}" "${distro}" "${distro}" "${distro}" "${target_arch}" > "${ports_sources}"
+}
+
 cross_prepare_foreign_arch() {
   local target_arch
   cross_build_enabled || return 0
@@ -61,6 +123,7 @@ cross_prepare_foreign_arch() {
     dpkg --add-architecture "${target_arch}"
     _CROSS_ENV_APT_UPDATED=0
   fi
+  cross_configure_foreign_arch_apt_sources
 }
 
 cross_resolve_target_package() {

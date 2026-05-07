@@ -5,16 +5,34 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   source /opt/scripts/core/cross-env.sh
 fi
 apt-get update
+
+is_riscv64_cross=false
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+  is_riscv64_cross=true
+fi
+
 # Ensure basic build tooling present for building vvdec and GTK/Cairo checks
 # Install core packages first, then attempt to install X protocol headers.
-apt-get install -y --no-install-recommends \
-    build-essential cmake git pkg-config libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-core-dev libsodium-dev python3-gi gobject-introspection libgirepository1.0-dev
+host_packages=(build-essential cmake git pkg-config python3-gi gobject-introspection libcairo2-dev)
+core_packages=(libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-dev libsodium-dev)
+
+if [ "${is_riscv64_cross}" = "true" ]; then
+  echo "Skipping libcairo2-dev, libpango1.0-dev, libgdk-pixbuf2.0-dev and libgirepository1.0-dev for riscv64 cross pre-setup because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
+else
+  core_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libgirepository1.0-dev "${core_packages[@]}")
+fi
+
+apt-get install -y --no-install-recommends "${host_packages[@]}" "${core_packages[@]}"
 # Some base images may not provide the \`xorgproto\` package name. Try a few
 # alternatives and fail early if none are available so the error is clear.
-(apt-get install -y --no-install-recommends xorgproto) || true
 apt-get update || true
 apt-get install -y --no-install-recommends xorg-dev || true
-apt-get install -y --no-install-recommends x11proto-core-dev x11proto-dev || true
+if [ "${is_riscv64_cross}" = "true" ]; then
+  apt-get install -y --no-install-recommends x11proto-dev || true
+else
+  apt-get install -y --no-install-recommends x11proto-core-dev x11proto-dev || true
+fi
 # Ensure pkg-config metadata directories updated
 update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # Install Csound packages required for building csound-related plugins.

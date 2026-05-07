@@ -69,7 +69,7 @@ Images in this repository:
 
 Linux image chain (built as separate images for caching):
 
-- `linux/Dockerfile.os-deps`: Ubuntu base + stable apt dependencies (no project scripts copied).
+- `linux/Dockerfile.base`: Ubuntu base + stable apt dependencies (no project scripts copied).
 - `linux/Dockerfile.compiler`: GCC + LLVM/Clang compiler toolchain.
 - `linux/Dockerfile.sdk`: Vulkan SDK layer on top of compiler.
 - `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
@@ -92,7 +92,7 @@ sudo nerdctl build \
 ```
 
 - Supported Dockerfiles:
-  `linux/Dockerfile.os-deps`, `linux/Dockerfile.compiler`, `linux/Dockerfile.sdk`, `linux/Dockerfile.media`, `linux/Dockerfile.android`, `linux/Dockerfile`, `linux/Dockerfile.nvidia`, `linux/Dockerfile.amd`, `linux/Dockerfile.torch`, `linux/Dockerfile.sdk-artifact`
+  `linux/Dockerfile.base`, `linux/Dockerfile.compiler`, `linux/Dockerfile.sdk`, `linux/Dockerfile.media`, `linux/Dockerfile.android`, `linux/Dockerfile`, `linux/Dockerfile.nvidia`, `linux/Dockerfile.amd`, `linux/Dockerfile.torch`, `linux/Dockerfile.sdk-artifact`
 - Not supported / not needed:
   `linux/webserver/Dockerfile` is not wired for this flag, `linux/Dockerfile.runtime-artifact` is copy-only and does not run apt, and `windows/Dockerfile` does not use apt.
 
@@ -236,16 +236,16 @@ If apt stalls on `archive.ubuntu.com` or `security.ubuntu.com`, add `--build-arg
 
 ```bash
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
-sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=true' \
-  -f linux/Dockerfile.os-deps \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-os-deps,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-os-deps \
+sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
+  -f linux/Dockerfile.base \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-base,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-base \
   . 2>&1 | tee -a output.log
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler,push=true' \
   -f linux/Dockerfile.compiler \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler \
   . 2>&1 | tee -a output.log
@@ -294,7 +294,7 @@ The cross-compiler path below is additive. It does not replace the existing QEMU
 
 This lane intentionally builds only a `linux/amd64` container image. The three architectures are the compiler targets installed inside that image via `CROSS_TARGETS=amd64,arm64,riscv64`, not three separate compiler container manifests.
 
-For the cross-compiler path, bootstrap the base image locally first. This avoids depending on a remote `os-deps` intermediate tag that may have been cleaned up in GHCR.
+For the cross-compiler path, bootstrap the base image locally first. This avoids depending on a remote `base` intermediate tag that may have been cleaned up in GHCR.
 
 Fastest entry point:
 
@@ -304,7 +304,7 @@ Fastest entry point:
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`http://de.archive.ubuntu.com/ubuntu/`).
 
-The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps`; if the registry manifest is broken or missing, it falls back to rebuilding `ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps` with `--output type=image,...,push=true` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way so the next stage can resolve it from GHCR. In `BUILD_MODE=cross`, that compiler image now builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
+The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base`; if the registry manifest is broken or missing, it falls back to rebuilding `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base` with `--output type=image,...,push=true` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way so the next stage can resolve it from GHCR. In `BUILD_MODE=cross`, that compiler image now builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
 
 If you only need the downstream SDK or media cross stages and want to reuse the published compiler image, pull it first:
 
@@ -316,9 +316,9 @@ sudo nerdctl pull --platform linux/amd64 \
 Build the local amd64 base image:
 
 ```bash
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=true' \
-  -f linux/Dockerfile.os-deps \
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
+  -f linux/Dockerfile.base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   . 2>&1 | tee -a output.log
 ```
@@ -329,7 +329,7 @@ Then build the dedicated amd64-hosted compiler image in cross mode for amd64, ar
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
   -f linux/Dockerfile.compiler \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BUILD_MODE=cross \
   --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
@@ -359,9 +359,9 @@ Run these commands from the repository root. Keep every trailing `\` as the last
 ```bash
 set -o pipefail
 
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps,push=true' \
-  -f linux/Dockerfile.os-deps \
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
+  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
+  -f linux/Dockerfile.base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   . 2>&1 | tee -a output.log
 
@@ -369,7 +369,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
   -f linux/Dockerfile.compiler \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:os-deps \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --build-arg BUILD_MODE=cross \
   --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
   . 2>&1 | tee -a output.log

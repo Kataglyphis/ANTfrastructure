@@ -87,10 +87,11 @@ ARG PYTHON_VERSION
 ARG PYTHON_MAJOR_MINOR=3.14
 ENV PYTHON_VERSION=${PYTHON_VERSION}
 ENV PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}
-# Override build scripts' default (3.14t) to ensure non-threaded ABI
+# Override build scripts' default (3.14t) to ensure non-threaded ABI.
+# Keep uv pinned to the shared venv interpreter after it is created, because
+# cross builds use the host Python to run build tooling.
 ENV ORT_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
-    OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
-    UV_PYTHON=${PYTHON_MAJOR_MINOR}
+    OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR}
 
 # Copy core build scripts (compiler-cache, parallelism helpers)
 COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
@@ -109,11 +110,12 @@ RUN set -eux; \
     else \
         uv venv --seed --python /usr/local/bin/python${PYTHON_MAJOR_MINOR} ${VIRTUAL_ENV}; \
     fi
-ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}" \
+    UV_PYTHON=${VIRTUAL_ENV}/bin/python
 
 # Install core Python build dependencies using uv
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    uv pip install wheel setuptools numpy meson ninja cmake packaging
+    uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools numpy meson ninja cmake packaging
 
 # ==============================================================================
 # ONNX Runtime stage
