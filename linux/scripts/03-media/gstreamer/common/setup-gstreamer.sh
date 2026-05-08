@@ -95,6 +95,207 @@ append_env_flag() {
   export "${var_name}"
 }
 
+resolve_host_gcc_for_cargo() {
+  local build_triplet=""
+  local candidate
+
+  if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
+    build_triplet="$(build_deb_multiarch_triplet)"
+  fi
+
+  for candidate in \
+    "/usr/bin/${build_triplet}-gcc" \
+    /usr/bin/gcc \
+    /usr/bin/cc; do
+    [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+  done
+
+  command -v gcc 2>/dev/null || command -v cc 2>/dev/null || true
+}
+
+prepare_cargo_host_linker_wrapper() {
+  local compiler="$1"
+  local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
+  local wrapper="${wrapper_dir}/host-gcc"
+
+  mkdir -p "${wrapper_dir}"
+  cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
+EOF
+  chmod +x "${wrapper}"
+  printf '%s' "${wrapper}"
+}
+
+resolve_host_gxx_for_cargo() {
+  local build_triplet=""
+  local candidate
+
+  if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
+    build_triplet="$(build_deb_multiarch_triplet)"
+  fi
+
+  for candidate in \
+    "/usr/bin/${build_triplet}-g++" \
+    /usr/bin/g++ \
+    /usr/bin/c++; do
+    [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+  done
+
+  command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || true
+}
+
+prepare_cargo_host_cxx_wrapper() {
+  local compiler="$1"
+  local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
+  local wrapper="${wrapper_dir}/host-g++"
+
+  mkdir -p "${wrapper_dir}"
+  cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
+EOF
+  chmod +x "${wrapper}"
+  printf '%s' "${wrapper}"
+}
+
+prepare_cross_python_build_config() {
+  local target_arch="$1"
+  local meson_version=""
+  local target_triplet=""
+  local python_build_config=""
+
+  CROSS_PYTHON_BUILD_CONFIG=""
+  export CROSS_PYTHON_BUILD_CONFIG
+
+  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+    return 0
+  fi
+
+  case "${target_arch}" in
+    riscv64) ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  meson_version="$(uv run meson --version 2>/dev/null || meson --version 2>/dev/null || true)"
+  if ! "${HOST_PYTHON}" - "${meson_version}" <<'PY'
+import re
+import sys
+
+version = sys.argv[1].strip()
+match = re.match(r'^(\d+)\.(\d+)\.(\d+)', version)
+if not match:
+    raise SystemExit(1)
+
+current = tuple(int(part) for part in match.groups())
+raise SystemExit(0 if current >= (1, 10, 0) else 1)
+PY
+  then
+    echo "Meson ${meson_version:-unknown} does not support python.build_config; continuing without cross Python ABI metadata"
+    return 0
+  fi
+
+  if command -v cross_target_triplet >/dev/null 2>&1; then
+    target_triplet="$(cross_target_triplet)"
+  else
+    target_triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+  fi
+  if [ -z "${target_triplet}" ]; then
+    echo "Could not determine cross target triplet for Meson python.build_config"
+    return 0
+  fi
+
+  python_build_config="/tmp/meson-python-build-config-${target_triplet}.json"
+  if "${HOST_PYTHON}" - "${python_build_config}" "${target_triplet}" <<'PY'
+import json
+import pathlib
+import re
+import sys
+import sysconfig
+
+output_path = pathlib.Path(sys.argv[1])
+target_triplet = sys.argv[2]
+target_arch = target_triplet.split('-', 1)[0]
+
+language_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+include_dir = pathlib.Path(f"/usr/include/python{language_version}")
+if not include_dir.is_dir():
+    fallback_include = sysconfig.get_config_var('INCLUDEPY')
+    if fallback_include:
+        include_dir = pathlib.Path(fallback_include)
+if not include_dir.is_dir():
+    raise SystemExit(f"Could not determine Python include directory for {language_version}")
+
+cache_tag = getattr(sys.implementation, 'cache_tag', '') or f"cpython-{sys.version_info.major}{sys.version_info.minor}"
+flag_match = re.match(r'^cpython-\d+([a-z]*)$', cache_tag)
+abi_flags = list(flag_match.group(1)) if flag_match else []
+
+platform = sysconfig.get_platform() or f"linux-{target_arch}"
+host_multiarch = sysconfig.get_config_var('MULTIARCH') or ''
+host_arch = host_multiarch.split('-', 1)[0] if host_multiarch else ''
+if host_arch and platform.endswith(host_arch):
+    platform = f"{platform[:-len(host_arch)]}{target_arch}"
+elif not platform.startswith('linux-'):
+    platform = f"linux-{target_arch}"
+
+libpython = {
+    'link_extensions': False,
+}
+for candidate in (
+    pathlib.Path(f"/usr/lib/{target_triplet}/libpython{language_version}.so"),
+    pathlib.Path(f"/usr/lib/{target_triplet}/libpython{language_version}.so.1.0"),
+    pathlib.Path(f"/usr/lib/libpython{language_version}.so"),
+    pathlib.Path(f"/usr/lib/libpython{language_version}.so.1.0"),
+):
+    if candidate.exists():
+        libpython['dynamic'] = str(candidate)
+        break
+
+impl_version = getattr(sys.implementation, 'version', sys.version_info)
+data = {
+    'schema_version': '1.0',
+    'base_prefix': '/usr',
+    'platform': platform,
+    'language': {
+        'version': language_version,
+    },
+    'implementation': {
+        'name': sys.implementation.name,
+        'version': {
+            'major': impl_version.major,
+            'minor': impl_version.minor,
+            'micro': impl_version.micro,
+            'releaselevel': impl_version.releaselevel,
+            'serial': impl_version.serial,
+        },
+        'cache_tag': cache_tag,
+        '_multiarch': target_triplet,
+    },
+    'abi': {
+        'flags': abi_flags,
+        'extension_suffix': f'.{cache_tag}-{target_triplet}.so',
+        'stable_abi_suffix': '.abi3.so',
+    },
+    'libpython': libpython,
+    'c_api': {
+        'headers': str(include_dir),
+    },
+}
+
+output_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+PY
+  then
+    CROSS_PYTHON_BUILD_CONFIG="${python_build_config}"
+    export CROSS_PYTHON_BUILD_CONFIG
+    echo "Generated Meson python.build_config for ${target_triplet}: ${CROSS_PYTHON_BUILD_CONFIG}"
+  else
+    rm -f "${python_build_config}" 2>/dev/null || true
+    echo "WARNING: Failed to generate Meson python.build_config for ${target_triplet}; continuing without it"
+  fi
+}
+
 # Allow callers to provide MESON_ARGS (preferred) to control Meson options.
 # If MESON_ARGS is set in the environment, use it verbatim; otherwise fall
 # back to the caller-provided fourth positional arg (EXTRA_MESON_ARGS).
@@ -117,9 +318,14 @@ append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
+HOST_PYTHON="$(host_python_bin)"
+export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+  Python_EXECUTABLE="${HOST_PYTHON}" \
+  Python3_EXECUTABLE="${HOST_PYTHON}"
 
-# this is for uv
-export PATH="${HOME}/.local/bin:${PATH}"
+# Keep /usr/local/bin ahead of /bin so cross-introspection shims like
+# g-ir-scanner and ldd are used when upstream tools shell out by program name.
+export PATH="/usr/local/sbin:/usr/local/bin:${HOME}/.local/bin:${PATH}"
 
 # set the gst paths accordingly
 # Prefer the installed helper if available, otherwise source relative to this script
@@ -156,7 +362,8 @@ dump_debug_info() {
   df -h || true
   ulimit -a || true
   echo "--- Tool versions ---"
-  which python3 || true; python3 --version 2>&1 || true
+  printf 'host python: %s\n' "${HOST_PYTHON:-unresolved}" || true
+  if [ -n "${HOST_PYTHON:-}" ]; then "${HOST_PYTHON}" --version 2>&1 || true; fi
   which pip  || true; pip --version 2>&1 || true
   which meson || true; meson --version 2>&1 || true
   which ninja || true; ninja --version 2>&1 || true
@@ -423,6 +630,16 @@ else
   cd gstreamer
 fi
 
+# gst-plugins-good's LAME probe currently treats a visible lame header as
+# sufficient even when the target libmp3lame library was not found. On cross
+# builds that can produce a later link line with no -lmp3lame at all. Tighten
+# the probe so the plugin is only enabled when the library lookup succeeded.
+if [ -f subprojects/gst-plugins-good/ext/lame/meson.build ] && \
+   grep -Fq "have_lame = cc.has_header_symbol('lame/lame.h', 'lame_init')" subprojects/gst-plugins-good/ext/lame/meson.build && \
+   ! grep -Fq "have_lame = lame_dep.found() and cc.has_header_symbol('lame/lame.h', 'lame_init')" subprojects/gst-plugins-good/ext/lame/meson.build; then
+  sed -i "s/have_lame = cc.has_header_symbol('lame\/lame.h', 'lame_init')/have_lame = lame_dep.found() and cc.has_header_symbol('lame\/lame.h', 'lame_init')/" subprojects/gst-plugins-good/ext/lame/meson.build
+fi
+
 echo ""
 echo "Setting up Meson build..."
 
@@ -433,6 +650,7 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   setup_linux_cross_env
   TARGET_MACHINE_ARCH="$(cross_target_arch)"
 fi
+prepare_cross_python_build_config "${TARGET_MACHINE_ARCH}"
 
 # Build Meson flags, conditionally enable Rust bindings (rs) except on RISC-V
 MESON_FLAGS=(
@@ -471,8 +689,23 @@ case "${TARGET_MACHINE_ARCH}" in
     # Ubuntu Ports currently cannot satisfy the riscv64 target GLib helper
     # dependency chain via APT, so rely on GStreamer's bundled Meson wraps for
     # the GLib/cairo/pango/GTK/introspection stack instead of the target
-    # sysroot packages.
-    append_meson_arg "--force-fallback-for=glib-2.0,gobject-2.0,gio-2.0,gio-unix-2.0,gmodule-2.0,gmodule-no-export-2.0,gmodule-export-2.0,gthread-2.0,cairo,cairo-gobject,pango,pangoft2,pangocairo,pangoxft,harfbuzz,gdk-pixbuf-2.0,pygobject-3.0,graphene-1.0,graphene-gobject-1.0,gtk4,gtk4-x11,gtk4-wayland"
+    # sysroot packages. Keep gobject-introspection itself on fallback too so
+    # PyGObject gets target girepository headers/libs rather than the host-side
+    # scanner shim metadata from pre-setup.
+    append_meson_arg "--force-fallback-for=glib-2.0,gobject-2.0,gio-2.0,gio-unix-2.0,gmodule-2.0,gmodule-no-export-2.0,gmodule-export-2.0,gthread-2.0,cairo,cairo-gobject,pango,pangoft2,pangocairo,pangoxft,harfbuzz,gdk-pixbuf-2.0,gobject-introspection-1.0,pygobject-3.0,graphene-1.0,graphene-gobject-1.0,gtk4,gtk4-x11,gtk4-wayland"
+    # The gobject-introspection fallback should keep using the host-installed
+    # scanner toolchain on cross builds; otherwise its subproject tries to
+    # override g-ir-scanner after Meson has already found the host program.
+    append_meson_arg "-Dgobject-introspection:gi_cross_use_prebuilt_gi=true"
+    if [ -x /usr/local/bin/g-ir-scanner-riscv64-binary-wrapper ]; then
+      append_meson_arg "-Dgobject-introspection:gi_cross_binary_wrapper=/usr/local/bin/g-ir-scanner-riscv64-binary-wrapper"
+    fi
+    if [ -x /usr/local/bin/g-ir-scanner-ldd-riscv64-cross ]; then
+      append_meson_arg "-Dgobject-introspection:gi_cross_ldd_wrapper=/usr/local/bin/g-ir-scanner-ldd-riscv64-cross"
+    fi
+    # Graphene disables GIR generation on cross builds unless introspection is
+    # explicitly enabled, but GTK's Gsk-4.0.gir includes Graphene-1.0.gir.
+    append_meson_arg "-Dgraphene:introspection=enabled"
     # Pango's fallback currently requires gobject-introspection >= 1.83.2,
     # while Ubuntu Noble provides 1.80.x, so disable Pango introspection on
     # the riscv64 cross path and keep GI enabled for the top-level project.
@@ -505,6 +738,12 @@ case "${TARGET_MACHINE_ARCH}" in
     ;;
 esac
 
+if [ -n "${CROSS_PYTHON_BUILD_CONFIG:-}" ]; then
+  # Meson's python module otherwise derives the extension suffix/SOABI from the
+  # host interpreter even while compiling the module for the cross target.
+  append_meson_arg "-Dpython.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
+fi
+
 if command -v append_meson_cross_flags >/dev/null 2>&1; then
   append_meson_cross_flags MESON_FLAGS
 fi
@@ -529,6 +768,11 @@ case " ${EXTRA_MESON_ARGS} " in
     EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --force-fallback-for=pygobject-3.0"
     ;;
 esac
+
+# GStreamer's top-level tests setting does not automatically propagate into the
+# forced PyGObject fallback, and that subproject's tests expect extra
+# gobject-introspection test exports that are absent on our cross-build path.
+append_meson_arg "-Dpygobject:tests=false"
 # --- end patch ---
 
 # Dump debug info and save to /tmp for collection
@@ -670,6 +914,32 @@ fi
 echo "Updating subprojects..."
 uv run meson subprojects update > /dev/null 2>&1 || true
 
+if [ "${TARGET_MACHINE_ARCH}" = "riscv64" ]; then
+  shopt -s nullglob
+  glib_subprojects=(subprojects/glib-[0-9]*)
+  graphene_subprojects=(subprojects/graphene-[0-9]*)
+  shopt -u nullglob
+
+  if [ "${#glib_subprojects[@]}" -gt 0 ]; then
+    glib_lib_target="glib-2.0"
+    gobject_lib_target="gobject-2.0"
+    gmodule_visibility_target="subprojects/$(basename "${glib_subprojects[0]}")/gmodule/gmodule-visibility.h"
+    gmodule_lib_target="gmodule-2.0"
+    gio_lib_target="gio-2.0"
+
+    echo "Prebuilding ${gmodule_visibility_target} before Graphene GIR generation"
+    uv run meson compile -C builddir --jobs 1 "${gmodule_visibility_target}"
+    echo "Prebuilding ${glib_lib_target}, ${gobject_lib_target}, ${gmodule_lib_target} and ${gio_lib_target} before Graphene GIR generation"
+    uv run meson compile -C builddir --jobs 1 "${glib_lib_target}" "${gobject_lib_target}" "${gmodule_lib_target}" "${gio_lib_target}"
+  fi
+
+  if [ "${#graphene_subprojects[@]}" -gt 0 ]; then
+    graphene_gir_target="subprojects/$(basename "${graphene_subprojects[0]}")/src/Graphene-1.0.gir"
+    echo "Prebuilding ${graphene_gir_target} before full compile to satisfy GTK cross-introspection ordering"
+    uv run meson compile -C builddir --jobs 1 "${graphene_gir_target}"
+  fi
+fi
+
 echo "Compiling GStreamer (this may take a while)..."
 
 # Calculate parallel jobs using shared helper if available, otherwise fallback
@@ -794,6 +1064,49 @@ echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS
 
 cd "${PLUGIN_RS_DIR}"
 
+# Cargo still builds host-side proc-macros and build scripts while compiling the
+# plugin crates for the cross target. If /opt/cross-bin stays first in PATH,
+# host linkers like x86_64-linux-gnu-gcc pick up the target ld shim there and
+# fail with an unsupported elf_x86_64 emulation mode.
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ -d /opt/cross-bin ]; then
+  export PATH="${PATH#/opt/cross-bin:}"
+fi
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  cargo_host_cc="$(resolve_host_gcc_for_cargo)"
+  if [ -n "${cargo_host_cc}" ]; then
+    cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
+    export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="${cargo_host_linker}"
+    export CC_x86_64_unknown_linux_gnu="${cargo_host_linker}"
+  fi
+  cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
+  if [ -n "${cargo_host_cxx}" ]; then
+    cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
+    export CXX_x86_64_unknown_linux_gnu="${cargo_host_cxx_wrapper}"
+  fi
+fi
+
+cargo_metadata_package_names() {
+  local pattern="$1"
+
+  cargo metadata --no-deps --format-version=1 2>/dev/null | "${HOST_PYTHON}" -c '
+import json
+import re
+import sys
+
+pattern = re.compile(sys.argv[1])
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+
+names = [pkg.get("name", "") for pkg in data.get("packages", [])]
+matches = [name for name in names if pattern.search(name)]
+if matches:
+    print(" ".join(matches))
+' "$pattern"
+}
+
 # Always attempt to install Csound development packages when possible.
 # This simplifies behaviour: rather than conditionally building csound
 # plugins or producing an error, we try to install the system packages via
@@ -870,18 +1183,8 @@ ARCH_PROBES="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpkg-arch
 if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
   :
   echo "Host arch detected in (${ARCH_PROBES}): excluding csound-related workspace crates from cargo build"
-  if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+  if CS_PKG_NAMES="$(cargo_metadata_package_names 'csound')"; then
   :
-    CS_PKG_NAMES=$(python3 - <<'PY'
-import sys, json
-try:
-    j = json.load(sys.stdin)
-    names = [p.get('name','') for p in j.get('packages', [])]
-    print(' '.join([n for n in names if 'csound' in n]))
-except Exception:
-    pass
-PY
-)
     if [ -n "${CS_PKG_NAMES}" ]; then
   :
       for n in ${CS_PKG_NAMES}; do
@@ -912,18 +1215,8 @@ fi
 if echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
   :
   echo "skia disabled via Meson args: excluding skia-related workspace crates from cargo build"
-  if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+  if SKIA_PKG_NAMES="$(cargo_metadata_package_names 'skia')"; then
   :
-    SKIA_PKG_NAMES=$(python3 - <<'PY'
-import sys, json
-try:
-    j=json.load(sys.stdin)
-    names=[p.get('name','') for p in j.get('packages',[])]
-    print(' '.join([n for n in names if 'skia' in n]))
-except Exception:
-    pass
-PY
-)
     if [ -n "${SKIA_PKG_NAMES}" ]; then
   :
       for n in ${SKIA_PKG_NAMES}; do
@@ -954,18 +1247,8 @@ if [ "${BUILD_TYPE_LOWER}" = "release" ]; then
   if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
   :
     echo "Release build on ARM/RISC-V detected in (${ARCH_PROBES}): excluding whisper-related workspace crates from cargo build"
-    if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
+    if WHISPER_PKG_NAMES="$(cargo_metadata_package_names 'whisper')"; then
   :
-      WHISPER_PKG_NAMES=$(python3 - <<'PY'
-import sys, json
-try:
-    j = json.load(sys.stdin)
-    names = [p.get('name','') for p in j.get('packages', [])]
-    print(' '.join([n for n in names if 'whisper' in n]))
-except Exception:
-    pass
-PY
-)
       if [ -n "${WHISPER_PKG_NAMES}" ]; then
   :
         for n in ${WHISPER_PKG_NAMES}; do
@@ -983,6 +1266,40 @@ PY
       BUILD_CMD+=(--exclude gst-plugin-whisper)
       echo "cargo metadata unavailable; excluding gst-plugin-whisper by default"
     fi
+  fi
+fi
+
+if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64'; then
+  :
+  echo "RISC-V detected in (${ARCH_PROBES}): excluding cargo plugins that require unavailable gstreamer-validate/dav1d pkg-config deps"
+  if VALIDATE_PKG_NAMES="$(cargo_metadata_package_names 'validate')"; then
+    if [ -n "${VALIDATE_PKG_NAMES}" ]; then
+      for n in ${VALIDATE_PKG_NAMES}; do
+        BUILD_CMD+=(--exclude "${n}")
+      done
+      echo "Excluding validate packages: ${VALIDATE_PKG_NAMES}"
+    else
+      BUILD_CMD+=(--exclude gst-plugin-validate)
+      echo "No validate package names found via cargo metadata; excluding gst-plugin-validate"
+    fi
+  else
+    BUILD_CMD+=(--exclude gst-plugin-validate)
+    echo "cargo metadata unavailable; excluding gst-plugin-validate by default"
+  fi
+
+  if DAV1D_PKG_NAMES="$(cargo_metadata_package_names 'dav1d')"; then
+    if [ -n "${DAV1D_PKG_NAMES}" ]; then
+      for n in ${DAV1D_PKG_NAMES}; do
+        BUILD_CMD+=(--exclude "${n}")
+      done
+      echo "Excluding dav1d packages: ${DAV1D_PKG_NAMES}"
+    else
+      BUILD_CMD+=(--exclude gst-plugin-dav1d)
+      echo "No dav1d package names found via cargo metadata; excluding gst-plugin-dav1d"
+    fi
+  else
+    BUILD_CMD+=(--exclude gst-plugin-dav1d)
+    echo "cargo metadata unavailable; excluding gst-plugin-dav1d by default"
   fi
 fi
 

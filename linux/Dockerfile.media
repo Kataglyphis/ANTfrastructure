@@ -105,13 +105,10 @@ RUN /opt/scripts/python/build_python.sh ${PYTHON_VERSION}
 # Create a shared Python virtual environment for all subsequent stages using uv
 ENV VIRTUAL_ENV=/opt/python/.venv
 RUN set -eux; \
-    if [ "${BUILD_MODE}" = "cross" ]; then \
-        uv venv --seed --python python3 ${VIRTUAL_ENV}; \
-    else \
-        uv venv --seed --python /usr/local/bin/python${PYTHON_MAJOR_MINOR} ${VIRTUAL_ENV}; \
-    fi
+    uv venv --seed --python /usr/local/bin/python${PYTHON_MAJOR_MINOR} ${VIRTUAL_ENV}
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}" \
-    UV_PYTHON=${VIRTUAL_ENV}/bin/python
+    UV_PYTHON=${VIRTUAL_ENV}/bin/python \
+    MEDIA_HOST_PYTHON=${VIRTUAL_ENV}/bin/python
 
 # Install core Python build dependencies using uv
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \

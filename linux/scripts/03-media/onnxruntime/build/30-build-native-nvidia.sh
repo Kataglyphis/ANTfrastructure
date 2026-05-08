@@ -139,6 +139,10 @@ sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgc
 
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 uv pip install numpy wheel setuptools
+HOST_PYTHON="$(host_python_bin)"
+export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+       Python_EXECUTABLE="${HOST_PYTHON}" \
+       Python3_EXECUTABLE="${HOST_PYTHON}"
 
 # --------------------------------------------------------------------------
 # Validate build script
@@ -147,8 +151,8 @@ BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [[ -x "${BUILD_SH}" ]] || err "build.sh not found at ${BUILD_SH}"
 
 info ">>> Native GPU build (CUDA+TensorRT+cuDNN): ${NATIVE_CPU_CONFIG} (${JOBS} parallel jobs)"
-info "Using Python: $(which python3)"
-info "NumPy version: $(python3 -c 'import numpy; print(numpy.__version__)')"
+info "Using Python: ${HOST_PYTHON}"
+info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)')"
 
 # --------------------------------------------------------------------------
 # Prepare output directories

@@ -84,6 +84,19 @@ fi
 if ! command -v cross_build_enabled >/dev/null 2>&1; then
   cross_build_enabled() { return 1; }
 fi
+if ! command -v host_python_bin >/dev/null 2>&1; then
+  host_python_bin() {
+    command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
+  }
+fi
+if ! command -v host_python_major_minor >/dev/null 2>&1; then
+  host_python_major_minor() {
+    local python_bin
+
+    python_bin="$(host_python_bin)" || return 1
+    "${python_bin}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+  }
+fi
 if ! command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
   compute_jobs_with_mem_cap() {
     local requested="${1:-}"

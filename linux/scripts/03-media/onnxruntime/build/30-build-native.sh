@@ -34,7 +34,11 @@ if command -v setup_linux_cross_env >/dev/null 2>&1; then
 fi
 
 # Create Python virtual environment with uv
-: "${ORT_PYTHON_VERSION:=3.14t}"
+: "${ORT_PYTHON_VERSION:=${PYTHON_MAJOR_MINOR:-3.14}}"
+HOST_PYTHON="$(host_python_bin)"
+export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+       Python_EXECUTABLE="${HOST_PYTHON}" \
+       Python3_EXECUTABLE="${HOST_PYTHON}"
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 
 # Install Python build dependencies with uv
@@ -46,8 +50,8 @@ BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [[ -x "${BUILD_SH}" ]] || err "build.sh not found at ${BUILD_SH}"
 
 info ">>> Native CPU build: ${NATIVE_CPU_CONFIG} (${JOBS} parallel jobs)"
-info "Using Python: $(which python3)"
-info "NumPy version: $(python3 -c 'import numpy; print(numpy.__version__)')"
+info "Using Python: ${HOST_PYTHON}"
+info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)')"
 
 # Prepare directories
 mkdir -p "${NATIVE_CPU_OUTPUT_DIR}"/{lib,include,wheels}
@@ -145,7 +149,7 @@ if [ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { 
   if [ -f "${ORT_SRC_DIR}/pyproject.toml" ] || [ -f "${ORT_SRC_DIR}/setup.py" ]; then
     info "Building wheel from ORT python package"
     mkdir -p "${NATIVE_CPU_OUTPUT_DIR}/wheels"
-    python3 -m pip wheel -w "${NATIVE_CPU_OUTPUT_DIR}/wheels" "${ORT_SRC_DIR}" || info "pip wheel failed for ORT source"
+    "${HOST_PYTHON}" -m pip wheel -w "${NATIVE_CPU_OUTPUT_DIR}/wheels" "${ORT_SRC_DIR}" || info "pip wheel failed for ORT source"
     info "Wheels after pip wheel:"; ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
   else
     info "ORT python packaging not detected; skipping pip wheel"

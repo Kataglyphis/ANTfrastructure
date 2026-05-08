@@ -51,10 +51,12 @@ done
 : "${NPROC:=$(nproc)}"
 : "${WITH_CONTRIB:=true}"
 : "${WITH_PYTHON:=true}"
-: "${OPENCV_PYTHON_VERSION:=3.14}"
+: "${OPENCV_PYTHON_VERSION:=${PYTHON_MAJOR_MINOR:-3.14}}"
 : "${WITH_JAVA:=false}"
 : "${SKIP_DEP_INSTALL:=false}"
 : "${WITH_IPP:=ON}"
+
+HOST_PYTHON=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -223,6 +225,10 @@ configure_opencv() {
 
     if [ "${WITH_PYTHON}" = "true" ]; then
         echo "Using existing Python venv (expected at /opt/python/.venv)..."
+        HOST_PYTHON="$(host_python_bin)"
+        export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+               Python_EXECUTABLE="${HOST_PYTHON}" \
+               Python3_EXECUTABLE="${HOST_PYTHON}"
         uv pip install numpy wheel
     fi
 
@@ -330,7 +336,7 @@ configure_opencv() {
     
     # Python bindings
     if [ "${WITH_PYTHON}" = "true" ]; then
-        PY_EXEC="$(which python3)"
+        PY_EXEC="${HOST_PYTHON:-$(host_python_bin)}"
         cmake_opts+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
         # Explicitly set library and include paths since FindPython3 might not find free-threaded (t) libraries
         if [ -f "/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so" ]; then
@@ -461,14 +467,14 @@ build_opencv_python_wheel() {
     export CMAKE_ARGS="${py_cmake_args[*]}"
     echo "CMAKE_ARGS for python wheel: ${CMAKE_ARGS}"
     
-    PYEXEC="$(which python3)"
+    PYEXEC="${HOST_PYTHON:-$(host_python_bin)}"
     # Ensure build dependencies are installed
-    ${PYEXEC} -m pip install wheel scikit-build cmake ninja numpy packaging || uv pip install wheel scikit-build cmake ninja numpy packaging
+    "${PYEXEC}" -m pip install wheel scikit-build cmake ninja numpy packaging || uv pip install wheel scikit-build cmake ninja numpy packaging
     
     mkdir -p "${OPENCV_PREFIX}/wheels"
     
     echo "Building wheel via scikit-build... (this will take a while as it compiles OpenCV again)"
-    ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" --verbose || echo "Failed to build opencv-python wheel"
+    "${PYEXEC}" -m pip wheel . -w "${OPENCV_PREFIX}/wheels" --verbose || echo "Failed to build opencv-python wheel"
     
     popd >/dev/null
 }
@@ -554,7 +560,7 @@ main() {
     if [ "${WITH_PYTHON}" = "true" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
         echo ""
         echo "Python bindings:"
-        python3 -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null || echo "Could not import cv2"
+        "${HOST_PYTHON:-$(host_python_bin)}" -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null || echo "Could not import cv2"
     elif [ "${WITH_PYTHON}" = "true" ]; then
         echo "Skipping Python import validation in cross mode"
     fi

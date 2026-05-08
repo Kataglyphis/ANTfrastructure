@@ -8,12 +8,11 @@ fi
 
 PYTHON_VERSION=${1:-3.14.4}
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-  echo "Skipping source-built host Python in cross mode; using target Python from the base rootfs"
-  exit 0
-fi
-
 echo "Building Python ${PYTHON_VERSION} from source..."
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  echo "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
+fi
 
 wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "/tmp/Python-${PYTHON_VERSION}.tgz"
 tar -xf "/tmp/Python-${PYTHON_VERSION}.tgz" -C /tmp

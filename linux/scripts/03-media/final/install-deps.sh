@@ -10,8 +10,11 @@ echo "Installing final stage dependencies..."
 
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' 'libunwind-*-dev' || true
+# The final image only needs GTK runtime bits. Installing the foreign-arch
+# GTK dev package pulls the GLib/GIR dev chain, which in turn tries to install
+# target-side Python during cross builds and breaks on python3-minimal postinst.
 DEBIAN_FRONTEND=noninteractive install_target_packages \
-    libunwind-dev libdw-dev libgtk-4-dev libv4l-0 libjson-glib-1.0-0 dbus-x11 \
+    libunwind-dev libdw-dev libgtk-4-1 libv4l-0 libjson-glib-1.0-0 dbus-x11 \
     libopenexr-dev libx264-dev libcdio-dev libspeex-dev libopenh264-dev libsrtp2-dev \
     libtwolame-dev libgsm1-dev libdav1d-dev libwavpack-dev libx265-dev libdc1394-dev \
     libvpx-dev libavcodec-dev libcsound64-dev libtbb12 libavfilter9 libavfilter-dev libavformat-dev || true

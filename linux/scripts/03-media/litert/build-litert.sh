@@ -41,6 +41,15 @@ LITERT_VERSION="${1:-v2.1.4}"
 : "${NPROC:=$(nproc)}"
 : "${SKIP_DEP_INSTALL:=false}"
 
+HOST_PYTHON="$(host_python_bin)"
+HOST_PYTHON_MM="$(host_python_major_minor 2>/dev/null || true)"
+if [ -n "${HOST_PYTHON_MM}" ] && [ -z "${PYTHON_MAJOR_MINOR:-}" ]; then
+    export PYTHON_MAJOR_MINOR="${HOST_PYTHON_MM}"
+fi
+export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+       Python_EXECUTABLE="${HOST_PYTHON}" \
+       Python3_EXECUTABLE="${HOST_PYTHON}"
+
 echo "[INFO] Building LiteRT ${LITERT_VERSION}"
 echo "[INFO] Using JOBS=${NPROC}"
 echo "[INFO] Install prefix: ${LITERT_PREFIX}"
@@ -215,7 +224,7 @@ configure_litert() {
         "-DLITERT_ENABLE_NPU=OFF"
         "-DTFLITE_ENABLE_XNNPACK=ON"
         "-DTFLITE_ENABLE_RUY=ON"
-        "-DPython3_EXECUTABLE=$(which python3)"
+        "-DPython3_EXECUTABLE=${HOST_PYTHON}"
     )
 
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
@@ -451,7 +460,7 @@ install_litert() {
         
         # The Litert script build_pip_package_with_cmake.sh builds the wheel.
         # It requires PYTHON environment variable
-        export PYTHON="$(which python3)"
+        export PYTHON="${HOST_PYTHON}"
         if [ -n "${PYTHON}" ]; then
             echo "[INFO] Building wheel via build_pip_package_with_cmake.sh..."
             # build_pip_package_with_cmake.sh uses these env vars to locate tensorflow/lite
@@ -474,7 +483,7 @@ install_litert() {
             local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON} -DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
             local wheel_platform_name=""
             local tflite_host_tools_dir=""
-            local python_major_minor=""
+            local python_major_minor="${PYTHON_MAJOR_MINOR:-}"
             local target_python_include=""
             local target_python_arch_include=""
 

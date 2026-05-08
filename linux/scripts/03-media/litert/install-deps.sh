@@ -14,18 +14,12 @@ target_packages=(
     libatlas-base-dev
 )
 
-# Cross-wheel builds need target Python headers, but installing the full
-# target python3-dev package pulls in a target interpreter whose postinst tries
-# to execute inside the amd64 build container.
+# Cross-wheel builds need target Python headers, but the generic libpython3-dev
+# package tracks the distro-default target libpython headers without binding the
+# install logic to whichever host python happens to be first on PATH.
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-    python_major_minor="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
-    if [ -n "${python_major_minor}" ]; then
-        target_packages=("libpython${python_major_minor}-dev" "${target_packages[@]}")
-        echo "[INFO] Using target Python headers from libpython${python_major_minor}-dev"
-    else
-        target_packages=(libpython3-dev "${target_packages[@]}")
-        echo "[WARN] Could not detect python3 major.minor; falling back to libpython3-dev"
-    fi
+    target_packages=(libpython3-dev "${target_packages[@]}")
+    echo "[INFO] Using target Python headers from libpython3-dev"
 fi
 
 apt-get update

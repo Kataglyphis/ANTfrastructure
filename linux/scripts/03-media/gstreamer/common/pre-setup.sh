@@ -127,8 +127,13 @@ if [ "${is_riscv64_cross}" = "true" ]; then
   gi_version="$(dpkg-query -W -f='${Version}' gobject-introspection 2>/dev/null || true)"
   gi_version="${gi_version%%-*}"
   gi_bindir="/usr/bin"
-  gi_scanner="$(command -v g-ir-scanner 2>/dev/null || true)"
+  # Prefer the distro-provided scanner path even on reruns so we don't recurse
+  # back into the wrapper we install under /usr/local/bin for Meson's lookup.
+  gi_scanner="$(PATH=/usr/bin:/bin command -v g-ir-scanner 2>/dev/null || command -v g-ir-scanner 2>/dev/null || true)"
+  gi_host_ldd="$(PATH=/usr/bin:/bin command -v ldd 2>/dev/null || true)"
   gi_scanner_wrapper="/usr/local/bin/g-ir-scanner-riscv64-cross"
+  gi_scanner_default="/usr/local/bin/g-ir-scanner"
+  gi_ldd_default="/usr/local/bin/ldd"
   gi_ldd_wrapper="/usr/local/bin/g-ir-scanner-ldd-riscv64-cross"
   gi_binary_wrapper="/usr/local/bin/g-ir-scanner-riscv64-binary-wrapper"
   if [ -n "${gi_scanner}" ]; then
@@ -140,6 +145,9 @@ if [ "${is_riscv64_cross}" = "true" ]; then
   fi
   if [ -z "${gi_version}" ]; then
     gi_version="1.80.1"
+  fi
+  if [ -z "${gi_host_ldd}" ]; then
+    gi_host_ldd="/usr/bin/ldd"
   fi
 
   qemu_riscv64="$(command -v qemu-riscv64 2>/dev/null || command -v qemu-riscv64-static 2>/dev/null || true)"
@@ -187,6 +195,36 @@ binary="\$1"
 EOF
   chmod +x "${gi_ldd_wrapper}"
 
+  cat > "${gi_ldd_default}" <<EOF
+#!/usr/bin/env bash
+set -eu
+
+host_ldd="${gi_host_ldd}"
+binary=""
+
+for arg in "\$@"; do
+  case "\${arg}" in
+    -*)
+      ;;
+    *)
+      binary="\${arg}"
+      ;;
+  esac
+done
+
+if [ -n "\${binary}" ] && [ -f "\${binary}" ]; then
+  arch="\$(PATH=/usr/bin:/bin objdump -f "\${binary}" 2>/dev/null | awk -F'architecture: ' '/architecture:/ { print \$2; exit }')"
+  case "\${arch}" in
+    riscv:*|riscv64*|*riscv*)
+      exec "${gi_ldd_wrapper}" "\$@"
+      ;;
+  esac
+fi
+
+exec "\${host_ldd}" "\$@"
+EOF
+  chmod +x "${gi_ldd_default}"
+
   cat > "${gi_binary_wrapper}" <<EOF
 #!/usr/bin/env bash
 set -eu
@@ -196,7 +234,7 @@ set -eu
 binary="\$1"
 shift
 
-target_ld_library_path="\${GI_TARGET_LD_LIBRARY_PATH:-}"
+target_ld_library_path=""
 
 append_target_libdir() {
   local dir="\$1"
@@ -215,6 +253,29 @@ append_target_libdir() {
       ;;
   esac
 }
+
+merge_target_libdirs() {
+  local value="\$1" dir old_ifs
+  [ -n "\${value}" ] || return 0
+
+  old_ifs="\${IFS}"
+  IFS=':'
+  for dir in \${value}; do
+    append_target_libdir "\${dir}"
+  done
+  IFS="\${old_ifs}"
+}
+
+# g-ir-scanner injects build-tree library directories into LD_LIBRARY_PATH when
+# it links the temporary dump binary. Preserve those target paths first so qemu
+# can resolve the freshly built uninstalled libraries during GIR generation.
+merge_target_libdirs "\${LD_LIBRARY_PATH:-}"
+# Allow callers to add extra target-only runtime directories without replacing
+# the scanner-provided build-tree paths.
+merge_target_libdirs "\${GI_TARGET_LD_LIBRARY_PATH:-}"
+# Some cross builds only surface certain target runtime directories via
+# LIBRARY_PATH, so fold them in as a fallback for the qemu-launched binary.
+merge_target_libdirs "\${LIBRARY_PATH:-}"
 
 append_target_libdir "\$(dirname "\${binary}")"
 if [ -n "${target_triplet}" ]; then
@@ -264,6 +325,13 @@ exec "${gi_scanner:-/bin/g-ir-scanner}" \
   "\$@"
 EOF
   chmod +x "${gi_scanner_wrapper}"
+
+  cat > "${gi_scanner_default}" <<EOF
+#!/usr/bin/env bash
+set -eu
+exec "${gi_scanner_wrapper}" "\$@"
+EOF
+  chmod +x "${gi_scanner_default}"
 
   mkdir -p /usr/local/lib/pkgconfig
   printf '%s\n' \

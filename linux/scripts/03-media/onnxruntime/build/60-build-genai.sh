@@ -7,6 +7,11 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
+HOST_PYTHON="$(host_python_bin)"
+export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+       Python_EXECUTABLE="${HOST_PYTHON}" \
+       Python3_EXECUTABLE="${HOST_PYTHON}"
+
 # Early exit check - ensure output dir exists even when skipping so Docker
 # COPY --from=onnxruntime won't fail when the GenAI build is intentionally
 # skipped (e.g. BUILD_GENAI=false).
@@ -81,8 +86,8 @@ info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 info "Installing Python build dependencies (pip, numpy, wheel, setuptools, requests)"
 uv pip install pip numpy wheel setuptools requests
 
-info "Using Python: $(which python3)"
-info "NumPy version: $(python3 -c 'import numpy; print(numpy.__version__)')"
+info "Using Python: ${HOST_PYTHON}"
+info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)')"
 
 # Prepare output directories
 mkdir -p "${GENAI_OUTPUT_DIR}"/{lib,include,wheels}
@@ -106,7 +111,7 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     fi
   fi
 
-  python3 build.py \
+  "${HOST_PYTHON}" build.py \
     --config "${GENAI_CONFIG}" \
     --ort_home "${ORT_HOME}" \
     --parallel \
@@ -120,7 +125,7 @@ else
   ORT_HOME="${NATIVE_CPU_OUTPUT_DIR}"
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
 
-  python3 build.py \
+  "${HOST_PYTHON}" build.py \
     --config "${GENAI_CONFIG}" \
     --ort_home "${ORT_HOME}" \
     --parallel \
@@ -142,7 +147,7 @@ if [ -z "$(ls -A "${GENAI_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
   info "No GenAI wheels found; attempting pip wheel build from source"
   if [ -f "${GENAI_SRC_DIR}/pyproject.toml" ] || [ -f "${GENAI_SRC_DIR}/setup.py" ]; then
     mkdir -p "${GENAI_OUTPUT_DIR}/wheels"
-    python3 -m pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
+    "${HOST_PYTHON}" -m pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
     info "Wheels after pip wheel:"; ls -lh "${GENAI_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
   else
     info "GenAI python packaging not detected; skipping pip wheel"

@@ -53,6 +53,47 @@ cross_target_upper_rust() {
   cross_target_rust_triple | tr '[:lower:]-' '[:upper:]_'
 }
 
+host_python_bin() {
+  if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
+    printf '%s' "${MEDIA_HOST_PYTHON}"
+    return 0
+  fi
+
+  if [ -n "${UV_PYTHON:-}" ] && [ -x "${UV_PYTHON}" ]; then
+    printf '%s' "${UV_PYTHON}"
+    return 0
+  fi
+
+  if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
+    printf '%s' "${VIRTUAL_ENV}/bin/python"
+    return 0
+  fi
+
+  if [ -n "${PYTHON_MAJOR_MINOR:-}" ] && [ -x "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" ]; then
+    printf '%s' "/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
+    return 0
+  fi
+
+  if [ -x /usr/local/bin/python3.14 ]; then
+    printf '%s' "/usr/local/bin/python3.14"
+    return 0
+  fi
+
+  command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
+}
+
+host_python_major_minor() {
+  local python_bin
+
+  if [ -n "${PYTHON_MAJOR_MINOR:-}" ]; then
+    printf '%s' "${PYTHON_MAJOR_MINOR}"
+    return 0
+  fi
+
+  python_bin="$(host_python_bin)" || return 1
+  "${python_bin}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+}
+
 cross_target_uses_ubuntu_ports() {
   case "$(cross_target_arch)" in
     arm64|armhf|ppc64el|riscv64|s390x) return 0 ;;
@@ -170,6 +211,38 @@ install_target_packages() {
   apt-get install -y --no-install-recommends "${pkgs[@]}"
 }
 
+cross_pkg_config_libdir() {
+  local triplet="${1:-$(cross_target_triplet)}"
+  local dir path=""
+  local old_ifs
+  local -a candidates extra_dirs
+
+  candidates=(
+    "/usr/${triplet}/lib/pkgconfig"
+    "/usr/lib/${triplet}/pkgconfig"
+    "/usr/lib/pkgconfig"
+    "/usr/local/lib/pkgconfig"
+    "/usr/share/pkgconfig"
+  )
+
+  if [ -n "${PKG_CONFIG_PATH:-}" ]; then
+    old_ifs="${IFS}"
+    IFS=':' read -r -a extra_dirs <<< "${PKG_CONFIG_PATH}"
+    IFS="${old_ifs}"
+    candidates+=("${extra_dirs[@]}")
+  fi
+
+  for dir in "${candidates[@]}"; do
+    [ -n "${dir}" ] || continue
+    case ":${path}:" in
+      *":${dir}:"*) continue ;;
+    esac
+    path="${path:+${path}:}${dir}"
+  done
+
+  printf '%s' "${path}"
+}
+
 setup_linux_cross_env() {
   local triplet target_arch processor rust_target rust_env build_arch
   local gcc_prefix gcc_major runtime_libdir
@@ -222,7 +295,10 @@ setup_linux_cross_env() {
 
   export PKG_CONFIG_ALLOW_CROSS=1
   export PKG_CONFIG_SYSROOT_DIR="${PKG_CONFIG_SYSROOT_DIR:-/}"
-  export PKG_CONFIG_LIBDIR="/usr/${triplet}/lib/pkgconfig:/usr/lib/${triplet}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig${PKG_CONFIG_LIBDIR:+:${PKG_CONFIG_LIBDIR}}"
+  # Keep cross pkg-config lookups on target/system and explicit prefix paths.
+  # Re-appending an inherited PKG_CONFIG_LIBDIR can leak build-machine pkg-config
+  # directories back into cross builds.
+  export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${triplet}")"
   if [ -d "${runtime_libdir}" ]; then
     export LIBRARY_PATH="${runtime_libdir}:${gcc_prefix}/${triplet}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
     export LD_LIBRARY_PATH="${runtime_libdir}:${gcc_prefix}/${triplet}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
@@ -276,13 +352,29 @@ append_cmake_cross_args() {
 
 ensure_meson_cross_file() {
   local path="${1:-/tmp/meson-cross-$(cross_target_arch).ini}"
-  local triplet pkg_config_libdir
+  local triplet pkg_config_libdir exe_wrapper exe_wrapper_line wrapper_candidate
 
   cross_build_enabled || return 0
   setup_linux_cross_env
 
   triplet="$(cross_target_triplet)"
-  pkg_config_libdir="/usr/${triplet}/lib/pkgconfig:/usr/lib/${triplet}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+  pkg_config_libdir="$(cross_pkg_config_libdir "${triplet}")"
+  exe_wrapper=""
+  # Some cross builds need to run target-side helpers during Meson setup. Reuse
+  # an explicitly provided wrapper first, then fall back to the target runner
+  # pre-setup installs for cross GObject Introspection.
+  if [ -n "${MESON_EXE_WRAPPER:-}" ] && [ -x "${MESON_EXE_WRAPPER}" ]; then
+    exe_wrapper="${MESON_EXE_WRAPPER}"
+  else
+    wrapper_candidate="/usr/local/bin/g-ir-scanner-$(cross_target_arch)-binary-wrapper"
+    if [ -x "${wrapper_candidate}" ]; then
+      exe_wrapper="${wrapper_candidate}"
+    fi
+  fi
+  exe_wrapper_line=""
+  if [ -n "${exe_wrapper}" ]; then
+    exe_wrapper_line="exe_wrapper = '${exe_wrapper}'"
+  fi
 
   cat > "${path}" <<EOF
 [binaries]
@@ -292,6 +384,7 @@ ar = '${AR}'
 strip = '${STRIP}'
 pkg-config = 'pkg-config'
 cmake = 'cmake'
+${exe_wrapper_line}
 
 [properties]
 needs_exe_wrapper = true

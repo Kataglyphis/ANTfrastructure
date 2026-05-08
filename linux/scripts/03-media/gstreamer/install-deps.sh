@@ -22,6 +22,15 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
   prefer_toolchain_vulkan=true
 fi
 
+target_python_dev_package=""
+# Cross PyGObject fallback builds need target Python headers, but the generic
+# libpython3-dev package avoids hard-coding the host interpreter version while
+# still resolving to the distro-default target libpython headers.
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  target_python_dev_package="libpython3-dev"
+  echo "Using target Python headers from ${target_python_dev_package}"
+fi
+
 # Pre-setup dependencies
 install_host_packages build-essential cmake git pkg-config g++ flex bison
 
@@ -70,6 +79,10 @@ gst_target_packages=(
   libffi-dev
   libpcre2-dev
 )
+
+if [ -n "${target_python_dev_package}" ]; then
+  gst_target_packages=("${target_python_dev_package}" "${gst_target_packages[@]}")
+fi
 
 if [ "${is_riscv64_cross}" = "true" ]; then
   echo "Skipping target GLib/GTK/introspection/cairo packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their helper dependency chain."
@@ -147,7 +160,9 @@ install_target_packages libopenexr-dev || true
 apt-get install -y --no-install-recommends libvvdec-dev || true
 
 # Codecs (audio)
-apt-get install -y --no-install-recommends \
+# These are linked into target-side plugins such as gst-plugins-good/ext/lame,
+# so cross builds need the target multiarch dev packages rather than host ones.
+install_target_packages \
   libogg-dev libvorbis-dev libtheora-dev libopus-dev libflac-dev \
   libmpg123-dev libmp3lame-dev libtwolame-dev libspeex-dev libspeexdsp-dev \
   libwavpack-dev libgsm1-dev

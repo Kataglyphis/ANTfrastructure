@@ -30,6 +30,37 @@ on_error() {
 }
 trap 'on_error $?' ERR
 
+append_env_flag() {
+  local var_name="$1"
+  local flag="$2"
+  local current="${!var_name:-}"
+
+  case " ${current} " in
+    *" ${flag} "*) return 0 ;;
+  esac
+
+  export "${var_name}=${current:+${current} }${flag}"
+}
+
+patch_libcamera_riscv64_cross_sources() {
+  local common_meson="${LIBCAMERA_SRC}/src/apps/common/meson.build"
+
+  [ -f "${common_meson}" ] || return 0
+
+  if grep -Fq "dependencies : [libcamera_public, libtiff])" "${common_meson}"; then
+    return 0
+  fi
+
+  # Upstream builds dng_writer.cpp into apps_lib when libtiff is found, but the
+  # static library itself only depends on libcamera_public. Native builds still
+  # see /usr/include, while riscv64 cross builds need libtiff's pkg-config
+  # include flags on apps_lib too.
+  if grep -Fq "dependencies : [libcamera_public])" "${common_meson}"; then
+    sed -i "s/dependencies : \[libcamera_public\])/dependencies : [libcamera_public, libtiff])/" "${common_meson}"
+    echo "Patched libcamera apps_lib to propagate libtiff includes for riscv64 cross builds"
+  fi
+}
+
 # Defaults (can be overridden via env vars)
 : "${LIBCAMERA_SRC:=/tmp/libcamera}"
 : "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
@@ -86,6 +117,10 @@ if command -v setup_linux_cross_env >/dev/null 2>&1; then
 fi
 
 echo "Using existing Astral uv venv (expected at /opt/python/.venv)"
+HOST_PYTHON="$(host_python_bin)"
+export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+       Python_EXECUTABLE="${HOST_PYTHON}" \
+       Python3_EXECUTABLE="${HOST_PYTHON}"
 
 # Install build tools into the uv venv; retry with --break-system-packages on PEP-668 failures
 if ! uv pip install --upgrade pip setuptools wheel 2>/tmp/uv-pip-install.log; then
@@ -127,6 +162,29 @@ MESON_SETUP_ARGS=(
   -Dpycamera=enabled
   -Ddocumentation=disabled
 )
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+  # Generic target headers like elfutils/tiff live in /usr/include, while some
+  # arch-specific target headers such as opensslconf.h live in the multiarch
+  # include dir. This container's riscv64 cross compiler doesn't pick those up
+  # reliably on its own. GCC 16 also reports a false positive array-bounds
+  # warning in libcamera's logger path; don't treat that warning as fatal.
+  MESON_SETUP_ARGS+=(-Dwerror=false)
+  cross_triplet="$(cross_target_triplet)"
+  if [ -d /usr/include ]; then
+    append_env_flag CPPFLAGS "-idirafter /usr/include"
+    append_env_flag CFLAGS "-idirafter /usr/include"
+    append_env_flag CXXFLAGS "-idirafter /usr/include"
+  fi
+  if [ -n "${cross_triplet}" ] && [ -d "/usr/include/${cross_triplet}" ]; then
+    append_env_flag CPPFLAGS "-idirafter /usr/include/${cross_triplet}"
+    append_env_flag CFLAGS "-idirafter /usr/include/${cross_triplet}"
+    append_env_flag CXXFLAGS "-idirafter /usr/include/${cross_triplet}"
+  fi
+  patch_libcamera_riscv64_cross_sources
+fi
+
 if command -v append_meson_cross_flags >/dev/null 2>&1; then
   append_meson_cross_flags MESON_SETUP_ARGS
 fi
@@ -190,7 +248,7 @@ setup(
 )
 EOF
   pushd "${WHEEL_DIR}" >/dev/null
-  python3 -m pip wheel . -w "${LIBCAMERA_PREFIX}/wheels" || echo "Failed to build wheel"
+  "${HOST_PYTHON}" -m pip wheel . -w "${LIBCAMERA_PREFIX}/wheels" || echo "Failed to build wheel"
   popd >/dev/null
   rm -rf "${WHEEL_DIR}"
 else
