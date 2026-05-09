@@ -26,7 +26,7 @@ on_error() {
     echo "Running: ninja -C \"${LIBCAMERA_BUILD_DIR}\" -v (to show the failing command)"
     ninja -C "${LIBCAMERA_BUILD_DIR}" -v || true
   fi
-  exit ${rc}
+  exit "${rc}"
 }
 trap 'on_error $?' ERR
 
@@ -77,9 +77,11 @@ echo "build-libcamera: src=${LIBCAMERA_SRC} builddir=${LIBCAMERA_BUILD_DIR} pref
 
 # Prefer the installed helper if available, otherwise source relative to this script
 if [ -f /usr/local/bin/gstreamer-env.sh ]; then
+  # shellcheck disable=SC1091
   source /usr/local/bin/gstreamer-env.sh
 else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/../../04-runtime/gstreamer-env.sh"
 fi
 
@@ -162,6 +164,19 @@ MESON_SETUP_ARGS=(
   -Dpycamera=enabled
   -Ddocumentation=disabled
 )
+
+if command -v c++ >/dev/null 2>&1; then
+  compiler_details="$(c++ -v 2>&1 || true)"
+  compiler_major="$(c++ -dumpfullversion -dumpversion 2>/dev/null | cut -d. -f1 || true)"
+  if [ -n "${compiler_major}" ] && [ "${compiler_major}" -ge 16 ] 2>/dev/null; then
+    case "${compiler_details}" in
+      *"gcc version "*)
+        # GCC 16 misdiagnoses libcamera's shared std::mutex teardown as array-bounds.
+        append_env_flag CXXFLAGS "-Wno-error=array-bounds"
+        ;;
+    esac
+  fi
+fi
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
    command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then

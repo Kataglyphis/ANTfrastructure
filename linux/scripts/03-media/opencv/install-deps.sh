@@ -69,7 +69,16 @@ else
 fi
 
 if [ "${WITH_PYTHON}" = "true" ]; then
-    echo "[INFO] Python dependencies are satisfied via source build and uv."
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
+            echo "[INFO] Using staged target Python headers from $(cross_target_python_include_dir)"
+        else
+            echo "[ERROR] Target Python ${OPENCV_PYTHON_VERSION} development files are missing for $(cross_target_triplet 2>/dev/null || echo target)" >&2
+            exit 1
+        fi
+    else
+        echo "[INFO] Python dependencies are satisfied via source build and uv."
+    fi
 fi
 
 if [ "${WITH_JAVA}" = "true" ]; then

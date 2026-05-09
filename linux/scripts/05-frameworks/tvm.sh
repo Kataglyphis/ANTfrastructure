@@ -19,6 +19,16 @@ source_module core.sh
 source_module llvm.sh
 source_module gcc.sh
 
+for helper in \
+  "/opt/scripts/core/cross-env.sh" \
+  "${SCRIPT_DIR}/../01-core/cross-env.sh"; do
+  if [ -f "${helper}" ]; then
+    # shellcheck disable=SC1090
+    source "${helper}"
+    break
+  fi
+done
+
 usage() {
   cat <<'EOF'
 Build Apache TVM from source on Ubuntu 24.04.
@@ -97,7 +107,7 @@ install_deps() {
   # TVM build/runtime dependencies
   apt_install \
     pkg-config cmake ninja-build \
-    python3 python3-venv python3-dev python3-pip \
+    python3 python3-venv python3-pip \
     libopenblas-dev
 }
 
@@ -336,7 +346,7 @@ try_source_vulkan_env() {
   local prefix="${VULKAN_PREFIX:-/opt/vulkan}"
 
   if [ -n "${VULKAN_VERSION:-}" ] && [ -r "${prefix}/${VULKAN_VERSION}/setup-env.sh" ]; then
-    # shellcheck disable=SC1090
+    # shellcheck disable=SC1090,SC1091
     source "${prefix}/${VULKAN_VERSION}/setup-env.sh"
     sanitize_vulkan_sdk_env_for_build
     return 0
@@ -345,7 +355,7 @@ try_source_vulkan_env() {
   local d
   for d in "${prefix}"/*; do
     [ -r "${d}/setup-env.sh" ] || continue
-    # shellcheck disable=SC1090
+    # shellcheck disable=SC1090,SC1091
     source "${d}/setup-env.sh"
     sanitize_vulkan_sdk_env_for_build
     return 0
@@ -514,9 +524,12 @@ main() {
 
   if [ "$do_python" -eq 1 ]; then
     log "Setting up Python venv + editable TVM install"
-    uv venv --seed "$tvm_dir/.venv"
+    HOST_PYTHON="$(host_python_bin 2>/dev/null || command -v python3 || command -v python)"
+    uv venv --seed "$tvm_dir/.venv" --python="$HOST_PYTHON"
     # shellcheck disable=SC1091
     source "$tvm_dir/.venv/bin/activate"
+    export UV_PYTHON="${VIRTUAL_ENV}/bin/python" \
+           MEDIA_HOST_PYTHON="${VIRTUAL_ENV}/bin/python"
 
     uv pip install -U pip setuptools wheel
     uv pip install -U numpy cloudpickle decorator psutil scipy attrs
@@ -538,7 +551,7 @@ main() {
     mkdir -p "$TVM_WHEEL_DIR"
     if [ -f "$tvm_dir/pyproject.toml" ] || [ -f "$tvm_dir/python/setup.py" ]; then
       log "Building TVM wheel into $TVM_WHEEL_DIR"
-      python3 -m pip wheel -w "$TVM_WHEEL_DIR" "$tvm_dir/python" || log "Warning: TVM wheel build failed"
+      python -m pip wheel -w "$TVM_WHEEL_DIR" "$tvm_dir/python" || log "Warning: TVM wheel build failed"
     else
       log "TVM python package not detected for wheel build; skipped"
     fi

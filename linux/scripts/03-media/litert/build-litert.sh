@@ -196,10 +196,13 @@ configure_litert() {
 
     cd "${LITERT_SRC}/litert"
 
-    local host_cc="$(resolve_host_compiler c)"
-    local host_cxx="$(resolve_host_compiler cxx)"
+    local host_cc=""
+    local host_cxx=""
     local cross_ar=""
     local cross_ranlib=""
+
+    host_cc="$(resolve_host_compiler c)"
+    host_cxx="$(resolve_host_compiler cxx)"
 
     local preset="default"
     if [ "${BUILD_TYPE}" = "Debug" ]; then
@@ -473,6 +476,7 @@ install_litert() {
             ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
             
             # fix build_pip_package_with_cmake.sh path resolution and version
+            # shellcheck disable=SC2016
             sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
             sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
             
@@ -492,7 +496,7 @@ install_litert() {
                 local cross_ar
                 local cross_ranlib
 
-                python_major_minor="$("${PYTHON}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
+                python_major_minor="${python_major_minor:-$(host_python_major_minor 2>/dev/null || true)}"
 
                 if command -v append_cmake_cross_args >/dev/null 2>&1; then
                     append_cmake_cross_args wheel_cross_args
@@ -509,9 +513,9 @@ install_litert() {
                     echo "[ERROR] Could not resolve wheel platform tag for target architecture $(cross_target_arch)"
                     exit 1
                 fi
-                if [ -n "${python_major_minor}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
-                    target_python_include="/usr/include/python${python_major_minor}"
-                    target_python_arch_include="/usr/include/$(cross_target_triplet)/python${python_major_minor}"
+                if [ -n "${python_major_minor}" ] && command -v cross_target_python_include_dir >/dev/null 2>&1; then
+                    target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
+                    target_python_arch_include="$(cross_target_python_arch_include_dir 2>/dev/null || true)"
                     if [ ! -d "${target_python_include}" ] || [ ! -d "${target_python_arch_include}" ]; then
                         target_python_include=""
                         target_python_arch_include=""
@@ -553,7 +557,9 @@ install_litert() {
                 # /usr/include by default with the current sysroot/toolchain
                 # setup, so make that root visible to the wheel helper's
                 # BUILD_FLAGS path.
+                # shellcheck disable=SC2016
                 sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"-march=native ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh
+                # shellcheck disable=SC2016
                 sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh
             fi
             
@@ -606,7 +612,7 @@ install_manual() {
     for lib in "${lib_dir}"/libLiteRt.so*; do
         [ -f "${lib}" ] || continue
         libname=$(basename "${lib}")
-        tfname=$(echo "${libname}" | sed 's/libLiteRt/libtensorflow-lite/')
+        tfname="${libname/libLiteRt/libtensorflow-lite}"
         ln -sf "${libname}" "${lib_dir}/${tfname}"
         echo "[INFO] Created symlink: ${tfname} -> ${libname}"
     done

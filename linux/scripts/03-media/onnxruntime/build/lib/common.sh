@@ -86,12 +86,42 @@ if ! command -v cross_build_enabled >/dev/null 2>&1; then
 fi
 if ! command -v host_python_bin >/dev/null 2>&1; then
   host_python_bin() {
+    if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
+      printf '%s' "${MEDIA_HOST_PYTHON}"
+      return 0
+    fi
+
+    if [ -n "${UV_PYTHON:-}" ] && [ -x "${UV_PYTHON}" ]; then
+      printf '%s' "${UV_PYTHON}"
+      return 0
+    fi
+
+    if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
+      printf '%s' "${VIRTUAL_ENV}/bin/python"
+      return 0
+    fi
+
+    if [ -n "${PYTHON_MAJOR_MINOR:-}" ] && [ -x "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" ]; then
+      printf '%s' "/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
+      return 0
+    fi
+
+    if [ -x /usr/local/bin/python3.14 ]; then
+      printf '%s' "/usr/local/bin/python3.14"
+      return 0
+    fi
+
     command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
   }
 fi
 if ! command -v host_python_major_minor >/dev/null 2>&1; then
   host_python_major_minor() {
     local python_bin
+
+    if [ -n "${PYTHON_MAJOR_MINOR:-}" ]; then
+      printf '%s' "${PYTHON_MAJOR_MINOR}"
+      return 0
+    fi
 
     python_bin="$(host_python_bin)" || return 1
     "${python_bin}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
@@ -144,7 +174,7 @@ EOF
 }
 
 init_defaults() {
-  ORT_VERSION="${ORT_VERSION:-v1.25.1}"
+  ORT_VERSION="${ORT_VERSION:-v1.26.0}"
   ORT_REPO="${ORT_REPO:-https://github.com/microsoft/onnxruntime.git}"
   ORT_SRC_DIR="${ORT_SRC_DIR:-/opt/onnxruntime}"
 

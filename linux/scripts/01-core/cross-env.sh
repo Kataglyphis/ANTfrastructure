@@ -4,7 +4,7 @@
 _CROSS_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CROSS_ENV_APT_UPDATED="${_CROSS_ENV_APT_UPDATED:-0}"
 
-# shellcheck disable=SC1090
+# shellcheck disable=SC1090,SC1091
 [ -f "${_CROSS_ENV_DIR}/platform.sh" ] && source "${_CROSS_ENV_DIR}/platform.sh"
 
 cross_build_enabled() {
@@ -92,6 +92,120 @@ host_python_major_minor() {
 
   python_bin="$(host_python_bin)" || return 1
   "${python_bin}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+}
+
+cross_target_python_major_minor() {
+  if [ -n "${TARGET_PYTHON_MAJOR_MINOR:-}" ]; then
+    printf '%s' "${TARGET_PYTHON_MAJOR_MINOR}"
+    return 0
+  fi
+
+  if [ -n "${PYTHON_MAJOR_MINOR:-}" ]; then
+    printf '%s' "${PYTHON_MAJOR_MINOR}"
+    return 0
+  fi
+
+  host_python_major_minor
+}
+
+cross_target_python_include_dir() {
+  local python_mm
+
+  python_mm="$(cross_target_python_major_minor)" || return 1
+  printf '%s' "/usr/include/python${python_mm}"
+}
+
+cross_target_python_arch_include_dir() {
+  local python_mm
+  local triplet
+
+  python_mm="$(cross_target_python_major_minor)" || return 1
+  if cross_build_enabled; then
+    triplet="$(cross_target_triplet)"
+    printf '%s' "/usr/include/${triplet}/python${python_mm}"
+  else
+    printf '%s' "/usr/include/python${python_mm}"
+  fi
+}
+
+cross_target_python_libdir() {
+  local triplet
+
+  if cross_build_enabled; then
+    triplet="$(cross_target_triplet)"
+    printf '%s' "/usr/lib/${triplet}"
+  else
+    printf '%s' "/usr/lib"
+  fi
+}
+
+cross_target_python_library() {
+  local python_mm
+  local triplet
+  local candidate
+
+  python_mm="$(cross_target_python_major_minor)" || return 1
+  triplet="$(cross_target_triplet 2>/dev/null || true)"
+
+  for candidate in \
+    "/usr/lib/${triplet}/libpython${python_mm}.so" \
+    "/usr/lib/${triplet}/libpython${python_mm}.so.1.0" \
+    "/usr/lib/libpython${python_mm}.so" \
+    "/usr/lib/libpython${python_mm}.so.1.0"; do
+    [ -f "${candidate}" ] && {
+      printf '%s' "${candidate}"
+      return 0
+    }
+  done
+
+  return 1
+}
+
+cross_target_python_pkgconfig_dir() {
+  local triplet
+
+  if cross_build_enabled; then
+    triplet="$(cross_target_triplet)"
+    printf '%s' "/usr/lib/${triplet}/pkgconfig"
+  else
+    printf '%s' "/usr/lib/pkgconfig"
+  fi
+}
+
+cross_target_python_pc() {
+  local python_mm
+  local pkgconfig_dir
+
+  python_mm="$(cross_target_python_major_minor)" || return 1
+  pkgconfig_dir="$(cross_target_python_pkgconfig_dir)" || return 1
+  printf '%s' "${pkgconfig_dir}/python-${python_mm}.pc"
+}
+
+cross_target_python_embed_pc() {
+  local python_mm
+  local pkgconfig_dir
+
+  python_mm="$(cross_target_python_major_minor)" || return 1
+  pkgconfig_dir="$(cross_target_python_pkgconfig_dir)" || return 1
+  printf '%s' "${pkgconfig_dir}/python-${python_mm}-embed.pc"
+}
+
+cross_target_python_dev_ready() {
+  local include_dir
+  local arch_include_dir
+  local pc_file
+  local embed_pc_file
+
+  include_dir="$(cross_target_python_include_dir)" || return 1
+  arch_include_dir="$(cross_target_python_arch_include_dir)" || return 1
+  pc_file="$(cross_target_python_pc)" || return 1
+  embed_pc_file="$(cross_target_python_embed_pc)" || return 1
+
+  [ -d "${include_dir}" ] || return 1
+  [ -d "${arch_include_dir}" ] || return 1
+  [ -f "${pc_file}" ] || return 1
+  [ -f "${embed_pc_file}" ] || return 1
+  cross_target_python_library >/dev/null
 }
 
 cross_target_uses_ubuntu_ports() {
@@ -298,7 +412,8 @@ setup_linux_cross_env() {
   # Keep cross pkg-config lookups on target/system and explicit prefix paths.
   # Re-appending an inherited PKG_CONFIG_LIBDIR can leak build-machine pkg-config
   # directories back into cross builds.
-  export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${triplet}")"
+  PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${triplet}")"
+  export PKG_CONFIG_LIBDIR
   if [ -d "${runtime_libdir}" ]; then
     export LIBRARY_PATH="${runtime_libdir}:${gcc_prefix}/${triplet}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
     export LD_LIBRARY_PATH="${runtime_libdir}:${gcc_prefix}/${triplet}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
@@ -462,17 +577,19 @@ EOF
 }
 
 append_meson_cross_flags() {
-  local -n _out="$1"
+  local out_name="$1"
+  local -n meson_cross_flags_ref="${out_name}"
 
   cross_build_enabled || return 0
   ensure_meson_cross_file
-  _out+=(--cross-file "${MESON_CROSS_FILE}")
+  meson_cross_flags_ref+=(--cross-file "${MESON_CROSS_FILE}")
 }
 
 append_meson_native_flags() {
-  local -n _out="$1"
+  local out_name="$1"
+  local -n meson_native_flags_ref="${out_name}"
 
   cross_build_enabled || return 0
   ensure_meson_native_file
-  _out+=(--native-file "${MESON_NATIVE_FILE}")
+  meson_native_flags_ref+=(--native-file "${MESON_NATIVE_FILE}")
 }

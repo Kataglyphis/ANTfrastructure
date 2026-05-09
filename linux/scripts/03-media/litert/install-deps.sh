@@ -14,12 +14,13 @@ target_packages=(
     libatlas-base-dev
 )
 
-# Cross-wheel builds need target Python headers, but the generic libpython3-dev
-# package tracks the distro-default target libpython headers without binding the
-# install logic to whichever host python happens to be first on PATH.
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-    target_packages=(libpython3-dev "${target_packages[@]}")
-    echo "[INFO] Using target Python headers from libpython3-dev"
+    if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
+        echo "[INFO] Using staged target Python headers from $(cross_target_python_include_dir)"
+    else
+        echo "[ERROR] Target Python ${PYTHON_MAJOR_MINOR:-$(host_python_major_minor 2>/dev/null || echo unknown)} development files are missing for $(cross_target_triplet 2>/dev/null || echo target)" >&2
+        exit 1
+    fi
 fi
 
 apt-get update

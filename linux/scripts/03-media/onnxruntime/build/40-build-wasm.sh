@@ -26,6 +26,16 @@ fi
 BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [ -x "${BUILD_SH}" ] || err "build.sh not found or not executable at ${BUILD_SH}"
 
+copy_variant_alias_if_missing() {
+  local source_path="$1"
+  local alias_path="$2"
+
+  [ -f "${source_path}" ] || return 0
+  [ -e "${alias_path}" ] && return 0
+
+  cp -v "${source_path}" "${alias_path}"
+}
+
 COMMON_ARGS=(
   "--build_dir" "${BUILD_DIR}"
   "--config" "${WASM_CONFIG}"
@@ -40,12 +50,6 @@ COMMON_ARGS=(
 
 mkdir -p "${WASM_OUTPUT_DIR}"
 rm -rf "${BUILD_DIR}" || true
-
-if [ "${ENABLE_ASYNCIFY}" = "true" ]; then
-  info "Enabling Asyncify via EMCC flags (ASYNCIFY_STACK_SIZE=${ASYNCIFY_STACK_SIZE})"
-  export EMCC_CFLAGS="-s ASYNCIFY=1 -s ASYNCIFY_STACK_SIZE=${ASYNCIFY_STACK_SIZE}"
-  export EMCC_LINKER_FLAGS="${EMCC_CFLAGS}"
-fi
 
 info ">>> Pass 1: SIMD + Threads"
 rm -rf "${BUILD_DIR}"
@@ -63,10 +67,21 @@ rm -rf "${BUILD_DIR}"
 find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-training*" -exec cp -v '{}' "${WASM_OUTPUT_DIR}/" ';' || true
 
 if [ "${ENABLE_ASYNCIFY}" = "true" ]; then
-  info ">>> Pass 4: Asyncify-marked (copied if present)"
+  info ">>> Pass 4: Asyncify-marked (ASYNCIFY_STACK_SIZE=${ASYNCIFY_STACK_SIZE})"
   rm -rf "${BUILD_DIR}"
-  "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads
-  find "${BUILD_DIR}/${WASM_CONFIG}" -type f \( -name "ort-wasm-simd-threaded.asyncify.*" -o -name "ort-wasm-simd-threaded.*" \) -exec cp -v '{}' "${WASM_OUTPUT_DIR}/" ';' || true
+  asyncify_flags="-s ASYNCIFY=1 -s ASYNCIFY_STACK_SIZE=${ASYNCIFY_STACK_SIZE}"
+  EMCC_CFLAGS="${asyncify_flags}" EMCC_LINKER_FLAGS="${asyncify_flags}" \
+    "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads
+  copy_variant_alias_if_missing \
+    "${BUILD_DIR}/${WASM_CONFIG}/ort-wasm-simd-threaded.mjs" \
+    "${BUILD_DIR}/${WASM_CONFIG}/ort-wasm-simd-threaded.asyncify.mjs"
+  copy_variant_alias_if_missing \
+    "${BUILD_DIR}/${WASM_CONFIG}/ort-wasm-simd-threaded.mjs.bak" \
+    "${BUILD_DIR}/${WASM_CONFIG}/ort-wasm-simd-threaded.asyncify.mjs.bak"
+  copy_variant_alias_if_missing \
+    "${BUILD_DIR}/${WASM_CONFIG}/ort-wasm-simd-threaded.wasm" \
+    "${BUILD_DIR}/${WASM_CONFIG}/ort-wasm-simd-threaded.asyncify.wasm"
+  find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-wasm-simd-threaded.asyncify.*" -exec cp -v '{}' "${WASM_OUTPUT_DIR}/" ';' || true
 fi
 
 info "WASM artifacts in ${WASM_OUTPUT_DIR}"

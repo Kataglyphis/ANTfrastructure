@@ -43,7 +43,7 @@ fi
 ANDROID_ABI="$(android_abi)"
 : "${ANDROID_ABI:?Unsupported Android target ABI}"
 
-ORT_VERSION="${1:-v1.25.1}"
+ORT_VERSION="${1:-v1.26.0}"
 INSTALL_DIR="/opt/android/onnxruntime"
 
 export DEBIAN_FRONTEND=noninteractive

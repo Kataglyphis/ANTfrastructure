@@ -339,7 +339,22 @@ configure_opencv() {
         PY_EXEC="${HOST_PYTHON:-$(host_python_bin)}"
         cmake_opts+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
         # Explicitly set library and include paths since FindPython3 might not find free-threaded (t) libraries
-        if [ -f "/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so" ]; then
+        if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+            local target_python_library=""
+            local target_python_include=""
+
+            if command -v cross_target_python_library >/dev/null 2>&1; then
+                target_python_library="$(cross_target_python_library 2>/dev/null || true)"
+            fi
+            if command -v cross_target_python_include_dir >/dev/null 2>&1; then
+                target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
+            fi
+
+            if [ -n "${target_python_library}" ] && [ -d "${target_python_include}" ]; then
+                cmake_opts+=("-DPYTHON3_LIBRARY=${target_python_library}")
+                cmake_opts+=("-DPYTHON3_INCLUDE_DIR=${target_python_include}")
+            fi
+        elif [ -f "/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so" ]; then
             cmake_opts+=("-DPYTHON3_LIBRARY=/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so")
             cmake_opts+=("-DPYTHON3_INCLUDE_DIR=/usr/local/include/python${OPENCV_PYTHON_VERSION}")
         fi

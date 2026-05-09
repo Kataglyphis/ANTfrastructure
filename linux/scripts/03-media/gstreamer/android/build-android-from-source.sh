@@ -26,6 +26,40 @@ done
 export DEBIAN_FRONTEND=noninteractive
 export DEBCONF_NONINTERACTIVE_SEEN=true
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+    # shellcheck disable=SC1091
+    source /opt/scripts/core/cross-env.sh
+fi
+
+resolve_host_python() {
+    if command -v host_python_bin >/dev/null 2>&1; then
+        host_python_bin
+        return
+    fi
+
+    if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
+        printf '%s' "${MEDIA_HOST_PYTHON}"
+        return
+    fi
+
+    if [ -n "${UV_PYTHON:-}" ] && [ -x "${UV_PYTHON}" ]; then
+        printf '%s' "${UV_PYTHON}"
+        return
+    fi
+
+    if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
+        printf '%s' "${VIRTUAL_ENV}/bin/python"
+        return
+    fi
+
+    if [ -n "${PYTHON_MAJOR_MINOR:-}" ] && [ -x "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" ]; then
+        printf '%s' "/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
+        return
+    fi
+
+    command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
+}
+
 # ------------------------------------------------------------------------------
 # Concurrency limiting (similar to the desktop GStreamer build)
 # ------------------------------------------------------------------------------
@@ -78,11 +112,11 @@ apt-get install -y --no-install-recommends \
     autotools-dev automake autoconf libtool g++ autopoint \
     make cmake ninja-build bison flex nasm pkg-config \
     libxv-dev libx11-dev libx11-xcb-dev libpulse-dev \
-    python3-dev gettext build-essential libxext-dev libxi-dev \
+    gettext build-essential libxext-dev libxi-dev \
     x11proto-record-dev libxrender-dev libgl1-mesa-dev \
     libxfixes-dev libxdamage-dev libxcomposite-dev libasound2-dev \
     gperf wget libxtst-dev libxrandr-dev libglu1-mesa-dev \
-    libegl1-mesa-dev git xutils-dev ccache python3-setuptools \
+    libegl1-mesa-dev git xutils-dev ccache \
     libssl-dev
 
 # 4. Setup Cerbero with fallback mechanism
@@ -151,9 +185,13 @@ else
 fi
 
 # 5. Setup Python Virtual Environment
-export UV_PYTHON=python3.12
-uv venv .venv
+HOST_PYTHON="$(resolve_host_python)"
+export UV_PYTHON="${HOST_PYTHON}" \
+       MEDIA_HOST_PYTHON="${HOST_PYTHON}"
+uv venv --seed --python "${HOST_PYTHON}" .venv
 source .venv/bin/activate
+export UV_PYTHON="${VIRTUAL_ENV}/bin/python" \
+       MEDIA_HOST_PYTHON="${VIRTUAL_ENV}/bin/python"
 uv pip install distro "setuptools==70.0.0" wheel
 
 # 6. Detect build host
@@ -286,7 +324,7 @@ fi
         libglu1-mesa-dev libpulse-dev libssl-dev libtool libva-dev libx11-dev \
         libx11-xcb-dev libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev \
         libxi-dev libxrandr-dev libxrender-dev libxtst-dev libxv-dev make nasm \
-        ninja-build pkg-config python3-dev python3-setuptools x11proto-record-dev \
+        ninja-build pkg-config x11proto-record-dev \
         xutils-dev || true
 
     echo "==> Running Cerbero Bootstrap..."

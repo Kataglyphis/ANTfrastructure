@@ -22,13 +22,13 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
   prefer_toolchain_vulkan=true
 fi
 
-target_python_dev_package=""
-# Cross PyGObject fallback builds need target Python headers, but the generic
-# libpython3-dev package avoids hard-coding the host interpreter version while
-# still resolving to the distro-default target libpython headers.
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-  target_python_dev_package="libpython3-dev"
-  echo "Using target Python headers from ${target_python_dev_package}"
+  if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
+    echo "Using staged target Python headers from $(cross_target_python_include_dir)"
+  else
+    echo "Target Python ${PYTHON_MAJOR_MINOR:-$(host_python_major_minor 2>/dev/null || echo unknown)} development files are missing for $(cross_target_triplet 2>/dev/null || echo target)" >&2
+    exit 1
+  fi
 fi
 
 # Pre-setup dependencies
@@ -79,10 +79,6 @@ gst_target_packages=(
   libffi-dev
   libpcre2-dev
 )
-
-if [ -n "${target_python_dev_package}" ]; then
-  gst_target_packages=("${target_python_dev_package}" "${gst_target_packages[@]}")
-fi
 
 if [ "${is_riscv64_cross}" = "true" ]; then
   echo "Skipping target GLib/GTK/introspection/cairo packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their helper dependency chain."
@@ -201,7 +197,7 @@ fi
 NVIDIA_GPU="${NVIDIA_CODEC_HEADERS:-auto}"
 if [ "${NVIDIA_GPU}" = "auto" ]; then
   if lspci 2>/dev/null | grep -qi nvidia; then NVIDIA_GPU="yes";
-  elif [ -d /dev/dri ] && ls /dev/dri/card* 2>/dev/null | head -1 | xargs -r cat 2>/dev/null | grep -q NVIDIA; then NVIDIA_GPU="yes";
+  elif [ -d /sys/class/drm ] && grep -q '^0x10de$' /sys/class/drm/card*/device/vendor 2>/dev/null; then NVIDIA_GPU="yes";
   elif [ -n "${NVIDIA_DRIVER_CAPABILITIES:-}" ] || [ -n "${NVIDIA_VISIBLE_DEVICES:-}" ]; then NVIDIA_GPU="yes";
   else NVIDIA_GPU="no"; fi
 fi

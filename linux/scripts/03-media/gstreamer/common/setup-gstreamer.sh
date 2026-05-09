@@ -63,6 +63,10 @@ GSTREAMER_VERSION="${1:-1.29.1}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
+HOST_PYTHON="$(host_python_bin)"
+export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+  Python_EXECUTABLE="${HOST_PYTHON}" \
+  Python3_EXECUTABLE="${HOST_PYTHON}"
 
 append_meson_arg() {
   local arg="$1"
@@ -92,7 +96,7 @@ append_env_flag() {
     printf -v "${var_name}" '%s' "${flag}"
   fi
 
-  export "${var_name}"
+  export "${var_name}=${!var_name}"
 }
 
 resolve_host_gcc_for_cargo() {
@@ -160,10 +164,12 @@ EOF
 }
 
 prepare_cross_python_build_config() {
-  local target_arch="$1"
   local meson_version=""
   local target_triplet=""
   local python_build_config=""
+  local target_python_include=""
+  local target_python_library=""
+  local target_python_pkgconfig_dir=""
 
   CROSS_PYTHON_BUILD_CONFIG=""
   export CROSS_PYTHON_BUILD_CONFIG
@@ -171,13 +177,6 @@ prepare_cross_python_build_config() {
   if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
     return 0
   fi
-
-  case "${target_arch}" in
-    riscv64) ;;
-    *)
-      return 0
-      ;;
-  esac
 
   meson_version="$(uv run meson --version 2>/dev/null || meson --version 2>/dev/null || true)"
   if ! "${HOST_PYTHON}" - "${meson_version}" <<'PY'
@@ -207,8 +206,22 @@ PY
     return 0
   fi
 
+  if command -v cross_target_python_include_dir >/dev/null 2>&1; then
+    target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
+  fi
+  if command -v cross_target_python_library >/dev/null 2>&1; then
+    target_python_library="$(cross_target_python_library 2>/dev/null || true)"
+  fi
+  if command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
+    target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
+  fi
+  if [ -z "${target_python_include}" ] || [ -z "${target_python_library}" ] || [ -z "${target_python_pkgconfig_dir}" ]; then
+    echo "Target Python development files are not ready for ${target_triplet}; skipping Meson python.build_config generation"
+    return 0
+  fi
+
   python_build_config="/tmp/meson-python-build-config-${target_triplet}.json"
-  if "${HOST_PYTHON}" - "${python_build_config}" "${target_triplet}" <<'PY'
+  if "${HOST_PYTHON}" - "${python_build_config}" "${target_triplet}" "${target_python_include}" "${target_python_library}" "${target_python_pkgconfig_dir}" <<'PY'
 import json
 import pathlib
 import re
@@ -217,14 +230,12 @@ import sysconfig
 
 output_path = pathlib.Path(sys.argv[1])
 target_triplet = sys.argv[2]
+include_dir = pathlib.Path(sys.argv[3])
+dynamic_libpython = pathlib.Path(sys.argv[4])
+pkgconfig_path = sys.argv[5]
 target_arch = target_triplet.split('-', 1)[0]
 
 language_version = f"{sys.version_info.major}.{sys.version_info.minor}"
-include_dir = pathlib.Path(f"/usr/include/python{language_version}")
-if not include_dir.is_dir():
-    fallback_include = sysconfig.get_config_var('INCLUDEPY')
-    if fallback_include:
-        include_dir = pathlib.Path(fallback_include)
 if not include_dir.is_dir():
     raise SystemExit(f"Could not determine Python include directory for {language_version}")
 
@@ -243,15 +254,8 @@ elif not platform.startswith('linux-'):
 libpython = {
     'link_extensions': False,
 }
-for candidate in (
-    pathlib.Path(f"/usr/lib/{target_triplet}/libpython{language_version}.so"),
-    pathlib.Path(f"/usr/lib/{target_triplet}/libpython{language_version}.so.1.0"),
-    pathlib.Path(f"/usr/lib/libpython{language_version}.so"),
-    pathlib.Path(f"/usr/lib/libpython{language_version}.so.1.0"),
-):
-    if candidate.exists():
-        libpython['dynamic'] = str(candidate)
-        break
+if dynamic_libpython.exists():
+    libpython['dynamic'] = str(dynamic_libpython)
 
 impl_version = getattr(sys.implementation, 'version', sys.version_info)
 data = {
@@ -281,6 +285,7 @@ data = {
     'libpython': libpython,
     'c_api': {
         'headers': str(include_dir),
+        'pkgconfig_path': pkgconfig_path,
     },
 }
 
@@ -312,16 +317,14 @@ elif [ -z "${EXTRA_MESON_ARGS}" ]; then
 fi
 
 # Always enforce these, even if MESON_ARGS was supplied externally.
+append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
+append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
 append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
-HOST_PYTHON="$(host_python_bin)"
-export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
-  Python_EXECUTABLE="${HOST_PYTHON}" \
-  Python3_EXECUTABLE="${HOST_PYTHON}"
 
 # Keep /usr/local/bin ahead of /bin so cross-introspection shims like
 # g-ir-scanner and ldd are used when upstream tools shell out by program name.
@@ -331,11 +334,13 @@ export PATH="/usr/local/sbin:/usr/local/bin:${HOME}/.local/bin:${PATH}"
 # Prefer the installed helper if available, otherwise source relative to this script
 if [ -f /usr/local/bin/gstreamer-env.sh ]; then
   :
+  # shellcheck disable=SC1091
   source /usr/local/bin/gstreamer-env.sh
 else
   :
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/media/* subfolders
+  # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
 fi
 
@@ -408,10 +413,6 @@ apt_package_exists() {
 
 # Force removal of any versioned libunwind to avoid conflicts, then install generic
 
-
-
-# Enable source repos so build-dep works
-CODENAME=$(lsb_release -sc)
 
 
 # Ensure xmllint is available (used by meson/xml preprocessing); small package
@@ -490,7 +491,7 @@ if [ "${NVIDIA_GPU}" = "auto" ]; then
   if lspci 2>/dev/null | grep -qi nvidia; then
   :
     NVIDIA_GPU="yes"
-  elif [ -d /dev/dri ] && ls /dev/dri/card* 2>/dev/null | head -1 | xargs -r cat 2>/dev/null | grep -q NVIDIA; then
+  elif [ -d /sys/class/drm ] && grep -q '^0x10de$' /sys/class/drm/card*/device/vendor 2>/dev/null; then
   :
     NVIDIA_GPU="yes"
   elif [ -n "${NVIDIA_DRIVER_CAPABILITIES:-}" ] || [ -n "${NVIDIA_VISIBLE_DEVICES:-}" ]; then
@@ -590,6 +591,8 @@ if [ -n "${MESON_ARGS:-}" ]; then
 fi
 
 # Enforce the gst-plugins-rs args again here so they survive external MESON_ARGS.
+append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
+append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
 append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # whisper left enabled — do not force-disable here
@@ -650,7 +653,14 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   setup_linux_cross_env
   TARGET_MACHINE_ARCH="$(cross_target_arch)"
 fi
-prepare_cross_python_build_config "${TARGET_MACHINE_ARCH}"
+prepare_cross_python_build_config
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_python_libdir >/dev/null 2>&1; then
+  TARGET_PYTHON_LIBDIR="$(cross_target_python_libdir 2>/dev/null || true)"
+  if [ -n "${TARGET_PYTHON_LIBDIR}" ]; then
+    append_meson_arg "-Dgst-python:libpython-dir=${TARGET_PYTHON_LIBDIR}"
+  fi
+fi
 
 # Build Meson flags, conditionally enable Rust bindings (rs) except on RISC-V
 MESON_FLAGS=(
@@ -876,7 +886,7 @@ which pkg-config || true | tee -a /tmp/gstreamer-cairo-debug.txt
 pkg-config --version 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
 for p in "/usr/lib/${DEB_HOST_MULTIARCH:-}/pkgconfig" /usr/lib/pkgconfig /usr/local/lib/pkgconfig; do
   echo "listing: $p" | tee -a /tmp/gstreamer-cairo-debug.txt
-  ls -la "$p" 2>/dev/null | sed -n '1,20p' | tee -a /tmp/gstreamer-cairo-debug.txt || true
+  find "$p" -mindepth 1 -maxdepth 1 2>/dev/null | sed -n '1,20p' | tee -a /tmp/gstreamer-cairo-debug.txt || true
   [ -f "$p/cairo.pc" ] && echo "FOUND: $p/cairo.pc" | tee -a /tmp/gstreamer-cairo-debug.txt || true
 done
 pkg-config --cflags --libs cairo 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
@@ -904,11 +914,21 @@ if ! pkg-config --exists cairo 2>/dev/null; then
 fi
 echo "--- end cairo debug ---" | tee -a /tmp/gstreamer-cairo-debug.txt
 
+run_meson_setup() {
+  local -a extra_meson_flags=()
+
+  if [ -n "${EXTRA_MESON_ARGS:-}" ]; then
+    read -r -a extra_meson_flags <<< "${EXTRA_MESON_ARGS}"
+  fi
+
+  uv run meson setup builddir "${MESON_FLAGS[@]}" "${extra_meson_flags[@]}" "$@"
+}
+
 # Run meson setup and capture full output
-if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
+if ! run_meson_setup > /tmp/meson-setup.log 2>&1; then
   :
   echo "Meson setup failed; printing verbose output..."
-  uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1 || true
+  run_meson_setup -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1 || true
 fi
 
 echo "Updating subprojects..."
@@ -1323,4 +1343,4 @@ echo "=========================================="
 echo ""
 echo "Add these environment variables to your shell:"
 echo "For setting up env:"
-echo "Have a look into: ExternalLib\Kataglyphis-ContainerHub\linux\scripts\04-runtime\gstreamer-env.sh"
+printf '%s\n' "Have a look into: linux/scripts/04-runtime/gstreamer-env.sh"

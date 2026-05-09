@@ -70,9 +70,14 @@ BUILD_ARGS=(
   --use_lock_free_queue
 )
 
-if [[ "$(arch_oci 2>/dev/null || uname -m)" != "riscv64" ]]; then
+if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
   BUILD_ARGS+=(
     --enable_lto
+  )
+fi
+
+if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
+  BUILD_ARGS+=(
     --use_webgpu
     --use_external_dawn
   )
