@@ -356,6 +356,15 @@ Manual staged build with plain `nerdctl` (current GCC 16 cross lane):
 
 Run these commands from the repository root. Keep every trailing `\` as the last character on its line, and keep the final `.` because it is the Docker build context.
 
+If you run the long `sudo nerdctl build` loops below from a non-root shell, refresh the sudo ticket first and keep it alive for the full loop. Otherwise a successful `media-cross-*` push can be followed by bare `sudo: timed out` lines on the next loop iteration when the host sudo timestamp expires.
+
+```bash
+sudo -v
+while true; do sudo -n true; sleep 60; done 2>/dev/null &
+SUDO_KEEPALIVE_PID=$!
+trap 'kill "${SUDO_KEEPALIVE_PID}"' EXIT
+```
+
 ```bash
 set -o pipefail
 

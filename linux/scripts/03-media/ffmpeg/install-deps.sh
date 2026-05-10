@@ -56,10 +56,28 @@ target_packages=(
     libsvtav1enc-dev
 )
 
-if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-    echo "Skipping libass-dev for riscv64 because Ubuntu Ports cannot satisfy its HarfBuzz/GLib helper dependency chain."
-    echo "Skipping libgnutls28-dev for riscv64 because FFmpeg's cross probe does not currently pass in this environment."
-    echo "Skipping libsdl2-dev for riscv64 because Ubuntu Ports cannot satisfy its GLib helper dependency chain."
+optional_cross_target_packages=()
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1; then
+    case "$(cross_target_arch)" in
+        riscv64)
+            echo "Skipping libass-dev for riscv64 because Ubuntu Ports cannot satisfy its HarfBuzz/GLib helper dependency chain."
+            echo "Skipping libgnutls28-dev for riscv64 because FFmpeg's cross probe does not currently pass in this environment."
+            echo "Skipping libsdl2-dev for riscv64 because Ubuntu Ports cannot satisfy its GLib helper dependency chain."
+            ;;
+        arm64)
+            target_packages+=(libgnutls28-dev)
+            optional_cross_target_packages+=(libass-dev)
+            optional_cross_target_packages+=(libsdl2-dev)
+            echo "Installing libass-dev and libsdl2-dev on a best-effort basis for arm64 cross builds because the foreign-arch GLib helper dependency chain is currently inconsistent."
+            ;;
+        *)
+            target_packages+=(libgnutls28-dev)
+            target_packages+=(libass-dev)
+            target_packages+=(libsdl2-dev)
+            ;;
+    esac
 else
     target_packages+=(libgnutls28-dev)
     target_packages+=(libass-dev)
@@ -71,6 +89,10 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ "$
     install_optional_target_packages "${target_packages[@]}"
 else
     install_target_packages "${target_packages[@]}"
+fi
+
+if [ "${#optional_cross_target_packages[@]}" -gt 0 ]; then
+    install_optional_target_packages "${optional_cross_target_packages[@]}"
 fi
 
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then

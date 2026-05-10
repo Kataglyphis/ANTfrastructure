@@ -16,7 +16,7 @@ build_cross_target_python_dev_files() {
   local source_dir="$1"
   local python_mm target_triplet build_triplet build_python_bin cross_build_dir config_site
   local target_libdir target_pkgconfig_dir target_include target_arch_include
-  local target_python_so target_python_soversion pkg_config_libdir
+  local target_python_so target_python_soversion pkg_config_libdir build_python_libdir
 
   if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
     return 0
@@ -26,6 +26,7 @@ build_cross_target_python_dev_files() {
   target_triplet="$(cross_target_triplet)"
   build_triplet="$(build_deb_multiarch_triplet)"
   build_python_bin="/usr/local/bin/python${python_mm}"
+  build_python_libdir="/usr/local/lib"
   cross_build_dir="/tmp/Python-${PYTHON_VERSION}-cross-${target_triplet}"
   config_site="/tmp/python-config-site-${target_triplet}"
   target_libdir="/usr/lib/${target_triplet}"
@@ -45,8 +46,13 @@ build_cross_target_python_dev_files() {
 
   setup_linux_cross_env
 
+  # Host in-tree builds leave generated frozen headers in the source tree.
+  # Remove them so the out-of-tree cross build regenerates its own copies
+  # in the build directory instead of resolving stale VPATH matches.
+  rm -f "${source_dir}/Python/frozen_modules/"*.h "${source_dir}/Python/frozen_modules/MANIFEST"
+
   rm -rf "${cross_build_dir}"
-  mkdir -p "${cross_build_dir}"
+  mkdir -p "${cross_build_dir}/Python/frozen_modules"
 
   cat > "${config_site}" <<EOF
 ac_cv_buggy_getaddrinfo=no
@@ -57,6 +63,7 @@ EOF
   (
     cd "${cross_build_dir}"
     CONFIG_SITE="${config_site}" \
+      LD_LIBRARY_PATH="${build_python_libdir}:${LD_LIBRARY_PATH:-}" \
       PKG_CONFIG_ALLOW_CROSS=1 \
       PKG_CONFIG_SYSROOT_DIR=/ \
       PKG_CONFIG_LIBDIR="${pkg_config_libdir}" \
@@ -134,11 +141,11 @@ cd "/tmp/Python-${PYTHON_VERSION}"
 make -j"$(nproc)"
 make altinstall
 
-build_cross_target_python_dev_files "/tmp/Python-${PYTHON_VERSION}"
-
 # Add the lib path to the system linker
 echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-${PYTHON_VERSION}.conf"
 ldconfig
+
+build_cross_target_python_dev_files "/tmp/Python-${PYTHON_VERSION}"
 
 # Clean up
 cd /

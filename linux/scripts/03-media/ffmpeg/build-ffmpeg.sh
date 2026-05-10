@@ -136,6 +136,13 @@ ffmpeg_probe_compiler() {
 resolve_ffmpeg_host_compiler() {
     local triplet=""
     local candidate
+    local resolved=""
+
+    if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+        resolved="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
+        [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool cc 2>/dev/null || true)"
+        [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
+    fi
 
     if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
         triplet="$(build_deb_multiarch_triplet)"

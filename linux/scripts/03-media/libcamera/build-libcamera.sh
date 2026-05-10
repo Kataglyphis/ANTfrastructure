@@ -165,9 +165,16 @@ MESON_SETUP_ARGS=(
   -Ddocumentation=disabled
 )
 
-if command -v c++ >/dev/null 2>&1; then
-  compiler_details="$(c++ -v 2>&1 || true)"
-  compiler_major="$(c++ -dumpfullversion -dumpversion 2>/dev/null | cut -d. -f1 || true)"
+compiler_probe="${CXX:-}"
+if [ -z "${compiler_probe}" ] && command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+  compiler_probe="$(resolve_build_gcc_tool g++ 2>/dev/null || resolve_build_gcc_tool c++ 2>/dev/null || true)"
+fi
+if [ -z "${compiler_probe}" ] && command -v c++ >/dev/null 2>&1; then
+  compiler_probe="$(command -v c++)"
+fi
+if [ -n "${compiler_probe}" ] && [ -x "${compiler_probe}" ]; then
+  compiler_details="$("${compiler_probe}" -v 2>&1 || true)"
+  compiler_major="$("${compiler_probe}" -dumpfullversion -dumpversion 2>/dev/null | cut -d. -f1 || true)"
   if [ -n "${compiler_major}" ] && [ "${compiler_major}" -ge 16 ] 2>/dev/null; then
     case "${compiler_details}" in
       *"gcc version "*)

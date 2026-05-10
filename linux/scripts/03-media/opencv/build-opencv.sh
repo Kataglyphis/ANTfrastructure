@@ -484,7 +484,19 @@ build_opencv_python_wheel() {
     
     PYEXEC="${HOST_PYTHON:-$(host_python_bin)}"
     # Ensure build dependencies are installed
-    "${PYEXEC}" -m pip install wheel scikit-build cmake ninja numpy packaging || uv pip install wheel scikit-build cmake ninja numpy packaging
+    "${PYEXEC}" -m pip install wheel scikit-build cmake ninja numpy packaging || \
+        uv pip install --python "${PYEXEC}" wheel scikit-build cmake ninja numpy packaging
+
+    local cmake_bin_dir=""
+    local cmake_bin=""
+    cmake_bin_dir="$("${PYEXEC}" -c 'import cmake; print(cmake.CMAKE_BIN_DIR)' 2>/dev/null || true)"
+    if [ -n "${cmake_bin_dir}" ] && [ -x "${cmake_bin_dir}/cmake" ]; then
+        cmake_bin="${cmake_bin_dir}/cmake"
+        export PATH="${cmake_bin_dir}:${PATH}"
+        export CMAKE_EXECUTABLE="${cmake_bin}"
+        export SKBUILD_CMAKE="${cmake_bin}"
+        echo "Using CMake binary from ${cmake_bin}"
+    fi
     
     mkdir -p "${OPENCV_PREFIX}/wheels"
     

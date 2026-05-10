@@ -99,9 +99,53 @@ append_env_flag() {
   export "${var_name}=${!var_name}"
 }
 
+gst_plugins_rs_meson_option_disabled() {
+  local option_name="$1"
+
+  case " ${EXTRA_MESON_ARGS} " in
+    *" -Dgst-plugins-rs:${option_name}=disabled "*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+prune_gst_plugins_rs_workspace_member() {
+  local cargo_toml="$1"
+  local member="$2"
+
+  [ -f "${cargo_toml}" ] || return 0
+
+  if grep -Fq "\"${member}\"," "${cargo_toml}"; then
+    echo "Removing gst-plugins-rs workspace member '${member}' from ${cargo_toml}"
+    grep -Fvx "    \"${member}\"," "${cargo_toml}" > "${cargo_toml}.tmp"
+    mv "${cargo_toml}.tmp" "${cargo_toml}"
+  fi
+}
+
+prune_disabled_gst_plugins_rs_workspace_members() {
+  local cargo_toml="subprojects/gst-plugins-rs/Cargo.toml"
+
+  [ -f "${cargo_toml}" ] || return 0
+
+  # cargo-cbuild still resolves workspace members from the root manifest even
+  # when Meson filters the selected plugin packages with `-p ...`.
+  if gst_plugins_rs_meson_option_disabled burn; then
+    prune_gst_plugins_rs_workspace_member "${cargo_toml}" "analytics/burn"
+  fi
+}
+
 resolve_host_gcc_for_cargo() {
   local build_triplet=""
   local candidate
+  local resolved=""
+
+  if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+    resolved="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
+    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool cc 2>/dev/null || true)"
+    [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
+  fi
 
   if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
     build_triplet="$(build_deb_multiarch_triplet)"
@@ -134,6 +178,13 @@ EOF
 resolve_host_gxx_for_cargo() {
   local build_triplet=""
   local candidate
+  local resolved=""
+
+  if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+    resolved="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
+    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool c++ 2>/dev/null || true)"
+    [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
+  fi
 
   if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
     build_triplet="$(build_deb_multiarch_triplet)"
@@ -463,7 +514,7 @@ if apt_package_exists libvvdec-dev; then
   
 else
   :
-  echo "Warning: libvvdec-dev not found in APT; vvdec plugin stays enabled, but Meson may fail unless the package is available in your Ubuntu repositories."
+  echo "Warning: libvvdec-dev not found in APT; continuing with the source-build fallback from install-vvdec.sh so the vvdec plugin stays enabled."
 fi
 
 # Codecs (audio)
@@ -633,6 +684,21 @@ else
   cd gstreamer
 fi
 
+# gst-plugins-bad 1.29.x ships gtk-doc blocks for internal WebRTC ABI fields
+# that do not map to real C identifiers. Downgrade only those blocks to plain
+# C comments so g-ir-scanner ignores the doc.skip-only internals.
+if [ -f subprojects/gst-plugins-bad/gst-libs/gst/webrtc/ice.h ]; then
+  perl -0pi -e '
+    s@/\*\*\n(\s+\* GstWebRTCICECandidateStats\.ABI: \(attributes doc\.skip=true\)\n)@/*\n$1@g;
+    s@/\*\*\n(\s+\* GstWebRTCICECandidateStats\.ABI\.abi: \(attributes doc\.skip=true\)\n)@/*\n$1@g;
+    s@/\*\*\n(\s+\* GstWebRTCICECandidateStats\.ABI\.abi\.foundation:\n)@/*\n$1@g;
+    s@/\*\*\n(\s+\* GstWebRTCICECandidateStats\.ABI\.abi\.related_address:\n)@/*\n$1@g;
+    s@/\*\*\n(\s+\* GstWebRTCICECandidateStats\.ABI\.abi\.related_port:\n)@/*\n$1@g;
+    s@/\*\*\n(\s+\* GstWebRTCICECandidateStats\.ABI\.abi\.username_fragment:\n)@/*\n$1@g;
+    s@/\*\*\n(\s+\* GstWebRTCICECandidateStats\.ABI\.abi\.tcp_type:\n)@/*\n$1@g;
+  ' subprojects/gst-plugins-bad/gst-libs/gst/webrtc/ice.h
+fi
+
 # gst-plugins-good's LAME probe currently treats a visible lame header as
 # sufficient even when the target libmp3lame library was not found. On cross
 # builds that can produce a later link line with no -lmp3lame at all. Tighten
@@ -642,6 +708,8 @@ if [ -f subprojects/gst-plugins-good/ext/lame/meson.build ] && \
    ! grep -Fq "have_lame = lame_dep.found() and cc.has_header_symbol('lame/lame.h', 'lame_init')" subprojects/gst-plugins-good/ext/lame/meson.build; then
   sed -i "s/have_lame = cc.has_header_symbol('lame\/lame.h', 'lame_init')/have_lame = lame_dep.found() and cc.has_header_symbol('lame\/lame.h', 'lame_init')/" subprojects/gst-plugins-good/ext/lame/meson.build
 fi
+
+prune_disabled_gst_plugins_rs_workspace_members
 
 echo ""
 echo "Setting up Meson build..."
@@ -659,6 +727,19 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
   TARGET_PYTHON_LIBDIR="$(cross_target_python_libdir 2>/dev/null || true)"
   if [ -n "${TARGET_PYTHON_LIBDIR}" ]; then
     append_meson_arg "-Dgst-python:libpython-dir=${TARGET_PYTHON_LIBDIR}"
+  fi
+fi
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
+  TARGET_PYTHON_PKGCONFIG_DIR="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
+  if [ -n "${TARGET_PYTHON_PKGCONFIG_DIR}" ]; then
+    # Meson resolves gst-python's embed flags through pkg-config. Keep the
+    # staged target python.pc ahead of host /usr/local entries during cross
+    # builds so gst-python does not link against host libpython.
+    case ":${PKG_CONFIG_PATH:-}:" in
+      *":${TARGET_PYTHON_PKGCONFIG_DIR}:"*) ;;
+      *) export PKG_CONFIG_PATH="${TARGET_PYTHON_PKGCONFIG_DIR}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}" ;;
+    esac
   fi
 fi
 
@@ -1083,6 +1164,7 @@ export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${RUST_JOBS}}"
 echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
 cd "${PLUGIN_RS_DIR}"
+STANDALONE_GST_PLUGINS_RS_CARGO_TOML="${PLUGIN_RS_DIR}/Cargo.toml"
 
 # Cargo still builds host-side proc-macros and build scripts while compiling the
 # plugin crates for the cross target. If /opt/cross-bin stays first in PATH,
@@ -1173,6 +1255,10 @@ else
   echo "APT not available: skipping automatic Csound installation. If you need csound-related plugins, please install the libcsound development package." >&2
 fi
 
+# cargo `--workspace` still resolves excluded workspace members from the root
+# manifest, so drop members we already know this standalone build should skip.
+prune_gst_plugins_rs_workspace_member "${STANDALONE_GST_PLUGINS_RS_CARGO_TOML}" "analytics/burn"
+
 DEFAULT_EXCLUDES=(--exclude gst-plugin-burn)
 
 # Proactively exclude csound-related crates on architectures known to cause
@@ -1183,6 +1269,7 @@ ARCH_FOR_EXCLUDES="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpk
 if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
   :
   DEFAULT_EXCLUDES+=(--exclude gst-plugin-csound --exclude csound --exclude csound-sys)
+  prune_gst_plugins_rs_workspace_member "${STANDALONE_GST_PLUGINS_RS_CARGO_TOML}" "audio/csound"
   echo "Host arch detected in (${ARCH_FOR_EXCLUDES}): added csound-related excludes to DEFAULT_EXCLUDES"
 fi
 BUILD_CMD=(cargo build --workspace "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}")
@@ -1235,6 +1322,7 @@ fi
 if echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
   :
   echo "skia disabled via Meson args: excluding skia-related workspace crates from cargo build"
+  prune_gst_plugins_rs_workspace_member "${STANDALONE_GST_PLUGINS_RS_CARGO_TOML}" "video/skia"
   if SKIA_PKG_NAMES="$(cargo_metadata_package_names 'skia')"; then
   :
     if [ -n "${SKIA_PKG_NAMES}" ]; then
@@ -1267,6 +1355,7 @@ if [ "${BUILD_TYPE_LOWER}" = "release" ]; then
   if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
   :
     echo "Release build on ARM/RISC-V detected in (${ARCH_PROBES}): excluding whisper-related workspace crates from cargo build"
+    prune_gst_plugins_rs_workspace_member "${STANDALONE_GST_PLUGINS_RS_CARGO_TOML}" "audio/whisper"
     if WHISPER_PKG_NAMES="$(cargo_metadata_package_names 'whisper')"; then
   :
       if [ -n "${WHISPER_PKG_NAMES}" ]; then
@@ -1292,6 +1381,8 @@ fi
 if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64'; then
   :
   echo "RISC-V detected in (${ARCH_PROBES}): excluding cargo plugins that require unavailable gstreamer-validate/dav1d pkg-config deps"
+  prune_gst_plugins_rs_workspace_member "${STANDALONE_GST_PLUGINS_RS_CARGO_TOML}" "utils/validate"
+  prune_gst_plugins_rs_workspace_member "${STANDALONE_GST_PLUGINS_RS_CARGO_TOML}" "video/dav1d"
   if VALIDATE_PKG_NAMES="$(cargo_metadata_package_names 'validate')"; then
     if [ -n "${VALIDATE_PKG_NAMES}" ]; then
       for n in ${VALIDATE_PKG_NAMES}; do

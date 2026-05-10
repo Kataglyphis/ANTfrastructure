@@ -72,6 +72,21 @@ fetch_litert() {
 resolve_host_compiler() {
     local lang="$1"
     local triplet=""
+    local resolved=""
+
+    if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+        case "${lang}" in
+            c)
+                resolved="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
+                [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool cc 2>/dev/null || true)"
+                ;;
+            cxx)
+                resolved="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
+                [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool c++ 2>/dev/null || true)"
+                ;;
+        esac
+        [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
+    fi
 
     if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
         triplet="$(build_deb_multiarch_triplet)"

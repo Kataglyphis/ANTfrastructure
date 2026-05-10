@@ -28,6 +28,16 @@ cross_target_rust_triple() {
   rust_target_triple
 }
 
+cross_build_rust_triple() {
+  case "$(cross_build_arch)" in
+    amd64) printf '%s' "x86_64-unknown-linux-gnu" ;;
+    arm64) printf '%s' "aarch64-unknown-linux-gnu" ;;
+    386) printf '%s' "i686-unknown-linux-gnu" ;;
+    riscv64) printf '%s' "riscv64gc-unknown-linux-gnu" ;;
+    *) printf '%s' "" ;;
+  esac
+}
+
 cross_target_android_abi() {
   android_abi_for_target
 }
@@ -51,6 +61,99 @@ cross_target_cpu() {
 
 cross_target_upper_rust() {
   cross_target_rust_triple | tr '[:lower:]-' '[:upper:]_'
+}
+
+cross_build_upper_rust() {
+  cross_build_rust_triple | tr '[:lower:]-' '[:upper:]_'
+}
+
+cross_target_lower_rust() {
+  cross_target_rust_triple | tr '[:upper:]-' '[:lower:]_'
+}
+
+cross_build_lower_rust() {
+  cross_build_rust_triple | tr '[:upper:]-' '[:lower:]_'
+}
+
+_cross_first_executable() {
+  local candidate
+
+  for candidate in "$@"; do
+    [ -n "${candidate}" ] || continue
+    [ -x "${candidate}" ] && {
+      printf '%s' "${candidate}"
+      return 0
+    }
+  done
+
+  return 1
+}
+
+gcc_toolchain_prefix() {
+  printf '%s' "/opt/gcc-${GCC_VERSION:-16.1.0}"
+}
+
+gcc_toolchain_bindir() {
+  printf '%s' "$(gcc_toolchain_prefix)/bin"
+}
+
+resolve_build_gcc_tool() {
+  local tool="$1"
+  local bindir build_triplet resolved=""
+
+  bindir="$(gcc_toolchain_bindir)"
+  build_triplet="$(build_deb_multiarch_triplet 2>/dev/null || true)"
+
+  case "${tool}" in
+    gcc|g++|cpp|gcov|gcc-ar|gcc-nm|gcc-ranlib)
+      resolved="$(_cross_first_executable \
+        "${bindir}/${tool}" \
+        "${build_triplet:+${bindir}/${build_triplet}-${tool}}" \
+        "${build_triplet:+/usr/bin/${build_triplet}-${tool}}" \
+        "/usr/bin/${tool}" || true)"
+      ;;
+    *)
+      resolved="$(_cross_first_executable \
+        "${build_triplet:+${bindir}/${build_triplet}-${tool}}" \
+        "${build_triplet:+/usr/bin/${build_triplet}-${tool}}" \
+        "/usr/bin/${tool}" || true)"
+      ;;
+  esac
+
+  if [ -n "${resolved}" ]; then
+    printf '%s' "${resolved}"
+    return 0
+  fi
+
+  if [ -n "${build_triplet}" ] && command -v "${build_triplet}-${tool}" >/dev/null 2>&1; then
+    command -v "${build_triplet}-${tool}"
+    return 0
+  fi
+
+  command -v "${tool}" 2>/dev/null || return 1
+}
+
+resolve_cross_gcc_tool() {
+  local tool="$1"
+  local triplet="${2:-$(cross_target_triplet)}"
+  local bindir candidate
+
+  [ -n "${triplet}" ] || return 1
+
+  bindir="$(gcc_toolchain_bindir)"
+  candidate="${bindir}/${triplet}-${tool}"
+  if [ -d "${bindir}" ]; then
+    [ -x "${candidate}" ] || return 1
+    printf '%s' "${candidate}"
+    return 0
+  fi
+
+  if [ -x "/usr/bin/${triplet}-${tool}" ]; then
+    printf '%s' "/usr/bin/${triplet}-${tool}"
+    return 0
+  fi
+
+  command -v "${triplet}-${tool}" 2>/dev/null || return 1
 }
 
 host_python_bin() {
@@ -358,8 +461,10 @@ cross_pkg_config_libdir() {
 }
 
 setup_linux_cross_env() {
-  local triplet target_arch processor rust_target rust_env build_arch
-  local gcc_prefix gcc_major runtime_libdir
+  local triplet target_arch processor rust_target rust_env rust_env_lower build_arch
+  local build_rust_lower gcc_prefix gcc_major runtime_libdir
+  local cc cxx ar as ld nm ranlib strip objcopy
+  local build_cc build_cxx build_ar build_ranlib
 
   if ! cross_build_enabled; then
     return 0
@@ -371,10 +476,52 @@ setup_linux_cross_env() {
   processor="$(cmake_system_processor)"
   rust_target="$(cross_target_rust_triple)"
   rust_env="$(cross_target_upper_rust)"
+  rust_env_lower="$(cross_target_lower_rust)"
+  build_rust_lower="$(cross_build_lower_rust 2>/dev/null || true)"
   gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
   gcc_major="${GCC_WANTED:-16}"
   gcc_major="${gcc_major%%.*}"
   runtime_libdir="${gcc_prefix}/lib/gcc/${triplet}/${gcc_major}"
+  cc="$(resolve_cross_gcc_tool gcc "${triplet}")" || {
+    printf 'Missing cross compiler: %s\n' "${gcc_prefix}/bin/${triplet}-gcc" >&2
+    return 1
+  }
+  cxx="$(resolve_cross_gcc_tool g++ "${triplet}")" || {
+    printf 'Missing cross compiler: %s\n' "${gcc_prefix}/bin/${triplet}-g++" >&2
+    return 1
+  }
+  ar="$(resolve_cross_gcc_tool ar "${triplet}")" || {
+    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-ar" >&2
+    return 1
+  }
+  as="$(resolve_cross_gcc_tool as "${triplet}")" || {
+    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-as" >&2
+    return 1
+  }
+  ld="$(resolve_cross_gcc_tool ld "${triplet}")" || {
+    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-ld" >&2
+    return 1
+  }
+  nm="$(resolve_cross_gcc_tool nm "${triplet}")" || {
+    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-nm" >&2
+    return 1
+  }
+  ranlib="$(resolve_cross_gcc_tool ranlib "${triplet}")" || {
+    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-ranlib" >&2
+    return 1
+  }
+  strip="$(resolve_cross_gcc_tool strip "${triplet}")" || {
+    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-strip" >&2
+    return 1
+  }
+  objcopy="$(resolve_cross_gcc_tool objcopy "${triplet}")" || {
+    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-objcopy" >&2
+    return 1
+  }
+  build_cc="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
+  build_cxx="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
+  build_ar="$(resolve_build_gcc_tool ar 2>/dev/null || true)"
+  build_ranlib="$(resolve_build_gcc_tool ranlib 2>/dev/null || true)"
 
   export TARGET_ARCH="${target_arch}"
   export TARGETARCH="${target_arch}"
@@ -389,16 +536,18 @@ setup_linux_cross_env() {
     export PATH="/opt/cross-bin:${PATH}"
   fi
 
-  case "${target_arch}" in
-    amd64)
-      export CC=gcc CXX=g++ AR=ar RANLIB=ranlib STRIP=strip OBJCOPY=objcopy
-      ;;
-    *)
-      export CC="${triplet}-gcc" CXX="${triplet}-g++" AR="${triplet}-ar" \
-        AS="${triplet}-as" LD="${triplet}-ld" NM="${triplet}-nm" \
-        RANLIB="${triplet}-ranlib" STRIP="${triplet}-strip" OBJCOPY="${triplet}-objcopy"
-      ;;
-  esac
+  export CC="${cc}" CXX="${cxx}" AR="${ar}" AS="${as}" LD="${ld}" NM="${nm}" \
+    RANLIB="${ranlib}" STRIP="${strip}" OBJCOPY="${objcopy}"
+  export "CC_${rust_env_lower}=${CC}"
+  export "CXX_${rust_env_lower}=${CXX}"
+  export "AR_${rust_env_lower}=${AR}"
+  export "RANLIB_${rust_env_lower}=${RANLIB}"
+  if [ -n "${build_rust_lower}" ]; then
+    [ -n "${build_cc}" ] && export "CC_${build_rust_lower}=${build_cc}"
+    [ -n "${build_cxx}" ] && export "CXX_${build_rust_lower}=${build_cxx}"
+    [ -n "${build_ar}" ] && export "AR_${build_rust_lower}=${build_ar}"
+    [ -n "${build_ranlib}" ] && export "RANLIB_${build_rust_lower}=${build_ranlib}"
+  fi
 
   if command -v "clang-${target_arch}" >/dev/null 2>&1; then
     export CLANG="clang-${target_arch}"
@@ -525,10 +674,17 @@ ensure_meson_native_file() {
 
   host_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   build_triplet="$(build_deb_multiarch_triplet)"
-  native_cc="$(PATH="${host_path}" command -v gcc || PATH="${host_path}" command -v cc || true)"
-  native_cxx="$(PATH="${host_path}" command -v g++ || PATH="${host_path}" command -v c++ || true)"
-  native_ar="$(PATH="${host_path}" command -v ar || true)"
-  native_strip="$(PATH="${host_path}" command -v strip || true)"
+  if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+    native_cc="$(resolve_build_gcc_tool gcc 2>/dev/null || resolve_build_gcc_tool cc 2>/dev/null || true)"
+    native_cxx="$(resolve_build_gcc_tool g++ 2>/dev/null || resolve_build_gcc_tool c++ 2>/dev/null || true)"
+    native_ar="$(resolve_build_gcc_tool ar 2>/dev/null || true)"
+    native_strip="$(resolve_build_gcc_tool strip 2>/dev/null || true)"
+  else
+    native_cc="$(PATH="${host_path}" command -v gcc || PATH="${host_path}" command -v cc || true)"
+    native_cxx="$(PATH="${host_path}" command -v g++ || PATH="${host_path}" command -v c++ || true)"
+    native_ar="$(PATH="${host_path}" command -v ar || true)"
+    native_strip="$(PATH="${host_path}" command -v strip || true)"
+  fi
   native_pkg_config="$(PATH="${host_path}" command -v pkg-config || true)"
   native_cmake="$(PATH="${host_path}" command -v cmake || true)"
   if [ -n "${build_triplet}" ]; then

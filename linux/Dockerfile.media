@@ -531,10 +531,6 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     rmdir /opt/wheels/repaired
 
 RUN set -eux; \
-    if [ "${BUILD_MODE}" = "cross" ]; then \
-        echo "Skipping Python wheel tag verification in cross mode"; \
-        exit 0; \
-    fi; \
     PY_TAG="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"; \
     echo "Verifying wheels in /opt/wheels have the correct tag ($PY_TAG or generic)..."; \
     for wheel in /opt/wheels/*.whl; do \

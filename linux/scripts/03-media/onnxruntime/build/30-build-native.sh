@@ -70,6 +70,11 @@ BUILD_ARGS=(
   --use_lock_free_queue
 )
 
+BUILD_ARGS+=(
+  --cmake_extra_defines
+  "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
+)
+
 if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
   BUILD_ARGS+=(
     --enable_lto
