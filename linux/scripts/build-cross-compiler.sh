@@ -101,7 +101,7 @@ build_cross_compiler() {
     --platform linux/amd64 \
     -t "${COMPILER_LOCAL_TAG}" \
     --output "type=image,name=${COMPILER_LOCAL_TAG},push=true" \
-    -f linux/Dockerfile.compiler \
+    -f linux/Dockerfile.toolchain \
     --build-arg BASE_IMAGE="${BASE_LOCAL_TAG}" \
     --build-arg BUILD_MODE=cross \
     --build-arg CROSS_TARGETS="${CROSS_TARGETS}" \

@@ -131,6 +131,11 @@ prepare_host_compiler_wrapper() {
         *) return 1 ;;
     esac
 
+    if command -v make_host_compiler_wrapper >/dev/null 2>&1; then
+        make_host_compiler_wrapper "${wrapper}" "${compiler}"
+        return 0
+    fi
+
     mkdir -p "${wrapper_dir}"
     cat > "${wrapper}" <<EOF
 #!/usr/bin/env bash

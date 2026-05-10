@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.19
 
 # Global Version Arguments
-ARG PYTHON_VERSION="3.14.4"
 ARG ONNXRUNTIME_VERSION="v1.26.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.13.1"
 ARG LITERT_VERSION="v2.1.4"
@@ -61,11 +60,6 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
     FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
     bash /tmp/use-fast-ubuntu-mirror.sh
 
-RUN if [ "$TARGETARCH" = "riscv64" ]; then \
-        echo 'export LIBRARY_PATH=/opt/gcc-16.1.0/lib64:/opt/gcc-16.1.0/lib:$LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh && \
-        echo 'export LD_LIBRARY_PATH=/opt/gcc-16.1.0/lib64:/opt/gcc-16.1.0/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh; \
-    fi
-
 # If NVIDIA is enabled, force NVIDIA codec headers on so GStreamer nvcodec plugin is built
 ENV NVIDIA_CODEC_HEADERS=${ENABLE_NVIDIA:+yes}
 # If NVIDIA is enabled, extend LD_LIBRARY_PATH for CUDA/TensorRT libs
@@ -82,10 +76,8 @@ RUN if [ "${ENABLE_AMD}" = "true" ]; then \
     fi
 ENV PATH="${ENABLE_AMD:+"/opt/rocm/bin:"}${PATH}"
 
-# Build Python from source
-ARG PYTHON_VERSION
+# Python interpreter selection for shared build tooling
 ARG PYTHON_MAJOR_MINOR=3.14
-ENV PYTHON_VERSION=${PYTHON_VERSION}
 ENV PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}
 # Override build scripts' default (3.14t) to ensure non-threaded ABI.
 # Keep uv pinned to the shared venv interpreter after it is created, because
@@ -99,12 +91,14 @@ COPY --chmod=755 linux/scripts/01-core/cross-env.sh /opt/scripts/core/cross-env.
 COPY --chmod=755 linux/scripts/01-core/compiler-cache.sh /opt/scripts/core/compiler-cache.sh
 COPY --chmod=755 linux/scripts/01-core/parallelism.sh /opt/scripts/core/parallelism.sh
 
-COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
-RUN /opt/scripts/python/build_python.sh ${PYTHON_VERSION}
-
 # Create a shared Python virtual environment for all subsequent stages using uv
 ENV VIRTUAL_ENV=/opt/python/.venv
 RUN set -eux; \
+    test -x "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" || { \
+        echo "Expected source-built interpreter /usr/local/bin/python${PYTHON_MAJOR_MINOR} from the compiler base image was not found" >&2; \
+        ls -1 /usr/local/bin/python* 2>/dev/null || true; \
+        exit 1; \
+    }; \
     uv venv --seed --python /usr/local/bin/python${PYTHON_MAJOR_MINOR} ${VIRTUAL_ENV}
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}" \
     UV_PYTHON=${VIRTUAL_ENV}/bin/python \
@@ -310,10 +304,6 @@ COPY --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
 COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
-COPY --chmod=755 linux/scripts/03-media/opencv/fix-symlinks.sh /opt/scripts/media/opencv/fix-symlinks.sh
-
-RUN set -eux; \
-    bash /opt/scripts/media/opencv/fix-symlinks.sh "${OPENCV_OUTPUT_DIR}"
 
 RUN set -eux; \
     triplet="$(case "${TARGET_ARCH:-${TARGETARCH}}" in amd64) echo x86_64-linux-gnu ;; arm64) echo aarch64-linux-gnu ;; riscv64) echo riscv64-linux-gnu ;; *) dpkg-architecture -q DEB_HOST_MULTIARCH ;; esac)"; \
@@ -382,21 +372,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
     cd /opt; \
-    if [ -f /usr/local/include/flatbuffers/flatbuffers.h ]; then \
-        echo "Found FlatBuffers header:"; \
-        sed -n '1,120p' /usr/local/include/flatbuffers/flatbuffers.h | sed -n '1,120p' || true; \
-        grep -n "FLATBUFFERS_VERSION_MAJOR" /usr/local/include/flatbuffers/flatbuffers.h || true; \
-    else \
-        echo "ERROR: /usr/local/include/flatbuffers/flatbuffers.h not found" >&2; \
-        echo "Listing /usr/local/include:" >&2; \
-        ls -la /usr/local/include || true; \
-        exit 1; \
-    fi; \
-    if [ -f /usr/local/include/tflite/converter/schema/schema_generated.h ]; then \
-        echo "TFLite schema check (expected FlatBuffers version):"; \
-        grep -n "static_assert(FLATBUFFERS_VERSION_MAJOR" /usr/local/include/tflite/converter/schema/schema_generated.h || true; \
-    fi; \
-    bash /opt/scripts/media/libcamera/build-libcamera-wrapper.sh
+    bash /opt/scripts/media/libcamera/build-libcamera.sh
 
 # ==============================================================================
 # Final stage - combine all artifacts
@@ -441,7 +417,6 @@ COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 COPY --from=libcamera /opt/libcamera /opt/libcamera
-COPY --chmod=755 linux/scripts/03-media/opencv/fix-symlinks.sh /opt/scripts/media/opencv/fix-symlinks.sh
 COPY --chmod=755 linux/scripts/03-media/final /opt/scripts/media/final
 
 RUN set -eux; \
@@ -453,15 +428,6 @@ RUN set -eux; \
     mv /opt/litert-wheels/*.whl /opt/wheels/ 2>/dev/null || true; \
     mv /opt/libcamera/wheels/*.whl /opt/wheels/ 2>/dev/null || true; \
     rm -rf /usr/local/lib/onnxruntime-*/wheels /opt/opencv4/wheels /opt/litert-wheels /opt/libcamera/wheels
-
-RUN set -eux; \
-    if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then \
-        echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"; \
-        ln -s /usr/local/include/tflite /usr/local/include/tensorflow || true; \
-    fi
-
-RUN set -eux; \
-    bash /opt/scripts/media/opencv/fix-symlinks.sh "${OPENCV_OUTPUT_DIR}"
 
 RUN set -eux; \
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
@@ -482,14 +448,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 
 RUN set -eux; \
     triplet="$(case "${TARGET_ARCH:-${TARGETARCH}}" in amd64) echo x86_64-linux-gnu ;; arm64) echo aarch64-linux-gnu ;; riscv64) echo riscv64-linux-gnu ;; *) dpkg-architecture -q DEB_HOST_MULTIARCH ;; esac)"; \
-    SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
-    GST_PKGCONF_DIR="/opt/gstreamer/lib/${triplet}/pkgconfig"; \
-    mkdir -p "${SYS_PKGCONF_DIR}"; \
-    if [ -d "${GST_PKGCONF_DIR}" ]; then \
-        for pc in "${GST_PKGCONF_DIR}"/*.pc; do \
-            ln -snf "$pc" "${SYS_PKGCONF_DIR}/$(basename "$pc")"; \
-        done; \
-    fi; \
     printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
     ldconfig
 

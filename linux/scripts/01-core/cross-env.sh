@@ -156,6 +156,34 @@ resolve_cross_gcc_tool() {
   command -v "${triplet}-${tool}" 2>/dev/null || return 1
 }
 
+make_host_compiler_wrapper() {
+  local wrapper_path="$1"
+  local compiler="$2"
+  local host_path="${3:-/usr/bin:/bin}"
+
+  [ -n "${wrapper_path}" ] || return 1
+  [ -n "${compiler}" ] || return 1
+
+  mkdir -p "$(dirname "${wrapper_path}")"
+  cat > "${wrapper_path}" <<EOF
+#!/usr/bin/env bash
+exec env PATH="${host_path}" "${compiler}" -B/usr/bin/ "\$@"
+EOF
+  chmod +x "${wrapper_path}"
+  printf '%s' "${wrapper_path}"
+}
+
+make_named_host_compiler_wrapper() {
+  local wrapper_dir="$1"
+  local wrapper_name="$2"
+  local compiler="$3"
+
+  [ -n "${wrapper_dir}" ] || return 1
+  [ -n "${wrapper_name}" ] || return 1
+
+  make_host_compiler_wrapper "${wrapper_dir}/${wrapper_name}" "${compiler}"
+}
+
 host_python_bin() {
   if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
     printf '%s' "${MEDIA_HOST_PYTHON}"

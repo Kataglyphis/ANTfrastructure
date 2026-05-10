@@ -70,7 +70,7 @@ Images in this repository:
 Linux image chain (built as separate images for caching):
 
 - `linux/Dockerfile.base`: Ubuntu base + stable apt dependencies (no project scripts copied).
-- `linux/Dockerfile.compiler`: GCC + LLVM/Clang compiler toolchain.
+- `linux/Dockerfile.toolchain`: GCC + LLVM/Clang compiler toolchain.
 - `linux/Dockerfile.sdk`: Vulkan SDK layer on top of compiler.
 - `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
@@ -92,7 +92,7 @@ sudo nerdctl build \
 ```
 
 - Supported Dockerfiles:
-  `linux/Dockerfile.base`, `linux/Dockerfile.compiler`, `linux/Dockerfile.sdk`, `linux/Dockerfile.media`, `linux/Dockerfile.android`, `linux/Dockerfile`, `linux/Dockerfile.nvidia`, `linux/Dockerfile.amd`, `linux/Dockerfile.torch`, `linux/Dockerfile.sdk-artifact`
+  `linux/Dockerfile.base`, `linux/Dockerfile.toolchain`, `linux/Dockerfile.sdk`, `linux/Dockerfile.media`, `linux/Dockerfile.android`, `linux/Dockerfile`, `linux/Dockerfile.nvidia`, `linux/Dockerfile.amd`, `linux/Dockerfile.torch`, `linux/Dockerfile.sdk-artifact`
 - Not supported / not needed:
   `linux/webserver/Dockerfile` is not wired for this flag, `linux/Dockerfile.runtime-artifact` is copy-only and does not run apt, and `windows/Dockerfile` does not use apt.
 
@@ -244,7 +244,7 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
   . 2>&1 | tee -a output.log
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler,push=true' \
-  -f linux/Dockerfile.compiler \
+  -f linux/Dockerfile.toolchain \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler \
@@ -328,7 +328,7 @@ Then build the dedicated amd64-hosted compiler image in cross mode for amd64, ar
 ```bash
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
-  -f linux/Dockerfile.compiler \
+  -f linux/Dockerfile.toolchain \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BUILD_MODE=cross \
@@ -376,7 +376,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
-  -f linux/Dockerfile.compiler \
+  -f linux/Dockerfile.toolchain \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --build-arg BUILD_MODE=cross \

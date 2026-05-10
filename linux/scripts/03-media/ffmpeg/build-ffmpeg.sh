@@ -161,15 +161,19 @@ resolve_ffmpeg_host_compiler() {
 prepare_ffmpeg_host_compiler_wrapper() {
     local compiler="$1"
     local wrapper_dir="${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain}"
-    local wrapper="${wrapper_dir}/host-gcc"
+
+    if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
+        make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"
+        return 0
+    fi
 
     mkdir -p "${wrapper_dir}"
-    cat > "${wrapper}" <<EOF
+    cat > "${wrapper_dir}/host-gcc" <<EOF
 #!/usr/bin/env bash
 exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
 EOF
-    chmod +x "${wrapper}"
-    printf '%s' "${wrapper}"
+    chmod +x "${wrapper_dir}/host-gcc"
+    printf '%s' "${wrapper_dir}/host-gcc"
 }
 
 ffmpeg_try_cpp_condition() {

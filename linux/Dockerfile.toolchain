@@ -14,6 +14,8 @@ ARG BUILDARCH
 ARG BUILDPLATFORM
 ARG BUILD_MODE=native
 ARG CROSS_TARGETS=amd64,arm64,riscv64
+ARG PYTHON_VERSION=3.14.4
+ARG PYTHON_MAJOR_MINOR=3.14
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 
@@ -29,6 +31,8 @@ ENV BUILD_MODE=${BUILD_MODE} \
     BUILDARCH=${BUILDARCH} \
     BUILDPLATFORM=${BUILDPLATFORM} \
     CROSS_TARGETS=${CROSS_TARGETS} \
+    PYTHON_VERSION=${PYTHON_VERSION} \
+    PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
     PATH="/usr/local/cargo/bin:${PATH}" \
     CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
@@ -133,15 +137,29 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
     rustup toolchain install "${nightly_toolchain}" || true; \
     rustup component add rust-src --toolchain "${nightly_toolchain}" || true; \
     rustup target add wasm32-unknown-unknown --toolchain "${nightly_toolchain}" || true; \
-    for target in ${rust_targets//,/ }; do \
-        case "${target}" in \
-            amd64|x86_64) rust_target="x86_64-unknown-linux-gnu" ;; \
+     for target in ${rust_targets//,/ }; do \
+         case "${target}" in \
+             amd64|x86_64) rust_target="x86_64-unknown-linux-gnu" ;; \
             arm64|aarch64) rust_target="aarch64-unknown-linux-gnu" ;; \
             riscv64) rust_target="riscv64gc-unknown-linux-gnu" ;; \
             *) echo "Unsupported Rust target: ${target}" >&2; exit 1 ;; \
-        esac; \
-        rustup target add "${rust_target}"; \
-        rustup target add --toolchain "${nightly_toolchain}" "${rust_target}" || true; \
-    done
+         esac; \
+         rustup target add "${rust_target}"; \
+         rustup target add --toolchain "${nightly_toolchain}" "${rust_target}" || true; \
+     done
+
+# 6. PYTHON (Source-Built Interpreter)
+# Keep the interpreter in the shared compiler layer so downstream images only
+# create their own venvs on top of a single source-built CPython install.
+COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
+
+RUN set -eux; \
+    python_mm="$(printf '%s' "${PYTHON_VERSION}" | cut -d. -f1,2)"; \
+    [ "${PYTHON_MAJOR_MINOR}" = "${python_mm}" ] || { \
+        echo "PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} does not match PYTHON_VERSION=${PYTHON_VERSION}" >&2; \
+        exit 1; \
+    }; \
+    bash /opt/scripts/python/build_python.sh "${PYTHON_VERSION}"
+
 LABEL org.opencontainers.image.title="Kataglyphis Compiler"
 LABEL org.opencontainers.image.description="Compiler toolchain with GCC and LLVM/Clang"

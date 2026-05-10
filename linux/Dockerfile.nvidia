@@ -15,7 +15,7 @@
 #   • NVTX (Nsight profiler headers)                      — from CUDA repo
 #   • CUDA Firmware / driver-independent libs             — from CUDA repo
 #
-# The STANDARD build chain (Dockerfile.base → Dockerfile.compiler →
+# The STANDARD build chain (Dockerfile.base → Dockerfile.toolchain →
 # Dockerfile.sdk → Dockerfile.media → Dockerfile.android → Dockerfile)
 # is UNCHANGED.
 # This file is ONLY used when building the -nvidia variants.

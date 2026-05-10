@@ -6,30 +6,6 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   source /opt/scripts/core/cross-env.sh
 fi
 
-# Error handler: print useful logs when a build step fails (meson/ninja/pip)
-on_error() {
-  local rc=${1:-1}
-  echo "ERROR: build failed (exit code ${rc})"
-  if [ -f "${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt" ]; then
-    echo "----- BEGIN meson-log.txt -----"
-    sed -n '1,200p' "${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt" || true
-    echo "..."
-    sed -n '201,400p' "${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt" || true
-    echo "----- END meson-log.txt -----"
-  fi
-  if [ -f /tmp/uv-pip-install.log ]; then
-    echo "----- BEGIN /tmp/uv-pip-install.log -----"
-    sed -n '1,200p' /tmp/uv-pip-install.log || true
-    echo "----- END /tmp/uv-pip-install.log -----"
-  fi
-  if [ -d "${LIBCAMERA_BUILD_DIR}" ]; then
-    echo "Running: ninja -C \"${LIBCAMERA_BUILD_DIR}\" -v (to show the failing command)"
-    ninja -C "${LIBCAMERA_BUILD_DIR}" -v || true
-  fi
-  exit "${rc}"
-}
-trap 'on_error $?' ERR
-
 append_env_flag() {
   local var_name="$1"
   local flag="$2"
@@ -124,27 +100,8 @@ export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
        Python_EXECUTABLE="${HOST_PYTHON}" \
        Python3_EXECUTABLE="${HOST_PYTHON}"
 
-# Install build tools into the uv venv; retry with --break-system-packages on PEP-668 failures
-if ! uv pip install --upgrade pip setuptools wheel 2>/tmp/uv-pip-install.log; then
-  echo "pip install into uv venv failed; retrying with --break-system-packages"
-  uv pip install --upgrade pip setuptools wheel || { echo "pip install (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
-fi
-if ! uv pip install --upgrade meson ninja jinja2 2>/tmp/uv-pip-install.log; then
-  echo "pip install meson/ninja/jinja2 failed; retrying with --break-system-packages"
-  uv pip install --upgrade meson ninja jinja2 || { echo "pip install meson/ninja/jinja2 (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
-fi
-if ! uv pip install --upgrade pyyaml 2>/tmp/uv-pip-install.log; then
-  echo "pip install pyyaml failed; retrying with --break-system-packages"
-  uv pip install --upgrade pyyaml || { echo "pip install pyyaml (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
-fi
-if ! uv pip install --upgrade ply 2>/tmp/uv-pip-install.log; then
-  echo "pip install ply failed; retrying with --break-system-packages"
-  uv pip install --upgrade ply || { echo "pip install ply (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
-fi
-if ! uv pip install --upgrade pybind11 2>/tmp/uv-pip-install.log; then
-  echo "pip install pybind11 failed; retrying with --break-system-packages"
-  uv pip install --upgrade pybind11 || { echo "pip install pybind11 (with override) failed; see /tmp/uv-pip-install.log"; cat /tmp/uv-pip-install.log || true; exit 1; }
-fi
+# Install build tools into the uv venv
+uv pip install --upgrade pip setuptools wheel meson ninja jinja2 pyyaml ply pybind11
 UV_RUN_PREFIX=(uv run --)
 
 # Ensure GoogleTest is available
@@ -244,7 +201,7 @@ echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-con
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   echo "Skipping libcamera Python wheel build in cross mode"
-  rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" /tmp/uv-pip-install.log || true
+  rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" || true
   exit 0
 fi
 
@@ -277,4 +234,4 @@ else
   echo "pycamera site-packages directory not found."
 fi
 
-rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" /tmp/uv-pip-install.log || true
+rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" || true
