@@ -15,6 +15,7 @@ fi
 
 # Source required modules
 source_module common.sh
+source_module cross-env.sh
 source_module repos.sh
 source_module core.sh
 source_module cmake.sh

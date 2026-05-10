@@ -3,14 +3,46 @@
 
 install_vulkan_prereqs() {
   log "Installing Vulkan SDK prerequisites"
-  apt_install xz-utils libglm-dev libxcb-dri3-0 \
-    libxcb-present0 libpciaccess0 libpng-dev libxcb1-dev libxcb-keysyms1-dev \
-    libxcb-dri3-dev libx11-dev g++ gcc libwayland-dev \
-    libxrandr-dev libxcb-randr0-dev libxcb-ewmh-dev git \
-    python3 bison libx11-xcb-dev liblz4-dev libzstd-dev \
-    ocaml ninja-build pkg-config libxml2-dev \
-    wayland-protocols python3-jsonschema clang-format qtbase5-dev qt6-base-dev \
+  local -a host_packages=(
+    xz-utils libglm-dev libxcb-dri3-0
+    libxcb-present0 libpciaccess0 libpng-dev libxcb1-dev libxcb-keysyms1-dev
+    libxcb-dri3-dev libx11-dev g++ gcc libwayland-dev
+    libxrandr-dev libxcb-randr0-dev libxcb-ewmh-dev git
+    python3 bison libx11-xcb-dev liblz4-dev libzstd-dev
+    ocaml ninja-build pkg-config libxml2-dev
+    wayland-protocols python3-jsonschema clang-format qtbase5-dev qt6-base-dev
     libxcb-xinput0 libxcb-xinerama0 libxcb-cursor-dev
+  )
+  local -a target_pkgconfig_packages=(
+    libpng-dev
+    libpciaccess-dev
+    libxcb1-dev
+    libxcb-keysyms1-dev
+    libxcb-dri3-dev
+    libxcb-present-dev
+    libxcb-randr0-dev
+    libxcb-ewmh-dev
+    libxcb-cursor-dev
+    libxcb-xinput-dev
+    libxcb-xinerama0-dev
+    libx11-dev
+    libx11-xcb-dev
+    libwayland-dev
+    libxrandr-dev
+    liblz4-dev
+    libzstd-dev
+    libxml2-dev
+    wayland-protocols
+  )
+
+  apt_install "${host_packages[@]}"
+
+  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+     command -v install_target_packages >/dev/null 2>&1; then
+    # Cross Vulkan builds keep pkg-config pointed at target multiarch roots.
+    # Install the WSI and compression dev packages for that target too.
+    install_target_packages "${target_pkgconfig_packages[@]}"
+  fi
 }
 
 # default install location - overrideable from environment
@@ -115,7 +147,10 @@ install_vulkan_sdk() {
       fi
       sudo ldconfig 2>/dev/null || true
 
-      SDK_ARCHDIR="${target_dir}/$(uname -m)"
+      SDK_ARCHDIR="${target_dir}/${arch_suffix}"
+      if [[ ! -d "${SDK_ARCHDIR}" ]]; then
+        SDK_ARCHDIR="${target_dir}/$(uname -m)"
+      fi
       if [[ -d "${SDK_ARCHDIR}" ]]; then
         local target_include_dir="/usr/${target_triplet}/include"
         log "Preferring Vulkan SDK headers and CMake packages from ${SDK_ARCHDIR}"
@@ -161,6 +196,18 @@ install_vulkan_sdk() {
           sudo ln -s "${SDK_ARCHDIR}/include/vk_video" /usr/local/include/vk_video
           sudo ln -s "${SDK_ARCHDIR}/include/vk_video" "${target_include_dir}/vk_video"
         fi
+      fi
+
+      if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        unset PKG_CONFIG_PATH
+        export PKG_CONFIG_ALLOW_CROSS=1
+        export PKG_CONFIG_SYSROOT_DIR=/
+        if command -v cross_pkg_config_libdir >/dev/null 2>&1; then
+          export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${target_triplet}")"
+        else
+          export PKG_CONFIG_LIBDIR="/usr/${target_triplet}/lib/pkgconfig:/usr/lib/${target_triplet}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+        fi
+        log "Using cross pkg-config search path ${PKG_CONFIG_LIBDIR}"
       fi
 
       log "Building selected SDK components..."

@@ -107,8 +107,27 @@ install_deps() {
   # TVM build/runtime dependencies
   apt_install \
     pkg-config cmake ninja-build \
-    python3 python3-venv python3-pip \
     libopenblas-dev
+}
+
+require_toolchain_python() {
+  local python_mm="${PYTHON_MAJOR_MINOR:-}"
+  local python_bin=""
+
+  if [ -z "$python_mm" ] && command -v host_python_major_minor >/dev/null 2>&1; then
+    python_mm="$(host_python_major_minor 2>/dev/null || true)"
+  fi
+
+  if [ -z "$python_mm" ]; then
+    die "PYTHON_MAJOR_MINOR is not set; cannot resolve the source-built toolchain Python"
+  fi
+
+  python_bin="/usr/local/bin/python${python_mm}"
+  if [ ! -x "$python_bin" ]; then
+    die "Expected source-built toolchain Python at ${python_bin}; TVM must use the interpreter from linux/Dockerfile.toolchain"
+  fi
+
+  printf '%s' "$python_bin"
 }
 
 tvm_cross_wheel_platform_tag() {
@@ -538,7 +557,7 @@ main() {
 
   if [ "$do_python" -eq 1 ]; then
     log "Setting up Python venv + TVM Python package"
-    HOST_PYTHON="$(host_python_bin 2>/dev/null || command -v python3 || command -v python)"
+    HOST_PYTHON="$(require_toolchain_python)"
     uv venv --seed "$tvm_dir/.venv" --python="$HOST_PYTHON"
     # shellcheck disable=SC1091
     source "$tvm_dir/.venv/bin/activate"

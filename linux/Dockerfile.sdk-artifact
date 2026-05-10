@@ -28,6 +28,16 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # depend on how old the cached compiler-cross image is.
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
+COPY --chmod=+x linux/scripts/05-frameworks/ /opt/scripts/frameworks/
+
+ARG TVM_REF=v0.23.0
+ARG TVM_BUILD_TYPE=${BUILD_TYPE}
+ARG TVM_USE_VULKAN=1
+ARG TVM_INSTALL_PYTHON=1
+
+ENV TVM_REF=${TVM_REF} \
+    TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
+    TVM_USE_VULKAN=${TVM_USE_VULKAN}
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-artifact-amd64 \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-sdk-artifact-amd64 \
@@ -95,5 +105,27 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-art
 RUN set -eux; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
 
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-artifact-amd64 \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-sdk-artifact-amd64 \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-sdk-artifact-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-sdk-artifact-${TARGET_ARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-sdk-artifact-${TARGET_ARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-sdk-artifact-${TARGET_ARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    if [ "${BUILD_MODE}" = "cross" ]; then \
+        source /opt/scripts/core/cross-env.sh; \
+        setup_linux_cross_env; \
+    fi; \
+    if [ "${TVM_INSTALL_PYTHON}" = "1" ]; then \
+        py_flag=""; \
+    else \
+        py_flag="--no-python"; \
+    fi; \
+    bash /opt/scripts/frameworks/tvm.sh \
+        --ref "${TVM_REF}" \
+        --build-type "${TVM_BUILD_TYPE}" \
+        ${py_flag}
+
 LABEL org.opencontainers.image.title="Kataglyphis SDK Artifact Builder"
-LABEL org.opencontainers.image.description="SDK artifact image that builds a target-specific Vulkan SDK rootfs on an amd64 host"
+LABEL org.opencontainers.image.description="SDK artifact image that builds a target-specific Vulkan SDK and TVM rootfs on an amd64 host"

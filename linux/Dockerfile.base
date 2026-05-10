@@ -2,7 +2,8 @@
 
 # ------------------------------------------------------------------------------
 # OS + stable dependencies (rarely changes)
-# This image intentionally avoids COPY of scripts to keep apt layers cacheable.
+# This image avoids persisting helper scripts into the image so apt layers remain
+# stable while shared setup logic can still run through BuildKit bind mounts.
 # ------------------------------------------------------------------------------
 FROM ubuntu:24.04
 
@@ -71,8 +72,22 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         libpango1.0-dev libx11-dev libx11-xcb-dev \
         libasound2-dev libpulse-dev libdbus-1-dev \
         file dpkg-dev fakeroot binutils \
-        $([ "$ARCH" != "riscv64" ] && echo "valgrind") \
-        linux-tools-common;
+         $([ "$ARCH" != "riscv64" ] && echo "valgrind") \
+         linux-tools-common;
+
+
+# ------------------------------------------------------------------------------
+# Shared build tooling (CMake, extras, packaging prerequisites)
+# Keep this in the base image so compiler/toolchain builds inherit it directly.
+# ------------------------------------------------------------------------------
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    bash /tmp/scripts/02-toolchain/setup-dependencies.sh cmake; \
+    bash /tmp/scripts/02-toolchain/setup-dependencies.sh extras; \
+    bash /tmp/scripts/02-toolchain/packaging-deps.sh
 
 
 # ------------------------------------------------------------------------------
