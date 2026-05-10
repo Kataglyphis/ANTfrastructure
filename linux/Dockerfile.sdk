@@ -35,7 +35,7 @@ RUN bash /opt/scripts/toolchain/setup-dependencies.sh verify
 # ==============================================================================
 COPY --chmod=+x linux/scripts/05-frameworks/ /opt/scripts/frameworks/
 
-ARG TVM_REF=v0.22.0
+ARG TVM_REF=v0.23.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
 ARG TVM_INSTALL_PYTHON=1
@@ -44,24 +44,22 @@ ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
     TVM_USE_VULKAN=${TVM_USE_VULKAN}
 
-# Uncomment below to enable TVM build
-# RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-#     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
-#     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
-#     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-#     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-#     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-#     --mount=type=tmpfs,target=/tmp \
-#     set -eux; \
-#     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
-#     if [ "${TVM_INSTALL_PYTHON}" = "1" ]; then \
-#         py_flag=""; \
-#     else \
-#         py_flag="--no-python"; \
-#     fi; \
-#     bash /opt/scripts/frameworks/tvm.sh \
-#         --ref "${TVM_REF}" \
-#         --build-type "${TVM_BUILD_TYPE}" \
-#         ${py_flag}
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    if [ "${TVM_INSTALL_PYTHON}" = "1" ]; then \
+        py_flag=""; \
+    else \
+        py_flag="--no-python"; \
+    fi; \
+    bash /opt/scripts/frameworks/tvm.sh \
+        --ref "${TVM_REF}" \
+        --build-type "${TVM_BUILD_TYPE}" \
+        ${py_flag}
 LABEL org.opencontainers.image.title="Kataglyphis SDK"
 LABEL org.opencontainers.image.description="SDK layer with Vulkan on top of compiler toolchain"

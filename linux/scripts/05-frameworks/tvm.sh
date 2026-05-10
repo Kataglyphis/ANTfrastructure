@@ -55,7 +55,7 @@ Environment overrides:
 
 Examples:
   ./tvm.sh
-  ./tvm.sh --ref v0.16.0
+  ./tvm.sh --ref v0.23.0
   ./tvm.sh --llvm-config /usr/bin/llvm-config-21
   ./tvm.sh --clean
 EOF
@@ -109,6 +109,15 @@ install_deps() {
     pkg-config cmake ninja-build \
     python3 python3-venv python3-pip \
     libopenblas-dev
+}
+
+tvm_cross_wheel_platform_tag() {
+  case "$(cross_target_arch 2>/dev/null || true)" in
+    amd64) printf '%s' "linux_x86_64" ;;
+    arm64) printf '%s' "linux_aarch64" ;;
+    riscv64) printf '%s' "linux_riscv64" ;;
+    *) return 1 ;;
+  esac
 }
 
 detect_clang_tools() {
@@ -488,9 +497,14 @@ main() {
     -DCMAKE_INSTALL_PREFIX="$prefix"
     -DUSE_OPENCL=OFF
     -DUSE_CUDA=OFF
+    -DTVM_BUILD_PYTHON_MODULE=OFF
     -DCMAKE_C_COMPILER="$desired_cc"
     -DCMAKE_CXX_COMPILER="$desired_cxx"
   )
+
+  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    append_cmake_cross_args cmake_args
+  fi
 
   if [ "$use_vulkan" -eq 1 ]; then
     cmake_args+=( -DUSE_VULKAN=ON )
@@ -523,7 +537,7 @@ main() {
   cmake --install "$build_dir"
 
   if [ "$do_python" -eq 1 ]; then
-    log "Setting up Python venv + editable TVM install"
+    log "Setting up Python venv + TVM Python package"
     HOST_PYTHON="$(host_python_bin 2>/dev/null || command -v python3 || command -v python)"
     uv venv --seed "$tvm_dir/.venv" --python="$HOST_PYTHON"
     # shellcheck disable=SC1091
@@ -531,35 +545,97 @@ main() {
     export UV_PYTHON="${VIRTUAL_ENV}/bin/python" \
            MEDIA_HOST_PYTHON="${VIRTUAL_ENV}/bin/python"
 
-    uv pip install -U pip setuptools wheel
+    uv pip install -U pip setuptools wheel build scikit-build-core cython setuptools-scm
     uv pip install -U numpy cloudpickle decorator psutil scipy attrs
 
-    # TVM depends on tvm-ffi for Python bindings.
-    # Upstream docs: `cd 3rdparty/tvm-ffi; pip install .`
-    if [ -f "$tvm_dir/3rdparty/tvm-ffi/pyproject.toml" ] || [ -f "$tvm_dir/3rdparty/tvm-ffi/setup.py" ]; then
-      uv pip install "$tvm_dir/3rdparty/tvm-ffi"
-    else
-      die "tvm-ffi is missing or not a Python project at $tvm_dir/3rdparty/tvm-ffi"
-    fi
-
-    # Install TVM python bindings (editable) and point it at the built libs
-    export TVM_LIBRARY_PATH="$build_dir"
-    uv pip install -e "$tvm_dir/python"
-
-    # Attempt to build a wheel for TVM python package and copy next to native artifacts
-    TVM_WHEEL_DIR="${prefix}/wheels"
+    local TVM_WHEEL_DIR="${prefix}/wheels"
+    local -a wheel_cmake_args=(
+      -DCMAKE_BUILD_TYPE="$build_type"
+      -DUSE_OPENCL=OFF
+      -DUSE_CUDA=OFF
+      -DTVM_BUILD_PYTHON_MODULE=ON
+      -DCMAKE_C_COMPILER="$desired_cc"
+      -DCMAKE_CXX_COMPILER="$desired_cxx"
+    )
+    local wheel_cmake_args_string
     mkdir -p "$TVM_WHEEL_DIR"
-    if [ -f "$tvm_dir/pyproject.toml" ] || [ -f "$tvm_dir/python/setup.py" ]; then
-      log "Building TVM wheel into $TVM_WHEEL_DIR"
-      python -m pip wheel -w "$TVM_WHEEL_DIR" "$tvm_dir/python" || log "Warning: TVM wheel build failed"
-    else
-      log "TVM python package not detected for wheel build; skipped"
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+      append_cmake_cross_args wheel_cmake_args
     fi
 
-    python - <<'PY'
+    if [ "$use_vulkan" -eq 1 ]; then
+      wheel_cmake_args+=( -DUSE_VULKAN=ON )
+      if [ -n "${spirv_tools_lib:-}" ]; then
+        wheel_cmake_args+=( -DVulkan_SPIRV_TOOLS_LIBRARY="$spirv_tools_lib" )
+      fi
+    else
+      wheel_cmake_args+=( -DUSE_VULKAN=OFF )
+    fi
+
+    if [ -n "$llvm_config" ]; then
+      wheel_cmake_args+=( -DUSE_LLVM="$llvm_config" )
+    fi
+
+    wheel_cmake_args_string="${wheel_cmake_args[*]}"
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+      local wheel_platform
+      local wheel_tags
+
+      wheel_platform="$(tvm_cross_wheel_platform_tag || true)"
+      if [ -z "$wheel_platform" ]; then
+        log "Skipping TVM wheel build in cross mode; unsupported target architecture $(cross_target_arch 2>/dev/null || echo unknown)"
+      elif [ -f "$tvm_dir/pyproject.toml" ]; then
+        log "Building cross TVM wheel into $TVM_WHEEL_DIR"
+        wheel_tags="py3-none-${wheel_platform}"
+        CMAKE_GENERATOR=Ninja \
+        CMAKE_ARGS="${wheel_cmake_args_string}" \
+        python -m build --wheel --no-isolation \
+          --outdir "$TVM_WHEEL_DIR" \
+          -Cbuild-dir="${tvm_dir}/build-wheel-${wheel_platform}" \
+          -Cwheel.tags="${wheel_tags}" \
+          "$tvm_dir" || log "Warning: cross TVM wheel build failed"
+      else
+        log "TVM python packaging not detected for wheel build; skipped"
+      fi
+    else
+      if [ -f "$tvm_dir/pyproject.toml" ]; then
+        log "Building TVM wheel into $TVM_WHEEL_DIR"
+        CMAKE_GENERATOR=Ninja \
+        CMAKE_ARGS="${wheel_cmake_args_string}" \
+        python -m build --wheel --no-isolation \
+          --outdir "$TVM_WHEEL_DIR" \
+          -Cbuild-dir="${tvm_dir}/build-wheel-native" \
+          "$tvm_dir" || log "Warning: TVM wheel build failed"
+      else
+        log "TVM python packaging not detected for wheel build; skipped"
+      fi
+
+      if [ -f "$tvm_dir/3rdparty/tvm-ffi/pyproject.toml" ]; then
+        log "Installing Apache TVM FFI Python package from source tree"
+        uv pip install "$tvm_dir/3rdparty/tvm-ffi"
+      else
+        log "Local Apache TVM FFI package not found; relying on apache-tvm-ffi from the Python package resolver"
+      fi
+
+      shopt -s nullglob
+      local -a built_wheels=("${TVM_WHEEL_DIR}"/*.whl)
+      shopt -u nullglob
+
+      if [ "${#built_wheels[@]}" -gt 0 ]; then
+        log "Installing TVM Python wheel ${built_wheels[0]}"
+        uv pip install "${built_wheels[0]}"
+      else
+        log "Wheel build unavailable; installing TVM Python package from source tree"
+        uv pip install "$tvm_dir"
+      fi
+
+      python - <<'PY'
 import tvm
 print("tvm imported OK; version=", tvm.__version__)
 PY
+    fi
   else
     log "Skipping Python setup (--no-python)"
   fi
