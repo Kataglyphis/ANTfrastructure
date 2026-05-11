@@ -10,7 +10,7 @@ TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-amd64,arm64,risc
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
-FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-http://de.archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
 
 usage() {
   cat <<'EOF'
@@ -125,7 +125,7 @@ build_sdk_image() {
     --platform linux/amd64 \
     -t "${tag}" \
     --output "type=image,name=${tag},push=true" \
-    -f linux/Dockerfile.sdk-artifact \
+    -f linux/Dockerfile.sdk \
     --build-arg BASE_IMAGE="${COMPILER_IMAGE}" \
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${arch}" \

@@ -220,7 +220,7 @@ if [ "${USE_CCACHE}" = "1" ]; then
 fi
 
 TARBALL="gcc-${GCC_VERSION}.tar.xz"
-DOWNLOAD_BASE="https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}"
+DOWNLOAD_BASE="https://gcc.gnu.org/pub/gcc/releases/gcc-${GCC_VERSION}"
 TARBALL_URL="${DOWNLOAD_BASE}/${TARBALL}"
 SHA_URL="${DOWNLOAD_BASE}/sha512.sum"
 SIG_URL="${DOWNLOAD_BASE}/${TARBALL}.sig"
@@ -261,9 +261,6 @@ apt_install \
   libmpc-dev \
   libisl-dev \
   libzstd-dev \
-  texinfo \
-  flex \
-  bison \
   python3 \
   libexpat1-dev \
   libncurses-dev \
@@ -271,6 +268,20 @@ apt_install \
   patch \
   git \
   gnupg
+
+# GCC release tarballs already ship generated parser/doc artifacts, so the
+# build does not need flex, bison, or texinfo just to rebuild them.
+# Default warning-suppression flags keep the toolchain build log focused on
+# actionable failures while still allowing callers to override them.
+: "${CFLAGS:=-g -O2 -w}"
+: "${CXXFLAGS:=-g -O2 -w}"
+: "${FFLAGS:=-g -O2 -w}"
+: "${FCFLAGS:=${FFLAGS}}"
+: "${CFLAGS_FOR_BUILD:=${CFLAGS}}"
+: "${CXXFLAGS_FOR_BUILD:=${CXXFLAGS}}"
+: "${BOOT_CFLAGS:=-g -O2 -w}"
+: "${STAGE1_CFLAGS:=${BOOT_CFLAGS}}"
+export CFLAGS CXXFLAGS FFLAGS FCFLAGS CFLAGS_FOR_BUILD CXXFLAGS_FOR_BUILD BOOT_CFLAGS STAGE1_CFLAGS
 
 # 2) Prepare build directory (no /tmp used)
 mkdir -p "${BUILD_DIR}"
@@ -286,8 +297,8 @@ fi
 echo "Attempting SHA512 verification..."
 if wget -q --spider "${SHA_URL}"; then
   wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SHA_URL}" -O sha512.sum || true
-  if grep -q "${TARBALL}" sha512.sum 2>/dev/null; then
-    grep "${TARBALL}" sha512.sum > "${TARBALL}.sha512"
+  if grep -Eq "[[:space:]]${TARBALL}\$" sha512.sum 2>/dev/null; then
+    grep -E "[[:space:]]${TARBALL}\$" sha512.sum > "${TARBALL}.sha512"
     if sha512sum -c --status "${TARBALL}.sha512"; then
       echo "SHA512 OK."
     else
@@ -307,14 +318,14 @@ if wget -q --spider "${SIG_URL}"; then
   wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}" || true
   
   # GPG verification (GCC Release Signing Key)
-  GCC_RELEASE_KEY="D3A93CAD751C2AF4F8C7AD536D4525099671F567"
+  GCC_RELEASE_KEY="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62"
   echo "Attempting GPG verification..."
   if command -v gpg >/dev/null 2>&1; then
     # Import GCC release key if not present
     if ! gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
       echo "Importing GCC release signing key..."
-      gpg --keyserver keyserver.ubuntu.com --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
-      gpg --keyserver pgp.mit.edu --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
+      gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
+      gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
       echo "Warning: Could not import GPG key, skipping signature verification"
     fi
     
@@ -347,9 +358,31 @@ CONFIG_CMD=(
   "--prefix=${PREFIX}"
   "--enable-languages=${GCC_LANGUAGES}"
   "--disable-multilib"
+  "--disable-fixed-point"
   "--enable-checking=release"
   "--with-system-zlib"
 )
+
+filter_libtool_finish_warnings() {
+  local line
+
+  while IFS= read -r line; do
+    case "${line}" in
+      "libtool: install: warning: remember to run \`libtool --finish "*) continue ;;
+    esac
+    printf '%s\n' "${line}" >&2
+  done
+}
+
+finish_libtool_dirs() {
+  local libdir
+
+  command -v libtool >/dev/null 2>&1 || return 0
+  while IFS= read -r libdir; do
+    [ -n "${libdir}" ] || continue
+    ${SUDO} libtool --finish "${libdir}" >/dev/null 2>&1 || true
+  done < <(find "${PREFIX}" -type f -name '*.la' -printf '%h\n' | sort -u)
+}
 
 if [ "${ENABLE_BOOTSTRAP}" = "1" ]; then
   CONFIG_CMD+=("--enable-bootstrap")
@@ -380,10 +413,12 @@ fi
 echo "Installing to ${PREFIX}..."
 ${SUDO} mkdir -p "${PREFIX}"
 if [ -n "${TARGET_TRIPLET}" ]; then
-  ${SUDO} make install-gcc install-target-libgcc install-target-libstdc++-v3 install-target-libatomic
+  ${SUDO} make install-gcc install-target-libgcc install-target-libstdc++-v3 install-target-libatomic \
+    2> >(filter_libtool_finish_warnings)
 else
-  ${SUDO} make install
+  ${SUDO} make install 2> >(filter_libtool_finish_warnings)
 fi
+finish_libtool_dirs
 
 if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
   # 5) Register with update-alternatives and set as default

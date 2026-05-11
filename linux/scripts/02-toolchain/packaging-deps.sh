@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGING_DEPS_MODE="${PACKAGING_DEPS_MODE:-required}"
+INSTALL_FLATPAK_RUNTIMES="${INSTALL_FLATPAK_RUNTIMES:-false}"
 
 # Source shared helpers if available
 
@@ -29,7 +31,7 @@ trap cleanup EXIT
 download() {
     local url="$1" dest="$2"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 3 --retry-delay 2 -o "$dest" "$url"
+        curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --retry-delay 2 -o "$dest" "$url"
     elif command -v wget >/dev/null 2>&1; then
         wget -q --tries=3 -O "$dest" "$url"
     else
@@ -38,17 +40,58 @@ download() {
     fi
 }
 
+download_verified() {
+    local url="$1" expected_sha256="$2" dest="$3"
+
+    download "$url" "$dest"
+    printf '%s  %s\n' "$expected_sha256" "$dest" | sha256sum -c - >/dev/null
+}
+
+best_effort_mode() {
+    [ "${PACKAGING_DEPS_MODE}" = "best-effort" ]
+}
+
+run_step() {
+    local label="$1"
+    shift
+    local status=0
+
+    "$@" || status=$?
+    if [ "$status" -eq 0 ]; then
+        return 0
+    fi
+
+    if best_effort_mode; then
+        warn "${label} failed; continuing because PACKAGING_DEPS_MODE=${PACKAGING_DEPS_MODE}"
+        return 0
+    fi
+
+    return "$status"
+}
+
+apt_has_package() {
+    local pkg="$1"
+    apt-cache show "$pkg" >/dev/null 2>&1
+}
+
 # ── Helper: run a command, retry with sudo on failure ──────────────────
 
 try_or_sudo() {
-    if "$@" 2>/dev/null; then
+    local status=0
+
+    "$@" || status=$?
+    if [ "$status" -eq 0 ]; then
         return 0
+    fi
+
+    if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+        return "$status"
     elif command -v sudo >/dev/null 2>&1; then
         info "Retrying with sudo: $1"
         sudo "$@"
     else
         warn "Command failed and sudo unavailable: $*"
-        return 1
+        return "$status"
     fi
 }
 
@@ -58,30 +101,27 @@ install_apt_deps() {
     local -a pkgs=(
         ca-certificates curl wget xz-utils
         dpkg
-        libfuse2 libfuse3-3
+        libfuse3-3
         flatpak flatpak-builder
         elfutils
         dbus-user-session
         build-essential appstream apt-utils
     )
 
-    info "Updating apt index (best-effort)"
-    if ! try_or_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq; then
-        warn "apt-get update failed; trying install anyway"
+    info "Updating apt index"
+    try_or_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+
+    if apt_has_package libfuse2; then
+        pkgs+=(libfuse2)
+    elif apt_has_package libfuse2t64; then
+        pkgs+=(libfuse2t64)
     fi
 
-    info "Installing packaging prerequisites (best-effort)"
-    if try_or_sudo env DEBIAN_FRONTEND=noninteractive \
-            apt-get install -y --no-install-recommends "${pkgs[@]}"; then
-        info "Packaging prerequisites installed"
-        
-        info "Adding flathub remote and installing flatpak runtimes"
-        try_or_sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
-        try_or_sudo flatpak install -y flathub org.freedesktop.Sdk//24.08 || true
-        try_or_sudo flatpak install -y flathub org.freedesktop.Platform//24.08 || true
-    else
-        warn "Could not install all packaging prerequisites; continuing"
-    fi
+    info "Installing packaging prerequisites"
+    try_or_sudo env DEBIAN_FRONTEND=noninteractive \
+        apt-get install -y --no-install-recommends "${pkgs[@]}"
+
+    info "Packaging prerequisites installed"
 }
 
 # ── appimagetool provisioning ─────────────────────────────────────────
@@ -92,13 +132,25 @@ ensure_appimagetool() {
         return 0
     fi
 
-    local arch asset url tmpfile
+    local arch asset url tmpfile sha256
     arch="$(uname -m)"
     case "$arch" in
-        x86_64|amd64)   asset="appimagetool-x86_64.AppImage"  ;;
-        aarch64|arm64)   asset="appimagetool-aarch64.AppImage" ;;
-        armv7l)          asset="appimagetool-armhf.AppImage"   ;;
-        i686)            asset="appimagetool-i686.AppImage"    ;;
+        x86_64|amd64)
+            asset="appimagetool-x86_64.AppImage"
+            sha256="a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0"
+            ;;
+        aarch64|arm64)
+            asset="appimagetool-aarch64.AppImage"
+            sha256="1b00524ba8c6b678dc15ef88a5c25ec24def36cdfc7e3abb32ddcd068e8007fe"
+            ;;
+        armv7l)
+            asset="appimagetool-armhf.AppImage"
+            sha256="32aeca26db15a7d029b76adb8d5836f98acbf4a37b2a3101758b094f721e4b67"
+            ;;
+        i686)
+            asset="appimagetool-i686.AppImage"
+            sha256="ba04b9ecb2869993173bd38516dbafcfbe3064aca942500e94e7a3c3c2ea578d"
+            ;;
         *)
             warn "Unsupported architecture '$arch' for appimagetool"
             return 1
@@ -114,10 +166,7 @@ ensure_appimagetool() {
     CLEANUP_FILES+=("$tmpfile")
 
     info "Downloading appimagetool from $url"
-    if ! download "$url" "$tmpfile"; then
-        warn "Failed to download appimagetool"
-        return 1
-    fi
+    download_verified "$url" "$sha256" "$tmpfile"
 
     chmod +x "$tmpfile"
 
@@ -156,40 +205,37 @@ install_flatpak_runtime() {
 
     info "Adding Flathub repository (if not present)"
     if ! flatpak remote-list | grep -q flathub; then
-        if ! try_or_sudo flatpak remote-add --if-not-exists flathub \
-                https://dl.flathub.org/repo/flathub.flatpakrepo; then
-            warn "Failed to add Flathub repository"
-            return 1
-        fi
+        try_or_sudo flatpak remote-add --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
     fi
 
     info "Installing Freedesktop Platform runtime $runtime_version"
-    if ! try_or_sudo flatpak install -y --noninteractive flathub \
-            org.freedesktop.Platform//"$runtime_version"; then
-        warn "Failed to install org.freedesktop.Platform//$runtime_version"
-    fi
+    try_or_sudo flatpak install -y --noninteractive flathub \
+        org.freedesktop.Platform//"$runtime_version"
 
     info "Installing Freedesktop SDK $runtime_version"
-    if ! try_or_sudo flatpak install -y --noninteractive flathub \
-            org.freedesktop.Sdk//"$runtime_version"; then
-        warn "Failed to install org.freedesktop.Sdk//$runtime_version"
-    fi
+    try_or_sudo flatpak install -y --noninteractive flathub \
+        org.freedesktop.Sdk//"$runtime_version"
 
     info "Flatpak runtime/SDK installation complete"
 }
 
 # ── Main ───────────────────────────────────────────────────────────────
 
-info "Running packaging dependency preflight (best-effort)"
+info "Running packaging dependency preflight (mode=${PACKAGING_DEPS_MODE}, install_flatpak_runtimes=${INSTALL_FLATPAK_RUNTIMES})"
 
 if command -v apt-get >/dev/null 2>&1; then
-    install_apt_deps || true
+    run_step "apt-based packaging dependency installation" install_apt_deps
 else
     warn "apt-get not found; skipping apt-based dependency installation"
 fi
 
-install_flatpak_runtime || true
+case "${INSTALL_FLATPAK_RUNTIMES}" in
+    1|true|TRUE|yes|YES)
+        run_step "Flatpak runtime installation" install_flatpak_runtime
+        ;;
+esac
 
-ensure_appimagetool || true
+run_step "appimagetool installation" ensure_appimagetool
 
 info "Packaging dependency preflight complete"

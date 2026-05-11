@@ -73,8 +73,9 @@ if echo "$PackageTypes" | tr '[:upper:]' '[:lower:]' | grep -q "flatpak"; then
     fi
 fi
 
-# Run packaging dependency preflight (best-effort)
-bash "$SCRIPT_DIR/../02-toolchain/packaging-deps.sh" || true
+# Run packaging dependency preflight (best-effort, including Flatpak runtimes)
+PACKAGING_DEPS_MODE=best-effort INSTALL_FLATPAK_RUNTIMES=true \
+    bash "$SCRIPT_DIR/../02-toolchain/packaging-deps.sh" || true
 
 if [ -z "$Binary" ]; then
     err "BINARY or --binary is required"

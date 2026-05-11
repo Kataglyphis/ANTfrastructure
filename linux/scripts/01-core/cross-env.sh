@@ -493,6 +493,7 @@ setup_linux_cross_env() {
   local build_rust_lower gcc_prefix gcc_major runtime_libdir
   local cc cxx ar as ld nm ranlib strip objcopy
   local build_cc build_cxx build_ar build_ranlib
+  local target_link_path dir
 
   if ! cross_build_enabled; then
     return 0
@@ -591,9 +592,19 @@ setup_linux_cross_env() {
   # directories back into cross builds.
   PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${triplet}")"
   export PKG_CONFIG_LIBDIR
-  if [ -d "${runtime_libdir}" ]; then
-    export LIBRARY_PATH="${runtime_libdir}:${gcc_prefix}/${triplet}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-    export LD_LIBRARY_PATH="${runtime_libdir}:${gcc_prefix}/${triplet}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+  target_link_path=""
+  for dir in \
+    "${runtime_libdir}" \
+    "${gcc_prefix}/${triplet}/lib" \
+    "/usr/lib/${triplet}" \
+    "/lib/${triplet}" \
+    "/usr/${triplet}/lib"; do
+    [ -d "${dir}" ] || continue
+    target_link_path="${target_link_path:+${target_link_path}:}${dir}"
+  done
+  if [ -n "${target_link_path}" ]; then
+    export LIBRARY_PATH="${target_link_path}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+    export LD_LIBRARY_PATH="${target_link_path}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
   fi
   export CMAKE_SYSTEM_NAME=Linux
   export CMAKE_SYSTEM_PROCESSOR="${processor}"

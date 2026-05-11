@@ -10,7 +10,7 @@ ARG BUILD_MODE=native
 ARG TARGET_ARCH
 ARG TARGETARCH
 ARG USE_FAST_UBUNTU_MIRROR=false
-ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 
 SHELL ["bash", "-lc"]
 

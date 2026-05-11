@@ -45,9 +45,9 @@ pre_setup_target_packages=(
 )
 
 if [ "${is_riscv64_cross}" = "true" ]; then
-  echo "Skipping libcairo2-dev, libpango1.0-dev and libgdk-pixbuf2.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
+  echo "Skipping libcairo2-dev, libpango1.0-dev and libgdk-pixbuf-2.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
-  pre_setup_target_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev "${pre_setup_target_packages[@]}")
+  pre_setup_target_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev "${pre_setup_target_packages[@]}")
 fi
 
 install_target_packages "${pre_setup_target_packages[@]}"

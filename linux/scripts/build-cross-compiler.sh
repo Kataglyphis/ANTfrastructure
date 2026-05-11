@@ -10,7 +10,7 @@ COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschl
 COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 CROSS_TARGETS="${CROSS_TARGETS:-amd64,arm64,riscv64}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
-FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-http://de.archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
 
 REBUILD_BASE=0
 PUSH_IMAGE=0

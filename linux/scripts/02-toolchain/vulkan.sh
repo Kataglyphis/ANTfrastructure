@@ -126,6 +126,36 @@ install_vulkan_sdk() {
       log "Normalizing patched vulkansdk formatting"
       sudo perl -0pi -e 's/\n\+    -DSPIRV_WERROR/\n    -DSPIRV_WERROR/g; s/\n\+    -DCMAKE_COMPILE_WARNING_AS_ERROR/\n    -DCMAKE_COMPILE_WARNING_AS_ERROR/g; s/\n\+    --install-prefix/\n    --install-prefix/g; s/\n\+    -DVulkanHeaders_DIR/\n    -DVulkanHeaders_DIR/g; s/\n\+    -DCMAKE_PREFIX_PATH/\n    -DCMAKE_PREFIX_PATH/g; s/\n\+    -DCMAKE_INCLUDE_PATH/\n    -DCMAKE_INCLUDE_PATH/g; s/\n\+    -DSYSCONFDIR/\n    -DSYSCONFDIR/g' ./vulkansdk
 
+      log "Adding retry wrapper around upstream git clone/pull helper"
+      sudo tee -a ./vulkansdk >/dev/null <<'EOF'
+
+clone_pull_repo() {
+  REPO_DIR=$1
+  REPO_URL=$2
+  REPO_REF=$3
+  attempt=1
+  while [ $attempt -le 5 ]; do
+    if [ -d "${REPO_DIR}" ]; then
+      if git -C "${REPO_DIR}" checkout "${REPO_REF}" && git -C "${REPO_DIR}" pull origin "${REPO_REF}"; then
+        break
+      fi
+    else
+      if git -C "${SOURCEDIR}" clone --recurse-submodules "${REPO_URL}" "${REPO_DIR}" && git -C "${REPO_DIR}" checkout "${REPO_REF}"; then
+        break
+      fi
+    fi
+    if [ $attempt -eq 5 ]; then
+      return 1
+    fi
+    echo "Retrying repo fetch for ${REPO_URL} (attempt ${attempt}/5 failed)"
+    rm -rf "${REPO_DIR}"
+    sleep $((attempt * 5))
+    attempt=$((attempt + 1))
+  done
+  [ -f "${REPO_DIR}/.gitmodules" ] && git -C "${REPO_DIR}" submodule update || true
+}
+EOF
+
       # Ensure libgcc_s and libstdc++ are findable by the linker for riscv64/aarch64 builds.
       ARCH_LIB_DIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "${ARCH}-linux-gnu")"
       sudo mkdir -p "${ARCH_LIB_DIR}" /usr/lib

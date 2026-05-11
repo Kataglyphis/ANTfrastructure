@@ -105,9 +105,9 @@ core_packages=(libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev lib
 
 if [ "${is_riscv64_cross}" = "true" ]; then
   host_packages+=(qemu-user)
-  echo "Skipping libpango1.0-dev and libgdk-pixbuf2.0-dev target helper packages for riscv64 cross pre-setup because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
+  echo "Skipping libpango1.0-dev and libgdk-pixbuf-2.0-dev target helper packages for riscv64 cross pre-setup because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
-  core_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev "${core_packages[@]}")
+  core_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev "${core_packages[@]}")
 fi
 
 apt-get install -y --no-install-recommends "${host_packages[@]}" "${core_packages[@]}"

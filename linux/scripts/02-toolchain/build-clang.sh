@@ -166,8 +166,7 @@ if [ "$USE_CCACHE" = "1" ]; then
     CCACHE_DIR="${CCACHE_DIR:-${HOME}/.cache/ccache}"
     mkdir -p "${CCACHE_DIR}"
     export CCACHE_DIR
-    export CC="ccache gcc"
-    export CXX="ccache g++"info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
+    info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
 fi
 
 # Compute release version if not specified
@@ -276,8 +275,11 @@ fi
 run_preflight_checks
 
 if [[ ! -d "${SRC_DIR}" ]]; then
-    info "Cloning llvm-project ${LLVM_TAG}..."
-    git clone --depth 1 --branch "${LLVM_TAG}" https://github.com/llvm/llvm-project.git "${SRC_DIR}"
+    info "Fetching llvm-project ${LLVM_TAG}..."
+    git init -q "${SRC_DIR}"
+    git -C "${SRC_DIR}" remote add origin https://github.com/llvm/llvm-project.git
+    git -C "${SRC_DIR}" fetch --depth 1 origin tag "${LLVM_TAG}"
+    git -C "${SRC_DIR}" checkout -q FETCH_HEAD
 fi
 
 rm -rf "${BUILD_DIR}"
@@ -301,29 +303,36 @@ if [ -z "${CC:-}" ]; then
     if command -v g++ >/dev/null 2>&1; then export CXX=g++; fi
 fi
 
-if [ "$USE_CCACHE" = "1" ]; then
-    CCACHE_FLAGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
-else
-    CCACHE_FLAGS=""
-fi
-
 CMAKE_FLAGS=(
     -G Ninja
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
-    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;compiler-rt"
+    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld"
+    -DLLVM_ENABLE_RUNTIMES="compiler-rt"
     -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}"
     -DLLVM_ENABLE_LTO=${ENABLE_LTO}
     -DLLVM_ENABLE_ASSERTIONS=OFF
+    -DLLVM_ENABLE_WARNINGS=OFF
     -DCLANG_ENABLE_BOOTSTRAP=${BOOTSTRAP}
-    ${LINKER_FLAG}
-    ${CCACHE_FLAGS}
     -DLLVM_ENABLE_TERMINFO=OFF
     -DLLVM_INCLUDE_TESTS=OFF
     -DLLVM_INCLUDE_EXAMPLES=OFF
     -DLLVM_INCLUDE_BENCHMARKS=OFF
     -DCLANG_INCLUDE_TESTS=OFF
 )
+
+if [ -n "${LINKER_FLAG}" ]; then
+    CMAKE_FLAGS+=("${LINKER_FLAG}")
+fi
+
+if [ "$USE_CCACHE" = "1" ]; then
+    # Let CMake call the real compiler directly and inject ccache as a launcher.
+    # Exporting CC="ccache gcc" makes CMake generate broken ASM rules for .S files.
+    CMAKE_FLAGS+=(
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+    )
+fi
 
 echo "==> Configuring: LTO=${ENABLE_LTO}, Bootstrap=${BOOTSTRAP}, Targets=${LLVM_TARGETS}"
 cmake "${CMAKE_FLAGS[@]}" "${SRC_DIR}/llvm"
@@ -348,6 +357,15 @@ ${SUDO} update-alternatives --install /usr/bin/clang clang "${BIN_DIR}/clang" 20
     --slave /usr/bin/ld.lld ld.lld "${BIN_DIR}/ld.lld" || true
 
 ${SUDO} update-alternatives --set clang "${BIN_DIR}/clang" || true
+
+# Keep the rest of the LLVM toolchain visible on PATH when apt.llvm.org is not
+# available and this script becomes the primary installation path.
+if [ -d "${BIN_DIR}" ]; then
+    for tool_path in "${BIN_DIR}"/*; do
+        [ -x "${tool_path}" ] || continue
+        ${SUDO} ln -sf "${tool_path}" "/usr/local/bin/$(basename "${tool_path}")"
+    done
+fi
 
 if [[ "${DO_STRIP}" == "1" ]]; then
     info "Stripping binaries..."

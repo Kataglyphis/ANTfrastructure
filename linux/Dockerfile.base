@@ -5,18 +5,29 @@
 # This image avoids persisting helper scripts into the image so apt layers remain
 # stable while shared setup logic can still run through BuildKit bind mounts.
 # ------------------------------------------------------------------------------
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ARG TARGETARCH
 ARG TARGETPLATFORM
 ARG VULKAN_VERSION=1.4.341.1
 ARG USE_FAST_UBUNTU_MIRROR=false
-ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG CMAKE_VERSION=4.3.2
+ARG NODE_VERSION=24.15.0
+ARG UV_VERSION=0.11.13
 
 # ------------------------------------------------------------------------------
 # Shell
 # ------------------------------------------------------------------------------
 SHELL ["bash", "-lc"]
+
+# Bootstrap CA roots before optionally rewriting apt sources to HTTPS mirrors.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    set -eux; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    update-ca-certificates
 
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
     USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
@@ -54,12 +65,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     set -eux; \
     ARCH="$(dpkg --print-architecture)"; \
     apt-get update -qq; \
-    apt-get install -y --no-install-recommends \
+    packages=( \
         nano tmux vim \
         sudo curl ca-certificates gnupg wget xz-utils libssl-dev git \
         build-essential ninja-build make sccache ccache \
-        libc++-18-dev libc++abi-18-dev \
-        $([ "$ARCH" != "riscv64" ] && echo "clang clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev lldb") \
         pkg-config lsb-release software-properties-common \
         meson python3 python3-venv python3-pip \
         patchelf unzip zip \
@@ -68,12 +77,27 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         libglu1-mesa-dev freeglut3-dev mesa-common-dev mesa-utils \
         wayland-protocols libwayland-dev libxkbcommon-dev \
         libglx-mesa0 libosmesa6-dev \
-        libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
+        libgtk-3-dev libglib2.0-dev libgdk-pixbuf-2.0-dev libatk1.0-dev \
         libpango1.0-dev libx11-dev libx11-xcb-dev \
         libasound2-dev libpulse-dev libdbus-1-dev \
         file dpkg-dev fakeroot binutils \
-         $([ "$ARCH" != "riscv64" ] && echo "valgrind") \
-         linux-tools-common;
+    ); \
+    if [ "$ARCH" != "riscv64" ]; then \
+        if apt-cache show libc++-18-dev >/dev/null 2>&1 && apt-cache show libc++abi-18-dev >/dev/null 2>&1; then \
+            packages+=(libc++-18-dev libc++abi-18-dev); \
+        elif apt-cache show libc++-dev >/dev/null 2>&1 && apt-cache show libc++abi-dev >/dev/null 2>&1; then \
+            packages+=(libc++-dev libc++abi-dev); \
+        fi; \
+        for pkg in clang clang-format clang-tidy lld llvm llvm-dev libclang-dev libclang-rt-dev lldb valgrind; do \
+            if apt-cache show "$pkg" >/dev/null 2>&1; then \
+                packages+=("$pkg"); \
+            fi; \
+        done; \
+    fi; \
+    if apt-cache show linux-tools-common >/dev/null 2>&1; then \
+        packages+=(linux-tools-common); \
+    fi; \
+    apt-get install -y --no-install-recommends "${packages[@]}";
 
 
 # ------------------------------------------------------------------------------
@@ -91,25 +115,52 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
 
 
 # ------------------------------------------------------------------------------
-# Install Node.js (different for RISC-V vs. other architectures)
+# Install Node.js (official tarballs, apt fallback for RISC-V)
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
-    --mount=type=cache,target=/tmp/nodesource,id=nodesource-${TARGETARCH} \
     set -eux; \
-    ARCH=$(dpkg --print-architecture); \
-    apt-get update -qq; \
-    if [ "$ARCH" = "riscv64" ]; then \
-        echo "RISC-V detected: Installing Node.js from default apt repo"; \
-        apt-get install -y --no-install-recommends nodejs npm; \
-    else \
-        echo "Non-RISC-V architecture: Installing Node.js from NodeSource"; \
-        if [ ! -f /tmp/nodesource/.setup_done ]; then \
-            curl -sL https://deb.nodesource.com/setup_24.x | bash -; \
-            touch /tmp/nodesource/.setup_done; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "${ARCH}" in \
+        amd64|x86_64) \
+            node_asset="node-v${NODE_VERSION}-linux-x64.tar.xz"; \
+            node_sha256="472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6"; \
+            ;; \
+        arm64|aarch64) \
+            node_asset="node-v${NODE_VERSION}-linux-arm64.tar.xz"; \
+            node_sha256="f3d5a797b5d210ce8e2cb265544c8e482eaedcb8aa409a8b46da7e8595d0dda0"; \
+            ;; \
+        riscv64) \
+            apt-get update -qq; \
+            apt-get install -y --no-install-recommends nodejs npm; \
+            node --version; \
+            npm --version; \
+            exit 0; \
+            ;; \
+        *) \
+            echo "Unsupported Node.js architecture: ${ARCH}" >&2; \
+            exit 1; \
+            ;; \
+    esac; \
+    node_url="https://nodejs.org/dist/v${NODE_VERSION}/${node_asset}"; \
+    tmpdir="$(mktemp -d)"; \
+    trap 'rm -rf "${tmpdir}"' EXIT; \
+    curl --proto '=https' --tlsv1.2 -fsSL "${node_url}" -o "${tmpdir}/${node_asset}"; \
+    printf '%s  %s\n' "${node_sha256}" "${tmpdir}/${node_asset}" | sha256sum -c -; \
+    tar -xJf "${tmpdir}/${node_asset}" -C "${tmpdir}"; \
+    node_dir="${tmpdir}/${node_asset%.tar.xz}"; \
+    install -d /usr/local/lib/nodejs; \
+    rm -rf "/usr/local/lib/nodejs/node-v${NODE_VERSION}"; \
+    mv "${node_dir}" "/usr/local/lib/nodejs/node-v${NODE_VERSION}"; \
+    for tool in node npm npx corepack; do \
+        if [ -e "/usr/local/lib/nodejs/node-v${NODE_VERSION}/bin/${tool}" ]; then \
+            ln -sf "/usr/local/lib/nodejs/node-v${NODE_VERSION}/bin/${tool}" "/usr/local/bin/${tool}"; \
         fi; \
-        apt-get update -qq && apt-get install -y --no-install-recommends nodejs; \
-    fi;
+    done; \
+    rm -rf "${tmpdir}"; \
+    trap - EXIT; \
+    node --version; \
+    npm --version
 
 
 # ------------------------------------------------------------------------------
@@ -129,7 +180,37 @@ RUN set -eux; \
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     set -eux; \
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ARCH="$(dpkg --print-architecture)"; \
+    case "${ARCH}" in \
+        amd64|x86_64) \
+            uv_asset="uv-x86_64-unknown-linux-gnu.tar.gz"; \
+            uv_sha256="f830ea3d38ae1492acf53cb7f2cd0f81d6ae22b42d2d7310a6c7d42c451e1a43"; \
+            ;; \
+        arm64|aarch64) \
+            uv_asset="uv-aarch64-unknown-linux-gnu.tar.gz"; \
+            uv_sha256="12366407dc1fdba5179b10bd69c11ebfc2eff25791366089c0b2f5701056efc5"; \
+            ;; \
+        riscv64) \
+            uv_asset="uv-riscv64gc-unknown-linux-gnu.tar.gz"; \
+            uv_sha256="3264ce97b34d5c8d37c1e67821a74960ca89237e001253309a3cda25fb416040"; \
+            ;; \
+        *) \
+            echo "Unsupported uv architecture: ${ARCH}" >&2; \
+            exit 1; \
+            ;; \
+    esac; \
+    uv_url="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${uv_asset}"; \
+    tmpdir="$(mktemp -d)"; \
+    trap 'rm -rf "${tmpdir}"' EXIT; \
+    curl --proto '=https' --tlsv1.2 -fsSL "${uv_url}" -o "${tmpdir}/${uv_asset}"; \
+    printf '%s  %s\n' "${uv_sha256}" "${tmpdir}/${uv_asset}" | sha256sum -c -; \
+    tar -xzf "${tmpdir}/${uv_asset}" -C "${tmpdir}"; \
+    uv_dir="${tmpdir}/${uv_asset%.tar.gz}"; \
+    install -m 0755 "${uv_dir}/uv" /usr/local/bin/uv; \
+    install -m 0755 "${uv_dir}/uvx" /usr/local/bin/uvx; \
+    rm -rf "${tmpdir}"; \
+    trap - EXIT; \
+    uv --version
 
 # ------------------------------------------------------------------------------
 # Compiler caches init

@@ -62,7 +62,7 @@ Published images and tag hints:
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 | windows/amd64 | `winamd64` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX. |
 
 Images in this repository:
-- 📦 **linux/Dockerfile:** Ubuntu 24.04 toolchain image (Clang/GCC, Rust, Vulkan, GStreamer, Android SDK/NDK).
+- 📦 **linux/Dockerfile:** Ubuntu 26.04 toolchain image (Clang/GCC, Rust, Vulkan, GStreamer, Android SDK/NDK).
 - 🔥 **linux/torch/Dockerfile:** Torch/Python add-on on top of the base image.
 - 🌐 **linux/webserver/Dockerfile:** Minimal nginx static webserver (config at linux/webserver/nginx.conf).
 - 🪟 **windows/Dockerfile:** Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
@@ -71,28 +71,29 @@ Linux image chain (built as separate images for caching):
 
 - `linux/Dockerfile.base`: Ubuntu base + stable apt dependencies (no project scripts copied).
 - `linux/Dockerfile.toolchain`: GCC + LLVM/Clang compiler toolchain.
-- `linux/Dockerfile.sdk`: Vulkan SDK layer on top of compiler.
+- `linux/Dockerfile.sdk`: Vulkan SDK layer on top of compiler; also reused for amd64-hosted cross SDK artifact builds with `BUILD_MODE=cross`.
 - `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
 - `linux/Dockerfile`: runtime scripts + entrypoint (final image).
 
 Optional Ubuntu apt mirror workaround:
 
-- Add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to Ubuntu-based Linux Docker builds when `archive.ubuntu.com` or `security.ubuntu.com` is slow.
-- Override the mirror with `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` if needed.
+- Add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to Ubuntu-based Linux Docker builds when the default Ubuntu archive mirror is slow.
+- Override the mirror with `--build-arg FAST_UBUNTU_MIRROR_URL=https://de.archive.ubuntu.com/ubuntu/` if needed.
+- The helper rewrites archive mirror entries only by default; `security.ubuntu.com` stays untouched unless you explicitly opt into rewriting it.
 - Helper scripts expose the same behavior via `--fast-ubuntu-mirror` and `--fast-ubuntu-mirror-url`.
 - Generic usage:
 
 ```bash
 sudo nerdctl build \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
+  --build-arg FAST_UBUNTU_MIRROR_URL=https://de.archive.ubuntu.com/ubuntu/ \
   -f <dockerfile> \
   .
 ```
 
 - Supported Dockerfiles:
-  `linux/Dockerfile.base`, `linux/Dockerfile.toolchain`, `linux/Dockerfile.sdk`, `linux/Dockerfile.media`, `linux/Dockerfile.android`, `linux/Dockerfile`, `linux/Dockerfile.nvidia`, `linux/Dockerfile.amd`, `linux/Dockerfile.torch`, `linux/Dockerfile.sdk-artifact`
+  `linux/Dockerfile.base`, `linux/Dockerfile.toolchain`, `linux/Dockerfile.sdk`, `linux/Dockerfile.media`, `linux/Dockerfile.android`, `linux/Dockerfile`, `linux/Dockerfile.nvidia`, `linux/Dockerfile.amd`, `linux/Dockerfile.torch`
 - Not supported / not needed:
   `linux/webserver/Dockerfile` is not wired for this flag, `linux/Dockerfile.runtime-artifact` is copy-only and does not run apt, and `windows/Dockerfile` does not use apt.
 
@@ -113,8 +114,8 @@ What you get:
 ### Key Features ✨
 
 - 🪟 Windows Server 2025 x64 **Clang 21.8.0** and **MSVC Build Tools 2026**.
-- 🐧 Ubuntu 24.04 x64 **Clang 21.8.0**.
-- 🐧 Ubuntu 24.04 ARM **Clang 21.8.0**.
+- 🐧 Ubuntu 26.04 x64 **Clang 21.8.0**.
+- 🐧 Ubuntu 26.04 ARM **Clang 21.8.0**.
 
 <div align="center">
 
@@ -232,7 +233,7 @@ docker buildx create --name mybuilder --driver docker-container --buildkitd-conf
 
 ##### Sequential build (nerdctl)
 
-If apt stalls on `archive.ubuntu.com` or `security.ubuntu.com`, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to the Ubuntu-based build commands in this sequence.
+If apt stalls on the default Ubuntu archive mirror, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to the Ubuntu-based build commands in this sequence.
 
 ```bash
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
@@ -302,21 +303,21 @@ Fastest entry point:
 ./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror
 ```
 
-Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`http://de.archive.ubuntu.com/ubuntu/`).
+Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`).
 
 The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base`; if the registry manifest is broken or missing, it falls back to rebuilding `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base` with `--output type=image,...,push=true` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way so the next stage can resolve it from GHCR. In `BUILD_MODE=cross`, that compiler image now builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
 
 If you only need the downstream SDK or media cross stages and want to reuse the published compiler image, pull it first:
 
 ```bash
-sudo nerdctl pull --platform linux/amd64 \
+nerdctl pull --platform linux/amd64 \
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64
 ```
 
 Build the local amd64 base image:
 
 ```bash
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
+nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
   -f linux/Dockerfile.base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -326,7 +327,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 Then build the dedicated amd64-hosted compiler image in cross mode for amd64, arm64, and riscv64 targets:
 
 ```bash
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
+nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
   -f linux/Dockerfile.toolchain \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
@@ -356,25 +357,18 @@ Manual staged build with plain `nerdctl` (current GCC 16 cross lane):
 
 Run these commands from the repository root. Keep every trailing `\` as the last character on its line, and keep the final `.` because it is the Docker build context.
 
-If you run the long `sudo nerdctl build` loops below from a non-root shell, refresh the sudo ticket first and keep it alive for the full loop. Otherwise a successful `media-cross-*` push can be followed by bare `sudo: timed out` lines on the next loop iteration when the host sudo timestamp expires.
-
-```bash
-sudo -v
-while true; do sudo -n true; sleep 60; done 2>/dev/null &
-SUDO_KEEPALIVE_PID=$!
-trap 'kill "${SUDO_KEEPALIVE_PID}"' EXIT
-```
+These commands assume `nerdctl` is already usable from your current shell without `sudo`.
 
 ```bash
 set -o pipefail
 
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
+nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
   -f linux/Dockerfile.base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   . 2>&1 | tee -a output.log
 
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
+nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
   -f linux/Dockerfile.toolchain \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -384,9 +378,9 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   . 2>&1 | tee -a output.log
 
 for target_arch in amd64 arm64 riscv64; do
-  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
+  nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch},push=true" \
-    -f linux/Dockerfile.sdk-artifact \
+    -f linux/Dockerfile.sdk \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
     --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
     --build-arg BUILD_MODE=cross \
@@ -395,7 +389,7 @@ for target_arch in amd64 arm64 riscv64; do
 done
 
 for target_arch in amd64 arm64 riscv64; do
-  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch}" \
+  nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch},push=true" \
     -f linux/Dockerfile.media \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -406,7 +400,7 @@ for target_arch in amd64 arm64 riscv64; do
 done
 
 for target_arch in amd64 arm64 riscv64; do
-  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
+  nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch},push=true" \
     -f linux/Dockerfile.android \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -417,7 +411,7 @@ for target_arch in amd64 arm64 riscv64; do
 done
 
 for target_arch in amd64 arm64 riscv64; do
-  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-cross-${target_arch}" \
+  nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-cross-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-cross-${target_arch},push=true" \
     -f linux/Dockerfile.torch \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -428,7 +422,7 @@ for target_arch in amd64 arm64 riscv64; do
 done
 
 for target_arch in amd64 arm64 riscv64; do
-  sudo nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${target_arch}" \
+  nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${target_arch},push=true" \
     -f linux/Dockerfile \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -439,7 +433,7 @@ for target_arch in amd64 arm64 riscv64; do
 done
 ```
 
-`linux/Dockerfile.sdk-artifact` still consumes one `TARGET_ARCH` per `nerdctl build`. The loops above intentionally fan that out one target at a time for `amd64`, `arm64`, and `riscv64`.
+`linux/Dockerfile.sdk` now serves both the sequential SDK build and the amd64-hosted cross SDK artifact lane. The cross path still consumes one `TARGET_ARCH` per `nerdctl build`, so the loops above intentionally fan that out one target at a time for `amd64`, `arm64`, and `riscv64`.
 
 The later cross builds above are additive and still intentionally conservative:
 
@@ -448,18 +442,37 @@ The later cross builds above are additive and still intentionally conservative:
 - `torch-cross-${target_arch}` is currently a structural cross stage only. It preserves the image chain but skips the live Python environment assembly because target wheels cannot be safely installed and imported inside an amd64 build container.
 - `latest-cross-${target_arch}` is currently a thin wrapper over the cross Android image and skips the final apt-only host mutation in cross mode.
 
-The existing multi-platform sequential `media`, `android`, `torch`, and `latest` commands above still remain supported and unchanged.
+The existing multi-platform sequential `sdk`, `media`, `android`, `torch`, and `latest` commands above still remain supported and unchanged.
 
 This image is a single amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding source-built GCC 16 target compilers like `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-amd64`, `clang-arm64`, and `clang-riscv64` for host-side cross builds.
 
 ##### SDK rootfs artifacts (first host-side build step)
 
-The first additive artifact path is now the SDK stage. It builds target-specific SDK root filesystems for amd64, arm64, and riscv64 on a fast amd64 host and exports them to disk, while the existing QEMU/binfmt multi-platform build above remains unchanged.
+The first additive artifact path is now the SDK stage. It reuses `linux/Dockerfile.sdk` in `BUILD_MODE=cross`, builds target-specific SDK root filesystems for amd64, arm64, and riscv64 on a fast amd64 host, and exports them to disk while the existing QEMU/binfmt multi-platform build above remains unchanged.
 
-Build the first SDK artifacts for amd64, arm64, and riscv64:
+Build the first SDK artifacts for amd64, arm64, and riscv64 while streaming everything to both the terminal and `output.log`:
 
 ```bash
-./linux/scripts/build-sdk-artifacts.sh --target-arches amd64,arm64,riscv64 --fast-ubuntu-mirror
+set -o pipefail
+./linux/scripts/build-sdk-artifacts.sh --target-arches amd64,arm64,riscv64 --fast-ubuntu-mirror \
+  2>&1 | tee -a output.log
+```
+
+Build all three SDK artifact targets directly with `nerdctl` and log them the same way:
+
+```bash
+set -o pipefail
+for target_arch in amd64 arm64 riscv64; do
+  nerdctl build --platform linux/amd64 \
+    -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
+    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch},push=true" \
+    -f linux/Dockerfile.sdk \
+    --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
+    --build-arg BUILD_MODE=cross \
+    --build-arg TARGET_ARCH="${target_arch}" \
+    . 2>&1 | tee -a output.log
+done
 ```
 
 Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror.
@@ -467,7 +480,7 @@ Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror.
 If you want this helper to reuse the published compiler image instead of bootstrapping it locally, pull the compiler tag first:
 
 ```bash
-sudo nerdctl pull --platform linux/amd64 \
+nerdctl pull --platform linux/amd64 \
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64
 ```
 
@@ -484,7 +497,7 @@ out/linux-sdk/riscv64/rootfs/
 out/linux-sdk/riscv64/artifact.env
 ```
 
-This helper uses `linux/Dockerfile.sdk-artifact` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.1.0` rather than the Ubuntu 24.04 system GCC 13 toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU endbuild, but it does not yet replace the full `:latest` pipeline.
+This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.1.0` rather than the Ubuntu 26.04 system GCC toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU endbuild, but it does not yet replace the full `:latest` pipeline.
 
 ##### Cross-artifacts to multi-arch manifest (experimental)
 
@@ -508,10 +521,11 @@ out/linux-runtime/riscv64/rootfs/
 Once these rootfs artifacts exist, build one image per architecture and create a single manifest with nerdctl:
 
 ```bash
+set -o pipefail
 ./linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
   --artifacts-root out/linux-runtime \
-  --push
+  --push 2>&1 | tee -a output.log
 ```
 
 This helper only adds a second lane. It does not modify the current QEMU-based multi-platform build commands above.
@@ -536,7 +550,7 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 
 **Sequential build (nerdctl):**
 
-If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to each Ubuntu-based build command below. The helper rewrites both `archive.ubuntu.com` and `security.ubuntu.com`.
+If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
 
 ```bash
 # Step 1: NVIDIA layer (builds on top of existing :sdk from standard chain)
@@ -660,7 +674,7 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 
 **Sequential build (nerdctl):**
 
-If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to each Ubuntu-based build command below. The helper rewrites both `archive.ubuntu.com` and `security.ubuntu.com`.
+If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
 
 ```bash
 # Step 1: AMD layer (builds on top of existing :sdk from standard chain)
