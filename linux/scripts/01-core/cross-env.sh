@@ -6,6 +6,21 @@ _CROSS_ENV_APT_UPDATED="${_CROSS_ENV_APT_UPDATED:-0}"
 
 # shellcheck disable=SC1090,SC1091
 [ -f "${_CROSS_ENV_DIR}/platform.sh" ] && source "${_CROSS_ENV_DIR}/platform.sh"
+# shellcheck disable=SC1090,SC1091
+[ -f "${_CROSS_ENV_DIR}/ubuntu-mirror.sh" ] && source "${_CROSS_ENV_DIR}/ubuntu-mirror.sh"
+
+cross_foreign_arch_ports_mirror_url() {
+  local archive_url explicit_ports_url
+
+  explicit_ports_url="${FAST_UBUNTU_PORTS_MIRROR_URL:-${UBUNTU_PORTS_MIRROR_URL:-}}"
+  if ubuntu_mirror_is_truthy "${USE_FAST_UBUNTU_MIRROR:-false}"; then
+    archive_url="${FAST_UBUNTU_MIRROR_URL:-$(ubuntu_default_archive_mirror_url)}"
+    ubuntu_effective_ports_mirror_url "${archive_url}" "${explicit_ports_url}"
+    return 0
+  fi
+
+  ubuntu_mirror_normalize_url "${explicit_ports_url:-$(ubuntu_default_ports_mirror_url)}"
+}
 
 cross_build_enabled() {
   [ "${BUILD_MODE:-native}" = "cross" ] || return 1
@@ -355,7 +370,7 @@ cross_configure_foreign_arch_apt_sources() {
   target_arch="$(cross_target_arch)"
   build_arch="$(cross_build_arch)"
   distro="${DISTRO:-${UBUNTU_CODENAME:-${VERSION_CODENAME:-noble}}}"
-  ports_url="${UBUNTU_PORTS_MIRROR_URL:-http://ports.ubuntu.com/ubuntu-ports/}"
+  ports_url="$(cross_foreign_arch_ports_mirror_url)"
   host_sources="/etc/apt/sources.list.d/ubuntu.sources"
   ports_sources="/etc/apt/sources.list.d/ubuntu-ports-${target_arch}.sources"
 
@@ -736,22 +751,12 @@ ensure_meson_native_file() {
   mkdir -p "${native_wrapper_dir}"
 
   if [ -n "${native_cc}" ]; then
-    native_cc_wrapper="${native_wrapper_dir}/native-cc"
-    cat > "${native_cc_wrapper}" <<EOF
-#!/usr/bin/env bash
-exec env PATH="${host_path}" "${native_cc}" -B/usr/bin/ "\$@"
-EOF
-    chmod +x "${native_cc_wrapper}"
+    native_cc_wrapper="$(make_host_compiler_wrapper "${native_wrapper_dir}/native-cc" "${native_cc}" "${host_path}")"
     native_cc="${native_cc_wrapper}"
   fi
 
   if [ -n "${native_cxx}" ]; then
-    native_cxx_wrapper="${native_wrapper_dir}/native-cxx"
-    cat > "${native_cxx_wrapper}" <<EOF
-#!/usr/bin/env bash
-exec env PATH="${host_path}" "${native_cxx}" -B/usr/bin/ "\$@"
-EOF
-    chmod +x "${native_cxx_wrapper}"
+    native_cxx_wrapper="$(make_host_compiler_wrapper "${native_wrapper_dir}/native-cxx" "${native_cxx}" "${host_path}")"
     native_cxx="${native_cxx_wrapper}"
   fi
 

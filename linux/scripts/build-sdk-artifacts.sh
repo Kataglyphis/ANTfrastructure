@@ -11,6 +11,8 @@ VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+PUSH_IMAGES=0
 
 usage() {
   cat <<'EOF'
@@ -18,6 +20,7 @@ Usage: build-sdk-artifacts.sh [options]
 
 Builds target-specific SDK artifact images on an amd64 host and exports their
 root filesystems into per-architecture output directories.
+The images stay local unless --push is requested.
 
 Expected result:
   out/linux-sdk/amd64/rootfs/
@@ -29,10 +32,13 @@ Options:
   --architectures LIST   Alias for --target-arches
   --output-root DIR      Export directory root (default: out/linux-sdk)
   --compiler-image TAG   Cross compiler image to use as base
-  --fast-ubuntu-mirror   Replace security.ubuntu.com during Docker builds
+  --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during Docker builds
   --fast-ubuntu-mirror-url URL
-                          Mirror URL to use with --fast-ubuntu-mirror
+                           Mirror URL to use with --fast-ubuntu-mirror
+  --fast-ubuntu-ports-mirror-url URL
+                          Optional mirror URL for ubuntu-ports entries
   --vulkan-version VER   Vulkan SDK version to build
+  --push                Push each built SDK artifact image after export
   -h, --help             Show this help text
 
 Environment overrides:
@@ -44,8 +50,9 @@ Environment overrides:
   COMPILER_IMAGE         Cross compiler image to use as base
   VULKAN_VERSION         Vulkan SDK version
   IMAGE_PREFIX           Prefix for local artifact image tags
-  USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security Ubuntu mirrors
+  USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security/ports Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
+  FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
 EOF
 }
 
@@ -104,6 +111,9 @@ ensure_compiler_image() {
   local -a bootstrap_args=()
   if [ "${USE_FAST_UBUNTU_MIRROR}" = "true" ]; then
     bootstrap_args+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")
+    if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
+      bootstrap_args+=(--fast-ubuntu-ports-mirror-url "${FAST_UBUNTU_PORTS_MIRROR_URL}")
+    fi
   fi
   run bash "${REPO_ROOT}/linux/scripts/build-cross-compiler.sh" "${bootstrap_args[@]}"
 
@@ -121,10 +131,14 @@ build_sdk_image() {
     --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
   )
 
+  if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
+    mirror_build_args+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${FAST_UBUNTU_PORTS_MIRROR_URL}")
+  fi
+
   run "${NERDCTL_BIN}" build \
+    --pull=false \
     --platform linux/amd64 \
     -t "${tag}" \
-    --output "type=image,name=${tag},push=true" \
     -f linux/Dockerfile.sdk \
     --build-arg BASE_IMAGE="${COMPILER_IMAGE}" \
     --build-arg BUILD_MODE=cross \
@@ -132,6 +146,11 @@ build_sdk_image() {
     --build-arg VULKAN_VERSION="${VULKAN_VERSION}" \
     "${mirror_build_args[@]}" \
     .
+}
+
+push_sdk_image() {
+  local tag="$1"
+  run "${NERDCTL_BIN}" push "${tag}"
 }
 
 export_rootfs() {
@@ -192,9 +211,18 @@ main() {
         FAST_UBUNTU_MIRROR_URL="$2"
         shift 2
         ;;
+      --fast-ubuntu-ports-mirror-url)
+        USE_FAST_UBUNTU_MIRROR=true
+        FAST_UBUNTU_PORTS_MIRROR_URL="$2"
+        shift 2
+        ;;
       --vulkan-version)
         VULKAN_VERSION="$2"
         shift 2
+        ;;
+      --push)
+        PUSH_IMAGES=1
+        shift
         ;;
       -h|--help)
         usage
@@ -219,6 +247,9 @@ main() {
     tag="${IMAGE_PREFIX}-${arch}"
     build_sdk_image "${arch}" "${tag}"
     export_rootfs "${arch}" "${tag}"
+    if [ "${PUSH_IMAGES}" -eq 1 ]; then
+      push_sdk_image "${tag}"
+    fi
   done
 }
 

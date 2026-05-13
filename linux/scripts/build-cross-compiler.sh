@@ -11,6 +11,7 @@ COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_besc
 CROSS_TARGETS="${CROSS_TARGETS:-amd64,arm64,riscv64}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 
 REBUILD_BASE=0
 PUSH_IMAGE=0
@@ -20,14 +21,17 @@ usage() {
 Usage: build-cross-compiler.sh [options]
 
 Builds an amd64-hosted cross-compiler image with nerdctl.
+The image stays local unless --push is requested.
 If the remote base image is unavailable, the script builds a local amd64 base
 image first and then uses it for the compiler build.
 
 Options:
   --cross-targets LIST   Comma-separated target list (default: amd64,arm64,riscv64)
-  --fast-ubuntu-mirror   Replace security.ubuntu.com during Docker builds
+  --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during Docker builds
   --fast-ubuntu-mirror-url URL
-                         Mirror URL to use with --fast-ubuntu-mirror
+                          Mirror URL to use with --fast-ubuntu-mirror
+  --fast-ubuntu-ports-mirror-url URL
+                         Optional mirror URL for ubuntu-ports entries
   --rebuild-base         Always rebuild the local base image instead of trying pull first
   --push                 Tag and push the finished compiler image to GHCR
   -h, --help             Show this help text
@@ -38,8 +42,9 @@ Environment overrides:
   BASE_LOCAL_TAG         Local base tag (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger:base)
   COMPILER_LOCAL_TAG     Local compiler tag
   COMPILER_REMOTE_TAG    Remote compiler tag used with --push
-  USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security Ubuntu mirrors
+  USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security/ports Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
+  FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
 EOF
 }
 
@@ -64,6 +69,10 @@ ensure_base_image() {
     --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
   )
 
+  if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
+    mirror_build_args+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${FAST_UBUNTU_PORTS_MIRROR_URL}")
+  fi
+
   if [ "${REBUILD_BASE}" -eq 0 ] && image_exists "${BASE_LOCAL_TAG}"; then
     log "Using existing local base image: ${BASE_LOCAL_TAG}"
     return 0
@@ -83,9 +92,9 @@ ensure_base_image() {
   fi
 
   run "${NERDCTL_BIN}" build \
+    --pull=false \
     --platform linux/amd64 \
     -t "${BASE_LOCAL_TAG}" \
-    --output "type=image,name=${BASE_LOCAL_TAG},push=true" \
     -f linux/Dockerfile.base \
     "${mirror_build_args[@]}" \
     .
@@ -97,10 +106,14 @@ build_cross_compiler() {
     --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
   )
 
+  if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
+    mirror_build_args+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${FAST_UBUNTU_PORTS_MIRROR_URL}")
+  fi
+
   run "${NERDCTL_BIN}" build \
+    --pull=false \
     --platform linux/amd64 \
     -t "${COMPILER_LOCAL_TAG}" \
-    --output "type=image,name=${COMPILER_LOCAL_TAG},push=true" \
     -f linux/Dockerfile.toolchain \
     --build-arg BASE_IMAGE="${BASE_LOCAL_TAG}" \
     --build-arg BUILD_MODE=cross \
@@ -130,6 +143,11 @@ main() {
       --fast-ubuntu-mirror-url)
         USE_FAST_UBUNTU_MIRROR=true
         FAST_UBUNTU_MIRROR_URL="$2"
+        shift 2
+        ;;
+      --fast-ubuntu-ports-mirror-url)
+        USE_FAST_UBUNTU_MIRROR=true
+        FAST_UBUNTU_PORTS_MIRROR_URL="$2"
         shift 2
         ;;
       --rebuild-base)

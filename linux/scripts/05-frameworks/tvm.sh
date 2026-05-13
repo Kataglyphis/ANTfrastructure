@@ -272,6 +272,49 @@ detect_vulkan_llvm_cmake_ignore_paths() {
   printf '%s' "${out}"
 }
 
+llvm_cmake_package_prefix() {
+  case "$1" in
+    */lib/cmake/llvm) printf '%s' "${1%/lib/cmake/llvm}" ;;
+    */lib64/cmake/llvm) printf '%s' "${1%/lib64/cmake/llvm}" ;;
+    *) return 1 ;;
+  esac
+}
+
+llvm_cmake_package_has_umbrella_lib() {
+  local prefix="$1"
+  local candidate
+
+  for candidate in \
+    "${prefix}/lib/libLLVM.so" \
+    "${prefix}/lib/libLLVM.a" \
+    "${prefix}/lib64/libLLVM.so" \
+    "${prefix}/lib64/libLLVM.a"; do
+    [ -e "${candidate}" ] || continue
+    return 0
+  done
+
+  return 1
+}
+
+validate_detected_llvm_cmake_package() {
+  local llvm_dir="$1"
+  local prefix llvm_config_file
+
+  [ -n "${llvm_dir}" ] || return 0
+  llvm_dir="$(normalize_llvm_cmake_dir "${llvm_dir}")"
+  prefix="$(llvm_cmake_package_prefix "${llvm_dir}" 2>/dev/null || true)"
+  [ -n "${prefix}" ] || return 0
+
+  llvm_config_file="${llvm_dir}/LLVMConfig.cmake"
+  [ -f "${llvm_config_file}" ] || die "LLVMConfig.cmake missing at ${llvm_config_file}"
+  if ! llvm_cmake_package_has_umbrella_lib "${prefix}"; then
+    log "Sanitizing target LLVM CMake package: missing umbrella libLLVM under ${prefix}"
+    sanitize_llvm_cmake_package_for_missing_umbrella_lib "${prefix}" "${llvm_dir}"
+  fi
+  llvm_cmake_package_has_component_metadata "${llvm_config_file}" || \
+    die "Target LLVM package at ${llvm_dir} does not provide LLVM component metadata"
+}
+
 detect_llvm_major_version() {
   local llvm_config_path="$1"
   local major=""
@@ -775,6 +818,7 @@ main() {
     fi
     if [ -n "$llvm_dir" ]; then
       llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
+      validate_detected_llvm_cmake_package "$llvm_dir"
     fi
     if [ -n "$llvm_dir" ]; then
       log "Using target LLVM CMake package: $llvm_dir"

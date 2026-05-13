@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
 # repos.sh - add external apt repositories
 
-download_verified_file() {
-  local url="$1"
-  local expected_sha256="$2"
-  local dest="$3"
-
-  curl --proto '=https' --tlsv1.2 -fsSL "$url" -o "$dest"
-  printf '%s  %s\n' "$expected_sha256" "$dest" | sha256sum -c - >/dev/null
-}
-
 repo_http_status() {
   local url="$1"
   curl -sSL -o /dev/null -w '%{http_code}' "$url"
@@ -74,6 +65,7 @@ add_kitware_repo() {
 
   echo "deb [signed-by=$key] https://apt.kitware.com/ubuntu $DISTRO main" | $SUDO tee /etc/apt/sources.list.d/kitware.list >/dev/null
   APT_UPDATED="" # force refresh
+  export APT_UPDATED
 }
 
 add_llvm_repo() {
@@ -97,4 +89,5 @@ add_llvm_repo() {
   echo "deb [signed-by=${key}] https://apt.llvm.org/${DISTRO}/ llvm-toolchain-${DISTRO}-${LLVM_WANTED} main" | $SUDO tee /etc/apt/sources.list.d/apt.llvm.org.list >/dev/null
 
   APT_UPDATED="" # force refresh
+  export APT_UPDATED
 }

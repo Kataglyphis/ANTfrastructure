@@ -78,8 +78,8 @@ Linux image chain (built as separate images for caching):
 
 Optional Ubuntu apt mirror workaround:
 
-- Add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to Ubuntu-based Linux Docker builds when the default Ubuntu archive mirror is slow.
-- Override the mirror with `--build-arg FAST_UBUNTU_MIRROR_URL=https://de.archive.ubuntu.com/ubuntu/` if needed.
+- Add both `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=...` when the default Ubuntu archive mirror is slow.
+- Example German mirror override: `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/`.
 - The helper rewrites archive mirror entries only by default; `security.ubuntu.com` stays untouched unless you explicitly opt into rewriting it.
 - Helper scripts expose the same behavior via `--fast-ubuntu-mirror` and `--fast-ubuntu-mirror-url`.
 - Generic usage:
@@ -87,7 +87,7 @@ Optional Ubuntu apt mirror workaround:
 ```bash
 sudo nerdctl build \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg FAST_UBUNTU_MIRROR_URL=https://de.archive.ubuntu.com/ubuntu/ \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   -f <dockerfile> \
   .
 ```
@@ -233,13 +233,15 @@ docker buildx create --name mybuilder --driver docker-container --buildkitd-conf
 
 ##### Sequential build (nerdctl)
 
-If apt stalls on the default Ubuntu archive mirror, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to the Ubuntu-based build commands in this sequence.
+If apt stalls on the default Ubuntu archive mirror, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to the Ubuntu-based build commands in this sequence.
 
 ```bash
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
   -f linux/Dockerfile.base \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-base,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-base \
   . 2>&1 | tee -a output.log
@@ -247,6 +249,8 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler,push=true' \
   -f linux/Dockerfile.toolchain \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler \
   . 2>&1 | tee -a output.log
@@ -254,6 +258,8 @@ sudo nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/k
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk,push=true' \
   -f linux/Dockerfile.sdk \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
+  --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-sdk,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-sdk \
   . 2>&1 | tee -a output.log
@@ -300,10 +306,11 @@ For the cross-compiler path, bootstrap the base image locally first. This avoids
 Fastest entry point:
 
 ```bash
-./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror \
+  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/
 ```
 
-Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`).
+Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`). For example: `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
 
 The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base`; if the registry manifest is broken or missing, it falls back to rebuilding `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base` with `--output type=image,...,push=true` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way so the next stage can resolve it from GHCR. In `BUILD_MODE=cross`, that compiler image now builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
 
@@ -321,6 +328,7 @@ nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleu
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
   -f linux/Dockerfile.base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   . 2>&1 | tee -a output.log
 ```
 
@@ -332,6 +340,7 @@ nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleu
   -f linux/Dockerfile.toolchain \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg BUILD_MODE=cross \
   --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
   . 2>&1 | tee -a output.log
@@ -366,12 +375,14 @@ nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleu
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
   -f linux/Dockerfile.base \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   . 2>&1 | tee -a output.log
 
 nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
   -f linux/Dockerfile.toolchain \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
   --build-arg BUILD_MODE=cross \
   --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
@@ -382,6 +393,7 @@ for target_arch in amd64 arm64 riscv64; do
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch},push=true" \
     -f linux/Dockerfile.sdk \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
     --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${target_arch}" \
@@ -393,6 +405,7 @@ for target_arch in amd64 arm64 riscv64; do
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch},push=true" \
     -f linux/Dockerfile.media \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
     --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${target_arch}" \
@@ -404,6 +417,7 @@ for target_arch in amd64 arm64 riscv64; do
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch},push=true" \
     -f linux/Dockerfile.android \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
     --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch}" \
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${target_arch}" \
@@ -415,6 +429,7 @@ for target_arch in amd64 arm64 riscv64; do
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-cross-${target_arch},push=true" \
     -f linux/Dockerfile.torch \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
     --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${target_arch}" \
@@ -426,6 +441,7 @@ for target_arch in amd64 arm64 riscv64; do
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${target_arch},push=true" \
     -f linux/Dockerfile \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
     --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${target_arch}" \
@@ -455,6 +471,7 @@ Build the first SDK artifacts for amd64, arm64, and riscv64 while streaming ever
 ```bash
 set -o pipefail
 ./linux/scripts/build-sdk-artifacts.sh --target-arches amd64,arm64,riscv64 --fast-ubuntu-mirror \
+  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
   2>&1 | tee -a output.log
 ```
 
@@ -468,6 +485,7 @@ for target_arch in amd64 arm64 riscv64; do
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch},push=true" \
     -f linux/Dockerfile.sdk \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
+    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
     --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${target_arch}" \
@@ -475,7 +493,7 @@ for target_arch in amd64 arm64 riscv64; do
 done
 ```
 
-Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror.
+Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror, for example `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
 
 If you want this helper to reuse the published compiler image instead of bootstrapping it locally, pull the compiler tag first:
 
@@ -550,7 +568,7 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 
 **Sequential build (nerdctl):**
 
-If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
+If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
 
 ```bash
 # Step 1: NVIDIA layer (builds on top of existing :sdk from standard chain)
@@ -674,7 +692,7 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 
 **Sequential build (nerdctl):**
 
-If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
+If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
 
 ```bash
 # Step 1: AMD layer (builds on top of existing :sdk from standard chain)

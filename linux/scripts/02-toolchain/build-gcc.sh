@@ -15,34 +15,9 @@ umask 022
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source shared helpers (prefer symlinked location for Docker builds)
-# shellcheck disable=SC1090
-if [ -f "${_SCRIPT_DIR}/common.sh" ]; then
-  source "${_SCRIPT_DIR}/common.sh"
-elif [ -f "${_SCRIPT_DIR}/../01-core/common.sh" ]; then
-  source "${_SCRIPT_DIR}/../01-core/common.sh"
-elif [ -f "/opt/scripts/core/common.sh" ]; then
-  source "/opt/scripts/core/common.sh"
-else
-  # Minimal fallbacks when core helpers aren't available
-  info() { printf '[INFO] %s\n' "$*"; }
-  warn() { printf '[WARN] %s\n' "$*" >&2; }
-  err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
-  die()  { err "$@"; }
-  require_sudo() {
-    if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-      command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
-      SUDO="sudo"
-    else
-      SUDO=""
-    fi
-  }
-  apt_install() {
-    ${SUDO:-} apt-get update -qq
-    ${SUDO:-} apt-get install -y --no-install-recommends "$@"
-  }
-  detect_system() { :; }
-fi
+# shellcheck disable=SC1091
+source "${_SCRIPT_DIR}/bootstrap.sh"
+source_toolchain_common_or_fallback "${_SCRIPT_DIR}"
 
 on_err() {
   local line="${1:-?}"

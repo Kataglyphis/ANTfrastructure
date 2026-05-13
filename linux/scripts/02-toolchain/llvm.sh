@@ -107,7 +107,7 @@ llvm_release_version() {
   fi
 
   case "${LLVM_WANTED:-${CLANG_WANTED:-22}}" in
-    22) printf '%s' "22.1.4" ;;
+    22) printf '%s' "22.1.5" ;;
     *) printf '%s' "${LLVM_WANTED:-${CLANG_WANTED:-22}}.1.0" ;;
   esac
 }
@@ -125,6 +125,28 @@ llvm_cross_install_prefix() {
 
   triplet="$(llvm_cross_triplet "$1")" || return 1
   printf '%s' "$(llvm_cross_root)/${triplet}"
+}
+
+llvm_cross_bin_dir() {
+  local prefix
+
+  prefix="$(llvm_cross_install_prefix "$1")" || return 1
+  printf '%s' "${prefix}/bin"
+}
+
+llvm_cross_lib_dir() {
+  local prefix="$1"
+  local dir
+
+  for dir in \
+    "${prefix}/lib" \
+    "${prefix}/lib64"; do
+    [ -d "${dir}" ] || continue
+    printf '%s' "${dir}"
+    return 0
+  done
+
+  return 1
 }
 
 llvm_cross_cmake_dir() {
@@ -149,6 +171,514 @@ llvm_cross_include_dir() {
   prefix="$(llvm_cross_install_prefix "$1")" || return 1
   [ -d "${prefix}/include" ] || return 1
   printf '%s' "${prefix}/include"
+}
+
+llvm_cross_shared_umbrella_lib_path() {
+  local prefix="$1"
+  local candidate
+
+  for candidate in \
+    "${prefix}/lib/libLLVM.so" \
+    "${prefix}/lib64/libLLVM.so"; do
+    [ -e "${candidate}" ] || continue
+    printf '%s' "${candidate}"
+    return 0
+  done
+
+  return 1
+}
+
+llvm_cross_versioned_shared_umbrella_lib_path() {
+  local prefix="$1"
+  local candidate
+  local nullglob_was_set=0
+  local -a matches=()
+
+  case ":${BASHOPTS}:" in
+    *:nullglob:*) nullglob_was_set=1 ;;
+  esac
+  shopt -s nullglob
+  matches=("${prefix}/lib"/libLLVM.so.* "${prefix}/lib64"/libLLVM.so.*)
+  if [ "${nullglob_was_set}" -eq 0 ]; then
+    shopt -u nullglob
+  fi
+
+  for candidate in "${matches[@]}"; do
+    [ -e "${candidate}" ] || continue
+    printf '%s' "${candidate}"
+    return 0
+  done
+
+  return 1
+}
+
+llvm_cross_compat_shared_umbrella_lib_path() {
+  local prefix="$1"
+  local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  local candidate
+
+  major="${major%%.*}"
+  for candidate in \
+    "${prefix}/lib/libLLVM-${major}.so" \
+    "${prefix}/lib64/libLLVM-${major}.so"; do
+    [ -e "${candidate}" ] || continue
+    printf '%s' "${candidate}"
+    return 0
+  done
+
+  return 1
+}
+
+llvm_cross_llvm_config_path() {
+  local prefix="$1"
+  local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  local candidate
+
+  major="${major%%.*}"
+  for candidate in \
+    "${prefix}/bin/llvm-config" \
+    "${prefix}/bin/llvm-config-${major}"; do
+    [ -x "${candidate}" ] || continue
+    printf '%s' "${candidate}"
+    return 0
+  done
+
+  return 1
+}
+
+llvm_cross_install_looks_complete() {
+  local target_label="$1"
+  local prefix
+
+  prefix="$(llvm_cross_install_prefix "${target_label}")" || return 1
+  llvm_cross_cmake_dir "${target_label}" >/dev/null 2>&1 || return 1
+  llvm_cross_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || return 1
+  llvm_cross_versioned_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || return 1
+  llvm_cross_compat_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || return 1
+  llvm_cross_llvm_config_path "${prefix}" >/dev/null 2>&1 || return 1
+  return 0
+}
+
+llvm_cross_first_executable() {
+  local candidate resolved
+
+  for candidate in "$@"; do
+    [ -n "${candidate}" ] || continue
+    if [ -x "${candidate}" ]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+    if resolved="$(command -v "${candidate}" 2>/dev/null || true)" && [ -n "${resolved}" ]; then
+      printf '%s' "${resolved}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+llvm_cross_qemu_binary() {
+  case "$1" in
+    arm64)
+      llvm_cross_first_executable qemu-aarch64 qemu-aarch64-static
+      ;;
+    riscv64)
+      llvm_cross_first_executable qemu-riscv64 qemu-riscv64-static
+      ;;
+    amd64)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+llvm_cross_qemu_sysroot() {
+  local target_label="$1"
+  local triplet candidate loader
+  local -a loaders=()
+
+  [ "${target_label}" = "amd64" ] && {
+    printf '%s' "/"
+    return 0
+  }
+
+  triplet="$(llvm_cross_triplet "${target_label}")" || return 1
+  case "${target_label}" in
+    arm64)
+      loaders=(
+        "lib/ld-linux-aarch64.so.1"
+      )
+      ;;
+    riscv64)
+      loaders=(
+        "lib/ld-linux-riscv64-lp64d.so.1"
+        "lib/ld-linux-riscv64-lp64.so.1"
+        "lib/ld-linux-riscv64-ilp32d.so.1"
+        "lib/ld-linux-riscv64-ilp32.so.1"
+      )
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  for candidate in "/usr/${triplet}" "/"; do
+    for loader in "${loaders[@]}"; do
+      [ -e "${candidate}/${loader}" ] || continue
+      printf '%s' "${candidate}"
+      return 0
+    done
+  done
+
+  return 1
+}
+
+llvm_cross_target_runtime_library_path() {
+  local target_label="$1"
+  local prefix triplet gcc_prefix gcc_major runtime_libdir path="" dir
+
+  prefix="$(llvm_cross_install_prefix "${target_label}")" || return 1
+  triplet="$(llvm_cross_triplet "${target_label}")" || return 1
+  gcc_prefix="$(gcc_toolchain_prefix 2>/dev/null || true)"
+  [ -n "${gcc_prefix}" ] || gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  gcc_major="${GCC_WANTED:-16}"
+  gcc_major="${gcc_major%%.*}"
+  runtime_libdir="${gcc_prefix}/lib/gcc/${triplet}/${gcc_major}"
+
+  for dir in \
+    "${prefix}/lib" \
+    "${prefix}/lib64" \
+    "${runtime_libdir}" \
+    "${gcc_prefix}/${triplet}/lib" \
+    "${gcc_prefix}/${triplet}/lib64" \
+    "${gcc_prefix}/lib64" \
+    "${gcc_prefix}/lib" \
+    "/lib/${triplet}" \
+    "/usr/lib/${triplet}" \
+    "/usr/${triplet}/lib"; do
+    [ -d "${dir}" ] || continue
+    case ":${path}:" in
+      *":${dir}:"*)
+        ;;
+      *)
+        path="${path:+${path}:}${dir}"
+        ;;
+    esac
+  done
+
+  printf '%s' "${path}"
+}
+
+llvm_cross_run_binary() {
+  local target_label="$1"
+  shift
+
+  [ "$#" -gt 0 ] || return 1
+  if [ "${target_label}" = "amd64" ]; then
+    "$@"
+    return 0
+  fi
+
+  local qemu_bin qemu_sysroot target_ld_library_path
+  local -a qemu_args=()
+
+  qemu_bin="$(llvm_cross_qemu_binary "${target_label}")" || \
+    die "No qemu user-mode runner available for target LLVM ${target_label}"
+  qemu_sysroot="$(llvm_cross_qemu_sysroot "${target_label}")" || \
+    die "Could not locate a qemu sysroot for target LLVM ${target_label}"
+  target_ld_library_path="$(llvm_cross_target_runtime_library_path "${target_label}")"
+
+  qemu_args=("${qemu_bin}" -L "${qemu_sysroot}")
+  if [ -n "${target_ld_library_path}" ]; then
+    qemu_args+=( -E "LD_LIBRARY_PATH=${target_ld_library_path}" )
+  fi
+
+  env -u LD_LIBRARY_PATH "${qemu_args[@]}" "$@"
+}
+
+llvm_cross_populate_tool_wrapper_dir() {
+  local wrapper_dir="$1"
+  local tool
+
+  mkdir -p "${wrapper_dir}"
+  for tool in as ld ar nm ranlib strip objcopy; do
+    case "${tool}" in
+      as)      ln -sfn "${AS}"      "${wrapper_dir}/as" ;;
+      ld)      ln -sfn "${LD}"      "${wrapper_dir}/ld" ;;
+      ar)      ln -sfn "${AR}"      "${wrapper_dir}/ar" ;;
+      nm)      ln -sfn "${NM}"      "${wrapper_dir}/nm" ;;
+      ranlib)  ln -sfn "${RANLIB}"  "${wrapper_dir}/ranlib" ;;
+      strip)   ln -sfn "${STRIP}"   "${wrapper_dir}/strip" ;;
+      objcopy) ln -sfn "${OBJCOPY}" "${wrapper_dir}/objcopy" ;;
+    esac
+  done
+}
+
+llvm_cmake_package_has_component_metadata() {
+  local llvm_config_file="$1"
+
+  grep -q 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")' "${llvm_config_file}" && return 0
+  grep -q '^set(LLVM_AVAILABLE_LIBS[[:space:]]' "${llvm_config_file}" && return 0
+  return 1
+}
+
+sanitize_llvm_cmake_package_for_missing_umbrella_lib() {
+  local prefix="$1"
+  local cmake_dir="$2"
+  local llvm_config_file="${cmake_dir}/LLVMConfig.cmake"
+  local exports_file="${cmake_dir}/LLVMExports.cmake"
+
+  [ -f "${llvm_config_file}" ] || return 0
+  [ -f "${exports_file}" ] || return 0
+
+  python3 - "${llvm_config_file}" "${exports_file}" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+config_path = Path(sys.argv[1])
+exports_path = Path(sys.argv[2])
+config_text = config_path.read_text()
+exports_text = exports_path.read_text()
+
+target_blocks = re.finditer(r'set_target_properties\(([^)\s]+)\s+PROPERTIES(.*?)\n\)', exports_text, re.S)
+problem_targets = []
+for match in target_blocks:
+    target = match.group(1)
+    block = match.group(2)
+    libs_match = re.search(r'INTERFACE_LINK_LIBRARIES\s+"([^"]*)"', block)
+    if not libs_match:
+        continue
+    libs = [item.strip() for item in libs_match.group(1).split(';') if item.strip()]
+    normalized = []
+    for item in libs:
+        link_only = re.fullmatch(r'\$<LINK_ONLY:([^>]+)>', item)
+        normalized.append(link_only.group(1) if link_only else item)
+    if any(item == 'LLVM' for item in normalized):
+        problem_targets.append(target)
+
+if not problem_targets:
+    raise SystemExit(0)
+
+available_match = re.search(r'^set\(LLVM_AVAILABLE_LIBS ([^\n]*)\)$', config_text, re.M)
+if not available_match:
+    raise SystemExit(f"LLVM_AVAILABLE_LIBS not found in {config_path}")
+
+available_libs = [item for item in available_match.group(1).split(';') if item]
+filtered_libs = [item for item in available_libs if item not in problem_targets and item != 'LLVM']
+new_available_line = f'set(LLVM_AVAILABLE_LIBS {";".join(filtered_libs)})'
+config_text = config_text[:available_match.start()] + new_available_line + config_text[available_match.end():]
+
+config_text = re.sub(r'^set\(LLVM_LINK_LLVM_DYLIB .*\)$', 'set(LLVM_LINK_LLVM_DYLIB OFF)', config_text, flags=re.M)
+config_text = re.sub(r'^set\(LLVM_DYLIB_COMPONENTS .*\)$', 'set(LLVM_DYLIB_COMPONENTS "")', config_text, flags=re.M)
+
+marker = 'include(${LLVM_CMAKE_DIR}/LLVM-Config.cmake)'
+property_line = 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")'
+if property_line not in config_text:
+    if marker not in config_text:
+        raise SystemExit(f"expected include marker not found in {config_path}")
+    config_text = config_text.replace(marker, marker + '\n' + property_line, 1)
+
+config_path.write_text(config_text)
+PY
+}
+
+validate_cross_llvm_cmake_package() {
+  local target_label="$1"
+  local prefix cmake_dir llvm_config_file exports_file
+
+  prefix="$(llvm_cross_install_prefix "${target_label}")" || return 1
+  cmake_dir="$(llvm_cross_cmake_dir "${target_label}" 2>/dev/null || true)"
+  [ -n "${cmake_dir}" ] || die "Target LLVM CMake package missing for ${target_label}"
+
+  llvm_config_file="${cmake_dir}/LLVMConfig.cmake"
+  exports_file="${cmake_dir}/LLVMExports.cmake"
+  [ -f "${llvm_config_file}" ] || die "Target LLVMConfig.cmake missing for ${target_label}: ${llvm_config_file}"
+
+  llvm_cross_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || \
+    die "Target LLVM shared umbrella lib missing for ${target_label}: ${prefix}/lib/libLLVM.so"
+  llvm_cross_versioned_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || \
+    die "Target LLVM versioned shared umbrella lib missing for ${target_label} under ${prefix}"
+  llvm_cross_compat_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || \
+    die "Target LLVM compatibility shared umbrella lib missing for ${target_label}: ${prefix}/lib/libLLVM-${LLVM_WANTED:-${CLANG_WANTED:-22}}.so"
+  llvm_cross_llvm_config_path "${prefix}" >/dev/null 2>&1 || \
+    die "Target llvm-config missing for ${target_label} under ${prefix}/bin"
+
+  grep -Eq '^set\(LLVM_LINK_LLVM_DYLIB (ON|TRUE|YES|1)\)$' "${llvm_config_file}" || \
+    die "Target LLVM package for ${target_label} does not advertise LLVM_LINK_LLVM_DYLIB=ON"
+  grep -Eq '^set\(LLVM_DYLIB_COMPONENTS [^)]*[[:alnum:]_]' "${llvm_config_file}" || \
+    die "Target LLVM package for ${target_label} does not advertise LLVM_DYLIB_COMPONENTS"
+
+  if [ -f "${exports_file}" ] && grep -q 'INTERFACE_LINK_LIBRARIES "LLVM' "${exports_file}"; then
+    grep -q 'add_library(LLVM ' "${exports_file}" || \
+      die "Target LLVM exports for ${target_label} reference LLVM without defining an imported LLVM target"
+  fi
+
+  llvm_cmake_package_has_component_metadata "${llvm_config_file}" || \
+    die "Target LLVM package for ${target_label} does not provide LLVM component metadata"
+}
+
+install_cross_llvm_runner_tools() {
+  [ "${BUILD_MODE:-native}" = "cross" ] || return 0
+
+  if command -v qemu-aarch64 >/dev/null 2>&1 && command -v qemu-riscv64 >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if apt_has_package qemu-user; then
+    apt_install qemu-user
+    return 0
+  fi
+
+  if apt_has_package qemu-user-static; then
+    apt_install qemu-user-static
+    return 0
+  fi
+
+  die "Neither qemu-user nor qemu-user-static is available for target llvm-config verification"
+}
+
+install_cross_llvm_config_binary() {
+  local target_label="$1"
+  local build_dir="$2"
+  local llvm_config_src bin_dir major
+
+  llvm_config_src="${build_dir}/bin/llvm-config"
+  [ -x "${llvm_config_src}" ] || die "Cross llvm-config build output missing for ${target_label}: ${llvm_config_src}"
+
+  bin_dir="$(llvm_cross_bin_dir "${target_label}")" || die "Unable to resolve LLVM bin dir for ${target_label}"
+  major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  major="${major%%.*}"
+
+  mkdir -p "${bin_dir}"
+  install -m755 "${llvm_config_src}" "${bin_dir}/llvm-config"
+  ln -sfn llvm-config "${bin_dir}/llvm-config-${major}"
+}
+
+verify_cross_llvm_config() {
+  local target_label="$1"
+  local prefix expected_libdir llvm_config_path actual_libdir shared_mode
+
+  prefix="$(llvm_cross_install_prefix "${target_label}")" || return 1
+  expected_libdir="$(llvm_cross_lib_dir "${prefix}")" || \
+    die "Target LLVM libdir missing for ${target_label}: ${prefix}"
+  llvm_config_path="$(llvm_cross_llvm_config_path "${prefix}")" || \
+    die "Target llvm-config missing for ${target_label}: ${prefix}/bin/llvm-config"
+
+  actual_libdir="$(llvm_cross_run_binary "${target_label}" "${llvm_config_path}" --libdir)"
+  [ "${actual_libdir}" = "${expected_libdir}" ] || \
+    die "Target llvm-config for ${target_label} reports libdir ${actual_libdir}, expected ${expected_libdir}"
+
+  shared_mode="$(llvm_cross_run_binary "${target_label}" "${llvm_config_path}" --shared-mode all)"
+  [ "${shared_mode}" = "shared" ] || \
+    die "Target llvm-config for ${target_label} reports --shared-mode ${shared_mode:-<empty>} (expected shared)"
+}
+
+verify_cross_llvm_cmake_smoke_test() {
+  local target_label="$1"
+  local cmake_dir smoke_root wrapper_dir
+  local -a cmake_args=(
+    -G Ninja
+  )
+
+  cmake_dir="$(llvm_cross_cmake_dir "${target_label}")" || \
+    die "Target LLVM CMake package missing for ${target_label}"
+  smoke_root="$(mktemp -d "/tmp/llvm-cross-${target_label}.XXXXXX")"
+  wrapper_dir="${smoke_root}/tool-bin"
+
+  cat > "${smoke_root}/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.20)
+project(llvm_cross_smoke LANGUAGES CXX)
+find_package(LLVM REQUIRED CONFIG)
+if (NOT TARGET LLVM)
+  message(FATAL_ERROR "LLVM imported target missing")
+endif()
+add_executable(llvm_cross_smoke main.cpp)
+target_link_libraries(llvm_cross_smoke PRIVATE LLVM)
+EOF
+  cat > "${smoke_root}/main.cpp" <<'EOF'
+int main() { return 0; }
+EOF
+
+  (
+    export BUILD_MODE=cross
+    export TARGETARCH="${target_label}"
+    export TARGET_ARCH="${target_label}"
+    export TARGETPLATFORM="linux/${target_label}"
+
+    setup_linux_cross_env
+    llvm_cross_populate_tool_wrapper_dir "${wrapper_dir}"
+    export PATH="${wrapper_dir}:${PATH}"
+    append_cmake_cross_args cmake_args
+    cmake_args+=( "-DLLVM_DIR=${cmake_dir}" )
+    cmake_args+=(
+      "-DCMAKE_C_FLAGS_INIT=-B${wrapper_dir}"
+      "-DCMAKE_CXX_FLAGS_INIT=-B${wrapper_dir}"
+      "-DCMAKE_ASM_FLAGS_INIT=-B${wrapper_dir}"
+    )
+
+    cmake -S "${smoke_root}" -B "${smoke_root}/build" "${cmake_args[@]}"
+    cmake --build "${smoke_root}/build" --parallel 1
+  )
+
+  rm -rf "${smoke_root}"
+}
+
+verify_cross_llvm_target() {
+  local target_label="$1"
+  local prefix
+
+  prefix="$(llvm_cross_install_prefix "${target_label}")" || return 1
+  log "Verifying target LLVM package for ${target_label}: ${prefix}"
+  validate_cross_llvm_cmake_package "${target_label}"
+  verify_cross_llvm_config "${target_label}"
+  verify_cross_llvm_cmake_smoke_test "${target_label}"
+}
+
+verify_cross_llvm_targets() {
+  local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
+  local target target_label
+
+  [ "${BUILD_MODE:-native}" = "cross" ] || return 0
+
+  for target in ${targets_raw//,/ }; do
+    target_label="$(llvm_canonical_cross_target "${target}")" || {
+      log "Skipping unsupported LLVM cross verification target: ${target}"
+      continue
+    }
+
+    [ "${target_label}" = "amd64" ] && continue
+    verify_cross_llvm_target "${target_label}"
+  done
+}
+
+patch_cross_llvm_config_template() {
+  local source_dir="$1"
+  local template_file="${source_dir}/llvm/cmake/modules/LLVMConfig.cmake.in"
+
+  [ -f "${template_file}" ] || die "LLVMConfig.cmake.in not found: ${template_file}"
+
+  python3 - "${template_file}" <<'PY'
+from pathlib import Path
+import sys
+
+template_path = Path(sys.argv[1])
+text = template_path.read_text()
+line = 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")'
+marker = 'include(${LLVM_CMAKE_DIR}/LLVM-Config.cmake)'
+
+if line in text:
+    raise SystemExit(0)
+if marker not in text:
+    raise SystemExit(f"expected marker not found in {template_path}")
+
+template_path.write_text(text.replace(marker, marker + '\n' + line, 1))
+PY
+
+  grep -q 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")' "${template_file}" || \
+    die "Failed to patch LLVMConfig.cmake.in for installed package component metadata"
 }
 
 llvm_host_native_tool_dir() {
@@ -201,8 +731,14 @@ build_cross_llvm_target() {
   prefix="$(llvm_cross_install_prefix "${target_label}")" || die "Unable to resolve LLVM cross install prefix for ${target_label}"
   if cmake_dir="$(llvm_cross_cmake_dir "${target_label}" 2>/dev/null || true)"; then
     if [ -n "${cmake_dir}" ]; then
-      log "Reusing target LLVM install for ${target_label}: ${cmake_dir}"
-      return 0
+      if llvm_cross_install_looks_complete "${target_label}"; then
+        validate_cross_llvm_cmake_package "${target_label}"
+        log "Reusing target LLVM install for ${target_label}: ${cmake_dir}"
+        return 0
+      fi
+
+      log "Discarding incomplete target LLVM install for ${target_label}: ${prefix}"
+      rm -rf "${prefix}"
     fi
   fi
 
@@ -222,7 +758,9 @@ build_cross_llvm_target() {
     log "Cloning llvm-project ${tag} for target LLVM ${target_label}"
     git clone --depth 1 --branch "${tag}" https://github.com/llvm/llvm-project.git "${source_dir}"
   fi
+  patch_cross_llvm_config_template "${source_dir}"
 
+  rm -rf "${prefix}"
   rm -rf "${build_dir}"
   rm -rf "${wrapper_dir}"
   log "Building target LLVM ${release} for ${target_label} (${triplet})"
@@ -233,18 +771,7 @@ build_cross_llvm_target() {
 
     setup_linux_cross_env
 
-    mkdir -p "${wrapper_dir}"
-    for tool in as ld ar nm ranlib strip objcopy; do
-      case "${tool}" in
-        as)      ln -sfn "${AS}"      "${wrapper_dir}/as" ;;
-        ld)      ln -sfn "${LD}"      "${wrapper_dir}/ld" ;;
-        ar)      ln -sfn "${AR}"      "${wrapper_dir}/ar" ;;
-        nm)      ln -sfn "${NM}"      "${wrapper_dir}/nm" ;;
-        ranlib)  ln -sfn "${RANLIB}"  "${wrapper_dir}/ranlib" ;;
-        strip)   ln -sfn "${STRIP}"   "${wrapper_dir}/strip" ;;
-        objcopy) ln -sfn "${OBJCOPY}" "${wrapper_dir}/objcopy" ;;
-      esac
-    done
+    llvm_cross_populate_tool_wrapper_dir "${wrapper_dir}"
     export PATH="${wrapper_dir}:${PATH}"
 
     cmake -G Ninja \
@@ -278,8 +805,9 @@ build_cross_llvm_target() {
       -DLLVM_ENABLE_RUNTIMES= \
       -DLLVM_BUILD_LLVM_DYLIB=ON \
       -DLLVM_LINK_LLVM_DYLIB=ON \
-      -DLLVM_INCLUDE_TOOLS=OFF \
+      -DLLVM_INCLUDE_TOOLS=ON \
       -DLLVM_BUILD_TOOLS=OFF \
+      -DLLVM_TOOL_LLVM_SHLIB_BUILD=ON \
       -DLLVM_INCLUDE_UTILS=OFF \
       -DLLVM_BUILD_UTILS=OFF \
       -DLLVM_INCLUDE_TESTS=OFF \
@@ -294,10 +822,14 @@ build_cross_llvm_target() {
       -DLLVM_TABLEGEN="${native_tool_dir}/llvm-tblgen"
 
     cmake --build "${build_dir}" --parallel "${jobs}"
+    cmake --build "${build_dir}" --parallel "${jobs}" --target llvm-config
     cmake --install "${build_dir}"
   )
 
+  install_cross_llvm_config_binary "${target_label}" "${build_dir}"
+
   cmake_dir="$(llvm_cross_cmake_dir "${target_label}")" || die "Target LLVM CMake package missing after install for ${target_label}"
+  validate_cross_llvm_cmake_package "${target_label}"
   log "Installed target LLVM package for ${target_label}: ${cmake_dir}"
 }
 
@@ -450,5 +982,6 @@ install_llvm_clang() {
 
   [ "${installed_from_source}" = "1" ] && log "Installed LLVM/Clang ${CLANG_WANTED} from source"
   install_cross_clang_wrappers
+  install_cross_llvm_runner_tools
   build_cross_llvm_targets
 }

@@ -78,6 +78,9 @@ verify_summary() {
 
   if [ "${BUILD_MODE:-native}" = "cross" ]; then
     verify_cross_target_versions
+    if declare -F verify_cross_llvm_targets >/dev/null 2>&1; then
+      verify_cross_llvm_targets
+    fi
   fi
 
   log "Reminder: source <sdk>/setup-env.sh before using Vulkan"

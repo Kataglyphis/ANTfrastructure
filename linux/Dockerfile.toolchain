@@ -3,7 +3,7 @@
 ARG BASE_IMAGE=local/kataglyphis:base
 FROM ${BASE_IMAGE}
 
-ARG LLVM_RELEASE=22.1.4
+ARG LLVM_RELEASE=22.1.5
 ARG GCC_VERSION=16.1.0
 ARG TARGETARCH
 ARG TARGETPLATFORM
@@ -15,6 +15,7 @@ ARG PYTHON_VERSION=3.14.4
 ARG PYTHON_MAJOR_MINOR=3.14
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 
 SHELL ["bash", "-lc"]
@@ -22,6 +23,7 @@ SHELL ["bash", "-lc"]
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
     USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
     FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
     bash /tmp/use-fast-ubuntu-mirror.sh
 
 ENV BUILD_MODE=${BUILD_MODE} \
@@ -57,8 +59,8 @@ COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 
 # 1. GCC (Heavy Layer)
 # If this succeeds, it is cached forever unless GCC_VERSION changes.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolchain-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-toolchain-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
     gcc_wanted="${GCC_VERSION%%.*}"; \
@@ -76,8 +78,8 @@ ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
 
 # 3. LLVM / CLANG (Heavy Layer)
 # If this fails, Docker restores the image state at 'Step 2' instantly.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolchain-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-toolchain-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
     llvm_wanted="${LLVM_RELEASE%%.*}"; \
@@ -93,6 +95,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     else \
         bash /opt/scripts/toolchain/setup-dependencies.sh --llvm "${llvm_wanted}" --clang "${llvm_wanted}" llvm; \
     fi
+
+# 3b. VERIFY TOOLCHAIN CONTRACT
+RUN set -eux; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
 # 4. RUST / CARGO
 # Install the host Rust toolchain in the compiler layer and add the target stdlibs

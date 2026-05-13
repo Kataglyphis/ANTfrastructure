@@ -4,11 +4,15 @@
 _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Side-effect free helpers
-# shellcheck disable=SC1090
+# shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/logging.sh" ] && source "${_COMMON_SH_DIR}/logging.sh"
-# shellcheck disable=SC1090
+# shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/platform.sh" ] && source "${_COMMON_SH_DIR}/platform.sh"
-# shellcheck disable=SC1090
+# shellcheck disable=SC1090,SC1091
+[ -f "${_COMMON_SH_DIR}/ubuntu-mirror.sh" ] && source "${_COMMON_SH_DIR}/ubuntu-mirror.sh"
+# shellcheck disable=SC1090,SC1091
+[ -f "${_COMMON_SH_DIR}/downloads.sh" ] && source "${_COMMON_SH_DIR}/downloads.sh"
+# shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/parallelism.sh" ] && source "${_COMMON_SH_DIR}/parallelism.sh"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -62,6 +66,7 @@ detect_system() {
   if command -v lsb_release >/dev/null 2>&1; then
     DISTRO="$(lsb_release -cs)"
   elif [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
     . /etc/os-release
     DISTRO="${UBUNTU_CODENAME:-${VERSION_CODENAME:-jammy}}"
   else

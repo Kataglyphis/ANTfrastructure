@@ -22,12 +22,11 @@ source_module cmake.sh
 source_module llvm.sh
 source_module gcc.sh
 source_module vulkan.sh
-source_module extras.sh
 source_module verify.sh
 
 usage() {
   cat <<EOF
-Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|extras|verify>
+Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|verify>
 
 Examples:
   $0 --llvm 22 --clang 22 --gcc 16 cmake
@@ -35,6 +34,22 @@ Examples:
   $0 --vulkan-version 1.4.328.1 vulkan
   $0 --llvm 22 --clang 22 --gcc 16 --vulkan-version 1.4.328.1 all
 EOF
+}
+
+skip_core_tools() {
+  case "${SETUP_DEPENDENCIES_SKIP_CORE_TOOLS:-false}" in
+    1|true|TRUE|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+install_core_tools_if_needed() {
+  if skip_core_tools; then
+    log "Skipping install_core_tools because SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=${SETUP_DEPENDENCIES_SKIP_CORE_TOOLS}"
+    return 0
+  fi
+
+  install_core_tools
 }
 
 main() {
@@ -55,7 +70,7 @@ main() {
       --gcc)           GCC_WANTED="$2"; shift 2 ;;
       --vulkan-version)VULKAN_VERSION_DEFAULT="$2"; shift 2 ;;
       --arch)          arch_override="$2"; shift 2 ;;
-      all|base|repos|cmake|llvm|gcc|vulkan|extras|verify)
+      all|base|repos|cmake|llvm|gcc|vulkan|verify)
         cmd="$1"; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "Unknown argument: $1" ;;
@@ -75,41 +90,37 @@ main() {
 
   case "$cmd" in
     base)
-      install_core_tools
+      install_core_tools_if_needed
       ;;
     repos)
       add_kitware_repo
       add_llvm_repo
       ;;
     cmake)
-      install_core_tools
+      install_core_tools_if_needed
       install_cmake
       ;;
     llvm)
-      install_core_tools
+      install_core_tools_if_needed
       install_llvm_clang
       ;;
     gcc)
-      install_core_tools
+      install_core_tools_if_needed
       install_gcc
       ;;
     vulkan)
-      install_core_tools
+      install_core_tools_if_needed
       install_vulkan_sdk "$VULKAN_VERSION_DEFAULT"
-      ;;
-    extras)
-      install_extras
       ;;
     verify)
       verify_summary
       ;;
     all)
-      install_core_tools
+      install_core_tools_if_needed
       install_cmake
       install_llvm_clang
       install_gcc
       install_vulkan_sdk "$VULKAN_VERSION_DEFAULT"
-      install_extras
       verify_summary
       ;;
   esac
