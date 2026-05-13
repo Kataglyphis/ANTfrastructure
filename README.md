@@ -301,7 +301,7 @@ The cross-compiler path below is additive. It does not replace the existing QEMU
 
 This lane intentionally builds only a `linux/amd64` container image. The three architectures are the compiler targets installed inside that image via `CROSS_TARGETS=amd64,arm64,riscv64`, not three separate compiler container manifests.
 
-For the cross-compiler path, bootstrap the base image locally first. This avoids depending on a remote `base` intermediate tag that may have been cleaned up in GHCR.
+For the cross-compiler path, the helper can bootstrap the base image locally when needed, so you do not have to rely on a remote `base` intermediate tag surviving in GHCR.
 
 Fastest entry point:
 
@@ -312,7 +312,7 @@ Fastest entry point:
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`). For example: `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
 
-The helper script only uses `nerdctl`. It first tries to reuse or pull `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base`; if the registry manifest is broken or missing, it falls back to rebuilding `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base` with `--output type=image,...,push=true` and then builds `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64` the same way so the next stage can resolve it from GHCR. In `BUILD_MODE=cross`, that compiler image now builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
+The helper script only uses `nerdctl`. It first tries to reuse a local `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base`, then tries to pull that tag, and if that fails it rebuilds the base image locally before building `ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64`. It only pushes when you pass `--push`. In `BUILD_MODE=cross`, that compiler image builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
 
 If you only need the downstream SDK or media cross stages and want to reuse the published compiler image, pull it first:
 
@@ -346,7 +346,7 @@ nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleu
   . 2>&1 | tee -a output.log
 ```
 
-The commands above already push the intermediary images to GHCR.
+The explicit `nerdctl build --output ... push=true` commands above already push the intermediary images to GHCR. Only the helper script keeps the images local by default unless you pass `--push`.
 
 Expected compiler result inside that image:
 

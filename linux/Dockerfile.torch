@@ -14,15 +14,13 @@ ARG ENABLE_AMD="false"
 ARG BUILD_MODE=native
 ARG TARGET_ARCH
 ARG TARGETARCH
-ARG PYTHON_MAJOR_MINOR=3.14
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
 SHELL ["bash", "-lc"]
 ENV VENV=/opt/venv
 ENV BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
-    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
-    PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}
+    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}}
 
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
     USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \

@@ -106,9 +106,13 @@ if ! command -v host_python_bin >/dev/null 2>&1; then
       return 0
     fi
 
-    if [ -x /usr/local/bin/python3.14 ]; then
-      printf '%s' "/usr/local/bin/python3.14"
-      return 0
+    if [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
+      local python_mm=""
+      python_mm="$(version_major_minor "${PYTHON_VERSION}" 2>/dev/null || true)"
+      if [ -n "${python_mm}" ] && [ -x "/usr/local/bin/python${python_mm}" ]; then
+        printf '%s' "/usr/local/bin/python${python_mm}"
+        return 0
+      fi
     fi
 
     command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
@@ -120,6 +124,11 @@ if ! command -v host_python_major_minor >/dev/null 2>&1; then
 
     if [ -n "${PYTHON_MAJOR_MINOR:-}" ]; then
       printf '%s' "${PYTHON_MAJOR_MINOR}"
+      return 0
+    fi
+
+    if [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
+      version_major_minor "${PYTHON_VERSION}"
       return 0
     fi
 

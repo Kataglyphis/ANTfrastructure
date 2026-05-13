@@ -19,9 +19,24 @@ export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 # Defaults (overridden by CLI or ENV)
-LLVM_WANTED=${LLVM_WANTED:-22}
-CLANG_WANTED=${CLANG_WANTED:-22}
-GCC_WANTED=${GCC_WANTED:-16}
+if [ -z "${LLVM_WANTED:-}" ]; then
+  LLVM_WANTED="${LLVM_RELEASE:-22}"
+  LLVM_WANTED="$(version_major "${LLVM_WANTED}")"
+fi
+
+if [ -z "${CLANG_WANTED:-}" ]; then
+  CLANG_WANTED="${LLVM_WANTED}"
+fi
+
+if [ -z "${GCC_WANTED:-}" ]; then
+  GCC_WANTED="${GCC_VERSION:-16}"
+  GCC_WANTED="$(version_major "${GCC_WANTED}")"
+fi
+
+if [ -z "${PYTHON_MAJOR_MINOR:-}" ] && [ -n "${PYTHON_VERSION:-}" ]; then
+  PYTHON_MAJOR_MINOR="$(version_major_minor "${PYTHON_VERSION}")"
+fi
+
 VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-1.4.341.1}
 
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
@@ -29,15 +44,6 @@ APT_FLAGS=(-qq --no-install-recommends "${APT_OPTS[@]}")
 
 SUDO=""
 APT_UPDATED=""
-
-_common_arch_to_uname() {
-  case "$1" in
-    amd64) printf '%s' "x86_64" ;;
-    arm64) printf '%s' "aarch64" ;;
-    386) printf '%s' "i386" ;;
-    *) printf '%s' "$1" ;;
-  esac
-}
 
 tool_version() {
   local cmd="$1"
@@ -60,8 +66,8 @@ detect_system() {
   local target_arch build_arch
   target_arch="$(arch_oci)"
   build_arch="$(build_arch_oci)"
-  ARCH="$(_common_arch_to_uname "${target_arch}")"
-  HOST_ARCH="$(_common_arch_to_uname "${build_arch}")"
+  ARCH="$(arch_uname_name_for "${target_arch}")"
+  HOST_ARCH="$(arch_uname_name_for "${build_arch}")"
 
   if command -v lsb_release >/dev/null 2>&1; then
     DISTRO="$(lsb_release -cs)"
@@ -86,4 +92,26 @@ apt_update_once() {
 apt_install() {
   apt_update_once
   $SUDO apt-get install -y "${APT_FLAGS[@]}" "$@"
+}
+
+apt_has_package() {
+  local pkg="$1"
+  apt-cache show "$pkg" >/dev/null 2>&1
+}
+
+apt_install_available() {
+  local pkg
+  local -a pkgs=()
+
+  for pkg in "$@"; do
+    if apt_has_package "$pkg"; then
+      pkgs+=("$pkg")
+    else
+      log "Skipping missing package: ${pkg}"
+    fi
+  done
+
+  if [ "${#pkgs[@]}" -gt 0 ]; then
+    apt_install "${pkgs[@]}"
+  fi
 }

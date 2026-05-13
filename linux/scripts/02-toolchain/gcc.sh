@@ -1,55 +1,6 @@
 #!/usr/bin/env bash
 # gcc.sh - GCC toolchain
 
-gcc_apt_has_package() {
-  local pkg="$1"
-  apt-cache show "$pkg" >/dev/null 2>&1
-}
-
-gcc_apt_install_available() {
-  local pkgs=()
-  local pkg
-
-  for pkg in "$@"; do
-    if gcc_apt_has_package "$pkg"; then
-      pkgs+=("$pkg")
-    else
-      log "Skipping missing package: ${pkg}"
-    fi
-  done
-
-  if [ "${#pkgs[@]}" -gt 0 ]; then
-    apt_install "${pkgs[@]}"
-  fi
-}
-
-gcc_canonical_cross_target() {
-  case "$1" in
-    amd64|x86_64) printf '%s' "amd64" ;;
-    arm64|aarch64) printf '%s' "arm64" ;;
-    riscv64) printf '%s' "riscv64" ;;
-    *) return 1 ;;
-  esac
-}
-
-gcc_cross_triplet() {
-  case "$1" in
-    arm64) printf '%s' "aarch64-linux-gnu" ;;
-    riscv64) printf '%s' "riscv64-linux-gnu" ;;
-    amd64) printf '%s' "x86_64-linux-gnu" ;;
-    *) return 1 ;;
-  esac
-}
-
-gcc_cross_libc_arch() {
-  case "$1" in
-    arm64) printf '%s' "arm64" ;;
-    riscv64) printf '%s' "riscv64" ;;
-    amd64) printf '%s' "amd64" ;;
-    *) return 1 ;;
-  esac
-}
-
 gcc_reported_version() {
   local tool="$1"
   local version=""
@@ -65,21 +16,22 @@ install_cross_gcc_sysroot_packages() {
   local normalized_target="$1"
   local triplet
 
-  triplet="$(gcc_cross_triplet "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
+  normalized_target="$(arch_normalize "${normalized_target}")"
+  triplet="$(arch_deb_multiarch_triplet_for "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
 
   case "${normalized_target}" in
     amd64)
-      gcc_apt_install_available \
+      apt_install_available \
         binutils-x86-64-linux-gnu
       ;;
     arm64)
-      gcc_apt_install_available \
+      apt_install_available \
         binutils-aarch64-linux-gnu \
         libc6-dev-arm64-cross \
         linux-libc-dev-arm64-cross
       ;;
     riscv64)
-      gcc_apt_install_available \
+      apt_install_available \
         binutils-riscv64-linux-gnu \
         libc6-dev-riscv64-cross \
         linux-libc-dev-riscv64-cross
@@ -121,16 +73,17 @@ stage_cross_gcc_sysroot_libs() {
 build_source_cross_gcc_targets() {
   local full_version="$1"
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local gcc_major="${full_version%%.*}"
+  local gcc_major="$(version_major "${full_version}")"
   local prefix="/opt/gcc-${full_version}"
   local script_dir builder
-  local requested_major="${full_version%%.*}"
+  local requested_major="${gcc_major}"
   local target normalized_target triplet compat_prefix tool actual_tool actual_version
 
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   builder="${script_dir}/build-gcc.sh"
   [ -f "${builder}" ] || die "GCC build script not found: ${builder}"
   chmod +x "${builder}" || true
+  targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported GCC cross target list: ${targets_raw}"
 
   log "Building host GCC ${full_version} from source for cross mode"
   PREFIX="${prefix}" \
@@ -140,10 +93,14 @@ build_source_cross_gcc_targets() {
 
   log "Building cross GCC toolchains from source for ${targets_raw}"
   for target in ${targets_raw//,/ }; do
-    normalized_target="$(gcc_canonical_cross_target "$target")" || die "Unsupported cross target: ${target}"
+    normalized_target="$(arch_normalize "$target")"
+    case "${normalized_target}" in
+      amd64|arm64|riscv64) ;;
+      *) die "Unsupported cross target: ${target}" ;;
+    esac
     install_cross_gcc_sysroot_packages "${normalized_target}"
 
-    triplet="$(gcc_cross_triplet "$normalized_target")" || die "Unsupported cross target: ${normalized_target}"
+    triplet="$(arch_deb_multiarch_triplet_for "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
     if [ "${normalized_target}" = "amd64" ]; then
       for tool in gcc g++ gcov; do
         [ -x "${prefix}/bin/${tool}" ] || die "Expected host GCC tool not found: ${prefix}/bin/${tool}"
@@ -193,7 +150,7 @@ build_source_cross_gcc_targets() {
     actual_tool="${prefix}/bin/${triplet}-g++"
     actual_version="$(gcc_reported_version "${actual_tool}" || true)"
     if [ -n "${actual_version}" ]; then
-      if [ -n "${requested_major}" ] && [ "${actual_version%%.*}" != "${requested_major}" ]; then
+      if [ -n "${requested_major}" ] && [ "$(version_major "${actual_version}")" != "${requested_major}" ]; then
         warn "Cross mode requested GCC ${full_version}, but ${triplet}-g++ resolves to ${actual_tool} (GCC ${actual_version})."
       else
         log "Cross compiler version for ${normalized_target}: ${actual_tool} (${actual_version})"
@@ -210,7 +167,7 @@ build_source_cross_gcc_targets() {
 install_gcc() {
   log "Installing GCC ${GCC_WANTED}"
 
-  local gcc_major="${GCC_WANTED%%.*}"
+  local gcc_major="$(version_major "${GCC_WANTED}")"
   local default_full_version
   case "${gcc_major}" in
     16) default_full_version="16.1.0" ;;

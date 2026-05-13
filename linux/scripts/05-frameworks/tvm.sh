@@ -97,16 +97,6 @@ detect_llvm_config() {
   echo ""
 }
 
-llvm_target_arch_from_triple() {
-  case "${1%%-*}" in
-    x86_64|amd64) printf '%s' "amd64" ;;
-    aarch64|arm64) printf '%s' "arm64" ;;
-    riscv64|riscv64gc) printf '%s' "riscv64" ;;
-    i686|i386|x86) printf '%s' "386" ;;
-    *) printf '%s' "" ;;
-  esac
-}
-
 sanitize_llvm_config_for_target() {
   local llvm_config_path="$1"
   local llvm_host_target=""
@@ -125,7 +115,7 @@ sanitize_llvm_config_for_target() {
 
   target_arch="$(cross_target_arch 2>/dev/null || true)"
   llvm_host_target="$($llvm_config_path --host-target 2>/dev/null || true)"
-  llvm_host_arch="$(llvm_target_arch_from_triple "$llvm_host_target")"
+  llvm_host_arch="$(arch_from_target_triple "$llvm_host_target" 2>/dev/null || true)"
 
   if [ -n "$target_arch" ] && [ -n "$llvm_host_arch" ] && [ "$llvm_host_arch" != "$target_arch" ]; then
     log "Disabling TVM LLVM for cross target ${target_arch}: ${llvm_config_path} reports host target ${llvm_host_target}, so it would link build-host LLVM archives into target binaries" >&2
@@ -317,17 +307,99 @@ validate_detected_llvm_cmake_package() {
 
 detect_llvm_major_version() {
   local llvm_config_path="$1"
+  local llvm_dir="${2:-}"
   local major=""
+  local llvm_release=""
 
-  if [ -n "${llvm_config_path}" ] && command -v "${llvm_config_path}" >/dev/null 2>&1; then
+  if [ -n "${llvm_dir}" ] && command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    # linux/Dockerfile.toolchain pins both host and cross LLVM installs from the
+    # same LLVM_RELEASE, so in cross mode the target package should follow that
+    # pinned release rather than the build-host llvm-config.
+    if declare -F llvm_release_version >/dev/null 2>&1; then
+      llvm_release="$(llvm_release_version 2>/dev/null || true)"
+    elif [ -n "${LLVM_RELEASE:-}" ]; then
+      llvm_release="${LLVM_RELEASE}"
+    fi
+    if [ -n "${llvm_release}" ]; then
+      major="$(version_major "${llvm_release}" 2>/dev/null || true)"
+    fi
+  fi
+
+  if [ -z "${major}" ] && [ -n "${llvm_dir}" ]; then
+    major="$(detect_llvm_major_version_from_cmake_package "${llvm_dir}" 2>/dev/null || true)"
+  fi
+
+  if [ -z "${major}" ] && [ -n "${llvm_config_path}" ] && command -v "${llvm_config_path}" >/dev/null 2>&1; then
     major="$(${llvm_config_path} --version 2>/dev/null | cut -d. -f1 || true)"
   fi
 
   if [ -z "${major}" ] && [ -n "${LLVM_RELEASE:-}" ]; then
-    major="${LLVM_RELEASE%%.*}"
+    major="$(version_major "${LLVM_RELEASE}")"
   fi
 
   printf '%s' "${major}"
+}
+
+detect_llvm_major_version_from_metadata_file() {
+  local metadata_file="$1"
+  local line=""
+
+  [ -f "${metadata_file}" ] || return 1
+
+  while IFS= read -r line; do
+    case "${line}" in
+      *LLVM_VERSION_MAJOR* )
+        if [[ "${line}" =~ LLVM_VERSION_MAJOR[^0-9]*([0-9]+) ]]; then
+          printf '%s' "${BASH_REMATCH[1]}"
+          return 0
+        fi
+        ;;
+      *LLVM_PACKAGE_VERSION*|*PACKAGE_VERSION* )
+        if [[ "${line}" =~ (LLVM_PACKAGE_VERSION|PACKAGE_VERSION)[^0-9]*([0-9]+) ]]; then
+          printf '%s' "${BASH_REMATCH[2]}"
+          return 0
+        fi
+        ;;
+    esac
+  done < "${metadata_file}"
+
+  return 1
+}
+
+detect_llvm_major_version_from_cmake_package() {
+  local llvm_dir="$1"
+  local prefix=""
+  local candidate=""
+  local major=""
+
+  [ -n "${llvm_dir}" ] || return 1
+
+  for candidate in \
+    "${llvm_dir}/LLVMConfigVersion.cmake" \
+    "${llvm_dir}/LLVMConfig.cmake"; do
+    major="$(detect_llvm_major_version_from_metadata_file "${candidate}" 2>/dev/null || true)"
+    if [ -n "${major}" ]; then
+      printf '%s' "${major}"
+      return 0
+    fi
+  done
+
+  prefix="$(llvm_cmake_package_prefix "${llvm_dir}" 2>/dev/null || true)"
+  if [ -z "${prefix}" ]; then
+    return 1
+  fi
+
+  for candidate in \
+    "${prefix}/include/llvm/Config/llvm-config.h" \
+    "${prefix}/include/llvm/Config/llvm-config.h.cmake"; do
+    major="$(detect_llvm_major_version_from_metadata_file "${candidate}" 2>/dev/null || true)"
+    if [ -n "${major}" ]; then
+      printf '%s' "${major}"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 patch_tvm_findllvm_for_cross_package() {
@@ -397,12 +469,7 @@ require_toolchain_python() {
 }
 
 tvm_cross_wheel_platform_tag() {
-  case "$(cross_target_arch 2>/dev/null || true)" in
-    amd64) printf '%s' "linux_x86_64" ;;
-    arm64) printf '%s' "linux_aarch64" ;;
-    riscv64) printf '%s' "linux_riscv64" ;;
-    *) return 1 ;;
-  esac
+  arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
 }
 
 detect_clang_tools() {
@@ -444,6 +511,65 @@ cross_linker_search_flags() {
   done
 
   printf '%s' "${flags}"
+}
+
+shell_quote_args() {
+  local quoted=""
+  local arg
+
+  for arg in "$@"; do
+    quoted+="${quoted:+ }$(printf '%q' "${arg}")"
+  done
+
+  printf '%s' "${quoted}"
+}
+
+append_tvm_cmake_args() {
+  local out_name="$1"
+  local python_module="$2"
+  local -n out_ref="${out_name}"
+
+  out_ref+=(
+    -DCMAKE_BUILD_TYPE="$build_type"
+    -DUSE_OPENCL=OFF
+    -DUSE_CUDA=OFF
+    "-DTVM_BUILD_PYTHON_MODULE=${python_module}"
+  )
+
+  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    append_cmake_cross_args "${out_name}"
+    out_ref+=( -DUSE_ALTERNATIVE_LINKER=OFF )
+    if [ -n "${cross_link_flags:-}" ]; then
+      out_ref+=(
+        "-DCMAKE_EXE_LINKER_FLAGS=${cross_link_flags}${CMAKE_EXE_LINKER_FLAGS:+ ${CMAKE_EXE_LINKER_FLAGS}}"
+        "-DCMAKE_SHARED_LINKER_FLAGS=${cross_link_flags}${CMAKE_SHARED_LINKER_FLAGS:+ ${CMAKE_SHARED_LINKER_FLAGS}}"
+        "-DCMAKE_MODULE_LINKER_FLAGS=${cross_link_flags}${CMAKE_MODULE_LINKER_FLAGS:+ ${CMAKE_MODULE_LINKER_FLAGS}}"
+      )
+    fi
+  fi
+
+  if [ -n "${llvm_dir}" ]; then
+    out_ref+=( -DLLVM_DIR="${llvm_dir}" )
+    if [ -n "${llvm_ignore_paths}" ]; then
+      out_ref+=( "-DCMAKE_IGNORE_PATH=${llvm_ignore_paths}${CMAKE_IGNORE_PATH:+;${CMAKE_IGNORE_PATH}}" )
+    fi
+  fi
+
+  out_ref+=(
+    -DCMAKE_C_COMPILER="$desired_cc"
+    -DCMAKE_CXX_COMPILER="$desired_cxx"
+  )
+
+  if [ "$use_vulkan" -eq 1 ]; then
+    out_ref+=( -DUSE_VULKAN=ON )
+    if [ -n "${spirv_tools_lib:-}" ]; then
+      out_ref+=( -DVulkan_SPIRV_TOOLS_LIBRARY="${spirv_tools_lib}" )
+    fi
+  else
+    out_ref+=( -DUSE_VULKAN=OFF )
+  fi
+
+  out_ref+=( -DUSE_LLVM="$llvm_cmake_value" )
 }
 
 maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
@@ -576,9 +702,10 @@ EOF
 patch_tvm_for_llvm_22() {
   local tvm_dir="$1"
   local llvm_config_path="$2"
+  local llvm_dir="${3:-}"
   local llvm_major=""
 
-  llvm_major="$(detect_llvm_major_version "$llvm_config_path")"
+  llvm_major="$(detect_llvm_major_version "$llvm_config_path" "$llvm_dir")"
   case "$llvm_major" in
     22|2[3-9]|[3-9][0-9]) ;;
     *) return 0 ;;
@@ -779,6 +906,10 @@ main() {
     prefix="$workdir/tvm-install"
   fi
 
+  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    setup_linux_cross_env
+  fi
+
   if [ "$do_apt" -eq 1 ]; then
     log "Installing build dependencies via apt"
     install_deps
@@ -846,7 +977,7 @@ main() {
     llvm_cmake_value="$llvm_config"
   fi
 
-  patch_tvm_for_llvm_22 "$tvm_dir" "$llvm_config"
+  patch_tvm_for_llvm_22 "$tvm_dir" "$llvm_config" "$llvm_dir"
   patch_tvm_findllvm_for_cross_package "$tvm_dir" "$llvm_dir"
 
   if [ "$do_clean" -eq 1 ]; then
@@ -878,45 +1009,17 @@ main() {
   log "Configuring CMake (type=$build_type)"
   local cmake_args=(
     -G Ninja
-    -DCMAKE_BUILD_TYPE="$build_type"
     -DCMAKE_INSTALL_PREFIX="$prefix"
-    -DUSE_OPENCL=OFF
-    -DUSE_CUDA=OFF
-    -DTVM_BUILD_PYTHON_MODULE=OFF
   )
   local cross_link_flags=""
+  local spirv_tools_lib=""
 
   if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-    append_cmake_cross_args cmake_args
-    cmake_args+=( -DUSE_ALTERNATIVE_LINKER=OFF )
     cross_link_flags="$(cross_linker_search_flags || true)"
-    if [ -n "${cross_link_flags}" ]; then
-      cmake_args+=(
-        "-DCMAKE_EXE_LINKER_FLAGS=${cross_link_flags}${CMAKE_EXE_LINKER_FLAGS:+ ${CMAKE_EXE_LINKER_FLAGS}}"
-        "-DCMAKE_SHARED_LINKER_FLAGS=${cross_link_flags}${CMAKE_SHARED_LINKER_FLAGS:+ ${CMAKE_SHARED_LINKER_FLAGS}}"
-        "-DCMAKE_MODULE_LINKER_FLAGS=${cross_link_flags}${CMAKE_MODULE_LINKER_FLAGS:+ ${CMAKE_MODULE_LINKER_FLAGS}}"
-      )
-    fi
   fi
-
-  if [ -n "$llvm_dir" ]; then
-    cmake_args+=( -DLLVM_DIR="$llvm_dir" )
-    if [ -n "${llvm_ignore_paths}" ]; then
-      cmake_args+=( "-DCMAKE_IGNORE_PATH=${llvm_ignore_paths}${CMAKE_IGNORE_PATH:+;${CMAKE_IGNORE_PATH}}" )
-    fi
-  fi
-
-  # Keep the wrapped compiler paths last so cross-mode helper defaults do not
-  # overwrite the cxxabi.h workaround.
-  cmake_args+=(
-    -DCMAKE_C_COMPILER="$desired_cc"
-    -DCMAKE_CXX_COMPILER="$desired_cxx"
-  )
 
   if [ "$use_vulkan" -eq 1 ]; then
-    cmake_args+=( -DUSE_VULKAN=ON )
     # Help CMake/TVM find the SPIRV-Tools library reliably.
-    local spirv_tools_lib=""
     spirv_tools_lib="$(detect_spirv_tools_library || true)"
 
     if [ -z "$spirv_tools_lib" ]; then
@@ -926,12 +1029,9 @@ main() {
       die "Vulkan enabled but SPIRV-Tools library resolved outside /opt/vulkan ($spirv_tools_lib). Only /opt/vulkan is allowed."
     fi
 
-    cmake_args+=( -DVulkan_SPIRV_TOOLS_LIBRARY="$spirv_tools_lib" )
-  else
-    cmake_args+=( -DUSE_VULKAN=OFF )
   fi
 
-  cmake_args+=( -DUSE_LLVM="$llvm_cmake_value" )
+  append_tvm_cmake_args cmake_args OFF
 
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
 
@@ -955,69 +1055,46 @@ main() {
     uv pip install -U numpy cloudpickle decorator psutil scipy attrs
 
     local TVM_WHEEL_DIR="${prefix}/wheels"
-    local -a wheel_cmake_args=(
-      -DCMAKE_BUILD_TYPE="$build_type"
-      -DUSE_OPENCL=OFF
-      -DUSE_CUDA=OFF
-      -DTVM_BUILD_PYTHON_MODULE=ON
-    )
+    local -a wheel_cmake_args=()
     local wheel_cmake_args_string
     mkdir -p "$TVM_WHEEL_DIR"
+    # Avoid stale wheel artifacts from previous runs influencing install/retag.
+    rm -f "${TVM_WHEEL_DIR}"/*.whl
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-      append_cmake_cross_args wheel_cmake_args
-      wheel_cmake_args+=( -DUSE_ALTERNATIVE_LINKER=OFF )
-      if [ -n "${cross_link_flags}" ]; then
-        wheel_cmake_args+=(
-          "-DCMAKE_EXE_LINKER_FLAGS=${cross_link_flags}${CMAKE_EXE_LINKER_FLAGS:+ ${CMAKE_EXE_LINKER_FLAGS}}"
-          "-DCMAKE_SHARED_LINKER_FLAGS=${cross_link_flags}${CMAKE_SHARED_LINKER_FLAGS:+ ${CMAKE_SHARED_LINKER_FLAGS}}"
-          "-DCMAKE_MODULE_LINKER_FLAGS=${cross_link_flags}${CMAKE_MODULE_LINKER_FLAGS:+ ${CMAKE_MODULE_LINKER_FLAGS}}"
-        )
-      fi
-    fi
+    append_tvm_cmake_args wheel_cmake_args ON
 
-    if [ -n "$llvm_dir" ]; then
-      wheel_cmake_args+=( -DLLVM_DIR="$llvm_dir" )
-      if [ -n "${llvm_ignore_paths}" ]; then
-        wheel_cmake_args+=( "-DCMAKE_IGNORE_PATH=${llvm_ignore_paths}${CMAKE_IGNORE_PATH:+;${CMAKE_IGNORE_PATH}}" )
-      fi
-    fi
-
-    wheel_cmake_args+=(
-      -DCMAKE_C_COMPILER="$desired_cc"
-      -DCMAKE_CXX_COMPILER="$desired_cxx"
-    )
-
-    if [ "$use_vulkan" -eq 1 ]; then
-      wheel_cmake_args+=( -DUSE_VULKAN=ON )
-      if [ -n "${spirv_tools_lib:-}" ]; then
-        wheel_cmake_args+=( -DVulkan_SPIRV_TOOLS_LIBRARY="$spirv_tools_lib" )
-      fi
-    else
-      wheel_cmake_args+=( -DUSE_VULKAN=OFF )
-    fi
-
-    wheel_cmake_args+=( -DUSE_LLVM="$llvm_cmake_value" )
-
-    wheel_cmake_args_string="${wheel_cmake_args[*]}"
+    wheel_cmake_args_string="$(shell_quote_args "${wheel_cmake_args[@]}")"
 
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
       local wheel_platform
-      local wheel_tags
 
       wheel_platform="$(tvm_cross_wheel_platform_tag || true)"
       if [ -z "$wheel_platform" ]; then
         log "Skipping TVM wheel build in cross mode; unsupported target architecture $(cross_target_arch 2>/dev/null || echo unknown)"
       elif [ -f "$tvm_dir/pyproject.toml" ]; then
         log "Building cross TVM wheel into $TVM_WHEEL_DIR"
-        wheel_tags="py3-none-${wheel_platform}"
-        CMAKE_GENERATOR=Ninja \
-        CMAKE_ARGS="${wheel_cmake_args_string}" \
-        "$venv_python" -m build --wheel --no-isolation \
-          --outdir "$TVM_WHEEL_DIR" \
-          -Cbuild-dir="${tvm_dir}/build-wheel-${wheel_platform}" \
-          -Cwheel.tags="${wheel_tags}" \
-          "$tvm_dir" || log "Warning: cross TVM wheel build failed"
+        if CMAKE_GENERATOR=Ninja \
+          CMAKE_ARGS="${wheel_cmake_args_string}" \
+          "$venv_python" -m build --wheel --no-isolation \
+            --outdir "$TVM_WHEEL_DIR" \
+            -Cbuild-dir="${tvm_dir}/build-wheel-${wheel_platform}" \
+            "$tvm_dir"; then
+          shopt -s nullglob
+          local -a built_cross_wheels=("${TVM_WHEEL_DIR}"/*.whl)
+          shopt -u nullglob
+          if [ "${#built_cross_wheels[@]}" -eq 0 ]; then
+            log "Warning: cross TVM wheel build succeeded but produced no wheel artifact"
+          else
+            local cross_wheel
+            for cross_wheel in "${built_cross_wheels[@]}"; do
+              log "Retagging cross TVM wheel for ${wheel_platform}: $(basename "${cross_wheel}")"
+              "$venv_python" -m wheel tags --remove --platform-tag="${wheel_platform}" "${cross_wheel}" || \
+                log "Warning: failed to retag cross TVM wheel $(basename "${cross_wheel}")"
+            done
+          fi
+        else
+          log "Warning: cross TVM wheel build failed"
+        fi
       else
         log "TVM python packaging not detected for wheel build; skipped"
       fi

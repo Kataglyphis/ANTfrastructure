@@ -50,7 +50,7 @@ Options:
   --ccache                  Use ccache for faster rebuilds
   -h, --help                Show this help
 
-Environment (overrides CLI args):
+Environment (used as defaults when CLI args are omitted):
   GCC_VERSION               GCC version to build
   TARGET_TRIPLET            GCC target triplet for cross builds
   PREFIX                    Install prefix
@@ -66,7 +66,7 @@ USAGE
 KEEP_BUILD="0"
 DO_STRIP="1"
 USE_CCACHE="0"
-GCC_VERSION=""
+GCC_VERSION="${GCC_VERSION:-}"
 TARGET_TRIPLET="${TARGET_TRIPLET:-}"
 GCC_LANGUAGES="${GCC_LANGUAGES:-}"
 SYSROOT="${SYSROOT:-}"
@@ -138,7 +138,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Fallback to environment variable if not set via CLI
+# Preserve GCC_VERSION from the environment and keep GCC_VERSION_ENV as a
+# legacy fallback when the CLI does not provide --version.
 GCC_VERSION="${GCC_VERSION:-${GCC_VERSION_ENV:-}}"
 if [ -z "${GCC_VERSION}" ]; then
   die "GCC version is required. Use --version <X.Y.Z> or set GCC_VERSION environment variable."

@@ -1,16 +1,40 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-if [ -f /opt/scripts/core/cross-env.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source_first_helper() {
+  local helper=""
+
+  for helper in "$@"; do
+    if [ -f "${helper}" ]; then
+      # shellcheck disable=SC1090
+      source "${helper}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+source_first_helper \
+  "/opt/scripts/core/platform.sh" \
+  "${SCRIPT_DIR}/../01-core/platform.sh"
+
+source_first_helper \
+  "/opt/scripts/core/cross-env.sh" \
+  "${SCRIPT_DIR}/../01-core/cross-env.sh" || true
 
 PYTHON_VERSION=${1:-3.14.4}
+PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSION}")}"
+PYTHON_TARBALL="/tmp/Python-${PYTHON_VERSION}.tgz"
+PYTHON_SOURCE_DIR="/tmp/Python-${PYTHON_VERSION}"
 
-host_python_major_minor() {
-  printf '%s' "${PYTHON_VERSION}" | cut -d. -f1,2
+cleanup() {
+  rm -rf "${PYTHON_SOURCE_DIR}" "${PYTHON_TARBALL}"
 }
+
+trap cleanup EXIT
 
 build_cross_target_python_dev_files() {
   local source_dir="$1"
@@ -22,7 +46,11 @@ build_cross_target_python_dev_files() {
     return 0
   fi
 
-  python_mm="$(host_python_major_minor)"
+  if command -v host_python_major_minor >/dev/null 2>&1; then
+    python_mm="$(host_python_major_minor)"
+  else
+    python_mm="${PYTHON_MAJOR_MINOR}"
+  fi
   target_triplet="$(cross_target_triplet)"
   build_triplet="$(build_deb_multiarch_triplet)"
   build_python_bin="/usr/local/bin/python${python_mm}"
@@ -133,10 +161,10 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   echo "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
 fi
 
-wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "/tmp/Python-${PYTHON_VERSION}.tgz"
-tar -xf "/tmp/Python-${PYTHON_VERSION}.tgz" -C /tmp
+wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "${PYTHON_TARBALL}"
+tar -xf "${PYTHON_TARBALL}" -C /tmp
 
-cd "/tmp/Python-${PYTHON_VERSION}"
+cd "${PYTHON_SOURCE_DIR}"
 ./configure --enable-shared --enable-optimizations --prefix=/usr/local
 make -j"$(nproc)"
 make altinstall
@@ -145,11 +173,10 @@ make altinstall
 echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-${PYTHON_VERSION}.conf"
 ldconfig
 
-build_cross_target_python_dev_files "/tmp/Python-${PYTHON_VERSION}"
+build_cross_target_python_dev_files "${PYTHON_SOURCE_DIR}"
 
 # Clean up
 cd /
-rm -rf "/tmp/Python-${PYTHON_VERSION}" "/tmp/Python-${PYTHON_VERSION}.tgz"
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 

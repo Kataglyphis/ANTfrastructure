@@ -169,12 +169,14 @@ info "LTO: ${ENABLE_LTO}, Assertions: OFF, Bootstrap: ${BOOTSTRAP}"
 
 # --- Initialization & WORKDIR FIX ---
 WD="$(pwd)"
+DEFAULT_LLVM_WORK_ROOT="${LLVM_BUILD_ROOT:-${HOME}/tmp2/llvm-build-root}"
+AUTO_WORKDIR="${DEFAULT_LLVM_WORK_ROOT}/llvm-work"
 
 if [ "${WD}" = "/" ]; then
-    warn "Detected execution from Root (/). Creating safe workspace in /tmp/llvm-work..."
-    mkdir -p /tmp/llvm-work
-    cd /tmp/llvm-work
-    WD="/tmp/llvm-work"
+    warn "Detected execution from Root (/). Creating safe workspace in ${AUTO_WORKDIR}..."
+    mkdir -p "${AUTO_WORKDIR}"
+    cd "${AUTO_WORKDIR}"
+    WD="${AUTO_WORKDIR}"
 fi
 
 SRC_DIR="${WD}/llvm-project"
@@ -207,30 +209,10 @@ if [ -n "${NUM_JOBS:-}" ] && [[ "${NUM_JOBS}" =~ ^[0-9]+$ ]]; then
     : # Explicitly set by user, respect it.
 elif [ -n "${CLANG_NUM_JOBS:-}" ] && [[ "${CLANG_NUM_JOBS}" =~ ^[0-9]+$ ]]; then
     NUM_JOBS="${CLANG_NUM_JOBS}"
+elif command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    NUM_JOBS="$(compute_jobs_with_mem_cap "" "${CLANG_BUILD_MB_PER_JOB:-2000}")"
 else
-    if [ -f /proc/meminfo ]; then
-        TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-        TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
-    else
-        TOTAL_MEM_MB=8000
-    fi
-
-    AVAIL_CORES=$(nproc || echo 1)
-    
-    MEM_LIMIT_JOBS=$((TOTAL_MEM_MB / 2000))
-    if [ "$MEM_LIMIT_JOBS" -lt 1 ]; then MEM_LIMIT_JOBS=1; fi
-
-    if [ "$ARCH" = "riscv64" ]; then
-        if [ "$AVAIL_CORES" -le "$MEM_LIMIT_JOBS" ]; then
-            NUM_JOBS="$AVAIL_CORES"
-            info "RISC-V Job Config: RAM is sufficient ($TOTAL_MEM_MB MB). Using all $NUM_JOBS cores."
-        else
-            NUM_JOBS="$MEM_LIMIT_JOBS"
-            warn "RISC-V Job Config: Limiting to $NUM_JOBS jobs to prevent OOM ($TOTAL_MEM_MB MB RAM detected). Available Cores: $AVAIL_CORES."
-        fi
-    else
-        NUM_JOBS="$AVAIL_CORES"
-    fi
+    NUM_JOBS="$(nproc || echo 1)"
 fi
 info "Using NUM_JOBS=${NUM_JOBS}"
 
@@ -350,9 +332,9 @@ fi
 [[ "${KEEP_SRC}" != "1" ]] && rm -rf "${SRC_DIR}"
 [[ "${KEEP_BUILD}" != "1" ]] && rm -rf "${BUILD_DIR}"
 
-if [[ "${WD}" == "/tmp/llvm-work" ]]; then
+if [[ "${WD}" == "${AUTO_WORKDIR}" ]]; then
     cd /
-    rm -rf "/tmp/llvm-work"
+    rm -rf "${AUTO_WORKDIR}"
 fi
 
 info "Done. Clang ${LLVM_VERSION} installed at ${INSTALL_DIR}"

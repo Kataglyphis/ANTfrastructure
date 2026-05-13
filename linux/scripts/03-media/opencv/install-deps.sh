@@ -8,7 +8,7 @@ fi
 
 : "${WITH_PYTHON:=true}"
 : "${WITH_JAVA:=false}"
-: "${OPENCV_PYTHON_VERSION:=${PYTHON_MAJOR_MINOR:-3.14}}"
+: "${OPENCV_PYTHON_VERSION:=$(host_python_major_minor)}"
 
 echo "Installing OpenCV build dependencies..."
 

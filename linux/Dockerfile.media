@@ -77,8 +77,6 @@ RUN if [ "${ENABLE_AMD}" = "true" ]; then \
 ENV PATH="${ENABLE_AMD:+"/opt/rocm/bin:"}${PATH}"
 
 # Python interpreter selection for shared build tooling
-ARG PYTHON_MAJOR_MINOR=3.14
-ENV PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}
 # Override build scripts' default (3.14t) to ensure non-threaded ABI.
 # Keep uv pinned to the shared venv interpreter after it is created, because
 # cross builds use the host Python to run build tooling.

@@ -1,24 +1,6 @@
 #!/usr/bin/env bash
 # llvm.sh - LLVM/Clang toolchain
 
-llvm_cross_triplet() {
-  case "$1" in
-    arm64|aarch64) printf '%s' "aarch64-linux-gnu" ;;
-    riscv64) printf '%s' "riscv64-linux-gnu" ;;
-    amd64|x86_64) printf '%s' "x86_64-linux-gnu" ;;
-    *) return 1 ;;
-  esac
-}
-
-llvm_canonical_cross_target() {
-  case "$1" in
-    amd64|x86_64) printf '%s' "amd64" ;;
-    arm64|aarch64) printf '%s' "arm64" ;;
-    riscv64) printf '%s' "riscv64" ;;
-    *) return 1 ;;
-  esac
-}
-
 llvm_build_script() {
   local script_dir
 
@@ -48,24 +30,73 @@ build_llvm_clang_from_source() {
   bash "${builder}" "${args[@]}"
 }
 
+llvm_selected_host_clang() {
+  local candidate=""
+
+  for candidate in \
+    "clang-${CLANG_WANTED}" \
+    clang; do
+    command -v "${candidate}" >/dev/null 2>&1 || continue
+    command -v "${candidate}"
+    return 0
+  done
+
+  return 1
+}
+
+llvm_selected_host_clangxx() {
+  local candidate=""
+
+  for candidate in \
+    "clang++-${CLANG_WANTED}" \
+    clang++; do
+    command -v "${candidate}" >/dev/null 2>&1 || continue
+    command -v "${candidate}"
+    return 0
+  done
+
+  return 1
+}
+
+register_versioned_llvm_binaries() {
+  local full base tool
+
+  # Register every versioned binary we find under /usr/bin that ends with -${CLANG_WANTED}
+  # and set it as the chosen alternative.
+  for full in /usr/bin/*-"${CLANG_WANTED}"; do
+    [ -e "$full" ] || continue
+
+    base="$(basename "$full")"
+    tool="${base%-${CLANG_WANTED}}"
+
+    $SUDO update-alternatives --install "/usr/bin/${tool}" "${tool}" "$full" 100
+    $SUDO update-alternatives --set "${tool}" "$full"
+  done
+}
+
 install_cross_clang_wrappers() {
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local gcc_prefix target target_label triplet sysroot wrapper
+  local gcc_prefix target target_label triplet sysroot wrapper host_clang host_clangxx
 
   [ "${BUILD_MODE:-native}" = "cross" ] || return 0
 
-  gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  host_clang="$(llvm_selected_host_clang)" || die "Host clang is unavailable"
+  host_clangxx="$(llvm_selected_host_clangxx)" || die "Host clang++ is unavailable"
+  targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported LLVM cross target list: ${targets_raw}"
+
+  gcc_prefix="$(gcc_toolchain_prefix 2>/dev/null || true)"
   [ -d "${gcc_prefix}" ] || gcc_prefix="/usr"
 
   for target in ${targets_raw//,/ }; do
-    target_label="$(llvm_canonical_cross_target "$target")" || {
+    target_label="$(arch_normalize "$target")"
+    case "${target_label}" in
+      amd64|arm64|riscv64) ;;
+      *)
       log "Skipping unsupported LLVM cross target: ${target}"
       continue
-    }
-    triplet="$(llvm_cross_triplet "$target_label")" || {
-      log "Skipping unsupported LLVM cross target: ${target}"
-      continue
-    }
+      ;;
+    esac
+    triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || continue
     if [ "${target_label}" = "amd64" ]; then
       sysroot="/"
     else
@@ -76,7 +107,7 @@ install_cross_clang_wrappers() {
     wrapper="/usr/local/bin/clang-${target_label}"
     cat > "${wrapper}" <<EOF
 #!/usr/bin/env bash
-exec /usr/bin/clang --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
+exec "${host_clang}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
 EOF
     chmod +x "${wrapper}"
     log "Installed LLVM wrapper: $(basename "${wrapper}")"
@@ -84,7 +115,7 @@ EOF
     wrapper="/usr/local/bin/clang++-${target_label}"
     cat > "${wrapper}" <<EOF
 #!/usr/bin/env bash
-exec /usr/bin/clang++ --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
+exec "${host_clangxx}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
 EOF
     chmod +x "${wrapper}"
     log "Installed LLVM wrapper: $(basename "${wrapper}")"
@@ -92,7 +123,7 @@ EOF
 }
 
 llvm_cross_backend() {
-  case "$1" in
+  case "$(arch_normalize "$1")" in
     amd64|x86_64) printf '%s' "X86" ;;
     arm64|aarch64) printf '%s' "AArch64" ;;
     riscv64) printf '%s' "RISCV" ;;
@@ -123,7 +154,7 @@ llvm_cross_root() {
 llvm_cross_install_prefix() {
   local triplet
 
-  triplet="$(llvm_cross_triplet "$1")" || return 1
+  triplet="$(arch_deb_multiarch_triplet_for "$1")" || return 1
   printf '%s' "$(llvm_cross_root)/${triplet}"
 }
 
@@ -163,14 +194,6 @@ llvm_cross_cmake_dir() {
   done
 
   return 1
-}
-
-llvm_cross_include_dir() {
-  local prefix
-
-  prefix="$(llvm_cross_install_prefix "$1")" || return 1
-  [ -d "${prefix}/include" ] || return 1
-  printf '%s' "${prefix}/include"
 }
 
 llvm_cross_shared_umbrella_lib_path() {
@@ -217,7 +240,7 @@ llvm_cross_compat_shared_umbrella_lib_path() {
   local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
   local candidate
 
-  major="${major%%.*}"
+  major="$(version_major "${major}")"
   for candidate in \
     "${prefix}/lib/libLLVM-${major}.so" \
     "${prefix}/lib64/libLLVM-${major}.so"; do
@@ -234,7 +257,7 @@ llvm_cross_llvm_config_path() {
   local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
   local candidate
 
-  major="${major%%.*}"
+  major="$(version_major "${major}")"
   for candidate in \
     "${prefix}/bin/llvm-config" \
     "${prefix}/bin/llvm-config-${major}"; do
@@ -304,7 +327,7 @@ llvm_cross_qemu_sysroot() {
     return 0
   }
 
-  triplet="$(llvm_cross_triplet "${target_label}")" || return 1
+  triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || return 1
   case "${target_label}" in
     arm64)
       loaders=(
@@ -340,11 +363,11 @@ llvm_cross_target_runtime_library_path() {
   local prefix triplet gcc_prefix gcc_major runtime_libdir path="" dir
 
   prefix="$(llvm_cross_install_prefix "${target_label}")" || return 1
-  triplet="$(llvm_cross_triplet "${target_label}")" || return 1
+  triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || return 1
   gcc_prefix="$(gcc_toolchain_prefix 2>/dev/null || true)"
   [ -n "${gcc_prefix}" ] || gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
   gcc_major="${GCC_WANTED:-16}"
-  gcc_major="${gcc_major%%.*}"
+  gcc_major="$(version_major "${gcc_major}")"
   runtime_libdir="${gcc_prefix}/lib/gcc/${triplet}/${gcc_major}"
 
   for dir in \
@@ -424,67 +447,6 @@ llvm_cmake_package_has_component_metadata() {
   return 1
 }
 
-sanitize_llvm_cmake_package_for_missing_umbrella_lib() {
-  local prefix="$1"
-  local cmake_dir="$2"
-  local llvm_config_file="${cmake_dir}/LLVMConfig.cmake"
-  local exports_file="${cmake_dir}/LLVMExports.cmake"
-
-  [ -f "${llvm_config_file}" ] || return 0
-  [ -f "${exports_file}" ] || return 0
-
-  python3 - "${llvm_config_file}" "${exports_file}" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-config_path = Path(sys.argv[1])
-exports_path = Path(sys.argv[2])
-config_text = config_path.read_text()
-exports_text = exports_path.read_text()
-
-target_blocks = re.finditer(r'set_target_properties\(([^)\s]+)\s+PROPERTIES(.*?)\n\)', exports_text, re.S)
-problem_targets = []
-for match in target_blocks:
-    target = match.group(1)
-    block = match.group(2)
-    libs_match = re.search(r'INTERFACE_LINK_LIBRARIES\s+"([^"]*)"', block)
-    if not libs_match:
-        continue
-    libs = [item.strip() for item in libs_match.group(1).split(';') if item.strip()]
-    normalized = []
-    for item in libs:
-        link_only = re.fullmatch(r'\$<LINK_ONLY:([^>]+)>', item)
-        normalized.append(link_only.group(1) if link_only else item)
-    if any(item == 'LLVM' for item in normalized):
-        problem_targets.append(target)
-
-if not problem_targets:
-    raise SystemExit(0)
-
-available_match = re.search(r'^set\(LLVM_AVAILABLE_LIBS ([^\n]*)\)$', config_text, re.M)
-if not available_match:
-    raise SystemExit(f"LLVM_AVAILABLE_LIBS not found in {config_path}")
-
-available_libs = [item for item in available_match.group(1).split(';') if item]
-filtered_libs = [item for item in available_libs if item not in problem_targets and item != 'LLVM']
-new_available_line = f'set(LLVM_AVAILABLE_LIBS {";".join(filtered_libs)})'
-config_text = config_text[:available_match.start()] + new_available_line + config_text[available_match.end():]
-
-config_text = re.sub(r'^set\(LLVM_LINK_LLVM_DYLIB .*\)$', 'set(LLVM_LINK_LLVM_DYLIB OFF)', config_text, flags=re.M)
-config_text = re.sub(r'^set\(LLVM_DYLIB_COMPONENTS .*\)$', 'set(LLVM_DYLIB_COMPONENTS "")', config_text, flags=re.M)
-
-marker = 'include(${LLVM_CMAKE_DIR}/LLVM-Config.cmake)'
-property_line = 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")'
-if property_line not in config_text:
-    if marker not in config_text:
-        raise SystemExit(f"expected include marker not found in {config_path}")
-    config_text = config_text.replace(marker, marker + '\n' + property_line, 1)
-
-config_path.write_text(config_text)
-PY
-}
-
 validate_cross_llvm_cmake_package() {
   local target_label="$1"
   local prefix cmake_dir llvm_config_file exports_file
@@ -550,7 +512,7 @@ install_cross_llvm_config_binary() {
 
   bin_dir="$(llvm_cross_bin_dir "${target_label}")" || die "Unable to resolve LLVM bin dir for ${target_label}"
   major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
-  major="${major%%.*}"
+  major="$(version_major "${major}")"
 
   mkdir -p "${bin_dir}"
   install -m755 "${llvm_config_src}" "${bin_dir}/llvm-config"
@@ -638,16 +600,31 @@ verify_cross_llvm_target() {
 }
 
 verify_cross_llvm_targets() {
-  local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
+  local targets_raw=""
   local target target_label
 
   [ "${BUILD_MODE:-native}" = "cross" ] || return 0
 
+  if declare -F cross_effective_targets_raw >/dev/null 2>&1; then
+    targets_raw="$(cross_effective_targets_raw)"
+  else
+    targets_raw="${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-amd64,arm64,riscv64}}"
+  fi
+  [ -n "${targets_raw}" ] || return 0
+  targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || {
+    log "Skipping unsupported LLVM cross verification target list: ${targets_raw}"
+    return 0
+  }
+
   for target in ${targets_raw//,/ }; do
-    target_label="$(llvm_canonical_cross_target "${target}")" || {
+    target_label="$(arch_normalize "${target}")"
+    case "${target_label}" in
+      amd64|arm64|riscv64) ;;
+      *)
       log "Skipping unsupported LLVM cross verification target: ${target}"
       continue
-    }
+      ;;
+    esac
 
     [ "${target_label}" = "amd64" ] && continue
     verify_cross_llvm_target "${target_label}"
@@ -684,6 +661,8 @@ PY
 llvm_host_native_tool_dir() {
   local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
   local candidate
+
+  major="$(version_major "${major}")"
 
   for candidate in \
     "/usr/local/llvm-${major}/bin" \
@@ -726,7 +705,7 @@ build_cross_llvm_target() {
 
   [ "${target_label}" = "amd64" ] && return 0
 
-  triplet="$(llvm_cross_triplet "${target_label}")" || die "Unsupported LLVM cross target: ${target_label}"
+  triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || die "Unsupported LLVM cross target: ${target_label}"
   backend="$(llvm_cross_backend "${target_label}")" || die "Unsupported LLVM backend target: ${target_label}"
   prefix="$(llvm_cross_install_prefix "${target_label}")" || die "Unable to resolve LLVM cross install prefix for ${target_label}"
   if cmake_dir="$(llvm_cross_cmake_dir "${target_label}" 2>/dev/null || true)"; then
@@ -838,37 +817,22 @@ build_cross_llvm_targets() {
   local target target_label
 
   [ "${BUILD_MODE:-native}" = "cross" ] || return 0
+  targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported LLVM cross target list: ${targets_raw}"
 
   for target in ${targets_raw//,/ }; do
-    target_label="$(llvm_canonical_cross_target "${target}")" || {
+    target_label="$(arch_normalize "${target}")"
+    case "${target_label}" in
+      amd64|arm64|riscv64) ;;
+      *)
       log "Skipping unsupported LLVM cross target: ${target}"
       continue
-    }
+      ;;
+    esac
 
     [ "${target_label}" = "amd64" ] && continue
     install_cross_llvm_target_packages "${target_label}"
     build_cross_llvm_target "${target_label}"
   done
-}
-
-apt_has_package() {
-  local pkg="$1"
-  apt-cache show "$pkg" >/dev/null 2>&1
-}
-
-apt_install_available() {
-  local pkgs=()
-  local pkg
-  for pkg in "$@"; do
-    if apt_has_package "$pkg"; then
-      pkgs+=("$pkg")
-    else
-      log "Skipping missing package: ${pkg}"
-    fi
-  done
-  if [ "${#pkgs[@]}" -gt 0 ]; then
-    apt_install "${pkgs[@]}"
-  fi
 }
 
 install_llvm_clang_minimal() {
@@ -932,8 +896,15 @@ install_llvm_clang() {
   # Default to a complete install; override with LLVM_INSTALL_PROFILE=minimal if desired.
   local profile="${LLVM_INSTALL_PROFILE:-full}"
   local installed_from_source=0
+  local target_arch=""
 
-  if declare -F llvm_repo_available >/dev/null 2>&1 && ! llvm_repo_available "${DISTRO}"; then
+  target_arch="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-${ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}}")"
+
+  if [ "${BUILD_MODE:-native}" != "cross" ] && [ "${target_arch}" = "riscv64" ]; then
+    log "apt.llvm.org does not provide prebuilt LLVM/Clang packages for riscv64; building LLVM/Clang ${CLANG_WANTED} from source"
+    build_llvm_clang_from_source
+    installed_from_source=1
+  elif declare -F llvm_repo_available >/dev/null 2>&1 && ! llvm_repo_available "${DISTRO}"; then
     build_llvm_clang_from_source
     installed_from_source=1
   else
@@ -943,19 +914,7 @@ install_llvm_clang() {
       *) die "Unknown LLVM_INSTALL_PROFILE: ${profile} (expected: full|minimal)" ;;
     esac
 
-    # Register every versioned binary we find under /usr/bin that ends with -${CLANG_WANTED}
-    # and set it as the chosen alternative.
-    for full in /usr/bin/*-"${CLANG_WANTED}"; do
-      # if glob didn't match, "$full" may be the literal pattern; skip non-existing entries
-      [ -e "$full" ] || continue
-
-      base="$(basename "$full")"
-      tool="${base%-${CLANG_WANTED}}"
-
-      # install the alternative and force it to the new path
-      $SUDO update-alternatives --install "/usr/bin/${tool}" "${tool}" "$full" 100
-      $SUDO update-alternatives --set "${tool}" "$full"
-    done
+    register_versioned_llvm_binaries
   fi
 
   # Show versions (non-fatal)

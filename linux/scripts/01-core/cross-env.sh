@@ -35,8 +35,77 @@ cross_build_arch() {
   build_arch_oci
 }
 
+cross_normalize_arch() {
+  local raw="$1"
+
+  [ -n "${raw}" ] || return 1
+  arch_normalize "${raw}"
+}
+
+cross_require_single_target_arch() {
+  local raw="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+  local scope="${2:-cross build}"
+  local target_arch=""
+
+  [ -n "${raw}" ] || {
+    printf 'TARGET_ARCH is required for %s\n' "${scope}" >&2
+    return 1
+  }
+
+  case "${raw}" in
+    *,*)
+      printf 'TARGET_ARCH must be a single architecture for %s: %s\n' "${scope}" "${raw}" >&2
+      return 1
+      ;;
+  esac
+
+  target_arch="$(cross_normalize_arch "${raw}" 2>/dev/null || true)"
+  case "${target_arch}" in
+    amd64|arm64|386|riscv64)
+      printf '%s' "${target_arch}"
+      return 0
+      ;;
+  esac
+
+  printf 'Unsupported TARGET_ARCH=%s\n' "${raw}" >&2
+  return 1
+}
+
+cross_set_target_env() {
+  local target_arch=""
+
+  target_arch="$(cross_require_single_target_arch "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}" "${2:-cross build}")" || return 1
+  export TARGET_ARCH="${target_arch}"
+  export TARGETARCH="${target_arch}"
+  export TARGETPLATFORM="linux/${target_arch}"
+}
+
+prepare_cross_target_env() {
+  local target_arch=""
+  local scope="${2:-cross build}"
+
+  target_arch="$(cross_require_single_target_arch "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}" "${scope}")" || return 1
+  cross_set_target_env "${target_arch}" "${scope}"
+  if cross_build_enabled; then
+    install_cross_bin_symlinks "${target_arch}"
+  fi
+  setup_linux_cross_env
+}
+
+cross_effective_targets_raw() {
+  cross_targets_effective_raw
+}
+
+cross_bin_dir() {
+  printf '%s' "${CROSS_BIN_DIR:-/opt/cross-bin}"
+}
+
+cross_target_triplet_for_arch() {
+  arch_deb_multiarch_triplet_for "$1"
+}
+
 cross_target_triplet() {
-  deb_multiarch_triplet
+  cross_target_triplet_for_arch "$(cross_target_arch)"
 }
 
 cross_target_rust_triple() {
@@ -58,20 +127,11 @@ cross_target_android_abi() {
 }
 
 cross_target_cpu_family() {
-  case "$(cross_target_arch)" in
-    amd64) printf '%s' "x86_64" ;;
-    arm64) printf '%s' "aarch64" ;;
-    386) printf '%s' "x86" ;;
-    riscv64) printf '%s' "riscv64" ;;
-    *) printf '%s' "$(cross_target_arch)" ;;
-  esac
+  arch_cpu_family_for "$(cross_target_arch)"
 }
 
 cross_target_cpu() {
-  case "$(cross_target_arch)" in
-    386) printf '%s' "i686" ;;
-    *) cross_target_cpu_family ;;
-  esac
+  arch_cpu_for "$(cross_target_arch)"
 }
 
 cross_target_upper_rust() {
@@ -88,6 +148,57 @@ cross_target_lower_rust() {
 
 cross_build_lower_rust() {
   cross_build_rust_triple | tr '[:upper:]-' '[:lower:]_'
+}
+
+install_cross_bin_symlinks() {
+  local target_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+  local bin_dir="${2:-$(cross_bin_dir)}"
+  local triplet=""
+  local cc=""
+  local cxx=""
+  local ar=""
+  local as=""
+  local ld=""
+  local nm=""
+  local ranlib=""
+  local strip=""
+  local objcopy=""
+
+  target_arch="$(cross_require_single_target_arch "${target_arch}" "cross tool symlink setup")" || return 1
+  triplet="$(cross_target_triplet_for_arch "${target_arch}")" || {
+    printf 'Unsupported cross tool target: %s\n' "${target_arch}" >&2
+    return 1
+  }
+
+  cc="$(resolve_cross_gcc_tool gcc "${triplet}")" || return 1
+  cxx="$(resolve_cross_gcc_tool g++ "${triplet}")" || return 1
+  ar="$(resolve_cross_gcc_tool ar "${triplet}")" || return 1
+  as="$(resolve_cross_gcc_tool as "${triplet}")" || return 1
+  ld="$(resolve_cross_gcc_tool ld "${triplet}")" || return 1
+  nm="$(resolve_cross_gcc_tool nm "${triplet}")" || return 1
+  ranlib="$(resolve_cross_gcc_tool ranlib "${triplet}")" || return 1
+  strip="$(resolve_cross_gcc_tool strip "${triplet}")" || return 1
+  objcopy="$(resolve_cross_gcc_tool objcopy "${triplet}")" || return 1
+
+  mkdir -p "${bin_dir}"
+  ln -sf "${cc}" "${bin_dir}/gcc"
+  ln -sf "${cxx}" "${bin_dir}/g++"
+  ln -sf "${cc}" "${bin_dir}/cc"
+  ln -sf "${cxx}" "${bin_dir}/c++"
+  ln -sf "${as}" "${bin_dir}/as"
+  ln -sf "${ld}" "${bin_dir}/ld"
+  ln -sf "${ar}" "${bin_dir}/ar"
+  ln -sf "${nm}" "${bin_dir}/nm"
+  ln -sf "${ranlib}" "${bin_dir}/ranlib"
+  ln -sf "${strip}" "${bin_dir}/strip"
+  ln -sf "${objcopy}" "${bin_dir}/objcopy"
+
+  if command -v "clang-${target_arch}" >/dev/null 2>&1; then
+    ln -sf "$(command -v "clang-${target_arch}")" "${bin_dir}/clang"
+  fi
+  if command -v "clang++-${target_arch}" >/dev/null 2>&1; then
+    ln -sf "$(command -v "clang++-${target_arch}")" "${bin_dir}/clang++"
+  fi
 }
 
 _cross_first_executable() {
@@ -220,9 +331,13 @@ host_python_bin() {
     return 0
   fi
 
-  if [ -x /usr/local/bin/python3.14 ]; then
-    printf '%s' "/usr/local/bin/python3.14"
-    return 0
+  if [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
+    local python_mm=""
+    python_mm="$(version_major_minor "${PYTHON_VERSION}" 2>/dev/null || true)"
+    if [ -n "${python_mm}" ] && [ -x "/usr/local/bin/python${python_mm}" ]; then
+      printf '%s' "/usr/local/bin/python${python_mm}"
+      return 0
+    fi
   fi
 
   command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
@@ -523,8 +638,8 @@ setup_linux_cross_env() {
   rust_env_lower="$(cross_target_lower_rust)"
   build_rust_lower="$(cross_build_lower_rust 2>/dev/null || true)"
   gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
-  gcc_major="${GCC_WANTED:-16}"
-  gcc_major="${gcc_major%%.*}"
+  gcc_major="${GCC_WANTED:-${GCC_VERSION:-16}}"
+  gcc_major="$(version_major "${gcc_major}")"
   runtime_libdir="${gcc_prefix}/lib/gcc/${triplet}/${gcc_major}"
   cc="$(resolve_cross_gcc_tool gcc "${triplet}")" || {
     printf 'Missing cross compiler: %s\n' "${gcc_prefix}/bin/${triplet}-gcc" >&2
@@ -576,8 +691,9 @@ setup_linux_cross_env() {
   export CROSS_TARGET_PROCESSOR="${processor}"
   export CROSS_RUST_TARGET="${rust_target}"
 
-  if [ -d /opt/cross-bin ]; then
-    export PATH="/opt/cross-bin:${PATH}"
+  dir="$(cross_bin_dir 2>/dev/null || true)"
+  if [ -n "${dir}" ] && [ -d "${dir}" ]; then
+    export PATH="${dir}:${PATH}"
   fi
 
   export CC="${cc}" CXX="${cxx}" AR="${ar}" AS="${as}" LD="${ld}" NM="${nm}" \

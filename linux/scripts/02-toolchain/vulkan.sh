@@ -55,23 +55,11 @@ install_vulkan_sdk() {
   log "Installing Vulkan SDK ${version} via tarball"
   install_vulkan_prereqs
 
-  local arch_suffix="x86_64"
-  local target_triplet="x86_64-linux-gnu"
-  case "$ARCH" in
-    x86_64|amd64)
-      arch_suffix="x86_64"
-      target_triplet="x86_64-linux-gnu"
-      ;;
-    aarch64|arm64)
-      arch_suffix="aarch64"
-      target_triplet="aarch64-linux-gnu"
-      ;;
-    riscv64|riscv|rv64*)
-      arch_suffix="riscv64"
-      target_triplet="riscv64-linux-gnu"
-      ;;
-    *) die "Unknown or unsupported architecture: $ARCH" ;;
-  esac
+  local normalized_arch="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}")"
+  local arch_suffix="$(arch_uname_name_for "${normalized_arch}")"
+  local target_triplet="$(arch_deb_multiarch_triplet_for "${normalized_arch}")"
+  [ -n "${arch_suffix}" ] || die "Unknown or unsupported architecture: ${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}"
+  [ -n "${target_triplet}" ] || die "Unknown or unsupported architecture: ${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}"
 
   local tarball="vulkansdk-linux-x86_64-${version}.tar.xz"
   local url="https://sdk.lunarg.com/sdk/download/${version}/linux/${tarball}"

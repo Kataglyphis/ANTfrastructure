@@ -51,7 +51,7 @@ done
 : "${NPROC:=$(nproc)}"
 : "${WITH_CONTRIB:=true}"
 : "${WITH_PYTHON:=true}"
-: "${OPENCV_PYTHON_VERSION:=${PYTHON_MAJOR_MINOR:-3.14}}"
+: "${OPENCV_PYTHON_VERSION:=$(host_python_major_minor)}"
 : "${WITH_JAVA:=false}"
 : "${SKIP_DEP_INSTALL:=false}"
 : "${WITH_IPP:=ON}"

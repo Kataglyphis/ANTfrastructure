@@ -38,7 +38,7 @@ fi
 
 sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgcc-s1
 
-: "${ORT_PYTHON_VERSION:=${PYTHON_MAJOR_MINOR:-3.14}}"
+: "${ORT_PYTHON_VERSION:=$(host_python_major_minor)}"
 HOST_PYTHON="$(host_python_bin)"
 export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
        Python_EXECUTABLE="${HOST_PYTHON}" \

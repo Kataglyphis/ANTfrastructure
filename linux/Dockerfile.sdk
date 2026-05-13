@@ -41,60 +41,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${T
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-sdk-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
-    target_arch="${TARGET_ARCH}"; \
-    if [ "${BUILD_MODE}" = "cross" ]; then \
-        case "${target_arch}" in \
-            *,*) \
-                echo "TARGET_ARCH must be a single architecture for linux/Dockerfile.sdk: ${target_arch}" >&2; \
-                echo "Use TARGET_ARCH=${target_arch} ./linux/scripts/build-sdk-artifacts.sh --fast-ubuntu-mirror, ./linux/scripts/build-sdk-artifacts.sh --target-arches ${target_arch}, or loop over one TARGET_ARCH per nerdctl build." >&2; \
-                exit 1 ;; \
-            x86_64) target_arch="amd64" ;; \
-            aarch64) target_arch="arm64" ;; \
-            riscv64|riscv|rv64*) target_arch="riscv64" ;; \
-        esac; \
-        export TARGET_ARCH="${target_arch}" TARGETARCH="${target_arch}" TARGETPLATFORM="linux/${target_arch}"; \
-        case "${target_arch}" in \
-            amd64) ;; \
-            arm64) triplet="aarch64-linux-gnu" ;; \
-            riscv64) triplet="riscv64-linux-gnu" ;; \
-            *) \
-                echo "Unsupported TARGET_ARCH=${target_arch}" >&2; \
-                exit 1 ;; \
-        esac; \
-        if [ -n "${triplet:-}" ]; then \
-            mkdir -p /opt/cross-bin; \
-            ln -sf "$(command -v ${triplet}-gcc)" /opt/cross-bin/gcc; \
-            ln -sf "$(command -v ${triplet}-g++)" /opt/cross-bin/g++; \
-            ln -sf "$(command -v ${triplet}-gcc)" /opt/cross-bin/cc; \
-            ln -sf "$(command -v ${triplet}-g++)" /opt/cross-bin/c++; \
-            ln -sf "$(command -v ${triplet}-as)" /opt/cross-bin/as; \
-            ln -sf "$(command -v ${triplet}-ld)" /opt/cross-bin/ld; \
-            ln -sf "$(command -v ${triplet}-ar)" /opt/cross-bin/ar; \
-            ln -sf "$(command -v ${triplet}-nm)" /opt/cross-bin/nm; \
-            ln -sf "$(command -v ${triplet}-ranlib)" /opt/cross-bin/ranlib; \
-            ln -sf "$(command -v ${triplet}-strip)" /opt/cross-bin/strip; \
-            ln -sf "$(command -v ${triplet}-objcopy)" /opt/cross-bin/objcopy; \
-            if command -v "clang-${target_arch}" >/dev/null 2>&1; then \
-                ln -sf "$(command -v clang-${target_arch})" /opt/cross-bin/clang; \
-            fi; \
-            if command -v "clang++-${target_arch}" >/dev/null 2>&1; then \
-                ln -sf "$(command -v clang++-${target_arch})" /opt/cross-bin/clang++; \
-            fi; \
-        fi; \
-        source /opt/scripts/core/cross-env.sh; \
-        setup_linux_cross_env; \
-        bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${target_arch}" --vulkan-version "${VULKAN_VERSION}" vulkan; \
-    else \
-        bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan; \
-    fi
+    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
 
 # 6. VERIFICATION
 RUN set -eux; \
-    if [ "${BUILD_MODE}" = "cross" ]; then \
-        bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify; \
-    else \
-        bash /opt/scripts/toolchain/setup-dependencies.sh verify; \
-    fi
+    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" dockerfile-sdk-verify
 
 # ==============================================================================
 # Frameworks; TVM
@@ -121,29 +72,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${T
     tvm_args=(--ref "${TVM_REF}" --build-type "${TVM_BUILD_TYPE}"); \
     if [ "${TVM_INSTALL_PYTHON}" != "1" ]; then \
         tvm_args+=(--no-python); \
-    fi; \
-    if [ "${BUILD_MODE}" = "cross" ]; then \
-        source /opt/scripts/core/cross-env.sh; \
-        setup_linux_cross_env; \
-        llvm_config=""; \
-        if [ -n "${LLVM_RELEASE:-}" ]; then \
-            llvm_major="${LLVM_RELEASE%%.*}"; \
-            if command -v "llvm-config-${llvm_major}" >/dev/null 2>&1; then \
-                llvm_config="$(command -v llvm-config-${llvm_major})"; \
-            elif [ -x "/usr/local/llvm-${llvm_major}/bin/llvm-config" ]; then \
-                llvm_config="/usr/local/llvm-${llvm_major}/bin/llvm-config"; \
-            elif [ -x "/usr/bin/llvm-config-${llvm_major}" ]; then \
-                llvm_config="/usr/bin/llvm-config-${llvm_major}"; \
-            fi; \
-        fi; \
-        if [ -z "${llvm_config}" ] && command -v llvm-config >/dev/null 2>&1; then \
-            llvm_config="$(command -v llvm-config)"; \
-        fi; \
-        if [ -x "${llvm_config}" ]; then \
-            tvm_args=(--llvm-config "${llvm_config}" "${tvm_args[@]}"); \
-        else \
-            echo "llvm-config from base toolchain image not found; continuing without LLVM in TVM cross mode" >&2; \
-        fi; \
     fi; \
     bash /opt/scripts/frameworks/tvm.sh "${tvm_args[@]}"
 LABEL org.opencontainers.image.title="Kataglyphis SDK"

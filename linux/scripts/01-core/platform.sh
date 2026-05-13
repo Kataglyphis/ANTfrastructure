@@ -11,6 +11,119 @@ _platform_normalize_arch() {
   esac
 }
 
+arch_normalize() {
+  _platform_normalize_arch "$1"
+}
+
+arch_uname_name_for() {
+  case "$(arch_normalize "$1")" in
+    amd64) printf '%s' "x86_64" ;;
+    arm64) printf '%s' "aarch64" ;;
+    386) printf '%s' "i386" ;;
+    riscv64) printf '%s' "riscv64" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+arch_deb_multiarch_triplet_for() {
+  case "$(arch_normalize "$1")" in
+    amd64) printf '%s' "x86_64-linux-gnu" ;;
+    arm64) printf '%s' "aarch64-linux-gnu" ;;
+    386) printf '%s' "i386-linux-gnu" ;;
+    riscv64) printf '%s' "riscv64-linux-gnu" ;;
+    *) return 1 ;;
+  esac
+}
+
+arch_cmake_system_processor_for() {
+  case "$(arch_normalize "$1")" in
+    amd64) printf '%s' "x86_64" ;;
+    arm64) printf '%s' "aarch64" ;;
+    386) printf '%s' "i686" ;;
+    riscv64) printf '%s' "riscv64" ;;
+    *) printf '%s' "$(arch_normalize "$1")" ;;
+  esac
+}
+
+arch_rust_target_triple_for() {
+  case "$(arch_normalize "$1")" in
+    amd64) printf '%s' "x86_64-unknown-linux-gnu" ;;
+    arm64) printf '%s' "aarch64-unknown-linux-gnu" ;;
+    386) printf '%s' "i686-unknown-linux-gnu" ;;
+    riscv64) printf '%s' "riscv64gc-unknown-linux-gnu" ;;
+    *) return 1 ;;
+  esac
+}
+
+arch_android_abi_for() {
+  case "$(arch_normalize "$1")" in
+    amd64) printf '%s' "x86_64" ;;
+    arm64) printf '%s' "arm64-v8a" ;;
+    386) printf '%s' "x86" ;;
+    riscv64) printf '%s' "riscv64" ;;
+    *) return 1 ;;
+  esac
+}
+
+arch_cpu_family_for() {
+  case "$(arch_normalize "$1")" in
+    amd64) printf '%s' "x86_64" ;;
+    arm64) printf '%s' "aarch64" ;;
+    386) printf '%s' "x86" ;;
+    riscv64) printf '%s' "riscv64" ;;
+    *) printf '%s' "$(arch_normalize "$1")" ;;
+  esac
+}
+
+arch_cpu_for() {
+  case "$(arch_normalize "$1")" in
+    386) printf '%s' "i686" ;;
+    *) arch_cpu_family_for "$1" ;;
+  esac
+}
+
+arch_linux_platform_tag_for() {
+  case "$(arch_normalize "$1")" in
+    amd64) printf '%s' "linux_x86_64" ;;
+    arm64) printf '%s' "linux_aarch64" ;;
+    386) printf '%s' "linux_i686" ;;
+    riscv64) printf '%s' "linux_riscv64" ;;
+    *) return 1 ;;
+  esac
+}
+
+arch_from_target_triple() {
+  case "${1%%-*}" in
+    x86_64|amd64) printf '%s' "amd64" ;;
+    aarch64|arm64) printf '%s' "arm64" ;;
+    riscv64|riscv64gc) printf '%s' "riscv64" ;;
+    i686|i386|x86) printf '%s' "386" ;;
+    *) return 1 ;;
+  esac
+}
+
+arch_list_csv_normalize() {
+  local raw_list="$1"
+  local raw_arch normalized_arch
+  local -a normalized_arches=()
+
+  for raw_arch in ${raw_list//,/ }; do
+    [ -n "${raw_arch}" ] || continue
+    normalized_arch="$(arch_normalize "${raw_arch}")"
+    case "${normalized_arch}" in
+      amd64|arm64|386|riscv64) normalized_arches+=("${normalized_arch}") ;;
+      *) return 1 ;;
+    esac
+  done
+
+  [ "${#normalized_arches[@]}" -gt 0 ] || return 1
+  printf '%s' "${normalized_arches[*]}" | tr ' ' ','
+}
+
+cross_targets_effective_raw() {
+  printf '%s' "${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}}}"
+}
+
 _platform_raw_target_arch() {
   local raw="${TARGET_ARCH:-${TARGETARCH:-}}"
   if [ -n "${raw}" ]; then
@@ -43,12 +156,12 @@ _platform_raw_build_arch() {
 
 arch_oci() {
   # Returns OCI/Docker style arch names for the build target.
-  _platform_normalize_arch "$(_platform_raw_target_arch)"
+  arch_normalize "$(_platform_raw_target_arch)"
 }
 
 build_arch_oci() {
   # Returns OCI/Docker style arch names for the machine executing the build.
-  _platform_normalize_arch "$(_platform_raw_build_arch)"
+  arch_normalize "$(_platform_raw_build_arch)"
 }
 
 is_amd64_arch() {
@@ -60,51 +173,43 @@ is_amd64_build_arch() {
 }
 
 deb_multiarch_triplet() {
-  case "$(arch_oci)" in
-    amd64) printf '%s' "x86_64-linux-gnu" ;;
-    arm64) printf '%s' "aarch64-linux-gnu" ;;
-    386) printf '%s' "i386-linux-gnu" ;;
-    riscv64) printf '%s' "riscv64-linux-gnu" ;;
-    *) printf '%s' "" ;;
-  esac
+  arch_deb_multiarch_triplet_for "$(arch_oci)" || printf '%s' ""
 }
 
 build_deb_multiarch_triplet() {
-  case "$(build_arch_oci)" in
-    amd64) printf '%s' "x86_64-linux-gnu" ;;
-    arm64) printf '%s' "aarch64-linux-gnu" ;;
-    386) printf '%s' "i386-linux-gnu" ;;
-    riscv64) printf '%s' "riscv64-linux-gnu" ;;
-    *) printf '%s' "" ;;
-  esac
+  arch_deb_multiarch_triplet_for "$(build_arch_oci)" || printf '%s' ""
 }
 
 cmake_system_processor() {
-  case "$(arch_oci)" in
-    amd64) printf '%s' "x86_64" ;;
-    arm64) printf '%s' "aarch64" ;;
-    386) printf '%s' "i686" ;;
-    riscv64) printf '%s' "riscv64" ;;
-    *) printf '%s' "$(arch_oci)" ;;
-  esac
+  arch_cmake_system_processor_for "$(arch_oci)"
 }
 
 rust_target_triple() {
-  case "$(arch_oci)" in
-    amd64) printf '%s' "x86_64-unknown-linux-gnu" ;;
-    arm64) printf '%s' "aarch64-unknown-linux-gnu" ;;
-    386) printf '%s' "i686-unknown-linux-gnu" ;;
-    riscv64) printf '%s' "riscv64gc-unknown-linux-gnu" ;;
-    *) printf '%s' "" ;;
-  esac
+  arch_rust_target_triple_for "$(arch_oci)" || printf '%s' ""
+}
+
+rust_target_triple_for_arch() {
+  arch_rust_target_triple_for "$1"
 }
 
 android_abi_for_target() {
-  case "$(arch_oci)" in
-    amd64) printf '%s' "x86_64" ;;
-    arm64) printf '%s' "arm64-v8a" ;;
-    386) printf '%s' "x86" ;;
-    riscv64) printf '%s' "riscv64" ;;
-    *) printf '%s' "" ;;
+  arch_android_abi_for "$(arch_oci)" || printf '%s' ""
+}
+
+version_major() {
+  local version="${1:-}"
+
+  version="${version%%.*}"
+  [ -n "${version}" ] || return 1
+  printf '%s' "${version}"
+}
+
+version_major_minor() {
+  local version="${1:-}"
+
+  case "${version}" in
+    *.*.*) printf '%s' "${version%.*}" ;;
+    *.*) printf '%s' "${version}" ;;
+    *) return 1 ;;
   esac
 }

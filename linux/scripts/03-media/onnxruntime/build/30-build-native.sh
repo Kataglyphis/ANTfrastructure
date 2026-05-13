@@ -34,7 +34,7 @@ if command -v setup_linux_cross_env >/dev/null 2>&1; then
 fi
 
 # Create Python virtual environment with uv
-: "${ORT_PYTHON_VERSION:=${PYTHON_MAJOR_MINOR:-3.14}}"
+: "${ORT_PYTHON_VERSION:=$(host_python_major_minor)}"
 HOST_PYTHON="$(host_python_bin)"
 export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
        Python_EXECUTABLE="${HOST_PYTHON}" \
