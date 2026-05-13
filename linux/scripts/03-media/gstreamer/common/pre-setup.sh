@@ -4,6 +4,13 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
 fi
+if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/toolchain/vulkan.sh
+fi
+
+vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
+
 apt-get update
 
 is_riscv64_cross=false
@@ -14,15 +21,23 @@ fi
 
 prefer_toolchain_vulkan=false
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-   [ -d "${VULKAN_PREFIX:-/opt/vulkan}" ]; then
+   [ -d "${vulkan_prefix}" ]; then
   prefer_toolchain_vulkan=true
 fi
 
 find_toolchain_vulkan_sdk_dir() {
   local prefix host_arch candidate version_dir
 
-  prefix="${VULKAN_PREFIX:-/opt/vulkan}"
+  prefix="${vulkan_prefix}"
   host_arch="$(uname -m)"
+
+  if declare -F source_vulkan_sdk_env >/dev/null 2>&1 && \
+     source_vulkan_sdk_env "${prefix}" sanitize-libs >/dev/null 2>&1; then
+    if [ -n "${VULKAN_SDK:-}" ] && [ -d "${VULKAN_SDK}" ]; then
+      printf '%s' "${VULKAN_SDK}"
+      return 0
+    fi
+  fi
 
   if [ -n "${VULKAN_SDK:-}" ] && [ -d "${VULKAN_SDK}" ]; then
     printf '%s' "${VULKAN_SDK}"
@@ -49,7 +64,7 @@ setup_toolchain_vulkan_cross_metadata() {
   local sdk_dir sdk_version triplet target_libdir target_runtime pcdir candidate
 
   sdk_dir="$(find_toolchain_vulkan_sdk_dir)" || {
-    echo "ERROR: Could not find toolchain Vulkan SDK under ${VULKAN_PREFIX:-/opt/vulkan}" >&2
+    echo "ERROR: Could not find toolchain Vulkan SDK under ${vulkan_prefix}" >&2
     return 1
   }
 

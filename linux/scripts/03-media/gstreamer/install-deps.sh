@@ -5,6 +5,12 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
 fi
+if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/toolchain/vulkan.sh
+fi
+
+vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
 echo "Installing GStreamer build dependencies..."
 
@@ -17,9 +23,13 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
 fi
 
 prefer_toolchain_vulkan=false
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-   [ -d "${VULKAN_PREFIX:-/opt/vulkan}" ]; then
-  prefer_toolchain_vulkan=true
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if declare -F source_vulkan_sdk_env >/dev/null 2>&1 && \
+     source_vulkan_sdk_env "${vulkan_prefix}" sanitize-libs >/dev/null 2>&1; then
+    prefer_toolchain_vulkan=true
+  elif [ -d "${vulkan_prefix}" ]; then
+    prefer_toolchain_vulkan=true
+  fi
 fi
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
@@ -130,7 +140,7 @@ graphics_target_packages=(
 )
 
 if [ "${prefer_toolchain_vulkan}" = "true" ]; then
-  echo "Using toolchain Vulkan SDK from ${VULKAN_PREFIX:-/opt/vulkan}; installing target libvulkan1 instead of libvulkan-dev."
+  echo "Using toolchain Vulkan SDK from ${vulkan_prefix}; installing target libvulkan1 instead of libvulkan-dev."
   graphics_target_packages+=(libvulkan1)
 else
   graphics_target_packages+=(libvulkan-dev)

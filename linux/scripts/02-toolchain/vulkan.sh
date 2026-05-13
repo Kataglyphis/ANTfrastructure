@@ -50,6 +50,82 @@ VULKAN_INSTALL_ROOT="${VULKAN_INSTALL_ROOT:-/opt/vulkan}"
 # custom tmp directory - overrideable from environment
 VULKAN_TMP_DIR="${VULKAN_TMP_DIR:-/opt/tmp}"
 
+filter_colon_list_excluding_prefix() {
+  local list="${1:-}"
+  local prefix="${2:-}"
+  local out=""
+  local entry
+  local old_ifs="${IFS}"
+  local -a entries=()
+
+  [ -n "${list}" ] || {
+    printf '%s' ""
+    return 0
+  }
+
+  IFS=':' read -r -a entries <<< "${list}"
+  IFS="${old_ifs}"
+  for entry in "${entries[@]}"; do
+    [ -n "${entry}" ] || continue
+    case "${entry}" in
+      "${prefix}"*)
+        continue
+        ;;
+    esac
+    out="${out:+${out}:}${entry}"
+  done
+
+  printf '%s' "${out}"
+}
+
+sanitize_vulkan_sdk_env() {
+  local prefix="${1:-/opt/vulkan/}"
+
+  if [ "${VULKAN_KEEP_SDK_LIBS:-${TVM_VULKAN_KEEP_SDK_LIBS:-0}}" = "1" ]; then
+    return 0
+  fi
+
+  if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+    LD_LIBRARY_PATH="$(filter_colon_list_excluding_prefix "${LD_LIBRARY_PATH}" "${prefix}")"
+    export LD_LIBRARY_PATH
+  fi
+
+  if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
+    CMAKE_PREFIX_PATH="$(filter_colon_list_excluding_prefix "${CMAKE_PREFIX_PATH}" "${prefix}")"
+    export CMAKE_PREFIX_PATH
+  fi
+}
+
+source_vulkan_sdk_env() {
+  local prefix="${1:-${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT}}}"
+  local sanitize_mode="${2:-keep-libs}"
+  local setup_path=""
+  local candidate
+
+  if [ -n "${VULKAN_VERSION:-}" ] && [ -r "${prefix}/${VULKAN_VERSION}/setup-env.sh" ]; then
+    setup_path="${prefix}/${VULKAN_VERSION}/setup-env.sh"
+  else
+    for candidate in "${prefix}"/*/setup-env.sh; do
+      [ -r "${candidate}" ] || continue
+      setup_path="${candidate}"
+      break
+    done
+  fi
+
+  [ -n "${setup_path}" ] || return 1
+
+  # setup-env.sh may inspect $1/$2, so clear this helper's function args first.
+  set --
+  # shellcheck disable=SC1090,SC1091
+  source "${setup_path}"
+  case "${sanitize_mode}" in
+    sanitize-libs)
+      sanitize_vulkan_sdk_env "${prefix}/"
+      ;;
+  esac
+  return 0
+}
+
 install_vulkan_sdk() {
   local version="${1:-$VULKAN_VERSION_DEFAULT}"
   log "Installing Vulkan SDK ${version} via tarball"

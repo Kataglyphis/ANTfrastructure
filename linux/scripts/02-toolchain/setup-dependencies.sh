@@ -26,7 +26,7 @@ source_module verify.sh
 
 usage() {
   cat <<EOF
-Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm|dockerfile-sdk-verify>
+Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm>
 
 Examples:
   $0 --llvm 22 --clang 22 --gcc 16 cmake
@@ -47,11 +47,9 @@ setup_dependencies_apply_arch_override() {
   local normalized_arch_override="${1:-}"
 
   [ -n "${normalized_arch_override}" ] || return 0
-  ARCH="$(arch_uname_name_for "${normalized_arch_override}")"
-  TARGET_ARCH="${normalized_arch_override}"
-  TARGETARCH="${normalized_arch_override}"
-  TARGETPLATFORM="linux/${normalized_arch_override}"
-  export ARCH TARGET_ARCH TARGETARCH TARGETPLATFORM
+  cross_set_target_env "${normalized_arch_override}" "setup-dependencies.sh --arch"
+  ARCH="$(arch_uname_name_for "${TARGET_ARCH}")"
+  export ARCH
 }
 
 setup_dependencies_seed_verify_cross_targets() {
@@ -63,7 +61,7 @@ setup_dependencies_seed_verify_cross_targets() {
   [ -z "${VERIFY_CROSS_TARGETS:-}" ] || return 0
 
   case "${cmd}" in
-    verify|dockerfile-sdk-verify|all)
+    verify|all)
       VERIFY_CROSS_TARGETS="${normalized_arch_override}"
       export VERIFY_CROSS_TARGETS
       ;;
@@ -77,6 +75,19 @@ install_core_tools_if_needed() {
   fi
 
   install_core_tools
+}
+
+install_vulkan_for_current_env() {
+  local version="$1"
+
+  if [ "${BUILD_MODE:-native}" = "cross" ]; then
+    (
+      prepare_cross_target_env "${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}" "setup-dependencies.sh vulkan"
+      install_vulkan_sdk "${version}"
+    )
+  else
+    install_vulkan_sdk "${version}"
+  fi
 }
 
 dockerfile_install_gcc() {
@@ -94,10 +105,6 @@ dockerfile_install_llvm() {
   install_llvm_clang
 }
 
-dockerfile_sdk_verify() {
-  verify_summary
-}
-
 main() {
   local cmd="all"
   local arch_override=""
@@ -111,7 +118,7 @@ main() {
       --gcc)           GCC_WANTED="$2"; shift 2 ;;
       --vulkan-version)VULKAN_VERSION_DEFAULT="$2"; shift 2 ;;
       --arch)          arch_override="$2"; shift 2 ;;
-      all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm|dockerfile-sdk-verify)
+      all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm)
         cmd="$1"; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "Unknown argument: $1" ;;
@@ -156,10 +163,7 @@ main() {
       ;;
     vulkan)
       install_core_tools_if_needed
-      if [ "${BUILD_MODE:-native}" = "cross" ]; then
-        prepare_cross_target_env "${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}" "setup-dependencies.sh vulkan"
-      fi
-      install_vulkan_sdk "$VULKAN_VERSION_DEFAULT"
+      install_vulkan_for_current_env "$VULKAN_VERSION_DEFAULT"
       ;;
     verify)
       verify_summary
@@ -170,15 +174,12 @@ main() {
     dockerfile-llvm)
       dockerfile_install_llvm
       ;;
-    dockerfile-sdk-verify)
-      dockerfile_sdk_verify
-      ;;
     all)
       install_core_tools_if_needed
       install_cmake
       install_llvm_clang
       install_gcc
-      install_vulkan_sdk "$VULKAN_VERSION_DEFAULT"
+      install_vulkan_for_current_env "$VULKAN_VERSION_DEFAULT"
       verify_summary
       ;;
   esac

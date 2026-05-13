@@ -25,6 +25,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
 # Runtime scripts (most volatile - changes frequently)
 # Copy LAST to maximize cache hits
 # ==============================================================================
+COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
 COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
 
 # ------------------------------------------------------------------------------

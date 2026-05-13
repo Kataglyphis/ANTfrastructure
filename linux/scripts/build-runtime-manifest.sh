@@ -75,6 +75,7 @@ stage_context() {
   cp "${REPO_ROOT}/linux/Dockerfile.runtime-artifact" "${ctx}/Dockerfile"
   cp -a "${src_rootfs}/." "${ctx}/rootfs/"
   cp -a "${REPO_ROOT}/linux/scripts/04-runtime/." "${ctx}/runtime/"
+  cp "${REPO_ROOT}/linux/scripts/02-toolchain/vulkan.sh" "${ctx}/runtime/vulkan.sh"
   chmod +x "${ctx}/runtime/"*.sh 2>/dev/null || true
 
   printf '%s' "${ctx}"

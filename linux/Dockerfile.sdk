@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${T
 
 # 6. VERIFICATION
 RUN set -eux; \
-    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" dockerfile-sdk-verify
+    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
 
 # ==============================================================================
 # Frameworks; TVM
@@ -62,7 +62,7 @@ ENV TVM_REF=${TVM_REF} \
     TVM_USE_VULKAN=${TVM_USE_VULKAN}
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-sdk-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-sdk-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \

@@ -18,6 +18,7 @@ source_module repos.sh
 source_module core.sh
 source_module llvm.sh
 source_module gcc.sh
+source_module vulkan.sh
 
 for helper in \
   "/opt/scripts/core/cross-env.sh" \
@@ -472,20 +473,6 @@ tvm_cross_wheel_platform_tag() {
   arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
 }
 
-detect_clang_tools() {
-  local clang_bin="clang-${CLANG_WANTED}"
-  local clangxx_bin="clang++-${CLANG_WANTED}"
-
-  if ! command -v "$clang_bin" >/dev/null 2>&1; then
-    clang_bin="clang"
-  fi
-  if ! command -v "$clangxx_bin" >/dev/null 2>&1; then
-    clangxx_bin="clang++"
-  fi
-
-  echo "${clang_bin} ${clangxx_bin}"
-}
-
 cross_linker_search_flags() {
   local triplet=""
   local flags=""
@@ -527,6 +514,15 @@ shell_quote_args() {
 append_tvm_cmake_args() {
   local out_name="$1"
   local python_module="$2"
+  local build_type="$3"
+  local desired_cc="$4"
+  local desired_cxx="$5"
+  local llvm_cmake_value="$6"
+  local llvm_dir="$7"
+  local llvm_ignore_paths="$8"
+  local use_vulkan="$9"
+  local spirv_tools_lib="${10:-}"
+  local cross_link_flags="${11:-}"
   local -n out_ref="${out_name}"
 
   out_ref+=(
@@ -770,96 +766,8 @@ is_under_opt_vulkan() {
   esac
 }
 
-filter_colon_list_excluding_prefix() {
-  # Filters a colon-separated list, removing entries that start with the given prefix.
-  # Usage: filter_colon_list_excluding_prefix "$LIST" "/opt/vulkan/"
-  local list="${1:-}"
-  local prefix="${2:-}"
-  local out=""
-
-  [ -n "$list" ] || { echo ""; return 0; }
-
-  local IFS=':'
-  local -a parts
-  read -r -a parts <<<"$list"
-  local p
-  for p in "${parts[@]}"; do
-    [ -n "$p" ] || continue
-    case "$p" in
-      "$prefix"*)
-        continue
-        ;;
-    esac
-    if [ -z "$out" ]; then
-      out="$p"
-    else
-      out+="${IFS}${p}"
-    fi
-  done
-
-  echo "$out"
-}
-
-sanitize_vulkan_sdk_env_for_build() {
-  # The LunarG Vulkan SDK's setup-env.sh typically prepends /opt/vulkan/.../lib to
-  # LD_LIBRARY_PATH and often touches CMAKE_PREFIX_PATH. That can lead to CMake RPATH
-  # warnings/conflicts with system Vulkan loader libs.
-  # Default: keep headers/tools but avoid using SDK lib directories for linking.
-  if [ "${TVM_VULKAN_KEEP_SDK_LIBS:-0}" = "1" ]; then
-    return 0
-  fi
-
-  if [ -n "${LD_LIBRARY_PATH:-}" ]; then
-    LD_LIBRARY_PATH="$(filter_colon_list_excluding_prefix "$LD_LIBRARY_PATH" "/opt/vulkan/")"
-    export LD_LIBRARY_PATH
-  fi
-
-  if [ -n "${CMAKE_PREFIX_PATH:-}" ]; then
-    CMAKE_PREFIX_PATH="$(filter_colon_list_excluding_prefix "$CMAKE_PREFIX_PATH" "/opt/vulkan/")"
-    export CMAKE_PREFIX_PATH
-  fi
-}
-
 try_source_vulkan_env() {
-  # If a LunarG Vulkan SDK has already been installed under /opt/vulkan,
-  # source its setup-env.sh so CMake can find headers/tools.
-  local prefix="${VULKAN_PREFIX:-/opt/vulkan}"
-
-  if [ -n "${VULKAN_VERSION:-}" ] && [ -r "${prefix}/${VULKAN_VERSION}/setup-env.sh" ]; then
-    # shellcheck disable=SC1090,SC1091
-    source "${prefix}/${VULKAN_VERSION}/setup-env.sh"
-    sanitize_vulkan_sdk_env_for_build
-    return 0
-  fi
-
-  local d
-  for d in "${prefix}"/*; do
-    [ -r "${d}/setup-env.sh" ] || continue
-    # shellcheck disable=SC1090,SC1091
-    source "${d}/setup-env.sh"
-    sanitize_vulkan_sdk_env_for_build
-    return 0
-  done
-
-  return 1
-}
-
-have_vulkan_already() {
-  # Return success when Vulkan headers + basic tools appear to be available.
-  # This can be from apt packages or from a sourced Vulkan SDK.
-  if [ -d /usr/include/vulkan ]; then
-    return 0
-  fi
-
-  if [ -n "${VULKAN_SDK:-}" ] && [ -d "${VULKAN_SDK}/include/vulkan" ]; then
-    return 0
-  fi
-
-  if command -v vulkaninfo >/dev/null 2>&1; then
-    return 0
-  fi
-
-  return 1
+  source_vulkan_sdk_env "${VULKAN_PREFIX:-/opt/vulkan}" sanitize-libs
 }
 
 main() {
@@ -1031,7 +939,18 @@ main() {
 
   fi
 
-  append_tvm_cmake_args cmake_args OFF
+  append_tvm_cmake_args \
+    cmake_args \
+    OFF \
+    "$build_type" \
+    "$desired_cc" \
+    "$desired_cxx" \
+    "$llvm_cmake_value" \
+    "$llvm_dir" \
+    "$llvm_ignore_paths" \
+    "$use_vulkan" \
+    "$spirv_tools_lib" \
+    "$cross_link_flags"
 
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
 
@@ -1061,7 +980,18 @@ main() {
     # Avoid stale wheel artifacts from previous runs influencing install/retag.
     rm -f "${TVM_WHEEL_DIR}"/*.whl
 
-    append_tvm_cmake_args wheel_cmake_args ON
+    append_tvm_cmake_args \
+      wheel_cmake_args \
+      ON \
+      "$build_type" \
+      "$desired_cc" \
+      "$desired_cxx" \
+      "$llvm_cmake_value" \
+      "$llvm_dir" \
+      "$llvm_ignore_paths" \
+      "$use_vulkan" \
+      "$spirv_tools_lib" \
+      "$cross_link_flags"
 
     wheel_cmake_args_string="$(shell_quote_args "${wheel_cmake_args[@]}")"
 

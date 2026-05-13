@@ -30,6 +30,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     BUILDPLATFORM=${BUILDPLATFORM} \
     CROSS_TARGETS=${CROSS_TARGETS} \
     GCC_VERSION=${GCC_VERSION} \
+    GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
     LLVM_RELEASE=${LLVM_RELEASE} \
     PYTHON_VERSION=${PYTHON_VERSION} \
     PATH="/usr/local/cargo/bin:${PATH}" \
@@ -44,7 +45,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # 1. GCC (Heavy Layer)
 # If this succeeds, it is cached forever unless GCC_VERSION changes.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolchain-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-toolchain-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-toolchain-${TARGETARCH} \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
     --mount=type=tmpfs,target=/tmp \
@@ -57,14 +58,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolcha
 # LIBRARY_PATH is needed at link time (for the linker to find libgcc_s, etc.)
 # LD_LIBRARY_PATH is needed at runtime (for the dynamic loader)
 ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
-    PKG_CONFIG_PATH="/opt/gcc-${GCC_VERSION}/lib64/pkgconfig:/opt/gcc-${GCC_VERSION}/lib/pkgconfig" \
-    LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
-    LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib"
+    PKG_CONFIG_PATH="${GCC_PREFIX}/lib64/pkgconfig:${GCC_PREFIX}/lib/pkgconfig" \
+    LD_LIBRARY_PATH="${GCC_PREFIX}/lib64:${GCC_PREFIX}/lib" \
+    LIBRARY_PATH="${GCC_PREFIX}/lib64:${GCC_PREFIX}/lib"
 
 # 3. LLVM / CLANG (Heavy Layer)
 # If this fails, Docker restores the image state at 'Step 2' instantly.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolchain-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-toolchain-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-toolchain-${TARGETARCH} \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
     --mount=type=tmpfs,target=/tmp \

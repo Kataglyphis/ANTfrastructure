@@ -31,32 +31,55 @@ _safe_source /usr/local/bin/gstreamer-env.sh || \
 _safe_source /usr/local/bin/libcamera-env.sh || \
   echo "Warning: /usr/local/bin/libcamera-env.sh not found or not sourced" >&2
 
-# Source Vulkan env: prefer VULKAN_VERSION if set, otherwise pick first available /opt/vulkan/*/setup-env.sh
+# Source Vulkan env: prefer the shared helper when available, otherwise fall back
+# to the local version-aware /opt/vulkan scan.
 VULKAN_PREFIX="${VULKAN_PREFIX:-/opt/vulkan}"
 
-if [ -n "${VULKAN_VERSION:-}" ]; then
-  VULKAN_SETUP="${VULKAN_PREFIX}/${VULKAN_VERSION}/setup-env.sh"
-  if _safe_source "$VULKAN_SETUP"; then
-    :
-  else
-    echo "Warning: Vulkan setup ${VULKAN_SETUP} not found; falling back to any /opt/vulkan/*/setup-env.sh" >&2
-    # fall through to fallback logic below
-    unset VULKAN_SETUP
-  fi
-fi
+_try_source_shared_vulkan_env() {
+  local helper
+  local -a helpers=(
+    /usr/local/bin/vulkan.sh
+    /opt/scripts/toolchain/vulkan.sh
+  )
 
-# Fallback: if we didn't source a specific version, try to source the first setup-env.sh found under prefix
-if [ -z "${VULKAN_SETUP:-}" ]; then
-  found=false
-  for d in "${VULKAN_PREFIX}"/*; do
-    [ -d "$d" ] || continue
-    if _safe_source "${d}/setup-env.sh"; then
-      found=true
-      break
+  for helper in "${helpers[@]}"; do
+    [ -r "${helper}" ] || continue
+    # shellcheck disable=SC1090,SC1091
+    source "${helper}"
+    if declare -F source_vulkan_sdk_env >/dev/null 2>&1 && \
+       source_vulkan_sdk_env "${VULKAN_PREFIX}" >/dev/null 2>&1; then
+      return 0
     fi
   done
-  if [ "$found" = false ]; then
-    echo "Warning: no Vulkan setup-env.sh found under ${VULKAN_PREFIX}" >&2
+
+  return 1
+}
+
+if ! _try_source_shared_vulkan_env; then
+  if [ -n "${VULKAN_VERSION:-}" ]; then
+    VULKAN_SETUP="${VULKAN_PREFIX}/${VULKAN_VERSION}/setup-env.sh"
+    if _safe_source "$VULKAN_SETUP"; then
+      :
+    else
+      echo "Warning: Vulkan setup ${VULKAN_SETUP} not found; falling back to any /opt/vulkan/*/setup-env.sh" >&2
+      # fall through to fallback logic below
+      unset VULKAN_SETUP
+    fi
+  fi
+
+  # Fallback: if we didn't source a specific version, try to source the first setup-env.sh found under prefix
+  if [ -z "${VULKAN_SETUP:-}" ]; then
+    found=false
+    for d in "${VULKAN_PREFIX}"/*; do
+      [ -d "$d" ] || continue
+      if _safe_source "${d}/setup-env.sh"; then
+        found=true
+        break
+      fi
+    done
+    if [ "$found" = false ]; then
+      echo "Warning: no Vulkan setup-env.sh found under ${VULKAN_PREFIX}" >&2
+    fi
   fi
 fi
 

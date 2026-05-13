@@ -81,13 +81,11 @@ cross_set_target_env() {
 }
 
 prepare_cross_target_env() {
-  local target_arch=""
   local scope="${2:-cross build}"
 
-  target_arch="$(cross_require_single_target_arch "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}" "${scope}")" || return 1
-  cross_set_target_env "${target_arch}" "${scope}"
+  cross_set_target_env "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}" "${scope}" || return 1
   if cross_build_enabled; then
-    install_cross_bin_symlinks "${target_arch}"
+    install_cross_bin_symlinks "${TARGET_ARCH}"
   fi
   setup_linux_cross_env
 }
@@ -280,6 +278,20 @@ resolve_cross_gcc_tool() {
   fi
 
   command -v "${triplet}-${tool}" 2>/dev/null || return 1
+}
+
+require_cross_gcc_tool() {
+  local tool="$1"
+  local triplet="${2:-$(cross_target_triplet)}"
+  local kind="${3:-cross tool}"
+  local resolved=""
+
+  resolved="$(resolve_cross_gcc_tool "${tool}" "${triplet}")" || {
+    printf 'Missing %s: %s/bin/%s-%s\n' "${kind}" "$(gcc_toolchain_prefix)" "${triplet}" "${tool}" >&2
+    return 1
+  }
+
+  printf '%s' "${resolved}"
 }
 
 make_host_compiler_wrapper() {
@@ -641,42 +653,15 @@ setup_linux_cross_env() {
   gcc_major="${GCC_WANTED:-${GCC_VERSION:-16}}"
   gcc_major="$(version_major "${gcc_major}")"
   runtime_libdir="${gcc_prefix}/lib/gcc/${triplet}/${gcc_major}"
-  cc="$(resolve_cross_gcc_tool gcc "${triplet}")" || {
-    printf 'Missing cross compiler: %s\n' "${gcc_prefix}/bin/${triplet}-gcc" >&2
-    return 1
-  }
-  cxx="$(resolve_cross_gcc_tool g++ "${triplet}")" || {
-    printf 'Missing cross compiler: %s\n' "${gcc_prefix}/bin/${triplet}-g++" >&2
-    return 1
-  }
-  ar="$(resolve_cross_gcc_tool ar "${triplet}")" || {
-    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-ar" >&2
-    return 1
-  }
-  as="$(resolve_cross_gcc_tool as "${triplet}")" || {
-    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-as" >&2
-    return 1
-  }
-  ld="$(resolve_cross_gcc_tool ld "${triplet}")" || {
-    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-ld" >&2
-    return 1
-  }
-  nm="$(resolve_cross_gcc_tool nm "${triplet}")" || {
-    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-nm" >&2
-    return 1
-  }
-  ranlib="$(resolve_cross_gcc_tool ranlib "${triplet}")" || {
-    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-ranlib" >&2
-    return 1
-  }
-  strip="$(resolve_cross_gcc_tool strip "${triplet}")" || {
-    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-strip" >&2
-    return 1
-  }
-  objcopy="$(resolve_cross_gcc_tool objcopy "${triplet}")" || {
-    printf 'Missing cross binutils tool: %s\n' "${gcc_prefix}/bin/${triplet}-objcopy" >&2
-    return 1
-  }
+  cc="$(require_cross_gcc_tool gcc "${triplet}" 'cross compiler')" || return 1
+  cxx="$(require_cross_gcc_tool g++ "${triplet}" 'cross compiler')" || return 1
+  ar="$(require_cross_gcc_tool ar "${triplet}" 'cross binutils tool')" || return 1
+  as="$(require_cross_gcc_tool as "${triplet}" 'cross binutils tool')" || return 1
+  ld="$(require_cross_gcc_tool ld "${triplet}" 'cross binutils tool')" || return 1
+  nm="$(require_cross_gcc_tool nm "${triplet}" 'cross binutils tool')" || return 1
+  ranlib="$(require_cross_gcc_tool ranlib "${triplet}" 'cross binutils tool')" || return 1
+  strip="$(require_cross_gcc_tool strip "${triplet}" 'cross binutils tool')" || return 1
+  objcopy="$(require_cross_gcc_tool objcopy "${triplet}" 'cross binutils tool')" || return 1
   build_cc="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
   build_cxx="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
   build_ar="$(resolve_build_gcc_tool ar 2>/dev/null || true)"
