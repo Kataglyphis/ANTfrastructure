@@ -7,7 +7,10 @@
     modules/WindowsInstaller.Common.psm1.
 #>
 param(
-    [string]$Url = 'https://gstreamer.freedesktop.org/data/pkg/windows/1.28.1/msvc/gstreamer-1.0-msvc-x86_64-1.28.1.exe',
+    [string]$Url = '',
+    [string]$Version = '',
+    [string]$Arch = '',
+    [string]$Flavor = '',
     [string]$InstallDir = 'C:\gstreamer',
     [string]$LogDir = 'C:\temp',
     [switch]$ForceInteractiveOnFail,   # if set, run interactive installer if silent attempts fail
@@ -24,6 +27,36 @@ if (-not (Test-Path $sharedModulePath)) {
 }
 
 Import-Module $sharedModulePath -Force
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = $env:GST_VERSION
+}
+
+if ([string]::IsNullOrWhiteSpace($Arch)) {
+    $Arch = $env:ARCH
+}
+
+if ([string]::IsNullOrWhiteSpace($Flavor)) {
+    $Flavor = $env:FLAVOR
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = '1.28.1'
+}
+
+if ([string]::IsNullOrWhiteSpace($Arch)) {
+    $Arch = 'x86_64'
+}
+
+if ([string]::IsNullOrWhiteSpace($Flavor)) {
+    $Flavor = 'msvc'
+}
+
+if ([string]::IsNullOrWhiteSpace($Url)) {
+    $base = 'https://gstreamer.freedesktop.org/data/pkg/windows/{0}/{1}/' -f $Version, $Flavor
+    $exeInstaller = 'gstreamer-1.0-{0}-{1}-{2}.exe' -f $Flavor, $Arch, $Version
+    $Url = $base + $exeInstaller
+}
 
 $logContext = New-StructuredLogContext -LogDir $LogDir -Prefix 'gstreamer-install'
 Start-StructuredLogging -Context $logContext
