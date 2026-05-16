@@ -32,6 +32,7 @@ Supported Dockerfiles:
 - `linux/Dockerfile.sdk`
 - `linux/Dockerfile.media`
 - `linux/Dockerfile.android`
+- `linux/Dockerfile.runtime-package`
 - `linux/Dockerfile`
 - `linux/Dockerfile.nvidia`
 - `linux/Dockerfile.amd`
@@ -40,7 +41,7 @@ Supported Dockerfiles:
 Not supported / not needed:
 
 - `linux/webserver/Dockerfile` is not wired for this flag.
-- `linux/Dockerfile.runtime-artifact` and `linux/Dockerfile.runtime-package` are copy-only and do not run apt.
+- `linux/Dockerfile.runtime-artifact` is copy-only and does not run apt.
 - `windows/Dockerfile` does not use apt.
 
 ## Multi-Arch Build

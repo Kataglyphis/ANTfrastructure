@@ -142,12 +142,6 @@ for target_arch in amd64 arm64 riscv64; do
     --build-arg TARGET_ARCH="${target_arch}" \
     . 2>&1 | tee -a output.log
 done
-
-./linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --base-image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
-  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross \
-  --push 2>&1 | tee -a output.log
 ```
 
 `linux/Dockerfile.sdk` now serves both the sequential SDK build and the amd64-hosted cross SDK artifact lane. The cross path still consumes one `TARGET_ARCH` per `nerdctl build`, so the loops above intentionally fan that out one target at a time for `amd64`, `arm64`, and `riscv64`.
@@ -157,7 +151,7 @@ The later cross builds above are additive and still intentionally conservative:
 - `media-cross-${target_arch}` now runs the native C/C++ stages with target compilers and target pkg-config/sysroot settings on the amd64 host.
 - `android-cross-${target_arch}` now keys off the amd64 build host for SDK/NDK setup while still selecting the requested Android target ABI from `TARGET_ARCH`.
 - `torch-cross-${target_arch}` is currently a structural cross stage only. It preserves the image chain but skips the live Python environment assembly because target wheels cannot be safely installed and imported inside an amd64 build container.
-- The final cross output is now `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`, built by starting from the real target-platform `:latest` image, overlaying only the target-built payload from `android-cross-${target_arch}`, and then publishing a single multi-architecture manifest.
+- The final cross output is now `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`, built by publishing clean per-arch `linux/Dockerfile.base` images, layering the target-built `android-cross-${target_arch}` payload onto them with `linux/Dockerfile.runtime-package`, wrapping each result with `linux/Dockerfile`, and then publishing one multi-architecture manifest.
 
 The existing multi-platform sequential `sdk`, `media`, `android`, `torch`, and `latest` commands above still remain supported and unchanged.
 
@@ -224,22 +218,65 @@ The new end-goal path is split into two steps so the old QEMU lane keeps working
 
 1. Keep the existing multi-platform build for compatibility.
 2. Build target artifacts host-side with the cross builder.
-3. Assemble one runtime image per architecture by overlaying those target-built artifacts onto the real target base image.
+3. Assemble one runtime image per architecture from a clean per-arch `linux/Dockerfile.base` image plus the target-built payload from `android-cross-${target_arch}`.
 4. Publish a single multi-architecture manifest.
 
-The additive packaging Dockerfile for this path is `linux/Dockerfile.runtime-package`. It is copy-only and stages only the target-built payload from the amd64-hosted cross image before overlaying that payload onto the real target-platform base image.
+`linux/Dockerfile.runtime-package` is the packaging layer for this path. It starts from a clean per-arch base image, copies only the selected target payload from the amd64-hosted `android-cross-${target_arch}` image, replays the final runtime dependency setup, and then becomes the `BASE_IMAGE` for the final `linux/Dockerfile` wrapper.
 
-Build one image per architecture and create a single manifest with nerdctl:
+Run the final publish flow directly with `nerdctl`. The per-arch `latest-cross-base-*`, `latest-cross-package-*`, and `latest-cross-*` tags are internal publish tags used to assemble the public `latest-cross` manifest:
 
 ```bash
-set -o pipefail
-./linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --base-image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
-  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross \
-  --push 2>&1 | tee -a output.log
+IMAGE_REPO=ghcr.io/kataglyphis/kataglyphis_beschleuniger
+
+MIRROR_ARGS=(
+  --build-arg USE_FAST_UBUNTU_MIRROR=true
+  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
+  --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/
+)
+
+for target_arch in amd64 arm64 riscv64; do
+  nerdctl build --platform "linux/${target_arch}" \
+    -t "${IMAGE_REPO}:latest-cross-base-${target_arch}" \
+    -f linux/Dockerfile.base \
+    "${MIRROR_ARGS[@]}" \
+    . && \
+  nerdctl push "${IMAGE_REPO}:latest-cross-base-${target_arch}"
+done
+
+for target_arch in amd64 arm64 riscv64; do
+  nerdctl build --platform "linux/${target_arch}" \
+    -t "${IMAGE_REPO}:latest-cross-package-${target_arch}" \
+    -f linux/Dockerfile.runtime-package \
+    --build-arg BASE_IMAGE="${IMAGE_REPO}:latest-cross-base-${target_arch}" \
+    --build-arg ARTIFACT_IMAGE="${IMAGE_REPO}:android-cross-${target_arch}" \
+    --build-arg BUILD_MODE=cross \
+    --build-arg TARGET_ARCH="${target_arch}" \
+    "${MIRROR_ARGS[@]}" \
+    . && \
+  nerdctl push "${IMAGE_REPO}:latest-cross-package-${target_arch}"
+done
+
+for target_arch in amd64 arm64 riscv64; do
+  nerdctl build --platform "linux/${target_arch}" \
+    -t "${IMAGE_REPO}:latest-cross-${target_arch}" \
+    -f linux/Dockerfile \
+    --build-arg BASE_IMAGE="${IMAGE_REPO}:latest-cross-package-${target_arch}" \
+    --build-arg BUILD_MODE=cross \
+    --build-arg TARGET_ARCH="${target_arch}" \
+    "${MIRROR_ARGS[@]}" \
+    . && \
+  nerdctl push "${IMAGE_REPO}:latest-cross-${target_arch}"
+done
+
+nerdctl manifest rm "${IMAGE_REPO}:latest-cross" >/dev/null 2>&1 || true
+nerdctl manifest create "${IMAGE_REPO}:latest-cross" \
+  "${IMAGE_REPO}:latest-cross-amd64" \
+  "${IMAGE_REPO}:latest-cross-arm64" \
+  "${IMAGE_REPO}:latest-cross-riscv64"
+nerdctl manifest push --purge "${IMAGE_REPO}:latest-cross"
+nerdctl manifest inspect "${IMAGE_REPO}:latest-cross"
 ```
 
-This helper builds real per-architecture child images such as `latest-cross-arm64` by starting from the target-platform `:latest` base and copying only the cross-built payload from `android-cross-${target_arch}`. It then creates the final `latest-cross` manifest.
+If you do not need the mirror override, remove `MIRROR_ARGS` and the `"${MIRROR_ARGS[@]}"` arguments from the three `nerdctl build` loops.
 
-This helper only adds a second lane. It does not modify the current QEMU-based multi-platform build commands above.
+This flow still adds a second lane. It does not modify the current QEMU-based multi-platform build commands above.
