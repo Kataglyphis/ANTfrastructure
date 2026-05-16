@@ -16,7 +16,7 @@ set -euo pipefail
 _SETUP_GST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
     "/opt/scripts/core/cross-env.sh" \
-    "${_SETUP_GST_DIR}/../../../../01-core/cross-env.sh"; do
+    "${_SETUP_GST_DIR}/../../../01-core/cross-env.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -25,16 +25,20 @@ for helper in \
 done
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-    # Meson's C++ dependency checks (for example GLib's builtin iconv probe)
-    # currently fail under lld on the riscv64 cross path when g++ links
-    # libstdc++. Keep the linker on the toolchain default for this build.
-    export USE_LLD=false
+   command -v cross_target_arch >/dev/null 2>&1; then
+    case "$(cross_target_arch)" in
+        arm64|riscv64)
+            # Meson's C++ dependency checks (for example GLib's builtin iconv probe)
+            # currently fail under lld on these cross paths when g++ links libstdc++.
+            # Keep the linker on the toolchain default for this build.
+            export USE_LLD=false
+            ;;
+    esac
 fi
 
 for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
-    "${_SETUP_GST_DIR}/../../../../01-core/compiler-cache.sh"; do
+    "${_SETUP_GST_DIR}/../../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -48,7 +52,7 @@ done
 # Source parallelism helpers
 for helper in \
     "/opt/scripts/core/parallelism.sh" \
-    "${_SETUP_GST_DIR}/../../../../01-core/parallelism.sh"; do
+    "${_SETUP_GST_DIR}/../../../01-core/parallelism.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -67,6 +71,16 @@ HOST_PYTHON="$(host_python_bin)"
 export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
   Python_EXECUTABLE="${HOST_PYTHON}" \
   Python3_EXECUTABLE="${HOST_PYTHON}"
+GSTREAMER_ENABLE_PYTHON_BINDINGS=true
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_python_dev_ready >/dev/null 2>&1 && \
+   ! cross_target_python_dev_ready; then
+  GSTREAMER_ENABLE_PYTHON_BINDINGS=false
+  echo "Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling gst-python in cross mode"
+fi
+
+export GSTREAMER_ENABLE_PYTHON_BINDINGS
 
 append_meson_arg() {
   local arg="$1"
@@ -183,6 +197,66 @@ exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
 EOF
   chmod +x "${wrapper_dir}/host-g++"
   printf '%s' "${wrapper_dir}/host-g++"
+}
+
+remove_path_entry() {
+  local needle="$1"
+  local source_path="${2:-${PATH:-}}"
+  local old_ifs="${IFS}"
+  local entry=""
+  local new_path=""
+
+  IFS=':'
+  for entry in ${source_path}; do
+    [ "${entry}" = "${needle}" ] && continue
+    new_path="${new_path:+${new_path}:}${entry}"
+  done
+  IFS="${old_ifs}"
+
+  printf '%s' "${new_path}"
+}
+
+prepare_host_cargo_toolchain_env() {
+  local build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
+  local build_rust_lower="x86_64_unknown_linux_gnu"
+  local cargo_host_cc=""
+  local cargo_host_linker=""
+  local cargo_host_cxx=""
+  local cargo_host_cxx_wrapper=""
+
+  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+    return 0
+  fi
+
+  if command -v cross_build_upper_rust >/dev/null 2>&1; then
+    build_rust_env="$(cross_build_upper_rust 2>/dev/null || true)"
+  fi
+  if command -v cross_build_lower_rust >/dev/null 2>&1; then
+    build_rust_lower="$(cross_build_lower_rust 2>/dev/null || true)"
+  fi
+  [ -n "${build_rust_env}" ] || build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
+  [ -n "${build_rust_lower}" ] || build_rust_lower="x86_64_unknown_linux_gnu"
+
+  if [ -d /opt/cross-bin ]; then
+    # Cargo still builds host-side proc-macros and build scripts during cross
+    # builds. Keep bare `cc`/`c++` on the host toolchain for those jobs.
+    export PATH="$(remove_path_entry /opt/cross-bin "${PATH}")"
+  fi
+
+  cargo_host_cc="$(resolve_host_gcc_for_cargo)"
+  if [ -n "${cargo_host_cc}" ]; then
+    cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
+    export "CARGO_TARGET_${build_rust_env}_LINKER=${cargo_host_linker}"
+    export "CC_${build_rust_lower}=${cargo_host_linker}"
+    export HOST_CC="${cargo_host_linker}"
+  fi
+
+  cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
+  if [ -n "${cargo_host_cxx}" ]; then
+    cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
+    export "CXX_${build_rust_lower}=${cargo_host_cxx_wrapper}"
+    export HOST_CXX="${cargo_host_cxx_wrapper}"
+  fi
 }
 
 prepare_cross_python_build_config() {
@@ -340,7 +414,9 @@ fi
 
 # Always enforce these, even if MESON_ARGS was supplied externally.
 append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
-append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
+if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
+  append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
+fi
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
 append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
@@ -625,7 +701,9 @@ fi
 
 # Enforce the gst-plugins-rs args again here so they survive external MESON_ARGS.
 append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
-append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
+if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
+  append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
+fi
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
 append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # whisper left enabled — do not force-disable here

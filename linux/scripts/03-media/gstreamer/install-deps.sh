@@ -14,12 +14,26 @@ vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
 echo "Installing GStreamer build dependencies..."
 
-apt-get update
+if command -v cross_apt_update >/dev/null 2>&1; then
+  cross_apt_update
+else
+  apt-get update
+fi
 
 is_riscv64_cross=false
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
    command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
   is_riscv64_cross=true
+fi
+
+skip_csound_cross=false
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1; then
+  case "$(cross_target_arch)" in
+    arm64|riscv64)
+      skip_csound_cross=true
+      ;;
+  esac
 fi
 
 prefer_toolchain_vulkan=false
@@ -36,8 +50,7 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
     echo "Using staged target Python headers from $(cross_target_python_include_dir)"
   else
-    echo "Target Python ${PYTHON_MAJOR_MINOR:-$(host_python_major_minor 2>/dev/null || echo unknown)} development files are missing for $(cross_target_triplet 2>/dev/null || echo target)" >&2
-    exit 1
+    echo "Target Python ${PYTHON_MAJOR_MINOR:-$(host_python_major_minor 2>/dev/null || echo unknown)} development files are missing for $(cross_target_triplet 2>/dev/null || echo target); disabling gst-python for this cross build"
   fi
 fi
 
@@ -174,10 +187,10 @@ install_target_packages \
   libwavpack-dev libgsm1-dev
 
 # Codecs (video)
-apt-get install -y --no-install-recommends \
+install_target_packages \
   libvpx-dev libaom-dev libdav1d-dev \
-  libx264-dev libx265-dev libopenh264-dev \
-  libsvtav1-dev || true
+  libx264-dev libx265-dev libopenh264-dev || true
+install_target_packages libsvtav1enc-dev || install_target_packages libsvtav1-dev || true
 
 # FFmpeg (for gst-libav)
 if [ -f /opt/ffmpeg/lib/pkgconfig/libavcodec.pc ]; then
@@ -196,8 +209,8 @@ install_target_packages \
   libsrtp2-dev libssl-dev libusrsctp-dev || true
 
 # Csound conditionally
-if echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
-  echo "Skipping Csound APT install on TARGETARCH=${TARGETARCH:-unset}"
+if [ "${skip_csound_cross}" = "true" ]; then
+  echo "Skipping target Csound packages for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
   install_target_packages \
     csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || true

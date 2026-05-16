@@ -44,11 +44,6 @@ patch_libcamera_riscv64_cross_sources() {
 : "${LIBCAMERA_PREFIX:=/opt/libcamera}"
 : "${BUILD_TYPE_LOWER:=release}"
 
-# libcamera-apps (contains libcamera-hello, libcamera-vid, etc.)
-: "${LIBCAMERA_APPS_SRC:=/tmp/libcamera-apps}"
-: "${LIBCAMERA_APPS_BUILD_DIR:=${LIBCAMERA_APPS_SRC}/build}"
-: "${LIBCAMERA_APPS_GIT:=https://github.com/raspberrypi/libcamera-apps.git}"
-
 echo "build-libcamera: src=${LIBCAMERA_SRC} builddir=${LIBCAMERA_BUILD_DIR} prefix=${LIBCAMERA_PREFIX} buildtype=${BUILD_TYPE_LOWER}"
 
 # Prefer the installed helper if available, otherwise source relative to this script
@@ -142,15 +137,17 @@ if [ -n "${compiler_probe}" ] && [ -x "${compiler_probe}" ]; then
   fi
 fi
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  cross_triplet="$(cross_target_triplet)"
+
+  # lc-compliance is a test application, not a runtime dependency. Cross builds
+  # currently pick up an incomplete GTest link line here, so keep the shipped
+  # libcamera runtime/plugin artifacts and skip that test tool.
+  MESON_SETUP_ARGS+=(-Dlc-compliance=disabled)
+
   # Generic target headers like elfutils/tiff live in /usr/include, while some
   # arch-specific target headers such as opensslconf.h live in the multiarch
-  # include dir. This container's riscv64 cross compiler doesn't pick those up
-  # reliably on its own. GCC 16 also reports a false positive array-bounds
-  # warning in libcamera's logger path; don't treat that warning as fatal.
-  MESON_SETUP_ARGS+=(-Dwerror=false)
-  cross_triplet="$(cross_target_triplet)"
+  # include dir. The cross compiler does not reliably search both roots here.
   if [ -d /usr/include ]; then
     append_env_flag CPPFLAGS "-idirafter /usr/include"
     append_env_flag CFLAGS "-idirafter /usr/include"
@@ -161,7 +158,13 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
     append_env_flag CFLAGS "-idirafter /usr/include/${cross_triplet}"
     append_env_flag CXXFLAGS "-idirafter /usr/include/${cross_triplet}"
   fi
-  patch_libcamera_riscv64_cross_sources
+
+  if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+    # GCC 16 still reports a false positive array-bounds warning in libcamera's
+    # logger path on the riscv64 cross build; don't treat that warning as fatal.
+    MESON_SETUP_ARGS+=(-Dwerror=false)
+    patch_libcamera_riscv64_cross_sources
+  fi
 fi
 
 if command -v append_meson_cross_flags >/dev/null 2>&1; then
@@ -201,7 +204,7 @@ echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-con
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   echo "Skipping libcamera Python wheel build in cross mode"
-  rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" || true
+  rm -rf "${LIBCAMERA_SRC}" || true
   exit 0
 fi
 
@@ -234,4 +237,4 @@ else
   echo "pycamera site-packages directory not found."
 fi
 
-rm -rf "${LIBCAMERA_SRC}" "${LIBCAMERA_APPS_SRC}" || true
+rm -rf "${LIBCAMERA_SRC}" || true

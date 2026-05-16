@@ -14,40 +14,64 @@ Docker templates for Linux GPU development stacks, a slim nginx webserver, and a
 - Windows toolchain container for CI and local builds
 - Optional media and Android layers for specialized workloads
 
+Choose the guide that matches the task you want to do: inspect the image catalog, run a local Linux image,
+build cross-architecture artifacts, enable GPU variants, use runtime services, or build the Windows image.
+
 .. grid:: 2
    :gutter: 2
 
-   .. grid-item-card:: Linux Dockerfiles
+   .. grid-item-card:: Project Overview
+      :link: overview
+      :link-type: doc
 
-      Multi-stage Linux images: ``base`` → ``toolchain`` → ``media`` → ``android`` → ``final``.
+      Published images, repository image chain, feature snapshot, dependencies, and useful tools.
 
-   .. grid-item-card:: Windows Dockerfile
+   .. grid-item-card:: Linux Build Basics
+      :link: linux-build-basics
+      :link-type: doc
 
-      Build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter and WiX.
+      Local runs, multi-arch builds, buildx workflows, and sequential ``nerdctl`` builds.
 
-   .. grid-item-card:: Build Commands
+   .. grid-item-card:: Linux Cross Builds
+      :link: linux-cross-builds
+      :link-type: doc
 
-      Ready-to-use examples for ``docker buildx`` and ``nerdctl`` workflows.
+      Additive cross-compiler lane, SDK rootfs artifacts, runtime artifacts, and manifest publishing.
 
-   .. grid-item-card:: CI-Friendly Docs
+   .. grid-item-card:: Linux Accelerator Images
+      :link: linux-accelerator-images
+      :link-type: doc
 
-      Documentation site designed for readability in light and dark mode.
+      NVIDIA, AMD, and Torch variants on top of the standard Linux image chain.
 
-Linux: multi-stage Dockerfile
------------------------------
+   .. grid-item-card:: Runtime Services and Streaming
+      :link: runtime-services
+      :link-type: doc
 
-The Linux image at ``linux/Dockerfile`` is split into logical stages to improve BuildKit caching and
-avoid rebuilding the whole world when only scripts change.
+      Webserver, display forwarding, Raspberry Pi camera notes, and WebRTC signalling and streaming.
 
-Stages:
+   .. grid-item-card:: Windows Build Image
+      :link: windows-builds
+      :link-type: doc
 
-- ``base``: Ubuntu base + stable apt dependencies (no project scripts copied).
-- ``toolchain``: GCC/LLVM/Vulkan toolchain setup via scripts.
-- ``media``: ONNX Runtime + GStreamer + Libcamera builds.
-- ``android``: Android SDK/NDK setup (x86_64 only).
-- ``final``: runtime scripts + entrypoint (default build output).
+      Windows container build command, antivirus warning, and memory notes.
 
-Build only a specific stage (useful during development):
+   .. grid-item-card:: Project Information
+      :link: project-info
+      :link-type: doc
+
+      Prerequisites, installation, tests, roadmap, troubleshooting, contribution, contact, and references.
+
+Linux image flow
+----------------
+
+The Linux container stack is intentionally split into reusable stages so BuildKit can cache stable
+layers and rebuild only the slice you changed.
+
+For the full image chain, see :doc:`Project Overview <overview>`. For local and multi-arch build
+commands, see :doc:`Linux Build Basics <linux-build-basics>`.
+
+Common development targets:
 
 .. code-block:: bash
 
@@ -60,3 +84,11 @@ Build only a specific stage (useful during development):
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
+
+   overview
+   linux-build-basics
+   linux-cross-builds
+   linux-accelerator-images
+   runtime-services
+   windows-builds
+   project-info

@@ -15,7 +15,8 @@ ARG BUILD_MODE=native
 ARG TARGET_ARCH
 ARG TARGETARCH
 ARG USE_FAST_UBUNTU_MIRROR=false
-ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
 SHELL ["bash", "-lc"]
 ENV VENV=/opt/venv
 ENV BUILD_MODE=${BUILD_MODE} \
@@ -25,11 +26,22 @@ ENV BUILD_MODE=${BUILD_MODE} \
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
     USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
     FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
     bash /tmp/use-fast-ubuntu-mirror.sh
+
+COPY --chmod=755 linux/scripts/03-media/final/assemble-torch-app.sh /opt/scripts/media/final/assemble-torch-app.sh
 
 # Initialize the venv
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    uv venv --seed --python="/usr/local/bin/python${PYTHON_MAJOR_MINOR}" "${VENV}"
+    set -eux; \
+    source /opt/scripts/core/cross-env.sh; \
+    python_mm="$(host_python_major_minor)"; \
+    test -x "/usr/local/bin/python${python_mm}" || { \
+      echo "Expected source-built interpreter /usr/local/bin/python${python_mm} from the base image was not found" >&2; \
+      ls -1 /usr/local/bin/python* 2>/dev/null || true; \
+      exit 1; \
+    }; \
+    uv venv --seed --python="/usr/local/bin/python${python_mm}" "${VENV}"
 ENV VIRTUAL_ENV=${VENV}
 ENV PATH=${VENV}/bin:${PATH}
 ENV UV_PYTHON=${VENV}/bin/python
@@ -82,42 +94,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
       echo "Skipping torch application install/validation in cross mode"; \
       exit 0; \
     fi && \
-    git clone https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git && \
-    cd Kataglyphis-Orchestr-ANT-ion && \
-    git checkout v0.0.17 && \
-    source ${VENV}/bin/activate && \
-    # Remove conflicting system headers to force use of PyPI version
-    apt-get remove -y pybind11-dev python3-pybind11 || true && \
-    # ---------------------------------------------------------
-    # Variable $UV_OPTS wird hier eingefügt
-    rm -rf /root/.cache/uv/* && \
-    rm -f uv.lock && \
-    echo "Debugging local wheels:" && ls -la /opt/wheels || true && \
-    uv pip install /opt/wheels/ai_edge_litert*.whl || true && \
-    if [ "${ONNX_PACKAGE}" = "onnxruntime-gpu" ] || [ "${ONNX_PACKAGE}" = "onnxruntime-rocm" ]; then rm -f /opt/wheels/*webgpu*.whl || true; else rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_rocm-*.whl /opt/wheels/*genai*.whl || true; fi && \
-    sed -i "s/\"onnxruntime; /\"${ONNX_PACKAGE}; /g" pyproject.toml && \
-    sed -i "s/\"onnxruntime\"/\"${ONNX_PACKAGE}\"/g" pyproject.toml && \
-    sed -i "s/\"onnxruntime>=.*\"/\"${ONNX_PACKAGE}\"/g" pyproject.toml && \
-    sed -i 's/"opencv-python; /"opencv-contrib-python; /g' pyproject.toml && \
-    sed -i 's/"opencv-python"/"opencv-contrib-python"/g' pyproject.toml && \
-    echo -e "\n[tool.uv]\nconstraint-dependencies = [\"ai-edge-litert==${LITERT_VERSION}\", \"numpy==2.4.4\"]" >> pyproject.toml && \
-    uv lock --find-links /opt/wheels && \
-    uv sync --find-links /opt/wheels --active --extra "ml-ai" --extra "${PYTORCH_EXTRA}" --extra "test" --extra "frontend" --extra "docs" && \
-    uv pip uninstall onnxruntime opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless || true && \
-    uv pip install --force-reinstall /opt/wheels/*.whl && \
-    uv pip install PyGObject && \
-    # Debug OpenCV shared libraries to see what might be missing
-    find /opt/venv -name "cv2*.so" -exec ldd {} \; || true && \
-    # 6. Verify
-    uv run --active python -c "import gi, numpy, contourpy; print('gi OK'); print('numpy', numpy.__version__);" && \
-    uv run --active python -c "import os; os.environ['OPENCV_LOG_LEVEL']='DEBUG'; import cv2; print('cv2', cv2.__version__);" && \
-    if [ "${ENABLE_NVIDIA}" = "true" ]; then \
-        echo "Testing GPU Support (Build checks only, not runtime)" && \
-        rm -f /usr/local/tensorrt/lib/libstdc++.so* || true && \
-        uv run --active python -c "import torch; cuda_ver = torch.version.cuda; print(f'PyTorch CUDA Build Version: {cuda_ver}'); assert cuda_ver is not None, 'ERROR: PyTorch was NOT built with CUDA!'" && \
-        uv run --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CUDAExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have CUDAExecutionProvider!'"; \
-    fi && \
-    echo "Installed packages in the virtual environment:" && \
-    uv pip list
+    /opt/scripts/media/final/assemble-torch-app.sh
 
 WORKDIR /opt/Kataglyphis-Orchestr-ANT-ion

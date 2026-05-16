@@ -164,12 +164,31 @@ build_arch_oci() {
   arch_normalize "$(_platform_raw_build_arch)"
 }
 
+target_arch_oci() {
+  arch_oci
+}
+
 is_amd64_arch() {
   [ "$(arch_oci)" = "amd64" ]
 }
 
 is_amd64_build_arch() {
   [ "$(build_arch_oci)" = "amd64" ]
+}
+
+android_build_host_supported() {
+  is_amd64_build_arch
+}
+
+android_require_amd64_build_host() {
+  local scope="${1:-Android build}"
+
+  if android_build_host_supported; then
+    return 0
+  fi
+
+  printf 'Skipping %s on non-amd64 build host\n' "${scope}"
+  return 1
 }
 
 deb_multiarch_triplet() {
@@ -194,6 +213,54 @@ rust_target_triple_for_arch() {
 
 android_abi_for_target() {
   arch_android_abi_for "$(arch_oci)" || printf '%s' ""
+}
+
+android_abi_for_arch() {
+  arch_android_abi_for "$1"
+}
+
+android_target_arch() {
+  target_arch_oci
+}
+
+android_target_abi() {
+  android_abi_for_arch "$(android_target_arch)" || printf '%s' ""
+}
+
+android_min_api_level_for_arch() {
+  case "$(arch_normalize "$1")" in
+    riscv64) printf '%s' "35" ;;
+    *) printf '%s' "34" ;;
+  esac
+}
+
+android_effective_api_level_for_arch() {
+  local arch="$1"
+  local requested_api="${2:-34}"
+  local min_api
+
+  min_api="$(android_min_api_level_for_arch "${arch}")"
+  if [ "${requested_api}" -lt "${min_api}" ]; then
+    printf '%s' "${min_api}"
+    return 0
+  fi
+
+  printf '%s' "${requested_api}"
+}
+
+android_raise_api_level_if_needed() {
+  local arch="$1"
+  local requested_api="${2:-34}"
+  local scope="${3:-Android build}"
+  local effective_api
+
+  effective_api="$(android_effective_api_level_for_arch "${arch}" "${requested_api}")"
+  if [ "${effective_api}" != "${requested_api}" ]; then
+    printf 'Raising Android API level from %s to %s for %s (%s)\n' \
+      "${requested_api}" "${effective_api}" "${arch}" "${scope}" >&2
+  fi
+
+  printf '%s' "${effective_api}"
 }
 
 version_major() {

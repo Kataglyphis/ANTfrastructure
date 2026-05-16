@@ -12,7 +12,11 @@ fi
 
 echo "Installing OpenCV build dependencies..."
 
-apt-get update -y
+if command -v cross_apt_update >/dev/null 2>&1; then
+    cross_apt_update -y
+else
+    apt-get update -y
+fi
 install_host_packages \
     build-essential \
     cmake \
@@ -73,8 +77,7 @@ if [ "${WITH_PYTHON}" = "true" ]; then
         if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
             echo "[INFO] Using staged target Python headers from $(cross_target_python_include_dir)"
         else
-            echo "[ERROR] Target Python ${OPENCV_PYTHON_VERSION} development files are missing for $(cross_target_triplet 2>/dev/null || echo target)" >&2
-            exit 1
+            echo "[WARN] Target Python ${OPENCV_PYTHON_VERSION} development files are missing for $(cross_target_triplet 2>/dev/null || echo target); disabling OpenCV Python bindings for this cross build"
         fi
     else
         echo "[INFO] Python dependencies are satisfied via source build and uv."

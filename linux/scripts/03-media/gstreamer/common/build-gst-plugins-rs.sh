@@ -72,6 +72,24 @@ if matches:
 ' "$pattern"
 }
 
+prepare_cargo_target_compiler_wrapper() {
+  local compiler="$1"
+  local wrapper_name="$2"
+  local cross_bindir="${3:-/opt/cross-bin}"
+  local wrapper_dir="${GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-target-toolchain}"
+
+  [ -n "${compiler}" ] || return 1
+  [ -n "${wrapper_name}" ] || return 1
+
+  mkdir -p "${wrapper_dir}"
+  cat > "${wrapper_dir}/${wrapper_name}" <<EOF
+#!/usr/bin/env bash
+exec "${compiler}" -B"${cross_bindir%/}/" "\$@"
+EOF
+  chmod +x "${wrapper_dir}/${wrapper_name}"
+  printf '%s' "${wrapper_dir}/${wrapper_name}"
+}
+
 build_standalone_gst_plugins_rs() {
   local plugin_rs_dir="/opt/gst-plugins-rs"
   local standalone_cargo_toml=""
@@ -80,6 +98,11 @@ build_standalone_gst_plugins_rs() {
   local cargo_host_linker=""
   local cargo_host_cxx=""
   local cargo_host_cxx_wrapper=""
+  local cargo_target_rust_env=""
+  local cargo_target_rust_lower=""
+  local cargo_target_cross_bindir=""
+  local cargo_target_cc_wrapper=""
+  local cargo_target_cxx_wrapper=""
   local arch_for_excludes=""
   local arch_probes=""
   local cs_pkg_names=""
@@ -114,13 +137,9 @@ build_standalone_gst_plugins_rs() {
   cd "${plugin_rs_dir}"
   standalone_cargo_toml="${plugin_rs_dir}/Cargo.toml"
 
-  # Cargo still builds host-side proc-macros and build scripts while compiling
-  # the plugin crates for the cross target.
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ -d /opt/cross-bin ]; then
-    export PATH="${PATH#/opt/cross-bin:}"
-  fi
-
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then
+    prepare_host_cargo_toolchain_env
+  elif command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
     cargo_host_cc="$(resolve_host_gcc_for_cargo)"
     if [ -n "${cargo_host_cc}" ]; then
       cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
@@ -132,6 +151,51 @@ build_standalone_gst_plugins_rs() {
     if [ -n "${cargo_host_cxx}" ]; then
       cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
       export CXX_x86_64_unknown_linux_gnu="${cargo_host_cxx_wrapper}"
+    fi
+  fi
+
+  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled &&
+     command -v cross_target_arch >/dev/null 2>&1 &&
+     [ "$(cross_target_arch)" = "riscv64" ]; then
+    # prepare_host_cargo_toolchain_env removes /opt/cross-bin from PATH so host
+    # build scripts keep using the native cc/c++. Wrap the target compiler driver
+    # with -B/opt/cross-bin so target-side cc-rs builds still resolve riscv64 as/ld.
+    cargo_target_cross_bindir="$(cross_bin_dir 2>/dev/null || printf '%s' '/opt/cross-bin')"
+    if command -v cross_target_upper_rust >/dev/null 2>&1; then
+      cargo_target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
+    fi
+    if command -v cross_target_lower_rust >/dev/null 2>&1; then
+      cargo_target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
+    fi
+    [ -n "${cargo_target_rust_env}" ] || cargo_target_rust_env="$(printf '%s' "${CARGO_BUILD_TARGET}" | tr '[:lower:]-' '[:upper:]_')"
+    [ -n "${cargo_target_rust_lower}" ] || cargo_target_rust_lower="$(printf '%s' "${CARGO_BUILD_TARGET}" | tr '[:upper:]-' '[:lower:]_')"
+
+    if [ -d "${cargo_target_cross_bindir}" ] && [ -n "${CC:-}" ]; then
+      cargo_target_cc_wrapper="$(prepare_cargo_target_compiler_wrapper "${CC}" "target-gcc-riscv64" "${cargo_target_cross_bindir}")"
+      export "CARGO_TARGET_${cargo_target_rust_env}_LINKER=${cargo_target_cc_wrapper}"
+      export "CC_${cargo_target_rust_lower}=${cargo_target_cc_wrapper}"
+    fi
+
+    if [ -d "${cargo_target_cross_bindir}" ] && [ -n "${CXX:-}" ]; then
+      cargo_target_cxx_wrapper="$(prepare_cargo_target_compiler_wrapper "${CXX}" "target-g++-riscv64" "${cargo_target_cross_bindir}")"
+      export "CXX_${cargo_target_rust_lower}=${cargo_target_cxx_wrapper}"
+    fi
+
+    # Standalone Cargo crates here use pkg-config / system-deps, which can drop
+    # target system libdirs (for example /usr/lib/riscv64-linux-gnu and
+    # /usr/local/lib) from emitted link-search flags. Keep those -L entries so
+    # Rust links can resolve target shared libs like Vulkan and vvdec.
+    export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
+
+    # vvdec-sys resolves libvvdec via system-deps/pkg-config, which still needs
+    # an explicit native search override because libvvdec is installed into
+    # /usr/local/lib by install-vvdec.sh rather than coming from the distro.
+    if [ -d /usr/local/lib ]; then
+      export SYSTEM_DEPS_LIBVVDEC_SEARCH_NATIVE="${SYSTEM_DEPS_LIBVVDEC_SEARCH_NATIVE:-/usr/local/lib}"
+    fi
+
+    if [ -n "${cargo_target_cc_wrapper}" ]; then
+      echo "RISC-V standalone gst-plugins-rs build detected: using target compiler wrappers with -B${cargo_target_cross_bindir%/}/"
     fi
   fi
 
