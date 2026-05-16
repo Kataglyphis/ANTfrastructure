@@ -65,7 +65,9 @@ Images in this repository:
 - 📦 **linux/Dockerfile:** Ubuntu 26.04 toolchain image (Clang/GCC, Rust, Vulkan, GStreamer, Android SDK/NDK).
 - 🔥 **linux/torch/Dockerfile:** Torch/Python add-on on top of the base image.
 - 🌐 **linux/webserver/Dockerfile:** Minimal nginx static webserver (config at linux/webserver/nginx.conf).
-- 🪟 **windows/Dockerfile:** Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
+- 🪟 **windows/Dockerfile.base:** Cached Windows toolchain base image with the heavy compiler and developer tooling installation.
+- 🪟 **windows/Dockerfile.ai:** Cached Windows AI layer with CUDA, cuDNN, ONNX Runtime, and OpenCV.
+- 🪟 **windows/Dockerfile:** Thin final Windows developer image built on top of `windows/Dockerfile.ai`.
 
 Linux image chain (built as separate images for caching):
 
@@ -75,6 +77,12 @@ Linux image chain (built as separate images for caching):
 - `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
 - `linux/Dockerfile`: runtime scripts + entrypoint (final image).
+
+Windows image chain (built as separate images for caching):
+
+- `windows/Dockerfile.base`: Windows Server Core 2025 base image with Visual Studio Build Tools, GStreamer, Scoop tools, Rust, and developer tooling verification.
+- `windows/Dockerfile.ai`: AI add-on layer with CUDA, cuDNN, ONNX Runtime, ONNX GenAI, and OpenCV.
+- `windows/Dockerfile`: thin final image that inherits from the Windows AI layer and keeps the developer entrypoint.
 
 Optional Ubuntu apt mirror workaround:
 
@@ -95,7 +103,7 @@ sudo nerdctl build \
 - Supported Dockerfiles:
   `linux/Dockerfile.base`, `linux/Dockerfile.toolchain`, `linux/Dockerfile.sdk`, `linux/Dockerfile.media`, `linux/Dockerfile.android`, `linux/Dockerfile`, `linux/Dockerfile.nvidia`, `linux/Dockerfile.amd`, `linux/Dockerfile.torch`
 - Not supported / not needed:
-  `linux/webserver/Dockerfile` is not wired for this flag, `linux/Dockerfile.runtime-artifact` is copy-only and does not run apt, and `windows/Dockerfile` does not use apt.
+  `linux/webserver/Dockerfile` is not wired for this flag, `linux/Dockerfile.runtime-artifact` is copy-only and does not run apt, and `windows/Dockerfile.base` / `windows/Dockerfile.ai` / `windows/Dockerfile` do not use apt.
 
 Optional NVIDIA GPU image chain (built by passing `--build-arg ENABLE_NVIDIA=true` to standard Dockerfiles):
 
@@ -787,11 +795,25 @@ nerdctl run --rm -it \
 > **Important (Antivirus):** On Windows, **exclude your development folder from antivirus scanning**. Real-time protection can lock files during builds (especially during CMake FetchContent and cargo builds), causing intermittent failures with errors like "Failed to remove directory" or "(os error 32)". Add your project directory to your antivirus exclusion list.
 
 ```powershell
-C:\PATH_TO_NERDCTL\nerdctl.exe build --platform windows/amd64 `
+docker build --platform windows/amd64 `
+  --progress=plain --no-cache `
+  -t local/kataglyphis:windows-base `
+  -f windows/Dockerfile.base .
+
+docker build --platform windows/amd64 `
+  --progress=plain --no-cache `
+  -t local/kataglyphis:windows-ai `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
+  -f windows/Dockerfile.ai .
+
+docker build --platform windows/amd64 `
   --progress=plain --no-cache `
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-ai `
   -f windows/Dockerfile .
 ```
+
+The Windows flow now mirrors the Linux layering approach more closely: build `windows/Dockerfile.base`, then `windows/Dockerfile.ai`, and derive the final `windows/Dockerfile` image from that cached AI layer.
 
 > **Note (Windows):** For Windows-based containers and heavy workloads you may need to increase the container memory. Add the `--memory 48g` flag to your `docker run` command, for example:
 

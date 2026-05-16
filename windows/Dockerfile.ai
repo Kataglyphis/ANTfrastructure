@@ -1,0 +1,49 @@
+# escape=`
+# Cached Windows AI layer.
+# Adds CUDA, cuDNN, ONNX Runtime, and OpenCV on top of the Windows toolchain base.
+
+ARG BASE_IMAGE=local/kataglyphis:windows-base
+FROM ${BASE_IMAGE}
+
+ARG CUDA_VERSION=12.9.0
+ARG CUDA_VERSION_MAJOR_MINOR=12.9
+ARG CUDNN_VERSION=9.10.1.4
+ARG ONNX_VERSION=1.26.0
+ARG ONNX_GENAI_VERSION=0.13.2
+ARG ONNX_DIRECTML_VERSION=1.24.4
+ARG ONNX_GPU_VARIANT=both
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+COPY windows\scripts C:\temp\scripts
+
+ENV CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
+ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
+
+RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
+
+ENV ONNX_ROOT="C:\onnx" `
+    ONNX_GPU_VARIANT="${ONNX_GPU_VARIANT}" `
+    ONNX_INCLUDE="C:\onnx\Microsoft.ML.OnnxRuntime.${ONNX_VERSION}\build\native\include" `
+    ONNX_LIB="C:\onnx\Microsoft.ML.OnnxRuntime.${ONNX_VERSION}\runtimes\win-x64\native" `
+    ONNX_GENAI_INCLUDE="C:\onnx\Microsoft.ML.OnnxRuntimeGenAI.${ONNX_GENAI_VERSION}\build\native\include" `
+    ONNX_GENAI_LIB="C:\onnx\Microsoft.ML.OnnxRuntimeGenAI.${ONNX_GENAI_VERSION}\runtimes\win-x64\native" `
+    ONNX_DIRECTML_LIB="C:\onnx\Microsoft.ML.OnnxRuntime.DirectML.${ONNX_DIRECTML_VERSION}\runtimes\win-x64\native" `
+    ONNX_CUDA_LIB="C:\onnx\Microsoft.ML.OnnxRuntime.Gpu.Windows.${ONNX_VERSION}\runtimes\win-x64\native" `
+    ONNX_GENAI_DIRECTML_LIB="C:\onnx\Microsoft.ML.OnnxRuntimeGenAI.DirectML.${ONNX_GENAI_VERSION}\runtimes\win-x64\native" `
+    ONNX_GENAI_CUDA_LIB="C:\onnx\Microsoft.ML.OnnxRuntimeGenAI.Cuda.${ONNX_GENAI_VERSION}\runtimes\win-x64\native"
+
+RUN & 'C:\temp\scripts\setup-onnx.ps1' -TempDir $env:TEMP_DIR
+
+ENV OPENCV_VERSION="4.13.0" `
+    OPENCV_ROOT="C:\opencv" `
+    OPENCV_DIR="C:\opencv\build" `
+    OPENCV_BIN="C:\opencv\build\x64\vc16\bin" `
+    OPENCV_LIB="C:\opencv\build\x64\vc16\lib" `
+    OPENCV_INCLUDE="C:\opencv\build\include"
+
+RUN & 'C:\temp\scripts\setup-opencv.ps1' -TempDir $env:TEMP_DIR
+
+ENV PATH=$CUDA_ROOT\bin;$CUDNN_ROOT\bin;$ONNX_LIB;$ONNX_GENAI_LIB;$ONNX_DIRECTML_LIB;$ONNX_CUDA_LIB;$OPENCV_BIN;$PATH
+
+RUN & 'C:\temp\scripts\verify-ai-stack.ps1'

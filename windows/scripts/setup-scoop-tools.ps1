@@ -1,5 +1,6 @@
 param(
     [string]$TempDir = 'C:\temp',
+    [string]$GitInstallerUrl = 'https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/Git-2.54.0-64-bit.exe',
     [string]$CMakeNightlyUrl = '',
     [string]$VulkanVersion = ''
 )
@@ -19,16 +20,46 @@ $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentV
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
+$gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
+Invoke-WebRequest -Uri $GitInstallerUrl -OutFile $gitInstaller
+Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait
+Remove-Item $gitInstaller -Force
+Sync-ContainerProcessPath -AdditionalPaths @(
+    'C:\Program Files\Git\cmd',
+    'C:\Program Files\Git\bin',
+    'C:\Program Files\Git\usr\bin'
+) | Out-Null
+
+dotnet tool install --tool-path C:\WiX wix --version 4.0.6
+& 'C:\WiX\wix.exe' extension add --global WixToolset.UI.wixext/4.0.4
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
 irm get.scoop.sh -outfile $scoopInstallScript
 & $scoopInstallScript -RunAsAdmin
+Sync-ContainerProcessPath -AdditionalPaths @(
+    'C:\Users\ContainerAdministrator\scoop\shims',
+    'C:\ProgramData\scoop\shims'
+) | Out-Null
+Assert-ContainerCommandAvailable -Name 'git' | Out-Null
+Assert-ContainerCommandAvailable -Name 'scoop' | Out-Null
 scoop bucket add main
 scoop bucket add extras
 scoop bucket add versions
 scoop install main/7zip
 scoop config use_external_7zip true
-scoop install main/rustup
+
+$cargoHome = 'C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo'
+$rustupHome = 'C:\Users\ContainerAdministrator\scoop\persist\rustup\.rustup'
+[Environment]::SetEnvironmentVariable('CARGO_HOME', $cargoHome, 'Process')
+[Environment]::SetEnvironmentVariable('RUSTUP_HOME', $rustupHome, 'Process')
+New-Item -Path $cargoHome -ItemType Directory -Force | Out-Null
+New-Item -Path $rustupHome -ItemType Directory -Force | Out-Null
+
+$rustupInit = Join-Path $TempDir 'rustup-init.exe'
+Invoke-WebRequest -Uri 'https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe' -OutFile $rustupInit
+Start-Process -FilePath $rustupInit -ArgumentList '-y', '--default-toolchain', 'none', '--no-modify-path' -Wait -NoNewWindow
+Remove-Item $rustupInit -Force
 
 if ([string]::IsNullOrWhiteSpace($VulkanVersion)) {
     scoop install main/vulkan

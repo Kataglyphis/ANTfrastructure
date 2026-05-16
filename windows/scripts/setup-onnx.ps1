@@ -26,6 +26,11 @@ $OnnxGenAiVersion = Resolve-ContainerImageValue -Value $OnnxGenAiVersion -Enviro
 $OnnxDirectMlVersion = Resolve-ContainerImageValue -Value $OnnxDirectMlVersion -EnvironmentVariable 'ONNX_DIRECTML_VERSION'
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
+Sync-ContainerProcessPath -AdditionalPaths @(
+    'C:\Users\ContainerAdministrator\scoop\shims',
+    'C:\ProgramData\scoop\shims'
+) | Out-Null
+Assert-ContainerCommandAvailable -Name 'nuget' | Out-Null
 
 Write-Host 'Downloading ONNX Runtime and GenAI packages...'
 $OnnxRoot = Resolve-ContainerDirectoryPath -Path $OnnxRoot

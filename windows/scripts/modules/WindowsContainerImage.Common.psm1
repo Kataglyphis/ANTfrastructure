@@ -76,6 +76,58 @@ function Assert-ContainerPathExists {
     return $Path
 }
 
+function Sync-ContainerProcessPath {
+    param(
+        [string[]]$AdditionalPaths = @()
+    )
+
+    $entries = [System.Collections.Generic.List[string]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    $addPathEntries = {
+        param(
+            [AllowEmptyString()]
+            [string]$Value
+        )
+
+        if ([string]::IsNullOrWhiteSpace($Value)) {
+            return
+        }
+
+        foreach ($entry in $Value -split ';') {
+            if ([string]::IsNullOrWhiteSpace($entry)) {
+                continue
+            }
+
+            $expandedEntry = [Environment]::ExpandEnvironmentVariables($entry.Trim())
+            if ([string]::IsNullOrWhiteSpace($expandedEntry)) {
+                continue
+            }
+
+            $normalizedEntry = $expandedEntry.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+            if ($seen.Add($normalizedEntry)) {
+                $entries.Add($expandedEntry)
+            }
+        }
+    }
+
+    & $addPathEntries $env:PATH
+
+    foreach ($scope in @([EnvironmentVariableTarget]::Machine, [EnvironmentVariableTarget]::User)) {
+        & $addPathEntries ([Environment]::GetEnvironmentVariable('Path', $scope))
+    }
+
+    foreach ($path in $AdditionalPaths) {
+        & $addPathEntries $path
+    }
+
+    $resolvedPath = $entries.ToArray() -join ';'
+    [Environment]::SetEnvironmentVariable('Path', $resolvedPath, 'Process')
+    $env:PATH = $resolvedPath
+
+    return $resolvedPath
+}
+
 function Assert-ContainerCommandAvailable {
     param(
         [Parameter(Mandatory)]
@@ -96,5 +148,6 @@ Export-ModuleMember -Function @(
     'Resolve-ContainerDirectoryPath',
     'Resolve-ContainerNormalizedPath',
     'Assert-ContainerPathExists',
+    'Sync-ContainerProcessPath',
     'Assert-ContainerCommandAvailable'
 )
