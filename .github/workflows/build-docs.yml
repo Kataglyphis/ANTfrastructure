@@ -26,7 +26,7 @@ jobs:
           submodules: recursive
 
       - name: Install uv (Astral)
-        uses: astral-sh/setup-uv@v7.2.0
+        uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: 3.14
           enable-cache: true
@@ -37,6 +37,9 @@ jobs:
           uv venv
           source .venv/bin/activate
           uv pip install -r requirements.txt
+
+      - name: Check generated version snapshot
+        run: python docs/scripts/sync_versions.py --check
 
       - name: Copy docs
         run: |
@@ -50,7 +53,7 @@ jobs:
           make html
 
       - name: 📂 Sync files to domain
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ secrets.SERVER }}
           username: ${{ secrets.USERNAME }}

@@ -143,15 +143,10 @@ for target_arch in amd64 arm64 riscv64; do
     . 2>&1 | tee -a output.log
 done
 
-./linux/scripts/build-runtime-artifacts.sh \
-  --target-arches amd64,arm64,riscv64 \
-  --fast-ubuntu-mirror \
-  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
-  2>&1 | tee -a output.log
-
 ./linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --artifacts-root out/linux-runtime \
+  --base-image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross \
   --push 2>&1 | tee -a output.log
 ```
 
@@ -162,7 +157,7 @@ The later cross builds above are additive and still intentionally conservative:
 - `media-cross-${target_arch}` now runs the native C/C++ stages with target compilers and target pkg-config/sysroot settings on the amd64 host.
 - `android-cross-${target_arch}` now keys off the amd64 build host for SDK/NDK setup while still selecting the requested Android target ABI from `TARGET_ARCH`.
 - `torch-cross-${target_arch}` is currently a structural cross stage only. It preserves the image chain but skips the live Python environment assembly because target wheels cannot be safely installed and imported inside an amd64 build container.
-- The final cross output is now `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`, built by exporting one final runtime rootfs per target with `linux/Dockerfile` and then publishing a single multi-architecture manifest.
+- The final cross output is now `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`, built by starting from the real target-platform `:latest` image, overlaying only the target-built payload from `android-cross-${target_arch}`, and then publishing a single multi-architecture manifest.
 
 The existing multi-platform sequential `sdk`, `media`, `android`, `torch`, and `latest` commands above still remain supported and unchanged.
 
@@ -223,49 +218,28 @@ out/linux-sdk/riscv64/artifact.env
 
 This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.1.0` rather than the Ubuntu 26.04 system GCC toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU endbuild, but it does not yet replace the full `:latest` pipeline.
 
-## Cross-artifacts to multi-arch manifest (experimental)
+## Cross packaging to multi-arch manifest (experimental)
 
 The new end-goal path is split into two steps so the old QEMU lane keeps working:
 
 1. Keep the existing multi-platform build for compatibility.
-2. Build target rootfs artifacts host-side with the cross builder.
-3. Assemble one runtime image per architecture.
+2. Build target artifacts host-side with the cross builder.
+3. Assemble one runtime image per architecture by overlaying those target-built artifacts onto the real target base image.
 4. Publish a single multi-architecture manifest.
 
-The additive runtime Dockerfile for this path is `linux/Dockerfile.runtime-artifact`. It is copy-only and meant for prebuilt rootfs trees.
+The additive packaging Dockerfile for this path is `linux/Dockerfile.runtime-package`. It is copy-only and stages only the target-built payload from the amd64-hosted cross image before overlaying that payload onto the real target-platform base image.
 
-Export the final runtime rootfs trees from `linux/Dockerfile` first:
-
-```bash
-set -o pipefail
-./linux/scripts/build-runtime-artifacts.sh \
-  --target-arches amd64,arm64,riscv64 \
-  --fast-ubuntu-mirror \
-  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
-  2>&1 | tee -a output.log
-```
-
-Expected artifact layout:
-
-```text
-out/linux-runtime/amd64/rootfs/
-out/linux-runtime/amd64/artifact.env
-out/linux-runtime/arm64/rootfs/
-out/linux-runtime/arm64/artifact.env
-out/linux-runtime/riscv64/rootfs/
-out/linux-runtime/riscv64/artifact.env
-```
-
-That helper builds `linux/Dockerfile` once per target architecture in `BUILD_MODE=cross`, using the published `android-cross-${target_arch}` images as inputs. The final cross step is therefore no longer a per-target published `latest-cross-${target_arch}` wrapper. Instead, it exports the final runtime filesystem for each target and then assembles one real multi-architecture `latest-cross` image tag from those exported rootfs trees.
-
-Once these rootfs artifacts exist, build one image per architecture and create a single manifest with nerdctl:
+Build one image per architecture and create a single manifest with nerdctl:
 
 ```bash
 set -o pipefail
 ./linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --artifacts-root out/linux-runtime \
+  --base-image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross \
   --push 2>&1 | tee -a output.log
 ```
+
+This helper builds real per-architecture child images such as `latest-cross-arm64` by starting from the target-platform `:latest` base and copying only the cross-built payload from `android-cross-${target_arch}`. It then creates the final `latest-cross` manifest.
 
 This helper only adds a second lane. It does not modify the current QEMU-based multi-platform build commands above.

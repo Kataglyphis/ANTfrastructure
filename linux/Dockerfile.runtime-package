@@ -1,0 +1,82 @@
+# syntax=docker/dockerfile:1.19
+
+ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-amd64
+
+FROM --platform=linux/amd64 ${ARTIFACT_IMAGE} AS artifact-payload
+SHELL ["bash", "-lc"]
+
+# Stage only the target-built payload from the amd64-hosted cross image. This
+# avoids copying host-only pieces such as the live Python venv, toolchains, apt
+# state, and other build-host plumbing into the final target runtime image.
+RUN set -euo pipefail; \
+    mkdir -p /payload; \
+    copy_path() { \
+        local src="$1"; \
+        local dst="${2:-$1}"; \
+        [ -e "${src}" ] || return 0; \
+        mkdir -p "/payload$(dirname "${dst}")"; \
+        cp -a "${src}" "/payload${dst}"; \
+    }; \
+    copy_glob() { \
+        local pattern="$1"; \
+        local item; \
+        shopt -s nullglob; \
+        for item in ${pattern}; do \
+            mkdir -p "/payload$(dirname "${item}")"; \
+            cp -a "${item}" "/payload${item}"; \
+        done; \
+        shopt -u nullglob; \
+    }; \
+    copy_path /usr/local/lib/onnxruntime-cpu; \
+    copy_path /usr/local/lib/onnxruntime-genai; \
+    copy_path /usr/local/lib/onnxruntime-gpu; \
+    copy_path /usr/local/include/tflite; \
+    copy_path /usr/local/include/tensorflow; \
+    copy_path /usr/local/include/flatbuffers; \
+    copy_path /usr/local/include/c; \
+    copy_path /usr/local/lib/pkgconfig/litert.pc; \
+    copy_path /usr/local/lib/pkgconfig/tensorflow-lite.pc; \
+    copy_path /usr/local/lib/pkgconfig/tensorflowlite_c.pc; \
+    copy_path /usr/local/lib/pkgconfig/libvvdec.pc; \
+    copy_path /opt/opencv4; \
+    copy_path /opt/ffmpeg; \
+    copy_path /opt/gstreamer; \
+    copy_path /opt/libcamera; \
+    copy_path /opt/wheels; \
+    copy_path /opt/android; \
+    copy_glob '/usr/local/lib/libLiteRt.so*'; \
+    copy_glob '/usr/local/lib/libtensorflow-lite.so*'; \
+    copy_glob '/usr/local/lib/libtensorflowlite_c.so*'; \
+    copy_glob '/usr/local/lib/libvvdec.so*'
+
+FROM ${BASE_IMAGE}
+
+ARG BUILD_TYPE=Release
+ARG WORKDIR=/workspace
+ARG BUILD_DATE=""
+ARG VCS_REF=""
+ARG BUILD_BY="CI"
+
+COPY --from=artifact-payload /payload/ /
+
+# Refresh the runtime scripts from the repository so the final packaged image
+# stays aligned with the current runtime entrypoint/env behavior.
+COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
+COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
+
+WORKDIR ${WORKDIR}
+VOLUME ["${WORKDIR}"]
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/bin/bash"]
+
+LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
+      org.opencontainers.image.description="Kataglyphis runtime image assembled by overlaying cross-built target payload onto a real target-platform base image" \
+      org.opencontainers.image.version="${BUILD_TYPE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \
+      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
+      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
+      org.opencontainers.image.licenses="MIT"

@@ -7,84 +7,55 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-ARTIFACTS_ROOT="${ARTIFACTS_ROOT:-${REPO_ROOT}/out/linux-runtime}"
 IMAGE_NAME="${IMAGE_NAME:-}"
 ARCHITECTURES="${ARCHITECTURES:-amd64,arm64,riscv64}"
+BASE_IMAGE="${BASE_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest}"
+ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-linux/Dockerfile.runtime-package}"
 
 PUSH_IMAGES=0
-
-TMP_DIRS=()
 
 usage() {
   cat <<'EOF'
 Usage: build-runtime-manifest.sh --image IMAGE [options]
 
-Builds one runtime image per architecture from prebuilt rootfs artifacts and
-optionally pushes a multi-architecture manifest with nerdctl.
-
-Expected artifact layout:
-  out/linux-runtime/amd64/rootfs/
-  out/linux-runtime/arm64/rootfs/
-  out/linux-runtime/riscv64/rootfs/
+Builds one runtime image per architecture by overlaying target-built payload
+from amd64-hosted cross artifact images onto a real target-platform base image,
+then optionally pushes a multi-architecture manifest with nerdctl.
 
 Options:
   --image IMAGE           Base image tag to use (required)
-  --artifacts-root DIR    Root directory for per-architecture rootfs trees
   --architectures LIST    Comma-separated list (default: amd64,arm64,riscv64)
+  --base-image IMAGE      Real target-platform base image (default: :latest)
+  --artifact-image-prefix TAG
+                         Prefix for amd64-hosted cross artifact image tags
+  --dockerfile PATH      Packaging Dockerfile (default: linux/Dockerfile.runtime-package)
   --push                  Push per-architecture images and the manifest
   -h, --help              Show this help text
 
 Environment overrides:
   NERDCTL_BIN             nerdctl executable to use
-  ARTIFACTS_ROOT          Root directory for artifacts
   IMAGE_NAME              Base image name, equivalent to --image
   ARCHITECTURES           Comma-separated architecture list
+  BASE_IMAGE              Real target-platform base image
+  ARTIFACT_IMAGE_PREFIX   Prefix for cross artifact image tags
+  DOCKERFILE_PATH         Packaging Dockerfile path
 EOF
-}
-
-cleanup() {
-  local dir
-  for dir in "${TMP_DIRS[@]}"; do
-    rm -rf "${dir}"
-  done
-}
-trap cleanup EXIT
-
-stage_context() {
-  local arch="$1"
-  local src_rootfs="${ARTIFACTS_ROOT}/${arch}/rootfs"
-  local ctx
-
-  if [ ! -d "${src_rootfs}" ]; then
-    printf '[ERROR] Missing artifact rootfs for %s: %s\n' "${arch}" "${src_rootfs}" >&2
-    exit 1
-  fi
-
-  ctx="$(mktemp -d)"
-  TMP_DIRS+=("${ctx}")
-
-  mkdir -p "${ctx}/rootfs" "${ctx}/runtime"
-  cp "${REPO_ROOT}/linux/Dockerfile.runtime-artifact" "${ctx}/Dockerfile"
-  cp -a "${src_rootfs}/." "${ctx}/rootfs/"
-  cp -a "${REPO_ROOT}/linux/scripts/04-runtime/." "${ctx}/runtime/"
-  cp "${REPO_ROOT}/linux/scripts/02-toolchain/vulkan.sh" "${ctx}/runtime/vulkan.sh"
-  chmod +x "${ctx}/runtime/"*.sh 2>/dev/null || true
-
-  printf '%s' "${ctx}"
 }
 
 build_arch_image() {
   local arch="$1"
   local tag="${IMAGE_NAME}-${arch}"
-  local ctx
-
-  ctx="$(stage_context "${arch}")"
+  local artifact_image="${ARTIFACT_IMAGE_PREFIX}-${arch}"
 
   run "${NERDCTL_BIN}" build \
+    --pull=true \
     --platform "linux/${arch}" \
     -t "${tag}" \
-    -f "${ctx}/Dockerfile" \
-    "${ctx}"
+    -f "${DOCKERFILE_PATH}" \
+    --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+    --build-arg "ARTIFACT_IMAGE=${artifact_image}" \
+    .
 
   if [ "${PUSH_IMAGES}" -eq 1 ]; then
     run "${NERDCTL_BIN}" push "${tag}"
@@ -114,8 +85,16 @@ main() {
         IMAGE_NAME="$2"
         shift 2
         ;;
-      --artifacts-root)
-        ARTIFACTS_ROOT="$2"
+      --base-image)
+        BASE_IMAGE="$2"
+        shift 2
+        ;;
+      --artifact-image-prefix)
+        ARTIFACT_IMAGE_PREFIX="$2"
+        shift 2
+        ;;
+      --dockerfile)
+        DOCKERFILE_PATH="$2"
         shift 2
         ;;
       --architectures)
@@ -145,6 +124,8 @@ main() {
   fi
 
   cd "${REPO_ROOT}"
+  ARCHITECTURES="$(normalize_target_arches "${ARCHITECTURES}")"
+  log "Building final runtime package images for architectures: ${ARCHITECTURES}"
 
   local arch
   for arch in ${ARCHITECTURES//,/ }; do
