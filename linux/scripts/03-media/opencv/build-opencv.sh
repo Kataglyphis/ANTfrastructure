@@ -21,7 +21,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
     "/opt/scripts/core/cross-env.sh" \
-    "${SCRIPT_DIR}/../../../01-core/cross-env.sh"; do
+    "${SCRIPT_DIR}/../../01-core/cross-env.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -31,7 +31,7 @@ done
 
 for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
-    "${SCRIPT_DIR}/../../../01-core/compiler-cache.sh"; do
+    "${SCRIPT_DIR}/../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -220,6 +220,10 @@ configure_opencv() {
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # Ubuntu Ports cannot currently satisfy the target GStreamer/GLib dev chain for riscv64 cross builds.
             with_gstreamer="OFF"
+        fi
+        if [ "${WITH_PYTHON}" = "true" ] && command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
+            echo "Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling OpenCV Python bindings in cross mode"
+            WITH_PYTHON="false"
         fi
     fi
 

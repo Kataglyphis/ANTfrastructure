@@ -2,12 +2,12 @@
 set -eux
 
 # 1. Parse Arguments
-GST_VERSION="1.29.1"
-ANDROID_SDK="/opt/android-sdk"
-ANDROID_NDK="/opt/android-sdk/ndk/29.0.14206865"
-INSTALL_PATH="/opt/android/gstreamer"
-ANDROID_API_LEVEL=34  # Android 14
-TARGET_ARCH="arm64"
+GST_VERSION="${GSTREAMER_VERSION:-1.29.1}"
+ANDROID_SDK="${ANDROID_HOME:-/opt/android-sdk}"
+ANDROID_NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/${ANDROID_NDK_VERSION:-29.0.14206865}}"
+INSTALL_PATH="${GSTREAMER_ROOT_ANDROID:-/opt/android/gstreamer}"
+ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-34}"
+TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-arm64}}"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -29,6 +29,19 @@ export DEBCONF_NONINTERACTIVE_SEEN=true
 if [ -f /opt/scripts/core/cross-env.sh ]; then
     # shellcheck disable=SC1091
     source /opt/scripts/core/cross-env.sh
+fi
+
+if command -v android_target_arch >/dev/null 2>&1; then
+    TARGET_ARCH="$(android_target_arch)"
+elif command -v arch_normalize >/dev/null 2>&1; then
+    TARGET_ARCH="$(arch_normalize "${TARGET_ARCH}")"
+fi
+
+if command -v android_raise_api_level_if_needed >/dev/null 2>&1; then
+    ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL}" "GStreamer Android build")"
+elif [ "${TARGET_ARCH}" = "riscv64" ] && [ "${ANDROID_API_LEVEL}" -lt 35 ]; then
+    echo "==> Note: Raising Android API level from ${ANDROID_API_LEVEL} to 35 for ${TARGET_ARCH}"
+    ANDROID_API_LEVEL=35
 fi
 
 resolve_host_python() {
@@ -58,6 +71,17 @@ resolve_host_python() {
     fi
 
     command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
+}
+
+patch_cerbero_system_m4_usage() {
+    local autoconf_recipe="recipes/build-tools/autoconf.recipe"
+    local libtool_recipe="recipes/build-tools/libtool.recipe"
+
+    [ -f "${autoconf_recipe}" ] || return 0
+    [ -f "${libtool_recipe}" ] || return 0
+
+    # Cerbero's bundled m4 1.4.20 currently fails against the host libc/toolchain.
+    perl -0pi -e "s/deps = \['m4'\]/deps = []/" "${autoconf_recipe}" "${libtool_recipe}"
 }
 
 # ------------------------------------------------------------------------------
@@ -116,7 +140,7 @@ apt-get install -y --no-install-recommends \
     x11proto-record-dev libxrender-dev libgl1-mesa-dev \
     libxfixes-dev libxdamage-dev libxcomposite-dev libasound2-dev \
     gperf wget libxtst-dev libxrandr-dev libglu1-mesa-dev \
-    libegl1-mesa-dev git xutils-dev ccache \
+    libegl1-mesa-dev git m4 xutils-dev ccache \
     libssl-dev
 
 # 4. Setup Cerbero with fallback mechanism
@@ -184,6 +208,8 @@ else
     cd cerbero
 fi
 
+patch_cerbero_system_m4_usage
+
 # 5. Setup Python Virtual Environment
 HOST_PYTHON="$(resolve_host_python)"
 export UV_PYTHON="${HOST_PYTHON}" \
@@ -208,9 +234,13 @@ case "$TARGET_ARCH" in
         CERBERO_TARGET_ARCH="ARM64"
         CONFIG_NAME="android_arm64"
         ;;
-    x86_64|x64)
+    amd64|x86_64|x64)
         CERBERO_TARGET_ARCH="X86_64"
         CONFIG_NAME="android_x86_64"
+        ;;
+    riscv64|riscv|rv64*)
+        CERBERO_TARGET_ARCH="RISCV64"
+        CONFIG_NAME="android_riscv64"
         ;;
     armv7|arm)
         CERBERO_TARGET_ARCH="ARMv7"
@@ -229,9 +259,15 @@ mkdir -p "${CERBERO_HOME}"
 mkdir -p "${CERBERO_PREFIX}"
 
 # 9. Map API level to Cerbero's DistroVersion enum
-# Note: GStreamer 1.26.9 has limited Android version support
-# Use the highest available version for newer Android APIs
-if [ "$ANDROID_API_LEVEL" -ge 26 ]; then
+CERBERO_VARIANTS_OVERRIDE=""
+
+# Note: Cerbero's bundled riscv64 Android config requires API 35 and disables Rust.
+# Other Android targets still use the older distro version mapping.
+if [ "${CERBERO_TARGET_ARCH}" = "RISCV64" ]; then
+    DISTRO_VERSION="ANDROID_VANILLAICECREAM"
+    CERBERO_VARIANTS_OVERRIDE="variants.override('norust')"
+    echo "==> Note: Using ANDROID_VANILLAICECREAM for Android riscv64 (Cerbero requirement)"
+elif [ "$ANDROID_API_LEVEL" -ge 26 ]; then
     DISTRO_VERSION="ANDROID_OREO"           # API 26+ - Use Oreo for all newer versions
     echo "==> Note: Using ANDROID_OREO for API ${ANDROID_API_LEVEL} (highest available in GStreamer 1.26.9)"
 elif [ "$ANDROID_API_LEVEL" -ge 24 ]; then
@@ -277,7 +313,7 @@ logs = os.path.join(home_dir, "logs")
 cache_file = os.path.join(home_dir, "cache-file.cache")
 
 # Build configuration
-variants = []
+${CERBERO_VARIANTS_OVERRIDE}
 interactive = False
 
 # Toolchain configuration
@@ -306,6 +342,7 @@ fi
 (
     unset RUSTUP_HOME CARGO_HOME RUSTC_WRAPPER
     export DEBIAN_FRONTEND=noninteractive
+    export M4=/usr/bin/m4
     export SETUPTOOLS_USE_DISTUTILS=local
     
     # Set Android environment variables
@@ -323,8 +360,8 @@ fi
         libcurl4-openssl-dev libdrm-dev libegl1-mesa-dev libgl1-mesa-dev \
         libglu1-mesa-dev libpulse-dev libssl-dev libtool libva-dev libx11-dev \
         libx11-xcb-dev libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev \
-        libxi-dev libxrandr-dev libxrender-dev libxtst-dev libxv-dev make nasm \
-        ninja-build pkg-config x11proto-record-dev \
+        libxi-dev libxrandr-dev libxrender-dev libxtst-dev libxv-dev m4 make nasm \
+        ninja-build pkg-config python3-dev python3-setuptools x11proto-record-dev \
         xutils-dev || true
 
     echo "==> Running Cerbero Bootstrap..."

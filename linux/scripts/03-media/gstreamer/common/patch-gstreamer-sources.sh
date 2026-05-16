@@ -58,6 +58,8 @@ patch_gstreamer_sources() {
   local repo_root="$1"
   local meson_args="$2"
   local cargo_toml="${repo_root}/subprojects/gst-plugins-rs/Cargo.toml"
+  local cargo_wrapper_py="${repo_root}/subprojects/gst-plugins-rs/cargo_wrapper.py"
+  local gst_plugins_rs_meson="${repo_root}/subprojects/gst-plugins-rs/meson.build"
   local webrtc_ice_h="${repo_root}/subprojects/gst-plugins-bad/gst-libs/gst/webrtc/ice.h"
   local lame_meson="${repo_root}/subprojects/gst-plugins-good/ext/lame/meson.build"
 
@@ -89,6 +91,27 @@ patch_gstreamer_sources() {
      grep -Fq "have_lame = cc.has_header_symbol('lame/lame.h', 'lame_init')" "${lame_meson}" && \
      ! grep -Fq "have_lame = lame_dep.found() and cc.has_header_symbol('lame/lame.h', 'lame_init')" "${lame_meson}"; then
     sed -i "s/have_lame = cc.has_header_symbol('lame\/lame.h', 'lame_init')/have_lame = lame_dep.found() and cc.has_header_symbol('lame\/lame.h', 'lame_init')/" "${lame_meson}"
+  fi
+
+  # When Meson drives gst-plugins-rs through cargo_wrapper.py in cross builds,
+  # the RUSTC wrapper may intentionally omit --target so host-side build scripts
+  # still use the native toolchain. cargo-cbuild's pkg-config generation then
+  # falls back to the host triple unless cargo_wrapper.py forwards the explicit
+  # Cargo target. Reuse CARGO_BUILD_TARGET when available and mirror it back
+  # into Cargo's env so cargo-c stops using the host/default target layout.
+  if [ -f "${cargo_wrapper_py}" ] && \
+     grep -Fq "env['RUSTC'] = rustc_cmdline[0]" "${cargo_wrapper_py}" && \
+     ! grep -Fq "env.get('CROSS_RUST_TARGET')" "${cargo_wrapper_py}"; then
+    perl -0pi -e "s/env\['RUSTC'\] = rustc_cmdline\[0\]\n(?:\n    if not rustc_target:\n        rustc_target = env\.get\('CARGO_BUILD_TARGET'\)\n)?/env['RUSTC'] = rustc_cmdline[0]\n\n    if not rustc_target:\n        rustc_target = env.get('CARGO_BUILD_TARGET') or env.get('CROSS_RUST_TARGET')\n    if rustc_target and 'CARGO_BUILD_TARGET' not in env:\n        env['CARGO_BUILD_TARGET'] = rustc_target\n/" "${cargo_wrapper_py}"
+  fi
+
+  # Meson's custom_target env only forwards the keys in extra_env. Copy the
+  # shell's explicit cross Rust target into gst-plugins-rs' extra_env so the
+  # vendored cargo wrapper can always append --target for cargo-c.
+  if [ -f "${gst_plugins_rs_meson}" ] && \
+     grep -Fq "extra_env = {}" "${gst_plugins_rs_meson}" && \
+     ! grep -Fq "extra_env += {'CARGO_BUILD_TARGET': cargo_build_target}" "${gst_plugins_rs_meson}"; then
+    perl -0pi -e "s/extra_env = \{\}\n/extra_env = {}\n\ncargo_build_target = ''\nif python.found()\n  cargo_build_target = run_command(python, '-c', 'import os; print(os.environ.get(\"CARGO_BUILD_TARGET\") or os.environ.get(\"CROSS_RUST_TARGET\") or \"\")', check: true).stdout().strip()\nendif\nif cargo_build_target != ''\n  extra_env += {'CARGO_BUILD_TARGET': cargo_build_target}\nendif\n/" "${gst_plugins_rs_meson}"
   fi
 
   prune_disabled_gst_plugins_rs_workspace_members "${cargo_toml}" "${meson_args}"

@@ -24,18 +24,24 @@ FROM ${BASE_IMAGE}
 
 ARG ROCM_VERSION=6.1.2
 ARG UBUNTU_VERSION=noble
+ARG TARGETARCH
 ARG USE_FAST_UBUNTU_MIRROR=false
-ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 SHELL ["bash", "-lc"]
 
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
     USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
     FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
     bash /tmp/use-fast-ubuntu-mirror.sh
 
 # Install prerequisites and add ROCm repository
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-amd-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-amd-${TARGETARCH} \
+    set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends \
         wget \
         gnupg2 \
         software-properties-common \
@@ -58,9 +64,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV ROCM_HOME=/opt/rocm
 ENV PATH="${ROCM_HOME}/bin:${PATH}"
-ENV LD_LIBRARY_PATH="${ROCM_HOME}/lib:${ROCM_HOME}/lib64:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="${ROCM_HOME}/lib:${ROCM_HOME}/lib64:${LD_LIBRARY_PATH:-}"
 
 RUN echo "export PATH=${ROCM_HOME}/bin:\$PATH" >> /etc/profile.d/rocm.sh \
     && echo "${ROCM_HOME}/lib" > /etc/ld.so.conf.d/rocm.conf \
     && echo "${ROCM_HOME}/lib64" >> /etc/ld.so.conf.d/rocm.conf \
     && ldconfig
+
+RUN set -eux; \
+    test -x "${ROCM_HOME}/bin/hipcc"; \
+    ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse' >/dev/null

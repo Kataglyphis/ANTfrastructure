@@ -193,6 +193,7 @@ init_defaults() {
 
   NATIVE_CPU_BUILD_DIR="${NATIVE_CPU_BUILD_DIR:-${ORT_SRC_DIR}/build_native_cpu}"
   NATIVE_CPU_OUTPUT_DIR="${NATIVE_CPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}"
+  NATIVE_GPU_OUTPUT_DIR="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"
   NATIVE_CPU_CONFIG="${NATIVE_CPU_CONFIG:-Release}"
 
   BUILD_NATIVE_CPU="${BUILD_NATIVE_CPU:-true}"
@@ -274,7 +275,7 @@ parse_common_args() {
 
   export ORT_VERSION ORT_REPO ORT_SRC_DIR
   export WASM_OUTPUT_DIR WASM_CONFIG BUILD_DIR
-  export NATIVE_CPU_BUILD_DIR NATIVE_CPU_OUTPUT_DIR NATIVE_CPU_CONFIG
+  export NATIVE_CPU_BUILD_DIR NATIVE_CPU_OUTPUT_DIR NATIVE_GPU_OUTPUT_DIR NATIVE_CPU_CONFIG
   export BUILD_NATIVE_CPU BUILD_DNNL_EP BUILD_XNNPACK_EP BUILD_ACL_EP ACL_HOME ACL_LIBS
   export BUILD_GENAI GENAI_VERSION GENAI_REPO GENAI_SRC_DIR GENAI_BUILD_DIR GENAI_OUTPUT_DIR GENAI_CONFIG
   export USE_UV_VENV UV_VENV_DIR
@@ -301,6 +302,222 @@ detect_jobs() {
   JOBS="$(compute_jobs_with_mem_cap "" 2000)"
   export JOBS
   info "Using JOBS=${JOBS}"
+}
+
+source_build_acceleration_helpers() {
+  local include_sccache="${1:-false}"
+  local helper
+
+  for helper in \
+    "/opt/scripts/core/compiler-cache.sh" \
+    "${_ONNX_LIB_DIR}/../../../../01-core/compiler-cache.sh"; do
+    if [ -f "${helper}" ]; then
+      # shellcheck disable=SC1090
+      source "${helper}"
+      setup_ccache
+      if [ "${include_sccache}" = "true" ] && command -v setup_sccache >/dev/null 2>&1; then
+        setup_sccache
+      fi
+      setup_lld_linker
+      return 0
+    fi
+  done
+
+  return 0
+}
+
+setup_host_python_environment() {
+  HOST_PYTHON_BIN="$(host_python_bin)"
+  export HOST_PYTHON_BIN
+  export PYTHON_EXECUTABLE="${HOST_PYTHON_BIN}" \
+         Python_EXECUTABLE="${HOST_PYTHON_BIN}" \
+         Python3_EXECUTABLE="${HOST_PYTHON_BIN}"
+}
+
+ensure_uv_python_packages() {
+  local python_bin="${1:-}"
+  shift || true
+
+  [ "$#" -gt 0 ] || return 0
+  require_cmd uv
+
+  if [ -z "${python_bin}" ]; then
+    python_bin="$(host_python_bin)"
+  fi
+
+  uv pip install --python "${python_bin}" "$@"
+}
+
+ensure_onnx_output_tree() {
+  local output_dir="${1:?output dir required}"
+
+  mkdir -p "${output_dir}" "${output_dir}/lib" "${output_dir}/include" "${output_dir}/wheels"
+}
+
+ensure_onnx_gpu_placeholder_output_dir() {
+  ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
+}
+
+collect_wheels_from_tree() {
+  local search_root="${1:?search root required}"
+  local output_dir="${2:?output dir required}"
+  local wheel_label="${3:-wheel}"
+  local wheel_path
+
+  [ -d "${search_root}" ] || return 0
+  mkdir -p "${output_dir}/wheels"
+
+  find "${search_root}" -name "*.whl" -type f 2>/dev/null | while read -r wheel_path; do
+    info "Copying ${wheel_label}: ${wheel_path}"
+    cp "${wheel_path}" "${output_dir}/wheels/"
+    ls -lh "${output_dir}/wheels/$(basename "${wheel_path}")"
+  done || info "No wheels found in ${search_root}"
+}
+
+maybe_build_source_wheel() {
+  local source_dir="${1:?source dir required}"
+  local output_dir="${2:?output dir required}"
+  local python_bin="${3:?python binary required}"
+  local package_label="${4:-package}"
+
+  if [ -n "$(ls -A "${output_dir}/wheels" 2>/dev/null || true)" ]; then
+    return 0
+  fi
+
+  if [ -f "${source_dir}/pyproject.toml" ] || [ -f "${source_dir}/setup.py" ]; then
+    info "No ${package_label} wheels found; attempting pip wheel build from source"
+    mkdir -p "${output_dir}/wheels"
+    "${python_bin}" -m pip wheel -w "${output_dir}/wheels" "${source_dir}" || info "pip wheel failed for ${package_label} source"
+    ls -lh "${output_dir}/wheels"/*.whl 2>/dev/null || true
+  else
+    info "${package_label} python packaging not detected; skipping pip wheel"
+  fi
+}
+
+copy_onnx_headers_to_output() {
+  local output_dir="${1:?output dir required}"
+  local search_dir header_path
+
+  shift
+  mkdir -p "${output_dir}/include"
+
+  for search_dir in "$@"; do
+    [ -d "${search_dir}/include" ] || continue
+    cp -a "${search_dir}/include/." "${output_dir}/include/" 2>/dev/null || true
+    info "Copied headers from ${search_dir}/include"
+  done
+
+  for search_dir in "$@"; do
+    [ -d "${search_dir}/include" ] || continue
+    find "${search_dir}/include" -name "onnxruntime*.h" -type f 2>/dev/null | while read -r header_path; do
+      cp "${header_path}" "${output_dir}/include/" 2>/dev/null || true
+    done
+  done
+}
+
+verify_onnxruntime_core_header() {
+  local output_dir="${1:?output dir required}"
+  shift || true
+
+  if [ -f "${output_dir}/include/onnxruntime_c_api.h" ]; then
+    info "Found onnxruntime_c_api.h in ${output_dir}/include"
+    return 0
+  fi
+
+  warn "onnxruntime_c_api.h not found in ${output_dir}/include"
+  for search_dir in "$@"; do
+    [ -d "${search_dir}" ] || continue
+    find "${search_dir}" -name "onnxruntime_c_api.h" 2>/dev/null | head -5 || true
+  done
+}
+
+copy_onnx_libraries_to_output() {
+  local build_dir="${1:?build dir required}"
+  local build_config="${2:?build config required}"
+  local output_dir="${3:?output dir required}"
+
+  mkdir -p "${output_dir}/lib"
+  find "${build_dir}/${build_config}" -maxdepth 1 -type f \
+    \( -name "libonnxruntime*.so*" -o -name "libonnxruntime_providers_*.so*" \) \
+    -exec cp -t "${output_dir}/lib/" {} + 2>/dev/null || true
+}
+
+ensure_onnxruntime_symlink() {
+  local output_dir="${1:?output dir required}"
+  local onnx_lib=""
+
+  onnx_lib="$(find "${output_dir}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
+  if [ -n "${onnx_lib}" ] && [ ! -e "${output_dir}/lib/libonnxruntime.so" ]; then
+    ln -sf "$(basename "${onnx_lib}")" "${output_dir}/lib/libonnxruntime.so"
+    info "Created symlink: libonnxruntime.so -> $(basename "${onnx_lib}")"
+  fi
+}
+
+symlink_output_libraries_into_usr_local() {
+  local output_dir="${1:?output dir required}"
+
+  find "${output_dir}/lib" -type f -name "lib*.so*" -print0 2>/dev/null | \
+    xargs -0 -r ln -sf -t /usr/local/lib/ 2>/dev/null || true
+
+  ldconfig 2>/dev/null || true
+}
+
+append_onnx_cross_cmake_build_args() {
+  local build_args_name="$1"
+  # shellcheck disable=SC2178
+  local -n build_args_ref="${build_args_name}"
+
+  build_args_ref+=(
+    --cmake_extra_defines
+    CMAKE_SYSTEM_NAME=Linux
+    CMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}"
+    CMAKE_C_COMPILER="${CC}"
+    CMAKE_CXX_COMPILER="${CXX}"
+    CMAKE_ASM_COMPILER="${CC}"
+    CMAKE_SYSROOT=/
+    CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+    CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
+    CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+    CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+    onnxruntime_ENABLE_PYTHON=OFF
+    onnxruntime_BUILD_UNIT_TESTS=OFF
+    onnxruntime_GENERATE_TEST_REPORTS=OFF
+  )
+}
+
+append_onnx_lld_build_args() {
+  local build_args_name="$1"
+  # shellcheck disable=SC2178
+  local -n build_args_ref="${build_args_name}"
+
+  if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+    build_args_ref+=(
+      --cmake_extra_defines
+      CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
+      CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld
+      CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld
+    )
+    info "Using lld linker for faster linking"
+  fi
+}
+
+append_onnx_ccache_build_args() {
+  local build_args_name="$1"
+  # shellcheck disable=SC2178
+  local -n build_args_ref="${build_args_name}"
+
+  if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+    if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
+      build_args_ref+=(
+        --cmake_extra_defines
+        CMAKE_C_COMPILER_LAUNCHER=ccache
+        CMAKE_CXX_COMPILER_LAUNCHER=ccache
+      )
+      info "Using ccache for faster compilation (via cmake_extra_defines)"
+    else
+      info "ccache already configured via environment (CMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER})"
+    fi
+  fi
 }
 
 pc_numeric_version_from_ort_version() {

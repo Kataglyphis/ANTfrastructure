@@ -3,6 +3,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 ARTIFACTS_ROOT="${ARTIFACTS_ROOT:-${REPO_ROOT}/out/linux-runtime}"
 IMAGE_NAME="${IMAGE_NAME:-}"
@@ -37,17 +40,6 @@ Environment overrides:
   IMAGE_NAME              Base image name, equivalent to --image
   ARCHITECTURES           Comma-separated architecture list
 EOF
-}
-
-log() {
-  printf '[INFO] %s\n' "$*"
-}
-
-run() {
-  printf '+ '
-  printf '%q ' "$@"
-  printf '\n'
-  "$@"
 }
 
 cleanup() {

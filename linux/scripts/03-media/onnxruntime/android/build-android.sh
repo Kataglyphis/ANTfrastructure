@@ -6,45 +6,24 @@ if [ -f /opt/scripts/core/platform.sh ]; then
   source /opt/scripts/core/platform.sh
 fi
 
-build_arch() {
-  if command -v build_arch_oci >/dev/null 2>&1; then
-    build_arch_oci
-    return 0
-  fi
-  if [ -n "${BUILDARCH:-}" ]; then
-    printf '%s' "${BUILDARCH}"
-    return 0
-  fi
-  if command -v dpkg >/dev/null 2>&1; then
-    dpkg --print-architecture 2>/dev/null && return 0
-  fi
-  uname -m || true
-}
-
-android_abi() {
-  if command -v android_abi_for_target >/dev/null 2>&1; then
-    android_abi_for_target
-    return 0
-  fi
-  case "${TARGET_ARCH:-${TARGETARCH:-arm64}}" in
-    amd64|x86_64) printf '%s' "x86_64" ;;
-    arm64|aarch64) printf '%s' "arm64-v8a" ;;
-    386|i386|i686|x86) printf '%s' "x86" ;;
-    riscv64|riscv|rv64*) printf '%s' "riscv64" ;;
-    *) printf '%s' "" ;;
-  esac
-}
-
-if [ "$(build_arch)" != "amd64" ]; then
-  echo "Skipping Android ONNX Runtime build on non-amd64 build host"
+if ! android_require_amd64_build_host "Android ONNX Runtime build"; then
   exit 0
 fi
 
-ANDROID_ABI="$(android_abi)"
+TARGET_ARCH="$(android_target_arch)"
+ANDROID_ABI="$(android_target_abi)"
 : "${ANDROID_ABI:?Unsupported Android target ABI}"
 
+case "${TARGET_ARCH}" in
+  riscv64|riscv|rv64*)
+    echo "Skipping Android ONNX Runtime build for riscv64 because upstream build.sh does not support that Android ABI"
+    exit 0
+    ;;
+esac
+
 ORT_VERSION="${1:-v1.26.0}"
-INSTALL_DIR="/opt/android/onnxruntime"
+ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL:-34}" "Android ONNX Runtime build")"
+INSTALL_DIR="${ONNXRUNTIME_ROOT_ANDROID:-/opt/android/onnxruntime}"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
@@ -69,7 +48,7 @@ sed -i '/android {/a \    buildFeatures {\n        buildConfig = true\n    }' ja
   --android_sdk_path "${ANDROID_HOME}" \
   --android_ndk_path "${ANDROID_NDK_HOME}" \
   --android_abi "${ANDROID_ABI}" \
-  --android_api 34 \
+  --android_api "${ANDROID_API_LEVEL}" \
   --build_java \
   --build_shared_lib \
   --config Release \

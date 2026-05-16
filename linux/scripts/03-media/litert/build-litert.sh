@@ -14,7 +14,7 @@ set -euo pipefail
 SCRIPT_DIR_LITERT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
     "/opt/scripts/core/cross-env.sh" \
-    "${SCRIPT_DIR_LITERT}/../../../01-core/cross-env.sh"; do
+    "${SCRIPT_DIR_LITERT}/../../01-core/cross-env.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -24,7 +24,7 @@ done
 
 for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
-    "${SCRIPT_DIR_LITERT}/../../../01-core/compiler-cache.sh"; do
+    "${SCRIPT_DIR_LITERT}/../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -53,10 +53,6 @@ export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
 echo "[INFO] Building LiteRT ${LITERT_VERSION}"
 echo "[INFO] Using JOBS=${NPROC}"
 echo "[INFO] Install prefix: ${LITERT_PREFIX}"
-
-install_dependencies() {
-    echo "[INFO] Dependencies should be installed prior to running this script."
-}
 
 fetch_litert() {
     echo "[INFO] Fetching LiteRT ${LITERT_VERSION} source..."
@@ -473,6 +469,11 @@ install_litert() {
     # Docker stages can copy the wheels directory even when no wheel is built.
     mkdir -p "${LITERT_PREFIX}/wheels"
 
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        echo "[INFO] Skipping LiteRT Python wheel build in cross mode; target wheel build and validation are not supported in the amd64 host container"
+        return 0
+    fi
+
     # Try to build a Python wheel if the project exposes a Python package
     local pip_pkg_dir="${LITERT_SRC}/tflite/tools/pip_package"
     if [ -d "${pip_pkg_dir}" ]; then
@@ -809,7 +810,6 @@ cleanup() {
 
 main() {
     echo "[INFO] LiteRT build started"
-    install_dependencies
     fetch_litert
     configure_litert
     build_litert

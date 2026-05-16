@@ -3,6 +3,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 COMPILER_IMAGE="${COMPILER_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
@@ -54,47 +57,6 @@ Environment overrides:
   FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
   FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
 EOF
-}
-
-canonical_target_arch() {
-  case "$1" in
-    amd64|x86_64) printf '%s' "amd64" ;;
-    arm64|aarch64) printf '%s' "arm64" ;;
-    riscv64|riscv|rv64*) printf '%s' "riscv64" ;;
-    *) return 1 ;;
-  esac
-}
-
-normalize_target_arches() {
-  local raw_arches="$1"
-  local raw_arch normalized_arch
-  local -a normalized_arches=()
-
-  for raw_arch in ${raw_arches//,/ }; do
-    normalized_arch="$(canonical_target_arch "${raw_arch}")" || {
-      printf '[ERROR] Unsupported target architecture: %s\n' "${raw_arch}" >&2
-      exit 1
-    }
-    normalized_arches+=("${normalized_arch}")
-  done
-
-  if [ "${#normalized_arches[@]}" -eq 0 ]; then
-    printf '[ERROR] At least one target architecture is required\n' >&2
-    exit 1
-  fi
-
-  printf '%s' "${normalized_arches[*]}" | tr ' ' ','
-}
-
-log() {
-  printf '[INFO] %s\n' "$*"
-}
-
-run() {
-  printf '+ '
-  printf '%q ' "$@"
-  printf '\n'
-  "$@"
 }
 
 image_exists() {
@@ -151,36 +113,6 @@ build_sdk_image() {
 push_sdk_image() {
   local tag="$1"
   run "${NERDCTL_BIN}" push "${tag}"
-}
-
-export_rootfs() {
-  local arch="$1"
-  local tag="$2"
-  local artifact_dir="${OUTPUT_ROOT}/${arch}"
-  local rootfs_dir="${artifact_dir}/rootfs"
-  local cid=""
-
-  rm -rf "${artifact_dir}"
-  mkdir -p "${rootfs_dir}"
-
-  cid="$(${NERDCTL_BIN} create "${tag}" /bin/true)"
-  cleanup_container() {
-    if [ -n "${cid}" ]; then
-      "${NERDCTL_BIN}" rm -f "${cid}" >/dev/null 2>&1 || true
-    fi
-  }
-  trap cleanup_container RETURN
-
-  "${NERDCTL_BIN}" export "${cid}" | tar -xpf - -C "${rootfs_dir}"
-
-  cat > "${artifact_dir}/artifact.env" <<EOF
-TARGET_ARCH=${arch}
-SOURCE_IMAGE=${tag}
-VULKAN_VERSION=${VULKAN_VERSION}
-EOF
-
-  cleanup_container
-  trap - RETURN
 }
 
 main() {
@@ -246,7 +178,10 @@ main() {
   for arch in ${TARGET_ARCHES//,/ }; do
     tag="${IMAGE_PREFIX}-${arch}"
     build_sdk_image "${arch}" "${tag}"
-    export_rootfs "${arch}" "${tag}"
+    export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
+      "TARGET_ARCH=${arch}" \
+      "SOURCE_IMAGE=${tag}" \
+      "VULKAN_VERSION=${VULKAN_VERSION}"
     if [ "${PUSH_IMAGES}" -eq 1 ]; then
       push_sdk_image "${tag}"
     fi

@@ -17,15 +17,27 @@ ARG ANDROID_NDK_VERSION=29.0.14206865
 ARG ANDROID_COMPILE_SDK=36
 ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
+ARG ANDROID_API_LEVEL=34
 ARG USE_FAST_UBUNTU_MIRROR=false
-ARG FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 SHELL ["bash", "-lc"]
 
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_SDK_VERSION=${ANDROID_SDK_VERSION} \
+    ANDROID_NDK_VERSION=${ANDROID_NDK_VERSION} \
+    ANDROID_COMPILE_SDK=${ANDROID_COMPILE_SDK} \
+    ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
+    ANDROID_CMAKE_VERSION=${ANDROID_CMAKE_VERSION} \
+    ANDROID_API_LEVEL=${ANDROID_API_LEVEL} \
     ANDROID_NDK_HOME=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
     ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
+    GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer \
+    ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime \
+    LITERT_ROOT_ANDROID=/opt/android/litert \
+    OPENCV_ROOT_ANDROID=/opt/android/opencv \
     BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
     TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
@@ -35,25 +47,18 @@ ENV ANDROID_HOME=/opt/android-sdk \
 
 ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
-COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
-COPY linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh
-RUN chmod +x /opt/scripts/setup-android-sdk-ndk.sh
+COPY --chmod=755 linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
     USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
     FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
     bash /tmp/use-fast-ubuntu-mirror.sh
 RUN set -eux; /opt/scripts/setup-android-sdk-ndk.sh
 
-COPY linux/scripts/03-media/gstreamer/android /opt/scripts/media/gstreamer/android
-COPY linux/scripts/03-media/onnxruntime/android /opt/scripts/media/onnxruntime/android
-COPY linux/scripts/03-media/litert/android /opt/scripts/media/litert/android
-COPY linux/scripts/03-media/opencv/android /opt/scripts/media/opencv/android
-
-RUN chmod +x /opt/scripts/media/gstreamer/android/build-android-from-source.sh \
-    && chmod +x /opt/scripts/media/gstreamer/android/build-gstreamer.sh \
-    && chmod +x /opt/scripts/media/onnxruntime/android/build-android.sh \
-    && chmod +x /opt/scripts/media/litert/android/build-android.sh \
-    && chmod +x /opt/scripts/media/opencv/android/build-android.sh
+COPY --chmod=755 linux/scripts/03-media/gstreamer/android /opt/scripts/media/gstreamer/android
+COPY --chmod=755 linux/scripts/03-media/onnxruntime/android /opt/scripts/media/onnxruntime/android
+COPY --chmod=755 linux/scripts/03-media/litert/android /opt/scripts/media/litert/android
+COPY --chmod=755 linux/scripts/03-media/opencv/android /opt/scripts/media/opencv/android
 
 RUN set -eux; \
         /opt/scripts/media/gstreamer/android/build-gstreamer.sh
@@ -62,8 +67,3 @@ RUN set -eux; \
         /opt/scripts/media/onnxruntime/android/build-android.sh && \
         /opt/scripts/media/litert/android/build-android.sh && \
         /opt/scripts/media/opencv/android/build-android.sh
-
-ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
-ENV ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime
-ENV LITERT_ROOT_ANDROID=/opt/android/litert
-ENV OPENCV_ROOT_ANDROID=/opt/android/opencv

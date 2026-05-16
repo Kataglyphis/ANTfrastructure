@@ -18,7 +18,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
     "/opt/scripts/core/cross-env.sh" \
-    "${SCRIPT_DIR}/../../../01-core/cross-env.sh"; do
+    "${SCRIPT_DIR}/../../01-core/cross-env.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -28,7 +28,7 @@ done
 
 for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
-    "${SCRIPT_DIR}/../../../01-core/compiler-cache.sh"; do
+    "${SCRIPT_DIR}/../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -46,13 +46,6 @@ done
 : "${NPROC:=$(nproc)}"
 
 echo "build-ffmpeg: src=${FFMPEG_SRC} prefix=${FFMPEG_PREFIX} buildtype=${BUILD_TYPE}"
-
-# ------------------------------------------------------------------------------
-# Install build dependencies
-# ------------------------------------------------------------------------------
-install_dependencies() {
-    echo "Dependencies should be installed prior to running this script."
-}
 
 # ------------------------------------------------------------------------------
 # Fetch latest FFmpeg source
@@ -604,8 +597,7 @@ main() {
         
         # Continue with build to ensure we have latest
     fi
-    
-    install_dependencies
+
     fetch_ffmpeg
     configure_ffmpeg
     build_ffmpeg

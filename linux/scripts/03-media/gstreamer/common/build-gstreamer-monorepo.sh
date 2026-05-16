@@ -83,11 +83,14 @@ build_gstreamer_monorepo() {
   local host_arch=""
   local deb_host_multiarch_dir=""
   local sys_pkgconf_dir=""
+  local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv4}"
+  local opencv_libdir=""
   local target_python_libdir=""
   local target_python_pkgconfig_dir=""
   local tflite_pkg_config_name=""
   local tflite_includedir=""
   local tflite_libdir=""
+  local python_feature="enabled"
 
   echo ""
   echo "Setting up Meson build..."
@@ -97,10 +100,17 @@ build_gstreamer_monorepo() {
   if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
     setup_linux_cross_env
     TARGET_MACHINE_ARCH="$(cross_target_arch)"
+    if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then
+      prepare_host_cargo_toolchain_env
+    fi
+    if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" != "true" ]; then
+      python_feature="disabled"
+    fi
   fi
   prepare_cross_python_build_config
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+  if [ "${python_feature}" = "enabled" ] && \
+     command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
      command -v cross_target_python_libdir >/dev/null 2>&1; then
     target_python_libdir="$(cross_target_python_libdir 2>/dev/null || true)"
     if [ -n "${target_python_libdir}" ]; then
@@ -108,7 +118,8 @@ build_gstreamer_monorepo() {
     fi
   fi
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+  if [ "${python_feature}" = "enabled" ] && \
+     command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
      command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
     target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
     if [ -n "${target_python_pkgconfig_dir}" ]; then
@@ -140,7 +151,7 @@ build_gstreamer_monorepo() {
     "-Dexamples=disabled"
     "-Dtests=disabled"
     "-Drtsp_server=enabled"
-    "-Dpython=enabled"
+    "-Dpython=${python_feature}"
     "-Dintrospection=enabled"
   )
 
@@ -244,6 +255,16 @@ build_gstreamer_monorepo() {
     append_env_flag LDFLAGS "-Wl,-rpath-link,/usr/lib/${deb_host_multiarch_dir}"
   fi
 
+  for opencv_libdir in "${opencv_prefix}/lib" "${opencv_prefix}/lib64"; do
+    [ -d "${opencv_libdir}" ] || continue
+    if [ -e "${opencv_libdir}/libopencv_tracking.so" ]; then
+      # gst-plugins-bad/ext/opencv links opencv_tracking via a raw -l flag.
+      append_env_flag LDFLAGS "-L${opencv_libdir}"
+      append_env_flag LDFLAGS "-Wl,-rpath-link,${opencv_libdir}"
+      break
+    fi
+  done
+
   if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
     for dep in tensorflowlite_c tensorflow-lite; do
       if pkg-config --exists "${dep}" 2>/dev/null; then
@@ -306,6 +327,11 @@ build_gstreamer_monorepo() {
 
   echo "Updating subprojects..."
   uv run meson subprojects update > /dev/null 2>&1 || true
+  if command -v patch_gstreamer_sources >/dev/null 2>&1; then
+    # Wrapped subprojects such as gst-plugins-rs may only exist after Meson has
+    # populated the source tree, so reapply source patches here before compile.
+    patch_gstreamer_sources "$(pwd)" "${EXTRA_MESON_ARGS}"
+  fi
   prebuild_gstreamer_riscv_targets
 
   echo "Compiling GStreamer (this may take a while)..."

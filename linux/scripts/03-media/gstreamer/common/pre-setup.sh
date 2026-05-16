@@ -11,12 +11,36 @@ fi
 
 vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
-apt-get update
+if command -v cross_apt_update >/dev/null 2>&1; then
+  cross_apt_update
+else
+  apt-get update
+fi
 
 is_riscv64_cross=false
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
    command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
   is_riscv64_cross=true
+fi
+
+gi_cross_wrapper_arch=""
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1; then
+  case "$(cross_target_arch)" in
+    arm64|riscv64)
+      gi_cross_wrapper_arch="$(cross_target_arch)"
+      ;;
+  esac
+fi
+
+skip_csound_cross=false
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1; then
+  case "$(cross_target_arch)" in
+    arm64|riscv64)
+      skip_csound_cross=true
+      ;;
+  esac
 fi
 
 prefer_toolchain_vulkan=false
@@ -118,8 +142,11 @@ setup_toolchain_vulkan_cross_metadata() {
 host_packages=(build-essential cmake git pkg-config python3-gi gobject-introspection libgirepository1.0-dev libcairo2-dev libpcre2-dev)
 core_packages=(libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-dev libsodium-dev)
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ -n "${gi_cross_wrapper_arch}" ]; then
   host_packages+=(qemu-user)
+fi
+
+if [ "${is_riscv64_cross}" = "true" ]; then
   echo "Skipping libpango1.0-dev and libgdk-pixbuf-2.0-dev target helper packages for riscv64 cross pre-setup because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
   core_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev "${core_packages[@]}")
@@ -129,15 +156,16 @@ apt-get install -y --no-install-recommends "${host_packages[@]}" "${core_package
 
 # Keep the cross pkg-config path target-only, but expose the host-side
 # gobject-introspection metadata through a focused shim so Meson's GIR helper can
-# still discover scanner paths and GIR include dirs during riscv64 cross builds.
-if [ "${is_riscv64_cross}" = "true" ]; then
+# still discover scanner paths and GIR include dirs during wrapper-backed cross
+# builds.
+if [ -n "${gi_cross_wrapper_arch}" ]; then
   build_triplet="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   target_triplet=""
   if command -v cross_target_triplet >/dev/null 2>&1; then
     target_triplet="$(cross_target_triplet 2>/dev/null || true)"
   fi
   if [ -z "${target_triplet}" ]; then
-    target_triplet="$(dpkg-architecture -a riscv64 -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+    target_triplet="$(dpkg-architecture -a "${gi_cross_wrapper_arch}" -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   fi
   gi_version="$(dpkg-query -W -f='${Version}' gobject-introspection 2>/dev/null || true)"
   gi_version="${gi_version%%-*}"
@@ -146,11 +174,13 @@ if [ "${is_riscv64_cross}" = "true" ]; then
   # back into the wrapper we install under /usr/local/bin for Meson's lookup.
   gi_scanner="$(PATH=/usr/bin:/bin command -v g-ir-scanner 2>/dev/null || command -v g-ir-scanner 2>/dev/null || true)"
   gi_host_ldd="$(PATH=/usr/bin:/bin command -v ldd 2>/dev/null || true)"
-  gi_scanner_wrapper="/usr/local/bin/g-ir-scanner-riscv64-cross"
+  gi_scanner_wrapper="/usr/local/bin/g-ir-scanner-${gi_cross_wrapper_arch}-cross"
+  gi_scanner_triplet_wrapper="/usr/bin/${target_triplet}-g-ir-scanner"
   gi_scanner_default="/usr/local/bin/g-ir-scanner"
   gi_ldd_default="/usr/local/bin/ldd"
-  gi_ldd_wrapper="/usr/local/bin/g-ir-scanner-ldd-riscv64-cross"
-  gi_binary_wrapper="/usr/local/bin/g-ir-scanner-riscv64-binary-wrapper"
+  gi_ldd_wrapper="/usr/local/bin/g-ir-scanner-ldd-${gi_cross_wrapper_arch}-cross"
+  gi_binary_wrapper="/usr/local/bin/g-ir-scanner-${gi_cross_wrapper_arch}-binary-wrapper"
+  meson_binary_wrapper="/usr/local/bin/meson-${gi_cross_wrapper_arch}-exe-wrapper"
   if [ -n "${gi_scanner}" ]; then
     gi_bindir="$(dirname "${gi_scanner}")"
   fi
@@ -165,28 +195,53 @@ if [ "${is_riscv64_cross}" = "true" ]; then
     gi_host_ldd="/usr/bin/ldd"
   fi
 
-  qemu_riscv64="$(command -v qemu-riscv64 2>/dev/null || command -v qemu-riscv64-static 2>/dev/null || true)"
-  if [ -z "${qemu_riscv64}" ]; then
-    echo "ERROR: riscv64 cross-introspection requires qemu-riscv64 or qemu-riscv64-static" >&2
-    exit 1
-  fi
+  qemu_runner=""
+  case "${gi_cross_wrapper_arch}" in
+    riscv64)
+      qemu_runner="$(command -v qemu-riscv64 2>/dev/null || command -v qemu-riscv64-static 2>/dev/null || true)"
+      if [ -z "${qemu_runner}" ]; then
+        echo "ERROR: riscv64 cross-introspection requires qemu-riscv64 or qemu-riscv64-static" >&2
+        exit 1
+      fi
+      ;;
+    arm64)
+      qemu_runner="$(command -v qemu-aarch64 2>/dev/null || command -v qemu-aarch64-static 2>/dev/null || true)"
+      if [ -z "${qemu_runner}" ]; then
+        echo "ERROR: arm64 cross-introspection requires qemu-aarch64 or qemu-aarch64-static" >&2
+        exit 1
+      fi
+      ;;
+  esac
 
   qemu_sysroot=""
   for candidate in "/usr/${target_triplet}" "/"; do
-    for loader in \
-      "${candidate}/lib/ld-linux-riscv64-lp64d.so.1" \
-      "${candidate}/lib/ld-linux-riscv64-lp64.so.1" \
-      "${candidate}/lib/ld-linux-riscv64-ilp32d.so.1" \
-      "${candidate}/lib/ld-linux-riscv64-ilp32.so.1"; do
-      if [ -e "${loader}" ]; then
-        qemu_sysroot="${candidate}"
-        break 2
-      fi
-    done
+    case "${gi_cross_wrapper_arch}" in
+      riscv64)
+        for loader in \
+          "${candidate}/lib/ld-linux-riscv64-lp64d.so.1" \
+          "${candidate}/lib/ld-linux-riscv64-lp64.so.1" \
+          "${candidate}/lib/ld-linux-riscv64-ilp32d.so.1" \
+          "${candidate}/lib/ld-linux-riscv64-ilp32.so.1"; do
+          if [ -e "${loader}" ]; then
+            qemu_sysroot="${candidate}"
+            break 2
+          fi
+        done
+        ;;
+      arm64)
+        for loader in \
+          "${candidate}/lib/ld-linux-aarch64.so.1"; do
+          if [ -e "${loader}" ]; then
+            qemu_sysroot="${candidate}"
+            break 2
+          fi
+        done
+        ;;
+    esac
   done
 
   if [ -z "${qemu_sysroot}" ]; then
-    echo "ERROR: Could not locate a riscv64 dynamic loader for qemu under /usr/${target_triplet} or /" >&2
+    echo "ERROR: Could not locate a ${gi_cross_wrapper_arch} dynamic loader for qemu under /usr/${target_triplet} or /" >&2
     exit 1
   fi
 
@@ -227,22 +282,31 @@ for arg in "\$@"; do
   esac
 done
 
-if [ -n "\${binary}" ] && [ -f "\${binary}" ]; then
-  arch="\$(PATH=/usr/bin:/bin objdump -f "\${binary}" 2>/dev/null | awk -F'architecture: ' '/architecture:/ { print \$2; exit }')"
-  case "\${arch}" in
-    riscv:*|riscv64*|*riscv*)
-      exec "${gi_ldd_wrapper}" "\$@"
-      ;;
-  esac
-fi
+  if [ -n "\${binary}" ] && [ -f "\${binary}" ]; then
+    arch="\$(PATH=/usr/bin:/bin objdump -f "\${binary}" 2>/dev/null | awk -F'architecture: ' '/architecture:/ { print \$2; exit }')"
+    case "\${arch}" in
+      aarch64:*|aarch64*|arm64*|*aarch64*)
+        exec "${gi_ldd_wrapper}" "\$@"
+        ;;
+      riscv:*|riscv64*|*riscv*)
+        exec "${gi_ldd_wrapper}" "\$@"
+        ;;
+    esac
+  fi
 
 exec "\${host_ldd}" "\$@"
 EOF
   chmod +x "${gi_ldd_default}"
 
-  cat > "${gi_binary_wrapper}" <<EOF
+  write_qemu_binary_wrapper() {
+    local wrapper_path="$1"
+    local mode="$2"
+
+    cat > "${wrapper_path}" <<EOF
 #!/usr/bin/env bash
 set -eu
+
+wrapper_mode='${mode}'
 
 [ "\$#" -ge 1 ] || exit 2
 
@@ -269,6 +333,47 @@ append_target_libdir() {
   esac
 }
 
+append_binary_runpaths() {
+  local binary_path="\$1"
+  local binary_dir objdump_cmd runpath old_ifs entry
+
+  [ -n "\${binary_path}" ] || return 0
+  [ -f "\${binary_path}" ] || return 0
+
+  binary_dir="\$(cd "\$(dirname "\${binary_path}")" 2>/dev/null && pwd)"
+
+  if [ -n "${target_triplet}" ] && command -v "${target_triplet}-objdump" >/dev/null 2>&1; then
+    objdump_cmd="${target_triplet}-objdump"
+  else
+    objdump_cmd="objdump"
+  fi
+
+  while IFS= read -r runpath; do
+    [ -n "\${runpath}" ] || continue
+
+    old_ifs="\${IFS}"
+    IFS=':'
+    for entry in \${runpath}; do
+      case "\${entry}" in
+        '\$ORIGIN'|'\${ORIGIN}')
+          entry="\${binary_dir}"
+          ;;
+        '\$ORIGIN'/*|'\${ORIGIN}'/*)
+          entry="\${binary_dir}/\${entry#*/}"
+          ;;
+      esac
+      append_target_libdir "\${entry}"
+    done
+    IFS="\${old_ifs}"
+  done < <("\${objdump_cmd}" -p "\${binary_path}" | awk '
+    /^[[:space:]]*RUNPATH/ || /^[[:space:]]*RPATH/ {
+      \$1 = ""
+      sub(/^[[:space:]]+/, "")
+      print
+    }
+  ')
+}
+
 merge_target_libdirs() {
   local value="\$1" dir old_ifs
   [ -n "\${value}" ] || return 0
@@ -281,55 +386,71 @@ merge_target_libdirs() {
   IFS="\${old_ifs}"
 }
 
-# g-ir-scanner injects build-tree library directories into LD_LIBRARY_PATH when
-# it links the temporary dump binary. Preserve those target paths first so qemu
-# can resolve the freshly built uninstalled libraries during GIR generation.
-merge_target_libdirs "\${LD_LIBRARY_PATH:-}"
-# Allow callers to add extra target-only runtime directories without replacing
-# the scanner-provided build-tree paths.
-merge_target_libdirs "\${GI_TARGET_LD_LIBRARY_PATH:-}"
-# Some cross builds only surface certain target runtime directories via
-# LIBRARY_PATH, so fold them in as a fallback for the qemu-launched binary.
-merge_target_libdirs "\${LIBRARY_PATH:-}"
+append_meson_uninstalled_libdirs() {
+  local meson_uninstalled="" entry pc_file pkg_name lib_flag
+  local old_ifs
+  local -a pkg_config_entries
 
-append_target_libdir "\$(dirname "\${binary}")"
+  IFS=':' read -r -a pkg_config_entries <<< "\${PKG_CONFIG_PATH:-}"
+  for entry in "\${pkg_config_entries[@]}"; do
+    case "\${entry}" in
+      */meson-uninstalled)
+        meson_uninstalled="\${entry}"
+        break
+        ;;
+    esac
+  done
+
+  if [ -n "\${meson_uninstalled}" ] && [ -d "\${meson_uninstalled}" ]; then
+    while IFS= read -r pc_file; do
+      pkg_name="\$(basename "\${pc_file}" .pc)"
+      for lib_flag in \$(pkg-config --libs-only-L "\${pkg_name}" 2>/dev/null || true); do
+        case "\${lib_flag}" in
+          -L*)
+            append_target_libdir "\${lib_flag#-L}"
+            ;;
+        esac
+      done
+    done < <(find "\${meson_uninstalled}" -maxdepth 1 -type f -name '*.pc' -print)
+  fi
+}
+
+if [ "\${wrapper_mode}" = "gi" ]; then
+  # For temporary GIR dump binaries, prefer the current build-tree libraries
+  # from meson-uninstalled metadata before broader inherited target paths.
+  append_meson_uninstalled_libdirs
+  merge_target_libdirs "\${LD_LIBRARY_PATH:-}"
+  merge_target_libdirs "\${GI_TARGET_LD_LIBRARY_PATH:-}"
+  merge_target_libdirs "\${LIBRARY_PATH:-}"
+  append_target_libdir "\$(dirname "\${binary}")"
+else
+  # Generic Meson target helpers like orcc need their executable-local
+  # RUNPATH/RPATH ahead of broader target library fallbacks.
+  append_target_libdir "\$(dirname "\${binary}")"
+  append_binary_runpaths "\${binary}"
+  append_meson_uninstalled_libdirs
+  merge_target_libdirs "\${LD_LIBRARY_PATH:-}"
+  merge_target_libdirs "\${GI_TARGET_LD_LIBRARY_PATH:-}"
+  merge_target_libdirs "\${LIBRARY_PATH:-}"
+fi
+
 if [ -n "${target_triplet}" ]; then
   append_target_libdir "/lib/${target_triplet}"
   append_target_libdir "/usr/lib/${target_triplet}"
 fi
 
-meson_uninstalled=""
-IFS=':' read -r -a pkg_config_entries <<< "\${PKG_CONFIG_PATH:-}"
-for entry in "\${pkg_config_entries[@]}"; do
-  case "\${entry}" in
-    */meson-uninstalled)
-      meson_uninstalled="\${entry}"
-      break
-      ;;
-  esac
-done
-
-if [ -n "\${meson_uninstalled}" ] && [ -d "\${meson_uninstalled}" ]; then
-  while IFS= read -r pc_file; do
-    pkg_name="\$(basename "\${pc_file}" .pc)"
-    for lib_flag in \$(pkg-config --libs-only-L "\${pkg_name}" 2>/dev/null || true); do
-      case "\${lib_flag}" in
-        -L*)
-          append_target_libdir "\${lib_flag#-L}"
-          ;;
-      esac
-    done
-  done < <(find "\${meson_uninstalled}" -maxdepth 1 -type f -name '*.pc' -print)
-fi
-
-qemu_args=( "${qemu_riscv64}" -L "${qemu_sysroot}" )
+qemu_args=( "${qemu_runner}" -L "${qemu_sysroot}" )
 if [ -n "\${target_ld_library_path}" ]; then
   qemu_args+=( -E "LD_LIBRARY_PATH=\${target_ld_library_path}" )
 fi
 
 exec env -u LD_LIBRARY_PATH "\${qemu_args[@]}" "\${binary}" "\$@"
 EOF
-  chmod +x "${gi_binary_wrapper}"
+    chmod +x "${wrapper_path}"
+  }
+
+  write_qemu_binary_wrapper "${gi_binary_wrapper}" gi
+  write_qemu_binary_wrapper "${meson_binary_wrapper}" meson
 
   cat > "${gi_scanner_wrapper}" <<EOF
 #!/usr/bin/env bash
@@ -340,6 +461,13 @@ exec "${gi_scanner:-/bin/g-ir-scanner}" \
   "\$@"
 EOF
   chmod +x "${gi_scanner_wrapper}"
+
+  cat > "${gi_scanner_triplet_wrapper}" <<EOF
+#!/usr/bin/env bash
+set -eu
+exec "${gi_scanner_wrapper}" "\$@"
+EOF
+  chmod +x "${gi_scanner_triplet_wrapper}"
 
   cat > "${gi_scanner_default}" <<EOF
 #!/usr/bin/env bash
@@ -355,7 +483,7 @@ EOF
     "bindir=${gi_bindir}" \
     "datadir=/usr/share" \
     "libdir=${gi_libdir}" \
-    "g_ir_scanner=${gi_scanner_wrapper}" \
+    "g_ir_scanner=${gi_scanner_triplet_wrapper}" \
     "g_ir_compiler=\${bindir}/g-ir-compiler" \
     "g_ir_generate=\${bindir}/g-ir-generate" \
     "gidatadir=\${datadir}/gobject-introspection-1.0" \
@@ -377,7 +505,11 @@ fi
 
 # Some base images may not provide the \`xorgproto\` package name. Try a few
 # alternatives and fail early if none are available so the error is clear.
-apt-get update || true
+if command -v cross_apt_update >/dev/null 2>&1; then
+  cross_apt_update || true
+else
+  apt-get update || true
+fi
 apt-get install -y --no-install-recommends xorg-dev || true
 if [ "${is_riscv64_cross}" = "true" ]; then
   apt-get install -y --no-install-recommends x11proto-dev || true
@@ -387,10 +519,15 @@ fi
 # Ensure pkg-config metadata directories updated
 update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # Install Csound packages required for building csound-related plugins.
-apt-get update
-# Skip installing Csound on RISC-V targets where APT packages are often unavailable.
-if echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
-  echo "Skipping Csound APT install on TARGETARCH=${TARGETARCH:-unset}"
+if command -v cross_apt_update >/dev/null 2>&1; then
+  cross_apt_update
+else
+  apt-get update
+fi
+# The later GStreamer build already disables/excludes csound on ARM and RISC-V
+# cross targets, so avoid redundant host-side package churn here.
+if [ "${skip_csound_cross}" = "true" ]; then
+  echo "Skipping Csound pre-setup for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
   apt-get install -y --no-install-recommends \
     csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || \
@@ -400,9 +537,9 @@ fi
 # Create a minimal csound.pc in the appropriate multiarch pkgconfig
 # directory so downstream pkg-config checks succeed. Only create the
 # stub when not building for riscv targets (we skipped installing Csound
-# packages above for riscv), otherwise creating a stub may mask missing
-# package problems on supported arches.
-if ! echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
+# packages above for skipped cross targets), otherwise creating a stub may mask
+# missing package problems on supported arches.
+if [ "${skip_csound_cross}" != "true" ]; then
   triplet=""
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     triplet="$(cross_target_triplet)"
@@ -459,6 +596,6 @@ if ! echo "${TARGETARCH:-}" | grep -qi -E '^riscv|riscv64'; then
   # Persist for later stages / shells
   echo "CSOUND_LIB_DIR=$CSOUND_LIB_DIR" >> /etc/environment
 else
-  echo "Skipping creation of csound.pc stub for riscv target"
+  echo "Skipping creation of csound.pc stub for cross targets where Csound is disabled"
 fi
 rm -rf /var/lib/apt/lists/*

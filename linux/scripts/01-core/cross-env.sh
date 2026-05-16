@@ -322,6 +322,59 @@ make_named_host_compiler_wrapper() {
   make_host_compiler_wrapper "${wrapper_dir}/${wrapper_name}" "${compiler}"
 }
 
+make_meson_cross_rust_wrapper() {
+  local wrapper_path="$1"
+  local rustc_bin="$2"
+  local rust_target="$3"
+
+  [ -n "${wrapper_path}" ] || return 1
+  [ -n "${rustc_bin}" ] || return 1
+  [ -n "${rust_target}" ] || return 1
+
+  mkdir -p "$(dirname "${wrapper_path}")"
+  cat > "${wrapper_path}" <<EOF
+#!/usr/bin/env bash
+set -eu
+
+want_target='${rust_target}'
+have_target=false
+expect_target_value=false
+cargo_managed=false
+
+for arg in "\$@"; do
+  if [ "\${expect_target_value}" = "true" ]; then
+    have_target=true
+    expect_target_value=false
+    continue
+  fi
+
+  case "\${arg}" in
+    --target)
+      expect_target_value=true
+      ;;
+    --target=*)
+      have_target=true
+      ;;
+    */target/*)
+      cargo_managed=true
+      ;;
+  esac
+done
+
+if [ "\${have_target}" = "true" ]; then
+  exec '${rustc_bin}' "\$@"
+fi
+
+if [ "\${cargo_managed}" = "true" ]; then
+  exec '${rustc_bin}' "\$@"
+fi
+
+exec '${rustc_bin}' --target "\${want_target}" "\$@"
+EOF
+  chmod +x "${wrapper_path}"
+  printf '%s' "${wrapper_path}"
+}
+
 host_python_bin() {
   if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
     printf '%s' "${MEDIA_HOST_PYTHON}"
@@ -488,15 +541,81 @@ cross_target_uses_ubuntu_ports() {
   esac
 }
 
+cross_detect_distro_codename() {
+  local distro=""
+
+  if [ -n "${DISTRO:-}" ]; then
+    printf '%s' "${DISTRO}"
+    return 0
+  fi
+
+  if [ -r /etc/os-release ]; then
+    distro="$(
+      # shellcheck disable=SC1091
+      . /etc/os-release
+      printf '%s' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+    )"
+    if [ -n "${distro}" ]; then
+      printf '%s' "${distro}"
+      return 0
+    fi
+  fi
+
+  if command -v lsb_release >/dev/null 2>&1; then
+    distro="$(lsb_release -cs 2>/dev/null || true)"
+    if [ -n "${distro}" ]; then
+      printf '%s' "${distro}"
+      return 0
+    fi
+  fi
+
+  printf '%s' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-noble}}"
+}
+
+cross_prune_foreign_arch_apt_sources() {
+  local keep_source="${1:-}"
+  local existing_ports_source
+
+  shopt -s nullglob
+  for existing_ports_source in /etc/apt/sources.list.d/ubuntu-ports-*.sources; do
+    [ -n "${keep_source}" ] && [ "${existing_ports_source}" = "${keep_source}" ] && continue
+    rm -f "${existing_ports_source}"
+  done
+  shopt -u nullglob
+}
+
+cross_prepare_apt_sources_for_target() {
+  local target_arch ports_sources
+
+  [ "${BUILD_MODE:-native}" = "cross" ] || return 0
+
+  target_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
+  [ -n "${target_arch}" ] || return 0
+
+  if cross_build_enabled && cross_target_uses_ubuntu_ports; then
+    ports_sources="/etc/apt/sources.list.d/ubuntu-ports-${target_arch}.sources"
+    cross_prune_foreign_arch_apt_sources "${ports_sources}"
+    cross_configure_foreign_arch_apt_sources
+  else
+    cross_prune_foreign_arch_apt_sources
+  fi
+}
+
+cross_apt_update() {
+  cross_prepare_apt_sources_for_target
+  apt-get update "$@"
+  _CROSS_ENV_APT_UPDATED=1
+}
+
 cross_configure_foreign_arch_apt_sources() {
-  local target_arch build_arch distro ports_url host_sources ports_sources tmp
+  local target_arch build_arch distro ports_url host_sources ports_sources tmp existing_ports_source
 
   cross_build_enabled || return 0
   cross_target_uses_ubuntu_ports || return 0
 
   target_arch="$(cross_target_arch)"
   build_arch="$(cross_build_arch)"
-  distro="${DISTRO:-${UBUNTU_CODENAME:-${VERSION_CODENAME:-noble}}}"
+  distro="$(cross_detect_distro_codename)"
   ports_url="$(cross_foreign_arch_ports_mirror_url)"
   host_sources="/etc/apt/sources.list.d/ubuntu.sources"
   ports_sources="/etc/apt/sources.list.d/ubuntu-ports-${target_arch}.sources"
@@ -539,6 +658,8 @@ cross_configure_foreign_arch_apt_sources() {
     mv "${tmp}" "${host_sources}"
   fi
 
+  cross_prune_foreign_arch_apt_sources "${ports_sources}"
+
   printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nArchitectures: %s\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' \
     "${ports_url}" "${distro}" "${distro}" "${distro}" "${distro}" "${target_arch}" > "${ports_sources}"
 }
@@ -551,7 +672,19 @@ cross_prepare_foreign_arch() {
     dpkg --add-architecture "${target_arch}"
     _CROSS_ENV_APT_UPDATED=0
   fi
-  cross_configure_foreign_arch_apt_sources
+  cross_prepare_apt_sources_for_target
+}
+
+cross_package_has_install_candidate() {
+  local pkg="${1:-}"
+  local candidate=""
+
+  [ -n "${pkg}" ] || return 1
+
+  # `apt-cache show` can return package metadata even when apt cannot install the
+  # package on this release/architecture combination.
+  candidate="$(apt-cache policy "${pkg}" 2>/dev/null | awk '/^[[:space:]]*Candidate:/ { print $2; exit }')"
+  [ -n "${candidate}" ] && [ "${candidate}" != "(none)" ]
 }
 
 cross_resolve_target_package() {
@@ -564,7 +697,7 @@ cross_resolve_target_package() {
     return 0
   fi
 
-  if apt-cache show "${pkg}:${target_arch}" >/dev/null 2>&1; then
+  if cross_package_has_install_candidate "${pkg}:${target_arch}"; then
     printf '%s' "${pkg}:${target_arch}"
   else
     printf '%s' "${pkg}"
@@ -576,8 +709,22 @@ install_host_packages() {
   apt-get install -y --no-install-recommends "$@"
 }
 
+cross_filter_known_foreign_postinst_noise() {
+  local line
+
+  while IFS= read -r line; do
+    case "${line}" in
+      *"glib-compile-schemas: Exec format error"*|*"gio-querymodules: Exec format error"*|*"gdk-pixbuf-query-loaders: Exec format error"*)
+        continue
+        ;;
+    esac
+    printf '%s\n' "${line}"
+  done
+}
+
 install_target_packages() {
   local pkg resolved
+  local had_pipefail=0
   local -a pkgs=()
 
   [ "$#" -gt 0 ] || return 0
@@ -595,6 +742,19 @@ install_target_packages() {
   done
 
   [ "${#pkgs[@]}" -gt 0 ] || return 0
+
+  if cross_build_enabled; then
+    case ":${SHELLOPTS:-}:" in
+      *:pipefail:*) had_pipefail=1 ;;
+    esac
+    set -o pipefail
+    apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 | cross_filter_known_foreign_postinst_noise
+    if [ "${had_pipefail}" -ne 1 ]; then
+      set +o pipefail
+    fi
+    return 0
+  fi
+
   apt-get install -y --no-install-recommends "${pkgs[@]}"
 }
 
@@ -720,7 +880,6 @@ setup_linux_cross_env() {
   done
   if [ -n "${target_link_path}" ]; then
     export LIBRARY_PATH="${target_link_path}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-    export LD_LIBRARY_PATH="${target_link_path}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
   fi
   export CMAKE_SYSTEM_NAME=Linux
   export CMAKE_SYSTEM_PROCESSOR="${processor}"
@@ -772,20 +931,24 @@ append_cmake_cross_args() {
 ensure_meson_cross_file() {
   local path="${1:-/tmp/meson-cross-$(cross_target_arch).ini}"
   local triplet pkg_config_libdir exe_wrapper exe_wrapper_line wrapper_candidate
+  local rust_target rustc_bin rust_binary_line rust_wrapper rust_wrapper_dir
 
   cross_build_enabled || return 0
   setup_linux_cross_env
 
   triplet="$(cross_target_triplet)"
   pkg_config_libdir="$(cross_pkg_config_libdir "${triplet}")"
+  rust_target="$(cross_target_rust_triple)"
+  rustc_bin="$(command -v rustc 2>/dev/null || true)"
+  [ -n "${rustc_bin}" ] || rustc_bin="rustc"
   exe_wrapper=""
   # Some cross builds need to run target-side helpers during Meson setup. Reuse
-  # an explicitly provided wrapper first, then fall back to the target runner
-  # pre-setup installs for cross GObject Introspection.
+  # an explicitly provided wrapper first, then fall back to the generic qemu
+  # target-runner wrapper installed by pre-setup hooks.
   if [ -n "${MESON_EXE_WRAPPER:-}" ] && [ -x "${MESON_EXE_WRAPPER}" ]; then
     exe_wrapper="${MESON_EXE_WRAPPER}"
   else
-    wrapper_candidate="/usr/local/bin/g-ir-scanner-$(cross_target_arch)-binary-wrapper"
+    wrapper_candidate="/usr/local/bin/meson-$(cross_target_arch)-exe-wrapper"
     if [ -x "${wrapper_candidate}" ]; then
       exe_wrapper="${wrapper_candidate}"
     fi
@@ -795,12 +958,24 @@ ensure_meson_cross_file() {
     exe_wrapper_line="exe_wrapper = '${exe_wrapper}'"
   fi
 
+  # Meson's Rust cross sanity checks do not reliably infer the target triple
+  # from the linker alone. Inject it only when the invocation does not already
+  # specify --target so cargo-backed subprojects keep working.
+  if [ -n "${rust_target}" ] && command -v make_meson_cross_rust_wrapper >/dev/null 2>&1; then
+    rust_wrapper_dir="${MESON_RUST_TOOLCHAIN_DIR:-/tmp/meson-rust-toolchain}"
+    rust_wrapper="$(make_meson_cross_rust_wrapper "${rust_wrapper_dir}/rustc-$(cross_target_arch)" "${rustc_bin}" "${rust_target}")"
+    rust_binary_line="rust = '${rust_wrapper}'"
+  else
+    rust_binary_line="rust = '${rustc_bin}'"
+  fi
+
   cat > "${path}" <<EOF
 [binaries]
 c = '${CC}'
 cpp = '${CXX}'
 ar = '${AR}'
 strip = '${STRIP}'
+${rust_binary_line}
 pkg-config = 'pkg-config'
 cmake = 'cmake'
 ${exe_wrapper_line}
