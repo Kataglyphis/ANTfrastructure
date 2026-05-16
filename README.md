@@ -25,36 +25,24 @@ This README now keeps the quick project picture and links to the detailed guides
 
 | Topic | What it covers |
 | --- | --- |
-| [Project overview](docs/overview.md) | Published images, repository image chain, feature snapshot, dependencies, useful tools |
-| [Linux build basics](docs/linux-build-basics.md) | Local runs, multi-arch builds, buildx, sequential nerdctl builds, fast Ubuntu mirror usage |
-| [Linux cross builds](docs/linux-cross-builds.md) | Additive cross-compiler lane, SDK artifacts, runtime artifacts, manifest publishing |
-| [Linux accelerator images](docs/linux-accelerator-images.md) | NVIDIA, AMD, and Torch variants plus required build and run flags |
-| [Runtime services and streaming](docs/runtime-services.md) | Webserver, display forwarding, Raspberry Pi camera notes, WebRTC signalling and streaming |
-| [Windows build image](docs/windows-builds.md) | Windows container build notes, antivirus exclusion warning, memory guidance |
-| [Project information](docs/project-info.md) | Prerequisites, installation, tests, roadmap, troubleshooting, contribution, contact |
+| [Project Overview](docs/overview.md) | Published images, repository image chain, feature snapshot, dependencies, useful tools |
+| [Linux Build Basics](docs/linux-build-basics.md) | Local runs, multi-arch builds, buildx, sequential nerdctl builds, fast Ubuntu mirror usage |
+| [Linux Cross Builds](docs/linux-cross-builds.md) | Additive cross-compiler lane, SDK artifacts, runtime artifacts, manifest publishing |
+| [Linux Accelerator Images](docs/linux-accelerator-images.md) | NVIDIA, AMD, and Torch variants plus required build and run flags |
+| [Runtime Services and Streaming](docs/runtime-services.md) | Webserver, display forwarding, Raspberry Pi camera notes, WebRTC signalling and streaming |
+| [Windows Build Image](docs/windows-builds.md) | Windows container build notes, antivirus exclusion warning, memory guidance |
+| [Project Information](docs/project-info.md) | Prerequisites, installation, tests, roadmap, troubleshooting, contributing, contact |
 
-## About The Project 🧭
+## Project at a Glance 🧭
 
-This project ships ready-to-build Dockerfiles for multiple targets in a single repo.
+Kataglyphis-ContainerHub keeps the main container entry points for Linux GPU development, runtime-facing web delivery, and Windows builds in one repository.
 
-Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/pkgs/container/kataglyphis_beschleuniger) — published multi-arch images (Linux base, Torch add-on, webserver) and Windows build image.
+Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/pkgs/container/kataglyphis_beschleuniger)
 
-Published images and tag hints:
-
-| Image | Platforms | Tag examples | Description |
-| --- | --- | --- | --- |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest` | Base Linux toolchain image with Clang/GCC, Rust, Vulkan, GStreamer, Android SDK/NDK. |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver | linux/amd64, linux/arm64 (as pushed) | `webserver`, `webserver-<git-sha>` | Minimal nginx static webserver image. |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 | windows/amd64 | `winamd64` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX. |
-
-What you get:
-
-- ✅ Multi-arch builds via buildx/nerdctl.
-- 🎮 Vulkan + toolchains ready for GPU passthrough.
-- 🧠 Optional Torch layer for Python/ROCm work.
-- 📡 Ready-to-serve static web content with nginx.
-
-For the full stage breakdown, repository image inventory, feature snapshot, dependencies, and useful tools, see [Project overview](docs/overview.md).
+- Main Linux image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`
+- Webserver image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver`
+- Windows build image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`
+- Detailed image inventory, tags, stage breakdown, dependencies, and tooling notes live in [Project Overview](docs/overview.md).
 
 ## Quick Start 🏁
 
@@ -62,11 +50,12 @@ For the full stage breakdown, repository image inventory, feature snapshot, depe
 
 ```bash
 sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
-# on Windows you must expose ports one by one
 sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
-Detailed Linux build workflows live in [Linux build basics](docs/linux-build-basics.md), [Linux cross builds](docs/linux-cross-builds.md), and [Linux accelerator images](docs/linux-accelerator-images.md).
+If you run the container from Windows, expose required ports explicitly, for example with `-p 8443:8443`.
+
+Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-basics.md), [Linux Cross Builds](docs/linux-cross-builds.md), and [Linux Accelerator Images](docs/linux-accelerator-images.md).
 
 ### Windows 🪟
 
@@ -77,7 +66,7 @@ C:\PATH_TO_NERDCTL\nerdctl.exe build --platform windows/amd64 `
   -f windows/Dockerfile .
 ```
 
-Windows-specific build notes are in [Windows build image](docs/windows-builds.md).
+Windows-specific build notes are in [Windows Build Image](docs/windows-builds.md).
 
 ### Clone The Repository
 
@@ -85,8 +74,8 @@ Windows-specific build notes are in [Windows build image](docs/windows-builds.md
 git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
 ```
 
-Runtime topics such as the webserver, display forwarding, Raspberry Pi camera notes, and WebRTC signalling live in [Runtime services and streaming](docs/runtime-services.md).
+Runtime topics such as the webserver, display forwarding, Raspberry Pi camera notes, and WebRTC signalling live in [Runtime Services and Streaming](docs/runtime-services.md).
 
 ## Project Information
 
-Prerequisites, installation, tests, roadmap, troubleshooting, contributing, license, contact, acknowledgements, and literature are documented in [Project information](docs/project-info.md).
+Prerequisites, installation, tests, roadmap, troubleshooting, contributing, license, contact, acknowledgements, and literature are documented in [Project Information](docs/project-info.md).

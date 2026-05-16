@@ -14,7 +14,8 @@ Docker templates for Linux GPU development stacks, a slim nginx webserver, and a
 - Windows toolchain container for CI and local builds
 - Optional media and Android layers for specialized workloads
 
-The repository README now links into the guides below so the same content is split into smaller, focused documentation units.
+Choose the guide that matches the task you want to do: inspect the image catalog, run a local Linux image,
+build cross-architecture artifacts, enable GPU variants, use runtime services, or build the Windows image.
 
 .. grid:: 2
    :gutter: 2
@@ -43,11 +44,11 @@ The repository README now links into the guides below so the same content is spl
 
       NVIDIA, AMD, and Torch variants on top of the standard Linux image chain.
 
-   .. grid-item-card:: Runtime Services
+   .. grid-item-card:: Runtime Services and Streaming
       :link: runtime-services
       :link-type: doc
 
-      Webserver, display forwarding, Raspberry Pi camera notes, and WebRTC signalling.
+      Webserver, display forwarding, Raspberry Pi camera notes, and WebRTC signalling and streaming.
 
    .. grid-item-card:: Windows Build Image
       :link: windows-builds
@@ -59,7 +60,7 @@ The repository README now links into the guides below so the same content is spl
       :link: project-info
       :link-type: doc
 
-      Prerequisites, installation, troubleshooting, contribution, contact, and references.
+      Prerequisites, installation, tests, roadmap, troubleshooting, contribution, contact, and references.
 
 Linux image flow
 ----------------

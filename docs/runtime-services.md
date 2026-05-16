@@ -1,4 +1,4 @@
-# Runtime Services And Streaming
+# Runtime Services and Streaming
 
 ## Webserver (Linux)
 
