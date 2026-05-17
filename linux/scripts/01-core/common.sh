@@ -4,20 +4,39 @@
 _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Side-effect free helpers
-# shellcheck disable=SC1090
+# shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/logging.sh" ] && source "${_COMMON_SH_DIR}/logging.sh"
-# shellcheck disable=SC1090
+# shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/platform.sh" ] && source "${_COMMON_SH_DIR}/platform.sh"
-# shellcheck disable=SC1090
+# shellcheck disable=SC1090,SC1091
+[ -f "${_COMMON_SH_DIR}/ubuntu-mirror.sh" ] && source "${_COMMON_SH_DIR}/ubuntu-mirror.sh"
+# shellcheck disable=SC1090,SC1091
+[ -f "${_COMMON_SH_DIR}/downloads.sh" ] && source "${_COMMON_SH_DIR}/downloads.sh"
+# shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/parallelism.sh" ] && source "${_COMMON_SH_DIR}/parallelism.sh"
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 # Defaults (overridden by CLI or ENV)
-LLVM_WANTED=${LLVM_WANTED:-22}
-CLANG_WANTED=${CLANG_WANTED:-22}
-GCC_WANTED=${GCC_WANTED:-14}
+if [ -z "${LLVM_WANTED:-}" ]; then
+  LLVM_WANTED="${LLVM_RELEASE:-22}"
+  LLVM_WANTED="$(version_major "${LLVM_WANTED}")"
+fi
+
+if [ -z "${CLANG_WANTED:-}" ]; then
+  CLANG_WANTED="${LLVM_WANTED}"
+fi
+
+if [ -z "${GCC_WANTED:-}" ]; then
+  GCC_WANTED="${GCC_VERSION:-16}"
+  GCC_WANTED="$(version_major "${GCC_WANTED}")"
+fi
+
+if [ -z "${PYTHON_MAJOR_MINOR:-}" ] && [ -n "${PYTHON_VERSION:-}" ]; then
+  PYTHON_MAJOR_MINOR="$(version_major_minor "${PYTHON_VERSION}")"
+fi
+
 VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-1.4.341.1}
 
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
@@ -44,27 +63,23 @@ require_sudo() {
 }
 
 detect_system() {
-  # Prefer Docker's TARGETARCH if present; map to uname-style
-  local mapped=""
-  if [ -n "${TARGETARCH:-}" ]; then
-    case "$TARGETARCH" in
-      amd64)  mapped="x86_64" ;;
-      arm64)  mapped="aarch64" ;;
-      *)      mapped="$TARGETARCH" ;;
-    esac
-  fi
-  ARCH="${mapped:-$(uname -m)}"
+  local target_arch build_arch
+  target_arch="$(arch_oci)"
+  build_arch="$(build_arch_oci)"
+  ARCH="$(arch_uname_name_for "${target_arch}")"
+  HOST_ARCH="$(arch_uname_name_for "${build_arch}")"
 
   if command -v lsb_release >/dev/null 2>&1; then
     DISTRO="$(lsb_release -cs)"
   elif [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
     . /etc/os-release
     DISTRO="${UBUNTU_CODENAME:-${VERSION_CODENAME:-jammy}}"
   else
     DISTRO="jammy"
   fi
-  export ARCH DISTRO
-  log "Detected arch=${ARCH} distro=${DISTRO}"
+  export ARCH HOST_ARCH DISTRO
+  log "Detected arch=${ARCH} host_arch=${HOST_ARCH} distro=${DISTRO}"
 }
 
 apt_update_once() {
@@ -77,4 +92,26 @@ apt_update_once() {
 apt_install() {
   apt_update_once
   $SUDO apt-get install -y "${APT_FLAGS[@]}" "$@"
+}
+
+apt_has_package() {
+  local pkg="$1"
+  apt-cache show "$pkg" >/dev/null 2>&1
+}
+
+apt_install_available() {
+  local pkg
+  local -a pkgs=()
+
+  for pkg in "$@"; do
+    if apt_has_package "$pkg"; then
+      pkgs+=("$pkg")
+    else
+      log "Skipping missing package: ${pkg}"
+    fi
+  done
+
+  if [ "${#pkgs[@]}" -gt 0 ]; then
+    apt_install "${pkgs[@]}"
+  fi
 }

@@ -1,0 +1,143 @@
+# syntax=docker/dockerfile:1.19
+
+ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
+ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-amd64
+ARG BUILD_MODE=native
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG GSTREAMER_VERSION=1.29.1
+ARG OPENCV_OUTPUT_DIR=/opt/opencv4
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+ARG GSTREAMER_PREFIX=/opt/gstreamer
+ARG ANDROID_SDK_VERSION=14742923
+ARG ANDROID_NDK_VERSION=29.0.14206865
+ARG ANDROID_COMPILE_SDK=36
+ARG ANDROID_BUILD_TOOLS=35.0.0
+ARG ANDROID_CMAKE_VERSION=4.1.2
+ARG ANDROID_API_LEVEL=34
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+FROM --platform=linux/amd64 ${ARTIFACT_IMAGE} AS artifact-payload
+SHELL ["bash", "-lc"]
+
+# Stage only the target-built payload from the amd64-hosted cross image. This
+# avoids copying host-only pieces such as the live Python venv, toolchains, apt
+# state, and other build-host plumbing into the final target runtime image.
+RUN set -euo pipefail; \
+    mkdir -p /payload; \
+    copy_path() { \
+        local src="$1"; \
+        local dst="${2:-$1}"; \
+        [ -e "${src}" ] || return 0; \
+        mkdir -p "/payload$(dirname "${dst}")"; \
+        cp -a "${src}" "/payload${dst}"; \
+    }; \
+    copy_glob() { \
+        local pattern="$1"; \
+        local item; \
+        shopt -s nullglob; \
+        for item in ${pattern}; do \
+            mkdir -p "/payload$(dirname "${item}")"; \
+            cp -a "${item}" "/payload${item}"; \
+        done; \
+        shopt -u nullglob; \
+    }; \
+    copy_path /usr/local/lib/onnxruntime-cpu; \
+    copy_path /usr/local/lib/onnxruntime-genai; \
+    copy_path /usr/local/lib/onnxruntime-gpu; \
+    copy_path /usr/local/include/tflite; \
+    copy_path /usr/local/include/tensorflow; \
+    copy_path /usr/local/include/flatbuffers; \
+    copy_path /usr/local/include/c; \
+    copy_path /usr/local/lib/pkgconfig/litert.pc; \
+    copy_path /usr/local/lib/pkgconfig/tensorflow-lite.pc; \
+    copy_path /usr/local/lib/pkgconfig/tensorflowlite_c.pc; \
+    copy_path /usr/local/lib/pkgconfig/libvvdec.pc; \
+    copy_path /opt/opencv4; \
+    copy_path /opt/ffmpeg; \
+    copy_path /opt/gstreamer; \
+    copy_path /opt/libcamera; \
+    copy_path /opt/wheels; \
+    copy_path /opt/android; \
+    copy_path /opt/android-sdk; \
+    copy_glob '/usr/local/lib/libLiteRt.so*'; \
+    copy_glob '/usr/local/lib/libtensorflow-lite.so*'; \
+    copy_glob '/usr/local/lib/libtensorflowlite_c.so*'; \
+    copy_glob '/usr/local/lib/libvvdec.so*'
+
+FROM ${BASE_IMAGE}
+
+ARG BUILD_MODE
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG GSTREAMER_VERSION
+ARG OPENCV_OUTPUT_DIR
+ARG ONNXRUNTIME_OUTPUT_DIR
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR
+ARG GSTREAMER_PREFIX
+ARG ANDROID_SDK_VERSION
+ARG ANDROID_NDK_VERSION
+ARG ANDROID_COMPILE_SDK
+ARG ANDROID_BUILD_TOOLS
+ARG ANDROID_CMAKE_VERSION
+ARG ANDROID_API_LEVEL
+ARG USE_FAST_UBUNTU_MIRROR
+ARG FAST_UBUNTU_MIRROR_URL
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+SHELL ["bash", "-lc"]
+
+ENV BUILD_MODE=${BUILD_MODE} \
+    TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETPLATFORM=${TARGETPLATFORM} \
+    GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
+    OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
+    FFMPEG_PREFIX=/opt/ffmpeg \
+    LIBCAMERA_PREFIX=/opt/libcamera \
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_SDK_VERSION=${ANDROID_SDK_VERSION} \
+    ANDROID_NDK_VERSION=${ANDROID_NDK_VERSION} \
+    ANDROID_COMPILE_SDK=${ANDROID_COMPILE_SDK} \
+    ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
+    ANDROID_CMAKE_VERSION=${ANDROID_CMAKE_VERSION} \
+    ANDROID_API_LEVEL=${ANDROID_API_LEVEL} \
+    ANDROID_NDK_HOME=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
+    ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
+    GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer \
+    ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime \
+    LITERT_ROOT_ANDROID=/opt/android/litert \
+    OPENCV_ROOT_ANDROID=/opt/android/opencv \
+    PATH="/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/build-tools/${ANDROID_BUILD_TOOLS}:/opt/android-sdk/ndk/${ANDROID_NDK_VERSION}:${GSTREAMER_PREFIX}/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:${PATH}" \
+    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:/opt/libcamera/lib/pkgconfig:/opt/libcamera/lib64/pkgconfig:/opt/ffmpeg/lib/pkgconfig" \
+    LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu:${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu:${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu:${GSTREAMER_PREFIX}/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:${LD_LIBRARY_PATH}" \
+    GDK_BACKEND=x11 \
+    GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0" \
+    GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
+
+COPY --from=artifact-payload /payload/ /
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
+
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/03-media/final,target=/opt/scripts/media/final,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-runtime-package-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-runtime-package-${TARGETARCH} \
+    set -eux; \
+    bash /opt/scripts/media/final/install-deps.sh; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libtbb-dev; \
+    bash /opt/scripts/media/final/configure-runtime.sh; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*

@@ -23,18 +23,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 
-# Source build acceleration helpers if available
-for helper in \
-    "/opt/scripts/core/compiler-cache.sh" \
-    "${SCRIPT_DIR}/../../../../01-core/compiler-cache.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        setup_ccache
-        setup_lld_linker
-        break
-    fi
-done
+source_build_acceleration_helpers
 
 # --------------------------------------------------------------------------
 # Additional defaults specific to the NVIDIA/GPU build
@@ -61,7 +50,7 @@ init_nvidia_defaults() {
         *) DEB_ARCH="$ARCH" ;;
       esac
       if [ -d "/usr/lib/${DEB_ARCH}" ]; then
-        ln -snf /usr/lib/${DEB_ARCH}/libnvinfer* /tmp/tensorrt/lib/ 2>/dev/null || true
+        ln -snf "/usr/lib/${DEB_ARCH}"/libnvinfer* /tmp/tensorrt/lib/ 2>/dev/null || true
       fi
       ln -snf /usr/lib/libnvinfer* /tmp/tensorrt/lib/ 2>/dev/null || true
       TENSORRT_HOME="/tmp/tensorrt"
@@ -138,7 +127,9 @@ info "cuDNN header: ${CUDNN_H}"
 sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgcc-s1
 
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
-uv pip install numpy wheel setuptools
+setup_host_python_environment
+HOST_PYTHON="${HOST_PYTHON_BIN}"
+ensure_uv_python_packages "${HOST_PYTHON}" numpy wheel setuptools
 
 # --------------------------------------------------------------------------
 # Validate build script
@@ -147,13 +138,13 @@ BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [[ -x "${BUILD_SH}" ]] || err "build.sh not found at ${BUILD_SH}"
 
 info ">>> Native GPU build (CUDA+TensorRT+cuDNN): ${NATIVE_CPU_CONFIG} (${JOBS} parallel jobs)"
-info "Using Python: $(which python3)"
-info "NumPy version: $(python3 -c 'import numpy; print(numpy.__version__)')"
+info "Using Python: ${HOST_PYTHON}"
+info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)')"
 
 # --------------------------------------------------------------------------
 # Prepare output directories
 # --------------------------------------------------------------------------
-mkdir -p "${NATIVE_GPU_OUTPUT_DIR}"/{lib,include,wheels}
+ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 
 # --------------------------------------------------------------------------
 # Build ONNX Runtime with GPU EPs
@@ -191,73 +182,20 @@ BUILD_ARGS=(
   --use_external_dawn
 )
 
-# Add lld linker for faster linking
-if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
-  BUILD_ARGS+=(
-    --cmake_extra_defines
-    CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
-    CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld
-    CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld
-  )
-  info "Using lld linker for faster linking"
-fi
-
-# Add ccache for faster compilation
-if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-  BUILD_ARGS+=(
-    --cmake_extra_defines
-    CMAKE_C_COMPILER_LAUNCHER=ccache
-    CMAKE_CXX_COMPILER_LAUNCHER=ccache
-  )
-  info "Using ccache for faster compilation"
-fi
+append_onnx_lld_build_args BUILD_ARGS
+append_onnx_ccache_build_args BUILD_ARGS
 
 "${BUILD_SH}" "${BUILD_ARGS[@]}"
 
 # --------------------------------------------------------------------------
-# Collect artifacts
-# --------------------------------------------------------------------------
-info "Searching for wheel files..."
-find "${NATIVE_GPU_BUILD_DIR}" -name "*.whl" -type f 2>/dev/null | while read -r whl; do
-  info "Copying wheel: ${whl}"
-  cp "${whl}" "${NATIVE_GPU_OUTPUT_DIR}/wheels/"
-  ls -lh "${NATIVE_GPU_OUTPUT_DIR}/wheels/$(basename "${whl}")"
-done || info "No wheels found in ${NATIVE_GPU_BUILD_DIR}"
-
-# Copy headers
-cp -a "${ORT_SRC_DIR}/include" "${NATIVE_GPU_OUTPUT_DIR}/" 2>/dev/null || \
-  warn "Include directory not found at ${ORT_SRC_DIR}/include"
-
-# Flatten headers for GenAI - it expects headers at include/ root
-for search_dir in "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"; do
-  if [[ ! -d "${search_dir}/include" ]]; then
-    continue
-  fi
-  find "${search_dir}/include" -name "onnxruntime*.h" -type f 2>/dev/null | while read -r hdr; do
-    cp "${hdr}" "${NATIVE_GPU_OUTPUT_DIR}/include/" 2>/dev/null || true
-  done
-done
-
-# Copy libraries
-mkdir -p "${NATIVE_GPU_OUTPUT_DIR}/lib"
-find "${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" -maxdepth 1 -type f \
-  \( -name "libonnxruntime*.so*" -o -name "libonnxruntime_providers_*.so*" \) \
-  -exec cp -t "${NATIVE_GPU_OUTPUT_DIR}/lib/" {} + 2>/dev/null || true
-
-# Create unversioned symlink for libonnxruntime.so (required by GenAI CMake)
-onnx_lib="$(find "${NATIVE_GPU_OUTPUT_DIR}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
-if [[ -n "${onnx_lib}" ]] && [[ ! -e "${NATIVE_GPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]]; then
-  ln -sf "$(basename "${onnx_lib}")" "${NATIVE_GPU_OUTPUT_DIR}/lib/libonnxruntime.so"
-  info "Created symlink: libonnxruntime.so -> $(basename "${onnx_lib}")"
-fi
-
-# Symlink into /usr/local/lib for discovery
-find "${NATIVE_GPU_OUTPUT_DIR}/lib" -type f -name "lib*.so*" -print0 2>/dev/null | \
-  xargs -0 -r ln -sf -t /usr/local/lib/ 2>/dev/null || true
-
-ldconfig 2>/dev/null || true
+collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "GPU wheel"
+copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
+verify_onnxruntime_core_header "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
+copy_onnx_libraries_to_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}"
+ensure_onnxruntime_symlink "${NATIVE_GPU_OUTPUT_DIR}"
+symlink_output_libraries_into_usr_local "${NATIVE_GPU_OUTPUT_DIR}"
 
 info "GPU build complete. Artifacts in ${NATIVE_GPU_OUTPUT_DIR}"
 info "Wheels in ${NATIVE_GPU_OUTPUT_DIR}/wheels"
 ls -lh "${NATIVE_GPU_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
-ls -lh "${NATIVE_GPU_OUTPUT_DIR}/lib"/*.so* 2>/dev/null | head -20 || true
+find "${NATIVE_GPU_OUTPUT_DIR}/lib" -maxdepth 1 -type f -name "*.so*" -printf '%f\n' 2>/dev/null | head -20 || true

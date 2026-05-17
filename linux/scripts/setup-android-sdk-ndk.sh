@@ -1,28 +1,50 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-is_x86_64() {
-  local arch
-  arch="${TARGETARCH:-}"
-  case "${arch}" in
-    amd64|x86_64) return 0 ;;
-  esac
+if [ -f /opt/scripts/core/platform.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/platform.sh
+fi
 
-  arch="$(uname -m || true)"
-  case "${arch}" in
-    x86_64|amd64) return 0 ;;
-  esac
+ensure_host_apt_architectures() {
+  local host_sources="/etc/apt/sources.list.d/ubuntu.sources"
+  local tmp=""
 
-  arch="$(dpkg --print-architecture 2>/dev/null || true)"
-  case "${arch}" in
-    amd64) return 0 ;;
-  esac
+  [ -f "${host_sources}" ] || return 0
 
-  return 1
+  tmp="$(mktemp)"
+  awk -v archs="amd64 i386" '
+    BEGIN { in_stanza=0; has_arch=0 }
+    /^[[:space:]]*$/ {
+      if (in_stanza && !has_arch) print "Architectures: " archs
+      print
+      in_stanza=0
+      has_arch=0
+      next
+    }
+    /^[[:space:]]*#/ {
+      print
+      next
+    }
+    {
+      in_stanza=1
+    }
+    /^Architectures:[[:space:]]*/ {
+      print "Architectures: " archs
+      has_arch=1
+      next
+    }
+    {
+      print
+    }
+    END {
+      if (in_stanza && !has_arch) print "Architectures: " archs
+    }
+  ' "${host_sources}" > "${tmp}"
+  mv "${tmp}" "${host_sources}"
 }
 
-if ! is_x86_64; then
-  echo "Skipping Android SDK/NDK installation on non-x86_64 architecture"
+if ! android_require_amd64_build_host "Android SDK/NDK installation"; then
   exit 0
 fi
 
@@ -40,7 +62,10 @@ export DEBCONF_NONINTERACTIVE_SEEN=true
 export ANDROID_SDK_ROOT="${ANDROID_HOME}"
 
 # 32-bit libs required by parts of the Android toolchain.
-dpkg --add-architecture i386
+if ! dpkg --print-foreign-architectures | grep -qx i386; then
+  dpkg --add-architecture i386
+fi
+ensure_host_apt_architectures
 apt-get update
 apt-get install -y --no-install-recommends \
   libc6:i386 libncurses6:i386 libstdc++6:i386 \
@@ -96,13 +121,18 @@ accept_licenses() {
 # Helper: run sdkmanager install with retries to handle transient network failures
 sdkmanager_install() {
   local attempt=0 max_attempts=4 sleep_sec=5 args=("$@") out
+  local status=0
   while :; do
     attempt=$((attempt + 1))
     echo "sdkmanager install attempt ${attempt}/${max_attempts}: ${args[*]}"
-    out="$("${sdkmanager_bin}" --sdk_root="${ANDROID_HOME}" "${args[@]}" 2>&1 || true)"
+    status=0
+    if out="$("${sdkmanager_bin}" --sdk_root="${ANDROID_HOME}" "${args[@]}" 2>&1)"; then
+      status=0
+    else
+      status=$?
+    fi
     echo "$out"
-    if echo "$out" | grep -q "Done\." || [ $? -eq 0 ]; then
-      # If sdkmanager exits 0 or prints Done., consider it successful
+    if [ "${status}" -eq 0 ] || echo "$out" | grep -q "Done\."; then
       echo "sdkmanager install succeeded"
       return 0
     fi

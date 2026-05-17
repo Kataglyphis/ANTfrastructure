@@ -47,6 +47,14 @@ try {
     Write-BuildLog -Context $Context -Message "BINARY:    $Binary"
     Write-BuildLog -Context $Context -Message "VERSION:   $Version"
 
+    # Onnx Runtime DirectML package version (override with ONNX_DIRECTML_VERSION env var)
+    $DirectMLOnnxRuntimeVersion = $env:ONNX_DIRECTML_VERSION
+    if ([string]::IsNullOrWhiteSpace($DirectMLOnnxRuntimeVersion)) {
+        # Default to 1.24.4 because 1.25.0 may not be available in NuGet sources
+        $DirectMLOnnxRuntimeVersion = "1.24.4"
+    }
+    Write-BuildLog -Context $Context -Message "OnnxRuntime.DirectML Version: $DirectMLOnnxRuntimeVersion"
+
     Set-Location -Path $Workspace
 
     Invoke-BuildStep -Context $Context -StepName "Setup Environment" -Critical -Script {

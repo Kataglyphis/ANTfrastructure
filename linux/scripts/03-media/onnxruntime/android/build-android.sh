@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-is_x86_64() {
-  local arch="${TARGETARCH:-$(uname -m)}"
-  case "${arch}" in amd64|x86_64) return 0 ;; *) return 1 ;; esac
-}
+if [ -f /opt/scripts/core/platform.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/platform.sh
+fi
 
-if ! is_x86_64; then
-  echo "Skipping Android ONNX Runtime build on non-x86_64 architecture"
+if ! android_require_amd64_build_host "Android ONNX Runtime build"; then
   exit 0
 fi
 
-ORT_VERSION="${1:-v1.24.4}"
-INSTALL_DIR="/opt/android/onnxruntime"
+TARGET_ARCH="$(android_target_arch)"
+ANDROID_ABI="$(android_target_abi)"
+: "${ANDROID_ABI:?Unsupported Android target ABI}"
+
+case "${TARGET_ARCH}" in
+  riscv64|riscv|rv64*)
+    echo "Skipping Android ONNX Runtime build for riscv64 because upstream build.sh does not support that Android ABI"
+    exit 0
+    ;;
+esac
+
+ORT_VERSION="${1:-v1.26.0}"
+ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL:-34}" "Android ONNX Runtime build")"
+INSTALL_DIR="${ONNXRUNTIME_ROOT_ANDROID:-/opt/android/onnxruntime}"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
@@ -36,8 +47,8 @@ sed -i '/android {/a \    buildFeatures {\n        buildConfig = true\n    }' ja
   --android \
   --android_sdk_path "${ANDROID_HOME}" \
   --android_ndk_path "${ANDROID_NDK_HOME}" \
-  --android_abi arm64-v8a \
-  --android_api 34 \
+  --android_abi "${ANDROID_ABI}" \
+  --android_api "${ANDROID_API_LEVEL}" \
   --build_java \
   --build_shared_lib \
   --config Release \

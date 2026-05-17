@@ -1,0 +1,114 @@
+# syntax=docker/dockerfile:1.19
+
+# ------------------------------------------------------------------------------
+# OS + stable dependencies (rarely changes)
+# This image avoids persisting helper scripts into the image so apt layers remain
+# stable while shared setup logic can still run through BuildKit bind mounts.
+# ------------------------------------------------------------------------------
+FROM ubuntu:26.04
+
+ARG TARGETARCH
+ARG VULKAN_VERSION=1.4.341.1
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+ARG CMAKE_VERSION=4.3.2
+ARG NODE_VERSION=24.15.0
+ARG UV_VERSION=0.11.13
+
+# ------------------------------------------------------------------------------
+# Shell
+# ------------------------------------------------------------------------------
+SHELL ["bash", "-lc"]
+
+# Bootstrap CA roots before optionally rewriting apt sources to HTTPS mirrors.
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-base-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-base-${TARGETARCH} \
+    bash /tmp/scripts/01-core/base-image.sh bootstrap-ca
+
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    bash /tmp/scripts/01-core/base-image.sh configure-fast-mirror \
+      --archive-url "${FAST_UBUNTU_MIRROR_URL}" \
+      --ports-url "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+
+# ------------------------------------------------------------------------------
+# GPU-ENV
+# ------------------------------------------------------------------------------
+ENV NVIDIA_DRIVER_CAPABILITIES=all \
+    NVIDIA_VISIBLE_DEVICES=all \
+    VULKAN_VERSION=${VULKAN_VERSION}
+
+# ------------------------------------------------------------------------------
+# Base ENV
+# ------------------------------------------------------------------------------
+ENV DEBIAN_FRONTEND=noninteractive \
+    APT_LISTCHANGES_FRONTEND=none \
+    PATH=/root/.local/bin:$PATH \
+    CCACHE_DIR=/var/cache/ccache \
+    CCACHE_MAXSIZE=30G \
+    SCCACHE_DIR=/var/cache/sccache
+
+WORKDIR /workspace
+
+# ==============================================================================
+# OS dependencies
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Base packages + graphics + flutter deps + perf tools (combined for fewer layers)
+# BuildKit cache mounts handle apt caching efficiently.
+# ------------------------------------------------------------------------------
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-base-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-base-${TARGETARCH} \
+    bash /tmp/scripts/01-core/base-image.sh install-os-packages
+
+
+# ------------------------------------------------------------------------------
+# Shared build tooling (CMake, packaging prerequisites)
+# Keep this in the base image so compiler/toolchain builds inherit it directly.
+# ------------------------------------------------------------------------------
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-base-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-base-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    bash /tmp/scripts/01-core/base-image.sh install-shared-build-tooling \
+      --cmake-version "${CMAKE_VERSION}"
+
+
+# ------------------------------------------------------------------------------
+# Install Node.js (official tarballs, apt fallback for RISC-V)
+# ------------------------------------------------------------------------------
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-base-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-base-${TARGETARCH} \
+    bash /tmp/scripts/01-core/base-image.sh install-node \
+      --version "${NODE_VERSION}"
+
+
+# ------------------------------------------------------------------------------
+# Vulkan ICD/Layer-JSONs
+# ------------------------------------------------------------------------------
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    --mount=type=bind,source=linux/vulkan,target=/tmp/vulkan,ro \
+    bash /tmp/scripts/01-core/base-image.sh install-vulkan-runtime-files \
+      --version "${VULKAN_VERSION}" \
+      /tmp/vulkan
+
+# ------------------------------------------------------------------------------
+# uv install
+# ------------------------------------------------------------------------------
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    bash /tmp/scripts/01-core/base-image.sh install-uv \
+      --version "${UV_VERSION}"
+
+# ------------------------------------------------------------------------------
+# Compiler caches init
+# ------------------------------------------------------------------------------
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    bash /tmp/scripts/01-core/base-image.sh init-compiler-caches \
+      --max-size "${CCACHE_MAXSIZE}"

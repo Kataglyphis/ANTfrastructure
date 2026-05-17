@@ -15,7 +15,7 @@
 #   • NVTX (Nsight profiler headers)                      — from CUDA repo
 #   • CUDA Firmware / driver-independent libs             — from CUDA repo
 #
-# The STANDARD build chain (Dockerfile.os-deps → Dockerfile.compiler →
+# The STANDARD build chain (Dockerfile.base → Dockerfile.toolchain →
 # Dockerfile.sdk → Dockerfile.media → Dockerfile.android → Dockerfile)
 # is UNCHANGED.
 # This file is ONLY used when building the -nvidia variants.
@@ -47,9 +47,18 @@ ARG TENSORRT_VERSION=10
 ARG CUDA_MATH_LIBS_VERSION=${CUDA_VERSION_MAJOR_MINOR}
 
 ARG TARGETARCH
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 
 SHELL ["bash", "-lc"]
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
 
 # ==============================================================================
 # 1. Add NVIDIA CUDA apt repository (keyring method)

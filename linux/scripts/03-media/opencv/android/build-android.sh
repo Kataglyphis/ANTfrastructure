@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-is_x86_64() {
-  local arch="${TARGETARCH:-$(uname -m)}"
-  case "${arch}" in amd64|x86_64) return 0 ;; *) return 1 ;; esac
-}
+if [ -f /opt/scripts/core/platform.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/platform.sh
+fi
 
-if ! is_x86_64; then
-  echo "Skipping Android OpenCV build on non-x86_64 architecture"
+if ! android_require_amd64_build_host "Android OpenCV build"; then
   exit 0
 fi
 
+TARGET_ARCH="$(android_target_arch)"
+ANDROID_ABI="$(android_target_abi)"
+: "${ANDROID_ABI:?Unsupported Android target ABI}"
+
 OPENCV_VERSION="${1:-4.11.0}"
-INSTALL_DIR="/opt/android/opencv"
+ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL:-34}" "Android OpenCV build")"
+INSTALL_DIR="${OPENCV_ROOT_ANDROID:-/opt/android/opencv}"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
@@ -29,8 +33,8 @@ cd opencv-android
 mkdir -p build-android && cd build-android
 cmake -GNinja \
   -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
-  -DANDROID_ABI="arm64-v8a" \
-  -DANDROID_PLATFORM="android-34" \
+  -DANDROID_ABI="${ANDROID_ABI}" \
+  -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
   -DANDROID_SDK="${ANDROID_HOME}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=ON \

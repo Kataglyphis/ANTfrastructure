@@ -1,4 +1,5 @@
 docs/_build/*
 *.log
+out/**/*
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md

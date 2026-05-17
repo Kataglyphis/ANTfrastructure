@@ -9,34 +9,9 @@ umask 022
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source shared helpers (prefer symlinked location for Docker builds)
-# shellcheck disable=SC1090
-if [ -f "${_SCRIPT_DIR}/common.sh" ]; then
-  source "${_SCRIPT_DIR}/common.sh"
-elif [ -f "${_SCRIPT_DIR}/../01-core/common.sh" ]; then
-  source "${_SCRIPT_DIR}/../01-core/common.sh"
-elif [ -f "/opt/scripts/core/common.sh" ]; then
-  source "/opt/scripts/core/common.sh"
-else
-  # Minimal fallbacks when core helpers aren't available
-  info() { printf '[INFO] %s\n' "$*"; }
-  warn() { printf '[WARN] %s\n' "$*" >&2; }
-  err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
-  die()  { err "$@"; }
-  require_sudo() {
-    if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-      command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
-      SUDO="sudo"
-    else
-      SUDO=""
-    fi
-  }
-  apt_install() {
-    ${SUDO:-} apt-get update -qq
-    ${SUDO:-} apt-get install -y --no-install-recommends "$@"
-  }
-  detect_system() { :; }
-fi
+# shellcheck disable=SC1091
+source "${_SCRIPT_DIR}/bootstrap.sh"
+source_toolchain_common_or_fallback "${_SCRIPT_DIR}"
 
 on_err() {
   local line="${1:-?}"
@@ -78,7 +53,7 @@ USAGE
 
 # --- Default Values ---
 LLVM_VERSION=""
-LLVM_RELEASE=""
+LLVM_RELEASE="${LLVM_RELEASE:-}"
 LLVM_TAG=""
 PREFIX=""
 ARCH="$(uname -m)"
@@ -166,14 +141,15 @@ if [ "$USE_CCACHE" = "1" ]; then
     CCACHE_DIR="${CCACHE_DIR:-${HOME}/.cache/ccache}"
     mkdir -p "${CCACHE_DIR}"
     export CCACHE_DIR
-    export CC="ccache gcc"
-    export CXX="ccache g++"info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
+    info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
 fi
 
 # Compute release version if not specified
 if [ -z "${LLVM_RELEASE:-}" ]; then
-    # Default to .1.0 for new major versions, can be overridden
-    LLVM_RELEASE="${LLVM_VERSION}.1.0"
+    case "${LLVM_VERSION}" in
+        22) LLVM_RELEASE="22.1.5" ;;
+        *)  LLVM_RELEASE="${LLVM_VERSION}.1.0" ;;
+    esac
 fi
 
 # Compute LLVM_TAG if not specified
@@ -193,12 +169,14 @@ info "LTO: ${ENABLE_LTO}, Assertions: OFF, Bootstrap: ${BOOTSTRAP}"
 
 # --- Initialization & WORKDIR FIX ---
 WD="$(pwd)"
+DEFAULT_LLVM_WORK_ROOT="${LLVM_BUILD_ROOT:-${HOME}/tmp2/llvm-build-root}"
+AUTO_WORKDIR="${DEFAULT_LLVM_WORK_ROOT}/llvm-work"
 
 if [ "${WD}" = "/" ]; then
-    warn "Detected execution from Root (/). Creating safe workspace in /tmp/llvm-work..."
-    mkdir -p /tmp/llvm-work
-    cd /tmp/llvm-work
-    WD="/tmp/llvm-work"
+    warn "Detected execution from Root (/). Creating safe workspace in ${AUTO_WORKDIR}..."
+    mkdir -p "${AUTO_WORKDIR}"
+    cd "${AUTO_WORKDIR}"
+    WD="${AUTO_WORKDIR}"
 fi
 
 SRC_DIR="${WD}/llvm-project"
@@ -231,30 +209,10 @@ if [ -n "${NUM_JOBS:-}" ] && [[ "${NUM_JOBS}" =~ ^[0-9]+$ ]]; then
     : # Explicitly set by user, respect it.
 elif [ -n "${CLANG_NUM_JOBS:-}" ] && [[ "${CLANG_NUM_JOBS}" =~ ^[0-9]+$ ]]; then
     NUM_JOBS="${CLANG_NUM_JOBS}"
+elif command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    NUM_JOBS="$(compute_jobs_with_mem_cap "" "${CLANG_BUILD_MB_PER_JOB:-2000}")"
 else
-    if [ -f /proc/meminfo ]; then
-        TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-        TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
-    else
-        TOTAL_MEM_MB=8000
-    fi
-
-    AVAIL_CORES=$(nproc || echo 1)
-    
-    MEM_LIMIT_JOBS=$((TOTAL_MEM_MB / 2000))
-    if [ "$MEM_LIMIT_JOBS" -lt 1 ]; then MEM_LIMIT_JOBS=1; fi
-
-    if [ "$ARCH" = "riscv64" ]; then
-        if [ "$AVAIL_CORES" -le "$MEM_LIMIT_JOBS" ]; then
-            NUM_JOBS="$AVAIL_CORES"
-            info "RISC-V Job Config: RAM is sufficient ($TOTAL_MEM_MB MB). Using all $NUM_JOBS cores."
-        else
-            NUM_JOBS="$MEM_LIMIT_JOBS"
-            warn "RISC-V Job Config: Limiting to $NUM_JOBS jobs to prevent OOM ($TOTAL_MEM_MB MB RAM detected). Available Cores: $AVAIL_CORES."
-        fi
-    else
-        NUM_JOBS="$AVAIL_CORES"
-    fi
+    NUM_JOBS="$(nproc || echo 1)"
 fi
 info "Using NUM_JOBS=${NUM_JOBS}"
 
@@ -274,8 +232,11 @@ fi
 run_preflight_checks
 
 if [[ ! -d "${SRC_DIR}" ]]; then
-    info "Cloning llvm-project ${LLVM_TAG}..."
-    git clone --depth 1 --branch "${LLVM_TAG}" https://github.com/llvm/llvm-project.git "${SRC_DIR}"
+    info "Fetching llvm-project ${LLVM_TAG}..."
+    git init -q "${SRC_DIR}"
+    git -C "${SRC_DIR}" remote add origin https://github.com/llvm/llvm-project.git
+    git -C "${SRC_DIR}" fetch --depth 1 origin tag "${LLVM_TAG}"
+    git -C "${SRC_DIR}" checkout -q FETCH_HEAD
 fi
 
 rm -rf "${BUILD_DIR}"
@@ -299,29 +260,36 @@ if [ -z "${CC:-}" ]; then
     if command -v g++ >/dev/null 2>&1; then export CXX=g++; fi
 fi
 
-if [ "$USE_CCACHE" = "1" ]; then
-    CCACHE_FLAGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
-else
-    CCACHE_FLAGS=""
-fi
-
 CMAKE_FLAGS=(
     -G Ninja
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
-    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;compiler-rt"
+    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld"
+    -DLLVM_ENABLE_RUNTIMES="compiler-rt"
     -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS}"
     -DLLVM_ENABLE_LTO=${ENABLE_LTO}
     -DLLVM_ENABLE_ASSERTIONS=OFF
+    -DLLVM_ENABLE_WARNINGS=OFF
     -DCLANG_ENABLE_BOOTSTRAP=${BOOTSTRAP}
-    ${LINKER_FLAG}
-    ${CCACHE_FLAGS}
     -DLLVM_ENABLE_TERMINFO=OFF
     -DLLVM_INCLUDE_TESTS=OFF
     -DLLVM_INCLUDE_EXAMPLES=OFF
     -DLLVM_INCLUDE_BENCHMARKS=OFF
     -DCLANG_INCLUDE_TESTS=OFF
 )
+
+if [ -n "${LINKER_FLAG}" ]; then
+    CMAKE_FLAGS+=("${LINKER_FLAG}")
+fi
+
+if [ "$USE_CCACHE" = "1" ]; then
+    # Let CMake call the real compiler directly and inject ccache as a launcher.
+    # Exporting CC="ccache gcc" makes CMake generate broken ASM rules for .S files.
+    CMAKE_FLAGS+=(
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+    )
+fi
 
 echo "==> Configuring: LTO=${ENABLE_LTO}, Bootstrap=${BOOTSTRAP}, Targets=${LLVM_TARGETS}"
 cmake "${CMAKE_FLAGS[@]}" "${SRC_DIR}/llvm"
@@ -347,6 +315,15 @@ ${SUDO} update-alternatives --install /usr/bin/clang clang "${BIN_DIR}/clang" 20
 
 ${SUDO} update-alternatives --set clang "${BIN_DIR}/clang" || true
 
+# Keep the rest of the LLVM toolchain visible on PATH when apt.llvm.org is not
+# available and this script becomes the primary installation path.
+if [ -d "${BIN_DIR}" ]; then
+    for tool_path in "${BIN_DIR}"/*; do
+        [ -x "${tool_path}" ] || continue
+        ${SUDO} ln -sf "${tool_path}" "/usr/local/bin/$(basename "${tool_path}")"
+    done
+fi
+
 if [[ "${DO_STRIP}" == "1" ]]; then
     info "Stripping binaries..."
     ${SUDO} find "${INSTALL_DIR}" -type f -exec sh -c 'file "{}" | grep -q ELF && strip --strip-all "{}"' \; || true
@@ -355,9 +332,9 @@ fi
 [[ "${KEEP_SRC}" != "1" ]] && rm -rf "${SRC_DIR}"
 [[ "${KEEP_BUILD}" != "1" ]] && rm -rf "${BUILD_DIR}"
 
-if [[ "${WD}" == "/tmp/llvm-work" ]]; then
+if [[ "${WD}" == "${AUTO_WORKDIR}" ]]; then
     cd /
-    rm -rf "/tmp/llvm-work"
+    rm -rf "${AUTO_WORKDIR}"
 fi
 
 info "Done. Clang ${LLVM_VERSION} installed at ${INSTALL_DIR}"

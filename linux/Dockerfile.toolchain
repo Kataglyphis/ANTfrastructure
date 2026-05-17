@@ -1,0 +1,150 @@
+# syntax=docker/dockerfile:1.19
+
+ARG BASE_IMAGE=local/kataglyphis:base
+FROM ${BASE_IMAGE}
+
+ARG LLVM_RELEASE=22.1.5
+ARG GCC_VERSION=16.1.0
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG BUILDARCH
+ARG BUILDPLATFORM
+ARG BUILD_MODE=native
+ARG CROSS_TARGETS=amd64,arm64,riscv64
+ARG PYTHON_VERSION=3.14.4
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+
+SHELL ["bash", "-lc"]
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
+
+ENV BUILD_MODE=${BUILD_MODE} \
+    BUILDARCH=${BUILDARCH} \
+    BUILDPLATFORM=${BUILDPLATFORM} \
+    CROSS_TARGETS=${CROSS_TARGETS} \
+    GCC_VERSION=${GCC_VERSION} \
+    GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
+    LLVM_RELEASE=${LLVM_RELEASE} \
+    PYTHON_VERSION=${PYTHON_VERSION} \
+    PATH="/usr/local/cargo/bin:${PATH}" \
+    CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    RUSTC_WRAPPER="" \
+    PKG_CONFIG_ALLOW_CROSS=1
+
+# ------------------------------------------------------------------------------
+# Toolchain setup
+# ------------------------------------------------------------------------------
+# 1. GCC (Heavy Layer)
+# If this succeeds, it is cached forever unless GCC_VERSION changes.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolchain-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-toolchain-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-gcc
+
+# 2. ENVIRONMENT CONFIGURATION
+# We apply ENV vars here so subsequent RUN instructions (LLVM/Vulkan)
+# automatically use the new GCC without needing to source /etc/environment.
+# LIBRARY_PATH is needed at link time (for the linker to find libgcc_s, etc.)
+# LD_LIBRARY_PATH is needed at runtime (for the dynamic loader)
+ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
+    PKG_CONFIG_PATH="${GCC_PREFIX}/lib64/pkgconfig:${GCC_PREFIX}/lib/pkgconfig" \
+    LD_LIBRARY_PATH="${GCC_PREFIX}/lib64:${GCC_PREFIX}/lib" \
+    LIBRARY_PATH="${GCC_PREFIX}/lib64:${GCC_PREFIX}/lib"
+
+# 3. LLVM / CLANG (Heavy Layer)
+# If this fails, Docker restores the image state at 'Step 2' instantly.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolchain-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-toolchain-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-llvm
+
+# 3b. VERIFY TOOLCHAIN CONTRACT
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    set -eux; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh verify
+
+# 4. RUST / CARGO
+# Install the host Rust toolchain in the compiler layer and add the target stdlibs
+# plus Cargo linker hints needed by the amd64-hosted cross build lane.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \
+    --mount=type=cache,target=/root/.cache/rustup,id=rustup-cache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    source /opt/scripts/core/platform.sh; \
+    try_rustup() { \
+        "$@" && return 0; \
+        printf 'WARNING: optional rustup command failed: %s\n' "$*" >&2; \
+    }; \
+    host_arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    host_rust_target="$(rust_target_triple_for_arch "${host_arch}")" || { \
+        echo "Unsupported Rust host architecture: ${host_arch}" >&2; \
+        exit 1; \
+    }; \
+    if [ "${BUILD_MODE}" = "cross" ]; then \
+        rust_targets="${CROSS_TARGETS}"; \
+    else \
+        rust_targets="${host_arch}"; \
+    fi; \
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; \
+    rustc --version; \
+    cargo --version; \
+    cargo install --locked cargo-c; \
+    try_rustup rustup component add clippy; \
+    nightly_toolchain="nightly-${host_rust_target}"; \
+    try_rustup rustup toolchain install "${nightly_toolchain}"; \
+    try_rustup rustup component add rust-src --toolchain "${nightly_toolchain}"; \
+    try_rustup rustup target add wasm32-unknown-unknown --toolchain "${nightly_toolchain}"; \
+    for target in ${rust_targets//,/ }; do \
+        rust_target="$(rust_target_triple_for_arch "${target}")" || { \
+            echo "Unsupported Rust target: ${target}" >&2; \
+            exit 1; \
+        }; \
+        rustup target add "${rust_target}"; \
+        try_rustup rustup target add --toolchain "${nightly_toolchain}" "${rust_target}"; \
+    done
+
+# 5. PYTHON (Source-Built Interpreter)
+# Keep the interpreter in the shared compiler layer so downstream images only
+# create their own venvs on top of a single source-built CPython install.
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/python/build_python.sh,target=/opt/scripts/python/build_python.sh,ro \
+    set -eux; \
+    bash /opt/scripts/python/build_python.sh "${PYTHON_VERSION}"
+
+COPY linux/scripts/01-core/ /opt/scripts/core/
+COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
+COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
+
+# 6. FINAL SCRIPT TREE SMOKE CHECK
+RUN set -eux; \
+    bash -n \
+      /opt/scripts/core/modules.sh \
+      /opt/scripts/core/platform.sh \
+      /opt/scripts/core/common.sh \
+      /opt/scripts/core/cross-env.sh \
+      /opt/scripts/core/verify.sh \
+      /opt/scripts/toolchain/setup-dependencies.sh \
+      /opt/scripts/toolchain/build-gcc.sh \
+      /opt/scripts/toolchain/build-clang.sh \
+      /opt/scripts/python/build_python.sh; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null
+
+LABEL org.opencontainers.image.title="Kataglyphis Compiler"
+LABEL org.opencontainers.image.description="Compiler toolchain with GCC and LLVM/Clang"

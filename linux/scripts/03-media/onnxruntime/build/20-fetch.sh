@@ -58,8 +58,8 @@ fi
 # ----------------------------
 # Setup emsdk (if present in repo)
 # ----------------------------
-if ! is_amd64_arch; then
-  info "Skipping emsdk setup on non-amd64 architecture (arch=$(detect_target_arch))"
+if command -v build_arch_oci >/dev/null 2>&1 && [ "$(build_arch_oci)" != "amd64" ]; then
+  info "Skipping emsdk setup on non-amd64 build host"
   info "Fetch step complete (ORT_VERSION=${ORT_VERSION})"
   exit 0
 fi

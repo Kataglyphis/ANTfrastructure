@@ -1,0 +1,76 @@
+# syntax=docker/dockerfile:1.19
+
+# ==============================================================================
+# Dockerfile.amd  —  Optional AMD GPU (ROCm) library layer
+#
+# Position in the chain:
+#   :sdk  →  THIS (:toolchain-amd)  →  :media-amd  →  :android-amd  →  :amd
+#
+# What this installs on top of the standard SDK image:
+#   • ROCm Toolkit (hipcc, hip-runtime-amd)
+#   • MIOpen (Deep Neural Network library)
+#   • RCCL (multi-GPU collective comms)
+#   • rocBLAS, rocSPARSE, rocFFT (ROCm math libraries)
+#
+# Usage:
+#   docker buildx build \
+#     --build-arg BASE_IMAGE=local/kataglyphis:sdk \
+#     -t local/kataglyphis:toolchain-amd \
+#     -f linux/Dockerfile.amd .
+# ==============================================================================
+
+ARG BASE_IMAGE=local/kataglyphis:sdk
+FROM ${BASE_IMAGE}
+
+ARG ROCM_VERSION=6.1.2
+ARG UBUNTU_VERSION=noble
+ARG TARGETARCH
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+SHELL ["bash", "-lc"]
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
+
+# Install prerequisites and add ROCm repository
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-amd-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-amd-${TARGETARCH} \
+    set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends \
+        wget \
+        gnupg2 \
+        software-properties-common \
+    && mkdir --parents --mode=0755 /etc/apt/keyrings \
+    && wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${ROCM_VERSION} ${UBUNTU_VERSION} main" | tee /etc/apt/sources.list.d/rocm.list \
+    && echo -e 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' | tee /etc/apt/preferences.d/rocm-pin-600 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        rocm-dev \
+        rocm-libs \
+        miopen-hip \
+        rccl \
+        rocblas \
+        rocfft \
+        rocsolver \
+        rocsparse \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ROCM_HOME=/opt/rocm
+ENV PATH="${ROCM_HOME}/bin:${PATH}"
+ENV LD_LIBRARY_PATH="${ROCM_HOME}/lib:${ROCM_HOME}/lib64:${LD_LIBRARY_PATH:-}"
+
+RUN echo "export PATH=${ROCM_HOME}/bin:\$PATH" >> /etc/profile.d/rocm.sh \
+    && echo "${ROCM_HOME}/lib" > /etc/ld.so.conf.d/rocm.conf \
+    && echo "${ROCM_HOME}/lib64" >> /etc/ld.so.conf.d/rocm.conf \
+    && ldconfig
+
+RUN set -eux; \
+    test -x "${ROCM_HOME}/bin/hipcc"; \
+    ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse' >/dev/null

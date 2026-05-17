@@ -1,9 +1,8 @@
 # syntax=docker/dockerfile:1.19
 
 # Global Version Arguments
-ARG PYTHON_VERSION="3.14.3"
-ARG ONNXRUNTIME_VERSION="v1.24.4"
-ARG ONNXRUNTIME_GENAI_VERSION="v0.12.2"
+ARG ONNXRUNTIME_VERSION="v1.26.0"
+ARG ONNXRUNTIME_GENAI_VERSION="v0.13.1"
 ARG LITERT_VERSION="v2.1.4"
 ARG OPENCV_VERSION="4.x"
 ARG GSTREAMER_VERSION="1.29.1"
@@ -24,14 +23,30 @@ ARG USE_SCCACHE=true
 ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE} AS base
 
+ARG BUILD_MODE=native
+ARG TARGET_ARCH
 ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG BUILDARCH
+ARG BUILDPLATFORM
 ARG ENABLE_NVIDIA=false
+ARG ENABLE_AMD=false
 ARG AGGRESSIVE_PARALLELISM
 ARG USE_LLD
 ARG USE_CCACHE
 ARG USE_SCCACHE
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
+    ENABLE_AMD=${ENABLE_AMD} \
+    BUILD_MODE=${BUILD_MODE} \
+    TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETPLATFORM=${TARGETPLATFORM} \
+    BUILDARCH=${BUILDARCH} \
+    BUILDPLATFORM=${BUILDPLATFORM} \
     AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM} \
     USE_LLD=${USE_LLD} \
     USE_CCACHE=${USE_CCACHE} \
@@ -39,47 +54,57 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
 
 SHELL ["bash", "-lc"]
 
-ENV USER=root
+USER root
 
-RUN if [ "$TARGETARCH" = "riscv64" ]; then \
-        echo 'export LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh && \
-        echo 'export LD_LIBRARY_PATH=/opt/gcc-15.2.0/lib64:/opt/gcc-15.2.0/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/10-riscv-gcc.sh; \
-    fi
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
 
 # If NVIDIA is enabled, force NVIDIA codec headers on so GStreamer nvcodec plugin is built
 ENV NVIDIA_CODEC_HEADERS=${ENABLE_NVIDIA:+yes}
-# If NVIDIA is enabled, extend LD_LIBRARY_PATH for CUDA/TensorRT libs
-ENV LD_LIBRARY_PATH=${ENABLE_NVIDIA:+"${CUDA_HOME}/lib64:${TENSORRT_HOME}/lib:${LD_LIBRARY_PATH}"}
 RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
         echo "export PATH=${CUDA_HOME}/bin:\$PATH" >> /etc/profile.d/cuda.sh; \
     fi
-ENV PATH="${CUDA_HOME}/bin:${PATH}"
 
-# Build Python from source
-ARG PYTHON_VERSION
-ARG PYTHON_MAJOR_MINOR=3.14
-ENV PYTHON_VERSION=${PYTHON_VERSION}
-ENV PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}
-# Override build scripts' default (3.14t) to ensure non-threaded ABI
-ENV ORT_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
-    OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
-    UV_PYTHON=${PYTHON_MAJOR_MINOR}
+RUN if [ "${ENABLE_AMD}" = "true" ]; then \
+        echo "export PATH=/opt/rocm/bin:\$PATH" >> /etc/profile.d/rocm.sh; \
+    fi
+ENV PATH="${CUDA_HOME:+${CUDA_HOME}/bin:}${ENABLE_AMD:+/opt/rocm/bin:}${PATH}" \
+    LD_LIBRARY_PATH="${CUDA_HOME:+${CUDA_HOME}/lib64:}${TENSORRT_HOME:+${TENSORRT_HOME}/lib:}${ENABLE_AMD:+/opt/rocm/lib:/opt/rocm/lib64:}${LD_LIBRARY_PATH}"
+
+# Python interpreter selection for shared build tooling.
+# Keep uv pinned to the shared venv interpreter after it is created, because
+# cross builds use the host Python to run build tooling.
 
 # Copy core build scripts (compiler-cache, parallelism helpers)
-COPY --chmod=755 linux/scripts/01-core/compiler-cache.sh /opt/scripts/core/compiler-cache.sh
-COPY --chmod=755 linux/scripts/01-core/parallelism.sh /opt/scripts/core/parallelism.sh
-
-COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
-RUN /opt/scripts/python/build_python.sh ${PYTHON_VERSION}
+COPY --chmod=755 \
+    linux/scripts/01-core/platform.sh \
+    linux/scripts/01-core/cross-env.sh \
+    linux/scripts/01-core/ubuntu-mirror.sh \
+    linux/scripts/01-core/compiler-cache.sh \
+    linux/scripts/01-core/parallelism.sh \
+    /opt/scripts/core/
 
 # Create a shared Python virtual environment for all subsequent stages using uv
 ENV VIRTUAL_ENV=/opt/python/.venv
-RUN uv venv --seed --python /usr/local/bin/python${PYTHON_MAJOR_MINOR} ${VIRTUAL_ENV}
-ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+RUN set -eux; \
+    source /opt/scripts/core/cross-env.sh; \
+    python_mm="$(host_python_major_minor)"; \
+    test -x "/usr/local/bin/python${python_mm}" || { \
+        echo "Expected source-built interpreter /usr/local/bin/python${python_mm} from the compiler base image was not found" >&2; \
+        ls -1 /usr/local/bin/python* 2>/dev/null || true; \
+        exit 1; \
+    }; \
+    uv venv --seed --python "/usr/local/bin/python${python_mm}" "${VIRTUAL_ENV}"
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}" \
+    UV_PYTHON=${VIRTUAL_ENV}/bin/python \
+    MEDIA_HOST_PYTHON=${VIRTUAL_ENV}/bin/python
 
 # Install core Python build dependencies using uv
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    uv pip install wheel setuptools numpy meson ninja cmake packaging
+    uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools numpy meson ninja cmake packaging
 
 # ==============================================================================
 # ONNX Runtime stage
@@ -95,85 +120,70 @@ ARG BUILD_GENAI=true
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
 
-ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR}
-ENV GENAI_OUTPUT_DIR=${ONNXRUNTIME_GENAI_OUTPUT_DIR}
+ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
+    GENAI_OUTPUT_DIR=${ONNXRUNTIME_GENAI_OUTPUT_DIR} \
+    ORT_VERSION=${ONNXRUNTIME_VERSION} \
+    NATIVE_CPU_CONFIG=${ONNXRUNTIME_NATIVE_BUILD_TYPE} \
+    WASM_CONFIG=${ONNXRUNTIME_WASM_BUILD_TYPE} \
+    GENAI_VERSION=${ONNXRUNTIME_GENAI_VERSION} \
+    GENAI_CONFIG=${ONNXRUNTIME_GENAI_BUILD_TYPE} \
+    BUILD_GENAI=${BUILD_GENAI}
 
 COPY --chmod=755 linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
-COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /opt/scripts/04-runtime/gstreamer-env.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
         --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
         set -eux; \
-    SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/10-deps.sh \
-            --ort-version "${ONNXRUNTIME_VERSION}" \
-            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
-            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+    SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
+            --step deps
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
         --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         set -eux; \
-        bash /opt/scripts/media/onnxruntime/build/20-fetch.sh \
-            --ort-version "${ONNXRUNTIME_VERSION}" \
-            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
-            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
+            --step fetch
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
         set -eux; \
-        bash /opt/scripts/media/onnxruntime/build/30-build-native.sh \
-            --ort-version "${ONNXRUNTIME_VERSION}" \
-            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
-            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
+            --step cpu
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
         set -eux; \
-        if [ "$ENABLE_NVIDIA" = "true" ]; then \
-            bash /opt/scripts/media/onnxruntime/build/30-build-native-nvidia.sh \
-                --ort-version "${ONNXRUNTIME_VERSION}" \
-                --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
-                --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"; \
-        fi
+        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
+            --step gpu
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         set -eux; \
-        BUILD_GENAI="${BUILD_GENAI}" \
-        bash /opt/scripts/media/onnxruntime/build/60-build-genai.sh \
-            --ort-version "${ONNXRUNTIME_VERSION}" \
-            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
-            --genai-version "${ONNXRUNTIME_GENAI_VERSION}" \
-            --genai-config "${ONNXRUNTIME_GENAI_BUILD_TYPE}"
+        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
+            --step genai
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         set -eux; \
-        bash /opt/scripts/media/onnxruntime/build/40-build-wasm.sh \
-            --ort-version "${ONNXRUNTIME_VERSION}" \
-            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
-            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
+            --step wasm
 
 RUN set -eux; \
-    bash /opt/scripts/media/onnxruntime/build/50-build-js.sh \
-            --ort-version "${ONNXRUNTIME_VERSION}" \
-            --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
-            --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+    bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
+            --step js
 
 COPY --chmod=755 linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
 
 RUN set -eux; \
-    bash /opt/scripts/media/onnxruntime/runtime/31-generate-pkgconfig-native.sh \
-        --ort-version "${ONNXRUNTIME_VERSION}" \
-        --build-type "${ONNXRUNTIME_NATIVE_BUILD_TYPE}" \
-        --wasm-config "${ONNXRUNTIME_WASM_BUILD_TYPE}"
+    bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
+        --step pkgconfig
 
 # ==============================================================================
 # LiteRT stage
@@ -249,42 +259,41 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     bash /opt/scripts/media/ffmpeg/build-ffmpeg.sh
 
 # ==============================================================================
+# Shared media build inputs stage
+# ==============================================================================
+FROM base AS media-inputs
+
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+ARG LITERT_OUTPUT_DIR=/usr/local
+ARG OPENCV_OUTPUT_DIR=/opt/opencv4
+
+ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
+    FFMPEG_PREFIX=/opt/ffmpeg \
+    PKG_CONFIG_PATH="/opt/ffmpeg/lib/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LITERT_OUTPUT_DIR}/lib/pkgconfig:${ONNXRUNTIME_OUTPUT_DIR}/runtime/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}" \
+    LD_LIBRARY_PATH="/opt/ffmpeg/lib:${OPENCV_OUTPUT_DIR}/lib:${LITERT_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+    LIBRARY_PATH="/opt/ffmpeg/lib:${LITERT_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+
+COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
+COPY --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
+COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
+COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
+
+# ==============================================================================
 # GStreamer stage (depends on onnxruntime + litert)
 # ==============================================================================
-FROM base AS gstreamer
+FROM media-inputs AS gstreamer
 
 ARG GSTREAMER_VERSION
 ARG BUILD_TYPE=Release
-ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
-ARG LITERT_OUTPUT_DIR=/usr/local
-ARG OPENCV_OUTPUT_DIR=/opt/opencv4
 ARG GSTREAMER_PREFIX=/opt/gstreamer
 
-ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
-    GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
+ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     GSTREAMER_VERSION=${GSTREAMER_VERSION} \
-    CSOUND_LIB_DIR=/usr/lib
-
-COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
-COPY --from=onnxruntime /usr/local/lib/onnxruntime-genai /usr/local/lib/onnxruntime-genai
-COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
-COPY --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
-COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
-COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
-COPY --chmod=755 linux/scripts/03-media/opencv/fix-symlinks.sh /opt/scripts/media/opencv/fix-symlinks.sh
-
-RUN set -eux; \
-    bash /opt/scripts/media/opencv/fix-symlinks.sh "${OPENCV_OUTPUT_DIR}"
-
-RUN set -eux; \
-    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
-    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
-    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
-
-ENV PKG_CONFIG_PATH="${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LITERT_OUTPUT_DIR}/lib/pkgconfig:${ONNXRUNTIME_OUTPUT_DIR}/runtime/lib/pkgconfig"
-ENV LD_LIBRARY_PATH="${OPENCV_OUTPUT_DIR}/lib:${LITERT_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
-ENV LIBRARY_PATH="${LITERT_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib"
-ENV PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
+    CSOUND_LIB_DIR=/usr/lib \
+    PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 
 COPY --chmod=755 linux/scripts/03-media/gstreamer /opt/scripts/media/gstreamer
 COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
@@ -297,21 +306,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
-    cd /opt; \
-    bash /opt/scripts/media/gstreamer/common/pre-setup.sh; \
-    /opt/scripts/media/gstreamer/common/install-vvdec.sh; \
-    export SODIUM_USE_PKG_CONFIG=1; \
-    export PKG_CONFIG_ALLOW_CROSS=1; \
-    export PKG_CONFIG_SYSROOT_DIR="${PKG_CONFIG_SYSROOT_DIR:-/}"; \
-    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
-    if [ -n "$triplet" ]; then \
-      export PKG_CONFIG_LIBDIR="/usr/lib/$triplet/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_LIBDIR:-}"; \
-    else \
-      export PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_LIBDIR:-}"; \
-    fi; \
-    export SODIUM_SHARED=1; \
-    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"; \
-    MESON_ARGS="-Dgst-plugins-rs:skia=disabled" bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
+    bash /opt/scripts/media/gstreamer/common/build-gstreamer-stage.sh \
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \
         "$BUILD_TYPE"
@@ -319,14 +314,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 # ==============================================================================
 # libcamera stage
 # ==============================================================================
-FROM base AS libcamera
+FROM gstreamer AS libcamera
 
-COPY --from=litert /usr/local/include /usr/local/include
-COPY --from=litert /usr/local/lib /usr/local/lib
-COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+ARG GSTREAMER_PREFIX=/opt/gstreamer
+
+ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX}
 
 COPY --chmod=755 linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
-COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
@@ -343,24 +337,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -eux; \
     cd /opt; \
-    if [ -f /usr/local/include/flatbuffers/flatbuffers.h ]; then \
-        echo "Found FlatBuffers header:"; \
-        sed -n '1,120p' /usr/local/include/flatbuffers/flatbuffers.h | sed -n '1,120p' || true; \
-        grep -n "FLATBUFFERS_VERSION_MAJOR" /usr/local/include/flatbuffers/flatbuffers.h || true; \
-    else \
-        echo "ERROR: /usr/local/include/flatbuffers/flatbuffers.h not found" >&2; \
-        echo "Listing /usr/local/include:" >&2; \
-        ls -la /usr/local/include || true; \
-        exit 1; \
-    fi; \
-    if [ -f /usr/local/include/tflite/converter/schema/schema_generated.h ]; then \
-        echo "TFLite schema check (expected FlatBuffers version):"; \
-        grep -n "static_assert(FLATBUFFERS_VERSION_MAJOR" /usr/local/include/tflite/converter/schema/schema_generated.h || true; \
-    fi; \
-    bash /opt/scripts/media/libcamera/build-libcamera-wrapper.sh
+    bash /opt/scripts/media/libcamera/build-libcamera.sh
 
 # ==============================================================================
-# Final stage - combine all artifacts
+# Final stage - combine all artifacts while keeping runtime inputs selective.
 # ==============================================================================
 FROM base AS final
 
@@ -381,16 +361,7 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
 
 COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
-# Only copy ONNX Runtime GPU artifact if built (it would only be in the build stage if enabled)
-# For multistage we need to be careful as the GPU output dir might not exist.
-# A safe way is to copy wildcards or use a dedicated intermediate.
-COPY --from=onnxruntime /usr/local/lib/onnxruntime-gp[u] /usr/local/lib/onnxruntime-gpu/
-# Handle potential nested directory from wildcard copy
-RUN set -eux; \
-    if [ -d "/usr/local/lib/onnxruntime-gpu/onnxruntime-gpu" ]; then \
-        mv /usr/local/lib/onnxruntime-gpu/onnxruntime-gpu/* /usr/local/lib/onnxruntime-gpu/ || true; \
-        rm -rf /usr/local/lib/onnxruntime-gpu/onnxruntime-gpu; \
-    fi
+COPY --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/pkgconfig ${LITERT_OUTPUT_DIR}/lib/pkgconfig
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
@@ -402,32 +373,10 @@ COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 COPY --from=libcamera /opt/libcamera /opt/libcamera
-COPY --chmod=755 linux/scripts/03-media/opencv/fix-symlinks.sh /opt/scripts/media/opencv/fix-symlinks.sh
 COPY --chmod=755 linux/scripts/03-media/final /opt/scripts/media/final
 
 RUN set -eux; \
-    mkdir -p /opt/wheels; \
-    mv /usr/local/lib/onnxruntime-cpu/wheels/*.whl /opt/wheels/ 2>/dev/null || true; \
-    mv /usr/local/lib/onnxruntime-genai/wheels/*.whl /opt/wheels/ 2>/dev/null || true; \
-    mv /usr/local/lib/onnxruntime-gpu/wheels/*.whl /opt/wheels/ 2>/dev/null || true; \
-    mv /opt/opencv4/wheels/*.whl /opt/wheels/ 2>/dev/null || true; \
-    mv /opt/litert-wheels/*.whl /opt/wheels/ 2>/dev/null || true; \
-    mv /opt/libcamera/wheels/*.whl /opt/wheels/ 2>/dev/null || true; \
-    rm -rf /usr/local/lib/onnxruntime-*/wheels /opt/opencv4/wheels /opt/litert-wheels /opt/libcamera/wheels
-
-RUN set -eux; \
-    if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then \
-        echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"; \
-        ln -s /usr/local/include/tflite /usr/local/include/tensorflow || true; \
-    fi
-
-RUN set -eux; \
-    bash /opt/scripts/media/opencv/fix-symlinks.sh "${OPENCV_OUTPUT_DIR}"
-
-RUN set -eux; \
-    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
-    mkdir -p "/opt/gstreamer/lib/${triplet}"; \
-    ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
+    bash /opt/scripts/media/final/collect-artifacts.sh
 
 ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
@@ -442,55 +391,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     bash /opt/scripts/media/final/install-deps.sh
 
 RUN set -eux; \
-    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"; \
-    SYS_PKGCONF_DIR="/usr/lib/${triplet}/pkgconfig"; \
-    GST_PKGCONF_DIR="/opt/gstreamer/lib/${triplet}/pkgconfig"; \
-    mkdir -p "${SYS_PKGCONF_DIR}"; \
-    if [ -d "${GST_PKGCONF_DIR}" ]; then \
-        for pc in "${GST_PKGCONF_DIR}"/*.pc; do \
-            ln -snf "$pc" "${SYS_PKGCONF_DIR}/$(basename "$pc")"; \
-        done; \
-    fi; \
-    printf "%s\n" "/opt/gstreamer/lib/${triplet}" > /etc/ld.so.conf.d/gstreamer.conf; \
-    ldconfig
-
-RUN set -eux; \
-    printf "%s\n" "/opt/libcamera/lib" > /etc/ld.so.conf.d/libcamera.conf; \
-    printf "%s\n" "/opt/libcamera/lib64" >> /etc/ld.so.conf.d/libcamera.conf; \
-    printf "%s\n" "/opt/ffmpeg/lib" > /etc/ld.so.conf.d/ffmpeg.conf; \
-    printf "%s\n" "/opt/opencv4/lib" > /etc/ld.so.conf.d/opencv.conf; \
-    printf "%s\n" "/usr/local/lib/onnxruntime-cpu/lib" > /etc/ld.so.conf.d/onnxruntime.conf; \
-    printf "%s\n" "/usr/local/lib/onnxruntime-genai/lib" >> /etc/ld.so.conf.d/onnxruntime.conf; \
-    printf "%s\n" "/usr/local/lib" >> /etc/ld.so.conf.d/litert.conf; \
-    if [ "$ENABLE_NVIDIA" = "true" ]; then \
-        printf "%s\n" "${CUDA_HOME}/lib64" > /etc/ld.so.conf.d/cuda.conf; \
-        printf "%s\n" "${TENSORRT_HOME}/lib" > /etc/ld.so.conf.d/tensorrt.conf; \
-    fi; \
-    ldconfig
+    bash /opt/scripts/media/final/configure-runtime.sh
 
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     set -eux; \
-    uv pip install auditwheel patchelf; \
-    export LD_LIBRARY_PATH="$(find /opt /usr/local -type d -name 'lib*' -o -name '*linux-gnu*' | sort -u | paste -sd ':' -):${LD_LIBRARY_PATH:-}"; \
-    mkdir -p /opt/wheels/repaired; \
-    for wheel in /opt/wheels/*.whl; do \
-        if [ ! -e "$wheel" ]; then continue; fi; \
-        case $(basename "$wheel") in \
-            *none-any.whl) cp "$wheel" /opt/wheels/repaired/ ;; \
-            *) auditwheel repair "$wheel" -w /opt/wheels/repaired/ || cp "$wheel" /opt/wheels/repaired/ ;; \
-        esac; \
-    done; \
-    rm /opt/wheels/*.whl; \
-    mv /opt/wheels/repaired/*.whl /opt/wheels/; \
-    rmdir /opt/wheels/repaired
+    bash /opt/scripts/media/final/repair-wheels.sh
 
 RUN set -eux; \
-    PY_TAG="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"; \
-    echo "Verifying wheels in /opt/wheels have the correct tag ($PY_TAG or generic)..."; \
-    for wheel in /opt/wheels/*.whl; do \
-        if [ ! -e "$wheel" ]; then continue; fi; \
-        case $(basename "$wheel") in \
-            *"$PY_TAG-"*|*py3-none-any*|*py2.py3-none-any*|*py3-none-*) ;; \
-            *) echo "Error: Wheel $wheel does not have the correct tag (expected ${PY_TAG}- or generic py3)"; exit 1 ;; \
-        esac; \
-    done
+    bash /opt/scripts/media/final/verify-wheels.sh

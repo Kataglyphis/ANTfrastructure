@@ -32,6 +32,7 @@ function New-BuildContext {
             Succeeded = New-Object System.Collections.Generic.List[string]
             Failed    = New-Object System.Collections.Generic.List[string]
             Errors    = @{}
+            Durations = [ordered]@{}
         }
     }
 }
@@ -127,60 +128,29 @@ function Invoke-BuildExternal {
     $global:LASTEXITCODE = 0
 
     try {
-        # Create temp files for capturing output
-        $stdOutFile = [System.IO.Path]::GetTempFileName()
-        $stdErrFile = [System.IO.Path]::GetTempFileName()
-
-        try {
-            # Use Start-Process for reliable execution of paths containing spaces
-            # This avoids issues with the & operator and cmd.exe path parsing
-            $startProcessArgs = @{
-                FilePath = $File
-                Wait = $true
-                NoNewWindow = $true
-                PassThru = $true
-                RedirectStandardOutput = $stdOutFile
-                RedirectStandardError = $stdErrFile
-            }
-
-            if ($parameterList -and $parameterList.Count -gt 0) {
-                $startProcessArgs.ArgumentList = $parameterList
-            }
-
-            $process = Start-Process @startProcessArgs
-
-            # Read captured output into variables for logging and diagnostics
-            $capturedStdOut = @()
-            $capturedStdErr = @()
-            if (Test-Path $stdOutFile) {
-                $capturedStdOut = Get-Content $stdOutFile
-            }
-            if (Test-Path $stdErrFile) {
-                $capturedStdErr = Get-Content $stdErrFile
-            }
-
-            # Log captured output (preserve order: stdout then stderr)
-            foreach ($line in $capturedStdOut) {
+        $capturedOutput = @()
+        if ($parameterList -and $parameterList.Count -gt 0) {
+            & $File @parameterList 2>&1 | ForEach-Object {
+                $line = $_.ToString()
+                $capturedOutput += $line
                 if (-not [String]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
             }
-            foreach ($line in $capturedStdErr) {
+        } else {
+            & $File 2>&1 | ForEach-Object {
+                $line = $_.ToString()
+                $capturedOutput += $line
                 if (-not [String]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
             }
-
-            $exitCode = $process.ExitCode
-            if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
-                # Include captured output in the thrown error to make logs self-contained
-                $stdOutText = if ($capturedStdOut) { ($capturedStdOut -join "`n") } else { '<no stdout>' }
-                $stdErrText = if ($capturedStdErr) { ($capturedStdErr -join "`n") } else { '<no stderr>' }
-                throw "Command failed with exit code ${exitCode}: $cmdLine`n--- STDOUT ---`n$stdOutText`n--- STDERR ---`n$stdErrText"
-            }
-
-            return $exitCode
-        } finally {
-            # Clean up temp files
-            if (Test-Path $stdOutFile) { Remove-Item $stdOutFile -Force -ErrorAction SilentlyContinue }
-            if (Test-Path $stdErrFile) { Remove-Item $stdErrFile -Force -ErrorAction SilentlyContinue }
         }
+
+        $exitCode = $LASTEXITCODE
+
+        if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
+            $outputText = if ($capturedOutput) { ($capturedOutput -join "`n") } else { '<no output>' }
+            throw "Command failed with exit code $($exitCode): $cmdLine`n--- OUTPUT ---`n$outputText"
+        }
+
+        return $exitCode
     } finally {
         $ErrorActionPreference = $previousErrorActionPreference
     }
@@ -225,14 +195,26 @@ function Invoke-BuildStep {
         $stopwatch.Stop()
         $Context.Results.Succeeded.Add($StepName) | Out-Null
         Write-BuildLogSuccess -Context $Context -Message "<<< Completed: $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
+        
+        # Add a diagnostic entry to the JSON summary tracking the duration of this step
+        if ($null -eq $Context.Results.Durations) {
+            $Context.Results.Durations = [ordered]@{}
+        }
+        $Context.Results.Durations[$StepName] = $stopwatch.Elapsed.TotalSeconds
+        
         return $true
     } catch {
         $stopwatch.Stop()
         $errorMessage = $_.Exception.Message
         $Context.Results.Failed.Add($StepName) | Out-Null
+        if ($null -eq $Context.Results.Durations) {
+            $Context.Results.Durations = [ordered]@{}
+        }
+        $Context.Results.Durations[$StepName] = $stopwatch.Elapsed.TotalSeconds
         $Context.Results.Errors[$StepName] = $errorMessage
         Write-BuildLogError -Context $Context -Message "<<< FAILED: $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
         Write-BuildLogError -Context $Context -Message "    Error: $errorMessage"
+
 
         if ($_.ScriptStackTrace) {
             Write-BuildLog -Context $Context -Message "    Stack: $($_.ScriptStackTrace)"
@@ -280,6 +262,14 @@ function Write-BuildSummary {
     $successRate = if ($total -gt 0) { [math]::Round(($Context.Results.Succeeded.Count / $total) * 100, 1) } else { 0 }
     Write-BuildLog -Context $Context -Message "Total: $total steps, $($Context.Results.Succeeded.Count) succeeded, $($Context.Results.Failed.Count) failed ($($successRate)% success rate)"
 
+    if ($null -ne $Context.Results.Durations -and $Context.Results.Durations.Count -gt 0) {
+        Write-BuildLog -Context $Context -Message ""
+        Write-BuildLog -Context $Context -Message "=== STEP DURATIONS ==="
+        $Context.Results.Durations.GetEnumerator() | Sort-Object Value -Descending | ForEach-Object {
+            Write-BuildLog -Context $Context -Message ("  {0,-50} : {1:N2}s" -f $_.Key, $_.Value)
+        }
+    }
+
     if ($Context.Results.Failed.Count -gt 0) {
         Write-BuildLog -Context $Context -Message ""
         Write-BuildLog -Context $Context -Message ("=" * 60)
@@ -321,6 +311,7 @@ function Write-BuildSummary {
             succeededSteps = @($Context.Results.Succeeded)
             failedSteps = @($Context.Results.Failed)
             errors = $Context.Results.Errors
+            durations = $Context.Results.Durations
         }
 
         $summaryJson = $summary | ConvertTo-Json -Depth 8
@@ -380,6 +371,184 @@ function Remove-BuildRoot {
     return $false
 }
 
+function Initialize-BuildCacheEnvironment {
+    param(
+        [Parameter(Mandatory=$true)]
+        [pscustomobject]$Context,
+        [string]$FastBuildDir = ""
+    )
+
+    $fastLocalCache = if (-not [string]::IsNullOrWhiteSpace($FastBuildDir)) {
+        $FastBuildDir
+    } elseif ($env:KATAGLYPHIS_FAST_BUILD_DIR) {
+        $env:KATAGLYPHIS_FAST_BUILD_DIR
+    } else {
+        "C:\kataglyphis_fast_build"
+    }
+
+    $env:GLOBAL_CACHE_DIR = Join-Path $fastLocalCache ".cache"
+    $env:SCCACHE_DIR      = Join-Path $env:GLOBAL_CACHE_DIR "sccache"
+    $env:CARGO_HOME       = Join-Path $env:GLOBAL_CACHE_DIR "cargo"
+    $env:PUB_CACHE        = Join-Path $env:GLOBAL_CACHE_DIR "pub-cache"
+
+    foreach ($cachePath in @($env:SCCACHE_DIR, $env:CARGO_HOME, $env:PUB_CACHE)) {
+        if (-not (Test-Path -LiteralPath $cachePath -PathType Container)) {
+            New-Item -ItemType Directory -Force -Path $cachePath | Out-Null
+        }
+    }
+
+    $cargoBin = Join-Path $env:CARGO_HOME "bin"
+    if ($env:PATH -notlike "*$cargoBin*") {
+        $env:PATH = "$cargoBin;$env:PATH"
+    }
+
+    Write-BuildLog -Context $Context -Message "Initialized Fast Local Cache at: $fastLocalCache"
+    
+    # If sccache is present on PATH, enable compiler wrapper environment
+    # variables globally so downstream CMake/configure steps will pick up
+    # sccache without requiring explicit caller configuration. This can be
+    # disabled by clearing the variables later or passing DisableSccache to
+    # the specific build invocation.
+    $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue
+    if ($sccacheCmd) {
+        $sccacheExe = $sccacheCmd.Source
+        Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
+        $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
+        $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
+        $env:RUSTC_WRAPPER = $sccacheExe
+        $env:CC_WRAPPER = $sccacheExe
+        $env:CXX_WRAPPER = $sccacheExe
+
+        if (-not $env:SCCACHE_MAX_JOBS) {
+            $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString()
+            Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$($env:SCCACHE_MAX_JOBS) (from Initialize-BuildCacheEnvironment)"
+        }
+    }
+    return $fastLocalCache
+}
+
+function Sync-BuildArtifacts {
+    param(
+        [Parameter(Mandatory=$true)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory=$true)]
+        [string]$Source,
+        [Parameter(Mandatory=$true)]
+        [string]$Destination,
+        [string[]]$ExcludeFiles = @(),
+        [string[]]$ExcludeDirs = @(),
+        [switch]$ExcludeCommonRustAndCppCache
+    )
+
+    if ($ExcludeCommonRustAndCppCache) {
+        $ExcludeFiles += @("*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.rlib", "*.rmeta", "*.d", "*.o", "*.pcm", "*.modmap", ".ninja_deps", ".ninja_log", "CMakeCache.txt")
+        $ExcludeDirs += @("*.dir", ".fingerprint", "build", "deps", "incremental", "CMakeFiles", "vcpkg_installed", ".cmake")
+    }
+
+    Write-BuildLog -Context $Context -Message "Syncing artifacts from $Source to $Destination..."
+
+    if (-not (Test-Path -LiteralPath $Destination)) {
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    }
+
+    $robocopyArgs = @(
+        $Source,
+        $Destination,
+        "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD"
+    )
+
+    if ($ExcludeFiles -and $ExcludeFiles.Count -gt 0) {
+        $robocopyArgs += "/XF"
+        $robocopyArgs += $ExcludeFiles
+    }
+
+    if ($ExcludeDirs -and $ExcludeDirs.Count -gt 0) {
+        $robocopyArgs += "/XD"
+        $robocopyArgs += $ExcludeDirs
+    }
+
+    $robocopyArgs += @("/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul")
+
+    & robocopy.exe $robocopyArgs > $null 2>&1
+    $exitCode = $LASTEXITCODE
+    # Robocopy exit codes < 8 are considered success
+    if ($exitCode -ge 8) {
+        Write-BuildLogWarning -Context $Context -Message "Robocopy returned exit code $exitCode while syncing $Source to $Destination."
+    }
+}
+
+function Show-SccacheStats {
+    param(
+        [Parameter(Mandatory=$true)]
+        [pscustomobject]$Context
+    )
+
+    if (Get-Command "sccache" -ErrorAction SilentlyContinue) {
+        Invoke-BuildStep -Context $Context -StepName "Sccache Statistics" -Script {
+            Invoke-BuildExternal -Context $Context -File "sccache" -Parameters @("--show-stats")
+        }
+    }
+}
+
+function Assert-FlutterPluginsBuilt {
+    param(
+        [Parameter(Mandatory=$true)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory=$true)]
+        [string]$CMakeFile,
+        [Parameter(Mandatory=$true)]
+        [string[]]$SearchDirectories
+    )
+
+    $expectedPlugins = @()
+    if (Test-Path -LiteralPath $CMakeFile -PathType Leaf) {
+        $cmakeContent = Get-Content $CMakeFile
+        foreach ($line in $cmakeContent) {
+            if ($line -match 'list\(APPEND FLUTTER_PLUGIN_LIST\s+"([^"]+)"\)') {
+                $expectedPlugins += $matches[1]
+            }
+        }
+        Write-BuildLog -Context $Context -Message "Expected Flutter plugins from generated CMake: $($expectedPlugins.Count)"
+        foreach ($plugin in $expectedPlugins) {
+            Write-BuildLog -Context $Context -Message "  - $plugin"
+        }
+    } else {
+        Write-BuildLogWarning -Context $Context -Message "generated_plugins.cmake not found at '$CMakeFile'. Skipping expected plugin list."
+    }
+
+    $pluginArtifacts = @()
+    foreach ($dir in $SearchDirectories) {
+        if (Test-Path -LiteralPath $dir -PathType Container) {
+            $pluginArtifacts += Get-ChildItem -LiteralPath $dir -Recurse -File -Filter "*.dll"
+        }
+    }
+
+    $pluginArtifacts = @($pluginArtifacts | Sort-Object -Property FullName -Unique)
+
+    if ($pluginArtifacts.Count -eq 0) {
+        Write-BuildLogWarning -Context $Context -Message "No plugin DLL artifacts found in search directories."
+    } else {
+        Write-BuildLog -Context $Context -Message "Built plugin DLL artifacts: $($pluginArtifacts.Count)"
+        foreach ($artifact in $pluginArtifacts) {
+            Write-BuildLog -Context $Context -Message "  - $($artifact.FullName)"
+        }
+    }
+
+    if ($expectedPlugins.Count -gt 0 -and $pluginArtifacts.Count -gt 0) {
+        foreach ($plugin in $expectedPlugins) {
+            $matchedArtifact = $pluginArtifacts | Where-Object {
+                $_.Name -like "$plugin*.dll" -or $_.FullName -like "*$plugin*"
+            } | Select-Object -First 1
+
+            if ($null -eq $matchedArtifact) {
+                Write-BuildLogWarning -Context $Context -Message "Expected plugin '$plugin' has no matching DLL artifact name."
+            } else {
+                Write-BuildLog -Context $Context -Message "Plugin '$plugin' mapped to artifact: $($matchedArtifact.Name)"
+            }
+        }
+    }
+}
+
 Export-ModuleMember -Function @(
     'New-BuildContext',
     'Open-BuildLog',
@@ -398,5 +567,9 @@ Export-ModuleMember -Function @(
     'New-Timestamp',
     'New-TimestampedFilePath',
     'Resolve-NormalizedPath',
-    'ConvertTo-ParameterList'
+    'ConvertTo-ParameterList',
+    'Initialize-BuildCacheEnvironment',
+    'Sync-BuildArtifacts',
+    'Show-SccacheStats',
+    'Assert-FlutterPluginsBuilt'
 )

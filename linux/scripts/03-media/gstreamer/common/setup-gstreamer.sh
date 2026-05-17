@@ -15,8 +15,30 @@ set -euo pipefail
 # Source build acceleration and parallelism helpers if available
 _SETUP_GST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
+    "/opt/scripts/core/cross-env.sh" \
+    "${_SETUP_GST_DIR}/../../../01-core/cross-env.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1; then
+    case "$(cross_target_arch)" in
+        arm64|riscv64)
+            # Meson's C++ dependency checks (for example GLib's builtin iconv probe)
+            # currently fail under lld on these cross paths when g++ links libstdc++.
+            # Keep the linker on the toolchain default for this build.
+            export USE_LLD=false
+            ;;
+    esac
+fi
+
+for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
-    "${_SETUP_GST_DIR}/../../../../01-core/compiler-cache.sh"; do
+    "${_SETUP_GST_DIR}/../../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -30,7 +52,7 @@ done
 # Source parallelism helpers
 for helper in \
     "/opt/scripts/core/parallelism.sh" \
-    "${_SETUP_GST_DIR}/../../../../01-core/parallelism.sh"; do
+    "${_SETUP_GST_DIR}/../../../01-core/parallelism.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -45,6 +67,20 @@ GSTREAMER_VERSION="${1:-1.29.1}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
+HOST_PYTHON="$(host_python_bin)"
+export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+  Python_EXECUTABLE="${HOST_PYTHON}" \
+  Python3_EXECUTABLE="${HOST_PYTHON}"
+GSTREAMER_ENABLE_PYTHON_BINDINGS=true
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_python_dev_ready >/dev/null 2>&1 && \
+   ! cross_target_python_dev_ready; then
+  GSTREAMER_ENABLE_PYTHON_BINDINGS=false
+  echo "Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling gst-python in cross mode"
+fi
+
+export GSTREAMER_ENABLE_PYTHON_BINDINGS
 
 append_meson_arg() {
   local arg="$1"
@@ -55,6 +91,310 @@ append_meson_arg() {
       EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} ${arg}"
       ;;
   esac
+}
+
+append_env_flag() {
+  local var_name="$1"
+  local flag="$2"
+  local current="${!var_name:-}"
+
+  case " ${current} " in
+    *" ${flag} "*)
+      return 0
+      ;;
+  esac
+
+  if [ -n "${current}" ]; then
+    printf -v "${var_name}" '%s %s' "${current}" "${flag}"
+  else
+    printf -v "${var_name}" '%s' "${flag}"
+  fi
+
+  export "${var_name}=${!var_name}"
+}
+
+resolve_host_gcc_for_cargo() {
+  local build_triplet=""
+  local candidate
+  local resolved=""
+
+  if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+    resolved="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
+    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool cc 2>/dev/null || true)"
+    [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
+  fi
+
+  if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
+    build_triplet="$(build_deb_multiarch_triplet)"
+  fi
+
+  for candidate in \
+    "/usr/bin/${build_triplet}-gcc" \
+    /usr/bin/gcc \
+    /usr/bin/cc; do
+    [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+  done
+
+  command -v gcc 2>/dev/null || command -v cc 2>/dev/null || true
+}
+
+prepare_cargo_host_linker_wrapper() {
+  local compiler="$1"
+  local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
+
+  if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
+    make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"
+    return 0
+  fi
+
+  mkdir -p "${wrapper_dir}"
+  cat > "${wrapper_dir}/host-gcc" <<EOF
+#!/usr/bin/env bash
+exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
+EOF
+  chmod +x "${wrapper_dir}/host-gcc"
+  printf '%s' "${wrapper_dir}/host-gcc"
+}
+
+resolve_host_gxx_for_cargo() {
+  local build_triplet=""
+  local candidate
+  local resolved=""
+
+  if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+    resolved="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
+    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool c++ 2>/dev/null || true)"
+    [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
+  fi
+
+  if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
+    build_triplet="$(build_deb_multiarch_triplet)"
+  fi
+
+  for candidate in \
+    "/usr/bin/${build_triplet}-g++" \
+    /usr/bin/g++ \
+    /usr/bin/c++; do
+    [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+  done
+
+  command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || true
+}
+
+prepare_cargo_host_cxx_wrapper() {
+  local compiler="$1"
+  local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
+
+  if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
+    make_named_host_compiler_wrapper "${wrapper_dir}" host-g++ "${compiler}"
+    return 0
+  fi
+
+  mkdir -p "${wrapper_dir}"
+  cat > "${wrapper_dir}/host-g++" <<EOF
+#!/usr/bin/env bash
+exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
+EOF
+  chmod +x "${wrapper_dir}/host-g++"
+  printf '%s' "${wrapper_dir}/host-g++"
+}
+
+remove_path_entry() {
+  local needle="$1"
+  local source_path="${2:-${PATH:-}}"
+  local old_ifs="${IFS}"
+  local entry=""
+  local new_path=""
+
+  IFS=':'
+  for entry in ${source_path}; do
+    [ "${entry}" = "${needle}" ] && continue
+    new_path="${new_path:+${new_path}:}${entry}"
+  done
+  IFS="${old_ifs}"
+
+  printf '%s' "${new_path}"
+}
+
+prepare_host_cargo_toolchain_env() {
+  local build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
+  local build_rust_lower="x86_64_unknown_linux_gnu"
+  local cargo_host_cc=""
+  local cargo_host_linker=""
+  local cargo_host_cxx=""
+  local cargo_host_cxx_wrapper=""
+
+  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+    return 0
+  fi
+
+  if command -v cross_build_upper_rust >/dev/null 2>&1; then
+    build_rust_env="$(cross_build_upper_rust 2>/dev/null || true)"
+  fi
+  if command -v cross_build_lower_rust >/dev/null 2>&1; then
+    build_rust_lower="$(cross_build_lower_rust 2>/dev/null || true)"
+  fi
+  [ -n "${build_rust_env}" ] || build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
+  [ -n "${build_rust_lower}" ] || build_rust_lower="x86_64_unknown_linux_gnu"
+
+  if [ -d /opt/cross-bin ]; then
+    # Cargo still builds host-side proc-macros and build scripts during cross
+    # builds. Keep bare `cc`/`c++` on the host toolchain for those jobs.
+    export PATH="$(remove_path_entry /opt/cross-bin "${PATH}")"
+  fi
+
+  cargo_host_cc="$(resolve_host_gcc_for_cargo)"
+  if [ -n "${cargo_host_cc}" ]; then
+    cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
+    export "CARGO_TARGET_${build_rust_env}_LINKER=${cargo_host_linker}"
+    export "CC_${build_rust_lower}=${cargo_host_linker}"
+    export HOST_CC="${cargo_host_linker}"
+  fi
+
+  cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
+  if [ -n "${cargo_host_cxx}" ]; then
+    cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
+    export "CXX_${build_rust_lower}=${cargo_host_cxx_wrapper}"
+    export HOST_CXX="${cargo_host_cxx_wrapper}"
+  fi
+}
+
+prepare_cross_python_build_config() {
+  local meson_version=""
+  local target_triplet=""
+  local python_build_config=""
+  local target_python_include=""
+  local target_python_library=""
+  local target_python_pkgconfig_dir=""
+
+  CROSS_PYTHON_BUILD_CONFIG=""
+  export CROSS_PYTHON_BUILD_CONFIG
+
+  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+    return 0
+  fi
+
+  meson_version="$(uv run meson --version 2>/dev/null || meson --version 2>/dev/null || true)"
+  if ! "${HOST_PYTHON}" - "${meson_version}" <<'PY'
+import re
+import sys
+
+version = sys.argv[1].strip()
+match = re.match(r'^(\d+)\.(\d+)\.(\d+)', version)
+if not match:
+    raise SystemExit(1)
+
+current = tuple(int(part) for part in match.groups())
+raise SystemExit(0 if current >= (1, 10, 0) else 1)
+PY
+  then
+    echo "Meson ${meson_version:-unknown} does not support python.build_config; continuing without cross Python ABI metadata"
+    return 0
+  fi
+
+  if command -v cross_target_triplet >/dev/null 2>&1; then
+    target_triplet="$(cross_target_triplet)"
+  else
+    target_triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+  fi
+  if [ -z "${target_triplet}" ]; then
+    echo "Could not determine cross target triplet for Meson python.build_config"
+    return 0
+  fi
+
+  if command -v cross_target_python_include_dir >/dev/null 2>&1; then
+    target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
+  fi
+  if command -v cross_target_python_library >/dev/null 2>&1; then
+    target_python_library="$(cross_target_python_library 2>/dev/null || true)"
+  fi
+  if command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
+    target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
+  fi
+  if [ -z "${target_python_include}" ] || [ -z "${target_python_library}" ] || [ -z "${target_python_pkgconfig_dir}" ]; then
+    echo "Target Python development files are not ready for ${target_triplet}; skipping Meson python.build_config generation"
+    return 0
+  fi
+
+  python_build_config="/tmp/meson-python-build-config-${target_triplet}.json"
+  if "${HOST_PYTHON}" - "${python_build_config}" "${target_triplet}" "${target_python_include}" "${target_python_library}" "${target_python_pkgconfig_dir}" <<'PY'
+import json
+import pathlib
+import re
+import sys
+import sysconfig
+
+output_path = pathlib.Path(sys.argv[1])
+target_triplet = sys.argv[2]
+include_dir = pathlib.Path(sys.argv[3])
+dynamic_libpython = pathlib.Path(sys.argv[4])
+pkgconfig_path = sys.argv[5]
+target_arch = target_triplet.split('-', 1)[0]
+
+language_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+if not include_dir.is_dir():
+    raise SystemExit(f"Could not determine Python include directory for {language_version}")
+
+cache_tag = getattr(sys.implementation, 'cache_tag', '') or f"cpython-{sys.version_info.major}{sys.version_info.minor}"
+flag_match = re.match(r'^cpython-\d+([a-z]*)$', cache_tag)
+abi_flags = list(flag_match.group(1)) if flag_match else []
+
+platform = sysconfig.get_platform() or f"linux-{target_arch}"
+host_multiarch = sysconfig.get_config_var('MULTIARCH') or ''
+host_arch = host_multiarch.split('-', 1)[0] if host_multiarch else ''
+if host_arch and platform.endswith(host_arch):
+    platform = f"{platform[:-len(host_arch)]}{target_arch}"
+elif not platform.startswith('linux-'):
+    platform = f"linux-{target_arch}"
+
+libpython = {
+    'link_extensions': False,
+}
+if dynamic_libpython.exists():
+    libpython['dynamic'] = str(dynamic_libpython)
+
+impl_version = getattr(sys.implementation, 'version', sys.version_info)
+data = {
+    'schema_version': '1.0',
+    'base_prefix': '/usr',
+    'platform': platform,
+    'language': {
+        'version': language_version,
+    },
+    'implementation': {
+        'name': sys.implementation.name,
+        'version': {
+            'major': impl_version.major,
+            'minor': impl_version.minor,
+            'micro': impl_version.micro,
+            'releaselevel': impl_version.releaselevel,
+            'serial': impl_version.serial,
+        },
+        'cache_tag': cache_tag,
+        '_multiarch': target_triplet,
+    },
+    'abi': {
+        'flags': abi_flags,
+        'extension_suffix': f'.{cache_tag}-{target_triplet}.so',
+        'stable_abi_suffix': '.abi3.so',
+    },
+    'libpython': libpython,
+    'c_api': {
+        'headers': str(include_dir),
+        'pkgconfig_path': pkgconfig_path,
+    },
+}
+
+output_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+PY
+  then
+    CROSS_PYTHON_BUILD_CONFIG="${python_build_config}"
+    export CROSS_PYTHON_BUILD_CONFIG
+    echo "Generated Meson python.build_config for ${target_triplet}: ${CROSS_PYTHON_BUILD_CONFIG}"
+  else
+    rm -f "${python_build_config}" 2>/dev/null || true
+    echo "WARNING: Failed to generate Meson python.build_config for ${target_triplet}; continuing without it"
+  fi
 }
 
 # Allow callers to provide MESON_ARGS (preferred) to control Meson options.
@@ -73,6 +413,10 @@ elif [ -z "${EXTRA_MESON_ARGS}" ]; then
 fi
 
 # Always enforce these, even if MESON_ARGS was supplied externally.
+append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
+if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
+  append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
+fi
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
 append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
@@ -80,28 +424,29 @@ append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
 BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 
-# this is for uv
-export PATH="${HOME}/.local/bin:${PATH}"
+# Keep /usr/local/bin ahead of /bin so cross-introspection shims like
+# g-ir-scanner and ldd are used when upstream tools shell out by program name.
+export PATH="/usr/local/sbin:/usr/local/bin:${HOME}/.local/bin:${PATH}"
 
 # set the gst paths accordingly
 # Prefer the installed helper if available, otherwise source relative to this script
 if [ -f /usr/local/bin/gstreamer-env.sh ]; then
   :
+  # shellcheck disable=SC1091
   source /usr/local/bin/gstreamer-env.sh
 else
   :
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/media/* subfolders
+  # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
 fi
 
 # just trust every folder
 set -eux
-git config --global --add safe.directory '*'
 
 # --- Debug/logging helpers -------------------------------------------------
 LOG_DIR="/tmp/gstreamer-build-logs-$(date +%s)"
-mkdir -p "${LOG_DIR}"
 
 dump_debug_info() {
   echo "=== GStreamer build debug info ==="
@@ -118,7 +463,8 @@ dump_debug_info() {
   df -h || true
   ulimit -a || true
   echo "--- Tool versions ---"
-  which python3 || true; python3 --version 2>&1 || true
+  printf 'host python: %s\n' "${HOST_PYTHON:-unresolved}" || true
+  if [ -n "${HOST_PYTHON:-}" ]; then "${HOST_PYTHON}" --version 2>&1 || true; fi
   which pip  || true; pip --version 2>&1 || true
   which meson || true; meson --version 2>&1 || true
   which ninja || true; ninja --version 2>&1 || true
@@ -141,7 +487,10 @@ save_logs() {
   echo "Logs preserved in ${LOG_DIR}"
 }
 
-trap save_logs EXIT
+if [ "${GSTREAMER_DEBUG_LOGS:-false}" = "true" ]; then
+  mkdir -p "${LOG_DIR}"
+  trap save_logs EXIT
+fi
 
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 # we need to get rid of old orc modules on the system
@@ -163,10 +512,6 @@ apt_package_exists() {
 
 # Force removal of any versioned libunwind to avoid conflicts, then install generic
 
-
-
-# Enable source repos so build-dep works
-CODENAME=$(lsb_release -sc)
 
 
 # Ensure xmllint is available (used by meson/xml preprocessing); small package
@@ -217,7 +562,7 @@ if apt_package_exists libvvdec-dev; then
   
 else
   :
-  echo "Warning: libvvdec-dev not found in APT; vvdec plugin stays enabled, but Meson may fail unless the package is available in your Ubuntu repositories."
+  echo "Warning: libvvdec-dev not found in APT; continuing with the source-build fallback from install-vvdec.sh so the vvdec plugin stays enabled."
 fi
 
 # Codecs (audio)
@@ -245,7 +590,7 @@ if [ "${NVIDIA_GPU}" = "auto" ]; then
   if lspci 2>/dev/null | grep -qi nvidia; then
   :
     NVIDIA_GPU="yes"
-  elif [ -d /dev/dri ] && ls /dev/dri/card* 2>/dev/null | head -1 | xargs -r cat 2>/dev/null | grep -q NVIDIA; then
+  elif [ -d /sys/class/drm ] && grep -q '^0x10de$' /sys/class/drm/card*/device/vendor 2>/dev/null; then
   :
     NVIDIA_GPU="yes"
   elif [ -n "${NVIDIA_DRIVER_CAPABILITIES:-}" ] || [ -n "${NVIDIA_VISIBLE_DEVICES:-}" ]; then
@@ -282,17 +627,6 @@ fi
 # libcamera support; needed for raspberry pi cam
 # sudo apt install -y --no-install-recommends libcamera-dev libcamera-tools
 
-# Some projects (litert/TFLite) install headers under /usr/local/include/tflite
-# while other code expects /usr/local/include/tensorflow/... header layout.
-# Create a compat symlink so includes like <tensorflow/lite/interpreter.h>
-# resolve correctly. Place this before libcamera/build steps so downstream
-# builds (e.g. libcamera) see the expected headers.
-if [ -d /usr/local/include/tflite ] && [ ! -e /usr/local/include/tensorflow ]; then
-  :
-  echo "Creating compat symlink /usr/local/include/tensorflow -> /usr/local/include/tflite"
-  sudo ln -s /usr/local/include/tflite /usr/local/include/tensorflow || true
-fi
-
 sudo rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
@@ -307,6 +641,22 @@ echo "Using existing Python venv (expected at /opt/python/.venv)..."
 # Install Meson/Ninja in the existing venv
 uv pip install -U pip setuptools wheel
 uv pip install -U meson ninja
+# pycairo is a host Python build dependency for pygobject fallback. Install it
+# with host pkg-config paths so cross-target overrides do not hide xorgproto
+# metadata required by cairo's x11 dependency chain.
+HOST_MULTIARCH="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+HOST_PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
+if [ -n "${HOST_MULTIARCH}" ]; then
+  HOST_PKG_CONFIG_LIBDIR="/usr/lib/${HOST_MULTIARCH}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+else
+  HOST_PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+fi
+env \
+  PKG_CONFIG_ALLOW_CROSS= \
+  PKG_CONFIG_SYSROOT_DIR= \
+  PKG_CONFIG_LIBDIR="${HOST_PKG_CONFIG_LIBDIR}" \
+  PKG_CONFIG_PATH="${HOST_PKG_CONFIG_PATH}" \
+  uv pip install -U pycairo
 
 # Optional: verify
 meson --version
@@ -328,13 +678,36 @@ if [ -n "${MESON_ARGS:-}" ]; then
   EXTRA_MESON_ARGS="${MESON_ARGS}"
 fi
 
+if [ -f "${_SETUP_GST_DIR}/patch-gstreamer-sources.sh" ]; then
+  # shellcheck disable=SC1090
+  source "${_SETUP_GST_DIR}/patch-gstreamer-sources.sh"
+fi
+
+if [ -f "${_SETUP_GST_DIR}/build-gst-plugins-rs.sh" ]; then
+  # shellcheck disable=SC1090
+  source "${_SETUP_GST_DIR}/build-gst-plugins-rs.sh"
+else
+  echo "ERROR: Missing helper: ${_SETUP_GST_DIR}/build-gst-plugins-rs.sh" >&2
+  exit 1
+fi
+
+if [ -f "${_SETUP_GST_DIR}/build-gstreamer-monorepo.sh" ]; then
+  # shellcheck disable=SC1090
+  source "${_SETUP_GST_DIR}/build-gstreamer-monorepo.sh"
+else
+  echo "ERROR: Missing helper: ${_SETUP_GST_DIR}/build-gstreamer-monorepo.sh" >&2
+  exit 1
+fi
+
 # Enforce the gst-plugins-rs args again here so they survive external MESON_ARGS.
+append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
+if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
+  append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
+fi
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
 append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # whisper left enabled — do not force-disable here
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
-
-BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
 
 echo "=========================================="
 echo "Building GStreamer ${GSTREAMER_VERSION}"
@@ -369,469 +742,13 @@ else
   cd gstreamer
 fi
 
-echo ""
-echo "Setting up Meson build..."
-
-# detect host architecture (examples: x86_64, aarch64, riscv64, armv7l)
-HOST_ARCH="$(uname -m)"
-
-# Build Meson flags, conditionally enable Rust bindings (rs) except on RISC-V
-MESON_FLAGS=(
-  "--prefix=${GSTREAMER_PREFIX}"
-  "-Dbuildtype=${BUILD_TYPE_LOWER}"
-  "-Dgpl=enabled"
-  "-Ddoc=disabled"
-  "-Dbase=enabled"
-  "-Dgood=enabled"
-  "-Dgtk_doc=disabled"
-  "-Dgtk=enabled"
-  "-Dugly=enabled"
-  "-Dges=enabled"
-  # --- ML / Inference / LiteRT support ---
-  "-Dbad=enabled"
-  "-Dgst-plugins-bad:tflite=enabled"
-  "-Dgst-plugins-bad:opencv=enabled"
-  "-Dgst-plugins-bad:onnx=enabled"
-  "-Dtools=enabled"
-  "-Dlibav=enabled"
-  "-Ddevtools=enabled"
-  "-Dexamples=disabled"
-  "-Dtests=disabled"
-  "-Drtsp_server=enabled"
-  "-Dpython=enabled"
-  "-Dintrospection=enabled"
-  "-Dglib:introspection=enabled"
-)
-
-case "${HOST_ARCH}" in
-  riscv*|*riscv*)
-    echo "Host arch '${HOST_ARCH}' detected: skipping -Drs (Rust bindings) in Meson flags"
-    MESON_FLAGS+=("-Drs=disabled")
-    # Disable Whisper plugin on RISC-V as well — whisper can be resource-heavy
-    # and may cause toolchain/platform issues similar to ARM.
-    append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
-    echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"
-    ;;
-  aarch64*|arm*)
-    echo "Host arch '${HOST_ARCH}' detected: enabling -Drs (Rust bindings) but disabling csound"
-    MESON_FLAGS+=("-Drs=enabled")
-    append_meson_arg "-Dgst-plugins-rs:csound=disabled"
-    # Disable Whisper plugin on ARM architectures — it is resource-heavy and
-    # known to cause issues on some ARM toolchains/platforms.
-    append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
-    echo "Disabling gst-plugins-rs whisper plugin for ARM host arch"
-    ;;
-  *)
-    MESON_FLAGS+=("-Drs=enabled")
-    ;;
-esac
-
-# --- begin patch: ensure meson won't use fallback subprojects by default ---
-MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
-
-case " ${EXTRA_MESON_ARGS} " in
-  *" --wrap-mode="*) ;;
-  *)
-    # Use fallback specifically for pygobject since we are using a custom python build
-    EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --wrap-mode=${MESON_WRAP_MODE} --force-fallback-for=pygobject"
-    ;;
-esac
-# --- end patch ---
-
-# Dump debug info and save to /tmp for collection
-dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
-
-# Ensure PKG_CONFIG_LIBDIR includes the system multiarch pkgconfig directory
-# Some base images omit this which makes pkg-config unable to find xproto/cairo
-DEB_HOST_MULTIARCH_DIR="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
-if [ -n "${DEB_HOST_MULTIARCH_DIR}" ]; then
-  :
-  SYS_PKGCONF_DIR="/usr/lib/${DEB_HOST_MULTIARCH_DIR}/pkgconfig"
-  export CSOUND_LIB_DIR="/usr/lib/${DEB_HOST_MULTIARCH_DIR}"
-else
-  :
-  SYS_PKGCONF_DIR="/usr/lib/pkgconfig"
-  export CSOUND_LIB_DIR="/usr/lib"
-fi
-# Prepend system pkgconfig dirs if not already present
-PKG_CONFIG_LIBDIR="${SYS_PKGCONF_DIR}:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig"
-if [ -n "${PKG_CONFIG_LIBDIR_ORIG:-}" ]; then
-  PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:${PKG_CONFIG_LIBDIR_ORIG}"
-fi
-export PKG_CONFIG_LIBDIR
-
-# Some distributions install .pc files under /usr/share/pkgconfig; include it
-# when present so pkg-config can find xproto/cairo/etc even when PKG_CONFIG_LIBDIR
-# is set (PKG_CONFIG_LIBDIR overrides pkg-config defaults).
-if [ -d /usr/share/pkgconfig ]; then
-  :
-  PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:/usr/share/pkgconfig"
-  export PKG_CONFIG_LIBDIR
+if command -v patch_gstreamer_sources >/dev/null 2>&1; then
+  patch_gstreamer_sources "$(pwd)" "${EXTRA_MESON_ARGS}"
 fi
 
-# Extra debug: check pkg-config visibility for cairo before Meson runs
-echo "--- cairo / pkg-config debug ---" | tee /tmp/gstreamer-cairo-debug.txt
-echo "PKG_CONFIG PATH: PKG_CONFIG_PATH='${PKG_CONFIG_PATH:-}'" | tee -a /tmp/gstreamer-cairo-debug.txt
-echo "PKG_CONFIG LIBDIR: PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}'" | tee -a /tmp/gstreamer-cairo-debug.txt
-echo "DEB_HOST_MULTIARCH: $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)" | tee -a /tmp/gstreamer-cairo-debug.txt
-which pkg-config || true | tee -a /tmp/gstreamer-cairo-debug.txt
-pkg-config --version 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
-for p in "/usr/lib/${DEB_HOST_MULTIARCH:-}/pkgconfig" /usr/lib/pkgconfig /usr/local/lib/pkgconfig; do
-  echo "listing: $p" | tee -a /tmp/gstreamer-cairo-debug.txt
-  ls -la "$p" 2>/dev/null | sed -n '1,20p' | tee -a /tmp/gstreamer-cairo-debug.txt || true
-  [ -f "$p/cairo.pc" ] && echo "FOUND: $p/cairo.pc" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-done
-pkg-config --cflags --libs cairo 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
+build_gstreamer_monorepo
 
-# If cairo isn't visible when PKG_CONFIG_LIBDIR is set, try a fallback by
-# unsetting PKG_CONFIG_LIBDIR (this lets pkg-config use its compiled-in
-# defaults which often include /usr/share/pkgconfig). If that succeeds, use
-# the fallback for subsequent Meson setup.
-if ! pkg-config --exists cairo 2>/dev/null; then
-  :
-  echo "cairo not found with PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}' — trying fallback by unsetting PKG_CONFIG_LIBDIR" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-  if env -u PKG_CONFIG_LIBDIR pkg-config --exists cairo 2>/dev/null; then
-    echo "Fallback: cairo found after unsetting PKG_CONFIG_LIBDIR; proceeding using fallback search paths" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-    # Unset for the rest of the script so Meson will see the cairo pkg-config
-    unset PKG_CONFIG_LIBDIR
-  else
-  :
-    echo "Fallback also failed: cairo still not found" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-  fi
-fi
-echo "--- end cairo debug ---" | tee -a /tmp/gstreamer-cairo-debug.txt
-
-# Run meson setup and capture full output
-# First, install pycairo beforehand so that pygobject fallback can find it (needs cairo properly set up in pkgconfig)
-uv pip install -U pycairo
-
-if ! uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} > /tmp/meson-setup.log 2>&1; then
-  :
-  echo "Meson setup failed; printing verbose output..."
-  uv run meson setup builddir "${MESON_FLAGS[@]}" ${EXTRA_MESON_ARGS} -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1 || true
-fi
-
-echo "Updating subprojects..."
-uv run meson subprojects update > /dev/null 2>&1 || true
-
-echo "Compiling GStreamer (this may take a while)..."
-
-# Calculate parallel jobs using shared helper if available, otherwise fallback
-if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
-  # Use AGGRESSIVE_PARALLELISM-aware helper
-  # Default: 1500MB/job, Aggressive: 1000MB/job for GStreamer
-  if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-    JOBS=$(compute_jobs_with_mem_cap "" 1000)
-  else
-    JOBS=$(compute_jobs_with_mem_cap "" 1500)
-  fi
-else
-  # Fallback to inline calculation
-  PER_JOB_MB=1500
-  [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ] && PER_JOB_MB=1000
-  CORES=$(nproc --all)
-  AVAIL_MB=$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo)
-  [ -z "$AVAIL_MB" ] && AVAIL_MB=2048
-  MAX_BY_MEM=$(( AVAIL_MB / PER_JOB_MB ))
-  [ "$MAX_BY_MEM" -lt 1 ] && MAX_BY_MEM=1
-  if [ "$CORES" -lt "$MAX_BY_MEM" ]; then
-    JOBS=$CORES
-  else
-    JOBS=$MAX_BY_MEM
-  fi
-  [ "$JOBS" -lt 1 ] && JOBS=1
-fi
-
-export JOBS
-echo "Using JOBS=$JOBS (AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
-
-echo "Compiling GStreamer..."
-if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
-  :
-  echo "ERROR: Meson compile failed"
-  echo "==> Letzte Zeilen der Compile-Logs:"
-  tail -n 20000 /tmp/meson-compile.log || true
-  echo "==> Meson log:"
-  tail -n +1 builddir/meson-logs/meson-log.txt || true
-  dmesg | tail -n 100 | grep -i -E "out of memory|killed process" || true
-  exit 1
-fi
-
-echo "Installing GStreamer..."
-if ! uv run meson install -C builddir; then
-  :
-  echo "ERROR: Meson install failed"
-  echo "==> Meson log:"
-  tail -n +1 builddir/meson-logs/meson-log.txt || true
-  echo "==> Meson install log (if present):"
-  tail -n +1 builddir/meson-logs/install-log.txt || true
-  exit 1
-fi
-
-# --------------------------------------------------------------------
-# Build gst-plugins-rs net/webrtc under /opt
-# --------------------------------------------------------------------
-# Ensure GStreamer is discoverable for cargo builds
-if [ -d "${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig" ]; then
-  :
-  export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
-  export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
-elif [ -d "${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu/pkgconfig" ]; then
-  :
-  export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
-  export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}"
-elif [ -d "${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu/pkgconfig" ]; then
-  :
-  export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
-  export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/riscv64-linux-gnu:${LD_LIBRARY_PATH:-}"
-else
-  :
-  export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-  export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
-fi
-
-PLUGIN_RS_DIR="/opt/gst-plugins-rs"
-if [ -d "${PLUGIN_RS_DIR}" ]; then
-  :
-  cd "${PLUGIN_RS_DIR}"
-  git fetch origin --tags
-  git checkout "gstreamer-${GSTREAMER_VERSION}"
-else
-  :
-  sudo mkdir -p "${PLUGIN_RS_DIR}"
-  sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
-  git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${PLUGIN_RS_DIR}"
-  cd "${PLUGIN_RS_DIR}"
-  sudo chown "$(id -u):$(id -g)" "${PLUGIN_RS_DIR}" 2>/dev/null || true
-fi
-
-# Build gst-plugins-rs packages.
-CARGO_FLAGS=()
-[ "${BUILD_TYPE_LOWER}" = "release" ] && CARGO_FLAGS+=(--release)
-
-# Limit Rust build parallelism (cargo can be very memory hungry)
-# Use shared helper if available
-if command -v compute_rust_jobs >/dev/null 2>&1; then
-  RUST_JOBS=$(compute_rust_jobs)
-else
-  # Fallback to inline calculation
-  if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-    RUST_PER_JOB_MB="${RUST_PER_JOB_MB:-1800}"
-  else
-    RUST_PER_JOB_MB="${RUST_PER_JOB_MB:-2500}"
-  fi
-  RUST_CORES="$(nproc --all 2>/dev/null || echo 1)"
-  RUST_AVAIL_MB="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
-  [ -z "${RUST_AVAIL_MB}" ] && RUST_AVAIL_MB=2048
-  RUST_MAX_BY_MEM=$(( RUST_AVAIL_MB / RUST_PER_JOB_MB ))
-  [ "${RUST_MAX_BY_MEM}" -lt 1 ] && RUST_MAX_BY_MEM=1
-  if [ "${RUST_CORES}" -lt "${RUST_MAX_BY_MEM}" ]; then
-    RUST_JOBS="${RUST_CORES}"
-  else
-    RUST_JOBS="${RUST_MAX_BY_MEM}"
-  fi
-  [ "${RUST_JOBS}" -lt 1 ] && RUST_JOBS=1
-fi
-
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${RUST_JOBS}}"
-echo "Building gst-plugins-rs workspace with CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
-
-cd "${PLUGIN_RS_DIR}"
-
-# Always attempt to install Csound development packages when possible.
-# This simplifies behaviour: rather than conditionally building csound
-# plugins or producing an error, we try to install the system packages via
-# APT and continue. If installation fails we'll print a warning but not
-# abort the entire build.
-run_as_root() {
-  if [ "$(id -u)" -eq 0 ]; then
-  :
-    "$@"
-    return $?
-  fi
-  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  :
-    sudo "$@"
-    return $?
-  fi
-  return 2
-}
-
-if false; then
-  :
-  # Check if architecture shouldn't build Csound
-  ARCH_FOR_APT="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
-  if echo "${ARCH_FOR_APT}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
-  :
-    echo "Skipping Csound APT install on ARM/RISC-V architecture."
-  else
-  :
-    echo "Attempting to install Csound development packages via APT..."
-        # Install user-facing csound packages and development headers that cargo
-    # crates expect (installing several common package names to cover
-    # distribution differences).
-    
-    if pkg-config --exists csound 2>/dev/null; then
-  :
-      echo "libcsound detected via pkg-config after install: building all workspace members"
-    else
-  :
-      echo "Warning: libcsound pkg-config not available after APT install; csound-related crates may fail to build." >&2
-    fi
-  fi
-else
-  :
-  echo "APT not available: skipping automatic Csound installation. If you need csound-related plugins, please install the libcsound development package." >&2
-fi
-
-DEFAULT_EXCLUDES=(--exclude gst-plugin-burn)
-
-# Proactively exclude csound-related crates on architectures known to cause
-# csound-sys/va_list binding issues (riscv/aarch64/arm64/arm). Detect using several
-# probes (HOST_ARCH, TARGETARCH, dpkg queries, and the kernel machine name) so
-# we don't accidentally miss a Docker/CI context that sets one but not others.
-ARCH_FOR_EXCLUDES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
-if echo "${ARCH_FOR_EXCLUDES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
-  :
-  DEFAULT_EXCLUDES+=(--exclude gst-plugin-csound --exclude csound --exclude csound-sys)
-  echo "Host arch detected in (${ARCH_FOR_EXCLUDES}): added csound-related excludes to DEFAULT_EXCLUDES"
-fi
-BUILD_CMD=(cargo build --workspace "${CARGO_FLAGS[@]}" --jobs "${CARGO_BUILD_JOBS}")
-BUILD_CMD+=("${DEFAULT_EXCLUDES[@]}")
-
-# If host is RISC-V or ARM64 (aarch64/arm64) or 32-bit ARM, exclude csound-related workspace
-# crates from the cargo build. Csound crates (csound-sys -> va_list) currently
-# fail to compile on some RISC-V and ARM toolchains (due to c_char
-# signedness / platform differences), so always exclude them on these arches
-# even if system csound packages are present.
-#
-# Use multiple detection methods (uname, TARGETARCH, dpkg) because Docker
-# build contexts sometimes set TARGETARCH or use different uname values.
-ARCH_PROBES="${HOST_ARCH} ${TARGETARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
-if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
-  :
-  echo "Host arch detected in (${ARCH_PROBES}): excluding csound-related workspace crates from cargo build"
-  if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
-  :
-    CS_PKG_NAMES=$(python3 - <<'PY'
-import sys, json
-try:
-    j = json.load(sys.stdin)
-    names = [p.get('name','') for p in j.get('packages', [])]
-    print(' '.join([n for n in names if 'csound' in n]))
-except Exception:
-    pass
-PY
-)
-    if [ -n "${CS_PKG_NAMES}" ]; then
-  :
-      for n in ${CS_PKG_NAMES}; do
-        BUILD_CMD+=(--exclude "${n}")
-      done
-      echo "Excluding csound packages: ${CS_PKG_NAMES}"
-    else
-  :
-      # Fallback to likely crate names
-      BUILD_CMD+=(--exclude gst-plugin-csound)
-      BUILD_CMD+=(--exclude csound)
-      BUILD_CMD+=(--exclude csound-sys)
-      echo "No csound package names found via cargo metadata; excluding gst-plugin-csound, csound and csound-sys"
-    fi
-  else
-  :
-    BUILD_CMD+=(--exclude gst-plugin-csound)
-    BUILD_CMD+=(--exclude csound)
-    BUILD_CMD+=(--exclude csound-sys)
-    echo "cargo metadata unavailable; excluding gst-plugin-csound, csound and csound-sys by default"
-  fi
-fi
-
-# If Meson args disabled skia, exclude skia-related workspace crates from the
-# cargo build to avoid pulling in skia-bindings (which requires GN/Chromium
-# toolchain helpers like fetch-gn). This mirrors the meson configuration and
-# prevents cargo from attempting to build skia when the meson plugin is off.
-if echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
-  :
-  echo "skia disabled via Meson args: excluding skia-related workspace crates from cargo build"
-  if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
-  :
-    SKIA_PKG_NAMES=$(python3 - <<'PY'
-import sys, json
-try:
-    j=json.load(sys.stdin)
-    names=[p.get('name','') for p in j.get('packages',[])]
-    print(' '.join([n for n in names if 'skia' in n]))
-except Exception:
-    pass
-PY
-)
-    if [ -n "${SKIA_PKG_NAMES}" ]; then
-  :
-      for n in ${SKIA_PKG_NAMES}; do
-        BUILD_CMD+=(--exclude "${n}")
-      done
-      echo "Excluding skia packages: ${SKIA_PKG_NAMES}"
-    else
-  :
-      # Fallback to a likely crate name used historically
-      BUILD_CMD+=(--exclude gst-plugin-skia)
-      BUILD_CMD+=(--exclude gst-plugin-skia-sys)
-      echo "No skia package names found via cargo metadata; excluding gst-plugin-skia and gst-plugin-skia-sys"
-    fi
-  else
-  :
-    BUILD_CMD+=(--exclude gst-plugin-skia)
-    BUILD_CMD+=(--exclude gst-plugin-skia-sys)
-    echo "cargo metadata unavailable; excluding gst-plugin-skia and gst-plugin-skia-sys by default"
-  fi
-fi
-
-# If this is a Release build on ARM or RISC-V architectures, exclude the
-# Whisper plugin from the cargo build. Whisper can be resource heavy and may
-# fail on some ARM and RISC-V toolchains in release mode, so exclude it
-# proactively for stability.
-if [ "${BUILD_TYPE_LOWER}" = "release" ]; then
-  :
-  if echo "${ARCH_PROBES}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
-  :
-    echo "Release build on ARM/RISC-V detected in (${ARCH_PROBES}): excluding whisper-related workspace crates from cargo build"
-    if cargo metadata --no-deps --format-version=1 >/tmp/cargo-metadata.json 2>/dev/null; then
-  :
-      WHISPER_PKG_NAMES=$(python3 - <<'PY'
-import sys, json
-try:
-    j = json.load(sys.stdin)
-    names = [p.get('name','') for p in j.get('packages', [])]
-    print(' '.join([n for n in names if 'whisper' in n]))
-except Exception:
-    pass
-PY
-)
-      if [ -n "${WHISPER_PKG_NAMES}" ]; then
-  :
-        for n in ${WHISPER_PKG_NAMES}; do
-          BUILD_CMD+=(--exclude "${n}")
-        done
-        echo "Excluding whisper packages: ${WHISPER_PKG_NAMES}"
-      else
-  :
-        # Fallback to a likely crate name
-        BUILD_CMD+=(--exclude gst-plugin-whisper)
-        echo "No whisper package names found via cargo metadata; excluding gst-plugin-whisper"
-      fi
-    else
-  :
-      BUILD_CMD+=(--exclude gst-plugin-whisper)
-      echo "cargo metadata unavailable; excluding gst-plugin-whisper by default"
-    fi
-  fi
-fi
-
-if ! "${BUILD_CMD[@]}"; then
-  :
-  echo "ERROR: cargo build for gst-plugins-rs failed"
-  exit 1
-fi
+build_standalone_gst_plugins_rs
 
 echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly."
 
@@ -847,4 +764,4 @@ echo "=========================================="
 echo ""
 echo "Add these environment variables to your shell:"
 echo "For setting up env:"
-echo "Have a look into: ExternalLib\Kataglyphis-ContainerHub\linux\scripts\04-runtime\gstreamer-env.sh"
+printf '%s\n' "Have a look into: linux/scripts/04-runtime/gstreamer-env.sh"

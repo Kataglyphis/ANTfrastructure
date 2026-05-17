@@ -1,12 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/cross-env.sh
+fi
+
 echo "Installing libcamera build dependencies..."
 
-apt-get update -y
-apt-get install -y --no-install-recommends \
-    libboost-program-options-dev libdrm-dev libexif-dev libjpeg-dev libpng-dev \
-    libtiff-dev libavcodec-dev libavdevice-dev libavformat-dev libswresample-dev \
-    libunwind-dev libdw-dev \
-    libyaml-dev \
-    ninja-build pkg-config libudev-dev libevent-dev libgtest-dev cmake
+if command -v cross_apt_update >/dev/null 2>&1; then
+  cross_apt_update -y
+else
+  apt-get update -y
+fi
+install_host_packages ninja-build pkg-config cmake
+
+target_packages=(
+    libboost-program-options-dev libdrm-dev libexif-dev libjpeg-dev libpng-dev
+    libtiff-dev libavcodec-dev libavdevice-dev libavformat-dev libswresample-dev
+    libunwind-dev libdw-dev libssl-dev libglib2.0-dev libpcre2-dev
+    libyaml-dev
+    libudev-dev libevent-dev libgtest-dev
+    libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libgbm-dev libepoxy-dev
+)
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1 && \
+   [ "$(cross_target_arch)" = "riscv64" ]; then
+  # This stage already copies /opt/gstreamer in before libcamera builds, and
+  # that prefix provides the target GLib pkg-config metadata and headers. Avoid
+  # libglib2.0-dev:riscv64 here because Ubuntu pulls in target python3, whose
+  # postinst cannot execute in this build stage.
+  target_packages=("${target_packages[@]/libglib2.0-dev}")
+fi
+
+install_target_packages "${target_packages[@]}"

@@ -4,31 +4,55 @@ ARG BASE_IMAGE=local/kataglyphis:compiler
 FROM ${BASE_IMAGE}
 
 ARG BUILD_TYPE=Release
+ARG BUILD_MODE=native
 ARG VULKAN_VERSION=1.4.341.1
+ARG TARGET_ARCH
 ARG TARGETARCH
 ARG TARGETPLATFORM
+ARG BUILDARCH
+ARG BUILDPLATFORM
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 
 SHELL ["bash", "-lc"]
 
+ENV BUILD_MODE=${BUILD_MODE} \
+    TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETPLATFORM=${TARGETPLATFORM} \
+    BUILDARCH=${BUILDARCH} \
+    BUILDPLATFORM=${BUILDPLATFORM}
+
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
+    bash /tmp/use-fast-ubuntu-mirror.sh
+
+COPY linux/scripts/01-core/ /opt/scripts/core/
+COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
+
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup
 # ------------------------------------------------------------------------------
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-sdk-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
-    bash /opt/scripts/toolchain/setup-dependencies.sh --vulkan-version "${VULKAN_VERSION}" vulkan
+    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
 
 # 6. VERIFICATION
-RUN bash /opt/scripts/toolchain/setup-dependencies.sh verify
+RUN set -eux; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
 
 # ==============================================================================
 # Frameworks; TVM
 # ==============================================================================
 COPY --chmod=+x linux/scripts/05-frameworks/ /opt/scripts/frameworks/
 
-ARG TVM_REF=v0.22.0
+ARG TVM_REF=v0.23.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
 ARG TVM_INSTALL_PYTHON=1
@@ -37,24 +61,18 @@ ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
     TVM_USE_VULKAN=${TVM_USE_VULKAN}
 
-# Uncomment below to enable TVM build
-# RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-#     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
-#     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
-#     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-#     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-#     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-#     --mount=type=tmpfs,target=/tmp \
-#     set -eux; \
-#     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
-#     if [ "${TVM_INSTALL_PYTHON}" = "1" ]; then \
-#         py_flag=""; \
-#     else \
-#         py_flag="--no-python"; \
-#     fi; \
-#     bash /opt/scripts/frameworks/tvm.sh \
-#         --ref "${TVM_REF}" \
-#         --build-type "${TVM_BUILD_TYPE}" \
-#         ${py_flag}
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-sdk-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -eux; \
+    tvm_args=(--ref "${TVM_REF}" --build-type "${TVM_BUILD_TYPE}"); \
+    if [ "${TVM_INSTALL_PYTHON}" != "1" ]; then \
+        tvm_args+=(--no-python); \
+    fi; \
+    bash /opt/scripts/frameworks/tvm.sh "${tvm_args[@]}"
 LABEL org.opencontainers.image.title="Kataglyphis SDK"
-LABEL org.opencontainers.image.description="SDK layer with Vulkan on top of compiler toolchain"
+LABEL org.opencontainers.image.description="SDK layer with Vulkan on top of compiler toolchain and the amd64-hosted cross artifact lane"

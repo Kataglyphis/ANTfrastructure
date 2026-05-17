@@ -24,13 +24,11 @@ _MODULE_DIR="${BASH_SOURCE[0]%/*}"
 source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" >&2; exit 1; }
 
 # Add known experimental Python versions here so callers can test/build
-# against newer interpreter releases (eg. 3.14). Keep DEFAULT_PYTHON_VERSION
-# conservative to avoid surprising CI consumers; callers can still override
-# by passing an explicit python version to `uv_venv_create` or setting
-# the PYTHON_VERSION env var in build scripts.
-declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14 3.14t}"
+# against newer interpreter releases. Keep the default aligned with the
+# source-built interpreter used by the container images.
+declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14t}"
 # Make Python 3.14 the default interpreter used when callers don't specify one.
-declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.14t}"
+declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.14}"
 declare -g _CURRENT_VENV_PATH=""
 
 timestamp() {

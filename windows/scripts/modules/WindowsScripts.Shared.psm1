@@ -177,11 +177,133 @@ function Resolve-WorkspacePath {
     return (Resolve-Path $Path).Path
 }
 
+function Resolve-WindowsBuildRootCandidates {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $RepoRoot,
+
+        [Parameter()]
+        [string] $BuildRootDir = "",
+
+        [Parameter()]
+        [hashtable] $WindowsBuildConfig,
+
+        [Parameter()]
+        [switch] $IncludeDefaultFallbacks
+    )
+
+    $candidateInputs = [System.Collections.Generic.List[string]]::new()
+
+    if (-not [string]::IsNullOrWhiteSpace($BuildRootDir)) {
+        $candidateInputs.Add($BuildRootDir)
+    }
+
+    if ($null -ne $WindowsBuildConfig -and $WindowsBuildConfig.ContainsKey('BuildRootDir') -and -not [string]::IsNullOrWhiteSpace($WindowsBuildConfig.BuildRootDir)) {
+        $candidateInputs.Add($WindowsBuildConfig.BuildRootDir)
+    }
+
+    if ($IncludeDefaultFallbacks) {
+        $candidateInputs.Add('out')
+        $candidateInputs.Add('build')
+    }
+
+    $resolved = [System.Collections.Generic.List[string]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($candidate in $candidateInputs) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+
+        $fullPath = if ([System.IO.Path]::IsPathRooted($candidate)) {
+            [System.IO.Path]::GetFullPath($candidate)
+        } else {
+            [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $candidate))
+        }
+
+        if ($seen.Add($fullPath)) {
+            $resolved.Add($fullPath)
+        }
+    }
+
+    return @($resolved)
+}
+
+function Invoke-WindowsExecutableWithPlugins {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $ExecutablePath,
+
+        [Parameter()]
+        [string[]] $PluginDirectories = @(),
+
+        [Parameter(Mandatory = $true)]
+        [string] $LogPath
+    )
+
+    $originalPath = $env:PATH
+    $psNativePreferenceAvailable = $null -ne (Get-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue)
+    $originalPsNativePreference = $null
+    
+    try {
+        $pluginPathEntries = @()
+        foreach ($dir in $PluginDirectories) {
+            $pluginPathEntries += $dir
+            if (Test-Path -LiteralPath $dir -PathType Container) {
+                $pluginSubDirs = Get-ChildItem -LiteralPath $dir -Directory -Recurse -ErrorAction SilentlyContinue |
+                    ForEach-Object { $_.FullName }
+                $pluginPathEntries += $pluginSubDirs
+            }
+        }
+
+        $pluginPathEntries = @(
+            $pluginPathEntries |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                Sort-Object -Unique
+        )
+
+        $logDir = [System.IO.Path]::GetDirectoryName($LogPath)
+        if (-not [string]::IsNullOrWhiteSpace($logDir) -and -not (Test-Path $logDir)) {
+            New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+        }
+
+        if ($pluginPathEntries.Count -gt 0) {
+            $env:PATH = (($pluginPathEntries -join ";") + ";" + $env:PATH)
+        }
+
+        if ($psNativePreferenceAvailable) {
+            $originalPsNativePreference = $global:PSNativeCommandUseErrorActionPreference
+            $global:PSNativeCommandUseErrorActionPreference = $false
+        }
+        $originalErrorActionPreference = $ErrorActionPreference
+        $processExitCode = 1
+        try {
+            $ErrorActionPreference = "Continue"
+            & $ExecutablePath 2>&1 | Tee-Object -FilePath $LogPath
+            $processExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $originalErrorActionPreference
+        }
+
+        return $processExitCode
+    }
+    finally {
+        if ($psNativePreferenceAvailable) {
+            $global:PSNativeCommandUseErrorActionPreference = $originalPsNativePreference
+        }
+        $env:PATH = $originalPath
+    }
+}
+
 Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'New-TimestampedFilePath',
     'Resolve-NormalizedPath',
     'ConvertTo-ParameterList',
-    'Resolve-WorkspacePath'
+    'Resolve-WorkspacePath',
+    'Resolve-WindowsBuildRootCandidates',
+    'Invoke-WindowsExecutableWithPlugins'
 )
+

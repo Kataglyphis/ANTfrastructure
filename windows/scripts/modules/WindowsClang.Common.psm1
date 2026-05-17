@@ -53,7 +53,12 @@ function Invoke-ClangTidyFixStep {
     [string]$WorkspacePath,
     [Parameter(Mandatory)]
     [string]$BuildRoot,
-    [string[]]$Checks = @('--checks=-misc-include-cleaner'),
+    # Do not force project-specific clang-tidy checks by default. Leave the
+    # checks list empty so callers can opt-in or provide their own set of
+    # --checks arguments. The ContainerHub previously enforced
+    # --checks=-misc-include-cleaner which caused issues for some clang-tidy
+    # versions (crashes); remove the imposed flag to avoid that.
+    [string[]]$Checks = @(),
     [switch]$Fix
   )
 
@@ -69,12 +74,25 @@ function Invoke-ClangTidyFixStep {
     Where-Object { $_.Extension -in @('.cpp', '.cc', '.cxx') } |
     Select-Object -ExpandProperty FullName)
 
+  $filteredFiles = @()
+  foreach ($f in $tidyFiles) {
+    $content = Get-Content $f -Raw -ErrorAction SilentlyContinue
+    if ($content -match '^import\s+kataglyphis') {
+      Write-BuildLog -Context $Context -Message "Skipping clang-tidy for $f (uses C++20 module syntax)"
+      continue
+    }
+    $filteredFiles += $f
+  }
+  $tidyFiles = $filteredFiles
+
   if ($tidyFiles.Count -eq 0) {
     Write-BuildLog -Context $Context -Message 'No C/C++ source files found under Src for clang-tidy.'
     return
   }
 
   $baseParams = @('-p', $BuildRoot) + $Checks
+  # Restrict analysis to the source directory to avoid noise from ExternalLib headers
+  $baseParams += "--header-filter=$([regex]::Escape($srcDir)).*"
   if ($Fix) { $baseParams += '--fix' }
 
   foreach ($tidyFile in $tidyFiles) {

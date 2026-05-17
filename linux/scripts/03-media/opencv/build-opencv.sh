@@ -20,8 +20,18 @@ set -euo pipefail
 # Source build acceleration helpers if available
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
+    "/opt/scripts/core/cross-env.sh" \
+    "${SCRIPT_DIR}/../../01-core/cross-env.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
+for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
-    "${SCRIPT_DIR}/../../../01-core/compiler-cache.sh"; do
+    "${SCRIPT_DIR}/../../01-core/compiler-cache.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
@@ -41,10 +51,12 @@ done
 : "${NPROC:=$(nproc)}"
 : "${WITH_CONTRIB:=true}"
 : "${WITH_PYTHON:=true}"
-: "${OPENCV_PYTHON_VERSION:=3.14}"
+: "${OPENCV_PYTHON_VERSION:=$(host_python_major_minor)}"
 : "${WITH_JAVA:=false}"
 : "${SKIP_DEP_INSTALL:=false}"
 : "${WITH_IPP:=ON}"
+
+HOST_PYTHON=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -139,6 +151,39 @@ fetch_opencv() {
     fi
 }
 
+target_machine() {
+    if command -v cross_target_arch >/dev/null 2>&1; then
+        cross_target_arch
+        return 0
+    fi
+    if [ -n "${TARGET_ARCH:-${TARGETARCH:-}}" ]; then
+        printf '%s' "${TARGET_ARCH:-${TARGETARCH}}"
+        return 0
+    fi
+    uname -m
+}
+
+resolve_cross_archive_tool() {
+    local tool="$1"
+    local preferred="${CROSS_TARGET_TRIPLET}-gcc-${tool}"
+    local fallback="${CROSS_TARGET_TRIPLET}-${tool}"
+    local resolved
+
+    resolved="$(command -v "${preferred}" 2>/dev/null || true)"
+    if [ -n "${resolved}" ]; then
+        printf '%s' "${resolved}"
+        return 0
+    fi
+
+    resolved="$(command -v "${fallback}" 2>/dev/null || true)"
+    if [ -n "${resolved}" ]; then
+        printf '%s' "${resolved}"
+        return 0
+    fi
+
+    printf '%s' "${fallback}"
+}
+
 # ------------------------------------------------------------------------------
 # Configure OpenCV build
 # ------------------------------------------------------------------------------
@@ -146,6 +191,12 @@ configure_opencv() {
     echo "Configuring OpenCV build..."
     
     local build_dir="${OPENCV_SRC}/build"
+    local with_gtk="ON"
+    local with_gstreamer="ON"
+    local with_opengl="ON"
+    local target_zlib_include=""
+    local target_zlib_library=""
+    local target_shared_include_fallback=""
     mkdir -p "${build_dir}"
     cd "${build_dir}"
     
@@ -153,13 +204,35 @@ configure_opencv() {
     # prebuilt ippicv libraries for x86 which will fail when linking on
     # architectures like aarch64 or riscv. Allow explicit override via
     # the WITH_IPP env var (set to "ON" or "OFF").
-    if [ "$(uname -m)" != "x86_64" ] && [ "${WITH_IPP}" = "ON" ]; then
-        echo "Non-x86 host detected ($(uname -m)) - disabling Intel IPP to avoid x86 prebuilt libs"
+    if [ "$(target_machine)" != "amd64" ] && [ "$(target_machine)" != "x86_64" ] && [ "${WITH_IPP}" = "ON" ]; then
+        echo "Non-x86 target detected ($(target_machine)) - disabling Intel IPP to avoid x86 prebuilt libs"
         WITH_IPP="OFF"
+    fi
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        # GTK pulls target-side Pango GIR files that are not coinstallable with the host arch.
+        with_gtk="OFF"
+        with_opengl="OFF"
+        # Debian/Ubuntu multiarch keeps zlib.h in the shared include directory.
+        target_zlib_include="/usr/include"
+        target_zlib_library="/usr/lib/$(cross_target_triplet)/libz.so"
+        target_shared_include_fallback="-idirafter /usr/include"
+        if [ "$(cross_target_arch)" = "riscv64" ]; then
+            # Ubuntu Ports cannot currently satisfy the target GStreamer/GLib dev chain for riscv64 cross builds.
+            with_gstreamer="OFF"
+        fi
+        if [ "${WITH_PYTHON}" = "true" ] && command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
+            echo "Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling OpenCV Python bindings in cross mode"
+            WITH_PYTHON="false"
+        fi
     fi
 
     if [ "${WITH_PYTHON}" = "true" ]; then
         echo "Using existing Python venv (expected at /opt/python/.venv)..."
+        HOST_PYTHON="$(host_python_bin)"
+        export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
+               Python_EXECUTABLE="${HOST_PYTHON}" \
+               Python3_EXECUTABLE="${HOST_PYTHON}"
         uv pip install numpy wheel
     fi
 
@@ -181,10 +254,10 @@ configure_opencv() {
         "-DINSTALL_PYTHON_EXAMPLES=OFF"
         "-DWITH_TBB=ON"
         "-DWITH_EIGEN=ON"
-        "-DWITH_GTK=ON"
+        "-DWITH_GTK=${with_gtk}"
         "-DWITH_V4L=ON"
         "-DWITH_FFMPEG=ON"
-        "-DWITH_GSTREAMER=ON"
+        "-DWITH_GSTREAMER=${with_gstreamer}"
         "-DWITH_OPENEXR=ON"
         "-DWITH_JPEG=ON"
         "-DWITH_PNG=ON"
@@ -193,13 +266,36 @@ configure_opencv() {
         "-DWITH_DC1394=ON"
         "-DWITH_1394=ON"
         "-DWITH_OPENCL=ON"
-        "-DWITH_OPENGL=ON"
+        "-DWITH_OPENGL=${with_opengl}"
         "-DWITH_VULKAN=ON"
         "-DWITH_PROTOBUF=ON"
         "-DWITH_LIBV4L=ON"
         "-DWITH_ITT=ON"
         "-DWITH_IPP=${WITH_IPP}"
     )
+
+    if command -v append_cmake_cross_args >/dev/null 2>&1; then
+        append_cmake_cross_args cmake_opts
+    fi
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        # OpenCV's mixed vendored/system dependency graph needs access to the
+        # target sysroot headers and libraries under /usr while still finding
+        # generated build artifacts in the normal build tree.
+        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH")
+        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH")
+        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+        cmake_opts+=("-DCMAKE_AR=$(resolve_cross_archive_tool ar)")
+        cmake_opts+=("-DCMAKE_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        cmake_opts+=("-DCMAKE_C_COMPILER_AR=$(resolve_cross_archive_tool ar)")
+        cmake_opts+=("-DCMAKE_CXX_COMPILER_AR=$(resolve_cross_archive_tool ar)")
+        cmake_opts+=("-DCMAKE_C_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        cmake_opts+=("-DCMAKE_CXX_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        cmake_opts+=("-DZLIB_INCLUDE_DIR=${target_zlib_include}")
+        cmake_opts+=("-DZLIB_LIBRARY=${target_zlib_library}")
+        cmake_opts+=("-DCMAKE_C_FLAGS=${target_shared_include_fallback}")
+        cmake_opts+=("-DCMAKE_CXX_FLAGS=${target_shared_include_fallback}")
+    fi
 
     # Add lld linker flags if available
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
@@ -244,10 +340,25 @@ configure_opencv() {
     
     # Python bindings
     if [ "${WITH_PYTHON}" = "true" ]; then
-        PY_EXEC="$(which python3)"
+        PY_EXEC="${HOST_PYTHON:-$(host_python_bin)}"
         cmake_opts+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
         # Explicitly set library and include paths since FindPython3 might not find free-threaded (t) libraries
-        if [ -f "/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so" ]; then
+        if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+            local target_python_library=""
+            local target_python_include=""
+
+            if command -v cross_target_python_library >/dev/null 2>&1; then
+                target_python_library="$(cross_target_python_library 2>/dev/null || true)"
+            fi
+            if command -v cross_target_python_include_dir >/dev/null 2>&1; then
+                target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
+            fi
+
+            if [ -n "${target_python_library}" ] && [ -d "${target_python_include}" ]; then
+                cmake_opts+=("-DPYTHON3_LIBRARY=${target_python_library}")
+                cmake_opts+=("-DPYTHON3_INCLUDE_DIR=${target_python_include}")
+            fi
+        elif [ -f "/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so" ]; then
             cmake_opts+=("-DPYTHON3_LIBRARY=/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so")
             cmake_opts+=("-DPYTHON3_INCLUDE_DIR=/usr/local/include/python${OPENCV_PYTHON_VERSION}")
         fi
@@ -298,7 +409,14 @@ build_opencv() {
     local build_dir="${OPENCV_SRC}/build"
     cd "${build_dir}"
     
-    make -j"${NPROC}" || { echo "OpenCV build failed"; exit 1; }
+    if make -j"${NPROC}"; then
+        return 0
+    fi
+
+    echo "OpenCV parallel build failed; rerunning serial verbose build for diagnostics..."
+    make -j1 VERBOSE=1 || true
+    echo "OpenCV build failed"
+    exit 1
 }
 
 # ------------------------------------------------------------------------------
@@ -343,7 +461,7 @@ build_opencv_python_wheel() {
         "-DBUILD_opencv_tracking=ON"
     )
     
-    if [ "$(uname -m)" != "x86_64" ]; then
+    if [ "$(target_machine)" != "amd64" ] && [ "$(target_machine)" != "x86_64" ]; then
         py_cmake_args+=("-DWITH_IPP=OFF")
     fi
     
@@ -368,14 +486,26 @@ build_opencv_python_wheel() {
     export CMAKE_ARGS="${py_cmake_args[*]}"
     echo "CMAKE_ARGS for python wheel: ${CMAKE_ARGS}"
     
-    PYEXEC="$(which python3)"
+    PYEXEC="${HOST_PYTHON:-$(host_python_bin)}"
     # Ensure build dependencies are installed
-    ${PYEXEC} -m pip install wheel scikit-build cmake ninja numpy packaging || uv pip install wheel scikit-build cmake ninja numpy packaging
+    "${PYEXEC}" -m pip install wheel scikit-build cmake ninja numpy packaging || \
+        uv pip install --python "${PYEXEC}" wheel scikit-build cmake ninja numpy packaging
+
+    local cmake_bin_dir=""
+    local cmake_bin=""
+    cmake_bin_dir="$("${PYEXEC}" -c 'import cmake; print(cmake.CMAKE_BIN_DIR)' 2>/dev/null || true)"
+    if [ -n "${cmake_bin_dir}" ] && [ -x "${cmake_bin_dir}/cmake" ]; then
+        cmake_bin="${cmake_bin_dir}/cmake"
+        export PATH="${cmake_bin_dir}:${PATH}"
+        export CMAKE_EXECUTABLE="${cmake_bin}"
+        export SKBUILD_CMAKE="${cmake_bin}"
+        echo "Using CMake binary from ${cmake_bin}"
+    fi
     
     mkdir -p "${OPENCV_PREFIX}/wheels"
     
     echo "Building wheel via scikit-build... (this will take a while as it compiles OpenCV again)"
-    ${PYEXEC} -m pip wheel . -w "${OPENCV_PREFIX}/wheels" --verbose || echo "Failed to build opencv-python wheel"
+    "${PYEXEC}" -m pip wheel . -w "${OPENCV_PREFIX}/wheels" --verbose || echo "Failed to build opencv-python wheel"
     
     popd >/dev/null
 }
@@ -441,7 +571,7 @@ main() {
     build_opencv
     install_opencv
     
-    if [ "${WITH_PYTHON}" = "true" ]; then
+    if [ "${WITH_PYTHON}" = "true" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
         build_opencv_python_wheel
     fi
     
@@ -458,10 +588,12 @@ main() {
     echo "Libraries:"
     ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null | head -20 || echo "Could not list libraries"
     
-    if [ "${WITH_PYTHON}" = "true" ]; then
+    if [ "${WITH_PYTHON}" = "true" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
         echo ""
         echo "Python bindings:"
-        python3 -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null || echo "Could not import cv2"
+        "${HOST_PYTHON:-$(host_python_bin)}" -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null || echo "Could not import cv2"
+    elif [ "${WITH_PYTHON}" = "true" ]; then
+        echo "Skipping Python import validation in cross mode"
     fi
 }
 

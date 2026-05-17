@@ -74,7 +74,7 @@ if command -v apt-get >/dev/null 2>&1; then
 
   LLVM_WANTED=22
   CLANG_WANTED=22
-  GCC_WANTED=14
+  GCC_WANTED=16
   export DEBIAN_FRONTEND=noninteractive
 
   sudo apt-get update

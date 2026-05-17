@@ -7,12 +7,15 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
+setup_host_python_environment
+HOST_PYTHON="${HOST_PYTHON_BIN}"
+
 # Early exit check - ensure output dir exists even when skipping so Docker
 # COPY --from=onnxruntime won't fail when the GenAI build is intentionally
 # skipped (e.g. BUILD_GENAI=false).
 [[ "${BUILD_GENAI}" != "true" ]] && {
   info "Skipping GenAI build (BUILD_GENAI=${BUILD_GENAI})"
-  mkdir -p "${GENAI_OUTPUT_DIR}" "${GENAI_OUTPUT_DIR}/lib" "${GENAI_OUTPUT_DIR}/include" "${GENAI_OUTPUT_DIR}/wheels" || true
+  ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
   echo "[INFO] Created placeholder GenAI output dir: ${GENAI_OUTPUT_DIR}" || true
   exit 0
 }
@@ -24,8 +27,14 @@ ARCH="$(arch_oci 2>/dev/null || uname -m 2>/dev/null || echo unknown)"
 if [ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "risc-v" ]; then
   info "Skipping onnxruntime-genai on ${ARCH} because it is not supported"
   # Create placeholder output directories so later Dockerfile COPYs succeed
-  mkdir -p "${GENAI_OUTPUT_DIR}" "${GENAI_OUTPUT_DIR}/lib" "${GENAI_OUTPUT_DIR}/include" "${GENAI_OUTPUT_DIR}/wheels" || true
+  ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
   echo "[INFO] Created placeholder GenAI output dir for unsupported arch: ${GENAI_OUTPUT_DIR}" || true
+  exit 0
+fi
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  info "Skipping onnxruntime-genai in cross mode; the build emits target wheels and host-run validation"
+  ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
   exit 0
 fi
 
@@ -45,16 +54,9 @@ if [[ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/lib"/*.so* 2>/dev/null)" ]]; then
 fi
 
 # Check specifically for libonnxruntime.so (may be a symlink)
+ensure_onnxruntime_symlink "${NATIVE_CPU_OUTPUT_DIR}"
 if [[ ! -e "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]] && [[ ! -L "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]]; then
-  warn "libonnxruntime.so symlink not found, checking for versioned libraries..."
-  # Try to create symlink from versioned library
-  versioned_lib="$(find "${NATIVE_CPU_OUTPUT_DIR}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
-  if [[ -n "${versioned_lib}" ]]; then
-    ln -sf "$(basename "${versioned_lib}")" "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so"
-    info "Created symlink: ${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so -> $(basename "${versioned_lib}")"
-  else
-    err "No libonnxruntime.so* files found in ${NATIVE_CPU_OUTPUT_DIR}/lib"
-  fi
+  err "No libonnxruntime.so* files found in ${NATIVE_CPU_OUTPUT_DIR}/lib"
 fi
 
 # Check for required header
@@ -73,13 +75,13 @@ info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 
 # Install Python build dependencies with uv
 info "Installing Python build dependencies (pip, numpy, wheel, setuptools, requests)"
-uv pip install pip numpy wheel setuptools requests
+ensure_uv_python_packages "${HOST_PYTHON}" pip numpy wheel setuptools requests
 
-info "Using Python: $(which python3)"
-info "NumPy version: $(python3 -c 'import numpy; print(numpy.__version__)')"
+info "Using Python: ${HOST_PYTHON}"
+info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)')"
 
 # Prepare output directories
-mkdir -p "${GENAI_OUTPUT_DIR}"/{lib,include,wheels}
+ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
 
 # Build GenAI
 cd "${GENAI_SRC_DIR}"
@@ -89,18 +91,12 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   info "Building onnxruntime-genai with GPU ORT from ${ORT_HOME}"
 
   # Ensure libonnxruntime.so exists in the GPU ORT home (often it's just versioned)
+  ensure_onnxruntime_symlink "${ORT_HOME}"
   if [[ ! -e "${ORT_HOME}/lib/libonnxruntime.so" ]] && [[ ! -L "${ORT_HOME}/lib/libonnxruntime.so" ]]; then
-    warn "libonnxruntime.so not found in ${ORT_HOME}/lib, attempting to create symlink..."
-    versioned_lib="$(find "${ORT_HOME}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
-    if [[ -n "${versioned_lib}" ]]; then
-      ln -sf "$(basename "${versioned_lib}")" "${ORT_HOME}/lib/libonnxruntime.so"
-      info "Created symlink: ${ORT_HOME}/lib/libonnxruntime.so -> $(basename "${versioned_lib}")"
-    else
-      warn "No versioned libonnxruntime.so found in ${ORT_HOME}/lib!"
-    fi
+    warn "No versioned libonnxruntime.so found in ${ORT_HOME}/lib"
   fi
 
-  python3 build.py \
+  "${HOST_PYTHON}" build.py \
     --config "${GENAI_CONFIG}" \
     --ort_home "${ORT_HOME}" \
     --parallel \
@@ -114,7 +110,7 @@ else
   ORT_HOME="${NATIVE_CPU_OUTPUT_DIR}"
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
 
-  python3 build.py \
+  "${HOST_PYTHON}" build.py \
     --config "${GENAI_CONFIG}" \
     --ort_home "${ORT_HOME}" \
     --parallel \
@@ -123,24 +119,11 @@ else
     --use_guidance
 fi
 
-# Copy wheel files
-info "Searching for GenAI wheel files..."
-find "${GENAI_SRC_DIR}/build" -name "*.whl" -type f 2>/dev/null | while read -r whl; do
-  info "Copying wheel: ${whl}"
-  cp "${whl}" "${GENAI_OUTPUT_DIR}/wheels/"
-  ls -lh "${GENAI_OUTPUT_DIR}/wheels/$(basename "${whl}")"
-done || info "No wheels found in ${GENAI_SRC_DIR}/build"
+collect_wheels_from_tree "${GENAI_SRC_DIR}/build" "${GENAI_OUTPUT_DIR}" "GenAI wheel"
 
 # If no GenAI wheels were created, attempt to build a wheel from the GenAI Python package
 if [ -z "$(ls -A "${GENAI_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
-  info "No GenAI wheels found; attempting pip wheel build from source"
-  if [ -f "${GENAI_SRC_DIR}/pyproject.toml" ] || [ -f "${GENAI_SRC_DIR}/setup.py" ]; then
-    mkdir -p "${GENAI_OUTPUT_DIR}/wheels"
-    python3 -m pip wheel -w "${GENAI_OUTPUT_DIR}/wheels" "${GENAI_SRC_DIR}" || info "pip wheel failed for GenAI source"
-    info "Wheels after pip wheel:"; ls -lh "${GENAI_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
-  else
-    info "GenAI python packaging not detected; skipping pip wheel"
-  fi
+  maybe_build_source_wheel "${GENAI_SRC_DIR}" "${GENAI_OUTPUT_DIR}" "${HOST_PYTHON}" "GenAI"
 fi
 
 # Copy headers
@@ -161,13 +144,9 @@ if [[ -d "${GENAI_LIB_DIR}" ]]; then
     -exec cp -t "${GENAI_OUTPUT_DIR}/lib/" {} + 2>/dev/null || true
 fi
 
-# Create symlinks in /usr/local/lib
-find "${GENAI_OUTPUT_DIR}/lib" -type f -name "lib*.so*" -print0 2>/dev/null | \
-  xargs -0 -r ln -sf -t /usr/local/lib/ 2>/dev/null || true
-
-ldconfig 2>/dev/null || true
+symlink_output_libraries_into_usr_local "${GENAI_OUTPUT_DIR}"
 
 info "GenAI build complete. Artifacts in ${GENAI_OUTPUT_DIR}"
 info "Wheels in ${GENAI_OUTPUT_DIR}/wheels"
 ls -lh "${GENAI_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
-ls -lh "${GENAI_OUTPUT_DIR}/lib"/*.so* 2>/dev/null | head -20 || true
+find "${GENAI_OUTPUT_DIR}/lib" -maxdepth 1 -type f -name "*.so*" -printf '%f\n' 2>/dev/null | head -20 || true
