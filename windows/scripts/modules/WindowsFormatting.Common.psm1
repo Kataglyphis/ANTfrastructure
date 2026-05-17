@@ -15,6 +15,7 @@ function Get-ProjectCmakeFiles {
           Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
           ForEach-Object { Join-Path $WorkspacePath $_ } |
           Where-Object {
+            (Test-Path $_) -and
             ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
             ($_.ToString() -notmatch '\\ExternalLib\\') -and
             ($_.ToString() -notmatch '\\_deps\\') -and
@@ -56,9 +57,10 @@ function Get-ProjectCppFiles {
           Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
           ForEach-Object { Join-Path $WorkspacePath $_ } |
           Where-Object {
+            (Test-Path $_) -and
             ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
             ($_.ToString() -notmatch '\\ExternalLib\\') -and
-            ($_.ToString() -match '\\_deps\\') -and
+            ($_.ToString() -notmatch '\\_deps\\') -and
             ($_.ToString() -notmatch '\\vcpkg_installed\\')
           })
         return @($trackedPaths | Sort-Object -Unique)
@@ -96,9 +98,23 @@ function Initialize-UvVenvPython {
     throw 'uv not found on PATH. Install Astral uv before running formatting steps.'
   }
 
-  $venvPath = Join-Path $WorkspacePath $EnvName
+  $venvPath = if ([System.IO.Path]::IsPathRooted($EnvName)) {
+    $EnvName
+  } else {
+    Join-Path $WorkspacePath $EnvName
+  }
   $venvPython = Join-Path $venvPath 'Scripts\python.exe'
   $requirementsPath = Join-Path $WorkspacePath 'requirements.txt'
+
+  # Avoid creating Python environments on the bind-mounted workspace inside
+  # Windows containers, which is prone to transient file locks during package
+  # installs. Keep the environment in container-local temp storage instead.
+  if (-not [System.IO.Path]::IsPathRooted($EnvName) -and $WorkspacePath -like 'C:\workspace*') {
+    $envRoot = Join-Path $env:TEMP 'kataglyphis-uv-envs'
+    Resolve-DirectoryPath -Path $envRoot | Out-Null
+    $venvPath = Join-Path $envRoot $EnvName.TrimStart('.')
+    $venvPython = Join-Path $venvPath 'Scripts\python.exe'
+  }
 
   $logInfo = {
     param([string]$Message)
@@ -128,7 +144,7 @@ function Initialize-UvVenvPython {
   }
 
   if ($venvNeedsCreation) {
-    New-UvProjectEnvironment -Workspace $WorkspacePath -PythonVersion $PythonVersion -EnvName $EnvName `
+    New-UvProjectEnvironment -Workspace $WorkspacePath -PythonVersion $PythonVersion -EnvName $venvPath `
       -CommandRunner $commandRunner -LogInfo $logInfo -LogWarning $logWarning | Out-Null
     $env:UV_PROJECT_ENVIRONMENT = $venvPath
   }
