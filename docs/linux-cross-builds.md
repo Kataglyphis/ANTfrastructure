@@ -293,7 +293,9 @@ The new end-goal path is split into two steps so the old QEMU lane keeps working
 
 `linux/Dockerfile.package` is the shared runtime packaging layer for this path. It starts from a clean per-arch base image, copies only the selected target payload from the chosen artifact image, replays the final runtime dependency setup, and then becomes the `BASE_IMAGE` for the final `linux/Dockerfile` wrapper. In `cross` mode that artifact image still runs on amd64 (`android-cross-${target_arch}`); in `native` mode it can be the target-platform sequential image directly.
 
-Run the final publish flow directly with `nerdctl`. The per-arch `latest-cross-base-*`, `latest-cross-package-*`, `latest-cross-torch-*`, and `latest-cross-*` tags are internal publish tags used to assemble the public `latest-cross` manifest:
+For day-to-day work on this host, prefer the helper scripts below over the long manual `nerdctl` loops. The manual sequence remains useful as a low-level reference, but the helpers already encode the verified local-context handoff and push semantics.
+
+Run the final publish flow directly with `nerdctl` only when you intentionally need the fully manual path. The per-arch `latest-cross-base-*`, `latest-cross-package-*`, `latest-cross-torch-*`, and `latest-cross-*` tags are internal publish tags used to assemble the public `latest-cross` manifest:
 
 ```bash
 IMAGE_REPO=ghcr.io/kataglyphis/kataglyphis_beschleuniger
@@ -365,6 +367,7 @@ The helper scripts now follow the same runtime path too:
 
 - `linux/scripts/build-runtime-manifest.sh` builds `base -> package -> torch -> wrapper -> manifest`.
 - `linux/scripts/build-runtime-artifacts.sh` builds that same `base -> package -> torch -> wrapper` chain and exports the final wrapper rootfs instead of creating a manifest.
+- Both helpers accept `--target-arches`, `TARGET_ARCHES`, or `TARGET_ARCH` for architecture selection.
 - Both helpers accept `ARTIFACT_BUILD_MODE=cross` or `ARTIFACT_BUILD_MODE=native`.
 - In `cross` mode, `ARTIFACT_IMAGE_PREFIX` is treated as a prefix like `ghcr.io/...:android-cross` and the helper fans out `-${target_arch}` automatically.
 - In `native` mode, `ARTIFACT_IMAGE_PREFIX` is treated as the exact artifact image ref, for example `ghcr.io/...:android`.
@@ -373,7 +376,9 @@ The helper scripts now follow the same runtime path too:
 - `ARTIFACT_CONTEXT_MODE=oci` makes each `ARTIFACT_CONTEXT_ROOT/<arch>` resolve as `oci-layout://...`. That is the verified path for the saved `out/local-oci/android/{arm64,riscv64}` artifacts.
 - On this host, one build still fails when it consumes two named OCI image contexts at once. The working workaround is to keep `runtime_artifact` as an OCI layout context and `runtime_base` as a plain rootfs directory context.
 - Each local stage context is deleted as soon as the downstream build finishes consuming it, which keeps non-push runs off `/tmp` and reduces peak disk usage.
-- `--push` keeps the current default behavior of pushing only the per-architecture wrapper images, and `--push-manifest` pushes the assembled manifest. Use `--push-all` only when you also want the `base`, `package`, and `torch` intermediates pushed.
+- `build-runtime-artifacts.sh --push` pushes the final per-architecture wrapper images even when the helper keeps `base -> package -> torch` in local stage contexts.
+- `build-runtime-manifest.sh --push` is shorthand for `--push-images --push-manifest`.
+- Use `--push-all` only when you also want the `base`, `package`, and `torch` intermediates pushed.
 
 Verified local foreign-architecture rebuild on this host:
 
@@ -392,6 +397,23 @@ bash linux/scripts/build-runtime-artifacts.sh \
 ```
 
 That path was validated for both `arm64` and `riscv64` with `clang version 22.1.5`, manual `update-alternatives` wiring to `/usr/local/llvm-target/bin/clang`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`.
+
+After the runtime helper cleanup in this repository, the same helper path was re-validated for `amd64` with:
+
+```bash
+RUNTIME_CONTEXT_ROOT="/tmp/opencode/runtime-contexts" \
+bash linux/scripts/build-runtime-artifacts.sh \
+  --target-arches amd64 \
+  --output-root /tmp/opencode/runtime-smoke \
+  --image-prefix docker.io/library/opencode-local:latest-cross-smoke \
+  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross \
+  --artifact-build-mode cross \
+  --fast-ubuntu-mirror \
+  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
+  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
+```
+
+The resulting image reported `clang version 22.1.5`, target `x86_64-unknown-linux-gnu`, and `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`.
 
 For local wrapper smoke validation without pushing anything, build the checked-in smoke target directly:
 

@@ -38,6 +38,7 @@ These files document host-specific workarounds that are easy to regress if you i
   - `./linux/scripts/build-cross-compiler.sh`
   - `bash linux/scripts/build-runtime-artifacts.sh`
   - `bash linux/scripts/build-runtime-manifest.sh`
+- The runtime helpers accept `--target-arches`, `TARGET_ARCHES`, and `TARGET_ARCH` for architecture selection.
 - For local foreign-architecture runtime rebuilds, prefer saved OCI layouts under `out/local-oci/android/<arch>`.
 - When reusing saved local artifacts, use:
   - `ARTIFACT_CONTEXT_ROOT="$PWD/out/local-oci/android"`
@@ -49,7 +50,8 @@ These files document host-specific workarounds that are easy to regress if you i
 
 ## Push And Publish Rules
 
-- For the runtime helpers, `--push` should push only the final per-architecture wrapper images, plus the final manifest when `--push-manifest` is also used.
+- For the runtime helpers, `build-runtime-artifacts.sh --push` should push only the final per-architecture wrapper images.
+- `build-runtime-manifest.sh --push` should push those final wrapper images plus the final manifest.
 - Use `--push-all` only when the user explicitly wants the `base`, `package`, and `torch` intermediates published too.
 - Final cross release target: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
 - Final wrapper tags are:

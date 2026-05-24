@@ -70,6 +70,7 @@ RUSTC_WRAPPER=""
 
 - Some rootless setups expose `nerdctl` but not the raw BuildKit or containerd sockets.
 - Use `nerdctl save`, `nerdctl create`, and `nerdctl export` for local image export and inspection on this host.
+- Prefer the checked-in runtime helpers over manual rebuild loops when validating or publishing the cross runtime path.
 - Fall back to regular disk usage checks and `nerdctl` cleanup commands when `buildctl` or `ctr` socket access is unavailable.
 
 ## Contributing

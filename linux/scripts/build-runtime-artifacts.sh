@@ -176,22 +176,11 @@ main() {
   local arch
   local tag
   for arch in ${TARGET_ARCHES//,/ }; do
-    runtime_build_base_image "${arch}"
-    runtime_build_package_image "${arch}"
-    runtime_build_torch_image "${arch}"
     if runtime_use_local_stage_context_outputs; then
-      runtime_build_wrapper_rootfs "${arch}" "${OUTPUT_ROOT}/${arch}/rootfs"
-      mkdir -p "${OUTPUT_ROOT}/${arch}"
-      cat > "${OUTPUT_ROOT}/${arch}/artifact.env" <<EOF
-TARGET_ARCH=${arch}
-SOURCE_IMAGE=$(runtime_wrapper_tag "${arch}")
-TORCH_IMAGE=$(runtime_torch_tag "${arch}")
-PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
-BASE_IMAGE=$(runtime_base_tag "${arch}")
-ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
-EOF
+      runtime_build_chain "${arch}" "${OUTPUT_ROOT}/${arch}/rootfs"
+      runtime_write_artifact_metadata "${arch}" "${OUTPUT_ROOT}/${arch}"
     else
-      runtime_build_wrapper_image "${arch}"
+      runtime_build_chain "${arch}"
       tag="$(runtime_wrapper_tag "${arch}")"
       export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
         "TARGET_ARCH=${arch}" \

@@ -249,11 +249,19 @@ runtime_stage_context_ref() {
   printf '%s' "oci-layout://${context_dir}"
 }
 
+runtime_pushes_wrapper_images() {
+  [ "${PUSH_IMAGES:-0}" -eq 1 ]
+}
+
+runtime_pushes_intermediate_images() {
+  runtime_pushes_wrapper_images && [ "${PUSH_INTERMEDIATE_IMAGES:-0}" -eq 1 ]
+}
+
 runtime_use_local_context_chain() {
   case "${RUNTIME_USE_LOCAL_CONTEXT_CHAIN:-auto}" in
     1|true|TRUE|yes|YES|on|ON) return 0 ;;
     0|false|FALSE|no|NO|off|OFF) return 1 ;;
-    auto|"") [ "${PUSH_IMAGES:-0}" -eq 0 ] || [ "${PUSH_INTERMEDIATE_IMAGES:-0}" -eq 0 ] ;;
+    auto|"") ! runtime_pushes_intermediate_images ;;
     *)
       printf '[ERROR] Unsupported RUNTIME_USE_LOCAL_CONTEXT_CHAIN value: %s\n' "${RUNTIME_USE_LOCAL_CONTEXT_CHAIN}" >&2
       return 1
@@ -285,7 +293,7 @@ runtime_use_local_stage_context_outputs() {
   # When we are not pushing intermediate images the entire intermediate
   # pipeline stays in local OCI-layout directories — only the final
   # wrapper image is tagged and pushed.
-  [ "${PUSH_IMAGES:-0}" -eq 0 ] || [ "${PUSH_INTERMEDIATE_IMAGES:-0}" -eq 0 ]
+  ! runtime_pushes_intermediate_images
 }
 
 runtime_install_local_context_cleanup_trap() {
@@ -473,7 +481,7 @@ runtime_build_base_image() {
     "${build_args[@]}" \
     .
 
-  if [ "${PUSH_IMAGES:-0}" -eq 1 ] && [ "${PUSH_INTERMEDIATE_IMAGES:-1}" -eq 1 ]; then
+  if runtime_pushes_intermediate_images; then
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
   fi
 
@@ -553,7 +561,7 @@ runtime_build_package_image() {
 
   runtime_remove_stage_context base "${arch}"
 
-  if [ "${PUSH_IMAGES:-0}" -eq 1 ] && [ "${PUSH_INTERMEDIATE_IMAGES:-1}" -eq 1 ]; then
+  if runtime_pushes_intermediate_images; then
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
   fi
 
@@ -588,7 +596,7 @@ runtime_build_wrapper_image() {
 
   runtime_remove_stage_context torch "${arch}"
 
-  if [ "${PUSH_IMAGES:-0}" -eq 1 ]; then
+  if runtime_pushes_wrapper_images; then
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
   fi
 }
@@ -623,6 +631,10 @@ runtime_build_wrapper_rootfs() {
 
   runtime_remove_stage_context torch "${arch}"
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}"
+
+  if runtime_pushes_wrapper_images; then
+    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+  fi
 }
 
 runtime_build_torch_image() {
@@ -677,9 +689,40 @@ runtime_build_torch_image() {
 
   runtime_remove_stage_context package "${arch}"
 
-  if [ "${PUSH_IMAGES:-0}" -eq 1 ] && [ "${PUSH_INTERMEDIATE_IMAGES:-1}" -eq 1 ]; then
+  if runtime_pushes_intermediate_images; then
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
   fi
 
   runtime_refresh_stage_context torch "${arch}" "${tag}"
+}
+
+runtime_build_chain() {
+  local arch="$1"
+  local rootfs_dir="${2:-}"
+
+  runtime_build_base_image "${arch}"
+  runtime_build_package_image "${arch}"
+  runtime_build_torch_image "${arch}"
+
+  if [ -n "${rootfs_dir}" ]; then
+    runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}"
+    return 0
+  fi
+
+  runtime_build_wrapper_image "${arch}"
+}
+
+runtime_write_artifact_metadata() {
+  local arch="$1"
+  local output_dir="$2"
+
+  mkdir -p "${output_dir}"
+  cat > "${output_dir}/artifact.env" <<EOF
+TARGET_ARCH=${arch}
+SOURCE_IMAGE=$(runtime_wrapper_tag "${arch}")
+TORCH_IMAGE=$(runtime_torch_tag "${arch}")
+PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
+BASE_IMAGE=$(runtime_base_tag "${arch}")
+ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
+EOF
 }

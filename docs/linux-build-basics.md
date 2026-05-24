@@ -52,9 +52,9 @@ nerdctl build --platform linux/amd64 \
   .
 ```
 
-The runtime helpers use the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag.
+The runtime helpers use the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag. On this host, prefer `linux/scripts/build-runtime-artifacts.sh` and `linux/scripts/build-runtime-manifest.sh` over ad hoc `nerdctl build` loops.
 
-Those temporary stage contexts now default to `${XDG_CACHE_HOME:-$HOME/.cache}/opencode/runtime-build-contexts` and each one is deleted after the next stage finishes using it.
+Those temporary stage contexts now default to `${XDG_CACHE_HOME:-$HOME/.cache}/opencode/runtime-build-contexts` and each one is deleted after the next stage finishes using it. Both runtime helpers accept `--target-arches`, `TARGET_ARCHES`, and `TARGET_ARCH` for selecting target architectures.
 
 When you are feeding locally saved runtime artifacts back into later builds:
 

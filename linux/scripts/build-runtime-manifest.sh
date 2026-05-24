@@ -8,7 +8,7 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_NAME="${IMAGE_NAME:-}"
-ARCHITECTURES="${ARCHITECTURES:-amd64,arm64,riscv64}"
+ARCHITECTURES="${ARCHITECTURES:-${TARGET_ARCHES:-${TARGET_ARCH:-amd64,arm64,riscv64}}}"
 ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross}"
 ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
 BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
@@ -39,7 +39,8 @@ Builds the documented cross publish flow end-to-end:
 
 Options:
   --image IMAGE                Final manifest image ref to build (required)
-  --architectures LIST         Comma-separated list (default: amd64,arm64,riscv64)
+  --target-arches LIST         Comma-separated list (default: amd64,arm64,riscv64)
+  --architectures LIST         Alias for --target-arches
   --artifact-image-prefix TAG  Cross tag prefix, or exact artifact image ref in native mode
   --artifact-build-mode MODE   Artifact source mode: cross or native (default: cross)
   --base-dockerfile PATH       Base Dockerfile (default: linux/Dockerfile.base)
@@ -64,7 +65,9 @@ Environment overrides:
   NERDCTL_BIN                  nerdctl executable to use
   BUILDKIT_HOST                Optional BuildKit socket/address passed to nerdctl build
   IMAGE_NAME                   Final manifest image ref, equivalent to --image
-  ARCHITECTURES                Comma-separated architecture list
+  TARGET_ARCHES                Comma-separated architecture list
+  TARGET_ARCH                  Alias for TARGET_ARCHES
+  ARCHITECTURES                Alias for TARGET_ARCHES
   ARTIFACT_IMAGE_PREFIX        Cross tag prefix, or exact artifact image ref in native mode
   ARTIFACT_BUILD_MODE          Artifact source mode: cross or native
   RUNTIME_USE_LOCAL_CONTEXT_CHAIN
@@ -113,7 +116,7 @@ main() {
         IMAGE_NAME="$2"
         shift 2
         ;;
-      --architectures)
+      --architectures|--target-arches)
         ARCHITECTURES="$2"
         shift 2
         ;;
@@ -218,10 +221,7 @@ main() {
   local arch
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
     for arch in ${ARCHITECTURES//,/ }; do
-      runtime_build_base_image "${arch}"
-      runtime_build_package_image "${arch}"
-      runtime_build_torch_image "${arch}"
-      runtime_build_wrapper_image "${arch}"
+      runtime_build_chain "${arch}"
     done
   fi
 
