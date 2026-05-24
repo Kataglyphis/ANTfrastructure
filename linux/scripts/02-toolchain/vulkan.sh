@@ -312,23 +312,23 @@ EOF
         vulkan-extensionlayer volk vma vul
         spirv-cross spirv-reflect vulkan-profiles
       )
-      if [ "${BUILD_MODE:-native}" = "cross" ]; then
-        log "Skipping vulkan-tools in cross mode; vulkaninfo/vkcube would link against host GUI libraries on the amd64 builder"
+      if cross_build_enabled; then
+        log "Skipping vulkan-tools for foreign-arch cross builds; vulkaninfo/vkcube would link against host GUI libraries on the amd64 builder"
       else
         sdk_components+=( vulkan-tools )
       fi
-      if [ "${BUILD_MODE:-native}" = "cross" ]; then
-        log "Skipping gfxreconstruct in cross mode; its build currently requires target-side LZ4 resolution not present in the amd64 artifact builder"
+      if cross_build_enabled; then
+        log "Skipping gfxreconstruct for foreign-arch cross builds; its build currently requires target-side LZ4 resolution not present in the amd64 artifact builder"
       else
         sdk_components+=( gfxreconstruct )
       fi
-      if [ "${BUILD_MODE:-native}" = "cross" ]; then
-        log "Skipping VulkanCapsViewer in cross mode; it requires target-side Qt6 packages that are not present on the amd64 artifact builder"
+      if cross_build_enabled; then
+        log "Skipping VulkanCapsViewer for foreign-arch cross builds; it requires target-side Qt6 packages that are not present on the amd64 artifact builder"
       else
         sdk_components+=( vcv )
       fi
-      if [ "${BUILD_MODE:-native}" = "cross" ]; then
-        log "Skipping slang in cross mode; its build generates target helper binaries that the amd64 artifact builder cannot execute"
+      if cross_build_enabled; then
+        log "Skipping slang for foreign-arch cross builds; its build generates target helper binaries that the amd64 artifact builder cannot execute"
       elif [[ "$arch_suffix" != "riscv64" ]]; then
         sdk_components+=( slang )
       else

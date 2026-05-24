@@ -22,9 +22,17 @@ cross_foreign_arch_ports_mirror_url() {
   ubuntu_mirror_normalize_url "${explicit_ports_url:-$(ubuntu_default_ports_mirror_url)}"
 }
 
-cross_build_enabled() {
-  [ "${BUILD_MODE:-native}" = "cross" ] || return 1
+cross_mode_requested() {
+  [ "${BUILD_MODE:-native}" = "cross" ]
+}
+
+cross_target_is_foreign() {
   [ "$(build_arch_oci)" != "$(arch_oci)" ]
+}
+
+cross_build_enabled() {
+  cross_mode_requested || return 1
+  cross_target_is_foreign
 }
 
 cross_target_arch() {
@@ -587,7 +595,7 @@ cross_prune_foreign_arch_apt_sources() {
 cross_prepare_apt_sources_for_target() {
   local target_arch ports_sources
 
-  [ "${BUILD_MODE:-native}" = "cross" ] || return 0
+  cross_mode_requested || return 0
 
   target_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
   [ -n "${target_arch}" ] || return 0

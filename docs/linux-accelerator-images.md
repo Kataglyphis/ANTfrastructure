@@ -34,6 +34,9 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
 
 ```bash
+LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-nvidia"
+mkdir -p "${LOG_DIR}"
+
 # Step 1: NVIDIA layer (builds on top of existing :sdk from standard chain)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
@@ -41,7 +44,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/toolchain-nvidia.log"
 
 # Step 2: media-nvidia (GStreamer nvcodec + ORT with CUDA/TRT/cuDNN EPs)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia \
@@ -51,7 +54,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-nvidia \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/media-nvidia.log"
 
 # Step 3: android-nvidia
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
@@ -61,7 +64,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-nvidia \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/android-nvidia.log"
 
 # Step 4: torch-nvidia
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-nvidia \
@@ -73,7 +76,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg PYTORCH_EXTRA="pytorch-cu130" \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-nvidia \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/torch-nvidia.log"
 
 # Step 5: final nvidia image
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia \
@@ -83,7 +86,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-nvidia \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/nvidia.log"
 ```
 
 **Run with GPU access:**
@@ -98,6 +101,9 @@ sudo nerdctl run --rm -it --runtime=nvidia ghcr.io/kataglyphis/kataglyphis_besch
 **Version overrides** (all have sensible defaults):
 
 ```bash
+LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-nvidia-overrides"
+mkdir -p "${LOG_DIR}"
+
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
   -f linux/Dockerfile.nvidia \
@@ -108,7 +114,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg TENSORRT_VERSION=10 \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/toolchain-nvidia.log"
 ```
 
 **Key differences from the standard build:**
@@ -133,7 +139,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 Builds on the base image:
 
 ```bash
-docker build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/torch/Dockerfile .
+docker build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Dockerfile.torch .
 ```
 
 ## AMD GPU Build (Linux)
@@ -159,6 +165,9 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
 
 ```bash
+LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-amd"
+mkdir -p "${LOG_DIR}"
+
 # Step 1: AMD layer (builds on top of existing :sdk from standard chain)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd,push=true' \
@@ -166,7 +175,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-amd,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-amd \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/toolchain-amd.log"
 
 # Step 2: media-amd
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd \
@@ -176,7 +185,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-amd,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media-amd \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/media-amd.log"
 
 # Step 3: android-amd
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd \
@@ -186,7 +195,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-amd,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android-amd \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/android-amd.log"
 
 # Step 4: torch-amd
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd \
@@ -195,10 +204,10 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg ENABLE_AMD=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd \
   --build-arg ONNX_PACKAGE="onnxruntime-rocm" \
-  --build-arg PYTORCH_EXTRA="pytorch-rocm" \
+  --build-arg PYTORCH_EXTRA="pytorch-rocm71" \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-amd,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-amd \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/torch-amd.log"
 
 # Step 5: final amd image
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd \
@@ -208,7 +217,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-amd,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-amd \
-  . 2>&1 | tee -a output.log
+  . 2>&1 | tee "${LOG_DIR}/amd.log"
 ```
 
 **Run with GPU access:**

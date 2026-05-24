@@ -1,11 +1,8 @@
 # syntax=docker/dockerfile:1.19
 
-# Global Version Arguments
-ARG LITERT_VERSION="2.1.4"
 ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:android"
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS torch
 
-ARG LITERT_VERSION
 ARG ONNX_PACKAGE="onnxruntime-webgpu"
 ARG PYTORCH_EXTRA="pytorch-cpu"
 ARG ENABLE_NVIDIA="false"
@@ -14,52 +11,54 @@ ARG ENABLE_AMD="false"
 ARG BUILD_MODE=native
 ARG TARGET_ARCH
 ARG TARGETARCH
+ARG TORCH_APP_MODE=all
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 SHELL ["bash", "-lc"]
-ENV VENV=/opt/venv
-ENV BUILD_MODE=${BUILD_MODE} \
-    TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
-    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}}
+ENV VENV=/opt/venv \
+    TORCH_APP_MODE=${TORCH_APP_MODE}
 
-RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
-    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
-    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
-    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
-    bash /tmp/use-fast-ubuntu-mirror.sh
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core,ro \
+    bash /tmp/core/dockerfile-common.sh configure-fast-mirror
 
+COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
+COPY --chmod=755 linux/scripts/01-core/ubuntu-mirror.sh /opt/scripts/core/ubuntu-mirror.sh
+COPY --chmod=755 linux/scripts/01-core/cross-env.sh /opt/scripts/core/cross-env.sh
 COPY --chmod=755 linux/scripts/03-media/final/assemble-torch-app.sh /opt/scripts/media/final/assemble-torch-app.sh
 
-# Initialize the venv
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    if [ "${BUILD_MODE}" = "cross" ]; then \
+      echo "Skipping torch venv creation in pure cross artifact mode; build linux/Dockerfile.torch on the target platform on top of a packaged runtime image to create /opt/venv"; \
+      exit 0; \
+    fi && \
     set -eux; \
     source /opt/scripts/core/cross-env.sh; \
-    python_mm="$(host_python_major_minor)"; \
-    test -x "/usr/local/bin/python${python_mm}" || { \
-      echo "Expected source-built interpreter /usr/local/bin/python${python_mm} from the base image was not found" >&2; \
+    python_bin="$(host_python_bin)"; \
+    test -x "${python_bin}" || { \
+      echo "Python interpreter not found in the base image" >&2; \
       ls -1 /usr/local/bin/python* 2>/dev/null || true; \
       exit 1; \
     }; \
-    uv venv --seed --python="/usr/local/bin/python${python_mm}" "${VENV}"
-ENV VIRTUAL_ENV=${VENV}
-ENV PATH=${VENV}/bin:${PATH}
-ENV UV_PYTHON=${VENV}/bin/python
-ENV MEDIA_HOST_PYTHON=${VENV}/bin/python
-ENV UV_LOCK_TIMEOUT=14400
-ENV PIP_DEFAULT_TIMEOUT=1200
-ENV UV_HTTP_TIMEOUT=1200
+    uv venv --seed --python="${python_bin}" "${VENV}"
+ENV VIRTUAL_ENV=${VENV} \
+    PATH=${VENV}/bin:${PATH} \
+    UV_PYTHON=${VENV}/bin/python \
+    MEDIA_HOST_PYTHON=${VENV}/bin/python \
+    UV_LOCK_TIMEOUT=14400 \
+    PIP_DEFAULT_TIMEOUT=1200 \
+    UV_HTTP_TIMEOUT=1200
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     if [ "${BUILD_MODE}" = "cross" ]; then \
-      echo "Skipping torch environment assembly in cross mode; target wheels cannot be installed into a live amd64 venv"; \
+      echo "Skipping torch environment assembly in pure cross artifact mode; run this stage on linux/${TARGETARCH} or another target-platform image to install the target wheelhouse"; \
       exit 0; \
     fi && \
     apt-get update && \
-    # Do NOT remove. need to build PyGObject from source on RISCV
-    apt-get install -y libgirepository-2.0-dev libcairo2-dev libgirepository1.0-dev && \
     apt-get install -y --no-install-recommends \
+      # Do NOT remove. need to build PyGObject from source on RISCV
+      libgirepository-2.0-dev libcairo2-dev libgirepository1.0-dev \
       python3-gi \
       gir1.2-glib-2.0 gir1.2-gtk-3.0 \
       git libopenblas-dev liblapack-dev \
@@ -86,14 +85,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
       libfribidi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /opt
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     if [ "${BUILD_MODE}" = "cross" ]; then \
-      echo "Skipping torch application install/validation in cross mode"; \
+      echo "Skipping torch application install/validation in pure cross artifact mode; use TORCH_APP_MODE=install or all when building linux/Dockerfile.torch on the target platform"; \
       exit 0; \
     fi && \
-    /opt/scripts/media/final/assemble-torch-app.sh
+    export SKIP_TORCH_TEST_EXTRAS=true && \
+    /opt/scripts/media/final/assemble-torch-app.sh "${TORCH_APP_MODE}"
 
 WORKDIR /opt/Kataglyphis-Orchestr-ANT-ion
+
+FROM scratch AS venv-export
+COPY --from=torch /opt/venv /opt/venv
+
+FROM torch AS final

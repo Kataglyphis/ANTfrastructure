@@ -9,57 +9,85 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_NAME="${IMAGE_NAME:-}"
 ARCHITECTURES="${ARCHITECTURES:-amd64,arm64,riscv64}"
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest}"
 ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross}"
-DOCKERFILE_PATH="${DOCKERFILE_PATH:-linux/Dockerfile.runtime-package}"
+ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
+BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
+PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
+TORCH_DOCKERFILE_PATH="${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}"
+WRAPPER_DOCKERFILE_PATH="${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile}"
+TORCH_APP_MODE="${TORCH_APP_MODE:-}"
+USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 
 PUSH_IMAGES=0
+PUSH_MANIFEST=0
+PUSH_INTERMEDIATE_IMAGES=0
+BUILD_IMAGES=1
+CREATE_MANIFEST=1
 
 usage() {
   cat <<'EOF'
 Usage: build-runtime-manifest.sh --image IMAGE [options]
 
-Builds one runtime image per architecture by overlaying target-built payload
-from amd64-hosted cross artifact images onto a real target-platform base image,
-then optionally pushes a multi-architecture manifest with nerdctl.
+Builds the documented cross publish flow end-to-end:
+1. clean per-architecture base images
+2. package images that layer target-built payload from android-cross-${arch}
+3. torch images from linux/Dockerfile.torch
+4. final wrapper images from linux/Dockerfile
+5. one multi-architecture manifest
 
 Options:
-  --image IMAGE           Base image tag to use (required)
-  --architectures LIST    Comma-separated list (default: amd64,arm64,riscv64)
-  --base-image IMAGE      Real target-platform base image (default: :latest)
-  --artifact-image-prefix TAG
-                         Prefix for amd64-hosted cross artifact image tags
-  --dockerfile PATH      Packaging Dockerfile (default: linux/Dockerfile.runtime-package)
-  --push                  Push per-architecture images and the manifest
-  -h, --help              Show this help text
+  --image IMAGE                Final manifest image ref to build (required)
+  --architectures LIST         Comma-separated list (default: amd64,arm64,riscv64)
+  --artifact-image-prefix TAG  Cross tag prefix, or exact artifact image ref in native mode
+  --artifact-build-mode MODE   Artifact source mode: cross or native (default: cross)
+  --base-dockerfile PATH       Base Dockerfile (default: linux/Dockerfile.base)
+  --package-dockerfile PATH    Package Dockerfile (default: linux/Dockerfile.package)
+  --torch-dockerfile PATH      Torch Dockerfile (default: linux/Dockerfile.torch)
+  --wrapper-dockerfile PATH    Final wrapper Dockerfile (default: linux/Dockerfile)
+  --torch-app-mode MODE        TORCH_APP_MODE for linux/Dockerfile.torch
+                               (default: install in cross mode, all in native mode)
+  --fast-ubuntu-mirror         Replace Ubuntu archive/security/ports mirrors during Docker builds
+  --fast-ubuntu-mirror-url URL Archive mirror URL to use with --fast-ubuntu-mirror
+  --fast-ubuntu-ports-mirror-url URL
+                               Optional mirror URL for ubuntu-ports entries
+  --push-images                Push per-architecture wrapper images only
+  --push-all                   Push ALL images (wrapper + base/package/torch intermediates)
+  --push-manifest              Push the final manifest after creating it
+  --skip-manifest              Build images only; do not create a manifest locally
+  --manifest-only              Create/push the manifest only; skip all image builds
+  --push                       Short for --push-images --push-manifest (intermediates stay local)
+  -h, --help                   Show this help text
 
 Environment overrides:
-  NERDCTL_BIN             nerdctl executable to use
-  IMAGE_NAME              Base image name, equivalent to --image
-  ARCHITECTURES           Comma-separated architecture list
-  BASE_IMAGE              Real target-platform base image
-  ARTIFACT_IMAGE_PREFIX   Prefix for cross artifact image tags
-  DOCKERFILE_PATH         Packaging Dockerfile path
+  NERDCTL_BIN                  nerdctl executable to use
+  BUILDKIT_HOST                Optional BuildKit socket/address passed to nerdctl build
+  IMAGE_NAME                   Final manifest image ref, equivalent to --image
+  ARCHITECTURES                Comma-separated architecture list
+  ARTIFACT_IMAGE_PREFIX        Cross tag prefix, or exact artifact image ref in native mode
+  ARTIFACT_BUILD_MODE          Artifact source mode: cross or native
+  RUNTIME_USE_LOCAL_CONTEXT_CHAIN
+                               true/false/auto (default: auto)
+  RUNTIME_CONTEXT_ROOT         Temporary directory root for local stage handoff
+  PUSH_INTERMEDIATE_IMAGES     1 to also push base/package/torch (default: 0)
+  BASE_DOCKERFILE_PATH         Base Dockerfile path
+  BASE_PARENT_IMAGE            Optional parent image passed as BASE_IMAGE to the
+                               selected base Dockerfile (for example a GPU base)
+  PACKAGE_DOCKERFILE_PATH      Package Dockerfile path
+  TORCH_DOCKERFILE_PATH        Torch Dockerfile path
+  WRAPPER_DOCKERFILE_PATH      Final wrapper Dockerfile path
+  TORCH_APP_MODE               TORCH_APP_MODE passed to linux/Dockerfile.torch
+  ENABLE_NVIDIA                Optional accelerator flag passed to package/torch/
+                               wrapper builds
+  ENABLE_AMD                   Optional accelerator flag passed to package/torch/
+                               wrapper builds
+  ONNX_PACKAGE                 Optional torch ONNX package override
+  PYTORCH_EXTRA                Optional torch PyTorch extra override
+  USE_FAST_UBUNTU_MIRROR       Set to true to replace archive/security/ports Ubuntu mirrors
+  FAST_UBUNTU_MIRROR_URL       Mirror URL used when the fast mirror is enabled
+  FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
 EOF
-}
-
-build_arch_image() {
-  local arch="$1"
-  local tag="${IMAGE_NAME}-${arch}"
-  local artifact_image="${ARTIFACT_IMAGE_PREFIX}-${arch}"
-
-  run "${NERDCTL_BIN}" build \
-    --pull=true \
-    --platform "linux/${arch}" \
-    -t "${tag}" \
-    -f "${DOCKERFILE_PATH}" \
-    --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
-    --build-arg "ARTIFACT_IMAGE=${artifact_image}" \
-    .
-
-  if [ "${PUSH_IMAGES}" -eq 1 ]; then
-    run "${NERDCTL_BIN}" push "${tag}"
-  fi
 }
 
 create_manifest() {
@@ -67,13 +95,13 @@ create_manifest() {
   local arch
 
   for arch in ${ARCHITECTURES//,/ }; do
-    refs+=("${IMAGE_NAME}-${arch}")
+    refs+=("$(runtime_wrapper_tag "${arch}")")
   done
 
   "${NERDCTL_BIN}" manifest rm "${IMAGE_NAME}" >/dev/null 2>&1 || true
   run "${NERDCTL_BIN}" manifest create "${IMAGE_NAME}" "${refs[@]}"
 
-  if [ "${PUSH_IMAGES}" -eq 1 ]; then
+  if [ "${PUSH_MANIFEST}" -eq 1 ]; then
     run "${NERDCTL_BIN}" manifest push --purge "${IMAGE_NAME}"
   fi
 }
@@ -85,24 +113,77 @@ main() {
         IMAGE_NAME="$2"
         shift 2
         ;;
-      --base-image)
-        BASE_IMAGE="$2"
+      --architectures)
+        ARCHITECTURES="$2"
         shift 2
         ;;
       --artifact-image-prefix)
         ARTIFACT_IMAGE_PREFIX="$2"
         shift 2
         ;;
-      --dockerfile)
-        DOCKERFILE_PATH="$2"
+      --artifact-build-mode)
+        ARTIFACT_BUILD_MODE="$2"
         shift 2
         ;;
-      --architectures)
-        ARCHITECTURES="$2"
+      --base-dockerfile)
+        BASE_DOCKERFILE_PATH="$2"
         shift 2
+        ;;
+      --package-dockerfile)
+        PACKAGE_DOCKERFILE_PATH="$2"
+        shift 2
+        ;;
+      --torch-dockerfile)
+        TORCH_DOCKERFILE_PATH="$2"
+        shift 2
+        ;;
+      --wrapper-dockerfile)
+        WRAPPER_DOCKERFILE_PATH="$2"
+        shift 2
+        ;;
+      --torch-app-mode)
+        TORCH_APP_MODE="$2"
+        shift 2
+        ;;
+      --fast-ubuntu-mirror)
+        USE_FAST_UBUNTU_MIRROR=true
+        shift
+        ;;
+      --fast-ubuntu-mirror-url)
+        USE_FAST_UBUNTU_MIRROR=true
+        FAST_UBUNTU_MIRROR_URL="$2"
+        shift 2
+        ;;
+      --fast-ubuntu-ports-mirror-url)
+        USE_FAST_UBUNTU_MIRROR=true
+        FAST_UBUNTU_PORTS_MIRROR_URL="$2"
+        shift 2
+        ;;
+      --push-images)
+        PUSH_IMAGES=1
+        shift
+        ;;
+      --push-manifest)
+        PUSH_MANIFEST=1
+        shift
+        ;;
+      --skip-manifest)
+        CREATE_MANIFEST=0
+        shift
+        ;;
+      --manifest-only)
+        BUILD_IMAGES=0
+        shift
         ;;
       --push)
         PUSH_IMAGES=1
+        PUSH_MANIFEST=1
+        shift
+        ;;
+      --push-all)
+        PUSH_IMAGES=1
+        PUSH_MANIFEST=1
+        PUSH_INTERMEDIATE_IMAGES=1
         shift
         ;;
       -h|--help)
@@ -125,14 +206,28 @@ main() {
 
   cd "${REPO_ROOT}"
   ARCHITECTURES="$(normalize_target_arches "${ARCHITECTURES}")"
-  log "Building final runtime package images for architectures: ${ARCHITECTURES}"
+  RUNTIME_IMAGE_PREFIX="${IMAGE_NAME}"
+  runtime_prepare_local_context_chain
+  runtime_install_local_context_cleanup_trap
+  if [ "${BUILD_IMAGES}" -eq 1 ]; then
+    log "Building ${ARTIFACT_BUILD_MODE} runtime package flow for architectures: ${ARCHITECTURES}"
+  else
+    log "Creating manifest only for architectures: ${ARCHITECTURES}"
+  fi
 
   local arch
-  for arch in ${ARCHITECTURES//,/ }; do
-    build_arch_image "${arch}"
-  done
+  if [ "${BUILD_IMAGES}" -eq 1 ]; then
+    for arch in ${ARCHITECTURES//,/ }; do
+      runtime_build_base_image "${arch}"
+      runtime_build_package_image "${arch}"
+      runtime_build_torch_image "${arch}"
+      runtime_build_wrapper_image "${arch}"
+    done
+  fi
 
-  create_manifest
+  if [ "${CREATE_MANIFEST}" -eq 1 ]; then
+    create_manifest
+  fi
 }
 
 main "$@"

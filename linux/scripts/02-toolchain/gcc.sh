@@ -178,7 +178,7 @@ install_gcc() {
 
   # In cross mode, keep the host compiler native and install target-specific
   # GNU toolchains under their triplet names (for example aarch64-linux-gnu-gcc).
-  if [ "${BUILD_MODE:-native}" = "cross" ]; then
+  if cross_mode_requested; then
     if [[ ! "${full_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       full_version="${default_full_version}"
     fi

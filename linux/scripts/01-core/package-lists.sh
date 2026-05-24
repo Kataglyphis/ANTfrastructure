@@ -47,7 +47,9 @@ packaging_prerequisite_packages() {
 
   append_unique_packages "${array_name}" \
     ca-certificates curl wget xz-utils \
-    dpkg \
+    dpkg
+
+  append_available_packages "${array_name}" \
     libfuse3-3 \
     flatpak flatpak-builder \
     elfutils \

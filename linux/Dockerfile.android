@@ -48,12 +48,16 @@ ENV ANDROID_HOME=/opt/android-sdk \
 ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
 COPY --chmod=755 linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh
-RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
-    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
-    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
-    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
-    bash /tmp/use-fast-ubuntu-mirror.sh
+COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core,ro \
+    bash /tmp/core/dockerfile-common.sh configure-fast-mirror
 RUN set -eux; /opt/scripts/setup-android-sdk-ndk.sh
+
+# Ensure the directories expected by downstream stages exist even when
+# the Android SDK/NDK is skipped (non-amd64 host or no network).
+RUN set -eux; \
+    mkdir -p /opt/android-sdk /opt/android && \
+    mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv
 
 COPY --chmod=755 linux/scripts/03-media/gstreamer/android /opt/scripts/media/gstreamer/android
 COPY --chmod=755 linux/scripts/03-media/onnxruntime/android /opt/scripts/media/onnxruntime/android

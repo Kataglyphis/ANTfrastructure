@@ -10,14 +10,14 @@ Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://gith
 
 | Image | Platforms | Tag examples | Description |
 | --- | --- | --- | --- |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest` | Base Linux toolchain image with Clang/GCC, Rust, Vulkan, GStreamer, Android SDK/NDK. |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest` | Final Linux runtime wrapper image built on top of the staged base/toolchain/sdk/media/android/torch chain. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver | linux/amd64, linux/arm64 (as pushed) | `webserver`, `webserver-<git-sha>` | Minimal nginx static webserver image. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 | windows/amd64 | `winamd64` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX. |
 
 ## Images in This Repository
 
-- 📦 `linux/Dockerfile`: Ubuntu 26.04 toolchain image (Clang/GCC, Rust, Vulkan, GStreamer, Android SDK/NDK).
-- 🔥 `linux/torch/Dockerfile`: Torch/Python add-on on top of the base image.
+- 📦 `linux/Dockerfile`: Final Linux wrapper image with runtime scripts and entrypoint on top of the Torch image.
+- 🔥 `linux/Dockerfile.torch`: Torch/Python layer on top of the staged Android or packaged runtime image.
 - 🌐 `linux/webserver/Dockerfile`: Minimal nginx static webserver (config at `linux/webserver/nginx.conf`).
 - 🪟 `windows/Dockerfile`: Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
 
@@ -30,13 +30,15 @@ Linux image chain (built as separate images for caching):
 - `linux/Dockerfile.sdk`: Vulkan SDK layer on top of compiler; also reused for amd64-hosted cross SDK artifact builds with `BUILD_MODE=cross`.
 - `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
 - `linux/Dockerfile.android`: Android SDK/NDK setup.
-- `linux/Dockerfile`: runtime scripts + entrypoint (final image).
+- `linux/Dockerfile.package`: runtime compatibility layer that rebuilds the developer-facing target image surface from a clean base image in both sequential/native and cross artifact flows.
+- `linux/Dockerfile.torch`: Torch/Python application layer built on top of the Android or packaged runtime image.
+- `linux/Dockerfile`: runtime scripts + entrypoint (final wrapper image on top of `linux/Dockerfile.torch`).
 
 ## What You Get
 
 - ✅ Multi-arch builds via buildx/nerdctl.
 - 🎮 Vulkan + toolchains ready for GPU passthrough.
-- 🧠 Optional Torch layer for Python/ROCm work.
+- 🧠 Torch/Python runtime included in the final Linux image chain.
 - 📡 Ready-to-serve static web content with nginx.
 
 <!-- generated:version-snapshot:start -->

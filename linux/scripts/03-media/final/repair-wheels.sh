@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "${BUILD_MODE:-native}" = "cross" ]; then
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/cross-env.sh
+fi
+
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  echo "Skipping auditwheel repair for foreign-arch cross builds"
+  exit 0
+fi
+
+if ! command -v cross_build_enabled >/dev/null 2>&1 && [ "${BUILD_MODE:-native}" = "cross" ]; then
   echo "Skipping auditwheel repair in cross mode"
   exit 0
 fi

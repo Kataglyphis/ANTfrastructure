@@ -9,88 +9,83 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-runtime}"
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-amd64,arm64,riscv64}}}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-runtime}"
-ANDROID_IMAGE_PREFIX="${ANDROID_IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross}"
+ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross}"
+ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
+BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
+PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
+TORCH_DOCKERFILE_PATH="${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}"
+WRAPPER_DOCKERFILE_PATH="${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile}"
+TORCH_APP_MODE="${TORCH_APP_MODE:-}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
 FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 PUSH_IMAGES=0
+PUSH_INTERMEDIATE_IMAGES=0
 
 usage() {
   cat <<'EOF'
 Usage: build-runtime-artifacts.sh [options]
 
-Builds target-specific final runtime images from linux/Dockerfile in BUILD_MODE=cross,
-exports their root filesystems, and optionally pushes the intermediate images.
-
-Expected result:
-  out/linux-runtime/amd64/rootfs/
-  out/linux-runtime/arm64/rootfs/
-  out/linux-runtime/riscv64/rootfs/
+Builds the same cross runtime flow used for publishable images:
+1. clean per-architecture base images
+2. package images that layer target-built payload from android-cross-${arch}
+3. torch images from linux/Dockerfile.torch
+4. final wrapper images from linux/Dockerfile
+5. exports the final wrapper rootfs for each architecture
 
 Options:
-  --target-arches LIST   Comma-separated target list (default: amd64,arm64,riscv64)
-  --architectures LIST   Alias for --target-arches
-  --output-root DIR      Export directory root (default: out/linux-runtime)
-  --image-prefix TAG     Prefix for intermediate runtime image tags
-  --android-image-prefix TAG
-                         Prefix for base android-cross image tags
-  --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during Docker builds
-  --fast-ubuntu-mirror-url URL
-                         Mirror URL to use with --fast-ubuntu-mirror
+  --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
+  --architectures LIST          Alias for --target-arches
+  --output-root DIR             Export directory root (default: out/linux-runtime)
+  --image-prefix TAG            Prefix for built wrapper image tags
+  --artifact-image-prefix TAG   Cross tag prefix, or exact artifact image ref in native mode
+  --artifact-build-mode MODE    Artifact source mode: cross or native (default: cross)
+  --base-dockerfile PATH        Base Dockerfile (default: linux/Dockerfile.base)
+  --package-dockerfile PATH     Package Dockerfile (default: linux/Dockerfile.package)
+  --torch-dockerfile PATH       Torch Dockerfile (default: linux/Dockerfile.torch)
+  --wrapper-dockerfile PATH     Final wrapper Dockerfile (default: linux/Dockerfile)
+  --torch-app-mode MODE         TORCH_APP_MODE for linux/Dockerfile.torch
+                                (default: install in cross mode, all in native mode)
+  --fast-ubuntu-mirror          Replace Ubuntu archive/security/ports mirrors during Docker builds
+  --fast-ubuntu-mirror-url URL  Archive mirror URL to use with --fast-ubuntu-mirror
   --fast-ubuntu-ports-mirror-url URL
-                         Optional mirror URL for ubuntu-ports entries
-  --push                 Push each built runtime artifact image after export
-  -h, --help             Show this help text
+                                 Optional mirror URL for ubuntu-ports entries
+  --push                        Push wrapper images after export (intermediates stay local)
+  --push-all                    Push ALL intermediate images too (base/package/torch)
+  -h, --help                    Show this help text
+
+Environment overrides:
+  NERDCTL_BIN                   nerdctl executable to use
+  BUILDKIT_HOST                 Optional BuildKit socket/address passed to nerdctl build
+  TARGET_ARCHES                 Comma-separated target list
+  TARGET_ARCH                   Alias for TARGET_ARCHES
+  ARCHITECTURES                 Alias for TARGET_ARCHES
+  OUTPUT_ROOT                   Root directory for exported rootfs artifacts
+  IMAGE_PREFIX                  Prefix for wrapper image tags
+  ARTIFACT_IMAGE_PREFIX         Cross tag prefix, or exact artifact image ref in native mode
+  ARTIFACT_BUILD_MODE           Artifact source mode: cross or native
+  RUNTIME_USE_LOCAL_CONTEXT_CHAIN
+                                true/false/auto (default: auto)
+  RUNTIME_CONTEXT_ROOT          Temporary directory root for local stage handoff
+  PUSH_INTERMEDIATE_IMAGES      1 to also push base/package/torch (default: 0)
+  BASE_DOCKERFILE_PATH          Base Dockerfile path
+  BASE_PARENT_IMAGE             Optional parent image passed as BASE_IMAGE to the
+                                selected base Dockerfile (for example a GPU base)
+  PACKAGE_DOCKERFILE_PATH       Package Dockerfile path
+  TORCH_DOCKERFILE_PATH         Torch Dockerfile path
+  WRAPPER_DOCKERFILE_PATH       Final wrapper Dockerfile path
+  TORCH_APP_MODE                TORCH_APP_MODE passed to linux/Dockerfile.torch
+  ENABLE_NVIDIA                 Optional accelerator flag passed to package/torch/
+                                wrapper builds
+  ENABLE_AMD                    Optional accelerator flag passed to package/torch/
+                                wrapper builds
+  ONNX_PACKAGE                  Optional torch ONNX package override
+  PYTORCH_EXTRA                 Optional torch PyTorch extra override
+  USE_FAST_UBUNTU_MIRROR        Set to true to replace archive/security/ports Ubuntu mirrors
+  FAST_UBUNTU_MIRROR_URL        Mirror URL used when the fast mirror is enabled
+  FAST_UBUNTU_PORTS_MIRROR_URL  Optional ports mirror URL used when the fast mirror is enabled
 EOF
-}
-
-image_exists() {
-  "${NERDCTL_BIN}" image inspect "$1" >/dev/null 2>&1
-}
-
-ensure_base_image() {
-  local image="$1"
-
-  if image_exists "${image}"; then
-    log "Using existing local base image: ${image}"
-    return 0
-  fi
-
-  log "Pulling runtime base image: ${image}"
-  run "${NERDCTL_BIN}" pull --platform linux/amd64 "${image}"
-}
-
-build_runtime_image() {
-  local arch="$1"
-  local tag="$2"
-  local base_image="${ANDROID_IMAGE_PREFIX}-${arch}"
-  local -a mirror_build_args=(
-    --build-arg "USE_FAST_UBUNTU_MIRROR=${USE_FAST_UBUNTU_MIRROR}"
-    --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
-  )
-
-  if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
-    mirror_build_args+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${FAST_UBUNTU_PORTS_MIRROR_URL}")
-  fi
-
-  ensure_base_image "${base_image}"
-
-  run "${NERDCTL_BIN}" build \
-    --pull=false \
-    --platform linux/amd64 \
-    -t "${tag}" \
-    -f linux/Dockerfile \
-    --build-arg BASE_IMAGE="${base_image}" \
-    --build-arg BUILD_MODE=cross \
-    --build-arg TARGET_ARCH="${arch}" \
-    "${mirror_build_args[@]}" \
-    .
-}
-
-push_runtime_image() {
-  local tag="$1"
-  run "${NERDCTL_BIN}" push "${tag}"
 }
 
 main() {
@@ -108,8 +103,32 @@ main() {
         IMAGE_PREFIX="$2"
         shift 2
         ;;
-      --android-image-prefix)
-        ANDROID_IMAGE_PREFIX="$2"
+      --artifact-image-prefix)
+        ARTIFACT_IMAGE_PREFIX="$2"
+        shift 2
+        ;;
+      --artifact-build-mode)
+        ARTIFACT_BUILD_MODE="$2"
+        shift 2
+        ;;
+      --base-dockerfile)
+        BASE_DOCKERFILE_PATH="$2"
+        shift 2
+        ;;
+      --package-dockerfile)
+        PACKAGE_DOCKERFILE_PATH="$2"
+        shift 2
+        ;;
+      --torch-dockerfile)
+        TORCH_DOCKERFILE_PATH="$2"
+        shift 2
+        ;;
+      --wrapper-dockerfile)
+        WRAPPER_DOCKERFILE_PATH="$2"
+        shift 2
+        ;;
+      --torch-app-mode)
+        TORCH_APP_MODE="$2"
         shift 2
         ;;
       --fast-ubuntu-mirror)
@@ -130,6 +149,11 @@ main() {
         PUSH_IMAGES=1
         shift
         ;;
+      --push-all)
+        PUSH_IMAGES=1
+        PUSH_INTERMEDIATE_IMAGES=1
+        shift
+        ;;
       -h|--help)
         usage
         exit 0
@@ -144,19 +168,38 @@ main() {
 
   cd "${REPO_ROOT}"
   TARGET_ARCHES="$(normalize_target_arches "${TARGET_ARCHES}")"
-  log "Building final runtime artifacts for target arches: ${TARGET_ARCHES}"
+  RUNTIME_IMAGE_PREFIX="${IMAGE_PREFIX}"
+  runtime_prepare_local_context_chain
+  runtime_install_local_context_cleanup_trap
+  log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 
   local arch
   local tag
   for arch in ${TARGET_ARCHES//,/ }; do
-    tag="${IMAGE_PREFIX}-${arch}"
-    build_runtime_image "${arch}" "${tag}"
-    export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
-      "TARGET_ARCH=${arch}" \
-      "SOURCE_IMAGE=${tag}" \
-      "BASE_IMAGE=${ANDROID_IMAGE_PREFIX}-${arch}"
-    if [ "${PUSH_IMAGES}" -eq 1 ]; then
-      push_runtime_image "${tag}"
+    runtime_build_base_image "${arch}"
+    runtime_build_package_image "${arch}"
+    runtime_build_torch_image "${arch}"
+    if runtime_use_local_stage_context_outputs; then
+      runtime_build_wrapper_rootfs "${arch}" "${OUTPUT_ROOT}/${arch}/rootfs"
+      mkdir -p "${OUTPUT_ROOT}/${arch}"
+      cat > "${OUTPUT_ROOT}/${arch}/artifact.env" <<EOF
+TARGET_ARCH=${arch}
+SOURCE_IMAGE=$(runtime_wrapper_tag "${arch}")
+TORCH_IMAGE=$(runtime_torch_tag "${arch}")
+PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
+BASE_IMAGE=$(runtime_base_tag "${arch}")
+ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
+EOF
+    else
+      runtime_build_wrapper_image "${arch}"
+      tag="$(runtime_wrapper_tag "${arch}")"
+      export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
+        "TARGET_ARCH=${arch}" \
+        "SOURCE_IMAGE=${tag}" \
+        "TORCH_IMAGE=$(runtime_torch_tag "${arch}")" \
+        "PACKAGE_IMAGE=$(runtime_package_tag "${arch}")" \
+        "BASE_IMAGE=$(runtime_base_tag "${arch}")" \
+        "ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")"
     fi
   done
 }

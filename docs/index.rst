@@ -76,9 +76,11 @@ Common development targets:
 .. code-block:: bash
 
    docker buildx build -f linux/Dockerfile.base -t local/kataglyphis:base .
-   docker buildx build -f linux/Dockerfile --target toolchain -t local/kataglyphis:toolchain .
-   docker buildx build -f linux/Dockerfile --target media -t local/kataglyphis:media .
-   docker buildx build -f linux/Dockerfile --target final -t local/kataglyphis:latest .
+   docker buildx build -f linux/Dockerfile.toolchain -t local/kataglyphis:compiler .
+   docker buildx build -f linux/Dockerfile.sdk -t local/kataglyphis:sdk .
+   docker buildx build -f linux/Dockerfile.media -t local/kataglyphis:media .
+   docker buildx build -f linux/Dockerfile.android -t local/kataglyphis:android .
+   docker buildx build -f linux/Dockerfile -t local/kataglyphis:latest .
 
 
 .. toctree::

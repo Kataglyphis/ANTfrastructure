@@ -15,11 +15,17 @@
 
 ## Tests
 
-Add test steps here as they become available.
+Current automated validation in this repository is documentation-focused:
+
+- GitHub Actions runs the docs workflow and checks the generated version snapshot with `python docs/scripts/sync_versions.py --check`.
+- Local container validation is currently documented as targeted smoke builds in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md`.
+- There is not yet a single end-to-end CI workflow that builds every Linux, accelerator, and Windows image variant on each change.
 
 ## Roadmap
 
-Upcoming :)
+- Keep the current multi-platform Linux build path working while expanding the amd64-hosted cross artifact lane.
+- Improve validation coverage for Linux sequential, cross, NVIDIA, AMD, and runtime packaging flows.
+- Continue tightening documentation so the source docs and generated site stay aligned with the Dockerfiles and helper scripts.
 
 ## Troubleshooting
 
@@ -42,7 +48,29 @@ RUSTC_WRAPPER=""
 
 **Solution:**
 
-Don't write to `tmp/` folder! This is stupid. Write to tmp2 f.e.
+- Prefer workspace-relative output directories like `logs/` and `out/` for large build artifacts.
+- The runtime packaging helpers already avoid `/tmp` by default and use `${XDG_CACHE_HOME:-$HOME/.cache}/opencode/runtime-build-contexts` for temporary local stage handoff.
+- Clean old local images, caches, and exported rootfs artifacts if repeated BuildKit runs fill the disk.
+
+### Local runtime images try to pull from a registry
+
+**Symptom:** a local runtime rebuild tries to resolve `docker.io/library/opencode-local:*` remotely, or `localhost/*` is treated like a real registry and fails with `connect: connection refused`.
+
+**Solution:**
+
+- On this host, do not rely on plain local image tags as reusable `FROM` sources for the runtime packaging chain.
+- Keep the helper default local-context handoff for `base -> package -> torch`, and for saved runtime artifact images pass `ARTIFACT_CONTEXT_ROOT=...` with `ARTIFACT_CONTEXT_MODE=oci` instead of expecting `FROM opencode-local:*` to stay local.
+- `docs/linux-cross-builds.md` documents the verified mixed `OCI artifact + plain rootfs base` workaround.
+
+### buildctl or ctr permission denied in rootless troubleshooting
+
+**Symptom:** `buildctl du --verbose` fails with `dial unix /run/buildkit/buildkitd.sock: connect: permission denied`, or `ctr images export` cannot access `/run/containerd/containerd.sock`.
+
+**Solution:**
+
+- Some rootless setups expose `nerdctl` but not the raw BuildKit or containerd sockets.
+- Use `nerdctl save`, `nerdctl create`, and `nerdctl export` for local image export and inspection on this host.
+- Fall back to regular disk usage checks and `nerdctl` cleanup commands when `buildctl` or `ctr` socket access is unavailable.
 
 ## Contributing
 
@@ -56,13 +84,13 @@ Contributions are what make the open source community such an amazing place to l
 
 ## License
 
-Add your license details here.
+The container images use OCI labels that declare the project license as `MIT`.
 
 ## Contact
 
 Jonas Heinle - [@Cataglyphis_](https://twitter.com/Cataglyphis_) - jonasheinle@googlemail.com
 
-Project Link: [https://github.com/Kataglyphis/...](https://github.com/Kataglyphis/...)
+Project Link: [https://github.com/Kataglyphis/Kataglyphis-ContainerHub](https://github.com/Kataglyphis/Kataglyphis-ContainerHub)
 
 ## Acknowledgements
 

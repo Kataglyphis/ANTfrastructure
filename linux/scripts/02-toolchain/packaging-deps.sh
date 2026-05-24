@@ -82,6 +82,7 @@ try_or_sudo() {
 
 install_apt_deps() {
     local -a pkgs=()
+    local install_status=0
 
     case "${PACKAGING_DEPS_SKIP_APT_INSTALL:-false}" in
         1|true|TRUE|yes|YES)
@@ -114,7 +115,11 @@ install_apt_deps() {
     info "Updating apt index"
     try_or_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq
     try_or_sudo env DEBIAN_FRONTEND=noninteractive \
-        apt-get install -y --no-install-recommends "${pkgs[@]}"
+        apt-get install -y --no-install-recommends "${pkgs[@]}" || install_status=$?
+
+    if [ "${install_status}" -ne 0 ]; then
+        return "${install_status}"
+    fi
 
     info "Packaging prerequisites installed"
 }
@@ -188,6 +193,21 @@ ensure_appimagetool() {
     info "appimagetool is now available: $dest"
 }
 
+ensure_appimagetool_if_supported() {
+    if ensure_appimagetool; then
+        return 0
+    fi
+
+    case "$(uname -m)" in
+        riscv64|riscv64gc)
+            warn "Skipping appimagetool on unsupported architecture $(uname -m)"
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
 # ── Flatpak Runtime/SDK installation ──────────────────────────────────
 
 install_flatpak_runtime() {
@@ -244,7 +264,7 @@ run_requested_command() {
                     run_step "Flatpak runtime installation" install_flatpak_runtime
                     ;;
             esac
-            run_step "appimagetool installation" ensure_appimagetool
+            run_step "appimagetool installation" ensure_appimagetool_if_supported
             ;;
         apt)
             run_apt_step_if_available

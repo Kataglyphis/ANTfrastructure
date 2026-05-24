@@ -35,6 +35,10 @@ _safe_source /usr/local/bin/libcamera-env.sh || \
 # to the local version-aware /opt/vulkan scan.
 VULKAN_PREFIX="${VULKAN_PREFIX:-/opt/vulkan}"
 
+if [ ! -d "${VULKAN_PREFIX}" ]; then
+  echo "Warning: Vulkan prefix ${VULKAN_PREFIX} not found; skipping Vulkan SDK environment setup" >&2
+else
+
 _try_source_shared_vulkan_env() {
   local helper
   local -a helpers=(
@@ -81,6 +85,7 @@ if ! _try_source_shared_vulkan_env; then
       echo "Warning: no Vulkan setup-env.sh found under ${VULKAN_PREFIX}" >&2
     fi
   fi
+fi
 fi
 
 # Optional: run a one-shot setup script (execute, not source) if present

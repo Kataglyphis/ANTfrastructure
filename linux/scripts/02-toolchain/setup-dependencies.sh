@@ -57,7 +57,7 @@ setup_dependencies_seed_verify_cross_targets() {
   local normalized_arch_override="${2:-}"
 
   [ -n "${normalized_arch_override}" ] || return 0
-  [ "${BUILD_MODE:-native}" = "cross" ] || return 0
+  cross_mode_requested || return 0
   [ -z "${VERIFY_CROSS_TARGETS:-}" ] || return 0
 
   case "${cmd}" in
@@ -80,7 +80,7 @@ install_core_tools_if_needed() {
 install_vulkan_for_current_env() {
   local version="$1"
 
-  if [ "${BUILD_MODE:-native}" = "cross" ]; then
+  if cross_mode_requested; then
     (
       prepare_cross_target_env "${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}" "setup-dependencies.sh vulkan"
       install_vulkan_sdk "${version}"
@@ -118,7 +118,7 @@ main() {
       --gcc)           GCC_WANTED="$2"; shift 2 ;;
       --vulkan-version)VULKAN_VERSION_DEFAULT="$2"; shift 2 ;;
       --arch)          arch_override="$2"; shift 2 ;;
-      all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm)
+      all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm|target-clang)
         cmd="$1"; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "Unknown argument: $1" ;;
@@ -173,6 +173,10 @@ main() {
       ;;
     dockerfile-llvm)
       dockerfile_install_llvm
+      ;;
+    target-clang)
+      install_core_tools_if_needed
+      install_target_clang_toolchain "${normalized_arch_override:-${TARGET_ARCH:-${TARGETARCH:-}}}"
       ;;
     all)
       install_core_tools_if_needed

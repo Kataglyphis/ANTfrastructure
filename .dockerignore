@@ -5,3 +5,7 @@ output.log
 archive
 README.md
 docs
+out/local-oci
+out/local-android-dir
+out/linux-sdk
+out/linux-runtime

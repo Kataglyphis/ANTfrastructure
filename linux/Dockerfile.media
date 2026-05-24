@@ -56,23 +56,15 @@ SHELL ["bash", "-lc"]
 
 USER root
 
-RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/use-fast-ubuntu-mirror.sh,ro \
-    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
-    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
-    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
-    bash /tmp/use-fast-ubuntu-mirror.sh
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core,ro \
+    bash /tmp/core/dockerfile-common.sh configure-fast-mirror
 
-# If NVIDIA is enabled, force NVIDIA codec headers on so GStreamer nvcodec plugin is built
-ENV NVIDIA_CODEC_HEADERS=${ENABLE_NVIDIA:+yes}
+# Keep accelerator tool paths inherited from the selected base image. Only the
+# nvcodec header toggle needs an explicit override here for later RUN steps.
+ENV NVIDIA_CODEC_HEADERS=auto
 RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
-        echo "export PATH=${CUDA_HOME}/bin:\$PATH" >> /etc/profile.d/cuda.sh; \
+        printf '%s\n' 'export NVIDIA_CODEC_HEADERS=yes' > /etc/profile.d/nvidia-codec-headers.sh; \
     fi
-
-RUN if [ "${ENABLE_AMD}" = "true" ]; then \
-        echo "export PATH=/opt/rocm/bin:\$PATH" >> /etc/profile.d/rocm.sh; \
-    fi
-ENV PATH="${CUDA_HOME:+${CUDA_HOME}/bin:}${ENABLE_AMD:+/opt/rocm/bin:}${PATH}" \
-    LD_LIBRARY_PATH="${CUDA_HOME:+${CUDA_HOME}/lib64:}${TENSORRT_HOME:+${TENSORRT_HOME}/lib:}${ENABLE_AMD:+/opt/rocm/lib:/opt/rocm/lib64:}${LD_LIBRARY_PATH}"
 
 # Python interpreter selection for shared build tooling.
 # Keep uv pinned to the shared venv interpreter after it is created, because

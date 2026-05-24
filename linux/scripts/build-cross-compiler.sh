@@ -3,6 +3,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:base}"
 BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:base}"
@@ -48,39 +51,19 @@ Environment overrides:
 EOF
 }
 
-log() {
-  printf '[INFO] %s\n' "$*"
-}
-
-run() {
-  printf '+ '
-  printf '%q ' "$@"
-  printf '\n'
-  "$@"
-}
-
-image_exists() {
-  "${NERDCTL_BIN}" image inspect "$1" >/dev/null 2>&1
-}
-
 ensure_base_image() {
-  local -a mirror_build_args=(
-    --build-arg "USE_FAST_UBUNTU_MIRROR=${USE_FAST_UBUNTU_MIRROR}"
-    --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
-  )
+  local -a mirror_build_args=()
 
-  if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
-    mirror_build_args+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${FAST_UBUNTU_PORTS_MIRROR_URL}")
-  fi
+  append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
 
-  if [ "${REBUILD_BASE}" -eq 0 ] && image_exists "${BASE_LOCAL_TAG}"; then
+  if [ "${REBUILD_BASE}" -eq 0 ] && image_exists "${NERDCTL_BIN}" "${BASE_LOCAL_TAG}"; then
     log "Using existing local base image: ${BASE_LOCAL_TAG}"
     return 0
   fi
 
   if [ "${REBUILD_BASE}" -eq 0 ]; then
     log "Trying to pull remote base image: ${BASE_REMOTE_TAG}"
-    if run "${NERDCTL_BIN}" pull --platform linux/amd64 "${BASE_REMOTE_TAG}"; then
+    if pull_platform_image "${NERDCTL_BIN}" linux/amd64 "${BASE_REMOTE_TAG}"; then
       if [ "${BASE_REMOTE_TAG}" != "${BASE_LOCAL_TAG}" ]; then
         run "${NERDCTL_BIN}" tag "${BASE_REMOTE_TAG}" "${BASE_LOCAL_TAG}"
       fi
@@ -91,7 +74,7 @@ ensure_base_image() {
     log "Forced local rebuild of ${BASE_LOCAL_TAG}"
   fi
 
-  run "${NERDCTL_BIN}" build \
+  run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
     --platform linux/amd64 \
     -t "${BASE_LOCAL_TAG}" \
@@ -101,16 +84,11 @@ ensure_base_image() {
 }
 
 build_cross_compiler() {
-  local -a mirror_build_args=(
-    --build-arg "USE_FAST_UBUNTU_MIRROR=${USE_FAST_UBUNTU_MIRROR}"
-    --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
-  )
+  local -a mirror_build_args=()
 
-  if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
-    mirror_build_args+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${FAST_UBUNTU_PORTS_MIRROR_URL}")
-  fi
+  append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
 
-  run "${NERDCTL_BIN}" build \
+  run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
     --platform linux/amd64 \
     -t "${COMPILER_LOCAL_TAG}" \

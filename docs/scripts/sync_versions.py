@@ -30,7 +30,8 @@ def collect_versions() -> dict[str, str]:
     linux_webserver = read_repo_file("linux/webserver/Dockerfile")
     linux_common = read_repo_file("linux/scripts/01-core/common.sh")
     linux_android = read_repo_file("linux/Dockerfile.android")
-    windows_dockerfile = read_repo_file("windows/Dockerfile")
+    windows_base = read_repo_file("windows/Dockerfile.base")
+    windows_ai = read_repo_file("windows/Dockerfile.ai")
     windows_vs = read_repo_file("windows/scripts/setup-vs.ps1")
 
     return {
@@ -53,13 +54,13 @@ def collect_versions() -> dict[str, str]:
         "webserver_ubuntu": extract(r"^FROM ubuntu:([^\s]+)$", linux_webserver, "Webserver Ubuntu version"),
         "windows_ltsc": extract(
             r"^FROM mcr\.microsoft\.com/windows/servercore:ltsc([^\s]+)$",
-            windows_dockerfile,
+            windows_base,
             "Windows LTSC version",
         ),
-        "windows_vulkan": extract(r"^ARG VULKAN_VERSION=([^\s]+)$", windows_dockerfile, "Windows Vulkan version"),
-        "windows_gstreamer": extract(r"^ARG GST_VERSION=([^\s]+)$", windows_dockerfile, "Windows GStreamer version"),
-        "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_dockerfile, "Windows CUDA version"),
-        "windows_onnx": extract(r"^ARG ONNX_VERSION=([^\s]+)$", windows_dockerfile, "Windows ONNX version"),
+        "windows_vulkan": extract(r"^ARG VULKAN_VERSION=([^\s]+)$", windows_base, "Windows Vulkan version"),
+        "windows_gstreamer": extract(r"^ARG GST_VERSION=([^\s]+)$", windows_base, "Windows GStreamer version"),
+        "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_ai, "Windows CUDA version"),
+        "windows_onnx": extract(r"^ARG ONNX_VERSION=([^\s]+)$", windows_ai, "Windows ONNX version"),
         "windows_vs": extract(
             r"Visual Studio\\([0-9]+)\\BuildTools",
             windows_vs,

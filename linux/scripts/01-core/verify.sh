@@ -58,6 +58,15 @@ verify_lld_version() {
   fi
 }
 
+verify_cross_mode_requested() {
+  if declare -F cross_mode_requested >/dev/null 2>&1; then
+    cross_mode_requested
+    return $?
+  fi
+
+  [ "${BUILD_MODE:-native}" = "cross" ]
+}
+
 verify_cross_target_versions() {
   local target_arch="${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}"
   local triplet=""
@@ -100,7 +109,7 @@ verify_all_cross_target_versions() {
   local old_targetarch="${TARGETARCH:-}"
   local old_target_arch="${TARGET_ARCH:-}"
 
-  [ "${BUILD_MODE:-native}" = "cross" ] || return 0
+  verify_cross_mode_requested || return 0
 
   if declare -F cross_effective_targets_raw >/dev/null 2>&1; then
     targets_raw="$(cross_effective_targets_raw)"
@@ -155,7 +164,7 @@ verify_summary() {
   tool_version cmake --version
   tool_version ccache --version
 
-  if [ "${BUILD_MODE:-native}" = "cross" ]; then
+  if verify_cross_mode_requested; then
     log "Host toolchain on the builder image:"
   fi
   verify_host_toolchain_versions
@@ -173,7 +182,7 @@ verify_summary() {
   verify_tool_with_path flang --version
   verify_tool_with_path flang-new --version
 
-  if [ "${BUILD_MODE:-native}" = "cross" ]; then
+  if verify_cross_mode_requested; then
     verify_all_cross_target_versions
     if declare -F verify_cross_llvm_targets >/dev/null 2>&1; then
       verify_cross_llvm_targets

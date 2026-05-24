@@ -59,27 +59,25 @@ Environment overrides:
 EOF
 }
 
-image_exists() {
-  "${NERDCTL_BIN}" image inspect "$1" >/dev/null 2>&1
-}
-
 ensure_compiler_image() {
-  if image_exists "${COMPILER_IMAGE}"; then
+  if image_exists "${NERDCTL_BIN}" "${COMPILER_IMAGE}"; then
     log "Using existing cross compiler image: ${COMPILER_IMAGE}"
     return 0
   fi
 
   log "Cross compiler image missing; bootstrapping it first"
-  local -a bootstrap_args=()
-  if [ "${USE_FAST_UBUNTU_MIRROR}" = "true" ]; then
-    bootstrap_args+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")
-    if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
-      bootstrap_args+=(--fast-ubuntu-ports-mirror-url "${FAST_UBUNTU_PORTS_MIRROR_URL}")
-    fi
-  fi
-  run bash "${REPO_ROOT}/linux/scripts/build-cross-compiler.sh" "${bootstrap_args[@]}"
+  run env \
+    NERDCTL_BIN="${NERDCTL_BIN}" \
+    BUILDKIT_HOST="${BUILDKIT_HOST:-}" \
+    COMPILER_LOCAL_TAG="${COMPILER_IMAGE}" \
+    COMPILER_REMOTE_TAG="${COMPILER_IMAGE}" \
+    CROSS_TARGETS="${TARGET_ARCHES}" \
+    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
+    bash "${REPO_ROOT}/linux/scripts/build-cross-compiler.sh"
 
-  image_exists "${COMPILER_IMAGE}" || {
+  image_exists "${NERDCTL_BIN}" "${COMPILER_IMAGE}" || {
     printf '[ERROR] Required compiler image not available after bootstrap: %s\n' "${COMPILER_IMAGE}" >&2
     exit 1
   }
@@ -88,16 +86,11 @@ ensure_compiler_image() {
 build_sdk_image() {
   local arch="$1"
   local tag="$2"
-  local -a mirror_build_args=(
-    --build-arg "USE_FAST_UBUNTU_MIRROR=${USE_FAST_UBUNTU_MIRROR}"
-    --build-arg "FAST_UBUNTU_MIRROR_URL=${FAST_UBUNTU_MIRROR_URL}"
-  )
+  local -a mirror_build_args=()
 
-  if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
-    mirror_build_args+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${FAST_UBUNTU_PORTS_MIRROR_URL}")
-  fi
+  append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
 
-  run "${NERDCTL_BIN}" build \
+  run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
     --platform linux/amd64 \
     -t "${tag}" \

@@ -1,0 +1,344 @@
+# syntax=docker/dockerfile:1.19
+
+ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
+ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-amd64
+ARG BUILD_MODE=native
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG ARTIFACT_PLATFORM=${TARGETPLATFORM}
+ARG ARTIFACT_SOURCE_STAGE=artifact-source-image
+ARG PACKAGE_BASE_STAGE=package-image
+ARG ENABLE_NVIDIA=false
+ARG ENABLE_AMD=false
+ARG GSTREAMER_VERSION=1.29.1
+ARG OPENCV_OUTPUT_DIR=/opt/opencv4
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+ARG GSTREAMER_PREFIX=/opt/gstreamer
+ARG ANDROID_SDK_VERSION=14742923
+ARG ANDROID_NDK_VERSION=29.0.14206865
+ARG ANDROID_COMPILE_SDK=36
+ARG ANDROID_BUILD_TOOLS=35.0.0
+ARG ANDROID_CMAKE_VERSION=4.1.2
+ARG ANDROID_API_LEVEL=34
+ARG GCC_VERSION=16.1.0
+ARG PYTHON_VERSION=3.14.4
+ARG PYTHON_MAJOR_MINOR=3.14
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+FROM --platform=${ARTIFACT_PLATFORM} ${ARTIFACT_IMAGE} AS artifact-source-image
+
+FROM ${BASE_IMAGE} AS artifact-source-local
+ARG ONNXRUNTIME_OUTPUT_DIR
+ARG OPENCV_OUTPUT_DIR
+ARG GSTREAMER_PREFIX
+ARG GCC_VERSION
+SHELL ["bash", "-lc"]
+COPY --from=runtime_artifact ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --from=runtime_artifact ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --from=runtime_artifact /opt/ffmpeg /opt/ffmpeg
+COPY --from=runtime_artifact ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+COPY --from=runtime_artifact /opt/libcamera /opt/libcamera
+COPY --from=runtime_artifact /opt/wheels /opt/wheels
+COPY --from=runtime_artifact /opt/vulkan /opt/vulkan
+COPY --from=runtime_artifact /opt/android-sdk /opt/android-sdk
+COPY --from=runtime_artifact /opt/android /opt/android
+COPY --from=runtime_artifact /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
+COPY --from=runtime_artifact /opt/llvm-target /opt/llvm-target
+RUN --mount=type=bind,from=runtime_artifact,source=/,target=/runtime_artifact,ro \
+    set -euo pipefail; \
+    copy_path() { \
+        local src="$1"; \
+        local dst="${2:-$1}"; \
+        [ -e "/runtime_artifact${src}" ] || return 0; \
+        mkdir -p "$(dirname "${dst}")"; \
+        cp -a "/runtime_artifact${src}" "${dst}"; \
+    }; \
+    copy_glob() { \
+        local pattern="$1"; \
+        local item rel; \
+        shopt -s nullglob; \
+        for item in /runtime_artifact${pattern}; do \
+            rel="${item#/runtime_artifact}"; \
+            mkdir -p "$(dirname "${rel}")"; \
+            cp -a "${item}" "${rel}"; \
+        done; \
+        shopt -u nullglob; \
+    }; \
+    copy_path /usr/local/lib/onnxruntime-genai; \
+    copy_path /usr/local/lib/onnxruntime-gpu; \
+    copy_path /usr/local/include/tflite; \
+    copy_path /usr/local/include/tensorflow; \
+    copy_path /usr/local/include/flatbuffers; \
+    copy_path /usr/local/include/c; \
+    copy_path /usr/local/lib/pkgconfig/litert.pc; \
+    copy_path /usr/local/lib/pkgconfig/tensorflow-lite.pc; \
+    copy_path /usr/local/lib/pkgconfig/tensorflowlite_c.pc; \
+    copy_path /usr/local/lib/pkgconfig/libvvdec.pc; \
+    copy_path /usr/local/llvm-target; \
+    copy_path /usr/local/llvm-22; \
+    copy_glob '/usr/local/lib/libLiteRt.so*'; \
+    copy_glob '/usr/local/lib/libtensorflow-lite.so*'; \
+    copy_glob '/usr/local/lib/libtensorflowlite_c.so*'; \
+    copy_glob '/usr/local/lib/libvvdec.so*'
+
+FROM ${ARTIFACT_SOURCE_STAGE} AS artifact-source
+
+SHELL ["bash", "-lc"]
+
+RUN if [ ! -e /opt/llvm-target ] && [ -d /usr/local/llvm-target ]; then \
+        ln -s /usr/local/llvm-target /opt/llvm-target; \
+    elif [ ! -e /opt/llvm-target ] && [ -d /usr/local/llvm-22 ]; then \
+        ln -s /usr/local/llvm-22 /opt/llvm-target; \
+    fi
+
+FROM artifact-source AS artifact-payload
+SHELL ["bash", "-lc"]
+ARG BUILD_MODE
+
+# Stage only smaller optional payloads here. Heavyweight runtime directories are
+# copied directly from the artifact image into the package stage so they are not
+# duplicated under /payload first, which can exhaust rootless BuildKit storage
+# on large android-cross images.
+RUN set -euo pipefail; \
+    mkdir -p /payload; \
+    copy_path() { \
+        local src="$1"; \
+        local dst="${2:-$1}"; \
+        [ -e "${src}" ] || return 0; \
+        mkdir -p "/payload$(dirname "${dst}")"; \
+        cp -a "${src}" "/payload${dst}"; \
+    }; \
+    copy_glob() { \
+        local pattern="$1"; \
+        local item; \
+        shopt -s nullglob; \
+        for item in ${pattern}; do \
+            mkdir -p "/payload$(dirname "${item}")"; \
+            cp -a "${item}" "/payload${item}"; \
+        done; \
+        shopt -u nullglob; \
+    }; \
+    copy_path /usr/local/lib/onnxruntime-genai; \
+    copy_path /usr/local/lib/onnxruntime-gpu; \
+    copy_path /usr/local/include/tflite; \
+    copy_path /usr/local/include/tensorflow; \
+    copy_path /usr/local/include/flatbuffers; \
+    copy_path /usr/local/include/c; \
+    copy_path /usr/local/lib/pkgconfig/litert.pc; \
+    copy_path /usr/local/lib/pkgconfig/tensorflow-lite.pc; \
+    copy_path /usr/local/lib/pkgconfig/tensorflowlite_c.pc; \
+    copy_path /usr/local/lib/pkgconfig/libvvdec.pc; \
+    copy_glob '/usr/local/lib/libLiteRt.so*'; \
+    copy_glob '/usr/local/lib/libtensorflow-lite.so*'; \
+    copy_glob '/usr/local/lib/libtensorflowlite_c.so*'; \
+    copy_glob '/usr/local/lib/libvvdec.so*'
+
+FROM ${BASE_IMAGE} AS package-image
+
+ARG BUILD_MODE
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG GSTREAMER_VERSION
+ARG OPENCV_OUTPUT_DIR
+ARG ONNXRUNTIME_OUTPUT_DIR
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR
+ARG GSTREAMER_PREFIX
+ARG ANDROID_SDK_VERSION
+ARG ANDROID_NDK_VERSION
+ARG ANDROID_COMPILE_SDK
+ARG ANDROID_BUILD_TOOLS
+ARG ANDROID_CMAKE_VERSION
+ARG ANDROID_API_LEVEL
+ARG ENABLE_NVIDIA
+ARG ENABLE_AMD
+ARG GCC_VERSION
+ARG PYTHON_VERSION
+ARG PYTHON_MAJOR_MINOR
+ARG USE_FAST_UBUNTU_MIRROR
+ARG FAST_UBUNTU_MIRROR_URL
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+SHELL ["bash", "-lc"]
+
+# Copy only the selected target-built payload into the final package layer. The
+# artifact image may either be a target-platform sequential image or an amd64-
+# hosted cross carrier image, but the exported developer-facing runtime surface
+# is rebuilt the same way in both cases.
+COPY --from=artifact-source ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --from=artifact-source /opt/ffmpeg /opt/ffmpeg
+COPY --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+COPY --from=artifact-source /opt/libcamera /opt/libcamera
+COPY --from=artifact-source /opt/wheels /opt/wheels
+COPY --from=artifact-source /opt/vulkan /opt/vulkan
+COPY --from=artifact-source /opt/android-sdk /opt/android-sdk
+COPY --from=artifact-source /opt/android /opt/android
+COPY --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
+# The SDK stage cross-compiles a native Clang 22.1.5 toolchain for the
+# target architecture and stores it at /opt/llvm-target.  Copy it into
+# the runtime image so every arch ships its own native clang.
+COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
+COPY --from=artifact-payload /payload/ /
+
+FROM ${PACKAGE_BASE_STAGE} AS package
+
+ARG BUILD_MODE
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG GSTREAMER_VERSION
+ARG OPENCV_OUTPUT_DIR
+ARG ONNXRUNTIME_OUTPUT_DIR
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR
+ARG GSTREAMER_PREFIX
+ARG ANDROID_SDK_VERSION
+ARG ANDROID_NDK_VERSION
+ARG ANDROID_COMPILE_SDK
+ARG ANDROID_BUILD_TOOLS
+ARG ANDROID_CMAKE_VERSION
+ARG ANDROID_API_LEVEL
+ARG ENABLE_NVIDIA
+ARG ENABLE_AMD
+ARG GCC_VERSION
+ARG PYTHON_VERSION
+ARG PYTHON_MAJOR_MINOR
+ARG USE_FAST_UBUNTU_MIRROR
+ARG FAST_UBUNTU_MIRROR_URL
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+SHELL ["bash", "-lc"]
+
+ENV BUILD_MODE=${BUILD_MODE} \
+    TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETPLATFORM=${TARGETPLATFORM} \
+    ENABLE_NVIDIA=${ENABLE_NVIDIA} \
+    ENABLE_AMD=${ENABLE_AMD} \
+    GCC_VERSION=${GCC_VERSION} \
+    GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
+    PYTHON_VERSION=${PYTHON_VERSION} \
+    PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
+    ORT_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
+    OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
+    VIRTUAL_ENV=/opt/python/.venv \
+    UV_PYTHON=/opt/python/.venv/bin/python \
+    MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python \
+    CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    RUSTC_WRAPPER="" \
+    GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
+    OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
+    FFMPEG_PREFIX=/opt/ffmpeg \
+    LIBCAMERA_PREFIX=/opt/libcamera \
+    PATH="/opt/gstreamer/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/opt/gstreamer/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:/opt/libcamera/lib/pkgconfig:/opt/libcamera/lib64/pkgconfig:/opt/ffmpeg/lib/pkgconfig" \
+    LD_LIBRARY_PATH="/usr/local/lib:/opt/gstreamer/lib/multiarch:/opt/gstreamer/lib/x86_64-linux-gnu:/opt/gstreamer/lib/aarch64-linux-gnu:/opt/gstreamer/lib/riscv64-linux-gnu:/opt/gstreamer/lib:/opt/opencv4/lib:/opt/opencv4/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
+    LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
+    GDK_BACKEND=x11 \
+    GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0" \
+    GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
+
+RUN if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
+        ln -s /opt/llvm-target /usr/local/llvm-target; \
+    elif [ ! -e /usr/local/llvm-target ] && [ -d /usr/local/llvm-22 ]; then \
+        ln -s /usr/local/llvm-22 /usr/local/llvm-target; \
+    fi
+
+# Vulkan SDK installs only under x86_64/; create aarch64 symlink so
+# setup-env.sh (which sources $(uname -m)) works on arm64 machines.
+RUN set -eux; \
+    for vulkan_dir in /opt/vulkan/*/; do \
+        [ -d "${vulkan_dir}" ] || continue; \
+        if [ -d "${vulkan_dir}/x86_64" ] && [ ! -e "${vulkan_dir}/aarch64" ]; then \
+            ln -sf x86_64 "${vulkan_dir}/aarch64"; \
+        fi; \
+    done
+
+COPY linux/scripts/01-core/ /opt/scripts/core/
+COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
+COPY --chmod=755 linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh
+COPY --chmod=755 linux/scripts/03-media/final/ /opt/scripts/media/final/
+COPY --chmod=755 linux/scripts/03-media/gstreamer/android/ /opt/scripts/media/gstreamer/android/
+COPY --chmod=755 linux/scripts/03-media/litert/android/ /opt/scripts/media/litert/android/
+COPY --chmod=755 linux/scripts/03-media/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/
+COPY --chmod=755 linux/scripts/03-media/opencv/android/ /opt/scripts/media/opencv/android/
+COPY --chmod=755 linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.sh
+COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
+COPY --chmod=755 linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh
+
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core,ro \
+    bash /tmp/core/dockerfile-common.sh configure-fast-mirror
+
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-package-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-package-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-package-${TARGETARCH} \
+    bash /opt/scripts/packaging/setup-package-image.sh
+
+# Ensure LLVM 22 is the default compiler for CMake presets and downstream
+# builds.  setup-package-image.sh may install clang-22/clang++-22 via apt
+# but not always register them as the highest-priority alternative.
+RUN set -eux; \
+    llvm_major="22"; \
+    alt_install() { \
+        local name="$1" priority="${2:-120}"; \
+        local candidate; \
+        for candidate in \
+            "/usr/local/llvm-target/bin/${name}" \
+            "/usr/local/llvm-${llvm_major}/bin/${name}" \
+            "/usr/lib/llvm-${llvm_major}/bin/${name}" \
+            "/usr/bin/${name}-${llvm_major}"; do \
+            if [ -x "${candidate}" ]; then \
+                update-alternatives --install "/usr/bin/${name}" "${name}" "${candidate}" "${priority}"; \
+                update-alternatives --set "${name}" "${candidate}"; \
+                return 0; \
+            fi; \
+        done; \
+        echo "WARNING: could not find ${name} for LLVM ${llvm_major}" >&2; \
+    }; \
+    alt_install clang; \
+    alt_install clang++; \
+    alt_install llvm-ar; \
+    alt_install llvm-ranlib
+
+# In cross builds the system already ships GCC ${GCC_VERSION} via apt,
+# so the /opt/gcc-* prefix copied from the cross-artifact image is
+# redundant and may conflict with CMake presets that auto-detect a
+# partial toolchain.  Remove it so presets fall back to /usr/bin/.
+RUN if [ "${BUILD_MODE}" = "cross" ]; then \
+        rm -rf "/opt/gcc-${GCC_VERSION}"; \
+        echo "Removed redundant /opt/gcc-${GCC_VERSION} (system GCC available)"; \
+    fi
+
+# Keep a tiny smoke-only wrapper target here because local/unpushed intermediate
+# image tags are not always resolvable across separate Dockerfiles under BuildKit.
+FROM package AS wrapper-smoke
+
+ARG BUILD_TYPE=Release
+ARG WORKDIR=/workspace
+ARG BUILD_DATE=""
+ARG VCS_REF=""
+
+COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
+COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
+
+WORKDIR ${WORKDIR}
+VOLUME ["${WORKDIR}"]
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/bin/bash"]
+
+LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
+      org.opencontainers.image.description="My beschleuniger image for 2D AI" \
+      org.opencontainers.image.version="${BUILD_TYPE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \
+      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
+      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
+      org.opencontainers.image.licenses="MIT"
