@@ -92,7 +92,16 @@ function New-UvProjectEnvironment {
         [scriptblock]$LogWarning
     )
 
-    $envPath = Join-Path $Workspace $EnvName
+    if ([System.IO.Path]::IsPathRooted($EnvName)) {
+        $envPath = $EnvName
+    } else {
+        $envPath = Join-Path $Workspace $EnvName
+    }
+
+    $envParent = Split-Path -Path $envPath -Parent
+    if (-not [string]::IsNullOrWhiteSpace($envParent)) {
+        Resolve-DirectoryPath -Path $envParent | Out-Null
+    }
 
     if ($LogInfo) {
         & $LogInfo "Creating uv environment: $envPath (Python $PythonVersion)"

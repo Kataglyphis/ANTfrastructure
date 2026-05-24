@@ -1,5 +1,78 @@
 Set-StrictMode -Version Latest
 
+function Get-SanitizerRuntimeDlls {
+  $clangRootPaths = [System.Collections.Generic.List[string]]::new()
+
+  foreach ($commandName in @('clang-cl.exe', 'clang.exe')) {
+    $clangCommand = Get-Command $commandName -ErrorAction SilentlyContinue
+    if ($clangCommand) {
+      $clangBinDir = Split-Path $clangCommand.Source -Parent
+      $clangRoot = Split-Path $clangBinDir -Parent
+      if (-not [string]::IsNullOrWhiteSpace($clangRoot) -and -not $clangRootPaths.Contains($clangRoot)) {
+        $clangRootPaths.Add($clangRoot)
+      }
+    }
+  }
+
+  foreach ($fallbackRoot in @('C:\Program Files\LLVM', 'C:\Program Files (x86)\LLVM')) {
+    if (-not $clangRootPaths.Contains($fallbackRoot)) {
+      $clangRootPaths.Add($fallbackRoot)
+    }
+  }
+
+  $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+  if (Test-Path $vswhere) {
+    $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if ($vsPath) {
+      $vcToolsPath = Get-ChildItem -Path "$vsPath\VC\Tools\MSVC\*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($vcToolsPath -and -not $clangRootPaths.Contains($vcToolsPath.FullName)) {
+        $clangRootPaths.Add($vcToolsPath.FullName)
+      }
+    }
+  }
+
+  foreach ($rootPath in $clangRootPaths) {
+    if (-not (Test-Path $rootPath)) {
+      continue
+    }
+
+    $sanitizerDlls = @(Get-ChildItem -Path "$rootPath\lib\clang\*\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue)
+    if ($sanitizerDlls.Count -eq 0) {
+      $sanitizerDlls = @(Get-ChildItem -Path "$rootPath\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue)
+    }
+    if ($sanitizerDlls.Count -eq 0) {
+      $sanitizerDlls = @(Get-ChildItem -Path "$rootPath\bin\Hostx64\x64\clang_rt.*san*.dll" -ErrorAction SilentlyContinue)
+    }
+
+    if ($sanitizerDlls.Count -gt 0) {
+      return $sanitizerDlls
+    }
+  }
+
+  return @()
+}
+
+function Copy-SanitizerRuntimeDlls {
+  param(
+    [Parameter(Mandatory)]
+    [pscustomobject]$Context,
+    [Parameter(Mandatory)]
+    [System.IO.FileInfo[]]$SanitizerDlls,
+    [string[]]$DestinationDirectories
+  )
+
+  foreach ($destinationDirectory in @($DestinationDirectories | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+    if (-not (Test-Path $destinationDirectory)) {
+      continue
+    }
+
+    foreach ($dll in $SanitizerDlls) {
+      Copy-Item -Path $dll.FullName -Destination $destinationDirectory -Force
+      Write-BuildLog -Context $Context -Message "DEBUG: Copied $($dll.Name) to $destinationDirectory"
+    }
+  }
+}
+
 function Remove-BuildRootSafe {
   param(
     [Parameter(Mandatory)]
@@ -223,6 +296,19 @@ function Invoke-CmakeConfigureAndBuild {
   Write-BuildLog -Context $Context -Message "DEBUG: Starting configure step..."
   Invoke-BuildExternal -Context $Context -File 'cmake' -Parameters $configureArgs | Out-Null
   Write-BuildLog -Context $Context -Message "DEBUG: Configure completed. Starting build step..."
+
+  $sanitizerRuntimeDlls = @()
+  $sanitizerRuntimeDirs = @()
+  if ($Configuration -eq 'Debug') {
+    $sanitizerRuntimeDlls = @(Get-SanitizerRuntimeDlls)
+    if ($sanitizerRuntimeDlls.Count -gt 0) {
+      Copy-SanitizerRuntimeDlls -Context $Context -SanitizerDlls $sanitizerRuntimeDlls -DestinationDirectories @($BuildPath)
+      $sanitizerRuntimeDirs = @($sanitizerRuntimeDlls | ForEach-Object { $_.DirectoryName } | Select-Object -Unique)
+      Write-BuildLog -Context $Context -Message "DEBUG: Using sanitizer runtime PATH entries: $($sanitizerRuntimeDirs -join ';')"
+    } else {
+      Write-BuildLogWarning -Context $Context -Message 'Could not find Sanitizer dynamic DLLs before build. Build-time helper executables may fail to start.'
+    }
+  }
   
   $buildStartTime = Get-Date
   Write-BuildLog -Context $Context -Message "DEBUG: Build started at $($buildStartTime.ToString('HH:mm:ss'))"
@@ -233,7 +319,12 @@ function Invoke-CmakeConfigureAndBuild {
   Write-BuildLog -Context $Context -Message "CMD: $buildCmdLine"
   
   $global:LASTEXITCODE = 0
+  $originalPath = $env:PATH
   try {
+    if ($sanitizerRuntimeDirs.Count -gt 0) {
+      $env:PATH = (($sanitizerRuntimeDirs -join ';') + ';' + $env:PATH)
+    }
+
     # Stream output line by line for real-time logging and visibility
     & cmake @buildArgs 2>&1 | ForEach-Object {
       $line = $_.ToString()
@@ -245,6 +336,8 @@ function Invoke-CmakeConfigureAndBuild {
   } catch {
     Write-BuildLog -Context $Context -Message "ERROR: Build exception: $_"
     $buildExitCode = 1
+  } finally {
+    $env:PATH = $originalPath
   }
   
   $buildEndTime = Get-Date
@@ -268,95 +361,10 @@ function Invoke-CmakeConfigureAndBuild {
         $binDir = $BuildPath
     }
 
-    if (Test-Path $binDir) {
-        $ClangRootPaths = @()
-
-        $ClangCmd = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
-        if (-not $ClangCmd) {
-            $ClangCmd = Get-Command clang.exe -ErrorAction SilentlyContinue
-        }
-
-        if ($ClangCmd) {
-            $ClangRootPaths += Split-Path (Split-Path $ClangCmd.Path)
-        }
-
-        $ClangRootPaths += "C:\Program Files\LLVM"
-        $ClangRootPaths += "C:\Program Files (x86)\LLVM"
-
-        # Use clang-cl --print-resource-dir to locate sanitizer runtime DLLs reliably
-        if ($ClangCmd) {
-            try {
-                $resourceDir = & $ClangCmd.Source '--print-resource-dir' 2>$null
-                if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($resourceDir)) {
-                    $resourceDir = $resourceDir.Trim()
-                    $ClangRootPaths += Split-Path (Split-Path $resourceDir)
-                    $ClangRootPaths += $resourceDir
-                }
-            } catch {
-                Write-BuildLog -Context $Context -Message "DEBUG: Could not query clang resource dir: $_"
-            }
-        }
-
-        # Add scoop-managed LLVM installations
-        $scoopDir = if (-not [string]::IsNullOrWhiteSpace($env:SCOOP)) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
-        if (Test-Path (Join-Path $scoopDir 'apps\llvm')) {
-            Get-ChildItem -Path (Join-Path $scoopDir 'apps\llvm') -Directory -ErrorAction SilentlyContinue |
-                ForEach-Object { $ClangRootPaths += $_.FullName }
-        }
-        $globalScoopDir = if (-not [string]::IsNullOrWhiteSpace($env:SCOOP_GLOBAL)) { $env:SCOOP_GLOBAL } else { 'C:\ProgramData\scoop' }
-        if (Test-Path (Join-Path $globalScoopDir 'apps\llvm')) {
-            Get-ChildItem -Path (Join-Path $globalScoopDir 'apps\llvm') -Directory -ErrorAction SilentlyContinue |
-                ForEach-Object { $ClangRootPaths += $_.FullName }
-        }
-        
-        # Add MSVC VC Tools path for MSVC ASAN dlls
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        if (Test-Path $vswhere) {
-            $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-            if ($vsPath) {
-                $vcToolsPath = Get-ChildItem -Path "$vsPath\VC\Tools\MSVC\*" -Directory | Select-Object -First 1
-                if ($vcToolsPath) {
-                    $ClangRootPaths += $vcToolsPath.FullName
-                }
-            }
-        }
-
-        $SanitizerDllsCopied = $false
-
-        foreach ($RootPath in $ClangRootPaths) {
-            if (-not (Test-Path $RootPath)) { continue }
-
-            # Check LLVM paths (versioned resource dir layout, e.g. lib/clang/<ver>/lib/windows/)
-            # Include both sanitizer DLLs (*san*) and the ASan dynamic runtime thunk
-            $SanitizerDlls = Get-ChildItem -Path "$RootPath\lib\clang\*\lib\windows\clang_rt.asan_dynamic*.dll" -ErrorAction SilentlyContinue
-            $otherSanDlls = Get-ChildItem -Path "$RootPath\lib\clang\*\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue
-            $SanitizerDlls = @($SanitizerDlls) + @($otherSanDlls) | Select-Object -Unique
-            if (-not $SanitizerDlls) {
-                # Flat LLVM lib layout (e.g. scoop installs: lib/windows/)
-                $SanitizerDlls = Get-ChildItem -Path "$RootPath\lib\windows\clang_rt.asan_dynamic*.dll" -ErrorAction SilentlyContinue
-                $otherSanDlls = Get-ChildItem -Path "$RootPath\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue
-                $SanitizerDlls = @($SanitizerDlls) + @($otherSanDlls) | Select-Object -Unique
-            }
-            # Check MSVC paths
-            if (-not $SanitizerDlls) {
-                $SanitizerDlls = Get-ChildItem -Path "$RootPath\bin\Hostx64\x64\clang_rt.*san*.dll" -ErrorAction SilentlyContinue
-            }
-
-            if ($SanitizerDlls) {
-                foreach ($dll in $SanitizerDlls) {
-                    Copy-Item -Path $dll.FullName -Destination $binDir -Force
-                    Write-BuildLog -Context $Context -Message "DEBUG: Copied $($dll.Name) to $binDir"
-                }
-                $SanitizerDllsCopied = $true
-                break
-            }
-        }
-        
-        if (-not $SanitizerDllsCopied) {
-            Write-BuildLogWarning -Context $Context -Message "Could not find Sanitizer dynamic DLLs to copy."
-        }
+    if ($sanitizerRuntimeDlls.Count -gt 0) {
+        Copy-SanitizerRuntimeDlls -Context $Context -SanitizerDlls $sanitizerRuntimeDlls -DestinationDirectories @($BuildPath, $binDir)
     } else {
-        Write-BuildLogWarning -Context $Context -Message "Bin directory $binDir not found. Cannot copy Sanitizer DLLs."
+        Write-BuildLogWarning -Context $Context -Message "Could not find Sanitizer dynamic DLLs to copy."
     }
   }
 
