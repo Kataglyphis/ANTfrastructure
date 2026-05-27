@@ -50,6 +50,8 @@ RUSTC_WRAPPER=""
 
 - Prefer workspace-relative output directories like `logs/` and `out/` for large build artifacts.
 - The runtime packaging helpers already avoid `/tmp` by default and use `${XDG_CACHE_HOME:-$HOME/.cache}/opencode/runtime-build-contexts` for temporary local stage handoff.
+- The main Linux Dockerfiles also use Dockerfile-specific ignore files so repo-root Linux builds do not keep re-sending `linux/webserver/` through unrelated build contexts.
+- Keep exported repair trees such as `out/runtime-repair-*` out of later Docker build contexts too, or routine retries will spend minutes re-uploading them.
 - Clean old local images, caches, and exported rootfs artifacts if repeated BuildKit runs fill the disk.
 
 ### Local runtime images try to pull from a registry
@@ -59,7 +61,7 @@ RUSTC_WRAPPER=""
 **Solution:**
 
 - On this host, do not rely on plain local image tags as reusable `FROM` sources for the runtime packaging chain.
-- Keep the helper default local-context handoff for `base -> package -> torch`, and for saved runtime artifact images pass `ARTIFACT_CONTEXT_ROOT=...` with `ARTIFACT_CONTEXT_MODE=oci` instead of expecting `FROM opencode-local:*` to stay local.
+- Keep the helper default local-context handoff for `base -> package -> torch`, and for saved runtime artifact images pass `ARTIFACT_CONTEXT_ROOT=...` with `ARTIFACT_CONTEXT_MODE=oci` instead of expecting `FROM opencode-local:*` to stay local. The helper still runs the Torch stage natively on `linux/<arch>` so the final runtime image includes `/opt/venv`. In cross mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and the native Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels before falling back to source builds. If a reused cross artifact has an empty `/opt/wheels` the Torch install step now keeps the packages that `uv sync` already resolved instead of trying to install a literal `/opt/wheels/*.whl` glob. The foreign-arch package stage must keep `/usr/bin/clang` wired to the copied target-native `/usr/local/llvm-target/bin/clang` rather than falling back to distro `/usr/local/llvm-22`.
 - `docs/linux-cross-builds.md` documents the verified mixed `OCI artifact + plain rootfs base` workaround.
 
 ### buildctl or ctr permission denied in rootless troubleshooting

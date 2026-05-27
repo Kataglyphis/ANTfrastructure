@@ -68,31 +68,52 @@ RUN --mount=type=bind,from=runtime_artifact,source=/,target=/runtime_artifact,ro
         done; \
         shopt -u nullglob; \
     }; \
-    copy_path /usr/local/lib/onnxruntime-genai; \
-    copy_path /usr/local/lib/onnxruntime-gpu; \
-    copy_path /usr/local/include/tflite; \
-    copy_path /usr/local/include/tensorflow; \
-    copy_path /usr/local/include/flatbuffers; \
-    copy_path /usr/local/include/c; \
-    copy_path /usr/local/lib/pkgconfig/litert.pc; \
-    copy_path /usr/local/lib/pkgconfig/tensorflow-lite.pc; \
-    copy_path /usr/local/lib/pkgconfig/tensorflowlite_c.pc; \
-    copy_path /usr/local/lib/pkgconfig/libvvdec.pc; \
-    copy_path /usr/local/llvm-target; \
-    copy_path /usr/local/llvm-22; \
-    copy_glob '/usr/local/lib/libLiteRt.so*'; \
-    copy_glob '/usr/local/lib/libtensorflow-lite.so*'; \
-    copy_glob '/usr/local/lib/libtensorflowlite_c.so*'; \
-    copy_glob '/usr/local/lib/libvvdec.so*'
+    for path in \
+        /usr/local/lib/onnxruntime-genai \
+        /usr/local/lib/onnxruntime-gpu \
+        /usr/local/include/tflite \
+        /usr/local/include/tensorflow \
+        /usr/local/include/flatbuffers \
+        /usr/local/include/c \
+        /usr/local/lib/pkgconfig/litert.pc \
+        /usr/local/lib/pkgconfig/tensorflow-lite.pc \
+        /usr/local/lib/pkgconfig/tensorflowlite_c.pc \
+        /usr/local/lib/pkgconfig/libvvdec.pc \
+        /usr/local/llvm-target \
+        /usr/local/llvm-22; do \
+        copy_path "${path}"; \
+    done; \
+    for pattern in \
+        '/usr/local/lib/libLiteRt.so*' \
+        '/usr/local/lib/libtensorflow-lite.so*' \
+        '/usr/local/lib/libtensorflowlite_c.so*' \
+        '/usr/local/lib/libvvdec.so*'; do \
+        copy_glob "${pattern}"; \
+    done
 
 FROM ${ARTIFACT_SOURCE_STAGE} AS artifact-source
 
 SHELL ["bash", "-lc"]
 
-RUN if [ ! -e /opt/llvm-target ] && [ -d /usr/local/llvm-target ]; then \
-        ln -s /usr/local/llvm-target /opt/llvm-target; \
-    elif [ ! -e /opt/llvm-target ] && [ -d /usr/local/llvm-22 ]; then \
-        ln -s /usr/local/llvm-22 /opt/llvm-target; \
+ARG BUILD_MODE
+ARG TARGET_ARCH
+ARG TARGETARCH
+
+RUN set -eux; \
+    target_arch="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}"; \
+    case "${target_arch}" in \
+        x86_64) target_arch=amd64 ;; \
+        aarch64) target_arch=arm64 ;; \
+    esac; \
+    if [ ! -e /opt/llvm-target ]; then \
+        if [ -d /usr/local/llvm-target ]; then \
+            ln -s /usr/local/llvm-target /opt/llvm-target; \
+        elif [ "${target_arch}" = "amd64" ] && [ -d /usr/local/llvm-22 ]; then \
+            ln -s /usr/local/llvm-22 /opt/llvm-target; \
+        else \
+            echo "WARNING: missing target-native LLVM toolchain for ${target_arch}; continuing with distro LLVM"; \
+            mkdir -p /opt/llvm-target; \
+        fi; \
     fi
 
 FROM artifact-source AS artifact-payload
@@ -122,20 +143,26 @@ RUN set -euo pipefail; \
         done; \
         shopt -u nullglob; \
     }; \
-    copy_path /usr/local/lib/onnxruntime-genai; \
-    copy_path /usr/local/lib/onnxruntime-gpu; \
-    copy_path /usr/local/include/tflite; \
-    copy_path /usr/local/include/tensorflow; \
-    copy_path /usr/local/include/flatbuffers; \
-    copy_path /usr/local/include/c; \
-    copy_path /usr/local/lib/pkgconfig/litert.pc; \
-    copy_path /usr/local/lib/pkgconfig/tensorflow-lite.pc; \
-    copy_path /usr/local/lib/pkgconfig/tensorflowlite_c.pc; \
-    copy_path /usr/local/lib/pkgconfig/libvvdec.pc; \
-    copy_glob '/usr/local/lib/libLiteRt.so*'; \
-    copy_glob '/usr/local/lib/libtensorflow-lite.so*'; \
-    copy_glob '/usr/local/lib/libtensorflowlite_c.so*'; \
-    copy_glob '/usr/local/lib/libvvdec.so*'
+    for path in \
+        /usr/local/lib/onnxruntime-genai \
+        /usr/local/lib/onnxruntime-gpu \
+        /usr/local/include/tflite \
+        /usr/local/include/tensorflow \
+        /usr/local/include/flatbuffers \
+        /usr/local/include/c \
+        /usr/local/lib/pkgconfig/litert.pc \
+        /usr/local/lib/pkgconfig/tensorflow-lite.pc \
+        /usr/local/lib/pkgconfig/tensorflowlite_c.pc \
+        /usr/local/lib/pkgconfig/libvvdec.pc; do \
+        copy_path "${path}"; \
+    done; \
+    for pattern in \
+        '/usr/local/lib/libLiteRt.so*' \
+        '/usr/local/lib/libtensorflow-lite.so*' \
+        '/usr/local/lib/libtensorflowlite_c.so*' \
+        '/usr/local/lib/libvvdec.so*'; do \
+        copy_glob "${pattern}"; \
+    done
 
 FROM ${BASE_IMAGE} AS package-image
 
@@ -183,6 +210,7 @@ COPY --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
+COPY --from=artifact-source /opt/python-cross /opt/python-cross
 COPY --from=artifact-payload /payload/ /
 
 FROM ${PACKAGE_BASE_STAGE} AS package
@@ -223,6 +251,8 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
     PYTHON_VERSION=${PYTHON_VERSION} \
     PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
+    PYTHON_CROSS_STAGE_ROOT=/opt/python-cross \
+    PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \
     ORT_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
     OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
     VIRTUAL_ENV=/opt/python/.venv \
@@ -246,8 +276,6 @@ ENV BUILD_MODE=${BUILD_MODE} \
 
 RUN if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
         ln -s /opt/llvm-target /usr/local/llvm-target; \
-    elif [ ! -e /usr/local/llvm-target ] && [ -d /usr/local/llvm-22 ]; then \
-        ln -s /usr/local/llvm-22 /usr/local/llvm-target; \
     fi
 
 # Vulkan SDK installs only under x86_64/; create aarch64 symlink so
@@ -280,31 +308,28 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-package-${TARGETARCH} 
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-package-${TARGETARCH} \
     bash /opt/scripts/packaging/setup-package-image.sh
 
-# Ensure LLVM 22 is the default compiler for CMake presets and downstream
-# builds.  setup-package-image.sh may install clang-22/clang++-22 via apt
-# but not always register them as the highest-priority alternative.
+# Ensure the runtime package always exposes the target-native LLVM tree copied
+# from the artifact image. Do not fall back to distro LLVM here: that can leak
+# an amd64 clang into arm64/riscv64 runtime manifests.
 RUN set -eux; \
-    llvm_major="22"; \
-    alt_install() { \
+    if [ -d /usr/local/llvm-target ]; then \
+      require_target_llvm_tool() { \
         local name="$1" priority="${2:-120}"; \
-        local candidate; \
-        for candidate in \
-            "/usr/local/llvm-target/bin/${name}" \
-            "/usr/local/llvm-${llvm_major}/bin/${name}" \
-            "/usr/lib/llvm-${llvm_major}/bin/${name}" \
-            "/usr/bin/${name}-${llvm_major}"; do \
-            if [ -x "${candidate}" ]; then \
-                update-alternatives --install "/usr/bin/${name}" "${name}" "${candidate}" "${priority}"; \
-                update-alternatives --set "${name}" "${candidate}"; \
-                return 0; \
-            fi; \
-        done; \
-        echo "WARNING: could not find ${name} for LLVM ${llvm_major}" >&2; \
-    }; \
-    alt_install clang; \
-    alt_install clang++; \
-    alt_install llvm-ar; \
-    alt_install llvm-ranlib
+        local candidate="/usr/local/llvm-target/bin/${name}"; \
+        [ -x "${candidate}" ] || { \
+          echo "WARNING: expected target-native LLVM tool missing: ${candidate}" >&2; \
+          return 0; \
+        }; \
+        update-alternatives --install "/usr/bin/${name}" "${name}" "${candidate}" "${priority}"; \
+        update-alternatives --set "${name}" "${candidate}"; \
+      }; \
+      require_target_llvm_tool clang; \
+      require_target_llvm_tool clang++; \
+      require_target_llvm_tool llvm-ar; \
+      require_target_llvm_tool llvm-ranlib; \
+    else \
+      echo "WARNING: /usr/local/llvm-target not found; using distro LLVM"; \
+    fi
 
 # In cross builds the system already ships GCC ${GCC_VERSION} via apt,
 # so the /opt/gcc-* prefix copied from the cross-artifact image is

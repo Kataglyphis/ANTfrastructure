@@ -52,13 +52,15 @@ nerdctl build --platform linux/amd64 \
   .
 ```
 
-The runtime helpers use the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag. On this host, prefer `linux/scripts/build-runtime-artifacts.sh` and `linux/scripts/build-runtime-manifest.sh` over ad hoc `nerdctl build` loops.
+The runtime helpers use the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag. They still run the Torch stage on the real target platform so the final image includes `/opt/venv`. In cross mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and the final Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels instead of re-resolving the same git sources under QEMU. If a reused cross artifact has an empty `/opt/wheels`, that Torch step now keeps the packages that `uv sync` already resolved instead of uninstalling them and trying to install a literal `/opt/wheels/*.whl` glob. For foreign-architecture runtime images, the package stage must also keep `/usr/bin/clang` pointed at the copied target-native `/usr/local/llvm-target/bin/clang`; do not let it fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`. On this host, prefer `linux/scripts/build-runtime-artifacts.sh` and `linux/scripts/build-runtime-manifest.sh` over ad hoc `nerdctl build` loops.
 
 Those temporary stage contexts now default to `${XDG_CACHE_HOME:-$HOME/.cache}/opencode/runtime-build-contexts` and each one is deleted after the next stage finishes using it. Both runtime helpers accept `--target-arches`, `TARGET_ARCHES`, and `TARGET_ARCH` for selecting target architectures.
 
+The main repo-root Linux Dockerfiles now use Dockerfile-specific ignore files too, so routine Linux builds no longer send the large `linux/webserver/` tree through the base/toolchain/sdk/media/android/package/torch/wrapper contexts.
+
 When you are feeding locally saved runtime artifacts back into later builds:
 
-- Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, and `out/linux-runtime` so exported OCI layouts and rootfs trees do not get sent back as a later build context.
+- Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so exported OCI layouts and rootfs trees do not get sent back as a later build context.
 - Prefer saved OCI layouts such as `out/local-oci/android/<arch>` for foreign-architecture runtime packaging. The plain directory exports under `out/local-android-dir/<arch>` are much larger, and an earlier OCI-to-directory conversion dropped `/usr/local/lib/onnxruntime-cpu`.
 - On this host, the verified local runtime path mixes context types: the heavy `runtime_artifact` input comes from an `oci-layout://...` context, while the intermediate `runtime_base` handoff stays a plain rootfs directory because one build still fails when it consumes two named OCI image contexts at once.
 - `readlink -f` on symlinks inside `out/linux-runtime/*/rootfs` resolves absolute links against the host root, so use plain `readlink` or validate from inside the built image when checking `/usr/bin/clang` and `/etc/alternatives/clang`.

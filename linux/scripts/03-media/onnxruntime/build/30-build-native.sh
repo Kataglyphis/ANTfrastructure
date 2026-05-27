@@ -76,8 +76,13 @@ if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
 fi
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-  info "Skipping ONNX Runtime wheel build in cross mode; target Python headers/wheels are not safely buildable in the amd64 host container"
   append_onnx_cross_cmake_build_args BUILD_ARGS
+  if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
+    info "Target Python dev files available; enabling ONNX Runtime wheel build in cross mode"
+    BUILD_ARGS+=(--build_wheel)
+  else
+    info "Skipping ONNX Runtime wheel build in cross mode; target Python headers/wheels are not safely buildable in the amd64 host container"
+  fi
 else
   BUILD_ARGS+=(--build_wheel)
 fi

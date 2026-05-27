@@ -184,6 +184,25 @@ resolve_cross_archive_tool() {
     printf '%s' "${fallback}"
 }
 
+shell_quote_args() {
+    local quoted=""
+    local arg
+
+    for arg in "$@"; do
+        quoted+="${quoted:+ }$(printf '%q' "${arg}")"
+    done
+
+    printf '%s' "${quoted}"
+}
+
+opencv_cross_wheel_platform_tag() {
+    if ! command -v cross_target_arch >/dev/null 2>&1 || ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
+        return 1
+    fi
+
+    arch_linux_platform_tag_for "$(cross_target_arch)"
+}
+
 # ------------------------------------------------------------------------------
 # Configure OpenCV build
 # ------------------------------------------------------------------------------
@@ -460,9 +479,69 @@ build_opencv_python_wheel() {
         "-DWITH_ITT=ON"
         "-DBUILD_opencv_tracking=ON"
     )
+    local wheel_platform_name=""
     
     if [ "$(target_machine)" != "amd64" ] && [ "$(target_machine)" != "x86_64" ]; then
         py_cmake_args+=("-DWITH_IPP=OFF")
+    fi
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        local -a wheel_cross_args=()
+        local cross_ar=""
+        local cross_ranlib=""
+        local target_python_library=""
+        local target_python_include=""
+        local target_python_arch_include=""
+        local target_triplet=""
+
+        wheel_platform_name="$(opencv_cross_wheel_platform_tag || true)"
+        if [ -z "${wheel_platform_name}" ]; then
+            echo "[WARN] Could not determine a platform tag for the OpenCV cross wheel; skipping wheel retagging"
+        fi
+
+        target_triplet="$(cross_target_triplet 2>/dev/null || true)"
+        if command -v append_cmake_cross_args >/dev/null 2>&1; then
+            append_cmake_cross_args wheel_cross_args
+            py_cmake_args+=("${wheel_cross_args[@]}")
+        fi
+        cross_ar="$(resolve_cross_archive_tool ar)"
+        cross_ranlib="$(resolve_cross_archive_tool ranlib)"
+
+        py_cmake_args+=("-DWITH_GTK=OFF" "-DWITH_OPENGL=OFF")
+        if [ "$(cross_target_arch)" = "riscv64" ]; then
+            py_cmake_args+=("-DWITH_GSTREAMER=OFF")
+        fi
+        py_cmake_args+=(
+            "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH"
+            "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH"
+            "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH"
+            "-DCMAKE_AR=${cross_ar}"
+            "-DCMAKE_RANLIB=${cross_ranlib}"
+            "-DCMAKE_C_COMPILER_AR=${cross_ar}"
+            "-DCMAKE_CXX_COMPILER_AR=${cross_ar}"
+            "-DCMAKE_C_COMPILER_RANLIB=${cross_ranlib}"
+            "-DCMAKE_CXX_COMPILER_RANLIB=${cross_ranlib}"
+            "-DZLIB_INCLUDE_DIR=/usr/include"
+            "-DCMAKE_C_FLAGS=-idirafter /usr/include"
+            "-DCMAKE_CXX_FLAGS=-idirafter /usr/include"
+        )
+        if [ -n "${target_triplet}" ] && [ -f "/usr/lib/${target_triplet}/libz.so" ]; then
+            py_cmake_args+=("-DZLIB_LIBRARY=/usr/lib/${target_triplet}/libz.so")
+        fi
+
+        if command -v cross_target_python_library >/dev/null 2>&1; then
+            target_python_library="$(cross_target_python_library 2>/dev/null || true)"
+        fi
+        if command -v cross_target_python_include_dir >/dev/null 2>&1; then
+            target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
+            target_python_arch_include="$(cross_target_python_arch_include_dir 2>/dev/null || true)"
+        fi
+        if [ -n "${target_python_library}" ] && [ -d "${target_python_include}" ]; then
+            py_cmake_args+=("-DPYTHON3_LIBRARY=${target_python_library}" "-DPYTHON3_INCLUDE_DIR=${target_python_include}")
+            if [ -d "${target_python_arch_include}" ]; then
+                py_cmake_args+=("-DPython3_INCLUDE_DIRS=${target_python_include};${target_python_arch_include}")
+            fi
+        fi
     fi
     
     if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
@@ -483,7 +562,7 @@ build_opencv_python_wheel() {
         fi
     fi
     
-    export CMAKE_ARGS="${py_cmake_args[*]}"
+    export CMAKE_ARGS="$(shell_quote_args "${py_cmake_args[@]}")"
     echo "CMAKE_ARGS for python wheel: ${CMAKE_ARGS}"
     
     PYEXEC="${HOST_PYTHON:-$(host_python_bin)}"
@@ -506,6 +585,19 @@ build_opencv_python_wheel() {
     
     echo "Building wheel via scikit-build... (this will take a while as it compiles OpenCV again)"
     "${PYEXEC}" -m pip wheel . -w "${OPENCV_PREFIX}/wheels" --verbose || echo "Failed to build opencv-python wheel"
+
+    if [ -n "${wheel_platform_name}" ]; then
+        shopt -s nullglob
+        local -a built_cross_wheels=("${OPENCV_PREFIX}/wheels"/*.whl)
+        shopt -u nullglob
+        if [ "${#built_cross_wheels[@]}" -gt 0 ]; then
+            local cross_wheel
+            for cross_wheel in "${built_cross_wheels[@]}"; do
+                "${PYEXEC}" -m wheel tags --remove --platform-tag="${wheel_platform_name}" "${cross_wheel}" || \
+                    echo "Failed to retag OpenCV cross wheel $(basename "${cross_wheel}")"
+            done
+        fi
+    fi
     
     popd >/dev/null
 }
@@ -571,7 +663,7 @@ main() {
     build_opencv
     install_opencv
     
-    if [ "${WITH_PYTHON}" = "true" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
+    if [ "${WITH_PYTHON}" = "true" ]; then
         build_opencv_python_wheel
     fi
     

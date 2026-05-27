@@ -467,6 +467,12 @@ append_onnx_cross_cmake_build_args() {
   # shellcheck disable=SC2178
   local -n build_args_ref="${build_args_name}"
 
+  local enable_python="OFF"
+  if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
+    enable_python="ON"
+    info "Target Python dev files available; enabling ONNX Runtime Python in cross mode"
+  fi
+
   build_args_ref+=(
     --cmake_extra_defines
     CMAKE_SYSTEM_NAME=Linux
@@ -479,7 +485,7 @@ append_onnx_cross_cmake_build_args() {
     CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
-    onnxruntime_ENABLE_PYTHON=OFF
+    "onnxruntime_ENABLE_PYTHON=${enable_python}"
     onnxruntime_BUILD_UNIT_TESTS=OFF
     onnxruntime_GENERATE_TEST_REPORTS=OFF
   )

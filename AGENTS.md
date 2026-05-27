@@ -45,7 +45,7 @@ These files document host-specific workarounds that are easy to regress if you i
   - `ARTIFACT_CONTEXT_MODE=oci`
   - `RUNTIME_CONTEXT_ROOT="$PWD/out/local-oci/runtime-contexts"`
 - The working host workaround is mixed context types: keep `runtime_artifact` as an `oci-layout://...` build context and keep `runtime_base` as a plain rootfs directory context. Do not switch both named contexts to OCI in one build on this host.
-- Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, and `out/linux-runtime` so large exported artifacts do not get sent back as later Docker build contexts.
+- Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so large exported artifacts do not get sent back as later Docker build contexts.
 - Prefer the saved OCI layouts over the plain directory exports in `out/local-android-dir/<arch>`. The plain directory path is much larger and previously dropped runtime payload during OCI-to-directory conversion.
 
 ## Push And Publish Rules

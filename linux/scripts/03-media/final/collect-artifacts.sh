@@ -15,6 +15,7 @@ wheel_source_dirs=(
   /usr/local/lib/onnxruntime-genai/wheels
   /usr/local/lib/onnxruntime-gpu/wheels
   /opt/opencv4/wheels
+  /opt/app-wheels
   /opt/litert-wheels
   /opt/libcamera/wheels
 )

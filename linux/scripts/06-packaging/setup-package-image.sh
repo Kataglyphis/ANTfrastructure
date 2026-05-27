@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
+
+link_path_if_present() {
+    local candidate="$1"
+    local link_path="$2"
+
+    if [ -n "${candidate}" ] && [ "${candidate}" != "${link_path}" ]; then
+        ln -sf "${candidate}" "${link_path}"
+    fi
+}
 
 # shellcheck disable=SC1091
 source /opt/scripts/core/package-lists.sh
@@ -7,25 +16,46 @@ source /opt/scripts/core/package-lists.sh
 link_command_if_present() {
     local command_name="$1"
     local link_path="$2"
+    local command_path
 
-    if command -v "${command_name}" >/dev/null 2>&1; then
-        ln -sf "$(command -v "${command_name}")" "${link_path}"
-    fi
+    command_path="$(command -v "${command_name}" || true)"
+    link_path_if_present "${command_path}" "${link_path}"
 }
 
 main() {
     local python_mm="${PYTHON_MAJOR_MINOR:-3.14}"
     local gcc_major="${GCC_VERSION%%.*}"
     local python_bin python_cfg pip_bin triplet gcc_prefix
+    local staged_python_root=""
     local -a packages=(libtbb-dev python3-venv python3-pip cargo rustc)
 
     bash /opt/scripts/media/final/install-deps.sh
     apt-get update
 
-    if apt_package_exists "python${python_mm}-dev"; then
-        packages+=("python${python_mm}-dev")
-    elif apt_package_exists python3-dev; then
-        packages+=(python3-dev)
+    staged_python_root="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
+    case "$(arch_normalize "${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}")" in
+        amd64|arm64|riscv64)
+            if [ -x "${staged_python_root}/usr/local/bin/python${python_mm}" ]; then
+                echo "Installing source-built target Python ${python_mm} from ${staged_python_root}/usr/local"
+                cp -a "${staged_python_root}/usr/local/bin"/* /usr/local/bin/
+                cp -a "${staged_python_root}/usr/local/lib"/python"${python_mm}" /usr/local/lib/
+                cp -a "${staged_python_root}/usr/local/lib"/libpython* /usr/local/lib/
+                cp -a "${staged_python_root}/usr/local/lib"/pkgconfig /usr/local/lib/
+                cp -a "${staged_python_root}/usr/local/include"/python* /usr/local/include/
+                echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-local.conf"
+                ldconfig
+                echo "/usr/local/lib" >> /etc/ld.so.conf.d/python-local.conf
+                ldconfig
+            fi
+            ;;
+    esac
+
+    if [ ! -x "/usr/local/bin/python${python_mm}" ]; then
+        if apt_package_exists "python${python_mm}-dev"; then
+            packages+=("python${python_mm}-dev")
+        elif apt_package_exists python3-dev; then
+            packages+=(python3-dev)
+        fi
     fi
 
     if apt_package_exists "gcc-${gcc_major}" && apt_package_exists "g++-${gcc_major}"; then
@@ -78,14 +108,12 @@ main() {
 
     for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib; do
         candidate="$(command -v "${tool}-${gcc_major}" || command -v "${tool}" || true)"
-        [ -n "${candidate}" ] || continue
-        ln -sf "${candidate}" "${gcc_prefix}/bin/${tool}"
+        link_path_if_present "${candidate}" "${gcc_prefix}/bin/${tool}"
     done
 
     for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib ar as ld nm ranlib strip objcopy; do
         candidate="$(command -v "${triplet}-${tool}-${gcc_major}" || command -v "${triplet}-${tool}" || command -v "${tool}-${gcc_major}" || command -v "${tool}" || true)"
-        [ -n "${candidate}" ] || continue
-        ln -sf "${candidate}" "${gcc_prefix}/bin/${triplet}-${tool}"
+        link_path_if_present "${candidate}" "${gcc_prefix}/bin/${triplet}-${tool}"
     done
 
     link_command_if_present cargo "${CARGO_HOME}/bin/cargo"

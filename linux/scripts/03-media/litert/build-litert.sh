@@ -469,9 +469,14 @@ install_litert() {
     # Docker stages can copy the wheels directory even when no wheel is built.
     mkdir -p "${LITERT_PREFIX}/wheels"
 
+    local cross_wheel_build=false
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-        echo "[INFO] Skipping LiteRT Python wheel build in cross mode; target wheel build and validation are not supported in the amd64 host container"
-        return 0
+        cross_wheel_build=true
+        if command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
+            echo "[WARN] Target Python development files are unavailable; skipping LiteRT Python wheel build in cross mode"
+            return 0
+        fi
+        echo "[INFO] Attempting LiteRT Python wheel build in cross mode for $(cross_target_arch)"
     fi
 
     # Try to build a Python wheel if the project exposes a Python package
@@ -591,6 +596,11 @@ install_litert() {
             bash build_pip_package_with_cmake.sh "${TENSORFLOW_TARGET}" > pip_build.log 2>&1 || {
                 echo "[WARN] pip wheel failed for LiteRT source. Last 1000 lines of log:"
                 tail -n 1000 pip_build.log
+                if [ "${cross_wheel_build}" = "true" ]; then
+                    echo "[WARN] Continuing without a local LiteRT wheel for the cross build"
+                    popd > /dev/null
+                    return 0
+                fi
                 exit 1
             }
             

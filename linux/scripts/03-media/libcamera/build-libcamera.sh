@@ -203,9 +203,11 @@ fi
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."
 
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-  echo "Skipping libcamera Python wheel build in cross mode"
-  rm -rf "${LIBCAMERA_SRC}" || true
-  exit 0
+  if ! command -v cross_target_python_dev_ready >/dev/null 2>&1 || ! cross_target_python_dev_ready; then
+    echo "Skipping libcamera Python wheel build in cross mode (target Python not ready)"
+    rm -rf "${LIBCAMERA_SRC}" || true
+    exit 0
+  fi
 fi
 
 echo "Attempting to create libcamera Python wheel"

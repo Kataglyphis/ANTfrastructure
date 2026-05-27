@@ -231,6 +231,24 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --skip-dep-install
 
 # ==============================================================================
+# App wheelhouse stage (best-effort riscv64 cross-only)
+# ==============================================================================
+FROM base AS app-wheelhouse
+
+COPY --chmod=755 linux/scripts/05-frameworks/torch /opt/scripts/frameworks/torch
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    set -eux; \
+    bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh
+
+# ==============================================================================
 # FFmpeg stage
 # ==============================================================================
 FROM base AS ffmpeg
@@ -360,6 +378,7 @@ COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/liblite* ${LITERT_OUTPUT_DIR}/lib/
 COPY --from=litert ${LITERT_OUTPUT_DIR}/lib/libtensor* ${LITERT_OUTPUT_DIR}/lib/
 COPY --from=litert ${LITERT_OUTPUT_DIR}/include /usr/local/include
 COPY --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
+COPY --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}

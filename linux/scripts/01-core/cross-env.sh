@@ -221,6 +221,29 @@ _cross_first_executable() {
   return 1
 }
 
+cross_target_qemu_runner_for_arch() {
+  local target_arch="$1"
+  local qemu_arch=""
+
+  case "$(cross_normalize_arch "${target_arch}")" in
+    amd64) qemu_arch="x86_64" ;;
+    arm64) qemu_arch="aarch64" ;;
+    386) qemu_arch="i386" ;;
+    riscv64) qemu_arch="riscv64" ;;
+    *) return 1 ;;
+  esac
+
+  _cross_first_executable \
+    "/usr/bin/qemu-${qemu_arch}-static" \
+    "/usr/bin/qemu-${qemu_arch}" \
+    "$(command -v "qemu-${qemu_arch}-static" 2>/dev/null || true)" \
+    "$(command -v "qemu-${qemu_arch}" 2>/dev/null || true)"
+}
+
+cross_target_qemu_runner() {
+  cross_target_qemu_runner_for_arch "$(cross_target_arch)"
+}
+
 gcc_toolchain_prefix() {
   printf '%s' "/opt/gcc-${GCC_VERSION:-16.1.0}"
 }
@@ -428,6 +451,44 @@ host_python_major_minor() {
   "${python_bin}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
 }
 
+cross_target_python_stage_root() {
+  local target_arch=""
+
+  target_arch="$(cross_require_single_target_arch "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}" "target Python staging")" || return 1
+  printf '%s' "${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${target_arch}"
+}
+
+cross_target_python_active_stage_root() {
+  local requested_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+  local active_root="${PYTHON_CROSS_ACTIVE_ROOT:-/opt/python-target}"
+  local stage_root=""
+
+  if [ -d "${active_root}/usr/local" ]; then
+    printf '%s' "${active_root}"
+    return 0
+  fi
+
+  stage_root="$(cross_target_python_stage_root "${requested_arch}" 2>/dev/null || true)"
+  if [ -n "${stage_root}" ] && [ -d "${stage_root}/usr/local" ]; then
+    printf '%s' "${stage_root}"
+    return 0
+  fi
+
+  return 1
+}
+
+cross_target_python_root() {
+  local active_root=""
+
+  active_root="$(cross_target_python_active_stage_root "$@" 2>/dev/null || true)"
+  if [ -n "${active_root}" ] && [ -d "${active_root}/usr/local" ]; then
+    printf '%s' "${active_root}/usr/local"
+    return 0
+  fi
+
+  return 1
+}
+
 cross_target_python_major_minor() {
   if [ -n "${TARGET_PYTHON_MAJOR_MINOR:-}" ]; then
     printf '%s' "${TARGET_PYTHON_MAJOR_MINOR}"
@@ -444,44 +505,91 @@ cross_target_python_major_minor() {
 
 cross_target_python_include_dir() {
   local python_mm
+  local python_root=""
+  local candidate
 
   python_mm="$(cross_target_python_major_minor)" || return 1
-  printf '%s' "/usr/include/python${python_mm}"
+  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
+
+  for candidate in \
+    "${python_root:+${python_root}/include/python${python_mm}}" \
+    "/usr/local/include/python${python_mm}" \
+    "/usr/include/python${python_mm}"; do
+    [ -n "${candidate}" ] || continue
+    [ -d "${candidate}" ] && {
+      printf '%s' "${candidate}"
+      return 0
+    }
+  done
+
+  return 1
 }
 
 cross_target_python_arch_include_dir() {
   local python_mm
   local triplet
+  local python_root=""
+  local candidate
 
   python_mm="$(cross_target_python_major_minor)" || return 1
-  if cross_build_enabled; then
-    triplet="$(cross_target_triplet)"
-    printf '%s' "/usr/include/${triplet}/python${python_mm}"
-  else
-    printf '%s' "/usr/include/python${python_mm}"
-  fi
+  triplet="$(cross_target_triplet 2>/dev/null || true)"
+  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
+
+  for candidate in \
+    "${python_root:+${python_root}/include/${triplet}/python${python_mm}}" \
+    "${python_root:+${python_root}/include/python${python_mm}}" \
+    "/usr/local/include/${triplet}/python${python_mm}" \
+    "/usr/include/${triplet}/python${python_mm}" \
+    "/usr/local/include/python${python_mm}" \
+    "/usr/include/python${python_mm}"; do
+    [ -n "${candidate}" ] || continue
+    [ -d "${candidate}" ] && {
+      printf '%s' "${candidate}"
+      return 0
+    }
+  done
+
+  return 1
 }
 
 cross_target_python_libdir() {
   local triplet
+  local python_root=""
+  local candidate
 
-  if cross_build_enabled; then
-    triplet="$(cross_target_triplet)"
-    printf '%s' "/usr/lib/${triplet}"
-  else
-    printf '%s' "/usr/lib"
-  fi
+  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
+  triplet="$(cross_target_triplet 2>/dev/null || true)"
+
+  for candidate in \
+    "${python_root:+${python_root}/lib}" \
+    "/usr/local/lib" \
+    "/usr/lib/${triplet}" \
+    "/usr/lib"; do
+    [ -n "${candidate}" ] || continue
+    [ -d "${candidate}" ] && {
+      printf '%s' "${candidate}"
+      return 0
+    }
+  done
+
+  return 1
 }
 
 cross_target_python_library() {
   local python_mm
   local triplet
+  local python_root=""
   local candidate
 
   python_mm="$(cross_target_python_major_minor)" || return 1
   triplet="$(cross_target_triplet 2>/dev/null || true)"
+  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
 
   for candidate in \
+    "${python_root:+${python_root}/lib/libpython${python_mm}.so}" \
+    "${python_root:+${python_root}/lib/libpython${python_mm}.so.1.0}" \
+    "/usr/local/lib/libpython${python_mm}.so" \
+    "/usr/local/lib/libpython${python_mm}.so.1.0" \
     "/usr/lib/${triplet}/libpython${python_mm}.so" \
     "/usr/lib/${triplet}/libpython${python_mm}.so.1.0" \
     "/usr/lib/libpython${python_mm}.so" \
@@ -497,13 +605,25 @@ cross_target_python_library() {
 
 cross_target_python_pkgconfig_dir() {
   local triplet
+  local python_root=""
+  local candidate
 
-  if cross_build_enabled; then
-    triplet="$(cross_target_triplet)"
-    printf '%s' "/usr/lib/${triplet}/pkgconfig"
-  else
-    printf '%s' "/usr/lib/pkgconfig"
-  fi
+  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
+  triplet="$(cross_target_triplet 2>/dev/null || true)"
+
+  for candidate in \
+    "${python_root:+${python_root}/lib/pkgconfig}" \
+    "/usr/local/lib/pkgconfig" \
+    "/usr/lib/${triplet}/pkgconfig" \
+    "/usr/lib/pkgconfig"; do
+    [ -n "${candidate}" ] || continue
+    [ -d "${candidate}" ] && {
+      printf '%s' "${candidate}"
+      return 0
+    }
+  done
+
+  return 1
 }
 
 cross_target_python_pc() {
@@ -840,6 +960,8 @@ setup_linux_cross_env() {
   export TARGETPLATFORM="linux/${target_arch}"
   export BUILDARCH="${build_arch}"
   export BUILDPLATFORM="linux/${build_arch}"
+  export PYTHON_CROSS_STAGE_ROOT="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}"
+  export PYTHON_CROSS_ACTIVE_ROOT="${PYTHON_CROSS_ACTIVE_ROOT:-/opt/python-target}"
   export CROSS_TARGET_TRIPLET="${triplet}"
   export CROSS_TARGET_PROCESSOR="${processor}"
   export CROSS_RUST_TARGET="${rust_target}"

@@ -215,7 +215,7 @@ Think of the target-platform handoff like this:
 - `linux/Dockerfile.base` -> `linux/Dockerfile.package` -> `linux/Dockerfile.torch` -> `linux/Dockerfile` produces `latest-cross-${target_arch}`.
 - `linux/Dockerfile.base` -> `linux/Dockerfile.package` -> `linux/Dockerfile.torch` produces `torch-cross-${target_arch}`.
 
-`linux/Dockerfile.package` is the point where the amd64-hosted cross artifacts are copied into a clean real target root filesystem. After that, `linux/Dockerfile.torch` becomes the shared parent for both the exported Torch image and the final `latest-cross-${target_arch}` wrapper. The example above still uses separate `torch-base-*` and `torch-package-*` tags to keep the Torch logs and handoff tags explicit, but if you already built per-arch base/package images for `latest-cross`, you can reuse those same images for the Torch stage instead of rebuilding them.
+`linux/Dockerfile.package` is the point where the amd64-hosted cross artifacts are copied into a clean real target root filesystem. For foreign-architecture runtime images, that package stage must receive a real target-native `/opt/llvm-target` tree from the artifact image and must wire `/usr/bin/clang` to `/usr/local/llvm-target/bin/clang`; do not fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`, or the final manifest can pick up a host-architecture Clang binary. After that, `linux/Dockerfile.torch` becomes the shared parent for both the exported Torch image and the final `latest-cross-${target_arch}` wrapper. The example above still uses separate `torch-base-*` and `torch-package-*` tags to keep the Torch logs and handoff tags explicit, but if you already built per-arch base/package images for `latest-cross`, you can reuse those same images for the Torch stage instead of rebuilding them.
 
 The existing multi-platform sequential `sdk`, `media`, `android`, `torch`, and `latest` commands above still remain supported and unchanged.
 
@@ -295,6 +295,8 @@ The new end-goal path is split into two steps so the old QEMU lane keeps working
 
 For day-to-day work on this host, prefer the helper scripts below over the long manual `nerdctl` loops. The manual sequence remains useful as a low-level reference, but the helpers already encode the verified local-context handoff and push semantics.
 
+The main repo-root Linux Dockerfiles also now carry Dockerfile-specific ignore files so helper/manual cross builds do not send `linux/webserver/` and the large exported `out/*` trees back through the default build context on every stage.
+
 Run the final publish flow directly with `nerdctl` only when you intentionally need the fully manual path. The per-arch `latest-cross-base-*`, `latest-cross-package-*`, `latest-cross-torch-*`, and `latest-cross-*` tags are internal publish tags used to assemble the public `latest-cross` manifest:
 
 ```bash
@@ -368,9 +370,13 @@ The helper scripts now follow the same runtime path too:
 - `linux/scripts/build-runtime-manifest.sh` builds `base -> package -> torch -> wrapper -> manifest`.
 - `linux/scripts/build-runtime-artifacts.sh` builds that same `base -> package -> torch -> wrapper` chain and exports the final wrapper rootfs instead of creating a manifest.
 - Both helpers accept `--target-arches`, `TARGET_ARCHES`, or `TARGET_ARCH` for architecture selection.
-- Both helpers accept `ARTIFACT_BUILD_MODE=cross` or `ARTIFACT_BUILD_MODE=native`.
+- Both helpers accept `ARTIFACT_BUILD_MODE=cross` or `ARTIFACT_BUILD_MODE=native` for selecting the package artifact source.
 - In `cross` mode, `ARTIFACT_IMAGE_PREFIX` is treated as a prefix like `ghcr.io/...:android-cross` and the helper fans out `-${target_arch}` automatically.
 - In `native` mode, `ARTIFACT_IMAGE_PREFIX` is treated as the exact artifact image ref, for example `ghcr.io/...:android`.
+- In `cross` mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and carries those wheels forward through the existing `/opt/wheels` handoff when the build succeeds.
+- The helper still runs `linux/Dockerfile.torch` on the real target platform in both modes so `/opt/venv` is populated in the final runtime image.
+- The final Torch install now keeps the upstream `uv.lock` when it is present, runs `uv sync --frozen`, and skips reinstalling any packages that already exist in `/opt/wheels` before force-reinstalling the local wheelhouse.
+- If a reused cross artifact has an empty `/opt/wheels`, the Torch install step now keeps the packages that `uv sync` already resolved instead of uninstalling them and trying to install a literal `/opt/wheels/*.whl` glob.
 - When images stay local, the helpers keep the intermediate runtime handoff off-registry by default. `base` is exported as a plain rootfs directory, while `package` and `torch` are exported as OCI layouts and then consumed through named build contexts.
 - `ARTIFACT_CONTEXT_ROOT` lets the runtime helpers consume previously saved runtime artifacts from disk instead of pulling `android-cross-*` from a registry.
 - `ARTIFACT_CONTEXT_MODE=oci` makes each `ARTIFACT_CONTEXT_ROOT/<arch>` resolve as `oci-layout://...`. That is the verified path for the saved `out/local-oci/android/{arm64,riscv64}` artifacts.
@@ -396,7 +402,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
-That path was validated for both `arm64` and `riscv64` with `clang version 22.1.5`, manual `update-alternatives` wiring to `/usr/local/llvm-target/bin/clang`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`.
+That path was validated for both `arm64` and `riscv64` with `clang version 22.1.5`, manual `update-alternatives` wiring to `/usr/local/llvm-target/bin/clang`, native `clang-22` binaries under `/usr/local/llvm-target/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`.
 
 After the runtime helper cleanup in this repository, the same helper path was re-validated for `amd64` with:
 

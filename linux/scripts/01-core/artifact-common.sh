@@ -117,33 +117,6 @@ run_nerdctl_build() {
   run "${build_cmd[@]}"
 }
 
-run_nerdctl_build_to_local_dir() {
-  local nerdctl_bin="$1"
-  local dest_dir="$2"
-  shift 2
-
-  rm -rf "${dest_dir}"
-  mkdir -p "${dest_dir}"
-
-  local -a build_cmd=("${nerdctl_bin}" build)
-  append_buildkit_host_arg build_cmd
-  build_cmd+=(--output "type=local,dest=${dest_dir}" "$@")
-  run "${build_cmd[@]}"
-}
-
-run_nerdctl_build_to_oci_dir() {
-  local nerdctl_bin="$1"
-  local dest_dir="$2"
-  shift 2
-
-  rm -rf "${dest_dir}"
-
-  local -a build_cmd=("${nerdctl_bin}" build)
-  append_buildkit_host_arg build_cmd
-  build_cmd+=(--output "type=oci,dest=${dest_dir},tar=false" "$@")
-  run "${build_cmd[@]}"
-}
-
 run_nerdctl_build_to_tag() {
   local nerdctl_bin="$1"
   local tag="$2"
@@ -639,10 +612,14 @@ runtime_build_wrapper_rootfs() {
 
 runtime_build_torch_image() {
   local arch="$1"
-  local tag package_image package_context_dir torch_app_mode context_dir
+  local tag package_image package_context_dir torch_app_mode context_dir torch_build_mode
 
   tag="$(runtime_torch_tag "${arch}")"
   torch_app_mode="$(runtime_effective_torch_app_mode)"
+  # The runtime helper always builds the torch stage on the real target
+  # platform so /opt/venv is assembled instead of being skipped as a pure
+  # cross artifact build.
+  torch_build_mode="native"
 
   local -a build_args=()
   append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
@@ -663,7 +640,7 @@ runtime_build_torch_image() {
       --platform "linux/${arch}" \
       -f "${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
       --build-arg "BASE_IMAGE=${package_image}" \
-      --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE:-native}" \
+      --build-arg "BUILD_MODE=${torch_build_mode}" \
       --build-arg "TARGET_ARCH=${arch}" \
       --build-arg "TORCH_APP_MODE=${torch_app_mode}" \
       "${build_args[@]}" \
@@ -682,7 +659,8 @@ runtime_build_torch_image() {
     -t "${tag}" \
     -f "${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
     --build-arg "BASE_IMAGE=${package_image}" \
-    --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE:-native}" \
+    --build-arg "BUILD_MODE=${torch_build_mode}" \
+    --build-arg "TARGET_ARCH=${arch}" \
     --build-arg "TORCH_APP_MODE=${torch_app_mode}" \
     "${build_args[@]}" \
     .
