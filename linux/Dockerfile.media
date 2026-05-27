@@ -1,9 +1,9 @@
-# syntax=docker/dockerfile:1.19
+# syntax=docker/dockerfile:1.24.0
 
 # Global Version Arguments
 ARG ONNXRUNTIME_VERSION="v1.26.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.13.1"
-ARG LITERT_VERSION="v2.1.4"
+ARG LITERT_VERSION="v2.1.5"
 ARG OPENCV_VERSION="4.x"
 ARG GSTREAMER_VERSION="1.29.1"
 
@@ -410,3 +410,8 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
 
 RUN set -eux; \
     bash /opt/scripts/media/final/verify-wheels.sh
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    set -eux; \
+    bash /opt/scripts/media/final/validate-media-runtime.sh

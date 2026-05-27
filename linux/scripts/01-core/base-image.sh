@@ -340,7 +340,7 @@ install_uv() {
       ;;
     riscv64)
       uv_asset="uv-riscv64gc-unknown-linux-gnu.tar.gz"
-      uv_sha256="3264ce97b34d5c8d37c1e67821a74960ca89237e001253309a3cda25fb416040"
+      uv_sha256="0314895f159ce97bcedac00a4b97fa7e53c16fee911a6a2d9f0b69ee6461b7d5"
       ;;
     *)
       die "Unsupported uv architecture: ${arch}"

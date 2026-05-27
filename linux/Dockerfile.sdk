@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.19
+# syntax=docker/dockerfile:1.24.0
 
 ARG BASE_IMAGE=local/kataglyphis:compiler
 FROM ${BASE_IMAGE}
@@ -48,7 +48,7 @@ RUN set -eux; \
 
 # ------------------------------------------------------------------------------
 # Cross-compile a native Clang/LDD/compiler-rt toolchain for the target
-# architecture so :latest-cross ships with clang 22.1.5 on every arch.
+# architecture so :latest-cross ships with clang 22.1.6 on every arch.
 # ------------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-sdk-${TARGETARCH} \
@@ -64,7 +64,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${T
 # ==============================================================================
 COPY --chmod=755 linux/scripts/05-frameworks/ /opt/scripts/frameworks/
 
-ARG TVM_REF=v0.23.0
+ARG TVM_REF=v0.24.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
 ARG TVM_INSTALL_PYTHON=1

@@ -6,8 +6,31 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   source /opt/scripts/core/cross-env.sh
 fi
 
+WHEELS_DIR="${WHEELS_DIR:-/opt/wheels}"
+
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-  echo "Skipping auditwheel repair for foreign-arch cross builds"
+  target_arch="$(cross_target_arch 2>/dev/null || true)"
+  [ -n "${target_arch}" ] || target_arch="${TARGET_ARCH:-}"
+  if [ -n "${target_arch}" ] && command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
+    platform_tag="$(arch_linux_platform_tag_for "${target_arch}")"
+    if [ -n "${platform_tag}" ]; then
+      echo "Retagging cross-built wheels for platform: ${platform_tag}"
+      shopt -s nullglob
+      for wheel in "${WHEELS_DIR}"/*.whl; do
+        wheel_name="$(basename "${wheel}")"
+        case "${wheel_name}" in
+          *-none-any.whl|*"${platform_tag}"*.whl)
+            continue
+            ;;
+        esac
+        uv run python -m wheel tags --remove --platform-tag "${platform_tag}" "${wheel}" && \
+          echo "Retagged: ${wheel_name}" || \
+          echo "Failed to retag: ${wheel_name}"
+      done
+      shopt -u nullglob
+    fi
+  fi
+  echo "Cross-build wheel retagging complete"
   exit 0
 fi
 
@@ -16,7 +39,6 @@ if ! command -v cross_build_enabled >/dev/null 2>&1 && [ "${BUILD_MODE:-native}"
   exit 0
 fi
 
-WHEELS_DIR="${WHEELS_DIR:-/opt/wheels}"
 REPAIRED_WHEELS_DIR="${WHEELS_DIR}/repaired"
 
 uv pip install auditwheel patchelf

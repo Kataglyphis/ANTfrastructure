@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.19
+# syntax=docker/dockerfile:1.24.0
 
 # ==============================================================================
 # Dockerfile.nvidia  —  Optional NVIDIA GPU library layer
@@ -33,9 +33,9 @@ FROM ${BASE_IMAGE}
 # ------------------------------------------------------------------------------
 # Version ARGs — override at build time as needed
 # ------------------------------------------------------------------------------
-# CUDA 13.1 requires driver >= 590.44.01 (Linux)
-ARG CUDA_VERSION=13.1.1
-ARG CUDA_VERSION_MAJOR_MINOR=13-1
+# CUDA 13.3 requires driver >= 590.44.01 (Linux)
+ARG CUDA_VERSION=13.3.0
+ARG CUDA_VERSION_MAJOR_MINOR=13-3
 
 # cuDNN 9.x is compatible with CUDA 13.x
 ARG CUDNN_VERSION=9

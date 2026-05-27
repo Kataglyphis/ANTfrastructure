@@ -250,6 +250,16 @@ configure_litert() {
         append_cmake_cross_args cmake_args
     fi
 
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+       command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+        echo "[INFO] Removing Samsung vendor sources to avoid GCC 16.1.0 ICE on riscv64 cross"
+        rm -rf "${LITERT_SRC}/litert/vendors/samsung" 2>/dev/null || true
+        mkdir -p "${LITERT_SRC}/litert/vendors/samsung"
+        cat > "${LITERT_SRC}/litert/vendors/samsung/CMakeLists.txt" <<'CMAKE_EOF'
+message(STATUS "Samsung vendor disabled for riscv64 cross build")
+CMAKE_EOF
+    fi
+
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
         cross_ar="$(resolve_litert_cross_archive_tool ar)"
         cross_ranlib="$(resolve_litert_cross_archive_tool ranlib)"

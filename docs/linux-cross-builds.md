@@ -402,7 +402,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
-That path was validated for both `arm64` and `riscv64` with `clang version 22.1.5`, manual `update-alternatives` wiring to `/usr/local/llvm-target/bin/clang`, native `clang-22` binaries under `/usr/local/llvm-target/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`.
+That path was validated for both `arm64` and `riscv64` with `clang version 22.1.6`, manual `update-alternatives` wiring to `/usr/local/llvm-target/bin/clang`, native `clang-22` binaries under `/usr/local/llvm-target/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`.
 
 After the runtime helper cleanup in this repository, the same helper path was re-validated for `amd64` with:
 
@@ -419,7 +419,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
-The resulting image reported `clang version 22.1.5`, target `x86_64-unknown-linux-gnu`, and `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`.
+The resulting image reported `clang version 22.1.6`, target `x86_64-unknown-linux-gnu`, and `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`.
 
 For local wrapper smoke validation without pushing anything, build the checked-in smoke target directly:
 

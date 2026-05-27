@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.19
+# syntax=docker/dockerfile:1.24.0
 
 ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
 ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-amd64
@@ -23,7 +23,7 @@ ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
 ARG ANDROID_API_LEVEL=34
 ARG GCC_VERSION=16.1.0
-ARG PYTHON_VERSION=3.14.4
+ARG PYTHON_VERSION=3.14.5
 ARG PYTHON_MAJOR_MINOR=3.14
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
@@ -206,7 +206,7 @@ COPY --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --from=artifact-source /opt/android /opt/android
 COPY --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
-# The SDK stage cross-compiles a native Clang 22.1.5 toolchain for the
+# The SDK stage cross-compiles a native Clang 22.1.6 toolchain for the
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target

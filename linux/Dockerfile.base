@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.19
+# syntax=docker/dockerfile:1.24.0
 
 # ------------------------------------------------------------------------------
 # OS + stable dependencies (rarely changes)
@@ -13,8 +13,8 @@ ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 ARG CMAKE_VERSION=4.3.2
-ARG NODE_VERSION=24.15.0
-ARG UV_VERSION=0.11.13
+ARG NODE_VERSION=24.16.0
+ARG UV_VERSION=0.11.16
 
 # ------------------------------------------------------------------------------
 # Shell

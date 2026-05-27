@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.19
+# syntax=docker/dockerfile:1.24.0
 
 # ==============================================================================
 # Dockerfile.amd  —  Optional AMD GPU (ROCm) library layer
@@ -22,7 +22,7 @@
 ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
 
-ARG ROCM_VERSION=6.1.2
+ARG ROCM_VERSION=7.2.3
 ARG UBUNTU_VERSION=noble
 ARG TARGETARCH
 ARG USE_FAST_UBUNTU_MIRROR=false

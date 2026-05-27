@@ -351,12 +351,36 @@ build_gstreamer_monorepo() {
   fi
 
   echo "Installing GStreamer..."
-  if ! uv run meson install -C builddir; then
-    echo "ERROR: Meson install failed"
-    echo "==> Meson log:"
-    tail -n +1 builddir/meson-logs/meson-log.txt || true
-    echo "==> Meson install log (if present):"
-    tail -n +1 builddir/meson-logs/install-log.txt || true
-    exit 1
+  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    # Cross-build: meson install may fail because post-install scripts
+    # (e.g. GLib's gio-querymodules) try to run target binaries on the
+    # build host.  Install via DESTDIR into a staging directory first,
+    # then copy to the real prefix; ignore install-script failures.
+    local gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")"
+    if uv run meson install -C builddir --destdir "${gst_stage}" --no-rebuild 2>&1; then
+      echo "GStreamer cross-install via DESTDIR succeeded"
+    else
+      echo "WARNING: GStreamer cross-install had errors (expected for post-install scripts); copying staged files"
+    fi
+    if [ -d "${gst_stage}${GSTREAMER_PREFIX}" ]; then
+      cp -a "${gst_stage}${GSTREAMER_PREFIX}/"* "${GSTREAMER_PREFIX}/" 2>/dev/null || true
+    fi
+    if [ -d "${gst_stage}/usr/local" ]; then
+      cp -a "${gst_stage}/usr/local/"* /usr/local/ 2>/dev/null || true
+    fi
+    rm -rf "${gst_stage}"
+    if ! find "${GSTREAMER_PREFIX}" -name "libgstreamer*.so*" 2>/dev/null | grep -q .; then
+      echo "ERROR: GStreamer cross-install produced no libgstreamer libraries" >&2
+      exit 1
+    fi
+  else
+    if ! uv run meson install -C builddir; then
+      echo "ERROR: Meson install failed"
+      echo "==> Meson log:"
+      tail -n +1 builddir/meson-logs/meson-log.txt || true
+      echo "==> Meson install log (if present):"
+      tail -n +1 builddir/meson-logs/install-log.txt || true
+      exit 1
+    fi
   fi
 }

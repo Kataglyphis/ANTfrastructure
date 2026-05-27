@@ -29,7 +29,7 @@ These files document host-specific workarounds that are easy to regress if you i
 - Use `nerdctl` first on this host. `buildctl` and `ctr` commonly fail here with permission errors.
 - Keep the existing QEMU/binfmt multi-platform Linux lane working while extending the additive cross-build lane.
 - `linux/scripts/build-cross-compiler.sh` builds one `linux/amd64` compiler image that contains cross toolchains for `amd64`, `arm64`, and `riscv64`. It is not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features just to make foreign-arch builds pass. Foreign-architecture runtime images must keep source-built `clang 22.1.5` and must not fall back to the Ubuntu `clang 22.1.2` packages.
+- Do not remove LLVM/Clang features just to make foreign-arch builds pass. Foreign-architecture runtime images must keep source-built `clang 22.1.6` and must not fall back to the Ubuntu `clang 22.1.2` packages.
 - Preserve the optional runtime payloads and LLVM normalization in `linux/Dockerfile.package`. Do not silently drop the `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
 
 ## Verified Runtime Packaging Path On This Host
@@ -75,7 +75,7 @@ nerdctl manifest inspect "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
 
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs`, because absolute symlinks resolve against the host root.
 - Confirm all of the following for runtime image validation:
-  - `clang --version` reports `22.1.5`
+  - `clang --version` reports `22.1.6`
   - the reported target triple matches the architecture
   - `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`
   - the optional runtime payloads are still present
@@ -88,6 +88,88 @@ nerdctl manifest inspect "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
 - Plain local image tags such as `docker.io/library/opencode-local:*` may be treated like remote registry references here. Do not rely on them as reusable `FROM` sources for the runtime packaging chain.
 - Disk pressure is common during runtime rebuilds. When free space is tight, build and push one architecture at a time.
 - `gh` may be unavailable on this host. Use `nerdctl` and regular git commands unless GitHub CLI is actually installed.
+
+## Version Bumping
+
+When bumping dependency versions across the Linux Dockerfiles, follow this checklist:
+
+### Version Map
+
+Versions live in multiple places. Update all of them:
+
+| Software | Where defined |
+|----------|---------------|
+| **BuildKit syntax** | `# syntax=docker/dockerfile:VERSION` line 1 in every `linux/Dockerfile*` |
+| **LLVM/Clang** | `ARG LLVM_RELEASE=...` in `Dockerfile.toolchain`; comments in `Dockerfile.package` L209, `Dockerfile.sdk` L51; validation text in `AGENTS.md`, `docs/linux-cross-builds.md` |
+| **GCC** | `ARG GCC_VERSION=...` in `Dockerfile.toolchain` and `Dockerfile.package`; doc refs use major only (`16`) |
+| **Python** | `ARG PYTHON_VERSION=...` in `Dockerfile.toolchain` and `Dockerfile.package`; `ARG PYTHON_MAJOR_MINOR=...` in `Dockerfile.package` |
+| **CMake** | `ARG CMAKE_VERSION=...` in `Dockerfile.base` |
+| **Node.js** | `ARG NODE_VERSION=...` in `Dockerfile.base` |
+| **uv** | `ARG UV_VERSION=...` in `Dockerfile.base` |
+| **Vulkan SDK** | `ARG VULKAN_VERSION=...` in `Dockerfile.base` and `Dockerfile.sdk`; `VULKAN_VERSION_DEFAULT` in `common.sh` |
+| **ONNX Runtime** | `ARG ONNXRUNTIME_VERSION=...` in `Dockerfile.media` |
+| **ONNX Runtime GenAI** | `ARG ONNXRUNTIME_GENAI_VERSION=...` in `Dockerfile.media` |
+| **LiteRT** | `ARG LITERT_VERSION=...` in `Dockerfile.media` |
+| **OpenCV** | `ARG OPENCV_VERSION=...` in `Dockerfile.media` |
+| **GStreamer** | `ARG GSTREAMER_VERSION=...` in `Dockerfile.media` and `Dockerfile.package` |
+| **CUDA** | `ARG CUDA_VERSION=...` and `ARG CUDA_VERSION_MAJOR_MINOR=...` in `Dockerfile.nvidia` |
+| **cuDNN** | `ARG CUDNN_VERSION=...` (major only) in `Dockerfile.nvidia` |
+| **TensorRT** | `ARG TENSORRT_VERSION=...` (major only) in `Dockerfile.nvidia` |
+| **ROCm** | `ARG ROCM_VERSION=...` in `Dockerfile.amd` |
+| **Apache TVM** | `ARG TVM_REF=...` in `Dockerfile.sdk` |
+| **Android SDK** | `ARG ANDROID_SDK_VERSION=...` in `Dockerfile.android` and `Dockerfile.package` |
+| **Android NDK** | `ARG ANDROID_NDK_VERSION=...` in `Dockerfile.android` and `Dockerfile.package` |
+| **Android Build Tools** | `ARG ANDROID_BUILD_TOOLS=...` in `Dockerfile.android` and `Dockerfile.package` |
+| **Android CMake** | `ARG ANDROID_CMAKE_VERSION=...` in `Dockerfile.android` and `Dockerfile.package` |
+| **Android SDK/API** | `ARG ANDROID_COMPILE_SDK=...` and `ARG ANDROID_API_LEVEL=...` in `Dockerfile.android` and `Dockerfile.package` |
+| **Ubuntu** | `FROM ubuntu:...` in `Dockerfile.base` and `webserver/Dockerfile` |
+| **Webserver Ubuntu** | `FROM ubuntu:...` in `linux/webserver/Dockerfile` |
+
+### Version Verification Sources
+
+Check these URLs for the latest versions:
+- LLVM/Clang: `https://github.com/llvm/llvm-project/releases`
+- Python: `https://www.python.org/downloads/`
+- Node.js: `https://nodejs.org/en/download`
+- CMake: `https://cmake.org/download/`
+- uv: `https://github.com/astral-sh/uv/releases`
+- Vulkan SDK: `https://vulkan.lunarg.com/sdk/home`
+- ONNX Runtime: `https://github.com/microsoft/onnxruntime/releases`
+- ONNX Runtime GenAI: `https://github.com/microsoft/onnxruntime-genai/releases`
+- LiteRT: `https://github.com/google-ai-edge/LiteRT/releases`
+- GStreamer: `https://gstreamer.freedesktop.org/releases/`
+- CUDA: `https://developer.nvidia.com/cuda-toolkit-archive`
+- ROCm: `https://repo.radeon.com/rocm/apt/` (browse directory listing)
+- TVM: `https://github.com/apache/tvm/releases`
+- Android SDK/NDK: `https://developer.android.com/studio#command-line-tools-only`
+- Docker BuildKit: `https://github.com/moby/buildkit/releases`
+
+### Post-Bump Steps
+
+After changing any versions:
+1. Run `python3 docs/scripts/sync_versions.py --check` to verify the generated snapshot is current.
+2. If any version tracked by the script changed, run `python3 docs/scripts/sync_versions.py --write`.
+3. Update version references in `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, and `AGENTS.md`.
+4. Update cross-file consistency: several versions appear in multiple Dockerfiles (e.g., GCC, Python, Android SDK, Vulkan, GStreamer). Make sure they stay in sync.
+
+### Versions Tracked by sync_versions.py
+
+The script extracts these versions for the README snapshot:
+- `linux_ubuntu`: `FROM ubuntu:...` from `Dockerfile.base`
+- `linux_cmake`: `ARG CMAKE_VERSION` from `Dockerfile.base`
+- `linux_vulkan`: `ARG VULKAN_VERSION` from `Dockerfile.base`
+- `linux_llvm`: major version from `common.sh`
+- `linux_gcc`: major version from `common.sh`
+- `android_sdk`, `android_ndk`, `android_cmake`: from `Dockerfile.android`
+- `webserver_ubuntu`: `FROM ubuntu:...` from `webserver/Dockerfile`
+- Windows versions are also tracked but are in `windows/` Dockerfiles.
+
+### Kernel-Specific GPU Version Constraints
+
+When bumping CUDA or ROCm, verify:
+- CUDA: minimum driver requirement (check NVIDIA release notes)
+- ROCm: `UBUNTU_VERSION` in `Dockerfile.amd` must match a supported Ubuntu codename for that ROCm version
+- Both: confirm the repo URL format (`repo.radeon.com/rocm/apt/${ROCM_VERSION}`) is still valid
 
 ## Documentation Maintenance
 
