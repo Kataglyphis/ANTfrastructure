@@ -357,10 +357,14 @@ build_gstreamer_monorepo() {
     # build host.  Install via DESTDIR into a staging directory first,
     # then copy to the real prefix; ignore install-script failures.
     local gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")"
-    if uv run meson install -C builddir --destdir "${gst_stage}" --no-rebuild 2>&1; then
+    set +euo pipefail
+    uv run meson install -C builddir --destdir "${gst_stage}" --no-rebuild >/tmp/gst-install.log 2>&1
+    local install_rc=$?
+    set -euo pipefail
+    if [ "${install_rc}" -eq 0 ]; then
       echo "GStreamer cross-install via DESTDIR succeeded"
     else
-      echo "WARNING: GStreamer cross-install had errors (expected for post-install scripts); copying staged files"
+      echo "WARNING: GStreamer cross-install had errors (rc=${install_rc}); copying staged files anyway"
     fi
     if [ -d "${gst_stage}${GSTREAMER_PREFIX}" ]; then
       cp -a "${gst_stage}${GSTREAMER_PREFIX}/"* "${GSTREAMER_PREFIX}/" 2>/dev/null || true

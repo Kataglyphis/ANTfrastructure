@@ -747,13 +747,29 @@ build_cross_llvm_target() {
     export BUILD_MODE=cross
     export TARGETARCH="${target_label}"
     export TARGET_ARCH="${target_label}"
+    export CCACHE_DIR="/var/cache/ccache"
+    export SCCACHE_DIR="/var/cache/sccache"
 
     setup_linux_cross_env
 
     llvm_cross_populate_tool_wrapper_dir "${wrapper_dir}"
     export PATH="${wrapper_dir}:${PATH}"
 
+    local -a extra_cmake_args=()
+    if command -v ccache >/dev/null 2>&1; then
+      extra_cmake_args+=(
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      )
+    elif command -v sccache >/dev/null 2>&1; then
+      extra_cmake_args+=(
+        -DCMAKE_C_COMPILER_LAUNCHER=sccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      )
+    fi
+
     cmake -G Ninja \
+      "${extra_cmake_args[@]}" \
       -S "${source_dir}/llvm" \
       -B "${build_dir}" \
       -DCMAKE_BUILD_TYPE=Release \
@@ -1010,6 +1026,8 @@ install_target_clang_toolchain() {
     export BUILD_MODE=cross
     export TARGETARCH="${target_label}"
     export TARGET_ARCH="${target_label}"
+    export CCACHE_DIR="/var/cache/ccache"
+    export SCCACHE_DIR="/var/cache/sccache"
     setup_linux_cross_env
     llvm_cross_populate_tool_wrapper_dir "${wrapper_dir}"
     build_cc="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-gcc" "${build_cc_real}" "${host_path}")"
@@ -1024,7 +1042,21 @@ install_target_clang_toolchain() {
     fi
     export PATH="${wrapper_dir}:${PATH}"
 
+    local -a extra_cmake_args=()
+    if command -v ccache >/dev/null 2>&1; then
+      extra_cmake_args+=(
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      )
+    elif command -v sccache >/dev/null 2>&1; then
+      extra_cmake_args+=(
+        -DCMAKE_C_COMPILER_LAUNCHER=sccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      )
+    fi
+
     cmake -G Ninja \
+      "${extra_cmake_args[@]}" \
       -S "${source_dir}/llvm" \
       -B "${build_dir}" \
       -DCMAKE_BUILD_TYPE=Release \
