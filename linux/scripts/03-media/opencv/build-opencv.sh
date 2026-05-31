@@ -664,7 +664,11 @@ main() {
     install_opencv
     
     if [ "${WITH_PYTHON}" = "true" ]; then
-        build_opencv_python_wheel
+        if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+            echo "Skipping opencv-python wheel rebuild in cross mode; reusing the installed OpenCV Python bindings from ${OPENCV_PREFIX}"
+        else
+            build_opencv_python_wheel
+        fi
     fi
     
     cleanup

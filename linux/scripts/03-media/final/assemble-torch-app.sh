@@ -34,9 +34,32 @@ append_unique_arg() {
   out_args_ref+=("${new_arg}")
 }
 
+staged_opencv_python_available() {
+  local dir
+
+  shopt -s nullglob
+  for dir in \
+    /opt/opencv4/lib/python3*/site-packages \
+    /opt/opencv4/lib/python3*/dist-packages \
+    /opt/opencv4/lib64/python3*/site-packages \
+    /opt/opencv4/lib64/python3*/dist-packages \
+    /opt/opencv4/python/cv2/python-*; do
+    [ -d "${dir}" ] || continue
+    shopt -u nullglob
+    return 0
+  done
+  shopt -u nullglob
+
+  return 1
+}
+
 collect_locked_local_skip_packages() {
   local -n out_packages_ref=$1
   local wheel_path wheel_basename
+
+  if staged_opencv_python_available; then
+    append_unique_arg out_packages_ref opencv-python
+  fi
 
   shopt -s nullglob
   for wheel_path in /opt/wheels/*.whl; do

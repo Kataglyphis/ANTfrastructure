@@ -1060,6 +1060,10 @@ main() {
         uv pip install "$tvm_dir"
       fi
 
+      # Newer tvm_ffi imports pull in tvm_ffi.testing during `import tvm`, which
+      # expects pytest in the build venv for this sanity check.
+      uv pip install -U pytest
+
       "$venv_python" - <<'PY'
 import tvm
 print("tvm imported OK; version=", tvm.__version__)

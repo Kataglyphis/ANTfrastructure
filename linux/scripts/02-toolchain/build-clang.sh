@@ -147,7 +147,7 @@ fi
 # Compute release version if not specified
 if [ -z "${LLVM_RELEASE:-}" ]; then
     case "${LLVM_VERSION}" in
-        22) LLVM_RELEASE="22.1.5" ;;
+        22) LLVM_RELEASE="22.1.6" ;;
         *)  LLVM_RELEASE="${LLVM_VERSION}.1.0" ;;
     esac
 fi
@@ -219,7 +219,7 @@ info "Using NUM_JOBS=${NUM_JOBS}"
 info "Installing dependencies..."
 apt_install build-essential git cmake ninja-build python3 libedit-dev \
     libncurses5-dev zlib1g-dev libxml2-dev libssl-dev pkg-config \
-    libffi-dev curl ca-certificates file binutils ccache
+    libffi-dev curl ca-certificates file binutils binutils-dev ccache
 
 if ${SUDO} apt-get install -y lld >/dev/null 2>&1; then
     info "LLD installed successfully."

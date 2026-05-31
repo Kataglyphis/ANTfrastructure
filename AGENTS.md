@@ -34,6 +34,7 @@ These files document host-specific workarounds that are easy to regress if you i
 
 ## Verified Runtime Packaging Path On This Host
 
+- **Stage-by-Stage Background-Building & Polling (Highly Preferred):** Instead of running long interactive `nerdctl build` loops in the foreground (which can freeze or experience extremely slow download rates with direct terminal stdout), always build each stage independently and non-interactively in the background. Use background processes (e.g. `setsid bash -c "nerdctl build ... > build.log 2>&1" & disown`) and poll their progress periodically via `tail`, `grep`, or `pgrep`.
 - Prefer helper scripts over ad hoc `nerdctl build` sequences:
   - `./linux/scripts/build-cross-compiler.sh`
   - `bash linux/scripts/build-runtime-artifacts.sh`
@@ -47,6 +48,13 @@ These files document host-specific workarounds that are easy to regress if you i
 - The working host workaround is mixed context types: keep `runtime_artifact` as an `oci-layout://...` build context and keep `runtime_base` as a plain rootfs directory context. Do not switch both named contexts to OCI in one build on this host.
 - Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so large exported artifacts do not get sent back as later Docker build contexts.
 - Prefer the saved OCI layouts over the plain directory exports in `out/local-android-dir/<arch>`. The plain directory path is much larger and previously dropped runtime payload during OCI-to-directory conversion.
+
+## Three Critical Fixes To Maintain
+
+Always preserve these three vital fixes to prevent build/runtime regressions:
+1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, use `rewrite_staged_python_pc()` to rewrite the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory.
+2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent `libcamera` build errors.
+3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), use `cp -a -L` to dereference standard Python cross-build library symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Note that since this Python is packaged into the compiler cross image, the compiler itself must be rebuilt when modifying this python helper.
 
 ## Push And Publish Rules
 
@@ -88,6 +96,12 @@ nerdctl manifest inspect "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
 - Plain local image tags such as `docker.io/library/opencode-local:*` may be treated like remote registry references here. Do not rely on them as reusable `FROM` sources for the runtime packaging chain.
 - Disk pressure is common during runtime rebuilds. When free space is tight, build and push one architecture at a time.
 - `gh` may be unavailable on this host. Use `nerdctl` and regular git commands unless GitHub CLI is actually installed.
+- Rootless BuildKit on this host is already tuned for fast build-time downloads. Do not regress these settings:
+  - `~/.config/systemd/user/buildkit.service.d/override.conf` runs `buildkitd` with `--oci-worker-net=host --allow-insecure-entitlement network.host`. This makes every `RUN` step (e.g. the LLVM `git fetch` in `linux/scripts/02-toolchain/build-clang.sh`) use host networking instead of the slow rootless bridge/slirp path. With this in place, plain `nerdctl build` already uses host networking; you do not need `--network host`.
+  - `~/.config/systemd/user/containerd.service.d/override.conf` sets `CONTAINERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns`, `..._MTU=65520`, `..._DETACH_NETNS=true`, `..._PORT_DRIVER=builtin` to speed up `nerdctl pull/push/build`.
+  - `~/.config/containerd/certs.d/docker.io/hosts.toml` (referenced by `~/.config/nerdctl/nerdctl.toml`) and `~/.config/buildkit/buildkitd.toml` mirror Docker Hub pulls through `mirror.gcr.io`. Mirrors only speed up image pulls (`FROM ...`), NOT in-build `git`/`curl` downloads.
+  - After editing any of these, run `systemctl --user daemon-reload && systemctl --user restart containerd buildkit`.
+  - Registry mirrors do NOT speed up the LLVM source download; that is a `git fetch` inside the build. The host-net change is what helps it. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
 
 ## Version Bumping
 

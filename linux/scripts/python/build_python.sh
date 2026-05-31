@@ -82,6 +82,20 @@ python_stage_finalize() {
   local target_triplet="$4"
   local pkgconfig_dir="${stage_root}/usr/local/lib/pkgconfig"
 
+  rewrite_staged_python_pc() {
+    local pc_file="$1"
+    [ -f "${pc_file}" ] || return 0
+
+    # Keep pkg-config resolving into the staged target tree instead of the
+    # build host's /usr/local prefix.
+    sed -i \
+      -e 's|^prefix=/usr/local$|prefix=${pcfiledir}/../..|' \
+      -e 's|^exec_prefix=\${prefix}$|exec_prefix=${prefix}|' \
+      -e 's|^libdir=\${exec_prefix}/lib$|libdir=${prefix}/lib|' \
+      -e 's|^includedir=\${prefix}/include$|includedir=${prefix}/include|' \
+      "${pc_file}"
+  }
+
   mkdir -p "${stage_root}/usr/local/include/${target_triplet}/python${python_mm}"
   if [ -f "${stage_root}/usr/local/include/python${python_mm}/pyconfig.h" ]; then
     cp -a \
@@ -99,6 +113,8 @@ python_stage_finalize() {
   fi
 
   mkdir -p "${pkgconfig_dir}"
+  rewrite_staged_python_pc "${pkgconfig_dir}/python-${python_mm}.pc"
+  rewrite_staged_python_pc "${pkgconfig_dir}/python-${python_mm}-embed.pc"
   if [ -f "${pkgconfig_dir}/python-${python_mm}.pc" ]; then
     ln -sfn "python-${python_mm}.pc" "${pkgconfig_dir}/python3.pc"
   fi
@@ -246,12 +262,38 @@ EOF
 
   cp -a "${source_dir}/Lib/." "${stage_root}/usr/local/lib/python${python_mm}/"
 
+  # CPython 3.14's Makefile-based extension build does not place the real
+  # extension shared objects under build/lib.linux-*/. Instead it builds them
+  # into ${cross_build_dir}/Modules/ and leaves *relative symlinks*
+  # (e.g. ../../Modules/_struct.cpython-*.so) inside build/lib.linux-*/.
+  # A plain `cp -a` preserves those symlinks, so the installed lib-dynload ends
+  # up full of dangling links (../../Modules resolves to <prefix>/lib/Modules,
+  # which never gets installed). The result is a target Python that cannot load
+  # ANY C extension (import _struct -> ModuleNotFoundError) once it runs under
+  # QEMU in the runtime/torch stage. Dereference symlinks (-L) so the real .so
+  # files land in lib-dynload.
+  local dynload_dir="${stage_root}/usr/local/lib/python${python_mm}/lib-dynload"
+  mkdir -p "${dynload_dir}"
   for ext_build_dir in "${cross_build_dir}/build/lib.linux"*; do
     if [ -d "${ext_build_dir}" ]; then
-      mkdir -p "${stage_root}/usr/local/lib/python${python_mm}/lib-dynload"
-      cp -a "${ext_build_dir}/"* "${stage_root}/usr/local/lib/python${python_mm}/lib-dynload/"
+      cp -a -L "${ext_build_dir}/." "${dynload_dir}/"
     fi
   done
+
+  # Safety net: copy the real extension shared objects straight from the build
+  # Modules directory in case build/lib.linux-*/ was empty or only held links.
+  if [ -d "${cross_build_dir}/Modules" ]; then
+    find "${cross_build_dir}/Modules" -maxdepth 1 -name '*.so' \
+      -exec cp -a -L {} "${dynload_dir}/" \;
+  fi
+
+  # Final guard: refuse to ship a target Python whose lib-dynload still contains
+  # dangling extension symlinks (this is what silently broke foreign-arch torch).
+  if find "${dynload_dir}" -xtype l 2>/dev/null | grep -q .; then
+    echo "ERROR: dangling extension symlinks remain in ${dynload_dir} after staging" >&2
+    find "${dynload_dir}" -xtype l >&2 || true
+    exit 1
+  fi
 
   mkdir -p "${stage_root}/usr/local/lib/pkgconfig"
   if [ -f "${cross_build_dir}/Misc/python.pc" ]; then

@@ -188,9 +188,9 @@ find_missing_needed() {
   local binary="$1"
   local missing=()
 
-  [ -f "${binary}" ] || [ -L "${binary}" ] || { echo "WARNING: ${binary} not found, skipping"; return 0; }
+  [ -f "${binary}" ] || [ -L "${binary}" ] || { echo "WARNING: ${binary} not found, skipping" >&2; return 0; }
 
-  echo "Checking: ${binary}"
+  echo "Checking: ${binary}" >&2
 
   local so_name
   for so_name in $(objdump -p "${binary}" 2>/dev/null | awk '/NEEDED/ {print $2}'); do
@@ -211,12 +211,14 @@ find_missing_needed() {
     fi
 
     if [ "${found}" = "false" ]; then
-      echo "  MISSING: ${so_name}"
+      echo "  MISSING: ${so_name}" >&2
       missing+=("${so_name}")
     fi
   done
 
-  printf '%s\n' "${missing[@]}"
+  if [ ${#missing[@]} -gt 0 ]; then
+    printf '%s\n' "${missing[@]}"
+  fi
 }
 
 resolve_package_for_so() {
@@ -254,7 +256,7 @@ scan_plugin_directory() {
 
   [ -d "${plugin_dir}" ] || return 0
 
-  echo "Scanning plugins in: ${plugin_dir}"
+  echo "Scanning plugins in: ${plugin_dir}" >&2
 
   local missing_all=()
 
@@ -288,10 +290,16 @@ scan_plugin_directory() {
   done
 
   if [ ${#missing_all[@]} -gt 0 ]; then
-    printf '%s\n' "Some plugins have missing deps:" "${missing_all[@]}"
+    printf '%s\n' "Some plugins have missing deps:" "${missing_all[@]}" >&2
   fi
 
-  printf '%s\n' "${missing_all[@]}"
+  if [ ${#missing_all[@]} -gt 0 ]; then
+    printf '%s\n' "${missing_all[@]}"
+  fi
+}
+
+uniq_nonempty_lines() {
+  grep -v '^$' | sort -u || true
 }
 
 echo "=== Media Runtime Validation ==="
@@ -309,7 +317,7 @@ if [ -d "${gst_plugin_dir}" ]; then
   ALL_MISSING+=("${plugin_missing[@]}")
 fi
 
-UNIQ_MISSING=($(printf '%s\n' "${ALL_MISSING[@]}" | grep -v '^$' | sort -u))
+mapfile -t UNIQ_MISSING < <(printf '%s\n' "${ALL_MISSING[@]}" | uniq_nonempty_lines)
 
 if [ ${#UNIQ_MISSING[@]} -eq 0 ]; then
   echo "All artifacts have their runtime dependencies satisfied."
@@ -323,7 +331,7 @@ PACKAGES_TO_INSTALL=()
 STILL_MISSING=()
 
 for so_name in "${UNIQ_MISSING[@]}"; do
-  pkg="$(resolve_package_for_so "${so_name}")"
+  pkg="$(resolve_package_for_so "${so_name}" || true)"
   if [ -n "${pkg}" ]; then
     echo "  ${so_name} -> ${pkg}"
     PACKAGES_TO_INSTALL+=("${pkg}")
@@ -333,7 +341,7 @@ for so_name in "${UNIQ_MISSING[@]}"; do
   fi
 done
 
-UNIQ_PKGS=($(printf '%s\n' "${PACKAGES_TO_INSTALL[@]}" | sort -u))
+mapfile -t UNIQ_PKGS < <(printf '%s\n' "${PACKAGES_TO_INSTALL[@]}" | uniq_nonempty_lines)
 
 if [ ${#UNIQ_PKGS[@]} -gt 0 ]; then
   echo ""
@@ -361,7 +369,7 @@ if [ ${#UNIQ_PKGS[@]} -gt 0 ]; then
     REMAINING+=("${still_missing[@]}")
   done
 
-  UNIQ_REMAINING=($(printf '%s\n' "${REMAINING[@]}" | grep -v '^$' | sort -u))
+  mapfile -t UNIQ_REMAINING < <(printf '%s\n' "${REMAINING[@]}" | uniq_nonempty_lines)
 
   if [ ${#UNIQ_REMAINING[@]} -gt 0 ]; then
     echo ""

@@ -193,6 +193,38 @@ resolve_litert_tflite_host_tools_dir() {
     return 1
 }
 
+append_litert_preferred_cmake_compiler_args() {
+    local -n out_args_ref=$1
+    local native_clang=""
+    local native_clangxx=""
+
+    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        return 0
+    fi
+
+    # Native/amd64 artifact builds should prefer the source-built Clang from the
+    # toolchain image. GCC 16 currently ICEs in LiteRT's Samsung vendor code.
+    if [ -x /usr/local/bin/clang ] && [ -x /usr/local/bin/clang++ ]; then
+        native_clang="/usr/local/bin/clang"
+        native_clangxx="/usr/local/bin/clang++"
+    else
+        native_clang="$(command -v clang 2>/dev/null || true)"
+        native_clangxx="$(command -v clang++ 2>/dev/null || true)"
+    fi
+
+    if [ -n "${native_clang}" ] && [ -n "${native_clangxx}" ]; then
+        out_args_ref+=(
+            "-DCMAKE_C_COMPILER=${native_clang}"
+            "-DCMAKE_CXX_COMPILER=${native_clangxx}"
+            "-DCMAKE_ASM_COMPILER=${native_clang}"
+            "-DCMAKE_C_FLAGS=-Wno-c2y-extensions"
+            "-DCMAKE_CXX_FLAGS=-Wno-c2y-extensions"
+        )
+        echo "[INFO] Using native Clang toolchain for LiteRT: ${native_clang} / ${native_clangxx}"
+        echo "[INFO] Disabling Clang C2y extension pedantic errors for bundled googlebenchmark"
+    fi
+}
+
 litert_cross_wheel_platform_tag() {
     if ! command -v cross_target_arch >/dev/null 2>&1; then
         return 1
@@ -246,18 +278,24 @@ configure_litert() {
         "-DPython3_EXECUTABLE=${HOST_PYTHON}"
     )
 
+    append_litert_preferred_cmake_compiler_args cmake_args
+
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
         append_cmake_cross_args cmake_args
     fi
 
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-       command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-        echo "[INFO] Removing Samsung vendor sources to avoid GCC 16.1.0 ICE on riscv64 cross"
-        rm -rf "${LITERT_SRC}/litert/vendors/samsung" 2>/dev/null || true
-        mkdir -p "${LITERT_SRC}/litert/vendors/samsung"
-        cat > "${LITERT_SRC}/litert/vendors/samsung/CMakeLists.txt" <<'CMAKE_EOF'
-message(STATUS "Samsung vendor disabled for riscv64 cross build")
+       command -v cross_target_arch >/dev/null 2>&1; then
+        local cross_arch=""
+        cross_arch="$(cross_target_arch)"
+        if [ "${cross_arch}" = "arm64" ] || [ "${cross_arch}" = "riscv64" ]; then
+            echo "[INFO] Removing Samsung vendor sources to avoid GCC 16.1.0 ICE on ${cross_arch} cross"
+            rm -rf "${LITERT_SRC}/litert/vendors/samsung" 2>/dev/null || true
+            mkdir -p "${LITERT_SRC}/litert/vendors/samsung"
+            cat > "${LITERT_SRC}/litert/vendors/samsung/CMakeLists.txt" <<CMAKE_EOF
+message(STATUS "Samsung vendor disabled for ${cross_arch} cross build")
 CMAKE_EOF
+        fi
     fi
 
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
@@ -374,6 +412,8 @@ build_tflite_c_api() {
         "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
         "-DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
     )
+
+    append_litert_preferred_cmake_compiler_args cmake_args
 
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
         append_cmake_cross_args cmake_args
@@ -521,11 +561,17 @@ install_litert() {
             
             # fix cmake policy error and inject required flags to match main build
             local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON} -DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
+            local native_compiler_args=()
             local wheel_platform_name=""
             local tflite_host_tools_dir=""
             local python_major_minor="${PYTHON_MAJOR_MINOR:-}"
             local target_python_include=""
             local target_python_arch_include=""
+
+            append_litert_preferred_cmake_compiler_args native_compiler_args
+            if [ "${#native_compiler_args[@]}" -gt 0 ]; then
+                extra_cmake_flags+=" ${native_compiler_args[*]}"
+            fi
 
             if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
                 local wheel_cross_args=()
@@ -737,6 +783,43 @@ install_manual() {
     fi
     if [ "$fb_found" -eq 0 ]; then
         echo "[WARN] FlatBuffers headers not found in expected build locations; some targets may fail to compile" || true
+    fi
+
+    # 6. Abseil (absl) headers (Required transitively by the tflite C++ headers)
+    # tflite/util.h does `#include "absl/types/span.h"`, which is pulled in via
+    # <tflite/interpreter.h>. Downstream consumers such as libcamera's
+    # rpi/awb_nn.cpp include tflite/interpreter.h and therefore need the absl
+    # headers on the include path. Copy them next to the tflite headers.
+    echo "[INFO] Copying Abseil (absl) headers..."
+    absl_found=0
+    for absl_root in \
+        "${LITERT_SRC}/litert/cmake_build/_deps/abseil-cpp-src" \
+        "${LITERT_SRC}/litert/cmake_build/_deps/abseil_cpp-src" \
+        "${LITERT_SRC}/litert/cmake_build/_deps/abseil-src"; do
+        if [ -d "${absl_root}/absl" ]; then
+            echo "[INFO] Copying absl headers from ${absl_root}/absl..."
+            ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
+                -exec cp --parents {} "${include_dir}/" \; ) 2>/dev/null || true
+            absl_found=1
+            break
+        fi
+    done
+    # Fallback: locate absl/types/span.h anywhere under the LiteRT tree and copy
+    # the absl tree rooted at its grandparent directory.
+    if [ "$absl_found" -eq 0 ]; then
+        spanhdr=$(find "${LITERT_SRC}/litert" -type f -path "*/absl/types/span.h" -print -quit 2>/dev/null || true)
+        if [ -n "$spanhdr" ]; then
+            absl_root=$(dirname "$(dirname "$(dirname "$spanhdr")")")
+            echo "[INFO] Found absl headers under ${absl_root}; copying..."
+            ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
+                -exec cp --parents {} "${include_dir}/" \; ) 2>/dev/null || true
+            absl_found=1
+        fi
+    fi
+    if [ "$absl_found" -eq 1 ] && [ -f "${include_dir}/absl/types/span.h" ]; then
+        echo "[INFO] Verified: absl/types/span.h is accessible"
+    else
+        echo "[WARN] Abseil headers not found; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile" || true
     fi
 
     local static_libs=""

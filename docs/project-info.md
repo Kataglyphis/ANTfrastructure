@@ -64,6 +64,15 @@ RUSTC_WRAPPER=""
 - Keep the helper default local-context handoff for `base -> package -> torch`, and for saved runtime artifact images pass `ARTIFACT_CONTEXT_ROOT=...` with `ARTIFACT_CONTEXT_MODE=oci` instead of expecting `FROM opencode-local:*` to stay local. The helper still runs the Torch stage natively on `linux/<arch>` so the final runtime image includes `/opt/venv`. In cross mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and the native Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels before falling back to source builds. If a reused cross artifact has an empty `/opt/wheels` the Torch install step now keeps the packages that `uv sync` already resolved instead of trying to install a literal `/opt/wheels/*.whl` glob. The foreign-arch package stage must keep `/usr/bin/clang` wired to the copied target-native `/usr/local/llvm-target/bin/clang` rather than falling back to distro `/usr/local/llvm-22`.
 - `docs/linux-cross-builds.md` documents the verified mixed `OCI artifact + plain rootfs base` workaround.
 
+### Rebuilt SDK artifact still reports old clang
+
+**Symptom:** a rebuilt `arm64` or `riscv64` SDK artifact still reports an older `clang` version under `/opt/llvm-target` even though the repository pin was updated.
+
+**Solution:**
+
+- `linux/Dockerfile.sdk` forwards the checked-in `LLVM_RELEASE` into the `target-clang` step so that build does not inherit a stale `LLVM_RELEASE` environment variable from an older `compiler-cross-amd64` base image.
+- Rebuild the SDK artifact after updating or selecting the desired compiler base image.
+
 ### buildctl or ctr permission denied in rootless troubleshooting
 
 **Symptom:** `buildctl du --verbose` fails with `dial unix /run/buildkit/buildkitd.sock: connect: permission denied`, or `ctr images export` cannot access `/run/containerd/containerd.sock`.
@@ -74,6 +83,52 @@ RUSTC_WRAPPER=""
 - Use `nerdctl save`, `nerdctl create`, and `nerdctl export` for local image export and inspection on this host.
 - Prefer the checked-in runtime helpers over manual rebuild loops when validating or publishing the cross runtime path.
 - Fall back to regular disk usage checks and `nerdctl` cleanup commands when `buildctl` or `ctr` socket access is unavailable.
+
+### Slow build-time downloads in rootless nerdctl/BuildKit
+
+**Symptom:** A `RUN` step that downloads a large source tree is extremely slow. The worst offender is the LLVM `git fetch` in `linux/scripts/02-toolchain/build-clang.sh` (and `linux/scripts/02-toolchain/llvm.sh`) during the cross-compiler/SDK builds.
+
+**Cause:** Rootless BuildKit defaults to `--oci-worker-net=bridge`, so every in-build `git`/`curl`/`wget` is routed through the user-space rootless bridge/slirp path. Registry mirrors do not help here because this is not an image pull.
+
+**Solution (already applied on this host):**
+
+- Switch the rootless BuildKit OCI worker to host networking with a systemd drop-in at `~/.config/systemd/user/buildkit.service.d/override.conf`:
+
+  ```ini
+  [Service]
+  ExecStart=
+  ExecStart="/usr/local/bin/containerd-rootless-setuptool.sh" nsenter -- buildkitd --oci-worker=true --oci-worker-rootless=true --containerd-worker=false --oci-worker-net=host --allow-insecure-entitlement network.host
+  ```
+
+- Make rootless containerd networking explicit and fast with `~/.config/systemd/user/containerd.service.d/override.conf`:
+
+  ```ini
+  [Service]
+  Environment=CONTAINERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
+  Environment=CONTAINERD_ROOTLESS_ROOTLESSKIT_MTU=65520
+  Environment=CONTAINERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=true
+  Environment=CONTAINERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin
+  ```
+
+- Mirror Docker Hub image pulls (only helps `FROM ...`, not in-build downloads) via `~/.config/containerd/certs.d/docker.io/hosts.toml` (referenced by `hosts_dir` in `~/.config/nerdctl/nerdctl.toml`) and `~/.config/buildkit/buildkitd.toml`.
+
+- Apply changes with:
+
+  ```bash
+  systemctl --user daemon-reload
+  systemctl --user restart containerd buildkit
+  ```
+
+- With `--oci-worker-net=host` set, plain `nerdctl build` already uses host networking; you do not need to pass `--network host`.
+- For repeated LLVM rebuilds, the host-net change is the main lever. For an even bigger win, cache the LLVM source on the host instead of re-fetching it every build.
+
+### Terminal Freeze or Slowness During Large/Interactive Rebuilds
+
+**Symptom:** Running long interactive `nerdctl build` loops in the foreground causes the terminal to freeze, lag, or experience extremely slow download rates with direct terminal stdout.
+
+**Cause:** High-volume stdout stream pipelines from concurrent `apt` or source fetch downloads (under QEMU/binfmt or native compilation) can overwhelm terminal buffers and choke build execution.
+
+**Solution:** Always build each stage independently and non-interactively in the background using a decoupled session (e.g., `setsid bash -c "nerdctl build ... > stage-build.log 2>&1" & disown`) and poll/inspect progress via file-based `tail`, `grep`, or `pgrep` checks. This guarantees that direct console rendering does not throttle execution threads.
 
 ## Contributing
 

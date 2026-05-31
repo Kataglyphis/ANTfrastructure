@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source /opt/scripts/core/platform.sh
+
 link_path_if_present() {
     local candidate="$1"
     local link_path="$2"
@@ -20,6 +23,41 @@ link_command_if_present() {
 
     command_path="$(command -v "${command_name}" || true)"
     link_path_if_present "${command_path}" "${link_path}"
+}
+
+add_prefix_python_paths_to_venv() {
+    local prefix="$1"
+    local venv_python="$2"
+    local site_packages_dir=""
+    local pth_path=""
+    local dir
+    local -a python_paths=()
+
+    [ -d "${prefix}" ] || return 0
+
+    site_packages_dir="$("${venv_python}" -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null || true)"
+    [ -n "${site_packages_dir}" ] || return 0
+
+    shopt -s nullglob
+    for dir in \
+        "${prefix}"/lib/python3*/site-packages \
+        "${prefix}"/lib/python3*/dist-packages \
+        "${prefix}"/lib64/python3*/site-packages \
+        "${prefix}"/lib64/python3*/dist-packages \
+        "${prefix}"/python/cv2/python-*; do
+        [ -d "${dir}" ] || continue
+        python_paths+=("${dir}")
+    done
+    shopt -u nullglob
+
+    [ "${#python_paths[@]}" -gt 0 ] || return 0
+
+    pth_path="${site_packages_dir}/kataglyphis-opencv-system-paths.pth"
+    mkdir -p "${site_packages_dir}"
+    : > "${pth_path}"
+    for dir in "${python_paths[@]}"; do
+        printf '%s\n' "${dir}" >> "${pth_path}"
+    done
 }
 
 main() {
@@ -73,18 +111,18 @@ main() {
     triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"
 
     mkdir -p /usr/local/bin /usr/local/lib "${VIRTUAL_ENV%/*}" "${CARGO_HOME}/bin" "${RUSTUP_HOME}"
-    ln -sf "${python_bin}" "/usr/local/bin/python${python_mm}"
-    ln -sf "${python_bin}" /usr/local/bin/python3
-    ln -sf "${python_bin}" /usr/local/bin/python
+    link_path_if_present "${python_bin}" "/usr/local/bin/python${python_mm}"
+    link_path_if_present "${python_bin}" /usr/local/bin/python3
+    link_path_if_present "${python_bin}" /usr/local/bin/python
 
     if [ -n "${python_cfg}" ]; then
-        ln -sf "${python_cfg}" "/usr/local/bin/python${python_mm}-config"
+        link_path_if_present "${python_cfg}" "/usr/local/bin/python${python_mm}-config"
     fi
 
     if [ -n "${pip_bin}" ]; then
-        ln -sf "${pip_bin}" "/usr/local/bin/pip${python_mm}"
-        ln -sf "${pip_bin}" /usr/local/bin/pip3
-        ln -sf "${pip_bin}" /usr/local/bin/pip
+        link_path_if_present "${pip_bin}" "/usr/local/bin/pip${python_mm}"
+        link_path_if_present "${pip_bin}" /usr/local/bin/pip3
+        link_path_if_present "${pip_bin}" /usr/local/bin/pip
     fi
 
     for lib in \
@@ -138,6 +176,8 @@ main() {
     else
         uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools numpy meson ninja cmake packaging
     fi
+
+    add_prefix_python_paths_to_venv "/opt/opencv4" "${VIRTUAL_ENV}/bin/python"
 
     bash /opt/scripts/media/final/configure-runtime.sh
     ldconfig

@@ -88,8 +88,6 @@ apt-get purge -y 'liborc*' || true
 apt-get autoremove -y
 
 gst_target_packages=(
-  libc++-dev
-  libc++abi-dev
   libgsl-dev
   libdw-dev
   libnsl-dev
@@ -102,6 +100,15 @@ gst_target_packages=(
   libffi-dev
   libpcre2-dev
 )
+
+if [ "${is_riscv64_cross}" = "true" ]; then
+  echo "Skipping target libc++-dev and libc++abi-dev for riscv64 cross builds because Ubuntu Ports has broken dependencies for libc++-21-dev."
+else
+  gst_target_packages+=(
+    libc++-dev
+    libc++abi-dev
+  )
+fi
 
 if [ "${is_riscv64_cross}" = "true" ]; then
   echo "Skipping target GLib/GTK/introspection/cairo packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their helper dependency chain."

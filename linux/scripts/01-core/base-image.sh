@@ -18,8 +18,8 @@ source_module package-lists.sh
 source_module cmake.sh
 
 BASE_IMAGE_CMAKE_VERSION="${CMAKE_VERSION:-4.3.2}"
-BASE_IMAGE_NODE_VERSION="${NODE_VERSION:-24.15.0}"
-BASE_IMAGE_UV_VERSION="${UV_VERSION:-0.11.13}"
+BASE_IMAGE_NODE_VERSION="${NODE_VERSION:-24.16.0}"
+BASE_IMAGE_UV_VERSION="${UV_VERSION:-0.11.16}"
 BASE_IMAGE_VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 BASE_IMAGE_CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-30G}"
 
@@ -267,11 +267,11 @@ install_nodejs() {
   case "${arch}" in
     amd64|x86_64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-x64.tar.xz"
-      node_sha256="472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6"
+      node_sha256="d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9"
       ;;
     arm64|aarch64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-arm64.tar.xz"
-      node_sha256="f3d5a797b5d210ce8e2cb265544c8e482eaedcb8aa409a8b46da7e8595d0dda0"
+      node_sha256="524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78"
       ;;
     riscv64)
       log "Installing distro Node.js packages on riscv64"
@@ -288,7 +288,7 @@ install_nodejs() {
 
   node_url="https://nodejs.org/dist/v${BASE_IMAGE_NODE_VERSION}/${node_asset}"
   tmpdir="$(mktemp -d)"
-  trap 'rm -rf "${tmpdir}"' EXIT
+  trap 'rm -rf "${tmpdir:-}"' EXIT
 
   log "Installing pinned Node.js ${BASE_IMAGE_NODE_VERSION} for ${arch}"
   download_verified_file "${node_url}" "${node_sha256}" "${tmpdir}/${node_asset}"
@@ -332,11 +332,11 @@ install_uv() {
   case "${arch}" in
     amd64|x86_64)
       uv_asset="uv-x86_64-unknown-linux-gnu.tar.gz"
-      uv_sha256="f830ea3d38ae1492acf53cb7f2cd0f81d6ae22b42d2d7310a6c7d42c451e1a43"
+      uv_sha256="74947fe2c03315cf07e82ab3acc703eddef01aba4d5232a98e4c6825ec116131"
       ;;
     arm64|aarch64)
       uv_asset="uv-aarch64-unknown-linux-gnu.tar.gz"
-      uv_sha256="12366407dc1fdba5179b10bd69c11ebfc2eff25791366089c0b2f5701056efc5"
+      uv_sha256="8c9d0f0ee98166ae6ab198747519ba6f25db29d185bd2ae5960ecebc91a5c22a"
       ;;
     riscv64)
       uv_asset="uv-riscv64gc-unknown-linux-gnu.tar.gz"
@@ -349,7 +349,7 @@ install_uv() {
 
   uv_url="https://github.com/astral-sh/uv/releases/download/${BASE_IMAGE_UV_VERSION}/${uv_asset}"
   tmpdir="$(mktemp -d)"
-  trap 'rm -rf "${tmpdir}"' EXIT
+  trap 'rm -rf "${tmpdir:-}"' EXIT
 
   log "Installing pinned uv ${BASE_IMAGE_UV_VERSION} for ${arch}"
   download_verified_file "${uv_url}" "${uv_sha256}" "${tmpdir}/${uv_asset}"

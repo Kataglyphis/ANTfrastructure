@@ -138,7 +138,7 @@ llvm_release_version() {
   fi
 
   case "${LLVM_WANTED:-${CLANG_WANTED:-22}}" in
-    22) printf '%s' "22.1.5" ;;
+    22) printf '%s' "22.1.6" ;;
     *) printf '%s' "${LLVM_WANTED:-${CLANG_WANTED:-22}}.1.0" ;;
   esac
 }
@@ -968,7 +968,7 @@ install_llvm_clang() {
 # ---------------------------------------------------------------------------
 # Cross-compile a full Clang/LDD/compiler-rt toolchain for a foreign target
 # architecture.  Called from Dockerfile.sdk so each architecture (arm64,
-# riscv64) ships its own native clang 22.1.5 in the final :latest-cross image.
+# riscv64) ships its own native clang 22.1.6 in the final :latest-cross image.
 # ---------------------------------------------------------------------------
 install_target_clang_toolchain() {
   local target_label="${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
@@ -982,9 +982,15 @@ install_target_clang_toolchain() {
   [ "${target_label}" = "amd64" ] && { log "Skipping target-clang for amd64 (host clang already serves)"; return 0; }
 
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || die "No triplet for ${target_label}"
+  local clang_triple="${triplet}"
+  if [ "${target_label}" = "arm64" ]; then
+    clang_triple="aarch64-unknown-linux-gnu"
+  elif [ "${target_label}" = "riscv64" ]; then
+    clang_triple="riscv64-unknown-linux-gnu"
+  fi
   backend="$(llvm_cross_backend "${target_label}")" || die "No LLVM backend for ${target_label}"
   prefix="/opt/llvm-target"
-  release="${LLVM_RELEASE:-22.1.5}"
+  release="${LLVM_RELEASE:-22.1.6}"
   tag="llvmorg-${release}"
   source_root="${LLVM_CROSS_SOURCE_ROOT:-/var/tmp/llvm-cross-src}"
   build_root="${LLVM_CROSS_BUILD_ROOT:-/var/tmp/llvm-cross-build}"
@@ -1083,8 +1089,8 @@ install_target_clang_toolchain() {
       -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
       -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
       -DCMAKE_INSTALL_PREFIX="${prefix}" \
-      -DLLVM_HOST_TRIPLE="${triplet}" \
-      -DLLVM_DEFAULT_TARGET_TRIPLE="${triplet}" \
+      -DLLVM_HOST_TRIPLE="${clang_triple}" \
+      -DLLVM_DEFAULT_TARGET_TRIPLE="${clang_triple}" \
       -DLLVM_TARGETS_TO_BUILD="${backend}" \
       -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld" \
       -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
@@ -1092,7 +1098,7 @@ install_target_clang_toolchain() {
       -DCOMPILER_RT_BUILD_BUILTINS=ON \
       -DCOMPILER_RT_BUILD_XRAY=OFF \
       -DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
-      -DCOMPILER_RT_BUILD_PROFILE=OFF \
+      -DCOMPILER_RT_BUILD_PROFILE=ON \
       -DCOMPILER_RT_BUILD_MEMPROF=OFF \
       -DCOMPILER_RT_BUILD_ORC=OFF \
       -DCOMPILER_RT_BUILD_GWP_ASAN=OFF \

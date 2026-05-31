@@ -154,18 +154,44 @@ fi
 
 apt-get install -y --no-install-recommends "${host_packages[@]}" "${core_packages[@]}"
 
-# Keep the cross pkg-config path target-only, but expose the host-side
-# gobject-introspection metadata through a focused shim so Meson's GIR helper can
-# still discover scanner paths and GIR include dirs during wrapper-backed cross
-# builds.
+# Keep the cross pkg-config path target-only, but expose the wrapped scanner
+# path through a focused shim without dropping the target package's real
+# include/library flags.
 if [ -n "${gi_cross_wrapper_arch}" ]; then
   build_triplet="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   target_triplet=""
+  target_gi_bindir="/usr/bin"
+  target_gi_datadir="/usr/share"
+  target_gi_includedir="/usr/include"
+  target_gi_libdir="/usr/lib"
+  target_gi_requires="glib-2.0 >= 2.82.0, gobject-2.0 >= 2.82.0"
+  target_gi_libs='-L${libdir} -lgirepository-1.0'
+  target_gi_cflags='-I${includedir}/gobject-introspection-1.0'
+  target_gi_compiler="${target_gi_bindir}/g-ir-compiler"
+  target_gi_generate="${target_gi_bindir}/g-ir-generate"
+  target_gi_pc=""
   if command -v cross_target_triplet >/dev/null 2>&1; then
     target_triplet="$(cross_target_triplet 2>/dev/null || true)"
   fi
   if [ -z "${target_triplet}" ]; then
     target_triplet="$(dpkg-architecture -a "${gi_cross_wrapper_arch}" -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+  fi
+  if [ -n "${target_triplet}" ]; then
+    target_gi_pc="/usr/lib/${target_triplet}/pkgconfig/gobject-introspection-1.0.pc"
+    if [ -d "/usr/lib/${target_triplet}" ]; then
+      target_gi_libdir="/usr/lib/${target_triplet}"
+    fi
+    if [ -x "/usr/bin/${target_triplet}-g-ir-compiler" ]; then
+      target_gi_compiler="/usr/bin/${target_triplet}-g-ir-compiler"
+    fi
+    if [ -x "/usr/bin/${target_triplet}-g-ir-generate" ]; then
+      target_gi_generate="/usr/bin/${target_triplet}-g-ir-generate"
+    fi
+  fi
+  if [ -n "${target_gi_pc}" ] && [ -f "${target_gi_pc}" ]; then
+    target_gi_requires="$(awk -F': *' '$1=="Requires" { print $2; exit }' "${target_gi_pc}")"
+    target_gi_libs="$(awk -F': *' '$1=="Libs" { print $2; exit }' "${target_gi_pc}")"
+    target_gi_cflags="$(awk -F': *' '$1=="Cflags" { print $2; exit }' "${target_gi_pc}")"
   fi
   gi_version="$(dpkg-query -W -f='${Version}' gobject-introspection 2>/dev/null || true)"
   gi_version="${gi_version%%-*}"
@@ -480,12 +506,13 @@ EOF
   printf '%s\n' \
     "prefix=/usr" \
     "exec_prefix=\${prefix}" \
-    "bindir=${gi_bindir}" \
-    "datadir=/usr/share" \
-    "libdir=${gi_libdir}" \
+    "bindir=${target_gi_bindir}" \
+    "datadir=${target_gi_datadir}" \
+    "includedir=${target_gi_includedir}" \
+    "libdir=${target_gi_libdir}" \
     "g_ir_scanner=${gi_scanner_triplet_wrapper}" \
-    "g_ir_compiler=\${bindir}/g-ir-compiler" \
-    "g_ir_generate=\${bindir}/g-ir-generate" \
+    "g_ir_compiler=${target_gi_compiler}" \
+    "g_ir_generate=${target_gi_generate}" \
     "gidatadir=\${datadir}/gobject-introspection-1.0" \
     "girdir=\${datadir}/gir-1.0" \
     "typelibdir=\${libdir}/girepository-1.0" \
@@ -493,8 +520,9 @@ EOF
     "Name: gobject-introspection" \
     "Description: GObject Introspection cross-build helper metadata" \
     "Version: ${gi_version}" \
-    "Libs:" \
-    "Cflags:" \
+    "Requires: ${target_gi_requires}" \
+    "Libs: ${target_gi_libs}" \
+    "Cflags: ${target_gi_cflags}" \
     > /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc
   cp /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc /usr/local/lib/pkgconfig/gobject-introspection-no-export-1.0.pc
 fi

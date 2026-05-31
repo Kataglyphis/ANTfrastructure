@@ -1,5 +1,7 @@
 # Linux Cross Builds
 
+> Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. See `docs/project-info.md` for the drop-in config and `AGENTS.md` for the do-not-regress note. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
+
 ## Cross-Compiler builder (nerdctl, amd64 host; amd64/arm64/riscv64 targets)
 
 The existing multi-platform build above stays unchanged. Treat it as the compatibility lane for the current QEMU/binfmt-based end-to-end build.
@@ -282,6 +284,8 @@ out/linux-sdk/riscv64/artifact.env
 
 This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.1.0` rather than the Ubuntu 26.04 system GCC toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU endbuild, but it does not yet replace the full `:latest` pipeline.
 
+`linux/Dockerfile.sdk` also forwards the checked-in `LLVM_RELEASE` pin into the `target-clang` step, so rebuilding an SDK artifact from an older `compiler-cross-amd64` base still refreshes `/opt/llvm-target` to the repository pin instead of inheriting a stale base-image environment value.
+
 ## Cross packaging to multi-arch manifest (experimental)
 
 The new end-goal path is split into two steps so the old QEMU lane keeps working:
@@ -438,3 +442,34 @@ nerdctl build --platform linux/amd64 \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \
   .
 ```
+
+## Best Practices: Stage-by-Stage Background-Building & Polling
+
+Direct, interactive `nerdctl build` loops on the terminal stdout can easily freeze, experience extremely slow download rates, or hang due to heavy multi-platform CPU and QEMU emulation. 
+
+Therefore, **always build each stage independently and non-interactively in the background**.
+
+### Non-Interactive Stage Pattern
+
+Run each stage in a background shell process, redirecting output to a dedicated log file, and decouple it from the active terminal:
+
+```bash
+# Example of backgrounding a build stage:
+setsid bash -c "nerdctl build ... > out/build-logs/my-stage.log 2>&1" & disown
+```
+
+### Monitoring Strategy
+
+Instead of relying on terminal stdout, monitor the background log periodically from another shell using:
+
+- `tail -n 20 -f out/build-logs/my-stage.log`
+- `grep -E "ERROR|fatal|failed|DONE|exporting" out/build-logs/my-stage.log`
+- `pgrep -af "nerdctl build|buildctl"` to verify the build process is still active.
+
+## Three Critical Fixes To Maintain
+
+To prevent regressions during updates, always preserve the following three vital fixes in the Linux cross pipeline:
+
+1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, the `rewrite_staged_python_pc()` helper rewrites the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory so `gst-python` builds succeed.
+2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, the build must copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent downstream `libcamera` build errors.
+3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), standard CPython build steps create standard cross-build library symlinks that end up dangling when packaged. We use `cp -a -L` to dereference those symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the target's `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Since target-packaged Python is staged into the compiler-cross image, the compiler itself must be rebuilt if this helper logic is changed.
