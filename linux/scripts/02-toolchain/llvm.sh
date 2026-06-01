@@ -1092,6 +1092,7 @@ install_target_clang_toolchain() {
       -DLLVM_HOST_TRIPLE="${clang_triple}" \
       -DLLVM_DEFAULT_TARGET_TRIPLE="${clang_triple}" \
       -DLLVM_TARGETS_TO_BUILD="${backend}" \
+      -DLLVM_BINUTILS_INCDIR=/usr/include \
       -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld" \
       -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
       -DCOMPILER_RT_BUILD_SANITIZERS=ON \
