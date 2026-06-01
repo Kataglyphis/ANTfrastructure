@@ -266,9 +266,13 @@ ENV BUILD_MODE=${BUILD_MODE} \
     OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
     FFMPEG_PREFIX=/opt/ffmpeg \
     LIBCAMERA_PREFIX=/opt/libcamera \
-    PATH="/opt/gstreamer/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    VULKAN_SDK=/opt/vulkan/active \
+    VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
+    CCACHE_DIR=/workspace/.ccache \
+    CCACHE_SECONDARY_STORAGE=true \
+    PATH="/opt/vulkan/active/bin:/opt/gstreamer/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/opt/gstreamer/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:/opt/libcamera/lib/pkgconfig:/opt/libcamera/lib64/pkgconfig:/opt/ffmpeg/lib/pkgconfig" \
-    LD_LIBRARY_PATH="/usr/local/lib:/opt/gstreamer/lib/multiarch:/opt/gstreamer/lib/x86_64-linux-gnu:/opt/gstreamer/lib/aarch64-linux-gnu:/opt/gstreamer/lib/riscv64-linux-gnu:/opt/gstreamer/lib:/opt/opencv4/lib:/opt/opencv4/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
+    LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:/opt/gstreamer/lib/multiarch:/opt/gstreamer/lib/x86_64-linux-gnu:/opt/gstreamer/lib/aarch64-linux-gnu:/opt/gstreamer/lib/riscv64-linux-gnu:/opt/gstreamer/lib:/opt/opencv4/lib:/opt/opencv4/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
     LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
     GDK_BACKEND=x11 \
     GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0" \
@@ -276,16 +280,28 @@ ENV BUILD_MODE=${BUILD_MODE} \
 
 RUN if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
         ln -s /opt/llvm-target /usr/local/llvm-target; \
+    fi; \
+    if [ -d /usr/local/llvm-target/lib/clang ] && [ ! -e /usr/lib/clang ]; then \
+        ln -s /usr/local/llvm-target/lib/clang /usr/lib/clang; \
     fi
 
-# Vulkan SDK installs only under x86_64/; create aarch64 symlink so
-# setup-env.sh (which sources $(uname -m)) works on arm64 machines.
+# Vulkan SDK installs only under x86_64/; create aarch64 and riscv64 symlinks,
+# and link /opt/vulkan/active to the appropriate architecture folder.
 RUN set -eux; \
     for vulkan_dir in /opt/vulkan/*/; do \
         [ -d "${vulkan_dir}" ] || continue; \
         if [ -d "${vulkan_dir}/x86_64" ] && [ ! -e "${vulkan_dir}/aarch64" ]; then \
             ln -sf x86_64 "${vulkan_dir}/aarch64"; \
         fi; \
+        if [ -d "${vulkan_dir}/x86_64" ] && [ ! -e "${vulkan_dir}/riscv64" ]; then \
+            ln -sf x86_64 "${vulkan_dir}/riscv64"; \
+        fi; \
+        vulkan_arch="${TARGETARCH:-${TARGET_ARCH:-amd64}}"; \
+        if [ "${vulkan_arch}" = "amd64" ]; then arch_dir="x86_64"; \
+        elif [ "${vulkan_arch}" = "arm64" ] || [ "${vulkan_arch}" = "aarch64" ]; then arch_dir="aarch64"; \
+        elif [ "${vulkan_arch}" = "riscv64" ]; then arch_dir="riscv64"; \
+        else arch_dir="x86_64"; fi; \
+        ln -sf "${vulkan_dir}${arch_dir}" /opt/vulkan/active; \
     done
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
@@ -327,6 +343,10 @@ RUN set -eux; \
       require_target_llvm_tool clang++; \
       require_target_llvm_tool llvm-ar; \
       require_target_llvm_tool llvm-ranlib; \
+      update-alternatives --install /usr/bin/cc cc /usr/local/llvm-target/bin/clang 100; \
+      update-alternatives --set cc /usr/local/llvm-target/bin/clang; \
+      update-alternatives --install /usr/bin/c++ c++ /usr/local/llvm-target/bin/clang++ 100; \
+      update-alternatives --set c++ /usr/local/llvm-target/bin/clang++; \
     else \
       echo "WARNING: /usr/local/llvm-target not found; using distro LLVM"; \
     fi
