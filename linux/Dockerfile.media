@@ -316,6 +316,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
+    if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
+        export CFLAGS="${CFLAGS:-} -D_LIBCPP_VERSION=20220101 -fno-lto"; \
+        export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101 -fno-lto"; \
+    fi; \
     bash /opt/scripts/media/gstreamer/common/build-gstreamer-stage.sh \
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \

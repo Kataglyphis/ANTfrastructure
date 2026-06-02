@@ -219,6 +219,7 @@ bootstrap_ca() {
 
     USE_FAST_UBUNTU_MIRROR=true \
     FAST_UBUNTU_MIRROR_URL="${bootstrap_archive_mirror_url}" \
+    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}" \
     FAST_UBUNTU_REWRITE_SECURITY="${rewrite_security}" \
     bash "${SCRIPT_DIR}/use-fast-ubuntu-mirror.sh"
   fi

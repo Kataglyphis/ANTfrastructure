@@ -190,6 +190,9 @@ build_gstreamer_monorepo() {
 
   if [ -n "${CROSS_PYTHON_BUILD_CONFIG:-}" ]; then
     append_meson_arg "-Dpython.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
+    if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" = "true" ]; then
+      append_meson_arg "-Dgst-python:python.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
+    fi
   fi
 
   if command -v append_meson_cross_flags >/dev/null 2>&1; then

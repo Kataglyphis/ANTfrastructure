@@ -36,6 +36,19 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
     esac
 fi
 
+# Meson's internal C++ standard library detection probes _LIBCPP_VERSION in a way
+# that fails with the GCC 16 cross-compiler's libstdc++ headers on arm64/riscv64.
+# Define _LIBCPP_VERSION in CXXFLAGS to satisfy the detection probe without
+# changing the actual standard library used.
+if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+   command -v cross_target_arch >/dev/null 2>&1; then
+    case "$(cross_target_arch)" in
+        arm64|riscv64)
+            export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101"
+            ;;
+    esac
+fi
+
 for helper in \
     "/opt/scripts/core/compiler-cache.sh" \
     "${_SETUP_GST_DIR}/../../../01-core/compiler-cache.sh"; do
@@ -354,9 +367,11 @@ if dynamic_libpython.exists():
     libpython['dynamic'] = str(dynamic_libpython)
 
 impl_version = getattr(sys.implementation, 'version', sys.version_info)
+# Compute base_prefix from the include dir: include/pythonX.Y -> prefix
+cross_prefix = str(include_dir.parent.parent)
 data = {
     'schema_version': '1.0',
-    'base_prefix': '/usr',
+    'base_prefix': cross_prefix,
     'platform': platform,
     'language': {
         'version': language_version,

@@ -343,21 +343,28 @@ RUN set -eux; \
       require_target_llvm_tool clang++; \
       require_target_llvm_tool llvm-ar; \
       require_target_llvm_tool llvm-ranlib; \
-      update-alternatives --install /usr/bin/cc cc /usr/local/llvm-target/bin/clang 100; \
-      update-alternatives --set cc /usr/local/llvm-target/bin/clang; \
-      update-alternatives --install /usr/bin/c++ c++ /usr/local/llvm-target/bin/clang++ 100; \
-      update-alternatives --set c++ /usr/local/llvm-target/bin/clang++; \
     else \
       echo "WARNING: /usr/local/llvm-target not found; using distro LLVM"; \
-    fi
-
-# In cross builds the system already ships GCC ${GCC_VERSION} via apt,
-# so the /opt/gcc-* prefix copied from the cross-artifact image is
-# redundant and may conflict with CMake presets that auto-detect a
-# partial toolchain.  Remove it so presets fall back to /usr/bin/.
-RUN if [ "${BUILD_MODE}" = "cross" ]; then \
-        rm -rf "/opt/gcc-${GCC_VERSION}"; \
-        echo "Removed redundant /opt/gcc-${GCC_VERSION} (system GCC available)"; \
+    fi; \
+    gcc_prefix="/opt/gcc-${GCC_VERSION}"; \
+    if [ -d "${gcc_prefix}" ]; then \
+      for tool in gcc g++ gcov; do \
+        candidate="${gcc_prefix}/bin/${tool}"; \
+        if [ -x "${candidate}" ]; then \
+          update-alternatives --install "/usr/bin/${tool}" "${tool}" "${candidate}" 150; \
+          update-alternatives --set "${tool}" "${candidate}"; \
+        fi; \
+      done; \
+      if [ -x "${gcc_prefix}/bin/gcc" ]; then \
+        update-alternatives --install /usr/bin/cc cc "${gcc_prefix}/bin/gcc" 150; \
+        update-alternatives --set cc "${gcc_prefix}/bin/gcc"; \
+      fi; \
+      if [ -x "${gcc_prefix}/bin/g++" ]; then \
+        update-alternatives --install /usr/bin/c++ c++ "${gcc_prefix}/bin/g++" 150; \
+        update-alternatives --set c++ "${gcc_prefix}/bin/g++"; \
+      fi; \
+    else \
+      echo "WARNING: Custom GCC prefix ${gcc_prefix} not found"; \
     fi
 
 # Keep a tiny smoke-only wrapper target here because local/unpushed intermediate

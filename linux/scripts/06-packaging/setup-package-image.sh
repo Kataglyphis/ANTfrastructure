@@ -135,24 +135,32 @@ main() {
     done
 
     gcc_prefix="/opt/gcc-${GCC_VERSION}"
-    mkdir -p "${gcc_prefix}/bin" "${gcc_prefix}/${triplet}"
-    rm -rf "${gcc_prefix}/lib" "${gcc_prefix}/lib64" "${gcc_prefix}/${triplet}/lib"
+    if [ -f "${gcc_prefix}/bin/gcc" ]; then
+        echo "Custom GCC already present at ${gcc_prefix}; preserving it."
+        # Configure dynamic loader paths for custom GCC (prevent GLIBCXX Version Errors)
+        echo "${gcc_prefix}/lib64" > "/etc/ld.so.conf.d/gcc-custom.conf"
+        echo "${gcc_prefix}/lib" >> "/etc/ld.so.conf.d/gcc-custom.conf"
+        ldconfig
+    else
+        mkdir -p "${gcc_prefix}/bin" "${gcc_prefix}/${triplet}"
+        rm -rf "${gcc_prefix}/lib" "${gcc_prefix}/lib64" "${gcc_prefix}/${triplet}/lib"
 
-    if [ -d "/usr/lib/${triplet}" ]; then
-        ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/lib"
-        ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/lib64"
-        ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/${triplet}/lib"
+        if [ -d "/usr/lib/${triplet}" ]; then
+            ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/lib"
+            ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/lib64"
+            ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/${triplet}/lib"
+        fi
+
+        for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib; do
+            candidate="$(command -v "${tool}-${gcc_major}" || command -v "${tool}" || true)"
+            link_path_if_present "${candidate}" "${gcc_prefix}/bin/${tool}"
+        done
+
+        for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib ar as ld nm ranlib strip objcopy; do
+            candidate="$(command -v "${triplet}-${tool}-${gcc_major}" || command -v "${triplet}-${tool}" || command -v "${tool}-${gcc_major}" || command -v "${tool}" || true)"
+            link_path_if_present "${candidate}" "${gcc_prefix}/bin/${triplet}-${tool}"
+        done
     fi
-
-    for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib; do
-        candidate="$(command -v "${tool}-${gcc_major}" || command -v "${tool}" || true)"
-        link_path_if_present "${candidate}" "${gcc_prefix}/bin/${tool}"
-    done
-
-    for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib ar as ld nm ranlib strip objcopy; do
-        candidate="$(command -v "${triplet}-${tool}-${gcc_major}" || command -v "${triplet}-${tool}" || command -v "${tool}-${gcc_major}" || command -v "${tool}" || true)"
-        link_path_if_present "${candidate}" "${gcc_prefix}/bin/${triplet}-${tool}"
-    done
 
     link_command_if_present cargo "${CARGO_HOME}/bin/cargo"
     link_command_if_present rustc "${CARGO_HOME}/bin/rustc"

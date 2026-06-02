@@ -29,7 +29,7 @@ These files document host-specific workarounds that are easy to regress if you i
 - Use `nerdctl` first on this host. `buildctl` and `ctr` commonly fail here with permission errors.
 - Keep the existing QEMU/binfmt multi-platform Linux lane working while extending the additive cross-build lane.
 - `linux/scripts/build-cross-compiler.sh` builds one `linux/amd64` compiler image that contains cross toolchains for `amd64`, `arm64`, and `riscv64`. It is not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features just to make foreign-arch builds pass. Foreign-architecture runtime images must keep source-built `clang 22.1.6` and must not fall back to the Ubuntu `clang 22.1.2` packages.
+- Do not remove LLVM/Clang features just to make foreign-arch builds pass. Foreign-architecture runtime images must keep source-built `clang 22.1.6` and must not fall back to the Ubuntu `clang 22.1.2` packages, but should prioritize source-built `gcc 16.1.0` as the default system `cc`/`c++` compiler.
 - Preserve the optional runtime payloads and LLVM normalization in `linux/Dockerfile.package`. Do not silently drop the `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
 
 ## Verified Runtime Packaging Path On This Host
@@ -83,8 +83,13 @@ nerdctl manifest inspect "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
 
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs`, because absolute symlinks resolve against the host root.
 - Confirm all of the following for runtime image validation:
+  - `gcc --version` reports `16.1.0`
   - `clang --version` reports `22.1.6`
   - the reported target triple matches the architecture
+  - `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`
+  - `/usr/bin/c++ -> /etc/alternatives/c++ -> /opt/gcc-16.1.0/bin/g++`
+  - `/usr/bin/gcc -> /etc/alternatives/gcc -> /opt/gcc-16.1.0/bin/gcc`
+  - `/usr/bin/g++ -> /etc/alternatives/g++ -> /opt/gcc-16.1.0/bin/g++`
   - `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`
   - the optional runtime payloads are still present
 - Use the checked-in `wrapper-smoke` target documented in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md` for cheaper packaging validation before large publish runs.

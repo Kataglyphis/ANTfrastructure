@@ -60,6 +60,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${T
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -eux; \
+    apt-get install -y --no-install-recommends binutils-dev; \
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" target-clang
 
