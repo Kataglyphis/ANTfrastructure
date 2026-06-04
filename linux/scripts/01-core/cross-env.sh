@@ -886,6 +886,32 @@ install_target_packages() {
   apt-get install -y --no-install-recommends "${pkgs[@]}"
 }
 
+install_optional_target_packages() {
+    local pkg
+
+    [ "$#" -gt 0 ] || return 0
+
+    for pkg in "$@"; do
+        if ! install_target_packages "${pkg}"; then
+            echo "Skipping optional target package ${pkg} because apt could not resolve it for $(cross_target_arch 2>/dev/null || echo target)."
+        fi
+    done
+}
+
+is_cross_riscv64() {
+  command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+  command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]
+}
+
+is_cross_skip_csound() {
+  command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+  command -v cross_target_arch >/dev/null 2>&1 || return 1
+  case "$(cross_target_arch)" in
+    arm64|riscv64) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 cross_pkg_config_libdir() {
   local triplet="${1:-$(cross_target_triplet)}"
   local dir path=""

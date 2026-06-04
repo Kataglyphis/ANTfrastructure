@@ -11,17 +11,17 @@ fi
 
 vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
-if command -v cross_apt_update >/dev/null 2>&1; then
-  cross_apt_update
-else
-  apt-get update
-fi
+_apt_refresh() {
+  if command -v cross_apt_update >/dev/null 2>&1; then
+    cross_apt_update "$@"
+  else
+    apt-get update "$@"
+  fi
+}
 
-is_riscv64_cross=false
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-  is_riscv64_cross=true
-fi
+_apt_refresh
+
+is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
 
 gi_cross_wrapper_arch=""
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
@@ -33,15 +33,7 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
   esac
 fi
 
-skip_csound_cross=false
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-   command -v cross_target_arch >/dev/null 2>&1; then
-  case "$(cross_target_arch)" in
-    arm64|riscv64)
-      skip_csound_cross=true
-      ;;
-  esac
-fi
+skip_csound_cross=$(is_cross_skip_csound && echo true || echo false)
 
 prefer_toolchain_vulkan=false
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
@@ -533,11 +525,7 @@ fi
 
 # Some base images may not provide the \`xorgproto\` package name. Try a few
 # alternatives and fail early if none are available so the error is clear.
-if command -v cross_apt_update >/dev/null 2>&1; then
-  cross_apt_update || true
-else
-  apt-get update || true
-fi
+_apt_refresh || true
 apt-get install -y --no-install-recommends xorg-dev || true
 if [ "${is_riscv64_cross}" = "true" ]; then
   apt-get install -y --no-install-recommends x11proto-dev || true
@@ -547,11 +535,7 @@ fi
 # Ensure pkg-config metadata directories updated
 update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # Install Csound packages required for building csound-related plugins.
-if command -v cross_apt_update >/dev/null 2>&1; then
-  cross_apt_update
-else
-  apt-get update
-fi
+_apt_refresh
 # The later GStreamer build already disables/excludes csound on ARM and RISC-V
 # cross targets, so avoid redundant host-side package churn here.
 if [ "${skip_csound_cross}" = "true" ]; then

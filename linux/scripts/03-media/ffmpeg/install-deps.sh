@@ -26,17 +26,6 @@ install_host_packages \
     yasm \
     nasm
 
-install_optional_target_packages() {
-    local pkg
-
-    [ "$#" -gt 0 ] || return 0
-
-    for pkg in "$@"; do
-        if ! install_target_packages "${pkg}"; then
-            echo "Skipping optional target package ${pkg} because apt could not resolve it for $(cross_target_arch 2>/dev/null || echo target)."
-        fi
-    done
-}
 
 target_packages=(
     libfreetype6-dev

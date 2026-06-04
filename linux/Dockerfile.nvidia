@@ -109,7 +109,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         cuda-compat-${CUDA_VERSION_MAJOR_MINOR}
 
 # ==============================================================================
-# 8. Environment variables for CUDA
+# 3. Environment variables for CUDA
 #    /usr/local/cuda is the canonical symlink created by the cuda-toolkit package.
 # ==============================================================================
 ENV CUDA_HOME=/usr/local/cuda \
@@ -123,7 +123,7 @@ ENV PKG_CONFIG_PATH="${CUDA_HOME}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 ENV LIBRARY_PATH="${CUDA_HOME}/lib64/stubs:${LIBRARY_PATH:-}"
 
 # ==============================================================================
-# 9. Locate TensorRT and symlink to /usr/local/tensorrt for a stable path
+# 4. Locate TensorRT and symlink to /usr/local/tensorrt for a stable path
 #    TensorRT installs to /usr on Ubuntu. We create a canonical symlink so
 #    downstream build scripts can rely on TENSORRT_HOME=/usr/local/tensorrt.
 # ==============================================================================
@@ -140,7 +140,7 @@ RUN set -eux; \
     ldconfig
 
 # ==============================================================================
-# 10. Verification
+# 5. Verification
 # ==============================================================================
 RUN set -eux; \
     nvcc --version; \

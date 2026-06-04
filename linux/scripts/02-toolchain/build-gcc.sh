@@ -452,50 +452,37 @@ if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
     exit 1
   fi
 
-  # NOTE: Do NOT use --slave here. In minimal/container images, g++/cpp/gcov may
-  # already be managed by separate alternatives groups (or not at all). Using
-  # --slave can fail with exit code 2 if link groups are already configured.
+  _install_alt() {
+    local name="$1" link="$2" bin="$3" priority="${4:-${ALTS_PRIORITY}}"
+    echo "Registering ${name}..."
+    ${SUDO} update-alternatives --install "${link}" "${name}" "${bin}" "${priority}"
+  }
+  _set_alt() {
+    local name="$1" bin="$2"
+    ${SUDO} update-alternatives --set "${name}" "${bin}" || true
+  }
 
-  echo "Registering gcc..."
-  ${SUDO} update-alternatives --install /usr/bin/gcc gcc "${GCC_BIN}" "${ALTS_PRIORITY}"
-
-  if [ -x "${GXX_BIN}" ]; then
-    echo "Registering g++..."
-    ${SUDO} update-alternatives --install /usr/bin/g++ g++ "${GXX_BIN}" "${ALTS_PRIORITY}"
-  fi
+  _install_alt gcc /usr/bin/gcc "${GCC_BIN}"
+  if [ -x "${GXX_BIN}" ]; then _install_alt g++ /usr/bin/g++ "${GXX_BIN}"; fi
 
   if [ -x "${CPP_BIN}" ]; then
-    echo "Registering cpp..."
-    # On Ubuntu/Debian, the master link for the 'cpp' alternative may be /lib/cpp.
-    # Using the wrong master link can trigger a link-group rename and sometimes
-    # fail in minimal/container setups.
     CPP_LINK="/usr/bin/cpp"
-    if [ -e "/lib/cpp" ]; then
-      CPP_LINK="/lib/cpp"
-    fi
-    ${SUDO} update-alternatives --install "${CPP_LINK}" cpp "${CPP_BIN}" "${ALTS_PRIORITY}"
+    if [ -e "/lib/cpp" ]; then CPP_LINK="/lib/cpp"; fi
+    _install_alt cpp "${CPP_LINK}" "${CPP_BIN}"
   fi
 
-  if [ -x "${GCOV_BIN}" ]; then
-    echo "Registering gcov..."
-    ${SUDO} update-alternatives --install /usr/bin/gcov gcov "${GCOV_BIN}" "${ALTS_PRIORITY}"
-  fi
+  if [ -x "${GCOV_BIN}" ]; then _install_alt gcov /usr/bin/gcov "${GCOV_BIN}"; fi
+  if [ -x "${GFORTRAN_BIN}" ]; then _install_alt gfortran /usr/bin/gfortran "${GFORTRAN_BIN}"; fi
 
-  if [ -x "${GFORTRAN_BIN}" ]; then
-    echo "Registering gfortran..."
-    ${SUDO} update-alternatives --install /usr/bin/gfortran gfortran "${GFORTRAN_BIN}" "${ALTS_PRIORITY}"
-  fi
-
-  echo "Registering /usr/bin/cc to point to ${GCC_BIN}..."
-  ${SUDO} update-alternatives --install /usr/bin/cc cc "${GCC_BIN}" "${ALTS_PRIORITY}"
+  _install_alt cc /usr/bin/cc "${GCC_BIN}"
 
   echo "Setting alternatives (gcc + cc + optional tools)..."
-  ${SUDO} update-alternatives --set gcc "${GCC_BIN}" || true
-  ${SUDO} update-alternatives --set cc "${GCC_BIN}" || true
-  if [ -x "${GXX_BIN}" ]; then ${SUDO} update-alternatives --set g++ "${GXX_BIN}" || true; fi
-  if [ -x "${CPP_BIN}" ]; then ${SUDO} update-alternatives --set cpp "${CPP_BIN}" || true; fi
-  if [ -x "${GCOV_BIN}" ]; then ${SUDO} update-alternatives --set gcov "${GCOV_BIN}" || true; fi
-  if [ -x "${GFORTRAN_BIN}" ]; then ${SUDO} update-alternatives --set gfortran "${GFORTRAN_BIN}" || true; fi
+  _set_alt gcc "${GCC_BIN}"
+  _set_alt cc "${GCC_BIN}"
+  if [ -x "${GXX_BIN}" ]; then _set_alt g++ "${GXX_BIN}"; fi
+  if [ -x "${CPP_BIN}" ]; then _set_alt cpp "${CPP_BIN}"; fi
+  if [ -x "${GCOV_BIN}" ]; then _set_alt gcov "${GCOV_BIN}"; fi
+  if [ -x "${GFORTRAN_BIN}" ]; then _set_alt gfortran "${GFORTRAN_BIN}"; fi
 
   echo "update-alternatives registration complete."
 fi

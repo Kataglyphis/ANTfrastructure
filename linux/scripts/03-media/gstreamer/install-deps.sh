@@ -20,21 +20,9 @@ else
   apt-get update
 fi
 
-is_riscv64_cross=false
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-  is_riscv64_cross=true
-fi
+is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
 
-skip_csound_cross=false
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
-   command -v cross_target_arch >/dev/null 2>&1; then
-  case "$(cross_target_arch)" in
-    arm64|riscv64)
-      skip_csound_cross=true
-      ;;
-  esac
-fi
+skip_csound_cross=$(is_cross_skip_csound && echo true || echo false)
 
 prefer_toolchain_vulkan=false
 if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
