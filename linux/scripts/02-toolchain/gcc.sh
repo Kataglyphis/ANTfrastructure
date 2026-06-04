@@ -101,6 +101,13 @@ build_source_cross_gcc_targets() {
     install_cross_gcc_sysroot_packages "${normalized_target}"
 
     triplet="$(arch_deb_multiarch_triplet_for "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
+
+    if [ "${normalized_target}" != "amd64" ]; then
+      if [ ! -d "/usr/${triplet}" ]; then
+        log "Skipping cross GCC for ${normalized_target}: sysroot /usr/${triplet} not available (missing libc6-dev-${normalized_target}-cross)"
+        continue
+      fi
+    fi
     if [ "${normalized_target}" = "amd64" ]; then
       for tool in gcc g++ gcov; do
         [ -x "${prefix}/bin/${tool}" ] || die "Expected host GCC tool not found: ${prefix}/bin/${tool}"
