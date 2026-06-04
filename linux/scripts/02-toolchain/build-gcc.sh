@@ -404,12 +404,16 @@ fi
 if [ -n "${HOST_TRIPLET}" ]; then
   BUILD_TRIPLET="$(gcc -dumpmachine 2>/dev/null || cc -dumpmachine 2>/dev/null || echo x86_64-pc-linux-gnu)"
   CONFIG_CMD+=("--build=${BUILD_TRIPLET}" "--host=${HOST_TRIPLET}")
-  export CC="${HOST_TRIPLET}-gcc"
-  export CXX="${HOST_TRIPLET}-g++"
+  export CC="${CC:-${HOST_TRIPLET}-gcc}"
+  export CXX="${CXX:-${HOST_TRIPLET}-g++}"
   export AR="${HOST_TRIPLET}-ar"
+  export AS="${HOST_TRIPLET}-as"
+  export LD="${HOST_TRIPLET}-ld"
   export RANLIB="${HOST_TRIPLET}-ranlib"
   export NM="${HOST_TRIPLET}-nm"
   export STRIP="${HOST_TRIPLET}-strip"
+  export OBJCOPY="${HOST_TRIPLET}-objcopy"
+  export OBJDUMP="${HOST_TRIPLET}-objdump"
   # Build-time host tools need the native (build-machine) compiler
   export CC_FOR_BUILD="${CC_FOR_BUILD:-gcc}"
   export CXX_FOR_BUILD="${CXX_FOR_BUILD:-g++}"
