@@ -167,6 +167,14 @@ build_source_cross_gcc_targets() {
       [ -x "${cross_cc}" ] || die "Cross compiler ${cross_cc} not found for Canadian cross"
       [ -x "${cross_cxx}" ] || die "Cross compiler ${cross_cxx} not found for Canadian cross"
       log "Building native GCC ${full_version} for ${normalized_target} (Canadian cross via ${cross_cc})"
+      log "Testing cross-compiler link capability..."
+      echo 'int main(){return 0;}' | "${cross_cc}" -x c - -o /tmp/_cc_test_"${normalized_target}" 2>&1 || {
+        log "Cross-compiler link test FAILED for ${normalized_target} — skipping Canadian cross"
+        log "Hint: ensure cross sysroot is installed (apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalized_target}-cross)"
+        continue
+      }
+      rm -f /tmp/_cc_test_"${normalized_target}"
+      log "Cross-compiler link test passed for ${normalized_target}"
       CC="${cross_cc}" CXX="${cross_cxx}" \
         PREFIX="${native_prefix}" \
         BUILD_DIR="${HOME}/tmp2/gcc-build-${full_version}-native-${normalized_target}" \
