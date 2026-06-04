@@ -169,12 +169,16 @@ build_source_cross_gcc_targets() {
       log "Building native GCC ${full_version} for ${normalized_target} (Canadian cross via ${cross_cc})"
       log "Testing cross-compiler link capability..."
       echo 'int main(){return 0;}' | "${cross_cc}" -x c - -o /tmp/_cc_test_"${normalized_target}" 2>&1 || {
-        log "Cross-compiler link test FAILED for ${normalized_target} — skipping Canadian cross"
-        log "Hint: ensure cross sysroot is installed (apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalized_target}-cross)"
-        continue
+        _link_error=$(echo 'int main(){return 0;}' | "${cross_cc}" -x c - -o /tmp/_cc_test_"${normalized_target}" 2>&1 || true)
+        log "Cross-compiler link test FAILED for ${normalized_target}: ${_link_error}"
+        log "Skipping Canadian cross — native GCC for ${normalized_target} will NOT be built"
+        log "Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalized_target}-cross"
+        log "Or set GCC_CANADIAN_CROSS_SKIP_LINK_TEST=1 to skip this test"
+        if [ "${GCC_CANADIAN_CROSS_SKIP_LINK_TEST:-0}" != "1" ]; then
+          continue
+        fi
       }
       rm -f /tmp/_cc_test_"${normalized_target}"
-      log "Cross-compiler link test passed for ${normalized_target}"
       CC="${cross_cc}" CXX="${cross_cxx}" \
         PREFIX="${native_prefix}" \
         BUILD_DIR="${HOME}/tmp2/gcc-build-${full_version}-native-${normalized_target}" \
