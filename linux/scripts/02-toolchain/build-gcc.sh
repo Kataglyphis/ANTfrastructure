@@ -402,7 +402,8 @@ fi
 # resulting binaries are host-architecture executables that produce target-arch
 # code. This requires the cross-compiler for the host triplet to be on PATH.
 if [ -n "${HOST_TRIPLET}" ]; then
-  CONFIG_CMD+=("--host=${HOST_TRIPLET}")
+  BUILD_TRIPLET="$(gcc -dumpmachine 2>/dev/null || cc -dumpmachine 2>/dev/null || echo x86_64-pc-linux-gnu)"
+  CONFIG_CMD+=("--build=${BUILD_TRIPLET}" "--host=${HOST_TRIPLET}")
   export CC="${HOST_TRIPLET}-gcc"
   export CXX="${HOST_TRIPLET}-g++"
   export AR="${HOST_TRIPLET}-ar"
