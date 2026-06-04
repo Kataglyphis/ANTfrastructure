@@ -71,3 +71,10 @@ RUN set -eux; \
         /opt/scripts/media/onnxruntime/android/build-android.sh && \
         /opt/scripts/media/litert/android/build-android.sh && \
         /opt/scripts/media/opencv/android/build-android.sh
+
+# Preserve the cross-compiled Python staging tree from the base image.
+# Without this, Dockerfile.package fails at COPY --from=artifact-source /opt/python-cross.
+RUN if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
+        touch /opt/python-cross/.keep; \
+    fi; \
+    echo "android-cross ready"

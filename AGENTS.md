@@ -97,7 +97,7 @@ nerdctl manifest inspect "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
 
 ## Host Constraints
 
-- QEMU/binfmt works for `arm64` and `riscv64` on this host.
+- QEMU/binfmt works for `arm64` and `riscv64` on this host. It may need to be reinstalled after a host reboot. If foreign-architecture builds (or even simple `nerdctl run --platform linux/arm64 alpine uname -m`) fail with `exec format error`, run `sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all` in a terminal first before resuming the agentic session.
 - Plain local image tags such as `docker.io/library/opencode-local:*` may be treated like remote registry references here. Do not rely on them as reusable `FROM` sources for the runtime packaging chain.
 - Disk pressure is common during runtime rebuilds. When free space is tight, build and push one architecture at a time.
 - `gh` may be unavailable on this host. Use `nerdctl` and regular git commands unless GitHub CLI is actually installed.

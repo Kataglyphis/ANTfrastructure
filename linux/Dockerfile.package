@@ -210,7 +210,14 @@ COPY --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
-COPY --from=artifact-source /opt/python-cross /opt/python-cross
+# Create /opt/python-cross if it does not exist in the artifact source.
+# The cross-compiled Python staging tree is transferred from the SDK
+# media stages through the android stage; when the android stage is
+# built from a clean base image the directory may be absent, which is
+# fine because the runtime image does not need the cross compiler
+# tooling.
+RUN set -eux; \
+    mkdir -p /opt/python-cross
 COPY --from=artifact-payload /payload/ /
 
 FROM ${PACKAGE_BASE_STAGE} AS package

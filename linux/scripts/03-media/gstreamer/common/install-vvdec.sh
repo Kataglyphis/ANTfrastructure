@@ -16,7 +16,7 @@ TMPDIR="/tmp/vvdec"
 PREFIX="/usr/local"
 
 rm -rf "${TMPDIR}"
-git clone --depth 1 https://github.com/fraunhoferhhi/vvdec.git "${TMPDIR}"
+git clone --depth 1 --branch v3.1.0 https://github.com/fraunhoferhhi/vvdec.git "${TMPDIR}"
 cd "${TMPDIR}"
 
 # Prefer CMake build flow which is supported by vvdec
@@ -26,6 +26,7 @@ cmake_args=(
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="${PREFIX}"
   -DCMAKE_INSTALL_LIBDIR="lib"
+  -DCMAKE_CXX_FLAGS="-Wno-error=unused-but-set-variable"
 )
 if command -v append_cmake_cross_args >/dev/null 2>&1; then
   append_cmake_cross_args cmake_args

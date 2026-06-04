@@ -152,6 +152,8 @@ for target_arch in amd64 arm64 riscv64; do
 done
 
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
+# ^ If the agent reports "exec format error" during foreign-arch builds, run this command
+#   manually in a terminal first, then retry.
 
 for target_arch in amd64 arm64 riscv64; do
   nerdctl build --platform "linux/${target_arch}" -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-package-${target_arch}" \

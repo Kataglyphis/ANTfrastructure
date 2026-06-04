@@ -113,6 +113,16 @@ build_gstreamer_monorepo() {
      command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
      command -v cross_target_python_libdir >/dev/null 2>&1; then
     target_python_libdir="$(cross_target_python_libdir 2>/dev/null || true)"
+    # If cross_target_python_libdir resolved to the host /usr/local/lib
+    # instead of the staged cross Python, force the correct per-arch path.
+    if [ "${target_python_libdir}" = "/usr/local/lib" ] && \
+       [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" = "true" ]; then
+      local _cross_arch="${TARGET_MACHINE_ARCH:-riscv64}"
+      local _cross_python_lib="/opt/python-cross/${_cross_arch}/usr/local/lib"
+      if [ -d "${_cross_python_lib}" ] && [ -f "${_cross_python_lib}/libpython3.14.so" ]; then
+        target_python_libdir="${_cross_python_lib}"
+      fi
+    fi
     if [ -n "${target_python_libdir}" ]; then
       append_meson_arg "-Dgst-python:libpython-dir=${target_python_libdir}"
     fi

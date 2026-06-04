@@ -98,6 +98,22 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}" \
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools numpy meson ninja cmake packaging
 
+# ------------------------------------------------------------------------------
+# Create /opt/python-target symlink for cross builds so that
+# cross_target_python_active_stage_root() finds the correct per-arch Python
+# staging tree.  Must be in the base stage so it persists through all
+# downstream stages and prevents host libpython linking errors.
+# ------------------------------------------------------------------------------
+RUN set -eux; \
+    if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
+        python_cross_stage="/opt/python-cross/${TARGET_ARCH}"; \
+        if [ -d "${python_cross_stage}/usr/local" ]; then \
+            rm -rf /opt/python-target; \
+            ln -sfn "${python_cross_stage}" /opt/python-target; \
+            echo "Activated cross Python staging: /opt/python-target -> ${python_cross_stage}"; \
+        fi; \
+    fi
+
 # ==============================================================================
 # ONNX Runtime stage
 # ==============================================================================
@@ -291,6 +307,11 @@ COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
 COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 
+# Diagnostic: ensure the cross Python staging directory survived the build chain
+RUN set -eux; \
+    echo "=== /opt/python-cross/ ==="; \
+    ls /opt/python-cross/ 2>/dev/null || echo "MISSING";
+
 # ==============================================================================
 # GStreamer stage (depends on onnxruntime + litert)
 # ==============================================================================
@@ -299,26 +320,63 @@ FROM media-inputs AS gstreamer
 ARG GSTREAMER_VERSION
 ARG BUILD_TYPE=Release
 ARG GSTREAMER_PREFIX=/opt/gstreamer
+ARG TARGET_ARCH
+ARG BUILD_MODE
 
 ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     CSOUND_LIB_DIR=/usr/lib \
-    PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
+    PATH="${GSTREAMER_PREFIX}/bin:${PATH}" \
+    BUILD_MODE=${BUILD_MODE} \
+    TARGET_ARCH=${TARGET_ARCH}
 
 COPY --chmod=755 linux/scripts/03-media/gstreamer /opt/scripts/media/gstreamer
 COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
+COPY --chmod=755 linux/scripts/01-core/cross-env.sh /opt/scripts/core/cross-env.sh
+
+# ------------------------------------------------------------------------------
+# Activate the correct per-architecture cross-compiled Python staging root so
+# Meson (gst-python) links against the target libpython3.14 instead of the
+# host amd64 libpython3.14. Create /opt/python-target as a symlink so
+# cross_target_python_active_stage_root() finds it without fallback.
+# ------------------------------------------------------------------------------
+RUN set -eux; \
+    if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
+        python_cross_stage="/opt/python-cross/${TARGET_ARCH}"; \
+        if [ -d "${python_cross_stage}/usr/local" ]; then \
+            rm -rf /opt/python-target; \
+            ln -sfn "${python_cross_stage}" /opt/python-target; \
+            echo "Activated cross Python staging: /opt/python-target -> ${python_cross_stage}"; \
+        fi; \
+    fi
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/gstreamer/install-deps.sh
 
+# ------------------------------------------------------------------------------
+# Diagnostics: verify cross Python staging directory exists before GStreamer build
+# ------------------------------------------------------------------------------
+RUN set -eux; \
+    echo "=== ENV ==="; \
+    echo "BUILD_MODE=${BUILD_MODE:-UNSET}"; \
+    echo "TARGET_ARCH=${TARGET_ARCH:-UNSET}"; \
+    echo "TARGETARCH=${TARGETARCH:-UNSET}"; \
+    echo "=== /opt/python-cross/ ==="; \
+    ls -la /opt/python-cross/ 2>/dev/null || echo "NO CROSS DIR"; \
+    for d in /opt/python-cross/*/usr/local; do \
+        [ -d "$d" ] && echo "EXISTS: $d" || true; \
+    done; \
+    echo "=== /opt/python-target ==="; \
+    ls -la /opt/python-target 2>/dev/null || echo "NO TARGET DIR"
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
     if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
-        export CFLAGS="${CFLAGS:-} -D_LIBCPP_VERSION=20220101 -fno-lto"; \
-        export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101 -fno-lto"; \
+        export CFLAGS="${CFLAGS:-} -D_LIBCPP_VERSION=20220101"; \
+        export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101"; \
     fi; \
     bash /opt/scripts/media/gstreamer/common/build-gstreamer-stage.sh \
         "$GSTREAMER_VERSION" \

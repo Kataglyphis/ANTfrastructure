@@ -961,7 +961,17 @@ setup_linux_cross_env() {
   export BUILDARCH="${build_arch}"
   export BUILDPLATFORM="linux/${build_arch}"
   export PYTHON_CROSS_STAGE_ROOT="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}"
-  export PYTHON_CROSS_ACTIVE_ROOT="${PYTHON_CROSS_ACTIVE_ROOT:-/opt/python-target}"
+  local _cross_python_active="${PYTHON_CROSS_ACTIVE_ROOT:-}"
+  if [ -z "${_cross_python_active}" ] || [ ! -d "${_cross_python_active}/usr/local" ]; then
+    local _cross_python_arch="${target_arch}"
+    local _cross_python_stage="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${_cross_python_arch}"
+    if [ -d "${_cross_python_stage}/usr/local" ]; then
+      PYTHON_CROSS_ACTIVE_ROOT="${_cross_python_stage}"
+    else
+      PYTHON_CROSS_ACTIVE_ROOT="${PYTHON_CROSS_ACTIVE_ROOT:-/opt/python-target}"
+    fi
+  fi
+  export PYTHON_CROSS_ACTIVE_ROOT
   export CROSS_TARGET_TRIPLET="${triplet}"
   export CROSS_TARGET_PROCESSOR="${processor}"
   export CROSS_RUST_TARGET="${rust_target}"

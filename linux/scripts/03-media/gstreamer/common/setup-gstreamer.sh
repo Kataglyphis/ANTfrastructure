@@ -324,6 +324,18 @@ PY
   if command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
     target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
   fi
+  # If the cross-resolution functions returned host paths (/usr/local/...)
+  # instead of the staged cross Python, force the correct per-arch paths.
+  if [ "${target_python_include}" = "/usr/local/include/python3.14" ] && \
+     [ -n "${target_triplet}" ]; then
+    local _cross_arch="${target_triplet%%-*}"
+    local _cross_stage="/opt/python-cross/${_cross_arch}/usr/local"
+    if [ -d "${_cross_stage}" ]; then
+      target_python_include="${_cross_stage}/include/python3.14"
+      target_python_library="${_cross_stage}/lib/libpython3.14.so"
+      target_python_pkgconfig_dir="${_cross_stage}/lib/pkgconfig"
+    fi
+  fi
   if [ -z "${target_python_include}" ] || [ -z "${target_python_library}" ] || [ -z "${target_python_pkgconfig_dir}" ]; then
     echo "Target Python development files are not ready for ${target_triplet}; skipping Meson python.build_config generation"
     return 0
