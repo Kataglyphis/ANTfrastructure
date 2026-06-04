@@ -128,6 +128,37 @@ normalize_find_output() {
 }
 
 # ---------------------------------------------------------------------------
+# Shared diff helper -- eliminates duplicated diff/count/report logic
+# from check_packages, check_files, check_libs, and check_python.
+# ---------------------------------------------------------------------------
+run_diff_check() {
+  local check_name="$1"
+  local native_file="$2"
+  local cross_file="$3"
+  local ok_msg="${4:-}"
+  local diff_out="${WORKDIR}/${check_name}.diff"
+
+  if "${DIFF_TOOL}" "${native_file}" "${cross_file}" > "${diff_out}" 2>&1; then
+    local count
+    count="$(wc -l < "${native_file}")"
+    result_pass "${ok_msg:-All ${check_name} match (${count} entries)}"
+    return 0
+  fi
+
+  local added removed
+  added="$(grep -c '^> ' "${diff_out}" 2>/dev/null || echo 0)"
+  removed="$(grep -c '^< ' "${diff_out}" 2>/dev/null || echo 0)"
+
+  result_fail "${check_name} differ (+${added:-0} -${removed:-0})"
+  if [ "${VERBOSE}" -eq 1 ]; then
+    cat "${diff_out}"
+  else
+    printf '    Run with --verbose to see full diff (diff file: %s)\n' "${diff_out}"
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # Check: OS packages (dpkg -l)
 # ---------------------------------------------------------------------------
 check_packages() {
@@ -150,23 +181,7 @@ check_packages() {
   normalize_package_list "${native_file}" > "${native_file}.norm"
   normalize_package_list "${cross_file}" > "${cross_file}.norm"
 
-  local diff_out="${WORKDIR}/packages.diff"
-  if "${DIFF_TOOL}" "${native_file}.norm" "${cross_file}.norm" > "${diff_out}" 2>&1; then
-    result_pass "All OS packages match ($(wc -l < "${native_file}.norm") packages)"
-    return 0
-  fi
-
-  local added removed
-  added="$(grep -c '^> ' "${diff_out}" 2>/dev/null || echo 0)"
-  removed="$(grep -c '^< ' "${diff_out}" 2>/dev/null || echo 0)"
-
-  result_fail "OS package lists differ (+${added:-0} -${removed:-0})"
-  if [ "${VERBOSE}" -eq 1 ]; then
-    cat "${diff_out}"
-  else
-    printf '    Run with --verbose to see full diff (diff file: %s)\n' "${diff_out}"
-  fi
-  return 1
+  run_diff_check "OS packages" "${native_file}.norm" "${cross_file}.norm" "All OS packages match ($(wc -l < "${native_file}.norm") packages)"
 }
 
 # ---------------------------------------------------------------------------
@@ -201,25 +216,7 @@ check_python() {
   normalize_pip_list "${native_file}" > "${native_file}.norm"
   normalize_pip_list "${cross_file}" > "${cross_file}.norm"
 
-  local diff_out="${WORKDIR}/python.diff"
-  if "${DIFF_TOOL}" "${native_file}.norm" "${cross_file}.norm" > "${diff_out}" 2>&1; then
-    result_pass "All Python packages match ($(wc -l < "${native_file}.norm") packages)"
-    return 0
-  fi
-
-  local added removed
-  added="$(grep -c '^> ' "${diff_out}" 2>/dev/null || echo 0)"
-  removed="$(grep -c '^< ' "${diff_out}" 2>/dev/null || echo 0)"
-
-  # Version-only diffs are ok for some packages if cross vs native resolves differently
-  if [ "${VERBOSE}" -eq 1 ]; then
-    result_fail "Python packages differ (+${added:-0} -${removed:-0})"
-    cat "${diff_out}"
-  else
-    result_fail "Python packages differ (+${added:-0} -${removed:-0})"
-    printf '    Run with --verbose to see full diff (diff file: %s)\n' "${diff_out}"
-  fi
-  return 1
+  run_diff_check "Python packages" "${native_file}.norm" "${cross_file}.norm" "All Python packages match ($(wc -l < "${native_file}.norm") packages)"
 }
 
 # ---------------------------------------------------------------------------
@@ -293,8 +290,6 @@ check_files() {
   local native_file="${WORKDIR}/native-files.txt"
   local cross_file="${WORKDIR}/cross-files.txt"
 
-  # nerdctl may return non-zero when stdout is piped (broken pipe on large output);
-  # check the output file non-emptiness instead of relying on exit code.
   container_exec_strip "${NATIVE_IMAGE}" find / -type f 2>/dev/null | sort > "${native_file}" || true
   if [ ! -s "${native_file}" ]; then
     result_fail "Failed to list files from native image (empty or missing output)"
@@ -309,23 +304,7 @@ check_files() {
   normalize_find_output "${native_file}" > "${native_file}.clean"
   normalize_find_output "${cross_file}" > "${cross_file}.clean"
 
-  local diff_out="${WORKDIR}/files.diff"
-  if "${DIFF_TOOL}" "${native_file}.clean" "${cross_file}.clean" > "${diff_out}" 2>&1; then
-    result_pass "File trees match ($(wc -l < "${native_file}.clean") files)"
-    return 0
-  fi
-
-  local added removed
-  added="$(grep -c '^> ' "${diff_out}" 2>/dev/null || echo 0)"
-  removed="$(grep -c '^< ' "${diff_out}" 2>/dev/null || echo 0)"
-
-  result_fail "File trees differ (+${added:-0} -${removed:-0})"
-  if [ "${VERBOSE}" -eq 1 ]; then
-    cat "${diff_out}"
-  else
-    printf '    Run with --verbose to see full diff (diff file: %s)\n' "${diff_out}"
-  fi
-  return 1
+  run_diff_check "File trees" "${native_file}.clean" "${cross_file}.clean" "File trees match ($(wc -l < "${native_file}.clean") files)"
 }
 
 # ---------------------------------------------------------------------------
@@ -355,23 +334,7 @@ check_libs() {
     return 0
   fi
 
-  local diff_out="${WORKDIR}/libs.diff"
-  if "${DIFF_TOOL}" "${native_file}" "${cross_file}" > "${diff_out}" 2>&1; then
-    result_pass "Shared library sets match ($(wc -l < "${native_file}") libraries)"
-    return 0
-  fi
-
-  local added removed
-  added="$(grep -c '^> ' "${diff_out}" 2>/dev/null || echo 0)"
-  removed="$(grep -c '^< ' "${diff_out}" 2>/dev/null || echo 0)"
-
-  result_fail "Shared library sets differ (+${added:-0} -${removed:-0})"
-  if [ "${VERBOSE}" -eq 1 ]; then
-    cat "${diff_out}"
-  else
-    printf '    Run with --verbose to see full diff (diff file: %s)\n' "${diff_out}"
-  fi
-  return 1
+  run_diff_check "Shared library sets" "${native_file}" "${cross_file}" "Shared library sets match ($(wc -l < "${native_file}") libraries)"
 }
 
 # ---------------------------------------------------------------------------

@@ -78,6 +78,7 @@ COPY --chmod=755 \
     linux/scripts/01-core/compiler-cache.sh \
     linux/scripts/01-core/parallelism.sh \
     /opt/scripts/core/
+COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh /opt/scripts/media/activate-cross-python.sh
 
 # Create a shared Python virtual environment for all subsequent stages using uv
 ENV VIRTUAL_ENV=/opt/python/.venv
@@ -101,18 +102,9 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
 # ------------------------------------------------------------------------------
 # Create /opt/python-target symlink for cross builds so that
 # cross_target_python_active_stage_root() finds the correct per-arch Python
-# staging tree.  Must be in the base stage so it persists through all
-# downstream stages and prevents host libpython linking errors.
+# staging tree.
 # ------------------------------------------------------------------------------
-RUN set -eux; \
-    if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
-        python_cross_stage="/opt/python-cross/${TARGET_ARCH}"; \
-        if [ -d "${python_cross_stage}/usr/local" ]; then \
-            rm -rf /opt/python-target; \
-            ln -sfn "${python_cross_stage}" /opt/python-target; \
-            echo "Activated cross Python staging: /opt/python-target -> ${python_cross_stage}"; \
-        fi; \
-    fi
+RUN set -eux; bash /opt/scripts/media/activate-cross-python.sh
 
 # ==============================================================================
 # ONNX Runtime stage
@@ -332,20 +324,10 @@ COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstrea
 COPY --chmod=755 linux/scripts/01-core/cross-env.sh /opt/scripts/core/cross-env.sh
 
 # ------------------------------------------------------------------------------
-# Activate the correct per-architecture cross-compiled Python staging root so
-# Meson (gst-python) links against the target libpython3.14 instead of the
-# host amd64 libpython3.14. Create /opt/python-target as a symlink so
-# cross_target_python_active_stage_root() finds it without fallback.
+# Activate the correct per-architecture cross-compiled Python staging root
+# for Meson (gst-python) linking.  Script is idempotent (skip on native/amd64).
 # ------------------------------------------------------------------------------
-RUN set -eux; \
-    if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
-        python_cross_stage="/opt/python-cross/${TARGET_ARCH}"; \
-        if [ -d "${python_cross_stage}/usr/local" ]; then \
-            rm -rf /opt/python-target; \
-            ln -sfn "${python_cross_stage}" /opt/python-target; \
-            echo "Activated cross Python staging: /opt/python-target -> ${python_cross_stage}"; \
-        fi; \
-    fi
+RUN set -eux; bash /opt/scripts/media/activate-cross-python.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \

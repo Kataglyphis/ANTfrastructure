@@ -19,10 +19,15 @@ main() {
   local target_arch errors
 
   target_arch="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}"
-  case "${target_arch}" in
-    x86_64) target_arch=amd64 ;;
-    aarch64) target_arch=arm64 ;;
-  esac
+  if [ -f /opt/scripts/core/platform.sh ]; then
+    source /opt/scripts/core/platform.sh
+    target_arch="$(arch_normalize "${target_arch}")"
+  else
+    case "${target_arch}" in
+      x86_64) target_arch=amd64 ;;
+      aarch64) target_arch=arm64 ;;
+    esac
+  fi
 
   echo "=== smoke: target_arch=${target_arch} ==="
   errors=0

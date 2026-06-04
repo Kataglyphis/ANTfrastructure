@@ -18,14 +18,23 @@ set -euo pipefail
 #   validate-compilers.sh package
 #   validate-compilers.sh smoke
 
+_vcs_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${_vcs_script_dir}/../01-core/platform.sh" ]; then
+  source "${_vcs_script_dir}/../01-core/platform.sh"
+fi
+
 validate_resolve_arch() {
   local raw="${1:-${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}}"
-  case "${raw}" in
-    x86_64) printf '%s' "amd64" ;;
-    aarch64) printf '%s' "arm64" ;;
-    amd64|arm64|riscv64) printf '%s' "${raw}" ;;
-    *) printf '%s' "${raw}" ;;
-  esac
+  if command -v arch_normalize >/dev/null 2>&1; then
+    arch_normalize "${raw}"
+  else
+    case "${raw}" in
+      x86_64) printf '%s' "amd64" ;;
+      aarch64) printf '%s' "arm64" ;;
+      amd64|arm64|riscv64) printf '%s' "${raw}" ;;
+      *) printf '%s' "${raw}" ;;
+    esac
+  fi
 }
 
 validate_fail() {
