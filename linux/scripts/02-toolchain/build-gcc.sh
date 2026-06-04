@@ -416,7 +416,12 @@ if [ -n "${HOST_TRIPLET}" ]; then
 fi
 
 printf '%q ' "${CONFIG_CMD[@]}"; echo
-"${CONFIG_CMD[@]}"
+"${CONFIG_CMD[@]}" || {
+  echo "=== configure failed. config.log tail: ===" >&2
+  tail -50 config.log 2>/dev/null >&2 || true
+  echo "=== end config.log ===" >&2
+  exit 1
+}
 
 # 4) Build & install
 echo "Building (this will take a long time)..."
