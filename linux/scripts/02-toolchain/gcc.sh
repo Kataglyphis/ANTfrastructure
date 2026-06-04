@@ -44,6 +44,7 @@ install_cross_gcc_sysroot_packages() {
   if [ "${normalized_target}" != "amd64" ]; then
     [ -d "/usr/${triplet}/include" ] || die "Expected cross headers not found: /usr/${triplet}/include"
     [ -d "/usr/${triplet}/lib" ] || die "Expected cross libs not found: /usr/${triplet}/lib"
+    bridge_cross_lib_sysroot "${triplet}"
     log "Prepared cross sysroot packages for ${normalized_target}: /usr/${triplet}"
   fi
 
@@ -68,6 +69,21 @@ stage_cross_gcc_sysroot_libs() {
     fi
   done
   log "Staged target sysroot libs for ${triplet} into ${dst_dir}"
+}
+
+# Debian cross packages install at /usr/<triplet>/lib/ but GCC with
+# --with-sysroot=/ searches /usr/lib/<triplet>/. Create symlink bridges.
+bridge_cross_lib_sysroot() {
+  local triplet="$1"
+  local src="/usr/${triplet}/lib"
+  local dst="/usr/lib/${triplet}"
+
+  [ -d "${src}" ] || return 0
+  [ -d "${dst}" ] && return 0
+
+  $SUDO mkdir -p "$(dirname "${dst}")"
+  $SUDO ln -sfn "${src}" "${dst}"
+  log "Bridged cross sysroot: ${dst} -> ${src}"
 }
 
 build_source_cross_gcc_targets() {
