@@ -53,28 +53,6 @@ python_cross_stage_prefix_for_arch() {
   printf '%s' "$(python_cross_stage_root_for_arch "${target_arch}")/usr/local"
 }
 
-python_hostrunner_for_arch() {
-  local target_arch="$1"
-
-  case "$(arch_normalize "${target_arch}")" in
-    amd64)
-      command -v qemu-x86_64-static 2>/dev/null || command -v qemu-x86_64 2>/dev/null || true
-      ;;
-    arm64)
-      command -v qemu-aarch64-static 2>/dev/null || command -v qemu-aarch64 2>/dev/null || true
-      ;;
-    386)
-      command -v qemu-i386-static 2>/dev/null || command -v qemu-i386 2>/dev/null || true
-      ;;
-    riscv64)
-      command -v qemu-riscv64-static 2>/dev/null || command -v qemu-riscv64 2>/dev/null || true
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
 python_stage_finalize() {
   local target_arch="$1"
   local stage_root="$2"

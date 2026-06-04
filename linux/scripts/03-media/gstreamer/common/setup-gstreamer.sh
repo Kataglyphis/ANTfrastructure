@@ -692,16 +692,8 @@ ninja --version
 # ------------------------------------------------------------------------------
 # Build GStreamer from monorepo
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.29.1}"
-GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
-BUILD_TYPE="${3:-Release}"
-EXTRA_MESON_ARGS="${4:-}"
-
-# Honor MESON_ARGS env var (if present) at this later re-evaluation point as
-# well. This allows callers to export MESON_ARGS or pass a fourth positional
-# argument; MESON_ARGS takes precedence.
+# Honor MESON_ARGS env var if present (takes precedence over CLI args).
 if [ -n "${MESON_ARGS:-}" ]; then
-  :
   EXTRA_MESON_ARGS="${MESON_ARGS}"
 fi
 
