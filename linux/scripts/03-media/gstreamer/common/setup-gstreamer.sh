@@ -743,13 +743,18 @@ cd "${BUILD_DIR}"
 sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true
 
 if [ -d "gstreamer" ]; then
-  :
   echo "Updating existing GStreamer repository..."
   cd gstreamer
-  git fetch origin
+  git fetch origin --tags 2>/dev/null || git fetch --unshallow origin 2>/dev/null || true
   git checkout "${GSTREAMER_VERSION}" || {
-    echo "ERROR: Failed to checkout version ${GSTREAMER_VERSION}"
-    exit 1
+    echo "Version ${GSTREAMER_VERSION} not found in shallow clone; re-cloning..."
+    cd "${BUILD_DIR}"
+    rm -rf gstreamer
+    git clone --depth 1 --branch "${GSTREAMER_VERSION}" https://github.com/GStreamer/gstreamer.git || {
+      echo "ERROR: Failed to re-clone GStreamer repository"
+      exit 1
+    }
+    cd gstreamer
   }
 else
   :

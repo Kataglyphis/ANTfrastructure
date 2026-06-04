@@ -497,11 +497,13 @@ if [ "${DO_STRIP}" = "1" ]; then
   fi
 fi
 
-if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
-  # 6) Add library path to loader and run ldconfig
-  CONF_FILE="/etc/ld.so.conf.d/gcc-${GCC_VERSION}.conf"
+_configure_gcc_environment() {
+  local PREFIX="$1"
+  local GCC_VERSION="$2"
+  local SUDO="${3:-}"
+  local CONF_FILE="/etc/ld.so.conf.d/gcc-${GCC_VERSION}.conf"
 
-  # sudo-safe: redirection can't be elevated, so use tee.
+  # 6) Add library path to loader and run ldconfig
   ${SUDO} sh -c ": > \"${CONF_FILE}\""
 
   if [ -d "${PREFIX}/lib64" ]; then
@@ -521,8 +523,8 @@ if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
 
   # 6b) Add pkg-config path configuration
   echo "Configuring PKG_CONFIG_PATH..."
-  PKG_CONFIG_DIR="/etc/profile.d"
-  PKG_CONFIG_FILE="${PKG_CONFIG_DIR}/gcc-${GCC_VERSION}-pkgconfig.sh"
+  local PKG_CONFIG_DIR="/etc/profile.d"
+  local PKG_CONFIG_FILE="${PKG_CONFIG_DIR}/gcc-${GCC_VERSION}-pkgconfig.sh"
 
   if [ -d "${PREFIX}/lib64/pkgconfig" ] || [ -d "${PREFIX}/lib/pkgconfig" ]; then
     ${SUDO} sh -c "cat > \"${PKG_CONFIG_FILE}\"" <<EOF
@@ -542,7 +544,7 @@ EOF
 
   # 6c) Add to system PATH
   echo "Configuring PATH..."
-  PATH_FILE="/etc/profile.d/gcc-${GCC_VERSION}-path.sh"
+  local PATH_FILE="/etc/profile.d/gcc-${GCC_VERSION}-path.sh"
   ${SUDO} sh -c "cat > \"${PATH_FILE}\"" <<EOF
 # GCC ${GCC_VERSION} binaries
 export PATH="${PREFIX}/bin:\${PATH}"
@@ -553,70 +555,44 @@ EOF
   # 6c-docker) For Docker: Also add to /etc/environment for non-interactive shells
   echo "Adding GCC paths to /etc/environment for Docker compatibility..."
   if [ -f /etc/environment ]; then
-    # Read current PATH from /etc/environment
+    local CURRENT_PATH NEW_PATH CURRENT_PKG NEW_PKG_PARTS NEW_PKG CURRENT_LD NEW_LD_PARTS NEW_LD
     CURRENT_PATH=$(grep -E '^PATH=' /etc/environment 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
-    if [ -z "$CURRENT_PATH" ]; then
-      CURRENT_PATH="${PATH}"
-    fi
-    # Remove GCC prefix if already present to avoid duplicates
+    if [ -z "$CURRENT_PATH" ]; then CURRENT_PATH="${PATH}"; fi
     CURRENT_PATH=$(echo "$CURRENT_PATH" | sed "s|${PREFIX}/bin:||g" | sed "s|:${PREFIX}/bin||g")
-    # Prepend GCC bin directory
     NEW_PATH="${PREFIX}/bin:${CURRENT_PATH}"
     ${SUDO} sed -i '/^PATH=/d' /etc/environment 2>/dev/null || true
     echo "PATH=\"${NEW_PATH}\"" | ${SUDO} tee -a /etc/environment >/dev/null
-    
-    # Add PKG_CONFIG_PATH
+
     CURRENT_PKG=$(grep -E '^PKG_CONFIG_PATH=' /etc/environment 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
     NEW_PKG_PARTS=""
-    if [ -d "${PREFIX}/lib64/pkgconfig" ]; then
-      NEW_PKG_PARTS="${PREFIX}/lib64/pkgconfig"
-    fi
+    if [ -d "${PREFIX}/lib64/pkgconfig" ]; then NEW_PKG_PARTS="${PREFIX}/lib64/pkgconfig"; fi
     if [ -d "${PREFIX}/lib/pkgconfig" ]; then
-      if [ -n "$NEW_PKG_PARTS" ]; then
-        NEW_PKG_PARTS="${NEW_PKG_PARTS}:${PREFIX}/lib/pkgconfig"
-      else
-        NEW_PKG_PARTS="${PREFIX}/lib/pkgconfig"
-      fi
+      if [ -n "$NEW_PKG_PARTS" ]; then NEW_PKG_PARTS="${NEW_PKG_PARTS}:${PREFIX}/lib/pkgconfig"
+      else NEW_PKG_PARTS="${PREFIX}/lib/pkgconfig"; fi
     fi
     if [ -n "$NEW_PKG_PARTS" ]; then
-      # Remove existing GCC pkgconfig paths to avoid duplicates
       CURRENT_PKG=$(echo "$CURRENT_PKG" | sed "s|${PREFIX}/lib64/pkgconfig:||g" | sed "s|:${PREFIX}/lib64/pkgconfig||g")
       CURRENT_PKG=$(echo "$CURRENT_PKG" | sed "s|${PREFIX}/lib/pkgconfig:||g" | sed "s|:${PREFIX}/lib/pkgconfig||g")
-      if [ -n "$CURRENT_PKG" ]; then
-        NEW_PKG="${NEW_PKG_PARTS}:${CURRENT_PKG}"
-      else
-        NEW_PKG="${NEW_PKG_PARTS}"
-      fi
+      if [ -n "$CURRENT_PKG" ]; then NEW_PKG="${NEW_PKG_PARTS}:${CURRENT_PKG}"; else NEW_PKG="${NEW_PKG_PARTS}"; fi
       ${SUDO} sed -i '/^PKG_CONFIG_PATH=/d' /etc/environment 2>/dev/null || true
       echo "PKG_CONFIG_PATH=\"${NEW_PKG}\"" | ${SUDO} tee -a /etc/environment >/dev/null
     fi
-    
-    # Add LD_LIBRARY_PATH
+
     CURRENT_LD=$(grep -E '^LD_LIBRARY_PATH=' /etc/environment 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
     NEW_LD_PARTS=""
-    if [ -d "${PREFIX}/lib64" ]; then
-      NEW_LD_PARTS="${PREFIX}/lib64"
-    fi
+    if [ -d "${PREFIX}/lib64" ]; then NEW_LD_PARTS="${PREFIX}/lib64"; fi
     if [ -d "${PREFIX}/lib" ]; then
-      if [ -n "$NEW_LD_PARTS" ]; then
-        NEW_LD_PARTS="${NEW_LD_PARTS}:${PREFIX}/lib"
-      else
-        NEW_LD_PARTS="${PREFIX}/lib"
-      fi
+      if [ -n "$NEW_LD_PARTS" ]; then NEW_LD_PARTS="${NEW_LD_PARTS}:${PREFIX}/lib"
+      else NEW_LD_PARTS="${PREFIX}/lib"; fi
     fi
     if [ -n "$NEW_LD_PARTS" ]; then
-      # Remove existing GCC lib paths to avoid duplicates
       CURRENT_LD=$(echo "$CURRENT_LD" | sed "s|${PREFIX}/lib64:||g" | sed "s|:${PREFIX}/lib64||g")
       CURRENT_LD=$(echo "$CURRENT_LD" | sed "s|${PREFIX}/lib:||g" | sed "s|:${PREFIX}/lib||g")
-      if [ -n "$CURRENT_LD" ]; then
-        NEW_LD="${NEW_LD_PARTS}:${CURRENT_LD}"
-      else
-        NEW_LD="${NEW_LD_PARTS}"
-      fi
+      if [ -n "$CURRENT_LD" ]; then NEW_LD="${NEW_LD_PARTS}:${CURRENT_LD}"; else NEW_LD="${NEW_LD_PARTS}"; fi
       ${SUDO} sed -i '/^LD_LIBRARY_PATH=/d' /etc/environment 2>/dev/null || true
       echo "LD_LIBRARY_PATH=\"${NEW_LD}\"" | ${SUDO} tee -a /etc/environment >/dev/null
     fi
-    
+
     echo "Updated /etc/environment with GCC paths"
   else
     echo "WARNING: /etc/environment not found; skipping Docker-friendly environment setup"
@@ -624,7 +600,7 @@ EOF
 
   # 6d) Configure man pages
   echo "Configuring man pages..."
-  MANPATH_FILE="/etc/manpath.config"
+  local MANPATH_FILE="/etc/manpath.config"
   if [ -d "${PREFIX}/share/man" ] && [ -f "${MANPATH_FILE}" ]; then
     if ! grep -q "${PREFIX}/share/man" "${MANPATH_FILE}" 2>/dev/null; then
       echo "MANPATH_MAP ${PREFIX}/bin ${PREFIX}/share/man" | ${SUDO} tee -a "${MANPATH_FILE}" >/dev/null
@@ -635,6 +611,10 @@ EOF
   elif [ -d "${PREFIX}/share/man" ]; then
     echo "MANPATH_FILE not found at ${MANPATH_FILE}; skipping man page configuration."
   fi
+}
+
+if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
+  _configure_gcc_environment "${PREFIX}" "${GCC_VERSION}" "${SUDO}"
 
   # 7) Enhanced verification
   echo
