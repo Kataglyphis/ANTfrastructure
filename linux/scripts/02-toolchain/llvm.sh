@@ -101,10 +101,7 @@ install_cross_clang_wrappers() {
       sysroot="/"
     else
       sysroot="/usr/${triplet}"
-      if [ ! -d "${sysroot}" ]; then
-        log "Skipping cross LLVM wrapper for ${target_label}: cross sysroot not found at ${sysroot} (may need libc6-dev-${target_label}-cross)"
-        continue
-      fi
+      [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
     fi
 
     wrapper="/usr/local/bin/clang-${target_label}"

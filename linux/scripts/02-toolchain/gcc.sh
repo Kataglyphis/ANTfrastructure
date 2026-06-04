@@ -145,11 +145,6 @@ build_source_cross_gcc_targets() {
       # (host triplet == target triplet). The resulting gcc binary runs
       # natively on the target architecture and produces target-arch code.
       # Uses the just-built cross compiler to cross-compile GCC itself.
-      # Skip when SKIP_CANADIAN_CROSS is set (host may lack target sysroot).
-      if [ "${SKIP_CANADIAN_CROSS:-0}" = "1" ]; then
-        log "Skipping Canadian cross for ${normalized_target} (SKIP_CANADIAN_CROSS=1)"
-        return 0
-      fi
       local native_prefix="/opt/gcc-${full_version}-native-${normalized_target}"
       local cross_cc="${prefix}/bin/${triplet}-gcc"
       local cross_cxx="${prefix}/bin/${triplet}-g++"
