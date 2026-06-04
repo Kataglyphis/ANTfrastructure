@@ -23,6 +23,7 @@ ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
 ARG ANDROID_API_LEVEL=34
 ARG GCC_VERSION=16.1.0
+ARG LLVM_RELEASE=22.1.6
 ARG PYTHON_VERSION=3.14.5
 ARG PYTHON_MAJOR_MINOR=3.14
 ARG USE_FAST_UBUNTU_MIRROR=false
@@ -49,47 +50,9 @@ COPY --from=runtime_artifact /opt/android /opt/android
 COPY --from=runtime_artifact /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 COPY --from=runtime_artifact /opt/llvm-target /opt/llvm-target
 RUN --mount=type=bind,from=runtime_artifact,source=/,target=/runtime_artifact,ro \
-    set -euo pipefail; \
-    copy_path() { \
-        local src="$1"; \
-        local dst="${2:-$1}"; \
-        [ -e "/runtime_artifact${src}" ] || return 0; \
-        mkdir -p "$(dirname "${dst}")"; \
-        cp -a "/runtime_artifact${src}" "${dst}"; \
-    }; \
-    copy_glob() { \
-        local pattern="$1"; \
-        local item rel; \
-        shopt -s nullglob; \
-        for item in /runtime_artifact${pattern}; do \
-            rel="${item#/runtime_artifact}"; \
-            mkdir -p "$(dirname "${rel}")"; \
-            cp -a "${item}" "${rel}"; \
-        done; \
-        shopt -u nullglob; \
-    }; \
-    for path in \
-        /usr/local/lib/onnxruntime-genai \
-        /usr/local/lib/onnxruntime-gpu \
-        /usr/local/include/tflite \
-        /usr/local/include/tensorflow \
-        /usr/local/include/flatbuffers \
-        /usr/local/include/c \
-        /usr/local/lib/pkgconfig/litert.pc \
-        /usr/local/lib/pkgconfig/tensorflow-lite.pc \
-        /usr/local/lib/pkgconfig/tensorflowlite_c.pc \
-        /usr/local/lib/pkgconfig/libvvdec.pc \
-        /usr/local/llvm-target \
-        /usr/local/llvm-22; do \
-        copy_path "${path}"; \
-    done; \
-    for pattern in \
-        '/usr/local/lib/libLiteRt.so*' \
-        '/usr/local/lib/libtensorflow-lite.so*' \
-        '/usr/local/lib/libtensorflowlite_c.so*' \
-        '/usr/local/lib/libvvdec.so*'; do \
-        copy_glob "${pattern}"; \
-    done
+    --mount=type=bind,source=linux/scripts/06-packaging/copy-media-payloads.sh,target=/tmp/copy-media-payloads.sh,ro \
+    set -eux; \
+    SRCPREFIX=/runtime_artifact bash /tmp/copy-media-payloads.sh
 
 FROM ${ARTIFACT_SOURCE_STAGE} AS artifact-source
 
@@ -98,23 +61,16 @@ SHELL ["bash", "-lc"]
 ARG BUILD_MODE
 ARG TARGET_ARCH
 ARG TARGETARCH
+ARG GCC_VERSION
+ARG LLVM_RELEASE
 
-RUN set -eux; \
-    target_arch="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}"; \
-    case "${target_arch}" in \
-        x86_64) target_arch=amd64 ;; \
-        aarch64) target_arch=arm64 ;; \
-    esac; \
-    if [ ! -e /opt/llvm-target ]; then \
-        if [ -d /usr/local/llvm-target ]; then \
-            ln -s /usr/local/llvm-target /opt/llvm-target; \
-        elif [ "${target_arch}" = "amd64" ] && [ -d /usr/local/llvm-22 ]; then \
-            ln -s /usr/local/llvm-22 /opt/llvm-target; \
-        else \
-            echo "WARNING: missing target-native LLVM toolchain for ${target_arch}; continuing with distro LLVM"; \
-            mkdir -p /opt/llvm-target; \
-        fi; \
-    fi
+# Compiler chain verification: confirm that the custom GCC and Clang
+# toolchains built in Dockerfile.toolchain and Dockerfile.sdk are
+# present in the artifact image for every target architecture.
+RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,target=/tmp/validate-compilers.sh,ro \
+    set -eux; \
+    TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
+    bash /tmp/validate-compilers.sh artifact-source
 
 FROM artifact-source AS artifact-payload
 SHELL ["bash", "-lc"]
@@ -124,45 +80,10 @@ ARG BUILD_MODE
 # copied directly from the artifact image into the package stage so they are not
 # duplicated under /payload first, which can exhaust rootless BuildKit storage
 # on large android-cross images.
-RUN set -euo pipefail; \
+RUN --mount=type=bind,source=linux/scripts/06-packaging/copy-media-payloads.sh,target=/tmp/copy-media-payloads.sh,ro \
+    set -euo pipefail; \
     mkdir -p /payload; \
-    copy_path() { \
-        local src="$1"; \
-        local dst="${2:-$1}"; \
-        [ -e "${src}" ] || return 0; \
-        mkdir -p "/payload$(dirname "${dst}")"; \
-        cp -a "${src}" "/payload${dst}"; \
-    }; \
-    copy_glob() { \
-        local pattern="$1"; \
-        local item; \
-        shopt -s nullglob; \
-        for item in ${pattern}; do \
-            mkdir -p "/payload$(dirname "${item}")"; \
-            cp -a "${item}" "/payload${item}"; \
-        done; \
-        shopt -u nullglob; \
-    }; \
-    for path in \
-        /usr/local/lib/onnxruntime-genai \
-        /usr/local/lib/onnxruntime-gpu \
-        /usr/local/include/tflite \
-        /usr/local/include/tensorflow \
-        /usr/local/include/flatbuffers \
-        /usr/local/include/c \
-        /usr/local/lib/pkgconfig/litert.pc \
-        /usr/local/lib/pkgconfig/tensorflow-lite.pc \
-        /usr/local/lib/pkgconfig/tensorflowlite_c.pc \
-        /usr/local/lib/pkgconfig/libvvdec.pc; do \
-        copy_path "${path}"; \
-    done; \
-    for pattern in \
-        '/usr/local/lib/libLiteRt.so*' \
-        '/usr/local/lib/libtensorflow-lite.so*' \
-        '/usr/local/lib/libtensorflowlite_c.so*' \
-        '/usr/local/lib/libvvdec.so*'; do \
-        copy_glob "${pattern}"; \
-    done
+    bash /tmp/copy-media-payloads.sh /payload
 
 FROM ${BASE_IMAGE} AS package-image
 
@@ -184,6 +105,7 @@ ARG ANDROID_API_LEVEL
 ARG ENABLE_NVIDIA
 ARG ENABLE_AMD
 ARG GCC_VERSION
+ARG LLVM_RELEASE
 ARG PYTHON_VERSION
 ARG PYTHON_MAJOR_MINOR
 ARG USE_FAST_UBUNTU_MIRROR
@@ -210,12 +132,6 @@ COPY --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
-# Create /opt/python-cross if it does not exist in the artifact source.
-# The cross-compiled Python staging tree is transferred from the SDK
-# media stages through the android stage; when the android stage is
-# built from a clean base image the directory may be absent, which is
-# fine because the runtime image does not need the cross compiler
-# tooling.
 RUN set -eux; \
     mkdir -p /opt/python-cross
 COPY --from=artifact-payload /payload/ /
@@ -240,6 +156,7 @@ ARG ANDROID_API_LEVEL
 ARG ENABLE_NVIDIA
 ARG ENABLE_AMD
 ARG GCC_VERSION
+ARG LLVM_RELEASE
 ARG PYTHON_VERSION
 ARG PYTHON_MAJOR_MINOR
 ARG USE_FAST_UBUNTU_MIRROR
@@ -255,6 +172,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     ENABLE_NVIDIA=${ENABLE_NVIDIA} \
     ENABLE_AMD=${ENABLE_AMD} \
     GCC_VERSION=${GCC_VERSION} \
+    LLVM_RELEASE=${LLVM_RELEASE} \
     GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
     PYTHON_VERSION=${PYTHON_VERSION} \
     PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
@@ -322,6 +240,7 @@ COPY --chmod=755 linux/scripts/03-media/opencv/android/ /opt/scripts/media/openc
 COPY --chmod=755 linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.sh
 COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
 COPY --chmod=755 linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh
+COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core,ro \
     bash /tmp/core/dockerfile-common.sh configure-fast-mirror
@@ -331,48 +250,11 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-package-${TARGETARCH} 
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-package-${TARGETARCH} \
     bash /opt/scripts/packaging/setup-package-image.sh
 
-# Ensure the runtime package always exposes the target-native LLVM tree copied
-# from the artifact image. Do not fall back to distro LLVM here: that can leak
-# an amd64 clang into arm64/riscv64 runtime manifests.
+# Wire GCC/LLVM alternatives and hard-fail if cc -dumpmachine does not
+# match the target architecture. Uses the shared validate-compilers.sh.
 RUN set -eux; \
-    if [ -d /usr/local/llvm-target ]; then \
-      require_target_llvm_tool() { \
-        local name="$1" priority="${2:-120}"; \
-        local candidate="/usr/local/llvm-target/bin/${name}"; \
-        [ -x "${candidate}" ] || { \
-          echo "WARNING: expected target-native LLVM tool missing: ${candidate}" >&2; \
-          return 0; \
-        }; \
-        update-alternatives --install "/usr/bin/${name}" "${name}" "${candidate}" "${priority}"; \
-        update-alternatives --set "${name}" "${candidate}"; \
-      }; \
-      require_target_llvm_tool clang; \
-      require_target_llvm_tool clang++; \
-      require_target_llvm_tool llvm-ar; \
-      require_target_llvm_tool llvm-ranlib; \
-    else \
-      echo "WARNING: /usr/local/llvm-target not found; using distro LLVM"; \
-    fi; \
-    gcc_prefix="/opt/gcc-${GCC_VERSION}"; \
-    if [ -d "${gcc_prefix}" ]; then \
-      for tool in gcc g++ gcov; do \
-        candidate="${gcc_prefix}/bin/${tool}"; \
-        if [ -x "${candidate}" ]; then \
-          update-alternatives --install "/usr/bin/${tool}" "${tool}" "${candidate}" 150; \
-          update-alternatives --set "${tool}" "${candidate}"; \
-        fi; \
-      done; \
-      if [ -x "${gcc_prefix}/bin/gcc" ]; then \
-        update-alternatives --install /usr/bin/cc cc "${gcc_prefix}/bin/gcc" 150; \
-        update-alternatives --set cc "${gcc_prefix}/bin/gcc"; \
-      fi; \
-      if [ -x "${gcc_prefix}/bin/g++" ]; then \
-        update-alternatives --install /usr/bin/c++ c++ "${gcc_prefix}/bin/g++" 150; \
-        update-alternatives --set c++ "${gcc_prefix}/bin/g++"; \
-      fi; \
-    else \
-      echo "WARNING: Custom GCC prefix ${gcc_prefix} not found"; \
-    fi
+    TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
+    bash /opt/scripts/packaging/validate-compilers.sh package
 
 # Keep a tiny smoke-only wrapper target here because local/unpushed intermediate
 # image tags are not always resolvable across separate Dockerfiles under BuildKit.
@@ -382,6 +264,19 @@ ARG BUILD_TYPE=Release
 ARG WORKDIR=/workspace
 ARG BUILD_DATE=""
 ARG VCS_REF=""
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG GCC_VERSION
+ARG LLVM_RELEASE
+
+COPY --chmod=755 linux/scripts/06-packaging/smoke-wrapper.sh /opt/scripts/packaging/smoke-wrapper.sh
+COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
+
+RUN set -eux; \
+    GCC_VERSION="${GCC_VERSION}" \
+    LLVM_RELEASE="${LLVM_RELEASE}" \
+    TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
+    bash /opt/scripts/packaging/smoke-wrapper.sh
 
 COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
 COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/

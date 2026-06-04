@@ -4,12 +4,21 @@ BUILDKIT_HOST="${BUILDKIT_HOST:-}"
 RUNTIME_CONTEXT_ROOT="${RUNTIME_CONTEXT_ROOT:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/opencode/runtime-build-contexts}"
 
 canonical_target_arch() {
-  case "$1" in
-    amd64|x86_64) printf '%s' "amd64" ;;
-    arm64|aarch64) printf '%s' "arm64" ;;
-    riscv64|riscv|rv64*) printf '%s' "riscv64" ;;
-    *) return 1 ;;
-  esac
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [ -f "${script_dir}/platform.sh" ]; then
+    # shellcheck disable=SC1091
+    source "${script_dir}/platform.sh"
+    arch_normalize "$1"
+  else
+    # fallback for standalone use
+    case "$1" in
+      amd64|x86_64) printf '%s' "amd64" ;;
+      arm64|aarch64) printf '%s' "arm64" ;;
+      riscv64|riscv|rv64*) printf '%s' "riscv64" ;;
+      *) return 1 ;;
+    esac
+  fi
 }
 
 normalize_target_arches() {
@@ -424,27 +433,67 @@ runtime_artifact_context_ref() {
   esac
 }
 
+# Resolve a parent stage as either a remote image tag or a local
+# OCI-layout build context. Sets the out variables:
+#   parent_image_var   -> base image name to pass as --build-arg BASE_IMAGE
+#   parent_context_var -> local OCI context dir (only when local)
+# Appends any --build-context args needed for local mode to the build_args array.
+_runtime_resolve_parent_context() {
+  local parent_kind="$1"
+  local arch="$2"
+  local -n _out_image_ref=$3
+  local -n _out_context_dir=$4
+  local -n _out_build_args=$5
+
+  if runtime_use_local_stage_context_outputs; then
+    _out_context_dir="$(runtime_stage_context_dir "${parent_kind}" "${arch}")"
+    _out_image_ref="runtime_${parent_kind}"
+    _out_build_args+=(--build-context "runtime_${parent_kind}=${_out_context_dir}")
+  else
+    _out_context_dir=""
+    case "${parent_kind}" in
+      base)    _out_image_ref="$(runtime_base_tag "${arch}")" ;;
+      package) _out_image_ref="$(runtime_package_tag "${arch}")" ;;
+      torch)   _out_image_ref="$(runtime_torch_tag "${arch}")" ;;
+      *)       return 1 ;;
+    esac
+  fi
+}
+
+# Post-build: export to OCI layout locally, or push remotely, then clean up.
+_runtime_finish_stage() {
+  local kind="$1"
+  local arch="$2"
+  local tag="$3"
+  local parent_kind="${4:-}"
+
+  if runtime_use_local_stage_context_outputs; then
+    local context_dir
+    context_dir="$(runtime_stage_context_dir "${kind}" "${arch}")"
+    export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
+    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
+  else
+    if runtime_pushes_intermediate_images; then
+      run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+    fi
+    if [ "${kind}" != "wrapper" ] || ! runtime_pushes_wrapper_images; then
+      runtime_refresh_stage_context "${kind}" "${arch}" "${tag}"
+    fi
+  fi
+
+  if [ -n "${parent_kind}" ]; then
+    runtime_remove_stage_context "${parent_kind}" "${arch}"
+  fi
+}
+
 runtime_build_base_image() {
   local arch="$1"
-  local tag context_dir
+  local tag context_dir parent_image parent_context
   local -a build_args=()
 
   tag="$(runtime_base_tag "${arch}")"
   append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
   append_runtime_base_parent_build_arg build_args
-
-  if runtime_use_local_stage_context_outputs; then
-    context_dir="$(runtime_stage_context_dir base "${arch}")"
-    run_nerdctl_build_to_tag "${NERDCTL_BIN:-nerdctl}" "${tag}" \
-      --pull=true \
-      --platform "linux/${arch}" \
-      -f "${BASE_DOCKERFILE_PATH}" \
-      "${build_args[@]}" \
-      .
-    export_image_rootfs_dir "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
-    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
-    return 0
-  fi
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=true \
@@ -453,6 +502,13 @@ runtime_build_base_image() {
     -f "${BASE_DOCKERFILE_PATH}" \
     "${build_args[@]}" \
     .
+
+  if runtime_use_local_stage_context_outputs; then
+    context_dir="$(runtime_stage_context_dir base "${arch}")"
+    export_image_rootfs_dir "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
+    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
+    return 0
+  fi
 
   if runtime_pushes_intermediate_images; then
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
@@ -463,7 +519,8 @@ runtime_build_base_image() {
 
 runtime_build_package_image() {
   local arch="$1"
-  local tag artifact_image artifact_context_ref artifact_context_mode base_image base_context_dir context_dir package_base_stage
+  local tag parent_image parent_context_dir
+  local artifact_image artifact_context_ref artifact_context_mode package_base_stage
   local -a build_args=()
 
   tag="$(runtime_package_tag "${arch}")"
@@ -488,42 +545,14 @@ runtime_build_package_image() {
     package_base_stage="package-image"
   fi
 
-  if runtime_use_local_stage_context_outputs; then
-    base_context_dir="$(runtime_stage_context_dir base "${arch}")"
-    base_image="runtime_base"
-    build_args+=(--build-context "runtime_base=${base_context_dir}")
-  else
-    base_image="$(runtime_base_tag "${arch}")"
-  fi
-
-  if runtime_use_local_stage_context_outputs; then
-    context_dir="$(runtime_stage_context_dir package "${arch}")"
-    run_nerdctl_build_to_tag "${NERDCTL_BIN:-nerdctl}" "${tag}" \
-      --pull=false \
-      --platform "linux/${arch}" \
-      -f "${PACKAGE_DOCKERFILE_PATH}" \
-      --build-arg "BASE_IMAGE=${base_image}" \
-      --build-arg "ARTIFACT_IMAGE=${artifact_image}" \
-      --build-arg "PACKAGE_BASE_STAGE=${package_base_stage}" \
-      --build-arg "ARTIFACT_PLATFORM=$(runtime_artifact_platform "${arch}")" \
-      --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE}" \
-      --build-arg "TARGET_ARCH=${arch}" \
-      "${build_args[@]}" \
-      .
-
-    export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
-    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
-
-    runtime_remove_stage_context base "${arch}"
-    return 0
-  fi
+  _runtime_resolve_parent_context base "${arch}" parent_image parent_context_dir build_args
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=false \
     --platform "linux/${arch}" \
     -t "${tag}" \
     -f "${PACKAGE_DOCKERFILE_PATH}" \
-    --build-arg "BASE_IMAGE=${base_image}" \
+    --build-arg "BASE_IMAGE=${parent_image}" \
     --build-arg "ARTIFACT_IMAGE=${artifact_image}" \
     --build-arg "PACKAGE_BASE_STAGE=${package_base_stage}" \
     --build-arg "ARTIFACT_PLATFORM=$(runtime_artifact_platform "${arch}")" \
@@ -532,37 +561,54 @@ runtime_build_package_image() {
     "${build_args[@]}" \
     .
 
-  runtime_remove_stage_context base "${arch}"
+  _runtime_finish_stage package "${arch}" "${tag}" base
+}
 
-  if runtime_pushes_intermediate_images; then
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
-  fi
+runtime_build_torch_image() {
+  local arch="$1"
+  local tag parent_image parent_context_dir torch_app_mode torch_build_mode
+  local -a build_args=()
 
-  runtime_refresh_stage_context package "${arch}" "${tag}"
+  tag="$(runtime_torch_tag "${arch}")"
+  torch_app_mode="$(runtime_effective_torch_app_mode)"
+  torch_build_mode="native"
+
+  append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+  append_runtime_torch_build_args build_args
+
+  _runtime_resolve_parent_context package "${arch}" parent_image parent_context_dir build_args
+
+  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
+    --pull=false \
+    --platform "linux/${arch}" \
+    -t "${tag}" \
+    -f "${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
+    --build-arg "BASE_IMAGE=${parent_image}" \
+    --build-arg "BUILD_MODE=${torch_build_mode}" \
+    --build-arg "TARGET_ARCH=${arch}" \
+    --build-arg "TORCH_APP_MODE=${torch_app_mode}" \
+    "${build_args[@]}" \
+    .
+
+  _runtime_finish_stage torch "${arch}" "${tag}" package
 }
 
 runtime_build_wrapper_image() {
   local arch="$1"
-  local tag torch_image torch_context_dir
+  local tag parent_image parent_context_dir
+  local -a build_args=()
 
   tag="$(runtime_wrapper_tag "${arch}")"
-
-  local -a build_args=()
   append_runtime_accelerator_build_args build_args
-  if runtime_use_local_stage_context_outputs; then
-    torch_context_dir="$(runtime_stage_context_ref torch "${arch}")"
-    torch_image="runtime_torch"
-    build_args+=(--build-context "runtime_torch=${torch_context_dir}")
-  else
-    torch_image="$(runtime_torch_tag "${arch}")"
-  fi
+
+  _runtime_resolve_parent_context torch "${arch}" parent_image parent_context_dir build_args
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=false \
     --platform "linux/${arch}" \
     -t "${tag}" \
     -f "${WRAPPER_DOCKERFILE_PATH}" \
-    --build-arg "BASE_IMAGE=${torch_image}" \
+    --build-arg "BASE_IMAGE=${parent_image}" \
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
     "${build_args[@]}" \
     .
@@ -577,27 +623,22 @@ runtime_build_wrapper_image() {
 runtime_build_wrapper_rootfs() {
   local arch="$1"
   local rootfs_dir="$2"
-  local torch_image torch_context_ref tag artifact_dir
+  local tag parent_image parent_context_dir artifact_dir
+  local -a build_args=()
 
   tag="$(runtime_wrapper_tag "${arch}")"
   artifact_dir="$(dirname "${rootfs_dir}")"
 
-  local -a build_args=()
   append_runtime_accelerator_build_args build_args
-  if runtime_use_local_stage_context_outputs; then
-    torch_context_ref="$(runtime_stage_context_ref torch "${arch}")"
-    torch_image="runtime_torch"
-    build_args+=(--build-context "runtime_torch=${torch_context_ref}")
-  else
-    torch_image="$(runtime_torch_tag "${arch}")"
-  fi
+
+  _runtime_resolve_parent_context torch "${arch}" parent_image parent_context_dir build_args
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=false \
     --platform "linux/${arch}" \
     -t "${tag}" \
     -f "${WRAPPER_DOCKERFILE_PATH}" \
-    --build-arg "BASE_IMAGE=${torch_image}" \
+    --build-arg "BASE_IMAGE=${parent_image}" \
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
     "${build_args[@]}" \
     .
@@ -608,70 +649,6 @@ runtime_build_wrapper_rootfs() {
   if runtime_pushes_wrapper_images; then
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
   fi
-}
-
-runtime_build_torch_image() {
-  local arch="$1"
-  local tag package_image package_context_dir torch_app_mode context_dir torch_build_mode
-
-  tag="$(runtime_torch_tag "${arch}")"
-  torch_app_mode="$(runtime_effective_torch_app_mode)"
-  # The runtime helper always builds the torch stage on the real target
-  # platform so /opt/venv is assembled instead of being skipped as a pure
-  # cross artifact build.
-  torch_build_mode="native"
-
-  local -a build_args=()
-  append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_runtime_torch_build_args build_args
-
-  if runtime_use_local_stage_context_outputs; then
-    package_context_dir="$(runtime_stage_context_ref package "${arch}")"
-    package_image="runtime_package"
-    build_args+=(--build-context "runtime_package=${package_context_dir}")
-  else
-    package_image="$(runtime_package_tag "${arch}")"
-  fi
-
-  if runtime_use_local_stage_context_outputs; then
-    context_dir="$(runtime_stage_context_dir torch "${arch}")"
-    run_nerdctl_build_to_tag "${NERDCTL_BIN:-nerdctl}" "${tag}" \
-      --pull=false \
-      --platform "linux/${arch}" \
-      -f "${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
-      --build-arg "BASE_IMAGE=${package_image}" \
-      --build-arg "BUILD_MODE=${torch_build_mode}" \
-      --build-arg "TARGET_ARCH=${arch}" \
-      --build-arg "TORCH_APP_MODE=${torch_app_mode}" \
-      "${build_args[@]}" \
-      .
-
-    export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
-    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
-
-    runtime_remove_stage_context package "${arch}"
-    return 0
-  fi
-
-  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=false \
-    --platform "linux/${arch}" \
-    -t "${tag}" \
-    -f "${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
-    --build-arg "BASE_IMAGE=${package_image}" \
-    --build-arg "BUILD_MODE=${torch_build_mode}" \
-    --build-arg "TARGET_ARCH=${arch}" \
-    --build-arg "TORCH_APP_MODE=${torch_app_mode}" \
-    "${build_args[@]}" \
-    .
-
-  runtime_remove_stage_context package "${arch}"
-
-  if runtime_pushes_intermediate_images; then
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
-  fi
-
-  runtime_refresh_stage_context torch "${arch}" "${tag}"
 }
 
 runtime_build_chain() {

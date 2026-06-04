@@ -137,11 +137,14 @@ main() {
     gcc_prefix="/opt/gcc-${GCC_VERSION}"
     if [ -f "${gcc_prefix}/bin/gcc" ]; then
         echo "Custom GCC already present at ${gcc_prefix}; preserving it."
-        # Configure dynamic loader paths for custom GCC (prevent GLIBCXX Version Errors)
         echo "${gcc_prefix}/lib64" > "/etc/ld.so.conf.d/gcc-custom.conf"
         echo "${gcc_prefix}/lib" >> "/etc/ld.so.conf.d/gcc-custom.conf"
         ldconfig
     else
+        # NOTE: This fallback is unreachable when built through Dockerfile.package
+        # because the artifact-source stage hard-fails if GCC is missing from the
+        # artifact image. Kept for standalone script usage outside Docker context.
+        echo "WARNING: Custom GCC not found at ${gcc_prefix}; creating symlink fallback to system GCC."
         mkdir -p "${gcc_prefix}/bin" "${gcc_prefix}/${triplet}"
         rm -rf "${gcc_prefix}/lib" "${gcc_prefix}/lib64" "${gcc_prefix}/${triplet}/lib"
 

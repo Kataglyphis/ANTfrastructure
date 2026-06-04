@@ -140,6 +140,34 @@ build_source_cross_gcc_targets() {
         $SUDO ln -sfn "$(command -v ${triplet}-${tool})" "${prefix}/bin/${triplet}-${tool}"
       done
       stage_cross_gcc_sysroot_libs "${prefix}" "${triplet}"
+
+      # Canadian cross: build a native GCC for the target architecture
+      # (host triplet == target triplet). The resulting gcc binary runs
+      # natively on the target architecture and produces target-arch code.
+      # Uses the just-built cross compiler to cross-compile GCC itself.
+      local native_prefix="/opt/gcc-${full_version}-native-${normalized_target}"
+      local cross_cc="${prefix}/bin/${triplet}-gcc"
+      local cross_cxx="${prefix}/bin/${triplet}-g++"
+      [ -x "${cross_cc}" ] || die "Cross compiler ${cross_cc} not found for Canadian cross"
+      [ -x "${cross_cxx}" ] || die "Cross compiler ${cross_cxx} not found for Canadian cross"
+      log "Building native GCC ${full_version} for ${normalized_target} (Canadian cross via ${cross_cc})"
+      CC="${cross_cc}" CXX="${cross_cxx}" \
+        PREFIX="${native_prefix}" \
+        BUILD_DIR="${HOME}/tmp2/gcc-build-${full_version}-native-${normalized_target}" \
+        JOBS="${JOBS:-$(nproc)}" \
+        bash "${builder}" \
+          --version "${full_version}" \
+          --target "${triplet}" \
+          --host "${triplet}" \
+          --languages c,c++ \
+          --sysroot / \
+          --native-system-header-dir "/usr/${triplet}/include" \
+          --disable-bootstrap \
+          --skip-system-registration
+
+      [ -x "${native_prefix}/bin/gcc" ] || die "Expected native GCC not found: ${native_prefix}/bin/gcc"
+      [ -x "${native_prefix}/bin/g++" ] || die "Expected native G++ not found: ${native_prefix}/bin/g++"
+      log "Installed native GCC ${full_version} for ${normalized_target} at ${native_prefix}"
     fi
 
     for tool in gcc g++ ar; do
@@ -172,7 +200,7 @@ install_gcc() {
   case "${gcc_major}" in
     16) default_full_version="16.1.0" ;;
     15) default_full_version="15.2.0" ;;
-    *) default_full_version="${gcc_major}.2.0" ;;
+    *) default_full_version="${gcc_major}.1.0" ;;
   esac
   local full_version="${GCC_VERSION:-${default_full_version}}"
 

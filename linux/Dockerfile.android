@@ -78,3 +78,24 @@ RUN if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
         touch /opt/python-cross/.keep; \
     fi; \
     echo "android-cross ready"
+
+# Swap the amd64-hosted GCC with the target-native GCC for non-amd64
+# architectures. The native GCC was cross-compiled from source during the
+# compiler image build (Canadian cross) and stored at /opt/gcc-*-native-<arch>/.
+# This ensures /usr/bin/cc in the final runtime image is a native binary for
+# every architecture, not an amd64 cross-compiler host binary.
+ARG GCC_VERSION=16.1.0
+RUN set -eux; \
+    if [ "${TARGET_ARCH}" != "amd64" ] && [ "${BUILD_MODE}" = "cross" ]; then \
+        native_gcc="/opt/gcc-${GCC_VERSION}-native-${TARGET_ARCH}"; \
+        if [ -d "${native_gcc}" ]; then \
+            rm -rf "/opt/gcc-${GCC_VERSION}"; \
+            mv "${native_gcc}" "/opt/gcc-${GCC_VERSION}"; \
+            echo "Replaced host GCC with target-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"; \
+        else \
+            echo "ERROR: expected target-native GCC at ${native_gcc} but not found" >&2; \
+            exit 1; \
+        fi; \
+    elif [ "${TARGET_ARCH}" = "amd64" ]; then \
+        echo "Using host-native amd64 GCC at /opt/gcc-${GCC_VERSION}"; \
+    fi

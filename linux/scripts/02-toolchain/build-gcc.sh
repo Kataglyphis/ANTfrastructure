@@ -68,6 +68,7 @@ DO_STRIP="1"
 USE_CCACHE="0"
 GCC_VERSION="${GCC_VERSION:-}"
 TARGET_TRIPLET="${TARGET_TRIPLET:-}"
+HOST_TRIPLET="${HOST_TRIPLET:-}"
 GCC_LANGUAGES="${GCC_LANGUAGES:-}"
 SYSROOT="${SYSROOT:-}"
 NATIVE_SYSTEM_HEADER_DIR="${NATIVE_SYSTEM_HEADER_DIR:-}"
@@ -82,6 +83,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --target)
       TARGET_TRIPLET="$2"
+      shift 2
+      ;;
+    --host)
+      HOST_TRIPLET="$2"
       shift 2
       ;;
     --prefix)
@@ -150,7 +155,14 @@ if ! [[ "${GCC_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   warn "GCC_VERSION '${GCC_VERSION}' does not match expected format X.Y.Z (e.g., 16.1.0)"
 fi
 
-if [ -n "${TARGET_TRIPLET}" ]; then
+if [ -n "${HOST_TRIPLET}" ]; then
+  # Canadian cross: building GCC to run on host arch, producing target arch code
+  GCC_LANGUAGES="${GCC_LANGUAGES:-c,c++}"
+  SYSROOT="${SYSROOT:-/}"
+  NATIVE_SYSTEM_HEADER_DIR="${NATIVE_SYSTEM_HEADER_DIR:-/usr/${TARGET_TRIPLET}/include}"
+  ENABLE_BOOTSTRAP="${ENABLE_BOOTSTRAP:-0}"
+  SKIP_SYSTEM_REGISTRATION="${SKIP_SYSTEM_REGISTRATION:-1}"
+elif [ -n "${TARGET_TRIPLET}" ]; then
   GCC_LANGUAGES="${GCC_LANGUAGES:-c,c++}"
   SYSROOT="${SYSROOT:-/}"
   NATIVE_SYSTEM_HEADER_DIR="${NATIVE_SYSTEM_HEADER_DIR:-/usr/${TARGET_TRIPLET}/include}"
@@ -163,7 +175,11 @@ else
 fi
 
 # DEFAULT: use a tmp2 directory in the user's home — avoids /tmp entirely
-BUILD_DIR="${BUILD_DIR:-${HOME}/tmp2/gcc-build-${GCC_VERSION}${TARGET_TRIPLET:+-${TARGET_TRIPLET}}}"
+if [ -n "${HOST_TRIPLET}" ]; then
+  BUILD_DIR="${BUILD_DIR:-${HOME}/tmp2/gcc-build-${GCC_VERSION}-host-${HOST_TRIPLET}${TARGET_TRIPLET:+-target-${TARGET_TRIPLET}}}"
+else
+  BUILD_DIR="${BUILD_DIR:-${HOME}/tmp2/gcc-build-${GCC_VERSION}${TARGET_TRIPLET:+-${TARGET_TRIPLET}}}"
+fi
 PREFIX="${PREFIX:-/opt/gcc-${GCC_VERSION}}"
 
 require_sudo
@@ -182,7 +198,7 @@ else
   JOBS="${JOBS_REQUESTED:-$(nproc || echo 1)}"
 fi
 
-if [ "${USE_CCACHE}" = "1" ]; then
+if [ "${USE_CCACHE}" = "1" ] && [ -z "${HOST_TRIPLET}" ]; then
   if ! command -v ccache >/dev/null 2>&1; then
     warn "ccache not found, installing..."
     apt_install ccache
@@ -201,7 +217,9 @@ TARBALL_URL="${DOWNLOAD_BASE}/${TARBALL}"
 SHA_URL="${DOWNLOAD_BASE}/sha512.sum"
 SIG_URL="${DOWNLOAD_BASE}/${TARBALL}.sig"
 
-if [ -n "${TARGET_TRIPLET}" ]; then
+if [ -n "${HOST_TRIPLET}" ]; then
+  info "=== Build GCC ${GCC_VERSION} Canadian cross (host=${HOST_TRIPLET} target=${TARGET_TRIPLET}) ==="
+elif [ -n "${TARGET_TRIPLET}" ]; then
   info "=== Build GCC ${GCC_VERSION} cross toolchain for ${TARGET_TRIPLET} ==="
 else
   info "=== Build & set GCC ${GCC_VERSION} as system default ==="
@@ -214,6 +232,11 @@ if [ -n "${TARGET_TRIPLET}" ]; then
   info "Target: ${TARGET_TRIPLET}"
   info "Sysroot: ${SYSROOT}"
   info "Native system headers: ${NATIVE_SYSTEM_HEADER_DIR}"
+fi
+if [ -n "${HOST_TRIPLET}" ]; then
+  info "Host: ${HOST_TRIPLET}"
+  info "CC=${CC:-${HOST_TRIPLET}-gcc}"
+  info "CXX=${CXX:-${HOST_TRIPLET}-g++}"
 fi
 info "Bootstrap: ${ENABLE_BOOTSTRAP}"
 info "System registration: ${SKIP_SYSTEM_REGISTRATION}"
@@ -373,6 +396,22 @@ if [ -n "${TARGET_TRIPLET}" ]; then
     "--with-sysroot=${SYSROOT}"
     "--with-native-system-header-dir=${NATIVE_SYSTEM_HEADER_DIR}"
   )
+fi
+
+# Canadian cross: GCC itself is cross-compiled to run on a different host. The
+# resulting binaries are host-architecture executables that produce target-arch
+# code. This requires the cross-compiler for the host triplet to be on PATH.
+if [ -n "${HOST_TRIPLET}" ]; then
+  CONFIG_CMD+=("--host=${HOST_TRIPLET}")
+  export CC="${HOST_TRIPLET}-gcc"
+  export CXX="${HOST_TRIPLET}-g++"
+  export AR="${HOST_TRIPLET}-ar"
+  export RANLIB="${HOST_TRIPLET}-ranlib"
+  export NM="${HOST_TRIPLET}-nm"
+  export STRIP="${HOST_TRIPLET}-strip"
+  # Build-time host tools need the native (build-machine) compiler
+  export CC_FOR_BUILD="${CC_FOR_BUILD:-gcc}"
+  export CXX_FOR_BUILD="${CXX_FOR_BUILD:-g++}"
 fi
 
 printf '%q ' "${CONFIG_CMD[@]}"; echo

@@ -29,12 +29,11 @@ These files document host-specific workarounds that are easy to regress if you i
 - Use `nerdctl` first on this host. `buildctl` and `ctr` commonly fail here with permission errors.
 - Keep the existing QEMU/binfmt multi-platform Linux lane working while extending the additive cross-build lane.
 - `linux/scripts/build-cross-compiler.sh` builds one `linux/amd64` compiler image that contains cross toolchains for `amd64`, `arm64`, and `riscv64`. It is not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features just to make foreign-arch builds pass. Foreign-architecture runtime images must keep source-built `clang 22.1.6` and must not fall back to the Ubuntu `clang 22.1.2` packages, but should prioritize source-built `gcc 16.1.0` as the default system `cc`/`c++` compiler.
+- Do not remove LLVM/Clang features just to make foreign-arch builds pass. Foreign-architecture runtime images must keep source-built `clang 22.1.6` and must not fall back to the Ubuntu `clang 22.1.2` packages. The source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default system `cc`/`c++` compiler on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; the resulting native GCC is swapped into `/opt/gcc-16.1.0` at the end of the Android stage via `Dockerfile.android`.
 - Preserve the optional runtime payloads and LLVM normalization in `linux/Dockerfile.package`. Do not silently drop the `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
 
 ## Verified Runtime Packaging Path On This Host
 
-- **Stage-by-Stage Background-Building & Polling (Highly Preferred):** Instead of running long interactive `nerdctl build` loops in the foreground (which can freeze or experience extremely slow download rates with direct terminal stdout), always build each stage independently and non-interactively in the background. Use background processes (e.g. `setsid bash -c "nerdctl build ... > build.log 2>&1" & disown`) and poll their progress periodically via `tail`, `grep`, or `pgrep`.
 - Prefer helper scripts over ad hoc `nerdctl build` sequences:
   - `./linux/scripts/build-cross-compiler.sh`
   - `bash linux/scripts/build-runtime-artifacts.sh`
@@ -49,12 +48,13 @@ These files document host-specific workarounds that are easy to regress if you i
 - Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so large exported artifacts do not get sent back as later Docker build contexts.
 - Prefer the saved OCI layouts over the plain directory exports in `out/local-android-dir/<arch>`. The plain directory path is much larger and previously dropped runtime payload during OCI-to-directory conversion.
 
-## Three Critical Fixes To Maintain
+## Four Critical Fixes To Maintain
 
-Always preserve these three vital fixes to prevent build/runtime regressions:
+Always preserve these four vital fixes to prevent build/runtime regressions:
 1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, use `rewrite_staged_python_pc()` to rewrite the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory.
 2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), use `cp -a -L` to dereference standard Python cross-build library symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Note that since this Python is packaged into the compiler cross image, the compiler itself must be rebuilt when modifying this python helper.
+4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, the GCC alternatives registration wires `/opt/gcc-16.1.0/bin/gcc` as the system `cc`/`c++` on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native GCC at the end of the Android stage. The build validates `cc -dumpmachine` against `TARGET_ARCH` as a hard-fail guard to prevent an amd64 `cc` from leaking into foreign-arch runtime images. The `wrapper-smoke` target uses `linux/scripts/06-packaging/smoke-wrapper.sh` for end-to-end verification.
 
 ## Push And Publish Rules
 
@@ -83,16 +83,17 @@ nerdctl manifest inspect "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
 
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs`, because absolute symlinks resolve against the host root.
 - Confirm all of the following for runtime image validation:
-  - `gcc --version` reports `16.1.0`
-  - `clang --version` reports `22.1.6`
-  - the reported target triple matches the architecture
-  - `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`
-  - `/usr/bin/c++ -> /etc/alternatives/c++ -> /opt/gcc-16.1.0/bin/g++`
-  - `/usr/bin/gcc -> /etc/alternatives/gcc -> /opt/gcc-16.1.0/bin/gcc`
-  - `/usr/bin/g++ -> /etc/alternatives/g++ -> /opt/gcc-16.1.0/bin/g++`
+  - `clang --version` reports `22.1.6` on all architectures
+  - the reported target triple matches the architecture (`cc -dumpmachine`)
+  - On all architectures: `gcc --version` reports `16.1.0`, and:
+    - `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`
+    - `/usr/bin/c++ -> /etc/alternatives/c++ -> /opt/gcc-16.1.0/bin/g++`
+    - `/usr/bin/gcc -> /etc/alternatives/gcc -> /opt/gcc-16.1.0/bin/gcc`
+    - `/usr/bin/g++ -> /etc/alternatives/g++ -> /opt/gcc-16.1.0/bin/g++`
   - `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`
   - the optional runtime payloads are still present
-- Use the checked-in `wrapper-smoke` target documented in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md` for cheaper packaging validation before large publish runs.
+  - The build-time validation in `Dockerfile.package` verifies `cc -dumpmachine` matches `TARGET_ARCH` and fails the build if it does not
+- Use the checked-in `wrapper-smoke` target documented in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md` for cheaper packaging validation before large publish runs. The smoke verification logic lives in `linux/scripts/06-packaging/smoke-wrapper.sh`.
 - Current automated validation is documentation-focused. Do not claim there is already a single full end-to-end CI workflow that builds every Linux, accelerator, and Windows image variant on each change.
 
 ## Host Constraints

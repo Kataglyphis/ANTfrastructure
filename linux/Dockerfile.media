@@ -307,10 +307,7 @@ COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
 COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 
-# Diagnostic: ensure the cross Python staging directory survived the build chain
-RUN set -eux; \
-    echo "=== /opt/python-cross/ ==="; \
-    ls /opt/python-cross/ 2>/dev/null || echo "MISSING";
+
 
 # ==============================================================================
 # GStreamer stage (depends on onnxruntime + litert)
@@ -354,22 +351,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/gstreamer/install-deps.sh
-
-# ------------------------------------------------------------------------------
-# Diagnostics: verify cross Python staging directory exists before GStreamer build
-# ------------------------------------------------------------------------------
-RUN set -eux; \
-    echo "=== ENV ==="; \
-    echo "BUILD_MODE=${BUILD_MODE:-UNSET}"; \
-    echo "TARGET_ARCH=${TARGET_ARCH:-UNSET}"; \
-    echo "TARGETARCH=${TARGETARCH:-UNSET}"; \
-    echo "=== /opt/python-cross/ ==="; \
-    ls -la /opt/python-cross/ 2>/dev/null || echo "NO CROSS DIR"; \
-    for d in /opt/python-cross/*/usr/local; do \
-        [ -d "$d" ] && echo "EXISTS: $d" || true; \
-    done; \
-    echo "=== /opt/python-target ==="; \
-    ls -la /opt/python-target 2>/dev/null || echo "NO TARGET DIR"
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \

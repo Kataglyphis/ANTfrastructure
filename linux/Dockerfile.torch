@@ -26,21 +26,14 @@ COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
 COPY --chmod=755 linux/scripts/01-core/ubuntu-mirror.sh /opt/scripts/core/ubuntu-mirror.sh
 COPY --chmod=755 linux/scripts/01-core/cross-env.sh /opt/scripts/core/cross-env.sh
 COPY --chmod=755 linux/scripts/03-media/final/assemble-torch-app.sh /opt/scripts/media/final/assemble-torch-app.sh
+COPY --chmod=755 linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/packaging/setup-torch-venv.sh
 
-RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    if [ "${BUILD_MODE}" = "cross" ]; then \
-      echo "Skipping torch venv creation in pure cross artifact mode; build linux/Dockerfile.torch on the target platform on top of a packaged runtime image to create /opt/venv"; \
-      exit 0; \
-    fi && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     set -eux; \
-    source /opt/scripts/core/cross-env.sh; \
-    python_bin="$(host_python_bin)"; \
-    test -x "${python_bin}" || { \
-      echo "Python interpreter not found in the base image" >&2; \
-      ls -1 /usr/local/bin/python* 2>/dev/null || true; \
-      exit 1; \
-    }; \
-    uv venv --seed --python="${python_bin}" "${VENV}"
+    bash /opt/scripts/packaging/setup-torch-venv.sh
+
 ENV VIRTUAL_ENV=${VENV} \
     PATH=${VENV}/bin:${PATH} \
     UV_PYTHON=${VENV}/bin/python \
@@ -48,52 +41,6 @@ ENV VIRTUAL_ENV=${VENV} \
     UV_LOCK_TIMEOUT=14400 \
     PIP_DEFAULT_TIMEOUT=1200 \
     UV_HTTP_TIMEOUT=1200
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
-    if [ "${BUILD_MODE}" = "cross" ]; then \
-      echo "Skipping torch environment assembly in pure cross artifact mode; run this stage on linux/${TARGETARCH} or another target-platform image to install the target wheelhouse"; \
-      exit 0; \
-    fi && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-      # Do NOT remove. need to build PyGObject from source on RISCV
-      libgirepository-2.0-dev libcairo2-dev libgirepository1.0-dev \
-      python3-gi \
-      gir1.2-glib-2.0 gir1.2-gtk-3.0 \
-      git libopenblas-dev liblapack-dev \
-      # wxPython / GTK3 Dependencies (CRITICAL)
-      libgtk-3-dev \
-      libglib2.0-dev:$(dpkg --print-architecture) \
-      libglib2.0-dev \
-      libjpeg-dev \
-      libtiff-dev \
-      libpng-dev \
-      libsdl2-dev \
-      libnotify-dev \
-      libsm-dev \
-      libxtst-dev \
-      freeglut3-dev \
-      libxxf86vm-dev \
-      libegl1-mesa-dev \
-      libglu1-mesa-dev \
-      pkg-config \
-      # ADDED: Matplotlib build dependencies to avoid meson timeouts
-      libfreetype6-dev \
-      libqhull-dev \
-      libharfbuzz-dev \
-      libfribidi-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
-    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    if [ "${BUILD_MODE}" = "cross" ]; then \
-      echo "Skipping torch application install/validation in pure cross artifact mode; use TORCH_APP_MODE=install or all when building linux/Dockerfile.torch on the target platform"; \
-      exit 0; \
-    fi && \
-    export SKIP_TORCH_TEST_EXTRAS=true && \
-    /opt/scripts/media/final/assemble-torch-app.sh "${TORCH_APP_MODE}"
 
 WORKDIR /opt/Kataglyphis-Orchestr-ANT-ion
 

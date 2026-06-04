@@ -219,7 +219,7 @@ Think of the target-platform handoff like this:
 - `linux/Dockerfile.base` -> `linux/Dockerfile.package` -> `linux/Dockerfile.torch` -> `linux/Dockerfile` produces `latest-cross-${target_arch}`.
 - `linux/Dockerfile.base` -> `linux/Dockerfile.package` -> `linux/Dockerfile.torch` produces `torch-cross-${target_arch}`.
 
-`linux/Dockerfile.package` is the point where the amd64-hosted cross artifacts are copied into a clean real target root filesystem. For foreign-architecture runtime images, that package stage must receive a real target-native `/opt/llvm-target` tree from the artifact image and must wire `/usr/bin/clang` to `/usr/local/llvm-target/bin/clang`; do not fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`, or the final manifest can pick up a host-architecture Clang binary. After that, `linux/Dockerfile.torch` becomes the shared parent for both the exported Torch image and the final `latest-cross-${target_arch}` wrapper. The example above still uses separate `torch-base-*` and `torch-package-*` tags to keep the Torch logs and handoff tags explicit, but if you already built per-arch base/package images for `latest-cross`, you can reuse those same images for the Torch stage instead of rebuilding them.
+`linux/Dockerfile.package` is the point where the amd64-hosted cross artifacts are copied into a clean real target root filesystem. For foreign-architecture runtime images, that package stage must receive a real target-native `/opt/llvm-target` tree from the artifact image and must wire `/usr/bin/clang` to `/usr/local/llvm-target/bin/clang`; do not fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`, or the final manifest can pick up a host-architecture Clang binary. The stage also receives a target-native `/opt/gcc-16.1.0` that was cross-compiled from source (Canadian cross) during the toolchain stage and swapped in by `Dockerfile.android`. A hard-fail validation step verifies that `cc -dumpmachine` matches `TARGET_ARCH`. After that, `linux/Dockerfile.torch` becomes the shared parent for both the exported Torch image and the final `latest-cross-${target_arch}` wrapper. The example above still uses separate `torch-base-*` and `torch-package-*` tags to keep the Torch logs and handoff tags explicit, but if you already built per-arch base/package images for `latest-cross`, you can reuse those same images for the Torch stage instead of rebuilding them.
 
 The existing multi-platform sequential `sdk`, `media`, `android`, `torch`, and `latest` commands above still remain supported and unchanged.
 
@@ -408,7 +408,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
-That path was validated for both `arm64` and `riscv64` with `gcc version 16.1.0`, `clang version 22.1.6`, manual `update-alternatives` wiring to `/opt/gcc-16.1.0/bin/gcc`, native `gcc-16` binaries under `/opt/gcc-16.1.0/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`.
+That path was validated for both `arm64` and `riscv64` with `gcc version 16.1.0`, `clang version 22.1.6`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, native `gcc-16` binaries under `/opt/gcc-16.1.0/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary. The build-time guard in `Dockerfile.package` verifies that `cc -dumpmachine` matches the target architecture.
 
 After the runtime helper cleanup in this repository, the same helper path was re-validated for `amd64` with:
 
@@ -439,39 +439,19 @@ nerdctl build --platform linux/amd64 \
   --build-arg ARTIFACT_PLATFORM=linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
+  --build-arg GCC_VERSION=16.1.0 \
+  --build-arg LLVM_RELEASE=22.1.6 \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \
   .
 ```
 
-## Best Practices: Stage-by-Stage Background-Building & Polling
+## Four Critical Fixes To Maintain
 
-Direct, interactive `nerdctl build` loops on the terminal stdout can easily freeze, experience extremely slow download rates, or hang due to heavy multi-platform CPU and QEMU emulation. 
-
-Therefore, **always build each stage independently and non-interactively in the background**.
-
-### Non-Interactive Stage Pattern
-
-Run each stage in a background shell process, redirecting output to a dedicated log file, and decouple it from the active terminal:
-
-```bash
-# Example of backgrounding a build stage:
-setsid bash -c "nerdctl build ... > out/build-logs/my-stage.log 2>&1" & disown
-```
-
-### Monitoring Strategy
-
-Instead of relying on terminal stdout, monitor the background log periodically from another shell using:
-
-- `tail -n 20 -f out/build-logs/my-stage.log`
-- `grep -E "ERROR|fatal|failed|DONE|exporting" out/build-logs/my-stage.log`
-- `pgrep -af "nerdctl build|buildctl"` to verify the build process is still active.
-
-## Three Critical Fixes To Maintain
-
-To prevent regressions during updates, always preserve the following three vital fixes in the Linux cross pipeline:
+To prevent regressions during updates, always preserve the following four vital fixes in the Linux cross pipeline:
 
 1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, the `rewrite_staged_python_pc()` helper rewrites the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory so `gst-python` builds succeed.
 2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, the build must copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent downstream `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), standard CPython build steps create standard cross-build library symlinks that end up dangling when packaged. We use `cp -a -L` to dereference those symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the target's `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Since target-packaged Python is staged into the compiler-cross image, the compiler itself must be rebuilt if this helper logic is changed.
+4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, the GCC alternatives registration wires `/opt/gcc-16.1.0/bin/gcc` as the system `cc`/`c++` on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native GCC at the end of the Android stage. The build validates `cc -dumpmachine` against `TARGET_ARCH` as a hard-fail guard to prevent an amd64 `cc` from leaking into foreign-arch runtime images. The `wrapper-smoke` target uses `linux/scripts/06-packaging/smoke-wrapper.sh` for end-to-end verification.
