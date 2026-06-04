@@ -182,6 +182,13 @@ validate_package() {
   [ -z "${cc_path}" ] && cc_path="$(command -v cc 2>/dev/null || true)"
   if [ -n "${cc_path}" ] && [ -x "${cc_path}" ]; then
     cc_dump="$(cc -dumpmachine 2>/dev/null || true)"
+    if [ -z "${cc_dump}" ]; then
+      echo "ERROR: /usr/bin/cc (${cc_path}) exists but 'cc -dumpmachine' returned empty — binary may be the wrong architecture" >&2
+      if command -v file >/dev/null 2>&1; then
+        echo "Binary type: $(file "${cc_path}" 2>/dev/null || true)" >&2
+      fi
+      exit 1
+    fi
     case "${target_arch}" in
       amd64) expected_pattern="x86_64" ;;
       arm64) expected_pattern="aarch64" ;;

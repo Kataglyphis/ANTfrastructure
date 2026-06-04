@@ -131,19 +131,14 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
 
 COPY --chmod=755 linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onnxruntime/build
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-        --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
-        set -eux; \
-    SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
-            --step deps
-
+# deps + fetch combined: both are fast IO-bound operations
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
         --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         set -eux; \
-        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
-            --step fetch
+    SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step deps && \
+    bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step fetch
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
@@ -169,21 +164,12 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
             --step genai
 
-RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
-        --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-        set -eux; \
-        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
-            --step wasm
-
-RUN set -eux; \
-    bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
-            --step js
-
+# wasm + js + pkgconfig combined: all fast, no heavy cache dependencies
 COPY --chmod=755 linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
-
 RUN set -eux; \
-    bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
-        --step pkgconfig
+        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step wasm; \
+        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step js; \
+        bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step pkgconfig
 
 # ==============================================================================
 # LiteRT stage

@@ -185,7 +185,7 @@ done
 for target_arch in amd64 arm64 riscv64; do
   nerdctl build --platform "linux/${target_arch}" -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${target_arch},push=true" \
-    -f linux/Dockerfile \
+    -f linux/Dockerfile.torch \
     --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-cross-${target_arch}" \
     . 2>&1 | tee "${LOG_DIR}/latest-cross-${target_arch}.log"
 done
@@ -210,18 +210,16 @@ The later cross builds above are additive and still intentionally conservative:
 
 - `media-cross-${target_arch}` now runs the native C/C++ stages with target compilers and target pkg-config/sysroot settings on the amd64 host.
 - `android-cross-${target_arch}` now keys off the amd64 build host for SDK/NDK setup while still selecting the requested Android target ABI from `TARGET_ARCH`.
-- `torch-package-${target_arch}` rebuilds a clean target runtime surface from `android-cross-${target_arch}` by copying the cross-built payloads and wheelhouse into a real `linux/${target_arch}` image.
-- `torch-cross-${target_arch}` now performs only the final Torch `/opt/venv` and `uv sync` step on `linux/${target_arch}` under QEMU. Use `TORCH_APP_MODE=install` when you only need a reusable `/opt/venv`; switch back to `all` to keep the emulated import smoke checks during the build.
-- The final cross output is now `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`, built by publishing clean per-arch `linux/Dockerfile.base` images, layering the target-built `android-cross-${target_arch}` payload onto them with `linux/Dockerfile.package`, building `linux/Dockerfile.torch` on top of that packaged image, wrapping each result with `linux/Dockerfile`, and then publishing one multi-architecture manifest.
+The final cross output is now `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`, built by publishing clean per-arch `linux/Dockerfile.base` images, layering the target-built `android-cross-${target_arch}` payload onto them with `linux/Dockerfile.package`, and then building the final `linux/Dockerfile.torch` wrapper (which includes Torch venv, app, and runtime scripts). A single multi-architecture manifest is then published.
 
 Think of the target-platform handoff like this:
 
-- `linux/Dockerfile.base` -> `linux/Dockerfile.package` -> `linux/Dockerfile.torch` -> `linux/Dockerfile` produces `latest-cross-${target_arch}`.
-- `linux/Dockerfile.base` -> `linux/Dockerfile.package` -> `linux/Dockerfile.torch` produces `torch-cross-${target_arch}`.
+- `linux/Dockerfile.base` -> `linux/Dockerfile.package` -> `linux/Dockerfile.torch` produces `latest-cross-${target_arch}`.
+- `Dockerfile.torch` includes a `venv-export` scratch stage for exporting `/opt/venv` separately.
 
-`linux/Dockerfile.package` is the point where the amd64-hosted cross artifacts are copied into a clean real target root filesystem. For foreign-architecture runtime images, that package stage must receive a real target-native `/opt/llvm-target` tree from the artifact image and must wire `/usr/bin/clang` to `/usr/local/llvm-target/bin/clang`; do not fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`, or the final manifest can pick up a host-architecture Clang binary. The stage also receives a target-native `/opt/gcc-16.1.0` that was cross-compiled from source (Canadian cross) during the toolchain stage and swapped in by `Dockerfile.android`. A hard-fail validation step verifies that `cc -dumpmachine` matches `TARGET_ARCH`. After that, `linux/Dockerfile.torch` becomes the shared parent for both the exported Torch image and the final `latest-cross-${target_arch}` wrapper. The example above still uses separate `torch-base-*` and `torch-package-*` tags to keep the Torch logs and handoff tags explicit, but if you already built per-arch base/package images for `latest-cross`, you can reuse those same images for the Torch stage instead of rebuilding them.
+`linux/Dockerfile.package` is the point where the amd64-hosted cross artifacts are copied into a clean real target root filesystem. For foreign-architecture runtime images, that package stage must receive a real target-native `/opt/llvm-target` tree from the artifact image and must wire `/usr/bin/clang` to `/usr/local/llvm-target/bin/clang`; do not fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`, or the final manifest can pick up a host-architecture Clang binary. The stage also receives a target-native `/opt/gcc-16.1.0` that was cross-compiled from source (Canadian cross) during the toolchain stage and swapped in by `Dockerfile.android`. A hard-fail validation step verifies that `cc -dumpmachine` matches `TARGET_ARCH`. After that, `linux/Dockerfile.torch` directly produces the final `latest-cross-${target_arch}` wrapper image.
 
-The existing multi-platform sequential `sdk`, `media`, `android`, `torch`, and `latest` commands above still remain supported and unchanged.
+The existing multi-platform sequential `sdk`, `media`, and `android` commands above still remain supported and unchanged.
 
 This image is a single amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding source-built GCC 16 target compilers like `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-amd64`, `clang-arm64`, and `clang-riscv64` for host-side cross builds.
 
@@ -297,7 +295,7 @@ The new end-goal path is split into two steps so the old QEMU lane keeps working
 3. Assemble one runtime image per architecture from a clean per-arch `linux/Dockerfile.base` image plus the target-built payload from `android-cross-${target_arch}`.
 4. Publish a single multi-architecture manifest.
 
-`linux/Dockerfile.package` is the shared runtime packaging layer for this path. It starts from a clean per-arch base image, copies only the selected target payload from the chosen artifact image, replays the final runtime dependency setup, and then becomes the `BASE_IMAGE` for the final `linux/Dockerfile` wrapper. In `cross` mode that artifact image still runs on amd64 (`android-cross-${target_arch}`); in `native` mode it can be the target-platform sequential image directly.
+`linux/Dockerfile.package` is the shared runtime packaging layer for this path. It starts from a clean per-arch base image, copies only the selected target payload from the chosen artifact image, replays the final runtime dependency setup, and then becomes the `BASE_IMAGE` for the final `linux/Dockerfile.torch` wrapper. In `cross` mode that artifact image still runs on amd64 (`android-cross-${target_arch}`); in `native` mode it can be the target-platform sequential image directly.
 
 For day-to-day work on this host, prefer the helper scripts below over the long manual `nerdctl` loops. The manual sequence remains useful as a low-level reference, but the helpers already encode the verified local-context handoff and push semantics.
 
@@ -350,7 +348,7 @@ done
 for target_arch in amd64 arm64 riscv64; do
   nerdctl build --platform "linux/${target_arch}" \
     -t "${IMAGE_REPO}:latest-cross-${target_arch}" \
-    -f linux/Dockerfile \
+    -f linux/Dockerfile.torch \
     --build-arg BASE_IMAGE="${IMAGE_REPO}:latest-cross-torch-${target_arch}" \
     . && \
   nerdctl push "${IMAGE_REPO}:latest-cross-${target_arch}"
@@ -369,7 +367,7 @@ If you do not need the mirror override, remove `MIRROR_ARGS` and the `"${MIRROR_
 
 This flow still adds a second lane. It does not modify the current QEMU-based multi-platform build commands above.
 
-The same package handoff now works for `linux/Dockerfile.torch` too. Build the heavy media/android payloads with the amd64-hosted cross compiler first, then feed `android-cross-${target_arch}` through `linux/Dockerfile.package`, build `linux/Dockerfile.torch` on `linux/${target_arch}`, and use that Torch image as the `BASE_IMAGE` for the final `linux/Dockerfile` wrapper. `TORCH_APP_MODE=install` keeps that QEMU Torch stage focused on creating `/opt/venv`, and the dedicated `venv-export` target lets you export only `/opt/venv` for later `COPY` into a matching real target image.
+The same package handoff now works for `linux/Dockerfile.torch` too. Build the heavy media/android payloads with the amd64-hosted cross compiler first, then feed `android-cross-${target_arch}` through `linux/Dockerfile.package`, build `linux/Dockerfile.torch` on `linux/${target_arch}` (which now includes the runtime scripts + entrypoint directly). `TORCH_APP_MODE=install` keeps that QEMU Torch stage focused on creating `/opt/venv`, and the dedicated `venv-export` target lets you export only `/opt/venv` for later `COPY` into a matching real target image.
 
 The helper scripts now follow the same runtime path too:
 

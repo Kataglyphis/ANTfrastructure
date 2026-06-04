@@ -18,7 +18,7 @@ These files document host-specific workarounds that are easy to regress if you i
 
 ## Repo Map
 
-- `linux/`: Linux Dockerfiles for base, toolchain, SDK, media, Android, package, Torch, and wrapper images.
+- `linux/`: Linux Dockerfiles for base, toolchain, SDK, media, Android, package, and Torch images. `Dockerfile.torch` is the final wrapper (includes runtime scripts + entrypoint).
 - `linux/scripts/`: helper scripts for cross-compiler, SDK artifacts, runtime artifacts, and runtime manifest publishing.
 - `docs/`: the canonical build and troubleshooting instructions.
 - `windows/`: Windows container images.
@@ -54,13 +54,13 @@ Always preserve these four vital fixes to prevent build/runtime regressions:
 1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, use `rewrite_staged_python_pc()` to rewrite the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory.
 2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), use `cp -a -L` to dereference standard Python cross-build library symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Note that since this Python is packaged into the compiler cross image, the compiler itself must be rebuilt when modifying this python helper.
-4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, the GCC alternatives registration wires `/opt/gcc-16.1.0/bin/gcc` as the system `cc`/`c++` on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native GCC at the end of the Android stage. The build validates `cc -dumpmachine` against `TARGET_ARCH` as a hard-fail guard to prevent an amd64 `cc` from leaking into foreign-arch runtime images. The `wrapper-smoke` target uses `linux/scripts/06-packaging/smoke-wrapper.sh` for end-to-end verification.
+4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, the GCC alternatives registration wires `/opt/gcc-16.1.0/bin/gcc` as the system `cc`/`c++` on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native GCC at the end of the Android stage. The build validates `cc -dumpmachine` against `TARGET_ARCH` as a hard-fail guard to prevent an amd64 `cc` from leaking into foreign-arch runtime images. The `wrapper-smoke` target uses `linux/scripts/06-packaging/smoke-wrapper.sh` (which delegates to `linux/scripts/06-packaging/validate-compilers.sh`) for end-to-end verification.
 
 ## Push And Publish Rules
 
 - For the runtime helpers, `build-runtime-artifacts.sh --push` should push only the final per-architecture wrapper images.
 - `build-runtime-manifest.sh --push` should push those final wrapper images plus the final manifest.
-- Use `--push-all` only when the user explicitly wants the `base`, `package`, and `torch` intermediates published too.
+- Use `--push-all` only when the user explicitly wants the `base` and `package` intermediates published too.
 - Final cross release target: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
 - Final wrapper tags are:
   - `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-amd64`

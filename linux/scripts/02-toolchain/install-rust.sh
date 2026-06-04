@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eux
+set -euo pipefail
 
 # install-rust.sh
 # Installs rustup, cargo-c, nightly toolchain, and cross-compilation targets

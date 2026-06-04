@@ -338,25 +338,6 @@ runtime_package_tag() {
   printf '%s' "${RUNTIME_IMAGE_PREFIX}-package-${arch}"
 }
 
-runtime_torch_tag() {
-  local arch="$1"
-
-  runtime_require_image_prefix || return 1
-  printf '%s' "${RUNTIME_IMAGE_PREFIX}-torch-${arch}"
-}
-
-runtime_effective_torch_app_mode() {
-  if [ -n "${TORCH_APP_MODE:-}" ]; then
-    printf '%s' "${TORCH_APP_MODE}"
-    return 0
-  fi
-
-  case "${ARTIFACT_BUILD_MODE:-cross}" in
-    native) printf '%s' "all" ;;
-    *) printf '%s' "install" ;;
-  esac
-}
-
 runtime_wrapper_tag() {
   local arch="$1"
 
@@ -454,7 +435,6 @@ _runtime_resolve_parent_context() {
     case "${parent_kind}" in
       base)    _out_image_ref="$(runtime_base_tag "${arch}")" ;;
       package) _out_image_ref="$(runtime_package_tag "${arch}")" ;;
-      torch)   _out_image_ref="$(runtime_torch_tag "${arch}")" ;;
       *)       return 1 ;;
     esac
   fi
@@ -564,17 +544,14 @@ runtime_build_package_image() {
   _runtime_finish_stage package "${arch}" "${tag}" base
 }
 
-runtime_build_torch_image() {
+runtime_build_wrapper_image() {
   local arch="$1"
-  local tag parent_image parent_context_dir torch_app_mode torch_build_mode
+  local tag parent_image parent_context_dir
   local -a build_args=()
 
-  tag="$(runtime_torch_tag "${arch}")"
-  torch_app_mode="$(runtime_effective_torch_app_mode)"
-  torch_build_mode="native"
-
+  tag="$(runtime_wrapper_tag "${arch}")"
   append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_runtime_torch_build_args build_args
+  append_runtime_accelerator_build_args build_args
 
   _runtime_resolve_parent_context package "${arch}" parent_image parent_context_dir build_args
 
@@ -582,38 +559,16 @@ runtime_build_torch_image() {
     --pull=false \
     --platform "linux/${arch}" \
     -t "${tag}" \
-    -f "${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
+    -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
     --build-arg "BASE_IMAGE=${parent_image}" \
-    --build-arg "BUILD_MODE=${torch_build_mode}" \
+    --build-arg "BUILD_MODE=native" \
     --build-arg "TARGET_ARCH=${arch}" \
-    --build-arg "TORCH_APP_MODE=${torch_app_mode}" \
-    "${build_args[@]}" \
-    .
-
-  _runtime_finish_stage torch "${arch}" "${tag}" package
-}
-
-runtime_build_wrapper_image() {
-  local arch="$1"
-  local tag parent_image parent_context_dir
-  local -a build_args=()
-
-  tag="$(runtime_wrapper_tag "${arch}")"
-  append_runtime_accelerator_build_args build_args
-
-  _runtime_resolve_parent_context torch "${arch}" parent_image parent_context_dir build_args
-
-  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=false \
-    --platform "linux/${arch}" \
-    -t "${tag}" \
-    -f "${WRAPPER_DOCKERFILE_PATH}" \
-    --build-arg "BASE_IMAGE=${parent_image}" \
+    --build-arg "TORCH_APP_MODE=$(runtime_effective_torch_app_mode)" \
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
     "${build_args[@]}" \
     .
 
-  runtime_remove_stage_context torch "${arch}"
+  runtime_remove_stage_context package "${arch}"
 
   if runtime_pushes_wrapper_images; then
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
@@ -629,21 +584,25 @@ runtime_build_wrapper_rootfs() {
   tag="$(runtime_wrapper_tag "${arch}")"
   artifact_dir="$(dirname "${rootfs_dir}")"
 
+  append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
   append_runtime_accelerator_build_args build_args
 
-  _runtime_resolve_parent_context torch "${arch}" parent_image parent_context_dir build_args
+  _runtime_resolve_parent_context package "${arch}" parent_image parent_context_dir build_args
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=false \
     --platform "linux/${arch}" \
     -t "${tag}" \
-    -f "${WRAPPER_DOCKERFILE_PATH}" \
+    -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
     --build-arg "BASE_IMAGE=${parent_image}" \
+    --build-arg "BUILD_MODE=native" \
+    --build-arg "TARGET_ARCH=${arch}" \
+    --build-arg "TORCH_APP_MODE=$(runtime_effective_torch_app_mode)" \
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
     "${build_args[@]}" \
     .
 
-  runtime_remove_stage_context torch "${arch}"
+  runtime_remove_stage_context package "${arch}"
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}"
 
   if runtime_pushes_wrapper_images; then
@@ -657,7 +616,6 @@ runtime_build_chain() {
 
   runtime_build_base_image "${arch}"
   runtime_build_package_image "${arch}"
-  runtime_build_torch_image "${arch}"
 
   if [ -n "${rootfs_dir}" ]; then
     runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}"
@@ -675,7 +633,6 @@ runtime_write_artifact_metadata() {
   cat > "${output_dir}/artifact.env" <<EOF
 TARGET_ARCH=${arch}
 SOURCE_IMAGE=$(runtime_wrapper_tag "${arch}")
-TORCH_IMAGE=$(runtime_torch_tag "${arch}")
 PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
 BASE_IMAGE=$(runtime_base_tag "${arch}")
 ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")

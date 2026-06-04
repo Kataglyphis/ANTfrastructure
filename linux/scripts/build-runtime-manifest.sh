@@ -13,8 +13,8 @@ ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_
 ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
 BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
 PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
-TORCH_DOCKERFILE_PATH="${TORCH_DOCKERFILE_PATH:-linux/Dockerfile.torch}"
-WRAPPER_DOCKERFILE_PATH="${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile}"
+PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
+WRAPPER_DOCKERFILE_PATH="${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}"
 TORCH_APP_MODE="${TORCH_APP_MODE:-}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
@@ -33,9 +33,8 @@ Usage: build-runtime-manifest.sh --image IMAGE [options]
 Builds the documented cross publish flow end-to-end:
 1. clean per-architecture base images
 2. package images that layer target-built payload from android-cross-${arch}
-3. torch images from linux/Dockerfile.torch
-4. final wrapper images from linux/Dockerfile
-5. one multi-architecture manifest
+3. final wrapper images (includes torch venv + app + runtime scripts)
+4. one multi-architecture manifest
 
 Options:
   --image IMAGE                Final manifest image ref to build (required)
@@ -45,16 +44,15 @@ Options:
   --artifact-build-mode MODE   Artifact source mode: cross or native (default: cross)
   --base-dockerfile PATH       Base Dockerfile (default: linux/Dockerfile.base)
   --package-dockerfile PATH    Package Dockerfile (default: linux/Dockerfile.package)
-  --torch-dockerfile PATH      Torch Dockerfile (default: linux/Dockerfile.torch)
-  --wrapper-dockerfile PATH    Final wrapper Dockerfile (default: linux/Dockerfile)
-  --torch-app-mode MODE        TORCH_APP_MODE for linux/Dockerfile.torch
+  --wrapper-dockerfile PATH    Final wrapper Dockerfile (default: linux/Dockerfile.torch)
+  --torch-app-mode MODE        TORCH_APP_MODE for the wrapper build
                                (default: install in cross mode, all in native mode)
   --fast-ubuntu-mirror         Replace Ubuntu archive/security/ports mirrors during Docker builds
   --fast-ubuntu-mirror-url URL Archive mirror URL to use with --fast-ubuntu-mirror
   --fast-ubuntu-ports-mirror-url URL
-                               Optional mirror URL for ubuntu-ports entries
+                                Optional mirror URL for ubuntu-ports entries
   --push-images                Push per-architecture wrapper images only
-  --push-all                   Push ALL images (wrapper + base/package/torch intermediates)
+  --push-all                   Push ALL images (wrapper + base/package intermediates)
   --push-manifest              Push the final manifest after creating it
   --skip-manifest              Build images only; do not create a manifest locally
   --manifest-only              Create/push the manifest only; skip all image builds
@@ -73,20 +71,17 @@ Environment overrides:
   RUNTIME_USE_LOCAL_CONTEXT_CHAIN
                                true/false/auto (default: auto)
   RUNTIME_CONTEXT_ROOT         Temporary directory root for local stage handoff
-  PUSH_INTERMEDIATE_IMAGES     1 to also push base/package/torch (default: 0)
+  PUSH_INTERMEDIATE_IMAGES     1 to also push base/package (default: 0)
   BASE_DOCKERFILE_PATH         Base Dockerfile path
   BASE_PARENT_IMAGE            Optional parent image passed as BASE_IMAGE to the
                                selected base Dockerfile (for example a GPU base)
   PACKAGE_DOCKERFILE_PATH      Package Dockerfile path
-  TORCH_DOCKERFILE_PATH        Torch Dockerfile path
   WRAPPER_DOCKERFILE_PATH      Final wrapper Dockerfile path
-  TORCH_APP_MODE               TORCH_APP_MODE passed to linux/Dockerfile.torch
-  ENABLE_NVIDIA                Optional accelerator flag passed to package/torch/
-                               wrapper builds
-  ENABLE_AMD                   Optional accelerator flag passed to package/torch/
-                               wrapper builds
-  ONNX_PACKAGE                 Optional torch ONNX package override
-  PYTORCH_EXTRA                Optional torch PyTorch extra override
+  TORCH_APP_MODE               TORCH_APP_MODE passed to the wrapper build
+  ENABLE_NVIDIA                Optional accelerator flag passed to package/wrapper builds
+  ENABLE_AMD                   Optional accelerator flag passed to package/wrapper builds
+  ONNX_PACKAGE                 Optional ONNX package override
+  PYTORCH_EXTRA                Optional PyTorch extra override
   USE_FAST_UBUNTU_MIRROR       Set to true to replace archive/security/ports Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL       Mirror URL used when the fast mirror is enabled
   FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
@@ -137,7 +132,7 @@ main() {
         shift 2
         ;;
       --torch-dockerfile)
-        TORCH_DOCKERFILE_PATH="$2"
+        WRAPPER_DOCKERFILE_PATH="$2"
         shift 2
         ;;
       --wrapper-dockerfile)

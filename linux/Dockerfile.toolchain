@@ -129,25 +129,9 @@ COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
 
 # Fix cross-compiled Python pkg-config files so they resolve into the per-arch
-# staging trees instead of the build host's /usr/local prefix.  Without this
-# rewrite, downstream Meson builds (gst-python, OpenCV) link against the host
-# amd64 libpython instead of the target architecture's libpython.
-RUN set -eux; \
-    for python_cross_root in /opt/python-cross/*; do \
-        [ -d "${python_cross_root}/usr/local/lib/pkgconfig" ] || continue; \
-        pc_dir="${python_cross_root}/usr/local/lib/pkgconfig"; \
-        for pc in "${pc_dir}"/python-*.pc; do \
-            [ -f "${pc}" ] || continue; \
-            sed -i \
-                -e 's|^prefix=/usr/local$|prefix=${pcfiledir}/../..|' \
-                -e 's|^exec_prefix=${prefix}$|exec_prefix=${prefix}|' \
-                -e 's|^libdir=${exec_prefix}/lib$|libdir=${prefix}/lib|' \
-                -e 's|^includedir=${prefix}/include$|includedir=${prefix}/include|' \
-                "${pc}"; \
-            echo "Fixed ${pc}"; \
-            head -5 "${pc}"; \
-        done; \
-    done
+# staging trees instead of the build host's /usr/local prefix.
+RUN --mount=type=bind,source=linux/scripts/python/fix-staged-python-pc.sh,target=/tmp/fix-staged-python-pc.sh,ro \
+    set -eux; bash /tmp/fix-staged-python-pc.sh
 
 # 6. FINAL SCRIPT TREE SMOKE CHECK
 RUN set -eux; \

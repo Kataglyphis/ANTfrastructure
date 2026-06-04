@@ -107,7 +107,8 @@ runtime_cli_usage_common() {
   --base-dockerfile PATH        Base Dockerfile (default: linux/Dockerfile.base)
   --package-dockerfile PATH     Package Dockerfile (default: linux/Dockerfile.package)
   --torch-dockerfile PATH       Torch Dockerfile (default: linux/Dockerfile.torch)
-  --wrapper-dockerfile PATH     Final wrapper Dockerfile (default: linux/Dockerfile)
+  --torch-dockerfile PATH       Alias for --wrapper-dockerfile (deprecated)
+  --wrapper-dockerfile PATH     Final wrapper Dockerfile (default: linux/Dockerfile.torch)
   --torch-app-mode MODE         TORCH_APP_MODE for linux/Dockerfile.torch
   --fast-ubuntu-mirror          Replace Ubuntu archive/security/ports mirrors during Docker builds
   --fast-ubuntu-mirror-url URL  Archive mirror URL to use with --fast-ubuntu-mirror

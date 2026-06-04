@@ -125,7 +125,7 @@ nerdctl build \
   --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
   --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
   --build-arg BUILD_BY="local" \
-  -f linux/Dockerfile . 2>&1 | tee "${LOG_DIR}/latest.log"
+  -f linux/Dockerfile.torch . 2>&1 | tee "${LOG_DIR}/latest.log"
 ```
 
 ### Build & push (docker buildx)
@@ -143,7 +143,7 @@ LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-buildx"
 mkdir -p "${LOG_DIR}"
 
 sudo docker buildx build \
-  -f linux/Dockerfile \
+  -f linux/Dockerfile.torch \
   --platform linux/amd64,linux/arm64,linux/riscv64 \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:$(git rev-parse --short HEAD) \
@@ -224,7 +224,7 @@ nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/katagl
   . 2>&1 | tee "${LOG_DIR}/torch.log"
 nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
-  -f linux/Dockerfile \
+  -f linux/Dockerfile.torch \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-latest,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-latest \
