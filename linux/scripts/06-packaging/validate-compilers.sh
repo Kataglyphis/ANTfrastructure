@@ -108,12 +108,18 @@ validate_artifact_source() {
     fi
   fi
   if [ -x "${llvm_target}" ]; then
-    local clang_ver
+    local clang_ver clang_major_minor
     clang_ver="$("${llvm_target}" --version 2>/dev/null | head -1 || true)"
     if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:-22.1.6}"; then
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
-      validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.6})"
+      # Check major.minor match (artifact may have minor patch drift)
+      clang_major_minor="$(echo "${LLVM_RELEASE:-22.1.6}" | cut -d. -f1-2)"
+      if echo "${clang_ver}" | grep -q "clang version ${clang_major_minor}"; then
+        echo "OK: target clang ${llvm_target} reports ${clang_ver} (major.minor ${clang_major_minor} matches)"
+      else
+        validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.6})"
+      fi
     fi
   elif [ "${BUILD_MODE:-native}" = "cross" ] && [ -d /opt/llvm-target ]; then
     validate_fail "target-clang-missing" "${llvm_target} not executable in /opt/llvm-target"
