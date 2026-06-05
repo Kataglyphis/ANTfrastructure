@@ -417,6 +417,10 @@ if [ -n "${HOST_TRIPLET}" ]; then
   # Build-time host tools need the native (build-machine) compiler
   export CC_FOR_BUILD="${CC_FOR_BUILD:-gcc}"
   export CXX_FOR_BUILD="${CXX_FOR_BUILD:-g++}"
+  # Force configure to accept the cross-compiler (Canadian cross host != build)
+  export ac_cv_prog_cc_works=yes
+  export ac_cv_prog_cxx_works=yes
+  export gcc_cv_prog_cc_works=yes
 fi
 
 printf '%q ' "${CONFIG_CMD[@]}"; echo
