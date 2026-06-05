@@ -39,11 +39,11 @@ staged_opencv_python_available() {
 
   shopt -s nullglob
   for dir in \
-    /opt/opencv4/lib/python3*/site-packages \
-    /opt/opencv4/lib/python3*/dist-packages \
-    /opt/opencv4/lib64/python3*/site-packages \
-    /opt/opencv4/lib64/python3*/dist-packages \
-    /opt/opencv4/python/cv2/python-*; do
+    /opt/opencv5/lib/python3*/site-packages \
+    /opt/opencv5/lib/python3*/dist-packages \
+    /opt/opencv5/lib64/python3*/site-packages \
+    /opt/opencv5/lib64/python3*/dist-packages \
+    /opt/opencv5/python/cv2/python-*; do
     [ -d "${dir}" ] || continue
     shopt -u nullglob
     return 0

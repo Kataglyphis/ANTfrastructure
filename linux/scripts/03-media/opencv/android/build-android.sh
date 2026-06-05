@@ -14,7 +14,7 @@ TARGET_ARCH="$(android_target_arch)"
 ANDROID_ABI="$(android_target_abi)"
 : "${ANDROID_ABI:?Unsupported Android target ABI}"
 
-OPENCV_VERSION="${1:-4.11.0}"
+OPENCV_VERSION="${1:-5.x}"
 ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL:-34}" "Android OpenCV build")"
 INSTALL_DIR="${OPENCV_ROOT_ANDROID:-/opt/android/opencv}"
 

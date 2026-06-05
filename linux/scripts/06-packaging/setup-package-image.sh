@@ -188,7 +188,7 @@ main() {
         uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools numpy meson ninja cmake packaging
     fi
 
-    add_prefix_python_paths_to_venv "/opt/opencv4" "${VIRTUAL_ENV}/bin/python"
+    add_prefix_python_paths_to_venv "/opt/opencv5" "${VIRTUAL_ENV}/bin/python"
 
     bash /opt/scripts/media/final/configure-runtime.sh
     ldconfig

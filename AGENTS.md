@@ -130,7 +130,7 @@ Versions live in multiple places. Update all of them:
 | **ONNX Runtime** | `ARG ONNXRUNTIME_VERSION=...` in `Dockerfile.media` |
 | **ONNX Runtime GenAI** | `ARG ONNXRUNTIME_GENAI_VERSION=...` in `Dockerfile.media` |
 | **LiteRT** | `ARG LITERT_VERSION=...` in `Dockerfile.media` |
-| **OpenCV** | `ARG OPENCV_VERSION=...` in `Dockerfile.media` |
+| **OpenCV** | `ARG OPENCV_VERSION=...` in `Dockerfile.media`; uses `5.x` branch |
 | **GStreamer** | `ARG GSTREAMER_VERSION=...` in `Dockerfile.media` and `Dockerfile.package` |
 | **CUDA** | `ARG CUDA_VERSION=...` and `ARG CUDA_VERSION_MAJOR_MINOR=...` in `Dockerfile.nvidia` |
 | **cuDNN** | `ARG CUDNN_VERSION=...` (major only) in `Dockerfile.nvidia` |

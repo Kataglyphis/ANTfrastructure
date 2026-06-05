@@ -42,9 +42,9 @@ for helper in \
 done
 
 # Defaults (can be overridden via env vars or arguments)
-: "${OPENCV_VERSION:=4.x}"
+: "${OPENCV_VERSION:=5.x}"
 : "${OPENCV_SRC:=/tmp/opencv}"
-: "${OPENCV_PREFIX:=/opt/opencv}"
+: "${OPENCV_PREFIX:=/opt/opencv5}"
 : "${OPENCV_REPO:=https://github.com/opencv/opencv.git}"
 : "${OPENCV_CONTRIB_REPO:=https://github.com/opencv/opencv_contrib.git}"
 : "${BUILD_TYPE:=Release}"
@@ -92,8 +92,8 @@ while [[ $# -gt 0 ]]; do
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
-            echo "  --opencv-version VERSION  OpenCV version to build (default: 4.x)"
-            echo "  --prefix PATH             Installation prefix (default: /opt/opencv)"
+            echo "  --opencv-version VERSION  OpenCV version to build (default: 5.x)"
+            echo "  --prefix PATH             Installation prefix (default: /opt/opencv5)"
             echo "  --build-type TYPE         Build type: Release/Debug (default: Release)"
             echo "  --with-contrib BOOL       Build with contrib modules (default: true)"
             echo "  --with-python BOOL        Build with Python bindings (default: true)"
@@ -674,8 +674,9 @@ main() {
     cleanup
     
     # Validation step
-    pkg-config --exists opencv4 && echo "OpenCV found via pkg-config: $(pkg-config --modversion opencv4)" || {
-        echo "ERROR: OpenCV not found via pkg-config"
+    pkg-config --exists opencv5 && echo "OpenCV found via pkg-config: $(pkg-config --modversion opencv5)" || {
+        echo "ERROR: OpenCV not found via pkg-config (opencv5)"
+
         echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-}"
         exit 1
     }

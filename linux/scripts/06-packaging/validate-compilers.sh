@@ -318,7 +318,7 @@ validate_smoke() {
   echo "=== smoke: checking compiled library compiler signatures ==="
   local gcc_sig_ok=0 libdir lib comment
   for libdir in \
-    /opt/opencv4/lib \
+    /opt/opencv5/lib \
     /opt/gstreamer/lib \
     /opt/ffmpeg/lib \
     /opt/libcamera/lib \

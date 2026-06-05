@@ -18,7 +18,7 @@ LIB_DIRS=(
   "${LIBCAMERA_PREFIX:-/opt/libcamera}/lib"
   "${LIBCAMERA_PREFIX:-/opt/libcamera}/lib64"
   "${FFMPEG_PREFIX:-/opt/ffmpeg}/lib"
-  "/opt/opencv4/lib"
+  "/opt/opencv5/lib"
   "/usr/local/lib"
   "/usr/local/lib/onnxruntime-cpu/lib"
 )

@@ -83,7 +83,7 @@ build_gstreamer_monorepo() {
   local host_arch=""
   local deb_host_multiarch_dir=""
   local sys_pkgconf_dir=""
-  local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv4}"
+  local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv5}"
   local opencv_libdir=""
   local target_python_libdir=""
   local target_python_pkgconfig_dir=""

@@ -39,7 +39,7 @@ ln -snf "/opt/gstreamer/lib/${triplet}" "/opt/gstreamer/lib/multiarch" || true
 write_conf /etc/ld.so.conf.d/gstreamer.conf "/opt/gstreamer/lib/${triplet}"
 write_conf /etc/ld.so.conf.d/libcamera.conf "/opt/libcamera/lib" "/opt/libcamera/lib64"
 write_conf /etc/ld.so.conf.d/ffmpeg.conf "/opt/ffmpeg/lib"
-write_conf /etc/ld.so.conf.d/opencv.conf "/opt/opencv4/lib"
+write_conf /etc/ld.so.conf.d/opencv.conf "/opt/opencv5/lib"
 write_conf /etc/ld.so.conf.d/onnxruntime.conf "/usr/local/lib/onnxruntime-cpu/lib" "/usr/local/lib/onnxruntime-genai/lib"
 write_conf /etc/ld.so.conf.d/litert.conf "/usr/local/lib"
 
