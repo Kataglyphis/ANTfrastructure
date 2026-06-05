@@ -167,14 +167,29 @@ build_source_cross_gcc_targets() {
       [ -x "${cross_cc}" ] || die "Cross compiler ${cross_cc} not found for Canadian cross"
       [ -x "${cross_cxx}" ] || die "Cross compiler ${cross_cxx} not found for Canadian cross"
       log "Building native GCC ${full_version} for ${normalized_target} (Canadian cross via ${cross_cc})"
+
+      # The cross-compiler may invoke $target-as but fall through to plain as
+      # which picks up the x86-64 assembler. Create a wrapper dir that
+      # redirects plain as/ld/etc. to the cross versions.
+      local cross_binwrap="/tmp/cross-binwrap-${normalized_target}"
+      rm -rf "${cross_binwrap}"
+      mkdir -p "${cross_binwrap}"
+      for tool in as ld ar nm ranlib strip objcopy objdump; do
+        if command -v "${triplet}-${tool}" >/dev/null 2>&1; then
+          ln -sfn "$(command -v "${triplet}-${tool}")" "${cross_binwrap}/${tool}"
+        fi
+      done
+      export PATH="${cross_binwrap}:${PATH}"
+
+      # Test link capability
       log "Testing cross-compiler link capability..."
-      echo 'int main(){return 0;}' | PATH="/opt/gcc-${full_version}/bin:${PATH}" "${cross_cc}" -x c - -o /tmp/_cc_test_"${normalized_target}" 2>&1 || {
-        _link_error=$(echo 'int main(){return 0;}' | PATH="/opt/gcc-${full_version}/bin:${PATH}" "${cross_cc}" -x c - -o /tmp/_cc_test_"${normalized_target}" 2>&1 || true)
+      echo 'int main(){return 0;}' | "${cross_cc}" -x c - -o /tmp/_cc_test_"${normalized_target}" 2>&1 || {
+        _link_error=$(echo 'int main(){return 0;}' | "${cross_cc}" -x c - -o /tmp/_cc_test_"${normalized_target}" 2>&1 || true)
         log "Cross-compiler link test FAILED for ${normalized_target}: ${_link_error}"
         log "Skipping Canadian cross — native GCC for ${normalized_target} will NOT be built"
         log "Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalized_target}-cross binutils-${triplet}"
-        log "Or set GCC_CANADIAN_CROSS_SKIP_LINK_TEST=1 to skip this test"
         if [ "${GCC_CANADIAN_CROSS_SKIP_LINK_TEST:-0}" != "1" ]; then
+          rm -rf "${cross_binwrap}"
           continue
         fi
       }
