@@ -102,6 +102,34 @@ arch_from_target_triple() {
   esac
 }
 
+# Substring that appears in the `readelf -h` "Machine:" line for a normalized
+# architecture. Used to assert the actual ELF machine type of a binary, which
+# (unlike `gcc -dumpmachine`) distinguishes a target-native compiler binary
+# from a host-arch cross-compiler that merely *targets* the same triple.
+arch_elf_machine_grep_for() {
+  case "$(arch_normalize "$1")" in
+    amd64) printf '%s' "X86-64" ;;
+    arm64) printf '%s' "AArch64" ;;
+    386) printf '%s' "Intel 80386" ;;
+    riscv64) printf '%s' "RISC-V" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Print the ELF machine string of a binary (the value after "Machine:" in
+# `readelf -h`). Never executes the binary, so it works for foreign-arch
+# binaries on any build host. Returns non-zero if readelf or the file is
+# unavailable.
+elf_machine_name() {
+  local file="$1"
+
+  command -v readelf >/dev/null 2>&1 || return 1
+  [ -r "${file}" ] || return 1
+  readelf -h "${file}" 2>/dev/null \
+    | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' \
+    | head -n1
+}
+
 arch_list_csv_normalize() {
   local raw_list="$1"
   local raw_arch normalized_arch

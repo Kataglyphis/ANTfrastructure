@@ -347,6 +347,19 @@ echo "Extracting ${TARBALL}..."
 rm -rf "gcc-${GCC_VERSION}" "gcc-${GCC_VERSION}-build"
 tar -xf "${TARBALL}"
 
+# Canadian cross (host != build): GCC's binaries run on the *host* arch and link
+# against GMP/MPFR/MPC/ISL. The build host only has build-arch (amd64) -dev
+# packages, so configure fails with "correct version of gmp.h... no". Pull the
+# math libraries into the GCC source tree so configure builds them in-tree,
+# cross-compiled for the host arch. (Plain target cross builds keep build==host
+# == amd64 and can use the system libgmp-dev, so this is scoped to Canadian
+# cross to avoid lengthening the host/target GCC builds.)
+if [ -n "${HOST_TRIPLET}" ]; then
+  echo "Canadian cross: fetching in-tree GCC prerequisites (gmp/mpfr/mpc/isl)..."
+  ( cd "gcc-${GCC_VERSION}" && ./contrib/download_prerequisites ) \
+    || die "contrib/download_prerequisites failed; cannot build in-tree GMP/MPFR/MPC for Canadian cross host=${HOST_TRIPLET}"
+fi
+
 BUILD_SUBDIR="${BUILD_DIR}/gcc-${GCC_VERSION}-build"
 mkdir -p "${BUILD_SUBDIR}"
 cd "${BUILD_SUBDIR}"
@@ -359,8 +372,20 @@ CONFIG_CMD=(
   "--disable-multilib"
   "--disable-fixed-point"
   "--enable-checking=release"
-  "--with-system-zlib"
 )
+
+# --with-system-zlib makes GCC link its LTO support against the *host* system
+# zlib. For a Canadian cross (host==target!=build) the host is the foreign arch
+# and no host zlib lives in the cross sysroot, so the GCC build fails with
+# "zlib.h: No such file or directory" while compiling lto-compress.cc. Fall back
+# to GCC's bundled in-tree zlib (the zlib/ subdir of the release tarball), which
+# configure builds cross-compiled for the host. Native and plain-target cross
+# builds keep build==amd64 and use the faster system zlib.
+if [ -z "${HOST_TRIPLET}" ]; then
+  CONFIG_CMD+=("--with-system-zlib")
+else
+  echo "Canadian cross: using GCC in-tree zlib (no --with-system-zlib)."
+fi
 
 filter_libtool_finish_warnings() {
   local line
@@ -406,6 +431,22 @@ if [ -n "${HOST_TRIPLET}" ]; then
   CONFIG_CMD+=("--build=${BUILD_TRIPLET}" "--host=${HOST_TRIPLET}")
   export CC="${CC:-${HOST_TRIPLET}-gcc}"
   export CXX="${CXX:-${HOST_TRIPLET}-g++}"
+  # The cross compiler (and its triplet-prefixed binutils) live in a non-default
+  # prefix such as /opt/gcc-<ver>/bin which is only added to /etc/profile.d (not
+  # sourced by this non-login build subprocess). The GCC Makefile drives several
+  # steps via the *bare* program names (GCC_FOR_TARGET=${HOST_TRIPLET}-gcc, the
+  # `specs` target, AS/LD lookups), so without this the build dies with
+  # "${HOST_TRIPLET}-gcc: command not found" (make Error 127). Put the cross
+  # toolchain bin dir on PATH so every bare ${HOST_TRIPLET}-* tool resolves.
+  _cross_bin_dir="$(dirname "$(command -v "${CC}" 2>/dev/null || echo "${CC}")")"
+  if [ -d "${_cross_bin_dir}" ]; then
+    export PATH="${_cross_bin_dir}:${PATH}"
+  fi
+  # Pin the build->target compilers explicitly so target libgcc/libstdc++ are
+  # built with our cross compiler regardless of make's default lookup.
+  export CC_FOR_TARGET="${CC_FOR_TARGET:-${CC}}"
+  export CXX_FOR_TARGET="${CXX_FOR_TARGET:-${CXX}}"
+  export GCC_FOR_TARGET="${GCC_FOR_TARGET:-${CC}}"
   export AR="${HOST_TRIPLET}-ar"
   export AS="${HOST_TRIPLET}-as"
   export LD="${HOST_TRIPLET}-ld"

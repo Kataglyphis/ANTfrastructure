@@ -86,16 +86,40 @@ RUN if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
 # every architecture, not an amd64 cross-compiler host binary.
 ARG GCC_VERSION=16.1.0
 RUN set -eux; \
+    elf_machine_pattern() { \
+        case "$1" in \
+            amd64) printf '%s' "X86-64" ;; \
+            arm64) printf '%s' "AArch64" ;; \
+            riscv64) printf '%s' "RISC-V" ;; \
+            386) printf '%s' "Intel 80386" ;; \
+            *) return 1 ;; \
+        esac; \
+    }; \
+    assert_elf_arch() { \
+        local bin="$1" arch="$2" pat machine; \
+        pat="$(elf_machine_pattern "${arch}")" || { echo "WARN: no ELF pattern for ${arch}; skipping" >&2; return 0; }; \
+        command -v readelf >/dev/null 2>&1 || { echo "WARN: readelf missing; skipping ELF check" >&2; return 0; }; \
+        machine="$(readelf -h "${bin}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"; \
+        [ -n "${machine}" ] || { echo "ERROR: cannot read ELF machine of ${bin}" >&2; exit 1; }; \
+        case "${machine}" in \
+            *"${pat}"*) echo "ELF arch OK: ${bin} Machine='${machine}' matches ${arch}" ;; \
+            *) echo "ERROR: ELF arch MISMATCH ${bin} Machine='${machine}' expected '${pat}' for ${arch}" >&2; exit 1 ;; \
+        esac; \
+    }; \
     if [ "${TARGET_ARCH}" != "amd64" ] && [ "${BUILD_MODE}" = "cross" ]; then \
         native_gcc="/opt/gcc-${GCC_VERSION}-native-${TARGET_ARCH}"; \
         if [ -d "${native_gcc}" ]; then \
+            assert_elf_arch "${native_gcc}/bin/gcc" "${TARGET_ARCH}"; \
+            assert_elf_arch "${native_gcc}/bin/g++" "${TARGET_ARCH}"; \
             rm -rf "/opt/gcc-${GCC_VERSION}"; \
             mv "${native_gcc}" "/opt/gcc-${GCC_VERSION}"; \
+            assert_elf_arch "/opt/gcc-${GCC_VERSION}/bin/gcc" "${TARGET_ARCH}"; \
             echo "Replaced host GCC with target-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"; \
         else \
             echo "ERROR: expected target-native GCC at ${native_gcc} but not found" >&2; \
             exit 1; \
         fi; \
     elif [ "${TARGET_ARCH}" = "amd64" ]; then \
+        assert_elf_arch "/opt/gcc-${GCC_VERSION}/bin/gcc" "amd64"; \
         echo "Using host-native amd64 GCC at /opt/gcc-${GCC_VERSION}"; \
     fi
