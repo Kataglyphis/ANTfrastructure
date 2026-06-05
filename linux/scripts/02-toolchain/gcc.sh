@@ -196,6 +196,9 @@ build_source_cross_gcc_targets() {
       rm -f /tmp/_cc_test_"${normalized_target}"
       log "Cross-compiler link test passed for ${normalized_target}"
       CC="${cross_cc}" CXX="${cross_cxx}" \
+        ac_cv_prog_cc_works=yes \
+        ac_cv_prog_CC_works=yes \
+        ac_cv_prog_cxx_works=yes \
         PREFIX="${native_prefix}" \
         BUILD_DIR="${HOME}/tmp2/gcc-build-${full_version}-native-${normalized_target}" \
         JOBS="${JOBS:-$(nproc)}" \
