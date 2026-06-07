@@ -77,9 +77,73 @@ Or let the helper do the push too:
 ./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror --push
 ```
 
-Manual staged build with plain `nerdctl` (current GCC 16 cross lane):
+## Recommended: digest-pinned orchestrator (`build-cross-chain.sh`)
+
+For a hands-off, agent-proof end-to-end cross build, prefer the orchestrator over
+the manual `nerdctl` loops:
+
+```bash
+./linux/scripts/build-cross-chain.sh \
+  --target-arches amd64,arm64,riscv64 \
+  --fast-ubuntu-mirror \
+  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
+  --log-dir "logs/$(date -u +'%Y%m%dT%H%M%SZ')-cross-chain"
+```
+
+It runs `base -> compiler -> sdk -> media -> android -> runtime` and, after each
+cross stage is pushed, captures that stage's **registry-resolvable manifest
+digest** and feeds it to the next stage as
+`--build-arg BASE_IMAGE=<repo>@sha256:<digest>`. The final `runtime` stage
+delegates to `build-runtime-manifest.sh` to build the per-arch
+`base -> package -> torch -> wrapper` images on the real target platform and
+publish the multi-arch `:latest-cross` manifest.
+
+### Why the handoff must be pinned by digest
+
+Each cross stage is a separate `nerdctl build` whose next stage does
+`FROM ${BASE_IMAGE}`. If `BASE_IMAGE` is a **mutable tag** such as
+`:media-cross-arm64`, the downstream build can silently consume a **stale,
+locally-cached** image instead of the one you just built, because:
+
+- `--output type=image,name=...,push=true` pushes the new digest to the registry
+  but does **not** reliably refresh the local containerd tag to that digest, and
+- BuildKit's default `FROM` resolution prefers an image already present locally
+  (it does not re-pull unless told to).
+
+So a rebuild of `media` followed by a build of `android` can quietly use the old
+`media`. Two defenses, in order of strength:
+
+1. **Digest pinning (used by `build-cross-chain.sh`):** content-addressed
+   `repo@sha256:...` references can never resolve to a stale image. This is the
+   robust fix and the path you should instruct automated agents to use.
+2. **`--pull=true` on every downstream stage (used in the manual loops below):**
+   forces BuildKit to re-pull the freshly pushed base tag from the registry.
+   Lighter, but still relies on mutable tags.
+
+> Do **not** capture the pin from the local image store's `RepoDigests`. On this
+> host BuildKit pushes a converted `docker.v2+json` manifest whose digest differs
+> from the local OCI manifest, so `RepoDigests` is **not** registry-resolvable.
+> Use `nerdctl manifest inspect --verbose <tag>` → `.Descriptor.digest`
+> (this is exactly what the `registry_pin_ref` helper in
+> `linux/scripts/01-core/artifact-common.sh` does).
+
+Partial runs are supported, e.g. resume from media for one arch:
+
+```bash
+./linux/scripts/build-cross-chain.sh --target-arches arm64 --from-stage media --to-stage android
+```
+
+When resuming mid-chain, the required upstream digest is resolved from the parent
+stage's current registry tag automatically.
+
+## Manual staged build with plain `nerdctl` (current GCC 16 cross lane)
 
 Run these commands from the repository root. Keep every trailing `\` as the last character on its line, and keep the final `.` because it is the Docker build context.
+
+The manual loops below add `--pull=true` to every stage that consumes a
+`BASE_IMAGE` tag so each stage re-pulls the freshly pushed base instead of a
+stale local copy. This is the lighter of the two defenses described above; the
+orchestrator's digest pinning is stronger.
 
 These commands assume `nerdctl` is already usable from your current shell without `sudo`.
 
@@ -95,7 +159,7 @@ nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleu
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   . 2>&1 | tee "${LOG_DIR}/base.log"
 
-nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
+nerdctl build --platform linux/amd64 --pull=true -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64 \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64,push=true' \
   -f linux/Dockerfile.toolchain \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -106,7 +170,7 @@ nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleu
   . 2>&1 | tee "${LOG_DIR}/compiler-cross-amd64.log"
 
 for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
+  nerdctl build --platform linux/amd64 --pull=true -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact-${target_arch},push=true" \
     -f linux/Dockerfile.sdk \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -118,7 +182,7 @@ for target_arch in amd64 arm64 riscv64; do
 done
 
 for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch}" \
+  nerdctl build --platform linux/amd64 --pull=true -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-cross-${target_arch},push=true" \
     -f linux/Dockerfile.media \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -130,7 +194,7 @@ for target_arch in amd64 arm64 riscv64; do
 done
 
 for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform linux/amd64 -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
+  nerdctl build --platform linux/amd64 --pull=true -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch}" \
     --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-${target_arch},push=true" \
     -f linux/Dockerfile.android \
     --build-arg USE_FAST_UBUNTU_MIRROR=true \
@@ -220,6 +284,16 @@ Think of the target-platform handoff like this:
 `linux/Dockerfile.package` is the point where the amd64-hosted cross artifacts are copied into a clean real target root filesystem. For foreign-architecture runtime images, that package stage must receive a real target-native `/opt/llvm-target` tree from the artifact image and must wire `/usr/bin/clang` to `/usr/local/llvm-target/bin/clang`; do not fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`, or the final manifest can pick up a host-architecture Clang binary. The stage also receives a target-native `/opt/gcc-16.1.0` that was cross-compiled from source (Canadian cross) during the toolchain stage and swapped in by `Dockerfile.android`. A hard-fail validation step verifies that `cc -dumpmachine` matches `TARGET_ARCH`, asserts the ELF machine type of the `cc` binary itself (via `readelf -h`, the real discriminator between a target-native compiler and a host-arch cross-compiler), and runs a cc1 compile-to-object smoke under the target platform. After that, `linux/Dockerfile.torch` directly produces the final `latest-cross-${target_arch}` wrapper image.
 
 The existing multi-platform sequential `sdk`, `media`, and `android` commands above still remain supported and unchanged.
+
+### OpenCV 5.x GStreamer compatibility (applies to all architectures)
+
+OpenCV 5.x reorganized several modules relative to OpenCV 4.x. GStreamer's bundled `gst-plugins-bad` "opencv" plugin (1.29.x) still targets the 4.x layout, so it fails to compile against the source-built OpenCV 5 in this image. The build system applies an automatic source patch via `patch-gstreamer-sources.sh` → `patch_gstreamer_opencv5_compat()` that addresses three upstream API changes:
+
+1. **`contourArea`/`approxPolyDP`/`convexHull`** moved from `imgproc` to the new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`.
+2. **`findChessboardCorners`/`findCirclesGrid`/`drawChessboardCorners` + `CALIB_CB_*`** moved from `calib3d` into `objdetect` → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`.
+3. **`cv::CascadeClassifier`** + `CASCADE_*` (legacy Haar cascade detection) were **removed** from OpenCV 5 → the three cascade-dependent GStreamer elements (`faceblur`, `facedetect`, `handdetect`) are dropped from the monolithic `libgstopencv.so`. The remaining 22 elements (dilate, sobel, smooth, edgedetect, tracker, grabcut, retinex, segmentation, cameracalibrate, etc.) build and function normally.
+
+Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compatibility alias because GStreamer's meson dependency lookup queries `dependency('opencv4', '>= 4.0.0')`.
 
 This image is a single amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding source-built GCC 16 target compilers like `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-amd64`, `clang-arm64`, and `clang-riscv64` for host-side cross builds.
 

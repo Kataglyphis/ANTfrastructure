@@ -199,7 +199,11 @@ install_project_environment() {
     uv pip install --force-reinstall "${local_wheels[@]}"
   fi
 
-  uv pip install PyGObject
+  if python3 -c 'import gi; print(gi.__version__)' 2>/dev/null; then
+    echo "PyGObject already installed (system package), skipping pip install"
+  else
+    uv pip install PyGObject
+  fi
 }
 
 verify_project_environment() {

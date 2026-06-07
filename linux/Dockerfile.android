@@ -112,11 +112,13 @@ RUN set -eux; \
             assert_elf_arch "${native_gcc}/bin/gcc" "${TARGET_ARCH}"; \
             assert_elf_arch "${native_gcc}/bin/g++" "${TARGET_ARCH}"; \
             rm -rf "/opt/gcc-${GCC_VERSION}"; \
-            mv "${native_gcc}" "/opt/gcc-${GCC_VERSION}"; \
+            cp -a "${native_gcc}" "/opt/gcc-${GCC_VERSION}"; \
             assert_elf_arch "/opt/gcc-${GCC_VERSION}/bin/gcc" "${TARGET_ARCH}"; \
             echo "Replaced host GCC with target-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"; \
         else \
             echo "ERROR: expected target-native GCC at ${native_gcc} but not found" >&2; \
+            echo "ERROR: Rebuild the toolchain image (build-cross-compiler.sh) to produce" >&2; \
+            echo "ERROR: the Canadian cross GCC, then rebuild this android image." >&2; \
             exit 1; \
         fi; \
     elif [ "${TARGET_ARCH}" = "amd64" ]; then \

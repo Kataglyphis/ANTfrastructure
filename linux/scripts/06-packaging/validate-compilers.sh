@@ -94,7 +94,21 @@ validate_artifact_source() {
         validate_fail "native-gcc" "${native_gcc}/bin/gcc --version: ${native_ver:-MISSING}"
       fi
     elif [ "${BUILD_MODE:-native}" = "cross" ]; then
-      validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
+      # The GCC swap in Dockerfile.android may have already moved the
+      # native GCC into /opt/gcc-${GCC_VERSION}.  If the main GCC
+      # already reports the correct architecture, the swap succeeded.
+      local main_gcc_dump
+      main_gcc_dump="$("${gcc_prefix}/bin/gcc" -dumpmachine 2>/dev/null || true)"
+      case "${target_arch}" in
+        arm64)   expected_triple="aarch64-linux-gnu" ;;
+        riscv64) expected_triple="riscv64-linux-gnu" ;;
+        *)       expected_triple="" ;;
+      esac
+      if [ -n "${expected_triple}" ] && [ "${main_gcc_dump}" = "${expected_triple}" ]; then
+        echo "OK: main gcc already reports target-native triple ${main_gcc_dump} (swap completed)"
+      else
+        validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
+      fi
     fi
   fi
 

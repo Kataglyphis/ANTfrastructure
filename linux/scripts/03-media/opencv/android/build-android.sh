@@ -27,6 +27,31 @@ rm -rf opencv-android
 git clone --depth 1 -b ${OPENCV_VERSION} https://github.com/opencv/opencv.git opencv-android
 cd opencv-android
 
+# Same MLAS stub fix as in build-opencv.sh: MlasHGemmSupported is declared
+# but never defined in vendored MLAS when MLAS_GEMM_ONLY=1.
+mlas_compute="3rdparty/mlas/lib/compute.cpp"
+if [ -f "${mlas_compute}" ] && ! grep -Fq 'MLAS_GEMM_ONLY stub' "${mlas_compute}"; then
+    echo "Patching vendored MLAS: adding MlasHGemmSupported stub for MLAS_GEMM_ONLY"
+    cat >> "${mlas_compute}" <<'MLAS_STUB_EOF'
+
+#ifdef MLAS_GEMM_ONLY
+// MLAS_GEMM_ONLY stub
+MLASCALL
+bool
+MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    )
+{
+    (void)TransA;
+    (void)TransB;
+    return false;
+}
+#endif
+MLAS_STUB_EOF
+    echo "OpenCV MLAS stub patch applied (Android)"
+fi
+
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 : "${ANDROID_HOME:?ANDROID_HOME must be set}"
 

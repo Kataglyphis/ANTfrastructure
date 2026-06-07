@@ -32,9 +32,40 @@ These files document host-specific workarounds that are easy to regress if you i
 - Do not remove LLVM/Clang features just to make foreign-arch builds pass. Foreign-architecture runtime images must keep source-built `clang 22.1.6` and must not fall back to the Ubuntu `clang 22.1.2` packages. The source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default system `cc`/`c++` compiler on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; the resulting native GCC is swapped into `/opt/gcc-16.1.0` at the end of the Android stage via `Dockerfile.android`.
 - Preserve the optional runtime payloads and LLVM normalization in `linux/Dockerfile.package`. Do not silently drop the `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
 
+## Cross Chain Stage Handoff (do not regress)
+
+The cross lane is a sequence of separate `nerdctl build` invocations where each
+stage's next stage does `FROM ${BASE_IMAGE}`: `base -> compiler -> sdk -> media
+-> android -> package -> torch -> wrapper -> manifest`. The base-image handoff
+between these stages MUST NOT rely on a bare mutable tag, or a stage can silently
+consume a STALE locally-cached image instead of the one just built. Concretely:
+`--output type=image,name=...,push=true` pushes the new digest to the registry
+but does not reliably refresh the local containerd tag, and BuildKit's default
+`FROM` resolution prefers an already-present local image (it does not re-pull).
+So rebuilding `media` then building `android` can quietly reuse the old `media`.
+
+Rules:
+
+- To run the full cross chain (e.g. when asked to "cross build `:latest-cross`"),
+  prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It captures each
+  cross stage's registry-resolvable manifest digest after push and feeds it to the
+  next stage as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`, so stale reuse is
+  structurally impossible. It supports `--target-arches`, `--from-stage`,
+  `--to-stage`, and `--only` for partial/per-arch runs.
+- When you must drive the manual `nerdctl` cross loops instead, pass `--pull=true`
+  on every stage that consumes a `BASE_IMAGE` tag so it re-pulls the freshly
+  pushed base. This is the weaker defense; digest pinning is preferred.
+- Capture pinnable digests with `nerdctl manifest inspect --verbose <tag>` →
+  `.Descriptor.digest` (the `registry_pin_ref` helper in
+  `linux/scripts/01-core/artifact-common.sh`). Do NOT use the local image store's
+  `RepoDigests`: on this host BuildKit pushes a converted `docker.v2+json`
+  manifest whose digest differs from the local OCI manifest, so `RepoDigests` is
+  not registry-resolvable and will fail to pin.
+
 ## Verified Runtime Packaging Path On This Host
 
 - Prefer helper scripts over ad hoc `nerdctl build` sequences:
+  - `bash linux/scripts/build-cross-chain.sh` (full digest-pinned cross chain orchestrator)
   - `./linux/scripts/build-cross-compiler.sh`
   - `bash linux/scripts/build-runtime-artifacts.sh`
   - `bash linux/scripts/build-runtime-manifest.sh`
@@ -48,13 +79,14 @@ These files document host-specific workarounds that are easy to regress if you i
 - Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so large exported artifacts do not get sent back as later Docker build contexts.
 - Prefer the saved OCI layouts over the plain directory exports in `out/local-android-dir/<arch>`. The plain directory path is much larger and previously dropped runtime payload during OCI-to-directory conversion.
 
-## Four Critical Fixes To Maintain
+## Five Critical Fixes To Maintain
 
-Always preserve these four vital fixes to prevent build/runtime regressions:
+Always preserve these five vital fixes to prevent build/runtime regressions:
 1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, use `rewrite_staged_python_pc()` to rewrite the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory.
 2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), use `cp -a -L` to dereference standard Python cross-build library symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Note that since this Python is packaged into the compiler cross image, the compiler itself must be rebuilt when modifying this python helper.
 4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, the GCC alternatives registration wires `/opt/gcc-16.1.0/bin/gcc` as the system `cc`/`c++` on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native GCC at the end of the Android stage. The build hard-fails if the runtime `cc` is the wrong architecture, using three layered guards: (a) `cc -dumpmachine` must match `TARGET_ARCH`; (b) the ELF machine type of the `cc` binary itself (via `readelf -h`) must match the target — this is the real discriminator, because `-dumpmachine` reports the *target* triple and cannot tell a target-native compiler from a host-arch cross-compiler that merely targets the same triple; and (c) a cc1 compile-to-object smoke (`cc -x c - -c -o`) plus an ELF-machine check on the produced object, run under the target platform (QEMU for foreign arch). `Dockerfile.android` additionally asserts the ELF machine type of the swapped GCC right after the swap. The `wrapper-smoke` target uses `linux/scripts/06-packaging/smoke-wrapper.sh` (which delegates to `linux/scripts/06-packaging/validate-compilers.sh`) for end-to-end verification.
+5. **Fix 5 (OpenCV 5 GStreamer compat):** `patch-gstreamer-sources.sh` → `patch_gstreamer_opencv5_compat()` patches the GStreamer `gst-plugins-bad` opencv plugin sources at build time for OpenCV 5.x compatibility. Three API changes are handled: (a) `contourArea`/`approxPolyDP`/`convexHull` moved to new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`; (b) chessboard/circles-grid detection (`findChessboardCorners`/`findCirclesGrid`/`CALIB_CB_*`) moved to `objdetect` module → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`; (c) `cv::CascadeClassifier` removed from OpenCV 5 → drops the three cascade-dependent GStreamer elements (`faceblur`, `facedetect`, `handdetect`) from the monolithic `libgstopencv.so`. Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compatibility alias because GStreamer's meson dependency lookup queries `dependency('opencv4')`. All patches are idempotent (guarded with grep before applying). When changing OpenCV or GStreamer versions, verify the patch still applies correctly.
 
 ## Push And Publish Rules
 

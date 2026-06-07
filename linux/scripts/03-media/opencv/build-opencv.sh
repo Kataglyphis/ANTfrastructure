@@ -149,6 +149,35 @@ fetch_opencv() {
         git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout contrib version ${OPENCV_VERSION}"; exit 1; }
         echo "OpenCV contrib version: $(git describe --tags 2>/dev/null || echo 'unknown')"
     fi
+
+    # OpenCV 5.x vendored MLAS: MlasHGemmSupported is declared in inc/mlas.h
+    # but never defined, yet compute.cpp calls it from the FP16 template
+    # MlasGQASupported<MLAS_FP16> regardless of MLAS_GEMM_ONLY. On riscv64
+    # this produces an undefined-symbol link error. Provide a stub that
+    # returns false when MLAS_GEMM_ONLY is set (SGEMM-only build).
+    local mlas_compute="${OPENCV_SRC}/3rdparty/mlas/lib/compute.cpp"
+    if [ -f "${mlas_compute}" ] && ! grep -Fq 'MLAS_GEMM_ONLY stub' "${mlas_compute}"; then
+        echo "Patching vendored MLAS: adding MlasHGemmSupported stub for MLAS_GEMM_ONLY"
+        cat >> "${mlas_compute}" <<'MLAS_STUB_EOF'
+
+#ifdef MLAS_GEMM_ONLY
+// MLAS_GEMM_ONLY stub: MlasHGemmSupported is declared but never defined
+// in SGEMM-only builds; provide a fallback that always returns false.
+MLASCALL
+bool
+MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    )
+{
+    (void)TransA;
+    (void)TransB;
+    return false;
+}
+#endif
+MLAS_STUB_EOF
+        echo "OpenCV MLAS stub patch applied"
+    fi
 }
 
 target_machine() {
@@ -643,6 +672,47 @@ install_opencv() {
         ${SUDO_CMD} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
         echo "Failing build so the image build doesn't continue with a broken OpenCV install."
         exit 1
+    fi
+
+    install_opencv4_compat_aliases
+}
+
+# ------------------------------------------------------------------------------
+# OpenCV 4 compatibility aliases
+#
+# OpenCV 5.x installs its pkg-config file as `opencv5.pc` and its data files
+# under `share/opencv5`. Downstream consumers (notably GStreamer's
+# gst-plugins-bad opencv plugin) still look up OpenCV via the historical
+# `opencv4` pkg-config name and a `share/{opencv,OpenCV,opencv4}` data
+# directory. GStreamer only requires `opencv4 >= 4.0.0` (no upper bound), so the
+# OpenCV 5.x version satisfies that check once the package is discoverable under
+# the `opencv4` name. Provide stable `opencv4` compatibility aliases so those
+# consumers resolve against this OpenCV 5 install instead of failing.
+# ------------------------------------------------------------------------------
+install_opencv4_compat_aliases() {
+    local pcdir
+    for pcdir in "${OPENCV_PREFIX}/lib/pkgconfig" "${OPENCV_PREFIX}/lib64/pkgconfig"; do
+        if [ -f "${pcdir}/opencv5.pc" ] && [ ! -e "${pcdir}/opencv4.pc" ]; then
+            echo "Creating pkg-config compatibility alias ${pcdir}/opencv4.pc -> opencv5.pc"
+            ${SUDO_CMD} cp "${pcdir}/opencv5.pc" "${pcdir}/opencv4.pc"
+        fi
+    done
+
+    local sharedir="${OPENCV_PREFIX}/share"
+    if [ ! -e "${sharedir}/opencv4" ] && \
+       [ ! -e "${sharedir}/opencv" ] && \
+       [ ! -e "${sharedir}/OpenCV" ]; then
+        ${SUDO_CMD} mkdir -p "${sharedir}"
+        if [ -d "${sharedir}/opencv5" ]; then
+            echo "Creating data-dir compatibility alias ${sharedir}/opencv4 -> opencv5"
+            ${SUDO_CMD} ln -s opencv5 "${sharedir}/opencv4"
+        else
+            # No OpenCV data directory was installed (e.g. cascade data removed
+            # in OpenCV 5 core). Create an empty data dir so consumers that only
+            # probe for its existence at configure time still succeed.
+            echo "Creating empty data-dir compatibility alias ${sharedir}/opencv4"
+            ${SUDO_CMD} mkdir -p "${sharedir}/opencv4"
+        fi
     fi
 }
 

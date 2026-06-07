@@ -116,6 +116,41 @@ image_exists() {
   "${nerdctl_bin}" image inspect "${image_ref}" >/dev/null 2>&1
 }
 
+# Resolve the registry-resolvable manifest digest of a pushed tag and print a
+# digest-pinned reference like "repo@sha256:...".
+#
+# This intentionally uses `nerdctl manifest inspect --verbose` (which reports the
+# digest of the manifest as it exists in the registry) rather than the local
+# image store's RepoDigests. On this host BuildKit pushes a converted
+# `docker.v2+json` manifest whose digest differs from the local OCI manifest, so
+# RepoDigests is NOT registry-resolvable and must not be used for `FROM` pinning.
+registry_pin_ref() {
+  local nerdctl_bin image_ref
+
+  if [ "$#" -eq 1 ]; then
+    nerdctl_bin="${NERDCTL_BIN:-nerdctl}"
+    image_ref="$1"
+  else
+    nerdctl_bin="$1"
+    image_ref="$2"
+  fi
+
+  local repo digest
+  repo="${image_ref%:*}"
+  digest="$("${nerdctl_bin}" manifest inspect --verbose "${image_ref}" 2>/dev/null \
+    | python3 -c 'import sys, json
+data = json.load(sys.stdin)
+entry = data[0] if isinstance(data, list) else data
+print(entry["Descriptor"]["digest"])' 2>/dev/null)"
+
+  if [ -z "${digest}" ]; then
+    printf '[ERROR] Could not resolve registry digest for %s\n' "${image_ref}" >&2
+    return 1
+  fi
+
+  printf '%s@%s' "${repo}" "${digest}"
+}
+
 run_nerdctl_build() {
   local nerdctl_bin="$1"
   shift
@@ -429,7 +464,22 @@ _runtime_resolve_parent_context() {
   if runtime_use_local_stage_context_outputs; then
     _out_context_dir="$(runtime_stage_context_dir "${parent_kind}" "${arch}")"
     _out_image_ref="runtime_${parent_kind}"
-    _out_build_args+=(--build-context "runtime_${parent_kind}=${_out_context_dir}")
+    # The export format differs per stage and the build-context reference MUST
+    # match it. `base` is exported as a flat rootfs directory
+    # (export_image_rootfs_dir) and is consumed as a plain directory context.
+    # `package` is exported as an OCI image layout (export_image_to_oci_layout)
+    # in _runtime_finish_stage; it preserves the image config (PATH, ENV,
+    # SHELL, /usr/bin/bash), which `FROM runtime_package` in Dockerfile.torch
+    # depends on. An OCI layout consumed as a plain directory context would
+    # hand BuildKit the layout's blobs/index.json as a rootfs and break
+    # `FROM` (exec: "bash": executable file not found). Reference it via the
+    # oci-layout:// scheme so BuildKit resolves it as an image.
+    local _parent_context_ref="${_out_context_dir}"
+    case "${parent_kind}" in
+      base)    _parent_context_ref="${_out_context_dir}" ;;
+      package) _parent_context_ref="oci-layout://${_out_context_dir}" ;;
+    esac
+    _out_build_args+=(--build-context "runtime_${parent_kind}=${_parent_context_ref}")
   else
     _out_context_dir=""
     case "${parent_kind}" in
@@ -563,7 +613,7 @@ runtime_build_wrapper_image() {
     --build-arg "BASE_IMAGE=${parent_image}" \
     --build-arg "BUILD_MODE=native" \
     --build-arg "TARGET_ARCH=${arch}" \
-    --build-arg "TORCH_APP_MODE=$(runtime_effective_torch_app_mode)" \
+    --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}" \
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
     "${build_args[@]}" \
     .
@@ -597,7 +647,7 @@ runtime_build_wrapper_rootfs() {
     --build-arg "BASE_IMAGE=${parent_image}" \
     --build-arg "BUILD_MODE=native" \
     --build-arg "TARGET_ARCH=${arch}" \
-    --build-arg "TORCH_APP_MODE=$(runtime_effective_torch_app_mode)" \
+    --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}" \
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
     "${build_args[@]}" \
     .

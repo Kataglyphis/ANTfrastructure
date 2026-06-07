@@ -678,12 +678,16 @@ if [ -n "${HOST_MULTIARCH}" ]; then
 else
   HOST_PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
 fi
-env \
-  PKG_CONFIG_ALLOW_CROSS= \
-  PKG_CONFIG_SYSROOT_DIR= \
-  PKG_CONFIG_LIBDIR="${HOST_PKG_CONFIG_LIBDIR}" \
-  PKG_CONFIG_PATH="${HOST_PKG_CONFIG_PATH}" \
-  uv pip install -U pycairo
+if python3 -c 'import cairo' 2>/dev/null; then
+  echo "pycairo already installed (system package), skipping pip upgrade"
+else
+  env \
+    PKG_CONFIG_ALLOW_CROSS= \
+    PKG_CONFIG_SYSROOT_DIR= \
+    PKG_CONFIG_LIBDIR="${HOST_PKG_CONFIG_LIBDIR}" \
+    PKG_CONFIG_PATH="${HOST_PKG_CONFIG_PATH}" \
+    uv pip install -U pycairo
+fi
 
 # Optional: verify
 meson --version

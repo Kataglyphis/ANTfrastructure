@@ -245,3 +245,5 @@ docker buildx build \
 ```
 
 The cross/QEMU variant of that flow is documented in `docs/linux-cross-builds.md` and uses `linux/Dockerfile.package` to copy the cross-built payloads into a real target-platform runtime image before the final Torch `/opt/venv` assembly step runs.
+
+For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` and hands each stage to the next by its registry-resolvable manifest digest (`<repo>@sha256:...`) rather than a mutable tag, so a downstream stage can never silently consume a stale locally-cached base image. The manual `nerdctl` cross loops in `docs/linux-cross-builds.md` carry `--pull=true` as a weaker fallback defense. See `AGENTS.md` → "Cross Chain Stage Handoff" for the do-not-regress rule.
