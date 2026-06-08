@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -25,7 +26,18 @@ source_first_helper \
   "/opt/scripts/core/cross-env.sh" \
   "${SCRIPT_DIR}/../01-core/cross-env.sh" || true
 
-PYTHON_VERSION=${1:-3.14.4}
+source_first_helper \
+  "/opt/scripts/core/logging.sh" \
+  "${SCRIPT_DIR}/../01-core/logging.sh" || true
+
+on_err() {
+  local line="${1:-?}"
+  local cmd="${2:-?}"
+  warn "Command failed (line ${line}): ${cmd}"
+}
+trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
+
+PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.5}}"
 PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSION}")}"
 PYTHON_TARBALL="/tmp/Python-${PYTHON_VERSION}.tgz"
 PYTHON_SOURCE_DIR="/tmp/Python-${PYTHON_VERSION}"
@@ -100,12 +112,12 @@ python_stage_finalize() {
     ln -sfn "python-${python_mm}-embed.pc" "${pkgconfig_dir}/python3-embed.pc"
   fi
 
-  echo "Target Python ${python_mm} staged for ${target_arch}:"
-  echo "  prefix: $(python_cross_stage_prefix_for_arch "${target_arch}")"
-  echo "  include: ${stage_root}/usr/local/include/python${python_mm}"
-  echo "  arch include: ${stage_root}/usr/local/include/${target_triplet}/python${python_mm}"
-  echo "  libdir: ${stage_root}/usr/local/lib"
-  echo "  pkg-config: ${pkgconfig_dir}"
+  info "Target Python ${python_mm} staged for ${target_arch}:"
+  info "  prefix: $(python_cross_stage_prefix_for_arch "${target_arch}")"
+  info "  include: ${stage_root}/usr/local/include/python${python_mm}"
+  info "  arch include: ${stage_root}/usr/local/include/${target_triplet}/python${python_mm}"
+  info "  libdir: ${stage_root}/usr/local/lib"
+  info "  pkg-config: ${pkgconfig_dir}"
 }
 
 stage_host_python_payload() {
@@ -155,11 +167,10 @@ build_cross_target_python_payload() {
   config_site="/tmp/python-config-site-${target_triplet}"
   stage_root="$(python_cross_stage_root_for_arch "${target_arch}")"
 
-  echo "Cross mode detected; building target Python ${python_mm} for ${target_arch} (${target_triplet})"
+  info "Cross mode detected; building target Python ${python_mm} for ${target_arch} (${target_triplet})"
 
   if [ ! -x "${build_python_bin}" ]; then
-    echo "Expected build Python ${build_python_bin} was not found" >&2
-    exit 1
+    err "Expected build Python ${build_python_bin} was not found"
   fi
 
   prepare_cross_target_env "${target_arch}" "cross Python ${target_arch} staging"
@@ -204,8 +215,7 @@ EOF
   )
 
   if [ ! -x "${cross_build_dir}/python" ] || [ ! -f "${cross_build_dir}/libpython${python_mm}.so.1.0" ]; then
-    echo "ERROR: target Python cross build for ${target_arch} did not produce the critical binary or shared library" >&2
-    exit 1
+    err "target Python cross build for ${target_arch} did not produce the critical binary or shared library"
   fi
 
   # Stage the cross-built interpreter binary and libraries into the
@@ -221,8 +231,7 @@ EOF
   if [ -x "${cross_build_dir}/python" ]; then
     cp -a "${cross_build_dir}/python" "${stage_root}/usr/local/bin/python${python_mm}"
   else
-    echo "Expected cross-built python binary was not produced in ${cross_build_dir}" >&2
-    exit 1
+    err "Expected cross-built python binary was not produced in ${cross_build_dir}"
   fi
 
   shopt -s nullglob
@@ -231,8 +240,7 @@ EOF
 
   if [ ! -f "${stage_root}/usr/local/lib/libpython${python_mm}.so.1.0" ] && \
      [ ! -f "${stage_root}/usr/local/lib/libpython${python_mm}.so" ]; then
-    echo "Expected cross-built libpython${python_mm}.so was not produced" >&2
-    exit 1
+    err "Expected cross-built libpython${python_mm}.so was not produced"
   fi
 
   cp -a "${source_dir}/Include/." "${stage_root}/usr/local/include/python${python_mm}/"
@@ -268,17 +276,15 @@ EOF
   # Final guard: refuse to ship a target Python whose lib-dynload still contains
   # dangling extension symlinks (this is what silently broke foreign-arch torch).
   if find "${dynload_dir}" -xtype l 2>/dev/null | grep -q .; then
-    echo "ERROR: dangling extension symlinks remain in ${dynload_dir} after staging" >&2
-    find "${dynload_dir}" -xtype l >&2 || true
-    exit 1
+    find "${dynload_dir}" -xtype l 2>/dev/null | while read -r symlink; do warn "dangling: ${symlink}"; done || true
+    err "dangling extension symlinks remain in ${dynload_dir} after staging"
   fi
 
   mkdir -p "${stage_root}/usr/local/lib/pkgconfig"
   if [ -f "${cross_build_dir}/Misc/python.pc" ]; then
     cp -a "${cross_build_dir}/Misc/python.pc" "${stage_root}/usr/local/lib/pkgconfig/python-${python_mm}.pc"
   else
-    echo "Expected cross-built python-${python_mm}.pc was not produced" >&2
-    exit 1
+    err "Expected cross-built python-${python_mm}.pc was not produced"
   fi
 
   if [ -f "${cross_build_dir}/Misc/python-embed.pc" ]; then
@@ -302,8 +308,7 @@ stage_requested_cross_python_payloads() {
   [ -n "${raw_targets}" ] || return 0
 
   normalized_targets="$(arch_list_csv_normalize "${raw_targets}")" || {
-    echo "Unsupported cross target list for Python staging: ${raw_targets}" >&2
-    exit 1
+    err "Unsupported cross target list for Python staging: ${raw_targets}"
   }
   build_arch="$(build_arch_oci 2>/dev/null || arch_oci)"
 
@@ -319,10 +324,10 @@ stage_requested_cross_python_payloads() {
   done
 }
 
-echo "Building Python ${PYTHON_VERSION} from source..."
+info "Building Python ${PYTHON_VERSION} from source..."
 
 if [ "${BUILD_MODE:-native}" = "cross" ]; then
-  echo "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
+  info "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
 fi
 
 wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "${PYTHON_TARBALL}"
@@ -344,4 +349,4 @@ cd /
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-echo "Python ${PYTHON_VERSION} built and installed successfully."
+info "Python ${PYTHON_VERSION} built and installed successfully."

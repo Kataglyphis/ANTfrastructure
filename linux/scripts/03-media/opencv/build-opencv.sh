@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+IFS=$'\n\t'
 
 # ==============================================================================
 # build-opencv.sh - Build and install OpenCV from source
@@ -40,6 +41,23 @@ for helper in \
         break
     fi
 done
+
+for helper in \
+    "/opt/scripts/core/logging.sh" \
+    "${SCRIPT_DIR}/../../01-core/logging.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
+on_err() {
+  local line="${1:-?}"
+  local cmd="${2:-?}"
+  warn "Command failed (line ${line}): ${cmd}"
+}
+trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
 
 # Defaults (can be overridden via env vars or arguments)
 : "${OPENCV_VERSION:=5.x}"
@@ -114,7 +132,7 @@ echo "build-opencv: version=${OPENCV_VERSION} prefix=${OPENCV_PREFIX} buildtype=
 # Fetch OpenCV source
 # ------------------------------------------------------------------------------
 fetch_opencv() {
-    echo "Fetching OpenCV ${OPENCV_VERSION} source..."
+    info "Fetching OpenCV ${OPENCV_VERSION} source..."
     
     # Main repository
     if [ -d "${OPENCV_SRC}/.git" ]; then
@@ -683,8 +701,7 @@ install_opencv() {
         echo "ERROR: libopencv_tracking was not found after install. Listing installed libs for debugging:"
         ${SUDO_CMD} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
         ${SUDO_CMD} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
-        echo "Failing build so the image build doesn't continue with a broken OpenCV install."
-        exit 1
+        die "Failing build so the image build doesn't continue with a broken OpenCV install."
     fi
 
     install_opencv4_compat_aliases
@@ -760,9 +777,8 @@ main() {
     # Validation step
     pkg-config --exists opencv5 && echo "OpenCV found via pkg-config: $(pkg-config --modversion opencv5)" || {
         echo "ERROR: OpenCV not found via pkg-config (opencv5)"
-
         echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-}"
-        exit 1
+        die "OpenCV validation failed"
     }
     
     echo "OpenCV ${OPENCV_VERSION} installed successfully to ${OPENCV_PREFIX}"

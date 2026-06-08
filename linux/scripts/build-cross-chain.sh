@@ -136,7 +136,9 @@ build_cross_stage() {
   shift 3
   local -a extra=("$@")
   local -a mirror_args=()
+  local -a version_args=()
   append_mirror_build_args mirror_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+  append_version_build_args version_args
 
   local log_file
   log_file="$(stage_log_redirect "${label}")"
@@ -150,7 +152,7 @@ build_cross_stage() {
     -f "${dockerfile}"
   )
   append_buildkit_host_arg build_cmd
-  build_cmd+=("${extra[@]}" "${mirror_args[@]}" .)
+  build_cmd+=("${extra[@]}" "${mirror_args[@]}" "${version_args[@]}" .)
 
   if [ -n "${log_file}" ]; then
     run "${build_cmd[@]}" 2>&1 | tee "${log_file}"

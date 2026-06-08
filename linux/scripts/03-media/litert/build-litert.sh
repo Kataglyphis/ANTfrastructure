@@ -44,7 +44,7 @@ for helper in \
     fi
 done
 
-LITERT_VERSION="${1:-v2.1.4}"
+LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
 : "${LITERT_SRC:=/tmp/litert}"
 : "${LITERT_PREFIX:=/usr/local}"
 : "${BUILD_TYPE:=Release}"

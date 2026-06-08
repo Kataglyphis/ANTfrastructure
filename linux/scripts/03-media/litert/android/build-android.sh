@@ -40,7 +40,7 @@ TARGET_ARCH="$(android_target_arch)"
 ANDROID_ABI="$(android_target_abi)"
 : "${ANDROID_ABI:?Unsupported Android target ABI}"
 
-LITERT_VERSION="${1:-v2.1.4}"
+LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
 ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL:-34}" "Android LiteRT build")"
 INSTALL_DIR="${LITERT_ROOT_ANDROID:-/opt/android/litert}"
 

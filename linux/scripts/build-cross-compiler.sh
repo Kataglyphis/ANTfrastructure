@@ -53,8 +53,10 @@ EOF
 
 ensure_base_image() {
   local -a mirror_build_args=()
+  local -a version_args=()
 
   append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+  append_version_build_args version_args
 
   if [ "${REBUILD_BASE}" -eq 0 ] && image_exists "${NERDCTL_BIN}" "${BASE_LOCAL_TAG}"; then
     log "Using existing local base image: ${BASE_LOCAL_TAG}"
@@ -80,13 +82,16 @@ ensure_base_image() {
     -t "${BASE_LOCAL_TAG}" \
     -f linux/Dockerfile.base \
     "${mirror_build_args[@]}" \
+    "${version_args[@]}" \
     .
 }
 
 build_cross_compiler() {
   local -a mirror_build_args=()
+  local -a version_args=()
 
   append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+  append_version_build_args version_args
 
   run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
@@ -97,6 +102,7 @@ build_cross_compiler() {
     --build-arg BUILD_MODE=cross \
     --build-arg CROSS_TARGETS="${CROSS_TARGETS}" \
     "${mirror_build_args[@]}" \
+    "${version_args[@]}" \
     .
 }
 

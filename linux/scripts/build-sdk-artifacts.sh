@@ -88,8 +88,10 @@ build_sdk_image() {
   local arch="$1"
   local tag="$2"
   local -a mirror_build_args=()
+  local -a version_args=()
 
   append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+  append_version_build_args version_args
 
   run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
@@ -101,6 +103,7 @@ build_sdk_image() {
     --build-arg TARGET_ARCH="${arch}" \
     --build-arg VULKAN_VERSION="${VULKAN_VERSION}" \
     "${mirror_build_args[@]}" \
+    "${version_args[@]}" \
     .
 }
 

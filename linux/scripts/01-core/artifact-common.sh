@@ -523,6 +523,7 @@ runtime_build_base_image() {
 
   tag="$(runtime_base_tag "${arch}")"
   append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+  append_version_build_args build_args
   append_runtime_base_parent_build_arg build_args
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
@@ -555,6 +556,7 @@ runtime_build_package_image() {
 
   tag="$(runtime_package_tag "${arch}")"
   append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+  append_version_build_args build_args
   append_runtime_accelerator_build_args build_args
 
   if runtime_use_local_artifact_context; then
@@ -602,6 +604,7 @@ _runtime_build_wrapper() {
 
   _wrapper_tag_out="$(runtime_wrapper_tag "${arch}")"
   append_mirror_build_args _wrapper_build_args_out "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+  append_version_build_args _wrapper_build_args_out
   append_runtime_accelerator_build_args _wrapper_build_args_out
 
   local parent_context_dir
@@ -678,6 +681,36 @@ PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
 BASE_IMAGE=$(runtime_base_tag "${arch}")
 ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
 EOF
+}
+
+# ==============================================================================
+# Append --build-arg VAR=$VAR for every version tracked in versions.env.
+# This ensures Dockerfile ARG defaults are always overridden with the canonical
+# values, eliminating version drift between versions.env and Dockerfile ARGs.
+#
+# The variable list below MUST match every ARG in the Dockerfiles that carries a
+# version default. When a new version is added to versions.env, add its name here.
+# ==============================================================================
+_VERSION_BUILD_ARG_VARS=(
+  UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
+  LLVM_RELEASE GCC_VERSION
+  PYTHON_VERSION PYTHON_MAJOR_MINOR
+  VULKAN_VERSION
+  ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION
+  LITERT_VERSION OPENCV_VERSION GSTREAMER_VERSION
+  ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK
+  ANDROID_BUILD_TOOLS ANDROID_CMAKE_VERSION ANDROID_API_LEVEL
+)
+
+append_version_build_args() {
+  local -n out_args_ref=$1
+  local var_name
+
+  for var_name in "${_VERSION_BUILD_ARG_VARS[@]}"; do
+    if [ -n "${!var_name:-}" ]; then
+      append_optional_build_arg out_args_ref "${var_name}" "${!var_name}"
+    fi
+  done
 }
 
 # ==============================================================================
