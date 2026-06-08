@@ -9,12 +9,12 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 COMPILER_IMAGE="${COMPILER_IMAGE:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
-TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-amd64,arm64,riscv64}}}"
+TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"
 # VULKAN_VERSION default comes from versions.env via artifact-common.sh
 VULKAN_VERSION="${VULKAN_VERSION}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:sdk-artifact}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
-FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT}}"
 FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 PUSH_IMAGES=0
 
@@ -87,11 +87,8 @@ ensure_compiler_image() {
 build_sdk_image() {
   local arch="$1"
   local tag="$2"
-  local -a mirror_build_args=()
-  local -a version_args=()
-
-  append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
-  append_version_build_args version_args
+  local -a build_args=()
+  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
 
   run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
@@ -102,8 +99,7 @@ build_sdk_image() {
     --build-arg BUILD_MODE=cross \
     --build-arg TARGET_ARCH="${arch}" \
     --build-arg VULKAN_VERSION="${VULKAN_VERSION}" \
-    "${mirror_build_args[@]}" \
-    "${version_args[@]}" \
+    "${build_args[@]}" \
     .
 }
 
@@ -114,13 +110,11 @@ push_sdk_image() {
 
 main() {
   while [ $# -gt 0 ]; do
-    local oa_rc=0
-    parse_shared_orchestrator_args \
+    dispatch_parsed_args parse_shared_orchestrator_args \
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
       FAST_UBUNTU_PORTS_MIRROR_URL IGNORED_REPO VULKAN_VERSION PUSH_IMAGES \
-      "$1" "$2" || true
-    oa_rc=$?
-    case ${oa_rc} in
+      "$1" "$2"
+    case $? in
       2) shift 2; continue ;;
       1) shift 1; continue ;;
       255) usage; exit 0 ;;

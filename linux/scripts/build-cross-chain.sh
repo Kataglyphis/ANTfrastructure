@@ -37,13 +37,13 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
-TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-amd64,arm64,riscv64}}"
+TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${CROSS_DEFAULT_ARCHES}}}"
 # Compiler targets baked into the single amd64-hosted compiler image. The
 # compiler must contain every arch the later per-arch stages will target.
-CROSS_TARGETS="${CROSS_TARGETS:-amd64,arm64,riscv64}"
+CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
-FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT}}"
 FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 LOG_DIR="${LOG_DIR:-}"
 
@@ -113,11 +113,9 @@ stage_index() {
 }
 
 stage_enabled() {
-  local name="$1" idx from_idx to_idx
+  local name="$1" idx
   idx="$(stage_index "${name}")" || exit 1
-  from_idx="$(stage_index "${FROM_STAGE}")" || exit 1
-  to_idx="$(stage_index "${TO_STAGE}")" || exit 1
-  [ "${idx}" -ge "${from_idx}" ] && [ "${idx}" -le "${to_idx}" ]
+  [ "${idx}" -ge "${FROM_STAGE_IDX}" ] && [ "${idx}" -le "${TO_STAGE_IDX}" ]
 }
 
 stage_log_redirect() {
@@ -135,10 +133,8 @@ build_cross_stage() {
   local label="$1" tag="$2" dockerfile="$3"
   shift 3
   local -a extra=("$@")
-  local -a mirror_args=()
-  local -a version_args=()
-  append_mirror_build_args mirror_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
-  append_version_build_args version_args
+  local -a common_args=()
+  append_common_build_args common_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
 
   local log_file
   log_file="$(stage_log_redirect "${label}")"
@@ -152,7 +148,7 @@ build_cross_stage() {
     -f "${dockerfile}"
   )
   append_buildkit_host_arg build_cmd
-  build_cmd+=("${extra[@]}" "${mirror_args[@]}" "${version_args[@]}" .)
+  build_cmd+=("${extra[@]}" "${common_args[@]}" .)
 
   if [ -n "${log_file}" ]; then
     run "${build_cmd[@]}" 2>&1 | tee "${log_file}"
@@ -272,13 +268,11 @@ run_runtime_stage() {
 main() {
   local only_stage=""
   while [ $# -gt 0 ]; do
-    local oa_rc=0
-    parse_shared_orchestrator_args \
+    dispatch_parsed_args parse_shared_orchestrator_args \
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
       FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IGNORED \
-      "$1" "$2" || true
-    oa_rc=$?
-    case ${oa_rc} in
+      "$1" "$2"
+    case $? in
       2) shift 2; continue ;;
       1) shift 1; continue ;;
       255) usage; exit 0 ;;
@@ -307,10 +301,10 @@ main() {
     FINAL_IMAGE="${IMAGE_REPO}:latest-cross"
   fi
 
-  # Validate stage bounds early.
-  stage_index "${FROM_STAGE}" >/dev/null
-  stage_index "${TO_STAGE}" >/dev/null
-  if [ "$(stage_index "${FROM_STAGE}")" -gt "$(stage_index "${TO_STAGE}")" ]; then
+  # Validate stage bounds early and cache indices.
+  FROM_STAGE_IDX="$(stage_index "${FROM_STAGE}")" || exit 1
+  TO_STAGE_IDX="$(stage_index "${TO_STAGE}")" || exit 1
+  if [ "${FROM_STAGE_IDX}" -gt "${TO_STAGE_IDX}" ]; then
     printf '[ERROR] --from-stage (%s) is after --to-stage (%s)\n' "${FROM_STAGE}" "${TO_STAGE}" >&2
     exit 1
   fi

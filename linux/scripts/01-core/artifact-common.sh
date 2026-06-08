@@ -64,7 +64,7 @@ append_buildkit_host_arg() {
 append_mirror_build_args() {
   local -n out_args_ref=$1
   local use_fast_mirror="${2:-${USE_FAST_UBUNTU_MIRROR:-false}}"
-  local archive_url="${3:-${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}}"
+  local archive_url="${3:-${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}}"
   local ports_url="${4:-${FAST_UBUNTU_PORTS_MIRROR_URL:-}}"
 
   out_args_ref+=(
@@ -75,6 +75,12 @@ append_mirror_build_args() {
   if [ -n "${ports_url}" ]; then
     out_args_ref+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${ports_url}")
   fi
+}
+
+append_common_build_args() {
+  local -n _acba_out=$1
+  append_mirror_build_args _acba_out "${2:-}" "${3:-}" "${4:-}"
+  append_version_build_args _acba_out
 }
 
 append_optional_build_arg() {
@@ -522,8 +528,7 @@ runtime_build_base_image() {
   local -a build_args=()
 
   tag="$(runtime_base_tag "${arch}")"
-  append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_version_build_args build_args
+  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
   append_runtime_base_parent_build_arg build_args
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
@@ -555,8 +560,7 @@ runtime_build_package_image() {
   local -a build_args=()
 
   tag="$(runtime_package_tag "${arch}")"
-  append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_version_build_args build_args
+  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
   append_runtime_accelerator_build_args build_args
 
   if runtime_use_local_artifact_context; then
@@ -603,8 +607,7 @@ _runtime_build_wrapper() {
   local -n _wrapper_build_args_out=$4
 
   _wrapper_tag_out="$(runtime_wrapper_tag "${arch}")"
-  append_mirror_build_args _wrapper_build_args_out "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_version_build_args _wrapper_build_args_out
+  append_common_build_args _wrapper_build_args_out "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
   append_runtime_accelerator_build_args _wrapper_build_args_out
 
   local parent_context_dir
@@ -760,6 +763,17 @@ parse_shared_orchestrator_args() {
 }
 
 # ==============================================================================
+# Dispatch a shared CLI argument parser, absorbing `set -e` exit-on-help.
+# Returns the parser's return code (0/1/2/255) for the caller to handle
+# shifting and continuation.  Call with a parser function followed by its args.
+# ==============================================================================
+dispatch_parsed_args() {
+  local rc=0
+  "$@" || { rc=$?; true; }
+  return $rc
+}
+
+# ==============================================================================
 # Shared CLI argument parsing for runtime build scripts.
 # Call this from the argument loop in build-runtime-artifacts.sh and
 # build-runtime-manifest.sh to handle their nearly identical flag sets.
@@ -808,8 +822,6 @@ parse_shared_runtime_args() {
       _use_fast_mirror=true; _fast_mirror_url="${val}"; return 2 ;;
     --fast-ubuntu-ports-mirror-url)
       _use_fast_mirror=true; _fast_ports_url="${val}"; return 2 ;;
-    --push-all)
-      _push_intermediate=1; return 1 ;;
     -h|--help)
       return 255 ;;
     *)

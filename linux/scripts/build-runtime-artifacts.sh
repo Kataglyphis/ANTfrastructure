@@ -10,7 +10,7 @@ source "${REPO_ROOT}/linux/scripts/01-core/runtime-cli.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-runtime}"
-TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-amd64,arm64,riscv64}}}"
+TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:latest-cross}"
 ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:android-cross}"
 ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
@@ -19,7 +19,7 @@ PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
 WRAPPER_DOCKERFILE_PATH="${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}"
 TORCH_APP_MODE="${TORCH_APP_MODE:-}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
-FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT}}"
 FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 PUSH_IMAGES=0
 PUSH_INTERMEDIATE_IMAGES=0
@@ -53,16 +53,14 @@ EOF
 
 main() {
   while [ $# -gt 0 ]; do
-    local shared_rc=0
-    parse_shared_runtime_args \
+    dispatch_parsed_args parse_shared_runtime_args \
       TARGET_ARCHES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
       BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
       TORCH_APP_MODE \
       USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
       PUSH_INTERMEDIATE_IMAGES \
-      "$1" "$2" || true
-    shared_rc=$?
-    case ${shared_rc} in
+      "$1" "$2"
+    case $? in
       2) shift 2; continue ;;
       1) shift 1; continue ;;
       255) usage; exit 0 ;;
@@ -78,6 +76,11 @@ main() {
         ;;
       --push)
         PUSH_IMAGES=1
+        shift
+        ;;
+      --push-all)
+        PUSH_IMAGES=1
+        PUSH_INTERMEDIATE_IMAGES=1
         shift
         ;;
       *)

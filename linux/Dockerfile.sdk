@@ -32,13 +32,6 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 # (Provides llvm.sh with install_target_clang_toolchain, setup-dependencies.sh)
-COPY --chmod=755 linux/scripts/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh
-
-# ------------------------------------------------------------------------------
-# Fix staged cross-compiled Python pkg-config files so they resolve into the
-# per-architecture staging trees instead of the host /usr/local prefix.
-# Uses the shared fix-staged-python-pc.sh script (also called from Dockerfile.toolchain).
-RUN set -eux; bash /opt/scripts/python/fix-staged-python-pc.sh
 
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup

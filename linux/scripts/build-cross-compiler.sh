@@ -11,9 +11,9 @@ BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:base}"
 BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:base}"
 COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
 COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
-CROSS_TARGETS="${CROSS_TARGETS:-amd64,arm64,riscv64}"
+CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
-FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT}}"
 FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 
 REBUILD_BASE=0
@@ -52,11 +52,8 @@ EOF
 }
 
 ensure_base_image() {
-  local -a mirror_build_args=()
-  local -a version_args=()
-
-  append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
-  append_version_build_args version_args
+  local -a build_args=()
+  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
 
   if [ "${REBUILD_BASE}" -eq 0 ] && image_exists "${NERDCTL_BIN}" "${BASE_LOCAL_TAG}"; then
     log "Using existing local base image: ${BASE_LOCAL_TAG}"
@@ -81,17 +78,13 @@ ensure_base_image() {
     --platform linux/amd64 \
     -t "${BASE_LOCAL_TAG}" \
     -f linux/Dockerfile.base \
-    "${mirror_build_args[@]}" \
-    "${version_args[@]}" \
+    "${build_args[@]}" \
     .
 }
 
 build_cross_compiler() {
-  local -a mirror_build_args=()
-  local -a version_args=()
-
-  append_mirror_build_args mirror_build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
-  append_version_build_args version_args
+  local -a build_args=()
+  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
 
   run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
@@ -101,8 +94,7 @@ build_cross_compiler() {
     --build-arg BASE_IMAGE="${BASE_LOCAL_TAG}" \
     --build-arg BUILD_MODE=cross \
     --build-arg CROSS_TARGETS="${CROSS_TARGETS}" \
-    "${mirror_build_args[@]}" \
-    "${version_args[@]}" \
+    "${build_args[@]}" \
     .
 }
 
@@ -115,13 +107,11 @@ push_cross_compiler() {
 
 main() {
   while [ $# -gt 0 ]; do
-    local oa_rc=0
-    parse_shared_orchestrator_args \
+    dispatch_parsed_args parse_shared_orchestrator_args \
       CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
       FAST_UBUNTU_PORTS_MIRROR_URL IGNORED_REPO IGNORED_VULKAN PUSH_IMAGE \
-      "$1" "$2" || true
-    oa_rc=$?
-    case ${oa_rc} in
+      "$1" "$2"
+    case $? in
       2) shift 2; continue ;;
       1) shift 1; continue ;;
       255) usage; exit 0 ;;

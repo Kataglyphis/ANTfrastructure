@@ -10,7 +10,7 @@ source "${REPO_ROOT}/linux/scripts/01-core/runtime-cli.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_NAME="${IMAGE_NAME:-}"
-ARCHITECTURES="${ARCHITECTURES:-${TARGET_ARCHES:-${TARGET_ARCH:-amd64,arm64,riscv64}}}"
+ARCHITECTURES="${ARCHITECTURES:-${TARGET_ARCHES:-${TARGET_ARCH:-${CROSS_DEFAULT_ARCHES}}}}"
 ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:android-cross}"
 ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
 BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
@@ -18,7 +18,7 @@ PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
 WRAPPER_DOCKERFILE_PATH="${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}"
 TORCH_APP_MODE="${TORCH_APP_MODE:-}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
-FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
+FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT}}"
 FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 
 PUSH_IMAGES=0
@@ -74,16 +74,14 @@ create_manifest() {
 
 main() {
   while [ $# -gt 0 ]; do
-    local shared_rc=0
-    parse_shared_runtime_args \
+    dispatch_parsed_args parse_shared_runtime_args \
       ARCHITECTURES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
       BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
       TORCH_APP_MODE \
       USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
       PUSH_INTERMEDIATE_IMAGES \
-      "$1" "$2" || true
-    shared_rc=$?
-    case ${shared_rc} in
+      "$1" "$2"
+    case $? in
       2) shift 2; continue ;;
       1) shift 1; continue ;;
       255) usage; exit 0 ;;
@@ -114,9 +112,6 @@ main() {
         PUSH_MANIFEST=1
         shift
         ;;
-      # --push-all is partially handled by the shared parser (which sets
-      # PUSH_INTERMEDIATE_IMAGES=1). Re-catch it here to also set the
-      # manifest-specific flags.
       --push-all)
         PUSH_IMAGES=1
         PUSH_MANIFEST=1
