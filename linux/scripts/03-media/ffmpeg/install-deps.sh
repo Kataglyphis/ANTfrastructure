@@ -8,10 +8,10 @@ fi
 
 echo "Installing FFmpeg build dependencies..."
 
-if command -v cross_apt_update >/dev/null 2>&1; then
-    cross_apt_update -y
+if command -v apt_update_smart >/dev/null 2>&1; then
+  apt_update_smart
 else
-    apt-get update -y
+  apt-get update -y
 fi
 install_host_packages \
     autoconf \
@@ -49,7 +49,7 @@ target_packages=(
 
 optional_cross_target_packages=()
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+if is_cross && \
    command -v cross_target_arch >/dev/null 2>&1; then
     case "$(cross_target_arch)" in
         riscv64)
@@ -75,7 +75,7 @@ else
     target_packages+=(libsdl2-dev)
 fi
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ "$(cross_target_arch)" = "riscv64" ]; then
+if is_cross && [ "$(cross_target_arch)" = "riscv64" ]; then
     echo "Installing riscv64 target FFmpeg feature deps on a best-effort basis because Ubuntu Ports currently has partial/broken dependency coverage for several optional codec packages."
     install_optional_target_packages "${target_packages[@]}"
     install_optional_target_packages libsvtav1enc-dev libsvtav1-dev

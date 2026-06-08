@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eux
+set -euo pipefail
 
 if [ -f /opt/scripts/core/cross-env.sh ]; then
     # shellcheck disable=SC1091
@@ -25,10 +25,10 @@ normalize_vvdec_soname_link() {
     ln -snf "$(basename "${soname_lib}")" "/usr/local/lib/libvvdec.so"
 }
 
-if command -v cross_apt_update >/dev/null 2>&1; then
-    cross_apt_update
+if command -v apt_update_smart >/dev/null 2>&1; then
+    apt_update_smart
 else
-    apt-get update
+    apt-get update -y
 fi
 DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' 'libunwind-*-dev' || true
 # The final image only needs GTK runtime bits. Installing the foreign-arch
@@ -46,7 +46,7 @@ target_packages=(
     libgsl28 libgslcblas0 libnuma1
 )
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+if is_cross && \
    command -v cross_target_arch >/dev/null 2>&1 && \
    [ "$(cross_target_arch)" = "riscv64" ]; then
     # The riscv64 GStreamer build skips the GTK/json-glib dependent plugins

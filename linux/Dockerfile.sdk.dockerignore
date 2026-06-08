@@ -1,13 +1,1 @@
-.git
-output.log
-*.log
-.codacy
-archive
-README.md
-docs
-linux/webserver
-out/local-oci
-out/local-android-dir
-out/linux-sdk
-out/linux-runtime
-out/runtime-repair-*
+Dockerfile.base.dockerignore

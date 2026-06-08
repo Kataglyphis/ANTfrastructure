@@ -17,45 +17,39 @@ make_meson_cross_rust_wrapper() {
   [ -n "${rust_target}" ] || return 1
 
   mkdir -p "$(dirname "${wrapper_path}")"
-  cat > "${wrapper_path}" <<EOF
+
+  local template="${_CROSS_ENV_DIR:-${BASH_SOURCE[0]%/*}}/meson-rust-wrapper.sh"
+  if [ -f "${template}" ]; then
+    sed -e "s|__RUSTC_BIN__|${rustc_bin}|g" \
+        -e "s|__RUST_TARGET__|${rust_target}|g" \
+        "${template}" > "${wrapper_path}"
+  else
+    cat > "${wrapper_path}" <<'HEREDOC_EOF'
 #!/usr/bin/env bash
 set -eu
-
-want_target='${rust_target}'
+want_target='HEREDOC_TARGET'
 have_target=false
 expect_target_value=false
 cargo_managed=false
-
-for arg in "\$@"; do
-  if [ "\${expect_target_value}" = "true" ]; then
+for arg in "$@"; do
+  if [ "${expect_target_value}" = "true" ]; then
     have_target=true
     expect_target_value=false
     continue
   fi
-
-  case "\${arg}" in
-    --target)
-      expect_target_value=true
-      ;;
-    --target=*)
-      have_target=true
-      ;;
-    */target/*)
-      cargo_managed=true
-      ;;
+  case "${arg}" in
+    --target) expect_target_value=true ;;
+    --target=*) have_target=true ;;
+    */target/*) cargo_managed=true ;;
   esac
 done
+if [ "${have_target}" = "true" ]; then exec 'HEREDOC_RUSTC' "$@"; fi
+if [ "${cargo_managed}" = "true" ]; then exec 'HEREDOC_RUSTC' "$@"; fi
+exec 'HEREDOC_RUSTC' --target "${want_target}" "$@"
+HEREDOC_EOF
+    sed -i "s|HEREDOC_TARGET|${rust_target}|g; s|HEREDOC_RUSTC|${rustc_bin}|g" "${wrapper_path}"
+  fi
 
-if [ "\${have_target}" = "true" ]; then
-  exec '${rustc_bin}' "\$@"
-fi
-
-if [ "\${cargo_managed}" = "true" ]; then
-  exec '${rustc_bin}' "\$@"
-fi
-
-exec '${rustc_bin}' --target "\${want_target}" "\$@"
-EOF
   chmod +x "${wrapper_path}"
   printf '%s' "${wrapper_path}"
 }
@@ -91,6 +85,9 @@ append_cmake_cross_args() {
   cross_build_enabled || return 0
   setup_linux_cross_env
 
+  # CMake picks up CMAKE_* from the environment automatically, but explicit -D
+  # arguments take precedence and serve as defense-in-depth against stale
+  # inherited env vars or CMake toolchain files that might override them.
   _out+=(
     "-DCMAKE_SYSTEM_NAME=Linux"
     "-DCMAKE_SYSTEM_PROCESSOR=${CROSS_TARGET_PROCESSOR}"

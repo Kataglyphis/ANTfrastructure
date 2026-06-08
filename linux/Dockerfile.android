@@ -3,6 +3,8 @@
 ARG BASE_IMAGE=local/kataglyphis:media
 FROM ${BASE_IMAGE}
 
+SHELL ["bash", "-lc"]
+
 ARG BUILD_MODE=native
 ARG TARGET_ARCH
 ARG TARGETARCH
@@ -89,3 +91,6 @@ RUN set -eux; \
     GCC_VERSION="${GCC_VERSION}" \
     BUILD_MODE="${BUILD_MODE}" \
     bash /opt/scripts/packaging/swap-native-gcc.sh
+
+LABEL org.opencontainers.image.title="Kataglyphis Android" \
+      org.opencontainers.image.description="Android SDK/NDK and cross-compiled Android artifacts layer"

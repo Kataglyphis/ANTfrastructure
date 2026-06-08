@@ -8,8 +8,8 @@ fi
 
 echo "Installing libcamera build dependencies..."
 
-if command -v cross_apt_update >/dev/null 2>&1; then
-  cross_apt_update -y
+if command -v apt_update_smart >/dev/null 2>&1; then
+  apt_update_smart
 else
   apt-get update -y
 fi
@@ -24,7 +24,7 @@ target_packages=(
     libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev libgbm-dev libepoxy-dev
 )
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+if is_cross && \
    command -v cross_target_arch >/dev/null 2>&1 && \
    [ "$(cross_target_arch)" = "riscv64" ]; then
   # This stage already copies /opt/gstreamer in before libcamera builds, and

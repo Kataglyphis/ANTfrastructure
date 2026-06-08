@@ -7,9 +7,12 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
+# shellcheck disable=SC1091
+[ -f "${_CROSS_ENV_DIR:-${BASH_SOURCE[0]%/*}}/package-groups.sh" ] && source "${_CROSS_ENV_DIR:-${BASH_SOURCE[0]%/*}}/package-groups.sh"
+
 cross_target_uses_ubuntu_ports() {
   case "$(cross_target_arch)" in
-    arm64|armhf|ppc64el|riscv64|s390x) return 0 ;;
+    arm64|riscv64) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -71,6 +74,21 @@ cross_prepare_apt_sources_for_target() {
     cross_configure_foreign_arch_apt_sources
   else
     cross_prune_foreign_arch_apt_sources
+  fi
+}
+
+apt_update_smart() {
+  local -a extra_args=()
+  if [ "$#" -gt 0 ]; then
+    extra_args=("$@")
+  else
+    extra_args=(-y)
+  fi
+
+  if command -v cross_apt_update >/dev/null 2>&1; then
+    cross_apt_update "${extra_args[@]}"
+  else
+    apt-get update "${extra_args[@]}"
   fi
 }
 
@@ -232,15 +250,26 @@ install_target_packages() {
 }
 
 install_optional_target_packages() {
-    local pkg
-
     [ "$#" -gt 0 ] || return 0
 
+    local -a resolved=()
+    local pkg
+
     for pkg in "$@"; do
-        if ! install_target_packages "${pkg}"; then
-            echo "Skipping optional target package ${pkg} because apt could not resolve it for $(cross_target_arch 2>/dev/null || echo target)."
+        [ -n "${pkg}" ] || continue
+        if cross_build_enabled; then
+            cross_package_has_install_candidate "$(cross_resolve_target_package "${pkg}")" || {
+                echo "Skipping optional target package ${pkg} because apt could not resolve it for $(cross_target_arch 2>/dev/null || echo target)."
+                continue
+            }
         fi
+        resolved+=("${pkg}")
     done
+
+    [ "${#resolved[@]}" -gt 0 ] || return 0
+    if ! install_target_packages "${resolved[@]}"; then
+        echo "Some optional target packages failed to install; continuing" >&2
+    fi
 }
 
 is_cross_riscv64() {

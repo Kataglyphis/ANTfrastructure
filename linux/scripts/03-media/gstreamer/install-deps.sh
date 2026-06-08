@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eux
+set -euo pipefail
 
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
@@ -14,10 +14,10 @@ vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
 echo "Installing GStreamer build dependencies..."
 
-if command -v cross_apt_update >/dev/null 2>&1; then
-  cross_apt_update
+if command -v apt_update_smart >/dev/null 2>&1; then
+  apt_update_smart
 else
-  apt-get update
+  apt-get update -y
 fi
 
 is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
@@ -25,7 +25,7 @@ is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
 skip_csound_cross=$(is_cross_skip_csound && echo true || echo false)
 
 prefer_toolchain_vulkan=false
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if is_cross; then
   if declare -F source_vulkan_sdk_env >/dev/null 2>&1 && \
      source_vulkan_sdk_env "${vulkan_prefix}" sanitize-libs >/dev/null 2>&1; then
     prefer_toolchain_vulkan=true
@@ -34,7 +34,7 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   fi
 fi
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if is_cross; then
   if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
     echo "Using staged target Python headers from $(cross_target_python_include_dir)"
   else

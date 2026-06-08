@@ -2,7 +2,6 @@
 
 _ARTIFACT_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-BUILDKIT_HOST="${BUILDKIT_HOST:-}"
 RUNTIME_CONTEXT_ROOT="${RUNTIME_CONTEXT_ROOT:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/opencode/runtime-build-contexts}"
 
 # Load canonical version defaults.  Already-set environment variables take
@@ -25,23 +24,14 @@ fi
 
 normalize_target_arches() {
   local raw_arches="$1"
-  local raw_arch normalized_arch
-  local -a normalized_arches=()
 
-  for raw_arch in ${raw_arches//,/ }; do
-    normalized_arch="$(canonical_target_arch "${raw_arch}")" || {
-      printf '[ERROR] Unsupported target architecture: %s\n' "${raw_arch}" >&2
-      return 1
-    }
-    normalized_arches+=("${normalized_arch}")
-  done
-
-  if [ "${#normalized_arches[@]}" -eq 0 ]; then
-    printf '[ERROR] At least one target architecture is required\n' >&2
+  local result
+  result="$(arch_list_csv_normalize "${raw_arches}")" || {
+    printf '[ERROR] At least one valid target architecture is required (got: %s)\n' "${raw_arches}" >&2
     return 1
-  fi
+  }
 
-  printf '%s' "${normalized_arches[*]}" | tr ' ' ','
+  printf '%s' "${result}"
 }
 
 run() {
@@ -141,6 +131,12 @@ registry_pin_ref() {
 
   local repo digest
   repo="${image_ref%:*}"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '[ERROR] python3 is required for registry digest resolution\n' >&2
+    return 1
+  fi
+
   digest="$("${nerdctl_bin}" manifest inspect --verbose "${image_ref}" 2>/dev/null \
     | python3 -c 'import sys, json
 data = json.load(sys.stdin)
@@ -181,16 +177,13 @@ pull_platform_image() {
   run "${nerdctl_bin}" pull --platform "${platform}" "${image_ref}"
 }
 
-export_rootfs_from_image() {
+_export_container_rootfs() {
   local nerdctl_bin="$1"
   local tag="$2"
-  local artifact_dir="$3"
-  shift 3
-
-  local rootfs_dir="${artifact_dir}/rootfs"
+  local rootfs_dir="$3"
   local cid=""
 
-  rm -rf "${artifact_dir}"
+  rm -rf "${rootfs_dir}"
   mkdir -p "${rootfs_dir}"
 
   cid="$("${nerdctl_bin}" create "${tag}" /bin/true)"
@@ -203,6 +196,19 @@ export_rootfs_from_image() {
 
   "${nerdctl_bin}" export "${cid}" | tar -xpf - -C "${rootfs_dir}"
 
+  cleanup_container
+  trap - RETURN
+}
+
+export_rootfs_from_image() {
+  local nerdctl_bin="$1"
+  local tag="$2"
+  local artifact_dir="$3"
+  shift 3
+
+  local rootfs_dir="${artifact_dir}/rootfs"
+  _export_container_rootfs "${nerdctl_bin}" "${tag}" "${rootfs_dir}"
+
   if [ "$#" -gt 0 ]; then
     : > "${artifact_dir}/artifact.env"
     while [ "$#" -gt 0 ]; do
@@ -210,32 +216,10 @@ export_rootfs_from_image() {
       shift
     done
   fi
-
-  cleanup_container
-  trap - RETURN
 }
 
 export_image_rootfs_dir() {
-  local nerdctl_bin="$1"
-  local tag="$2"
-  local rootfs_dir="$3"
-  local cid=""
-
-  rm -rf "${rootfs_dir}"
-  mkdir -p "${rootfs_dir}"
-
-  cid="$(${nerdctl_bin} create "${tag}" /bin/true)"
-  cleanup_container() {
-    if [ -n "${cid}" ]; then
-      "${nerdctl_bin}" rm -f "${cid}" >/dev/null 2>&1 || true
-    fi
-  }
-  trap cleanup_container RETURN
-
-  "${nerdctl_bin}" export "${cid}" | tar -xpf - -C "${rootfs_dir}"
-
-  cleanup_container
-  trap - RETURN
+  _export_container_rootfs "$@"
 }
 
 export_image_to_oci_layout() {
@@ -476,10 +460,9 @@ _runtime_resolve_parent_context() {
     # `FROM` (exec: "bash": executable file not found). Reference it via the
     # oci-layout:// scheme so BuildKit resolves it as an image.
     local _parent_context_ref="${_out_context_dir}"
-    case "${parent_kind}" in
-      base)    _parent_context_ref="${_out_context_dir}" ;;
-      package) _parent_context_ref="oci-layout://${_out_context_dir}" ;;
-    esac
+    if [ "${parent_kind}" = "package" ]; then
+      _parent_context_ref="oci-layout://${_out_context_dir}"
+    fi
     _out_build_args+=(--build-context "runtime_${parent_kind}=${_parent_context_ref}")
   else
     _out_context_dir=""
@@ -696,19 +679,36 @@ cross_android_tag()           { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREF
 # This ensures Dockerfile ARG defaults are always overridden with the canonical
 # values, eliminating version drift between versions.env and Dockerfile ARGs.
 #
-# The variable list below MUST match every ARG in the Dockerfiles that carries a
-# version default. When a new version is added to versions.env, add its name here.
+# Build-arg vars are auto-discovered from versions.env: any variable whose name
+# ends with _VERSION, _RELEASE, _MAJOR_MINOR, or _MAJOR is forwarded.
 # ==============================================================================
-_VERSION_BUILD_ARG_VARS=(
-  UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
-  LLVM_RELEASE GCC_VERSION
-  PYTHON_VERSION PYTHON_MAJOR_MINOR
-  VULKAN_VERSION
-  ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION
-  LITERT_VERSION OPENCV_VERSION GSTREAMER_VERSION
-  ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK
-  ANDROID_BUILD_TOOLS ANDROID_CMAKE_VERSION ANDROID_API_LEVEL
-)
+_auto_discover_version_build_arg_vars() {
+  local var value
+
+  # Re-source versions.env in a subshell to extract var names without side effects.
+  (
+    set -a
+    # shellcheck disable=SC1091
+    [ -f "${_ARTIFACT_COMMON_DIR}/versions.env" ] && source "${_ARTIFACT_COMMON_DIR}/versions.env"
+    set -o posix
+    set | grep -E '^[A-Z][A-Z0-9_]*=' | cut -d= -f1
+  ) | while read -r var; do
+    case "${var}" in
+      *_VERSION|*_RELEASE|*_MAJOR_MINOR|*_MAJOR)
+        printf '%s\n' "${var}"
+        ;;
+    esac
+  done
+}
+
+# Cache the auto-discovered list once.
+if [ -z "${_VERSION_BUILD_ARG_VARS_CACHED:-}" ]; then
+  _VERSION_BUILD_ARG_VARS=()
+  while IFS= read -r varname; do
+    [ -n "${varname}" ] && _VERSION_BUILD_ARG_VARS+=("${varname}")
+  done < <(_auto_discover_version_build_arg_vars)
+  _VERSION_BUILD_ARG_VARS_CACHED=1
+fi
 
 append_version_build_args() {
   local -n out_args_ref=$1

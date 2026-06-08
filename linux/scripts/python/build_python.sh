@@ -33,7 +33,7 @@ source_first_helper \
 on_err() {
   local line="${1:-?}"
   local cmd="${2:-?}"
-  warn "Command failed (line ${line}): ${cmd}"
+  err "Command failed (line ${line}): ${cmd}"
 }
 trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
 

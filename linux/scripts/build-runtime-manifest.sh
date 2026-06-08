@@ -64,7 +64,9 @@ create_manifest() {
     refs+=("$(runtime_wrapper_tag "${arch}")")
   done
 
-  "${NERDCTL_BIN}" manifest rm "${IMAGE_NAME}" >/dev/null 2>&1 || true
+  if "${NERDCTL_BIN}" manifest inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
+    "${NERDCTL_BIN}" manifest rm "${IMAGE_NAME}" >/dev/null 2>&1 || true
+  fi
   run "${NERDCTL_BIN}" manifest create "${IMAGE_NAME}" "${refs[@]}"
 
   if [ "${PUSH_MANIFEST}" -eq 1 ]; then

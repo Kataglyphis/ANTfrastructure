@@ -54,6 +54,12 @@ VERIFY_CHAIN_ONLY=0
 # Ordered stage list used for --from-stage/--to-stage gating.
 ALL_STAGES=(base compiler sdk media android runtime)
 
+# Pre-built stage index map for O(1) lookups.
+declare -A STAGE_INDEX=()
+for i in "${!ALL_STAGES[@]}"; do
+  STAGE_INDEX["${ALL_STAGES[$i]}"]="${i}"
+done
+
 # Per-arch digest references captured during this run.
 declare -A SDK_PIN=()
 declare -A MEDIA_PIN=()
@@ -103,13 +109,12 @@ EOF
 }
 
 stage_index() {
-  local name="$1" i
-  for i in "${!ALL_STAGES[@]}"; do
-    if [ "${ALL_STAGES[$i]}" = "${name}" ]; then
-      printf '%s' "${i}"
-      return 0
-    fi
-  done
+  local name="$1"
+  local idx="${STAGE_INDEX[${name}]:--1}"
+  if [ "${idx}" -ge 0 ]; then
+    printf '%s' "${idx}"
+    return 0
+  fi
   printf '[ERROR] Unknown stage: %s\n' "${name}" >&2
   return 1
 }
@@ -271,38 +276,40 @@ run_runtime_stage() {
 }
 
 verify_chain() {
-  local arch parent_tag child_tag parent_digest
+  local arch parent_tag child_tag parent_digest child_digest
 
   log "[verify] checking cross-chain freshness for arches: ${TARGET_ARCHES}"
 
-  parent_tag="$(cross_base_tag)"
-  child_tag="$(cross_compiler_tag)"
-  parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
-  if [ -n "${parent_digest}" ]; then
-    log "[verify] base: ${parent_digest}"
-  else
-    warn "[verify] base tag ${parent_tag} not resolvable in registry"
-  fi
+  _verify_link() {
+    local label="$1" parent_tag="$2" child_tag="$3" parent_digest child_base_digest
+    parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
+    if [ -z "${parent_digest}" ]; then
+      warn "[verify] ${label}: parent tag ${parent_tag} not resolvable in registry"
+      return 0
+    fi
+    child_base_digest="$("${NERDCTL_BIN}" manifest inspect "${child_tag}" 2>/dev/null \
+      | python3 -c 'import sys, json; data = json.load(sys.stdin); layer = data["layers"][0] if "layers" in data else {}; print(layer.get("digest", ""))' 2>/dev/null || true)"
+    if [ -n "${child_base_digest}" ]; then
+      log "[verify] ${label}: parent ${parent_digest}"
+      log "[verify] ${label}: child  ${child_tag}"
+      log "[verify] ${label}: child base layer ${child_base_digest}"
+    else
+      log "[verify] ${label}: parent digest ${parent_digest} (child tag unresolvable)"
+    fi
+  }
+
+  _verify_link "base->compiler" "$(cross_base_tag)" "$(cross_compiler_tag)"
 
   for arch in ${TARGET_ARCHES//,/ }; do
-    parent_tag="$(cross_compiler_tag)"
-    child_tag="$(cross_sdk_tag "${arch}")"
-    parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
-    log "[verify] sdk-${arch}: parent compiler digest ${parent_digest:-unresolved}"
+    _verify_link "compiler->sdk-${arch}" "$(cross_compiler_tag)" "$(cross_sdk_tag "${arch}")"
   done
 
   for arch in ${TARGET_ARCHES//,/ }; do
-    parent_tag="$(cross_sdk_tag "${arch}")"
-    child_tag="$(cross_media_tag "${arch}")"
-    parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
-    log "[verify] media-${arch}: parent sdk digest ${parent_digest:-unresolved}"
+    _verify_link "sdk->media-${arch}" "$(cross_sdk_tag "${arch}")" "$(cross_media_tag "${arch}")"
   done
 
   for arch in ${TARGET_ARCHES//,/ }; do
-    parent_tag="$(cross_media_tag "${arch}")"
-    child_tag="$(cross_android_tag "${arch}")"
-    parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
-    log "[verify] android-${arch}: parent media digest ${parent_digest:-unresolved}"
+    _verify_link "media->android-${arch}" "$(cross_media_tag "${arch}")" "$(cross_android_tag "${arch}")"
   done
 
   log "[verify] chain check complete"
@@ -314,7 +321,7 @@ main() {
     local _dispatch_rc=0
     dispatch_parsed_args parse_shared_orchestrator_args \
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IGNORED \
+      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _unused_push \
       "$1" "${2:-}" || _dispatch_rc=$?
     case $_dispatch_rc in
       2) shift 2; continue ;;

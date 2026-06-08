@@ -12,8 +12,8 @@ fi
 
 echo "Installing OpenCV build dependencies..."
 
-if command -v cross_apt_update >/dev/null 2>&1; then
-    cross_apt_update -y
+if command -v apt_update_smart >/dev/null 2>&1; then
+    apt_update_smart
 else
     apt-get update -y
 fi
@@ -42,7 +42,7 @@ target_packages=(
     libdc1394-dev
 )
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if is_cross; then
     echo "Skipping libgtk-3-dev for cross builds because libpango1.0-dev is not multiarch-coinstallable."
     if [ "$(cross_target_arch)" = "riscv64" ]; then
         echo "Skipping GStreamer dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
@@ -61,7 +61,7 @@ else
 fi
 
 if [ "${WITH_PYTHON}" = "true" ]; then
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if is_cross; then
         if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
             echo "[INFO] Using staged target Python headers from $(cross_target_python_include_dir)"
         else

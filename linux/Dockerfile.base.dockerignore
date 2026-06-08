@@ -1,4 +1,5 @@
 .git
+.github
 output.log
 *.log
 .codacy
@@ -6,8 +7,16 @@ archive
 README.md
 docs
 linux/webserver
-out/local-oci
-out/local-android-dir
-out/linux-sdk
-out/linux-runtime
-out/runtime-repair-*
+windows/
+out/
+*.tar
+*.tar.gz
+*.zip
+*.swp
+*.swo
+__pycache__/
+*.pyc
+.env
+*.pem
+*.key
+secrets/

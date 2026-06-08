@@ -109,3 +109,6 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     bash /tmp/scripts/01-core/base-image.sh init-compiler-caches \
       --max-size "${CCACHE_MAXSIZE}"
+
+LABEL org.opencontainers.image.title="Kataglyphis Base" \
+      org.opencontainers.image.description="Base OS image with CMake, Node.js, uv, and compiler caches"

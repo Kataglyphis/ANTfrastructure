@@ -5,10 +5,13 @@ _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source canonical version defaults (single source of truth).
 # Variables already set in the environment take precedence over versions.env.
-set -a
-# shellcheck disable=SC1090,SC1091
-[ -f "${_COMMON_SH_DIR}/versions.env" ] && source "${_COMMON_SH_DIR}/versions.env"
-set +a
+if [ -z "${_VERSIONS_ENV_LOADED:-}" ]; then
+  set -a
+  # shellcheck disable=SC1090,SC1091
+  [ -f "${_COMMON_SH_DIR}/versions.env" ] && source "${_COMMON_SH_DIR}/versions.env"
+  set +a
+  _VERSIONS_ENV_LOADED=1
+fi
 
 # Side-effect free helpers
 # shellcheck disable=SC1090,SC1091
@@ -66,7 +69,7 @@ APT_UPDATED=""
 
 tool_version() {
   local cmd="$1"
-  shift || true
+  shift 2>/dev/null || true
   if command -v "$cmd" >/dev/null 2>&1; then
     "$cmd" "$@" || true
   fi

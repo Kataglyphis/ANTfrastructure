@@ -13,7 +13,7 @@ target_packages=(
     liblapack-dev
 )
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if is_cross; then
     if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
         echo "[INFO] Using staged target Python headers from $(cross_target_python_include_dir)"
     else
@@ -21,10 +21,10 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
     fi
 fi
 
-if command -v cross_apt_update >/dev/null 2>&1; then
-    cross_apt_update
+if command -v apt_update_smart >/dev/null 2>&1; then
+    apt_update_smart
 else
-    apt-get update
+    apt-get update -y
 fi
 install_host_packages \
     build-essential \
@@ -39,7 +39,7 @@ install_host_packages \
 install_target_packages "${target_packages[@]}"
 
 atlas_pkg="libatlas-base-dev"
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if is_cross; then
     atlas_pkg_resolved="$(cross_resolve_target_package "${atlas_pkg}")"
 else
     atlas_pkg_resolved="${atlas_pkg}"

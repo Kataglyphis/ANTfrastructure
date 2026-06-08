@@ -55,9 +55,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-amd-${T
         rocblas \
         rocfft \
         rocsolver \
-        rocsparse \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+        rocsparse
 
 ENV ROCM_HOME=/opt/rocm
 ENV PATH="${ROCM_HOME}/bin:${PATH}"
@@ -71,3 +69,6 @@ RUN echo "export PATH=${ROCM_HOME}/bin:\$PATH" >> /etc/profile.d/rocm.sh \
 RUN set -eux; \
     test -x "${ROCM_HOME}/bin/hipcc"; \
     ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse' >/dev/null
+
+LABEL org.opencontainers.image.title="Kataglyphis AMD GPU" \
+      org.opencontainers.image.description="AMD GPU (ROCm) acceleration layer for the Kataglyphis accelerator toolchain"

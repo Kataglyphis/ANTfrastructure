@@ -23,6 +23,8 @@ ARG USE_SCCACHE=true
 ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE} AS base
 
+SHELL ["bash", "-lc"]
+
 ARG BUILD_MODE=native
 ARG TARGET_ARCH
 ARG TARGETARCH
@@ -51,8 +53,6 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
     USE_LLD=${USE_LLD} \
     USE_CCACHE=${USE_CCACHE} \
     USE_SCCACHE=${USE_SCCACHE}
-
-USER root
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
@@ -424,3 +424,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/final/validate-media-runtime.sh
+
+LABEL org.opencontainers.image.title="Kataglyphis Media" \
+      org.opencontainers.image.description="Media libraries layer with ONNX Runtime, LiteRT, OpenCV, GStreamer, FFmpeg, and libcamera"

@@ -3,6 +3,8 @@
 ARG BASE_IMAGE=local/kataglyphis:base
 FROM ${BASE_IMAGE}
 
+SHELL ["bash", "-lc"]
+
 ARG LLVM_RELEASE=22.1.6
 ARG GCC_VERSION=16.1.0
 ARG TARGETARCH

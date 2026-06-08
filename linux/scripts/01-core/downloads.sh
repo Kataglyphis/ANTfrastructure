@@ -19,7 +19,11 @@ download_verified_file() {
   local url="$1"
   local expected_sha256="$2"
   local dest="$3"
+  local checksum_output
 
   download_file "$url" "$dest"
-  printf '%s  %s\n' "$expected_sha256" "$dest" | sha256sum -c - >/dev/null
+  checksum_output="$(printf '%s  %s\n' "$expected_sha256" "$dest" | sha256sum -c - 2>&1)" || {
+    printf 'Checksum verification FAILED for %s: %s\n' "${dest}" "${checksum_output}" >&2
+    return 1
+  }
 }

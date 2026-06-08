@@ -58,3 +58,6 @@ ARG ENABLE_AMD
 # here because the torch stage overrides it to its app directory.
 ARG WORKDIR=/workspace
 WORKDIR ${WORKDIR}
+
+LABEL org.opencontainers.image.title="Kataglyphis Torch" \
+      org.opencontainers.image.description="Final torch venv + Kataglyphis app wrapper image"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # platform.sh - small, side-effect-free platform helpers
 
-_platform_normalize_arch() {
+arch_normalize() {
   case "$1" in
     amd64|x86_64) printf '%s' "amd64" ;;
     arm64|aarch64) printf '%s' "arm64" ;;
@@ -9,10 +9,6 @@ _platform_normalize_arch() {
     riscv64|riscv|rv64*) printf '%s' "riscv64" ;;
     *) printf '%s' "$1" ;;
   esac
-}
-
-arch_normalize() {
-  _platform_normalize_arch "$1"
 }
 
 arch_uname_name_for() {
@@ -243,20 +239,12 @@ build_arch_oci() {
   arch_normalize "$(_platform_raw_build_arch)"
 }
 
-target_arch_oci() {
-  arch_oci
+is_arch() {
+  [ "$(arch_normalize "$(arch_oci)")" = "$(arch_normalize "$1")" ]
 }
 
-is_amd64_arch() {
-  [ "$(arch_oci)" = "amd64" ]
-}
-
-is_amd64_build_arch() {
-  [ "$(build_arch_oci)" = "amd64" ]
-}
-
-android_build_host_supported() {
-  is_amd64_build_arch
+is_build_arch() {
+  [ "$(arch_normalize "$(build_arch_oci)")" = "$(arch_normalize "$1")" ]
 }
 
 android_require_amd64_build_host() {
@@ -299,7 +287,7 @@ android_abi_for_arch() {
 }
 
 android_target_arch() {
-  target_arch_oci
+  arch_oci
 }
 
 android_target_abi() {
