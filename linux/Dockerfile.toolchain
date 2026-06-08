@@ -78,26 +78,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolcha
 # without always registering them as the highest-priority alternatives.
 # Explicit update-alternatives here guarantees clang/clang++ resolve to the
 # requested major version for CMake presets and downstream builds.
-RUN set -eux; \
-    llvm_major="${LLVM_RELEASE%%.*}"; \
-    alt_install() { \
-        local name="$1" priority="${2:-120}"; \
-        local candidate; \
-        for candidate in \
-            "/usr/lib/llvm-${llvm_major}/bin/${name}" \
-            "/usr/bin/${name}-${llvm_major}"; do \
-            if [ -x "${candidate}" ]; then \
-                update-alternatives --install "/usr/bin/${name}" "${name}" "${candidate}" "${priority}"; \
-                update-alternatives --set "${name}" "${candidate}"; \
-                return 0; \
-            fi; \
-        done; \
-        echo "WARNING: could not find ${name} for LLVM ${llvm_major}" >&2; \
-    }; \
-    alt_install clang; \
-    alt_install clang++; \
-    alt_install llvm-ar; \
-    alt_install llvm-ranlib
+COPY --chmod=755 linux/scripts/02-toolchain/register-llvm-alternatives.sh /opt/scripts/toolchain/register-llvm-alternatives.sh
+RUN set -eux; LLVM_RELEASE="${LLVM_RELEASE}" bash /opt/scripts/toolchain/register-llvm-alternatives.sh
 
 # 3c. VERIFY TOOLCHAIN CONTRACT
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \

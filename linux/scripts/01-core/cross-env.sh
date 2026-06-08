@@ -128,10 +128,6 @@ cross_build_rust_triple() {
   esac
 }
 
-cross_target_android_abi() {
-  android_abi_for_target
-}
-
 cross_target_cpu_family() {
   arch_cpu_family_for "$(cross_target_arch)"
 }
