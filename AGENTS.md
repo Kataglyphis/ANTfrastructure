@@ -44,8 +44,38 @@ but does not reliably refresh the local containerd tag, and BuildKit's default
 `FROM` resolution prefers an already-present local image (it does not re-pull).
 So rebuilding `media` then building `android` can quietly reuse the old `media`.
 
+### Stale-base propagation across orchestrator invocations (critical)
+
+The orchestrator's digest pinning prevents intra-invocation drift (media→android
+within the same run), but **across separate orchestrator invocations** the digest
+of a tag may point to a newer image while downstream images still inherit from an
+older digest that was built from a previous version of that tag.
+
+Example: you build the chain, then rebuild the compiler image (adding new content
+like Canadian-cross native GCC dirs) and push it. The existing `sdk-artifact-*`
+tags in the registry were built from the *old* compiler. Running `--from-stage
+media --to-stage android` resolves the sdk pin from the registry sdk tag — which
+still carries the old compiler base, missing the new content. The media rebuild
+inherits from the stale sdk, and the new compiler content never reaches the final
+image. **This wastes hours on duplicates that look correct but are silently stale.**
+
 Rules:
 
+- **Whenever ANY base image in the registry tag hierarchy is replaced,** you MUST
+  either (a) rebuild every downstream image starting from the replaced stage, or
+  (b) explicitly verify that the downstream images were already rebuilt from the
+  new base by checking they contain the new content (e.g. verify
+  `/opt/gcc-16.1.0-native-arm64` exists in the pinned sdk digest).
+- **The `--from-stage` flag only controls where execution starts; it does NOT
+  update the base image of the first stage it runs.** If the existing registry
+  tag for the stage BEFORE your `--from-stage` was built from a stale upstream,
+  your rebuild inherits that staleness.
+- **After pushing a rebuilt compiler image**, run the orchestrator from
+  `--from-stage sdk` (not `media`) so the sdk is built from the new compiler
+  before media inherits it.
+- **Do NOT use `--from-stage android`** unless you have verified the media tag
+  already contains the content the compiler provides (e.g., the native GCC
+  directories).
 - To run the full cross chain (e.g. when asked to "cross build `:latest-cross`"),
   prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It captures each
   cross stage's registry-resolvable manifest digest after push and feeds it to the

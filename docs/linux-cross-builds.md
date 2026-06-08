@@ -136,6 +136,35 @@ Partial runs are supported, e.g. resume from media for one arch:
 When resuming mid-chain, the required upstream digest is resolved from the parent
 stage's current registry tag automatically.
 
+### Trap: stale-base propagation across orchestrator invocations
+
+Digest pinning only prevents drift **within a single orchestration run.** Across
+**separate** invocations, a registry tag may have been updated — but downstream
+images still pin the old digest. For example:
+
+1. You build the full chain (`compiler → sdk → media → android`).
+2. You rebuild and re-push the **compiler** image (e.g. adding
+   `/opt/gcc-16.1.0-native-arm64`).
+3. You run `--from-stage media --to-stage android`. The orchestrator resolves the
+   sdk pin from the registry tag `sdk-artifact-arm64` — which was built from the
+   **old** compiler and is missing the new content.
+4. The new media rebuild inherits from the stale sdk, and the new compiler
+   content never reaches the final image.
+
+**How to avoid this:**
+
+- After replacing any base image (compiler, sdk, etc.), **rebuild from the
+  replaced stage** — not a later one. E.g. after a compiler push, start from
+  `--from-stage sdk`, not `--from-stage media`.
+- **Verify** downstream images contain the expected new content before relying on
+  them (e.g. check that `/opt/gcc-16.1.0-native-arm64` exists in the pinned sdk
+  digest with `nerdctl run --rm <repo>@<digest> ls -d /opt/gcc-16.1.0-native-arm64`).
+- **The `--from-stage` flag only controls where execution starts; it does NOT
+  update the base image of the first stage it runs.** If the stage just before
+  your `--from-stage` inherits from a stale upstream, so will your rebuild.
+- For partial runs after a compiler update, always use `--from-stage sdk` as the
+  minimum starting point.
+
 ## Manual staged build with plain `nerdctl` (current GCC 16 cross lane)
 
 Run these commands from the repository root. Keep every trailing `\` as the last character on its line, and keep the final `.` because it is the Docker build context.

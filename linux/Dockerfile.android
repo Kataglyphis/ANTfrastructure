@@ -115,6 +115,37 @@ RUN set -eux; \
             cp -a "${native_gcc}" "/opt/gcc-${GCC_VERSION}"; \
             assert_elf_arch "/opt/gcc-${GCC_VERSION}/bin/gcc" "${TARGET_ARCH}"; \
             echo "Replaced host GCC with target-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"; \
+            case "${TARGET_ARCH}" in \
+              arm64) gcc_target_triplet="aarch64-linux-gnu" ;; \
+              riscv64) gcc_target_triplet="riscv64-linux-gnu" ;; \
+              *) gcc_target_triplet="" ;; \
+            esac; \
+            if [ -n "${gcc_target_triplet}" ]; then \
+              gcc_target_lib="/opt/gcc-${GCC_VERSION}/${gcc_target_triplet}/lib"; \
+              system_multiarch_lib="/usr/lib/${gcc_target_triplet}"; \
+              if [ ! -d "${gcc_target_lib}" ] || [ -z "$(ls -A ${gcc_target_lib} 2>/dev/null)" ]; then \
+                rm -rf "${gcc_target_lib}"; \
+                mkdir -p "$(dirname "${gcc_target_lib}")"; \
+                ln -sf "${system_multiarch_lib}" "${gcc_target_lib}"; \
+                echo "Linked GCC target lib ${gcc_target_lib} -> ${system_multiarch_lib}"; \
+              fi; \
+              gcc_target_include="/opt/gcc-${GCC_VERSION}/${gcc_target_triplet}/include"; \
+              system_multiarch_include="/usr/include/${gcc_target_triplet}"; \
+              if [ ! -e "${gcc_target_include}" ]; then \
+                mkdir -p "$(dirname "${gcc_target_include}")"; \
+                ln -sf "${system_multiarch_include}" "${gcc_target_include}"; \
+                echo "Linked GCC target include ${gcc_target_include} -> ${system_multiarch_include}"; \
+              fi; \
+            fi; \
+            echo "int main(){}" > /tmp/gcc_smoke.c; \
+            if /opt/gcc-${GCC_VERSION}/bin/gcc /tmp/gcc_smoke.c -o /tmp/gcc_smoke 2>/tmp/gcc_smoke.err; then \
+              file /tmp/gcc_smoke; \
+              echo "GCC compile smoke test PASSED"; \
+            else \
+              echo "WARNING: native GCC cannot compile trivial program (cross-build host limitation)"; \
+              cat /tmp/gcc_smoke.err 2>/dev/null || true; \
+            fi; \
+            rm -f /tmp/gcc_smoke.c /tmp/gcc_smoke /tmp/gcc_smoke.err; \
         else \
             echo "ERROR: expected target-native GCC at ${native_gcc} but not found" >&2; \
             echo "ERROR: Rebuild the toolchain image (build-cross-compiler.sh) to produce" >&2; \

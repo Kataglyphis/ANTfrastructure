@@ -275,6 +275,19 @@ validate_package() {
       exit 1
     fi
     rm -f "${cc_obj}" /tmp/cc1smoke.log 2>/dev/null || true
+
+    # --- cc link smoke (crt files, Scrt1.o etc.) ---
+    local cc_exe
+    cc_exe="$(mktemp -d)/cclinksmoke"
+    if printf 'int main(void){return 0;}\n' | cc -x c - -o "${cc_exe}" 2>/tmp/cclinksmoke.log; then
+      echo "Verified /usr/bin/cc link smoke for ${target_arch}"
+      rm -f "${cc_exe}"
+    else
+      echo "ERROR: cc link smoke FAILED for ${target_arch} (missing crt/startup files?):" >&2
+      cat /tmp/cclinksmoke.log >&2 || true
+      exit 1
+    fi
+    rm -f /tmp/cclinksmoke.log 2>/dev/null || true
   fi
 
   if [ "${_VALIDATE_ERRORS}" -gt 0 ]; then

@@ -406,6 +406,19 @@ configure_opencv() {
                 cmake_opts+=("-DPYTHON3_LIBRARY=${target_python_library}")
                 cmake_opts+=("-DPYTHON3_INCLUDE_DIR=${target_python_include}")
             fi
+
+            # Numpy headers are architecture-independent; use the host venv numpy.
+            # OpenCV's cmake needs them to generate Python3 wrappers (cv2.so).
+            # In cross mode, FindPython3 cannot probe numpy at the target, so we
+            # supply the include path explicitly.
+            local numpy_include
+            numpy_include="$(${HOST_PYTHON:-$(host_python_bin)} -c 'import numpy; print(numpy.get_include())' 2>/dev/null || true)"
+            if [ -n "${numpy_include}" ] && [ -d "${numpy_include}" ]; then
+                cmake_opts+=("-DPYTHON3_NUMPY_INCLUDE_DIRS=${numpy_include}")
+                echo "Set PYTHON3_NUMPY_INCLUDE_DIRS=${numpy_include} for cross-compile"
+            else
+                echo "[WARN] Numpy not available in host venv; Python3 wrappers will not be generated"
+            fi
         elif [ -f "/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so" ]; then
             cmake_opts+=("-DPYTHON3_LIBRARY=/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so")
             cmake_opts+=("-DPYTHON3_INCLUDE_DIR=/usr/local/include/python${OPENCV_PYTHON_VERSION}")
@@ -734,11 +747,12 @@ main() {
     install_opencv
     
     if [ "${WITH_PYTHON}" = "true" ]; then
-        if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-            echo "Skipping opencv-python wheel rebuild in cross mode; reusing the installed OpenCV Python bindings from ${OPENCV_PREFIX}"
-        else
-            build_opencv_python_wheel
-        fi
+        # The library cmake (with BUILD_opencv_python3=true and numpy headers)
+        # already installs cv2 to /opt/opencv5/lib/python3.*/site-packages/.
+        # The opencv-python wheel rebuild produces the OLD tagged version from
+        # the official repo (4.x, not 5.x) and would overwrite the source-built
+        # 5.x bindings. Skip it unconditionally.
+        echo "Skipping opencv-python wheel rebuild; source-built 5.x bindings are already installed to ${OPENCV_PREFIX}"
     fi
     
     cleanup

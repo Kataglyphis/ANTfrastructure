@@ -48,6 +48,44 @@ setup_torch_venv() {
   uv venv "${venv_args[@]}" "${VENV}"
 }
 
+seed_opencv5_bindings() {
+  # If OpenCV 5.x Python bindings were built during the media stage, they
+  # live at /opt/opencv5/lib/python3.*/site-packages/cv2.  Create a .pth
+  # file in the venv so `import cv2` resolves to the source-built version
+  # instead of downloading an older PyPI wheel.
+  local cv2_dir
+  cv2_dir="$(find /opt/opencv5/lib/python3.*/site-packages -maxdepth 1 -name cv2 -type d 2>/dev/null | head -1 || true)"
+  if [ -n "${cv2_dir}" ]; then
+    local site_pkg_dir
+    site_pkg_dir="$(echo "${VENV}/lib/python3."*/site-packages 2>/dev/null | head -1 || true)"
+    local pth="${site_pkg_dir}/opencv5.pth"
+    local parent
+    parent="$(dirname "${cv2_dir}")"
+    if [ -d "${site_pkg_dir}" ]; then
+      echo "${parent}" > "${pth}" 2>/dev/null || true
+    fi
+    echo "Added OpenCV5 bindings .pth: ${parent}"
+
+    # Cross-compiled cv2.so gets the host platform suffix (x86_64) from
+    # cmake's FindPython3.  Rename it to match the runtime target platform
+    # suffix so the extension is loadable on the real architecture.
+    local host_arch target_suffix so_dir
+    host_arch="$(uname -m)"
+    target_suffix="$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))' 2>/dev/null || true)"
+    if [ "${host_arch}" != "x86_64" ] && [ -n "${target_suffix}" ]; then
+      so_dir="$(find "${cv2_dir}" -name 'python-3.*' -type d 2>/dev/null | head -1 || true)"
+      if [ -n "${so_dir}" ]; then
+        local old_so
+        old_so="$(find "${so_dir}" -name 'cv2.cpython-3*.so' -type f 2>/dev/null | head -1 || true)"
+        if [ -n "${old_so}" ] && [ ! "${old_so}" = "${so_dir}/cv2${target_suffix}" ]; then
+          mv "${old_so}" "${so_dir}/cv2${target_suffix}" 2>/dev/null || true
+          echo "Renamed cv2 .so to target suffix: ${target_suffix}"
+        fi
+      fi
+    fi
+  fi
+}
+
 setup_torch_deps() {
   cross_skip "torch environment assembly" && return 0
 
@@ -163,6 +201,7 @@ setup_torch_app() {
 
 main() {
   setup_torch_venv
+  seed_opencv5_bindings
   setup_torch_deps
   setup_torch_app
 }

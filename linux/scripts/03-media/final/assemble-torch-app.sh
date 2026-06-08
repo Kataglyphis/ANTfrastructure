@@ -90,9 +90,13 @@ collect_locked_local_wheels() {
   for wheel_path in /opt/wheels/*.whl; do
     wheel_basename="$(basename "${wheel_path}")"
     case "${wheel_basename}" in
-      torch-*.whl|torchvision-*.whl|ai_edge_litert-*.whl|ai-edge-litert-*.whl|opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
-        out_wheels_ref+=("${wheel_path}")
-        ;;
+      torch-*.whl|torchvision-*.whl|ai_edge_litert-*.whl|ai-edge-litert-*.whl|      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
+        if staged_opencv_python_available; then
+          echo "Skipping /opt/wheels/ opencv wheel (source-built OpenCV5 bindings found)"
+        else
+          out_wheels_ref+=("${wheel_path}")
+        fi
+        ;;      
     esac
   done
   shopt -u nullglob
@@ -190,13 +194,19 @@ install_project_environment() {
     done
 
     if [ "${have_onnx_family}" = "true" ]; then
-      uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-rocm onnxruntime-webgpu || true
+      uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-rocm onnxruntime-webgpu 2>/dev/null || true
     fi
     if [ "${have_opencv_family}" = "true" ]; then
-      uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless || true
+      uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
     fi
 
     uv pip install --force-reinstall "${local_wheels[@]}"
+  fi
+
+  # If any dependency pulled in a PyPI opencv-python (4.x), remove it
+  # so the source-built OpenCV5 bindings win.
+  if staged_opencv_python_available; then
+    uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
   fi
 
   if python3 -c 'import gi; print(gi.__version__)' 2>/dev/null; then
@@ -208,6 +218,12 @@ install_project_environment() {
 
 verify_project_environment() {
   activate_project_environment
+
+  # Uninstall any pip-installed opencv packages so the source-built
+  # OpenCV5 bindings at /opt/opencv5 (visible via .pth) are used.
+  if staged_opencv_python_available; then
+    uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
+  fi
 
   find "${VENV}" -name "cv2*.so" -exec ldd {} \; || true
   uv run --active python -c "import gi, numpy, contourpy; print('gi OK'); print('numpy', numpy.__version__);"
