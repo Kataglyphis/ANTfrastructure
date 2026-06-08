@@ -25,32 +25,51 @@ def extract(pattern: str, text: str, description: str) -> str:
     return match.group(1)
 
 
+def parse_versions_env() -> dict[str, str]:
+    versions_path = REPO_ROOT / "linux/scripts/01-core/versions.env"
+    if not versions_path.exists():
+        raise ValueError(f"Canonical versions file not found: {versions_path}")
+    result: dict[str, str] = {}
+    for line in versions_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            continue
+        result[key] = value
+    return result
+
+
 def collect_versions() -> dict[str, str]:
-    linux_base = read_repo_file("linux/Dockerfile.base")
+    v = parse_versions_env()
+
     linux_webserver = read_repo_file("linux/webserver/Dockerfile")
-    linux_common = read_repo_file("linux/scripts/01-core/common.sh")
-    linux_android = read_repo_file("linux/Dockerfile.android")
     windows_base = read_repo_file("windows/Dockerfile.base")
     windows_ai = read_repo_file("windows/Dockerfile.ai")
     windows_vs = read_repo_file("windows/scripts/setup-vs.ps1")
 
     return {
-        "linux_ubuntu": extract(r"^FROM ubuntu:([^\s]+)$", linux_base, "Linux Ubuntu version"),
-        "linux_cmake": extract(r"^ARG CMAKE_VERSION=([^\s]+)$", linux_base, "Linux CMake version"),
-        "linux_vulkan": extract(r"^ARG VULKAN_VERSION=([^\s]+)$", linux_base, "Linux Vulkan version"),
+        "linux_ubuntu": v["UBUNTU_VERSION"],
+        "linux_cmake": v["CMAKE_VERSION"],
+        "linux_vulkan": v["VULKAN_VERSION"],
         "linux_llvm": extract(
-            r'LLVM_WANTED="\$\{LLVM_RELEASE:-([^}]+)\}"',
-            linux_common,
+            r"(\d+\.\d+\.\d+)",
+            v.get("LLVM_RELEASE", "0.0.0"),
             "Linux LLVM version",
         ),
         "linux_gcc": extract(
-            r'GCC_WANTED="\$\{GCC_VERSION:-([^}]+)\}"',
-            linux_common,
-            "Linux GCC version",
+            r"(\d+)",
+            v.get("GCC_VERSION", "0"),
+            "Linux GCC major version",
         ),
-        "android_sdk": extract(r"^ARG ANDROID_SDK_VERSION=([^\s]+)$", linux_android, "Android SDK version"),
-        "android_ndk": extract(r"^ARG ANDROID_NDK_VERSION=([^\s]+)$", linux_android, "Android NDK version"),
-        "android_cmake": extract(r"^ARG ANDROID_CMAKE_VERSION=([^\s]+)$", linux_android, "Android CMake version"),
+        "android_sdk": v["ANDROID_SDK_VERSION"],
+        "android_ndk": v["ANDROID_NDK_VERSION"],
+        "android_cmake": v["ANDROID_CMAKE_VERSION"],
         "webserver_ubuntu": extract(r"^FROM ubuntu:([^\s]+)$", linux_webserver, "Webserver Ubuntu version"),
         "windows_ltsc": extract(
             r"^FROM mcr\.microsoft\.com/windows/servercore:ltsc([^\s]+)$",

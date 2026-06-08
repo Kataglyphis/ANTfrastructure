@@ -548,11 +548,20 @@ nerdctl build --platform linux/amd64 \
   .
 ```
 
-## Four Critical Fixes To Maintain
+## Centralized Version Management
 
-To prevent regressions during updates, always preserve the following four vital fixes in the Linux cross pipeline:
+All version numbers are now tracked in a single file: `linux/scripts/01-core/versions.env`. Update this file when bumping versions — do NOT scatter version changes across individual Dockerfiles.
+
+`common.sh` and `artifact-common.sh` both source `versions.env` at load time with `set -a`, so all build scripts and orchestrators automatically receive canonical values. The per-Dockerfile ARG defaults are kept as safety nets and should match `versions.env`.
+
+After bumping versions, run `python3 docs/scripts/sync_versions.py --write` to update the version snapshot in `README.md`.
+
+## Five Critical Fixes To Maintain
+
+To prevent regressions during updates, always preserve the following five vital fixes in the Linux cross pipeline:
 
 1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, the `rewrite_staged_python_pc()` helper rewrites the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory so `gst-python` builds succeed.
 2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, the build must copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent downstream `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), standard CPython build steps create standard cross-build library symlinks that end up dangling when packaged. We use `cp -a -L` to dereference those symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the target's `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Since target-packaged Python is staged into the compiler-cross image, the compiler itself must be rebuilt if this helper logic is changed.
 4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, the GCC alternatives registration wires `/opt/gcc-16.1.0/bin/gcc` as the system `cc`/`c++` on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native GCC at the end of the Android stage. The build hard-fails if the runtime `cc` is the wrong architecture, using three layered guards: (a) `cc -dumpmachine` must match `TARGET_ARCH`; (b) the ELF machine type of the `cc` binary itself (via `readelf -h`) must match the target — this is the real discriminator, because `-dumpmachine` reports the *target* triple and cannot tell a target-native compiler from a host-arch cross-compiler that merely targets the same triple; and (c) a cc1 compile-to-object smoke (`cc -x c - -c -o`) plus an ELF-machine check on the produced object, run under the target platform (QEMU for foreign arch). `Dockerfile.android` additionally asserts the ELF machine type of the swapped GCC right after the swap. The `wrapper-smoke` target uses `linux/scripts/06-packaging/smoke-wrapper.sh` for end-to-end verification.
+5. **Fix 5 (OpenCV 5 GStreamer compat):** `patch-gstreamer-sources.sh` → `patch_gstreamer_opencv5_compat()` patches the GStreamer `gst-plugins-bad` opencv plugin sources at build time for OpenCV 5.x compatibility. Three API changes are handled: (a) `contourArea`/`approxPolyDP`/`convexHull` moved to new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`; (b) chessboard/circles-grid detection (`findChessboardCorners`/`findCirclesGrid`/`CALIB_CB_*`) moved to `objdetect` module → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`; (c) `cv::CascadeClassifier` removed from OpenCV 5 → drops the three cascade-dependent GStreamer elements (`faceblur`, `facedetect`, `handdetect`) from the monolithic `libgstopencv.so`. Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compatibility alias because GStreamer's meson dependency lookup queries `dependency('opencv4')`. All patches are idempotent (guarded with grep before applying). When changing OpenCV or GStreamer versions, verify the patch still applies correctly.

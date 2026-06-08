@@ -3,6 +3,13 @@
 
 _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Source canonical version defaults (single source of truth).
+# Variables already set in the environment take precedence over versions.env.
+set -a
+# shellcheck disable=SC1090,SC1091
+[ -f "${_COMMON_SH_DIR}/versions.env" ] && source "${_COMMON_SH_DIR}/versions.env"
+set +a
+
 # Side-effect free helpers
 # shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/logging.sh" ] && source "${_COMMON_SH_DIR}/logging.sh"
@@ -18,9 +25,9 @@ _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
-# Defaults (overridden by CLI or ENV)
+# Derived defaults (use the canonical values from versions.env as fallbacks)
 if [ -z "${LLVM_WANTED:-}" ]; then
-  LLVM_WANTED="${LLVM_RELEASE:-22}"
+  LLVM_WANTED="${LLVM_RELEASE}"
   LLVM_WANTED="$(version_major "${LLVM_WANTED}")"
 fi
 
@@ -29,7 +36,7 @@ if [ -z "${CLANG_WANTED:-}" ]; then
 fi
 
 if [ -z "${GCC_WANTED:-}" ]; then
-  GCC_WANTED="${GCC_VERSION:-16}"
+  GCC_WANTED="${GCC_VERSION}"
   GCC_WANTED="$(version_major "${GCC_WANTED}")"
 fi
 
@@ -37,7 +44,29 @@ if [ -z "${PYTHON_MAJOR_MINOR:-}" ] && [ -n "${PYTHON_VERSION:-}" ]; then
   PYTHON_MAJOR_MINOR="$(version_major_minor "${PYTHON_VERSION}")"
 fi
 
-VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-1.4.341.1}
+VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-${VULKAN_VERSION}}
+
+# ---------------------------------------------------------------------------
+# ensure_target_arch
+#
+# Normalizes TARGET_ARCH from TARGETARCH when TARGET_ARCH is unset.
+# Print the resolved value and export it.
+# ---------------------------------------------------------------------------
+ensure_target_arch() {
+  if [ -z "${TARGET_ARCH:-}" ]; then
+    TARGET_ARCH="${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
+  fi
+  case "${TARGET_ARCH}" in
+    x86_64) TARGET_ARCH=amd64 ;;
+    aarch64) TARGET_ARCH=arm64 ;;
+    riscv64) ;;
+    amd64) ;;
+    arm64) ;;
+    *) printf '[WARN] ensure_target_arch: unknown architecture %s\n' "${TARGET_ARCH}" >&2 ;;
+  esac
+  export TARGET_ARCH
+  echo "TARGET_ARCH=${TARGET_ARCH}"
+}
 
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 APT_FLAGS=(-qq --no-install-recommends "${APT_OPTS[@]}")

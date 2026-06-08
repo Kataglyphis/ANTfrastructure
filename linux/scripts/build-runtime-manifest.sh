@@ -13,7 +13,6 @@ ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_
 ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
 BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
 PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
-PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
 WRAPPER_DOCKERFILE_PATH="${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}"
 TORCH_APP_MODE="${TORCH_APP_MODE:-}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
@@ -106,55 +105,23 @@ create_manifest() {
 
 main() {
   while [ $# -gt 0 ]; do
+    local shared_rc=0
+    parse_shared_runtime_args \
+      ARCHITECTURES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
+      BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
+      TORCH_APP_MODE \
+      USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
+      PUSH_INTERMEDIATE_IMAGES \
+      "$1" "$2" || true
+    shared_rc=$?
+    case ${shared_rc} in
+      2) shift 2; continue ;;
+      1) shift 1; continue ;;
+      255) usage; exit 0 ;;
+    esac
     case "$1" in
       --image)
         IMAGE_NAME="$2"
-        shift 2
-        ;;
-      --architectures|--target-arches)
-        ARCHITECTURES="$2"
-        shift 2
-        ;;
-      --artifact-image-prefix)
-        ARTIFACT_IMAGE_PREFIX="$2"
-        shift 2
-        ;;
-      --artifact-build-mode)
-        ARTIFACT_BUILD_MODE="$2"
-        shift 2
-        ;;
-      --base-dockerfile)
-        BASE_DOCKERFILE_PATH="$2"
-        shift 2
-        ;;
-      --package-dockerfile)
-        PACKAGE_DOCKERFILE_PATH="$2"
-        shift 2
-        ;;
-      --torch-dockerfile)
-        WRAPPER_DOCKERFILE_PATH="$2"
-        shift 2
-        ;;
-      --wrapper-dockerfile)
-        WRAPPER_DOCKERFILE_PATH="$2"
-        shift 2
-        ;;
-      --torch-app-mode)
-        TORCH_APP_MODE="$2"
-        shift 2
-        ;;
-      --fast-ubuntu-mirror)
-        USE_FAST_UBUNTU_MIRROR=true
-        shift
-        ;;
-      --fast-ubuntu-mirror-url)
-        USE_FAST_UBUNTU_MIRROR=true
-        FAST_UBUNTU_MIRROR_URL="$2"
-        shift 2
-        ;;
-      --fast-ubuntu-ports-mirror-url)
-        USE_FAST_UBUNTU_MIRROR=true
-        FAST_UBUNTU_PORTS_MIRROR_URL="$2"
         shift 2
         ;;
       --push-images)
@@ -178,15 +145,14 @@ main() {
         PUSH_MANIFEST=1
         shift
         ;;
+      # --push-all is partially handled by the shared parser (which sets
+      # PUSH_INTERMEDIATE_IMAGES=1). Re-catch it here to also set the
+      # manifest-specific flags.
       --push-all)
         PUSH_IMAGES=1
         PUSH_MANIFEST=1
         PUSH_INTERMEDIATE_IMAGES=1
         shift
-        ;;
-      -h|--help)
-        usage
-        exit 0
         ;;
       *)
         printf '[ERROR] Unknown option: %s\n' "$1" >&2

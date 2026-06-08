@@ -175,35 +175,40 @@ nerdctl manifest inspect "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
 
 When bumping dependency versions across the Linux Dockerfiles, follow this checklist:
 
-### Version Map
+### Centralized Version File
 
-Versions live in multiple places. Update all of them:
+**The single source of truth for ALL versions is `linux/scripts/01-core/versions.env`.** Update it first, then verify the downstream consumers are in sync.
+
+`common.sh` and `artifact-common.sh` both source `versions.env` at load time with `set -a`, so all build scripts automatically receive the canonical values. Orchestrator scripts inherit versions through `artifact-common.sh`. The old per-Dockerfile ARG defaults are kept as safety nets and should match `versions.env`.
+
+### Version Map
 
 | Software | Where defined |
 |----------|---------------|
+| **All Linux versions** | `linux/scripts/01-core/versions.env` (canonical) |
 | **BuildKit syntax** | `# syntax=docker/dockerfile:VERSION` line 1 in every `linux/Dockerfile*` |
-| **LLVM/Clang** | `ARG LLVM_RELEASE=...` in `Dockerfile.toolchain`; comments in `Dockerfile.package` L209, `Dockerfile.sdk` L51; validation text in `AGENTS.md`, `docs/linux-cross-builds.md` |
-| **GCC** | `ARG GCC_VERSION=...` in `Dockerfile.toolchain` and `Dockerfile.package`; doc refs use major only (`16`) |
-| **Python** | `ARG PYTHON_VERSION=...` in `Dockerfile.toolchain` and `Dockerfile.package`; `ARG PYTHON_MAJOR_MINOR=...` in `Dockerfile.package` |
-| **CMake** | `ARG CMAKE_VERSION=...` in `Dockerfile.base` |
-| **Node.js** | `ARG NODE_VERSION=...` in `Dockerfile.base` |
-| **uv** | `ARG UV_VERSION=...` in `Dockerfile.base` |
-| **Vulkan SDK** | `ARG VULKAN_VERSION=...` in `Dockerfile.base` and `Dockerfile.sdk`; `VULKAN_VERSION_DEFAULT` in `common.sh` |
-| **ONNX Runtime** | `ARG ONNXRUNTIME_VERSION=...` in `Dockerfile.media` |
-| **ONNX Runtime GenAI** | `ARG ONNXRUNTIME_GENAI_VERSION=...` in `Dockerfile.media` |
-| **LiteRT** | `ARG LITERT_VERSION=...` in `Dockerfile.media` |
-| **OpenCV** | `ARG OPENCV_VERSION=...` in `Dockerfile.media`; uses `5.x` branch |
-| **GStreamer** | `ARG GSTREAMER_VERSION=...` in `Dockerfile.media` and `Dockerfile.package` |
-| **CUDA** | `ARG CUDA_VERSION=...` and `ARG CUDA_VERSION_MAJOR_MINOR=...` in `Dockerfile.nvidia` |
-| **cuDNN** | `ARG CUDNN_VERSION=...` (major only) in `Dockerfile.nvidia` |
-| **TensorRT** | `ARG TENSORRT_VERSION=...` (major only) in `Dockerfile.nvidia` |
-| **ROCm** | `ARG ROCM_VERSION=...` in `Dockerfile.amd` |
-| **Apache TVM** | `ARG TVM_REF=...` in `Dockerfile.sdk` |
-| **Android SDK** | `ARG ANDROID_SDK_VERSION=...` in `Dockerfile.android` and `Dockerfile.package` |
-| **Android NDK** | `ARG ANDROID_NDK_VERSION=...` in `Dockerfile.android` and `Dockerfile.package` |
-| **Android Build Tools** | `ARG ANDROID_BUILD_TOOLS=...` in `Dockerfile.android` and `Dockerfile.package` |
-| **Android CMake** | `ARG ANDROID_CMAKE_VERSION=...` in `Dockerfile.android` and `Dockerfile.package` |
-| **Android SDK/API** | `ARG ANDROID_COMPILE_SDK=...` and `ARG ANDROID_API_LEVEL=...` in `Dockerfile.android` and `Dockerfile.package` |
+| **LLVM/Clang** | `versions.env` then forwarded by `Dockerfile.toolchain`, `Dockerfile.sdk`, `Dockerfile.package` |
+| **GCC** | `versions.env` then forwarded by `Dockerfile.toolchain`, `Dockerfile.android`, `Dockerfile.package` |
+| **Python** | `versions.env` then forwarded by `Dockerfile.toolchain`, `Dockerfile.package` |
+| **CMake** | `versions.env` then forwarded by `Dockerfile.base` |
+| **Node.js** | `versions.env` then forwarded by `Dockerfile.base` |
+| **uv** | `versions.env` then forwarded by `Dockerfile.base` |
+| **Vulkan SDK** | `versions.env` then forwarded by `Dockerfile.base`, `Dockerfile.sdk` |
+| **ONNX Runtime** | `versions.env` then forwarded by `Dockerfile.media` |
+| **ONNX Runtime GenAI** | `versions.env` then forwarded by `Dockerfile.media` |
+| **LiteRT** | `versions.env` then forwarded by `Dockerfile.media` |
+| **OpenCV** | `versions.env` then forwarded by `Dockerfile.media` |
+| **GStreamer** | `versions.env` then forwarded by `Dockerfile.media`, `Dockerfile.package` |
+| **CUDA** | `versions.env` then forwarded by `Dockerfile.nvidia` |
+| **cuDNN** | `versions.env` then forwarded by `Dockerfile.nvidia` |
+| **TensorRT** | `versions.env` then forwarded by `Dockerfile.nvidia` |
+| **ROCm** | `versions.env` then forwarded by `Dockerfile.amd` |
+| **Apache TVM** | `Dockerfile.sdk` only (ARG TVM_REF) |
+| **Android SDK** | `versions.env` then forwarded by `Dockerfile.android`, `Dockerfile.package` |
+| **Android NDK** | `versions.env` then forwarded by `Dockerfile.android`, `Dockerfile.package` |
+| **Android Build Tools** | `versions.env` then forwarded by `Dockerfile.android`, `Dockerfile.package` |
+| **Android CMake** | `versions.env` then forwarded by `Dockerfile.android`, `Dockerfile.package` |
+| **Android SDK/API** | `versions.env` then forwarded by `Dockerfile.android`, `Dockerfile.package` |
 | **Ubuntu** | `FROM ubuntu:...` in `Dockerfile.base` and `webserver/Dockerfile` |
 | **Webserver Ubuntu** | `FROM ubuntu:...` in `linux/webserver/Dockerfile` |
 

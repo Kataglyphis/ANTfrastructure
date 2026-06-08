@@ -31,8 +31,8 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 SHELL ["bash", "-lc"]
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core,ro \
-    bash /tmp/core/dockerfile-common.sh configure-fast-mirror
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
 
 # Install prerequisites and add ROCm repository
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-amd-${TARGETARCH} \

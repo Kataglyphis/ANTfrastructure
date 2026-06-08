@@ -17,8 +17,6 @@ ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 
-SHELL ["bash", "-lc"]
-
 ENV BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
     TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
@@ -27,8 +25,8 @@ ENV BUILD_MODE=${BUILD_MODE} \
     BUILDPLATFORM=${BUILDPLATFORM} \
     LLVM_RELEASE=${LLVM_RELEASE}
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core,ro \
-    bash /tmp/core/dockerfile-common.sh configure-fast-mirror
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
 # Includes llvm.sh (with install_target_clang_toolchain) and setup-dependencies.sh
