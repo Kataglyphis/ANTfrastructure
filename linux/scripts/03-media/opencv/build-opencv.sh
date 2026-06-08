@@ -18,39 +18,22 @@ IFS=$'\n\t'
 #   USE_LLD=true        Use lld linker for faster linking (default: true)
 # ==============================================================================
 
-# Source build acceleration helpers if available
+# Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
-    "/opt/scripts/core/cross-env.sh" \
-    "${SCRIPT_DIR}/../../01-core/cross-env.sh"; do
+    "/opt/scripts/core/modules.sh" \
+    "${SCRIPT_DIR}/../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
+        source_modules_framework "${SCRIPT_DIR}"
         break
     fi
 done
 
-for helper in \
-    "/opt/scripts/core/compiler-cache.sh" \
-    "${SCRIPT_DIR}/../../01-core/compiler-cache.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        setup_ccache
-        setup_lld_linker
-        break
-    fi
-done
-
-for helper in \
-    "/opt/scripts/core/logging.sh" \
-    "${SCRIPT_DIR}/../../01-core/logging.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        break
-    fi
-done
+source_module cross-env.sh || true
+source_module logging.sh || true
+source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 
 on_err() {
   local line="${1:-?}"

@@ -791,6 +791,38 @@ dispatch_parsed_args() {
 #   0  — flag not recognized (caller should handle it)
 #   255 — --help requested (caller should print usage and exit)
 # ==============================================================================
+# ==============================================================================
+# Shared dispatch wrapper for runtime build scripts.
+# Both build-runtime-artifacts.sh and build-runtime-manifest.sh call this from
+# their argument loop to handle the common --architectures, --fast-ubuntu-mirror,
+# etc. flags.  Pass the same namerefs + "$1" "$2" as parse_shared_runtime_args.
+# ==============================================================================
+runtime_dispatch_shared_args() {
+  dispatch_parsed_args parse_shared_runtime_args "$@" || { local rc=$?; return $rc; }
+}
+
+# ==============================================================================
+# Shared post-parse setup for runtime build scripts.
+# Call after argument parsing to normalize arches, set RUNTIME_IMAGE_PREFIX,
+# and prepare local context chain.  Requires IMAGE_PREFIX or IMAGE_NAME to be
+# set before calling.
+# ==============================================================================
+runtime_post_parse_setup() {
+  local arches_var_name="${1:-TARGET_ARCHES}"
+  local image_prefix="${2:-${IMAGE_PREFIX:-${IMAGE_NAME:-}}}"
+
+  cd "${REPO_ROOT}"
+
+  # Resolve the arches variable dynamically
+  local raw_arches="${!arches_var_name}"
+  raw_arches="$(normalize_target_arches "${raw_arches}")"
+  eval "${arches_var_name}=\"${raw_arches}\""
+
+  export RUNTIME_IMAGE_PREFIX="${image_prefix}"
+  runtime_prepare_local_context_chain
+  runtime_install_local_context_cleanup_trap
+}
+
 parse_shared_runtime_args() {
   local -n _target_arches=$1
   local -n _artifact_image_prefix=$2

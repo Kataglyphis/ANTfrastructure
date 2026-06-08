@@ -74,14 +74,15 @@ create_manifest() {
 
 main() {
   while [ $# -gt 0 ]; do
-    dispatch_parsed_args parse_shared_runtime_args \
+    local _dispatch_rc=0
+    runtime_dispatch_shared_args \
       ARCHITECTURES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
       BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
       TORCH_APP_MODE \
       USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
       PUSH_INTERMEDIATE_IMAGES \
-      "$1" "$2"
-    case $? in
+      "$1" "${2:-}" || _dispatch_rc=$?
+    case $_dispatch_rc in
       2) shift 2; continue ;;
       1) shift 1; continue ;;
       255) usage; exit 0 ;;
@@ -132,11 +133,8 @@ main() {
     exit 1
   fi
 
-  cd "${REPO_ROOT}"
-  ARCHITECTURES="$(normalize_target_arches "${ARCHITECTURES}")"
-  RUNTIME_IMAGE_PREFIX="${IMAGE_NAME}"
-  runtime_prepare_local_context_chain
-  runtime_install_local_context_cleanup_trap
+  runtime_post_parse_setup ARCHITECTURES "${IMAGE_NAME}"
+
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
     log "Building ${ARTIFACT_BUILD_MODE} runtime package flow for architectures: ${ARCHITECTURES}"
   else

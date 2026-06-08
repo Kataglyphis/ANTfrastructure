@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
+IFS=$'\n\t'
 
-if [ -f /opt/scripts/core/cross-env.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
+# Source shared modules
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for helper in \
+    "/opt/scripts/core/modules.sh" \
+    "${SCRIPT_DIR}/../../01-core/modules.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        source_modules_framework "${SCRIPT_DIR}"
+        break
+    fi
+done
 
-append_env_flag() {
-  local var_name="$1"
-  local flag="$2"
-  local current="${!var_name:-}"
-
-  case " ${current} " in
-    *" ${flag} "*) return 0 ;;
-  esac
-
-  export "${var_name}=${current:+${current} }${flag}"
-}
+source_module cross-env.sh || true
+source_module logging.sh || true
+source_module common.sh || true
 
 patch_libcamera_riscv64_cross_sources() {
   local common_meson="${LIBCAMERA_SRC}/src/apps/common/meson.build"
@@ -131,7 +132,7 @@ if [ -n "${compiler_probe}" ] && [ -x "${compiler_probe}" ]; then
     case "${compiler_details}" in
       *"gcc version "*)
         # GCC 16 misdiagnoses libcamera's shared std::mutex teardown as array-bounds.
-        append_env_flag CXXFLAGS "-Wno-error=array-bounds"
+        append_flag_if_missing CXXFLAGS "-Wno-error=array-bounds"
         ;;
     esac
   fi
@@ -149,14 +150,14 @@ if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
   # arch-specific target headers such as opensslconf.h live in the multiarch
   # include dir. The cross compiler does not reliably search both roots here.
   if [ -d /usr/include ]; then
-    append_env_flag CPPFLAGS "-idirafter /usr/include"
-    append_env_flag CFLAGS "-idirafter /usr/include"
-    append_env_flag CXXFLAGS "-idirafter /usr/include"
+    append_flag_if_missing CPPFLAGS "-idirafter /usr/include"
+    append_flag_if_missing CFLAGS "-idirafter /usr/include"
+    append_flag_if_missing CXXFLAGS "-idirafter /usr/include"
   fi
   if [ -n "${cross_triplet}" ] && [ -d "/usr/include/${cross_triplet}" ]; then
-    append_env_flag CPPFLAGS "-idirafter /usr/include/${cross_triplet}"
-    append_env_flag CFLAGS "-idirafter /usr/include/${cross_triplet}"
-    append_env_flag CXXFLAGS "-idirafter /usr/include/${cross_triplet}"
+    append_flag_if_missing CPPFLAGS "-idirafter /usr/include/${cross_triplet}"
+    append_flag_if_missing CFLAGS "-idirafter /usr/include/${cross_triplet}"
+    append_flag_if_missing CXXFLAGS "-idirafter /usr/include/${cross_triplet}"
   fi
 
   if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then

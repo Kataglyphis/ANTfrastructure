@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+IFS=$'\n\t'
 
 # ==============================================================================
 # build-ffmpeg.sh - Build and install latest FFmpeg from source
@@ -14,29 +15,21 @@ set -euo pipefail
 #   USE_LLD=true        Use lld linker for faster linking (default: true)
 # ==============================================================================
 
-# Source build acceleration helpers if available
+# Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
-    "/opt/scripts/core/cross-env.sh" \
-    "${SCRIPT_DIR}/../../01-core/cross-env.sh"; do
+    "/opt/scripts/core/modules.sh" \
+    "${SCRIPT_DIR}/../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
+        source_modules_framework "${SCRIPT_DIR}"
         break
     fi
 done
 
-for helper in \
-    "/opt/scripts/core/compiler-cache.sh" \
-    "${SCRIPT_DIR}/../../01-core/compiler-cache.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        setup_ccache
-        setup_lld_linker
-        break
-    fi
-done
+source_module cross-env.sh || true
+source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 
 # Defaults (can be overridden via env vars)
 : "${FFMPEG_SRC:=/tmp/ffmpeg}"

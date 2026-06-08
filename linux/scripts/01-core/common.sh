@@ -134,3 +134,15 @@ apt_install_available() {
     apt_install "${pkgs[@]}"
   fi
 }
+
+append_flag_if_missing() {
+  local var_name="$1"
+  local flag="$2"
+  local current="${!var_name:-}"
+
+  case " ${current} " in
+    *" ${flag} "*) return 0 ;;
+  esac
+
+  export "${var_name}=${current:+${current} }${flag}"
+}

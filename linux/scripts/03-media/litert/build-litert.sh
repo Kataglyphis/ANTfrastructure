@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+IFS=$'\n\t'
 
 # ==============================================================================
 # build-litert.sh - Build and install LiteRT from source
@@ -10,39 +11,22 @@ set -euo pipefail
 #   USE_LLD=true        Use lld linker for faster linking (default: true)
 # ==============================================================================
 
-# Source build acceleration helpers if available
-SCRIPT_DIR_LITERT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source shared modules
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for helper in \
-    "/opt/scripts/core/cross-env.sh" \
-    "${SCRIPT_DIR_LITERT}/../../01-core/cross-env.sh"; do
+    "/opt/scripts/core/modules.sh" \
+    "${SCRIPT_DIR}/../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
         # shellcheck disable=SC1090
         source "${helper}"
+        source_modules_framework "${SCRIPT_DIR}"
         break
     fi
 done
 
-for helper in \
-    "/opt/scripts/core/compiler-cache.sh" \
-    "${SCRIPT_DIR_LITERT}/../../01-core/compiler-cache.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        setup_ccache
-        setup_lld_linker
-        break
-    fi
-done
-
-for helper in \
-    "/opt/scripts/core/logging.sh" \
-    "${SCRIPT_DIR_LITERT}/../../01-core/logging.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        break
-    fi
-done
+source_module cross-env.sh || true
+source_module logging.sh || true
+source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 
 LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
 : "${LITERT_SRC:=/tmp/litert}"

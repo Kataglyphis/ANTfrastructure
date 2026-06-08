@@ -1,34 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
+IFS=$'\n\t'
+
+# Source shared modules
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for helper in \
+    "/opt/scripts/core/modules.sh" \
+    "${SCRIPT_DIR}/../../../01-core/modules.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        source_modules_framework "${SCRIPT_DIR}"
+        break
+    fi
+done
+
+source_module platform.sh || true
+source_module common.sh || true
 
 GSTREAMER_VERSION="${1:?gstreamer version is required}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 
 ensure_gstreamer_multiarch_layout() {
-  local target_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
-  local triplet=""
-
-  case "${target_arch}" in
-    amd64) triplet="x86_64-linux-gnu" ;;
-    arm64) triplet="aarch64-linux-gnu" ;;
-    riscv64) triplet="riscv64-linux-gnu" ;;
-    *) triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)" ;;
-  esac
+  local triplet
+  triplet="$(arch_deb_multiarch_triplet_for "${TARGET_ARCH:-${TARGETARCH:-amd64}}")" || true
+  if [ -z "${triplet}" ]; then
+    triplet="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+  fi
 
   [ -n "${triplet}" ] || return 0
   mkdir -p "${GSTREAMER_PREFIX}/lib/${triplet}"
   ln -snf "${GSTREAMER_PREFIX}/lib/${triplet}" "${GSTREAMER_PREFIX}/lib/multiarch" || true
-}
-
-append_meson_arg_if_missing() {
-  local arg="$1"
-
-  case " ${MESON_ARGS:-} " in
-    *" ${arg} "*) return 0 ;;
-  esac
-
-  export MESON_ARGS="${MESON_ARGS:+${MESON_ARGS} }${arg}"
 }
 
 ensure_gstreamer_multiarch_layout
@@ -51,7 +54,7 @@ fi
 export SODIUM_SHARED=1
 export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
 
-append_meson_arg_if_missing "-Dgst-plugins-rs:skia=disabled"
+append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
 
 bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
   "${GSTREAMER_VERSION}" \

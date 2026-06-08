@@ -311,11 +311,12 @@ verify_chain() {
 main() {
   local only_stage=""
   while [ $# -gt 0 ]; do
+    local _dispatch_rc=0
     dispatch_parsed_args parse_shared_orchestrator_args \
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
       FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IGNORED \
-      "$1" "$2"
-    case $? in
+      "$1" "${2:-}" || _dispatch_rc=$?
+    case $_dispatch_rc in
       2) shift 2; continue ;;
       1) shift 1; continue ;;
       255) usage; exit 0 ;;

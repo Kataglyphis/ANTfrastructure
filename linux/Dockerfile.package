@@ -265,14 +265,13 @@ ARG TARGETARCH
 ARG GCC_VERSION
 ARG LLVM_RELEASE
 
-COPY --chmod=755 linux/scripts/06-packaging/smoke-wrapper.sh /opt/scripts/packaging/smoke-wrapper.sh
 COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
 
 RUN set -eux; \
     GCC_VERSION="${GCC_VERSION}" \
     LLVM_RELEASE="${LLVM_RELEASE}" \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
-    bash /opt/scripts/packaging/smoke-wrapper.sh
+    bash /opt/scripts/packaging/validate-compilers.sh smoke
 
 # Runtime scripts + entrypoint + labels — keep in sync with
 # linux/Dockerfile.runtime-common (canonical source) and
