@@ -34,6 +34,16 @@ for helper in \
     fi
 done
 
+for helper in \
+    "/opt/scripts/core/logging.sh" \
+    "${SCRIPT_DIR_LITERT}/../../01-core/logging.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
 LITERT_VERSION="${1:-v2.1.4}"
 : "${LITERT_SRC:=/tmp/litert}"
 : "${LITERT_PREFIX:=/usr/local}"
@@ -50,19 +60,19 @@ export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
        Python_EXECUTABLE="${HOST_PYTHON}" \
        Python3_EXECUTABLE="${HOST_PYTHON}"
 
-echo "[INFO] Building LiteRT ${LITERT_VERSION}"
-echo "[INFO] Using JOBS=${NPROC}"
-echo "[INFO] Install prefix: ${LITERT_PREFIX}"
+info Building LiteRT ${LITERT_VERSION}
+info Using JOBS=${NPROC}
+info Install prefix: ${LITERT_PREFIX}
 
 fetch_litert() {
-    echo "[INFO] Fetching LiteRT ${LITERT_VERSION} source..."
+    info Fetching LiteRT ${LITERT_VERSION} source...
 
     rm -rf "${LITERT_SRC}"
     git clone --depth=1 --branch "${LITERT_VERSION}" \
         https://github.com/google-ai-edge/LiteRT.git "${LITERT_SRC}"
     cd "${LITERT_SRC}"
 
-    echo "[INFO] LiteRT version: $(git describe --tags 2>/dev/null || echo 'unknown')"
+    info LiteRT version: $(git describe --tags 2>/dev/null || echo 'unknown')
 }
 
 resolve_host_compiler() {
@@ -220,8 +230,8 @@ append_litert_preferred_cmake_compiler_args() {
             "-DCMAKE_C_FLAGS=-Wno-c2y-extensions"
             "-DCMAKE_CXX_FLAGS=-Wno-c2y-extensions"
         )
-        echo "[INFO] Using native Clang toolchain for LiteRT: ${native_clang} / ${native_clangxx}"
-        echo "[INFO] Disabling Clang C2y extension pedantic errors for bundled googlebenchmark"
+        info Using native Clang toolchain for LiteRT: ${native_clang} / ${native_clangxx}
+        info Disabling Clang C2y extension pedantic errors for bundled googlebenchmark
     fi
 }
 
@@ -240,14 +250,12 @@ litert_cross_wheel_platform_tag() {
 }
 
 configure_litert() {
-    echo "[INFO] Configuring LiteRT build..."
+    info Configuring LiteRT build...
 
     cd "${LITERT_SRC}/litert"
 
     local host_cc=""
     local host_cxx=""
-    local cross_ar=""
-    local cross_ranlib=""
 
     host_cc="$(resolve_host_compiler c)"
     host_cxx="$(resolve_host_compiler cxx)"
@@ -257,7 +265,7 @@ configure_litert() {
         preset="default-debug"
     fi
 
-    echo "[INFO] Using preset: ${preset}"
+    info Using preset: ${preset}
 
     # Build CMake arguments array
     local cmake_args=(
@@ -289,7 +297,7 @@ configure_litert() {
         local cross_arch=""
         cross_arch="$(cross_target_arch)"
         if [ "${cross_arch}" = "arm64" ] || [ "${cross_arch}" = "riscv64" ]; then
-            echo "[INFO] Removing Samsung vendor sources to avoid GCC 16.1.0 ICE on ${cross_arch} cross"
+            info Removing Samsung vendor sources to avoid GCC 16.1.0 ICE on ${cross_arch} cross
             rm -rf "${LITERT_SRC}/litert/vendors/samsung" 2>/dev/null || true
             mkdir -p "${LITERT_SRC}/litert/vendors/samsung"
             cat > "${LITERT_SRC}/litert/vendors/samsung/CMakeLists.txt" <<CMAKE_EOF
@@ -299,15 +307,9 @@ CMAKE_EOF
     fi
 
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-        cross_ar="$(resolve_litert_cross_archive_tool ar)"
-        cross_ranlib="$(resolve_litert_cross_archive_tool ranlib)"
-
-        cmake_args+=("-DCMAKE_AR=${cross_ar}")
-        cmake_args+=("-DCMAKE_RANLIB=${cross_ranlib}")
-        cmake_args+=("-DCMAKE_C_COMPILER_AR=${cross_ar}")
-        cmake_args+=("-DCMAKE_CXX_COMPILER_AR=${cross_ar}")
-        cmake_args+=("-DCMAKE_C_COMPILER_RANLIB=${cross_ranlib}")
-        cmake_args+=("-DCMAKE_CXX_COMPILER_RANLIB=${cross_ranlib}")
+        if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
+            append_cmake_cross_archiver_args cmake_args resolve_litert_cross_archive_tool
+        fi
 
         # LiteRT configures a nested host-only FlatBuffers build for flatc.
         # Do not let the target-side toolchain/cache/linker environment leak into
@@ -322,16 +324,16 @@ CMAKE_EOF
         if [ -n "${host_cxx}" ]; then
             host_cxx="$(prepare_host_compiler_wrapper cxx "${host_cxx}")"
         fi
-        echo "[INFO] Using host C compiler for flatbuffers: ${host_cc:-unresolved}"
-        echo "[INFO] Using host C++ compiler for flatbuffers: ${host_cxx:-unresolved}"
+        info Using host C compiler for flatbuffers: ${host_cc:-unresolved}
+        info Using host C++ compiler for flatbuffers: ${host_cxx:-unresolved}
         if [ -n "${host_cc}" ]; then
             cmake_args+=("-DLITERT_HOST_C_COMPILER=${host_cc}")
         fi
         if [ -n "${host_cxx}" ]; then
             cmake_args+=("-DLITERT_HOST_CXX_COMPILER=${host_cxx}")
         fi
-        echo "[INFO] Using cross archive tool: ${cross_ar}"
-        echo "[INFO] Using cross ranlib tool: ${cross_ranlib}"
+        info Using cross archive tool: ${cross_ar}
+        info Using cross ranlib tool: ${cross_ranlib}
     fi
 
     # Add lld linker flags if available
@@ -339,7 +341,7 @@ CMAKE_EOF
         cmake_args+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
         cmake_args+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
         cmake_args+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
-        echo "[INFO] Using lld linker for faster linking"
+        info Using lld linker for faster linking
     fi
 
     # Add ccache if available
@@ -351,9 +353,9 @@ CMAKE_EOF
             # Explicitly disable ccache for ASM files - ccache cannot handle assembly
             # and will fail with "invalid option -- 'D'" when processing .S files
             cmake_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
-            echo "[INFO] Using ccache for faster compilation (C/C++ only, not ASM)"
+            info "Using ccache for faster compilation (C/C++ only, not ASM)"
         else
-            echo "[INFO] ccache already configured via environment"
+            info ccache already configured via environment
             # Still need to disable ASM launcher to prevent ccache from being used for .S files
             cmake_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
         fi
@@ -363,12 +365,12 @@ CMAKE_EOF
     # linking against ruy_profiler_instrumentation (not present in some
     # build environments / submodule combinations). Explicitly set
     # RUY_PROFILER=0 so the profiler is disabled while ruy remains enabled.
-    echo "[INFO] LiteRT CMake args: ${cmake_args[*]}"
+    info LiteRT CMake args: ${cmake_args[*]}
     cmake --preset "${preset}" "${cmake_args[@]}"
 }
 
 build_litert() {
-    echo "[INFO] Building LiteRT with ${NPROC} parallel jobs..."
+    info Building LiteRT with ${NPROC} parallel jobs...
 
     local build_dir="cmake_build"
     if [ "${BUILD_TYPE}" = "Debug" ]; then
@@ -377,23 +379,23 @@ build_litert() {
 
     cd "${LITERT_SRC}/litert"
     cmake --build "${build_dir}" -j"${NPROC}" || {
-        echo "[WARN] Parallel build failed, trying single-threaded..."
+        warn Parallel build failed, trying single-threaded...
         cmake --build "${build_dir}" -j1 --verbose
     }
 }
 
 build_tflite_c_api() {
-    echo "[INFO] Building TensorFlow Lite C API library..."
+    info Building TensorFlow Lite C API library...
 
     local c_api_src="${LITERT_SRC}/tflite/c"
     if [ ! -d "${c_api_src}" ]; then
-        echo "[WARN] TFLite C API source not found at ${c_api_src}; skipping C API build"
+        warn TFLite C API source not found at ${c_api_src}; skipping C API build
         return 0
     fi
 
     # The C API CMakeLists.txt expects TF_SOURCE_DIR to contain tensorflow/lite
     # but LiteRT uses tflite/ instead. Create the compatibility symlink.
-    echo "[INFO] Creating tensorflow/lite symlink for C API build compatibility..."
+    info Creating tensorflow/lite symlink for C API build compatibility...
     mkdir -p "${LITERT_SRC}/tensorflow"
     ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
 
@@ -420,24 +422,15 @@ build_tflite_c_api() {
     fi
 
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
-        local cross_ar
-        local cross_ranlib
-
-        cross_ar="$(resolve_litert_cross_archive_tool ar)"
-        cross_ranlib="$(resolve_litert_cross_archive_tool ranlib)"
         tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
-        cmake_args+=("-DCMAKE_AR=${cross_ar}")
-        cmake_args+=("-DCMAKE_RANLIB=${cross_ranlib}")
-        cmake_args+=("-DCMAKE_C_COMPILER_AR=${cross_ar}")
-        cmake_args+=("-DCMAKE_CXX_COMPILER_AR=${cross_ar}")
-        cmake_args+=("-DCMAKE_C_COMPILER_RANLIB=${cross_ranlib}")
-        cmake_args+=("-DCMAKE_CXX_COMPILER_RANLIB=${cross_ranlib}")
+        if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
+            append_cmake_cross_archiver_args cmake_args resolve_litert_cross_archive_tool
+        fi
         if [ -z "${tflite_host_tools_dir}" ]; then
-            echo "[ERROR] Could not resolve TFLite host tools directory containing flatc for cross build"
-            return 1
+            err Could not resolve TFLite host tools directory containing flatc for cross build
         fi
         cmake_args+=("-DTFLITE_HOST_TOOLS_DIR=${tflite_host_tools_dir}")
-        echo "[INFO] Using TFLite host tools dir: ${tflite_host_tools_dir}"
+        info Using TFLite host tools dir: ${tflite_host_tools_dir}
     fi
 
     # Add lld linker flags if available
@@ -456,33 +449,31 @@ build_tflite_c_api() {
         fi
     fi
 
-    echo "[INFO] Configuring TFLite C API..."
-    echo "[INFO] C API source: ${c_api_src}"
-    echo "[INFO] TF_SOURCE_DIR: ${LITERT_SRC}"
-    echo "[INFO] Expected tensorflow/lite at: ${LITERT_SRC}/tensorflow/lite"
-    echo "[INFO] TFLite C API CMake args: ${cmake_args[*]}"
-    ls -la "${LITERT_SRC}/tensorflow/lite" 2>/dev/null || echo "[WARN] tensorflow/lite symlink may not exist"
+    info Configuring TFLite C API...
+    info C API source: ${c_api_src}
+    info TF_SOURCE_DIR: ${LITERT_SRC}
+    info Expected tensorflow/lite at: ${LITERT_SRC}/tensorflow/lite
+    info TFLite C API CMake args: ${cmake_args[*]}
+    ls -la "${LITERT_SRC}/tensorflow/lite" 2>/dev/null || warn tensorflow/lite symlink may not exist
     
     if ! cmake "${c_api_src}" "${cmake_args[@]}"; then
-        echo "[ERROR] TFLite C API cmake configure failed!"
-        echo "[ERROR] This is required for GStreamer tflite plugin support."
-        echo "[ERROR] Check the cmake output above for details."
-        return 1
+        err TFLite C API cmake configure failed!
+        err This is required for GStreamer tflite plugin support.
+        err Check the cmake output above for details.
     fi
 
-    echo "[INFO] Building TFLite C API..."
+    info Building TFLite C API...
     if ! cmake --build . -j"${NPROC}"; then
-        echo "[WARN] TFLite C API parallel build failed, trying single-threaded..."
+        warn TFLite C API parallel build failed, trying single-threaded...
         if ! cmake --build . -j1 --verbose; then
-            echo "[ERROR] TFLite C API build failed!"
-            return 1
+            err TFLite C API build failed!
         fi
     fi
 
-    echo "[INFO] Installing TFLite C API..."
+    info Installing TFLite C API...
     mkdir -p "${LITERT_PREFIX}/lib"
     if ! cmake --install .; then
-        echo "[WARN] TFLite C API cmake install failed; falling back to manual library copy..."
+        warn TFLite C API cmake install failed; falling back to manual library copy...
     fi
     # Some LiteRT revisions build libtensorflowlite_c.so without an install
     # rule. Copy it explicitly so downstream cross stages can link against it.
@@ -491,16 +482,16 @@ build_tflite_c_api() {
     # Verify the library was built
     if [ -f "${LITERT_PREFIX}/lib/libtensorflowlite_c.so" ] || \
        ls "${c_api_build}"/libtensorflowlite_c*.so* 2>/dev/null; then
-        echo "[INFO] TFLite C API build complete - libtensorflowlite_c.so available"
+        info TFLite C API build complete - libtensorflowlite_c.so available
     else
-        echo "[WARN] libtensorflowlite_c.so not found after build!"
-        echo "[INFO] Checking build directory for any .so files:"
+        warn libtensorflowlite_c.so not found after build!
+        info Checking build directory for any .so files:
         find "${c_api_build}" -name "*.so*" -ls 2>/dev/null || echo "No .so files found"
     fi
 }
 
 install_litert() {
-    echo "[INFO] Installing LiteRT to ${LITERT_PREFIX}..."
+    info Installing LiteRT to ${LITERT_PREFIX}...
 
     local build_dir="${LITERT_SRC}/litert/cmake_build"
     if [ "${BUILD_TYPE}" = "Debug" ]; then
@@ -523,16 +514,16 @@ install_litert() {
     if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
         cross_wheel_build=true
         if command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
-            echo "[WARN] Target Python development files are unavailable; skipping LiteRT Python wheel build in cross mode"
+            warn Target Python development files are unavailable; skipping LiteRT Python wheel build in cross mode
             return 0
         fi
-        echo "[INFO] Attempting LiteRT Python wheel build in cross mode for $(cross_target_arch)"
+        info Attempting LiteRT Python wheel build in cross mode for $(cross_target_arch)
     fi
 
     # Try to build a Python wheel if the project exposes a Python package
     local pip_pkg_dir="${LITERT_SRC}/tflite/tools/pip_package"
     if [ -d "${pip_pkg_dir}" ]; then
-        echo "[INFO] Detected Python packaging in LiteRT source - attempting to build wheel"
+        info Detected Python packaging in LiteRT source - attempting to build wheel
         
         # We need to make sure the environment is set up for the pip package builder
         pushd "${pip_pkg_dir}" > /dev/null
@@ -541,7 +532,7 @@ install_litert() {
         # It requires PYTHON environment variable
         export PYTHON="${HOST_PYTHON}"
         if [ -n "${PYTHON}" ]; then
-            echo "[INFO] Building wheel via build_pip_package_with_cmake.sh..."
+            info Building wheel via build_pip_package_with_cmake.sh...
             # build_pip_package_with_cmake.sh uses these env vars to locate tensorflow/lite
             export TENSORFLOW_DIR="${LITERT_SRC}"
             export TENSORFLOW_LITE_DIR="${LITERT_SRC}/tflite"
@@ -575,25 +566,22 @@ install_litert() {
 
             if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
                 local wheel_cross_args=()
-                local cross_ar
-                local cross_ranlib
 
                 python_major_minor="${python_major_minor:-$(host_python_major_minor 2>/dev/null || true)}"
 
                 if command -v append_cmake_cross_args >/dev/null 2>&1; then
                     append_cmake_cross_args wheel_cross_args
                 fi
-                cross_ar="$(resolve_litert_cross_archive_tool ar)"
-                cross_ranlib="$(resolve_litert_cross_archive_tool ranlib)"
+                if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
+                    append_cmake_cross_archiver_args wheel_cross_args resolve_litert_cross_archive_tool
+                fi
                 tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
                 if [ -z "${tflite_host_tools_dir}" ]; then
-                    echo "[ERROR] Could not resolve TFLite host tools directory containing flatc for cross wheel build"
-                    exit 1
+                    err Could not resolve TFLite host tools directory containing flatc for cross wheel build
                 fi
                 wheel_platform_name="$(litert_cross_wheel_platform_tag || true)"
                 if [ -z "${wheel_platform_name}" ]; then
-                    echo "[ERROR] Could not resolve wheel platform tag for target architecture $(cross_target_arch)"
-                    exit 1
+                    err Could not resolve wheel platform tag for target architecture $(cross_target_arch)
                 fi
                 if [ -n "${python_major_minor}" ] && command -v cross_target_python_include_dir >/dev/null 2>&1; then
                     target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
@@ -605,13 +593,12 @@ install_litert() {
                 fi
 
                 extra_cmake_flags+=" ${wheel_cross_args[*]}"
-                extra_cmake_flags+=" -DCMAKE_AR=${cross_ar} -DCMAKE_RANLIB=${cross_ranlib} -DCMAKE_C_COMPILER_AR=${cross_ar} -DCMAKE_CXX_COMPILER_AR=${cross_ar} -DCMAKE_C_COMPILER_RANLIB=${cross_ranlib} -DCMAKE_CXX_COMPILER_RANLIB=${cross_ranlib}"
                 extra_cmake_flags+=" -DTFLITE_HOST_TOOLS_DIR=${tflite_host_tools_dir}"
                 if [ -n "${target_python_include}" ]; then
                     extra_cmake_flags+=" -DPYTHON_INCLUDE_DIR=${target_python_include}"
                     extra_cmake_flags+=" -DPYTHON_INCLUDE_PATH=${target_python_include}"
-                    echo "[INFO] Cross wheel target Python include dir: ${target_python_include}"
-                    echo "[INFO] Cross wheel target Python arch include dir: ${target_python_arch_include}"
+                    info Cross wheel target Python include dir: ${target_python_include}
+                    info Cross wheel target Python arch include dir: ${target_python_arch_include}
                 fi
 
                 # Keep the pip helper on its generic/native code path so it does
@@ -621,9 +608,9 @@ install_litert() {
                 # architecture and tag the produced wheel accordingly.
                 export TENSORFLOW_TARGET="native"
                 export WHEEL_PLATFORM_NAME="${wheel_platform_name}"
-                echo "[INFO] Building LiteRT wheel in cross mode for $(cross_target_arch)"
-                echo "[INFO] Cross wheel platform tag: ${WHEEL_PLATFORM_NAME}"
-                echo "[INFO] Cross wheel host tools dir: ${tflite_host_tools_dir}"
+                info Building LiteRT wheel in cross mode for $(cross_target_arch)
+                info Cross wheel platform tag: ${WHEEL_PLATFORM_NAME}
+                info Cross wheel host tools dir: ${tflite_host_tools_dir}
             else
                 export TENSORFLOW_TARGET="native"
                 unset WHEEL_PLATFORM_NAME || true
@@ -650,10 +637,10 @@ install_litert() {
             
             # run the script
             bash build_pip_package_with_cmake.sh "${TENSORFLOW_TARGET}" > pip_build.log 2>&1 || {
-                echo "[WARN] pip wheel failed for LiteRT source. Last 1000 lines of log:"
+                warn pip wheel failed for LiteRT source. Last 1000 lines of log:
                 tail -n 1000 pip_build.log
                 if [ "${cross_wheel_build}" = "true" ]; then
-                    echo "[WARN] Continuing without a local LiteRT wheel for the cross build"
+                    warn Continuing without a local LiteRT wheel for the cross build
                     popd > /dev/null
                     return 0
                 fi
@@ -661,17 +648,17 @@ install_litert() {
             }
             
             # Print the log if it succeeds so we can debug anyway!
-            echo "[INFO] pip wheel success! Last 50 lines of log:"
+            info pip wheel success! Last 50 lines of log:
             tail -n 50 pip_build.log
             
             # The wheels are created in tflite/tools/pip_package/gen/tflite_pip/python3/dist/
-            find "gen/tflite_pip" -name "*.whl" -type f -exec cp -v {} "${LITERT_PREFIX}/wheels/" \; 2>/dev/null || echo "[WARN] No wheels found after build script"
+            find "gen/tflite_pip" -name "*.whl" -type f -exec cp -v {} "${LITERT_PREFIX}/wheels/" \; 2>/dev/null || warn No wheels found after build script
         else
-            echo "[WARN] No python found in PATH to build LiteRT wheel"
+            warn No python found in PATH to build LiteRT wheel
         fi
         popd > /dev/null
     else
-        echo "[INFO] No Python packaging detected for LiteRT at ${pip_pkg_dir}; skipping wheel build"
+        info No Python packaging detected for LiteRT at ${pip_pkg_dir}; skipping wheel build
     fi
 }
 
@@ -687,10 +674,10 @@ install_manual() {
     mkdir -p "${lib_dir}"
     mkdir -p "${include_dir}"
 
-    echo "[INFO] Copying shared libraries..."
+    info Copying shared libraries...
     find "${build_dir}" -name "*.so*" -exec cp -v {} "${lib_dir}/" \; 2>/dev/null || true
 
-    echo "[INFO] Copying static libraries..."
+    info Copying static libraries...
     find "${build_dir}" -name "*.a" -exec cp -v {} "${lib_dir}/" \; 2>/dev/null || true
 
     # Create symlinks for tensorflow-lite compatibility
@@ -701,31 +688,31 @@ install_manual() {
         libname=$(basename "${lib}")
         tfname="${libname/libLiteRt/libtensorflow-lite}"
         ln -sf "${libname}" "${lib_dir}/${tfname}"
-        echo "[INFO] Created symlink: ${tfname} -> ${libname}"
+        info Created symlink: ${tfname} -> ${libname}
     done
 
-    echo "[INFO] Copying headers (C++ and C API)..."
+    info "Copying headers (C++ and C API)..."
     cd "${LITERT_SRC}"
     
     # 1. Copy ALL headers (C and C++) preserving the directory structure
     if [ -d "tensorflow/lite" ]; then
-        echo "[INFO] Found tensorflow/lite source layout..."
+        info Found tensorflow/lite source layout...
         find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -exec cp --parents {} "${include_dir}/" \;
     elif [ -d "litert" ]; then
-        echo "[INFO] Found litert source layout..."
+        info Found litert source layout...
         find litert -type f \( -name "*.h" -o -name "*.hpp" \) -exec cp --parents {} "${include_dir}/" \;
     fi
     
     # 2. Copy tflite directory (contains TensorFlow Lite C++ compatibility headers)
     # This is CRITICAL for libcamera's awb_nn.cpp which needs tensorflow/lite/interpreter.h
-    echo "[INFO] Copying tflite C++ compatibility headers..."
+    info Copying tflite C++ compatibility headers...
     if [ -d "tflite" ]; then
         cp -rv "tflite" "${include_dir}/" 2>/dev/null || true
-        echo "[INFO] tflite headers copied to ${include_dir}/tflite"
+        info tflite headers copied to ${include_dir}/tflite
     fi
     
     # 3. Copy litert/c headers for C API compatibility
-    echo "[INFO] Ensuring strict C API compatibility..."
+    info Ensuring strict C API compatibility...
     cp -rv "litert/c" "${include_dir}/" 2>/dev/null || true
     
     # 4. Create tensorflow/lite -> tflite symlink for compatibility
@@ -733,18 +720,18 @@ install_manual() {
     # but LiteRT provides them at <tflite/interpreter.h>
     # NOTE: Since this is a symlink, tensorflow/lite/c will automatically resolve
     # to tflite/c which should already have the C API headers from the tflite copy
-    echo "[INFO] Creating tensorflow/lite compatibility symlink..."
+    info Creating tensorflow/lite compatibility symlink...
     mkdir -p "${include_dir}/tensorflow"
     rm -rf "${include_dir}/tensorflow/lite"  # Remove any existing symlink or directory
     ln -snf "${include_dir}/tflite" "${include_dir}/tensorflow/lite"
-    echo "[INFO] Created symlink: ${include_dir}/tensorflow/lite -> ${include_dir}/tflite"
+    info Created symlink: ${include_dir}/tensorflow/lite -> ${include_dir}/tflite
     
     # Verify the symlink works for the critical header
     if [ -f "${include_dir}/tensorflow/lite/interpreter.h" ]; then
-        echo "[INFO] Verified: tensorflow/lite/interpreter.h is accessible"
+        info Verified: tensorflow/lite/interpreter.h is accessible
     else
-        echo "[WARN] tensorflow/lite/interpreter.h is NOT accessible via symlink!"
-        echo "[INFO] Contents of ${include_dir}/tflite:"
+        warn tensorflow/lite/interpreter.h is NOT accessible via symlink!
+        info Contents of ${include_dir}/tflite:
         ls -la "${include_dir}/tflite" 2>/dev/null || echo "  (directory not found)"
     fi
     
@@ -754,18 +741,18 @@ install_manual() {
     # fall back to searching for the header if needed.
     fb_found=0
     if [ -d "${LITERT_SRC}/litert/cmake_build/_deps/flatbuffers-src/include" ]; then
-        echo "[INFO] Copying flatbuffers headers from _deps/flatbuffers-src/include..."
+        info Copying flatbuffers headers from _deps/flatbuffers-src/include...
         cp -rv "${LITERT_SRC}/litert/cmake_build/_deps/flatbuffers-src/include"/* "${include_dir}/" 2>/dev/null || true
         fb_found=1
     fi
     if [ -d "${LITERT_SRC}/litert/cmake_build/flatbuffers-flatc/include" ]; then
-        echo "[INFO] Copying flatbuffers headers from flatbuffers-flatc/include..."
+        info Copying flatbuffers headers from flatbuffers-flatc/include...
         cp -rv "${LITERT_SRC}/litert/cmake_build/flatbuffers-flatc/include"/* "${include_dir}/" 2>/dev/null || true
         fb_found=1
     fi
     # Also check for an installed location within the build tree
     if [ -d "${LITERT_SRC}/litert/cmake_build/flatbuffers-flatc/include/flatbuffers" ]; then
-        echo "[INFO] Copying flatbuffers headers from flatbuffers-flatc/include/flatbuffers..."
+        info Copying flatbuffers headers from flatbuffers-flatc/include/flatbuffers...
         mkdir -p "${include_dir}/flatbuffers" || true
         cp -rv "${LITERT_SRC}/litert/cmake_build/flatbuffers-flatc/include/flatbuffers"/* "${include_dir}/flatbuffers/" 2>/dev/null || true
         fb_found=1
@@ -775,14 +762,14 @@ install_manual() {
         fbheader=$(find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h" -print -quit 2>/dev/null || true)
         if [ -n "$fbheader" ]; then
             fbdir=$(dirname "$fbheader")
-            echo "[INFO] Found flatbuffers header at $fbheader; copying from $fbdir..."
+            info Found flatbuffers header at $fbheader; copying from $fbdir...
             mkdir -p "${include_dir}/flatbuffers" || true
             cp -rv "$fbdir"/* "${include_dir}/flatbuffers/" 2>/dev/null || true
             fb_found=1
         fi
     fi
     if [ "$fb_found" -eq 0 ]; then
-        echo "[WARN] FlatBuffers headers not found in expected build locations; some targets may fail to compile" || true
+        warn "FlatBuffers headers not found in expected build locations; some targets may fail to compile" 2>/dev/null || true
     fi
 
     # 6. Abseil (absl) headers (Required transitively by the tflite C++ headers)
@@ -790,14 +777,14 @@ install_manual() {
     # <tflite/interpreter.h>. Downstream consumers such as libcamera's
     # rpi/awb_nn.cpp include tflite/interpreter.h and therefore need the absl
     # headers on the include path. Copy them next to the tflite headers.
-    echo "[INFO] Copying Abseil (absl) headers..."
+    info "Copying Abseil (absl) headers..."
     absl_found=0
     for absl_root in \
         "${LITERT_SRC}/litert/cmake_build/_deps/abseil-cpp-src" \
         "${LITERT_SRC}/litert/cmake_build/_deps/abseil_cpp-src" \
         "${LITERT_SRC}/litert/cmake_build/_deps/abseil-src"; do
         if [ -d "${absl_root}/absl" ]; then
-            echo "[INFO] Copying absl headers from ${absl_root}/absl..."
+            info Copying absl headers from ${absl_root}/absl...
             ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
                 -exec cp --parents {} "${include_dir}/" \; ) 2>/dev/null || true
             absl_found=1
@@ -810,16 +797,16 @@ install_manual() {
         spanhdr=$(find "${LITERT_SRC}/litert" -type f -path "*/absl/types/span.h" -print -quit 2>/dev/null || true)
         if [ -n "$spanhdr" ]; then
             absl_root=$(dirname "$(dirname "$(dirname "$spanhdr")")")
-            echo "[INFO] Found absl headers under ${absl_root}; copying..."
+            info Found absl headers under ${absl_root}; copying...
             ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
                 -exec cp --parents {} "${include_dir}/" \; ) 2>/dev/null || true
             absl_found=1
         fi
     fi
     if [ "$absl_found" -eq 1 ] && [ -f "${include_dir}/absl/types/span.h" ]; then
-        echo "[INFO] Verified: absl/types/span.h is accessible"
+        info Verified: absl/types/span.h is accessible
     else
-        echo "[WARN] Abseil headers not found; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile" || true
+        warn "Abseil headers not found; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile" 2>/dev/null || true
     fi
 
     local static_libs=""
@@ -877,7 +864,7 @@ EOF
 }
 
 verify_installation() {
-    echo "[INFO] Verifying LiteRT installation..."
+    info Verifying LiteRT installation...
 
     local found_libs=false
     if ls "${LITERT_PREFIX}/lib"/*[Ll]ite[Rr]t* 2>/dev/null; then
@@ -888,31 +875,31 @@ verify_installation() {
     fi
 
     if [ "${found_libs}" = "false" ]; then
-        echo "[WARN] No LiteRT/TensorFlow Lite libraries found in ${LITERT_PREFIX}/lib"
+        warn No LiteRT/TensorFlow Lite libraries found in ${LITERT_PREFIX}/lib
         ls -la "${LITERT_PREFIX}/lib" 2>/dev/null || true
         return 1
     fi
 
     if [ -f "${LITERT_PREFIX}/lib/pkgconfig/litert.pc" ]; then
-        echo "[INFO] LiteRT pkg-config:"
+        info LiteRT pkg-config:
         cat "${LITERT_PREFIX}/lib/pkgconfig/litert.pc"
     fi
 
     if [ -f "${LITERT_PREFIX}/lib/pkgconfig/tensorflow-lite.pc" ]; then
-        echo "[INFO] TensorFlow Lite pkg-config:"
+        info TensorFlow Lite pkg-config:
         cat "${LITERT_PREFIX}/lib/pkgconfig/tensorflow-lite.pc"
     fi
 
-    echo "[INFO] LiteRT ${LITERT_VERSION} installed successfully"
+    info LiteRT ${LITERT_VERSION} installed successfully
 }
 
 cleanup() {
-    echo "[INFO] Cleaning up..."
+    info Cleaning up...
     rm -rf "${LITERT_SRC}" || true
 }
 
 main() {
-    echo "[INFO] LiteRT build started"
+    info LiteRT build started
     fetch_litert
     configure_litert
     build_litert
@@ -920,7 +907,7 @@ main() {
     install_litert
     verify_installation
     cleanup
-    echo "[INFO] LiteRT build complete"
+    info LiteRT build complete
 }
 
 main "$@"

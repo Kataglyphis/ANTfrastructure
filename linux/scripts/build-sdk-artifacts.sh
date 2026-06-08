@@ -7,12 +7,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-COMPILER_IMAGE="${COMPILER_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
+COMPILER_IMAGE="${COMPILER_IMAGE:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-amd64,arm64,riscv64}}}"
 # VULKAN_VERSION default comes from versions.env via artifact-common.sh
 VULKAN_VERSION="${VULKAN_VERSION}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk-artifact}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:sdk-artifact}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
 FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
@@ -111,15 +111,18 @@ push_sdk_image() {
 
 main() {
   while [ $# -gt 0 ]; do
+    local oa_rc=0
+    parse_shared_orchestrator_args \
+      TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
+      FAST_UBUNTU_PORTS_MIRROR_URL IGNORED_REPO VULKAN_VERSION PUSH_IMAGES \
+      "$1" "$2" || true
+    oa_rc=$?
+    case ${oa_rc} in
+      2) shift 2; continue ;;
+      1) shift 1; continue ;;
+      255) usage; exit 0 ;;
+    esac
     case "$1" in
-      --architectures)
-        TARGET_ARCHES="$2"
-        shift 2
-        ;;
-      --target-arches)
-        TARGET_ARCHES="$2"
-        shift 2
-        ;;
       --output-root)
         OUTPUT_ROOT="$2"
         shift 2
@@ -127,32 +130,6 @@ main() {
       --compiler-image)
         COMPILER_IMAGE="$2"
         shift 2
-        ;;
-      --fast-ubuntu-mirror)
-        USE_FAST_UBUNTU_MIRROR=true
-        shift
-        ;;
-      --fast-ubuntu-mirror-url)
-        USE_FAST_UBUNTU_MIRROR=true
-        FAST_UBUNTU_MIRROR_URL="$2"
-        shift 2
-        ;;
-      --fast-ubuntu-ports-mirror-url)
-        USE_FAST_UBUNTU_MIRROR=true
-        FAST_UBUNTU_PORTS_MIRROR_URL="$2"
-        shift 2
-        ;;
-      --vulkan-version)
-        VULKAN_VERSION="$2"
-        shift 2
-        ;;
-      --push)
-        PUSH_IMAGES=1
-        shift
-        ;;
-      -h|--help)
-        usage
-        exit 0
         ;;
       *)
         printf '[ERROR] Unknown option: %s\n' "$1" >&2

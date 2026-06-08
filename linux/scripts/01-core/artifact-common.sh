@@ -15,22 +15,14 @@ if [ -z "${_VERSIONS_ENV_LOADED:-}" ]; then
   _VERSIONS_ENV_LOADED=1
 fi
 
+# Load logging helpers (info, warn, err, log, die).
+# shellcheck disable=SC1091
+[ -f "${_ARTIFACT_COMMON_DIR}/platform.sh" ] && source "${_ARTIFACT_COMMON_DIR}/platform.sh"
+# shellcheck disable=SC1091
+[ -f "${_ARTIFACT_COMMON_DIR}/logging.sh" ] && source "${_ARTIFACT_COMMON_DIR}/logging.sh"
+
 canonical_target_arch() {
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  if [ -f "${script_dir}/platform.sh" ]; then
-    # shellcheck disable=SC1091
-    source "${script_dir}/platform.sh"
-    arch_normalize "$1"
-  else
-    # fallback for standalone use
-    case "$1" in
-      amd64|x86_64) printf '%s' "amd64" ;;
-      arm64|aarch64) printf '%s' "arm64" ;;
-      riscv64|riscv|rv64*) printf '%s' "riscv64" ;;
-      *) return 1 ;;
-    esac
-  fi
+  arch_normalize "$1" || return 1
 }
 
 normalize_target_arches() {
@@ -52,10 +44,6 @@ normalize_target_arches() {
   fi
 
   printf '%s' "${normalized_arches[*]}" | tr ' ' ','
-}
-
-log() {
-  printf '[INFO] %s\n' "$*"
 }
 
 run() {
@@ -606,31 +594,41 @@ runtime_build_package_image() {
   _runtime_finish_stage package "${arch}" "${tag}" base
 }
 
-runtime_build_wrapper_image() {
+_runtime_build_wrapper() {
   local arch="$1"
-  local tag parent_image parent_context_dir
-  local -a build_args=()
+  local -n _wrapper_tag_out=$2
+  local -n _wrapper_parent_image_out=$3
+  local -n _wrapper_build_args_out=$4
 
-  tag="$(runtime_wrapper_tag "${arch}")"
-  append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_runtime_accelerator_build_args build_args
+  _wrapper_tag_out="$(runtime_wrapper_tag "${arch}")"
+  append_mirror_build_args _wrapper_build_args_out "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+  append_runtime_accelerator_build_args _wrapper_build_args_out
 
-  _runtime_resolve_parent_context package "${arch}" parent_image parent_context_dir build_args
+  local parent_context_dir
+  _runtime_resolve_parent_context package "${arch}" _wrapper_parent_image_out parent_context_dir _wrapper_build_args_out
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=false \
     --platform "linux/${arch}" \
-    -t "${tag}" \
+    -t "${_wrapper_tag_out}" \
     -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
-    --build-arg "BASE_IMAGE=${parent_image}" \
+    --build-arg "BASE_IMAGE=${_wrapper_parent_image_out}" \
     --build-arg "BUILD_MODE=native" \
     --build-arg "TARGET_ARCH=${arch}" \
     --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}" \
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
-    "${build_args[@]}" \
+    "${_wrapper_build_args_out[@]}" \
     .
 
   runtime_remove_stage_context package "${arch}"
+}
+
+runtime_build_wrapper_image() {
+  local arch="$1"
+  local tag parent_image
+  local -a build_args=()
+
+  _runtime_build_wrapper "${arch}" tag parent_image build_args
 
   if runtime_pushes_wrapper_images; then
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
@@ -640,31 +638,12 @@ runtime_build_wrapper_image() {
 runtime_build_wrapper_rootfs() {
   local arch="$1"
   local rootfs_dir="$2"
-  local tag parent_image parent_context_dir artifact_dir
+  local tag parent_image artifact_dir
   local -a build_args=()
 
-  tag="$(runtime_wrapper_tag "${arch}")"
+  _runtime_build_wrapper "${arch}" tag parent_image build_args
+
   artifact_dir="$(dirname "${rootfs_dir}")"
-
-  append_mirror_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_runtime_accelerator_build_args build_args
-
-  _runtime_resolve_parent_context package "${arch}" parent_image parent_context_dir build_args
-
-  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=false \
-    --platform "linux/${arch}" \
-    -t "${tag}" \
-    -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
-    --build-arg "BASE_IMAGE=${parent_image}" \
-    --build-arg "BUILD_MODE=native" \
-    --build-arg "TARGET_ARCH=${arch}" \
-    --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}" \
-    --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
-    "${build_args[@]}" \
-    .
-
-  runtime_remove_stage_context package "${arch}"
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}"
 
   if runtime_pushes_wrapper_images; then
@@ -699,6 +678,52 @@ PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
 BASE_IMAGE=$(runtime_base_tag "${arch}")
 ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
 EOF
+}
+
+# ==============================================================================
+# Shared CLI argument parsing for cross-chain orchestrator scripts.
+# Call this from the argument loop in build-cross-chain.sh,
+# build-cross-compiler.sh, and build-sdk-artifacts.sh.
+#
+# Receives namerefs for the shared variables, then $1 $2 from the caller's loop.
+#
+# Return values:
+#   1  — consumed a single-arg flag (caller should shift 1)
+#   2  — consumed a two-arg flag (caller should shift 2)
+#   0  — flag not recognized (caller should handle it)
+#   255 — --help requested (caller should print usage and exit)
+# ==============================================================================
+parse_shared_orchestrator_args() {
+  local -n _psoa_target_arches=$1
+  local -n _psoa_use_fast_mirror=$2
+  local -n _psoa_fast_mirror_url=$3
+  local -n _psoa_fast_ports_url=$4
+  local -n _psoa_image_repo=$5
+  local -n _psoa_vulkan_version=$6
+  local -n _psoa_push=$7
+  shift 7 || true
+  local arg="$1" val="$2"
+
+  case "${arg}" in
+    --target-arches|--architectures)
+      _psoa_target_arches="${val}"; return 2 ;;
+    --image-repo)
+      _psoa_image_repo="${val}"; return 2 ;;
+    --vulkan-version)
+      _psoa_vulkan_version="${val}"; return 2 ;;
+    --fast-ubuntu-mirror)
+      _psoa_use_fast_mirror=true; return 1 ;;
+    --fast-ubuntu-mirror-url)
+      _psoa_use_fast_mirror=true; _psoa_fast_mirror_url="${val}"; return 2 ;;
+    --fast-ubuntu-ports-mirror-url)
+      _psoa_use_fast_mirror=true; _psoa_fast_ports_url="${val}"; return 2 ;;
+    --push)
+      _psoa_push=1; return 1 ;;
+    -h|--help)
+      return 255 ;;
+    *)
+      return 0 ;;
+  esac
 }
 
 # ==============================================================================

@@ -7,10 +7,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:base}"
-BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:base}"
-COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
-COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler-cross-amd64}"
+BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:base}"
+BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:base}"
+COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
+COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
 CROSS_TARGETS="${CROSS_TARGETS:-amd64,arm64,riscv64}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"
@@ -109,36 +109,25 @@ push_cross_compiler() {
 
 main() {
   while [ $# -gt 0 ]; do
+    local oa_rc=0
+    parse_shared_orchestrator_args \
+      CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
+      FAST_UBUNTU_PORTS_MIRROR_URL IGNORED_REPO IGNORED_VULKAN PUSH_IMAGE \
+      "$1" "$2" || true
+    oa_rc=$?
+    case ${oa_rc} in
+      2) shift 2; continue ;;
+      1) shift 1; continue ;;
+      255) usage; exit 0 ;;
+    esac
     case "$1" in
       --cross-targets)
         CROSS_TARGETS="$2"
         shift 2
         ;;
-      --fast-ubuntu-mirror)
-        USE_FAST_UBUNTU_MIRROR=true
-        shift
-        ;;
-      --fast-ubuntu-mirror-url)
-        USE_FAST_UBUNTU_MIRROR=true
-        FAST_UBUNTU_MIRROR_URL="$2"
-        shift 2
-        ;;
-      --fast-ubuntu-ports-mirror-url)
-        USE_FAST_UBUNTU_MIRROR=true
-        FAST_UBUNTU_PORTS_MIRROR_URL="$2"
-        shift 2
-        ;;
       --rebuild-base)
         REBUILD_BASE=1
         shift
-        ;;
-      --push)
-        PUSH_IMAGE=1
-        shift
-        ;;
-      -h|--help)
-        usage
-        exit 0
         ;;
       *)
         printf '[ERROR] Unknown option: %s\n' "$1" >&2

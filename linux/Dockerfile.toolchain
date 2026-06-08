@@ -128,6 +128,8 @@ RUN set -eux; \
       /opt/scripts/toolchain/setup-dependencies.sh \
       /opt/scripts/toolchain/build-gcc.sh \
       /opt/scripts/toolchain/build-clang.sh \
+      /opt/scripts/toolchain/configure-gcc-env.sh \
+      /opt/scripts/toolchain/verify-gcc.sh \
       /opt/scripts/python/build_python.sh; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null
 

@@ -35,7 +35,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-IMAGE_REPO="${IMAGE_REPO:-ghcr.io/kataglyphis/kataglyphis_beschleuniger}"
+IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-amd64,arm64,riscv64}}"
 # Compiler targets baked into the single amd64-hosted compiler image. The
@@ -270,20 +270,24 @@ run_runtime_stage() {
 main() {
   local only_stage=""
   while [ $# -gt 0 ]; do
+    local oa_rc=0
+    parse_shared_orchestrator_args \
+      TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
+      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IGNORED \
+      "$1" "$2" || true
+    oa_rc=$?
+    case ${oa_rc} in
+      2) shift 2; continue ;;
+      1) shift 1; continue ;;
+      255) usage; exit 0 ;;
+    esac
     case "$1" in
-      --target-arches|--architectures) TARGET_ARCHES="$2"; shift 2 ;;
       --cross-targets) CROSS_TARGETS="$2"; shift 2 ;;
-      --image-repo) IMAGE_REPO="$2"; shift 2 ;;
       --final-image) FINAL_IMAGE="$2"; shift 2 ;;
       --from-stage) FROM_STAGE="$2"; shift 2 ;;
       --to-stage) TO_STAGE="$2"; shift 2 ;;
       --only) only_stage="$2"; shift 2 ;;
-      --vulkan-version) VULKAN_VERSION="$2"; shift 2 ;;
       --log-dir) LOG_DIR="$2"; shift 2 ;;
-      --fast-ubuntu-mirror) USE_FAST_UBUNTU_MIRROR=true; shift ;;
-      --fast-ubuntu-mirror-url) USE_FAST_UBUNTU_MIRROR=true; FAST_UBUNTU_MIRROR_URL="$2"; shift 2 ;;
-      --fast-ubuntu-ports-mirror-url) USE_FAST_UBUNTU_MIRROR=true; FAST_UBUNTU_PORTS_MIRROR_URL="$2"; shift 2 ;;
-      -h|--help) usage; exit 0 ;;
       *) printf '[ERROR] Unknown option: %s\n' "$1" >&2; usage >&2; exit 1 ;;
     esac
   done
@@ -297,7 +301,7 @@ main() {
   TARGET_ARCHES="$(normalize_target_arches "${TARGET_ARCHES}")"
   # Default FINAL_IMAGE may reference the previous IMAGE_REPO default; recompute
   # it if the user changed --image-repo but not --final-image.
-  if [ "${FINAL_IMAGE}" = "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" ]; then
+  if [ "${FINAL_IMAGE}" = "${IMAGE_REGISTRY_PREFIX}:latest-cross" ]; then
     FINAL_IMAGE="${IMAGE_REPO}:latest-cross"
   fi
 

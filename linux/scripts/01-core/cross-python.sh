@@ -1,8 +1,11 @@
-#!/usr/bin/env bash
-# cross-env.sh - shared helpers for amd64-hosted target builds
+# Source-only helper -- do not execute directly.
+# cross-python.sh - Python cross-compilation helpers.
+# Sourced by cross-env.sh.
 
-# cross-python.sh - Python cross-compilation helpers
-# Sourced by cross-env.sh after cross-env-core.sh
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "This script is meant to be sourced, not executed" >&2
+  exit 1
+fi
 
 host_python_bin() {
   if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then

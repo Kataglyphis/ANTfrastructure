@@ -1,8 +1,11 @@
-#!/usr/bin/env bash
-# cross-env.sh - shared helpers for amd64-hosted target builds
+# Source-only helper -- do not execute directly.
+# cross-meson.sh - Meson cross-compilation helpers.
+# Sourced by cross-env.sh.
 
-# cross-meson.sh - Meson cross-compilation helpers
-# Sourced by cross-env.sh after cross-python.sh
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "This script is meant to be sourced, not executed" >&2
+  exit 1
+fi
 
 make_meson_cross_rust_wrapper() {
   local wrapper_path="$1"
@@ -56,6 +59,32 @@ EOF
   chmod +x "${wrapper_path}"
   printf '%s' "${wrapper_path}"
 }
+append_cmake_cross_archiver_args() {
+  local -n _cmcaa_out=$1
+  local archiver_tool_name="${2:-}"
+
+  cross_build_enabled || return 0
+
+  local cross_ar cross_ranlib
+
+  if [ -n "${archiver_tool_name}" ] && command -v "${archiver_tool_name}" >/dev/null 2>&1; then
+    cross_ar="$("${archiver_tool_name}" ar)"
+    cross_ranlib="$("${archiver_tool_name}" ranlib)"
+  else
+    cross_ar="${CMAKE_AR:-${AR}}"
+    cross_ranlib="${CMAKE_RANLIB:-${RANLIB}}"
+  fi
+
+  _cmcaa_out+=(
+    "-DCMAKE_AR=${cross_ar}"
+    "-DCMAKE_RANLIB=${cross_ranlib}"
+    "-DCMAKE_C_COMPILER_AR=${cross_ar}"
+    "-DCMAKE_CXX_COMPILER_AR=${cross_ar}"
+    "-DCMAKE_C_COMPILER_RANLIB=${cross_ranlib}"
+    "-DCMAKE_CXX_COMPILER_RANLIB=${cross_ranlib}"
+  )
+}
+
 append_cmake_cross_args() {
   local -n _out="$1"
 

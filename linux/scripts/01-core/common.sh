@@ -56,14 +56,7 @@ ensure_target_arch() {
   if [ -z "${TARGET_ARCH:-}" ]; then
     TARGET_ARCH="${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
   fi
-  case "${TARGET_ARCH}" in
-    x86_64) TARGET_ARCH=amd64 ;;
-    aarch64) TARGET_ARCH=arm64 ;;
-    riscv64) ;;
-    amd64) ;;
-    arm64) ;;
-    *) printf '[WARN] ensure_target_arch: unknown architecture %s\n' "${TARGET_ARCH}" >&2 ;;
-  esac
+  TARGET_ARCH="$(arch_normalize "${TARGET_ARCH}")"
   export TARGET_ARCH
   echo "TARGET_ARCH=${TARGET_ARCH}"
 }

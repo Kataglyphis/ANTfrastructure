@@ -1,8 +1,11 @@
-#!/usr/bin/env bash
-# cross-env.sh - shared helpers for amd64-hosted target builds
+# Source-only helper -- do not execute directly.
+# cross-gcc.sh - GCC toolchain detection helpers.
+# Sourced by cross-env.sh.
 
-# cross-gcc.sh - GCC toolchain detection helpers
-# Sourced by cross-env.sh after cross-env-core.sh
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "This script is meant to be sourced, not executed" >&2
+  exit 1
+fi
 
 gcc_toolchain_prefix() {
   printf '%s' "/opt/gcc-${GCC_VERSION:-16.1.0}"
