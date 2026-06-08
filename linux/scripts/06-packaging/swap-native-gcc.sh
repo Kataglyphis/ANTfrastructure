@@ -15,44 +15,9 @@ set -euo pipefail
 #   GCC_VERSION   e.g. 16.1.0
 #   BUILD_MODE    cross or native
 
-elf_machine_pattern() {
-  case "$1" in
-    amd64)   printf '%s' "X86-64" ;;
-    arm64)   printf '%s' "AArch64" ;;
-    riscv64) printf '%s' "RISC-V" ;;
-    386)     printf '%s' "Intel 80386" ;;
-    *)       return 1 ;;
-  esac
-}
-
-assert_elf_arch() {
-  local bin="$1" arch="$2" pat machine
-  pat="$(elf_machine_pattern "${arch}")" || {
-    echo "WARN: no ELF pattern for ${arch}; skipping" >&2
-    return 0
-  }
-  command -v readelf >/dev/null 2>&1 || {
-    echo "WARN: readelf missing; skipping ELF check" >&2
-    return 0
-  }
-  machine="$(readelf -h "${bin}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
-  [ -n "${machine}" ] || { echo "ERROR: cannot read ELF machine of ${bin}" >&2; exit 1; }
-  case "${machine}" in
-    *"${pat}"*)
-      echo "ELF arch OK: ${bin} Machine='${machine}' matches ${arch}" ;;
-    *)
-      echo "ERROR: ELF arch MISMATCH ${bin} Machine='${machine}' expected '${pat}' for ${arch}" >&2
-      exit 1 ;;
-  esac
-}
-
-gcc_target_triplet() {
-  case "$1" in
-    arm64)   echo "aarch64-linux-gnu" ;;
-    riscv64) echo "riscv64-linux-gnu" ;;
-    *)       echo "" ;;
-  esac
-}
+_swap_gcc_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_swap_gcc_script_dir}/../01-core/platform.sh"
 
 main() {
   : "${TARGET_ARCH:?TARGET_ARCH is required}"
@@ -77,7 +42,7 @@ main() {
     echo "Replaced host GCC with target-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"
 
     local triplet
-    triplet="$(gcc_target_triplet "${TARGET_ARCH}")"
+    triplet="$(arch_deb_multiarch_triplet_for "${TARGET_ARCH}")"
     if [ -n "${triplet}" ]; then
       local gcc_target_lib="/opt/gcc-${GCC_VERSION}/${triplet}/lib"
       local sys_multiarch_lib="/usr/lib/${triplet}"

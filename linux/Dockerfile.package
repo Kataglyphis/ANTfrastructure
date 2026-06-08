@@ -273,9 +273,9 @@ RUN set -eux; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
     bash /opt/scripts/packaging/validate-compilers.sh smoke
 
-# Runtime scripts + entrypoint + labels — keep in sync with
-# linux/Dockerfile.runtime-common (canonical source) and
-# linux/Dockerfile.torch (final stage).
+# Runtime scripts + entrypoint + labels — canonical source.  Keep in
+# sync with linux/Dockerfile.runtime-common (additions mirror here).
+# Dockerfile.torch inherits from this image so does not duplicate.
 COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
 COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
 

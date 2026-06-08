@@ -130,6 +130,40 @@ elf_machine_name() {
     | head -n1
 }
 
+# Assert that a binary's ELF machine type matches the given normalized
+# architecture.  Uses arch_elf_machine_grep_for() and elf_machine_name().
+# Returns 0 on match, exits non-zero on mismatch (hard-fail).
+assert_elf_arch() {
+  local bin="$1" arch="$2" expected_pattern machine
+
+  expected_pattern="$(arch_elf_machine_grep_for "${arch}")" || {
+    printf 'WARN: no ELF pattern for arch %s; skipping ELF check\n' "${arch}" >&2
+    return 0
+  }
+
+  command -v readelf >/dev/null 2>&1 || {
+    printf 'WARN: readelf missing; skipping ELF check\n' >&2
+    return 0
+  }
+
+  machine="$(elf_machine_name "${bin}")"
+  [ -n "${machine}" ] || {
+    printf 'ERROR: cannot read ELF machine of %s\n' "${bin}" >&2
+    exit 1
+  }
+
+  case "${machine}" in
+    *"${expected_pattern}"*)
+      printf 'ELF arch OK: %s Machine=%s matches %s\n' "${bin}" "${machine}" "${arch}"
+      ;;
+    *)
+      printf 'ERROR: ELF arch MISMATCH %s Machine=%s expected %s for %s\n' \
+        "${bin}" "${machine}" "${expected_pattern}" "${arch}" >&2
+      exit 1
+      ;;
+  esac
+}
+
 arch_list_csv_normalize() {
   local raw_list="$1"
   local raw_arch normalized_arch

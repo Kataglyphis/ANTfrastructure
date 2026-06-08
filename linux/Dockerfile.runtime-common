@@ -1,13 +1,12 @@
 # syntax=docker/dockerfile:1.24.0
 
-# Shared final-stage elements for every runtime wrapper image.
-# Produce a stage named "runtime-common" that other Dockerfiles
-# inherit via FROM so runtime scripts, entrypoint, workdir, volume,
-# and OCI labels stay DRY across package-smoke and torch wrappers.
+# Canonical source for shared final-stage elements: runtime scripts,
+# entrypoint, workdir, volume, and OCI labels.  Dockerfile.package's
+# wrapper-smoke stage copies this content verbatim and is the actual
+# producer.  Dockerfile.torch's final stage inherits from the package
+# base image so does not need to repeat these instructions.
 #
-# Usage in Dockerfile.package / Dockerfile.torch:
-#   FROM <previous-stage> AS runtime-common
-#   ... then FROM runtime-common AS final
+# Additions here MUST be mirrored in Dockerfile.package wrapper-smoke.
 
 ARG WORKDIR=/workspace
 ARG BUILD_TYPE=Release

@@ -2,18 +2,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
+_FOUND_MODULES=0
 # shellcheck disable=SC1091
-if [ -f "${SCRIPT_DIR}/modules.sh" ]; then
-  source "${SCRIPT_DIR}/modules.sh"
-  source_modules_framework "${SCRIPT_DIR}"
-elif [ -f "/opt/scripts/core/modules.sh" ]; then
-  source "/opt/scripts/core/modules.sh"
-  source_modules_framework "/opt/scripts/core"
-else
-  echo "Error: modules.sh not found (expected ${SCRIPT_DIR}/modules.sh or /opt/scripts/core/modules.sh)" >&2
-  exit 1
-fi
+for _bs_path in "/opt/scripts/core/modules.sh" "${SCRIPT_DIR}/modules.sh"; do
+  if [ -f "${_bs_path}" ]; then
+    source "${_bs_path}"
+    source_modules_framework "${SCRIPT_DIR}"
+    _FOUND_MODULES=1
+    break
+  fi
+done
+[ "${_FOUND_MODULES}" -eq 1 ] || { echo "Error: modules.sh not found" >&2; exit 1; }
+unset _bs_path _FOUND_MODULES
 
 source_module common.sh
 source_module package-lists.sh

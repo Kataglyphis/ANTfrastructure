@@ -43,13 +43,6 @@ cross_build_arch() {
   build_arch_oci
 }
 
-cross_normalize_arch() {
-  local raw="$1"
-
-  [ -n "${raw}" ] || return 1
-  arch_normalize "${raw}"
-}
-
 cross_require_single_target_arch() {
   local raw="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
   local scope="${2:-cross build}"
@@ -221,7 +214,7 @@ cross_target_qemu_runner_for_arch() {
   local target_arch="$1"
   local qemu_arch=""
 
-  case "$(cross_normalize_arch "${target_arch}")" in
+  case "$(arch_normalize "${target_arch}")" in
     amd64) qemu_arch="x86_64" ;;
     arm64) qemu_arch="aarch64" ;;
     386) qemu_arch="i386" ;;

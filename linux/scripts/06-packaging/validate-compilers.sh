@@ -213,11 +213,12 @@ _validate_cc_target() {
   fi
 
   case "${target_arch}" in
-    amd64) expected_pattern="x86_64"; cc_pattern="X86-64" ;;
-    arm64) expected_pattern="aarch64"; cc_pattern="AArch64" ;;
-    riscv64) expected_pattern="riscv64"; cc_pattern="RISC-V" ;;
-    *) expected_pattern=""; cc_pattern="" ;;
+    amd64) expected_pattern="x86_64" ;;
+    arm64) expected_pattern="aarch64" ;;
+    riscv64) expected_pattern="riscv64" ;;
+    *) expected_pattern="" ;;
   esac
+  cc_pattern="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
 
   cc_dump="$(cc -dumpmachine 2>/dev/null || true)"
   if [ -z "${cc_dump}" ]; then
