@@ -38,6 +38,7 @@ ARG OPENCV_OUTPUT_DIR
 ARG GSTREAMER_PREFIX
 ARG GCC_VERSION
 SHELL ["bash", "-lc"]
+# Canonical artifact COPY list — keep in sync with package-image stage below.
 COPY --from=runtime_artifact ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=runtime_artifact ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=runtime_artifact /opt/ffmpeg /opt/ffmpeg
@@ -273,6 +274,9 @@ RUN set -eux; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
     bash /opt/scripts/packaging/smoke-wrapper.sh
 
+# Runtime scripts + entrypoint + labels — keep in sync with
+# linux/Dockerfile.runtime-common (canonical source) and
+# linux/Dockerfile.torch (final stage).
 COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
 COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
 

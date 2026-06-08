@@ -21,9 +21,7 @@ fi
 # shellcheck disable=SC1091
 [ -f "${_ARTIFACT_COMMON_DIR}/logging.sh" ] && source "${_ARTIFACT_COMMON_DIR}/logging.sh"
 
-canonical_target_arch() {
-  arch_normalize "$1" || return 1
-}
+# canonical_target_arch() is provided by platform.sh (sourced above)
 
 normalize_target_arches() {
   local raw_arches="$1"
@@ -172,10 +170,7 @@ run_nerdctl_build_to_tag() {
   local tag="$2"
   shift 2
 
-  local -a build_cmd=("${nerdctl_bin}" build)
-  append_buildkit_host_arg build_cmd
-  build_cmd+=(-t "${tag}" "$@")
-  run "${build_cmd[@]}"
+  run_nerdctl_build "${nerdctl_bin}" -t "${tag}" "$@"
 }
 
 pull_platform_image() {
@@ -685,6 +680,16 @@ BASE_IMAGE=$(runtime_base_tag "${arch}")
 ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
 EOF
 }
+
+# ==============================================================================
+# Cross-chain tag name functions.
+# Centralized tag naming so orchestrators and helpers stay in sync.
+# ==============================================================================
+cross_base_tag()              { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:base"; }
+cross_compiler_tag()          { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:compiler-cross-amd64"; }
+cross_sdk_tag()               { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:sdk-artifact-${1}"; }
+cross_media_tag()             { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:media-cross-${1}"; }
+cross_android_tag()           { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:android-cross-${1}"; }
 
 # ==============================================================================
 # Append --build-arg VAR=$VAR for every version tracked in versions.env.

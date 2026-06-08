@@ -2,11 +2,24 @@
 # modules.sh - shared module loader
 #
 # Provides: source_module <filename>
+#           source_modules_framework
 #
 # Supports both repository layout:
 #   linux/scripts/01-core, 02-toolchain, ...
 # and container layout:
 #   /opt/scripts/core, /opt/scripts/toolchain
+
+source_modules_framework() {
+  local caller_dir="${1:-${SCRIPT_DIR:-}}"
+
+  if [ -z "${caller_dir}" ]; then
+    caller_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
+  fi
+
+  if [ -z "${SCRIPT_DIR:-}" ]; then
+    export SCRIPT_DIR="${caller_dir}"
+  fi
+}
 
 source_module() {
   local name="$1"
@@ -16,10 +29,8 @@ source_module() {
     return 1
   fi
 
-  # Prefer caller-provided SCRIPT_DIR; otherwise derive from call stack.
   local caller_dir="${SCRIPT_DIR:-}"
   if [ -z "${caller_dir}" ]; then
-    # BASH_SOURCE[0] is this file; BASH_SOURCE[1] is the caller.
     caller_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
   fi
 

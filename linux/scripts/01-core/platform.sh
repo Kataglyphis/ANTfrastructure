@@ -153,9 +153,19 @@ cross_targets_effective_raw() {
 }
 
 _platform_raw_target_arch() {
-  local raw="${TARGET_ARCH:-${TARGETARCH:-}}"
+  canonical_resolve_arch "${TARGET_ARCH:-${TARGETARCH:-}}"
+}
+
+canonical_resolve_arch() {
+  local raw="${1:-}"
+
   if [ -n "${raw}" ]; then
     printf '%s' "${raw}"
+    return 0
+  fi
+
+  if [ -n "${TARGETARCH:-}" ]; then
+    printf '%s' "${TARGETARCH}"
     return 0
   fi
 
@@ -166,6 +176,13 @@ _platform_raw_target_arch() {
     raw="$(uname -m 2>/dev/null || echo unknown)"
   fi
   printf '%s' "${raw}"
+}
+
+canonical_target_arch() {
+  local raw="${1:-}"
+  local resolved
+  resolved="$(canonical_resolve_arch "${raw}")"
+  arch_normalize "${resolved}" || return 1
 }
 
 _platform_raw_build_arch() {

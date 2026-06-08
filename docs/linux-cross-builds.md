@@ -98,6 +98,20 @@ delegates to `build-runtime-manifest.sh` to build the per-arch
 `base -> package -> torch -> wrapper` images on the real target platform and
 publish the multi-arch `:latest-cross` manifest.
 
+### Stale-check (`--verify-chain`)
+
+Before a full build, verify whether downstream registry images are stale without
+performing any builds:
+
+```bash
+./linux/scripts/build-cross-chain.sh \
+  --target-arches amd64,arm64,riscv64 \
+  --verify-chain
+```
+
+This resolves all upstream registry digests and reports mismatches so you can
+decide whether a full rebuild is needed.
+
 ### Why the handoff must be pinned by digest
 
 Each cross stage is a separate `nerdctl build` whose next stage does

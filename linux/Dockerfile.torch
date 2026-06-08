@@ -53,7 +53,9 @@ ARG ENABLE_NVIDIA
 ARG ENABLE_AMD
 
 # ==============================================================================
-# Runtime scripts — copy LAST to maximize cache hits
+# Runtime scripts + entrypoint + labels — keep in sync with
+# linux/Dockerfile.runtime-common (canonical source) and
+# linux/Dockerfile.package (wrapper-smoke stage).
 # ==============================================================================
 COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
 COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/

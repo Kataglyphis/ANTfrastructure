@@ -67,7 +67,7 @@ cross_require_single_target_arch() {
       ;;
   esac
 
-  target_arch="$(cross_normalize_arch "${raw}" 2>/dev/null || true)"
+  target_arch="$(canonical_target_arch "${raw}" 2>/dev/null || true)"
   case "${target_arch}" in
     amd64|arm64|386|riscv64)
       printf '%s' "${target_arch}"

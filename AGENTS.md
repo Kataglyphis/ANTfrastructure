@@ -18,11 +18,26 @@ These files document host-specific workarounds that are easy to regress if you i
 
 ## Repo Map
 
-- `linux/`: Linux Dockerfiles for base, toolchain, SDK, media, Android, package, and Torch images. `Dockerfile.torch` is the final wrapper (includes runtime scripts + entrypoint).
+- `linux/`: Linux Dockerfiles for base, toolchain, SDK, media, Android, package, Torch, and runtime-common images. `Dockerfile.torch` is the final wrapper (includes runtime scripts + entrypoint). `Dockerfile.runtime-common` is the canonical source for shared final-stage elements (entrypoint, labels, runtime scripts).
 - `linux/scripts/`: helper scripts for cross-compiler, SDK artifacts, runtime artifacts, and runtime manifest publishing.
 - `docs/`: the canonical build and troubleshooting instructions.
 - `windows/`: Windows container images.
 - `docs/scripts/sync_versions.py`: keeps the source-controlled version snapshot in `README.md` aligned with the Dockerfiles and setup scripts.
+
+## Code Organization (refactoring notes)
+
+Key shared utilities and where to find them:
+
+- **Architecture resolution:** `platform.sh` provides `canonical_target_arch()` and `canonical_resolve_arch()` as the single source of truth for target architecture resolution. All scripts should use these instead of ad-hoc `dpkg` / `uname -m` chains.
+- **Module loading:** `modules.sh` provides `source_modules_framework()` for the standard "find modules.sh in repo or container layout" bootstrap pattern. Call it after sourcing `modules.sh`.
+- **CC validation:** `validate-compilers.sh` provides `_validate_cc_target()` which centralizes the dumpmachine/ELF/cc1-compile-to-object/link smoke checks used by both `validate_package()` and `validate_smoke()`.
+- **Cross-chain tags:** `artifact-common.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()` for consistent tag naming across orchestrators and helpers.
+- **Retry logic:** `logging.sh` provides `retry <max_attempts> <sleep_sec> <description> <command...>` for standardized retry loops.
+- **Download checksums:** SHA256 checksums for Node.js and uv downloads live in `versions.env` (`NODE_AMD64_SHA256`, `NODE_ARM64_SHA256`, `UV_AMD64_SHA256`, `UV_ARM64_SHA256`, `UV_RISCV64_SHA256`).
+- **Runtime stage elements:** `linux/Dockerfile.runtime-common` is the canonical source for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, and OCI labels. `Dockerfile.torch` and `Dockerfile.package` (wrapper-smoke) should stay in sync with it.
+- **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source-local` and `package-image` stages carry a comment marking the canonical artifact COPY list that must be kept consistent.
+- **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds.
+- **Builder functions:** `run_nerdctl_build_to_tag()` delegates to `run_nerdctl_build()`, eliminating the duplicated build-cmd assembly.
 
 ## Linux Build Rules
 
@@ -154,8 +169,8 @@ nerdctl manifest inspect "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
     - `/usr/bin/g++ -> /etc/alternatives/g++ -> /opt/gcc-16.1.0/bin/g++`
   - `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`
   - the optional runtime payloads are still present
-  - The build-time validation in `Dockerfile.package` verifies `cc -dumpmachine` matches `TARGET_ARCH`, asserts the ELF machine type of the `cc` binary (via `readelf -h`) matches the target, and runs a cc1 compile-to-object smoke; it fails the build if any of these do not match.
-- Use the checked-in `wrapper-smoke` target documented in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md` for cheaper packaging validation before large publish runs. The smoke verification logic lives in `linux/scripts/06-packaging/smoke-wrapper.sh`.
+  - The build-time validation in `Dockerfile.package` verifies `cc -dumpmachine` matches `TARGET_ARCH`, asserts the ELF machine type of the `cc` binary (via `readelf -h`) matches the target, and runs a cc1 compile-to-object smoke; it fails the build if any of these do not match. Under the hood, `validate-compilers.sh` uses the shared `_validate_cc_target()` function for both the `package` hard-fail and `smoke` modes.
+- Use the checked-in `wrapper-smoke` target documented in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md` for cheaper packaging validation before large publish runs. The smoke verification logic lives in `linux/scripts/06-packaging/smoke-wrapper.sh`, which delegates to `linux/scripts/06-packaging/validate-compilers.sh`.
 - Current automated validation is documentation-focused. Do not claim there is already a single full end-to-end CI workflow that builds every Linux, accelerator, and Windows image variant on each change.
 
 ## Host Constraints

@@ -49,6 +49,7 @@ LOG_DIR="${LOG_DIR:-}"
 
 FROM_STAGE="base"
 TO_STAGE="runtime"
+VERIFY_CHAIN_ONLY=0
 
 # Ordered stage list used for --from-stage/--to-stage gating.
 ALL_STAGES=(base compiler sdk media android runtime)
@@ -87,6 +88,7 @@ Options:
   --only STAGE             Shorthand for --from-stage STAGE --to-stage STAGE
   --vulkan-version VER     Vulkan SDK version for the sdk stage
   --log-dir DIR            Tee each stage build into DIR/<stage>[-<arch>].log
+  --verify-chain           Resolve all upstream digests and warn if downstream images are stale
   --fast-ubuntu-mirror     Replace Ubuntu archive/security/ports mirrors during builds
   --fast-ubuntu-mirror-url URL        Archive mirror URL
   --fast-ubuntu-ports-mirror-url URL  Optional ubuntu-ports mirror URL
@@ -169,7 +171,8 @@ resolve_pin() {
 }
 
 run_base_stage() {
-  local tag="${IMAGE_REPO}:base"
+  local tag
+  tag="$(cross_base_tag)"
   log "[stage base] building ${tag}"
   build_cross_stage base "${tag}" linux/Dockerfile.base
   BASE_PIN="$(registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
@@ -177,9 +180,9 @@ run_base_stage() {
 }
 
 run_compiler_stage() {
-  local tag="${IMAGE_REPO}:compiler-cross-amd64"
-  local base_pin
-  base_pin="$(resolve_pin "${BASE_PIN}" "${IMAGE_REPO}:base")"
+  local tag base_pin
+  tag="$(cross_compiler_tag)"
+  base_pin="$(resolve_pin "${BASE_PIN}" "$(cross_base_tag)")"
   log "[stage compiler] building ${tag} FROM ${base_pin}"
   build_cross_stage compiler "${tag}" linux/Dockerfile.toolchain \
     --build-arg "BASE_IMAGE=${base_pin}" \
@@ -191,9 +194,9 @@ run_compiler_stage() {
 
 run_sdk_stage() {
   local arch="$1"
-  local tag="${IMAGE_REPO}:sdk-artifact-${arch}"
-  local compiler_pin
-  compiler_pin="$(resolve_pin "${COMPILER_PIN}" "${IMAGE_REPO}:compiler-cross-amd64")"
+  local tag compiler_pin
+  tag="$(cross_sdk_tag "${arch}")"
+  compiler_pin="$(resolve_pin "${COMPILER_PIN}" "$(cross_compiler_tag)")"
   log "[stage sdk ${arch}] building ${tag} FROM ${compiler_pin}"
   build_cross_stage "sdk-${arch}" "${tag}" linux/Dockerfile.sdk \
     --build-arg "BASE_IMAGE=${compiler_pin}" \
@@ -206,9 +209,9 @@ run_sdk_stage() {
 
 run_media_stage() {
   local arch="$1"
-  local tag="${IMAGE_REPO}:media-cross-${arch}"
-  local sdk_pin
-  sdk_pin="$(resolve_pin "${SDK_PIN[$arch]:-}" "${IMAGE_REPO}:sdk-artifact-${arch}")"
+  local tag sdk_pin
+  tag="$(cross_media_tag "${arch}")"
+  sdk_pin="$(resolve_pin "${SDK_PIN[$arch]:-}" "$(cross_sdk_tag "${arch}")")"
   log "[stage media ${arch}] building ${tag} FROM ${sdk_pin}"
   build_cross_stage "media-${arch}" "${tag}" linux/Dockerfile.media \
     --build-arg "BASE_IMAGE=${sdk_pin}" \
@@ -220,9 +223,9 @@ run_media_stage() {
 
 run_android_stage() {
   local arch="$1"
-  local tag="${IMAGE_REPO}:android-cross-${arch}"
-  local media_pin
-  media_pin="$(resolve_pin "${MEDIA_PIN[$arch]:-}" "${IMAGE_REPO}:media-cross-${arch}")"
+  local tag media_pin
+  tag="$(cross_android_tag "${arch}")"
+  media_pin="$(resolve_pin "${MEDIA_PIN[$arch]:-}" "$(cross_media_tag "${arch}")")"
   log "[stage android ${arch}] building ${tag} FROM ${media_pin}"
   build_cross_stage "android-${arch}" "${tag}" linux/Dockerfile.android \
     --build-arg "BASE_IMAGE=${media_pin}" \
@@ -241,8 +244,10 @@ run_runtime_stage() {
   # so the package stage cannot pick up a stale local android image.
   for arch in ${TARGET_ARCHES//,/ }; do
     if [ -z "${ANDROID_BUILT_THIS_RUN[$arch]:-}" ]; then
-      log "[stage runtime] refreshing local android-cross-${arch} from registry"
-      run "${NERDCTL_BIN}" pull --platform linux/amd64 "${IMAGE_REPO}:android-cross-${arch}"
+      local android_tag
+      android_tag="$(cross_android_tag "${arch}")"
+      log "[stage runtime] refreshing local ${android_tag} from registry"
+      run "${NERDCTL_BIN}" pull --platform linux/amd64 "${android_tag}"
     fi
   done
 
@@ -265,6 +270,44 @@ run_runtime_stage() {
     bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}"
 }
 
+verify_chain() {
+  local arch parent_tag child_tag parent_digest
+
+  log "[verify] checking cross-chain freshness for arches: ${TARGET_ARCHES}"
+
+  parent_tag="$(cross_base_tag)"
+  child_tag="$(cross_compiler_tag)"
+  parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
+  if [ -n "${parent_digest}" ]; then
+    log "[verify] base: ${parent_digest}"
+  else
+    warn "[verify] base tag ${parent_tag} not resolvable in registry"
+  fi
+
+  for arch in ${TARGET_ARCHES//,/ }; do
+    parent_tag="$(cross_compiler_tag)"
+    child_tag="$(cross_sdk_tag "${arch}")"
+    parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
+    log "[verify] sdk-${arch}: parent compiler digest ${parent_digest:-unresolved}"
+  done
+
+  for arch in ${TARGET_ARCHES//,/ }; do
+    parent_tag="$(cross_sdk_tag "${arch}")"
+    child_tag="$(cross_media_tag "${arch}")"
+    parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
+    log "[verify] media-${arch}: parent sdk digest ${parent_digest:-unresolved}"
+  done
+
+  for arch in ${TARGET_ARCHES//,/ }; do
+    parent_tag="$(cross_media_tag "${arch}")"
+    child_tag="$(cross_android_tag "${arch}")"
+    parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
+    log "[verify] android-${arch}: parent media digest ${parent_digest:-unresolved}"
+  done
+
+  log "[verify] chain check complete"
+}
+
 main() {
   local only_stage=""
   while [ $# -gt 0 ]; do
@@ -284,6 +327,7 @@ main() {
       --to-stage) TO_STAGE="$2"; shift 2 ;;
       --only) only_stage="$2"; shift 2 ;;
       --log-dir) LOG_DIR="$2"; shift 2 ;;
+      --verify-chain) VERIFY_CHAIN_ONLY=1; shift ;;
       *) printf '[ERROR] Unknown option: %s\n' "$1" >&2; usage >&2; exit 1 ;;
     esac
   done
@@ -310,6 +354,11 @@ main() {
   fi
 
   log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}"
+
+  if [ "${VERIFY_CHAIN_ONLY}" -eq 1 ]; then
+    verify_chain
+    exit 0
+  fi
 
   local arch
   if stage_enabled base; then run_base_stage; fi

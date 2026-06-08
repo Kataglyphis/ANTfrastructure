@@ -6,8 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 if [ -f "${SCRIPT_DIR}/modules.sh" ]; then
   source "${SCRIPT_DIR}/modules.sh"
+  source_modules_framework "${SCRIPT_DIR}"
 elif [ -f "/opt/scripts/core/modules.sh" ]; then
   source "/opt/scripts/core/modules.sh"
+  source_modules_framework "/opt/scripts/core"
 else
   echo "Error: modules.sh not found (expected ${SCRIPT_DIR}/modules.sh or /opt/scripts/core/modules.sh)" >&2
   exit 1
@@ -268,11 +270,11 @@ install_nodejs() {
   case "${arch}" in
     amd64|x86_64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-x64.tar.xz"
-      node_sha256="d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9"
+      node_sha256="${NODE_AMD64_SHA256:-d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9}"
       ;;
     arm64|aarch64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-arm64.tar.xz"
-      node_sha256="524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78"
+      node_sha256="${NODE_ARM64_SHA256:-524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78}"
       ;;
     riscv64)
       log "Installing distro Node.js packages on riscv64"
@@ -333,15 +335,15 @@ install_uv() {
   case "${arch}" in
     amd64|x86_64)
       uv_asset="uv-x86_64-unknown-linux-gnu.tar.gz"
-      uv_sha256="74947fe2c03315cf07e82ab3acc703eddef01aba4d5232a98e4c6825ec116131"
+      uv_sha256="${UV_AMD64_SHA256:-74947fe2c03315cf07e82ab3acc703eddef01aba4d5232a98e4c6825ec116131}"
       ;;
     arm64|aarch64)
       uv_asset="uv-aarch64-unknown-linux-gnu.tar.gz"
-      uv_sha256="8c9d0f0ee98166ae6ab198747519ba6f25db29d185bd2ae5960ecebc91a5c22a"
+      uv_sha256="${UV_ARM64_SHA256:-8c9d0f0ee98166ae6ab198747519ba6f25db29d185bd2ae5960ecebc91a5c22a}"
       ;;
     riscv64)
       uv_asset="uv-riscv64gc-unknown-linux-gnu.tar.gz"
-      uv_sha256="0314895f159ce97bcedac00a4b97fa7e53c16fee911a6a2d9f0b69ee6461b7d5"
+      uv_sha256="${UV_RISCV64_SHA256:-0314895f159ce97bcedac00a4b97fa7e53c16fee911a6a2d9f0b69ee6461b7d5}"
       ;;
     *)
       die "Unsupported uv architecture: ${arch}"

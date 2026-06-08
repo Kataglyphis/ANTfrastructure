@@ -6,8 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 if [ -f "${SCRIPT_DIR}/../01-core/modules.sh" ]; then
   source "${SCRIPT_DIR}/../01-core/modules.sh"
+  source_modules_framework "${SCRIPT_DIR}/../01-core"
 elif [ -f "/opt/scripts/core/modules.sh" ]; then
   source "/opt/scripts/core/modules.sh"
+  source_modules_framework "/opt/scripts/core"
 else
   echo "Error: modules.sh not found (expected ${SCRIPT_DIR}/../01-core/modules.sh or /opt/scripts/core/modules.sh)" >&2
   exit 1

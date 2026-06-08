@@ -79,3 +79,24 @@ err()  { _log_emit ERROR 2 "$@"; exit 1; }
 # Backwards compatible aliases
 log() { info "$@"; }
 die() { err "$@"; }
+
+retry() {
+  local max_attempts="${1:-3}"
+  local sleep_sec="${2:-5}"
+  local description="${3:-operation}"
+  shift 3 || true
+  local attempt=0
+
+  while true; do
+    attempt=$((attempt + 1))
+    if "$@"; then
+      return 0
+    fi
+    if [ "${attempt}" -ge "${max_attempts}" ]; then
+      printf '[ERROR] %s failed after %d attempts\n' "${description}" "${attempt}" >&2
+      return 1
+    fi
+    printf '[WARN] %s attempt %d/%d failed; retrying in %ds...\n' "${description}" "${attempt}" "${max_attempts}" "${sleep_sec}" >&2
+    sleep "${sleep_sec}"
+  done
+}

@@ -53,10 +53,7 @@ VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-${VULKAN_VERSION}}
 # Print the resolved value and export it.
 # ---------------------------------------------------------------------------
 ensure_target_arch() {
-  if [ -z "${TARGET_ARCH:-}" ]; then
-    TARGET_ARCH="${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
-  fi
-  TARGET_ARCH="$(arch_normalize "${TARGET_ARCH}")"
+  TARGET_ARCH="$(canonical_target_arch "${TARGET_ARCH:-}")"
   export TARGET_ARCH
   echo "TARGET_ARCH=${TARGET_ARCH}"
 }
