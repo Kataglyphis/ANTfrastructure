@@ -1,41 +1,9 @@
 # syntax=docker/dockerfile:1.24.0
 
-# Canonical source for shared final-stage elements: runtime scripts,
-# entrypoint, workdir, volume, and OCI labels.  Dockerfile.package's
-# wrapper-smoke stage copies this content verbatim and is the actual
-# producer.  Dockerfile.torch's final stage inherits from the package
-# base image so does not need to repeat these instructions.
+# The canonical source for shared final-stage runtime elements (runtime
+# scripts, entrypoint, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK,
+# kataglyphis user, OCI labels) is now linux/Dockerfile.torch final stage.
 #
-# Additions here MUST be mirrored in Dockerfile.package wrapper-smoke.
-
-ARG WORKDIR=/workspace
-ARG BUILD_TYPE=Release
-ARG BUILD_DATE=""
-ARG VCS_REF=""
-
-COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
-COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
-
-WORKDIR ${WORKDIR}
-VOLUME ["${WORKDIR}"]
-
-RUN useradd -m -s /bin/bash -u 1000 kataglyphis && \
-    mkdir -p /home/kataglyphis && chown -R kataglyphis:kataglyphis /home/kataglyphis
-
-USER kataglyphis
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["/bin/bash"]
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD /usr/local/bin/python3 -c "import sys; sys.exit(0)" 2>/dev/null || /bin/bash -c "exit 0"
-
-LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
-      org.opencontainers.image.description="My beschleuniger image for 2D AI" \
-      org.opencontainers.image.version="${BUILD_TYPE}" \
-      org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \
-      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
-      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
-      org.opencontainers.image.licenses="MIT"
+# This file exists for documentation reference only.  It is NOT consumed
+# by any build.  Do not add content here expecting it to appear in images.
+# All final-image additions go in Dockerfile.torch's final stage.

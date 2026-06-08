@@ -4,8 +4,6 @@ set -euo pipefail
 # copy-media-payloads.sh
 # Shared helper to copy lightweight media library payloads (LiteRT, VVdec,
 # ONNX Runtime GenAI/GPU) from the artifact image into the package image.
-# Deduplicates the copy_path/copy_glob pattern previously defined inline
-# twice in Dockerfile.package.
 #
 # Usage:
 #   copy-media-payloads.sh              Copy onto the local filesystem.
@@ -15,9 +13,16 @@ set -euo pipefail
 
 SRCPREFIX="${SRCPREFIX:-}"
 
+_dest() {
+  local rel="${1:-}"
+  local target_dir="${COPY_TARGET_DIR:-}"
+  printf '%s' "${target_dir}${rel}"
+}
+
 copy_path() {
   local src="${SRCPREFIX}$1"
-  local dst="${2:-$1}"
+  local dst
+  dst="$(_dest "${2:-$1}")"
   [ -e "${src}" ] || return 0
   mkdir -p "$(dirname "${dst}")"
   cp -a "${src}" "${dst}"
@@ -25,49 +30,20 @@ copy_path() {
 
 copy_glob() {
   local pattern="${SRCPREFIX}$1"
-  local item rel
+  local item rel dst
   shopt -s nullglob
   for item in ${pattern}; do
     rel="${item#${SRCPREFIX}}"
-    mkdir -p "$(dirname "${rel}")"
-    cp -a "${item}" "${rel}"
-  done
-  shopt -u nullglob
-}
-
-copy_path_to() {
-  local src="${SRCPREFIX}$1"
-  local dst="$2"
-  local target_dir="$3"
-  [ -e "${src}" ] || return 0
-  mkdir -p "${target_dir}$(dirname "${dst}")"
-  cp -a "${src}" "${target_dir}${dst}"
-}
-
-copy_glob_to() {
-  local pattern="${SRCPREFIX}$1"
-  local target_dir="$2"
-  local item rel
-  shopt -s nullglob
-  for item in ${pattern}; do
-    rel="${item#${SRCPREFIX}}"
-    mkdir -p "${target_dir}$(dirname "${rel}")"
-    cp -a "${item}" "${target_dir}${rel}"
+    dst="$(_dest "${rel}")"
+    mkdir -p "$(dirname "${dst}")"
+    cp -a "${item}" "${dst}"
   done
   shopt -u nullglob
 }
 
 copy_media_payloads() {
   local target_dir="${1:-}"
-
-  local _copy_path _copy_glob
-  if [ -n "${target_dir}" ]; then
-    _copy_path() { copy_path_to "$1" "$1" "${target_dir}"; }
-    _copy_glob() { copy_glob_to "$1" "${target_dir}"; }
-  else
-    _copy_path() { copy_path "$@"; }
-    _copy_glob() { copy_glob "$@"; }
-  fi
+  export COPY_TARGET_DIR="${target_dir}"
 
   for path in \
     /usr/local/lib/onnxruntime-genai \
@@ -82,7 +58,7 @@ copy_media_payloads() {
     /usr/local/lib/pkgconfig/libvvdec.pc \
     /usr/local/llvm-target \
     /usr/local/llvm-22; do
-    _copy_path "${path}"
+    copy_path "${path}"
   done
 
   for pattern in \
@@ -90,8 +66,10 @@ copy_media_payloads() {
     '/usr/local/lib/libtensorflow-lite.so*' \
     '/usr/local/lib/libtensorflowlite_c.so*' \
     '/usr/local/lib/libvvdec.so*'; do
-    _copy_glob "${pattern}"
+    copy_glob "${pattern}"
   done
+
+  unset COPY_TARGET_DIR
 }
 
 main() {

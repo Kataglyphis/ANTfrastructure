@@ -18,7 +18,7 @@ These files document host-specific workarounds that are easy to regress if you i
 
 ## Repo Map
 
-- `linux/`: Linux Dockerfiles for base, toolchain, SDK, media, Android, package, Torch, and runtime-common images. `Dockerfile.torch` is the final wrapper (includes runtime scripts + entrypoint). `Dockerfile.runtime-common` is the canonical source for shared final-stage elements (entrypoint, labels, runtime scripts).
+- `linux/`: Linux Dockerfiles for base, toolchain, SDK, media, Android, package, Torch, and runtime-common images. `Dockerfile.torch` is the final wrapper (includes runtime scripts + entrypoint) and the canonical source for shared final-stage elements (entrypoint, labels, runtime scripts). `Dockerfile.runtime-common` is a documentation-only reference.
 - `linux/scripts/`: helper scripts for cross-compiler, SDK artifacts, runtime artifacts, and runtime manifest publishing.
 - `docs/`: the canonical build and troubleshooting instructions.
 - `windows/`: Windows container images.
@@ -34,8 +34,8 @@ Key shared utilities and where to find them:
 - **Cross-chain tags:** `artifact-common.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()` for consistent tag naming across orchestrators and helpers.
 - **Retry logic:** `logging.sh` provides `retry <max_attempts> <sleep_sec> <description> <command...>` for standardized retry loops.
 - **Download checksums:** SHA256 checksums for Node.js and uv downloads live in `versions.env` (`NODE_AMD64_SHA256`, `NODE_ARM64_SHA256`, `UV_AMD64_SHA256`, `UV_ARM64_SHA256`, `UV_RISCV64_SHA256`).
-- **Runtime stage elements:** `linux/Dockerfile.runtime-common` is the canonical source for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, and OCI labels. `Dockerfile.torch` and `Dockerfile.package` (wrapper-smoke) should stay in sync with it.
-- **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source-local` and `package-image` stages carry a comment marking the canonical artifact COPY list that must be kept consistent.
+- **Runtime stage elements:** `linux/Dockerfile.torch` final stage is the canonical source for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, and OCI labels. `Dockerfile.runtime-common` exists as a documentation-only reference and is not consumed by any build.
+- **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source-local` and `package-image` stages carry comments marking the canonical artifact COPY list that must be kept consistent. Run `linux/scripts/verify-artifact-copy-parity.sh` to check.
 - **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds.
 - **Builder functions:** `run_nerdctl_build_to_tag()` delegates to `run_nerdctl_build()`, eliminating the duplicated build-cmd assembly.
 

@@ -61,8 +61,9 @@ add_prefix_python_paths_to_venv() {
 }
 
 main() {
-    local python_mm="${PYTHON_MAJOR_MINOR:-3.14}"
+    local python_mm="${PYTHON_MAJOR_MINOR:?PYTHON_MAJOR_MINOR is required}"
     local gcc_major="${GCC_VERSION%%.*}"
+    [ -n "${gcc_major}" ] || { echo "ERROR: GCC_VERSION is required" >&2; exit 1; }
     local python_bin python_cfg pip_bin triplet gcc_prefix
     local staged_python_root=""
     local -a packages=(libtbb-dev python3-venv python3-pip cargo rustc)

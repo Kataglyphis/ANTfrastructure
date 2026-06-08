@@ -40,7 +40,7 @@ Supported Dockerfiles:
 - `linux/Dockerfile.nvidia`
 - `linux/Dockerfile.amd`
 - `linux/Dockerfile.torch`
-- `linux/Dockerfile.runtime-common` (canonical source for runtime scripts, entrypoint, labels)
+- `linux/Dockerfile.runtime-common` (documentation-only reference; canonical source is `linux/Dockerfile.torch` final stage)
 
 Local smoke validation for the shared package+wrapper flow:
 

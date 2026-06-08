@@ -434,10 +434,19 @@ runtime_artifact_context_ref() {
   esac
 }
 
+runtime_stage_export_is_oci() {
+  local kind="$1"
+  case "${kind}" in
+    base) return 1 ;;    # plain rootfs directory (host workaround: cannot consume two OCI contexts)
+    package|wrapper) return 0 ;;  # OCI image layout (preserves image config for FROM)
+    *) return 1 ;;
+  esac
+}
+
 # Resolve a parent stage as either a remote image tag or a local
-# OCI-layout build context. Sets the out variables:
+# build context. Sets the out variables:
 #   parent_image_var   -> base image name to pass as --build-arg BASE_IMAGE
-#   parent_context_var -> local OCI context dir (only when local)
+#   parent_context_var -> local context dir (only when local)
 # Appends any --build-context args needed for local mode to the build_args array.
 _runtime_resolve_parent_context() {
   local parent_kind="$1"
@@ -449,18 +458,11 @@ _runtime_resolve_parent_context() {
   if runtime_use_local_stage_context_outputs; then
     _out_context_dir="$(runtime_stage_context_dir "${parent_kind}" "${arch}")"
     _out_image_ref="runtime_${parent_kind}"
-    # The export format differs per stage and the build-context reference MUST
-    # match it. `base` is exported as a flat rootfs directory
-    # (export_image_rootfs_dir) and is consumed as a plain directory context.
-    # `package` is exported as an OCI image layout (export_image_to_oci_layout)
-    # in _runtime_finish_stage; it preserves the image config (PATH, ENV,
-    # SHELL, /usr/bin/bash), which `FROM runtime_package` in Dockerfile.torch
-    # depends on. An OCI layout consumed as a plain directory context would
-    # hand BuildKit the layout's blobs/index.json as a rootfs and break
-    # `FROM` (exec: "bash": executable file not found). Reference it via the
-    # oci-layout:// scheme so BuildKit resolves it as an image.
     local _parent_context_ref="${_out_context_dir}"
-    if [ "${parent_kind}" = "package" ]; then
+    if runtime_stage_export_is_oci "${parent_kind}"; then
+      # OCI layout preserves image config (PATH, ENV, SHELL, /usr/bin/bash)
+      # which FROM depends on.  Reference via oci-layout:// so BuildKit
+      # resolves it as an image, not a plain rootfs directory.
       _parent_context_ref="oci-layout://${_out_context_dir}"
     fi
     _out_build_args+=(--build-context "runtime_${parent_kind}=${_parent_context_ref}")
@@ -683,22 +685,12 @@ cross_android_tag()           { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREF
 # ends with _VERSION, _RELEASE, _MAJOR_MINOR, or _MAJOR is forwarded.
 # ==============================================================================
 _auto_discover_version_build_arg_vars() {
-  local var value
-
-  # Re-source versions.env in a subshell to extract var names without side effects.
-  (
-    set -a
-    # shellcheck disable=SC1091
-    [ -f "${_ARTIFACT_COMMON_DIR}/versions.env" ] && source "${_ARTIFACT_COMMON_DIR}/versions.env"
-    set -o posix
-    set | grep -E '^[A-Z][A-Z0-9_]*=' | cut -d= -f1
-  ) | while read -r var; do
-    case "${var}" in
-      *_VERSION|*_RELEASE|*_MAJOR_MINOR|*_MAJOR)
-        printf '%s\n' "${var}"
-        ;;
-    esac
-  done
+  local versions_file="${_ARTIFACT_COMMON_DIR}/versions.env"
+  [ -f "${versions_file}" ] || return 0
+  # Extract variable names matching the version pattern directly from the file
+  # without re-sourcing.  versions.env has already been sourced by the caller.
+  grep -E '^[A-Z][A-Z0-9_]*(_VERSION|_RELEASE|_MAJOR_MINOR|_MAJOR)=' "${versions_file}" \
+    | cut -d= -f1
 }
 
 # Cache the auto-discovered list once.

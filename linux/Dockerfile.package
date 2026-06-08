@@ -38,7 +38,8 @@ ARG OPENCV_OUTPUT_DIR
 ARG GSTREAMER_PREFIX
 ARG GCC_VERSION
 SHELL ["bash", "-lc"]
-# Canonical artifact COPY list — keep in sync with package-image stage below.
+# Artifact COPY list — keep in sync with package-image stage below.
+# Run linux/scripts/verify-artifact-copy-parity.sh to check consistency.
 COPY --from=runtime_artifact ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=runtime_artifact ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=runtime_artifact /opt/ffmpeg /opt/ffmpeg
@@ -112,10 +113,9 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 SHELL ["bash", "-lc"]
 
-# Copy only the selected target-built payload into the final package layer. The
-# artifact image may either be a target-platform sequential image or an amd64-
-# hosted cross carrier image, but the exported developer-facing runtime surface
-# is rebuilt the same way in both cases.
+# Copy only the selected target-built payload into the final package layer.
+# Keep in sync with artifact-source-local COPY list above.
+# Run linux/scripts/verify-artifact-copy-parity.sh to check consistency.
 COPY --from=artifact-source ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=artifact-source /opt/ffmpeg /opt/ffmpeg
@@ -206,24 +206,11 @@ RUN if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
         ln -s /usr/local/llvm-target/lib/clang /usr/lib/clang; \
     fi
 
-# Vulkan SDK installs only under x86_64/; create aarch64 and riscv64 symlinks,
+# Vulkan SDK installs only under x86_64/; create aarch64 and riscv64 symlinks
 # and link /opt/vulkan/active to the appropriate architecture folder.
-RUN set -eux; \
-    for vulkan_dir in /opt/vulkan/*/; do \
-        [ -d "${vulkan_dir}" ] || continue; \
-        if [ -d "${vulkan_dir}/x86_64" ] && [ ! -e "${vulkan_dir}/aarch64" ]; then \
-            ln -sf x86_64 "${vulkan_dir}/aarch64"; \
-        fi; \
-        if [ -d "${vulkan_dir}/x86_64" ] && [ ! -e "${vulkan_dir}/riscv64" ]; then \
-            ln -sf x86_64 "${vulkan_dir}/riscv64"; \
-        fi; \
-        vulkan_arch="${TARGETARCH:-${TARGET_ARCH:-amd64}}"; \
-        if [ "${vulkan_arch}" = "amd64" ]; then arch_dir="x86_64"; \
-        elif [ "${vulkan_arch}" = "arm64" ] || [ "${vulkan_arch}" = "aarch64" ]; then arch_dir="aarch64"; \
-        elif [ "${vulkan_arch}" = "riscv64" ]; then arch_dir="riscv64"; \
-        else arch_dir="x86_64"; fi; \
-        ln -sf "${vulkan_dir}${arch_dir}" /opt/vulkan/active; \
-    done
+RUN --mount=type=bind,source=linux/scripts/06-packaging/setup-vulkan-symlinks.sh,target=/tmp/setup-vulkan-symlinks.sh,ro \
+    set -eux; \
+    bash /tmp/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}"
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
@@ -252,14 +239,11 @@ RUN set -eux; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /opt/scripts/packaging/validate-compilers.sh package
 
-# Keep a tiny smoke-only wrapper target here because local/unpushed intermediate
-# image tags are not always resolvable across separate Dockerfiles under BuildKit.
+# Self-contained smoke-only wrapper target. Runs compiler validation against
+# the package image without needing the full Dockerfile.torch build.  Runtime
+# scripts, entrypoint, labels etc. live canonically in Dockerfile.torch final.
 FROM package AS wrapper-smoke
 
-ARG BUILD_TYPE=Release
-ARG WORKDIR=/workspace
-ARG BUILD_DATE=""
-ARG VCS_REF=""
 ARG TARGET_ARCH
 ARG TARGETARCH
 ARG GCC_VERSION
@@ -272,25 +256,3 @@ RUN set -eux; \
     LLVM_RELEASE="${LLVM_RELEASE}" \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
     bash /opt/scripts/packaging/validate-compilers.sh smoke
-
-# Runtime scripts + entrypoint + labels — canonical source.  Keep in
-# sync with linux/Dockerfile.runtime-common (additions mirror here).
-# Dockerfile.torch inherits from this image so does not duplicate.
-COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
-COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
-
-WORKDIR ${WORKDIR}
-VOLUME ["${WORKDIR}"]
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["/bin/bash"]
-
-LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
-      org.opencontainers.image.description="My beschleuniger image for 2D AI" \
-      org.opencontainers.image.version="${BUILD_TYPE}" \
-      org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \
-      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
-      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
-      org.opencontainers.image.licenses="MIT"
