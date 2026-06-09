@@ -135,5 +135,5 @@ RUN set -eux; \
       /opt/scripts/python/build_python.sh; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null
 
-LABEL org.opencontainers.image.title="Kataglyphis Compiler"
-LABEL org.opencontainers.image.description="Compiler toolchain with GCC and LLVM/Clang"
+LABEL org.opencontainers.image.title="Kataglyphis Compiler" \
+      org.opencontainers.image.description="Compiler toolchain with GCC and LLVM/Clang"

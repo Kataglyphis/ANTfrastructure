@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# llvm.sh - LLVM/Clang toolchain
+# llvm.sh - LLVM/Clang toolchain source-only helper.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "This script is meant to be sourced, not executed" >&2
+  exit 1
+fi
+set -euo pipefail
 
 llvm_build_script() {
   local script_dir

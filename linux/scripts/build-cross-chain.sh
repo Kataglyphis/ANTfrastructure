@@ -115,7 +115,7 @@ stage_index() {
     printf '%s' "${idx}"
     return 0
   fi
-  printf '[ERROR] Unknown stage: %s\n' "${name}" >&2
+  warn "Unknown stage: ${name}"
   return 1
 }
 
@@ -158,7 +158,8 @@ build_cross_stage() {
   build_cmd+=("${extra[@]}" "${common_args[@]}" .)
 
   if [ -n "${log_file}" ]; then
-    run "${build_cmd[@]}" 2>&1 | tee "${log_file}"
+    # Use process substitution to preserve pipefail (tee always exits 0)
+    run "${build_cmd[@]}" > >(tee -a "${log_file}") 2>&1
   else
     run "${build_cmd[@]}"
   fi
@@ -172,7 +173,16 @@ resolve_pin() {
     printf '%s' "${captured}"
     return 0
   fi
-  registry_pin_ref "${NERDCTL_BIN}" "${tag}"
+  local result
+  result="$(registry_pin_ref "${NERDCTL_BIN}" "${tag}")" || {
+    warn "Failed to resolve registry digest for ${tag}. Cannot pin downstream FROM."
+    return 1
+  }
+  if [ -z "${result}" ]; then
+    warn "Registry pin ref returned empty for ${tag}. Cannot pin downstream FROM."
+    return 1
+  fi
+  printf '%s' "${result}"
 }
 
 run_base_stage() {
@@ -336,7 +346,7 @@ main() {
       --only) only_stage="$2"; shift 2 ;;
       --log-dir) LOG_DIR="$2"; shift 2 ;;
       --verify-chain) VERIFY_CHAIN_ONLY=1; shift ;;
-      *) printf '[ERROR] Unknown option: %s\n' "$1" >&2; usage >&2; exit 1 ;;
+      *) err "Unknown option: $1" ;;
     esac
   done
 
@@ -357,8 +367,7 @@ main() {
   FROM_STAGE_IDX="$(stage_index "${FROM_STAGE}")" || exit 1
   TO_STAGE_IDX="$(stage_index "${TO_STAGE}")" || exit 1
   if [ "${FROM_STAGE_IDX}" -gt "${TO_STAGE_IDX}" ]; then
-    printf '[ERROR] --from-stage (%s) is after --to-stage (%s)\n' "${FROM_STAGE}" "${TO_STAGE}" >&2
-    exit 1
+    err "--from-stage (${FROM_STAGE}) is after --to-stage (${TO_STAGE})"
   fi
 
   log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}"

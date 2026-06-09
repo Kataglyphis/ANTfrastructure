@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# vulkan.sh - Vulkan SDK install
+# vulkan.sh - Vulkan SDK install source-only helper.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "This script is meant to be sourced, not executed" >&2
+  exit 1
+fi
 
 install_vulkan_prereqs() {
   log "Installing Vulkan SDK prerequisites"

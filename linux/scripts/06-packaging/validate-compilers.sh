@@ -20,7 +20,17 @@ set -euo pipefail
 
 _vcs_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${_vcs_script_dir}/../01-core/platform.sh"
+_sourced_platform=0
+for _candidate in \
+  "${_vcs_script_dir}/../01-core/platform.sh" \
+  "/opt/scripts/core/platform.sh"; do
+  if [ -f "${_candidate}" ]; then
+    source "${_candidate}"
+    _sourced_platform=1
+    break
+  fi
+done
+[ "${_sourced_platform}" -eq 1 ] || { echo "COMPILER FAIL: cannot find platform.sh" >&2; exit 1; }
 
 validate_resolve_arch() {
   canonical_target_arch "${1:-${TARGET_ARCH:-}}"

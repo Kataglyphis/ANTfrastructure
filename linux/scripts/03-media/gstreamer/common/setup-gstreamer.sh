@@ -154,19 +154,7 @@ resolve_host_gcc_for_cargo() {
 prepare_cargo_host_linker_wrapper() {
   local compiler="$1"
   local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
-
-  if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
-    make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"
-    return 0
-  fi
-
-  mkdir -p "${wrapper_dir}"
-  cat > "${wrapper_dir}/host-gcc" <<EOF
-#!/usr/bin/env bash
-exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
-EOF
-  chmod +x "${wrapper_dir}/host-gcc"
-  printf '%s' "${wrapper_dir}/host-gcc"
+  make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"
 }
 
 resolve_host_gxx_for_cargo() {
@@ -197,19 +185,7 @@ resolve_host_gxx_for_cargo() {
 prepare_cargo_host_cxx_wrapper() {
   local compiler="$1"
   local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
-
-  if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
-    make_named_host_compiler_wrapper "${wrapper_dir}" host-g++ "${compiler}"
-    return 0
-  fi
-
-  mkdir -p "${wrapper_dir}"
-  cat > "${wrapper_dir}/host-g++" <<EOF
-#!/usr/bin/env bash
-exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
-EOF
-  chmod +x "${wrapper_dir}/host-g++"
-  printf '%s' "${wrapper_dir}/host-g++"
+  make_named_host_compiler_wrapper "${wrapper_dir}" host-g++ "${compiler}"
 }
 
 remove_path_entry() {

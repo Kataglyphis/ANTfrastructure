@@ -110,29 +110,10 @@ resolve_host_compiler() {
 }
 
 prepare_host_compiler_wrapper() {
-    local lang="$1"
-    local compiler="$2"
-    local wrapper_dir="${LITERT_HOST_TOOLCHAIN_DIR:-/tmp/litert-host-toolchain}"
-    local wrapper=""
-
-    case "${lang}" in
-        c) wrapper="${wrapper_dir}/host-gcc" ;;
-        cxx) wrapper="${wrapper_dir}/host-g++" ;;
-        *) return 1 ;;
-    esac
-
-    if command -v make_host_compiler_wrapper >/dev/null 2>&1; then
-        make_host_compiler_wrapper "${wrapper}" "${compiler}"
-        return 0
-    fi
-
-    mkdir -p "${wrapper_dir}"
-    cat > "${wrapper}" <<EOF
-#!/usr/bin/env bash
-exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
-EOF
-    chmod +x "${wrapper}"
-    printf '%s' "${wrapper}"
+    local compiler="$1"
+    local wrapper_name="${2:-host-gcc}"
+    local wrapper_dir="/tmp/litert-host-toolchain"
+    make_named_host_compiler_wrapper "${wrapper_dir}" "${wrapper_name}" "${compiler}"
 }
 
 resolve_litert_cross_archive_tool() {
@@ -303,10 +284,10 @@ CMAKE_EOF
         unset CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS
         unset LDFLAGS
         if [ -n "${host_cc}" ]; then
-            host_cc="$(prepare_host_compiler_wrapper c "${host_cc}")"
+            host_cc="$(prepare_host_compiler_wrapper "${host_cc}" host-gcc)"
         fi
         if [ -n "${host_cxx}" ]; then
-            host_cxx="$(prepare_host_compiler_wrapper cxx "${host_cxx}")"
+            host_cxx="$(prepare_host_compiler_wrapper "${host_cxx}" host-g++)"
         fi
         info Using host C compiler for flatbuffers: ${host_cc:-unresolved}
         info Using host C++ compiler for flatbuffers: ${host_cxx:-unresolved}
@@ -316,8 +297,8 @@ CMAKE_EOF
         if [ -n "${host_cxx}" ]; then
             cmake_args+=("-DLITERT_HOST_CXX_COMPILER=${host_cxx}")
         fi
-        info Using cross archive tool: ${cross_ar}
-        info Using cross ranlib tool: ${cross_ranlib}
+        info Using cross archive tool: ${cross_ar:-unresolved}
+        info Using cross ranlib tool: ${cross_ranlib:-unresolved}
     fi
 
     # Add lld linker flags if available
@@ -600,8 +581,8 @@ install_litert() {
                 unset WHEEL_PLATFORM_NAME || true
             fi
             
-            sed -i "s|cmake \"\${TENSORFLOW_LITE_DIR}\"|cmake ${extra_cmake_flags} \"\${TENSORFLOW_LITE_DIR}\"|g" build_pip_package_with_cmake.sh
-            sed -i "s|cmake \\\\|cmake ${extra_cmake_flags} \\\\|g" build_pip_package_with_cmake.sh
+            sed -i "s|cmake \"\${TENSORFLOW_LITE_DIR}\"|cmake ${extra_cmake_flags} \"\${TENSORFLOW_LITE_DIR}\"|g" build_pip_package_with_cmake.sh 2>/dev/null || true
+            sed -i "s|cmake \\\\|cmake ${extra_cmake_flags} \\\\|g" build_pip_package_with_cmake.sh 2>/dev/null || true
 
             if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
                 # Debian/Ubuntu's Python.h in /usr/include/pythonX.Y includes
@@ -611,13 +592,16 @@ install_litert() {
                 # setup, so make that root visible to the wheel helper's
                 # BUILD_FLAGS path.
                 # shellcheck disable=SC2016
-                sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"-march=native ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh
+                sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"-march=native ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh 2>/dev/null || true
                 # shellcheck disable=SC2016
-                sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh
+                sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh 2>/dev/null || true
             fi
             
             # remove -march=native from build flags to avoid multi-arch issues
-            sed -i 's|-march=native ||g' build_pip_package_with_cmake.sh
+            sed -i 's|-march=native ||g' build_pip_package_with_cmake.sh 2>/dev/null || true
+            
+            # Vendored neon2sse requires CMake >= 3.5; export so cmake picks it up
+            export CMAKE_POLICY_VERSION_MINIMUM=3.5
             
             # run the script
             bash build_pip_package_with_cmake.sh "${TENSORFLOW_TARGET}" > pip_build.log 2>&1 || {
@@ -642,7 +626,7 @@ install_litert() {
         fi
         popd > /dev/null
     else
-        info No Python packaging detected for LiteRT at ${pip_pkg_dir}; skipping wheel build
+        info "No Python packaging detected for LiteRT at ${pip_pkg_dir}; skipping wheel build"
     fi
 }
 
@@ -705,10 +689,9 @@ install_manual() {
     # NOTE: Since this is a symlink, tensorflow/lite/c will automatically resolve
     # to tflite/c which should already have the C API headers from the tflite copy
     info Creating tensorflow/lite compatibility symlink...
-    mkdir -p "${include_dir}/tensorflow"
-    rm -rf "${include_dir}/tensorflow/lite"  # Remove any existing symlink or directory
-    ln -snf "${include_dir}/tflite" "${include_dir}/tensorflow/lite"
-    info Created symlink: ${include_dir}/tensorflow/lite -> ${include_dir}/tflite
+    mkdir -p "${include_dir}/tensorflow/lite"
+    cp -a "${include_dir}/tflite/." "${include_dir}/tensorflow/lite/" 2>/dev/null || true
+    info Created tensorflow/lite compatibility directory
     
     # Verify the symlink works for the critical header
     if [ -f "${include_dir}/tensorflow/lite/interpreter.h" ]; then
@@ -746,7 +729,7 @@ install_manual() {
         fbheader=$(find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h" -print -quit 2>/dev/null || true)
         if [ -n "$fbheader" ]; then
             fbdir=$(dirname "$fbheader")
-            info Found flatbuffers header at $fbheader; copying from $fbdir...
+            info "Found flatbuffers header at $fbheader; copying from $fbdir..."
             mkdir -p "${include_dir}/flatbuffers" || true
             cp -rv "$fbdir"/* "${include_dir}/flatbuffers/" 2>/dev/null || true
             fb_found=1
@@ -781,7 +764,7 @@ install_manual() {
         spanhdr=$(find "${LITERT_SRC}/litert" -type f -path "*/absl/types/span.h" -print -quit 2>/dev/null || true)
         if [ -n "$spanhdr" ]; then
             absl_root=$(dirname "$(dirname "$(dirname "$spanhdr")")")
-            info Found absl headers under ${absl_root}; copying...
+            info "Found absl headers under ${absl_root}; copying..."
             ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
                 -exec cp --parents {} "${include_dir}/" \; ) 2>/dev/null || true
             absl_found=1

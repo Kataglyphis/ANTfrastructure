@@ -38,6 +38,11 @@ main() {
   echo "${image_src}"
   echo
 
+  if [ -z "${local_src}" ] && [ -z "${image_src}" ]; then
+    echo "ERROR: No COPY sources found in either section. Check stage names exist in Dockerfile."
+    exit 1
+  fi
+
   if [ "${local_src}" = "${image_src}" ]; then
     echo "OK: artifact COPY source paths match"
     return 0

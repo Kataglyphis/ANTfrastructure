@@ -130,8 +130,6 @@ COPY --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
-RUN set -eux; \
-    mkdir -p /opt/python-cross
 COPY --from=artifact-payload /payload/ /
 
 FROM ${PACKAGE_BASE_STAGE} AS package
@@ -238,6 +236,9 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-package-${TARGETARCH} 
 RUN set -eux; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /opt/scripts/packaging/validate-compilers.sh package
+
+LABEL org.opencontainers.image.title="Kataglyphis Package" \
+      org.opencontainers.image.description="Runtime package image with assembled cross-compiled artifacts"
 
 # Self-contained smoke-only wrapper target. Runs compiler validation against
 # the package image without needing the full Dockerfile.torch build.  Runtime

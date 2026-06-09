@@ -44,7 +44,7 @@ run() {
 append_buildkit_host_arg() {
   local -n out_args_ref=$1
 
-  if [ -n "${BUILDKIT_HOST}" ]; then
+  if [ -n "${BUILDKIT_HOST:-}" ]; then
     out_args_ref+=(--buildkit-host "${BUILDKIT_HOST}")
   fi
 }
@@ -66,9 +66,9 @@ append_mirror_build_args() {
 }
 
 append_common_build_args() {
-  local -n _acba_out=$1
-  append_mirror_build_args _acba_out "${2:-}" "${3:-}" "${4:-}"
-  append_version_build_args _acba_out
+  local _acba_name="$1"
+  append_mirror_build_args "${_acba_name}" "${2:-}" "${3:-}" "${4:-}"
+  append_version_build_args "${_acba_name}"
 }
 
 append_optional_build_arg() {
@@ -566,6 +566,7 @@ runtime_build_package_image() {
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=false \
     --platform "linux/${arch}" \
+    --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
     -t "${tag}" \
     -f "${PACKAGE_DOCKERFILE_PATH}" \
     --build-arg "BASE_IMAGE=${parent_image}" \
@@ -703,12 +704,12 @@ if [ -z "${_VERSION_BUILD_ARG_VARS_CACHED:-}" ]; then
 fi
 
 append_version_build_args() {
-  local -n out_args_ref=$1
+  local _avba_name="$1"
   local var_name
 
   for var_name in "${_VERSION_BUILD_ARG_VARS[@]}"; do
     if [ -n "${!var_name:-}" ]; then
-      append_optional_build_arg out_args_ref "${var_name}" "${!var_name}"
+      append_optional_build_arg "${_avba_name}" "${var_name}" "${!var_name}"
     fi
   done
 }

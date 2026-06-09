@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# build_common.sh - Linux build framework with step management and logging
+# build_common.sh - Build framework with step management and structured logging.
+#
+# NOTE: This module is available but NOT currently used by any orchestrator.
+# It provides optional infrastructure for build timing, structured JSON logging,
+# and step management.  Adopt it in orchestrators if step tracking is desired.
 #
 # Provides:
 #   build_init <workspace> [log_dir]      - Initialize build context

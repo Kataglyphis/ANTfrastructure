@@ -346,19 +346,18 @@ configure_opencv() {
         cmake_opts+=("-DCMAKE_CXX_FLAGS=${target_shared_include_fallback}")
     fi
 
-    # Add lld linker flags if available
-    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+    # Fallback LLD flags (canonical path via setup_lld_linker exports env vars)
+    if [ -z "${CMAKE_EXE_LINKER_FLAGS:-}" ] && command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
         cmake_opts+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
         cmake_opts+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
         cmake_opts+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
-        echo "Using lld linker for faster linking"
     fi
 
-    # Add ccache if available
-    if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+    # Fallback ccache flags (canonical path via setup_ccache exports env vars)
+    if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ] && command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
         cmake_opts+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
         cmake_opts+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-        echo "Using ccache for faster compilation"
+        cmake_opts+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
     fi
 
     # Ensure tracking contrib module is explicitly enabled (some builds/platforms
@@ -482,7 +481,9 @@ build_opencv() {
 }
 
 # ------------------------------------------------------------------------------
-# Build OpenCV Python Wheel (using official opencv-python repo)
+# NOTE: build_opencv_python_wheel() below is preserved for reference but is
+# NOT called by main(). The source-built 5.x bindings are installed directly
+# via cmake (BUILD_opencv_python3=true) and are preferred over the wheel path.
 # ------------------------------------------------------------------------------
 build_opencv_python_wheel() {
     echo "====================================================================="

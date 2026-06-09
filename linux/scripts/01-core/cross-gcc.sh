@@ -115,3 +115,38 @@ make_named_host_compiler_wrapper() {
 
   make_host_compiler_wrapper "${wrapper_dir}/${wrapper_name}" "${compiler}"
 }
+
+# Resolve a GCC cross archive tool (ar, ranlib, etc.) for the current cross target.
+# Looks for <triplet>-gcc-<tool> first, then falls back to <triplet>-<tool>.
+resolve_cross_archive_tool() {
+  local tool="$1"
+  local triplet="${2:-${CROSS_TARGET_TRIPLET:-}}"
+  local preferred=""
+  local fallback=""
+  local resolved=""
+
+  [ -n "${triplet}" ] || {
+    if command -v cross_target_triplet >/dev/null 2>&1; then
+      triplet="$(cross_target_triplet)" || return 1
+    else
+      return 1
+    fi
+  }
+
+  preferred="${triplet}-gcc-${tool}"
+  fallback="${triplet}-${tool}"
+
+  resolved="$(command -v "${preferred}" 2>/dev/null || true)"
+  if [ -n "${resolved}" ]; then
+    printf '%s' "${resolved}"
+    return 0
+  fi
+
+  resolved="$(command -v "${fallback}" 2>/dev/null || true)"
+  if [ -n "${resolved}" ]; then
+    printf '%s' "${resolved}"
+    return 0
+  fi
+
+  printf '%s' "${fallback}"
+}

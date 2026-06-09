@@ -3,6 +3,8 @@
 ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:android"
 FROM ${BASE_IMAGE} AS torch
 
+SHELL ["bash", "-lc"]
+
 ARG ONNX_PACKAGE="onnxruntime-webgpu"
 ARG PYTORCH_EXTRA="pytorch-cpu"
 ARG ENABLE_NVIDIA="false"
@@ -65,8 +67,7 @@ COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 
-RUN useradd -m -s /bin/bash -u 1000 kataglyphis && \
-    mkdir -p /home/kataglyphis && chown -R kataglyphis:kataglyphis /home/kataglyphis
+RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -s /bin/bash kataglyphis
 
 USER kataglyphis
 
@@ -74,7 +75,7 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/bin/bash"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD /usr/local/bin/python3 -c "import sys; sys.exit(0)" 2>/dev/null || /bin/bash -c "exit 0"
+  CMD /usr/local/bin/python3 -c "import torch; import cv2; import onnxruntime" 2>/dev/null || exit 1
 
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
       org.opencontainers.image.description="My beschleuniger image for 2D AI" \

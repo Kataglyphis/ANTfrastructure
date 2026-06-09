@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.24.0
 
-# Global Version Arguments
+# Global Version Arguments (safety-net defaults; orchestrator passes canonical values from versions.env)
 ARG ONNXRUNTIME_VERSION="v1.26.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.13.1"
 ARG LITERT_VERSION="v2.1.5"
@@ -70,6 +70,9 @@ RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
 
 # Copy core build scripts (compiler-cache, parallelism helpers)
 COPY --chmod=755 \
+    linux/scripts/01-core/modules.sh \
+    linux/scripts/01-core/logging.sh \
+    linux/scripts/01-core/common.sh \
     linux/scripts/01-core/platform.sh \
     linux/scripts/01-core/cross-env.sh \
     linux/scripts/01-core/ubuntu-mirror.sh \
@@ -306,12 +309,6 @@ ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
 COPY --chmod=755 linux/scripts/03-media/gstreamer /opt/scripts/media/gstreamer
 COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 COPY --chmod=755 linux/scripts/01-core/cross-env.sh /opt/scripts/core/cross-env.sh
-
-# ------------------------------------------------------------------------------
-# Activate the correct per-architecture cross-compiled Python staging root
-# for Meson (gst-python) linking.  Script is idempotent (skip on native/amd64).
-# ------------------------------------------------------------------------------
-RUN set -eux; bash /opt/scripts/media/activate-cross-python.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \

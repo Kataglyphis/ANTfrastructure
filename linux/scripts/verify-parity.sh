@@ -418,17 +418,13 @@ main() {
         exit 0
         ;;
       *)
-        printf '[ERROR] Unknown option: %s\n' "$1" >&2
-        usage >&2
-        exit 1
+        err "Unknown option: $1"
         ;;
     esac
   done
 
   if [ -z "${NATIVE_IMAGE}" ] || [ -z "${CROSS_IMAGE}" ]; then
-    printf '[ERROR] Both --native and --cross are required\n' >&2
-    usage >&2
-    exit 1
+    err "Both --native and --cross are required"
   fi
 
   WORKDIR="$(mktemp -d "${TMPDIR}/verify-parity.XXXXXX")"
@@ -439,28 +435,24 @@ main() {
   if ! "${CONTAINER_BIN}" image inspect "${NATIVE_IMAGE}" >/dev/null 2>&1; then
     log "Pulling native image: ${NATIVE_IMAGE}"
     "${CONTAINER_BIN}" pull "${NATIVE_IMAGE}" || {
-      printf '[ERROR] Cannot pull native image: %s\n' "${NATIVE_IMAGE}" >&2
-      exit 1
+      err "Cannot pull native image: ${NATIVE_IMAGE}"
     }
   fi
 
   if ! "${CONTAINER_BIN}" image inspect "${CROSS_IMAGE}" >/dev/null 2>&1; then
     log "Pulling cross image: ${CROSS_IMAGE}"
     "${CONTAINER_BIN}" pull "${CROSS_IMAGE}" || {
-      printf '[ERROR] Cannot pull cross image: %s\n' "${CROSS_IMAGE}" >&2
-      exit 1
+      err "Cannot pull cross image: ${CROSS_IMAGE}"
     }
   fi
 
   # Quick sanity check that both containers can start
   if ! container_exec_strip "${NATIVE_IMAGE}" echo "ok" >/dev/null 2>&1; then
-    printf '[ERROR] Native image %s failed to start a container\n' "${NATIVE_IMAGE}" >&2
-    exit 1
+    err "Native image ${NATIVE_IMAGE} failed to start a container"
   fi
 
   if ! container_exec_strip "${CROSS_IMAGE}" echo "ok" >/dev/null 2>&1; then
-    printf '[ERROR] Cross image %s failed to start a container\n' "${CROSS_IMAGE}" >&2
-    exit 1
+    err "Cross image ${CROSS_IMAGE} failed to start a container"
   fi
 
   printf '%b' "\033[1;37m"
@@ -506,9 +498,7 @@ main() {
         check_imports && ((passed++)) || true
         ;;
       *)
-        printf '[ERROR] Unknown check: %s\n' "${check_name}" >&2
-        printf 'Available: packages, python, versions, files, libs, imports\n' >&2
-        exit 1
+        err "Unknown check: ${check_name}"
         ;;
     esac
   done

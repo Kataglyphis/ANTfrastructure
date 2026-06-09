@@ -164,15 +164,18 @@ arch_list_csv_normalize() {
   local raw_list="$1"
   local raw_arch normalized_arch
   local -a normalized_arches=()
+  local old_ifs="${IFS}"
 
-  for raw_arch in ${raw_list//,/ }; do
+  IFS=', '
+  for raw_arch in ${raw_list}; do
     [ -n "${raw_arch}" ] || continue
     normalized_arch="$(arch_normalize "${raw_arch}")"
     case "${normalized_arch}" in
       amd64|arm64|386|riscv64) normalized_arches+=("${normalized_arch}") ;;
-      *) return 1 ;;
+      *) IFS="${old_ifs}"; return 1 ;;
     esac
   done
+  IFS="${old_ifs}"
 
   [ "${#normalized_arches[@]}" -gt 0 ] || return 1
   printf '%s' "${normalized_arches[*]}" | tr ' ' ','

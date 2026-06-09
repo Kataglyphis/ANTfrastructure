@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# gcc.sh - GCC toolchain
+# gcc.sh - GCC toolchain source-only helper.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "This script is meant to be sourced, not executed" >&2
+  exit 1
+fi
 
 gcc_reported_version() {
   local tool="$1"
