@@ -12,6 +12,7 @@ else
   echo "Error: modules.sh not found (expected ${SCRIPT_DIR}/../01-core/modules.sh or /opt/scripts/core/modules.sh)" >&2
   exit 1
 fi
+source_modules_framework "${SCRIPT_DIR}"
 
 source_module common.sh
 source_module repos.sh
@@ -109,7 +110,7 @@ sanitize_llvm_config_for_target() {
     return 0
   }
 
-  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+  if ! cross_build_is_active; then
     printf '%s' "$llvm_config_path"
     return 0
   fi
@@ -207,7 +208,7 @@ detect_cross_llvm_cmake_dir() {
     return 0
   fi
 
-  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+  if ! cross_build_is_active; then
     printf '%s' ""
     return 0
   fi
@@ -312,7 +313,7 @@ detect_llvm_major_version() {
   local major=""
   local llvm_release=""
 
-  if [ -n "${llvm_dir}" ] && command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if [ -n "${llvm_dir}" ] && cross_build_is_active; then
     # linux/Dockerfile.toolchain pins both host and cross LLVM installs from the
     # same LLVM_RELEASE, so in cross mode the target package should follow that
     # pinned release rather than the build-host llvm-config.
@@ -478,7 +479,7 @@ cross_linker_search_flags() {
   local flags=""
   local dir
 
-  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+  if ! cross_build_is_active; then
     printf '%s' ""
     return 0
   fi
@@ -532,7 +533,7 @@ append_tvm_cmake_args() {
     "-DTVM_BUILD_PYTHON_MODULE=${python_module}"
   )
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     append_cmake_cross_args "${out_name}"
     out_ref+=( -DUSE_ALTERNATIVE_LINKER=OFF )
     if [ -n "${cross_link_flags:-}" ]; then
@@ -691,7 +692,7 @@ main() {
     prefix="$workdir/tvm-install"
   fi
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     setup_linux_cross_env
   fi
 
@@ -728,7 +729,7 @@ main() {
     llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
   fi
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     if [ -z "$llvm_dir" ]; then
       llvm_dir="$(detect_cross_llvm_cmake_dir)"
     fi
@@ -746,7 +747,7 @@ main() {
     llvm_config="$(sanitize_llvm_config_for_target "$llvm_config")"
   fi
 
-  if [ -n "$llvm_dir" ] && command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if [ -n "$llvm_dir" ] && cross_build_is_active; then
     llvm_ignore_paths="$(detect_vulkan_llvm_cmake_ignore_paths)"
     if [ -n "${llvm_ignore_paths}" ]; then
       log "Ignoring Vulkan LLVM CMake packages: ${llvm_ignore_paths}"
@@ -799,7 +800,7 @@ main() {
   local cross_link_flags=""
   local spirv_tools_lib=""
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     cross_link_flags="$(cross_linker_search_flags || true)"
   fi
 
@@ -872,7 +873,7 @@ main() {
 
     wheel_cmake_args_string="$(shell_quote_args "${wheel_cmake_args[@]}")"
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
       local wheel_platform
 
       wheel_platform="$(tvm_cross_wheel_platform_tag || true)"

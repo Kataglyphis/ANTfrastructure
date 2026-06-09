@@ -4,21 +4,11 @@ _ARTIFACT_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RUNTIME_CONTEXT_ROOT="${RUNTIME_CONTEXT_ROOT:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/opencode/runtime-build-contexts}"
 
-# Load canonical version defaults.  Already-set environment variables take
-# precedence so orchestrator overrides still work.
-if [ -z "${_VERSIONS_ENV_LOADED:-}" ]; then
-  set -a
-  # shellcheck disable=SC1090,SC1091
-  [ -f "${_ARTIFACT_COMMON_DIR}/versions.env" ] && source "${_ARTIFACT_COMMON_DIR}/versions.env"
-  set +a
-  _VERSIONS_ENV_LOADED=1
-fi
-
-# Load logging helpers (info, warn, err, log, die).
+# Load common.sh (versions.env, platform.sh, logging.sh, ubuntu-mirror.sh,
+# downloads.sh, parallelism.sh).  common.sh has its own _VERSIONS_ENV_LOADED
+# guard so double-sourcing is safe.
 # shellcheck disable=SC1091
-[ -f "${_ARTIFACT_COMMON_DIR}/platform.sh" ] && source "${_ARTIFACT_COMMON_DIR}/platform.sh"
-# shellcheck disable=SC1091
-[ -f "${_ARTIFACT_COMMON_DIR}/logging.sh" ] && source "${_ARTIFACT_COMMON_DIR}/logging.sh"
+[ -f "${_ARTIFACT_COMMON_DIR}/common.sh" ] && source "${_ARTIFACT_COMMON_DIR}/common.sh"
 
 # canonical_target_arch() is provided by platform.sh (sourced above)
 
@@ -38,6 +28,12 @@ run() {
   printf '+ '
   printf '%q ' "$@"
   printf '\n'
+  "$@"
+}
+
+# Like run() but does NOT echo the command. Use when build args may contain
+# secrets (e.g. GITHUB_TOKEN, registry credentials) that must not appear in logs.
+run_quiet() {
   "$@"
 }
 
@@ -137,11 +133,14 @@ registry_pin_ref() {
     return 1
   fi
 
+  local digest_script="${_ARTIFACT_COMMON_DIR}/registry-digest.py"
+  if [ ! -f "${digest_script}" ]; then
+    printf '[ERROR] registry-digest.py not found at %s\n' "${digest_script}" >&2
+    return 1
+  fi
+
   digest="$("${nerdctl_bin}" manifest inspect --verbose "${image_ref}" 2>/dev/null \
-    | python3 -c 'import sys, json
-data = json.load(sys.stdin)
-entry = data[0] if isinstance(data, list) else data
-print(entry["Descriptor"]["digest"])' 2>/dev/null)"
+    | python3 "${digest_script}" 2>/dev/null)"
 
   if [ -z "${digest}" ]; then
     printf '[ERROR] Could not resolve registry digest for %s\n' "${image_ref}" >&2
@@ -476,200 +475,17 @@ _runtime_resolve_parent_context() {
   fi
 }
 
-# Post-build: export to OCI layout locally, or push remotely, then clean up.
-_runtime_finish_stage() {
-  local kind="$1"
-  local arch="$2"
-  local tag="$3"
-  local parent_kind="${4:-}"
-
-  if runtime_use_local_stage_context_outputs; then
-    local context_dir
-    context_dir="$(runtime_stage_context_dir "${kind}" "${arch}")"
-    export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
-    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
-  else
-    if runtime_pushes_intermediate_images; then
-      run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
-    fi
-    if [ "${kind}" != "wrapper" ] || ! runtime_pushes_wrapper_images; then
-      runtime_refresh_stage_context "${kind}" "${arch}" "${tag}"
-    fi
-  fi
-
-  if [ -n "${parent_kind}" ]; then
-    runtime_remove_stage_context "${parent_kind}" "${arch}"
-  fi
-}
-
-runtime_build_base_image() {
-  local arch="$1"
-  local tag context_dir parent_image parent_context
-  local -a build_args=()
-
-  tag="$(runtime_base_tag "${arch}")"
-  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_runtime_base_parent_build_arg build_args
-
-  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=true \
-    --platform "linux/${arch}" \
-    -t "${tag}" \
-    -f "${BASE_DOCKERFILE_PATH}" \
-    "${build_args[@]}" \
-    .
-
-  if runtime_use_local_stage_context_outputs; then
-    context_dir="$(runtime_stage_context_dir base "${arch}")"
-    export_image_rootfs_dir "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
-    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
-    return 0
-  fi
-
-  if runtime_pushes_intermediate_images; then
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
-  fi
-
-  runtime_refresh_stage_context base "${arch}" "${tag}"
-}
-
-runtime_build_package_image() {
-  local arch="$1"
-  local tag parent_image parent_context_dir
-  local artifact_image artifact_context_ref artifact_context_mode package_base_stage
-  local -a build_args=()
-
-  tag="$(runtime_package_tag "${arch}")"
-  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_runtime_accelerator_build_args build_args
-
-  if runtime_use_local_artifact_context; then
-    artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-dir}"
-    artifact_context_ref="$(runtime_artifact_context_ref "${arch}" "${artifact_context_mode}")"
-    if [ "${artifact_context_mode}" = "dir" ]; then
-      artifact_image="scratch"
-      package_base_stage="artifact-source-local"
-      build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
-      build_args+=(--build-arg "ARTIFACT_SOURCE_STAGE=artifact-source-local")
-    else
-      artifact_image="runtime_artifact"
-      package_base_stage="package-image"
-      build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
-    fi
-  else
-    artifact_image="$(runtime_artifact_image_ref "${arch}")"
-    package_base_stage="package-image"
-  fi
-
-  _runtime_resolve_parent_context base "${arch}" parent_image parent_context_dir build_args
-
-  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=false \
-    --platform "linux/${arch}" \
-    --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
-    -t "${tag}" \
-    -f "${PACKAGE_DOCKERFILE_PATH}" \
-    --build-arg "BASE_IMAGE=${parent_image}" \
-    --build-arg "ARTIFACT_IMAGE=${artifact_image}" \
-    --build-arg "PACKAGE_BASE_STAGE=${package_base_stage}" \
-    --build-arg "ARTIFACT_PLATFORM=$(runtime_artifact_platform "${arch}")" \
-    --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE}" \
-    --build-arg "TARGET_ARCH=${arch}" \
-    "${build_args[@]}" \
-    .
-
-  _runtime_finish_stage package "${arch}" "${tag}" base
-}
-
-_runtime_build_wrapper() {
-  local arch="$1"
-  local -n _wrapper_tag_out=$2
-  local -n _wrapper_parent_image_out=$3
-  local -n _wrapper_build_args_out=$4
-
-  _wrapper_tag_out="$(runtime_wrapper_tag "${arch}")"
-  append_common_build_args _wrapper_build_args_out "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
-  append_runtime_accelerator_build_args _wrapper_build_args_out
-
-  local parent_context_dir
-  _runtime_resolve_parent_context package "${arch}" _wrapper_parent_image_out parent_context_dir _wrapper_build_args_out
-
-  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=false \
-    --platform "linux/${arch}" \
-    -t "${_wrapper_tag_out}" \
-    -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
-    --build-arg "BASE_IMAGE=${_wrapper_parent_image_out}" \
-    --build-arg "BUILD_MODE=native" \
-    --build-arg "TARGET_ARCH=${arch}" \
-    --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}" \
-    --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
-    "${_wrapper_build_args_out[@]}" \
-    .
-
-  runtime_remove_stage_context package "${arch}"
-}
-
-runtime_build_wrapper_image() {
-  local arch="$1"
-  local tag parent_image
-  local -a build_args=()
-
-  _runtime_build_wrapper "${arch}" tag parent_image build_args
-
-  if runtime_pushes_wrapper_images; then
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
-  fi
-}
-
-runtime_build_wrapper_rootfs() {
-  local arch="$1"
-  local rootfs_dir="$2"
-  local tag parent_image artifact_dir
-  local -a build_args=()
-
-  _runtime_build_wrapper "${arch}" tag parent_image build_args
-
-  artifact_dir="$(dirname "${rootfs_dir}")"
-  export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}"
-
-  if runtime_pushes_wrapper_images; then
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
-  fi
-}
-
-runtime_build_chain() {
-  local arch="$1"
-  local rootfs_dir="${2:-}"
-
-  runtime_build_base_image "${arch}"
-  runtime_build_package_image "${arch}"
-
-  if [ -n "${rootfs_dir}" ]; then
-    runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}"
-    return 0
-  fi
-
-  runtime_build_wrapper_image "${arch}"
-}
-
-runtime_write_artifact_metadata() {
-  local arch="$1"
-  local output_dir="$2"
-
-  mkdir -p "${output_dir}"
-  cat > "${output_dir}/artifact.env" <<EOF
-TARGET_ARCH=${arch}
-SOURCE_IMAGE=$(runtime_wrapper_tag "${arch}")
-PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
-BASE_IMAGE=$(runtime_base_tag "${arch}")
-ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
-EOF
-}
-
 # ==============================================================================
 # Cross-chain tag name functions.
 # Centralized tag naming so orchestrators and helpers stay in sync.
+#
+# NOTE: Tag naming is not fully consistent across stages:
+#   :base                     (no -cross- suffix)
+#   :compiler-cross-amd64     (has -cross- suffix on amd64-only image)
+#   :sdk-artifact-<arch>      (uses "artifact" instead of "cross")
+#   :media-cross-<arch>       (standard pattern)
+#   :android-cross-<arch>     (standard pattern)
+# Future: standardize to :cross-<stage>-<arch> for all stages.
 # ==============================================================================
 cross_base_tag()              { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:base"; }
 cross_compiler_tag()          { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:compiler-cross-amd64"; }
@@ -679,22 +495,14 @@ cross_android_tag()           { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREF
 
 # ==============================================================================
 # Append --build-arg VAR=$VAR for every version tracked in versions.env.
-# This ensures Dockerfile ARG defaults are always overridden with the canonical
-# values, eliminating version drift between versions.env and Dockerfile ARGs.
-#
-# Build-arg vars are auto-discovered from versions.env: any variable whose name
-# ends with _VERSION, _RELEASE, _MAJOR_MINOR, or _MAJOR is forwarded.
 # ==============================================================================
 _auto_discover_version_build_arg_vars() {
   local versions_file="${_ARTIFACT_COMMON_DIR}/versions.env"
   [ -f "${versions_file}" ] || return 0
-  # Extract variable names matching the version pattern directly from the file
-  # without re-sourcing.  versions.env has already been sourced by the caller.
   grep -E '^[A-Z][A-Z0-9_]*(_VERSION|_RELEASE|_MAJOR_MINOR|_MAJOR)=' "${versions_file}" \
     | cut -d= -f1
 }
 
-# Cache the auto-discovered list once.
 if [ -z "${_VERSION_BUILD_ARG_VARS_CACHED:-}" ]; then
   _VERSION_BUILD_ARG_VARS=()
   while IFS= read -r varname; do
@@ -706,7 +514,6 @@ fi
 append_version_build_args() {
   local _avba_name="$1"
   local var_name
-
   for var_name in "${_VERSION_BUILD_ARG_VARS[@]}"; do
     if [ -n "${!var_name:-}" ]; then
       append_optional_build_arg "${_avba_name}" "${var_name}" "${!var_name}"
@@ -715,146 +522,9 @@ append_version_build_args() {
 }
 
 # ==============================================================================
-# Shared CLI argument parsing for cross-chain orchestrator scripts.
-# Call this from the argument loop in build-cross-chain.sh,
-# build-cross-compiler.sh, and build-sdk-artifacts.sh.
-#
-# Receives namerefs for the shared variables, then $1 $2 from the caller's loop.
-#
-# Return values:
-#   1  — consumed a single-arg flag (caller should shift 1)
-#   2  — consumed a two-arg flag (caller should shift 2)
-#   0  — flag not recognized (caller should handle it)
-#   255 — --help requested (caller should print usage and exit)
+# Source sub-modules (must follow all function definitions above).
 # ==============================================================================
-parse_shared_orchestrator_args() {
-  local -n _psoa_target_arches=$1
-  local -n _psoa_use_fast_mirror=$2
-  local -n _psoa_fast_mirror_url=$3
-  local -n _psoa_fast_ports_url=$4
-  local -n _psoa_image_repo=$5
-  local -n _psoa_vulkan_version=$6
-  local -n _psoa_push=$7
-  shift 7 || true
-  local arg="$1" val="$2"
-
-  case "${arg}" in
-    --target-arches|--architectures)
-      _psoa_target_arches="${val}"; return 2 ;;
-    --image-repo)
-      _psoa_image_repo="${val}"; return 2 ;;
-    --vulkan-version)
-      _psoa_vulkan_version="${val}"; return 2 ;;
-    --fast-ubuntu-mirror)
-      _psoa_use_fast_mirror=true; return 1 ;;
-    --fast-ubuntu-mirror-url)
-      _psoa_use_fast_mirror=true; _psoa_fast_mirror_url="${val}"; return 2 ;;
-    --fast-ubuntu-ports-mirror-url)
-      _psoa_use_fast_mirror=true; _psoa_fast_ports_url="${val}"; return 2 ;;
-    --push)
-      _psoa_push=1; return 1 ;;
-    -h|--help)
-      return 255 ;;
-    *)
-      return 0 ;;
-  esac
-}
-
-# ==============================================================================
-# Dispatch a shared CLI argument parser, absorbing `set -e` exit-on-help.
-# Returns the parser's return code (0/1/2/255) for the caller to handle
-# shifting and continuation.  Call with a parser function followed by its args.
-# ==============================================================================
-dispatch_parsed_args() {
-  local rc=0
-  "$@" || { rc=$?; true; }
-  return $rc
-}
-
-# ==============================================================================
-# Shared CLI argument parsing for runtime build scripts.
-# Call this from the argument loop in build-runtime-artifacts.sh and
-# build-runtime-manifest.sh to handle their nearly identical flag sets.
-#
-# Receives: name-refs for all shared variables, then $1 $2 from the caller's loop.
-#
-# Return values:
-#   1  — consumed a single-arg flag (caller should shift 1)
-#   2  — consumed a two-arg flag (caller should shift 2)
-#   0  — flag not recognized (caller should handle it)
-#   255 — --help requested (caller should print usage and exit)
-# ==============================================================================
-# ==============================================================================
-# Shared dispatch wrapper for runtime build scripts.
-# Both build-runtime-artifacts.sh and build-runtime-manifest.sh call this from
-# their argument loop to handle the common --architectures, --fast-ubuntu-mirror,
-# etc. flags.  Pass the same namerefs + "$1" "$2" as parse_shared_runtime_args.
-# ==============================================================================
-runtime_dispatch_shared_args() {
-  dispatch_parsed_args parse_shared_runtime_args "$@" || { local rc=$?; return $rc; }
-}
-
-# ==============================================================================
-# Shared post-parse setup for runtime build scripts.
-# Call after argument parsing to normalize arches, set RUNTIME_IMAGE_PREFIX,
-# and prepare local context chain.  Requires IMAGE_PREFIX or IMAGE_NAME to be
-# set before calling.
-# ==============================================================================
-runtime_post_parse_setup() {
-  local arches_var_name="${1:-TARGET_ARCHES}"
-  local image_prefix="${2:-${IMAGE_PREFIX:-${IMAGE_NAME:-}}}"
-
-  cd "${REPO_ROOT}"
-
-  # Resolve the arches variable dynamically
-  local raw_arches="${!arches_var_name}"
-  raw_arches="$(normalize_target_arches "${raw_arches}")"
-  eval "${arches_var_name}=\"${raw_arches}\""
-
-  export RUNTIME_IMAGE_PREFIX="${image_prefix}"
-  runtime_prepare_local_context_chain
-  runtime_install_local_context_cleanup_trap
-}
-
-parse_shared_runtime_args() {
-  local -n _target_arches=$1
-  local -n _artifact_image_prefix=$2
-  local -n _artifact_build_mode=$3
-  local -n _base_dockerfile=$4
-  local -n _package_dockerfile=$5
-  local -n _wrapper_dockerfile=$6
-  local -n _torch_app_mode=$7
-  local -n _use_fast_mirror=$8
-  local -n _fast_mirror_url=$9
-  local -n _fast_ports_url=${10}
-  local -n _push_intermediate=${11}
-  shift 11 || true
-  local arg="$1" val="$2"
-
-  case "${arg}" in
-    --architectures|--target-arches)
-      _target_arches="${val}"; return 2 ;;
-    --artifact-image-prefix)
-      _artifact_image_prefix="${val}"; return 2 ;;
-    --artifact-build-mode)
-      _artifact_build_mode="${val}"; return 2 ;;
-    --base-dockerfile)
-      _base_dockerfile="${val}"; return 2 ;;
-    --package-dockerfile)
-      _package_dockerfile="${val}"; return 2 ;;
-    --wrapper-dockerfile|--torch-dockerfile)
-      _wrapper_dockerfile="${val}"; return 2 ;;
-    --torch-app-mode)
-      _torch_app_mode="${val}"; return 2 ;;
-    --fast-ubuntu-mirror)
-      _use_fast_mirror=true; return 1 ;;
-    --fast-ubuntu-mirror-url)
-      _use_fast_mirror=true; _fast_mirror_url="${val}"; return 2 ;;
-    --fast-ubuntu-ports-mirror-url)
-      _use_fast_mirror=true; _fast_ports_url="${val}"; return 2 ;;
-    -h|--help)
-      return 255 ;;
-    *)
-      return 0 ;;
-  esac
-}
+# shellcheck disable=SC1091
+[ -f "${_ARTIFACT_COMMON_DIR}/cli-parsers.sh" ] && source "${_ARTIFACT_COMMON_DIR}/cli-parsers.sh"
+# shellcheck disable=SC1091
+[ -f "${_ARTIFACT_COMMON_DIR}/runtime-build-fns.sh" ] && source "${_ARTIFACT_COMMON_DIR}/runtime-build-fns.sh"

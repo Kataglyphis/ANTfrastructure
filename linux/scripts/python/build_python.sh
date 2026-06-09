@@ -4,38 +4,24 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-source_first_helper() {
-  local helper=""
-
-  for helper in "$@"; do
-    if [ -f "${helper}" ]; then
-      # shellcheck disable=SC1090
-      source "${helper}"
-      return 0
-    fi
-  done
-
+_source_first() {
+  for f in "$@"; do [ -f "${f}" ] && { source "${f}"; return 0; }; done
   return 1
 }
 
-source_first_helper \
+_source_first \
   "/opt/scripts/core/platform.sh" \
   "${SCRIPT_DIR}/../01-core/platform.sh"
 
-source_first_helper \
+_source_first \
   "/opt/scripts/core/cross-env.sh" \
   "${SCRIPT_DIR}/../01-core/cross-env.sh" || true
 
-source_first_helper \
+_source_first \
   "/opt/scripts/core/logging.sh" \
   "${SCRIPT_DIR}/../01-core/logging.sh" || true
 
-on_err() {
-  local line="${1:-?}"
-  local cmd="${2:-?}"
-  err "Command failed (line ${line}): ${cmd}"
-}
-trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
+install_err_trap
 
 PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.5}}"
 PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSION}")}"

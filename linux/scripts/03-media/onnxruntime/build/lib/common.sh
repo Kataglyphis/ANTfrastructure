@@ -2,7 +2,10 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Prefer shared platform helpers if available (container layout or repo layout)
+# Prefer shared platform helpers if available (container layout or repo layout).
+# TODO: migrate to source_modules_framework() from modules.sh for consistency
+# with the rest of the codebase.  The manual candidate arrays below duplicate
+# the path-resolution logic already provided by modules.sh.
 _ONNX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _LOGGING_CANDIDATES=(
   "/opt/scripts/core/logging.sh"
@@ -77,9 +80,6 @@ if ! command -v arch_oci >/dev/null 2>&1; then
 fi
 if ! command -v is_amd64_arch >/dev/null 2>&1; then
   is_amd64_arch() { [ "$(arch_oci)" = "amd64" ]; }
-fi
-if ! command -v build_arch_oci >/dev/null 2>&1; then
-  build_arch_oci() { arch_oci; }
 fi
 if ! command -v cross_build_enabled >/dev/null 2>&1; then
   cross_build_enabled() { return 1; }

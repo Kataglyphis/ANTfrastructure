@@ -1,0 +1,208 @@
+# runtime-build-fns.sh
+# Per-architecture image build functions for the runtime packaging chain.
+# Sourced by artifact-common.sh — do not source this directly.
+#
+# Provides:
+#   runtime_build_base_image
+#   runtime_build_package_image
+#   runtime_build_wrapper_image
+#   runtime_build_wrapper_rootfs
+#   runtime_build_chain
+#   runtime_write_artifact_metadata
+#
+# Depends on functions defined in artifact-common.sh:
+#   append_common_build_args, run_nerdctl_build, run, image_exists,
+#   export_image_to_oci_layout, export_image_rootfs_dir,
+#   remove_local_image_if_exists, runtime_*_tag(), runtime_artifact_*,
+#   runtime_stage_context_*, runtime_use_local_*, etc.
+
+# Post-build: export to OCI layout locally, or push remotely, then clean up.
+_runtime_finish_stage() {
+  local kind="$1"
+  local arch="$2"
+  local tag="$3"
+  local parent_kind="${4:-}"
+
+  if runtime_use_local_stage_context_outputs; then
+    local context_dir
+    context_dir="$(runtime_stage_context_dir "${kind}" "${arch}")"
+    export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
+    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
+  else
+    if runtime_pushes_intermediate_images; then
+      run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+    fi
+    if [ "${kind}" != "wrapper" ] || ! runtime_pushes_wrapper_images; then
+      runtime_refresh_stage_context "${kind}" "${arch}" "${tag}"
+    fi
+  fi
+
+  if [ -n "${parent_kind}" ]; then
+    runtime_remove_stage_context "${parent_kind}" "${arch}"
+  fi
+}
+
+runtime_build_base_image() {
+  local arch="$1"
+  local tag context_dir parent_image parent_context
+  local -a build_args=()
+
+  tag="$(runtime_base_tag "${arch}")"
+  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+  append_runtime_base_parent_build_arg build_args
+
+  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
+    --pull=true \
+    --platform "linux/${arch}" \
+    -t "${tag}" \
+    -f "${BASE_DOCKERFILE_PATH}" \
+    "${build_args[@]}" \
+    .
+
+  if runtime_use_local_stage_context_outputs; then
+    context_dir="$(runtime_stage_context_dir base "${arch}")"
+    export_image_rootfs_dir "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
+    remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
+    return 0
+  fi
+
+  if runtime_pushes_intermediate_images; then
+    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+  fi
+
+  runtime_refresh_stage_context base "${arch}" "${tag}"
+}
+
+runtime_build_package_image() {
+  local arch="$1"
+  local tag parent_image parent_context_dir
+  local artifact_image artifact_context_ref artifact_context_mode package_base_stage
+  local -a build_args=()
+
+  tag="$(runtime_package_tag "${arch}")"
+  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+  append_runtime_accelerator_build_args build_args
+
+  if runtime_use_local_artifact_context; then
+    artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-dir}"
+    artifact_context_ref="$(runtime_artifact_context_ref "${arch}" "${artifact_context_mode}")"
+    if [ "${artifact_context_mode}" = "dir" ]; then
+      artifact_image="scratch"
+      package_base_stage="artifact-source-local"
+      build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
+      build_args+=(--build-arg "ARTIFACT_SOURCE_STAGE=artifact-source-local")
+    else
+      artifact_image="runtime_artifact"
+      package_base_stage="package-image"
+      build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
+    fi
+  else
+    artifact_image="$(runtime_artifact_image_ref "${arch}")"
+    package_base_stage="package-image"
+  fi
+
+  _runtime_resolve_parent_context base "${arch}" parent_image parent_context_dir build_args
+
+  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
+    --pull=false \
+    --platform "linux/${arch}" \
+    --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
+    -t "${tag}" \
+    -f "${PACKAGE_DOCKERFILE_PATH}" \
+    --build-arg "BASE_IMAGE=${parent_image}" \
+    --build-arg "ARTIFACT_IMAGE=${artifact_image}" \
+    --build-arg "PACKAGE_BASE_STAGE=${package_base_stage}" \
+    --build-arg "ARTIFACT_PLATFORM=$(runtime_artifact_platform "${arch}")" \
+    --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE}" \
+    --build-arg "TARGET_ARCH=${arch}" \
+    "${build_args[@]}" \
+    .
+
+  _runtime_finish_stage package "${arch}" "${tag}" base
+}
+
+_runtime_build_wrapper() {
+  local arch="$1"
+  local -n _wrapper_tag_out=$2
+  local -n _wrapper_parent_image_out=$3
+  local -n _wrapper_build_args_out=$4
+
+  _wrapper_tag_out="$(runtime_wrapper_tag "${arch}")"
+  append_common_build_args _wrapper_build_args_out "${USE_FAST_UBUNTU_MIRROR:-false}" "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+  append_runtime_accelerator_build_args _wrapper_build_args_out
+
+  local parent_context_dir
+  _runtime_resolve_parent_context package "${arch}" _wrapper_parent_image_out parent_context_dir _wrapper_build_args_out
+
+  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
+    --pull=false \
+    --platform "linux/${arch}" \
+    -t "${_wrapper_tag_out}" \
+    -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
+    --build-arg "BASE_IMAGE=${_wrapper_parent_image_out}" \
+    --build-arg "BUILD_MODE=native" \
+    --build-arg "TARGET_ARCH=${arch}" \
+    --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}" \
+    --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
+    "${_wrapper_build_args_out[@]}" \
+    .
+
+  runtime_remove_stage_context package "${arch}"
+}
+
+runtime_build_wrapper_image() {
+  local arch="$1"
+  local tag parent_image
+  local -a build_args=()
+
+  _runtime_build_wrapper "${arch}" tag parent_image build_args
+
+  if runtime_pushes_wrapper_images; then
+    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+  fi
+}
+
+runtime_build_wrapper_rootfs() {
+  local arch="$1"
+  local rootfs_dir="$2"
+  local tag parent_image artifact_dir
+  local -a build_args=()
+
+  _runtime_build_wrapper "${arch}" tag parent_image build_args
+
+  artifact_dir="$(dirname "${rootfs_dir}")"
+  export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}"
+
+  if runtime_pushes_wrapper_images; then
+    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+  fi
+}
+
+runtime_build_chain() {
+  local arch="$1"
+  local rootfs_dir="${2:-}"
+
+  runtime_build_base_image "${arch}"
+  runtime_build_package_image "${arch}"
+
+  if [ -n "${rootfs_dir}" ]; then
+    runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}"
+    return 0
+  fi
+
+  runtime_build_wrapper_image "${arch}"
+}
+
+runtime_write_artifact_metadata() {
+  local arch="$1"
+  local output_dir="$2"
+
+  mkdir -p "${output_dir}"
+  cat > "${output_dir}/artifact.env" <<EOF
+TARGET_ARCH=${arch}
+SOURCE_IMAGE=$(runtime_wrapper_tag "${arch}")
+PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
+BASE_IMAGE=$(runtime_base_tag "${arch}")
+ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
+EOF
+}

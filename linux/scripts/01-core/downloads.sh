@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
 # downloads.sh - shared download and checksum helpers
+#
+# NOTE: download_file() calls die() which requires logging.sh to be sourced
+# before this file.  When sourced through common.sh this is guaranteed;
+# if sourcing independently, source logging.sh first.
 
 download_file() {
   local url="$1"

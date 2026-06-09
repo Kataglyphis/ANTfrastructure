@@ -127,7 +127,7 @@ main() {
         shift
         ;;
       *)
-        printf '[ERROR] Unknown option: %s\n' "$1" >&2
+        warn "Unknown option: $1"
         usage >&2
         exit 1
         ;;

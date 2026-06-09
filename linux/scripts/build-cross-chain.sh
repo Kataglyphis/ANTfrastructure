@@ -50,6 +50,9 @@ LOG_DIR="${LOG_DIR:-}"
 FROM_STAGE="base"
 TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
+DRY_RUN=0
+PARALLEL_ARCHS=0
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
 
 # Ordered stage list used for --from-stage/--to-stage gating.
 ALL_STAGES=(base compiler sdk media android runtime)
@@ -93,9 +96,12 @@ Options:
   --to-stage STAGE         Last stage to run (inclusive). Same value set.
   --only STAGE             Shorthand for --from-stage STAGE --to-stage STAGE
   --vulkan-version VER     Vulkan SDK version for the sdk stage
-  --log-dir DIR            Tee each stage build into DIR/<stage>[-<arch>].log
-  --verify-chain           Resolve all upstream digests and warn if downstream images are stale
-  --fast-ubuntu-mirror     Replace Ubuntu archive/security/ports mirrors during builds
+      --log-dir DIR            Tee each stage build into DIR/<stage>[-<arch>].log
+      --verify-chain           Resolve all upstream digests and warn if downstream images are stale
+      --dry-run                 Print build commands without executing them
+      --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
+      --max-parallel-archs N    Max concurrent arch builds (default: 4)
+      --fast-ubuntu-mirror     Replace Ubuntu archive/security/ports mirrors during builds
   --fast-ubuntu-mirror-url URL        Archive mirror URL
   --fast-ubuntu-ports-mirror-url URL  Optional ubuntu-ports mirror URL
   -h, --help               Show this help text
@@ -134,6 +140,20 @@ stage_log_redirect() {
   fi
 }
 
+# Detect whether the extra build args include a digest-pinned BASE_IMAGE.
+# If BASE_IMAGE=repo@sha256:..., --pull is unnecessary because the digest
+# uniquely identifies the image and can never resolve to a stale version.
+_has_digest_pinned_base() {
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --build-arg|BASE_IMAGE=*) ;;  # skip flag, value follows
+      *@sha256:*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # Build a cross stage on linux/amd64, push it, and print its digest-pinned ref.
 # Usage: build_cross_stage <label> <tag> <dockerfile> [extra build args...]
 build_cross_stage() {
@@ -146,9 +166,14 @@ build_cross_stage() {
   local log_file
   log_file="$(stage_log_redirect "${label}")"
 
+  local pull_flag="--pull=true"
+  if _has_digest_pinned_base "${extra[@]}"; then
+    pull_flag="--pull=false"
+  fi
+
   local -a build_cmd=(
     "${NERDCTL_BIN}" build
-    --pull=true
+    "${pull_flag}"
     --platform linux/amd64
     -t "${tag}"
     --output "type=image,name=${tag},push=true"
@@ -156,6 +181,13 @@ build_cross_stage() {
   )
   append_buildkit_host_arg build_cmd
   build_cmd+=("${extra[@]}" "${common_args[@]}" .)
+
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    printf '[DRY RUN] '
+    printf '%q ' "${build_cmd[@]}"
+    printf '\n'
+    return 0
+  fi
 
   if [ -n "${log_file}" ]; then
     # Use process substitution to preserve pipefail (tee always exits 0)
@@ -261,8 +293,12 @@ run_runtime_stage() {
     if [ -z "${ANDROID_BUILT_THIS_RUN[$arch]:-}" ]; then
       local android_tag
       android_tag="$(cross_android_tag "${arch}")"
-      log "[stage runtime] refreshing local ${android_tag} from registry"
-      run "${NERDCTL_BIN}" pull --platform linux/amd64 "${android_tag}"
+      if [ "${DRY_RUN}" -eq 1 ]; then
+        log "[stage runtime] [DRY RUN] would refresh local ${android_tag} from registry"
+      else
+        log "[stage runtime] refreshing local ${android_tag} from registry"
+        run "${NERDCTL_BIN}" pull --platform linux/amd64 "${android_tag}"
+      fi
     fi
   done
 
@@ -278,6 +314,11 @@ run_runtime_stage() {
     if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
       helper_args+=(--fast-ubuntu-ports-mirror-url "${FAST_UBUNTU_PORTS_MIRROR_URL}")
     fi
+  fi
+
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    log "[stage runtime] [DRY RUN] would run build-runtime-manifest.sh ${helper_args[*]}"
+    return 0
   fi
 
   log "[stage runtime] building package/torch/wrapper + manifest ${FINAL_IMAGE}"
@@ -298,7 +339,7 @@ verify_chain() {
       return 0
     fi
     child_base_digest="$("${NERDCTL_BIN}" manifest inspect "${child_tag}" 2>/dev/null \
-      | python3 -c 'import sys, json; data = json.load(sys.stdin); layer = data["layers"][0] if "layers" in data else {}; print(layer.get("digest", ""))' 2>/dev/null || true)"
+      | python3 "${REPO_ROOT}/linux/scripts/01-core/manifest-base-layer.py" 2>/dev/null || true)"
     if [ -n "${child_base_digest}" ]; then
       log "[verify] ${label}: parent ${parent_digest}"
       log "[verify] ${label}: child  ${child_tag}"
@@ -325,6 +366,30 @@ verify_chain() {
   log "[verify] chain check complete"
 }
 
+# Run a stage function for each arch, optionally in parallel.
+_run_arch_loop() {
+  local stage_fn="$1"; shift
+  local -a pids=()
+  local arch running
+  running=0
+  for arch in ${TARGET_ARCHES//,/ }; do
+    if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
+      "${stage_fn}" "${arch}" &
+      pids+=($!)
+      running=$((running + 1))
+      if [ "${running}" -ge "${MAX_PARALLEL_ARCHS}" ]; then
+        wait -n 2>/dev/null || true
+        running=$((running - 1))
+      fi
+    else
+      "${stage_fn}" "${arch}"
+    fi
+  done
+  if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
+    wait
+  fi
+}
+
 main() {
   local only_stage=""
   while [ $# -gt 0 ]; do
@@ -346,6 +411,9 @@ main() {
       --only) only_stage="$2"; shift 2 ;;
       --log-dir) LOG_DIR="$2"; shift 2 ;;
       --verify-chain) VERIFY_CHAIN_ONLY=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --parallel-archs) PARALLEL_ARCHS=1; shift ;;
+      --max-parallel-archs) MAX_PARALLEL_ARCHS="$2"; shift 2 ;;
       *) err "Unknown option: $1" ;;
     esac
   done
@@ -381,13 +449,13 @@ main() {
   if stage_enabled base; then run_base_stage; fi
   if stage_enabled compiler; then run_compiler_stage; fi
   if stage_enabled sdk; then
-    for arch in ${TARGET_ARCHES//,/ }; do run_sdk_stage "${arch}"; done
+    _run_arch_loop run_sdk_stage
   fi
   if stage_enabled media; then
-    for arch in ${TARGET_ARCHES//,/ }; do run_media_stage "${arch}"; done
+    _run_arch_loop run_media_stage
   fi
   if stage_enabled android; then
-    for arch in ${TARGET_ARCHES//,/ }; do run_android_stage "${arch}"; done
+    _run_arch_loop run_android_stage
   fi
   if stage_enabled runtime; then run_runtime_stage; fi
 

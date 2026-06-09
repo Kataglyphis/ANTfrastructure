@@ -18,13 +18,7 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${_SCRIPT_DIR}/bootstrap.sh"
 source_toolchain_common_or_fallback "${_SCRIPT_DIR}"
-
-on_err() {
-  local line="${1:-?}"
-  local cmd="${2:-?}"
-  err "Command failed (line ${line}): ${cmd}"
-}
-trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
+install_err_trap
 
 usage() {
   cat <<'USAGE'

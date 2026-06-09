@@ -736,7 +736,7 @@ _build_llvm_cross_core() {
   esac
 
   backend="$(llvm_cross_backend "${target_label}")" || die "No LLVM backend for ${target_label}"
-  source_root="${LLVM_CROSS_SOURCE_ROOT:-/var/tmp/llvm-cross-src}"
+  source_root="${LLVM_CROSS_SOURCE_ROOT:-/var/cache/llvm-src}"
   build_root="${LLVM_CROSS_BUILD_ROOT:-/var/tmp/llvm-cross-build}"
   source_dir="${source_root}/llvm-project-${release}"
   build_dir="${build_root}/${build_dir_suffix}"

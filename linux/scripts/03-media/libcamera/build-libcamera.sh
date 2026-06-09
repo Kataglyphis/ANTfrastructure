@@ -138,7 +138,7 @@ if [ -n "${compiler_probe}" ] && [ -x "${compiler_probe}" ]; then
   fi
 fi
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if cross_build_is_active; then
   cross_triplet="$(cross_target_triplet)"
 
   # lc-compliance is a test application, not a runtime dependency. Cross builds
@@ -203,7 +203,7 @@ fi
 
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if cross_build_is_active; then
   if ! command -v cross_target_python_dev_ready >/dev/null 2>&1 || ! cross_target_python_dev_ready; then
     echo "Skipping libcamera Python wheel build in cross mode (target Python not ready)"
     rm -rf "${LIBCAMERA_SRC}" || true

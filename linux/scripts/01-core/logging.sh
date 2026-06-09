@@ -80,6 +80,39 @@ err()  { _log_emit ERROR 2 "$@"; exit 1; }
 log() { info "$@"; }
 die() { err "$@"; }
 
+install_err_trap() {
+  on_err() {
+    local line="${1:-?}"
+    local cmd="${2:-?}"
+    err "Command failed (line ${line}): ${cmd}"
+  }
+  trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
+}
+
+install_warn_trap() {
+  on_err() {
+    local line="${1:-?}"
+    local cmd="${2:-?}"
+    warn "Command failed (line ${line}): ${cmd}"
+  }
+  trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
+}
+
+source_modules_framework_minimal() {
+  local script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+  for candidate in \
+    "/opt/scripts/core/modules.sh" \
+    "${script_dir}/../01-core/modules.sh" \
+    "${script_dir}/modules.sh"; do
+    if [ -f "${candidate}" ]; then
+      source "${candidate}"
+      source_modules_framework "${script_dir}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 retry() {
   local max_attempts="${1:-3}"
   local sleep_sec="${2:-5}"

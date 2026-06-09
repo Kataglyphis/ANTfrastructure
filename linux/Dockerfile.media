@@ -134,7 +134,7 @@ COPY --chmod=755 linux/scripts/03-media/onnxruntime/build /opt/scripts/media/onn
 
 # deps + fetch combined: both are fast IO-bound operations
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-        --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+        --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         set -eux; \
@@ -184,7 +184,7 @@ ARG LITERT_OUTPUT_DIR=/usr/local
 COPY --chmod=755 linux/scripts/03-media/litert /opt/scripts/media/litert
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/litert/install-deps.sh
 
@@ -210,7 +210,7 @@ ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 COPY --chmod=755 linux/scripts/03-media/opencv /opt/scripts/media/opencv
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/opencv/install-deps.sh
 
@@ -233,7 +233,7 @@ FROM base AS app-wheelhouse
 COPY --chmod=755 linux/scripts/05-frameworks/torch /opt/scripts/frameworks/torch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
@@ -253,12 +253,12 @@ COPY --chmod=755 linux/scripts/03-media/ffmpeg/ /opt/scripts/media/ffmpeg/
 ENV FFMPEG_PREFIX=/opt/ffmpeg
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/ffmpeg/install-deps.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
     cd /opt; \
     bash /opt/scripts/media/ffmpeg/build-ffmpeg.sh
@@ -311,12 +311,12 @@ COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstrea
 COPY --chmod=755 linux/scripts/01-core/cross-env.sh /opt/scripts/core/cross-env.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/gstreamer/install-deps.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
     if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
         export CFLAGS="${CFLAGS:-} -D_LIBCPP_VERSION=20220101"; \
@@ -339,12 +339,12 @@ ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX}
 COPY --chmod=755 linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/libcamera/install-deps.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
@@ -403,22 +403,18 @@ ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:$
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
-    bash /opt/scripts/media/final/install-deps.sh
-
-RUN set -eux; \
+    bash /opt/scripts/media/final/install-deps.sh && \
     bash /opt/scripts/media/final/configure-runtime.sh
 
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     set -eux; \
-    bash /opt/scripts/media/final/repair-wheels.sh
-
-RUN set -eux; \
+    bash /opt/scripts/media/final/repair-wheels.sh && \
     bash /opt/scripts/media/final/verify-wheels.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/media/final/validate-media-runtime.sh
 

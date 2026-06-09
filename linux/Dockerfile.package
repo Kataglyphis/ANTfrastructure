@@ -1,4 +1,12 @@
 # syntax=docker/dockerfile:1.24.0
+#
+# NOTE: ARGs before the first FROM are "global" only for the first FROM scope.
+# Each subsequent FROM creates a new build stage that requires its own ARG
+# re-declarations.  The orchestrator (build-runtime-manifest.sh) passes
+# canonical versions via --build-arg; the ARG defaults here are safety nets
+# for manual builds only.  Keep these in sync with versions.env.
+# TARGET_ARCH is always set by the orchestrator; TARGETARCH is Docker's native
+# build arg and used as a fallback.
 
 ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
 ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-amd64
@@ -226,9 +234,9 @@ COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/p
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
 
-RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-package-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-package-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-package-${TARGETARCH} \
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     bash /opt/scripts/packaging/setup-package-image.sh
 
 # Wire GCC/LLVM alternatives and hard-fail if cc -dumpmachine does not

@@ -8,6 +8,7 @@ if [ -f /opt/scripts/core/modules.sh ]; then
   source_modules_framework "/opt/scripts/core"
   source_module platform.sh || true
 elif [ -f /opt/scripts/core/platform.sh ]; then
+  # Fallback: modules.sh not present but platform.sh is (standalone runtime context)
   # shellcheck disable=SC1091
   source /opt/scripts/core/platform.sh
 fi

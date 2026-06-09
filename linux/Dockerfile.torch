@@ -30,7 +30,7 @@ COPY --chmod=755 linux/scripts/03-media/final/assemble-torch-app.sh /opt/scripts
 COPY --chmod=755 linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/packaging/setup-torch-venv.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     set -eux; \
     bash /opt/scripts/packaging/setup-torch-venv.sh

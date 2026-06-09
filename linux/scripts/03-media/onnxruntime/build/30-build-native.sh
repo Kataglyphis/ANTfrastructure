@@ -75,7 +75,7 @@ if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
   )
 fi
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if cross_build_is_active; then
   append_onnx_cross_cmake_build_args BUILD_ARGS
   if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
     info "Target Python dev files available; enabling ONNX Runtime wheel build in cross mode"
@@ -92,7 +92,7 @@ append_onnx_ccache_build_args BUILD_ARGS
 
 # Execute build
 if ! "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     warn "ONNX Runtime build failed; rerunning single-threaded verbose build for diagnostics"
     cmake --build "${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" --config "${NATIVE_CPU_CONFIG}" --parallel 1 --verbose || true
   fi
@@ -102,7 +102,7 @@ fi
 collect_wheels_from_tree "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_OUTPUT_DIR}" "ONNX Runtime wheel"
 
 # Additionally, try building a wheel from source if the ORT build did not produce one
-if [ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
+if [ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { ! cross_build_is_active; }; then
   maybe_build_source_wheel "${ORT_SRC_DIR}" "${NATIVE_CPU_OUTPUT_DIR}" "${HOST_PYTHON}" "ONNX Runtime"
 fi
 

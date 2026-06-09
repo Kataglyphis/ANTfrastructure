@@ -20,17 +20,8 @@ set -euo pipefail
 
 _vcs_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-_sourced_platform=0
-for _candidate in \
-  "${_vcs_script_dir}/../01-core/platform.sh" \
-  "/opt/scripts/core/platform.sh"; do
-  if [ -f "${_candidate}" ]; then
-    source "${_candidate}"
-    _sourced_platform=1
-    break
-  fi
-done
-[ "${_sourced_platform}" -eq 1 ] || { echo "COMPILER FAIL: cannot find platform.sh" >&2; exit 1; }
+source "${_vcs_script_dir}/../01-core/source-platform.sh"
+_source_platform_from "${_vcs_script_dir}"
 
 validate_resolve_arch() {
   canonical_target_arch "${1:-${TARGET_ARCH:-}}"
@@ -61,15 +52,13 @@ validate_artifact_source() {
     validate_fail "host-gcc-missing" "${gcc_prefix}/bin/gcc not found"
   fi
 
-  # cross compilers
+  # cross compilers — derive list from CROSS_TARGETS or platform default
+  local cross_arches="${CROSS_TARGETS:-amd64,arm64,riscv64}"
   local cross_arch triplet cross_gcc cross_ver
-  for cross_arch in arm64 riscv64; do
+  for cross_arch in ${cross_arches//,/ }; do
     [ "${cross_arch}" = "${target_arch}" ] && continue
-    case "${cross_arch}" in
-      arm64) triplet="aarch64-linux-gnu" ;;
-      riscv64) triplet="riscv64-linux-gnu" ;;
-      *) continue ;;
-    esac
+    triplet="$(arch_deb_multiarch_triplet_for "${cross_arch}" 2>/dev/null || true)"
+    [ -n "${triplet}" ] || continue
     cross_gcc="${gcc_prefix}/bin/${triplet}-gcc"
     if [ -x "${cross_gcc}" ]; then
       cross_ver="$("${cross_gcc}" --version 2>/dev/null | head -1 || true)"

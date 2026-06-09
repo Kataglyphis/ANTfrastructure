@@ -24,7 +24,7 @@ _apt_refresh
 is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
 
 gi_cross_wrapper_arch=""
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+if cross_build_is_active && \
    command -v cross_target_arch >/dev/null 2>&1; then
   case "$(cross_target_arch)" in
     arm64|riscv64)
@@ -36,7 +36,7 @@ fi
 skip_csound_cross=$(is_cross_skip_csound && echo true || echo false)
 
 prefer_toolchain_vulkan=false
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+if cross_build_is_active && \
    [ -d "${vulkan_prefix}" ]; then
   prefer_toolchain_vulkan=true
 fi

@@ -34,13 +34,7 @@ done
 source_module cross-env.sh || true
 source_module logging.sh || true
 source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
-
-on_err() {
-  local line="${1:-?}"
-  local cmd="${2:-?}"
-  warn "Command failed (line ${line}): ${cmd}"
-}
-trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
+install_warn_trap
 
 # Defaults (can be overridden via env vars or arguments)
 : "${OPENCV_VERSION:=5.x}"
@@ -258,7 +252,7 @@ configure_opencv() {
         WITH_IPP="OFF"
     fi
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         # GTK pulls target-side Pango GIR files that are not coinstallable with the host arch.
         with_gtk="OFF"
         with_opengl="OFF"
@@ -327,7 +321,7 @@ configure_opencv() {
         append_cmake_cross_args cmake_opts
     fi
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         # OpenCV's mixed vendored/system dependency graph needs access to the
         # target sysroot headers and libraries under /usr while still finding
         # generated build artifacts in the normal build tree.
@@ -391,7 +385,7 @@ configure_opencv() {
         PY_EXEC="${HOST_PYTHON:-$(host_python_bin)}"
         cmake_opts+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
         # Explicitly set library and include paths since FindPython3 might not find free-threaded (t) libraries
-        if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        if cross_build_is_active; then
             local target_python_library=""
             local target_python_include=""
 
@@ -529,7 +523,7 @@ build_opencv_python_wheel() {
         py_cmake_args+=("-DWITH_IPP=OFF")
     fi
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         local -a wheel_cross_args=()
         local cross_ar=""
         local cross_ranlib=""
@@ -769,7 +763,7 @@ main() {
     echo "Libraries:"
     ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null | head -20 || echo "Could not list libraries"
     
-    if [ "${WITH_PYTHON}" = "true" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
+    if [ "${WITH_PYTHON}" = "true" ] && { ! cross_build_is_active; }; then
         echo ""
         echo "Python bindings:"
         "${HOST_PYTHON:-$(host_python_bin)}" -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null || echo "Could not import cv2"

@@ -139,7 +139,7 @@ build_standalone_gst_plugins_rs() {
 
   if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then
     prepare_host_cargo_toolchain_env
-  elif command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  elif cross_build_is_active; then
     cargo_host_cc="$(resolve_host_gcc_for_cargo)"
     if [ -n "${cargo_host_cc}" ]; then
       cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
@@ -154,7 +154,7 @@ build_standalone_gst_plugins_rs() {
     fi
   fi
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled &&
+  if cross_build_is_active &&
      command -v cross_target_arch >/dev/null 2>&1 &&
      [ "$(cross_target_arch)" = "riscv64" ]; then
     # prepare_host_cargo_toolchain_env removes /opt/cross-bin from PATH so host
@@ -210,7 +210,7 @@ build_standalone_gst_plugins_rs() {
 
   build_cmd=(cargo build --workspace "${cargo_flags[@]}" --jobs "${CARGO_BUILD_JOBS}")
   build_cmd+=("${default_excludes[@]}")
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     build_cmd+=(--target "${CARGO_BUILD_TARGET}")
   fi
 

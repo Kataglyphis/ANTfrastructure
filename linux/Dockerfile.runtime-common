@@ -1,9 +1,17 @@
 # syntax=docker/dockerfile:1.24.0
-
-# The canonical source for shared final-stage runtime elements (runtime
-# scripts, entrypoint, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK,
-# kataglyphis user, OCI labels) is now linux/Dockerfile.torch final stage.
 #
-# This file exists for documentation reference only.  It is NOT consumed
-# by any build.  Do not add content here expecting it to appear in images.
-# All final-image additions go in Dockerfile.torch's final stage.
+# THIS FILE IS A DOCUMENTATION-ONLY REFERENCE.
+# It is NOT consumed by any build pipeline.
+# The canonical source for shared final-stage runtime elements is
+# linux/Dockerfile.torch final stage.
+#
+# If this file contains active instructions, CI should fail —
+# all final-image additions belong in Dockerfile.torch.
+#
+# To guard against accidental consumption, the FROM line below
+# intentionally references a nonexistent image so any attempt to
+# build this file will fail immediately.
+FROM scratch
+COPY DOES_NOT_EXIST / 
+
+(End of file - total 9 lines)

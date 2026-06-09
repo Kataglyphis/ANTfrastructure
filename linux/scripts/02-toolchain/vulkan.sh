@@ -41,7 +41,7 @@ install_vulkan_prereqs() {
 
   apt_install "${host_packages[@]}"
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+  if cross_build_is_active && \
      command -v install_target_packages >/dev/null 2>&1; then
     # Cross Vulkan builds keep pkg-config pointed at target multiarch roots.
     # Install the WSI and compression dev packages for that target too.
@@ -250,7 +250,7 @@ EOF
       fi
     fi
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
       unset PKG_CONFIG_PATH
       export PKG_CONFIG_ALLOW_CROSS=1
       export PKG_CONFIG_SYSROOT_DIR=/

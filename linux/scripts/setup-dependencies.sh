@@ -25,8 +25,8 @@ fi
 if command -v apt-get >/dev/null 2>&1; then
   echo "Detected apt-get. Installing via apt-get..."
 
-  echo "[1/3] Updating package lists..."
-  sudo apt-get update -y
+  echo "[1/4] Updating package lists..."
+  sudo apt-get update -qq
 
   BASE_PACKAGES=(
     curl
@@ -44,22 +44,20 @@ if command -v apt-get >/dev/null 2>&1; then
     libstdc++-12-dev
   )
 
-  echo "[2/3] Installing base packages: ${BASE_PACKAGES[*]}"
-  sudo apt-get install -y "${BASE_PACKAGES[@]}"
+  echo "[2/4] Installing base packages: ${BASE_PACKAGES[*]}"
+  sudo apt-get install -y --no-install-recommends "${BASE_PACKAGES[@]}"
 
-  sudo apt-get update
-  sudo apt-get install -y sccache ccache cppcheck iwyu lcov binutils graphviz doxygen llvm valgrind
+  sudo apt-get install -y --no-install-recommends sccache ccache cppcheck iwyu lcov binutils graphviz doxygen llvm valgrind
 
-  sudo apt-get install -y dpkg-dev fakeroot binutils
-  sudo apt-get install -y python3-pip
+  sudo apt-get install -y --no-install-recommends dpkg-dev fakeroot binutils
+  sudo apt-get install -y --no-install-recommends python3-pip
 
   CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
   echo "Installing latest CMake via Kitware repo for codename: ${CODENAME}"
 
   sudo apt-get purge --auto-remove -y cmake || true
 
-  sudo apt-get update
-  sudo apt-get install -y wget gpg lsb-release ca-certificates
+  sudo apt-get install -y --no-install-recommends wget gpg lsb-release ca-certificates
 
   wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc \
     | gpg --dearmor \
@@ -68,8 +66,8 @@ if command -v apt-get >/dev/null 2>&1; then
   echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ ${CODENAME} main" \
     | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
 
-  sudo apt-get update
-  sudo apt-get install -y cmake
+  sudo apt-get update -qq
+  sudo apt-get install -y --no-install-recommends cmake
   cmake --version
 
   LLVM_WANTED=22
@@ -77,11 +75,11 @@ if command -v apt-get >/dev/null 2>&1; then
   GCC_WANTED=16
   export DEBIAN_FRONTEND=noninteractive
 
-  sudo apt-get update
   sudo apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates
 
   wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${LLVM_WANTED}" all
-  sudo apt-get update
+  # llvm.sh adds new repos; refresh package lists for subsequent installs
+  sudo apt-get update -qq
 
   if [ -x "/usr/bin/clang-${CLANG_WANTED}" ]; then
     sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-"${CLANG_WANTED}" 100
@@ -137,7 +135,7 @@ if command -v apt-get >/dev/null 2>&1; then
   gcc --version
   g++ --version
 
-  echo "[3/3] Cleaning up..."
+  echo "[3/4] Cleaning up..."
   sudo apt-get clean
   sudo rm -rf /var/lib/apt/lists/*
 

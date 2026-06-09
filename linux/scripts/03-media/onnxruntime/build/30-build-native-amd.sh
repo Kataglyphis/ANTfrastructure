@@ -38,7 +38,7 @@ ensure_uv_python_packages "${HOST_PYTHON}" numpy wheel setuptools
 BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [[ -x "${BUILD_SH}" ]] || err "build.sh not found at ${BUILD_SH}"
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if cross_build_is_active; then
   warn "Skipping ONNX Runtime ROCm wheel build in cross mode; target wheel repair/validation is not supported here"
 fi
 
@@ -80,7 +80,7 @@ if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
   )
 fi
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if cross_build_is_active; then
   append_onnx_cross_cmake_build_args BUILD_ARGS
 else
   BUILD_ARGS+=(--build_wheel)
@@ -93,7 +93,7 @@ export PATH="${ROCM_HOME}/bin:${PATH}"
 export LD_LIBRARY_PATH="${ROCM_HOME}/lib:${ROCM_HOME}/lib64:${LD_LIBRARY_PATH:-}"
 
 if ! "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     warn "ONNX Runtime ROCm build failed; rerunning single-threaded verbose build for diagnostics"
     cmake --build "${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" --config "${NATIVE_CPU_CONFIG}" --parallel 1 --verbose || true
   fi
@@ -103,7 +103,7 @@ fi
 info "Searching for ROCm wheel files..."
 collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "ROCm wheel"
 
-if [ -z "$(ls -A "${NATIVE_GPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; }; then
+if [ -z "$(ls -A "${NATIVE_GPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { ! cross_build_is_active; }; then
   maybe_build_source_wheel "${ORT_SRC_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "${HOST_PYTHON}" "ONNX Runtime ROCm"
 fi
 

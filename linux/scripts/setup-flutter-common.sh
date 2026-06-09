@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e  # exit on any error
+set -euo pipefail
 
 # NOTE: Keep LF line endings for Linux shells.
 

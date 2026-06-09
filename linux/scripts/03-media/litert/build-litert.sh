@@ -173,7 +173,7 @@ append_litert_preferred_cmake_compiler_args() {
     local native_clang=""
     local native_clangxx=""
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         return 0
     fi
 
@@ -257,7 +257,7 @@ configure_litert() {
         append_cmake_cross_args cmake_args
     fi
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+    if cross_build_is_active && \
        command -v cross_target_arch >/dev/null 2>&1; then
         local cross_arch=""
         cross_arch="$(cross_target_arch)"
@@ -271,7 +271,7 @@ CMAKE_EOF
         fi
     fi
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
             append_cmake_cross_archiver_args cmake_args resolve_litert_cross_archive_tool
         fi
@@ -386,7 +386,7 @@ build_tflite_c_api() {
         append_cmake_cross_args cmake_args
     fi
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
         if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
             append_cmake_cross_archiver_args cmake_args resolve_litert_cross_archive_tool
@@ -476,7 +476,7 @@ install_litert() {
     mkdir -p "${LITERT_PREFIX}/wheels"
 
     local cross_wheel_build=false
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         cross_wheel_build=true
         if command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
             warn Target Python development files are unavailable; skipping LiteRT Python wheel build in cross mode
@@ -529,7 +529,7 @@ install_litert() {
                 extra_cmake_flags+=" ${native_compiler_args[*]}"
             fi
 
-            if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+            if cross_build_is_active; then
                 local wheel_cross_args=()
 
                 python_major_minor="${python_major_minor:-$(host_python_major_minor 2>/dev/null || true)}"
@@ -584,7 +584,7 @@ install_litert() {
             sed -i "s|cmake \"\${TENSORFLOW_LITE_DIR}\"|cmake ${extra_cmake_flags} \"\${TENSORFLOW_LITE_DIR}\"|g" build_pip_package_with_cmake.sh 2>/dev/null || true
             sed -i "s|cmake \\\\|cmake ${extra_cmake_flags} \\\\|g" build_pip_package_with_cmake.sh 2>/dev/null || true
 
-            if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+            if cross_build_is_active; then
                 # Debian/Ubuntu's Python.h in /usr/include/pythonX.Y includes
                 # <triplet/pythonX.Y/pyconfig.h> (or the equivalent
                 # target triplet). The cross compiler does not reliably search

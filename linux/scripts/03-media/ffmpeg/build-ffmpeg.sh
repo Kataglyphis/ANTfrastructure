@@ -188,7 +188,7 @@ ffmpeg_try_cpp_condition() {
     } > "${source_file}"
 
     cmd=("${compiler_cmd[@]}")
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         cmd+=("--sysroot=/")
     fi
     cmd+=("${cflags[@]}" "-c" "${source_file}" "-o" "${output_file}")
@@ -238,7 +238,7 @@ ffmpeg_try_link_probe() {
     } > "${source_file}"
 
     cmd=("${compiler_cmd[@]}")
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         cmd+=("--sysroot=/")
     fi
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
@@ -401,7 +401,7 @@ configure_ffmpeg() {
         "--disable-doc"
     )
 
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    if cross_build_is_active; then
         local host_cc
 
         setup_linux_cross_env
@@ -457,7 +457,7 @@ configure_ffmpeg() {
     fi
     
     # Optional codecs - add if libraries are available
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ "$(cross_target_arch)" = "riscv64" ]; then
+    if cross_build_is_active && [ "$(cross_target_arch)" = "riscv64" ]; then
         echo "Skipping gnutls for riscv64 cross builds because FFmpeg's configure probe does not currently pass in this environment."
     elif ffmpeg_probe_pkg_config_feature "gnutls" "gnutls" "gnutls/gnutls.h" "gnutls_global_init"; then
         configure_opts+=("--enable-gnutls")
@@ -515,7 +515,7 @@ configure_ffmpeg() {
 
     # Use ccache if available
     if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-        if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+        if cross_build_is_active; then
             configure_opts+=("--cc=ccache ${CC}")
             configure_opts+=("--cxx=ccache ${CXX}")
         else
@@ -523,7 +523,7 @@ configure_ffmpeg() {
             configure_opts+=("--cxx=ccache g++")
         fi
         echo "Using ccache for faster compilation"
-    elif command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+    elif cross_build_is_active; then
         configure_opts+=("--cc=${CC}")
         configure_opts+=("--cxx=${CXX}")
     fi

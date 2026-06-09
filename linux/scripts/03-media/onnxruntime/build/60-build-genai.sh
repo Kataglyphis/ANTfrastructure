@@ -32,7 +32,7 @@ if [ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "risc-v" ]; then
   exit 0
 fi
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if cross_build_is_active; then
   info "Skipping onnxruntime-genai in cross mode; the build emits target wheels and host-run validation"
   ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
   exit 0

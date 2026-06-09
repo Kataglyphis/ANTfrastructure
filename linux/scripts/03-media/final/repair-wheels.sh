@@ -9,7 +9,7 @@ fi
 
 WHEELS_DIR="${WHEELS_DIR:-/opt/wheels}"
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+if cross_build_is_active; then
   target_arch="$(cross_target_arch 2>/dev/null || true)"
   [ -n "${target_arch}" ] || target_arch="${TARGET_ARCH:-}"
   if [ -n "${target_arch}" ] && command -v arch_linux_platform_tag_for >/dev/null 2>&1; then

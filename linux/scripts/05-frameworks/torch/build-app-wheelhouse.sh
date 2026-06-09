@@ -94,7 +94,7 @@ install_build_dependencies() {
 prepare_build_environment() {
     prepare_workspace
 
-    if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+    if ! cross_build_is_active; then
         log "Skipping app wheelhouse build outside of amd64-hosted cross mode"
         return 1
     fi

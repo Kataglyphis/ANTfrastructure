@@ -17,17 +17,8 @@ set -euo pipefail
 
 _swap_gcc_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-_sourced_platform=0
-for _candidate in \
-  "${_swap_gcc_script_dir}/../01-core/platform.sh" \
-  "/opt/scripts/core/platform.sh"; do
-  if [ -f "${_candidate}" ]; then
-    source "${_candidate}"
-    _sourced_platform=1
-    break
-  fi
-done
-[ "${_sourced_platform}" -eq 1 ] || { echo "ERROR: cannot find platform.sh" >&2; exit 1; }
+source "${_swap_gcc_script_dir}/../01-core/source-platform.sh"
+_source_platform_from "${_swap_gcc_script_dir}"
 
 main() {
   : "${TARGET_ARCH:?TARGET_ARCH is required}"

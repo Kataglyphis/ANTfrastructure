@@ -36,7 +36,11 @@ cross_build_enabled() {
 }
 
 is_cross() {
-  command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled
+  cross_build_is_active
+}
+
+cross_build_is_active() {
+  cross_build_is_active
 }
 
 cross_target_arch() {

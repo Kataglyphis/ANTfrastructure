@@ -97,7 +97,7 @@ build_gstreamer_monorepo() {
 
   host_arch="$(uname -m)"
   TARGET_MACHINE_ARCH="${TARGET_ARCH:-${TARGETARCH:-${host_arch}}}"
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     setup_linux_cross_env
     TARGET_MACHINE_ARCH="$(cross_target_arch)"
     if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then
@@ -110,7 +110,7 @@ build_gstreamer_monorepo() {
   prepare_cross_python_build_config
 
   if [ "${python_feature}" = "enabled" ] && \
-     command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+     cross_build_is_active && \
      command -v cross_target_python_libdir >/dev/null 2>&1; then
     target_python_libdir="$(cross_target_python_libdir 2>/dev/null || true)"
     # If cross_target_python_libdir resolved to the host /usr/local/lib
@@ -129,7 +129,7 @@ build_gstreamer_monorepo() {
   fi
 
   if [ "${python_feature}" = "enabled" ] && \
-     command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+     cross_build_is_active && \
      command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
     target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
     if [ -n "${target_python_pkgconfig_dir}" ]; then
@@ -251,19 +251,19 @@ build_gstreamer_monorepo() {
     export PKG_CONFIG_LIBDIR
   fi
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ -n "${deb_host_multiarch_dir}" ] && [ -d "/usr/include/${deb_host_multiarch_dir}" ]; then
+  if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ] && [ -d "/usr/include/${deb_host_multiarch_dir}" ]; then
     append_env_flag CPPFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
     append_env_flag CFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
     append_env_flag CXXFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
   fi
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ -d /usr/include ]; then
+  if cross_build_is_active && [ -d /usr/include ]; then
     append_env_flag CPPFLAGS "-idirafter /usr/include"
     append_env_flag CFLAGS "-idirafter /usr/include"
     append_env_flag CXXFLAGS "-idirafter /usr/include"
   fi
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && [ -n "${deb_host_multiarch_dir}" ]; then
+  if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ]; then
     append_env_flag LDFLAGS "-L/usr/lib/${deb_host_multiarch_dir}"
     append_env_flag LDFLAGS "-Wl,-rpath-link,/usr/lib/${deb_host_multiarch_dir}"
   fi
@@ -278,7 +278,7 @@ build_gstreamer_monorepo() {
     fi
   done
 
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     for dep in tensorflowlite_c tensorflow-lite; do
       if pkg-config --exists "${dep}" 2>/dev/null; then
         tflite_pkg_config_name="${dep}"
@@ -318,7 +318,7 @@ build_gstreamer_monorepo() {
   pkg-config --cflags --libs cairo 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
 
   if ! pkg-config --exists cairo 2>/dev/null; then
-    if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+    if cross_build_is_active && \
        command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
       echo "cairo not found in target pkg-config paths on riscv64 cross build; keeping PKG_CONFIG_LIBDIR intact and relying on Meson subproject fallback" | tee -a /tmp/gstreamer-cairo-debug.txt || true
     else
@@ -364,7 +364,7 @@ build_gstreamer_monorepo() {
   fi
 
   echo "Installing GStreamer..."
-  if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled; then
+  if cross_build_is_active; then
     # Cross-build: meson install may fail because post-install scripts
     # (e.g. GLib's gio-querymodules) try to run target binaries on the
     # build host.  Install via DESTDIR into a staging directory first,

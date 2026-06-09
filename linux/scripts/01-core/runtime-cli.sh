@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # runtime-cli.sh - shared CLI usage/environment documentation for runtime build scripts.
+#
+# This script is meant to be sourced, not executed directly.
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "ERROR: runtime-cli.sh is meant to be sourced, not executed." >&2
+  exit 1
+fi
 
 runtime_cli_usage_common() {
   cat <<'EOF'

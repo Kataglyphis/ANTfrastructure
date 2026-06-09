@@ -36,7 +36,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 
 # Install prerequisites and add ROCm repository
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-amd-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,id=apt-lib-amd-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-amd-${TARGETARCH} \
     set -eux; \
     apt-get update && apt-get install -y --no-install-recommends \
         wget \
@@ -46,6 +46,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-amd-${T
     && wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
     && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${ROCM_VERSION} ${UBUNTU_VERSION} main" | tee /etc/apt/sources.list.d/rocm.list \
     && echo -e 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' | tee /etc/apt/preferences.d/rocm-pin-600 \
+    # Second apt-get update is required: fetches the newly-added ROCm repo index
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         rocm-dev \

@@ -24,7 +24,7 @@ for helper in \
     fi
 done
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+if cross_build_is_active && \
    command -v cross_target_arch >/dev/null 2>&1; then
     case "$(cross_target_arch)" in
         arm64|riscv64)
@@ -40,7 +40,7 @@ fi
 # that fails with the GCC 16 cross-compiler's libstdc++ headers on arm64/riscv64.
 # Define _LIBCPP_VERSION in CXXFLAGS to satisfy the detection probe without
 # changing the actual standard library used.
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+if cross_build_is_active && \
    command -v cross_target_arch >/dev/null 2>&1; then
     case "$(cross_target_arch)" in
         arm64|riscv64)
@@ -86,7 +86,7 @@ export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
   Python3_EXECUTABLE="${HOST_PYTHON}"
 GSTREAMER_ENABLE_PYTHON_BINDINGS=true
 
-if command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+if cross_build_is_active && \
    command -v cross_target_python_dev_ready >/dev/null 2>&1 && \
    ! cross_target_python_dev_ready; then
   GSTREAMER_ENABLE_PYTHON_BINDINGS=false
@@ -213,7 +213,7 @@ prepare_host_cargo_toolchain_env() {
   local cargo_host_cxx=""
   local cargo_host_cxx_wrapper=""
 
-  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+  if ! cross_build_is_active; then
     return 0
   fi
 
@@ -259,7 +259,7 @@ prepare_cross_python_build_config() {
   CROSS_PYTHON_BUILD_CONFIG=""
   export CROSS_PYTHON_BUILD_CONFIG
 
-  if ! command -v cross_build_enabled >/dev/null 2>&1 || ! cross_build_enabled; then
+  if ! cross_build_is_active; then
     return 0
   fi
 

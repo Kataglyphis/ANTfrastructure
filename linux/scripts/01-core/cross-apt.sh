@@ -273,12 +273,12 @@ install_optional_target_packages() {
 }
 
 is_cross_riscv64() {
-  command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+  cross_build_is_active && \
   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]
 }
 
 is_cross_skip_csound() {
-  command -v cross_build_enabled >/dev/null 2>&1 && cross_build_enabled && \
+  cross_build_is_active && \
   command -v cross_target_arch >/dev/null 2>&1 || return 1
   case "$(cross_target_arch)" in
     arm64|riscv64) return 0 ;;

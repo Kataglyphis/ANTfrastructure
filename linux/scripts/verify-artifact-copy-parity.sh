@@ -4,6 +4,10 @@ set -euo pipefail
 # Verifies that the artifact COPY source paths in Dockerfile.package's
 # artifact-source-local and package-image stages are consistent.
 # Run from repo root.
+#
+# NOTE: This uses regex-based COPY extraction which is best-effort.
+# It will NOT handle multi-line COPY, heredoc syntax, or --from= without ${}
+# variable references. For complex Dockerfiles, consider a proper parser.
 DOCKERFILE="${1:-linux/Dockerfile.package}"
 
 extract_copy_sources() {
