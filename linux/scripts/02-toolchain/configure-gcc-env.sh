@@ -10,7 +10,7 @@ _append_env_var() {
 
   local existing
   existing=$(grep -E "^${var_name}=" "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
-  existing=$(echo "$existing" | sed "s|${var_value}:||g" | sed "s|:${var_value}||g")
+  existing=$(echo "$existing" | sed -e "s|${var_value}:||g" -e "s|:${var_value}||g")
   if [ -n "$existing" ]; then
     existing="${var_value}:${existing}"
   else

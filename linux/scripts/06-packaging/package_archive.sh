@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -83,7 +83,7 @@ fi
 cd "$Workspace"
 
 if [ -z "$ArchiveName" ]; then
-    VersionSafe=$(echo "$Version" | tr '/' '-')
+    VersionSafe="${Version//\//-}"
     if [ -n "$Platform" ] && [ -n "$Arch" ]; then
         ArchiveName="dist/${Binary}-${VersionSafe}-${Platform/\//_}-${Arch}.tar.gz"
     else
@@ -148,7 +148,7 @@ create_deb() {
     trap "rm -rf '$DEB_DIR'" EXIT
 
     pkgname="$Binary"
-    vers_safe="$(echo "$Version" | tr '/' '-')"
+    vers_safe="${Version//\//-}"
     deb_maintainer="${DEB_MAINTAINER:-Unknown <noreply@example.com>}"
     deb_depends="${DEB_DEPENDS:-}" 
 

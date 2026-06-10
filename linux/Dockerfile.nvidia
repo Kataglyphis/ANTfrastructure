@@ -142,18 +142,34 @@ RUN set -euo pipefail; \
     nvcc --version; \
     echo "--- cuDNN ---"; \
     if pkg-config --exists libcudnn 2>/dev/null; then \
-        pkg-config --modversion libcudnn || true; \
+        pkg-config --modversion libcudnn; \
     else \
-        find /usr -name "cudnn_version.h" 2>/dev/null | head -1 | xargs -r grep "CUDNN_MAJOR\|CUDNN_MINOR\|CUDNN_PATCHLEVEL" || true; \
+        cudnn_hdr="$(find /usr -name "cudnn_version.h" 2>/dev/null | head -1)"; \
+        if [ -n "${cudnn_hdr}" ]; then \
+            grep "CUDNN_MAJOR\|CUDNN_MINOR\|CUDNN_PATCHLEVEL" "${cudnn_hdr}"; \
+        else \
+            echo "ERROR: cuDNN version header not found" >&2; exit 1; \
+        fi; \
     fi; \
     echo "--- TensorRT ---"; \
-    find /usr/include /usr/local/tensorrt/include -name "NvInferVersion.h" 2>/dev/null | head -1 \
-        | xargs -r grep "NV_TENSORRT_MAJOR\|NV_TENSORRT_MINOR\|NV_TENSORRT_PATCH" || true; \
+    trt_hdr="$(find /usr/include /usr/local/tensorrt/include -name "NvInferVersion.h" 2>/dev/null | head -1)"; \
+    if [ -n "${trt_hdr}" ]; then \
+        grep "NV_TENSORRT_MAJOR\|NV_TENSORRT_MINOR\|NV_TENSORRT_PATCH" "${trt_hdr}"; \
+    else \
+        echo "ERROR: TensorRT version header not found" >&2; exit 1; \
+    fi; \
     echo "--- NCCL ---"; \
-    find /usr/include /usr/local/cuda -name "nccl.h" 2>/dev/null | head -1 \
-        | xargs -r grep "NCCL_MAJOR\|NCCL_MINOR" || true; \
+    nccl_hdr="$(find /usr/include /usr/local/cuda -name "nccl.h" 2>/dev/null | head -1)"; \
+    if [ -n "${nccl_hdr}" ]; then \
+        grep "NCCL_MAJOR\|NCCL_MINOR" "${nccl_hdr}"; \
+    else \
+        echo "ERROR: NCCL header not found" >&2; exit 1; \
+    fi; \
     echo "--- CUDA libs ---"; \
-    ldconfig -p | grep -E "libcublas|libcusparse|libcufft|libcudnn|libnvinfer|libnccl" | head -20 || true; \
+    if ! ldconfig -p | grep -qE "libcublas|libcusparse|libcufft|libcudnn|libnvinfer|libnccl"; then \
+        echo "ERROR: required CUDA libraries not found by ldconfig" >&2; exit 1; \
+    fi; \
+    ldconfig -p | grep -E "libcublas|libcusparse|libcufft|libcudnn|libnvinfer|libnccl" | head -20; \
     echo "NVIDIA layer verified."
 LABEL org.opencontainers.image.title="Kataglyphis Toolchain NVIDIA" \
       org.opencontainers.image.description="NVIDIA GPU library layer: CUDA, cuDNN, TensorRT, NCCL, math libs, NVTX"

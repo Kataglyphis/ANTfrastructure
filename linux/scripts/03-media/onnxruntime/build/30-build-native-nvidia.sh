@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # ==============================================================================
 # 30-build-native-nvidia.sh
 # Build ONNX Runtime with CUDA, TensorRT, and cuDNN execution providers.
@@ -18,7 +19,6 @@
 #   USE_CCACHE=true     Enable ccache for faster rebuilds (default: true)
 #   USE_LLD=true        Use lld linker for faster linking (default: true)
 # ==============================================================================
-set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
@@ -85,7 +85,7 @@ detect_jobs
 if [ ! -x "${CUDA_HOME}/bin/nvcc" ]; then
   err "nvcc not found at ${CUDA_HOME}/bin/nvcc. Ensure CUDA is installed and CUDA_HOME is correct."
 fi
-CUDA_VERSION_FULL="$("${CUDA_HOME}/bin/nvcc" --version | grep "release" | awk '{print $5}' | tr -d ',')"
+CUDA_VERSION_FULL="$("${CUDA_HOME}/bin/nvcc" --version | awk '/release/ {gsub(/,/,""); print $5; exit}')"
 info "CUDA version: ${CUDA_VERSION_FULL}"
 
 # TensorRT check

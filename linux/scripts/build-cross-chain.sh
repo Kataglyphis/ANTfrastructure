@@ -337,47 +337,6 @@ run_runtime_stage() {
 
 # ── arch loop (sequential or parallel) ────────────────────────────────────────
 
-# Run a stage function for each arch.  Optionally parallelizes with flag-file
-# failure tracking.
-_run_arch_loop() {
-  local stage_fn="$1" stage_name="$2"
-  local -a pids=()
-  local arch running failed=0
-  local _flagdir
-  _flagdir="$(mktemp -d /tmp/arch-loop-flags.XXXXXX)"
-  # shellcheck disable=SC2064  # intentional expansion at def time: _flagdir is local
-  trap "rm -rf ${_flagdir}" RETURN
-  running=0
-  for arch in ${TARGET_ARCHES//,/ }; do
-    if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
-      {
-        "${stage_fn}" "${stage_name}" "${arch}" || touch "${_flagdir}/failed-${arch}"
-      } &
-      pids+=($!)
-      running=$((running + 1))
-      if [ "${running}" -ge "${MAX_PARALLEL_ARCHS}" ]; then
-        wait -n 2>/dev/null || true
-        running=$((running - 1))
-      fi
-    else
-      "${stage_fn}" "${stage_name}" "${arch}" || failed=1
-    fi
-  done
-  if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
-    for pid in "${pids[@]}"; do
-      wait "${pid}" || true
-    done
-    local f
-    for f in "${_flagdir}"/failed-*; do
-      if [ -f "${f}" ]; then
-        warn "Arch ${f##*-} failed during parallel build"
-        failed=1
-      fi
-    done
-  fi
-  return "${failed}"
-}
-
 # ── chain verification ────────────────────────────────────────────────────────
 
 _verify_link() {
@@ -510,7 +469,9 @@ main() {
         ;;
       *)
         if cross_stage_is_per_arch "${stage}"; then
-          _run_arch_loop run_cross_stage "${stage}"
+          local _arch_fn
+          _arch_fn() { run_cross_stage "${stage}" "$1"; }
+          run_parallel_arch_loop _arch_fn "/tmp/cross-loop-flags" "${MAX_PARALLEL_ARCHS}" ${TARGET_ARCHES//,/ }
         else
           run_cross_stage "${stage}"
         fi

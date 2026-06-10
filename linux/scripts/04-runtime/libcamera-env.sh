@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # libcamera-env.sh – source this to make libcamera found by pkg-config, python and runtime loader
 # Usage:
 #   source ./libcamera-env.sh            # uses $LIBCAMERA_PREFIX or /opt/libcamera
@@ -49,32 +50,35 @@ if [ ! -d "${LIBCAMERA_PREFIX}" ]; then
 fi
 
 # helper: check if colon-separated $1 contains entry $2
-_path_contains() {
-  # $1 = var value, $2 = candidate
-  local var="$1" cand="$2"
-  [ -n "$var" ] || return 1
-  case ":$var:" in
-    *":${cand}:"*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+# Load shared path helpers if available, otherwise define fallbacks
+if [ -f /opt/scripts/core/path-helpers.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/path-helpers.sh
+else
+  _path_contains() {
+    local var="$1" cand="$2"
+    [ -n "$var" ] || return 1
+    case ":$var:" in
+      *":${cand}:"*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
 
-# Prepend value to colon-separated variable only if not present
-_prepend_unique() {
-  # args: varname, value
-  local __varname="$1"; shift
-  local __value="$1"
-  # get current value
-  eval "local __cur=\${$__varname:-}"
-  if [ -z "$__cur" ]; then
-    eval "export $__varname=\"${__value}\""
-  else
-    if _path_contains "$__cur" "$__value"; then
-      return 0
+  _path_path_prepend_unique() {
+    local __varname="$1" __value="$2" __cur
+    __cur="${!__varname:-}"
+    if [ -z "$__cur" ]; then
+      printf -v "${__varname}" '%s' "${__value}"
+      export "${__varname}"
+    else
+      if _path_contains "$__cur" "$__value"; then
+        return 0
+      fi
+      printf -v "${__varname}" '%s:%s' "${__value}" "${__cur}"
+      export "${__varname}"
     fi
-    eval "export $__varname=\"${__value}:\${$__varname}\""
-  fi
-}
+  }
+fi
 
 PREFIX="$LIBCAMERA_PREFIX"
 
@@ -102,14 +106,14 @@ for d in \
   "${PREFIX}/share/pkgconfig" \
 ; do
   if [ -d "$d" ]; then
-    _prepend_unique PKG_CONFIG_PATH "$d"
+    _path_prepend_unique PKG_CONFIG_PATH "$d"
   fi
 done
 
 # Fallback: scan common nested pkgconfig dirs (e.g. lib/<triplet>/pkgconfig)
 for d in "${PREFIX}/lib"/*/pkgconfig "${PREFIX}/lib"/*/*/pkgconfig; do
   [ -d "$d" ] || continue
-  _prepend_unique PKG_CONFIG_PATH "$d"
+  _path_prepend_unique PKG_CONFIG_PATH "$d"
 done
 
 # runtime library search paths (including multiarch)
@@ -120,20 +124,20 @@ for d in \
   "${PREFIX}/lib64" \
 ; do
   if [ -d "$d" ]; then
-    _prepend_unique LD_LIBRARY_PATH "$d"
+    _path_prepend_unique LD_LIBRARY_PATH "$d"
   fi
 done
 
 # Fallback: include nested lib directories (e.g. lib/<triplet> or lib/*/)
 for d in "${PREFIX}/lib"/* "${PREFIX}/lib"/*/*; do
   [ -d "$d" ] || continue
-  _prepend_unique LD_LIBRARY_PATH "$d"
+  _path_prepend_unique LD_LIBRARY_PATH "$d"
 done
 
 # bin tools (e.g. libcamera-apps)
 if [ -d "${PREFIX}/bin" ]; then
   # prepend to PATH if not present
-  _prepend_unique PATH "${PREFIX}/bin"
+  _path_prepend_unique PATH "${PREFIX}/bin"
 fi
 
 # Python site-packages locations (attempt a few common patterns)
@@ -147,13 +151,13 @@ for p in \
   # expand glob safely
   for dir in $p; do
     [ -d "$dir" ] || continue
-    _prepend_unique PYTHONPATH "$dir"
+    _path_prepend_unique PYTHONPATH "$dir"
   done
 done
 
 # also consider pkg-installed python module locations under prefix/share
 if [ -d "${PREFIX}/share/python" ]; then
-  _prepend_unique PYTHONPATH "${PREFIX}/share/python"
+  _path_prepend_unique PYTHONPATH "${PREFIX}/share/python"
 fi
 
 # GStreamer plugin path for libcamerasrc (including multiarch paths)
@@ -164,14 +168,14 @@ for p in \
   "${PREFIX}/lib64/gstreamer-1.0" \
 ; do
   if [ -d "$p" ]; then
-    _prepend_unique GST_PLUGIN_PATH "$p"
+    _path_prepend_unique GST_PLUGIN_PATH "$p"
   fi
 done
 
 # Fallback: scan nested gstreamer plugin dirs
 for p in "${PREFIX}/lib"/*/gstreamer-1.0 "${PREFIX}/lib"/*/*/gstreamer-1.0; do
   [ -d "$p" ] || continue
-  _prepend_unique GST_PLUGIN_PATH "$p"
+  _path_prepend_unique GST_PLUGIN_PATH "$p"
 done
 
 # Export LIBCAMERA_PREFIX for convenience

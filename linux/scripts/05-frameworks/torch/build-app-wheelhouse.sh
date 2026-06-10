@@ -39,13 +39,12 @@ shell_quote_args() {
     printf '%s' "${quoted}"
 }
 
-log() {
-    printf '[INFO] %s\n' "$*"
-}
-
-warn() {
-    printf '[WARN] %s\n' "$*" >&2
-}
+if ! command -v log >/dev/null 2>&1; then
+  log() { printf '[INFO] %s\n' "$*"; }
+fi
+if ! command -v warn >/dev/null 2>&1; then
+  warn() { printf '[WARN] %s\n' "$*" >&2; }
+fi
 
 require_host_python() {
     local python_bin=""

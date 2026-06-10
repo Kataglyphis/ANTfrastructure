@@ -112,8 +112,8 @@ validate_artifact_source() {
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
       # Check major.minor match (artifact may have minor patch drift)
-      clang_major_minor="$(echo "${LLVM_RELEASE:-22.1.6}" | cut -d. -f1-2)"
-      if echo "${clang_ver}" | grep -q "clang version ${clang_major_minor}"; then
+      clang_major_minor="${LLVM_RELEASE%.*}"
+      if [[ "${clang_ver}" == *"clang version ${clang_major_minor}"* ]]; then
         echo "OK: target clang ${llvm_target} reports ${clang_ver} (major.minor ${clang_major_minor} matches)"
       else
         validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.6})"

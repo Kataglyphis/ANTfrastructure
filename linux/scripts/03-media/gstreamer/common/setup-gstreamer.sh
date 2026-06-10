@@ -425,7 +425,7 @@ append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
-BUILD_TYPE_LOWER=$(echo "${BUILD_TYPE}" | tr '[:upper:]' '[:lower:]')
+BUILD_TYPE_LOWER="${BUILD_TYPE,,}"
 
 # Keep /usr/local/bin ahead of /bin so cross-introspection shims like
 # g-ir-scanner and ldd are used when upstream tools shell out by program name.

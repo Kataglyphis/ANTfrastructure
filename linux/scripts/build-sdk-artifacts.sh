@@ -15,6 +15,8 @@ VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-sdk}"
 init_mirror_defaults
 PUSH_IMAGES=0
+PARALLEL_ARCHS=0
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
 
 usage() {
   cat <<'EOF'
@@ -41,6 +43,8 @@ Options:
                           Optional mirror URL for ubuntu-ports entries
   --vulkan-version VER   Vulkan SDK version to build
   --push                Push each built SDK artifact image after export
+  --parallel-archs       Build per-architecture images in parallel
+  --max-parallel-archs N Max concurrent arch builds (default: 4)
   -h, --help             Show this help text
 
 Environment overrides:
@@ -130,6 +134,14 @@ main() {
         COMPILER_IMAGE="$2"
         shift 2
         ;;
+      --parallel-archs)
+        PARALLEL_ARCHS=1
+        shift
+        ;;
+      --max-parallel-archs)
+        MAX_PARALLEL_ARCHS="$2"
+        shift 2
+        ;; 
       *)
         err "Unknown option: $1"
         ;;
@@ -141,9 +153,8 @@ main() {
   ensure_compiler_image
   log "Building SDK artifacts for target arches: ${TARGET_ARCHES}"
 
-  local arch
-  local tag
-  for arch in ${TARGET_ARCHES//,/ }; do
+  _sdk_arch_build() {
+    local arch="$1" tag
     tag="${IMAGE_PREFIX}-${arch}"
     build_sdk_image "${arch}" "${tag}"
     export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
@@ -153,7 +164,9 @@ main() {
     if [ "${PUSH_IMAGES}" -eq 1 ]; then
       push_sdk_image "${tag}"
     fi
-  done
+  }
+
+  run_parallel_arch_loop _sdk_arch_build "/tmp/sdk-arch-loop-flags" "${MAX_PARALLEL_ARCHS}" ${TARGET_ARCHES//,/ }
 }
 
 main "$@"

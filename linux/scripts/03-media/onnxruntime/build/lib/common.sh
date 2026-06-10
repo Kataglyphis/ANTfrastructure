@@ -106,27 +106,9 @@ if ! command -v host_python_major_minor >/dev/null 2>&1; then
     "${python_bin}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
   }
 fi
-if ! command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
-  compute_jobs_with_mem_cap() {
-    local requested="${1:-}"
-    local mb_per_job="${2:-2000}"
-    local cores avail_mb max_by_mem jobs
-    cores="$(nproc --all 2>/dev/null || echo 1)"
-    jobs="${cores}"
-    if [ -n "${requested}" ]; then
-      jobs="${requested}"
-    fi
-    avail_mb="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
-    [ -z "${avail_mb}" ] && avail_mb=2048
-    max_by_mem=$(( avail_mb / mb_per_job ))
-    [ "${max_by_mem}" -lt 1 ] && max_by_mem=1
-    if [ "${jobs}" -gt "${max_by_mem}" ] 2>/dev/null; then
-      jobs="${max_by_mem}"
-    fi
-    [ "${jobs}" -lt 1 ] && jobs=1
-    echo "${jobs}"
-  }
-fi
+# compute_jobs_with_mem_cap is loaded from the canonical parallelism.sh module
+# (sourced above via source_module). Do not add a fallback here — the canonical
+# version includes cgroup awareness, AGGRESSIVE_PARALLELISM, and PARALLEL_JOBS.
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || err "Required command not found in PATH: $1"
@@ -337,11 +319,14 @@ collect_wheels_from_tree() {
   [ -d "${search_root}" ] || return 0
   mkdir -p "${output_dir}/wheels"
 
-  find "${search_root}" -name "*.whl" -type f 2>/dev/null | while read -r wheel_path; do
+  local _wheels_found=0
+  while read -r wheel_path; do
+    _wheels_found=1
     info "Copying ${wheel_label}: ${wheel_path}"
     cp "${wheel_path}" "${output_dir}/wheels/"
     ls -lh "${output_dir}/wheels/$(basename "${wheel_path}")"
-  done || info "No wheels found in ${search_root}"
+  done < <(find "${search_root}" -name "*.whl" -type f 2>/dev/null || true)
+  [ "${_wheels_found}" -eq 1 ] || info "No wheels found in ${search_root}"
 }
 
 maybe_build_source_wheel() {
@@ -379,9 +364,9 @@ copy_onnx_headers_to_output() {
 
   for search_dir in "$@"; do
     [ -d "${search_dir}/include" ] || continue
-    find "${search_dir}/include" -name "onnxruntime*.h" -type f 2>/dev/null | while read -r header_path; do
+    while read -r header_path; do
       cp "${header_path}" "${output_dir}/include/" 2>/dev/null || true
-    done
+    done < <(find "${search_dir}/include" -name "onnxruntime*.h" -type f 2>/dev/null || true)
   done
 }
 

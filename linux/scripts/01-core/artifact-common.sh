@@ -39,7 +39,7 @@ normalize_target_arches() {
 for _module in \
   tag-naming.sh stage-defs.sh digest-pinning.sh build-helpers.sh \
   context-management.sh version-forwarding.sh cli-parsers.sh \
-  runtime-build-fns.sh compiler-resolution.sh; do
+  runtime-build-fns.sh compiler-resolution.sh parallel-loop.sh; do
   if [ -f "${_ARTIFACT_COMMON_DIR}/${_module}" ]; then
     source "${_ARTIFACT_COMMON_DIR}/${_module}"
   fi

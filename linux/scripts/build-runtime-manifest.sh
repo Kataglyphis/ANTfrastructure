@@ -107,43 +107,6 @@ create_manifest() {
   fi
 }
 
-_runtime_build_loop() {
-  local -a pids=()
-  local arch running failed=0
-  local _flagdir
-  _flagdir="$(mktemp -d /tmp/runtime-arch-loop-flags.XXXXXX)"
-  trap "rm -rf ${_flagdir}" RETURN
-  running=0
-  for arch in ${ARCHITECTURES//,/ }; do
-    if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
-      {
-        runtime_build_chain "${arch}" || touch "${_flagdir}/failed-${arch}"
-      } &
-      pids+=($!)
-      running=$((running + 1))
-      if [ "${running}" -ge "${MAX_PARALLEL_ARCHS}" ]; then
-        wait -n 2>/dev/null || true
-        running=$((running - 1))
-      fi
-    else
-      runtime_build_chain "${arch}" || failed=1
-    fi
-  done
-  if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
-    for pid in "${pids[@]}"; do
-      wait "${pid}" || true
-    done
-    local f
-    for f in "${_flagdir}"/failed-*; do
-      if [ -f "${f}" ]; then
-        warn "Arch ${f##*-} failed during parallel build"
-        failed=1
-      fi
-    done
-  fi
-  return "${failed}"
-}
-
 main() {
   while [ $# -gt 0 ]; do
     local _dispatch_rc=0
@@ -221,7 +184,7 @@ main() {
 
   local arch
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
-    _runtime_build_loop
+    run_parallel_arch_loop runtime_build_chain "/tmp/runtime-arch-loop-flags" "${MAX_PARALLEL_ARCHS}" ${ARCHITECTURES//,/ }
   fi
 
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then

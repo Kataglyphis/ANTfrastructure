@@ -136,10 +136,26 @@ _cgroup_mem_remaining_mb() {
   printf '%s\n' ""
 }
 
+_auto_aggressive_parallelism() {
+  # Enable AGGRESSIVE_PARALLELISM automatically when host has plenty of RAM.
+  # Explicit AGGRESSIVE_PARALLELISM=false disables this auto-detection.
+  if [ "${AGGRESSIVE_PARALLELISM:-}" = "false" ]; then
+    return 0
+  fi
+  if [ "${AGGRESSIVE_PARALLELISM:-}" = "true" ]; then
+    return 0
+  fi
+  local avail_mb
+  avail_mb="$(_mem_available_mb)"
+  if [ -n "${avail_mb}" ] && [ "${avail_mb}" -ge 32768 ] 2>/dev/null; then
+    export AGGRESSIVE_PARALLELISM=true
+  fi
+}
+
 compute_jobs_with_mem_cap() {
   # Usage: compute_jobs_with_mem_cap [requested] [mb_per_job]
   # Defaults to ~2000MB/job to avoid OOM on build steps.
-  # Set AGGRESSIVE_PARALLELISM=true for lower memory caps (1200MB/job).
+  # Set AGGRESSIVE_PARALLELISM=false to disable (auto-enabled when RAM >= 32GB).
   # Set PARALLEL_JOBS=N to override all auto-detection.
   local requested="${1:-}"
   local mb_per_job="${2:-}"
@@ -149,6 +165,9 @@ compute_jobs_with_mem_cap() {
     printf '%s\n' "${PARALLEL_JOBS}"
     return 0
   fi
+
+  # Auto-enable aggressive mode on high-memory hosts if not explicitly set
+  _auto_aggressive_parallelism
 
   # Determine default memory per job based on AGGRESSIVE_PARALLELISM
   if [ -z "${mb_per_job}" ]; then

@@ -271,7 +271,7 @@ EOF
   # Final guard: refuse to ship a target Python whose lib-dynload still contains
   # dangling extension symlinks (this is what silently broke foreign-arch torch).
   if find "${dynload_dir}" -xtype l 2>/dev/null | grep -q .; then
-    find "${dynload_dir}" -xtype l 2>/dev/null | while read -r symlink; do warn "dangling: ${symlink}"; done || true
+    while read -r symlink; do warn "dangling: ${symlink}"; done < <(find "${dynload_dir}" -xtype l 2>/dev/null || true)
     err "dangling extension symlinks remain in ${dynload_dir} after staging"
   fi
 
