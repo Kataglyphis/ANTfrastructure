@@ -64,20 +64,20 @@ ARG GCC_VERSION
 
 SHELL ["bash", "-lc"]
 
-COPY --from=artifact-source ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
-COPY --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
-COPY --from=artifact-source /opt/ffmpeg /opt/ffmpeg
-COPY --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
-COPY --from=artifact-source /opt/libcamera /opt/libcamera
-COPY --from=artifact-source /opt/wheels /opt/wheels
-COPY --from=artifact-source /opt/vulkan /opt/vulkan
-COPY --from=artifact-source /opt/android-sdk /opt/android-sdk
-COPY --from=artifact-source /opt/android /opt/android
-COPY --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
+COPY --link --from=artifact-source ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
+COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
+COPY --link --from=artifact-source /opt/wheels /opt/wheels
+COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
+COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
+COPY --link --from=artifact-source /opt/android /opt/android
+COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 # The SDK stage cross-compiles a native Clang 22.1.6 toolchain for the
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
-COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
+COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 # Lightweight payload files (LiteRT libs, pkg-config, VVdec, LLVM headers)
 # bind-mounted directly from artifact-source to avoid duplicating heavy dirs.
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact_src,ro \

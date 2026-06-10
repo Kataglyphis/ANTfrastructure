@@ -471,7 +471,7 @@ require_toolchain_python() {
 }
 
 tvm_cross_wheel_platform_tag() {
-  arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
+  cross_wheel_platform_tag
 }
 
 cross_linker_search_flags() {
@@ -501,16 +501,6 @@ cross_linker_search_flags() {
   printf '%s' "${flags}"
 }
 
-shell_quote_args() {
-  local quoted=""
-  local arg
-
-  for arg in "$@"; do
-    quoted+="${quoted:+ }$(printf '%q' "${arg}")"
-  done
-
-  printf '%s' "${quoted}"
-}
 
 append_tvm_cmake_args() {
   local out_name="$1"
@@ -594,13 +584,36 @@ patch_tvm_for_llvm_22() {
   fi
 
   log "Patching TVM for LLVM $llvm_major compatibility"
-  perl -0pi -e 's/llvm::StringMap<llvm::cl::Option\*>& options = llvm::cl::getRegisteredOptions\(\);/auto\& options = llvm::cl::getRegisteredOptions();/g' "$llvm_instance_cc"
-  perl -0pi -e 's/if \(options\.count\(opt\.name\)\) \{/if (options.find(opt.name) != options.end()) {/g' "$llvm_instance_cc"
-  perl -0pi -e 's/llvm::cl::Option\* base_op = options\[opt->name\];/llvm::cl::Option* base_op = nullptr;\n  auto it = options.find(opt->name);\n  if (it != options.end()) {\n    base_op = it->second;\n  }\n  if (base_op == nullptr) {\n    opt->type = Option::OptType::Invalid;\n    return;\n  }/g' "$llvm_instance_cc"
-  perl -0pi -e 's/llvm::cl::Option\* base_op = options\[new_opt\.name\];/llvm::cl::Option* base_op = nullptr;\n    auto it = options.find(new_opt.name);\n    if (it != options.end()) {\n      base_op = it->second;\n    }\n    ICHECK(base_op != nullptr) << "LLVM option not found: " << new_opt.name;/g' "$llvm_instance_cc"
-  perl -0pi -e 's/\n  target_options_\.UnsafeFPMath = false;//g' "$llvm_instance_cc"
-  perl -0pi -e 's/const llvm::Target\* llvm_instance = llvm::TargetRegistry::lookupTarget\(triple, error\);/llvm::Triple triple_obj(triple);\n  const llvm::Target* llvm_instance = llvm::TargetRegistry::lookupTarget(triple_obj, error);/g' "$llvm_instance_cc"
-  perl -0pi -e 's/llvm::TargetMachine\* tm = llvm_instance->createTargetMachine\(\n      triple, cpu, features, target_options, reloc_model, code_model, opt_level\);/llvm::Triple triple_obj(triple);\n  llvm::TargetMachine* tm = llvm_instance->createTargetMachine(\n      triple_obj, cpu, features, target_options, reloc_model, code_model, opt_level);/g' "$llvm_instance_cc"
+  python3 - "$llvm_instance_cc" <<'PY'
+from pathlib import Path
+import re, sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+
+replacements = [
+    (r'llvm::StringMap<llvm::cl::Option\*>& options = llvm::cl::getRegisteredOptions\(\);',
+     r'auto& options = llvm::cl::getRegisteredOptions();'),
+    (r'if \(options\.count\(opt\.name\)\) \{',
+     r'if (options.find(opt.name) != options.end()) {'),
+    (r'llvm::cl::Option\* base_op = options\[opt->name\];',
+     r'llvm::cl::Option* base_op = nullptr;\n  auto it = options.find(opt->name);\n  if (it != options.end()) {\n    base_op = it->second;\n  }\n  if (base_op == nullptr) {\n    opt->type = Option::OptType::Invalid;\n    return;\n  }'),
+    (r'llvm::cl::Option\* base_op = options\[new_opt\.name\];',
+     r'llvm::cl::Option* base_op = nullptr;\n    auto it = options.find(new_opt.name);\n    if (it != options.end()) {\n      base_op = it->second;\n    }\n    ICHECK(base_op != nullptr) << "LLVM option not found: " << new_opt.name;'),
+    (r'\n  target_options_\.UnsafeFPMath = false;', ''),
+    (r'const llvm::Target\* llvm_instance = llvm::TargetRegistry::lookupTarget\(triple, error\);',
+     r'llvm::Triple triple_obj(triple);\n  const llvm::Target* llvm_instance = llvm::TargetRegistry::lookupTarget(triple_obj, error);'),
+    (r'llvm::TargetMachine\* tm = llvm_instance->createTargetMachine\(\n      triple, cpu, features, target_options, reloc_model, code_model, opt_level\);',
+     r'llvm::Triple triple_obj(triple);\n  llvm::TargetMachine* tm = llvm_instance->createTargetMachine(\n      triple_obj, cpu, features, target_options, reloc_model, code_model, opt_level);'),
+]
+
+for pattern, replacement in replacements:
+    if not re.search(pattern, text, re.DOTALL):
+        continue
+    text = re.sub(pattern, replacement, text, count=1)
+
+path.write_text(text)
+PY
 
   grep -q 'lookupTarget(triple_obj, error)' "$llvm_instance_cc" || \
     die "Failed to patch TVM for LLVM 22: lookupTarget update missing"
@@ -711,15 +724,20 @@ main() {
 
   require_toolchain_compilers
 
+  local _tvm_cloned=0
   if [ ! -d "$tvm_dir/.git" ]; then
     log "Cloning TVM into $tvm_dir"
     git clone --recursive https://github.com/apache/tvm.git "$tvm_dir"
+    _tvm_cloned=1
   fi
 
+  local _curr_ref; _curr_ref="$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)"
   log "Fetching + checking out ref: $ref"
-  git -C "$tvm_dir" fetch --all --tags --prune
-  git -C "$tvm_dir" checkout "$ref"
-  git -C "$tvm_dir" submodule update --init --recursive
+  git -C "$tvm_dir" fetch --depth 1 origin "${ref}" 2>/dev/null || git -C "$tvm_dir" fetch --depth 1 --tags 2>/dev/null || true
+  git -C "$tvm_dir" checkout "${ref}"
+  if [ "$_tvm_cloned" -eq 0 ] || [ "$_curr_ref" != "$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)" ]; then
+    git -C "$tvm_dir" submodule update --init --recursive
+  fi
 
   if [ -z "$llvm_config" ]; then
     llvm_config="$(detect_llvm_config)"

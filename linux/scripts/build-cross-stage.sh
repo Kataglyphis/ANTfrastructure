@@ -22,7 +22,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
-NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 TARGET_ARCH="${TARGET_ARCH:-}"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
@@ -30,7 +29,7 @@ init_mirror_defaults
 LOG_DIR="${LOG_DIR:-}"
 
 STAGE=""
-PUSH_IMAGE=0
+PUSH_IMAGES=0
 
 usage() {
   cat <<'EOF'
@@ -72,24 +71,20 @@ EOF
 
 main() {
   while [ $# -gt 0 ]; do
-    local _dispatch_rc=0
-    dispatch_parsed_args parse_shared_orchestrator_args \
+    consume_shared_arg usage \
+      parse_shared_orchestrator_args \
       TARGET_ARCH USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IMAGE \
-      "$1" "${2:-}" || _dispatch_rc=$?
-    case $_dispatch_rc in
-      255) usage; exit 0 ;;
-      0) case "${_DP_SHIFT}" in
-           1) shift 1; continue ;;
-           2) shift 2; continue ;;
-         esac ;;
+      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IMAGES \
+      "$1" "${2:-}" || break
+    case "${_DP_SHIFT}" in
+      1) shift; continue ;;  2) shift 2; continue ;;
     esac
     case "$1" in
       --stage) STAGE="$2"; shift 2 ;;
       --arch) TARGET_ARCH="$2"; shift 2 ;;
       --cross-targets) CROSS_TARGETS="$2"; shift 2 ;;
       --log-dir) LOG_DIR="$2"; shift 2 ;;
-      *) err "Unknown option: $1" ;;
+      *) warn "Unknown option: $1"; usage >&2; exit 1 ;;
     esac
   done
 
@@ -119,9 +114,9 @@ main() {
 
   # Delegate the full build (parent resolution, build args, push/local, pin capture)
   # to the shared cross_stage_run() from cross-stage-build.sh.
-  cross_stage_run "${STAGE}" "${arch}" "${PUSH_IMAGE}"
+  cross_stage_run "${STAGE}" "${arch}" "${PUSH_IMAGES}"
 
-  if [ "${PUSH_IMAGE}" -eq 1 ] && ! is_dry_run; then
+  if [ "${PUSH_IMAGES}" -eq 1 ] && ! is_dry_run; then
     log "[stage ${label}] build complete (digest pinned)"
   fi
 }

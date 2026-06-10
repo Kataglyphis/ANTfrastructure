@@ -168,19 +168,10 @@ verify_summary() {
     log "Host toolchain on the builder image:"
   fi
   verify_host_toolchain_versions
-  verify_tool_with_path gcc --version
-  verify_tool_with_path g++ --version
-  verify_tool_with_path clang --version
-  verify_tool_with_path clangd --version
-  verify_tool_with_path clang-format --version
-  verify_tool_with_path clang-tidy --version
+  for t in gcc g++ clang clangd clang-format clang-tidy lldb llvm-config mlir-opt bolt flang flang-new; do
+    verify_tool_with_path "$t" --version
+  done
   verify_lld_version
-  verify_tool_with_path lldb --version
-  verify_tool_with_path llvm-config --version
-  verify_tool_with_path mlir-opt --version
-  verify_tool_with_path bolt --version
-  verify_tool_with_path flang --version
-  verify_tool_with_path flang-new --version
 
   if verify_cross_mode_requested; then
     verify_all_cross_target_versions

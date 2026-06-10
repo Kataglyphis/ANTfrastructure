@@ -64,7 +64,7 @@ else
     esac
   }
 
-  _path_path_prepend_unique() {
+  _path_prepend_unique() {
     local __varname="$1" __value="$2" __cur
     __cur="${!__varname:-}"
     if [ -z "$__cur" ]; then

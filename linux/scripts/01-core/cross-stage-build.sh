@@ -297,8 +297,10 @@ cross_stage_run() {
       local -n pin_map="${pin_varname}"
       pin_map["${arch}"]="${pinned_digest}"
       log "[stage ${label}] pinned ${pinned_digest}"
-      if [ "${stage}" = "android" ] && declare -p ANDROID_BUILT_THIS_RUN &>/dev/null; then
-        ANDROID_BUILT_THIS_RUN["${arch}"]=1
+      local built_flag_varname="${stage^^}_BUILT_THIS_RUN"
+      if declare -p "${built_flag_varname}" &>/dev/null; then
+        local -n built_flag="${built_flag_varname}"
+        built_flag["${arch}"]=1
       fi
     fi
   else

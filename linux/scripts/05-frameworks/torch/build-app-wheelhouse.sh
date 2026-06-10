@@ -28,17 +28,6 @@ TARGET_TORCH_WHEEL=""
 TARGET_TORCH_VERSION=""
 TORCH_STAGING_DIR=""
 
-shell_quote_args() {
-    local quoted=""
-    local arg
-
-    for arg in "$@"; do
-        quoted+="${quoted:+ }$(printf '%q' "${arg}")"
-    done
-
-    printf '%s' "${quoted}"
-}
-
 if ! command -v log >/dev/null 2>&1; then
   log() { printf '[INFO] %s\n' "$*"; }
 fi
@@ -66,10 +55,13 @@ require_host_python() {
 }
 
 wheel_platform_tag() {
+    if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
+        cross_wheel_platform_tag
+        return $?
+    fi
     if ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
         return 1
     fi
-
     arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
 }
 

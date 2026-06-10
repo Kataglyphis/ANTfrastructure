@@ -52,7 +52,7 @@ find_missing_needed() {
   echo "Checking: ${binary}" >&2
 
   local so_name
-  for so_name in $(objdump -p "${binary}" 2>/dev/null | awk '/NEEDED/ {print $2}'); do
+  while IFS= read -r so_name; do
     local found=false
 
     for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
@@ -133,7 +133,7 @@ scan_plugin_directory() {
           found=true
           break
         fi
-      done
+  done < <(objdump -p "${binary}" 2>/dev/null | awk '/NEEDED/ {print $2}')
 
       if [ "${found}" = "false" ]; then
         if ldconfig -p 2>/dev/null | grep -qF " ${so_name} "; then

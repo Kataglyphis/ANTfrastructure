@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.24.0
 FROM ubuntu:26.04
 ENV DEBIAN_FRONTEND=noninteractive
 

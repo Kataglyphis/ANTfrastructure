@@ -251,64 +251,48 @@ source "${_CROSS_ENV_DIR}/cross-apt.sh"
 # shellcheck disable=SC1091
 source "${_CROSS_ENV_DIR}/cross-meson.sh"
 
-# Private: resolve the core architecture identifiers (triplet, rust target, etc.)
+# Private: resolve the core architecture identifiers (triplet, rust target, etc.).
+# Populates the provided associative array with keys:
+#   target_arch, build_arch, triplet, processor, rust_target, rust_env,
+#   rust_env_lower, build_rust_lower, gcc_prefix, gcc_major, runtime_libdir
 _cross_env_resolve_identifiers() {
-  local -n _eri_target_arch=$1
-  local -n _eri_build_arch=$2
-  local -n _eri_triplet=$3
-  local -n _eri_processor=$4
-  local -n _eri_rust_target=$5
-  local -n _eri_rust_env=$6
-  local -n _eri_rust_env_lower=$7
-  local -n _eri_build_rust_lower=$8
-  local -n _eri_gcc_prefix=$9
-  local -n _eri_gcc_major=${10}
-  local -n _eri_runtime_libdir=${11}
+  local -n _eri_out=$1
 
-  _eri_target_arch="$(cross_target_arch)"
-  _eri_build_arch="$(cross_build_arch)"
-  _eri_triplet="$(cross_target_triplet)"
-  _eri_processor="$(cmake_system_processor)"
-  _eri_rust_target="$(cross_target_rust_triple)"
-  _eri_rust_env="$(cross_target_upper_rust)"
-  _eri_rust_env_lower="$(cross_target_lower_rust)"
-  _eri_build_rust_lower="$(cross_build_lower_rust 2>/dev/null || true)"
-  _eri_gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
-  _eri_gcc_major="${GCC_WANTED:-${GCC_VERSION:-16}}"
-  _eri_gcc_major="$(version_major "${_eri_gcc_major}")"
-  _eri_runtime_libdir="${_eri_gcc_prefix}/lib/gcc/${_eri_triplet}/${_eri_gcc_major}"
+  _eri_out[target_arch]="$(cross_target_arch)"
+  _eri_out[build_arch]="$(cross_build_arch)"
+  _eri_out[triplet]="$(cross_target_triplet)"
+  _eri_out[processor]="$(cmake_system_processor)"
+  _eri_out[rust_target]="$(cross_target_rust_triple)"
+  _eri_out[rust_env]="$(cross_target_upper_rust)"
+  _eri_out[rust_env_lower]="$(cross_target_lower_rust)"
+  _eri_out[build_rust_lower]="$(cross_build_lower_rust 2>/dev/null || true)"
+  _eri_out[gcc_prefix]="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  _eri_out[gcc_major]="${GCC_WANTED:-${GCC_VERSION:-16}}"
+  _eri_out[gcc_major]="$(version_major "${_eri_out[gcc_major]}")"
+  _eri_out[runtime_libdir]="${_eri_out[gcc_prefix]}/lib/gcc/${_eri_out[triplet]}/${_eri_out[gcc_major]}"
 }
 
 # Private: resolve all cross-compiler tool paths for a target triplet.
+# Populates the provided associative array with keys:
+#   cc, cxx, ar, as, ld, nm, ranlib, strip, objcopy,
+#   build_cc, build_cxx, build_ar, build_ranlib
 _cross_env_resolve_tools() {
   local triplet="$1"
-  local -n _ert_cc=$2
-  local -n _ert_cxx=$3
-  local -n _ert_ar=$4
-  local -n _ert_as=$5
-  local -n _ert_ld=$6
-  local -n _ert_nm=$7
-  local -n _ert_ranlib=$8
-  local -n _ert_strip=$9
-  local -n _ert_objcopy=${10}
-  local -n _ert_build_cc=${11}
-  local -n _ert_build_cxx=${12}
-  local -n _ert_build_ar=${13}
-  local -n _ert_build_ranlib=${14}
+  local -n _ert_out=$2
 
-  _ert_cc="$(require_cross_gcc_tool gcc "${triplet}" 'cross compiler')" || return 1
-  _ert_cxx="$(require_cross_gcc_tool g++ "${triplet}" 'cross compiler')" || return 1
-  _ert_ar="$(require_cross_gcc_tool ar "${triplet}" 'cross binutils tool')" || return 1
-  _ert_as="$(require_cross_gcc_tool as "${triplet}" 'cross binutils tool')" || return 1
-  _ert_ld="$(require_cross_gcc_tool ld "${triplet}" 'cross binutils tool')" || return 1
-  _ert_nm="$(require_cross_gcc_tool nm "${triplet}" 'cross binutils tool')" || return 1
-  _ert_ranlib="$(require_cross_gcc_tool ranlib "${triplet}" 'cross binutils tool')" || return 1
-  _ert_strip="$(require_cross_gcc_tool strip "${triplet}" 'cross binutils tool')" || return 1
-  _ert_objcopy="$(require_cross_gcc_tool objcopy "${triplet}" 'cross binutils tool')" || return 1
-  _ert_build_cc="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
-  _ert_build_cxx="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
-  _ert_build_ar="$(resolve_build_gcc_tool ar 2>/dev/null || true)"
-  _ert_build_ranlib="$(resolve_build_gcc_tool ranlib 2>/dev/null || true)"
+  _ert_out[cc]="$(require_cross_gcc_tool gcc "${triplet}" 'cross compiler')" || return 1
+  _ert_out[cxx]="$(require_cross_gcc_tool g++ "${triplet}" 'cross compiler')" || return 1
+  _ert_out[ar]="$(require_cross_gcc_tool ar "${triplet}" 'cross binutils tool')" || return 1
+  _ert_out[as]="$(require_cross_gcc_tool as "${triplet}" 'cross binutils tool')" || return 1
+  _ert_out[ld]="$(require_cross_gcc_tool ld "${triplet}" 'cross binutils tool')" || return 1
+  _ert_out[nm]="$(require_cross_gcc_tool nm "${triplet}" 'cross binutils tool')" || return 1
+  _ert_out[ranlib]="$(require_cross_gcc_tool ranlib "${triplet}" 'cross binutils tool')" || return 1
+  _ert_out[strip]="$(require_cross_gcc_tool strip "${triplet}" 'cross binutils tool')" || return 1
+  _ert_out[objcopy]="$(require_cross_gcc_tool objcopy "${triplet}" 'cross binutils tool')" || return 1
+  _ert_out[build_cc]="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
+  _ert_out[build_cxx]="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
+  _ert_out[build_ar]="$(resolve_build_gcc_tool ar 2>/dev/null || true)"
+  _ert_out[build_ranlib]="$(resolve_build_gcc_tool ranlib 2>/dev/null || true)"
 }
 
 # Private: set up cross Python staging directories.
@@ -329,22 +313,19 @@ _cross_env_setup_python_staging() {
 }
 
 # Private: export the full cross-compilation environment.
+# Consumes a single associative array with all the keys produced by
+# _cross_env_resolve_identifiers and _cross_env_resolve_tools.
 _cross_env_export_all() {
-  local target_arch="$1" build_arch="$2" triplet="$3" processor="$4" rust_target="$5"
-  local rust_env="$6" rust_env_lower="$7" build_rust_lower="$8"
-  local cc="$9" cxx="${10}" ar="${11}" as_tool="${12}" ld="${13}" nm_tool="${14}"
-  local ranlib="${15}" strip_tool="${16}" objcopy="${17}"
-  local build_cc="${18}" build_cxx="${19}" build_ar="${20}" build_ranlib="${21}"
-  local runtime_libdir="${22}" gcc_prefix="${23}"
+  local -n _eea=$1
 
-  export TARGET_ARCH="${target_arch}"
-  export TARGETARCH="${target_arch}"
-  export TARGETPLATFORM="linux/${target_arch}"
-  export BUILDARCH="${build_arch}"
-  export BUILDPLATFORM="linux/${build_arch}"
-  export CROSS_TARGET_TRIPLET="${triplet}"
-  export CROSS_TARGET_PROCESSOR="${processor}"
-  export CROSS_RUST_TARGET="${rust_target}"
+  export TARGET_ARCH="${_eea[target_arch]}"
+  export TARGETARCH="${_eea[target_arch]}"
+  export TARGETPLATFORM="linux/${_eea[target_arch]}"
+  export BUILDARCH="${_eea[build_arch]}"
+  export BUILDPLATFORM="linux/${_eea[build_arch]}"
+  export CROSS_TARGET_TRIPLET="${_eea[triplet]}"
+  export CROSS_TARGET_PROCESSOR="${_eea[processor]}"
+  export CROSS_RUST_TARGET="${_eea[rust_target]}"
 
   local dir
   dir="$(cross_bin_dir 2>/dev/null || true)"
@@ -352,38 +333,39 @@ _cross_env_export_all() {
     export PATH="${dir}:${PATH}"
   fi
 
-  export CC="${cc}" CXX="${cxx}" AR="${ar}" AS="${as_tool}" LD="${ld}" NM="${nm_tool}" \
-    RANLIB="${ranlib}" STRIP="${strip_tool}" OBJCOPY="${objcopy}"
-  export "CC_${rust_env_lower}=${CC}"
-  export "CXX_${rust_env_lower}=${CXX}"
-  export "AR_${rust_env_lower}=${AR}"
-  export "RANLIB_${rust_env_lower}=${RANLIB}"
-  if [ -n "${build_rust_lower}" ]; then
-    [ -n "${build_cc}" ] && export "CC_${build_rust_lower}=${build_cc}"
-    [ -n "${build_cxx}" ] && export "CXX_${build_rust_lower}=${build_cxx}"
-    [ -n "${build_ar}" ] && export "AR_${build_rust_lower}=${build_ar}"
-    [ -n "${build_ranlib}" ] && export "RANLIB_${build_rust_lower}=${build_ranlib}"
+  export CC="${_eea[cc]}" CXX="${_eea[cxx]}" AR="${_eea[ar]}" AS="${_eea[as]}" \
+    LD="${_eea[ld]}" NM="${_eea[nm]}" RANLIB="${_eea[ranlib]}" \
+    STRIP="${_eea[strip]}" OBJCOPY="${_eea[objcopy]}"
+  export "CC_${_eea[rust_env_lower]}=${CC}"
+  export "CXX_${_eea[rust_env_lower]}=${CXX}"
+  export "AR_${_eea[rust_env_lower]}=${AR}"
+  export "RANLIB_${_eea[rust_env_lower]}=${RANLIB}"
+  if [ -n "${_eea[build_rust_lower]}" ]; then
+    [ -n "${_eea[build_cc]}" ] && export "CC_${_eea[build_rust_lower]}=${_eea[build_cc]}"
+    [ -n "${_eea[build_cxx]}" ] && export "CXX_${_eea[build_rust_lower]}=${_eea[build_cxx]}"
+    [ -n "${_eea[build_ar]}" ] && export "AR_${_eea[build_rust_lower]}=${_eea[build_ar]}"
+    [ -n "${_eea[build_ranlib]}" ] && export "RANLIB_${_eea[build_rust_lower]}=${_eea[build_ranlib]}"
   fi
 
-  if command -v "clang-${target_arch}" >/dev/null 2>&1; then
-    export CLANG="clang-${target_arch}"
+  if command -v "clang-${_eea[target_arch]}" >/dev/null 2>&1; then
+    export CLANG="clang-${_eea[target_arch]}"
   fi
-  if command -v "clang++-${target_arch}" >/dev/null 2>&1; then
-    export CLANGXX="clang++-${target_arch}"
+  if command -v "clang++-${_eea[target_arch]}" >/dev/null 2>&1; then
+    export CLANGXX="clang++-${_eea[target_arch]}"
   fi
 
   export PKG_CONFIG_ALLOW_CROSS=1
   export PKG_CONFIG_SYSROOT_DIR="${PKG_CONFIG_SYSROOT_DIR:-/}"
-  PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${triplet}")"
+  PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${_eea[triplet]}")"
   export PKG_CONFIG_LIBDIR
 
   local target_link_path=""
   for dir in \
-    "${runtime_libdir}" \
-    "${gcc_prefix}/${triplet}/lib" \
-    "/usr/lib/${triplet}" \
-    "/lib/${triplet}" \
-    "/usr/${triplet}/lib"; do
+    "${_eea[runtime_libdir]}" \
+    "${_eea[gcc_prefix]}/${_eea[triplet]}/lib" \
+    "/usr/lib/${_eea[triplet]}" \
+    "/lib/${_eea[triplet]}" \
+    "/usr/${_eea[triplet]}/lib"; do
     [ -d "${dir}" ] || continue
     target_link_path="${target_link_path:+${target_link_path}:}${dir}"
   done
@@ -392,26 +374,26 @@ _cross_env_export_all() {
   fi
 
   export CMAKE_SYSTEM_NAME=Linux
-  export CMAKE_SYSTEM_PROCESSOR="${processor}"
+  export CMAKE_SYSTEM_PROCESSOR="${_eea[processor]}"
   export CMAKE_SYSROOT="${CMAKE_SYSROOT:-/}"
   export CMAKE_C_COMPILER="${CC}"
   export CMAKE_CXX_COMPILER="${CXX}"
   export CMAKE_ASM_COMPILER="${CC}"
   export CMAKE_AR="${AR}"
   export CMAKE_RANLIB="${RANLIB}"
-  export CMAKE_LINKER="${LD:-}"
-  export CMAKE_NM="${NM:-}"
-  export CMAKE_OBJCOPY="${OBJCOPY}"
-  export CMAKE_STRIP="${STRIP}"
-  export CMAKE_LIBRARY_ARCHITECTURE="${triplet}"
+  export CMAKE_LINKER="${_eea[ld]:-}"
+  export CMAKE_NM="${_eea[nm]:-}"
+  export CMAKE_OBJCOPY="${_eea[objcopy]}"
+  export CMAKE_STRIP="${_eea[strip]}"
+  export CMAKE_LIBRARY_ARCHITECTURE="${_eea[triplet]}"
   export CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
   export CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
   export CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
   export CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
-  export CARGO_BUILD_TARGET="${rust_target}"
-  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/opt/cargo-target/${target_arch}}"
-  export "CARGO_TARGET_${rust_env}_LINKER=${CC}"
-  export "CARGO_TARGET_${rust_env}_AR=${AR}"
+  export CARGO_BUILD_TARGET="${_eea[rust_target]}"
+  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/opt/cargo-target/${_eea[target_arch]}}"
+  export "CARGO_TARGET_${_eea[rust_env]}_LINKER=${CC}"
+  export "CARGO_TARGET_${_eea[rust_env]}_AR=${AR}"
 }
 
 setup_linux_cross_env() {
@@ -419,27 +401,11 @@ setup_linux_cross_env() {
     return 0
   fi
 
-  local target_arch build_arch triplet processor rust_target rust_env rust_env_lower build_rust_lower
-  local gcc_prefix gcc_major runtime_libdir
-  local cc cxx ar as_tool ld_tool nm_tool ranlib strip_tool objcopy
-  local build_cc build_cxx build_ar build_ranlib
+  local -A _env=()
 
-  _cross_env_resolve_identifiers \
-    target_arch build_arch triplet processor rust_target \
-    rust_env rust_env_lower build_rust_lower \
-    gcc_prefix gcc_major runtime_libdir
-
-  _cross_env_setup_python_staging "${target_arch}"
-
-  _cross_env_resolve_tools "${triplet}" \
-    cc cxx ar as_tool ld_tool nm_tool ranlib strip_tool objcopy \
-    build_cc build_cxx build_ar build_ranlib || return 1
-
-  _cross_env_export_all \
-    "${target_arch}" "${build_arch}" "${triplet}" "${processor}" "${rust_target}" \
-    "${rust_env}" "${rust_env_lower}" "${build_rust_lower}" \
-    "${cc}" "${cxx}" "${ar}" "${as_tool}" "${ld_tool}" "${nm_tool}" "${ranlib}" "${strip_tool}" "${objcopy}" \
-    "${build_cc}" "${build_cxx}" "${build_ar}" "${build_ranlib}" \
-    "${runtime_libdir}" "${gcc_prefix}"
+  _cross_env_resolve_identifiers _env
+  _cross_env_setup_python_staging "${_env[target_arch]}"
+  _cross_env_resolve_tools "${_env[triplet]}" _env || return 1
+  _cross_env_export_all _env
 }
 

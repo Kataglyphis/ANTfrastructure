@@ -233,21 +233,19 @@ EOF
         export CPLUS_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
       fi
 
-      if [[ -d "${SDK_ARCHDIR}/include/vulkan" ]]; then
-        log "Replacing standard Vulkan include paths with SDK headers"
-        ${SUDO:-sudo} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
-        ${SUDO:-sudo} rm -rf /usr/include/vulkan /usr/local/include/vulkan "${target_include_dir}/vulkan"
-        ${SUDO:-sudo} ln -s "${SDK_ARCHDIR}/include/vulkan" /usr/include/vulkan
-        ${SUDO:-sudo} ln -s "${SDK_ARCHDIR}/include/vulkan" /usr/local/include/vulkan
-        ${SUDO:-sudo} ln -s "${SDK_ARCHDIR}/include/vulkan" "${target_include_dir}/vulkan"
-      fi
-      if [[ -d "${SDK_ARCHDIR}/include/vk_video" ]]; then
-        ${SUDO:-sudo} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
-        ${SUDO:-sudo} rm -rf /usr/include/vk_video /usr/local/include/vk_video "${target_include_dir}/vk_video"
-        ${SUDO:-sudo} ln -s "${SDK_ARCHDIR}/include/vk_video" /usr/include/vk_video
-        ${SUDO:-sudo} ln -s "${SDK_ARCHDIR}/include/vk_video" /usr/local/include/vk_video
-        ${SUDO:-sudo} ln -s "${SDK_ARCHDIR}/include/vk_video" "${target_include_dir}/vk_video"
-      fi
+      _symlink_sdk_include() {
+        local name="$1" target_include_dir="$2" sdkincludedir="$3"
+        if [ -d "${sdkincludedir}/include/${name}" ]; then
+          ${SUDO:-sudo} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
+          ${SUDO:-sudo} rm -rf "/usr/include/${name}" "/usr/local/include/${name}" "${target_include_dir}/${name}"
+          ${SUDO:-sudo} ln -s "${sdkincludedir}/include/${name}" "/usr/include/${name}"
+          ${SUDO:-sudo} ln -s "${sdkincludedir}/include/${name}" "/usr/local/include/${name}"
+          ${SUDO:-sudo} ln -s "${sdkincludedir}/include/${name}" "${target_include_dir}/${name}"
+        fi
+      }
+      log "Replacing standard Vulkan include paths with SDK headers"
+      _symlink_sdk_include vulkan "${target_include_dir}" "${SDK_ARCHDIR}"
+      _symlink_sdk_include vk_video "${target_include_dir}" "${SDK_ARCHDIR}"
     fi
 
     if cross_build_is_active; then
@@ -270,28 +268,25 @@ EOF
       vulkan-extensionlayer volk vma vul
       spirv-cross spirv-reflect vulkan-profiles
     )
+
+    # Per-component skip rules: key=component, value=skip reason (empty=include)
+    local -A _vulkan_skip=()
     if cross_build_enabled; then
-      log "Skipping vulkan-tools for foreign-arch cross builds"
-    else
-      sdk_components+=( vulkan-tools )
+      _vulkan_skip[vulkan-tools]="foreign-arch cross builds"
+      _vulkan_skip[gfxreconstruct]="foreign-arch cross builds"
+      _vulkan_skip[vcv]="foreign-arch cross builds"
+      _vulkan_skip[slang]="foreign-arch cross builds"
+    elif [ "${arch_suffix}" = "riscv64" ]; then
+      _vulkan_skip[slang]="riscv64 (not yet ported)"
     fi
-    if cross_build_enabled; then
-      log "Skipping gfxreconstruct for foreign-arch cross builds"
-    else
-      sdk_components+=( gfxreconstruct )
-    fi
-    if cross_build_enabled; then
-      log "Skipping VulkanCapsViewer for foreign-arch cross builds"
-    else
-      sdk_components+=( vcv )
-    fi
-    if cross_build_enabled; then
-      log "Skipping slang for foreign-arch cross builds"
-    elif [[ "$arch_suffix" != "riscv64" ]]; then
-      sdk_components+=( slang )
-    else
-      log "Skipping slang on riscv64 (not yet ported)"
-    fi
+
+    for comp in vulkan-tools gfxreconstruct vcv slang; do
+      if [ -n "${_vulkan_skip[${comp}]:-}" ]; then
+        log "Skipping ${comp} for ${_vulkan_skip[${comp}]}"
+      else
+        sdk_components+=("${comp}")
+      fi
+    done
 
     ${SUDO:-sudo} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH \
       ./vulkansdk -j "$JOBS" "${sdk_components[@]}"

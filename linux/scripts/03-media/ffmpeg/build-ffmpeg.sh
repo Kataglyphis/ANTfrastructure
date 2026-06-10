@@ -34,6 +34,7 @@ else
   done
   source_module cross-env.sh || true
   source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
+  source_module compiler-resolution.sh || true
 fi
 
 if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
@@ -135,6 +136,11 @@ ffmpeg_probe_compiler() {
 }
 
 resolve_ffmpeg_host_compiler() {
+    if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
+        resolve_host_compiler_for_lang c
+        return $?
+    fi
+
     local triplet=""
     local candidate
     local resolved=""
@@ -161,8 +167,13 @@ resolve_ffmpeg_host_compiler() {
 
 prepare_ffmpeg_host_compiler_wrapper() {
     local compiler="$1"
-    local wrapper_dir="${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain-$$}"
 
+    if command -v prepare_host_compiler_wrapper >/dev/null 2>&1; then
+        prepare_host_compiler_wrapper "${compiler}" host-gcc "$(mktemp -d "${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain}.XXXXXX")"
+        return $?
+    fi
+
+    local wrapper_dir; wrapper_dir="$(mktemp -d "${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain}.XXXXXX")"
     if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
         make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"
         return 0
@@ -582,7 +593,7 @@ install_ffmpeg() {
     if command -v sudo >/dev/null 2>&1; then
         sudo ldconfig || true
     else
-        ldconfig || true 2>/dev/null || true
+        ldconfig 2>/dev/null || true
     fi
 }
 
@@ -598,12 +609,15 @@ cleanup() {
 # Main
 # ------------------------------------------------------------------------------
 main() {
+    local _ff_stamp="${FFMPEG_PREFIX}/.ffmpeg_version_stamp"
     if [ -x "${FFMPEG_PREFIX}/bin/ffmpeg" ]; then
         INSTALLED_VERSION=$("${FFMPEG_PREFIX}/bin/ffmpeg" -version 2>/dev/null | head -n1 | awk '{print $3}')
         echo "FFmpeg ${INSTALLED_VERSION} already installed at ${FFMPEG_PREFIX}"
         if [ "${FORCE_REBUILD:-0}" != "1" ]; then
-            echo "Skipping rebuild (set FORCE_REBUILD=1 to force)"
-            return 0
+            if [ -f "$_ff_stamp" ] && [ "$(cat "$_ff_stamp")" = "${INSTALLED_VERSION}" ]; then
+                echo "Skipping rebuild (set FORCE_REBUILD=1 to force)"
+                return 0
+            fi
         fi
     fi
 
@@ -611,6 +625,7 @@ main() {
     configure_ffmpeg
     build_ffmpeg
     install_ffmpeg
+    echo "$(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}')" > "$_ff_stamp"
     cleanup
     
     echo "FFmpeg installed successfully to ${FFMPEG_PREFIX}"

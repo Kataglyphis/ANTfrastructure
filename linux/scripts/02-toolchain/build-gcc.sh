@@ -132,7 +132,7 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      die "Unknown option: $1"
+      warn "Unknown option: $1"; usage >&2; exit 1
       ;;
   esac
 done
@@ -338,8 +338,12 @@ fi
 
 # 3) Extract and configure
 echo "Extracting ${TARBALL}..."
-rm -rf "gcc-${GCC_VERSION}" "gcc-${GCC_VERSION}-build"
-tar -xf "${TARBALL}"
+if [ ! -d "gcc-${GCC_VERSION}" ]; then
+    tar -xf "${TARBALL}"
+else
+    echo "Source already extracted: gcc-${GCC_VERSION}"
+fi
+rm -rf "gcc-${GCC_VERSION}-build"
 
 # Canadian cross (host != build): GCC's binaries run on the *host* arch and link
 # against GMP/MPFR/MPC/ISL. The build host only has build-arch (amd64) -dev
@@ -541,11 +545,11 @@ fi
 # 6e) Strip binaries if requested
 if [ "${DO_STRIP}" = "1" ]; then
   info "Stripping binaries in ${PREFIX}..."
-  local STRIP_BIN="strip"
+  STRIP_BIN="strip"
   if [ -n "${TARGET_TRIPLET}" ] && command -v "${TARGET_TRIPLET}-strip" >/dev/null 2>&1; then
     STRIP_BIN="${TARGET_TRIPLET}-strip"
   fi
-  local strip_jobs="${JOBS:-$(nproc)}"
+  strip_jobs="${JOBS:-$(nproc)}"
   ${SUDO} find "${PREFIX}" -type f -executable -exec file {} + 2>/dev/null \
     | awk -F': *' '/ELF.*(executable|shared object)/{print $1}' \
     | xargs -r -P"${strip_jobs}" "${STRIP_BIN}" --strip-all 2>/dev/null || true

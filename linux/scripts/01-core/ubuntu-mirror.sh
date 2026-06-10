@@ -7,7 +7,7 @@ _UBUNTU_MIRROR_SH_LOADED=1
 
 ubuntu_mirror_is_truthy() {
   case "${1:-false}" in
-    1|true|TRUE|yes|YES) return 0 ;;
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
     *) return 1 ;;
   esac
 }

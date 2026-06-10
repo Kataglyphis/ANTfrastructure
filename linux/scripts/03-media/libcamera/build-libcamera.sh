@@ -200,7 +200,7 @@ fi
 if command -v sudo >/dev/null 2>&1; then
   sudo ldconfig || true
 else
-  ldconfig || true 2>/dev/null || true
+  ldconfig 2>/dev/null || true
 fi
 
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."

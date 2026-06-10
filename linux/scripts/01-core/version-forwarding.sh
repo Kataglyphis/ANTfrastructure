@@ -11,8 +11,9 @@ _VF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # parse the file once (or when it changes).
 _VBA_CACHE_FILE="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/opencode/.version-build-arg-vars"
 
+# Normally sourced by artifact-common.sh first; this is a standalone safety guard.
 # shellcheck disable=SC1090,SC1091
-[ -f "${_VF_DIR}/build-helpers.sh" ] && source "${_VF_DIR}/build-helpers.sh"
+[ -n "${_BUILD_HELPERS_LOADED:-}" ] || [ -f "${_VF_DIR}/build-helpers.sh" ] && source "${_VF_DIR}/build-helpers.sh"
 
 _auto_discover_version_build_arg_vars() {
   local versions_file="${_VF_DIR}/versions.env"
@@ -25,7 +26,15 @@ _auto_discover_version_build_arg_vars() {
   mkdir -p "$(dirname "${_VBA_CACHE_FILE}")"
   local _tmp_cache
   _tmp_cache="$(mktemp "${_VBA_CACHE_FILE}.XXXXXX")"
-  awk -F= '/^[A-Z][A-Z0-9_]*(_VERSION|_RELEASE|_MAJOR_MINOR|_MAJOR|_REF|_API_LEVEL|_BUILD_TOOLS|_COMPILE_SDK)=/{print $1}' "${versions_file}" > "${_tmp_cache}"
+  awk -F= '/^[A-Z][A-Z0-9_]*(_VERSION|_RELEASE|_MAJOR_MINOR|_MAJOR|_REF|_API_LEVEL|_BUILD_TOOLS|_COMPILE_SDK)=/{print $1}' "${versions_file}" > "${_tmp_cache}" || {
+    printf 'WARNING: Failed to parse %s\n' "${versions_file}" >&2
+    return 1
+  }
+  if [ ! -s "${_tmp_cache}" ]; then
+    printf 'WARNING: No version variables discovered in %s\n' "${versions_file}" >&2
+    rm -f "${_tmp_cache}"
+    return 1
+  fi
   mv "${_tmp_cache}" "${_VBA_CACHE_FILE}"
 }
 

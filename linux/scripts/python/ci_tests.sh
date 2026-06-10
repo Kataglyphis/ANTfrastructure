@@ -32,7 +32,7 @@ if [ -z "$PACKAGE_NAME" ] && [ -f "$WORKSPACE_ROOT/pyproject.toml" ]; then
 fi
 PACKAGE_NAME="${PACKAGE_NAME:-$(basename "$WORKSPACE_ROOT")}"
 
-PY_VERSIONS="${2:-${PY_VERSIONS:- 3.13 3.14}}"
+PY_VERSIONS="${2:-${PY_VERSIONS:-3.13 3.14}}"
 EXPERIMENTAL_VERSIONS="${EXPERIMENTAL_VERSIONS:-3.14t}"
 
 LOG_FILE="${CI_TESTS_LOG_FILE:-$WORKSPACE_ROOT/docs/test_results/ci_tests-$(timestamp).log}"

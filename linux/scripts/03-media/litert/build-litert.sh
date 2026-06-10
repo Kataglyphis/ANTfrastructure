@@ -28,6 +28,7 @@ source_module cross-env.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true
 source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
+source_module compiler-resolution.sh || true
 
 LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
 : "${LITERT_SRC:=${TMPDIR:-/tmp}/litert-$$}"
@@ -58,6 +59,11 @@ fetch_litert() {
 
 resolve_host_compiler() {
     local lang="$1"
+    if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
+        resolve_host_compiler_for_lang "${lang}"
+        return $?
+    fi
+
     local triplet=""
     local resolved=""
 
@@ -109,7 +115,7 @@ resolve_host_compiler() {
 prepare_host_compiler_wrapper() {
     local compiler="$1"
     local wrapper_name="${2:-host-gcc}"
-    local wrapper_dir="${TMPDIR:-/tmp}/litert-host-toolchain-$$"
+    local wrapper_dir; wrapper_dir="$(mktemp -d "${TMPDIR:-/tmp}/litert-host-toolchain.XXXXXX")"
     make_named_host_compiler_wrapper "${wrapper_dir}" "${wrapper_name}" "${compiler}"
 }
 
@@ -192,6 +198,10 @@ append_litert_cache_linker_args() {
 }
 
 litert_cross_wheel_platform_tag() {
+    if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
+        cross_wheel_platform_tag
+        return $?
+    fi
     if ! command -v cross_target_arch >/dev/null 2>&1; then
         return 1
     fi
@@ -619,10 +629,10 @@ install_manual() {
     # 1. Copy ALL headers (C and C++) preserving the directory structure
     if [ -d "tensorflow/lite" ]; then
         info Found tensorflow/lite source layout...
-        find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -exec cp --parents {} "${include_dir}/" \;
+        find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm "${include_dir}/"
     elif [ -d "litert" ]; then
         info Found litert source layout...
-        find litert -type f \( -name "*.h" -o -name "*.hpp" \) -exec cp --parents {} "${include_dir}/" \;
+        find litert -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm "${include_dir}/"
     fi
     
     # 2. Copy tflite directory (contains TensorFlow Lite C++ compatibility headers)
@@ -642,10 +652,10 @@ install_manual() {
     # but LiteRT provides them at <tflite/interpreter.h>
     # NOTE: Since this is a symlink, tensorflow/lite/c will automatically resolve
     # to tflite/c which should already have the C API headers from the tflite copy
-    info Creating tensorflow/lite compatibility symlink...
-    mkdir -p "${include_dir}/tensorflow/lite"
-    cp -a "${include_dir}/tflite/." "${include_dir}/tensorflow/lite/" 2>/dev/null || true
-    info Created tensorflow/lite compatibility directory
+    info Creating tensorflow/lite compat symlink...
+    mkdir -p "${include_dir}/tensorflow"
+    ln -sfn "../tflite" "${include_dir}/tensorflow/lite"
+    info Created tensorflow/lite compatibility symlink
     
     # Verify the symlink works for the critical header
     if [ -f "${include_dir}/tensorflow/lite/interpreter.h" ]; then
@@ -690,7 +700,7 @@ install_manual() {
         fi
     fi
     if [ "$fb_found" -eq 0 ]; then
-        warn "FlatBuffers headers not found in expected build locations; some targets may fail to compile" 2>/dev/null || true
+        warn "FlatBuffers headers not found in expected build locations; some targets may fail to compile"
     fi
 
     # 6. Abseil (absl) headers (Required transitively by the tflite C++ headers)
@@ -707,7 +717,7 @@ install_manual() {
         if [ -d "${absl_root}/absl" ]; then
             info Copying absl headers from ${absl_root}/absl...
             ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
-                -exec cp --parents {} "${include_dir}/" \; ) 2>/dev/null || true
+                -print0 | cpio -pdm "${include_dir}/" ) 2>/dev/null || true
             absl_found=1
             break
         fi
@@ -720,14 +730,14 @@ install_manual() {
             absl_root=$(dirname "$(dirname "$(dirname "$spanhdr")")")
             info "Found absl headers under ${absl_root}; copying..."
             ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
-                -exec cp --parents {} "${include_dir}/" \; ) 2>/dev/null || true
+                -print0 | cpio -pdm "${include_dir}/" ) 2>/dev/null || true
             absl_found=1
         fi
     fi
     if [ "$absl_found" -eq 1 ] && [ -f "${include_dir}/absl/types/span.h" ]; then
         info Verified: absl/types/span.h is accessible
     else
-        warn "Abseil headers not found; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile" 2>/dev/null || true
+        warn "Abseil headers not found; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile"
     fi
 
     local static_libs=""
@@ -824,6 +834,13 @@ cleanup() {
 }
 
 main() {
+    if [ -d "${LITERT_PREFIX}/lib" ] && [ -f "${LITERT_PREFIX}/include/tflite/interpreter.h" ]; then
+        if [ "${FORCE_REBUILD:-0}" != "1" ]; then
+            info "LiteRT already installed at ${LITERT_PREFIX} (set FORCE_REBUILD=1 to force)"
+            return 0
+        fi
+    fi
+
     info LiteRT build started
     fetch_litert
     configure_litert

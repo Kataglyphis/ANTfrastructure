@@ -142,7 +142,7 @@ ensure_meson_cross_file() {
   # Meson's Rust cross sanity checks do not reliably infer the target triple
   # from the linker alone. Inject it only when the invocation does not already
   # specify --target so cargo-backed subprojects keep working.
-  if [ -n "${rust_target}" ] && command -v make_meson_cross_rust_wrapper >/dev/null 2>&1; then
+  if [ -n "${rust_target}" ]; then
     rust_wrapper_dir="${MESON_RUST_TOOLCHAIN_DIR:-${TMPDIR:-/tmp}/meson-rust-toolchain}"
     rust_wrapper="$(make_meson_cross_rust_wrapper "${rust_wrapper_dir}/rustc-$(cross_target_arch)" "${rustc_bin}" "${rust_target}")"
     rust_binary_line="rust = '${rust_wrapper}'"

@@ -46,6 +46,37 @@ if matches:
 ' "$pattern"
 }
 
+# Cached variant: calls cargo metadata once, caches JSON, reuses for subsequent calls.
+_CARGO_METADATA_JSON=""
+_cargo_metadata_cached_package_names() {
+  local pattern="$1"
+
+  if [ -z "${_CARGO_METADATA_JSON}" ]; then
+    _CARGO_METADATA_JSON="$(cargo metadata --no-deps --format-version=1 2>/dev/null)" || {
+      _CARGO_METADATA_JSON=""
+      return 1
+    }
+  fi
+  [ -z "${_CARGO_METADATA_JSON}" ] && return 1
+
+  printf '%s' "${_CARGO_METADATA_JSON}" | "${HOST_PYTHON}" -c '
+import json
+import re
+import sys
+
+pattern = re.compile(sys.argv[1])
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+
+names = [pkg.get("name", "") for pkg in data.get("packages", [])]
+matches = [name for name in names if pattern.search(name)]
+if matches:
+    print(" ".join(matches))
+' "$pattern"
+}
+
 prepare_cargo_target_compiler_wrapper() {
   local compiler="$1"
   local wrapper_name="$2"
@@ -191,7 +222,7 @@ build_standalone_gst_plugins_rs() {
   arch_probes="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   if echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
     echo "Host arch detected in (${arch_probes}): excluding csound-related workspace crates from cargo build"
-    if cs_pkg_names="$(cargo_metadata_package_names 'csound')"; then
+    if cs_pkg_names="$(_cargo_metadata_cached_package_names 'csound')"; then
       if [ -n "${cs_pkg_names}" ]; then
         for name in ${cs_pkg_names}; do
           build_cmd+=(--exclude "${name}")
@@ -214,7 +245,7 @@ build_standalone_gst_plugins_rs() {
   if echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
     echo "skia disabled via Meson args: excluding skia-related workspace crates from cargo build"
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "video/skia"
-    if skia_pkg_names="$(cargo_metadata_package_names 'skia')"; then
+    if skia_pkg_names="$(_cargo_metadata_cached_package_names 'skia')"; then
       if [ -n "${skia_pkg_names}" ]; then
         for name in ${skia_pkg_names}; do
           build_cmd+=(--exclude "${name}")
@@ -235,7 +266,7 @@ build_standalone_gst_plugins_rs() {
   if [ "${BUILD_TYPE_LOWER}" = "release" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
     echo "Release build on ARM/RISC-V detected in (${arch_probes}): excluding whisper-related workspace crates from cargo build"
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "audio/whisper"
-    if whisper_pkg_names="$(cargo_metadata_package_names 'whisper')"; then
+    if whisper_pkg_names="$(_cargo_metadata_cached_package_names 'whisper')"; then
       if [ -n "${whisper_pkg_names}" ]; then
         for name in ${whisper_pkg_names}; do
           build_cmd+=(--exclude "${name}")
@@ -256,7 +287,7 @@ build_standalone_gst_plugins_rs() {
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "utils/validate"
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "video/dav1d"
 
-    if validate_pkg_names="$(cargo_metadata_package_names 'validate')"; then
+    if validate_pkg_names="$(_cargo_metadata_cached_package_names 'validate')"; then
       if [ -n "${validate_pkg_names}" ]; then
         for name in ${validate_pkg_names}; do
           build_cmd+=(--exclude "${name}")
@@ -271,7 +302,7 @@ build_standalone_gst_plugins_rs() {
       echo "cargo metadata unavailable; excluding gst-plugin-validate by default"
     fi
 
-    if dav1d_pkg_names="$(cargo_metadata_package_names 'dav1d')"; then
+    if dav1d_pkg_names="$(_cargo_metadata_cached_package_names 'dav1d')"; then
       if [ -n "${dav1d_pkg_names}" ]; then
         for name in ${dav1d_pkg_names}; do
           build_cmd+=(--exclude "${name}")

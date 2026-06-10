@@ -59,8 +59,8 @@ sed -i '/android {/a \    buildFeatures {\n        buildConfig = true\n    }' ja
 
 mkdir -p "${INSTALL_DIR}/lib" "${INSTALL_DIR}/include" "${INSTALL_DIR}/java"
 cp -r include/* "${INSTALL_DIR}/include/" || true
-find build/Android/Release -name "libonnxruntime*.so" -exec cp {} "${INSTALL_DIR}/lib/" \;
-find build/Android/Release -name "*.aar" -exec cp {} "${INSTALL_DIR}/java/" \; 2>/dev/null || true
+find build/Android/Release -name "libonnxruntime*.so" -print0 | xargs -0 cp -t "${INSTALL_DIR}/lib/" 2>/dev/null || true
+find build/Android/Release -name "*.aar" -print0 | xargs -0 cp -t "${INSTALL_DIR}/java/" 2>/dev/null || true
 
 cd /opt
 rm -rf onnxruntime-android

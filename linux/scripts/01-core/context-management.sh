@@ -24,8 +24,9 @@
 
 _CM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Build helpers (run, nerdctl wrappers) are required.
+# Normally sourced by artifact-common.sh first; this is a standalone safety guard.
 # shellcheck disable=SC1090,SC1091
-[ -f "${_CM_DIR}/build-helpers.sh" ] && source "${_CM_DIR}/build-helpers.sh"
+[ -n "${_BUILD_HELPERS_LOADED:-}" ] || [ -f "${_CM_DIR}/build-helpers.sh" ] && source "${_CM_DIR}/build-helpers.sh"
 
 _export_container_rootfs() {
   local nerdctl_bin="$1"
@@ -89,11 +90,11 @@ remove_local_image_if_exists() {
 }
 
 runtime_pushes_wrapper_images() {
-  [ "${PUSH_IMAGES:-0}" -eq 1 ]
+  _bool_truthy "${PUSH_IMAGES:-0}"
 }
 
 runtime_pushes_intermediate_images() {
-  runtime_pushes_wrapper_images && [ "${PUSH_INTERMEDIATE_IMAGES:-0}" -eq 1 ]
+  runtime_pushes_wrapper_images && _bool_truthy "${PUSH_INTERMEDIATE_IMAGES:-0}"
 }
 
 runtime_use_local_context_chain() {
@@ -125,13 +126,7 @@ runtime_use_local_stage_context_outputs() {
 }
 
 runtime_install_local_context_cleanup_trap() {
-  local existing_trap
-  existing_trap="$(trap -p EXIT 2>/dev/null | sed "s/trap -- '\(.*\)' EXIT/\1/" || true)"
-  if [ -n "${existing_trap}" ]; then
-    trap "${existing_trap}; runtime_cleanup_local_context_chain" EXIT
-  else
-    trap 'runtime_cleanup_local_context_chain' EXIT
-  fi
+  trap_push 'runtime_cleanup_local_context_chain'
   trap 'exit 130' INT TERM
 }
 

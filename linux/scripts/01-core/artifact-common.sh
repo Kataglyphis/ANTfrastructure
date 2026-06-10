@@ -19,6 +19,7 @@
 _ARTIFACT_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RUNTIME_CONTEXT_ROOT="${RUNTIME_CONTEXT_ROOT:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/opencode/runtime-build-contexts}"
+NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
 # Load common.sh (versions.env, platform.sh, logging.sh, ubuntu-mirror.sh,
 # downloads.sh, parallelism.sh).  common.sh has its own _VERSIONS_ENV_LOADED

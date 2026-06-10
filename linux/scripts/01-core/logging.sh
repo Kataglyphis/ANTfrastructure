@@ -104,23 +104,17 @@ skip() {
   printf '  SKIP %s\n' "$*"
 }
 
-install_err_trap() {
+_install_trap() {
+  local action="${1:-err}"
   on_err() {
     local line="${1:-?}"
     local cmd="${2:-?}"
-    err "Command failed (line ${line}): ${cmd}"
+    "${action}" "Command failed (line ${line}): ${cmd}"
   }
   trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
 }
-
-install_warn_trap() {
-  on_err() {
-    local line="${1:-?}"
-    local cmd="${2:-?}"
-    warn "Command failed (line ${line}): ${cmd}"
-  }
-  trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
-}
+install_err_trap()  { _install_trap err; }
+install_warn_trap() { _install_trap warn; }
 
 retry() {
   local max_attempts="${1:-3}"

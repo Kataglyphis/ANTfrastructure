@@ -46,10 +46,9 @@ clone_or_update_repo() {
   local branch="${3:-}"
 
   if [ -d "${dest_dir}/.git" ]; then
-    cd "${dest_dir}"
-    git fetch --depth 1 origin "${branch}" 2>/dev/null || git fetch --depth 1 --tags 2>/dev/null || true
+    git -C "${dest_dir}" fetch --depth 1 origin "${branch}" 2>/dev/null || git -C "${dest_dir}" fetch --depth 1 --tags 2>/dev/null || true
     if [ -n "${branch}" ]; then
-      git checkout "${branch}" 2>/dev/null || true
+      git -C "${dest_dir}" checkout "${branch}" 2>/dev/null || true
     fi
     return 0
   fi

@@ -21,7 +21,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
-NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 TARGET_ARCHES="$(resolve_arch_list)"
 
@@ -46,20 +45,16 @@ EOF
 
 main() {
   while [ $# -gt 0 ]; do
-    local _dispatch_rc=0
-    dispatch_parsed_args parse_shared_orchestrator_args \
+    consume_shared_arg usage \
+      parse_shared_orchestrator_args \
       TARGET_ARCHES _ _ _ IMAGE_REPO _ _ \
-      "$1" "${2:-}" || _dispatch_rc=$?
-    case $_dispatch_rc in
-      255) usage; exit 0 ;;
-      0) case "${_DP_SHIFT}" in
-           1) shift 1; continue ;;
-           2) shift 2; continue ;;
-         esac ;;
+      "$1" "${2:-}" || break
+    case "${_DP_SHIFT}" in
+      1) shift; continue ;;  2) shift 2; continue ;;
     esac
     case "$1" in
       --describe-chain) DESCRIBE_CHAIN=1; shift ;;
-      *) err "Unknown option: $1" ;;
+      *) warn "Unknown option: $1"; usage >&2; exit 1 ;;
     esac
   done
 

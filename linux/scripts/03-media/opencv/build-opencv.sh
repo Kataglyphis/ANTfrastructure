@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+set -euo pipefail
 IFS=$'\n\t'
 
 # ==============================================================================
@@ -98,7 +98,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "Unknown option: $1"
+            err "Unknown option: $1"
             exit 1
             ;;
     esac
@@ -516,6 +516,12 @@ cleanup() {
 # Main
 # ------------------------------------------------------------------------------
 main() {
+    if [ "${FORCE_REBUILD:-0}" != "1" ] && pkg-config --exists opencv5 2>/dev/null; then
+        echo "OpenCV already installed ($(pkg-config --modversion opencv5 2>/dev/null)); skipping build"
+        echo "Set FORCE_REBUILD=1 to rebuild"
+        return 0
+    fi
+
     fetch_opencv
     configure_opencv
     build_opencv

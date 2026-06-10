@@ -525,7 +525,6 @@ fi
 
 # Some base images may not provide the \`xorgproto\` package name. Try a few
 # alternatives and fail early if none are available so the error is clear.
-_apt_refresh || true
 apt-get install -y --no-install-recommends xorg-dev || true
 if [ "${is_riscv64_cross}" = "true" ]; then
   apt-get install -y --no-install-recommends x11proto-dev || true
@@ -535,7 +534,6 @@ fi
 # Ensure pkg-config metadata directories updated
 update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # Install Csound packages required for building csound-related plugins.
-_apt_refresh
 # The later GStreamer build already disables/excludes csound on ARM and RISC-V
 # cross targets, so avoid redundant host-side package churn here.
 if [ "${skip_csound_cross}" = "true" ]; then

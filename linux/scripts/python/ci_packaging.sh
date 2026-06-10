@@ -24,7 +24,7 @@ fi
 
 cd "$WORKSPACE_ROOT"
 
-if [ -f "$WORKSPACE_ROOT/flutter/bin:$PATH" ]; then
+if [ -d "$WORKSPACE_ROOT/flutter/bin" ]; then
   export PATH="$WORKSPACE_ROOT/flutter/bin:$PATH"
 fi
 git config --global --add safe.directory "$WORKSPACE_ROOT" || true

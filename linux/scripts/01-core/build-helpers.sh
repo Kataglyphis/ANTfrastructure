@@ -7,6 +7,8 @@ _BUILD_HELPERS_LOADED=1
 # Provides:
 #   _bool_truthy()                — test a value for boolean truthiness
 #   is_dry_run()                  — return 0 if DRY_RUN is set to a truthy value
+#   arch_list_to_words()          — convert comma-separated arch list to space-separated
+#   trap_push()                   — push an EXIT trap handler (preserves existing handlers)
 #   run()                         — echo + execute (DO NOT use for secret-bearing args)
 #   run_quiet()                   — execute without echoing
 #   append_buildkit_host_arg()    — add --buildkit-host if BUILDKIT_HOST is set
@@ -46,6 +48,23 @@ _bool_truthy() {
 # Use this instead of repeating [ "${DRY_RUN:-0}" -eq 1 ] across scripts.
 is_dry_run() {
   _bool_truthy "${DRY_RUN:-0}"
+}
+
+# Convert a comma-separated architecture list to space-separated words.
+# Usage: for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do ...
+arch_list_to_words() {
+  printf '%s' "${1:-}" | tr ',' ' '
+}
+
+# ── EXIT trap stack ───────────────────────────────────────────────────────────
+# Push a handler onto the EXIT trap.  Preserves existing handlers so multiple
+# modules can register cleanup without overwriting each other.
+declare -a _EXIT_TRAP_STACK=()
+
+trap_push() {
+  local handler="$1"
+  _EXIT_TRAP_STACK+=("${handler}")
+  trap '_rc=$?; for _trap_handler in "${_EXIT_TRAP_STACK[@]}"; do eval "${_trap_handler}" || true; done; exit ${_rc}' EXIT
 }
 
 append_buildkit_host_arg() {
@@ -110,13 +129,14 @@ ensure_local_image() {
   local dockerfile_path="$2"
   local remote_tag="${3:-${image_tag}}"
   local -n _eli_build_args=$4
+  local rebuild="${5:-${REBUILD_BASE:-0}}"
 
-  if [ "${REBUILD_BASE:-0}" -eq 0 ] && image_exists "${NERDCTL_BIN:-nerdctl}" "${image_tag}"; then
+  if [ "${rebuild}" -eq 0 ] && image_exists "${NERDCTL_BIN:-nerdctl}" "${image_tag}"; then
     log "Using existing local image: ${image_tag}"
     return 0
   fi
 
-  if [ "${REBUILD_BASE:-0}" -eq 0 ] && [ -n "${remote_tag}" ]; then
+  if [ "${rebuild}" -eq 0 ] && [ -n "${remote_tag}" ]; then
     log "Trying to pull remote image: ${remote_tag}"
     if retry 3 10 "pulling ${remote_tag}" pull_platform_image "${NERDCTL_BIN:-nerdctl}" linux/amd64 "${remote_tag}"; then
       if [ "${remote_tag}" != "${image_tag}" ]; then

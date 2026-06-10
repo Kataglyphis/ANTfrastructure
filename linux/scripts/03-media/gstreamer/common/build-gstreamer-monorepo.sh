@@ -317,8 +317,11 @@ build_gstreamer_monorepo() {
     run_gstreamer_meson_setup -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1 || true
   fi
 
-  echo "Updating subprojects..."
-  uv run meson subprojects update > /dev/null 2>&1 || true
+  if [ ! -f builddir/.subprojects_updated ]; then
+    echo "Updating subprojects..."
+    uv run meson subprojects update > /dev/null 2>&1 || true
+    touch builddir/.subprojects_updated
+  fi
   if command -v patch_gstreamer_sources >/dev/null 2>&1; then
     # Wrapped subprojects such as gst-plugins-rs may only exist after Meson has
     # populated the source tree, so reapply source patches here before compile.

@@ -8,7 +8,26 @@ set -euo pipefail
 # NOTE: This uses regex-based COPY extraction which is best-effort.
 # It will NOT handle multi-line COPY, heredoc syntax, or --from= without ${}
 # variable references. For complex Dockerfiles, consider a proper parser.
+
+usage() {
+  cat <<'EOF'
+Usage: verify-artifact-copy-parity.sh [DOCKERFILE] [options]
+
+Verify that artifact COPY source paths match between the artifact-source-local
+and package-image stages in a Dockerfile.
+
+Arguments:
+  DOCKERFILE                 Path to Dockerfile (default: linux/Dockerfile.package)
+
+Options:
+  -h, --help                 Show this help text
+EOF
+}
+
 DOCKERFILE="${1:-linux/Dockerfile.package}"
+case "${DOCKERFILE}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 extract_copy_sources() {
   local section_pattern="$1" in_section=0 line src
@@ -56,4 +75,4 @@ main() {
   diff <(echo "${local_src}") <(echo "${image_src}") || true
   exit 1
 }
-main
+main "$@"

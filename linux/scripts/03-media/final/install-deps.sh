@@ -30,7 +30,7 @@ if command -v apt_update_smart >/dev/null 2>&1; then
 else
     apt-get update -y
 fi
-DEBIAN_FRONTEND=noninteractive apt-get purge -y 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' 'libunwind-*-dev' || true
+DEBIAN_FRONTEND=noninteractive apt-get purge -y $(dpkg -l 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' 'libunwind-*-dev' 2>/dev/null | grep '^ii' | awk '{print $2}') 2>/dev/null || true
 # The final image only needs GTK runtime bits. Installing the foreign-arch
 # GTK dev package pulls the GLib/GIR dev chain, which in turn tries to install
 # target-side Python during cross builds and breaks on python3-minimal postinst.

@@ -14,7 +14,7 @@ run_parallel_arch_loop() {
   trap "rm -rf ${_flagdir}" RETURN
   running=0
   for arch in "${arches[@]}"; do
-    if [ "${PARALLEL_ARCHS:-0}" -eq 1 ]; then
+    if _bool_truthy "${PARALLEL_ARCHS:-0}"; then
       {
         "${fn_name}" "${arch}" || touch "${_flagdir}/failed-${arch}"
       } &
@@ -28,7 +28,7 @@ run_parallel_arch_loop() {
       "${fn_name}" "${arch}" || failed=1
     fi
   done
-  if [ "${PARALLEL_ARCHS:-0}" -eq 1 ]; then
+  if _bool_truthy "${PARALLEL_ARCHS:-0}"; then
     local pid
     for pid in "${pids[@]}"; do
       wait "${pid}" 2>/dev/null || true

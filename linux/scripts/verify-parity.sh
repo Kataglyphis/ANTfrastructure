@@ -141,8 +141,8 @@ run_diff_check() {
   fi
 
   local added removed
-  added="$(grep -c '^> ' "${diff_out}" 2>/dev/null || echo 0)"
-  removed="$(grep -c '^< ' "${diff_out}" 2>/dev/null || echo 0)"
+  added="$(grep -c '^> ' "${diff_out}" 2>/dev/null || true)"
+  removed="$(grep -c '^< ' "${diff_out}" 2>/dev/null || true)"
 
   result_fail "${check_name} differ (+${added:-0} -${removed:-0})"
   if [ "${VERBOSE}" -eq 1 ]; then
@@ -413,7 +413,7 @@ main() {
         exit 0
         ;;
       *)
-        err "Unknown option: $1"
+        warn "Unknown option: $1"; usage >&2; exit 1
         ;;
     esac
   done

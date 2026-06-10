@@ -153,6 +153,30 @@ dispatch_parsed_args() {
 }
 
 # ==============================================================================
+# consume_shared_arg
+#
+# Wrapper around dispatch_parsed_args that handles the 255→usage+exit case
+# so the caller only needs to check _DP_SHIFT for shift/continue.
+#
+# Usage:  consume_shared_arg usage_fn \
+#           parse_shared_orchestrator_args NAMEREFS... \
+#           "$1" "${2:-}" || exit 1
+#         case "${_DP_SHIFT}" in 1) shift; continue;; 2) shift 2; continue;; esac
+# ==============================================================================
+consume_shared_arg() {
+  local usage_fn="$1"
+  shift
+  local _csa_rc=0
+  _DP_SHIFT=0
+  dispatch_parsed_args "$@" || _csa_rc=$?
+  case $_csa_rc in
+    255) "${usage_fn}"; exit 0 ;;
+    0) return 0 ;;
+    *) return "$_csa_rc" ;;
+  esac
+}
+
+# ==============================================================================
 # parse_shared_runtime_args
 #
 # Shared CLI argument parsing for runtime build scripts.

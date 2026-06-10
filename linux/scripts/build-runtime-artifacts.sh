@@ -46,8 +46,7 @@ Options:
   --fast-ubuntu-mirror-url URL  Archive mirror URL to use with --fast-ubuntu-mirror
   --fast-ubuntu-ports-mirror-url URL
                                  Optional mirror URL for ubuntu-ports entries
-EOF
-  cat <<'EOF'
+
 Environment overrides:
   OUTPUT_ROOT                   Root directory for exported rootfs artifacts
   IMAGE_PREFIX                  Prefix for wrapper image tags
@@ -75,20 +74,16 @@ _build_one_artifact() {
 
 main() {
   while [ $# -gt 0 ]; do
-    local _dispatch_rc=0
-    dispatch_parsed_args parse_shared_runtime_args \
+    consume_shared_arg usage \
+      parse_shared_runtime_args \
       TARGET_ARCHES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
       BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
       TORCH_APP_MODE \
       USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
       PUSH_INTERMEDIATE_IMAGES \
-      "$1" "${2:-}" || _dispatch_rc=$?
-    case $_dispatch_rc in
-      255) usage; exit 0 ;;
-      0) case "${_DP_SHIFT}" in
-           1) shift 1; continue ;;
-           2) shift 2; continue ;;
-         esac ;;
+      "$1" "${2:-}" || break
+    case "${_DP_SHIFT}" in
+      1) shift; continue ;;  2) shift 2; continue ;;
     esac
     case "$1" in
       --output-root)
@@ -109,7 +104,7 @@ main() {
         shift
         ;;
       *)
-        err "Unknown option: $1"
+        warn "Unknown option: $1"; usage >&2; exit 1
         ;;
     esac
   done
@@ -120,7 +115,7 @@ main() {
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 
-  run_parallel_arch_loop _build_one_artifact "/tmp/runtime-artifact-loop-flags" "${MAX_PARALLEL_ARCHS}" ${TARGET_ARCHES//,/ }
+  run_parallel_arch_loop _build_one_artifact "/tmp/runtime-artifact-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
 }
 
 main "$@"

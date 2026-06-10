@@ -145,7 +145,8 @@ create_deb() {
     fi
 
     DEB_DIR=$(mktemp -d)
-    trap "rm -rf '$DEB_DIR'" EXIT
+    DEB_DIR=$(mktemp -d)
+    trap "rm -rf '${DEB_DIR}'" EXIT
 
     pkgname="$Binary"
     vers_safe="${Version//\//-}"

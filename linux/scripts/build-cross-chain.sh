@@ -41,7 +41,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
-NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
 TARGET_ARCHES="$(resolve_arch_list)"
@@ -53,7 +52,7 @@ FROM_STAGE="base"
 TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
 DESCRIBE_CHAIN=0
-MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc)}"
 
 # Digest reference pins captured during this run.
 # Variables are declared by cross_stage_init_pins() driven by the stage graph
@@ -172,17 +171,13 @@ run_runtime_stage() {
 main() {
   local only_stage=""
   while [ $# -gt 0 ]; do
-    local _dispatch_rc=0
-    dispatch_parsed_args parse_shared_orchestrator_args \
+    consume_shared_arg usage \
+      parse_shared_orchestrator_args \
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
       FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _unused_push \
-      "$1" "${2:-}" || _dispatch_rc=$?
-    case $_dispatch_rc in
-      255) usage; exit 0 ;;
-      0) case "${_DP_SHIFT}" in
-           1) shift 1; continue ;;
-           2) shift 2; continue ;;
-         esac ;;
+      "$1" "${2:-}" || break
+    case "${_DP_SHIFT}" in
+      1) shift; continue ;;  2) shift 2; continue ;;
     esac
     case "$1" in
       --cross-targets) CROSS_TARGETS="$2"; shift 2 ;;
@@ -193,7 +188,7 @@ main() {
       --log-dir) LOG_DIR="$2"; shift 2 ;;
       --verify-chain) VERIFY_CHAIN_ONLY=1; shift ;;
       --describe-chain) DESCRIBE_CHAIN=1; shift ;;
-      *) err "Unknown option: $1" ;;
+      *) warn "Unknown option: $1"; usage >&2; exit 1 ;;
     esac
   done
 
@@ -246,7 +241,7 @@ main() {
         if cross_stage_is_per_arch "${stage}"; then
           local _arch_fn
           _arch_fn() { cross_stage_run "${stage}" "$1"; }
-          run_parallel_arch_loop _arch_fn "/tmp/cross-loop-flags" "${MAX_PARALLEL_ARCHS}" ${TARGET_ARCHES//,/ }
+          run_parallel_arch_loop _arch_fn "/tmp/cross-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
         else
           cross_stage_run "${stage}"
         fi

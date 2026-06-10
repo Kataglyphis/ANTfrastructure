@@ -251,8 +251,8 @@ cross_stage_pin_varname() {
 # derived from the stage graph itself via cross_stage_pin_varname(), so the
 # graph remains the single source of truth.
 #
-# Also declares ANDROID_BUILT_THIS_RUN as a per-arch flag array used by the
-# android→runtime handoff to avoid redundant pulls.
+# Also declares per-arch build-tracking arrays (e.g. ANDROID_BUILT_THIS_RUN)
+# used by the parent→child handoff to avoid redundant registry pulls.
 #
 # Usage: cross_stage_init_pins
 cross_stage_init_pins() {
@@ -263,11 +263,11 @@ cross_stage_init_pins() {
     [ -z "${pin_varname}" ] && continue
     if cross_stage_is_per_arch "${stage}"; then
       declare -g -A "${pin_varname}"
+      declare -g -A "${stage^^}_BUILT_THIS_RUN"
     else
       declare -g "${pin_varname}"=""
     fi
   done
-  declare -g -A ANDROID_BUILT_THIS_RUN=()
 }
 
 # ── Stage graph self-consistency validation ───────────────────────────────────
@@ -358,13 +358,19 @@ cross_stage_ensure_parent_available() {
   parent="$(cross_stage_parent "${stage}")"
   [ -z "${parent}" ] && return 0
 
-  for arch in ${arches_csv//,/ }; do
+  for arch in $(arch_list_to_words "${arches_csv}"); do
     parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
     [ -z "${parent_tag}" ] && { warn "No tag for parent stage '${parent}' arch ${arch}"; continue; }
 
-    if cross_stage_is_per_arch "${parent}" && [ -n "${ANDROID_BUILT_THIS_RUN[$arch]:-}" ]; then
-      log "[stage ${stage}] ${parent}-${arch} built in this run, skip pull"
-      continue
+    if cross_stage_is_per_arch "${parent}"; then
+      local built_flag_varname="${parent^^}_BUILT_THIS_RUN"
+      if declare -p "${built_flag_varname}" &>/dev/null; then
+        local -n built_flag="${built_flag_varname}"
+        if [ -n "${built_flag[$arch]:-}" ]; then
+          log "[stage ${stage}] ${parent}-${arch} built in this run, skip pull"
+          continue
+        fi
+      fi
     fi
 
     if is_dry_run; then

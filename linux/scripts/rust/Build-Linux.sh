@@ -32,14 +32,12 @@ fi
 
   build_run_step "Format Check" bash -c '
   rustup component add rustfmt 2>/dev/null || true
-  # Forward any args passed to Build-Linux.sh into cargo fmt (not common for this wrapper)
-  cargo fmt --all "$@" -- --check
+  cargo fmt --all -- --check "$@"
 ' 
 
   build_run_step "Linting (cargo clippy)" bash -c '
   rustup component add clippy 2>/dev/null || true
-  # Forward args into cargo clippy in case callers want to pass feature flags
-  cargo clippy --all-targets --all-features "$@" -- -D warnings
+  cargo clippy --all-targets --all-features -- -D warnings "$@"
 '
 
   build_run_step "Unit Tests" bash -c 'cargo test --all --verbose "$@"'

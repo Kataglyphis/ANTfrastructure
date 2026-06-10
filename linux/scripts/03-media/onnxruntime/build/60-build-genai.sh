@@ -16,7 +16,7 @@ HOST_PYTHON="${HOST_PYTHON_BIN}"
 [[ "${BUILD_GENAI}" != "true" ]] && {
   info "Skipping GenAI build (BUILD_GENAI=${BUILD_GENAI})"
   ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
-  echo "[INFO] Created placeholder GenAI output dir: ${GENAI_OUTPUT_DIR}" || true
+  echo "[INFO] Created placeholder GenAI output dir: ${GENAI_OUTPUT_DIR}"
   exit 0
 }
 

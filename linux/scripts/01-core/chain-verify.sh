@@ -71,7 +71,7 @@ verify_cross_chain_staleness() {
     parent="$(cross_stage_parent "${stage}")"
 
     if cross_stage_is_per_arch "${stage}"; then
-      for arch in ${arches_csv//,/ }; do
+      for arch in $(arch_list_to_words "${arches_csv}"); do
         if cross_stage_is_per_arch "${parent}"; then
           parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
         else
@@ -114,7 +114,7 @@ describe_cross_chain() {
     if cross_stage_is_per_arch "${stage}"; then
       printf '\n[%s]  ← %s\n' "${stage}" "${parent:-ubuntu:26.04}"
       printf '  Dockerfile: %s\n' "${dockerfile}"
-      for arch in ${arches_csv//,/ }; do
+      for arch in $(arch_list_to_words "${arches_csv}"); do
         tag="$(cross_stage_tag "${stage}" "${arch}")"
         printf '  %-6s → %s\n' "${arch}" "${tag}"
       done

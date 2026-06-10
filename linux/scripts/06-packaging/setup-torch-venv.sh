@@ -176,8 +176,8 @@ setup_torch_app() {
   fi
 
   if [ "${host_arch}" != "x86_64" ]; then
-    export CC=/opt/gcc-16.1.0/bin/gcc
-    export CXX=/opt/gcc-16.1.0/bin/g++
+    export CC=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/gcc
+    export CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
     unset CC_LD CXX_LD RUSTC_WRAPPER SCCACHE_RECACHE
     echo "sccache bypass: CC=${CC} CXX=${CXX} (host ${host_arch})"
     if [ -d /usr/lib/python3/dist-packages ] && [ -d "${VENV}/lib/python3."*/site-packages ]; then

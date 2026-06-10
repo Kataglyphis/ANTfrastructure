@@ -3,13 +3,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-source "${REPO_ROOT}/linux/scripts/01-core/modules.sh" 2>/dev/null || true
-if declare -F pass >/dev/null 2>&1; then
-  :  # logging.sh already sourced via modules hook
-else
-  pass() { printf '  PASS %s\n' "$*"; }
-  fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
-fi
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 FAILURES=0
 
@@ -19,7 +14,7 @@ echo ""
 # Fix 1: gst-python staged libpython — python-3.14.pc must have correct libdir/includedir
 # pointing into the cross-compiler's staging tree, not the build host prefix.
 echo "--- Fix 1: gst-python staged libpython (python pkg-config rewrite) ---"
-FIX1_PC="/opt/python-cross/lib/pkgconfig/python-3.14.pc"
+FIX1_PC="/opt/python-cross/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR:-3.14}.pc"
 if [ -f "${FIX1_PC}" ]; then
   if grep -q '^prefix=/opt/python-cross' "${FIX1_PC}"; then
     pass "python-3.14.pc prefix points to /opt/python-cross"
@@ -76,7 +71,7 @@ echo ""
 
 # Fix 3: cross lib-dynload — zero dangling symlinks in Python lib-dynload directory.
 echo "--- Fix 3: cross lib-dynload no dangling symlinks ---"
-FIX3_DIR="/opt/python-cross/lib/python3.14/lib-dynload"
+FIX3_DIR="/opt/python-cross/lib/python${PYTHON_MAJOR_MINOR:-3.14}/lib-dynload"
 if [ -d "${FIX3_DIR}" ]; then
   DANGLING_COUNT=$(find "${FIX3_DIR}" -xtype l 2>/dev/null | wc -l)
   if [ "${DANGLING_COUNT}" -eq 0 ]; then
@@ -95,17 +90,9 @@ echo ""
 
 # Fix 4: cross GCC architecture guard — cc -dumpmachine must match TARGET_ARCH.
 echo "--- Fix 4: cross GCC architecture guard (cc target triple) ---"
-FIX4_ARCH="${TARGET_ARCH:-${TARGETARCH:-}}"
-if [ -z "${FIX4_ARCH}" ]; then
-  FIX4_ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m 2>/dev/null || echo '')"
-fi
+FIX4_ARCH="$(canonical_target_arch "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || true)"
 if [ -n "${FIX4_ARCH}" ]; then
-  case "${FIX4_ARCH}" in
-    amd64|x86_64) FIX4_EXPECTED="x86_64" ;;
-    arm64|aarch64) FIX4_EXPECTED="aarch64" ;;
-    riscv64)       FIX4_EXPECTED="riscv64" ;;
-    *)             FIX4_EXPECTED="${FIX4_ARCH}" ;;
-  esac
+  FIX4_EXPECTED="$(arch_uname_name_for "${FIX4_ARCH}")"
   if command -v cc >/dev/null 2>&1; then
     FIX4_ACTUAL="$(cc -dumpmachine 2>/dev/null | cut -d- -f1 || echo '')"
     if [ "${FIX4_ACTUAL}" = "${FIX4_EXPECTED}" ]; then
@@ -115,13 +102,9 @@ if [ -n "${FIX4_ARCH}" ]; then
     fi
     if command -v readelf >/dev/null 2>&1; then
       FIX4_CC="$(command -v cc)"
-      FIX4_ELF="$(readelf -h "${FIX4_CC}" 2>/dev/null | grep "Machine:" | awk '{print $NF}' || echo '')"
-      case "${FIX4_EXPECTED}" in
-        x86_64)  FIX4_ELF_EXPECTED="X86-64|X86.64" ;;
-        aarch64) FIX4_ELF_EXPECTED="AArch64" ;;
-        riscv64) FIX4_ELF_EXPECTED="RISC-V" ;;
-      esac
-      if [ -n "${FIX4_ELF_EXPECTED}" ] && echo "${FIX4_ELF}" | grep -qE "${FIX4_ELF_EXPECTED}"; then
+      FIX4_ELF_EXPECTED="$(arch_elf_machine_grep_for "${FIX4_ARCH}" 2>/dev/null || echo '')"
+      FIX4_ELF="$(elf_machine_name "${FIX4_CC}" 2>/dev/null || echo '')"
+      if [ -n "${FIX4_ELF_EXPECTED}" ] && echo "${FIX4_ELF}" | grep -qF "${FIX4_ELF_EXPECTED}"; then
         pass "cc ELF machine matches expected ${FIX4_ELF_EXPECTED}"
       elif [ -n "${FIX4_ELF}" ]; then
         fail "cc ELF machine is ${FIX4_ELF} (expected ${FIX4_ELF_EXPECTED})"

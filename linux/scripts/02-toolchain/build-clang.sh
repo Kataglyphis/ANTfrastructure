@@ -104,7 +104,7 @@ while [ "$#" -gt 0 ]; do
         -h|--help)
             usage; exit 0 ;;
         *)
-            die "Unknown option: $1" ;;
+            warn "Unknown option: $1"; usage >&2; exit 1 ;;
     esac
 done
 
@@ -138,18 +138,9 @@ if [ "$USE_CCACHE" = "1" ]; then
     info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
 fi
 
-# Compute release version if not specified
-if [ -z "${LLVM_RELEASE:-}" ]; then
-    case "${LLVM_VERSION}" in
-        22) LLVM_RELEASE="22.1.6" ;;
-        *)  LLVM_RELEASE="${LLVM_VERSION}.1.0" ;;
-    esac
-fi
-
-# Compute LLVM_TAG if not specified
-if [ -z "${LLVM_TAG:-}" ]; then
-    LLVM_TAG="llvmorg-${LLVM_RELEASE}"
-fi
+# Compute release version and tag if not specified
+LLVM_RELEASE="${LLVM_RELEASE:-$(llvm_release_version "${LLVM_VERSION}")}"
+LLVM_TAG="${LLVM_TAG:-$(llvm_git_tag "${LLVM_VERSION}")}"
 
 # Set default prefix if not specified
 if [ -z "${PREFIX:-}" ]; then
@@ -231,9 +222,10 @@ if [[ ! -d "${SRC_DIR}" ]]; then
     git -C "${SRC_DIR}" remote add origin https://github.com/llvm/llvm-project.git
     git -C "${SRC_DIR}" fetch --depth 1 origin tag "${LLVM_TAG}"
     git -C "${SRC_DIR}" checkout -q FETCH_HEAD
+    rm -rf "${BUILD_DIR}"  # fresh source = fresh build
+elif [ ! -f "${BUILD_DIR}/CMakeCache.txt" ] || [ "${FORCE_REBUILD:-0}" = "1" ]; then
+    rm -rf "${BUILD_DIR}"
 fi
-
-rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
@@ -320,7 +312,7 @@ fi
 
 if [[ "${DO_STRIP}" == "1" ]]; then
     info "Stripping binaries..."
-  local strip_jobs="${NUM_JOBS:-$(nproc)}"
+  strip_jobs="${NUM_JOBS:-$(nproc)}"
   ${SUDO} find "${INSTALL_DIR}" -type f -exec file {} + 2>/dev/null \
     | awk -F': *' '/ELF/{print $1}' \
     | xargs -r -P"${strip_jobs}" strip --strip-all 2>/dev/null || true

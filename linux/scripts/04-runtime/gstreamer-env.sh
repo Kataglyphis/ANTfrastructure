@@ -80,5 +80,3 @@ for d in \
 do
   _path_prepend_unique GI_TYPELIB_PATH "$d"
 done
-
-# exec "$@"

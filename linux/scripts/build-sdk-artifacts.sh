@@ -6,12 +6,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
-NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-COMPILER_IMAGE="${COMPILER_IMAGE:-${IMAGE_REGISTRY_PREFIX}:cross-compiler-amd64}"
+IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
 TARGET_ARCHES="$(resolve_arch_list)"
-# VULKAN_VERSION comes from versions.env via artifact-common.sh
-IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-sdk}"
+CROSS_TARGETS="${CROSS_TARGETS:-${TARGET_ARCHES}}"
 init_mirror_defaults
 PUSH_IMAGES=0
 PARALLEL_ARCHS=0
@@ -34,16 +32,15 @@ Options:
   --target-arches LIST   Comma-separated target list (default: amd64,arm64,riscv64)
   --architectures LIST   Alias for --target-arches
   --output-root DIR      Export directory root (default: out/linux-sdk)
-  --compiler-image TAG   Cross compiler image to use as base
   --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during Docker builds
   --fast-ubuntu-mirror-url URL
                            Mirror URL to use with --fast-ubuntu-mirror
   --fast-ubuntu-ports-mirror-url URL
                           Optional mirror URL for ubuntu-ports entries
   --vulkan-version VER   Vulkan SDK version to build
-  --push                Push each built SDK artifact image after export
+  --push                 Push each built SDK artifact image after export
   --parallel-archs       Build per-architecture images in parallel
-  --max-parallel-archs N Max concurrent arch builds (default: 4)
+  --max-parallel-archs N Max concurrent arch builds (default: nproc)
   -h, --help             Show this help text
 
 Environment overrides:
@@ -52,95 +49,27 @@ Environment overrides:
   TARGET_ARCH            Alias for TARGET_ARCHES
   ARCHITECTURES          Alias for TARGET_ARCHES
   OUTPUT_ROOT            Root directory for exported rootfs artifacts
-  COMPILER_IMAGE         Cross compiler image to use as base
   VULKAN_VERSION         Vulkan SDK version
-  IMAGE_PREFIX           Prefix for local artifact image tags
+  IMAGE_REPO             Registry prefix for image tags
   USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security/ports Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
   FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
 EOF
 }
 
-ensure_compiler_image() {
-  local -a build_args=()
-  append_common_build_args build_args
-  if ensure_local_image "${COMPILER_IMAGE}" linux/Dockerfile.toolchain "${COMPILER_IMAGE}" build_args; then
-    image_exists "${NERDCTL_BIN}" "${COMPILER_IMAGE}" || {
-      err "Required compiler image not available after bootstrap: ${COMPILER_IMAGE}"
-    }
-  else
-    log "Cross compiler image missing; bootstrapping it first"
-    run env \
-      NERDCTL_BIN="${NERDCTL_BIN}" \
-      BUILDKIT_HOST="${BUILDKIT_HOST:-}" \
-      COMPILER_LOCAL_TAG="${COMPILER_IMAGE}" \
-      COMPILER_REMOTE_TAG="${COMPILER_IMAGE}" \
-      CROSS_TARGETS="${TARGET_ARCHES}" \
-      USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
-      FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
-      FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
-      bash "${REPO_ROOT}/linux/scripts/build-cross-compiler.sh"
-    image_exists "${NERDCTL_BIN}" "${COMPILER_IMAGE}" || {
-      err "Required compiler image not available after bootstrap: ${COMPILER_IMAGE}"
-    }
-  fi
-}
-
-build_sdk_image() {
-  local arch="$1"
-  local tag="$2"
-  local -a build_args=()
-  append_common_build_args build_args
-
-  run_nerdctl_build "${NERDCTL_BIN}" \
-    --pull=false \
-    --platform linux/amd64 \
-    -t "${tag}" \
-    -f linux/Dockerfile.sdk \
-    --build-arg BASE_IMAGE="${COMPILER_IMAGE}" \
-    --build-arg BUILD_MODE=cross \
-    --build-arg TARGET_ARCH="${arch}" \
-    --build-arg VULKAN_VERSION="${VULKAN_VERSION}" \
-    "${build_args[@]}" \
-    .
-}
-
-# Push using the shared cross-stage build function for consistent push+cache semantics.
-push_sdk_image() {
-  local arch="$1" tag="$2"
-  local parent_pin=""
-  # Pin the compiler parent to its current registry digest
-  parent_pin="$(retry 3 10 "registry digest for ${COMPILER_IMAGE}" registry_pin_ref "${NERDCTL_BIN}" "${COMPILER_IMAGE}")" || true
-  local -a extra_args=(
-    --build-arg "BASE_IMAGE=${parent_pin:-${COMPILER_IMAGE}}"
-    --build-arg "BUILD_MODE=cross"
-    --build-arg "TARGET_ARCH=${arch}"
-    --build-arg "VULKAN_VERSION=${VULKAN_VERSION}"
-  )
-  cross_stage_build_and_push "sdk-${arch}" "${tag}" "linux/Dockerfile.sdk" "${extra_args[@]}"
-}
-
 main() {
   while [ $# -gt 0 ]; do
-    local _dispatch_rc=0
-    dispatch_parsed_args parse_shared_orchestrator_args \
+    consume_shared_arg usage \
+      parse_shared_orchestrator_args \
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL _ignored_repo VULKAN_VERSION PUSH_IMAGES \
-      "$1" "${2:-}" || _dispatch_rc=$?
-    case $_dispatch_rc in
-      255) usage; exit 0 ;;
-      0) case "${_DP_SHIFT}" in
-           1) shift 1; continue ;;
-           2) shift 2; continue ;;
-         esac ;;
+      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IMAGES \
+      "$1" "${2:-}" || break
+    case "${_DP_SHIFT}" in
+      1) shift; continue ;;  2) shift 2; continue ;;
     esac
     case "$1" in
       --output-root)
         OUTPUT_ROOT="$2"
-        shift 2
-        ;;
-      --compiler-image)
-        COMPILER_IMAGE="$2"
         shift 2
         ;;
       --parallel-archs)
@@ -150,32 +79,36 @@ main() {
       --max-parallel-archs)
         MAX_PARALLEL_ARCHS="$2"
         shift 2
-        ;; 
+        ;;
       *)
-        err "Unknown option: $1"
+        warn "Unknown option: $1"
+        usage >&2
+        exit 1
         ;;
     esac
   done
 
   cd "${REPO_ROOT}"
   TARGET_ARCHES="$(normalize_target_arches "${TARGET_ARCHES}")"
-  ensure_compiler_image
-  log "Building SDK artifacts for target arches: ${TARGET_ARCHES}"
+  CROSS_TARGETS="${TARGET_ARCHES}"
+
+  log "Building SDK artifacts for target arches: ${TARGET_ARCHES} (push=${PUSH_IMAGES})"
+
+  # Build the compiler stage first (shared by all SDK per-arch builds).
+  cross_stage_run "compiler" "" "${PUSH_IMAGES}"
 
   _sdk_arch_build() {
     local arch="$1" tag
-    tag="${IMAGE_PREFIX}-${arch}"
-    build_sdk_image "${arch}" "${tag}"
+    tag="$(cross_sdk_tag "${arch}")"
+    cross_stage_run "sdk" "${arch}" "${PUSH_IMAGES}"
     export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
       "TARGET_ARCH=${arch}" \
       "SOURCE_IMAGE=${tag}" \
       "VULKAN_VERSION=${VULKAN_VERSION}"
-    if [ "${PUSH_IMAGES}" -eq 1 ]; then
-      push_sdk_image "${arch}" "${tag}"
-    fi
   }
 
-  run_parallel_arch_loop _sdk_arch_build "/tmp/sdk-arch-loop-flags" "${MAX_PARALLEL_ARCHS}" ${TARGET_ARCHES//,/ }
+  local _flags_dir; _flags_dir="$(mktemp -d "${TMPDIR:-/tmp}/sdk-arch-loop-flags.XXXXXX")"
+  run_parallel_arch_loop _sdk_arch_build "${_flags_dir}" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
 }
 
 main "$@"

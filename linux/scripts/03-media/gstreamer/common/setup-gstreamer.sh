@@ -73,6 +73,16 @@ for helper in \
     fi
 done
 
+for helper in \
+    "/opt/scripts/core/compiler-resolution.sh" \
+    "${_SETUP_GST_DIR}/../../../01-core/compiler-resolution.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        break
+    fi
+done
+
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
@@ -127,6 +137,11 @@ append_env_flag() {
 }
 
 resolve_host_gcc_for_cargo() {
+  if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
+    resolve_host_compiler_for_lang c
+    return $?
+  fi
+
   local build_triplet=""
   local candidate
   local resolved=""
@@ -153,11 +168,20 @@ resolve_host_gcc_for_cargo() {
 
 prepare_cargo_host_linker_wrapper() {
   local compiler="$1"
+  if command -v prepare_host_compiler_wrapper >/dev/null 2>&1; then
+    prepare_host_compiler_wrapper "${compiler}" host-gcc "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
+    return $?
+  fi
   local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
   make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"
 }
 
 resolve_host_gxx_for_cargo() {
+  if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
+    resolve_host_compiler_for_lang cxx
+    return $?
+  fi
+
   local build_triplet=""
   local candidate
   local resolved=""
@@ -184,6 +208,10 @@ resolve_host_gxx_for_cargo() {
 
 prepare_cargo_host_cxx_wrapper() {
   local compiler="$1"
+  if command -v prepare_host_compiler_wrapper >/dev/null 2>&1; then
+    prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
+    return $?
+  fi
   local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
   make_named_host_compiler_wrapper "${wrapper_dir}" host-g++ "${compiler}"
 }
@@ -445,8 +473,7 @@ else
   source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
 fi
 
-# just trust every folder
-set -euxo pipefail
+set -euo pipefail
 
 # --- Debug/logging helpers -------------------------------------------------
 LOG_DIR="${TMPDIR:-/tmp}/gstreamer-build-logs-$$-$(date +%s)"
@@ -497,116 +524,7 @@ fi
 
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 # we need to get rid of old orc modules on the system
-set -euxo pipefail
-
-
-
-
-# Helper: check whether a package is available in APT (returns 0 if present)
-# Delegates to the canonical apt_package_exists from package-lists.sh when available.
-if ! declare -F apt_package_exists >/dev/null 2>&1; then
-  apt_package_exists() {
-    if declare -F apt_has_package >/dev/null 2>&1; then
-      apt_has_package "$1"
-      return
-    fi
-    apt-cache show "$1" >/dev/null 2>&1
-  }
-fi
-
-# ------------------------------------------------------------------------------
-# Install broad dependency set to enable most plugins
-# ------------------------------------------------------------------------------
-
-
-
-# Force removal of any versioned libunwind to avoid conflicts, then install generic
-
-
-
-# Ensure xmllint is available (used by meson/xml preprocessing); small package
-if ! apt_package_exists libxml2-utils; then
-  :
-  echo "libxml2-utils not available in APT lists; will continue without xmllint"
-else
-  :
-  
-fi
-
-# For using GTK video sinks
-echo "Skipping gstreamer apt package installation — packages installed via pre-setup.sh"
-
-
-# Install OpenEXR development headers: prefer libopenexr-3-dev when present,
-# otherwise fall back to libopenexr-dev if available.
-if apt_package_exists libopenexr-3-dev; then
-  :
-  
-elif apt_package_exists libopenexr-dev; then
-  :
-  
-else
-  :
-  echo "Warning: no libopenexr-* package found in APT; continuing without explicit OpenEXR dev package"
-fi
-
-# VVdeC / vvdec dependency for gst-plugins-rs vvdec plugin
-# Keep the plugin enabled and install the system package instead.
-if apt_package_exists libvvdec-dev; then
-  :
-  
-else
-  :
-  echo "Warning: libvvdec-dev not found in APT; continuing with the source-build fallback from install-vvdec.sh so the vvdec plugin stays enabled."
-fi
-
-# NVIDIA codec headers (enable nvcodec plugin)
-# Only install if NVIDIA GPU present OR explicitly requested via env var
-# Note: lspci won't work in Docker builds, so check /dev/dri or NVIDIA env vars
-NVIDIA_GPU="${NVIDIA_CODEC_HEADERS:-auto}"
-if [ "${NVIDIA_GPU}" = "auto" ]; then
-  :
-  if lspci 2>/dev/null | grep -qi nvidia; then
-  :
-    NVIDIA_GPU="yes"
-  elif [ -d /sys/class/drm ] && grep -q '^0x10de$' /sys/class/drm/card*/device/vendor 2>/dev/null; then
-  :
-    NVIDIA_GPU="yes"
-  elif [ -n "${NVIDIA_DRIVER_CAPABILITIES:-}" ] || [ -n "${NVIDIA_VISIBLE_DEVICES:-}" ]; then
-  :
-    NVIDIA_GPU="yes"
-  else
-  :
-    NVIDIA_GPU="no"
-  fi
-fi
-
-if [ "${NVIDIA_GPU}" = "yes" ]; then
-  :
-  # Prefer package if available, otherwise fall back to upstream repo
-  if apt_package_exists nv-codec-headers; then
-  :
-    
-  else
-  :
-    echo "nv-codec-headers not present in APT; falling back to building and installing from source"
-  fi
-
-  if ! pkg-config --exists nv-codec-headers 2>/dev/null; then
-  :
-    git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers
-    make -C /tmp/nv-codec-headers install
-    if command -v sudo >/dev/null 2>&1; then sudo rm -rf /tmp/nv-codec-headers; else rm -rf /tmp/nv-codec-headers; fi
-  fi
-else
-  :
-  echo "No NVIDIA GPU detected, skipping nv-codec-headers installation"
-fi
-
-# libcamera support; needed for raspberry pi cam
-# sudo apt install -y --no-install-recommends libcamera-dev libcamera-tools
-
-if command -v sudo >/dev/null 2>&1; then sudo rm -rf /var/lib/apt/lists/*; else rm -rf /var/lib/apt/lists/*; fi
+set -euo pipefail
 
 # ------------------------------------------------------------------------------
 # Install Astral uv, use existing venv, install Meson/Ninja

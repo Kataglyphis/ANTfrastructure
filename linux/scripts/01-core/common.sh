@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # common.sh - shared helpers and configuration
+[ -n "${_COMMON_SH_LOADED:-}" ] && return 0
+_COMMON_SH_LOADED=1
 
 _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -94,7 +96,7 @@ detect_system() {
   elif [ -r /etc/os-release ]; then
     # shellcheck disable=SC1091
     . /etc/os-release
-    DISTRO="${UBUNTU_CODENAME:-${VERSION_CODENAME:-jammy}}"
+    DISTRO="${UBUNTU_CODENAME:-${VERSION_CODENAME:-plucky}}"
   else
     DISTRO="jammy"
   fi
@@ -146,4 +148,36 @@ append_flag_if_missing() {
   esac
 
   export "${var_name}=${current:+${current} }${flag}"
+}
+
+shell_quote_args() {
+  local quoted=""
+  local arg
+  for arg in "$@"; do
+    quoted+="${quoted:+ }$(printf '%q' "${arg}")"
+  done
+  printf '%s' "${quoted}"
+}
+
+llvm_release_version() {
+  local version="${1:-${LLVM_WANTED:-${CLANG_WANTED:-22}}}"
+  if [ -n "${LLVM_RELEASE:-}" ]; then
+    printf '%s' "${LLVM_RELEASE}"
+    return 0
+  fi
+  case "${version}" in
+    22) printf '%s' "22.1.6" ;;
+    *) printf '%s' "${version}.1.0" ;;
+  esac
+}
+
+llvm_git_tag() {
+  printf '%s' "llvmorg-$(llvm_release_version "$@")"
+}
+
+cross_wheel_platform_tag() {
+  if ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
+    return 1
+  fi
+  arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
 }

@@ -21,7 +21,7 @@ if [ -d /workspace ] && [ -f /workspace/pyproject.toml ]; then
   WORKSPACE_ROOT="/workspace"
 fi
 
-if [ -f "$WORKSPACE_ROOT/flutter/bin:$PATH" ]; then
+if [ -f "$WORKSPACE_ROOT/flutter/bin/flutter" ]; then
   export PATH="$WORKSPACE_ROOT/flutter/bin:$PATH"
 fi
 git config --global --add safe.directory "$WORKSPACE_ROOT" || true

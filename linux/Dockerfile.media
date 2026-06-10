@@ -281,13 +281,12 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     LD_LIBRARY_PATH="/opt/ffmpeg/lib:${OPENCV_OUTPUT_DIR}/lib:${LITERT_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
     LIBRARY_PATH="/opt/ffmpeg/lib:${LITERT_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib:${ONNXRUNTIME_OUTPUT_DIR}/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
 
-COPY --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
-COPY --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
-COPY --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
-COPY --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
-COPY --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
-COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
-
+COPY --link --from=onnxruntime ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --link --from=onnxruntime ${ONNXRUNTIME_GENAI_OUTPUT_DIR} ${ONNXRUNTIME_GENAI_OUTPUT_DIR}
+COPY --link --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/include
+COPY --link --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
+COPY --link --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --link --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 
 
 # ==============================================================================
@@ -376,13 +375,13 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     FFMPEG_PREFIX=/opt/ffmpeg \
     LIBCAMERA_PREFIX=/opt/libcamera
 
-COPY --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
+COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 
-COPY --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
-COPY --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
-COPY --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
-COPY --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
-COPY --from=libcamera /opt/libcamera /opt/libcamera
+COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
+COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
+COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
+COPY --link --from=libcamera /opt/libcamera /opt/libcamera
 COPY --chmod=755 linux/scripts/03-media/final /opt/scripts/media/final
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \

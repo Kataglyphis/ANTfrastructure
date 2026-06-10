@@ -16,7 +16,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
-NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 # CROSS_TARGETS is the compiler target arch list — distinct from TARGET_ARCHES
 # which is used for which arches to build per-arch stages for.
@@ -24,7 +23,7 @@ CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 init_mirror_defaults
 
 REBUILD_BASE=0
-PUSH_IMAGE=0
+PUSH_IMAGES=0
 
 usage() {
   cat <<'EOF'
@@ -81,7 +80,8 @@ ensure_base_image() {
   ensure_local_image "${base_tag}" \
     "$(cross_stage_dockerfile base)" \
     "${base_tag}" \
-    build_args
+    build_args \
+    "${REBUILD_BASE}"
 }
 
 # ── Compiler build ────────────────────────────────────────────────────────────
@@ -89,24 +89,20 @@ ensure_base_image() {
 # When pushing, the base parent is digest-pinned (no stale reuse).  When staying
 # local, the mutable base tag is used (safe since no downstream can be affected).
 build_compiler() {
-  cross_stage_run "compiler" "" "${PUSH_IMAGE}"
+  cross_stage_run "compiler" "" "${PUSH_IMAGES}"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   # Bind the shared parser's --target-arches arg to CROSS_TARGETS for this script
   while [ $# -gt 0 ]; do
-    local _dispatch_rc=0
-    dispatch_parsed_args parse_shared_orchestrator_args \
+    consume_shared_arg usage \
+      parse_shared_orchestrator_args \
       CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _ignored_vulkan PUSH_IMAGE \
-      "$1" "${2:-}" || _dispatch_rc=$?
-    case $_dispatch_rc in
-      255) usage; exit 0 ;;
-      0) case "${_DP_SHIFT}" in
-           1) shift 1; continue ;;
-           2) shift 2; continue ;;
-         esac ;;
+      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _ignored_vulkan PUSH_IMAGES \
+      "$1" "${2:-}" || break
+    case "${_DP_SHIFT}" in
+      1) shift; continue ;;  2) shift 2; continue ;;
     esac
     case "$1" in
       --cross-targets)
@@ -127,9 +123,9 @@ main() {
 
   cd "${REPO_ROOT}"
 
-  log "Cross-compiler build: targets=${CROSS_TARGETS} repo=${IMAGE_REPO} push=${PUSH_IMAGE}"
+  log "Cross-compiler build: targets=${CROSS_TARGETS} repo=${IMAGE_REPO} push=${PUSH_IMAGES}"
 
-  if [ "${PUSH_IMAGE}" -eq 1 ]; then
+  if [ "${PUSH_IMAGES}" -eq 1 ]; then
     # Push path: build and push both base and compiler via the stage graph.
     # cross_stage_run handles digest-pinned parent resolution and pin capture,
     # so the compiler always consumes the freshly pushed base digest.

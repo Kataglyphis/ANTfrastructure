@@ -107,89 +107,59 @@ cross_target_python_major_minor() {
   host_python_major_minor
 }
 
-cross_target_python_include_dir() {
-  local python_mm
-  local python_root=""
+# Helper: return the first existing path (checked with -d or -f) from a list.
+_resolve_first_path() {
+  local test_flag="${1:--d}"
+  shift
   local candidate
-
-  python_mm="$(cross_target_python_major_minor)" || return 1
-  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
-
-  for candidate in \
-    "${python_root:+${python_root}/include/python${python_mm}}" \
-    "/usr/local/include/python${python_mm}" \
-    "/usr/include/python${python_mm}"; do
+  for candidate in "$@"; do
     [ -n "${candidate}" ] || continue
-    [ -d "${candidate}" ] && {
-      printf '%s' "${candidate}"
-      return 0
-    }
+    [ "${test_flag}" "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
   done
-
   return 1
 }
 
-cross_target_python_arch_include_dir() {
-  local python_mm
-  local triplet
-  local python_root=""
-  local candidate
+cross_target_python_include_dir() {
+  local python_mm python_root
+  python_mm="$(cross_target_python_major_minor)" || return 1
+  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
+  _resolve_first_path -d \
+    "${python_root:+${python_root}/include/python${python_mm}}" \
+    "/usr/local/include/python${python_mm}" \
+    "/usr/include/python${python_mm}"
+}
 
+cross_target_python_arch_include_dir() {
+  local python_mm triplet python_root
   python_mm="$(cross_target_python_major_minor)" || return 1
   triplet="$(cross_target_triplet 2>/dev/null || true)"
   python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
-
-  for candidate in \
+  _resolve_first_path -d \
     "${python_root:+${python_root}/include/${triplet}/python${python_mm}}" \
     "${python_root:+${python_root}/include/python${python_mm}}" \
     "/usr/local/include/${triplet}/python${python_mm}" \
     "/usr/include/${triplet}/python${python_mm}" \
     "/usr/local/include/python${python_mm}" \
-    "/usr/include/python${python_mm}"; do
-    [ -n "${candidate}" ] || continue
-    [ -d "${candidate}" ] && {
-      printf '%s' "${candidate}"
-      return 0
-    }
-  done
-
-  return 1
+    "/usr/include/python${python_mm}"
 }
 
 cross_target_python_libdir() {
-  local triplet
-  local python_root=""
-  local candidate
-
+  local triplet python_root
   python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
   triplet="$(cross_target_triplet 2>/dev/null || true)"
-
-  for candidate in \
+  _resolve_first_path -d \
     "${python_root:+${python_root}/lib}" \
     "/usr/local/lib" \
     "/usr/lib/${triplet}" \
-    "/usr/lib"; do
-    [ -n "${candidate}" ] || continue
-    [ -d "${candidate}" ] && {
-      printf '%s' "${candidate}"
-      return 0
-    }
-  done
-
-  return 1
+    "/usr/lib"
 }
 
 cross_target_python_library() {
-  local python_mm
-  local triplet
-  local python_root=""
-  local candidate
-
+  local python_mm triplet python_root
   python_mm="$(cross_target_python_major_minor)" || return 1
   triplet="$(cross_target_triplet 2>/dev/null || true)"
   python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
-
-  for candidate in \
+  _resolve_first_path -f \
     "${python_root:+${python_root}/lib/libpython${python_mm}.so}" \
     "${python_root:+${python_root}/lib/libpython${python_mm}.so.1.0}" \
     "/usr/local/lib/libpython${python_mm}.so" \
@@ -197,37 +167,18 @@ cross_target_python_library() {
     "/usr/lib/${triplet}/libpython${python_mm}.so" \
     "/usr/lib/${triplet}/libpython${python_mm}.so.1.0" \
     "/usr/lib/libpython${python_mm}.so" \
-    "/usr/lib/libpython${python_mm}.so.1.0"; do
-    [ -f "${candidate}" ] && {
-      printf '%s' "${candidate}"
-      return 0
-    }
-  done
-
-  return 1
+    "/usr/lib/libpython${python_mm}.so.1.0"
 }
 
 cross_target_python_pkgconfig_dir() {
-  local triplet
-  local python_root=""
-  local candidate
-
+  local triplet python_root
   python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
   triplet="$(cross_target_triplet 2>/dev/null || true)"
-
-  for candidate in \
+  _resolve_first_path -d \
     "${python_root:+${python_root}/lib/pkgconfig}" \
     "/usr/local/lib/pkgconfig" \
     "/usr/lib/${triplet}/pkgconfig" \
-    "/usr/lib/pkgconfig"; do
-    [ -n "${candidate}" ] || continue
-    [ -d "${candidate}" ] && {
-      printf '%s' "${candidate}"
-      return 0
-    }
-  done
-
-  return 1
+    "/usr/lib/pkgconfig"
 }
 
 cross_target_python_pc() {

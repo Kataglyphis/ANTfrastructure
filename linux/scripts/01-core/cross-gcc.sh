@@ -151,5 +151,5 @@ resolve_cross_archive_tool() {
     return 0
   fi
 
-  printf '%s' "${fallback}"
+  return 1
 }

@@ -54,17 +54,17 @@ rm -rf "${BUILD_DIR}" || true
 info ">>> Pass 1: SIMD + Threads"
 rm -rf "${BUILD_DIR}"
 "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads
-find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-wasm-simd-threaded.*" -exec cp -v '{}' "${WASM_OUTPUT_DIR}/" ';' || true
+find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-wasm-simd-threaded.*" -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
 
 info ">>> Pass 2: JSEP (WebGPU/WebNN)"
 rm -rf "${BUILD_DIR}"
 "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads --use_jsep --use_webnn
-find "${BUILD_DIR}/${WASM_CONFIG}" -type f \( -name "ort-wasm-simd-threaded.jsep.*" -o -name "ort-wasm-simd-threaded.webnn.*" \) -exec cp -v '{}' "${WASM_OUTPUT_DIR}/" ';' || true
+find "${BUILD_DIR}/${WASM_CONFIG}" -type f \( -name "ort-wasm-simd-threaded.jsep.*" -o -name "ort-wasm-simd-threaded.webnn.*" \) -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
 
 info ">>> Pass 3: Training APIs"
 rm -rf "${BUILD_DIR}"
 "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads --enable_training_apis
-find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-training*" -exec cp -v '{}' "${WASM_OUTPUT_DIR}/" ';' || true
+find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-training*" -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
 
 if [ "${ENABLE_ASYNCIFY}" = "true" ]; then
   info ">>> Pass 4: Asyncify-marked (ASYNCIFY_STACK_SIZE=${ASYNCIFY_STACK_SIZE})"
@@ -81,7 +81,7 @@ if [ "${ENABLE_ASYNCIFY}" = "true" ]; then
   copy_variant_alias_if_missing \
     "${BUILD_DIR}/${WASM_CONFIG}/ort-wasm-simd-threaded.wasm" \
     "${BUILD_DIR}/${WASM_CONFIG}/ort-wasm-simd-threaded.asyncify.wasm"
-  find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-wasm-simd-threaded.asyncify.*" -exec cp -v '{}' "${WASM_OUTPUT_DIR}/" ';' || true
+  find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-wasm-simd-threaded.asyncify.*" -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
 fi
 
 info "WASM artifacts in ${WASM_OUTPUT_DIR}"

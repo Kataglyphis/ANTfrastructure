@@ -23,8 +23,8 @@ SHELL ["bash", "-lc"]
 
 # Bootstrap CA roots before optionally rewriting apt sources to HTTPS mirrors.
 RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-base-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-base-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     bash /tmp/scripts/01-core/base-image.sh bootstrap-ca
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
@@ -54,8 +54,8 @@ WORKDIR /workspace
 # BuildKit cache mounts handle apt caching efficiently.
 # ------------------------------------------------------------------------------
 RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-base-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-base-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     bash /tmp/scripts/01-core/base-image.sh install-os-packages
 
 
@@ -64,8 +64,8 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
 # Keep this in the base image so compiler/toolchain builds inherit it directly.
 # ------------------------------------------------------------------------------
 RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-base-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-base-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     bash /tmp/scripts/01-core/base-image.sh install-shared-build-tooling \
       --cmake-version "${CMAKE_VERSION}"
@@ -75,8 +75,8 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
 # Install Node.js (official tarballs, apt fallback for RISC-V)
 # ------------------------------------------------------------------------------
 RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-base-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-base-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     bash /tmp/scripts/01-core/base-image.sh install-node \
       --version "${NODE_VERSION}"
 
@@ -94,7 +94,7 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
 # uv install + compiler caches init
 # ------------------------------------------------------------------------------
 RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
-    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-base-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -euo pipefail; \
