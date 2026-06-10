@@ -25,7 +25,7 @@ _auto_discover_version_build_arg_vars() {
   mkdir -p "$(dirname "${_VBA_CACHE_FILE}")"
   local _tmp_cache
   _tmp_cache="$(mktemp "${_VBA_CACHE_FILE}.XXXXXX")"
-  grep -E '^[A-Z][A-Z0-9_]*(_VERSION|_RELEASE|_MAJOR_MINOR|_MAJOR)=' "${versions_file}" \
+  grep -E '^[A-Z][A-Z0-9_]*(_VERSION|_RELEASE|_MAJOR_MINOR|_MAJOR|_REF|_API_LEVEL|_BUILD_TOOLS|_COMPILE_SDK)=' "${versions_file}" \
     | cut -d= -f1 > "${_tmp_cache}"
   mv "${_tmp_cache}" "${_VBA_CACHE_FILE}"
 }

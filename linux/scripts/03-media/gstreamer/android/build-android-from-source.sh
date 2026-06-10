@@ -1,5 +1,5 @@
-#!/bin/bash
-set -eux
+#!/usr/bin/env bash
+set -euo pipefail
 
 # 1. Parse Arguments
 GST_VERSION="${GSTREAMER_VERSION:-1.29.1}"

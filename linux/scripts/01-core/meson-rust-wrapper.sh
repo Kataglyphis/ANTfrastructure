@@ -2,7 +2,7 @@
 # meson-rust-wrapper.sh - Rustc wrapper for Meson cross-compilation.
 # Substituted at build time with RUSTC_BIN and RUST_TARGET.
 
-set -eu
+set -euo pipefail
 
 RUSTC_BIN="__RUSTC_BIN__"
 RUST_TARGET="__RUST_TARGET__"

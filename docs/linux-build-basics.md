@@ -1,5 +1,44 @@
 # Linux Build Basics
 
+## Image Hierarchy
+
+```
+ubuntu:26.04
+└── base                                (:base)
+    ├── compiler/toolchain              (:cross-compiler-amd64)
+    │   └── sdk                         (:cross-sdk-<arch>)
+    │       ├── media                   (:cross-media-<arch>)
+    │       │   └── android             (:cross-android-<arch>)
+    │       ├── nvidia (optional)       (:toolchain-nvidia)
+    │       └── amd (optional)          (:toolchain-amd)
+    └── runtime-base                    (:latest-cross-base-<arch>)
+        └── package                     (:latest-cross-package-<arch>)
+            └── torch/wrapper           (:latest-cross-<arch>)
+                └── manifest            (:latest-cross)
+```
+
+**Two Build Lanes:**
+
+| Lane | Platform | Purpose | Tag prefix |
+|------|----------|---------|------------|
+| **Cross lane** | `linux/amd64` | Compile artifacts for all target arches | `:cross-*` |
+| **Runtime lane** | Target platform | Package cross artifacts into target-native images | `:latest-cross-*` |
+
+The final release target is the multi-arch manifest `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`, assembled from per-arch wrappers `:latest-cross-{amd64,arm64,riscv64}`.
+
+See `AGENTS.md` for the full container architecture documentation.
+
+## Build Flow
+
+The full `:latest-cross` pipeline:
+
+1. **Cross lane** (stages 1-5, all `linux/amd64`):
+   - `base` → `compiler` → `sdk` → `media` → `android`
+2. **Runtime lane** (stage 6, target platform via QEMU/binfmt for foreign arches):
+   - `base` → `package` → `torch`/`wrapper` → `manifest`
+
+Prefer the orchestrator: `bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64`
+
 ## Rootless Build Networking (host tuning)
 
 This host's rootless BuildKit is tuned for fast build-time downloads. The OCI worker runs with `--oci-worker-net=host` (via `~/.config/systemd/user/buildkit.service.d/override.conf`), so every `RUN` step (for example the LLVM `git fetch` in the cross-compiler build) uses host networking instead of the slow rootless bridge/slirp path. With this in place, a plain `nerdctl build` already uses host networking; you do not need `--network host`. Docker Hub pulls are mirrored through `mirror.gcr.io`, but mirrors only speed up `FROM ...` image pulls, not in-build `git`/`curl` downloads. See `docs/project-info.md` for the exact drop-in files and how to re-apply them. Do not regress these settings.
@@ -40,7 +79,6 @@ Supported Dockerfiles:
 - `linux/Dockerfile.nvidia`
 - `linux/Dockerfile.amd`
 - `linux/Dockerfile.torch`
-- `linux/Dockerfile.runtime-common` (documentation-only reference; canonical source is `linux/Dockerfile.torch` final stage)
 
 Local smoke validation for the shared package+wrapper flow:
 

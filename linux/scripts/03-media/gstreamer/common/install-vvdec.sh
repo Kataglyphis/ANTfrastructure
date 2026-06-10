@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
