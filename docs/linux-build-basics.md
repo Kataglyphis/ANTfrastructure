@@ -43,17 +43,23 @@ per-arch flag.  Both `build-cross-chain.sh` and `--verify-chain` consume this gr
 
 Stage build/pin functions live in `linux/scripts/01-core/cross-stage-build.sh` (sourced
 via `artifact-common.sh`), providing `cross_stage_run()`, `cross_stage_build_and_push()`,
-and `cross_stage_resolve_parent_pin()`.
+`cross_stage_resolve_parent_pin()`, and `resolve_pin()`.  These are consumed by all three
+cross-lane entry points (orchestrator, single-stage builder, and standalone compiler).
 
 Prefer the orchestrator for full chains:
 ```bash
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
 ```
 
-For single-stage rebuilds, use the standalone helper:
+For single-stage rebuilds, use the standalone helpers:
 ```bash
+bash linux/scripts/build-cross-stage.sh --stage compiler --push
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
-bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push
+```
+
+For standalone compiler builds (same as `--stage compiler` above):
+```bash
+bash linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
 ```
 
 ## Rootless Build Networking (host tuning)
@@ -97,7 +103,7 @@ Supported Dockerfiles:
 - `linux/Dockerfile.amd`
 - `linux/Dockerfile.torch`
 
-Local smoke validation for the shared package+wrapper flow:
+Local smoke validation for the shared package+wrapper flow (native mode):
 
 ```bash
 nerdctl build --platform linux/amd64 \
@@ -109,6 +115,21 @@ nerdctl build --platform linux/amd64 \
   --build-arg ARTIFACT_PLATFORM=linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=native \
+  .
+```
+
+Cross-mode variant (validates cross-assembled artifacts):
+
+```bash
+nerdctl build --platform linux/amd64 \
+  -t local/kataglyphis:latest-cross-wrapper-smoke-amd64 \
+  -f linux/Dockerfile.package \
+  --target wrapper-smoke \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
+  --build-arg ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-amd64 \
+  --build-arg ARTIFACT_PLATFORM=linux/amd64 \
+  --build-arg TARGET_ARCH=amd64 \
+  --build-arg BUILD_MODE=cross \
   .
 ```
 

@@ -10,7 +10,13 @@ _CROSS_STAGE_BUILD_SH_LOADED=1
 #   cross_stage_log_redirect()       — compute log file path for a stage build
 #   cross_stage_build_and_push()     — build a cross stage on linux/amd64 and push
 #   cross_stage_resolve_parent_pin() — resolve parent digest for stage transition
+#   resolve_pin()                    — low-level pin resolution (captured → registry)
 #   cross_stage_run()                — full orchestration: resolve parent, build, capture pin
+#
+# These functions are consumed by:
+#   - build-cross-chain.sh (full orchestrator)
+#   - build-cross-stage.sh (single-stage rebuilds)
+#   - build-cross-compiler.sh (standalone compiler entry point)
 
 # ==============================================================================
 # cross_stage_log_redirect
@@ -32,8 +38,11 @@ cross_stage_log_redirect() {
 # Build a cross-lane stage image on linux/amd64, push it to the registry, and
 # optionally tee output to a log file.
 #
-# Automatically disables --pull when BASE_IMAGE is already digest-pinned.
-# Uses registry build cache via --cache-from / --cache-to.
+# Automatically disables --pull when BASE_IMAGE is already digest-pinned
+# (repo@sha256:...), since the digest uniquely identifies the image and can
+# never resolve to a stale version.
+#
+# Uses registry build cache via --cache-from / --cache-to for faster rebuilds.
 # Respects DRY_RUN (when set to 1, prints the command without executing).
 #
 # Usage: cross_stage_build_and_push <label> <tag> <dockerfile> [extra build args...]
@@ -48,9 +57,6 @@ cross_stage_build_and_push() {
   local log_file
   log_file="$(cross_stage_log_redirect "${label}")"
 
-  # If the base image arg is already digest-pinned (repo@sha256:...), pull is
-  # unnecessary — the digest uniquely identifies the image.  Otherwise, --pull
-  # ensures we consume the freshly pushed parent, not a stale local copy.
   local pull_flag="--pull=true"
   if _has_digest_pinned_base "${extra[@]}"; then
     pull_flag="--pull=false"
@@ -87,8 +93,11 @@ cross_stage_build_and_push() {
 # cross_stage_resolve_parent_pin
 #
 # Resolve the digest-pinned parent reference for a stage using the stage graph.
-# Checks captured pins from this run first; falls back to the parent tag's
-# current registry digest.  Returns an empty string for the base stage (no parent).
+# Checks captured pins from this orchestration run first; falls back to the
+# parent tag's current registry digest if the parent wasn't built in this run
+# (e.g. when using --from-stage to resume mid-chain).
+#
+# Returns an empty string for the base stage (no parent).
 #
 # The captured pins are accessed via cross_stage_pin_varname() from stage-defs.sh.
 # The caller's scope must contain the pin variables (BASE_PIN, COMPILER_PIN,
@@ -104,10 +113,10 @@ cross_stage_resolve_parent_pin() {
   [ -z "${parent}" ] && return 0  # base has no parent
 
   parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
-  [ -z "${parent_tag}" ] && { warn "No tag for parent stage ${parent}"; return 1; }
+  [ -z "${parent_tag}" ] && { warn "No tag for parent stage '${parent}' of '${stage}'"; return 1; }
 
   parent_pin_varname="$(cross_stage_pin_varname "${parent}")"
-  [ -z "${parent_pin_varname}" ] && { warn "No pin varname for parent stage ${parent}"; return 1; }
+  [ -z "${parent_pin_varname}" ] && { warn "No pin varname for parent stage '${parent}'"; return 1; }
 
   if cross_stage_is_per_arch "${parent}"; then
     local -n pin_map="${parent_pin_varname}"
@@ -127,8 +136,8 @@ cross_stage_resolve_parent_pin() {
 # ==============================================================================
 # resolve_pin
 #
-# Resolve a digest pin: prefer a captured value from this run, otherwise fall
-# back to the registry digest of the given tag.
+# Resolve a digest pin: prefer a captured value from this orchestration run,
+# otherwise fall back to the registry digest of the given tag.
 #
 # Usage: pinned_ref="$(resolve_pin "${captured}" "${tag}")"
 # ==============================================================================
@@ -140,11 +149,11 @@ resolve_pin() {
   fi
   local result
   result="$(retry 3 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN:-nerdctl}" "${tag}")" || {
-    warn "Failed to resolve registry digest for ${tag}. Cannot pin downstream FROM."
+    warn "Failed to resolve registry digest for ${tag}. Is the image pushed?"
     return 1
   }
   if [ -z "${result}" ]; then
-    warn "Registry pin ref returned empty for ${tag}. Cannot pin downstream FROM."
+    warn "Registry pin ref returned empty for ${tag}. Is the image pushed?"
     return 1
   fi
   printf '%s' "${result}"
@@ -173,14 +182,17 @@ cross_stage_run() {
   cross_stage_is_per_arch "${stage}" && label="${stage}-${arch}"
 
   dockerfile="$(cross_stage_dockerfile "${stage}")" || {
-    err "No Dockerfile for stage: ${stage}"
+    err "Stage '${stage}' is not known. Valid stages: ${CROSS_STAGE_ORDER[*]}"
+  }
+  [ -z "${dockerfile}" ] && {
+    err "Stage '${stage}' has no Dockerfile (it delegates to another script — use a different entry point)"
   }
   tag="$(cross_stage_tag "${stage}" "${arch}")"
   [ -z "${tag}" ] && { err "No tag for stage: ${stage} ${arch:+arch=${arch}}"; }
 
   # Resolve the parent digest pin for this stage
   parent_pin="$(cross_stage_resolve_parent_pin "${stage}" "${arch}")" || {
-    err "Failed to resolve parent pin for stage ${stage}"
+    err "Failed to resolve parent pin for stage '${stage}' (parent: $(cross_stage_parent "${stage}")). Ensure the parent image is pushed to the registry."
   }
   if [ -n "${parent_pin}" ]; then
     build_args+=(--build-arg "BASE_IMAGE=${parent_pin}")

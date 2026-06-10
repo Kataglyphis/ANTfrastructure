@@ -2,15 +2,18 @@
 # artifact-common.sh — aggregator entry point for the build scripts layer.
 #
 # Sources all 01-core modules in dependency order:
-#   1. common.sh          (versions.env, logging, platform, ubuntu-mirror, downloads, parallelism)
-#  2. tag-naming.sh      (cross-chain + runtime tag functions)
-#   3. stage-defs.sh      (declarative stage graph for the cross lane)
-#   4. digest-pinning.sh  (registry digest resolution)
-#   5. build-helpers.sh   (nerdctl wrappers, build-arg helpers)
-#   6. context-management.sh (runtime context, OCI export, stage handoff)
-#   7. version-forwarding.sh (auto-discovered --build-arg forwarding from versions.env)
-#   8. cli-parsers.sh     (shared CLI argument parsing)
-#   9. runtime-build-fns.sh (per-arch build chain functions)
+#   1. common.sh              (versions.env, logging, platform, ubuntu-mirror, downloads, parallelism)
+#   2. tag-naming.sh          (cross-chain + runtime tag functions)
+#   3. stage-defs.sh          (declarative cross-lane stage graph)
+#   4. digest-pinning.sh      (registry digest resolution)
+#   5. build-helpers.sh       (nerdctl wrappers, build-arg helpers)
+#   6. cross-stage-build.sh   (cross-stage build orchestration: build, push, pin)
+#   7. context-management.sh  (runtime context, OCI export, stage handoff)
+#   8. version-forwarding.sh  (auto-discovered --build-arg forwarding)
+#   9. cli-parsers.sh         (shared CLI argument parsing)
+#  10. runtime-build-fns.sh   (per-arch build chain functions)
+#  11. compiler-resolution.sh (host compiler resolution for media builds)
+#  12. parallel-loop.sh       (per-architecture parallel build loop)
 
 _ARTIFACT_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

@@ -21,7 +21,7 @@ Fastest entry point:
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`). For example: `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
 
-The helper script only uses `nerdctl`. It first tries to reuse a local `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base`, then tries to pull that tag, and if that fails it rebuilds the base image locally before building `ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64`. It only pushes when you pass `--push`. In `BUILD_MODE=cross`, that compiler image builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
+The helper script only uses `nerdctl`. It first tries to reuse a local `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base`, then tries to pull that tag, and if that fails it rebuilds the base image locally before building `ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64`. It only pushes when you pass `--push`. Internally the script delegates to the shared stage graph (`stage-defs.sh`) and build helpers — the same infrastructure used by the full orchestrator. In `BUILD_MODE=cross`, the compiler image builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
 
 If you only need the downstream SDK or media cross stages and want to reuse the published compiler image, pull it first:
 
@@ -156,7 +156,8 @@ So a rebuild of `media` followed by a build of `android` can quietly use the old
 > from the local OCI manifest, so `RepoDigests` is **not** registry-resolvable.
 > Use `nerdctl manifest inspect --verbose <tag>` → `.Descriptor.digest`
 > (this is exactly what the `registry_pin_ref` helper in
-> `linux/scripts/01-core/artifact-common.sh` does).
+> `linux/scripts/01-core/digest-pinning.sh` does — sourced by
+> `artifact-common.sh`).
 
 Partial runs are supported, e.g. resume from media for one arch:
 

@@ -233,7 +233,7 @@ Key shared utilities and where to find them:
 - **CC validation:** `validate-compilers.sh` provides `_validate_cc_target()` which centralizes the dumpmachine/ELF/cc1-compile-to-object/link smoke checks used by both `validate_package()` and `validate_smoke()`.
 - **Cross-chain tags:** `tag-naming.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, and the runtime tag functions for consistent naming across orchestrators and helpers.
 - **Stage graph:** `stage-defs.sh` defines the cross-lane stage chain (`base -> compiler -> sdk -> media -> android -> runtime`) declaratively. Each stage entry maps to its Dockerfile, parent stage, tag function, and per-arch flag. Both `build-cross-chain.sh` and `--verify-chain` consume this graph so the chain is defined in exactly one place. When adding or reordering stages, update `CROSS_STAGE_ORDER` in this file.
-- **Cross-stage build orchestration:** `cross-stage-build.sh` provides `cross_stage_run()`, `cross_stage_build_and_push()`, and `cross_stage_resolve_parent_pin()` — the shared functions that the orchestrator uses to build each stage, push it, and capture the registry digest for pinning. `build-cross-stage.sh` wraps these for single-stage rebuilds.
+- **Cross-stage build orchestration:** `cross-stage-build.sh` provides `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_resolve_parent_pin()`, and `resolve_pin()` — the shared functions that the orchestrator uses to build each stage, push it, and capture the registry digest for pinning. `build-cross-stage.sh` wraps these for single-stage rebuilds. `build-cross-compiler.sh` also uses them internally (delegating to the stage graph instead of duplicating build logic).
 - **Retry logic:** `logging.sh` provides `retry <max_attempts> <sleep_sec> <description> <command...>` for standardized retry loops.
 - **Mirror args:** `build-helpers.sh` provides `append_mirror_build_args_from_env()` to DRY the mirror argument fallback chain. Use this instead of repeating the `USE_FAST_UBUNTU_MIRROR` / `FAST_UBUNTU_MIRROR_URL` / `FAST_UBUNTU_PORTS_MIRROR_URL` expansion.
 - **Version forwarding:** `version-forwarding.sh` auto-discovers version variables from `versions.env` and forwards them as `--build-arg` to all builds via `append_version_build_args()`.
@@ -258,7 +258,8 @@ Key shared utilities and where to find them:
 8. `version-forwarding.sh` (auto-discovered --build-arg forwarding)
 9. `cli-parsers.sh` (shared CLI argument parsing)
 10. `runtime-build-fns.sh` (per-arch build chain functions)
-11. `compiler-resolution.sh`
+11. `compiler-resolution.sh` (host compiler resolution for media builds)
+12. `parallel-loop.sh` (per-architecture parallel build loop)
 
 ---
 
