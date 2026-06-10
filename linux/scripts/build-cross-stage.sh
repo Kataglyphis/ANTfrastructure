@@ -101,67 +101,30 @@ main() {
 
   cd "${REPO_ROOT}"
 
-  # Validate stage exists and get metadata
-  local dockerfile tag parent
+  # Validate stage exists
+  local dockerfile arch is_per_arch
   dockerfile="$(cross_stage_dockerfile "${STAGE}")" || {
     err "Unknown stage: ${STAGE}. Valid stages: ${CROSS_STAGE_ORDER[*]}"
   }
   [ -z "${dockerfile}" ] && err "Stage '${STAGE}' has no Dockerfile (delegates to another script)"
 
-  local arch="${TARGET_ARCH}"
-  local is_per_arch=0
+  arch="${TARGET_ARCH}"
+  is_per_arch=0
   cross_stage_is_per_arch "${STAGE}" && is_per_arch=1
 
   if [ "${is_per_arch}" -eq 1 ] && [ -z "${arch}" ]; then
     err "Stage '${STAGE}' is per-architecture; --arch is required"
   fi
 
-  tag="$(cross_stage_tag "${STAGE}" "${arch}")"
-  [ -z "${tag}" ] && err "No tag for stage: ${STAGE} ${arch:+arch=${arch}}"
-
   local label="${STAGE}"
   [ "${is_per_arch}" -eq 1 ] && label="${STAGE}-${arch}"
 
-  log "Building cross stage: ${label} -> ${tag}"
+  # Delegate the full build (parent resolution, build args, push/local, pin capture)
+  # to the shared cross_stage_run() from cross-stage-build.sh.
+  cross_stage_run "${STAGE}" "${arch}" "${PUSH_IMAGE}"
 
-  # Assemble build args
-  local -a build_args=()
-  local parent_pin=""
-
-  parent="$(cross_stage_parent "${STAGE}")"
-  if [ -n "${parent}" ]; then
-    local parent_tag
-    parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
-    [ -z "${parent_tag}" ] && err "No tag for parent stage: ${parent}"
-
-    if [ "${PUSH_IMAGE}" -eq 1 ]; then
-      # Pin the parent to its current registry digest so we consume a
-      # content-addressed reference, not a mutable tag.
-      parent_pin="$(retry 3 10 "registry digest for ${parent_tag}" registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}")" || {
-        err "Failed to resolve registry digest for parent ${parent_tag}"
-      }
-      [ -z "${parent_pin}" ] && err "Empty registry digest for parent ${parent_tag}"
-      build_args+=(--build-arg "BASE_IMAGE=${parent_pin}")
-      log "[stage ${label}] parent pinned to ${parent_pin}"
-    else
-      # Local build: use the mutable tag (may be stale, but we're not pushing
-      # so no downstream stage can be affected).
-      build_args+=(--build-arg "BASE_IMAGE=${parent_tag}")
-      log "[stage ${label}] parent tag ${parent_tag} (local, not pinned)"
-    fi
-  fi
-
-  cross_stage_build_args build_args "${STAGE}" "${arch}"
-
-  # Build (local-only or push)
-  if [ "${PUSH_IMAGE}" -eq 1 ]; then
-    cross_stage_build_and_push "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
-    local pinned
-    pinned="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
-    log "[stage ${label}] pushed and pinned: ${pinned}"
-  else
-    cross_stage_build_local "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
-    log "[stage ${label}] built locally: ${tag}"
+  if [ "${PUSH_IMAGE}" -eq 1 ] && [ "${DRY_RUN}" -eq 0 ]; then
+    log "[stage ${label}] build complete (digest pinned)"
   fi
 }
 

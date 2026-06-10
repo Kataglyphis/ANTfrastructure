@@ -48,6 +48,11 @@ These are consumed by all three cross-lane entry points (orchestrator, single-st
 and standalone compiler).  `cross_stage_build_local()` handles local-only (non-push) builds
 while `cross_stage_build_and_push()` pushes to the registry with cache support.
 
+`cross_stage_run()` is the shared entry point for all stage builds. It accepts a `push`
+flag (3rd argument, default `1`): `push=1` for digest-pinned registry pushes, `push=0`
+for local-only builds.  This eliminates duplicated build/pin logic across the orchestrator,
+`build-cross-stage.sh`, and `build-cross-compiler.sh`.
+
 Runtime helpers (`build-runtime-artifacts.sh` and `build-runtime-manifest.sh`) share
 initialization logic via `runtime-flow-common.sh` (sourced after `artifact-common.sh`).
 

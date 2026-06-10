@@ -62,15 +62,15 @@ registry_pin_ref() {
 }
 
 # Detect whether the extra build args include a digest-pinned BASE_IMAGE.
-# If BASE_IMAGE=repo@sha256:..., --pull is unnecessary because the digest
-# uniquely identifies the image and can never resolve to a stale version.
+# Matches --build-arg BASE_IMAGE=...@sha256:... specifically (not any arg with
+# a sha256 prefix). When the base is content-addressed, --pull is unnecessary
+# because the digest uniquely identifies the image and can never resolve to a
+# stale version.
 _has_digest_pinned_base() {
   local arg
   for arg in "$@"; do
     case "${arg}" in
-      --build-arg) ;;
-      *@sha256:*) return 0 ;;
-      *) ;;
+      BASE_IMAGE=*@sha256:*) return 0 ;;
     esac
   done
   return 1

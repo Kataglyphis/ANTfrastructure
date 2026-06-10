@@ -113,6 +113,18 @@ are used by both the orchestrator and the standalone
 (non-push) builds, while `cross_stage_build_and_push()` handles registry-pushed
 builds with cache support.
 
+`cross_stage_run()` is the shared entry point for all stage builds. It accepts a
+`push` flag (3rd argument, default `1`):
+- `push=1`: resolves the parent via digest-pinned reference, pushes the stage
+  image to the registry, and captures the digest pin for downstream stages.
+- `push=0`: resolves the parent via mutable tag, builds locally only, does not
+  push or pin.
+
+Both the orchestrator (`push=1` for all stages), the single-stage builder
+(`build-cross-stage.sh`), and the standalone compiler
+(`build-cross-compiler.sh`) use this same function, eliminating duplicated
+build/pin logic across scripts.
+
 The runtime helpers share initialization logic via
 `linux/scripts/01-core/runtime-flow-common.sh`, which provides
 `init_runtime_flow_defaults()` and `runtime_flow_export_setup()`.  Both

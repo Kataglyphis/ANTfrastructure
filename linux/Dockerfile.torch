@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.24.0
 
-ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:android"
+ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-package-amd64"
 FROM ${BASE_IMAGE} AS torch
 
 SHELL ["bash", "-lc"]

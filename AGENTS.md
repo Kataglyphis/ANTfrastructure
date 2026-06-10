@@ -186,6 +186,12 @@ Each cross stage is a separate `nerdctl build`. The orchestrator captures each s
 
 The stage chain is defined declaratively in `linux/scripts/01-core/stage-defs.sh` as `CROSS_STAGE_ORDER`. Each stage entry specifies its Dockerfile, parent, tag function, and whether it is per-architecture. Both the build loop and `--verify-chain` consume this graph.
 
+`cross_stage_run()` in `cross-stage-build.sh` is the shared entry point for all stage builds. It accepts a `push` flag (3rd argument, default `1`):
+- `push=1`: resolves the parent via digest-pinned reference, pushes the stage image, captures the digest for downstream stages.
+- `push=0`: resolves the parent via mutable tag, builds locally only, does not push or pin.
+
+Both the orchestrator, `build-cross-stage.sh`, and `build-cross-compiler.sh` use this same function, eliminating duplicated build/pin logic.
+
 See [Cross Chain Stage Handoff](#cross-chain-stage-handoff) below for the full rules.
 
 ### Prerequisites
@@ -233,7 +239,7 @@ Key shared utilities and where to find them:
 - **CC validation:** `validate-compilers.sh` provides `_validate_cc_target()` which centralizes the dumpmachine/ELF/cc1-compile-to-object/link smoke checks used by both `validate_package()` and `validate_smoke()`.
 - **Cross-chain tags:** `tag-naming.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, and the runtime tag functions for consistent naming across orchestrators and helpers.
 - **Stage graph:** `stage-defs.sh` defines the cross-lane stage chain (`base -> compiler -> sdk -> media -> android -> runtime`) declaratively. Each stage entry maps to its Dockerfile, parent stage, tag function, and per-arch flag. Both `build-cross-chain.sh` and `--verify-chain` consume this graph so the chain is defined in exactly one place. When adding or reordering stages, update `CROSS_STAGE_ORDER` in this file.
-- **Cross-stage build orchestration:** `cross-stage-build.sh` provides `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, and `resolve_pin()` — the shared functions that the orchestrator uses to build each stage, push it, and capture the registry digest for pinning. `cross_stage_build_local()` handles local-only (non-push) builds. `build-cross-stage.sh` wraps these for single-stage rebuilds. `build-cross-compiler.sh` also uses them internally (delegating to the stage graph instead of duplicating build logic).
+- **Cross-stage build orchestration:** `cross-stage-build.sh` provides `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, and `resolve_pin()` — the shared functions that the orchestrator uses to build each stage, push it, and capture the registry digest for pinning. `cross_stage_build_local()` handles local-only (non-push) builds. `cross_stage_run()` accepts a `push` flag (3rd argument, default `1`) so standalone scripts (`build-cross-stage.sh`, `build-cross-compiler.sh`) can use the same function for both push and local modes. `build-cross-stage.sh` wraps these for single-stage rebuilds. `build-cross-compiler.sh` also uses them internally (delegating to the stage graph instead of duplicating build logic).
 - **Runtime flow initialization:** `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` and `runtime_flow_export_setup()` — shared initialization and post-parse setup for `build-runtime-artifacts.sh` and `build-runtime-manifest.sh`.  Both runtime scripts source this directly (it is not included in `artifact-common.sh`'s sourcing chain since only those two scripts need it).
 - **Retry logic:** `logging.sh` provides `retry <max_attempts> <sleep_sec> <description> <command...>` for standardized retry loops.
 - **Mirror args:** `build-helpers.sh` provides `append_mirror_build_args_from_env()` to DRY the mirror argument fallback chain. Use this instead of repeating the `USE_FAST_UBUNTU_MIRROR` / `FAST_UBUNTU_MIRROR_URL` / `FAST_UBUNTU_PORTS_MIRROR_URL` expansion.

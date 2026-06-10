@@ -96,71 +96,11 @@ ensure_base_image() {
 }
 
 # ── Compiler build ────────────────────────────────────────────────────────────
+# build_compiler: delegates to the shared cross_stage_run() from the stage graph.
+# When pushing, the base parent is digest-pinned (no stale reuse).  When staying
+# local, the mutable base tag is used (safe since no downstream can be affected).
 build_compiler() {
-  local base_tag compiler_tag parent_pin
-  local -a build_args=()
-
-  base_tag="$(cross_base_tag)"
-  compiler_tag="$(cross_compiler_tag)"
-
-  append_common_build_args build_args
-
-  if [ "${PUSH_IMAGE}" -eq 1 ]; then
-    # Digest-pinned handoff: resolve the base tag's registry digest so the
-    # compiler FROM is content-addressed (no stale base reuse).
-    if [ "${DRY_RUN}" -eq 1 ]; then
-      parent_pin="${base_tag}@sha256:dry-run-placeholder"
-    else
-      parent_pin="$(retry 3 10 "registry digest for ${base_tag}" \
-        registry_pin_ref "${NERDCTL_BIN}" "${base_tag}")" || {
-        err "Failed to resolve registry digest for base ${base_tag}. Push base first."
-      }
-    fi
-    build_args+=(--build-arg "BASE_IMAGE=${parent_pin}")
-    build_args+=(--build-arg "BUILD_MODE=cross")
-    build_args+=(--build-arg "CROSS_TARGETS=${CROSS_TARGETS}")
-
-    log "[compiler] building ${compiler_tag} FROM ${parent_pin}"
-    cross_stage_build_and_push "compiler" "${compiler_tag}" \
-      "$(cross_stage_dockerfile compiler)" "${build_args[@]}"
-
-    if [ "${DRY_RUN}" -eq 1 ]; then
-      log "[compiler] [DRY RUN] would pin ${compiler_tag}"
-    else
-      local pinned
-      pinned="$(retry 5 10 "registry digest for ${compiler_tag}" \
-        registry_pin_ref "${NERDCTL_BIN}" "${compiler_tag}")"
-      log "[compiler] pushed and pinned: ${pinned}"
-    fi
-  else
-    # Local-only build: use the mutable base tag (may be stale, but no downstream
-    # stage will be affected since we're not pushing).
-    build_args+=(--build-arg "BASE_IMAGE=${base_tag}")
-    build_args+=(--build-arg "BUILD_MODE=cross")
-    build_args+=(--build-arg "CROSS_TARGETS=${CROSS_TARGETS}")
-
-    log "[compiler] building ${compiler_tag} locally FROM ${base_tag}"
-
-    local -a build_cmd=(
-      "${NERDCTL_BIN}" build
-      --pull=false
-      --platform linux/amd64
-      -t "${compiler_tag}"
-      -f "$(cross_stage_dockerfile compiler)"
-      "${build_args[@]}"
-      .
-    )
-    append_buildkit_host_arg build_cmd
-
-    if [ "${DRY_RUN}" -eq 1 ]; then
-      printf '[DRY RUN] '
-      printf '%q ' "${build_cmd[@]}"
-      printf '\n'
-    else
-      run "${build_cmd[@]}"
-    fi
-    log "[compiler] built locally: ${compiler_tag}"
-  fi
+  cross_stage_run "compiler" "" "${PUSH_IMAGE}"
 }
 
 # ── Push (local-only path) ────────────────────────────────────────────────────
@@ -214,11 +154,20 @@ main() {
 
   log "Cross-compiler build: targets=${CROSS_TARGETS} repo=${IMAGE_REPO} push=${PUSH_IMAGE}"
 
-  ensure_base_image
-  build_compiler
-
-  if [ "${PUSH_IMAGE}" -eq 1 ] && [ "${DRY_RUN}" -eq 0 ]; then
-    push_compiler
+  if [ "${PUSH_IMAGE}" -eq 1 ]; then
+    # Push path: build and push both base and compiler via the stage graph.
+    # cross_stage_run handles digest-pinned parent resolution and pin capture,
+    # so the compiler always consumes the freshly pushed base digest.
+    cross_stage_run "base" "" 1
+    cross_stage_run "compiler" "" 1
+    if [ "${DRY_RUN}" -eq 0 ]; then
+      push_compiler
+    fi
+  else
+    # Local path: ensure base exists locally (try pull first, build if needed),
+    # then build compiler locally via the stage graph.
+    ensure_base_image
+    cross_stage_run "compiler" "" 0
   fi
 }
 

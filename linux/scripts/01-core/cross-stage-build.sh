@@ -213,20 +213,38 @@ resolve_pin() {
 # ==============================================================================
 # cross_stage_run
 #
-# Full cross-stage orchestration: resolve the parent digest, assemble build args,
-# run the build+publish, and capture the output digest pin.
+# Full cross-stage orchestration: resolve the parent reference, assemble build
+# args, run the build (with or without push), and capture the output digest pin.
 #
-# On success, the captured pin is stored in the appropriate pin variable
-# (BASE_PIN, COMPILER_PIN, SDK_PIN[arch], etc.) as determined by the stage graph.
+# Parameters:
+#   $1  stage name (base|compiler|sdk|media|android)
+#   $2  target architecture (required for per-arch stages; empty for base/compiler)
+#   $3  push flag: 1 = build and push with digest pinning (default);
+#       0 = build locally, no push, no pin capture
 #
-# The caller's scope must contain the pin variables and the ANDROID_BUILT_THIS_RUN
-# associative array (for tracking android stage rebuilds).
+# When push=1:
+#   - The parent is resolved via digest-pinned reference (registry digest or
+#     captured in-run pin). This prevents stale base reuse.
+#   - The stage image is pushed to the registry via cross_stage_build_and_push().
+#   - The pushed digest is captured and stored in the appropriate pin variable
+#     (BASE_PIN, COMPILER_PIN, SDK_PIN[arch], etc.) for downstream stages.
 #
-# Usage: cross_stage_run "media" "arm64"
+# When push=0:
+#   - The parent is resolved via the mutable tag (safe for local-only builds
+#     since no downstream stage will inherit from a stale image).
+#   - The image stays local via cross_stage_build_local().
+#   - No pin is captured.
+#
+# Pin capture is guarded: if the expected pin variable is not declared in the
+# calling scope, the pin is logged but not stored (safe for standalone scripts).
+#
+# Usage:
+#   cross_stage_run "media" "arm64"        # push (default)
+#   cross_stage_run "compiler" "" 0        # local only
 # ==============================================================================
 cross_stage_run() {
-  local stage="$1" arch="${2:-}"
-  local label tag dockerfile parent_pin pin_varname
+  local stage="$1" arch="${2:-}" push_flag="${3:-1}"
+  local label tag dockerfile parent parent_pin pin_varname
   local -a build_args=()
 
   label="${stage}"
@@ -241,25 +259,44 @@ cross_stage_run() {
   tag="$(cross_stage_tag "${stage}" "${arch}")"
   [ -z "${tag}" ] && { err "No tag for stage: ${stage} ${arch:+arch=${arch}}"; }
 
-  # Resolve the parent digest pin for this stage
-  parent_pin="$(cross_stage_resolve_parent_pin "${stage}" "${arch}")" || {
-    err "Failed to resolve parent pin for stage '${stage}' (parent: $(cross_stage_parent "${stage}")). Ensure the parent image is pushed to the registry."
-  }
-  if [ -n "${parent_pin}" ]; then
-    build_args+=(--build-arg "BASE_IMAGE=${parent_pin}")
+  parent="$(cross_stage_parent "${stage}")"
+
+  # Resolve parent reference: digest-pinned for push, mutable tag for local
+  if [ -n "${parent}" ]; then
+    if [ "${push_flag}" -eq 1 ]; then
+      parent_pin="$(cross_stage_resolve_parent_pin "${stage}" "${arch}")" || {
+        err "Failed to resolve parent pin for stage '${stage}' (parent: ${parent}). Ensure the parent image is pushed to the registry."
+      }
+      [ -n "${parent_pin}" ] && build_args+=(--build-arg "BASE_IMAGE=${parent_pin}")
+    else
+      local parent_tag
+      parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
+      [ -z "${parent_tag}" ] && { err "No tag for parent stage: ${parent}"; }
+      build_args+=(--build-arg "BASE_IMAGE=${parent_tag}")
+    fi
   fi
 
   # Append stage-specific build args from the stage graph
   cross_stage_build_args build_args "${stage}" "${arch}"
 
-  log "[stage ${label}] building ${tag}${parent_pin:+ FROM ${parent_pin}}"
-  cross_stage_build_and_push "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
+  # Build (push or local depending on flag)
+  if [ "${push_flag}" -eq 1 ]; then
+    log "[stage ${label}] building ${tag}${parent_pin:+ FROM ${parent_pin}}"
+    cross_stage_build_and_push "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
+  else
+    log "[stage ${label}] building ${tag} locally"
+    cross_stage_build_local "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
+  fi
 
-  # Capture the digest pin for downstream stages
+  # Pin capture: only on push, and only when not a dry run
+  if [ "${push_flag}" -eq 0 ]; then
+    return 0
+  fi
   if [ "${DRY_RUN:-0}" -eq 1 ]; then
     log "[stage ${label}] [DRY RUN] would pin ${tag}"
     return 0
   fi
+
   pin_varname="$(cross_stage_pin_varname "${stage}")"
   [ -z "${pin_varname}" ] && { err "No pin varname for stage: ${stage}"; }
 
@@ -268,15 +305,22 @@ cross_stage_run() {
   [ -z "${pinned_digest}" ] && { err "Failed to capture digest pin for ${tag}"; }
 
   if cross_stage_is_per_arch "${stage}"; then
-    local -n pin_map="${pin_varname}"
-    pin_map["${arch}"]="${pinned_digest}"
-    log "[stage ${label}] pinned ${pinned_digest}"
-    # Track android rebuilds so the runtime stage knows whether to re-pull
-    if [ "${stage}" = "android" ] && declare -p ANDROID_BUILT_THIS_RUN &>/dev/null; then
-      ANDROID_BUILT_THIS_RUN["${arch}"]=1
+    if ! declare -p "${pin_varname}" &>/dev/null; then
+      log "[stage ${label}] pinned ${pinned_digest} (pin variable ${pin_varname} not in scope, skipping storage)"
+    else
+      local -n pin_map="${pin_varname}"
+      pin_map["${arch}"]="${pinned_digest}"
+      log "[stage ${label}] pinned ${pinned_digest}"
+      if [ "${stage}" = "android" ] && declare -p ANDROID_BUILT_THIS_RUN &>/dev/null; then
+        ANDROID_BUILT_THIS_RUN["${arch}"]=1
+      fi
     fi
   else
-    printf -v "${pin_varname}" '%s' "${pinned_digest}"
-    log "[stage ${label}] pinned ${!pin_varname}"
+    if declare -p "${pin_varname}" &>/dev/null; then
+      printf -v "${pin_varname}" '%s' "${pinned_digest}"
+      log "[stage ${label}] pinned ${!pin_varname}"
+    else
+      log "[stage ${label}] pinned ${pinned_digest} (pin variable ${pin_varname} not in scope, skipping storage)"
+    fi
   fi
 }
