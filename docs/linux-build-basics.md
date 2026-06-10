@@ -43,8 +43,13 @@ per-arch flag.  Both `build-cross-chain.sh` and `--verify-chain` consume this gr
 
 Stage build/pin functions live in `linux/scripts/01-core/cross-stage-build.sh` (sourced
 via `artifact-common.sh`), providing `cross_stage_run()`, `cross_stage_build_and_push()`,
-`cross_stage_resolve_parent_pin()`, and `resolve_pin()`.  These are consumed by all three
-cross-lane entry points (orchestrator, single-stage builder, and standalone compiler).
+`cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, and `resolve_pin()`.
+These are consumed by all three cross-lane entry points (orchestrator, single-stage builder,
+and standalone compiler).  `cross_stage_build_local()` handles local-only (non-push) builds
+while `cross_stage_build_and_push()` pushes to the registry with cache support.
+
+Runtime helpers (`build-runtime-artifacts.sh` and `build-runtime-manifest.sh`) share
+initialization logic via `runtime-flow-common.sh` (sourced after `artifact-common.sh`).
 
 Prefer the orchestrator for full chains:
 ```bash

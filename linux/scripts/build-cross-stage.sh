@@ -9,9 +9,8 @@ set -euo pipefail
 #
 # When --push is used, the parent's registry digest is pinned so the stage
 # consumes a content-addressed FROM reference instead of a mutable tag.
-# Without --push, the image stays local and the parent is resolved from
-# the current registry tag (no digest pinning, since the local image isn't
-# pushed and can't be pinned by a downstream stage).
+# Without --push, the image stays local and cross_stage_build_local() (from
+# cross-stage-build.sh) handles the build.
 #
 # Usage:
 #   bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64
@@ -161,36 +160,7 @@ main() {
     pinned="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
     log "[stage ${label}] pushed and pinned: ${pinned}"
   else
-    local -a common_args=()
-    append_common_build_args common_args
-    local log_file
-    log_file="$(cross_stage_log_redirect "${label}")"
-
-    local pull_flag="--pull=true"
-    if _has_digest_pinned_base "${build_args[@]}"; then
-      pull_flag="--pull=false"
-    fi
-
-    local -a build_cmd=(
-      "${NERDCTL_BIN}" build
-      "${pull_flag}"
-      --platform linux/amd64
-      -t "${tag}"
-      -f "${dockerfile}"
-    )
-    append_buildkit_host_arg build_cmd
-    build_cmd+=("${build_args[@]}" "${common_args[@]}" .)
-
-    if [ "${DRY_RUN}" -eq 1 ]; then
-      printf '[DRY RUN] '
-      printf '%q ' "${build_cmd[@]}"
-      printf '\n'
-    elif [ -n "${log_file}" ]; then
-      run "${build_cmd[@]}" > >(tee -a "${log_file}") 2>&1
-    else
-      run "${build_cmd[@]}"
-    fi
-
+    cross_stage_build_local "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
     log "[stage ${label}] built locally: ${tag}"
   fi
 }

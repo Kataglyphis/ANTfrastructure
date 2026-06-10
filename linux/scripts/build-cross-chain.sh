@@ -144,23 +144,34 @@ Notes:
 EOF
 }
 
-# Runtime stage: delegates to build-runtime-manifest.sh.
-run_runtime_stage() {
-  local arch
-  for arch in ${TARGET_ARCHES//,/ }; do
-    if [ -z "${ANDROID_BUILT_THIS_RUN[$arch]:-}" ]; then
-      local android_tag
-      android_tag="$(cross_android_tag "${arch}")"
-      if [ "${DRY_RUN}" -eq 1 ]; then
-        log "[stage runtime] [DRY RUN] would refresh local ${android_tag} from registry"
-      else
-        log "[stage runtime] refreshing local ${android_tag} from registry"
-        run "${NERDCTL_BIN}" pull --platform linux/amd64 "${android_tag}"
-      fi
-    fi
-  done
+# ── runtime stage helpers ──────────────────────────────────────────────────────
 
-  local -a helper_args=(
+# Ensure per-arch android images are locally available for the runtime stage.
+# If android was built in this run, the image is already local; otherwise pull.
+_refresh_android_images() {
+  local arch android_tag
+  for arch in ${TARGET_ARCHES//,/ }; do
+    android_tag="$(cross_android_tag "${arch}")"
+    if [ -n "${ANDROID_BUILT_THIS_RUN[$arch]:-}" ]; then
+      log "[stage runtime] android-${arch} built in this run, skip pull"
+      continue
+    fi
+    if [ "${DRY_RUN}" -eq 1 ]; then
+      log "[stage runtime] [DRY RUN] would pull ${android_tag}"
+      continue
+    fi
+    log "[stage runtime] pulling ${android_tag}"
+    run "${NERDCTL_BIN}" pull --platform linux/amd64 "${android_tag}"
+  done
+}
+
+# Build the argument array for build-runtime-manifest.sh from the orchestrator's
+# state (IMAGE_REPO, FINAL_IMAGE, TARGET_ARCHES, mirror settings).
+_assemble_runtime_helper_args() {
+  local -a args_out
+  local -n _arha_out=${1:-args_out}
+
+  _arha_out=(
     --image "${FINAL_IMAGE}"
     --target-arches "${TARGET_ARCHES}"
     --artifact-image-prefix "${IMAGE_REPO}:cross-android"
@@ -168,11 +179,21 @@ run_runtime_stage() {
     --push
   )
   if [ "${USE_FAST_UBUNTU_MIRROR}" = "true" ]; then
-    helper_args+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")
+    _arha_out+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")
     if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL}" ]; then
-      helper_args+=(--fast-ubuntu-ports-mirror-url "${FAST_UBUNTU_PORTS_MIRROR_URL}")
+      _arha_out+=(--fast-ubuntu-ports-mirror-url "${FAST_UBUNTU_PORTS_MIRROR_URL}")
     fi
   fi
+}
+
+# Runtime stage: delegates to build-runtime-manifest.sh to build per-arch
+# base -> package -> torch -> wrapper images on the real target platform and
+# publish the multi-arch :latest-cross manifest.
+run_runtime_stage() {
+  _refresh_android_images
+
+  local -a helper_args
+  _assemble_runtime_helper_args helper_args
 
   if [ "${DRY_RUN}" -eq 1 ]; then
     log "[stage runtime] [DRY RUN] would run build-runtime-manifest.sh ${helper_args[*]}"

@@ -9,6 +9,7 @@ _CROSS_STAGE_BUILD_SH_LOADED=1
 # Provides:
 #   cross_stage_log_redirect()       — compute log file path for a stage build
 #   cross_stage_build_and_push()     — build a cross stage on linux/amd64 and push
+#   cross_stage_build_local()        — build a cross stage locally (no push)
 #   cross_stage_resolve_parent_pin() — resolve parent digest for stage transition
 #   resolve_pin()                    — low-level pin resolution (captured → registry)
 #   cross_stage_run()                — full orchestration: resolve parent, build, capture pin
@@ -70,6 +71,56 @@ cross_stage_build_and_push() {
     --output "type=image,name=${tag},push=true"
     --cache-from "type=registry,ref=${tag}-buildcache"
     --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
+    -f "${dockerfile}"
+  )
+  append_buildkit_host_arg build_cmd
+  build_cmd+=("${extra[@]}" "${common_args[@]}" .)
+
+  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+    printf '[DRY RUN] '
+    printf '%q ' "${build_cmd[@]}"
+    printf '\n'
+    return 0
+  fi
+
+  if [ -n "${log_file}" ]; then
+    run "${build_cmd[@]}" > >(tee -a "${log_file}") 2>&1
+  else
+    run "${build_cmd[@]}"
+  fi
+}
+
+# ==============================================================================
+# cross_stage_build_local
+#
+# Build a cross-lane stage image locally on linux/amd64 WITHOUT pushing.
+# The image stays in the local containerd store.
+#
+# Automatically disables --pull when BASE_IMAGE is already digest-pinned.
+# Respects DRY_RUN (when set to 1, prints the command without executing).
+#
+# Usage: cross_stage_build_local <label> <tag> <dockerfile> [extra build args...]
+# ==============================================================================
+cross_stage_build_local() {
+  local label="$1" tag="$2" dockerfile="$3"
+  shift 3
+  local -a extra=("$@")
+  local -a common_args=()
+  append_common_build_args common_args
+
+  local log_file
+  log_file="$(cross_stage_log_redirect "${label}")"
+
+  local pull_flag="--pull=true"
+  if _has_digest_pinned_base "${extra[@]}"; then
+    pull_flag="--pull=false"
+  fi
+
+  local -a build_cmd=(
+    "${NERDCTL_BIN:-nerdctl}" build
+    "${pull_flag}"
+    --platform linux/amd64
+    -t "${tag}"
     -f "${dockerfile}"
   )
   append_buildkit_host_arg build_cmd

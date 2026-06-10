@@ -106,8 +106,18 @@ To add or reorder stages, update `CROSS_STAGE_ORDER` in that file.
 
 Stage build/pin orchestration functions are shared in
 `linux/scripts/01-core/cross-stage-build.sh` (sourced via `artifact-common.sh`).
-These functions are used by both the orchestrator and the standalone
-`build-cross-stage.sh` helper:
+These functions (`cross_stage_run()`, `cross_stage_build_and_push()`,
+`cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `resolve_pin()`)
+are used by both the orchestrator and the standalone
+`build-cross-stage.sh` helper.  `cross_stage_build_local()` handles local-only
+(non-push) builds, while `cross_stage_build_and_push()` handles registry-pushed
+builds with cache support.
+
+The runtime helpers share initialization logic via
+`linux/scripts/01-core/runtime-flow-common.sh`, which provides
+`init_runtime_flow_defaults()` and `runtime_flow_export_setup()`.  Both
+`build-runtime-artifacts.sh` and `build-runtime-manifest.sh` source this
+directly after `artifact-common.sh`.
 
 ```bash
 # Rebuild a single cross stage independently:

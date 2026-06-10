@@ -5,23 +5,14 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+# shellcheck disable=SC1091
+source "${_ARTIFACT_COMMON_DIR}/runtime-flow-common.sh"
+init_runtime_flow_defaults
 
-NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-runtime}"
+# Script-specific defaults (override shared where needed)
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-runtime}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:latest-cross}"
-ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-android}"
-ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
-BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
-PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
-WRAPPER_DOCKERFILE_PATH="${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}"
-TORCH_APP_MODE="${TORCH_APP_MODE:-}"
-init_mirror_defaults
-PUSH_IMAGES=0
-PUSH_INTERMEDIATE_IMAGES=0
-DRY_RUN=0
-PARALLEL_ARCHS=0
-MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
 usage() {
   cat <<'EOF'
@@ -135,8 +126,7 @@ main() {
     esac
   done
 
-  export DRY_RUN
-  runtime_post_parse_setup TARGET_ARCHES
+  runtime_flow_export_setup TARGET_ARCHES "${IMAGE_PREFIX}"
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 
