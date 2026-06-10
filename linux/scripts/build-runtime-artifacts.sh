@@ -10,7 +10,7 @@ source "${_ARTIFACT_COMMON_DIR}/runtime-flow-common.sh"
 init_runtime_flow_defaults
 
 # Script-specific defaults (override shared where needed)
-TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"
+TARGET_ARCHES="$(resolve_arch_list)"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-runtime}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:latest-cross}"
 

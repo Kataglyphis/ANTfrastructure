@@ -11,7 +11,7 @@ init_runtime_flow_defaults
 
 # Script-specific defaults (override shared where needed)
 IMAGE_NAME="${IMAGE_NAME:-}"
-ARCHITECTURES="${ARCHITECTURES:-${TARGET_ARCHES:-${TARGET_ARCH:-${CROSS_DEFAULT_ARCHES}}}}"
+TARGET_ARCHES="$(resolve_arch_list)"
 PUSH_MANIFEST=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
@@ -33,6 +33,7 @@ Options:
   --push-manifest              Push the final manifest after creating it
   --skip-manifest              Build images only; do not create a manifest locally
   --manifest-only              Create/push the manifest only; skip all image builds
+  --repair                     Alias for --manifest-only (repair manifest from existing per-arch images)
   --push                       Short for --push-images --push-manifest (intermediates stay local)
   --dry-run                    Print build commands without executing them
   --parallel-archs              Build per-architecture images in parallel
@@ -64,11 +65,11 @@ create_manifest() {
   local refs=()
   local arch
 
-  for arch in ${ARCHITECTURES//,/ }; do
+  for arch in ${TARGET_ARCHES//,/ }; do
     refs+=("$(runtime_wrapper_tag "${arch}")")
   done
 
-  if [ "${DRY_RUN}" -eq 1 ]; then
+  if is_dry_run; then
     log "[DRY RUN] would create manifest ${IMAGE_NAME} from refs: ${refs[*]}"
     return 0
   fi
@@ -87,7 +88,7 @@ main() {
   while [ $# -gt 0 ]; do
     local _dispatch_rc=0
     runtime_dispatch_shared_args \
-      ARCHITECTURES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
+      TARGET_ARCHES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
       BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
       TORCH_APP_MODE \
       USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
@@ -117,7 +118,7 @@ main() {
         CREATE_MANIFEST=0
         shift
         ;;
-      --manifest-only)
+      --manifest-only|--repair)
         BUILD_IMAGES=0
         shift
         ;;
@@ -154,17 +155,17 @@ main() {
     err "--image is required"
   fi
 
-  runtime_flow_export_setup ARCHITECTURES "${IMAGE_NAME}"
+  runtime_flow_export_setup TARGET_ARCHES "${IMAGE_NAME}"
 
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
-    log "Building ${ARTIFACT_BUILD_MODE} runtime package flow for architectures: ${ARCHITECTURES}"
+    log "Building ${ARTIFACT_BUILD_MODE} runtime package flow for architectures: ${TARGET_ARCHES}"
   else
-    log "Creating manifest only for architectures: ${ARCHITECTURES}"
+    log "Creating manifest only for architectures: ${TARGET_ARCHES}"
   fi
 
   local arch
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
-    run_parallel_arch_loop runtime_build_chain "/tmp/runtime-arch-loop-flags" "${MAX_PARALLEL_ARCHS}" ${ARCHITECTURES//,/ }
+    run_parallel_arch_loop runtime_build_chain "/tmp/runtime-arch-loop-flags" "${MAX_PARALLEL_ARCHS}" ${TARGET_ARCHES//,/ }
   fi
 
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then

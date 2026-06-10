@@ -25,13 +25,6 @@ REBUILD_BASE=0
 PUSH_IMAGE=0
 DRY_RUN=0
 
-# ── Backward-compatible env var overrides (prefer --image-repo instead) ───────
-# These are resolved in _refresh_tags() after CLI parsing so IMAGE_REPO is final.
-_LEGACY_BASE_TAG="${BASE_REMOTE_TAG:-}"
-_LEGACY_COMPILER_TAG="${COMPILER_REMOTE_TAG:-}"
-_legacy_base_tag()  { [ -n "${_LEGACY_BASE_TAG}" ] && printf '%s' "${_LEGACY_BASE_TAG}" || cross_base_tag; }
-_legacy_compiler_tag() { [ -n "${_LEGACY_COMPILER_TAG}" ] && printf '%s' "${_LEGACY_COMPILER_TAG}" || cross_compiler_tag; }
-
 usage() {
   cat <<'EOF'
 Usage: build-cross-compiler.sh [options]
@@ -69,9 +62,7 @@ Examples:
   bash linux/scripts/build-cross-compiler.sh \\
     --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push
 
-Environment overrides (legacy — prefer --image-repo for the repo prefix):
-  BASE_REMOTE_TAG        Override base image tag (default: REPO:base)
-  COMPILER_REMOTE_TAG    Override compiler image tag (default: REPO:cross-compiler-amd64)
+Environment overrides:
   NERDCTL_BIN            nerdctl executable to use
   USE_FAST_UBUNTU_MIRROR Set to true to replace Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL Mirror URL used when fast mirror is enabled
@@ -82,16 +73,13 @@ EOF
 # ── Base image bootstrap ──────────────────────────────────────────────────────
 # Uses ensure_local_image() from build-helpers.sh to pull or build the base.
 ensure_base_image() {
-  local base_tag remote_tag
+  local base_tag
   base_tag="$(cross_base_tag)"
-  remote_tag="${_LEGACY_BASE_TAG:-${base_tag}}"
-
   local -a build_args=()
   append_common_build_args build_args
-
   ensure_local_image "${base_tag}" \
     "$(cross_stage_dockerfile base)" \
-    "${remote_tag}" \
+    "${base_tag}" \
     build_args
 }
 
@@ -101,17 +89,6 @@ ensure_base_image() {
 # local, the mutable base tag is used (safe since no downstream can be affected).
 build_compiler() {
   cross_stage_run "compiler" "" "${PUSH_IMAGE}"
-}
-
-# ── Push (local-only path) ────────────────────────────────────────────────────
-push_compiler() {
-  local compiler_tag
-  compiler_tag="$(_legacy_compiler_tag)"
-  if [ "${compiler_tag}" != "$(cross_compiler_tag)" ]; then
-    run "${NERDCTL_BIN}" tag "$(cross_compiler_tag)" "${compiler_tag}"
-  fi
-  retry 3 10 "pushing compiler image" \
-    run "${NERDCTL_BIN}" push "${compiler_tag}"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -158,11 +135,11 @@ main() {
     # Push path: build and push both base and compiler via the stage graph.
     # cross_stage_run handles digest-pinned parent resolution and pin capture,
     # so the compiler always consumes the freshly pushed base digest.
+    # cross_stage_build_and_push() (called by cross_stage_run with push=1)
+    # already pushes via --output type=image,...,push=true — no separate
+    # nerdctl push needed.
     cross_stage_run "base" "" 1
     cross_stage_run "compiler" "" 1
-    if [ "${DRY_RUN}" -eq 0 ]; then
-      push_compiler
-    fi
   else
     # Local path: ensure base exists locally (try pull first, build if needed),
     # then build compiler locally via the stage graph.

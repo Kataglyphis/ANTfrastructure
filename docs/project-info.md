@@ -21,6 +21,9 @@ Current automated validation in this repository is documentation-focused:
 - Local container validation is currently documented as targeted smoke builds in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md`.
 - The `wrapper-smoke` target in `Dockerfile.package` provides cheap packaging validation before publish.
 - `build-cross-chain.sh --verify-chain` performs a dry-run stale-check of the entire cross chain against registry digests without building anything.
+- `verify-cross-chain.sh` provides the same staleness check as a standalone script with a lighter footprint.
+- `verify-artifact-copy-parity.sh` checks that the artifact COPY lists in `Dockerfile.package` are consistent.
+- `verify-critical-fixes.sh` validates the five critical fixes documented in `AGENTS.md`.
 - `build-cross-chain.sh --dry-run` prints all build commands without executing them, useful for auditing the stage transitions.
 - There is not yet a single end-to-end CI workflow that builds every Linux, accelerator, and Windows image variant on each change.
 

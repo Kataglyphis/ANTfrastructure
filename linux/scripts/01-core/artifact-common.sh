@@ -37,6 +37,18 @@ normalize_target_arches() {
   printf '%s' "${result}"
 }
 
+# Resolve TARGET_ARCHES from the canonical variable name or common aliases.
+# Checks TARGET_ARCHES, then TARGET_ARCH, then ARCHITECTURES, then falls back
+# to the provided default (or CROSS_DEFAULT_ARCHES).
+#
+# Usage: TARGET_ARCHES="$(resolve_arch_list)"                 # uses CROSS_DEFAULT_ARCHES as fallback
+#        TARGET_ARCHES="$(resolve_arch_list "amd64,arm64")"   # custom fallback
+resolve_arch_list() {
+  local fallback="${1:-${CROSS_DEFAULT_ARCHES:-amd64,arm64,riscv64}}"
+  local raw="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${fallback}}}}"
+  normalize_target_arches "${raw}"
+}
+
 # Source focused modules in dependency order.
 #   tag-naming.sh         — cross-chain + runtime tag functions
 #   stage-defs.sh          — declarative cross-lane stage graph

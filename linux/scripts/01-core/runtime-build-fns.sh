@@ -62,7 +62,7 @@ runtime_build_base_image() {
   append_common_build_args build_args
   append_runtime_base_parent_build_arg build_args
 
-  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+  if is_dry_run; then
     log "[DRY RUN] would build base image ${tag} (platform linux/${arch})"
     return 0
   fi
@@ -112,7 +112,7 @@ runtime_build_package_image() {
 
   _runtime_resolve_parent_context base "${arch}" parent_image parent_context_dir build_args
 
-  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+  if is_dry_run; then
     log "[DRY RUN] would build package image ${tag} (platform linux/${arch})"
     return 0
   fi
@@ -148,7 +148,7 @@ _runtime_build_wrapper() {
   local parent_context_dir
   _runtime_resolve_parent_context package "${arch}" _wrapper_parent_image_out parent_context_dir _wrapper_build_args_out
 
-  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+  if is_dry_run; then
     log "[DRY RUN] would build wrapper image ${_wrapper_tag_out} (platform linux/${arch})"
     return 0
   fi

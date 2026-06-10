@@ -7,6 +7,7 @@ _BUILD_HELPERS_LOADED=1
 # Provides:
 #   run()                         — echo + execute (DO NOT use for secret-bearing args)
 #   run_quiet()                   — execute without echoing
+#   is_dry_run()                  — return 0 if DRY_RUN is set to a truthy value
 #   append_buildkit_host_arg()    — add --buildkit-host if BUILDKIT_HOST is set
 #   append_mirror_build_args()    — add USE_FAST_UBUNTU_MIRROR args
 #   append_mirror_build_args_from_env() — convenience wrapper
@@ -28,6 +29,15 @@ run() {
 # secrets (e.g. GITHUB_TOKEN, registry credentials) that must not appear in logs.
 run_quiet() {
   "$@"
+}
+
+# Returns 0 (true) when DRY_RUN is set to a truthy value (1, true, yes).
+# Use this instead of repeating [ "${DRY_RUN:-0}" -eq 1 ] across scripts.
+is_dry_run() {
+  case "${DRY_RUN:-0}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 append_buildkit_host_arg() {

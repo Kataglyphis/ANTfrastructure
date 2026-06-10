@@ -97,7 +97,10 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
 
 # Verify chain freshness without building
-bash linux/scripts/build-cross-chain.sh --verify-chain
+bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64
+
+# Standalone quick chain verification (lighter, no orchestrator flags)
+bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
 
 # Dry-run: print all build commands without executing
 bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,riscv64
@@ -152,6 +155,16 @@ nerdctl manifest create "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cr
   "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-arm64" \
   "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-riscv64"
 nerdctl manifest push --purge "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
+
+# Or use the helper: rebuild just the manifest (no image rebuilds)
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest
+
+# Shorthand: --repair is an alias for --manifest-only
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64 --repair --push-manifest
 ```
 
 ---
@@ -222,7 +235,7 @@ After a successful `build-cross-chain.sh` run:
 ## Repo Map
 
 - `linux/`: Linux Dockerfiles for base, toolchain, SDK, media, Android, package, Torch, and GPU accelerator images. `Dockerfile.torch` is the final wrapper (includes runtime scripts + entrypoint) and the canonical source for shared final-stage elements (entrypoint, labels, runtime scripts, WORKDIR, VOLUME, HEALTHCHECK, kataglyphis user).
-- `linux/scripts/`: helper scripts organized by layer: `01-core/` (shared utilities), `02-toolchain/` (compiler builds), `03-media/` (library builds), `04-runtime/` (entrypoint and env), `05-frameworks/` (TVM, Torch), `06-packaging/` (assembly and validation).
+- `linux/scripts/`: helper scripts organized by layer: `01-core/` (shared utilities), `02-toolchain/` (compiler builds), `03-media/` (library builds), `04-runtime/` (entrypoint and env), `05-frameworks/` (TVM, Torch), `06-packaging/` (assembly and validation). Top-level build orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `build-cross-stage.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`. Verification: `verify-cross-chain.sh`, `verify-critical-fixes.sh`, `verify-artifact-copy-parity.sh`.
 - `docs/`: the canonical build and troubleshooting instructions.
 - `windows/`: Windows container images.
 - `out/`: generated build artifacts (OCI layouts, rootfs exports). Subdirectories: `out/local-oci/android/<arch>`, `out/linux-sdk/<arch>`, `out/linux-runtime/<arch>`. Excluded from Docker build context via `.dockerignore`.
@@ -235,6 +248,8 @@ After a successful `build-cross-chain.sh` run:
 Key shared utilities and where to find them:
 
 - **Architecture resolution:** `platform.sh` provides `canonical_target_arch()` and `canonical_resolve_arch()` as the single source of truth for target architecture resolution. All scripts should use these instead of ad-hoc `dpkg` / `uname -m` chains.
+- **Architecture list resolution:** `artifact-common.sh` provides `resolve_arch_list()` which normalizes `TARGET_ARCHES` from both the canonical variable name and common aliases (`TARGET_ARCH`, `ARCHITECTURES`) with a configurable fallback. Use this in top-level scripts that accept architecture lists instead of repeating 4-level fallback chains.
+- **Dry-run guard:** `build-helpers.sh` provides `is_dry_run()` which returns 0 when `DRY_RUN` is set to a truthy value. Use this instead of repeating `[ "${DRY_RUN:-0}" -eq 1 ]` checks across scripts.
 - **Module loading:** `modules.sh` provides `source_modules_framework()` for the standard "find modules.sh in repo or container layout" bootstrap pattern. Call it after sourcing `modules.sh`.
 - **CC validation:** `validate-compilers.sh` provides `_validate_cc_target()` which centralizes the dumpmachine/ELF/cc1-compile-to-object/link smoke checks used by both `validate_package()` and `validate_smoke()`.
 - **Cross-chain tags:** `tag-naming.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, and the runtime tag functions for consistent naming across orchestrators and helpers.
@@ -247,7 +262,7 @@ Key shared utilities and where to find them:
 - **Download checksums:** SHA256 checksums for Node.js and uv downloads live in `versions.env` (`NODE_AMD64_SHA256`, `NODE_ARM64_SHA256`, `UV_AMD64_SHA256`, `UV_ARM64_SHA256`, `UV_RISCV64_SHA256`).
 - **Runtime stage elements:** `linux/Dockerfile.torch` final stage is the canonical source for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, and OCI labels.
 - **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source` and `package-image` stages carry comments marking the canonical artifact COPY list that must be kept consistent. Run `linux/scripts/verify-artifact-copy-parity.sh` to check.
-- **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds. Use `--dry-run` to audit stage transitions without executing.
+- **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds. The standalone `verify-cross-chain.sh` provides the same check with a lighter footprint. Use `--dry-run` to audit stage transitions without executing.
 - **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper with `BUILDKIT_HOST` support. Use it instead of ad hoc `nerdctl build` command assembly.
 - **CLI parsing:** `cli-parsers.sh` provides `parse_shared_orchestrator_args()` and `parse_shared_runtime_args()` with a dispatch pattern (`_DP_SHIFT`) shared across all build scripts.
 - **Dry-run support:** All orchestrators and runtime helpers accept `--dry-run` to print build commands without executing. The cross-chain orchestrator, cross-stage builder, runtime manifest builder, and runtime artifacts builder all support this flag.
@@ -432,7 +447,7 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 3. Add cross-compilation triple mappings in `platform.sh` (`canonical_target_arch()`)
 4. Add arch-specific download checksums in `versions.env` (Node, uv)
 5. Verify QEMU/binfmt support for the new architecture
-6. Update `TARGET_ARCHES` defaults across all scripts
+6. Update `TARGET_ARCHES` defaults in scripts that use raw fallback chains instead of `resolve_arch_list()`
 
 ### How Tags Should Be Generated
 
@@ -440,7 +455,7 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 - Cross lane: `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag() <arch>`, `cross_media_tag() <arch>`, `cross_android_tag() <arch>`
 - Runtime lane: `runtime_base_tag() <arch>`, `runtime_package_tag() <arch>`, `runtime_wrapper_tag() <arch>`
 - To change the registry prefix, set `IMAGE_REPO` or `IMAGE_REGISTRY_PREFIX`.
-- All scripts that build images accept `--image-repo` to override the default registry prefix. For `build-cross-compiler.sh`, use `--image-repo` (not the old `COMPILER_LOCAL_TAG`/`COMPILER_REMOTE_TAG` env vars for repo switching).
+- All scripts that build images accept `--image-repo` to override the default registry prefix.
 
 ### How Scripts Should Be Structured
 
@@ -452,6 +467,8 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 - Mirror configuration goes through `append_mirror_build_args_from_env()`.
 - Version forwarding goes through `append_version_build_args()`.
 - Architecture normalization goes through `normalize_target_arches()`.
+- Use `resolve_arch_list()` (in `artifact-common.sh`) instead of writing `TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"` chains.
+- Use `is_dry_run()` (in `build-helpers.sh`) instead of `[ "${DRY_RUN:-0}" -eq 1 ]`.
 
 ---
 

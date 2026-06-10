@@ -9,7 +9,7 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 COMPILER_IMAGE="${COMPILER_IMAGE:-${IMAGE_REGISTRY_PREFIX}:cross-compiler-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
-TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"
+TARGET_ARCHES="$(resolve_arch_list)"
 # VULKAN_VERSION comes from versions.env via artifact-common.sh
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-sdk}"
 init_mirror_defaults

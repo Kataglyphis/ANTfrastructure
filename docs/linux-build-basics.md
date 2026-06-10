@@ -56,6 +56,12 @@ for local-only builds.  This eliminates duplicated build/pin logic across the or
 Runtime helpers (`build-runtime-artifacts.sh` and `build-runtime-manifest.sh`) share
 initialization logic via `runtime-flow-common.sh` (sourced after `artifact-common.sh`).
 
+Architecture selection uses `resolve_arch_list()` (in `artifact-common.sh`), which normalizes
+`TARGET_ARCHES` from canonical and alias variables (`TARGET_ARCH`, `ARCHITECTURES`).
+
+Dry-run mode is checked via `is_dry_run()` (in `build-helpers.sh`) instead of inline `DRY_RUN`
+comparisons.
+
 Prefer the orchestrator for full chains:
 ```bash
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
@@ -71,6 +77,22 @@ For standalone compiler builds (same as `--stage compiler` above):
 ```bash
 bash linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
 ```
+
+## Chain Verification
+
+Before a full build, verify cross-chain freshness without building anything:
+
+```bash
+# Standalone — fastest way to check staleness:
+bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
+bash linux/scripts/verify-cross-chain.sh --target-arches arm64
+
+# Via the orchestrator:
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --verify-chain
+```
+
+These resolve registry digests for every stage transition and report if downstream
+images may be stale relative to their parent.
 
 ## Rootless Build Networking (host tuning)
 
@@ -143,7 +165,10 @@ nerdctl build --platform linux/amd64 \
   .
 ```
 
-The runtime helpers use the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag. They still run the Torch stage on the real target platform so the final image includes `/opt/venv`. In cross mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and the final Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels instead of re-resolving the same git sources under QEMU. If a reused cross artifact has an empty `/opt/wheels`, that Torch step now keeps the packages that `uv sync` already resolved instead of uninstalling them and trying to install a literal `/opt/wheels/*.whl` glob. The package stage must keep `/usr/bin/clang` pointed at the copied target-native `/usr/local/llvm-target/bin/clang` on all architectures; do not let it fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`. On all architectures, `/usr/bin/cc` points to the source-built `/opt/gcc-16.1.0/bin/gcc`. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) during the toolchain stage so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary; `Dockerfile.android` swaps it in at the end of the Android stage. On this host, prefer `linux/scripts/build-runtime-artifacts.sh` and `linux/scripts/build-runtime-manifest.sh` over ad hoc `nerdctl build` loops.
+The runtime helpers use the same local-only handoff internally, so   `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag.
+- `build-runtime-manifest.sh --manifest-only` (alias `--repair`) creates/pushes the manifest only,
+  useful for repairing a manifest from existing per-arch wrappers without rebuilding images.
+They still run the Torch stage on the real target platform so the final image includes `/opt/venv`. In cross mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and the final Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels instead of re-resolving the same git sources under QEMU. If a reused cross artifact has an empty `/opt/wheels`, that Torch step now keeps the packages that `uv sync` already resolved instead of uninstalling them and trying to install a literal `/opt/wheels/*.whl` glob. The package stage must keep `/usr/bin/clang` pointed at the copied target-native `/usr/local/llvm-target/bin/clang` on all architectures; do not let it fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`. On all architectures, `/usr/bin/cc` points to the source-built `/opt/gcc-16.1.0/bin/gcc`. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) during the toolchain stage so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary; `Dockerfile.android` swaps it in at the end of the Android stage. On this host, prefer `linux/scripts/build-runtime-artifacts.sh` and `linux/scripts/build-runtime-manifest.sh` over ad hoc `nerdctl build` loops.
 
 When you rebuild a cross SDK artifact from an older `cross-compiler-amd64` base, `linux/Dockerfile.sdk` now forwards the checked-in `LLVM_RELEASE` into `target-clang` so `/opt/llvm-target` is refreshed to the repository pin instead of inheriting a stale base-image environment value.
 

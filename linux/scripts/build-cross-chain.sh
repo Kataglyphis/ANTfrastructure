@@ -156,7 +156,7 @@ _refresh_android_images() {
       log "[stage runtime] android-${arch} built in this run, skip pull"
       continue
     fi
-    if [ "${DRY_RUN}" -eq 1 ]; then
+    if is_dry_run; then
       log "[stage runtime] [DRY RUN] would pull ${android_tag}"
       continue
     fi
@@ -195,7 +195,7 @@ run_runtime_stage() {
   local -a helper_args
   _assemble_runtime_helper_args helper_args
 
-  if [ "${DRY_RUN}" -eq 1 ]; then
+  if is_dry_run; then
     log "[stage runtime] [DRY RUN] would run build-runtime-manifest.sh ${helper_args[*]}"
     return 0
   fi

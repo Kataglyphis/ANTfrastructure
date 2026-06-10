@@ -76,7 +76,7 @@ cross_stage_build_and_push() {
   append_buildkit_host_arg build_cmd
   build_cmd+=("${extra[@]}" "${common_args[@]}" .)
 
-  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+  if is_dry_run; then
     printf '[DRY RUN] '
     printf '%q ' "${build_cmd[@]}"
     printf '\n'
@@ -126,7 +126,7 @@ cross_stage_build_local() {
   append_buildkit_host_arg build_cmd
   build_cmd+=("${extra[@]}" "${common_args[@]}" .)
 
-  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+  if is_dry_run; then
     printf '[DRY RUN] '
     printf '%q ' "${build_cmd[@]}"
     printf '\n'
@@ -176,7 +176,7 @@ cross_stage_resolve_parent_pin() {
     captured="${!parent_pin_varname:-}"
   fi
 
-  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+  if is_dry_run; then
     printf '%s' "${captured:-${parent_tag}@sha256:dry-run-placeholder}"
     return 0
   fi
@@ -292,7 +292,7 @@ cross_stage_run() {
   if [ "${push_flag}" -eq 0 ]; then
     return 0
   fi
-  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+  if is_dry_run; then
     log "[stage ${label}] [DRY RUN] would pin ${tag}"
     return 0
   fi

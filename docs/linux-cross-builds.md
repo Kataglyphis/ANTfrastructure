@@ -21,7 +21,7 @@ Fastest entry point:
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`). For example: `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
 
-The helper script only uses `nerdctl`. It first tries to reuse a local `ghcr.io/kataglyphis/kataglyphis_beschleuniger:base`, then tries to pull that tag, and if that fails it rebuilds the base image locally before building `ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64`. It only pushes when you pass `--push`. Internally the script delegates to the shared stage graph (`stage-defs.sh`) and build helpers — the same infrastructure used by the full orchestrator. In `BUILD_MODE=cross`, the compiler image builds GCC 16 from source into `/opt/gcc-16.1.0` for the amd64 host compiler and the target-prefixed `aarch64-linux-gnu-*` and `riscv64-linux-gnu-*` toolchains.
+The helper script only uses `nerdctl`. It first tries to reuse a local image, then tries to pull from the registry, and if that fails it rebuilds the base image locally before building the compiler image. It only pushes when you pass `--push`. Internally the script delegates to the shared stage graph (`stage-defs.sh`) and build helpers — the same infrastructure used by the full orchestrator. The `--image-repo` flag switches the registry prefix; there are no legacy env var overrides.
 
 If you only need the downstream SDK or media cross stages and want to reuse the published compiler image, pull it first:
 
@@ -137,19 +137,25 @@ bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
 bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push
 ```
 
-### Stale-check (`--verify-chain`)
+### Stale-check (`--verify-chain` and `verify-cross-chain.sh`)
 
 Before a full build, verify whether downstream registry images are stale without
-performing any builds:
+performing any builds.  Two entry points:
 
 ```bash
+# Via the orchestrator (same process):
 ./linux/scripts/build-cross-chain.sh \
   --target-arches amd64,arm64,riscv64 \
   --verify-chain
+
+# Standalone (lighter, no orchestrator flags needed):
+bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
+bash linux/scripts/verify-cross-chain.sh --target-arches arm64
 ```
 
-This resolves all upstream registry digests and reports mismatches so you can
-decide whether a full rebuild is needed.
+Both resolve all upstream registry digests and report mismatches so you can
+decide whether a full rebuild is needed.  The standalone script is useful for
+quick checks without loading the full orchestrator.
 
 ### Why the handoff must be pinned by digest
 
@@ -219,154 +225,32 @@ images still pin the old digest. For example:
 - For partial runs after a compiler update, always use `--from-stage sdk` as the
   minimum starting point.
 
-## Manual staged build with plain `nerdctl` (low-level reference)
+## Manual staged build (low-level reference)
 
 For full hands-off builds, prefer the orchestrator `build-cross-chain.sh` with
-digest-pinned stage handoff. The manual `nerdctl` commands below are a low-level
-reference using mutable tags with `--pull=true` as a lighter defense against
-stale base reuse. Run these from the repository root.
+digest-pinned stage handoff.  Each cross stage maps to one Dockerfile and one
+tag; the orchestrator and `build-cross-stage.sh` handle the per-arch fan-out,
+build arg assembly, and pin capture for you.  Use the helpers unless you are
+debugging a specific stage in isolation.
 
-**Cross lane** (all `linux/amd64`):
+If you must drive individual builds manually, refer to the helper scripts for
+the canonical argument set (or run them with `--dry-run` to print the commands
+they would execute).  The essential pattern for each cross-lane stage is:
 
 ```bash
-set -o pipefail
-LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-cross-manual"
-mkdir -p "${LOG_DIR}"
-
-# Stage 1: base
-nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
-  -f linux/Dockerfile.base \
-  --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-  . 2>&1 | tee "${LOG_DIR}/base.log"
-
-# Stage 2: compiler (shared, one build for all arches)
-nerdctl build --platform linux/amd64 --pull=true -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64 \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64,push=true' \
-  -f linux/Dockerfile.toolchain \
-  --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
+nerdctl build --platform linux/amd64 --pull=true \
+  --output 'type=image,name=<tag>,push=true' \
+  -f <dockerfile> \
+  --build-arg BASE_IMAGE=<parent_tag_or_pinned_digest> \
   --build-arg BUILD_MODE=cross \
-  --build-arg CROSS_TARGETS=amd64,arm64,riscv64 \
-  . 2>&1 | tee "${LOG_DIR}/cross-compiler-amd64.log"
-
-# Stages 3-5: sdk -> media -> android (per architecture)
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform linux/amd64 --pull=true -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-${target_arch}" \
-    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-${target_arch},push=true" \
-    -f linux/Dockerfile.sdk \
-    --build-arg USE_FAST_UBUNTU_MIRROR=true \
-    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-    --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64 \
-    --build-arg BUILD_MODE=cross \
-    --build-arg TARGET_ARCH="${target_arch}" \
-    . 2>&1 | tee "${LOG_DIR}/cross-sdk-${target_arch}.log"
-done
-
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform linux/amd64 --pull=true -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-media-${target_arch}" \
-    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-media-${target_arch},push=true" \
-    -f linux/Dockerfile.media \
-    --build-arg USE_FAST_UBUNTU_MIRROR=true \
-    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-    --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-${target_arch}" \
-    --build-arg BUILD_MODE=cross \
-    --build-arg TARGET_ARCH="${target_arch}" \
-    . 2>&1 | tee "${LOG_DIR}/cross-media-${target_arch}.log"
-done
-
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform linux/amd64 --pull=true -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${target_arch}" \
-    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${target_arch},push=true" \
-    -f linux/Dockerfile.android \
-    --build-arg USE_FAST_UBUNTU_MIRROR=true \
-    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-    --build-arg BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-media-${target_arch}" \
-    --build-arg BUILD_MODE=cross \
-    --build-arg TARGET_ARCH="${target_arch}" \
-    . 2>&1 | tee "${LOG_DIR}/cross-android-${target_arch}.log"
-done
+  [--build-arg TARGET_ARCH=<arch> if per-arch] \
+  .
 ```
 
-**Runtime lane** (per-arch, target platform via QEMU/binfmt for foreign arches).
-Prefer the runtime helpers for this path; the manual sequence is shown for clarity:
-
-```bash
-IMAGE_REPO=ghcr.io/kataglyphis/kataglyphis_beschleuniger
-
-MIRROR_ARGS=(
-  --build-arg USE_FAST_UBUNTU_MIRROR=true
-  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
-  --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/
-)
-
-sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
-
-# Stage 6a: per-arch base (target platform)
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform "linux/${target_arch}" \
-    -t "${IMAGE_REPO}:latest-cross-base-${target_arch}" \
-    -f linux/Dockerfile.base \
-    "${MIRROR_ARGS[@]}" \
-    . && \
-  nerdctl push "${IMAGE_REPO}:latest-cross-base-${target_arch}"
-done
-
-# Stage 6b: package (copies cross-android artifacts onto target-native base)
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform "linux/${target_arch}" \
-    -t "${IMAGE_REPO}:latest-cross-package-${target_arch}" \
-    -f linux/Dockerfile.package \
-    --build-arg BASE_IMAGE="${IMAGE_REPO}:latest-cross-base-${target_arch}" \
-    --build-arg ARTIFACT_IMAGE="${IMAGE_REPO}:cross-android-${target_arch}" \
-    --build-arg ARTIFACT_PLATFORM=linux/amd64 \
-    --build-arg BUILD_MODE=cross \
-    --build-arg TARGET_ARCH="${target_arch}" \
-    "${MIRROR_ARGS[@]}" \
-    . && \
-  nerdctl push "${IMAGE_REPO}:latest-cross-package-${target_arch}"
-done
-
-# Stage 6c: wrapper (torch venv + runtime scripts + entrypoint)
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform "linux/${target_arch}" \
-    -t "${IMAGE_REPO}:latest-cross-${target_arch}" \
-    -f linux/Dockerfile.torch \
-    --build-arg BASE_IMAGE="${IMAGE_REPO}:latest-cross-package-${target_arch}" \
-    --build-arg TORCH_APP_MODE=all \
-    --build-arg BUILD_MODE=native \
-    --build-arg TARGET_ARCH="${target_arch}" \
-    . && \
-  nerdctl push "${IMAGE_REPO}:latest-cross-${target_arch}"
-done
-
-# Stage 6d: multi-arch manifest
-nerdctl manifest rm "${IMAGE_REPO}:latest-cross" >/dev/null 2>&1 || true
-nerdctl manifest create "${IMAGE_REPO}:latest-cross" \
-  "${IMAGE_REPO}:latest-cross-amd64" \
-  "${IMAGE_REPO}:latest-cross-arm64" \
-  "${IMAGE_REPO}:latest-cross-riscv64"
-nerdctl manifest push --purge "${IMAGE_REPO}:latest-cross"
-nerdctl manifest inspect "${IMAGE_REPO}:latest-cross"
-```
-
-**Venv export** (optional):
-```bash
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform "linux/${target_arch}" \
-    -f linux/Dockerfile.torch \
-    --target venv-export \
-    --output "type=local,dest=out/torch-venv/${target_arch}" \
-    --build-arg USE_FAST_UBUNTU_MIRROR=true \
-    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-    --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \
-    --build-arg BASE_IMAGE="${IMAGE_REPO}:latest-cross-package-${target_arch}" \
-    --build-arg TORCH_APP_MODE=install \
-    . 2>&1 | tee "${LOG_DIR}/torch-venv-${target_arch}.log"
-done
-```
+For the runtime lane, prefer `build-runtime-manifest.sh`.  The helper handles
+the `base -> package -> torch` chain and multi-arch manifest creation.
+`--manifest-only` / `--repair` can recreate the manifest from existing per-arch
+wrappers without rebuilding any images.
 
 `linux/Dockerfile.sdk` serves both the sequential SDK build and the amd64-hosted cross SDK artifact lane.
 The cross path consumes one `TARGET_ARCH` per `nerdctl build`, fanned out per architecture.
@@ -408,28 +292,12 @@ mkdir -p "${LOG_DIR}"
   2>&1 | tee "${LOG_DIR}/build-sdk-artifacts.log"
 ```
 
-Build all three SDK artifact targets directly with `nerdctl` and keep one log per target:
-
+For individual SDK artifact builds, use `build-cross-stage.sh`:
 ```bash
-set -o pipefail
-LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-sdk-artifacts-direct"
-mkdir -p "${LOG_DIR}"
-
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform linux/amd64 \
-    -t "ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-${target_arch}" \
-    --output "type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-${target_arch},push=true" \
-    -f linux/Dockerfile.sdk \
-    --build-arg USE_FAST_UBUNTU_MIRROR=true \
-    --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-    --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64 \
-    --build-arg BUILD_MODE=cross \
-    --build-arg TARGET_ARCH="${target_arch}" \
-    . 2>&1 | tee "${LOG_DIR}/cross-sdk-${target_arch}.log"
+for arch in amd64 arm64 riscv64; do
+  bash linux/scripts/build-cross-stage.sh --stage sdk --arch "${arch}" --push
 done
 ```
-
-Use `--fast-ubuntu-mirror-url URL` if you want to override the default mirror, for example `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
 
 If you want this helper to reuse the published compiler image instead of bootstrapping it locally, pull the compiler tag first:
 
@@ -470,64 +338,19 @@ For day-to-day work on this host, prefer the helper scripts below over the long 
 
 The main repo-root Linux Dockerfiles also now carry Dockerfile-specific ignore files so helper/manual cross builds do not send `linux/webserver/` and the large exported `out/*` trees back through the default build context on every stage.
 
-Run the final publish flow directly with `nerdctl` only when you intentionally need the fully manual path. The per-arch `latest-cross-base-*`, `latest-cross-package-*`, and `latest-cross-*` tags are internal publish tags used to assemble the public `latest-cross` manifest:
+The per-arch `latest-cross-base-*`, `latest-cross-package-*`, and `latest-cross-*`
+tags are internal publish tags used to assemble the public `latest-cross` manifest.
+Prefer the runtime helpers:
 
 ```bash
-IMAGE_REPO=ghcr.io/kataglyphis/kataglyphis_beschleuniger
-
-MIRROR_ARGS=(
-  --build-arg USE_FAST_UBUNTU_MIRROR=true
-  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/
-  --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/
-)
-
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform "linux/${target_arch}" \
-    -t "${IMAGE_REPO}:latest-cross-base-${target_arch}" \
-    -f linux/Dockerfile.base \
-    "${MIRROR_ARGS[@]}" \
-    . && \
-  nerdctl push "${IMAGE_REPO}:latest-cross-base-${target_arch}"
-done
-
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform "linux/${target_arch}" \
-    -t "${IMAGE_REPO}:latest-cross-package-${target_arch}" \
-    -f linux/Dockerfile.package \
-    --build-arg BASE_IMAGE="${IMAGE_REPO}:latest-cross-base-${target_arch}" \
-    --build-arg ARTIFACT_IMAGE="${IMAGE_REPO}:cross-android-${target_arch}" \
-    --build-arg ARTIFACT_PLATFORM=linux/amd64 \
-    --build-arg BUILD_MODE=cross \
-    --build-arg TARGET_ARCH="${target_arch}" \
-    "${MIRROR_ARGS[@]}" \
-    . && \
-  nerdctl push "${IMAGE_REPO}:latest-cross-package-${target_arch}"
-done
-
-for target_arch in amd64 arm64 riscv64; do
-  nerdctl build --platform "linux/${target_arch}" \
-    -t "${IMAGE_REPO}:latest-cross-${target_arch}" \
-    -f linux/Dockerfile.torch \
-    --build-arg BASE_IMAGE="${IMAGE_REPO}:latest-cross-package-${target_arch}" \
-    --build-arg TORCH_APP_MODE=all \
-    --build-arg BUILD_MODE=native \
-    --build-arg TARGET_ARCH="${target_arch}" \
-    . && \
-  nerdctl push "${IMAGE_REPO}:latest-cross-${target_arch}"
-done
-
-nerdctl manifest rm "${IMAGE_REPO}:latest-cross" >/dev/null 2>&1 || true
-nerdctl manifest create "${IMAGE_REPO}:latest-cross" \
-  "${IMAGE_REPO}:latest-cross-amd64" \
-  "${IMAGE_REPO}:latest-cross-arm64" \
-  "${IMAGE_REPO}:latest-cross-riscv64"
-nerdctl manifest push --purge "${IMAGE_REPO}:latest-cross"
-nerdctl manifest inspect "${IMAGE_REPO}:latest-cross"
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64 \
+  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
+  --push
 ```
 
-If you do not need the mirror override, remove `MIRROR_ARGS` and the `"${MIRROR_ARGS[@]}"` arguments from the base and package build loops.
-
-This flow still adds a second lane. It does not modify the current QEMU-based multi-platform build commands above.
+Run with `--dry-run` to print the commands it would execute without building.
 
 The same package handoff now works for `linux/Dockerfile.torch` too. Build the heavy media/android payloads with the amd64-hosted cross compiler first, then feed `cross-android-${target_arch}` through `linux/Dockerfile.package`, build `linux/Dockerfile.torch` on `linux/${target_arch}` (which now includes the runtime scripts + entrypoint directly). `TORCH_APP_MODE=install` keeps that QEMU Torch stage focused on creating `/opt/venv`, and the dedicated `venv-export` target lets you export only `/opt/venv` for later `COPY` into a matching real target image.
 
@@ -550,6 +373,7 @@ The helper scripts now follow the same runtime path too:
 - Each local stage context is deleted as soon as the downstream build finishes consuming it, which keeps non-push runs off `/tmp` and reduces peak disk usage.
 - `build-runtime-artifacts.sh --push` pushes the final per-architecture wrapper images even when the helper keeps `base -> package -> torch` in local stage contexts.
 - `build-runtime-manifest.sh --push` is shorthand for `--push-images --push-manifest`.
+- `build-runtime-manifest.sh --manifest-only` (or its alias `--repair`) creates/pushes the manifest only without rebuilding any images. This is the recommended way to repair a :latest-cross manifest from existing per-arch wrapper images.
 - Use `--push-all` only when you also want the `base`, `package`, and `torch` intermediates pushed.
 
 Verified local foreign-architecture rebuild on this host:
