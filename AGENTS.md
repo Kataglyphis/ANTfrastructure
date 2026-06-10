@@ -90,11 +90,17 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
 # Compiler image only (amd64-hosted, contains cross toolchains for all arches)
 ./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
 
+# Compiler with custom image repo (matches --image-repo on the orchestrator)
+./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push
+
 # Single cross stage (e.g., rebuild just the sdk for arm64)
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
 
 # Verify chain freshness without building
 bash linux/scripts/build-cross-chain.sh --verify-chain
+
+# Dry-run: print all build commands without executing
+bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,riscv64
 
 # Cheap packaging validation before publish (see docs/linux-cross-builds.md)
 # Uses the `wrapper-smoke` target in Dockerfile.package
@@ -133,6 +139,11 @@ bash linux/scripts/build-runtime-manifest.sh \
 bash linux/scripts/build-runtime-artifacts.sh \
   --image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
   --target-arches amd64,arm64,riscv64
+
+# Dry-run: print what would be built without executing
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64 --dry-run
 
 # Manifest repair (rebuild manifest from existing per-arch wrappers)
 nerdctl manifest rm "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" >/dev/null 2>&1 || true
@@ -229,9 +240,10 @@ Key shared utilities and where to find them:
 - **Download checksums:** SHA256 checksums for Node.js and uv downloads live in `versions.env` (`NODE_AMD64_SHA256`, `NODE_ARM64_SHA256`, `UV_AMD64_SHA256`, `UV_ARM64_SHA256`, `UV_RISCV64_SHA256`).
 - **Runtime stage elements:** `linux/Dockerfile.torch` final stage is the canonical source for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, and OCI labels.
 - **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source` and `package-image` stages carry comments marking the canonical artifact COPY list that must be kept consistent. Run `linux/scripts/verify-artifact-copy-parity.sh` to check.
-- **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds.
+- **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds. Use `--dry-run` to audit stage transitions without executing.
 - **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper with `BUILDKIT_HOST` support. Use it instead of ad hoc `nerdctl build` command assembly.
 - **CLI parsing:** `cli-parsers.sh` provides `parse_shared_orchestrator_args()` and `parse_shared_runtime_args()` with a dispatch pattern (`_DP_SHIFT`) shared across all build scripts.
+- **Dry-run support:** All orchestrators and runtime helpers accept `--dry-run` to print build commands without executing. The cross-chain orchestrator, cross-stage builder, runtime manifest builder, and runtime artifacts builder all support this flag.
 
 ### Module Loading Order
 
@@ -418,6 +430,7 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 - Cross lane: `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag() <arch>`, `cross_media_tag() <arch>`, `cross_android_tag() <arch>`
 - Runtime lane: `runtime_base_tag() <arch>`, `runtime_package_tag() <arch>`, `runtime_wrapper_tag() <arch>`
 - To change the registry prefix, set `IMAGE_REPO` or `IMAGE_REGISTRY_PREFIX`.
+- All scripts that build images accept `--image-repo` to override the default registry prefix. For `build-cross-compiler.sh`, use `--image-repo` (not the old `COMPILER_LOCAL_TAG`/`COMPILER_REMOTE_TAG` env vars for repo switching).
 
 ### How Scripts Should Be Structured
 

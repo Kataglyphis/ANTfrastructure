@@ -11,7 +11,7 @@ set -euo pipefail
 # WHY THIS EXISTS
 # ---------------
 # Each cross stage is a separate `nerdctl build` whose next stage does
-# `FROM ${BASE_IMAGE}`. If BASE_IMAGE is a mutable tag (e.g. :media-cross-arm64)
+# `FROM ${BASE_IMAGE}`. If BASE_IMAGE is a mutable tag (e.g. :cross-media-arm64)
 # the downstream build can silently consume a STALE locally-cached image instead
 # of the freshly built/pushed one, because:
 #   * `--output type=image,...,push=true` pushes the new digest to the registry

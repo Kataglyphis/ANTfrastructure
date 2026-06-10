@@ -73,7 +73,7 @@ RUSTC_WRAPPER=""
 
 **Solution:**
 
-- `linux/Dockerfile.sdk` forwards the checked-in `LLVM_RELEASE` into the `target-clang` step so that build does not inherit a stale `LLVM_RELEASE` environment variable from an older `compiler-cross-amd64` base image.
+- `linux/Dockerfile.sdk` forwards the checked-in `LLVM_RELEASE` into the `target-clang` step so that build does not inherit a stale `LLVM_RELEASE` environment variable from an older `cross-compiler-amd64` base image.
 - Rebuild the SDK artifact after updating or selecting the desired compiler base image.
 
 ### buildctl or ctr permission denied in rootless troubleshooting

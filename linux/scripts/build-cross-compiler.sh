@@ -7,10 +7,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:base}"
-BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:base}"
-COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:cross-compiler-amd64}"
-COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:cross-compiler-amd64}"
+IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
+BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-${IMAGE_REPO}:base}"
+BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-${IMAGE_REPO}:base}"
+COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-${IMAGE_REPO}:cross-compiler-amd64}"
+COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-${IMAGE_REPO}:cross-compiler-amd64}"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 init_mirror_defaults
 
@@ -28,6 +29,7 @@ image first and then uses it for the compiler build.
 
 Options:
   --cross-targets LIST   Comma-separated target list (default: amd64,arm64,riscv64)
+  --image-repo REPO      Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
   --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during Docker builds
   --fast-ubuntu-mirror-url URL
                           Mirror URL to use with --fast-ubuntu-mirror
@@ -83,7 +85,7 @@ main() {
     local _dispatch_rc=0
     dispatch_parsed_args parse_shared_orchestrator_args \
       CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL _ignored_repo _ignored_vulkan PUSH_IMAGE \
+      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _ignored_vulkan PUSH_IMAGE \
       "$1" "${2:-}" || _dispatch_rc=$?
     case $_dispatch_rc in
       255) usage; exit 0 ;;
@@ -108,6 +110,12 @@ main() {
         ;;
     esac
   done
+
+  # Refresh tag defaults now that IMAGE_REPO may have been changed via --image-repo.
+  BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-${IMAGE_REPO}:base}"
+  BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-${IMAGE_REPO}:base}"
+  COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-${IMAGE_REPO}:cross-compiler-amd64}"
+  COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-${IMAGE_REPO}:cross-compiler-amd64}"
 
   cd "${REPO_ROOT}"
 

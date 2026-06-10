@@ -22,6 +22,7 @@ PUSH_MANIFEST=0
 PUSH_INTERMEDIATE_IMAGES=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
+DRY_RUN=0
 PARALLEL_ARCHS=0
 MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
@@ -43,6 +44,7 @@ Options:
   --skip-manifest              Build images only; do not create a manifest locally
   --manifest-only              Create/push the manifest only; skip all image builds
   --push                       Short for --push-images --push-manifest (intermediates stay local)
+  --dry-run                    Print build commands without executing them
   --parallel-archs              Build per-architecture images in parallel
   --max-parallel-archs N        Max concurrent arch builds (default: 4)
   -h, --help                   Show this help text
@@ -75,6 +77,11 @@ create_manifest() {
   for arch in ${ARCHITECTURES//,/ }; do
     refs+=("$(runtime_wrapper_tag "${arch}")")
   done
+
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    log "[DRY RUN] would create manifest ${IMAGE_NAME} from refs: ${refs[*]}"
+    return 0
+  fi
 
   if "${NERDCTL_BIN}" manifest inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
     "${NERDCTL_BIN}" manifest rm "${IMAGE_NAME}" >/dev/null 2>&1 || true
@@ -135,6 +142,10 @@ main() {
         PUSH_INTERMEDIATE_IMAGES=1
         shift
         ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
       --parallel-archs)
         PARALLEL_ARCHS=1
         shift
@@ -153,6 +164,7 @@ main() {
     err "--image is required"
   fi
 
+  export DRY_RUN
   runtime_post_parse_setup ARCHITECTURES "${IMAGE_NAME}"
 
   if [ "${BUILD_IMAGES}" -eq 1 ]; then

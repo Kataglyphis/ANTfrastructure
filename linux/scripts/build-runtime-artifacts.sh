@@ -19,6 +19,7 @@ TORCH_APP_MODE="${TORCH_APP_MODE:-}"
 init_mirror_defaults
 PUSH_IMAGES=0
 PUSH_INTERMEDIATE_IMAGES=0
+DRY_RUN=0
 PARALLEL_ARCHS=0
 MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
@@ -37,6 +38,7 @@ Options:
   --image-prefix TAG            Prefix for built wrapper image tags
   --push                        Push wrapper images after export (intermediates stay local)
   --push-all                    Push ALL intermediate images too (base/package)
+  --dry-run                    Print build commands without executing them
   --parallel-archs              Build per-architecture images in parallel
   --max-parallel-archs N        Max concurrent arch builds (default: 4)
   -h, --help                    Show this help text
@@ -115,6 +117,10 @@ main() {
         PUSH_INTERMEDIATE_IMAGES=1
         shift
         ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
       --parallel-archs)
         PARALLEL_ARCHS=1
         shift
@@ -122,13 +128,14 @@ main() {
       --max-parallel-archs)
         MAX_PARALLEL_ARCHS="$2"
         shift 2
-        ;;
+        ;; 
       *)
         err "Unknown option: $1"
         ;;
     esac
   done
 
+  export DRY_RUN
   runtime_post_parse_setup TARGET_ARCHES
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
