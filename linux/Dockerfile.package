@@ -15,7 +15,6 @@ ARG TARGET_ARCH
 ARG TARGETARCH
 ARG TARGETPLATFORM
 ARG ARTIFACT_PLATFORM=${TARGETPLATFORM}
-ARG ARTIFACT_SOURCE_STAGE=artifact-source-image
 ARG PACKAGE_BASE_STAGE=package-image
 ARG ENABLE_NVIDIA=false
 ARG ENABLE_AMD=false
@@ -38,33 +37,7 @@ ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
-FROM --platform=${ARTIFACT_PLATFORM} ${ARTIFACT_IMAGE} AS artifact-source-image
-
-FROM ${BASE_IMAGE} AS artifact-source-local
-ARG ONNXRUNTIME_OUTPUT_DIR
-ARG OPENCV_OUTPUT_DIR
-ARG GSTREAMER_PREFIX
-ARG GCC_VERSION
-SHELL ["bash", "-lc"]
-# Artifact COPY list — keep in sync with package-image stage below.
-# Run linux/scripts/verify-artifact-copy-parity.sh to check consistency.
-COPY --from=runtime_artifact ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
-COPY --from=runtime_artifact ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
-COPY --from=runtime_artifact /opt/ffmpeg /opt/ffmpeg
-COPY --from=runtime_artifact ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
-COPY --from=runtime_artifact /opt/libcamera /opt/libcamera
-COPY --from=runtime_artifact /opt/wheels /opt/wheels
-COPY --from=runtime_artifact /opt/vulkan /opt/vulkan
-COPY --from=runtime_artifact /opt/android-sdk /opt/android-sdk
-COPY --from=runtime_artifact /opt/android /opt/android
-COPY --from=runtime_artifact /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
-COPY --from=runtime_artifact /opt/llvm-target /opt/llvm-target
-RUN --mount=type=bind,from=runtime_artifact,source=/,target=/runtime_artifact,ro \
-    --mount=type=bind,source=linux/scripts/06-packaging/copy-media-payloads.sh,target=/tmp/copy-media-payloads.sh,ro \
-    set -euo pipefail; \
-    SRCPREFIX=/runtime_artifact bash /tmp/copy-media-payloads.sh
-
-FROM ${ARTIFACT_SOURCE_STAGE} AS artifact-source
+FROM --platform=${ARTIFACT_PLATFORM} ${ARTIFACT_IMAGE} AS artifact-source
 
 ARG BUILD_MODE
 ARG TARGET_ARCH
@@ -91,9 +64,6 @@ ARG GCC_VERSION
 
 SHELL ["bash", "-lc"]
 
-# Copy only the selected target-built payload into the final package layer.
-# Keep in sync with artifact-source-local COPY list above.
-# Run linux/scripts/verify-artifact-copy-parity.sh to check consistency.
 COPY --from=artifact-source ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
 COPY --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --from=artifact-source /opt/ffmpeg /opt/ffmpeg

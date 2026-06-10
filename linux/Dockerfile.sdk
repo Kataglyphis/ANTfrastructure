@@ -31,11 +31,8 @@ ENV BUILD_MODE=${BUILD_MODE} \
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
 
-# 01-core/ scripts already exist from the compiler base image
-# (Dockerfile.toolchain copies them into /opt/scripts/core/).
-# Only 02-toolchain/ needs to be added here.
-COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
-# (Provides llvm.sh with install_target_clang_toolchain, setup-dependencies.sh)
+# 01-core/ and 02-toolchain/ scripts are inherited from the compiler base image.
+# Nothing additional needs to be copied here.
 
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup

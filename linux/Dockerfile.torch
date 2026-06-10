@@ -45,9 +45,6 @@ ENV VIRTUAL_ENV=${VENV} \
 
 WORKDIR /opt/Kataglyphis-Orchestr-ANT-ion
 
-FROM scratch AS venv-export
-COPY --from=torch /opt/venv /opt/venv
-
 FROM torch AS final
 
 ARG BUILD_TYPE=Release

@@ -54,7 +54,7 @@ runtime_build_base_image() {
   append_runtime_base_parent_build_arg build_args
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=true \
+    --pull=false \
     --platform "linux/${arch}" \
     -t "${tag}" \
     -f "${BASE_DOCKERFILE_PATH}" \
@@ -87,18 +87,11 @@ runtime_build_package_image() {
   append_runtime_accelerator_build_args build_args
 
   if runtime_use_local_artifact_context; then
-    artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-dir}"
+    artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-oci}"
     artifact_context_ref="$(runtime_artifact_context_ref "${arch}" "${artifact_context_mode}")"
-    if [ "${artifact_context_mode}" = "dir" ]; then
-      artifact_image="scratch"
-      package_base_stage="artifact-source-local"
-      build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
-      build_args+=(--build-arg "ARTIFACT_SOURCE_STAGE=artifact-source-local")
-    else
-      artifact_image="runtime_artifact"
-      package_base_stage="package-image"
-      build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
-    fi
+    artifact_image="runtime_artifact"
+    package_base_stage="package-image"
+    build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
   else
     artifact_image="$(runtime_artifact_image_ref "${arch}")"
     package_base_stage="package-image"

@@ -114,6 +114,20 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \
     bash /opt/scripts/python/build_python.sh "${PYTHON_VERSION}"
 
+# Pre-create the shared Python virtual environment so downstream images
+# (media, sdk) can skip the costly uv venv + pip install step.
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    set -euo pipefail; \
+    VIRTUAL_ENV=/opt/python/.venv; \
+    uv venv --seed --python /usr/local/bin/python3 "${VIRTUAL_ENV}"; \
+    uv pip install --python "${VIRTUAL_ENV}/bin/python" \
+        wheel setuptools numpy meson ninja cmake packaging
+
+ENV VIRTUAL_ENV=/opt/python/.venv \
+    PATH=/opt/python/.venv/bin:${PATH} \
+    UV_PYTHON=/opt/python/.venv/bin/python \
+    MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python
+
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 \

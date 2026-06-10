@@ -25,11 +25,6 @@ cross_compiler_tag()          { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREF
 cross_sdk_tag()               { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-sdk-${1}"; }
 cross_media_tag()             { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-media-${1}"; }
 cross_android_tag()           { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-android-${1}"; }
-# Deprecated aliases kept for external callers that may reference the old names.
-cross_compiler_tag_legacy()   { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:compiler-cross-amd64"; }
-cross_sdk_tag_legacy()        { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:sdk-artifact-${1}"; }
-cross_media_tag_legacy()      { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:media-cross-${1}"; }
-cross_android_tag_legacy()    { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:android-cross-${1}"; }
 
 # ==============================================================================
 # Runtime tag name functions.
