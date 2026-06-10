@@ -17,8 +17,8 @@ set -euo pipefail
 
 _swap_gcc_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${_swap_gcc_script_dir}/../01-core/source-platform.sh"
-_source_platform_from "${_swap_gcc_script_dir}"
+source "${_swap_gcc_script_dir}/../01-core/modules.sh"
+source_module platform.sh
 
 main() {
   : "${TARGET_ARCH:?TARGET_ARCH is required}"

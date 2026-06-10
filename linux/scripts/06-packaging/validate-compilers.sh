@@ -20,8 +20,8 @@ set -euo pipefail
 
 _vcs_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${_vcs_script_dir}/../01-core/source-platform.sh"
-_source_platform_from "${_vcs_script_dir}"
+source "${_vcs_script_dir}/../01-core/modules.sh"
+source_module platform.sh
 
 validate_resolve_arch() {
   canonical_target_arch "${1:-${TARGET_ARCH:-}}"

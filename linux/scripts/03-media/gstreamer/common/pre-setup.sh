@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euo pipefailo pipefail
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
@@ -265,7 +265,7 @@ if [ -n "${gi_cross_wrapper_arch}" ]; then
 
   cat > "${gi_ldd_wrapper}" <<EOF
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 
 binary="\$1"
 [ -n "\${binary:-}" ] || exit 2
@@ -285,7 +285,7 @@ EOF
 
   cat > "${gi_ldd_default}" <<EOF
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 
 host_ldd="${gi_host_ldd}"
 binary=""
@@ -322,7 +322,7 @@ EOF
 
     cat > "${wrapper_path}" <<EOF
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 
 wrapper_mode='${mode}'
 
@@ -472,7 +472,7 @@ EOF
 
   cat > "${gi_scanner_wrapper}" <<EOF
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 exec "${gi_scanner:-/bin/g-ir-scanner}" \
   --use-binary-wrapper="${gi_binary_wrapper}" \
   --use-ldd-wrapper="${gi_ldd_wrapper}" \
@@ -482,14 +482,14 @@ EOF
 
   cat > "${gi_scanner_triplet_wrapper}" <<EOF
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 exec "${gi_scanner_wrapper}" "\$@"
 EOF
   chmod +x "${gi_scanner_triplet_wrapper}"
 
   cat > "${gi_scanner_default}" <<EOF
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 exec "${gi_scanner_wrapper}" "\$@"
 EOF
   chmod +x "${gi_scanner_default}"

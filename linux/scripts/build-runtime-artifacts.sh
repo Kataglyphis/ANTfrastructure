@@ -20,7 +20,7 @@ init_mirror_defaults
 PUSH_IMAGES=0
 PUSH_INTERMEDIATE_IMAGES=0
 PARALLEL_ARCHS=0
-MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
 usage() {
   cat <<'EOF'
@@ -58,29 +58,8 @@ EOF
 Environment overrides:
   OUTPUT_ROOT                   Root directory for exported rootfs artifacts
   IMAGE_PREFIX                  Prefix for wrapper image tags
-  NERDCTL_BIN                  nerdctl executable to use
-  BUILDKIT_HOST                Optional BuildKit socket/address passed to nerdctl build
-  TARGET_ARCHES                Comma-separated architecture list
-  TARGET_ARCH                  Alias for TARGET_ARCHES
-  ARCHITECTURES                Alias for TARGET_ARCHES
-  RUNTIME_USE_LOCAL_CONTEXT_CHAIN
-                                true/false/auto (default: auto)
-  RUNTIME_CONTEXT_ROOT         Temporary directory root for local stage handoff
-  BASE_DOCKERFILE_PATH         Base Dockerfile path
-  BASE_PARENT_IMAGE            Optional parent image passed as BASE_IMAGE to the
-                                selected base Dockerfile (for example a GPU base)
-  PACKAGE_DOCKERFILE_PATH      Package Dockerfile path
-  TORCH_DOCKERFILE_PATH        Torch Dockerfile path
-  WRAPPER_DOCKERFILE_PATH      Final wrapper Dockerfile path
-  TORCH_APP_MODE               TORCH_APP_MODE passed to linux/Dockerfile.torch
-  ENABLE_NVIDIA                Optional accelerator flag passed to package/torch/wrapper builds
-  ENABLE_AMD                   Optional accelerator flag passed to package/torch/wrapper builds
-  ONNX_PACKAGE                 Optional torch ONNX package override
-  PYTORCH_EXTRA                Optional torch PyTorch extra override
-  USE_FAST_UBUNTU_MIRROR       Set to true to replace archive/security/ports Ubuntu mirrors
-  FAST_UBUNTU_MIRROR_URL       Mirror URL used when the fast mirror is enabled
-  FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
 EOF
+  runtime_shared_usage_env_overrides
 }
 
 _build_one_artifact() {

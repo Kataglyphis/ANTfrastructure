@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/../01-core/modules.sh" 2>/dev/null || true
+if declare -F pass >/dev/null 2>&1; then
+  :  # logging.sh already sourced via modules hook
+else
+  pass() { printf '  PASS %s\n' "$*"; }
+  fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
+fi
+
 FAILURES=0
-pass() { printf '  PASS %s\n' "$*"; }
-fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
 
 echo "=== Media Library Functional Smoke Tests ==="
 echo ""

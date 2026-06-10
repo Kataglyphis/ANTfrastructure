@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../01-core/build_common.sh"
+source "$SCRIPT_DIR/../01-core/common.sh"
 
 Workspace="${WORKSPACE:-$PWD}"
 Binary="${BINARY:-}"

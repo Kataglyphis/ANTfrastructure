@@ -74,11 +74,4 @@ PKG_GSTREAMER_EXTRA=(
   libffi-dev libpcre2-dev
 )
 
-# Package array concatenation helper: append non-empty packages
-append_packages_from_group() {
-  local -n _out_ref=$1
-  local group_name="$2"
-  local -n _group_ref="${group_name}" 2>/dev/null || return 0
 
-  _out_ref+=("${_group_ref[@]}")
-}

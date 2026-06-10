@@ -288,21 +288,7 @@ llvm_cross_install_looks_complete() {
 }
 
 llvm_cross_first_executable() {
-  local candidate resolved
-
-  for candidate in "$@"; do
-    [ -n "${candidate}" ] || continue
-    if [ -x "${candidate}" ]; then
-      printf '%s' "${candidate}"
-      return 0
-    fi
-    if resolved="$(command -v "${candidate}" 2>/dev/null || true)" && [ -n "${resolved}" ]; then
-      printf '%s' "${resolved}"
-      return 0
-    fi
-  done
-
-  return 1
+  _cross_first_executable "$@"
 }
 
 llvm_cross_qemu_binary() {

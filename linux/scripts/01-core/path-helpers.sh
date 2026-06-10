@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-_PATH_HELPERS_SH_LOADED=true
+[ -n "${_PATH_HELPERS_SH_LOADED:-}" ] && return 0
+_PATH_HELPERS_SH_LOADED=1
 
 _path_contains() {
   local var="$1" cand="$2"

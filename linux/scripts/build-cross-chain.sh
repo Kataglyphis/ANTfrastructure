@@ -46,7 +46,6 @@ IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${CROSS_DEFAULT_ARCHES}}}"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 init_mirror_defaults
 LOG_DIR="${LOG_DIR:-}"
 
@@ -55,7 +54,7 @@ TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
 DRY_RUN=0
 PARALLEL_ARCHS=0
-MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
 # Per-arch digest references captured during this run.
 # These are accessed indirectly via cross_stage_pin_varname() + nameref in run_cross_stage().

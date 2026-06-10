@@ -78,16 +78,16 @@ container_exec_strip() {
 }
 
 result_pass() {
-  printf '  %b\n' "\033[1;32mPASS\033[0m $*"
+  pass "$*"
 }
 
 result_fail() {
-  printf '  %b\n' "\033[1;31mFAIL\033[0m $*"
+  fail "$*"
   return 1
 }
 
 result_warn() {
-  printf '  %b\n' "\033[1;33mWARN\033[0m $*"
+  warn "$*"
 }
 
 echo_header() {

@@ -10,13 +10,12 @@ NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 COMPILER_IMAGE="${COMPILER_IMAGE:-${IMAGE_REGISTRY_PREFIX}:cross-compiler-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"
-# VULKAN_VERSION default comes from versions.env via artifact-common.sh
-VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
+# VULKAN_VERSION comes from versions.env via artifact-common.sh
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-sdk}"
 init_mirror_defaults
 PUSH_IMAGES=0
 PARALLEL_ARCHS=0
-MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
 usage() {
   cat <<'EOF'

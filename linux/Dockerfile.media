@@ -71,15 +71,11 @@ COPY --chmod=755 \
     linux/scripts/03-media/activate-cross-python.sh /opt/scripts/media/activate-cross-python.sh \
     linux/scripts/03-media/media-build-preamble.sh /opt/scripts/media/media-build-preamble.sh
 
-RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
+RUN set -euo pipefail; \
+    if [ "${ENABLE_NVIDIA}" = "true" ]; then \
         printf '%s\n' 'export NVIDIA_CODEC_HEADERS=yes' > /etc/profile.d/nvidia-codec-headers.sh; \
-    fi
-
-# Python virtual environment (/opt/python/.venv) and core build tooling
-# (wheel, setuptools, numpy, meson, ninja, cmake, packaging) are baked
-# into the compiler base image.
-
-RUN set -euo pipefail; bash /opt/scripts/media/activate-cross-python.sh
+    fi; \
+    bash /opt/scripts/media/activate-cross-python.sh
 
 ENV NVIDIA_CODEC_HEADERS=auto
 
@@ -339,10 +335,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 # libcamera stage
 # ==============================================================================
 FROM gstreamer AS libcamera
-
-ARG GSTREAMER_PREFIX
-
-ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX}
 
 COPY --chmod=755 linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
 

@@ -201,14 +201,18 @@ install_cross_bin_symlinks() {
 }
 
 _cross_first_executable() {
-  local candidate
+  local candidate resolved
 
   for candidate in "$@"; do
     [ -n "${candidate}" ] || continue
-    [ -x "${candidate}" ] && {
+    if [ -x "${candidate}" ]; then
       printf '%s' "${candidate}"
       return 0
-    }
+    fi
+    if resolved="$(command -v "${candidate}" 2>/dev/null || true)" && [ -n "${resolved}" ]; then
+      printf '%s' "${resolved}"
+      return 0
+    fi
   done
 
   return 1

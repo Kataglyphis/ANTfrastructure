@@ -320,7 +320,9 @@ fi
 
 if [[ "${DO_STRIP}" == "1" ]]; then
     info "Stripping binaries..."
-    ${SUDO} find "${INSTALL_DIR}" -type f -exec sh -c 'file "{}" | grep -q ELF && strip --strip-all "{}"' \; || true
+    ${SUDO} find "${INSTALL_DIR}" -type f -exec file {} + 2>/dev/null \
+      | awk -F': *' '/ELF/{print $1}' \
+      | xargs -r -P"$(nproc)" strip --strip-all 2>/dev/null || true
 fi
 
 [[ "${KEEP_SRC}" != "1" ]] && rm -rf "${SRC_DIR}"

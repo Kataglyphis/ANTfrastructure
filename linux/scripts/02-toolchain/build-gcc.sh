@@ -541,11 +541,13 @@ fi
 # 6e) Strip binaries if requested
 if [ "${DO_STRIP}" = "1" ]; then
   info "Stripping binaries in ${PREFIX}..."
+  local STRIP_BIN="strip"
   if [ -n "${TARGET_TRIPLET}" ] && command -v "${TARGET_TRIPLET}-strip" >/dev/null 2>&1; then
-    ${SUDO} find "${PREFIX}" -type f -executable -exec sh -c 'file "$1" | grep -qE "ELF.*executable|ELF.*shared object" && "${0}" --strip-all "$1"' "${TARGET_TRIPLET}-strip" {} \; 2>/dev/null || true
-  else
-    ${SUDO} find "${PREFIX}" -type f -executable -exec sh -c 'file "$1" | grep -qE "ELF.*executable|ELF.*shared object" && strip --strip-all "$1"' _ {} \; 2>/dev/null || true
+    STRIP_BIN="${TARGET_TRIPLET}-strip"
   fi
+  ${SUDO} find "${PREFIX}" -type f -executable -exec file {} + 2>/dev/null \
+    | awk -F': *' '/ELF.*(executable|shared object)/{print $1}' \
+    | xargs -r -P"$(nproc)" "${STRIP_BIN}" --strip-all 2>/dev/null || true
 fi
 
 # 7) Enhanced verification

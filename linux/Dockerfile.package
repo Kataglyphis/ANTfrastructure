@@ -135,18 +135,6 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0" \
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
 
-# Wire LLVM-target and Vulkan symlinks. LLVM-target was cross-compiled for the
-# target arch in the SDK stage; Vulkan SDK installs under x86_64/ so we create
-# aarch64/riscv64 symlinks and link /opt/vulkan/active.
-RUN set -euo pipefail; \
-    if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
-        ln -s /opt/llvm-target /usr/local/llvm-target; \
-    fi; \
-    if [ -d /usr/local/llvm-target/lib/clang ] && [ ! -e /usr/lib/clang ]; then \
-        ln -s /usr/local/llvm-target/lib/clang /usr/lib/clang; \
-    fi; \
-    bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}"
-
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 \
@@ -161,6 +149,18 @@ COPY --chmod=755 \
     linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh \
     linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh \
     linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh
+
+# Wire LLVM-target and Vulkan symlinks. LLVM-target was cross-compiled for the
+# target arch in the SDK stage; Vulkan SDK installs under x86_64/ so we create
+# aarch64/riscv64 symlinks and link /opt/vulkan/active.
+RUN set -euo pipefail; \
+    if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
+        ln -s /opt/llvm-target /usr/local/llvm-target; \
+    fi; \
+    if [ -d /usr/local/llvm-target/lib/clang ] && [ ! -e /usr/lib/clang ]; then \
+        ln -s /usr/local/llvm-target/lib/clang /usr/lib/clang; \
+    fi; \
+    bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}"
 
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \

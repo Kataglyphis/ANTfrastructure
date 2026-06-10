@@ -82,6 +82,28 @@ err()  { _log_emit ERROR 2 "$@"; exit 1; }
 log() { info "$@"; }
 die() { err "$@"; }
 
+# Verification helpers: print PASS / FAIL / SKIP lines with LOG_COLOR awareness.
+# Callers should track their own failure count and exit code.
+pass() {
+  if _log_use_color; then
+    printf '  \033[1;32mPASS\033[0m %s\n' "$*"
+  else
+    printf '  PASS %s\n' "$*"
+  fi
+}
+
+fail() {
+  if _log_use_color; then
+    printf '  \033[1;31mFAIL\033[0m %s\n' "$*" >&2
+  else
+    printf '  FAIL %s\n' "$*" >&2
+  fi
+}
+
+skip() {
+  printf '  SKIP %s\n' "$*"
+}
+
 install_err_trap() {
   on_err() {
     local line="${1:-?}"

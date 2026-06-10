@@ -31,13 +31,12 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 SHELL ["bash", "-lc"]
 
+# Install ROCm stack from Ubuntu universe (native packages, ROCm 7.1.x) + verify
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
-    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
-
-# Install ROCm stack from Ubuntu universe (native packages, ROCm 7.1.x)
-RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
+    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh; \
     apt-get update && apt-get install -y --no-install-recommends \
         libamdhip64-dev \
         librocblas-dev \
@@ -45,15 +44,14 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
         librccl-dev \
         librocsparse-dev \
         librocsolver-dev \
-        libmiopen-dev
+        libmiopen-dev; \
+    echo "/usr/lib/rocm/lib" > /etc/ld.so.conf.d/rocm.conf; \
+    ldconfig; \
+    test -x "$(command -v hipcc)"; \
+    ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null
 
-ENV PATH="/usr/lib/llvm-22/bin:/usr/lib/rocm/bin:${PATH}"
-
-RUN echo "/usr/lib/rocm/lib" > /etc/ld.so.conf.d/rocm.conf \
-    && ldconfig \
-    && set -euo pipefail \
-    && test -x "$(command -v hipcc)" \
-    && ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null
+ARG LLVM_RELEASE=22.1.6
+ENV PATH="/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/usr/lib/rocm/bin:${PATH}"
 
 LABEL org.opencontainers.image.title="Kataglyphis AMD GPU" \
       org.opencontainers.image.description="AMD GPU (ROCm) acceleration layer for the Kataglyphis accelerator toolchain"

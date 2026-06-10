@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-_PARALLEL_LOOP_SH_LOADED=true
+[ -n "${_PARALLEL_LOOP_SH_LOADED:-}" ] && return 0
+_PARALLEL_LOOP_SH_LOADED=1
 
 run_parallel_arch_loop() {
   local fn_name="$1" flagdir_prefix="${2:-/tmp/arch-loop-flags}"
