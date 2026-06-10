@@ -4,10 +4,8 @@
 # Provides:
 #   _export_container_rootfs()
 #   export_rootfs_from_image()
-#   export_image_rootfs_dir()
 #   export_image_to_oci_layout()
 #   remove_local_image_if_exists()
-#   runtime_stage_context_ref()
 #   runtime_pushes_wrapper_images()
 #   runtime_pushes_intermediate_images()
 #   runtime_use_local_context_chain()
@@ -70,10 +68,6 @@ export_rootfs_from_image() {
   fi
 }
 
-export_image_rootfs_dir() {
-  _export_container_rootfs "$@"
-}
-
 export_image_to_oci_layout() {
   local nerdctl_bin="$1"
   local tag="$2"
@@ -92,14 +86,6 @@ remove_local_image_if_exists() {
 
   image_exists "${nerdctl_bin}" "${image_ref}" || return 0
   run "${nerdctl_bin}" rmi "${image_ref}"
-}
-
-runtime_stage_context_ref() {
-  local kind="$1"
-  local arch="$2"
-  local context_dir
-  context_dir="$(runtime_stage_context_dir "${kind}" "${arch}")"
-  printf '%s' "oci-layout://${context_dir}"
 }
 
 runtime_pushes_wrapper_images() {
@@ -174,7 +160,7 @@ runtime_refresh_stage_context() {
   local context_dir
   runtime_use_local_context_chain || return 0
   context_dir="$(runtime_stage_context_dir "${kind}" "${arch}")"
-  export_image_rootfs_dir "${NERDCTL_BIN:-nerdctl}" "${image_ref}" "${context_dir}"
+  _export_container_rootfs "${NERDCTL_BIN:-nerdctl}" "${image_ref}" "${context_dir}"
 }
 
 runtime_use_local_artifact_context() {

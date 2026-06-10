@@ -449,7 +449,7 @@ fi
 set -eux
 
 # --- Debug/logging helpers -------------------------------------------------
-LOG_DIR="/tmp/gstreamer-build-logs-$(date +%s)"
+LOG_DIR="${TMPDIR:-/tmp}/gstreamer-build-logs-$$-$(date +%s)"
 
 dump_debug_info() {
   echo "=== GStreamer build debug info ==="
@@ -620,7 +620,7 @@ if [ "${NVIDIA_GPU}" = "yes" ]; then
   :
     git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers
     make -C /tmp/nv-codec-headers install
-    sudo rm -rf /tmp/nv-codec-headers
+    if command -v sudo >/dev/null 2>&1; then sudo rm -rf /tmp/nv-codec-headers; else rm -rf /tmp/nv-codec-headers; fi
   fi
 else
   :
@@ -630,14 +630,14 @@ fi
 # libcamera support; needed for raspberry pi cam
 # sudo apt install -y --no-install-recommends libcamera-dev libcamera-tools
 
-sudo rm -rf /var/lib/apt/lists/*
+if command -v sudo >/dev/null 2>&1; then sudo rm -rf /var/lib/apt/lists/*; else rm -rf /var/lib/apt/lists/*; fi
 
 # ------------------------------------------------------------------------------
 # Install Astral uv, use existing venv, install Meson/Ninja
 # ------------------------------------------------------------------------------
 
-sudo mkdir -p "${GSTREAMER_PREFIX}"
-sudo chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"
+if command -v sudo >/dev/null 2>&1; then sudo mkdir -p "${GSTREAMER_PREFIX}"; else mkdir -p "${GSTREAMER_PREFIX}"; fi
+if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"; else chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"; fi
 
 echo "Using existing Python venv (expected at /opt/python/.venv)..."
 
@@ -715,12 +715,12 @@ echo "Build Type: ${BUILD_TYPE_LOWER}"
 echo "=========================================="
 
 mkdir -p "${GSTREAMER_PREFIX}"
-sudo chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true
+if command -v sudo >/dev/null 2>&1; then sudo chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; else chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; fi
 # do not write directly into tmp; its reserved for apt
 BUILD_DIR="/opt/tmp/gstreamer-build"
-sudo mkdir -p "${BUILD_DIR}"
+if command -v sudo >/dev/null 2>&1; then sudo mkdir -p "${BUILD_DIR}"; else mkdir -p "${BUILD_DIR}"; fi
 cd "${BUILD_DIR}"
-sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true
+if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; else chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; fi
 
 if [ -d "gstreamer" ]; then
   echo "Updating existing GStreamer repository..."
@@ -758,7 +758,7 @@ echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly
 
 echo "Cleaning up..."
 cd /
-sudo rm -rf "${BUILD_DIR}"
+if command -v sudo >/dev/null 2>&1; then sudo rm -rf "${BUILD_DIR}"; else rm -rf "${BUILD_DIR}"; fi
 
 echo ""
 echo "=========================================="

@@ -17,6 +17,16 @@
 #   remove_local_image_if_exists, runtime_*_tag(), runtime_artifact_*,
 #   runtime_stage_context_*, runtime_use_local_*, etc.
 
+# Trap cleanup for container/image leaks on premature exit
+_runtime_cleanup_trap() {
+  local cid
+  # Clean up any lingering containers from this script's build operations
+  for cid in $("${NERDCTL_BIN:-nerdctl}" ps -aq --filter "label=opencode-build" 2>/dev/null || true); do
+    "${NERDCTL_BIN:-nerdctl}" rm -f "${cid}" >/dev/null 2>&1 || true
+  done
+}
+trap '_runtime_cleanup_trap' EXIT
+
 # Post-build: export to OCI layout locally, or push remotely, then clean up.
 _runtime_finish_stage() {
   local kind="$1"
@@ -63,7 +73,7 @@ runtime_build_base_image() {
 
   if runtime_use_local_stage_context_outputs; then
     context_dir="$(runtime_stage_context_dir base "${arch}")"
-    export_image_rootfs_dir "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
+    _export_container_rootfs "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
     remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
     return 0
   fi

@@ -277,9 +277,11 @@ install_nodejs() {
       node_sha256="${NODE_ARM64_SHA256:-524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78}"
       ;;
     riscv64)
-      log "Installing distro Node.js packages on riscv64"
+      # RISC-V: no official Node.js tarball. Pin to a known version from distro packages.
+      log "Installing pinned Node.js distro packages on riscv64"
       apt-get update -qq
-      apt-get install -y --no-install-recommends nodejs npm
+      apt_install "nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1" || apt_install nodejs
+      apt_install npm || true
       node --version
       npm --version
       return 0

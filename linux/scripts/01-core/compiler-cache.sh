@@ -175,35 +175,36 @@ setup_lld_linker() {
   _cc_info "lld linker enabled: LDFLAGS contains ${lld_flag}"
 }
 
-# Get CMake linker flags for lld
-# Usage: cmake_opts+=($(get_cmake_linker_flags))
-get_cmake_linker_flags() {
-  if [ "${USE_LLD}" = "false" ] || ! _lld_available; then
+# Resolve a cross-compilation archive tool (ar, ranlib) for the target triplet.
+# Usage: resolve_cross_archive_tool ar   -> e.g., aarch64-linux-gnu-gcc-ar
+#         resolve_cross_archive_tool ranlib
+resolve_cross_archive_tool() {
+  local tool="$1"
+  local triplet="${CROSS_TARGET_TRIPLET:-}"
+  local preferred=""
+  local fallback=""
+  local resolved=""
+
+  if [ -z "${triplet}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
+    triplet="$(cross_target_triplet)"
+  fi
+
+  preferred="${triplet}-gcc-${tool}"
+  fallback="${triplet}-${tool}"
+
+  resolved="$(command -v "${preferred}" 2>/dev/null || true)"
+  if [ -n "${resolved}" ]; then
+    printf '%s' "${resolved}"
     return 0
   fi
 
-  local lld_flag="-fuse-ld=lld"
-  echo "-DCMAKE_EXE_LINKER_FLAGS=${lld_flag}"
-  echo "-DCMAKE_SHARED_LINKER_FLAGS=${lld_flag}"
-  echo "-DCMAKE_MODULE_LINKER_FLAGS=${lld_flag}"
-}
-
-# Get autoconf/configure linker flags for lld
-# Usage: configure_opts+=("$(get_configure_linker_flags)")
-get_configure_linker_flags() {
-  if [ "${USE_LLD}" = "false" ] || ! _lld_available; then
+  resolved="$(command -v "${fallback}" 2>/dev/null || true)"
+  if [ -n "${resolved}" ]; then
+    printf '%s' "${resolved}"
     return 0
   fi
 
-  echo "--extra-ldflags=-fuse-ld=lld"
-}
-
-# Combined setup function for convenience
-# Usage: setup_build_acceleration
-setup_build_acceleration() {
-  setup_ccache
-  setup_sccache
-  setup_lld_linker
+  printf '%s' "${fallback}"
 }
 
 fi

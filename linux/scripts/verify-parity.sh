@@ -62,13 +62,16 @@ trim() {
 container_exec() {
   local image="$1"
   shift
-  "${CONTAINER_BIN}" run --rm --entrypoint="" "${image}" "$@"
+  "${CONTAINER_BIN}" run --rm --entrypoint="/bin/bash" "${image}" -lc "$*"
 }
 
 container_exec_strip() {
   local image="$1"
   shift
-  container_exec "${image}" "$@" 2>/dev/null
+  container_exec "${image}" "$@" 2>/tmp/container_exec_stderr.log || {
+    cat /tmp/container_exec_stderr.log >&2
+    return 1
+  }
 }
 
 result_pass() {
@@ -86,17 +89,6 @@ result_warn() {
 
 echo_header() {
   printf '\n%b\n' "\033[1;36m=== $* ===\033[0m"
-}
-
-sort_file() {
-  sort -o "$1" "$1"
-}
-
-strip_container_noise() {
-  sed -E \
-    -e '/^(WARNING|removed|Cannot|time=|level=|docker|nerdctl)/d' \
-    -e 's/\r//g' \
-    -e '/^$/d'
 }
 
 normalize_package_list() {
@@ -434,14 +426,14 @@ main() {
   # Pre-flight: verify both images are runnable
   if ! "${CONTAINER_BIN}" image inspect "${NATIVE_IMAGE}" >/dev/null 2>&1; then
     log "Pulling native image: ${NATIVE_IMAGE}"
-    "${CONTAINER_BIN}" pull "${NATIVE_IMAGE}" || {
+    retry 3 10 "pulling ${NATIVE_IMAGE}" "${CONTAINER_BIN}" pull "${NATIVE_IMAGE}" || {
       err "Cannot pull native image: ${NATIVE_IMAGE}"
     }
   fi
 
   if ! "${CONTAINER_BIN}" image inspect "${CROSS_IMAGE}" >/dev/null 2>&1; then
     log "Pulling cross image: ${CROSS_IMAGE}"
-    "${CONTAINER_BIN}" pull "${CROSS_IMAGE}" || {
+    retry 3 10 "pulling ${CROSS_IMAGE}" "${CONTAINER_BIN}" pull "${CROSS_IMAGE}" || {
       err "Cannot pull cross image: ${CROSS_IMAGE}"
     }
   fi

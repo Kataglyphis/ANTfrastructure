@@ -18,6 +18,7 @@ done
 source_module cross-env.sh || true
 source_module logging.sh || true
 source_module common.sh || true
+source_module parallelism.sh || true
 
 patch_libcamera_riscv64_cross_sources() {
   local common_meson="${LIBCAMERA_SRC}/src/apps/common/meson.build"
@@ -39,7 +40,7 @@ patch_libcamera_riscv64_cross_sources() {
 }
 
 # Defaults (can be overridden via env vars)
-: "${LIBCAMERA_SRC:=/tmp/libcamera}"
+: "${LIBCAMERA_SRC:=${TMPDIR:-/tmp}/libcamera-$$}"
 : "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
 : "${LIBCAMERA_GIT:=https://git.libcamera.org/libcamera/libcamera.git}"
 : "${LIBCAMERA_PREFIX:=/opt/libcamera}"
@@ -180,7 +181,8 @@ if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" "${MESON_SETUP_A
     exit 1
 fi
 
-ninja -C "${LIBCAMERA_BUILD_DIR}" -v || { echo "ninja build failed"; exit 1; }
+: "${NPROC:=$(compute_jobs_with_mem_cap "" 2000)}"
+ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" -v || { echo "ninja build failed"; exit 1; }
 
 # install (use sudo if not root)
 if [ "$EUID" -ne 0 ]; then

@@ -39,7 +39,7 @@ install_warn_trap
 
 # Defaults (can be overridden via env vars or arguments)
 : "${OPENCV_VERSION:=5.x}"
-: "${OPENCV_SRC:=/tmp/opencv}"
+: "${OPENCV_SRC:=${TMPDIR:-/tmp}/opencv-$$}"
 : "${OPENCV_PREFIX:=/opt/opencv5}"
 : "${OPENCV_REPO:=https://github.com/opencv/opencv.git}"
 : "${OPENCV_CONTRIB_REPO:=https://github.com/opencv/opencv_contrib.git}"
@@ -113,15 +113,7 @@ fetch_opencv() {
     info "Fetching OpenCV ${OPENCV_VERSION} source..."
     
     # Main repository
-    if [ -d "${OPENCV_SRC}/.git" ]; then
-        echo "Updating existing OpenCV checkout..."
-        cd "${OPENCV_SRC}"
-        git fetch --tags || true
-    else
-        rm -rf "${OPENCV_SRC}"
-        git clone "${OPENCV_REPO}" "${OPENCV_SRC}" || { echo "Failed cloning OpenCV"; exit 1; }
-        cd "${OPENCV_SRC}"
-    fi
+    clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_VERSION}"
     
     git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout version ${OPENCV_VERSION}"; exit 1; }
     echo "OpenCV version: $(git describe --tags 2>/dev/null || echo 'unknown')"
@@ -133,14 +125,7 @@ fetch_opencv() {
         # OPENCV_EXTRA_MODULES_PATH is the expected path
         local contrib_dir="${OPENCV_SRC}/opencv_contrib"
 
-        if [ -d "${contrib_dir}/.git" ]; then
-            cd "${contrib_dir}"
-            git fetch --tags || true
-        else
-            rm -rf "${contrib_dir}"
-            git clone "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" || { echo "Failed cloning OpenCV contrib"; exit 1; }
-            cd "${contrib_dir}"
-        fi
+        clone_or_update_repo "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" "${OPENCV_VERSION}"
 
         git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout contrib version ${OPENCV_VERSION}"; exit 1; }
         echo "OpenCV contrib version: $(git describe --tags 2>/dev/null || echo 'unknown')"
@@ -186,27 +171,6 @@ target_machine() {
         return 0
     fi
     uname -m
-}
-
-resolve_cross_archive_tool() {
-    local tool="$1"
-    local preferred="${CROSS_TARGET_TRIPLET}-gcc-${tool}"
-    local fallback="${CROSS_TARGET_TRIPLET}-${tool}"
-    local resolved
-
-    resolved="$(command -v "${preferred}" 2>/dev/null || true)"
-    if [ -n "${resolved}" ]; then
-        printf '%s' "${resolved}"
-        return 0
-    fi
-
-    resolved="$(command -v "${fallback}" 2>/dev/null || true)"
-    if [ -n "${resolved}" ]; then
-        printf '%s' "${resolved}"
-        return 0
-    fi
-
-    printf '%s' "${fallback}"
 }
 
 # ------------------------------------------------------------------------------

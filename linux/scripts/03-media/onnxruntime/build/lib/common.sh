@@ -2,57 +2,27 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Prefer shared platform helpers if available (container layout or repo layout).
-# TODO: migrate to source_modules_framework() from modules.sh for consistency
-# with the rest of the codebase.  The manual candidate arrays below duplicate
-# the path-resolution logic already provided by modules.sh.
 _ONNX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_LOGGING_CANDIDATES=(
-  "/opt/scripts/core/logging.sh"
-  "${_ONNX_LIB_DIR}/../../../../01-core/logging.sh"
-)
-_PLATFORM_CANDIDATES=(
-  "/opt/scripts/core/platform.sh"
-  "${_ONNX_LIB_DIR}/../../../../01-core/platform.sh"
-)
-_CROSS_ENV_CANDIDATES=(
-  "/opt/scripts/core/cross-env.sh"
-  "${_ONNX_LIB_DIR}/../../../../01-core/cross-env.sh"
-)
-_PARALLEL_CANDIDATES=(
-  "/opt/scripts/core/parallelism.sh"
-  "${_ONNX_LIB_DIR}/../../../../01-core/parallelism.sh"
-)
+SCRIPT_DIR="${_ONNX_LIB_DIR}"
 
-for f in "${_LOGGING_CANDIDATES[@]}"; do
-  if [ -f "${f}" ]; then
-    # shellcheck disable=SC1090
-    source "${f}"
-    break
-  fi
-done
-for f in "${_PLATFORM_CANDIDATES[@]}"; do
-  if [ -f "${f}" ]; then
-    # shellcheck disable=SC1090
-    source "${f}"
-    break
-  fi
-done
-for f in "${_CROSS_ENV_CANDIDATES[@]}"; do
-  if [ -f "${f}" ]; then
-    # shellcheck disable=SC1090
-    source "${f}"
-    break
-  fi
-done
-for f in "${_PARALLEL_CANDIDATES[@]}"; do
-  if [ -f "${f}" ]; then
-    # shellcheck disable=SC1090
-    source "${f}"
-    break
-  fi
+# Use the standard modules.sh framework
+for helper in \
+    "/opt/scripts/core/modules.sh" \
+    "${_ONNX_LIB_DIR}/../../../01-core/modules.sh"; do
+    if [ -f "${helper}" ]; then
+        # shellcheck disable=SC1090
+        source "${helper}"
+        source_modules_framework "${_ONNX_LIB_DIR}"
+        break
+    fi
 done
 
+source_module logging.sh || true
+source_module platform.sh || true
+source_module cross-env.sh || true
+source_module parallelism.sh || true
+
+# Fallback definitions — safety nets when modules.sh framework is unavailable.
 # Fallback loggers if shared logging is not present
 if ! command -v info >/dev/null 2>&1; then
   info() { printf '[INFO] %s\n' "$*"; }

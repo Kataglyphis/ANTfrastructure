@@ -244,6 +244,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -euo pipefail; \
     cd /opt; \
     bash /opt/scripts/media/ffmpeg/build-ffmpeg.sh
@@ -301,6 +303,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     set -euo pipefail; \
     if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
         export CFLAGS="${CFLAGS:-} -D_LIBCPP_VERSION=20220101"; \

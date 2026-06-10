@@ -63,7 +63,7 @@ ensure_base_image() {
 
   if [ "${REBUILD_BASE}" -eq 0 ]; then
     log "Trying to pull remote base image: ${BASE_REMOTE_TAG}"
-    if pull_platform_image "${NERDCTL_BIN}" linux/amd64 "${BASE_REMOTE_TAG}"; then
+    if retry 3 10 "pulling base image" pull_platform_image "${NERDCTL_BIN}" linux/amd64 "${BASE_REMOTE_TAG}"; then
       if [ "${BASE_REMOTE_TAG}" != "${BASE_LOCAL_TAG}" ]; then
         run "${NERDCTL_BIN}" tag "${BASE_REMOTE_TAG}" "${BASE_LOCAL_TAG}"
       fi
@@ -104,7 +104,7 @@ push_cross_compiler() {
   if [ "${COMPILER_LOCAL_TAG}" != "${COMPILER_REMOTE_TAG}" ]; then
     run "${NERDCTL_BIN}" tag "${COMPILER_LOCAL_TAG}" "${COMPILER_REMOTE_TAG}"
   fi
-  run "${NERDCTL_BIN}" push "${COMPILER_REMOTE_TAG}"
+  retry 3 10 "pushing compiler image" run "${NERDCTL_BIN}" push "${COMPILER_REMOTE_TAG}"
 }
 
 main() {

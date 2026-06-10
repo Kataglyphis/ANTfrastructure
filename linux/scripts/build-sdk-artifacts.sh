@@ -106,7 +106,7 @@ build_sdk_image() {
 
 push_sdk_image() {
   local tag="$1"
-  run "${NERDCTL_BIN}" push "${tag}"
+  retry 3 10 "pushing sdk image ${tag}" run "${NERDCTL_BIN}" push "${tag}"
 }
 
 main() {

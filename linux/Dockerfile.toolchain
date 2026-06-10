@@ -5,6 +5,13 @@ FROM ${BASE_IMAGE}
 
 SHELL ["bash", "-lc"]
 
+# NOTE: Build scripts for GCC/LLVM/Rust RUNs are bind-mounted (--mount=type=bind)
+# rather than COPYed. Script changes do NOT invalidate GCC/LLVM/Rust build cache
+# — good for cache stability, but a script-only fix requires --no-cache. Downstream
+# Dockerfiles use COPY for scripts (script changes DO invalidate), creating an
+# intentional asymmetry: toolchain stays cached through script updates, while sdk,
+# media, and later stages rebuild when their scripts change.
+
 ARG LLVM_RELEASE=22.1.6
 ARG GCC_VERSION=16.1.0
 ARG TARGETARCH

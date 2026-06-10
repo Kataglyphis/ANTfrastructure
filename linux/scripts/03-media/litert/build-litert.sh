@@ -26,13 +26,14 @@ done
 
 source_module cross-env.sh || true
 source_module logging.sh || true
+source_module parallelism.sh || true
 source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 
 LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
-: "${LITERT_SRC:=/tmp/litert}"
+: "${LITERT_SRC:=${TMPDIR:-/tmp}/litert-$$}"
 : "${LITERT_PREFIX:=/usr/local}"
 : "${BUILD_TYPE:=Release}"
-: "${NPROC:=$(nproc)}"
+: "${NPROC:=$(compute_jobs_with_mem_cap "" 2000)}"
 : "${SKIP_DEP_INSTALL:=false}"
 
 HOST_PYTHON="$(host_python_bin)"
@@ -50,12 +51,8 @@ info Install prefix: ${LITERT_PREFIX}
 
 fetch_litert() {
     info Fetching LiteRT ${LITERT_VERSION} source...
-
-    rm -rf "${LITERT_SRC}"
-    git clone --depth=1 --branch "${LITERT_VERSION}" \
-        https://github.com/google-ai-edge/LiteRT.git "${LITERT_SRC}"
+    clone_or_update_repo "https://github.com/google-ai-edge/LiteRT.git" "${LITERT_SRC}" "${LITERT_VERSION}"
     cd "${LITERT_SRC}"
-
     info LiteRT version: $(git describe --tags 2>/dev/null || echo 'unknown')
 }
 
@@ -112,37 +109,8 @@ resolve_host_compiler() {
 prepare_host_compiler_wrapper() {
     local compiler="$1"
     local wrapper_name="${2:-host-gcc}"
-    local wrapper_dir="/tmp/litert-host-toolchain"
+    local wrapper_dir="${TMPDIR:-/tmp}/litert-host-toolchain-$$"
     make_named_host_compiler_wrapper "${wrapper_dir}" "${wrapper_name}" "${compiler}"
-}
-
-resolve_litert_cross_archive_tool() {
-    local tool="$1"
-    local triplet="${CROSS_TARGET_TRIPLET:-}"
-    local preferred=""
-    local fallback=""
-    local resolved=""
-
-    if [ -z "${triplet}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
-        triplet="$(cross_target_triplet)"
-    fi
-
-    preferred="${triplet}-gcc-${tool}"
-    fallback="${triplet}-${tool}"
-
-    resolved="$(command -v "${preferred}" 2>/dev/null || true)"
-    if [ -n "${resolved}" ]; then
-        printf '%s' "${resolved}"
-        return 0
-    fi
-
-    resolved="$(command -v "${fallback}" 2>/dev/null || true)"
-    if [ -n "${resolved}" ]; then
-        printf '%s' "${resolved}"
-        return 0
-    fi
-
-    printf '%s' "${fallback}"
 }
 
 resolve_litert_tflite_host_tools_dir() {
@@ -169,35 +137,58 @@ resolve_litert_tflite_host_tools_dir() {
 }
 
 append_litert_preferred_cmake_compiler_args() {
-    local -n out_args_ref=$1
-    local native_clang=""
-    local native_clangxx=""
+  local -n out_args_ref=$1
+  local native_clang=""
+  local native_clangxx=""
 
-    if cross_build_is_active; then
-        return 0
-    fi
+  if cross_build_is_active; then
+      return 0
+  fi
 
-    # Native/amd64 artifact builds should prefer the source-built Clang from the
-    # toolchain image. GCC 16 currently ICEs in LiteRT's Samsung vendor code.
-    if [ -x /usr/local/bin/clang ] && [ -x /usr/local/bin/clang++ ]; then
-        native_clang="/usr/local/bin/clang"
-        native_clangxx="/usr/local/bin/clang++"
+  # Native/amd64 artifact builds should prefer the source-built Clang from the
+  # toolchain image. GCC 16 currently ICEs in LiteRT's Samsung vendor code.
+  if [ -x /usr/local/bin/clang ] && [ -x /usr/local/bin/clang++ ]; then
+      native_clang="/usr/local/bin/clang"
+      native_clangxx="/usr/local/bin/clang++"
+  else
+      native_clang="$(command -v clang 2>/dev/null || true)"
+      native_clangxx="$(command -v clang++ 2>/dev/null || true)"
+  fi
+
+  if [ -n "${native_clang}" ] && [ -n "${native_clangxx}" ]; then
+      out_args_ref+=(
+          "-DCMAKE_C_COMPILER=${native_clang}"
+          "-DCMAKE_CXX_COMPILER=${native_clangxx}"
+          "-DCMAKE_ASM_COMPILER=${native_clang}"
+          "-DCMAKE_C_FLAGS=-Wno-c2y-extensions"
+          "-DCMAKE_CXX_FLAGS=-Wno-c2y-extensions"
+      )
+      info Using native Clang toolchain for LiteRT: ${native_clang} / ${native_clangxx}
+      info Disabling Clang C2y extension pedantic errors for bundled googlebenchmark
+  fi
+}
+
+append_litert_cache_linker_args() {
+  local -n _alcla_args=$1
+
+  if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+    _alcla_args+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
+    _alcla_args+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
+    _alcla_args+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
+    info Using lld linker for faster linking
+  fi
+
+  if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+    if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
+      _alcla_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+      _alcla_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+      _alcla_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
+      info "Using ccache for faster compilation (C/C++ only, not ASM)"
     else
-        native_clang="$(command -v clang 2>/dev/null || true)"
-        native_clangxx="$(command -v clang++ 2>/dev/null || true)"
+      info ccache already configured via environment
+      _alcla_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
     fi
-
-    if [ -n "${native_clang}" ] && [ -n "${native_clangxx}" ]; then
-        out_args_ref+=(
-            "-DCMAKE_C_COMPILER=${native_clang}"
-            "-DCMAKE_CXX_COMPILER=${native_clangxx}"
-            "-DCMAKE_ASM_COMPILER=${native_clang}"
-            "-DCMAKE_C_FLAGS=-Wno-c2y-extensions"
-            "-DCMAKE_CXX_FLAGS=-Wno-c2y-extensions"
-        )
-        info Using native Clang toolchain for LiteRT: ${native_clang} / ${native_clangxx}
-        info Disabling Clang C2y extension pedantic errors for bundled googlebenchmark
-    fi
+  fi
 }
 
 litert_cross_wheel_platform_tag() {
@@ -273,7 +264,7 @@ CMAKE_EOF
 
     if cross_build_is_active; then
         if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
-            append_cmake_cross_archiver_args cmake_args resolve_litert_cross_archive_tool
+            append_cmake_cross_archiver_args cmake_args resolve_cross_archive_tool
         fi
 
         # LiteRT configures a nested host-only FlatBuffers build for flatc.
@@ -301,30 +292,7 @@ CMAKE_EOF
         info Using cross ranlib tool: ${cross_ranlib:-unresolved}
     fi
 
-    # Add lld linker flags if available
-    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
-        cmake_args+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
-        cmake_args+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
-        cmake_args+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
-        info Using lld linker for faster linking
-    fi
-
-    # Add ccache if available
-    # Only add if CMAKE_C_COMPILER_LAUNCHER is not already set by compiler-cache.sh
-    if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-        if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
-            cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
-            cmake_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-            # Explicitly disable ccache for ASM files - ccache cannot handle assembly
-            # and will fail with "invalid option -- 'D'" when processing .S files
-            cmake_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
-            info "Using ccache for faster compilation (C/C++ only, not ASM)"
-        else
-            info ccache already configured via environment
-            # Still need to disable ASM launcher to prevent ccache from being used for .S files
-            cmake_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
-        fi
-    fi
+    append_litert_cache_linker_args cmake_args
 
     # Enable ruy but keep its profiler/instrumentation disabled to avoid
     # linking against ruy_profiler_instrumentation (not present in some
@@ -389,7 +357,7 @@ build_tflite_c_api() {
     if cross_build_is_active; then
         tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
         if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
-            append_cmake_cross_archiver_args cmake_args resolve_litert_cross_archive_tool
+            append_cmake_cross_archiver_args cmake_args resolve_cross_archive_tool
         fi
         if [ -z "${tflite_host_tools_dir}" ]; then
             err Could not resolve TFLite host tools directory containing flatc for cross build
@@ -398,21 +366,7 @@ build_tflite_c_api() {
         info Using TFLite host tools dir: ${tflite_host_tools_dir}
     fi
 
-    # Add lld linker flags if available
-    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
-        cmake_args+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
-        cmake_args+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
-        cmake_args+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
-    fi
-
-    # Add ccache if available
-    if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-        if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
-            cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
-            cmake_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-            cmake_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
-        fi
-    fi
+    append_litert_cache_linker_args cmake_args
 
     info Configuring TFLite C API...
     info C API source: ${c_api_src}
@@ -538,7 +492,7 @@ install_litert() {
                     append_cmake_cross_args wheel_cross_args
                 fi
                 if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
-                    append_cmake_cross_archiver_args wheel_cross_args resolve_litert_cross_archive_tool
+                    append_cmake_cross_archiver_args wheel_cross_args resolve_cross_archive_tool
                 fi
                 tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
                 if [ -z "${tflite_host_tools_dir}" ]; then

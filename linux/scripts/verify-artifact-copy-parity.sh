@@ -18,8 +18,8 @@ extract_copy_sources() {
     fi
     [ "${in_section}" -eq 1 ] || continue
     if echo "${line}" | grep -qE '^FROM '; then break; fi
-    if echo "${line}" | grep -qE '^\s*COPY --from=.*\$'; then
-      src="$(echo "${line}" | awk '{for(i=1;i<=NF;i++) if($i~/\$\{/){s=$i;gsub(/^\$\{?|:.*|-.*\}/,"",s); print s; exit}}')"
+    if echo "${line}" | grep -qE '^\s*COPY --from=.*\$(\{)?'; then
+      src="$(echo "${line}" | awk '{for(i=1;i<=NF;i++) if($i~/\$\{/){s=$i;gsub(/^\$\{?/, "", s); gsub(/[:-].*/, "", s); print s; exit}}')"
       [ -n "${src}" ] && printf '%s\n' "${src}"
       continue
     fi

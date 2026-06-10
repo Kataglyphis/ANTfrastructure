@@ -32,7 +32,7 @@ source_module cross-env.sh || true
 source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 
 # Defaults (can be overridden via env vars)
-: "${FFMPEG_SRC:=/tmp/ffmpeg}"
+: "${FFMPEG_SRC:=${TMPDIR:-/tmp}/ffmpeg-$$}"
 : "${FFMPEG_PREFIX:=/opt/ffmpeg}"
 : "${FFMPEG_GIT:=https://git.ffmpeg.org/ffmpeg.git}"
 : "${BUILD_TYPE:=release}"

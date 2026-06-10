@@ -140,20 +140,6 @@ stage_log_redirect() {
   fi
 }
 
-# Detect whether the extra build args include a digest-pinned BASE_IMAGE.
-# If BASE_IMAGE=repo@sha256:..., --pull is unnecessary because the digest
-# uniquely identifies the image and can never resolve to a stale version.
-_has_digest_pinned_base() {
-  local arg
-  for arg in "$@"; do
-    case "${arg}" in
-      --build-arg|BASE_IMAGE=*) ;;  # skip flag, value follows
-      *@sha256:*) return 0 ;;
-    esac
-  done
-  return 1
-}
-
 # Build a cross stage on linux/amd64, push it, and print its digest-pinned ref.
 # Usage: build_cross_stage <label> <tag> <dockerfile> [extra build args...]
 build_cross_stage() {

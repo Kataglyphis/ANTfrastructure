@@ -29,16 +29,16 @@ install_err_trap
 
 PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.5}}"
 PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSION}")}"
-PYTHON_TARBALL="/tmp/Python-${PYTHON_VERSION}.tgz"
-PYTHON_SOURCE_DIR="/tmp/Python-${PYTHON_VERSION}"
+PYTHON_TARBALL="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-$$.tgz"
+PYTHON_SOURCE_DIR="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-$$"
 PYTHON_CROSS_STAGE_ROOT="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}"
 
 cleanup() {
   rm -rf \
     "${PYTHON_SOURCE_DIR}" \
     "${PYTHON_TARBALL}" \
-    /tmp/Python-"${PYTHON_VERSION}"-cross-* \
-    /tmp/python-config-site-*
+    "${TMPDIR:-/tmp}"/Python-"${PYTHON_VERSION}"-cross-* \
+    "${TMPDIR:-/tmp}"/python-config-site-*
 }
 
 trap cleanup EXIT
@@ -153,8 +153,8 @@ build_cross_target_python_payload() {
   build_triplet="$(build_deb_multiarch_triplet)"
   build_python_bin="/usr/local/bin/python${python_mm}"
   build_python_libdir="/usr/local/lib"
-  cross_build_dir="/tmp/Python-${PYTHON_VERSION}-cross-${target_triplet}"
-  config_site="/tmp/python-config-site-${target_triplet}"
+  cross_build_dir="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-cross-${target_triplet}-$$"
+  config_site="${TMPDIR:-/tmp}/python-config-site-${target_triplet}-$$"
   stage_root="$(python_cross_stage_root_for_arch "${target_arch}")"
 
   info "Cross mode detected; building target Python ${python_mm} for ${target_arch} (${target_triplet})"

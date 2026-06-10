@@ -8,14 +8,11 @@
 #   append_buildkit_host_arg()    — add --buildkit-host if BUILDKIT_HOST is set
 #   append_mirror_build_args()    — add USE_FAST_UBUNTU_MIRROR args
 #   append_mirror_build_args_from_env() — convenience wrapper
-#   append_common_build_args()    — mirror + version build args
 #   append_optional_build_arg()   — add --build-arg only if value is non-empty
 #   append_runtime_base_parent_build_arg() — optional BASE_IMAGE for base build
 #   append_runtime_accelerator_build_args() — ENABLE_NVIDIA / ENABLE_AMD
-#   append_runtime_torch_build_args() — accelerator + ONNX/PyTorch args
 #   image_exists()                — check if an image exists locally
 #   run_nerdctl_build()           — nerdctl build with BUILDKIT_HOST support
-#   run_nerdctl_build_to_tag()    — nerdctl build -t <tag> convenience
 #   pull_platform_image()         — nerdctl pull --platform
 
 run() {
@@ -64,12 +61,6 @@ append_mirror_build_args_from_env() {
     "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 }
 
-append_common_build_args() {
-  local _acba_name="$1"
-  append_mirror_build_args "${_acba_name}" "${2:-}" "${3:-}" "${4:-}"
-  append_version_build_args "${_acba_name}"
-}
-
 append_optional_build_arg() {
   local -n out_args_ref=$1
   local arg_name="$2"
@@ -86,12 +77,6 @@ append_runtime_base_parent_build_arg() {
 append_runtime_accelerator_build_args() {
   append_optional_build_arg "$1" ENABLE_NVIDIA "${ENABLE_NVIDIA:-}"
   append_optional_build_arg "$1" ENABLE_AMD "${ENABLE_AMD:-}"
-}
-
-append_runtime_torch_build_args() {
-  append_runtime_accelerator_build_args "$1"
-  append_optional_build_arg "$1" ONNX_PACKAGE "${ONNX_PACKAGE:-}"
-  append_optional_build_arg "$1" PYTORCH_EXTRA "${PYTORCH_EXTRA:-}"
 }
 
 image_exists() {
@@ -113,13 +98,6 @@ run_nerdctl_build() {
   append_buildkit_host_arg build_cmd
   build_cmd+=("$@")
   run "${build_cmd[@]}"
-}
-
-run_nerdctl_build_to_tag() {
-  local nerdctl_bin="$1"
-  local tag="$2"
-  shift 2
-  run_nerdctl_build "${nerdctl_bin}" -t "${tag}" "$@"
 }
 
 pull_platform_image() {

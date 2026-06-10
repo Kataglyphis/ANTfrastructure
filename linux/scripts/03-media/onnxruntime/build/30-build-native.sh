@@ -16,7 +16,13 @@ detect_jobs
 }
 
 # Install dependencies
-sudo apt-get update && sudo apt-get install -y libgcc-s1
+if [ "${SKIP_DEP_INSTALL:-false}" != "true" ]; then
+    if command -v sudo >/dev/null 2>&1; then
+        sudo apt-get update && sudo apt-get install -y libgcc-s1
+    else
+        apt-get update && apt-get install -y libgcc-s1
+    fi
+fi
 
 if command -v setup_linux_cross_env >/dev/null 2>&1; then
   setup_linux_cross_env
