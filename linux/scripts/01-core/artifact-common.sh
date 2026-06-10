@@ -6,14 +6,15 @@
 #   2. tag-naming.sh          (cross-chain + runtime tag functions)
 #   3. stage-defs.sh          (declarative cross-lane stage graph)
 #   4. digest-pinning.sh      (registry digest resolution)
-#   5. build-helpers.sh       (nerdctl wrappers, build-arg helpers)
-#   6. cross-stage-build.sh   (cross-stage build orchestration: build, push, pin)
-#   7. context-management.sh  (runtime context, OCI export, stage handoff)
-#   8. version-forwarding.sh  (auto-discovered --build-arg forwarding)
-#   9. cli-parsers.sh         (shared CLI argument parsing)
-#  10. runtime-build-fns.sh   (per-arch build chain functions)
-#  11. compiler-resolution.sh (host compiler resolution for media builds)
-#  12. parallel-loop.sh       (per-architecture parallel build loop)
+#   5. chain-verify.sh        (cross-chain staleness verification + describe)
+#   6. build-helpers.sh       (nerdctl wrappers, build-arg helpers)
+#   7. cross-stage-build.sh   (cross-stage build orchestration: build, push, pin)
+#   8. context-management.sh  (runtime context, OCI export, stage handoff)
+#   9. version-forwarding.sh  (auto-discovered --build-arg forwarding)
+#  10. cli-parsers.sh         (shared CLI argument parsing)
+#  11. runtime-build-fns.sh   (per-arch build chain functions)
+#  12. compiler-resolution.sh (host compiler resolution for media builds)
+#  13. parallel-loop.sh       (per-architecture parallel build loop)
 
 _ARTIFACT_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -53,6 +54,7 @@ resolve_arch_list() {
 #   tag-naming.sh         — cross-chain + runtime tag functions
 #   stage-defs.sh          — declarative cross-lane stage graph
 #   digest-pinning.sh      — registry manifest digest resolution
+#   chain-verify.sh        — cross-chain staleness verification + describe
 #   build-helpers.sh       — nerdctl wrappers, build-arg helpers
 #   cross-stage-build.sh   — shared cross-stage build + pin orchestration
 #   context-management.sh  — runtime context, OCI export, stage handoff
@@ -63,8 +65,8 @@ resolve_arch_list() {
 #   parallel-loop.sh       — per-architecture parallel build loop
 # shellcheck disable=SC1090,SC1091
 for _module in \
-  tag-naming.sh stage-defs.sh digest-pinning.sh build-helpers.sh \
-  cross-stage-build.sh \
+  tag-naming.sh stage-defs.sh digest-pinning.sh chain-verify.sh \
+  build-helpers.sh cross-stage-build.sh \
   context-management.sh version-forwarding.sh cli-parsers.sh \
   runtime-build-fns.sh compiler-resolution.sh parallel-loop.sh; do
   if [ -f "${_ARTIFACT_COMMON_DIR}/${_module}" ]; then

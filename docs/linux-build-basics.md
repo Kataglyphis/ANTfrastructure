@@ -89,10 +89,14 @@ bash linux/scripts/verify-cross-chain.sh --target-arches arm64
 
 # Via the orchestrator:
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --verify-chain
+
+# Print full stage graph with tag names:
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --describe-chain
 ```
 
-These resolve registry digests for every stage transition and report if downstream
-images may be stale relative to their parent.
+The verification logic is shared via `linux/scripts/01-core/chain-verify.sh`,
+sourced by both entry points.  These resolve registry digests for every stage
+transition and report if downstream images may be stale relative to their parent.
 
 ## Rootless Build Networking (host tuning)
 

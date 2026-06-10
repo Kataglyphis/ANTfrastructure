@@ -52,6 +52,7 @@ LOG_DIR="${LOG_DIR:-}"
 FROM_STAGE="base"
 TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
+DESCRIBE_CHAIN=0
 DRY_RUN=0
 PARALLEL_ARCHS=0
 MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
@@ -126,6 +127,7 @@ Options:
   --vulkan-version VER     Vulkan SDK version for the sdk stage
       --log-dir DIR            Tee each stage build into DIR/<stage>[-<arch>].log
       --verify-chain           Resolve all upstream digests and warn if downstream images are stale
+      --describe-chain          Print the full stage graph with tag names (no builds)
       --dry-run                 Print build commands without executing them
       --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
       --max-parallel-archs N    Max concurrent arch builds (default: 4)
@@ -206,65 +208,10 @@ run_runtime_stage() {
 }
 
 # ── chain verification ────────────────────────────────────────────────────────
-
-_verify_link() {
-  local label="$1" parent_tag="$2" child_tag="$3" parent_digest child_base_digest
-  parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
-  if [ -z "${parent_digest}" ]; then
-    warn "[verify] ${label}: parent tag ${parent_tag} not resolvable in registry"
-    return 0
-  fi
-  if ! command -v python3 >/dev/null 2>&1; then
-    warn "[verify] ${label}: python3 not available, skipping base layer check"
-    return 0
-  fi
-  child_base_digest="$("${NERDCTL_BIN}" manifest inspect "${child_tag}" 2>/dev/null \
-    | python3 "${REPO_ROOT}/linux/scripts/01-core/manifest-base-layer.py" 2>/dev/null || true)"
-  if [ -n "${child_base_digest}" ]; then
-    log "[verify] ${label}: parent ${parent_digest}"
-    log "[verify] ${label}: child  ${child_tag}"
-    log "[verify] ${label}: child base layer ${child_base_digest}"
-  else
-    log "[verify] ${label}: parent digest ${parent_digest} (child tag unresolvable)"
-  fi
-}
-
-# Verify the entire cross chain by checking each documented stage transition.
-# Uses CROSS_STAGE_ORDER from stage-defs.sh instead of hardcoded transitions.
-# Skips runtime (delegates to separate script, no cross-lane Dockerfile).
-verify_chain() {
-  local stage parent parent_tag child_tag arch label
-
-  log "[verify] checking cross-chain freshness for arches: ${TARGET_ARCHES}"
-
-  for stage in "${CROSS_STAGE_ORDER[@]}"; do
-    [ "${stage}" = "base" ] && continue    # no parent to verify
-    [ "${stage}" = "runtime" ] && continue # delegates to runtime helper, not a cross stage
-
-    parent="$(cross_stage_parent "${stage}")"
-
-    if cross_stage_is_per_arch "${stage}"; then
-      for arch in ${TARGET_ARCHES//,/ }; do
-        # Parent tag may also need arch if the parent is per-arch
-        if cross_stage_is_per_arch "${parent}"; then
-          parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
-        else
-          parent_tag="$(cross_stage_tag "${parent}")"
-        fi
-        child_tag="$(cross_stage_tag "${stage}" "${arch}")"
-        label="${parent}->${stage}-${arch}"
-        _verify_link "${label}" "${parent_tag}" "${child_tag}"
-      done
-    else
-      parent_tag="$(cross_stage_tag "${parent}")"
-      child_tag="$(cross_stage_tag "${stage}")"
-      label="${parent}->${stage}"
-      _verify_link "${label}" "${parent_tag}" "${child_tag}"
-    fi
-  done
-
-  log "[verify] chain check complete"
-}
+#
+# Both verify_cross_chain_staleness() and describe_cross_chain() are sourced from
+# linux/scripts/01-core/chain-verify.sh (loaded via artifact-common.sh).
+# No local _verify_link() / verify_chain() definitions needed.
 
 # ── main driver ───────────────────────────────────────────────────────────────
 
@@ -291,6 +238,7 @@ main() {
       --only) only_stage="$2"; shift 2 ;;
       --log-dir) LOG_DIR="$2"; shift 2 ;;
       --verify-chain) VERIFY_CHAIN_ONLY=1; shift ;;
+      --describe-chain) DESCRIBE_CHAIN=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --parallel-archs) PARALLEL_ARCHS=1; shift ;;
       --max-parallel-archs) MAX_PARALLEL_ARCHS="$2"; shift 2 ;;
@@ -319,8 +267,13 @@ main() {
 
   log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}"
 
+  if [ "${DESCRIBE_CHAIN}" -eq 1 ]; then
+    describe_cross_chain "${TARGET_ARCHES}"
+    exit 0
+  fi
+
   if [ "${VERIFY_CHAIN_ONLY}" -eq 1 ]; then
-    verify_chain
+    verify_cross_chain_staleness "${TARGET_ARCHES}"
     exit 0
   fi
 

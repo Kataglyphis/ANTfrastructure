@@ -102,6 +102,9 @@ bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm
 # Standalone quick chain verification (lighter, no orchestrator flags)
 bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
 
+# Print the full stage graph with tag names (no builds)
+bash linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64
+
 # Dry-run: print all build commands without executing
 bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,riscv64
 
@@ -254,6 +257,7 @@ Key shared utilities and where to find them:
 - **CC validation:** `validate-compilers.sh` provides `_validate_cc_target()` which centralizes the dumpmachine/ELF/cc1-compile-to-object/link smoke checks used by both `validate_package()` and `validate_smoke()`.
 - **Cross-chain tags:** `tag-naming.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, and the runtime tag functions for consistent naming across orchestrators and helpers.
 - **Stage graph:** `stage-defs.sh` defines the cross-lane stage chain (`base -> compiler -> sdk -> media -> android -> runtime`) declaratively. Each stage entry maps to its Dockerfile, parent stage, tag function, and per-arch flag. Both `build-cross-chain.sh` and `--verify-chain` consume this graph so the chain is defined in exactly one place. When adding or reordering stages, update `CROSS_STAGE_ORDER` in this file.
+- **Chain verification:** `chain-verify.sh` provides `verify_cross_chain_staleness()` (used by both `build-cross-chain.sh --verify-chain` and `verify-cross-chain.sh`) and `describe_cross_chain()` (used by `--describe-chain`). This shared module eliminates the previously duplicated `_verify_link()` / `verify_chain()` logic.
 - **Cross-stage build orchestration:** `cross-stage-build.sh` provides `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, and `resolve_pin()` — the shared functions that the orchestrator uses to build each stage, push it, and capture the registry digest for pinning. `cross_stage_build_local()` handles local-only (non-push) builds. `cross_stage_run()` accepts a `push` flag (3rd argument, default `1`) so standalone scripts (`build-cross-stage.sh`, `build-cross-compiler.sh`) can use the same function for both push and local modes. `build-cross-stage.sh` wraps these for single-stage rebuilds. `build-cross-compiler.sh` also uses them internally (delegating to the stage graph instead of duplicating build logic).
 - **Runtime flow initialization:** `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` and `runtime_flow_export_setup()` — shared initialization and post-parse setup for `build-runtime-artifacts.sh` and `build-runtime-manifest.sh`.  Both runtime scripts source this directly (it is not included in `artifact-common.sh`'s sourcing chain since only those two scripts need it).
 - **Retry logic:** `logging.sh` provides `retry <max_attempts> <sleep_sec> <description> <command...>` for standardized retry loops.
@@ -262,7 +266,7 @@ Key shared utilities and where to find them:
 - **Download checksums:** SHA256 checksums for Node.js and uv downloads live in `versions.env` (`NODE_AMD64_SHA256`, `NODE_ARM64_SHA256`, `UV_AMD64_SHA256`, `UV_ARM64_SHA256`, `UV_RISCV64_SHA256`).
 - **Runtime stage elements:** `linux/Dockerfile.torch` final stage is the canonical source for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, and OCI labels.
 - **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source` and `package-image` stages carry comments marking the canonical artifact COPY list that must be kept consistent. Run `linux/scripts/verify-artifact-copy-parity.sh` to check.
-- **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds. The standalone `verify-cross-chain.sh` provides the same check with a lighter footprint. Use `--dry-run` to audit stage transitions without executing.
+- **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds. The standalone `verify-cross-chain.sh` provides the same check with a lighter footprint. `verify_cross_chain_staleness()` in `chain-verify.sh` is shared by both. Use `--dry-run` to audit stage transitions without executing. Use `--describe-chain` to print the full stage graph with tag names.
 - **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper with `BUILDKIT_HOST` support. Use it instead of ad hoc `nerdctl build` command assembly.
 - **CLI parsing:** `cli-parsers.sh` provides `parse_shared_orchestrator_args()` and `parse_shared_runtime_args()` with a dispatch pattern (`_DP_SHIFT`) shared across all build scripts.
 - **Dry-run support:** All orchestrators and runtime helpers accept `--dry-run` to print build commands without executing. The cross-chain orchestrator, cross-stage builder, runtime manifest builder, and runtime artifacts builder all support this flag.
@@ -274,14 +278,15 @@ Key shared utilities and where to find them:
 2. `tag-naming.sh` (cross-chain + runtime tag functions)
 3. `stage-defs.sh` (declarative cross-lane stage graph)
 4. `digest-pinning.sh` (registry digest resolution)
-5. `build-helpers.sh` (nerdctl wrappers, build-arg helpers)
-6. `cross-stage-build.sh` (cross-stage build orchestration: build, push, pin; includes `cross_stage_build_local()` for non-push builds)
-7. `context-management.sh` (runtime context, OCI export, stage handoff)
-8. `version-forwarding.sh` (auto-discovered --build-arg forwarding)
-9. `cli-parsers.sh` (shared CLI argument parsing)
-10. `runtime-build-fns.sh` (per-arch build chain functions)
-11. `compiler-resolution.sh` (host compiler resolution for media builds)
-12. `parallel-loop.sh` (per-architecture parallel build loop)
+5. `chain-verify.sh` (cross-chain staleness verification + describe)
+6. `build-helpers.sh` (nerdctl wrappers, build-arg helpers)
+7. `cross-stage-build.sh` (cross-stage build orchestration: build, push, pin; includes `cross_stage_build_local()` for non-push builds)
+8. `context-management.sh` (runtime context, OCI export, stage handoff)
+9. `version-forwarding.sh` (auto-discovered --build-arg forwarding)
+10. `cli-parsers.sh` (shared CLI argument parsing)
+11. `runtime-build-fns.sh` (per-arch build chain functions)
+12. `compiler-resolution.sh` (host compiler resolution for media builds)
+13. `parallel-loop.sh` (per-architecture parallel build loop)
 
 Additionally, `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` and `runtime_flow_export_setup()` — it is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`) to avoid polluting the broader sourcing chain.
 

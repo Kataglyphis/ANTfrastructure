@@ -15,23 +15,38 @@
 #
 #   base     — Ubuntu-based foundation image: system packages, CMake, Node, uv.
 #              Shared infrastructure, no arch-specific content.
+#              Dockerfile: linux/Dockerfile.base
+#              Tag:        :base
+#              Platform:   linux/amd64
 #
 #   compiler — Cross-compiler toolchains (GCC, LLVM/Clang, Rust, Python) for all
 #              target architectures.  Single amd64 image; NOT a multi-arch manifest.
+#              Dockerfile: linux/Dockerfile.toolchain
+#              Tag:        :cross-compiler-amd64
+#              Platform:   linux/amd64
 #
 #   sdk      — Per-architecture SDK (Vulkan, TVM) built with the cross-compiler.
 #              One image per target arch, all hosted on linux/amd64.
+#              Dockerfile: linux/Dockerfile.sdk
+#              Tag:        :cross-sdk-<arch>
+#              Platform:   linux/amd64 (cross-compiled for target arch)
 #
 #   media    — Per-architecture media libraries (ONNX Runtime, LiteRT, OpenCV,
 #              GStreamer, FFmpeg, libcamera) cross-compiled from the SDK base.
+#              Dockerfile: linux/Dockerfile.media
+#              Tag:        :cross-media-<arch>
+#              Platform:   linux/amd64 (cross-compiled for target arch)
 #
 #   android  — Per-architecture Android SDK/NDK setup + native GCC swap (Canadian
 #              cross for arm64/riscv64).  Produces the cross-lane's final artifacts.
+#              Dockerfile: linux/Dockerfile.android
+#              Tag:        :cross-android-<arch>
+#              Platform:   linux/amd64 (cross-compiled for target arch)
 #
 #   runtime  — Delegates to build-runtime-manifest.sh.  Builds per-arch
 #              base → package → torch/wrapper images on the real target platform
-#              and publishes the multi-arch :latest-cross manifest.  NOT a cross
-#              lane Dockerfile stage.
+#              and publishes the multi-arch :latest-cross manifest.
+#              NOT a cross-lane Dockerfile stage — handled specially by the orchestrator.
 #
 # ── STAGE HANDSHAKE PROTOCOL ─────────────────────────────────────────────────
 #
@@ -73,12 +88,23 @@ _STAGE_DEFS_SH_LOADED=1
 
 # ── Stage order ───────────────────────────────────────────────────────────────
 # The canonical ordered list of cross-lane stages.  Each stage depends on the
-# previous one.  base and compiler are shared (one build each); sdk, media, and
-# android are per-architecture; runtime delegates to build-runtime-manifest.sh.
+# previous one.
+#
+#   base     → shared (one build, no arch)
+#   compiler → shared (one build, no arch)
+#   sdk      → per-arch (amd64, arm64, riscv64)
+#   media    → per-arch
+#   android  → per-arch
+#   runtime  → delegates to build-runtime-manifest.sh (NOT a Dockerfile stage)
+#
+# The runtime stage is a sentinel: it has no Dockerfile, no cross_lane tag, and
+# no pin variable.  The orchestrator detects it and delegates to the runtime
+# helper instead of calling cross_stage_run().
 # shellcheck disable=SC2034
 CROSS_STAGE_ORDER=(base compiler sdk media android runtime)
 
 # Stages that fan out per target architecture (amd64, arm64, riscv64).
+# These are built once per arch on linux/amd64 using cross-compilers.
 CROSS_PER_ARCH_STAGES=(sdk media android)
 
 # ── Dockerfile mapping ────────────────────────────────────────────────────────

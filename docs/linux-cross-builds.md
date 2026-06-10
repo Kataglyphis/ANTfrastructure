@@ -140,7 +140,9 @@ bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push
 ### Stale-check (`--verify-chain` and `verify-cross-chain.sh`)
 
 Before a full build, verify whether downstream registry images are stale without
-performing any builds.  Two entry points:
+performing any builds.  The verification logic is shared via
+`linux/scripts/01-core/chain-verify.sh` (sourced by both entry points).
+Two entry points:
 
 ```bash
 # Via the orchestrator (same process):
@@ -156,6 +158,21 @@ bash linux/scripts/verify-cross-chain.sh --target-arches arm64
 Both resolve all upstream registry digests and report mismatches so you can
 decide whether a full rebuild is needed.  The standalone script is useful for
 quick checks without loading the full orchestrator.
+
+### Describe chain (`--describe-chain`)
+
+Print the full stage graph with tag names and parent chains without building:
+
+```bash
+# Via the orchestrator:
+./linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64
+
+# Via the standalone verifier:
+bash linux/scripts/verify-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64
+```
+
+This shows which Dockerfile produces each stage, the expected tags per
+architecture, and the parent→child relationships.
 
 ### Why the handoff must be pinned by digest
 
