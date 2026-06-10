@@ -13,13 +13,13 @@ source_build_acceleration_helpers
 parse_common_args "$@"
 detect_jobs
 
-ROCM_HOME="${ROCM_HOME:-/opt/rocm}"
-ROCM_VERSION="${ROCM_VERSION:-6.1}"
+ROCM_HOME="${ROCM_HOME:-/usr}"
+ROCM_VERSION="${ROCM_VERSION:-7.1}"
 NATIVE_GPU_OUTPUT_DIR="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"
 NATIVE_GPU_BUILD_DIR="${NATIVE_GPU_BUILD_DIR:-${ORT_SRC_DIR}/build_native_gpu_rocm}"
 
-if [ ! -d "${ROCM_HOME}" ]; then
-  err "ROCm home not found at ${ROCM_HOME}. Install the AMD toolchain layer first."
+if ! command -v hipcc >/dev/null 2>&1 && [ ! -d "${ROCM_HOME}/lib/rocm" ]; then
+  err "ROCm not found. Install the AMD toolchain layer first or set ROCM_HOME."
 fi
 
 if command -v setup_linux_cross_env >/dev/null 2>&1; then
@@ -90,7 +90,7 @@ append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS
 
 export PATH="${ROCM_HOME}/bin:${PATH}"
-export LD_LIBRARY_PATH="${ROCM_HOME}/lib:${ROCM_HOME}/lib64:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="${ROCM_HOME}/lib/rocm/lib:${ROCM_HOME}/lib:${LD_LIBRARY_PATH:-}"
 
 if ! "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
   if cross_build_is_active; then

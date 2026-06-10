@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # digest-pinning.sh — registry manifest digest resolution for pinned FROM refs.
+[ -n "${_DIGEST_PINNING_SH_LOADED:-}" ] && return 0
+_DIGEST_PINNING_SH_LOADED=1
 #
 # Provides:
 #   registry_pin_ref()            — resolve registry digest, print "repo@sha256:..."
@@ -66,8 +68,9 @@ _has_digest_pinned_base() {
   local arg
   for arg in "$@"; do
     case "${arg}" in
-      --build-arg|BASE_IMAGE=*) ;;  # skip flag, value follows
+      --build-arg) ;;
       *@sha256:*) return 0 ;;
+      *) ;;
     esac
   done
   return 1

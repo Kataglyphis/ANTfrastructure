@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # parallelism.sh - build parallelism helpers (CPU quota + optional memory cap)
+[ -n "${_PARALLELISM_SH_LOADED:-}" ] && return 0
+_PARALLELISM_SH_LOADED=1
 #
 # Environment Variables:
 #   AGGRESSIVE_PARALLELISM  - Set to "true" for lower memory caps (faster builds)

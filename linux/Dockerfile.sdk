@@ -78,7 +78,8 @@ ARG TVM_INSTALL_PYTHON=1
 
 ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
-    TVM_USE_VULKAN=${TVM_USE_VULKAN}
+    TVM_USE_VULKAN=${TVM_USE_VULKAN} \
+    TVM_INSTALL_PYTHON=${TVM_INSTALL_PYTHON}
 
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \

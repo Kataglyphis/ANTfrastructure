@@ -67,7 +67,7 @@ Key shared utilities and where to find them:
 - **Runtime stage elements:** `linux/Dockerfile.torch` final stage is the canonical source for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, and OCI labels. `Dockerfile.runtime-common` exists as a documentation-only reference and is not consumed by any build.
 - **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source-local` and `package-image` stages carry comments marking the canonical artifact COPY list that must be kept consistent. Run `linux/scripts/verify-artifact-copy-parity.sh` to check.
 - **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds.
-- **Builder functions:** `run_nerdctl_build_to_tag()` delegates to `run_nerdctl_build()`, eliminating the duplicated build-cmd assembly.
+- **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper with `BUILDKIT_HOST` support. Use it instead of ad hoc `nerdctl build` command assembly.
 
 ## Linux Build Rules
 

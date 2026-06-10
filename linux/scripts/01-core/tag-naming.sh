@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # tag-naming.sh — centralized cross-chain and runtime tag name functions.
 # Source this directly or through artifact-common.sh.
+[ -n "${_TAG_NAMING_SH_LOADED:-}" ] && return 0
+_TAG_NAMING_SH_LOADED=1
 #
 # Provides:
 #   cross_base_tag()              — :base

@@ -8,6 +8,7 @@ verify_gcc_installation() {
   local GCC_VERSION="$2"
   local SUDO="${3:-}"
   local TARGET_TRIPLET="${4:-}"
+  local failed=0
 
   echo
   echo "============================================"
@@ -15,10 +16,10 @@ verify_gcc_installation() {
   echo "============================================"
   echo
   echo "Active GCC location:"
-  which gcc || echo "ERROR: gcc not found in PATH"
+  which gcc || { echo "ERROR: gcc not found in PATH"; failed=1; }
   echo
   echo "Active GCC version:"
-  gcc --version 2>/dev/null | head -n1 || echo "ERROR: gcc --version failed"
+  gcc --version 2>/dev/null | head -n1 || { echo "ERROR: gcc --version failed"; failed=1; }
   echo
   echo "Active G++ location:"
   which g++ || echo "WARNING: g++ not found in PATH"
@@ -58,6 +59,7 @@ verify_gcc_installation() {
   echo "Or for Docker/non-interactive shells, the paths are already in /etc/environment"
   echo "and will be available in new shell sessions or after sourcing /etc/environment."
   echo
+  return "${failed}"
 }
 
 verify_cross_compiler() {

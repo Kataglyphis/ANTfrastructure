@@ -66,6 +66,11 @@ python_stage_finalize() {
     local pc_file="$1"
     [ -f "${pc_file}" ] || return 0
 
+    if declare -F fix_python_pc_file >/dev/null 2>&1; then
+      fix_python_pc_file "${pc_file}"
+      return $?
+    fi
+
     # Keep pkg-config resolving into the staged target tree instead of the
     # build host's /usr/local prefix.
     sed -i \
@@ -320,7 +325,7 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
   info "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
 fi
 
-wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "${PYTHON_TARBALL}"
+wget --tries=5 --retry-connrefused --timeout=30 -q "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "${PYTHON_TARBALL}"
 tar -xf "${PYTHON_TARBALL}" -C /tmp
 
 cd "${PYTHON_SOURCE_DIR}"

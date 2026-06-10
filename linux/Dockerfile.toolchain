@@ -91,8 +91,9 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
 # without always registering them as the highest-priority alternatives.
 # Explicit update-alternatives here guarantees clang/clang++ resolve to the
 # requested major version for CMake presets and downstream builds.
-COPY --chmod=755 linux/scripts/02-toolchain/register-llvm-alternatives.sh /opt/scripts/toolchain/register-llvm-alternatives.sh
-RUN set -euo pipefail; LLVM_RELEASE="${LLVM_RELEASE}" bash /opt/scripts/toolchain/register-llvm-alternatives.sh
+# Uses the bind-mounted copy to avoid cache invalidation on script-only changes.
+RUN --mount=type=bind,source=linux/scripts/02-toolchain/register-llvm-alternatives.sh,target=/tmp/register-llvm-alternatives.sh,ro \
+    set -euo pipefail; LLVM_RELEASE="${LLVM_RELEASE}" bash /tmp/register-llvm-alternatives.sh
 
 # 3c. VERIFY TOOLCHAIN CONTRACT
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \

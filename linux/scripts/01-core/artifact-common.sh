@@ -37,7 +37,7 @@ normalize_target_arches() {
 # shellcheck disable=SC1090,SC1091
 for _module in \
   tag-naming.sh digest-pinning.sh build-helpers.sh context-management.sh \
-  version-forwarding.sh cli-parsers.sh runtime-build-fns.sh; do
+  version-forwarding.sh cli-parsers.sh runtime-build-fns.sh compiler-resolution.sh; do
   if [ -f "${_ARTIFACT_COMMON_DIR}/${_module}" ]; then
     source "${_ARTIFACT_COMMON_DIR}/${_module}"
   fi

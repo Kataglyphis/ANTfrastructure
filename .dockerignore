@@ -26,3 +26,15 @@ __pycache__/
 secrets/
 **/node_modules/
 .cache/
+*.so
+*.o
+*.a
+**/target/
+**/build/
+**/dist/
+.venv/
+venv/
+*.whl
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

@@ -2,6 +2,8 @@
 # cli-parsers.sh
 # Shared CLI argument parsing helpers for orchestrator and runtime build scripts.
 # Sourced by artifact-common.sh — do not source this directly.
+[ -n "${_CLI_PARSERS_SH_LOADED:-}" ] && return 0
+_CLI_PARSERS_SH_LOADED=1
 #
 # Provides:
 #   parse_shared_orchestrator_args   — cross-chain orchestrator arg parser

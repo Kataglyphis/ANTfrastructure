@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # repos.sh - add external apt repositories
+[ -n "${_REPOS_SH_LOADED:-}" ] && return 0
+_REPOS_SH_LOADED=1
 
 repo_http_status() {
   local url="$1"

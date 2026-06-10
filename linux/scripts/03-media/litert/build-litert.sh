@@ -836,15 +836,3 @@ main() {
 }
 
 main "$@"
-
-# Validation step
-if [ -f "${LITERT_OUTPUT_DIR}/lib/pkgconfig/litert.pc" ]; then
-    echo "LiteRT pkg-config found:"
-    cat "${LITERT_OUTPUT_DIR}/lib/pkgconfig/litert.pc"
-fi
-if [ -f "${LITERT_OUTPUT_DIR}/lib/pkgconfig/tensorflow-lite.pc" ]; then
-    echo "TensorFlow Lite (via LiteRT) pkg-config found:"
-    cat "${LITERT_OUTPUT_DIR}/lib/pkgconfig/tensorflow-lite.pc"
-fi
-ls -la "${LITERT_OUTPUT_DIR}/lib"/*lite* 2>/dev/null || echo "Warning: LiteRT libraries may not be in expected location"
-ldconfig

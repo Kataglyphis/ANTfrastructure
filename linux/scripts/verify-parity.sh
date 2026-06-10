@@ -285,12 +285,12 @@ check_files() {
   local native_file="${WORKDIR}/native-files.txt"
   local cross_file="${WORKDIR}/cross-files.txt"
 
-  container_exec_strip "${NATIVE_IMAGE}" find / -type f 2>/dev/null | sort > "${native_file}" || true
+  container_exec_strip "${NATIVE_IMAGE}" find / -type f \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -print 2>/dev/null | sort > "${native_file}" || true
   if [ ! -s "${native_file}" ]; then
     result_fail "Failed to list files from native image (empty or missing output)"
     return 1
   fi
-  container_exec_strip "${CROSS_IMAGE}" find / -type f 2>/dev/null | sort > "${cross_file}" || true
+  container_exec_strip "${CROSS_IMAGE}" find / -type f \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -print 2>/dev/null | sort > "${cross_file}" || true
   if [ ! -s "${cross_file}" ]; then
     result_fail "Failed to list files from cross image (empty or missing output)"
     return 1

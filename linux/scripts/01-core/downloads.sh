@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-
 # downloads.sh - shared download and checksum helpers
+[ -n "${_DOWNLOADS_SH_LOADED:-}" ] && return 0
+_DOWNLOADS_SH_LOADED=1
 #
 # NOTE: download_file() calls die() which requires logging.sh to be sourced
 # before this file.  When sourced through common.sh this is guaranteed;

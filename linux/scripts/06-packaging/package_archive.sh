@@ -26,7 +26,6 @@ AppID="${APP_ID:-}"
 WRITE_GITHUB_OUTPUT="${WRITE_GITHUB_OUTPUT:-true}"
 ARCHIVE_OUT_FILE="${ARCHIVE_OUT_FILE:-}"
 PRINT_ARCHIVE="${PRINT_ARCHIVE:-false}"
-AppImageExtractAndRun="true"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -46,7 +45,6 @@ while [ $# -gt 0 ]; do
         --appdata-file) shift; AppDataFile="$1" ;;
         --app-id) shift; AppID="$1" ;;
         --no-github-output) WRITE_GITHUB_OUTPUT=false ;;
-        --appimage-extract-and-run) AppImageExtractAndRun="true" ;;
         --archive-out-file) shift; ARCHIVE_OUT_FILE="$1" ;;
         --print-archive) PRINT_ARCHIVE=true ;;
         *) warn "Unknown argument: $1" ;;
@@ -220,11 +218,6 @@ EOF
     fi
 
     # If we packaged a desktop entry or icon, add a small postinst to refresh caches if possible
-
-        # If user requested an archive out file, write the path there (workspace-accessible)
-        if [ -n "${ARCHIVE_OUT_FILE}" ]; then
-            echo "${ArchivePath}" >"${ARCHIVE_OUT_FILE}"
-        fi
     if [ -f "$DEB_DIR/usr/share/applications/$pkgname.desktop" ] || [ -f "$DEB_DIR/usr/share/icons/hicolor/256x256/apps/$pkgname.png" ]; then
         cat > "$DEB_DIR/DEBIAN/postinst" <<'POSTINST'
 #!/bin/sh

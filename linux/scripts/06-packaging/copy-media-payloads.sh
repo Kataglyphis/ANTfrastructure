@@ -23,7 +23,10 @@ copy_path() {
   local src="${SRCPREFIX}$1"
   local dst
   dst="$(_dest "${2:-$1}")"
-  [ -e "${src}" ] || return 0
+  if [ ! -e "${src}" ]; then
+    warn "copy-media-payloads: optional payload missing: ${src}"
+    return 0
+  fi
   mkdir -p "$(dirname "${dst}")"
   cp -a "${src}" "${dst}"
 }

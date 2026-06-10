@@ -83,8 +83,6 @@ main() {
                 cp -a "${staged_python_root}/usr/local/include"/python* /usr/local/include/
                 echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-local.conf"
                 ldconfig
-                echo "/usr/local/lib" >> /etc/ld.so.conf.d/python-local.conf
-                ldconfig
             fi
             ;;
     esac
@@ -141,29 +139,6 @@ main() {
         echo "${gcc_prefix}/lib64" > "/etc/ld.so.conf.d/gcc-custom.conf"
         echo "${gcc_prefix}/lib" >> "/etc/ld.so.conf.d/gcc-custom.conf"
         ldconfig
-    else
-        # NOTE: This fallback is unreachable when built through Dockerfile.package
-        # because the artifact-source stage hard-fails if GCC is missing from the
-        # artifact image. Kept for standalone script usage outside Docker context.
-        echo "WARNING: Custom GCC not found at ${gcc_prefix}; creating symlink fallback to system GCC."
-        mkdir -p "${gcc_prefix}/bin" "${gcc_prefix}/${triplet}"
-        rm -rf "${gcc_prefix}/lib" "${gcc_prefix}/lib64" "${gcc_prefix}/${triplet}/lib"
-
-        if [ -d "/usr/lib/${triplet}" ]; then
-            ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/lib"
-            ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/lib64"
-            ln -sfn "/usr/lib/${triplet}" "${gcc_prefix}/${triplet}/lib"
-        fi
-
-        for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib; do
-            candidate="$(command -v "${tool}-${gcc_major}" || command -v "${tool}" || true)"
-            link_path_if_present "${candidate}" "${gcc_prefix}/bin/${tool}"
-        done
-
-        for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib ar as ld nm ranlib strip objcopy; do
-            candidate="$(command -v "${triplet}-${tool}-${gcc_major}" || command -v "${triplet}-${tool}" || command -v "${tool}-${gcc_major}" || command -v "${tool}" || true)"
-            link_path_if_present "${candidate}" "${gcc_prefix}/bin/${triplet}-${tool}"
-        done
     fi
 
     link_command_if_present cargo "${CARGO_HOME}/bin/cargo"

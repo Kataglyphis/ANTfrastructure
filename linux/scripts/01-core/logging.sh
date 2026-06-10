@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # logging.sh - shared logging helpers
+[ -n "${_LOGGING_SH_LOADED:-}" ] && return 0
+_LOGGING_SH_LOADED=1
 #
 # Exposes:
 #   info <msg...>

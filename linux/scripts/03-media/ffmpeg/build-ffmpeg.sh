@@ -150,7 +150,7 @@ resolve_ffmpeg_host_compiler() {
 
 prepare_ffmpeg_host_compiler_wrapper() {
     local compiler="$1"
-    local wrapper_dir="${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain}"
+    local wrapper_dir="${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain-$$}"
 
     if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
         make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"

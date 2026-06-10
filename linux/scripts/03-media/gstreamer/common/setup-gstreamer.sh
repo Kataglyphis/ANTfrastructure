@@ -446,7 +446,7 @@ else
 fi
 
 # just trust every folder
-set -eux
+set -euxo pipefail
 
 # --- Debug/logging helpers -------------------------------------------------
 LOG_DIR="${TMPDIR:-/tmp}/gstreamer-build-logs-$$-$(date +%s)"
@@ -497,19 +497,22 @@ fi
 
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 # we need to get rid of old orc modules on the system
-set -eux
+set -euxo pipefail
 
 
 
 
 # Helper: check whether a package is available in APT (returns 0 if present)
-apt_package_exists() {
-  if declare -F apt_has_package >/dev/null 2>&1; then
-    apt_has_package "$1"
-    return
-  fi
-  apt-cache show "$1" >/dev/null 2>&1
-}
+# Delegates to the canonical apt_package_exists from package-lists.sh when available.
+if ! declare -F apt_package_exists >/dev/null 2>&1; then
+  apt_package_exists() {
+    if declare -F apt_has_package >/dev/null 2>&1; then
+      apt_has_package "$1"
+      return
+    fi
+    apt-cache show "$1" >/dev/null 2>&1
+  }
+fi
 
 # ------------------------------------------------------------------------------
 # Install broad dependency set to enable most plugins
@@ -531,22 +534,7 @@ else
 fi
 
 # For using GTK video sinks
-
-
-# Audio I/O and DSP
-
-
-
-# Video capture / devices
-
-
-
-# Graphics stacks (X11/Wayland/OpenGL/EGL/GLES/DRM/VA)
-
-
-
-# Images / formats
-
+echo "Skipping gstreamer apt package installation — packages installed via pre-setup.sh"
 
 
 # Install OpenEXR development headers: prefer libopenexr-3-dev when present,
@@ -571,22 +559,6 @@ else
   :
   echo "Warning: libvvdec-dev not found in APT; continuing with the source-build fallback from install-vvdec.sh so the vvdec plugin stays enabled."
 fi
-
-# Codecs (audio)
-
-
-
-# Codecs (video)
-
-
-
-# FFmpeg (for gst-libav)
-
-
-
-# Networking / RTP / WebRTC / crypto
-
-
 
 # NVIDIA codec headers (enable nvcodec plugin)
 # Only install if NVIDIA GPU present OR explicitly requested via env var
@@ -730,7 +702,7 @@ fi
 mkdir -p "${GSTREAMER_PREFIX}"
 if command -v sudo >/dev/null 2>&1; then sudo chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; else chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; fi
 # do not write directly into tmp; its reserved for apt
-BUILD_DIR="/opt/tmp/gstreamer-build"
+BUILD_DIR="/opt/tmp/gstreamer-build-$$"
 if command -v sudo >/dev/null 2>&1; then sudo mkdir -p "${BUILD_DIR}"; else mkdir -p "${BUILD_DIR}"; fi
 cd "${BUILD_DIR}"
 if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; else chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; fi
@@ -774,7 +746,7 @@ echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly
 
 echo "Cleaning up..."
 cd /
-if command -v sudo >/dev/null 2>&1; then sudo rm -rf "${BUILD_DIR}"; else rm -rf "${BUILD_DIR}"; fi
+if command -v sudo >/dev/null 2>&1; then sudo rm -rf "${BUILD_DIR:?}"; else rm -rf "${BUILD_DIR:?}"; fi
 
 echo ""
 echo "=========================================="

@@ -81,6 +81,12 @@ append_runtime_accelerator_build_args() {
   append_optional_build_arg "$1" ENABLE_AMD "${ENABLE_AMD:-}"
 }
 
+append_common_build_args() {
+  local -n _acba_out=$1
+  append_mirror_build_args_from_env _acba_out
+  append_version_build_args _acba_out
+}
+
 image_exists() {
   local nerdctl_bin image_ref
   if [ "$#" -eq 1 ]; then

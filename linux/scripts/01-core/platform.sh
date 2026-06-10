@@ -188,6 +188,19 @@ cross_targets_effective_raw() {
   printf '%s' "${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}}}"
 }
 
+run_as_root() {
+  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo "$@"
+    else
+      printf 'Not root and sudo not available: %s\n' "$*" >&2
+      exit 1
+    fi
+  else
+    "$@"
+  fi
+}
+
 _platform_raw_target_arch() {
   canonical_resolve_arch "${TARGET_ARCH:-${TARGETARCH:-}}"
 }
@@ -251,6 +264,10 @@ is_arch() {
 
 is_build_arch() {
   [ "$(arch_normalize "$(build_arch_oci)")" = "$(arch_normalize "$1")" ]
+}
+
+android_build_host_supported() {
+  [ "$(build_arch_oci)" = "amd64" ]
 }
 
 android_require_amd64_build_host() {
