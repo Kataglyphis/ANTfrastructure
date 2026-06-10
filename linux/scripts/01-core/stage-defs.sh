@@ -6,17 +6,43 @@
 #   base -> compiler -> sdk -> media -> android -> runtime
 #
 # Each stage entry maps a stage name to its Dockerfile, tag function, parent
-# stage, and whether it is per-architecture. The orchestrator and verify_chain
-# both consume this graph so the chain is defined in exactly one place.
+# stage, and whether it is per-architecture. The orchestrator (build-cross-chain.sh)
+# and --verify-chain both consume this graph so the chain is defined in exactly
+# one place.
+#
+# STAGE HANDSHAKE PROTOCOL
+# ------------------------
+# The cross lane is a sequence of separate `nerdctl build` invocations where
+# each downstream stage does `FROM ${BASE_IMAGE}`. To prevent stale-base reuse:
+#
+# 1. The orchestrator captures each pushed stage's registry-resolvable manifest
+#    digest (via registry_pin_ref) and feeds it to the next stage as
+#    `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`.
+#
+# 2. Content-addressed digests can never resolve to stale images, unlike mutable
+#    tags which BuildKit may resolve from a stale local cache.
+#
+# 3. Per-arch stages (sdk, media, android) fan out one build per target
+#    architecture. Shared stages (base, compiler) build once.
+#
+# 4. The runtime stage delegates to build-runtime-manifest.sh (not a Dockerfile).
+#
+# To add or reorder stages:
+#   1. Update CROSS_STAGE_ORDER
+#   2. Add entries in cross_stage_dockerfile(), cross_stage_parent(),
+#      cross_stage_tag(), cross_stage_build_args(), cross_stage_pin_varname()
+#   3. If per-arch, add to CROSS_PER_ARCH_STAGES
+#   4. Declare the pin variable in the orchestrator (build-cross-chain.sh)
 #
 # Provides:
 #   CROSS_STAGE_ORDER           ordered array of stage names
+#   CROSS_PER_ARCH_STAGES        stages that fan out per architecture
 #   cross_stage_dockerfile()    → Dockerfile path for a stage
 #   cross_stage_parent()        → parent stage name (empty for base)
 #   cross_stage_is_per_arch()   → true if stage fans out per architecture
 #   cross_stage_tag()           → resolve tag for a stage (optionally per-arch)
 #   cross_stage_build_args()    → extra --build-arg flags for a stage
-#   cross_stage_runtime_delegate() → hook for runtime stage delegation
+#   cross_stage_pin_varname()   → variable name for the digest pin
 #
 # Dependency note: tag-naming.sh must already be sourced (stage-defs uses
 # cross_*_tag() and runtime_*_tag() functions from tag-naming.sh).

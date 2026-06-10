@@ -41,7 +41,20 @@ The cross-lane stage chain is defined declaratively in `linux/scripts/01-core/st
 as `CROSS_STAGE_ORDER`.  Each stage maps to its Dockerfile, parent, tag function, and
 per-arch flag.  Both `build-cross-chain.sh` and `--verify-chain` consume this graph.
 
-Prefer the orchestrator: `bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64`
+Stage build/pin functions live in `linux/scripts/01-core/cross-stage-build.sh` (sourced
+via `artifact-common.sh`), providing `cross_stage_run()`, `cross_stage_build_and_push()`,
+and `cross_stage_resolve_parent_pin()`.
+
+Prefer the orchestrator for full chains:
+```bash
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
+```
+
+For single-stage rebuilds, use the standalone helper:
+```bash
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
+bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push
+```
 
 ## Rootless Build Networking (host tuning)
 
@@ -289,4 +302,11 @@ docker buildx build \
 
 The cross/QEMU variant of that flow is documented in `docs/linux-cross-builds.md` and uses `linux/Dockerfile.package` to copy the cross-built payloads into a real target-platform runtime image before the final Torch `/opt/venv` assembly step runs.
 
-For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` and hands each stage to the next by its registry-resolvable manifest digest (`<repo>@sha256:...`) rather than a mutable tag, so a downstream stage can never silently consume a stale locally-cached base image. The manual `nerdctl` cross loops in `docs/linux-cross-builds.md` carry `--pull=true` as a weaker fallback defense. See `AGENTS.md` → "Cross Chain Stage Handoff" for the do-not-regress rule.
+For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` and hands each stage to the next by its registry-resolvable manifest digest (`<repo>@sha256:...`) rather than a mutable tag, so a downstream stage can never silently consume a stale locally-cached base image. The manual `nerdctl` cross loops in `docs/linux-cross-builds.md` carry `--pull=true` as a weaker fallback defense.
+
+For single-stage rebuilds, use `linux/scripts/build-cross-stage.sh`:
+```bash
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
+```
+
+See `AGENTS.md` → "Cross Chain Stage Handoff" for the do-not-regress rule.

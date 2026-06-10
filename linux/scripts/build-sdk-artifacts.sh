@@ -105,9 +105,19 @@ build_sdk_image() {
     .
 }
 
+# Push using the shared cross-stage build function for consistent push+cache semantics.
 push_sdk_image() {
-  local tag="$1"
-  retry 3 10 "pushing sdk image ${tag}" run "${NERDCTL_BIN}" push "${tag}"
+  local arch="$1" tag="$2"
+  local parent_pin=""
+  # Pin the compiler parent to its current registry digest
+  parent_pin="$(retry 3 10 "registry digest for ${COMPILER_IMAGE}" registry_pin_ref "${NERDCTL_BIN}" "${COMPILER_IMAGE}")" || true
+  local -a extra_args=(
+    --build-arg "BASE_IMAGE=${parent_pin:-${COMPILER_IMAGE}}"
+    --build-arg "BUILD_MODE=cross"
+    --build-arg "TARGET_ARCH=${arch}"
+    --build-arg "VULKAN_VERSION=${VULKAN_VERSION}"
+  )
+  cross_stage_build_and_push "sdk-${arch}" "${tag}" "linux/Dockerfile.sdk" "${extra_args[@]}"
 }
 
 main() {
@@ -161,7 +171,7 @@ main() {
       "SOURCE_IMAGE=${tag}" \
       "VULKAN_VERSION=${VULKAN_VERSION}"
     if [ "${PUSH_IMAGES}" -eq 1 ]; then
-      push_sdk_image "${tag}"
+      push_sdk_image "${arch}" "${tag}"
     fi
   }
 

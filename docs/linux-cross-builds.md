@@ -104,6 +104,17 @@ stage, tag function, per-arch flag) is defined in `CROSS_STAGE_ORDER` so both
 the build loop and `--verify-chain` consume the same single source of truth.
 To add or reorder stages, update `CROSS_STAGE_ORDER` in that file.
 
+Stage build/pin orchestration functions are shared in
+`linux/scripts/01-core/cross-stage-build.sh` (sourced via `artifact-common.sh`).
+These functions are used by both the orchestrator and the standalone
+`build-cross-stage.sh` helper:
+
+```bash
+# Rebuild a single cross stage independently:
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
+bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push
+```
+
 ### Stale-check (`--verify-chain`)
 
 Before a full build, verify whether downstream registry images are stale without

@@ -35,9 +35,21 @@ normalize_target_arches() {
 }
 
 # Source focused modules in dependency order.
+#   tag-naming.sh         — cross-chain + runtime tag functions
+#   stage-defs.sh          — declarative cross-lane stage graph
+#   digest-pinning.sh      — registry manifest digest resolution
+#   build-helpers.sh       — nerdctl wrappers, build-arg helpers
+#   cross-stage-build.sh   — shared cross-stage build + pin orchestration
+#   context-management.sh  — runtime context, OCI export, stage handoff
+#   version-forwarding.sh  — auto-discovered --build-arg forwarding
+#   cli-parsers.sh         — shared CLI argument parsing
+#   runtime-build-fns.sh   — per-arch runtime build chain functions
+#   compiler-resolution.sh — host compiler resolution for media builds
+#   parallel-loop.sh       — per-architecture parallel build loop
 # shellcheck disable=SC1090,SC1091
 for _module in \
   tag-naming.sh stage-defs.sh digest-pinning.sh build-helpers.sh \
+  cross-stage-build.sh \
   context-management.sh version-forwarding.sh cli-parsers.sh \
   runtime-build-fns.sh compiler-resolution.sh parallel-loop.sh; do
   if [ -f "${_ARTIFACT_COMMON_DIR}/${_module}" ]; then

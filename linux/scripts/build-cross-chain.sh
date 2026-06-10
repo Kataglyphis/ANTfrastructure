@@ -57,7 +57,8 @@ PARALLEL_ARCHS=0
 MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
 # Per-arch digest references captured during this run.
-# These are accessed indirectly via cross_stage_pin_varname() + nameref in run_cross_stage().
+# These are accessed indirectly via cross_stage_pin_varname() + nameref in
+# cross_stage_run() (defined in cross-stage-build.sh, sourced via artifact-common.sh).
 # shellcheck disable=SC2034
 declare -A SDK_PIN=()
 # shellcheck disable=SC2034
@@ -70,7 +71,32 @@ BASE_PIN=""
 # shellcheck disable=SC2034
 COMPILER_PIN=""
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# ── stage gating ──────────────────────────────────────────────────────────────
+
+# Build the STAGE_INDEX map from CROSS_STAGE_ORDER (defined in stage-defs.sh).
+declare -A STAGE_INDEX=()
+for i in "${!CROSS_STAGE_ORDER[@]}"; do
+  STAGE_INDEX["${CROSS_STAGE_ORDER[$i]}"]="${i}"
+done
+
+stage_index() {
+  local name="$1"
+  local idx="${STAGE_INDEX[${name}]:--1}"
+  if [ "${idx}" -ge 0 ]; then
+    printf '%s' "${idx}"
+    return 0
+  fi
+  warn "Unknown stage: ${name}"
+  return 1
+}
+
+stage_enabled() {
+  local name="$1" idx
+  idx="$(stage_index "${name}")" || exit 1
+  [ "${idx}" -ge "${FROM_STAGE_IDX}" ] && [ "${idx}" -le "${TO_STAGE_IDX}" ]
+}
+
+# ── usage ─────────────────────────────────────────────────────────────────────
 
 usage() {
   cat <<'EOF'
@@ -113,187 +139,9 @@ Notes:
     digest is resolved from the parent stage's current registry tag.
   * Digest pinning requires pushing each cross stage; this is mandatory and
     matches the existing documented cross flow.
+  * For single-stage rebuilds, use build-cross-stage.sh instead:
+      bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
 EOF
-}
-
-# ── stage gating ──────────────────────────────────────────────────────────────
-
-# Build the STAGE_INDEX map from CROSS_STAGE_ORDER (defined in stage-defs.sh).
-declare -A STAGE_INDEX=()
-for i in "${!CROSS_STAGE_ORDER[@]}"; do
-  STAGE_INDEX["${CROSS_STAGE_ORDER[$i]}"]="${i}"
-done
-
-stage_index() {
-  local name="$1"
-  local idx="${STAGE_INDEX[${name}]:--1}"
-  if [ "${idx}" -ge 0 ]; then
-    printf '%s' "${idx}"
-    return 0
-  fi
-  warn "Unknown stage: ${name}"
-  return 1
-}
-
-stage_enabled() {
-  local name="$1" idx
-  idx="$(stage_index "${name}")" || exit 1
-  [ "${idx}" -ge "${FROM_STAGE_IDX}" ] && [ "${idx}" -le "${TO_STAGE_IDX}" ]
-}
-
-# ── logging ───────────────────────────────────────────────────────────────────
-
-stage_log_redirect() {
-  local label="$1"
-  if [ -n "${LOG_DIR}" ]; then
-    mkdir -p "${LOG_DIR}"
-    printf '%s/%s.log' "${LOG_DIR}" "${label}"
-  fi
-}
-
-# ── shared build driver ───────────────────────────────────────────────────────
-
-# Build a cross stage on linux/amd64, push it, and print its digest-pinned ref.
-# Usage: build_cross_stage <label> <tag> <dockerfile> [extra build args...]
-build_cross_stage() {
-  local label="$1" tag="$2" dockerfile="$3"
-  shift 3
-  local -a extra=("$@")
-  local -a common_args=()
-  append_common_build_args common_args
-
-  local log_file
-  log_file="$(stage_log_redirect "${label}")"
-
-  local pull_flag="--pull=true"
-  if _has_digest_pinned_base "${extra[@]}"; then
-    pull_flag="--pull=false"
-  fi
-
-  local -a build_cmd=(
-    "${NERDCTL_BIN}" build
-    "${pull_flag}"
-    --platform linux/amd64
-    -t "${tag}"
-    --output "type=image,name=${tag},push=true"
-    --cache-from "type=registry,ref=${tag}-buildcache"
-    --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
-    -f "${dockerfile}"
-  )
-  append_buildkit_host_arg build_cmd
-  build_cmd+=("${extra[@]}" "${common_args[@]}" .)
-
-  if [ "${DRY_RUN}" -eq 1 ]; then
-    printf '[DRY RUN] '
-    printf '%q ' "${build_cmd[@]}"
-    printf '\n'
-    return 0
-  fi
-
-  if [ -n "${log_file}" ]; then
-    run "${build_cmd[@]}" > >(tee -a "${log_file}") 2>&1
-  else
-    run "${build_cmd[@]}"
-  fi
-}
-
-# ── digest pin resolution ─────────────────────────────────────────────────────
-
-# Resolve an upstream digest pin, preferring one captured this run, otherwise
-# falling back to the parent tag's current registry digest.
-resolve_pin() {
-  local captured="$1" tag="$2"
-  if [ -n "${captured}" ]; then
-    printf '%s' "${captured}"
-    return 0
-  fi
-  local result
-  result="$(retry 3 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")" || {
-    warn "Failed to resolve registry digest for ${tag}. Cannot pin downstream FROM."
-    return 1
-  }
-  if [ -z "${result}" ]; then
-    warn "Registry pin ref returned empty for ${tag}. Cannot pin downstream FROM."
-    return 1
-  fi
-  printf '%s' "${result}"
-}
-
-# ── per-stage build functions ─────────────────────────────────────────────────
-
-# Resolve a digest pin for a stage's parent using the stage graph.
-# Looks up captured pin from this run (or falls back to registry tag).
-_resolve_parent_pin_for_stage() {
-  local stage="$1" arch="${2:-}"
-  local parent parent_tag parent_pin_varname captured
-
-  parent="$(cross_stage_parent "${stage}")"
-  [ -z "${parent}" ] && return 0  # base has no parent
-
-  parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
-  parent_pin_varname="$(cross_stage_pin_varname "${parent}")"
-
-  if cross_stage_is_per_arch "${parent}"; then
-    local -n pin_map="${parent_pin_varname}"
-    captured="${pin_map[$arch]:-}"
-  else
-    captured="${!parent_pin_varname:-}"
-  fi
-
-  if [ "${DRY_RUN}" -eq 1 ]; then
-    printf '%s' "${captured:-${parent_tag}@sha256:dry-run-placeholder}"
-    return 0
-  fi
-
-  resolve_pin "${captured}" "${parent_tag}"
-}
-
-# Generic cross stage builder.  Resolves the parent digest, assembles build args,
-# runs the nerdctl build, and captures the output digest.
-# Usage: run_cross_stage <stage-name> [arch]
-run_cross_stage() {
-  local stage="$1" arch="${2:-}"
-  local label tag dockerfile parent_pin
-  local -a build_args=()
-  local pin_varname
-
-  label="${stage}"
-  cross_stage_is_per_arch "${stage}" && label="${stage}-${arch}"
-
-  dockerfile="$(cross_stage_dockerfile "${stage}")" || { err "No Dockerfile for stage: ${stage}"; }
-  tag="$(cross_stage_tag "${stage}" "${arch}")"
-
-  # Resolve parent digest pin
-  parent_pin="$(_resolve_parent_pin_for_stage "${stage}" "${arch}")" || {
-    err "Failed to resolve parent pin for stage ${stage}"
-  }
-  if [ -n "${parent_pin}" ]; then
-    build_args+=(--build-arg "BASE_IMAGE=${parent_pin}")
-  fi
-
-  # Append stage-specific build args
-  cross_stage_build_args build_args "${stage}" "${arch}"
-
-  log "[stage ${label}] building ${tag}${parent_pin:+ FROM ${parent_pin}}"
-  build_cross_stage "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
-
-  # Capture the digest pin
-  if [ "${DRY_RUN}" -eq 1 ]; then
-    log "[stage ${label}] [DRY RUN] would pin ${tag}"
-    return 0
-  fi
-  pin_varname="$(cross_stage_pin_varname "${stage}")"
-  if cross_stage_is_per_arch "${stage}"; then
-    local -n pin_map="${pin_varname}"
-    pin_map["${arch}"]="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
-    log "[stage ${label}] pinned ${pin_map[$arch]}"
-    if [ "${stage}" = "android" ]; then
-      ANDROID_BUILT_THIS_RUN["${arch}"]=1
-    fi
-  else
-    printf -v "${pin_varname}" '%s' "$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
-    log "[stage ${label}] pinned ${!pin_varname}"
-  fi
 }
 
 # Runtime stage: delegates to build-runtime-manifest.sh.
@@ -335,8 +183,6 @@ run_runtime_stage() {
   run env NERDCTL_BIN="${NERDCTL_BIN}" \
     bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}"
 }
-
-# ── arch loop (sequential or parallel) ────────────────────────────────────────
 
 # ── chain verification ────────────────────────────────────────────────────────
 
@@ -459,7 +305,8 @@ main() {
 
   # Drive execution from the stage graph (stage-defs.sh).
   # Each stage in CROSS_STAGE_ORDER is run only if it falls within the
-  # [FROM_STAGE, TO_STAGE] range.
+  # [FROM_STAGE, TO_STAGE] range.  Stage build/pin functions are provided
+  # by cross-stage-build.sh (sourced via artifact-common.sh).
   local stage
   for stage in "${CROSS_STAGE_ORDER[@]}"; do
     stage_enabled "${stage}" || continue
@@ -471,10 +318,10 @@ main() {
       *)
         if cross_stage_is_per_arch "${stage}"; then
           local _arch_fn
-          _arch_fn() { run_cross_stage "${stage}" "$1"; }
+          _arch_fn() { cross_stage_run "${stage}" "$1"; }
           run_parallel_arch_loop _arch_fn "/tmp/cross-loop-flags" "${MAX_PARALLEL_ARCHS}" ${TARGET_ARCHES//,/ }
         else
-          run_cross_stage "${stage}"
+          cross_stage_run "${stage}"
         fi
         ;;
     esac

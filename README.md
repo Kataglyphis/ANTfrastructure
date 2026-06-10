@@ -27,7 +27,7 @@ This README now keeps the quick project picture and links to the detailed guides
 | --- | --- |
 | [Project Overview](docs/overview.md) | Published images, repository image chain, feature snapshot, dependencies, useful tools |
 | [Linux Build Basics](docs/linux-build-basics.md) | Local runs, multi-arch builds, buildx, sequential nerdctl builds, fast Ubuntu mirror usage |
-| [Linux Cross Builds](docs/linux-cross-builds.md) | Additive cross-compiler lane, SDK artifacts, runtime artifacts, manifest publishing |
+| [Linux Cross Builds](docs/linux-cross-builds.md) | Additive cross-compiler lane, SDK artifacts, runtime artifacts, manifest publishing, single-stage rebuilds |
 | [Linux Accelerator Images](docs/linux-accelerator-images.md) | NVIDIA, AMD, and Torch variants plus required build and run flags |
 | [Runtime Services and Streaming](docs/runtime-services.md) | Webserver, display forwarding, Raspberry Pi camera notes, WebRTC signalling and streaming |
 | [Windows Build Image](docs/windows-builds.md) | Windows container build notes, antivirus exclusion warning, memory guidance |
