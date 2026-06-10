@@ -36,10 +36,6 @@ cross_build_enabled() {
 }
 
 is_cross() {
-  cross_build_is_active
-}
-
-cross_build_is_active() {
   cross_build_enabled
 }
 
@@ -100,7 +96,7 @@ prepare_cross_target_env() {
 }
 
 cross_effective_targets_raw() {
-  cross_targets_effective_raw
+  printf '%s' "${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}}}"
 }
 
 cross_bin_dir() {

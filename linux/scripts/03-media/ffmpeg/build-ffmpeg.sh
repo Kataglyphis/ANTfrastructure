@@ -45,20 +45,24 @@ echo "build-ffmpeg: src=${FFMPEG_SRC} prefix=${FFMPEG_PREFIX} buildtype=${BUILD_
 # ------------------------------------------------------------------------------
 fetch_ffmpeg() {
     echo "Fetching latest FFmpeg source..."
-    
-    if [ -d "${FFMPEG_SRC}/.git" ]; then
-        echo "Updating existing FFmpeg checkout..."
-        cd "${FFMPEG_SRC}"
-        git fetch --tags || true
+    if command -v clone_or_update_repo >/dev/null 2>&1; then
+        clone_or_update_repo "${FFMPEG_GIT}" "${FFMPEG_SRC}"
     else
-        rm -rf "${FFMPEG_SRC}"
-        git clone "${FFMPEG_GIT}" "${FFMPEG_SRC}" || { echo "Failed cloning FFmpeg"; exit 1; }
-        cd "${FFMPEG_SRC}"
+        if [ -d "${FFMPEG_SRC}/.git" ]; then
+            echo "Updating existing FFmpeg checkout..."
+            cd "${FFMPEG_SRC}"
+            git fetch --tags || true
+        else
+            rm -rf "${FFMPEG_SRC}"
+            git clone "${FFMPEG_GIT}" "${FFMPEG_SRC}" || { echo "Failed cloning FFmpeg"; exit 1; }
+            cd "${FFMPEG_SRC}"
+        fi
     fi
-    
+    cd "${FFMPEG_SRC}"
+
     # Get the latest release tag (stable version)
     LATEST_TAG=$(git tag -l 'n*' | grep -E '^n[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n1)
-    
+
     if [ -z "${LATEST_TAG}" ]; then
         echo "Warning: Could not find latest release tag, using master branch"
         git checkout master
@@ -66,7 +70,7 @@ fetch_ffmpeg() {
         echo "Checking out latest stable release: ${LATEST_TAG}"
         git checkout "${LATEST_TAG}"
     fi
-    
+
     echo "FFmpeg version: $(git describe --tags 2>/dev/null || echo 'unknown')"
 }
 
@@ -583,12 +587,13 @@ cleanup() {
 # Main
 # ------------------------------------------------------------------------------
 main() {
-    # Check if FFmpeg is already available at desired version
-    if command -v ffmpeg >/dev/null 2>&1; then
-        INSTALLED_VERSION=$(ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}')
-        echo "FFmpeg ${INSTALLED_VERSION} already installed"
-        
-        # Continue with build to ensure we have latest
+    if [ -x "${FFMPEG_PREFIX}/bin/ffmpeg" ]; then
+        INSTALLED_VERSION=$("${FFMPEG_PREFIX}/bin/ffmpeg" -version 2>/dev/null | head -n1 | awk '{print $3}')
+        echo "FFmpeg ${INSTALLED_VERSION} already installed at ${FFMPEG_PREFIX}"
+        if [ "${FORCE_REBUILD:-0}" != "1" ]; then
+            echo "Skipping rebuild (set FORCE_REBUILD=1 to force)"
+            return 0
+        fi
     fi
 
     fetch_ffmpeg

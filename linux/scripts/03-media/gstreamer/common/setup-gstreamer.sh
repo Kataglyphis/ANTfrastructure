@@ -504,6 +504,10 @@ set -eux
 
 # Helper: check whether a package is available in APT (returns 0 if present)
 apt_package_exists() {
+  if declare -F apt_has_package >/dev/null 2>&1; then
+    apt_has_package "$1"
+    return
+  fi
   apt-cache show "$1" >/dev/null 2>&1
 }
 
@@ -714,6 +718,15 @@ echo "Prefix: ${GSTREAMER_PREFIX}"
 echo "Build Type: ${BUILD_TYPE_LOWER}"
 echo "=========================================="
 
+if [ -x "${GSTREAMER_PREFIX}/bin/gst-launch-1.0" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
+  installed_ver="$("${GSTREAMER_PREFIX}/bin/gst-launch-1.0" --version 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' || true)"
+  if [ "${installed_ver}" = "${GSTREAMER_VERSION}" ]; then
+    echo "GStreamer ${GSTREAMER_VERSION} already installed at ${GSTREAMER_PREFIX}, skipping build"
+    echo "Set FORCE_REBUILD=1 to force rebuild"
+    exit 0
+  fi
+fi
+
 mkdir -p "${GSTREAMER_PREFIX}"
 if command -v sudo >/dev/null 2>&1; then sudo chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; else chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; fi
 # do not write directly into tmp; its reserved for apt
@@ -722,7 +735,10 @@ if command -v sudo >/dev/null 2>&1; then sudo mkdir -p "${BUILD_DIR}"; else mkdi
 cd "${BUILD_DIR}"
 if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; else chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; fi
 
-if [ -d "gstreamer" ]; then
+if command -v clone_or_update_repo >/dev/null 2>&1; then
+  clone_or_update_repo "https://github.com/GStreamer/gstreamer.git" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}"
+  cd "${BUILD_DIR}/gstreamer"
+elif [ -d "gstreamer" ]; then
   echo "Updating existing GStreamer repository..."
   cd gstreamer
   git fetch origin --tags 2>/dev/null || git fetch --unshallow origin 2>/dev/null || true

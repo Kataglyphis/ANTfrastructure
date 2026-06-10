@@ -7,6 +7,9 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
+[ -z "${_CROSS_APT_LOADED:-}" ] || return 0
+_CROSS_APT_LOADED=1
+
 # shellcheck disable=SC1091
 [ -f "${_CROSS_ENV_DIR:-${BASH_SOURCE[0]%/*}}/package-groups.sh" ] && source "${_CROSS_ENV_DIR:-${BASH_SOURCE[0]%/*}}/package-groups.sh"
 

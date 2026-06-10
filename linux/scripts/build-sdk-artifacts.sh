@@ -13,9 +13,7 @@ TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_
 # VULKAN_VERSION default comes from versions.env via artifact-common.sh
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-sdk}"
-USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
-FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT}}"
-FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
+init_mirror_defaults
 PUSH_IMAGES=0
 
 usage() {
@@ -114,7 +112,7 @@ main() {
     local _dispatch_rc=0
     dispatch_parsed_args parse_shared_orchestrator_args \
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IGNORED_REPO VULKAN_VERSION PUSH_IMAGES \
+      FAST_UBUNTU_PORTS_MIRROR_URL _ignored_repo VULKAN_VERSION PUSH_IMAGES \
       "$1" "${2:-}" || _dispatch_rc=$?
     case $_dispatch_rc in
       255) usage; exit 0 ;;

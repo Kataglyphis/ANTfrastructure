@@ -103,11 +103,7 @@ validate_artifact_source() {
   # target-native Clang
   llvm_target="/opt/llvm-target/bin/clang"
   if [ ! -e /opt/llvm-target ]; then
-    if [ -d /usr/local/llvm-target ]; then
-      ln -s /usr/local/llvm-target /opt/llvm-target
-    elif [ "${target_arch}" = "amd64" ] && [ -d /usr/local/llvm-22 ]; then
-      ln -s /usr/local/llvm-22 /opt/llvm-target
-    fi
+    validate_fail "llvm-target-missing" "/opt/llvm-target symlink/directory not found (should be created by setup step)"
   fi
   if [ -x "${llvm_target}" ]; then
     local clang_ver clang_major_minor
@@ -127,7 +123,6 @@ validate_artifact_source() {
     validate_fail "target-clang-missing" "${llvm_target} not executable in /opt/llvm-target"
   else
     echo "WARNING: missing target-native LLVM toolchain for ${target_arch}; continuing with distro LLVM"
-    mkdir -p /opt/llvm-target
   fi
 
   if [ "${_VALIDATE_ERRORS}" -gt 0 ]; then
@@ -272,8 +267,10 @@ _validate_cc_target() {
     esac
   fi
 
-  cc_obj="$(mktemp -d)/cc1smoke.o"
-  if printf 'int answer(void){return 42;}\n' | cc -x c - -c -o "${cc_obj}" 2>/tmp/cc1smoke.log; then
+  local _cc1_tmpdir; _cc1_tmpdir="$(mktemp -d)"
+  cc_obj="${_cc1_tmpdir}/cc1smoke.o"
+  local _cc1_log="${_cc1_tmpdir}/cc1smoke.log"
+  if printf 'int answer(void){return 42;}\n' | cc -x c - -c -o "${cc_obj}" 2>"${_cc1_log}"; then
     echo "Verified /usr/bin/cc cc1 compile-to-object smoke for ${target_arch}"
     if [ -n "${cc_pattern}" ] && command -v readelf >/dev/null 2>&1; then
       local obj_machine
@@ -282,7 +279,7 @@ _validate_cc_target() {
         *"${cc_pattern}"*) echo "Verified cc1 output object ELF machine '${obj_machine}' matches ${target_arch}" ;;
         *)
           if [ "${mode}" = "hard-fail" ]; then
-            echo "ERROR: cc1 produced object with ELF machine '${obj_machine}', expected '${cc_pattern}' for ${target_arch}" >&2; exit 1
+            echo "ERROR: cc1 produced object with ELF machine '${obj_machine}', expected '${cc_pattern}' for ${target_arch}" >&2; rm -rf "${_cc1_tmpdir}"; exit 1
           else
             validate_fail "cc1-obj-elf" "object ELF machine '${obj_machine}' != '${cc_pattern}'"
           fi
@@ -292,28 +289,31 @@ _validate_cc_target() {
   else
     if [ "${mode}" = "hard-fail" ]; then
       echo "ERROR: cc1 compile-to-object smoke FAILED for ${target_arch}:" >&2
-      cat /tmp/cc1smoke.log >&2 || true
+      cat "${_cc1_log}" >&2 || true
+      rm -rf "${_cc1_tmpdir}"
       exit 1
     else
       validate_fail "cc1-smoke" "cc1 compile-to-object smoke failed for ${target_arch}"
     fi
   fi
-  rm -f "${cc_obj}" /tmp/cc1smoke.log 2>/dev/null || true
+  rm -rf "${_cc1_tmpdir}"
 
-  cc_exe="$(mktemp -d)/cclinksmoke"
-  if printf 'int main(void){return 0;}\n' | cc -x c - -o "${cc_exe}" 2>/tmp/cclinksmoke.log; then
+  local _cc_link_tmpdir; _cc_link_tmpdir="$(mktemp -d)"
+  cc_exe="${_cc_link_tmpdir}/cclinksmoke"
+  local _cc_link_log="${_cc_link_tmpdir}/cclinksmoke.log"
+  if printf 'int main(void){return 0;}\n' | cc -x c - -o "${cc_exe}" 2>"${_cc_link_log}"; then
     echo "Verified /usr/bin/cc link smoke for ${target_arch}"
-    rm -f "${cc_exe}"
   else
     if [ "${mode}" = "hard-fail" ]; then
       echo "ERROR: cc link smoke FAILED for ${target_arch} (missing crt/startup files?):" >&2
-      cat /tmp/cclinksmoke.log >&2 || true
+      cat "${_cc_link_log}" >&2 || true
+      rm -rf "${_cc_link_tmpdir}"
       exit 1
     else
       validate_fail "cc-link" "cc link smoke failed for ${target_arch}"
     fi
   fi
-  rm -f /tmp/cclinksmoke.log 2>/dev/null || true
+  rm -rf "${_cc_link_tmpdir}"
 }
 
 validate_smoke() {

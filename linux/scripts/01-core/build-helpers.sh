@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # build-helpers.sh — nerdctl build wrappers and build-arg helpers.
-# shellcheck disable=SC2178  # nameref across functions (separate local scopes)
+#
+[ -z "${_BUILD_HELPERS_LOADED:-}" ] || return 0
+_BUILD_HELPERS_LOADED=1
 #
 # Provides:
 #   run()                         — echo + execute (DO NOT use for secret-bearing args)

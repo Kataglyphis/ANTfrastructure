@@ -20,6 +20,7 @@ main() {
     case "${target_arch}" in
       x86_64) target_arch=amd64 ;;
       aarch64) target_arch=arm64 ;;
+      riscv64) target_arch=riscv64 ;;
     esac
   fi
 

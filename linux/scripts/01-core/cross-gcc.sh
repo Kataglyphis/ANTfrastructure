@@ -7,6 +7,9 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
+[ -z "${_CROSS_GCC_LOADED:-}" ] || return 0
+_CROSS_GCC_LOADED=1
+
 gcc_toolchain_prefix() {
   printf '%s' "/opt/gcc-${GCC_VERSION:-16.1.0}"
 }

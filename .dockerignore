@@ -5,6 +5,10 @@ output.log
 .codacy
 archive
 README.md
+AGENTS.md
+CHANGELOG.md
+.gitignore
+.dockerignore
 docs
 linux/webserver
 windows/
@@ -20,3 +24,5 @@ __pycache__/
 *.pem
 *.key
 secrets/
+**/node_modules/
+.cache/

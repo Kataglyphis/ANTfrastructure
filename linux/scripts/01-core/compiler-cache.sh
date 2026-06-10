@@ -175,36 +175,4 @@ setup_lld_linker() {
   _cc_info "lld linker enabled: LDFLAGS contains ${lld_flag}"
 }
 
-# Resolve a cross-compilation archive tool (ar, ranlib) for the target triplet.
-# Usage: resolve_cross_archive_tool ar   -> e.g., aarch64-linux-gnu-gcc-ar
-#         resolve_cross_archive_tool ranlib
-resolve_cross_archive_tool() {
-  local tool="$1"
-  local triplet="${CROSS_TARGET_TRIPLET:-}"
-  local preferred=""
-  local fallback=""
-  local resolved=""
-
-  if [ -z "${triplet}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
-    triplet="$(cross_target_triplet)"
-  fi
-
-  preferred="${triplet}-gcc-${tool}"
-  fallback="${triplet}-${tool}"
-
-  resolved="$(command -v "${preferred}" 2>/dev/null || true)"
-  if [ -n "${resolved}" ]; then
-    printf '%s' "${resolved}"
-    return 0
-  fi
-
-  resolved="$(command -v "${fallback}" 2>/dev/null || true)"
-  if [ -n "${resolved}" ]; then
-    printf '%s' "${resolved}"
-    return 0
-  fi
-
-  printf '%s' "${fallback}"
-}
-
 fi

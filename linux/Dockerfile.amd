@@ -46,9 +46,13 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     && wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
     && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${ROCM_VERSION} ${UBUNTU_CODENAME} main" | tee /etc/apt/sources.list.d/rocm.list \
     && echo -e 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' | tee /etc/apt/preferences.d/rocm-pin-600 \
-    # Second apt-get update is required: fetches the newly-added ROCm repo index
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get update
+
+# Install ROCm packages (separate RUN for faster retry on failure)
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    set -euo pipefail; \
+    apt-get install -y --no-install-recommends \
         rocm-dev \
         rocm-libs \
         miopen-hip \

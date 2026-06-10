@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # platform.sh - small, side-effect-free platform helpers
 
+[ -z "${_PLATFORM_SH_LOADED:-}" ] || return 0
+_PLATFORM_SH_LOADED=1
+
 arch_normalize() {
   case "$1" in
     amd64|x86_64) printf '%s' "amd64" ;;

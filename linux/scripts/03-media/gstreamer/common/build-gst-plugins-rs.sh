@@ -18,37 +18,11 @@ configure_gstreamer_prefix_for_cargo() {
 }
 
 compute_gst_plugins_rs_rust_jobs() {
-  local rust_per_job_mb=""
-  local rust_cores=""
-  local rust_avail_mb=""
-  local rust_max_by_mem=1
-  local rust_jobs=1
-
   if command -v compute_rust_jobs >/dev/null 2>&1; then
     compute_rust_jobs
     return 0
   fi
-
-  if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-    rust_per_job_mb="${RUST_PER_JOB_MB:-1800}"
-  else
-    rust_per_job_mb="${RUST_PER_JOB_MB:-2500}"
-  fi
-
-  rust_cores="$(nproc --all 2>/dev/null || echo 1)"
-  rust_avail_mb="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo 2>/dev/null || true)"
-  [ -n "${rust_avail_mb}" ] || rust_avail_mb=2048
-  rust_max_by_mem=$(( rust_avail_mb / rust_per_job_mb ))
-  [ "${rust_max_by_mem}" -lt 1 ] && rust_max_by_mem=1
-
-  if [ "${rust_cores}" -lt "${rust_max_by_mem}" ]; then
-    rust_jobs="${rust_cores}"
-  else
-    rust_jobs="${rust_max_by_mem}"
-  fi
-
-  [ "${rust_jobs}" -lt 1 ] && rust_jobs=1
-  printf '%s' "${rust_jobs}"
+  nproc --all 2>/dev/null || echo 1
 }
 
 cargo_metadata_package_names() {

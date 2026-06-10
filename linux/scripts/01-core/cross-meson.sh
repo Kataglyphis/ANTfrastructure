@@ -7,6 +7,9 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
+[ -z "${_CROSS_MESON_LOADED:-}" ] || return 0
+_CROSS_MESON_LOADED=1
+
 make_meson_cross_rust_wrapper() {
   local wrapper_path="$1"
   local rustc_bin="$2"

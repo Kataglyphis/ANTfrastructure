@@ -68,10 +68,13 @@ container_exec() {
 container_exec_strip() {
   local image="$1"
   shift
-  container_exec "${image}" "$@" 2>/tmp/container_exec_stderr.log || {
-    cat /tmp/container_exec_stderr.log >&2
+  local _stderr_log; _stderr_log="$(mktemp)"
+  container_exec "${image}" "$@" 2>"${_stderr_log}" || {
+    cat "${_stderr_log}" >&2
+    rm -f "${_stderr_log}"
     return 1
   }
+  rm -f "${_stderr_log}"
 }
 
 result_pass() {

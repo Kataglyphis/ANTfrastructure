@@ -52,11 +52,6 @@ run_step() {
     return "$status"
 }
 
-apt_has_package() {
-    local pkg="$1"
-    apt-cache show "$pkg" >/dev/null 2>&1
-}
-
 # ── Helper: run a command, retry with sudo on failure ──────────────────
 
 try_or_sudo() {

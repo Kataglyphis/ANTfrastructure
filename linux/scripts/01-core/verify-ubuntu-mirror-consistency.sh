@@ -15,6 +15,7 @@ DOCKERFILES=(
   linux/Dockerfile.media
   linux/Dockerfile.android
   linux/Dockerfile.package
+  linux/Dockerfile.torch
 )
 
 REQUIRED_ARGS=(

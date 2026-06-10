@@ -7,6 +7,9 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
+[ -z "${_CROSS_PYTHON_LOADED:-}" ] || return 0
+_CROSS_PYTHON_LOADED=1
+
 host_python_bin() {
   if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
     printf '%s' "${MEDIA_HOST_PYTHON}"

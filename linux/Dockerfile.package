@@ -149,17 +149,18 @@ RUN set -euo pipefail; \
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
-COPY --chmod=755 linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh
-COPY --chmod=755 linux/scripts/03-media/final/ /opt/scripts/media/final/
-COPY --chmod=755 linux/scripts/03-media/gstreamer/android/ /opt/scripts/media/gstreamer/android/
-COPY --chmod=755 linux/scripts/03-media/litert/android/ /opt/scripts/media/litert/android/
-COPY --chmod=755 linux/scripts/03-media/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/
-COPY --chmod=755 linux/scripts/03-media/opencv/android/ /opt/scripts/media/opencv/android/
-COPY --chmod=755 linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.sh
-COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
-COPY --chmod=755 linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh
-COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
-COPY --chmod=755 linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh
+COPY --chmod=755 \
+    linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh \
+    linux/scripts/03-media/final/ /opt/scripts/media/final/ \
+    linux/scripts/03-media/gstreamer/android/ /opt/scripts/media/gstreamer/android/ \
+    linux/scripts/03-media/litert/android/ /opt/scripts/media/litert/android/ \
+    linux/scripts/03-media/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/ \
+    linux/scripts/03-media/opencv/android/ /opt/scripts/media/opencv/android/ \
+    linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.sh \
+    linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh \
+    linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh \
+    linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh \
+    linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh

@@ -815,6 +815,10 @@ verify_installation() {
 }
 
 cleanup() {
+    if [ "${KEEP_SOURCES:-0}" = "1" ]; then
+        info "KEEP_SOURCES=1, skipping cleanup of ${LITERT_SRC}"
+        return 0
+    fi
     info Cleaning up...
     rm -rf "${LITERT_SRC}" || true
 }

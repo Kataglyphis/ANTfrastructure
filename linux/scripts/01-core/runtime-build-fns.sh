@@ -18,9 +18,12 @@
 #   runtime_stage_context_*, runtime_use_local_*, etc.
 
 # Trap cleanup for container/image leaks on premature exit
+_BUILD_INVOCATION_ID="${$}-$(date +%s)"
 _runtime_cleanup_trap() {
   local cid
-  # Clean up any lingering containers from this script's build operations
+  for cid in $("${NERDCTL_BIN:-nerdctl}" ps -aq --filter "label=opencode-build-${_BUILD_INVOCATION_ID}" 2>/dev/null || true); do
+    "${NERDCTL_BIN:-nerdctl}" rm -f "${cid}" >/dev/null 2>&1 || true
+  done
   for cid in $("${NERDCTL_BIN:-nerdctl}" ps -aq --filter "label=opencode-build" 2>/dev/null || true); do
     "${NERDCTL_BIN:-nerdctl}" rm -f "${cid}" >/dev/null 2>&1 || true
   done

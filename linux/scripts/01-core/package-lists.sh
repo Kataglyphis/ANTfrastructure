@@ -3,8 +3,11 @@
 # package-lists.sh - shared apt package lists for image/bootstrap scripts
 
 apt_package_exists() {
+  if declare -F apt_has_package >/dev/null 2>&1; then
+    apt_has_package "$@"
+    return
+  fi
   local pkg="$1"
-
   apt-cache show "${pkg}" >/dev/null 2>&1
 }
 

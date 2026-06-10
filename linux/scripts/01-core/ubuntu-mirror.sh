@@ -2,6 +2,9 @@
 
 # ubuntu-mirror.sh - shared helpers for Ubuntu archive/security/ports mirrors
 
+[ -z "${_UBUNTU_MIRROR_SH_LOADED:-}" ] || return 0
+_UBUNTU_MIRROR_SH_LOADED=1
+
 ubuntu_mirror_is_truthy() {
   case "${1:-false}" in
     1|true|TRUE|yes|YES) return 0 ;;
@@ -74,4 +77,10 @@ ubuntu_effective_ports_mirror_url() {
   fi
 
   ubuntu_ports_mirror_from_archive "${archive_url}"
+}
+
+init_mirror_defaults() {
+  : "${USE_FAST_UBUNTU_MIRROR:=false}"
+  : "${FAST_UBUNTU_MIRROR_URL:=${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}"
+  : "${FAST_UBUNTU_PORTS_MIRROR_URL:=}"
 }

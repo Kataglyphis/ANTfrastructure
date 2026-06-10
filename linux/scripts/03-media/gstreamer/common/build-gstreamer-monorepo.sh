@@ -47,12 +47,6 @@ prebuild_gstreamer_riscv_targets() {
 }
 
 compute_gstreamer_meson_jobs() {
-  local per_job_mb=1500
-  local cores=""
-  local avail_mb=""
-  local max_by_mem=1
-  local jobs=1
-
   if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
     if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
       compute_jobs_with_mem_cap "" 1000
@@ -61,22 +55,7 @@ compute_gstreamer_meson_jobs() {
     fi
     return 0
   fi
-
-  [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ] && per_job_mb=1000
-  cores="$(nproc --all)"
-  avail_mb="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo)"
-  [ -n "${avail_mb}" ] || avail_mb=2048
-  max_by_mem=$(( avail_mb / per_job_mb ))
-  [ "${max_by_mem}" -lt 1 ] && max_by_mem=1
-
-  if [ "${cores}" -lt "${max_by_mem}" ]; then
-    jobs="${cores}"
-  else
-    jobs="${max_by_mem}"
-  fi
-
-  [ "${jobs}" -lt 1 ] && jobs=1
-  printf '%s' "${jobs}"
+  nproc --all 2>/dev/null || echo 1
 }
 
 build_gstreamer_monorepo() {

@@ -85,7 +85,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
     CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
-    apt-get update -qq; \
     apt-get install -y --no-install-recommends \
         cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \
         cuda-libraries-${CUDA_VERSION_MAJOR_MINOR} \
