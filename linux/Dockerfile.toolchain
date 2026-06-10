@@ -45,12 +45,14 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # ------------------------------------------------------------------------------
 # 1. GCC (Heavy Layer)
 # If this succeeds, it is cached forever unless GCC_VERSION changes.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolchain-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-toolchain-${TARGETARCH} \
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
     --mount=type=tmpfs,target=/tmp \
-    set -eux; \
+    set -euo pipefail; \
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-gcc
 
@@ -66,13 +68,13 @@ ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
 
 # 3. LLVM / CLANG (Heavy Layer)
 # If this fails, Docker restores the image state at 'Step 2' instantly.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolchain-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-toolchain-${TARGETARCH} \
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
     --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
-    set -eux; \
+    set -euo pipefail; \
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
     bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-llvm
@@ -83,12 +85,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-toolcha
 # Explicit update-alternatives here guarantees clang/clang++ resolve to the
 # requested major version for CMake presets and downstream builds.
 COPY --chmod=755 linux/scripts/02-toolchain/register-llvm-alternatives.sh /opt/scripts/toolchain/register-llvm-alternatives.sh
-RUN set -eux; LLVM_RELEASE="${LLVM_RELEASE}" bash /opt/scripts/toolchain/register-llvm-alternatives.sh
+RUN set -euo pipefail; LLVM_RELEASE="${LLVM_RELEASE}" bash /opt/scripts/toolchain/register-llvm-alternatives.sh
 
 # 3c. VERIFY TOOLCHAIN CONTRACT
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
 # 4. RUST / CARGO
@@ -107,22 +109,23 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
 # create their own venvs on top of a single source-built CPython install.
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     --mount=type=bind,source=linux/scripts/python/build_python.sh,target=/opt/scripts/python/build_python.sh,ro \
-    set -eux; \
+    set -euo pipefail; \
     PYTHON_CROSS_STAGE_ROOT=/opt/python-cross \
     PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \
     bash /opt/scripts/python/build_python.sh "${PYTHON_VERSION}"
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
-COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
+COPY --chmod=755 \
+    linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh \
+    linux/scripts/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh
 
 # Fix cross-compiled Python pkg-config files so they resolve into the per-arch
 # staging trees instead of the build host's /usr/local prefix.
-RUN --mount=type=bind,source=linux/scripts/python/fix-staged-python-pc.sh,target=/tmp/fix-staged-python-pc.sh,ro \
-    set -eux; bash /tmp/fix-staged-python-pc.sh
+RUN set -euo pipefail; bash /opt/scripts/python/fix-staged-python-pc.sh
 
 # 6. FINAL SCRIPT TREE SMOKE CHECK
-RUN set -eux; \
+RUN set -euo pipefail; \
     find /opt/scripts -name '*.sh' -exec bash -n {} +; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null
 

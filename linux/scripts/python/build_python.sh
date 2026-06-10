@@ -21,6 +21,10 @@ _source_first \
   "/opt/scripts/core/logging.sh" \
   "${SCRIPT_DIR}/../01-core/logging.sh" || true
 
+_source_first \
+  "/opt/scripts/core/parallelism.sh" \
+  "${SCRIPT_DIR}/../01-core/parallelism.sh" || true
+
 install_err_trap
 
 PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.5}}"
@@ -197,7 +201,7 @@ EOF
 
   (
     cd "${cross_build_dir}"
-    make -k -j"$(nproc)" 2>&1 || true
+    make -k -j"$(compute_jobs_with_mem_cap "" 2500)" 2>&1 || true
   )
 
   if [ ! -x "${cross_build_dir}/python" ] || [ ! -f "${cross_build_dir}/libpython${python_mm}.so.1.0" ]; then
@@ -321,7 +325,7 @@ tar -xf "${PYTHON_TARBALL}" -C /tmp
 
 cd "${PYTHON_SOURCE_DIR}"
 ./configure --enable-shared --enable-optimizations --prefix=/usr/local
-make -j"$(nproc)"
+make -j"$(compute_jobs_with_mem_cap "" 2500)"
 make altinstall
 
 # Add the lib path to the system linker

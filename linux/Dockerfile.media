@@ -16,6 +16,17 @@ ARG USE_LLD=true
 ARG USE_CCACHE=true
 ARG USE_SCCACHE=true
 
+# Stage dependency DAG — BuildKit parallelizes independent stages automatically:
+#
+#   base ─┬─ onnxruntime ───────┐
+#         ├─ litert ────────────┤
+#         ├─ opencv ────────────┼─ media-inputs ─ gstreamer ─ libcamera ─ final
+#         ├─ ffmpeg ────────────┤
+#         └─ app-wheelhouse ────┘
+#
+# Stages are ordered by dependency. gstreamer depends on media-inputs
+# which collects everything from onnxruntime/litert/opencv/ffmpeg.
+# libcamera depends on gstreamer. final collectly everything.
 
 # ==============================================================================
 # Base stage - common setup
@@ -55,14 +66,14 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
     USE_SCCACHE=${USE_SCCACHE}
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
-    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
-
-# Keep accelerator tool paths inherited from the selected base image. Only the
-# nvcodec header toggle needs an explicit override here for later RUN steps.
-ENV NVIDIA_CODEC_HEADERS=auto
-RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
+    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh; \
+    if [ "${ENABLE_NVIDIA}" = "true" ]; then \
         printf '%s\n' 'export NVIDIA_CODEC_HEADERS=yes' > /etc/profile.d/nvidia-codec-headers.sh; \
     fi
+
+# Keep accelerator tool paths inherited from the selected base image.
+ENV NVIDIA_CODEC_HEADERS=auto \
+    VIRTUAL_ENV=/opt/python/.venv
 
 # Python interpreter selection for shared build tooling.
 # Keep uv pinned to the shared venv interpreter after it is created, because
@@ -82,8 +93,7 @@ COPY --chmod=755 \
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh /opt/scripts/media/activate-cross-python.sh
 
 # Create a shared Python virtual environment for all subsequent stages using uv
-ENV VIRTUAL_ENV=/opt/python/.venv
-RUN set -eux; \
+RUN set -euo pipefail; \
     source /opt/scripts/core/cross-env.sh; \
     python_mm="$(host_python_major_minor)"; \
     test -x "/usr/local/bin/python${python_mm}" || { \
@@ -96,16 +106,11 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}" \
     UV_PYTHON=${VIRTUAL_ENV}/bin/python \
     MEDIA_HOST_PYTHON=${VIRTUAL_ENV}/bin/python
 
-# Install core Python build dependencies using uv
+# Install core Python build dependencies using uv, then create the cross-build
+# Python staging symlink so cross_target_python_active_stage_root() resolves.
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools numpy meson ninja cmake packaging
-
-# ------------------------------------------------------------------------------
-# Create /opt/python-target symlink for cross builds so that
-# cross_target_python_active_stage_root() finds the correct per-arch Python
-# staging tree.
-# ------------------------------------------------------------------------------
-RUN set -eux; bash /opt/scripts/media/activate-cross-python.sh
+    uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools numpy meson ninja cmake packaging; \
+    bash /opt/scripts/media/activate-cross-python.sh
 
 # ==============================================================================
 # ONNX Runtime stage
@@ -137,7 +142,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-        set -eux; \
+        set -euo pipefail; \
     SKIP_DEP_INSTALL=true bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step deps && \
     bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step fetch
 
@@ -145,7 +150,7 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
-        set -eux; \
+        set -euo pipefail; \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
             --step cpu
 
@@ -153,7 +158,7 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
-        set -eux; \
+        set -euo pipefail; \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
             --step gpu
 
@@ -161,13 +166,15 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
         --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-        set -eux; \
+        set -euo pipefail; \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
             --step genai
 
-# wasm + js + pkgconfig combined: all fast, no heavy cache dependencies
+# wasm + js + pkgconfig combined: wasm uses uv/pip for dependencies
 COPY --chmod=755 linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
-RUN set -eux; \
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
+    set -euo pipefail; \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step wasm; \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step js; \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step pkgconfig
@@ -185,12 +192,12 @@ COPY --chmod=755 linux/scripts/03-media/litert /opt/scripts/media/litert
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/media/litert/install-deps.sh
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/media/litert/build-litert.sh "${LITERT_VERSION}"
 
 # ==============================================================================
@@ -211,12 +218,12 @@ COPY --chmod=755 linux/scripts/03-media/opencv /opt/scripts/media/opencv
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/media/opencv/install-deps.sh
 
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/media/opencv/build-opencv.sh \
         --opencv-version "${OPENCV_VERSION}" \
         --prefix "${OPENCV_OUTPUT_DIR}" \
@@ -240,7 +247,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh
 
 # ==============================================================================
@@ -254,12 +261,12 @@ ENV FFMPEG_PREFIX=/opt/ffmpeg
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/media/ffmpeg/install-deps.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     cd /opt; \
     bash /opt/scripts/media/ffmpeg/build-ffmpeg.sh
 
@@ -312,12 +319,12 @@ COPY --chmod=755 linux/scripts/01-core/cross-env.sh /opt/scripts/core/cross-env.
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/media/gstreamer/install-deps.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
         export CFLAGS="${CFLAGS:-} -D_LIBCPP_VERSION=20220101"; \
         export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101"; \
@@ -340,7 +347,7 @@ COPY --chmod=755 linux/scripts/03-media/libcamera/ /opt/scripts/media/libcamera/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/media/libcamera/install-deps.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
@@ -351,7 +358,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     cd /opt; \
     bash /opt/scripts/media/libcamera/build-libcamera.sh
 
@@ -392,7 +399,7 @@ COPY --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 COPY --from=libcamera /opt/libcamera /opt/libcamera
 COPY --chmod=755 linux/scripts/03-media/final /opt/scripts/media/final
 
-RUN set -eux; \
+RUN set -euo pipefail; \
     bash /opt/scripts/media/final/collect-artifacts.sh
 
 ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}" \
@@ -404,18 +411,16 @@ ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:$
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    set -euo pipefail; \
     bash /opt/scripts/media/final/install-deps.sh && \
-    bash /opt/scripts/media/final/configure-runtime.sh
-
-RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    set -eux; \
+    bash /opt/scripts/media/final/configure-runtime.sh && \
     bash /opt/scripts/media/final/repair-wheels.sh && \
     bash /opt/scripts/media/final/verify-wheels.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/media/final/validate-media-runtime.sh
 
 LABEL org.opencontainers.image.title="Kataglyphis Media" \

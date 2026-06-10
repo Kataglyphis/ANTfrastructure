@@ -31,22 +31,24 @@ ENV BUILD_MODE=${BUILD_MODE} \
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
 
-COPY linux/scripts/01-core/ /opt/scripts/core/
+# 01-core/ scripts already exist from the compiler base image
+# (Dockerfile.toolchain copies them into /opt/scripts/core/).
+# Only 02-toolchain/ needs to be added here.
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 # (Provides llvm.sh with install_target_clang_toolchain, setup-dependencies.sh)
 
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup
 # ------------------------------------------------------------------------------
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-sdk-${TARGETARCH} \
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
-    set -eux; \
+    set -euo pipefail; \
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
 
 # 6. VERIFICATION
-RUN set -eux; \
+RUN set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
 
 # ------------------------------------------------------------------------------
@@ -55,13 +57,13 @@ RUN set -eux; \
 # Keep the checked-in LLVM release pin authoritative even when BASE_IMAGE
 # carries an older LLVM_RELEASE environment variable.
 # ------------------------------------------------------------------------------
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-sdk-${TARGETARCH} \
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
-    set -eux; \
+    set -euo pipefail; \
     apt-get install -y --no-install-recommends binutils-dev; \
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
@@ -81,14 +83,14 @@ ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
     TVM_USE_VULKAN=${TVM_USE_VULKAN}
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-sdk-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-sdk-${TARGETARCH} \
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
-    set -eux; \
+    set -euo pipefail; \
     tvm_args=(--ref "${TVM_REF}" --build-type "${TVM_BUILD_TYPE}"); \
     if [ "${TVM_INSTALL_PYTHON}" != "1" ]; then \
         tvm_args+=(--no-python); \

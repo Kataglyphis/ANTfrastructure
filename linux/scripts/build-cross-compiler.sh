@@ -9,8 +9,8 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 BASE_REMOTE_TAG="${BASE_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:base}"
 BASE_LOCAL_TAG="${BASE_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:base}"
-COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
-COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
+COMPILER_LOCAL_TAG="${COMPILER_LOCAL_TAG:-${IMAGE_REGISTRY_PREFIX}:cross-compiler-amd64}"
+COMPILER_REMOTE_TAG="${COMPILER_REMOTE_TAG:-${IMAGE_REGISTRY_PREFIX}:cross-compiler-amd64}"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT}}"
@@ -53,7 +53,8 @@ EOF
 
 ensure_base_image() {
   local -a build_args=()
-  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+  append_mirror_build_args_from_env build_args
+  append_version_build_args build_args
 
   if [ "${REBUILD_BASE}" -eq 0 ] && image_exists "${NERDCTL_BIN}" "${BASE_LOCAL_TAG}"; then
     log "Using existing local base image: ${BASE_LOCAL_TAG}"
@@ -84,7 +85,8 @@ ensure_base_image() {
 
 build_cross_compiler() {
   local -a build_args=()
-  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+  append_mirror_build_args_from_env build_args
+  append_version_build_args build_args
 
   run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
@@ -113,9 +115,11 @@ main() {
       FAST_UBUNTU_PORTS_MIRROR_URL IGNORED_REPO IGNORED_VULKAN PUSH_IMAGE \
       "$1" "${2:-}" || _dispatch_rc=$?
     case $_dispatch_rc in
-      2) shift 2; continue ;;
-      1) shift 1; continue ;;
       255) usage; exit 0 ;;
+      0) case "${_DP_SHIFT}" in
+           1) shift 1; continue ;;
+           2) shift 2; continue ;;
+         esac ;;
     esac
     case "$1" in
       --cross-targets)

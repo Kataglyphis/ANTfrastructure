@@ -58,7 +58,7 @@ VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-${VULKAN_VERSION}}
 ensure_target_arch() {
   TARGET_ARCH="$(canonical_target_arch "${TARGET_ARCH:-}")"
   export TARGET_ARCH
-  echo "TARGET_ARCH=${TARGET_ARCH}"
+  printf '%s\n' "TARGET_ARCH=${TARGET_ARCH}"
 }
 
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)

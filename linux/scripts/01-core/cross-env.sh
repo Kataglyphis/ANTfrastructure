@@ -40,7 +40,7 @@ is_cross() {
 }
 
 cross_build_is_active() {
-  cross_build_is_active
+  cross_build_enabled
 }
 
 cross_target_arch() {

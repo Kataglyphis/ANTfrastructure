@@ -51,11 +51,10 @@ COPY --chmod=755 linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-andro
 COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
-RUN set -eux; /opt/scripts/setup-android-sdk-ndk.sh
-
-# Ensure the directories expected by downstream stages exist even when
-# the Android SDK/NDK is skipped (non-amd64 host or no network).
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; /opt/scripts/setup-android-sdk-ndk.sh && \
     mkdir -p /opt/android-sdk /opt/android && \
     mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv
 
@@ -64,27 +63,29 @@ COPY --chmod=755 linux/scripts/03-media/onnxruntime/android /opt/scripts/media/o
 COPY --chmod=755 linux/scripts/03-media/litert/android /opt/scripts/media/litert/android
 COPY --chmod=755 linux/scripts/03-media/opencv/android /opt/scripts/media/opencv/android
 
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    set -euo pipefail; \
         /opt/scripts/media/gstreamer/android/build-gstreamer.sh
 
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    set -euo pipefail; \
         /opt/scripts/media/onnxruntime/android/build-android.sh && \
         /opt/scripts/media/litert/android/build-android.sh && \
         /opt/scripts/media/opencv/android/build-android.sh
 
-# Preserve the cross-compiled Python staging tree from the base image.
-# Without this, Dockerfile.package fails at COPY --from=artifact-source /opt/python-cross.
-RUN if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
-        touch /opt/python-cross/.keep; fi
-
-# Swap the amd64-hosted GCC with the target-native GCC for non-amd64
-# architectures. The native GCC was cross-compiled from source during the
-# compiler image build (Canadian cross) and stored at /opt/gcc-*-native-<arch>/.
-# This ensures /usr/bin/cc in the final runtime image is a native binary for
-# every architecture, not an amd64 cross-compiler host binary.
+# Preserve the cross-compiled Python staging tree from the base image and swap
+# the amd64-hosted GCC with the target-native GCC for non-amd64 architectures.
 ARG GCC_VERSION=16.1.0
 COPY --chmod=755 linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
-RUN set -eux; \
+RUN set -euo pipefail; \
+    if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
+        touch /opt/python-cross/.keep; fi; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     GCC_VERSION="${GCC_VERSION}" \
     BUILD_MODE="${BUILD_MODE}" \

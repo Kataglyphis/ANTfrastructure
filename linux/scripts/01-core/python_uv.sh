@@ -13,11 +13,10 @@
 #   detect_workspace                            - Detect and export WORKSPACE_ROOT
 #   is_experimental_python <version>            - Check if Python version is experimental
 
-set -euo pipefail
-
 _PYTHON_UV_LOADED="${_PYTHON_UV_LOADED:-}"
 
 if [ -z "$_PYTHON_UV_LOADED" ]; then
+set -euo pipefail
 _PYTHON_UV_LOADED=1
 
 _MODULE_DIR="${BASH_SOURCE[0]%/*}"

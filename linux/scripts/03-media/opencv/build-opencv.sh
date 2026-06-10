@@ -33,6 +33,7 @@ done
 
 source_module cross-env.sh || true
 source_module logging.sh || true
+source_module parallelism.sh || true
 source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 install_warn_trap
 
@@ -43,7 +44,7 @@ install_warn_trap
 : "${OPENCV_REPO:=https://github.com/opencv/opencv.git}"
 : "${OPENCV_CONTRIB_REPO:=https://github.com/opencv/opencv_contrib.git}"
 : "${BUILD_TYPE:=Release}"
-: "${NPROC:=$(nproc)}"
+: "${NPROC:=$(compute_jobs_with_mem_cap "" 2000)}"
 : "${WITH_CONTRIB:=true}"
 : "${WITH_PYTHON:=true}"
 : "${OPENCV_PYTHON_VERSION:=$(host_python_major_minor)}"

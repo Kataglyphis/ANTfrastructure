@@ -13,18 +13,16 @@ append_unique_packages() {
   shift
 
   local -n packages_ref="${array_name}"
-  local pkg existing already_present
+  local -A _seen=()
+  local pkg
+
+  for pkg in "${packages_ref[@]}"; do
+    _seen["${pkg}"]=1
+  done
 
   for pkg in "$@"; do
-    already_present=0
-    for existing in "${packages_ref[@]}"; do
-      if [ "${existing}" = "${pkg}" ]; then
-        already_present=1
-        break
-      fi
-    done
-
-    if [ "${already_present}" -eq 0 ]; then
+    if [ -z "${_seen["${pkg}"]:-}" ]; then
+      _seen["${pkg}"]=1
       packages_ref+=("${pkg}")
     fi
   done

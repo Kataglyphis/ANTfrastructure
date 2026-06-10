@@ -23,7 +23,7 @@ ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
 
 ARG ROCM_VERSION=7.2.3
-ARG UBUNTU_VERSION=noble
+ARG UBUNTU_CODENAME=plucky
 ARG TARGETARCH
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
@@ -35,16 +35,16 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
 
 # Install prerequisites and add ROCm repository
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-amd-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-amd-${TARGETARCH} \
-    set -eux; \
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    set -euo pipefail; \
     apt-get update && apt-get install -y --no-install-recommends \
         wget \
         gnupg2 \
         software-properties-common \
     && mkdir --parents --mode=0755 /etc/apt/keyrings \
     && wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
-    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${ROCM_VERSION} ${UBUNTU_VERSION} main" | tee /etc/apt/sources.list.d/rocm.list \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${ROCM_VERSION} ${UBUNTU_CODENAME} main" | tee /etc/apt/sources.list.d/rocm.list \
     && echo -e 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' | tee /etc/apt/preferences.d/rocm-pin-600 \
     # Second apt-get update is required: fetches the newly-added ROCm repo index
     && apt-get update \
@@ -58,16 +58,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-amd-${T
         rocsolver \
         rocsparse
 
-ENV ROCM_HOME=/opt/rocm
-ENV PATH="${ROCM_HOME}/bin:${PATH}"
-ENV LD_LIBRARY_PATH="${ROCM_HOME}/lib:${ROCM_HOME}/lib64:${LD_LIBRARY_PATH:-}"
+ENV ROCM_HOME=/opt/rocm \
+    PATH="${ROCM_HOME}/bin:${PATH}" \
+    LD_LIBRARY_PATH="${ROCM_HOME}/lib:${ROCM_HOME}/lib64:${LD_LIBRARY_PATH:-}"
 
 RUN echo "export PATH=${ROCM_HOME}/bin:\$PATH" >> /etc/profile.d/rocm.sh \
     && echo "${ROCM_HOME}/lib" > /etc/ld.so.conf.d/rocm.conf \
     && echo "${ROCM_HOME}/lib64" >> /etc/ld.so.conf.d/rocm.conf \
     && ldconfig
 
-RUN set -eux; \
+RUN set -euo pipefail; \
     test -x "${ROCM_HOME}/bin/hipcc"; \
     ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse' >/dev/null
 

@@ -32,7 +32,7 @@ COPY --chmod=755 linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/pac
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     bash /opt/scripts/packaging/setup-torch-venv.sh
 
 ENV VIRTUAL_ENV=${VENV} \
@@ -75,7 +75,7 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/bin/bash"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD /usr/local/bin/python3 -c "import torch; import cv2; import onnxruntime" 2>/dev/null || exit 1
+  CMD python3 -c "import torch, cv2, onnxruntime" || exit 1
 
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
       org.opencontainers.image.description="My beschleuniger image for 2D AI" \

@@ -161,7 +161,8 @@ build_cross_stage() {
   shift 3
   local -a extra=("$@")
   local -a common_args=()
-  append_common_build_args common_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+  append_mirror_build_args_from_env common_args
+  append_version_build_args common_args
 
   local log_file
   log_file="$(stage_log_redirect "${label}")"
@@ -206,7 +207,7 @@ resolve_pin() {
     return 0
   fi
   local result
-  result="$(registry_pin_ref "${NERDCTL_BIN}" "${tag}")" || {
+  result="$(retry 3 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")" || {
     warn "Failed to resolve registry digest for ${tag}. Cannot pin downstream FROM."
     return 1
   }
@@ -222,7 +223,7 @@ run_base_stage() {
   tag="$(cross_base_tag)"
   log "[stage base] building ${tag}"
   build_cross_stage base "${tag}" linux/Dockerfile.base
-  BASE_PIN="$(registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
+  BASE_PIN="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
   log "[stage base] pinned ${BASE_PIN}"
 }
 
@@ -235,7 +236,7 @@ run_compiler_stage() {
     --build-arg "BASE_IMAGE=${base_pin}" \
     --build-arg "BUILD_MODE=cross" \
     --build-arg "CROSS_TARGETS=${CROSS_TARGETS}"
-  COMPILER_PIN="$(registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
+  COMPILER_PIN="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
   log "[stage compiler] pinned ${COMPILER_PIN}"
 }
 
@@ -250,7 +251,7 @@ run_sdk_stage() {
     --build-arg "BUILD_MODE=cross" \
     --build-arg "TARGET_ARCH=${arch}" \
     --build-arg "VULKAN_VERSION=${VULKAN_VERSION}"
-  SDK_PIN[$arch]="$(registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
+  SDK_PIN[$arch]="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
   log "[stage sdk ${arch}] pinned ${SDK_PIN[$arch]}"
 }
 
@@ -264,7 +265,7 @@ run_media_stage() {
     --build-arg "BASE_IMAGE=${sdk_pin}" \
     --build-arg "BUILD_MODE=cross" \
     --build-arg "TARGET_ARCH=${arch}"
-  MEDIA_PIN[$arch]="$(registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
+  MEDIA_PIN[$arch]="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
   log "[stage media ${arch}] pinned ${MEDIA_PIN[$arch]}"
 }
 
@@ -278,14 +279,14 @@ run_android_stage() {
     --build-arg "BASE_IMAGE=${media_pin}" \
     --build-arg "BUILD_MODE=cross" \
     --build-arg "TARGET_ARCH=${arch}"
-  ANDROID_PIN[$arch]="$(registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
+  ANDROID_PIN[$arch]="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
   ANDROID_BUILT_THIS_RUN[$arch]=1
   log "[stage android ${arch}] pinned ${ANDROID_PIN[$arch]}"
 }
 
 run_runtime_stage() {
   local arch
-  # The runtime helper consumes the local android-cross-${arch} tag with
+  # The runtime helper consumes the local cross-android-${arch} tag with
   # --pull=false. If android was built this run the local tag is already fresh.
   # When resuming straight into runtime, refresh the local tag from the registry
   # so the package stage cannot pick up a stale local android image.
@@ -305,7 +306,7 @@ run_runtime_stage() {
   local -a helper_args=(
     --image "${FINAL_IMAGE}"
     --target-arches "${TARGET_ARCHES}"
-    --artifact-image-prefix "${IMAGE_REPO}:android-cross"
+    --artifact-image-prefix "${IMAGE_REPO}:cross-android"
     --artifact-build-mode cross
     --push
   )
@@ -326,28 +327,32 @@ run_runtime_stage() {
     bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}"
 }
 
+_verify_link() {
+  local label="$1" parent_tag="$2" child_tag="$3" parent_digest child_base_digest
+  parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
+  if [ -z "${parent_digest}" ]; then
+    warn "[verify] ${label}: parent tag ${parent_tag} not resolvable in registry"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "[verify] ${label}: python3 not available, skipping base layer check"
+    return 0
+  fi
+  child_base_digest="$("${NERDCTL_BIN}" manifest inspect "${child_tag}" 2>/dev/null \
+    | python3 "${REPO_ROOT}/linux/scripts/01-core/manifest-base-layer.py" 2>/dev/null || true)"
+  if [ -n "${child_base_digest}" ]; then
+    log "[verify] ${label}: parent ${parent_digest}"
+    log "[verify] ${label}: child  ${child_tag}"
+    log "[verify] ${label}: child base layer ${child_base_digest}"
+  else
+    log "[verify] ${label}: parent digest ${parent_digest} (child tag unresolvable)"
+  fi
+}
+
 verify_chain() {
-  local arch parent_tag child_tag parent_digest child_digest
+  local arch
 
   log "[verify] checking cross-chain freshness for arches: ${TARGET_ARCHES}"
-
-  _verify_link() {
-    local label="$1" parent_tag="$2" child_tag="$3" parent_digest child_base_digest
-    parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
-    if [ -z "${parent_digest}" ]; then
-      warn "[verify] ${label}: parent tag ${parent_tag} not resolvable in registry"
-      return 0
-    fi
-    child_base_digest="$("${NERDCTL_BIN}" manifest inspect "${child_tag}" 2>/dev/null \
-      | python3 "${REPO_ROOT}/linux/scripts/01-core/manifest-base-layer.py" 2>/dev/null || true)"
-    if [ -n "${child_base_digest}" ]; then
-      log "[verify] ${label}: parent ${parent_digest}"
-      log "[verify] ${label}: child  ${child_tag}"
-      log "[verify] ${label}: child base layer ${child_base_digest}"
-    else
-      log "[verify] ${label}: parent digest ${parent_digest} (child tag unresolvable)"
-    fi
-  }
 
   _verify_link "base->compiler" "$(cross_base_tag)" "$(cross_compiler_tag)"
 
@@ -367,14 +372,21 @@ verify_chain() {
 }
 
 # Run a stage function for each arch, optionally in parallel.
+# Collects exit codes from all parallel jobs via flag files so a failure in one
+# subprocess does not silently succeed.
 _run_arch_loop() {
   local stage_fn="$1"; shift
   local -a pids=()
-  local arch running
+  local arch running failed=0
+  local _flagdir
+  _flagdir="$(mktemp -d /tmp/arch-loop-flags.XXXXXX)"
+  trap 'rm -rf ${_flagdir}' RETURN
   running=0
   for arch in ${TARGET_ARCHES//,/ }; do
     if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
-      "${stage_fn}" "${arch}" &
+      {
+        "${stage_fn}" "${arch}" || touch "${_flagdir}/failed-${arch}"
+      } &
       pids+=($!)
       running=$((running + 1))
       if [ "${running}" -ge "${MAX_PARALLEL_ARCHS}" ]; then
@@ -382,12 +394,22 @@ _run_arch_loop() {
         running=$((running - 1))
       fi
     else
-      "${stage_fn}" "${arch}"
+      "${stage_fn}" "${arch}" || failed=1
     fi
   done
   if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
-    wait
+    for pid in "${pids[@]}"; do
+      wait "${pid}" || true
+    done
+    local f
+    for f in "${_flagdir}"/failed-*; do
+      if [ -f "${f}" ]; then
+        warn "Arch ${f##*-} failed during parallel build"
+        failed=1
+      fi
+    done
   fi
+  return "${failed}"
 }
 
 main() {
@@ -399,9 +421,11 @@ main() {
       FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _unused_push \
       "$1" "${2:-}" || _dispatch_rc=$?
     case $_dispatch_rc in
-      2) shift 2; continue ;;
-      1) shift 1; continue ;;
       255) usage; exit 0 ;;
+      0) case "${_DP_SHIFT}" in
+           1) shift 1; continue ;;
+           2) shift 2; continue ;;
+         esac ;;
     esac
     case "$1" in
       --cross-targets) CROSS_TARGETS="$2"; shift 2 ;;

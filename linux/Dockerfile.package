@@ -9,7 +9,7 @@
 # build arg and used as a fallback.
 
 ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
-ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-cross-amd64
+ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGET_ARCH:-amd64}
 ARG BUILD_MODE=native
 ARG TARGET_ARCH
 ARG TARGETARCH
@@ -61,7 +61,7 @@ COPY --from=runtime_artifact /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 COPY --from=runtime_artifact /opt/llvm-target /opt/llvm-target
 RUN --mount=type=bind,from=runtime_artifact,source=/,target=/runtime_artifact,ro \
     --mount=type=bind,source=linux/scripts/06-packaging/copy-media-payloads.sh,target=/tmp/copy-media-payloads.sh,ro \
-    set -eux; \
+    set -euo pipefail; \
     SRCPREFIX=/runtime_artifact bash /tmp/copy-media-payloads.sh
 
 FROM ${ARTIFACT_SOURCE_STAGE} AS artifact-source
@@ -76,48 +76,18 @@ ARG LLVM_RELEASE
 # toolchains built in Dockerfile.toolchain and Dockerfile.sdk are
 # present in the artifact image for every target architecture.
 RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,target=/tmp/validate-compilers.sh,ro \
-    set -eux; \
+    set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /tmp/validate-compilers.sh artifact-source
 
-FROM artifact-source AS artifact-payload
-ARG BUILD_MODE
-
-# Stage only smaller optional payloads here. Heavyweight runtime directories are
-# copied directly from the artifact image into the package stage so they are not
-# duplicated under /payload first, which can exhaust rootless BuildKit storage
-# on large android-cross images.
-RUN --mount=type=bind,source=linux/scripts/06-packaging/copy-media-payloads.sh,target=/tmp/copy-media-payloads.sh,ro \
-    set -euo pipefail; \
-    mkdir -p /payload; \
-    bash /tmp/copy-media-payloads.sh /payload
 
 FROM ${BASE_IMAGE} AS package-image
 
-ARG BUILD_MODE
-ARG TARGET_ARCH
-ARG TARGETARCH
-ARG TARGETPLATFORM
-ARG GSTREAMER_VERSION
-ARG OPENCV_OUTPUT_DIR
 ARG ONNXRUNTIME_OUTPUT_DIR
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR
+ARG OPENCV_OUTPUT_DIR
 ARG GSTREAMER_PREFIX
-ARG ANDROID_SDK_VERSION
-ARG ANDROID_NDK_VERSION
-ARG ANDROID_COMPILE_SDK
-ARG ANDROID_BUILD_TOOLS
-ARG ANDROID_CMAKE_VERSION
-ARG ANDROID_API_LEVEL
-ARG ENABLE_NVIDIA
-ARG ENABLE_AMD
 ARG GCC_VERSION
-ARG LLVM_RELEASE
-ARG PYTHON_VERSION
-ARG PYTHON_MAJOR_MINOR
-ARG USE_FAST_UBUNTU_MIRROR
-ARG FAST_UBUNTU_MIRROR_URL
-ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 SHELL ["bash", "-lc"]
 
@@ -138,34 +108,24 @@ COPY --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
-COPY --from=artifact-payload /payload/ /
+# Lightweight payload files (LiteRT libs, pkg-config, VVdec, LLVM headers)
+# bind-mounted directly from artifact-source to avoid duplicating heavy dirs.
+RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact_src,ro \
+    --mount=type=bind,source=linux/scripts/06-packaging/copy-media-payloads.sh,target=/tmp/copy-media-payloads.sh,ro \
+    set -euo pipefail; \
+    SRCPREFIX=/artifact_src bash /tmp/copy-media-payloads.sh
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
-ARG BUILD_MODE
-ARG TARGET_ARCH
-ARG TARGETARCH
-ARG TARGETPLATFORM
-ARG GSTREAMER_VERSION
-ARG OPENCV_OUTPUT_DIR
-ARG ONNXRUNTIME_OUTPUT_DIR
-ARG ONNXRUNTIME_GENAI_OUTPUT_DIR
-ARG GSTREAMER_PREFIX
-ARG ANDROID_SDK_VERSION
-ARG ANDROID_NDK_VERSION
-ARG ANDROID_COMPILE_SDK
-ARG ANDROID_BUILD_TOOLS
-ARG ANDROID_CMAKE_VERSION
-ARG ANDROID_API_LEVEL
-ARG ENABLE_NVIDIA
-ARG ENABLE_AMD
-ARG GCC_VERSION
-ARG LLVM_RELEASE
-ARG PYTHON_VERSION
-ARG PYTHON_MAJOR_MINOR
-ARG USE_FAST_UBUNTU_MIRROR
-ARG FAST_UBUNTU_MIRROR_URL
-ARG FAST_UBUNTU_PORTS_MIRROR_URL
+# Re-declared ARGs required by this stage (Docker requirement across FROM boundaries).
+# ARGs before the first FROM are scope-limited. All version ARGs below are passed
+# by the orchestrator from versions.env; defaults here are safety nets.
+ARG BUILD_MODE TARGET_ARCH TARGETARCH TARGETPLATFORM
+ARG GSTREAMER_VERSION OPENCV_OUTPUT_DIR ONNXRUNTIME_OUTPUT_DIR ONNXRUNTIME_GENAI_OUTPUT_DIR GSTREAMER_PREFIX
+ARG ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK ANDROID_BUILD_TOOLS ANDROID_CMAKE_VERSION ANDROID_API_LEVEL
+ARG ENABLE_NVIDIA ENABLE_AMD
+ARG GCC_VERSION LLVM_RELEASE PYTHON_VERSION PYTHON_MAJOR_MINOR
+ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
 
 ENV BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
@@ -205,18 +165,17 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0" \
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
 
-RUN if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
+# Wire LLVM-target and Vulkan symlinks. LLVM-target was cross-compiled for the
+# target arch in the SDK stage; Vulkan SDK installs under x86_64/ so we create
+# aarch64/riscv64 symlinks and link /opt/vulkan/active.
+RUN set -euo pipefail; \
+    if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
         ln -s /opt/llvm-target /usr/local/llvm-target; \
     fi; \
     if [ -d /usr/local/llvm-target/lib/clang ] && [ ! -e /usr/lib/clang ]; then \
         ln -s /usr/local/llvm-target/lib/clang /usr/lib/clang; \
-    fi
-
-# Vulkan SDK installs only under x86_64/; create aarch64 and riscv64 symlinks
-# and link /opt/vulkan/active to the appropriate architecture folder.
-RUN --mount=type=bind,source=linux/scripts/06-packaging/setup-vulkan-symlinks.sh,target=/tmp/setup-vulkan-symlinks.sh,ro \
-    set -eux; \
-    bash /tmp/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}"
+    fi; \
+    bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}"
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
@@ -230,6 +189,7 @@ COPY --chmod=755 linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.
 COPY --chmod=755 linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh
 COPY --chmod=755 linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh
 COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
+COPY --chmod=755 linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
@@ -241,7 +201,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
 
 # Wire GCC/LLVM alternatives and hard-fail if cc -dumpmachine does not
 # match the target architecture. Uses the shared validate-compilers.sh.
-RUN set -eux; \
+RUN set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /opt/scripts/packaging/validate-compilers.sh package
 
@@ -260,7 +220,7 @@ ARG LLVM_RELEASE
 
 COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
 
-RUN set -eux; \
+RUN set -euo pipefail; \
     GCC_VERSION="${GCC_VERSION}" \
     LLVM_RELEASE="${LLVM_RELEASE}" \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \

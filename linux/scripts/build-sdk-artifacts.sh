@@ -7,12 +7,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
-COMPILER_IMAGE="${COMPILER_IMAGE:-${IMAGE_REGISTRY_PREFIX}:compiler-cross-amd64}"
+COMPILER_IMAGE="${COMPILER_IMAGE:-${IMAGE_REGISTRY_PREFIX}:cross-compiler-amd64}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"
 # VULKAN_VERSION default comes from versions.env via artifact-common.sh
-VULKAN_VERSION="${VULKAN_VERSION}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:sdk-artifact}"
+VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-sdk}"
 USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR:-false}"
 FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT}}"
 FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
@@ -88,7 +88,8 @@ build_sdk_image() {
   local arch="$1"
   local tag="$2"
   local -a build_args=()
-  append_common_build_args build_args "${USE_FAST_UBUNTU_MIRROR}" "${FAST_UBUNTU_MIRROR_URL}" "${FAST_UBUNTU_PORTS_MIRROR_URL}"
+  append_mirror_build_args_from_env build_args
+  append_version_build_args build_args
 
   run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
@@ -116,9 +117,11 @@ main() {
       FAST_UBUNTU_PORTS_MIRROR_URL IGNORED_REPO VULKAN_VERSION PUSH_IMAGES \
       "$1" "${2:-}" || _dispatch_rc=$?
     case $_dispatch_rc in
-      2) shift 2; continue ;;
-      1) shift 1; continue ;;
       255) usage; exit 0 ;;
+      0) case "${_DP_SHIFT}" in
+           1) shift 1; continue ;;
+           2) shift 2; continue ;;
+         esac ;;
     esac
     case "$1" in
       --output-root)

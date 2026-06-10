@@ -107,7 +107,7 @@ append_cmake_cross_args() {
 }
 
 ensure_meson_cross_file() {
-  local path="${1:-/tmp/meson-cross-$(cross_target_arch).ini}"
+  local path="${1:-${TMPDIR:-/tmp}/meson-cross-$(cross_target_arch).ini}"
   local triplet pkg_config_libdir exe_wrapper exe_wrapper_line wrapper_candidate
   local rust_target rustc_bin rust_binary_line rust_wrapper rust_wrapper_dir
 
@@ -140,7 +140,7 @@ ensure_meson_cross_file() {
   # from the linker alone. Inject it only when the invocation does not already
   # specify --target so cargo-backed subprojects keep working.
   if [ -n "${rust_target}" ] && command -v make_meson_cross_rust_wrapper >/dev/null 2>&1; then
-    rust_wrapper_dir="${MESON_RUST_TOOLCHAIN_DIR:-/tmp/meson-rust-toolchain}"
+    rust_wrapper_dir="${MESON_RUST_TOOLCHAIN_DIR:-${TMPDIR:-/tmp}/meson-rust-toolchain}"
     rust_wrapper="$(make_meson_cross_rust_wrapper "${rust_wrapper_dir}/rustc-$(cross_target_arch)" "${rustc_bin}" "${rust_target}")"
     rust_binary_line="rust = '${rust_wrapper}'"
   else
@@ -174,7 +174,7 @@ EOF
 }
 
 ensure_meson_native_file() {
-  local path="${1:-/tmp/meson-native-$(cross_build_arch).ini}"
+  local path="${1:-${TMPDIR:-/tmp}/meson-native-$(cross_build_arch).ini}"
   local host_path build_triplet native_cc native_cxx native_ar native_strip native_pkg_config native_cmake native_pkg_config_libdir
   local native_wrapper_dir native_cc_wrapper native_cxx_wrapper
 
@@ -201,7 +201,7 @@ ensure_meson_native_file() {
     native_pkg_config_libdir="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
   fi
 
-  native_wrapper_dir="${MESON_NATIVE_TOOLCHAIN_DIR:-/tmp/meson-native-toolchain}"
+  native_wrapper_dir="${MESON_NATIVE_TOOLCHAIN_DIR:-${TMPDIR:-/tmp}/meson-native-toolchain}"
   mkdir -p "${native_wrapper_dir}"
 
   if [ -n "${native_cc}" ]; then

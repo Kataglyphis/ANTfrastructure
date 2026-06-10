@@ -43,10 +43,8 @@ ARG CUDNN_VERSION=9
 # TensorRT 10.x is the latest series compatible with CUDA 13.x
 ARG TENSORRT_VERSION=10
 
-# NCCL, cuBLAS, cuSPARSE, cuFFT are pinned to the same CUDA major/minor
-ARG CUDA_MATH_LIBS_VERSION=${CUDA_VERSION_MAJOR_MINOR}
-
 ARG TARGETARCH
+ARG UBUNTU_CODENAME=plucky
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
@@ -59,12 +57,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 
 # ==============================================================================
 # 1. Add NVIDIA CUDA apt repository (keyring method)
-#    cuda-keyring package sets up /etc/apt/sources.list.d/cuda-ubuntu2404-x86_64.list
+#    cuda-keyring package sets up /etc/apt/sources.list.d/cuda-<codename>-<arch>.list
 #    and installs the GPG key automatically.
 # ==============================================================================
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     ARCH="$(dpkg --print-architecture)"; \
     case "${ARCH}" in \
       amd64)   CUDA_ARCH="x86_64" ;; \
@@ -72,7 +70,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
       *)       echo "WARNING: CUDA packages may not be available for arch ${ARCH}" >&2; CUDA_ARCH="${ARCH}" ;; \
     esac; \
     KEYRING_PKG="cuda-keyring_1.1-1_all.deb"; \
-    KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/${CUDA_ARCH}/${KEYRING_PKG}"; \
+    KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_CODENAME}/${CUDA_ARCH}/${KEYRING_PKG}"; \
     curl -fSsL "${KEYRING_URL}" -o "/tmp/${KEYRING_PKG}"; \
     dpkg -i "/tmp/${KEYRING_PKG}"; \
     rm "/tmp/${KEYRING_PKG}"; \
@@ -85,7 +83,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 # ==============================================================================
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    set -eux; \
+    set -euo pipefail; \
     CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
     apt-get update -qq; \
     apt-get install -y --no-install-recommends \
@@ -115,19 +113,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 ENV CUDA_HOME=/usr/local/cuda \
     CUDA_ROOT=/usr/local/cuda \
     CUDNN_HOME=/usr/local/cuda \
-    TENSORRT_HOME=/usr/local/tensorrt
-
-ENV PATH="${CUDA_HOME}/bin:${PATH}"
-ENV LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${CUDA_HOME}/lib64/stubs:${TENSORRT_HOME}/lib:${LD_LIBRARY_PATH:-}"
-ENV PKG_CONFIG_PATH="${CUDA_HOME}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
-ENV LIBRARY_PATH="${CUDA_HOME}/lib64/stubs:${LIBRARY_PATH:-}"
+    TENSORRT_HOME=/usr/local/tensorrt \
+    PATH="${CUDA_HOME}/bin:${PATH}" \
+    LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${CUDA_HOME}/lib64/stubs:${TENSORRT_HOME}/lib:${LD_LIBRARY_PATH:-}" \
+    PKG_CONFIG_PATH="${CUDA_HOME}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}" \
+    LIBRARY_PATH="${CUDA_HOME}/lib64/stubs:${LIBRARY_PATH:-}"
 
 # ==============================================================================
 # 4. Locate TensorRT and symlink to /usr/local/tensorrt for a stable path
 #    TensorRT installs to /usr on Ubuntu. We create a canonical symlink so
 #    downstream build scripts can rely on TENSORRT_HOME=/usr/local/tensorrt.
 # ==============================================================================
-RUN set -eux; \
+RUN set -euo pipefail; \
     if [ ! -f /usr/local/tensorrt/include/NvInfer.h ]; then \
         TRT_INC=$(find /usr/include -name "NvInfer.h" -print -quit 2>/dev/null || true); \
         if [ -n "$TRT_INC" ]; then \
@@ -142,7 +139,7 @@ RUN set -eux; \
 # ==============================================================================
 # 5. Verification
 # ==============================================================================
-RUN set -eux; \
+RUN set -euo pipefail; \
     nvcc --version; \
     echo "--- cuDNN ---"; \
     if pkg-config --exists libcudnn 2>/dev/null; then \

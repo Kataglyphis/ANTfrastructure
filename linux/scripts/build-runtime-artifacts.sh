@@ -12,7 +12,7 @@ NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-runtime}"
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:latest-cross}"
-ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:android-cross}"
+ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-android}"
 ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
 BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
 PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"
@@ -30,7 +30,7 @@ Usage: build-runtime-artifacts.sh [options]
 
 Builds the same cross runtime flow used for publishable images:
 1. clean per-architecture base images
-2. package images that layer target-built payload from android-cross-${arch}
+2. package images that layer target-built payload from cross-android-${arch}
 3. final wrapper images (includes torch venv + app + runtime scripts) from linux/Dockerfile.torch
 4. exports the final wrapper rootfs for each architecture
 
@@ -62,9 +62,11 @@ main() {
       PUSH_INTERMEDIATE_IMAGES \
       "$1" "${2:-}" || _dispatch_rc=$?
     case $_dispatch_rc in
-      2) shift 2; continue ;;
-      1) shift 1; continue ;;
       255) usage; exit 0 ;;
+      0) case "${_DP_SHIFT}" in
+           1) shift 1; continue ;;
+           2) shift 2; continue ;;
+         esac ;;
     esac
     case "$1" in
       --output-root)
