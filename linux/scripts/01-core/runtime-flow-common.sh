@@ -7,7 +7,6 @@ _RUNTIME_FLOW_COMMON_SH_LOADED=1
 # Provides:
 #   RUNTIME_FLOW_DEFAULTS_INITIALIZED — flag set after init_runtime_flow_defaults
 #   init_runtime_flow_defaults()      — set up shared variable defaults
-#   runtime_flow_export_setup()       — export DRY_RUN + call runtime_post_parse_setup
 #
 # Shared defaults set by init_runtime_flow_defaults:
 #   NERDCTL_BIN, ARTIFACT_IMAGE_PREFIX, ARTIFACT_BUILD_MODE,
@@ -38,11 +37,4 @@ init_runtime_flow_defaults() {
   DRY_RUN=0
   PARALLEL_ARCHS=0
   MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
-}
-
-runtime_flow_export_setup() {
-  local arches_var_name="${1:-TARGET_ARCHES}"
-  local image_prefix="${2:-${IMAGE_PREFIX:-${IMAGE_NAME:-}}}"
-  export DRY_RUN
-  runtime_post_parse_setup "${arches_var_name}" "${image_prefix}"
 }

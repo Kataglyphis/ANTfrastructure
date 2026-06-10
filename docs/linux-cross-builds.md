@@ -104,6 +104,28 @@ stage, tag function, per-arch flag) is defined in `CROSS_STAGE_ORDER` so both
 the build loop and `--verify-chain` consume the same single source of truth.
 To add or reorder stages, update `CROSS_STAGE_ORDER` in that file.
 
+### Stage graph management functions (stage-defs.sh)
+
+`stage-defs.sh` now provides self-contained stage graph management:
+
+- **`cross_stage_init_pins()`** — Declares all digest-pin variables (scalar for shared
+  stages, associative arrays for per-arch stages) derived from the stage graph.
+  Call once before entering the build loop.  Previously the orchestrator had to
+  manually declare `BASE_PIN`, `COMPILER_PIN`, `SDK_PIN`, `MEDIA_PIN`,
+  `ANDROID_PIN`, and `ANDROID_BUILT_THIS_RUN` — adding a stage required touching
+  both files.  Now the graph is the single source of truth for pin variables too.
+
+- **`cross_stage_validate_graph()`** — Runs before every build to check internal
+  consistency: parent references resolve to valid stages, tags produce non-empty
+  results, no dependency cycles exist.  Hard-fails if the graph is inconsistent,
+  catching configuration errors early.
+
+- **`cross_stage_ensure_parent_available()`** — For the runtime handoff: ensures the
+  parent stage images (e.g. `cross-android-<arch>`) are locally available before
+  delegating to `build-runtime-manifest.sh`.  Images built in the current run are
+  already local; images from prior builds are pulled from the registry.  Replaces
+  the old `_refresh_android_images()` with graph-driven resolution.
+
 Stage build/pin orchestration functions are shared in
 `linux/scripts/01-core/cross-stage-build.sh` (sourced via `artifact-common.sh`).
 These functions (`cross_stage_run()`, `cross_stage_build_and_push()`,

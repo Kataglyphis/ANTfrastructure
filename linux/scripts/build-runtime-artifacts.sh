@@ -76,7 +76,7 @@ _build_one_artifact() {
 main() {
   while [ $# -gt 0 ]; do
     local _dispatch_rc=0
-    runtime_dispatch_shared_args \
+    dispatch_parsed_args parse_shared_runtime_args \
       TARGET_ARCHES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
       BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
       TORCH_APP_MODE \
@@ -108,25 +108,15 @@ main() {
         PUSH_INTERMEDIATE_IMAGES=1
         shift
         ;;
-      --dry-run)
-        DRY_RUN=1
-        shift
-        ;;
-      --parallel-archs)
-        PARALLEL_ARCHS=1
-        shift
-        ;;
-      --max-parallel-archs)
-        MAX_PARALLEL_ARCHS="$2"
-        shift 2
-        ;; 
       *)
         err "Unknown option: $1"
         ;;
     esac
   done
 
-  runtime_flow_export_setup TARGET_ARCHES "${IMAGE_PREFIX}"
+  # Post-parse setup (replaces runtime_flow_export_setup)
+  export DRY_RUN
+  runtime_post_parse_setup TARGET_ARCHES "${IMAGE_PREFIX}"
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 

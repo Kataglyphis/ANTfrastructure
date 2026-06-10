@@ -23,7 +23,7 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
-TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${CROSS_DEFAULT_ARCHES}}}"
+TARGET_ARCHES="$(resolve_arch_list)"
 
 DESCRIBE_CHAIN=0
 
@@ -48,8 +48,7 @@ main() {
   while [ $# -gt 0 ]; do
     local _dispatch_rc=0
     dispatch_parsed_args parse_shared_orchestrator_args \
-      TARGET_ARCHES _unused_mirror _unused_mirror_url \
-      _unused_ports_url IMAGE_REPO _unused_vulkan _unused_push \
+      TARGET_ARCHES _ _ _ IMAGE_REPO _ _ \
       "$1" "${2:-}" || _dispatch_rc=$?
     case $_dispatch_rc in
       255) usage; exit 0 ;;
@@ -66,6 +65,8 @@ main() {
 
   cd "${REPO_ROOT}"
   TARGET_ARCHES="$(normalize_target_arches "${TARGET_ARCHES}")"
+
+  cross_stage_validate_graph || err "Stage graph validation failed"
 
   if [ "${DESCRIBE_CHAIN}" -eq 1 ]; then
     describe_cross_chain "${TARGET_ARCHES}"

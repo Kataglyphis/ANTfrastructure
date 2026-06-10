@@ -43,10 +43,11 @@ per-arch flag.  Both `build-cross-chain.sh` and `--verify-chain` consume this gr
 
 Stage build/pin functions live in `linux/scripts/01-core/cross-stage-build.sh` (sourced
 via `artifact-common.sh`), providing `cross_stage_run()`, `cross_stage_build_and_push()`,
-`cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, and `resolve_pin()`.
+`cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `resolve_pin()`, and
+`cross_stage_assemble_runtime_helper_args()`. Both `cross_stage_build_and_push()` and
+`cross_stage_build_local()` delegate to a shared `_cross_stage_build_impl()`.
 These are consumed by all three cross-lane entry points (orchestrator, single-stage builder,
-and standalone compiler).  `cross_stage_build_local()` handles local-only (non-push) builds
-while `cross_stage_build_and_push()` pushes to the registry with cache support.
+and standalone compiler).
 
 `cross_stage_run()` is the shared entry point for all stage builds. It accepts a `push`
 flag (3rd argument, default `1`): `push=1` for digest-pinned registry pushes, `push=0`
@@ -54,13 +55,17 @@ for local-only builds.  This eliminates duplicated build/pin logic across the or
 `build-cross-stage.sh`, and `build-cross-compiler.sh`.
 
 Runtime helpers (`build-runtime-artifacts.sh` and `build-runtime-manifest.sh`) share
-initialization logic via `runtime-flow-common.sh` (sourced after `artifact-common.sh`).
+initialization via `init_runtime_flow_defaults()` in `runtime-flow-common.sh` (sourced
+after `artifact-common.sh`). Post-parse setup is handled by `runtime_post_parse_setup()`
+in `cli-parsers.sh`.
 
 Architecture selection uses `resolve_arch_list()` (in `artifact-common.sh`), which normalizes
 `TARGET_ARCHES` from canonical and alias variables (`TARGET_ARCH`, `ARCHITECTURES`).
 
-Dry-run mode is checked via `is_dry_run()` (in `build-helpers.sh`) instead of inline `DRY_RUN`
-comparisons.
+Dry-run mode is checked via `is_dry_run()` (in `build-helpers.sh`). Boolean truthiness
+checks across scripts use the shared `_bool_truthy()` helper rather than repeating raw
+case statements. `--dry-run` and `--parallel-archs` are handled by both shared CLI
+parsers (`_parse_global_flags()`) so scripts don't duplicate them in local parsers.
 
 Prefer the orchestrator for full chains:
 ```bash
@@ -105,9 +110,13 @@ This host's rootless BuildKit is tuned for fast build-time downloads. The OCI wo
 ## Build
 
 ```bash
-sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+# Recommended: cross-lane digest-pinned release
+sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 # on Windows you must expose ports one by one
-sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+
+# Legacy QEMU/binfmt image:
+# sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 ## Optional Ubuntu Apt Mirror Workaround
@@ -280,7 +289,27 @@ docker buildx rm mybuilder 2>/dev/null || true
 docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --
 ```
 
-### Sequential build (nerdctl)
+### Sequential build (nerdctl) — QEMU/binfmt lane (legacy reference)
+
+The original QEMU multi-arch lane used `--platform linux/amd64,linux/arm64,linux/riscv64` in a single
+`nerdctl build` and produced `:latest`.  It is preserved as a compatibility lane.
+
+The **current cross lane** builds each stage separately on `linux/amd64` and produces
+per-arch intermediate images (`:cross-sdk-<arch>`, `:cross-media-<arch>`,
+`:cross-android-<arch>`). The runtime lane then assembles target-native per-arch images
+(`:latest-cross-<arch>`) into the `:latest-cross` multi-arch manifest.
+
+**Prefer the cross-lane orchestrator for all new development:**
+```bash
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
+```
+
+The stage graph is defined declaratively in `linux/scripts/01-core/stage-defs.sh`.
+`cross_stage_init_pins()` declares all digest-pin variables from the graph.
+`cross_stage_validate_graph()` checks internal consistency before every build.
+`cross_stage_ensure_parent_available()` handles the cross→runtime image handoff.
+
+The manual commands below are preserved for reference only.
 
 If apt stalls on the default Ubuntu archive mirror, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to the Ubuntu-based build commands in this sequence.
 

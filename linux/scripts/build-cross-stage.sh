@@ -31,7 +31,6 @@ LOG_DIR="${LOG_DIR:-}"
 
 STAGE=""
 PUSH_IMAGE=0
-DRY_RUN=0
 
 usage() {
   cat <<'EOF'
@@ -90,7 +89,6 @@ main() {
       --arch) TARGET_ARCH="$2"; shift 2 ;;
       --cross-targets) CROSS_TARGETS="$2"; shift 2 ;;
       --log-dir) LOG_DIR="$2"; shift 2 ;;
-      --dry-run) DRY_RUN=1; shift ;;
       *) err "Unknown option: $1" ;;
     esac
   done
@@ -123,7 +121,7 @@ main() {
   # to the shared cross_stage_run() from cross-stage-build.sh.
   cross_stage_run "${STAGE}" "${arch}" "${PUSH_IMAGE}"
 
-  if [ "${PUSH_IMAGE}" -eq 1 ] && [ "${DRY_RUN}" -eq 0 ]; then
+  if [ "${PUSH_IMAGE}" -eq 1 ] && ! is_dry_run; then
     log "[stage ${label}] build complete (digest pinned)"
   fi
 }

@@ -18,12 +18,13 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
+# CROSS_TARGETS is the compiler target arch list — distinct from TARGET_ARCHES
+# which is used for which arches to build per-arch stages for.
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 init_mirror_defaults
 
 REBUILD_BASE=0
 PUSH_IMAGE=0
-DRY_RUN=0
 
 usage() {
   cat <<'EOF'
@@ -50,16 +51,16 @@ Options:
 
 Examples:
   # Build locally (no push), fast mirror:
-  bash linux/scripts/build-cross-compiler.sh \\
-    --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror \\
+  bash linux/scripts/build-cross-compiler.sh \
+    --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror \
     --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/
 
   # Build and push:
-  bash linux/scripts/build-cross-compiler.sh \\
+  bash linux/scripts/build-cross-compiler.sh \
     --cross-targets amd64,arm64,riscv64 --push
 
   # Rebuild with a different image repo:
-  bash linux/scripts/build-cross-compiler.sh \\
+  bash linux/scripts/build-cross-compiler.sh \
     --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push
 
 Environment overrides:
@@ -93,6 +94,7 @@ build_compiler() {
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
+  # Bind the shared parser's --target-arches arg to CROSS_TARGETS for this script
   while [ $# -gt 0 ]; do
     local _dispatch_rc=0
     dispatch_parsed_args parse_shared_orchestrator_args \
@@ -115,10 +117,6 @@ main() {
         REBUILD_BASE=1
         shift
         ;;
-      --dry-run)
-        DRY_RUN=1
-        shift
-        ;;
       *)
         warn "Unknown option: $1"
         usage >&2
@@ -135,9 +133,6 @@ main() {
     # Push path: build and push both base and compiler via the stage graph.
     # cross_stage_run handles digest-pinned parent resolution and pin capture,
     # so the compiler always consumes the freshly pushed base digest.
-    # cross_stage_build_and_push() (called by cross_stage_run with push=1)
-    # already pushes via --output type=image,...,push=true — no separate
-    # nerdctl push needed.
     cross_stage_run "base" "" 1
     cross_stage_run "compiler" "" 1
   else

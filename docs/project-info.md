@@ -22,6 +22,7 @@ Current automated validation in this repository is documentation-focused:
 - The `wrapper-smoke` target in `Dockerfile.package` provides cheap packaging validation before publish.
 - `build-cross-chain.sh --verify-chain` performs a dry-run stale-check of the entire cross chain against registry digests without building anything.
 - `verify-cross-chain.sh` provides the same staleness check as a standalone script with a lighter footprint. Both use the shared `chain-verify.sh` module.
+- `cross_stage_validate_graph()` (in `stage-defs.sh`) runs automatically before every build to check internal stage graph consistency (parent references, cycle detection).
 - `build-cross-chain.sh --describe-chain` prints the full stage graph with tag names and parent chains.
 - `verify-artifact-copy-parity.sh` checks that the artifact COPY lists in `Dockerfile.package` are consistent.
 - `verify-critical-fixes.sh` validates the five critical fixes documented in `AGENTS.md`.

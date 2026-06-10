@@ -68,18 +68,23 @@
 # To add or reorder stages:
 #   1. Update CROSS_STAGE_ORDER and CROSS_PER_ARCH_STAGES arrays
 #   2. Add entries in each switch-case function below
-#   3. Declare the pin variable in the orchestrator (build-cross-chain.sh)
+#   3. Pin variables are auto-declared by cross_stage_init_pins() — no manual
+#      declarations needed in the orchestrator
 #   4. Update docs/linux-cross-builds.md and AGENTS.md
 #
 # Provides:
 #   CROSS_STAGE_ORDER            ordered array of stage names
 #   CROSS_PER_ARCH_STAGES         stages that fan out per architecture
+#   RUNTIME_STAGE_ORDER          ordered array of runtime lane stage names
 #   cross_stage_dockerfile()     → Dockerfile path for a stage
 #   cross_stage_parent()         → parent stage name (empty for base)
 #   cross_stage_is_per_arch()    → true if stage fans out per architecture
 #   cross_stage_tag()            → resolve tag for a stage (optionally per-arch)
 #   cross_stage_build_args()     → extra --build-arg flags for a stage
 #   cross_stage_pin_varname()    → variable name for the digest pin
+#   cross_stage_init_pins()      → declare all pin variables needed by the graph
+#   cross_stage_validate_graph() → self-consistency check for the stage graph
+#   cross_stage_ensure_parent_available() → ensure parent images are local (for runtime handoff)
 #
 # Dependency note: tag-naming.sh must already be sourced (stage-defs uses
 # cross_*_tag() and runtime_*_tag() functions from tag-naming.sh).
@@ -106,6 +111,19 @@ CROSS_STAGE_ORDER=(base compiler sdk media android runtime)
 # Stages that fan out per target architecture (amd64, arm64, riscv64).
 # These are built once per arch on linux/amd64 using cross-compilers.
 CROSS_PER_ARCH_STAGES=(sdk media android)
+
+# ── Runtime lane stage order ───────────────────────────────────────────────────
+# The runtime lane builds on the real target platform (via QEMU/binfmt for
+# foreign arches) and produces the final wrapper images + multi-arch manifest.
+#
+#   base     → Per-arch OS base (same Dockerfile.base, target platform)
+#   package  → Layers cross-compiled artifacts from :cross-android-<arch>
+#   wrapper  → Torch app venv + runtime scripts (Dockerfile.torch)
+#
+# Consumed by build-runtime-manifest.sh and build-runtime-artifacts.sh via
+# runtime_build_chain() in runtime-build-fns.sh.
+# shellcheck disable=SC2034
+RUNTIME_STAGE_ORDER=(base package wrapper)
 
 # ── Dockerfile mapping ────────────────────────────────────────────────────────
 # Returns the Dockerfile path for a stage.  Runtime returns empty (delegates to
@@ -219,4 +237,142 @@ cross_stage_pin_varname() {
     android)   printf '%s' "ANDROID_PIN" ;;
     *)         printf '%s' "" ;;
   esac
+}
+
+# ── Pin variable initialization ────────────────────────────────────────────────
+# Declares all pin variables consumed by the stage graph as global variables.
+# Call this once from the orchestrator before entering the build loop.
+#
+# For shared (non-per-arch) stages: declares a scalar variable (e.g. BASE_PIN="").
+# For per-arch stages: declares an associative array (e.g. declare -g -A SDK_PIN).
+#
+# This removes the need for the orchestrator to manually declare pin variables,
+# which was a prerequisite for adding new stages.  The pin variable names are
+# derived from the stage graph itself via cross_stage_pin_varname(), so the
+# graph remains the single source of truth.
+#
+# Also declares ANDROID_BUILT_THIS_RUN as a per-arch flag array used by the
+# android→runtime handoff to avoid redundant pulls.
+#
+# Usage: cross_stage_init_pins
+cross_stage_init_pins() {
+  local stage pin_varname
+  for stage in "${CROSS_STAGE_ORDER[@]}"; do
+    [ "${stage}" = "runtime" ] && continue  # runtime has no pin
+    pin_varname="$(cross_stage_pin_varname "${stage}")"
+    [ -z "${pin_varname}" ] && continue
+    if cross_stage_is_per_arch "${stage}"; then
+      declare -g -A "${pin_varname}"
+    else
+      declare -g "${pin_varname}"=""
+    fi
+  done
+  declare -g -A ANDROID_BUILT_THIS_RUN=()
+}
+
+# ── Stage graph self-consistency validation ───────────────────────────────────
+# Verifies that the stage graph is internally consistent:
+#   - Every parent reference resolves to a defined stage (except base which has none)
+#   - Every stage with a Dockerfile has an existing file
+#   - Every stage resolves to a non-empty tag function
+#   - No cycles exist in the parent chain
+#
+# Returns 0 when the graph passes all checks.  Writes errors to stderr.
+# Call this from the orchestrator or as a standalone sanity check.
+#
+# Usage: cross_stage_validate_graph && echo "Graph OK"
+cross_stage_validate_graph() {
+  local stage parent dockerfile tag_fn ok=0
+  local -A seen=()
+  local -a chain=()
+
+  # Build the index of valid stages
+  for stage in "${CROSS_STAGE_ORDER[@]}"; do
+    seen["${stage}"]=1
+  done
+
+  for stage in "${CROSS_STAGE_ORDER[@]}"; do
+    [ "${stage}" = "runtime" ] && continue  # runtime is a sentinel
+
+    parent="$(cross_stage_parent "${stage}")"
+
+    # Check parent references a valid stage (empty = base, no parent)
+    if [ -n "${parent}" ] && [ -z "${seen[${parent}]:-}" ]; then
+      printf '[ERROR] Stage "%s" references unknown parent "%s"\n' "${stage}" "${parent}" >&2
+      ok=1
+    fi
+
+    # Check tag function returns a non-empty result
+    local test_tag
+    if cross_stage_is_per_arch "${stage}"; then
+      test_tag="$(cross_stage_tag "${stage}" "testarch" 2>/dev/null || true)"
+      if [ -z "${test_tag}" ]; then
+        printf '[ERROR] Stage "%s" tag function returns empty string\n' "${stage}" >&2
+        ok=1
+      fi
+    else
+      test_tag="$(cross_stage_tag "${stage}" 2>/dev/null || true)"
+      if [ -z "${test_tag}" ]; then
+        printf '[ERROR] Stage "%s" tag function returns empty string\n' "${stage}" >&2
+        ok=1
+      fi
+    fi
+  done
+
+  # Check for cycles (simple: each stage visits its parent; max depth = array length)
+  for stage in "${CROSS_STAGE_ORDER[@]}"; do
+    [ "${stage}" = "runtime" ] && continue
+    chain=("${stage}")
+    local current="${stage}"
+    local depth=0
+    while [ -n "${current}" ]; do
+      current="$(cross_stage_parent "${current}")"
+      if [ -z "${current}" ]; then
+        break    # reached base (no parent)
+      fi
+      depth=$((depth + 1))
+      if [ "${depth}" -gt "${#CROSS_STAGE_ORDER[@]}" ]; then
+        printf '[ERROR] Cycle detected in stage chain near "%s"\n' "${stage}" >&2
+        ok=1
+        break
+      fi
+    done
+  done
+
+  return "${ok}"
+}
+
+# ── Ensure parent stage images are locally available ─────────────────────────
+# For the runtime handoff: pulls parent stage images (e.g. cross-android-<arch>)
+# that were NOT built in the current orchestration run, so the runtime helper
+# can consume them as `FROM` references.
+#
+# Call from the orchestrator before delegating to build-runtime-manifest.sh.
+# Uses the stage graph to determine which parent images to pull.
+#
+# Usage: cross_stage_ensure_parent_available "runtime" "${TARGET_ARCHES}"
+cross_stage_ensure_parent_available() {
+  local stage="$1" arches_csv="$2"
+  local parent arch parent_tag
+
+  parent="$(cross_stage_parent "${stage}")"
+  [ -z "${parent}" ] && return 0
+
+  for arch in ${arches_csv//,/ }; do
+    parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
+    [ -z "${parent_tag}" ] && { warn "No tag for parent stage '${parent}' arch ${arch}"; continue; }
+
+    if cross_stage_is_per_arch "${parent}" && [ -n "${ANDROID_BUILT_THIS_RUN[$arch]:-}" ]; then
+      log "[stage ${stage}] ${parent}-${arch} built in this run, skip pull"
+      continue
+    fi
+
+    if is_dry_run; then
+      log "[stage ${stage}] [DRY RUN] would pull ${parent_tag}"
+      continue
+    fi
+
+    log "[stage ${stage}] pulling ${parent_tag}"
+    run "${NERDCTL_BIN:-nerdctl}" pull --platform linux/amd64 "${parent_tag}"
+  done
 }

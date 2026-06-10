@@ -252,14 +252,14 @@ Key shared utilities and where to find them:
 
 - **Architecture resolution:** `platform.sh` provides `canonical_target_arch()` and `canonical_resolve_arch()` as the single source of truth for target architecture resolution. All scripts should use these instead of ad-hoc `dpkg` / `uname -m` chains.
 - **Architecture list resolution:** `artifact-common.sh` provides `resolve_arch_list()` which normalizes `TARGET_ARCHES` from both the canonical variable name and common aliases (`TARGET_ARCH`, `ARCHITECTURES`) with a configurable fallback. Use this in top-level scripts that accept architecture lists instead of repeating 4-level fallback chains.
-- **Dry-run guard:** `build-helpers.sh` provides `is_dry_run()` which returns 0 when `DRY_RUN` is set to a truthy value. Use this instead of repeating `[ "${DRY_RUN:-0}" -eq 1 ]` checks across scripts.
+- **Dry-run guard:** `build-helpers.sh` provides `is_dry_run()` which returns 0 when `DRY_RUN` is set to a truthy value. Also provides `_bool_truthy()` for testing any value for boolean truthiness (used by `is_dry_run()` and shared across context-management.sh and cross-stage-build.sh). Use these instead of repeating `[ "${DRY_RUN:-0}" -eq 1 ]` or raw case-statement boolean checks across scripts.
 - **Module loading:** `modules.sh` provides `source_modules_framework()` for the standard "find modules.sh in repo or container layout" bootstrap pattern. Call it after sourcing `modules.sh`.
 - **CC validation:** `validate-compilers.sh` provides `_validate_cc_target()` which centralizes the dumpmachine/ELF/cc1-compile-to-object/link smoke checks used by both `validate_package()` and `validate_smoke()`.
 - **Cross-chain tags:** `tag-naming.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, and the runtime tag functions for consistent naming across orchestrators and helpers.
-- **Stage graph:** `stage-defs.sh` defines the cross-lane stage chain (`base -> compiler -> sdk -> media -> android -> runtime`) declaratively. Each stage entry maps to its Dockerfile, parent stage, tag function, and per-arch flag. Both `build-cross-chain.sh` and `--verify-chain` consume this graph so the chain is defined in exactly one place. When adding or reordering stages, update `CROSS_STAGE_ORDER` in this file.
+- **Stage graph:** `stage-defs.sh` defines the cross-lane stage chain (`base -> compiler -> sdk -> media -> android -> runtime`) declaratively as `CROSS_STAGE_ORDER`. The runtime lane chain (`base -> package -> wrapper`) is defined as `RUNTIME_STAGE_ORDER`. Each stage entry maps to its Dockerfile, parent stage, tag function, and per-arch flag. Both `build-cross-chain.sh` and `--verify-chain` consume this graph so the chain is defined in exactly one place. When adding or reordering stages, update `CROSS_STAGE_ORDER` or `RUNTIME_STAGE_ORDER` in this file. Pin variable initialization is handled by `cross_stage_init_pins()` (replaces the old manual pin declarations in the orchestrator). Internal consistency is checked by `cross_stage_validate_graph()` before every build. The cross→runtime handoff uses `cross_stage_ensure_parent_available()` (graph-driven, replacing the old `_refresh_android_images()`).
 - **Chain verification:** `chain-verify.sh` provides `verify_cross_chain_staleness()` (used by both `build-cross-chain.sh --verify-chain` and `verify-cross-chain.sh`) and `describe_cross_chain()` (used by `--describe-chain`). This shared module eliminates the previously duplicated `_verify_link()` / `verify_chain()` logic.
-- **Cross-stage build orchestration:** `cross-stage-build.sh` provides `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, and `resolve_pin()` — the shared functions that the orchestrator uses to build each stage, push it, and capture the registry digest for pinning. `cross_stage_build_local()` handles local-only (non-push) builds. `cross_stage_run()` accepts a `push` flag (3rd argument, default `1`) so standalone scripts (`build-cross-stage.sh`, `build-cross-compiler.sh`) can use the same function for both push and local modes. `build-cross-stage.sh` wraps these for single-stage rebuilds. `build-cross-compiler.sh` also uses them internally (delegating to the stage graph instead of duplicating build logic).
-- **Runtime flow initialization:** `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` and `runtime_flow_export_setup()` — shared initialization and post-parse setup for `build-runtime-artifacts.sh` and `build-runtime-manifest.sh`.  Both runtime scripts source this directly (it is not included in `artifact-common.sh`'s sourcing chain since only those two scripts need it).
+- **Cross-stage build orchestration:** `cross-stage-build.sh` provides `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `resolve_pin()`, and `cross_stage_assemble_runtime_helper_args()` — the shared functions that the orchestrator uses to build each stage, push it, and capture the registry digest for pinning. `cross_stage_build_and_push()` and `cross_stage_build_local()` delegate to the shared `_cross_stage_build_impl()` to eliminate duplicated build logic. `cross_stage_run()` accepts a `push` flag (3rd argument, default `1`) so standalone scripts (`build-cross-stage.sh`, `build-cross-compiler.sh`) can use the same function for both push and local modes. `cross_stage_assemble_runtime_helper_args()` is the canonical source for the argument handoff between the orchestrator and `build-runtime-manifest.sh`. `build-cross-stage.sh` wraps these for single-stage rebuilds. `build-cross-compiler.sh` also uses them internally (delegating to the stage graph instead of duplicating build logic).
+- **Runtime flow initialization:** `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` — shared initialization for `build-runtime-artifacts.sh` and `build-runtime-manifest.sh`. Both runtime scripts source this directly (it is not included in `artifact-common.sh`'s sourcing chain since only those two scripts need it). Post-parse setup is handled by `runtime_post_parse_setup()` in `cli-parsers.sh`.
 - **Retry logic:** `logging.sh` provides `retry <max_attempts> <sleep_sec> <description> <command...>` for standardized retry loops.
 - **Mirror args:** `build-helpers.sh` provides `append_mirror_build_args_from_env()` to DRY the mirror argument fallback chain. Use this instead of repeating the `USE_FAST_UBUNTU_MIRROR` / `FAST_UBUNTU_MIRROR_URL` / `FAST_UBUNTU_PORTS_MIRROR_URL` expansion.
 - **Version forwarding:** `version-forwarding.sh` auto-discovers version variables from `versions.env` and forwards them as `--build-arg` to all builds via `append_version_build_args()`.
@@ -268,7 +268,7 @@ Key shared utilities and where to find them:
 - **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source` and `package-image` stages carry comments marking the canonical artifact COPY list that must be kept consistent. Run `linux/scripts/verify-artifact-copy-parity.sh` to check.
 - **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds. The standalone `verify-cross-chain.sh` provides the same check with a lighter footprint. `verify_cross_chain_staleness()` in `chain-verify.sh` is shared by both. Use `--dry-run` to audit stage transitions without executing. Use `--describe-chain` to print the full stage graph with tag names.
 - **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper with `BUILDKIT_HOST` support. Use it instead of ad hoc `nerdctl build` command assembly.
-- **CLI parsing:** `cli-parsers.sh` provides `parse_shared_orchestrator_args()` and `parse_shared_runtime_args()` with a dispatch pattern (`_DP_SHIFT`) shared across all build scripts.
+- **CLI parsing:** `cli-parsers.sh` provides `parse_shared_orchestrator_args()` and `parse_shared_runtime_args()` with a dispatch pattern (`_DP_SHIFT`) shared across all build scripts. Global flags (`--dry-run`, `--parallel-archs`, `--max-parallel-archs`, and mirror flags) are handled automatically by both parsers via `_parse_global_flags()` and `_parse_mirror_flags()` — scripts no longer duplicate these in their local case statements.
 - **Dry-run support:** All orchestrators and runtime helpers accept `--dry-run` to print build commands without executing. The cross-chain orchestrator, cross-stage builder, runtime manifest builder, and runtime artifacts builder all support this flag.
 
 ### Module Loading Order
@@ -288,7 +288,7 @@ Key shared utilities and where to find them:
 12. `compiler-resolution.sh` (host compiler resolution for media builds)
 13. `parallel-loop.sh` (per-architecture parallel build loop)
 
-Additionally, `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` and `runtime_flow_export_setup()` — it is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`) to avoid polluting the broader sourcing chain.
+Additionally, `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` — it is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`) to avoid polluting the broader sourcing chain.
 
 ---
 
@@ -452,7 +452,7 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 3. Add cross-compilation triple mappings in `platform.sh` (`canonical_target_arch()`)
 4. Add arch-specific download checksums in `versions.env` (Node, uv)
 5. Verify QEMU/binfmt support for the new architecture
-6. Update `TARGET_ARCHES` defaults in scripts that use raw fallback chains instead of `resolve_arch_list()`
+6. Update `TARGET_ARCHES` defaults in orchestrator `CROSS_DEFAULT_ARCHES` (all scripts use `resolve_arch_list()` for centralized resolution)
 
 ### How Tags Should Be Generated
 
@@ -469,6 +469,7 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 - Use `nerdctl` build wrappers: `run_nerdctl_build()` with `BUILDKIT_HOST` support, `pull_platform_image()`.
 - Source `artifact-common.sh` for access to all shared utilities (tag naming, digest pinning, build helpers, CLI parsing, runtime functions).
 - For orchestrator scripts, use the dispatch pattern with `parse_shared_orchestrator_args()` or `parse_shared_runtime_args()`.
+- Call `cross_stage_init_pins()` once before the build loop to declare all digest-pin variables from the stage graph.
 - Mirror configuration goes through `append_mirror_build_args_from_env()`.
 - Version forwarding goes through `append_version_build_args()`.
 - Architecture normalization goes through `normalize_target_arches()`.
@@ -485,7 +486,7 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 2. Run `python3 docs/scripts/sync_versions.py --check`; if drift, run `--write`
 3. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, and `AGENTS.md`
 4. Verify version references in Dockerfile ARG defaults match (they are safety nets only)
-5. Run `linux/scripts/verify-arg-consistency.sh` to check ARG consistency
+5. Run `linux/scripts/01-core/verify-arg-consistency.sh` to check ARG consistency
 6. Rebuild the affected stages of the cross chain:
    - **Base tooling** (CMake, Node, uv) → rebuild from `base`
    - **Compiler toolchain** (GCC, LLVM, Python) → rebuild from `compiler`, then `--from-stage sdk`

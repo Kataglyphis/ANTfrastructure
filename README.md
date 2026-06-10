@@ -39,7 +39,8 @@ Kataglyphis-ContainerHub keeps the main container entry points for Linux GPU dev
 
 Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/pkgs/container/kataglyphis_beschleuniger)
 
-- Main Linux image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`
+- Cross-lane release image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross` (multi-arch: amd64/arm64/riscv64)
+- Legacy QEMU/binfmt image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`
 - Webserver image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver`
 - Windows build image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`
 - Detailed image inventory, tags, stage breakdown, dependencies, and tooling notes live in [Project Overview](docs/overview.md).
@@ -62,8 +63,11 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 ### Linux 🐧
 
 ```bash
-sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
-sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+
+# Legacy QEMU/binfmt image:
+# sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 If you run the container from Windows, expose required ports explicitly, for example with `-p 8443:8443`.

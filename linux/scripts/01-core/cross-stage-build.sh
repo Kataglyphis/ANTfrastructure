@@ -8,11 +8,13 @@ _CROSS_STAGE_BUILD_SH_LOADED=1
 #
 # Provides:
 #   cross_stage_log_redirect()       — compute log file path for a stage build
+#   _cross_stage_build_impl()        — internal: build cross stage (push or local)
 #   cross_stage_build_and_push()     — build a cross stage on linux/amd64 and push
 #   cross_stage_build_local()        — build a cross stage locally (no push)
 #   cross_stage_resolve_parent_pin() — resolve parent digest for stage transition
 #   resolve_pin()                    — low-level pin resolution (captured → registry)
 #   cross_stage_run()                — full orchestration: resolve parent, build, capture pin
+#   cross_stage_assemble_runtime_helper_args() — build args for runtime helper invocation
 #
 # These functions are consumed by:
 #   - build-cross-chain.sh (full orchestrator)
@@ -34,23 +36,23 @@ cross_stage_log_redirect() {
 }
 
 # ==============================================================================
-# cross_stage_build_and_push
+# _cross_stage_build_impl
 #
-# Build a cross-lane stage image on linux/amd64, push it to the registry, and
-# optionally tee output to a log file.
+# Internal: build a cross-lane stage image on linux/amd64.
+# When push=1: pushes to registry with cache registry support.
+# When push=0: builds locally only (no push, no cache registry).
 #
 # Automatically disables --pull when BASE_IMAGE is already digest-pinned
 # (repo@sha256:...), since the digest uniquely identifies the image and can
 # never resolve to a stale version.
 #
-# Uses registry build cache via --cache-from / --cache-to for faster rebuilds.
-# Respects DRY_RUN (when set to 1, prints the command without executing).
+# Respects DRY_RUN (when set to a truthy value, prints the command without executing).
 #
-# Usage: cross_stage_build_and_push <label> <tag> <dockerfile> [extra build args...]
+# Usage: _cross_stage_build_impl <push_flag> <label> <tag> <dockerfile> [extra build args...]
 # ==============================================================================
-cross_stage_build_and_push() {
-  local label="$1" tag="$2" dockerfile="$3"
-  shift 3
+_cross_stage_build_impl() {
+  local push_flag="$1" label="$2" tag="$3" dockerfile="$4"
+  shift 4
   local -a extra=("$@")
   local -a common_args=()
   append_common_build_args common_args
@@ -68,11 +70,17 @@ cross_stage_build_and_push() {
     "${pull_flag}"
     --platform linux/amd64
     -t "${tag}"
-    --output "type=image,name=${tag},push=true"
-    --cache-from "type=registry,ref=${tag}-buildcache"
-    --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
     -f "${dockerfile}"
   )
+
+  if [ "${push_flag}" -eq 1 ]; then
+    build_cmd+=(
+      --output "type=image,name=${tag},push=true"
+      --cache-from "type=registry,ref=${tag}-buildcache"
+      --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
+    )
+  fi
+
   append_buildkit_host_arg build_cmd
   build_cmd+=("${extra[@]}" "${common_args[@]}" .)
 
@@ -91,53 +99,31 @@ cross_stage_build_and_push() {
 }
 
 # ==============================================================================
+# cross_stage_build_and_push
+#
+# Build a cross-lane stage image on linux/amd64, push it to the registry.
+#
+# Uses registry build cache via --cache-from / --cache-to for faster rebuilds.
+# Respects DRY_RUN (when set to 1, prints the command without executing).
+#
+# Usage: cross_stage_build_and_push <label> <tag> <dockerfile> [extra build args...]
+# ==============================================================================
+cross_stage_build_and_push() {
+  _cross_stage_build_impl 1 "$@"
+}
+
+# ==============================================================================
 # cross_stage_build_local
 #
 # Build a cross-lane stage image locally on linux/amd64 WITHOUT pushing.
 # The image stays in the local containerd store.
 #
-# Automatically disables --pull when BASE_IMAGE is already digest-pinned.
 # Respects DRY_RUN (when set to 1, prints the command without executing).
 #
 # Usage: cross_stage_build_local <label> <tag> <dockerfile> [extra build args...]
 # ==============================================================================
 cross_stage_build_local() {
-  local label="$1" tag="$2" dockerfile="$3"
-  shift 3
-  local -a extra=("$@")
-  local -a common_args=()
-  append_common_build_args common_args
-
-  local log_file
-  log_file="$(cross_stage_log_redirect "${label}")"
-
-  local pull_flag="--pull=true"
-  if _has_digest_pinned_base "${extra[@]}"; then
-    pull_flag="--pull=false"
-  fi
-
-  local -a build_cmd=(
-    "${NERDCTL_BIN:-nerdctl}" build
-    "${pull_flag}"
-    --platform linux/amd64
-    -t "${tag}"
-    -f "${dockerfile}"
-  )
-  append_buildkit_host_arg build_cmd
-  build_cmd+=("${extra[@]}" "${common_args[@]}" .)
-
-  if is_dry_run; then
-    printf '[DRY RUN] '
-    printf '%q ' "${build_cmd[@]}"
-    printf '\n'
-    return 0
-  fi
-
-  if [ -n "${log_file}" ]; then
-    run "${build_cmd[@]}" > >(tee -a "${log_file}") 2>&1
-  else
-    run "${build_cmd[@]}"
-  fi
+  _cross_stage_build_impl 0 "$@"
 }
 
 # ==============================================================================
@@ -321,6 +307,34 @@ cross_stage_run() {
       log "[stage ${label}] pinned ${!pin_varname}"
     else
       log "[stage ${label}] pinned ${pinned_digest} (pin variable ${pin_varname} not in scope, skipping storage)"
+    fi
+  fi
+}
+
+# ==============================================================================
+# cross_stage_assemble_runtime_helper_args
+#
+# Build the argument array for build-runtime-manifest.sh from the orchestrator's
+# state (IMAGE_REPO, FINAL_IMAGE, TARGET_ARCHES, mirror settings).
+#
+# Exists here so the orchestrator and the runtime helper share a single canonical
+# source for the handoff interface.
+#
+# Usage: cross_stage_assemble_runtime_helper_args <nameref>
+# ==============================================================================
+cross_stage_assemble_runtime_helper_args() {
+  local -n _arha_out=${1}
+  _arha_out=(
+    --image "${FINAL_IMAGE}"
+    --target-arches "${TARGET_ARCHES}"
+    --artifact-image-prefix "${IMAGE_REPO}:cross-android"
+    --artifact-build-mode cross
+    --push
+  )
+  if _bool_truthy "${USE_FAST_UBUNTU_MIRROR:-false}"; then
+    _arha_out+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")
+    if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL:-}" ]; then
+      _arha_out+=(--fast-ubuntu-ports-mirror-url "${FAST_UBUNTU_PORTS_MIRROR_URL}")
     fi
   fi
 }

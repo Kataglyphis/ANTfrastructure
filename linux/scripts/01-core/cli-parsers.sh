@@ -9,8 +9,13 @@ _CLI_PARSERS_SH_LOADED=1
 #   parse_shared_orchestrator_args   — cross-chain orchestrator arg parser
 #   dispatch_parsed_args             — dispatches parser, sets _DP_SHIFT
 #   parse_shared_runtime_args        — runtime build script arg parser
-#   runtime_dispatch_shared_args     — runtime dispatch wrapper
 #   runtime_post_parse_setup         — post-parse normalization + context prep
+#
+# Flags that set global variables directly (no nameref needed):
+#   --dry-run                     → DRY_RUN=1
+#   --parallel-archs              → PARALLEL_ARCHS=1
+#   --max-parallel-archs N        → MAX_PARALLEL_ARCHS=N
+#   --fast-ubuntu-mirror          → USE_FAST_UBUNTU_MIRROR=true (via _parse_mirror_flags)
 #
 # After dispatch_parsed_args returns 0:
 #   _DP_SHIFT=0  flag not recognized, caller should handle it
@@ -20,13 +25,67 @@ _CLI_PARSERS_SH_LOADED=1
 # Returns non-zero on parse error.
 
 # ==============================================================================
+# _parse_mirror_flags
+#
+# Internal: handle the three mirror-related flags.  Used by both
+# parse_shared_orchestrator_args and parse_shared_runtime_args to
+# eliminate duplicated case-branch logic.
+#
+# Usage: _parse_mirror_flags <use_fast_mirror_nameref> <fast_mirror_url_nameref> <fast_ports_url_nameref> <arg> <val>
+# Returns 1 (single-arg consumed), 2 (two-arg consumed), or 0 (not a mirror flag).
+# ==============================================================================
+_parse_mirror_flags() {
+  local -n _pmf_use=$1
+  local -n _pmf_url=$2
+  local -n _pmf_ports=$3
+  local arg="$4" val="$5"
+
+  case "${arg}" in
+    --fast-ubuntu-mirror)
+      _pmf_use=true; return 1 ;;
+    --fast-ubuntu-mirror-url)
+      _pmf_use=true; _pmf_url="${val}"; return 2 ;;
+    --fast-ubuntu-ports-mirror-url)
+      _pmf_use=true; _pmf_ports="${val}"; return 2 ;;
+    *)
+      return 0 ;;
+  esac
+}
+
+# ==============================================================================
+# _parse_global_flags
+#
+# Internal: handle flags that set global variables (--dry-run,
+# --parallel-archs, --max-parallel-archs).  These are shared across
+# orchestrator and runtime parsers.
+#
+# Usage: _parse_global_flags <arg> <val>
+# Returns 1, 2, or 0 (not a global flag).
+# ==============================================================================
+_parse_global_flags() {
+  local arg="$1" val="$2"
+
+  case "${arg}" in
+    --dry-run)
+      DRY_RUN=1; return 1 ;;
+    --parallel-archs)
+      PARALLEL_ARCHS=1; return 1 ;;
+    --max-parallel-archs)
+      MAX_PARALLEL_ARCHS="${val}"; return 2 ;;
+    *)
+      return 0 ;;
+  esac
+}
+
+# ==============================================================================
 # parse_shared_orchestrator_args
 #
 # Shared CLI argument parsing for cross-chain orchestrator scripts.
 # Call this from the argument loop in build-cross-chain.sh,
-# build-cross-compiler.sh, and build-sdk-artifacts.sh.
+# build-cross-compiler.sh, build-cross-stage.sh, and verify-cross-chain.sh.
 #
 # Receives namerefs for the shared variables, then $1 $2 from the caller's loop.
+# Also handles global flags (--dry-run, --parallel-archs, mirror flags).
 #
 # Return values:
 #   1  — consumed a single-arg flag (caller should shift 1)
@@ -45,6 +104,15 @@ parse_shared_orchestrator_args() {
   shift 7 || true
   local arg="$1" val="$2"
 
+  # Global flags (--dry-run, --parallel-archs, etc.)
+  local _rc=0
+  _parse_global_flags "${arg}" "${val}" || _rc=$?
+  if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
+
+  # Mirror flags (shared across both parsers)
+  _parse_mirror_flags _psoa_use_fast_mirror _psoa_fast_mirror_url _psoa_fast_ports_url "${arg}" "${val}" || _rc=$?
+  if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
+
   case "${arg}" in
     --target-arches|--architectures)
       _psoa_target_arches="${val}"; return 2 ;;
@@ -52,12 +120,6 @@ parse_shared_orchestrator_args() {
       _psoa_image_repo="${val}"; return 2 ;;
     --vulkan-version)
       _psoa_vulkan_version="${val}"; return 2 ;;
-    --fast-ubuntu-mirror)
-      _psoa_use_fast_mirror=true; return 1 ;;
-    --fast-ubuntu-mirror-url)
-      _psoa_use_fast_mirror=true; _psoa_fast_mirror_url="${val}"; return 2 ;;
-    --fast-ubuntu-ports-mirror-url)
-      _psoa_use_fast_mirror=true; _psoa_fast_ports_url="${val}"; return 2 ;;
     --push)
       _psoa_push=1; return 1 ;;
     -h|--help)
@@ -98,6 +160,7 @@ dispatch_parsed_args() {
 # build-runtime-manifest.sh to handle their nearly identical flag sets.
 #
 # Receives: name-refs for all shared variables, then $1 $2 from the caller's loop.
+# Also handles global flags (--dry-run, --parallel-archs, mirror flags).
 #
 # Return values:
 #   1  — consumed a single-arg flag (caller should shift 1)
@@ -120,6 +183,15 @@ parse_shared_runtime_args() {
   shift 11 || true
   local arg="$1" val="$2"
 
+  # Global flags (--dry-run, --parallel-archs, etc.)
+  local _rc=0
+  _parse_global_flags "${arg}" "${val}" || _rc=$?
+  if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
+
+  # Mirror flags (shared across both parsers)
+  _parse_mirror_flags _use_fast_mirror _fast_mirror_url _fast_ports_url "${arg}" "${val}" || _rc=$?
+  if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
+
   case "${arg}" in
     --architectures|--target-arches)
       _target_arches="${val}"; return 2 ;;
@@ -135,29 +207,11 @@ parse_shared_runtime_args() {
       _wrapper_dockerfile="${val}"; return 2 ;;
     --torch-app-mode)
       _torch_app_mode="${val}"; return 2 ;;
-    --fast-ubuntu-mirror)
-      _use_fast_mirror=true; return 1 ;;
-    --fast-ubuntu-mirror-url)
-      _use_fast_mirror=true; _fast_mirror_url="${val}"; return 2 ;;
-    --fast-ubuntu-ports-mirror-url)
-      _use_fast_mirror=true; _fast_ports_url="${val}"; return 2 ;;
     -h|--help)
       return 255 ;;
     *)
       return 0 ;;
   esac
-}
-
-# ==============================================================================
-# runtime_dispatch_shared_args
-#
-# Shared dispatch wrapper for runtime build scripts.
-# Both build-runtime-artifacts.sh and build-runtime-manifest.sh call this.
-# Pass the same namerefs + "$1" "$2" as parse_shared_runtime_args.
-# Sets _DP_SHIFT for the caller (see dispatch_parsed_args).
-# ==============================================================================
-runtime_dispatch_shared_args() {
-  dispatch_parsed_args parse_shared_runtime_args "$@"
 }
 
 # ==============================================================================
