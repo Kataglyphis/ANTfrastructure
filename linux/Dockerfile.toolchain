@@ -27,10 +27,6 @@ ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
-
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
-    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
-
 ENV BUILD_MODE=${BUILD_MODE} \
     GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=${GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE} \
     GCC_HOST_BOOTSTRAP=${GCC_HOST_BOOTSTRAP} \
@@ -140,8 +136,8 @@ ENV VIRTUAL_ENV=/opt/python/.venv \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
-COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 \
+    linux/scripts/02-toolchain/ /opt/scripts/toolchain/ \
     linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh \
     linux/scripts/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh
 

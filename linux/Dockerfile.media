@@ -8,7 +8,7 @@ ARG OPENCV_VERSION="5.x"
 ARG GSTREAMER_VERSION="1.29.1"
 
 # Build Acceleration Arguments
-# Set AGGRESSIVE_PARALLELISM=true for faster builds on high-memory machines (32GB+)
+# Set AGGRESSIVE_PARALLELISM=true for faster builds on high-memory machines (16GB+)
 # Set USE_LLD=false to disable lld linker
 # Set USE_CCACHE=false to disable ccache
 ARG AGGRESSIVE_PARALLELISM=false
@@ -67,12 +67,11 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
 
 # Core build scripts (compiler-cache, parallelism helpers) are inherited from
 # the compiler base image via the SDK layer.
-COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh /opt/scripts/media/activate-cross-python.sh
-COPY --chmod=755 linux/scripts/03-media/media-build-preamble.sh /opt/scripts/media/media-build-preamble.sh
+COPY --chmod=755 \
+    linux/scripts/03-media/activate-cross-python.sh /opt/scripts/media/activate-cross-python.sh \
+    linux/scripts/03-media/media-build-preamble.sh /opt/scripts/media/media-build-preamble.sh
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
-    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh; \
-    if [ "${ENABLE_NVIDIA}" = "true" ]; then \
+RUN if [ "${ENABLE_NVIDIA}" = "true" ]; then \
         printf '%s\n' 'export NVIDIA_CODEC_HEADERS=yes' > /etc/profile.d/nvidia-codec-headers.sh; \
     fi
 
@@ -227,6 +226,8 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
 # ==============================================================================
 FROM base AS app-wheelhouse
 
+ARG TARGET_ARCH
+
 COPY --chmod=755 linux/scripts/05-frameworks/torch /opt/scripts/frameworks/torch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
@@ -239,6 +240,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
+    if [ "${TARGET_ARCH}" != "riscv64" ]; then \
+        echo "Skipping app-wheelhouse (riscv64 cross-only, got ${TARGET_ARCH})"; \
+        exit 0; \
+    fi; \
     bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh
 
 # ==============================================================================

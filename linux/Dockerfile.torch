@@ -20,12 +20,10 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 ENV VENV=/opt/venv \
     TORCH_APP_MODE=${TORCH_APP_MODE}
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
-    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
-
 COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/ubuntu-mirror.sh linux/scripts/01-core/cross-env.sh /opt/scripts/core/
-COPY --chmod=755 linux/scripts/03-media/final/assemble-torch-app.sh /opt/scripts/media/final/assemble-torch-app.sh
-COPY --chmod=755 linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/packaging/setup-torch-venv.sh
+COPY --chmod=755 \
+    linux/scripts/03-media/final/assemble-torch-app.sh /opt/scripts/media/final/assemble-torch-app.sh \
+    linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/packaging/setup-torch-venv.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -56,8 +54,9 @@ ARG VCS_REF=""
 # labels.  This is the canonical source for shared final-stage elements.
 # Dockerfile.package wrapper-smoke delegates its smoke-only validation to
 # validate-compilers.sh and does not duplicate these.
-COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
-COPY --chmod=755 linux/scripts/04-runtime/*.sh /usr/local/bin/
+COPY --chmod=755 \
+    linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh \
+    linux/scripts/04-runtime/*.sh /usr/local/bin/
 
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]

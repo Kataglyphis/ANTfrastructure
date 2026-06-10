@@ -24,9 +24,6 @@ _runtime_cleanup_trap() {
   for cid in $("${NERDCTL_BIN:-nerdctl}" ps -aq --filter "label=opencode-build-${_BUILD_INVOCATION_ID}" 2>/dev/null || true); do
     "${NERDCTL_BIN:-nerdctl}" rm -f "${cid}" >/dev/null 2>&1 || true
   done
-  for cid in $("${NERDCTL_BIN:-nerdctl}" ps -aq --filter "label=opencode-build" 2>/dev/null || true); do
-    "${NERDCTL_BIN:-nerdctl}" rm -f "${cid}" >/dev/null 2>&1 || true
-  done
 }
 trap '_runtime_cleanup_trap' EXIT
 

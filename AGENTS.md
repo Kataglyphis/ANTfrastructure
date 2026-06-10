@@ -36,7 +36,7 @@ The cross lane compiles everything on the amd64 build host. The runtime lane bui
 | `Dockerfile.toolchain` | `:base` | `:cross-compiler-amd64` | 1 (single stage) |
 | `Dockerfile.sdk` | `:cross-compiler-amd64` | `:cross-sdk-<arch>` | 1 (single stage) |
 | `Dockerfile.media` | `:cross-sdk-<arch>` | `:cross-media-<arch>` | 10 (base, onnxruntime, litert, opencv, app-wheelhouse, ffmpeg, media-inputs, gstreamer, libcamera, final) |
-| `Dockerfile.android` | `:cross-media-<arch>` | `:cross-android-<arch>` | 1 (single stage) |
+| `Dockerfile.android` | `:cross-media-<arch>` | `:cross-android-<arch>` | 4 (android-sdk, android-gstreamer, android-libs, final) |
 | `Dockerfile.package` | `:base` + `:cross-android-<arch>` | `:latest-cross-package-<arch>` | 3 (artifact-source, package-image, package) + `wrapper-smoke` |
 | `Dockerfile.torch` | `:latest-cross-package-<arch>` | `:latest-cross-<arch>` | 2 (torch, final) |
 | `Dockerfile.nvidia` | `:cross-sdk-<arch>` | (optional GPU layer) | 1 (single stage) |

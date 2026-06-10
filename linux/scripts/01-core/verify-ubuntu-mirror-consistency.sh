@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # verify-ubuntu-mirror-consistency.sh - Check that every Dockerfile has the
-# canonical Ubuntu mirror ARGs and use-fast-ubuntu-mirror.sh RUN step.
+# canonical Ubuntu mirror ARGs, and that Dockerfile.base has the mirror RUN.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 errors=0
@@ -35,9 +35,12 @@ for df in "${DOCKERFILES[@]}"; do
     fi
   done
 
-  if ! grep -q 'use-fast-ubuntu-mirror.sh' "$df_path"; then
-    echo "ERROR: ${df} is missing use-fast-ubuntu-mirror.sh RUN" >&2
-    errors=$((errors + 1))
+  # Mirror RUN is only required in Dockerfile.base (downstream images inherit it)
+  if [ "${df}" = "linux/Dockerfile.base" ]; then
+    if ! grep -q 'use-fast-ubuntu-mirror.sh' "$df_path"; then
+      echo "ERROR: ${df} is missing use-fast-ubuntu-mirror.sh RUN" >&2
+      errors=$((errors + 1))
+    fi
   fi
 done
 
