@@ -47,11 +47,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
         libmiopen-dev; \
     echo "/usr/lib/rocm/lib" > /etc/ld.so.conf.d/rocm.conf; \
     ldconfig; \
+    rm -rf /var/lib/apt/lists/*; \
     test -x "$(command -v hipcc)"; \
     ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null
 
 ARG LLVM_RELEASE=22.1.6
-ENV PATH="/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/usr/lib/rocm/bin:${PATH}"
+ENV PATH="/usr/lib/llvm-22/bin:/usr/lib/rocm/bin:${PATH}"
 
 LABEL org.opencontainers.image.title="Kataglyphis AMD GPU" \
       org.opencontainers.image.description="AMD GPU (ROCm) acceleration layer for the Kataglyphis accelerator toolchain"

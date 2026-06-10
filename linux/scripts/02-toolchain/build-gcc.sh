@@ -545,9 +545,10 @@ if [ "${DO_STRIP}" = "1" ]; then
   if [ -n "${TARGET_TRIPLET}" ] && command -v "${TARGET_TRIPLET}-strip" >/dev/null 2>&1; then
     STRIP_BIN="${TARGET_TRIPLET}-strip"
   fi
+  local strip_jobs="${JOBS:-$(nproc)}"
   ${SUDO} find "${PREFIX}" -type f -executable -exec file {} + 2>/dev/null \
     | awk -F': *' '/ELF.*(executable|shared object)/{print $1}' \
-    | xargs -r -P"$(nproc)" "${STRIP_BIN}" --strip-all 2>/dev/null || true
+    | xargs -r -P"${strip_jobs}" "${STRIP_BIN}" --strip-all 2>/dev/null || true
 fi
 
 # 7) Enhanced verification

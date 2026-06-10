@@ -398,7 +398,7 @@ configure_opencv() {
     fi
 
     echo "CMake options: ${cmake_opts[*]}"
-    cmake "${OPENCV_SRC}" "${cmake_opts[@]}" || { echo "OpenCV configure failed"; exit 1; }
+    cmake -G Ninja "${OPENCV_SRC}" "${cmake_opts[@]}" || { echo "OpenCV configure failed"; exit 1; }
 }
 
 # ------------------------------------------------------------------------------
@@ -406,16 +406,16 @@ configure_opencv() {
 # ------------------------------------------------------------------------------
 build_opencv() {
     echo "Building OpenCV with ${NPROC} parallel jobs..."
-    
+
     local build_dir="${OPENCV_SRC}/build"
     cd "${build_dir}"
-    
-    if make -j"${NPROC}"; then
+
+    if ninja -j"${NPROC}" install; then
         return 0
     fi
 
     echo "OpenCV parallel build failed; rerunning serial verbose build for diagnostics..."
-    make -j1 VERBOSE=1 || true
+    ninja -j1 install VERBOSE=1 || true
     echo "OpenCV build failed"
     exit 1
 }

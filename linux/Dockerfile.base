@@ -35,12 +35,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 # ------------------------------------------------------------------------------
 ENV NVIDIA_DRIVER_CAPABILITIES=all \
     NVIDIA_VISIBLE_DEVICES=all \
-    VULKAN_VERSION=${VULKAN_VERSION}
-
-# ------------------------------------------------------------------------------
-# Base ENV
-# ------------------------------------------------------------------------------
-ENV DEBIAN_FRONTEND=noninteractive \
+    VULKAN_VERSION=${VULKAN_VERSION} \
+    DEBIAN_FRONTEND=noninteractive \
     APT_LISTCHANGES_FRONTEND=none \
     PATH=/root/.local/bin:$PATH \
     CCACHE_DIR=/var/cache/ccache \

@@ -176,6 +176,8 @@ build_cross_stage() {
     --platform linux/amd64
     -t "${tag}"
     --output "type=image,name=${tag},push=true"
+    --cache-from "type=registry,ref=${tag}-buildcache"
+    --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
     -f "${dockerfile}"
   )
   append_buildkit_host_arg build_cmd

@@ -47,9 +47,8 @@ ENV ANDROID_HOME=/opt/android-sdk \
     TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
     TARGETPLATFORM=${TARGETPLATFORM} \
     BUILDARCH=${BUILDARCH} \
-    BUILDPLATFORM=${BUILDPLATFORM}
-
-ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
+    BUILDPLATFORM=${BUILDPLATFORM} \
+    PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
 COPY --chmod=755 \
     linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh \

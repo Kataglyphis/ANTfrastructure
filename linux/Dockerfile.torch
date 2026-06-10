@@ -40,8 +40,6 @@ ENV VIRTUAL_ENV=${VENV} \
 FROM torch AS final
 
 ARG BUILD_TYPE=Release
-ARG ENABLE_NVIDIA
-ARG ENABLE_AMD
 ARG WORKDIR=/workspace
 ARG BUILD_DATE=""
 ARG VCS_REF=""
@@ -65,7 +63,7 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/bin/bash"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python3 -c "import torch, cv2, onnxruntime" || exit 1
+  CMD /opt/venv/bin/python3 -c "import torch, cv2, onnxruntime" || exit 1
 
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
       org.opencontainers.image.description="My beschleuniger image for 2D AI" \
