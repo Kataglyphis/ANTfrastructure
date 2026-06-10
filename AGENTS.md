@@ -167,6 +167,8 @@ Stages 1-5 run on `linux/amd64`. Stage 6 runs on the target platform for each ar
 
 Each cross stage is a separate `nerdctl build`. The orchestrator captures each stage's registry-resolvable manifest digest after push and feeds it to the next stage as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`. This prevents stale locally-cached images from being reused.
 
+The stage chain is defined declaratively in `linux/scripts/01-core/stage-defs.sh` as `CROSS_STAGE_ORDER`. Each stage entry specifies its Dockerfile, parent, tag function, and whether it is per-architecture. Both the build loop and `--verify-chain` consume this graph.
+
 See [Cross Chain Stage Handoff](#cross-chain-stage-handoff) below for the full rules.
 
 ### Prerequisites
@@ -213,6 +215,7 @@ Key shared utilities and where to find them:
 - **Module loading:** `modules.sh` provides `source_modules_framework()` for the standard "find modules.sh in repo or container layout" bootstrap pattern. Call it after sourcing `modules.sh`.
 - **CC validation:** `validate-compilers.sh` provides `_validate_cc_target()` which centralizes the dumpmachine/ELF/cc1-compile-to-object/link smoke checks used by both `validate_package()` and `validate_smoke()`.
 - **Cross-chain tags:** `tag-naming.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, and the runtime tag functions for consistent naming across orchestrators and helpers.
+- **Stage graph:** `stage-defs.sh` defines the cross-lane stage chain (`base -> compiler -> sdk -> media -> android -> runtime`) declaratively. Each stage entry maps to its Dockerfile, parent stage, tag function, and per-arch flag. Both `build-cross-chain.sh` and `--verify-chain` consume this graph so the chain is defined in exactly one place. When adding or reordering stages, update `CROSS_STAGE_ORDER` in this file.
 - **Retry logic:** `logging.sh` provides `retry <max_attempts> <sleep_sec> <description> <command...>` for standardized retry loops.
 - **Mirror args:** `build-helpers.sh` provides `append_mirror_build_args_from_env()` to DRY the mirror argument fallback chain. Use this instead of repeating the `USE_FAST_UBUNTU_MIRROR` / `FAST_UBUNTU_MIRROR_URL` / `FAST_UBUNTU_PORTS_MIRROR_URL` expansion.
 - **Version forwarding:** `version-forwarding.sh` auto-discovers version variables from `versions.env` and forwards them as `--build-arg` to all builds via `append_version_build_args()`.
@@ -228,13 +231,14 @@ Key shared utilities and where to find them:
 `artifact-common.sh` sources 01-core modules in dependency order:
 1. `common.sh` (versions.env, logging, platform, ubuntu-mirror, downloads, parallelism)
 2. `tag-naming.sh` (cross-chain + runtime tag functions)
-3. `digest-pinning.sh` (registry digest resolution)
-4. `build-helpers.sh` (nerdctl wrappers, build-arg helpers)
-5. `context-management.sh` (runtime context, OCI export, stage handoff)
-6. `version-forwarding.sh` (auto-discovered --build-arg forwarding)
-7. `cli-parsers.sh` (shared CLI argument parsing)
-8. `runtime-build-fns.sh` (per-arch build chain functions)
-9. `compiler-resolution.sh`
+3. `stage-defs.sh` (declarative cross-lane stage graph)
+4. `digest-pinning.sh` (registry digest resolution)
+5. `build-helpers.sh` (nerdctl wrappers, build-arg helpers)
+6. `context-management.sh` (runtime context, OCI export, stage handoff)
+7. `version-forwarding.sh` (auto-discovered --build-arg forwarding)
+8. `cli-parsers.sh` (shared CLI argument parsing)
+9. `runtime-build-fns.sh` (per-arch build chain functions)
+10. `compiler-resolution.sh`
 
 ---
 

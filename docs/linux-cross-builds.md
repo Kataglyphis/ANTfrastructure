@@ -98,6 +98,12 @@ delegates to `build-runtime-manifest.sh` to build the per-arch
 `base -> package -> torch -> wrapper` images on the real target platform and
 publish the multi-arch `:latest-cross` manifest.
 
+The cross-lane stage chain is defined declaratively in
+`linux/scripts/01-core/stage-defs.sh`.  Each stage entry (Dockerfile, parent
+stage, tag function, per-arch flag) is defined in `CROSS_STAGE_ORDER` so both
+the build loop and `--verify-chain` consume the same single source of truth.
+To add or reorder stages, update `CROSS_STAGE_ORDER` in that file.
+
 ### Stale-check (`--verify-chain`)
 
 Before a full build, verify whether downstream registry images are stale without

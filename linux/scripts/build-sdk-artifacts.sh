@@ -59,35 +59,35 @@ EOF
 }
 
 ensure_compiler_image() {
-  if image_exists "${NERDCTL_BIN}" "${COMPILER_IMAGE}"; then
-    log "Using existing cross compiler image: ${COMPILER_IMAGE}"
-    return 0
+  local -a build_args=()
+  append_common_build_args build_args
+  if ensure_local_image "${COMPILER_IMAGE}" linux/Dockerfile.toolchain "${COMPILER_IMAGE}" build_args; then
+    image_exists "${NERDCTL_BIN}" "${COMPILER_IMAGE}" || {
+      err "Required compiler image not available after bootstrap: ${COMPILER_IMAGE}"
+    }
+  else
+    log "Cross compiler image missing; bootstrapping it first"
+    run env \
+      NERDCTL_BIN="${NERDCTL_BIN}" \
+      BUILDKIT_HOST="${BUILDKIT_HOST:-}" \
+      COMPILER_LOCAL_TAG="${COMPILER_IMAGE}" \
+      COMPILER_REMOTE_TAG="${COMPILER_IMAGE}" \
+      CROSS_TARGETS="${TARGET_ARCHES}" \
+      USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
+      FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
+      FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
+      bash "${REPO_ROOT}/linux/scripts/build-cross-compiler.sh"
+    image_exists "${NERDCTL_BIN}" "${COMPILER_IMAGE}" || {
+      err "Required compiler image not available after bootstrap: ${COMPILER_IMAGE}"
+    }
   fi
-
-  log "Cross compiler image missing; bootstrapping it first"
-  run env \
-    NERDCTL_BIN="${NERDCTL_BIN}" \
-    BUILDKIT_HOST="${BUILDKIT_HOST:-}" \
-    COMPILER_LOCAL_TAG="${COMPILER_IMAGE}" \
-    COMPILER_REMOTE_TAG="${COMPILER_IMAGE}" \
-    CROSS_TARGETS="${TARGET_ARCHES}" \
-    USE_FAST_UBUNTU_MIRROR="${USE_FAST_UBUNTU_MIRROR}" \
-    FAST_UBUNTU_MIRROR_URL="${FAST_UBUNTU_MIRROR_URL}" \
-    FAST_UBUNTU_PORTS_MIRROR_URL="${FAST_UBUNTU_PORTS_MIRROR_URL}" \
-    bash "${REPO_ROOT}/linux/scripts/build-cross-compiler.sh"
-
-  image_exists "${NERDCTL_BIN}" "${COMPILER_IMAGE}" || {
-    printf '[ERROR] Required compiler image not available after bootstrap: %s\n' "${COMPILER_IMAGE}" >&2
-    exit 1
-  }
 }
 
 build_sdk_image() {
   local arch="$1"
   local tag="$2"
   local -a build_args=()
-  append_mirror_build_args_from_env build_args
-  append_version_build_args build_args
+  append_common_build_args build_args
 
   run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \
@@ -131,9 +131,7 @@ main() {
         shift 2
         ;;
       *)
-        printf '[ERROR] Unknown option: %s\n' "$1" >&2
-        usage >&2
-        exit 1
+        err "Unknown option: $1"
         ;;
     esac
   done

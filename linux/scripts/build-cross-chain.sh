@@ -6,7 +6,7 @@ set -euo pipefail
 # Orchestrates the full additive cross lane end-to-end with a digest-pinned
 # stage handoff:
 #
-#   base -> compiler -> sdk -> media -> android -> runtime(package/torch/wrapper/manifest)
+#   base -> compiler -> sdk -> media -> android -> runtime
 #
 # WHY THIS EXISTS
 # ---------------
@@ -22,12 +22,19 @@ set -euo pipefail
 # REGISTRY-resolvable manifest digest (via registry_pin_ref) right after it is
 # pushed, and feeding it to the next stage as
 # `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`. A content-addressed digest
-# can never resolve to a stale image, so a cheaper/less careful agent that runs
-# this single command always chains the images it just built.
+# can never resolve to a stale image.
+#
+# STAGE GRAPH
+# -----------
+# The cross-lane stage chain is defined declaratively in
+# `linux/scripts/01-core/stage-defs.sh`.  Each stage entry has a Dockerfile,
+# parent stage, tag function, and per-arch flag.  Both the build loop and
+# `--verify-chain` consume the same graph, so the chain is defined in exactly
+# one place.
 #
 # Every cross stage is pushed because digest pinning needs the manifest to exist
-# in the registry. That matches the existing documented cross flow, which already
-# pushes base/compiler/sdk/media/android intermediates.
+# in the registry.  This matches the documented cross flow, which already pushes
+# base/compiler/sdk/media/android intermediates.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -38,8 +45,6 @@ NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
 TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${CROSS_DEFAULT_ARCHES}}}"
-# Compiler targets baked into the single amd64-hosted compiler image. The
-# compiler must contain every arch the later per-arch stages will target.
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 VULKAN_VERSION="${VULKAN_VERSION:-1.4.341.1}"
 init_mirror_defaults
@@ -52,22 +57,21 @@ DRY_RUN=0
 PARALLEL_ARCHS=0
 MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
 
-# Ordered stage list used for --from-stage/--to-stage gating.
-ALL_STAGES=(base compiler sdk media android runtime)
-
-# Pre-built stage index map for O(1) lookups.
-declare -A STAGE_INDEX=()
-for i in "${!ALL_STAGES[@]}"; do
-  STAGE_INDEX["${ALL_STAGES[$i]}"]="${i}"
-done
-
 # Per-arch digest references captured during this run.
+# These are accessed indirectly via cross_stage_pin_varname() + nameref in run_cross_stage().
+# shellcheck disable=SC2034
 declare -A SDK_PIN=()
+# shellcheck disable=SC2034
 declare -A MEDIA_PIN=()
+# shellcheck disable=SC2034
 declare -A ANDROID_PIN=()
 declare -A ANDROID_BUILT_THIS_RUN=()
+# shellcheck disable=SC2034
 BASE_PIN=""
+# shellcheck disable=SC2034
 COMPILER_PIN=""
+
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 usage() {
   cat <<'EOF'
@@ -78,10 +82,11 @@ a freshly built stage is always consumed by the next one (no stale-tag reuse):
 
   base -> compiler -> sdk -> media -> android -> runtime
 
-Every cross stage is built on linux/amd64 and pushed to the registry; the next
-stage's FROM is pinned to the pushed manifest digest. The final "runtime" stage
-delegates to build-runtime-manifest.sh to build per-arch base/package/torch
-wrapper images on the real target platform and publish the multi-arch manifest.
+The stage chain is defined in linux/scripts/01-core/stage-defs.sh.  Every cross
+stage is built on linux/amd64 and pushed to the registry; the next stage's FROM
+is pinned to the pushed manifest digest.  The final "runtime" stage delegates to
+build-runtime-manifest.sh to build per-arch base/package/torch wrapper images on
+the real target platform and publish the multi-arch manifest.
 
 Options:
   --target-arches LIST     Comma-separated arch list (default: amd64,arm64,riscv64)
@@ -112,6 +117,14 @@ Notes:
 EOF
 }
 
+# ── stage gating ──────────────────────────────────────────────────────────────
+
+# Build the STAGE_INDEX map from CROSS_STAGE_ORDER (defined in stage-defs.sh).
+declare -A STAGE_INDEX=()
+for i in "${!CROSS_STAGE_ORDER[@]}"; do
+  STAGE_INDEX["${CROSS_STAGE_ORDER[$i]}"]="${i}"
+done
+
 stage_index() {
   local name="$1"
   local idx="${STAGE_INDEX[${name}]:--1}"
@@ -129,14 +142,17 @@ stage_enabled() {
   [ "${idx}" -ge "${FROM_STAGE_IDX}" ] && [ "${idx}" -le "${TO_STAGE_IDX}" ]
 }
 
+# ── logging ───────────────────────────────────────────────────────────────────
+
 stage_log_redirect() {
-  # Echo a shell redirect suffix when LOG_DIR is set, else nothing.
   local label="$1"
   if [ -n "${LOG_DIR}" ]; then
     mkdir -p "${LOG_DIR}"
     printf '%s/%s.log' "${LOG_DIR}" "${label}"
   fi
 }
+
+# ── shared build driver ───────────────────────────────────────────────────────
 
 # Build a cross stage on linux/amd64, push it, and print its digest-pinned ref.
 # Usage: build_cross_stage <label> <tag> <dockerfile> [extra build args...]
@@ -145,8 +161,7 @@ build_cross_stage() {
   shift 3
   local -a extra=("$@")
   local -a common_args=()
-  append_mirror_build_args_from_env common_args
-  append_version_build_args common_args
+  append_common_build_args common_args
 
   local log_file
   log_file="$(stage_log_redirect "${label}")"
@@ -175,12 +190,13 @@ build_cross_stage() {
   fi
 
   if [ -n "${log_file}" ]; then
-    # Use process substitution to preserve pipefail (tee always exits 0)
     run "${build_cmd[@]}" > >(tee -a "${log_file}") 2>&1
   else
     run "${build_cmd[@]}"
   fi
 }
+
+# ── digest pin resolution ─────────────────────────────────────────────────────
 
 # Resolve an upstream digest pin, preferring one captured this run, otherwise
 # falling back to the parent tag's current registry digest.
@@ -202,78 +218,86 @@ resolve_pin() {
   printf '%s' "${result}"
 }
 
-run_base_stage() {
-  local tag
-  tag="$(cross_base_tag)"
-  log "[stage base] building ${tag}"
-  build_cross_stage base "${tag}" linux/Dockerfile.base
-  BASE_PIN="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
-  log "[stage base] pinned ${BASE_PIN}"
+# ── per-stage build functions ─────────────────────────────────────────────────
+
+# Resolve a digest pin for a stage's parent using the stage graph.
+# Looks up captured pin from this run (or falls back to registry tag).
+_resolve_parent_pin_for_stage() {
+  local stage="$1" arch="${2:-}"
+  local parent parent_tag parent_pin_varname captured
+
+  parent="$(cross_stage_parent "${stage}")"
+  [ -z "${parent}" ] && return 0  # base has no parent
+
+  parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
+  parent_pin_varname="$(cross_stage_pin_varname "${parent}")"
+
+  if cross_stage_is_per_arch "${parent}"; then
+    local -n pin_map="${parent_pin_varname}"
+    captured="${pin_map[$arch]:-}"
+  else
+    captured="${!parent_pin_varname:-}"
+  fi
+
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    printf '%s' "${captured:-${parent_tag}@sha256:dry-run-placeholder}"
+    return 0
+  fi
+
+  resolve_pin "${captured}" "${parent_tag}"
 }
 
-run_compiler_stage() {
-  local tag base_pin
-  tag="$(cross_compiler_tag)"
-  base_pin="$(resolve_pin "${BASE_PIN}" "$(cross_base_tag)")"
-  log "[stage compiler] building ${tag} FROM ${base_pin}"
-  build_cross_stage compiler "${tag}" linux/Dockerfile.toolchain \
-    --build-arg "BASE_IMAGE=${base_pin}" \
-    --build-arg "BUILD_MODE=cross" \
-    --build-arg "CROSS_TARGETS=${CROSS_TARGETS}"
-  COMPILER_PIN="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
-  log "[stage compiler] pinned ${COMPILER_PIN}"
+# Generic cross stage builder.  Resolves the parent digest, assembles build args,
+# runs the nerdctl build, and captures the output digest.
+# Usage: run_cross_stage <stage-name> [arch]
+run_cross_stage() {
+  local stage="$1" arch="${2:-}"
+  local label tag dockerfile parent_pin
+  local -a build_args=()
+  local pin_varname
+
+  label="${stage}"
+  cross_stage_is_per_arch "${stage}" && label="${stage}-${arch}"
+
+  dockerfile="$(cross_stage_dockerfile "${stage}")" || { err "No Dockerfile for stage: ${stage}"; }
+  tag="$(cross_stage_tag "${stage}" "${arch}")"
+
+  # Resolve parent digest pin
+  parent_pin="$(_resolve_parent_pin_for_stage "${stage}" "${arch}")" || {
+    err "Failed to resolve parent pin for stage ${stage}"
+  }
+  if [ -n "${parent_pin}" ]; then
+    build_args+=(--build-arg "BASE_IMAGE=${parent_pin}")
+  fi
+
+  # Append stage-specific build args
+  cross_stage_build_args build_args "${stage}" "${arch}"
+
+  log "[stage ${label}] building ${tag}${parent_pin:+ FROM ${parent_pin}}"
+  build_cross_stage "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
+
+  # Capture the digest pin
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    log "[stage ${label}] [DRY RUN] would pin ${tag}"
+    return 0
+  fi
+  pin_varname="$(cross_stage_pin_varname "${stage}")"
+  if cross_stage_is_per_arch "${stage}"; then
+    local -n pin_map="${pin_varname}"
+    pin_map["${arch}"]="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
+    log "[stage ${label}] pinned ${pin_map[$arch]}"
+    if [ "${stage}" = "android" ]; then
+      ANDROID_BUILT_THIS_RUN["${arch}"]=1
+    fi
+  else
+    printf -v "${pin_varname}" '%s' "$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
+    log "[stage ${label}] pinned ${!pin_varname}"
+  fi
 }
 
-run_sdk_stage() {
-  local arch="$1"
-  local tag compiler_pin
-  tag="$(cross_sdk_tag "${arch}")"
-  compiler_pin="$(resolve_pin "${COMPILER_PIN}" "$(cross_compiler_tag)")"
-  log "[stage sdk ${arch}] building ${tag} FROM ${compiler_pin}"
-  build_cross_stage "sdk-${arch}" "${tag}" linux/Dockerfile.sdk \
-    --build-arg "BASE_IMAGE=${compiler_pin}" \
-    --build-arg "BUILD_MODE=cross" \
-    --build-arg "TARGET_ARCH=${arch}" \
-    --build-arg "VULKAN_VERSION=${VULKAN_VERSION}"
-  SDK_PIN[$arch]="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
-  log "[stage sdk ${arch}] pinned ${SDK_PIN[$arch]}"
-}
-
-run_media_stage() {
-  local arch="$1"
-  local tag sdk_pin
-  tag="$(cross_media_tag "${arch}")"
-  sdk_pin="$(resolve_pin "${SDK_PIN[$arch]:-}" "$(cross_sdk_tag "${arch}")")"
-  log "[stage media ${arch}] building ${tag} FROM ${sdk_pin}"
-  build_cross_stage "media-${arch}" "${tag}" linux/Dockerfile.media \
-    --build-arg "BASE_IMAGE=${sdk_pin}" \
-    --build-arg "BUILD_MODE=cross" \
-    --build-arg "TARGET_ARCH=${arch}"
-  MEDIA_PIN[$arch]="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
-  log "[stage media ${arch}] pinned ${MEDIA_PIN[$arch]}"
-}
-
-run_android_stage() {
-  local arch="$1"
-  local tag media_pin
-  tag="$(cross_android_tag "${arch}")"
-  media_pin="$(resolve_pin "${MEDIA_PIN[$arch]:-}" "$(cross_media_tag "${arch}")")"
-  log "[stage android ${arch}] building ${tag} FROM ${media_pin}"
-  build_cross_stage "android-${arch}" "${tag}" linux/Dockerfile.android \
-    --build-arg "BASE_IMAGE=${media_pin}" \
-    --build-arg "BUILD_MODE=cross" \
-    --build-arg "TARGET_ARCH=${arch}"
-  ANDROID_PIN[$arch]="$(retry 5 10 "registry digest for ${tag}" registry_pin_ref "${NERDCTL_BIN}" "${tag}")"
-  ANDROID_BUILT_THIS_RUN[$arch]=1
-  log "[stage android ${arch}] pinned ${ANDROID_PIN[$arch]}"
-}
-
+# Runtime stage: delegates to build-runtime-manifest.sh.
 run_runtime_stage() {
   local arch
-  # The runtime helper consumes the local cross-android-${arch} tag with
-  # --pull=false. If android was built this run the local tag is already fresh.
-  # When resuming straight into runtime, refresh the local tag from the registry
-  # so the package stage cannot pick up a stale local android image.
   for arch in ${TARGET_ARCHES//,/ }; do
     if [ -z "${ANDROID_BUILT_THIS_RUN[$arch]:-}" ]; then
       local android_tag
@@ -311,6 +335,51 @@ run_runtime_stage() {
     bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}"
 }
 
+# ── arch loop (sequential or parallel) ────────────────────────────────────────
+
+# Run a stage function for each arch.  Optionally parallelizes with flag-file
+# failure tracking.
+_run_arch_loop() {
+  local stage_fn="$1" stage_name="$2"
+  local -a pids=()
+  local arch running failed=0
+  local _flagdir
+  _flagdir="$(mktemp -d /tmp/arch-loop-flags.XXXXXX)"
+  # shellcheck disable=SC2064  # intentional expansion at def time: _flagdir is local
+  trap "rm -rf ${_flagdir}" RETURN
+  running=0
+  for arch in ${TARGET_ARCHES//,/ }; do
+    if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
+      {
+        "${stage_fn}" "${stage_name}" "${arch}" || touch "${_flagdir}/failed-${arch}"
+      } &
+      pids+=($!)
+      running=$((running + 1))
+      if [ "${running}" -ge "${MAX_PARALLEL_ARCHS}" ]; then
+        wait -n 2>/dev/null || true
+        running=$((running - 1))
+      fi
+    else
+      "${stage_fn}" "${stage_name}" "${arch}" || failed=1
+    fi
+  done
+  if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
+    for pid in "${pids[@]}"; do
+      wait "${pid}" || true
+    done
+    local f
+    for f in "${_flagdir}"/failed-*; do
+      if [ -f "${f}" ]; then
+        warn "Arch ${f##*-} failed during parallel build"
+        failed=1
+      fi
+    done
+  fi
+  return "${failed}"
+}
+
+# ── chain verification ────────────────────────────────────────────────────────
+
 _verify_link() {
   local label="$1" parent_tag="$2" child_tag="$3" parent_digest child_base_digest
   parent_digest="$(registry_pin_ref "${NERDCTL_BIN}" "${parent_tag}" 2>/dev/null || true)"
@@ -333,68 +402,44 @@ _verify_link() {
   fi
 }
 
+# Verify the entire cross chain by checking each documented stage transition.
+# Uses CROSS_STAGE_ORDER from stage-defs.sh instead of hardcoded transitions.
+# Skips runtime (delegates to separate script, no cross-lane Dockerfile).
 verify_chain() {
-  local arch
+  local stage parent parent_tag child_tag arch label
 
   log "[verify] checking cross-chain freshness for arches: ${TARGET_ARCHES}"
 
-  _verify_link "base->compiler" "$(cross_base_tag)" "$(cross_compiler_tag)"
+  for stage in "${CROSS_STAGE_ORDER[@]}"; do
+    [ "${stage}" = "base" ] && continue    # no parent to verify
+    [ "${stage}" = "runtime" ] && continue # delegates to runtime helper, not a cross stage
 
-  for arch in ${TARGET_ARCHES//,/ }; do
-    _verify_link "compiler->sdk-${arch}" "$(cross_compiler_tag)" "$(cross_sdk_tag "${arch}")"
-  done
+    parent="$(cross_stage_parent "${stage}")"
 
-  for arch in ${TARGET_ARCHES//,/ }; do
-    _verify_link "sdk->media-${arch}" "$(cross_sdk_tag "${arch}")" "$(cross_media_tag "${arch}")"
-  done
-
-  for arch in ${TARGET_ARCHES//,/ }; do
-    _verify_link "media->android-${arch}" "$(cross_media_tag "${arch}")" "$(cross_android_tag "${arch}")"
+    if cross_stage_is_per_arch "${stage}"; then
+      for arch in ${TARGET_ARCHES//,/ }; do
+        # Parent tag may also need arch if the parent is per-arch
+        if cross_stage_is_per_arch "${parent}"; then
+          parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
+        else
+          parent_tag="$(cross_stage_tag "${parent}")"
+        fi
+        child_tag="$(cross_stage_tag "${stage}" "${arch}")"
+        label="${parent}->${stage}-${arch}"
+        _verify_link "${label}" "${parent_tag}" "${child_tag}"
+      done
+    else
+      parent_tag="$(cross_stage_tag "${parent}")"
+      child_tag="$(cross_stage_tag "${stage}")"
+      label="${parent}->${stage}"
+      _verify_link "${label}" "${parent_tag}" "${child_tag}"
+    fi
   done
 
   log "[verify] chain check complete"
 }
 
-# Run a stage function for each arch, optionally in parallel.
-# Collects exit codes from all parallel jobs via flag files so a failure in one
-# subprocess does not silently succeed.
-_run_arch_loop() {
-  local stage_fn="$1"; shift
-  local -a pids=()
-  local arch running failed=0
-  local _flagdir
-  _flagdir="$(mktemp -d /tmp/arch-loop-flags.XXXXXX)"
-  trap 'rm -rf ${_flagdir}' RETURN
-  running=0
-  for arch in ${TARGET_ARCHES//,/ }; do
-    if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
-      {
-        "${stage_fn}" "${arch}" || touch "${_flagdir}/failed-${arch}"
-      } &
-      pids+=($!)
-      running=$((running + 1))
-      if [ "${running}" -ge "${MAX_PARALLEL_ARCHS}" ]; then
-        wait -n 2>/dev/null || true
-        running=$((running - 1))
-      fi
-    else
-      "${stage_fn}" "${arch}" || failed=1
-    fi
-  done
-  if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
-    for pid in "${pids[@]}"; do
-      wait "${pid}" || true
-    done
-    local f
-    for f in "${_flagdir}"/failed-*; do
-      if [ -f "${f}" ]; then
-        warn "Arch ${f##*-} failed during parallel build"
-        failed=1
-      fi
-    done
-  fi
-  return "${failed}"
-}
+# ── main driver ───────────────────────────────────────────────────────────────
 
 main() {
   local only_stage=""
@@ -439,7 +484,6 @@ main() {
     FINAL_IMAGE="${IMAGE_REPO}:latest-cross"
   fi
 
-  # Validate stage bounds early and cache indices.
   FROM_STAGE_IDX="$(stage_index "${FROM_STAGE}")" || exit 1
   TO_STAGE_IDX="$(stage_index "${TO_STAGE}")" || exit 1
   if [ "${FROM_STAGE_IDX}" -gt "${TO_STAGE_IDX}" ]; then
@@ -453,19 +497,26 @@ main() {
     exit 0
   fi
 
-  local arch
-  if stage_enabled base; then run_base_stage; fi
-  if stage_enabled compiler; then run_compiler_stage; fi
-  if stage_enabled sdk; then
-    _run_arch_loop run_sdk_stage
-  fi
-  if stage_enabled media; then
-    _run_arch_loop run_media_stage
-  fi
-  if stage_enabled android; then
-    _run_arch_loop run_android_stage
-  fi
-  if stage_enabled runtime; then run_runtime_stage; fi
+  # Drive execution from the stage graph (stage-defs.sh).
+  # Each stage in CROSS_STAGE_ORDER is run only if it falls within the
+  # [FROM_STAGE, TO_STAGE] range.
+  local stage
+  for stage in "${CROSS_STAGE_ORDER[@]}"; do
+    stage_enabled "${stage}" || continue
+
+    case "${stage}" in
+      runtime)
+        run_runtime_stage
+        ;;
+      *)
+        if cross_stage_is_per_arch "${stage}"; then
+          _run_arch_loop run_cross_stage "${stage}"
+        else
+          run_cross_stage "${stage}"
+        fi
+        ;;
+    esac
+  done
 
   log "Cross chain complete."
 }

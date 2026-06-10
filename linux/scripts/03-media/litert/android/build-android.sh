@@ -1,50 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/core/platform.sh ]; then
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
+
+if [ -f /opt/scripts/core/compiler-resolution.sh ]; then
   # shellcheck disable=SC1091
-  source /opt/scripts/core/platform.sh
+  source /opt/scripts/core/compiler-resolution.sh
+  resolve_host_compiler() { resolve_host_compiler_for_lang "$1"; }
+else
+  resolve_host_compiler() {
+    case "$1" in
+      c)
+        for candidate in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do
+          [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+        done
+        command -v gcc 2>/dev/null || command -v cc 2>/dev/null || command -v clang 2>/dev/null || true
+        ;;
+      cxx)
+        for candidate in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do
+          [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+        done
+        command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || command -v clang++ 2>/dev/null || true
+        ;;
+    esac
+  }
 fi
 
-resolve_host_compiler() {
-  case "$1" in
-    c)
-      for candidate in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do
-        [ -x "${candidate}" ] && {
-          printf '%s' "${candidate}"
-          return 0
-        }
-      done
-      command -v gcc 2>/dev/null || command -v cc 2>/dev/null || command -v clang 2>/dev/null || true
-      ;;
-    cxx)
-      for candidate in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do
-        [ -x "${candidate}" ] && {
-          printf '%s' "${candidate}"
-          return 0
-        }
-      done
-      command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || command -v clang++ 2>/dev/null || true
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-if ! android_require_amd64_build_host "Android LiteRT build"; then
-  exit 0
-fi
-
-TARGET_ARCH="$(android_target_arch)"
-ANDROID_ABI="$(android_target_abi)"
-: "${ANDROID_ABI:?Unsupported Android target ABI}"
+android_build_preamble_init "Android LiteRT build" "${ANDROID_API_LEVEL:-34}"
 
 LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
-ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL:-34}" "Android LiteRT build")"
 INSTALL_DIR="${LITERT_ROOT_ANDROID:-/opt/android/litert}"
 
-export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
     g++ git cmake ninja-build python3 python3-pip
 
@@ -78,7 +65,15 @@ cmake -GNinja \
   -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
   ..
 
-ninja -j"$(nproc)" install || cmake --build . --target install -j1
+PARALLEL_JOBS="$(nproc)"
+if [ -f /opt/scripts/core/parallelism.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/parallelism.sh 2>/dev/null || true
+  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    PARALLEL_JOBS="$(compute_jobs_with_mem_cap "" 2000)"
+  fi
+fi
+ninja -j"${PARALLEL_JOBS}" install || cmake --build . --target install -j1
 
 cd /opt
 rm -rf litert-android

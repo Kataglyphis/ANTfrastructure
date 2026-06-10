@@ -37,6 +37,10 @@ The full `:latest-cross` pipeline:
 2. **Runtime lane** (stage 6, target platform via QEMU/binfmt for foreign arches):
    - `base` → `package` → `torch`/`wrapper` → `manifest`
 
+The cross-lane stage chain is defined declaratively in `linux/scripts/01-core/stage-defs.sh`
+as `CROSS_STAGE_ORDER`.  Each stage maps to its Dockerfile, parent, tag function, and
+per-arch flag.  Both `build-cross-chain.sh` and `--verify-chain` consume this graph.
+
 Prefer the orchestrator: `bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64`
 
 ## Rootless Build Networking (host tuning)

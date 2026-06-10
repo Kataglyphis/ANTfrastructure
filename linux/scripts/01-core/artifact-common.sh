@@ -3,13 +3,14 @@
 #
 # Sources all 01-core modules in dependency order:
 #   1. common.sh          (versions.env, logging, platform, ubuntu-mirror, downloads, parallelism)
-#   2. tag-naming.sh      (cross-chain + runtime tag functions)
-#   3. digest-pinning.sh  (registry digest resolution)
-#   4. build-helpers.sh   (nerdctl wrappers, build-arg helpers)
-#   5. context-management.sh (runtime context, OCI export, stage handoff)
-#   6. version-forwarding.sh (auto-discovered --build-arg forwarding from versions.env)
-#   7. cli-parsers.sh     (shared CLI argument parsing)
-#   8. runtime-build-fns.sh (per-arch build chain functions)
+#  2. tag-naming.sh      (cross-chain + runtime tag functions)
+#   3. stage-defs.sh      (declarative stage graph for the cross lane)
+#   4. digest-pinning.sh  (registry digest resolution)
+#   5. build-helpers.sh   (nerdctl wrappers, build-arg helpers)
+#   6. context-management.sh (runtime context, OCI export, stage handoff)
+#   7. version-forwarding.sh (auto-discovered --build-arg forwarding from versions.env)
+#   8. cli-parsers.sh     (shared CLI argument parsing)
+#   9. runtime-build-fns.sh (per-arch build chain functions)
 
 _ARTIFACT_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -36,8 +37,9 @@ normalize_target_arches() {
 # Source focused modules in dependency order.
 # shellcheck disable=SC1090,SC1091
 for _module in \
-  tag-naming.sh digest-pinning.sh build-helpers.sh context-management.sh \
-  version-forwarding.sh cli-parsers.sh runtime-build-fns.sh compiler-resolution.sh; do
+  tag-naming.sh stage-defs.sh digest-pinning.sh build-helpers.sh \
+  context-management.sh version-forwarding.sh cli-parsers.sh \
+  runtime-build-fns.sh compiler-resolution.sh; do
   if [ -f "${_ARTIFACT_COMMON_DIR}/${_module}" ]; then
     source "${_ARTIFACT_COMMON_DIR}/${_module}"
   fi

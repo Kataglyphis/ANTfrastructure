@@ -1,24 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/core/platform.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/platform.sh
-fi
-
-if ! android_require_amd64_build_host "Android OpenCV build"; then
-  exit 0
-fi
-
-TARGET_ARCH="$(android_target_arch)"
-ANDROID_ABI="$(android_target_abi)"
-: "${ANDROID_ABI:?Unsupported Android target ABI}"
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
+android_build_preamble_init "Android OpenCV build" "${ANDROID_API_LEVEL:-34}"
 
 OPENCV_VERSION="${1:-5.x}"
-ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL:-34}" "Android OpenCV build")"
 INSTALL_DIR="${OPENCV_ROOT_ANDROID:-/opt/android/opencv}"
 
-export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
     git cmake ninja-build python3 openjdk-21-jdk ant
 
@@ -70,7 +59,15 @@ cmake -GNinja \
   -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
   ..
 
-ninja -j"$(nproc)" install || cmake --build . --target install -j1
+PARALLEL_JOBS="$(nproc)"
+if [ -f /opt/scripts/core/parallelism.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/parallelism.sh 2>/dev/null || true
+  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    PARALLEL_JOBS="$(compute_jobs_with_mem_cap "" 2000)"
+  fi
+fi
+ninja -j"${PARALLEL_JOBS}" install || cmake --build . --target install -j1
 
 cd /opt
 rm -rf opencv-android

@@ -50,11 +50,10 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
 ENV PATH="/usr/lib/llvm-22/bin:/usr/lib/rocm/bin:${PATH}"
 
 RUN echo "/usr/lib/rocm/lib" > /etc/ld.so.conf.d/rocm.conf \
-    && ldconfig
-
-RUN set -euo pipefail; \
-    test -x "$(command -v hipcc)"; \
-    ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null
+    && ldconfig \
+    && set -euo pipefail \
+    && test -x "$(command -v hipcc)" \
+    && ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null
 
 LABEL org.opencontainers.image.title="Kataglyphis AMD GPU" \
       org.opencontainers.image.description="AMD GPU (ROCm) acceleration layer for the Kataglyphis accelerator toolchain"

@@ -51,40 +51,13 @@ EOF
 
 ensure_base_image() {
   local -a build_args=()
-  append_mirror_build_args_from_env build_args
-  append_version_build_args build_args
-
-  if [ "${REBUILD_BASE}" -eq 0 ] && image_exists "${NERDCTL_BIN}" "${BASE_LOCAL_TAG}"; then
-    log "Using existing local base image: ${BASE_LOCAL_TAG}"
-    return 0
-  fi
-
-  if [ "${REBUILD_BASE}" -eq 0 ]; then
-    log "Trying to pull remote base image: ${BASE_REMOTE_TAG}"
-    if retry 3 10 "pulling base image" pull_platform_image "${NERDCTL_BIN}" linux/amd64 "${BASE_REMOTE_TAG}"; then
-      if [ "${BASE_REMOTE_TAG}" != "${BASE_LOCAL_TAG}" ]; then
-        run "${NERDCTL_BIN}" tag "${BASE_REMOTE_TAG}" "${BASE_LOCAL_TAG}"
-      fi
-      return 0
-    fi
-    log "Remote base image unavailable; bootstrapping ${BASE_LOCAL_TAG} locally"
-  else
-    log "Forced local rebuild of ${BASE_LOCAL_TAG}"
-  fi
-
-  run_nerdctl_build "${NERDCTL_BIN}" \
-    --pull=false \
-    --platform linux/amd64 \
-    -t "${BASE_LOCAL_TAG}" \
-    -f linux/Dockerfile.base \
-    "${build_args[@]}" \
-    .
+  append_common_build_args build_args
+  ensure_local_image "${BASE_LOCAL_TAG}" linux/Dockerfile.base "${BASE_REMOTE_TAG}" build_args
 }
 
 build_cross_compiler() {
   local -a build_args=()
-  append_mirror_build_args_from_env build_args
-  append_version_build_args build_args
+  append_common_build_args build_args
 
   run_nerdctl_build "${NERDCTL_BIN}" \
     --pull=false \

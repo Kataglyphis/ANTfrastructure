@@ -47,8 +47,6 @@ if [ -z "${PYTHON_MAJOR_MINOR:-}" ] && [ -n "${PYTHON_VERSION:-}" ]; then
   PYTHON_MAJOR_MINOR="$(version_major_minor "${PYTHON_VERSION}")"
 fi
 
-VULKAN_VERSION_DEFAULT=${VULKAN_VERSION_DEFAULT:-${VULKAN_VERSION}}
-
 # ---------------------------------------------------------------------------
 # ensure_target_arch
 #

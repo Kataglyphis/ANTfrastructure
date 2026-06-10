@@ -101,10 +101,7 @@ runtime_use_local_context_chain() {
     1|true|TRUE|yes|YES|on|ON) return 0 ;;
     0|false|FALSE|no|NO|off|OFF) return 1 ;;
     auto|"") ! runtime_pushes_intermediate_images ;;
-    *)
-      printf '[ERROR] Unsupported RUNTIME_USE_LOCAL_CONTEXT_CHAIN value: %s\n' "${RUNTIME_USE_LOCAL_CONTEXT_CHAIN}" >&2
-      return 1
-      ;;
+    *) return 1 ;;
   esac
 }
 
@@ -130,7 +127,13 @@ runtime_use_local_stage_context_outputs() {
 }
 
 runtime_install_local_context_cleanup_trap() {
-  trap 'runtime_cleanup_local_context_chain' EXIT
+  local existing_trap
+  existing_trap="$(trap -p EXIT 2>/dev/null | sed "s/trap -- '\(.*\)' EXIT/\1/" || true)"
+  if [ -n "${existing_trap}" ]; then
+    trap "${existing_trap}; runtime_cleanup_local_context_chain" EXIT
+  else
+    trap 'runtime_cleanup_local_context_chain' EXIT
+  fi
   trap 'exit 130' INT TERM
 }
 

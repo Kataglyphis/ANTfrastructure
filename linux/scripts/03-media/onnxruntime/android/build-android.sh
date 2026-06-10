@@ -1,18 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/core/platform.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/platform.sh
-fi
-
-if ! android_require_amd64_build_host "Android ONNX Runtime build"; then
-  exit 0
-fi
-
-TARGET_ARCH="$(android_target_arch)"
-ANDROID_ABI="$(android_target_abi)"
-: "${ANDROID_ABI:?Unsupported Android target ABI}"
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
+android_build_preamble_init "Android ONNX Runtime build" "${ANDROID_API_LEVEL:-34}"
 
 case "${TARGET_ARCH}" in
   riscv64|riscv|rv64*)
@@ -22,12 +13,19 @@ case "${TARGET_ARCH}" in
 esac
 
 ORT_VERSION="${1:-v1.26.0}"
-ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL:-34}" "Android ONNX Runtime build")"
 INSTALL_DIR="${ONNXRUNTIME_ROOT_ANDROID:-/opt/android/onnxruntime}"
 
-export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
     git cmake ninja-build python3 python3-pip openjdk-21-jdk curl
+
+PARALLEL_JOBS="$(nproc)"
+if [ -f /opt/scripts/core/parallelism.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/parallelism.sh 2>/dev/null || true
+  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    PARALLEL_JOBS="$(compute_jobs_with_mem_cap "" 2000)"
+  fi
+fi
 
 cd /opt
 rm -rf onnxruntime-android
@@ -52,7 +50,7 @@ sed -i '/android {/a \    buildFeatures {\n        buildConfig = true\n    }' ja
   --build_java \
   --build_shared_lib \
   --config Release \
-  --parallel "$(nproc)" \
+  --parallel "$PARALLEL_JOBS" \
   --skip_tests \
   --use_nnapi \
   --use_xnnpack \

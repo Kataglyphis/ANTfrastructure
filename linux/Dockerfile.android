@@ -58,10 +58,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     mkdir -p /opt/android-sdk /opt/android && \
     mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv
 
-COPY --chmod=755 linux/scripts/03-media/gstreamer/android/ /opt/scripts/media/gstreamer/android/
-COPY --chmod=755 linux/scripts/03-media/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/
-COPY --chmod=755 linux/scripts/03-media/litert/android/ /opt/scripts/media/litert/android/
-COPY --chmod=755 linux/scripts/03-media/opencv/android/ /opt/scripts/media/opencv/android/
+COPY --chmod=755 \
+    linux/scripts/03-media/gstreamer/android/ /opt/scripts/media/gstreamer/android/ \
+    linux/scripts/03-media/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/ \
+    linux/scripts/03-media/litert/android/ /opt/scripts/media/litert/android/ \
+    linux/scripts/03-media/opencv/android/ /opt/scripts/media/opencv/android/ \
+    linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \

@@ -13,13 +13,7 @@ set -euo pipefail
 _safe_source() {
   local f="$1"
   if [ -f "$f" ]; then
-    # shellcheck disable=SC1090
-    # IMPORTANT: When called from within a function, "$1" etc are the function's
-    # positional parameters. If we just `source "$f"`, the sourced script would
-    # see $1="$f" and may misinterpret it (e.g. as a prefix argument).
-    # Passing only arguments from $2.. ensures the sourced script sees no args
-    # unless explicitly provided.
-    source "$f" "${@:2}"
+    source "$f"
     return 0
   fi
   return 1

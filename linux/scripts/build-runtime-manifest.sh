@@ -22,6 +22,8 @@ PUSH_MANIFEST=0
 PUSH_INTERMEDIATE_IMAGES=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
+PARALLEL_ARCHS=0
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
 
 usage() {
   cat <<'EOF'
@@ -41,6 +43,8 @@ Options:
   --skip-manifest              Build images only; do not create a manifest locally
   --manifest-only              Create/push the manifest only; skip all image builds
   --push                       Short for --push-images --push-manifest (intermediates stay local)
+  --parallel-archs              Build per-architecture images in parallel
+  --max-parallel-archs N        Max concurrent arch builds (default: 4)
   -h, --help                   Show this help text
   --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
   --architectures LIST          Alias for --target-arches
@@ -103,6 +107,43 @@ create_manifest() {
   fi
 }
 
+_runtime_build_loop() {
+  local -a pids=()
+  local arch running failed=0
+  local _flagdir
+  _flagdir="$(mktemp -d /tmp/runtime-arch-loop-flags.XXXXXX)"
+  trap "rm -rf ${_flagdir}" RETURN
+  running=0
+  for arch in ${ARCHITECTURES//,/ }; do
+    if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
+      {
+        runtime_build_chain "${arch}" || touch "${_flagdir}/failed-${arch}"
+      } &
+      pids+=($!)
+      running=$((running + 1))
+      if [ "${running}" -ge "${MAX_PARALLEL_ARCHS}" ]; then
+        wait -n 2>/dev/null || true
+        running=$((running - 1))
+      fi
+    else
+      runtime_build_chain "${arch}" || failed=1
+    fi
+  done
+  if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
+    for pid in "${pids[@]}"; do
+      wait "${pid}" || true
+    done
+    local f
+    for f in "${_flagdir}"/failed-*; do
+      if [ -f "${f}" ]; then
+        warn "Arch ${f##*-} failed during parallel build"
+        failed=1
+      fi
+    done
+  fi
+  return "${failed}"
+}
+
 main() {
   while [ $# -gt 0 ]; do
     local _dispatch_rc=0
@@ -152,18 +193,22 @@ main() {
         PUSH_INTERMEDIATE_IMAGES=1
         shift
         ;;
+      --parallel-archs)
+        PARALLEL_ARCHS=1
+        shift
+        ;;
+      --max-parallel-archs)
+        MAX_PARALLEL_ARCHS="$2"
+        shift 2
+        ;;
       *)
-        printf '[ERROR] Unknown option: %s\n' "$1" >&2
-        usage >&2
-        exit 1
+        err "Unknown option: $1"
         ;;
     esac
   done
 
   if [ -z "${IMAGE_NAME}" ]; then
-    printf '[ERROR] --image is required\n' >&2
-    usage >&2
-    exit 1
+    err "--image is required"
   fi
 
   runtime_post_parse_setup ARCHITECTURES "${IMAGE_NAME}"
@@ -176,9 +221,7 @@ main() {
 
   local arch
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
-    for arch in ${ARCHITECTURES//,/ }; do
-      runtime_build_chain "${arch}"
-    done
+    _runtime_build_loop
   fi
 
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then

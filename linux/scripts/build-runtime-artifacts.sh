@@ -19,6 +19,8 @@ TORCH_APP_MODE="${TORCH_APP_MODE:-}"
 init_mirror_defaults
 PUSH_IMAGES=0
 PUSH_INTERMEDIATE_IMAGES=0
+PARALLEL_ARCHS=0
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-4}"
 
 usage() {
   cat <<'EOF'
@@ -35,6 +37,8 @@ Options:
   --image-prefix TAG            Prefix for built wrapper image tags
   --push                        Push wrapper images after export (intermediates stay local)
   --push-all                    Push ALL intermediate images too (base/package)
+  --parallel-archs              Build per-architecture images in parallel
+  --max-parallel-archs N        Max concurrent arch builds (default: 4)
   -h, --help                    Show this help text
   --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
   --architectures LIST          Alias for --target-arches
@@ -79,6 +83,57 @@ Environment overrides:
 EOF
 }
 
+_runtime_artifact_build_loop() {
+  local -a pids=()
+  local arch tag running failed=0
+  local _flagdir
+  _flagdir="$(mktemp -d /tmp/runtime-artifact-loop-flags.XXXXXX)"
+  trap "rm -rf ${_flagdir}" RETURN
+  running=0
+  for arch in ${TARGET_ARCHES//,/ }; do
+    _build_one_artifact() {
+      local _arch="$1"
+      if runtime_use_local_stage_context_outputs; then
+        runtime_build_chain "${_arch}" "${OUTPUT_ROOT}/${_arch}/rootfs"
+        runtime_write_artifact_metadata "${_arch}" "${OUTPUT_ROOT}/${_arch}"
+      else
+        runtime_build_chain "${_arch}"
+        tag="$(runtime_wrapper_tag "${_arch}")"
+        export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${_arch}" \
+          "TARGET_ARCH=${_arch}" \
+          "SOURCE_IMAGE=${tag}" \
+          "PACKAGE_IMAGE=$(runtime_package_tag "${_arch}")" \
+          "BASE_IMAGE=$(runtime_base_tag "${_arch}")" \
+          "ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${_arch}")"
+      fi
+    }
+    if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
+      { _build_one_artifact "${arch}" || touch "${_flagdir}/failed-${arch}"; } &
+      pids+=($!)
+      running=$((running + 1))
+      if [ "${running}" -ge "${MAX_PARALLEL_ARCHS}" ]; then
+        wait -n 2>/dev/null || true
+        running=$((running - 1))
+      fi
+    else
+      _build_one_artifact "${arch}" || failed=1
+    fi
+  done
+  if [ "${PARALLEL_ARCHS}" -eq 1 ]; then
+    for pid in "${pids[@]}"; do
+      wait "${pid}" || true
+    done
+    local f
+    for f in "${_flagdir}"/failed-*; do
+      if [ -f "${f}" ]; then
+        warn "Arch ${f##*-} failed during parallel build"
+        failed=1
+      fi
+    done
+  fi
+  return "${failed}"
+}
+
 main() {
   while [ $# -gt 0 ]; do
     local _dispatch_rc=0
@@ -114,10 +169,16 @@ main() {
         PUSH_INTERMEDIATE_IMAGES=1
         shift
         ;;
+      --parallel-archs)
+        PARALLEL_ARCHS=1
+        shift
+        ;;
+      --max-parallel-archs)
+        MAX_PARALLEL_ARCHS="$2"
+        shift 2
+        ;;
       *)
-        printf '[ERROR] Unknown option: %s\n' "$1" >&2
-        usage >&2
-        exit 1
+        err "Unknown option: $1"
         ;;
     esac
   done
@@ -126,23 +187,7 @@ main() {
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 
-  local arch
-  local tag
-  for arch in ${TARGET_ARCHES//,/ }; do
-    if runtime_use_local_stage_context_outputs; then
-      runtime_build_chain "${arch}" "${OUTPUT_ROOT}/${arch}/rootfs"
-      runtime_write_artifact_metadata "${arch}" "${OUTPUT_ROOT}/${arch}"
-    else
-      runtime_build_chain "${arch}"
-      tag="$(runtime_wrapper_tag "${arch}")"
-      export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
-        "TARGET_ARCH=${arch}" \
-        "SOURCE_IMAGE=${tag}" \
-        "PACKAGE_IMAGE=$(runtime_package_tag "${arch}")" \
-        "BASE_IMAGE=$(runtime_base_tag "${arch}")" \
-        "ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")"
-    fi
-  done
+  _runtime_artifact_build_loop
 }
 
 main "$@"

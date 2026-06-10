@@ -62,8 +62,7 @@ runtime_build_base_image() {
   local -a build_args=()
 
   tag="$(runtime_base_tag "${arch}")"
-  append_mirror_build_args_from_env build_args
-  append_version_build_args build_args
+  append_common_build_args build_args
   append_runtime_base_parent_build_arg build_args
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
@@ -95,8 +94,7 @@ runtime_build_package_image() {
   local -a build_args=()
 
   tag="$(runtime_package_tag "${arch}")"
-  append_mirror_build_args_from_env build_args
-  append_version_build_args build_args
+  append_common_build_args build_args
   append_runtime_accelerator_build_args build_args
 
   if runtime_use_local_artifact_context; then
@@ -137,8 +135,7 @@ _runtime_build_wrapper() {
   local -n _wrapper_build_args_out=$4
 
   _wrapper_tag_out="$(runtime_wrapper_tag "${arch}")"
-  append_mirror_build_args_from_env _wrapper_build_args_out
-  append_version_build_args _wrapper_build_args_out
+  append_common_build_args _wrapper_build_args_out
   append_runtime_accelerator_build_args _wrapper_build_args_out
 
   local parent_context_dir

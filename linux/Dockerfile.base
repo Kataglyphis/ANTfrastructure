@@ -95,19 +95,15 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
       /tmp/vulkan
 
 # ------------------------------------------------------------------------------
-# uv install
+# uv install + compiler caches init
 # ------------------------------------------------------------------------------
 RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-base-${TARGETARCH} \
-    bash /tmp/scripts/01-core/base-image.sh install-uv \
-      --version "${UV_VERSION}"
-
-# ------------------------------------------------------------------------------
-# Compiler caches init
-# ------------------------------------------------------------------------------
-RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    set -euo pipefail; \
+    bash /tmp/scripts/01-core/base-image.sh install-uv \
+      --version "${UV_VERSION}" && \
     bash /tmp/scripts/01-core/base-image.sh init-compiler-caches \
       --max-size "${CCACHE_MAXSIZE}"
 

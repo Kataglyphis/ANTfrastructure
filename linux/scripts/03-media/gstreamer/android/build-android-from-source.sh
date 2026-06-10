@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../android-build-preamble.sh"
+
 # 1. Parse Arguments
 GST_VERSION="${GSTREAMER_VERSION:-1.29.1}"
 ANDROID_SDK="${ANDROID_HOME:-/opt/android-sdk}"
 ANDROID_NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/${ANDROID_NDK_VERSION:-29.0.14206865}}"
 INSTALL_PATH="${GSTREAMER_ROOT_ANDROID:-/opt/android/gstreamer}"
-ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-34}"
 TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-arm64}}"
 
 while [[ $# -gt 0 ]]; do
@@ -31,18 +34,7 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
     source /opt/scripts/core/cross-env.sh
 fi
 
-if command -v android_target_arch >/dev/null 2>&1; then
-    TARGET_ARCH="$(android_target_arch)"
-elif command -v arch_normalize >/dev/null 2>&1; then
-    TARGET_ARCH="$(arch_normalize "${TARGET_ARCH}")"
-fi
-
-if command -v android_raise_api_level_if_needed >/dev/null 2>&1; then
-    ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${ANDROID_API_LEVEL}" "GStreamer Android build")"
-elif [ "${TARGET_ARCH}" = "riscv64" ] && [ "${ANDROID_API_LEVEL}" -lt 35 ]; then
-    echo "==> Note: Raising Android API level from ${ANDROID_API_LEVEL} to 35 for ${TARGET_ARCH}"
-    ANDROID_API_LEVEL=35
-fi
+android_build_preamble_init "GStreamer Android build" "${ANDROID_API_LEVEL:-34}"
 
 resolve_host_python() {
     if command -v host_python_bin >/dev/null 2>&1; then
@@ -91,28 +83,11 @@ patch_cerbero_system_m4_usage() {
 PER_JOB_MB="${ANDROID_GSTREAMER_PER_JOB_MB:-1500}"
 
 if [ -z "${JOBS:-}" ]; then
-    CORES="$(nproc --all)"
-
-    # Available RAM in MB (fallback 2048 MB)
-    AVAIL_MB="$(awk '/MemAvailable/ {printf("%d",$2/1024); exit}' /proc/meminfo)"
-    [ -z "${AVAIL_MB}" ] && AVAIL_MB=2048
-
-    MAX_BY_MEM=$(( AVAIL_MB / PER_JOB_MB ))
-    [ "${MAX_BY_MEM}" -lt 1 ] && MAX_BY_MEM=1
-
-    # JOBS = min(CORES, MAX_BY_MEM)
-    if [ "${CORES}" -lt "${MAX_BY_MEM}" ]; then
-        JOBS="${CORES}"
+    if [ -f /opt/scripts/core/parallelism.sh ] && declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+        JOBS="$(compute_jobs_with_mem_cap "" "${PER_JOB_MB}")"
     else
-        JOBS="${MAX_BY_MEM}"
+        JOBS="$(nproc --all)"
     fi
-
-    # Reserve one core for system if possible
-    if [ "${JOBS}" -gt 1 ]; then
-        JOBS=$((JOBS - 1))
-    fi
-
-    [ "${JOBS}" -lt 1 ] && JOBS=1
 fi
 
 export JOBS

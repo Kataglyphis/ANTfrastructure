@@ -14,6 +14,15 @@ fi
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 
+if [ -f /opt/scripts/core/parallelism.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/parallelism.sh 2>/dev/null || true
+  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    MAX_JOBS="${MAX_JOBS:-$(compute_jobs_with_mem_cap "" 2000)}"
+  fi
+fi
+: "${MAX_JOBS:=$(nproc)}"
+
 BUILD_PYTHON=""
 TARGET_TORCH_WHEEL=""
 TARGET_TORCH_VERSION=""
@@ -248,7 +257,7 @@ build_torch_wheel() {
         export _PYTHON_HOST_PLATFORM="${wheel_platform}" && \
         if [ -n "${python_sysconfig_export}" ]; then eval "${python_sysconfig_export}"; fi && \
         export PYTHON_EXECUTABLE="${BUILD_PYTHON}" Python_EXECUTABLE="${BUILD_PYTHON}" Python3_EXECUTABLE="${BUILD_PYTHON}" && \
-        export MAX_JOBS="${MAX_JOBS:-$(nproc)}" && \
+        export MAX_JOBS="${MAX_JOBS}" && \
         export BLAS=OpenBLAS USE_NUMPY=1 && \
         export USE_CUDA=0 USE_CUDNN=0 USE_CUSPARSELT=0 USE_CUDSS=0 USE_CUFILE=0 USE_ROCM=0 USE_XPU=0 && \
         export USE_DISTRIBUTED=0 USE_GLOO=0 USE_MPI=0 USE_TENSORPIPE=0 USE_NCCL=0 && \

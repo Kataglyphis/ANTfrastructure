@@ -87,6 +87,39 @@ append_common_build_args() {
   append_version_build_args _acba_out
 }
 
+ensure_local_image() {
+  local image_tag="$1"
+  local dockerfile_path="$2"
+  local remote_tag="${3:-${image_tag}}"
+  local -n _eli_build_args=$4
+
+  if [ "${REBUILD_BASE:-0}" -eq 0 ] && image_exists "${NERDCTL_BIN:-nerdctl}" "${image_tag}"; then
+    log "Using existing local image: ${image_tag}"
+    return 0
+  fi
+
+  if [ "${REBUILD_BASE:-0}" -eq 0 ] && [ -n "${remote_tag}" ]; then
+    log "Trying to pull remote image: ${remote_tag}"
+    if retry 3 10 "pulling ${remote_tag}" pull_platform_image "${NERDCTL_BIN:-nerdctl}" linux/amd64 "${remote_tag}"; then
+      if [ "${remote_tag}" != "${image_tag}" ]; then
+        run "${NERDCTL_BIN:-nerdctl}" tag "${remote_tag}" "${image_tag}"
+      fi
+      return 0
+    fi
+    log "Remote image unavailable; bootstrapping ${image_tag} locally"
+  else
+    log "Building ${image_tag} locally"
+  fi
+
+  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
+    --pull=false \
+    --platform linux/amd64 \
+    -t "${image_tag}" \
+    -f "${dockerfile_path}" \
+    "${_eli_build_args[@]}" \
+    .
+}
+
 image_exists() {
   local nerdctl_bin image_ref
   if [ "$#" -eq 1 ]; then

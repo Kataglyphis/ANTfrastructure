@@ -17,26 +17,37 @@ IFS=$'\n\t'
 
 # Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for helper in \
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${SCRIPT_DIR}"
+else
+  for helper in \
     "/opt/scripts/core/modules.sh" \
     "${SCRIPT_DIR}/../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        source_modules_framework "${SCRIPT_DIR}"
-        break
+      # shellcheck disable=SC1090
+      source "${helper}"
+      source_modules_framework "${SCRIPT_DIR}"
+      break
     fi
-done
+  done
+  source_module cross-env.sh || true
+  source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
+fi
 
-source_module cross-env.sh || true
-source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
+if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+  NPROC="$(compute_jobs_with_mem_cap "" 2000)"
+else
+  NPROC="$(nproc)"
+fi
 
 # Defaults (can be overridden via env vars)
 : "${FFMPEG_SRC:=${TMPDIR:-/tmp}/ffmpeg-$$}"
 : "${FFMPEG_PREFIX:=/opt/ffmpeg}"
 : "${FFMPEG_GIT:=https://git.ffmpeg.org/ffmpeg.git}"
 : "${BUILD_TYPE:=release}"
-: "${NPROC:=$(nproc)}"
+: "${NPROC:=${NPROC}}"
 
 echo "build-ffmpeg: src=${FFMPEG_SRC} prefix=${FFMPEG_PREFIX} buildtype=${BUILD_TYPE}"
 
