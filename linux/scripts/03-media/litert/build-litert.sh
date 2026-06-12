@@ -661,13 +661,6 @@ install_manual() {
         warn "Abseil headers not found; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile"
     fi
 
-    local static_libs=""
-    for lib in "${lib_dir}"/*.a; do
-        [ -f "${lib}" ] || continue
-        libname=$(basename "${lib}" .a)
-        static_libs="${static_libs} -l${libname}"
-    done
-
     mkdir -p "${lib_dir}/pkgconfig"
 
     local static_libs=""

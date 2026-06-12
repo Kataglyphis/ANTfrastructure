@@ -72,14 +72,6 @@ main() {
         OUTPUT_ROOT="$2"
         shift 2
         ;;
-      --parallel-archs)
-        PARALLEL_ARCHS=1
-        shift
-        ;;
-      --max-parallel-archs)
-        MAX_PARALLEL_ARCHS="$2"
-        shift 2
-        ;;
       *)
         warn "Unknown option: $1"
         usage >&2
@@ -89,7 +81,6 @@ main() {
   done
 
   cd "${REPO_ROOT}"
-  TARGET_ARCHES="$(normalize_target_arches "${TARGET_ARCHES}")"
   CROSS_TARGETS="${TARGET_ARCHES}"
 
   log "Building SDK artifacts for target arches: ${TARGET_ARCHES} (push=${PUSH_IMAGES})"
@@ -97,18 +88,18 @@ main() {
   # Build the compiler stage first (shared by all SDK per-arch builds).
   cross_stage_run "compiler" "" "${PUSH_IMAGES}"
 
-  _sdk_arch_build() {
-    local arch="$1" tag
-    tag="$(cross_sdk_tag "${arch}")"
-    cross_stage_run "sdk" "${arch}" "${PUSH_IMAGES}"
-    export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
-      "TARGET_ARCH=${arch}" \
-      "SOURCE_IMAGE=${tag}" \
-      "VULKAN_VERSION=${VULKAN_VERSION}"
-  }
-
   local _flags_dir; _flags_dir="$(mktemp -d "${TMPDIR:-/tmp}/sdk-arch-loop-flags.XXXXXX")"
   run_parallel_arch_loop _sdk_arch_build "${_flags_dir}" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+}
+
+_sdk_arch_build() {
+  local arch="$1" tag
+  tag="$(cross_sdk_tag "${arch}")"
+  cross_stage_run "sdk" "${arch}" "${PUSH_IMAGES}"
+  export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
+    "TARGET_ARCH=${arch}" \
+    "SOURCE_IMAGE=${tag}" \
+    "VULKAN_VERSION=${VULKAN_VERSION}"
 }
 
 main "$@"

@@ -83,7 +83,14 @@ log() { info "$@"; }
 die() { err "$@"; }
 
 # Verification helpers: print PASS / FAIL / SKIP lines with LOG_COLOR awareness.
-# Callers should track their own failure count and exit code.
+#
+# IMPORTANT: The `fail()` here is DECORATIVE only — it prints FAIL but does NOT
+# increment any FAILURES counter.  Verfication scripts (smoke-*, verify-*) MUST
+# define their own local `fail()` that increments FAILURES, e.g.:
+#   FAILURES=0
+#   fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
+# Or source 06-packaging/smoke-common.sh which already does this.
+#
 pass() {
   if _log_use_color; then
     printf '  \033[1;32mPASS\033[0m %s\n' "$*"

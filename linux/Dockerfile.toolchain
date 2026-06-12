@@ -104,8 +104,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
 # plus Cargo linker hints needed by the amd64-hosted cross build lane.
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
-    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/install-rust.sh,target=/opt/scripts/toolchain/install-rust.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
     --mount=type=cache,target=/root/.cache/rustup,id=rustup-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/toolchain/install-rust.sh
@@ -114,7 +114,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
 # Keep the interpreter in the shared compiler layer so downstream images only
 # create their own venvs on top of a single source-built CPython install.
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
-    --mount=type=bind,source=linux/scripts/python/build_python.sh,target=/opt/scripts/python/build_python.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/build_python.sh,target=/opt/scripts/python/build_python.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/fix-staged-python-pc.sh,target=/opt/scripts/python/fix-staged-python-pc.sh,ro \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -144,8 +145,12 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
     mkdir -p /opt/scripts/core /opt/scripts/toolchain /opt/scripts/python; \
     cp -av /tmp/scripts/01-core/. /opt/scripts/core/; \
     cp -av /tmp/scripts/02-toolchain/. /opt/scripts/toolchain/; \
-    cp -av /tmp/scripts/python/build_python.sh /opt/scripts/python/build_python.sh; \
-    cp -av /tmp/scripts/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh; \
+    cp -av /tmp/scripts/02-toolchain/python/build_python.sh /opt/scripts/python/build_python.sh; \
+    cp -av /tmp/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh; \
+    mkdir -p /opt/scripts/packaging; \
+    cp -av /tmp/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh; \
+    cp -av /tmp/scripts/06-packaging/smoke-toolchain.sh /opt/scripts/packaging/smoke-toolchain.sh; \
+    cp -av /tmp/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh; \
     chmod 755 /opt/scripts -R; \
     for f in $(find /opt/scripts -name '*.sh' -type f); do chmod 755 "$f" && bash -n "$f"; done; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null; \

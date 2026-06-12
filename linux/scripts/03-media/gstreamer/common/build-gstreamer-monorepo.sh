@@ -314,7 +314,10 @@ build_gstreamer_monorepo() {
 
   if ! run_gstreamer_meson_setup > /tmp/meson-setup.log 2>&1; then
     echo "Meson setup failed; printing verbose output..."
-    run_gstreamer_meson_setup -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1 || true
+    if ! run_gstreamer_meson_setup -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1; then
+      echo "ERROR: Meson setup failed both attempts. See /tmp/meson-setup.log" >&2
+      exit 1
+    fi
   fi
 
   if [ ! -f builddir/.subprojects_updated ]; then
@@ -352,10 +355,10 @@ build_gstreamer_monorepo() {
     # build host.  Install via DESTDIR into a staging directory first,
     # then copy to the real prefix; ignore install-script failures.
     local gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")"
-    set +euo pipefail
+    set +e
     uv run meson install -C builddir --destdir "${gst_stage}" --no-rebuild >/tmp/gst-install.log 2>&1
     local install_rc=$?
-    set -euo pipefail
+    set -e
     if [ "${install_rc}" -eq 0 ]; then
       echo "GStreamer cross-install via DESTDIR succeeded"
     else

@@ -13,7 +13,9 @@ _VBA_CACHE_FILE="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/opencode/.version-build
 
 # Normally sourced by artifact-common.sh first; this is a standalone safety guard.
 # shellcheck disable=SC1090,SC1091
-[ -n "${_BUILD_HELPERS_LOADED:-}" ] || [ -f "${_VF_DIR}/build-helpers.sh" ] && source "${_VF_DIR}/build-helpers.sh"
+if [ -z "${_BUILD_HELPERS_LOADED:-}" ] && [ -f "${_VF_DIR}/build-helpers.sh" ]; then
+  source "${_VF_DIR}/build-helpers.sh"
+fi
 
 _auto_discover_version_build_arg_vars() {
   local versions_file="${_VF_DIR}/versions.env"

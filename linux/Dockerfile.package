@@ -138,17 +138,23 @@ ENV BUILD_MODE=${BUILD_MODE} \
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 \
-    linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh \
+    linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh \
     linux/scripts/03-media/final/ /opt/scripts/media/final/ \
     linux/scripts/03-media/gstreamer/android/ /opt/scripts/media/gstreamer/android/ \
     linux/scripts/03-media/litert/android/ /opt/scripts/media/litert/android/ \
     linux/scripts/03-media/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/ \
     linux/scripts/03-media/opencv/android/ /opt/scripts/media/opencv/android/ \
     linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.sh \
-    linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh \
+    linux/scripts/02-toolchain/python/build_python.sh /opt/scripts/python/build_python.sh \
+    linux/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh \
     linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh \
     linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh \
-    linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh
+    linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh \
+    linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh \
+    linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh \
+    linux/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh \
+    linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh \
+    linux/scripts/06-packaging/smoke-runtime-image.sh /opt/scripts/packaging/smoke-runtime-image.sh
 
 # Wire LLVM-target and Vulkan symlinks. LLVM-target was cross-compiled for the
 # target arch in the SDK stage; Vulkan SDK installs under x86_64/ so we create
@@ -178,20 +184,24 @@ RUN set -euo pipefail; \
 LABEL org.opencontainers.image.title="Kataglyphis Package" \
       org.opencontainers.image.description="Runtime package image with assembled cross-compiled artifacts"
 
-# Self-contained smoke-only wrapper target. Runs compiler validation against
-# the package image without needing the full Dockerfile.torch build.  Runtime
-# scripts, entrypoint, labels etc. live canonically in Dockerfile.torch final.
+# Self-contained smoke-only wrapper target. Runs compiler, media, and cross-arch
+# validation against the package image without needing the full Dockerfile.torch
+# build.  Runtime scripts, entrypoint, labels etc. live canonically in
+# Dockerfile.torch final.
 FROM package AS wrapper-smoke
 
 ARG TARGET_ARCH
 ARG TARGETARCH
 ARG GCC_VERSION
 ARG LLVM_RELEASE
-
-COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
+ARG PYTHON_VERSION
+ARG PYTHON_MAJOR_MINOR
 
 RUN set -euo pipefail; \
     GCC_VERSION="${GCC_VERSION}" \
     LLVM_RELEASE="${LLVM_RELEASE}" \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
-    bash /opt/scripts/packaging/validate-compilers.sh smoke
+    bash /opt/scripts/packaging/validate-compilers.sh smoke && \
+    bash /opt/scripts/packaging/smoke-media.sh && \
+    GCC_VERSION="${GCC_VERSION}" \
+    bash /opt/scripts/packaging/smoke-cross-all-arches.sh "${TARGET_ARCH}"

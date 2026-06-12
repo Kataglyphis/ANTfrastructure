@@ -8,27 +8,35 @@ source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
 
 FAILURES=0
 
+pass() { printf '  PASS %s\n' "$*"; }
+fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
+
 echo "=== Five Critical Fixes Regression Tests ==="
 echo ""
 
 # Fix 1: gst-python staged libpython — python-3.14.pc must have correct libdir/includedir
 # pointing into the cross-compiler's staging tree, not the build host prefix.
 echo "--- Fix 1: gst-python staged libpython (python pkg-config rewrite) ---"
-FIX1_PC="/opt/python-cross/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR:-3.14}.pc"
-if [ -f "${FIX1_PC}" ]; then
-  if grep -q '^prefix=/opt/python-cross' "${FIX1_PC}"; then
-    pass "python-3.14.pc prefix points to /opt/python-cross"
-  else
-    fail "python-3.14.pc prefix does NOT point to /opt/python-cross"
+FIX1_FOUND=0
+for _fix1_arch in amd64 arm64 riscv64; do
+  FIX1_PC="/opt/python-cross/${_fix1_arch}/usr/local/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR:-3.14}.pc"
+  if [ -f "${FIX1_PC}" ]; then
+    FIX1_FOUND=1
+    if grep -q '^prefix=/opt/python-cross' "${FIX1_PC}"; then
+      pass "python-3.14.pc prefix points to /opt/python-cross (${_fix1_arch})"
+    else
+      fail "python-3.14.pc prefix does NOT point to /opt/python-cross (${_fix1_arch})"
+    fi
+    if grep -q '^libdir=/opt/python-cross' "${FIX1_PC}" 2>/dev/null || \
+       grep -q 'libdir=${prefix}/lib' "${FIX1_PC}" 2>/dev/null; then
+      pass "python-3.14.pc libdir resolves inside staging tree (${_fix1_arch})"
+    else
+      fail "python-3.14.pc libdir may point outside staging tree (${_fix1_arch})"
+    fi
   fi
-  if grep -q '^libdir=/opt/python-cross' "${FIX1_PC}" 2>/dev/null || \
-     grep -q 'libdir=${prefix}/lib' "${FIX1_PC}" 2>/dev/null; then
-    pass "python-3.14.pc libdir resolves inside staging tree"
-  else
-    fail "python-3.14.pc libdir may point outside staging tree"
-  fi
-else
-  echo "  SKIP: ${FIX1_PC} not found (not in cross-compiler context)"
+done
+if [ "${FIX1_FOUND}" -eq 0 ]; then
+  echo "  SKIP: no per-arch python-3.14.pc found (not in cross-compiler context)"
 fi
 
 echo ""

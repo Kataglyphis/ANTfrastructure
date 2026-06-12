@@ -4,26 +4,22 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-_source_first() {
-  for f in "$@"; do [ -f "${f}" ] && { source "${f}"; return 0; }; done
-  return 1
-}
+# Use shared module loader instead of ad-hoc _source_first().
+# Tries /opt/scripts first (container layout), then repo layout.
+for _bs_path in \
+  "/opt/scripts/core/modules.sh" \
+  "${SCRIPT_DIR}/../../01-core/modules.sh"; do
+  if [ -f "${_bs_path}" ]; then
+    source "${_bs_path}"
+    source_modules_framework "${SCRIPT_DIR}"
+    break
+  fi
+done
 
-_source_first \
-  "/opt/scripts/core/platform.sh" \
-  "${SCRIPT_DIR}/../01-core/platform.sh"
-
-_source_first \
-  "/opt/scripts/core/cross-env.sh" \
-  "${SCRIPT_DIR}/../01-core/cross-env.sh" || true
-
-_source_first \
-  "/opt/scripts/core/logging.sh" \
-  "${SCRIPT_DIR}/../01-core/logging.sh" || true
-
-_source_first \
-  "/opt/scripts/core/parallelism.sh" \
-  "${SCRIPT_DIR}/../01-core/parallelism.sh" || true
+source_module platform.sh
+source_module cross-env.sh || true
+source_module logging.sh || true
+source_module parallelism.sh || true
 
 install_err_trap
 
@@ -55,31 +51,22 @@ python_cross_stage_prefix_for_arch() {
   printf '%s' "$(python_cross_stage_root_for_arch "${target_arch}")/usr/local"
 }
 
+# Source the shared fix_python_pc_file() from its canonical location.
+for _pc_fix in \
+  "/opt/scripts/python/fix-staged-python-pc.sh" \
+  "${SCRIPT_DIR}/fix-staged-python-pc.sh"; do
+  if [ -f "${_pc_fix}" ]; then
+    source "${_pc_fix}"
+    break
+  fi
+done
+
 python_stage_finalize() {
   local target_arch="$1"
   local stage_root="$2"
   local python_mm="$3"
   local target_triplet="$4"
   local pkgconfig_dir="${stage_root}/usr/local/lib/pkgconfig"
-
-  rewrite_staged_python_pc() {
-    local pc_file="$1"
-    [ -f "${pc_file}" ] || return 0
-
-    if declare -F fix_python_pc_file >/dev/null 2>&1; then
-      fix_python_pc_file "${pc_file}"
-      return $?
-    fi
-
-    # Keep pkg-config resolving into the staged target tree instead of the
-    # build host's /usr/local prefix.
-    sed -i \
-      -e 's|^prefix=/usr/local$|prefix=${pcfiledir}/../..|' \
-      -e 's|^exec_prefix=\${prefix}$|exec_prefix=${prefix}|' \
-      -e 's|^libdir=\${exec_prefix}/lib$|libdir=${prefix}/lib|' \
-      -e 's|^includedir=\${prefix}/include$|includedir=${prefix}/include|' \
-      "${pc_file}"
-  }
 
   mkdir -p "${stage_root}/usr/local/include/${target_triplet}/python${python_mm}"
   if [ -f "${stage_root}/usr/local/include/python${python_mm}/pyconfig.h" ]; then
@@ -98,8 +85,8 @@ python_stage_finalize() {
   fi
 
   mkdir -p "${pkgconfig_dir}"
-  rewrite_staged_python_pc "${pkgconfig_dir}/python-${python_mm}.pc"
-  rewrite_staged_python_pc "${pkgconfig_dir}/python-${python_mm}-embed.pc"
+  fix_python_pc_file "${pkgconfig_dir}/python-${python_mm}.pc"
+  fix_python_pc_file "${pkgconfig_dir}/python-${python_mm}-embed.pc"
   if [ -f "${pkgconfig_dir}/python-${python_mm}.pc" ]; then
     ln -sfn "python-${python_mm}.pc" "${pkgconfig_dir}/python3.pc"
   fi

@@ -13,6 +13,9 @@ if command -v apt_update_smart >/dev/null 2>&1; then
 else
   apt-get update -y
 fi
+if ! command -v install_host_packages >/dev/null 2>&1; then
+  install_host_packages() { apt-get install -y --no-install-recommends "$@"; }
+fi
 install_host_packages \
     autoconf \
     automake \

@@ -6,6 +6,7 @@
 # Depends on: stage-defs.sh, digest-pinning.sh, logging.sh, tag-naming.sh.
 [ -n "${_CHAIN_VERIFY_SH_LOADED:-}" ] && return 0
 _CHAIN_VERIFY_SH_LOADED=1
+_CHAIN_VERIFY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #
 # Provides:
 #   _verify_link()                  — check one parent→child transition

@@ -70,24 +70,11 @@ Environment overrides:
 EOF
 }
 
-# ── Base image bootstrap ──────────────────────────────────────────────────────
-# Uses ensure_local_image() from build-helpers.sh to pull or build the base.
-ensure_base_image() {
-  local base_tag
-  base_tag="$(cross_base_tag)"
-  local -a build_args=()
-  append_common_build_args build_args
-  ensure_local_image "${base_tag}" \
-    "$(cross_stage_dockerfile base)" \
-    "${base_tag}" \
-    build_args \
-    "${REBUILD_BASE}"
-}
-
 # ── Compiler build ────────────────────────────────────────────────────────────
-# build_compiler: delegates to the shared cross_stage_run() from the stage graph.
+# Delegates to the shared cross_stage_run() from the stage graph.
 # When pushing, the base parent is digest-pinned (no stale reuse).  When staying
-# local, the mutable base tag is used (safe since no downstream can be affected).
+# local, the base is built first via the stage graph (same logic as the
+# orchestrator) instead of using a custom ensure_base_image() wrapper.
 build_compiler() {
   cross_stage_run "compiler" "" "${PUSH_IMAGES}"
 }
@@ -99,7 +86,7 @@ main() {
     consume_shared_arg usage \
       parse_shared_orchestrator_args \
       CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _ignored_vulkan PUSH_IMAGES \
+      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _cross_vulkan_version PUSH_IMAGES \
       "$1" "${2:-}" || break
     case "${_DP_SHIFT}" in
       1) shift; continue ;;  2) shift 2; continue ;;
@@ -132,9 +119,9 @@ main() {
     cross_stage_run "base" "" 1
     cross_stage_run "compiler" "" 1
   else
-    # Local path: ensure base exists locally (try pull first, build if needed),
-    # then build compiler locally via the stage graph.
-    ensure_base_image
+    # Local path: build base locally first (shared stage graph, same as
+    # orchestrator), then build compiler locally via the stage graph.
+    cross_stage_run "base" "" 0
     cross_stage_run "compiler" "" 0
   fi
 }

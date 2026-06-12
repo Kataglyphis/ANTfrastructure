@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 source_toolchain_common_or_fallback() {
   local script_dir="$1"

@@ -77,19 +77,6 @@ container_exec_strip() {
   rm -f "${_stderr_log}"
 }
 
-result_pass() {
-  pass "$*"
-}
-
-result_fail() {
-  fail "$*"
-  return 1
-}
-
-result_warn() {
-  warn "$*"
-}
-
 echo_header() {
   printf '\n%b\n' "\033[1;36m=== $* ===\033[0m"
 }
@@ -136,7 +123,7 @@ run_diff_check() {
   if "${DIFF_TOOL}" "${native_file}" "${cross_file}" > "${diff_out}" 2>&1; then
     local count
     count="$(wc -l < "${native_file}")"
-    result_pass "${ok_msg:-All ${check_name} match (${count} entries)}"
+    pass "${ok_msg:-All ${check_name} match (${count} entries)}"
     return 0
   fi
 
@@ -144,7 +131,7 @@ run_diff_check() {
   added="$(grep -c '^> ' "${diff_out}" 2>/dev/null || true)"
   removed="$(grep -c '^< ' "${diff_out}" 2>/dev/null || true)"
 
-  result_fail "${check_name} differ (+${added:-0} -${removed:-0})"
+  fail "${check_name} differ (+${added:-0} -${removed:-0})"
   if [ "${VERBOSE}" -eq 1 ]; then
     cat "${diff_out}"
   else
@@ -164,12 +151,12 @@ check_packages() {
 
   container_exec_strip "${NATIVE_IMAGE}" dpkg -l > "${native_file}" 2>/dev/null || true
   if [ ! -s "${native_file}" ]; then
-    result_fail "Failed to get packages from native image"
+    fail "Failed to get packages from native image"
     return 1
   fi
   container_exec_strip "${CROSS_IMAGE}" dpkg -l > "${cross_file}" 2>/dev/null || true
   if [ ! -s "${cross_file}" ]; then
-    result_fail "Failed to get packages from cross image"
+    fail "Failed to get packages from cross image"
     return 1
   fi
 
@@ -193,7 +180,7 @@ check_python() {
     > "${native_file}" 2>/dev/null || {
     container_exec_strip "${NATIVE_IMAGE}" bash -lc 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
       > "${native_file}" 2>/dev/null || {
-      result_warn "Cannot extract Python packages from native image (venv may not exist)"
+      warn "Cannot extract Python packages from native image (venv may not exist)"
       return 0
     }
   }
@@ -203,7 +190,7 @@ check_python() {
     > "${cross_file}" 2>/dev/null || {
     container_exec_strip "${CROSS_IMAGE}" bash -lc 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
       > "${cross_file}" 2>/dev/null || {
-      result_warn "Cannot extract Python packages from cross image (venv may not exist)"
+      warn "Cannot extract Python packages from cross image (venv may not exist)"
       return 0
     }
   }
@@ -268,11 +255,11 @@ check_versions() {
   done
 
   if [ "${failures}" -eq 0 ]; then
-    result_pass "All ${#tools[@]} version checks match"
+    pass "All ${#tools[@]} version checks match"
     return 0
   fi
 
-  result_fail "${failures}/${#tools[@]} version checks differ"
+  fail "${failures}/${#tools[@]} version checks differ"
   return 1
 }
 
@@ -287,12 +274,12 @@ check_files() {
 
   container_exec_strip "${NATIVE_IMAGE}" find / -type f \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -print 2>/dev/null | sort > "${native_file}" || true
   if [ ! -s "${native_file}" ]; then
-    result_fail "Failed to list files from native image (empty or missing output)"
+    fail "Failed to list files from native image (empty or missing output)"
     return 1
   fi
   container_exec_strip "${CROSS_IMAGE}" find / -type f \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -print 2>/dev/null | sort > "${cross_file}" || true
   if [ ! -s "${cross_file}" ]; then
-    result_fail "Failed to list files from cross image (empty or missing output)"
+    fail "Failed to list files from cross image (empty or missing output)"
     return 1
   fi
 
@@ -316,7 +303,7 @@ check_libs() {
     -maxdepth 5 -name '*.so*' -type f 2>/dev/null \
     | sed -E 's/\.so\.[0-9.]+$/.so.X/' | sort -u > "${native_file}" || true
   if [ ! -s "${native_file}" ]; then
-    result_warn "Cannot list shared libs from native image"
+    warn "Cannot list shared libs from native image"
     return 0
   fi
 
@@ -325,7 +312,7 @@ check_libs() {
     -maxdepth 5 -name '*.so*' -type f 2>/dev/null \
     | sed -E 's/\.so\.[0-9.]+$/.so.X/' | sort -u > "${cross_file}" || true
   if [ ! -s "${cross_file}" ]; then
-    result_warn "Cannot list shared libs from cross image"
+    warn "Cannot list shared libs from cross image"
     return 0
   fi
 
@@ -374,11 +361,11 @@ check_imports() {
   done
 
   if [ "${failures}" -eq 0 ]; then
-    result_pass "All ${#modules[@]} Python imports succeed in both images"
+    pass "All ${#modules[@]} Python imports succeed in both images"
     return 0
   fi
 
-  result_fail "${failures} Python imports failed"
+  fail "${failures} Python imports failed"
   return 1
 }
 

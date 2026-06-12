@@ -59,7 +59,6 @@ main() {
   done
 
   cd "${REPO_ROOT}"
-  TARGET_ARCHES="$(normalize_target_arches "${TARGET_ARCHES}")"
 
   cross_stage_validate_graph || err "Stage graph validation failed"
 

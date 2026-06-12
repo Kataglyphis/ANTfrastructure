@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../01-core/logging.sh"
+source "$SCRIPT_DIR/../../01-core/logging.sh"
 
 run_step() {
    local description="$1"

@@ -26,7 +26,9 @@ _CM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Build helpers (run, nerdctl wrappers) are required.
 # Normally sourced by artifact-common.sh first; this is a standalone safety guard.
 # shellcheck disable=SC1090,SC1091
-[ -n "${_BUILD_HELPERS_LOADED:-}" ] || [ -f "${_CM_DIR}/build-helpers.sh" ] && source "${_CM_DIR}/build-helpers.sh"
+if [ -z "${_BUILD_HELPERS_LOADED:-}" ] && [ -f "${_CM_DIR}/build-helpers.sh" ]; then
+  source "${_CM_DIR}/build-helpers.sh"
+fi
 
 _export_container_rootfs() {
   local nerdctl_bin="$1"

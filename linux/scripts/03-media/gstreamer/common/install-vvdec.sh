@@ -47,7 +47,7 @@ includedir=\${prefix}/include
 
 Name: libvvdec
 Description: VVC/vvdec video decoder library
-Version: 3.2.0
+Version: 3.1.0
 Libs: -L\${libdir} -lvvdec
 Libs.private: -lstdc++ -lm -lgcc
 Cflags: -I\${includedir}

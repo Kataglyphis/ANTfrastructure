@@ -17,7 +17,7 @@ host_rust_target="$(rust_target_triple_for_arch "${host_arch}")" || {
 }
 
 if [ "${BUILD_MODE}" = "cross" ]; then
-  rust_targets="${CROSS_TARGETS}"
+  rust_targets="$(arch_list_csv_normalize "${CROSS_TARGETS}" 2>/dev/null || printf '%s' "${CROSS_TARGETS}")"
 else
   rust_targets="${host_arch}"
 fi

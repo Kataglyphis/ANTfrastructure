@@ -411,8 +411,6 @@ else
   source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
 fi
 
-set -euo pipefail
-
 # --- Debug/logging helpers -------------------------------------------------
 LOG_DIR="${TMPDIR:-/tmp}/gstreamer-build-logs-$$-$(date +%s)"
 
@@ -462,7 +460,6 @@ fi
 
 # ensure universe/multiverse enabled and apt lists present for packages the script will install
 # we need to get rid of old orc modules on the system
-set -euo pipefail
 
 # ------------------------------------------------------------------------------
 # Install Astral uv, use existing venv, install Meson/Ninja

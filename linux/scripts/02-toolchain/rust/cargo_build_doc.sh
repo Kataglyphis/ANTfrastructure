@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../01-core/logging.sh"
+source "$SCRIPT_DIR/../../01-core/logging.sh"
 
 # Extract crate name from Cargo.toml and format for rustdoc directory (replace dashes with underscores)
 if [ ! -f "Cargo.toml" ]; then

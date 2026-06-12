@@ -2,7 +2,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../01-core/common.sh"
+source "$SCRIPT_DIR/../../01-core/modules.sh"
+source_modules_framework "${SCRIPT_DIR}"
+source_module common.sh
+
+# Provide fallback build helpers if not loaded from common.sh
+build_init() { local ws="$1" logd="$2"; _BUILD_WORKSPACE="${ws}"; mkdir -p "${logd}"; }
+build_log()  { printf '[BUILD] %s\n' "$*"; }
+build_run_step() { local label="$1"; shift; printf '[STEP] %s: ' "${label}"; "$@" && printf 'OK\n' || { printf 'FAIL\n'; return 1; }; }
+build_warn() { printf '[WARN] %s\n' "$*" >&2; }
+build_finish() { exit "${1:-0}"; }
 
 Workspace="${WORKSPACE:-$PWD}"
 Binary="${BINARY:-}"
@@ -32,15 +41,15 @@ fi
 
   build_run_step "Format Check" bash -c '
   rustup component add rustfmt 2>/dev/null || true
-  cargo fmt --all -- --check "$@"
-' 
+  cargo fmt --all -- --check
+'
 
   build_run_step "Linting (cargo clippy)" bash -c '
   rustup component add clippy 2>/dev/null || true
-  cargo clippy --all-targets --all-features -- -D warnings "$@"
+  cargo clippy --all-targets --all-features -- -D warnings
 '
 
-  build_run_step "Unit Tests" bash -c 'cargo test --all --verbose "$@"'
+  build_run_step "Unit Tests" cargo test --all --verbose
 
 if [ "$SkipBench" != "true" ]; then
   build_run_step "Benchmarks" bash -c 'cargo bench "$@"' || build_warn "Benchmarks skipped or failed"

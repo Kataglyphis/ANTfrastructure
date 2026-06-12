@@ -160,6 +160,17 @@ run_runtime_stage() {
     bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}"
 }
 
+# ── per-arch build helper (avoids function-redefinition race in loops) ─────────
+#
+# This function reads _CROSS_CURRENT_STAGE (set before each parallel dispatch)
+# to avoid redefining a function inside the stage loop. Bash function definitions
+# are global; redefining inside a loop while background tasks are running would
+# cause unpredictable stage-arch pairings.
+_cross_per_arch_build() {
+  local _arch="$1"
+  cross_stage_run "${_CROSS_CURRENT_STAGE}" "${_arch}"
+}
+
 # ── chain verification ────────────────────────────────────────────────────────
 #
 # Both verify_cross_chain_staleness() and describe_cross_chain() are sourced from
@@ -174,7 +185,7 @@ main() {
     consume_shared_arg usage \
       parse_shared_orchestrator_args \
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _unused_push \
+      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _chain_push_enabled \
       "$1" "${2:-}" || break
     case "${_DP_SHIFT}" in
       1) shift; continue ;;  2) shift 2; continue ;;
@@ -198,7 +209,6 @@ main() {
   fi
 
   cd "${REPO_ROOT}"
-  TARGET_ARCHES="$(normalize_target_arches "${TARGET_ARCHES}")"
   # Default FINAL_IMAGE may reference the previous IMAGE_REPO default; recompute
   # it if the user changed --image-repo but not --final-image.
   if [ "${FINAL_IMAGE}" = "${IMAGE_REGISTRY_PREFIX}:latest-cross" ]; then
@@ -239,9 +249,8 @@ main() {
         ;;
       *)
         if cross_stage_is_per_arch "${stage}"; then
-          local _arch_fn
-          _arch_fn() { cross_stage_run "${stage}" "$1"; }
-          run_parallel_arch_loop _arch_fn "/tmp/cross-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+          _CROSS_CURRENT_STAGE="${stage}"
+          run_parallel_arch_loop _cross_per_arch_build "/tmp/cross-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
         else
           cross_stage_run "${stage}"
         fi

@@ -35,9 +35,8 @@ cross_build_enabled() {
   cross_target_is_foreign
 }
 
-is_cross() {
-  cross_build_enabled
-}
+# Compatibility alias used by media build scripts.
+is_cross() { cross_build_enabled; }
 
 cross_target_arch() {
   arch_oci

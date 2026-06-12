@@ -262,7 +262,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    cd /opt; \
     bash /opt/scripts/media/ffmpeg/build-ffmpeg.sh
 
 # ==============================================================================
@@ -352,7 +351,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    cd /opt; \
     bash /opt/scripts/media/libcamera/build-libcamera.sh
 
 # ==============================================================================
@@ -382,7 +380,9 @@ COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 COPY --link --from=libcamera /opt/libcamera /opt/libcamera
-COPY --chmod=755 linux/scripts/03-media/final /opt/scripts/media/final
+COPY --chmod=755 \
+    linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh \
+    linux/scripts/03-media/final /opt/scripts/media/final
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \

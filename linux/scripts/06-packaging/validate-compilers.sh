@@ -53,7 +53,8 @@ validate_artifact_source() {
   fi
 
   # cross compilers — derive list from CROSS_TARGETS or platform default
-  local cross_arches="${CROSS_TARGETS:-amd64,arm64,riscv64}"
+  local cross_arches
+  cross_arches="$(arch_list_csv_normalize "${CROSS_TARGETS:-amd64,arm64,riscv64}" 2>/dev/null || printf '%s' "${CROSS_TARGETS:-amd64,arm64,riscv64}")"
   local cross_arch triplet cross_gcc cross_ver
   for cross_arch in ${cross_arches//,/ }; do
     [ "${cross_arch}" = "${target_arch}" ] && continue

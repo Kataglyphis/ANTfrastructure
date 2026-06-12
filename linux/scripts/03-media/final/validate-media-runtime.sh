@@ -133,7 +133,7 @@ scan_plugin_directory() {
           found=true
           break
         fi
-  done < <(objdump -p "${binary}" 2>/dev/null | awk '/NEEDED/ {print $2}')
+      done
 
       if [ "${found}" = "false" ]; then
         if ldconfig -p 2>/dev/null | grep -qF " ${so_name} "; then
