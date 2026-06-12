@@ -79,6 +79,38 @@ runtime_build_base_image() {
   runtime_refresh_stage_context base "${arch}" "${tag}"
 }
 
+# ── Per-stage build-arg assembly helpers ──────────────────────────────────────
+# DRY the inline --build-arg strings that are repeated across runtime_build_package_image
+# and _runtime_build_wrapper.  Use append_common_build_args first, then call these.
+#
+# Usage:
+#   append_package_build_args <nameref> <arch> <parent_image> <artifact_image> <package_base_stage>
+#   append_wrapper_build_args <nameref> <arch> <parent_image>
+append_package_build_args() {
+  local -n _apba_out=$1
+  local arch="$2" parent_image="$3" artifact_image="$4" package_base_stage="$5"
+  _apba_out+=(
+    --build-arg "BASE_IMAGE=${parent_image}"
+    --build-arg "ARTIFACT_IMAGE=${artifact_image}"
+    --build-arg "PACKAGE_BASE_STAGE=${package_base_stage}"
+    --build-arg "ARTIFACT_PLATFORM=$(runtime_artifact_platform "${arch}")"
+    --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE}"
+    --build-arg "TARGET_ARCH=${arch}"
+  )
+}
+
+append_wrapper_build_args() {
+  local -n _awba_out=$1
+  local arch="$2" parent_image="$3"
+  _awba_out+=(
+    --build-arg "BASE_IMAGE=${parent_image}"
+    --build-arg "BUILD_MODE=native"
+    --build-arg "TARGET_ARCH=${arch}"
+    --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}"
+    --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}"
+  )
+}
+
 runtime_build_package_image() {
   local arch="$1"
   local tag parent_image parent_context_dir
@@ -107,18 +139,14 @@ runtime_build_package_image() {
     return 0
   fi
 
+  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}"
+
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=false \
     --platform "linux/${arch}" \
     --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
     -t "${tag}" \
     -f "${PACKAGE_DOCKERFILE_PATH}" \
-    --build-arg "BASE_IMAGE=${parent_image}" \
-    --build-arg "ARTIFACT_IMAGE=${artifact_image}" \
-    --build-arg "PACKAGE_BASE_STAGE=${package_base_stage}" \
-    --build-arg "ARTIFACT_PLATFORM=$(runtime_artifact_platform "${arch}")" \
-    --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE}" \
-    --build-arg "TARGET_ARCH=${arch}" \
     "${build_args[@]}" \
     .
 
@@ -143,16 +171,13 @@ _runtime_build_wrapper() {
     return 0
   fi
 
+  append_wrapper_build_args _wrapper_build_args_out "${arch}" "${_wrapper_parent_image_out}"
+
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=false \
     --platform "linux/${arch}" \
     -t "${_wrapper_tag_out}" \
     -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
-    --build-arg "BASE_IMAGE=${_wrapper_parent_image_out}" \
-    --build-arg "BUILD_MODE=native" \
-    --build-arg "TARGET_ARCH=${arch}" \
-    --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}" \
-    --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}" \
     "${_wrapper_build_args_out[@]}" \
     .
 

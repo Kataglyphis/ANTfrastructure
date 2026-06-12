@@ -59,57 +59,7 @@ fetch_litert() {
 
 resolve_host_compiler() {
     local lang="$1"
-    if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
-        resolve_host_compiler_for_lang "${lang}"
-        return $?
-    fi
-
-    local triplet=""
-    local resolved=""
-
-    if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
-        case "${lang}" in
-            c)
-                resolved="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
-                [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool cc 2>/dev/null || true)"
-                ;;
-            cxx)
-                resolved="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
-                [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool c++ 2>/dev/null || true)"
-                ;;
-        esac
-        [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
-    fi
-
-    if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
-        triplet="$(build_deb_multiarch_triplet)"
-    fi
-
-    case "${lang}" in
-        c)
-            for candidate in \
-                "/usr/bin/${triplet}-gcc" \
-                /usr/bin/clang \
-                /usr/bin/gcc \
-                /usr/bin/cc; do
-                [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-            done
-            command -v gcc 2>/dev/null || command -v cc 2>/dev/null || true
-            ;;
-        cxx)
-            for candidate in \
-                "/usr/bin/${triplet}-g++" \
-                /usr/bin/clang++ \
-                /usr/bin/g++ \
-                /usr/bin/c++; do
-                [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-            done
-            command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || true
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    resolve_host_compiler_for_lang "${lang}"
 }
 
 prepare_host_compiler_wrapper() {
@@ -321,10 +271,7 @@ build_litert() {
     fi
 
     cd "${LITERT_SRC}/litert"
-    cmake --build "${build_dir}" -j"${NPROC}" || {
-        warn Parallel build failed, trying single-threaded...
-        cmake --build "${build_dir}" -j1 --verbose
-    }
+    run_cmake_build_with_fallback "${build_dir}" "${NPROC}"
 }
 
 build_tflite_c_api() {
@@ -392,12 +339,7 @@ build_tflite_c_api() {
     fi
 
     info Building TFLite C API...
-    if ! cmake --build . -j"${NPROC}"; then
-        warn TFLite C API parallel build failed, trying single-threaded...
-        if ! cmake --build . -j1 --verbose; then
-            err TFLite C API build failed!
-        fi
-    fi
+    run_cmake_build_with_fallback . "${NPROC}" || err "TFLite C API build failed!"
 
     info Installing TFLite C API...
     mkdir -p "${LITERT_PREFIX}/lib"
@@ -435,10 +377,12 @@ install_litert() {
 
     ldconfig || true
 
-    # Keep the output layout stable across native and cross builds so later
-    # Docker stages can copy the wheels directory even when no wheel is built.
     mkdir -p "${LITERT_PREFIX}/wheels"
 
+    _litert_build_wheel
+}
+
+_litert_build_wheel() {
     local cross_wheel_build=false
     if cross_build_is_active; then
         cross_wheel_build=true
@@ -449,149 +393,126 @@ install_litert() {
         info Attempting LiteRT Python wheel build in cross mode for $(cross_target_arch)
     fi
 
-    # Try to build a Python wheel if the project exposes a Python package
     local pip_pkg_dir="${LITERT_SRC}/tflite/tools/pip_package"
-    if [ -d "${pip_pkg_dir}" ]; then
-        info Detected Python packaging in LiteRT source - attempting to build wheel
-        
-        # We need to make sure the environment is set up for the pip package builder
-        pushd "${pip_pkg_dir}" > /dev/null
-        
-        # The Litert script build_pip_package_with_cmake.sh builds the wheel.
-        # It requires PYTHON environment variable
-        export PYTHON="${HOST_PYTHON}"
-        if [ -n "${PYTHON}" ]; then
-            info Building wheel via build_pip_package_with_cmake.sh...
-            # build_pip_package_with_cmake.sh uses these env vars to locate tensorflow/lite
-            export TENSORFLOW_DIR="${LITERT_SRC}"
-            export TENSORFLOW_LITE_DIR="${LITERT_SRC}/tflite"
-            export TENSORFLOW_TARGET="native"
-            
-            # create missing directories and symlinks to satisfy hardcoded paths in pip script
-            mkdir -p "${LITERT_SRC}/tensorflow"
-            ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
-            
-            # fix build_pip_package_with_cmake.sh path resolution and version
-            # shellcheck disable=SC2016
-            sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
-            sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
-            
-            # Export the new official LiteRT name so the wheel matches PyPI
-            export WHEEL_PROJECT_NAME="ai_edge_litert"
-            
-            # fix cmake policy error and inject required flags to match main build
-            local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON} -DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
-            local native_compiler_args=()
-            local wheel_platform_name=""
-            local tflite_host_tools_dir=""
-            local python_major_minor="${PYTHON_MAJOR_MINOR:-}"
-            local target_python_include=""
-            local target_python_arch_include=""
-
-            append_litert_preferred_cmake_compiler_args native_compiler_args
-            if [ "${#native_compiler_args[@]}" -gt 0 ]; then
-                extra_cmake_flags+=" ${native_compiler_args[*]}"
-            fi
-
-            if cross_build_is_active; then
-                local wheel_cross_args=()
-
-                python_major_minor="${python_major_minor:-$(host_python_major_minor 2>/dev/null || true)}"
-
-                if command -v append_cmake_cross_args >/dev/null 2>&1; then
-                    append_cmake_cross_args wheel_cross_args
-                fi
-                if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
-                    append_cmake_cross_archiver_args wheel_cross_args resolve_cross_archive_tool
-                fi
-                tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
-                if [ -z "${tflite_host_tools_dir}" ]; then
-                    err Could not resolve TFLite host tools directory containing flatc for cross wheel build
-                fi
-                wheel_platform_name="$(litert_cross_wheel_platform_tag || true)"
-                if [ -z "${wheel_platform_name}" ]; then
-                    err Could not resolve wheel platform tag for target architecture $(cross_target_arch)
-                fi
-                if [ -n "${python_major_minor}" ] && command -v cross_target_python_include_dir >/dev/null 2>&1; then
-                    target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
-                    target_python_arch_include="$(cross_target_python_arch_include_dir 2>/dev/null || true)"
-                    if [ ! -d "${target_python_include}" ] || [ ! -d "${target_python_arch_include}" ]; then
-                        target_python_include=""
-                        target_python_arch_include=""
-                    fi
-                fi
-
-                extra_cmake_flags+=" ${wheel_cross_args[*]}"
-                extra_cmake_flags+=" -DTFLITE_HOST_TOOLS_DIR=${tflite_host_tools_dir}"
-                if [ -n "${target_python_include}" ]; then
-                    extra_cmake_flags+=" -DPYTHON_INCLUDE_DIR=${target_python_include}"
-                    extra_cmake_flags+=" -DPYTHON_INCLUDE_PATH=${target_python_include}"
-                    info Cross wheel target Python include dir: ${target_python_include}
-                    info Cross wheel target Python arch include dir: ${target_python_arch_include}
-                fi
-
-                # Keep the pip helper on its generic/native code path so it does
-                # not try to bootstrap a second host-flatc build with its own
-                # limited cross-target switch logic. The injected CMake args
-                # below still make the actual extension build target the cross
-                # architecture and tag the produced wheel accordingly.
-                export TENSORFLOW_TARGET="native"
-                export WHEEL_PLATFORM_NAME="${wheel_platform_name}"
-                info Building LiteRT wheel in cross mode for $(cross_target_arch)
-                info Cross wheel platform tag: ${WHEEL_PLATFORM_NAME}
-                info Cross wheel host tools dir: ${tflite_host_tools_dir}
-            else
-                export TENSORFLOW_TARGET="native"
-                unset WHEEL_PLATFORM_NAME || true
-            fi
-            
-            sed -i "s|cmake \"\${TENSORFLOW_LITE_DIR}\"|cmake ${extra_cmake_flags} \"\${TENSORFLOW_LITE_DIR}\"|g" build_pip_package_with_cmake.sh 2>/dev/null || true
-            sed -i "s|cmake \\\\|cmake ${extra_cmake_flags} \\\\|g" build_pip_package_with_cmake.sh 2>/dev/null || true
-
-            if cross_build_is_active; then
-                # Debian/Ubuntu's Python.h in /usr/include/pythonX.Y includes
-                # <triplet/pythonX.Y/pyconfig.h> (or the equivalent
-                # target triplet). The cross compiler does not reliably search
-                # /usr/include by default with the current sysroot/toolchain
-                # setup, so make that root visible to the wheel helper's
-                # BUILD_FLAGS path.
-                # shellcheck disable=SC2016
-                sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"-march=native ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh 2>/dev/null || true
-                # shellcheck disable=SC2016
-                sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh 2>/dev/null || true
-            fi
-            
-            # remove -march=native from build flags to avoid multi-arch issues
-            sed -i 's|-march=native ||g' build_pip_package_with_cmake.sh 2>/dev/null || true
-            
-            # Vendored neon2sse requires CMake >= 3.5; export so cmake picks it up
-            export CMAKE_POLICY_VERSION_MINIMUM=3.5
-            
-            # run the script
-            bash build_pip_package_with_cmake.sh "${TENSORFLOW_TARGET}" > pip_build.log 2>&1 || {
-                warn pip wheel failed for LiteRT source. Last 1000 lines of log:
-                tail -n 1000 pip_build.log
-                if [ "${cross_wheel_build}" = "true" ]; then
-                    warn Continuing without a local LiteRT wheel for the cross build
-                    popd > /dev/null
-                    return 0
-                fi
-                exit 1
-            }
-            
-            # Print the log if it succeeds so we can debug anyway!
-            info pip wheel success! Last 50 lines of log:
-            tail -n 50 pip_build.log
-            
-            # The wheels are created in tflite/tools/pip_package/gen/tflite_pip/python3/dist/
-            find "gen/tflite_pip" -name "*.whl" -type f -exec cp -v {} "${LITERT_PREFIX}/wheels/" \; 2>/dev/null || warn No wheels found after build script
-        else
-            warn No python found in PATH to build LiteRT wheel
-        fi
-        popd > /dev/null
-    else
+    if [ ! -d "${pip_pkg_dir}" ]; then
         info "No Python packaging detected for LiteRT at ${pip_pkg_dir}; skipping wheel build"
+        return 0
     fi
+
+    info Detected Python packaging in LiteRT source - attempting to build wheel
+    pushd "${pip_pkg_dir}" > /dev/null
+
+    export PYTHON="${HOST_PYTHON}"
+    if [ -z "${PYTHON}" ]; then
+        warn No python found in PATH to build LiteRT wheel
+        popd > /dev/null
+        return 0
+    fi
+
+    info Building wheel via build_pip_package_with_cmake.sh...
+    export TENSORFLOW_DIR="${LITERT_SRC}"
+    export TENSORFLOW_LITE_DIR="${LITERT_SRC}/tflite"
+    export TENSORFLOW_TARGET="native"
+
+    mkdir -p "${LITERT_SRC}/tensorflow"
+    ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
+
+    # shellcheck disable=SC2016
+    sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
+    sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
+
+    export WHEEL_PROJECT_NAME="ai_edge_litert"
+
+    local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON} -DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
+    local native_compiler_args=()
+    local wheel_platform_name=""
+    local tflite_host_tools_dir=""
+    local python_major_minor="${PYTHON_MAJOR_MINOR:-}"
+    local target_python_include=""
+    local target_python_arch_include=""
+
+    append_litert_preferred_cmake_compiler_args native_compiler_args
+    if [ "${#native_compiler_args[@]}" -gt 0 ]; then
+        extra_cmake_flags+=" ${native_compiler_args[*]}"
+    fi
+
+    if cross_build_is_active; then
+        local wheel_cross_args=()
+
+        python_major_minor="${python_major_minor:-$(host_python_major_minor 2>/dev/null || true)}"
+
+        if command -v append_cmake_cross_args >/dev/null 2>&1; then
+            append_cmake_cross_args wheel_cross_args
+        fi
+        if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
+            append_cmake_cross_archiver_args wheel_cross_args resolve_cross_archive_tool
+        fi
+        tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
+        if [ -z "${tflite_host_tools_dir}" ]; then
+            err Could not resolve TFLite host tools directory containing flatc for cross wheel build
+        fi
+        wheel_platform_name="$(litert_cross_wheel_platform_tag || true)"
+        if [ -z "${wheel_platform_name}" ]; then
+            err Could not resolve wheel platform tag for target architecture $(cross_target_arch)
+        fi
+        if [ -n "${python_major_minor}" ] && command -v cross_target_python_include_dir >/dev/null 2>&1; then
+            target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
+            target_python_arch_include="$(cross_target_python_arch_include_dir 2>/dev/null || true)"
+            if [ ! -d "${target_python_include}" ] || [ ! -d "${target_python_arch_include}" ]; then
+                target_python_include=""
+                target_python_arch_include=""
+            fi
+        fi
+
+        extra_cmake_flags+=" ${wheel_cross_args[*]}"
+        extra_cmake_flags+=" -DTFLITE_HOST_TOOLS_DIR=${tflite_host_tools_dir}"
+        if [ -n "${target_python_include}" ]; then
+            extra_cmake_flags+=" -DPYTHON_INCLUDE_DIR=${target_python_include}"
+            extra_cmake_flags+=" -DPYTHON_INCLUDE_PATH=${target_python_include}"
+            info Cross wheel target Python include dir: ${target_python_include}
+            info Cross wheel target Python arch include dir: ${target_python_arch_include}
+        fi
+
+        export TENSORFLOW_TARGET="native"
+        export WHEEL_PLATFORM_NAME="${wheel_platform_name}"
+        info Building LiteRT wheel in cross mode for $(cross_target_arch)
+        info Cross wheel platform tag: ${WHEEL_PLATFORM_NAME}
+        info Cross wheel host tools dir: ${tflite_host_tools_dir}
+    else
+        export TENSORFLOW_TARGET="native"
+        unset WHEEL_PLATFORM_NAME || true
+    fi
+
+    sed -i "s|cmake \"\${TENSORFLOW_LITE_DIR}\"|cmake ${extra_cmake_flags} \"\${TENSORFLOW_LITE_DIR}\"|g" build_pip_package_with_cmake.sh 2>/dev/null || true
+    sed -i "s|cmake \\\\|cmake ${extra_cmake_flags} \\\\|g" build_pip_package_with_cmake.sh 2>/dev/null || true
+
+    if cross_build_is_active; then
+        # shellcheck disable=SC2016
+        sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"-march=native ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh 2>/dev/null || true
+        # shellcheck disable=SC2016
+        sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh 2>/dev/null || true
+    fi
+
+    sed -i 's|-march=native ||g' build_pip_package_with_cmake.sh 2>/dev/null || true
+
+    export CMAKE_POLICY_VERSION_MINIMUM=3.5
+
+    bash build_pip_package_with_cmake.sh "${TENSORFLOW_TARGET}" > pip_build.log 2>&1 || {
+        warn pip wheel failed for LiteRT source. Last 1000 lines of log:
+        tail -n 1000 pip_build.log
+        if [ "${cross_wheel_build}" = "true" ]; then
+            warn Continuing without a local LiteRT wheel for the cross build
+            popd > /dev/null
+            return 0
+        fi
+        exit 1
+    }
+
+    info pip wheel success! Last 50 lines of log:
+    tail -n 50 pip_build.log
+
+    find "gen/tflite_pip" -name "*.whl" -type f -exec cp -v {} "${LITERT_PREFIX}/wheels/" \; 2>/dev/null || warn No wheels found after build script
+    popd > /dev/null
 }
 
 install_manual() {
@@ -749,48 +670,38 @@ install_manual() {
 
     mkdir -p "${lib_dir}/pkgconfig"
 
-    cat > "${lib_dir}/pkgconfig/litert.pc" <<EOF
-prefix=${LITERT_PREFIX}
-exec_prefix=\${prefix}
-libdir=\${prefix}/lib
-includedir=\${prefix}/include
+    local static_libs=""
+    for lib in "${lib_dir}"/*.a; do
+        [ -f "${lib}" ] || continue
+        libname=$(basename "${lib}" .a)
+        static_libs="${static_libs} -l${libname}"
+    done
 
-Name: LiteRT
-Description: Google LiteRT Runtime Library
-Version: ${LITERT_VERSION}
-Libs: -L\${libdir} -lLiteRt -ltensorflow-lite
-Libs.private: ${static_libs}
-Cflags: -I\${includedir}
-EOF
+    generate_pkgconfig_file "${lib_dir}/pkgconfig/litert.pc" \
+      "LiteRT" "Google LiteRT Runtime Library" \
+      "${LITERT_VERSION}" "${LITERT_PREFIX}" \
+      "-L\${libdir} -lLiteRt -ltensorflow-lite" \
+      "-I\${includedir}"
 
-    cat > "${lib_dir}/pkgconfig/tensorflow-lite.pc" <<EOF
-prefix=${LITERT_PREFIX}
-exec_prefix=\${prefix}
-libdir=\${prefix}/lib
-includedir=\${prefix}/include
+    generate_pkgconfig_file "${lib_dir}/pkgconfig/tensorflow-lite.pc" \
+      "TensorFlow Lite" "TensorFlow Lite Library (via LiteRT)" \
+      "${LITERT_VERSION}" "${LITERT_PREFIX}" \
+      "-L\${libdir} -ltensorflow-lite" \
+      "-I\${includedir}"
 
-Name: TensorFlow Lite
-Description: TensorFlow Lite Library (via LiteRT)
-Version: ${LITERT_VERSION}
-Libs: -L\${libdir} -ltensorflow-lite
+    # Append Libs.private for tensorflow-lite.pc (not part of generic helper)
+    cat >> "${lib_dir}/pkgconfig/tensorflow-lite.pc" <<EOF
 Libs.private: ${static_libs} -lpthread -ldl
-Cflags: -I\${includedir}
 EOF
 
-    # Create pkg-config file for the C API (tensorflowlite_c)
-    # GStreamer's tflite plugin prefers this library
-    cat > "${lib_dir}/pkgconfig/tensorflowlite_c.pc" <<EOF
-prefix=${LITERT_PREFIX}
-exec_prefix=\${prefix}
-libdir=\${prefix}/lib
-includedir=\${prefix}/include
+    generate_pkgconfig_file "${lib_dir}/pkgconfig/tensorflowlite_c.pc" \
+      "TensorFlow Lite C API" "TensorFlow Lite C API Library (via LiteRT)" \
+      "${LITERT_VERSION}" "${LITERT_PREFIX}" \
+      "-L\${libdir} -ltensorflowlite_c" \
+      "-I\${includedir}"
 
-Name: TensorFlow Lite C API
-Description: TensorFlow Lite C API Library (via LiteRT)
-Version: ${LITERT_VERSION}
-Libs: -L\${libdir} -ltensorflowlite_c
+    cat >> "${lib_dir}/pkgconfig/tensorflowlite_c.pc" <<EOF
 Libs.private: -lpthread -ldl
-Cflags: -I\${includedir}
 EOF
 }
 

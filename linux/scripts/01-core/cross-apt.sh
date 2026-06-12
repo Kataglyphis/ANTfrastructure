@@ -301,6 +301,24 @@ cross_pkg_config_libdir() {
     "/usr/share/pkgconfig"
   )
 
+  # Include host-arch pkgconfig dirs so host libraries (e.g. xcb)
+  # are resolvable when building host-arch tools during cross builds.
+  local _build_multiarch=""
+  if [ -n "${DEB_BUILD_MULTIARCH:-}" ]; then
+    _build_multiarch="${DEB_BUILD_MULTIARCH}"
+  else
+    _build_multiarch="$(dpkg-architecture -qDEB_BUILD_MULTIARCH 2>/dev/null || true)"
+  fi
+  if [ -z "${_build_multiarch}" ]; then
+    _build_multiarch="$(uname -m)"
+    case "${_build_multiarch}" in
+      x86_64) _build_multiarch="x86_64-linux-gnu" ;;
+      aarch64) _build_multiarch="aarch64-linux-gnu" ;;
+      riscv64) _build_multiarch="riscv64-linux-gnu" ;;
+    esac
+  fi
+  [ -n "${_build_multiarch}" ] && candidates+=("/usr/lib/${_build_multiarch}/pkgconfig")
+
   if [ -n "${PKG_CONFIG_PATH:-}" ]; then
     old_ifs="${IFS}"
     IFS=':' read -r -a extra_dirs <<< "${PKG_CONFIG_PATH}"

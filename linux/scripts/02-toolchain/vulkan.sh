@@ -252,8 +252,16 @@ EOF
       unset PKG_CONFIG_PATH
       export PKG_CONFIG_ALLOW_CROSS=1
       export PKG_CONFIG_SYSROOT_DIR=/
+      local host_pkgconfig="/usr/share/pkgconfig:/usr/local/lib/pkgconfig"
+      local host_multiarch="${DEB_BUILD_MULTIARCH:-}"
+      if [ -z "${host_multiarch}" ]; then
+        host_multiarch="$(dpkg-architecture -qDEB_BUILD_MULTIARCH 2>/dev/null || uname -m | sed 's/x86_64/x86_64-linux-gnu/; s/aarch64/aarch64-linux-gnu/; s/riscv64/riscv64-linux-gnu/')"
+      fi
+      if [ -n "${host_multiarch}" ]; then
+        host_pkgconfig="/usr/lib/${host_multiarch}/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig"
+      fi
       if command -v cross_pkg_config_libdir >/dev/null 2>&1; then
-        export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${target_triplet}")"
+        export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${target_triplet}"):${host_pkgconfig}"
       else
         export PKG_CONFIG_LIBDIR="/usr/${target_triplet}/lib/pkgconfig:/usr/lib/${target_triplet}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
       fi
@@ -288,8 +296,16 @@ EOF
       fi
     done
 
+    # The vulkansdk builds HOST-arch tools. Save/restore cross CC/CXX
+    # so CMake uses the HOST compiler, not the cross-compiler.
+    local _saved_cc="${CC:-}" _saved_cxx="${CXX:-}"
+    local _saved_cmake_cc="${CMAKE_C_COMPILER:-}" _saved_cmake_cxx="${CMAKE_CXX_COMPILER:-}"
+    unset CC CXX CMAKE_C_COMPILER CMAKE_CXX_COMPILER
     ${SUDO:-sudo} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH \
       ./vulkansdk -j "$JOBS" "${sdk_components[@]}"
+    export CC="${_saved_cc}" CXX="${_saved_cxx}"
+    [ -n "${_saved_cmake_cc}" ] && export CMAKE_C_COMPILER="${_saved_cmake_cc}" || unset CMAKE_C_COMPILER
+    [ -n "${_saved_cmake_cxx}" ] && export CMAKE_CXX_COMPILER="${_saved_cmake_cxx}" || unset CMAKE_CXX_COMPILER
   )
 }
 

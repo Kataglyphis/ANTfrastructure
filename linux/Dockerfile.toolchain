@@ -138,17 +138,30 @@ ENV VIRTUAL_ENV=/opt/python/.venv \
     UV_PYTHON=/opt/python/.venv/bin/python \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python
 
-COPY linux/scripts/01-core/ /opt/scripts/core/
-COPY --chmod=755 \
-    linux/scripts/02-toolchain/ /opt/scripts/toolchain/ \
-    linux/scripts/python/build_python.sh /opt/scripts/python/build_python.sh \
-    linux/scripts/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    set -euo pipefail; \
+    echo "bundle v5"; \
+    mkdir -p /opt/scripts/core /opt/scripts/toolchain /opt/scripts/python; \
+    cp -av /tmp/scripts/01-core/. /opt/scripts/core/; \
+    cp -av /tmp/scripts/02-toolchain/. /opt/scripts/toolchain/; \
+    cp -av /tmp/scripts/python/build_python.sh /opt/scripts/python/build_python.sh; \
+    cp -av /tmp/scripts/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh; \
+    chmod 755 /opt/scripts -R; \
+    for f in $(find /opt/scripts -name '*.sh' -type f); do chmod 755 "$f" && bash -n "$f"; done; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null; \
+    bash /opt/scripts/python/fix-staged-python-pc.sh
 
-# Fix cross-compiled Python pkg-config files and run final script tree smoke check.
-RUN set -euo pipefail; \
-    bash /opt/scripts/python/fix-staged-python-pc.sh; \
-    find /opt/scripts -name '*.sh' -exec bash -n {} +; \
-    bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null
+# sudo pass-through wrapper: avoids sudo-rs env filtering issues in container
+RUN echo '#!/bin/bash' > /usr/local/bin/sudo && \
+    echo 'args=()' >> /usr/local/bin/sudo && \
+    echo 'while [ $# -gt 0 ]; do' >> /usr/local/bin/sudo && \
+    echo '  case "$1" in' >> /usr/local/bin/sudo && \
+    echo '    --preserve-env*) shift ;;' >> /usr/local/bin/sudo && \
+    echo '    *) args+=("$1"); shift ;;' >> /usr/local/bin/sudo && \
+    echo '  esac' >> /usr/local/bin/sudo && \
+    echo 'done' >> /usr/local/bin/sudo && \
+    echo 'exec "${args[@]}"' >> /usr/local/bin/sudo && \
+    chmod +x /usr/local/bin/sudo
 
 LABEL org.opencontainers.image.title="Kataglyphis Compiler" \
       org.opencontainers.image.description="Compiler toolchain with GCC and LLVM/Clang"

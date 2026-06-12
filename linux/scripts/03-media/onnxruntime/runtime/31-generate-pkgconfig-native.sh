@@ -54,9 +54,6 @@ Name: libonnxruntime
 Description: ONNX Runtime (native CPU build)
 Version: ${pc_version}
 ${libs_line}
-# Some consumers include headers like <onnxruntime_cxx_api.h> or
-# <cpu_provider_factory.h> directly. Depending on ONNX Runtime version, these
-# may live under nested include directories.
 Cflags: -I\${includedir} -I\${includedir}/onnxruntime/core/session -I\${includedir}/onnxruntime/core/providers/cpu
 EOF
 

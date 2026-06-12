@@ -857,6 +857,16 @@ main() {
   cmake --install "$build_dir"
 
   if [ "$do_python" -eq 1 ]; then
+    tvm_build_wheel
+  else
+    log "Skipping Python setup (--no-python)"
+  fi
+
+  log "Done. Build dir: $build_dir"
+  log "Install prefix: $prefix"
+}
+
+tvm_build_wheel() {
     log "Setting up Python venv + TVM Python package"
     HOST_PYTHON="$(require_toolchain_python)"
     uv venv --seed "$tvm_dir/.venv" --python="$HOST_PYTHON"
@@ -873,7 +883,6 @@ main() {
     local -a wheel_cmake_args=()
     local wheel_cmake_args_string
     mkdir -p "$TVM_WHEEL_DIR"
-    # Avoid stale wheel artifacts from previous runs influencing install/retag.
     rm -f "${TVM_WHEEL_DIR}"/*.whl
 
     append_tvm_cmake_args \
@@ -956,21 +965,9 @@ main() {
         uv pip install "$tvm_dir"
       fi
 
-      # Newer tvm_ffi imports pull in tvm_ffi.testing during `import tvm`, which
-      # expects pytest in the build venv for this sanity check.
       uv pip install -U pytest
-
-      "$venv_python" - <<'PY'
-import tvm
-print("tvm imported OK; version=", tvm.__version__)
-PY
+      verify_python_import "tvm" "tvm.__version__"
     fi
-  else
-    log "Skipping Python setup (--no-python)"
-  fi
-
-  log "Done. Build dir: $build_dir"
-  log "Install prefix: $prefix"
 }
 
 main "$@"

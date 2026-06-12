@@ -180,6 +180,32 @@ cross_stage_tag() {
   esac
 }
 
+# ── Shared per-arch + cross build-arg helpers ──────────────────────────────────
+# DRY helpers that avoid repeating --build-arg "BUILD_MODE=cross" and
+# --build-arg "TARGET_ARCH=${arch}" in every case branch.
+#
+# Usage:
+#   append_cross_build_args <nameref>          → adds BUILD_MODE=cross
+#   append_per_arch_build_args <nameref> <arch> → adds TARGET_ARCH=<arch>
+#   append_cross_per_arch_build_args <nameref> <arch> → both of the above
+append_cross_build_args() {
+  local -n _acba_out=$1
+  _acba_out+=(--build-arg "BUILD_MODE=cross")
+}
+
+append_per_arch_build_args() {
+  local -n _apaba_out=$1
+  local arch="$2"
+  _apaba_out+=(--build-arg "TARGET_ARCH=${arch}")
+}
+
+append_cross_per_arch_build_args() {
+  local -n _acpaba_out=$1
+  local arch="$2"
+  append_cross_build_args _acpaba_out
+  append_per_arch_build_args _acpaba_out "${arch}"
+}
+
 # ── Extra build args per stage ────────────────────────────────────────────────
 # Called by the orchestrator to append stage-specific --build-arg flags.
 # Receives a nameref to the build-args array, the stage name, and the
@@ -190,36 +216,22 @@ cross_stage_build_args() {
 
   case "${stage}" in
     base)
-      # base has no extra stage-specific args beyond the pinned parent
       ;;
     compiler)
-      _csba_out+=(
-        --build-arg "BUILD_MODE=cross"
-        --build-arg "CROSS_TARGETS=${CROSS_TARGETS}"
-      )
+      append_cross_build_args _csba_out
+      _csba_out+=(--build-arg "CROSS_TARGETS=${CROSS_TARGETS}")
       ;;
     sdk)
-      _csba_out+=(
-        --build-arg "BUILD_MODE=cross"
-        --build-arg "TARGET_ARCH=${arch}"
-        --build-arg "VULKAN_VERSION=${VULKAN_VERSION}"
-      )
+      append_cross_per_arch_build_args _csba_out "${arch}"
+      _csba_out+=(--build-arg "VULKAN_VERSION=${VULKAN_VERSION}")
       ;;
     media)
-      _csba_out+=(
-        --build-arg "BUILD_MODE=cross"
-        --build-arg "TARGET_ARCH=${arch}"
-      )
+      append_cross_per_arch_build_args _csba_out "${arch}"
       ;;
     android)
-      _csba_out+=(
-        --build-arg "BUILD_MODE=cross"
-        --build-arg "TARGET_ARCH=${arch}"
-      )
+      append_cross_per_arch_build_args _csba_out "${arch}"
       ;;
     runtime)
-      # runtime stage delegates to build-runtime-manifest.sh;
-      # build args are assembled in run_runtime_stage() in the orchestrator.
       ;;
   esac
 }

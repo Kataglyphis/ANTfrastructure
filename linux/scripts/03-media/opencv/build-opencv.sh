@@ -429,18 +429,10 @@ install_opencv() {
     local build_dir="${OPENCV_SRC}/build"
     cd "${build_dir}"
     
-    SUDO_CMD=""
-    if [ "$EUID" -ne 0 ]; then
-        if command -v sudo >/dev/null 2>&1; then
-            SUDO_CMD="sudo"
-        else
-            echo "Not root and sudo missing - cannot install; exiting"
-            exit 1
-        fi
-    fi
+    ensure_sudo_or_die
 
-    ${SUDO_CMD} make install
-    ${SUDO_CMD} ldconfig || true
+    ${SUDO_WRAP} make install
+    ${SUDO_WRAP} ldconfig || true
 
     # Ensure unversioned symlinks exist for contrib libraries (search lib and lib64)
     for libdir in "${OPENCV_PREFIX}/lib" "${OPENCV_PREFIX}/lib64"; do
@@ -449,7 +441,7 @@ install_opencv() {
             candidate=$(find "${libdir}" -maxdepth 1 -name "libopencv_tracking.so*" | head -n 1)
             if [ -n "${candidate}" ] && [ ! -e "${libdir}/libopencv_tracking.so" ]; then
                 echo "Creating symlink ${libdir}/libopencv_tracking.so -> ${candidate}"
-                ${SUDO_CMD} ln -sf "$(basename "${candidate}")" "${libdir}/libopencv_tracking.so" || true
+                ${SUDO_WRAP} ln -sf "$(basename "${candidate}")" "${libdir}/libopencv_tracking.so" || true
             fi
         fi
     done
@@ -457,8 +449,8 @@ install_opencv() {
     # Sanity-check: fail early if tracking library is still missing
     if ! (ls "${OPENCV_PREFIX}/lib/libopencv_tracking.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_tracking.so" >/dev/null 2>&1); then
         echo "ERROR: libopencv_tracking was not found after install. Listing installed libs for debugging:"
-        ${SUDO_CMD} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
-        ${SUDO_CMD} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
+        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
+        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
         die "Failing build so the image build doesn't continue with a broken OpenCV install."
     fi
 
@@ -482,7 +474,7 @@ install_opencv4_compat_aliases() {
     for pcdir in "${OPENCV_PREFIX}/lib/pkgconfig" "${OPENCV_PREFIX}/lib64/pkgconfig"; do
         if [ -f "${pcdir}/opencv5.pc" ] && [ ! -e "${pcdir}/opencv4.pc" ]; then
             echo "Creating pkg-config compatibility alias ${pcdir}/opencv4.pc -> opencv5.pc"
-            ${SUDO_CMD} cp "${pcdir}/opencv5.pc" "${pcdir}/opencv4.pc"
+            ${SUDO_WRAP} cp "${pcdir}/opencv5.pc" "${pcdir}/opencv4.pc"
         fi
     done
 
@@ -490,16 +482,16 @@ install_opencv4_compat_aliases() {
     if [ ! -e "${sharedir}/opencv4" ] && \
        [ ! -e "${sharedir}/opencv" ] && \
        [ ! -e "${sharedir}/OpenCV" ]; then
-        ${SUDO_CMD} mkdir -p "${sharedir}"
+        ${SUDO_WRAP} mkdir -p "${sharedir}"
         if [ -d "${sharedir}/opencv5" ]; then
             echo "Creating data-dir compatibility alias ${sharedir}/opencv4 -> opencv5"
-            ${SUDO_CMD} ln -s opencv5 "${sharedir}/opencv4"
+            ${SUDO_WRAP} ln -s opencv5 "${sharedir}/opencv4"
         else
             # No OpenCV data directory was installed (e.g. cascade data removed
             # in OpenCV 5 core). Create an empty data dir so consumers that only
             # probe for its existence at configure time still succeed.
             echo "Creating empty data-dir compatibility alias ${sharedir}/opencv4"
-            ${SUDO_CMD} mkdir -p "${sharedir}/opencv4"
+            ${SUDO_WRAP} mkdir -p "${sharedir}/opencv4"
         fi
     fi
 }
@@ -552,7 +544,7 @@ main() {
     if [ "${WITH_PYTHON}" = "true" ] && { ! cross_build_is_active; }; then
         echo ""
         echo "Python bindings:"
-        "${HOST_PYTHON:-$(host_python_bin)}" -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null || echo "Could not import cv2"
+        verify_python_import "cv2" "cv2.__version__" || echo "Could not import cv2"
     elif [ "${WITH_PYTHON}" = "true" ]; then
         echo "Skipping Python import validation in cross mode"
     fi

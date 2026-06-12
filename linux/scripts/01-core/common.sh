@@ -181,3 +181,68 @@ cross_wheel_platform_tag() {
   fi
   arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
 }
+
+# ── cmake build with fallback ─────────────────────────────────────────────────
+# Run cmake --build with parallel jobs; on failure, retry single-threaded with
+# --verbose for diagnostics.  Patterns from build-litert.sh and build-opencv.sh.
+#
+# Usage: run_cmake_build_with_fallback <build_dir> <jobs>
+run_cmake_build_with_fallback() {
+  local build_dir="$1" jobs="${2:-$(nproc)}"
+  cmake --build "${build_dir}" -j"${jobs}" || {
+    warn "Parallel build failed, trying single-threaded..."
+    cmake --build "${build_dir}" -j1 --verbose
+  }
+}
+
+# ── pkg-config file generation ────────────────────────────────────────────────
+# Generate a standard .pc file.  DRYs the identical heredoc pattern found in
+# build-litert.sh and onnxruntime/runtime/31-generate-pkgconfig-native.sh.
+#
+# Usage: generate_pkgconfig_file <path> <name> <description> <version> <prefix> [libs] [cflags] [requires]
+generate_pkgconfig_file() {
+  local pc_path="$1" name="$2" desc="$3" ver="$4" prefix="$5"
+  local libs="${6:--L\${libdir}}" cflags="${7:--I\${includedir}}" requires="${8:-}"
+  local pc_dir
+  pc_dir="$(dirname "${pc_path}")"
+  mkdir -p "${pc_dir}"
+
+  local req_line=""
+  [ -n "${requires}" ] && req_line="Requires: ${requires}"
+
+  cat >"${pc_path}" <<EOF
+prefix=${prefix}
+exec_prefix=\${prefix}
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+${req_line}
+Name: ${name}
+Description: ${desc}
+Version: ${ver}
+Libs: ${libs}
+Cflags: ${cflags}
+EOF
+}
+
+# ── Python import verification ────────────────────────────────────────────────
+# Verify a Python module can be imported.  Set PYTHON_IMPORT_PYTHON to override
+# the interpreter (default: python3 or python).
+#
+# Usage: verify_python_import <module_name> [version_check_expr]
+verify_python_import() {
+  local module="$1" check="${2:-}"
+  local py="${PYTHON_IMPORT_PYTHON:-}"
+  [ -z "${py}" ] && py="$(command -v python3 2>/dev/null || command -v python 2>/dev/null)"
+  if [ -z "${py}" ]; then
+    warn "No Python interpreter found; skipping import check for ${module}"
+    return 1
+  fi
+  if [ -n "${check}" ]; then
+    "${py}" -c "import ${module}; print(${check})" && return 0
+  else
+    "${py}" -c "import ${module}; print(${module}.__version__)" 2>/dev/null && return 0
+    "${py}" -c "import ${module}; print('imported')" && return 0
+  fi
+  warn "Failed to import Python module: ${module}"
+  return 1
+}

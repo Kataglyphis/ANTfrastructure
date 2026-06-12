@@ -30,7 +30,7 @@ install_err_trap
 PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.5}}"
 PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSION}")}"
 PYTHON_TARBALL="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-$$.tgz"
-PYTHON_SOURCE_DIR="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-$$"
+PYTHON_SOURCE_DIR="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}"
 PYTHON_CROSS_STAGE_ROOT="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}"
 
 cleanup() {
@@ -332,6 +332,9 @@ cd "${PYTHON_SOURCE_DIR}"
 ./configure --enable-shared --enable-optimizations --prefix=/usr/local
 make -j"$(compute_jobs_with_mem_cap "" 2500)"
 make altinstall
+
+ln -sf "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" /usr/local/bin/python3
+ln -sf "/usr/local/bin/pip${PYTHON_MAJOR_MINOR}" /usr/local/bin/pip3
 
 # Add the lib path to the system linker
 echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-${PYTHON_VERSION}.conf"

@@ -116,6 +116,23 @@ _install_trap() {
 install_err_trap()  { _install_trap err; }
 install_warn_trap() { _install_trap warn; }
 
+# ── Sudo guard ────────────────────────────────────────────────────────────────
+# Ensure we can run privileged commands.  Sets SUDO_WRAP="sudo" or SUDO_WRAP=""
+# depending on EUID.  Exits if no sudo is available and we are not root.
+#
+# Usage: ensure_sudo_or_die
+ensure_sudo_or_die() {
+  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then
+      SUDO_WRAP="sudo"
+    else
+      die "This command requires sudo or root. Install sudo or run as root."
+    fi
+  else
+    SUDO_WRAP=""
+  fi
+}
+
 retry() {
   local max_attempts="${1:-3}"
   local sleep_sec="${2:-5}"

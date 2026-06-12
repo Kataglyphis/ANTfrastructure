@@ -137,83 +137,21 @@ append_env_flag() {
 }
 
 resolve_host_gcc_for_cargo() {
-  if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
-    resolve_host_compiler_for_lang c
-    return $?
-  fi
-
-  local build_triplet=""
-  local candidate
-  local resolved=""
-
-  if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
-    resolved="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
-    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool cc 2>/dev/null || true)"
-    [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
-  fi
-
-  if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
-    build_triplet="$(build_deb_multiarch_triplet)"
-  fi
-
-  for candidate in \
-    "/usr/bin/${build_triplet}-gcc" \
-    /usr/bin/gcc \
-    /usr/bin/cc; do
-    [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-  done
-
-  command -v gcc 2>/dev/null || command -v cc 2>/dev/null || true
+  resolve_host_compiler_for_lang c
 }
 
 prepare_cargo_host_linker_wrapper() {
   local compiler="$1"
-  if command -v prepare_host_compiler_wrapper >/dev/null 2>&1; then
-    prepare_host_compiler_wrapper "${compiler}" host-gcc "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
-    return $?
-  fi
-  local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
-  make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"
+  prepare_host_compiler_wrapper "${compiler}" host-gcc "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
 }
 
 resolve_host_gxx_for_cargo() {
-  if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
-    resolve_host_compiler_for_lang cxx
-    return $?
-  fi
-
-  local build_triplet=""
-  local candidate
-  local resolved=""
-
-  if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
-    resolved="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
-    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool c++ 2>/dev/null || true)"
-    [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
-  fi
-
-  if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
-    build_triplet="$(build_deb_multiarch_triplet)"
-  fi
-
-  for candidate in \
-    "/usr/bin/${build_triplet}-g++" \
-    /usr/bin/g++ \
-    /usr/bin/c++; do
-    [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-  done
-
-  command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || true
+  resolve_host_compiler_for_lang cxx
 }
 
 prepare_cargo_host_cxx_wrapper() {
   local compiler="$1"
-  if command -v prepare_host_compiler_wrapper >/dev/null 2>&1; then
-    prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
-    return $?
-  fi
-  local wrapper_dir="${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
-  make_named_host_compiler_wrapper "${wrapper_dir}" host-g++ "${compiler}"
+  prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
 }
 
 remove_path_entry() {
