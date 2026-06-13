@@ -65,12 +65,14 @@ resolve_arch_list() {
 #   compiler-resolution.sh — host compiler resolution for media builds
 #   parallel-loop.sh       — per-architecture parallel build loop
 # shellcheck disable=SC1090,SC1091
-for _module in \
+_ac_module=""
+for _ac_module in \
   tag-naming.sh stage-defs.sh digest-pinning.sh chain-verify.sh \
   build-helpers.sh cross-stage-build.sh \
   context-management.sh version-forwarding.sh cli-parsers.sh \
   runtime-build-fns.sh compiler-resolution.sh parallel-loop.sh; do
-  if [ -f "${_ARTIFACT_COMMON_DIR}/${_module}" ]; then
-    source "${_ARTIFACT_COMMON_DIR}/${_module}"
+  if [ -f "${_ARTIFACT_COMMON_DIR}/${_ac_module}" ]; then
+    source "${_ARTIFACT_COMMON_DIR}/${_ac_module}"
   fi
 done
+unset _ac_module

@@ -52,7 +52,6 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     test -x "$(command -v hipcc)"; \
     ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null
 
-ARG LLVM_RELEASE=22.1.6
 ENV PATH="/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/usr/lib/rocm/bin:${PATH}"
 
 LABEL org.opencontainers.image.title="Kataglyphis AMD GPU" \

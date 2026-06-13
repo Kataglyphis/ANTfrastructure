@@ -64,9 +64,7 @@ main() {
       TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
       FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IMAGES \
       "$1" "${2:-}" || break
-    case "${_DP_SHIFT}" in
-      1) shift; continue ;;  2) shift 2; continue ;;
-    esac
+    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
     case "$1" in
       --output-root)
         OUTPUT_ROOT="$2"

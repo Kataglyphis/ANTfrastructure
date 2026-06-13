@@ -64,7 +64,7 @@ declare -a _EXIT_TRAP_STACK=()
 trap_push() {
   local handler="$1"
   _EXIT_TRAP_STACK+=("${handler}")
-  trap '_rc=$?; for _trap_handler in "${_EXIT_TRAP_STACK[@]}"; do eval "${_trap_handler}" || true; done; exit ${_rc}' EXIT
+  trap '_BH_RC=$?; for _BH_TRAP_HANDLER in "${_EXIT_TRAP_STACK[@]}"; do eval "${_BH_TRAP_HANDLER}" || true; done; exit ${_BH_RC}' EXIT
 }
 
 append_buildkit_host_arg() {

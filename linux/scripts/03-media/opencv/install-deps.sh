@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/core/cross-env.sh ]; then
-    # shellcheck disable=SC1091
-    source /opt/scripts/core/cross-env.sh
-fi
+for _cv_env in \
+    "/opt/scripts/core/cross-env.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/cross-env.sh"; do
+    if [ -f "${_cv_env}" ]; then
+        source "${_cv_env}" || { echo "FATAL: cannot load ${_cv_env}" >&2; exit 1; }
+        break
+    fi
+done
 
 : "${WITH_PYTHON:=true}"
 : "${WITH_JAVA:=false}"

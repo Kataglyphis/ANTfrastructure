@@ -50,9 +50,8 @@ ENV ANDROID_HOME=/opt/android-sdk \
     BUILDPLATFORM=${BUILDPLATFORM} \
     PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
-COPY --chmod=755 \
-    linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh \
-    linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
+COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
+COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -69,9 +68,8 @@ FROM android-sdk AS android-gstreamer
 ARG TARGET_ARCH
 ARG TARGETARCH
 
-COPY --chmod=755 \
-    linux/scripts/03-media/gstreamer/android/ /opt/scripts/media/gstreamer/android/ \
-    linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/gstreamer/android/ /opt/scripts/media/gstreamer/android/
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -89,9 +87,8 @@ FROM android-sdk AS android-onnx
 ARG TARGET_ARCH
 ARG TARGETARCH
 
-COPY --chmod=755 \
-    linux/scripts/03-media/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/ \
-    linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -109,9 +106,8 @@ FROM android-sdk AS android-litert
 ARG TARGET_ARCH
 ARG TARGETARCH
 
-COPY --chmod=755 \
-    linux/scripts/03-media/litert/android/ /opt/scripts/media/litert/android/ \
-    linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/litert/android/ /opt/scripts/media/litert/android/
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -129,9 +125,8 @@ FROM android-sdk AS android-opencv
 ARG TARGET_ARCH
 ARG TARGETARCH
 
-COPY --chmod=755 \
-    linux/scripts/03-media/opencv/android/ /opt/scripts/media/opencv/android/ \
-    linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/opencv/android/ /opt/scripts/media/opencv/android/
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/media/android-build-preamble.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -158,11 +153,10 @@ COPY --link --from=android-opencv /opt/android/opencv /opt/android/opencv
 
 # Preserve the cross-compiled Python staging tree from the base image and swap
 # the amd64-hosted GCC with the target-native GCC for non-amd64 architectures.
-COPY --chmod=755 \
-    linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh \
-    linux/scripts/06-packaging/smoke-android.sh /opt/scripts/packaging/smoke-android.sh \
-    linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh \
-    linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-android.sh /opt/scripts/packaging/smoke-android.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh
+COPY --chmod=755 linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
 RUN set -euo pipefail; \
     if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
         touch /opt/python-cross/.keep; fi; \

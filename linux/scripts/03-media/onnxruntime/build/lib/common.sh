@@ -3,7 +3,10 @@ set -euo pipefail
 IFS=$'\n\t'
 
 _ONNX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT_DIR="${_ONNX_LIB_DIR}"
+# Preserve caller's SCRIPT_DIR — this may be the build-onnxruntime.sh directory
+# which dispatches to step scripts using SCRIPT_DIR. Do NOT overwrite it.
+ONNX_SCRIPT_DIR="${_ONNX_LIB_DIR}"
+: "${SCRIPT_DIR:=${ONNX_SCRIPT_DIR}}"
 
 # Use the standard modules.sh framework
 for helper in \

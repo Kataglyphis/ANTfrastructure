@@ -49,9 +49,7 @@ main() {
       parse_shared_orchestrator_args \
       TARGET_ARCHES _ _ _ IMAGE_REPO _ _ \
       "$1" "${2:-}" || break
-    case "${_DP_SHIFT}" in
-      1) shift; continue ;;  2) shift 2; continue ;;
-    esac
+    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
     case "$1" in
       --describe-chain) DESCRIBE_CHAIN=1; shift ;;
       *) warn "Unknown option: $1"; usage >&2; exit 1 ;;

@@ -177,6 +177,26 @@ consume_shared_arg() {
 }
 
 # ==============================================================================
+# consume_dp_shift
+#
+# Shortcut to handle _DP_SHIFT after consume_shared_arg returns 0.
+# Instead of:
+#   case "${_DP_SHIFT}" in 1) shift; continue ;; 2) shift 2; continue ;; esac
+# Write:
+#   consume_dp_shift; shift "${_DP_SHIFT}"; continue
+#
+# Returns 0 when _DP_SHIFT is 1 or 2 (caller should shift + continue).
+# Returns 1 when _DP_SHIFT is 0 (caller should handle the arg locally).
+# ==============================================================================
+consume_dp_shift() {
+  case "${_DP_SHIFT}" in
+    1) return 0 ;;
+    2) return 0 ;;
+    0) return 1 ;;
+  esac
+}
+
+# ==============================================================================
 # parse_shared_runtime_args
 #
 # Shared CLI argument parsing for runtime build scripts.

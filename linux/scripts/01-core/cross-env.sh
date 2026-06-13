@@ -38,6 +38,9 @@ cross_build_enabled() {
 # Compatibility alias used by media build scripts.
 is_cross() { cross_build_enabled; }
 
+# All-purpose cross-build guard used by 60+ media/toolchain/framework scripts.
+cross_build_is_active() { cross_build_enabled; }
+
 cross_target_arch() {
   arch_oci
 }

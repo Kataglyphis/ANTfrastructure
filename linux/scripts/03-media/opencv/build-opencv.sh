@@ -31,10 +31,12 @@ for helper in \
     fi
 done
 
+source_module common.sh || true
 source_module cross-env.sh || true
 source_module build-helpers.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true
+source_module downloads.sh || true
 source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 install_warn_trap
 
