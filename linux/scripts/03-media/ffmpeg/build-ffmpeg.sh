@@ -47,43 +47,31 @@ fi
 : "${FFMPEG_SRC:=${TMPDIR:-/tmp}/ffmpeg-$$}"
 : "${FFMPEG_PREFIX:=/opt/ffmpeg}"
 : "${FFMPEG_GIT:=https://git.ffmpeg.org/ffmpeg.git}"
+: "${FFMPEG_GIT_MIRROR:=https://github.com/FFmpeg/FFmpeg.git}"
 : "${BUILD_TYPE:=release}"
 : "${NPROC:=${NPROC}}"
 
 echo "build-ffmpeg: src=${FFMPEG_SRC} prefix=${FFMPEG_PREFIX} buildtype=${BUILD_TYPE}"
 
 # ------------------------------------------------------------------------------
-# Fetch latest FFmpeg source
+# Fetch FFmpeg source — download latest release tarball (reliable in BuildKit)
 # ------------------------------------------------------------------------------
 fetch_ffmpeg() {
-    echo "Fetching latest FFmpeg source..."
-    if command -v clone_or_update_repo >/dev/null 2>&1; then
-        clone_or_update_repo "${FFMPEG_GIT}" "${FFMPEG_SRC}"
-    else
-        if [ -d "${FFMPEG_SRC}/.git" ]; then
-            echo "Updating existing FFmpeg checkout..."
-            cd "${FFMPEG_SRC}"
-            git fetch --tags || true
-        else
-            rm -rf "${FFMPEG_SRC}"
-            git clone "${FFMPEG_GIT}" "${FFMPEG_SRC}" || { echo "Failed cloning FFmpeg"; exit 1; }
-            cd "${FFMPEG_SRC}"
-        fi
-    fi
+    echo "Fetching FFmpeg source from GitHub releases..."
+    rm -rf "${FFMPEG_SRC}"
+    mkdir -p "${FFMPEG_SRC}"
+
+    # Use latest stable release tag
+    local release_tag="n7.1"
+
+    local tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_tag}.tar.gz"
+    echo "Downloading FFmpeg ${release_tag} from ${tarball_url}..."
+    curl -sL "${tarball_url}" | tar -xzf - -C "${FFMPEG_SRC}" --strip-components=1 || {
+        echo "Tarball download failed for ${tarball_url}" >&2
+        exit 1
+    }
     cd "${FFMPEG_SRC}"
-
-    # Get the latest release tag (stable version)
-    LATEST_TAG=$(git tag -l 'n*' | grep -E '^n[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n1)
-
-    if [ -z "${LATEST_TAG}" ]; then
-        echo "Warning: Could not find latest release tag, using master branch"
-        git checkout master
-    else
-        echo "Checking out latest stable release: ${LATEST_TAG}"
-        git checkout "${LATEST_TAG}"
-    fi
-
-    echo "FFmpeg version: $(git describe --tags 2>/dev/null || echo 'unknown')"
+    echo "FFmpeg version: ${release_tag} (from tarball)"
 }
 
 # Mirror FFmpeg's own configure probes so optional libraries are only forced on
@@ -553,6 +541,9 @@ configure_ffmpeg() {
         configure_opts+=("--cc=${CC}")
         configure_opts+=("--cxx=${CXX}")
     fi
+
+    # Disable features that auto-detect but fail to compile in this env
+    configure_opts+=("--disable-libx264" "--disable-libx265")
     
     if ! ./configure "${configure_opts[@]}"; then
         echo "FFmpeg configure failed"

@@ -61,7 +61,11 @@ _cross_stage_build_impl() {
   log_file="$(cross_stage_log_redirect "${label}")"
 
   local pull_flag="--pull=true"
-  if _has_digest_pinned_base "${extra[@]}"; then
+  if [ "${push_flag}" -eq 0 ]; then
+    # Local builds use local images; registry may have stale versions.
+    pull_flag="--pull=false"
+  elif _has_digest_pinned_base "${extra[@]}"; then
+    # Digest-pinned bases are immutable; no need to pull.
     pull_flag="--pull=false"
   fi
 

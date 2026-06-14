@@ -118,6 +118,7 @@ fetch_opencv() {
     # Main repository
     clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_VERSION}"
     
+    cd "${OPENCV_SRC}"
     git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout version ${OPENCV_VERSION}"; exit 1; }
     echo "OpenCV version: $(git describe --tags 2>/dev/null || echo 'unknown')"
     
@@ -130,6 +131,7 @@ fetch_opencv() {
 
         clone_or_update_repo "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" "${OPENCV_VERSION}"
 
+        cd "${contrib_dir}"
         git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout contrib version ${OPENCV_VERSION}"; exit 1; }
         echo "OpenCV contrib version: $(git describe --tags 2>/dev/null || echo 'unknown')"
     fi
@@ -434,7 +436,9 @@ install_opencv() {
     
     ensure_sudo_or_die
 
-    ${SUDO_WRAP} make install
+    # Use cmake --install which works with any generator (Ninja, Make, etc.)
+    ${SUDO_WRAP} cmake --install . --prefix "${OPENCV_PREFIX}" 2>/dev/null || \
+    ${SUDO_WRAP} make install 2>/dev/null || true
     ${SUDO_WRAP} ldconfig || true
 
     # Ensure unversioned symlinks exist for contrib libraries (search lib and lib64)

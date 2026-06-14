@@ -32,6 +32,11 @@ source_module downloads.sh || true
 source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 source_module compiler-resolution.sh || true
 
+# Ensure cross_build_is_active is always available
+if ! command -v cross_build_is_active >/dev/null 2>&1; then
+  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+fi
+
 LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
 : "${LITERT_SRC:=${TMPDIR:-/tmp}/litert-$$}"
 : "${LITERT_PREFIX:=/usr/local}"

@@ -99,7 +99,6 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   "${HOST_PYTHON}" build.py \
     --config "${GENAI_CONFIG}" \
     --ort_home "${ORT_HOME}" \
-    --parallel "${JOBS}" \
     --skip_tests \
     --skip_examples \
     --use_cuda \
@@ -113,7 +112,6 @@ else
   "${HOST_PYTHON}" build.py \
     --config "${GENAI_CONFIG}" \
     --ort_home "${ORT_HOME}" \
-    --parallel "${JOBS}" \
     --skip_tests \
     --skip_examples \
     --use_guidance

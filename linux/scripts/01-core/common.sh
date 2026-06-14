@@ -30,6 +30,12 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
+# Provide cross_build_is_active even when cross-env.sh guard prevents reload.
+# Called by 60+ media/toolchain/framework scripts across the entire build.
+if ! command -v cross_build_is_active >/dev/null 2>&1; then
+  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+fi
+
 # Derived defaults (use the canonical values from versions.env as fallbacks)
 if [ -z "${LLVM_WANTED:-}" ]; then
   LLVM_WANTED="${LLVM_RELEASE}"

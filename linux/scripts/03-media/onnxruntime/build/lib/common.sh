@@ -25,6 +25,11 @@ source_module platform.sh || true
 source_module cross-env.sh || true
 source_module parallelism.sh || true
 
+# Fallback for cross_build_is_active in case cross-env.sh guard prevents reload
+if ! command -v cross_build_is_active >/dev/null 2>&1; then
+  cross_build_is_active() { cross_build_enabled; }
+fi
+
 # Fallback definitions — safety nets when modules.sh framework is unavailable.
 # Fallback loggers if shared logging is not present
 if ! command -v info >/dev/null 2>&1; then

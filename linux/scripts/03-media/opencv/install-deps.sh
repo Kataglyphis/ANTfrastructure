@@ -58,7 +58,7 @@ else
     target_packages=(libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev "${target_packages[@]}")
 fi
 
-if cross_build_is_active && [ "$(cross_target_arch)" = "riscv64" ]; then
+if { cross_build_is_active 2>/dev/null || cross_build_enabled; } && [ "$(cross_target_arch)" = "riscv64" ]; then
     install_optional_target_packages "${target_packages[@]}"
 else
     install_target_packages "${target_packages[@]}"
