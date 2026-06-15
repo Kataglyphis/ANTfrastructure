@@ -151,6 +151,8 @@ Contributions are what make the open source community such an amazing place to l
 ## License
 
 The container images use OCI labels that declare the project license as `MIT`.
+See [Third-Party Licenses](third-party-licenses.md) for the licenses of bundled
+upstream software.
 
 ## Contact
 

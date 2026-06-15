@@ -51,6 +51,10 @@ INLINE_MARKER_MAP: dict[str, tuple[str, str]] = {
     "android_api_level": ("ANDROID_API_LEVEL", "raw"),
     "cudnn": ("CUDNN_VERSION", "raw"),
     "tensorrt": ("TENSORRT_VERSION", "raw"),
+    "tvm": ("TVM_REF", "raw"),
+    "ubuntu": ("UBUNTU_VERSION", "raw"),
+    "onnx_genai": ("ONNXRUNTIME_GENAI_VERSION", "no_v"),
+    "litert": ("LITERT_VERSION", "no_v"),
 }
 
 INLINE_MARKER_RE = re.compile(

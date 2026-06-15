@@ -439,6 +439,8 @@ configure_ffmpeg() {
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # Avoid cross-detecting host SDL when the target SDL dev package is unavailable.
             configure_opts+=("--disable-sdl2" "--disable-ffplay")
+            # RVV assembly uses absolute relocations; allow text rels in shared libs
+            configure_opts+=("--extra-ldflags=-Wl,-z,notext")
         fi
     fi
 

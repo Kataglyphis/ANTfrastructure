@@ -407,6 +407,28 @@ configure_opencv() {
         fi
     fi
 
+    # For cross-builds, ensure freetype can be found (headers from host, library from target)
+    if cross_build_is_active && [ "$(cross_target_arch)" != "amd64" ]; then
+        local _cv_triplet
+        _cv_triplet="$(cross_target_triplet 2>/dev/null || true)"
+        if [ -n "${_cv_triplet}" ]; then
+            local _cv_target_lib="/usr/lib/${_cv_triplet}"
+            # Host headers are arch-independent; point CMake to them
+            if [ -d /usr/include/freetype2 ]; then
+                cmake_opts+=("-DFREETYPE_INCLUDE_DIRS=/usr/include/freetype2")
+            fi
+            if [ -d /usr/include/harfbuzz ]; then
+                cmake_opts+=("-DHARFBUZZ_INCLUDE_DIRS=/usr/include/harfbuzz")
+            fi
+            # Prefer target library, fall back to host library at link time
+            if [ -f "${_cv_target_lib}/libfreetype.so" ]; then
+                cmake_opts+=("-DFREETYPE_LIBRARY=${_cv_target_lib}/libfreetype.so")
+            fi
+            if [ -f "${_cv_target_lib}/libharfbuzz.so" ]; then
+                cmake_opts+=("-DHARFBUZZ_LIBRARY=${_cv_target_lib}/libharfbuzz.so")
+            fi
+        fi
+    fi
     echo "CMake options: ${cmake_opts[*]}"
     cmake -G Ninja "${OPENCV_SRC}" "${cmake_opts[@]}" || { echo "OpenCV configure failed"; exit 1; }
 }
@@ -425,7 +447,7 @@ build_opencv() {
     fi
 
     echo "OpenCV parallel build failed; rerunning serial verbose build for diagnostics..."
-    ninja -j1 install VERBOSE=1 || true
+    ninja -j1 -v install || true
     echo "OpenCV build failed"
     exit 1
 }

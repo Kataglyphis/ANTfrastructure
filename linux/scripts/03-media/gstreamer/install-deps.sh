@@ -111,10 +111,10 @@ else
   )
 fi
 
-install_target_packages "${gst_target_packages[@]}"
+install_target_packages "${gst_target_packages[@]}" || true
 
 apt-get purge -y 'libunwind-[0-9]*-dev' || true
-install_target_packages libunwind-dev
+install_target_packages libunwind-dev || true
 
 install_host_packages libxml2-utils glslc glslang-tools gobject-introspection || true
 if [ "${is_riscv64_cross}" = "true" ]; then
@@ -154,19 +154,19 @@ else
   graphics_target_packages+=(libvulkan-dev)
 fi
 
-install_target_packages "${graphics_target_packages[@]}"
+install_target_packages "${graphics_target_packages[@]}" || true
 
 if [ "${is_riscv64_cross}" = "true" ]; then
   echo "Skipping libgudev-1.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy its libglib2.0-dev helper dependency chain."
 else
-  install_target_packages libgudev-1.0-dev
+  install_target_packages libgudev-1.0-dev || true
 fi
 
 # Images / formats
 # GTK/gdk-pixbuf probe these through the target-only pkg-config view during
 # cross builds, so install the image development packages on the target side.
 install_target_packages \
-  libjpeg-turbo8-dev libpng-dev libtiff-dev libwebp-dev
+  libjpeg-turbo8-dev libpng-dev libtiff-dev libwebp-dev || true
 
 install_target_packages libopenexr-3-dev || \
 install_target_packages libopenexr-dev || true
@@ -179,7 +179,7 @@ apt-get install -y --no-install-recommends libvvdec-dev || true
 install_target_packages \
   libogg-dev libvorbis-dev libtheora-dev libopus-dev libflac-dev \
   libmpg123-dev libmp3lame-dev libtwolame-dev libspeex-dev libspeexdsp-dev \
-  libwavpack-dev libgsm1-dev
+  libwavpack-dev libgsm1-dev || true
 
 # Codecs (video)
 install_target_packages \
@@ -202,6 +202,7 @@ install_target_packages \
   libcurl4-openssl-dev libxml2-dev \
   zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
   libsrtp2-dev libssl-dev libusrsctp-dev || true
+install_target_packages libsoup-3.0-dev libnice-dev || true
 
 # Csound conditionally
 if [ "${skip_csound_cross}" = "true" ]; then

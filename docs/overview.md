@@ -76,4 +76,6 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started
 
+See [Third-Party Licenses](third-party-licenses.md) for license information on bundled software.
+
 

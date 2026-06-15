@@ -76,6 +76,14 @@ RUN set -euo pipefail; \
     fi; \
     bash /opt/scripts/media/activate-cross-python.sh
 
+# Add Ubuntu Ports for foreign architectures so install_target_packages can install
+# arm64/riscv64 dev packages when cross-compiling.
+RUN set -euo pipefail; \
+    rm -f /etc/apt/sources.list.d/ubuntu-ports-*.sources 2>/dev/null || true; \
+    ports_file="/etc/apt/sources.list.d/ubuntu-ports.sources"; \
+    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: resolute resolute-updates resolute-backports resolute-security\nComponents: main universe restricted multiverse\nArchitectures: arm64 riscv64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' > "${ports_file}"; \
+    apt-get update -qq || true
+
 ENV NVIDIA_CODEC_HEADERS=auto
 
 # VIRTUAL_ENV, PATH, UV_PYTHON, and MEDIA_HOST_PYTHON are inherited from
