@@ -32,6 +32,7 @@ This README now keeps the quick project picture and links to the detailed guides
 | [Runtime Services and Streaming](docs/runtime-services.md) | Webserver, display forwarding, Raspberry Pi camera notes, WebRTC signalling and streaming |
 | [Windows Build Image](docs/windows-builds.md) | Windows container build notes, antivirus exclusion warning, memory guidance |
 | [Project Information](docs/project-info.md) | Prerequisites, installation, tests, roadmap, troubleshooting, contributing, contact |
+| [Third-Party Licenses](docs/third-party-licenses.md) | Licenses for all bundled upstream software |
 
 ## Project at a Glance 🧭
 
