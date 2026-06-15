@@ -33,6 +33,11 @@ done
 
 source_module common.sh || true
 source_module cross-env.sh || true
+
+# Ensure cross_build_is_active is always available
+if ! command -v cross_build_is_active >/dev/null 2>&1; then
+  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+fi
 source_module build-helpers.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true

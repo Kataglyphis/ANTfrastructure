@@ -16,8 +16,15 @@ set -euo pipefail
 #   BUILD_MODE    cross or native
 
 _swap_gcc_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "${_swap_gcc_script_dir}/../01-core/modules.sh"
+for _swap_mod_path in \
+  "${_swap_gcc_script_dir}/../01-core/modules.sh" \
+  "/opt/scripts/core/modules.sh"; do
+  if [ -f "${_swap_mod_path}" ]; then
+    # shellcheck disable=SC1090
+    source "${_swap_mod_path}"
+    break
+  fi
+done
 source_module platform.sh
 
 main() {

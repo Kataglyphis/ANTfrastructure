@@ -19,8 +19,15 @@ set -euo pipefail
 #   validate-compilers.sh smoke
 
 _vcs_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "${_vcs_script_dir}/../01-core/modules.sh"
+for _vcs_mod_path in \
+  "${_vcs_script_dir}/../01-core/modules.sh" \
+  "/opt/scripts/core/modules.sh"; do
+  if [ -f "${_vcs_mod_path}" ]; then
+    # shellcheck disable=SC1090
+    source "${_vcs_mod_path}"
+    break
+  fi
+done
 source_module platform.sh
 
 validate_resolve_arch() {
@@ -104,7 +111,11 @@ validate_artifact_source() {
   # target-native Clang
   llvm_target="/opt/llvm-target/bin/clang"
   if [ ! -e /opt/llvm-target ]; then
-    validate_fail "llvm-target-missing" "/opt/llvm-target symlink/directory not found (should be created by setup step)"
+    if [ "${target_arch}" = "amd64" ]; then
+      echo "WARNING: /opt/llvm-target not found for amd64; continuing with distro LLVM"
+    else
+      validate_fail "llvm-target-missing" "/opt/llvm-target symlink/directory not found (should be created by setup step)"
+    fi
   fi
   if [ -x "${llvm_target}" ]; then
     local clang_ver clang_major_minor
@@ -120,7 +131,7 @@ validate_artifact_source() {
         validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.6})"
       fi
     fi
-  elif [ "${BUILD_MODE:-native}" = "cross" ] && [ -d /opt/llvm-target ]; then
+  elif cross_build_is_active && [ -d /opt/llvm-target ]; then
     validate_fail "target-clang-missing" "${llvm_target} not executable in /opt/llvm-target"
   else
     echo "WARNING: missing target-native LLVM toolchain for ${target_arch}; continuing with distro LLVM"

@@ -58,7 +58,7 @@ runtime_build_base_image() {
   fi
 
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=false \
+    --pull=true \
     --platform "linux/${arch}" \
     -t "${tag}" \
     -f "${BASE_DOCKERFILE_PATH}" \
@@ -141,8 +141,10 @@ runtime_build_package_image() {
 
   append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}"
 
+  local _rb_pull="--pull=true"
+  runtime_pushes_intermediate_images || _rb_pull="--pull=false"
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=false \
+    "${_rb_pull}" \
     --platform "linux/${arch}" \
     --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
     -t "${tag}" \
@@ -173,8 +175,10 @@ _runtime_build_wrapper() {
 
   append_wrapper_build_args _wrapper_build_args_out "${arch}" "${_wrapper_parent_image_out}"
 
+  local _rb_pull="--pull=true"
+  runtime_pushes_intermediate_images || _rb_pull="--pull=false"
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
-    --pull=false \
+    "${_rb_pull}" \
     --platform "linux/${arch}" \
     -t "${_wrapper_tag_out}" \
     -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \

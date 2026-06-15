@@ -89,6 +89,9 @@ seed_opencv5_bindings() {
 setup_torch_deps() {
   cross_skip "torch environment assembly" && return 0
 
+  # Register /opt library paths so Python imports find FFmpeg etc.
+  export LD_LIBRARY_PATH="/usr/local/lib:/opt/opencv5/lib:/opt/gstreamer/lib:/opt/libcamera/lib:/opt/ffmpeg/lib:${LD_LIBRARY_PATH}"
+
   apt-get update
   # The locally-built OpenCV python wheel (opencv-contrib-python) in /opt/wheels is
   # a plain linux_x86_64 wheel (not manylinux): it bundles nothing and dynamically
@@ -127,7 +130,8 @@ setup_torch_deps() {
     libva2 libva-drm2 libva-x11-2 libvdpau1 \
     libaom3 libdav1d7 libsvtav1enc2 libx265-215 libvpx12 \
     libfdk-aac2 libmp3lame0 libopus0 libvorbis0a libvorbisenc2 \
-    libass9 libsndio7.0 libopenexr-3-1-30 libgraphene-1.0-0
+    libass9 libsndio7.0 libopenexr-3-1-30 libgraphene-1.0-0 \
+    libavformat62 libavcodec62 libswscale9 libswresample6 libavdevice62 libavfilter11
   rm -rf /var/lib/apt/lists/*
 }
 
@@ -187,7 +191,10 @@ setup_torch_app() {
     fi
   fi
 
-  export SKIP_TORCH_TEST_EXTRAS=true
+  : "${ONNX_PACKAGE:=onnxruntime}"
+  : "${PYTORCH_EXTRA:=none}"
+  : "${SKIP_TORCH_TEST_EXTRAS:=true}"
+  export ONNX_PACKAGE PYTORCH_EXTRA SKIP_TORCH_TEST_EXTRAS
   if [ "${host_arch}" != "x86_64" ]; then
     local constraint_file
     constraint_file="$(mktemp)"

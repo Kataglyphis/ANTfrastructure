@@ -3,7 +3,7 @@ set -euo pipefail
 
 : "${VENV:?VENV must be set}"
 : "${ONNX_PACKAGE:?ONNX_PACKAGE must be set}"
-: "${PYTORCH_EXTRA:?PYTORCH_EXTRA must be set}"
+: "${PYTORCH_EXTRA:=none}"
 
 APP_DIR="/opt/Kataglyphis-Orchestr-ANT-ion"
 APP_REF="v0.0.19"

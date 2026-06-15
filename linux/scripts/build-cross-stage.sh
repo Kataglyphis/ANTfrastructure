@@ -92,6 +92,9 @@ main() {
 
   cd "${REPO_ROOT}"
 
+  # Init pin arrays so cross_stage_run can access parent pin variables
+  cross_stage_init_pins
+
   # Validate stage exists
   local dockerfile arch is_per_arch
   dockerfile="$(cross_stage_dockerfile "${STAGE}")" || {

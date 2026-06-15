@@ -33,6 +33,7 @@ install_host_packages \
     pkg-config \
     curl \
     unzip \
+    cpio \
     gfortran \
     ninja-build
 

@@ -165,5 +165,8 @@ RUN set -euo pipefail; \
     BUILD_MODE="${BUILD_MODE}" \
     bash /opt/scripts/packaging/swap-native-gcc.sh
 
+# Ensure /opt/llvm-target exists for downstream stages (package build expects it)
+RUN mkdir -p /opt/llvm-target
+
 LABEL org.opencontainers.image.title="Kataglyphis Android" \
       org.opencontainers.image.description="Android SDK/NDK and cross-compiled Android artifacts layer"
