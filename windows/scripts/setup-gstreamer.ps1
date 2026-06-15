@@ -41,7 +41,7 @@ if ([string]::IsNullOrWhiteSpace($Flavor)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-    $Version = '1.28.1'
+    $Version = '1.28.3'
 }
 
 if ([string]::IsNullOrWhiteSpace($Arch)) {

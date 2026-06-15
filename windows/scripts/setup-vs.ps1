@@ -68,7 +68,27 @@ $installerLog = Join-Path $TempDir 'vs_installer.log'
 
 try {
     Write-Host 'Lade Visual Studio Build Tools Installer...'
-    Invoke-WebRequest -Uri 'https://aka.ms/vs/stable/vs_buildtools.exe' -OutFile $installer
+    $downloaded = $false
+    try {
+        Write-Host 'Versuch mit curl.exe (eigener DNS-Resolver)...'
+        & curl.exe -fsSL --retry 3 'https://aka.ms/vs/stable/vs_buildtools.exe' -o $installer
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $installer)) { $downloaded = $true; Write-Host 'curl erfolgreich.' }
+    } catch { Write-Host "curl fehlgeschlagen: $($_.Exception.Message)" }
+    if (-not $downloaded) {
+        try {
+            Write-Host 'Fallback BITS...'
+            Start-BitsTransfer -Source 'https://aka.ms/vs/stable/vs_buildtools.exe' -Destination $installer -ErrorAction Stop
+            Write-Host 'BITS erfolgreich.'; $downloaded = $true
+        } catch { Write-Host "BITS fehlgeschlagen: $($_.Exception.Message)" }
+    }
+    if (-not $downloaded) {
+        try {
+            Write-Host 'Fallback Invoke-WebRequest...'
+            Invoke-WebRequest -Uri 'https://aka.ms/vs/stable/vs_buildtools.exe' -OutFile $installer
+            $downloaded = $true
+        } catch { Write-Host "Invoke-WebRequest fehlgeschlagen: $($_.Exception.Message)" }
+    }
+    if (-not $downloaded) { throw 'VS Build Tools Download fehlgeschlagen.' }
 
     $args = @(
         '--quiet',

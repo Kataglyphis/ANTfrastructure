@@ -15,7 +15,7 @@ if (-not (Test-Path $sharedModulePath)) {
 
 Import-Module $sharedModulePath -Force
 
-$CMakeNightlyUrl = Resolve-ContainerImageValue -Value $CMakeNightlyUrl -EnvironmentVariable 'CMAKE_NIGHTLY_URL' -DefaultValue 'https://cmake.org/files/dev/cmake-4.3.20260425-gedeedd9-windows-x86_64.msi'
+$CMakeNightlyUrl = Resolve-ContainerImageValue -Value $CMakeNightlyUrl -EnvironmentVariable 'CMAKE_NIGHTLY_URL' -DefaultValue 'https://cmake.org/files/v4.3/cmake-4.3.3-windows-x86_64.msi'
 $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentVariable 'VULKAN_VERSION'
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
