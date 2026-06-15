@@ -368,10 +368,10 @@ The new end-goal path is split into two steps so the old QEMU lane keeps working
 
 1. Keep the existing multi-platform build for compatibility.
 2. Build target artifacts host-side with the cross builder.
-3. Assemble one runtime image per architecture from a clean per-arch `linux/Dockerfile.base` image plus the target-built payload from `cross-android-${target_arch}`.
+3. Assemble one runtime image per architecture from a clean per-arch `linux/Dockerfile.base` image plus the target-built payload from `cross-android-${TARGET_ARCH}`.
 4. Publish a single multi-architecture manifest.
 
-`linux/Dockerfile.package` is the shared runtime packaging layer for this path. It starts from a clean per-arch base image, copies only the selected target payload from the chosen artifact image, replays the final runtime dependency setup, and then becomes the `BASE_IMAGE` for the final `linux/Dockerfile.torch` wrapper. In `cross` mode that artifact image still runs on amd64 (`cross-android-${target_arch}`); in `native` mode it can be the target-platform sequential image directly.
+`linux/Dockerfile.package` is the shared runtime packaging layer for this path. It starts from a clean per-arch base image, copies only the selected target payload from the chosen artifact image, replays the final runtime dependency setup, and then becomes the `BASE_IMAGE` for the final `linux/Dockerfile.torch` wrapper. In `cross` mode that artifact image still runs on amd64 (`cross-android-${TARGET_ARCH}`); in `native` mode it can be the target-platform sequential image directly.
 
 For day-to-day work on this host, prefer the helper scripts below over the long manual `nerdctl` loops. The manual sequence remains useful as a low-level reference, but the helpers already encode the verified local-context handoff and push semantics.
 
@@ -391,7 +391,7 @@ bash linux/scripts/build-runtime-manifest.sh \
 
 Run with `--dry-run` to print the commands it would execute without building.
 
-The same package handoff now works for `linux/Dockerfile.torch` too. Build the heavy media/android payloads with the amd64-hosted cross compiler first, then feed `cross-android-${target_arch}` through `linux/Dockerfile.package`, build `linux/Dockerfile.torch` on `linux/${target_arch}` (which now includes the runtime scripts + entrypoint directly). `TORCH_APP_MODE=install` keeps that QEMU Torch stage focused on creating `/opt/venv`, and the dedicated `venv-export` target lets you export only `/opt/venv` for later `COPY` into a matching real target image.
+The same package handoff now works for `linux/Dockerfile.torch` too. Build the heavy media/android payloads with the amd64-hosted cross compiler first, then feed `cross-android-${TARGET_ARCH}` through `linux/Dockerfile.package`, build `linux/Dockerfile.torch` on `linux/${TARGET_ARCH}` (which now includes the runtime scripts + entrypoint directly). `TORCH_APP_MODE=install` keeps that QEMU Torch stage focused on creating `/opt/venv`, and the dedicated `venv-export` target lets you export only `/opt/venv` for later `COPY` into a matching real target image.
 
 The helper scripts now follow the same runtime path too:
 
@@ -399,7 +399,7 @@ The helper scripts now follow the same runtime path too:
 - `linux/scripts/build-runtime-artifacts.sh` builds that same `base -> package -> torch -> wrapper` chain and exports the final wrapper rootfs instead of creating a manifest.
 - Both helpers accept `--target-arches`, `TARGET_ARCHES`, or `TARGET_ARCH` for architecture selection.
 - Both helpers accept `ARTIFACT_BUILD_MODE=cross` or `ARTIFACT_BUILD_MODE=native` for selecting the package artifact source.
-- In `cross` mode, `ARTIFACT_IMAGE_PREFIX` is treated as a prefix like `ghcr.io/...:cross-android` and the helper fans out `-${target_arch}` automatically.
+- In `cross` mode, `ARTIFACT_IMAGE_PREFIX` is treated as a prefix like `ghcr.io/...:cross-android` and the helper fans out `-${TARGET_ARCH}` automatically.
 - In `native` mode, `ARTIFACT_IMAGE_PREFIX` is treated as the exact artifact image ref, for example `ghcr.io/...:android`.
 - In `cross` mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and carries those wheels forward through the existing `/opt/wheels` handoff when the build succeeds.
 - The helper still runs `linux/Dockerfile.torch` on the real target platform in both modes so `/opt/venv` is populated in the final runtime image.

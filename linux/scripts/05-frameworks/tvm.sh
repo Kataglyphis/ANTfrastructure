@@ -826,13 +826,25 @@ main() {
     # Help CMake/TVM find the SPIRV-Tools library reliably.
     spirv_tools_lib="$(detect_spirv_tools_library || true)"
 
-    if [ -z "$spirv_tools_lib" ]; then
-      die "Vulkan enabled but SPIRV-Tools library not found under /opt/vulkan. Install the Vulkan SDK so it provides libSPIRV-Tools."
-    fi
-    if ! is_under_opt_vulkan "$spirv_tools_lib"; then
-      die "Vulkan enabled but SPIRV-Tools library resolved outside /opt/vulkan ($spirv_tools_lib). Only /opt/vulkan is allowed."
+    # Check SPIRV-Tools arch matches target arch (loaded SDK libs may be x86_64 only).
+    if [ -n "$spirv_tools_lib" ] && [ -f "$spirv_tools_lib" ] && command -v readelf >/dev/null 2>&1; then
+      local _st_machine
+      _st_machine="$(readelf -h "$spirv_tools_lib" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
+      local _tvm_target_arch
+      _tvm_target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
+      local _st_expected
+      _st_expected="$(arch_elf_machine_grep_for "${_tvm_target_arch}" 2>/dev/null || true)"
+      if [ -n "${_st_expected}" ] && ! echo "${_st_machine}" | grep -qF "${_st_expected}"; then
+        log "SPIRV-Tools library ${spirv_tools_lib} has ELF machine '${_st_machine}' but target is ${_tvm_target_arch} ('${_st_expected}'). Building with USE_VULKAN=ON without SPIRV-Tools."
+        spirv_tools_lib=""
+      fi
     fi
 
+    if [ -z "$spirv_tools_lib" ]; then
+      log "Vulkan enabled without SPIRV-Tools library; TVM will use Vulkan without SPIRV assembly support."
+    elif ! is_under_opt_vulkan "$spirv_tools_lib"; then
+      die "Vulkan enabled but SPIRV-Tools library resolved outside /opt/vulkan ($spirv_tools_lib). Only /opt/vulkan is allowed."
+    fi
   fi
 
   append_tvm_cmake_args \

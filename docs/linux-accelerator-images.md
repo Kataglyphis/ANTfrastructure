@@ -4,16 +4,16 @@
 
 Optional NVIDIA GPU image chain (built by passing `--build-arg ENABLE_NVIDIA=true` to standard Dockerfiles):
 
-- `linux/Dockerfile.nvidia`: CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
+- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->10<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
 - `linux/Dockerfile.torch`: Torch/Python add-on on top of the Android NVIDIA layer.
-- `linux/Dockerfile`: Final entrypoint image (`:nvidia` tag).
+- `linux/Dockerfile.torch`: Final entrypoint image (`:nvidia` tag).
 
 ## NVIDIA GPU Build (Linux)
 
 > **Requirements:**
-> - Host driver >= 590.44 (for CUDA 13.1).
+> - Host driver >= 590.44 (for CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->).
 > - `nvidia-container-toolkit` installed and configured on the host.
 > - `--runtime=nvidia` or `--gpus all` passed to `docker run`.
 
@@ -23,10 +23,10 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.nvidia` | Installs CUDA 13.1, cuDNN 9, TensorRT 10, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
+| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->10<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the NVIDIA media image |
-| `linux/Dockerfile` | Conditionally tags the final entrypoint image |
+| `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
 | `linux/scripts/03-media/onnxruntime/build/30-build-native-nvidia.sh` | ORT build script with CUDA, TensorRT, cuDNN EPs |
 
 **Sequential build (nerdctl):**
@@ -81,7 +81,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 # Step 5: final nvidia image
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia,push=true' \
-  -f linux/Dockerfile \
+  -f linux/Dockerfile.torch \
   --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-nvidia \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia,mode=max,oci-mediatypes=true \
@@ -108,8 +108,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
   -f linux/Dockerfile.nvidia \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
-  --build-arg CUDA_VERSION=13.1.1 \
-  --build-arg CUDA_VERSION_MAJOR_MINOR=13-1 \
+  --build-arg CUDA_VERSION=13.3.0 \
+  --build-arg CUDA_VERSION_MAJOR_MINOR=13-3 \
   --build-arg CUDNN_VERSION=9 \
   --build-arg TENSORRT_VERSION=10 \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
@@ -121,7 +121,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 | Feature | Standard build | NVIDIA build |
 | --- | --- | --- |
-| CUDA Toolkit | Not installed | CUDA 13.1 |
+| CUDA Toolkit | Not installed | CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda --> |
 | cuDNN | Not installed | cuDNN 9 |
 | TensorRT | Not installed | TensorRT 10 |
 | NCCL | Not installed | Installed |
@@ -157,7 +157,7 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 | `linux/Dockerfile.amd` | Installs ROCm Toolkit, MIOpen, RCCL, rocBLAS, rocFFT |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with ROCm EP when `ENABLE_AMD=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the AMD media image |
-| `linux/Dockerfile` | Conditionally tags the final entrypoint image |
+| `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
 | `linux/scripts/03-media/onnxruntime/build/30-build-native-amd.sh` | ORT build script with ROCm EP |
 
 **Sequential build (nerdctl):**
@@ -212,7 +212,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 # Step 5: final amd image
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd \
   --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd,push=true' \
-  -f linux/Dockerfile \
+  -f linux/Dockerfile.torch \
   --build-arg ENABLE_AMD=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-amd,mode=max,oci-mediatypes=true \

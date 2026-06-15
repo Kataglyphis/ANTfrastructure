@@ -13,6 +13,86 @@ END_MARKER = "<!-- generated:version-snapshot:end -->"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# ---------------------------------------------------------------------------
+# Inline version marker system
+#
+# In doc files, wrap a version number with paired markers:
+#   <!-- generated:cuda -->13.3<!-- /generated:cuda -->
+#
+# The script replaces the content between markers with the canonical value
+# from versions.env, so version references never go stale.
+# ---------------------------------------------------------------------------
+
+# marker_name -> (versions.env key, transform)
+# transform: 'raw', 'no_v' (strip leading v), 'major', 'major_minor'
+INLINE_MARKER_MAP: dict[str, tuple[str, str]] = {
+    "cuda": ("CUDA_VERSION", "major_minor"),
+    "cuda_full": ("CUDA_VERSION", "raw"),
+    "cuda_major_minor": ("CUDA_VERSION_MAJOR_MINOR", "raw"),
+    "gstreamer": ("GSTREAMER_VERSION", "no_v"),
+    "gstreamer_full": ("GSTREAMER_VERSION", "raw"),
+    "llvm": ("LLVM_RELEASE", "raw"),
+    "gcc": ("GCC_VERSION", "raw"),
+    "gcc_major": ("GCC_VERSION", "major"),
+    "cmake": ("CMAKE_VERSION", "raw"),
+    "vulkan": ("VULKAN_VERSION", "raw"),
+    "python": ("PYTHON_VERSION", "raw"),
+    "onnx": ("ONNXRUNTIME_VERSION", "no_v"),
+    "onnx_full": ("ONNXRUNTIME_VERSION", "raw"),
+    "litert": ("LITERT_VERSION", "no_v"),
+    "opencv": ("OPENCV_VERSION", "raw"),
+    "node": ("NODE_VERSION", "raw"),
+    "uv": ("UV_VERSION", "raw"),
+    "android_sdk": ("ANDROID_SDK_VERSION", "raw"),
+    "android_ndk": ("ANDROID_NDK_VERSION", "raw"),
+    "android_cmake": ("ANDROID_CMAKE_VERSION", "raw"),
+    "android_build_tools": ("ANDROID_BUILD_TOOLS", "raw"),
+    "android_compile_sdk": ("ANDROID_COMPILE_SDK", "raw"),
+    "android_api_level": ("ANDROID_API_LEVEL", "raw"),
+    "cudnn": ("CUDNN_VERSION", "raw"),
+    "tensorrt": ("TENSORRT_VERSION", "raw"),
+}
+
+INLINE_MARKER_RE = re.compile(
+    r"<!-- generated:(\w+) -->(.*?)<!-- /generated:\1 -->", re.DOTALL
+)
+
+
+def transform_value(value: str, transform: str) -> str:
+    if transform == "raw":
+        return value
+    if transform == "no_v":
+        return value.lstrip("v")
+    if transform == "major":
+        return value.split(".")[0]
+    if transform == "major_minor":
+        parts = value.split(".")
+        return ".".join(parts[:2]) if len(parts) >= 2 else value
+    return value
+
+
+def resolve_inline_marker_value(
+    versions: dict[str, str], marker_name: str
+) -> str | None:
+    if marker_name not in INLINE_MARKER_MAP:
+        return None
+    env_var, transform = INLINE_MARKER_MAP[marker_name]
+    raw = versions.get(env_var)
+    if raw is None:
+        return None
+    return transform_value(raw, transform)
+
+
+def inline_marker_replacement(match: re.Match, versions: dict[str, str]) -> str:
+    name = match.group(1)
+    resolved = resolve_inline_marker_value(versions, name)
+    if resolved is None:
+        return match.group(0)
+    return f"<!-- generated:{name} -->{resolved}<!-- /generated:{name} -->"
+
+
+# ---------------------------------------------------------------------------
+
 
 def read_repo_file(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
@@ -125,6 +205,9 @@ def render_snapshot() -> str:
     )
 
 
+# -- Snapshot block helpers -------------------------------------------------
+
+
 def update_marked_block(file_path: Path, replacement: str) -> bool:
     original = file_path.read_text(encoding="utf-8")
     pattern = re.compile(re.escape(START_MARKER) + r".*?" + re.escape(END_MARKER), re.DOTALL)
@@ -144,6 +227,70 @@ def is_marked_block_current(file_path: Path, replacement: str) -> bool:
         raise ValueError(f"Markers not found in {file_path}")
     updated = pattern.sub(replacement, original, count=1)
     return updated == original
+
+
+# -- Inline marker helpers --------------------------------------------------
+
+
+def inline_marker_target_files() -> list[Path]:
+    return sorted(
+        path
+        for path in (REPO_ROOT / "docs").rglob("*.md")
+        if "_build" not in path.parts and ".venv" not in path.parts
+    ) + [REPO_ROOT / "README.md", REPO_ROOT / "AGENTS.md"]
+
+
+def resolve_all_inline_markers(text: str, versions: dict[str, str]) -> str:
+    def _replacer(match: re.Match) -> str:
+        return inline_marker_replacement(match, versions)
+    return INLINE_MARKER_RE.sub(_replacer, text)
+
+
+def update_inline_markers(file_path: Path, versions: dict[str, str]) -> bool:
+    original = file_path.read_text(encoding="utf-8")
+    updated = resolve_all_inline_markers(original, versions)
+    if updated == original:
+        return False
+    file_path.write_text(updated, encoding="utf-8")
+    return True
+
+
+def inline_markers_are_current(file_path: Path, versions: dict[str, str]) -> bool:
+    original = file_path.read_text(encoding="utf-8")
+    updated = resolve_all_inline_markers(original, versions)
+    return updated == original
+
+
+def check_inline_markers(versions: dict[str, str]) -> int:
+    stale = []
+    for path in inline_marker_target_files():
+        if not inline_markers_are_current(path, versions):
+            stale.append(str(path.relative_to(REPO_ROOT)))
+    if stale:
+        print("Inline version markers are stale in:", file=sys.stderr)
+        for p in stale:
+            print(f"- {p}", file=sys.stderr)
+        print("Run: python3 docs/scripts/sync_versions.py --write", file=sys.stderr)
+        return 1
+    print("Inline version markers are up to date.")
+    return 0
+
+
+def write_inline_markers(versions: dict[str, str]) -> int:
+    changed = []
+    for path in inline_marker_target_files():
+        if update_inline_markers(path, versions):
+            changed.append(str(path.relative_to(REPO_ROOT)))
+    if changed:
+        print("Updated inline version markers in:")
+        for p in changed:
+            print(f"- {p}")
+    else:
+        print("Inline version markers already up to date.")
+    return 0
+
+
+# -- Combined flow ----------------------------------------------------------
 
 
 def parse_args() -> argparse.Namespace:
@@ -202,10 +349,17 @@ def main() -> int:
         print(str(error), file=sys.stderr)
         return 2
 
-    replacement = render_snapshot()
+    versions = parse_versions_env()
+    snapshot = render_snapshot()
+
     if mode == "check":
-        return check_snapshot(replacement)
-    return write_snapshot(replacement)
+        result = check_snapshot(snapshot)
+        result |= check_inline_markers(versions)
+        return result
+
+    result = write_snapshot(snapshot)
+    result |= write_inline_markers(versions)
+    return result
 
 
 if __name__ == "__main__":

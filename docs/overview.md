@@ -19,10 +19,9 @@ Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://gith
 
 ## Images in This Repository
 
-- 📦 `linux/Dockerfile.torch`: Final Linux wrapper image with runtime scripts and entrypoint (includes Torch/Python layer).
-- 🔥 `linux/Dockerfile.torch`: Torch/Python layer + runtime scripts + entrypoint on top of the staged Android or packaged runtime image.
+- 🔥 `linux/Dockerfile.torch`: Final Linux wrapper image — Torch/Python layer + runtime scripts + entrypoint.
 - 🌐 `linux/webserver/Dockerfile`: Minimal nginx static webserver (config at `linux/webserver/nginx.conf`).
-- 🪟 `windows/Dockerfile`: Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
+- 🪟 `windows/Dockerfile.base`, `windows/Dockerfile.ai`, `windows/Dockerfile`: Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
 
 ## Linux Image Chain
 
@@ -60,19 +59,21 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 | Category | Feature | Status |
 | --- | --- | :---: |
-| Packaging agnostic | Binary-only deployment | ✔️ |
-| Packaging agnostic | Lore ipsum | ✔️ |
-| Lore ipsum agnostic | LORE IPSUM | ✔️ |
-| Lore ipsum agnostic | Advanced unit testing | 🔶 |
-| Lore ipsum agnostic | Advanced performance testing | 🔶 |
-| Lore ipsum agnostic | Advanced fuzz testing | 🔶 |
+| Cross-build | Multi-arch cross toolchain (amd64, arm64, riscv64) | ✔️ |
+| Cross-build | Digest-pinned stage handoff | ✔️ |
+| Cross-build | Runtime packaging via QEMU/binfmt | ✔️ |
+| GPU acceleration | NVIDIA CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN, TensorRT | ✔️ |
+| GPU acceleration | AMD ROCm | ✔️ |
+| GPU acceleration | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan --> | ✔️ |
+| Media | ONNX Runtime <!-- generated:onnx -->1.26.0<!-- /generated:onnx --> | ✔️ |
+| Media | GStreamer <!-- generated:gstreamer -->1.29.1<!-- /generated:gstreamer -->, OpenCV <!-- generated:opencv -->5.x<!-- /generated:opencv -->, LiteRT | ✔️ |
+| Media | libcamera, FFmpeg | ✔️ |
+| Compiler | GCC <!-- generated:gcc -->16.1.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->22.1.6<!-- /generated:llvm --> | ✔️ |
+| Language runtime | Python <!-- generated:python -->3.14.5<!-- /generated:python -->, Node.js <!-- generated:node -->24.16.0<!-- /generated:node --> | ✔️ |
+| Android | SDK <!-- generated:android_sdk -->14742923<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
+| Windows | MSVC Build Tools, CUDA 12.9, GStreamer 1.28.x | ✔️ |
+| Windows | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.26.0<!-- /generated:onnx --> | ✔️ |
 
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started
 
-## Dependencies
 
-This enumeration also includes submodules.
-
-## Useful Tools
-
-Handy extras that pair well with the images.

@@ -38,34 +38,9 @@ The full `:latest-cross` pipeline:
    - `base` → `package` → `torch`/`wrapper` → `manifest`
 
 The cross-lane stage chain is defined declaratively in `linux/scripts/01-core/stage-defs.sh`
-as `CROSS_STAGE_ORDER`.  Each stage maps to its Dockerfile, parent, tag function, and
-per-arch flag.  Both `build-cross-chain.sh` and `--verify-chain` consume this graph.
-
-Stage build/pin functions live in `linux/scripts/01-core/cross-stage-build.sh` (sourced
-via `artifact-common.sh`), providing `cross_stage_run()`, `cross_stage_build_and_push()`,
-`cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `resolve_pin()`, and
-`cross_stage_assemble_runtime_helper_args()`. Both `cross_stage_build_and_push()` and
-`cross_stage_build_local()` delegate to a shared `_cross_stage_build_impl()`.
-These are consumed by all three cross-lane entry points (orchestrator, single-stage builder,
-and standalone compiler).
-
-`cross_stage_run()` is the shared entry point for all stage builds. It accepts a `push`
-flag (3rd argument, default `1`): `push=1` for digest-pinned registry pushes, `push=0`
-for local-only builds.  This eliminates duplicated build/pin logic across the orchestrator,
-`build-cross-stage.sh`, and `build-cross-compiler.sh`.
-
-Runtime helpers (`build-runtime-artifacts.sh` and `build-runtime-manifest.sh`) share
-initialization via `init_runtime_flow_defaults()` in `runtime-flow-common.sh` (sourced
-after `artifact-common.sh`). Post-parse setup is handled by `runtime_post_parse_setup()`
-in `cli-parsers.sh`.
-
-Architecture selection uses `resolve_arch_list()` (in `artifact-common.sh`), which normalizes
-`TARGET_ARCHES` from canonical and alias variables (`TARGET_ARCH`, `ARCHITECTURES`).
-
-Dry-run mode is checked via `is_dry_run()` (in `build-helpers.sh`). Boolean truthiness
-checks across scripts use the shared `_bool_truthy()` helper rather than repeating raw
-case statements. `--dry-run` and `--parallel-archs` are handled by both shared CLI
-parsers (`_parse_global_flags()`) so scripts don't duplicate them in local parsers.
+as `CROSS_STAGE_ORDER`. Stage orchestration (build, push, pin) is handled by shared functions
+in `linux/scripts/01-core/cross-stage-build.sh`.  See `docs/linux-cross-builds.md` for the
+full stage graph API and digest-pinning details.
 
 Prefer the orchestrator for full chains:
 ```bash
@@ -85,12 +60,9 @@ bash linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
 
 ## Chain Verification
 
-Before a full build, verify cross-chain freshness without building anything:
-
 ```bash
 # Standalone — fastest way to check staleness:
 bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
-bash linux/scripts/verify-cross-chain.sh --target-arches arm64
 
 # Via the orchestrator:
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --verify-chain
@@ -99,9 +71,7 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --ve
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --describe-chain
 ```
 
-The verification logic is shared via `linux/scripts/01-core/chain-verify.sh`,
-sourced by both entry points.  These resolve registry digests for every stage
-transition and report if downstream images may be stale relative to their parent.
+See `docs/linux-cross-builds.md` for the full stale-check reference and `--describe-chain` output.
 
 ## Rootless Build Networking (host tuning)
 
@@ -178,10 +148,16 @@ nerdctl build --platform linux/amd64 \
   .
 ```
 
-The runtime helpers use the same local-only handoff internally, so   `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag.
+The runtime helpers use the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag.
 - `build-runtime-manifest.sh --manifest-only` (alias `--repair`) creates/pushes the manifest only,
   useful for repairing a manifest from existing per-arch wrappers without rebuilding images.
-They still run the Torch stage on the real target platform so the final image includes `/opt/venv`. In cross mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and the final Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels instead of re-resolving the same git sources under QEMU. If a reused cross artifact has an empty `/opt/wheels`, that Torch step now keeps the packages that `uv sync` already resolved instead of uninstalling them and trying to install a literal `/opt/wheels/*.whl` glob. The package stage must keep `/usr/bin/clang` pointed at the copied target-native `/usr/local/llvm-target/bin/clang` on all architectures; do not let it fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`. On all architectures, `/usr/bin/cc` points to the source-built `/opt/gcc-16.1.0/bin/gcc`. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) during the toolchain stage so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary; `Dockerfile.android` swaps it in at the end of the Android stage. On this host, prefer `linux/scripts/build-runtime-artifacts.sh` and `linux/scripts/build-runtime-manifest.sh` over ad hoc `nerdctl build` loops.
+They still run the Torch stage on the real target platform so the final image includes `/opt/venv`.
+
+In cross mode, the media artifact lane makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`. The final Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels instead of re-resolving the same git sources under QEMU. If a reused cross artifact has an empty `/opt/wheels`, that Torch step keeps the packages that `uv sync` already resolved instead of trying to install a literal `/opt/wheels/*.whl` glob.
+
+The package stage must keep `/usr/bin/clang` pointed at the copied target-native `/usr/local/llvm-target/bin/clang` on all architectures; do not let it fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`. On all architectures, `/usr/bin/cc` points to the source-built `/opt/gcc-16.1.0/bin/gcc`. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) during the toolchain stage so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary; `Dockerfile.android` swaps it in at the end of the Android stage.
+
+On this host, prefer `linux/scripts/build-runtime-artifacts.sh` and `linux/scripts/build-runtime-manifest.sh` over ad hoc `nerdctl build` loops.
 
 When you rebuild a cross SDK artifact from an older `cross-compiler-amd64` base, `linux/Dockerfile.sdk` now forwards the checked-in `LLVM_RELEASE` into `target-clang` so `/opt/llvm-target` is refreshed to the repository pin instead of inheriting a stale base-image environment value.
 
@@ -210,177 +186,17 @@ Not supported / not needed:
 ### RISC-V64 example
 
 ```bash
-nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.28.1 --no-cache \
+nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.29.1 --no-cache \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile.media \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
   .
 ```
 
-### Setup essentials
-
-Always build with `--platform`:
+`linux/Dockerfile.torch` also exposes a `venv-export` stage for cases where you only want the built `/opt/venv` tree:
 
 ```bash
-docker buildx imagetools create --tag ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest_multiarch ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd64
-```
-
-```bash
-cat > /tmp/buildkitd.toml <<'TOML'
-# limit BuildKit worker parallelism to 2 (set to 1 on very small machines)
-[worker.oci]
-  max-parallelism = 2
-TOML
-```
-
-```bash
-LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-multiarch"
-mkdir -p "${LOG_DIR}"
-
-nerdctl login ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -u Kataglyphis
-
-sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
-
-nerdctl build \
-  --platform=linux/amd64,linux/arm64,linux/riscv64 \
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-  --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
-  --build-arg BUILD_BY="local" \
-  -f linux/Dockerfile.torch . 2>&1 | tee "${LOG_DIR}/latest.log"
-```
-
-### Build & push (docker buildx)
-
-```bash
-docker buildx create --name wsl-limited --use --driver docker-container --driver-opt memory=12g --driver-opt cpu-period=100000 --driver-opt cpu-quota=800000
-```
-
-```bash
---builder wsl-limited
-```
-
-```bash
-LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-buildx"
-mkdir -p "${LOG_DIR}"
-
-sudo docker buildx build \
-  -f linux/Dockerfile.torch \
-  --platform linux/amd64,linux/arm64,linux/riscv64 \
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:$(git rev-parse --short HEAD) \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-  --build-arg VCS_REF="$(git rev-parse --short HEAD)" \
-  --build-arg BUILD_BY="local" \
-  --push \
-  . 2>&1 | tee "${LOG_DIR}/buildx-latest.log"
-```
-
-### Reset builder
-
-```bash
-docker buildx ls
-docker buildx rm mybuilder 2>/dev/null || true
-docker buildx create --name mybuilder --driver docker-container --buildkitd-config /tmp/buildkitd.toml --use --
-```
-
-### Sequential build (nerdctl) — QEMU/binfmt lane (legacy reference)
-
-The original QEMU multi-arch lane used `--platform linux/amd64,linux/arm64,linux/riscv64` in a single
-`nerdctl build` and produced `:latest`.  It is preserved as a compatibility lane.
-
-The **current cross lane** builds each stage separately on `linux/amd64` and produces
-per-arch intermediate images (`:cross-sdk-<arch>`, `:cross-media-<arch>`,
-`:cross-android-<arch>`). The runtime lane then assembles target-native per-arch images
-(`:latest-cross-<arch>`) into the `:latest-cross` multi-arch manifest.
-
-**Prefer the cross-lane orchestrator for all new development:**
-```bash
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
-```
-
-The stage graph is defined declaratively in `linux/scripts/01-core/stage-defs.sh`.
-`cross_stage_init_pins()` declares all digest-pin variables from the graph.
-`cross_stage_validate_graph()` checks internal consistency before every build.
-`cross_stage_ensure_parent_available()` handles the cross→runtime image handoff.
-
-The manual commands below are preserved for reference only.
-
-If apt stalls on the default Ubuntu archive mirror, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to the Ubuntu-based build commands in this sequence.
-
-Only the privileged `binfmt` install step below needs `sudo` in this sequential Linux flow.
-
-```bash
-LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-sequential"
-mkdir -p "${LOG_DIR}"
-
-sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base,push=true' \
-  -f linux/Dockerfile.base \
-  --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-base,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-base \
-  . 2>&1 | tee "${LOG_DIR}/base.log"
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler,push=true' \
-  -f linux/Dockerfile.toolchain \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
-  --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-compiler \
-  . 2>&1 | tee "${LOG_DIR}/compiler.log"
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk,push=true' \
-  -f linux/Dockerfile.sdk \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:compiler \
-  --build-arg USE_FAST_UBUNTU_MIRROR=true \
-  --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-sdk,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-sdk \
-  . 2>&1 | tee "${LOG_DIR}/sdk.log"
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media,push=true' \
-  -f linux/Dockerfile.media \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-media \
-  . 2>&1 | tee "${LOG_DIR}/media.log"
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android,push=true' \
-  -f linux/Dockerfile.android \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-android \
-  . 2>&1 | tee "${LOG_DIR}/android.log"
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch,push=true' \
-  -f linux/Dockerfile.torch \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch \
-  . 2>&1 | tee "${LOG_DIR}/torch.log"
-nerdctl build --platform linux/amd64,linux/arm64,linux/riscv64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest,push=true' \
-  -f linux/Dockerfile.torch \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-latest,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-latest \
-  . 2>&1 | tee "${LOG_DIR}/latest.log"
-```
-
-`linux/Dockerfile.torch` now also exposes a `venv-export` stage for cases where you only want the built `/opt/venv` tree. Build with `--build-arg TORCH_APP_MODE=install` to skip the import smoke tests during image creation, then export just `/opt/venv` with:
-
-```bash
-docker buildx build \
-  --platform linux/arm64 \
+nerdctl build --platform linux/arm64 \
   -f linux/Dockerfile.torch \
   --target venv-export \
   --output type=local,dest=out/torch-venv/arm64 \
@@ -389,13 +205,4 @@ docker buildx build \
   .
 ```
 
-The cross/QEMU variant of that flow is documented in `docs/linux-cross-builds.md` and uses `linux/Dockerfile.package` to copy the cross-built payloads into a real target-platform runtime image before the final Torch `/opt/venv` assembly step runs.
-
-For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` and hands each stage to the next by its registry-resolvable manifest digest (`<repo>@sha256:...`) rather than a mutable tag, so a downstream stage can never silently consume a stale locally-cached base image. The manual `nerdctl` cross loops in `docs/linux-cross-builds.md` carry `--pull=true` as a weaker fallback defense.
-
-For single-stage rebuilds, use `linux/scripts/build-cross-stage.sh`:
-```bash
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
-```
-
-See `AGENTS.md` → "Cross Chain Stage Handoff" for the do-not-regress rule.
+For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` with digest-pinned stage handoff. See `docs/linux-cross-builds.md` for the full pipeline and `AGENTS.md` for the stage handoff rules.

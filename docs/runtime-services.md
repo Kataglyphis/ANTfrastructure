@@ -55,7 +55,7 @@ sudo ufw allow 8443/tcp
 The `beschleuniger` container starts the signalling server automatically on port 8443:
 
 ```bash
-docker-compose up -d beschleuniger
+nerdctl compose -f linux/docker-compose.yml up -d beschleuniger
 ```
 
 ### Streaming from KataglyphisCppInference

@@ -80,7 +80,7 @@ Common development targets:
    docker buildx build -f linux/Dockerfile.sdk -t local/kataglyphis:sdk .
    docker buildx build -f linux/Dockerfile.media -t local/kataglyphis:media .
    docker buildx build -f linux/Dockerfile.android -t local/kataglyphis:android .
-   docker buildx build -f linux/Dockerfile -t local/kataglyphis:latest .
+   docker buildx build -f linux/Dockerfile.torch -t local/kataglyphis:latest .
 
 
 .. toctree::
