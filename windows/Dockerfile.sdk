@@ -1,0 +1,22 @@
+# escape=`
+# Cached Windows AI layer — NVIDIA GPU tools only.
+# Builds on top of the toolchain base and provides CUDA + cuDNN.
+# Downstream layers (media, final) consume these for GPU-accelerated builds.
+
+ARG BASE_IMAGE=local/kataglyphis:windows-base
+FROM ${BASE_IMAGE}
+
+ARG CUDA_VERSION=13.3.0
+ARG CUDA_VERSION_MAJOR_MINOR=13.3
+ARG CUDNN_VERSION=9.23.2.1
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+COPY windows\scripts C:\temp\scripts
+
+ENV CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
+ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
+
+RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
+
+ENV PATH=$CUDA_ROOT\bin;$CUDNN_ROOT\bin;$PATH

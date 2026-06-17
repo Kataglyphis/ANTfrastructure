@@ -2,11 +2,13 @@
 
 > **Important (Antivirus):** On Windows, **exclude your development folder from antivirus scanning**. Real-time protection can lock files during builds (especially during CMake FetchContent and cargo builds), causing intermittent failures with errors like "Failed to remove directory" or "(os error 32)". Add your project directory to your antivirus exclusion list.
 
-The Windows container build uses [Stevedore](https://github.com/slonopotamus/stevedore) (a Docker distribution for Windows Containers) and is split into three staged images:
+The Windows container build uses [Stevedore](https://github.com/slonopotamus/stevedore) (a Docker distribution for Windows Containers) and is split into five staged images:
 
-- `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.3.3, GStreamer 1.28.3, VS Build Tools 18, LLVM/Clang, Rust, Flutter, WiX 4).
-- `windows/Dockerfile.ai` layers CUDA 12.9, cuDNN 9.10, ONNX Runtime 1.26.0, and OpenCV 4.13.0 on top of that base image.
-- `windows/Dockerfile` produces the final developer image from the cached AI image (VsDevCmd entrypoint).
+- `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.3.3, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
+- `windows/Dockerfile.sdk` layers CUDA 12.9 + cuDNN 9.10 GPU SDK.
+- `windows/Dockerfile.toolchain` builds CPython 3.14 from source (matching the canonical versions.env).
+- `windows/Dockerfile.media` layers GStreamer 1.29.1 (from source via Meson + clang-cl, with optional CUDA support), OpenCV 5.x (source build via CMake+Ninja+clang-cl), ONNX Runtime 1.26.0 (source build via CMake+clang-cl), and ONNX GenAI 0.13.2 (source build via CMake+clang-cl).
+- `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).
 
 ## Prerequisites
 
@@ -29,18 +31,33 @@ Stevedore bundles containerd, nerdctl, and Docker Engine for Windows Containers.
 Run from the repository root in order:
 
 ```powershell
+# Stage 1: toolchain base (VS, Scoop, LLVM, Rust)
 nerdctl build --no-cache --progress=plain `
   -t local/kataglyphis:windows-base `
   -f windows/Dockerfile.base .
 
+# Stage 2: GPU SDK (CUDA + cuDNN)
 nerdctl build --no-cache --progress=plain `
-  -t local/kataglyphis:windows-ai `
+  -t local/kataglyphis:windows-sdk `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
-  -f windows/Dockerfile.ai .
+  -f windows/Dockerfile.sdk .
 
+# Stage 3: Python toolchain (CPython 3.14 from source)
+nerdctl build --no-cache --progress=plain `
+  -t local/kataglyphis:windows-toolchain `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-sdk `
+  -f windows/Dockerfile.toolchain .
+
+# Stage 4: media libs (GStreamer, OpenCV, ONNX, GenAI)
+nerdctl build --no-cache --progress=plain `
+  -t local/kataglyphis:windows-media `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
+  -f windows/Dockerfile.media .
+
+# Stage 5: final developer image
 nerdctl build --no-cache --progress=plain `
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-ai `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-media `
   -f windows/Dockerfile .
 ```
 

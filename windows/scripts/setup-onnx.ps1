@@ -21,8 +21,15 @@ Import-Module $onnxModulePath -Force
 Import-Module $containerModulePath -Force
 
 $OnnxRoot = Resolve-ContainerImageValue -Value $OnnxRoot -EnvironmentVariable 'ONNX_ROOT' -DefaultValue 'C:\onnx'
-$OnnxVersion = Resolve-ContainerImageValue -Value $OnnxVersion -EnvironmentVariable 'ONNX_VERSION'
-$OnnxGenAiVersion = Resolve-ContainerImageValue -Value $OnnxGenAiVersion -EnvironmentVariable 'ONNX_GENAI_VERSION'
+# Support both ONNX_VERSION (canonical versions.env) and the shorter aliases
+$OnnxVersion = Resolve-ContainerImageValue -Value $OnnxVersion -EnvironmentVariable 'ONNXRUNTIME_VERSION'
+if ([string]::IsNullOrWhiteSpace($OnnxVersion)) {
+    $OnnxVersion = Resolve-ContainerImageValue -Value '' -EnvironmentVariable 'ONNX_VERSION'
+}
+$OnnxGenAiVersion = Resolve-ContainerImageValue -Value $OnnxGenAiVersion -EnvironmentVariable 'ONNXRUNTIME_GENAI_VERSION'
+if ([string]::IsNullOrWhiteSpace($OnnxGenAiVersion)) {
+    $OnnxGenAiVersion = Resolve-ContainerImageValue -Value '' -EnvironmentVariable 'ONNX_GENAI_VERSION'
+}
 $OnnxDirectMlVersion = Resolve-ContainerImageValue -Value $OnnxDirectMlVersion -EnvironmentVariable 'ONNX_DIRECTML_VERSION'
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir

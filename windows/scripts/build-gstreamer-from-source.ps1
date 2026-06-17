@@ -289,7 +289,22 @@ int _isatty(int);
     # (LLVM 22 mmintrin.h bug: cairo Win32 backend disabled via -Dcairo:win32=disabled)
     # (Cairo Win32 stubs handled in retry loop after meson downloads cairo)
 
-    # ---- 5c. find compiler-rt for lld-link (__udivti3, etc.) ----
+    # ---- 5c. detect CUDA (available from Dockerfile.ai layer) ----
+    $cudaDetected = $false
+    $cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+    if ($cudaRoot -and (Test-Path $cudaRoot)) {
+        $cudaDetected = $true
+        log "CUDA detected at: $cudaRoot"
+        $env:CUDA_PATH = $cudaRoot
+        $env:CUDA_HOME = $cudaRoot
+        # Add CUDA bins to PATH for nvcc detection by Meson
+        $cudaBin = Join-Path $cudaRoot 'bin'
+        if (Test-Path $cudaBin) { $env:PATH = "$cudaBin;$env:PATH" }
+    } else {
+        log 'CUDA not detected — nvcodec/cuda plugins will be auto-detected by Meson'
+    }
+
+    # ---- 5d. find compiler-rt for lld-link (__udivti3, etc.) ----
     $compilerRtLib = @(Get-ChildItem -Path "$env:USERPROFILE\scoop\apps\llvm\current\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue | Select-Object -First 1)
     $rtFullPath = ''
     if ($compilerRtLib) {
@@ -312,8 +327,17 @@ int _isatty(int);
         '-Dc_args=-IC:\temp\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types',
         '-Dcairo:win32=disabled',
         '-Dopus:intrinsics=disabled',
+        # nvcodec disabled: D3D11 interop code in gstnvdecoder.cpp uses
+        # GST_CAPS_FEATURE_MEMORY_D3D11_MEMORY which is undeclared with
+        # clang-cl (gst-d3d11 library's headers aren't found). CUDA gst-lib
+        # is auto-detected separately and works fine.
         '-Dgst-plugins-bad:nvcodec=disabled',
+        # wasapi disabled: IID_* COM GUID symbols not resolved by lld-link
+        # (uuid.lib doesn't provide them in clang-cl's linking model)
         '-Dgst-plugins-bad:wasapi=disabled',
+        # dots-viewer disabled: cargo crates.io index fetch fails in
+        # containers behind proxies
+        '-Dgst-devtools:dots-viewer=disabled',
         # /FORCE:MULTIPLE for libffi dups; compiler-rt for lld-link (__udivti3 etc.)
         "-Dc_link_args=['/FORCE:MULTIPLE','$rtFullPath']"
     ) + $MesonSetupArgs

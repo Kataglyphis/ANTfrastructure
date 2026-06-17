@@ -20,12 +20,14 @@ See `docs/linux-build-basics.md` for the image hierarchy diagram, `docs/overview
 | `Dockerfile.nvidia` | `:cross-sdk-<arch>` | (optional GPU layer) |
 | `Dockerfile.amd` | `:cross-sdk-<arch>` | (optional GPU layer) |
 | `windows/Dockerfile.base` | `mcr.microsoft.com/windows/servercore:ltsc2025` | `local/kataglyphis:windows-base` |
-| `windows/Dockerfile.ai` | `windows-base` | `local/kataglyphis:windows-ai` |
-| `windows/Dockerfile` | `windows-ai` | `ghcr.io/.../kataglyphis_beschleuniger:winamd64` |
+| `windows/Dockerfile.sdk` | `windows-base` | `local/kataglyphis:windows-sdk` |
+| `windows/Dockerfile.toolchain` | `windows-sdk` | `local/kataglyphis:windows-toolchain` |
+| `windows/Dockerfile.media` | `windows-toolchain` | `local/kataglyphis:windows-media` |
+| `windows/Dockerfile` | `windows-media` | `ghcr.io/.../kataglyphis_beschleuniger:winamd64` |
 
 ### Windows-Specific Naming
 
-The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`, `local/kataglyphis:windows-ai`) and publishes the final image as `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`. See `docs/windows-builds.md` § Build Commands for the full build sequence.
+The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`, `local/kataglyphis:windows-sdk`, `local/kataglyphis:windows-toolchain`, `local/kataglyphis:windows-media`) and publishes the final image as `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`. See `docs/windows-builds.md` § Build Commands for the full build sequence.
 
 ---
 
@@ -67,30 +69,69 @@ sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 ### Windows Container Build (see `docs/windows-builds.md`)
 
+All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Stevedore's `docker.exe` for builds (nerdctl has DNS issues in BuildKit on Windows).
+
 ```powershell
 # Install Stevedore (prerequisite for Windows Containers via nerdctl)
 winget install stevedore   # or: choco install stevedore
 
-# Use docker.exe (bundled with Stevedore) for builds — nerdctl build has
-# a known DNS limitation on Windows (BuildKit containers can't resolve
-# hostnames).  nerdctl run works fine for running containers.
-
-# Stage 1: Windows toolchain base (VS Build Tools, GStreamer, Scoop tools)
+# Stage 1: Windows toolchain base (VS Build Tools 18, Scoop tools, LLVM 22)
 docker build --platform windows/amd64 --no-cache `
   -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
 
-# Stage 2: AI layer (CUDA, ONNX Runtime, OpenCV)
+# Stage 2: GPU SDK layer (CUDA 12.9 Toolkit + cuDNN 9.10, verified post-install)
 docker build --platform windows/amd64 --no-cache `
-  -t local/kataglyphis:windows-ai `
+  -t local/kataglyphis:windows-sdk `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
-  -f windows/Dockerfile.ai .
+  -f windows/Dockerfile.sdk .
 
-# Stage 3: Final developer image (VsDevCmd entrypoint)
+# Stage 3: CPython 3.14 built from source with ClangCL toolset (not MSVC v143)
+docker build --platform windows/amd64 --no-cache `
+  -t local/kataglyphis:windows-toolchain `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-sdk `
+  -f windows/Dockerfile.toolchain .
+
+# Stage 4: Media layer — all source-built with Ninja+clang-cl:
+#   - ONNX Runtime 1.26 (CPU-only; DirectML disabled due to VS 2026 STL hardening
+#     + clang-cl incomplete-type incompatibility in DirectML helper headers)
+#   - ONNX GenAI 0.13.1 (via NuGet package)
+#   - OpenCV 5.x (with global AVX2/SSSE3/SIMD flags for clang-cl)
+#   - GStreamer 1.29.1 (Meson+clang-cl, CUDA auto-detected)
+docker build --platform windows/amd64 --no-cache `
+  -t local/kataglyphis:windows-media `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
+  -f windows/Dockerfile.media .
+
+# Stage 5: Final developer image (VsDevCmd entrypoint)
 docker build --platform windows/amd64 --no-cache `
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-ai `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-media `
   -f windows/Dockerfile .
 ```
+
+### Windows Build Notes
+
+| Component | Generator | Compiler | Notes |
+|-----------|-----------|----------|-------|
+| CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset |
+| ONNX Runtime 1.26 | Ninja | clang-cl, lld-link | DirectML disabled. Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). |
+| ONNX GenAI 0.13.1 | `python build.py` | clang-cl (Ninja generator) | Source-built via `build.py --cmake_generator Ninja --cmake_extra_defines CMAKE_C_COMPILER=clang-cl CMAKE_CXX_COMPILER=clang-cl`. VsDevCmd environment loaded for MSVC STL headers. |
+| OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. Custom `CMAKE_AR` path fix. |
+| GStreamer 1.29 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
+
+### Windows Scripts
+
+| Script | Location | Purpose |
+|--------|----------|---------|
+| `build-onnx-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl build with build.ninja patching and VsDevCmd wrapper |
+| `build-onnx-genai-from-source.ps1` | `windows/scripts/` | Source build via `python build.py` with Ninja+clang-cl (not NuGet). Loads VsDevCmd environment, clones git tag, runs official `build.py --cmake_generator Ninja`. |
+| `build-opencv-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl with global SIMD flags and mlas `<cstring>` patch |
+| `build-gstreamer-from-source.ps1` | `windows/scripts/` | Meson+clang-cl with wrap pre-extraction |
+| `WindowsSourceBuild.Common.psm1` | `windows/scripts/modules/` | Reusable build helpers: `Invoke-GitClone`, `Invoke-CmakeConfigure`, `Invoke-CmakeBuild` |
+| `setup-cuda.ps1` | `windows/scripts/` | Now includes cuDNN post-install verification (headers/libs/DLLs) |
+| `smoke-test-container.ps1` | `windows/scripts/` | Comprehensive container validation (14 test categories) |
+
+For detailed build commands, see `docs/windows-builds.md`.
 
 ### Orchestrator Stage Selection
 

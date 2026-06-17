@@ -49,6 +49,11 @@ $components = @(
     ('nvml_dev_' + $ver),
     ('visual_studio_integration_' + $ver)
 )
+# CUDA 13.1+ drops driver bundling on Windows
+$cudaMajor = [int]($CudaVersionMajorMinor -split '\.')[0]
+if ($cudaMajor -ge 13) {
+    $components += '--no-download-driver'
+}
 $proc = Start-Process -FilePath $cudaInstaller -ArgumentList $components -Wait -PassThru
 if ($proc.ExitCode -ne 0) {
     throw ('CUDA installation failed with exit code: {0}' -f $proc.ExitCode)
@@ -72,4 +77,14 @@ New-Item -Path $CudnnRoot -ItemType Directory -Force | Out-Null
 Copy-Item -Path (Join-Path $cudnnDir.FullName '*') -Destination $CudnnRoot -Recurse -Force
 Remove-Item $cudnnArchive -Force
 Remove-Item $cudnnExtracted -Recurse -Force
+
+# Verify cuDNN installation
+Write-Host 'Verifying cuDNN installation...'
+$cudnnHeaders = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue
+$cudnnLibs = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue
+$cudnnDlls = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue
+if (-not $cudnnHeaders) { throw "cuDNN headers (cudnn.h) not found under $CudnnRoot" }
+if (-not $cudnnLibs) { throw "cuDNN import libs (cudnn*.lib) not found under $CudnnRoot" }
+if (-not $cudnnDlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $CudnnRoot" }
+Write-Host ('cuDNN verified: {0} headers, {1} libs, {2} DLLs' -f $cudnnHeaders.Count, $cudnnLibs.Count, $cudnnDlls.Count)
 Write-Host 'cuDNN installation complete.'
