@@ -55,20 +55,87 @@ if (-not $ok) { throw 'Failed to clone ONNX GenAI' }
 
 Set-Location $SourceDir
 
-# Build using the official build.py with Ninja+clang-cl
-Write-Host 'Building ONNX GenAI with build.py (Ninja+clang-cl)...'
-& $pythonExe build.py `
-    --config Release `
-    --update `
-    --build `
-    --skip_tests `
-    --skip_wheel `
-    --parallel `
-    --build_dir build\Windows-ClangCL `
-    --cmake_generator Ninja `
-    --cmake_extra_defines CMAKE_C_COMPILER=clang-cl CMAKE_CXX_COMPILER=clang-cl
+# Copy pyconfig.h to Include/ (CPython builds it in PC/ not Include/)
+$pyConfigSrc = 'C:\temp\cpython\PC\pyconfig.h'
+$pyConfigDst = 'C:\temp\cpython\Include\pyconfig.h'
+if ((Test-Path $pyConfigSrc) -and -not (Test-Path $pyConfigDst)) { Copy-Item $pyConfigSrc $pyConfigDst -Force; Write-Host 'Copied pyconfig.h to Include/' }
 
-if ($LASTEXITCODE -ne 0) { throw 'ONNX GenAI build failed' }
+# Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
+$genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
+$ortInstallDir = Join-Path $InstallDir 'lib\onnxruntime-source'
+$cmakeExtraGenAi = @(
+    '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
+    '-DUSE_CUDA=OFF', '-DUSE_TRT_RTX=OFF', '-DUSE_DML=OFF'
+    '-DENABLE_JAVA=OFF', '-DBUILD_WHEEL=OFF', '-DUSE_GUIDANCE=OFF'
+    '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
+    '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
+    "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE"
+    "-DPYTHON_EXECUTABLE=$pythonExe"
+    "-DPYTHON_LIBRARY=C:/temp/cpython/PCbuild/amd64/python3.lib"
+    "-DPYTHON_INCLUDE_DIR=C:/temp/cpython/Include"
+)
+$ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
+if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
+
+# Patch MSVC STL experimental/coroutine header to disable clang static_assert
+$coroHeader = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\include\experimental\coroutine"
+if (Test-Path $coroHeader) {
+    $text = [System.IO.File]::ReadAllText($coroHeader)
+    if ($text -match '_EMIT_STL_ERROR\(STL1009') {
+        $text = $text -replace '_EMIT_STL_ERROR\(STL1009, ".*?"\)', ''
+        [System.IO.File]::WriteAllText($coroHeader, $text)
+        Write-Host 'Patched MSVC experimental/coroutine header'
+    }
+}
+# Also patch yvals_core.h to make _EMIT_STL_ERROR a no-op when __clang__
+$yvalsCore = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\include\yvals_core.h"
+if (Test-Path $yvalsCore) {
+    $text = [System.IO.File]::ReadAllText($yvalsCore)
+    if ($text -match '#define _EMIT_STL_ERROR') {
+        $old = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
+        $new = '#ifdef __clang__
+#define _EMIT_STL_ERROR(NUMBER, MESSAGE)
+#else
+#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)
+#endif'
+        $text = $text -replace [regex]::Escape($old), $new
+        [System.IO.File]::WriteAllText($yvalsCore, $text)
+        Write-Host 'Patched MSVC yvals_core.h for clang compat'
+    }
+}
+
+# Patch build.ninja to strip MSVC-only flags clang-cl errors on
+$ninjaFile = Join-Path $genaiBuildDir 'build.ninja'
+if (Test-Path $ninjaFile) {
+    $text = [System.IO.File]::ReadAllText($ninjaFile)
+    $orig = $text
+    $text = $text -replace '/Qspectre', ''
+    $text = $text -replace '(?<=\s)/WX(?=\s)', ''
+    if ($text -ne $orig) {
+        [System.IO.File]::WriteAllText($ninjaFile, $text)
+        Write-Host 'Patched build.ninja for clang-cl compatibility'
+    }
+}
+
+Write-Host 'Building with ninja directly...'
+$batFile = Join-Path $env:TEMP 'build_genai.bat'
+"@echo off
+ninja -C `"$genaiBuildDir`" -j%NUMBER_OF_PROCESSORS% 2>&1
+if errorlevel 1 ninja -C `"$genaiBuildDir`" 2>&1
+" | Set-Content -Path $batFile -Encoding ASCII
+cmd.exe /c $batFile
+$buildExit = $LASTEXITCODE
+
+if ($buildExit -ne 0) {
+    # Try single-threaded to see full error
+    Write-Host 'Retrying single-threaded for clear error output...'
+    cmd.exe /c "ninja -C `"$genaiBuildDir`" -j1 2>&1"
+    throw "ONNX GenAI build failed"
+}
+
+Write-Host 'Installing...'
+& cmake --install $genaiBuildDir --config Release
+if ($LASTEXITCODE -ne 0) { throw 'Install failed' }
 
 Write-Host "Installing to $genaiInstallDir..."
 # Copy built artifacts

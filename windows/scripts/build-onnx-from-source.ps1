@@ -67,18 +67,10 @@ $ortInstallDir = Join-Path $InstallDir 'lib\onnxruntime-source'
 
 $cxxFlags = '/WX- /clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-msse4.2 /clang:-mf16c /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16'
 
-# Auto-detect cuDNN paths
+# Auto-detect cuDNN paths (for reference; CUDA is OFF for ORT)
 $cudnnIncludeDir = ''
 $cudnnLibPath = ''
 $cudnnLibDir = ''
-if ($env:CUDNN_ROOT -and (Test-Path $env:CUDNN_ROOT)) {
-    $found = Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($found) { $cudnnIncludeDir = $found.Directory.FullName }
-    $foundLib = Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($foundLib) { $cudnnLibPath = $foundLib.FullName; $cudnnLibDir = $foundLib.Directory.FullName }
-    Write-Host "cuDNN include: $cudnnIncludeDir"
-    Write-Host "cuDNN lib: $cudnnLibPath"
-}
 
 $cmakeExtra = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON'
@@ -93,29 +85,22 @@ $cmakeExtra = @(
     '-DPython3_EXECUTABLE=C:/temp/cpython/PCbuild/amd64/python.exe'
     # Use dynamic runtime (/MD) for all libs (protobuf defaults to /MT)
     '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
-    # CUDA support (CUDA Toolkit + cuDNN from SDK layer)
-    '-Donnxruntime_USE_CUDA=ON'
-    "-DCUDA_TOOLKIT_ROOT_DIR=$env:CUDA_ROOT"
-    "-DCMAKE_CUDA_COMPILER=$(Join-Path $env:CUDA_ROOT 'bin\nvcc.exe')"
-    '-DCMAKE_CUDA_FLAGS=--allow-unsupported-compiler'
-    "-DCUDNN_TOOLKIT_ROOT_DIR=$env:CUDNN_ROOT"
-    "-DCMAKE_LIBRARY_PATH=$cudnnLibDir"
-    "-DCMAKE_INCLUDE_PATH=$cudnnIncludeDir"
+    # CUDA not enabled for ONNX Runtime: CUDA 13.3 has a packaging bug
+    # (missing crt/ subdirectory) that breaks nvcc preprocessing.
+    # CUDA is still auto-detected by OpenCV and GStreamer builds.
+    '-Donnxruntime_USE_CUDA=OFF'
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 )
 
-# Add explicit cuDNN paths if auto-detected
-if ($cudnnIncludeDir) { $cmakeExtra += "-DCUDNN_INCLUDE_DIR=$cudnnIncludeDir" }
-if ($cudnnLibPath) { $cmakeExtra += "-DCUDNN_LIBRARY=$cudnnLibPath" }
-
-# Load VsDevCmd for CUDA (nvcc needs cl.exe in PATH as host compiler)
+# Load VsDevCmd for MSVC tools (cl.exe, link.exe, etc.) needed by
+# clang-cl for runtime library resolution and assembly files
 $vsDevCmd = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat"
-Write-Host 'Loading VsDevCmd environment for CUDA...'
+Write-Host 'Loading VsDevCmd environment...'
 cmd.exe /c """$vsDevCmd"" -arch=amd64 -host_arch=amd64 && set" | ForEach-Object {
     if ($_ -match '^(.*?)=(.*)$') { Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2] -ErrorAction SilentlyContinue }
 }
 
-Write-Host 'Building with Ninja+clang-cl (CUDA enabled)'
+Write-Host 'Building with Ninja+clang-cl'
 
 $ok = Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeExtra
 if (-not $ok) { throw 'CMake configure failed' }
@@ -137,6 +122,7 @@ if (Test-Path $ninjaFile) {
     $text = $text -replace [regex]::Escape('/experimental:external'), ''
     $text = $text -replace '(?<=\s)-WX(?=\s)', ''
     $text = $text -replace '/arch:\S+', ''
+    $text = $text -replace '/bigobj', ''
     if ($text -ne $orig) {
         [System.IO.File]::WriteAllText($ninjaFile, $text)
         Write-Host 'Patched build.ninja'
