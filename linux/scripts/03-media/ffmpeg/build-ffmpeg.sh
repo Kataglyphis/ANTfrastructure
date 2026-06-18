@@ -544,8 +544,9 @@ configure_ffmpeg() {
         configure_opts+=("--cxx=${CXX}")
     fi
 
-    # Disable features that auto-detect but fail to compile in this env
-    configure_opts+=("--disable-libx264" "--disable-libx265")
+    # Disable x265 if the installed library API is incompatible with this FFmpeg
+    # version (the configure probe passes but compilation fails with newer x265).
+    configure_opts+=("--disable-libx265")
     
     if ! ./configure "${configure_opts[@]}"; then
         echo "FFmpeg configure failed"

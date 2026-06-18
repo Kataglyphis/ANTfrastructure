@@ -24,6 +24,10 @@ for helper in \
     fi
 done
 
+if ! command -v cross_build_is_active >/dev/null 2>&1; then
+  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+fi
+
 if cross_build_is_active && \
    command -v cross_target_arch >/dev/null 2>&1; then
     case "$(cross_target_arch)" in
@@ -491,6 +495,7 @@ else
     PKG_CONFIG_SYSROOT_DIR= \
     PKG_CONFIG_LIBDIR="${HOST_PKG_CONFIG_LIBDIR}" \
     PKG_CONFIG_PATH="${HOST_PKG_CONFIG_PATH}" \
+    SCCACHE_DISABLE=1 \
     uv pip install -U pycairo
 fi
 
@@ -593,7 +598,13 @@ fi
 
 build_gstreamer_monorepo
 
-build_standalone_gst_plugins_rs
+if cross_build_is_active; then
+  echo "Cross build detected: skipping standalone gst-plugins-rs cargo build"
+  echo "(gst-plugins-rs subproject is disabled in monorepo; standalone cargo build"
+  echo "has host-toolchain path wrapping issues in cross mode)"
+else
+  build_standalone_gst_plugins_rs
+fi
 
 echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly."
 

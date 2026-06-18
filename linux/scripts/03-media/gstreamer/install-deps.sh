@@ -116,7 +116,9 @@ install_target_packages "${gst_target_packages[@]}" || true
 apt-get purge -y 'libunwind-[0-9]*-dev' || true
 install_target_packages libunwind-dev || true
 
-install_host_packages libxml2-utils glslc glslang-tools gobject-introspection || true
+# Install libdw-dev as host package too — its headers (elfutils/libdwfl.h) are
+# arch-independent and required by GStreamer gstinfo.c for backtrace support.
+install_host_packages libdw-dev libxml2-utils glslc glslang-tools gobject-introspection || true
 if [ "${is_riscv64_cross}" = "true" ]; then
   echo "Skipping target GTK dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else

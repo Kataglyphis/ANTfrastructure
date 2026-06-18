@@ -3,6 +3,7 @@
 # Lines starting with # are comments. Blank lines are ignored.
 
 libxml2.so.2	libxml2
+libevent-2.1.so.7	libevent-2.1-7t64
 libevent_core-2.1.so.7	libevent-core-2.1-7t64
 libevent_pthreads-2.1.so.7	libevent-pthreads-2.1-7t64
 libevent_extra-2.1.so.7	libevent-extra-2.1-7t64
@@ -35,7 +36,9 @@ libtiff.so.6	libtiff6
 libwebp.so.7	libwebp7
 libvpx.so.9	libvpx9
 libx264.so.164	libx264-164
+libx264.so.165	libx264-165
 libx265.so.209	libx265-209
+libx265.so.215	libx265-215
 libaom.so.3	libaom3
 libdav1d.so.7	libdav1d7
 libopenjp2.so.7	libopenjp2-7
@@ -59,6 +62,7 @@ libwavpack.so.1	libwavpack1
 libgsm.so.1	libgsm1
 libtwolame.so.0	libtwolame0
 libopenh264.so.7	libopenh264-7
+libopenh264.so.8	libopenh264-8
 libsrtp2.so.1	libsrtp2-1
 libsoup-3.0.so.0	libsoup-3.0-0
 libsoup-2.4.so.1	libsoup-2.4-1
@@ -136,6 +140,7 @@ libglib-2.0.so.0	libglib2.0-0t64
 libgobject-2.0.so.0	libglib2.0-0t64
 libgmodule-2.0.so.0	libglib2.0-0t64
 libgthread-2.0.so.0	libglib2.0-0t64
+libgraphene-1.0.so.0	libgraphene-1.0-0
 libjson-glib-1.0.so.0	libjson-glib-1.0-0
 libgtk-4.so.1	libgtk-4-1
 libgtk-3.so.0	libgtk-3-0t64

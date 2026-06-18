@@ -219,6 +219,10 @@ configure_opencv() {
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # Ubuntu Ports cannot currently satisfy the target GStreamer/GLib dev chain for riscv64 cross builds.
             with_gstreamer="OFF"
+            # Vendored libpng in OpenCV 5.x requires RISC-V Vector extension detection
+            # which fails with GCC 16.1.0 (the CMake test program uses incompatible intrinsics).
+            # Disable PNG for riscv64 to avoid the configure error.
+            cmake_opts+=("-DWITH_PNG=OFF")
         fi
         if [ "${WITH_PYTHON}" = "true" ] && command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
             echo "Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling OpenCV Python bindings in cross mode"

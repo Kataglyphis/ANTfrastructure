@@ -633,31 +633,43 @@ install_manual() {
     # <tflite/interpreter.h>. Downstream consumers such as libcamera's
     # rpi/awb_nn.cpp include tflite/interpreter.h and therefore need the absl
     # headers on the include path. Copy them next to the tflite headers.
-    info "Copying Abseil (absl) headers..."
+    info "Downloading abseil-cpp headers directly..."
     absl_found=0
-    for absl_root in \
-        "${LITERT_SRC}/litert/cmake_build/_deps/abseil-cpp-src" \
-        "${LITERT_SRC}/litert/cmake_build/_deps/abseil_cpp-src" \
-        "${LITERT_SRC}/litert/cmake_build/_deps/abseil-src"; do
-        if [ -d "${absl_root}/absl" ]; then
-            info Copying absl headers from ${absl_root}/absl...
-            ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
-                -print0 | cpio -pdm "${include_dir}/" ) 2>/dev/null || true
+    local absl_tag="20240722.0"
+    local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_tag}.tar.gz"
+    local absl_tar="/abseil-${absl_tag}.tar.gz"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fSL --retry 3 "${absl_url}" -o "${absl_tar}" || { warn "curl download failed"; absl_tar=""; }
+    elif command -v wget >/dev/null 2>&1; then
+        wget --retry-connrefused --timeout=30 -O "${absl_tar}" "${absl_url}" || { warn "wget download failed"; absl_tar=""; }
+    else
+        warn "Neither curl nor wget available for abseil download"
+        absl_tar=""
+    fi
+    if [ -n "${absl_tar}" ] && [ -f "${absl_tar}" ]; then
+        info "Extracting abseil-cpp headers..."
+        mkdir -p "${include_dir}/absl"
+        tar -xzf "${absl_tar}" -C "${include_dir}" --strip-components=1 --wildcards '*/absl/*.h' '*/absl/**/*.h' 2>/dev/null || \
+        tar -xzf "${absl_tar}" -C "${include_dir}" --strip-components=1 --no-wildcards --files-from <(tar -tzf "${absl_tar}" | grep '/absl/.*\.h$') 2>/dev/null || {
+            local absl_tmp="/tmp/abseil-extract-$$"
+            mkdir -p "${absl_tmp}"
+            tar -xzf "${absl_tar}" -C "${absl_tmp}" 2>/dev/null
+            local absl_src
+            absl_src=$(find "${absl_tmp}" -maxdepth 2 -type d -name "abseil-cpp*" -print -quit 2>/dev/null || true)
+            if [ -n "${absl_src}" ] && [ -d "${absl_src}/absl" ]; then
+                info "Falling back to copy from ${absl_src}/absl..."
+                find "${absl_src}/absl" -type f \( -name "*.h" -o -name "*.inc" \) -exec cp --parents "{}" "${include_dir}/" \; 2>/dev/null || true
+            fi
+            rm -rf "${absl_tmp}"
+        }
+        rm -f "${absl_tar}"
+        if [ -f "${include_dir}/absl/types/span.h" ]; then
+            info "Verified absl/types/span.h"
             absl_found=1
-            break
         fi
-    done
-    # Fallback: locate absl/types/span.h anywhere under the LiteRT tree and copy
-    # the absl tree rooted at its grandparent directory.
+    fi
     if [ "$absl_found" -eq 0 ]; then
-        spanhdr=$(find "${LITERT_SRC}/litert" -type f -path "*/absl/types/span.h" -print -quit 2>/dev/null || true)
-        if [ -n "$spanhdr" ]; then
-            absl_root=$(dirname "$(dirname "$(dirname "$spanhdr")")")
-            info "Found absl headers under ${absl_root}; copying..."
-            ( cd "${absl_root}" && find absl -type f \( -name "*.h" -o -name "*.inc" \) \
-                -print0 | cpio -pdm "${include_dir}/" ) 2>/dev/null || true
-            absl_found=1
-        fi
+        warn "Abseil headers not found after direct download; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile"
     fi
     if [ "$absl_found" -eq 1 ] && [ -f "${include_dir}/absl/types/span.h" ]; then
         info Verified: absl/types/span.h is accessible

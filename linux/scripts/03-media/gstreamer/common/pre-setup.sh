@@ -9,6 +9,10 @@ if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
   source /opt/scripts/toolchain/vulkan.sh
 fi
 
+if ! command -v cross_build_is_active >/dev/null 2>&1; then
+  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+fi
+
 vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
 _apt_refresh() {
@@ -536,7 +540,8 @@ update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # Install Csound packages required for building csound-related plugins.
 # The later GStreamer build already disables/excludes csound on ARM and RISC-V
 # cross targets, so avoid redundant host-side package churn here.
-if [ "${skip_csound_cross}" = "true" ]; then
+# Also check target arch directly in case cross_build_is_active is not available.
+if [ "${skip_csound_cross}" = "true" ] || echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
   echo "Skipping Csound pre-setup for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
   apt-get install -y --no-install-recommends \
@@ -549,7 +554,7 @@ fi
 # stub when not building for riscv targets (we skipped installing Csound
 # packages above for skipped cross targets), otherwise creating a stub may mask
 # missing package problems on supported arches.
-if [ "${skip_csound_cross}" != "true" ]; then
+if [ "${skip_csound_cross}" != "true" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
   triplet=""
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     triplet="$(cross_target_triplet)"
@@ -580,9 +585,7 @@ if [ "${skip_csound_cross}" != "true" ]; then
     "Cflags: -I\${includedir}" \
     > "$pcdir/csound.pc" || true
   # Verify that pkg-config can discover csound; fail with diagnostics if not.
-  if ! pkg-config --exists csound 2>/dev/null; then
-    echo "" >&2
-    echo "ERROR: csound pkg-config (.pc) not found after installing Csound packages." >&2
+  if [ "${skip_csound_cross}" != "true" ] && ! pkg-config --exists csound 2>/dev/null; then
     echo "dpkg multiarch triplet: ${triplet:-unset}" >&2
     echo "PKG_CONFIG_LIBDIR=${PKG_CONFIG_LIBDIR:-unset}" >&2
     echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-unset}" >&2

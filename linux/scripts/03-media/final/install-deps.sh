@@ -40,7 +40,7 @@ target_packages=(
     libtwolame-dev libgsm1-dev libdav1d-dev libwavpack-dev libx265-dev libdc1394-dev
     libvpx-dev libavcodec-dev libcsound64-dev libtbb12 libavfilter-dev libavformat-dev
     libxml2 libbz2-1.0 liblzma5 libzstd1
-    libevent-core-2.1-7t64 libevent-pthreads-2.1-7t64
+    libevent-core-2.1-7t64 libevent-pthreads-2.1-7t64 libevent-2.1-7t64
     liborc-0.4-0t64 libsoup-3.0-0
     libexif12 libboost-program-options1.83.0
     libgsl28 libgslcblas0 libnuma1

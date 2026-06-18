@@ -280,10 +280,10 @@ build_standalone_gst_plugins_rs() {
     fi
   fi
 
-  if echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
-    echo "RISC-V detected in (${arch_probes}): excluding cargo plugins that require unavailable gstreamer-validate/dav1d pkg-config deps"
+  if cross_build_is_active || echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
+    echo "Cross/RISC-V build detected: devtools is disabled, gstreamer-validate-1.0.pc not available"
+    echo "Excluding validate cargo plugin that requires gstreamer-validate pkg-config dep"
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "utils/validate"
-    prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "video/dav1d"
 
     if validate_pkg_names="$(_cargo_metadata_cached_package_names 'validate')"; then
       if [ -n "${validate_pkg_names}" ]; then
@@ -299,6 +299,11 @@ build_standalone_gst_plugins_rs() {
       build_cmd+=(--exclude gst-plugin-validate)
       echo "cargo metadata unavailable; excluding gst-plugin-validate by default"
     fi
+  fi
+
+  if echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
+    echo "RISC-V detected in (${arch_probes}): excluding dav1d cargo plugin"
+    prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "video/dav1d"
 
     if dav1d_pkg_names="$(_cargo_metadata_cached_package_names 'dav1d')"; then
       if [ -n "${dav1d_pkg_names}" ]; then
