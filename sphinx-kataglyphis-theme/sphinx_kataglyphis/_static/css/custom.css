@@ -414,8 +414,4 @@ html[data-theme="light"] #pst-secondary-sidebar-modal {
   min-width: 0;
 }
 
-/* -- Force override Sphinx basic.css span.pre { white-space: nowrap } -- */
 
-span.pre {
-  white-space: pre-wrap !important;
-}
