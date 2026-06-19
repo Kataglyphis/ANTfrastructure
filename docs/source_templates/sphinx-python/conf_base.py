@@ -68,6 +68,9 @@ SPHINX_BOOK_THEME_OPTIONS = {
     "use_repository_button": True,
     "show_navbar_depth": 2,
     "navigation_with_keys": True,
+    "show_toc_level": 2,
+    "secondary_sidebar_items": [],
+    "primary_sidebar_end": [],
 }
 
 SOURCE_SUFFIX = {

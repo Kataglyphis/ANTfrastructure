@@ -63,9 +63,19 @@ if ((Test-Path $pyConfigSrc) -and -not (Test-Path $pyConfigDst)) { Copy-Item $py
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 $ortInstallDir = Join-Path $InstallDir 'lib\onnxruntime-source'
+# Auto-detect CUDA for GenAI
+$genaiCudaArgs = @()
+$cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+$cudnnRoot = if ($env:CUDNN_ROOT) { $env:CUDNN_ROOT } else { $null }
+# NOTE: CUDA=OFF because clang-cl cannot compile cuRAND host headers
+# (curand_kernel.h uses __syncthreads, __umulhi, NV_PROVIDES_SM_61).
+# GenAI uses ONNX Runtime's CUDA execution provider at runtime instead.
+$genaiCudaArgs += '-DUSE_CUDA=OFF'
+Write-Host 'CUDA support disabled for ONNX GenAI build (clang-cl incompatibility with CUDA headers)'
+
 $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
-    '-DUSE_CUDA=OFF', '-DUSE_TRT_RTX=OFF', '-DUSE_DML=OFF'
+    '-DUSE_TRT_RTX=OFF', '-DUSE_DML=OFF'
     '-DENABLE_JAVA=OFF', '-DBUILD_WHEEL=OFF', '-DUSE_GUIDANCE=OFF'
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
@@ -73,7 +83,7 @@ $cmakeExtraGenAi = @(
     "-DPYTHON_EXECUTABLE=$pythonExe"
     "-DPYTHON_LIBRARY=C:/temp/cpython/PCbuild/amd64/python3.lib"
     "-DPYTHON_INCLUDE_DIR=C:/temp/cpython/Include"
-)
+) + $genaiCudaArgs
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
 if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
 

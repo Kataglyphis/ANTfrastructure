@@ -14,6 +14,8 @@ ARG ONNXRUNTIME_VERSION=1.26.0
 ARG ONNXRUNTIME_GENAI_VERSION=0.13.1
 ARG ONNX_DIRECTML_VERSION=1.26.0
 ARG OPENCV_SOURCE_VERSION=5.x
+ARG LITERT_VERSION=v2.1.5
+ARG LITERT_LM_VERSION=0.13.1
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
@@ -26,6 +28,18 @@ COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 # ── Stage 1: ONNX Runtime source build via clang-cl (git clone) ─────
 # Built before OpenCV so OpenCV can detect it.
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}"
+# Ensure CUDA include/cccl/ and nv/target (no ext) exist
+# CUDA 13.x CMake config references include/cccl/ but Scoop CUDA omits it.
+# Also cuda_fp16.h uses `#include <nv/target>` (no .h) in CUDA 13.3.
+RUN $cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } else { 'C:\Users\ContainerAdministrator\scoop\apps\cuda\current' }; `
+    $incDir = Join-Path $cudaRoot 'include'; `
+    $ccclDir = Join-Path $incDir 'cccl'; `
+    if (-not (Test-Path $ccclDir)) { New-Item -Path $ccclDir -ItemType Directory -Force | Out-Null; Write-Host 'Created CUDA cccl dir for CMake compat' }; `
+    $nvDir = Join-Path $incDir 'nv'; `
+    if (-not (Test-Path $nvDir)) { New-Item -Path $nvDir -ItemType Directory -Force | Out-Null }; `
+    $c = '#pragma on' + 'se' + [char]10 + '#define NV_IS_DEVICE 0' + [char]10 + '#define NV_IS_HOST 1' + [char]10 + '#define NV_IF_ELSE_TARGET(cond,t,f) f'; `
+    if (-not (Test-Path (Join-Path $nvDir 'target.h'))) { Set-Content -Path (Join-Path $nvDir 'target.h') -Value $c -Encoding ASCII; Write-Host 'Created nv/target.h stub' }; `
+    if (-not (Test-Path (Join-Path $nvDir 'target'))) { Set-Content -Path (Join-Path $nvDir 'target') -Value $c -Encoding ASCII; Write-Host 'Created nv/target stub (no ext)' }
 RUN & 'C:\temp\scripts\build-onnx-from-source.ps1' `
     -SourceDir 'C:\temp\onnx-src' `
     -InstallDir 'C:\gstreamer'
@@ -46,8 +60,25 @@ RUN & 'C:\temp\scripts\build-opencv-from-source.ps1' `
     -SourceDir 'C:\temp\opencv-src' `
     -InstallDir 'C:\gstreamer'
 
-# ── Stage 4: GStreamer (auto-detects CUDA, OpenCV, ONNX libs) ───────
-ENV GST_VERSION=$GSTREAMER_VERSION
+# Volatile scripts for LiteRT/LiteRT-LM (changes often)
+COPY windows\scripts\build-litert-from-source.ps1 C:\temp\scripts\
+COPY windows\scripts\build-litert-lm-from-source.ps1 C:\temp\scripts\
+
+# ── Stage 4a: LiteRT (TensorFlow Lite runtime, CUDA/GPU auto-detected) ──
+ENV LITERT_VERSION="${LITERT_VERSION}"
+RUN & 'C:\temp\scripts\build-litert-from-source.ps1' `
+    -SourceDir 'C:\temp\litert-src' `
+    -InstallDir 'C:\gstreamer'
+
+# ── Stage 4b: LiteRT-LM (on-device LLM inference, CUDA/GPU auto-detected) ──
+ENV LITERT_LM_VERSION="${LITERT_LM_VERSION}"
+RUN & 'C:\temp\scripts\build-litert-lm-from-source.ps1' `
+    -SourceDir 'C:\temp\litert-lm-src' `
+    -InstallDir 'C:\gstreamer'
+
+# ── Stage 5: GStreamer (auto-detects CUDA, OpenCV, ONNX, LiteRT libs) ───────
+ENV GST_VERSION=$GST_VERSION
+ENV GSTREAMER_VERSION=$GST_VERSION
 ENV GSTREAMER_BIN="C:\gstreamer\bin"
 ENV ONNX_ROOT="C:\gstreamer\lib\onnxruntime-source"
 ENV ONNX_GENAI_ROOT="C:\gstreamer\lib\onnxruntime-genai-source"
@@ -60,12 +91,23 @@ ENV ONNX_DIRECTML_VERSION="${ONNX_DIRECTML_VERSION}"
 # GPU variant: CUDA detected from SDK layer
 ENV ONNX_GPU_VARIANT="cuda"
 
+# LiteRT layout
+ENV LITERT_ROOT="C:\gstreamer\lib\litert"
+ENV LITERT_INCLUDE="${LITERT_ROOT}\include"
+ENV LITERT_LIB="${LITERT_ROOT}\lib"
+ENV LITERT_BIN="${LITERT_ROOT}\bin"
+
+# LiteRT-LM layout
+ENV LITERT_LM_ROOT="C:\gstreamer\lib\litert-lm"
+ENV LITERT_LM_INCLUDE="${LITERT_LM_ROOT}\include"
+ENV LITERT_LM_LIB="${LITERT_LM_ROOT}\lib"
+
 # OpenCV layout
 ENV OPENCV_ROOT="C:\gstreamer\lib\opencv5"
 ENV OPENCV_INCLUDE="${OPENCV_ROOT}\include"
 ENV OPENCV_LIB="${OPENCV_ROOT}\lib"
 ENV OPENCV_BIN="${OPENCV_ROOT}\bin"
 
-ENV PATH=$GSTREAMER_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$OPENCV_BIN;$PATH
+ENV PATH=$GSTREAMER_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$PATH
 
 RUN & 'C:\temp\scripts\build-gstreamer-from-source.ps1' -InstallDir 'C:\gstreamer' -LogDir 'C:\temp\logs'

@@ -25,13 +25,23 @@ html[data-theme="dark"] {
   background: linear-gradient(135deg, var(--brand-accent), var(--brand-accent-strong));
 }
 
-.bd-main .bd-content .bd-article-container {
-  max-width: 1100px;
-}
-
 .bd-sidebar-primary {
   background: linear-gradient(180deg, #fbfefd 0%, #f3fbf7 100%);
   border-right: 1px solid var(--surface-border);
+  overflow-y: auto;
+}
+
+/* Secondary sidebar: re-enabled for page TOC on desktop */
+.bd-sidebar-secondary {
+  display: block;
+}
+
+.bd-main .bd-content {
+  max-width: 100%;
+}
+
+.bd-main .bd-content .bd-article-container {
+  max-width: 1100px;
 }
 
 .sd-card {
@@ -78,4 +88,69 @@ html[data-theme="dark"] .bd-sidebar-primary .nav-link.active {
 
 html[data-theme="dark"] .hero-section {
   color: #000000 !important;
+}
+
+/* -- Primary sidebar dialog fix: slide from left, not centered ---------- */
+
+#pst-primary-sidebar-modal {
+  border: 0;
+  height: 100vh;
+  left: 0;
+  margin: 0;
+  max-height: 100vh;
+  max-width: 350px;
+  overflow-y: auto;
+  padding: 1rem;
+  position: fixed;
+  top: 0;
+  width: 75%;
+  z-index: 1055;
+  background: var(--pst-color-background);
+  color: var(--pst-color-text-base);
+}
+
+#pst-primary-sidebar-modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+#pst-primary-sidebar-modal::backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme="dark"] #pst-primary-sidebar-modal {
+  background: linear-gradient(180deg, #101712 0%, #0d1410 100%);
+  border-right: 1px solid #2b3b33;
+}
+
+html[data-theme="light"] #pst-primary-sidebar-modal {
+  background: linear-gradient(180deg, #fbfefd 0%, #f3fbf7 100%);
+  border-right: 1px solid var(--surface-border);
+}
+
+/* -- Force long links / URLs to wrap on narrow screens ------------------- */
+.bd-content a,
+.pst-scrollable-table-container th,
+.pst-scrollable-table-container td {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* -- Mobile responsive overrides ----------------------------------------- */
+
+@media (max-width: 575.98px) {
+  .sd-row-cols-xs-2 {
+    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+  }
+}
+
+.pst-scrollable-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+}
+
+.pst-scrollable-table-container table {
+  width: 100%;
+  min-width: 0;
 }

@@ -15,6 +15,15 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\gstreamer' }
 
 Write-Host "=== OpenCV source build (branch $OpenCvVersion, Ninja+clang-cl) ==="
 
+# Install numpy (required by OpenCV's CUDA detection/verification step)
+$pythonExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'
+if (Test-Path $pythonExe) {
+    Write-Host 'Installing numpy via pip (required for OpenCV CUDA detection)...'
+    cmd.exe /c """$pythonExe"" -m pip install numpy --quiet 2>&1"
+    if ($LASTEXITCODE -eq 0) { Write-Host 'numpy installed successfully' }
+    else { Write-Host 'WARNING: numpy install failed - OpenCV CUDA detection may be disabled' }
+}
+
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 $mainSrc = Join-Path $SourceDir 'opencv'
 $ok = Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv.git' -Branch $OpenCvVersion -SourceDir $mainSrc
@@ -53,8 +62,8 @@ $simdFlags = '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-mss
 $cmakeExtra = @(
     '-DCMAKE_CXX_STANDARD=17',
     # /FI<cstring> fixes clang-cl -include cstring ambiguity (file vs header)
-    "-DCMAKE_C_FLAGS:STRING=/FI\"cstring\" $simdFlags",
-    "-DCMAKE_CXX_FLAGS:STRING=/FI\"cstring\" $simdFlags",
+    "-DCMAKE_C_FLAGS:STRING=$simdFlags",
+    "-DCMAKE_CXX_FLAGS:STRING=/FIcstring $simdFlags",
     '-DBUILD_TESTS=OFF', '-DBUILD_PERF_TESTS=OFF', '-DBUILD_EXAMPLES=OFF',
     '-DBUILD_opencv_world=ON',
     '-DBUILD_JPEG=ON', '-DBUILD_PNG=ON', '-DBUILD_TIFF=ON', '-DBUILD_WEBP=ON',

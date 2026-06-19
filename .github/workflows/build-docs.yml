@@ -41,6 +41,9 @@ jobs:
       - name: Check generated version snapshot
         run: python docs/scripts/sync_versions.py --check
 
+      - name: Check website license files are current
+        run: python docs/scripts/generate-website-licenses.py --check
+
       - name: Verify version ARG consistency
         run: bash linux/scripts/01-core/verify-arg-consistency.sh
 

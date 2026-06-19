@@ -11,7 +11,7 @@
 > add the current user to the docker group so you can push to ghcr.io without sudo:
 > `sudo usermod -aG docker $USER`
 
-[![Build Media](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/build-media.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/build-media.yml)
+[![CI](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ubuntu24.04.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ubuntu24.04.yml)
 [![ghcr-cleanup](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ghcr-cleanup.yml)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 
@@ -106,8 +106,8 @@ sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 | Workflow | Purpose |
 |----------|---------|
-| `build-media.yml` | Builds `Dockerfile.media` with `type=gha` BuildKit cache (per-arch) |
-| `build-docs.yml` | Sphinx docs + version-consistency checks |
+| `ubuntu24.04.yml` | Trigger on push/PR: Sphinx docs + version-consistency checks |
+| `build-docs.yml` | Reusable workflow for docs build |
 | `ghcr-cleanup.yml` | Retains last 3 per tag, 14-day safety net |
 
 ## Documentation
@@ -138,7 +138,43 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 | Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.341.1, GStreamer 1.29.1, CUDA 13.3.0, ONNX Runtime 1.26.0, ONNX DirectML 1.26.0 |
 <!-- generated:version-snapshot:end -->
 
-## Clone
+## Quick Start 🏁
+
+### Linux 🐧
+
+```bash
+sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+```
+
+If you run the container from Windows, expose required ports explicitly, for example with `-p 8443:8443`.
+
+Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-basics.md), [Linux Cross Builds](docs/linux-cross-builds.md), and [Linux Accelerator Images](docs/linux-accelerator-images.md).
+
+### Windows 🪟
+
+```powershell
+docker build --platform windows/amd64 `
+  --progress=plain --no-cache `
+  -t local/kataglyphis:windows-base `
+  -f windows/Dockerfile.base .
+
+docker build --platform windows/amd64 `
+  --progress=plain --no-cache --memory 48g `
+  -t local/kataglyphis:windows-media `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
+  -f windows/Dockerfile.media .
+
+docker build --platform windows/amd64 `
+  --progress=plain --no-cache `
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-ai `
+  -f windows/Dockerfile .
+```
+
+Windows-specific build notes are in [Windows Build Image](docs/windows-builds.md).
+
+### Clone The Repository
 
 ```bash
 git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
