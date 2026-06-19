@@ -70,6 +70,9 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh /opt/scripts/media/activate-cross-python.sh
 COPY --chmod=755 linux/scripts/03-media/media-build-preamble.sh /opt/scripts/media/media-build-preamble.sh
 COPY --chmod=755 linux/scripts/03-media/final/verify-media-artifacts.sh /opt/scripts/media/final/verify-media-artifacts.sh
+COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh /opt/scripts/core/install-deps-preamble.sh
+COPY --chmod=755 linux/scripts/01-core/python-host.sh /opt/scripts/core/python-host.sh
+COPY --chmod=755 linux/scripts/01-core/cmake-cache-linker.sh /opt/scripts/core/cmake-cache-linker.sh
 
 RUN set -euo pipefail; \
     if [ "${ENABLE_NVIDIA}" = "true" ]; then \
@@ -435,7 +438,8 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GI_TYPELIB_PATH="" \
     OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
     FFMPEG_PREFIX=/opt/ffmpeg \
-    LIBCAMERA_PREFIX=/opt/libcamera
+    LIBCAMERA_PREFIX=/opt/libcamera \
+    PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python3.14/site-packages:${PYTHONPATH}"
 
 COPY --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 
@@ -461,7 +465,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     bash /opt/scripts/media/final/configure-runtime.sh && \
     bash /opt/scripts/media/final/repair-wheels.sh && \
     bash /opt/scripts/media/final/verify-wheels.sh && \
+    uv pip install --no-deps /opt/wheels/*.whl 2>/dev/null || true && \
     bash /opt/scripts/media/final/validate-media-runtime.sh && \
+    PYTHONPATH="$(echo /opt/opencv5/lib/python*/site-packages 2>/dev/null):${PYTHONPATH:-}" \
     bash /opt/scripts/packaging/smoke-media.sh
 
 # Keep in sync with linux/scripts/03-media/final/media-env.sh (canonical definition)

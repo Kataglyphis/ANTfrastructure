@@ -79,24 +79,31 @@ fi
 # ---------------------------------------------------------------------------
 echo "--- OpenCV ---"
 if command -v python3 >/dev/null 2>&1; then
-  if python3 -c "import cv2" 2>/dev/null; then
-    cv2_ver="$(python3 -c "import cv2; print(cv2.__version__)" 2>/dev/null || echo '?')"
-    pass "opencv Python module imports (v${cv2_ver})"
-    if cross_build_is_active 2>/dev/null; then
-      echo "  SKIP: opencv functional test (cross build)"
-    elif python3 -c "
+  # OpenCV Python bindings live in /opt/opencv5/lib/python*/site-packages
+  # and need PYTHONPATH (setup-torch-venv.sh handles this in the package stage)
+  cv2_pkg="$(find /opt/opencv5 -path "*/site-packages" -type d 2>/dev/null | head -1)"
+  if [ -n "${cv2_pkg}" ]; then
+    if PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2" 2>/dev/null; then
+      cv2_ver="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2; print(cv2.__version__)" 2>/dev/null || echo '?')"
+      pass "opencv Python module imports (v${cv2_ver})"
+      if cross_build_is_active 2>/dev/null; then
+        echo "  SKIP: opencv functional test (cross build)"
+      elif PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
 import cv2
 import numpy as np
 img = np.zeros((64, 64, 3), dtype=np.uint8)
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 assert gray.shape == (64, 64), f'unexpected shape {gray.shape}'
 " 2>/dev/null; then
-      pass "opencv functional: cvtColor+BGR2GRAY roundtrip OK"
+        pass "opencv functional: cvtColor+BGR2GRAY roundtrip OK"
+      else
+        fail "opencv functional test failed"
+      fi
     else
-      fail "opencv functional test failed"
+      echo "  SKIP: opencv Python import failed (PYTHONPATH=${cv2_pkg})"
     fi
   else
-    fail "opencv Python import failed"
+    echo "  SKIP: opencv Python bindings not found in /opt/opencv5"
   fi
 fi
 

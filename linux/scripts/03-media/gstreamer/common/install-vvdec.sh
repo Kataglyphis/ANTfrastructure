@@ -26,10 +26,13 @@ cd "${TMPDIR}"
 mkdir -p build
 cmake_args=(
   -DBUILD_SHARED_LIBS=ON
+  -DBUILD_APPS=OFF
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="${PREFIX}"
   -DCMAKE_INSTALL_LIBDIR="lib"
   -DCMAKE_CXX_FLAGS="-Wno-error=unused-but-set-variable"
+  -DCMAKE_EXE_LINKER_FLAGS="-Wl,--allow-shlib-undefined"
+  -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--allow-shlib-undefined"
 )
 if command -v append_cmake_cross_args >/dev/null 2>&1; then
   append_cmake_cross_args cmake_args

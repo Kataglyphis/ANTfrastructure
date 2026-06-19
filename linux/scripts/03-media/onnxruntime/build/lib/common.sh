@@ -291,7 +291,8 @@ source_build_acceleration_helpers() {
 if ! declare -F setup_host_python_environment >/dev/null 2>&1; then
   setup_host_python_environment() {
     HOST_PYTHON_BIN="$(host_python_bin)"
-    export HOST_PYTHON_BIN
+    HOST_PYTHON="${HOST_PYTHON_BIN}"
+    export HOST_PYTHON_BIN HOST_PYTHON
     export PYTHON_EXECUTABLE="${HOST_PYTHON_BIN}" \
            Python_EXECUTABLE="${HOST_PYTHON_BIN}" \
            Python3_EXECUTABLE="${HOST_PYTHON_BIN}"

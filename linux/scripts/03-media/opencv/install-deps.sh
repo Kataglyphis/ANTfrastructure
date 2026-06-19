@@ -2,6 +2,7 @@
 set -euo pipefail
 
 for _cv_env in \
+    "/opt/scripts/core/install-deps-preamble.sh" \
     "/opt/scripts/core/cross-env.sh" \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/cross-env.sh"; do
     if [ -f "${_cv_env}" ]; then
