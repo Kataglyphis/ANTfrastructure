@@ -25,13 +25,22 @@ html[data-theme="dark"] {
   background: linear-gradient(135deg, var(--brand-accent), var(--brand-accent-strong));
 }
 
-.bd-main .bd-content .bd-article-container {
-  max-width: 1100px;
-}
-
 .bd-sidebar-primary {
   background: linear-gradient(180deg, #fbfefd 0%, #f3fbf7 100%);
   border-right: 1px solid var(--surface-border);
+  overflow-y: auto;
+}
+
+.bd-sidebar-secondary {
+  display: none !important;
+}
+
+.bd-main .bd-content {
+  max-width: 100%;
+}
+
+.bd-main .bd-content .bd-article-container {
+  max-width: 1100px;
 }
 
 .sd-card {
@@ -78,4 +87,23 @@ html[data-theme="dark"] .bd-sidebar-primary .nav-link.active {
 
 html[data-theme="dark"] .hero-section {
   color: #000000 !important;
+}
+
+/* -- Mobile responsive overrides ----------------------------------------- */
+
+@media (max-width: 575.98px) {
+  .sd-row-cols-xs-2 {
+    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+  }
+}
+
+.pst-scrollable-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+}
+
+.pst-scrollable-table-container table {
+  width: 100%;
+  min-width: 0;
 }

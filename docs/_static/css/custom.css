@@ -32,6 +32,19 @@ html[data-theme="dark"] {
 .bd-sidebar-primary {
   background: linear-gradient(180deg, #fbfefd 0%, #f3fbf7 100%);
   border-right: 1px solid var(--surface-border);
+  overflow-y: auto;
+}
+
+.bd-sidebar-secondary {
+  display: none !important;
+}
+
+.bd-main .bd-content {
+  max-width: 100%;
+}
+
+.bd-main .bd-content .bd-article-container {
+  max-width: 1100px;
 }
 
 .sd-card {
