@@ -137,10 +137,27 @@ html[data-theme="light"] #pst-primary-sidebar-modal {
 
 /* -- Force long links / URLs to wrap on narrow screens ------------------- */
 .bd-content a,
+.bd-content a code,
+.bd-content a .pre,
 .pst-scrollable-table-container th,
 .pst-scrollable-table-container td {
-  overflow-wrap: break-word;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: none;
+}
+
+/* Code blocks: horizontal scroll instead of overflow clipping */
+.bd-content div.highlight pre {
+  white-space: pre;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Inline code that isn't inside a link: still break gracefully */
+.bd-content code,
+.bd-content .docutils.literal {
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 /* -- Mobile responsive overrides ----------------------------------------- */

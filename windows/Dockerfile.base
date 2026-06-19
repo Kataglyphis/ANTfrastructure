@@ -31,6 +31,7 @@ RUN & 'C:\temp\scripts\configure-dns.ps1'
 
 RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR; Start-Sleep -Seconds 10; Get-Process | Where-Object { $_.ProcessName -match 'vs_|setup_|install' } | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3; [GC]::Collect(); [GC]::WaitForPendingFinalizers()
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR
+RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
 
 ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     SCOOP_GLOBAL=C:\ProgramData\scoop `
