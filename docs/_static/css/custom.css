@@ -140,11 +140,12 @@ html[data-theme="light"] #pst-primary-sidebar-modal {
   overflow-wrap: anywhere !important;
   word-break: normal !important;
   hyphens: none !important;
+  white-space: pre-wrap !important;
 }
 
-/* Code blocks: horizontal scroll instead of overflow clipping */
+/* Code blocks: horizontal scroll instead of overflow clipping (keep white-space) */
 .bd-content div.highlight pre {
-  white-space: pre;
+  white-space: pre !important;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
