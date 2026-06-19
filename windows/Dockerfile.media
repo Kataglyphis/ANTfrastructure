@@ -9,7 +9,7 @@
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 FROM ${BASE_IMAGE}
 
-ARG GST_VERSION=1.29.1
+ARG GSTREAMER_VERSION=1.29.1
 ARG ONNXRUNTIME_VERSION=1.26.0
 ARG ONNXRUNTIME_GENAI_VERSION=0.13.1
 ARG ONNX_DIRECTML_VERSION=1.26.0
@@ -47,7 +47,7 @@ RUN & 'C:\temp\scripts\build-opencv-from-source.ps1' `
     -InstallDir 'C:\gstreamer'
 
 # ── Stage 4: GStreamer (auto-detects CUDA, OpenCV, ONNX libs) ───────
-ENV GST_VERSION=$GST_VERSION
+ENV GST_VERSION=$GSTREAMER_VERSION
 ENV GSTREAMER_BIN="C:\gstreamer\bin"
 ENV ONNX_ROOT="C:\gstreamer\lib\onnxruntime-source"
 ENV ONNX_GENAI_ROOT="C:\gstreamer\lib\onnxruntime-genai-source"

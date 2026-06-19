@@ -610,7 +610,7 @@ install_manual() {
     # headers on the include path. Copy them next to the tflite headers.
     info "Downloading abseil-cpp headers directly..."
     absl_found=0
-    local absl_tag="20240722.0"
+    local absl_tag="${ABSEIL_VERSION:-20240722.0}"
     local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_tag}.tar.gz"
     local absl_tar="/abseil-${absl_tag}.tar.gz"
     if command -v curl >/dev/null 2>&1; then

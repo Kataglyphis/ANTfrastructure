@@ -6,7 +6,7 @@ set -euo pipefail
 : "${PYTORCH_EXTRA:=none}"
 
 APP_DIR="/opt/Kataglyphis-Orchestr-ANT-ion"
-APP_REF="v0.0.19"
+APP_REF="${APP_REF:-v0.0.19}"
 
 activate_project_environment() {
   # Verify-only runs may happen in a later image or on real hardware.

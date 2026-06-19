@@ -2,16 +2,17 @@
 # Cached Windows toolchain base image.
 # Installs non-AI build tooling so CUDA/ONNX/OpenCV can live in a derived layer.
 
-FROM mcr.microsoft.com/windows/servercore:ltsc2025
-
+ARG WINDOWS_LTSC=2025
+FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
 ARG VULKAN_VERSION=1.4.341.1
-ARG GST_VERSION=1.29.1
+ARG GSTREAMER_VERSION=1.29.1
 ARG ARCH=x86_64
 ARG FLAVOR=msvc
-ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/v4.3/cmake-4.3.3-windows-x86_64.msi
+ARG CMAKE_VERSION=4.3.2
+ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-windows-x86_64.msi
 
 ENV TEMP_DIR="C:\temp"
-ENV GST_VERSION=$GST_VERSION
+ENV GST_VERSION=$GSTREAMER_VERSION
 LABEL maintainer="contact@jonasheinle.de"
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]

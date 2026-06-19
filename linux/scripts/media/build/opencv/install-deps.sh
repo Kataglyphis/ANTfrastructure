@@ -88,7 +88,7 @@ if is_cross && [ "$(cross_target_arch)" != "amd64" ]; then
     if [ -n "${_ft_triplet}" ] && [ ! -f "/usr/lib/${_ft_triplet}/libfreetype.so" ]; then
         echo "[INFO] Target libfreetype-dev:${_ft_arch} not in repos. Cross-compiling from source..."
         _ft_src="/tmp/freetype-src-$$"
-        _ft_ver="2.14.2"
+        _ft_ver="${FREETYPE_VERSION:-2.14.2}"
         rm -rf "${_ft_src}"
         mkdir -p "${_ft_src}"
         curl -sL "https://github.com/freetype/freetype/archive/refs/tags/VER-${_ft_ver//./-}.tar.gz" \

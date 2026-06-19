@@ -115,7 +115,7 @@ fi
 # (rpi/awb_nn.cpp includes tflite/interpreter.h -> tflite/util.h -> absl/types/span.h).
 if [ ! -f /usr/local/include/absl/types/span.h ]; then
   echo "Downloading abseil-cpp headers for tflite compat..."
-  local absl_ver="20240722.0"
+  local absl_ver="${ABSEIL_VERSION:-20240722.0}"
   local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_ver}.tar.gz"
   local absl_tar="/tmp/abseil-${absl_ver}.tar.gz"
   mkdir -p /usr/local/include/absl
