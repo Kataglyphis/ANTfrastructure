@@ -100,6 +100,8 @@ media_common_init() {
 
   source_module common.sh            || true
   source_module cross-env.sh         || true
+  source_module cross-meson.sh       || true
+  source_module cross-apt.sh         || true
   source_module logging.sh           || true
   source_module build-helpers.sh     || true
   source_module parallelism.sh       || true
