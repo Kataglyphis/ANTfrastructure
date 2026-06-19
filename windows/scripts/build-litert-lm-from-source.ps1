@@ -27,13 +27,18 @@ Push-Location $SourceDir
 Pop-Location
 
 # Install zlib (required by libpng which is a FetchContent dependency of LiteRT-LM)
-Write-Host 'Installing zlib via scoop...'
-scoop install main/zlib 2>&1 | Out-Null
-$zlibRoot = "$env:USERPROFILE\scoop\apps\zlib\current"
-if (-not (Test-Path $zlibRoot)) { $zlibRoot = "$env:ProgramData\scoop\apps\zlib\current" }
+Write-Host 'Installing zlib via nuget...'
+nuget install zlib-msvc-x64 -Version 1.2.11.8 -OutputDirectory C:\temp\zlib-nuget -ExcludeVersion 2>&1 | Out-Null
+$zlibRoot = 'C:\temp\zlib-nuget\zlib-msvc-x64'
 if (Test-Path $zlibRoot) {
     Write-Host "zlib found at: $zlibRoot"
-    $env:CMAKE_PREFIX_PATH = "$zlibRoot;$env:CMAKE_PREFIX_PATH"
+    $zlibLibDir = Join-Path $zlibRoot 'lib\native\v142\content\lib\zlib'
+    $zlibIncDir = Join-Path $zlibRoot 'lib\native\v142\content\include\zlib'
+    if (Test-Path $zlibLibDir) {
+        # Add zlib to system PATH for FindZLIB.cmake
+        $zlibBinDir = Join-Path $zlibRoot 'lib\native\v142\content\bin\zlib'
+        if (Test-Path $zlibBinDir) { $env:PATH = "$zlibBinDir;$env:PATH" }
+    }
 }
 
 $buildDir = Join-Path $SourceDir 'build_ninja'
@@ -58,8 +63,8 @@ $cmakeExtra = @(
     '-DTFLITE_ENABLE_GPU=ON'
     # zlib path for libpng dependency
     "-DZLIB_ROOT=$zlibRoot"
-    "-DZLIB_INCLUDE_DIR=$(Join-Path $zlibRoot 'include')"
-    "-DZLIB_LIBRARY=$(Join-Path $zlibRoot 'lib\zlib.lib')"
+    "-DZLIB_INCLUDE_DIR=$zlibIncDir"
+    "-DZLIB_LIBRARY=$(Join-Path $zlibLibDir 'zlib.lib')"
 )
 
 # Add CUDA support if detected
