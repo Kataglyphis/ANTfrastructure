@@ -331,13 +331,20 @@ html[data-theme="light"] #pst-primary-sidebar-modal {
 .bd-article-container section a .pre,
 .bd-article-container section code,
 .bd-article-container section .docutils.literal,
-.bd-article-container section span.pre,
 .pst-scrollable-table-container th,
 .pst-scrollable-table-container td {
   overflow-wrap: anywhere !important;
   word-break: normal !important;
   hyphens: none !important;
   white-space: pre-wrap !important;
+}
+
+/* Inline code: aggressive break to force long unbroken strings to wrap */
+.bd-article-container section span.pre {
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+  hyphens: none !important;
 }
 
 /* Code blocks: horizontal scroll instead of overflow clipping -- */
