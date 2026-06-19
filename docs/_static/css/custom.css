@@ -32,7 +32,10 @@ html[data-theme="dark"] {
 .bd-sidebar-primary {
   background: linear-gradient(180deg, #fbfefd 0%, #f3fbf7 100%);
   border-right: 1px solid var(--surface-border);
+  max-height: 100vh;
   overflow-y: auto;
+  position: sticky;
+  top: 0;
 }
 
 .bd-sidebar-secondary {
