@@ -128,13 +128,13 @@ html[data-theme="light"] #pst-primary-sidebar-modal {
 }
 
 /* -- Force long links / URLs to wrap on narrow screens ------------------- */
-.bd-content,
-.bd-content a,
-.bd-content a code,
-.bd-content a .pre,
-.bd-content code,
-.bd-content .docutils.literal,
-.bd-content span.pre,
+.bd-article-container section,
+.bd-article-container section a,
+.bd-article-container section a code,
+.bd-article-container section a .pre,
+.bd-article-container section code,
+.bd-article-container section .docutils.literal,
+.bd-article-container section span.pre,
 .pst-scrollable-table-container th,
 .pst-scrollable-table-container td {
   overflow-wrap: anywhere !important;
