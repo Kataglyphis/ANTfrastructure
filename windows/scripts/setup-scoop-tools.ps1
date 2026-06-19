@@ -68,7 +68,7 @@ if ([string]::IsNullOrWhiteSpace($VulkanVersion)) {
 }
 
 scoop install --global extras/flutter
-scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget
+scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib
 
 Write-Host ('Downloading CMake nightly from {0}...' -f $CMakeNightlyUrl)
 $cmakeInstaller = Join-Path $TempDir 'cmake-nightly.msi'

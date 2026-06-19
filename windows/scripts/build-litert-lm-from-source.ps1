@@ -26,19 +26,27 @@ Push-Location $SourceDir
 & git lfs pull 2>&1 | Out-Null
 Pop-Location
 
-# Install zlib (required by libpng which is a FetchContent dependency of LiteRT-LM)
-Write-Host 'Installing zlib via nuget...'
-nuget install zlib-msvc-x64 -Version 1.2.11.8 -OutputDirectory C:\temp\zlib-nuget -ExcludeVersion 2>&1 | Out-Null
-$zlibRoot = 'C:\temp\zlib-nuget\zlib-msvc-x64'
+# Install vcpkg and zlib for LiteRT-LM's libpng dependency
+$vcpkgDir = 'C:\temp\vcpkg'
+if (-not (Test-Path (Join-Path $vcpkgDir 'vcpkg.exe'))) {
+    Write-Host 'Bootstrapping vcpkg...'
+    & git clone --depth 1 https://github.com/microsoft/vcpkg.git $vcpkgDir 2>&1 | Out-Null
+    Push-Location $vcpkgDir
+    & .\bootstrap-vcpkg.bat 2>&1 | Out-Null
+    Pop-Location
+}
+Write-Host 'Installing zlib via vcpkg...'
+& "$vcpkgDir\vcpkg.exe" install zlib:x64-windows 2>&1 | Out-Null
+$zlibRoot = "$vcpkgDir\installed\x64-windows"
 if (Test-Path $zlibRoot) {
     Write-Host "zlib found at: $zlibRoot"
-    $zlibLibDir = Join-Path $zlibRoot 'lib\native\v142\content\lib\zlib'
-    $zlibIncDir = Join-Path $zlibRoot 'lib\native\v142\content\include\zlib'
-    if (Test-Path $zlibLibDir) {
-        # Add zlib to system PATH for FindZLIB.cmake
-        $zlibBinDir = Join-Path $zlibRoot 'lib\native\v142\content\bin\zlib'
-        if (Test-Path $zlibBinDir) { $env:PATH = "$zlibBinDir;$env:PATH" }
-    }
+    $zlibIncDir = Join-Path $zlibRoot 'include'
+    $zlibLibDir = Join-Path $zlibRoot 'lib'
+    Write-Host "zlib include: $zlibIncDir, lib: $zlibLibDir"
+    # Add to environment for FindZLIB.cmake
+    $env:CMAKE_PREFIX_PATH = "$zlibRoot;$env:CMAKE_PREFIX_PATH"
+    $env:CMAKE_INCLUDE_PATH = "$zlibIncDir;$env:CMAKE_INCLUDE_PATH"
+    $env:CMAKE_LIBRARY_PATH = "$zlibLibDir;$env:CMAKE_LIBRARY_PATH"
 }
 
 $buildDir = Join-Path $SourceDir 'build_ninja'
