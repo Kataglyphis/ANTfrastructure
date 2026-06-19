@@ -100,6 +100,27 @@ case "${STEP}" in
   litert-helper)
     bash "${SCRIPT_DIR}/70-build-litert.sh" "${FORWARDED_ARGS[@]}"
     ;;
+  smoke)
+    info "Running ONNX Runtime post-build smoke tests..."
+    HOST_PYTHON="$(host_python_bin 2>/dev/null || echo python3)"
+    "${HOST_PYTHON}" -c "import onnxruntime; print('onnxruntime', onnxruntime.__version__)" || warn "onnxruntime import failed"
+    if [ -d "${NATIVE_CPU_OUTPUT_DIR}/include" ]; then
+      if [ -f "${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime/core/session/onnxruntime_c_api.h" ]; then
+        info "ONNX Runtime C API headers OK"
+      else
+        warn "ONNX Runtime C API headers missing"
+      fi
+    fi
+    if [ -f "${NATIVE_CPU_OUTPUT_DIR}/runtime/lib/pkgconfig/libonnxruntime.pc" ]; then
+      info "ONNX Runtime pkg-config OK"
+    else
+      warn "ONNX Runtime pkg-config missing"
+    fi
+    if [ "${BUILD_GENAI}" = "true" ]; then
+      "${HOST_PYTHON}" -c "import onnxruntime_genai" 2>/dev/null && info "onnxruntime_genai OK" || warn "onnxruntime_genai import failed"
+    fi
+    info "ONNX Runtime smoke tests complete"
+    ;;
   *)
     err "Unknown build step: ${STEP}"
     ;;

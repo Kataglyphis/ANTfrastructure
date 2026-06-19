@@ -78,16 +78,8 @@ COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSIO
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
-# Lightweight payload files (LiteRT libs, pkg-config, VVdec, LLVM headers)
-# bind-mounted directly from artifact-source to avoid duplicating heavy dirs.
-RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact_src,ro \
-    --mount=type=bind,source=linux/scripts/06-packaging/copy-media-payloads.sh,target=/tmp/copy-media-payloads.sh,ro \
-    set -euo pipefail; \
-    if [ -f /tmp/copy-media-payloads.sh ]; then \
-        SRCPREFIX=/artifact_src bash /tmp/copy-media-payloads.sh || echo "copy-media-payloads failed (non-fatal)"; \
-    else \
-        echo "copy-media-payloads.sh not found; skipping optional payloads"; \
-    fi
+# Lightweight payload files (LiteRT libs, pkg-config, VVdec)
+# Copied via COPY --link to avoid QEMU emulation issues on foreign arches.
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
@@ -131,6 +123,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
     CCACHE_DIR=/workspace/.ccache \
     CCACHE_SECONDARY_STORAGE=true \
+    # Media paths: keep in sync with linux/scripts/03-media/final/media-env.sh
     PATH="/opt/vulkan/active/bin:/opt/gstreamer/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/opt/gstreamer/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:/opt/libcamera/lib/pkgconfig:/opt/libcamera/lib64/pkgconfig:/opt/ffmpeg/lib/pkgconfig" \
     LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:/opt/gstreamer/lib/multiarch:/opt/gstreamer/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \

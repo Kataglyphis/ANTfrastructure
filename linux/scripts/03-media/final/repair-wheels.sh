@@ -26,7 +26,7 @@ if cross_build_is_active; then
         esac
         uv run python -m wheel tags --remove --platform-tag "${platform_tag}" "${wheel}" && \
           echo "Retagged: ${wheel_name}" || \
-          echo "Failed to retag: ${wheel_name}"
+          echo "Warning: Failed to retag: ${wheel_name}"
       done
       shopt -u nullglob
     fi
@@ -35,11 +35,8 @@ if cross_build_is_active; then
   exit 0
 fi
 
-if ! command -v cross_build_enabled >/dev/null 2>&1 && [ "${BUILD_MODE:-native}" = "cross" ]; then
-  echo "Skipping auditwheel repair in cross mode"
-  exit 0
-fi
-
+# Native build: run auditwheel repair, skip if auditwheel fails
+echo "Running auditwheel repair on native wheels..."
 REPAIRED_WHEELS_DIR="${WHEELS_DIR}/repaired"
 
 uv pip install auditwheel patchelf

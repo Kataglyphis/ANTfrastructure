@@ -2,23 +2,31 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for helper in \
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${SCRIPT_DIR}"
+else
+  for helper in \
     "/opt/scripts/core/modules.sh" \
     "${SCRIPT_DIR}/../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        source_modules_framework "${SCRIPT_DIR}"
-        break
+      # shellcheck disable=SC1090
+      source "${helper}"
+      source_modules_framework "${SCRIPT_DIR}"
+      break
     fi
-done
-
-source_module cross-env.sh || true
-source_module logging.sh || true
-source_module common.sh || true
-source_module parallelism.sh || true
+  done
+  source_module cross-env.sh || true
+  source_module logging.sh || true
+  source_module common.sh || true
+  source_module parallelism.sh || true
+  source_module python-host.sh || true
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
+fi
 
 patch_libcamera_riscv64_cross_sources() {
   local common_meson="${LIBCAMERA_SRC}/src/apps/common/meson.build"
@@ -92,10 +100,7 @@ if command -v setup_linux_cross_env >/dev/null 2>&1; then
 fi
 
 echo "Using existing Astral uv venv (expected at /opt/python/.venv)"
-HOST_PYTHON="$(host_python_bin)"
-export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
-       Python_EXECUTABLE="${HOST_PYTHON}" \
-       Python3_EXECUTABLE="${HOST_PYTHON}"
+setup_host_python_environment
 
 # Install build tools into the uv venv
 uv pip install --upgrade pip setuptools wheel meson ninja jinja2 pyyaml ply pybind11
@@ -111,6 +116,30 @@ if [ ! -f /usr/include/gtest/gtest.h ]; then
   fi
 fi
 
+# Ensure abseil-cpp headers are available for tflite-dependent sources
+# (rpi/awb_nn.cpp includes tflite/interpreter.h -> tflite/util.h -> absl/types/span.h).
+if [ ! -f /usr/local/include/absl/types/span.h ]; then
+  echo "Downloading abseil-cpp headers for tflite compat..."
+  local absl_ver="20240722.0"
+  local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_ver}.tar.gz"
+  local absl_tar="/tmp/abseil-${absl_ver}.tar.gz"
+  mkdir -p /usr/local/include/absl
+  if command -v curl >/dev/null 2>&1; then
+    curl -fSL --retry 3 "${absl_url}" -o "${absl_tar}" 2>/dev/null
+  elif command -v wget >/dev/null 2>&1; then
+    wget --retry-connrefused --timeout=30 -O "${absl_tar}" "${absl_url}" 2>/dev/null
+  fi
+  if [ -f "${absl_tar}" ]; then
+    tar -xzf "${absl_tar}" -C /usr/local/include --strip-components=1 \
+      "abseil-cpp-${absl_ver}/absl" 2>/dev/null && rm -f "${absl_tar}"
+  fi
+  if [ ! -f /usr/local/include/absl/types/span.h ]; then
+    echo "ERROR: Failed to install abseil-cpp headers for tflite compat"
+    exit 1
+  fi
+  echo "abseil-cpp headers installed to /usr/local/include/absl/"
+fi
+
 MESON_SETUP_ARGS=(
   --prefix="${LIBCAMERA_PREFIX}"
   --buildtype="${BUILD_TYPE_LOWER}"
@@ -118,6 +147,11 @@ MESON_SETUP_ARGS=(
   -Dpycamera=enabled
   -Ddocumentation=disabled
 )
+
+# qcam requires native Qt6 which is not available for foreign architectures.
+if command -v cross_build_is_active >/dev/null 2>&1 && cross_build_is_active; then
+  MESON_SETUP_ARGS+=(-Dqcam=disabled)
+fi
 
 compiler_probe="${CXX:-}"
 if [ -z "${compiler_probe}" ] && command -v resolve_build_gcc_tool >/dev/null 2>&1; then

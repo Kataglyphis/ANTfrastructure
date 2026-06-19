@@ -273,6 +273,15 @@ install_optional_target_packages() {
     fi
 }
 
+install_deps_preamble() {
+  apt_update_smart
+  if [ "$#" -gt 0 ]; then
+    install_host_packages "$@"
+  else
+    install_host_packages build-essential cmake git pkg-config
+  fi
+}
+
 is_cross_riscv64() {
   cross_build_is_active && \
   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]

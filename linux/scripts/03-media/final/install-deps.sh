@@ -8,6 +8,8 @@ fi
 
 echo "Installing final stage dependencies..."
 
+install_deps_preamble
+
 normalize_vvdec_soname_link() {
     local soname_lib="/usr/local/lib/libvvdec.so.3"
     local real_lib="${soname_lib}.0.0"
@@ -25,11 +27,6 @@ normalize_vvdec_soname_link() {
     ln -snf "$(basename "${soname_lib}")" "/usr/local/lib/libvvdec.so"
 }
 
-if command -v apt_update_smart >/dev/null 2>&1; then
-    apt_update_smart
-else
-    apt-get update -y
-fi
 DEBIAN_FRONTEND=noninteractive apt-get purge -y $(dpkg -l 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' 'libunwind-*-dev' 2>/dev/null | grep '^ii' | awk '{print $2}') 2>/dev/null || true
 # The final image only needs GTK runtime bits. Installing the foreign-arch
 # GTK dev package pulls the GLib/GIR dev chain, which in turn tries to install
@@ -40,7 +37,7 @@ target_packages=(
     libtwolame-dev libgsm1-dev libdav1d-dev libwavpack-dev libx265-dev libdc1394-dev
     libvpx-dev libavcodec-dev libcsound64-dev libtbb12 libavfilter-dev libavformat-dev
     libxml2 libbz2-1.0 liblzma5 libzstd1
-    libevent-core-2.1-7t64 libevent-pthreads-2.1-7t64
+    libevent-core-2.1-7t64 libevent-pthreads-2.1-7t64 libevent-2.1-7t64
     liborc-0.4-0t64 libsoup-3.0-0
     libexif12 libboost-program-options1.83.0
     libgsl28 libgslcblas0 libnuma1

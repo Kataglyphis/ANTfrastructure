@@ -13,23 +13,11 @@ done
 : "${WITH_PYTHON:=true}"
 : "${WITH_JAVA:=false}"
 : "${OPENCV_PYTHON_VERSION:=$(host_python_major_minor)}"
+cross_arch=""
 
 echo "Installing OpenCV build dependencies..."
 
-if command -v apt_update_smart >/dev/null 2>&1; then
-    apt_update_smart
-else
-    apt-get update -y
-fi
-install_host_packages \
-    build-essential \
-    cmake \
-    git \
-    pkg-config \
-    wget \
-    unzip \
-    libtbb-dev \
-    libeigen3-dev
+install_deps_preamble build-essential cmake git pkg-config wget unzip libtbb-dev libeigen3-dev
 
 target_packages=(
     libavcodec-dev
@@ -48,9 +36,14 @@ target_packages=(
 
 if is_cross; then
     echo "Skipping libgtk-3-dev for cross builds because libpango1.0-dev is not multiarch-coinstallable."
-    if [ "$(cross_target_arch)" = "riscv64" ]; then
+    cross_arch="$(cross_target_arch 2>/dev/null || true)"
+    if [ "${cross_arch}" = "riscv64" ]; then
         echo "Skipping GStreamer dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
         echo "Installing riscv64 target OpenCV codec/video deps on a best-effort basis because Ubuntu Ports currently has broken dependency sets for some packages (for example FFmpeg/libpng)."
+    elif [ "${cross_arch}" = "arm64" ]; then
+        echo "Arm64 target OpenCV deps: adding GStreamer dev packages but using best-effort install"
+        echo "(multiarch harfbuzz/libgraphite2 dependency chain is broken on this Ubuntu release)"
+        target_packages+=(libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev)
     else
         target_packages+=(libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev)
     fi
@@ -59,6 +52,8 @@ else
 fi
 
 if { cross_build_is_active 2>/dev/null || cross_build_enabled; } && [ "$(cross_target_arch)" = "riscv64" ]; then
+    install_optional_target_packages "${target_packages[@]}"
+elif { cross_build_is_active 2>/dev/null || cross_build_enabled; } && [ "$(cross_target_arch)" = "arm64" ]; then
     install_optional_target_packages "${target_packages[@]}"
 else
     install_target_packages "${target_packages[@]}"

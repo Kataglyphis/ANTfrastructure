@@ -72,6 +72,7 @@ _cross_stage_build_impl() {
   local -a build_cmd=(
     "${NERDCTL_BIN:-nerdctl}" build
     "${pull_flag}"
+    ${NO_CACHE:+--no-cache}
     --platform linux/amd64
     -t "${tag}"
     -f "${dockerfile}"
@@ -80,9 +81,13 @@ _cross_stage_build_impl() {
   if [ "${push_flag}" -eq 1 ]; then
     build_cmd+=(
       --output "type=image,name=${tag},push=true"
-      --cache-from "type=registry,ref=${tag}-buildcache"
-      --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
     )
+    if [ -z "${NO_CACHE:-}" ]; then
+      build_cmd+=(
+        --cache-from "type=registry,ref=${tag}-buildcache"
+        --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
+      )
+    fi
   fi
 
   append_buildkit_host_arg build_cmd

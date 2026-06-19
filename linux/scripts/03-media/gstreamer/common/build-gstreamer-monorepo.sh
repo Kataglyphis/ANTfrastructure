@@ -59,6 +59,12 @@ compute_gstreamer_meson_jobs() {
 }
 
 build_gstreamer_monorepo() {
+  # Ensure cross_build_is_active is available. The SDK image's cross-env.sh
+  # may not be properly sourced in the call chain, leaving it undefined.
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
+
   local host_arch=""
   local deb_host_multiarch_dir=""
   local sys_pkgconf_dir=""
@@ -85,6 +91,9 @@ build_gstreamer_monorepo() {
     if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" != "true" ]; then
       python_feature="disabled"
     fi
+    case "${TARGET_MACHINE_ARCH}" in
+      riscv*|*riscv*|aarch64*|arm*) python_feature="disabled" ;;
+    esac
   fi
   prepare_cross_python_build_config
 
@@ -144,11 +153,25 @@ build_gstreamer_monorepo() {
     "-Dintrospection=enabled"
   )
 
+  if cross_build_is_active; then
+    echo "Cross build detected: disabling devtools (avoid cargo host-toolchain collisions)"
+    MESON_FLAGS+=("-Ddevtools=disabled")
+  fi
+
   case "${TARGET_MACHINE_ARCH}" in
     riscv*|*riscv*)
-      echo "Target arch '${TARGET_MACHINE_ARCH}' detected: keeping GTK, Python and introspection enabled while skipping -Drs (Rust bindings)"
+      echo "Target arch '${TARGET_MACHINE_ARCH}' detected: python disabled (no target Python dev for riscv64)"
       MESON_FLAGS+=("-Drs=disabled")
-      MESON_FLAGS+=("-Ddevtools=disabled")
+      # Introspection kept enabled — exe_wrapper is provided via pre-setup.sh QEMU wrapper.
+      # Force graphene introspection on to avoid dangling .gir dependency in ninja.
+      append_meson_arg "-Dgraphene:introspection=enabled"
+      # Pango: ensure GTK's subprojects dir can find the top-level pango subproject
+      # (GTK looks for pango in its own subprojects/ directory when force_fallback_for
+      # is active, but the pango wrap is at the GStreamer top level).
+      local gtk_subproj="${BUILD_DIR}/gstreamer/subprojects/gtk-4.14.5/subprojects"
+      if [ -d "${gtk_subproj}" ] && [ ! -e "${gtk_subproj}/pango" ]; then
+        ln -snf "$(realpath "${BUILD_DIR}/gstreamer/subprojects/pango" 2>/dev/null || echo "${BUILD_DIR}/gstreamer/subprojects/pango")" "${gtk_subproj}/pango" 2>/dev/null || true
+      fi
       append_meson_arg "--force-fallback-for=glib-2.0,gobject-2.0,gio-2.0,gio-unix-2.0,gmodule-2.0,gmodule-no-export-2.0,gmodule-export-2.0,gthread-2.0,cairo,cairo-gobject,pango,pangoft2,pangocairo,pangoxft,harfbuzz,gdk-pixbuf-2.0,gobject-introspection-1.0,pygobject-3.0,graphene-1.0,graphene-gobject-1.0,gtk4,gtk4-x11,gtk4-wayland"
       append_meson_arg "-Dgobject-introspection:gi_cross_use_prebuilt_gi=true"
       if [ -x /usr/local/bin/g-ir-scanner-riscv64-binary-wrapper ]; then
@@ -157,7 +180,6 @@ build_gstreamer_monorepo() {
       if [ -x /usr/local/bin/g-ir-scanner-ldd-riscv64-cross ]; then
         append_meson_arg "-Dgobject-introspection:gi_cross_ldd_wrapper=/usr/local/bin/g-ir-scanner-ldd-riscv64-cross"
       fi
-      append_meson_arg "-Dgraphene:introspection=enabled"
       append_meson_arg "-Dpango:introspection=disabled"
       append_meson_arg "-Dharfbuzz:introspection=disabled"
       append_meson_arg "-Dgdk-pixbuf:glycin=disabled"
@@ -171,11 +193,21 @@ build_gstreamer_monorepo() {
       append_meson_arg "-Dgst-plugins-rs:csound=disabled"
       append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
       echo "Disabling gst-plugins-rs whisper plugin for ARM host arch"
+      if [ "${BUILD_MODE:-native}" = "cross" ]; then
+        echo "ARM cross build: disabling introspection (g-ir-compiler needs qemu exe_wrapper)"
+        MESON_FLAGS+=("-Dintrospection=disabled")
+      fi
       ;;
     *)
       MESON_FLAGS+=("-Drs=enabled")
       ;;
   esac
+
+  if cross_build_is_active; then
+    echo "Cross build detected: disabling gst-plugins-rs subproject in monorepo"
+    echo "(standalone cargo build handles Rust plugins independently)"
+    MESON_FLAGS+=("-Drs=disabled")
+  fi
 
   if [ -n "${CROSS_PYTHON_BUILD_CONFIG:-}" ]; then
     append_meson_arg "-Dpython.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
@@ -186,6 +218,12 @@ build_gstreamer_monorepo() {
 
   if command -v append_meson_cross_flags >/dev/null 2>&1; then
     append_meson_cross_flags MESON_FLAGS
+    # Remove pkg_config_libdir from the cross file so meson falls back to
+    # the PKG_CONFIG_LIBDIR env var (which we set without the host x86_64
+    # pkgconfig path).  The SDK image's cross file includes host paths.
+    if [ -n "${MESON_CROSS_FILE:-}" ] && [ -f "${MESON_CROSS_FILE}" ]; then
+      sed -i '/^pkg_config_libdir = /d' "${MESON_CROSS_FILE}"
+    fi
   fi
   if command -v append_meson_native_flags >/dev/null 2>&1; then
     append_meson_native_flags MESON_FLAGS
@@ -219,7 +257,15 @@ build_gstreamer_monorepo() {
     export CSOUND_LIB_DIR="/usr/lib"
   fi
 
-  PKG_CONFIG_LIBDIR="${sys_pkgconf_dir}:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig"
+  # When cross-compiling, exclude /usr/lib/pkgconfig (host pkgconfig) to
+  # prevent pkg-config from returning host .pc files (e.g. x11-xcb.pc) that
+  # point to x86_64 library paths.  Meson also respects this env var when
+  # the cross file's pkg_config_libdir is absent (which we handle below).
+  if cross_build_is_active && [ "${BUILD_MODE:-native}" = "cross" ]; then
+    PKG_CONFIG_LIBDIR="${sys_pkgconf_dir}:/usr/local/lib/pkgconfig"
+  else
+    PKG_CONFIG_LIBDIR="${sys_pkgconf_dir}:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig"
+  fi
   if [ -n "${PKG_CONFIG_LIBDIR_ORIG:-}" ]; then
     PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:${PKG_CONFIG_LIBDIR_ORIG}"
   fi
@@ -311,6 +357,32 @@ build_gstreamer_monorepo() {
     fi
   fi
   echo "--- end cairo debug ---" | tee -a /tmp/gstreamer-cairo-debug.txt
+
+  # Fix the tensorflow-lite.pc file if it has trailing braces from the
+  # LiteRT .pc generation — the tflite plugin fails in cross builds when
+  # the Libs line reads "-ltensorflow-lite}" instead of "-ltensorflow-lite".
+  if [ -f /usr/local/lib/pkgconfig/tensorflow-lite.pc ]; then
+    if grep -q 'ltensorflow-lite}' /usr/local/lib/pkgconfig/tensorflow-lite.pc 2>/dev/null; then
+      sed -i 's/-ltensorflow-lite}/-ltensorflow-lite/g' /usr/local/lib/pkgconfig/tensorflow-lite.pc
+      echo "Fixed tensorflow-lite.pc: removed trailing brace from Libs line"
+    fi
+  fi
+  # Ensure meson's cross-compiler can find libtensorflow-lite. Meson checks
+  # library existence via the cross compiler's -print-file-name, which does
+  # NOT use -L flags from pkg-config. Symlink the library into one of the
+  # cross-compiler's default search directories.
+  if [ "${BUILD_MODE:-native}" = "cross" ] && [ -f /usr/local/lib/libtensorflow-lite.so ]; then
+    for _gcc_arch in aarch64-linux-gnu riscv64-linux-gnu; do
+      for _gcc_dir in /opt/gcc-*/${_gcc_arch}/lib* /opt/gcc-*/lib/gcc/${_gcc_arch}/*/; do
+        [ -d "${_gcc_dir}" ] || continue
+        ln -sf /usr/local/lib/libtensorflow-lite.so "${_gcc_dir}/libtensorflow-lite.so" 2>/dev/null || true
+        ln -sf /usr/local/lib/libtensorflow-lite.a "${_gcc_dir}/libtensorflow-lite.a" 2>/dev/null || true
+      done
+    done
+    # Also symlink to /usr/local/lib itself for the LIBRARY_PATH
+    export LIBRARY_PATH="/usr/local/lib:${LIBRARY_PATH:-}"
+    echo "Ensured libtensorflow-lite is findable by cross-compiler"
+  fi
 
   if ! run_gstreamer_meson_setup > /tmp/meson-setup.log 2>&1; then
     echo "Meson setup failed; printing verbose output..."

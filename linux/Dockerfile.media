@@ -69,6 +69,7 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
 # the compiler base image via the SDK layer.
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh /opt/scripts/media/activate-cross-python.sh
 COPY --chmod=755 linux/scripts/03-media/media-build-preamble.sh /opt/scripts/media/media-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/final/verify-media-artifacts.sh /opt/scripts/media/final/verify-media-artifacts.sh
 
 RUN set -euo pipefail; \
     if [ "${ENABLE_NVIDIA}" = "true" ]; then \
@@ -82,7 +83,7 @@ RUN set -euo pipefail; \
     rm -f /etc/apt/sources.list.d/ubuntu-ports-*.sources 2>/dev/null || true; \
     ports_file="/etc/apt/sources.list.d/ubuntu-ports.sources"; \
     printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: resolute resolute-updates resolute-backports resolute-security\nComponents: main universe restricted multiverse\nArchitectures: arm64 riscv64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' > "${ports_file}"; \
-    apt-get update -qq || true
+    apt-get update -qq 2>/dev/null || echo "WARNING: Ubuntu Ports update failed (expected for amd64-only builds)"
 
 ENV NVIDIA_CODEC_HEADERS=auto
 
@@ -132,10 +133,17 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
             --step cpu
 
+# Validate ONNX Runtime CPU artifacts before downstream stages consume them
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh onnxruntime-cpu
+
 RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
         --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+        --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+        --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
         --mount=type=tmpfs,target=/tmp \
         set -euo pipefail; \
         if [ "${ENABLE_NVIDIA}" = "true" ] || [ "${ENABLE_AMD}" = "true" ]; then \
@@ -154,6 +162,14 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh \
             --step genai
 
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    if [ "${BUILD_GENAI:-true}" = "true" ]; then \
+      bash /opt/scripts/media/final/verify-media-artifacts.sh onnxruntime-genai; \
+    else \
+      echo "Skipping onnxruntime-genai verification (BUILD_GENAI=${BUILD_GENAI:-true})"; \
+    fi
+
 # wasm step — heavy compilation, kept separate to avoid cache loss on pkgconfig failure
 COPY --chmod=755 linux/scripts/03-media/onnxruntime/runtime /opt/scripts/media/onnxruntime/runtime
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -168,6 +184,10 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     set -euo pipefail; \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step js; \
         bash /opt/scripts/media/onnxruntime/build/build-onnxruntime.sh --step pkgconfig
+
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh onnxruntime-pkgconfig
 
 # ==============================================================================
 # LiteRT stage
@@ -190,6 +210,11 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/media/litert/build-litert.sh "${LITERT_VERSION}"
+
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh litert && \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh litert-headers
 
 # ==============================================================================
 # OpenCV stage
@@ -224,6 +249,11 @@ RUN --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
         --with-python "${OPENCV_WITH_PYTHON}" \
         --skip-dep-install
 
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh opencv-core && \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh opencv
+
 # ==============================================================================
 # App wheelhouse stage (best-effort riscv64 cross-only)
 # ==============================================================================
@@ -248,7 +278,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         mkdir -p /opt/app-wheels; \
         exit 0; \
     fi; \
+    if ! command -v uv >/dev/null 2>&1; then \
+      echo "WARNING: uv not found in app-wheelhouse stage; installing..."; \
+      pip3 install uv 2>/dev/null || echo "WARNING: could not install uv"; \
+    fi; \
     bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh
+
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh app-wheels
 
 # ==============================================================================
 # FFmpeg stage
@@ -272,6 +310,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     set -euo pipefail; \
     bash /opt/scripts/media/ffmpeg/build-ffmpeg.sh
 
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh ffmpeg
+
 # ==============================================================================
 # Shared media build inputs stage
 # ==============================================================================
@@ -294,6 +336,10 @@ COPY --link --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/incl
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
 COPY --link --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
+
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh media-inputs
 
 
 # ==============================================================================
@@ -326,6 +372,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
@@ -336,6 +384,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \
         "$BUILD_TYPE"
+
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh gstreamer
 
 # ==============================================================================
 # libcamera stage
@@ -360,6 +412,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/media/libcamera/build-libcamera.sh
+
+RUN --mount=type=cache,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/media/final/verify-media-artifacts.sh libcamera
 
 # ==============================================================================
 # Final stage - combine all artifacts while keeping runtime inputs selective.
@@ -389,19 +445,26 @@ COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 COPY --link --from=libcamera /opt/libcamera /opt/libcamera
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
 COPY --chmod=755 linux/scripts/03-media/final /opt/scripts/media/final
+# Canonical media ENV definitions (shared with Dockerfile.package):
+# linux/scripts/03-media/final/media-env.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/media/final/collect-artifacts.sh && \
     bash /opt/scripts/media/final/install-deps.sh && \
     bash /opt/scripts/media/final/configure-runtime.sh && \
     bash /opt/scripts/media/final/repair-wheels.sh && \
     bash /opt/scripts/media/final/verify-wheels.sh && \
-    bash /opt/scripts/media/final/validate-media-runtime.sh
+    bash /opt/scripts/media/final/validate-media-runtime.sh && \
+    bash /opt/scripts/packaging/smoke-media.sh
 
+# Keep in sync with linux/scripts/03-media/final/media-env.sh (canonical definition)
 ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
     LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib:${OPENCV_PREFIX}/lib:${OPENCV_PREFIX}/lib64:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib:${FFMPEG_PREFIX}/lib64:${LD_LIBRARY_PATH}" \

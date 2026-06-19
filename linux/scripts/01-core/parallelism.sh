@@ -210,3 +210,14 @@ compute_rust_jobs() {
 
   compute_jobs_with_mem_cap "${requested}" "${mb_per_job}"
 }
+
+# Convenience wrapper: auto-resolve NPROC from PARALLEL_JOBS env var or
+# compute_jobs_with_mem_cap().  Uses 2000 MB/job by default.
+# Usage: NPROC="$(detect_jobs_with_mem_cap)"
+detect_jobs_with_mem_cap() {
+  if [ -n "${PARALLEL_JOBS:-}" ]; then
+    printf '%s' "${PARALLEL_JOBS}"
+  else
+    compute_jobs_with_mem_cap "" 2000
+  fi
+}

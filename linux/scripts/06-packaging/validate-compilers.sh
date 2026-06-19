@@ -48,10 +48,24 @@ validate_artifact_source() {
 
   # host GCC
   if [ -x "${gcc_prefix}/bin/gcc" ]; then
-    local host_ver
+    local host_ver host_elf
     host_ver="$("${gcc_prefix}/bin/gcc" --version 2>/dev/null | head -1 || true)"
     if echo "${host_ver}" | grep -q "${GCC_VERSION:-16.1.0}"; then
       echo "OK: host gcc ${gcc_prefix}/bin/gcc reports ${host_ver}"
+    elif host_elf="$(readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1)"; then
+      # Cross-built GCC binary (target-native) can't execute on build host.
+      # Accept if the ELF machine matches the target arch.
+      local expected_machine=""
+      case "${target_arch}" in
+        arm64)   expected_machine="AArch64" ;;
+        riscv64) expected_machine="RISC-V" ;;
+        amd64)   expected_machine="Advanced Micro Devices X86-64" ;;
+      esac
+      if echo "${host_elf}" | grep -qi "${expected_machine}"; then
+        echo "OK: host gcc ${gcc_prefix}/bin/gcc is cross-built ELF for ${target_arch} (${host_elf})"
+      else
+        validate_fail "host-gcc" "${gcc_prefix}/bin/gcc --version: ${host_ver:-MISSING} (expected ${GCC_VERSION:-16.1.0}), ELF: ${host_elf}"
+      fi
     else
       validate_fail "host-gcc" "${gcc_prefix}/bin/gcc --version: ${host_ver:-MISSING} (expected ${GCC_VERSION:-16.1.0})"
     fi
@@ -82,26 +96,44 @@ validate_artifact_source() {
   if [ "${target_arch}" != "amd64" ]; then
     local native_gcc="/opt/gcc-${GCC_VERSION:-16.1.0}-native-${target_arch}"
     if [ -d "${native_gcc}" ] && [ -x "${native_gcc}/bin/gcc" ]; then
-      local native_ver
+      local native_ver native_elf expected_machine
       native_ver="$("${native_gcc}/bin/gcc" --version 2>/dev/null | head -1 || true)"
       if echo "${native_ver}" | grep -q "${GCC_VERSION:-16.1.0}"; then
         echo "OK: target-native ${native_gcc}/bin/gcc reports ${native_ver}"
       else
-        validate_fail "native-gcc" "${native_gcc}/bin/gcc --version: ${native_ver:-MISSING}"
+        native_elf="$(readelf -h "${native_gcc}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+        case "${target_arch}" in
+          arm64)   expected_machine="AArch64" ;;
+          riscv64) expected_machine="RISC-V" ;;
+          *)       expected_machine="" ;;
+        esac
+        if [ -n "${expected_machine}" ] && echo "${native_elf}" | grep -qi "${expected_machine}"; then
+          echo "OK: target-native ${native_gcc}/bin/gcc is cross-built ELF for ${target_arch} (${native_elf})"
+        else
+          validate_fail "native-gcc" "${native_gcc}/bin/gcc --version: ${native_ver:-MISSING}${native_elf:+ ELF: ${native_elf}}"
+        fi
       fi
     elif [ "${BUILD_MODE:-native}" = "cross" ]; then
       # The GCC swap in Dockerfile.android may have already moved the
       # native GCC into /opt/gcc-${GCC_VERSION}.  If the main GCC
-      # already reports the correct architecture, the swap succeeded.
-      local main_gcc_dump
+      # already reports the correct architecture (via -dumpmachine or
+      # readelf), the swap succeeded.
+      local main_gcc_dump main_gcc_elf
       main_gcc_dump="$("${gcc_prefix}/bin/gcc" -dumpmachine 2>/dev/null || true)"
       case "${target_arch}" in
-        arm64)   expected_triple="aarch64-linux-gnu" ;;
-        riscv64) expected_triple="riscv64-linux-gnu" ;;
-        *)       expected_triple="" ;;
+        arm64)   expected_triple="aarch64-linux-gnu"; expected_machine="AArch64" ;;
+        riscv64) expected_triple="riscv64-linux-gnu"; expected_machine="RISC-V" ;;
+        *)       expected_triple=""; expected_machine="" ;;
       esac
       if [ -n "${expected_triple}" ] && [ "${main_gcc_dump}" = "${expected_triple}" ]; then
         echo "OK: main gcc already reports target-native triple ${main_gcc_dump} (swap completed)"
+      elif [ -n "${expected_machine}" ]; then
+        main_gcc_elf="$(readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+        if echo "${main_gcc_elf}" | grep -qi "${expected_machine}"; then
+          echo "OK: main gcc is cross-built ELF for ${target_arch} (${main_gcc_elf}) - swap completed"
+        else
+          validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
+        fi
       else
         validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
       fi
@@ -123,12 +155,24 @@ validate_artifact_source() {
     if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:-22.1.6}"; then
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
-      # Check major.minor match (artifact may have minor patch drift)
       clang_major_minor="${LLVM_RELEASE%.*}"
       if [[ "${clang_ver}" == *"clang version ${clang_major_minor}"* ]]; then
         echo "OK: target clang ${llvm_target} reports ${clang_ver} (major.minor ${clang_major_minor} matches)"
       else
-        validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.6})"
+        # Cross-built Clang can't execute on build host; check ELF arch instead
+        local clang_elf
+        clang_elf="$(readelf -h "${llvm_target}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+        local expected_machine=""
+        case "${target_arch}" in
+          arm64)   expected_machine="AArch64" ;;
+          riscv64) expected_machine="RISC-V" ;;
+          amd64)   expected_machine="Advanced Micro Devices X86-64" ;;
+        esac
+        if [ -n "${expected_machine}" ] && echo "${clang_elf}" | grep -qi "${expected_machine}"; then
+          echo "OK: target clang ${llvm_target} is cross-built ELF for ${target_arch} (${clang_elf})"
+        else
+          validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.6})${clang_elf:+ ELF: ${clang_elf}}"
+        fi
       fi
     fi
   elif cross_build_is_active && [ -d /opt/llvm-target ]; then

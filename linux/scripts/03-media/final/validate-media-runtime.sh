@@ -251,5 +251,77 @@ if [ ${#STILL_MISSING[@]} -gt 0 ]; then
   echo "Add entries to KNOWN_SO_PACKAGES in validate-media-runtime.sh."
 fi
 
+# ---------------------------------------------------------------------------
+# ELF architecture validation — verify key binaries match the target arch
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== ELF Architecture Validation ==="
+
+target_arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
+case "${target_arch}" in
+  amd64)   elf_machine_grep="X86-64" ;;
+  arm64)   elf_machine_grep="AArch64" ;;
+  riscv64) elf_machine_grep="RISC-V" ;;
+  *)       elf_machine_grep="" ;;
+esac
+
+if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
+  elf_binaries=(
+    "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-launch-1.0"
+    "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-inspect-1.0"
+    "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg"
+    "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffprobe"
+  )
+  for bin in "${elf_binaries[@]}"; do
+    [ -f "${bin}" ] || continue
+    elf_machine="$(readelf -h "${bin}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+    case "${elf_machine}" in
+      *"${elf_machine_grep}"*)
+        echo "  OK: $(basename "${bin}") ELF machine=${elf_machine}" >&2
+        ;;
+      *)
+        echo "  MISMATCH: $(basename "${bin}") ELF machine=${elf_machine} != expected ${elf_machine_grep} (arch=${target_arch})" >&2
+        ;;
+    esac
+  done
+  for so_dir in "${LIB_DIRS[@]}"; do
+    [ -d "${so_dir}" ] || continue
+    for so in "${so_dir}"/*.so "${so_dir}"/*.so.*; do
+      [ -f "${so}" ] || continue
+      elf_machine="$(readelf -h "${so}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+      case "${elf_machine}" in
+        *"${elf_machine_grep}"*) ;;
+        "") continue ;;
+        *)
+          echo "  MISMATCH: $(basename "${so}") ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
+          ;;
+      esac
+    done
+  done
+else
+  echo "  SKIP: readelf not available or unknown arch ${target_arch}" >&2
+fi
+
+# ---------------------------------------------------------------------------
+# QEMU-based cross-arch binary smoke (only when cross-compiling)
+# ---------------------------------------------------------------------------
+if cross_build_is_active 2>/dev/null && command -v cross_target_qemu_runner >/dev/null 2>&1; then
+  echo ""
+  echo "=== QEMU Cross-Arch Binary Smoke ==="
+  qemu_runner="$(cross_target_qemu_runner 2>/dev/null || true)"
+  if [ -n "${qemu_runner}" ] && [ -x "${qemu_runner}" ]; then
+    for bin in "${ARTIFACTS[@]}"; do
+      [ -f "${bin}" ] || continue
+      if "${qemu_runner}" "${bin}" --help >/dev/null 2>&1; then
+        echo "  OK: ${qemu_runner} $(basename "${bin}") --help" >&2
+      else
+        echo "  WARN: ${qemu_runner} $(basename "${bin}") --help failed (may be expected for cross builds without full sysroot)" >&2
+      fi
+    done
+  else
+    echo "  SKIP: qemu user-mode emulator not found (install qemu-user-static)" >&2
+  fi
+fi
+
 echo ""
 echo "=== Validation complete ==="

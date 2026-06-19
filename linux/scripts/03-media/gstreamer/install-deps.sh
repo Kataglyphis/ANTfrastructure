@@ -14,11 +14,7 @@ vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
 echo "Installing GStreamer build dependencies..."
 
-if command -v apt_update_smart >/dev/null 2>&1; then
-  apt_update_smart
-else
-  apt-get update -y
-fi
+install_deps_preamble build-essential cmake git pkg-config g++ flex bison
 
 is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
 
@@ -43,8 +39,6 @@ if is_cross; then
 fi
 
 # Pre-setup dependencies
-install_host_packages build-essential cmake git pkg-config g++ flex bison
-
 pre_setup_target_packages=(
   libx11-dev
   libxext-dev
@@ -116,7 +110,9 @@ install_target_packages "${gst_target_packages[@]}" || true
 apt-get purge -y 'libunwind-[0-9]*-dev' || true
 install_target_packages libunwind-dev || true
 
-install_host_packages libxml2-utils glslc glslang-tools gobject-introspection || true
+# Install libdw-dev as host package too — its headers (elfutils/libdwfl.h) are
+# arch-independent and required by GStreamer gstinfo.c for backtrace support.
+install_host_packages libdw-dev libxml2-utils glslc glslang-tools gobject-introspection || true
 if [ "${is_riscv64_cross}" = "true" ]; then
   echo "Skipping target GTK dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else

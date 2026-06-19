@@ -21,21 +21,7 @@ if is_cross; then
     fi
 fi
 
-if command -v apt_update_smart >/dev/null 2>&1; then
-    apt_update_smart
-else
-    apt-get update -y
-fi
-install_host_packages \
-    build-essential \
-    cmake \
-    git \
-    pkg-config \
-    curl \
-    unzip \
-    cpio \
-    gfortran \
-    ninja-build
+install_deps_preamble build-essential cmake git pkg-config curl unzip cpio gfortran ninja-build
 
 install_target_packages "${target_packages[@]}"
 

@@ -30,10 +30,15 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
-# Provide cross_build_is_active even when cross-env.sh guard prevents reload.
-# Called by 60+ media/toolchain/framework scripts across the entire build.
+# Provide cross_build_is_active when cross-env.sh hasn't been sourced.
+# Prefer calling cross_build_enabled (which checks BUILD_MODE=cross AND cross target != build arch),
+# falling back to the simpler BUILD_MODE check if cross_build_enabled isn't available either.
 if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  if command -v cross_build_enabled >/dev/null 2>&1; then
+    cross_build_is_active() { cross_build_enabled; }
+  else
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
 fi
 
 # Derived defaults (use the canonical values from versions.env as fallbacks)

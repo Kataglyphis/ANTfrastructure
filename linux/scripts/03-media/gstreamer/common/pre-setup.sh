@@ -1,9 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
-if [ -f /opt/scripts/core/cross-env.sh ]; then
+_PRE_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${_PRE_SETUP_DIR}"
+elif [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
+else
+  if [ -f "${_PRE_SETUP_DIR}/../../../01-core/cross-env.sh" ]; then
+    # shellcheck disable=SC1090
+    source "${_PRE_SETUP_DIR}/../../../01-core/cross-env.sh"
+  fi
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
 fi
+
 if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/toolchain/vulkan.sh
@@ -145,6 +159,14 @@ else
 fi
 
 apt-get install -y --no-install-recommends "${host_packages[@]}" "${core_packages[@]}"
+
+# On riscv64, purge system pango shared libraries so Meson's force-fallback-for
+# builds pango from source. The system libpangoft2 is too old and lacks symbols
+# (e.g. pango_font_description_get_color) that the source-built pango needs.
+if [ "${is_riscv64_cross}" = "true" ]; then
+  echo "Removing system riscv64 pango shared libraries to force source-built fallback..."
+  rm -f /usr/lib/riscv64-linux-gnu/libpango*.so* /usr/lib/riscv64-linux-gnu/pkgconfig/pango*.pc 2>/dev/null || true
+fi
 
 # Keep the cross pkg-config path target-only, but expose the wrapped scanner
 # path through a focused shim without dropping the target package's real
@@ -536,7 +558,8 @@ update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # Install Csound packages required for building csound-related plugins.
 # The later GStreamer build already disables/excludes csound on ARM and RISC-V
 # cross targets, so avoid redundant host-side package churn here.
-if [ "${skip_csound_cross}" = "true" ]; then
+# Also check target arch directly in case cross_build_is_active is not available.
+if [ "${skip_csound_cross}" = "true" ] || echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
   echo "Skipping Csound pre-setup for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
   apt-get install -y --no-install-recommends \
@@ -549,7 +572,7 @@ fi
 # stub when not building for riscv targets (we skipped installing Csound
 # packages above for skipped cross targets), otherwise creating a stub may mask
 # missing package problems on supported arches.
-if [ "${skip_csound_cross}" != "true" ]; then
+if [ "${skip_csound_cross}" != "true" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
   triplet=""
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     triplet="$(cross_target_triplet)"
@@ -580,9 +603,7 @@ if [ "${skip_csound_cross}" != "true" ]; then
     "Cflags: -I\${includedir}" \
     > "$pcdir/csound.pc" || true
   # Verify that pkg-config can discover csound; fail with diagnostics if not.
-  if ! pkg-config --exists csound 2>/dev/null; then
-    echo "" >&2
-    echo "ERROR: csound pkg-config (.pc) not found after installing Csound packages." >&2
+  if [ "${skip_csound_cross}" != "true" ] && ! pkg-config --exists csound 2>/dev/null; then
     echo "dpkg multiarch triplet: ${triplet:-unset}" >&2
     echo "PKG_CONFIG_LIBDIR=${PKG_CONFIG_LIBDIR:-unset}" >&2
     echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-unset}" >&2
