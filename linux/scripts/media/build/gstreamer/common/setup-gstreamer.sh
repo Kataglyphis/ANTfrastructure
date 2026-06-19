@@ -13,24 +13,9 @@ set -euo pipefail
 # ==============================================================================
 
 _SETUP_GST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/media/media-build-preamble.sh
-  media_build_preamble_init "${_SETUP_GST_DIR}"
-else
-  for helper in \
-    "/opt/scripts/core/cross-env.sh" \
-    "${_SETUP_GST_DIR}/../../../01-core/cross-env.sh"; do
-    if [ -f "${helper}" ]; then
-      # shellcheck disable=SC1090
-      source "${helper}"
-      break
-    fi
-  done
-  if ! command -v cross_build_is_active >/dev/null 2>&1; then
-    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
-  fi
-fi
+# shellcheck disable=SC1091
+source "${_SETUP_GST_DIR}/../../../core/common.sh"
+media_common_init "${_SETUP_GST_DIR}"
 
 if cross_build_is_active && \
    command -v cross_target_arch >/dev/null 2>&1; then

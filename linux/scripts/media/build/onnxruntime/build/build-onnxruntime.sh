@@ -17,6 +17,28 @@ while [ "$#" -gt 0 ]; do
       STEP="$2"
       shift 2
       ;;
+    -h|--help)
+      echo "Usage: $0 --step <step> [FORWARDED_ARGS...]"
+      echo ""
+      echo "Build ONNX Runtime (and GenAI/LiteRT steps) from source."
+      echo ""
+      echo "Steps:"
+      echo "  deps        Install build dependencies"
+      echo "  fetch       Fetch ONNX Runtime source"
+      echo "  cpu         Build native CPU EP"
+      echo "  gpu         Build GPU EP (NVIDIA CUDA or AMD ROCm)"
+      echo "  genai       Build ONNX Runtime GenAI"
+      echo "  wasm        Build WebAssembly target"
+      echo "  js          Build JS bindings"
+      echo "  pkgconfig   Generate pkg-config files"
+      echo "  all         Run every step (default)"
+      echo ""
+      echo "Environment:"
+      echo "  ENABLE_NVIDIA=true   Enable CUDA/TensorRT EPs"
+      echo "  ENABLE_AMD=true      Enable ROCm EP"
+      echo "  BUILD_GENAI=false    Skip GenAI build"
+      exit 0
+      ;;
     *)
       FORWARDED_ARGS+=("$1")
       shift

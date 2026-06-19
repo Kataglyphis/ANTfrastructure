@@ -3,24 +3,27 @@ set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/media/media-build-preamble.sh
-  media_build_preamble_init "${SCRIPT_DIR}"
-else
-  for helper in \
-    "/opt/scripts/core/modules.sh" \
-    "${SCRIPT_DIR}/../../../01-core/modules.sh"; do
-    if [ -f "${helper}" ]; then
-      # shellcheck disable=SC1090
-      source "${helper}"
-      source_modules_framework "${SCRIPT_DIR}"
-      break
-    fi
-  done
-  source_module platform.sh || true
-  source_module common.sh || true
-fi
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../../core/common.sh"
+media_common_init "${SCRIPT_DIR}"
+
+case "${1:-}" in
+  -h|--help)
+    echo "Usage: $0 <gstreamer_version> [prefix] [build_type]"
+    echo ""
+    echo "Build GStreamer from the monorepo source with all plugins."
+    echo ""
+    echo "Arguments:"
+    echo "  gstreamer_version  Required (e.g. 1.29.1)"
+    echo "  prefix             Install prefix (default: /opt/gstreamer)"
+    echo "  build_type         Release | Debug (default: Release)"
+    echo ""
+    echo "Environment:"
+    echo "  BUILD_MODE=cross   Enable cross-compile flags"
+    echo "  TARGET_ARCH        Target architecture (amd64/arm64/riscv64)"
+    exit 0
+    ;;
+esac
 
 GSTREAMER_VERSION="${1:?gstreamer version is required}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"

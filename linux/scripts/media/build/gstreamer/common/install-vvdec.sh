@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/media/media-build-preamble.sh
-  media_build_preamble_init "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-elif [ -f /opt/scripts/core/cross-env.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
+_VVDEC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_VVDEC_DIR}/../../../core/common.sh"
+media_common_init "${_VVDEC_DIR}"
 
 VV_VERSION="${VV_VERSION:-${VVDEC_VERSION:-${1:-v3.1.0}}}"
 TMPDIR="/tmp/vvdec-$$"

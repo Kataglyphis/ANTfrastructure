@@ -17,25 +17,25 @@ IFS=$'\n\t'
 
 # Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/media/media-build-preamble.sh
-  media_build_preamble_init "${SCRIPT_DIR}"
-else
-  for helper in \
-    "/opt/scripts/core/modules.sh" \
-    "${SCRIPT_DIR}/../../01-core/modules.sh"; do
-    if [ -f "${helper}" ]; then
-      # shellcheck disable=SC1090
-      source "${helper}"
-      source_modules_framework "${SCRIPT_DIR}"
-      break
-    fi
-  done
-  source_module cross-env.sh || true
-  source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
-  source_module compiler-resolution.sh || true
-fi
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../core/common.sh"
+media_common_init "${SCRIPT_DIR}"
+
+case "${1:-}" in
+  -h|--help)
+    echo "Usage: $0"
+    echo ""
+    echo "Build and install FFmpeg from source with common codecs enabled."
+    echo ""
+    echo "Environment:"
+    echo "  FFMPEG_PREFIX  Install prefix (default: /opt/ffmpeg)"
+    echo "  FFMPEG_SRC     Source checkout dir (default: /tmp/ffmpeg-\$\$)"
+    echo "  NPROC          Parallel jobs (default: auto with memory cap)"
+    echo "  USE_CCACHE     Enable ccache (default: true)"
+    echo "  USE_LLD        Use lld linker (default: true)"
+    exit 0
+    ;;
+esac
 
 if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
   NPROC="$(compute_jobs_with_mem_cap "" 2000)"

@@ -12,34 +12,28 @@ IFS=$'\n\t'
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/media/media-build-preamble.sh
-  media_build_preamble_init "${SCRIPT_DIR}"
-else
-  for helper in \
-    "/opt/scripts/core/modules.sh" \
-    "${SCRIPT_DIR}/../../01-core/modules.sh"; do
-    if [ -f "${helper}" ]; then
-      # shellcheck disable=SC1090
-      source "${helper}"
-      source_modules_framework "${SCRIPT_DIR}"
-      break
-    fi
-  done
-  source_module common.sh || true
-  source_module cross-env.sh || true
-  source_module logging.sh || true
-  source_module parallelism.sh || true
-  source_module downloads.sh || true
-  source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
-  source_module compiler-resolution.sh || true
-  source_module python-host.sh || true
-  source_module cmake-cache-linker.sh || true
-  if ! command -v cross_build_is_active >/dev/null 2>&1; then
-    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
-  fi
-fi
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../core/common.sh"
+media_common_init "${SCRIPT_DIR}"
+
+case "${1:-}" in
+  -h|--help)
+    echo "Usage: $0 [version]"
+    echo ""
+    echo "Build and install LiteRT (TensorFlow Lite) from source."
+    echo ""
+    echo "Arguments:"
+    echo "  version  LiteRT release tag (default: v2.1.5 or \$LITERT_VERSION)"
+    echo ""
+    echo "Environment:"
+    echo "  LITERT_PREFIX   Install prefix (default: /usr/local)"
+    echo "  BUILD_TYPE      Release | Debug (default: Release)"
+    echo "  FORCE_REBUILD=1 Force rebuild even if already installed"
+    echo "  USE_CCACHE      Enable ccache (default: true)"
+    echo "  USE_LLD         Use lld linker (default: true)"
+    exit 0
+    ;;
+esac
 
 LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
 : "${LITERT_SRC:=${TMPDIR:-/tmp}/litert-$$}"

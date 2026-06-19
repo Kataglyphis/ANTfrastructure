@@ -8,28 +8,14 @@ _ONNX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONNX_SCRIPT_DIR="${_ONNX_LIB_DIR}"
 : "${SCRIPT_DIR:=${ONNX_SCRIPT_DIR}}"
 
-if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+if [ -f /opt/scripts/media/core/common.sh ]; then
   # shellcheck disable=SC1091
-  source /opt/scripts/media/media-build-preamble.sh
-  media_build_preamble_init "${_ONNX_LIB_DIR}"
-else
-  for helper in \
-    "/opt/scripts/core/modules.sh" \
-    "${_ONNX_LIB_DIR}/../../../01-core/modules.sh"; do
-    if [ -f "${helper}" ]; then
-      # shellcheck disable=SC1090
-      source "${helper}"
-      source_modules_framework "${_ONNX_LIB_DIR}"
-      break
-    fi
-  done
-  source_module logging.sh || true
-  source_module platform.sh || true
-  source_module cross-env.sh || true
-  source_module parallelism.sh || true
-  if ! command -v cross_build_is_active >/dev/null 2>&1; then
-    cross_build_is_active() { cross_build_enabled; }
-  fi
+  source /opt/scripts/media/core/common.sh
+  media_common_init "${_ONNX_LIB_DIR}"
+elif [ -f "${_ONNX_LIB_DIR}/../../../../core/common.sh" ]; then
+  # shellcheck disable=SC1091
+  source "${_ONNX_LIB_DIR}/../../../../core/common.sh"
+  media_common_init "${_ONNX_LIB_DIR}"
 fi
 
 # Fallback definitions — safety nets when modules.sh framework is unavailable.

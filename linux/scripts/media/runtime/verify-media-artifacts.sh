@@ -11,6 +11,20 @@ set -euo pipefail
 # Stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, litert, litert-headers,
 #         opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels
 
+case "${1:-}" in
+  -h|--help)
+    echo "Usage: $0 <stage> [prefix_dir]"
+    echo ""
+    echo "Validate that a media build stage produced actual output (shared libs,"
+    echo "binaries, headers) before downstream stages consume it."
+    echo ""
+    echo "Stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu,"
+    echo "        onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core,"
+    echo "        ffmpeg, gstreamer, libcamera, app-wheels, media-inputs"
+    exit 0
+    ;;
+esac
+
 STAGE="${1:-}"
 PREFIX="${2:-}"
 
