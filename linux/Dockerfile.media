@@ -390,6 +390,7 @@ RUN --mount=type=bind,source=linux/scripts/media/build/gstreamer,target=/opt/scr
     bash /opt/scripts/media/build/gstreamer/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/media/build/gstreamer,target=/opt/scripts/media/build/gstreamer,readonly \
+    --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -423,6 +424,7 @@ RUN --mount=type=bind,source=linux/scripts/media/build/libcamera,target=/opt/scr
     bash /opt/scripts/media/build/libcamera/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/media/build/libcamera,target=/opt/scripts/media/build/libcamera,readonly \
+    --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \

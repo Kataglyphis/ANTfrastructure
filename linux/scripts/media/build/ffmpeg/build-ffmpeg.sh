@@ -175,21 +175,20 @@ resolve_ffmpeg_host_compiler() {
 prepare_ffmpeg_host_compiler_wrapper() {
     local compiler="$1"
 
-    if command -v prepare_host_compiler_wrapper >/dev/null 2>&1; then
-        prepare_host_compiler_wrapper "${compiler}" host-gcc "$(mktemp -d "${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain}.XXXXXX")"
-        return $?
-    fi
-
+    # NOTE: prepare_host_compiler_wrapper (from 01-core) double-prints the
+    # wrapper path (no newline), producing a concatenated doubled path.
+    # Skip it and use make_named_host_compiler_wrapper directly instead.
     local wrapper_dir; wrapper_dir="$(mktemp -d "${FFMPEG_HOST_TOOLCHAIN_DIR:-/tmp/ffmpeg-host-toolchain}.XXXXXX")"
     if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
-        make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}"
+        make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}" >/dev/null
+        printf '%s' "${wrapper_dir}/host-gcc"
         return 0
     fi
 
     mkdir -p "${wrapper_dir}"
     cat > "${wrapper_dir}/host-gcc" <<EOF
 #!/usr/bin/env bash
-exec env PATH="/usr/bin:/bin" "${compiler}" -B/usr/bin/ "\$@"
+exec env PATH="/usr/bin:/bin" "${compiler}" "\$@"
 EOF
     chmod +x "${wrapper_dir}/host-gcc"
     printf '%s' "${wrapper_dir}/host-gcc"

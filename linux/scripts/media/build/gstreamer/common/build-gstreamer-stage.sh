@@ -43,8 +43,8 @@ ensure_gstreamer_multiarch_layout() {
 ensure_gstreamer_multiarch_layout
 
 cd /opt
-bash /opt/scripts/media/gstreamer/common/pre-setup.sh
-bash /opt/scripts/media/gstreamer/common/install-vvdec.sh
+bash /opt/scripts/media/build/gstreamer/common/pre-setup.sh
+bash /opt/scripts/media/build/gstreamer/common/install-vvdec.sh
 
 export SODIUM_USE_PKG_CONFIG=1
 export PKG_CONFIG_ALLOW_CROSS=1
@@ -63,7 +63,7 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG
 append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
 
 set +e
-bash /opt/scripts/media/gstreamer/common/setup-gstreamer.sh \
+bash /opt/scripts/media/build/gstreamer/common/setup-gstreamer.sh \
   "${GSTREAMER_VERSION}" \
   "${GSTREAMER_PREFIX}" \
   "${BUILD_TYPE}" 2>&1
