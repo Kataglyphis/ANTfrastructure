@@ -11,7 +11,7 @@
 > add the current user to the docker group so you can push to ghcr.io without sudo:
 > `sudo usermod -aG docker $USER`
 
-[![Build Media](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/build-media.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/build-media.yml)
+[![CI](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ubuntu24.04.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ubuntu24.04.yml)
 [![ghcr-cleanup](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ghcr-cleanup.yml)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 
@@ -106,8 +106,8 @@ sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 | Workflow | Purpose |
 |----------|---------|
-| `build-media.yml` | Builds `Dockerfile.media` with `type=gha` BuildKit cache (per-arch) |
-| `build-docs.yml` | Sphinx docs + version-consistency checks |
+| `ubuntu24.04.yml` | Trigger on push/PR: Sphinx docs + version-consistency checks |
+| `build-docs.yml` | Reusable workflow for docs build |
 | `ghcr-cleanup.yml` | Retains last 3 per tag, 14-day safety net |
 
 ## Documentation
@@ -145,9 +145,6 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 ```bash
 sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
-
-# Legacy QEMU/binfmt image:
-# sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 If you run the container from Windows, expose required ports explicitly, for example with `-p 8443:8443`.

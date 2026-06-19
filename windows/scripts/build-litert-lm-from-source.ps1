@@ -26,6 +26,16 @@ Push-Location $SourceDir
 & git lfs pull 2>&1 | Out-Null
 Pop-Location
 
+# Install zlib (required by libpng which is a FetchContent dependency of LiteRT-LM)
+Write-Host 'Installing zlib via scoop...'
+scoop install main/zlib 2>&1 | Out-Null
+$zlibRoot = "$env:USERPROFILE\scoop\apps\zlib\current"
+if (-not (Test-Path $zlibRoot)) { $zlibRoot = "$env:ProgramData\scoop\apps\zlib\current" }
+if (Test-Path $zlibRoot) {
+    Write-Host "zlib found at: $zlibRoot"
+    $env:CMAKE_PREFIX_PATH = "$zlibRoot;$env:CMAKE_PREFIX_PATH"
+}
+
 $buildDir = Join-Path $SourceDir 'build_ninja'
 
 # Find the LiteRT installation (built in previous stage)
@@ -46,6 +56,10 @@ $cmakeExtra = @(
     "-DLiteRT_INCLUDE_DIR=$litertIncludeDir"
     # Enable GPU delegate when available
     '-DTFLITE_ENABLE_GPU=ON'
+    # zlib path for libpng dependency
+    "-DZLIB_ROOT=$zlibRoot"
+    "-DZLIB_INCLUDE_DIR=$(Join-Path $zlibRoot 'include')"
+    "-DZLIB_LIBRARY=$(Join-Path $zlibRoot 'lib\zlib.lib')"
 )
 
 # Add CUDA support if detected
