@@ -79,3 +79,24 @@ html[data-theme="dark"] .bd-sidebar-primary .nav-link.active {
 html[data-theme="dark"] .hero-section {
   color: #000000 !important;
 }
+
+/* -- Mobile responsive overrides ----------------------------------------- */
+
+/* Cards: single column on narrow screens (Bootstrap xs breakpoint) */
+@media (max-width: 575.98px) {
+  .sd-row-cols-xs-2 {
+    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Tables: horizontal scroll to prevent overflow on narrow viewports */
+.pst-scrollable-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+}
+
+.pst-scrollable-table-container table {
+  width: 100%;
+  min-width: 0;
+}

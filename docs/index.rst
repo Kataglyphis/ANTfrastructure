@@ -62,6 +62,12 @@ build cross-architecture artifacts, enable GPU variants, use runtime services, o
 
       Prerequisites, installation, tests, roadmap, troubleshooting, contribution, contact, and references.
 
+   .. grid-item-card:: Third-Party Licenses
+      :link: third-party-licenses
+      :link-type: doc
+
+      Complete list of bundled software components, their versions, repositories, and licenses.
+
 Linux image flow
 ----------------
 
@@ -94,3 +100,4 @@ Common development targets:
    runtime-services
    windows-builds
    project-info
+   third-party-licenses

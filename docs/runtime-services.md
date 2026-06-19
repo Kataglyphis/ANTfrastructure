@@ -2,6 +2,10 @@
 
 ## Webserver (Linux)
 
+The webserver serves the **Kataglyphis web frontend** — a Flutter app with pages
+for AI chat, blog posts, personal data, and an
+open source license overview at `/openSourceLicenses`.
+
 ```bash
 docker build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
 docker run -d --name kataglyphis-webserver \

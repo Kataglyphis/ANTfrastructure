@@ -462,9 +462,10 @@ base ─┬─ onnxruntime ───────┐
 
 After changing versions:
 1. `python3 docs/scripts/sync_versions.py --check` (run `--write` if drift)
-2. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
-3. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
-4. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
+2. `python3 docs/scripts/generate-website-licenses.py --write` (regenerate website /openSourceLicenses page)
+3. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
+4. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
+5. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
 
 GPU constraints: when bumping CUDA/ROCm, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `plucky`/26.04).
 
@@ -481,4 +482,4 @@ GPU constraints: when bumping CUDA/ROCm, verify driver requirements and that `UB
 
 - If Dockerfiles or Linux helpers change, update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`.
 - If Windows Dockerfiles/scripts change, update `docs/windows-builds.md`.
-- If version defaults change, run `python3 docs/scripts/sync_versions.py --write`.
+- If version defaults change, run `python3 docs/scripts/sync_versions.py --write` then `python3 docs/scripts/generate-website-licenses.py --write`.
