@@ -61,8 +61,8 @@ fetch_ffmpeg() {
     rm -rf "${FFMPEG_SRC}"
     mkdir -p "${FFMPEG_SRC}"
 
-    # Use latest stable release tag
-    local release_tag="n7.1"
+    # Use latest stable release tag (default from versions.env via orchestrator or env)
+    local release_tag="${FFMPEG_VERSION:-n7.1}"
 
     local tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_tag}.tar.gz"
     echo "Downloading FFmpeg ${release_tag} from ${tarball_url}..."
@@ -74,8 +74,27 @@ fetch_ffmpeg() {
     echo "FFmpeg version: ${release_tag} (from tarball)"
 }
 
-# Mirror FFmpeg's own configure probes so optional libraries are only forced on
-# when the current compiler, sysroot, and linker can actually use them.
+# ==============================================================================
+# FFmpeg dependency probe infrastructure (~180 lines)
+#
+# FFmpeg's `configure` script probes for optional libraries by compiling small
+# test programs with the target compiler and linker. During cross builds,
+# FFmpeg's bundled cross-pkg-config may fail to find target libraries, and its
+# own probe tests may silently skip libraries that ARE available.
+#
+# These functions replicate FFmpeg's C/C++ compile-and-link probe logic so we
+# can independently verify each optional dependency and configure the right
+# --enable-* / --disable-* flags BEFORE invoking FFmpeg's configure.
+#
+# Key functions:
+#   ffmpeg_try_cpp_condition  — compile a C++ #if test
+#   ffmpeg_try_header         — compile a #include test
+#   ffmpeg_try_link_probe     — compile + link a function-call test
+#   ffmpeg_try_pkg_config_probe — resolve via pkg-config + compile+link test
+#
+# These are specific to FFmpeg's dependency graph and are NOT intended as
+# general-purpose cross-compilation probes.
+# ==============================================================================
 split_shell_words() {
     local -n out_ref="$1"
     local words="${2:-}"

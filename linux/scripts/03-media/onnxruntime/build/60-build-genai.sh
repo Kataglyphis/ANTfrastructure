@@ -86,35 +86,44 @@ ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
 # Build GenAI
 cd "${GENAI_SRC_DIR}"
 
+# Shared build acceleration (lld + ccache) — same flags as the CPU build
+append_onnx_lld_build_args BUILD_ARGS || true
+append_onnx_ccache_build_args BUILD_ARGS || true
+
+# Common base args shared between GPU and CPU builds
+GENAI_BASE_ARGS=(
+  --config "${GENAI_CONFIG}"
+  --skip_tests
+  --skip_examples
+  --use_guidance
+  --cmake_extra_defines
+  "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
+)
+
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   ORT_HOME="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"
   info "Building onnxruntime-genai with GPU ORT from ${ORT_HOME}"
 
-  # Ensure libonnxruntime.so exists in the GPU ORT home (often it's just versioned)
   ensure_onnxruntime_symlink "${ORT_HOME}"
   if [[ ! -e "${ORT_HOME}/lib/libonnxruntime.so" ]] && [[ ! -L "${ORT_HOME}/lib/libonnxruntime.so" ]]; then
     warn "No versioned libonnxruntime.so found in ${ORT_HOME}/lib"
   fi
 
+  info "GenAI build args: ${GENAI_BASE_ARGS[*]}"
   "${HOST_PYTHON}" build.py \
-    --config "${GENAI_CONFIG}" \
+    "${GENAI_BASE_ARGS[@]}" \
     --ort_home "${ORT_HOME}" \
-    --skip_tests \
-    --skip_examples \
     --use_cuda \
     --cuda_home "${CUDA_HOME:-/usr/local/cuda}" \
-    --use_trt_rtx \
-    --use_guidance
+    --use_trt_rtx
 else
   ORT_HOME="${NATIVE_CPU_OUTPUT_DIR}"
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
 
+  info "GenAI build args: ${GENAI_BASE_ARGS[*]}"
   "${HOST_PYTHON}" build.py \
-    --config "${GENAI_CONFIG}" \
-    --ort_home "${ORT_HOME}" \
-    --skip_tests \
-    --skip_examples \
-    --use_guidance
+    "${GENAI_BASE_ARGS[@]}" \
+    --ort_home "${ORT_HOME}"
 fi
 
 collect_wheels_from_tree "${GENAI_SRC_DIR}/build" "${GENAI_OUTPUT_DIR}" "GenAI wheel"

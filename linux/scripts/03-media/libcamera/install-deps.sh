@@ -8,12 +8,7 @@ fi
 
 echo "Installing libcamera build dependencies..."
 
-if command -v apt_update_smart >/dev/null 2>&1; then
-  apt_update_smart
-else
-  apt-get update -y
-fi
-install_host_packages ninja-build pkg-config cmake
+install_deps_preamble ninja-build pkg-config cmake
 
 target_packages=(
     libboost-program-options-dev libdrm-dev libexif-dev libjpeg-dev libpng-dev

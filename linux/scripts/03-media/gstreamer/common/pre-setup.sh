@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
-if [ -f /opt/scripts/core/cross-env.sh ]; then
+_PRE_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${_PRE_SETUP_DIR}"
+elif [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
+else
+  if [ -f "${_PRE_SETUP_DIR}/../../../01-core/cross-env.sh" ]; then
+    # shellcheck disable=SC1090
+    source "${_PRE_SETUP_DIR}/../../../01-core/cross-env.sh"
+  fi
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
 fi
+
 if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/toolchain/vulkan.sh
-fi
-
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
 fi
 
 vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"

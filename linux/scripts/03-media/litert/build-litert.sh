@@ -11,30 +11,34 @@ IFS=$'\n\t'
 #   USE_LLD=true        Use lld linker for faster linking (default: true)
 # ==============================================================================
 
-# Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for helper in \
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${SCRIPT_DIR}"
+else
+  for helper in \
     "/opt/scripts/core/modules.sh" \
     "${SCRIPT_DIR}/../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        source_modules_framework "${SCRIPT_DIR}"
-        break
+      # shellcheck disable=SC1090
+      source "${helper}"
+      source_modules_framework "${SCRIPT_DIR}"
+      break
     fi
-done
-
-source_module common.sh || true
-source_module cross-env.sh || true
-source_module logging.sh || true
-source_module parallelism.sh || true
-source_module downloads.sh || true
-source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
-source_module compiler-resolution.sh || true
-
-# Ensure cross_build_is_active is always available
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  done
+  source_module common.sh || true
+  source_module cross-env.sh || true
+  source_module logging.sh || true
+  source_module parallelism.sh || true
+  source_module downloads.sh || true
+  source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
+  source_module compiler-resolution.sh || true
+  source_module python-host.sh || true
+  source_module cmake-cache-linker.sh || true
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
 fi
 
 LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
@@ -44,14 +48,7 @@ LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
 : "${NPROC:=$(compute_jobs_with_mem_cap "" 2000)}"
 : "${SKIP_DEP_INSTALL:=false}"
 
-HOST_PYTHON="$(host_python_bin)"
-HOST_PYTHON_MM="$(host_python_major_minor 2>/dev/null || true)"
-if [ -n "${HOST_PYTHON_MM}" ] && [ -z "${PYTHON_MAJOR_MINOR:-}" ]; then
-    export PYTHON_MAJOR_MINOR="${HOST_PYTHON_MM}"
-fi
-export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
-       Python_EXECUTABLE="${HOST_PYTHON}" \
-       Python3_EXECUTABLE="${HOST_PYTHON}"
+setup_host_python_with_major_minor
 
 info Building LiteRT ${LITERT_VERSION}
 info Using JOBS=${NPROC}
@@ -132,26 +129,7 @@ append_litert_preferred_cmake_compiler_args() {
 }
 
 append_litert_cache_linker_args() {
-  local -n _alcla_args=$1
-
-  if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
-    _alcla_args+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
-    _alcla_args+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
-    _alcla_args+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
-    info Using lld linker for faster linking
-  fi
-
-  if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-    if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
-      _alcla_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
-      _alcla_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-      _alcla_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
-      info "Using ccache for faster compilation (C/C++ only, not ASM)"
-    else
-      info ccache already configured via environment
-      _alcla_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
-    fi
-  fi
+  append_cmake_cache_linker_args "$@"
 }
 
 litert_cross_wheel_platform_tag() {
@@ -206,7 +184,7 @@ configure_litert() {
         "-DLITERT_ENABLE_NPU=OFF"
         "-DTFLITE_ENABLE_XNNPACK=ON"
         "-DTFLITE_ENABLE_RUY=ON"
-        "-DPython3_EXECUTABLE=${HOST_PYTHON}"
+        "-DPython3_EXECUTABLE=${HOST_PYTHON_BIN}"
     )
 
     append_litert_preferred_cmake_compiler_args cmake_args
@@ -375,7 +353,10 @@ install_litert() {
 
     cd "${LITERT_SRC}/litert"
 
-    cmake --build "${build_dir}" --target install || true
+    cmake --build "${build_dir}" --target install || {
+      warn "cmake --target install failed; falling back to manual copy"
+      install_manual
+    }
 
     install_manual
 
@@ -406,7 +387,7 @@ _litert_build_wheel() {
     info Detected Python packaging in LiteRT source - attempting to build wheel
     pushd "${pip_pkg_dir}" > /dev/null
 
-    export PYTHON="${HOST_PYTHON}"
+    export PYTHON="${HOST_PYTHON_BIN}"
     if [ -z "${PYTHON}" ]; then
         warn No python found in PATH to build LiteRT wheel
         popd > /dev/null

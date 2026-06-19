@@ -8,9 +8,9 @@ fi
 
 : "${APP_WHEELHOUSE_DIR:=/opt/app-wheels}"
 : "${APP_WHEELHOUSE_BUILD_ROOT:=/tmp/app-wheelhouse}"
-: "${PYTORCH_REF:=v2.12.0}"
-: "${PYTORCH_VERSION:=2.12.0}"
-: "${TORCHVISION_REF:=v0.27.0}"
+: "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.12.0}}"
+: "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
+: "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.27.0}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 

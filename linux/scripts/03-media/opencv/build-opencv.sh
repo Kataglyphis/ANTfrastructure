@@ -18,31 +18,36 @@ IFS=$'\n\t'
 #   USE_LLD=true        Use lld linker for faster linking (default: true)
 # ==============================================================================
 
-# Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for helper in \
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${SCRIPT_DIR}"
+else
+  for helper in \
     "/opt/scripts/core/modules.sh" \
     "${SCRIPT_DIR}/../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        source_modules_framework "${SCRIPT_DIR}"
-        break
+      # shellcheck disable=SC1090
+      source "${helper}"
+      source_modules_framework "${SCRIPT_DIR}"
+      break
     fi
-done
-
-source_module common.sh || true
-source_module cross-env.sh || true
-
-# Ensure cross_build_is_active is always available
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  done
+  source_module common.sh || true
+  source_module cross-env.sh || true
+  source_module build-helpers.sh || true
+  source_module logging.sh || true
+  source_module parallelism.sh || true
+  source_module downloads.sh || true
+  source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
+  source_module compiler-resolution.sh || true
+  source_module python-host.sh || true
+  source_module cmake-cache-linker.sh || true
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
 fi
-source_module build-helpers.sh || true
-source_module logging.sh || true
-source_module parallelism.sh || true
-source_module downloads.sh || true
-source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
 install_warn_trap
 
 # Defaults (can be overridden via env vars or arguments)
@@ -232,10 +237,7 @@ configure_opencv() {
 
     if [ "${WITH_PYTHON}" = "true" ]; then
         echo "Using existing Python venv (expected at /opt/python/.venv)..."
-        HOST_PYTHON="$(host_python_bin)"
-        export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
-               Python_EXECUTABLE="${HOST_PYTHON}" \
-               Python3_EXECUTABLE="${HOST_PYTHON}"
+        setup_host_python_environment
         uv pip install numpy wheel
     fi
 
@@ -300,19 +302,7 @@ configure_opencv() {
         cmake_opts+=("-DCMAKE_CXX_FLAGS=${target_shared_include_fallback}")
     fi
 
-    # Fallback LLD flags (canonical path via setup_lld_linker exports env vars)
-    if [ -z "${CMAKE_EXE_LINKER_FLAGS:-}" ] && command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
-        cmake_opts+=("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld")
-        cmake_opts+=("-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld")
-        cmake_opts+=("-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld")
-    fi
-
-    # Fallback ccache flags (canonical path via setup_ccache exports env vars)
-    if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ] && command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
-        cmake_opts+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
-        cmake_opts+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-        cmake_opts+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
-    fi
+    append_cmake_cache_linker_args cmake_opts
 
     # Ensure tracking contrib module is explicitly enabled (some builds/platforms
     # may not build it by default even when contrib modules are available).
@@ -469,7 +459,10 @@ install_opencv() {
 
     # Use cmake --install which works with any generator (Ninja, Make, etc.)
     ${SUDO_WRAP} cmake --install . --prefix "${OPENCV_PREFIX}" 2>/dev/null || \
-    ${SUDO_WRAP} make install 2>/dev/null || true
+    ${SUDO_WRAP} make install 2>/dev/null || {
+      echo "ERROR: Both cmake --install and make install failed for OpenCV"
+      exit 1
+    }
     ${SUDO_WRAP} ldconfig || true
 
     # Ensure unversioned symlinks exist for contrib libraries (search lib and lib64)
@@ -484,7 +477,13 @@ install_opencv() {
         fi
     done
 
-    # Sanity-check: fail early if tracking library is still missing
+    # Sanity-check: fail early if core or tracking library is still missing
+    if ! (ls "${OPENCV_PREFIX}/lib/libopencv_core.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_core.so" >/dev/null 2>&1); then
+        echo "ERROR: libopencv_core was not found after install. Listing installed libs for debugging:"
+        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
+        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
+        die "Failing build so the image build doesn't continue with a broken OpenCV install."
+    fi
     if ! (ls "${OPENCV_PREFIX}/lib/libopencv_tracking.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_tracking.so" >/dev/null 2>&1); then
         echo "ERROR: libopencv_tracking was not found after install. Listing installed libs for debugging:"
         ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true

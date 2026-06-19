@@ -17,20 +17,7 @@ cross_arch=""
 
 echo "Installing OpenCV build dependencies..."
 
-if command -v apt_update_smart >/dev/null 2>&1; then
-    apt_update_smart
-else
-    apt-get update -y
-fi
-install_host_packages \
-    build-essential \
-    cmake \
-    git \
-    pkg-config \
-    wget \
-    unzip \
-    libtbb-dev \
-    libeigen3-dev
+install_deps_preamble build-essential cmake git pkg-config wget unzip libtbb-dev libeigen3-dev
 
 target_packages=(
     libavcodec-dev

@@ -8,26 +8,28 @@ _ONNX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONNX_SCRIPT_DIR="${_ONNX_LIB_DIR}"
 : "${SCRIPT_DIR:=${ONNX_SCRIPT_DIR}}"
 
-# Use the standard modules.sh framework
-for helper in \
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${_ONNX_LIB_DIR}"
+else
+  for helper in \
     "/opt/scripts/core/modules.sh" \
     "${_ONNX_LIB_DIR}/../../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        source_modules_framework "${_ONNX_LIB_DIR}"
-        break
+      # shellcheck disable=SC1090
+      source "${helper}"
+      source_modules_framework "${_ONNX_LIB_DIR}"
+      break
     fi
-done
-
-source_module logging.sh || true
-source_module platform.sh || true
-source_module cross-env.sh || true
-source_module parallelism.sh || true
-
-# Fallback for cross_build_is_active in case cross-env.sh guard prevents reload
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { cross_build_enabled; }
+  done
+  source_module logging.sh || true
+  source_module platform.sh || true
+  source_module cross-env.sh || true
+  source_module parallelism.sh || true
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { cross_build_enabled; }
+  fi
 fi
 
 # Fallback definitions — safety nets when modules.sh framework is unavailable.
@@ -286,13 +288,15 @@ source_build_acceleration_helpers() {
   return 0
 }
 
-setup_host_python_environment() {
-  HOST_PYTHON_BIN="$(host_python_bin)"
-  export HOST_PYTHON_BIN
-  export PYTHON_EXECUTABLE="${HOST_PYTHON_BIN}" \
-         Python_EXECUTABLE="${HOST_PYTHON_BIN}" \
-         Python3_EXECUTABLE="${HOST_PYTHON_BIN}"
-}
+if ! declare -F setup_host_python_environment >/dev/null 2>&1; then
+  setup_host_python_environment() {
+    HOST_PYTHON_BIN="$(host_python_bin)"
+    export HOST_PYTHON_BIN
+    export PYTHON_EXECUTABLE="${HOST_PYTHON_BIN}" \
+           Python_EXECUTABLE="${HOST_PYTHON_BIN}" \
+           Python3_EXECUTABLE="${HOST_PYTHON_BIN}"
+  }
+fi
 
 ensure_uv_python_packages() {
   local python_bin="${1:-}"
@@ -496,7 +500,7 @@ pc_numeric_version_from_ort_version() {
   # Check if this is the main branch
   if [ "${v}" = "main" ] || [ "${v}" = "master" ]; then
     # Fetch version from GitHub
-    out="$(curl -sL https://raw.githubusercontent.com/microsoft/onnxruntime/main/VERSION_NUMBER | tr -d '\n\r' | sed -E 's/[^0-9.].*//')"
+    out="$(curl -sL --connect-timeout 10 --max-time 30 https://raw.githubusercontent.com/microsoft/onnxruntime/main/VERSION_NUMBER | tr -d '\n\r' | sed -E 's/[^0-9.].*//')"
     if [ -z "${out}" ]; then
       printf '%s' "0.0.0"
     else

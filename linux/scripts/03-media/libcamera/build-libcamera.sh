@@ -2,26 +2,30 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for helper in \
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${SCRIPT_DIR}"
+else
+  for helper in \
     "/opt/scripts/core/modules.sh" \
     "${SCRIPT_DIR}/../../01-core/modules.sh"; do
     if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        source_modules_framework "${SCRIPT_DIR}"
-        break
+      # shellcheck disable=SC1090
+      source "${helper}"
+      source_modules_framework "${SCRIPT_DIR}"
+      break
     fi
-done
-
-source_module cross-env.sh || true
-source_module logging.sh || true
-source_module common.sh || true
-source_module parallelism.sh || true
-
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  done
+  source_module cross-env.sh || true
+  source_module logging.sh || true
+  source_module common.sh || true
+  source_module parallelism.sh || true
+  source_module python-host.sh || true
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
 fi
 
 patch_libcamera_riscv64_cross_sources() {
@@ -96,10 +100,7 @@ if command -v setup_linux_cross_env >/dev/null 2>&1; then
 fi
 
 echo "Using existing Astral uv venv (expected at /opt/python/.venv)"
-HOST_PYTHON="$(host_python_bin)"
-export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
-       Python_EXECUTABLE="${HOST_PYTHON}" \
-       Python3_EXECUTABLE="${HOST_PYTHON}"
+setup_host_python_environment
 
 # Install build tools into the uv venv
 uv pip install --upgrade pip setuptools wheel meson ninja jinja2 pyyaml ply pybind11

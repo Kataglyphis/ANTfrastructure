@@ -13,6 +13,11 @@ _SMOKE_COMMON_LOADED=1
 
 FAILURES=0
 
+# Fallback for cross_build_is_active (may not be in the smoke test environment)
+if ! command -v cross_build_is_active >/dev/null 2>&1; then
+  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+fi
+
 pass() { printf '  PASS %s\n' "$*"; }
 fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
 

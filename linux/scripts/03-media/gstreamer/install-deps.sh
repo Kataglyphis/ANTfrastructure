@@ -14,11 +14,7 @@ vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
 echo "Installing GStreamer build dependencies..."
 
-if command -v apt_update_smart >/dev/null 2>&1; then
-  apt_update_smart
-else
-  apt-get update -y
-fi
+install_deps_preamble build-essential cmake git pkg-config g++ flex bison
 
 is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
 
@@ -43,8 +39,6 @@ if is_cross; then
 fi
 
 # Pre-setup dependencies
-install_host_packages build-essential cmake git pkg-config g++ flex bison
-
 pre_setup_target_packages=(
   libx11-dev
   libxext-dev

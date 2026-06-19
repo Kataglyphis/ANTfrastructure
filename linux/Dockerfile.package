@@ -123,6 +123,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
     CCACHE_DIR=/workspace/.ccache \
     CCACHE_SECONDARY_STORAGE=true \
+    # Media paths: keep in sync with linux/scripts/03-media/final/media-env.sh
     PATH="/opt/vulkan/active/bin:/opt/gstreamer/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/opt/gstreamer/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:/opt/libcamera/lib/pkgconfig:/opt/libcamera/lib64/pkgconfig:/opt/ffmpeg/lib/pkgconfig" \
     LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:/opt/gstreamer/lib/multiarch:/opt/gstreamer/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \

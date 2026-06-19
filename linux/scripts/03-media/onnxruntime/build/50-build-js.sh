@@ -96,16 +96,30 @@ if [ ! -f "${ORT_SRC_DIR}/js/web/dist/ort-wasm-simd-threaded.jspi.mjs" ] || \
 fi
 
 cd "${ORT_SRC_DIR}/js"
-npm ci || npm install || true
+if ! npm ci 2>/dev/null; then
+  warn "npm ci failed, trying npm install"
+  npm install || err "npm install failed in js/"
+fi
 
 cd "${ORT_SRC_DIR}/js/common"
-npm ci || npm install || true
+if ! npm ci 2>/dev/null; then
+  warn "npm ci failed in common/, trying npm install"
+  npm install || err "npm install failed in js/common/"
+fi
 
 patch_web_build_targets "${skip_webgpu}" "${skip_jspi}"
 
 cd "${ORT_SRC_DIR}/js/web"
-npm ci || npm install || true
-npm run build || true
+if ! npm ci 2>/dev/null; then
+  warn "npm ci failed in web/, trying npm install"
+  npm install || err "npm install failed in js/web/"
+fi
+npm run build || err "npm run build failed in js/web/"
+
+# Validate JS build produced output
+if ! ls "${ORT_SRC_DIR}/js/web/dist"/*.js >/dev/null 2>&1 && ! ls "${ORT_SRC_DIR}/js/web/dist"/*.mjs >/dev/null 2>&1; then
+  err "No .js or .mjs files found in js/web/dist/ after build"
+fi
 
 cp -v "${ORT_SRC_DIR}/js/web/dist"/*.js "${WASM_OUTPUT_DIR}/" || true
 cp -v "${ORT_SRC_DIR}/js/web/dist"/*.mjs "${WASM_OUTPUT_DIR}/" || true

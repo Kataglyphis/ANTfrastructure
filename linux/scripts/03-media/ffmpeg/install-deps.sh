@@ -8,26 +8,7 @@ fi
 
 echo "Installing FFmpeg build dependencies..."
 
-if command -v apt_update_smart >/dev/null 2>&1; then
-  apt_update_smart
-else
-  apt-get update -y
-fi
-if ! command -v install_host_packages >/dev/null 2>&1; then
-  install_host_packages() { apt-get install -y --no-install-recommends "$@"; }
-fi
-install_host_packages \
-    autoconf \
-    automake \
-    build-essential \
-    cmake \
-    git \
-    libtool \
-    pkg-config \
-    texinfo \
-    wget \
-    yasm \
-    nasm
+install_deps_preamble autoconf automake build-essential cmake git libtool pkg-config texinfo wget yasm nasm
 
 
 target_packages=(

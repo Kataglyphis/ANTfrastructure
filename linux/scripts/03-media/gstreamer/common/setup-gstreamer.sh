@@ -12,20 +12,24 @@ set -euo pipefail
 #   AGGRESSIVE_PARALLELISM=true  Use lower memory caps (default: false)
 # ==============================================================================
 
-# Source build acceleration and parallelism helpers if available
 _SETUP_GST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for helper in \
+if [ -f /opt/scripts/media/media-build-preamble.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/media/media-build-preamble.sh
+  media_build_preamble_init "${_SETUP_GST_DIR}"
+else
+  for helper in \
     "/opt/scripts/core/cross-env.sh" \
     "${_SETUP_GST_DIR}/../../../01-core/cross-env.sh"; do
     if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        break
+      # shellcheck disable=SC1090
+      source "${helper}"
+      break
     fi
-done
-
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  done
+  if ! command -v cross_build_is_active >/dev/null 2>&1; then
+    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  fi
 fi
 
 if cross_build_is_active && \
@@ -94,10 +98,7 @@ GSTREAMER_VERSION="${1:-1.29.1}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
-HOST_PYTHON="$(host_python_bin)"
-export PYTHON_EXECUTABLE="${HOST_PYTHON}" \
-  Python_EXECUTABLE="${HOST_PYTHON}" \
-  Python3_EXECUTABLE="${HOST_PYTHON}"
+setup_host_python_environment
 GSTREAMER_ENABLE_PYTHON_BINDINGS=true
 
 if cross_build_is_active && \
