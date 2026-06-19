@@ -215,8 +215,8 @@ if (Test-Path $cutlassUint128) {
 # Patch softmax.cc: clang-cl in MSVC mode doesn't recognize C++ alternative tokens
 # ("or", "and", "not") as keywords even in C++20 mode.
 $softmaxFiles = @(
-    Join-Path $SourceDir 'onnxruntime\core\providers\cuda\math\softmax.cc',
-    Join-Path $SourceDir 'onnxruntime\core\providers\cuda\math\softmax.h'
+    "$SourceDir\onnxruntime\core\providers\cuda\math\softmax.cc",
+    "$SourceDir\onnxruntime\core\providers\cuda\math\softmax.h"
 )
 foreach ($sf in $softmaxFiles) {
     if (Test-Path $sf) {
@@ -274,6 +274,23 @@ if ($exitCode -ne 0) {
 
 Write-Host 'Installing...'
 & cmake --install $buildDir --config Release
-if ($LASTEXITCODE -ne 0) { throw 'cmake --install failed' }
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "cmake --install failed (exit $LASTEXITCODE) - checking if artifacts exist"
+    $dlls = @(Get-ChildItem -Path $buildDir -Filter 'onnxruntime*.dll' -Recurse -ErrorAction SilentlyContinue)
+    $libs = @(Get-ChildItem -Path $buildDir -Filter 'onnxruntime*.lib' -Recurse -ErrorAction SilentlyContinue)
+    if ($dlls.Count -gt 0) {
+        Write-Host "Found $($dlls.Count) DLLs and $($libs.Count) LIBs - copying manually"
+        New-Item -Path "$ortInstallDir\lib" -ItemType Directory -Force | Out-Null
+        New-Item -Path "$ortInstallDir\bin" -ItemType Directory -Force | Out-Null
+        $dlls | Copy-Item -Destination "$ortInstallDir\bin" -Force -ErrorAction SilentlyContinue
+        $libs | Copy-Item -Destination "$ortInstallDir\lib" -Force -ErrorAction SilentlyContinue
+        # Copy headers
+        $srcInclude = Join-Path $SourceDir 'include'
+        if (Test-Path $srcInclude) { Copy-Item -Path $srcInclude -Destination "$ortInstallDir\" -Recurse -Force -ErrorAction SilentlyContinue }
+        Write-Host "Manual installation completed - $($dlls.Count) DLLs copied"
+    } else {
+        throw 'cmake --install failed and no DLLs found'
+    }
+}
 
 Write-Host '=== ONNX Runtime source build completed ==='

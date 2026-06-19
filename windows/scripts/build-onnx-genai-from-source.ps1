@@ -67,16 +67,11 @@ $ortInstallDir = Join-Path $InstallDir 'lib\onnxruntime-source'
 $genaiCudaArgs = @()
 $cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
 $cudnnRoot = if ($env:CUDNN_ROOT) { $env:CUDNN_ROOT } else { $null }
-if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    $genaiCudaArgs += '-DUSE_CUDA=ON'
-    $genaiCudaArgs += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
-    $genaiCudaArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$(Join-Path $cudaRoot 'bin\nvcc.exe')"
-    if ($cudnnRoot -and (Test-Path $cudnnRoot)) {
-        $genaiCudaArgs += "-DCUDNN_ROOT_DIR=$cudnnRoot"
-    }
-} else {
-    $genaiCudaArgs += '-DUSE_CUDA=OFF'
-}
+# NOTE: CUDA=OFF because clang-cl cannot compile cuRAND host headers
+# (curand_kernel.h uses __syncthreads, __umulhi, NV_PROVIDES_SM_61).
+# GenAI uses ONNX Runtime's CUDA execution provider at runtime instead.
+$genaiCudaArgs += '-DUSE_CUDA=OFF'
+Write-Host 'CUDA support disabled for ONNX GenAI build (clang-cl incompatibility with CUDA headers)'
 
 $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'

@@ -75,6 +75,69 @@ nerdctl build --no-cache --progress=plain `
 > ```
 > See the Common Failure Modes in `AGENTS.md` for full details.
 
+## Stevedore Setup Fixes
+
+After installing Stevedore, the following fixes are required to make `docker.exe` builds work with Windows native containers:
+
+### Fix 1: Exclude Stevedore from Windows Defender
+
+Windows Defender's real-time protection blocks Stevedore's `dockerd.exe` from starting. Add exclusions:
+
+```powershell
+Add-MpPreference -ExclusionProcess "dockerd.exe"
+Add-MpPreference -ExclusionPath "$env:ProgramFiles\Stevedore"
+```
+
+Also exclude the data directories (prevents hcsshim layer commit failures during builds):
+
+```powershell
+Add-MpPreference -ExclusionPath "$env:ProgramData\containerd"
+Add-MpPreference -ExclusionPath "$env:ProgramData\nerdctl"
+```
+
+### Fix 2: Remove stale Docker Desktop daemon.json
+
+If Docker Desktop was previously installed, its daemon config at `C:\ProgramData\docker\config\daemon.json` may specify a hosts pipe (`docker_engine_windows`) that conflicts with Stevedore's `docker_engine` pipe. Remove it:
+
+```powershell
+if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\ProgramData\docker\config\daemon.json" }
+```
+
+### Fix 3: Change default runtime from hcsshim to runhcs
+
+Stevedore's service defaults to the `com.docker.hcsshim.v1` runtime, but only the `io.containerd.runhcs.v1` shim binary (`containerd-shim-runhcs-v1.exe`) ships with Stevedore. Update the service binary path:
+
+```powershell
+sc config stevedore binPath="\"C:\Program Files\Stevedore\dockerd.exe\" --run-service --service-name stevedore --group docker-users --host npipe:////./pipe/dockerDesktopWindowsEngine --host npipe:////./pipe/docker_engine --containerd=npipe:////./pipe/containerd-containerd --default-runtime=io.containerd.runhcs.v1"
+```
+
+Then restart:
+
+```powershell
+net stop stevedore /y
+net start stevedore
+```
+
+### Fix 4: Windows Defender exclusions for containerd data
+
+Add exclusions for containerd's snapshot directories (prevents hcsshim layer commit errors — `hcsshim::ActivateLayer failed (0x20)`):
+
+```powershell
+Add-MpPreference -ExclusionPath "C:\ProgramData\containerd"
+Add-MpPreference -ExclusionPath "C:\ProgramData\nerdctl"
+Add-MpPreference -ExclusionPath "C:\temp"
+```
+
+### Fix 5: Use docker.exe for builds (not nerdctl)
+
+Always use Stevedore's `docker.exe` for builds — `nerdctl build` lacks DNS resolution:
+
+```powershell
+"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
+```
+
+`nerdctl run` works fine for running containers (DNS resolution is only broken during BuildKit builds, not for runs).
+
 ## Running the Image
 
 ```powershell

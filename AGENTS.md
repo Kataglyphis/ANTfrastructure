@@ -72,21 +72,38 @@ sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Stevedore's `docker.exe` for builds (nerdctl has DNS issues in BuildKit on Windows).
 
 ```powershell
-# Install Stevedore (prerequisite for Windows Containers via nerdctl)
+# Install Stevedore (prerequisite for Windows Containers)
 winget install stevedore   # or: choco install stevedore
 
+# === POST-INSTALL FIXES (apply once) ===
+# 1. Exclude Stevedore from Windows Defender:
+Add-MpPreference -ExclusionProcess "dockerd.exe"
+Add-MpPreference -ExclusionPath "$env:ProgramFiles\Stevedore"
+Add-MpPreference -ExclusionPath "$env:ProgramData\containerd"
+
+# 2. Remove stale Docker Desktop daemon.json (if Docker Desktop was previously installed):
+if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\ProgramData\docker\config\daemon.json" }
+
+# 3. Change default runtime from hcsshim to runhcs:
+sc config stevedore binPath="\"C:\Program Files\Stevedore\dockerd.exe\" --run-service --service-name stevedore --group docker-users --host npipe:////./pipe/dockerDesktopWindowsEngine --host npipe:////./pipe/docker_engine --containerd=npipe:////./pipe/containerd-containerd --default-runtime=io.containerd.runhcs.v1"
+net stop stevedore /y
+net start stevedore
+
+# === BUILD SEQUENCE ===
+# All commands use Stevedore's docker.exe (nerdctl has DNS issues on Windows BuildKit):
+
 # Stage 1: Windows toolchain base (VS Build Tools 18, Scoop tools, LLVM 22)
-docker build --platform windows/amd64 --no-cache `
+"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
   -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
 
-# Stage 2: GPU SDK layer (CUDA 12.9 Toolkit + cuDNN 9.10, verified post-install)
-docker build --platform windows/amd64 --no-cache `
+# Stage 2: GPU SDK layer (CUDA 13.3 Toolkit + cuDNN 9.23, verified post-install)
+"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
   -t local/kataglyphis:windows-sdk `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
   -f windows/Dockerfile.sdk .
 
 # Stage 3: CPython 3.14 built from source with ClangCL toolset (not MSVC v143)
-docker build --platform windows/amd64 --no-cache `
+"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
   -t local/kataglyphis:windows-toolchain `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-sdk `
   -f windows/Dockerfile.toolchain .
@@ -94,20 +111,20 @@ docker build --platform windows/amd64 --no-cache `
 # Stage 4: Media layer — all source-built with Ninja+clang-cl:
 #   - ONNX Runtime 1.26 (CPU-only; DirectML disabled due to VS 2026 STL hardening
 #     + clang-cl incomplete-type incompatibility in DirectML helper headers)
-#   - ONNX GenAI 0.13.1 (via NuGet package)
+#   - ONNX GenAI 0.13.1 (source-built via build.py with Ninja)
 #   - OpenCV 5.x (with global AVX2/SSSE3/SIMD flags for clang-cl)
 #   - LiteRT 2.1.5 (GPU delegate with Vulkan, XNNPACK, external CUDA delegate)
 #   - LiteRT-LM 0.13.1 (on-device LLM inference, CUDA enabled, links LiteRT)
 #   - GStreamer 1.29.1 (Meson+clang-cl, CUDA auto-detected)
 # NOTE: ONNX Runtime AVX-512+AMX compilation with clang-cl needs ~48 GB RAM.
 # Adjust --memory to your host's available resources (--cpu-quota not supported on Windows).
-docker build --platform windows/amd64 --no-cache --memory 48g `
+"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache --memory 48g `
   -t local/kataglyphis:windows-media `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
   -f windows/Dockerfile.media .
 
 # Stage 5: Final developer image (VsDevCmd entrypoint)
-docker build --platform windows/amd64 --no-cache `
+"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-media `
   -f windows/Dockerfile .
@@ -220,6 +237,36 @@ The **Windows lane** follows a separate 3-stage build (`base → ai → final`) 
 - **Reboot** after Stevedore install to enable the Windows Containers feature
 - **Docker Desktop or Rancher Desktop** can also be used with `docker` commands (swap `nerdctl` → `docker` in build commands)
 - **DNS workaround**: Windows `nerdctl build` has broken DNS in BuildKit containers. Use Stevedore's bundled `docker.exe` for builds: `"%ProgramFiles%\Stevedore\bin\docker.exe" build`. `nerdctl run` works fine for running containers.
+
+### Stevedore Fixes After Install
+
+After installing Stevedore, apply these fixes exactly once:
+
+1. **Exclude Stevedore from Windows Defender:**
+   ```powershell
+   Add-MpPreference -ExclusionProcess "dockerd.exe"
+   Add-MpPreference -ExclusionPath "$env:ProgramFiles\Stevedore"
+   Add-MpPreference -ExclusionPath "$env:ProgramData\containerd"
+   Add-MpPreference -ExclusionPath "$env:ProgramData\nerdctl"
+   Add-MpPreference -ExclusionPath "$env:ProgramData\Docker"
+   ```
+
+2. **Remove stale Docker Desktop daemon.json** (if Docker Desktop was previously installed):
+   ```powershell
+   if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\ProgramData\docker\config\daemon.json" }
+   ```
+
+3. **Change default runtime from hcsshim to runhcs** (the `com.docker.hcsshim.v1` shim binary is not shipped — use `io.containerd.runhcs.v1`):
+   ```powershell
+   sc config stevedore binPath="\"C:\Program Files\Stevedore\dockerd.exe\" --run-service --service-name stevedore --group docker-users --host npipe:////./pipe/dockerDesktopWindowsEngine --host npipe:////./pipe/docker_engine --containerd=npipe:////./pipe/containerd-containerd --default-runtime=io.containerd.runhcs.v1"
+   net stop stevedore /y
+   net start stevedore
+   ```
+
+4. **Verify** with:
+   ```cmd
+   "%ProgramFiles%\Stevedore\bin\docker.exe" run --rm mcr.microsoft.com/windows/servercore:ltsc2025 powershell -Command "Write-Host OK"
+   ```
 
 ### Supported Platforms
 
@@ -524,6 +571,12 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 | `registry_pin_ref` fails on fresh push | Registry hasn't propagated the new manifest | Now uses `retry()` with 5 attempts; wait a few seconds and retry |
 | Terminal freeze during long build | Build output overwhelms terminal | Use `setsid` / `disown` for very long builds |
 | nerdctl DNS failure in build | BuildKit container can't resolve hostnames on Windows (`--dns` and `--network host` unsupported) | Use Stevedore's bundled `"%ProgramFiles%\Stevedore\bin\docker.exe" build` instead — same containerd backend, working DNS. `nerdctl run` works fine for running containers. |
+| `hcsshim::ActivateLayer failed (0x20)` during build | Windows Defender scanning new layer files + containerd snapshot contention | Exclude `C:\ProgramData\containerd`, `C:\ProgramData\nerdctl` from Windows Defender. Or use `docker.exe` instead of `nerdctl` for builds (Docker's layer manager is more resilient). |
+| Stevedore docker build: `runtime "com.docker.hcsshim.v1" binary not installed` | Service default runtime uses `hcsshim-v1` shim which isn't shipped | Change to `runhcs-v1`: `sc config stevedore binPath="..." --default-runtime=io.containerd.runhcs.v1"` (see docs/windows-builds.md § Fix 3) |
+| Stevedore docker build: `failed to create TTRPC connection` | Shim binary mismatch (runhcs copied as hcsshim) | Remove the bad shim copy: `del "C:\Program Files\Stevedore\bin\containerd-shim-hcsshim-v1.exe"`. Apply Fix 3 instead. |
+| Stevedore service won't start (1053 timeout) | Windows Defender blocking dockerd.exe OR stale daemon.json from Docker Desktop | `Add-MpPreference -ExclusionProcess "dockerd.exe"` AND delete `C:\ProgramData\docker\config\daemon.json` |
+| `error getting credentials - err: exit status 1` | wincred credential helper fails because dockerd runs as SYSTEM without interactive session | OK to ignore for public images (MCR, GitHub). Use `nerdctl pull` instead for images that need auth, or set `"credsStore":""` in docker config. |
+| `failed to extract layer ... failed to find link target` when pulling servercore | containerd windows snapshotter can't handle certain Windows reparse points in the layer | Use `docker.exe pull` instead of `nerdctl pull`. Docker Engine's layer extraction handles reparse points correctly. |
 
 ---
 

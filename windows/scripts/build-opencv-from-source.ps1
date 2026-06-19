@@ -15,6 +15,15 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\gstreamer' }
 
 Write-Host "=== OpenCV source build (branch $OpenCvVersion, Ninja+clang-cl) ==="
 
+# Install numpy (required by OpenCV's CUDA detection/verification step)
+$pythonExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'
+if (Test-Path $pythonExe) {
+    Write-Host 'Installing numpy via pip (required for OpenCV CUDA detection)...'
+    cmd.exe /c """$pythonExe"" -m pip install numpy --quiet 2>&1"
+    if ($LASTEXITCODE -eq 0) { Write-Host 'numpy installed successfully' }
+    else { Write-Host 'WARNING: numpy install failed - OpenCV CUDA detection may be disabled' }
+}
+
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 $mainSrc = Join-Path $SourceDir 'opencv'
 $ok = Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv.git' -Branch $OpenCvVersion -SourceDir $mainSrc

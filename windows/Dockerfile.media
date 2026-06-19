@@ -14,7 +14,7 @@ ARG ONNXRUNTIME_VERSION=1.26.0
 ARG ONNXRUNTIME_GENAI_VERSION=0.13.1
 ARG ONNX_DIRECTML_VERSION=1.26.0
 ARG OPENCV_SOURCE_VERSION=5.x
-ARG LITERT_VERSION=2.1.5
+ARG LITERT_VERSION=v2.1.5
 ARG LITERT_LM_VERSION=0.13.1
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
@@ -78,6 +78,7 @@ RUN & 'C:\temp\scripts\build-litert-lm-from-source.ps1' `
 
 # ── Stage 5: GStreamer (auto-detects CUDA, OpenCV, ONNX, LiteRT libs) ───────
 ENV GST_VERSION=$GST_VERSION
+ENV GSTREAMER_VERSION=$GST_VERSION
 ENV GSTREAMER_BIN="C:\gstreamer\bin"
 ENV ONNX_ROOT="C:\gstreamer\lib\onnxruntime-source"
 ENV ONNX_GENAI_ROOT="C:\gstreamer\lib\onnxruntime-genai-source"
