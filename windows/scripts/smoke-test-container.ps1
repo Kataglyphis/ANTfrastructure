@@ -116,6 +116,7 @@ Assert-CommandExists 'nuget'
 # Verify clang-cl version
 $clangVer = Get-CommandVersion 'clang-cl'
 Assert-Test -Name "clang-cl version" -Condition { $clangVer -ne $null } -FailMessage "Could not get clang-cl version"
+Assert-Test -Name "clang-cl version string" -Condition { $clangVer -match '22\.' } -FailMessage "clang-cl version is not 22.x"
 
 # Verify cmake version
 $cmakeVer = Get-CommandVersion 'cmake'
@@ -196,8 +197,8 @@ if (-not $SkipCudaTests) {
     Assert-CommandExists 'nvcc'
     Assert-Test -Name "nvcc version" -Condition {
         $ver = & nvcc --version 2>&1 | Out-String
-        return $ver -match '12\.9'
-    } -FailMessage "nvcc version is not 12.9.x"
+        return $ver -match '13\.3'
+    } -FailMessage "nvcc version is not 13.3.x"
 
     Assert-EnvVarSet -Name 'CUDA_ROOT'
     Assert-EnvVarSet -Name 'CUDA_PATH'
@@ -304,7 +305,59 @@ Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
 } -FailMessage "GStreamer gst-launch-1.0 failed to load"
 
 # ============================================================================
-Write-TestHeader '12. Compiler smoke test (clang-cl builds C++)'
+Write-TestHeader '12. LiteRT (AI Edge runtime, source-built)'
+# ============================================================================
+$litertRoot = 'C:\gstreamer\lib\litert'
+$litertInclude = Join-Path $litertRoot 'include'
+$litertLibDir = Join-Path $litertRoot 'lib'
+$litertBinDir = Join-Path $litertRoot 'bin'
+
+Assert-DirectoryExists -Path $litertRoot -Description 'LiteRT root dir'
+Assert-DirectoryExists -Path $litertInclude -Description 'LiteRT include dir'
+
+if (Test-Path $litertInclude) {
+    $litertHeaders = Get-ChildItem -Path $litertInclude -Filter 'tensorflow/lite/c_api.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT C API header" -Condition { $litertHeaders.Count -gt 0 } -FailMessage "No LiteRT C API header found"
+    $litertCxxHeaders = Get-ChildItem -Path $litertInclude -Filter 'tensorflow/lite/interpreter.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT C++ API header" -Condition { $litertCxxHeaders.Count -gt 0 } -FailMessage "No LiteRT interpreter header found"
+    # Check GPU delegate header
+    $litertGpuHeaders = Get-ChildItem -Path $litertInclude -Filter 'delegate/gpu/*.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT GPU delegate headers" -Condition { $litertGpuHeaders.Count -gt 0 } -FailMessage "No LiteRT GPU delegate headers found"
+}
+
+if (Test-Path $litertLibDir) {
+    $litertLibs = Get-ChildItem -Path $litertLibDir -Filter '*.lib' -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT lib files" -Condition { $litertLibs.Count -gt 0 } -FailMessage "No LiteRT .lib files found"
+}
+
+if (Test-Path $litertBinDir) {
+    $litertDlls = Get-ChildItem -Path $litertBinDir -Filter '*.dll' -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT DLL files" -Condition { $litertDlls.Count -gt 0 } -FailMessage "No LiteRT .dll files found"
+}
+
+# ============================================================================
+Write-TestHeader '13. LiteRT-LM (on-device LLM inference, source-built)'
+# ============================================================================
+$litertLmRoot = 'C:\gstreamer\lib\litert-lm'
+$litertLmInclude = Join-Path $litertLmRoot 'include'
+$litertLmLibDir = Join-Path $litertLmRoot 'lib'
+
+Assert-DirectoryExists -Path $litertLmRoot -Description 'LiteRT-LM root dir'
+
+if (Test-Path $litertLmInclude) {
+    $litertLmHeaders = Get-ChildItem -Path $litertLmInclude -Filter '*.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT-LM headers" -Condition { $litertLmHeaders.Count -gt 0 } -FailMessage "No LiteRT-LM headers found"
+}
+
+if (Test-Path $litertLmLibDir) {
+    $litertLmLibs = Get-ChildItem -Path $litertLmLibDir -Filter '*.lib' -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT-LM lib files" -Condition { $litertLmLibs.Count -gt 0 } -FailMessage "No LiteRT-LM .lib files found"
+    $litertLmDlls = Get-ChildItem -Path $litertLmLibDir -Filter '*.dll' -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT-LM DLL files" -Condition { $litertLmDlls.Count -gt 0 } -FailMessage "No LiteRT-LM .dll files found"
+}
+
+# ============================================================================
+Write-TestHeader '14. Compiler smoke test (clang-cl builds C++)'
 # ============================================================================
 $tmpDir = Join-Path $env:TEMP 'kataglyphis-smoke-test'
 New-Item -Path $tmpDir -ItemType Directory -Force | Out-Null
@@ -337,7 +390,7 @@ Assert-Test -Name "Compiled program runs" -Condition {
 Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 
 # ============================================================================
-Write-TestHeader '13. CMake + Ninja + clang-cl integration'
+Write-TestHeader '15. CMake + Ninja + clang-cl integration'
 # ============================================================================
 $tmpDir2 = Join-Path $env:TEMP 'kataglyphis-smoke-cmake'
 New-Item -Path $tmpDir2 -ItemType Directory -Force | Out-Null
@@ -371,7 +424,7 @@ Assert-Test -Name "CMake+Ninja+clang-cl build" -Condition {
 Remove-Item $tmpDir2 -Recurse -Force -ErrorAction SilentlyContinue
 
 # ============================================================================
-Write-TestHeader '14. VS MSBuild + ClangCL toolset integration'
+Write-TestHeader '16. VS MSBuild + ClangCL toolset integration'
 # ============================================================================
 $tmpDir3 = Join-Path $env:TEMP 'kataglyphis-smoke-msbuild'
 New-Item -Path $tmpDir3 -ItemType Directory -Force | Out-Null

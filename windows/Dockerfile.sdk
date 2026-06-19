@@ -14,9 +14,13 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 
 COPY windows\scripts C:\temp\scripts
 
-ENV CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
+ENV CUDA_ROOT_INIT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
 ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 
 RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
 
-ENV PATH=$CUDA_ROOT\bin;$CUDNN_ROOT\bin;$PATH
+# CUDA_ROOT points to where the portable (Scoop) install puts it inside the container.
+# The setup-cuda.ps1 script installs via Scoop which writes to the user profile.
+ENV CUDA_ROOT=C:\Users\ContainerAdministrator\scoop\apps\cuda\current
+ENV CUDA_PATH=C:\Users\ContainerAdministrator\scoop\apps\cuda\current
+ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$PATH

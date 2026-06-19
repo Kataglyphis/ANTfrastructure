@@ -96,8 +96,12 @@ docker build --platform windows/amd64 --no-cache `
 #     + clang-cl incomplete-type incompatibility in DirectML helper headers)
 #   - ONNX GenAI 0.13.1 (via NuGet package)
 #   - OpenCV 5.x (with global AVX2/SSSE3/SIMD flags for clang-cl)
+#   - LiteRT 2.1.5 (GPU delegate with Vulkan, XNNPACK, external CUDA delegate)
+#   - LiteRT-LM 0.13.1 (on-device LLM inference, CUDA enabled, links LiteRT)
 #   - GStreamer 1.29.1 (Meson+clang-cl, CUDA auto-detected)
-docker build --platform windows/amd64 --no-cache `
+# NOTE: ONNX Runtime AVX-512+AMX compilation with clang-cl needs ~48 GB RAM.
+# Adjust --memory to your host's available resources (--cpu-quota not supported on Windows).
+docker build --platform windows/amd64 --no-cache --memory 48g `
   -t local/kataglyphis:windows-media `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
   -f windows/Dockerfile.media .
@@ -114,9 +118,11 @@ docker build --platform windows/amd64 --no-cache `
 | Component | Generator | Compiler | Notes |
 |-----------|-----------|----------|-------|
 | CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset |
-| ONNX Runtime 1.26 | Ninja | clang-cl, lld-link | DirectML disabled. Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). |
-| ONNX GenAI 0.13.1 | `python build.py` | clang-cl (Ninja generator) | Source-built via `build.py --cmake_generator Ninja --cmake_extra_defines CMAKE_C_COMPILER=clang-cl CMAKE_CXX_COMPILER=clang-cl`. VsDevCmd environment loaded for MSVC STL headers. |
-| OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. Custom `CMAKE_AR` path fix. |
+| ONNX Runtime 1.26 | Ninja | clang-cl, lld-link | DirectML disabled. CUDA enabled via CUDA 13.3 provider (includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). AVX-512+AMX compilation with clang-cl needs ~48 GB RAM — pass `--memory 48g` to docker build (--cpu-quota not supported on Windows). |
+| ONNX GenAI 0.13.1 | `python build.py` | clang-cl (Ninja generator) | Source-built via `build.py --cmake_generator Ninja --cmake_extra_defines CMAKE_C_COMPILER=clang-cl CMAKE_CXX_COMPILER=clang-cl`. CUDA enabled. VsDevCmd environment loaded for MSVC STL headers. |
+| OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. CUDA auto-detected. Custom `CMAKE_AR` path fix. |
+| LiteRT 2.1.5 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. |
+| LiteRT-LM 0.13.1 | Ninja | clang-cl, lld-link | On-device LLM inference. CUDA support enabled when detected. Links against LiteRT from previous stage. |
 | GStreamer 1.29 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
 
 ### Windows Scripts

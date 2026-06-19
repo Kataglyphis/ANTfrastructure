@@ -63,9 +63,24 @@ if ((Test-Path $pyConfigSrc) -and -not (Test-Path $pyConfigDst)) { Copy-Item $py
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 $ortInstallDir = Join-Path $InstallDir 'lib\onnxruntime-source'
+# Auto-detect CUDA for GenAI
+$genaiCudaArgs = @()
+$cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+$cudnnRoot = if ($env:CUDNN_ROOT) { $env:CUDNN_ROOT } else { $null }
+if ($cudaRoot -and (Test-Path $cudaRoot)) {
+    $genaiCudaArgs += '-DUSE_CUDA=ON'
+    $genaiCudaArgs += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
+    $genaiCudaArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$(Join-Path $cudaRoot 'bin\nvcc.exe')"
+    if ($cudnnRoot -and (Test-Path $cudnnRoot)) {
+        $genaiCudaArgs += "-DCUDNN_ROOT_DIR=$cudnnRoot"
+    }
+} else {
+    $genaiCudaArgs += '-DUSE_CUDA=OFF'
+}
+
 $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
-    '-DUSE_CUDA=OFF', '-DUSE_TRT_RTX=OFF', '-DUSE_DML=OFF'
+    '-DUSE_TRT_RTX=OFF', '-DUSE_DML=OFF'
     '-DENABLE_JAVA=OFF', '-DBUILD_WHEEL=OFF', '-DUSE_GUIDANCE=OFF'
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
@@ -73,7 +88,7 @@ $cmakeExtraGenAi = @(
     "-DPYTHON_EXECUTABLE=$pythonExe"
     "-DPYTHON_LIBRARY=C:/temp/cpython/PCbuild/amd64/python3.lib"
     "-DPYTHON_INCLUDE_DIR=C:/temp/cpython/Include"
-)
+) + $genaiCudaArgs
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
 if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
 

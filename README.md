@@ -84,10 +84,10 @@ docker build --platform windows/amd64 `
   -f windows/Dockerfile.base .
 
 docker build --platform windows/amd64 `
-  --progress=plain --no-cache `
-  -t local/kataglyphis:windows-ai `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
-  -f windows/Dockerfile.ai .
+  --progress=plain --no-cache --memory 48g `
+  -t local/kataglyphis:windows-media `
+  --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
+  -f windows/Dockerfile.media .
 
 docker build --platform windows/amd64 `
   --progress=plain --no-cache `
