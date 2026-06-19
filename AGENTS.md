@@ -1,12 +1,12 @@
 # Kataglyphis-ContainerHub
 
+Agent context file. Build commands live in `README.md`; deep architecture in
+`docs/`. This file captures the **guardrails** an LLM agent must follow to avoid
+regressing the build.
+
 ## Container Architecture
 
-Three build lanes — **cross lane** (`linux/amd64` host, cross-compiles for all arches, tags `:cross-*`), **runtime lane** (native target platform via QEMU, tags `:latest-cross-*`), and **Windows lane** (native Windows Containers, tag `:winamd64`). Supported Linux architectures: `amd64`, `arm64`, `riscv64`. Windows target: `windows/amd64` only.
-
-See `docs/linux-build-basics.md` for the image hierarchy diagram, `docs/overview.md` for the tag inventory, `docs/windows-builds.md` for Windows container details, and the intro tables below (Dockerfiles, naming) for quick reference.
-
-### Dockerfiles
+Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows: `windows/amd64`.
 
 | Dockerfile | FROM | Produces |
 |------------|------|----------|
@@ -17,13 +17,8 @@ See `docs/linux-build-basics.md` for the image hierarchy diagram, `docs/overview
 | `Dockerfile.android` | `:cross-media-<arch>` | `:cross-android-<arch>` |
 | `Dockerfile.package` | `:base` + `:cross-android-<arch>` | `:latest-cross-package-<arch>` |
 | `Dockerfile.torch` | `:latest-cross-package-<arch>` | `:latest-cross-<arch>` |
-| `Dockerfile.nvidia` | `:cross-sdk-<arch>` | (optional GPU layer) |
-| `Dockerfile.amd` | `:cross-sdk-<arch>` | (optional GPU layer) |
-| `windows/Dockerfile.base` | `mcr.microsoft.com/windows/servercore:ltsc2025` | `local/kataglyphis:windows-base` |
-| `windows/Dockerfile.sdk` | `windows-base` | `local/kataglyphis:windows-sdk` |
-| `windows/Dockerfile.toolchain` | `windows-sdk` | `local/kataglyphis:windows-toolchain` |
-| `windows/Dockerfile.media` | `windows-toolchain` | `local/kataglyphis:windows-media` |
-| `windows/Dockerfile` | `windows-media` | `ghcr.io/.../kataglyphis_beschleuniger:winamd64` |
+| `Dockerfile.nvidia` / `Dockerfile.amd` | `:cross-sdk-<arch>` | optional GPU layer |
+| `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64` |
 
 ### Windows-Specific Naming
 
@@ -288,278 +283,157 @@ After a successful `build-cross-chain.sh` run:
 
 ## Repo Map
 
-- `linux/`: Linux Dockerfiles for base, toolchain, SDK, media, Android, package, Torch, and GPU accelerator images. `Dockerfile.torch` is the final wrapper (includes runtime scripts + entrypoint) and the canonical source for shared final-stage elements (entrypoint, labels, runtime scripts, WORKDIR, VOLUME, HEALTHCHECK, kataglyphis user).
-- `linux/scripts/`: helper scripts organized by layer: `01-core/` (shared utilities), `02-toolchain/` (compiler builds), `03-media/` (library builds), `04-runtime/` (entrypoint and env), `05-frameworks/` (TVM, Torch), `06-packaging/` (assembly and validation). Top-level build orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `build-cross-stage.sh`, `build-sdk-artifacts.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`. Verification: `verify-cross-chain.sh`, `verify-critical-fixes.sh`, `verify-artifact-copy-parity.sh`.
-- `docs/`: the canonical build and troubleshooting instructions (including `docs/windows-builds.md` for Windows containers).
-- `windows/`: Windows container images.
-- `out/`: generated build artifacts (OCI layouts, rootfs exports). Subdirectories: `out/local-oci/android/<arch>`, `out/linux-sdk/<arch>`, `out/linux-runtime/<arch>`. Excluded from Docker build context via `.dockerignore`.
-- `docs/scripts/sync_versions.py`: keeps the source-controlled version snapshot in `README.md` aligned with the Dockerfiles and setup scripts.
+```
+linux/scripts/
+├── 01-core/             shared utilities (versions.env, logging, platform, tag-naming, stage-defs, digest-pinning, build-helpers, cli-parsers, …)
+├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
+├── media/               media library build scripts (refactored)
+│   ├── core/common.sh   single DRY bootstrap — sourced by every media script (replaces the old media-build-preamble.sh)
+│   ├── build/           per-library build scripts
+│   │   ├── onnxruntime/   ONNX Runtime + GenAI (build/ steps, runtime/ pkgconfig, android/)
+│   │   ├── litert/        LiteRT + TFLite C API (Critical Fix #2: abseil span.h copy in build-litert.sh)
+│   │   ├── opencv/        OpenCV 5.x
+│   │   ├── ffmpeg/        FFmpeg
+│   │   ├── gstreamer/     GStreamer monorepo (common/ has patch-gstreamer-sources.sh — Critical Fix #5)
+│   │   └── libcamera/     libcamera
+│   └── runtime/         artifact collection, runtime config, wheel repair, verification, media-env.sh (canonical ENV)
+├── 04-runtime/          entrypoint + env scripts (gstreamer-env.sh, etc.)
+├── 05-frameworks/       TVM, Torch, Flutter
+└── 06-packaging/        assembly + smoke tests (smoke-media.sh, smoke-common.sh)
+```
 
----
+Top-level orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `build-cross-stage.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`. Verification: `verify-cross-chain.sh`, `verify-critical-fixes.sh`, `verify-artifact-copy-parity.sh`.
 
-## Code Organization
+`out/`: generated build artifacts (OCI layouts, rootfs exports). Excluded from Docker context via `.dockerignore`.
 
-Key shared utilities and where to find them:
+## Code Organization (key shared utilities)
 
-- **Architecture resolution:** `platform.sh` provides `canonical_target_arch()` and `canonical_resolve_arch()` as the single source of truth for target architecture resolution. All scripts should use these instead of ad-hoc `dpkg` / `uname -m` chains.
-- **Architecture list resolution:** `artifact-common.sh` provides `resolve_arch_list()` which normalizes `TARGET_ARCHES` from both the canonical variable name and common aliases (`TARGET_ARCH`, `ARCHITECTURES`) with a configurable fallback. Use this in top-level scripts that accept architecture lists instead of repeating 4-level fallback chains.
-- **Dry-run guard:** `build-helpers.sh` provides `is_dry_run()` which returns 0 when `DRY_RUN` is set to a truthy value. Also provides `_bool_truthy()` for testing any value for boolean truthiness (used by `is_dry_run()` and shared across context-management.sh and cross-stage-build.sh). Use these instead of repeating `[ "${DRY_RUN:-0}" -eq 1 ]` or raw case-statement boolean checks across scripts.
-- **Module loading:** `modules.sh` provides `source_modules_framework()` for the standard "find modules.sh in repo or container layout" bootstrap pattern. Call it after sourcing `modules.sh`.
-- **CC validation:** `validate-compilers.sh` provides `_validate_cc_target()` which centralizes the dumpmachine/ELF/cc1-compile-to-object/link smoke checks used by both `validate_package()` and `validate_smoke()`.
-- **Cross-chain tags:** `tag-naming.sh` provides `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, and the runtime tag functions for consistent naming across orchestrators and helpers.
-- **Stage graph:** `stage-defs.sh` defines the cross-lane stage chain (`base -> compiler -> sdk -> media -> android -> runtime`) declaratively as `CROSS_STAGE_ORDER`. The runtime lane chain (`base -> package -> wrapper`) is defined as `RUNTIME_STAGE_ORDER`. Each stage entry maps to its Dockerfile, parent stage, tag function, and per-arch flag. Both `build-cross-chain.sh` and `--verify-chain` consume this graph so the chain is defined in exactly one place. When adding or reordering stages, update `CROSS_STAGE_ORDER` or `RUNTIME_STAGE_ORDER` in this file. Pin variable initialization is handled by `cross_stage_init_pins()` (replaces the old manual pin declarations in the orchestrator). Internal consistency is checked by `cross_stage_validate_graph()` before every build. The cross→runtime handoff uses `cross_stage_ensure_parent_available()` (graph-driven, replacing the old `_refresh_android_images()`).
-- **Chain verification:** `chain-verify.sh` provides `verify_cross_chain_staleness()` (used by both `build-cross-chain.sh --verify-chain` and `verify-cross-chain.sh`) and `describe_cross_chain()` (used by `--describe-chain`). This shared module eliminates the previously duplicated `_verify_link()` / `verify_chain()` logic.
-- **Cross-stage build orchestration:** `cross-stage-build.sh` provides `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `resolve_pin()`, and `cross_stage_assemble_runtime_helper_args()` — the shared functions that the orchestrator uses to build each stage, push it, and capture the registry digest for pinning. `cross_stage_build_and_push()` and `cross_stage_build_local()` delegate to the shared `_cross_stage_build_impl()` to eliminate duplicated build logic. `cross_stage_run()` accepts a `push` flag (3rd argument, default `1`) so standalone scripts (`build-cross-stage.sh`, `build-cross-compiler.sh`) can use the same function for both push and local modes. `cross_stage_assemble_runtime_helper_args()` is the canonical source for the argument handoff between the orchestrator and `build-runtime-manifest.sh`. `build-cross-stage.sh` wraps these for single-stage rebuilds. `build-cross-compiler.sh` also uses them internally (delegating to the stage graph instead of duplicating build logic).
-- **Runtime flow initialization:** `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` — shared initialization for `build-runtime-artifacts.sh` and `build-runtime-manifest.sh`. Both runtime scripts source this directly (it is not included in `artifact-common.sh`'s sourcing chain since only those two scripts need it). Post-parse setup is handled by `runtime_post_parse_setup()` in `cli-parsers.sh`.
-- **Retry logic:** `logging.sh` provides `retry <max_attempts> <sleep_sec> <description> <command...>` for standardized retry loops.
-- **Mirror args:** `build-helpers.sh` provides `append_mirror_build_args_from_env()` to DRY the mirror argument fallback chain. Use this instead of repeating the `USE_FAST_UBUNTU_MIRROR` / `FAST_UBUNTU_MIRROR_URL` / `FAST_UBUNTU_PORTS_MIRROR_URL` expansion.
-- **Version forwarding:** `version-forwarding.sh` auto-discovers version variables from `versions.env` and forwards them as `--build-arg` to all builds via `append_version_build_args()`.
-- **Download checksums:** SHA256 checksums for Node.js and uv downloads live in `versions.env` (`NODE_AMD64_SHA256`, `NODE_ARM64_SHA256`, `UV_AMD64_SHA256`, `UV_ARM64_SHA256`, `UV_RISCV64_SHA256`).
-- **Python host environment:** `python-host.sh` provides `setup_host_python_environment()` (export HOST_PYTHON_BIN, PYTHON_EXECUTABLE, etc.) and `setup_host_python_with_major_minor()`. Use these instead of manually repeating the 3-line export block. Sourced by `media-build-preamble.sh` automatically.
-- **CMake cache/linker flags:** `cmake-cache-linker.sh` provides `append_cmake_cache_linker_args <array_ref>` — the canonical LLD+ccache CMake fallback flag logic. Use this instead of repeating the `ld.lld`/`ccache` flag blocks. Sourced by `media-build-preamble.sh` automatically.
-- **Install deps preamble:** `cross-apt.sh` defines `install_deps_preamble [packages...]` which calls `apt_update_smart` + `install_host_packages`. All `install-deps.sh` scripts use this instead of duplicating the apt-update+install pattern.
-- **Media ENV reference:** `linux/scripts/03-media/final/media-env.sh` is the canonical definition of PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH/GI_TYPELIB_PATH for media libraries. Dockerfile.media and Dockerfile.package ENV blocks must stay in sync with this file.
-- **Media artifact verification:** `linux/scripts/03-media/final/verify-media-artifacts.sh` validates that each media build stage produced actual output (shared libs exist, binaries executable, headers present). Called from Dockerfile.media RUN steps after every library build stage. Supports stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `app-wheels`, `media-inputs`.
-- **Build-time smoke:** `Dockerfile.media` final stage runs `smoke-media.sh` during the build, so behavioral test failures (import errors, broken libraries) are caught before the media image is pushed.
-- **Runtime stage elements:** `linux/Dockerfile.torch` final stage is the canonical source for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, and OCI labels.
-- **Artifact COPY list:** In `Dockerfile.package`, the `artifact-source` and `package-image` stages carry comments marking the canonical artifact COPY list that must be kept consistent. Run `linux/scripts/verify-artifact-copy-parity.sh` to check.
-- **Orchestrator stale-check:** `build-cross-chain.sh --verify-chain` resolves all upstream registry digests and reports whether downstream images may be stale, without performing any builds. The standalone `verify-cross-chain.sh` provides the same check with a lighter footprint. `verify_cross_chain_staleness()` in `chain-verify.sh` is shared by both. Use `--dry-run` to audit stage transitions without executing. Use `--describe-chain` to print the full stage graph with tag names.
-- **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper with `BUILDKIT_HOST` support. Use it instead of ad hoc `nerdctl build` command assembly.
-- **CLI parsing:** `cli-parsers.sh` provides `parse_shared_orchestrator_args()` and `parse_shared_runtime_args()` with a dispatch pattern (`_DP_SHIFT`) shared across all build scripts. Global flags (`--dry-run`, `--parallel-archs`, `--max-parallel-archs`, and mirror flags) are handled automatically by both parsers via `_parse_global_flags()` and `_parse_mirror_flags()` — scripts no longer duplicate these in their local case statements.
-- **Dry-run support:** All orchestrators and runtime helpers accept `--dry-run` to print build commands without executing. The cross-chain orchestrator, cross-stage builder, runtime manifest builder, and runtime artifacts builder all support this flag.
+- **Architecture resolution:** `platform.sh` → `canonical_target_arch()`, `canonical_resolve_arch()`. Single source of truth — never use ad-hoc `dpkg`/`uname -m`.
+- **Architecture list resolution:** `artifact-common.sh` → `resolve_arch_list()`. Normalizes `TARGET_ARCHES` from canonical name + aliases with fallback. Use instead of 4-level fallback chains.
+- **Dry-run guard:** `build-helpers.sh` → `is_dry_run()`, `_bool_truthy()`. Use instead of `[ "${DRY_RUN:-0}" -eq 1 ]`.
+- **Module loading:** `modules.sh` → `source_modules_framework()`. Bootstrap pattern for sourcing 01-core.
+- **Media bootstrap:** `media/core/common.sh` → `media_common_init <script_dir>`. Single DRY entry that sources the 01-core module framework. Every media build script sources this instead of duplicating a preamble block. Backward-compatible alias: `media_build_preamble_init`.
+- **CC validation:** `validate-compilers.sh` → `_validate_cc_target()` (dumpmachine/ELF/cc1/link smoke).
+- **Cross-chain tags:** `tag-naming.sh` → `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, runtime tag functions. Never construct tags manually.
+- **Stage graph:** `stage-defs.sh` → `CROSS_STAGE_ORDER` (base→compiler→sdk→media→android→runtime), `RUNTIME_STAGE_ORDER` (base→package→wrapper). Pin init: `cross_stage_init_pins()`. Validation: `cross_stage_validate_graph()`. Cross→runtime handoff: `cross_stage_ensure_parent_available()`.
+- **Chain verification:** `chain-verify.sh` → `verify_cross_chain_staleness()`, `describe_cross_chain()`.
+- **Cross-stage build:** `cross-stage-build.sh` → `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `cross_stage_assemble_runtime_helper_args()`.
+- **Runtime flow init:** `runtime-flow-common.sh` → `init_runtime_flow_defaults()` (sourced directly by the two runtime scripts).
+- **Retry logic:** `logging.sh` → `retry <max> <sleep> <desc> <cmd...>`.
+- **Mirror args:** `build-helpers.sh` → `append_mirror_build_args_from_env()`.
+- **Version forwarding:** `version-forwarding.sh` → `append_version_build_args()` (auto-discovers from `versions.env`).
+- **CMake cache/linker:** `cmake-cache-linker.sh` → `append_cmake_cache_linker_args <array_ref>`. Sourced by `media/core/common.sh` automatically.
+- **Install deps preamble:** `cross-apt.sh` → `install_deps_preamble [packages...]`.
+- **Media ENV reference:** `media/runtime/media-env.sh` is the canonical definition of PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH/GI_TYPELIB_PATH. `Dockerfile.media` and `Dockerfile.package` ENV blocks must stay in sync with this file.
+- **Media artifact verification:** `media/runtime/verify-media-artifacts.sh` validates each media build stage produced output. Called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `app-wheels`, `media-inputs`.
+- **Runtime stage elements:** `Dockerfile.torch` final stage is canonical for COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, OCI labels.
+- **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper (`BUILDKIT_HOST` support). Use instead of ad hoc `nerdctl build`.
 
 ### Module Loading Order
 
 `artifact-common.sh` sources 01-core modules in dependency order:
-1. `common.sh` (versions.env, logging, platform, ubuntu-mirror, downloads, parallelism)
-2. `tag-naming.sh` (cross-chain + runtime tag functions)
-3. `stage-defs.sh` (declarative cross-lane stage graph)
-4. `digest-pinning.sh` (registry digest resolution)
-5. `chain-verify.sh` (cross-chain staleness verification + describe)
-6. `build-helpers.sh` (nerdctl wrappers, build-arg helpers)
-7. `cross-stage-build.sh` (cross-stage build orchestration: build, push, pin; includes `cross_stage_build_local()` for non-push builds)
-8. `context-management.sh` (runtime context, OCI export, stage handoff)
-9. `version-forwarding.sh` (auto-discovered --build-arg forwarding)
-10. `cli-parsers.sh` (shared CLI argument parsing)
-11. `runtime-build-fns.sh` (per-arch build chain functions)
-12. `compiler-resolution.sh` (host compiler resolution for media builds)
-13. `parallel-loop.sh` (per-architecture parallel build loop)
+1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `build-helpers.sh` 7. `cross-stage-build.sh` 8. `context-management.sh` 9. `version-forwarding.sh` 10. `cli-parsers.sh` 11. `runtime-build-fns.sh` 12. `compiler-resolution.sh` 13. `parallel-loop.sh`.
 
-Additionally, `runtime-flow-common.sh` provides `init_runtime_flow_defaults()` — it is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`) to avoid polluting the broader sourcing chain.
-
----
-
-## Linux Build Rules
-
-- Use `nerdctl` first on this host. `buildctl` and `ctr` commonly fail here with permission errors.
-- Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working. Do not break one to fix the other.
-- `linux/scripts/build-cross-compiler.sh` builds one `linux/amd64` compiler image that contains cross toolchains for `amd64`, `arm64`, and `riscv64`. It is not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features just to make foreign-arch builds pass. Foreign-architecture runtime images must keep source-built `clang 22.1.6` and must not fall back to the Ubuntu `clang 22.1.2` packages. The source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default system `cc`/`c++` compiler on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; the resulting native GCC is swapped into `/opt/gcc-16.1.0` at the end of the Android stage via `Dockerfile.android`.
-- Preserve the optional runtime payloads and LLVM normalization in `linux/Dockerfile.package`. Do not silently drop the `/usr/local/lib/onnxruntime-*` (includes `onnxruntime-cpu`, `onnxruntime-gpu`, `onnxruntime-genai`), LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
-
----
+`runtime-flow-common.sh` is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`).
 
 ## Cross Chain Stage Handoff (do not regress)
 
 The cross lane is a sequence of separate `nerdctl build` invocations where each
-stage's next stage does `FROM ${BASE_IMAGE}`: `base -> compiler -> sdk -> media
--> android -> package -> torch -> wrapper -> manifest`. The base-image handoff
-between these stages MUST NOT rely on a bare mutable tag, or a stage can silently
-consume a STALE locally-cached image instead of the one just built. Concretely:
-`--output type=image,name=...,push=true` pushes the new digest to the registry
-but does not reliably refresh the local containerd tag, and BuildKit's default
-`FROM` resolution prefers an already-present local image (it does not re-pull).
-So rebuilding `media` then building `android` can quietly reuse the old `media`.
+stage does `FROM ${BASE_IMAGE}`: `base → compiler → sdk → media → android →
+package → torch → wrapper → manifest`. The base-image handoff MUST NOT rely on a
+bare mutable tag, or a stage can silently consume a STALE locally-cached image.
 
-### Stale-base propagation across orchestrator invocations (critical)
-
-For a detailed walkthrough of how this manifests, see `docs/linux-cross-builds.md`
-§ "Trap: stale-base propagation across orchestrator invocations".
+`--output type=image,name=...,push=true` pushes the new digest but does not
+reliably refresh the local containerd tag; BuildKit's default `FROM` prefers an
+already-present local image. So rebuilding `media` then building `android` can
+quietly reuse the old `media`.
 
 Rules:
 
-1. **Whenever ANY base image in the registry tag hierarchy is replaced,** you MUST
-   either (a) rebuild every downstream image starting from the replaced stage, or
-   (b) explicitly verify that the downstream images were already rebuilt from the
-   new base by checking they contain the new content (e.g. verify
-   `/opt/gcc-16.1.0-native-arm64` exists in the pinned sdk digest).
-2. **The `--from-stage` flag only controls where execution starts; it does NOT
-   update the base image of the first stage it runs.** If the existing registry
-   tag for the stage BEFORE your `--from-stage` was built from a stale upstream,
-   your rebuild inherits that staleness.
-3. **After pushing a rebuilt compiler image**, run the orchestrator from
-   `--from-stage sdk` (not `media`) so the sdk is built from the new compiler
-   before media inherits it.
-4. **Do NOT use `--from-stage android`** unless you have verified the media tag
-   already contains the content the compiler provides (e.g., the native GCC
-   directories).
-5. To run the full cross chain, prefer the orchestrator `linux/scripts/build-cross-chain.sh`.
-   It captures each cross stage's registry-resolvable manifest digest after push and
-   feeds it to the next stage as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`,
-   so stale reuse is structurally impossible. It supports `--target-arches`,
-   `--from-stage`, `--to-stage`, and `--only` for partial/per-arch runs.
-6. When you must drive the manual `nerdctl` cross loops instead, pass `--pull=true`
-   on every stage that consumes a `BASE_IMAGE` tag so it re-pulls the freshly
-   pushed base. This is the weaker defense; digest pinning is preferred.
-7. Capture pinnable digests with `nerdctl manifest inspect --verbose <tag>` ->
+1. When ANY base image in the registry tag hierarchy is replaced, rebuild every
+   downstream image from the replaced stage, OR verify the downstream images
+   already contain the new content (e.g. check `/opt/gcc-16.1.0-native-arm64`
+   exists in the pinned sdk digest).
+2. `--from-stage` only controls where execution starts; it does NOT update the
+   base image of the first stage. If the previous stage's tag was built from a
+   stale upstream, your rebuild inherits that staleness.
+3. After pushing a rebuilt compiler image, run from `--from-stage sdk` (not
+   `media`) so the sdk is built from the new compiler.
+4. Do NOT use `--from-stage android` unless you verified the media tag already
+   contains the compiler's content (e.g. native GCC directories).
+5. Prefer `linux/scripts/build-cross-chain.sh` — it captures each stage's
+   registry digest after push and feeds it to the next as
+   `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`, making stale reuse
+   structurally impossible. Supports `--target-arches`, `--from-stage`,
+   `--to-stage`, `--only`.
+6. When driving manual `nerdctl` loops, pass `--pull=true` on every stage that
+   consumes a `BASE_IMAGE` tag (weaker defense; digest pinning preferred).
+7. Capture pinnable digests with `nerdctl manifest inspect --verbose <tag>` →
    `.Descriptor.digest` (the `registry_pin_ref` helper in
-   `linux/scripts/01-core/digest-pinning.sh`). Do NOT use the local image store's
-   `RepoDigests`: on this host BuildKit pushes a converted `docker.v2+json`
-   manifest whose digest differs from the local OCI manifest, so `RepoDigests` is
-   not registry-resolvable and will fail to pin.
-
----
-
-## Verified Runtime Packaging Path On This Host
-
-- Prefer helper scripts over ad hoc `nerdctl build` sequences (see Quick Reference above).
-- The runtime helpers accept `--target-arches`, `TARGET_ARCHES`, and `TARGET_ARCH` for architecture selection.
-- For local foreign-architecture runtime rebuilds, prefer saved OCI layouts under `out/local-oci/android/<arch>`.
-- When reusing saved local artifacts, use:
-  - `ARTIFACT_CONTEXT_ROOT="$PWD/out/local-oci/android"`
-  - `ARTIFACT_CONTEXT_MODE=oci`
-  - `RUNTIME_CONTEXT_ROOT="$PWD/out/local-oci/runtime-contexts"`
-- The working host workaround is mixed context types: keep `runtime_artifact` as an `oci-layout://...` build context and keep `runtime_base` as a plain rootfs directory context. Do not switch both named contexts to OCI in one build on this host.
-- The repo-root `.dockerignore` excludes `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so large exported artifacts do not get sent back as later Docker build contexts.
-- Prefer the saved OCI layouts over the plain directory exports in `out/local-android-dir/<arch>`. The plain directory path is much larger and previously dropped runtime payload during OCI-to-directory conversion.
-
----
+   `01-core/digest-pinning.sh`). Do NOT use `RepoDigests`: BuildKit pushes a
+   converted `docker.v2+json` manifest whose digest differs from the local OCI
+   manifest and is not registry-resolvable.
 
 ## Five Critical Fixes To Maintain
 
-Always preserve these five vital fixes to prevent build/runtime regressions.
-See `docs/linux-cross-builds.md` § "Five Critical Fixes" for full implementation details.
+Always preserve these. See `docs/linux-cross-builds.md` § "Five Critical Fixes".
 
-1. **gst-python staged libpython** — `rewrite_staged_python_pc()` in `build_python.sh`
-2. **libcamera abseil** — copy `absl/types/span.h` in `build-litert.sh`
-3. **cross lib-dynload dangling symlinks** — `cp -a -L` + `find -xtype l` guard in `build_python.sh`
+1. **gst-python staged libpython** — `rewrite_staged_python_pc()` in `02-toolchain/python/build_python.sh`
+2. **libcamera abseil** — copy `absl/types/span.h` in `media/build/litert/build-litert.sh`
+3. **cross lib-dynload dangling symlinks** — `cp -a -L` + `find -xtype l` guard in `02-toolchain/python/build_python.sh`
 4. **cross GCC architecture guard** — three-layer ELF + dumpmachine + cc1 smoke check in `Dockerfile.package`
-5. **OpenCV 5 GStreamer compat** — `patch_gstreamer_opencv5_compat()` in `patch-gstreamer-sources.sh`
+5. **OpenCV 5 GStreamer compat** — `patch_gstreamer_opencv5_compat()` in `media/build/gstreamer/common/patch-gstreamer-sources.sh`
 
----
+## Linux Build Rules
+
+- Use `nerdctl` first on this host. `buildctl`/`ctr` commonly fail with permission errors.
+- Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
+- `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all arches. Not a multi-arch compiler manifest.
+- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep source-built `clang 22.1.6` (not Ubuntu `clang 22.1.2`). Source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
+- Preserve optional runtime payloads and LLVM normalization in `Dockerfile.package`. Do not drop `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
+
+## Dockerfile.media BuildKit Strategy
+
+`Dockerfile.media` uses a parallel multi-stage DAG (BuildKit runs independent stages concurrently):
+
+```
+base ─┬─ onnxruntime ───────┐
+      ├─ litert ────────────┤
+      ├─ opencv ────────────┼─ media-inputs ─ gstreamer ─ libcamera ─ final
+      ├─ ffmpeg ────────────┤
+      └─ app-wheelhouse ────┘
+```
+
+- `--mount=type=cache` (apt/ccache/sccache/uv/pip/cargo) keyed per-arch via `id=...-${TARGETARCH}`, `sharing=locked`.
+- `--mount=type=bind,readonly` for per-library build scripts — no COPY layer, so editing one library's scripts invalidates only that RUN, not downstream layers.
+- `--mount=type=tmpfs` for `/tmp` scratch (no layer bloat).
+- `COPY --link` for layer-parallel copying from independent build stages.
+- Shared/common files (`core/common.sh`, `activate-cross-python.sh`, `verify-media-artifacts.sh`, 01-core helpers) are COPY'd in the `base` stage (rarely change → stable cache).
+- Runtime scripts are COPY'd only in the `final` stage (must persist in the published image; build scripts are NOT shipped).
 
 ## Push And Publish Rules
 
-- For the runtime helpers, `build-runtime-artifacts.sh --push` should push only the final per-architecture wrapper images.
-- `build-runtime-manifest.sh --push` should push those final wrapper images plus the final manifest.
-- Use `--push-all` only when the user explicitly wants the `base` and `package` intermediates published too.
-- Final cross release target: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
-- Before rebuilding expensive foreign-architecture wrappers, inspect the remote tags with `nerdctl manifest inspect`. If the per-architecture wrapper images already exist remotely, recreate the final manifest directly instead of rebuilding them.
-
----
-
-## Development Rules
-
-### Where New Base Images Belong
-
-- OS-level changes go in `Dockerfile.base` (Ubuntu version, system packages, CMake, Node, uv).
-- Compiler/toolchain changes go in `Dockerfile.toolchain` (GCC, LLVM/Clang, Rust, Python interpreter).
-- SDK/framework changes go in `Dockerfile.sdk` (Vulkan SDK, TVM).
-- Media library changes go in `Dockerfile.media` (ONNX Runtime, LiteRT, OpenCV, GStreamer, libcamera).
-- Android platform changes go in `Dockerfile.android` (SDK, NDK, native GCC swap).
-- GPU accelerator layers go in `Dockerfile.nvidia` or `Dockerfile.amd`.
-
-### Where New Toolchains Belong
-
-Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
-- `build-gcc.sh` / `gcc.sh` — GCC from source
-- `build-clang.sh` / `llvm.sh` — LLVM/Clang from source
-- `install-rust.sh` — Rust toolchain
-- `vulkan.sh` — Vulkan SDK setup
-- `cmake.sh` — CMake bootstrap
-- `bootstrap.sh` — initial build dependencies
-
-### How New Architectures Are Added
-
-1. Add the architecture to `CROSS_DEFAULT_ARCHES` in `versions.env`
-2. Update cross-target lists in `build-cross-compiler.sh` and `build-cross-chain.sh` defaults
-3. Add cross-compilation triple mappings in `platform.sh` (`canonical_target_arch()`)
-4. Add arch-specific download checksums in `versions.env` (Node, uv)
-5. Verify QEMU/binfmt support for the new architecture
-6. Update `TARGET_ARCHES` defaults in orchestrator `CROSS_DEFAULT_ARCHES` (all scripts use `resolve_arch_list()` for centralized resolution)
-
-### How Tags Should Be Generated
-
-- Use the centralized tag functions in `tag-naming.sh` — never construct tags manually.
-- Cross lane: `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag() <arch>`, `cross_media_tag() <arch>`, `cross_android_tag() <arch>`
-- Runtime lane: `runtime_base_tag() <arch>`, `runtime_package_tag() <arch>`, `runtime_wrapper_tag() <arch>`
-- To change the registry prefix, set `IMAGE_REPO` or `IMAGE_REGISTRY_PREFIX`.
-- All scripts that build images accept `--image-repo` to override the default registry prefix.
-
-### How Scripts Should Be Structured
-
-- Every script must start with `#!/usr/bin/env bash` and `set -euo pipefail`.
-- Use `run()` from `build-helpers.sh` for echoing and executing commands. Use `run_quiet()` for secret-bearing args.
-- Use `nerdctl` build wrappers: `run_nerdctl_build()` with `BUILDKIT_HOST` support, `pull_platform_image()`.
-- Source `artifact-common.sh` for access to all shared utilities (tag naming, digest pinning, build helpers, CLI parsing, runtime functions).
-- For orchestrator scripts, use the dispatch pattern with `parse_shared_orchestrator_args()` or `parse_shared_runtime_args()`.
-- Call `cross_stage_init_pins()` once before the build loop to declare all digest-pin variables from the stage graph.
-- Mirror configuration goes through `append_mirror_build_args_from_env()`.
-- Version forwarding goes through `append_version_build_args()`.
-- Architecture normalization goes through `normalize_target_arches()`.
-- Use `resolve_arch_list()` (in `artifact-common.sh`) instead of writing `TARGET_ARCHES="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${CROSS_DEFAULT_ARCHES}}}}"` chains.
-- Use `is_dry_run()` (in `build-helpers.sh`) instead of `[ "${DRY_RUN:-0}" -eq 1 ]`.
-
----
-
-## Maintenance Rules
-
-### Dependency Update Procedure
-
-1. Update version numbers in `linux/scripts/01-core/versions.env` (single source of truth)
-2. Run `python3 docs/scripts/sync_versions.py --check`; if drift, run `--write`
-3. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
-4. Verify version references in Dockerfile ARG defaults match (they are safety nets only)
-5. Run `linux/scripts/01-core/verify-arg-consistency.sh` to check ARG consistency
-6. Rebuild the affected stages of the cross chain:
-   - **Base tooling** (CMake, Node, uv) → rebuild from `base`
-   - **Compiler toolchain** (GCC, LLVM, Python) → rebuild from `compiler`, then `--from-stage sdk`
-   - **Media libraries** (ONNX, LiteRT, OpenCV, GStreamer) → rebuild from `media`
-   - **Android** (SDK, NDK) → rebuild from `android`
-
-### Image Deprecation Procedure
-
-- Cross-lane intermediates (`:cross-sdk-*`, `:cross-media-*`, `:cross-android-*`) are ephemeral — each new full build replaces them.
-- Runtime intermediates (`:latest-cross-base-*`, `:latest-cross-package-*`) are internal — only pushed with `--push-all`.
-- The public `:latest-cross` manifest and its per-arch wrappers are the stable API.
-- Old versions are cleaned by the `ghcr-cleanup` GitHub Action (keeps last 3 per tag, 14-day safety net).
-
-### Release Procedure
-
-1. Run `bash linux/scripts/build-cross-chain.sh --verify-chain` to check freshness
-2. Run `bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64` to build and publish
-3. Run `python3 docs/scripts/sync_versions.py --check` to verify docs are in sync
-4. Validate with `wrapper-smoke` target (see `docs/linux-build-basics.md`)
-5. Update `CHANGELOG.md`
-
----
+- `build-runtime-artifacts.sh --push` pushes only final per-arch wrapper images.
+- `build-runtime-manifest.sh --push` pushes wrappers + final manifest.
+- `--push-all` only when explicitly requested (publishes `base`/`package` intermediates).
+- Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
+- Before rebuilding expensive foreign-arch wrappers, inspect remote tags with `nerdctl manifest inspect`. If wrappers exist remotely, recreate the manifest directly instead of rebuilding.
 
 ## Validation
 
-- For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs`, because absolute symlinks resolve against the host root.
-- Confirm all of the following for runtime image validation:
-  - `clang --version` reports `<!-- generated:llvm -->22.1.6<!-- /generated:llvm -->` on all architectures
-  - the reported target triple matches the architecture (`cc -dumpmachine`)
-  - On all architectures: `gcc --version` reports `<!-- generated:gcc -->16.1.0<!-- /generated:gcc -->`, and:
-    - `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-<!-- generated:gcc -->16.1.0<!-- /generated:gcc -->/bin/gcc`
-    - `/usr/bin/c++ -> /etc/alternatives/c++ -> /opt/gcc-<!-- generated:gcc -->16.1.0<!-- /generated:gcc -->/bin/g++`
-    - `/usr/bin/gcc -> /etc/alternatives/gcc -> /opt/gcc-<!-- generated:gcc -->16.1.0<!-- /generated:gcc -->/bin/gcc`
-    - `/usr/bin/g++ -> /etc/alternatives/g++ -> /opt/gcc-<!-- generated:gcc -->16.1.0<!-- /generated:gcc -->/bin/g++`
-  - `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`
-  - the optional runtime payloads are still present
-  - See `validate-compilers.sh` for the shared `_validate_cc_target()` used by both the `package` hard-fail and `smoke` modes.
-- Use the `wrapper-smoke` target (documented in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md`) for cheaper packaging validation before large publish runs.
-- Current automated validation is documentation-focused. Do not claim there is already a single full end-to-end CI workflow.
-
----
+- For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
+- Confirm on all arches: `clang --version` reports `22.1.6`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.1.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
+- Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
 
 ## Host Constraints
 
-- QEMU/binfmt works for `arm64` and `riscv64` on this host. It may need to be reinstalled after a host reboot. If foreign-architecture builds (or even simple `nerdctl run --platform linux/arm64 alpine uname -m`) fail with `exec format error`, run `sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all` in a terminal first before resuming the agentic session.
-- Plain local image tags such as `docker.io/library/opencode-local:*` may be treated like remote registry references here. Do not rely on them as reusable `FROM` sources for the runtime packaging chain.
-- Disk pressure is common during runtime rebuilds. When free space is tight, build and push one architecture at a time. To free space: `nerdctl system prune -a -f && rm -rf out/local-* out/linux-*`.
-- `gh` may be unavailable on this host. Use `nerdctl` and regular git commands unless GitHub CLI is actually installed.
-- Rootless BuildKit on this host is already tuned for fast build-time downloads. Do not regress these settings. Full details in `docs/project-info.md`.
+| Symptom | Fix |
+|---------|-----|
+| `exec format error` | `sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all` |
+| `no space left on device` | `nerdctl system prune -a -f && rm -rf out/local-*` |
+| Stale downstream images | `--verify-chain` or rebuild from replaced stage |
+| `registry_pin_ref` fails on fresh push | Uses `retry()` with 5 attempts; wait and retry |
+| nerdctl DNS failure (Windows BuildKit) | Use Stevedore's `docker.exe build` instead |
 
 ### Common Failure Modes
 
@@ -582,84 +456,29 @@ Scripts under `linux/scripts/02-toolchain/` build the compiler toolchain:
 
 ## Version Bumping
 
-### Centralized Version File
+**Single source of truth: `linux/scripts/01-core/versions.env`.** Update it first.
 
-**The single source of truth for ALL versions is `linux/scripts/01-core/versions.env`.** Update it first, then verify the downstream consumers are in sync.
+`common.sh` and `artifact-common.sh` source `versions.env` at load time with `set -a`. Per-Dockerfile ARG defaults are safety nets and should match.
 
-`common.sh` and `artifact-common.sh` both source `versions.env` at load time with `set -a`, so all build scripts automatically receive the canonical values. Orchestrator scripts inherit versions through `artifact-common.sh`. The old per-Dockerfile ARG defaults are kept as safety nets and should match `versions.env`.
+After changing versions:
+1. `python3 docs/scripts/sync_versions.py --check` (run `--write` if drift)
+2. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
+3. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
+4. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
 
-### Version Map
+GPU constraints: when bumping CUDA/ROCm, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `plucky`/26.04).
 
-| Software | Where defined |
-|----------|---------------|
-| **All Linux versions** | `linux/scripts/01-core/versions.env` (canonical) |
-| **BuildKit syntax** | `# syntax=docker/dockerfile:1.24.0` line 1 in every `linux/Dockerfile.*` |
-| **LLVM/Clang** | `versions.env` -> `Dockerfile.toolchain`, `Dockerfile.sdk`, `Dockerfile.package` |
-| **GCC** | `versions.env` -> `Dockerfile.toolchain`, `Dockerfile.android`, `Dockerfile.package` |
-| **Python** | `versions.env` -> `Dockerfile.toolchain`, `Dockerfile.package` |
-| **CMake** | `versions.env` -> `Dockerfile.base` |
-| **Node.js** | `versions.env` -> `Dockerfile.base` |
-| **uv** | `versions.env` -> `Dockerfile.base` |
-| **Vulkan SDK** | `versions.env` -> `Dockerfile.base`, `Dockerfile.sdk` |
-| **ONNX Runtime** | `versions.env` -> `Dockerfile.media` |
-| **ONNX Runtime GenAI** | `versions.env` -> `Dockerfile.media` |
-| **LiteRT** | `versions.env` -> `Dockerfile.media` |
-| **OpenCV** | `versions.env` -> `Dockerfile.media` |
-| **GStreamer** | `versions.env` -> `Dockerfile.media`, `Dockerfile.package` |
-| **CUDA** | `versions.env` -> `Dockerfile.nvidia` |
-| **cuDNN** | `versions.env` -> `Dockerfile.nvidia` |
-| **TensorRT** | `versions.env` -> `Dockerfile.nvidia` |
-| **ROCm** | `versions.env` -> `Dockerfile.amd` |
-| **Apache TVM** | `Dockerfile.sdk` only (ARG TVM_REF) |
-| **Android SDK** | `versions.env` -> `Dockerfile.android`, `Dockerfile.package` |
-| **Android NDK** | `versions.env` -> `Dockerfile.android`, `Dockerfile.package` |
-| **Android Build Tools** | `versions.env` -> `Dockerfile.android`, `Dockerfile.package` |
-| **Android CMake** | `versions.env` -> `Dockerfile.android`, `Dockerfile.package` |
-| **Android SDK/API** | `versions.env` -> `Dockerfile.android`, `Dockerfile.package` |
-| **Ubuntu** | `FROM ubuntu:...` in `Dockerfile.base` and `webserver/Dockerfile` |
-| **Webserver Ubuntu** | `FROM ubuntu:...` in `linux/webserver/Dockerfile` |
+## Development Rules
 
-### Version Verification Sources
-
-Check these URLs for the latest versions:
-- LLVM/Clang: `https://github.com/llvm/llvm-project/releases`
-- Python: `https://www.python.org/downloads/`
-- Node.js: `https://nodejs.org/en/download`
-- CMake: `https://cmake.org/download/`
-- uv: `https://github.com/astral-sh/uv/releases`
-- Vulkan SDK: `https://vulkan.lunarg.com/sdk/home`
-- ONNX Runtime: `https://github.com/microsoft/onnxruntime/releases`
-- ONNX Runtime GenAI: `https://github.com/microsoft/onnxruntime-genai/releases`
-- LiteRT: `https://github.com/google-ai-edge/LiteRT/releases`
-- GStreamer: `https://gstreamer.freedesktop.org/releases/`
-- CUDA: `https://developer.nvidia.com/cuda-toolkit-archive`
-- ROCm: `https://repo.radeon.com/rocm/apt/` (browse directory listing)
-- TVM: `https://github.com/apache/tvm/releases`
-- Android SDK/NDK: `https://developer.android.com/studio#command-line-tools-only`
-- Docker BuildKit: `https://github.com/moby/buildkit/releases`
-
-### Post-Bump Steps
-
-After changing any versions:
-1. Run `python3 docs/scripts/sync_versions.py --check`. If it reports drift, run `--write`.
-2. Update version references in `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`.
-3. Update cross-file consistency: several versions appear in multiple Dockerfiles (e.g., GCC, Python, Android SDK, Vulkan, GStreamer). Make sure they stay in sync.
-
-### GPU Version Constraints
-
-When bumping CUDA or ROCm, verify:
-- CUDA: minimum driver requirement (check NVIDIA release notes)
-- ROCm: the `UBUNTU_CODENAME` ARG in `Dockerfile.amd` must match a supported Ubuntu codename for that ROCm version. Default is `plucky` (26.04). The same codename variable is used in `Dockerfile.nvidia` for the CUDA keyring URL.
-- Both: confirm the repo URL format (`repo.radeon.com/rocm/apt/${ROCM_VERSION}`) is still valid
-
----
+- Every script: `#!/usr/bin/env bash` + `set -euo pipefail`. Use `run()`/`run_quiet()` from `build-helpers.sh`.
+- Source `artifact-common.sh` for shared utilities. Use `parse_shared_orchestrator_args()`/`parse_shared_runtime_args()`.
+- Call `cross_stage_init_pins()` before the build loop.
+- Use centralized helpers: `resolve_arch_list()`, `is_dry_run()`, `append_mirror_build_args_from_env()`, `append_version_build_args()`, `normalize_target_arches()`.
+- New OS packages → `Dockerfile.base`. Compiler changes → `Dockerfile.toolchain`. SDK/frameworks → `Dockerfile.sdk`. Media libs → `Dockerfile.media` + `media/build/`. Android → `Dockerfile.android`. GPU → `Dockerfile.nvidia`/`Dockerfile.amd`.
+- New architecture: add to `CROSS_DEFAULT_ARCHES` in `versions.env`, update cross-target lists, add triple mapping in `platform.sh`, add checksums in `versions.env`, verify QEMU/binfmt.
 
 ## Documentation Maintenance
 
-- If Dockerfiles or Linux build helpers change, update these docs in the same commit:
-  - `docs/linux-cross-builds.md`
-  - `docs/linux-build-basics.md`
-  - `docs/project-info.md`
-- If Windows Dockerfiles or scripts change, update `docs/windows-builds.md`.
-- If source-controlled version defaults change, run `python3 docs/scripts/sync_versions.py --write`.
-- For verification-only checks, run `python3 docs/scripts/sync_versions.py --check`.
+- If Dockerfiles or Linux helpers change, update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`.
+- If Windows Dockerfiles/scripts change, update `docs/windows-builds.md`.
+- If version defaults change, run `python3 docs/scripts/sync_versions.py --write`.

@@ -72,7 +72,7 @@ prepare_host_compiler_wrapper() {
   local wrapper_path="${wrapper_dir}/${wrapper_name}"
 
   if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
-    make_named_host_compiler_wrapper "${wrapper_dir}" "${wrapper_name}" "${compiler}"
+    make_named_host_compiler_wrapper "${wrapper_dir}" "${wrapper_name}" "${compiler}" >/dev/null
     printf '%s' "${wrapper_path}"
     return 0
   fi

@@ -30,7 +30,8 @@ secrets/
 *.a
 **/target/
 **/build/
-!linux/scripts/03-media/onnxruntime/build/
+!linux/scripts/media/build/
+!linux/scripts/media/build/onnxruntime/build/
 **/dist/
 .venv/
 venv/

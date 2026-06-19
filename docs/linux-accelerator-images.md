@@ -27,7 +27,7 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the NVIDIA media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
-| `linux/scripts/03-media/onnxruntime/build/30-build-native-nvidia.sh` | ORT build script with CUDA, TensorRT, cuDNN EPs |
+| `linux/scripts/media/build/onnxruntime/build/30-build-native-nvidia.sh` | ORT build script with CUDA, TensorRT, cuDNN EPs |
 
 **Sequential build (nerdctl):**
 
@@ -158,7 +158,7 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with ROCm EP when `ENABLE_AMD=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the AMD media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
-| `linux/scripts/03-media/onnxruntime/build/30-build-native-amd.sh` | ORT build script with ROCm EP |
+| `linux/scripts/media/build/onnxruntime/build/30-build-native-amd.sh` | ORT build script with ROCm EP |
 
 **Sequential build (nerdctl):**
 

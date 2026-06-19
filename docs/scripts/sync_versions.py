@@ -134,7 +134,8 @@ def collect_versions() -> dict[str, str]:
 
     linux_webserver = read_repo_file("linux/webserver/Dockerfile")
     windows_base = read_repo_file("windows/Dockerfile.base")
-    windows_ai = read_repo_file("windows/Dockerfile.ai")
+    windows_sdk = read_repo_file("windows/Dockerfile.sdk")
+    windows_media = read_repo_file("windows/Dockerfile.media")
     windows_vs = read_repo_file("windows/scripts/setup-vs.ps1")
 
     return {
@@ -156,14 +157,15 @@ def collect_versions() -> dict[str, str]:
         "android_cmake": v["ANDROID_CMAKE_VERSION"],
         "webserver_ubuntu": extract(r"^FROM ubuntu:([^\s]+)$", linux_webserver, "Webserver Ubuntu version"),
         "windows_ltsc": extract(
-            r"^FROM mcr\.microsoft\.com/windows/servercore:ltsc([^\s]+)$",
+            r"^ARG WINDOWS_LTSC=([^\s]+)$",
             windows_base,
             "Windows LTSC version",
         ),
         "windows_vulkan": extract(r"^ARG VULKAN_VERSION=([^\s]+)$", windows_base, "Windows Vulkan version"),
-        "windows_gstreamer": extract(r"^ARG GST_VERSION=([^\s]+)$", windows_base, "Windows GStreamer version"),
-        "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_ai, "Windows CUDA version"),
-        "windows_onnx": extract(r"^ARG ONNX_VERSION=([^\s]+)$", windows_ai, "Windows ONNX version"),
+        "windows_gstreamer": extract(r"^ARG GSTREAMER_VERSION=([^\s]+)$", windows_base, "Windows GStreamer version"),
+        "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_sdk, "Windows CUDA version"),
+        "windows_onnx": extract(r"^ARG ONNXRUNTIME_VERSION=([^\s]+)$", windows_media, "Windows ONNX Runtime version"),
+        "windows_onnx_dml": extract(r"^ARG ONNX_DIRECTML_VERSION=([^\s]+)$", windows_media, "Windows ONNX DirectML version"),
         "windows_vs": extract(
             r"Visual Studio\\([0-9]+)\\BuildTools",
             windows_vs,
@@ -202,7 +204,8 @@ def render_snapshot() -> str:
                 f"Vulkan SDK {versions['windows_vulkan']}, "
                 f"GStreamer {versions['windows_gstreamer']}, "
                 f"CUDA {versions['windows_cuda']}, "
-                f"ONNX Runtime {versions['windows_onnx']} |"
+                f"ONNX Runtime {versions['windows_onnx']}, "
+                f"ONNX DirectML {versions['windows_onnx_dml']} |"
             ),
             END_MARKER,
         ]
@@ -294,6 +297,134 @@ def write_inline_markers(versions: dict[str, str]) -> int:
     return 0
 
 
+# -- Deps table (third-party-licenses.md) -----------------------------------
+
+DEPS_START_MARKER = "<!-- generated:deps-table:start -->"
+DEPS_END_MARKER = "<!-- generated:deps-table:end -->"
+DEPS_JSON_PATH = REPO_ROOT / "docs/deps/deps.json"
+DEPS_TABLE_FILE = REPO_ROOT / "docs/third-party-licenses.md"
+
+
+def load_deps_metadata() -> dict:
+    import json
+    return json.loads(DEPS_JSON_PATH.read_text(encoding="utf-8"))
+
+
+def resolve_dep_version(entry: dict, versions: dict[str, str]) -> str:
+    var = entry.get("var")
+    if var and var in versions:
+        return versions[var]
+    fixed = entry.get("version_fixed")
+    if fixed:
+        return fixed
+    return "—"
+
+
+def render_deps_table(versions: dict[str, str]) -> str:
+    metadata = load_deps_metadata()
+    lines: list[str] = [DEPS_START_MARKER]
+
+    for section in metadata["sections"]:
+        title = section["title"]
+        tag = section.get("tag", "")
+        heading = f"## {title}"
+        if tag:
+            heading += f" (`{tag}`)"
+        lines.append("")
+        lines.append(heading)
+        lines.append("")
+
+        for subsection in section["subsections"]:
+            subtitle = subsection["title"]
+            df = subsection.get("dockerfile", "")
+            sub_heading = f"### {subtitle}"
+            if df:
+                sub_heading += f" (`{df}`)"
+            lines.append(sub_heading)
+            lines.append("")
+            lines.append("| Software | Version | Repository | License |")
+            lines.append("| --- | --- | --- | --- |")
+
+            for entry in subsection["entries"]:
+                name = entry["name"]
+                ver = resolve_dep_version(entry, versions)
+                url = entry.get("url", "")
+                lic = entry.get("license", "")
+                if url:
+                    display = url.replace("https://", "").replace("http://", "").rstrip("/")
+                    repo = f"[{display}]({url})"
+                else:
+                    repo = "—"
+                lines.append(f"| {name} | {ver} | {repo} | {lic} |")
+
+            lines.append("")
+
+    lines.append(DEPS_END_MARKER)
+    return "\n".join(lines)
+
+
+def _deps_marker_pattern() -> re.Pattern:
+    return re.compile(
+        re.escape(DEPS_START_MARKER) + r".*?" + re.escape(DEPS_END_MARKER), re.DOTALL
+    )
+
+
+def update_deps_table(file_path: Path, replacement: str) -> bool:
+    original = file_path.read_text(encoding="utf-8")
+    pattern = _deps_marker_pattern()
+    if not pattern.search(original):
+        raise ValueError(f"Deps table markers not found in {file_path}")
+    updated = pattern.sub(replacement, original, count=1)
+    if updated == original:
+        return False
+    file_path.write_text(updated, encoding="utf-8")
+    return True
+
+
+def is_deps_table_current(file_path: Path, replacement: str) -> bool:
+    original = file_path.read_text(encoding="utf-8")
+    pattern = _deps_marker_pattern()
+    if not pattern.search(original):
+        raise ValueError(f"Deps table markers not found in {file_path}")
+    updated = pattern.sub(replacement, original, count=1)
+    return updated == original
+
+
+def check_deps_table(versions: dict[str, str]) -> int:
+    try:
+        replacement = render_deps_table(versions)
+    except FileNotFoundError as e:
+        print(f"Deps metadata not found: {e}", file=sys.stderr)
+        return 1
+    try:
+        if is_deps_table_current(DEPS_TABLE_FILE, replacement):
+            print("Dependency table is up to date.")
+            return 0
+        print("Dependency table is out of date.", file=sys.stderr)
+        print("Run: python3 docs/scripts/sync_versions.py --write", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+
+def write_deps_table(versions: dict[str, str]) -> int:
+    try:
+        replacement = render_deps_table(versions)
+    except FileNotFoundError as e:
+        print(f"Deps metadata not found: {e}", file=sys.stderr)
+        return 1
+    try:
+        if update_deps_table(DEPS_TABLE_FILE, replacement):
+            print(f"Updated dependency table in {DEPS_TABLE_FILE.relative_to(REPO_ROOT)}")
+        else:
+            print("Dependency table already up to date.")
+        return 0
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+
 # -- Combined flow ----------------------------------------------------------
 
 
@@ -359,10 +490,12 @@ def main() -> int:
     if mode == "check":
         result = check_snapshot(snapshot)
         result |= check_inline_markers(versions)
+        result |= check_deps_table(versions)
         return result
 
     result = write_snapshot(snapshot)
     result |= write_inline_markers(versions)
+    result |= write_deps_table(versions)
     return result
 
 

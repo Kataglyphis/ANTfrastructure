@@ -12,7 +12,8 @@ _PYTHON_HOST_SH_LOADED=1
 
 setup_host_python_environment() {
   HOST_PYTHON_BIN="$(host_python_bin)"
-  export HOST_PYTHON_BIN
+  HOST_PYTHON="${HOST_PYTHON_BIN}"  # Backward compat alias
+  export HOST_PYTHON_BIN HOST_PYTHON
   export PYTHON_EXECUTABLE="${HOST_PYTHON_BIN}" \
          Python_EXECUTABLE="${HOST_PYTHON_BIN}" \
          Python3_EXECUTABLE="${HOST_PYTHON_BIN}"

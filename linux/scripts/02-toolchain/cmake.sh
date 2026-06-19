@@ -13,11 +13,11 @@ install_cmake() {
   case "${arch}" in
     amd64|x86_64)
       asset="cmake-${version}-linux-x86_64.tar.gz"
-      sha256="791ae3604841ca03cb3889a3ad89165346e4b180ae3448efd4b0caa9ef46d245"
+      sha256="${CMAKE_AMD64_SHA256:-791ae3604841ca03cb3889a3ad89165346e4b180ae3448efd4b0caa9ef46d245}"
       ;;
     arm64|aarch64)
       asset="cmake-${version}-linux-aarch64.tar.gz"
-      sha256="377079ab739f5765176f427609d9a2015b756ea20d5cba908d279c3731a2f481"
+      sha256="${CMAKE_ARM64_SHA256:-377079ab739f5765176f427609d9a2015b756ea20d5cba908d279c3731a2f481}"
       ;;
     riscv64)
       log "Using distro CMake on riscv64; Kitware does not publish a prebuilt archive for this architecture"
