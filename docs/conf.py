@@ -16,6 +16,10 @@ release = "0.0.1"
 
 extensions = ["myst_parser", "sphinx_design"]
 
+# Treat all markdown links as external URLs — don't try to resolve
+# docs/overview.md etc. as Sphinx cross-references.
+myst_all_links_external = True
+
 templates_path = ["_templates"]
 exclude_patterns = ["_build", ".venv", "Thumbs.db", ".DS_Store", "source_templates"]
 
@@ -30,7 +34,7 @@ html_theme_options = {
     "show_navbar_depth": 2,
     "navigation_with_keys": True,
     "show_toc_level": 2,
-    "secondary_sidebar_items": [],
+    "secondary_sidebar_items": ["page-toc"],
     "primary_sidebar_end": [],
 }
 html_static_path = ["_static"]

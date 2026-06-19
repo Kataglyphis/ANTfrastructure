@@ -31,8 +31,9 @@ html[data-theme="dark"] {
   overflow-y: auto;
 }
 
+/* Secondary sidebar: re-enabled for page TOC on desktop */
 .bd-sidebar-secondary {
-  display: none !important;
+  display: block;
 }
 
 .bd-main .bd-content {
@@ -128,7 +129,9 @@ html[data-theme="light"] #pst-primary-sidebar-modal {
 }
 
 /* -- Force long links / URLs to wrap on narrow screens ------------------- */
-.bd-content a {
+.bd-content a,
+.pst-scrollable-table-container th,
+.pst-scrollable-table-container td {
   overflow-wrap: break-word;
   word-break: break-word;
 }
