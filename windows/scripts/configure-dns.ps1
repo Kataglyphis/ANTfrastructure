@@ -60,6 +60,12 @@ if ($adapters) {
         '140.82.112.23 github.com'
         '140.82.112.3 github.com'
         '140.82.112.4 github.com'
+        '151.101.130.137 static.rust-lang.org'
+        '151.101.194.137 static.rust-lang.org'
+        '151.101.0.137 static.rust-lang.org'
+        '151.101.64.137 static.rust-lang.org'
+        '104.22.3.179 static.rust-lang.org'
+        '104.22.2.179 static.rust-lang.org'
     )
 
     $existing = Get-Content $hostsPath -ErrorAction SilentlyContinue
