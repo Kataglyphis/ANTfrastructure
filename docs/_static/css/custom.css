@@ -134,6 +134,12 @@ html[data-theme="light"] #pst-primary-sidebar-modal {
   border-right: 1px solid var(--surface-border);
 }
 
+/* -- Force long links / URLs to wrap on narrow screens ------------------- */
+.bd-content a {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 /* -- Mobile responsive overrides ----------------------------------------- */
 
 /* Cards: single column on narrow screens (Bootstrap xs breakpoint) */
