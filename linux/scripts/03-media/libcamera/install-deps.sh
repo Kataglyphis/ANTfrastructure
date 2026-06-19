@@ -31,8 +31,7 @@ if is_cross && \
   # that prefix provides the target GLib pkg-config metadata and headers. Avoid
   # libglib2.0-dev:riscv64 here because Ubuntu pulls in target python3, whose
   # postinst cannot execute in this build stage.
-  local -a _filtered=()
-  local _pkg
+  _filtered=()
   for _pkg in "${target_packages[@]}"; do
     [ "${_pkg}" = "libglib2.0-dev" ] || [ -z "${_pkg}" ] || _filtered+=("${_pkg}")
   done

@@ -150,6 +150,14 @@ fi
 
 apt-get install -y --no-install-recommends "${host_packages[@]}" "${core_packages[@]}"
 
+# On riscv64, purge system pango shared libraries so Meson's force-fallback-for
+# builds pango from source. The system libpangoft2 is too old and lacks symbols
+# (e.g. pango_font_description_get_color) that the source-built pango needs.
+if [ "${is_riscv64_cross}" = "true" ]; then
+  echo "Removing system riscv64 pango shared libraries to force source-built fallback..."
+  rm -f /usr/lib/riscv64-linux-gnu/libpango*.so* /usr/lib/riscv64-linux-gnu/pkgconfig/pango*.pc 2>/dev/null || true
+fi
+
 # Keep the cross pkg-config path target-only, but expose the wrapped scanner
 # path through a focused shim without dropping the target package's real
 # include/library flags.
