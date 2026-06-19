@@ -478,8 +478,28 @@ GPU constraints: when bumping CUDA/ROCm, verify driver requirements and that `UB
 - New OS packages → `Dockerfile.base`. Compiler changes → `Dockerfile.toolchain`. SDK/frameworks → `Dockerfile.sdk`. Media libs → `Dockerfile.media` + `media/build/`. Android → `Dockerfile.android`. GPU → `Dockerfile.nvidia`/`Dockerfile.amd`.
 - New architecture: add to `CROSS_DEFAULT_ARCHES` in `versions.env`, update cross-target lists, add triple mapping in `platform.sh`, add checksums in `versions.env`, verify QEMU/binfmt.
 
+## Reusable Sphinx Theme Package
+
+`docs/conf.py` delegates to `sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py` (`setup_theme()`), which provides all shared Sphinx config and loads the canonical CSS from the package's `_static/` directory.
+
+**For other projects** — copy the `sphinx-kataglyphis-theme/` directory alongside their repo root (or `pip install -e` in dev mode), then `conf.py` is just:
+
+```python
+from sphinx_kataglyphis import setup_theme
+setup_theme(globals(), repository_url="https://github.com/org/repo")
+```
+
+The canonical CSS lives at `sphinx_kataglyphis/_static/css/custom.css` — edit that file to change the global look. The project's own `_static/css/` can hold additional per-project overrides.
+
+To add the package to a new project's `sys.path`:
+```python
+_repo_root = Path(__file__).resolve().parent
+sys.path.insert(0, str(_repo_root / "sphinx-kataglyphis-theme"))
+```
+
 ## Documentation Maintenance
 
 - If Dockerfiles or Linux helpers change, update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`.
 - If Windows Dockerfiles/scripts change, update `docs/windows-builds.md`.
 - If version defaults change, run `python3 docs/scripts/sync_versions.py --write` then `python3 docs/scripts/generate-website-licenses.py --write`.
+- If `custom.css` changes, update both `docs/_static/css/custom.css` (project) AND `sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css` (canonical source). Run `python -m sphinx -b html docs/source docs/_build/html` to verify.
