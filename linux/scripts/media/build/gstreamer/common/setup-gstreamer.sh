@@ -464,25 +464,29 @@ echo "Using existing Python venv (expected at /opt/python/.venv)..."
 uv pip install -U pip setuptools wheel
 uv pip install -U meson ninja
 # pycairo is a host Python build dependency for pygobject fallback. Install it
-# with host pkg-config paths so cross-target overrides do not hide xorgproto
-# metadata required by cairo's x11 dependency chain.
-HOST_MULTIARCH="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
-HOST_PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
-if [ -n "${HOST_MULTIARCH}" ]; then
-  HOST_PKG_CONFIG_LIBDIR="/usr/lib/${HOST_MULTIARCH}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+# only when Python bindings are enabled, since the cross-compiler CC/CXX env
+# vars leak into uv and cause Meson's "Could not invoke" in cross builds.
+if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
+  HOST_MULTIARCH="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
+  HOST_PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
+  if [ -n "${HOST_MULTIARCH}" ]; then
+    HOST_PKG_CONFIG_LIBDIR="/usr/lib/${HOST_MULTIARCH}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+  else
+    HOST_PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
+  fi
+  if python3 -c 'import cairo' 2>/dev/null; then
+    echo "pycairo already installed (system package), skipping pip upgrade"
+  else
+    env \
+      PKG_CONFIG_ALLOW_CROSS= \
+      PKG_CONFIG_SYSROOT_DIR= \
+      PKG_CONFIG_LIBDIR="${HOST_PKG_CONFIG_LIBDIR}" \
+      PKG_CONFIG_PATH="${HOST_PKG_CONFIG_PATH}" \
+      SCCACHE_DISABLE=1 \
+      uv pip install -U pycairo
+  fi
 else
-  HOST_PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
-fi
-if python3 -c 'import cairo' 2>/dev/null; then
-  echo "pycairo already installed (system package), skipping pip upgrade"
-else
-  env \
-    PKG_CONFIG_ALLOW_CROSS= \
-    PKG_CONFIG_SYSROOT_DIR= \
-    PKG_CONFIG_LIBDIR="${HOST_PKG_CONFIG_LIBDIR}" \
-    PKG_CONFIG_PATH="${HOST_PKG_CONFIG_PATH}" \
-    SCCACHE_DISABLE=1 \
-    uv pip install -U pycairo
+  echo "Python bindings disabled, skipping pycairo installation"
 fi
 
 # Optional: verify

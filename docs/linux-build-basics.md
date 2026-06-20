@@ -1,5 +1,7 @@
 # Linux Build Basics
 
+> **Build logging:** All orchestrator scripts accept `--log-dir ./out/build-logs` to write per-stage build logs. For manual `nerdctl build` commands, capture output with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
+
 ## Image Hierarchy
 
 ```
@@ -44,18 +46,18 @@ full stage graph API and digest-pinning details.
 
 Prefer the orchestrator for full chains:
 ```bash
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 ```
 
 For single-stage rebuilds, use the standalone helpers:
 ```bash
-bash linux/scripts/build-cross-stage.sh --stage compiler --push
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
+bash linux/scripts/build-cross-stage.sh --stage compiler --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
 ```
 
 For standalone compiler builds (same as `--stage compiler` above):
 ```bash
-bash linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
+bash linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --log-dir ./out/build-logs
 ```
 
 ## Chain Verification
@@ -65,10 +67,10 @@ bash linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
 bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
 
 # Via the orchestrator:
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --verify-chain
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --verify-chain --log-dir ./out/build-logs
 
 # Print full stage graph with tag names:
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --describe-chain
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --describe-chain --log-dir ./out/build-logs
 ```
 
 See `docs/linux-cross-builds.md` for the full stale-check reference and `--describe-chain` output.
@@ -103,7 +105,7 @@ sudo nerdctl build \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   -f <dockerfile> \
-  .
+  . 2>&1 | tee ./out/build-logs/nerdctl-build.log
 ```
 
 Supported Dockerfiles:
@@ -121,6 +123,7 @@ Supported Dockerfiles:
 Local smoke validation for the shared package+wrapper flow (native mode):
 
 ```bash
+mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/amd64 \
   -t local/kataglyphis:latest-cross-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
@@ -130,12 +133,13 @@ nerdctl build --platform linux/amd64 \
   --build-arg ARTIFACT_PLATFORM=linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=native \
-  .
+  . 2>&1 | tee ./out/build-logs/wrapper-smoke-native.log
 ```
 
 Cross-mode variant (validates cross-assembled artifacts):
 
 ```bash
+mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/amd64 \
   -t local/kataglyphis:latest-cross-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
@@ -145,7 +149,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg ARTIFACT_PLATFORM=linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
-  .
+  . 2>&1 | tee ./out/build-logs/wrapper-smoke-cross.log
 ```
 
 The runtime helpers use the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag.
@@ -186,23 +190,25 @@ Not supported / not needed:
 ### RISC-V64 example
 
 ```bash
+mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.29.1 --no-cache \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile.media \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
-  .
+  . 2>&1 | tee ./out/build-logs/riscv64-build.log
 ```
 
 `linux/Dockerfile.torch` also exposes a `venv-export` stage for cases where you only want the built `/opt/venv` tree:
 
 ```bash
+mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/arm64 \
   -f linux/Dockerfile.torch \
   --target venv-export \
   --output type=local,dest=out/torch-venv/arm64 \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
   --build-arg TORCH_APP_MODE=install \
-  .
+  . 2>&1 | tee ./out/build-logs/venv-export.log
 ```
 
 For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` with digest-pinned stage handoff. See `docs/linux-cross-builds.md` for the full pipeline and `AGENTS.md` for the stage handoff rules.

@@ -42,6 +42,27 @@ ensure_gstreamer_multiarch_layout() {
 
 ensure_gstreamer_multiarch_layout
 
+# Ensure CXX and CC are set for meson cross file creation.
+# setup_linux_cross_env may not export CXX when require_cross_gcc_tool g++
+# fails. Derive CXX from CC as a fallback.
+if [ -z "${CXX:-}" ] && [ -n "${CC:-}" ] && [ "${BUILD_MODE:-native}" = "cross" ]; then
+  _cxx_derived="$(printf '%s' "${CC}" | sed 's/-gcc$/-g++/')"
+  [ -x "${_cxx_derived}" ] && CXX="${_cxx_derived}"
+fi
+if [ -z "${CC:-}" ] && [ "${BUILD_MODE:-native}" = "cross" ]; then
+  case "${TARGET_ARCH:-${TARGETARCH:-}}" in
+    arm64) _ct="aarch64-linux-gnu" ;;
+    riscv64) _ct="riscv64-linux-gnu" ;;
+  esac
+  if [ -n "${_ct:-}" ]; then
+    [ -x "/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_ct}-gcc" ] && CC="/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_ct}-gcc"
+    [ -x "/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_ct}-g++" ] && CXX="/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_ct}-g++"
+  fi
+fi
+# Export temporarily so setup_linux_cross_env / ensure_meson_cross_file see them
+[ -n "${CC:-}" ] && export CC
+[ -n "${CXX:-}" ] && export CXX
+
 cd /opt
 bash /opt/scripts/media/build/gstreamer/common/pre-setup.sh
 bash /opt/scripts/media/build/gstreamer/common/install-vvdec.sh

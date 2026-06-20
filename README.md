@@ -73,13 +73,16 @@ sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleun
 
 ### Build the full cross chain locally
 
+Build logs are written to `out/build-logs/` by passing `--log-dir` to the orchestrator scripts.
+
 ```bash
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 ```
 
 ### Build just the media layer (with BuildKit caching)
 
 ```bash
+mkdir -p ./out/build-logs && \
 nerdctl build \
   --progress=plain \
   -f linux/Dockerfile.media \
@@ -87,13 +90,13 @@ nerdctl build \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
   -t kataglyphis:cross-media-amd64 \
-  .
+  . 2>&1 | tee ./out/build-logs/media-build.log
 ```
 
 ### Verify a single cross stage without building
 
 ```bash
-bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64
+bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 ```
 
 ### Reinstall QEMU/binfmt after a host reboot

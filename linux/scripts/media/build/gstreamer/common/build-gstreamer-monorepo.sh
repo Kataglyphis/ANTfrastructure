@@ -95,6 +95,13 @@ build_gstreamer_monorepo() {
       riscv*|*riscv*|aarch64*|arm*) python_feature="disabled" ;;
     esac
   fi
+
+  # GSTREAMER_ENABLE_PYTHON_BINDINGS env var (set externally) can force-disable
+  # Python bindings even outside the cross-build check, preventing pycairo builds.
+  if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" != "true" ]; then
+    python_feature="disabled"
+  fi
+
   prepare_cross_python_build_config
 
   if [ "${python_feature}" = "enabled" ] && \
@@ -228,6 +235,19 @@ build_gstreamer_monorepo() {
   if command -v append_meson_native_flags >/dev/null 2>&1; then
     append_meson_native_flags MESON_FLAGS
   fi
+
+  # CC/CXX are only needed for cross/native file creation above.
+  # The main meson setup uses --cross-file which contains the cross compilers.
+  # Strip the cross-compiler bin directory from PATH so that subprocess builds
+  # (pycairo via uv) pick up the native compilers by default.  CC/CXX are
+  # exported to /usr/bin/gcc/g++ as a further safety net.
+  export CC="/usr/bin/gcc"
+  export CXX="/usr/bin/g++"
+  _gcc_bindir="$(gcc_toolchain_bindir 2>/dev/null || echo "/opt/gcc-16.1.0/bin")"
+  PATH=":${PATH}:"
+  PATH="${PATH//:${_gcc_bindir}:/:}"
+  PATH="${PATH#:}"; PATH="${PATH%:}"
+  export PATH
 
   MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
   case " ${EXTRA_MESON_ARGS} " in

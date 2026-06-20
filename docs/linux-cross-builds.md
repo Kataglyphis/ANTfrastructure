@@ -2,6 +2,8 @@
 
 > Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. See `docs/project-info.md` for the drop-in config and `AGENTS.md` for the do-not-regress note. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
 
+> **Build logging:** All orchestrator scripts accept `--log-dir ./out/build-logs` to write per-stage build logs. For manual `nerdctl build` commands, capture output with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
+
 ## Cross-Compiler builder (nerdctl, amd64 host; amd64/arm64/riscv64 targets)
 
 The existing multi-platform build above stays unchanged. Treat it as the compatibility lane for the current QEMU/binfmt-based end-to-end build.
@@ -16,7 +18,8 @@ Fastest entry point:
 
 ```bash
 ./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror \
-  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/
+  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
+  --log-dir ./out/build-logs
 ```
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`). For example: `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
@@ -26,8 +29,10 @@ The helper script only uses `nerdctl`. It first tries to reuse a local image, th
 If you only need the downstream SDK or media cross stages and want to reuse the published compiler image, pull it first:
 
 ```bash
+mkdir -p ./out/build-logs && \
 nerdctl pull --platform linux/amd64 \
-  ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64 \
+  2>&1 | tee ./out/build-logs/pull-compiler.log
 ```
 
 Build the local amd64 base image:
@@ -74,7 +79,7 @@ Expected result: the build log ends with `ghcr.io/kataglyphis/kataglyphis_beschl
 Or let the helper do the push too:
 
 ```bash
-./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror --push
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror --push --log-dir ./out/build-logs
 ```
 
 ## Recommended: digest-pinned orchestrator (`build-cross-chain.sh`)
@@ -155,8 +160,8 @@ directly after `artifact-common.sh`.
 
 ```bash
 # Rebuild a single cross stage independently:
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
-bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
 ```
 
 ### Stale-check (`--verify-chain` and `verify-cross-chain.sh`)
@@ -170,7 +175,8 @@ Two entry points:
 # Via the orchestrator (same process):
 ./linux/scripts/build-cross-chain.sh \
   --target-arches amd64,arm64,riscv64 \
-  --verify-chain
+  --verify-chain \
+  --log-dir ./out/build-logs
 
 # Standalone (lighter, no orchestrator flags needed):
 bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
@@ -187,7 +193,7 @@ Print the full stage graph with tag names and parent chains without building:
 
 ```bash
 # Via the orchestrator:
-./linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64
+./linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Via the standalone verifier:
 bash linux/scripts/verify-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64
@@ -229,7 +235,7 @@ So a rebuild of `media` followed by a build of `android` can quietly use the old
 Partial runs are supported, e.g. resume from media for one arch:
 
 ```bash
-./linux/scripts/build-cross-chain.sh --target-arches arm64 --from-stage media --to-stage android
+./linux/scripts/build-cross-chain.sh --target-arches arm64 --from-stage media --to-stage android --log-dir ./out/build-logs
 ```
 
 When resuming mid-chain, the required upstream digest is resolved from the parent
@@ -334,15 +340,17 @@ mkdir -p "${LOG_DIR}"
 For individual SDK artifact builds, use `build-cross-stage.sh`:
 ```bash
 for arch in amd64 arm64 riscv64; do
-  bash linux/scripts/build-cross-stage.sh --stage sdk --arch "${arch}" --push
+  bash linux/scripts/build-cross-stage.sh --stage sdk --arch "${arch}" --push --log-dir ./out/build-logs
 done
 ```
 
 If you want this helper to reuse the published compiler image instead of bootstrapping it locally, pull the compiler tag first:
 
 ```bash
+mkdir -p ./out/build-logs && \
 nerdctl pull --platform linux/amd64 \
-  ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64 \
+  2>&1 | tee ./out/build-logs/pull-compiler.log
 ```
 
 The helper accepts `TARGET_ARCHES=amd64,arm64,riscv64`, `TARGET_ARCH=amd64,arm64,riscv64`, or `--target-arches amd64,arm64,riscv64` and then fans that list out into one `TARGET_ARCH=<arch>` build per target.
@@ -386,7 +394,8 @@ bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
   --target-arches amd64,arm64,riscv64 \
   --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
-  --push
+  --push \
+  --log-dir ./out/build-logs
 ```
 
 Run with `--dry-run` to print the commands it would execute without building.
@@ -428,7 +437,8 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --artifact-build-mode cross \
   --fast-ubuntu-mirror \
   --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
-  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
+  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/ \
+  --log-dir ./out/build-logs
 ```
 
 That path was validated for both `arm64` and `riscv64` with `gcc version 16.1.0`, `clang version 22.1.6`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, native `gcc-16` binaries under `/opt/gcc-16.1.0/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary. The build-time guard in `Dockerfile.package` verifies that `cc -dumpmachine` matches the target architecture, asserts the ELF machine type of the `cc` binary itself (via `readelf -h`), and runs a cc1 compile-to-object smoke under the target platform.
@@ -445,7 +455,8 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --artifact-build-mode cross \
   --fast-ubuntu-mirror \
   --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
-  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
+  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/ \
+  --log-dir ./out/build-logs
 ```
 
 The resulting image reported `gcc version 16.1.0`, `clang version 22.1.6`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, and `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`.
@@ -453,6 +464,7 @@ The resulting image reported `gcc version 16.1.0`, `clang version 22.1.6`, targe
 For local wrapper smoke validation without pushing anything, build the checked-in smoke target directly:
 
 ```bash
+mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/amd64 \
   -t local/kataglyphis:latest-cross-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
@@ -467,7 +479,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \
-  .
+  . 2>&1 | tee ./out/build-logs/wrapper-smoke.log
 ```
 
 ## Centralized Version Management

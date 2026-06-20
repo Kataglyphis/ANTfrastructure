@@ -400,15 +400,7 @@ RUN --mount=type=bind,source=linux/scripts/media/build/gstreamer,target=/opt/scr
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
-        case "${TARGET_ARCH}" in \
-            arm64)  _triplet="aarch64-linux-gnu" ;; \
-            riscv64) _triplet="riscv64-linux-gnu" ;; \
-            *)      _triplet="" ;; \
-        esac; \
-        if [ -n "${_triplet}" ]; then \
-            export CC="/opt/gcc-${GCC_VERSION}/bin/${_triplet}-gcc"; \
-            export CXX="/opt/gcc-${GCC_VERSION}/bin/${_triplet}-g++"; \
-        fi; \
+        export GSTREAMER_ENABLE_PYTHON_BINDINGS=false; \
     fi; \
     bash /opt/scripts/media/build/gstreamer/common/build-gstreamer-stage.sh \
         "$GSTREAMER_VERSION" \

@@ -28,32 +28,34 @@ The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`,
 
 ## Quick Reference
 
+Build logs are written to `out/build-logs/` by passing `--log-dir` to the orchestrator scripts, or by piping manual `nerdctl build` output through `2>&1 | tee ./out/build-logs/<name>.log`.
+
 Most common build commands:
 
 ```bash
 # Full cross-build chain (base -> compiler -> sdk -> media -> android -> runtime)
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Compiler image only (amd64-hosted, contains cross toolchains for all arches)
-./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Compiler with custom image repo (matches --image-repo on the orchestrator)
-./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push
+./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push --log-dir ./out/build-logs
 
 # Single cross stage (e.g., rebuild just the sdk for arm64)
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
 
 # Verify chain freshness without building
-bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64
+bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Standalone quick chain verification (lighter, no orchestrator flags)
 bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
 
 # Print the full stage graph with tag names (no builds)
-bash linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64
+bash linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Dry-run: print all build commands without executing
-bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,riscv64
+bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Cheap packaging validation before publish (see docs/linux-cross-builds.md)
 # Uses the `wrapper-smoke` target in Dockerfile.package
@@ -155,16 +157,16 @@ For detailed build commands, see `docs/windows-builds.md`.
 
 ```bash
 # Resume mid-chain (e.g., after rebuilding compiler)
-bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,arm64,riscv64
+bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Build only one stage for one architecture
-bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64
+bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log-dir ./out/build-logs
 
 # Build per-arch stages in parallel (faster on multi-core machines)
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --log-dir ./out/build-logs
 
 # Build a single cross stage standalone (with digest-pinned parent when --push)
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
 ```
 
 ### Runtime Helpers
@@ -175,17 +177,20 @@ bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
   --target-arches amd64,arm64,riscv64 \
   --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
-  --push
+  --push \
+  --log-dir ./out/build-logs
 
 # Build local artifacts only (no push)
 bash linux/scripts/build-runtime-artifacts.sh \
   --image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64
+  --target-arches amd64,arm64,riscv64 \
+  --log-dir ./out/build-logs
 
 # Dry-run: print what would be built without executing
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --dry-run
+  --target-arches amd64,arm64,riscv64 --dry-run \
+  --log-dir ./out/build-logs
 
 # Manifest repair (rebuild manifest from existing per-arch wrappers)
 nerdctl manifest rm "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" >/dev/null 2>&1 || true
@@ -198,12 +203,14 @@ nerdctl manifest push --purge "ghcr.io/kataglyphis/kataglyphis_beschleuniger:lat
 # Or use the helper: rebuild just the manifest (no image rebuilds)
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest
+  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest \
+  --log-dir ./out/build-logs
 
 # Shorthand: --repair is an alias for --manifest-only
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --repair --push-manifest
+  --target-arches amd64,arm64,riscv64 --repair --push-manifest \
+  --log-dir ./out/build-logs
 ```
 
 ---
