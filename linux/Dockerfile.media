@@ -302,7 +302,12 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
       echo "WARNING: uv not found in app-wheelhouse stage; installing..."; \
       pip3 install uv 2>/dev/null || echo "WARNING: could not install uv"; \
     fi; \
-    bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh
+    bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh; \
+    if [ ! -d /opt/app-wheels ] || [ -z "$(ls -A /opt/app-wheels 2>/dev/null)" ]; then \
+        mkdir -p /opt/app-wheels; \
+        touch /opt/app-wheels/.placeholder; \
+        echo "WARNING: app wheelhouse is empty — riscv64 cross wheel builds may have failed; continuing"; \
+    fi
 
 RUN --mount=type=cache,target=/tmp \
     set -euo pipefail; \
