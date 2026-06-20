@@ -12,7 +12,9 @@ echo ""
 # ---------------------------------------------------------------------------
 echo "--- ONNX Runtime ---"
 if command -v python3 >/dev/null 2>&1; then
-  if python3 -c "import onnxruntime" 2>/dev/null; then
+  if cross_build_is_active 2>/dev/null; then
+    echo "  SKIP: onnxruntime Python import (cross build — target arch wheels can't run on build machine)"
+  elif python3 -c "import onnxruntime" 2>/dev/null; then
     onnx_ver="$(python3 -c "import onnxruntime; print(onnxruntime.__version__)" 2>/dev/null || echo '?')"
     pass "onnxruntime Python module imports (v${onnx_ver})"
     if cross_build_is_active 2>/dev/null; then

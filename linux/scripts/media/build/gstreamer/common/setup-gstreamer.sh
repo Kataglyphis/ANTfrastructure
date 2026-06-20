@@ -84,7 +84,7 @@ GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
 setup_host_python_environment
-GSTREAMER_ENABLE_PYTHON_BINDINGS=true
+: "${GSTREAMER_ENABLE_PYTHON_BINDINGS:=true}"
 
 if cross_build_is_active && \
    command -v cross_target_python_dev_ready >/dev/null 2>&1 && \

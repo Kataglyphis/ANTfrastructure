@@ -8,6 +8,7 @@ run_gstreamer_meson_setup() {
     read -r -a extra_meson_flags <<< "${EXTRA_MESON_ARGS}"
   fi
 
+  echo "[meson-cmd] UV run: meson setup builddir ${MESON_FLAGS[*]} ${extra_meson_flags[*]} $*" >&2
   uv run meson setup builddir "${MESON_FLAGS[@]}" "${extra_meson_flags[@]}" "$@"
 }
 
@@ -223,26 +224,57 @@ build_gstreamer_monorepo() {
     fi
   fi
 
+  # Ensure CXX is exported for the cross file. setup_linux_cross_env may fail
+  # to export CXX if require_cross_gcc_tool g++ cannot find the binary (e.g.
+  # triplet mismatch in the SDK image). Inject it from the known GCC path.
+  if [ "${BUILD_MODE:-native}" = "cross" ] && [ -z "${CXX:-}" ] && [ -n "${CC:-}" ]; then
+    _cxx_fb="$(printf '%s' "${CC}" | sed 's/-gcc$/-g++/')"
+    [ -x "${_cxx_fb}" ] && export CXX="${_cxx_fb}"
+  fi
+  if [ "${BUILD_MODE:-native}" = "cross" ] && [ -z "${CC:-}" ]; then
+    case "${TARGET_ARCH:-${TARGETARCH:-}}" in
+      arm64) _cc_t="aarch64-linux-gnu" ;;
+      riscv64) _cc_t="riscv64-linux-gnu" ;;
+    esac
+    if [ -n "${_cc_t:-}" ]; then
+      [ -x "/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_cc_t}-gcc" ] && export CC="/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_cc_t}-gcc"
+      [ -x "/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_cc_t}-g++" ] && export CXX="/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_cc_t}-g++"
+    fi
+  fi
+
   if command -v append_meson_cross_flags >/dev/null 2>&1; then
     append_meson_cross_flags MESON_FLAGS
+    # If the cross file has an empty [binaries] section, populate it from
+    # our known cross-compiler paths (setup_linux_cross_env may fail to
+    # export CC/CXX even though the binaries exist).
+    if [ -f "${MESON_CROSS_FILE:-}" ] && ! grep -q "^c " "${MESON_CROSS_FILE}" 2>/dev/null; then
+      echo "[cross] cross file missing binaries — injecting CC/CXX" >&2
+      case "${TARGET_ARCH:-${TARGETARCH:-}}" in
+        arm64) _jt="aarch64-linux-gnu" ;;
+        riscv64) _jt="riscv64-linux-gnu" ;;
+      esac
+      if [ -n "${_jt:-}" ]; then
+        _bc="/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_jt}"
+        sed -i "s|^\[binaries\]$|[binaries]\nc = '${_bc}-gcc'\ncpp = '${_bc}-g++'\nar = '${_bc}-ar'\nstrip = '${_bc}-strip'|" "${MESON_CROSS_FILE}"
+        echo "[cross] cross file updated with CC/CXX" >&2
+      fi
+    fi
     # Remove pkg_config_libdir from the cross file so meson falls back to
     # the PKG_CONFIG_LIBDIR env var (which we set without the host x86_64
     # pkgconfig path).  The SDK image's cross file includes host paths.
     if [ -n "${MESON_CROSS_FILE:-}" ] && [ -f "${MESON_CROSS_FILE}" ]; then
       sed -i '/^pkg_config_libdir = /d' "${MESON_CROSS_FILE}"
+      echo "[cross] cross file final:"; cat "${MESON_CROSS_FILE}"
     fi
   fi
   if command -v append_meson_native_flags >/dev/null 2>&1; then
     append_meson_native_flags MESON_FLAGS
   fi
+  echo "[cross] native file:"; cat "${MESON_NATIVE_FILE:-/dev/null}" 2>/dev/null || echo "(no native file)"
 
-  # CC/CXX are only needed for cross/native file creation above.
-  # The main meson setup uses --cross-file which contains the cross compilers.
-  # Strip the cross-compiler bin directory from PATH so that subprocess builds
-  # (pycairo via uv) pick up the native compilers by default.  CC/CXX are
-  # exported to /usr/bin/gcc/g++ as a further safety net.
-  export CC="/usr/bin/gcc"
-  export CXX="/usr/bin/g++"
+  # Keep CC/CXX set to the CROSS compilers so meson uses them from env.
+  # The cross file also contains them; having env vars set doesn't hurt.
+  # Do NOT unset them — pycairo is already disabled by GSTREAMER_ENABLE_PYTHON_BINDINGS=false.
   _gcc_bindir="$(gcc_toolchain_bindir 2>/dev/null || echo "/opt/gcc-16.1.0/bin")"
   PATH=":${PATH}:"
   PATH="${PATH//:${_gcc_bindir}:/:}"
@@ -405,8 +437,14 @@ build_gstreamer_monorepo() {
   fi
 
   if ! run_gstreamer_meson_setup > /tmp/meson-setup.log 2>&1; then
-    echo "Meson setup failed; printing verbose output..."
+    echo "Meson setup failed; printing first attempt output:" >&2
+    cat /tmp/meson-setup.log >&2
+    echo "=== End of first attempt ===" >&2
     if ! run_gstreamer_meson_setup -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1; then
+      echo "ERROR: Meson setup failed. Full meson log:" >&2
+      find /opt/tmp /tmp -name "meson-log.txt" 2>/dev/null | while read _ml; do
+        echo "=== ${_ml} ==="; cat -v "${_ml}" 2>/dev/null | tail -80
+      done
       echo "ERROR: Meson setup failed both attempts. See /tmp/meson-setup.log" >&2
       exit 1
     fi
