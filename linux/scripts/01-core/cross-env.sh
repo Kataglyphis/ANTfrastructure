@@ -286,11 +286,11 @@ _cross_env_resolve_tools() {
   if ! _ert_out[cxx]="$(require_cross_gcc_tool g++ "${triplet}" 'cross compiler')"; then
     # Some cross-triplet g++ binaries may not be found by
     # resolve_cross_gcc_tool even though they exist. Derive from CC.
-    _cxx_fb="$(printf '%s' "${_ert_out[cc]}" | sed 's/-gcc$/-g++/')"
-    if [ -x "${_cxx_fb}" ]; then
-      _ert_out[cxx]="${_cxx_fb}"
+    if command -v derive_cxx_from_cc >/dev/null 2>&1; then
+      _ert_out[cxx]="$(derive_cxx_from_cc "${_ert_out[cc]}")" || return 1
     else
-      return 1
+      _cxx_fb="$(printf '%s' "${_ert_out[cc]}" | sed 's/-gcc$/-g++/')"
+      [ -x "${_cxx_fb}" ] && _ert_out[cxx]="${_cxx_fb}" || return 1
     fi
   fi
   _ert_out[ar]="$(require_cross_gcc_tool ar "${triplet}" 'cross binutils tool')" || return 1

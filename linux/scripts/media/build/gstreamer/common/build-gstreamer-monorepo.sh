@@ -8,7 +8,6 @@ run_gstreamer_meson_setup() {
     read -r -a extra_meson_flags <<< "${EXTRA_MESON_ARGS}"
   fi
 
-  echo "[meson-cmd] UV run: meson setup builddir ${MESON_FLAGS[*]} ${extra_meson_flags[*]} $*" >&2
   uv run meson setup builddir "${MESON_FLAGS[@]}" "${extra_meson_flags[@]}" "$@"
 }
 
@@ -60,8 +59,8 @@ compute_gstreamer_meson_jobs() {
 }
 
 build_gstreamer_monorepo() {
-  # Ensure cross_build_is_active is available. The SDK image's cross-env.sh
-  # may not be properly sourced in the call chain, leaving it undefined.
+  # cross_build_is_active is provided by cross-env.sh (sourced via media_common_init).
+  # If not available, define a minimal fallback.
   if ! command -v cross_build_is_active >/dev/null 2>&1; then
     cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
   fi
@@ -224,62 +223,27 @@ build_gstreamer_monorepo() {
     fi
   fi
 
-  # Ensure CXX is exported for the cross file. setup_linux_cross_env may fail
-  # to export CXX if require_cross_gcc_tool g++ cannot find the binary (e.g.
-  # triplet mismatch in the SDK image). Inject it from the known GCC path.
-  if [ "${BUILD_MODE:-native}" = "cross" ] && [ -z "${CXX:-}" ] && [ -n "${CC:-}" ]; then
-    _cxx_fb="$(printf '%s' "${CC}" | sed 's/-gcc$/-g++/')"
-    [ -x "${_cxx_fb}" ] && export CXX="${_cxx_fb}"
-  fi
-  if [ "${BUILD_MODE:-native}" = "cross" ] && [ -z "${CC:-}" ]; then
-    case "${TARGET_ARCH:-${TARGETARCH:-}}" in
-      arm64) _cc_t="aarch64-linux-gnu" ;;
-      riscv64) _cc_t="riscv64-linux-gnu" ;;
-    esac
-    if [ -n "${_cc_t:-}" ]; then
-      [ -x "/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_cc_t}-gcc" ] && export CC="/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_cc_t}-gcc"
-      [ -x "/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_cc_t}-g++" ] && export CXX="/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_cc_t}-g++"
+  # Ensure CC/CXX are exported for the meson cross file. setup_linux_cross_env
+  # may fail to export CXX if require_cross_gcc_tool g++ cannot find the binary.
+  # Use canonical helpers from compiler-resolution.sh as fallback.
+  if [ "${BUILD_MODE:-native}" = "cross" ] && { [ -z "${CC:-}" ] || [ -z "${CXX:-}" ]; }; then
+    if command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
+      resolve_cross_cc_cxx_for_arch || true
     fi
   fi
 
   if command -v append_meson_cross_flags >/dev/null 2>&1; then
     append_meson_cross_flags MESON_FLAGS
-    # If the cross file has an empty [binaries] section, populate it from
-    # our known cross-compiler paths (setup_linux_cross_env may fail to
-    # export CC/CXX even though the binaries exist).
-    if [ -f "${MESON_CROSS_FILE:-}" ] && ! grep -q "^c " "${MESON_CROSS_FILE}" 2>/dev/null; then
-      echo "[cross] cross file missing binaries — injecting CC/CXX" >&2
-      case "${TARGET_ARCH:-${TARGETARCH:-}}" in
-        arm64) _jt="aarch64-linux-gnu" ;;
-        riscv64) _jt="riscv64-linux-gnu" ;;
-      esac
-      if [ -n "${_jt:-}" ]; then
-        _bc="/opt/gcc-${GCC_VERSION:-16.1.0}/bin/${_jt}"
-        sed -i "s|^\[binaries\]$|[binaries]\nc = '${_bc}-gcc'\ncpp = '${_bc}-g++'\nar = '${_bc}-ar'\nstrip = '${_bc}-strip'|" "${MESON_CROSS_FILE}"
-        echo "[cross] cross file updated with CC/CXX" >&2
-      fi
-    fi
     # Remove pkg_config_libdir from the cross file so meson falls back to
     # the PKG_CONFIG_LIBDIR env var (which we set without the host x86_64
     # pkgconfig path).  The SDK image's cross file includes host paths.
     if [ -n "${MESON_CROSS_FILE:-}" ] && [ -f "${MESON_CROSS_FILE}" ]; then
       sed -i '/^pkg_config_libdir = /d' "${MESON_CROSS_FILE}"
-      echo "[cross] cross file final:"; cat "${MESON_CROSS_FILE}"
     fi
   fi
   if command -v append_meson_native_flags >/dev/null 2>&1; then
     append_meson_native_flags MESON_FLAGS
   fi
-  echo "[cross] native file:"; cat "${MESON_NATIVE_FILE:-/dev/null}" 2>/dev/null || echo "(no native file)"
-
-  # Keep CC/CXX set to the CROSS compilers so meson uses them from env.
-  # The cross file also contains them; having env vars set doesn't hurt.
-  # Do NOT unset them — pycairo is already disabled by GSTREAMER_ENABLE_PYTHON_BINDINGS=false.
-  _gcc_bindir="$(gcc_toolchain_bindir 2>/dev/null || echo "/opt/gcc-16.1.0/bin")"
-  PATH=":${PATH}:"
-  PATH="${PATH//:${_gcc_bindir}:/:}"
-  PATH="${PATH#:}"; PATH="${PATH%:}"
-  export PATH
 
   MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
   case " ${EXTRA_MESON_ARGS} " in
@@ -292,7 +256,7 @@ build_gstreamer_monorepo() {
   esac
   append_meson_arg "-Dpygobject:tests=false"
 
-  dump_debug_info | tee /tmp/gstreamer-debug-info.log || true
+  dump_debug_info > /tmp/gstreamer-debug-info.log 2>&1 || true
 
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     deb_host_multiarch_dir="$(cross_target_triplet)"
@@ -381,42 +345,11 @@ build_gstreamer_monorepo() {
     fi
   fi
 
-  echo "--- cairo / pkg-config debug ---" | tee /tmp/gstreamer-cairo-debug.txt
-  echo "PKG_CONFIG PATH: PKG_CONFIG_PATH='${PKG_CONFIG_PATH:-}'" | tee -a /tmp/gstreamer-cairo-debug.txt
-  echo "PKG_CONFIG LIBDIR: PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}'" | tee -a /tmp/gstreamer-cairo-debug.txt
-  echo "DEB_HOST_MULTIARCH: $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)" | tee -a /tmp/gstreamer-cairo-debug.txt
-  which pkg-config || true | tee -a /tmp/gstreamer-cairo-debug.txt
-  pkg-config --version 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
-  for p in "/usr/lib/${deb_host_multiarch_dir:-}/pkgconfig" /usr/lib/pkgconfig /usr/local/lib/pkgconfig; do
-    echo "listing: $p" | tee -a /tmp/gstreamer-cairo-debug.txt
-    find "$p" -mindepth 1 -maxdepth 1 2>/dev/null | sed -n '1,20p' | tee -a /tmp/gstreamer-cairo-debug.txt || true
-    [ -f "$p/cairo.pc" ] && echo "FOUND: $p/cairo.pc" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-  done
-  pkg-config --cflags --libs cairo 2>&1 | tee -a /tmp/gstreamer-cairo-debug.txt || true
-
-  if ! pkg-config --exists cairo 2>/dev/null; then
-    if cross_build_is_active && \
-       command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-      echo "cairo not found in target pkg-config paths on riscv64 cross build; keeping PKG_CONFIG_LIBDIR intact and relying on Meson subproject fallback" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-    else
-      echo "cairo not found with PKG_CONFIG_LIBDIR='${PKG_CONFIG_LIBDIR:-}' - trying fallback by unsetting PKG_CONFIG_LIBDIR" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-      if env -u PKG_CONFIG_LIBDIR pkg-config --exists cairo 2>/dev/null; then
-        echo "Fallback: cairo found after unsetting PKG_CONFIG_LIBDIR; proceeding using fallback search paths" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-        unset PKG_CONFIG_LIBDIR
-      else
-        echo "Fallback also failed: cairo still not found" | tee -a /tmp/gstreamer-cairo-debug.txt || true
-      fi
-    fi
-  fi
-  echo "--- end cairo debug ---" | tee -a /tmp/gstreamer-cairo-debug.txt
-
   # Fix the tensorflow-lite.pc file if it has trailing braces from the
-  # LiteRT .pc generation — the tflite plugin fails in cross builds when
-  # the Libs line reads "-ltensorflow-lite}" instead of "-ltensorflow-lite".
+  # LiteRT .pc generation.
   if [ -f /usr/local/lib/pkgconfig/tensorflow-lite.pc ]; then
     if grep -q 'ltensorflow-lite}' /usr/local/lib/pkgconfig/tensorflow-lite.pc 2>/dev/null; then
       sed -i 's/-ltensorflow-lite}/-ltensorflow-lite/g' /usr/local/lib/pkgconfig/tensorflow-lite.pc
-      echo "Fixed tensorflow-lite.pc: removed trailing brace from Libs line"
     fi
   fi
   # Ensure meson's cross-compiler can find libtensorflow-lite. Meson checks
@@ -431,20 +364,12 @@ build_gstreamer_monorepo() {
         ln -sf /usr/local/lib/libtensorflow-lite.a "${_gcc_dir}/libtensorflow-lite.a" 2>/dev/null || true
       done
     done
-    # Also symlink to /usr/local/lib itself for the LIBRARY_PATH
     export LIBRARY_PATH="/usr/local/lib:${LIBRARY_PATH:-}"
-    echo "Ensured libtensorflow-lite is findable by cross-compiler"
   fi
 
   if ! run_gstreamer_meson_setup > /tmp/meson-setup.log 2>&1; then
-    echo "Meson setup failed; printing first attempt output:" >&2
-    cat /tmp/meson-setup.log >&2
-    echo "=== End of first attempt ===" >&2
+    echo "Meson setup failed; retrying with verbose output..." >&2
     if ! run_gstreamer_meson_setup -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1; then
-      echo "ERROR: Meson setup failed. Full meson log:" >&2
-      find /opt/tmp /tmp -name "meson-log.txt" 2>/dev/null | while read _ml; do
-        echo "=== ${_ml} ==="; cat -v "${_ml}" 2>/dev/null | tail -80
-      done
       echo "ERROR: Meson setup failed both attempts. See /tmp/meson-setup.log" >&2
       exit 1
     fi

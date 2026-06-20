@@ -406,14 +406,6 @@ RUN --mount=type=bind,source=linux/scripts/media/build/gstreamer,target=/opt/scr
     set -euo pipefail; \
     if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
         export GSTREAMER_ENABLE_PYTHON_BINDINGS=false; \
-        _fix_triplet="$(dpkg-architecture -a${TARGET_ARCH} -q DEB_HOST_MULTIARCH 2>/dev/null || true)"; \
-        if [ -n "${_fix_triplet}" ] && [ -L "/usr/lib/${_fix_triplet}/libstdc++.so" ]; then \
-            _gcc_lib="/opt/gcc-${GCC_VERSION:-16.1.0}/${_fix_triplet}/lib64/libstdc++.so"; \
-            if [ -f "${_gcc_lib}" ]; then \
-                ln -sf "${_gcc_lib}" "/usr/lib/${_fix_triplet}/libstdc++.so"; \
-                echo "Fixed libstdc++.so symlink for ${_fix_triplet}"; \
-            fi; \
-        fi; \
     fi; \
     bash /opt/scripts/media/build/gstreamer/common/build-gstreamer-stage.sh \
         "$GSTREAMER_VERSION" \

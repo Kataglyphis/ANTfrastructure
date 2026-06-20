@@ -17,9 +17,7 @@ if command -v python3 >/dev/null 2>&1; then
   elif python3 -c "import onnxruntime" 2>/dev/null; then
     onnx_ver="$(python3 -c "import onnxruntime; print(onnxruntime.__version__)" 2>/dev/null || echo '?')"
     pass "onnxruntime Python module imports (v${onnx_ver})"
-    if cross_build_is_active 2>/dev/null; then
-      echo "  SKIP: onnxruntime functional test (cross build)"
-    elif python3 -c "
+    if python3 -c "
 import onnxruntime as ort
 import numpy as np
 sess = ort.InferenceSession(
