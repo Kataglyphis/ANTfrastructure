@@ -49,10 +49,11 @@ Prefer the orchestrator for full chains:
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 ```
 
-For single-stage rebuilds, use the standalone helpers:
+For single-stage rebuilds, use the standalone helpers (the recommended way):
 ```bash
 bash linux/scripts/build-cross-stage.sh --stage compiler --push --log-dir ./out/build-logs
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
 ```
 
 For standalone compiler builds (same as `--stage compiler` above):

@@ -110,7 +110,7 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   fi
 
   info "GenAI build args: ${GENAI_BASE_ARGS[*]}"
-  "${HOST_PYTHON}" build.py \
+  retry 3 10 "ONNX Runtime GenAI GPU build" "${HOST_PYTHON}" build.py \
     "${GENAI_BASE_ARGS[@]}" \
     --ort_home "${ORT_HOME}" \
     --use_cuda \
@@ -121,7 +121,7 @@ else
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
 
   info "GenAI build args: ${GENAI_BASE_ARGS[*]}"
-  "${HOST_PYTHON}" build.py \
+  retry 3 10 "ONNX Runtime GenAI CPU build" "${HOST_PYTHON}" build.py \
     "${GENAI_BASE_ARGS[@]}" \
     --ort_home "${ORT_HOME}"
 fi

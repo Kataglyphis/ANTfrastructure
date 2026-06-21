@@ -165,3 +165,8 @@ libavutil.so.60	libavutil60
 libavfilter.so.11	libavfilter11
 libavdevice.so.62	libavdevice62
 libpostproc.so.58	libpostproc58
+libOpenEXR-3_1.so.30	libopenexr-3-1-30
+libOpenEXR-3_1.so.31	libopenexr-3-1-31
+libcdda_paranoia.so.0	libcdda-paranoia0
+libdc1394.so.25	libdc1394-25
+libdc1394.so.26	libdc1394-26

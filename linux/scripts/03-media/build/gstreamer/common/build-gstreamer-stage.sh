@@ -50,15 +50,36 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && { [ -z "${CC:-}" ] || [ -z "${CXX:-}
   fi
 fi
 # Fix broken libstdc++.so symlinks that point to wrong-arch libraries.
-if [ "${BUILD_MODE:-native}" = "cross" ]; then
+# The SDK image's apt packages may create symlinks in /usr/lib/<triplet>/
+# that point to the host (amd64) libstdc++ instead of the target arch one.
+if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "amd64" ]; then
   if command -v fix_libstdcxx_symlink >/dev/null 2>&1; then
     fix_libstdcxx_symlink || true
+  else
+    # Inline fallback when compiler-resolution.sh doesn't have the helper
+    # (older SDK images). Uses arch_deb_multiarch_triplet_for if available.
+    _fix_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
+    _fix_triplet=""
+    if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
+      _fix_triplet="$(arch_deb_multiarch_triplet_for "${_fix_arch}" 2>/dev/null || true)"
+    else
+      case "${_fix_arch}" in
+        arm64) _fix_triplet="aarch64-linux-gnu" ;;
+        riscv64) _fix_triplet="riscv64-linux-gnu" ;;
+      esac
+    fi
+    if [ -n "${_fix_triplet}" ] && [ -L "/usr/lib/${_fix_triplet}/libstdc++.so" ]; then
+      _gcc_lib="/opt/gcc-${GCC_VERSION:-16.1.0}/${_fix_triplet}/lib64/libstdc++.so"
+      if [ -f "${_gcc_lib}" ]; then
+        ln -sf "${_gcc_lib}" "/usr/lib/${_fix_triplet}/libstdc++.so"
+      fi
+    fi
   fi
 fi
 
 cd /opt
-bash /opt/scripts/media/build/gstreamer/common/pre-setup.sh
-bash /opt/scripts/media/build/gstreamer/common/install-vvdec.sh
+bash /opt/scripts/03-media/build/gstreamer/common/pre-setup.sh
+bash /opt/scripts/03-media/build/gstreamer/common/install-vvdec.sh
 
 export SODIUM_USE_PKG_CONFIG=1
 export PKG_CONFIG_ALLOW_CROSS=1
@@ -77,7 +98,7 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG
 append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
 
 set +e
-bash /opt/scripts/media/build/gstreamer/common/setup-gstreamer.sh \
+bash /opt/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh \
   "${GSTREAMER_VERSION}" \
   "${GSTREAMER_PREFIX}" \
   "${BUILD_TYPE}" 2>&1

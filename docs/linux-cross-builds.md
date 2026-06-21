@@ -1,5 +1,7 @@
 # Linux Cross Builds
 
+> **See also:** [`docs/linux-build-basics.md`](linux-build-basics.md) for build fundamentals, caching, and troubleshooting. [`AGENTS.md`](../AGENTS.md) for agent guardrails and the full repo map.
+
 > Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. See `docs/project-info.md` for the drop-in config and `AGENTS.md` for the do-not-regress note. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
 
 > **Build logging:** All orchestrator scripts accept `--log-dir ./out/build-logs` to write per-stage build logs. For manual `nerdctl build` commands, capture output with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.

@@ -396,7 +396,7 @@ if [ -f /usr/local/bin/gstreamer-env.sh ]; then
 else
   :
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/media/* subfolders
+  # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/03-media/* subfolders
   # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
 fi

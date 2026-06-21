@@ -14,13 +14,13 @@ detect_jobs
 # ----------------------------
 if [ ! -d "${ORT_SRC_DIR}" ]; then
   info "Cloning ONNX Runtime ${ORT_VERSION} into ${ORT_SRC_DIR}"
-  git clone --branch "${ORT_VERSION}" --depth 1 "${ORT_REPO}" "${ORT_SRC_DIR}"
+  retry 3 10 "ONNX Runtime git clone" git clone --branch "${ORT_VERSION}" --depth 1 "${ORT_REPO}" "${ORT_SRC_DIR}"
 fi
 
 cd "${ORT_SRC_DIR}"
 
-git submodule sync --recursive || true
-git submodule update --init --recursive
+retry 3 10 "ONNX Runtime submodule sync" git submodule sync --recursive || true
+retry 3 10 "ONNX Runtime submodule update" git submodule update --init --recursive
 
 # ----------------------------
 # Clone GenAI repo if enabled
@@ -28,7 +28,7 @@ git submodule update --init --recursive
 if [[ "${BUILD_GENAI}" == "true" ]]; then
   if [ ! -d "${GENAI_SRC_DIR}" ]; then
     info "Cloning ONNX Runtime GenAI ${GENAI_VERSION} into ${GENAI_SRC_DIR}"
-    git clone --branch "${GENAI_VERSION}" --depth 1 "${GENAI_REPO}" "${GENAI_SRC_DIR}"
+    retry 3 10 "ONNX Runtime GenAI git clone" git clone --branch "${GENAI_VERSION}" --depth 1 "${GENAI_REPO}" "${GENAI_SRC_DIR}"
   else
     info "GenAI source directory exists at ${GENAI_SRC_DIR}"
   fi

@@ -96,8 +96,8 @@ fi
 append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS
 
-# Execute build
-if ! "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
+# Execute build (with retry for transient network errors like GitHub download failures)
+if ! retry 3 10 "ONNX Runtime CPU build" "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
   if cross_build_is_active; then
     warn "ONNX Runtime build failed; rerunning single-threaded verbose build for diagnostics"
     cmake --build "${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" --config "${NATIVE_CPU_CONFIG}" --parallel 1 --verbose || true

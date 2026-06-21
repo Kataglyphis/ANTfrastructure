@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # vulkan.sh - Vulkan SDK install source-only helper.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   echo "This script is meant to be sourced, not executed" >&2

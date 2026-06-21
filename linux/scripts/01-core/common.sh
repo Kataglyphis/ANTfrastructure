@@ -31,13 +31,16 @@ export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 # Provide cross_build_is_active when cross-env.sh hasn't been sourced.
-# Prefer calling cross_build_enabled (which checks BUILD_MODE=cross AND cross target != build arch),
-# falling back to the simpler BUILD_MODE check if cross_build_enabled isn't available either.
+# The real definition in cross-env.sh checks BUILD_MODE=cross AND target arch != build arch.
+# This fallback approximates that when cross_build_enabled is unavailable.
 if ! command -v cross_build_is_active >/dev/null 2>&1; then
   if command -v cross_build_enabled >/dev/null 2>&1; then
     cross_build_is_active() { cross_build_enabled; }
   else
-    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+    cross_build_is_active() {
+      [ "${BUILD_MODE:-native}" = "cross" ] && \
+      [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+    }
   fi
 fi
 

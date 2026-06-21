@@ -59,10 +59,13 @@ compute_gstreamer_meson_jobs() {
 }
 
 build_gstreamer_monorepo() {
-  # cross_build_is_active is provided by cross-env.sh (sourced via media_common_init).
-  # If not available, define a minimal fallback.
+  # cross_build_is_active is provided by cross-env.sh via media_common_init.
+  # Minimal fallback if the module chain didn't load it.
   if ! command -v cross_build_is_active >/dev/null 2>&1; then
-    cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+    cross_build_is_active() {
+      [ "${BUILD_MODE:-native}" = "cross" ] && \
+      [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+    }
   fi
 
   local host_arch=""

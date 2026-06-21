@@ -8,9 +8,9 @@ _ONNX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONNX_SCRIPT_DIR="${_ONNX_LIB_DIR}"
 : "${SCRIPT_DIR:=${ONNX_SCRIPT_DIR}}"
 
-if [ -f /opt/scripts/media/core/common.sh ]; then
+if [ -f /opt/scripts/03-media/core/common.sh ]; then
   # shellcheck disable=SC1091
-  source /opt/scripts/media/core/common.sh
+  source /opt/scripts/03-media/core/common.sh
   media_common_init "${_ONNX_LIB_DIR}"
 elif [ -f "${_ONNX_LIB_DIR}/../../../../core/common.sh" ]; then
   # shellcheck disable=SC1091

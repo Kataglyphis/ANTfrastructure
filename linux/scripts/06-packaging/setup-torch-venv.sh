@@ -203,7 +203,7 @@ setup_torch_app() {
     export UV_CONSTRAINT="${constraint_file}"
     echo "Pinned pycairo to 1.27.0 via constraint ${constraint_file}"
   fi
-  /opt/scripts/media/final/assemble-torch-app.sh "${TORCH_APP_MODE}"
+  /opt/scripts/03-media/final/assemble-torch-app.sh "${TORCH_APP_MODE}"
 }
 
 main() {

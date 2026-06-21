@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# linux/scripts/media/core/common.sh
+# linux/scripts/03-media/core/common.sh
 #
 # Single Source of Truth bootstrap for every media library build script.
 #
@@ -19,7 +19,7 @@
 #   media_common_init "${SCRIPT_DIR}"
 #
 # In the container image the same file is COPY'd to
-# /opt/scripts/media/core/common.sh and 01-core lives at /opt/scripts/core/.
+# /opt/scripts/03-media/core/common.sh and 01-core lives at /opt/scripts/core/.
 
 set -euo pipefail
 
@@ -88,7 +88,7 @@ media_common_init() {
   # Source the module loader (modules.sh) then the standard media helper set.
   # Set SCRIPTS_ROOT explicitly so source_modules_framework / source_module find
   # 01-core correctly. Without this, _find_scripts_root() in modules.sh would
-  # misidentify media/ as the scripts root (because media/core/ exists), breaking
+  # misidentify 03-media/ as the scripts root (because 03-media/core/ exists), breaking
   # the relative module search on the host.
   case "${core_dir}" in
     */01-core) export SCRIPTS_ROOT="$(cd "${core_dir}/.." && pwd)" ;;
@@ -98,30 +98,33 @@ media_common_init() {
   source "${core_dir}/modules.sh"
   source_modules_framework "${script_dir}"
 
+  # Critical modules — must load or the script cannot function.
   source_module common.sh            || true
   source_module cross-env.sh         || true
-  source_module cross-meson.sh       || true
-  source_module cross-apt.sh         || true
   source_module logging.sh           || true
   source_module build-helpers.sh     || true
   source_module parallelism.sh       || true
+
+  # Optional modules — may not be needed by every consumer.
+  source_module cross-meson.sh       || true
+  source_module cross-apt.sh         || true
   source_module downloads.sh         || true
   source_module compiler-cache.sh    && { setup_ccache; setup_lld_linker; } || true
   source_module compiler-resolution.sh || true
   source_module python-host.sh       || true
   source_module cmake-cache-linker.sh || true
 
-  # Fallback for cross_build_is_active in case cross-env.sh's reload guard
-  # prevents it from being redefined. Prefer cross_build_enabled (which checks
-  # both BUILD_MODE and cross-target != build-arch), then BUILD_MODE alone.
+  # Ensure cross_build_is_active is always defined. The canonical definition
+  # lives in cross-env.sh (sourced above), and a fallback exists in
+  # 01-core/common.sh. If neither loaded (e.g. reload guard), define here.
   if ! command -v cross_build_is_active >/dev/null 2>&1; then
     if command -v cross_build_enabled >/dev/null 2>&1; then
       cross_build_is_active() { cross_build_enabled; }
     else
-      cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+      cross_build_is_active() {
+        [ "${BUILD_MODE:-native}" = "cross" ] && \
+        [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+      }
     fi
   fi
 }
-
-# Backward-compatible alias for any external caller still using the old name.
-media_build_preamble_init() { media_common_init "$@"; }

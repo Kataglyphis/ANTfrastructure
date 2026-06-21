@@ -19,7 +19,7 @@
 
 ## Architecture
 
-Three build lanes share one script tree:
+Four-tier dependency chain with shared script tree:
 
 ```
 linux/
@@ -33,15 +33,28 @@ linux/
 ├── Dockerfile.nvidia        optional CUDA/cuDNN/TensorRT layer (FROM sdk)
 ├── Dockerfile.amd           optional ROCm layer (FROM sdk)
 └── scripts/
-    ├── 01-core/             shared utilities (logging, platform, downloads, tag-naming, stage-defs, digest-pinning)
+    ├── 01-core/             shared utilities (41 modules: logging, platform, cross-env, tag-naming, stage-defs, digest-pinning, compiler-resolution)
     ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
-    ├── media/               ← media library build scripts (refactored)
-    │   ├── core/common.sh   single DRY bootstrap sourced by every media script
+    ├── 03-03-media/          media library build scripts
+    │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
     │   ├── build/           per-library build scripts (onnxruntime, litert, opencv, ffmpeg, gstreamer, libcamera)
     │   └── runtime/         artifact collection, runtime config, verification, media-env.sh
     ├── 04-runtime/          entrypoint + env scripts
     ├── 05-frameworks/       TVM, Torch, Flutter
     └── 06-packaging/        assembly + smoke tests
+```
+
+### 4-Tier Build Dependency Graph
+
+```
+  Phase 1     Phase 2      Phase 3       Phase 4
+  ───────     ───────      ───────       ───────
+  Base   →   Compiler  →   SDK      →    Media
+  (amd64)    (amd64)       (per-arch)    (per-arch)
+                                          ↓
+                                     Android (optional)
+                                          ↓
+                                     Package + Torch (optional)
 ```
 
 **Cross lane** (`linux/amd64` host, cross-compiles all arches): `base → compiler → sdk → media → android → package → torch`
@@ -58,7 +71,7 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 |-----|------|
 | `:latest-cross` | Multi-arch release (amd64/arm64/riscv64) — the stable API |
 | `:latest-cross-<arch>` | Per-architecture wrapper |
-| `:cross-media-<arch>` | Media libraries layer (CI-built via `build-media.yml`) |
+| `:cross-media-<arch>` | Media libraries layer (ONNX Runtime, LiteRT, OpenCV, FFmpeg, GStreamer, libcamera) |
 | `:webserver` | Slim nginx webserver |
 | `:winamd64` | Windows build image |
 
@@ -79,19 +92,25 @@ Build logs are written to `out/build-logs/` by passing `--log-dir` to the orches
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 ```
 
-### Build just the media layer (with BuildKit caching)
+### Build just the media layer for one architecture
+
+Use `build-cross-stage.sh` — it resolves the parent SDK digest, assembles all
+build args from `versions.env`, pins the result, and writes logs to `out/build-logs/`.
+**This is the recommended way to build any single cross-lane stage.**
 
 ```bash
-mkdir -p ./out/build-logs && \
-nerdctl build \
-  --progress=plain \
-  -f linux/Dockerfile.media \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-amd64 \
-  --build-arg TARGET_ARCH=amd64 \
-  --build-arg BUILD_MODE=cross \
-  -t kataglyphis:cross-media-amd64 \
-  . 2>&1 | tee ./out/build-logs/media-build.log
+bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
 ```
+
+Build all three architectures sequentially:
+
+```bash
+for arch in amd64 arm64 riscv64; do
+  bash linux/scripts/build-cross-stage.sh --stage media --arch "$arch" --push --log-dir ./out/build-logs
+done
+```
+
+See `docs/linux-cross-builds.md` for the full stage graph and `docs/linux-build-basics.md` for build fundamentals.
 
 ### Verify a single cross stage without building
 

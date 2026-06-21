@@ -42,8 +42,12 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 # Compiler with custom image repo (matches --image-repo on the orchestrator)
 ./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push --log-dir ./out/build-logs
 
-# Single cross stage (e.g., rebuild just the sdk for arm64)
+# Single cross stage — the canonical way to rebuild one stage for one arch.
+# Handles parent digest pinning, build-arg assembly, log capture, and push.
+# See docs/linux-cross-builds.md § "Single-Stage Builds" for details.
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./out/build-logs
 
 # Verify chain freshness without building
 bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
@@ -63,6 +67,8 @@ bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,ri
 # Reinstall QEMU/binfmt after host reboot
 sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
 ```
+
+> **See also:** [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the full stage graph, digest pinning, and single-stage build details. [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for build fundamentals, caching, and troubleshooting.
 
 ### Windows Container Build (see `docs/windows-builds.md`)
 
@@ -292,15 +298,15 @@ After a successful `build-cross-chain.sh` run:
 
 ```
 linux/scripts/
-├── 01-core/             shared utilities (versions.env, logging, platform, tag-naming, stage-defs, digest-pinning, build-helpers, cli-parsers, …)
+├── 01-core/             shared utilities (41 modules: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, build-helpers, cli-parsers, …)
 ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
-├── media/               media library build scripts (refactored)
-│   ├── core/common.sh   single DRY bootstrap — sourced by every media script (replaces the old media-build-preamble.sh)
+├── 03-03-media/            media library build scripts
+│   ├── core/common.sh   single DRY bootstrap — sourced by every media script
 │   ├── build/           per-library build scripts
 │   │   ├── onnxruntime/   ONNX Runtime + GenAI (build/ steps, runtime/ pkgconfig, android/)
 │   │   ├── litert/        LiteRT + TFLite C API (Critical Fix #2: abseil span.h copy in build-litert.sh)
 │   │   ├── opencv/        OpenCV 5.x
-│   │   ├── ffmpeg/        FFmpeg
+│   │   ├── ffmpeg/        FFmpeg (build-ffmpeg.sh has fixed host compiler wrapper)
 │   │   ├── gstreamer/     GStreamer monorepo (common/ has patch-gstreamer-sources.sh — Critical Fix #5)
 │   │   └── libcamera/     libcamera
 │   └── runtime/         artifact collection, runtime config, wheel repair, verification, media-env.sh (canonical ENV)
@@ -319,7 +325,7 @@ Top-level orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `bui
 - **Architecture list resolution:** `artifact-common.sh` → `resolve_arch_list()`. Normalizes `TARGET_ARCHES` from canonical name + aliases with fallback. Use instead of 4-level fallback chains.
 - **Dry-run guard:** `build-helpers.sh` → `is_dry_run()`, `_bool_truthy()`. Use instead of `[ "${DRY_RUN:-0}" -eq 1 ]`.
 - **Module loading:** `modules.sh` → `source_modules_framework()`. Bootstrap pattern for sourcing 01-core.
-- **Media bootstrap:** `media/core/common.sh` → `media_common_init <script_dir>`. Single DRY entry that sources the 01-core module framework. Every media build script sources this instead of duplicating a preamble block. Backward-compatible alias: `media_build_preamble_init`.
+- **Media bootstrap:** `03-media/core/common.sh` → `media_common_init <script_dir>`. Single DRY entry that sources the 01-core module framework. Every media build script sources this instead of duplicating a preamble block. Backward-compatible alias: `media_build_preamble_init`.
 - **CC validation:** `validate-compilers.sh` → `_validate_cc_target()` (dumpmachine/ELF/cc1/link smoke).
 - **Cross-chain tags:** `tag-naming.sh` → `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, runtime tag functions. Never construct tags manually.
 - **Stage graph:** `stage-defs.sh` → `CROSS_STAGE_ORDER` (base→compiler→sdk→media→android→runtime), `RUNTIME_STAGE_ORDER` (base→package→wrapper). Pin init: `cross_stage_init_pins()`. Validation: `cross_stage_validate_graph()`. Cross→runtime handoff: `cross_stage_ensure_parent_available()`.
@@ -329,10 +335,10 @@ Top-level orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `bui
 - **Retry logic:** `logging.sh` → `retry <max> <sleep> <desc> <cmd...>`.
 - **Mirror args:** `build-helpers.sh` → `append_mirror_build_args_from_env()`.
 - **Version forwarding:** `version-forwarding.sh` → `append_version_build_args()` (auto-discovers from `versions.env`).
-- **CMake cache/linker:** `cmake-cache-linker.sh` → `append_cmake_cache_linker_args <array_ref>`. Sourced by `media/core/common.sh` automatically.
+- **CMake cache/linker:** `cmake-cache-linker.sh` → `append_cmake_cache_linker_args <array_ref>`. Sourced by `03-media/core/common.sh` automatically.
 - **Install deps preamble:** `cross-apt.sh` → `install_deps_preamble [packages...]`.
-- **Media ENV reference:** `media/runtime/media-env.sh` is the canonical definition of PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH/GI_TYPELIB_PATH. `Dockerfile.media` and `Dockerfile.package` ENV blocks must stay in sync with this file.
-- **Media artifact verification:** `media/runtime/verify-media-artifacts.sh` validates each media build stage produced output. Called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `app-wheels`, `media-inputs`.
+- **Media ENV reference:** `03-media/runtime/media-env.sh` is the canonical definition of PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH/GI_TYPELIB_PATH. `Dockerfile.media` and `Dockerfile.package` ENV blocks must stay in sync with this file.
+- **Media artifact verification:** `03-media/runtime/verify-media-artifacts.sh` validates each media build stage produced output. Called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `app-wheels`, `media-inputs`.
 - **Runtime stage elements:** `Dockerfile.torch` final stage is canonical for COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, OCI labels.
 - **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper (`BUILDKIT_HOST` support). Use instead of ad hoc `nerdctl build`.
 
@@ -386,10 +392,10 @@ Rules:
 Always preserve these. See `docs/linux-cross-builds.md` § "Five Critical Fixes".
 
 1. **gst-python staged libpython** — `rewrite_staged_python_pc()` in `02-toolchain/python/build_python.sh`
-2. **libcamera abseil** — copy `absl/types/span.h` in `media/build/litert/build-litert.sh`
+2. **libcamera abseil** — copy `absl/types/span.h` in `03-media/build/litert/build-litert.sh`
 3. **cross lib-dynload dangling symlinks** — `cp -a -L` + `find -xtype l` guard in `02-toolchain/python/build_python.sh`
 4. **cross GCC architecture guard** — three-layer ELF + dumpmachine + cc1 smoke check in `Dockerfile.package`
-5. **OpenCV 5 GStreamer compat** — `patch_gstreamer_opencv5_compat()` in `media/build/gstreamer/common/patch-gstreamer-sources.sh`
+5. **OpenCV 5 GStreamer compat** — `patch_gstreamer_opencv5_compat()` in `03-media/build/gstreamer/common/patch-gstreamer-sources.sh`
 
 ## Linux Build Rules
 
@@ -482,7 +488,7 @@ GPU constraints: when bumping CUDA/ROCm, verify driver requirements and that `UB
 - Source `artifact-common.sh` for shared utilities. Use `parse_shared_orchestrator_args()`/`parse_shared_runtime_args()`.
 - Call `cross_stage_init_pins()` before the build loop.
 - Use centralized helpers: `resolve_arch_list()`, `is_dry_run()`, `append_mirror_build_args_from_env()`, `append_version_build_args()`, `normalize_target_arches()`.
-- New OS packages → `Dockerfile.base`. Compiler changes → `Dockerfile.toolchain`. SDK/frameworks → `Dockerfile.sdk`. Media libs → `Dockerfile.media` + `media/build/`. Android → `Dockerfile.android`. GPU → `Dockerfile.nvidia`/`Dockerfile.amd`.
+- New OS packages → `Dockerfile.base`. Compiler changes → `Dockerfile.toolchain`. SDK/frameworks → `Dockerfile.sdk`. Media libs → `Dockerfile.media` + `03-media/build/`. Android → `Dockerfile.android`. GPU → `Dockerfile.nvidia`/`Dockerfile.amd`.
 - New architecture: add to `CROSS_DEFAULT_ARCHES` in `versions.env`, update cross-target lists, add triple mapping in `platform.sh`, add checksums in `versions.env`, verify QEMU/binfmt.
 
 ## Reusable Sphinx Theme Package

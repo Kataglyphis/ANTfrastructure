@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # core.sh - base packages
 #
 # Depends on logging.sh (log) and common.sh (apt_install) which must be

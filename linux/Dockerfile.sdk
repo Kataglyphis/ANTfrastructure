@@ -33,7 +33,6 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup
 # ------------------------------------------------------------------------------
-# Vulkan SDK setup
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \

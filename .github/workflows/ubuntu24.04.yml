@@ -1,4 +1,5 @@
-# .github/workflows/ubuntu-24.04.yml
+# .github/workflows/ubuntu24.04.yml
+# Entry-point workflow: dispatches both docs validation and container builds.
 name: Ubuntu 24.04 Workflow
 on:
   push:
@@ -16,3 +17,4 @@ jobs:
       SERVER: ${{ secrets.SERVER }}
       USERNAME: ${{ secrets.USERNAME }}
       PW: ${{ secrets.PW }}
+

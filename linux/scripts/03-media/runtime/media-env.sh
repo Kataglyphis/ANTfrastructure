@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # media-env.sh
 # Canonical environment variables for media library paths.
 # Sourced by RUN steps in Dockerfile.media and Dockerfile.package to keep

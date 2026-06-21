@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # cmake.sh - CMake from Kitware
 
 install_cmake() {

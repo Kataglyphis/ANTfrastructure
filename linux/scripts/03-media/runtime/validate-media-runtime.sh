@@ -5,6 +5,10 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
 fi
+# Fallback if cross-env.sh didn't define cross_build_is_active
+if ! command -v cross_build_is_active >/dev/null 2>&1; then
+  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+fi
 
 ARTIFACTS=(
   "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-launch-1.0"
@@ -265,6 +269,37 @@ case "${target_arch}" in
   *)       elf_machine_grep="" ;;
 esac
 
+# Directories that contain intentionally foreign-arch vendor binaries
+# (Qualcomm QNN, SNPE, MediaTek NeuroPilot, etc.). These are shipped as-is
+# and should NOT be flagged as ELF architecture mismatches.
+VENDOR_ARCH_SKIP_PATTERNS=(
+  "libQnn"
+  "libSnpe"
+  "libSNPE"
+  "libhta_hexagon"
+  "libneuronusdk"
+  "libcalculator"
+  "libCalculator"
+  "libPyBackend"
+  "libPyIr"
+  "libPyNet"
+  "libPlatformValidator"
+  "libGenie"
+  "libDlModelTools"
+  "libatomic.so"
+)
+
+is_vendor_binary() {
+  local basename="$1"
+  local pattern
+  for pattern in "${VENDOR_ARCH_SKIP_PATTERNS[@]}"; do
+    case "${basename}" in
+      *"${pattern}"*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
   elf_binaries=(
     "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-launch-1.0"
@@ -288,12 +323,15 @@ if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
     [ -d "${so_dir}" ] || continue
     for so in "${so_dir}"/*.so "${so_dir}"/*.so.*; do
       [ -f "${so}" ] || continue
+      _so_base="$(basename "${so}")"
+      # Skip vendor binaries that are intentionally foreign-arch
+      is_vendor_binary "${_so_base}" && continue
       elf_machine="$(readelf -h "${so}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
       case "${elf_machine}" in
         *"${elf_machine_grep}"*) ;;
         "") continue ;;
         *)
-          echo "  MISMATCH: $(basename "${so}") ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
+          echo "  MISMATCH: ${_so_base} ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
           ;;
       esac
     done

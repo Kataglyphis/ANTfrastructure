@@ -68,7 +68,7 @@ main() {
     local staged_python_root=""
     local -a packages=(libtbb-dev python3-venv python3-pip cargo rustc)
 
-    bash /opt/scripts/media/final/install-deps.sh
+    bash /opt/scripts/03-media/final/install-deps.sh
     apt-get update
 
     staged_python_root="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
@@ -166,7 +166,7 @@ main() {
 
     add_prefix_python_paths_to_venv "/opt/opencv5" "${VIRTUAL_ENV}/bin/python"
 
-    bash /opt/scripts/media/final/configure-runtime.sh
+    bash /opt/scripts/03-media/final/configure-runtime.sh
     ldconfig
     apt-get clean
     rm -rf /var/lib/apt/lists/*

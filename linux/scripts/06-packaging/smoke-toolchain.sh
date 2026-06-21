@@ -110,7 +110,9 @@ main() {
   check_version "cargo --version" "cargo" "cargo"
   for target in $(arch_list_to_words "${target_arches}"); do
     local rust_target
-    if command -v rust_target_triple >/dev/null 2>&1; then
+    if command -v arch_rust_target_triple_for >/dev/null 2>&1; then
+      rust_target="$(arch_rust_target_triple_for "${target}")"
+    elif command -v rust_target_triple >/dev/null 2>&1; then
       rust_target="$(rust_target_triple "${target}")"
     else
       case "${target}" in

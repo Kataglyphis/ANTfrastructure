@@ -123,7 +123,8 @@ ENV BUILD_MODE=${BUILD_MODE} \
     VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
     CCACHE_DIR=/workspace/.ccache \
     CCACHE_SECONDARY_STORAGE=true \
-    # Media paths: keep in sync with linux/scripts/media/runtime/media-env.sh
+    # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
+    # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
     PATH="/opt/vulkan/active/bin:/opt/gstreamer/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/opt/gstreamer/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:/opt/libcamera/lib/pkgconfig:/opt/libcamera/lib64/pkgconfig:/opt/ffmpeg/lib/pkgconfig" \
     LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:/opt/gstreamer/lib/multiarch:/opt/gstreamer/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
@@ -135,11 +136,11 @@ ENV BUILD_MODE=${BUILD_MODE} \
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
-COPY --chmod=755 linux/scripts/media/runtime/ /opt/scripts/media/final/
-COPY --chmod=755 linux/scripts/media/build/gstreamer/android/ /opt/scripts/media/gstreamer/android/
-COPY --chmod=755 linux/scripts/media/build/litert/android/ /opt/scripts/media/litert/android/
-COPY --chmod=755 linux/scripts/media/build/onnxruntime/android/ /opt/scripts/media/onnxruntime/android/
-COPY --chmod=755 linux/scripts/media/build/opencv/android/ /opt/scripts/media/opencv/android/
+COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/
+COPY --chmod=755 linux/scripts/03-media/build/gstreamer/android/ /opt/scripts/03-media/gstreamer/android/
+COPY --chmod=755 linux/scripts/03-media/build/litert/android/ /opt/scripts/03-media/litert/android/
+COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/android/ /opt/scripts/03-media/onnxruntime/android/
+COPY --chmod=755 linux/scripts/03-media/build/opencv/android/ /opt/scripts/03-media/opencv/android/
 COPY --chmod=755 linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.sh
 COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh /opt/scripts/python/build_python.sh
 COPY --chmod=755 linux/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh

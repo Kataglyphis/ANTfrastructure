@@ -130,8 +130,8 @@ echo ""
 # Fix 5: OpenCV 5 GStreamer compat — gstsegmentation.cpp must include geometry.hpp.
 echo "--- Fix 5: OpenCV 5 GStreamer compat (geometry.hpp include) ---"
 FIX5_DIRS=(
-  "${REPO_ROOT}/linux/scripts/media/build/gstreamer"
-  "/opt/scripts/media/build/gstreamer"
+  "${REPO_ROOT}/linux/scripts/03-media/build/gstreamer"
+  "/opt/scripts/03-media/build/gstreamer"
 )
 FIX5_FOUND=0
 FIX5_SRC=""
@@ -153,8 +153,8 @@ if [ "${FIX5_FOUND}" -eq 1 ]; then
   fi
 else
   echo "  SKIP: gstsegmentation.cpp not found (checking if patch applies at build time)"
-  if [ -f "${REPO_ROOT}/linux/scripts/media/build/gstreamer/common/patch-gstreamer-sources.sh" ]; then
-    if grep -q "geometry.hpp" "${REPO_ROOT}/linux/scripts/media/build/gstreamer/common/patch-gstreamer-sources.sh" 2>/dev/null; then
+  if [ -f "${REPO_ROOT}/linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh" ]; then
+    if grep -q "geometry.hpp" "${REPO_ROOT}/linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh" 2>/dev/null; then
       pass "patch-gstreamer-sources.sh contains geometry.hpp patch"
     else
       fail "patch-gstreamer-sources.sh missing geometry.hpp reference"

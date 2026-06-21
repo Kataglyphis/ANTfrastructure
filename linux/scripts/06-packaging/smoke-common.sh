@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
 # smoke-common.sh
 # Shared smoke test utilities: pass/fail with FAILURES tracking, version checks,
 # and ELF verification helpers.  Source this in all *-smoke.sh scripts.
@@ -13,9 +15,14 @@ _SMOKE_COMMON_LOADED=1
 
 FAILURES=0
 
-# Fallback for cross_build_is_active (may not be in the smoke test environment)
+# Fallback for cross_build_is_active when cross-env.sh is not loaded.
+# The real definition in cross-env.sh checks both BUILD_MODE and arch mismatch.
+# This fallback approximates it by checking BUILD_MODE and TARGET_ARCH != build arch.
 if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  cross_build_is_active() {
+    [ "${BUILD_MODE:-native}" = "cross" ] && \
+    [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+  }
 fi
 
 pass() { printf '  PASS %s\n' "$*"; }
@@ -87,7 +94,7 @@ validate_compiler_for_target() {
     expected_machine="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
   else
     case "${target_arch}" in
-      amd64)   expected_machine="Advanced Micro Devices X86-64" ;;
+      amd64)   expected_machine="X86-64" ;;
       arm64)   expected_machine="AArch64" ;;
       riscv64) expected_machine="RISC-V" ;;
       *)       expected_machine="" ;;
@@ -148,14 +155,4 @@ validate_compiler_for_target() {
     fail "${label}: link smoke FAILED (missing crt/startup files?)"
   fi
   rm -rf "${tmpdir}"
-}
-
-# Rust target triple for a normalized architecture.
-rust_target_triple() {
-  case "${1}" in
-    amd64)   echo "x86_64-unknown-linux-gnu" ;;
-    arm64)   echo "aarch64-unknown-linux-gnu" ;;
-    riscv64) echo "riscv64gc-unknown-linux-gnu" ;;
-    *)       echo "" ;;
-  esac
 }

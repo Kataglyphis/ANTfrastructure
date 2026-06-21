@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # Lightweight wrapper: prefer the centralized litert script location used by
-# media scripts (/opt/scripts/media/litert) when present in a container build
-# stage. If not available, fall back to the repository's sibling litert
+# media scripts (/opt/scripts/03-media/build/litert) when present in a container
+# build stage. If not available, fall back to the repository's sibling litert
 # directory (useful for running locally from the repo).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-CENTRAL="/opt/scripts/media/litert/build-litert.sh"
+CENTRAL="/opt/scripts/03-media/build/litert/build-litert.sh"
 REPO_REL="$(cd "${SCRIPT_DIR}/../../litert" 2>/dev/null && pwd || true)/build-litert.sh"
 
 if [ -x "${CENTRAL}" ]; then

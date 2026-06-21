@@ -14,9 +14,9 @@ fi
 : "${GSTREAMER_ROOT_ANDROID:=/opt/android/gstreamer}"
 
 # If the repository contains a build script to cross-compile GStreamer for Android, run it.
-if [ -x /opt/scripts/media/gstreamer/android/build-android-from-source.sh ]; then
+if [ -x /opt/scripts/03-media/gstreamer/android/build-android-from-source.sh ]; then
   echo "Found script build-android-from-source.sh -> building GStreamer for Android from source"
-  /opt/scripts/media/gstreamer/android/build-android-from-source.sh \
+  /opt/scripts/03-media/gstreamer/android/build-android-from-source.sh \
     --prefix="${GSTREAMER_ROOT_ANDROID}"
 else
   echo "No build script found; falling back to downloading prebuilt GStreamer Android universal"
