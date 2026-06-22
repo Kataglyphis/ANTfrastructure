@@ -53,7 +53,18 @@ if ($env:GPU_TYPE -eq 'nvidia' -and $env:CUDA_ROOT) {
         if (Test-Path $f) { [System.IO.File]::WriteAllText($f, ([System.IO.File]::ReadAllText($f) -replace '\bor\b', '||' -replace '\band\b', '&&' -replace '\bnot\b', '!')) }
     }
 
-    $gpuArgs += '-Donnxruntime_USE_CUDA=ON', '-Donnxruntime_USE_TENSORRT=OFF'
+    $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
+    $trtRoot = $env:TENSORRT_ROOT
+    if ($trtRoot -and (Test-Path $trtRoot)) {
+        Write-Host ("TensorRT detected at " + $trtRoot + " - enabling TensorRT EP")
+        $gpuArgs += '-Donnxruntime_USE_TENSORRT=ON'
+        $gpuArgs += "-DTENSORRT_ROOT=$trtRoot"
+        # Find a TensorRT version dir inside the root
+        $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($trtVerDir) { $gpuArgs += "-DTENSORRT_ROOT=$($trtVerDir.FullName)" }
+    } else {
+        $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
+    }
     $gpuArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaRoot\bin\nvcc.exe"
     $gpuArgs += "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$((Get-Command cl.exe -ErrorAction Stop).Source)"
     $gpuArgs += '-DCMAKE_CUDA_STANDARD:STRING=17'
@@ -101,7 +112,7 @@ $ninja = "$buildDir\build.ninja"
 $t = [System.IO.File]::ReadAllText($ninja)
 $t = $t -replace '--compiler-options /experimental:external\s*', ''
 $t = $t -replace '(?<=\s)/experimental:external(?=\s)', '' -replace '(?<=\s)-WX(?=\s)', ''
-$t = $t -replace '/arch:\S+', '' -replace '/bigobj', '' -replace '  +', ' '
+$t = $t -replace '/arch:\S+', '' -replace '(?<!-Xcompiler\s)/bigobj', '' -replace '  +', ' '
 [System.IO.File]::WriteAllText($ninja, $t)
 
 $env:NINJA_STATUS = "[%f/%t] "

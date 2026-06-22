@@ -9,7 +9,7 @@ FROM ${BASE_IMAGE}
 ARG CUDA_VERSION=13.3.0
 ARG CUDA_VERSION_MAJOR_MINOR=13.3
 ARG CUDNN_VERSION=9.23.2.1
-ARG TENSORRT_VERSION=10.9
+ARG TENSORRT_VERSION=10.10.0.39
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
@@ -20,8 +20,12 @@ ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 
 RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
 
+# Install TensorRT
+RUN & 'C:\temp\scripts\setup-tensorrt.ps1'
+
 # Signal to downstream layers that NVIDIA GPU is available
 ENV GPU_TYPE="nvidia"
 ENV CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
 ENV CUDA_PATH="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
-ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$PATH
+ENV TENSORRT_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\TensorRT"
+ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\bin;$PATH
