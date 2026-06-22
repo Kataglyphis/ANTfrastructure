@@ -73,11 +73,25 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 # 1. NVIDIA Components
 #    Combined installation of CUDA Toolkit, cuDNN, TensorRT, NCCL, Math Libraries,
 #    and CUDA firmware, plus TensorRT symlink setup.
+#
+#    TensorRT priority: local .deb in build context → NVIDIA apt repo → skip
 # ==============================================================================
+COPY tensorrt-local-repo*.deb /tmp/tensorrt-local-repo.deb
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
     CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
+    \
+    # Try local TensorRT repo deb first \
+    _trt_local=0; \
+    if [ -f /tmp/tensorrt-local-repo.deb ]; then \
+        echo "Installing TensorRT from local repo deb..."; \
+        dpkg -i /tmp/tensorrt-local-repo.deb 2>/dev/null && \
+        apt-get update -qq && \
+        _trt_local=1 || \
+        echo "WARNING: local TensorRT deb failed; falling back to NVIDIA repo"; \
+    fi; \
+    \
     apt-get install -y --no-install-recommends \
         cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \
         cuda-libraries-${CUDA_VERSION_MAJOR_MINOR} \
@@ -86,7 +100,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         cuda-command-line-tools-${CUDA_VERSION_MAJOR_MINOR} \
         libcudnn${CUDNN_VERSION}-cuda-${CUDA_MAJOR} \
         libcudnn${CUDNN_VERSION}-dev-cuda-${CUDA_MAJOR} \
-        tensorrt-dev \
         libnccl2 \
         libnccl-dev \
         libcublas-${CUDA_VERSION_MAJOR_MINOR} \
@@ -97,6 +110,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         libcufft-dev-${CUDA_VERSION_MAJOR_MINOR} \
         cuda-cudart-dev-${CUDA_VERSION_MAJOR_MINOR} \
         cuda-compat-${CUDA_VERSION_MAJOR_MINOR}; \
+    \
+    # Install TensorRT — try local repo first, then NVIDIA apt repo \
+    if [ "${_trt_local}" -eq 1 ]; then \
+        apt-get install -y --no-install-recommends \
+            tensorrt tensorrt-dev tensorrt-libs python3-tensorrt \
+            cuda-nvml-dev-${CUDA_VERSION_MAJOR_MINOR} || \
+        echo "WARNING: TensorRT local packages not all found; continuing"; \
+    else \
+        apt-get install -y --no-install-recommends \
+            tensorrt-dev tensorrt-libs || \
+        echo "WARNING: TensorRT apt package not found; skipping TensorRT install"; \
+    fi; \
+    \
     if [ ! -f /usr/local/tensorrt/include/NvInfer.h ]; then \
         TRT_INC=$(find /usr/include -name "NvInfer.h" -print -quit 2>/dev/null || true); \
         if [ -n "$TRT_INC" ]; then \

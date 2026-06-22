@@ -83,8 +83,6 @@ COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
-SHELL ["bash", "-c"]
-
 # Re-declared ARGs required by this stage (Docker requirement across FROM boundaries).
 # ARGs before the first FROM are scope-limited. All version ARGs below are passed
 # by the orchestrator from versions.env; defaults here are safety nets.

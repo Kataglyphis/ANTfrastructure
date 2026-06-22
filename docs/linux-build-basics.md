@@ -186,7 +186,7 @@ Not supported / not needed:
 
 ## Multi-Arch Build
 
-> **QEMU/binfmt:** If foreign-architecture builds fail with `exec format error`, run `sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all` in a terminal first. The binfmt registration may need to be reinstalled after a host reboot.
+> **QEMU/binfmt:** If foreign-architecture builds fail with `exec format error`, run `nerdctl run --rm --privileged tonistiigi/binfmt --install all` in a terminal first. The binfmt registration may need to be reinstalled after a host reboot.
 
 ### RISC-V64 example
 
