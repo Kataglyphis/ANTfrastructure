@@ -62,7 +62,6 @@ if ((Test-Path $pyConfigSrc) -and -not (Test-Path $pyConfigDst)) { Copy-Item $py
 
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
-$ortInstallDir = Join-Path $InstallDir 'lib\onnxruntime-source'
 # Auto-detect CUDA for GenAI
 $genaiCudaArgs = @()
 $cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
@@ -87,8 +86,15 @@ $cmakeExtraGenAi = @(
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
 if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
 
+# Derive MSVC tools path dynamically from vswhere (avoid hardcoded version)
+$msvcToolsRoot = Join-Path $vsPath 'VC\Tools\MSVC'
+$msvcVersionDirs = Get-ChildItem -Path $msvcToolsRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+if (-not $msvcVersionDirs) { throw "No MSVC toolchain found under $msvcToolsRoot" }
+$msvcVersionDir = $msvcVersionDirs[0].FullName
+Write-Host "Using MSVC tools: $msvcVersionDir"
+
 # Patch MSVC STL experimental/coroutine header to disable clang static_assert
-$coroHeader = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\include\experimental\coroutine"
+$coroHeader = Join-Path $msvcVersionDir 'include\experimental\coroutine'
 if (Test-Path $coroHeader) {
     $text = [System.IO.File]::ReadAllText($coroHeader)
     if ($text -match '_EMIT_STL_ERROR\(STL1009') {
@@ -98,7 +104,7 @@ if (Test-Path $coroHeader) {
     }
 }
 # Also patch yvals_core.h to make _EMIT_STL_ERROR a no-op when __clang__
-$yvalsCore = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\include\yvals_core.h"
+$yvalsCore = Join-Path $msvcVersionDir 'include\yvals_core.h'
 if (Test-Path $yvalsCore) {
     $text = [System.IO.File]::ReadAllText($yvalsCore)
     if ($text -match '#define _EMIT_STL_ERROR') {
