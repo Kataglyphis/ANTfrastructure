@@ -25,12 +25,14 @@ if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
     Write-Host 'vcpkg already installed'
 }
 
-Write-Host 'Installing zlib:x64-windows via vcpkg...'
-& "$VcpkgDir\vcpkg.exe" install zlib:x64-windows --triplet x64-windows 2>&1 | Out-Null
-if ($LASTEXITCODE -eq 0) {
-    Write-Host 'zlib installed successfully'
-} else {
-    Write-Host 'WARNING: zlib installation may have failed'
+Write-Host 'Installing dependencies via vcpkg...'
+foreach ($pkg in @('zlib:x64-windows', 'protobuf:x64-windows')) {
+    Write-Host "  Installing $pkg..."
+    & "$VcpkgDir\vcpkg.exe" install $pkg --triplet x64-windows 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  $pkg installed successfully"
+    } else {
+        Write-Host "  WARNING: $pkg installation may have failed"
+    }
 }
-
 Write-Host 'vcpkg setup complete.'

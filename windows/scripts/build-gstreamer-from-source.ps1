@@ -114,9 +114,9 @@ try {
     & curl.exe -fsSL 'https://bootstrap.pypa.io/get-pip.py' -o "$pythonDir\get-pip.py"
     $pipLog = Join-Path $resolvedLogDir 'pip-install.log'
     & cmd.exe /c """$pyExe"" ""$pythonDir\get-pip.py"" > ""$pipLog"" 2>&1"
-    Get-Content $pipLog | ForEach-Object { if ($_) { if ($_) { log $_ } } }
+    Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
     & cmd.exe /c """$pyExe"" -m pip install meson > ""$pipLog"" 2>&1"
-    Get-Content $pipLog | ForEach-Object { if ($_) { if ($_) { log $_ } } }
+    Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
 
     # Find meson executable from Scripts dir (embedded Python's -m may not
     # find site-packages even after _pth removal; direct exe is reliable)

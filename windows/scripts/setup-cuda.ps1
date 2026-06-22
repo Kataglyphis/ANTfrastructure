@@ -23,53 +23,27 @@ $CudnnRoot = Resolve-ContainerImageValue -Value $CudnnRoot -EnvironmentVariable 
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
-Write-Host ('Installing CUDA Toolkit {0} via Scoop (portable install within container)...' -f $CudaVersion)
-scoop install cuda 2>&1
-$scoopExit = $LASTEXITCODE
-if ($scoopExit -ne 0) {
-    Write-Host "Scoop CUDA install failed (exit $scoopExit) - falling back to direct full installer"
-    $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/cuda_$CudaVersion`_windows.exe"
-    Write-Host "Download URL: $cudaUrl"
-    $cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
-    Invoke-WebRequest -Uri $cudaUrl -OutFile $cudaInstaller
-    Write-Host 'Installing CUDA Toolkit with all components (lowercase -s = full silent install)...'
-    $proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-download-driver' -Wait -PassThru
-    if ($proc.ExitCode -ne 0) {
-        throw ('CUDA installation failed with exit code: {0}' -f $proc.ExitCode)
-    }
-    Remove-Item $cudaInstaller -Force
+# Use NVIDIA's full CUDA installer (not Scoop — Scoop's portable install strips CCCL headers).
+# The full installer includes CUB, Thrust, libcudacxx at include/cccl/ and a proper nv/target.h.
+Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaVersion)
+$cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/cuda_$CudaVersion`_windows.exe"
+Write-Host "Download URL: $cudaUrl"
+$cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
+Invoke-WebRequest -Uri $cudaUrl -OutFile $cudaInstaller
+Write-Host 'Installing CUDA Toolkit (full silent install, no driver)...'
+$proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-download-driver' -Wait -PassThru
+if ($proc.ExitCode -ne 0) {
+    throw ('CUDA installation failed with exit code: {0}' -f $proc.ExitCode)
 }
+Remove-Item $cudaInstaller -Force
 Write-Host 'CUDA Toolkit installation complete.'
 
-# Detect CUDA installation path: prefer Scoop path (portable, within container layer),
-# fall back to standard Program Files location for direct installer
-$scoopCudaHome = "$env:USERPROFILE\scoop\apps\cuda\current"
-$expectedProgramFilesRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$($CudaVersionMajorMinor -replace '-', '.')"
-
-$effectiveCudaRoot = $null
-if (Test-Path $scoopCudaHome) {
-    $effectiveCudaRoot = $scoopCudaHome
-    Write-Host "CUDA Scoop home found at: $effectiveCudaRoot"
-} elseif (Test-Path $expectedProgramFilesRoot) {
-    $effectiveCudaRoot = $expectedProgramFilesRoot
-    Write-Host "CUDA Program Files home found at: $effectiveCudaRoot"
-} else {
-    # Search broadly
-    $cudaSearchPaths = @(
-        "$env:USERPROFILE\scoop\apps\cuda\current",
-        $expectedProgramFilesRoot,
-        "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$((Get-ChildItem 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1).Name)"
-    )
-    foreach ($searchPath in $cudaSearchPaths) {
-        $testNvcc = Join-Path $searchPath 'bin\nvcc.exe'
-        if (Test-Path $testNvcc) {
-            $effectiveCudaRoot = $searchPath
-            Write-Host "nvcc found at: $testNvcc"
-            break
-        }
-    }
-    if (-not $effectiveCudaRoot) { throw "nvcc.exe not found after CUDA installation" }
+# Full installer puts CUDA at Program Files
+$effectiveCudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$($CudaVersionMajorMinor -replace '-', '.')"
+if (-not (Test-Path (Join-Path $effectiveCudaRoot 'bin\nvcc.exe'))) {
+    throw "nvcc.exe not found at $effectiveCudaRoot after full installer"
 }
+Write-Host "CUDA root: $effectiveCudaRoot"
 
 [Environment]::SetEnvironmentVariable('CUDA_ROOT', $effectiveCudaRoot, 'Process')
 [Environment]::SetEnvironmentVariable('CUDA_PATH', $effectiveCudaRoot, 'Process')
@@ -78,57 +52,48 @@ $env:PATH = "$cudaBinDir;$env:PATH"
 Write-Host "Set CUDA_ROOT to: $effectiveCudaRoot"
 Get-ChildItem -Path "$effectiveCudaRoot\bin" -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { Write-Host "  CUDA bin: $_" }
 
-# Verify CCCL/CRT headers are present; create stubs if missing (Scoop portable install
-# includes all components, but CUDA 13.x places some CCCL headers under include/cccl/
-# instead of include/nv/ or include/crt/)
+# Full installer includes CCCL headers (cub, thrust, libcudacxx) at include/cccl/.
+# Just verify they're present.
 $cudaIncludeDir = "$effectiveCudaRoot\include"
-
-# CUDA 13.x CMake config references include/cccl/ for CCCL headers — Scoop doesn't ship it
 $ccclDir = Join-Path $cudaIncludeDir 'cccl'
-if (-not (Test-Path $ccclDir)) {
-    New-Item -Path $ccclDir -ItemType Directory -Force | Out-Null
-    Write-Host "Created empty include/cccl/ directory (required by CUDA CMake config)"
+if (Test-Path (Join-Path $ccclDir 'cub\cub.cuh')) {
+    Write-Host 'CCCL headers verified present (cub/cub.cuh found).'
+} else {
+    Write-Host 'WARNING: CCCL cub/cub.cuh not found — CUDA installer may not have included CCCL.'
 }
-# CUDA CMake's CUDA::cublasLt etc. have INTERFACE_INCLUDE_DIRECTORIES pointing at cccl/
-# Even empty, the directory existence satisfies CMake's path validation.
 
-$missingHeaders = @()
+# nv/target.h: the full installer provides a proper version that handles both
+# host and device compilation (selects device branch when __CUDA_ARCH__ is defined).
+# Only create a stub if the file is completely missing.
 $nvDir = Join-Path $cudaIncludeDir 'nv'
 if (-not (Test-Path $nvDir)) { New-Item -Path $nvDir -ItemType Directory -Force | Out-Null }
-# CUDA 13.3 cuda_fp16.h uses `#include <nv/target>` (no .h extension, CCCL header-unit style)
-# We need BOTH nv/target.h (for <nv/target.h> includes) AND nv/target (for <nv/target> includes).
-# The stub must define NV_IS_DEVICE/NV_IS_HOST/NV_IF_ELSE_TARGET for host-only compilation
-# (clang-cl compiling CUDA provider code without nvcc's device builtins).
-$nvTargetContent = @'
-#pragma once
-// CCCL nv/target stub for host-only compilation (clang-cl, no nvcc builtins)
-#define NV_IS_DEVICE 0
-#define NV_IS_HOST 1
-#define NV_IF_ELSE_TARGET(cond, t, f) f
-'@
-$nvTargetH = Join-Path $nvDir 'target.h'
-$nvTargetNoExt = Join-Path $nvDir 'target'
-if (-not (Test-Path $nvTargetH)) {
-    Set-Content -Path $nvTargetH -Value $nvTargetContent -Encoding ASCII
-    Write-Host "Created stub: nv/target.h"
-}
-if (-not (Test-Path $nvTargetNoExt)) {
-    Set-Content -Path $nvTargetNoExt -Value $nvTargetContent -Encoding ASCII
-    Write-Host "Created stub: nv/target (no ext, for <nv/target>)"
-}
-if (-not (Test-Path (Join-Path $cudaIncludeDir 'crt\host_config.h'))) {
-    $missingHeaders += 'crt/host_config.h'
-}
-if ($missingHeaders.Count -gt 0) {
-    Write-Host "WARNING: CRT headers missing: $($missingHeaders -join ', ')"
-    foreach ($header in $missingHeaders) {
-        $dir = Split-Path (Join-Path $cudaIncludeDir $header) -Parent
-        if (-not (Test-Path $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-        Set-Content -Path (Join-Path $cudaIncludeDir $header) -Value '#pragma once' -Encoding ASCII
-        Write-Host "Created stub: $header"
+$nvTargetLines = @(
+    '#pragma once',
+    '#define NV_IS_DEVICE 0',
+    '#define NV_IS_HOST 1',
+    '#define NV_IF_ELSE_TARGET(cond,t,f) f',
+    '#define NV_IF_TARGET(arch, ...) _NV_IF_TARGET_HOST(__VA_ARGS__)',
+    '#define _NV_IF_TARGET_HOST(device, ...) __VA_ARGS__',
+    '#define NV_PROVIDES_SM_70 0',
+    '#define NV_PROVIDES_SM_80 0',
+    '#define NV_PROVIDES_SM_90 0',
+    '#define NV_PROVIDES_SM_61 0'
+)
+foreach ($targetFile in @((Join-Path $nvDir 'target.h'), (Join-Path $nvDir 'target'))) {
+    if (-not (Test-Path $targetFile)) {
+        Set-Content -Path $targetFile -Value $nvTargetLines -Encoding ASCII
+        Write-Host "Created stub: $targetFile (host-only fallback)"
+    } else {
+        Write-Host "Using installer-provided: $targetFile"
     }
-} else {
-    Write-Host "CCCL and CRT headers verified present."
+}
+
+# CRT stubs (only if missing — full installer should have them)
+if (-not (Test-Path (Join-Path $cudaIncludeDir 'crt\host_config.h'))) {
+    $crtDir = Join-Path $cudaIncludeDir 'crt'
+    if (-not (Test-Path $crtDir)) { New-Item -Path $crtDir -ItemType Directory -Force | Out-Null }
+    Set-Content -Path (Join-Path $crtDir 'host_config.h') -Value '#pragma once' -Encoding ASCII
+    Write-Host 'Created stub: crt/host_config.h'
 }
 
 Write-Host ('Downloading cuDNN {0}...' -f $CudnnVersion)

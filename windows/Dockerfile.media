@@ -10,9 +10,9 @@ ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 FROM ${BASE_IMAGE}
 
 ARG GSTREAMER_VERSION=1.29.1
-ARG ONNXRUNTIME_VERSION=1.26.0
+ARG ONNXRUNTIME_VERSION=1.27.0
 ARG ONNXRUNTIME_GENAI_VERSION=0.13.1
-ARG ONNX_DIRECTML_VERSION=1.26.0
+
 ARG OPENCV_SOURCE_VERSION=5.x
 ARG LITERT_VERSION=v2.1.5
 ARG LITERT_LM_VERSION=0.13.1
@@ -28,18 +28,6 @@ COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 # ── Stage 1: ONNX Runtime source build via clang-cl (git clone) ─────
 # Built before OpenCV so OpenCV can detect it.
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}"
-# Ensure CUDA include/cccl/ and nv/target (no ext) exist
-# CUDA 13.x CMake config references include/cccl/ but Scoop CUDA omits it.
-# Also cuda_fp16.h uses `#include <nv/target>` (no .h) in CUDA 13.3.
-RUN $cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } else { 'C:\Users\ContainerAdministrator\scoop\apps\cuda\current' }; `
-    $incDir = Join-Path $cudaRoot 'include'; `
-    $ccclDir = Join-Path $incDir 'cccl'; `
-    if (-not (Test-Path $ccclDir)) { New-Item -Path $ccclDir -ItemType Directory -Force | Out-Null; Write-Host 'Created CUDA cccl dir for CMake compat' }; `
-    $nvDir = Join-Path $incDir 'nv'; `
-    if (-not (Test-Path $nvDir)) { New-Item -Path $nvDir -ItemType Directory -Force | Out-Null }; `
-    $c = '#pragma on' + 'se' + [char]10 + '#define NV_IS_DEVICE 0' + [char]10 + '#define NV_IS_HOST 1' + [char]10 + '#define NV_IF_ELSE_TARGET(cond,t,f) f'; `
-    if (-not (Test-Path (Join-Path $nvDir 'target.h'))) { Set-Content -Path (Join-Path $nvDir 'target.h') -Value $c -Encoding ASCII; Write-Host 'Created nv/target.h stub' }; `
-    if (-not (Test-Path (Join-Path $nvDir 'target'))) { Set-Content -Path (Join-Path $nvDir 'target') -Value $c -Encoding ASCII; Write-Host 'Created nv/target stub (no ext)' }
 RUN & 'C:\temp\scripts\build-onnx-from-source.ps1' `
     -SourceDir 'C:\temp\onnx-src' `
     -InstallDir 'C:\gstreamer'
@@ -86,7 +74,7 @@ ENV ONNX_GENAI_ROOT="C:\gstreamer\lib\onnxruntime-genai-source"
 # Canonical version aliases for downstream consumers and verification scripts
 ENV ONNX_VERSION="${ONNXRUNTIME_VERSION}"
 ENV ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
-ENV ONNX_DIRECTML_VERSION="${ONNX_DIRECTML_VERSION}"
+
 
 # GPU variant: CUDA detected from SDK layer
 ENV ONNX_GPU_VARIANT="cuda"

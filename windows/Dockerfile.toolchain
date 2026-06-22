@@ -3,7 +3,7 @@
 # Builds CPython 3.14 from source (matching versions.env) on top of the SDK layer.
 # Makes the built Python interpreter available for downstream media builds.
 
-ARG BASE_IMAGE=local/kataglyphis:windows-sdk
+ARG BASE_IMAGE=local/kataglyphis:windows-nvidia
 FROM ${BASE_IMAGE}
 
 ARG PYTHON_VERSION=3.14.5
