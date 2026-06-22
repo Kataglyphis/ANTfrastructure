@@ -234,7 +234,11 @@ The **Windows lane** follows a separate 3-stage build (`base → ai → final`) 
 ### Prerequisites
 
 - **nerdctl** with BuildKit backend
-- **QEMU/binfmt** for foreign-architecture runtime builds (`tonistiigi/binfmt`)
+- **QEMU/binfmt** for foreign-architecture runtime builds. **Required before EVERY build** (registration is lost after host reboot):
+  ```bash
+  sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
+  ```
+  Without this, riscv64 and arm64 builds under QEMU will fail with `exec format error` or silent exit code 1.
 - **Registry access** (GHCR) for pushing intermediate and final images
 - **Disk space**: ~50GB+ for full cross chain with all architectures
 - **Python 3** for digest resolution (`registry-digest.py`)

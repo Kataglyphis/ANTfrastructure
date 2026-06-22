@@ -226,9 +226,18 @@ bootstrap_ca() {
     bash "${SCRIPT_DIR}/use-fast-ubuntu-mirror.sh"
   fi
 
-  apt-get update -qq
-  apt-get install -y --no-install-recommends ca-certificates
-  update-ca-certificates
+  # Retry apt-get under QEMU emulation (network can be flaky)
+  local _retry=0 _max=3
+  until apt-get update -qq; do
+    _retry=$((_retry + 1))
+    [ "${_retry}" -ge "${_max}" ] && break
+    log "apt-get update failed (attempt ${_retry}/${_max}), retrying..."
+    sleep 5
+  done
+  apt-get install -y --no-install-recommends ca-certificates || \
+    log "WARNING: ca-certificates install failed (non-fatal during emulated build)"
+  update-ca-certificates || \
+    log "WARNING: update-ca-certificates failed (non-fatal during emulated build)"
 }
 
 configure_fast_mirror() {

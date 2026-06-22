@@ -65,14 +65,14 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 | GPU acceleration | NVIDIA CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN, TensorRT | ✔️ |
 | GPU acceleration | AMD ROCm | ✔️ |
 | GPU acceleration | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan --> | ✔️ |
-| Media | ONNX Runtime <!-- generated:onnx -->1.26.0<!-- /generated:onnx --> | ✔️ |
+| Media | ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |
 | Media | GStreamer <!-- generated:gstreamer -->1.29.1<!-- /generated:gstreamer -->, OpenCV <!-- generated:opencv -->5.x<!-- /generated:opencv -->, LiteRT | ✔️ |
 | Media | libcamera, FFmpeg | ✔️ |
 | Compiler | GCC <!-- generated:gcc -->16.1.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->22.1.6<!-- /generated:llvm --> | ✔️ |
 | Language runtime | Python <!-- generated:python -->3.14.5<!-- /generated:python -->, Node.js <!-- generated:node -->24.16.0<!-- /generated:node --> | ✔️ |
 | Android | SDK <!-- generated:android_sdk -->14742923<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
 | Windows | MSVC Build Tools, CUDA 12.9, GStreamer 1.28.3 | ✔️ |
-| Windows | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.26.0<!-- /generated:onnx --> | ✔️ |
+| Windows | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |
 
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started
 
