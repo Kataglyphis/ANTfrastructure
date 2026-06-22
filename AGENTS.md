@@ -133,6 +133,16 @@ net start stevedore
   -f windows/Dockerfile .
 ```
 
+### TensorRT Setup (Optional)
+
+TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's EULA. To include TensorRT:
+
+1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-10.10.0.39.Windows10.x86_64.cuda-*.zip`)
+2. Place the zip in `windows/downloads/`
+3. It will be auto-detected during the `Dockerfile.nvidia` build
+
+If no zip is found, the build skips TensorRT gracefully (CUDA + cuDNN still work). The ORT build script auto-detects `$env:TENSORRT_ROOT` and enables the TensorRT EP when available.
+
 ### Windows Build Notes
 
 | Component | Generator | Compiler | Notes |
