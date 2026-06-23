@@ -57,11 +57,12 @@ if ($env:GPU_TYPE -eq 'nvidia' -and $env:CUDA_ROOT) {
     $trtRoot = $env:TENSORRT_ROOT
     if ($trtRoot -and (Test-Path $trtRoot)) {
         Write-Host ("TensorRT detected at " + $trtRoot + " - enabling TensorRT EP")
-        $gpuArgs += '-Donnxruntime_USE_TENSORRT=ON'
-        $gpuArgs += "-DTENSORRT_ROOT=$trtRoot"
-        # Find a TensorRT version dir inside the root
+        # Find versioned subdirectory, fall back to root
         $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($trtVerDir) { $gpuArgs += "-DTENSORRT_ROOT=$($trtVerDir.FullName)" }
+        if ($trtVerDir) { $trtRoot = $trtVerDir.FullName }
+        $gpuArgs += '-Donnxruntime_USE_TENSORRT=ON'
+        $gpuArgs += '-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=ON'
+        $gpuArgs += "-DTENSORRT_ROOT=$trtRoot"
     } else {
         $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
     }
