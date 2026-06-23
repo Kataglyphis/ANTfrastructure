@@ -121,7 +121,7 @@ bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm
 ### Reinstall QEMU/binfmt after a host reboot
 
 ```bash
-sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all
+nerdctl run --rm --privileged tonistiigi/binfmt --install all
 ```
 
 ## CI

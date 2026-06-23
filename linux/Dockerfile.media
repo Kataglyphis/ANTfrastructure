@@ -314,6 +314,37 @@ RUN --mount=type=cache,target=/tmp \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh app-wheels
 
 # ==============================================================================
+# Arm NN stage (arm64 only; provides ONNX Runtime Arm NN EP)
+# ==============================================================================
+FROM base AS armnn
+
+ARG TARGET_ARCH
+ARG BUILD_MODE
+
+RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    set -euo pipefail; \
+    if echo "${TARGET_ARCH}" | grep -qiE 'arm64|aarch64'; then \
+        bash /opt/scripts/03-media/build/armnn/install-deps.sh; \
+    else \
+        echo "Skipping Arm NN deps (arm64 only, got ${TARGET_ARCH})"; \
+    fi
+
+RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    if echo "${TARGET_ARCH}" | grep -qiE 'arm64|aarch64'; then \
+        bash /opt/scripts/03-media/build/armnn/build-arm-compute-library.sh && \
+        bash /opt/scripts/03-media/build/armnn/build-armnn.sh; \
+    else \
+        echo "Skipping Arm NN build (arm64 only, got ${TARGET_ARCH})"; \
+        mkdir -p /opt/armnn /opt/acl; \
+    fi
+
+# ==============================================================================
 # FFmpeg stage
 # ==============================================================================
 FROM base AS ffmpeg
@@ -362,6 +393,8 @@ COPY --link --from=litert ${LITERT_OUTPUT_DIR}/include ${LITERT_OUTPUT_DIR}/incl
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/lib ${LITERT_OUTPUT_DIR}/lib
 COPY --link --from=opencv ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
+COPY --link --from=armnn /opt/armnn /opt/armnn
+COPY --link --from=armnn /opt/acl /opt/acl
 
 RUN --mount=type=cache,target=/tmp \
     set -euo pipefail; \

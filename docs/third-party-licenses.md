@@ -40,7 +40,7 @@ images).  Each upstream component carries its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| ONNX Runtime | v1.26.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime | v1.27.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.13.1 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.1.5 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.x | [opencv.org](https://opencv.org/) | Apache 2.0 |
@@ -125,9 +125,9 @@ images).  Each upstream component carries its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | GStreamer | 1.29.1 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
-| ONNX Runtime | v1.26.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime | v1.27.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.13.1 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
-| ONNX Runtime DirectML | 1.26.0 | [github.com/microsoft/onnxruntime-directml](https://github.com/microsoft/onnxruntime-directml) | MIT |
+| ONNX Runtime DirectML | 1.27.0 | [github.com/microsoft/onnxruntime-directml](https://github.com/microsoft/onnxruntime-directml) | MIT |
 | OpenCV | 5.x | [opencv.org](https://opencv.org/) | Apache 2.0 |
 
 <!-- generated:deps-table:end -->

@@ -222,6 +222,16 @@ case "${STAGE}" in
     verify_dir_not_empty "${PREFIX}" "app wheelhouse"
     ;;
 
+  armnn)
+    echo "=== Arm NN stage integrity check ==="
+    if echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qiE 'arm64|aarch64'; then
+      verify_dir_not_empty "/opt/armnn/lib" "Arm NN libs"
+      verify_dir_not_empty "/opt/acl/lib" "ACL libs"
+    else
+      echo "Skipping Arm NN check (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-unknown}})"
+    fi
+    ;;
+
   media-inputs)
     echo "=== Media inputs stage integrity check ==="
     verify_dir_not_empty "${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}/lib" "ONNX CPU libs in media-inputs"
@@ -229,11 +239,13 @@ case "${STAGE}" in
       verify_dir_not_empty "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib64" "OpenCV lib64 in media-inputs" || true
     fi
     verify_file_exists "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg" "ffmpeg in media-inputs" || true
+    verify_dir_not_empty "/opt/armnn/lib" "Arm NN in media-inputs" || true
+    verify_dir_not_empty "/opt/acl/lib" "ACL in media-inputs" || true
     ;;
 
   *)
     echo "ERROR: Unknown verification stage: ${STAGE}" >&2
-    echo "Known stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels, media-inputs" >&2
+    echo "Known stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels, armnn, media-inputs" >&2
     exit 1
     ;;
 esac

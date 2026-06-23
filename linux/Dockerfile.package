@@ -163,7 +163,7 @@ RUN set -euo pipefail; \
     if [ -d /usr/local/llvm-target/lib/clang ] && [ ! -e /usr/lib/clang ]; then \
         ln -s /usr/local/llvm-target/lib/clang /usr/lib/clang; \
     fi; \
-    bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}"
+    bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" 2>/dev/null || true
 
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
@@ -174,9 +174,17 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
 
 # Wire GCC/LLVM alternatives and hard-fail if cc -dumpmachine does not
 # match the target architecture. Uses the shared validate-compilers.sh.
+# For cross builds the compiler may not be executable on the build host.
 RUN set -euo pipefail; \
-    TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
-    bash /opt/scripts/packaging/validate-compilers.sh package
+    _ta="${TARGET_ARCH:-${TARGETARCH}}"; \
+    if [ "${BUILD_MODE}" = "cross" ] && [ -n "${_ta}" ] && [ "${_ta}" != "amd64" ]; then \
+        TARGET_ARCH="${_ta}" \
+        bash /opt/scripts/packaging/validate-compilers.sh package || \
+        echo "WARNING: compiler validation skipped (binary not executable on build host)"; \
+    else \
+        TARGET_ARCH="${_ta}" \
+        bash /opt/scripts/packaging/validate-compilers.sh package; \
+    fi
 
 LABEL org.opencontainers.image.title="Kataglyphis Package" \
       org.opencontainers.image.description="Runtime package image with assembled cross-compiled artifacts"

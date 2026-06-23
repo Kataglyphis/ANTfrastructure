@@ -81,6 +81,38 @@ if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
   )
 fi
 
+if [ "${ORT_ENABLE_TVM:-true}" = "true" ]; then
+  if [ -d /opt/src/tvm-install ]; then
+    info "TVM EP enabled (TVM installed at /opt/src/tvm-install)"
+    BUILD_ARGS+=(
+      --use_tvm
+      --tvm_home /opt/src/tvm-install
+    )
+  else
+    warn "TVM EP enabled but /opt/src/tvm-install not found; skipping TVM EP"
+  fi
+fi
+
+if [ "${ORT_ENABLE_ARMNN:-true}" = "true" ]; then
+  case "${TARGET_ARCH:-${TARGETARCH:-}}" in
+    arm64|aarch64)
+      if [ -d /opt/armnn ] && [ -d /opt/acl ]; then
+        info "Arm NN EP enabled (armnn=/opt/armnn, acl=/opt/acl)"
+        BUILD_ARGS+=(
+          --use_armnn
+          --armnn_home /opt/armnn
+          --acl_home /opt/acl
+        )
+      else
+        warn "Arm NN EP enabled but /opt/armnn or /opt/acl not found; skipping"
+      fi
+      ;;
+    *)
+      info "Arm NN EP only supported on arm64; skipping on ${TARGET_ARCH:-${TARGETARCH:-unknown}}"
+      ;;
+  esac
+fi
+
 if cross_build_is_active; then
   append_onnx_cross_cmake_build_args BUILD_ARGS
   if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
