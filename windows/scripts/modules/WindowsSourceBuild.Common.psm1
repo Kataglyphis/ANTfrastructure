@@ -172,7 +172,8 @@ function Get-CudaRoot {
 }
 
 function Assert-CudaAvailable {
-    return -not [string]::IsNullOrWhiteSpace(Get-CudaRoot)
+    $root = Get-CudaRoot
+    return -not [string]::IsNullOrWhiteSpace($root)
 }
 
 function Assert-CudnnInstalled {
