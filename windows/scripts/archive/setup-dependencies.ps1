@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Param(
     [string]$VulkanVersion = '1.4.341.1',
     [string]$ClangVersion  = '21.1.1',
@@ -9,20 +12,16 @@ Write-Host "=== Installing build dependencies on Windows ==="
 # Enable verbose logging
 $ErrorActionPreference = 'Stop'
 
-# Install LLVM/Clang via Chocolatey
-# 
+# Install LLVM/Clang via winget
+
 Write-Host "Installing LLVM/Clang $ClangVersion..."
 winget install --accept-source-agreements --accept-package-agreements --id=LLVM.LLVM -v $ClangVersion -e
-# choco install llvm --version="$ClangVersion" --params '/AddToPath' -y
 
 # Install sccache
 Write-Host "Installing Ccache..."
-winget install --accept-source-agreements --accept-package-agreements --id=Ccache.Ccache -e 
-# choco install sccache -y
+winget install --accept-source-agreements --accept-package-agreements --id=Ccache.Ccache -e
 
-# install scoop (if not present)
 iwr -useb get.scoop.sh | iex
-# install sccache
 scoop install sccache
 # verify
 sccache --version
@@ -49,8 +48,7 @@ $includePath= "${VulkanSdkPath}\${VulkanVersion}\Include"
 
 foreach ($path in @($binPath, $libPath, $includePath)) {
     if (Test-Path $path) {
-        Write-Host "Appending $path to GITHUB_PATH"
-        $path | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        if ($env:GITHUB_PATH) { $path | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append } else { Write-Host "GITHUB_PATH not set — adding to session PATH instead"; $env:PATH = "$path;$env:PATH" }
     } else {
         Write-Warning "Path not found: $path"
     }
@@ -59,8 +57,7 @@ foreach ($path in @($binPath, $libPath, $includePath)) {
 # Add NSIS to PATH (in case it's under Program Files (x86))
 $nsisPath = 'C:\Program Files (x86)\NSIS'
 if (Test-Path $nsisPath) {
-    Write-Host "Adding NSIS path to GITHUB_PATH: $nsisPath"
-    $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    if ($env:GITHUB_PATH) { $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append } else { Write-Host "GITHUB_PATH not set — adding to session PATH instead"; $env:PATH = "$nsisPath;$env:PATH" }
 } else {
     Write-Warning "NSIS installation path not found at $nsisPath"
 }

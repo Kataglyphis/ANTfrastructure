@@ -1,6 +1,9 @@
 # escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # Cached Windows toolchain base image.
 # Installs non-AI build tooling so CUDA/ONNX/OpenCV can live in a derived layer.
+# Build scripts live in the media layer.
 
 ARG WINDOWS_LTSC=2025
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
@@ -15,21 +18,30 @@ ENV TEMP_DIR="C:\temp"
 ENV GST_VERSION=$GSTREAMER_VERSION
 LABEL maintainer="contact@jonasheinle.de"
 
+# NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 # Stable scripts layer (cache-friendly — rarely changes)
 COPY windows\scripts\modules C:\temp\scripts\modules
-COPY windows\scripts\setup-*.ps1 C:\temp\scripts\
+COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
+COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
+COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
+COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
+
 COPY windows\scripts\configure-dns.ps1 C:\temp\scripts\
 COPY windows\scripts\verify-*.ps1 C:\temp\scripts\
 COPY windows\scripts\finalize-container.ps1 C:\temp\scripts\
 COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
+# versions.env is the single source of truth for version numbers.
+# load-versions.ps1 reads it and sets matching env vars.
+# Dockerfile ARG defaults should mirror versions.env entries.
 COPY linux\scripts\01-core\versions.env C:\temp\
+RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 
 # Configure DNS inside BuildKit container (nerdctl build can't pass --dns on Windows)
 RUN & 'C:\temp\scripts\configure-dns.ps1'
 
-RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR; Start-Sleep -Seconds 10; Get-Process | Where-Object { $_.ProcessName -match 'vs_|setup_|install' } | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3; [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
 

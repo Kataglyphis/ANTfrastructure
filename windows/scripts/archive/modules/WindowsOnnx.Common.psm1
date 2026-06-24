@@ -1,7 +1,10 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 $containerImagePath = Join-Path $PSScriptRoot 'WindowsContainerImage.Common.psm1'
-Import-Module $containerImagePath
+Import-Module $containerImagePath -Force
 
 function Get-OnnxPackageLayout {
     param(

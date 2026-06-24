@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$TempDir = 'C:\temp',
     [string]$GitInstallerUrl = 'https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/Git-2.54.0-64-bit.exe',
@@ -68,7 +71,7 @@ if ([string]::IsNullOrWhiteSpace($VulkanVersion)) {
 }
 
 scoop install --global extras/flutter
-scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib
+scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib main/nasm main/openssl
 
 Write-Host ('Downloading CMake nightly from {0}...' -f $CMakeNightlyUrl)
 $cmakeInstaller = Join-Path $TempDir 'cmake-nightly.msi'

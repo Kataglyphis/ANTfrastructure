@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 <#
 .SYNOPSIS
     Build GStreamer from source on Windows using Meson with clang-cl.
@@ -33,7 +36,7 @@
 #>
 param(
     [string]$GstVersion        = '',
-    [string]$InstallDir        = 'C:\gstreamer',
+    [string]$InstallDir        = 'C:\runtime',
     [string]$SrcDir            = 'C:\temp\gst-source',
     [string]$BuildDir          = 'C:\temp\gst-builddir',
     [string]$LogDir            = 'C:\temp\logs',
@@ -126,7 +129,7 @@ try {
         # Fallback: try pip show to locate
         $mesonVer = & $pyExe -m pip show meson 2>&1 | Select-String '^Location:' | ForEach-Object { $_ -replace '^Location: ', '' }
         if ($mesonVer) {
-            $mesonExe = Join-Path (Join-Path ($mesonVer.Trim()) '..\Scripts') 'meson.exe'
+            $mesonExe = (Get-Item $mesonVer.Trim()).Directory.Parent.FullName + '\Scripts\meson.exe'
         }
     }
     if (-not (Test-Path $mesonExe)) { throw 'meson.exe not found after pip install' }
@@ -275,7 +278,7 @@ try {
     }
 
     # ---- 5b. create stub unistd.h + fixed intrin.h for platform compat ----
-    $stubDir = 'C:\temp\includes'
+    $stubDir = Join-Path $env:TEMP_DIR 'includes'
     if (-not (Test-Path $stubDir)) { New-Item -Path $stubDir -ItemType Directory -Force | Out-Null }
     # unistd.h: flex/bison generated files + POSIX compat on Windows
     $stubFile = Join-Path $stubDir 'unistd.h'
@@ -291,7 +294,7 @@ int _isatty(int);
 
     # ---- 5c. detect CUDA (available from Dockerfile.ai layer) ----
     $cudaDetected = $false
-    $cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+    $cudaRoot = Get-CudaRoot
     if ($cudaRoot -and (Test-Path $cudaRoot)) {
         $cudaDetected = $true
         log "CUDA detected at: $cudaRoot"
@@ -324,7 +327,7 @@ int _isatty(int);
         '-Dtests=disabled',
         '-Dexamples=disabled',
         # Provide stub unistd.h; disable cairo Win32 (avoids LLVM 22 mmintrin.h bug)
-        '-Dc_args=-IC:\temp\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types',
+        "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
         '-Dcairo:win32=disabled',
         '-Dopus:intrinsics=disabled',
         # nvcodec disabled: D3D11 interop code in gstnvdecoder.cpp uses
@@ -420,7 +423,6 @@ int _isatty(int);
     }
 
     log 'END - GStreamer source build completed successfully.'
-    exit 0
 
 } catch {
     log "FATAL ERROR: $($_.Exception.Message)"
