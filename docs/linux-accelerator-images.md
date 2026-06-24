@@ -145,7 +145,7 @@ docker build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Doc
 ## AMD GPU Build (Linux)
 
 > **Requirements:**
-> - Host driver >= 6.0 (for ROCm 6.1).
+> - Host driver >= 6.0 (for ROCm 7.1).
 > - `--device=/dev/kfd --device=/dev/dri` passed to `docker run`.
 
 The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before the media stage. Subsequent stages reuse the standard Dockerfiles by passing `--build-arg ENABLE_AMD=true`.
@@ -154,11 +154,17 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.amd` | Installs ROCm Toolkit, MIOpen, RCCL, rocBLAS, rocFFT |
-| `linux/Dockerfile.media` | Media stack: conditionally builds ORT with ROCm EP when `ENABLE_AMD=true` |
+| `linux/Dockerfile.amd` | Installs ROCm 7.1 + MIGraphX 2.14 from AMD repo (HIP, MIOpen, RCCL, rocBLAS, rocFFT, MIGraphX) |
+| `linux/Dockerfile.media` | Media stack: conditionally builds ORT with MIGraphX EP when `ENABLE_AMD=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the AMD media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
-| `linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh` | ORT build script with ROCm EP |
+| `linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh` | ORT build script with MIGraphX EP |
+
+**Notes:**
+- MIGraphX packages come from the AMD ROCm repository (`repo.radeon.com`) targeting Ubuntu 24.04 (noble), compatible with Ubuntu 26.04 (plucky). The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages to avoid noble-vs-resolute apt version conflicts.
+- The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home /opt/rocm` instead of `--use_rocm`.
+- The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`).
+- The media stage strips all external apt sources from the SDK base image and configures clean resolute-only sources to prevent cross-distro package conflicts. 01-core modules are bind-mounted into build stages so `media_common_init()` can locate cross-build helpers.
 
 **Sequential build (nerdctl):**
 
@@ -203,7 +209,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   -f linux/Dockerfile.torch \
   --build-arg ENABLE_AMD=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd \
-  --build-arg ONNX_PACKAGE="onnxruntime-rocm" \
+  --build-arg ONNX_PACKAGE="onnxruntime-migraphx" \
   --build-arg PYTORCH_EXTRA="pytorch-rocm71" \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-amd,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-amd \

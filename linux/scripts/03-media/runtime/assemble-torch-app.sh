@@ -116,9 +116,9 @@ install_project_environment() {
 
   case "${ONNX_PACKAGE}" in
     onnxruntime|onnxruntime-webgpu)
-      rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_rocm-*.whl /opt/wheels/*genai*.whl || true
+      rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_migraphx-*.whl /opt/wheels/*genai*.whl || true
       ;;
-    onnxruntime-gpu|onnxruntime-rocm)
+    onnxruntime-gpu|onnxruntime-migraphx)
       rm -f /opt/wheels/*webgpu*.whl || true
       ;;
     *)
@@ -184,7 +184,7 @@ install_project_environment() {
     for wheel_path in "${local_wheels[@]}"; do
       wheel_basename="$(basename "${wheel_path}")"
       case "${wheel_basename}" in
-        onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_rocm-*.whl|onnxruntime_webgpu-*.whl)
+        onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl)
           have_onnx_family=true
           ;;
         opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
@@ -194,7 +194,7 @@ install_project_environment() {
     done
 
     if [ "${have_onnx_family}" = "true" ]; then
-      uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-rocm onnxruntime-webgpu 2>/dev/null || true
+      uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu 2>/dev/null || true
     fi
     if [ "${have_opencv_family}" = "true" ]; then
       uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true

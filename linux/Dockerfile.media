@@ -29,7 +29,7 @@
 
 # Global Version Arguments (safety-net defaults; orchestrator passes canonical
 # values from linux/scripts/01-core/versions.env via append_version_build_args).
-ARG ONNXRUNTIME_VERSION="v1.26.0"
+ARG ONNXRUNTIME_VERSION="v1.27.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.13.1"
 ARG LITERT_VERSION="v2.1.5"
 ARG OPENCV_VERSION="5.x"
@@ -91,6 +91,7 @@ COPY --chmod=755 linux/scripts/03-media/runtime/verify-media-artifacts.sh /opt/s
 COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh  /opt/scripts/core/install-deps-preamble.sh
 COPY --chmod=755 linux/scripts/01-core/python-host.sh            /opt/scripts/core/python-host.sh
 COPY --chmod=755 linux/scripts/01-core/cmake-cache-linker.sh     /opt/scripts/core/cmake-cache-linker.sh
+COPY --chmod=755 linux/scripts/01-core/modules.sh                /opt/scripts/core/modules.sh
 
 RUN set -euo pipefail; \
     if [ "${ENABLE_NVIDIA}" = "true" ]; then \
@@ -98,15 +99,41 @@ RUN set -euo pipefail; \
     fi; \
     bash /opt/scripts/03-media/activate-cross-python.sh
 
-# Add Ubuntu Ports for foreign architectures so install_target_packages can
-# install arm64/riscv64 dev packages when cross-compiling.
+# Strip all external apt sources and configure only standard resolute repos.
+# The SDK base image may carry external repo traces (ROCm, Kitware, etc.)
+# that cause package version conflicts.  We start fresh here.
 RUN set -euo pipefail; \
-    rm -f /etc/apt/sources.list.d/ubuntu-ports-*.sources 2>/dev/null || true; \
-    ports_file="/etc/apt/sources.list.d/ubuntu-ports.sources"; \
-    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: resolute resolute-updates resolute-backports resolute-security\nComponents: main universe restricted multiverse\nArchitectures: arm64 riscv64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' > "${ports_file}"; \
-    apt-get update -qq 2>/dev/null || echo "WARNING: Ubuntu Ports update failed (expected for amd64-only builds)"
+    rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
+          /etc/apt/preferences.d/* 2>/dev/null || true; \
+    printf 'Types: deb\nURIs: http://archive.ubuntu.com/ubuntu/\nSuites: resolute resolute-updates resolute-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' > /etc/apt/sources.list.d/ubuntu.sources; \
+    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: resolute resolute-updates resolute-backports resolute-security\nComponents: main universe restricted multiverse\nArchitectures: arm64 riscv64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' > /etc/apt/sources.list.d/ubuntu-ports.sources; \
+    rm -rf /var/lib/apt/lists/*; \
+    apt-get update -qq
 
-ENV NVIDIA_CODEC_HEADERS=auto
+# Ensure Python venv exists for downstream stages (OpenCV, LiteRT, ONNX build scripts)
+RUN set -euo pipefail; \
+    uv venv --clear /opt/python/.venv; \
+    UV_PYTHON="/opt/python/.venv/bin/python" uv pip install \
+        --upgrade pip setuptools wheel cython pybind11 numpy
+
+# Re-register GCC 16.1.0 as the default after install-deps reset alternatives
+RUN set -euo pipefail; \
+    update-alternatives --install /usr/bin/gcc gcc /opt/gcc-16.1.0/bin/gcc 150; \
+    update-alternatives --install /usr/bin/g++ g++ /opt/gcc-16.1.0/bin/g++ 150; \
+    update-alternatives --install /usr/bin/cc cc /opt/gcc-16.1.0/bin/gcc 150; \
+    update-alternatives --install /usr/bin/c++ c++ /opt/gcc-16.1.0/bin/g++ 150; \
+    update-alternatives --set gcc /opt/gcc-16.1.0/bin/gcc; \
+    update-alternatives --set g++ /opt/gcc-16.1.0/bin/g++; \
+    update-alternatives --set cc /opt/gcc-16.1.0/bin/gcc; \
+    update-alternatives --set c++ /opt/gcc-16.1.0/bin/g++; \
+    cc --version 2>&1 | head -1; c++ --version 2>&1 | head -1
+
+# Also export CC/CXX so CMake (which searches PATH) always gets GCC 16.1.0
+ENV NVIDIA_CODEC_HEADERS=auto \
+    UV_PYTHON="/opt/python/.venv/bin/python" \
+    VIRTUAL_ENV="/opt/python/.venv" \
+    CC=/opt/gcc-16.1.0/bin/gcc \
+    CXX=/opt/gcc-16.1.0/bin/g++
 
 # ==============================================================================
 # ONNX Runtime stage
@@ -134,7 +161,8 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
 # deps + fetch combined: both are fast IO-bound operations.
 # Bind-mount the onnxruntime build scripts (readonly) so changes to them only
 # invalidate this RUN — not a COPY layer that would cascade to every later RUN.
-RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/runtime,target=/opt/scripts/03-media/build/onnxruntime/runtime,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -144,7 +172,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
     SKIP_DEP_INSTALL=true bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step deps && \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step fetch
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
@@ -158,7 +187,8 @@ RUN --mount=type=cache,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-cpu
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
@@ -173,7 +203,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
         echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; \
     fi
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -225,7 +256,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scr
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/litert/install-deps.sh
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -257,11 +289,17 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scr
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/opencv/install-deps.sh
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
+    rm -rf /opt/opencv; \
+    unset LDFLAGS; \
+    export USE_LLD=false \
+      CMAKE_C_COMPILER=/opt/gcc-16.1.0/bin/gcc CMAKE_CXX_COMPILER=/opt/gcc-16.1.0/bin/g++ \
+      LDFLAGS="-Wl,--allow-multiple-definition"; \
     bash /opt/scripts/03-media/build/opencv/build-opencv.sh \
         --opencv-version "${OPENCV_VERSION}" \
         --prefix "${OPENCV_OUTPUT_DIR}" \
@@ -357,13 +395,13 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scr
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/ffmpeg/install-deps.sh
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
-    set -euo pipefail; \
     bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh
 
 RUN --mount=type=cache,target=/tmp \
@@ -495,6 +533,7 @@ ARG GSTREAMER_PREFIX=/opt/gstreamer
 ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GCC_VERSION
+ARG PYTHON_MAJOR_MINOR
 
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
@@ -504,7 +543,8 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     FFMPEG_PREFIX=/opt/ffmpeg \
     LIBCAMERA_PREFIX=/opt/libcamera \
     GCC_VERSION=${GCC_VERSION:-16.1.0} \
-    PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python3.14/site-packages:${PYTHONPATH}"
+    PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR:-3.14} \
+    PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python${PYTHON_MAJOR_MINOR:-3.14}/site-packages:${PYTHONPATH}"
 
 COPY --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 

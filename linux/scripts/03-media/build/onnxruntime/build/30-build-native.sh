@@ -81,7 +81,7 @@ if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
   )
 fi
 
-if [ "${ORT_ENABLE_TVM:-true}" = "true" ]; then
+if [ "${ORT_ENABLE_TVM:-false}" = "true" ]; then
   if [ -d /opt/src/tvm-install ]; then
     info "TVM EP enabled (TVM installed at /opt/src/tvm-install)"
     BUILD_ARGS+=(
@@ -127,6 +127,15 @@ fi
 
 append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS
+
+# Ensure the venv Python is used for the ORT build (numpy is installed there, not in system python)
+BUILD_ARGS+=(
+  --cmake_extra_defines
+  "Python_EXECUTABLE=${HOST_PYTHON_BIN}"
+)
+export PATH="${HOST_PYTHON_BIN%/*}:${PATH}"
+
+# GCC 16.1.0 is the default system compiler (via ENV CC/CXX and alternatives)
 
 # Execute build (with retry for transient network errors like GitHub download failures)
 if ! retry 3 10 "ONNX Runtime CPU build" "${BUILD_SH}" "${BUILD_ARGS[@]}"; then

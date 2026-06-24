@@ -17,7 +17,7 @@ Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows:
 | `Dockerfile.android` | `:cross-media-<arch>` | `:cross-android-<arch>` |
 | `Dockerfile.package` | `:base` + `:cross-android-<arch>` | `:latest-cross-package-<arch>` |
 | `Dockerfile.torch` | `:latest-cross-package-<arch>` | `:latest-cross-<arch>` |
-| `Dockerfile.nvidia` / `Dockerfile.amd` | `:cross-sdk-<arch>` | optional GPU layer |
+| `Dockerfile.nvidia` / `Dockerfile.amd` | `:cross-sdk-<arch>` | optional GPU layer (CUDA or MIGraphX) |
 | `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64` |
 
 ### Windows-Specific Naming
@@ -494,7 +494,7 @@ After changing versions:
 4. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
 5. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
 
-GPU constraints: when bumping CUDA/ROCm, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `plucky`/26.04).
+GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `plucky`/26.04). MIGraphX packages currently come from the AMD ROCm noble (24.04) repo since no plucky builds exist yet.
 
 ## Development Rules
 

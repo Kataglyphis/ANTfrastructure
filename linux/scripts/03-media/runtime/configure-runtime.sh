@@ -53,7 +53,7 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   write_conf /etc/ld.so.conf.d/cuda.conf "${CUDA_HOME:-/usr/local/cuda}/lib64"
   write_conf /etc/ld.so.conf.d/tensorrt.conf "${TENSORRT_HOME:-/usr/local/tensorrt}/lib"
 elif [ "${ENABLE_AMD:-false}" = "true" ]; then
-  write_conf /etc/ld.so.conf.d/rocm.conf "/opt/rocm/lib" "/opt/rocm/lib64"
+  write_conf /etc/ld.so.conf.d/migraphx.conf "/opt/rocm/lib" "/opt/rocm/lib64"
 fi
 
 ldconfig

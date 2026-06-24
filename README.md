@@ -31,7 +31,7 @@ linux/
 ├── Dockerfile.package       lean runtime assembly + validation (FROM base + android)
 ├── Dockerfile.torch         final wrapper: entrypoint, labels, runtime scripts (FROM package)
 ├── Dockerfile.nvidia        optional CUDA/cuDNN/TensorRT layer (FROM sdk)
-├── Dockerfile.amd           optional ROCm layer (FROM sdk)
+├── Dockerfile.amd           optional MIGraphX layer (FROM sdk)
 └── scripts/
     ├── 01-core/             shared utilities (41 modules: logging, platform, cross-env, tag-naming, stage-defs, digest-pinning, compiler-resolution)
     ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds

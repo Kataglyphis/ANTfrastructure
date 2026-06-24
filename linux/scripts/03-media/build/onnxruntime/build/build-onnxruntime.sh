@@ -26,7 +26,7 @@ while [ "$#" -gt 0 ]; do
       echo "  deps        Install build dependencies"
       echo "  fetch       Fetch ONNX Runtime source"
       echo "  cpu         Build native CPU EP"
-      echo "  gpu         Build GPU EP (NVIDIA CUDA or AMD ROCm)"
+      echo "  gpu         Build GPU EP (NVIDIA CUDA or AMD MIGraphX)"
       echo "  genai       Build ONNX Runtime GenAI"
       echo "  wasm        Build WebAssembly target"
       echo "  js          Build JS bindings"
@@ -35,7 +35,7 @@ while [ "$#" -gt 0 ]; do
       echo ""
       echo "Environment:"
       echo "  ENABLE_NVIDIA=true   Enable CUDA/TensorRT EPs"
-      echo "  ENABLE_AMD=true      Enable ROCm EP"
+      echo "  ENABLE_AMD=true      Enable MIGraphX EP"
       echo "  BUILD_GENAI=false    Skip GenAI build"
       exit 0
       ;;
