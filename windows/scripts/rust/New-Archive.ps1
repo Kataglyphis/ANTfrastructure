@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 <#
 .SYNOPSIS
   Creates a ZIP archive for Windows builds.
@@ -94,6 +97,8 @@ try {
         }
     }
 
+    # NOTE: $script:ArchiveName/$script:ArchiveDir used inside scriptblock via script scope;
+    # for new scripts, prefer $using:ArchiveName or pass via -ArgumentList to Invoke-BuildStep
     Write-BuildLog -Context $Context -Message "Archive name: $ArchiveName"
 
     Invoke-BuildStep -Context $Context -StepName "Prepare Archive" -Critical -Script {

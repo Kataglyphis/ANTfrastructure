@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$SourceDir = 'C:\temp\opencv-src',
     [string]$InstallDir = '',
@@ -11,12 +14,12 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $OpenCvVersion = Get-SourceBuildVersion -Value $OpenCvVersion -EnvironmentVariables @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION') -DefaultValue '5.x'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\gstreamer' }
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== OpenCV source build (branch $OpenCvVersion, Ninja+clang-cl) ==="
 
 # Install numpy (required by OpenCV's CUDA detection/verification step)
-$pythonExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'
+$pythonExe = Join-Path $env:TEMP_DIR 'cpython\PCbuild\amd64\python.exe'
 if (Test-Path $pythonExe) {
     Write-Host 'Installing numpy via pip (required for OpenCV CUDA detection)...'
     cmd.exe /c """$pythonExe"" -m pip install numpy --quiet 2>&1"
@@ -39,7 +42,7 @@ if (Test-Path $mlasSrcDir) {
     Get-ChildItem -Path $mlasSrcDir -Filter '*.cpp' -Recurse | ForEach-Object {
         $content = Get-Content $_.FullName -Raw
         if ($content -notmatch '#include\s*<cstring>') {
-            Set-Content -Path $_.FullName -Value ("#include <cstring>`n" + $content) -NoNewline
+            Set-Content -Path $_.FullName -Value ("#include <cstring>`n" + $content)
         }
     }
     Write-Host 'Patched mlas sources for clang-cl (added <cstring> include)'
@@ -50,7 +53,7 @@ $cvOptsPath = Join-Path $mainSrc 'cmake/OpenCVCompilerOptions.cmake'
 if (Test-Path $cvOptsPath) {
     $content = Get-Content $cvOptsPath -Raw
     $patched = $content -replace '-include cstring', ''
-    Set-Content -Path $cvOptsPath -Value $patched -NoNewline
+    Set-Content -Path $cvOptsPath -Value $patched
     Write-Host 'Patched OpenCVCompilerOptions.cmake: removed -include cstring'
 }
 
@@ -73,13 +76,13 @@ $cmakeExtra = @(
     '-DWITH_TBB=OFF', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
     '-DWITH_OPENGL=ON', '-DWITH_DIRECTX=ON', '-DWITH_DIRECTML=ON',
     '-DWITH_VULKAN=ON', '-DWITH_EIGEN=OFF',
-    '-DWITH_ONNXRUNTIME=OFF',
+    '-DWITH_ONNXRUNTIME=OFF',  # OFF to avoid linking conflicts with the separate source-built ONNX Runtime
     '-DWITH_VTK=OFF', '-DWITH_MSMF=ON', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
     '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON',
     '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=ON'
 )
 
-$cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+$cudaRoot = Get-CudaRoot
 if ($cudaRoot -and (Test-Path $cudaRoot)) {
     $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
     $nvccPath = Join-Path $cudaRoot 'bin\nvcc.exe'

@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$SourceDir = 'C:\temp\litert-src',
     [string]$InstallDir = '',
@@ -11,7 +14,7 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue '2.1.5'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\gstreamer' }
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
 Write-Host "=== LiteRT source build (v$LiteRtVersion, Ninja+clang-cl) ==="
@@ -47,7 +50,7 @@ if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force -ErrorAction Si
 if (Test-Path (Join-Path $SourceDir 'BUILD')) { Remove-Item (Join-Path $SourceDir 'BUILD') -Recurse -Force -ErrorAction SilentlyContinue }
 
 # Detect CUDA for LiteRT (CUDA delegate available via external delegate)
-$cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+$cudaRoot = Get-CudaRoot
 $cmakeExtra = @(
     '-DTFLITE_ENABLE_INSTALL=OFF'
     '-DTFLITE_ENABLE_LABEL_IMAGE=OFF'
@@ -87,6 +90,7 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     if (Test-Path $vulkanLib) { $cmakeExtra += "-DVulkan_LIBRARY=$(Join-Path $vulkanLib 'vulkan-1.lib')" }
 }
 
+# InstallPrefix passed for CMake generator expressions even though TFLITE_ENABLE_INSTALL=OFF
 $ok = Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra
 if (-not $ok) { throw 'LiteRT CMake configure failed' }
 
@@ -95,6 +99,10 @@ $ok = Invoke-CmakeBuild -BuildDir $buildDir -Config Release -Install:$false -Log
 if (-not $ok) { throw 'LiteRT build failed' }
 
 # Manual install (TFLITE_ENABLE_INSTALL=OFF disables cmake --install)
+# -InstallPrefix is still passed to Invoke-CmakeConfigure because CMake generator
+# expressions and INTERFACE targets reference CMAKE_INSTALL_PREFIX even when
+# the install() commands are no-ops. Without it, header search paths and
+# pkg-config .pc files may resolve incorrectly.
 Write-Host 'Installing LiteRT artifacts manually...'
 New-Item -Path "$litertInstallDir\lib" -ItemType Directory -Force | Out-Null
 New-Item -Path "$litertInstallDir\bin" -ItemType Directory -Force | Out-Null

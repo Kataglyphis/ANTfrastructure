@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -8,10 +11,10 @@ if (-not (Test-Path $sharedModulePath)) {
 
 Import-Module $sharedModulePath -Force
 
-where.exe flutter
-where.exe wix.exe
-where.exe clang-cl.exe
-where.exe lld-link.exe
+Assert-ContainerCommandAvailable -Name 'flutter' | Out-Null
+Assert-ContainerCommandAvailable -Name 'wix' | Out-Null
+Assert-ContainerCommandAvailable -Name 'clang-cl' | Out-Null
+Assert-ContainerCommandAvailable -Name 'lld-link' | Out-Null
 
 & 'C:\WiX\wix.exe' --version | Out-Host
 $wixExtensions = & 'C:\WiX\wix.exe' extension list --global 2>&1

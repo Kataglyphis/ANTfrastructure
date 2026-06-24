@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$SourceDir = 'C:\temp\tvm-src',
     [string]$InstallDir = '',
@@ -13,26 +16,23 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.24.0'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\gstreamer' }
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== TVM source build (v$TvmVersion, Ninja+clang-cl) ==="
 
 $ok = Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive
 if (-not $ok) { throw 'Failed to clone TVM' }
 
-# Load VsDevCmd: ml64 for .asm + cl.exe for CUDA host compiler
-cmd /c """C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat"" -arch=amd64 -host_arch=amd64 && set" | ForEach-Object {
-    if ($_ -match '^(.*?)=(.*)$') { Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2] }
-}
+Enter-VsDevCmdEnvironment
 
 $buildDir = Join-Path $SourceDir 'build'
 $tvmInstallDir = Join-Path $InstallDir 'lib\tvm'
 
 # Auto-detect CUDA
-$cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+$cudaRoot = Get-CudaRoot
 $useCuda = 'OFF'
 if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    Write-Host "CUDA detected at: $cudaRoot — enabling TVM CUDA support"
+    Write-Host "CUDA detected at: $cudaRoot - enabling TVM CUDA support"
     $useCuda = 'ON'
     $env:CUDA_PATH = $cudaRoot
     $cudaBin = Join-Path $cudaRoot 'bin'
@@ -43,16 +43,17 @@ if ($cudaRoot -and (Test-Path $cudaRoot)) {
 $vulkanSdk = if ($env:VULKAN_SDK) { $env:VULKAN_SDK } else { $null }
 $useVulkan = 'OFF'
 if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
-    Write-Host "Vulkan SDK detected at: $vulkanSdk — enabling TVM Vulkan support"
+    Write-Host "Vulkan SDK detected at: $vulkanSdk - enabling TVM Vulkan support"
     $useVulkan = 'ON'
 }
 
 # Auto-detect LLVM
-$llvmConfig = (Get-Command llvm-config.exe -ErrorAction SilentlyContinue).Source
-$useLvm = 'OFF'
+$llvmCmd = Get-Command llvm-config.exe -ErrorAction SilentlyContinue
+$llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
+$useLLVM = 'OFF'
 if ($llvmConfig) {
-    Write-Host "LLVM detected via llvm-config: $llvmConfig — enabling TVM LLVM codegen"
-    $useLvm = 'ON'
+    Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"
+    $useLLVM = 'ON'
 }
 
 $pythonModule = if ($SkipPython) { 'OFF' } else { 'ON' }
@@ -63,12 +64,12 @@ $cmakeExtra = @(
     '-DUSE_MICRO=OFF'
     "-DUSE_CUDA=$useCuda"
     "-DUSE_VULKAN=$useVulkan"
-    "-DUSE_LLVM=$useLvm"
+    "-DUSE_LLVM=$useLLVM"
     "-DTVM_BUILD_PYTHON_MODULE=$pythonModule"
 )
 
 if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
+    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$($cudaRoot -replace '\\', '/')"
 }
 
 if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
@@ -84,12 +85,23 @@ if (-not $ok) { throw 'TVM CMake configuration failed' }
 
 Write-Host 'Building TVM (this may take 30-60 minutes)...'
 $buildLog = Join-Path $buildDir 'tvm-build.log'
-$ok = Invoke-CmakeBuild -BuildDir $buildDir -Config $BuildType -Install -LogFile $buildLog
-if (-not $ok) { throw 'TVM build failed' }
+Write-Host "Building..."
+& cmake --build $buildDir --config $BuildType --parallel 2>&1 | Tee-Object -FilePath $buildLog
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "`n=== BUILD FAILED: FAILED: lines ==="
+    Select-String -Path $buildLog -Pattern 'FAILED:' -SimpleMatch | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
+    Write-Host "=== BUILD FAILED: error: lines ==="
+    Select-String -Path $buildLog -Pattern '^.*error:.*$' | Select-Object -First 10 | ForEach-Object { Write-Host "  $_" }
+    Write-Host "=== BUILD FAILED: last 20 lines ==="
+    Get-Content $buildLog -Tail 20 | ForEach-Object { Write-Host $_ }
+    throw 'TVM build failed'
+}
+Write-Host 'Installing...'
+& cmake --install $buildDir --config $BuildType
 
 # Install Python wheel if enabled
 if ($pythonModule -eq 'ON') {
-    $pythonExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'
+    $pythonExe = Join-Path $env:TEMP_DIR 'cpython\PCbuild\amd64\python.exe'
     if (Test-Path $pythonExe) {
         Write-Host 'Installing TVM Python wheel...'
         $wheelDir = Join-Path $buildDir 'python'

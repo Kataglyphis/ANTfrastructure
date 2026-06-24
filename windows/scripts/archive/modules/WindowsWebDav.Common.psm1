@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
@@ -101,7 +104,9 @@ function Invoke-EarlyWebDavDownload {
   }
 
   Write-BuildLog -Context $Context -Message "DEBUG: Invoking early WebDAV download with: $($uvCmd.Source) run $earlyScript $WebDavHost $WebDavUser <redacted> $WebDavRemote $WebDavLocal"
-  Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('run', $earlyScript, $WebDavHost, $WebDavUser, $WebDavPass, $WebDavRemote, $WebDavLocal) -IgnoreExitCode
+  # Password passed via env var to avoid command-line exposure
+  $env:WEBDAV_PASS = $WebDavPass
+  Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('run', $earlyScript, $WebDavHost, $WebDavUser, 'env:WEBDAV_PASS', $WebDavRemote, $WebDavLocal) -IgnoreExitCode
 }
 
 Export-ModuleMember -Function @(

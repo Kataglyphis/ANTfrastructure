@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$TempDir       = 'C:\temp'
 )
@@ -9,7 +12,7 @@ $ProgressPreference    = 'SilentlyContinue'
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Error 'Bitte PowerShell als Administrator ausführen.'; exit 1
+    Write-Error 'Please run PowerShell as Administrator.'; exit 1
 }
 
 function Dump-InstallerLogs {
@@ -67,28 +70,28 @@ $installerLog = Join-Path $TempDir 'vs_installer.log'
 # Optionale ENV-Variablen analog Dockerfile
 
 try {
-    Write-Host 'Lade Visual Studio Build Tools Installer...'
+    Write-Host 'Downloading Visual Studio Build Tools Installer...'
     $downloaded = $false
     try {
-        Write-Host 'Versuch mit curl.exe (eigener DNS-Resolver)...'
+        Write-Host 'Trying curl.exe (custom DNS resolver)...'
         & curl.exe -fsSL --retry 3 'https://aka.ms/vs/stable/vs_buildtools.exe' -o $installer
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $installer)) { $downloaded = $true; Write-Host 'curl erfolgreich.' }
-    } catch { Write-Host "curl fehlgeschlagen: $($_.Exception.Message)" }
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $installer)) { $downloaded = $true; Write-Host 'curl succeeded.' }
+    } catch { Write-Host "curl failed: $($_.Exception.Message)" }
     if (-not $downloaded) {
         try {
-            Write-Host 'Fallback BITS...'
+            Write-Host 'Falling back to BITS transfer...'
             Start-BitsTransfer -Source 'https://aka.ms/vs/stable/vs_buildtools.exe' -Destination $installer -ErrorAction Stop
-            Write-Host 'BITS erfolgreich.'; $downloaded = $true
-        } catch { Write-Host "BITS fehlgeschlagen: $($_.Exception.Message)" }
+            Write-Host 'BITS transfer succeeded.'; $downloaded = $true
+        } catch { Write-Host "BITS transfer failed: $($_.Exception.Message)" }
     }
     if (-not $downloaded) {
         try {
-            Write-Host 'Fallback Invoke-WebRequest...'
+            Write-Host 'Falling back to Invoke-WebRequest...'
             Invoke-WebRequest -Uri 'https://aka.ms/vs/stable/vs_buildtools.exe' -OutFile $installer
             $downloaded = $true
-        } catch { Write-Host "Invoke-WebRequest fehlgeschlagen: $($_.Exception.Message)" }
+        } catch { Write-Host "Invoke-WebRequest failed: $($_.Exception.Message)" }
     }
-    if (-not $downloaded) { throw 'VS Build Tools Download fehlgeschlagen.' }
+    if (-not $downloaded) { throw 'VS Build Tools Download failed.' }
 
     $args = @(
         '--quiet',
@@ -146,7 +149,7 @@ try {
 
     )
 
-    Write-Host "Starte Installation der Visual Studio Build Tools ..."
+    Write-Host "Starting Visual Studio Build Tools installation ..."
     try {
         $proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -NoNewWindow -PassThru
     }
@@ -159,25 +162,25 @@ try {
     Write-Host "Installer ExitCode: $($proc.ExitCode)"
 
     if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
-        Write-Host 'Installation ist fehlgeschlagen — gebe Logs aus:'
+        Write-Host 'Installation failed — printing logs:'
         Dump-InstallerLogs -TempDir $TempDir
-        throw "Build Tools Setup fehlgeschlagen (ExitCode $($proc.ExitCode))."
+        throw "Build Tools Setup failed (ExitCode $($proc.ExitCode))."
     }
 
     if ($proc.ExitCode -eq 3010) {
-        Write-Warning 'Installation abgeschlossen. Ein Neustart ist erforderlich (ExitCode 3010).'
+        Write-Warning 'Installation complete. A reboot is required (ExitCode 3010).'
     } else {
-        Write-Host 'Installation erfolgreich.'
+        Write-Host 'Installation succeeded.'
     }
 
     if (Test-Path 'C:\Program Files\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat') {
-        Write-Host 'VsDevCmd gefunden.'
+        Write-Host 'VsDevCmd found.'
     } elseif (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat') {
-        Write-Host 'VsDevCmd (x86) gefunden Pfad anpassen.'
+        Write-Host 'VsDevCmd (x86) found, path adjusted.'
     } else {
-        Write-Host 'VsDevCmd nicht gefunden — gebe Logs aus.'
+        Write-Host 'VsDevCmd not found — printing logs.'
         Dump-InstallerLogs -TempDir $TempDir
-        throw 'VS Build Tools nicht installiert Prüfe dd_bootstrapper*.log und dd_setup_*.log unter %TEMP%.'
+        throw 'VS Build Tools not installed. Check dd_bootstrapper*.log and dd_setup_*.log under %TEMP%.'
     }
 }
 finally {
@@ -187,6 +190,6 @@ finally {
 
     # Wenn im Fehlerfall noch der Installer existiert, lasse ihn zur Analyse bestehen.
     if ($proc -and ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010)) {
-    Write-Host "Installer wurde nicht gelöscht (zur Fehleranalyse bleibt $installer bestehen)."
+    Write-Host "Installer was not deleted (left for analysis at $installer)."
     }
 }

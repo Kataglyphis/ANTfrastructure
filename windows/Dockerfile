@@ -1,4 +1,6 @@
 # escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # Final Windows developer image built on top of the cached media image.
 # SDK layer (CUDA+cuDNN) → Media layer (GStreamer+OpenCV+ONNX+GenAI).
 

@@ -1,4 +1,6 @@
 # escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # NVIDIA GPU layer — CUDA + cuDNN + TensorRT.
 # Builds on top of the generic SDK and provides GPU acceleration.
 # Swap this file for Dockerfile.amd to target AMD GPUs instead.
@@ -22,7 +24,7 @@ ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
 
 # Install TensorRT (from local zip or skip gracefully)
-RUN & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath (Get-ChildItem 'C:\temp\downloads\*TensorRT*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { $_.FullName })
+RUN $trtZip = Get-ChildItem 'C:\temp\downloads\*TensorRT*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1; $trtPath = if ($trtZip) { $trtZip.FullName } else { '' }; & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath
 
 # Signal to downstream layers that NVIDIA GPU is available
 ENV GPU_TYPE="nvidia"

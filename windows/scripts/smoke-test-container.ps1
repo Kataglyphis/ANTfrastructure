@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 <#
 .SYNOPSIS
     Comprehensive smoke test for the Windows Kataglyphis container image.
@@ -131,10 +134,11 @@ Assert-Test -Name "Python is 3.14.x" -Condition {
     return $ver -match '3\.14\.'
 } -FailMessage "Python version is not 3.14.x"
 
-Assert-Test -Name "Python source-built from C:\temp\cpython" -Condition {
-    (Test-Path "C:\temp\cpython\PCbuild\amd64\python.exe") -or
-    (Test-Path "C:\temp\cpython\PCbuild\amd64\python3.dll")
-} -FailMessage "Python source build artifacts not found at C:\temp\cpython"
+$cpythonDir = Join-Path $env:TEMP_DIR 'cpython'
+Assert-Test -Name "Python source-built from $cpythonDir" -Condition {
+    (Test-Path "$cpythonDir\PCbuild\amd64\python.exe") -or
+    (Test-Path "$cpythonDir\PCbuild\amd64\python3.dll")
+} -FailMessage "Python source build artifacts not found at $cpythonDir"
 
 Assert-Test -Name "Python pip available" -Condition {
     & python -m pip --version 2>&1 | Select-Object -First 1 | ForEach-Object { $_ -ne $null }
@@ -307,7 +311,7 @@ Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
 # ============================================================================
 Write-TestHeader '12. LiteRT (AI Edge runtime, source-built)'
 # ============================================================================
-$litertRoot = 'C:\gstreamer\lib\litert'
+$litertRoot = 'C:\runtime\lib\litert'
 $litertInclude = Join-Path $litertRoot 'include'
 $litertLibDir = Join-Path $litertRoot 'lib'
 $litertBinDir = Join-Path $litertRoot 'bin'
@@ -338,7 +342,7 @@ if (Test-Path $litertBinDir) {
 # ============================================================================
 Write-TestHeader '13. LiteRT-LM (on-device LLM inference, source-built)'
 # ============================================================================
-$litertLmRoot = 'C:\gstreamer\lib\litert-lm'
+$litertLmRoot = 'C:\runtime\lib\litert-lm'
 $litertLmInclude = Join-Path $litertLmRoot 'include'
 $litertLmLibDir = Join-Path $litertLmRoot 'lib'
 

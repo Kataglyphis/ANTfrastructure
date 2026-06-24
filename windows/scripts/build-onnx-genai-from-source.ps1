@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$SourceDir = 'C:\temp\onnx-genai-src',
     [string]$InstallDir = '',
@@ -11,7 +14,7 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.13.1'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\gstreamer' }
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== ONNX Runtime GenAI source build (v$OnnxGenAiVersion, Ninja+clang-cl) ==="
 Write-Host "SourceDir: $SourceDir"
@@ -20,7 +23,7 @@ Write-Host "InstallDir: $InstallDir"
 $genaiInstallDir = Join-Path $InstallDir 'lib\onnxruntime-genai-source'
 
 # Use the source-built Python from the toolchain layer
-$pythonExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'
+$pythonExe = Join-Path $env:TEMP_DIR 'cpython\PCbuild\amd64\python.exe'
 if (-not (Test-Path $pythonExe)) { throw "Python not found at $pythonExe" }
 Write-Host "Using Python: $pythonExe"
 
@@ -56,8 +59,9 @@ if (-not $ok) { throw 'Failed to clone ONNX GenAI' }
 Set-Location $SourceDir
 
 # Copy pyconfig.h to Include/ (CPython builds it in PC/ not Include/)
-$pyConfigSrc = 'C:\temp\cpython\PC\pyconfig.h'
-$pyConfigDst = 'C:\temp\cpython\Include\pyconfig.h'
+$cpythonDir = Join-Path $env:TEMP_DIR 'cpython'
+$pyConfigSrc = Join-Path $cpythonDir 'PC\pyconfig.h'
+$pyConfigDst = Join-Path $cpythonDir 'Include\pyconfig.h'
 if ((Test-Path $pyConfigSrc) -and -not (Test-Path $pyConfigDst)) { Copy-Item $pyConfigSrc $pyConfigDst -Force; Write-Host 'Copied pyconfig.h to Include/' }
 
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
@@ -73,7 +77,7 @@ $genaiCudaArgs += '-DUSE_CUDA=OFF'
 Write-Host 'CUDA support disabled for ONNX GenAI build (clang-cl incompatibility with CUDA headers)'
 
 # Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
-$pythonLibDir = 'C:/temp/cpython/PCbuild/amd64'
+$pythonLibDir = "$env:TEMP_DIR/cpython/PCbuild/amd64"
 $pythonLibFull = Join-Path $pythonLibDir 'python314.lib'
 if (-not (Test-Path $pythonLibFull)) { $pythonLibFull = Join-Path $pythonLibDir 'python3.lib' }
 
@@ -86,7 +90,7 @@ $cmakeExtraGenAi = @(
     "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE"
     "-DPYTHON_EXECUTABLE=$pythonExe"
     "-DPYTHON_LIBRARY=$pythonLibFull"
-    "-DPYTHON_INCLUDE_DIR=C:/temp/cpython/Include"
+    "-DPYTHON_INCLUDE_DIR=$env:TEMP_DIR/cpython/Include"
     "-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$pythonLibDir"
 ) + $genaiCudaArgs
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
@@ -113,6 +117,10 @@ if (Test-Path $coroHeader) {
 $yvalsCore = Join-Path $msvcVersionDir 'include\yvals_core.h'
 if (Test-Path $yvalsCore) {
     $text = [System.IO.File]::ReadAllText($yvalsCore)
+    # NOTE: This _EMIT_STL_ERROR regex patch is MSVC version-specific (v143/v145 toolset).
+    # The exact #define line format changes between MSVC releases.
+    # When the MSVC toolset is updated, verify the macro signature still matches
+    # before blindly applying this patch.
     if ($text -match '#define _EMIT_STL_ERROR') {
         $old = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
         $new = '#ifdef __clang__
@@ -141,12 +149,16 @@ if (Test-Path $ninjaFile) {
 
 Write-Host 'Building with ninja directly...'
 $batFile = Join-Path $env:TEMP 'build_genai.bat'
-"@echo off
-ninja -C `"$genaiBuildDir`" -j%NUMBER_OF_PROCESSORS% 2>&1
-if errorlevel 1 ninja -C `"$genaiBuildDir`" 2>&1
-" | Set-Content -Path $batFile -Encoding ASCII
-cmd.exe /c $batFile
-$buildExit = $LASTEXITCODE
+try {
+    "@echo off
+    ninja -C `"$genaiBuildDir`" -j%NUMBER_OF_PROCESSORS% 2>&1
+    if errorlevel 1 ninja -C `"$genaiBuildDir`" 2>&1
+    " | Set-Content -Path $batFile -Encoding ASCII
+    cmd.exe /c $batFile
+    $buildExit = $LASTEXITCODE
+} finally {
+    if (Test-Path $batFile) { Remove-Item $batFile -Force -ErrorAction SilentlyContinue }
+}
 
 if ($buildExit -ne 0) {
     # Try single-threaded to see full error

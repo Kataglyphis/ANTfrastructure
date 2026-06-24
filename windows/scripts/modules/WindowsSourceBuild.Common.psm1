@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
@@ -155,9 +158,21 @@ function Invoke-CmakeBuild {
     return $true
 }
 
+function Get-CudaRoot {
+    <#
+    .SYNOPSIS
+        Returns the CUDA root directory from environment variables.
+    .DESCRIPTION
+        Checks $env:CUDA_ROOT first, then $env:CUDA_PATH, returns $null if neither is set.
+        This is the SINGLE source of truth for CUDA detection across all build scripts.
+    #>
+    if ($env:CUDA_ROOT -and (Test-Path $env:CUDA_ROOT)) { return $env:CUDA_ROOT }
+    if ($env:CUDA_PATH -and (Test-Path $env:CUDA_PATH)) { return $env:CUDA_PATH }
+    return $null
+}
+
 function Assert-CudaAvailable {
-    $cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
-    return (-not [string]::IsNullOrWhiteSpace($cudaRoot)) -and (Test-Path $cudaRoot)
+    return -not [string]::IsNullOrWhiteSpace(Get-CudaRoot)
 }
 
 function Assert-CudnnInstalled {
@@ -176,11 +191,27 @@ function Assert-CudnnInstalled {
     return ($headers.Count -gt 0) -and ($libs.Count -gt 0) -and ($dlls.Count -gt 0)
 }
 
+function Enter-VsDevCmdEnvironment {
+    param(
+        [string]$Arch = 'amd64',
+        [string]$HostArch = 'amd64',
+        [string]$VsDevCmdPath = 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat'
+    )
+
+    cmd /c """$VsDevCmdPath"" -arch=$Arch -host_arch=$HostArch && set" | ForEach-Object {
+        if ($_ -match '^(.*?)=(.*)$') {
+            Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2] -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
     'Invoke-CmakeBuild',
+    'Get-CudaRoot',
     'Assert-CudaAvailable',
-    'Assert-CudnnInstalled'
+    'Assert-CudnnInstalled',
+    'Enter-VsDevCmdEnvironment'
 )
