@@ -72,10 +72,6 @@ $cmakeExtra = @(
 # Add CUDA paths for external delegate compilation if available
 if ($cudaRoot -and (Test-Path $cudaRoot)) {
     $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
-    $cudaInclude = Join-Path $cudaRoot 'include'
-    if (Test-Path $cudaInclude) {
-        $cmakeExtra += "-DCMAKE_CXX_FLAGS:STRING=-I$cudaInclude"
-    }
 }
 
 # Fix CMAKE_AR path for llvm-lib (CMake resolves llvm-lib to C:\llvm-lib incorrectly)

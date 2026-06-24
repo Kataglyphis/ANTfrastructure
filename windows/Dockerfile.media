@@ -1,6 +1,6 @@
 # escape=`
 # Cached Windows media layer.
-# Build order: ONNX Runtime/GenAI (git clone) -> OpenCV -> GStreamer
+# Build order: ONNX Runtime/GenAI -> OpenCV -> LiteRT/LiteRT-LM -> TVM -> GStreamer
 # This allows OpenCV and GStreamer to auto-detect ONNX Runtime.
 # Binary install scripts (setup-opencv.ps1, setup-onnx.ps1) exist for
 # reference but are NOT used in this Dockerfile (keep scripts - do not delete).
@@ -16,6 +16,7 @@ ARG ONNXRUNTIME_GENAI_VERSION=0.13.1
 ARG OPENCV_SOURCE_VERSION=5.x
 ARG LITERT_VERSION=v2.1.5
 ARG LITERT_LM_VERSION=0.13.1
+ARG TVM_REF=v0.24.0
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
@@ -62,6 +63,15 @@ RUN & 'C:\temp\scripts\build-litert-from-source.ps1' `
 ENV LITERT_LM_VERSION="${LITERT_LM_VERSION}"
 RUN & 'C:\temp\scripts\build-litert-lm-from-source.ps1' `
     -SourceDir 'C:\temp\litert-lm-src' `
+    -InstallDir 'C:\gstreamer'
+
+# Volatile scripts for TVM (changes often — separate COPY to preserve LiteRT cache)
+COPY windows\scripts\build-tvm-from-source.ps1 C:\temp\scripts\
+
+# ── Stage 4c: TVM (standalone build from source) ──────────────────────────────
+ENV TVM_REF="${TVM_REF}"
+RUN & 'C:\temp\scripts\build-tvm-from-source.ps1' `
+    -SourceDir 'C:\temp\tvm-src' `
     -InstallDir 'C:\gstreamer'
 
 # ── Stage 5: GStreamer (auto-detects CUDA, OpenCV, ONNX, LiteRT libs) ───────

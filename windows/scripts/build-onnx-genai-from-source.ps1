@@ -72,6 +72,11 @@ $cudnnRoot = if ($env:CUDNN_ROOT) { $env:CUDNN_ROOT } else { $null }
 $genaiCudaArgs += '-DUSE_CUDA=OFF'
 Write-Host 'CUDA support disabled for ONNX GenAI build (clang-cl incompatibility with CUDA headers)'
 
+# Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
+$pythonLibDir = 'C:/temp/cpython/PCbuild/amd64'
+$pythonLibFull = Join-Path $pythonLibDir 'python314.lib'
+if (-not (Test-Path $pythonLibFull)) { $pythonLibFull = Join-Path $pythonLibDir 'python3.lib' }
+
 $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
     '-DUSE_TRT_RTX=OFF', '-DUSE_DML=OFF'
@@ -80,8 +85,9 @@ $cmakeExtraGenAi = @(
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
     "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE"
     "-DPYTHON_EXECUTABLE=$pythonExe"
-    "-DPYTHON_LIBRARY=C:/temp/cpython/PCbuild/amd64/python3.lib"
+    "-DPYTHON_LIBRARY=$pythonLibFull"
     "-DPYTHON_INCLUDE_DIR=C:/temp/cpython/Include"
+    "-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$pythonLibDir"
 ) + $genaiCudaArgs
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
 if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
