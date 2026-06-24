@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.24.0
 
 # ==============================================================================
-# Dockerfile.amd  —  Optional AMD GPU (ROCm) library layer
+# Dockerfile.amd  —  Optional AMD GPU (MIGraphX) library layer
 #
 # Position in the chain:
 #   :sdk  →  THIS (:toolchain-amd)  →  :media-amd  →  :android-amd  →  :amd
@@ -11,8 +11,10 @@
 #   • MIOpen (Deep Neural Network library)
 #   • RCCL (multi-GPU collective comms)
 #   • rocBLAS, rocSPARSE, rocFFT, rocSOLVER (ROCm math libraries)
+#   • MIGraphX (AMD graph inference engine) — replaces ROCm EP with MIGraphX EP
 #
-# Uses native Ubuntu 26.04 universe packages (ROCm 7.1.x) — no external repo needed.
+# Packages from the AMD ROCm repository (repo.radeon.com) for Ubuntu 24.04 (noble),
+# compatible with Ubuntu 26.04 (plucky).  No native plucky MIGraphX packages exist yet.
 #
 # Usage:
 #   docker buildx build \
@@ -26,33 +28,57 @@ FROM ${BASE_IMAGE}
 
 ARG TARGETARCH
 ARG LLVM_RELEASE=22.1.6
+ARG ROCM_VERSION=7.1
+ARG MIGRAPHX_VERSION=2.14.0
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 SHELL ["bash", "-lc"]
 
-# Install ROCm stack from Ubuntu universe (native packages, ROCm 7.1.x) + verify
+# Add AMD ROCm repository + install MIGraphX + ROCm stack
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh; \
-    apt-get update && apt-get install -y --no-install-recommends \
-        libamdhip64-dev \
-        librocblas-dev \
-        librocfft-dev \
-        librccl-dev \
-        librocsparse-dev \
-        librocsolver-dev \
-        libmiopen-dev; \
-    echo "/usr/lib/rocm/lib" > /etc/ld.so.conf.d/rocm.conf; \
-    ldconfig; \
+    apt-get update && apt-get install -y --no-install-recommends wget gpg; \
+    mkdir -p /etc/apt/keyrings; \
+    wget -qO- https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg; \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${ROCM_VERSION} noble main" > /etc/apt/sources.list.d/rocm.list; \
+    echo 'Package: *' > /etc/apt/preferences.d/rocm-pin; \
+    echo 'Pin: release o=repo.radeon.com' >> /etc/apt/preferences.d/rocm-pin; \
+    echo 'Pin-Priority: 600' >> /etc/apt/preferences.d/rocm-pin; \
+    echo '' >> /etc/apt/preferences.d/rocm-pin; \
+    echo '# Allow only rocm-related packages from the AMD repo' >> /etc/apt/preferences.d/rocm-pin; \
+    echo 'Package: migraphx* hip* rocblas* miopen* hipblaslt* rocfft* rccl* rocsparse* rocsolver* rocm* half' >> /etc/apt/preferences.d/rocm-pin; \
+    echo 'Pin: release o=repo.radeon.com' >> /etc/apt/preferences.d/rocm-pin; \
+    echo 'Pin-Priority: 1001' >> /etc/apt/preferences.d/rocm-pin; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        hip-dev \
+        hip-runtime-amd \
+        rocblas-dev \
+        miopen-hip-dev \
+        hipblaslt-dev \
+        rocfft-dev \
+        rccl-dev \
+        rocsparse-dev \
+        rocsolver-dev \
+        rocm-device-libs \
+        migraphx \
+        migraphx-dev; \
     rm -rf /var/lib/apt/lists/*; \
-    test -x "$(command -v hipcc)"; \
-    ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null
+    rm -f /etc/apt/sources.list.d/rocm.list /etc/apt/preferences.d/rocm-pin; \
+    echo "/opt/rocm/lib" > /etc/ld.so.conf.d/rocm.conf; \
+    ldconfig; \
+    test -x /opt/rocm/bin/hipcc || { echo "hipcc not found"; exit 1; }; \
+    test -f /opt/rocm/include/migraphx/migraphx.hpp || { echo "migraphx.hpp not found"; exit 1; }; \
+    ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null || { echo "ROCm libs not in ldconfig"; exit 1; }
 
-ENV PATH="/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/usr/lib/rocm/bin:${PATH}"
+ENV PATH="/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/opt/rocm/bin:${PATH}" \
+    ROCM_HOME="/opt/rocm" \
+    MIGRAPHX_HOME="/opt/rocm"
 
 LABEL org.opencontainers.image.title="Kataglyphis AMD GPU" \
-      org.opencontainers.image.description="AMD GPU (ROCm) acceleration layer for the Kataglyphis accelerator toolchain"
+      org.opencontainers.image.description="AMD GPU (MIGraphX) acceleration layer for the Kataglyphis accelerator toolchain"

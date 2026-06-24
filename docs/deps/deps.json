@@ -72,7 +72,8 @@
           "title": "Optional GPU — AMD",
           "dockerfile": "Dockerfile.amd",
           "entries": [
-            {"name": "ROCm", "var": "ROCM_VERSION", "url": "https://rocm.docs.amd.com/", "license": "Apache 2.0 / MIT (varies by component)"}
+            {"name": "ROCm", "var": "ROCM_VERSION", "url": "https://rocm.docs.amd.com/", "license": "Apache 2.0 / MIT (varies by component)"},
+            {"name": "MIGraphX", "var": "MIGRAPHX_VERSION", "url": "https://github.com/ROCm/AMDMIGraphX", "license": "MIT"}
           ]
         },
         {

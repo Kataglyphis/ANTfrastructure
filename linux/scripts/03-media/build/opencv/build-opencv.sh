@@ -133,6 +133,9 @@ fetch_opencv() {
 #ifdef MLAS_GEMM_ONLY
 // MLAS_GEMM_ONLY stub: MlasHGemmSupported is declared but never defined
 // in SGEMM-only builds; provide a fallback that always returns false.
+// Weak attribute resolves duplicate-symbol conflicts when upstream MLAS
+// also defines this function (e.g. Android NDK lld rejects duplicates).
+__attribute__((weak))
 MLASCALL
 bool
 MlasHGemmSupported(

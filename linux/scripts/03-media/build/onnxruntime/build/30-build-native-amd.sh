@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # 30-build-native-amd.sh
-# Build ONNX Runtime with the ROCm execution provider.
+# Build ONNX Runtime with the MIGraphX execution provider.
 # ==============================================================================
 set -euo pipefail
 
@@ -13,13 +13,13 @@ source_build_acceleration_helpers
 parse_common_args "$@"
 detect_jobs
 
-ROCM_HOME="${ROCM_HOME:-/usr}"
-ROCM_VERSION="${ROCM_VERSION:-7.1}"
+MIGRAPHX_HOME="${MIGRAPHX_HOME:-/opt/rocm}"
+MIGRAPHX_VERSION="${MIGRAPHX_VERSION:-2.14.0}"
 NATIVE_GPU_OUTPUT_DIR="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"
-NATIVE_GPU_BUILD_DIR="${NATIVE_GPU_BUILD_DIR:-${ORT_SRC_DIR}/build_native_gpu_rocm}"
+NATIVE_GPU_BUILD_DIR="${NATIVE_GPU_BUILD_DIR:-${ORT_SRC_DIR}/build_native_gpu_migraphx}"
 
-if ! command -v hipcc >/dev/null 2>&1 && [ ! -d "${ROCM_HOME}/lib/rocm" ]; then
-  err "ROCm not found. Install the AMD toolchain layer first or set ROCM_HOME."
+if ! command -v hipcc >/dev/null 2>&1 && [ ! -d "${MIGRAPHX_HOME}/include/migraphx" ]; then
+  err "MIGraphX not found. Install the AMD toolchain layer first or set MIGRAPHX_HOME."
 fi
 
 if command -v setup_linux_cross_env >/dev/null 2>&1; then
@@ -39,10 +39,10 @@ BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [[ -x "${BUILD_SH}" ]] || err "build.sh not found at ${BUILD_SH}"
 
 if cross_build_is_active; then
-  warn "Skipping ONNX Runtime ROCm wheel build in cross mode; target wheel repair/validation is not supported here"
+  warn "Skipping ONNX Runtime MIGraphX wheel build in cross mode; target wheel repair/validation is not supported here"
 fi
 
-info ">>> Native AMD GPU build (ROCm): ${NATIVE_CPU_CONFIG} (${JOBS} parallel jobs)"
+info ">>> Native AMD GPU build (MIGraphX): ${NATIVE_CPU_CONFIG} (${JOBS} parallel jobs)"
 info "Using Python: ${HOST_PYTHON}"
 info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)')"
 
@@ -57,9 +57,8 @@ BUILD_ARGS=(
   --skip_submodule_sync
   --skip_tests
   --allow_running_as_root
-  --use_rocm
-  --rocm_home "${ROCM_HOME}"
-  --rocm_version "${ROCM_VERSION}"
+  --use_migraphx
+  --migraphx_home "${MIGRAPHX_HOME}"
   --use_mimalloc
   --use_lock_free_queue
 )
@@ -89,22 +88,22 @@ fi
 append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS
 
-export PATH="${ROCM_HOME}/bin:${PATH}"
-export LD_LIBRARY_PATH="${ROCM_HOME}/lib/rocm/lib:${ROCM_HOME}/lib:${LD_LIBRARY_PATH:-}"
+export PATH="${MIGRAPHX_HOME}/bin:${PATH}"
+export LD_LIBRARY_PATH="${MIGRAPHX_HOME}/lib:${MIGRAPHX_HOME}/lib64:${LD_LIBRARY_PATH:-}"
 
 if ! "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
   if cross_build_is_active; then
-    warn "ONNX Runtime ROCm build failed; rerunning single-threaded verbose build for diagnostics"
+    warn "ONNX Runtime MIGraphX build failed; rerunning single-threaded verbose build for diagnostics"
     cmake --build "${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" --config "${NATIVE_CPU_CONFIG}" --parallel 1 --verbose || true
   fi
   exit 1
 fi
 
-info "Searching for ROCm wheel files..."
-collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "ROCm wheel"
+info "Searching for MIGraphX wheel files..."
+collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "MIGraphX wheel"
 
 if [ -z "$(ls -A "${NATIVE_GPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { ! cross_build_is_active; }; then
-  maybe_build_source_wheel "${ORT_SRC_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "${HOST_PYTHON}" "ONNX Runtime ROCm"
+  maybe_build_source_wheel "${ORT_SRC_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "${HOST_PYTHON}" "ONNX Runtime MIGraphX"
 fi
 
 copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"

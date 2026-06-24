@@ -63,7 +63,7 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 | Cross-build | Digest-pinned stage handoff | ✔️ |
 | Cross-build | Runtime packaging via QEMU/binfmt | ✔️ |
 | GPU acceleration | NVIDIA CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN, TensorRT | ✔️ |
-| GPU acceleration | AMD ROCm | ✔️ |
+| GPU acceleration | AMD MIGraphX | ✔️ |
 | GPU acceleration | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan --> | ✔️ |
 | Media | ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |
 | Media | GStreamer <!-- generated:gstreamer -->1.29.1<!-- /generated:gstreamer -->, OpenCV <!-- generated:opencv -->5.x<!-- /generated:opencv -->, LiteRT | ✔️ |

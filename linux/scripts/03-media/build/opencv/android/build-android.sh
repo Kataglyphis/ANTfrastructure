@@ -24,7 +24,9 @@ if [ -f "${mlas_compute}" ] && ! grep -Fq 'MLAS_GEMM_ONLY stub' "${mlas_compute}
     cat >> "${mlas_compute}" <<'MLAS_STUB_EOF'
 
 #ifdef MLAS_GEMM_ONLY
-// MLAS_GEMM_ONLY stub
+// MLAS_GEMM_ONLY stub. Weak attribute resolves duplicate-symbol
+// conflicts when the real MLAS also defines this function.
+__attribute__((weak))
 MLASCALL
 bool
 MlasHGemmSupported(

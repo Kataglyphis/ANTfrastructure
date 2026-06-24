@@ -461,6 +461,9 @@ configure_ffmpeg() {
         fi
     fi
 
+    # Workaround for glibc 2.43+ __pthread_cond_timedwait64 symbol (Clang sets __USE_TIME_BITS64)
+    configure_opts+=("--extra-cflags=-U__USE_TIME_BITS64")
+
     if ffmpeg_probe_pkg_config_feature "libfreetype" "freetype2" "ft2build.h FT_FREETYPE_H" "FT_Init_FreeType"; then
         configure_opts+=("--enable-libfreetype")
     fi
