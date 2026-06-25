@@ -15,10 +15,10 @@ main() {
     [ -d "${vulkan_dir}" ] || continue
 
     if [ -d "${vulkan_dir}/x86_64" ] && [ ! -e "${vulkan_dir}/aarch64" ]; then
-      ln -sf x86_64 "${vulkan_dir}/aarch64"
+      ln -sf x86_64 "${vulkan_dir}/aarch64" 2>/dev/null || true
     fi
     if [ -d "${vulkan_dir}/x86_64" ] && [ ! -e "${vulkan_dir}/riscv64" ]; then
-      ln -sf x86_64 "${vulkan_dir}/riscv64"
+      ln -sf x86_64 "${vulkan_dir}/riscv64" 2>/dev/null || true
     fi
 
     local arch_dir
@@ -29,7 +29,9 @@ main() {
       *)       arch_dir="x86_64" ;;
     esac
 
-    ln -sf "${vulkan_dir}${arch_dir}" /opt/vulkan/active
+    if [ -d "${vulkan_dir}${arch_dir}" ]; then
+      ln -sf "${vulkan_dir}${arch_dir}" /opt/vulkan/active 2>/dev/null || true
+    fi
   done
 }
 
