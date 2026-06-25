@@ -54,12 +54,17 @@ function Ensure-Dir($path) {
     return (Resolve-Path $path).Path
 }
 
-# ---- module import (logging only) ----
+# ---- module import (logging + build helpers) ----
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "Required module not found: $modulePath"
 }
 Import-Module $modulePath -Force
+
+$sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
+if (Test-Path $sourceBuildModule) {
+    Import-Module $sourceBuildModule -Force
+}
 
 # ---- logging ----
 $logContext = New-StructuredLogContext -LogDir $LogDir -Prefix 'gst-source-build'

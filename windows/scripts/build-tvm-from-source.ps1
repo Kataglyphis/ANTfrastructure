@@ -60,6 +60,7 @@ $pythonModule = if ($SkipPython) { 'OFF' } else { 'ON' }
 
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
+    '-DCMAKE_CXX_FLAGS="-Wno-unknown-attributes"'
     '-DUSE_OPENCL=OFF'
     '-DUSE_MICRO=OFF'
     "-DUSE_CUDA=$useCuda"
@@ -78,6 +79,12 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     if (Test-Path $vulkanLib) {
         $cmakeExtra += "-DVulkan_LIBRARY=$(Join-Path $vulkanLib 'vulkan-1.lib')"
     }
+}
+
+# Fix llvm-lib archiver path for clang-cl builds
+$llvmLib = Get-Command llvm-lib.exe -ErrorAction SilentlyContinue
+if ($llvmLib) {
+    $cmakeExtra += "-DCMAKE_AR:PATH=$($llvmLib.Source)"
 }
 
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra
