@@ -6,3 +6,4 @@ out/**/*
 .github\instructions\codacy.instructions.md
 *.deb
 windows/downloads/*
+linux/llm-stack/ollama-binary.tar.zst
