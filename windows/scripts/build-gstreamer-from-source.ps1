@@ -331,6 +331,18 @@ int _isatty(int);
         '-Dintrospection=disabled',
         '-Dtests=disabled',
         '-Dexamples=disabled',
+        # Enable all GStreamer plugin sets.
+        # Individual lib integrations (opencv, onnx, tflite) are auto-detected
+        # via PKG_CONFIG_PATH set in Dockerfile.media. If a dependency is not
+        # found, that plugin is simply skipped — no build failure.
+        '-Dgpl=enabled',
+        '-Dbase=enabled',
+        '-Dgood=enabled',
+        '-Dugly=enabled',
+        '-Dbad=enabled',
+        '-Dges=enabled',
+        '-Drtsp_server=enabled',
+        '-Dtools=enabled',
         # Provide stub unistd.h; disable cairo Win32 (avoids LLVM 22 mmintrin.h bug)
         "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
         '-Dcairo:win32=disabled',
@@ -412,6 +424,22 @@ int _isatty(int);
     } else {
         log "WARNING: gst-launch-1.0.exe not found at expected path: $gstLaunch"
         log 'Build may have completed but binaries may be elsewhere. Check logs.'
+    }
+
+    # ---- 8b. verify plugin integrations (non-fatal) ----
+    $gstInspect = Join-Path $resolvedInstallDir 'bin\gst-inspect-1.0.exe'
+    if (Test-Path $gstInspect) {
+        $integrationPlugins = @('opencv', 'onnx', 'tensorfilter', 'libav')
+        foreach ($p in $integrationPlugins) {
+            try {
+                $null = & $gstInspect $p 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    log "  [PASS] GStreamer plugin '$p' found"
+                } else {
+                    log "  [INFO] GStreamer plugin '$p' not available"
+                }
+            } catch { log "  [INFO] GStreamer plugin '$p' check skipped" }
+        }
     }
 
     # ---- 9. cleanup ----
