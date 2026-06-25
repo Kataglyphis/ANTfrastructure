@@ -172,6 +172,8 @@ build_gstreamer_monorepo() {
     riscv*|*riscv*)
       echo "Target arch '${TARGET_MACHINE_ARCH}' detected: python disabled (no target Python dev for riscv64)"
       MESON_FLAGS+=("-Drs=disabled")
+      # PTP helper fails to link on riscv64 (collect2 error with gcc cross linker).
+      append_meson_arg "-Dgstreamer:ptp-helper=disabled"
       # Introspection kept enabled — exe_wrapper is provided via pre-setup.sh QEMU wrapper.
       # Force graphene introspection on to avoid dangling .gir dependency in ninja.
       append_meson_arg "-Dgraphene:introspection=enabled"

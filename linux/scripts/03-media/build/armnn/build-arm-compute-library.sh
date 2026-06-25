@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_common_init "${SCRIPT_DIR}"
 
-ACL_VERSION="${ACL_VERSION:-v25.05}"
+ACL_VERSION="${ACL_VERSION:-v25.04}"
 ACL_REPO="${ACL_REPO:-https://github.com/ARM-software/ComputeLibrary.git}"
 ACL_SRC_DIR="${ACL_SRC_DIR:-/tmp/acl-src}"
 ACL_INSTALL_DIR="${ACL_INSTALL_DIR:-/opt/acl}"

@@ -623,14 +623,28 @@ detect_spirv_tools_library() {
   # TVM's Vulkan build requires the SPIRV-Tools *library*.
   local candidates=()
 
-  # Prefer shared libs when present.
+  # Map canonical arch → Vulkan SDK arch directory name.
+  local _arch_dir
+  case "${CROSS_TARGET_ARCH:-${TARGET_ARCH:-${TARGETARCH:-}}}" in
+    amd64|x86_64)  _arch_dir="x86_64" ;;
+    arm64|aarch64) _arch_dir="aarch64" ;;
+    riscv64)       _arch_dir="riscv64" ;;
+    *)             _arch_dir="" ;;
+  esac
+
   shopt -s nullglob
-  # Prefer the Vulkan SDK copy under /opt/vulkan. Prefer static to avoid runtime deps/RPATH.
+  # 1) Target-arch path from cross-rebuilt SPIRV-Tools (Dockerfile.sdk).
+  #    Placed under /opt/vulkan/<version>/<arch_dir>/lib/.
+  if [ -n "${_arch_dir}" ]; then
+    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libSPIRV-Tools.a)
+    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libSPIRV-Tools-shared.so)
+    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libSPIRV-Tools.so)
+  fi
+  # 2) Generic Vulkan SDK copy — may be host-arch only.
   candidates+=(/opt/vulkan/*/*/lib/libSPIRV-Tools.a)
   candidates+=(/opt/vulkan/*/*/lib/libSPIRV-Tools-shared.so)
   candidates+=(/opt/vulkan/*/*/lib/libSPIRV-Tools.so)
-
-  # If setup-env.sh sets VULKAN_SDK, also consider that location (it should still be under /opt/vulkan).
+  # 3) VULKAN_SDK override.
   if [ -n "${VULKAN_SDK:-}" ]; then
     candidates+=("${VULKAN_SDK}/lib/libSPIRV-Tools.a")
     candidates+=("${VULKAN_SDK}/lib/libSPIRV-Tools-shared.so")

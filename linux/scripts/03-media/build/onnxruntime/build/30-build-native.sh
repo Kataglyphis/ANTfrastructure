@@ -82,15 +82,8 @@ if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
 fi
 
 if [ "${ORT_ENABLE_TVM:-false}" = "true" ]; then
-  if [ -d /opt/src/tvm-install ]; then
-    info "TVM EP enabled (TVM installed at /opt/src/tvm-install)"
-    BUILD_ARGS+=(
-      --use_tvm
-      --tvm_home /opt/src/tvm-install
-    )
-  else
-    warn "TVM EP enabled but /opt/src/tvm-install not found; skipping TVM EP"
-  fi
+  warn "TVM EP requested but ORT build.py no longer supports --use_tvm (removed after ORT 1.16)."
+  warn "TVM integration is handled via the TVM runtime, not the ORT EP. Skipping."
 fi
 
 if [ "${ORT_ENABLE_ARMNN:-true}" = "true" ]; then
