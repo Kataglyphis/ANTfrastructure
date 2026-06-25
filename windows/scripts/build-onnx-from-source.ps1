@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$SourceDir = 'C:\temp\onnx-src',
     [string]$InstallDir = '',
@@ -11,7 +14,7 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.27.0'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\gstreamer' }
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 
@@ -26,22 +29,21 @@ $ortInstallDir = "$InstallDir\lib\onnxruntime-source"
 $bytes = [System.IO.File]::ReadAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc")
 [System.IO.File]::WriteAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc", [byte[]]@($bytes | Where-Object { $_ -le 127 }))
 
-# VsDevCmd: ml64 for .asm + cl.exe for nvcc host compiler
-cmd /c """C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat"" -arch=amd64 -host_arch=amd64 && set" | ForEach-Object {
-    if ($_ -match '^(.*?)=(.*)$') { Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2] }
-}
+Enter-VsDevCmdEnvironment
 
-if ((Test-Path 'C:\temp\cpython\PC\pyconfig.h') -and -not (Test-Path 'C:\temp\cpython\Include\pyconfig.h')) { Copy-Item 'C:\temp\cpython\PC\pyconfig.h' 'C:\temp\cpython\Include\pyconfig.h' }
+$cpythonDir = Join-Path $env:TEMP_DIR 'cpython'
+if ((Test-Path "$cpythonDir\PC\pyconfig.h") -and -not (Test-Path "$cpythonDir\Include\pyconfig.h")) { Copy-Item "$cpythonDir\PC\pyconfig.h" "$cpythonDir\Include\pyconfig.h" }
 
-$sccache = (Get-Command sccache.exe -ErrorAction Stop).Source; $env:SCCACHE_MAX_JOBS = '8'
+$sccache = (Get-Command sccache.exe -ErrorAction Stop).Source; $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount
 
 $cxxFlags = '/WX- /clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-msse4.2 /clang:-mf16c /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16 /clang:-Wno-invalid-specialization'
 
 # ── GPU detection ──
 $gpuArgs = @()
-if ($env:GPU_TYPE -eq 'nvidia' -and $env:CUDA_ROOT) {
+if ($env:GPU_TYPE -eq 'nvidia') {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
-    $cudaRoot = $env:CUDA_ROOT; $cudnnRoot = $env:CUDNN_ROOT
+    $cudaRoot = Get-CudaRoot
+    $cudnnRoot = $env:CUDNN_ROOT
     $cudnnLib = if ($cudnnRoot) { (Get-ChildItem "$cudnnRoot\lib\x64\cudnn*.lib" -ErrorAction SilentlyContinue)[0].FullName }
     $env:PATH = "$cudaRoot\bin;$env:PATH"
 
@@ -66,13 +68,13 @@ if ($env:GPU_TYPE -eq 'nvidia' -and $env:CUDA_ROOT) {
     } else {
         $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
     }
-    $gpuArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaRoot\bin\nvcc.exe"
+    $gpuArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$($cudaRoot)/bin/nvcc.exe"
     $gpuArgs += "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$((Get-Command cl.exe -ErrorAction Stop).Source)"
     $gpuArgs += '-DCMAKE_CUDA_STANDARD:STRING=17'
     $gpuArgs += "-DCMAKE_CUDA_FLAGS:STRING=-Xcompiler=/wd4067 -Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING"
     $gpuArgs += '-DCMAKE_CUDA_ARCHITECTURES=80-real;86-real;89-real;90-real'
-    $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
-    $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnRoot\lib\x64", "-DCUDNN_LIBRARY=$cudnnLib"
+    $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$($cudnnRoot)/include"
+    $gpuArgs += "-DCMAKE_LIBRARY_PATH=$($cudnnRoot)/lib/x64", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
 } elseif ($env:GPU_TYPE -eq 'amd' -and $env:ROCM_ROOT) {
     Write-Host 'AMD GPU detected: enabling ROCm'

@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # WindowsFlutter.Common.psm1
 # Reusable functions for building and patching Flutter Windows applications in a containerized environment.
 

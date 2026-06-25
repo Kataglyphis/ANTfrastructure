@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 <#
 .SYNOPSIS
     Build GStreamer from source on Windows using Meson with clang-cl.
@@ -33,7 +36,7 @@
 #>
 param(
     [string]$GstVersion        = '',
-    [string]$InstallDir        = 'C:\gstreamer',
+    [string]$InstallDir        = 'C:\runtime',
     [string]$SrcDir            = 'C:\temp\gst-source',
     [string]$BuildDir          = 'C:\temp\gst-builddir',
     [string]$LogDir            = 'C:\temp\logs',
@@ -51,12 +54,17 @@ function Ensure-Dir($path) {
     return (Resolve-Path $path).Path
 }
 
-# ---- module import (logging only) ----
+# ---- module import (logging + build helpers) ----
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "Required module not found: $modulePath"
 }
 Import-Module $modulePath -Force
+
+$sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
+if (Test-Path $sourceBuildModule) {
+    Import-Module $sourceBuildModule -Force
+}
 
 # ---- logging ----
 $logContext = New-StructuredLogContext -LogDir $LogDir -Prefix 'gst-source-build'
@@ -126,7 +134,7 @@ try {
         # Fallback: try pip show to locate
         $mesonVer = & $pyExe -m pip show meson 2>&1 | Select-String '^Location:' | ForEach-Object { $_ -replace '^Location: ', '' }
         if ($mesonVer) {
-            $mesonExe = Join-Path (Join-Path ($mesonVer.Trim()) '..\Scripts') 'meson.exe'
+            $mesonExe = (Get-Item $mesonVer.Trim()).Directory.Parent.FullName + '\Scripts\meson.exe'
         }
     }
     if (-not (Test-Path $mesonExe)) { throw 'meson.exe not found after pip install' }
@@ -275,7 +283,7 @@ try {
     }
 
     # ---- 5b. create stub unistd.h + fixed intrin.h for platform compat ----
-    $stubDir = 'C:\temp\includes'
+    $stubDir = Join-Path $env:TEMP_DIR 'includes'
     if (-not (Test-Path $stubDir)) { New-Item -Path $stubDir -ItemType Directory -Force | Out-Null }
     # unistd.h: flex/bison generated files + POSIX compat on Windows
     $stubFile = Join-Path $stubDir 'unistd.h'
@@ -291,7 +299,7 @@ int _isatty(int);
 
     # ---- 5c. detect CUDA (available from Dockerfile.ai layer) ----
     $cudaDetected = $false
-    $cudaRoot = if ($env:CUDA_ROOT) { $env:CUDA_ROOT } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+    $cudaRoot = Get-CudaRoot
     if ($cudaRoot -and (Test-Path $cudaRoot)) {
         $cudaDetected = $true
         log "CUDA detected at: $cudaRoot"
@@ -323,8 +331,20 @@ int _isatty(int);
         '-Dintrospection=disabled',
         '-Dtests=disabled',
         '-Dexamples=disabled',
+        # Enable all GStreamer plugin sets.
+        # Individual lib integrations (opencv, onnx, tflite) are auto-detected
+        # via PKG_CONFIG_PATH set in Dockerfile.media. If a dependency is not
+        # found, that plugin is simply skipped — no build failure.
+        '-Dgpl=enabled',
+        '-Dbase=enabled',
+        '-Dgood=enabled',
+        '-Dugly=enabled',
+        '-Dbad=enabled',
+        '-Dges=enabled',
+        '-Drtsp_server=enabled',
+        '-Dtools=enabled',
         # Provide stub unistd.h; disable cairo Win32 (avoids LLVM 22 mmintrin.h bug)
-        '-Dc_args=-IC:\temp\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types',
+        "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
         '-Dcairo:win32=disabled',
         '-Dopus:intrinsics=disabled',
         # nvcodec disabled: D3D11 interop code in gstnvdecoder.cpp uses
@@ -406,6 +426,22 @@ int _isatty(int);
         log 'Build may have completed but binaries may be elsewhere. Check logs.'
     }
 
+    # ---- 8b. verify plugin integrations (non-fatal) ----
+    $gstInspect = Join-Path $resolvedInstallDir 'bin\gst-inspect-1.0.exe'
+    if (Test-Path $gstInspect) {
+        $integrationPlugins = @('opencv', 'onnx', 'tensorfilter', 'libav')
+        foreach ($p in $integrationPlugins) {
+            try {
+                $null = & $gstInspect $p 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    log "  [PASS] GStreamer plugin '$p' found"
+                } else {
+                    log "  [INFO] GStreamer plugin '$p' not available"
+                }
+            } catch { log "  [INFO] GStreamer plugin '$p' check skipped" }
+        }
+    }
+
     # ---- 9. cleanup ----
     if (-not $KeepBuildArtifacts.IsPresent) {
         log 'Cleaning up source and build directories...'
@@ -420,7 +456,6 @@ int _isatty(int);
     }
 
     log 'END - GStreamer source build completed successfully.'
-    exit 0
 
 } catch {
     log "FATAL ERROR: $($_.Exception.Message)"

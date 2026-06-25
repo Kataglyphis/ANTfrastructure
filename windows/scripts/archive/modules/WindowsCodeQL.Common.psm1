@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
@@ -80,17 +83,13 @@ function Invoke-BuildCodeQL {
         $innerArgs[$pair.Key] = $pair.Value
     }
 
-    $innerParameterString = ($innerArgs.GetEnumerator() | ForEach-Object {
-            if ($_.Value -is [switch]) {
-                if ($_.Value.IsPresent) { "-$($_.Key)" }
-            } elseif ($_.Value -is [bool]) {
-                if ($_.Value) { "-$($_.Key)" }
-            } else {
-                "-$($_.Key) `"$($_.Value)`""
-            }
-        }) -join ' '
-
-    $innerCommand = "cmd /c powershell -NoProfile -ExecutionPolicy Bypass -File `"$BuildScriptPath`" $innerParameterString"
+    $innerParamList = @()
+    foreach ($pair in $innerArgs.GetEnumerator()) {
+        if ($pair.Value -is [switch] -and $pair.Value.IsPresent) { $innerParamList += "-$($pair.Key)" }
+        elseif ($pair.Value -is [bool] -and $pair.Value) { $innerParamList += "-$($pair.Key)" }
+        elseif ($pair.Value -isnot [switch] -and $pair.Value -isnot [bool]) { $innerParamList += "-$($pair.Key)", "$($pair.Value)" }
+    }
+    $innerCommand = @('cmd', '/c', 'powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BuildScriptPath) + $innerParamList
 
     $dbClusterDir = Join-Path $Workspace 'codeql-db-cluster'
     $shouldCreateDbCluster = $true

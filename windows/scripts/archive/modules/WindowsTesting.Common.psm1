@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 $script:MsvcAsanRuntimeDir = $null

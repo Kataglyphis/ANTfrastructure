@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$TempDir = 'C:\temp',
     [string]$OpenCvVersion = ''

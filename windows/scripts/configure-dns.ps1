@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string[]]$DnsServers = @('8.8.8.8', '1.1.1.1')
 )
@@ -5,6 +8,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+# DEPRECATED: nerdctl build has known DNS issues on Windows.
+# Use Stevedore's docker.exe instead (see AGENTS.md § Windows Container Build).
+# This script remains as a fallback for hosts that cannot use docker.exe.
 Write-Host 'Configuring DNS for BuildKit container...'
 
 $adapters = Get-NetAdapter -ErrorAction SilentlyContinue

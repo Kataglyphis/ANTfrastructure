@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, ConvertTo-ParameterList, etc.)
@@ -125,6 +128,7 @@ function Invoke-BuildExternal {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
+    $previousLastExitCode = $global:LASTEXITCODE
     $global:LASTEXITCODE = 0
 
     try {
@@ -152,6 +156,7 @@ function Invoke-BuildExternal {
 
         return $exitCode
     } finally {
+        $global:LASTEXITCODE = $previousLastExitCode
         $ErrorActionPreference = $previousErrorActionPreference
     }
 }

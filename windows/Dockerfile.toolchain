@@ -1,9 +1,11 @@
 # escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # Cached Windows toolchain layer.
 # Builds CPython 3.14 from source (matching versions.env) on top of the SDK layer.
 # Makes the built Python interpreter available for downstream media builds.
 
-ARG BASE_IMAGE=local/kataglyphis:windows-nvidia
+ARG BASE_IMAGE=local/kataglyphis:windows-sdk
 FROM ${BASE_IMAGE}
 
 ARG PYTHON_VERSION=3.14.5
@@ -17,9 +19,7 @@ COPY windows\scripts C:\temp\scripts
 SHELL ["cmd", "/S", "/C"]
 RUN set "PYTHON_VERSION=%PYTHON_VERSION%" && if not exist "C:\temp\cpython\" git clone --branch v%PYTHON_VERSION% --depth 1 https://github.com/python/cpython.git C:\temp\cpython
 
-# Patch platform toolset from MSVC v143 to ClangCL
-SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
-# Build CPython from source (override PlatformToolset via Directory.Build.props)
+# Build CPython from source (override PlatformToolset via Directory.Build.props using ClangCL)
 SHELL ["cmd", "/S", "/C"]
 RUN cd /d C:\temp\cpython && `
     echo ^<?xml version="1.0" encoding="utf-8"?^> > PCbuild\Directory.Build.props && `

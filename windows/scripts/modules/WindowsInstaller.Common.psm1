@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, ConvertTo-ParameterList, etc.)
@@ -126,7 +129,7 @@ function Invoke-WebDownloadWithFallback {
     }
 
     if (-not $downloaded) {
-        throw 'DownloadFailed'
+        throw "Download failed: $Url"
     }
 }
 
@@ -148,7 +151,7 @@ function Invoke-InstallerProcess {
 
     try {
         $process = if ($sanitized.Count -gt 0) {
-            Start-Process -FilePath $FilePath -ArgumentList $sanitized -Wait -PassThru -NoNewWindow
+            Start-Process -FilePath $FilePath -ArgumentList ($sanitized -join ' ') -Wait -PassThru -NoNewWindow
         } else {
             Start-Process -FilePath $FilePath -Wait -PassThru -NoNewWindow
         }

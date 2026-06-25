@@ -1,25 +1,25 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$VcpkgDir = 'C:\vcpkg'
 )
 
-$ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 Write-Host "Setting up vcpkg at $VcpkgDir..."
 
 if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
     Write-Host 'Cloning vcpkg...'
-    $oldEap = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    git clone --depth 1 https://github.com/microsoft/vcpkg.git $VcpkgDir 2>$null
+    git clone --depth 1 https://github.com/microsoft/vcpkg.git $VcpkgDir 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'vcpkg clone failed' }
 
     Push-Location $VcpkgDir
     Write-Host 'Bootstrapping vcpkg...'
-    .\bootstrap-vcpkg.bat 2>$null
+    .\bootstrap-vcpkg.bat 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
     Pop-Location
-    $ErrorActionPreference = $oldEap
     Write-Host 'vcpkg installed successfully'
 } else {
     Write-Host 'vcpkg already installed'

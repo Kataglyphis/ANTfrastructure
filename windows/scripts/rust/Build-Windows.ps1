@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 <#
 .SYNOPSIS
   Build script for running inside the Windows container, using the Kataglyphis-ContainerHub build framework.
@@ -46,14 +49,6 @@ try {
     Write-BuildLog -Context $Context -Message "Workspace: $Workspace"
     Write-BuildLog -Context $Context -Message "BINARY:    $Binary"
     Write-BuildLog -Context $Context -Message "VERSION:   $Version"
-
-    # Onnx Runtime DirectML package version (override with ONNX_DIRECTML_VERSION env var)
-    $DirectMLOnnxRuntimeVersion = $env:ONNX_DIRECTML_VERSION
-    if ([string]::IsNullOrWhiteSpace($DirectMLOnnxRuntimeVersion)) {
-        # Default to 1.24.4 because 1.25.0 may not be available in NuGet sources
-        $DirectMLOnnxRuntimeVersion = "1.24.4"
-    }
-    Write-BuildLog -Context $Context -Message "OnnxRuntime.DirectML Version: $DirectMLOnnxRuntimeVersion"
 
     Set-Location -Path $Workspace
 

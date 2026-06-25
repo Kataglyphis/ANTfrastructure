@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
@@ -81,14 +84,58 @@ function Invoke-MsixSign {
       }
 
       # Verify signature
-      Write-BuildLog -Context $Context -Message "Verifying MSIX signature: $MsixOutPath"
-      if ($InvokerScriptBlock) {
-        & $InvokerScriptBlock -Context $Context -File $signtoolPath -Parameters @('verify', '/pa', '/v', $MsixOutPath) | Out-Null
-      } else {
-        Invoke-BuildExternal -Context $Context -File $signtoolPath -Parameters @('verify', '/pa', '/v', $MsixOutPath) | Out-Null
+      try {
+        Write-BuildLog -Context $Context -Message "Verifying MSIX signature: $MsixOutPath"
+        if ($InvokerScriptBlock) {
+          & $InvokerScriptBlock -Context $Context -File $signtoolPath -Parameters @('verify', '/pa', '/v', $MsixOutPath) | Out-Null
+        } else {
+          Invoke-BuildExternal -Context $Context -File $signtoolPath -Parameters @('verify', '/pa', '/v', $MsixOutPath) | Out-Null
+        }
+        Write-BuildLog -Context $Context -Message 'MSIX signing/verification completed.'
+      } finally {
+        # Clean up imported certificates to avoid accumulation in the certificate store
+        if ($imported -ne $null) {
+          $thumbprints = @()
+          if ($imported -is [System.Array]) { $thumbprints = $imported | ForEach-Object { $_.Thumbprint } }
+          else { $thumbprints = @($imported.Thumbprint) }
+          foreach ($tp in $thumbprints) {
+            try {
+              $certPath = "Cert:\LocalMachine\Root\$tp"
+              if (Test-Path $certPath) { Remove-Item $certPath -Force -ErrorAction SilentlyContinue }
+            } catch {
+              Write-BuildLogWarning -Context $Context -Message "Failed to clean up certificate $tp: $($_.Exception.Message)"
+            }
+          }
+        }
       }
-      Write-BuildLog -Context $Context -Message 'MSIX signing/verification completed.'
     } else {
+      Write-BuildLogWarning -Context $Context -Message 'No .pfx found at repository root; MSIX will not be signed.'
+    }
+  } catch {
+    Write-BuildLogWarning -Context $Context -Message ("MSIX signing step failed: $($_.Exception.Message)")
+  } finally {
+    # Clean up imported certificates to avoid accumulation
+    Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -match 'Kataglyphis' } | ForEach-Object { Remove-Item -Path $_.PSPath -Force -ErrorAction SilentlyContinue }
+  }
+}
+
+# Approved-verb wrapper for the signing flow. Keeps Invoke-MsixSign for compatibility.
+function Start-MsixSigning {
+  param(
+    [Parameter(Mandatory)] [pscustomobject]$Context,
+    [Parameter(Mandatory)] [string]$WorkspacePath,
+    [Parameter(Mandatory)] [string]$MsixOutPath,
+    [scriptblock]$InvokerScriptBlock
+  )
+
+  return Invoke-MsixSign -Context $Context -WorkspacePath $WorkspacePath -MsixOutPath $MsixOutPath -InvokerScriptBlock $InvokerScriptBlock
+}
+
+Export-ModuleMember -Function @(
+  'Invoke-MsixSign',
+  'Start-MsixSigning',
+  'Test-Administrator'
+)
       Write-BuildLogWarning -Context $Context -Message 'No .pfx found at repository root; MSIX will not be signed.'
     }
   } catch {

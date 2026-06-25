@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 param(
     [string]$TensorRtVersion = '',
     [string]$TensorRtRoot = '',
@@ -25,7 +28,7 @@ if ($LocalZipPath -and (Test-Path $LocalZipPath)) {
 
 # 2. Check repo downloads dir (mounted in container at C:\temp\downloads)
 if (-not $trtZip) {
-    $repoDlDir = 'C:\temp\downloads'
+    $repoDlDir = Join-Path $env:TEMP_DIR 'downloads'
     if (Test-Path $repoDlDir) {
         $found = Get-ChildItem "$repoDlDir\*TensorRT*.zip" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($found) { $trtZip = $found.FullName; Write-Host "Found TensorRT zip at: $trtZip" }
@@ -71,7 +74,7 @@ if (-not $trtZip -or -not (Test-Path $trtZip)) {
 Write-Host "Extracting TensorRT to $TensorRtRoot..."
 New-Item -Path $TensorRtRoot -ItemType Directory -Force | Out-Null
 Expand-Archive -Path $trtZip -DestinationPath $TensorRtRoot -Force
-if ($trtZip -ne $LocalZipPath -and $trtZip -notlike 'C:\temp\downloads\*') { Remove-Item $trtZip -Force -ErrorAction SilentlyContinue }
+if ($trtZip -ne $LocalZipPath -and $trtZip.FullName -notlike (Join-Path $env:TEMP_DIR 'downloads\*')) { Remove-Item $trtZip -Force -ErrorAction SilentlyContinue }
 
 # Find the actual versioned subdirectory
 $trtDir = Get-ChildItem "$TensorRtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
