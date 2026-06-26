@@ -1,0 +1,172 @@
+# syntax=docker/dockerfile:1.24.0
+
+ARG BASE_IMAGE=local/kataglyphis:base
+FROM ${BASE_IMAGE}
+
+SHELL ["bash", "-lc"]
+
+# NOTE: Build scripts for GCC/LLVM/Rust RUNs are bind-mounted (--mount=type=bind)
+# rather than COPYed. Script changes do NOT invalidate GCC/LLVM/Rust build cache
+# — good for cache stability, but a script-only fix requires --no-cache. Downstream
+# Dockerfiles use COPY for scripts (script changes DO invalidate), creating an
+# intentional asymmetry: toolchain stays cached through script updates, while sdk,
+# media, and later stages rebuild when their scripts change.
+
+ARG LLVM_RELEASE=22.1.6
+ARG GCC_VERSION=16.1.0
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG BUILDARCH
+ARG BUILDPLATFORM
+ARG BUILD_MODE=native
+ARG CROSS_TARGETS=amd64,arm64,riscv64
+ARG PYTHON_VERSION=3.14.5
+ARG GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=0
+ARG GCC_HOST_BOOTSTRAP=1
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+ENV BUILD_MODE=${BUILD_MODE} \
+    GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=${GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE} \
+    GCC_HOST_BOOTSTRAP=${GCC_HOST_BOOTSTRAP} \
+    BUILDARCH=${BUILDARCH} \
+    BUILDPLATFORM=${BUILDPLATFORM} \
+    CROSS_TARGETS=${CROSS_TARGETS} \
+    GCC_VERSION=${GCC_VERSION} \
+    GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
+    LLVM_RELEASE=${LLVM_RELEASE} \
+    PYTHON_VERSION=${PYTHON_VERSION} \
+    PATH="/usr/local/cargo/bin:${PATH}" \
+    CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    RUSTC_WRAPPER="" \
+    PKG_CONFIG_ALLOW_CROSS=1
+
+# ------------------------------------------------------------------------------
+# Toolchain setup
+# ------------------------------------------------------------------------------
+# 1. GCC (Heavy Layer)
+# If this succeeds, it is cached forever unless GCC_VERSION changes.
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=tmpfs,target=/tmp \
+    --mount=type=tmpfs,target=/var/tmp \
+    set -euo pipefail; \
+    SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
+    bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-gcc
+
+# 2. ENVIRONMENT CONFIGURATION
+# We apply ENV vars here so subsequent RUN instructions (LLVM/Vulkan)
+# automatically use the new GCC without needing to source /etc/environment.
+# LIBRARY_PATH is needed at link time (for the linker to find libgcc_s, etc.)
+# LD_LIBRARY_PATH is needed at runtime (for the dynamic loader)
+ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
+    PKG_CONFIG_PATH="${GCC_PREFIX}/lib64/pkgconfig:${GCC_PREFIX}/lib/pkgconfig" \
+    LD_LIBRARY_PATH="${GCC_PREFIX}/lib64:${GCC_PREFIX}/lib" \
+    LIBRARY_PATH="${GCC_PREFIX}/lib64:${GCC_PREFIX}/lib"
+
+# 3. LLVM / CLANG (Heavy Layer)
+# If this fails, Docker restores the image state at 'Step 2' instantly.
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    --mount=type=tmpfs,target=/var/tmp \
+    set -euo pipefail; \
+    SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
+    LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
+    bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-llvm
+
+# 3b. ENSURE LLVM 22 IS THE SYSTEM DEFAULT
+# apt.llvm.org or source-build may install binaries at /usr/lib/llvm-*/bin/
+# without always registering them as the highest-priority alternatives.
+# Explicit update-alternatives here guarantees clang/clang++ resolve to the
+# requested major version for CMake presets and downstream builds.
+# Uses the bind-mounted copy to avoid cache invalidation on script-only changes.
+RUN --mount=type=bind,source=linux/scripts/02-toolchain/register-llvm-alternatives.sh,target=/tmp/register-llvm-alternatives.sh,ro \
+    set -euo pipefail; LLVM_RELEASE="${LLVM_RELEASE}" bash /tmp/register-llvm-alternatives.sh
+
+# 3c. VERIFY TOOLCHAIN CONTRACT
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    set -euo pipefail; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh verify
+
+# 4. RUST / CARGO
+# Install the host Rust toolchain in the compiler layer and add the target stdlibs
+# plus Cargo linker hints needed by the amd64-hosted cross build lane.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=cache,target=/root/.cache/rustup,id=rustup-cache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    bash /opt/scripts/toolchain/install-rust.sh
+
+# 5. PYTHON (Source-Built Interpreter)
+# Keep the interpreter in the shared compiler layer so downstream images only
+# create their own venvs on top of a single source-built CPython install.
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/build_python.sh,target=/opt/scripts/python/build_python.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/fix-staged-python-pc.sh,target=/opt/scripts/python/fix-staged-python-pc.sh,ro \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    PYTHON_CROSS_STAGE_ROOT=/opt/python-cross \
+    PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \
+    bash /opt/scripts/python/build_python.sh "${PYTHON_VERSION}"
+
+# Pre-create the shared Python virtual environment so downstream images
+# (media, sdk) can skip the costly uv venv + pip install step.
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    VIRTUAL_ENV=/opt/python/.venv; \
+    uv venv --seed --python /usr/local/bin/python3 "${VIRTUAL_ENV}"; \
+    uv pip install --python "${VIRTUAL_ENV}/bin/python" \
+        wheel setuptools numpy meson ninja cmake packaging
+
+ENV VIRTUAL_ENV=/opt/python/.venv \
+    PATH=/opt/python/.venv/bin:${PATH} \
+    UV_PYTHON=/opt/python/.venv/bin/python \
+    MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python
+
+RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
+    set -euo pipefail; \
+    echo "bundle v5"; \
+    mkdir -p /opt/scripts/core /opt/scripts/toolchain /opt/scripts/python; \
+    cp -av /tmp/scripts/01-core/. /opt/scripts/core/; \
+    cp -av /tmp/scripts/02-toolchain/. /opt/scripts/toolchain/; \
+    cp -av /tmp/scripts/02-toolchain/python/build_python.sh /opt/scripts/python/build_python.sh; \
+    cp -av /tmp/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh; \
+    mkdir -p /opt/scripts/packaging; \
+    cp -av /tmp/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh; \
+    cp -av /tmp/scripts/06-packaging/smoke-toolchain.sh /opt/scripts/packaging/smoke-toolchain.sh; \
+    cp -av /tmp/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh; \
+    chmod 755 /opt/scripts -R; \
+    for f in $(find /opt/scripts -name '*.sh' -type f); do chmod 755 "$f" && bash -n "$f"; done; \
+    bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null; \
+    bash /opt/scripts/python/fix-staged-python-pc.sh
+
+# sudo pass-through wrapper: avoids sudo-rs env filtering issues in container
+RUN echo '#!/bin/bash' > /usr/local/bin/sudo && \
+    echo 'args=()' >> /usr/local/bin/sudo && \
+    echo 'while [ $# -gt 0 ]; do' >> /usr/local/bin/sudo && \
+    echo '  case "$1" in' >> /usr/local/bin/sudo && \
+    echo '    --preserve-env*) shift ;;' >> /usr/local/bin/sudo && \
+    echo '    *) args+=("$1"); shift ;;' >> /usr/local/bin/sudo && \
+    echo '  esac' >> /usr/local/bin/sudo && \
+    echo 'done' >> /usr/local/bin/sudo && \
+    echo 'exec "${args[@]}"' >> /usr/local/bin/sudo && \
+    chmod +x /usr/local/bin/sudo
+
+LABEL org.opencontainers.image.title="Kataglyphis Compiler" \
+      org.opencontainers.image.description="Compiler toolchain with GCC and LLVM/Clang"

@@ -1,0 +1,215 @@
+# syntax=docker/dockerfile:1.24.0
+#
+# NOTE: ARGs before the first FROM are "global" only for the first FROM scope.
+# Each subsequent FROM creates a new build stage that requires its own ARG
+# re-declarations.  The orchestrator (build-runtime-manifest.sh) passes
+# canonical versions via --build-arg; the ARG defaults here are safety nets
+# for manual builds only.  Keep these in sync with versions.env.
+# TARGET_ARCH is always set by the orchestrator; TARGETARCH is Docker's native
+# build arg and used as a fallback.
+
+ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
+ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGET_ARCH:-amd64}
+ARG BUILD_MODE=native
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG ARTIFACT_PLATFORM=${TARGETPLATFORM}
+ARG PACKAGE_BASE_STAGE=package-image
+ARG ENABLE_NVIDIA=false
+ARG ENABLE_AMD=false
+ARG GSTREAMER_VERSION=1.29.1
+ARG OPENCV_OUTPUT_DIR=/opt/opencv5
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+ARG GSTREAMER_PREFIX=/opt/gstreamer
+ARG ANDROID_SDK_VERSION=14742923
+ARG ANDROID_NDK_VERSION=29.0.14206865
+ARG ANDROID_COMPILE_SDK=36
+ARG ANDROID_BUILD_TOOLS=35.0.0
+ARG ANDROID_CMAKE_VERSION=4.1.2
+ARG ANDROID_API_LEVEL=34
+ARG GCC_VERSION=16.1.0
+ARG LLVM_RELEASE=22.1.6
+ARG PYTHON_VERSION=3.14.5
+ARG PYTHON_MAJOR_MINOR=3.14
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
+
+FROM --platform=${ARTIFACT_PLATFORM} ${ARTIFACT_IMAGE} AS artifact-source
+
+ARG BUILD_MODE
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG GCC_VERSION
+ARG LLVM_RELEASE
+
+# Compiler chain verification: confirm that the custom GCC and Clang
+# toolchains built in Dockerfile.toolchain and Dockerfile.sdk are
+# present in the artifact image for every target architecture.
+RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,target=/tmp/validate-compilers.sh,ro \
+    set -euo pipefail; \
+    TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
+    bash /tmp/validate-compilers.sh artifact-source
+
+
+FROM ${BASE_IMAGE} AS package-image
+
+ARG ONNXRUNTIME_OUTPUT_DIR
+ARG ONNXRUNTIME_GENAI_OUTPUT_DIR
+ARG OPENCV_OUTPUT_DIR
+ARG GSTREAMER_PREFIX
+ARG GCC_VERSION
+
+SHELL ["bash", "-lc"]
+
+COPY --link --from=artifact-source ${ONNXRUNTIME_OUTPUT_DIR} ${ONNXRUNTIME_OUTPUT_DIR}
+COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
+COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
+COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
+COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
+COPY --link --from=artifact-source /opt/wheels /opt/wheels
+COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
+COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
+COPY --link --from=artifact-source /opt/android /opt/android
+COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
+# The SDK stage cross-compiles a native Clang 22.1.6 toolchain for the
+# target architecture and stores it at /opt/llvm-target.  Copy it into
+# the runtime image so every arch ships its own native clang.
+COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
+# Lightweight payload files (LiteRT libs, pkg-config, VVdec)
+# Copied via COPY --link to avoid QEMU emulation issues on foreign arches.
+
+FROM ${PACKAGE_BASE_STAGE} AS package
+
+# Override inherited SHELL (bash -lc) to avoid QEMU login-shell issues
+SHELL ["bash", "-c"]
+
+# Re-declared ARGs required by this stage (Docker requirement across FROM boundaries).
+# ARGs before the first FROM are scope-limited. All version ARGs below are passed
+# by the orchestrator from versions.env; defaults here are safety nets.
+ARG BUILD_MODE TARGET_ARCH TARGETARCH TARGETPLATFORM
+ARG GSTREAMER_VERSION OPENCV_OUTPUT_DIR ONNXRUNTIME_OUTPUT_DIR ONNXRUNTIME_GENAI_OUTPUT_DIR GSTREAMER_PREFIX
+ARG ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK ANDROID_BUILD_TOOLS ANDROID_CMAKE_VERSION ANDROID_API_LEVEL
+ARG ENABLE_NVIDIA ENABLE_AMD
+ARG GCC_VERSION LLVM_RELEASE PYTHON_VERSION PYTHON_MAJOR_MINOR
+ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
+
+ENV BUILD_MODE=${BUILD_MODE} \
+    TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETPLATFORM=${TARGETPLATFORM} \
+    ENABLE_NVIDIA=${ENABLE_NVIDIA} \
+    ENABLE_AMD=${ENABLE_AMD} \
+    GCC_VERSION=${GCC_VERSION} \
+    LLVM_RELEASE=${LLVM_RELEASE} \
+    GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
+    PYTHON_VERSION=${PYTHON_VERSION} \
+    PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
+    PYTHON_CROSS_STAGE_ROOT=/opt/python-cross \
+    PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \
+    ORT_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
+    OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
+    VIRTUAL_ENV=/opt/python/.venv \
+    UV_PYTHON=/opt/python/.venv/bin/python \
+    MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python \
+    CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup \
+    RUSTC_WRAPPER="" \
+    GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
+    OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
+    FFMPEG_PREFIX=/opt/ffmpeg \
+    LIBCAMERA_PREFIX=/opt/libcamera \
+    VULKAN_SDK=/opt/vulkan/active \
+    VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
+    CCACHE_DIR=/workspace/.ccache \
+    CCACHE_SECONDARY_STORAGE=true \
+    # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
+    # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
+    PATH="/opt/vulkan/active/bin:/opt/gstreamer/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/opt/gstreamer/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:/opt/libcamera/lib/pkgconfig:/opt/libcamera/lib64/pkgconfig:/opt/ffmpeg/lib/pkgconfig" \
+    LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:/opt/gstreamer/lib/multiarch:/opt/gstreamer/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
+    LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
+    GDK_BACKEND=x11 \
+    GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0" \
+    GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
+
+COPY linux/scripts/01-core/ /opt/scripts/core/
+COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
+COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
+COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/
+COPY --chmod=755 linux/scripts/03-media/build/gstreamer/android/ /opt/scripts/03-media/gstreamer/android/
+COPY --chmod=755 linux/scripts/03-media/build/litert/android/ /opt/scripts/03-media/litert/android/
+COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/android/ /opt/scripts/03-media/onnxruntime/android/
+COPY --chmod=755 linux/scripts/03-media/build/opencv/android/ /opt/scripts/03-media/opencv/android/
+COPY --chmod=755 linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.sh
+COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh /opt/scripts/python/build_python.sh
+COPY --chmod=755 linux/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh
+COPY --chmod=755 linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh
+COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
+COPY --chmod=755 linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-runtime-image.sh /opt/scripts/packaging/smoke-runtime-image.sh
+
+# Wire LLVM-target and Vulkan symlinks. LLVM-target was cross-compiled for the
+# target arch in the SDK stage; Vulkan SDK installs under x86_64/ so we create
+# aarch64/riscv64 symlinks and link /opt/vulkan/active.
+RUN set -euo pipefail; \
+    if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
+        ln -s /opt/llvm-target /usr/local/llvm-target; \
+    fi; \
+    if [ -d /usr/local/llvm-target/lib/clang ] && [ ! -e /usr/lib/clang ]; then \
+        ln -s /usr/local/llvm-target/lib/clang /usr/lib/clang; \
+    fi; \
+    bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" 2>/dev/null || true
+
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    set -euo pipefail; \
+    bash /opt/scripts/packaging/setup-package-image.sh && \
+    rm -rf /var/lib/apt/lists/*
+
+# Wire GCC/LLVM alternatives and hard-fail if cc -dumpmachine does not
+# match the target architecture. Uses the shared validate-compilers.sh.
+# For cross builds the compiler may not be executable on the build host.
+RUN set -euo pipefail; \
+    _ta="${TARGET_ARCH:-${TARGETARCH}}"; \
+    if [ "${BUILD_MODE}" = "cross" ] && [ -n "${_ta}" ] && [ "${_ta}" != "amd64" ]; then \
+        TARGET_ARCH="${_ta}" \
+        bash /opt/scripts/packaging/validate-compilers.sh package || \
+        echo "WARNING: compiler validation skipped (binary not executable on build host)"; \
+    else \
+        TARGET_ARCH="${_ta}" \
+        bash /opt/scripts/packaging/validate-compilers.sh package; \
+    fi
+
+LABEL org.opencontainers.image.title="Kataglyphis Package" \
+      org.opencontainers.image.description="Runtime package image with assembled cross-compiled artifacts"
+
+# Self-contained smoke-only wrapper target. Runs compiler, media, and cross-arch
+# validation against the package image without needing the full Dockerfile.torch
+# build.  Runtime scripts, entrypoint, labels etc. live canonically in
+# Dockerfile.torch final.
+FROM package AS wrapper-smoke
+
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG GCC_VERSION
+ARG LLVM_RELEASE
+ARG PYTHON_VERSION
+ARG PYTHON_MAJOR_MINOR
+
+RUN set -euo pipefail; \
+    GCC_VERSION="${GCC_VERSION}" \
+    LLVM_RELEASE="${LLVM_RELEASE}" \
+    TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
+    bash /opt/scripts/packaging/validate-compilers.sh smoke && \
+    bash /opt/scripts/packaging/smoke-media.sh && \
+    GCC_VERSION="${GCC_VERSION}" \
+    bash /opt/scripts/packaging/smoke-cross-all-arches.sh "${TARGET_ARCH}"

@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, ConvertTo-ParameterList, etc.)
@@ -125,6 +128,7 @@ function Invoke-BuildExternal {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
+    $previousLastExitCode = $global:LASTEXITCODE
     $global:LASTEXITCODE = 0
 
     try {
@@ -152,6 +156,7 @@ function Invoke-BuildExternal {
 
         return $exitCode
     } finally {
+        $global:LASTEXITCODE = $previousLastExitCode
         $ErrorActionPreference = $previousErrorActionPreference
     }
 }
@@ -403,6 +408,27 @@ function Initialize-BuildCacheEnvironment {
     }
 
     Write-BuildLog -Context $Context -Message "Initialized Fast Local Cache at: $fastLocalCache"
+    
+    # If sccache is present on PATH, enable compiler wrapper environment
+    # variables globally so downstream CMake/configure steps will pick up
+    # sccache without requiring explicit caller configuration. This can be
+    # disabled by clearing the variables later or passing DisableSccache to
+    # the specific build invocation.
+    $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue
+    if ($sccacheCmd) {
+        $sccacheExe = $sccacheCmd.Source
+        Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
+        $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
+        $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
+        $env:RUSTC_WRAPPER = $sccacheExe
+        $env:CC_WRAPPER = $sccacheExe
+        $env:CXX_WRAPPER = $sccacheExe
+
+        if (-not $env:SCCACHE_MAX_JOBS) {
+            $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString()
+            Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$($env:SCCACHE_MAX_JOBS) (from Initialize-BuildCacheEnvironment)"
+        }
+    }
     return $fastLocalCache
 }
 

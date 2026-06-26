@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Set-StrictMode -Version Latest
 
 # Common helper functions for Windows build scripts
@@ -115,9 +118,14 @@ function ConvertTo-ParameterList {
 
     if ($null -eq $Value) { return @() }
 
-    # If it's already an array of strings, return as-is
-    if ($Value -is [array] -and $Value.Count -gt 0 -and $Value[0] -is [string]) {
-        return @($Value)
+    # If it's already an array, check for mixed types
+    if ($Value -is [array] -and $Value.Count -gt 0) {
+        $allStrings = ($Value | Where-Object { $_ -isnot [string] }).Count -eq 0
+        if ($allStrings) {
+            return @($Value)
+        }
+        # Mixed types - convert all elements to strings
+        return @($Value | ForEach-Object { "$_" })
     }
 
     # If it's a single string, return as single-element array

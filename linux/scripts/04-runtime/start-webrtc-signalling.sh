@@ -11,5 +11,5 @@ echo "Starting WebRTC signalling server on ${WEBRTC_HOST}:${WEBRTC_PORT}..."
 /opt/gstreamer/bin/gst-webrtc-signalling-server --host "${WEBRTC_HOST}" --port "${WEBRTC_PORT}" &
 echo "WebRTC signalling server started (PID: $!)"
 
-# Keep container running
-exec /bin/bash -l
+# Keep container running (wait forwards signals to child process)
+wait

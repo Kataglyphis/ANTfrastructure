@@ -1,8 +1,20 @@
-# syntax=docker/dockerfile:1.19
+# syntax=docker/dockerfile:1.24.0
 
 ARG BASE_IMAGE=local/kataglyphis:media
-FROM ${BASE_IMAGE}
 
+# ==============================================================================
+# android-sdk — shared base with Android SDK/NDK installed
+# ==============================================================================
+FROM ${BASE_IMAGE} AS android-sdk
+
+SHELL ["bash", "-lc"]
+
+ARG BUILD_MODE=native
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG TARGETPLATFORM
+ARG BUILDARCH
+ARG BUILDPLATFORM
 ARG ENABLE_NVIDIA=false
 ARG ENABLE_AMD=false
 
@@ -11,40 +23,150 @@ ARG ANDROID_NDK_VERSION=29.0.14206865
 ARG ANDROID_COMPILE_SDK=36
 ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
-
-SHELL ["bash", "-lc"]
+ARG ANDROID_API_LEVEL=34
+ARG USE_FAST_UBUNTU_MIRROR=false
+ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
+ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_SDK_VERSION=${ANDROID_SDK_VERSION} \
+    ANDROID_NDK_VERSION=${ANDROID_NDK_VERSION} \
+    ANDROID_COMPILE_SDK=${ANDROID_COMPILE_SDK} \
+    ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
+    ANDROID_CMAKE_VERSION=${ANDROID_CMAKE_VERSION} \
+    ANDROID_API_LEVEL=${ANDROID_API_LEVEL} \
     ANDROID_NDK_HOME=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
-    ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION}
+    ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
+    GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer \
+    ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime \
+    LITERT_ROOT_ANDROID=/opt/android/litert \
+    OPENCV_ROOT_ANDROID=/opt/android/opencv \
+    BUILD_MODE=${BUILD_MODE} \
+    TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
+    TARGETPLATFORM=${TARGETPLATFORM} \
+    BUILDARCH=${BUILDARCH} \
+    BUILDPLATFORM=${BUILDPLATFORM} \
+    PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
-ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
+COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
+COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
 
-COPY linux/scripts/setup-android-sdk-ndk.sh /opt/scripts/setup-android-sdk-ndk.sh
-RUN chmod +x /opt/scripts/setup-android-sdk-ndk.sh
-RUN set -eux; /opt/scripts/setup-android-sdk-ndk.sh
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; /opt/scripts/android-sdk.sh && \
+    mkdir -p /opt/android-sdk /opt/android && \
+    mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv
 
-COPY linux/scripts/03-media/gstreamer/android /opt/scripts/media/gstreamer/android
-COPY linux/scripts/03-media/onnxruntime/android /opt/scripts/media/onnxruntime/android
-COPY linux/scripts/03-media/litert/android /opt/scripts/media/litert/android
-COPY linux/scripts/03-media/opencv/android /opt/scripts/media/opencv/android
+# ==============================================================================
+# android-gstreamer — GStreamer Android build (parallel with android-libs)
+# ==============================================================================
+FROM android-sdk AS android-gstreamer
 
-RUN chmod +x /opt/scripts/media/gstreamer/android/build-android-from-source.sh \
-    && chmod +x /opt/scripts/media/gstreamer/android/build-gstreamer.sh \
-    && chmod +x /opt/scripts/media/onnxruntime/android/build-android.sh \
-    && chmod +x /opt/scripts/media/litert/android/build-android.sh \
-    && chmod +x /opt/scripts/media/opencv/android/build-android.sh
+ARG TARGET_ARCH
+ARG TARGETARCH
 
-RUN set -eux; \
-        /opt/scripts/media/gstreamer/android/build-gstreamer.sh
+COPY --chmod=755 linux/scripts/03-media/build/gstreamer/android/ /opt/scripts/03-media/gstreamer/android/
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
 
-RUN set -eux; \
-        /opt/scripts/media/onnxruntime/android/build-android.sh && \
-        /opt/scripts/media/litert/android/build-android.sh && \
-        /opt/scripts/media/opencv/android/build-android.sh
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+        /opt/scripts/03-media/gstreamer/android/build-gstreamer.sh
 
-ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
-ENV ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime
-ENV LITERT_ROOT_ANDROID=/opt/android/litert
-ENV OPENCV_ROOT_ANDROID=/opt/android/opencv
+# ==============================================================================
+# android-onnx — ONNX Runtime Android build (parallel with gstreamer, litert, opencv)
+# ==============================================================================
+FROM android-sdk AS android-onnx
+
+ARG TARGET_ARCH
+ARG TARGETARCH
+
+COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/android/ /opt/scripts/03-media/onnxruntime/android/
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+        /opt/scripts/03-media/onnxruntime/android/build-android.sh
+
+# ==============================================================================
+# android-litert — LiteRT Android build (parallel with gstreamer, onnx, opencv)
+# ==============================================================================
+FROM android-sdk AS android-litert
+
+ARG TARGET_ARCH
+ARG TARGETARCH
+
+COPY --chmod=755 linux/scripts/03-media/build/litert/android/ /opt/scripts/03-media/litert/android/
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+        /opt/scripts/03-media/litert/android/build-android.sh
+
+# ==============================================================================
+# android-opencv — OpenCV Android build (parallel with gstreamer, onnx, litert)
+# ==============================================================================
+FROM android-sdk AS android-opencv
+
+ARG TARGET_ARCH
+ARG TARGETARCH
+
+COPY --chmod=755 linux/scripts/03-media/build/opencv/android/ /opt/scripts/03-media/opencv/android/
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+        /opt/scripts/03-media/opencv/android/build-android.sh
+
+# ==============================================================================
+# Final stage — aggregate parallel stage outputs + native GCC swap
+# ==============================================================================
+FROM android-sdk AS final
+
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG BUILD_MODE
+ARG GCC_VERSION=16.1.0
+
+COPY --link --from=android-gstreamer /opt/android/gstreamer /opt/android/gstreamer
+COPY --link --from=android-onnx /opt/android/onnxruntime /opt/android/onnxruntime
+COPY --link --from=android-litert /opt/android/litert /opt/android/litert
+COPY --link --from=android-opencv /opt/android/opencv /opt/android/opencv
+
+# Preserve the cross-compiled Python staging tree from the base image and swap
+# the amd64-hosted GCC with the target-native GCC for non-amd64 architectures.
+COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-android.sh /opt/scripts/packaging/smoke-android.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh
+COPY --chmod=755 linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
+RUN set -euo pipefail; \
+    if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
+        touch /opt/python-cross/.keep; fi; \
+    TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
+    GCC_VERSION="${GCC_VERSION}" \
+    BUILD_MODE="${BUILD_MODE}" \
+    bash /opt/scripts/packaging/swap-native-gcc.sh
+
+# Ensure /opt/llvm-target exists for downstream stages (package build expects it)
+RUN mkdir -p /opt/llvm-target
+
+LABEL org.opencontainers.image.title="Kataglyphis Android" \
+      org.opencontainers.image.description="Android SDK/NDK and cross-compiled Android artifacts layer"

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # logging.sh - shared logging helpers
+[ -n "${_LOGGING_SH_LOADED:-}" ] && return 0
+_LOGGING_SH_LOADED=1
 #
 # Exposes:
 #   info <msg...>
@@ -79,3 +81,82 @@ err()  { _log_emit ERROR 2 "$@"; exit 1; }
 # Backwards compatible aliases
 log() { info "$@"; }
 die() { err "$@"; }
+
+# Verification helpers: print PASS / FAIL / SKIP lines with LOG_COLOR awareness.
+#
+# IMPORTANT: The `fail()` here is DECORATIVE only — it prints FAIL but does NOT
+# increment any FAILURES counter.  Verfication scripts (smoke-*, verify-*) MUST
+# define their own local `fail()` that increments FAILURES, e.g.:
+#   FAILURES=0
+#   fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
+# Or source 06-packaging/smoke-common.sh which already does this.
+#
+pass() {
+  if _log_use_color; then
+    printf '  \033[1;32mPASS\033[0m %s\n' "$*"
+  else
+    printf '  PASS %s\n' "$*"
+  fi
+}
+
+fail() {
+  if _log_use_color; then
+    printf '  \033[1;31mFAIL\033[0m %s\n' "$*" >&2
+  else
+    printf '  FAIL %s\n' "$*" >&2
+  fi
+}
+
+skip() {
+  printf '  SKIP %s\n' "$*"
+}
+
+_install_trap() {
+  local action="${1:-err}"
+  on_err() {
+    local line="${1:-?}"
+    local cmd="${2:-?}"
+    "${action}" "Command failed (line ${line}): ${cmd}"
+  }
+  trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
+}
+install_err_trap()  { _install_trap err; }
+install_warn_trap() { _install_trap warn; }
+
+# ── Sudo guard ────────────────────────────────────────────────────────────────
+# Ensure we can run privileged commands.  Sets SUDO_WRAP="sudo" or SUDO_WRAP=""
+# depending on EUID.  Exits if no sudo is available and we are not root.
+#
+# Usage: ensure_sudo_or_die
+ensure_sudo_or_die() {
+  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then
+      SUDO_WRAP="sudo"
+    else
+      die "This command requires sudo or root. Install sudo or run as root."
+    fi
+  else
+    SUDO_WRAP=""
+  fi
+}
+
+retry() {
+  local max_attempts="${1:-3}"
+  local sleep_sec="${2:-5}"
+  local description="${3:-operation}"
+  shift 3 || true
+  local attempt=0
+
+  while true; do
+    attempt=$((attempt + 1))
+    if "$@"; then
+      return 0
+    fi
+    if [ "${attempt}" -ge "${max_attempts}" ]; then
+      printf '[ERROR] %s failed after %d attempts\n' "${description}" "${attempt}" >&2
+      return 1
+    fi
+    printf '[WARN] %s attempt %d/%d failed; retrying in %ds...\n' "${description}" "${attempt}" "${max_attempts}" "${sleep_sec}" >&2
+    sleep "${sleep_sec}"
+  done
+}

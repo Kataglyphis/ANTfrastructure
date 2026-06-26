@@ -1,17 +1,10 @@
-```bash
-sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
-```
-```bash
-sudo nerdctl run -d --name mysite -p 8443:8443 -p 8080:80 kataglyphis-webserver:latest
-```
-# open http://localhost:8080
-
-=======
 # Build
 
 ```bash
 sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
 ```
+
+`linux/webserver/Dockerfile` does not currently expose the fast Ubuntu mirror build flag used by the main Linux image chain.
 
 # Run mit Volume-Mount für dist UND nginx.conf
 ```bash
@@ -29,6 +22,24 @@ docker exec kataglyphis-webserver nginx -s reload
 ```
 
 Reload browser with cache: F5 !!
+
+---
+
+# Reusable Flutter web helpers
+
+The following shared helpers are intended for Flutter web projects that need local hosting or smoke testing outside this repository:
+
+- `linux/webserver/templates/flutter-nginx-local.conf`: minimal nginx config for local SPA + WASM serving on port `8080`
+- `linux/webserver/templates/flutter-web.htaccess`: Apache template with WASM MIME type and basic headers
+- `linux/webserver/scripts/flutter_integration_smoke_test.sh`: HTTP-level smoke test for a built Flutter web app
+- `linux/webserver/scripts/flutter_capture_console_errors.py`: Playwright-based browser smoke test for a built Flutter web app
+
+Example:
+
+```bash
+bash linux/webserver/scripts/flutter_integration_smoke_test.sh http://localhost:8080
+python3 linux/webserver/scripts/flutter_capture_console_errors.py --build-dir /path/to/build/web
+```
 
 ---
 

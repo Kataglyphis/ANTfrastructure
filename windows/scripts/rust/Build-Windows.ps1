@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 <#
 .SYNOPSIS
   Build script for running inside the Windows container, using the Kataglyphis-ContainerHub build framework.

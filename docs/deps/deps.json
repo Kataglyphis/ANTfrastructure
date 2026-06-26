@@ -1,0 +1,149 @@
+{
+  "sections": [
+    {
+      "title": "Linux Images",
+      "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger",
+      "subsections": [
+        {
+          "title": "Base Layer",
+          "dockerfile": "Dockerfile.base",
+          "entries": [
+            {"name": "Ubuntu", "var": "UBUNTU_VERSION", "url": "https://ubuntu.com/", "license": "GPLv2 / various (individual packages)"},
+            {"name": "CMake", "var": "CMAKE_VERSION", "url": "https://cmake.org/", "license": "BSD 3-Clause"},
+            {"name": "Node.js", "var": "NODE_VERSION", "url": "https://nodejs.org/", "license": "MIT"},
+            {"name": "uv", "var": "UV_VERSION", "url": "https://github.com/astral-sh/uv", "license": "Apache 2.0 / MIT"},
+            {"name": "Vulkan SDK", "var": "VULKAN_VERSION", "url": "https://vulkan.lunarg.com/", "license": "Apache 2.0"}
+          ]
+        },
+        {
+          "title": "Compiler Toolchain",
+          "dockerfile": "Dockerfile.toolchain",
+          "entries": [
+            {"name": "GCC (host + cross)", "var": "GCC_VERSION", "url": "https://gcc.gnu.org/", "license": "GPLv3+ with GCC Runtime Library Exception"},
+            {"name": "LLVM / Clang", "var": "LLVM_RELEASE", "url": "https://llvm.org/", "license": "Apache 2.0 with LLVM Exceptions"},
+            {"name": "Python", "var": "PYTHON_VERSION", "url": "https://python.org/", "license": "PSF License"},
+            {"name": "Rust toolchain", "var": null, "url": "https://rust-lang.org/", "license": "MIT / Apache 2.0", "version_fixed": "latest stable"}
+          ]
+        },
+        {
+          "title": "SDK Layer",
+          "dockerfile": "Dockerfile.sdk",
+          "entries": [
+            {"name": "Apache TVM", "var": "TVM_REF", "url": "https://tvm.apache.org/", "license": "Apache 2.0"}
+          ]
+        },
+        {
+          "title": "Media Layer",
+          "dockerfile": "Dockerfile.media",
+          "entries": [
+            {"name": "ONNX Runtime", "var": "ONNXRUNTIME_VERSION", "url": "https://github.com/microsoft/onnxruntime", "license": "MIT"},
+            {"name": "ONNX Runtime GenAI", "var": "ONNXRUNTIME_GENAI_VERSION", "url": "https://github.com/microsoft/onnxruntime-genai", "license": "MIT"},
+            {"name": "LiteRT (TensorFlow Lite)", "var": "LITERT_VERSION", "url": "https://www.tensorflow.org/lite", "license": "Apache 2.0"},
+            {"name": "OpenCV", "var": "OPENCV_VERSION", "url": "https://opencv.org/", "license": "Apache 2.0"},
+            {"name": "GStreamer", "var": "GSTREAMER_VERSION", "url": "https://gstreamer.freedesktop.org/", "license": "LGPLv2+"},
+            {"name": "FFmpeg", "var": "FFMPEG_VERSION", "url": "https://ffmpeg.org/", "license": "LGPLv2.1+"},
+            {"name": "libcamera", "var": null, "url": "https://libcamera.org/", "license": "LGPLv2.1+", "version_fixed": "git master"},
+            {"name": "Abseil", "var": "ABSEIL_VERSION", "url": "https://github.com/abseil/abseil-cpp", "license": "Apache 2.0"},
+            {"name": "FreeType", "var": "FREETYPE_VERSION", "url": "https://freetype.org/", "license": "GPLv2 / FTL"},
+            {"name": "nv-codec-headers", "var": "NV_CODEC_HEADERS_REF", "url": "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git", "license": "MIT"},
+            {"name": "GObject-Introspection", "var": "GOBJECT_INTROSPECTION_VERSION", "url": "https://gitlab.gnome.org/GNOME/gobject-introspection", "license": "LGPLv2+"}
+          ]
+        },
+        {
+          "title": "Android Layer",
+          "dockerfile": "Dockerfile.android",
+          "entries": [
+            {"name": "Android SDK", "var": "ANDROID_SDK_VERSION", "url": "https://developer.android.com/studio", "license": "Apache 2.0 / Google ToS"},
+            {"name": "Android NDK", "var": "ANDROID_NDK_VERSION", "url": "https://developer.android.com/ndk", "license": "Apache 2.0"},
+            {"name": "Android Build Tools", "var": "ANDROID_BUILD_TOOLS", "url": "https://developer.android.com/studio/releases/build-tools", "license": "Apache 2.0"},
+            {"name": "Android CMake", "var": "ANDROID_CMAKE_VERSION", "url": "https://cmake.org/", "license": "BSD 3-Clause"}
+          ]
+        },
+        {
+          "title": "Optional GPU — NVIDIA",
+          "dockerfile": "Dockerfile.nvidia",
+          "entries": [
+            {"name": "CUDA Toolkit", "var": "CUDA_VERSION_MAJOR_MINOR", "url": "https://developer.nvidia.com/cuda-toolkit", "license": "NVIDIA EULA"},
+            {"name": "cuDNN", "var": "CUDNN_VERSION", "url": "https://developer.nvidia.com/cudnn", "license": "NVIDIA cuDNN EULA"},
+            {"name": "TensorRT", "var": "TENSORRT_VERSION", "url": "https://developer.nvidia.com/tensorrt", "license": "NVIDIA TensorRT EULA"}
+          ]
+        },
+        {
+          "title": "Optional GPU — AMD",
+          "dockerfile": "Dockerfile.amd",
+          "entries": [
+            {"name": "ROCm", "var": "ROCM_VERSION", "url": "https://rocm.docs.amd.com/", "license": "Apache 2.0 / MIT (varies by component)"},
+            {"name": "MIGraphX", "var": "MIGRAPHX_VERSION", "url": "https://github.com/ROCm/AMDMIGraphX", "license": "MIT"}
+          ]
+        },
+        {
+          "title": "Frameworks",
+          "dockerfile": "Dockerfile.torch",
+          "entries": [
+            {"name": "PyTorch", "var": "PYTORCH_VERSION", "url": "https://pytorch.org/", "license": "BSD-3-Clause"},
+            {"name": "TorchVision", "var": "TORCHVISION_VERSION", "url": "https://github.com/pytorch/vision", "license": "BSD-3-Clause"},
+            {"name": "Flutter SDK", "var": "FLUTTER_VERSION", "url": "https://flutter.dev/", "license": "BSD 3-Clause"}
+          ]
+        },
+        {
+          "title": "Runtime",
+          "dockerfile": "Dockerfile.torch",
+          "entries": [
+            {"name": "Kataglyphis Orchestr-ANT-ion", "var": "APP_REF", "url": "https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion", "license": "MIT"}
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Webserver Image",
+      "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver",
+      "subsections": [
+        {
+          "title": "Packages",
+          "dockerfile": null,
+          "entries": [
+            {"name": "Ubuntu", "var": "UBUNTU_VERSION", "url": "https://ubuntu.com/", "license": "GPLv2 / various"},
+            {"name": "nginx", "var": null, "url": "https://nginx.org/", "license": "BSD 2-Clause", "version_fixed": "latest (apt)"}
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Windows Image",
+      "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64",
+      "subsections": [
+        {
+          "title": "Base Toolchain",
+          "dockerfile": null,
+          "entries": [
+            {"name": "Windows Server Core", "var": "WINDOWS_LTSC", "url": "https://www.microsoft.com/", "license": "Microsoft EULA"},
+            {"name": "Visual Studio Build Tools", "var": null, "url": "https://visualstudio.microsoft.com/", "license": "Microsoft EULA", "version_fixed": "18"},
+            {"name": "Vulkan SDK", "var": "VULKAN_VERSION", "url": "https://vulkan.lunarg.com/", "license": "Apache 2.0"},
+            {"name": "Rust toolchain", "var": null, "url": "https://rust-lang.org/", "license": "MIT / Apache 2.0", "version_fixed": "latest stable"},
+            {"name": "WiX Toolset", "var": null, "url": "https://wixtoolset.org/", "license": "MS-RL", "version_fixed": "latest"},
+            {"name": "Flutter SDK", "var": "FLUTTER_VERSION", "url": "https://flutter.dev/", "license": "BSD 3-Clause"}
+          ]
+        },
+        {
+          "title": "GPU Layer",
+          "dockerfile": null,
+          "entries": [
+            {"name": "CUDA", "var": "CUDA_VERSION", "url": "https://developer.nvidia.com/cuda-toolkit", "license": "NVIDIA EULA"},
+            {"name": "cuDNN", "var": "CUDNN_VERSION_FULL", "url": "https://developer.nvidia.com/cudnn", "license": "NVIDIA cuDNN EULA"}
+          ]
+        },
+        {
+          "title": "Media Layer",
+          "dockerfile": null,
+          "entries": [
+            {"name": "GStreamer", "var": "GSTREAMER_VERSION", "url": "https://gstreamer.freedesktop.org/", "license": "LGPLv2+"},
+            {"name": "ONNX Runtime", "var": "ONNXRUNTIME_VERSION", "url": "https://github.com/microsoft/onnxruntime", "license": "MIT"},
+            {"name": "ONNX Runtime GenAI", "var": "ONNXRUNTIME_GENAI_VERSION", "url": "https://github.com/microsoft/onnxruntime-genai", "license": "MIT"},
+            {"name": "ONNX Runtime DirectML", "var": "ONNX_DIRECTML_VERSION", "url": "https://github.com/microsoft/onnxruntime-directml", "license": "MIT"},
+            {"name": "OpenCV", "var": "OPENCV_VERSION", "url": "https://opencv.org/", "license": "Apache 2.0"}
+          ]
+        }
+      ]
+    }
+  ]
+}

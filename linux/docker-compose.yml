@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
 
   beschleuniger:
-    image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+    image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
     ports:
       - "8443:8443"
     volumes:

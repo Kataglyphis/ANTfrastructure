@@ -1,0 +1,46 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Cached Windows toolchain layer.
+# Builds CPython 3.14 from source (matching versions.env) on top of the SDK layer.
+# Makes the built Python interpreter available for downstream media builds.
+
+ARG BASE_IMAGE=local/kataglyphis:windows-sdk
+FROM ${BASE_IMAGE}
+
+ARG PYTHON_VERSION=3.14.5
+ARG PYTHON_MAJOR_MINOR=3.14
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+COPY windows\scripts C:\temp\scripts
+
+# Clone CPython source at the canonical version
+SHELL ["cmd", "/S", "/C"]
+RUN set "PYTHON_VERSION=%PYTHON_VERSION%" && if not exist "C:\temp\cpython\" git clone --branch v%PYTHON_VERSION% --depth 1 https://github.com/python/cpython.git C:\temp\cpython
+
+# Build CPython from source (override PlatformToolset via Directory.Build.props using ClangCL)
+SHELL ["cmd", "/S", "/C"]
+RUN cd /d C:\temp\cpython && `
+    echo ^<?xml version="1.0" encoding="utf-8"?^> > PCbuild\Directory.Build.props && `
+    echo ^<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003"^> >> PCbuild\Directory.Build.props && `
+    echo   ^<PropertyGroup^> >> PCbuild\Directory.Build.props && `
+    echo     ^<PlatformToolset^>ClangCL^</PlatformToolset^> >> PCbuild\Directory.Build.props && `
+    echo   ^</PropertyGroup^> >> PCbuild\Directory.Build.props && `
+    echo ^</Project^> >> PCbuild\Directory.Build.props && `
+    PCbuild\build.bat -e -p x64 -c Release
+
+# Verify built Python
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+RUN $pyExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'; `
+    if (-not (Test-Path $pyExe)) { $pyExe = 'C:\temp\cpython\PCbuild\amd64\python_d.exe' }; `
+    if (Test-Path $pyExe) { `
+        & $pyExe --version; `
+        Write-Host "Python built at: $pyExe" `
+    } else { throw 'Python build failed - interpreter not found' }
+
+ENV PYTHON_BUILD_DIR="C:\temp\cpython" `
+    PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64" `
+    PYTHON_BUILD_SCRIPTS="C:\temp\cpython\PCbuild\amd64"
+
+ENV PATH=$PYTHON_BUILD_BIN;$PYTHON_BUILD_SCRIPTS;$PATH

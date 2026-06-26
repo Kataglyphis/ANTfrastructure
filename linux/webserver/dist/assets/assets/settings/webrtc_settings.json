@@ -9,6 +9,16 @@
 		"defaultFramerate": 30,
 		"defaultBitrateKbps": 2000
 	},
+	"stream": {
+		"source": "libcamera",
+		"encoder": "h264-hw",
+		"device": "/dev/video0",
+		"cameraId": "",
+		"inputPath": "",
+		"inputUri": "",
+		"peerId": "",
+		"producerId": ""
+	},
 	"texture": {
 		"width": 640,
 		"height": 480

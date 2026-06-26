@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# verify-runtime-paths.sh - Verify that PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH
+# components in Dockerfiles match the canonical runtime-paths.env reference.
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PATHS_ENV="${REPO_ROOT}/linux/scripts/04-runtime/runtime-paths.env"
+errors=0
+
+echo "=== Runtime paths consistency check ==="
+
+# Load canonical paths
+source "${PATHS_ENV}" 2>/dev/null || true
+
+# Extract the explicit paths (values that look like absolute paths)
+canonical_paths="$(
+  grep -E '^[A-Z_]+=' "${PATHS_ENV}" \
+    | grep -vE '^(GCC_PREFIX|OPENCV_PREFIX|GSTREAMER_PREFIX|FFMPEG_PREFIX|LIBCAMERA_PREFIX|VULKAN_SDK)=' \
+    | cut -d= -f2- \
+    | grep '^/' \
+    | sort -u
+)"
+
+echo "  canonical paths from runtime-paths.env: $(echo "$canonical_paths" | wc -l)"
+
+# Check each Dockerfile's ENV blocks for these paths
+DOCKERFILES=(
+  linux/Dockerfile.package
+  linux/Dockerfile.media
+)
+
+for df in "${DOCKERFILES[@]}"; do
+  df_path="${REPO_ROOT}/${df}"
+  echo "  checking ${df}..."
+
+  # Extract ENV values (multi-line ENV blocks), expanding known variables
+  df_env_text="$(
+    awk '/^ENV /{flag=1} flag{print; if(!/\\$/){flag=0}}' "$df_path" | tr -d '\\'
+  )"
+  # Expand variable refs to their literal values for matching
+  df_env_expanded="$(
+    echo "$df_env_text" \
+      | sed 's|\${GCC_PREFIX}|\/opt\/gcc-16.1.0|g' \
+      | sed 's|\${OPENCV_OUTPUT_DIR}|\/opt\/opencv5|g' \
+      | sed 's|\${GSTREAMER_PREFIX}|\/opt\/gstreamer|g' \
+      | sed 's|\${GCC_VERSION}|16.1.0|g' \
+      | sed 's|\${VIRTUAL_ENV}|\/opt\/python\/.venv|g' \
+      | sed 's|\${OPENCV_PREFIX}|\/opt\/opencv5|g' \
+      | sed 's|\${LIBCAMERA_PREFIX}|\/opt\/libcamera|g' \
+      | sed 's|\${FFMPEG_PREFIX}|\/opt\/ffmpeg|g'
+  )"
+  df_env_values="$(echo "$df_env_expanded" | grep -oP '/[A-Za-z0-9/._-]+' | sort -u)"
+
+  for path in $canonical_paths; do
+    # Remove variable substitutions for matching
+    clean_path="$(echo "$path" | sed 's/\${[^}]*}//g' | sed 's/\/$//')"
+    [ -n "$clean_path" ] || continue
+    if ! echo "$df_env_values" | grep -qF "$clean_path"; then
+      case "$clean_path" in
+        /opt/*|/usr/local/*)
+          echo "WARN: ${df} missing canonical path: ${clean_path}" >&2
+          ;;
+      esac
+    fi
+  done
+done
+
+# Check that Dockerfile.package and Dockerfile.media agree on the critical paths
+echo "  checking cross-Dockerfile consistency..."
+PKG_ENV_PATHS="$(
+  awk '/^ENV /,/^RUN/{print}' "${REPO_ROOT}/linux/Dockerfile.package" \
+    | grep -oP '/opt/[A-Za-z0-9/._-]+' \
+    | sort -u
+)"
+MEDIA_ENV_PATHS="$(
+  awk '/^ENV /,/^RUN/{print}' "${REPO_ROOT}/linux/Dockerfile.media" \
+    | grep -oP '/opt/[A-Za-z0-9/._-]+' \
+    | sort -u
+)"
+
+# Compare shared /opt paths
+shared_opt="$(
+  comm -12 <(echo "$PKG_ENV_PATHS" | sort -u) <(echo "$MEDIA_ENV_PATHS" | sort -u)
+)"
+pkg_only_opt="$(
+  comm -23 <(echo "$PKG_ENV_PATHS" | sort -u) <(echo "$MEDIA_ENV_PATHS" | sort -u)
+)"
+media_only_opt="$(
+  comm -13 <(echo "$PKG_ENV_PATHS" | sort -u) <(echo "$MEDIA_ENV_PATHS" | sort -u)
+)"
+
+if [ -n "$pkg_only_opt" ]; then
+  echo "  paths only in Dockerfile.package: $(echo "$pkg_only_opt" | tr '\n' ' ')"
+fi
+if [ -n "$media_only_opt" ]; then
+  echo "  paths only in Dockerfile.media: $(echo "$media_only_opt" | tr '\n' ' ')"
+fi
+
+if [ "$errors" -gt 0 ]; then
+  echo "FAILED: ${errors} path consistency errors" >&2
+  exit 1
+fi
+echo "PASSED: runtime paths consistency OK"

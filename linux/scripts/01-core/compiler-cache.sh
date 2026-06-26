@@ -140,6 +140,20 @@ setup_sccache() {
 # Sets LDFLAGS and provides CMAKE flags
 setup_lld_linker() {
   if [ "${USE_LLD}" = "false" ]; then
+    # Strip any -fuse-ld=lld previously added to environment variables.
+    # Earlier callers (e.g. media_common_init) may have populated these before
+    # USE_LLD was set to false, and Meson/CMake will inherit the stale flags.
+    local _sl_var _sl_cleaned
+    for _sl_var in LDFLAGS CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS RUSTFLAGS; do
+      if [ -n "${!_sl_var:-}" ]; then
+        _sl_cleaned="${!_sl_var}"
+        # Remove -fuse-ld=lld with optional leading/trailing whitespace
+        _sl_cleaned="${_sl_cleaned//-fuse-ld=lld/}"
+        # Collapse repeated whitespace and trim
+        _sl_cleaned="$(printf '%s' "${_sl_cleaned}" | sed 's/[[:space:]]\{2,\}/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//')"
+        export "${_sl_var}=${_sl_cleaned}"
+      fi
+    done
     _cc_info "lld linker disabled via USE_LLD=false"
     return 0
   fi
@@ -175,35 +189,21 @@ setup_lld_linker() {
   _cc_info "lld linker enabled: LDFLAGS contains ${lld_flag}"
 }
 
-# Get CMake linker flags for lld
-# Usage: cmake_opts+=($(get_cmake_linker_flags))
-get_cmake_linker_flags() {
-  if [ "${USE_LLD}" = "false" ] || ! _lld_available; then
-    return 0
+# Append CMake cache args for ccache/sccache and lld to a named array.
+# Use this in scripts that build CMake args manually rather than exporting
+# CMAKE_C_COMPILER_LAUNCHER / CMAKE_LINKER_TYPE environment variables.
+#
+# Usage: local -a cmake_args=(); append_cmake_cache_args cmake_args
+append_cmake_cache_args() {
+  local -n _acmca_out=${1}
+  if _ccache_available && [ "${USE_CCACHE:-true}" != "false" ]; then
+    _acmca_out+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+  elif _sccache_available && [ "${USE_SCCACHE:-true}" != "false" ]; then
+    _acmca_out+=(-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache)
   fi
-
-  local lld_flag="-fuse-ld=lld"
-  echo "-DCMAKE_EXE_LINKER_FLAGS=${lld_flag}"
-  echo "-DCMAKE_SHARED_LINKER_FLAGS=${lld_flag}"
-  echo "-DCMAKE_MODULE_LINKER_FLAGS=${lld_flag}"
-}
-
-# Get autoconf/configure linker flags for lld
-# Usage: configure_opts+=("$(get_configure_linker_flags)")
-get_configure_linker_flags() {
-  if [ "${USE_LLD}" = "false" ] || ! _lld_available; then
-    return 0
+  if _lld_available && [ "${USE_LLD:-true}" != "false" ]; then
+    _acmca_out+=(-DCMAKE_LINKER_TYPE=lld)
   fi
-
-  echo "--extra-ldflags=-fuse-ld=lld"
-}
-
-# Combined setup function for convenience
-# Usage: setup_build_acceleration
-setup_build_acceleration() {
-  setup_ccache
-  setup_sccache
-  setup_lld_linker
 }
 
 fi

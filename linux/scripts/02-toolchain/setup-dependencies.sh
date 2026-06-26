@@ -2,49 +2,115 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
+_FOUND_MODULES=0
 # shellcheck disable=SC1091
-if [ -f "${SCRIPT_DIR}/../01-core/modules.sh" ]; then
-  source "${SCRIPT_DIR}/../01-core/modules.sh"
-elif [ -f "/opt/scripts/core/modules.sh" ]; then
-  source "/opt/scripts/core/modules.sh"
-else
-  echo "Error: modules.sh not found (expected ${SCRIPT_DIR}/../01-core/modules.sh or /opt/scripts/core/modules.sh)" >&2
-  exit 1
-fi
+for _bs_path in "/opt/scripts/core/modules.sh" "${SCRIPT_DIR}/modules.sh" "${SCRIPT_DIR}/../01-core/modules.sh"; do
+  if [ -f "${_bs_path}" ]; then
+    source "${_bs_path}"
+    source_modules_framework "${SCRIPT_DIR}"
+    _FOUND_MODULES=1
+    break
+  fi
+done
+[ "${_FOUND_MODULES}" -eq 1 ] || { echo "Error: modules.sh not found" >&2; exit 1; }
+unset _bs_path _FOUND_MODULES
 
 # Source required modules
 source_module common.sh
+source_module cross-env.sh
 source_module repos.sh
 source_module core.sh
 source_module cmake.sh
 source_module llvm.sh
 source_module gcc.sh
 source_module vulkan.sh
-source_module extras.sh
 source_module verify.sh
 
 usage() {
   cat <<EOF
-Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|extras|verify>
+Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm>
 
 Examples:
-  $0 --llvm 21 --clang 21 --gcc 14 cmake
-  $0 --llvm 21 --clang 21 --gcc 14 llvm
+  $0 --llvm 22 --clang 22 --gcc 16 cmake
+  $0 --llvm 22 --clang 22 --gcc 16 llvm
   $0 --vulkan-version 1.4.328.1 vulkan
-  $0 --llvm 21 --clang 21 --gcc 14 --vulkan-version 1.4.328.1 all
+  $0 --llvm 22 --clang 22 --gcc 16 --vulkan-version 1.4.328.1 all
 EOF
 }
 
-main() {
-  # Defaults (can be overridden by args)
-  LLVM_WANTED="${LLVM_WANTED:-22}"
-  CLANG_WANTED="${CLANG_WANTED:-22}"
-  GCC_WANTED="${GCC_WANTED:-14}"
-  VULKAN_VERSION_DEFAULT="${VULKAN_VERSION_DEFAULT:-1.4.341.1}"
+skip_core_tools() {
+  case "${SETUP_DEPENDENCIES_SKIP_CORE_TOOLS:-false}" in
+    1|true|TRUE|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
+setup_dependencies_apply_arch_override() {
+  local normalized_arch_override="${1:-}"
+
+  [ -n "${normalized_arch_override}" ] || return 0
+  cross_set_target_env "${normalized_arch_override}" "setup-dependencies.sh --arch"
+  ARCH="$(arch_uname_name_for "${TARGET_ARCH}")"
+  export ARCH
+}
+
+setup_dependencies_seed_verify_cross_targets() {
+  local cmd="${1:-}"
+  local normalized_arch_override="${2:-}"
+
+  [ -n "${normalized_arch_override}" ] || return 0
+  cross_mode_requested || return 0
+  [ -z "${VERIFY_CROSS_TARGETS:-}" ] || return 0
+
+  case "${cmd}" in
+    verify|all)
+      VERIFY_CROSS_TARGETS="${normalized_arch_override}"
+      export VERIFY_CROSS_TARGETS
+      ;;
+  esac
+}
+
+install_core_tools_if_needed() {
+  if skip_core_tools; then
+    log "Skipping install_core_tools because SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=${SETUP_DEPENDENCIES_SKIP_CORE_TOOLS}"
+    return 0
+  fi
+
+  install_core_tools
+}
+
+install_vulkan_for_current_env() {
+  local version="$1"
+
+  if cross_mode_requested; then
+    (
+      prepare_cross_target_env "${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}" "setup-dependencies.sh vulkan"
+      install_vulkan_sdk "${version}"
+    )
+  else
+    install_vulkan_sdk "${version}"
+  fi
+}
+
+dockerfile_install_gcc() {
+  install_core_tools_if_needed
+  GCC_WANTED="$(version_major "${GCC_VERSION:-${GCC_WANTED:-16}}")"
+  export GCC_WANTED
+  install_gcc
+}
+
+dockerfile_install_llvm() {
+  install_core_tools_if_needed
+  LLVM_WANTED="$(version_major "${LLVM_RELEASE:-${LLVM_WANTED:-${CLANG_WANTED:-22}}}")"
+  CLANG_WANTED="${LLVM_WANTED}"
+  export LLVM_WANTED CLANG_WANTED
+  install_llvm_clang
+}
+
+main() {
   local cmd="all"
   local arch_override=""
+  local normalized_arch_override=""
 
   # Parse args
   while [ $# -gt 0 ]; do
@@ -54,7 +120,7 @@ main() {
       --gcc)           GCC_WANTED="$2"; shift 2 ;;
       --vulkan-version)VULKAN_VERSION_DEFAULT="$2"; shift 2 ;;
       --arch)          arch_override="$2"; shift 2 ;;
-      all|base|repos|cmake|llvm|gcc|vulkan|extras|verify)
+      all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm|target-clang)
         cmd="$1"; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "Unknown argument: $1" ;;
@@ -64,51 +130,62 @@ main() {
   # Export for modules
   export LLVM_WANTED CLANG_WANTED GCC_WANTED VULKAN_VERSION_DEFAULT
 
+  if [ -n "$arch_override" ]; then
+    normalized_arch_override="$(cross_require_single_target_arch "${arch_override}" "setup-dependencies.sh --arch")"
+    setup_dependencies_apply_arch_override "${normalized_arch_override}"
+  fi
+
   require_sudo
   detect_system
-  if [ -n "$arch_override" ]; then
-    ARCH="$arch_override"
-    export ARCH
-    log "Overridden arch=${ARCH}"
+  if [ -n "$normalized_arch_override" ]; then
+    setup_dependencies_apply_arch_override "${normalized_arch_override}"
+    log "Overridden arch=${normalized_arch_override}"
   fi
+  setup_dependencies_seed_verify_cross_targets "${cmd}" "${normalized_arch_override}"
 
   case "$cmd" in
     base)
-      install_core_tools
+      install_core_tools_if_needed
       ;;
     repos)
       add_kitware_repo
       add_llvm_repo
       ;;
     cmake)
-      install_core_tools
+      install_core_tools_if_needed
       install_cmake
       ;;
     llvm)
-      install_core_tools
+      install_core_tools_if_needed
       install_llvm_clang
       ;;
     gcc)
-      install_core_tools
+      install_core_tools_if_needed
       install_gcc
       ;;
     vulkan)
-      install_core_tools
-      install_vulkan_sdk "$VULKAN_VERSION_DEFAULT"
-      ;;
-    extras)
-      install_extras
+      install_core_tools_if_needed
+      install_vulkan_for_current_env "$VULKAN_VERSION_DEFAULT"
       ;;
     verify)
       verify_summary
       ;;
+    dockerfile-gcc)
+      dockerfile_install_gcc
+      ;;
+    dockerfile-llvm)
+      dockerfile_install_llvm
+      ;;
+    target-clang)
+      install_core_tools_if_needed
+      install_target_clang_toolchain "${normalized_arch_override:-${TARGET_ARCH:-${TARGETARCH:-}}}"
+      ;;
     all)
-      install_core_tools
+      install_core_tools_if_needed
       install_cmake
       install_llvm_clang
       install_gcc
-      install_vulkan_sdk "$VULKAN_VERSION_DEFAULT"
-      install_extras
+      install_vulkan_for_current_env "$VULKAN_VERSION_DEFAULT"
       verify_summary
       ;;
   esac

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # parallelism.sh - build parallelism helpers (CPU quota + optional memory cap)
+[ -n "${_PARALLELISM_SH_LOADED:-}" ] && return 0
+_PARALLELISM_SH_LOADED=1
 #
 # Environment Variables:
 #   AGGRESSIVE_PARALLELISM  - Set to "true" for lower memory caps (faster builds)
+#                              Auto-enabled when host RAM >= 16GB.
 #   PARALLEL_JOBS           - Override all auto-detection with explicit job count
-#   DEFAULT_MB_PER_JOB      - Override default memory per job (default: 2000 or 1200 if aggressive)
+#   DEFAULT_MB_PER_JOB      - Override default memory per job (default: 2000 or 800 if aggressive)
 
 _cgroup_cpu_quota_cores() {
   local quota=""
@@ -15,22 +18,22 @@ _cgroup_cpu_quota_cores() {
     # format: "max <period>" or "<quota> <period>"
     read -r quota period < /sys/fs/cgroup/cpu.max || true
     if [ -n "${quota}" ] && [ "${quota}" != "max" ] && [ -n "${period}" ] && [ "${period}" -gt 0 ] 2>/dev/null; then
-      echo $(( (quota + period - 1) / period ))
+      printf '%s\n' $(( (quota + period - 1) / period ))
       return 0
     fi
   fi
 
   # cgroup v1
   if [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ] && [ -r /sys/fs/cgroup/cpu/cpu.cfs_period_us ]; then
-    quota="$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || echo "")"
-    period="$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null || echo "")"
+    quota="$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || printf '')"
+    period="$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null || printf '')"
     if [ -n "${quota}" ] && [ -n "${period}" ] && [ "${quota}" -gt 0 ] 2>/dev/null && [ "${period}" -gt 0 ] 2>/dev/null; then
-      echo $(( (quota + period - 1) / period ))
+      printf '%s\n' $(( (quota + period - 1) / period ))
       return 0
     fi
   fi
 
-  echo ""
+  printf '%s\n' ""
 }
 
 detect_available_cores() {
@@ -47,7 +50,7 @@ detect_available_cores() {
   fi
 
   [ "${cores}" -lt 1 ] 2>/dev/null && cores=1
-  echo "${cores}"
+  printf '%s\n' "${cores}"
 }
 
 compute_jobs() {
@@ -67,7 +70,7 @@ compute_jobs() {
   fi
 
   [ "${jobs}" -lt 1 ] 2>/dev/null && jobs=1
-  echo "${jobs}"
+  printf '%s\n' "${jobs}"
 }
 
 _mem_available_mb() {
@@ -83,9 +86,9 @@ _mem_available_mb() {
   fi
 
   if [ -z "${avail_mb}" ]; then
-    echo ""
+    printf '%s\n' ""
   else
-    echo "${avail_mb}"
+    printf '%s\n' "${avail_mb}"
   fi
 }
 
@@ -96,62 +99,81 @@ _cgroup_mem_remaining_mb() {
 
   # cgroup v2
   if [ -r /sys/fs/cgroup/memory.max ]; then
-    max="$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "")"
+    max="$(cat /sys/fs/cgroup/memory.max 2>/dev/null || printf '')"
     if [ -n "${max}" ] && [ "${max}" != "max" ] 2>/dev/null; then
       if [ -r /sys/fs/cgroup/memory.current ]; then
-        current="$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo "")"
+        current="$(cat /sys/fs/cgroup/memory.current 2>/dev/null || printf '')"
       fi
       if [ -n "${current}" ] && [ "${current}" -ge 0 ] 2>/dev/null; then
         remaining_bytes=$(( max - current ))
         [ "${remaining_bytes}" -lt 0 ] 2>/dev/null && remaining_bytes=0
-        echo $(( remaining_bytes / 1024 / 1024 ))
+        printf '%s\n' $(( remaining_bytes / 1024 / 1024 ))
         return 0
       fi
-      echo $(( max / 1024 / 1024 ))
+      printf '%s\n' $(( max / 1024 / 1024 ))
       return 0
     fi
   fi
 
   # cgroup v1
   if [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
-    max="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || echo "")"
+    max="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || printf '')"
     # Some kernels report a huge number when effectively unlimited.
     if [ -n "${max}" ] && [ "${max}" -gt 0 ] 2>/dev/null && [ "${max}" -lt 9223372036854771712 ] 2>/dev/null; then
       if [ -r /sys/fs/cgroup/memory/memory.usage_in_bytes ]; then
-        current="$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || echo "")"
+        current="$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || printf '')"
       fi
       if [ -n "${current}" ] && [ "${current}" -ge 0 ] 2>/dev/null; then
         remaining_bytes=$(( max - current ))
         [ "${remaining_bytes}" -lt 0 ] 2>/dev/null && remaining_bytes=0
-        echo $(( remaining_bytes / 1024 / 1024 ))
+        printf '%s\n' $(( remaining_bytes / 1024 / 1024 ))
         return 0
       fi
-      echo $(( max / 1024 / 1024 ))
+      printf '%s\n' $(( max / 1024 / 1024 ))
       return 0
     fi
   fi
 
-  echo ""
+  printf '%s\n' ""
+}
+
+_auto_aggressive_parallelism() {
+  # Enable AGGRESSIVE_PARALLELISM automatically when host has plenty of RAM.
+  # Explicit AGGRESSIVE_PARALLELISM=false disables this auto-detection.
+  if [ "${AGGRESSIVE_PARALLELISM:-}" = "false" ]; then
+    return 0
+  fi
+  if [ "${AGGRESSIVE_PARALLELISM:-}" = "true" ]; then
+    return 0
+  fi
+  local avail_mb
+  avail_mb="$(_mem_available_mb)"
+  if [ -n "${avail_mb}" ] && [ "${avail_mb}" -ge 16384 ] 2>/dev/null; then
+    export AGGRESSIVE_PARALLELISM=true
+  fi
 }
 
 compute_jobs_with_mem_cap() {
   # Usage: compute_jobs_with_mem_cap [requested] [mb_per_job]
   # Defaults to ~2000MB/job to avoid OOM on build steps.
-  # Set AGGRESSIVE_PARALLELISM=true for lower memory caps (1200MB/job).
+  # Set AGGRESSIVE_PARALLELISM=false to disable (auto-enabled when RAM >= 16GB).
   # Set PARALLEL_JOBS=N to override all auto-detection.
   local requested="${1:-}"
   local mb_per_job="${2:-}"
 
   # Allow explicit override via PARALLEL_JOBS
   if [ -n "${PARALLEL_JOBS:-}" ]; then
-    echo "${PARALLEL_JOBS}"
+    printf '%s\n' "${PARALLEL_JOBS}"
     return 0
   fi
+
+  # Auto-enable aggressive mode on high-memory hosts if not explicitly set
+  _auto_aggressive_parallelism
 
   # Determine default memory per job based on AGGRESSIVE_PARALLELISM
   if [ -z "${mb_per_job}" ]; then
     if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-      mb_per_job="${DEFAULT_MB_PER_JOB:-1200}"
+      mb_per_job="${DEFAULT_MB_PER_JOB:-800}"
     else
       mb_per_job="${DEFAULT_MB_PER_JOB:-2000}"
     fi
@@ -171,7 +193,7 @@ compute_jobs_with_mem_cap() {
   fi
 
   [ "${jobs}" -lt 1 ] && jobs=1
-  echo "${jobs}"
+  printf '%s\n' "${jobs}"
 }
 
 # Compute jobs for Rust/Cargo builds (typically need more memory)
@@ -181,10 +203,21 @@ compute_rust_jobs() {
   local mb_per_job
 
   if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-    mb_per_job="${RUST_MB_PER_JOB:-1800}"
+    mb_per_job="${RUST_MB_PER_JOB:-1200}"
   else
     mb_per_job="${RUST_MB_PER_JOB:-2500}"
   fi
 
   compute_jobs_with_mem_cap "${requested}" "${mb_per_job}"
+}
+
+# Convenience wrapper: auto-resolve NPROC from PARALLEL_JOBS env var or
+# compute_jobs_with_mem_cap().  Uses 2000 MB/job by default.
+# Usage: NPROC="$(detect_jobs_with_mem_cap)"
+detect_jobs_with_mem_cap() {
+  if [ -n "${PARALLEL_JOBS:-}" ]; then
+    printf '%s' "${PARALLEL_JOBS}"
+  else
+    compute_jobs_with_mem_cap "" 2000
+  fi
 }
