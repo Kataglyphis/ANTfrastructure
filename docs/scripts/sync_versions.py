@@ -135,6 +135,7 @@ def collect_versions() -> dict[str, str]:
     linux_webserver = read_repo_file("linux/webserver/Dockerfile")
     windows_base = read_repo_file("windows/Dockerfile.base")
     windows_sdk = read_repo_file("windows/Dockerfile.sdk")
+    windows_nvidia = read_repo_file("windows/Dockerfile.nvidia")
     windows_media = read_repo_file("windows/Dockerfile.media")
     windows_vs = read_repo_file("windows/scripts/setup-vs.ps1")
 
@@ -163,9 +164,8 @@ def collect_versions() -> dict[str, str]:
         ),
         "windows_vulkan": extract(r"^ARG VULKAN_VERSION=([^\s]+)$", windows_base, "Windows Vulkan version"),
         "windows_gstreamer": extract(r"^ARG GSTREAMER_VERSION=([^\s]+)$", windows_base, "Windows GStreamer version"),
-        "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_sdk, "Windows CUDA version"),
+        "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_nvidia, "Windows CUDA version"),
         "windows_onnx": extract(r"^ARG ONNXRUNTIME_VERSION=([^\s]+)$", windows_media, "Windows ONNX Runtime version"),
-        "windows_onnx_dml": extract(r"^ARG ONNX_DIRECTML_VERSION=([^\s]+)$", windows_media, "Windows ONNX DirectML version"),
         "windows_vs": extract(
             r"Visual Studio\\([0-9]+)\\BuildTools",
             windows_vs,
@@ -204,8 +204,7 @@ def render_snapshot() -> str:
                 f"Vulkan SDK {versions['windows_vulkan']}, "
                 f"GStreamer {versions['windows_gstreamer']}, "
                 f"CUDA {versions['windows_cuda']}, "
-                f"ONNX Runtime {versions['windows_onnx']}, "
-                f"ONNX DirectML {versions['windows_onnx_dml']} |"
+                f"ONNX Runtime {versions['windows_onnx']} |"
             ),
             END_MARKER,
         ]
