@@ -1,0 +1,10 @@
+#!/bin/sh
+# Override dig to fix container hostname resolution for start.sh
+# Returns the raw IP from /etc/hosts for start.sh to convert to CIDR
+
+if echo "$*" | grep -q "nextcloud-aio-apache"; then
+    # Get IP from /etc/hosts - return raw IP, start.sh does the CIDR conversion
+    grep -m1 "nextcloud-aio-apache" /etc/hosts | awk '{print $1}'
+    exit 0
+fi
+exec /usr/bin/dig "$@"

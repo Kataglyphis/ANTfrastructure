@@ -7,3 +7,5 @@ out/**/*
 *.deb
 windows/downloads/*
 linux/llm-stack/ollama-binary.tar.zst
+linux/nextcloud-aio/.env
+

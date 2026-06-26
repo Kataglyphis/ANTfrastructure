@@ -1,0 +1,40 @@
+#!/bin/sh
+CADDYFILE="${CADDYFILE:-/tmp/Caddyfile}"
+if [ -f "$CADDYFILE" ] && grep -q '# TLS options' "$CADDYFILE" 2>/dev/null; then
+    python3 << 'PYEOF'
+import re
+with open('/tmp/Caddyfile') as f:
+    lines = f.readlines()
+
+# Find the TLS block
+in_tls = False
+brace_count = 0
+result = []
+skip_count = 0
+
+for line in lines:
+    if '# TLS options' in line:
+        in_tls = True
+        continue
+    if in_tls:
+        if 'tls {' in line:
+            brace_count = 1
+            continue
+        if brace_count > 0:
+            brace_count += line.count('{') - line.count('}')
+            if brace_count <= 0:
+                in_tls = False
+                brace_count = 0
+            continue
+        if brace_count == 0 and '}' in line:
+            # This is the closing brace of tls block
+            in_tls = False
+            continue
+
+    result.append(line)
+
+with open('/tmp/Caddyfile', 'w') as f:
+    f.writelines(result)
+PYEOF
+fi
+exec /usr/bin/caddy "$@"
