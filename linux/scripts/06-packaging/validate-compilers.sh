@@ -74,6 +74,8 @@ validate_artifact_source() {
   fi
 
   # cross compilers — derive list from CROSS_TARGETS or platform default
+  # Under QEMU emulation for a non-amd64 target, cross compilers for other
+  # arches are x86_64 host binaries that cannot execute; skip --version checks.
   local cross_arches
   cross_arches="$(arch_list_csv_normalize "${CROSS_TARGETS:-amd64,arm64,riscv64}" 2>/dev/null || printf '%s' "${CROSS_TARGETS:-amd64,arm64,riscv64}")"
   local cross_arch triplet cross_gcc cross_ver
@@ -83,11 +85,15 @@ validate_artifact_source() {
     [ -n "${triplet}" ] || continue
     cross_gcc="${gcc_prefix}/bin/${triplet}-gcc"
     if [ -x "${cross_gcc}" ]; then
-      cross_ver="$("${cross_gcc}" --version 2>/dev/null | head -1 || true)"
-      if echo "${cross_ver}" | grep -q "${GCC_VERSION:-16.1.0}"; then
-        echo "OK: cross ${cross_gcc} reports ${cross_ver}"
+      if [ "${target_arch}" = "amd64" ]; then
+        cross_ver="$("${cross_gcc}" --version 2>/dev/null | head -1 || true)"
+        if echo "${cross_ver}" | grep -q "${GCC_VERSION:-16.1.0}"; then
+          echo "OK: cross ${cross_gcc} reports ${cross_ver}"
+        else
+          validate_fail "cross-gcc-${cross_arch}" "${cross_gcc} --version: ${cross_ver:-MISSING}"
+        fi
       else
-        validate_fail "cross-gcc-${cross_arch}" "${cross_gcc} --version: ${cross_ver:-MISSING}"
+        echo "OK: cross ${cross_gcc} present (skipping --version under QEMU emulation for ${target_arch})"
       fi
     fi
   done

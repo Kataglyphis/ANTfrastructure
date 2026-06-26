@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # Cached Windows media layer.
-# Build order: ONNX Runtime/GenAI -> OpenCV -> LiteRT/LiteRT-LM -> TVM -> GStreamer
+# Build order: ONNX Runtime/GenAI -> OpenCV -> LiteRT/LiteRT-LM -> TVM -> FFmpeg -> GStreamer
 # This allows OpenCV and GStreamer to auto-detect ONNX Runtime.
 # Binary install scripts (setup-opencv.ps1, setup-onnx.ps1) exist for
 # reference but are NOT used in this Dockerfile (keep scripts - do not delete).
@@ -14,6 +14,7 @@ FROM ${BASE_IMAGE}
 ARG GSTREAMER_VERSION=1.29.1
 ARG ONNXRUNTIME_VERSION=1.27.0
 ARG ONNXRUNTIME_GENAI_VERSION=0.13.1
+ARG FFMPEG_VERSION=n8.1.2
 
 ARG OPENCV_SOURCE_VERSION=5.x
 ARG LITERT_VERSION=v2.1.5
@@ -26,7 +27,6 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 COPY windows\scripts\modules C:\temp\scripts\modules
 COPY windows\scripts\build-onnx-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\build-opencv-from-source.ps1 C:\temp\scripts\
-COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 
 # ── Stage 1: ONNX Runtime source build via clang-cl (git clone) ─────
 # Built before OpenCV so OpenCV can detect it.
@@ -76,7 +76,16 @@ RUN & 'C:\temp\scripts\build-tvm-from-source.ps1' `
     -SourceDir 'C:\temp\tvm-src' `
     -InstallDir 'C:\runtime'
 
-# ── Stage 5: GStreamer (auto-detects CUDA, OpenCV, ONNX, LiteRT libs) ───────
+# Volatile scripts for FFmpeg (changes often — separate COPY to preserve TVM cache)
+COPY windows\scripts\build-ffmpeg-from-source.ps1 C:\temp\scripts\
+
+# ── Stage 4d: FFmpeg (standalone build, auto-detects CUDA) ──────────────────
+ENV FFMPEG_VERSION="${FFMPEG_VERSION}"
+RUN & 'C:\temp\scripts\build-ffmpeg-from-source.ps1' `
+    -SourceDir 'C:\temp\ffmpeg-src' `
+    -InstallDir 'C:\runtime'
+
+# ── Stage 5: GStreamer (auto-detects CUDA, OpenCV, ONNX, LiteRT, FFmpeg libs) ──
 ENV GST_VERSION=${GSTREAMER_VERSION}
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION}
 ENV GSTREAMER_BIN="C:\runtime\bin"
@@ -107,6 +116,25 @@ ENV OPENCV_INCLUDE="${OPENCV_ROOT}\include"
 ENV OPENCV_LIB="${OPENCV_ROOT}\lib"
 ENV OPENCV_BIN="${OPENCV_ROOT}\bin"
 
-ENV PATH=$GSTREAMER_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$PATH
+# FFmpeg layout
+ENV FFMPEG_ROOT="C:\runtime\ffmpeg"
+ENV FFMPEG_BIN="${FFMPEG_ROOT}\bin"
+ENV FFMPEG_LIB="${FFMPEG_ROOT}\lib"
+
+ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$PATH
+
+# PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg, OpenCV, ONNX Runtime.
+# LiteRT is excluded (TFLITE_ENABLE_INSTALL=OFF — no .pc files generated).
+# GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
+ENV PKG_CONFIG_PATH=$OPENCV_LIB\pkgconfig;$ONNX_ROOT\runtime\lib\pkgconfig;C:\runtime\lib\pkgconfig
+
+# Volatile script for GStreamer (separate COPY to preserve FFmpeg cache)
+COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 
 RUN & 'C:\temp\scripts\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs'
+
+# Verify GStreamer plugin integrations (non-fatal)
+RUN $gstInspect = 'C:\runtime\bin\gst-inspect-1.0.exe'; `
+    $plugins = @('opencv', 'onnx'); `
+    foreach ($p in $plugins) { `
+        try { $out = & $gstInspect $p 2>&1; if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] GStreamer plugin '$p' built" } else { Write-Host "[INFO] GStreamer plugin '$p' not auto-detected" } } catch { Write-Host "[SKIP] GStreamer plugin '$p'" } }

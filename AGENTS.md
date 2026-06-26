@@ -505,6 +505,19 @@ GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and
 - New OS packages → `Dockerfile.base`. Compiler changes → `Dockerfile.toolchain`. SDK/frameworks → `Dockerfile.sdk`. Media libs → `Dockerfile.media` + `03-media/build/`. Android → `Dockerfile.android`. GPU → `Dockerfile.nvidia`/`Dockerfile.amd`.
 - New architecture: add to `CROSS_DEFAULT_ARCHES` in `versions.env`, update cross-target lists, add triple mapping in `platform.sh`, add checksums in `versions.env`, verify QEMU/binfmt.
 
+## `.dockerignore` Guardrail
+
+**Never exclude the `linux/` directory from `.dockerignore`.** The Linux Dockerfiles
+(`Dockerfile.base`, `Dockerfile.package`, `Dockerfile.torch`, etc.) use `COPY`
+instructions that reference files under `linux/` (scripts, Vulkan manifests,
+smoke-test scripts, etc.). A blanket `linux/` exclusion breaks every COPY step
+with `failed to compute cache key: ... not found`.
+
+Windows build contexts are sufficiently small already (they only reference
+`windows/`). If the Windows lane needs a smaller context, add specific excludes
+for large directories under `linux/` (e.g., `linux/out/`, `linux/build/`) rather
+than blocking `linux/` itself.
+
 ## Reusable Sphinx Theme Package
 
 `docs/conf.py` delegates to `sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py` (`setup_theme()`), which provides all shared Sphinx config and loads the canonical CSS from the package's `_static/` directory.
