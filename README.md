@@ -157,7 +157,7 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 | Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.6, GCC 16, CMake 4.3.2, Vulkan SDK 1.4.341.1 |
 | Android layer | Android SDK 14742923, NDK 29.0.14206865, CMake 4.1.2 |
 | Webserver image | Ubuntu 26.04 |
-| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.341.1, GStreamer 1.29.1, CUDA 13.3.0, ONNX Runtime 1.26.0, ONNX DirectML 1.26.0 |
+| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.341.1, GStreamer 1.29.1, CUDA 13.3.0, ONNX Runtime 1.27.0 |
 <!-- generated:version-snapshot:end -->
 
 ## Quick Start 🏁
