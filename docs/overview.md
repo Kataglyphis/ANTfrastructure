@@ -71,7 +71,7 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 | Compiler | GCC <!-- generated:gcc -->16.1.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->22.1.8<!-- /generated:llvm --> | ✔️ |
 | Language runtime | Python <!-- generated:python -->3.14.6<!-- /generated:python -->, Node.js <!-- generated:node -->26.4.0<!-- /generated:node --> | ✔️ |
 | Android | SDK <!-- generated:android_sdk -->14742923<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
-| Windows | MSVC Build Tools, CUDA 12.9, GStreamer 1.28.3 | ✔️ |
+| Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.1<!-- /generated:gstreamer --> | ✔️ |
 | Windows | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |
 
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started

@@ -92,45 +92,8 @@ sc config stevedore binPath="\"C:\Program Files\Stevedore\dockerd.exe\" --run-se
 net stop stevedore /y
 net start stevedore
 
-# === BUILD SEQUENCE ===
-# All commands use Stevedore's docker.exe (nerdctl has DNS issues on Windows BuildKit):
-
-# Stage 1: Windows toolchain base (VS Build Tools 18, Scoop tools, LLVM 22)
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
-  -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
-
-# Stage 2: GPU SDK layer (CUDA 13.3 Toolkit + cuDNN 9.23, verified post-install)
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
-  -t local/kataglyphis:windows-sdk `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
-  -f windows/Dockerfile.sdk .
-
-# Stage 3: CPython 3.14 built from source with ClangCL toolset (not MSVC v143)
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
-  -t local/kataglyphis:windows-toolchain `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-sdk `
-  -f windows/Dockerfile.toolchain .
-
-# Stage 4: Media layer — all source-built with Ninja+clang-cl:
-#   - ONNX Runtime 1.26 (CPU-only; DirectML disabled due to VS 2026 STL hardening
-#     + clang-cl incomplete-type incompatibility in DirectML helper headers)
-#   - ONNX GenAI 0.13.1 (source-built via build.py with Ninja)
-#   - OpenCV 5.x (with global AVX2/SSSE3/SIMD flags for clang-cl)
-#   - LiteRT 2.1.5 (GPU delegate with Vulkan, XNNPACK, external CUDA delegate)
-#   - LiteRT-LM 0.13.1 (on-device LLM inference, CUDA enabled, links LiteRT)
-#   - GStreamer 1.29.1 (Meson+clang-cl, CUDA auto-detected)
-# NOTE: ONNX Runtime AVX-512+AMX compilation with clang-cl needs ~48 GB RAM.
-# Adjust --memory to your host's available resources (--cpu-quota not supported on Windows).
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache --memory 48g `
-  -t local/kataglyphis:windows-media `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
-  -f windows/Dockerfile.media .
-
-# Stage 5: Final developer image (VsDevCmd entrypoint)
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-media `
-  -f windows/Dockerfile .
+# See docs/windows-builds.md § Build Commands for the full 5-stage Windows build
+# sequence using Stevedore's docker.exe (nerdctl has DNS issues on Windows BuildKit).
 ```
 
 ### TensorRT Setup (Optional)
@@ -262,33 +225,7 @@ The **Windows lane** follows a separate 3-stage build (`base → ai → final`) 
 
 ### Stevedore Fixes After Install
 
-After installing Stevedore, apply these fixes exactly once:
-
-1. **Exclude Stevedore from Windows Defender:**
-   ```powershell
-   Add-MpPreference -ExclusionProcess "dockerd.exe"
-   Add-MpPreference -ExclusionPath "$env:ProgramFiles\Stevedore"
-   Add-MpPreference -ExclusionPath "$env:ProgramData\containerd"
-   Add-MpPreference -ExclusionPath "$env:ProgramData\nerdctl"
-   Add-MpPreference -ExclusionPath "$env:ProgramData\Docker"
-   ```
-
-2. **Remove stale Docker Desktop daemon.json** (if Docker Desktop was previously installed):
-   ```powershell
-   if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\ProgramData\docker\config\daemon.json" }
-   ```
-
-3. **Change default runtime from hcsshim to runhcs** (the `com.docker.hcsshim.v1` shim binary is not shipped — use `io.containerd.runhcs.v1`):
-   ```powershell
-   sc config stevedore binPath="\"C:\Program Files\Stevedore\dockerd.exe\" --run-service --service-name stevedore --group docker-users --host npipe:////./pipe/dockerDesktopWindowsEngine --host npipe:////./pipe/docker_engine --containerd=npipe:////./pipe/containerd-containerd --default-runtime=io.containerd.runhcs.v1"
-   net stop stevedore /y
-   net start stevedore
-   ```
-
-4. **Verify** with:
-   ```cmd
-   "%ProgramFiles%\Stevedore\bin\docker.exe" run --rm mcr.microsoft.com/windows/servercore:ltsc2025 powershell -Command "Write-Host OK"
-   ```
+Apply the post-install fixes documented in `docs/windows-builds.md` § Stevedore Setup Fixes (Defender exclusions, daemon.json cleanup, default runtime change, verification). Those instructions are the canonical source — keep them in sync instead of duplicating here.
 
 ### Supported Platforms
 
@@ -403,20 +340,14 @@ Rules:
 
 ## Five Critical Fixes To Maintain
 
-Always preserve these. See `docs/linux-cross-builds.md` § "Five Critical Fixes".
-
-1. **gst-python staged libpython** — `rewrite_staged_python_pc()` in `02-toolchain/python/build_python.sh`
-2. **libcamera abseil** — copy `absl/types/span.h` in `03-media/build/litert/build-litert.sh`
-3. **cross lib-dynload dangling symlinks** — `cp -a -L` + `find -xtype l` guard in `02-toolchain/python/build_python.sh`
-4. **cross GCC architecture guard** — three-layer ELF + dumpmachine + cc1 smoke check in `Dockerfile.package`
-5. **OpenCV 5 GStreamer compat** — `patch_gstreamer_opencv5_compat()` in `03-media/build/gstreamer/common/patch-gstreamer-sources.sh`
+Always preserve these. The canonical reference is `docs/linux-cross-builds.md` § "Five Critical Fixes"; CI validates them via `linux/scripts/verify-critical-fixes.sh`.
 
 ## Linux Build Rules
 
 - Use `nerdctl` first on this host. `buildctl`/`ctr` commonly fail with permission errors.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all arches. Not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep source-built `clang 22.1.6` (not Ubuntu `clang 22.1.2`). Source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
+- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep source-built `clang 22.1.8` (not Ubuntu `clang 22.1.2`). Source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
 - Preserve optional runtime payloads and LLVM normalization in `Dockerfile.package`. Do not drop `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
 
 ## Dockerfile.media BuildKit Strategy
@@ -449,7 +380,7 @@ base ─┬─ onnxruntime ───────┐
 ## Validation
 
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
-- Confirm on all arches: `clang --version` reports `22.1.6`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.1.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
+- Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.1.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
 
 ## Host Constraints

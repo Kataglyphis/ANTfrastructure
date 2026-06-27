@@ -4,7 +4,7 @@ set -euo pipefail
 # smoke-toolchain.sh
 # Validates the compiler toolchain inside the cross-compiler image:
 #   - GCC 16.1.0 for all cross targets
-#   - LLVM/Clang 22.1.6
+#   - LLVM/Clang 22.1.8
 #   - Rust/Cargo
 #   - Python 3.14
 #   - All cross-linkers produce correct ELF for each target
@@ -16,7 +16,7 @@ set -euo pipefail
 # Designed to run inside Dockerfile.toolchain during the final bundle step.
 
 : "${GCC_VERSION:=16.1.0}"
-: "${LLVM_RELEASE:=22.1.6}"
+: "${LLVM_RELEASE:=22.1.8}"
 : "${PYTHON_VERSION:=3.14.5}"
 : "${PYTHON_MAJOR_MINOR:=3.14}"
 : "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION}}"

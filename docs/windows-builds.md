@@ -7,7 +7,7 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.3.3, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
 - `windows/Dockerfile.sdk` layers CUDA 13.3 + cuDNN 9.23 GPU SDK.
 - `windows/Dockerfile.toolchain` builds CPython 3.14 from source (matching the canonical versions.env).
-- `windows/Dockerfile.media` layers GStreamer 1.29.1 (from source via Meson + clang-cl, with CUDA auto-detected), OpenCV 5.x (source build via CMake+Ninja+clang-cl, with CUDA auto-detected), ONNX Runtime 1.26.0 (source build with CUDA enabled via CUDA provider), ONNX GenAI 0.13.1 (source build with CUDA enabled), LiteRT 2.1.5 (source build with GPU delegate enabled via Vulkan/OpenCL + external CUDA delegate support), LiteRT-LM 0.13.1 (on-device LLM inference with CUDA support), built in dependency order so each finds the previous.
+- `windows/Dockerfile.media` layers GStreamer 1.29.1 (from source via Meson + clang-cl, with CUDA auto-detected), OpenCV 5.x (source build via CMake+Ninja+clang-cl, with CUDA auto-detected), ONNX Runtime 1.27.0 (source build with CUDA enabled via CUDA provider), ONNX GenAI 0.13.1 (source build with CUDA enabled), LiteRT 2.1.5 (source build with GPU delegate enabled via Vulkan/OpenCL + external CUDA delegate support), LiteRT-LM 0.13.1 (on-device LLM inference with CUDA support), built in dependency order so each finds the previous.
 - `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).
 
 ## Prerequisites
@@ -24,26 +24,35 @@ choco install stevedore
 
 Reboot after installation. This enables the Windows Containers feature and adds your user to the `docker-users` group.
 
-Stevedore bundles containerd, nerdctl, and Docker Engine for Windows Containers. The build commands below use `nerdctl` (configured through Stevedore's installation at `%ProgramFiles%\Stevedore\bin\nerdctl.exe`).
+**DNS note:** Windows `nerdctl build` has broken DNS in BuildKit containers.  
+Use Stevedore's bundled `docker.exe` for all builds below:
+
+| Tool | Build | Run |
+|------|-------|-----|
+| `"%ProgramFiles%\Stevedore\bin\docker.exe" build` | ✅ Working DNS | N/A |
+| `nerdctl build` | ❌ Broken DNS | N/A |
+| `nerdctl run` | N/A | ✅ Works |
 
 ## Build Commands
 
-Run from the repository root in order:
+Run from the repository root in order. Replace `"%ProgramFiles%\Stevedore\bin\docker.exe"` with your Stevedore install path:
 
 ```powershell
+$DOCKER = "${env:ProgramFiles}\Stevedore\bin\docker.exe"
+
 # Stage 1: toolchain base (VS, Scoop, LLVM, Rust)
-nerdctl build --no-cache --progress=plain `
+& $DOCKER build --no-cache --progress=plain `
   -t local/kataglyphis:windows-base `
   -f windows/Dockerfile.base .
 
 # Stage 2: GPU SDK (CUDA + cuDNN)
-nerdctl build --no-cache --progress=plain `
+& $DOCKER build --no-cache --progress=plain `
   -t local/kataglyphis:windows-sdk `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
   -f windows/Dockerfile.sdk .
 
 # Stage 3: Python toolchain (CPython 3.14 from source)
-nerdctl build --no-cache --progress=plain `
+& $DOCKER build --no-cache --progress=plain `
   -t local/kataglyphis:windows-toolchain `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-sdk `
   -f windows/Dockerfile.toolchain .
@@ -52,41 +61,23 @@ nerdctl build --no-cache --progress=plain `
 # Build order: ONNX -> GenAI -> OpenCV -> LiteRT -> LiteRT-LM -> GStreamer
 # NOTE: ONNX Runtime AVX-512+AMX compilation with clang-cl needs ~48 GB RAM.
 # Adjust --memory to your host's available resources (--cpu-quota not supported on Windows).
-nerdctl build --no-cache --progress=plain --memory 48g `
+& $DOCKER build --no-cache --progress=plain --memory 48g `
   -t local/kataglyphis:windows-media `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
   -f windows/Dockerfile.media .
 
 # Stage 5: final developer image
-nerdctl build --no-cache --progress=plain `
+& $DOCKER build --no-cache --progress=plain `
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-media `
   -f windows/Dockerfile .
 ```
 
-> **Note:** `--progress=plain` is required with nerdctl BuildKit to avoid `write /dev/stdout: The pipe is being closed` errors (see [containerd#10154](https://github.com/containerd/containerd/issues/10154)).
-
 > **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (which use `linux/` context) but breaks Windows builds.
-
-> **Note (nerdctl DNS limitation):** `nerdctl build` has a known DNS limitation on Windows — BuildKit build containers cannot resolve hostnames (`--dns` and `--network host` are not supported on Windows). If builds fail with "Could not resolve host" or "The remote name could not be resolved", use Stevedore's bundled `docker.exe` instead (shares the same containerd backend but has working DNS):
-> ```powershell
-> # Use Stevedore's docker instead of nerdctl for builds
-> "%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -f windows/Dockerfile.base .
-> ```
-> See the Common Failure Modes in `AGENTS.md` for full details.
 
 ## Stevedore Setup Fixes
 
-After installing Stevedore, the following fixes are required to make `docker.exe` builds work with Windows native containers:
-
-### Fix 1: Exclude Stevedore from Windows Defender
-
-Windows Defender's real-time protection blocks Stevedore's `dockerd.exe` from starting. Add exclusions:
-
-```powershell
-Add-MpPreference -ExclusionProcess "dockerd.exe"
-Add-MpPreference -ExclusionPath "$env:ProgramFiles\Stevedore"
-```
+After installing Stevedore, apply the post-install fixes documented in `AGENTS.md` § Stevedore Fixes After Install (Defender exclusions, daemon.json cleanup, default runtime change). The fixes there are the canonical source and are maintained in lockstep with the project's CI requirements.
 
 Also exclude the data directories (prevents hcsshim layer commit failures during builds):
 

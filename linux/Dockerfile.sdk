@@ -8,7 +8,7 @@ SHELL ["bash", "-lc"]
 ARG BUILD_TYPE=Release
 ARG BUILD_MODE=native
 ARG VULKAN_VERSION=1.4.341.1
-ARG LLVM_RELEASE=22.1.6
+ARG LLVM_RELEASE=22.1.8
 ARG TARGET_ARCH
 ARG TARGETARCH
 ARG TARGETPLATFORM
@@ -99,7 +99,7 @@ RUN set -euo pipefail; \
 
 # ------------------------------------------------------------------------------
 # Cross-compile a native Clang/LDD/compiler-rt toolchain for the target
-# architecture so :latest-cross ships with clang 22.1.6 on every arch.
+# architecture so :latest-cross ships with clang 22.1.8 on every arch.
 # Keep the checked-in LLVM release pin authoritative even when BASE_IMAGE
 # carries an older LLVM_RELEASE environment variable.
 # ------------------------------------------------------------------------------

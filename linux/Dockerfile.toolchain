@@ -12,7 +12,7 @@ SHELL ["bash", "-lc"]
 # intentional asymmetry: toolchain stays cached through script updates, while sdk,
 # media, and later stages rebuild when their scripts change.
 
-ARG LLVM_RELEASE=22.1.6
+ARG LLVM_RELEASE=22.1.8
 ARG GCC_VERSION=16.1.0
 ARG TARGETARCH
 ARG TARGETPLATFORM

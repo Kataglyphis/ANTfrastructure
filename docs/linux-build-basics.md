@@ -44,37 +44,7 @@ as `CROSS_STAGE_ORDER`. Stage orchestration (build, push, pin) is handled by sha
 in `linux/scripts/01-core/cross-stage-build.sh`.  See `docs/linux-cross-builds.md` for the
 full stage graph API and digest-pinning details.
 
-Prefer the orchestrator for full chains:
-```bash
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
-```
-
-For single-stage rebuilds, use the standalone helpers (the recommended way):
-```bash
-bash linux/scripts/build-cross-stage.sh --stage compiler --push --log-dir ./out/build-logs
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
-bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
-```
-
-For standalone compiler builds (same as `--stage compiler` above):
-```bash
-bash linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --log-dir ./out/build-logs
-```
-
-## Chain Verification
-
-```bash
-# Standalone — fastest way to check staleness:
-bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
-
-# Via the orchestrator:
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --verify-chain --log-dir ./out/build-logs
-
-# Print full stage graph with tag names:
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --describe-chain --log-dir ./out/build-logs
-```
-
-See `docs/linux-cross-builds.md` for the full stale-check reference and `--describe-chain` output.
+See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
 
 ## Rootless Build Networking (host tuning)
 

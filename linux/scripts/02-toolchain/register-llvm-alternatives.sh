@@ -8,7 +8,7 @@ set -euo pipefail
 # or /usr/bin/*-N patterns.
 #
 # Environment:
-#   LLVM_RELEASE   e.g. "22.1.6"
+#   LLVM_RELEASE   e.g. "22.1.8"
 
 llvm_major="${LLVM_RELEASE%%.*}"
 

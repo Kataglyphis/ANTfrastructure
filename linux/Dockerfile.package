@@ -30,8 +30,8 @@ ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
 ARG ANDROID_API_LEVEL=34
 ARG GCC_VERSION=16.1.0
-ARG LLVM_RELEASE=22.1.6
-ARG PYTHON_VERSION=3.14.5
+ARG LLVM_RELEASE=22.1.8
+ARG PYTHON_VERSION=3.14.6
 ARG PYTHON_MAJOR_MINOR=3.14
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
@@ -74,7 +74,7 @@ COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --link --from=artifact-source /opt/android /opt/android
 COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
-# The SDK stage cross-compiles a native Clang 22.1.6 toolchain for the
+# The SDK stage cross-compiles a native Clang 22.1.8 toolchain for the
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target

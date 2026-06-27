@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # validate-compilers.sh
-# Unified compiler chain validation for GCC 16.1.0 and Clang 22.1.6.
+# Unified compiler chain validation for GCC 16.1.0 and Clang 22.1.8.
 # Called from Dockerfile.package (artifact-source, package, and wrapper-smoke targets).
 #
 # Modes:
@@ -158,7 +158,7 @@ validate_artifact_source() {
   if [ -x "${llvm_target}" ]; then
     local clang_ver clang_major_minor
     clang_ver="$("${llvm_target}" --version 2>/dev/null | head -1 || true)"
-    if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:-22.1.6}"; then
+    if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:-22.1.8}"; then
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
       clang_major_minor="${LLVM_RELEASE%.*}"
@@ -177,7 +177,7 @@ validate_artifact_source() {
         if [ -n "${expected_machine}" ] && echo "${clang_elf}" | grep -qi "${expected_machine}"; then
           echo "OK: target clang ${llvm_target} is cross-built ELF for ${target_arch} (${clang_elf})"
         else
-          validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.6})${clang_elf:+ ELF: ${clang_elf}}"
+          validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.8})${clang_elf:+ ELF: ${clang_elf}}"
         fi
       fi
     fi
@@ -380,7 +380,7 @@ _validate_cc_target() {
 
 validate_smoke() {
   local gcc_ver="${GCC_VERSION:-16.1.0}"
-  local llvm_ver="${LLVM_RELEASE:-22.1.6}"
+  local llvm_ver="${LLVM_RELEASE:-22.1.8}"
   local target_arch errors gcc_ver_out clang_ver_out
 
   target_arch="$(validate_resolve_arch)"

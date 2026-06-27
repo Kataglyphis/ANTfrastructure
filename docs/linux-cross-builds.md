@@ -86,17 +86,8 @@ Or let the helper do the push too:
 
 ## Recommended: digest-pinned orchestrator (`build-cross-chain.sh`)
 
-For a hands-off, agent-proof end-to-end cross build, prefer the orchestrator over
-the manual `nerdctl` loops:
-
-```bash
-./linux/scripts/build-cross-chain.sh \
-  --target-arches amd64,arm64,riscv64 \
-  --fast-ubuntu-mirror \
-  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
-  --log-dir "logs/$(date -u +'%Y%m%dT%H%M%SZ')-cross-chain"
-```
-
+For a hands-off, agent-proof end-to-end cross build, prefer the orchestrator
+(see `AGENTS.md` § Quick Reference for the canonical command).
 It runs `base -> compiler -> sdk -> media -> android -> runtime` and, after each
 cross stage is pushed, captures that stage's **registry-resolvable manifest
 digest** and feeds it to the next stage as
@@ -160,32 +151,14 @@ The runtime helpers share initialization logic via
 `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` source this
 directly after `artifact-common.sh`.
 
-```bash
-# Rebuild a single cross stage independently:
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
-bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
-```
+See `AGENTS.md` § Quick Reference for standalone single-stage rebuild commands.
 
 ### Stale-check (`--verify-chain` and `verify-cross-chain.sh`)
 
 Before a full build, verify whether downstream registry images are stale without
 performing any builds.  The verification logic is shared via
 `linux/scripts/01-core/chain-verify.sh` (sourced by both entry points).
-Two entry points:
-
-```bash
-# Via the orchestrator (same process):
-./linux/scripts/build-cross-chain.sh \
-  --target-arches amd64,arm64,riscv64 \
-  --verify-chain \
-  --log-dir ./out/build-logs
-
-# Standalone (lighter, no orchestrator flags needed):
-bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
-bash linux/scripts/verify-cross-chain.sh --target-arches arm64
-```
-
-Both resolve all upstream registry digests and report mismatches so you can
+See `AGENTS.md` § Quick Reference for the chain verification commands. Both resolve all upstream registry digests and report mismatches so you can
 decide whether a full rebuild is needed.  The standalone script is useful for
 quick checks without loading the full orchestrator.
 
@@ -389,18 +362,7 @@ The main repo-root Linux Dockerfiles also now carry Dockerfile-specific ignore f
 
 The per-arch `latest-cross-base-*`, `latest-cross-package-*`, and `latest-cross-*`
 tags are internal publish tags used to assemble the public `latest-cross` manifest.
-Prefer the runtime helpers:
-
-```bash
-bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 \
-  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
-  --push \
-  --log-dir ./out/build-logs
-```
-
-Run with `--dry-run` to print the commands it would execute without building.
+Prefer the runtime helpers (see `AGENTS.md` § Runtime Helpers for the canonical commands). Run with `--dry-run` to print the commands without building.
 
 The same package handoff now works for `linux/Dockerfile.torch` too. Build the heavy media/android payloads with the amd64-hosted cross compiler first, then feed `cross-android-${TARGET_ARCH}` through `linux/Dockerfile.package`, build `linux/Dockerfile.torch` on `linux/${TARGET_ARCH}` (which now includes the runtime scripts + entrypoint directly). `TORCH_APP_MODE=install` keeps that QEMU Torch stage focused on creating `/opt/venv`, and the dedicated `venv-export` target lets you export only `/opt/venv` for later `COPY` into a matching real target image.
 
@@ -443,7 +405,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --log-dir ./out/build-logs
 ```
 
-That path was validated for both `arm64` and `riscv64` with `gcc version 16.1.0`, `clang version 22.1.6`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, native `gcc-16` binaries under `/opt/gcc-16.1.0/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary. The build-time guard in `Dockerfile.package` verifies that `cc -dumpmachine` matches the target architecture, asserts the ELF machine type of the `cc` binary itself (via `readelf -h`), and runs a cc1 compile-to-object smoke under the target platform.
+That path was validated for both `arm64` and `riscv64` with `gcc version 16.1.0`, `clang version 22.1.8`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, native `gcc-16` binaries under `/opt/gcc-16.1.0/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary. The build-time guard in `Dockerfile.package` verifies that `cc -dumpmachine` matches the target architecture, asserts the ELF machine type of the `cc` binary itself (via `readelf -h`), and runs a cc1 compile-to-object smoke under the target platform.
 
 After the runtime helper cleanup in this repository, the same helper path was re-validated for `amd64` with:
 
@@ -461,7 +423,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --log-dir ./out/build-logs
 ```
 
-The resulting image reported `gcc version 16.1.0`, `clang version 22.1.6`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, and `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`.
+The resulting image reported `gcc version 16.1.0`, `clang version 22.1.8`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, and `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`.
 
 For local wrapper smoke validation without pushing anything, build the checked-in smoke target directly:
 
@@ -477,7 +439,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
   --build-arg GCC_VERSION=16.1.0 \
-  --build-arg LLVM_RELEASE=22.1.6 \
+  --build-arg LLVM_RELEASE=22.1.8 \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \

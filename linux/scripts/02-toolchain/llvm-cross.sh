@@ -46,7 +46,7 @@ _build_llvm_cross_core() {
       ;;
     target-clang)
       prefix="/opt/llvm-target"
-      release="${LLVM_RELEASE:-22.1.6}"
+      release="${LLVM_RELEASE:-22.1.8}"
       tag="llvmorg-${release}"
       build_dir_suffix="target-clang-${target_label}"
       wrapper_dir_suffix="target-clang-${target_label}-tool-bin"

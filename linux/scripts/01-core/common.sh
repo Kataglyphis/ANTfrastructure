@@ -180,7 +180,7 @@ llvm_release_version() {
     return 0
   fi
   case "${version}" in
-    22) printf '%s' "22.1.6" ;;
+    22) printf '%s' "22.1.8" ;;
     *) printf '%s' "${version}.1.0" ;;
   esac
 }

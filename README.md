@@ -24,7 +24,7 @@ Four-tier dependency chain with shared script tree:
 ```
 linux/
 ├── Dockerfile.base          ubuntu:26.04 + CMake/Node/uv
-├── Dockerfile.toolchain     GCC 16.1.0 + LLVM/Clang 22.1.6 + Python 3.14 (FROM base)
+├── Dockerfile.toolchain     GCC 16.1.0 + LLVM/Clang 22.1.8 + Python 3.14 (FROM base)
 ├── Dockerfile.sdk           Vulkan SDK + TVM (FROM toolchain)
 ├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera (FROM sdk)
 ├── Dockerfile.android       Android SDK/NDK + native GCC swap (FROM media)
@@ -87,36 +87,7 @@ sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleun
 ### Build the full cross chain locally
 
 Build logs are written to `out/build-logs/` by passing `--log-dir` to the orchestrator scripts.
-
-```bash
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
-```
-
-### Build just the media layer for one architecture
-
-Use `build-cross-stage.sh` — it resolves the parent SDK digest, assembles all
-build args from `versions.env`, pins the result, and writes logs to `out/build-logs/`.
-**This is the recommended way to build any single cross-lane stage.**
-
-```bash
-bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
-```
-
-Build all three architectures sequentially:
-
-```bash
-for arch in amd64 arm64 riscv64; do
-  bash linux/scripts/build-cross-stage.sh --stage media --arch "$arch" --push --log-dir ./out/build-logs
-done
-```
-
-See `docs/linux-cross-builds.md` for the full stage graph and `docs/linux-build-basics.md` for build fundamentals.
-
-### Verify a single cross stage without building
-
-```bash
-bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
-```
+See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
 
 ### Reinstall QEMU/binfmt after a host reboot
 

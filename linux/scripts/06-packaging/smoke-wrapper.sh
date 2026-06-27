@@ -9,7 +9,7 @@ VALIDATE_COMPILERS="/opt/scripts/packaging/validate-compilers.sh"
 
 main() {
   local gcc_ver="${GCC_VERSION:-16.1.0}"
-  local llvm_ver="${LLVM_RELEASE:-22.1.6}"
+  local llvm_ver="${LLVM_RELEASE:-22.1.8}"
   local target_arch
 
   target_arch="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}"
