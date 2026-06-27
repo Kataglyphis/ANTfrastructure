@@ -49,7 +49,7 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 | Target | Source-controlled defaults |
 | --- | --- |
-| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.6, GCC 16, CMake 4.3.2, Vulkan SDK 1.4.341.1 |
+| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.3.3, Vulkan SDK 1.4.341.1 |
 | Android layer | Android SDK 14742923, NDK 29.0.14206865, CMake 4.1.2 |
 | Webserver image | Ubuntu 26.04 |
 | Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.341.1, GStreamer 1.29.1, CUDA 13.3.0, ONNX Runtime 1.27.0 |
@@ -68,8 +68,8 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 | Media | ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |
 | Media | GStreamer <!-- generated:gstreamer -->1.29.1<!-- /generated:gstreamer -->, OpenCV <!-- generated:opencv -->5.x<!-- /generated:opencv -->, LiteRT | ✔️ |
 | Media | libcamera, FFmpeg | ✔️ |
-| Compiler | GCC <!-- generated:gcc -->16.1.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->22.1.6<!-- /generated:llvm --> | ✔️ |
-| Language runtime | Python <!-- generated:python -->3.14.5<!-- /generated:python -->, Node.js <!-- generated:node -->24.16.0<!-- /generated:node --> | ✔️ |
+| Compiler | GCC <!-- generated:gcc -->16.1.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->22.1.8<!-- /generated:llvm --> | ✔️ |
+| Language runtime | Python <!-- generated:python -->3.14.6<!-- /generated:python -->, Node.js <!-- generated:node -->26.4.0<!-- /generated:node --> | ✔️ |
 | Android | SDK <!-- generated:android_sdk -->14742923<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
 | Windows | MSVC Build Tools, CUDA 12.9, GStreamer 1.28.3 | ✔️ |
 | Windows | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |

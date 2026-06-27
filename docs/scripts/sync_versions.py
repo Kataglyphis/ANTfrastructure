@@ -54,7 +54,6 @@ INLINE_MARKER_MAP: dict[str, tuple[str, str]] = {
     "tvm": ("TVM_REF", "raw"),
     "ubuntu": ("UBUNTU_VERSION", "raw"),
     "onnx_genai": ("ONNXRUNTIME_GENAI_VERSION", "no_v"),
-    "litert": ("LITERT_VERSION", "no_v"),
 }
 
 INLINE_MARKER_RE = re.compile(
@@ -156,7 +155,7 @@ def collect_versions() -> dict[str, str]:
         "android_sdk": v["ANDROID_SDK_VERSION"],
         "android_ndk": v["ANDROID_NDK_VERSION"],
         "android_cmake": v["ANDROID_CMAKE_VERSION"],
-        "webserver_ubuntu": extract(r"^FROM ubuntu:([^\s]+)$", linux_webserver, "Webserver Ubuntu version"),
+        "webserver_ubuntu": v["UBUNTU_VERSION"],
         "windows_ltsc": extract(
             r"^ARG WINDOWS_LTSC=([^\s]+)$",
             windows_base,

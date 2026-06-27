@@ -6,7 +6,7 @@ set -euo pipefail
 # directory.  Replaces the old per-arch setup-flutter-{x86-64,arm64}.sh wrappers.
 #
 # Usage:
-#   setup-flutter.sh --arch x64|arm64 --version 3.41.4 [--dir /opt/flutter]
+#   setup-flutter.sh --arch x64|arm64 --version 3.44.4 [--dir /opt/flutter]
 #
 # The --arch flag selects the correct download archive (x86-64 vs arm64).
 # riscv64 is rejected — Flutter does not support it.
@@ -16,7 +16,7 @@ usage() {
 Usage: $0 --arch <x64|arm64> --version <ver> [--dir <path>]
 
   --arch, -a     Target architecture: x64 or arm64 (riscv64 unsupported)
-  --version, -v  Flutter SDK version (e.g. 3.41.4)
+  --version, -v  Flutter SDK version (e.g. 3.44.4)
   --dir, -d      Installation directory (default: /opt)
   -h, --help     Show this help
 EOF
