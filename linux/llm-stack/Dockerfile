@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.24.0
-FROM ubuntu:26.04 AS base
+ARG UBUNTU_VERSION=26.04
+FROM ubuntu:${UBUNTU_VERSION} AS base
 
 ARG TARGETARCH
 ARG OLLAMA_VERSION=0.30.10

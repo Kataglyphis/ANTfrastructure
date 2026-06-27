@@ -30,11 +30,14 @@ main() {
   local arch
   local host_arch
 
-  host_arch="$(uname -m)"
-  case "${host_arch}" in
-    x86_64)  host_arch=amd64 ;;
-    aarch64) host_arch=arm64 ;;
-  esac
+  host_arch="$(canonical_target_arch 2>/dev/null || echo "${host_arch:-}")"
+  if [ -z "${host_arch}" ]; then
+    host_arch="$(uname -m)"
+    case "${host_arch}" in
+      x86_64)  host_arch=amd64 ;;
+      aarch64) host_arch=arm64 ;;
+    esac
+  fi
 
   echo "=== Cross-Compiler Multi-Arch Smoke Test ==="
   echo "Host arch: ${host_arch}"

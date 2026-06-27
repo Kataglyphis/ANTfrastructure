@@ -64,7 +64,8 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
       _fix_triplet="$(arch_deb_multiarch_triplet_for "${_fix_arch}" 2>/dev/null || true)"
     else
       case "${_fix_arch}" in
-        arm64) _fix_triplet="aarch64-linux-gnu" ;;
+        amd64)   _fix_triplet="x86_64-linux-gnu" ;;
+        arm64)   _fix_triplet="aarch64-linux-gnu" ;;
         riscv64) _fix_triplet="riscv64-linux-gnu" ;;
       esac
     fi

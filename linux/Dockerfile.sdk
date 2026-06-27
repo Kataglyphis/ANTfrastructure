@@ -26,7 +26,9 @@ ENV BUILD_MODE=${BUILD_MODE} \
     BUILDARCH=${BUILDARCH} \
     BUILDPLATFORM=${BUILDPLATFORM} \
     VULKAN_VERSION=${VULKAN_VERSION} \
-    LLVM_RELEASE=${LLVM_RELEASE}
+    LLVM_RELEASE=${LLVM_RELEASE} \
+    PATH="/opt/flutter/bin:${PATH}" \
+    FLUTTER_ROOT=/opt/flutter
 # 01-core/ and 02-toolchain/ scripts are inherited from the compiler base image.
 # Nothing additional needs to be copied here.
 
@@ -124,6 +126,7 @@ ARG TVM_REF=v0.24.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
 ARG TVM_INSTALL_PYTHON=1
+ARG FLUTTER_VERSION
 
 ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
@@ -143,6 +146,21 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
         tvm_args+=(--no-python); \
     fi; \
     bash /opt/scripts/frameworks/tvm.sh "${tvm_args[@]}"
+
+# ==============================================================================
+# Frameworks; Flutter SDK (amd64 + arm64; riscv64 skipped)
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-cache-${TARGETARCH},sharing=locked \
+    set -euo pipefail; \
+    mkdir -p /var/cache/flutter; \
+    cp -an /var/cache/flutter/. /opt/ 2>/dev/null || true; \
+    if [ ! -x /opt/flutter/bin/flutter ]; then \
+        bash /opt/scripts/frameworks/flutter/setup-flutter.sh \
+          --arch "${TARGET_ARCH}" \
+          --version "${FLUTTER_VERSION}" \
+          --dir /opt; \
+        cp -an /opt/flutter/. /var/cache/flutter/ 2>/dev/null || true; \
+    fi
 
 LABEL org.opencontainers.image.title="Kataglyphis SDK" \
       org.opencontainers.image.description="SDK layer with Vulkan on top of compiler toolchain and the amd64-hosted cross artifact lane"

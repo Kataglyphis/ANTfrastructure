@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.24.0
-FROM ubuntu:26.04
+ARG UBUNTU_VERSION=26.04
+FROM ubuntu:${UBUNTU_VERSION}
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install nginx and openssl (minimal) utilizing BuildKit cache mounts

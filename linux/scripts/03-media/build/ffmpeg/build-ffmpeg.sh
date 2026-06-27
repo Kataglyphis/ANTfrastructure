@@ -62,7 +62,7 @@ fetch_ffmpeg() {
     mkdir -p "${FFMPEG_SRC}"
 
     # Use latest stable release tag (default from versions.env via orchestrator or env)
-    local release_tag="${FFMPEG_VERSION:-n7.1}"
+    local release_tag="${FFMPEG_VERSION:-n8.1.2}"
 
     local tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_tag}.tar.gz"
     echo "Downloading FFmpeg ${release_tag} from ${tarball_url}..."

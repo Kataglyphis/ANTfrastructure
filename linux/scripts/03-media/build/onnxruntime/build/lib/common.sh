@@ -131,7 +131,7 @@ EOF
 }
 
 init_defaults() {
-  ORT_VERSION="${ORT_VERSION:-v1.26.0}"
+  ORT_VERSION="${ORT_VERSION:-${ONNXRUNTIME_VERSION:-v1.27.0}}"
   ORT_REPO="${ORT_REPO:-https://github.com/microsoft/onnxruntime.git}"
   ORT_SRC_DIR="${ORT_SRC_DIR:-/opt/onnxruntime}"
 

@@ -5,7 +5,8 @@
 # This image avoids persisting helper scripts into the image so apt layers remain
 # stable while shared setup logic can still run through BuildKit bind mounts.
 # ------------------------------------------------------------------------------
-FROM ubuntu:26.04
+ARG UBUNTU_VERSION=26.04
+FROM ubuntu:${UBUNTU_VERSION}
 
 ARG TARGETARCH
 ARG VULKAN_VERSION=1.4.341.1

@@ -39,11 +39,14 @@ ARG CUDA_VERSION_MAJOR_MINOR=13-3
 # cuDNN 9.x is compatible with CUDA 13.x
 ARG CUDNN_VERSION=9
 
-ARG TENSORRT_VERSION=10
+# Single source of truth: linux/scripts/01-core/versions.env
+ARG TENSORRT_VERSION=11.1.0
+ARG CUDA_VERSION_DOT=13.3
+# CUDA_VERSION_DOT is CUDA_VERSION_MAJOR_MINOR with hyphen → dot for repo path construction
 
 ARG TARGETARCH
-ARG UBUNTU_CODENAME=2604
-# UBUNTU_CODENAME is derived from UBUNTU_VERSION (26.04 → 2604). Update in lockstep.
+ARG UBUNTU_CODENAME=plucky
+# UBUNTU_CODENAME is the official codename (plucky for 26.04). Update in lockstep.
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
@@ -114,8 +117,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     if [ -f /tmp/tensorrt-local-repo.deb ]; then \
         echo "TensorRT: installing local repo deb..."; \
         dpkg -i /tmp/tensorrt-local-repo.deb 2>/dev/null || true; \
-        if [ -f /var/nv-tensorrt-local-repo-ubuntu2404-11.1.0-cuda-13.3/nv-tensorrt-local-0B248249-keyring.gpg ]; then \
-            cp /var/nv-tensorrt-local-repo-ubuntu2404-11.1.0-cuda-13.3/nv-tensorrt-local-0B248249-keyring.gpg /usr/share/keyrings/ 2>/dev/null || true; \
+        _trt_key="$(find /var -name 'nv-tensorrt-local-*-keyring.gpg' 2>/dev/null | head -1)"; \
+        if [ -n "${_trt_key}" ]; then \
+            cp "${_trt_key}" /usr/share/keyrings/ 2>/dev/null || true; \
         fi; \
         apt-get update -qq 2>/dev/null || true; \
         if apt-get install -y --no-install-recommends tensorrt tensorrt-dev tensorrt-libs 2>/dev/null; then \
