@@ -417,6 +417,15 @@ ffmpeg_probe_libfdk_aac() {
     return 1
 }
 
+ffmpeg_probe_libonnx() {
+    if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime" \
+        "onnxruntime_c_api.h" "OrtGetApiBase"; then
+        return 0
+    fi
+    echo "Skipping libonnx: ONNX Runtime pkg-config probe failed."
+    return 1
+}
+
 # ------------------------------------------------------------------------------
 # Configure FFmpeg build
 # ------------------------------------------------------------------------------
@@ -523,6 +532,10 @@ configure_ffmpeg() {
     
     if ffmpeg_probe_pkg_config_feature "libsvtav1" "SvtAv1Enc >= 0.9.0" "EbSvtAv1Enc.h" "svt_av1_enc_init_handle"; then
         configure_opts+=("--enable-libsvtav1")
+    fi
+    
+    if ffmpeg_probe_libonnx; then
+        configure_opts+=("--enable-libonnx")
     fi
     
     # Hardware acceleration (if available)

@@ -13,7 +13,11 @@ $ErrorActionPreference = 'Stop'
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
-$FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariables @('FFMPEG_VERSION') -DefaultValue 'n8.1.2'
+# Load canonical versions from linux/scripts/01-core/versions.env if available
+$versionsScript = Join-Path $PSScriptRoot 'load-versions.ps1'
+if (Test-Path $versionsScript) { & $versionsScript }
+
+$FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariables @('FFMPEG_VERSION') -DefaultValue 'main'
 $prefix = Join-Path $InstallDir 'ffmpeg'
 $ffmpegDir = Join-Path $prefix 'bin'
 
@@ -31,7 +35,11 @@ New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 Write-Host "Downloading FFmpeg $FfmpegVersion..."
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $wc = New-Object System.Net.WebClient
-$wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz", $tarballPath)
+if ($FfmpegVersion -in @('main', 'master', 'develop')) {
+    $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz", $tarballPath)
+} else {
+    $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz", $tarballPath)
+}
 Write-Host "Extracting tarball..."
 & 7z x "$tarballPath" -o"$SourceDir" -y -bd 2>&1 | Out-Null
 $tarFile = Get-ChildItem -Path $SourceDir -Filter '*.tar' | Select-Object -First 1 -ExpandProperty FullName
@@ -70,12 +78,20 @@ $cygSrc = $srcDir -replace '\\', '/' -replace '^C:', '/c'
 
 # Configure with --toolchain=msvc (officially supported by FFmpeg on Windows)
 # Resulting binaries are ABI-compatible with clang-cl throughout the container.
+# Ensure ONNX Runtime pkg-config is discoverable for --enable-libonnx
+$onnxPkgConfig = Join-Path $InstallDir 'lib\onnxruntime-source\runtime\lib\pkgconfig'
+if (Test-Path $onnxPkgConfig) {
+    $env:PKG_CONFIG_PATH = "$onnxPkgConfig;$env:PKG_CONFIG_PATH"
+    Write-Host "ONNX Runtime pkg-config found at $onnxPkgConfig"
+}
+
 $confFlags = @()
 $confFlags += "--prefix=$cygPrefix"
 $confFlags += '--enable-shared', '--disable-static'
 $confFlags += '--disable-debug', '--disable-doc'
 $confFlags += '--enable-gpl', '--enable-nonfree', '--enable-version3'
 $confFlags += '--enable-ffmpeg', '--enable-ffprobe'
+$confFlags += '--enable-dnn', '--enable-libonnx'
 $confFlags += '--toolchain=msvc'
 $confFlags += '--disable-x86asm'
 
