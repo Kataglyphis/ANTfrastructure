@@ -17,9 +17,9 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| CMake | 4.3.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Node.js | 24.16.0 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.11.16 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| CMake | 4.3.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| Node.js | 26.4.0 | [nodejs.org](https://nodejs.org/) | MIT |
+| uv | 0.11.25 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.341.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
@@ -27,8 +27,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | GCC (host + cross) | 16.1.0 | [gcc.gnu.org](https://gcc.gnu.org/) | GPLv3+ with GCC Runtime Library Exception |
-| LLVM / Clang | 22.1.6 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
-| Python | 3.14.5 | [python.org](https://python.org/) | PSF License |
+| LLVM / Clang | 22.1.8 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
+| Python | 3.14.6 | [python.org](https://python.org/) | PSF License |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 
 ### SDK Layer (`Dockerfile.sdk`)
@@ -68,7 +68,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | CUDA Toolkit | 13-3 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
-| TensorRT | 11.1.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| TensorRT | 11.1.0 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Optional GPU — AMD (`Dockerfile.amd`)
 
@@ -81,9 +81,9 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| PyTorch | v2.12.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
-| TorchVision | v0.27.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.41.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| PyTorch | v2.12.1 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
+| TorchVision | v0.27.1 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
+| Flutter SDK | 3.44.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Runtime (`Dockerfile.torch`)
 
@@ -113,7 +113,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Vulkan SDK | 1.4.341.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.41.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.44.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 

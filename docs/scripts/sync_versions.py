@@ -489,11 +489,29 @@ def main() -> int:
         result = check_snapshot(snapshot)
         result |= check_inline_markers(versions)
         result |= check_deps_table(versions)
+        # Also check website license files.
+        import subprocess
+        lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
+        lic_result = subprocess.run([sys.executable, str(lic_script), "--check"], capture_output=True, text=True)
+        result |= lic_result.returncode
+        if lic_result.returncode:
+            print(lic_result.stderr, file=sys.stderr)
         return result
 
     result = write_snapshot(snapshot)
     result |= write_inline_markers(versions)
     result |= write_deps_table(versions)
+    # Auto-regenerate website license files so they never go stale.
+    import subprocess
+    lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
+    lic_result = subprocess.run([sys.executable, str(lic_script), "--write"], capture_output=True, text=True)
+    if lic_result.returncode:
+        print("WARNING: generate-website-licenses.py --write failed:", file=sys.stderr)
+        print(lic_result.stderr, file=sys.stderr)
+    else:
+        for line in lic_result.stdout.strip().splitlines():
+            print(line)
+        result |= lic_result.returncode
     return result
 
 
