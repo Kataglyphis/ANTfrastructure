@@ -31,18 +31,14 @@ jobs:
           python-version: 3.14
           enable-cache: true
 
-      # Optional: install Python pinned by project if you want: `uv python install`
-      - name: Install project dependencies with uv (use lock if present)
+      - name: Install project dependencies with uv
         run: |
           uv venv
           source .venv/bin/activate
           uv pip install -r requirements.txt
 
-      - name: Check generated version snapshot
+      - name: Check generated version snapshot (also checks website licenses)
         run: python docs/scripts/sync_versions.py --check
-
-      - name: Check website license files are current
-        run: python docs/scripts/generate-website-licenses.py --check
 
       - name: Verify version ARG consistency
         run: bash linux/scripts/01-core/verify-arg-consistency.sh
@@ -58,7 +54,6 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           shellcheck --exclude=SC1090,SC1091,SC2034,SC2154 \
             $(find linux/scripts -name '*.sh' | sort) || true
-        continue-on-error: true
 
       - name: Copy docs
         run: |
@@ -72,6 +67,7 @@ jobs:
           make html
 
       - name: 📂 Sync files to domain
+        if: success()
         uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ secrets.SERVER }}
