@@ -61,17 +61,22 @@ fetch_ffmpeg() {
     rm -rf "${FFMPEG_SRC}"
     mkdir -p "${FFMPEG_SRC}"
 
-    # Use latest stable release tag (default from versions.env via orchestrator or env)
-    local release_tag="${FFMPEG_VERSION:-n8.1.2}"
+    # Use latest stable release tag (default from versions.env via orchestrator or env),
+    # or "main" to track the latest development branch.
+    local release_ref="${FFMPEG_VERSION:-n8.1.2}"
 
-    local tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_tag}.tar.gz"
-    echo "Downloading FFmpeg ${release_tag} from ${tarball_url}..."
+    local tarball_url
+    case "${release_ref}" in
+      main|master|develop) tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/heads/${release_ref}.tar.gz" ;;
+      *)                   tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_ref}.tar.gz" ;;
+    esac
+    echo "Downloading FFmpeg ${release_ref} from ${tarball_url}..."
     curl -sL "${tarball_url}" | tar -xzf - -C "${FFMPEG_SRC}" --strip-components=1 || {
         echo "Tarball download failed for ${tarball_url}" >&2
         exit 1
     }
     cd "${FFMPEG_SRC}"
-    echo "FFmpeg version: ${release_tag} (from tarball)"
+    echo "FFmpeg version: ${release_ref} (from tarball)"
 }
 
 # ==============================================================================
@@ -430,6 +435,7 @@ configure_ffmpeg() {
         "--disable-static"
         "--disable-debug"
         "--disable-doc"
+        "--enable-dnn"
     )
 
     if cross_build_is_active; then
