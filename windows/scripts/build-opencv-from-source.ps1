@@ -18,15 +18,6 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== OpenCV source build (branch $OpenCvVersion, Ninja+clang-cl) ==="
 
-# Install numpy (required by OpenCV's CUDA detection/verification step)
-$pythonExe = Join-Path $env:TEMP_DIR 'cpython\PCbuild\amd64\python.exe'
-if (Test-Path $pythonExe) {
-    Write-Host 'Installing numpy via pip (required for OpenCV CUDA detection)...'
-    cmd.exe /c """$pythonExe"" -m pip install numpy --quiet 2>&1"
-    if ($LASTEXITCODE -eq 0) { Write-Host 'numpy installed successfully' }
-    else { Write-Host 'WARNING: numpy install failed - OpenCV CUDA detection may be disabled' }
-}
-
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 $mainSrc = Join-Path $SourceDir 'opencv'
 $ok = Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv.git' -Branch $OpenCvVersion -SourceDir $mainSrc
@@ -78,15 +69,17 @@ $cmakeExtra = @(
     '-DWITH_VULKAN=ON', '-DWITH_EIGEN=OFF',
     '-DWITH_ONNXRUNTIME=OFF',  # OFF to avoid linking conflicts with the separate source-built ONNX Runtime
     '-DWITH_VTK=OFF', '-DWITH_MSMF=ON', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
-    '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON',
     '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=ON'
 )
 
 $cudaRoot = Get-CudaRoot
 if ($cudaRoot -and (Test-Path $cudaRoot)) {
+    $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
     $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
     $nvccPath = Join-Path $cudaRoot 'bin\nvcc.exe'
     if (Test-Path $nvccPath) { $cmakeExtra += "-DCMAKE_CUDA_COMPILER=$nvccPath" }
+} else {
+    $cmakeExtra += '-DWITH_CUDA=OFF', '-DWITH_CUDNN=OFF', '-DWITH_CUBLAS=OFF'
 }
 
 # CMAKE_AR: find llvm-lib on PATH and pass full path
