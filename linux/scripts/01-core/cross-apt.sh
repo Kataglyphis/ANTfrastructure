@@ -54,7 +54,7 @@ cross_prune_foreign_arch_apt_sources() {
   local existing_ports_source
 
   shopt -s nullglob
-  for existing_ports_source in /etc/apt/sources.list.d/ubuntu-ports-*.sources; do
+  for existing_ports_source in /etc/apt/sources.list.d/ubuntu-ports*.sources; do
     [ -n "${keep_source}" ] && [ "${existing_ports_source}" = "${keep_source}" ] && continue
     rm -f "${existing_ports_source}"
   done

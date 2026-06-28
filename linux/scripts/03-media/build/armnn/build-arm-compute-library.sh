@@ -52,10 +52,8 @@ build_acl() {
     neon=1 \
     opencl=1 \
     examples=0 \
-    tests=0 \
     benchmark_tests=0 \
     validation_tests=0 \
-    multithread=1 \
     "${@}"
 
   mkdir -p "${ACL_INSTALL_DIR}/lib" "${ACL_INSTALL_DIR}/include"

@@ -132,6 +132,38 @@ patch_gstreamer_opencv5_compat() {
        "(relocated-module includes; dropped faceblur/facedetect/handdetect)."
 }
 
+# AV_CODEC_ID_V308, AV_CODEC_ID_V408, and AV_CODEC_ID_V410 were removed from
+# FFmpeg main (used by gst-libav for uncompressed 4:4:4 video formats). Define
+# them as zero (invalid codec ID) so the gst-libav sources compile — the
+# comparisons will simply never match.
+patch_gst_libav_removed_codecs() {
+  local repo_root="$1"
+  local gst_libav_dir="${repo_root}/subprojects/gst-libav/ext/libav"
+  local file
+
+  [ -d "${gst_libav_dir}" ] || return 0
+
+  for file in gstavvidenc.c gstavviddec.c; do
+    local src="${gst_libav_dir}/${file}"
+    [ -f "${src}" ] || continue
+    # Insert fallback defines after the last #include line (idempotent).
+    if ! grep -Fq 'define AV_CODEC_ID_V308' "${src}" 2>/dev/null; then
+      sed -i '/^#include/a\
+/* Fallback defines for codec IDs removed from FFmpeg main */\
+#ifndef AV_CODEC_ID_V308\
+#define AV_CODEC_ID_V308 0\
+#endif\
+#ifndef AV_CODEC_ID_V408\
+#define AV_CODEC_ID_V408 0\
+#endif\
+#ifndef AV_CODEC_ID_V410\
+#define AV_CODEC_ID_V410 0\
+#endif' "${src}"
+      echo "Patched ${src}: added fallback defines for removed FFmpeg codec IDs V308/V408/V410"
+    fi
+  done
+}
+
 patch_gstreamer_sources() {
   local repo_root="$1"
   local meson_args="$2"
@@ -193,6 +225,7 @@ patch_gstreamer_sources() {
   fi
 
   patch_gstreamer_opencv5_compat "${repo_root}"
+  patch_gst_libav_removed_codecs "${repo_root}"
 
   prune_disabled_gst_plugins_rs_workspace_members "${cargo_toml}" "${meson_args}"
 }

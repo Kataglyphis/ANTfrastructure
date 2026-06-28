@@ -51,15 +51,23 @@ build_armnn() {
   mkdir -p "${ARMNN_BUILD_DIR}"
   cd "${ARMNN_BUILD_DIR}"
 
+  # ARMCOMPUTE_ROOT must point to the ACL source tree (contains cmake configs),
+  # not the install prefix. The install prefix is used for -L/-I paths.
+  # Arm NN's NEON/CL backend detection probes for ACL features by compiling
+  # test programs. The cross-compiler needs -march=armv8-a and the install
+  # include path to detect NEON support.
   cmake "${ARMNN_SRC_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${ARMNN_INSTALL_DIR}" \
-    -DARMCOMPUTE_ROOT="${ACL_INSTALL_DIR}" \
+    -DARMCOMPUTE_ROOT="${ACL_SRC_DIR:-/tmp/acl-src}" \
     -DARMCOMPUTE_LIBS="${ACL_INSTALL_DIR}/lib" \
+    -DARMCOMPUTE_INCLUDE="${ACL_INSTALL_DIR}/include" \
     -DBUILD_UNIT_TESTS=0 \
     -DBUILD_TESTS=0 \
     -DBUILD_BENCHMARK_TESTS=0 \
     -DBUILD_BENCHMARK_EXECUTABLE=0 \
+    -DCMAKE_CXX_FLAGS="-march=armv8-a" \
+    -DCMAKE_C_FLAGS="-march=armv8-a" \
     "${cross_args[@]}"
 
   cmake --build . -j "$(nproc)"

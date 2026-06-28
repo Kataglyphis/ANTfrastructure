@@ -223,13 +223,18 @@ RUN --mount=type=cache,target=/tmp \
       echo "Skipping onnxruntime-genai verification (BUILD_GENAI=${BUILD_GENAI:-true})"; \
     fi
 
-# wasm step — heavy compilation, kept separate to avoid cache loss on pkgconfig failure.
+# wasm step — only useful for native amd64 builds (WASM is browser-targeted);
+# skip for cross-builds and non-amd64 to avoid unnecessary downloads/caching.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm
+    if [ "${TARGET_ARCH}" = "${BUILDARCH}" ] && [ "${TARGET_ARCH}" = "amd64" ]; then \
+        bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm; \
+    else \
+        echo "Skipping WASM build (target=${TARGET_ARCH}, build=${BUILDARCH})"; \
+    fi
 
 # js + pkgconfig steps (fast, IO-bound)
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \

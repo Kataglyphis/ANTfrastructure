@@ -381,6 +381,13 @@ append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
+# The system Vulkan SDK headers (1.4.x) are incompatible with GCC 16's strict
+# C parsing when combined with XCB headers, causing syntax errors in
+# vulkan_xcb.h. Disable the vulkan WSI backends (xcb/wayland) to avoid
+# compilation failures in gst-plugins-bad's vulkan library.
+# Vulkan compute/processing still works without display backends in a container.
+append_meson_arg "-Dgst-plugins-bad:vulkan_wsi="
+
 BUILD_TYPE_LOWER="${BUILD_TYPE,,}"
 
 # Keep /usr/local/bin ahead of /bin so cross-introspection shims like

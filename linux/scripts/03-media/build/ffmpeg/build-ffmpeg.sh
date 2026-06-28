@@ -747,6 +747,12 @@ configure_ffmpeg() {
     if ffmpeg_probe_vdpau; then
         configure_opts+=("--enable-vdpau")
     fi
+
+    # Vulkan HW acceleration — auto-detected by FFmpeg's configure but also
+    # explicitly enabled via pkg-config probe for cross-build reliability.
+    if ffmpeg_probe_pkg_config_feature "vulkan" "vulkan" "vulkan/vulkan.h" "vkCreateInstance"; then
+        configure_opts+=("--enable-vulkan")
+    fi
     
     # NVIDIA Hardware acceleration — auto-probe for CUDA SDK
     CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
@@ -891,13 +897,21 @@ cleanup() {
 # ------------------------------------------------------------------------------
 main() {
     local _ff_stamp="${FFMPEG_PREFIX}/.ffmpeg_version_stamp"
-    if [ -x "${FFMPEG_PREFIX}/bin/ffmpeg" ]; then
-        INSTALLED_VERSION=$("${FFMPEG_PREFIX}/bin/ffmpeg" -version 2>/dev/null | head -n1 | awk '{print $3}')
-        echo "FFmpeg ${INSTALLED_VERSION} already installed at ${FFMPEG_PREFIX}"
-        if [ "${FORCE_REBUILD:-0}" != "1" ]; then
-            if [ -f "$_ff_stamp" ] && [ "$(cat "$_ff_stamp")" = "${INSTALLED_VERSION}" ]; then
-                echo "Skipping rebuild (set FORCE_REBUILD=1 to force)"
-                return 0
+    local _arch
+
+    _arch="${TARGET_ARCH:-${TARGETARCH:-$(uname -m)}}"
+
+    # Only run version check / stamp read when the binary is native — cross-compiled
+    # binaries cannot execute on the build host.
+    if [ "${_arch}" = "$(uname -m)" ]; then
+        if [ -x "${FFMPEG_PREFIX}/bin/ffmpeg" ]; then
+            INSTALLED_VERSION=$("${FFMPEG_PREFIX}/bin/ffmpeg" -version 2>/dev/null | head -n1 | awk '{print $3}')
+            echo "FFmpeg ${INSTALLED_VERSION} already installed at ${FFMPEG_PREFIX}"
+            if [ "${FORCE_REBUILD:-0}" != "1" ]; then
+                if [ -f "$_ff_stamp" ] && [ "$(cat "$_ff_stamp")" = "${INSTALLED_VERSION}" ]; then
+                    echo "Skipping rebuild (set FORCE_REBUILD=1 to force)"
+                    return 0
+                fi
             fi
         fi
     fi
@@ -906,12 +920,17 @@ main() {
     configure_ffmpeg
     build_ffmpeg
     install_ffmpeg
-    echo "$(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}')" > "$_ff_stamp"
-    smoke_test_ffmpeg
-    cleanup
-    
-    echo "FFmpeg installed successfully to ${FFMPEG_PREFIX}"
-    echo "Version: $(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 || echo 'unknown')"
+
+    # Only write stamp and run smoke test for native builds
+    if [ "${_arch}" = "$(uname -m)" ]; then
+        echo "$(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}')" > "$_ff_stamp"
+        smoke_test_ffmpeg
+        echo "FFmpeg installed successfully to ${FFMPEG_PREFIX}"
+        echo "Version: $(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 || echo 'unknown')"
+    else
+        echo "FFmpeg cross-built for ${_arch} (host=$(uname -m)); skipping native smoke test"
+        echo "FFmpeg installed successfully to ${FFMPEG_PREFIX}"
+    fi
 }
 
 main "$@"
