@@ -57,8 +57,6 @@ $cudaRoot = Get-CudaRoot
 
 $cmakeExtra = @(
     "-DCMAKE_PREFIX_PATH=$litertInstallDir;$litertCmakeDir"
-    "-DLiteRT_INCLUDE_DIR=$litertIncludeDir"
-    '-DTFLITE_ENABLE_GPU=ON'
 )
 if ($cudaRoot -and (Test-Path $cudaRoot)) { $cmakeExtra += '-DUSE_CUDA=ON' }
 if (Test-Path $litertCmakeDir) { $cmakeExtra += "-DLiteRT_DIR=$litertCmakeDir" }
