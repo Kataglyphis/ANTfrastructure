@@ -48,8 +48,9 @@ if (-not $trtZip) {
 if (-not $trtZip -and $TensorRtVersion) {
     $parts = $TensorRtVersion.Split('.')
     $dirVersion = if ($parts.Length -ge 3) { "$($parts[0]).$($parts[1]).$($parts[2])" } else { $TensorRtVersion }
-    $trtZip = Join-Path $env:TEMP 'tensorrt.zip'
+$trtZip = Join-Path $env:TEMP 'tensorrt.zip'
     $urls = @(
+        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-13.3.zip",
         "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-13.0.zip",
         "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-12.8.zip"
     )
@@ -74,7 +75,7 @@ if (-not $trtZip -or -not (Test-Path $trtZip)) {
 Write-Host "Extracting TensorRT to $TensorRtRoot..."
 New-Item -Path $TensorRtRoot -ItemType Directory -Force | Out-Null
 Expand-Archive -Path $trtZip -DestinationPath $TensorRtRoot -Force
-if ($trtZip -ne $LocalZipPath -and $trtZip.FullName -notlike (Join-Path $env:TEMP_DIR 'downloads\*')) { Remove-Item $trtZip -Force -ErrorAction SilentlyContinue }
+if ($trtZip -ne $LocalZipPath -and $trtZip -notlike (Join-Path $env:TEMP_DIR 'downloads\*')) { Remove-Item $trtZip -Force -ErrorAction SilentlyContinue }
 
 # Find the actual versioned subdirectory
 $trtDir = Get-ChildItem "$TensorRtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1

@@ -3,7 +3,7 @@
 output.log
 *.log
 .codacy
-archive
+**/archive/
 README.md
 AGENTS.md
 CHANGELOG.md
@@ -47,3 +47,8 @@ sphinx-kataglyphis-theme/
 *.pdb
 *.exp
 *.ilk
+
+# Windows CI/template scaffolding — not consumed by any Windows Dockerfile
+windows/scripts/rust/
+windows/scripts/python/
+windows/scripts/certificates/

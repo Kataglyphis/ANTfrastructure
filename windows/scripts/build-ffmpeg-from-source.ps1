@@ -36,7 +36,14 @@ Write-Host "Downloading FFmpeg $FfmpegVersion..."
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $wc = New-Object System.Net.WebClient
 if ($FfmpegVersion -in @('main', 'master', 'develop')) {
-    $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz", $tarballPath)
+    try {
+        $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz", $tarballPath)
+    } catch {
+        # FFmpeg GitHub mirror uses 'master' as default branch; fall back if branch not found
+        Write-Warning "FFmpeg branch '$FfmpegVersion' not found, trying 'master'..."
+        $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz", $tarballPath)
+        $FfmpegVersion = 'master'
+    }
 } else {
     $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz", $tarballPath)
 }
@@ -78,11 +85,32 @@ $cygSrc = $srcDir -replace '\\', '/' -replace '^C:', '/c'
 
 # Configure with --toolchain=msvc (officially supported by FFmpeg on Windows)
 # Resulting binaries are ABI-compatible with clang-cl throughout the container.
-# Ensure ONNX Runtime pkg-config is discoverable for --enable-libonnx
-$onnxPkgConfig = Join-Path $InstallDir 'lib\onnxruntime-source\runtime\lib\pkgconfig'
-if (Test-Path $onnxPkgConfig) {
-    $env:PKG_CONFIG_PATH = "$onnxPkgConfig;$env:PKG_CONFIG_PATH"
-    Write-Host "ONNX Runtime pkg-config found at $onnxPkgConfig"
+# Ensure ONNX Runtime is discoverable for --enable-libonnxruntime
+# Use MSYS2 paths (/c/...) because FFmpeg configure runs under Git Bash/MSYS2,
+# which translates POSIX paths for native Windows tools (cl.exe, link.exe).
+$onnxRuntimeDir = Join-Path $InstallDir 'lib\onnxruntime-source'
+if (Test-Path $onnxRuntimeDir) {
+    $onnxMsysPath = $onnxRuntimeDir -replace '\\', '/' -replace '^C:', '/c'
+    # Search for the header in common ONNX Runtime install locations
+    $header = $null
+    $searchPaths = @(
+        "$onnxRuntimeDir\include\onnxruntime_c_api.h",
+        "$onnxRuntimeDir\include\onnxruntime\core\session\onnxruntime_c_api.h",
+        "$onnxRuntimeDir\include\onnxruntime_c_api.h"
+    )
+    # Also search recursively if not found at standard paths
+    if (-not ($header = Get-ChildItem "$onnxRuntimeDir" -Recurse -Filter 'onnxruntime_c_api.h' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+        Write-Warning "ONNX Runtime header onnxruntime_c_api.h not found under $onnxRuntimeDir"
+    } else {
+        $headerDir = $header.Directory.FullName -replace '\\', '/' -replace '^C:', '/c'
+        $libDir = "$onnxMsysPath/lib"
+        $confFlags += "--extra-cflags=-I$headerDir"
+        Write-Host "ONNX Runtime header at: $($header.FullName)"
+        if (Test-Path "$onnxRuntimeDir\lib") {
+            $confFlags += "--extra-ldflags=-L$libDir"
+            Write-Host "ONNX Runtime lib: $libDir"
+        }
+    }
 }
 
 $confFlags = @()
@@ -91,7 +119,7 @@ $confFlags += '--enable-shared', '--disable-static'
 $confFlags += '--disable-debug', '--disable-doc'
 $confFlags += '--enable-gpl', '--enable-nonfree', '--enable-version3'
 $confFlags += '--enable-ffmpeg', '--enable-ffprobe'
-$confFlags += '--enable-dnn', '--enable-libonnx'
+$confFlags += '--enable-libonnxruntime'
 $confFlags += '--toolchain=msvc'
 $confFlags += '--disable-x86asm'
 
@@ -199,7 +227,8 @@ Write-Host 'Attempting install from source if built...'
 
 # Download pre-built MSVC FFmpeg if source build didn't produce ffmpeg.exe
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
-    Write-Host 'Build failed. Downloading pre-built MSVC FFmpeg...'
+    Write-Warning 'FFmpeg source build failed — falling back to pre-built BtbN MSVC FFmpeg. DNN/ONNX integration will NOT be available in the fallback binary.'
+    [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '0', 'Process')
     if (-not (Test-Path $prefix)) { New-Item -Path $prefix -ItemType Directory -Force | Out-Null }
     $dlUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
     $zipPath = "$env:TEMP\ffmpeg.zip"
@@ -213,6 +242,8 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
         Copy-Item "$binDir\*.exe" "$ffmpegDir\" -Force
         Copy-Item "$binDir\*.dll" "$ffmpegDir\" -Force
     }
+} else {
+    [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '1', 'Process')
 }
 
 Write-Host "=== FFmpeg build completed ==="

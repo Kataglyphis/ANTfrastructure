@@ -417,12 +417,12 @@ ffmpeg_probe_libfdk_aac() {
     return 1
 }
 
-ffmpeg_probe_libonnx() {
+ffmpeg_probe_libonnxruntime() {
     if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime" \
         "onnxruntime_c_api.h" "OrtGetApiBase"; then
         return 0
     fi
-    echo "Skipping libonnx: ONNX Runtime pkg-config probe failed."
+    echo "Skipping libonnxruntime: ONNX Runtime pkg-config probe failed."
     return 1
 }
 
@@ -444,7 +444,6 @@ configure_ffmpeg() {
         "--disable-static"
         "--disable-debug"
         "--disable-doc"
-        "--enable-dnn"
     )
 
     if cross_build_is_active; then
@@ -534,8 +533,8 @@ configure_ffmpeg() {
         configure_opts+=("--enable-libsvtav1")
     fi
     
-    if ffmpeg_probe_libonnx; then
-        configure_opts+=("--enable-libonnx")
+    if ffmpeg_probe_libonnxruntime; then
+        configure_opts+=("--enable-libonnxruntime")
     fi
     
     # Hardware acceleration (if available)

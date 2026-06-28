@@ -8,12 +8,14 @@
 ARG BASE_IMAGE=local/kataglyphis:windows-sdk
 FROM ${BASE_IMAGE}
 
-ARG PYTHON_VERSION=3.14.5
+ARG PYTHON_VERSION=3.14.6
 ARG PYTHON_MAJOR_MINOR=3.14
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-COPY windows\scripts C:\temp\scripts
+# Note: No Windows scripts are needed in this stage (CPython is built via
+# git clone + PCbuild\build.bat). Build scripts are COPY'd lazily by the
+# media stage so editing one script only invalidates that step's cache.
 
 # Clone CPython source at the canonical version
 SHELL ["cmd", "/S", "/C"]
@@ -40,7 +42,6 @@ RUN $pyExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'; `
     } else { throw 'Python build failed - interpreter not found' }
 
 ENV PYTHON_BUILD_DIR="C:\temp\cpython" `
-    PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64" `
-    PYTHON_BUILD_SCRIPTS="C:\temp\cpython\PCbuild\amd64"
+    PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
 
-ENV PATH=$PYTHON_BUILD_BIN;$PYTHON_BUILD_SCRIPTS;$PATH
+ENV PATH=$PYTHON_BUILD_BIN;$PATH

@@ -96,7 +96,7 @@ ENV ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source"
 ENV ONNX_VERSION="${ONNXRUNTIME_VERSION}"
 ENV ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 
-# GPU variant: CUDA detected from SDK layer (set by Dockerfile.nvidia or Dockerfile.amd; empty = CPU-only)
+# GPU variant: CUDA detected from SDK layer (set by Dockerfile.nvidia; empty = CPU-only)
 ENV ONNX_GPU_VARIANT="${GPU_TYPE}"
 
 # LiteRT layout
@@ -135,6 +135,6 @@ RUN & 'C:\temp\scripts\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime'
 
 # Verify GStreamer plugin integrations (non-fatal)
 RUN $gstInspect = 'C:\runtime\bin\gst-inspect-1.0.exe'; `
-    $plugins = @('opencv', 'onnx'); `
+    $plugins = @('opencv', 'tensorfilter', 'libav'); `
     foreach ($p in $plugins) { `
         try { $out = & $gstInspect $p 2>&1; if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] GStreamer plugin '$p' built" } else { Write-Host "[INFO] GStreamer plugin '$p' not auto-detected" } } catch { Write-Host "[SKIP] GStreamer plugin '$p'" } }

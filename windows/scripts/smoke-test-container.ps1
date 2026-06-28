@@ -9,7 +9,7 @@
 .DESCRIPTION
     Runs inside the container (or on the build host) to verify:
     - Build tools (git, cmake, ninja, clang-cl, lld-link, msbuild)
-    - Python 3.14.5 from source
+    - Python 3.14.6 from source
     - Rust toolchain (cargo, rustc)
     - CUDA Toolkit + cuDNN
     - ONNX Runtime + GenAI (header, lib, DLL)
@@ -20,6 +20,8 @@
     - WiX toolset
     - Flutter/Dart
     - VS Build Tools / VsDevCmd
+    - TVM (source-built)
+    - FFmpeg (source-built with DNN/ONNX integration)
 
 .EXAMPLE
     powershell -File smoke-test-container.ps1
@@ -253,7 +255,7 @@ Write-TestHeader '9. ONNX Runtime GenAI (source-built)'
 $genaiRoot = [Environment]::GetEnvironmentVariable('ONNX_GENAI_ROOT')
 if ($genaiRoot) {
     Assert-DirectoryExists -Path $genaiRoot -Description "ONNX_GENAI_ROOT"
-    Assert-FileExists -Path (Join-Path $genaiRoot 'include\ort_genai.h') -Description 'ONNX GenAI header'
+    Assert-FileExists -Path (Join-Path $genaiRoot 'include\onnxruntime-genai.h') -Description 'ONNX GenAI header'
 
     $genaiLibs = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai*.lib' -Recurse -ErrorAction SilentlyContinue
     Assert-Test -Name "ONNX GenAI lib files" -Condition { $genaiLibs.Count -gt 0 } -FailMessage "No onnxruntime-genai*.lib found"
@@ -462,6 +464,59 @@ Assert-Test -Name "MSBuild+ClangCL builds" -Condition {
 } -FailMessage "MSBuild with ClangCL toolset failed"
 
 Remove-Item $tmpDir3 -Recurse -Force -ErrorAction SilentlyContinue
+
+# ============================================================================
+Write-TestHeader '17. TVM (source-built)'
+# ============================================================================
+$tvmRoot = Join-Path 'C:\runtime\lib' 'tvm'
+if (Test-Path $tvmRoot) {
+    Assert-DirectoryExists -Path $tvmRoot -Description "TVM install root ($tvmRoot)"
+    $tvmInclude = Join-Path $tvmRoot 'include'
+    if (Test-Path $tvmInclude) {
+        $tvmHeaders = Get-ChildItem -Path $tvmInclude -Filter 'tvm_runtime.h' -Recurse -ErrorAction SilentlyContinue
+        Assert-Test -Name "TVM runtime header (tvm_runtime.h)" -Condition { $tvmHeaders.Count -gt 0 } -FailMessage "No tvm_runtime.h found under $tvmInclude"
+    } else {
+        Write-Host '  [SKIP] TVM include dir not found' -ForegroundColor Yellow
+        $script:skipped++
+    }
+    $tvmLibs = Get-ChildItem -Path $tvmRoot -Filter 'tvm*.lib' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "TVM lib files" -Condition { $tvmLibs.Count -gt 0 } -FailMessage "No tvm*.lib found under $tvmRoot"
+    $tvmDlls = Get-ChildItem -Path $tvmRoot -Filter 'tvm*.dll' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "TVM DLL files" -Condition { $tvmDlls.Count -gt 0 } -FailMessage "No tvm*.dll found under $tvmRoot"
+} else {
+    Write-Host '  [SKIP] TVM not installed (C:\runtime\lib\tvm not found)' -ForegroundColor Yellow
+    $script:skipped++
+}
+
+# ============================================================================
+Write-TestHeader '18. FFmpeg (source-built with DNN/ONNX)'
+# ============================================================================
+$ffmpegBin = 'C:\runtime\ffmpeg\bin'
+if (Test-Path $ffmpegBin) {
+    $ffmpegExe = Join-Path $ffmpegBin 'ffmpeg.exe'
+    $ffprobeExe = Join-Path $ffmpegBin 'ffprobe.exe'
+    Assert-FileExists -Path $ffmpegExe -Description 'ffmpeg.exe'
+    Assert-FileExists -Path $ffprobeExe -Description 'ffprobe.exe'
+
+    Assert-Test -Name "ffmpeg --version responds" -Condition {
+        $v = & $ffmpegExe -version 2>&1 | Select-Object -First 1
+        return ($v -ne $null) -and ($v -match 'ffmpeg')
+    } -FailMessage "ffmpeg -version failed"
+
+    # Verify DNN support is compiled in (--enable-dnn --enable-libonnx)
+    Assert-Test -Name "ffmpeg built with --enable-dnn" -Condition {
+        $cfg = & $ffmpegExe -hide_banner -configure 2>&1 | Out-String
+        return ($cfg -match '--enable-dnn')
+    } -FailMessage "ffmpeg was not configured with --enable-dnn"
+
+    Assert-Test -Name "ffmpeg built with --enable-libonnx" -Condition {
+        $cfg = & $ffmpegExe -hide_banner -configure 2>&1 | Out-String
+        return ($cfg -match '--enable-libonnx')
+    } -FailMessage "ffmpeg was not configured with --enable-libonnx"
+} else {
+    Write-Host '  [SKIP] FFmpeg not installed (C:\runtime\ffmpeg\bin not found)' -ForegroundColor Yellow
+    $script:skipped++
+}
 
 # ============================================================================
 Write-TestHeader '== SUMMARY =='

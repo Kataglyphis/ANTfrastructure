@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # NVIDIA GPU layer — CUDA + cuDNN + TensorRT.
 # Builds on top of the generic SDK and provides GPU acceleration.
-# Swap this file for Dockerfile.amd to target AMD GPUs instead.
+# There is no Windows Dockerfile.amd (ROCm-on-Windows is not supported).
 
 ARG BASE_IMAGE=local/kataglyphis:windows-sdk
 FROM ${BASE_IMAGE}

@@ -100,7 +100,7 @@ net start stevedore
 
 TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's EULA. To include TensorRT:
 
-1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-10.10.0.39.Windows10.x86_64.cuda-*.zip`)
+1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-11.1.0.106.Windows10.x86_64.cuda-13.3.zip`)
 2. Place the zip in `windows/downloads/`
 3. It will be auto-detected during the `Dockerfile.nvidia` build
 
@@ -111,11 +111,13 @@ If no zip is found, the build skips TensorRT gracefully (CUDA + cuDNN still work
 | Component | Generator | Compiler | Notes |
 |-----------|-----------|----------|-------|
 | CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset |
-| ONNX Runtime 1.26 | Ninja | clang-cl, lld-link | DirectML disabled. CUDA enabled via CUDA 13.3 provider (includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). AVX-512+AMX compilation with clang-cl needs ~48 GB RAM — pass `--memory 48g` to docker build (--cpu-quota not supported on Windows). |
-| ONNX GenAI 0.13.1 | `python build.py` | clang-cl (Ninja generator) | Source-built via `build.py --cmake_generator Ninja --cmake_extra_defines CMAKE_C_COMPILER=clang-cl CMAKE_CXX_COMPILER=clang-cl`. CUDA enabled. VsDevCmd environment loaded for MSVC STL headers. |
+| ONNX Runtime 1.27.0 | Ninja | clang-cl, lld-link | DirectML disabled. CUDA EP enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). AVX-512+AMX compilation with clang-cl needs ~48 GB RAM — pass `--memory 48g` to docker build (--cpu-quota not supported on Windows). |
+| ONNX GenAI 0.13.1 | CMake (Ninja) | clang-cl, lld-link | Source-built directly via CMake (bypasses `build.py` which always builds examples). CUDA is disabled at build time (clang-cl cannot compile cuRAND host headers); GenAI uses ONNX Runtime's CUDA execution provider at runtime. VsDevCmd environment loaded for MSVC STL headers. |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. CUDA auto-detected. Custom `CMAKE_AR` path fix. |
 | LiteRT 2.1.5 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. |
 | LiteRT-LM 0.13.1 | Ninja | clang-cl, lld-link | On-device LLM inference. CUDA support enabled when detected. Links against LiteRT from previous stage. |
+| TVM 0.24.0 | Ninja | clang-cl, lld-link | Auto-detects CUDA/Vulkan/LLVM. Builds a Python wheel. VsDevCmd environment loaded for MSVC STL headers. |
+| FFmpeg `main` | MSYS2 `make` (MSVC toolchain) | clang-cl via `--toolchain=msvc` | Source build from the `main` branch. `--enable-dnn --enable-libonnx` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters. Disabled x86asm. Falls back to a BtbN pre-built GPL binary if the source build fails (the sentinel env var `FFMPEG_SOURCE_BUILD=0` is then set). |
 | GStreamer 1.29 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
 
 ### Windows Scripts
@@ -123,12 +125,25 @@ If no zip is found, the build skips TensorRT gracefully (CUDA + cuDNN still work
 | Script | Location | Purpose |
 |--------|----------|---------|
 | `build-onnx-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl build with build.ninja patching and VsDevCmd wrapper |
-| `build-onnx-genai-from-source.ps1` | `windows/scripts/` | Source build via `python build.py` with Ninja+clang-cl (not NuGet). Loads VsDevCmd environment, clones git tag, runs official `build.py --cmake_generator Ninja`. |
+| `build-onnx-genai-from-source.ps1` | `windows/scripts/` | Source-built directly via CMake+clang-cl (bypasses `build.py` which always builds examples). Loads VsDevCmd via `vswhere`, clones git tag, runs `cmake`/`ninja` directly. CUDA disabled at build time. |
 | `build-opencv-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl with global SIMD flags and mlas `<cstring>` patch |
-| `build-gstreamer-from-source.ps1` | `windows/scripts/` | Meson+clang-cl with wrap pre-extraction |
-| `WindowsSourceBuild.Common.psm1` | `windows/scripts/modules/` | Reusable build helpers: `Invoke-GitClone`, `Invoke-CmakeConfigure`, `Invoke-CmakeBuild` |
-| `setup-cuda.ps1` | `windows/scripts/` | Now includes cuDNN post-install verification (headers/libs/DLLs) |
-| `smoke-test-container.ps1` | `windows/scripts/` | Comprehensive container validation (14 test categories) |
+| `build-litert-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; GPU delegate (Vulkan+OpenCL), XNNPACK, external CUDA delegate |
+| `build-litert-lm-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; on-device LLM inference; links against LiteRT from previous stage |
+| `build-tvm-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; auto-detects CUDA/Vulkan/LLVM; builds Python wheel; VsDevCmd for MSVC STL headers |
+| `build-ffmpeg-from-source.ps1` | `windows/scripts/` | MSYS2 `make` with `--toolchain=msvc`; `--enable-dnn --enable-libonnx` links against the source-built ONNX Runtime. Loads `versions.env` via `load-versions.ps1` for centralized branch config. Falls back to BtbN pre-built GPL binary on source-build failure (`FFMPEG_SOURCE_BUILD=0` sentinel). |
+| `build-gstreamer-from-source.ps1` | `windows/scripts/` | Meson+clang-cl with wrap pre-extraction; loads `versions.env` via `load-versions.ps1` |
+| `WindowsSourceBuild.Common.psm1` | `windows/scripts/modules/` | Reusable build helpers: `Invoke-GitClone`, `Invoke-CmakeConfigure`, `Invoke-CmakeBuild`, `Get-SourceBuildVersion`, `Get-CudaRoot`, `Enter-VsDevCmdEnvironment` |
+| `setup-vs.ps1` | `windows/scripts/` | Installs VS Build Tools 18 with ClangCL toolset |
+| `setup-scoop-tools.ps1` | `windows/scripts/` | Installs LLVM, ninja, sccache, uv, Rust, Flutter, Vulkan SDK via Scoop |
+| `setup-vcpkg.ps1` | `windows/scripts/` | Bootstraps vcpkg for Windows |
+| `setup-rust-toolchain.ps1` | `windows/scripts/` | Installs/verifies the Rust toolchain (rustc, cargo) |
+| `setup-cuda.ps1` | `windows/scripts/` | Installs CUDA 13.3 + cuDNN; includes post-install verification (headers/libs/DLLs) |
+| `setup-tensorrt.ps1` | `windows/scripts/` | Auto-detects a TensorRT zip in `windows/downloads/` and installs it |
+| `load-versions.ps1` | `windows/scripts/` | Reads `C:\temp\versions.env` (COPY'd from `linux/scripts/01-core/versions.env`) and sets matching process env vars so Windows build scripts consume the same canonical versions as Linux |
+| `finalize-container.ps1` | `windows/scripts/` | Enables git long paths and sets `core.longpaths` in the final image |
+| `verify-toolchain.ps1` | `windows/scripts/` | Verifies clang-cl, lld-link, WiX, Flutter are present after base setup |
+| `healthcheck.ps1` | `windows/scripts/` | Docker `HEALTHCHECK` script — verifies ONNX Runtime DLL, FFmpeg, GStreamer, CMake, clang-cl |
+| `smoke-test-container.ps1` | `windows/scripts/` | Comprehensive container validation (18 test categories) |
 
 For detailed build commands, see `docs/windows-builds.md`.
 
@@ -202,7 +217,7 @@ build-cross-chain.sh → base → compiler → sdk → media → android → run
 
 Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate 3-stage build (`base → ai → final`) using nerdctl with Stevedore. See `docs/windows-builds.md` for the full build sequence and prerequisites.
+The **Windows lane** follows a separate 5-stage build (`base → sdk → toolchain → media → final`) using Stevedore's `docker.exe` for builds (`nerdctl build` has broken DNS on Windows). An optional NVIDIA GPU stage (`Dockerfile.nvidia`) can replace the generic `Dockerfile.sdk` shim to produce a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 
