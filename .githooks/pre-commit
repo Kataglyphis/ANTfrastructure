@@ -33,10 +33,26 @@ echo ""
 echo "=== shell syntax (staged .sh files) ==="
 STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
 if [ -n "$STAGED_SH" ]; then
-  # shellcheck disable=SC2086
   bash -n $STAGED_SH && pass "staged shell scripts parse OK" || fail "shell syntax error in staged .sh files"
 else
   pass "no staged .sh files to check"
+fi
+
+# 5. Sphinx docs build (if deps are installed)
+echo ""
+echo "=== sphinx-build ==="
+if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
+  . "${REPO_ROOT}/.venv/bin/activate"
+  if python -c "import sphinx_kataglyphis" 2>/dev/null; then
+    cd "${REPO_ROOT}/docs"
+    python -m sphinx -W -E -b html source _build/html > /dev/null 2>&1 \
+      && pass "sphinx docs build" \
+      || fail "sphinx build failed (run 'make html' in docs/)"
+  else
+    pass "sphinx_kataglyphis not in .venv (skipping docs build)"
+  fi
+else
+  pass "no .venv found (skipping sphinx docs build)"
 fi
 
 exit 0

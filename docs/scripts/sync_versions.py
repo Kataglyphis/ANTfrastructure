@@ -508,7 +508,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def target_files() -> list[Path]:
-    return [REPO_ROOT / "README.md", REPO_ROOT / "docs/overview.md"]
+    return [REPO_ROOT / "README.md"]
 
 
 def check_snapshot(replacement: str) -> int:

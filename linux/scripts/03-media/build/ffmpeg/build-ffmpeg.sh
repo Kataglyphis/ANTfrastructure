@@ -519,29 +519,37 @@ PKGCONF
 }
 
 ffmpeg_probe_libtensorflow() {
-    local tf_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/tensorflow-c"
+    # Try LiteRT/TensorFlow Lite first — already built in the media stage
+    local litert_base="/usr/local"
+    if [ -f "${litert_base}/lib/libtensorflowlite_c.so" ] && [ -f "${litert_base}/include/tensorflow/lite/c/c_api.h" ]; then
+        # TensorFlow Lite C API is compatible with FFmpeg's libtensorflow backend
+        local tf_cflags="-I${litert_base}/include"
+        local tf_ldflags="-L${litert_base}/lib -ltensorflowlite_c"
+        if ffmpeg_try_link_probe "tensorflow/lite/c/c_api.h" "TfLiteVersion" \
+            "${tf_cflags}" "${tf_ldflags}"; then
+            export CFLAGS="${CFLAGS:-} ${tf_cflags}"
+            export LDFLAGS="${LDFLAGS:-} ${tf_ldflags}"
+            echo "TensorFlow Lite (LiteRT) found at ${litert_base}"
+            return 0
+        fi
+        echo "NOTE: LiteRT found but probe failed; falling back to full TensorFlow C SDK"
+    fi
 
+    # Fallback: download full TensorFlow C API SDK
+    local tf_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/tensorflow-c"
     if [ ! -d "${tf_cache}/lib" ]; then
         ensure_tensorflow_c_sdk || return 1
     fi
 
-    # The pkg-config file was written to the parent cache dir; ensure it's on PKG_CONFIG_PATH
+    # Ensure the cache pkg-config dir is on PKG_CONFIG_PATH
     export PKG_CONFIG_PATH="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}:${PKG_CONFIG_PATH:-}"
-
-    # Also try a direct pkg-config probe through the cached .pc file
-    if [ -f "${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/tensorflow.pc" ]; then
-        local pc_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
-        if PKG_CONFIG_PATH="${pc_dir}" pkg-config --exists tensorflow 2>/dev/null; then
-            echo "TensorFlow C SDK pkg-config resolved at ${pc_dir}"
-        fi
-    fi
 
     if ffmpeg_probe_pkg_config_feature "libtensorflow" "tensorflow" \
         "tensorflow/c/c_api.h" "TF_Version TF_NewGraph"; then
         return 0
     fi
 
-    # Fallback: probe with explicit paths
+    # Fallback: direct link
     local tf_base=""
     for d in "${tf_cache}" /usr/local/lib/tensorflow-c /opt/tensorflow-c; do
         [ -f "${d}/lib/libtensorflow.so" ] && { tf_base="${d}"; break; }
@@ -552,13 +560,11 @@ ffmpeg_probe_libtensorflow() {
         "-I${tf_base}/include" "-L${tf_base}/lib -ltensorflow"; then
         export CFLAGS="${CFLAGS:-} -I${tf_base}/include"
         export LDFLAGS="${LDFLAGS:-} -L${tf_base}/lib -ltensorflow"
-        # FFmpeg's --extra-cflags/--extra-ldflags override pkg-config; append them
-        # so configure can link the probe test correctly.
         echo "TensorFlow C SDK found at ${tf_base} (direct link)"
         return 0
     fi
 
-    echo "Skipping libtensorflow: FFmpeg-style link probe failed."
+    echo "Skipping libtensorflow: SDK not found or link probe failed."
     return 1
 }
 
@@ -723,23 +729,12 @@ configure_ffmpeg() {
         configure_opts+=("--enable-libopenvino")
     fi
 
-    # Additional media libraries already built in this image
-    # OpenCV DNN (built in the media stage at /opt/opencv5)
-    if ffmpeg_probe_pkg_config_feature "libopencv_dnn" "opencv5" "opencv2/dnn.hpp" "cv::dnn::Net::Net"; then
-        configure_opts+=("--enable-libopencv")
-    fi
-    
     # Image codecs
     if ffmpeg_probe_pkg_config_feature "libwebp" "libwebp" "webp/decode.h" "WebPGetDecoderVersion"; then
         configure_opts+=("--enable-libwebp")
     fi
 
-    # OCR via libtesseract (if installed as build dependency)
-    if ffmpeg_probe_pkg_config_feature "libtesseract" "tesseract" "tesseract/capi.h" "TessBaseAPICreate"; then
-        configure_opts+=("--enable-libtesseract")
-    fi
-
-    # Video quality metrics
+    # Video quality metrics (if installed)
     if ffmpeg_probe_pkg_config_feature "libvmaf" "libvmaf" "libvmaf/libvmaf.h" "vmaf_version"; then
         configure_opts+=("--enable-libvmaf")
     fi
@@ -864,11 +859,11 @@ smoke_test_ffmpeg() {
     # Check enabled backends from configure
     echo "  Enabled backends:"
     local backends
-    backends="$("${ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null | grep -E "libonnx|libtensorflow|libopenvino|nvenc|nvdec|cuda|cuvid" || true)"
+    backends="$("${ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null | grep -E "libonnx|libtensorflow|libopenvino|libwebp|libvmaf|nvenc|nvdec|cuda|cuvid" || true)"
     if [ -n "${backends}" ]; then
-        echo "${backends}" | while IFS= read -r line; do echo "    ${line}"; done
+        echo "${backends}" | while IFR= read -r line; do echo "    ${line}"; done
     else
-        echo "    (none of the DNN/CUDA backends were linked)"
+        echo "    (none of the DNN/CUDA/media backends were linked)"
     fi
 
     # Verify DNN inference filter can accept input

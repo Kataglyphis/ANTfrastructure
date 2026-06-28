@@ -91,9 +91,7 @@ See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrato
 
 ### Reinstall QEMU/binfmt after a host reboot
 
-```bash
-nerdctl run --rm --privileged tonistiigi/binfmt --install all
-```
+If foreign-architecture builds fail with `exec format error`, see [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for the binfmt fix.
 
 ## CI
 
