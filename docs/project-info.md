@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Docker with buildx/nerdctl support.
+- nerdctl with BuildKit support.
 - GPU passthrough configured when building Vulkan-enabled images.
 
 ## Installation
@@ -10,7 +10,7 @@
 1. Clone the repo:
 
    ```bash
-   git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
+   git clone --recurse-submodules https://github.com/Kataglyphis/Kataglyphis-ContainerHub.git
    ```
 
 ## Tests

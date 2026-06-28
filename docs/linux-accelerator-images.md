@@ -123,7 +123,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 | --- | --- | --- |
 | CUDA Toolkit | Not installed | CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda --> |
 | cuDNN | Not installed | cuDNN 9 |
-| TensorRT | Not installed | TensorRT 10 |
+| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.1.0<!-- /generated:tensorrt --> |
 | NCCL | Not installed | Installed |
 | cuBLAS/cuSPARSE/cuFFT | Not installed | Installed |
 | NVTX | Not installed | Installed |
@@ -161,10 +161,10 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 | `linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh` | ORT build script with MIGraphX EP |
 
 **Notes:**
-- MIGraphX packages come from the AMD ROCm repository (`repo.radeon.com`) targeting Ubuntu 24.04 (noble), compatible with Ubuntu 26.04 (plucky). The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages to avoid noble-vs-resolute apt version conflicts.
+- MIGraphX packages come from the AMD ROCm repository (`repo.radeon.com`) targeting Ubuntu 24.04 (noble), compatible with Ubuntu 26.04 (plucky). The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages to avoid noble-vs-plucky apt version conflicts.
 - The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home /opt/rocm` instead of `--use_rocm`.
 - The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`).
-- The media stage strips all external apt sources from the SDK base image and configures clean resolute-only sources to prevent cross-distro package conflicts. 01-core modules are bind-mounted into build stages so `media_common_init()` can locate cross-build helpers.
+- The media stage strips all external apt sources from the SDK base image and configures clean plucky-only sources to prevent cross-distro package conflicts. 01-core modules are bind-mounted into build stages so `media_common_init()` can locate cross-build helpers.
 
 **Sequential build (nerdctl):**
 
