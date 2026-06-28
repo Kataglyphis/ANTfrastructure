@@ -45,4 +45,39 @@ else
   echo "All version ARGs covered by auto-discovery"
 fi
 
+echo ""
+echo "=== ARG default value check ==="
+
+# Load versions.env into associative array for value comparison
+declare -A _version_values
+while IFS='=' read -r key val; do
+  [ -n "$key" ] && _version_values["$key"]="$val"
+done < <(grep -E '^[A-Z][A-Z0-9_]*-?[A-Z0-9_]*=' "${VERSIONS_ENV}" || true)
+
+VALUE_ERRORS=0
+for df in linux/Dockerfile.{base,toolchain,sdk,media,android,package,torch}; do
+  df_path="${REPO_ROOT}/${df}"
+  [ -f "$df_path" ] || continue
+  while IFS='=' read -r var val_raw; do
+    [ -z "$var" ] && continue
+    env_val="${_version_values[$var]:-}"
+    [ -z "$env_val" ] && continue
+    # Strip surrounding double quotes from Dockerfile value
+    val="${val_raw%\"}"
+    val="${val#\"}"
+    if [ "$val" != "$env_val" ]; then
+      echo "  DRIFT: ${df} ARG ${var}=${val}  ≠  versions.env ${var}=${env_val}"
+      VALUE_ERRORS=$((VALUE_ERRORS + 1))
+    fi
+  done < <(grep -oP '^\s*ARG\s+\K[A-Z_]+=("[^"]*"|\S+)' "$df_path" || true)
+done
+
+if [ "$VALUE_ERRORS" -gt 0 ]; then
+  echo "ERROR: ${VALUE_ERRORS} ARG default(s) differ from versions.env"
+  echo "Run: python3 docs/scripts/sync_versions.py --write"
+  exit 1
+else
+  echo "All ARG defaults match versions.env"
+fi
+
 echo "DONE: version ARG consistency check"

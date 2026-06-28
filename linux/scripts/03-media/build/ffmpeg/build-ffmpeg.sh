@@ -418,11 +418,27 @@ ffmpeg_probe_libfdk_aac() {
 }
 
 ffmpeg_probe_libonnxruntime() {
+    # Try pkg-config first
     if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime" \
         "onnxruntime_c_api.h" "OrtGetApiBase"; then
         return 0
     fi
-    echo "Skipping libonnxruntime: ONNX Runtime pkg-config probe failed."
+
+    # Fallback: probe via direct path (ONNX Runtime is bind-mounted into ffmpeg stage)
+    local onnx_base="/usr/local/lib/onnxruntime-cpu"
+    if [ -f "${onnx_base}/lib/libonnxruntime.so" ] && [ -f "${onnx_base}/include/onnxruntime_c_api.h" ]; then
+        local onnx_cflags="-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session -I${onnx_base}/include/onnxruntime/core/providers/cpu"
+        local onnx_ldflags="-L${onnx_base}/lib -lonnxruntime"
+        if ffmpeg_try_link_probe "onnxruntime_c_api.h" "OrtGetApiBase" \
+            "${onnx_cflags}" "${onnx_ldflags}"; then
+            export CFLAGS="${CFLAGS:-} ${onnx_cflags}"
+            export LDFLAGS="${LDFLAGS:-} ${onnx_ldflags}"
+            echo "ONNX Runtime found at ${onnx_base} (direct path)"
+            return 0
+        fi
+    fi
+
+    echo "Skipping libonnxruntime: ONNX Runtime not found."
     return 1
 }
 
@@ -706,7 +722,28 @@ configure_ffmpeg() {
     if ffmpeg_probe_libopenvino; then
         configure_opts+=("--enable-libopenvino")
     fi
+
+    # Additional media libraries already built in this image
+    # OpenCV DNN (built in the media stage at /opt/opencv5)
+    if ffmpeg_probe_pkg_config_feature "libopencv_dnn" "opencv5" "opencv2/dnn.hpp" "cv::dnn::Net::Net"; then
+        configure_opts+=("--enable-libopencv")
+    fi
     
+    # Image codecs
+    if ffmpeg_probe_pkg_config_feature "libwebp" "libwebp" "webp/decode.h" "WebPGetDecoderVersion"; then
+        configure_opts+=("--enable-libwebp")
+    fi
+
+    # OCR via libtesseract (if installed as build dependency)
+    if ffmpeg_probe_pkg_config_feature "libtesseract" "tesseract" "tesseract/capi.h" "TessBaseAPICreate"; then
+        configure_opts+=("--enable-libtesseract")
+    fi
+
+    # Video quality metrics
+    if ffmpeg_probe_pkg_config_feature "libvmaf" "libvmaf" "libvmaf/libvmaf.h" "vmaf_version"; then
+        configure_opts+=("--enable-libvmaf")
+    fi
+
     # Hardware acceleration (if available)
     if ffmpeg_probe_pkg_config_feature "vaapi" "libva >= 0.35.0" "va/va.h" "vaInitialize"; then
         configure_opts+=("--enable-vaapi")
@@ -800,6 +837,53 @@ install_ffmpeg() {
 }
 
 # ------------------------------------------------------------------------------
+# Smoke test — verify DNN module and linked backends
+# ------------------------------------------------------------------------------
+smoke_test_ffmpeg() {
+    echo ""
+    echo "=== FFmpeg smoke test ==="
+    local ffmpeg_bin="${FFMPEG_PREFIX}/bin/ffmpeg"
+    if [ ! -x "${ffmpeg_bin}" ]; then
+        echo "FAIL: ffmpeg binary not found at ${ffmpeg_bin}"
+        return 1
+    fi
+
+    # Basic version check
+    local version
+    version="$("${ffmpeg_bin}" -version 2>&1 | head -1)"
+    echo "  Version: ${version}"
+
+    # Check DNN module is compiled in
+    echo -n "  DNN filter: "
+    if "${ffmpeg_bin}" -filters 2>/dev/null | grep -q "dnn"; then
+        echo "FOUND"
+    else
+        echo "NOT FOUND (check --enable-dnn or native DNN backend)"
+    fi
+
+    # Check enabled backends from configure
+    echo "  Enabled backends:"
+    local backends
+    backends="$("${ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null | grep -E "libonnx|libtensorflow|libopenvino|nvenc|nvdec|cuda|cuvid" || true)"
+    if [ -n "${backends}" ]; then
+        echo "${backends}" | while IFS= read -r line; do echo "    ${line}"; done
+    else
+        echo "    (none of the DNN/CUDA backends were linked)"
+    fi
+
+    # Verify DNN inference filter can accept input
+    echo -n "  dnn_processing filter available: "
+    if "${ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "dnn_processing"; then
+        echo "YES"
+    else
+        echo "NO"
+    fi
+
+    echo "=== FFmpeg smoke test complete ==="
+    echo ""
+}
+
+# ------------------------------------------------------------------------------
 # Cleanup
 # ------------------------------------------------------------------------------
 cleanup() {
@@ -828,6 +912,7 @@ main() {
     build_ffmpeg
     install_ffmpeg
     echo "$(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}')" > "$_ff_stamp"
+    smoke_test_ffmpeg
     cleanup
     
     echo "FFmpeg installed successfully to ${FFMPEG_PREFIX}"

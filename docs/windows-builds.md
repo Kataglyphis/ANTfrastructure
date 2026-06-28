@@ -91,18 +91,9 @@ $DOCKER = "${env:ProgramFiles}\Stevedore\bin\docker.exe"
 
 ## Stevedore Setup Fixes
 
-After installing Stevedore, apply the post-install fixes documented in `AGENTS.md` § Stevedore Fixes After Install (Defender exclusions, daemon.json cleanup, default runtime change). The fixes there are the canonical source and are maintained in lockstep with the project's CI requirements.
+After installing Stevedore, apply these post-install fixes. They are the canonical source and are maintained in lockstep with the project's CI requirements.
 
-### Fix 1: Exclude data directories from Windows Defender
-
-Exclude the data directories (prevents hcsshim layer commit failures during builds):
-
-```powershell
-Add-MpPreference -ExclusionPath "$env:ProgramData\containerd"
-Add-MpPreference -ExclusionPath "$env:ProgramData\nerdctl"
-```
-
-### Fix 2: Remove stale Docker Desktop daemon.json
+### Fix 1: Remove stale Docker Desktop daemon.json
 
 If Docker Desktop was previously installed, its daemon config at `C:\ProgramData\docker\config\daemon.json` may specify a hosts pipe (`docker_engine_windows`) that conflicts with Stevedore's `docker_engine` pipe. Remove it:
 
@@ -110,7 +101,7 @@ If Docker Desktop was previously installed, its daemon config at `C:\ProgramData
 if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\ProgramData\docker\config\daemon.json" }
 ```
 
-### Fix 3: Change default runtime from hcsshim to runhcs
+### Fix 2: Change default runtime from hcsshim to runhcs
 
 Stevedore's service defaults to the `com.docker.hcsshim.v1` runtime, but only the `io.containerd.runhcs.v1` shim binary (`containerd-shim-runhcs-v1.exe`) ships with Stevedore. Update the service binary path:
 
@@ -125,7 +116,7 @@ net stop stevedore /y
 net start stevedore
 ```
 
-### Fix 4: Windows Defender exclusions for containerd data
+### Fix 3: Windows Defender exclusions for containerd data
 
 Add exclusions for containerd's snapshot directories (prevents hcsshim layer commit errors — `hcsshim::ActivateLayer failed (0x20)`):
 
@@ -135,7 +126,7 @@ Add-MpPreference -ExclusionPath "C:\ProgramData\nerdctl"
 Add-MpPreference -ExclusionPath "C:\temp"
 ```
 
-### Fix 5: Use docker.exe for builds (not nerdctl)
+### Fix 4: Use docker.exe for builds (not nerdctl)
 
 Always use Stevedore's `docker.exe` for builds — `nerdctl build` lacks DNS resolution:
 
