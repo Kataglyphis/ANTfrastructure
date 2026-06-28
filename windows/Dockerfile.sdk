@@ -2,7 +2,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # Generic Windows SDK layer (no GPU).
-# GPU-specific layers (Dockerfile.nvidia, Dockerfile.amd) build on top of this.
+# The optional NVIDIA GPU layer (Dockerfile.nvidia) builds on top of this.
+# There is no Windows Dockerfile.amd (ROCm-on-Windows is not supported).
 # Downstream layers (media, final) consume the GPU layer for accelerated builds.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-base
@@ -10,8 +11,6 @@ FROM ${BASE_IMAGE}
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-COPY windows\scripts C:\temp\scripts
-
-RUN Write-Host 'Generic Windows SDK layer initialized — ready for GPU layer (nvidia/amd)'
+RUN Write-Host 'Generic Windows SDK layer initialized — ready for GPU layer (nvidia)'
 
 # Generic SDK tools (no GPU). GPU layers install their own deps.

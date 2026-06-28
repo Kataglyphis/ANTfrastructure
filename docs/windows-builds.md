@@ -5,9 +5,10 @@
 The Windows container build uses [Stevedore](https://github.com/slonopotamus/stevedore) (a Docker distribution for Windows Containers) and is split into five staged images:
 
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.3.3, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
-- `windows/Dockerfile.sdk` layers CUDA 13.3 + cuDNN 9.23 GPU SDK.
+- `windows/Dockerfile.sdk` is a generic (non-GPU) SDK shim layer between base and the optional GPU layer. No CUDA/cuDNN are installed here; it only initializes the SDK directory layout.
+- `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.23 + TensorRT 11.1.0.106 on top of the SDK shim. Build this stage **instead of** `Dockerfile.sdk` to produce a GPU-enabled image. If skipped, downstream stages will perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`).
 - `windows/Dockerfile.toolchain` builds CPython 3.14 from source (matching the canonical versions.env).
-- `windows/Dockerfile.media` layers GStreamer 1.29.1 (from source via Meson + clang-cl, with CUDA auto-detected), OpenCV 5.x (source build via CMake+Ninja+clang-cl, with CUDA auto-detected), ONNX Runtime 1.27.0 (source build with CUDA enabled via CUDA provider), ONNX GenAI 0.13.1 (source build with CUDA enabled), LiteRT 2.1.5 (source build with GPU delegate enabled via Vulkan/OpenCL + external CUDA delegate support), LiteRT-LM 0.13.1 (on-device LLM inference with CUDA support), built in dependency order so each finds the previous.
+- `windows/Dockerfile.media` layers the AI/media stack in dependency order so each finds the previous: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used), ONNX GenAI 0.13.1 (source build via CMake+clang-cl, bypassing `build.py`; CUDA is disabled at build time because clang-cl cannot compile cuRAND host headers — GenAI uses ONNX Runtime's CUDA EP at runtime), OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected), LiteRT 2.1.5 (GPU delegate enabled via Vulkan/OpenCL + external CUDA delegate), LiteRT-LM 0.13.1 (on-device LLM inference; CUDA auto-detected), TVM 0.24.0 (Ninja+clang-cl; auto-detects CUDA/Vulkan/LLVM; builds a Python wheel), FFmpeg `main` branch (MSVC toolchain via MSYS2 bash; `--enable-dnn --enable-libonnx` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters), GStreamer 1.29.1 (from source via Meson + clang-cl, with CUDA auto-detected).
 - `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).
 
 ## Prerequisites
@@ -45,7 +46,20 @@ $DOCKER = "${env:ProgramFiles}\Stevedore\bin\docker.exe"
   -t local/kataglyphis:windows-base `
   -f windows/Dockerfile.base .
 
-# Stage 2: GPU SDK (CUDA + cuDNN)
+# Stage 2 — choose ONE of the two SDK variants:
+#   (a) GPU variant — build Dockerfile.nvidia to get CUDA 13.3 + cuDNN + TensorRT
+#   (b) CPU variant — build Dockerfile.sdk (generic shim, no GPU) [default below]
+# Both variants produce the `local/kataglyphis:windows-sdk` tag so downstream stages
+# pick up whichever variant you built.
+
+# Stage 2a (GPU variant, optional): NVIDIA GPU SDK (CUDA + cuDNN + TensorRT)
+# Requires a TensorRT zip in windows/downloads/ (see AGENTS.md § TensorRT Setup).
+# & $DOCKER build --no-cache --progress=plain `
+#   -t local/kataglyphis:windows-sdk `
+#   --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
+#   -f windows/Dockerfile.nvidia .
+
+# Stage 2b (CPU variant, default): generic non-GPU SDK shim
 & $DOCKER build --no-cache --progress=plain `
   -t local/kataglyphis:windows-sdk `
   --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
@@ -57,8 +71,8 @@ $DOCKER = "${env:ProgramFiles}\Stevedore\bin\docker.exe"
   --build-arg BASE_IMAGE=local/kataglyphis:windows-sdk `
   -f windows/Dockerfile.toolchain .
 
-# Stage 4: media libs (GStreamer, OpenCV, ONNX, GenAI, LiteRT, LiteRT-LM)
-# Build order: ONNX -> GenAI -> OpenCV -> LiteRT -> LiteRT-LM -> GStreamer
+# Stage 4: media libs (ONNX, GenAI, OpenCV, LiteRT, LiteRT-LM, TVM, FFmpeg, GStreamer)
+# Build order: ONNX -> GenAI -> OpenCV -> LiteRT -> LiteRT-LM -> TVM -> FFmpeg -> GStreamer
 # NOTE: ONNX Runtime AVX-512+AMX compilation with clang-cl needs ~48 GB RAM.
 # Adjust --memory to your host's available resources (--cpu-quota not supported on Windows).
 & $DOCKER build --no-cache --progress=plain --memory 48g `
@@ -79,7 +93,9 @@ $DOCKER = "${env:ProgramFiles}\Stevedore\bin\docker.exe"
 
 After installing Stevedore, apply the post-install fixes documented in `AGENTS.md` § Stevedore Fixes After Install (Defender exclusions, daemon.json cleanup, default runtime change). The fixes there are the canonical source and are maintained in lockstep with the project's CI requirements.
 
-Also exclude the data directories (prevents hcsshim layer commit failures during builds):
+### Fix 1: Exclude data directories from Windows Defender
+
+Exclude the data directories (prevents hcsshim layer commit failures during builds):
 
 ```powershell
 Add-MpPreference -ExclusionPath "$env:ProgramData\containerd"
@@ -146,4 +162,4 @@ nerdctl run --memory 48g -it --rm `
   powershell -File C:\temp\scripts\smoke-test-container.ps1
 ```
 
-The smoke test validates 16 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, and compiler integration.
+The smoke test validates 18 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), and compiler integration.

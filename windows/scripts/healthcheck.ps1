@@ -17,10 +17,19 @@ function Check {
     }
 }
 
-# Python + ONNX Runtime (matches Linux healthcheck)
-Check "python + onnxruntime" {
-    $result = powershell -NoProfile -Command "python -c 'import onnxruntime; print(onnxruntime.__version__)'" 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "onnxruntime import failed: $result" }
+# ONNX Runtime (source-built C/C++ runtime; ENABLE_PYTHON=OFF so no Python module)
+Check "onnxruntime DLL" {
+    $onnxRoot = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
+    if (-not $onnxRoot) { throw 'ONNX_ROOT env var not set' }
+    $dll = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $dll) { throw "No onnxruntime*.dll found under $onnxRoot" }
+    Write-Host "  Found: $($dll.FullName)"
+}
+
+# Python interpreter (source-built CPython 3.14)
+Check "python --version" {
+    $v = & python --version 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "python --version failed: $v" }
 }
 
 # FFmpeg
@@ -37,7 +46,7 @@ Check "gst-launch-1.0 --version" {
 
 # GStreamer plugin integrations (non-fatal — auto-detected by meson at build time)
 $gstInspect = 'C:\runtime\bin\gst-inspect-1.0.exe'
-foreach ($gstPlugin in @('opencv', 'onnx')) {
+foreach ($gstPlugin in @('opencv', 'tensorfilter', 'libav')) {
     $v = & $gstInspect $gstPlugin 2>&1 | Select-Object -First 1
     if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] gst-plugin $gstPlugin found" } `
     else { Write-Host "[SKIP] gst-plugin $gstPlugin not available" }

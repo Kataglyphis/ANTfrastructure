@@ -79,13 +79,7 @@ $versionsScript = Join-Path $PSScriptRoot 'load-versions.ps1'
 if (Test-Path $versionsScript) { & $versionsScript }
 
 if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = $env:GST_VERSION
-}
-if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = $env:GSTREAMER_VERSION
-}
-if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = '1.29.1'  # keep in sync with versions.env
+    $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GST_VERSION', 'GSTREAMER_VERSION') -DefaultValue '1.29.1'
 }
 
 try {
@@ -297,7 +291,7 @@ int _isatty(int);
     # (LLVM 22 mmintrin.h bug: cairo Win32 backend disabled via -Dcairo:win32=disabled)
     # (Cairo Win32 stubs handled in retry loop after meson downloads cairo)
 
-    # ---- 5c. detect CUDA (available from Dockerfile.ai layer) ----
+    # ---- 5c. detect CUDA (available from Dockerfile.nvidia layer) ----
     $cudaDetected = $false
     $cudaRoot = Get-CudaRoot
     if ($cudaRoot -and (Test-Path $cudaRoot)) {

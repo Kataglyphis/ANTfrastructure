@@ -29,6 +29,24 @@ Current automated validation in this repository is documentation-focused:
 - `build-cross-chain.sh --dry-run` prints all build commands without executing them, useful for auditing the stage transitions.
 - There is not yet a single end-to-end CI workflow that builds every Linux, accelerator, and Windows image variant on each change.
 
+## Windows Image Chain
+
+Windows Container builds run on `windows/amd64` only and produce a single published tag (`ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`) on `windows/servercore:ltsc2025`. The lane uses Stevedore's bundled `docker.exe` for builds (`nerdctl build` has broken DNS in BuildKit on Windows; `nerdctl run` works fine for running containers). See `docs/windows-builds.md` for the full build commands and prerequisites.
+
+Stage chain (each `FROM` the previous stage's local tag):
+
+| Stage | Dockerfile | Produces | Contents |
+|-------|------------|----------|----------|
+| 1 | `windows/Dockerfile.base` | `local/kataglyphis:windows-base` | VS Build Tools 18 (ClangCL toolset), Scoop (LLVM 22, Rust, Flutter, Vulkan SDK, WiX 4), Git, Python bootstrapping, `versions.env` |
+| 2 | `windows/Dockerfile.sdk` (CPU) **or** `windows/Dockerfile.nvidia` (GPU) | `local/kataglyphis:windows-sdk` | Generic non-GPU SDK shim **or** NVIDIA GPU layer (CUDA 13.3 + cuDNN 9.23 + optional TensorRT 11.1.0.106). Build whichever variant you want — both produce the `windows-sdk` tag. |
+| 3 | `windows/Dockerfile.toolchain` | `local/kataglyphis:windows-toolchain` | CPython 3.14 source-built with ClangCL via `PCbuild\build.bat` |
+| 4 | `windows/Dockerfile.media` | `local/kataglyphis:windows-media` | AI/media stack: ONNX Runtime 1.27.0, ONNX GenAI 0.13.1, OpenCV 5.x, LiteRT 2.1.5, LiteRT-LM 0.13.1, TVM 0.24.0, FFmpeg `main` (`--enable-dnn --enable-libonnx`), GStreamer 1.29.1 — all source-built with Ninja/clang-cl in dependency order |
+| 5 | `windows/Dockerfile` | `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` | Final developer image (VsDevCmd entrypoint, HEALTHCHECK, smoke-test script) |
+
+Container validation uses `windows/scripts/smoke-test-container.ps1` (18 test categories) and the Docker `HEALTHCHECK` defined in `windows/scripts/healthcheck.ps1`.
+
+The smoke test validates (1) build tools, (2) Python 3.14, (3) Rust, (4) LLVM/Clang+Flutter+WiX, (5) VS Build Tools, (6) Vulkan SDK, (7) CUDA+cuDNN (skippable), (8) ONNX Runtime, (9) ONNX GenAI, (10) OpenCV 5, (11) GStreamer, (12) LiteRT, (13) LiteRT-LM, (14) compiler smoke, (15) CMake+Ninja+clang-cl integration, (16) MSBuild+ClangCL, (17) TVM (source-built), (18) FFmpeg (source-built with DNN/ONNX).
+
 ## Roadmap
 
 - Keep the current multi-platform Linux build path working while expanding the amd64-hosted cross artifact lane.
