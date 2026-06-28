@@ -139,7 +139,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 Builds on the base image:
 
 ```bash
-docker build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Dockerfile.torch .
+nerdctl build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Dockerfile.torch .
 ```
 
 ## AMD GPU Build (Linux)

@@ -168,13 +168,11 @@ When feeding locally saved runtime artifacts back into later builds:
 
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are greatly appreciated.
-
 1. Fork the project.
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4. Push to the branch (`git push origin feature/AmazingFeature`).
-5. Open a pull request.
+2. Create a feature branch (`git checkout -b feature/my-change`).
+3. Make your changes. If modifying build scripts or Dockerfiles, run `python3 docs/scripts/sync_versions.py --check` to verify version consistency.
+4. Commit your changes — the pre-commit hook (`.githooks/pre-commit`) runs version-staleness checks and shell syntax validation.
+5. Push and open a pull request.
 
 ## License
 
