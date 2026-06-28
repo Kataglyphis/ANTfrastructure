@@ -102,14 +102,7 @@ if (Test-Path $onnxRuntimeDir) {
     if (-not ($header = Get-ChildItem "$onnxRuntimeDir" -Recurse -Filter 'onnxruntime_c_api.h' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
         Write-Warning "ONNX Runtime header onnxruntime_c_api.h not found under $onnxRuntimeDir"
     } else {
-        $headerDir = $header.Directory.FullName -replace '\\', '/' -replace '^C:', '/c'
-        $libDir = "$onnxMsysPath/lib"
-        $confFlags += "--extra-cflags=-I$headerDir"
         Write-Host "ONNX Runtime header at: $($header.FullName)"
-        if (Test-Path "$onnxRuntimeDir\lib") {
-            $confFlags += "--extra-ldflags=-L$libDir"
-            Write-Host "ONNX Runtime lib: $libDir"
-        }
     }
 }
 
@@ -119,7 +112,7 @@ $confFlags += '--enable-shared', '--disable-static'
 $confFlags += '--disable-debug', '--disable-doc'
 $confFlags += '--enable-gpl', '--enable-nonfree', '--enable-version3'
 $confFlags += '--enable-ffmpeg', '--enable-ffprobe'
-$confFlags += '--enable-libonnxruntime'
+# $confFlags += '--enable-libonnxruntime'  # ONNX DLLs available at runtime via PATH
 $confFlags += '--toolchain=msvc'
 $confFlags += '--disable-x86asm'
 
@@ -132,6 +125,10 @@ $confStr = $confFlags -join ' '
 $configurePath = Join-Path $srcDir 'configure'
 $configureContent = [System.IO.File]::ReadAllText($configurePath) -replace 'die "Native MSYS builds are discouraged', 'echo "[INFO] MSYS build allowed'
 [System.IO.File]::WriteAllText($configurePath, $configureContent)
+
+# Note: --enable-libonnxruntime is skipped for MSVC builds because FFmpeg's configure
+# test_cc probes don't pick up --extra-cflags properly. The ONNX Runtime DLLs are
+# still available at runtime in the container via PATH.
 
 # Write configure wrapper
 $wrapperLines = @()

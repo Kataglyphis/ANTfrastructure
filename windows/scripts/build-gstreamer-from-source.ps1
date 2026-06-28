@@ -338,7 +338,7 @@ int _isatty(int);
         '-Drtsp_server=enabled',
         '-Dtools=enabled',
         # Provide stub unistd.h; disable cairo Win32 (avoids LLVM 22 mmintrin.h bug)
-        "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
+        "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Daccess=_access -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
         '-Dcairo:win32=disabled',
         '-Dopus:intrinsics=disabled',
         # nvcodec disabled: D3D11 interop code in gstnvdecoder.cpp uses
