@@ -426,6 +426,167 @@ ffmpeg_probe_libonnx() {
     return 1
 }
 
+# ---------------------------------------------------------------------------
+# DNN backend probes — TensorFlow and OpenVINO
+# ---------------------------------------------------------------------------
+
+# Download TensorFlow C API SDK into a cache directory so it persists across
+# rebuilds. FFmpeg's --enable-libtensorflow needs libtensorflow.so + headers.
+ensure_tensorflow_c_sdk() {
+    local cache_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
+    local tf_dir="${cache_dir}/tensorflow-c"
+    local tf_version="${TENSORFLOW_C_VERSION:-2.16.1}"
+    local tf_archive tf_url
+
+    if [ -f "${tf_dir}/lib/libtensorflow.so" ] && [ -f "${tf_dir}/include/tensorflow/c/c_api.h" ]; then
+        echo "TensorFlow C SDK ${tf_version} already cached at ${tf_dir}"
+        return 0
+    fi
+
+    mkdir -p "${cache_dir}" "${tf_dir}/lib" "${tf_dir}/include"
+
+    case "$(uname -m)" in
+        x86_64)
+            tf_archive="libtensorflow-cpu-linux-x86_64-${tf_version}.tar.gz"
+            ;;
+        aarch64|arm64)
+            tf_archive="libtensorflow-cpu-linux-aarch64-${tf_version}.tar.gz"
+            ;;
+        *)
+            echo "Skipping TensorFlow C SDK: unsupported arch $(uname -m)"
+            return 1
+            ;;
+    esac
+
+    tf_url="https://github.com/tensorflow/tensorflow/archive/refs/tags/v${tf_version}.tar.gz"
+    echo "Downloading TensorFlow C SDK ${tf_version}..."
+    # Download just the C library from the TF release
+    local tf_release_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/${tf_archive}"
+    if     curl -sL --connect-timeout 30 --max-time 300 -o "${cache_dir}/${tf_archive}" "${tf_release_url}" 2>/dev/null \
+        && [ -s "${cache_dir}/${tf_archive}" ]; then
+        tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}" 2>/dev/null || true
+        # The tarball extracts to ./lib/ and ./include/ relative to cache_dir
+        if [ -d "${cache_dir}/lib" ] && [ -f "${cache_dir}/lib/libtensorflow.so" ]; then
+            mv "${cache_dir}/lib" "${tf_dir}/lib" 2>/dev/null || true
+            mv "${cache_dir}/include" "${tf_dir}/include" 2>/dev/null || true
+        fi
+        # Create a pkg-config file for FFmpeg's configure to find
+        cat > "${cache_dir}/tensorflow.pc" <<PKGCONF
+prefix=${tf_dir}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: TensorFlow
+Description: TensorFlow C API
+Version: ${tf_version}
+Libs: -L\${libdir} -ltensorflow
+Cflags: -I\${includedir}
+PKGCONF
+        export PKG_CONFIG_PATH="${cache_dir}:${PKG_CONFIG_PATH:-}"
+        echo "TensorFlow C SDK ${tf_version} installed to ${tf_dir}"
+        return 0
+    fi
+
+    echo "TensorFlow C SDK download failed (trying alternate URL)..."
+    # Fallback: use the full TF source release (much larger but always available)
+    local alt_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/libtensorflow-cpu-linux-x86_64-${tf_version}.tar.gz"
+    if curl -sL --connect-timeout 30 --max-time 600 -o "${cache_dir}/${tf_archive}" "${alt_url}" 2>/dev/null \
+        && [ -s "${cache_dir}/${tf_archive}" ]; then
+        tar -xzf "${cache_dir}/${tf_archive}" -C "${tf_dir}" 2>/dev/null || true
+        echo "TensorFlow C SDK ${tf_version} installed (fallback URL)"
+        return 0
+    fi
+
+    echo "WARNING: TensorFlow C SDK download failed. libtensorflow will not be available."
+    return 1
+}
+
+ffmpeg_probe_libtensorflow() {
+    local tf_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/tensorflow-c"
+
+    if [ ! -d "${tf_cache}/lib" ]; then
+        ensure_tensorflow_c_sdk || return 1
+    fi
+
+    # The pkg-config file was written to the parent cache dir; ensure it's on PKG_CONFIG_PATH
+    export PKG_CONFIG_PATH="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}:${PKG_CONFIG_PATH:-}"
+
+    # Also try a direct pkg-config probe through the cached .pc file
+    if [ -f "${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/tensorflow.pc" ]; then
+        local pc_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
+        if PKG_CONFIG_PATH="${pc_dir}" pkg-config --exists tensorflow 2>/dev/null; then
+            echo "TensorFlow C SDK pkg-config resolved at ${pc_dir}"
+        fi
+    fi
+
+    if ffmpeg_probe_pkg_config_feature "libtensorflow" "tensorflow" \
+        "tensorflow/c/c_api.h" "TF_Version TF_NewGraph"; then
+        return 0
+    fi
+
+    # Fallback: probe with explicit paths
+    local tf_base=""
+    for d in "${tf_cache}" /usr/local/lib/tensorflow-c /opt/tensorflow-c; do
+        [ -f "${d}/lib/libtensorflow.so" ] && { tf_base="${d}"; break; }
+    done
+    [ -z "${tf_base}" ] && { echo "Skipping libtensorflow: SDK not found."; return 1; }
+
+    if ffmpeg_try_link_probe "tensorflow/c/c_api.h" "TF_Version TF_NewGraph" \
+        "-I${tf_base}/include" "-L${tf_base}/lib -ltensorflow"; then
+        export CFLAGS="${CFLAGS:-} -I${tf_base}/include"
+        export LDFLAGS="${LDFLAGS:-} -L${tf_base}/lib -ltensorflow"
+        # FFmpeg's --extra-cflags/--extra-ldflags override pkg-config; append them
+        # so configure can link the probe test correctly.
+        echo "TensorFlow C SDK found at ${tf_base} (direct link)"
+        return 0
+    fi
+
+    echo "Skipping libtensorflow: FFmpeg-style link probe failed."
+    return 1
+}
+
+ffmpeg_probe_libopenvino() {
+    local ov_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/openvino"
+    local ov_pkg="${ov_dir}/runtime/lib/pkgconfig"
+
+    if [ -d "${ov_pkg}" ]; then
+        if PKG_CONFIG_PATH="${ov_pkg}:${PKG_CONFIG_PATH:-}" \
+            ffmpeg_probe_pkg_config_feature "libopenvino" "openvino" \
+            "openvino/openvino.hpp openvino/c/openvino.h" "ov_get_openvino_version"; then
+            return 0
+        fi
+    fi
+
+    # If openvino is installed system-wide via apt, try pkg-config directly
+    if ffmpeg_probe_pkg_config_feature "libopenvino" "openvino" \
+        "openvino/openvino.hpp openvino/c/openvino.h" "ov_get_openvino_version"; then
+        return 0
+    fi
+
+    # Direct link probe without pkg-config
+    local ov_base=""
+    for d in "${ov_dir}" /opt/intel/openvino /usr/local/openvino; do
+        if [ -f "${d}/runtime/lib/libopenvino.so" ] || [ -f "${d}/lib/libopenvino.so" ]; then
+            ov_base="${d}"
+            break
+        fi
+    done
+    [ -z "${ov_base}" ] && { echo "Skipping libopenvino: SDK not found."; return 1; }
+
+    local ov_lib_dir
+    [ -d "${ov_base}/runtime/lib" ] && ov_lib_dir="${ov_base}/runtime/lib" || ov_lib_dir="${ov_base}/lib"
+    if ffmpeg_try_link_probe "openvino/c/openvino.h" "ov_get_openvino_version" \
+        "-I${ov_base}/runtime/include" "-L${ov_lib_dir} -lopenvino"; then
+        export CFLAGS="${CFLAGS:-} -I${ov_base}/runtime/include"
+        export LDFLAGS="${LDFLAGS:-} -L${ov_lib_dir} -lopenvino"
+        return 0
+    fi
+
+    echo "Skipping libopenvino: FFmpeg-style link probe failed."
+    return 1
+}
+
 # ------------------------------------------------------------------------------
 # Configure FFmpeg build
 # ------------------------------------------------------------------------------
@@ -444,7 +605,7 @@ configure_ffmpeg() {
         "--disable-static"
         "--disable-debug"
         "--disable-doc"
-        "--enable-dnn"
+        # DNN module is auto-detected (no --enable-dnn flag; removed in FFmpeg master).
     )
 
     if cross_build_is_active; then
@@ -537,6 +698,15 @@ configure_ffmpeg() {
     if ffmpeg_probe_libonnx; then
         configure_opts+=("--enable-libonnx")
     fi
+
+    # Deep Neural Network backends (always try; skip if SDK not available)
+    if ffmpeg_probe_libtensorflow; then
+        configure_opts+=("--enable-libtensorflow")
+    fi
+    
+    if ffmpeg_probe_libopenvino; then
+        configure_opts+=("--enable-libopenvino")
+    fi
     
     # Hardware acceleration (if available)
     if ffmpeg_probe_pkg_config_feature "vaapi" "libva >= 0.35.0" "va/va.h" "vaInitialize"; then
@@ -547,19 +717,19 @@ configure_ffmpeg() {
         configure_opts+=("--enable-vdpau")
     fi
     
-    # NVIDIA Hardware acceleration
-    if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
-        echo "Enabling NVIDIA CUDA and NVENC/NVDEC support in FFmpeg..."
+    # NVIDIA Hardware acceleration — auto-probe for CUDA SDK
+    CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+    if [ -f "${CUDA_HOME}/include/cuda.h" ] && [ -d "${CUDA_HOME}/lib64" ]; then
+        echo "NVIDIA CUDA SDK detected at ${CUDA_HOME}. Enabling NVENC/NVDEC/CUDA..."
         configure_opts+=("--enable-nvenc")
         configure_opts+=("--enable-nvdec")
         configure_opts+=("--enable-cuvid")
         configure_opts+=("--enable-ffnvcodec")
         configure_opts+=("--enable-cuda-nvcc")
-        
-        # Explicitly pass CUDA include and lib directories so FFmpeg can find CUDA headers
-        CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
         configure_opts+=("--extra-cflags=-I${CUDA_HOME}/include")
         configure_opts+=("--extra-ldflags=-L${CUDA_HOME}/lib64")
+    elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+        echo "ENABLE_NVIDIA=true but CUDA SDK not found at ${CUDA_HOME}. Skipping NVIDIA acceleration."
     fi
 
     # Use lld linker for faster linking if available
