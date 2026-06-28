@@ -423,6 +423,80 @@ def write_deps_table(versions: dict[str, str]) -> int:
         return 1
 
 
+# -- Dockerfile ARG default syncing -----------------------------------------
+
+_ARG_LINE_RE = re.compile(r'^(\s*ARG\s+)([A-Z][A-Z0-9_]*)=(\S+)')
+
+
+def dockerfile_target_files() -> list[Path]:
+    result = []
+    for name in ['base', 'toolchain', 'sdk', 'media', 'android', 'package', 'torch', 'nvidia', 'amd']:
+        p = REPO_ROOT / f"linux/Dockerfile.{name}"
+        if p.exists():
+            result.append(p)
+    return result
+
+
+def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
+    """Return True if file needs updating (or was updated when not dry_run)."""
+    version_vars = set(versions.keys())
+    original = file_path.read_text(encoding="utf-8")
+    lines = original.splitlines(keepends=True)
+    changed = False
+    for i, line in enumerate(lines):
+        m = _ARG_LINE_RE.match(line)
+        if not m:
+            continue
+        var_name = m.group(2)
+        if var_name not in version_vars:
+            continue
+        env_val = versions[var_name]
+        old_raw = m.group(3)
+        if old_raw.startswith('"') and old_raw.endswith('"'):
+            formatted = f'"{env_val}"'
+        elif old_raw.startswith("'") and old_raw.endswith("'"):
+            formatted = f"'{env_val}'"
+        else:
+            formatted = env_val
+        if old_raw == formatted:
+            continue
+        if not dry_run:
+            lines[i] = f"{m.group(1)}{var_name}={formatted}\n"
+        changed = True
+    if not dry_run and changed:
+        file_path.write_text(''.join(lines), encoding="utf-8")
+    return changed
+
+
+def check_dockerfile_args(versions: dict[str, str]) -> int:
+    stale = []
+    for path in dockerfile_target_files():
+        if _update_dockerfile_args_inner(path, versions, dry_run=True):
+            stale.append(str(path.relative_to(REPO_ROOT)))
+    if stale:
+        print("Dockerfile ARG defaults are stale:", file=sys.stderr)
+        for p in stale:
+            print(f"- {p}", file=sys.stderr)
+        print("Run: python3 docs/scripts/sync_versions.py --write", file=sys.stderr)
+        return 1
+    print("Dockerfile ARG defaults match versions.env.")
+    return 0
+
+
+def write_dockerfile_args(versions: dict[str, str]) -> int:
+    changed = []
+    for path in dockerfile_target_files():
+        if _update_dockerfile_args_inner(path, versions, dry_run=False):
+            changed.append(str(path.relative_to(REPO_ROOT)))
+    if changed:
+        print("Synced Dockerfile ARG defaults in:")
+        for p in changed:
+            print(f"- {p}")
+    else:
+        print("Dockerfile ARG defaults already match versions.env.")
+    return 0
+
+
 # -- Combined flow ----------------------------------------------------------
 
 
@@ -434,7 +508,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def target_files() -> list[Path]:
-    return [REPO_ROOT / "README.md", REPO_ROOT / "docs/overview.md"]
+    return [REPO_ROOT / "README.md"]
 
 
 def check_snapshot(replacement: str) -> int:
@@ -489,6 +563,7 @@ def main() -> int:
         result = check_snapshot(snapshot)
         result |= check_inline_markers(versions)
         result |= check_deps_table(versions)
+        result |= check_dockerfile_args(versions)
         # Also check website license files.
         import subprocess
         lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
@@ -501,6 +576,7 @@ def main() -> int:
     result = write_snapshot(snapshot)
     result |= write_inline_markers(versions)
     result |= write_deps_table(versions)
+    result |= write_dockerfile_args(versions)
     # Auto-regenerate website license files so they never go stale.
     import subprocess
     lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"

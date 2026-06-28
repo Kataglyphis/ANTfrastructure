@@ -45,7 +45,7 @@ images).  Each upstream component carries its own license terms.
 | LiteRT (TensorFlow Lite) | v2.1.5 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.x | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.1 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
-| FFmpeg | main | [ffmpeg.org](https://ffmpeg.org/) | LGPLv2.1+ |
+| FFmpeg | master | [ffmpeg.org](https://ffmpeg.org/) | LGPLv2.1+ |
 | libcamera | git master | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20240722.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 | FreeType | 2.14.2 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |

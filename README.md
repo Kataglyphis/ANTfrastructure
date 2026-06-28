@@ -91,9 +91,7 @@ See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrato
 
 ### Reinstall QEMU/binfmt after a host reboot
 
-```bash
-nerdctl run --rm --privileged tonistiigi/binfmt --install all
-```
+If foreign-architecture builds fail with `exec format error`, see [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for the binfmt fix.
 
 ## CI
 
@@ -146,43 +144,7 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 
 ### Windows 🪟
 
-```powershell
-docker build --platform windows/amd64 `
-  --progress=plain --no-cache `
-  -t local/kataglyphis:windows-base `
-  -f windows/Dockerfile.base .
-
-docker build --platform windows/amd64 `
-  --progress=plain --no-cache `
-  -t local/kataglyphis:windows-sdk `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
-  -f windows/Dockerfile.sdk .
-# (For a GPU-enabled image, replace the prev. step with windows/Dockerfile.nvidia. 
-#  See docs/windows-builds.md § Build Commands for the optional NVIDIA stage.)
-
-docker build --platform windows/amd64 `
-  --progress=plain --no-cache `
-  -t local/kataglyphis:windows-toolchain `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-sdk `
-  -f windows/Dockerfile.toolchain .
-
-docker build --platform windows/amd64 `
-  --progress=plain --no-cache --memory 48g `
-  -t local/kataglyphis:windows-media `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
-  -f windows/Dockerfile.media .
-
-docker build --platform windows/amd64 `
-  --progress=plain --no-cache `
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-media `
-  -f windows/Dockerfile .
-```
-
-> Windows `nerdctl build` has broken DNS in BuildKit. Use Stevedore's bundled
-> `docker.exe` for all builds above (`nerdctl run` works fine for running containers).
-
-Windows-specific build notes are in [Windows Build Image](docs/windows-builds.md).
+Windows build commands are in [Windows Build Image](docs/windows-builds.md) § Build Commands.
 
 ### Clone The Repository
 

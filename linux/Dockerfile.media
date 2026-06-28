@@ -404,8 +404,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ffmpeg-sdks,id=ffmpeg-sdks-${TARGETARCH},sharing=shared \
     --mount=type=tmpfs,target=/tmp \
-    PKG_CONFIG_PATH="/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}" \
+    set -euo pipefail; \
+    export PKG_CONFIG_PATH="/var/cache/ffmpeg-sdks:/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"; \
+    export ENABLE_NVIDIA="${ENABLE_NVIDIA}"; \
+    echo "--- ffmpeg build v3: DNN backends (TensorFlow, OpenVINO, ONNX) + CUDA HW accel ---"; \
     bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh
 
 RUN --mount=type=cache,target=/tmp \
