@@ -345,48 +345,40 @@ This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-ho
 
 ## Cross packaging to multi-arch manifest (experimental)
 
-The new end-goal path is split into two steps so the old QEMU lane keeps working:
+### Overview
 
-1. Keep the existing multi-platform build for compatibility.
-2. Build target artifacts host-side with the cross builder.
-3. Assemble one runtime image per architecture from a clean per-arch `linux/Dockerfile.base` image plus the target-built payload from `cross-android-${TARGET_ARCH}`.
-4. Publish a single multi-architecture manifest.
+The new end-goal path keeps the existing QEMU lane for compatibility while adding:
+1. Cross-compile target artifacts host-side with the cross builder.
+2. Assemble one runtime image per architecture from a clean per-arch `linux/Dockerfile.base` plus the target-built payload from `cross-android-${TARGET_ARCH}`.
+3. Publish a single multi-architecture manifest.
 
-`linux/Dockerfile.package` is the shared runtime packaging layer for this path. It starts from a clean per-arch base image, copies only the selected target payload from the chosen artifact image, replays the final runtime dependency setup, and then becomes the `BASE_IMAGE` for the final `linux/Dockerfile.torch` wrapper. In `cross` mode that artifact image still runs on amd64 (`cross-android-${TARGET_ARCH}`); in `native` mode it can be the target-platform sequential image directly.
-
-For day-to-day work on this host, prefer the helper scripts below over the long manual `nerdctl` loops. The manual sequence remains useful as a low-level reference, but the helpers already encode the verified local-context handoff and push semantics.
-
-The main repo-root Linux Dockerfiles also now carry Dockerfile-specific ignore files so helper/manual cross builds do not send `linux/webserver/` and the large exported `out/*` trees back through the default build context on every stage.
+`linux/Dockerfile.package` is the shared runtime packaging layer. It starts from a clean per-arch base, copies the selected target payload from the artifact image, replays final runtime dependency setup, and becomes `BASE_IMAGE` for `linux/Dockerfile.torch`. In `cross` mode the artifact image runs on amd64 (`cross-android-${TARGET_ARCH}`); in `native` mode it uses the target-platform sequential image directly.
 
 The per-arch `latest-cross-base-*`, `latest-cross-package-*`, and `latest-cross-*`
 tags are internal publish tags used to assemble the public `latest-cross` manifest.
-Prefer the runtime helpers (see `AGENTS.md` § Runtime Helpers for the canonical commands). Run with `--dry-run` to print the commands without building.
+Prefer the runtime helpers (see `AGENTS.md` § Runtime Helpers for the canonical commands).
+Run with `--dry-run` to print the commands without building.
 
-The same package handoff now works for `linux/Dockerfile.torch` too. Build the heavy media/android payloads with the amd64-hosted cross compiler first, then feed `cross-android-${TARGET_ARCH}` through `linux/Dockerfile.package`, build `linux/Dockerfile.torch` on `linux/${TARGET_ARCH}` (which now includes the runtime scripts + entrypoint directly). `TORCH_APP_MODE=install` keeps that QEMU Torch stage focused on creating `/opt/venv`, and the dedicated `venv-export` target lets you export only `/opt/venv` for later `COPY` into a matching real target image.
+### Runtime helper scripts
 
-The helper scripts now follow the same runtime path too:
+Two helpers manage the `base → package → torch → wrapper → manifest` chain:
 
-- `linux/scripts/build-runtime-manifest.sh` builds `base -> package -> torch -> wrapper -> manifest`.
-- `linux/scripts/build-runtime-artifacts.sh` builds that same `base -> package -> torch -> wrapper` chain and exports the final wrapper rootfs instead of creating a manifest.
-- Both helpers accept `--target-arches`, `TARGET_ARCHES`, or `TARGET_ARCH` for architecture selection.
-- Both helpers accept `ARTIFACT_BUILD_MODE=cross` or `ARTIFACT_BUILD_MODE=native` for selecting the package artifact source.
-- In `cross` mode, `ARTIFACT_IMAGE_PREFIX` is treated as a prefix like `ghcr.io/...:cross-android` and the helper fans out `-${TARGET_ARCH}` automatically.
-- In `native` mode, `ARTIFACT_IMAGE_PREFIX` is treated as the exact artifact image ref, for example `ghcr.io/...:android`.
-- In `cross` mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and carries those wheels forward through the existing `/opt/wheels` handoff when the build succeeds.
-- The helper still runs `linux/Dockerfile.torch` on the real target platform in both modes so `/opt/venv` is populated in the final runtime image.
-- The final Torch install now keeps the upstream `uv.lock` when it is present, runs `uv sync --frozen`, and skips reinstalling any packages that already exist in `/opt/wheels` before force-reinstalling the local wheelhouse.
-- If a reused cross artifact has an empty `/opt/wheels`, the Torch install step now keeps the packages that `uv sync` already resolved instead of uninstalling them and trying to install a literal `/opt/wheels/*.whl` glob.
-- When images stay local, the helpers keep the intermediate runtime handoff off-registry by default. `base` is exported as a plain rootfs directory, while `package` and `torch` are exported as OCI layouts and then consumed through named build contexts.
-- `ARTIFACT_CONTEXT_ROOT` lets the runtime helpers consume previously saved runtime artifacts from disk instead of pulling `cross-android-*` from a registry.
-- `ARTIFACT_CONTEXT_MODE=oci` makes each `ARTIFACT_CONTEXT_ROOT/<arch>` resolve as `oci-layout://...`. That is the verified path for the saved `out/local-oci/android/{arm64,riscv64}` artifacts.
-- On this host, one build still fails when it consumes two named OCI image contexts at once. The working workaround is to keep `runtime_artifact` as an OCI layout context and `runtime_base` as a plain rootfs directory context.
-- Each local stage context is deleted as soon as the downstream build finishes consuming it, which keeps non-push runs off `/tmp` and reduces peak disk usage.
-- `build-runtime-artifacts.sh --push` pushes the final per-architecture wrapper images even when the helper keeps `base -> package -> torch` in local stage contexts.
-- `build-runtime-manifest.sh --push` is shorthand for `--push-images --push-manifest`.
-- `build-runtime-manifest.sh --manifest-only` (or its alias `--repair`) creates/pushes the manifest only without rebuilding any images. This is the recommended way to repair a :latest-cross manifest from existing per-arch wrapper images.
-- Use `--push-all` only when you also want the `base`, `package`, and `torch` intermediates pushed.
+- **`build-runtime-manifest.sh`** — builds the full chain and publishes the multi-arch manifest.
+- **`build-runtime-artifacts.sh`** — builds the chain and exports the final wrapper rootfs instead of creating a manifest.
 
-Verified local foreign-architecture rebuild on this host:
+Both accept `--target-arches`, `TARGET_ARCHES`, or `TARGET_ARCH` for architecture selection, and `ARTIFACT_BUILD_MODE=cross|native` for the package artifact source. In `cross` mode, `ARTIFACT_IMAGE_PREFIX` is a prefix (e.g. `ghcr.io/...:cross-android`) that fans out `-${TARGET_ARCH}`; in `native` mode it is the exact artifact image ref.
+
+The riscv64 app wheelhouse is built on the amd64 host for `torch`, `torchvision`, and `opencv-python` git dependencies and carried through `/opt/wheels`. The final `linux/Dockerfile.torch` stage runs on the real target platform in both modes so `/opt/venv` is correct for the target architecture.
+
+**Local handoff behavior:**
+- When images stay local, `base` is exported as a plain rootfs directory, `package` and `torch` as OCI layouts consumed through named build contexts.
+- `ARTIFACT_CONTEXT_ROOT` lets helpers consume previously saved artifacts from disk instead of pulling from a registry.
+- `ARTIFACT_CONTEXT_MODE=oci` resolves each `<arch>` within `ARTIFACT_CONTEXT_ROOT` as `oci-layout://...` (verified path for `out/local-oci/android/{arm64,riscv64}`).
+- One build still fails when consuming two named OCI contexts at once; the workaround is `runtime_artifact` as OCI layout + `runtime_base` as plain rootfs directory.
+- Each local stage context is deleted after the downstream build consumes it.
+- `--manifest-only` (alias `--repair`) creates/pushes the manifest without rebuilding images — the recommended way to repair `:latest-cross` from existing per-arch wrappers.
+
+### Verified local foreign-architecture rebuild
 
 ```bash
 ARTIFACT_CONTEXT_ROOT="$PWD/out/local-oci/android" \
@@ -403,9 +395,9 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --log-dir ./out/build-logs
 ```
 
-That path was validated for both `arm64` and `riscv64` with `gcc version 16.1.0`, `clang version 22.1.8`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, native `gcc-16` binaries under `/opt/gcc-16.1.0/bin/`, and the optional runtime payloads under `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-gpu`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, and `/usr/local/lib/pkgconfig/litert.pc`. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary. The build-time guard in `Dockerfile.package` verifies that `cc -dumpmachine` matches the target architecture, asserts the ELF machine type of the `cc` binary itself (via `readelf -h`), and runs a cc1 compile-to-object smoke under the target platform.
+Validated for both `arm64` and `riscv64`: `gcc 16.1.0`, `clang 22.1.8`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.1.0/bin/gcc`, and optional runtime payloads under `/usr/local/lib/onnxruntime-*`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, `/usr/local/lib/pkgconfig/litert.pc`.
 
-After the runtime helper cleanup in this repository, the same helper path was re-validated for `amd64` with:
+After the runtime helper cleanup, validated for `amd64` with:
 
 ```bash
 RUNTIME_CONTEXT_ROOT="/tmp/opencode/runtime-contexts" \
@@ -421,9 +413,9 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --log-dir ./out/build-logs
 ```
 
-The resulting image reported `gcc version 16.1.0`, `clang version 22.1.8`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc -> /etc/alternatives/cc -> /opt/gcc-16.1.0/bin/gcc`, and `/usr/bin/clang -> /etc/alternatives/clang -> /usr/local/llvm-target/bin/clang`.
+Result: `gcc 16.1.0`, `clang 22.1.8`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.1.0/bin/gcc`, `/usr/bin/clang → /etc/alternatives/clang → /usr/local/llvm-target/bin/clang`.
 
-For local wrapper smoke validation without pushing anything, build the checked-in smoke target directly:
+### Local wrapper smoke validation
 
 ```bash
 mkdir -p ./out/build-logs && \
@@ -459,5 +451,5 @@ To prevent regressions during updates, always preserve the following five vital 
 1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, the `rewrite_staged_python_pc()` helper rewrites the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory so `gst-python` builds succeed.
 2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, the build must copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent downstream `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), standard CPython build steps create standard cross-build library symlinks that end up dangling when packaged. We use `cp -a -L` to dereference those symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the target's `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Since target-packaged Python is staged into the compiler-cross image, the compiler itself must be rebuilt if this helper logic is changed.
-4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, the GCC alternatives registration wires `/opt/gcc-16.1.0/bin/gcc` as the system `cc`/`c++` on all architectures. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) using the cross-compiler built in the same toolchain image; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native GCC at the end of the Android stage. The build hard-fails if the runtime `cc` is the wrong architecture, using three layered guards: (a) `cc -dumpmachine` must match `TARGET_ARCH`; (b) the ELF machine type of the `cc` binary itself (via `readelf -h`) must match the target — this is the real discriminator, because `-dumpmachine` reports the *target* triple and cannot tell a target-native compiler from a host-arch cross-compiler that merely targets the same triple; and (c) a cc1 compile-to-object smoke (`cc -x c - -c -o`) plus an ELF-machine check on the produced object, run under the target platform (QEMU for foreign arch). `Dockerfile.android` additionally asserts the ELF machine type of the swapped GCC right after the swap. The `wrapper-smoke` target uses `linux/scripts/06-packaging/smoke-wrapper.sh` for end-to-end verification.
+4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, GCC alternatives wire `/opt/gcc-16.1.0/bin/gcc` as `cc`/`c++`. On `amd64`, GCC is built natively. On `arm64`/`riscv64`, it is Canadian-cross-compiled; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native binary. The build hard-fails with three layered guards: (a) `cc -dumpmachine` must match `TARGET_ARCH`; (b) `readelf -h` on the `cc` binary itself checks ELF machine type (the real discriminator — `-dumpmachine` only reports the *target* triple, not the host arch); and (c) a cc1 compile-to-object smoke plus ELF check on the produced object, run under the target platform (QEMU for foreign arches). `wrapper-smoke` uses `linux/scripts/06-packaging/smoke-wrapper.sh` for end-to-end verification.
 5. **Fix 5 (OpenCV 5 GStreamer compat):** `patch-gstreamer-sources.sh` → `patch_gstreamer_opencv5_compat()` patches the GStreamer `gst-plugins-bad` opencv plugin sources at build time for OpenCV 5.x compatibility. Three API changes are handled: (a) `contourArea`/`approxPolyDP`/`convexHull` moved to new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`; (b) chessboard/circles-grid detection (`findChessboardCorners`/`findCirclesGrid`/`CALIB_CB_*`) moved to `objdetect` module → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`; (c) `cv::CascadeClassifier` removed from OpenCV 5 → drops the three cascade-dependent GStreamer elements (`faceblur`, `facedetect`, `handdetect`) from the monolithic `libgstopencv.so`. Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compatibility alias because GStreamer's meson dependency lookup queries `dependency('opencv4')`. All patches are idempotent (guarded with grep before applying). When changing OpenCV or GStreamer versions, verify the patch still applies correctly.

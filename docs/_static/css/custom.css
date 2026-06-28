@@ -278,7 +278,7 @@ html[data-theme="dark"] .bd-sidebar-primary .nav-link.active {
 }
 
 html[data-theme="dark"] .hero-section {
-  color: #000000 !important;
+  color: var(--pst-color-text-base) !important;
 }
 
 html[data-theme="dark"] .hero-section a {

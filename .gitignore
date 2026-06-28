@@ -4,6 +4,8 @@ logs/**/*
 out/**/*
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md
+__pycache__/
+*.pyc
 *.deb
 windows/downloads/*
 linux/llm-stack/ollama-binary.tar.zst

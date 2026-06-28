@@ -7,7 +7,7 @@ for AI chat, blog posts, personal data, and an
 open source license overview at `/openSourceLicenses`.
 
 ```bash
-docker build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
+nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
 docker run -d --name kataglyphis-webserver \
   -p 8080:80 \
   -v "$(pwd)/linux/webserver/dist:/var/www/html" \
