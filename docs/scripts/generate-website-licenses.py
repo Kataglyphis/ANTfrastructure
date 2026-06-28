@@ -20,7 +20,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPS_JSON = REPO_ROOT / "docs/deps/deps.json"
 VERSIONS_ENV = REPO_ROOT / "linux/scripts/01-core/versions.env"
-ASSETS_DIR = REPO_ROOT / "linux/webserver/dist/assets/documents/footer"
+ASSETS_DIR = REPO_ROOT / "linux/webserver/license-assets/documents/footer"
 
 EN_TEMPLATE = """# Open Source Licenses
 

@@ -55,11 +55,6 @@ jobs:
           shellcheck --exclude=SC1090,SC1091,SC2034,SC2154 \
             $(find linux/scripts -name '*.sh' | sort) || true
 
-      - name: Copy docs
-        run: |
-          cp README.md docs/source/README.md
-          cp CHANGELOG.md docs/source/CHANGELOG.md
-
       - name: Build web page
         run: |
           source .venv/bin/activate

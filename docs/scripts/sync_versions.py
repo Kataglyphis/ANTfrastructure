@@ -241,7 +241,7 @@ def inline_marker_target_files() -> list[Path]:
     return sorted(
         path
         for path in (REPO_ROOT / "docs").rglob("*.md")
-        if "_build" not in path.parts and ".venv" not in path.parts and "source/" not in path.parts
+        if "_build" not in path.parts and ".venv" not in path.parts
     ) + [REPO_ROOT / "README.md", REPO_ROOT / "AGENTS.md"]
 
 

@@ -59,13 +59,10 @@ The smoke test validates (1) build tools, (2) Python 3.14, (3) Rust, (4) LLVM/Cl
 
 **Symptom:** caching is weird or files cannot be found.
 
-**Solution:**
+**Solution:** If sccache is interfering with builds, unset the wrapper:
 
 ```bash
-# change this line
-RUSTC_WRAPPER= /usr/bin/sccache 
-# to
-RUSTC_WRAPPER="" 
+RUSTC_WRAPPER=
 ```
 
 ### No space left on this device
