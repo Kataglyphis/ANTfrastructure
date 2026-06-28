@@ -58,7 +58,7 @@ sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-c
 # on Windows you must expose ports one by one
 sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 
-# Legacy QEMU/binfmt image:
+# Alternative: QEMU/binfmt multi-platform build:
 # sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
@@ -123,30 +123,12 @@ nerdctl build --platform linux/amd64 \
   . 2>&1 | tee ./out/build-logs/wrapper-smoke-cross.log
 ```
 
-The runtime helpers use the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag.
+The `build-runtime-manifest.sh` helper uses the same local-only handoff internally, so `--skip-manifest` and other non-push runs do not require a registry-visible base/package tag.
 - `build-runtime-manifest.sh --manifest-only` (alias `--repair`) creates/pushes the manifest only,
   useful for repairing a manifest from existing per-arch wrappers without rebuilding images.
-They still run the Torch stage on the real target platform so the final image includes `/opt/venv`.
+The runtime helpers still run the Torch stage on the real target platform so the final image includes `/opt/venv`.
 
-In cross mode, the media artifact lane makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`. The final Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels instead of re-resolving the same git sources under QEMU. If a reused cross artifact has an empty `/opt/wheels`, that Torch step keeps the packages that `uv sync` already resolved instead of trying to install a literal `/opt/wheels/*.whl` glob.
-
-The package stage must keep `/usr/bin/clang` pointed at the copied target-native `/usr/local/llvm-target/bin/clang` on all architectures; do not let it fall back to distro `/usr/local/llvm-22` on `arm64` or `riscv64`. On all architectures, `/usr/bin/cc` points to the source-built `/opt/gcc-16.1.0/bin/gcc`. On `amd64`, GCC is built natively. On `arm64` and `riscv64`, GCC is cross-compiled from source (Canadian cross) during the toolchain stage so `/opt/gcc-16.1.0/bin/gcc` is a target-native binary; `Dockerfile.android` swaps it in at the end of the Android stage.
-
-On this host, prefer `linux/scripts/build-runtime-artifacts.sh` and `linux/scripts/build-runtime-manifest.sh` over ad hoc `nerdctl build` loops.
-
-When you rebuild a cross SDK artifact from an older `cross-compiler-amd64` base, `linux/Dockerfile.sdk` now forwards the checked-in `LLVM_RELEASE` into `target-clang` so `/opt/llvm-target` is refreshed to the repository pin instead of inheriting a stale base-image environment value.
-
-Those temporary stage contexts now default to `${XDG_CACHE_HOME:-$HOME/.cache}/opencode/runtime-build-contexts` and each one is deleted after the next stage finishes using it. Both runtime helpers accept `--target-arches`, `TARGET_ARCHES`, and `TARGET_ARCH` for selecting target architectures.
-
-The main repo-root Linux Dockerfiles now use Dockerfile-specific ignore files too, so routine Linux builds no longer send the large `linux/webserver/` tree through the base/toolchain/sdk/media/android/package/torch/wrapper contexts.
-
-When you are feeding locally saved runtime artifacts back into later builds:
-
-- Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so exported OCI layouts and rootfs trees do not get sent back as a later build context.
-- Prefer saved OCI layouts such as `out/local-oci/android/<arch>` for foreign-architecture runtime packaging. The plain directory exports under `out/local-android-dir/<arch>` are much larger, and an earlier OCI-to-directory conversion dropped `/usr/local/lib/onnxruntime-cpu`.
-- On this host, the verified local runtime path mixes context types: the heavy `runtime_artifact` input comes from an `oci-layout://...` context, while the intermediate `runtime_base` handoff stays a plain rootfs directory because one build still fails when it consumes two named OCI image contexts at once.
-- `readlink -f` on symlinks inside `out/linux-runtime/*/rootfs` resolves absolute links against the host root, so use plain `readlink` or validate from inside the built image when checking `/usr/bin/cc`, `/usr/bin/clang`, `/etc/alternatives/cc`, and `/etc/alternatives/clang`.
-- Local BuildKit and containerd stores can still grow very large during repeated runtime rebuilds, so prune old images and exported artifacts if disk pressure returns.
+See `docs/linux-cross-builds.md` for details on the riscv64 app wheelhouse, GCC compilation patterns (native vs Canadian cross), clang/cc symlink setup, LLVM_RELEASE forwarding through SDK rebuilds, and Dockerfile-specific ignore files.
 
 
 Not supported / not needed:

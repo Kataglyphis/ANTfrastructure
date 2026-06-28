@@ -129,7 +129,7 @@
           "dockerfile": null,
           "entries": [
             {"name": "CUDA", "var": "CUDA_VERSION", "url": "https://developer.nvidia.com/cuda-toolkit", "license": "NVIDIA EULA"},
-            {"name": "cuDNN", "var": "CUDNN_VERSION_FULL", "url": "https://developer.nvidia.com/cudnn", "license": "NVIDIA cuDNN EULA"}
+            {"name": "cuDNN", "var": "CUDNN_VERSION", "url": "https://developer.nvidia.com/cudnn", "license": "NVIDIA cuDNN EULA"}
           ]
         },
         {
