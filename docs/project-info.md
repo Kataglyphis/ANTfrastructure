@@ -148,6 +148,16 @@ RUSTC_WRAPPER=""
 - With `--oci-worker-net=host` set, plain `nerdctl build` already uses host networking; you do not need to pass `--network host`.
 - For repeated LLVM rebuilds, the host-net change is the main lever. For an even bigger win, cache the LLVM source on the host instead of re-fetching it every build.
 
+### Local runtime artifacts: OCI layouts, rootfs, and disk usage
+
+When feeding locally saved runtime artifacts back into later builds:
+
+- Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so exported OCI layouts and rootfs trees do not get sent back as a later build context.
+- Prefer saved OCI layouts such as `out/local-oci/android/<arch>` for foreign-architecture runtime packaging. The plain directory exports under `out/local-android-dir/<arch>` are much larger, and an earlier OCI-to-directory conversion dropped `/usr/local/lib/onnxruntime-cpu`.
+- On this host, the verified local runtime path mixes context types: the heavy `runtime_artifact` input comes from an `oci-layout://...` context, while the intermediate `runtime_base` handoff stays a plain rootfs directory because one build still fails when it consumes two named OCI image contexts at once.
+- `readlink -f` on symlinks inside `out/linux-runtime/*/rootfs` resolves absolute links against the host root, so use plain `readlink` or validate from inside the built image when checking `/usr/bin/cc`, `/usr/bin/clang`, `/etc/alternatives/cc`, and `/etc/alternatives/clang`.
+- Local BuildKit and containerd stores can still grow very large during repeated runtime rebuilds, so prune old images and exported artifacts if disk pressure returns.
+
 ### Terminal Freeze or Slowness During Large/Interactive Rebuilds
 
 **Symptom:** Running long interactive `nerdctl build` loops in the foreground causes the terminal to freeze, lag, or experience extremely slow download rates with direct terminal stdout.
