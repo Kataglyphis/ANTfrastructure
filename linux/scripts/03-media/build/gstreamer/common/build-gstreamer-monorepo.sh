@@ -47,20 +47,31 @@ prebuild_gstreamer_riscv_targets() {
 }
 
 compute_gstreamer_meson_jobs() {
-  local jobs
-  if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-      jobs="$(compute_jobs_with_mem_cap "" 1000)"
+  local jobs mem_total_mb
+  mem_total_mb="$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{printf "%d", $2/1024}')" || mem_total_mb=""
+  if [ -n "${mem_total_mb}" ] && [ "${mem_total_mb}" -lt 16000 ]; then
+    # On low-memory hosts, force AGGRESSIVE_PARALLELISM behavior to reduce
+    # job count. arm64 cross builds under QEMU are especially memory-hungry.
+    if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
+      jobs="$(compute_jobs_with_mem_cap "" 3000)"
     else
-      jobs="$(compute_jobs_with_mem_cap "" 2000)"
+      jobs="1"
     fi
   else
-    jobs="$(nproc --all 2>/dev/null || echo 1)"
+    if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
+      if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
+        jobs="$(compute_jobs_with_mem_cap "" 1000)"
+      else
+        jobs="$(compute_jobs_with_mem_cap "" 2000)"
+      fi
+    else
+      jobs="$(nproc --all 2>/dev/null || echo 1)"
+    fi
   fi
   # arm64 cross-compilation of heavy subprojects (gtk4, glib) under QEMU
-  # consumes ~3-4x more memory per job than native. Cap at 4 to avoid OOM.
+  # consumes ~3-4x more memory per job than native. Cap at 2 to avoid OOM.
   if cross_build_is_active && [ "${TARGET_MACHINE_ARCH}" = "arm64" ]; then
-    [ "${jobs}" -gt 4 ] && jobs=4
+    [ "${jobs}" -gt 2 ] && jobs=2
   fi
   printf '%s' "${jobs}"
 }

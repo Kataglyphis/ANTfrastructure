@@ -119,7 +119,7 @@ images).  Each upstream component carries its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | CUDA | 13.3.0 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
-| cuDNN | — | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
+| cuDNN | 9 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 
 ### Media Layer
 
