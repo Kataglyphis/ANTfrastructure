@@ -189,8 +189,12 @@ configure_litert() {
 
     if command -v cross_target_arch >/dev/null 2>&1; then
         local _litert_arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
-        # GCC 16.1.0 ICEs on LiteRT's Samsung vendor code on ALL architectures
-        info "Removing Samsung vendor sources to avoid GCC 16.1.0 ICE (arch=${_litert_arch})"
+        # GCC 16.1.0 ICEs on LiteRT's Samsung vendor code. The ICE is
+        # triggered by the cross-compiler toolchain used in cross builds; on
+        # native amd64 we keep the sources and use clang instead (see
+        # append_litert_preferred_cmake_compiler_args above). Track upstream
+        # GCC bug and revisit once 16.x is fixed or pinned to an older minor.
+        info "Removing Samsung vendor sources to avoid GCC 16.1.0 ICE in cross builds (arch=${_litert_arch})"
         rm -rf "${LITERT_SRC}/litert/vendors/samsung" 2>/dev/null || true
         mkdir -p "${LITERT_SRC}/litert/vendors/samsung"
         cat > "${LITERT_SRC}/litert/vendors/samsung/CMakeLists.txt" <<CMAKE_EOF
@@ -608,48 +612,16 @@ install_manual() {
     # <tflite/interpreter.h>. Downstream consumers such as libcamera's
     # rpi/awb_nn.cpp include tflite/interpreter.h and therefore need the absl
     # headers on the include path. Copy them next to the tflite headers.
-    info "Downloading abseil-cpp headers directly..."
-    absl_found=0
-    local absl_tag="${ABSEIL_VERSION:-20240722.0}"
-    local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_tag}.tar.gz"
-    local absl_tar="/abseil-${absl_tag}.tar.gz"
-    if command -v curl >/dev/null 2>&1; then
-        curl -fSL --retry 3 "${absl_url}" -o "${absl_tar}" || { warn "curl download failed"; absl_tar=""; }
-    elif command -v wget >/dev/null 2>&1; then
-        wget --retry-connrefused --timeout=30 -O "${absl_tar}" "${absl_url}" || { warn "wget download failed"; absl_tar=""; }
-    else
-        warn "Neither curl nor wget available for abseil download"
-        absl_tar=""
-    fi
-    if [ -n "${absl_tar}" ] && [ -f "${absl_tar}" ]; then
-        info "Extracting abseil-cpp headers..."
-        mkdir -p "${include_dir}/absl"
-        tar -xzf "${absl_tar}" -C "${include_dir}" --strip-components=1 --wildcards '*/absl/*.h' '*/absl/**/*.h' 2>/dev/null || \
-        tar -xzf "${absl_tar}" -C "${include_dir}" --strip-components=1 --no-wildcards --files-from <(tar -tzf "${absl_tar}" | grep '/absl/.*\.h$') 2>/dev/null || {
-            local absl_tmp="/tmp/abseil-extract-$$"
-            mkdir -p "${absl_tmp}"
-            tar -xzf "${absl_tar}" -C "${absl_tmp}" 2>/dev/null
-            local absl_src
-            absl_src=$(find "${absl_tmp}" -maxdepth 2 -type d -name "abseil-cpp*" -print -quit 2>/dev/null || true)
-            if [ -n "${absl_src}" ] && [ -d "${absl_src}/absl" ]; then
-                info "Falling back to copy from ${absl_src}/absl..."
-                find "${absl_src}/absl" -type f \( -name "*.h" -o -name "*.inc" \) -exec cp --parents "{}" "${include_dir}/" \; 2>/dev/null || true
-            fi
-            rm -rf "${absl_tmp}"
-        }
-        rm -f "${absl_tar}"
-        if [ -f "${include_dir}/absl/types/span.h" ]; then
-            info "Verified absl/types/span.h"
-            absl_found=1
-        fi
-    fi
-    if [ "$absl_found" -eq 0 ]; then
-        warn "Abseil headers not found after direct download; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile"
-    fi
-    if [ "$absl_found" -eq 1 ] && [ -f "${include_dir}/absl/types/span.h" ]; then
-        info Verified: absl/types/span.h is accessible
-    else
+    #
+    # Canonical implementation lives in 01-core/abseil-headers.sh (Critical Fix #2).
+    # The helper is idempotent and skips if span.h is already present.
+    if ! install_abseil_headers "${include_dir}"; then
         warn "Abseil headers not found; tflite-consuming targets (e.g. libcamera awb_nn) may fail to compile"
+        if [ -f "${include_dir}/absl/types/span.h" ]; then
+            info "Verified: absl/types/span.h is accessible"
+        fi
+    else
+        info "Verified: absl/types/span.h is accessible"
     fi
 
     mkdir -p "${lib_dir}/pkgconfig"

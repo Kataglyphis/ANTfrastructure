@@ -86,10 +86,6 @@ ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
 # Build GenAI
 cd "${GENAI_SRC_DIR}"
 
-# Shared build acceleration (lld + ccache) — same flags as the CPU build
-append_onnx_lld_build_args BUILD_ARGS || true
-append_onnx_ccache_build_args BUILD_ARGS || true
-
 # Common base args shared between GPU and CPU builds
 GENAI_BASE_ARGS=(
   --config "${GENAI_CONFIG}"
@@ -99,6 +95,12 @@ GENAI_BASE_ARGS=(
   --cmake_extra_defines
   "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
 )
+
+# Shared build acceleration (lld + ccache) — applied to GENAI_BASE_ARGS so they
+# are actually passed to build.py (previously targeted an undeclared BUILD_ARGS
+# array and silently no-op'd via `|| true`).
+append_onnx_lld_build_args GENAI_BASE_ARGS
+append_onnx_ccache_build_args GENAI_BASE_ARGS
 
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   ORT_HOME="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"

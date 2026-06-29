@@ -81,11 +81,6 @@ if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
   )
 fi
 
-if [ "${ORT_ENABLE_TVM:-false}" = "true" ]; then
-  warn "TVM EP requested but ORT build.py no longer supports --use_tvm (removed after ORT 1.16)."
-  warn "TVM integration is handled via the TVM runtime, not the ORT EP. Skipping."
-fi
-
 if [ "${ORT_ENABLE_ARMNN:-true}" = "true" ]; then
   case "${TARGET_ARCH:-${TARGETARCH:-}}" in
     arm64|aarch64)

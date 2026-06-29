@@ -113,6 +113,7 @@ media_common_init() {
   source_module compiler-resolution.sh || true
   source_module python-host.sh       || true
   source_module cmake-cache-linker.sh || true
+  source_module abseil-headers.sh    || true
 
   # Ensure cross_build_is_active is always defined. The canonical definition
   # lives in cross-env.sh (sourced above), and a fallback exists in

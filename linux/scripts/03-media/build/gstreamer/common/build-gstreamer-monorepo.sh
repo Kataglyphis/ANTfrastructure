@@ -368,8 +368,10 @@ build_gstreamer_monorepo() {
     fi
   fi
 
-  # Fix the tensorflow-lite.pc file if it has trailing braces from the
-  # LiteRT .pc generation.
+  # Defensive cleanup: the root-cause was a bash `${6:--L\${libdir}}` parsing
+  # bug in generate_pkgconfig_file() that left a stray `}` after `-ltensorflow-lite`.
+  # That's been fixed in 01-core/common.sh, but keep this idempotent sanitizer so
+  # images rebuilt from older toolchain still produce a valid pc file at runtime.
   if [ -f /usr/local/lib/pkgconfig/tensorflow-lite.pc ]; then
     if grep -q 'ltensorflow-lite}' /usr/local/lib/pkgconfig/tensorflow-lite.pc 2>/dev/null; then
       sed -i 's/-ltensorflow-lite}/-ltensorflow-lite/g' /usr/local/lib/pkgconfig/tensorflow-lite.pc
@@ -418,7 +420,7 @@ build_gstreamer_monorepo() {
   echo "Compiling GStreamer..."
   if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
     echo "ERROR: Meson compile failed"
-    echo "==> Letzte Zeilen der Compile-Logs:"
+    echo "==> Last lines of compile logs:"
     tail -n 20000 /tmp/meson-compile.log || true
     echo "==> Meson log:"
     tail -n +1 builddir/meson-logs/meson-log.txt || true

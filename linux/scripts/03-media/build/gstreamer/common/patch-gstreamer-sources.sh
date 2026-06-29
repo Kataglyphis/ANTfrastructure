@@ -222,6 +222,9 @@ patch_gstreamer_sources() {
      grep -Fq "extra_env = {}" "${gst_plugins_rs_meson}" && \
      ! grep -Fq "extra_env += {'CARGO_BUILD_TARGET': cargo_build_target}" "${gst_plugins_rs_meson}"; then
     perl -0pi -e "s/extra_env = \{\}\n/extra_env = {}\n\ncargo_build_target = ''\nif python.found()\n  cargo_build_target = run_command(python, '-c', 'import os; print(os.environ.get(\"CARGO_BUILD_TARGET\") or os.environ.get(\"CROSS_RUST_TARGET\") or \"\")', check: true).stdout().strip()\nendif\nif cargo_build_target != ''\n  extra_env += {'CARGO_BUILD_TARGET': cargo_build_target}\nendif\n/" "${gst_plugins_rs_meson}"
+    if ! grep -Fq "extra_env += {'CARGO_BUILD_TARGET': cargo_build_target}" "${gst_plugins_rs_meson}" 2>/dev/null; then
+      echo "WARNING: gst-plugins-rs meson.build CARGO_BUILD_TARGET patch did not apply (upstream reformatted?); cross Rust target may fall back to host triple" >&2
+    fi
   fi
 
   patch_gstreamer_opencv5_compat "${repo_root}"

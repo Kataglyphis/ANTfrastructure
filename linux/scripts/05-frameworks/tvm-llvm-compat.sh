@@ -45,7 +45,14 @@ maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
     [ -n "$gcc_full" ] || gcc_full="$($real_cxx -dumpversion 2>/dev/null || true)"
     gcc_major="${gcc_full%%.*}"
   fi
-  [ -n "$gcc_major" ] || gcc_major="14"
+  # Fallback to the canonical GCC version from versions.env if present
+  # (avoids the stale hardcoded `14` that predates the source-built GCC 16.x
+  # toolchain). GCC_VERSION is exported by artifact-common.sh / common.sh.
+  if [ -z "$gcc_major" ] && [ -n "${GCC_VERSION:-}" ]; then
+    gcc_major="${GCC_VERSION%%.*}"
+  fi
+  # Last-resort safety net (matches versions.env GCC_VERSION=16.1.0).
+  [ -n "$gcc_major" ] || gcc_major="16"
 
   local real_cxx_path="${real_cxx}"
   if [ -x "$real_cxx" ]; then

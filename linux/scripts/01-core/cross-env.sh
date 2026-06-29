@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # cross-env.sh - shared helpers for amd64-hosted target builds
+[ -n "${_CROSS_ENV_SH_LOADED:-}" ] && return 0
+_CROSS_ENV_SH_LOADED=1
 
 _CROSS_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CROSS_ENV_APT_UPDATED="${_CROSS_ENV_APT_UPDATED:-0}"

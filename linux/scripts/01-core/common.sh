@@ -185,6 +185,23 @@ llvm_release_version() {
   esac
 }
 
+# Single source of truth for the "wanted" LLVM major. Use instead of the
+# ${LLVM_WANTED:-${CLANG_WANTED:-22}} fallback chain so a future LLVM bump
+# (versions.env LLVM_RELEASE) only needs to update common.sh's literal above
+# (the `22` literal there is loaded into LLVM_WANTED at module-load time via
+# the block above this function).
+llvm_wanted_major() {
+  if [ -n "${LLVM_WANTED:-}" ]; then
+    printf '%s' "${LLVM_WANTED}"
+    return 0
+  fi
+  if [ -n "${CLANG_WANTED:-}" ]; then
+    printf '%s' "${CLANG_WANTED}"
+    return 0
+  fi
+  printf '%s' "22"
+}
+
 llvm_git_tag() {
   printf '%s' "llvmorg-$(llvm_release_version "$@")"
 }
@@ -216,7 +233,17 @@ run_cmake_build_with_fallback() {
 # Usage: generate_pkgconfig_file <path> <name> <description> <version> <prefix> [libs] [cflags] [requires]
 generate_pkgconfig_file() {
   local pc_path="$1" name="$2" desc="$3" ver="$4" prefix="$5"
-  local libs="${6:--L\${libdir}}" cflags="${7:--I\${includedir}}" requires="${8:-}"
+  local libs cflags requires
+  # NOTE: do NOT use `${6:--L\${libdir}}` here — bash's expansion of `:-`
+  # defaults eats the trailing `}` of `${libdir}` and emits a stray literal
+  # `}` into the .pc file (the root cause of the LiteRT
+  # `tensorflow-lite.pc` trailing-brace bug, worked around in
+  # build-gstreamer-monorepo.sh for years).
+  libs="${6:-}"
+  [ -n "${libs}" ] || libs='-L${libdir}'
+  cflags="${7:-}"
+  [ -n "${cflags}" ] || cflags='-I${includedir}'
+  requires="${8:-}"
   local pc_dir
   pc_dir="$(dirname "${pc_path}")"
   mkdir -p "${pc_dir}"

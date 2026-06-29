@@ -685,9 +685,10 @@ configure_ffmpeg() {
         configure_opts+=("--enable-libx264")
     fi
 
-    if ffmpeg_probe_libx265; then
-        configure_opts+=("--enable-libx265")
-    fi
+    # NOTE: libx265 is intentionally NOT enabled here. The configure probe
+    # passes but compilation fails with newer x265 releases (see the explicit
+    # --disable-libx265 later in this function). Re-enable only after upstream
+    # x265/FFmpeg source compatibility is restored.
     
     # Optional codecs - add if libraries are available
     if cross_build_is_active && [ "$(cross_target_arch)" = "riscv64" ]; then
@@ -790,8 +791,8 @@ configure_ffmpeg() {
         configure_opts+=("--cxx=${CXX}")
     fi
 
-    # Disable x265 if the installed library API is incompatible with this FFmpeg
-    # version (the configure probe passes but compilation fails with newer x265).
+    # Explicitly disable libx265: the configure probe passes but FFmpeg
+    # compilation fails against newer x265 releases (see note above).
     configure_opts+=("--disable-libx265")
     
     if ! ./configure "${configure_opts[@]}"; then
@@ -849,6 +850,8 @@ smoke_test_ffmpeg() {
         return 1
     fi
 
+    local failures=0
+
     # Basic version check
     local version
     version="$("${ffmpeg_bin}" -version 2>&1 | head -1)"
@@ -859,7 +862,8 @@ smoke_test_ffmpeg() {
     if "${ffmpeg_bin}" -filters 2>/dev/null | grep -q "dnn"; then
         echo "FOUND"
     else
-        echo "NOT FOUND (check --enable-dnn or native DNN backend)"
+        echo "FAIL: DNN filter NOT FOUND (check --enable-dnn or native DNN backend)"
+        failures=$((failures + 1))
     fi
 
     # Check enabled backends from configure
@@ -867,9 +871,10 @@ smoke_test_ffmpeg() {
     local backends
     backends="$("${ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null | grep -E "libonnx|libtensorflow|libopenvino|libwebp|libvmaf|nvenc|nvdec|cuda|cuvid" || true)"
     if [ -n "${backends}" ]; then
-        echo "${backends}" | while IFR= read -r line; do echo "    ${line}"; done
+        echo "${backends}" | while IFS= read -r line; do echo "    ${line}"; done
     else
         echo "    (none of the DNN/CUDA/media backends were linked)"
+        failures=$((failures + 1))
     fi
 
     # Verify DNN inference filter can accept input
@@ -877,11 +882,13 @@ smoke_test_ffmpeg() {
     if "${ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "dnn_processing"; then
         echo "YES"
     else
-        echo "NO"
+        echo "FAIL: dnn_processing filter NOT available"
+        failures=$((failures + 1))
     fi
 
-    echo "=== FFmpeg smoke test complete ==="
+    echo "=== FFmpeg smoke test complete (${failures} failure(s)) ==="
     echo ""
+    [ "${failures}" -eq 0 ]
 }
 
 # ------------------------------------------------------------------------------

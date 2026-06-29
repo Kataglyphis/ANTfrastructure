@@ -30,7 +30,7 @@ validate_cross_llvm_cmake_package() {
   llvm_cross_versioned_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || \
     die "Target LLVM versioned shared umbrella lib missing for ${target_label} under ${prefix}"
   llvm_cross_compat_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || \
-    die "Target LLVM compatibility shared umbrella lib missing for ${target_label}: ${prefix}/lib/libLLVM-${LLVM_WANTED:-${CLANG_WANTED:-22}}.so"
+    die "Target LLVM compatibility shared umbrella lib missing for ${target_label}: ${prefix}/lib/libLLVM-$(llvm_wanted_major).so"
   llvm_cross_llvm_config_path "${prefix}" >/dev/null 2>&1 || \
     die "Target llvm-config missing for ${target_label} under ${prefix}/bin"
 
@@ -77,7 +77,7 @@ install_cross_llvm_config_binary() {
   [ -x "${llvm_config_src}" ] || die "Cross llvm-config build output missing for ${target_label}: ${llvm_config_src}"
 
   bin_dir="$(llvm_cross_bin_dir "${target_label}")" || die "Unable to resolve LLVM bin dir for ${target_label}"
-  major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  major="$(llvm_wanted_major)"
   major="$(version_major "${major}")"
 
   mkdir -p "${bin_dir}"

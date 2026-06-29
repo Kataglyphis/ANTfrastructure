@@ -6,11 +6,26 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
     source /opt/scripts/core/cross-env.sh
 fi
 
+# Source canonical versions.env so PYTORCH_VERSION / TORCHVISION_VERSION are
+# always available even when this script is invoked outside the orchestrator
+# (which is the typical case in the media app-wheelhouse stage). Fallback paths
+# below still exist but now mirror versions.env rather than drifting.
+for _evf in \
+    "/opt/scripts/core/versions.env" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/versions.env"; do
+    if [ -f "${_evf}" ]; then
+        # shellcheck disable=SC1091
+        set -a; source "${_evf}"; set +a
+        break
+    fi
+done
+unset _evf
+
 : "${APP_WHEELHOUSE_DIR:=/opt/app-wheels}"
 : "${APP_WHEELHOUSE_BUILD_ROOT:=/tmp/app-wheelhouse}"
-: "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.12.0}}"
+: "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.12.1}}"
 : "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
-: "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.27.0}}"
+: "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.27.1}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 

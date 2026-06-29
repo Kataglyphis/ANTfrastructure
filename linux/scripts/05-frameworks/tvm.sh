@@ -512,14 +512,23 @@ append_tvm_cmake_args() {
   local llvm_dir="$7"
   local llvm_ignore_paths="$8"
   local use_vulkan="$9"
-  local spirv_tools_lib="${10:-}"
-  local cross_link_flags="${11:-}"
+  local use_cuda="${10:-0}"
+  local use_opencl="${11:-0}"
+  local spirv_tools_lib="${12:-}"
+  local cross_link_flags="${13:-}"
   local -n out_ref="${out_name}"
+
+  # Normalize 0/1 booleans to OFF/ON for TVM's CMake (which accepts both forms,
+  # but ON/OFF is what its docs and validate scripts print).
+  local cuda_flag="OFF"
+  local opencl_flag="OFF"
+  if [ "${use_cuda:-0}" -eq 1 ]; then cuda_flag="ON"; fi
+  if [ "${use_opencl:-0}" -eq 1 ]; then opencl_flag="ON"; fi
 
   out_ref+=(
     -DCMAKE_BUILD_TYPE="$build_type"
-    -DUSE_OPENCL=OFF
-    -DUSE_CUDA=OFF
+    -DUSE_OPENCL="${opencl_flag}"
+    -DUSE_CUDA="${cuda_flag}"
     "-DTVM_BUILD_PYTHON_MODULE=${python_module}"
   )
 
@@ -684,6 +693,8 @@ main() {
   local llvm_ignore_paths=""
   local prefix="${TVM_PREFIX:-}"
   local use_vulkan="${TVM_USE_VULKAN:-1}"
+  local use_cuda="${TVM_USE_CUDA:-0}"
+  local use_opencl="${TVM_USE_OPENCL:-0}"
   local requested_jobs="${TVM_JOBS:-}"
   local mb_per_job="${TVM_MB_PER_JOB:-2000}"
   local llvm_cmake_value="OFF"
@@ -700,6 +711,8 @@ main() {
       --llvm-config) llvm_config="$2"; shift 2 ;;
       --llvm-dir)    llvm_dir="$2"; shift 2 ;;
       --use-vulkan)  use_vulkan=1; shift ;;
+      --use-cuda)   use_cuda=1; shift ;;
+      --use-opencl) use_opencl=1; shift ;;
       --clean)       do_clean=1; shift ;;
       --no-apt)      do_apt=0; shift ;;
       --no-python)   do_python=0; shift ;;
@@ -871,6 +884,8 @@ main() {
     "$llvm_dir" \
     "$llvm_ignore_paths" \
     "$use_vulkan" \
+    "$use_cuda" \
+    "$use_opencl" \
     "$spirv_tools_lib" \
     "$cross_link_flags"
 
@@ -911,7 +926,7 @@ tvm_build_wheel() {
     mkdir -p "$TVM_WHEEL_DIR"
     rm -f "${TVM_WHEEL_DIR}"/*.whl
 
-    append_tvm_cmake_args \
+append_tvm_cmake_args \
       wheel_cmake_args \
       ON \
       "$build_type" \
@@ -921,6 +936,8 @@ tvm_build_wheel() {
       "$llvm_dir" \
       "$llvm_ignore_paths" \
       "$use_vulkan" \
+      "$use_cuda" \
+      "$use_opencl" \
       "$spirv_tools_lib" \
       "$cross_link_flags"
 

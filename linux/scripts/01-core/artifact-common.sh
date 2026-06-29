@@ -70,7 +70,8 @@ for _ac_module in \
   tag-naming.sh stage-defs.sh digest-pinning.sh chain-verify.sh \
   build-helpers.sh cross-stage-build.sh \
   context-management.sh version-forwarding.sh cli-parsers.sh \
-  runtime-build-fns.sh compiler-resolution.sh parallel-loop.sh; do
+  runtime-build-fns.sh compiler-resolution.sh parallel-loop.sh \
+  abseil-headers.sh path-helpers.sh; do
   if [ -f "${_ARTIFACT_COMMON_DIR}/${_ac_module}" ]; then
     source "${_ARTIFACT_COMMON_DIR}/${_ac_module}"
   fi

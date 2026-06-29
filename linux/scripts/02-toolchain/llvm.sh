@@ -226,7 +226,7 @@ llvm_cross_versioned_shared_umbrella_lib_path() {
 
 llvm_cross_compat_shared_umbrella_lib_path() {
   local prefix="$1"
-  local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  local major="$(llvm_wanted_major)"
   local candidate
 
   major="$(version_major "${major}")"
@@ -243,7 +243,7 @@ llvm_cross_compat_shared_umbrella_lib_path() {
 
 llvm_cross_llvm_config_path() {
   local prefix="$1"
-  local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  local major="$(llvm_wanted_major)"
   local candidate
 
   major="$(version_major "${major}")"
@@ -418,7 +418,7 @@ _LLVM_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_LLVM_SH_DIR}/llvm-validate.sh"
 
 llvm_host_native_tool_dir() {
-  local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  local major="$(llvm_wanted_major)"
   local candidate
 
   major="$(version_major "${major}")"

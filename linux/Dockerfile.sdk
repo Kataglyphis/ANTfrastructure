@@ -26,9 +26,17 @@ ENV BUILD_MODE=${BUILD_MODE} \
     BUILDARCH=${BUILDARCH} \
     BUILDPLATFORM=${BUILDPLATFORM} \
     VULKAN_VERSION=${VULKAN_VERSION} \
-    LLVM_RELEASE=${LLVM_RELEASE} \
-    PATH="/opt/flutter/bin:${PATH}" \
-    FLUTTER_ROOT=/opt/flutter
+    LLVM_RELEASE=${LLVM_RELEASE}
+# Flutter is amd64+arm64 only (riscv64 is silently skipped by setup-flutter.sh).
+# Only advertise FLUTTER_ROOT / prepend PATH on arches that actually install Flutter.
+RUN if [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "riscv64" ]; then \
+      echo 'export PATH="/opt/flutter/bin:${PATH}"' >> /etc/profile.d/flutter.sh && \
+      echo 'export FLUTTER_ROOT=/opt/flutter'        >> /etc/profile.d/flutter.sh ; \
+    fi
+# FLUTTER_ROOT / Flutter PATH are intentionally NOT in a global ENV because
+# Flutter is riscv64-skipped. Login shells pick them up via /etc/profile.d on
+# amd64/arm64 only (see RUN above), so on riscv64 the image honestly advertises
+# "no Flutter" instead of pointing at a non-existent dir.
 # 01-core/ and 02-toolchain/ scripts are inherited from the compiler base image.
 # Nothing additional needs to be copied here.
 
@@ -125,12 +133,19 @@ COPY --chmod=755 linux/scripts/05-frameworks/ /opt/scripts/frameworks/
 ARG TVM_REF=v0.24.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
+# CUDA / OpenCL are disabled by default — GPU EP layers build separately via
+# Dockerfile.nvidia / Dockerfile.amd. Exposed as ARGs for parity with
+# TVM_USE_VULKAN so callers can opt in without editing the script.
+ARG TVM_USE_CUDA=0
+ARG TVM_USE_OPENCL=0
 ARG TVM_INSTALL_PYTHON=1
 ARG FLUTTER_VERSION
 
 ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
     TVM_USE_VULKAN=${TVM_USE_VULKAN} \
+    TVM_USE_CUDA=${TVM_USE_CUDA} \
+    TVM_USE_OPENCL=${TVM_USE_OPENCL} \
     TVM_INSTALL_PYTHON=${TVM_INSTALL_PYTHON}
 
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \

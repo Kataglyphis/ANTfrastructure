@@ -113,26 +113,11 @@ fi
 
 # Ensure abseil-cpp headers are available for tflite-dependent sources
 # (rpi/awb_nn.cpp includes tflite/interpreter.h -> tflite/util.h -> absl/types/span.h).
-if [ ! -f /usr/local/include/absl/types/span.h ]; then
-  echo "Downloading abseil-cpp headers for tflite compat..."
-  local absl_ver="${ABSEIL_VERSION:-20240722.0}"
-  local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_ver}.tar.gz"
-  local absl_tar="/tmp/abseil-${absl_ver}.tar.gz"
-  mkdir -p /usr/local/include/absl
-  if command -v curl >/dev/null 2>&1; then
-    curl -fSL --retry 3 "${absl_url}" -o "${absl_tar}" 2>/dev/null
-  elif command -v wget >/dev/null 2>&1; then
-    wget --retry-connrefused --timeout=30 -O "${absl_tar}" "${absl_url}" 2>/dev/null
-  fi
-  if [ -f "${absl_tar}" ]; then
-    tar -xzf "${absl_tar}" -C /usr/local/include --strip-components=1 \
-      "abseil-cpp-${absl_ver}/absl" 2>/dev/null && rm -f "${absl_tar}"
-  fi
-  if [ ! -f /usr/local/include/absl/types/span.h ]; then
-    echo "ERROR: Failed to install abseil-cpp headers for tflite compat"
-    exit 1
-  fi
-  echo "abseil-cpp headers installed to /usr/local/include/absl/"
+# Canonical implementation: 01-core/abseil-headers.sh (Critical Fix #2).
+# libcamera ships in the same image as LiteRT which installs abseil under
+# /usr/local/include/absl, so this install pinpoints the same location.
+if ! install_abseil_headers "/usr/local/include"; then
+  err "Failed to install abseil-cpp headers for tflite compat"
 fi
 
 MESON_SETUP_ARGS=(

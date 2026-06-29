@@ -4,6 +4,8 @@
 #
 # Provides:
 #   append_version_build_args()   — append --build-arg VAR=$VAR for all tracked versions
+[ -n "${_VERSION_FORWARDING_SH_LOADED:-}" ] && return 0
+_VERSION_FORWARDING_SH_LOADED=1
 
 _VF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
