@@ -337,10 +337,13 @@ int _isatty(int);
         '-Dges=enabled',
         '-Drtsp_server=enabled',
         '-Dtools=enabled',
-        # Provide stub unistd.h; disable cairo Win32 (avoids LLVM 22 mmintrin.h bug)
+        # Provide stub unistd.h for Windows CRT compatibility
         "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
         # svtjpegxs disabled: defines local access() function that conflicts with Windows CRT
         '-Dgst-plugins-bad:svtjpegxs=disabled',
+        # cairo:win32=disabled intentionally fails cairo at meson setup (unknown option in
+        # cairo-1.18.4) — this prevents the LLVM 22 mmintrin.h __builtin_shufflevector crash
+        # that occurs when cairo tries to compile with clang-cl on Windows.
         '-Dcairo:win32=disabled',
         '-Dopus:intrinsics=disabled',
         # nvcodec disabled: D3D11 interop code in gstnvdecoder.cpp uses
