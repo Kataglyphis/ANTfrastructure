@@ -59,17 +59,11 @@ $cmakeExtra = @(
     '-DTFLITE_ENABLE_RESOURCE=ON'
     # GPU delegate via Vulkan/OpenGL ES (primary GPU acceleration on Windows)
     '-DTFLITE_ENABLE_GPU=ON'
-    # GPU delegate via OpenCL (alternative GPU path on Windows)
-    '-DTFLITE_ENABLE_GPU_OPENCL=ON'
     '-DTFLITE_ENABLE_XNNPACK=ON'
     # External delegate support for custom CUDA/ROCm delegates
     '-DTFLITE_ENABLE_EXTERNAL_DELEGATE=ON'
     '-DTFLITE_ENABLE_MMAP=OFF'
     '-DTFLITE_ENABLE_NNAPI=OFF'
-    # Enable hexagon delegate on Windows (dsp sim)
-    '-DTFLITE_ENABLE_HEXAGON=OFF'
-    # Disable profiling (avoids protobuf proto_path compilation error on Windows)
-    '-DTFLITE_ENABLE_PROFILING=OFF'
 )
 
 # Add CUDA paths for external delegate compilation if available
@@ -82,13 +76,7 @@ $llvmLib = (Get-Command 'llvm-lib' -ErrorAction SilentlyContinue).Source
 if (-not $llvmLib) { $llvmLib = (Get-Command 'llvm-lib.exe' -ErrorAction SilentlyContinue).Source }
 if ($llvmLib) { $cmakeExtra += "-DCMAKE_AR:FILEPATH=$llvmLib" }
 
-# Add Vulkan SDK path (needed for GPU delegate Vulkan backend)
-$vulkanSdk = if ($env:VULKAN_SDK) { $env:VULKAN_SDK } else { $null }
-if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
-    $cmakeExtra += "-DVulkan_INCLUDE_DIR=$(Join-Path $vulkanSdk 'Include')"
-    $vulkanLib = Join-Path $vulkanSdk 'Lib'
-    if (Test-Path $vulkanLib) { $cmakeExtra += "-DVulkan_LIBRARY=$(Join-Path $vulkanLib 'vulkan-1.lib')" }
-}
+# Vulkan SDK is auto-detected by LiteRT via VULKAN_SDK env var; no need for explicit paths.
 
 # InstallPrefix passed for CMake generator expressions even though TFLITE_ENABLE_INSTALL=OFF
 $ok = Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra

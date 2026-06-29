@@ -61,25 +61,25 @@ $cmakeExtra = @(
     '-DBUILD_TESTS=OFF', '-DBUILD_PERF_TESTS=OFF', '-DBUILD_EXAMPLES=OFF',
     '-DBUILD_opencv_world=ON',
     '-DBUILD_JPEG=ON', '-DBUILD_PNG=ON', '-DBUILD_TIFF=ON', '-DBUILD_WEBP=ON',
-    '-DBUILD_OPENJPEG=ON', '-DBUILD_HARFBUZZ=ON', '-DBUILD_TBB=OFF',
+    '-DBUILD_OPENJPEG=ON', '-DBUILD_HARFBUZZ=ON', '-DBUILD_TBB=OFF',  # source build only on ARM Windows
     '-DBUILD_CLAPACK=ON', '-DBUILD_IPP_IW=ON',
     '-DBUILD_opencv_python3=OFF', '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
-    '-DWITH_TBB=OFF', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
+    '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
     '-DWITH_OPENGL=ON', '-DWITH_DIRECTX=ON', '-DWITH_DIRECTML=ON',
-    '-DWITH_VULKAN=ON', '-DWITH_EIGEN=OFF',
-    '-DWITH_ONNXRUNTIME=OFF',  # OFF to avoid linking conflicts with the separate source-built ONNX Runtime
+    '-DWITH_VULKAN=ON', '-DWITH_EIGEN=ON',
+    # Use system ONNX Runtime (source-built in a previous stage); disable download
+    '-DWITH_ONNXRUNTIME=ON', '-DOPENCV_DOWNLOAD_ONNXRUNTIME=OFF',
     '-DWITH_VTK=OFF', '-DWITH_MSMF=ON', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
-    '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=ON'
+    '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=ON',
+    # CUDA unconditionally ON; if NVIDIA layer is absent, OpenCV warns and skips gracefully
+    '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
 )
 
 $cudaRoot = Get-CudaRoot
 if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
     $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
     $nvccPath = Join-Path $cudaRoot 'bin\nvcc.exe'
     if (Test-Path $nvccPath) { $cmakeExtra += "-DCMAKE_CUDA_COMPILER=$nvccPath" }
-} else {
-    $cmakeExtra += '-DWITH_CUDA=OFF', '-DWITH_CUDNN=OFF', '-DWITH_CUBLAS=OFF'
 }
 
 # CMAKE_AR: find llvm-lib on PATH and pass full path
