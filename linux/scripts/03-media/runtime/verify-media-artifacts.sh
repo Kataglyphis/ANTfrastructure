@@ -224,12 +224,15 @@ case "${STAGE}" in
 
   armnn)
     echo "=== Arm NN stage integrity check ==="
-    if echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qiE 'arm64|aarch64'; then
-      verify_dir_not_empty "/opt/armnn/lib" "Arm NN libs"
-      verify_dir_not_empty "/opt/acl/lib" "ACL libs"
-    else
-      echo "Skipping Arm NN check (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-unknown}})"
-    fi
+    case "${TARGET_ARCH:-${TARGETARCH:-}}" in
+      arm64|aarch64)
+        verify_dir_not_empty "/opt/armnn/lib" "Arm NN libs"
+        verify_dir_not_empty "/opt/acl/lib" "ACL libs"
+        ;;
+      *)
+        echo "Skipping Arm NN check (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-unknown}})"
+        ;;
+    esac
     ;;
 
   media-inputs)
@@ -239,10 +242,12 @@ case "${STAGE}" in
       verify_dir_not_empty "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib64" "OpenCV lib64 in media-inputs" || true
     fi
     verify_file_exists "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg" "ffmpeg in media-inputs" || true
-    if echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qiE 'arm64|aarch64'; then
-      verify_dir_not_empty "/opt/armnn/lib" "Arm NN in media-inputs" || true
-      verify_dir_not_empty "/opt/acl/lib" "ACL in media-inputs" || true
-    fi
+    case "${TARGET_ARCH:-${TARGETARCH:-}}" in
+      arm64|aarch64)
+        verify_dir_not_empty "/opt/armnn/lib" "Arm NN in media-inputs" || true
+        verify_dir_not_empty "/opt/acl/lib" "ACL in media-inputs" || true
+        ;;
+    esac
     ;;
 
   *)

@@ -203,23 +203,11 @@ patch_cross_llvm_config_template() {
 
   [ -f "${template_file}" ] || die "LLVMConfig.cmake.in not found: ${template_file}"
 
-  python3 - "${template_file}" <<'PY'
-from pathlib import Path
-import sys
+  local _script_dir
+  _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local _apply_patch="${_script_dir}/01-core/apply-patch.sh"
+  local _patch_file="${_script_dir}/patches/llvm/001-component-libs-property.patch"
 
-template_path = Path(sys.argv[1])
-text = template_path.read_text()
-line = 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")'
-marker = 'include(${LLVM_CMAKE_DIR}/LLVM-Config.cmake)'
-
-if line in text:
-    raise SystemExit(0)
-if marker not in text:
-    raise SystemExit(f"expected marker not found in {template_path}")
-
-template_path.write_text(text.replace(marker, marker + '\n' + line, 1))
-PY
-
-  grep -q 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")' "${template_file}" || \
-    die "Failed to patch LLVMConfig.cmake.in for installed package component metadata"
+  bash "${_apply_patch}" "${_patch_file}" "${source_dir}" \
+    "LLVMConfig.cmake.in: set LLVM_COMPONENT_LIBS global property"
 }

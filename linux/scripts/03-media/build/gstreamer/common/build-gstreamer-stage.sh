@@ -14,7 +14,7 @@ case "${1:-}" in
     echo "Build GStreamer from the monorepo source with all plugins."
     echo ""
     echo "Arguments:"
-    echo "  gstreamer_version  Required (e.g. 1.29.1)"
+    echo "  gstreamer_version  Required (e.g. 1.29.2)"
     echo "  prefix             Install prefix (default: /opt/gstreamer)"
     echo "  build_type         Release | Debug (default: Release)"
     echo ""
@@ -28,6 +28,17 @@ esac
 GSTREAMER_VERSION="${1:?gstreamer version is required}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
+
+# Disable Python bindings for cross builds targeting foreign arches.
+# setup-gstreamer.sh and build-gstreamer-monorepo.sh also check
+# cross_target_python_dev_ready and arch-specific patterns, but those
+# are finer-grained checks that may not cover all edge cases (e.g.
+# arm64 with staged Python that still fails GIR generation).
+# This early override ensures consistent behavior regardless of the
+# downstream script's own detection logic.
+if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "amd64" ]; then
+  export GSTREAMER_ENABLE_PYTHON_BINDINGS=false
+fi
 
 ensure_gstreamer_multiarch_layout() {
   local triplet
@@ -98,17 +109,21 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG
 
 append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
 
-set +e
+# Dump diagnostic logs on GStreamer build failure, then propagate the exit code.
+# This replaces the previous set +e / set -e pattern, keeping errexit active
+# throughout the script so intermediate command failures are not masked.
+_dump_gst_build_logs() {
+  local _log
+  echo "=== GStreamer build failed — dumping diagnostic logs ===" >&2
+  for _log in /tmp/meson-compile.log /tmp/meson-setup.log /tmp/gst-install.log /tmp/gstreamer-cairo-debug.txt; do
+    [ -f "${_log}" ] && echo "--- ${_log} ---" >&2 && cat "${_log}" >&2
+  done
+}
+trap '_dump_gst_build_logs' ERR
+
 bash /opt/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh \
   "${GSTREAMER_VERSION}" \
   "${GSTREAMER_PREFIX}" \
   "${BUILD_TYPE}" 2>&1
-rc=$?
-set -e
-if [ ${rc} -ne 0 ]; then
-  echo "ERROR: GStreamer build failed (rc=${rc})" >&2
-  for _log in /tmp/meson-compile.log /tmp/meson-setup.log /tmp/gst-install.log /tmp/gstreamer-cairo-debug.txt; do
-    [ -f "${_log}" ] && echo "=== ${_log} ===" >&2 && cat "${_log}" >&2
-  done
-fi
-exit ${rc}
+
+trap - ERR

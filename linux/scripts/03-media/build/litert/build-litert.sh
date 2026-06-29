@@ -396,17 +396,32 @@ _litert_build_wheel() {
     export TENSORFLOW_DIR="${LITERT_SRC}"
     export TENSORFLOW_LITE_DIR="${LITERT_SRC}/tflite"
     export TENSORFLOW_TARGET="native"
+    export TENSORFLOW_VERSION="${LITERT_VERSION#v}"
 
     mkdir -p "${LITERT_SRC}/tensorflow"
     ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
 
-    # shellcheck disable=SC2016
-    sed -i 's|export TENSORFLOW_DIR=.*|export TENSORFLOW_DIR="${SCRIPT_DIR}/../../.."|g' build_pip_package_with_cmake.sh
-    sed -i 's|TENSORFLOW_VERSION=.*|TENSORFLOW_VERSION="'"${LITERT_VERSION#v}"'"|g' build_pip_package_with_cmake.sh
+    # Build base cmake flags early so EXTRA_CMAKE_FLAGS can be exported
+    # before the patch is applied (the patch script reads this env var).
+    local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON} -DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
+    export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
+
+    # Apply env-var-overrides patch to build_pip_package_with_cmake.sh so it
+    # respects TENSORFLOW_DIR, TENSORFLOW_VERSION, EXTRA_CMAKE_FLAGS, and
+    # replaces -march=native with -idirafter /usr/include.
+    local _apply_patch _patch_file
+    if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -f "/opt/scripts/patches/litert/001-env-var-overrides.patch" ]; then
+        _apply_patch="/opt/scripts/core/apply-patch.sh"
+        _patch_file="/opt/scripts/patches/litert/001-env-var-overrides.patch"
+    else
+        _apply_patch="${SCRIPT_DIR}/01-core/apply-patch.sh"
+        _patch_file="${SCRIPT_DIR}/patches/litert/001-env-var-overrides.patch"
+    fi
+    bash "${_apply_patch}" "${_patch_file}" "${LITERT_SRC}/tflite/tools/pip_package" \
+      "LiteRT build_pip_package_with_cmake.sh env var overrides"
 
     export WHEEL_PROJECT_NAME="ai_edge_litert"
 
-    local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON} -DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
     local native_compiler_args=()
     local wheel_platform_name=""
     local tflite_host_tools_dir=""
@@ -456,27 +471,18 @@ _litert_build_wheel() {
             info Cross wheel target Python arch include dir: ${target_python_arch_include}
         fi
 
+        export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
         export TENSORFLOW_TARGET="native"
         export WHEEL_PLATFORM_NAME="${wheel_platform_name}"
+        export BUILD_FLAGS="-idirafter /usr/include ${TF_CXX_FLAGS:-} -I${PYTHON_INCLUDE:-} -I${PYBIND11_INCLUDE:-} -I${NUMPY_INCLUDE:-}"
         info Building LiteRT wheel in cross mode for $(cross_target_arch)
         info Cross wheel platform tag: ${WHEEL_PLATFORM_NAME}
         info Cross wheel host tools dir: ${tflite_host_tools_dir}
     else
         export TENSORFLOW_TARGET="native"
         unset WHEEL_PLATFORM_NAME || true
+        export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
     fi
-
-    sed -i "s|cmake \"\${TENSORFLOW_LITE_DIR}\"|cmake ${extra_cmake_flags} \"\${TENSORFLOW_LITE_DIR}\"|g" build_pip_package_with_cmake.sh 2>/dev/null || true
-    sed -i "s|cmake \\\\|cmake ${extra_cmake_flags} \\\\|g" build_pip_package_with_cmake.sh 2>/dev/null || true
-
-    if cross_build_is_active; then
-        # shellcheck disable=SC2016
-        sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"-march=native ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh 2>/dev/null || true
-        # shellcheck disable=SC2016
-        sed -i 's|BUILD_FLAGS=${BUILD_FLAGS:-"${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|BUILD_FLAGS=${BUILD_FLAGS:-"-idirafter /usr/include ${TF_CXX_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}|' build_pip_package_with_cmake.sh 2>/dev/null || true
-    fi
-
-    sed -i 's|-march=native ||g' build_pip_package_with_cmake.sh 2>/dev/null || true
 
     export CMAKE_POLICY_VERSION_MINIMUM=3.5
 

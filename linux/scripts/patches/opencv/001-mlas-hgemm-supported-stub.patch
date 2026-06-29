@@ -1,0 +1,27 @@
+diff --git a/3rdparty/mlas/lib/compute.cpp b/3rdparty/mlas/lib/compute.cpp
+index a677ee5..5661d15 100644
+--- a/3rdparty/mlas/lib/compute.cpp
++++ b/3rdparty/mlas/lib/compute.cpp
+@@ -1158,3 +1158,22 @@ MlasGQASupported<float>(
+     MLAS_UNREFERENCED_PARAMETER(TransB);
+     return true;
+ }
++
++#ifdef MLAS_GEMM_ONLY
++// MLAS_GEMM_ONLY stub: MlasHGemmSupported is declared but never defined
++// in SGEMM-only builds; provide a fallback that always returns false.
++// Weak attribute resolves duplicate-symbol conflicts when upstream MLAS
++// also defines this function (e.g. Android NDK lld rejects duplicates).
++__attribute__((weak))
++MLASCALL
++bool
++MlasHGemmSupported(
++    CBLAS_TRANSPOSE TransA,
++    CBLAS_TRANSPOSE TransB
++    )
++{
++    (void)TransA;
++    (void)TransB;
++    return false;
++}
++#endif

@@ -144,7 +144,7 @@ Not supported / not needed:
 
 ```bash
 mkdir -p ./out/build-logs && \
-nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.29.1 --no-cache \
+nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.29.2 --no-cache \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile.media \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \

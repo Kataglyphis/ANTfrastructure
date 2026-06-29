@@ -45,8 +45,8 @@ ARG CUDA_VERSION_DOT=13.3
 # CUDA_VERSION_DOT is CUDA_VERSION_MAJOR_MINOR with hyphen → dot for repo path construction
 
 ARG TARGETARCH
-ARG UBUNTU_CODENAME=plucky
-# UBUNTU_CODENAME is the official codename (plucky for 26.04). Update in lockstep.
+ARG UBUNTU_CODENAME=resolute
+# UBUNTU_CODENAME is the official codename (resolute for 26.04). Update in lockstep.
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL

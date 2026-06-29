@@ -1,0 +1,19 @@
+diff --git a/subprojects/gst-plugins-rs/meson.build b/subprojects/gst-plugins-rs/meson.build
+index 3c93c15..d360cc4 100644
+--- a/subprojects/gst-plugins-rs/meson.build
++++ b/subprojects/gst-plugins-rs/meson.build
+@@ -46,6 +46,14 @@ endif
+ # Extra env to pass to cargo
+ extra_env = {}
+ 
++cargo_build_target = ''
++if python.found()
++  cargo_build_target = run_command(python, '-c', 'import os; print(os.environ.get("CARGO_BUILD_TARGET") or os.environ.get("CROSS_RUST_TARGET") or "")', check: true).stdout().strip()
++endif
++if cargo_build_target != ''
++  extra_env += {'CARGO_BUILD_TARGET': cargo_build_target}
++endif
++
+ # Used to not lookup the same dependency multiple times which clutters logs
+ deps_cache = {}
+ 

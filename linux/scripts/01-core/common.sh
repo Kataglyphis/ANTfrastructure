@@ -110,7 +110,7 @@ detect_system() {
   elif [ -r /etc/os-release ]; then
     # shellcheck disable=SC1091
     . /etc/os-release
-    DISTRO="${UBUNTU_CODENAME:-${VERSION_CODENAME:-plucky}}"
+    DISTRO="${UBUNTU_CODENAME:-${VERSION_CODENAME:-resolute}}"
   else
     DISTRO="jammy"
   fi

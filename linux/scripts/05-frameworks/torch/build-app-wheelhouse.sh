@@ -307,38 +307,19 @@ install_host_torch_for_vision() {
 patch_torchvision_setup() {
     local setup_py="$1"
 
-    "${BUILD_PYTHON}" - "${setup_py}" <<'PY'
-from pathlib import Path
-import sys
+    local _apply_patch _patch_file
+    if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -f "/opt/scripts/patches/torchvision/001-torch-staging-paths.patch" ]; then
+        _apply_patch="/opt/scripts/core/apply-patch.sh"
+        _patch_file="/opt/scripts/patches/torchvision/001-torch-staging-paths.patch"
+    else
+        local _script_dir
+        _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        _apply_patch="${_script_dir}/01-core/apply-patch.sh"
+        _patch_file="${_script_dir}/patches/torchvision/001-torch-staging-paths.patch"
+    fi
 
-path = Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
-anchor = "from torch.utils.cpp_extension import BuildExtension, CppExtension, CUDA_HOME, CUDAExtension, ROCM_HOME\n"
-if "TORCHVISION_TORCH_STAGING" in text:
-    raise SystemExit(0)
-if anchor not in text:
-    raise SystemExit("expected torchvision cpp_extension import not found")
-insertion = anchor + """
-STAGED_TORCH_ROOT = os.environ.get(\"TORCHVISION_TORCH_STAGING\")
-if STAGED_TORCH_ROOT:
-    from torch.utils import cpp_extension as _torchvision_cpp_extension
-
-    _staged_torch_root = Path(STAGED_TORCH_ROOT)
-    _staged_torch_include = _staged_torch_root / \"torch\" / \"include\"
-    _staged_torch_csrc = _staged_torch_include / \"torch\" / \"csrc\" / \"api\" / \"include\"
-    _staged_torch_lib = _staged_torch_root / \"torch\" / \"lib\"
-
-    def _staged_include_paths(*args, **kwargs):
-        return [str(_staged_torch_include), str(_staged_torch_csrc)]
-
-    def _staged_library_paths(*args, **kwargs):
-        return [str(_staged_torch_lib)]
-
-    _torchvision_cpp_extension.include_paths = _staged_include_paths
-    _torchvision_cpp_extension.library_paths = _staged_library_paths
-"""
-path.write_text(text.replace(anchor, insertion, 1), encoding="utf-8")
-PY
+    bash "${_apply_patch}" "${_patch_file}" "$(dirname "${setup_py}")" \
+      "torchvision setup.py: TORCHVISION_TORCH_STAGING env var support"
 }
 
 build_torchvision_wheel() {

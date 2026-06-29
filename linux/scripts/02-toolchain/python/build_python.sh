@@ -156,7 +156,8 @@ build_cross_target_python_payload() {
   fi
 
   prepare_cross_target_env "${target_arch}" "cross Python ${target_arch} staging"
-  install_target_packages zlib1g-dev libbz2-dev liblzma-dev libzstd-dev libffi-dev libssl-dev 2>/dev/null || true
+  install_target_packages zlib1g-dev libbz2-dev liblzma-dev libzstd-dev libffi-dev libssl-dev || \
+    warn "Some target dev packages failed to install; extension modules may be missing"
   pkg_config_libdir="$(cross_pkg_config_libdir "${target_triplet}")"
   export CFLAGS="${CFLAGS:--O2} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export CPPFLAGS="${CPPFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
@@ -164,6 +165,11 @@ build_cross_target_python_payload() {
 ac_cv_buggy_getaddrinfo=no
 ac_cv_file__dev_ptmx=yes
 ac_cv_file__dev_ptc=no
+# libffi's ffi.h is in the target multiarch include dir.  Even with
+# -idirafter /usr/include/${target_triplet} above, the cross-configure
+# probe for ffi.h can fail to find it (it checks the default include
+# path, not -idirafter flags).  Force-disable to avoid a configure
+# error; _ctypes will not be built.  See _optional_exts check below.
 ac_cv_header_ffi_h=no
 EOF
 
@@ -262,6 +268,34 @@ EOF
     err "dangling extension symlinks remain in ${dynload_dir} after staging"
   fi
 
+  # Guard: refuse to ship a target Python missing critical C extensions.
+  # make -k || true above can silently skip failed extension builds; the
+  # dangling-symlink check only catches broken links, not missing files.
+  # These extensions have no external dependencies and must always build.
+  local -a _critical_exts=(_struct math cmath _csv _io _json _pickle _socket)
+  local _ext _missing=()
+  for _ext in "${_critical_exts[@]}"; do
+    if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
+       ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then
+      _missing+=("$_ext")
+    fi
+  done
+  if [ "${#_missing[@]}" -gt 0 ]; then
+    warn "Missing critical C extensions in ${dynload_dir}: ${_missing[*]}"
+    err "target Python is missing critical C extensions (make -k may have silently failed)"
+  fi
+
+  # Warn about missing optional extensions (depend on target dev packages).
+  # _ctypes is intentionally disabled via ac_cv_header_ffi_h=no in the
+  # config.site above; the warning is expected on cross builds.
+  local -a _optional_exts=(zlib bz2 _lzma _ssl _hashlib _ctypes)
+  for _ext in "${_optional_exts[@]}"; do
+    if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
+       ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then
+      warn "Optional C extension missing: ${_ext} (target dev package may not be installed)"
+    fi
+  done
+
   mkdir -p "${stage_root}/usr/local/lib/pkgconfig"
   if [ -f "${cross_build_dir}/Misc/python.pc" ]; then
     cp -a "${cross_build_dir}/Misc/python.pc" "${stage_root}/usr/local/lib/pkgconfig/python-${python_mm}.pc"
@@ -313,7 +347,7 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
 fi
 
 wget --tries=5 --retry-connrefused --timeout=30 -q "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "${PYTHON_TARBALL}"
-tar -xf "${PYTHON_TARBALL}" -C /tmp
+tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
 cd "${PYTHON_SOURCE_DIR}"
 ./configure --enable-shared --enable-optimizations --prefix=/usr/local

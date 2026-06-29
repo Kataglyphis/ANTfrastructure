@@ -412,42 +412,12 @@ patch_tvm_findllvm_for_cross_package() {
   [ -n "${llvm_dir}" ] || return 0
   [ -f "${findllvm_cmake}" ] || return 0
 
-  if grep -q 'Prefer LLVM_AVAILABLE_LIBS from CONFIG package' "${findllvm_cmake}"; then
-    return 0
-  fi
+  local _apply_patch="${SCRIPT_DIR}/01-core/apply-patch.sh"
+  local _patch_file="${SCRIPT_DIR}/patches/tvm/001-findllvm-cross-config-libs.patch"
 
   log "Patching TVM FindLLVM.cmake to keep cross LLVM CONFIG packages"
-  python3 - "${findllvm_cmake}" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-text = path.read_text()
-old = '''    llvm_map_components_to_libnames(LLVM_LIBS "all")
-    if (NOT LLVM_LIBS)
-      message(STATUS "Not found - LLVM_LIBS")
-      message(STATUS "Fall back to using llvm-config")
-      set(LLVM_CONFIG "${LLVM_TOOLS_BINARY_DIR}/llvm-config")
-    endif()'''
-new = '''    llvm_map_components_to_libnames(LLVM_LIBS "all")
-    if (NOT LLVM_LIBS AND DEFINED LLVM_AVAILABLE_LIBS AND LLVM_AVAILABLE_LIBS)
-      # Prefer LLVM_AVAILABLE_LIBS from CONFIG package when stripped cross installs
-      # do not populate llvm_map_components_to_libnames(all).
-      set(LLVM_LIBS ${LLVM_AVAILABLE_LIBS})
-      message(STATUS "Using LLVM_AVAILABLE_LIBS from LLVM CONFIG package")
-    endif()
-    if (NOT LLVM_LIBS)
-      message(STATUS "Not found - LLVM_LIBS")
-      message(STATUS "Fall back to using llvm-config")
-      set(LLVM_CONFIG "${LLVM_TOOLS_BINARY_DIR}/llvm-config")
-    endif()'''
-if old not in text:
-    raise SystemExit('expected LLVM CONFIG block not found')
-path.write_text(text.replace(old, new, 1))
-PY
-
-  grep -q 'Prefer LLVM_AVAILABLE_LIBS from CONFIG package' "${findllvm_cmake}" || \
-    die "Failed to patch TVM FindLLVM.cmake for cross LLVM CONFIG packages"
+  bash "${_apply_patch}" "${_patch_file}" "${tvm_dir}" \
+    "TVM FindLLVM.cmake cross LLVM CONFIG package fallback"
 }
 
 require_toolchain_python() {
@@ -572,61 +542,8 @@ append_tvm_cmake_args() {
 source "${SCRIPT_DIR}/tvm-llvm-compat.sh"
 
 
-patch_tvm_for_llvm_22() {
-  local tvm_dir="$1"
-  local llvm_config_path="$2"
-  local llvm_dir="${3:-}"
-  local llvm_major=""
-
-  llvm_major="$(detect_llvm_major_version "$llvm_config_path" "$llvm_dir")"
-  case "$llvm_major" in
-    22|2[3-9]|[3-9][0-9]) ;;
-    *) return 0 ;;
-  esac
-
-  local llvm_instance_cc="$tvm_dir/src/target/llvm/llvm_instance.cc"
-  [ -f "$llvm_instance_cc" ] || return 0
-
-  if grep -q 'lookupTarget(triple_obj, error)' "$llvm_instance_cc"; then
-    log "TVM LLVM 22 patch already present in $llvm_instance_cc"
-    return 0
-  fi
-
-  log "Patching TVM for LLVM $llvm_major compatibility"
-  python3 - "$llvm_instance_cc" <<'PY'
-from pathlib import Path
-import re, sys
-
-path = Path(sys.argv[1])
-text = path.read_text()
-
-replacements = [
-    (r'llvm::StringMap<llvm::cl::Option\*>& options = llvm::cl::getRegisteredOptions\(\);',
-     r'auto& options = llvm::cl::getRegisteredOptions();'),
-    (r'if \(options\.count\(opt\.name\)\) \{',
-     r'if (options.find(opt.name) != options.end()) {'),
-    (r'llvm::cl::Option\* base_op = options\[opt->name\];',
-     r'llvm::cl::Option* base_op = nullptr;\n  auto it = options.find(opt->name);\n  if (it != options.end()) {\n    base_op = it->second;\n  }\n  if (base_op == nullptr) {\n    opt->type = Option::OptType::Invalid;\n    return;\n  }'),
-    (r'llvm::cl::Option\* base_op = options\[new_opt\.name\];',
-     r'llvm::cl::Option* base_op = nullptr;\n    auto it = options.find(new_opt.name);\n    if (it != options.end()) {\n      base_op = it->second;\n    }\n    ICHECK(base_op != nullptr) << "LLVM option not found: " << new_opt.name;'),
-    (r'\n  target_options_\.UnsafeFPMath = false;', ''),
-    (r'const llvm::Target\* llvm_instance = llvm::TargetRegistry::lookupTarget\(triple, error\);',
-     r'llvm::Triple triple_obj(triple);\n  const llvm::Target* llvm_instance = llvm::TargetRegistry::lookupTarget(triple_obj, error);'),
-    (r'llvm::TargetMachine\* tm = llvm_instance->createTargetMachine\(\n      triple, cpu, features, target_options, reloc_model, code_model, opt_level\);',
-     r'llvm::Triple triple_obj(triple);\n  llvm::TargetMachine* tm = llvm_instance->createTargetMachine(\n      triple_obj, cpu, features, target_options, reloc_model, code_model, opt_level);'),
-]
-
-for pattern, replacement in replacements:
-    if not re.search(pattern, text, re.DOTALL):
-        continue
-    text = re.sub(pattern, replacement, text, count=1)
-
-path.write_text(text)
-PY
-
-  grep -q 'lookupTarget(triple_obj, error)' "$llvm_instance_cc" || \
-    die "Failed to patch TVM for LLVM 22: lookupTarget update missing"
-}
+# TVM v0.25.0 already includes LLVM 22 compatibility fixes.
+# patch_tvm_for_llvm_22 was removed after the v0.24.0 -> v0.25.0 bump.
 
 detect_spirv_tools_library() {
   # TVM's Vulkan build requires the SPIRV-Tools *library*.
@@ -808,7 +725,6 @@ main() {
     llvm_cmake_value="$llvm_config"
   fi
 
-  patch_tvm_for_llvm_22 "$tvm_dir" "$llvm_config" "$llvm_dir"
   patch_tvm_findllvm_for_cross_package "$tvm_dir" "$llvm_dir"
 
   if [ "$do_clean" -eq 1 ]; then

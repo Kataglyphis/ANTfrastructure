@@ -136,54 +136,23 @@ _patch_vulkan_sdk_for_cross_build() {
   local target_dir="$2"
   local target_triplet="$3"
 
+  local _script_dir
+  _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local _apply_patch="${_script_dir}/01-core/apply-patch.sh"
+  local _patch_file="${_script_dir}/patches/vulkan/001-cross-build-patches.patch"
+
   (
     cd "${target_dir}"
     ${SUDO:-sudo} chmod +x vulkansdk
-    log "Patching vulkansdk for non-interactive installs on ${arch_suffix}"
-    ${SUDO:-sudo} sed -E -i.bak \
-      -e '/\bapt(-get)?[[:space:]]+install\b/ { /(-y|--assume-yes|--assumeyes|--yes)/! s/(\bapt(-get)?[[:space:]]+install\b)/\1 -y/ }' \
-      -e '/\bdnf[[:space:]]+install\b/     { /(-y|--assumeyes|--assume-yes|--yes)/! s/(\bdnf[[:space:]]+install\b)/\1 -y/ }' \
-      -e '/\bpacman[[:space:]]+-S\b/         { /(--noconfirm|-y)/! s/(\bpacman[[:space:]]+-S\b)/\1 -y/ }' \
-      ./vulkansdk
 
-    log "Disabling SPIRV-Tools warnings-as-errors in vulkansdk"
-    ${SUDO:-sudo} perl -0pi -e 's/-DSPIRV_SKIP_TESTS="ON" \\\n+    --install-prefix/ -DSPIRV_SKIP_TESTS="ON" \\\n+    -DSPIRV_WERROR="OFF" \\\n+    -DCMAKE_COMPILE_WARNING_AS_ERROR="OFF" \\\n+    --install-prefix/s' ./vulkansdk
+    # Init a temp git repo so apply-patch.sh can use git apply
+    ${SUDO:-sudo} git init -q 2>/dev/null || true
+    ${SUDO:-sudo} git add -A 2>/dev/null
+    ${SUDO:-sudo} git -c user.email=agent@kataglyphis -c user.name=agent commit -q -m "original vulkansdk" 2>/dev/null || true
 
-    log "Pinning Vulkan-Loader to the extracted VulkanHeaders package"
-    ${SUDO:-sudo} perl -0pi -e 's/-DVULKAN_HEADERS_INSTALL_DIR="\$ARCHDIR" \\\n    -DSYSCONFDIR="\/etc"/-DVULKAN_HEADERS_INSTALL_DIR="\$ARCHDIR" \\\n+    -DVulkanHeaders_DIR="\$ARCHDIR\/share\/cmake\/VulkanHeaders" \\\n+    -DCMAKE_PREFIX_PATH="\$ARCHDIR;\$ARCHDIR\/share\/cmake;\$ARCHDIR\/lib\/cmake" \\\n+    -DCMAKE_INCLUDE_PATH="\$ARCHDIR\/include" \\\n+    -DSYSCONFDIR="\/etc"/s' ./vulkansdk
-
-    log "Normalizing patched vulkansdk formatting"
-    ${SUDO:-sudo} perl -0pi -e 's/\n\+    -DSPIRV_WERROR/\n    -DSPIRV_WERROR/g; s/\n\+    -DCMAKE_COMPILE_WARNING_AS_ERROR/\n    -DCMAKE_COMPILE_WARNING_AS_ERROR/g; s/\n\+    --install-prefix/\n    --install-prefix/g; s/\n\+    -DVulkanHeaders_DIR/\n    -DVulkanHeaders_DIR/g; s/\n\+    -DCMAKE_PREFIX_PATH/\n    -DCMAKE_PREFIX_PATH/g; s/\n\+    -DCMAKE_INCLUDE_PATH/\n    -DCMAKE_INCLUDE_PATH/g; s/\n\+    -DSYSCONFDIR/\n    -DSYSCONFDIR/g' ./vulkansdk
-
-    log "Adding retry wrapper around upstream git clone/pull helper"
-    ${SUDO:-sudo} tee -a ./vulkansdk >/dev/null <<'EOF'
-
-clone_pull_repo() {
-  REPO_DIR=$1
-  REPO_URL=$2
-  REPO_REF=$3
-  attempt=1
-  while [ $attempt -le 5 ]; do
-    if [ -d "${REPO_DIR}" ]; then
-      if git -C "${REPO_DIR}" checkout "${REPO_REF}" && git -C "${REPO_DIR}" pull origin "${REPO_REF}"; then
-        break
-      fi
-    else
-      if git -C "${SOURCEDIR}" clone --recurse-submodules "${REPO_URL}" "${REPO_DIR}" && git -C "${REPO_DIR}" checkout "${REPO_REF}"; then
-        break
-      fi
-    fi
-    if [ $attempt -eq 5 ]; then
-      return 1
-    fi
-    echo "Retrying repo fetch for ${REPO_URL} (attempt ${attempt}/5 failed)"
-    rm -rf "${REPO_DIR}"
-    sleep $((attempt * 5))
-    attempt=$((attempt + 1))
-  done
-  [ -f "${REPO_DIR}/.gitmodules" ] && git -C "${REPO_DIR}" submodule update || true
-}
-EOF
+    log "Applying cross-build patches to vulkansdk"
+    bash "${_apply_patch}" "${_patch_file}" "${target_dir}" \
+      "Vulkan SDK cross-build patches (non-interactive, SPIRV Werror off, VulkanHeaders pin, retry wrapper)"
 
     ARCH_LIB_DIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "${ARCH}-linux-gnu")"
     ${SUDO:-sudo} mkdir -p "${ARCH_LIB_DIR}" /usr/lib

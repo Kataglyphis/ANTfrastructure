@@ -1,0 +1,13 @@
+diff --git a/configure b/configure
+index 785e23f..4e83051 100644
+--- a/configure
++++ b/configure
+@@ -6214,7 +6214,7 @@ case $target_os in
+ 
+         ;;
+     msys*)
+-        die "Native MSYS builds are discouraged, please use the MINGW environment."
++        echo "[INFO] MSYS build allowed, please use the MINGW environment."
+         ;;
+     mingw32*|mingw64*)
+         target_os=mingw32

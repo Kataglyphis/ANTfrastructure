@@ -79,7 +79,7 @@ done
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.29.1}"
+GSTREAMER_VERSION="${1:-1.29.2}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -615,7 +615,7 @@ echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly
 
 echo "Cleaning up..."
 cd /
-if command -v sudo >/dev/null 2>&1; then sudo rm -rf "${BUILD_DIR:?}"; else rm -rf "${BUILD_DIR:?}"; fi
+if command -v sudo >/dev/null 2>&1; then sudo rm -rf "${BUILD_DIR:?}" 2>/dev/null || true; else rm -rf "${BUILD_DIR:?}" 2>/dev/null || true; fi
 
 echo ""
 echo "=========================================="
