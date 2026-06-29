@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../android-build-preamble.sh"
 
 # 1. Parse Arguments
-GST_VERSION="${GSTREAMER_VERSION:-1.29.1}"
+GST_VERSION="${GSTREAMER_VERSION:-1.29.2}"
 ANDROID_SDK="${ANDROID_HOME:-/opt/android-sdk}"
 ANDROID_NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/${ANDROID_NDK_VERSION:-29.0.14206865}}"
 INSTALL_PATH="${GSTREAMER_ROOT_ANDROID:-/opt/android/gstreamer}"
@@ -72,8 +72,12 @@ patch_cerbero_system_m4_usage() {
     [ -f "${autoconf_recipe}" ] || return 0
     [ -f "${libtool_recipe}" ] || return 0
 
-    # Cerbero's bundled m4 1.4.20 currently fails against the host libc/toolchain.
-    perl -0pi -e "s/deps = \['m4'\]/deps = []/" "${autoconf_recipe}" "${libtool_recipe}"
+    local _scripts_dir
+    _scripts_dir="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+    bash "${_scripts_dir}/01-core/apply-patch.sh" \
+      "${_scripts_dir}/patches/cerbero/001-drop-m4-dependency.patch" \
+      "$(pwd)" \
+      "Cerbero drop m4 dependency from autoconf/libtool recipes"
 }
 
 # ------------------------------------------------------------------------------

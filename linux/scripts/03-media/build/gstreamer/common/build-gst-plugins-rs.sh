@@ -114,7 +114,7 @@ build_standalone_gst_plugins_rs() {
   local validate_pkg_names=""
   local dav1d_pkg_names=""
   local -a cargo_flags=()
-  local -a default_excludes=(--exclude gst-plugin-burn)
+  local -a default_excludes=(--exclude gst-plugin-burn --exclude gst-plugin-webrtcbin2)
   local -a build_cmd=()
 
   configure_gstreamer_prefix_for_cargo

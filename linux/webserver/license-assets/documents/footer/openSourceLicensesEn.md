@@ -35,17 +35,17 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Apache TVM | v0.24.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
+| Apache TVM | v0.25.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
 
 ### Media Layer (`Dockerfile.media`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | ONNX Runtime | v1.27.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
-| ONNX Runtime GenAI | v0.13.1 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
+| ONNX Runtime GenAI | v0.14.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.1.5 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.x | [opencv.org](https://opencv.org/) | Apache 2.0 |
-| GStreamer | 1.29.1 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
+| GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | FFmpeg | master | [ffmpeg.org](https://ffmpeg.org/) | LGPLv2.1+ |
 | libcamera | git master | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20240722.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
@@ -126,9 +126,9 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| GStreamer | 1.29.1 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
+| GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | ONNX Runtime | v1.27.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
-| ONNX Runtime GenAI | v0.13.1 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
+| ONNX Runtime GenAI | v0.14.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | ONNX Runtime DirectML | — | [github.com/microsoft/onnxruntime-directml](https://github.com/microsoft/onnxruntime-directml) | MIT |
 | OpenCV | 5.x | [opencv.org](https://opencv.org/) | Apache 2.0 |
 

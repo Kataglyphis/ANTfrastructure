@@ -1,0 +1,64 @@
+diff --git a/subprojects/gst-plugins-bad/ext/opencv/gstopencv.cpp b/subprojects/gst-plugins-bad/ext/opencv/gstopencv.cpp
+index 5407a5a..6b56f9c 100644
+--- a/subprojects/gst-plugins-bad/ext/opencv/gstopencv.cpp
++++ b/subprojects/gst-plugins-bad/ext/opencv/gstopencv.cpp
+@@ -30,12 +30,9 @@
+ #include "gstcvsmooth.h"
+ #include "gstcvsobel.h"
+ #include "gstedgedetect.h"
+-#include "gstfaceblur.h"
+-#include "gstfacedetect.h"
+ #include "gstmotioncells.h"
+ #include "gsttemplatematch.h"
+ #include "gsttextoverlay.h"
+-#include "gsthanddetect.h"
+ #include "gstskindetect.h"
+ #include "gstretinex.h"
+ #include "gstsegmentation.h"
+@@ -59,12 +56,9 @@ plugin_init (GstPlugin * plugin)
+   ret |= GST_ELEMENT_REGISTER (cvsmooth, plugin);
+   ret |= GST_ELEMENT_REGISTER (cvsobel, plugin);
+   ret |= GST_ELEMENT_REGISTER (edgedetect, plugin);
+-  ret |= GST_ELEMENT_REGISTER (faceblur, plugin);
+-  ret |= GST_ELEMENT_REGISTER (facedetect, plugin);
+   ret |= GST_ELEMENT_REGISTER (motioncells, plugin);
+   ret |= GST_ELEMENT_REGISTER (templatematch, plugin);
+   ret |= GST_ELEMENT_REGISTER (opencvtextoverlay, plugin);
+-  ret |= GST_ELEMENT_REGISTER (handdetect, plugin);
+   ret |= GST_ELEMENT_REGISTER (skindetect, plugin);
+   ret |= GST_ELEMENT_REGISTER (retinex, plugin);
+   ret |= GST_ELEMENT_REGISTER (segmentation, plugin);
+diff --git a/subprojects/gst-plugins-bad/ext/opencv/meson.build b/subprojects/gst-plugins-bad/ext/opencv/meson.build
+index c351274..33d7a21 100644
+--- a/subprojects/gst-plugins-bad/ext/opencv/meson.build
++++ b/subprojects/gst-plugins-bad/ext/opencv/meson.build
+@@ -8,10 +8,7 @@ gstopencv_sources = [
+   'gstcvsobel.cpp',
+   'gstdisparity.cpp',
+   'gstedgedetect.cpp',
+-  'gstfaceblur.cpp',
+-  'gstfacedetect.cpp',
+   'gstgrabcut.cpp',
+-  'gsthanddetect.cpp',
+   'gstmotioncells.cpp',
+   'gstopencv.cpp',
+   'gstretinex.cpp',
+@@ -41,7 +38,6 @@ gstopencv_headers = [
+   'gstedgedetect.h',
+   'gstskindetect.h',
+   'gsttemplatematch.h',
+-  'gstfacedetect.h',
+   'gstretinex.h',
+   'MotionCells.h',
+   'gstcvdilateerode.h',
+@@ -49,10 +45,8 @@ gstopencv_headers = [
+   'motioncells_wrapper.h',
+   'gstcvdilate.h',
+   'gstcvsobel.h',
+-  'gstfaceblur.h',
+   'gstmotioncells.h',
+   'gstcvsmooth.h',
+-  'gsthanddetect.h',
+   'gstcameraundistort.h',
+   'gstcvtracker.h',
+ ]

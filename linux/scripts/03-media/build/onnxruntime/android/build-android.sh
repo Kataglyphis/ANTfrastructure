@@ -32,10 +32,12 @@ rm -rf onnxruntime-android
 git clone --depth 1 -b ${ORT_VERSION} https://github.com/microsoft/onnxruntime.git onnxruntime-android
 cd onnxruntime-android
 
-# Patch Android Gradle Plugin version to support JDK 21
-sed -i "s/classpath 'com.android.tools.build:gradle:7.4.2'/classpath 'com.android.tools.build:gradle:8.3.1'/g" java/build-android.gradle java/src/test/android/build.gradle
-# AGP 8.0+ disables buildConfig by default, but ORT test app needs it
-sed -i '/android {/a \    buildFeatures {\n        buildConfig = true\n    }' java/src/test/android/app/build.gradle
+# Patch Android Gradle Plugin 7.4.2 -> 8.3.1 (JDK 21) and re-enable buildConfig
+_scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+bash "${_scripts_dir}/01-core/apply-patch.sh" \
+  "${_scripts_dir}/patches/onnxruntime/001-android-gradle-agp8-compat.patch" \
+  "$(pwd)" \
+  "ONNX Runtime Android Gradle AGP 8 compat"
 
 : "${ANDROID_HOME:?ANDROID_HOME must be set}"
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"

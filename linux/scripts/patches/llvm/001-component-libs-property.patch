@@ -1,0 +1,9 @@
+diff --git a/llvm/cmake/modules/LLVMConfig.cmake.in b/llvm/cmake/modules/LLVMConfig.cmake.in
+index 70c807a..5e0cfbb 100644
+--- a/llvm/cmake/modules/LLVMConfig.cmake.in
++++ b/llvm/cmake/modules/LLVMConfig.cmake.in
+@@ -170,3 +170,4 @@ endif()
+ 
+ set_property(GLOBAL PROPERTY LLVM_TARGETS_CONFIGURED On)
+ include(${LLVM_CMAKE_DIR}/LLVM-Config.cmake)
++set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")

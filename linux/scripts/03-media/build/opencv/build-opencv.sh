@@ -94,6 +94,44 @@ done
 echo "build-opencv: version=${OPENCV_VERSION} prefix=${OPENCV_PREFIX} buildtype=${BUILD_TYPE}"
 
 # ------------------------------------------------------------------------------
+# Build environment configuration
+#
+# OpenCV's vendored dependency graph produces duplicate symbol definitions
+# when linking the monolithic libopencv_core.so. --allow-multiple-definition
+# works around this without needing to patch OpenCV's CMakeLists.
+#
+# lld is disabled for OpenCV because its strict duplicate-symbol handling
+# rejects symbols that GNU ld accepts with --allow-multiple-definition.
+#
+# CC/CXX are pinned to GCC explicitly because CMake may otherwise pick clang
+# from PATH (the SDK image has both). The ${GCC_VERSION} env is set by the
+# toolchain stage; fall back to scanning /opt/gcc-* if unset.
+# ------------------------------------------------------------------------------
+configure_opencv_build_env() {
+    rm -rf "${OPENCV_PREFIX}"
+
+    # Resolve GCC version if not already set in the environment
+    if [ -z "${GCC_VERSION:-}" ]; then
+        local _gcc_dir
+        _gcc_dir="$(ls -d /opt/gcc-*/bin 2>/dev/null | sort -V | tail -1)"
+        if [ -n "${_gcc_dir}" ]; then
+            GCC_VERSION="${_gcc_dir#/opt/gcc-}"
+            GCC_VERSION="${GCC_VERSION%/bin}"
+        fi
+    fi
+
+    unset LDFLAGS
+    export USE_LLD=false
+    if [ -n "${GCC_VERSION:-}" ]; then
+        export CMAKE_C_COMPILER="/opt/gcc-${GCC_VERSION}/bin/gcc"
+        export CMAKE_CXX_COMPILER="/opt/gcc-${GCC_VERSION}/bin/g++"
+    fi
+    export LDFLAGS="-Wl,--allow-multiple-definition"
+}
+
+configure_opencv_build_env
+
+# ------------------------------------------------------------------------------
 # Fetch OpenCV source
 # ------------------------------------------------------------------------------
 fetch_opencv() {
@@ -123,32 +161,20 @@ fetch_opencv() {
     # OpenCV 5.x vendored MLAS: MlasHGemmSupported is declared in inc/mlas.h
     # but never defined, yet compute.cpp calls it from the FP16 template
     # MlasGQASupported<MLAS_FP16> regardless of MLAS_GEMM_ONLY. On riscv64
-    # this produces an undefined-symbol link error. Provide a stub that
-    # returns false when MLAS_GEMM_ONLY is set (SGEMM-only build).
+    # this produces an undefined-symbol link error. Apply a patch that
+    # appends a weak stub returning false when MLAS_GEMM_ONLY is set.
     local mlas_compute="${OPENCV_SRC}/3rdparty/mlas/lib/compute.cpp"
-    if [ -f "${mlas_compute}" ] && ! grep -Fq 'MLAS_GEMM_ONLY stub' "${mlas_compute}"; then
-        echo "Patching vendored MLAS: adding MlasHGemmSupported stub for MLAS_GEMM_ONLY"
-        cat >> "${mlas_compute}" <<'MLAS_STUB_EOF'
-
-#ifdef MLAS_GEMM_ONLY
-// MLAS_GEMM_ONLY stub: MlasHGemmSupported is declared but never defined
-// in SGEMM-only builds; provide a fallback that always returns false.
-// Weak attribute resolves duplicate-symbol conflicts when upstream MLAS
-// also defines this function (e.g. Android NDK lld rejects duplicates).
-__attribute__((weak))
-MLASCALL
-bool
-MlasHGemmSupported(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB
-    )
-{
-    (void)TransA;
-    (void)TransB;
-    return false;
-}
-#endif
-MLAS_STUB_EOF
+    if [ -f "${mlas_compute}" ]; then
+        local _ap _pf
+        if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -f "/opt/scripts/patches/opencv/001-mlas-hgemm-supported-stub.patch" ]; then
+            _ap="/opt/scripts/core/apply-patch.sh"
+            _pf="/opt/scripts/patches/opencv/001-mlas-hgemm-supported-stub.patch"
+        else
+            _ap="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/01-core/apply-patch.sh"
+            _pf="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/patches/opencv/001-mlas-hgemm-supported-stub.patch"
+        fi
+        bash "${_ap}" "${_pf}" "${OPENCV_SRC}" \
+          "OpenCV MLAS MlasHGemmSupported stub for MLAS_GEMM_ONLY"
         echo "OpenCV MLAS stub patch applied"
     fi
 }

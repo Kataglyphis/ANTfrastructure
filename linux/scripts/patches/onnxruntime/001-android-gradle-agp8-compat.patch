@@ -1,0 +1,40 @@
+diff --git a/java/build-android.gradle b/java/build-android.gradle
+index 610625c..41ed113 100644
+--- a/java/build-android.gradle
++++ b/java/build-android.gradle
+@@ -67,7 +67,7 @@ buildscript {
+ 		mavenCentral()
+ 	}
+ 	dependencies {
+-		classpath 'com.android.tools.build:gradle:7.4.2'
++		classpath 'com.android.tools.build:gradle:8.3.1'
+ 
+ 		// NOTE: Do not place your application dependencies here; they belong
+ 		// in the individual module build.gradle files
+diff --git a/java/src/test/android/app/build.gradle b/java/src/test/android/app/build.gradle
+index baf18e7..0d0f878 100644
+--- a/java/src/test/android/app/build.gradle
++++ b/java/src/test/android/app/build.gradle
+@@ -7,6 +7,9 @@ def minSdkVer = System.properties.get("minSdkVer")?:24
+ def qnnVersion = System.properties['qnnVersion']
+ 
+ android {
++    buildFeatures {
++        buildConfig = true
++    }
+ 	compileSdkVersion 34
+ 
+ 	defaultConfig {
+diff --git a/java/src/test/android/build.gradle b/java/src/test/android/build.gradle
+index d7672e1..0fd281b 100644
+--- a/java/src/test/android/build.gradle
++++ b/java/src/test/android/build.gradle
+@@ -7,7 +7,7 @@ buildscript {
+ 		mavenCentral()
+ 	}
+ 	dependencies {
+-		classpath 'com.android.tools.build:gradle:7.4.2'
++		classpath 'com.android.tools.build:gradle:8.3.1'
+ 		classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+ 		// NOTE: Do not place your application dependencies here; they belong
+ 		// in the individual module build.gradle files

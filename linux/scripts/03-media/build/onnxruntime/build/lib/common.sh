@@ -153,7 +153,7 @@ init_defaults() {
   ORT_ENABLE_ARMNN="${ORT_ENABLE_ARMNN:-true}"
 
   BUILD_GENAI="${BUILD_GENAI:-true}"
-  GENAI_VERSION="${GENAI_VERSION:-v0.13.1}"
+  GENAI_VERSION="${GENAI_VERSION:-v0.14.0}"
   GENAI_REPO="${GENAI_REPO:-https://github.com/microsoft/onnxruntime-genai.git}"
   GENAI_SRC_DIR="${GENAI_SRC_DIR:-${ORT_SRC_DIR}-genai}"
   GENAI_BUILD_DIR="${GENAI_BUILD_DIR:-${GENAI_SRC_DIR}/build}"

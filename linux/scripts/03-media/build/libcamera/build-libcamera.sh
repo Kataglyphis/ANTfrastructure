@@ -28,18 +28,16 @@ patch_libcamera_riscv64_cross_sources() {
 
   [ -f "${common_meson}" ] || return 0
 
-  if grep -Fq "dependencies : [libcamera_public, libtiff])" "${common_meson}"; then
-    return 0
+  local _apply_patch _patch_file
+  if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -f "/opt/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch" ]; then
+    _apply_patch="/opt/scripts/core/apply-patch.sh"
+    _patch_file="/opt/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch"
+  else
+    _apply_patch="${SCRIPT_DIR}/01-core/apply-patch.sh"
+    _patch_file="${SCRIPT_DIR}/patches/libcamera/001-riscv64-add-libtiff-dep.patch"
   fi
-
-  # Upstream builds dng_writer.cpp into apps_lib when libtiff is found, but the
-  # static library itself only depends on libcamera_public. Native builds still
-  # see /usr/include, while riscv64 cross builds need libtiff's pkg-config
-  # include flags on apps_lib too.
-  if grep -Fq "dependencies : [libcamera_public])" "${common_meson}"; then
-    sed -i "s/dependencies : \[libcamera_public\])/dependencies : [libcamera_public, libtiff])/" "${common_meson}"
-    echo "Patched libcamera apps_lib to propagate libtiff includes for riscv64 cross builds"
-  fi
+  bash "${_apply_patch}" "${_patch_file}" "${LIBCAMERA_SRC}" \
+    "libcamera riscv64 cross: add libtiff to apps_lib dependencies"
 }
 
 # Defaults (can be overridden via env vars)

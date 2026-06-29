@@ -1,0 +1,81 @@
+diff --git a/vulkansdk b/vulkansdk
+index c0c09c7..3a942de 100755
+--- a/vulkansdk
++++ b/vulkansdk
+@@ -78,7 +78,9 @@ build_spirv_tools() {
+     -DCMAKE_BUILD_TYPE="Release" \
+     -DCMAKE_INSTALL_LIBDIR="lib" \
+     -DSPIRV-Headers_SOURCE_DIR="$ARCHDIR" \
+-    -DSPIRV_SKIP_TESTS="ON" \
++     -DSPIRV_SKIP_TESTS="ON" \
++    -DSPIRV_WERROR="OFF" \
++    -DCMAKE_COMPILE_WARNING_AS_ERROR="OFF" \
+     --install-prefix "$ARCHDIR"
+   cmake --build "${SPIRV_TOOLS_DIR}/${BUILD_DIR}" -j $NUMJOBS
+   cmake --install "${SPIRV_TOOLS_DIR}/${BUILD_DIR}"
+@@ -136,6 +138,9 @@ build_loader() {
+     -DCMAKE_BUILD_TYPE="$BUILD_RELDEBINFO_TYPE" \
+     -DCMAKE_INSTALL_LIBDIR="lib" \
+     -DVULKAN_HEADERS_INSTALL_DIR="$ARCHDIR" \
++    -DVulkanHeaders_DIR="$ARCHDIR/share/cmake/VulkanHeaders" \
++    -DCMAKE_PREFIX_PATH="$ARCHDIR;$ARCHDIR/share/cmake;$ARCHDIR/lib/cmake" \
++    -DCMAKE_INCLUDE_PATH="$ARCHDIR/include" \
+     -DSYSCONFDIR="/etc" \
+     --install-prefix "$ARCHDIR"
+   cmake --build "${VL_DIR}/${BUILD_DIR}" -j $NUMJOBS
+@@ -505,7 +510,7 @@ install_deps() {
+   if [ "$ID" = "ubuntu" ]; then
+     VERSION=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
+     sudo apt-get update
+-    sudo apt-get install libglm-dev cmake libxcb-dri3-0 libxcb-present0 libpciaccess0 \
++    sudo apt-get install -y libglm-dev cmake libxcb-dri3-0 libxcb-present0 libpciaccess0 \
+       libpng-dev libxcb-keysyms1-dev libxcb-dri3-dev libx11-dev g++ gcc \
+       libwayland-dev libxrandr-dev libxcb-randr0-dev libxcb-ewmh-dev \
+       git python-is-python3 bison libx11-xcb-dev liblz4-dev libzstd-dev \
+@@ -513,14 +518,14 @@ install_deps() {
+       clang-format qtbase5-dev qt6-base-dev libxcb-glx0-dev
+   elif [ "$ID" = "fedora" ]; then
+     sudo dnf update
+-    sudo dnf install @development-tools which glm-devel cmake libpng-devel wayland-devel \
++    sudo dnf install -y @development-tools which glm-devel cmake libpng-devel wayland-devel \
+       libpciaccess-devel libX11-devel libXpresent libxcb xcb-util libxcb-devel libXrandr-devel \
+       xcb-util-keysyms-devel xcb-util-wm-devel python python3 git lz4-devel libzstd-devel python3-distutils-extra qt \
+       gcc-g++ wayland-protocols-devel ninja-build python3-jsonschema qt5-qtbase-devel python-unversioned-command \
+       python3-setuptools clang-tools-extra qt6-qtbase-devel
+   elif [ "$ID" = "arch" ]; then
+     sudo pacman -Sy
+-    sudo pacman -S --needed base-devel glm cmake libpng wayland libpciaccess libx11 libxpresent \
++    sudo pacman -S -y --needed base-devel glm cmake libpng wayland libpciaccess libx11 libxpresent \
+       libxcb xcb-util libxrandr xcb-util-keysyms xcb-util-wm python git lz4 zstd python-distlib qt5-base \
+       wayland-protocols ninja python-jsonschema clang expat python-distutils-extra qt6-base
+   else
+@@ -815,3 +820,29 @@ done
+ [ $BUILD_CDL -eq 1 ] && build_crash_diagnostic_layer
+ [ $BUILD_SLANG -eq 1 ] && build_slang
+ [ $CLEAN_NONSDK_FILES -eq 1 ] && clean_nonsdk_files
++
++clone_pull_repo() {
++  REPO_DIR=$1
++  REPO_URL=$2
++  REPO_REF=$3
++  attempt=1
++  while [ $attempt -le 5 ]; do
++    if [ -d "${REPO_DIR}" ]; then
++      if git -C "${REPO_DIR}" checkout "${REPO_REF}" && git -C "${REPO_DIR}" pull origin "${REPO_REF}"; then
++        break
++      fi
++    else
++      if git -C "${SOURCEDIR}" clone --recurse-submodules "${REPO_URL}" "${REPO_DIR}" && git -C "${REPO_DIR}" checkout "${REPO_REF}"; then
++        break
++      fi
++    fi
++    if [ $attempt -eq 5 ]; then
++      return 1
++    fi
++    echo "Retrying repo fetch for ${REPO_URL} (attempt ${attempt}/5 failed)"
++    rm -rf "${REPO_DIR}"
++    sleep $((attempt * 5))
++    attempt=$((attempt + 1))
++  done
++  [ -f "${REPO_DIR}/.gitmodules" ] && git -C "${REPO_DIR}" submodule update || true
++}

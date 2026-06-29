@@ -1,0 +1,29 @@
+diff --git a/setup.py b/setup.py
+index 1f4a1a7..7bc9af9 100644
+--- a/setup.py
++++ b/setup.py
+@@ -16,6 +16,24 @@ from packaging.version import parse as parse_version
+ from setuptools import find_packages, setup
+ from torch.utils.cpp_extension import BuildExtension, CppExtension, CUDA_HOME, CUDAExtension, ROCM_HOME
+ 
++STAGED_TORCH_ROOT = os.environ.get("TORCHVISION_TORCH_STAGING")
++if STAGED_TORCH_ROOT:
++    from torch.utils import cpp_extension as _torchvision_cpp_extension
++
++    _staged_torch_root = Path(STAGED_TORCH_ROOT)
++    _staged_torch_include = _staged_torch_root / "torch" / "include"
++    _staged_torch_csrc = _staged_torch_include / "torch" / "csrc" / "api" / "include"
++    _staged_torch_lib = _staged_torch_root / "torch" / "lib"
++
++    def _staged_include_paths(*args, **kwargs):
++        return [str(_staged_torch_include), str(_staged_torch_csrc)]
++
++    def _staged_library_paths(*args, **kwargs):
++        return [str(_staged_torch_lib)]
++
++    _torchvision_cpp_extension.include_paths = _staged_include_paths
++    _torchvision_cpp_extension.library_paths = _staged_library_paths
++
+ FORCE_CUDA = os.getenv("FORCE_CUDA", "0") == "1"
+ FORCE_MPS = os.getenv("FORCE_MPS", "0") == "1"
+ DEBUG = os.getenv("DEBUG", "0") == "1"

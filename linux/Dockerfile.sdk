@@ -85,7 +85,7 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
 # ==============================================================================
 COPY --chmod=755 linux/scripts/05-frameworks/ /opt/scripts/frameworks/
 
-ARG TVM_REF=v0.24.0
+ARG TVM_REF=v0.25.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
 # CUDA / OpenCL are disabled by default — GPU EP layers build separately via

@@ -1,0 +1,12 @@
+diff --git a/subprojects/gst-plugins-bad/ext/opencv/gstsegmentation.cpp b/subprojects/gst-plugins-bad/ext/opencv/gstsegmentation.cpp
+index 439d14d..bd05977 100644
+--- a/subprojects/gst-plugins-bad/ext/opencv/gstsegmentation.cpp
++++ b/subprojects/gst-plugins-bad/ext/opencv/gstsegmentation.cpp
+@@ -91,6 +91,7 @@
+ 
+ #include "gstsegmentation.h"
+ #include <opencv2/imgproc.hpp>
++#include <opencv2/geometry.hpp>
+ 
+ GST_DEBUG_CATEGORY_STATIC (gst_segmentation_debug);
+ #define GST_CAT_DEFAULT gst_segmentation_debug

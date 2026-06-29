@@ -30,11 +30,11 @@
 # Global Version Arguments (safety-net defaults; orchestrator passes canonical
 # values from linux/scripts/01-core/versions.env via append_version_build_args).
 ARG ONNXRUNTIME_VERSION="v1.27.0"
-ARG ONNXRUNTIME_GENAI_VERSION="v0.13.1"
+ARG ONNXRUNTIME_GENAI_VERSION="v0.14.0"
 ARG LITERT_VERSION="v2.1.5"
 ARG LITERT_LM_VERSION="0.13.1"
 ARG OPENCV_VERSION="5.x"
-ARG GSTREAMER_VERSION="1.29.1"
+ARG GSTREAMER_VERSION="1.29.2"
 
 # Build Acceleration Arguments
 # Set AGGRESSIVE_PARALLELISM=true for faster builds on high-memory machines (16GB+)
@@ -115,6 +115,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     _ports_url="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"; \
     if [ -z "${_ports_url}" ]; then \
       case "${_archive_url}" in \
+        *://archive.ubuntu.com/ubuntu/) _ports_url="http://ports.ubuntu.com/ubuntu-ports/" ;; \
         */ubuntu/) _ports_url="${_archive_url%/ubuntu/}/ubuntu-ports/" ;; \
         *) _ports_url="${_archive_url}" ;; \
       esac; \
@@ -241,6 +242,7 @@ RUN --mount=type=cache,target=/tmp \
 # wasm step — only useful for native amd64 builds (WASM is browser-targeted);
 # skip for cross-builds and non-amd64 to avoid unnecessary downloads/caching.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -253,6 +255,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
 
 # js + pkgconfig steps (fast, IO-bound)
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     set -euo pipefail; \
@@ -279,6 +282,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scr
     bash /opt/scripts/03-media/build/litert/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
@@ -312,16 +316,12 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scr
     bash /opt/scripts/03-media/build/opencv/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    rm -rf /opt/opencv; \
-    unset LDFLAGS; \
-    export USE_LLD=false \
-      CMAKE_C_COMPILER=/opt/gcc-${GCC_VERSION}/bin/gcc CMAKE_CXX_COMPILER=/opt/gcc-${GCC_VERSION}/bin/g++ \
-      LDFLAGS="-Wl,--allow-multiple-definition"; \
     bash /opt/scripts/03-media/build/opencv/build-opencv.sh \
         --opencv-version "${OPENCV_VERSION}" \
         --prefix "${OPENCV_OUTPUT_DIR}" \
@@ -343,6 +343,8 @@ FROM base AS app-wheelhouse
 ARG TARGET_ARCH
 
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -489,6 +491,8 @@ ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     TARGET_ARCH=${TARGET_ARCH}
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -496,6 +500,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     bash /opt/scripts/03-media/build/gstreamer/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -505,9 +511,6 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
-        export GSTREAMER_ENABLE_PYTHON_BINDINGS=false; \
-    fi; \
     bash /opt/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh \
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \
@@ -529,6 +532,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     bash /opt/scripts/03-media/build/libcamera/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \

@@ -79,7 +79,7 @@ $versionsScript = Join-Path $PSScriptRoot 'load-versions.ps1'
 if (Test-Path $versionsScript) { & $versionsScript }
 
 if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GST_VERSION', 'GSTREAMER_VERSION') -DefaultValue '1.29.1'
+    $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GST_VERSION', 'GSTREAMER_VERSION') -DefaultValue '1.29.2'
 }
 
 try {
