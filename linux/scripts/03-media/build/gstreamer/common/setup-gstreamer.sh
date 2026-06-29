@@ -539,6 +539,14 @@ append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # whisper left enabled — do not force-disable here
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
+# In cross mode the rustc ptp-helper link step receives empty -C link-arg=
+# flags from meson's env passthrough, causing ld.bfd to fail with
+# "cannot find : No such file or directory". The ptp helper is not essential
+# for container images (PTP clock sync requires setuid), disable it.
+if cross_build_is_active; then
+  append_meson_arg "-Dgstreamer:ptp-helper-permissions=none"
+fi
+
 echo "=========================================="
 echo "Building GStreamer ${GSTREAMER_VERSION}"
 echo "Prefix: ${GSTREAMER_PREFIX}"

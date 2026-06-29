@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_common_init "${SCRIPT_DIR}"
 
-ARMNN_VERSION="${ARMNN_VERSION:-v25.02}"
+ARMNN_VERSION="${ARMNN_VERSION:-v25.11}"
 ARMNN_REPO="${ARMNN_REPO:-https://github.com/ARM-software/armnn.git}"
 ARMNN_SRC_DIR="${ARMNN_SRC_DIR:-/tmp/armnn-src}"
 ARMNN_INSTALL_DIR="${ARMNN_INSTALL_DIR:-/opt/armnn}"
@@ -51,23 +51,23 @@ build_armnn() {
   mkdir -p "${ARMNN_BUILD_DIR}"
   cd "${ARMNN_BUILD_DIR}"
 
-  # ARMCOMPUTE_ROOT must point to the ACL source tree (contains cmake configs),
-  # not the install prefix. The install prefix is used for -L/-I paths.
-  # Arm NN's NEON/CL backend detection probes for ACL features by compiling
-  # test programs. The cross-compiler needs -march=armv8-a and the install
-  # include path to detect NEON support.
+  # Arm NN v25.11+ probes ACL's CMake package config directly (installed by
+  # scons into ACL_BUILD_DIR). ARMCOMPUTE_ROOT points to the ACL build tree
+  # which contains the generated cmake files and arm_compute_version.h.
+  # GCC 16.1.0's -Werror=array-bounds triggers false positives on std::mutex
+  # placement in ACL/Arm NN buffers; suppress to avoid build failure.
   cmake "${ARMNN_SRC_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${ARMNN_INSTALL_DIR}" \
     -DARMCOMPUTE_ROOT="${ACL_SRC_DIR:-/tmp/acl-src}" \
+    -DARMCOMPUTE_BUILD_DIR="${ACL_SRC_DIR:-/tmp/acl-src}/build" \
     -DARMCOMPUTE_LIBS="${ACL_INSTALL_DIR}/lib" \
-    -DARMCOMPUTE_INCLUDE="${ACL_INSTALL_DIR}/include" \
     -DBUILD_UNIT_TESTS=0 \
     -DBUILD_TESTS=0 \
     -DBUILD_BENCHMARK_TESTS=0 \
     -DBUILD_BENCHMARK_EXECUTABLE=0 \
-    -DCMAKE_CXX_FLAGS="-march=armv8-a" \
-    -DCMAKE_C_FLAGS="-march=armv8-a" \
+    -DCMAKE_CXX_FLAGS="-Wno-array-bounds" \
+    -DCMAKE_C_FLAGS="-Wno-array-bounds" \
     "${cross_args[@]}"
 
   cmake --build . -j "$(nproc)"
