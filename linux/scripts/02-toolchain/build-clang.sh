@@ -174,7 +174,7 @@ detect_system || true
 # ====== Preflight Checks ======
 run_preflight_checks() {
     info "---- preflight: workdir safety ----"
-    [ -z "${WD:-}" ] || [ "${WD}" = "/" ] && die "Unsafe WD: ${WD} (Should have been fixed)"
+    [ -n "${WD:-}" ] && [ "${WD}" != "/" ] || die "Unsafe WD: '${WD:-<empty>}' (should have been fixed)"
 
     info "---- preflight: tools ----"
     for t in git cmake ninja python3 file strip; do

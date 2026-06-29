@@ -22,7 +22,6 @@ IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 init_mirror_defaults
 
-REBUILD_BASE=0
 PUSH_IMAGES=0
 
 usage() {
@@ -41,7 +40,6 @@ Options:
   --cross-targets LIST   Comma-separated target list (default: amd64,arm64,riscv64)
   --image-repo REPO      Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
   --push                 Push the compiler image to the registry with digest pinning
-  --rebuild-base         Always rebuild the local base image instead of trying pull first
   --dry-run              Print build commands without executing them
   --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during builds
   --fast-ubuntu-mirror-url URL        Archive mirror URL
@@ -93,10 +91,6 @@ main() {
       --cross-targets)
         CROSS_TARGETS="$2"
         shift 2
-        ;;
-      --rebuild-base)
-        REBUILD_BASE=1
-        shift
         ;;
       *)
         warn "Unknown option: $1"

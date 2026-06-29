@@ -52,55 +52,11 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
 
 # Post-Vulkan: rebuild SPIRV-Tools for target arch if cross-built,
 # so TVM can link it on arm64/riscv64 without x86_64 arch mismatch.
-RUN set -euo pipefail; \
-    if [ "${TARGET_ARCH}" != "amd64" ]; then \
-        _spirv_src=""; \
-        for d in /opt/vulkan/*/source/spirv-tools /opt/vulkan/*/source/SPIRV-Tools; do \
-            [ -d "$d" ] && _spirv_src="$d" && break; \
-        done; \
-        if [ -n "$_spirv_src" ]; then \
-            _spirv_headers="$(dirname "$_spirv_src")/SPIRV-Headers"; \
-            [ -d "$_spirv_headers" ] || _spirv_headers="$(dirname "$_spirv_src")/spirv-headers"; \
-            case "${TARGET_ARCH}" in \
-                arm64) _cross_tuple="aarch64-linux-gnu" ; _arch_dir="aarch64" ;; \
-                riscv64) _cross_tuple="riscv64-linux-gnu" ; _arch_dir="riscv64" ;; \
-                *) _cross_tuple="" ; _arch_dir="" ;; \
-            esac; \
-            if [ -n "${_cross_tuple}" ]; then \
-                echo "Rebuilding SPIRV-Tools for target arch ${TARGET_ARCH} from $_spirv_src"; \
-                mkdir -p "/tmp/spirv-tools-${TARGET_ARCH}build"; \
-                cd "/tmp/spirv-tools-${TARGET_ARCH}build"; \
-                cmake "$_spirv_src" -DCMAKE_BUILD_TYPE=Release -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF \
-                    -DSPIRV-Headers_SOURCE_DIR="$_spirv_headers" \
-                    -DSPIRVHeaders_DIR="$_spirv_headers" \
-                    -DCMAKE_C_COMPILER="${_cross_tuple}-gcc" \
-                    -DCMAKE_CXX_COMPILER="${_cross_tuple}-g++" && \
-                cmake --build . -j"$(nproc)" --target SPIRV-Tools-static && \
-                _spirv_lib="$(find "/tmp/spirv-tools-${TARGET_ARCH}build" -name 'libSPIRV-Tools.a' -type f 2>/dev/null | head -1)" && \
-                _vk_base="$(ls -d /opt/vulkan/*/ 2>/dev/null | head -1)" && \
-                if [ -n "$_spirv_lib" ] && [ -n "$_vk_base" ]; then \
-                    mkdir -p "${_vk_base}/${_arch_dir}/lib"; \
-                    cp "$_spirv_lib" "${_vk_base}/${_arch_dir}/lib/"; \
-                    echo "SPIRV-Tools rebuilt for target arch ${TARGET_ARCH}"; \
-                fi; \
-            fi; \
-            # Always rebuild host SPIRV-Tools too (fixes Werror for host tools) \
-            echo "Rebuilding SPIRV-Tools for host arch from $_spirv_src"; \
-            mkdir -p /tmp/spirv-tools-hostbuild; \
-            cd /tmp/spirv-tools-hostbuild; \
-            unset CC CXX CMAKE_C_COMPILER CMAKE_CXX_COMPILER; \
-            cmake "$_spirv_src" -DCMAKE_BUILD_TYPE=Release -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF \
-                -DSPIRV-Headers_SOURCE_DIR="$_spirv_headers" \
-                -DSPIRVHeaders_DIR="$_spirv_headers" && \
-            cmake --build . -j"$(nproc)" --target SPIRV-Tools-static && \
-            _spirv_lib="$(find /tmp/spirv-tools-hostbuild -name 'libSPIRV-Tools.a' -type f 2>/dev/null | head -1)" && \
-            _vk_libdir="$(ls -d /opt/vulkan/*/x86_64/lib 2>/dev/null | head -1)" && \
-            [ -n "$_spirv_lib" ] && [ -n "$_vk_libdir" ] && cp "$_spirv_lib" "$_vk_libdir/" && \
-            echo "SPIRV-Tools rebuilt for host arch" \
-        else \
-            echo "SPIRV-Tools source not found under /opt/vulkan; rebuild skipped"; \
-        fi; \
-    fi
+# Skipped for amd64 (uses the SDK's prebuilt x86_64 SPIRV-Tools as-is).
+RUN --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/toolchain/rebuild-spirv-tools.sh
+
 # 6. VERIFICATION
 RUN set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify

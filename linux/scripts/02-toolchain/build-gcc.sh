@@ -326,7 +326,9 @@ if wget -q --spider "${SIG_URL}"; then
       if gpg --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null; then
         echo "GPG signature verified successfully."
       else
-        echo "WARNING: GPG verification FAILED. Proceeding with caution." >&2
+        echo "ERROR: GPG verification FAILED for ${TARBALL}." >&2
+        echo "The tarball may be corrupted or tampered with. Aborting." >&2
+        exit 1
       fi
     fi
   else

@@ -156,7 +156,8 @@ build_cross_target_python_payload() {
   fi
 
   prepare_cross_target_env "${target_arch}" "cross Python ${target_arch} staging"
-  install_target_packages zlib1g-dev libbz2-dev liblzma-dev libzstd-dev libffi-dev libssl-dev 2>/dev/null || true
+  install_target_packages zlib1g-dev libbz2-dev liblzma-dev libzstd-dev libffi-dev libssl-dev || \
+    warn "Some target dev packages failed to install; extension modules may be missing"
   pkg_config_libdir="$(cross_pkg_config_libdir "${target_triplet}")"
   export CFLAGS="${CFLAGS:--O2} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export CPPFLAGS="${CPPFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
@@ -261,6 +262,32 @@ EOF
     while read -r symlink; do warn "dangling: ${symlink}"; done < <(find "${dynload_dir}" -xtype l 2>/dev/null || true)
     err "dangling extension symlinks remain in ${dynload_dir} after staging"
   fi
+
+  # Guard: refuse to ship a target Python missing critical C extensions.
+  # make -k || true above can silently skip failed extension builds; the
+  # dangling-symlink check only catches broken links, not missing files.
+  # These extensions have no external dependencies and must always build.
+  local -a _critical_exts=(_struct math cmath _csv _io _json _pickle _socket)
+  local _ext _missing=()
+  for _ext in "${_critical_exts[@]}"; do
+    if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
+       ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then
+      _missing+=("$_ext")
+    fi
+  done
+  if [ "${#_missing[@]}" -gt 0 ]; then
+    warn "Missing critical C extensions in ${dynload_dir}: ${_missing[*]}"
+    err "target Python is missing critical C extensions (make -k may have silently failed)"
+  fi
+
+  # Warn about missing optional extensions (depend on target dev packages).
+  local -a _optional_exts=(zlib bz2 _lzma _ssl _hashlib)
+  for _ext in "${_optional_exts[@]}"; do
+    if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
+       ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then
+      warn "Optional C extension missing: ${_ext} (target dev package may not be installed)"
+    fi
+  done
 
   mkdir -p "${stage_root}/usr/local/lib/pkgconfig"
   if [ -f "${cross_build_dir}/Misc/python.pc" ]; then
