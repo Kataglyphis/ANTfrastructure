@@ -165,6 +165,11 @@ build_cross_target_python_payload() {
 ac_cv_buggy_getaddrinfo=no
 ac_cv_file__dev_ptmx=yes
 ac_cv_file__dev_ptc=no
+# libffi's ffi.h is in the target multiarch include dir.  Even with
+# -idirafter /usr/include/${target_triplet} above, the cross-configure
+# probe for ffi.h can fail to find it (it checks the default include
+# path, not -idirafter flags).  Force-disable to avoid a configure
+# error; _ctypes will not be built.  See _optional_exts check below.
 ac_cv_header_ffi_h=no
 EOF
 
@@ -281,7 +286,9 @@ EOF
   fi
 
   # Warn about missing optional extensions (depend on target dev packages).
-  local -a _optional_exts=(zlib bz2 _lzma _ssl _hashlib)
+  # _ctypes is intentionally disabled via ac_cv_header_ffi_h=no in the
+  # config.site above; the warning is expected on cross builds.
+  local -a _optional_exts=(zlib bz2 _lzma _ssl _hashlib _ctypes)
   for _ext in "${_optional_exts[@]}"; do
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
        ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then
@@ -340,7 +347,7 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
 fi
 
 wget --tries=5 --retry-connrefused --timeout=30 -q "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "${PYTHON_TARBALL}"
-tar -xf "${PYTHON_TARBALL}" -C /tmp
+tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
 cd "${PYTHON_SOURCE_DIR}"
 ./configure --enable-shared --enable-optimizations --prefix=/usr/local
