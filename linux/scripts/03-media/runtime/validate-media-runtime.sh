@@ -7,7 +7,10 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
 fi
 # Fallback if cross-env.sh didn't define cross_build_is_active
 if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  cross_build_is_active() {
+    [ "${BUILD_MODE:-native}" = "cross" ] && \
+    [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+  }
 fi
 
 ARTIFACTS=(
@@ -57,6 +60,7 @@ find_missing_needed() {
 
   local so_name
   while IFS= read -r so_name; do
+    [ -n "${so_name}" ] || continue
     local found=false
 
     for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
@@ -77,7 +81,7 @@ find_missing_needed() {
       echo "  MISSING: ${so_name}" >&2
       missing+=("${so_name}")
     fi
-  done
+  done < <(objdump -p "${binary}" 2>/dev/null | awk '/NEEDED/ {print $2}')
 
   if [ ${#missing[@]} -gt 0 ]; then
     printf '%s\n' "${missing[@]}"
@@ -128,7 +132,8 @@ scan_plugin_directory() {
     [ -f "${p}" ] || continue
 
     local so_name
-    for so_name in $(objdump -p "${p}" 2>/dev/null | awk '/NEEDED/ {print $2}'); do
+    while IFS= read -r so_name; do
+      [ -n "${so_name}" ] || continue
       local found=false
 
       for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
@@ -147,9 +152,8 @@ scan_plugin_directory() {
 
       if [ "${found}" = "false" ]; then
         missing_all+=("${so_name}")
-        break
       fi
-    done
+    done < <(objdump -p "${p}" 2>/dev/null | awk '/NEEDED/ {print $2}')
   done
 
   if [ ${#missing_all[@]} -gt 0 ]; then
