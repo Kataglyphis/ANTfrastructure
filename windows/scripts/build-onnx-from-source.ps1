@@ -34,6 +34,10 @@ Enter-VsDevCmdEnvironment
 
 $cpythonDir = Join-Path $env:TEMP_DIR 'cpython'
 if ((Test-Path "$cpythonDir\PC\pyconfig.h") -and -not (Test-Path "$cpythonDir\Include\pyconfig.h")) { Copy-Item "$cpythonDir\PC\pyconfig.h" "$cpythonDir\Include\pyconfig.h" }
+$pythonExe = Join-Path $cpythonDir 'PCbuild\amd64\python.exe'
+$pythonInc = Join-Path $cpythonDir 'Include'
+$pythonLibDir = Join-Path $cpythonDir 'PCbuild\amd64'
+$pythonLibFull = if (Test-Path "$pythonLibDir\python314.lib") { "$pythonLibDir\python314.lib" } else { "$pythonLibDir\python3.lib" }
 
 $sccache = (Get-Command sccache.exe -ErrorAction Stop).Source; $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount
 
@@ -87,6 +91,7 @@ if ($env:GPU_TYPE -eq 'nvidia') {
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     '-Donnxruntime_USE_DML=OFF', '-Donnxruntime_ENABLE_PYTHON=OFF', '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
+    "-DPython3_EXECUTABLE=$pythonExe", "-DPython3_INCLUDE_DIR=$pythonInc", "-DPython3_LIBRARY=$pythonLibFull"
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
     "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$sccache"
     "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$sccache"

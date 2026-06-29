@@ -85,24 +85,24 @@ $cygSrc = $srcDir -replace '\\', '/' -replace '^C:', '/c'
 
 # Configure with --toolchain=msvc (officially supported by FFmpeg on Windows)
 # Resulting binaries are ABI-compatible with clang-cl throughout the container.
-# Ensure ONNX Runtime is discoverable for --enable-libonnxruntime
-# Use MSYS2 paths (/c/...) because FFmpeg configure runs under Git Bash/MSYS2,
-# which translates POSIX paths for native Windows tools (cl.exe, link.exe).
+# Ensure ONNX Runtime is discoverable for --enable-libonnxruntime.
+# Copy the ONNX header into FFmpeg's include/compat directory so configure's
+# test_cc probes can find it without --extra-cflags (which doesn't get passed
+# to test compilations when using --toolchain=msvc).
 $onnxRuntimeDir = Join-Path $InstallDir 'lib\onnxruntime-source'
+$onnxHeaderCopied = $false
 if (Test-Path $onnxRuntimeDir) {
-    $onnxMsysPath = $onnxRuntimeDir -replace '\\', '/' -replace '^C:', '/c'
-    # Search for the header in common ONNX Runtime install locations
-    $header = $null
-    $searchPaths = @(
-        "$onnxRuntimeDir\include\onnxruntime_c_api.h",
-        "$onnxRuntimeDir\include\onnxruntime\core\session\onnxruntime_c_api.h",
-        "$onnxRuntimeDir\include\onnxruntime_c_api.h"
-    )
-    # Also search recursively if not found at standard paths
-    if (-not ($header = Get-ChildItem "$onnxRuntimeDir" -Recurse -Filter 'onnxruntime_c_api.h' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
-        Write-Warning "ONNX Runtime header onnxruntime_c_api.h not found under $onnxRuntimeDir"
+    $header = Get-ChildItem "$onnxRuntimeDir" -Recurse -Filter 'onnxruntime_c_api.h' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($header) {
+        $ffCompatInc = Join-Path $srcDir 'compat\onnx'
+        New-Item -Path $ffCompatInc -ItemType Directory -Force | Out-Null
+        Copy-Item $header.FullName "$ffCompatInc\" -Force
+        $cxxHeader = Join-Path $header.Directory 'onnxruntime_cxx_api.h'
+        if (Test-Path $cxxHeader) { Copy-Item $cxxHeader "$ffCompatInc\" -Force }
+        Write-Host "Copied ONNX headers to: $ffCompatInc"
+        $onnxHeaderCopied = $true
     } else {
-        Write-Host "ONNX Runtime header at: $($header.FullName)"
+        Write-Warning "ONNX Runtime header onnxruntime_c_api.h not found under $onnxRuntimeDir"
     }
 }
 
@@ -112,12 +112,13 @@ $confFlags += '--enable-shared', '--disable-static'
 $confFlags += '--disable-debug', '--disable-doc'
 $confFlags += '--enable-gpl', '--enable-nonfree', '--enable-version3'
 $confFlags += '--enable-ffmpeg', '--enable-ffprobe'
-# $confFlags += '--enable-libonnxruntime'  # ONNX DLLs available at runtime via PATH
+if ($onnxHeaderCopied) {
+    $confFlags += '--enable-libonnxruntime'
+    $confFlags += "--extra-cflags=-I$cygSrc/compat/onnx"
+    $confFlags += "--extra-ldflags=-libpath:$($onnxRuntimeDir -replace '\\', '/')/lib"
+}
 $confFlags += '--toolchain=msvc'
 $confFlags += '--disable-x86asm'
-
-# CUDA auto-detected via CUDA_PATH env var (set by VsDevCmd). Explicit
-# --enable-nvenc/--enable-nvdec require ffnvcodec headers not installed here.
 
 $confStr = $confFlags -join ' '
 
@@ -126,11 +127,8 @@ $configurePath = Join-Path $srcDir 'configure'
 $configureContent = [System.IO.File]::ReadAllText($configurePath) -replace 'die "Native MSYS builds are discouraged', 'echo "[INFO] MSYS build allowed'
 [System.IO.File]::WriteAllText($configurePath, $configureContent)
 
-# Note: --enable-libonnxruntime is skipped for MSVC builds because FFmpeg's configure
-# test_cc probes don't pick up --extra-cflags properly. The ONNX Runtime DLLs are
-# still available at runtime in the container via PATH.
-
-# Write configure wrapper
+# Write configure wrapper. VsDevCmd INCLUDE/LIB env vars are inherited from PowerShell,
+# so MSVC SDK paths are available. --extra-cflags adds our ONNX include path.
 $wrapperLines = @()
 $wrapperLines += '#!/usr/bin/env bash'
 $wrapperLines += "cd $cygSrc"
@@ -150,11 +148,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "FFmpeg configure failed (exit $LASTEXITCODE)"
 }
 
-$nproc = & $bashExe -l -c "nproc" 2>&1
-$jobs = if ($nproc -match '\d+') { $Matches[0] } else { 4 }
-Write-Host "Building FFmpeg with $jobs parallel jobs..."
+# Use -j1 to avoid link race conditions with MSVC's incremental linking.
+# Parallel builds (-jN) can cause spurious LNK1120 errors when library
+# dependencies (libavutil → libswscale) aren't fully linked before consumers.
+Write-Host 'Building FFmpeg with single job (avoids MSVC link race conditions)...'
 
-Write-Host 'Building FFmpeg (this may take 15-30 minutes)...'
+Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
 $ffbuildDir = Join-Path $srcDir 'ffbuild'
 Get-ChildItem -Path $ffbuildDir -Filter '*.mak' -ErrorAction SilentlyContinue | ForEach-Object {
     $c = [System.IO.File]::ReadAllText($_.FullName)
@@ -208,7 +207,7 @@ sed -n "s/^ *\([a-zA-Z][a-zA-Z0-9_]*\);.*/\1/p" "$ver_file"
 '@
 $makedefPath = Join-Path $srcDir 'compat/windows/makedef'
 [System.IO.File]::WriteAllText($makedefPath, $makedefContent, [System.Text.Encoding]::ASCII)
-& cmd /c "`"$bashExe`" -c `"cd $cygSrc && make -j$jobs`" 2>&1" | ForEach-Object { Write-Host $_ }
+& cmd /c "`"$bashExe`" -c `"cd $cygSrc && make -j1`" 2>&1" | ForEach-Object { Write-Host $_ }
 $builtFfmpeg = Join-Path $srcDir 'ffmpeg.exe'
 if (-not (Test-Path $builtFfmpeg)) {
     Write-Host 'Retrying with single job...'

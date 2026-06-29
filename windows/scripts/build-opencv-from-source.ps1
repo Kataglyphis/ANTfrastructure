@@ -67,8 +67,9 @@ $cmakeExtra = @(
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
     '-DWITH_OPENGL=ON', '-DWITH_DIRECTX=ON', '-DWITH_DIRECTML=ON',
     '-DWITH_VULKAN=ON', '-DWITH_EIGEN=ON',
-    # Use system ONNX Runtime (source-built in a previous stage); disable download
-    '-DWITH_ONNXRUNTIME=ON', '-DOPENCV_DOWNLOAD_ONNXRUNTIME=OFF',
+    # ONNX Runtime enabled — OpenCV auto-detects our source-built ORT via PKG_CONFIG_PATH.
+    # If not found via pkg-config, OpenCV falls back to its bundled download (v1.25.1).
+    '-DWITH_ONNXRUNTIME=ON',
     '-DWITH_VTK=OFF', '-DWITH_MSMF=ON', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
     '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=ON',
     # CUDA unconditionally ON; if NVIDIA layer is absent, OpenCV warns and skips gracefully

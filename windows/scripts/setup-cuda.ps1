@@ -35,16 +35,36 @@ $cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
 Invoke-WebRequest -Uri $cudaUrl -OutFile $cudaInstaller -UseBasicParsing
 Write-Host 'Installing CUDA Toolkit (full silent install, no driver)...'
 $proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-download-driver' -Wait -PassThru
-if ($proc.ExitCode -ne 0) {
-    throw ('CUDA installation failed with exit code: {0}' -f $proc.ExitCode)
-}
+$proc.WaitForExit()
+$exitCode = $proc.ExitCode
+$proc.Dispose()
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
 Remove-Item $cudaInstaller -Force
-Write-Host 'CUDA Toolkit installation complete.'
+if ($exitCode -ne 0) {
+    throw ('CUDA installation failed with exit code: {0}' -f $exitCode)
+}
+Write-Host 'CUDA Toolkit installation complete. Waiting for files to settle...'
+Start-Sleep -Seconds 5
+# Force any lingering handles closed
+& cmd.exe /c 'ver > nul' 2>&1 | Out-Null
+[System.GC]::Collect()
 
 # Full installer puts CUDA at Program Files
-$effectiveCudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$($CudaVersionMajorMinor -replace '-', '.')"
+$cudaInstallRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA"
+Write-Host "Listing $cudaInstallRoot ..."
+Get-ChildItem $cudaInstallRoot -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  Found: $_" }
+
+$effectiveCudaRoot = "$cudaInstallRoot\v$($CudaVersionMajorMinor -replace '-', '.')"
 if (-not (Test-Path (Join-Path $effectiveCudaRoot 'bin\nvcc.exe'))) {
-    throw "nvcc.exe not found at $effectiveCudaRoot after full installer"
+    Write-Host "nvcc.exe not found at $effectiveCudaRoot, searching..."
+    $nvcc = Get-ChildItem "$cudaInstallRoot\*\bin\nvcc.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($nvcc) {
+        $effectiveCudaRoot = $nvcc.Directory.Parent.FullName
+        Write-Host "Found nvcc at alternate path: $effectiveCudaRoot"
+    } else {
+        throw "nvcc.exe not found anywhere under $cudaInstallRoot after full installer"
+    }
 }
 Write-Host "CUDA root: $effectiveCudaRoot"
 
@@ -127,3 +147,10 @@ if (-not $cudnnLibs) { throw "cuDNN import libs (cudnn*.lib) not found under $Cu
 if (-not $cudnnDlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $CudnnRoot" }
 Write-Host ('cuDNN verified: {0} headers, {1} libs, {2} DLLs' -f $cudnnHeaders.Count, $cudnnLibs.Count, $cudnnDlls.Count)
 Write-Host 'cuDNN installation complete.'
+
+# Final GC push to release any lingering file handles before layer commit
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+Remove-Item "$TempDir\cudnn.zip" -Force -ErrorAction SilentlyContinue
+Remove-Item "$TempDir\cuda_installer.exe" -Force -ErrorAction SilentlyContinue
+& cmd.exe /c 'ver > nul' 2>&1 | Out-Null

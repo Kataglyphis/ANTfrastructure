@@ -71,11 +71,12 @@ $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 $genaiCudaArgs = @()
 $cudaRoot = Get-CudaRoot
 $cudnnRoot = if ($env:CUDNN_ROOT) { $env:CUDNN_ROOT } else { $null }
-# NOTE: CUDA=OFF because clang-cl cannot compile cuRAND host headers
-# (curand_kernel.h uses __syncthreads, __umulhi, NV_PROVIDES_SM_61).
-# GenAI uses ONNX Runtime's CUDA execution provider at runtime instead.
+# NOTE: CUDA is OFF at build time because CUDA 13.3 headers use __declspec(identifier)
+# (a clang extension) which MSVC 14.51 (VS 18.7.2) does not support as the host
+# compiler for nvcc. GenAI uses ONNX Runtime's CUDA execution provider at runtime
+# instead, so CUDA at build time is not required.
 $genaiCudaArgs += '-DUSE_CUDA=OFF'
-Write-Host 'CUDA support disabled for ONNX GenAI build (clang-cl incompatibility with CUDA headers)'
+Write-Host 'CUDA disabled for ONNX GenAI build (uses ONNX Runtime CUDA EP at runtime)'
 
 # Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
 $pythonLibDir = "$env:TEMP_DIR/cpython/PCbuild/amd64"

@@ -5,7 +5,7 @@
 # Builds on top of the generic SDK and provides GPU acceleration.
 # There is no Windows Dockerfile.amd (ROCm-on-Windows is not supported).
 
-ARG BASE_IMAGE=local/kataglyphis:windows-sdk
+ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 FROM ${BASE_IMAGE}
 
 ARG CUDA_VERSION=13.3.0
