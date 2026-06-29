@@ -415,7 +415,7 @@ build_gstreamer_monorepo() {
   prebuild_gstreamer_riscv_targets
 
   echo "Compiling GStreamer (this may take a while)..."
-  JOBS="$(compute_gstreamer_meson_jobs)"
+  JOBS="$(nproc 2>/dev/null || echo 4)"
   export JOBS
   echo "Using JOBS=$JOBS (AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
