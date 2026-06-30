@@ -19,9 +19,14 @@ Install [Stevedore](https://github.com/slonopotamus/stevedore):
 # WinGet (recommended)
 winget install stevedore
 
+# WinGet — custom install directory (e.g. D: NVMe dev drive)
+winget install stevedore --custom="INSTALLDIR=D:\Stevedore"
+
 # or Chocolatey
 choco install stevedore
 ```
+
+If you used a custom `INSTALLDIR`, substitute `D:\Stevedore\bin\docker.exe` for `"%ProgramFiles%\Stevedore\bin\docker.exe"` in all commands below.
 
 Reboot after installation. This enables the Windows Containers feature and adds your user to the `docker-users` group.
 
@@ -30,16 +35,16 @@ Use Stevedore's bundled `docker.exe` for all builds below:
 
 | Tool | Build | Run |
 |------|-------|-----|
-| `"%ProgramFiles%\Stevedore\bin\docker.exe" build` | ✅ Working DNS | N/A |
+| `"D:\Stevedore\bin\docker.exe" build` | ✅ Working DNS | N/A |
 | `nerdctl build` | ❌ Broken DNS | N/A |
 | `nerdctl run` | N/A | ✅ Works |
 
 ## Build Commands
 
-Run from the repository root in order. Replace `"%ProgramFiles%\Stevedore\bin\docker.exe"` with your Stevedore install path:
+Run from the repository root in order. Update `$DOCKER` to match your Stevedore install path (default: `D:\Stevedore\bin\docker.exe`; adjust if different):
 
 ```powershell
-$DOCKER = "${env:ProgramFiles}\Stevedore\bin\docker.exe"
+$DOCKER = "D:\Stevedore\bin\docker.exe"
 
 # Stage 1: toolchain base (VS, Scoop, LLVM, Rust)
 & $DOCKER build --no-cache --progress=plain `
@@ -131,7 +136,7 @@ Add-MpPreference -ExclusionPath "C:\temp"
 Always use Stevedore's `docker.exe` for builds — `nerdctl build` lacks DNS resolution:
 
 ```powershell
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
+"D:\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
 ```
 
 `nerdctl run` works fine for running containers (DNS resolution is only broken during BuildKit builds, not for runs).

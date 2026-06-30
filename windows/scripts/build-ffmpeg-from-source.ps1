@@ -99,6 +99,8 @@ if (Test-Path $onnxRuntimeDir) {
         Copy-Item $header.FullName "$ffCompatInc\" -Force
         $cxxHeader = Join-Path $header.Directory 'onnxruntime_cxx_api.h'
         if (Test-Path $cxxHeader) { Copy-Item $cxxHeader "$ffCompatInc\" -Force }
+        $epHeader = Join-Path $header.Directory 'onnxruntime_ep_c_api.h'
+        if (Test-Path $epHeader) { Copy-Item $epHeader "$ffCompatInc\" -Force }
         Write-Host "Copied ONNX headers to: $ffCompatInc"
         $onnxHeaderCopied = $true
     } else {

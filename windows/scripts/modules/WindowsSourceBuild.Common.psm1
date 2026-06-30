@@ -106,6 +106,15 @@ function Invoke-CmakeConfigure {
     if ($Linker) { $cmakeArgs += "-DCMAKE_LINKER=$Linker" }
     if ($Archiver) { $cmakeArgs += "-DCMAKE_AR=$Archiver" }
 
+    # Auto-detect sccache compiler launcher for max-speed incremental rebuilds
+    $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if ($sccacheCmd) {
+        if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
+        $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
+        $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
+        Write-Host "sccache enabled at: $($sccacheCmd.Source) (max $env:SCCACHE_MAX_JOBS jobs)"
+    }
+
     if ($ExtraArgs.Count -gt 0) { $cmakeArgs += $ExtraArgs }
 
     Write-Host "CMake configure: $($cmakeArgs -join ' ')"
@@ -216,6 +225,159 @@ function Enter-VsDevCmdEnvironment {
     }
 }
 
+function Get-VsInstallPath {
+    <#
+    .SYNOPSIS
+        Resolves the latest Visual Studio installation path via vswhere.
+    .OUTPUTS
+        [string] The VS installation path (e.g. C:\Program Files\Microsoft Visual Studio\18\BuildTools).
+    #>
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere - Visual Studio Installer missing" }
+    $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if ([string]::IsNullOrWhiteSpace($vsPath)) { throw 'No Visual Studio installation with VC Tools x86/x64 found via vswhere' }
+    return $vsPath
+}
+
+function Get-MsvcToolsRoot {
+    <#
+    .SYNOPSIS
+        Resolves the latest MSVC tools directory (include/lib headers) via vswhere.
+    .OUTPUTS
+        [string] Full path to the MSVC tools version directory (e.g. ...\VC\Tools\MSVC\14.51.32910).
+    #>
+    $vsPath = Get-VsInstallPath
+    $msvcRoot = Join-Path $vsPath 'VC\Tools\MSVC'
+    $dirs = Get-ChildItem -Path $msvcRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+    if (-not $dirs) { throw "No MSVC toolchain found under $msvcRoot" }
+    return $dirs[0].FullName
+}
+
+function Resolve-LlvmArchiver {
+    <#
+    .SYNOPSIS
+        Resolves the full path to llvm-lib.exe for use as CMAKE_AR in clang-cl builds.
+    .DESCRIPTION
+        CMake's default CMAKE_AR resolution can find llvm-lib incorrectly (e.g. C:\llvm-lib).
+        This returns the full path so it can be passed via -DCMAKE_AR:FILEPATH=...
+    .OUTPUTS
+        [string] Full path to llvm-lib.exe, or $null if not found.
+    #>
+    $llvmLib = (Get-Command 'llvm-lib' -ErrorAction SilentlyContinue).Source
+    if (-not $llvmLib) { $llvmLib = (Get-Command 'llvm-lib.exe' -ErrorAction SilentlyContinue).Source }
+    return $llvmLib
+}
+
+function Copy-CpythonPyConfigHeader {
+    <#
+    .SYNOPSIS
+        Copies CPython's PC\pyconfig.h to Include\pyconfig.h (source build puts it in PC/, not Include/).
+    .DESCRIPTION
+        The source-built CPython generates pyconfig.h under PC\ but many build systems
+        expect it under Include\. This copies it if the destination is missing.
+    .PARAMETER CpythonDir
+        Path to the CPython source checkout (default: $env:TEMP_DIR\cpython).
+    #>
+    param(
+        [string]$CpythonDir = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
+    $src = Join-Path $CpythonDir 'PC\pyconfig.h'
+    $dst = Join-Path $CpythonDir 'Include\pyconfig.h'
+    if ((Test-Path $src) -and -not (Test-Path $dst)) {
+        Copy-Item $src $dst -Force
+        Write-Host "Copied pyconfig.h to Include/ (from $src)"
+    }
+}
+
+function Get-SourceBuildPython {
+    <#
+    .SYNOPSIS
+        Returns paths for the source-built CPython interpreter (built in the toolchain layer).
+    .OUTPUTS
+        [hashtable] @{ Exe=...; Include=...; LibDir=...; Lib=... }
+    .PARAMETER CpythonDir
+        Path to the CPython source checkout (default: $env:TEMP_DIR\cpython).
+    #>
+    param(
+        [string]$CpythonDir = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
+    $exe = Join-Path $CpythonDir 'PCbuild\amd64\python.exe'
+    $include = Join-Path $CpythonDir 'Include'
+    $libDir = Join-Path $CpythonDir 'PCbuild\amd64'
+    $lib = if (Test-Path (Join-Path $libDir 'python314.lib')) { Join-Path $libDir 'python314.lib' } else { Join-Path $libDir 'python3.lib' }
+    return @{ Exe = $exe; Include = $include; LibDir = $libDir; Lib = $lib }
+}
+
+function Replace-CppKeywordAlternatives {
+    <#
+    .SYNOPSIS
+        Replaces C++ keyword alternatives (and/or/not) with symbolic operators (&&/||/!) for clang-cl.
+    .DESCRIPTION
+        clang-cl does not support the ISO-C++ keyword alternatives `and`, `or`, `not`
+        (they require including <iso646.h> on MSVC). This in-place patches a source file
+        to replace all word-boundary occurrences with symbolic operators.
+    .PARAMETER Path
+        File to patch in-place.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+    if (-not (Test-Path $Path)) { return }
+    $content = [System.IO.File]::ReadAllText($Path)
+    $patched = $content -replace '\bor\b', '||' -replace '\band\b', '&&' -replace '\bnot\b', '!'
+    if ($content -ne $patched) {
+        [System.IO.File]::WriteAllText($Path, $patched)
+        Write-Host "Patched keyword alternatives in: $Path"
+    }
+}
+
+function Get-SccacheLauncher {
+    <#
+    .SYNOPSIS
+        Finds sccache.exe on PATH and sets SCCACHE_MAX_JOBS to the processor count.
+    .OUTPUTS
+        [string] Full path to sccache.exe, or $null if not found.
+    #>
+    $cmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if (-not $cmd) { return $null }
+    $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount
+    return $cmd.Source
+}
+
+function Update-NinjaFile {
+    <#
+    .SYNOPSIS
+        Strips MSVC-only flags from a build.ninja file that clang-cl errors on.
+    .DESCRIPTION
+        clang-cl doesn't understand several MSVC-only flags (/experimental:external,
+        /arch:, /bigobj, -WX, /Qspectre). This patches the generated build.ninja in-place
+        after CMake configure but before ninja build.
+    .PARAMETER NinjaFile
+        Path to the build.ninja file.
+    .PARAMETER StripPatterns
+        Array of regex patterns to remove from build.ninja.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$NinjaFile,
+        [string[]]$StripPatterns = @()
+    )
+    if (-not (Test-Path $NinjaFile)) { return }
+    $text = [System.IO.File]::ReadAllText($NinjaFile)
+    $original = $text
+    foreach ($pattern in $StripPatterns) {
+        $text = $text -replace $pattern, ''
+    }
+    $text = $text -replace '  +', ' '
+    if ($text -ne $original) {
+        [System.IO.File]::WriteAllText($NinjaFile, $text)
+        Write-Host "Patched build.ninja for clang-cl compatibility: $NinjaFile"
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
     'Invoke-GitClone',
@@ -224,5 +386,13 @@ Export-ModuleMember -Function @(
     'Get-CudaRoot',
     'Assert-CudaAvailable',
     'Assert-CudnnInstalled',
-    'Enter-VsDevCmdEnvironment'
+    'Enter-VsDevCmdEnvironment',
+    'Get-VsInstallPath',
+    'Get-MsvcToolsRoot',
+    'Resolve-LlvmArchiver',
+    'Copy-CpythonPyConfigHeader',
+    'Get-SourceBuildPython',
+    'Replace-CppKeywordAlternatives',
+    'Get-SccacheLauncher',
+    'Update-NinjaFile'
 )

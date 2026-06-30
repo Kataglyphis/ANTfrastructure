@@ -72,8 +72,7 @@ if ($cudaRoot -and (Test-Path $cudaRoot)) {
 }
 
 # Fix CMAKE_AR path for llvm-lib (CMake resolves llvm-lib to C:\llvm-lib incorrectly)
-$llvmLib = (Get-Command 'llvm-lib' -ErrorAction SilentlyContinue).Source
-if (-not $llvmLib) { $llvmLib = (Get-Command 'llvm-lib.exe' -ErrorAction SilentlyContinue).Source }
+$llvmLib = Resolve-LlvmArchiver
 if ($llvmLib) { $cmakeExtra += "-DCMAKE_AR:FILEPATH=$llvmLib" }
 
 # Vulkan SDK is auto-detected by LiteRT via VULKAN_SDK env var; no need for explicit paths.

@@ -48,13 +48,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ---- helpers (inline, avoids module scope issues) ----
-function Ensure-Dir($path) {
-    if (-not (Test-Path $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
-    return (Resolve-Path $path).Path
-}
+# ---- module import (logging + build helpers + shared utilities) ----
+$sharedPath = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
+if (-not (Test-Path $sharedPath)) { throw "Required module not found: $sharedPath" }
+Import-Module $sharedPath -Force
 
-# ---- module import (logging + build helpers) ----
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "Required module not found: $modulePath"
@@ -92,10 +90,10 @@ try {
     log "GitRepo:   $GitRepo"
 
     # ---- 1. resolve directories ----
-    $resolvedInstallDir = Ensure-Dir $InstallDir
-    $resolvedSrcDir     = Ensure-Dir $SrcDir
-    $resolvedBuildDir   = Ensure-Dir $BuildDir
-    $resolvedLogDir     = Ensure-Dir $LogDir
+    $resolvedInstallDir = Resolve-DirectoryPath -Path $InstallDir
+    $resolvedSrcDir     = Resolve-DirectoryPath -Path $SrcDir
+    $resolvedBuildDir   = Resolve-DirectoryPath -Path $BuildDir
+    $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
     # ---- 2. install Meson via uv ----
     # uv needs CPython, download embeddable Python manually (uv's built-in

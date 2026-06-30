@@ -31,10 +31,9 @@ Pop-Location
 $vcpkgRoot = 'C:\vcpkg\installed\x64-windows'
 $vcpkgDir = 'C:\vcpkg'
 $env:CMAKE_PREFIX_PATH = "$vcpkgRoot;$env:CMAKE_PREFIX_PATH"
-$protobufTools = 'C:\vcpkg\installed\x64-windows\tools\protobuf'
+$protobufTools = Join-Path $vcpkgDir 'installed\x64-windows\tools\protobuf'
 if (Test-Path $protobufTools) { $env:PATH = "$protobufTools;$env:PATH" }
-$rustDir = 'C:\Users\ContainerAdministrator\scoop\apps\rust\current\bin'
-$env:PATH = "$rustDir;$env:USERPROFILE\.cargo\bin;$env:PATH"
+$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 $env:CARGO_HOME = "$env:USERPROFILE\.cargo"
 
 $runtimeProtoCmake = Join-Path $SourceDir 'runtime\proto\CMakeLists.txt'
@@ -87,8 +86,8 @@ Copy-Item "$vcpkgInclude\*" $protoInstallInclude -Recurse -Force -ErrorAction Si
 
 $litertBuildDir = Join-Path $buildDir 'litert_lm\build'
 $stampDir = Join-Path $buildDir 'litert_lm\stamps'
-$llvmAr = 'C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin\llvm-ar.exe'
-$ninja = 'C:\Users\ContainerAdministrator\scoop\shims\ninja.exe'
+$llvmAr = (Get-Command llvm-ar.exe -ErrorAction Stop).Source
+$ninja = (Get-Command ninja.exe -ErrorAction Stop).Source
 
 Write-Host 'Running ExternalProject steps 1-4 (mkdir/download/update/patch)...'
 & $ninja -C $buildDir litert_lm/stamps/litert_lm-mkdir litert_lm/stamps/litert_lm-download litert_lm/stamps/litert_lm-update litert_lm/stamps/litert_lm-patch 2>&1

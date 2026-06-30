@@ -24,34 +24,25 @@ Write-Host "InstallDir: $InstallDir"
 $genaiInstallDir = Join-Path $InstallDir 'lib\onnxruntime-genai-source'
 
 # Use the source-built Python from the toolchain layer
-$pythonExe = Join-Path $env:TEMP_DIR 'cpython\PCbuild\amd64\python.exe'
-if (-not (Test-Path $pythonExe)) { throw "Python not found at $pythonExe" }
-Write-Host "Using Python: $pythonExe"
+$py = Get-SourceBuildPython
+if (-not (Test-Path $py.Exe)) { throw "Python not found at $($py.Exe)" }
+Write-Host "Using Python: $($py.Exe)"
 
 # Install pip (source-built Python doesn't include it)
 Write-Host 'Installing pip...'
 $pipScript = Join-Path $env:TEMP 'get-pip.py'
 Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $pipScript -UseBasicParsing
 # Use cmd.exe to avoid PowerShell's $ErrorActionPreference treating stderr as errors
-cmd.exe /c """$pythonExe"" ""$pipScript"" --quiet 2>&1"
+cmd.exe /c """$($py.Exe)"" ""$pipScript"" --quiet 2>&1"
 if ($LASTEXITCODE -ne 0) { throw 'get-pip.py failed' }
 Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
 
 Write-Host 'Installing cmake, ninja, requests via pip...'
-cmd.exe /c """$pythonExe"" -m pip install cmake ninja requests --no-warn-script-location --quiet 2>&1"
+cmd.exe /c """$($py.Exe)"" -m pip install cmake ninja requests --no-warn-script-location --quiet 2>&1"
 if ($LASTEXITCODE -ne 0) { throw 'pip install build deps failed' }
 
-Write-Host 'Locating VS installation via vswhere...'
-$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-if (-not (Test-Path $vswhere)) { throw "vswhere not found at $vswhere" }
-$vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not $vsPath) { throw 'VS installation not found' }
-Write-Host "VS path: $vsPath"
-
-Write-Host 'Loading VsDevCmd environment...'
-cmd.exe /c """$vsPath\Common7\Tools\VsDevCmd.bat"" -arch=x64 -host_arch=x64 && set" | ForEach-Object {
-    if ($_ -match '^(.*?)=(.*)$') { Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2] -ErrorAction SilentlyContinue }
-}
+# Load VsDevCmd for MASM (.asm files) and MSVC STL headers
+Enter-VsDevCmdEnvironment
 
 # Clone onnxruntime-genai
 $ok = Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -Tag "v$OnnxGenAiVersion" -SourceDir $SourceDir -Recursive
@@ -60,10 +51,7 @@ if (-not $ok) { throw 'Failed to clone ONNX GenAI' }
 Set-Location $SourceDir
 
 # Copy pyconfig.h to Include/ (CPython builds it in PC/ not Include/)
-$cpythonDir = Join-Path $env:TEMP_DIR 'cpython'
-$pyConfigSrc = Join-Path $cpythonDir 'PC\pyconfig.h'
-$pyConfigDst = Join-Path $cpythonDir 'Include\pyconfig.h'
-if ((Test-Path $pyConfigSrc) -and -not (Test-Path $pyConfigDst)) { Copy-Item $pyConfigSrc $pyConfigDst -Force; Write-Host 'Copied pyconfig.h to Include/' }
+Copy-CpythonPyConfigHeader
 
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
@@ -79,10 +67,6 @@ $genaiCudaArgs += '-DUSE_CUDA=OFF'
 Write-Host 'CUDA disabled for ONNX GenAI build (uses ONNX Runtime CUDA EP at runtime)'
 
 # Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
-$pythonLibDir = "$env:TEMP_DIR/cpython/PCbuild/amd64"
-$pythonLibFull = Join-Path $pythonLibDir 'python314.lib'
-if (-not (Test-Path $pythonLibFull)) { $pythonLibFull = Join-Path $pythonLibDir 'python3.lib' }
-
 $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
     '-DUSE_TRT_RTX=OFF', '-DUSE_DML=OFF'
@@ -90,19 +74,16 @@ $cmakeExtraGenAi = @(
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
     "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE"
-    "-DPYTHON_EXECUTABLE=$pythonExe"
-    "-DPYTHON_LIBRARY=$pythonLibFull"
-    "-DPYTHON_INCLUDE_DIR=$env:TEMP_DIR/cpython/Include"
-    "-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$pythonLibDir"
+    "-DPYTHON_EXECUTABLE=$($py.Exe)"
+    "-DPYTHON_LIBRARY=$($py.Lib)"
+    "-DPYTHON_INCLUDE_DIR=$($py.Include)"
+    "-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$($py.LibDir)"
 ) + $genaiCudaArgs
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
 if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
 
-# Derive MSVC tools path dynamically from vswhere (avoid hardcoded version)
-$msvcToolsRoot = Join-Path $vsPath 'VC\Tools\MSVC'
-$msvcVersionDirs = Get-ChildItem -Path $msvcToolsRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
-if (-not $msvcVersionDirs) { throw "No MSVC toolchain found under $msvcToolsRoot" }
-$msvcVersionDir = $msvcVersionDirs[0].FullName
+# Resolve MSVC tools path dynamically (avoid hardcoded version)
+$msvcVersionDir = Get-MsvcToolsRoot
 Write-Host "Using MSVC tools: $msvcVersionDir"
 
 # Patch MSVC STL experimental/coroutine header to disable clang static_assert
@@ -137,17 +118,10 @@ if (Test-Path $yvalsCore) {
 }
 
 # Patch build.ninja to strip MSVC-only flags clang-cl errors on
-$ninjaFile = Join-Path $genaiBuildDir 'build.ninja'
-if (Test-Path $ninjaFile) {
-    $text = [System.IO.File]::ReadAllText($ninjaFile)
-    $orig = $text
-    $text = $text -replace '/Qspectre', ''
-    $text = $text -replace '(?<=\s)/WX(?=\s)', ''
-    if ($text -ne $orig) {
-        [System.IO.File]::WriteAllText($ninjaFile, $text)
-        Write-Host 'Patched build.ninja for clang-cl compatibility'
-    }
-}
+Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatterns @(
+    '/Qspectre',
+    '(?<=\s)/WX(?=\s)'
+)
 
 Write-Host 'Building with ninja directly...'
 $batFile = Join-Path $env:TEMP 'build_genai.bat'

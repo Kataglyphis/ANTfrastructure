@@ -93,7 +93,7 @@ try {
     }
     if (-not $downloaded) { throw 'VS Build Tools Download failed.' }
 
-    $args = @(
+    $installerArgs = @(
         '--quiet',
         '--wait', '--norestart', '--nocache',
 
@@ -151,7 +151,7 @@ try {
 
     Write-Host "Starting Visual Studio Build Tools installation ..."
     try {
-        $proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -NoNewWindow -PassThru
+        $proc = Start-Process -FilePath $installer -ArgumentList $installerArgs -Wait -NoNewWindow -PassThru
     }
     catch {
         Write-Host "Start-Process Exception: $($_.Exception.Message)"

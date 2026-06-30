@@ -18,6 +18,7 @@ Get-Content $versionsFile | ForEach-Object {
         if ($parts.Count -eq 2) {
             $name = $parts[0].Trim()
             $value = $parts[1].Trim().Trim('"', "'")
+            [Environment]::SetEnvironmentVariable($name, $value, 'Machine')
             [Environment]::SetEnvironmentVariable($name, $value, 'Process')
             Write-Host "  $name = $value"
         }

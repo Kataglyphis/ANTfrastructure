@@ -32,14 +32,8 @@ $bytes = [System.IO.File]::ReadAllBytes("$SourceDir\onnxruntime\core\dll\onnxrun
 
 Enter-VsDevCmdEnvironment
 
-$cpythonDir = Join-Path $env:TEMP_DIR 'cpython'
-if ((Test-Path "$cpythonDir\PC\pyconfig.h") -and -not (Test-Path "$cpythonDir\Include\pyconfig.h")) { Copy-Item "$cpythonDir\PC\pyconfig.h" "$cpythonDir\Include\pyconfig.h" }
-$pythonExe = Join-Path $cpythonDir 'PCbuild\amd64\python.exe'
-$pythonInc = Join-Path $cpythonDir 'Include'
-$pythonLibDir = Join-Path $cpythonDir 'PCbuild\amd64'
-$pythonLibFull = if (Test-Path "$pythonLibDir\python314.lib") { "$pythonLibDir\python314.lib" } else { "$pythonLibDir\python3.lib" }
-
-$sccache = (Get-Command sccache.exe -ErrorAction Stop).Source; $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount
+Copy-CpythonPyConfigHeader
+$py = Get-SourceBuildPython
 
 $cxxFlags = '/WX- /clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-msse4.2 /clang:-mf16c /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16 /clang:-Wno-invalid-specialization'
 
@@ -57,7 +51,7 @@ if ($env:GPU_TYPE -eq 'nvidia') {
     if (Test-Path $pch) { [System.IO.File]::WriteAllText($pch, ([System.IO.File]::ReadAllText($pch) -replace 'target_precompile_headers\([^)]+\)', '')) }
     # clang-cl can't do and/or/not keywords
     foreach ($f in @("$SourceDir\onnxruntime\core\providers\cuda\math\softmax.cc", "$SourceDir\onnxruntime\core\providers\cuda\math\softmax.h")) {
-        if (Test-Path $f) { [System.IO.File]::WriteAllText($f, ([System.IO.File]::ReadAllText($f) -replace '\bor\b', '||' -replace '\band\b', '&&' -replace '\bnot\b', '!')) }
+        Replace-CppKeywordAlternatives -Path $f
     }
 
     $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
@@ -91,10 +85,8 @@ if ($env:GPU_TYPE -eq 'nvidia') {
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     '-Donnxruntime_USE_DML=OFF', '-Donnxruntime_ENABLE_PYTHON=OFF', '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
-    "-DPython3_EXECUTABLE=$pythonExe", "-DPython3_INCLUDE_DIR=$pythonInc", "-DPython3_LIBRARY=$pythonLibFull"
+    "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)"
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
-    "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$sccache"
-    "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$sccache"
 ) + $gpuArgs
 $ok = Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs
 if (-not $ok) { throw 'CMake configure failed' }
@@ -104,11 +96,7 @@ if ($env:GPU_TYPE -eq 'nvidia') {
     # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keywords
     $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
     if (Test-Path $cutlassInclude) {
-        Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object {
-            $c = [System.IO.File]::ReadAllText($_.FullName)
-            $c2 = $c -replace '\bnot\b', '!' -replace '\band\b', '&&' -replace '\bor\b', '||'
-            if ($c -ne $c2) { [System.IO.File]::WriteAllText($_.FullName, $c2) }
-        }
+        Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object { Replace-CppKeywordAlternatives -Path $_.FullName }
     }
     # CUTLASS uint128: clang-cl lacks _udiv128
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
@@ -117,12 +105,13 @@ if ($env:GPU_TYPE -eq 'nvidia') {
 }
 
 # Strip MSVC-only flags from build.ninja
-$ninja = "$buildDir\build.ninja"
-$t = [System.IO.File]::ReadAllText($ninja)
-$t = $t -replace '--compiler-options /experimental:external\s*', ''
-$t = $t -replace '(?<=\s)/experimental:external(?=\s)', '' -replace '(?<=\s)-WX(?=\s)', ''
-$t = $t -replace '/arch:\S+', '' -replace '(?<!-Xcompiler\s)/bigobj', '' -replace '  +', ' '
-[System.IO.File]::WriteAllText($ninja, $t)
+Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
+    '--compiler-options /experimental:external\s*',
+    '(?<=\s)/experimental:external(?=\s)',
+    '(?<=\s)-WX(?=\s)',
+    '/arch:\S+',
+    '(?<!-Xcompiler\s)/bigobj'
+)
 
 $env:NINJA_STATUS = "[%f/%t] "
 ninja -C $buildDir 2>&1; if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }

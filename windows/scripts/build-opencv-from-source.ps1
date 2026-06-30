@@ -84,8 +84,7 @@ if ($cudaRoot -and (Test-Path $cudaRoot)) {
 }
 
 # CMAKE_AR: find llvm-lib on PATH and pass full path
-$llvmLib = (Get-Command 'llvm-lib' -ErrorAction SilentlyContinue).Source
-if (-not $llvmLib) { $llvmLib = (Get-Command 'llvm-lib.exe' -ErrorAction SilentlyContinue).Source }
+$llvmLib = Resolve-LlvmArchiver
 if ($llvmLib) { $cmakeExtra += "-DCMAKE_AR:FILEPATH=$llvmLib" }
 
 if ($contribSrc) {
