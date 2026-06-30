@@ -54,25 +54,6 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
 RUN set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
 
-# ------------------------------------------------------------------------------
-# Cross-compile a native Clang/LDD/compiler-rt toolchain for the target
-# architecture so :latest-cross ships with clang 22.1.8 on every arch.
-# Keep the checked-in LLVM release pin authoritative even when BASE_IMAGE
-# carries an older LLVM_RELEASE environment variable.
-# ------------------------------------------------------------------------------
-RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
-    --mount=type=tmpfs,target=/tmp \
-    set -euo pipefail; \
-    apt-get update -qq && \
-    apt-get install -y --no-install-recommends binutils-dev; \
-    SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
-    LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
-    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" target-clang
-
 # ==============================================================================
 # Frameworks; TVM
 # ==============================================================================

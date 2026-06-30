@@ -99,6 +99,28 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
+# 3d. Target-architecture Clang/LLD/compiler-rt (for arm64, riscv64)
+# Cross-compile a native clang 22.1.8 for each target arch so the final
+# runtime image ships with clang on every architecture.
+# Uses the LLVM source cache from the host LLVM build above.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends binutils-dev; \
+    for _target in $(echo ${CROSS_TARGETS} | tr ',' ' '); do \
+      [ "${_target}" = "amd64" ] && continue; \
+      SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
+      LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
+      bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${_target}" target-clang; \
+    done
+
 # 4. RUST / CARGO
 # Install the host Rust toolchain in the compiler layer and add the target stdlibs
 # plus Cargo linker hints needed by the amd64-hosted cross build lane.
