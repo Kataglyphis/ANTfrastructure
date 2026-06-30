@@ -156,21 +156,46 @@ build_cross_target_python_payload() {
   fi
 
   prepare_cross_target_env "${target_arch}" "cross Python ${target_arch} staging"
-  install_target_packages zlib1g-dev libbz2-dev liblzma-dev libzstd-dev libffi-dev libssl-dev || \
+
+  # Install cross-target dev packages for ${target_arch} with explicit
+  # architecture qualifier (avoids install_target_packages' silent amd64 fallback
+  # since cross_build_enabled() returns false when TARGET_ARCH == BUILD_ARCH).
+  if ! dpkg --print-architecture 2>/dev/null | grep -qx "${target_arch}" && \
+     ! dpkg --print-foreign-architectures 2>/dev/null | grep -qx "${target_arch}"; then
+    dpkg --add-architecture "${target_arch}"
+  fi
+  # Set up multiarch apt sources if not already present (the base image only has
+  # the amd64 archive; arm64 packages come from ports.ubuntu.com).
+  if [ ! -f /etc/apt/sources.list.d/ubuntu-ports.sources ]; then
+    _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-plucky}")"
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+    printf 'Types: deb\nURIs: https://archive.ubuntu.com/ubuntu/\nSuites: %s %s-updates %s-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' \
+      "${_codename}" "${_codename}" "${_codename}" \
+      > /etc/apt/sources.list.d/ubuntu.sources
+    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: arm64 riscv64\n' \
+      "${_codename}" "${_codename}" "${_codename}" "${_codename}" \
+      > /etc/apt/sources.list.d/ubuntu-ports.sources
+    apt-get update -qq 2>&1 || warn "apt-get update failed; multiarch repos may be unavailable"
+  fi
+  apt-get install -y --no-install-recommends \
+    "zlib1g-dev:${target_arch}" "libbz2-dev:${target_arch}" \
+    "liblzma-dev:${target_arch}" "libzstd-dev:${target_arch}" \
+    "libffi-dev:${target_arch}" "libssl-dev:${target_arch}" \
+    "uuid-dev:${target_arch}" "libbz2-dev" 2>&1 || \
     warn "Some target dev packages failed to install; extension modules may be missing"
   pkg_config_libdir="$(cross_pkg_config_libdir "${target_triplet}")"
   export CFLAGS="${CFLAGS:--O2} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export CPPFLAGS="${CPPFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
+  export LDFLAGS="-L/usr/lib/${target_triplet} ${LDFLAGS:-}"
+  export LIBRARY_PATH="/usr/lib/${target_triplet}:${LIBRARY_PATH:-}"
   cat > "${config_site}" <<EOF
 ac_cv_buggy_getaddrinfo=no
 ac_cv_file__dev_ptmx=yes
 ac_cv_file__dev_ptc=no
-# libffi's ffi.h is in the target multiarch include dir.  Even with
-# -idirafter /usr/include/${target_triplet} above, the cross-configure
-# probe for ffi.h can fail to find it (it checks the default include
-# path, not -idirafter flags).  Force-disable to avoid a configure
-# error; _ctypes will not be built.  See _optional_exts check below.
 ac_cv_header_ffi_h=no
+ac_cv_header_bzlib_h=yes
+ac_cv_lib_bz2_BZ2_bzlibVersion=yes
+ac_cv_header_uuid_uuid_h=yes
 EOF
 
   rm -f "${source_dir}/Python/frozen_modules/"*.h "${source_dir}/Python/frozen_modules/MANIFEST"
@@ -182,6 +207,7 @@ EOF
   (
     cd "${cross_build_dir}"
     CONFIG_SITE="${config_site}" \
+      LDFLAGS="${LDFLAGS}" \
       LD_LIBRARY_PATH="${build_python_libdir}:${LD_LIBRARY_PATH:-}" \
       PKG_CONFIG_ALLOW_CROSS=1 \
       PKG_CONFIG_SYSROOT_DIR=/ \
@@ -272,7 +298,7 @@ EOF
   # make -k || true above can silently skip failed extension builds; the
   # dangling-symlink check only catches broken links, not missing files.
   # These extensions have no external dependencies and must always build.
-  local -a _critical_exts=(_struct math cmath _csv _io _json _pickle _socket)
+  local -a _critical_exts=(_struct math cmath _csv _json _pickle _socket)
   local _ext _missing=()
   for _ext in "${_critical_exts[@]}"; do
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
@@ -288,7 +314,7 @@ EOF
   # Warn about missing optional extensions (depend on target dev packages).
   # _ctypes is intentionally disabled via ac_cv_header_ffi_h=no in the
   # config.site above; the warning is expected on cross builds.
-  local -a _optional_exts=(zlib bz2 _lzma _ssl _hashlib _ctypes)
+  local -a _optional_exts=(zlib _bz2 _lzma _ssl _hashlib _ctypes)
   for _ext in "${_optional_exts[@]}"; do
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
        ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then

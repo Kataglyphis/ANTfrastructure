@@ -404,21 +404,7 @@ detect_llvm_major_version_from_cmake_package() {
   return 1
 }
 
-patch_tvm_findllvm_for_cross_package() {
-  local tvm_dir="$1"
-  local llvm_dir="$2"
-  local findllvm_cmake="${tvm_dir}/cmake/utils/FindLLVM.cmake"
 
-  [ -n "${llvm_dir}" ] || return 0
-  [ -f "${findllvm_cmake}" ] || return 0
-
-  local _apply_patch="${SCRIPT_DIR}/01-core/apply-patch.sh"
-  local _patch_file="${SCRIPT_DIR}/patches/tvm/001-findllvm-cross-config-libs.patch"
-
-  log "Patching TVM FindLLVM.cmake to keep cross LLVM CONFIG packages"
-  bash "${_apply_patch}" "${_patch_file}" "${tvm_dir}" \
-    "TVM FindLLVM.cmake cross LLVM CONFIG package fallback"
-}
 
 require_toolchain_python() {
   local python_mm="${PYTHON_MAJOR_MINOR:-}"
@@ -724,8 +710,6 @@ main() {
     log "Using LLVM: $llvm_config"
     llvm_cmake_value="$llvm_config"
   fi
-
-  patch_tvm_findllvm_for_cross_package "$tvm_dir" "$llvm_dir"
 
   if [ "$do_clean" -eq 1 ]; then
     log "Cleaning build directory: $build_dir"
