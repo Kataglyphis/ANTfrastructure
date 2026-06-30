@@ -197,17 +197,4 @@ verify_cross_llvm_targets() {
   done
 }
 
-patch_cross_llvm_config_template() {
-  local source_dir="$1"
-  local template_file="${source_dir}/llvm/cmake/modules/LLVMConfig.cmake.in"
 
-  [ -f "${template_file}" ] || die "LLVMConfig.cmake.in not found: ${template_file}"
-
-  local _script_dir
-  _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  local _apply_patch="${_script_dir}/01-core/apply-patch.sh"
-  local _patch_file="${_script_dir}/patches/llvm/001-component-libs-property.patch"
-
-  bash "${_apply_patch}" "${_patch_file}" "${source_dir}" \
-    "LLVMConfig.cmake.in: set LLVM_COMPONENT_LIBS global property"
-}

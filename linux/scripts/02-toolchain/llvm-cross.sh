@@ -101,7 +101,6 @@ _build_llvm_cross_core() {
   # --- Mode-specific pre-build hooks ---
   case "${mode}" in
     target-llvm)
-      patch_cross_llvm_config_template "${source_dir}"
       ;;
     target-clang)
       native_wrapper_dir="${build_root}/target-clang-${target_label}-native-tool-bin"

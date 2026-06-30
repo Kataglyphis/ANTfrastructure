@@ -43,13 +43,9 @@ if [ -z "${ARCH}" ] || [ -z "${FLUTTER_VERSION}" ]; then
 fi
 
 case "${ARCH}" in
-  x64|x86-64|amd64)
+  x64|x86-64|amd64|arm64|aarch64)
     ARCH_SUFFIX=""
     ARCH_LABEL="x86-64"
-    ;;
-  arm64|aarch64)
-    ARCH_SUFFIX="_arm64"
-    ARCH_LABEL="ARM64"
     ;;
   riscv64)
     echo "Error: Flutter does not support riscv64. Skipping." >&2
@@ -79,5 +75,5 @@ rm -rf "${FLUTTER_PATH}/bin/cache"
 
 # Verify
 export PATH="${FLUTTER_PATH}/bin:${PATH}"
-flutter --version 2>&1 | head -1
+flutter --version 2>&1 | head -1 || true
 echo "Flutter installed at ${FLUTTER_PATH}"

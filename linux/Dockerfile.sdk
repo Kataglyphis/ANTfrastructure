@@ -50,13 +50,6 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
 
-# Post-Vulkan: rebuild SPIRV-Tools for target arch if cross-built,
-# so TVM can link it on arm64/riscv64 without x86_64 arch mismatch.
-# Skipped for amd64 (uses the SDK's prebuilt x86_64 SPIRV-Tools as-is).
-RUN --mount=type=tmpfs,target=/tmp \
-    set -euo pipefail; \
-    bash /opt/scripts/toolchain/rebuild-spirv-tools.sh
-
 # 6. VERIFICATION
 RUN set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
