@@ -50,9 +50,7 @@ if ($env:GPU_TYPE -eq 'nvidia') {
     $pch = "$SourceDir\onnxruntime\core\providers\cuda\CMakeLists.txt"
     if (Test-Path $pch) { [System.IO.File]::WriteAllText($pch, ([System.IO.File]::ReadAllText($pch) -replace 'target_precompile_headers\([^)]+\)', '')) }
     # clang-cl can't do and/or/not keywords
-    foreach ($f in @("$SourceDir\onnxruntime\core\providers\cuda\math\softmax.cc", "$SourceDir\onnxruntime\core\providers\cuda\math\softmax.h")) {
-        Replace-CppKeywordAlternatives -Path $f
-    }
+    Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir -IgnoreWhitespace
 
     $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
     $trtRoot = $env:TENSORRT_ROOT

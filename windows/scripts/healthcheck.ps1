@@ -34,18 +34,22 @@ Check "python --version" {
 
 # FFmpeg
 Check "ffmpeg --version" {
-    $v = & "C:\runtime\ffmpeg\bin\ffmpeg.exe" -version 2>&1 | Select-Object -First 1
+    $ffmpegBin = [Environment]::GetEnvironmentVariable('FFMPEG_BIN')
+    $ffmpegExe = if ($ffmpegBin) { Join-Path $ffmpegBin 'ffmpeg.exe' } else { 'C:\runtime\ffmpeg\bin\ffmpeg.exe' }
+    $v = & $ffmpegExe -version 2>&1 | Select-Object -First 1
     if (-not $v) { throw "ffmpeg not found or failed" }
 }
 
 # GStreamer
 Check "gst-launch-1.0 --version" {
-    $v = & "C:\runtime\bin\gst-launch-1.0.exe" --version 2>&1 | Select-Object -First 1
+    $gstBin = [Environment]::GetEnvironmentVariable('GSTREAMER_BIN')
+    $gstLaunch = if ($gstBin) { Join-Path $gstBin 'gst-launch-1.0.exe' } else { 'C:\runtime\bin\gst-launch-1.0.exe' }
+    $v = & $gstLaunch --version 2>&1 | Select-Object -First 1
     if (-not $v) { throw "gst-launch-1.0 not found or failed" }
 }
 
 # GStreamer plugin integrations (non-fatal — auto-detected by meson at build time)
-$gstInspect = 'C:\runtime\bin\gst-inspect-1.0.exe'
+$gstInspect = if ($gstBin) { Join-Path $gstBin 'gst-inspect-1.0.exe' } else { 'C:\runtime\bin\gst-inspect-1.0.exe' }
 foreach ($gstPlugin in @('opencv', 'tensorfilter', 'libav')) {
     $v = & $gstInspect $gstPlugin 2>&1 | Select-Object -First 1
     if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] gst-plugin $gstPlugin found" } `

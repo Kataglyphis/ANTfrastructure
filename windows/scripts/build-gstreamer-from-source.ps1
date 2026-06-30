@@ -95,46 +95,32 @@ try {
     $resolvedBuildDir   = Resolve-DirectoryPath -Path $BuildDir
     $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
-    # ---- 2. install Meson via uv ----
-    # uv needs CPython, download embeddable Python manually (uv's built-in
-    # Python download can fail on some Windows hosts).  Then use uv pip.
-    log 'Downloading embeddable Python for uv...'
-    $pythonUrl = 'https://www.python.org/ftp/python/3.14.6/python-3.14.6-embed-amd64.zip'
-    $pythonZip = Join-Path $resolvedLogDir 'python-embed.zip'
-    $pythonDir = Join-Path $resolvedSrcDir 'cpython'
-    & curl.exe -fsSL --retry 3 $pythonUrl -o $pythonZip
-    if ($LASTEXITCODE -ne 0) { throw 'Failed to download embedded Python' }
-    Expand-Archive -Path $pythonZip -DestinationPath $pythonDir -Force
-    $pyExe = Join-Path $pythonDir 'python.exe'
-    Remove-Item "$pythonDir\python*._pth" -Force -ErrorAction SilentlyContinue
-    # Enable site-packages by importing site (needed after _pth removal)
-    & $pyExe -c "import site" 2>&1 | ForEach-Object { if ($_) { log $_ } }
+    # ---- 2. install Meson via source-built CPython ----
+    # The toolchain layer built CPython 3.14 at $env:TEMP_DIR\cpython\PCbuild\amd64\python.exe
+    # with pip pre-installed (by the ONNX GenAI build step). Use it to install meson.
+    log 'Using source-built CPython from toolchain layer...'
+    $py = Get-SourceBuildPython
+    $pyExe = $py.Exe
+    if (-not (Test-Path $pyExe)) { throw "Source-built Python not found at $pyExe" }
+    log "Using Python: $pyExe"
 
-    log 'Installing pip + Meson...'
-    & curl.exe -fsSL 'https://bootstrap.pypa.io/get-pip.py' -o "$pythonDir\get-pip.py"
+    log 'Installing Meson via pip...'
     $pipLog = Join-Path $resolvedLogDir 'pip-install.log'
-    & cmd.exe /c """$pyExe"" ""$pythonDir\get-pip.py"" > ""$pipLog"" 2>&1"
-    Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
     & cmd.exe /c """$pyExe"" -m pip install meson > ""$pipLog"" 2>&1"
     Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
 
-    # Find meson executable from Scripts dir (embedded Python's -m may not
-    # find site-packages even after _pth removal; direct exe is reliable)
-    $pythonScripts = Join-Path $pythonDir 'Scripts'
+    # Find meson executable from Scripts dir
+    $pythonScripts = Join-Path (Split-Path $pyExe -Parent) 'Scripts'
     $mesonExe = Join-Path $pythonScripts 'meson.exe'
     if (-not (Test-Path $mesonExe)) {
-        # Fallback: try pip show to locate
         $mesonVer = & $pyExe -m pip show meson 2>&1 | Select-String '^Location:' | ForEach-Object { $_ -replace '^Location: ', '' }
-        if ($mesonVer) {
-            $mesonExe = (Get-Item $mesonVer.Trim()).Directory.Parent.FullName + '\Scripts\meson.exe'
-        }
+        if ($mesonVer) { $mesonExe = (Get-Item $mesonVer.Trim()).Directory.Parent.FullName + '\Scripts\meson.exe' }
     }
     if (-not (Test-Path $mesonExe)) { throw 'meson.exe not found after pip install' }
     $env:PATH = "$pythonScripts;$env:PATH"
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
     $script:mesonExe = $mesonExe
-    $env:UV_PYTHON = $pyExe
 
     # ---- 3. set clang-cl as the compiler ----
     log 'Setting CC/CXX to clang-cl...'

@@ -125,9 +125,7 @@ $confFlags += '--disable-x86asm'
 $confStr = $confFlags -join ' '
 
 # Patch configure to allow MSYS2 builds (official docs say MSYS is discouraged)
-$configurePath = Join-Path $srcDir 'configure'
-$configureContent = [System.IO.File]::ReadAllText($configurePath) -replace 'die "Native MSYS builds are discouraged', 'echo "[INFO] MSYS build allowed'
-[System.IO.File]::WriteAllText($configurePath, $configureContent)
+Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\ffmpeg\001-allow-msys-builds.patch') -SourceDir $srcDir -IgnoreWhitespace
 
 # Write configure wrapper. VsDevCmd INCLUDE/LIB env vars are inherited from PowerShell,
 # so MSVC SDK paths are available. --extra-cflags adds our ONNX include path.
@@ -198,17 +196,9 @@ if (Test-Path $configMakPath) {
     [System.IO.File]::WriteAllText($configMakPath, $cm)
 }
 
-# Write a replacement makedef that lists .o files via dir instead of CLI args
-$makedefContent = @'
-#!/usr/bin/env sh
-# Replacement makedef: reads .ver file, generates .def directly, ignoring .o
-# args (avoids Windows command-line length limit for avcodec).
-ver_file="$1"
-echo "EXPORTS"
-sed -n "s/^ *\([a-zA-Z][a-zA-Z0-9_]*\);.*/\1/p" "$ver_file"
-'@
-$makedefPath = Join-Path $srcDir 'compat/windows/makedef'
-[System.IO.File]::WriteAllText($makedefPath, $makedefContent, [System.Text.Encoding]::ASCII)
+# Replace makedef with version that reads .ver directly (avoids Windows command-line length limit)
+Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\ffmpeg\002-replacement-makedef.patch') -SourceDir $srcDir -IgnoreWhitespace
+
 & cmd /c "`"$bashExe`" -c `"cd $cygSrc && make -j1`" 2>&1" | ForEach-Object { Write-Host $_ }
 $builtFfmpeg = Join-Path $srcDir 'ffmpeg.exe'
 if (-not (Test-Path $builtFfmpeg)) {

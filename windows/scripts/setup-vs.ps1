@@ -52,11 +52,11 @@ function Dump-InstallerLogs {
     try { Test-Connection -ComputerName www.microsoft.com -Count 1 -ErrorAction Stop | Select-Object Address,ResponseTime } catch { Write-Host "Network check failed: $($_.Exception.Message)" }
 }
 
-# TLS 1.2 sicherstellen (für Downloads)
+# TLS 1.2 for downloads
 
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
-# Temp-Verzeichnis vorbereiten
+# Prepare temp directory for installer logs
 
 # ensure we run the installer with the temp dir we control
 $env:TEMP = $TempDir

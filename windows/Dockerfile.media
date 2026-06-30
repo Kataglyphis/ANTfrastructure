@@ -24,8 +24,9 @@ ARG TVM_REF=v0.25.0
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Stable scripts (modules + stable build scripts - rarely change)
+# Stable scripts (modules + patch files + stable build scripts - rarely change)
 COPY windows\scripts\modules C:\temp\scripts\modules
+COPY windows\scripts\patches C:\temp\scripts\patches
 COPY windows\scripts\build-onnx-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\build-opencv-from-source.ps1 C:\temp\scripts\
 

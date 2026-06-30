@@ -378,6 +378,50 @@ function Update-NinjaFile {
     }
 }
 
+function Invoke-SourcePatch {
+    <#
+    .SYNOPSIS
+        Applies a patch file to source code using git apply.
+    .DESCRIPTION
+        Uses git apply (available in the container via Git for Windows) to apply a
+        unified diff patch file to the source tree. The patch file is a standard git
+        diff with a/ b/ prefix (stripped by -p1 default).
+    .PARAMETER PatchFile
+        Path to the .patch file to apply.
+    .PARAMETER SourceDir
+        Root directory of the source tree to patch (cwd during apply).
+    .PARAMETER Strip
+        Number of leading path components to strip (default 1, strips a/).
+    .PARAMETER IgnoreWhitespace
+        If set, passes --ignore-whitespace to git apply (for whitespace drift).
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$PatchFile,
+        [Parameter(Mandatory)]
+        [string]$SourceDir,
+        [int]$Strip = 1,
+        [switch]$IgnoreWhitespace
+    )
+
+    if (-not (Test-Path $PatchFile)) { throw "Patch file not found: $PatchFile" }
+    if (-not (Test-Path $SourceDir)) { throw "Source directory not found: $SourceDir" }
+
+    $gitArgs = @('apply', "-p$Strip", '--verbose')
+    if ($IgnoreWhitespace) { $gitArgs += '--ignore-whitespace' }
+    $gitArgs += $PatchFile
+
+    Push-Location $SourceDir
+    try {
+        Write-Host "Applying patch: $(Split-Path $PatchFile -Leaf) to $SourceDir"
+        & git @gitArgs 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "git apply failed (exit $LASTEXITCODE): $PatchFile" }
+        Write-Host "  [OK] Patch applied successfully"
+    } finally {
+        Pop-Location
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
     'Invoke-GitClone',
@@ -394,5 +438,6 @@ Export-ModuleMember -Function @(
     'Get-SourceBuildPython',
     'Replace-CppKeywordAlternatives',
     'Get-SccacheLauncher',
-    'Update-NinjaFile'
+    'Update-NinjaFile',
+    'Invoke-SourcePatch'
 )
