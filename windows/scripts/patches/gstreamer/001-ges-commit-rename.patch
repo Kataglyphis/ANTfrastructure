@@ -1,0 +1,13 @@
+diff --git a/subprojects/gst-editing-services/ges/ges-validate.c b/subprojects/gst-editing-services/ges/ges-validate.c
+--- a/subprojects/gst-editing-services/ges/ges-validate.c
++++ b/subprojects/gst-editing-services/ges/ges-validate.c
+@@ -1,3 +1,7 @@
++/* clang-cl on Windows force-includes <io.h> via -FIio.h, which exposes CRT
++ * helpers that collide with GES's validate-action function `_commit`. Rename
++ * the GES function with a macro before any force-include lands.
++ */
++#define _commit ges__commit
++
+ /* GStreamer Editing Services
+  *
+  * Copyright (C) <2014> Thibault Saunier <thibault.saunier@collabora.com>

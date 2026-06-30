@@ -9,7 +9,6 @@ ARG BASE_IMAGE=local/kataglyphis:windows-sdk
 FROM ${BASE_IMAGE}
 
 ARG PYTHON_VERSION=3.14.6
-ARG PYTHON_MAJOR_MINOR=3.14
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
@@ -17,20 +16,30 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 # git clone + PCbuild\build.bat). Build scripts are COPY'd lazily by the
 # media stage so editing one script only invalidates that step's cache.
 
-# Clone CPython source at the canonical version
+# Clone CPython source at the canonical version (standalone cache layer — clone result
+# is reusable across build attempts; only invalidated when PYTHON_VERSION changes).
 SHELL ["cmd", "/S", "/C"]
 RUN set "PYTHON_VERSION=%PYTHON_VERSION%" && if not exist "C:\temp\cpython\" git clone --branch v%PYTHON_VERSION% --depth 1 https://github.com/python/cpython.git C:\temp\cpython
 
-# Build CPython from source (override PlatformToolset via Directory.Build.props using ClangCL)
+# Write Directory.Build.props as its own layer using cmd.exe echo (proven working;
+# PowerShell Set-Content with -Encoding ASCII produces XML that MSBuild rejects
+# with "unexpected token '1.0' at position 15" — the `^<?xml ` caret escaping in
+# cmd.exe is the canonical Windows form for correct XML prolog output).
 SHELL ["cmd", "/S", "/C"]
 RUN cd /d C:\temp\cpython && `
     echo ^<?xml version="1.0" encoding="utf-8"?^> > PCbuild\Directory.Build.props && `
     echo ^<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003"^> >> PCbuild\Directory.Build.props && `
     echo   ^<PropertyGroup^> >> PCbuild\Directory.Build.props && `
     echo     ^<PlatformToolset^>ClangCL^</PlatformToolset^> >> PCbuild\Directory.Build.props && `
-    echo   ^</PropertyGroup^> >> PCbuild\Directory.Build.props && `
-    echo ^</Project^> >> PCbuild\Directory.Build.props && `
-    PCbuild\build.bat -e -p x64 -c Release
+    echo ^</PropertyGroup^> >> PCbuild\Directory.Build.props && `
+    echo ^</Project^> >> PCbuild\Directory.Build.props
+
+# Build CPython from source (ClangCL PlatformToolset via Directory.Build.props above).
+# NOTE: `--mount=type=cache` requires BuildKit, which is not available for Windows
+# Containers (buildkit executor not implemented for windows). The sccache cache mount
+# cannot be used here. CPython is rebuilt from scratch on every cache miss.
+SHELL ["cmd", "/S", "/C"]
+RUN cd /d C:\temp\cpython && PCbuild\build.bat -e -p x64 -c Release
 
 # Verify built Python
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
@@ -41,7 +50,7 @@ RUN $pyExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'; `
         Write-Host "Python built at: $pyExe" `
     } else { throw 'Python build failed - interpreter not found' }
 
-ENV PYTHON_BUILD_DIR="C:\temp\cpython" `
-    PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
-
+# Expose the source-built Python via PATH for downstream media build scripts.
+# (PYTHON_BUILD_DIR was removed — no downstream consumer reads it; only PYTHON_BUILD_BIN is used.)
+ENV PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
 ENV PATH=$PYTHON_BUILD_BIN;$PATH

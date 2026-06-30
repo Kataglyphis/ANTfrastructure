@@ -11,12 +11,12 @@
     compiler (msvc-compatible ABI) with Visual Studio SDK paths.
 
 .PARAMETER GstVersion
-    Git tag or branch to build (default: 1.28.3).
+    Git tag or branch to build (default: 1.29.2).
 
 .PARAMETER InstallDir
-    Target install prefix (default: C:\gstreamer).
+    Target install prefix (default: empty -> resolves to C:\runtime via Initialize-SourceBuildEnvironment).
 
-.PARAMETER SrcDir
+.PARAMETER SourceDir
     Temporary directory for the git clone (default: C:\temp\gst-source).
 
 .PARAMETER BuildDir
@@ -33,11 +33,15 @@
 
 .PARAMETER MesonSetupArgs
     Additional arguments passed through to meson setup.
+
+.PARAMETER SrcDir
+    DEPRECATED alias for -SourceDir (kept for backwards compatibility).
 #>
 param(
     [string]$GstVersion        = '',
-    [string]$InstallDir        = 'C:\runtime',
-    [string]$SrcDir            = 'C:\temp\gst-source',
+    [string]$InstallDir        = '',
+    [string]$SourceDir         = 'C:\temp\gst-source',
+    [string]$SrcDir            = '',
     [string]$BuildDir          = 'C:\temp\gst-builddir',
     [string]$LogDir            = 'C:\temp\logs',
     [string]$GitRepo           = 'https://github.com/gstreamer/gstreamer.git',
@@ -45,8 +49,11 @@ param(
     [string[]]$MesonSetupArgs  = @()
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
+
+# Backwards-compat: accept the deprecated -SrcDir alias (preferred form is -SourceDir).
+if ([string]::IsNullOrWhiteSpace($SourceDir) -and -not [string]::IsNullOrWhiteSpace($SrcDir)) { $SourceDir = $SrcDir }
+if ([string]::IsNullOrWhiteSpace($SourceDir)) { $SourceDir = 'C:\temp\gst-source' }
 
 # ---- module import (logging + build helpers + shared utilities) ----
 $sharedPath = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
@@ -84,14 +91,14 @@ try {
     log "START - GStreamer source build"
     log "Version:   $GstVersion"
     log "Install:   $InstallDir"
-    log "SrcDir:    $SrcDir"
+    log "SourceDir: $SourceDir"
     log "BuildDir:  $BuildDir"
     log "LogDir:    $LogDir"
     log "GitRepo:   $GitRepo"
 
     # ---- 1. resolve directories ----
     $resolvedInstallDir = Resolve-DirectoryPath -Path $InstallDir
-    $resolvedSrcDir     = Resolve-DirectoryPath -Path $SrcDir
+    $resolvedSrcDir     = Resolve-DirectoryPath -Path $SourceDir
     $resolvedBuildDir   = Resolve-DirectoryPath -Path $BuildDir
     $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
@@ -276,22 +283,21 @@ int _isatty(int);
     # (Cairo Win32 stubs handled in retry loop after meson downloads cairo)
 
     # ---- 5c. detect CUDA (available from Dockerfile.nvidia layer) ----
-    $cudaDetected = $false
-    $cudaRoot = Get-CudaRoot
-    if ($cudaRoot -and (Test-Path $cudaRoot)) {
-        $cudaDetected = $true
-        log "CUDA detected at: $cudaRoot"
-        $env:CUDA_PATH = $cudaRoot
-        $env:CUDA_HOME = $cudaRoot
-        # Add CUDA bins to PATH for nvcc detection by Meson
-        $cudaBin = Join-Path $cudaRoot 'bin'
-        if (Test-Path $cudaBin) { $env:PATH = "$cudaBin;$env:PATH" }
+    # Get-GpuEnvironment sets $env:CUDA_PATH / CUDA_HOME and prepends CUDA bin to PATH
+    # -- all this script needs on top is logging and the GpuType for downstream logic.
+    $gpuEnv = Get-GpuEnvironment
+    if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+        log "CUDA detected at: $($gpuEnv.CudaRoot)"
     } else {
-        log 'CUDA not detected — nvcodec/cuda plugins will be auto-detected by Meson'
+        log 'CUDA not detected -- nvcodec/cuda plugins will be auto-detected by Meson'
     }
 
     # ---- 5d. find compiler-rt for lld-link (__udivti3, etc.) ----
-    $compilerRtLib = @(Get-ChildItem -Path "$env:USERPROFILE\scoop\apps\llvm\current\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue | Select-Object -First 1)
+    # Resolve the LLVM install dir via clang-cl on PATH (single source of truth) rather
+    # than hardcoding the scoop app dir layout -- survives a LLVM/scoop install relocation.
+    $clangClCmd = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
+    $llvmRoot = if ($clangClCmd) { Split-Path (Split-Path $clangClCmd.Source) } else { Join-Path $env:USERPROFILE 'scoop\apps\llvm\current' }
+    $compilerRtLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue | Select-Object -First 1)
     $rtFullPath = ''
     if ($compilerRtLib) {
         $rtFullPath = $compilerRtLib.FullName -replace '\\', '/'
@@ -312,7 +318,7 @@ int _isatty(int);
         # Enable all GStreamer plugin sets.
         # Individual lib integrations (opencv, onnx, tflite) are auto-detected
         # via PKG_CONFIG_PATH set in Dockerfile.media. If a dependency is not
-        # found, that plugin is simply skipped — no build failure.
+        # found, that plugin is simply skipped -- no build failure.
         '-Dgpl=enabled',
         '-Dbase=enabled',
         '-Dgood=enabled',
@@ -326,7 +332,7 @@ int _isatty(int);
         # svtjpegxs disabled: defines local access() function that conflicts with Windows CRT
         '-Dgst-plugins-bad:svtjpegxs=disabled',
         # cairo:win32=disabled intentionally fails cairo at meson setup (unknown option in
-        # cairo-1.18.4) — this prevents the LLVM 22 mmintrin.h __builtin_shufflevector crash
+        # cairo-1.18.4) -- this prevents the LLVM 22 mmintrin.h __builtin_shufflevector crash
         # that occurs when cairo tries to compile with clang-cl on Windows.
         '-Dcairo:win32=disabled',
         '-Dopus:intrinsics=disabled',
@@ -377,16 +383,24 @@ int _isatty(int);
         if ($LASTEXITCODE -eq 0) { $compileSucceeded = $true; break }
         if ($cAttempt -eq 1) {
             log 'Compile attempt 1 failed; patching _commit conflict in GES and retrying...'
-            # The -FIio.h conflicts with ges-validate.c's _commit function;
-            # rename it locally via a #define before the macro invocation.
+            # The -FIio.h conflicts with ges-validate.c's _commit function.
+            # Apply the reviewable .patch from windows/scripts/patches/gstreamer/.
             $gesValidate = Join-Path $gstSrcDir 'subprojects/gst-editing-services/ges/ges-validate.c'
-            if (Test-Path $gesValidate) {
-                $content = Get-Content $gesValidate -Raw
-                $patch = '#define _commit ges__commit
-'
-                if (-not ($content -match '#define _commit ges__commit')) {
-                    Set-Content -Path $gesValidate -Value ($patch + $content) -NoNewline
+            $gesPatch = Join-Path $PSScriptRoot 'patches\gstreamer\001-ges-commit-rename.patch'
+            if ((Test-Path $gesValidate) -and (Test-Path $gesPatch)) {
+                try {
+                    Invoke-SourcePatch -PatchFile $gesPatch -SourceDir $gstSrcDir -IgnoreWhitespace
                     log "Patched: ges-validate.c (_commit -> ges__commit)"
+                } catch {
+                    # Fallback to the previous inline form if the .patch context has drifted.
+                    log "GES .patch did not apply cleanly, falling back to inline #define"
+                    $content = Get-Content $gesValidate -Raw
+                    $patch = '#define _commit ges__commit
+'
+                    if (-not ($content -match '#define _commit ges__commit')) {
+                        Set-Content -Path $gesValidate -Value ($patch + $content) -NoNewline
+                        log "Inline-patched: ges-validate.c (_commit -> ges__commit)"
+                    }
                 }
             }
         }
@@ -450,3 +464,4 @@ int _isatty(int);
 } finally {
     Stop-StructuredLogging -Context $logContext
 }
+

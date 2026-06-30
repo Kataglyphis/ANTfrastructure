@@ -381,11 +381,16 @@ function Update-NinjaFile {
 function Invoke-SourcePatch {
     <#
     .SYNOPSIS
-        Applies a patch file to source code using git apply.
+        Idempotently applies a patch file to source code using git apply / patch.exe.
     .DESCRIPTION
-        Uses git apply (available in the container via Git for Windows) to apply a
-        unified diff patch file to the source tree. The patch file is a standard git
-        diff with a/ b/ prefix (stripped by -p1 default).
+        Mirrors linux/scripts/01-core/apply-patch.sh behaviour:
+          1. If the patch is already applied (reverse-apply check passes), SKIP.
+          2. If the patch applies cleanly (forward check passes), APPLY.
+          3. Otherwise, throw a loud error.
+
+        Prefers `git apply` when SourceDir is a git working tree; falls back to
+        `patch.exe -p1` for extracted tarballs (Patch.exe ships with Git for Windows).
+        The patch file is a standard unified diff with a/ b/ prefix.
     .PARAMETER PatchFile
         Path to the .patch file to apply.
     .PARAMETER SourceDir
@@ -394,6 +399,8 @@ function Invoke-SourcePatch {
         Number of leading path components to strip (default 1, strips a/).
     .PARAMETER IgnoreWhitespace
         If set, passes --ignore-whitespace to git apply (for whitespace drift).
+    .PARAMETER Description
+        Optional human-friendly label for log output (defaults to patch file name).
     #>
     param(
         [Parameter(Mandatory)]
@@ -401,25 +408,212 @@ function Invoke-SourcePatch {
         [Parameter(Mandatory)]
         [string]$SourceDir,
         [int]$Strip = 1,
-        [switch]$IgnoreWhitespace
+        [switch]$IgnoreWhitespace,
+        [string]$Description = ''
     )
 
     if (-not (Test-Path $PatchFile)) { throw "Patch file not found: $PatchFile" }
     if (-not (Test-Path $SourceDir)) { throw "Source directory not found: $SourceDir" }
+    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $PatchFile -Leaf }
 
-    $gitArgs = @('apply', "-p$Strip", '--verbose')
-    if ($IgnoreWhitespace) { $gitArgs += '--ignore-whitespace' }
-    $gitArgs += $PatchFile
+    $pFlag = "-p$Strip"
+    $wsFlag = @()
+    if ($IgnoreWhitespace) { $wsFlag += '--ignore-whitespace' }
+
+    $isGitRepo = (Test-Path (Join-Path $SourceDir '.git')) -or `
+        ((& git -C $SourceDir rev-parse --git-dir 2>$null) -ne $null)
 
     Push-Location $SourceDir
     try {
-        Write-Host "Applying patch: $(Split-Path $PatchFile -Leaf) to $SourceDir"
-        & git @gitArgs 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "git apply failed (exit $LASTEXITCODE): $PatchFile" }
-        Write-Host "  [OK] Patch applied successfully"
+        # Suppress $ErrorActionPreference for git/patch native commands: in PS 5.1,
+        # stderr output from git apply (e.g. "patch failed: softmax.h:41") is treated
+        # as a PowerShell ErrorRecord that triggers `$ErrorActionPreference = 'Stop'`
+        # even when `2>$null` is used. We rely on `$LASTEXITCODE` instead.
+        $oldEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+
+        Write-Host "Applying patch: $Description to $SourceDir"
+
+        if ($isGitRepo) {
+            # 1. Already applied? (reverse-check)
+            $null = & git apply --reverse --check $pFlag $wsFlag $PatchFile 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  SKIP: $Description (already applied)"
+                return
+            }
+            # 2. Forward apply
+            $null = & git apply --check $pFlag $wsFlag $PatchFile 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $null = & git apply $pFlag --verbose $wsFlag $PatchFile 2>&1
+                if ($LASTEXITCODE -ne 0) { throw "git apply failed (exit $LASTEXITCODE): $PatchFile" }
+                Write-Host "  [OK] $Description applied via git"
+                return
+            }
+        } else {
+            # Fallback: patch.exe (ships with Git for Windows at $GIT_USRBIN\patch.exe)
+            $patchExe = (Get-Command patch.exe -ErrorAction SilentlyContinue).Source
+            if (-not $patchExe) { throw "patch.exe not found and source is not a git repo -- cannot apply $PatchFile" }
+
+            # 1. Already applied? (reverse dry-run)
+            $null = & $patchExe $pFlag --dry-run --reverse $PatchFile 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  SKIP: $Description (already applied)"
+                return
+            }
+            # 2. Forward dry-run
+            $null = & $patchExe $pFlag --dry-run $PatchFile 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $null = & $patchExe $pFlag $PatchFile 2>&1
+                if ($LASTEXITCODE -ne 0) { throw "patch.exe failed (exit $LASTEXITCODE): $PatchFile" }
+                Write-Host "  [OK] $Description applied via patch.exe"
+                return
+            }
+        }
+
+        $ErrorActionPreference = $oldEAP
+
+        # 3. Patch does not apply cleanly
+        $msg = "ERROR: $Description -- patch does not apply cleanly to $SourceDir"
+        Write-Host $msg
+        Write-Host "       The upstream source may have changed. Regenerate the .patch file."
+        Write-Host "--- patch file: $PatchFile ---"
+        Get-Content $PatchFile -TotalCount 40 | ForEach-Object { Write-Host "       $_" }
+        Write-Host '       ...'
+        throw $msg
     } finally {
+        $ErrorActionPreference = $oldEAP
         Pop-Location
     }
+}
+
+function Initialize-SourceBuildEnvironment {
+    <#
+    .SYNOPSIS
+        Standard preamble for every build-*-from-source.ps1 script.
+    .DESCRIPTION
+        Sets StrictMode + Stop error action, imports this module, and resolves
+        a default InstallDir. Call at the top of each build script instead of
+        duplicating the 4-line boilerplate.
+    .PARAMETER InstallDir
+        Passed-through InstallDir value (empty -> 'C:\runtime').
+    .OUTPUTS
+        [string] The resolved InstallDir.
+    #>
+    param(
+        [string]$InstallDir = ''
+    )
+    Set-StrictMode -Version Latest
+    $ErrorActionPreference = 'Stop'
+    if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
+    return $InstallDir
+}
+
+function Get-WindowsX86SimdFlags {
+    <#
+    .SYNOPSIS
+        Returns the canonical x86 SIMD /feature flag string for clang-cl on Windows.
+    .DESCRIPTION
+        Single source of truth for the SIMD flag set used by both OpenCV and ONNX
+        Runtime Windows builds. AVX2 baseline + AVX-512 + AMX + popcnt/aes/pclmul.
+    .OUTPUTS
+        [string] Space-separated /clang:... flags (no leading space).
+    #>
+    return '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
+}
+
+function Get-WindowsX86Avx512Flags {
+    <#
+    .SYNOPSIS
+        Returns the AVX-512 + AMX sub-flag string used by ONNX Runtime.
+    .OUTPUTS
+        [string] Space-separated /clang:... flags covering AVX-512 + AMX.
+    #>
+    return '/clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16'
+}
+
+function Resolve-TensorRtRoot {
+    <#
+    .SYNOPSIS
+        Resolves the canonical TensorRT install root from $env:TENSORRT_ROOT.
+    .DESCRIPTION
+        Looks for a `TensorRT-*` versioned subdirectory below the env var; falls
+        back to the env value itself when only a flat layout is present. Returns
+        $null if TENSORRT_ROOT is unset or doesn't exist on disk.
+    .OUTPUTS
+        [string] Resolved TensorRT root path (or $null).
+    #>
+    $trtRoot = $env:TENSORRT_ROOT
+    if (-not $trtRoot) { return $null }
+    if (-not (Test-Path $trtRoot)) { return $null }
+    $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($trtVerDir) { return $trtVerDir.FullName }
+    return $trtRoot
+}
+
+function Get-GpuEnvironment {
+    <#
+    .SYNOPSIS
+        Detect GPU/CUDA/cuDNN/TensorRT/ROCm environment once for all GPU-aware build scripts.
+    .DESCRIPTION
+        Single source of truth for GPU detection across onnx, opencv, litert,
+        litert-lm, tvm, gstreamer. Returns a hashtable of resolved paths + a
+        GpuType discriminator ('nvidia' / 'amd' / 'cpu'). Per-script CMake args
+        remain in the build scripts (each library has its own flag names like
+        `Donnxruntime_USE_TENSORRT` vs `DUSE_CUDA`) -- the helper only resolves
+        *environment paths*, not project-specific flags.
+    .OUTPUTS
+        [hashtable] @{ GpuType='nvidia'|'amd'|'cpu'; CudaRoot=$string|null;
+                       CudnnRoot=$string|null; TensorRtRoot=$string|null;
+                       CudaBin=$string|null }
+    #>
+    $gpuType = if ($env:GPU_TYPE) { $env:GPU_TYPE.ToLowerInvariant() } else { 'cpu' }
+    $cudaRoot = Get-CudaRoot
+    $cudnnRoot = $env:CUDNN_ROOT
+    $trtRoot = Resolve-TensorRtRoot
+    $cudaBin = if ($cudaRoot) { Join-Path $cudaRoot 'bin' } else { $null }
+
+    if ($gpuType -eq 'nvidia' -and $cudaRoot -and (Test-Path $cudaRoot)) {
+        # Prepend CUDA bin to PATH so nvcc / cudnn DLLs are discoverable by the
+        # single build script that needs PATH-based lookup (FFmpeg auto-detect).
+        if ($cudaBin -and (Test-Path $cudaBin) -and ($env:PATH -notlike "*$cudaBin*")) {
+            $env:PATH = "$cudaBin;$env:PATH"
+        }
+        if ($env:CUDA_PATH -eq $null -or $env:CUDA_PATH -ne $cudaRoot) { $env:CUDA_PATH = $cudaRoot }
+        if ($env:CUDA_HOME -eq $null -or $env:CUDA_HOME -ne $cudaRoot) { $env:CUDA_HOME = $cudaRoot }
+    }
+
+    return @{
+        GpuType       = $gpuType
+        CudaRoot      = $cudaRoot
+        CudnnRoot     = $cudnnRoot
+        TensorRtRoot  = $trtRoot
+        CudaBin       = $cudaBin
+    }
+}
+
+function Initialize-ToolchainPythonEnvironment {
+    <#
+    .SYNOPSIS
+        Load VsDevCmd (MSVC tools), copy CPython pyconfig.h, resolve source-built CPython.
+    .DESCRIPTION
+        Canonical preamble for any build script that needs MSVC STL headers +
+        the source-built CPython interpreter (built in the toolchain layer).
+        Replaces the 3-line boilerplate duplicated (in different orders!) across
+        build-onnx, build-onnx-genai, build-tvm.
+    .PARAMETER Arch
+        Target architecture passed to VsDevCmd (default 'amd64').
+    .PARAMETER HostArch
+        Host architecture passed to VsDevCmd (default 'amd64').
+    .OUTPUTS
+        [hashtable] Same as Get-SourceBuildPython: @{ Exe; Include; LibDir; Lib }.
+    #>
+    param(
+        [string]$Arch = 'amd64',
+        [string]$HostArch = 'amd64'
+    )
+    Enter-VsDevCmdEnvironment -Arch $Arch -HostArch $HostArch
+    Copy-CpythonPyConfigHeader
+    return Get-SourceBuildPython
 }
 
 Export-ModuleMember -Function @(
@@ -428,16 +622,21 @@ Export-ModuleMember -Function @(
     'Invoke-CmakeConfigure',
     'Invoke-CmakeBuild',
     'Get-CudaRoot',
+    'Enter-VsDevCmdEnvironment',
+    'Get-MsvcToolsRoot',
+    'Get-SccacheLauncher',
     'Assert-CudaAvailable',
     'Assert-CudnnInstalled',
-    'Enter-VsDevCmdEnvironment',
-    'Get-VsInstallPath',
-    'Get-MsvcToolsRoot',
     'Resolve-LlvmArchiver',
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
     'Replace-CppKeywordAlternatives',
-    'Get-SccacheLauncher',
     'Update-NinjaFile',
-    'Invoke-SourcePatch'
+    'Invoke-SourcePatch',
+    'Initialize-SourceBuildEnvironment',
+    'Initialize-ToolchainPythonEnvironment',
+    'Get-WindowsX86SimdFlags',
+    'Get-WindowsX86Avx512Flags',
+    'Get-GpuEnvironment',
+    'Resolve-TensorRtRoot'
 )

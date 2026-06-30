@@ -162,7 +162,7 @@ try {
     Write-Host "Installer ExitCode: $($proc.ExitCode)"
 
     if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
-        Write-Host 'Installation failed — printing logs:'
+        Write-Host 'Installation failed -- printing logs:'
         Dump-InstallerLogs -TempDir $TempDir
         throw "Build Tools Setup failed (ExitCode $($proc.ExitCode))."
     }
@@ -178,7 +178,7 @@ try {
     } elseif (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat') {
         Write-Host 'VsDevCmd (x86) found, path adjusted.'
     } else {
-        Write-Host 'VsDevCmd not found — printing logs.'
+        Write-Host 'VsDevCmd not found -- printing logs.'
         Dump-InstallerLogs -TempDir $TempDir
         throw 'VS Build Tools not installed. Check dd_bootstrapper*.log and dd_setup_*.log under %TEMP%.'
     }

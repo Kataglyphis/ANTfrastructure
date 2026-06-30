@@ -7,15 +7,13 @@ param(
     [string]$OnnxGenAiVersion = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.14.0'
 $OnnxGenAiVersion = $OnnxGenAiVersion -replace '^v', ''  # versions.env uses v-prefix; this script adds it back for the git tag
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== ONNX Runtime GenAI source build (v$OnnxGenAiVersion, Ninja+clang-cl) ==="
 Write-Host "SourceDir: $SourceDir"
@@ -41,8 +39,9 @@ Write-Host 'Installing cmake, ninja, requests via pip...'
 cmd.exe /c """$($py.Exe)"" -m pip install cmake ninja requests --no-warn-script-location --quiet 2>&1"
 if ($LASTEXITCODE -ne 0) { throw 'pip install build deps failed' }
 
-# Load VsDevCmd for MASM (.asm files) and MSVC STL headers
-Enter-VsDevCmdEnvironment
+# Canonical preamble: VsDevCmd + Copy-CpythonPyConfigHeader in one call (replaces the
+# previously duplicated three-line invocation in a different order than build-onnx).
+Initialize-ToolchainPythonEnvironment | Out-Null
 
 # Clone onnxruntime-genai
 $ok = Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -Tag "v$OnnxGenAiVersion" -SourceDir $SourceDir -Recursive
@@ -50,20 +49,13 @@ if (-not $ok) { throw 'Failed to clone ONNX GenAI' }
 
 Set-Location $SourceDir
 
-# Copy pyconfig.h to Include/ (CPython builds it in PC/ not Include/)
-Copy-CpythonPyConfigHeader
-
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
-# Auto-detect CUDA for GenAI
-$genaiCudaArgs = @()
-$cudaRoot = Get-CudaRoot
-$cudnnRoot = if ($env:CUDNN_ROOT) { $env:CUDNN_ROOT } else { $null }
-# NOTE: CUDA is OFF at build time because CUDA 13.3 headers use __declspec(identifier)
-# (a clang extension) which MSVC 14.51 (VS 18.7.2) does not support as the host
-# compiler for nvcc. GenAI uses ONNX Runtime's CUDA execution provider at runtime
-# instead, so CUDA at build time is not required.
-$genaiCudaArgs += '-DUSE_CUDA=OFF'
+# GPU environment is detected once via the canonical helper. GenAI keeps CUDA OFF at build
+# time (clang-cl + nvcc host-compiler interplay issue with CUDA 13.x headers); GenAI uses
+# ONNX Runtime's CUDA execution provider at runtime instead.
+$gpuEnv = Get-GpuEnvironment
+$genaiCudaArgs = @('-DUSE_CUDA=OFF')
 Write-Host 'CUDA disabled for ONNX GenAI build (uses ONNX Runtime CUDA EP at runtime)'
 
 # Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
@@ -85,6 +77,13 @@ if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
 # Resolve MSVC tools path dynamically (avoid hardcoded version)
 $msvcVersionDir = Get-MsvcToolsRoot
 Write-Host "Using MSVC tools: $msvcVersionDir"
+
+# Inline patches (kept inline, NOT .patch files): these target MSVC STL headers
+# under the installed MSVC tools directory (C:\Program Files...\VC\Tools\MSVC\...),
+# not the cloned source tree. The MSVC tools version floats (resolved via
+# Get-MsvcToolsRoot), so a static .patch against a pinned MSVC build would only
+# work for one toolset version. The `-replace` form tolerates surrounding-text
+# drift across MSVC v143/v145 releases. See docs/windows-builds.md ?Patches.
 
 # Patch MSVC STL experimental/coroutine header to disable clang static_assert
 $coroHeader = Join-Path $msvcVersionDir 'include\experimental\coroutine'
@@ -166,3 +165,5 @@ if (Test-Path $altOutDir) {
 
 Write-Host '=== ONNX Runtime GenAI source build completed ==='
 Write-Host "Artifacts at: $genaiInstallDir"
+
+

@@ -7,14 +7,12 @@ param(
     [string]$OpenCvVersion = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $OpenCvVersion = Get-SourceBuildVersion -Value $OpenCvVersion -EnvironmentVariables @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION') -DefaultValue '5.x'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== OpenCV source build (branch $OpenCvVersion, Ninja+clang-cl) ==="
 
@@ -27,7 +25,10 @@ $contribSrc = Join-Path $SourceDir 'opencv_contrib'
 $contribOk = Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv_contrib.git' -Branch $OpenCvVersion -SourceDir $contribSrc -SkipOnFailure
 if (-not $contribOk) { $contribSrc = ''; Write-Host 'Continuing without contrib modules' }
 
-# Patch mlas for clang-cl: add missing <cstring> include
+# Inline patch (kept inline, NOT a .patch file): the mlas `<cstring>` include is
+# a multi-file prepend loop that conditionally skips files which already include
+# <cstring>. A static .patch cannot express the per-file conditional guard, so the
+# loop form is the canonical representation. See docs/windows-builds.md ?Patches.
 $mlasSrcDir = Join-Path $mainSrc '3rdparty\mlas'
 if (Test-Path $mlasSrcDir) {
     Get-ChildItem -Path $mlasSrcDir -Filter '*.cpp' -Recurse | ForEach-Object {
@@ -39,7 +40,11 @@ if (Test-Path $mlasSrcDir) {
     Write-Host 'Patched mlas sources for clang-cl (added <cstring> include)'
 }
 
-# Patch OpenCV's cmake to NOT add -include cstring (clang-cl treats it as filename)
+# Inline patch (kept inline, NOT a .patch file): OpenCV's cmake script contains
+# the literal flag `-include cstring` which clang-cl interprets as a file path.
+# The fix is a single multi-line-but-deterministic `-replace`; a separate .patch
+# file would just duplicate this line and rot when OpenCV reshuffles surrounding
+# context lines. See docs/windows-builds.md ?Patches.
 $cvOptsPath = Join-Path $mainSrc 'cmake/OpenCVCompilerOptions.cmake'
 if (Test-Path $cvOptsPath) {
     $content = Get-Content $cvOptsPath -Raw
@@ -51,7 +56,7 @@ if (Test-Path $cvOptsPath) {
 $buildDir = Join-Path $SourceDir 'build'
 $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 
-$simdFlags = '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
+$simdFlags = Get-WindowsX86SimdFlags
 
 $cmakeExtra = @(
     '-DCMAKE_CXX_STANDARD=17',
@@ -67,7 +72,7 @@ $cmakeExtra = @(
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
     '-DWITH_OPENGL=ON', '-DWITH_DIRECTX=ON', '-DWITH_DIRECTML=ON',
     '-DWITH_VULKAN=ON', '-DWITH_EIGEN=ON',
-    # ONNX Runtime enabled — OpenCV auto-detects our source-built ORT via PKG_CONFIG_PATH.
+    # ONNX Runtime enabled -- OpenCV auto-detects our source-built ORT via PKG_CONFIG_PATH.
     # If not found via pkg-config, OpenCV falls back to its bundled download (v1.25.1).
     '-DWITH_ONNXRUNTIME=ON',
     '-DWITH_VTK=OFF', '-DWITH_MSMF=ON', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
@@ -76,10 +81,10 @@ $cmakeExtra = @(
     '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
 )
 
-$cudaRoot = Get-CudaRoot
-if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
-    $nvccPath = Join-Path $cudaRoot 'bin\nvcc.exe'
+$gpuEnv = Get-GpuEnvironment
+if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$($gpuEnv.CudaRoot)"
+    $nvccPath = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
     if (Test-Path $nvccPath) { $cmakeExtra += "-DCMAKE_CUDA_COMPILER=$nvccPath" }
 }
 
@@ -100,3 +105,5 @@ $ok = Invoke-CmakeBuild -BuildDir $buildDir -Config Release -Install -LogFile $b
 if (-not $ok) { throw 'OpenCV build failed' }
 
 Write-Host '=== OpenCV source build completed ==='
+
+

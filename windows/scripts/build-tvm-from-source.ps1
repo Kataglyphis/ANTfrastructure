@@ -9,35 +9,30 @@ param(
     [switch]$SkipPython
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.25.0'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== TVM source build (v$TvmVersion, Ninja+clang-cl) ==="
 
 $ok = Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive
 if (-not $ok) { throw 'Failed to clone TVM' }
 
+# TVM requires VsDevCmd for MSVC STL headers (but does not consume the source-built CPython directly
+# -- TVM builds its own Python wheel against the system Python), so do VsDevCmd alone, not the full
+# Initialize-ToolchainPythonEnvironment preamble.
 Enter-VsDevCmdEnvironment
 
 $buildDir = Join-Path $SourceDir 'build'
 $tvmInstallDir = Join-Path $InstallDir 'lib\tvm'
 
-# Auto-detect CUDA
-$cudaRoot = Get-CudaRoot
-$useCuda = 'OFF'
-if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    Write-Host "CUDA detected at: $cudaRoot - enabling TVM CUDA support"
-    $useCuda = 'ON'
-    $env:CUDA_PATH = $cudaRoot
-    $cudaBin = Join-Path $cudaRoot 'bin'
-    if (Test-Path $cudaBin) { $env:PATH = "$cudaBin;$env:PATH" }
-}
+# Auto-detect CUDA via the canonical GPU environment helper (CUDA_PATH / PATH already set by it).
+$gpuEnv = Get-GpuEnvironment
+$useCuda = if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) { 'ON' } else { 'OFF' }
+if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - enabling TVM CUDA support" }
 
 # Auto-detect Vulkan SDK
 $vulkanSdk = if ($env:VULKAN_SDK) { $env:VULKAN_SDK } else { $null }
@@ -69,8 +64,8 @@ $cmakeExtra = @(
     "-DTVM_BUILD_PYTHON_MODULE=$pythonModule"
 )
 
-if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$($cudaRoot -replace '\\', '/')"
+if ($gpuEnv.CudaRoot) {
+    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$($gpuEnv.CudaRoot -replace '\\', '/')"
 }
 
 if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
@@ -81,10 +76,10 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     }
 }
 
-# Fix llvm-lib archiver path for clang-cl builds
+# CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
 $llvmLib = Resolve-LlvmArchiver
 if ($llvmLib) {
-    $cmakeExtra += "-DCMAKE_AR:PATH=$llvmLib"
+    $cmakeExtra += "-DCMAKE_AR:FILEPATH=$llvmLib"
 }
 
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra
@@ -114,3 +109,5 @@ if ($pythonModule -eq 'ON') {
 
 Write-Host '=== TVM source build completed ==='
 Write-Host "Artifacts at: $tvmInstallDir"
+
+

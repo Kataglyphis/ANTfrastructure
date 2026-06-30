@@ -7,8 +7,7 @@ param(
     [string]$FfmpegVersion = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
@@ -150,10 +149,17 @@ if ($LASTEXITCODE -ne 0) {
 
 # Use -j1 to avoid link race conditions with MSVC's incremental linking.
 # Parallel builds (-jN) can cause spurious LNK1120 errors when library
-# dependencies (libavutil → libswscale) aren't fully linked before consumers.
+# dependencies (libavutil -> libswscale) aren't fully linked before consumers.
 Write-Host 'Building FFmpeg with single job (avoids MSVC link race conditions)...'
 
 Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
+# Inline patches (kept inline, NOT .patch files): the targets below are *generated*
+# by FFmpeg's `./configure` (ffbuild/*.mak, library.mak, subdir.mak, Makefile,
+# ffbuild/config.mak). Generated content differs per configure invocation
+# (probe results, lib list, OS detection), so a static .patch cannot match
+# reliably across builds. The `-replace` form targets invariant sub-sequences
+# (`-showIncludes`, `EXTRALIBS-lib*=`) that configure writes the same way for
+# the msvc toolchain. See docs/windows-builds.md ?Patches.
 $ffbuildDir = Join-Path $srcDir 'ffbuild'
 Get-ChildItem -Path $ffbuildDir -Filter '*.mak' -ErrorAction SilentlyContinue | ForEach-Object {
     $c = [System.IO.File]::ReadAllText($_.FullName)
@@ -215,7 +221,7 @@ Write-Host 'Attempting install from source if built...'
 
 # Download pre-built MSVC FFmpeg if source build didn't produce ffmpeg.exe
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
-    Write-Warning 'FFmpeg source build failed — falling back to pre-built BtbN MSVC FFmpeg. DNN/ONNX integration will NOT be available in the fallback binary.'
+    Write-Warning 'FFmpeg source build failed -- falling back to pre-built BtbN MSVC FFmpeg. DNN/ONNX integration will NOT be available in the fallback binary.'
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '0', 'Process')
     if (-not (Test-Path $prefix)) { New-Item -Path $prefix -ItemType Directory -Force | Out-Null }
     $dlUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
@@ -238,3 +244,5 @@ Write-Host "=== FFmpeg build completed ==="
 Write-Host "Artifacts at: $prefix"
 if (Test-Path "$ffmpegDir\ffmpeg.exe") { Write-Host "ffmpeg.exe installed" }
 if (Test-Path "$ffmpegDir\ffprobe.exe") { Write-Host "ffprobe.exe installed" }
+
+

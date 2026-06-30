@@ -26,7 +26,7 @@ $CudnnRoot = Resolve-ContainerImageValue -Value $CudnnRoot -EnvironmentVariable 
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
-# Use NVIDIA's full CUDA installer (not Scoop — Scoop's portable install strips CCCL headers).
+# Use NVIDIA's full CUDA installer (not Scoop -- Scoop's portable install strips CCCL headers).
 # The full installer includes CUB, Thrust, libcudacxx at include/cccl/ and a proper nv/target.h.
 Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaVersion)
 $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/cuda_$CudaVersion`_windows.exe"
@@ -82,7 +82,7 @@ $ccclDir = Join-Path $cudaIncludeDir 'cccl'
 if (Test-Path (Join-Path $ccclDir 'cub\cub.cuh')) {
     Write-Host 'CCCL headers verified present (cub/cub.cuh found).'
 } else {
-    Write-Host 'WARNING: CCCL cub/cub.cuh not found — CUDA installer may not have included CCCL.'
+    Write-Host 'WARNING: CCCL cub/cub.cuh not found -- CUDA installer may not have included CCCL.'
 }
 
 # nv/target.h: the full installer provides a proper version that handles both
@@ -111,7 +111,7 @@ foreach ($targetFile in @((Join-Path $nvDir 'target.h'), (Join-Path $nvDir 'targ
     }
 }
 
-# CRT stubs (only if missing — full installer should have them)
+# CRT stubs (only if missing -- full installer should have them)
 if (-not (Test-Path (Join-Path $cudaIncludeDir 'crt\host_config.h'))) {
     $crtDir = Join-Path $cudaIncludeDir 'crt'
     if (-not (Test-Path $crtDir)) { New-Item -Path $crtDir -ItemType Directory -Force | Out-Null }

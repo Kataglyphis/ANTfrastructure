@@ -15,12 +15,23 @@ ARG TENSORRT_VERSION=11.1.0.106
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-COPY windows\scripts C:\temp\scripts
+# Narrow COPY — only the two scripts this stage uses (a wildcard `windows\scripts`
+# would bust the CUDA layer on every unrelated script edit). Skip COPY of modules/ —
+# the parent base stage already populated C:\temp\scripts\modules.
+COPY windows\scripts\setup-cuda.ps1 C:\temp\scripts\
+COPY windows\scripts\setup-tensorrt.ps1 C:\temp\scripts\
 COPY windows\downloads C:\temp\downloads
 
-ENV CUDA_ROOT_INIT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
+# Surface the TensorRT version ARG as an env var so setup-tensorrt.ps1's download
+# fallback (used only when no local zip is present under windows\downloads\) can
+# resolve the canonical URL — previously the ARG was declared but never consumed.
+ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 
+# CUDA installer extracts to C:\temp. Without BuildKit cache mounts (not available
+# on Windows Containers), the scratch directory is discarded after the RUN completes.
+# setup-cuda.ps1 cleans up its own temp files; the final image layer contains only
+# the installed CUDA binaries.
 RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
 
 # Install TensorRT (from local zip or skip gracefully)

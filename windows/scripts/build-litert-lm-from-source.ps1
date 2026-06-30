@@ -4,17 +4,16 @@
 param(
     [string]$SourceDir = 'C:\temp\litert-lm-src',
     [string]$InstallDir = '',
-    [string]$LiteRtLmVersion = ''
+    [string]$LiteRtLmVersion = '',
+    [string]$VcpkgRoot = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.13.1'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
 
 Write-Host "=== LiteRT-LM source build (v$LiteRtLmVersion, Ninja+clang-cl) ==="
@@ -28,14 +27,26 @@ Push-Location $SourceDir
 & git lfs pull 2>&1 | Out-Null
 Pop-Location
 
-$vcpkgRoot = 'C:\vcpkg\installed\x64-windows'
-$vcpkgDir = 'C:\vcpkg'
-$env:CMAKE_PREFIX_PATH = "$vcpkgRoot;$env:CMAKE_PREFIX_PATH"
-$protobufTools = Join-Path $vcpkgDir 'installed\x64-windows\tools\protobuf'
+# vcpkg paths: prefer -VcpkgRoot param, then $env:VCPKG_ROOT, then the container default.
+if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
+    $VcpkgRoot = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { 'C:\vcpkg' }
+}
+$vcpkgInstalledX64 = Join-Path $VcpkgRoot 'installed\x64-windows'
+$env:CMAKE_PREFIX_PATH = "$vcpkgInstalledX64;$env:CMAKE_PREFIX_PATH"
+$protobufTools = Join-Path $vcpkgInstalledX64 'tools\protobuf'
 if (Test-Path $protobufTools) { $env:PATH = "$protobufTools;$env:PATH" }
-$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-$env:CARGO_HOME = "$env:USERPROFILE\.cargo"
 
+# Cargo: honor the existing $env:CARGO_HOME (set in Dockerfile.base); only fall back to a default if unset.
+if ([string]::IsNullOrWhiteSpace($env:CARGO_HOME)) { $env:CARGO_HOME = Join-Path $env:USERPROFILE '.cargo' }
+$cargoBin = Join-Path $env:CARGO_HOME 'bin'
+if (($env:PATH -notlike "*$cargoBin*") -and (Test-Path $cargoBin)) { $env:PATH = "$cargoBin;$env:PATH" }
+
+# Inline patch (kept inline, NOT a .patch file): LiteRT-LM's runtime/proto/CMakeLists.txt
+# is a single small file but the regex substitutions (`protobuf_generate(...)`,
+# `find_package(Protobuf` -> QUIET) are not stable across LiteRT-LM tags -- newer
+# releases rename the proto target list and add an extra `find_package(Protobuf
+# REQUIRED)` near the bottom. A static .patch would rot; the `-replace` form is
+# the canonical representation. See docs/windows-builds.md ?Patches.
 $runtimeProtoCmake = Join-Path $SourceDir 'runtime\proto\CMakeLists.txt'
 if (Test-Path $runtimeProtoCmake) {
     $content = [System.IO.File]::ReadAllText($runtimeProtoCmake)
@@ -52,12 +63,12 @@ if (-not (Test-Path $litertCmakeDir)) {
     $litertCmakeDir = Join-Path $litertInstallDir 'lib\cmake\LiteRT'
 }
 $litertIncludeDir = Join-Path $litertInstallDir 'include'
-$cudaRoot = Get-CudaRoot
+$gpuEnv = Get-GpuEnvironment
 
 $cmakeExtra = @(
     "-DCMAKE_PREFIX_PATH=$litertInstallDir;$litertCmakeDir"
 )
-if ($cudaRoot -and (Test-Path $cudaRoot)) { $cmakeExtra += '-DUSE_CUDA=ON' }
+if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) { $cmakeExtra += '-DUSE_CUDA=ON' }
 if (Test-Path $litertCmakeDir) { $cmakeExtra += "-DLiteRT_DIR=$litertCmakeDir" }
 
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $litertLmInstallDir -ExtraArgs $cmakeExtra
@@ -136,3 +147,5 @@ Write-Host 'Installing...'
 & cmake --install $buildDir --config Release 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: cmake --install had errors (exit $LASTEXITCODE)" }
 Write-Host '=== LiteRT-LM source build completed ==='
+
+

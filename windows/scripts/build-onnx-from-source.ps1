@@ -7,15 +7,16 @@ param(
     [string]$OnnxVersion = ''
 )
 
+# Inline initialization (avoids module-load dependency for the first media build script).
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.27.0'
 $OnnxVersion = $OnnxVersion -replace '^v', ''  # versions.env uses v-prefix; this script adds it back for the git tag
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 
@@ -26,54 +27,70 @@ $cmakeSrc = if (Test-Path "$SourceDir\cmake\CMakeLists.txt") { "$SourceDir\cmake
 $buildDir = "$SourceDir\build"
 $ortInstallDir = "$InstallDir\lib\onnxruntime-source"
 
-# llvm-rc can't handle non-ASCII
+# Inline patch (kept inline, NOT a .patch file): llvm-rc rejects non-ASCII bytes in the .rc resource.
+# This is a binary byte-filter (`-le 127`), not a textual diff -- not expressible as a unified diff.
 $bytes = [System.IO.File]::ReadAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc")
 [System.IO.File]::WriteAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc", [byte[]]@($bytes | Where-Object { $_ -le 127 }))
 
-Enter-VsDevCmdEnvironment
+$py = Initialize-ToolchainPythonEnvironment
 
-Copy-CpythonPyConfigHeader
-$py = Get-SourceBuildPython
+# ONNX-specific CPU feature flags added on top of the shared SIMD base.
+# mwaitpkg is required by spin_pause.cc (_tpause intrinsic); aes/pclmul are
+# used by CUDA provider crc64; f16c accelerates float16 on Haswell+.
+$cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c $(Get-WindowsX86Avx512Flags) /clang:-Wno-invalid-specialization"
 
-$cxxFlags = '/WX- /clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-msse4.2 /clang:-mf16c /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16 /clang:-Wno-invalid-specialization'
-
-# ── GPU detection ──
+# -- GPU detection (single shot via Get-GpuEnvironment; ONNX-specific flag names stay local) --
+$gpuEnv = Get-GpuEnvironment
 $gpuArgs = @()
-if ($env:GPU_TYPE -eq 'nvidia') {
+# if/elseif/else used in place of `switch ($gpuEnv.GpuType) { ... }` for broad compatibility
+# with Windows PowerShell 5.1 (the switch-on-property syntax can trigger parser errors in PS 5.1).
+if ($gpuEnv.GpuType -eq 'nvidia') {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
-    $cudaRoot = Get-CudaRoot
-    $cudnnRoot = $env:CUDNN_ROOT
-    $cudnnLib = if ($cudnnRoot) { (Get-ChildItem "$cudnnRoot\lib\x64\cudnn*.lib" -ErrorAction SilentlyContinue)[0].FullName }
-    $env:PATH = "$cudaRoot\bin;$env:PATH"
+    $cudaRoot = $gpuEnv.CudaRoot
+    $cudnnRoot = $gpuEnv.CudnnRoot
+    $cudnnLib = if ($cudnnRoot) { (Get-ChildItem "$cudnnRoot\lib\x64\cudnn*.lib" -ErrorAction SilentlyContinue)[0].FullName } else { $null }
 
-    # CUDA PCH broken with CUDA 13.x CCCL
-    $pch = "$SourceDir\onnxruntime\core\providers\cuda\CMakeLists.txt"
-    if (Test-Path $pch) { [System.IO.File]::WriteAllText($pch, ([System.IO.File]::ReadAllText($pch) -replace 'target_precompile_headers\([^)]+\)', '')) }
-    # clang-cl can't do and/or/not keywords
-    Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir -IgnoreWhitespace
+    # CUDA 13.x CCCL breaks clang-cl PCH -- disable via a reviewable .patch (inline regex fallback for context drift).
+    try {
+        Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\002-disable-cuda-pch.patch') -SourceDir $SourceDir -IgnoreWhitespace
+    } catch {
+        Write-Host "002-disable-cuda-pch.patch did not apply cleanly -- falling back to inline regex"
+        $pch = "$SourceDir\cmake\onnxruntime_providers_cuda.cmake"
+        if (Test-Path $pch) { [System.IO.File]::WriteAllText($pch, ([System.IO.File]::ReadAllText($pch) -replace 'target_precompile_headers\([^)]+\)', '')) }
+    }
+        # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
+        # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back
+        # to the generic Replace-CppKeywordAlternatives helper against the two softmax source files.
+        try {
+            Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir -IgnoreWhitespace
+        } catch {
+            Write-Host "001-softmax-clangcl-keywords.patch did not apply cleanly -- falling back to keyword-alternatives in softmax sources"
+            foreach ($sf in @('softmax.cc', 'softmax.h')) {
+                $sfp = Join-Path $SourceDir 'onnxruntime\core\providers\cuda\math' $sf
+                if (Test-Path $sfp) { Replace-CppKeywordAlternatives -Path $sfp }
+            }
+        }
 
+    # ONNX-specific CMake flags (names like `onnxruntime_USE_CUDA` are ORT-only -- kept local, not in the generic helper).
     $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
-    $trtRoot = $env:TENSORRT_ROOT
-    if ($trtRoot -and (Test-Path $trtRoot)) {
-        Write-Host ("TensorRT detected at " + $trtRoot + " - enabling TensorRT EP")
-        # Find versioned subdirectory, fall back to root
-        $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($trtVerDir) { $trtRoot = $trtVerDir.FullName }
+    $trtRoot = $gpuEnv.TensorRtRoot
+    if ($trtRoot) {
+        Write-Host "TensorRT detected at $trtRoot - enabling TensorRT EP"
         $gpuArgs += '-Donnxruntime_USE_TENSORRT=ON'
         $gpuArgs += '-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=ON'
         $gpuArgs += "-DTENSORRT_ROOT=$trtRoot"
     } else {
         $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
     }
-    $gpuArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$($cudaRoot)/bin/nvcc.exe"
+    $gpuArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaRoot\bin\nvcc.exe"
     $gpuArgs += "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$((Get-Command cl.exe -ErrorAction Stop).Source)"
     $gpuArgs += '-DCMAKE_CUDA_STANDARD:STRING=17'
     $gpuArgs += "-DCMAKE_CUDA_FLAGS:STRING=-Xcompiler=/wd4067 -Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING"
     $gpuArgs += '-DCMAKE_CUDA_ARCHITECTURES=80-real;86-real;89-real;90-real'
-    $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$($cudnnRoot)/include"
-    $gpuArgs += "-DCMAKE_LIBRARY_PATH=$($cudnnRoot)/lib/x64", "-DCUDNN_LIBRARY=$cudnnLib"
+    $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
+    $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnRoot\lib\x64", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
-} elseif ($env:GPU_TYPE -eq 'amd' -and $env:ROCM_ROOT) {
+} elseif ($gpuEnv.GpuType -eq 'amd') {
     Write-Host 'AMD GPU detected: enabling ROCm'
     $gpuArgs += '-Donnxruntime_USE_ROCM=ON'
 } else {
@@ -89,14 +106,20 @@ $cmakeArgs = @(
 $ok = Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs
 if (-not $ok) { throw 'CMake configure failed' }
 
-# ── Post-configure patches (NVIDIA CUDA + CUTLASS) ──
+# -- Post-configure patches (NVIDIA CUDA + CUTLASS) --
+# Inline patches (kept inline, NOT .patch files):
+#   * CUTLASS is a CMake-fetched third-party dep; the fetched version's SHA varies
+#     with onnxruntime's `cutlass-src` ExternalProject pointer. A static .patch
+#     against a pinned tag would silently rot when the pinned SHA changes, so
+#     the `Replace-CppKeywordAlternatives` helper walks the fetched tree and
+#     the `_udiv128->udiv128` substitution targets `cutlass/uint128.h` directly.
 if ($env:GPU_TYPE -eq 'nvidia') {
-    # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keywords
+    # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keyword alternatives.
     $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
     if (Test-Path $cutlassInclude) {
         Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object { Replace-CppKeywordAlternatives -Path $_.FullName }
     }
-    # CUTLASS uint128: clang-cl lacks _udiv128
+    # CUTLASS uint128: clang-cl lacks the MSVC-only `_udiv128` intrinsic.
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
     if (Test-Path $cut) { [System.IO.File]::WriteAllText($cut, ([System.IO.File]::ReadAllText($cut) -replace '_udiv128', 'udiv128')) }
     # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
@@ -115,3 +138,5 @@ $env:NINJA_STATUS = "[%f/%t] "
 ninja -C $buildDir 2>&1; if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
 cmake --install $buildDir --config Release; if ($LASTEXITCODE -ne 0) { throw "Install failed" }
 Write-Host '=== ONNX Runtime source build completed ==='
+
+

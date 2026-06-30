@@ -2,9 +2,13 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # Generic Windows SDK layer (no GPU).
-# The optional NVIDIA GPU layer (Dockerfile.nvidia) builds on top of this.
+# The optional NVIDIA GPU layer (Dockerfile.nvidia) builds on top of the *toolchain*
+# stage (which itself descends from this stage) — so the lineage is
+#   base → sdk → toolchain → nvidia
+# rather than nvidia FROMing this stage directly.
 # There is no Windows Dockerfile.amd (ROCm-on-Windows is not supported).
-# Downstream layers (media, final) consume the GPU layer for accelerated builds.
+# Downstream layers (media, final) then consume the toolchain stage (optionally the
+# nvidia GPU stage for CUDA-enabled builds).
 
 ARG BASE_IMAGE=local/kataglyphis:windows-base
 FROM ${BASE_IMAGE}

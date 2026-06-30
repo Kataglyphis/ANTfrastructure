@@ -16,8 +16,13 @@ Assert-ContainerCommandAvailable -Name 'wix' | Out-Null
 Assert-ContainerCommandAvailable -Name 'clang-cl' | Out-Null
 Assert-ContainerCommandAvailable -Name 'lld-link' | Out-Null
 
-& 'C:\WiX\wix.exe' --version | Out-Host
-$wixExtensions = & 'C:\WiX\wix.exe' extension list --global 2>&1
+# Resolve wix.exe via Get-Command (single source of truth, survives WiX install relocations
+# instead of hardcoding C:\WiX\wix.exe).
+$wixCmd = (Get-Command wix -ErrorAction SilentlyContinue).Source
+if (-not $wixCmd) { throw 'wix.exe not found on PATH (Assert-ContainerCommandAvailable failed)' }
+
+& $wixCmd --version | Out-Host
+$wixExtensions = & $wixCmd extension list --global 2>&1
 $wixExtensions | Out-Host
 if (-not ($wixExtensions | Select-String -SimpleMatch 'WixToolset.UI.wixext 4.0.4')) {
     throw 'Required WiX extension not installed: WixToolset.UI.wixext 4.0.4'

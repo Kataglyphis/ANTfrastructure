@@ -7,14 +7,12 @@ param(
     [string]$LiteRtVersion = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue '2.1.5'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
 Write-Host "=== LiteRT source build (v$LiteRtVersion, Ninja+clang-cl) ==="
@@ -24,8 +22,13 @@ if (-not $ok) { throw 'Failed to clone LiteRT' }
 
 $tfliteSrc = Join-Path $SourceDir 'tflite'
 
-# Patch: disable ALL protobuf-based proto generation (proto_path issue on Windows)
-# Replace every proto/CMakeLists.txt with a no-op to avoid protoc --proto_path errors
+# Inline patch (kept inline, NOT a .patch file): LiteRT ships ~17 proto/CMakeLists.txt
+# files across nested subprojects, and the set of patched files varies between
+# versions (new tables land in minor releases). The loop's predicate (presence of
+# `protobuf_generate|protoc`) drives a per-file conditional stub. A static .patch
+# against a pinned tag would silently rot when the proto set changes. Removed the
+# orphaned windows/scripts/patches/litert/001-disable-proto-generation.patch (it
+# only covered 2 of the ~15 files). See docs/windows-builds.md ?Patches.
 $patchedIndex = 0
 Get-ChildItem -Path $tfliteSrc -Filter 'CMakeLists.txt' -Recurse -ErrorAction SilentlyContinue | Where-Object {
     $_.FullName -match 'proto\\CMakeLists\.txt'
@@ -49,8 +52,8 @@ $buildDir = Join-Path $SourceDir 'build'
 if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force -ErrorAction SilentlyContinue }
 if (Test-Path (Join-Path $SourceDir 'BUILD')) { Remove-Item (Join-Path $SourceDir 'BUILD') -Recurse -Force -ErrorAction SilentlyContinue }
 
-# Detect CUDA for LiteRT (CUDA delegate available via external delegate)
-$cudaRoot = Get-CudaRoot
+# Detect GPU environment via the canonical helper (single source of truth for CUDA/cuDNN/TRT).
+$gpuEnv = Get-GpuEnvironment
 $cmakeExtra = @(
     '-DTFLITE_ENABLE_INSTALL=OFF'
     '-DTFLITE_ENABLE_LABEL_IMAGE=OFF'
@@ -67,8 +70,8 @@ $cmakeExtra = @(
 )
 
 # Add CUDA paths for external delegate compilation if available
-if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
+if ($gpuEnv.CudaRoot) {
+    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$($gpuEnv.CudaRoot)"
 }
 
 # Fix CMAKE_AR path for llvm-lib (CMake resolves llvm-lib to C:\llvm-lib incorrectly)
@@ -108,3 +111,5 @@ if (Test-Path $tfliteIncludeDir) {
 Write-Host 'LiteRT manual install completed'
 
 Write-Host '=== LiteRT source build completed ==='
+
+

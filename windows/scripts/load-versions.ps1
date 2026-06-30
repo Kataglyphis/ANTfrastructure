@@ -6,7 +6,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $versionsFile = Join-Path $env:TEMP_DIR 'versions.env'
 if (-not (Test-Path $versionsFile)) {
-    Write-Host 'versions.env not found — skipping'
+    Write-Host 'versions.env not found -- skipping'
     return
 }
 
