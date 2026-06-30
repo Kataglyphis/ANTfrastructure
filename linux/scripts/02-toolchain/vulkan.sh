@@ -131,28 +131,16 @@ source_vulkan_sdk_env() {
   return 0
 }
 
-_patch_vulkan_sdk_for_cross_build() {
+_build_vulkan_sdk_cross() {
   local arch_suffix="$1"
   local target_dir="$2"
   local target_triplet="$3"
-
-  local _script_dir
-  _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  local _apply_patch="${_script_dir}/01-core/apply-patch.sh"
-  local _patch_file="${_script_dir}/patches/vulkan/001-cross-build-patches.patch"
 
   (
     cd "${target_dir}"
     ${SUDO:-sudo} chmod +x vulkansdk
 
-    # Init a temp git repo so apply-patch.sh can use git apply
-    ${SUDO:-sudo} git init -q 2>/dev/null || true
-    ${SUDO:-sudo} git add -A 2>/dev/null
-    ${SUDO:-sudo} git -c user.email=agent@kataglyphis -c user.name=agent commit -q -m "original vulkansdk" 2>/dev/null || true
-
-    log "Applying cross-build patches to vulkansdk"
-    bash "${_apply_patch}" "${_patch_file}" "${target_dir}" \
-      "Vulkan SDK cross-build patches (non-interactive, SPIRV Werror off, VulkanHeaders pin, retry wrapper)"
+    log "Building vulkansdk for cross-build..."
 
     ARCH_LIB_DIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "${ARCH}-linux-gnu")"
     ${SUDO:-sudo} mkdir -p "${ARCH_LIB_DIR}" /usr/lib
@@ -324,6 +312,6 @@ install_vulkan_sdk() {
   log "To use in a shell: source ${target_dir}/setup-env.sh"
 
   if [[ "$arch_suffix" == "aarch64" || "$arch_suffix" == "riscv64" ]]; then
-    _patch_vulkan_sdk_for_cross_build "$arch_suffix" "$target_dir" "$target_triplet"
+    _build_vulkan_sdk_cross "$arch_suffix" "$target_dir" "$target_triplet"
   fi
 }
