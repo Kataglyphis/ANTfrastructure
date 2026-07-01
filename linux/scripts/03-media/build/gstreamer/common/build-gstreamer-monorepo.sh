@@ -47,32 +47,37 @@ prebuild_gstreamer_riscv_targets() {
 }
 
 compute_gstreamer_meson_jobs() {
-  local jobs mem_total_mb
-  mem_total_mb="$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{printf "%d", $2/1024}')" || mem_total_mb=""
-  if [ -n "${mem_total_mb}" ] && [ "${mem_total_mb}" -lt 16000 ]; then
-    # On low-memory hosts, force AGGRESSIVE_PARALLELISM behavior to reduce
-    # job count. arm64 cross builds under QEMU are especially memory-hungry.
-    if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
-      jobs="$(compute_jobs_with_mem_cap "" 3000)"
-    else
-      jobs="1"
-    fi
+  # GStreamer's monorepo links heavy C++ TUs (gtk4, webrtc, opencv/onnx plugins)
+  # and Rust crates (gst-plugins-rs) whose peak RSS is ~2-3 GB per job — far more
+  # than the global AGGRESSIVE 800-1000 MB/job estimate. Size the job count by
+  # AVAILABLE memory at a realistic per-job budget: big-RAM hosts (>=32 GB) get
+  # more jobs (RAM used fully) while smaller hosts throttle automatically, and
+  # neither oversubscribes into OOM. Deliberately ignores AGGRESSIVE_PARALLELISM
+  # here — its estimate is too optimistic for this stage. Override the budget
+  # with GSTREAMER_MB_PER_JOB, or pin the count with PARALLEL_JOBS.
+  local jobs mb_per_job
+  mb_per_job="${GSTREAMER_MB_PER_JOB:-2500}"
+
+  if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    jobs="$(compute_jobs_with_mem_cap "" "${mb_per_job}")"
   else
-    if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
-      if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-        jobs="$(compute_jobs_with_mem_cap "" 1000)"
-      else
-        jobs="$(compute_jobs_with_mem_cap "" 2000)"
-      fi
-    else
-      jobs="$(nproc --all 2>/dev/null || echo 1)"
-    fi
+    jobs="$(nproc --all 2>/dev/null || echo 1)"
   fi
-  # arm64 cross-compilation of heavy subprojects (gtk4, glib) under QEMU
-  # consumes ~3-4x more memory per job than native. Cap at 2 to avoid OOM.
-  if cross_build_is_active && [ "${TARGET_MACHINE_ARCH}" = "arm64" ]; then
-    [ "${jobs}" -gt 2 ] && jobs=2
+
+  # arm64/riscv64 cross subprojects build under QEMU, which uses ~3x the memory
+  # per job; apply an extra memory-derived headroom cap (scales with RAM instead
+  # of a hardcoded ceiling, so a big host still gets more than 2 jobs).
+  if cross_build_is_active; then
+    case "${TARGET_MACHINE_ARCH:-}" in
+      arm64|aarch64|riscv64|riscv*)
+        local qemu_jobs
+        qemu_jobs="$(compute_jobs_with_mem_cap "" "$(( mb_per_job * 3 ))" 2>/dev/null || echo 2)"
+        [ "${jobs}" -gt "${qemu_jobs}" ] 2>/dev/null && jobs="${qemu_jobs}"
+        ;;
+    esac
   fi
+
+  [ "${jobs}" -ge 1 ] 2>/dev/null || jobs=1
   printf '%s' "${jobs}"
 }
 
@@ -415,9 +420,11 @@ build_gstreamer_monorepo() {
   prebuild_gstreamer_riscv_targets
 
   echo "Compiling GStreamer (this may take a while)..."
-  JOBS="$(nproc 2>/dev/null || echo 4)"
+  # Use the memory-aware job count (was previously raw `nproc`, uncapped, which
+  # oversubscribed heavy C++/Rust link jobs and OOM-killed the compile).
+  JOBS="$(compute_gstreamer_meson_jobs)"
   export JOBS
-  echo "Using JOBS=$JOBS (AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
+  echo "Using JOBS=$JOBS (mem-capped; GSTREAMER_MB_PER_JOB=${GSTREAMER_MB_PER_JOB:-2500}, AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
   echo "Compiling GStreamer..."
   if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
