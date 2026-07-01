@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/core/install-deps-preamble.sh ]; then
-    # shellcheck disable=SC1091
-    source /opt/scripts/core/install-deps-preamble.sh
-elif [ -f /opt/scripts/core/cross-env.sh ]; then
-    # shellcheck disable=SC1091
-    source /opt/scripts/core/cross-env.sh
-fi
+# Load the shared apt/cross helpers, trying the in-container path first and
+# falling back to the repo layout for local dev. Fail loudly if none load.
+for _dep_env in \
+    "/opt/scripts/core/install-deps-preamble.sh" \
+    "/opt/scripts/core/cross-env.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../01-core/cross-env.sh"; do
+    if [ -f "${_dep_env}" ]; then
+        # shellcheck disable=SC1090
+        source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
+        break
+    fi
+done
 
 echo "[INFO] Installing LiteRT dependencies..."
 
@@ -41,7 +46,10 @@ else
     echo "[WARN] ${atlas_pkg_resolved} has no apt install candidate; continuing with OpenBLAS/LAPACK"
 fi
 
-rm -rf /var/lib/apt/lists/*
+# NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
+# BuildKit cache mount in Dockerfile.media, so wiping it only forces the next
+# stage's `apt-get update` to re-download every index (and it saves no image
+# size, since a cache mount is not a layer).
 
 echo "[INFO] Using existing Python venv (expected at /opt/python/.venv)..."
 export PATH="${HOME}/.local/bin:${PATH}"

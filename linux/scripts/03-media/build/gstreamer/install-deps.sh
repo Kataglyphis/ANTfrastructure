@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/core/install-deps-preamble.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/install-deps-preamble.sh
-elif [ -f /opt/scripts/core/cross-env.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
+# Load the shared apt/cross helpers, trying the in-container path first and
+# falling back to the repo layout for local dev. Fail loudly if none load.
+for _dep_env in \
+    "/opt/scripts/core/install-deps-preamble.sh" \
+    "/opt/scripts/core/cross-env.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../01-core/cross-env.sh"; do
+    if [ -f "${_dep_env}" ]; then
+        # shellcheck disable=SC1090
+        source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
+        break
+    fi
+done
 if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/toolchain/vulkan.sh
@@ -122,15 +127,15 @@ else
   install_target_packages libgtk-3-dev libgtk-4-dev
 fi
 
-# Audio I/O and DSP
-apt-get install -y --no-install-recommends \
+# Audio I/O and DSP — target-side dev packages (linked into cross plugins).
+install_target_packages \
   libasound2-dev libpulse-dev libjack-dev libpipewire-0.3-dev \
-  libsndfile1-dev libsamplerate0-dev
+  libsndfile1-dev libsamplerate0-dev || true
 
-# Video capture / devices
-apt-get install -y --no-install-recommends \
+# Video capture / devices — target-side dev packages.
+install_target_packages \
   libv4l-dev libusb-1.0-0-dev libdc1394-dev libraw1394-dev \
-  libcdio-dev libcdparanoia-dev
+  libcdio-dev libcdparanoia-dev || true
 
 # Graphics stacks
 # GTK and several video sinks probe these through the target-only pkg-config
@@ -170,7 +175,7 @@ install_target_packages \
 install_target_packages libopenexr-3-dev || \
 install_target_packages libopenexr-dev || true
 
-apt-get install -y --no-install-recommends libvvdec-dev || true
+install_target_packages libvvdec-dev || true
 
 # Codecs (audio)
 # These are linked into target-side plugins such as gst-plugins-good/ext/lame,
@@ -190,13 +195,13 @@ install_target_packages libsvtav1enc-dev || install_target_packages libsvtav1-de
 if [ -f /opt/ffmpeg/lib/pkgconfig/libavcodec.pc ]; then
   echo "Using staged FFmpeg build from /opt/ffmpeg for gst-libav; skipping distro FFmpeg dev packages."
 else
-  apt-get install -y --no-install-recommends \
+  install_target_packages \
     libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev \
-    libswscale-dev libswresample-dev
+    libswscale-dev libswresample-dev || true
 fi
 
 # Networking / crypto
-apt-get install -y --no-install-recommends libsoup-3.0-dev libnice-dev || true
+# (libsoup-3.0-dev / libnice-dev are installed via install_target_packages below.)
 install_target_packages \
   libcurl4-openssl-dev libxml2-dev \
   zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
@@ -223,4 +228,7 @@ if [ "${NVIDIA_GPU}" = "yes" ]; then
   install_host_packages nv-codec-headers || true
 fi
 
-rm -rf /var/lib/apt/lists/*
+# NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
+# BuildKit cache mount in Dockerfile.media, so wiping it only forces the next
+# stage's `apt-get update` to re-download every index (and it saves no image
+# size, since a cache mount is not a layer).

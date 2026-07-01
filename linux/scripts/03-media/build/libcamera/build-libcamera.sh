@@ -28,14 +28,8 @@ patch_libcamera_riscv64_cross_sources() {
 
   [ -f "${common_meson}" ] || return 0
 
-  local _apply_patch _patch_file
-  if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -f "/opt/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch" ]; then
-    _apply_patch="/opt/scripts/core/apply-patch.sh"
-    _patch_file="/opt/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch"
-  else
-    _apply_patch="${SCRIPT_DIR}/01-core/apply-patch.sh"
-    _patch_file="${SCRIPT_DIR}/patches/libcamera/001-riscv64-add-libtiff-dep.patch"
-  fi
+  local _apply_patch="/opt/scripts/core/apply-patch.sh"
+  local _patch_file="/opt/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch"
   bash "${_apply_patch}" "${_patch_file}" "${LIBCAMERA_SRC}" \
     "libcamera riscv64 cross: add libtiff to apps_lib dependencies"
 }
@@ -67,18 +61,10 @@ if pkg-config --exists libcamera >/dev/null 2>&1; then
   exit 0
 fi
 
-# Ensure minimal build deps (apt-based distros)
-# clone or update
-if [ -d "${LIBCAMERA_SRC}/.git" ]; then
-  echo "Updating existing libcamera checkout..."
-  cd "${LIBCAMERA_SRC}"
-  git fetch --depth 1 origin || true
-  git checkout origin/HEAD || true
-else
-  rm -rf "${LIBCAMERA_SRC}"
-  git clone --depth 1 "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}" || { echo "Failed cloning libcamera"; exit 1; }
-  cd "${LIBCAMERA_SRC}"
-fi
+# Clone (or refresh) the source via the shared 01-core helper — same fetch/
+# shallow-clone logic used by the litert/opencv build scripts.
+clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}"
+cd "${LIBCAMERA_SRC}"
 
 mkdir -p "${LIBCAMERA_BUILD_DIR}"
 
@@ -177,6 +163,10 @@ if cross_build_is_active; then
     # GCC 16 still reports a false positive array-bounds warning in libcamera's
     # logger path on the riscv64 cross build; don't treat that warning as fatal.
     MESON_SETUP_ARGS+=(-Dwerror=false)
+
+    # Upstream apps_lib compiles dng_writer.cpp (which uses libtiff) when libtiff
+    # is found, but omits libtiff from its dependency list, so consumers fail to
+    # link. Add the missing dependency.
     patch_libcamera_riscv64_cross_sources
   fi
 fi

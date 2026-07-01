@@ -7,7 +7,10 @@ if [ -f /opt/scripts/core/common.sh ]; then
   source /opt/scripts/core/common.sh
 fi
 
-WHEELS_DIR="${WHEELS_DIR:-/opt/wheels}"
+# WHEELS_DIR comes from the canonical media-env.sh (sibling of this script).
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_SCRIPT_DIR}/media-env.sh"
 
 PY_TAG="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
 

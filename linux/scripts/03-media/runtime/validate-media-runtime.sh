@@ -3,14 +3,7 @@ set -euo pipefail
 
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
-# Fallback if cross-env.sh didn't define cross_build_is_active
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() {
-    [ "${BUILD_MODE:-native}" = "cross" ] && \
-    [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
-  }
+  source /opt/scripts/core/cross-env.sh   # defines cross_build_is_active
 fi
 
 ARTIFACTS=(

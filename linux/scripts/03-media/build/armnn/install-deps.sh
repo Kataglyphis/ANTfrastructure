@@ -17,10 +17,8 @@ target_packages=(
   libflatbuffers-dev
 )
 
-if is_cross; then
-  install_target_packages "${target_packages[@]}"
-else
-  apt_install "${target_packages[@]}"
-fi
+# install_target_packages handles both native and cross builds (it resolves
+# :arch suffixes and foreign-arch prep only when cross-compiling).
+install_target_packages "${target_packages[@]}"
 
 echo "[INFO] Arm NN dependencies installed"

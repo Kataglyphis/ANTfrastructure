@@ -4,17 +4,13 @@ IFS=$'\n\t'
 
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
-# Fallback if cross-env.sh didn't define cross_build_is_active
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() {
-    [ "${BUILD_MODE:-native}" = "cross" ] && \
-    [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
-  }
+  source /opt/scripts/core/cross-env.sh   # defines cross_build_is_active
 fi
 
-WHEELS_DIR="${WHEELS_DIR:-/opt/wheels}"
+# WHEELS_DIR comes from the canonical media-env.sh (sibling of this script).
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_SCRIPT_DIR}/media-env.sh"
 
 if cross_build_is_active; then
   target_arch="$(cross_target_arch 2>/dev/null || true)"

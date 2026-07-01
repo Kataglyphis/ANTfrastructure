@@ -616,4 +616,7 @@ if [ "${skip_csound_cross}" != "true" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-
 else
   echo "Skipping creation of csound.pc stub for cross targets where Csound is disabled"
 fi
-rm -rf /var/lib/apt/lists/*
+# NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
+# BuildKit cache mount in Dockerfile.media, so wiping it only forces the next
+# stage's `apt-get update` to re-download every index (and it saves no image
+# size, since a cache mount is not a layer).
