@@ -1,0 +1,66 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e0dd02b..f504e91 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -25,11 +25,11 @@ if(POLICY CMP0091)
+ endif()
+ 
+ if(POLICY CMP0146)
+-  cmake_policy(SET CMP0146 OLD)  # CMake 3.27+: use CMake FindCUDA if available.
++  cmake_policy(SET CMP0146 NEW)  # CMake 3.27+: use CMake FindCUDA if available.
+ endif()
+ 
+ if(POLICY CMP0148)
+-  cmake_policy(SET CMP0148 OLD)  # CMake 3.27+: use CMake FindPythonInterp and FindPythonLib if available.
++  cmake_policy(SET CMP0148 NEW)  # CMake 3.27+: use CMake FindPythonInterp and FindPythonLib if available.
+ endif()
+ 
+ #
+diff --git a/cmake/FindONNX.cmake b/cmake/FindONNX.cmake
+index e162cde..2a1937b 100644
+--- a/cmake/FindONNX.cmake
++++ b/cmake/FindONNX.cmake
+@@ -144,7 +144,7 @@ if(ORT_LIB AND ORT_INCLUDE)
+   # Link target with associated interface headers
+   set(ONNX_LIBRARY "onnxruntime" CACHE STRING "ONNX Link Target")
+   if(NOT TARGET ${ONNX_LIBRARY})
+-    ocv_add_library(${ONNX_LIBRARY} SHARED IMPORTED)
++    add_library(${ONNX_LIBRARY} SHARED IMPORTED)
+   endif()
+ 
+   if(WIN32)
+diff --git a/cmake/OpenCVDetectCUDALanguage.cmake b/cmake/OpenCVDetectCUDALanguage.cmake
+index bc40134..1e4274b 100644
+--- a/cmake/OpenCVDetectCUDALanguage.cmake
++++ b/cmake/OpenCVDetectCUDALanguage.cmake
+@@ -20,7 +20,7 @@ if((WIN32 AND NOT MSVC) OR OPENCV_CMAKE_FORCE_CUDA)
+   return()
+ endif()
+ 
+-if((NOT UNIX AND CV_CLANG) OR OPENCV_CMAKE_FORCE_CUDA)
++if(OPENCV_CMAKE_FORCE_CUDA)  # PATCHED (Windows clang-cl): dropped "NOT UNIX AND CV_CLANG" so clang-cl enables CUDA (nvcc host=cl.exe; clang-cl flags stripped in ocv_cuda_filter_options)
+   message(STATUS "CUDA: Compilation is disabled (due to Clang unsupported on your platform).")
+   return()
+ endif()
+diff --git a/cmake/OpenCVDetectCUDAUtils.cmake b/cmake/OpenCVDetectCUDAUtils.cmake
+index fce31f6..8372772 100644
+--- a/cmake/OpenCVDetectCUDAUtils.cmake
++++ b/cmake/OpenCVDetectCUDAUtils.cmake
+@@ -334,6 +334,17 @@ macro(ocv_cuda_filter_options)
+   foreach(var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_DEBUG)
+     set(${var}_backup_in_cuda_compile_ "${${var}}")
+ 
++    # PATCHED (Windows clang-cl): nvcc on Windows uses cl.exe (MSVC) as its host
++    # compiler, but OpenCV forwards the C++ (clang-cl) flags via -Xcompiler. cl.exe
++    # rejects clang-cl-only options (e.g. D8021 on /Wno-undef) and /FI force-include
++    # breaks nvcc's cudafe intermediate. Strip them from the CUDA host flags only;
++    # the normal C++ build keeps them (restored by ocv_cuda_unfilter_options).
++    string(REGEX REPLACE "/clang:[^ ]*" "" ${var} "${${var}}")
++    string(REGEX REPLACE "/FI[^ ]*" "" ${var} "${${var}}")
++    string(REGEX REPLACE "-Xclang[ ]+[^ ]+" "" ${var} "${${var}}")
++    string(REPLACE "-fopenmp" "" ${var} "${${var}}")
++    string(REGEX REPLACE "-W[^ ]*" "" ${var} "${${var}}")
++
+     if (CV_CLANG)
+       # we remove -Winconsistent-missing-override and -Qunused-arguments
+       # just in case we are compiling CUDA with gcc but OpenCV with clang

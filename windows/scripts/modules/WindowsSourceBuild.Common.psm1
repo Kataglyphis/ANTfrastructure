@@ -420,8 +420,17 @@ function Invoke-SourcePatch {
     $wsFlag = @()
     if ($IgnoreWhitespace) { $wsFlag += '--ignore-whitespace' }
 
-    $isGitRepo = (Test-Path (Join-Path $SourceDir '.git')) -or `
-        ((& git -C $SourceDir rev-parse --git-dir 2>$null) -ne $null)
+    # Detect git repo: check .git directory first, then try git rev-parse with
+    # suppressed stderr (fatal: not a git repository) that PS 5.1 treats as an
+    # ErrorRecord even under $ErrorActionPreference = 'Continue'.
+    $isGitRepo = $false
+    if (Test-Path (Join-Path $SourceDir '.git')) {
+        $isGitRepo = $true
+    } else {
+        $gitErr = $null
+        $null = & git -C $SourceDir rev-parse --git-dir 2>$null
+        if ($LASTEXITCODE -eq 0) { $isGitRepo = $true }
+    }
 
     Push-Location $SourceDir
     try {

@@ -1,0 +1,46 @@
+diff --git a/modules/cudev/include/opencv2/cudev/common.hpp b/modules/cudev/include/opencv2/cudev/common.hpp
+index e1a27b6..3c4eb16 100644
+--- a/modules/cudev/include/opencv2/cudev/common.hpp
++++ b/modules/cudev/include/opencv2/cudev/common.hpp
+@@ -50,6 +50,15 @@
+ #include "opencv2/core/cuda.hpp"
+ #include "opencv2/core/cuda_stream_accessor.hpp"
+ 
++// PATCHED (Windows LLP64): Unix supplies 'ulong' via <sys/types.h>; Windows does not.
++// cudev uses 'ulong' as a scalar element type, and (unlike Unix LP64) int64_t/uint64_t
++// are 'long long'/'unsigned long long' here, so add single-token aliases for them.
++#if defined(_WIN32) || defined(_WIN64)
++typedef unsigned long ulong;
++typedef long long longlong;
++typedef unsigned long long ulonglong;
++#endif
++
+ namespace cv { namespace cudev {
+ 
+ //! @addtogroup cudev
+diff --git a/modules/cudev/include/opencv2/cudev/util/vec_traits.hpp b/modules/cudev/include/opencv2/cudev/util/vec_traits.hpp
+index ea0a4dd..54d536b 100644
+--- a/modules/cudev/include/opencv2/cudev/util/vec_traits.hpp
++++ b/modules/cudev/include/opencv2/cudev/util/vec_traits.hpp
+@@ -78,6 +78,10 @@ CV_CUDEV_MAKE_VEC_INST(float)
+ CV_CUDEV_MAKE_VEC_INST(double)
+ CV_CUDEV_MAKE_VEC_INST(long)
+ CV_CUDEV_MAKE_VEC_INST(ulong)
++#if defined(_WIN32) || defined(_WIN64)
++CV_CUDEV_MAKE_VEC_INST(longlong)
++CV_CUDEV_MAKE_VEC_INST(ulonglong)
++#endif
+ 
+ #undef CV_CUDEV_MAKE_VEC_INST
+ 
+@@ -146,6 +150,10 @@ CV_CUDEV_VEC_TRAITS_INST(float)
+ CV_CUDEV_VEC_TRAITS_INST(double)
+ CV_CUDEV_VEC_TRAITS_INST(long)
+ CV_CUDEV_VEC_TRAITS_INST(ulong)
++#if defined(_WIN32) || defined(_WIN64)
++CV_CUDEV_VEC_TRAITS_INST(longlong)
++CV_CUDEV_VEC_TRAITS_INST(ulonglong)
++#endif
+ 
+ #undef CV_CUDEV_VEC_TRAITS_INST
+ 

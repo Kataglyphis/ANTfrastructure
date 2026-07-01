@@ -7,7 +7,9 @@ param(
     [string]$LiteRtVersion = ''
 )
 
-Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
@@ -111,5 +113,6 @@ if (Test-Path $tfliteIncludeDir) {
 Write-Host 'LiteRT manual install completed'
 
 Write-Host '=== LiteRT source build completed ==='
+
 
 
