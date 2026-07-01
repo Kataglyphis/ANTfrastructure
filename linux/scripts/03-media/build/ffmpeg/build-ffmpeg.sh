@@ -309,12 +309,24 @@ ffmpeg_probe_pkg_config_feature() {
     local headers="$3"
     local symbol="$4"
 
-    if ffmpeg_try_pkg_config_probe "${pkg_spec}" "${headers}" "${symbol}"; then
-        return 0
+    # Gate on pkg-config resolution — the SAME mechanism FFmpeg's own configure
+    # uses, so a module that resolves here resolves there too. If it does not
+    # resolve, the library genuinely is not available for this arch (in cross
+    # builds this correctly reflects the target's pkg-config view).
+    if ! pkg-config --exists "${pkg_spec}" >/dev/null 2>&1; then
+        echo "Skipping ${feature}: pkg-config cannot resolve ${pkg_spec}."
+        return 1
     fi
 
-    echo "Skipping ${feature}: FFmpeg-style pkg-config probe failed for ${pkg_spec}."
-    return 1
+    # The strict compile+link micro-probe is kept ONLY as a diagnostic. It
+    # previously *gated* enablement and produced false negatives that silently
+    # dropped installed codecs (x264/opus/vpx/mp3lame/webp/svtav1/vmaf/DNN, …),
+    # so it must not block a feature whose pkg-config module resolves. FFmpeg's
+    # configure performs the definitive compile+link check itself.
+    if ! ffmpeg_try_pkg_config_probe "${pkg_spec}" "${headers}" "${symbol}"; then
+        echo "Note: ${feature} resolves via pkg-config but the compile/link micro-probe failed; enabling anyway (FFmpeg's configure will verify)."
+    fi
+    return 0
 }
 
 ffmpeg_probe_library_feature() {
@@ -327,7 +339,17 @@ ffmpeg_probe_library_feature() {
         return 0
     fi
 
-    echo "Skipping ${feature}: FFmpeg-style link probe failed."
+    # No pkg-config file for these libraries, so fall back to a header-presence
+    # check: if the dev headers compile, the library is installed — enable it and
+    # let FFmpeg's configure do the definitive link test. The full link
+    # micro-probe gives false negatives (e.g. a missing transitive -l in the
+    # generated test program), which silently dropped installed libraries.
+    if ffmpeg_try_cpp_condition "${headers}" "1"; then
+        echo "Note: ${feature} link micro-probe failed but its headers are present; enabling (FFmpeg's configure will verify the link)."
+        return 0
+    fi
+
+    echo "Skipping ${feature}: headers not found (dev package missing?)."
     return 1
 }
 
