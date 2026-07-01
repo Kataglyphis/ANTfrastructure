@@ -1,293 +1,46 @@
 diff --git a/subprojects/gst-libav/ext/libav/gstavviddec.c b/subprojects/gst-libav/ext/libav/gstavviddec.c
-index e21f3e1..4e06008 100644
+index e21f3e1..7c3c1a1 100644
 --- a/subprojects/gst-libav/ext/libav/gstavviddec.c
 +++ b/subprojects/gst-libav/ext/libav/gstavviddec.c
-@@ -19,19 +19,119 @@
- 
+@@ -19,7 +19,18 @@
  #ifdef HAVE_CONFIG_H
  #include "config.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
  #endif
  
++/* Fallback defines for codec IDs removed from FFmpeg main */
++#ifndef AV_CODEC_ID_V308
++#define AV_CODEC_ID_V308 0
++#endif
++#ifndef AV_CODEC_ID_V408
++#define AV_CODEC_ID_V408 0
++#endif
++#ifndef AV_CODEC_ID_V410
++#define AV_CODEC_ID_V410 0
++#endif
++
  #include <assert.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
  #include <string.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- 
- #include <libavcodec/avcodec.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include <libavutil/stereo3d.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include <libavutil/mastering_display_metadata.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- 
- #include "gstav.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include "gstavcodecmap.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include "gstavutils.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include "gstavviddec.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- 
- GST_DEBUG_CATEGORY_STATIC (GST_CAT_PERFORMANCE);
  
 diff --git a/subprojects/gst-libav/ext/libav/gstavvidenc.c b/subprojects/gst-libav/ext/libav/gstavvidenc.c
-index 2ae6a1b..f5bf03d 100644
+index 2ae6a1b..9c0e3e2 100644
 --- a/subprojects/gst-libav/ext/libav/gstavvidenc.c
 +++ b/subprojects/gst-libav/ext/libav/gstavvidenc.c
-@@ -19,24 +19,164 @@
- 
+@@ -19,7 +19,18 @@
  #ifdef HAVE_CONFIG_H
  #include "config.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
  #endif
  
++/* Fallback defines for codec IDs removed from FFmpeg main */
++#ifndef AV_CODEC_ID_V308
++#define AV_CODEC_ID_V308 0
++#endif
++#ifndef AV_CODEC_ID_V408
++#define AV_CODEC_ID_V408 0
++#endif
++#ifndef AV_CODEC_ID_V410
++#define AV_CODEC_ID_V410 0
++#endif
++
  #include <assert.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
  #include <string.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
  /* for stats file handling */
- #include <stdio.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include <glib/gstdio.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include <errno.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- 
- #include <libavcodec/avcodec.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include <libavutil/stereo3d.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include <libavutil/opt.h>
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- 
- #include "gstav.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include "gstavcodecmap.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include "gstavutils.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include "gstavvidenc.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- #include "gstavcfg.h"
-+/* Fallback defines for codec IDs removed from FFmpeg main */
-+#ifndef AV_CODEC_ID_V308
-+#define AV_CODEC_ID_V308 0
-+#endif
-+#ifndef AV_CODEC_ID_V408
-+#define AV_CODEC_ID_V408 0
-+#endif
-+#ifndef AV_CODEC_ID_V410
-+#define AV_CODEC_ID_V410 0
-+#endif
- 
- 
- enum

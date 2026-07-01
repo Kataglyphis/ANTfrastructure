@@ -406,19 +406,15 @@ _litert_build_wheel() {
     local extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON} -DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
     export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
 
-    # Apply env-var-overrides patch to build_pip_package_with_cmake.sh so it
-    # respects TENSORFLOW_DIR, TENSORFLOW_VERSION, EXTRA_CMAKE_FLAGS, and
-    # replaces -march=native with -idirafter /usr/include.
-    local _apply_patch _patch_file
-    if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -f "/opt/scripts/patches/litert/001-env-var-overrides.patch" ]; then
-        _apply_patch="/opt/scripts/core/apply-patch.sh"
-        _patch_file="/opt/scripts/patches/litert/001-env-var-overrides.patch"
-    else
-        _apply_patch="${SCRIPT_DIR}/01-core/apply-patch.sh"
-        _patch_file="${SCRIPT_DIR}/patches/litert/001-env-var-overrides.patch"
-    fi
-    bash "${_apply_patch}" "${_patch_file}" "${LITERT_SRC}/tflite/tools/pip_package" \
-      "LiteRT build_pip_package_with_cmake.sh env var overrides"
+    # Patch upstream build_pip_package_with_cmake.sh so it honours the env vars
+    # we export (TENSORFLOW_DIR, TENSORFLOW_VERSION, EXTRA_CMAKE_FLAGS) and
+    # replaces -march=native with a cross-safe include path. apply-patch.sh is
+    # idempotent, so re-runs are safe.
+    bash /opt/scripts/core/apply-patch.sh \
+        /opt/scripts/patches/litert/001-env-var-overrides.patch \
+        "${pip_pkg_dir}" \
+        "LiteRT build_pip_package_with_cmake.sh env var overrides"
+    local _fixed="${pip_pkg_dir}/build_pip_package_with_cmake.sh"
 
     export WHEEL_PROJECT_NAME="ai_edge_litert"
 
@@ -486,7 +482,7 @@ _litert_build_wheel() {
 
     export CMAKE_POLICY_VERSION_MINIMUM=3.5
 
-    bash build_pip_package_with_cmake.sh "${TENSORFLOW_TARGET}" > pip_build.log 2>&1 || {
+    bash "${_fixed}" "${TENSORFLOW_TARGET}" > pip_build.log 2>&1 || {
         warn pip wheel failed for LiteRT source. Last 1000 lines of log:
         tail -n 1000 pip_build.log
         if [ "${cross_wheel_build}" = "true" ]; then

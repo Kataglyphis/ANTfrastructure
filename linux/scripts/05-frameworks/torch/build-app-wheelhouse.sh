@@ -307,19 +307,10 @@ install_host_torch_for_vision() {
 patch_torchvision_setup() {
     local setup_py="$1"
 
-    local _apply_patch _patch_file
-    if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -f "/opt/scripts/patches/torchvision/001-torch-staging-paths.patch" ]; then
-        _apply_patch="/opt/scripts/core/apply-patch.sh"
-        _patch_file="/opt/scripts/patches/torchvision/001-torch-staging-paths.patch"
-    else
-        local _script_dir
-        _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        _apply_patch="${_script_dir}/01-core/apply-patch.sh"
-        _patch_file="${_script_dir}/patches/torchvision/001-torch-staging-paths.patch"
-    fi
-
-    bash "${_apply_patch}" "${_patch_file}" "$(dirname "${setup_py}")" \
-      "torchvision setup.py: TORCHVISION_TORCH_STAGING env var support"
+    bash /opt/scripts/core/apply-patch.sh \
+        /opt/scripts/patches/torchvision/001-torch-staging-paths.patch \
+        "$(dirname "${setup_py}")" \
+        "torchvision setup.py: TORCHVISION_TORCH_STAGING env var support"
 }
 
 build_torchvision_wheel() {

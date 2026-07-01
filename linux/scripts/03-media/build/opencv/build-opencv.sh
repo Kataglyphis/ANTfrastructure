@@ -158,24 +158,14 @@ fetch_opencv() {
         echo "OpenCV contrib version: $(git describe --tags 2>/dev/null || echo 'unknown')"
     fi
 
-    # OpenCV 5.x vendored MLAS: MlasHGemmSupported is declared in inc/mlas.h
-    # but never defined, yet compute.cpp calls it from the FP16 template
-    # MlasGQASupported<MLAS_FP16> regardless of MLAS_GEMM_ONLY. On riscv64
-    # this produces an undefined-symbol link error. Apply a patch that
-    # appends a weak stub returning false when MLAS_GEMM_ONLY is set.
-    local mlas_compute="${OPENCV_SRC}/3rdparty/mlas/lib/compute.cpp"
-    if [ -f "${mlas_compute}" ]; then
-        local _ap _pf
-        if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -f "/opt/scripts/patches/opencv/001-mlas-hgemm-supported-stub.patch" ]; then
-            _ap="/opt/scripts/core/apply-patch.sh"
-            _pf="/opt/scripts/patches/opencv/001-mlas-hgemm-supported-stub.patch"
-        else
-            _ap="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/01-core/apply-patch.sh"
-            _pf="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/patches/opencv/001-mlas-hgemm-supported-stub.patch"
-        fi
-        bash "${_ap}" "${_pf}" "${OPENCV_SRC}" \
-          "OpenCV MLAS MlasHGemmSupported stub for MLAS_GEMM_ONLY"
-        echo "OpenCV MLAS stub patch applied"
+    # OpenCV 5.x vendored MLAS declares MlasHGemmSupported (inc/mlas.h) but never
+    # defines it, yet compute.cpp calls it from MlasGQASupported<MLAS_FP16>,
+    # producing an undefined-symbol link error. Apply a weak-stub patch.
+    if [ -f "${OPENCV_SRC}/3rdparty/mlas/lib/compute.cpp" ]; then
+        bash /opt/scripts/core/apply-patch.sh \
+            /opt/scripts/patches/opencv/001-mlas-hgemm-supported-stub.patch \
+            "${OPENCV_SRC}" \
+            "OpenCV MLAS MlasHGemmSupported stub for MLAS_GEMM_ONLY"
     fi
 }
 
