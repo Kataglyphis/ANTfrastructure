@@ -81,6 +81,22 @@ if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
   )
 fi
 
+# oneDNN (DNNL) CPU execution provider. BUILD_DNNL_EP defaults to true (see
+# lib/common.sh) but the --use_dnnl flag was never actually passed to build.py,
+# so the EP was silently never built. Wire it up, gated to x86_64: oneDNN's
+# kernels are x86-tuned and this is the native (host==target) build there.
+if [ "${BUILD_DNNL_EP:-true}" = "true" ]; then
+  case "${TARGET_ARCH:-${TARGETARCH:-}}" in
+    amd64|x86_64)
+      info "oneDNN (DNNL) execution provider enabled"
+      BUILD_ARGS+=(--use_dnnl)
+      ;;
+    *)
+      info "Skipping oneDNN EP (x86_64-only; arch=${TARGET_ARCH:-${TARGETARCH:-unknown}})"
+      ;;
+  esac
+fi
+
 if [ "${ORT_ENABLE_ARMNN:-true}" = "true" ]; then
   case "${TARGET_ARCH:-${TARGETARCH:-}}" in
     arm64|aarch64)

@@ -740,6 +740,52 @@ configure_ffmpeg() {
         configure_opts+=("--enable-libvmaf")
     fi
 
+    # ------------------------------------------------------------------
+    # Extra optional codecs / protocols (max-feature expansion).
+    # Each entry is probe-gated: "flag|pkg-config spec|headers|symbols".
+    # If the library isn't present/linkable for this arch, the feature is
+    # simply not enabled and the build still succeeds. Symbols/headers mirror
+    # FFmpeg's own configure checks to minimise false positives.
+    # ------------------------------------------------------------------
+    local _ff_extra_pkgconfig=(
+        "--enable-libtheora|theoraenc theoradec|theora/theoraenc.h|th_encode_alloc"
+        "--enable-libopenjpeg|libopenjp2 >= 2.1.0|openjpeg.h|opj_version"
+        "--enable-libspeex|speex|speex/speex_header.h|speex_lib_get_mode"
+        "--enable-libsoxr|soxr|soxr.h|soxr_create"
+        "--enable-libzimg|zimg >= 2.7.0|zimg.h|zimg_get_api_version"
+        "--enable-libopencore-amrnb|opencore-amrnb|opencore-amrnb/interf_dec.h|Decoder_Interface_init"
+        "--enable-libopencore-amrwb|opencore-amrwb|opencore-amrwb/dec_if.h|D_IF_init"
+        "--enable-libsrt|srt >= 1.3.0|srt/srt.h|srt_socket"
+        "--enable-libssh|libssh >= 0.6.0|libssh/sftp.h|sftp_init"
+        "--enable-librav1e|rav1e >= 0.4.0|rav1e.h|rav1e_context_new"
+        "--enable-libvidstab|vidstab >= 0.98|vid.stab/libvidstab.h|vsMotionDetectInit"
+        "--enable-libopenmpt|libopenmpt >= 0.2.6557|libopenmpt/libopenmpt.h|openmpt_module_create"
+        "--enable-libgme|libgme|gme/gme.h|gme_new_emu"
+        "--enable-libmysofa|libmysofa|mysofa.h|mysofa_load"
+        "--enable-libbluray|libbluray >= 0.6.0|libbluray/bluray.h|bd_open"
+        "--enable-librsvg|librsvg-2.0 >= 2.36.1|librsvg-2.0/librsvg/rsvg.h|rsvg_handle_new"
+    )
+    local _ff_feat _ff_flag _ff_pkg _ff_hdrs _ff_syms _ff_libs
+    for _ff_feat in "${_ff_extra_pkgconfig[@]}"; do
+        IFS='|' read -r _ff_flag _ff_pkg _ff_hdrs _ff_syms <<<"${_ff_feat}"
+        if ffmpeg_probe_pkg_config_feature "${_ff_flag}" "${_ff_pkg}" "${_ff_hdrs}" "${_ff_syms}"; then
+            configure_opts+=("${_ff_flag}")
+        fi
+    done
+
+    # Libraries that ship no pkg-config file — direct link probe instead.
+    local _ff_extra_link=(
+        "--enable-libtwolame|twolame.h|twolame_init|-ltwolame"
+        "--enable-libgsm|gsm/gsm.h|gsm_create|-lgsm"
+        "--enable-libxvid|xvid.h|xvid_global|-lxvidcore"
+    )
+    for _ff_feat in "${_ff_extra_link[@]}"; do
+        IFS='|' read -r _ff_flag _ff_hdrs _ff_syms _ff_libs <<<"${_ff_feat}"
+        if ffmpeg_probe_library_feature "${_ff_flag}" "${_ff_hdrs}" "${_ff_syms}" "${_ff_libs}"; then
+            configure_opts+=("${_ff_flag}")
+        fi
+    done
+
     # Hardware acceleration (if available)
     if ffmpeg_probe_pkg_config_feature "vaapi" "libva >= 0.35.0" "va/va.h" "vaInitialize"; then
         configure_opts+=("--enable-vaapi")

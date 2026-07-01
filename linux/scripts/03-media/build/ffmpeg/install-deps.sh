@@ -80,6 +80,38 @@ if [ "${#optional_cross_target_packages[@]}" -gt 0 ]; then
     install_optional_target_packages "${optional_cross_target_packages[@]}"
 fi
 
+# ---------------------------------------------------------------------------
+# Extra optional codec / protocol libraries — maximize FFmpeg feature coverage.
+# Installed one-at-a-time and best-effort: any package unavailable for the
+# target arch (e.g. riscv64/arm64 Ubuntu Ports gaps) is skipped without failing
+# the build, and build-ffmpeg.sh probe-gates the matching --enable-* flag, so a
+# missing library just means that feature is left out for that arch.
+# ---------------------------------------------------------------------------
+ffmpeg_extra_feature_packages=(
+    libtheora-dev            # Theora video
+    libopenjp2-7-dev         # JPEG 2000
+    libspeex-dev             # Speex speech
+    libsoxr-dev              # high-quality audio resampling
+    libzimg-dev              # high-quality scaling (zscale)
+    libtwolame-dev           # MP2 audio encoder
+    libopencore-amrnb-dev    # AMR-NB speech
+    libopencore-amrwb-dev    # AMR-WB speech
+    libsrt-gnutls-dev        # SRT transport (gnutls flavor to match FFmpeg TLS)
+    libssh-dev               # SFTP/SSH protocol
+    librav1e-dev             # rav1e AV1 encoder
+    libvidstab-dev           # vid.stab stabilization filter
+    libopenmpt-dev           # tracker/module audio (MOD/XM/IT/S3M)
+    libgme-dev               # game-music-emu (chiptunes)
+    libmysofa-dev            # SOFA HRTF (spatial audio)
+    libbluray-dev            # Blu-ray navigation
+    librsvg2-dev             # SVG rasterization
+    libgsm1-dev              # GSM 06.10 speech
+    libxvidcore-dev          # Xvid MPEG-4 ASP encoder
+)
+for _ff_extra_pkg in "${ffmpeg_extra_feature_packages[@]}"; do
+    install_optional_target_packages "${_ff_extra_pkg}"
+done
+
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     echo "Installing nv-codec-headers for FFmpeg NVIDIA acceleration..."
     local nv_codec_ref="${NV_CODEC_HEADERS_REF:-n12.2.1}"
