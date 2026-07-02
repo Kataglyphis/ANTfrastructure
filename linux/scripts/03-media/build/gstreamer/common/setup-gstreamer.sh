@@ -388,7 +388,10 @@ append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 # vulkan_xcb.h. Disable the vulkan WSI backends (xcb/wayland) to avoid
 # compilation failures in gst-plugins-bad's vulkan library.
 # Vulkan compute/processing still works without display backends in a container.
-append_meson_arg "-Dgst-plugins-bad:vulkan_wsi="
+# NOTE: the option is 'vulkan-windowing' (an array of WSI backends) — the old
+# 'vulkan_wsi' name does not exist in gst-plugins-bad 1.29.2 and makes meson
+# setup fail with "Unknown option". Empty array = no windowing backends.
+append_meson_arg "-Dgst-plugins-bad:vulkan-windowing="
 
 BUILD_TYPE_LOWER="${BUILD_TYPE,,}"
 
