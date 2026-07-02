@@ -382,6 +382,10 @@ configure_opencv() {
         cmake_opts+=("-DWITH_CUBLAS=ON")
         cmake_opts+=("-DWITH_NVCUVID=ON")
         cmake_opts+=("-DWITH_TENSORRT=ON")
+        # Target GPU arch list from versions.env (CUDA_ARCHITECTURES). Plain
+        # entries emit SASS + PTX per arch under nvcc (the Windows clang-cl
+        # build is the one that needs the -real decoration).
+        cmake_opts+=("-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES:-80;86;89;90}")
         
         # Explicitly provide the CUDA library stub so we can build without a GPU present
         if [ -f "/usr/local/cuda/lib64/stubs/libcuda.so" ]; then

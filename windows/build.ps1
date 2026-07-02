@@ -115,7 +115,9 @@ function Get-Ver([string]$Name) {
     return $versions[$Name]
 }
 
-# Windows uses dot notation (13.3); versions.env keeps the Linux apt hyphen form (13-3).
+# NVIDIA versions are shared with Linux (full semvers in versions.env).
+# Windows consumes the dotted major.minor (13.3) derived here; Linux derives
+# its apt hyphen form (13-3) inside linux/Dockerfile.nvidia.
 $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 
 function Get-DockerBuildArgList {
@@ -291,8 +293,8 @@ if ($Stages -contains 'sdk') {
             BASE_IMAGE               = 'local/kataglyphis:windows-base'
             CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
             CUDA_VERSION_MAJOR_MINOR = $cudaMajorMinor
-            CUDNN_VERSION            = Get-Ver 'CUDNN_VERSION_WINDOWS'
-            TENSORRT_VERSION         = Get-Ver 'TENSORRT_VERSION_WINDOWS'
+            CUDNN_VERSION            = Get-Ver 'CUDNN_VERSION'
+            TENSORRT_VERSION         = Get-Ver 'TENSORRT_VERSION'
         }
     } else {
         Write-Host "`n==> CPU lane: tagging windows-base as windows-sdk (no GPU layer)" -ForegroundColor Cyan

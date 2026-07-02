@@ -71,9 +71,12 @@ if command -v apt-get >/dev/null 2>&1; then
   cmake --version
 
   # Read canonical versions from versions.env, fall back to defaults
-  _versions_env="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/versions.env"
+  _core_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core"
+  _versions_env="${_core_dir}/versions.env"
   if [ -f "${_versions_env}" ]; then
-    set -a; source "${_versions_env}"; set +a
+    # shellcheck disable=SC1091
+    source "${_core_dir}/load-versions-env.sh"
+    load_versions_env "${_versions_env}"
     LLVM_WANTED="${LLVM_RELEASE%%.*}"
     CLANG_WANTED="${LLVM_RELEASE%%.*}"
     GCC_WANTED="${GCC_VERSION%%.*}"

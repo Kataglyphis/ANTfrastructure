@@ -28,7 +28,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 INLINE_MARKER_MAP: dict[str, tuple[str, str]] = {
     "cuda": ("CUDA_VERSION", "major_minor"),
     "cuda_full": ("CUDA_VERSION", "raw"),
-    "cuda_major_minor": ("CUDA_VERSION_MAJOR_MINOR", "raw"),
     "gstreamer": ("GSTREAMER_VERSION", "no_v"),
     "gstreamer_full": ("GSTREAMER_VERSION", "raw"),
     "llvm": ("LLVM_RELEASE", "raw"),

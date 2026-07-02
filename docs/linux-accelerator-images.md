@@ -4,7 +4,7 @@
 
 Optional NVIDIA GPU image chain (built by passing `--build-arg ENABLE_NVIDIA=true` to standard Dockerfiles):
 
-- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.1.0<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
+- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.23.2.1<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.1.0.106<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
 - `linux/Dockerfile.torch`: Torch/Python add-on on top of the Android NVIDIA layer.
@@ -23,7 +23,7 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.1.0<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
+| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.23.2.1<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.1.0.106<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the NVIDIA media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
@@ -98,7 +98,9 @@ sudo nerdctl run --rm -it --gpus all ghcr.io/kataglyphis/kataglyphis_beschleunig
 sudo nerdctl run --rm -it --runtime=nvidia ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia
 ```
 
-**Version overrides** (all have sensible defaults):
+**Version overrides** (all have sensible defaults). The full semvers are
+shared with the Windows build; the apt forms (`13-3` package suffix, cuDNN
+major) are derived inside `Dockerfile.nvidia` automatically:
 
 ```bash
 LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-nvidia-overrides"
@@ -109,9 +111,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   -f linux/Dockerfile.nvidia \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
   --build-arg CUDA_VERSION=13.3.0 \
-  --build-arg CUDA_VERSION_MAJOR_MINOR=13-3 \
-  --build-arg CUDNN_VERSION=9 \
-  --build-arg TENSORRT_VERSION=10 \
+  --build-arg CUDNN_VERSION=9.23.2.1 \
+  --build-arg TENSORRT_VERSION=11.1.0.106 \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia \
   . 2>&1 | tee "${LOG_DIR}/toolchain-nvidia.log"
@@ -123,7 +124,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 | --- | --- | --- |
 | CUDA Toolkit | Not installed | CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda --> |
 | cuDNN | Not installed | cuDNN 9 |
-| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.1.0<!-- /generated:tensorrt --> |
+| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.1.0.106<!-- /generated:tensorrt --> |
 | NCCL | Not installed | Installed |
 | cuBLAS/cuSPARSE/cuFFT | Not installed | Installed |
 | NVTX | Not installed | Installed |

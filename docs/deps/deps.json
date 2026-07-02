@@ -41,7 +41,13 @@
             {"name": "LiteRT (TensorFlow Lite)", "var": "LITERT_VERSION", "url": "https://www.tensorflow.org/lite", "license": "Apache 2.0"},
             {"name": "OpenCV", "var": "OPENCV_VERSION", "url": "https://opencv.org/", "license": "Apache 2.0"},
             {"name": "GStreamer", "var": "GSTREAMER_VERSION", "url": "https://gstreamer.freedesktop.org/", "license": "LGPLv2+"},
-            {"name": "FFmpeg", "var": "FFMPEG_VERSION", "url": "https://ffmpeg.org/", "license": "LGPLv2.1+"},
+            {"name": "GStreamer Rust plugins (gst-plugins-rs)", "var": "GSTREAMER_VERSION", "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs", "license": "MPL-2.0"},
+            {"name": "librice / rice-proto (webrtcbin2)", "var": "RICE_VERSION", "url": "https://github.com/ystreet/librice", "license": "Apache 2.0"},
+            {"name": "FFmpeg", "var": "FFMPEG_VERSION", "url": "https://ffmpeg.org/", "license": "GPLv3+ (built with --enable-gpl --enable-version3)"},
+            {"name": "FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame)", "var": null, "version_fixed": "Ubuntu apt", "url": "https://ffmpeg.org/legal.html", "license": "GPL / LGPL / various"},
+            {"name": "VVdeC (VVC/H.266 decoder)", "var": "VVDEC_VERSION", "url": "https://github.com/fraunhoferhhi/vvdec", "license": "BSD-3-Clause-Clear"},
+            {"name": "ArmNN (arm64)", "var": "ARMNN_VERSION", "url": "https://github.com/ARM-software/armnn", "license": "MIT"},
+            {"name": "Arm Compute Library (arm64)", "var": "ACL_VERSION", "url": "https://github.com/ARM-software/ComputeLibrary", "license": "MIT"},
             {"name": "libcamera", "var": null, "url": "https://libcamera.org/", "license": "LGPLv2.1+", "version_fixed": "git master"},
             {"name": "Abseil", "var": "ABSEIL_VERSION", "url": "https://github.com/abseil/abseil-cpp", "license": "Apache 2.0"},
             {"name": "FreeType", "var": "FREETYPE_VERSION", "url": "https://freetype.org/", "license": "GPLv2 / FTL"},
@@ -56,14 +62,15 @@
             {"name": "Android SDK", "var": "ANDROID_SDK_VERSION", "url": "https://developer.android.com/studio", "license": "Apache 2.0 / Google ToS"},
             {"name": "Android NDK", "var": "ANDROID_NDK_VERSION", "url": "https://developer.android.com/ndk", "license": "Apache 2.0"},
             {"name": "Android Build Tools", "var": "ANDROID_BUILD_TOOLS", "url": "https://developer.android.com/studio/releases/build-tools", "license": "Apache 2.0"},
-            {"name": "Android CMake", "var": "ANDROID_CMAKE_VERSION", "url": "https://cmake.org/", "license": "BSD 3-Clause"}
+            {"name": "Android CMake", "var": "ANDROID_CMAKE_VERSION", "url": "https://cmake.org/", "license": "BSD 3-Clause"},
+            {"name": "Android builds of LiteRT / ONNX Runtime / OpenCV / GStreamer", "var": null, "version_fixed": "same versions as Media Layer", "url": "https://developer.android.com/ndk", "license": "Apache 2.0 / MIT / LGPLv2+ (per component)"}
           ]
         },
         {
           "title": "Optional GPU — NVIDIA",
           "dockerfile": "Dockerfile.nvidia",
           "entries": [
-            {"name": "CUDA Toolkit", "var": "CUDA_VERSION_MAJOR_MINOR", "url": "https://developer.nvidia.com/cuda-toolkit", "license": "NVIDIA EULA"},
+            {"name": "CUDA Toolkit", "var": "CUDA_VERSION", "url": "https://developer.nvidia.com/cuda-toolkit", "license": "NVIDIA EULA"},
             {"name": "cuDNN", "var": "CUDNN_VERSION", "url": "https://developer.nvidia.com/cudnn", "license": "NVIDIA cuDNN EULA"},
             {"name": "TensorRT", "var": "TENSORRT_VERSION", "url": "https://developer.nvidia.com/tensorrt", "license": "NVIDIA TensorRT EULA"}
           ]
@@ -90,6 +97,26 @@
           "dockerfile": "Dockerfile.torch",
           "entries": [
             {"name": "Kataglyphis Orchestr-ANT-ion", "var": "APP_REF", "url": "https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion", "license": "MIT"}
+          ]
+        },
+        {
+          "title": "LLM Stack",
+          "dockerfile": "llm-stack/Dockerfile",
+          "entries": [
+            {"name": "Ollama", "var": "OLLAMA_VERSION", "url": "https://github.com/ollama/ollama", "license": "MIT"}
+          ]
+        },
+        {
+          "title": "Build Tooling (build-time only, not in runtime images)",
+          "dockerfile": null,
+          "entries": [
+            {"name": "Emscripten / emsdk (ONNX Runtime WASM build)", "var": null, "version_fixed": "pinned by ONNX Runtime", "url": "https://emscripten.org/", "license": "MIT / NCSA"},
+            {"name": "ccache", "var": null, "version_fixed": "Ubuntu apt", "url": "https://ccache.dev/", "license": "GPLv3+"},
+            {"name": "sccache", "var": null, "version_fixed": "Ubuntu apt", "url": "https://github.com/mozilla/sccache", "license": "Apache 2.0"},
+            {"name": "Meson", "var": null, "version_fixed": "latest (PyPI)", "url": "https://mesonbuild.com/", "license": "Apache 2.0"},
+            {"name": "Ninja", "var": null, "version_fixed": "latest (PyPI)", "url": "https://ninja-build.org/", "license": "Apache 2.0"},
+            {"name": "cargo-c (C-ABI build of gst-plugins-rs)", "var": null, "version_fixed": "latest (crates.io)", "url": "https://github.com/lu-zero/cargo-c", "license": "MIT / Apache 2.0"},
+            {"name": "cerbero (GStreamer Android build system)", "var": null, "version_fixed": "git default branch", "url": "https://gitlab.freedesktop.org/gstreamer/cerbero", "license": "LGPLv2.1+"}
           ]
         }
       ]
@@ -118,6 +145,9 @@
           "entries": [
             {"name": "Windows Server Core", "var": "WINDOWS_LTSC", "url": "https://www.microsoft.com/", "license": "Microsoft EULA"},
             {"name": "Visual Studio Build Tools", "var": null, "url": "https://visualstudio.microsoft.com/", "license": "Microsoft EULA", "version_fixed": "18"},
+            {"name": "Python (source-built, ClangCL)", "var": "PYTHON_VERSION", "url": "https://python.org/", "license": "PSF License"},
+            {"name": "CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal)", "var": null, "version_fixed": "bundled with Python", "url": "https://github.com/python/cpython-source-deps", "license": "various (Apache 2.0, MIT, PD, …)"},
+            {"name": "CMake", "var": "CMAKE_VERSION", "url": "https://cmake.org/", "license": "BSD 3-Clause"},
             {"name": "Vulkan SDK", "var": "VULKAN_VERSION", "url": "https://vulkan.lunarg.com/", "license": "Apache 2.0"},
             {"name": "Rust toolchain", "var": null, "url": "https://rust-lang.org/", "license": "MIT / Apache 2.0", "version_fixed": "latest stable"},
             {"name": "WiX Toolset", "var": null, "url": "https://wixtoolset.org/", "license": "MS-RL", "version_fixed": "latest"},
@@ -129,7 +159,8 @@
           "dockerfile": null,
           "entries": [
             {"name": "CUDA", "var": "CUDA_VERSION", "url": "https://developer.nvidia.com/cuda-toolkit", "license": "NVIDIA EULA"},
-            {"name": "cuDNN", "var": "CUDNN_VERSION", "url": "https://developer.nvidia.com/cudnn", "license": "NVIDIA cuDNN EULA"}
+            {"name": "cuDNN", "var": "CUDNN_VERSION", "url": "https://developer.nvidia.com/cudnn", "license": "NVIDIA cuDNN EULA"},
+            {"name": "TensorRT", "var": "TENSORRT_VERSION", "url": "https://developer.nvidia.com/tensorrt", "license": "NVIDIA TensorRT EULA"}
           ]
         },
         {
@@ -137,10 +168,39 @@
           "dockerfile": null,
           "entries": [
             {"name": "GStreamer", "var": "GSTREAMER_VERSION", "url": "https://gstreamer.freedesktop.org/", "license": "LGPLv2+"},
+            {"name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …)", "var": null, "version_fixed": "per wrap files", "url": "https://gstreamer.freedesktop.org/", "license": "LGPLv2+ / GPL (x264) / BSD (openh264)"},
             {"name": "ONNX Runtime", "var": "ONNXRUNTIME_VERSION", "url": "https://github.com/microsoft/onnxruntime", "license": "MIT"},
             {"name": "ONNX Runtime GenAI", "var": "ONNXRUNTIME_GENAI_VERSION", "url": "https://github.com/microsoft/onnxruntime-genai", "license": "MIT"},
-            {"name": "ONNX Runtime DirectML", "var": "ONNX_DIRECTML_VERSION", "url": "https://github.com/microsoft/onnxruntime-directml", "license": "MIT"},
-            {"name": "OpenCV", "var": "OPENCV_VERSION", "url": "https://opencv.org/", "license": "Apache 2.0"}
+            {"name": "OpenCV", "var": "OPENCV_VERSION", "url": "https://opencv.org/", "license": "Apache 2.0"},
+            {"name": "FFmpeg", "var": "FFMPEG_VERSION", "url": "https://ffmpeg.org/", "license": "GPLv3+ (built with --enable-gpl --enable-version3)"},
+            {"name": "LiteRT (TensorFlow Lite)", "var": "LITERT_VERSION", "url": "https://www.tensorflow.org/lite", "license": "Apache 2.0"},
+            {"name": "LiteRT-LM", "var": "LITERT_LM_VERSION", "url": "https://github.com/google-ai-edge/LiteRT-LM", "license": "Apache 2.0"},
+            {"name": "Apache TVM", "var": "TVM_REF", "url": "https://tvm.apache.org/", "license": "Apache 2.0"}
+          ]
+        },
+        {
+          "title": "Build Tooling (build-time only)",
+          "dockerfile": null,
+          "entries": [
+            {"name": "Scoop package manager", "var": null, "version_fixed": "latest", "url": "https://scoop.sh/", "license": "Unlicense / MIT"},
+            {"name": "Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet)", "var": null, "version_fixed": "latest (scoop)", "url": "https://scoop.sh/", "license": "various (GPL, Apache 2.0, BSD, zlib)"},
+            {"name": "vcpkg", "var": null, "version_fixed": "master", "url": "https://github.com/microsoft/vcpkg", "license": "MIT"},
+            {"name": "vcpkg packages (zlib, protobuf — linked into builds)", "var": null, "version_fixed": "vcpkg baseline", "url": "https://github.com/microsoft/vcpkg", "license": "Zlib / BSD 3-Clause"}
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Host Build Infrastructure (runs on the build host, not inside any image)",
+      "subsections": [
+        {
+          "title": "Container Engines & Builders",
+          "dockerfile": null,
+          "entries": [
+            {"name": "nerdctl (Linux builds & container runs)", "var": null, "version_fixed": "host install", "url": "https://github.com/containerd/nerdctl", "license": "Apache 2.0"},
+            {"name": "containerd", "var": null, "version_fixed": "host install", "url": "https://containerd.io/", "license": "Apache 2.0"},
+            {"name": "BuildKit (buildkitd)", "var": null, "version_fixed": "host install", "url": "https://github.com/moby/buildkit", "license": "Apache 2.0"},
+            {"name": "Stevedore (Windows builds — bundled docker.exe)", "var": null, "version_fixed": "host install", "url": "https://github.com/slonopotamus/stevedore", "license": "Apache 2.0"}
           ]
         }
       ]

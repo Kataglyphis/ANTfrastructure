@@ -12,7 +12,9 @@ echo "=== Runtime paths consistency check ==="
 
 # Load version defaults from the single source of truth so variable references
 # (${GCC_VERSION}, ${OPENCV_OUTPUT_DIR}, etc.) can be expanded dynamically.
-set -a; source "${VERSIONS_ENV}" 2>/dev/null || true; set +a
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/load-versions-env.sh"
+load_versions_env "${VERSIONS_ENV}"
 
 # Load canonical paths (may reference $GCC_VERSION etc.)
 source "${PATHS_ENV}" 2>/dev/null || true

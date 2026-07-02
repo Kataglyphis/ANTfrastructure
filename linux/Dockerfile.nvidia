@@ -32,17 +32,19 @@ FROM ${BASE_IMAGE}
 
 # ------------------------------------------------------------------------------
 # Version ARGs — override at build time as needed
+# Single source of truth: linux/scripts/01-core/versions.env. The full semvers
+# are SHARED with the Windows build (windows/Dockerfile.nvidia) so both
+# platforms pin the exact same NVIDIA releases.
 # ------------------------------------------------------------------------------
 # CUDA 13.3 requires driver >= 590.44.01 (Linux)
-ARG CUDA_VERSION_MAJOR_MINOR=13-3
-
-# cuDNN 9.x is compatible with CUDA 13.x
-ARG CUDNN_VERSION=9
-
-# Single source of truth: linux/scripts/01-core/versions.env
-ARG TENSORRT_VERSION=11.1.0
-ARG CUDA_VERSION_DOT=13.3
-# CUDA_VERSION_DOT is CUDA_VERSION_MAJOR_MINOR with hyphen → dot for repo path construction
+ARG CUDA_VERSION=13.3.0
+ARG CUDNN_VERSION=9.23.2.1
+ARG TENSORRT_VERSION=11.1.0.106
+# Apt package-name forms derived from the shared semvers:
+#   13.3.0 → 13.3 (repo paths) → 13-3 (apt package suffix); 9.23.2.1 → 9 (cuDNN major)
+ARG CUDA_VERSION_DOT=${CUDA_VERSION%.*}
+ARG CUDA_VERSION_MAJOR_MINOR=${CUDA_VERSION_DOT/./-}
+ARG CUDNN_MAJOR=${CUDNN_VERSION%%.*}
 
 ARG TARGETARCH
 ARG UBUNTU_CODENAME=resolute
@@ -97,11 +99,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         cuda-compat-${CUDA_VERSION_MAJOR_MINOR}; \
     CUDA_VER_DOT="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | tr '-' '.')"; \
     apt-get install -y --no-install-recommends \
-        libcudnn${CUDNN_VERSION}-cuda-${CUDA_VER_DOT} \
-        libcudnn${CUDNN_VERSION}-dev-cuda-${CUDA_VER_DOT} || \
+        "libcudnn${CUDNN_MAJOR}-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*" \
+        "libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*" || \
     apt-get install -y --no-install-recommends \
-        libcudnn${CUDNN_VERSION}-cuda-${CUDA_MAJOR} \
-        libcudnn${CUDNN_VERSION}-dev-cuda-${CUDA_MAJOR} || \
+        libcudnn${CUDNN_MAJOR}-cuda-${CUDA_VER_DOT} \
+        libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_VER_DOT} || \
+    apt-get install -y --no-install-recommends \
+        libcudnn${CUDNN_MAJOR}-cuda-${CUDA_MAJOR} \
+        libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR} || \
     echo "WARNING: cuDNN packages not found; continuing without cuDNN"; \
     rm -rf /var/lib/apt/lists/*; \
     ldconfig
@@ -130,8 +135,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
         fi; \
     fi; \
     if [ "${_trt_ok}" -eq 0 ]; then \
-        if apt-get install -y --no-install-recommends tensorrt-dev tensorrt-libs 2>/dev/null; then \
-            echo "TensorRT: installed from NVIDIA apt repo"; \
+        if apt-get install -y --no-install-recommends "tensorrt-dev=${TENSORRT_VERSION}*" "tensorrt-libs=${TENSORRT_VERSION}*" 2>/dev/null; then \
+            echo "TensorRT: installed ${TENSORRT_VERSION} from NVIDIA apt repo"; \
+            _trt_ok=1; \
+        elif apt-get install -y --no-install-recommends tensorrt-dev tensorrt-libs 2>/dev/null; then \
+            echo "TensorRT: installed from NVIDIA apt repo (unpinned; ${TENSORRT_VERSION} not available)"; \
             _trt_ok=1; \
         else \
             echo "TensorRT: not available in any repo; skipping"; \

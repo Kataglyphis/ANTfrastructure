@@ -18,7 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCHES_DIR="${SCRIPT_DIR}/patches"
 TMP_DIR="${TMPDIR:-/tmp}/opencode/gen-patches"
 
-source "${SCRIPT_DIR}/01-core/versions.env" 2>/dev/null || true
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../01-core/load-versions-env.sh"
+load_versions_env "${SCRIPT_DIR}/../01-core/versions.env"
 
 component=""
 while [ $# -gt 0 ]; do

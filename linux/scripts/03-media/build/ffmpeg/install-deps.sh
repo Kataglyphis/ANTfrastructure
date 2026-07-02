@@ -33,7 +33,6 @@ target_packages=(
     libx265-dev
     libnuma-dev
     libvpx-dev
-    libfdk-aac-dev
     libopus-dev
     libaom-dev
     libdav1d-dev

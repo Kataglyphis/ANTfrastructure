@@ -5,13 +5,13 @@ _COMMON_SH_LOADED=1
 
 _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source canonical version defaults (single source of truth).
-# Variables already set in the environment take precedence over versions.env.
+# Load canonical version defaults (single source of truth). Variables already
+# set in the environment (e.g. Dockerfile ARG/ENV values forwarded by the
+# orchestrator) take precedence over versions.env — see load-versions-env.sh.
+# shellcheck disable=SC1091
+source "${_COMMON_SH_DIR}/load-versions-env.sh"
 if [ -z "${_VERSIONS_ENV_LOADED:-}" ]; then
-  set -a
-  # shellcheck disable=SC1090,SC1091
-  [ -f "${_COMMON_SH_DIR}/versions.env" ] && source "${_COMMON_SH_DIR}/versions.env"
-  set +a
+  load_versions_env "${_COMMON_SH_DIR}/versions.env"
   _VERSIONS_ENV_LOADED=1
 fi
 

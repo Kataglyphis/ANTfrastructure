@@ -129,7 +129,7 @@ setup_torch_deps() {
     libdc1394-25 \
     libva2 libva-drm2 libva-x11-2 libvdpau1 \
     libaom3 libdav1d7 libsvtav1enc2 libx265-215 libvpx12 \
-    libfdk-aac2 libmp3lame0 libopus0 libvorbis0a libvorbisenc2 \
+    libmp3lame0 libopus0 libvorbis0a libvorbisenc2 \
     libass9 libsndio7.0 libopenexr-3-1-30 libgraphene-1.0-0 \
     libavformat62 libavcodec62 libswscale9 libswresample6 libavdevice62 libavfilter11
   rm -rf /var/lib/apt/lists/*

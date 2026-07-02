@@ -1,67 +1,76 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-arg-consistency.sh - Verify that the auto-discovered version
-# variables from versions.env match what Dockerfile ARGs expect.
+# verify-arg-consistency.sh - Verify that versions.env, the build-arg
+# forwarding, and the Dockerfile ARG safety-net defaults agree:
+#   1. Every Dockerfile ARG whose name is a versions.env variable must be
+#      forwarded by version-forwarding.sh (i.e. not marked `# noforward`).
+#   2. Every such ARG's literal default must equal the versions.env value.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 VERSIONS_ENV="${REPO_ROOT}/linux/scripts/01-core/versions.env"
 
+# Same Dockerfile set as docs/scripts/sync_versions.py dockerfile_target_files().
+DOCKERFILES=(base toolchain sdk media android package torch nvidia amd)
+
 echo "=== Version ARG consistency check ==="
 
-# Use the same auto-discovery logic as version-forwarding.sh.
-_VERSION_BUILD_ARG_VARS=()
-while IFS= read -r varname; do
-  [ -n "${varname}" ] && _VERSION_BUILD_ARG_VARS+=("${varname}")
-done < <(grep -E '^[A-Z][A-Z0-9_]*(_VERSION|_RELEASE|_MAJOR_MINOR|_MAJOR|_REF|_API_LEVEL|_BUILD_TOOLS|_COMPILE_SDK)=' "${VERSIONS_ENV}" | cut -d= -f1)
+# Reuse the discovery from version-forwarding.sh (single definition of the
+# forward-all-except-`# noforward` rule and of _VERSION_BUILD_ARG_VARS).
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/version-forwarding.sh"
 
-echo "Auto-discovered ${#_VERSION_BUILD_ARG_VARS[@]} version variables"
+echo "Discovered ${#_VERSION_BUILD_ARG_VARS[@]} forwarded variables"
 
-# Collect all Dockerfile version ARGs
+# Load versions.env into associative array (all vars, including noforward).
+declare -A _version_values
+while IFS='=' read -r key val; do
+  [ -n "$key" ] && _version_values["$key"]="$val"
+done < <(grep -E '^[A-Z][A-Z0-9_]*=' "${VERSIONS_ENV}" || true)
+
 MISSING=0
-for df in linux/Dockerfile.{base,toolchain,sdk,media,android,package}; do
+for name in "${DOCKERFILES[@]}"; do
+  df="linux/Dockerfile.${name}"
   df_path="${REPO_ROOT}/${df}"
   [ -f "$df_path" ] || continue
-  while IFS= read -r var; do
+  while IFS='=' read -r var val_raw; do
     [ -n "$var" ] || continue
-    case "$var" in
-      *_VERSION|*_RELEASE|*_MAJOR_MINOR|*_MAJOR|*_REF|ANDROID_API_LEVEL|ANDROID_BUILD_TOOLS|ANDROID_COMPILE_SDK) ;;
-      *) continue ;;
-    esac
+    # ARGs derived from another ARG (e.g. PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*})
+    # are computed in-Dockerfile and need no forwarding from versions.env.
+    case "$val_raw" in '${'*) continue ;; esac
+    # Only ARGs whose name exists in versions.env are expected to be forwarded.
+    [ -n "${_version_values[$var]:-}" ] || continue
     found=0
     for v in "${_VERSION_BUILD_ARG_VARS[@]}"; do
       [ "$v" = "$var" ] && { found=1; break; }
     done
     if [ "$found" -eq 0 ]; then
-      echo "WARN: ${df} has ARG '${var}' not in versions.env auto-discover list"
+      echo "WARN: ${df} ARG '${var}' consumes a versions.env value that is not forwarded (marked # noforward?)"
       MISSING=$((MISSING + 1))
     fi
-  done < <(grep -oP '^\s*ARG\s+\K[A-Z_]+(?=\s*=)' "$df_path" || true)
+  done < <(grep -oP '^\s*ARG\s+\K[A-Z_]+=("[^"]*"|\S+)' "$df_path" || true)
 done
 
 if [ "$MISSING" -gt 0 ]; then
   echo "WARNING: ${MISSING} ARG(s) may not be auto-forwarded to builds"
-  echo "Review version-forwarding.sh or add to _MANUAL_VARS in this script"
+  echo "Remove the # noforward marker in versions.env or drop the Dockerfile ARG"
 else
-  echo "All version ARGs covered by auto-discovery"
+  echo "All version ARGs covered by forwarding"
 fi
 
 echo ""
 echo "=== ARG default value check ==="
 
-# Load versions.env into associative array for value comparison
-declare -A _version_values
-while IFS='=' read -r key val; do
-  [ -n "$key" ] && _version_values["$key"]="$val"
-done < <(grep -E '^[A-Z][A-Z0-9_]*-?[A-Z0-9_]*=' "${VERSIONS_ENV}" || true)
-
 VALUE_ERRORS=0
-for df in linux/Dockerfile.{base,toolchain,sdk,media,android,package,torch}; do
+for name in "${DOCKERFILES[@]}"; do
+  df="linux/Dockerfile.${name}"
   df_path="${REPO_ROOT}/${df}"
   [ -f "$df_path" ] || continue
   while IFS='=' read -r var val_raw; do
     [ -z "$var" ] && continue
     env_val="${_version_values[$var]:-}"
     [ -z "$env_val" ] && continue
+    # Derived ARGs (default computed from another ARG) have no literal to compare.
+    case "$val_raw" in '${'*) continue ;; esac
     # Strip surrounding double quotes from Dockerfile value
     val="${val_raw%\"}"
     val="${val#\"}"

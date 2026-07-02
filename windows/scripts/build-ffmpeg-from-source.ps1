@@ -113,7 +113,9 @@ $confFlags = @()
 $confFlags += "--prefix=$cygPrefix"
 $confFlags += '--enable-shared', '--disable-static'
 $confFlags += '--disable-debug', '--disable-doc'
-$confFlags += '--enable-gpl', '--enable-nonfree', '--enable-version3'
+# No --enable-nonfree: nothing in this build needs it, and nonfree builds are
+# not redistributable (the images are published). GPL+version3 covers x264 etc.
+$confFlags += '--enable-gpl', '--enable-version3'
 $confFlags += '--enable-ffmpeg', '--enable-ffprobe'
 if ($onnxHeaderCopied) {
     $confFlags += '--enable-libonnxruntime'

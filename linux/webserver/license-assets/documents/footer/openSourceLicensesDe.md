@@ -46,7 +46,13 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | LiteRT (TensorFlow Lite) | v2.1.5 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.x | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
-| FFmpeg | master | [ffmpeg.org](https://ffmpeg.org/) | LGPLv2.1+ |
+| GStreamer Rust plugins (gst-plugins-rs) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
+| librice / rice-proto (webrtcbin2) | v0.4.3 | [github.com/ystreet/librice](https://github.com/ystreet/librice) | Apache 2.0 |
+| FFmpeg | master | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
+| FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame) | Ubuntu apt | [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html) | GPL / LGPL / various |
+| VVdeC (VVC/H.266 decoder) | v3.1.0 | [github.com/fraunhoferhhi/vvdec](https://github.com/fraunhoferhhi/vvdec) | BSD-3-Clause-Clear |
+| ArmNN (arm64) | v25.11 | [github.com/ARM-software/armnn](https://github.com/ARM-software/armnn) | MIT |
+| Arm Compute Library (arm64) | v25.04 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
 | libcamera | git master | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20240722.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 | FreeType | 2.14.2 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
@@ -61,14 +67,15 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Android NDK | 29.0.14206865 | [developer.android.com/ndk](https://developer.android.com/ndk) | Apache 2.0 |
 | Android Build Tools | 35.0.0 | [developer.android.com/studio/releases/build-tools](https://developer.android.com/studio/releases/build-tools) | Apache 2.0 |
 | Android CMake | 4.1.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| Android builds of LiteRT / ONNX Runtime / OpenCV / GStreamer | same versions as Media Layer | [developer.android.com/ndk](https://developer.android.com/ndk) | Apache 2.0 / MIT / LGPLv2+ (per component) |
 
 ### Optional GPU — NVIDIA (`Dockerfile.nvidia`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| CUDA Toolkit | 13-3 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
-| cuDNN | 9 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
-| TensorRT | 11.1.0 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| CUDA Toolkit | 13.3.0 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
+| cuDNN | 9.23.2.1 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
+| TensorRT | 11.1.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Optional GPU — AMD (`Dockerfile.amd`)
 
@@ -91,6 +98,24 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | Kataglyphis Orchestr-ANT-ion | v0.0.19 | [github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion](https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion) | MIT |
 
+### LLM Stack (`llm-stack/Dockerfile`)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| Ollama | 0.30.10 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+
+### Build Tooling (build-time only, not in runtime images)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| Emscripten / emsdk (ONNX Runtime WASM build) | pinned by ONNX Runtime | [emscripten.org](https://emscripten.org/) | MIT / NCSA |
+| ccache | Ubuntu apt | [ccache.dev](https://ccache.dev/) | GPLv3+ |
+| sccache | Ubuntu apt | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
+| Meson | latest (PyPI) | [mesonbuild.com](https://mesonbuild.com/) | Apache 2.0 |
+| Ninja | latest (PyPI) | [ninja-build.org](https://ninja-build.org/) | Apache 2.0 |
+| cargo-c (C-ABI build of gst-plugins-rs) | latest (crates.io) | [github.com/lu-zero/cargo-c](https://github.com/lu-zero/cargo-c) | MIT / Apache 2.0 |
+| cerbero (GStreamer Android build system) | git default branch | [gitlab.freedesktop.org/gstreamer/cerbero](https://gitlab.freedesktop.org/gstreamer/cerbero) | LGPLv2.1+ |
+
 
 ## Webserver Image (`ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver`)
 
@@ -110,6 +135,9 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | Windows Server Core | 2025 | [www.microsoft.com](https://www.microsoft.com/) | Microsoft EULA |
 | Visual Studio Build Tools | 18 | [visualstudio.microsoft.com](https://visualstudio.microsoft.com/) | Microsoft EULA |
+| Python (source-built, ClangCL) | 3.14.6 | [python.org](https://python.org/) | PSF License |
+| CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) | bundled with Python | [github.com/python/cpython-source-deps](https://github.com/python/cpython-source-deps) | various (Apache 2.0, MIT, PD, …) |
+| CMake | 4.3.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Vulkan SDK | 1.4.341.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
@@ -120,17 +148,43 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | CUDA | 13.3.0 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
-| cuDNN | 9 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
+| cuDNN | 9.23.2.1 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
+| TensorRT | 11.1.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Media Layer
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
+| GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …) | per wrap files | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ / GPL (x264) / BSD (openh264) |
 | ONNX Runtime | v1.27.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.14.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
-| ONNX Runtime DirectML | — | [github.com/microsoft/onnxruntime-directml](https://github.com/microsoft/onnxruntime-directml) | MIT |
 | OpenCV | 5.x | [opencv.org](https://opencv.org/) | Apache 2.0 |
+| FFmpeg | master | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
+| LiteRT (TensorFlow Lite) | v2.1.5 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
+| LiteRT-LM | 0.13.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
+| Apache TVM | v0.25.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
+
+### Build Tooling (build-time only)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| Scoop package manager | latest | [scoop.sh](https://scoop.sh/) | Unlicense / MIT |
+| Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) | latest (scoop) | [scoop.sh](https://scoop.sh/) | various (GPL, Apache 2.0, BSD, zlib) |
+| vcpkg | master | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | MIT |
+| vcpkg packages (zlib, protobuf — linked into builds) | vcpkg baseline | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | Zlib / BSD 3-Clause |
+
+
+## Host Build Infrastructure (runs on the build host, not inside any image)
+
+### Container Engines & Builders
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| nerdctl (Linux builds & container runs) | host install | [github.com/containerd/nerdctl](https://github.com/containerd/nerdctl) | Apache 2.0 |
+| containerd | host install | [containerd.io](https://containerd.io/) | Apache 2.0 |
+| BuildKit (buildkitd) | host install | [github.com/moby/buildkit](https://github.com/moby/buildkit) | Apache 2.0 |
+| Stevedore (Windows builds — bundled docker.exe) | host install | [github.com/slonopotamus/stevedore](https://github.com/slonopotamus/stevedore) | Apache 2.0 |
 
 
 ---
