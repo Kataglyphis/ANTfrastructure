@@ -1,0 +1,58 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Media branch A (core chain): ONNX Runtime → ONNX GenAI → OpenCV → FFmpeg.
+# These components form a dependency chain (OpenCV and FFmpeg link/detect the
+# source-built ONNX Runtime), so they stay sequential. Independent branches
+# (Dockerfile.media-litert, Dockerfile.media-tvm) build in parallel; everything
+# merges in Dockerfile.media, which then builds GStreamer on top.
+# windows/build.ps1 orchestrates the fan-out/fan-in.
+
+ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
+FROM ${BASE_IMAGE}
+
+# ARG defaults mirror linux/scripts/01-core/versions.env (single source of truth);
+# windows/build.ps1 passes the canonical values as --build-arg.
+ARG ONNXRUNTIME_VERSION=v1.27.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
+ARG OPENCV_SOURCE_VERSION=5.x
+ARG FFMPEG_VERSION=master
+# Container --memory cap (GB), forwarded so Get-BuildJobCount scales parallelism
+# to the cap instead of host RAM (branches run concurrently).
+ARG MEMORY_LIMIT_GB=""
+# Optional persistent sccache remote (e.g. WebDAV server on the host); empty = off.
+ARG SCCACHE_WEBDAV_ENDPOINT=""
+
+ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Only the modules the build scripts import (keeps CI-module edits from busting this branch).
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     C:\temp\scripts\modules\
+
+# ── Stage 1: ONNX Runtime source build via clang-cl ─────────────────────────
+ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}"
+COPY windows\scripts\patches\onnxruntime C:\temp\scripts\patches\onnxruntime
+COPY windows\scripts\build-onnx-from-source.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\build-onnx-from-source.ps1' -SourceDir 'C:\temp\onnx-src' -InstallDir 'C:\runtime'
+
+# ── Stage 2: ONNX GenAI source build via clang-cl ───────────────────────────
+ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
+COPY windows\scripts\build-onnx-genai-from-source.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\build-onnx-genai-from-source.ps1' -SourceDir 'C:\temp\onnx-genai-src' -InstallDir 'C:\runtime'
+
+# ── Stage 3: OpenCV source build via clang-cl (detects ONNX from stage 1) ───
+ENV OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}"
+COPY windows\scripts\patches\opencv C:\temp\scripts\patches\opencv
+COPY windows\scripts\patches\opencv_contrib C:\temp\scripts\patches\opencv_contrib
+COPY windows\scripts\build-opencv-from-source.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\build-opencv-from-source.ps1' -SourceDir 'C:\temp\opencv-src' -InstallDir 'C:\runtime'
+
+# ── Stage 4: FFmpeg (MSVC toolchain, links the source-built ONNX Runtime) ───
+ENV FFMPEG_VERSION="${FFMPEG_VERSION}"
+COPY windows\scripts\patches\ffmpeg C:\temp\scripts\patches\ffmpeg
+COPY windows\scripts\build-ffmpeg-from-source.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\build-ffmpeg-from-source.ps1' -SourceDir 'C:\temp\ffmpeg-src' -InstallDir 'C:\runtime'

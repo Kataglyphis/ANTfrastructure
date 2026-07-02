@@ -1,0 +1,26 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Media branch C: TVM (independent — builds in parallel with the other media
+# branches; merged in Dockerfile.media). The Python wheel installs into the
+# source-built CPython; the merge stage copies its site-packages across.
+
+ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
+FROM ${BASE_IMAGE}
+
+ARG TVM_REF=v0.25.0
+ARG MEMORY_LIMIT_GB=""
+ARG SCCACHE_WEBDAV_ENDPOINT=""
+
+ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     C:\temp\scripts\modules\
+
+ENV TVM_REF="${TVM_REF}"
+COPY windows\scripts\build-tvm-from-source.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\build-tvm-from-source.ps1' -SourceDir 'C:\temp\tvm-src' -InstallDir 'C:\runtime'

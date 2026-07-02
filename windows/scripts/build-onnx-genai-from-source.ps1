@@ -28,14 +28,8 @@ $py = Get-SourceBuildPython
 if (-not (Test-Path $py.Exe)) { throw "Python not found at $($py.Exe)" }
 Write-Host "Using Python: $($py.Exe)"
 
-# Install pip (source-built Python doesn't include it)
-Write-Host 'Installing pip...'
-$pipScript = Join-Path $env:TEMP 'get-pip.py'
-Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $pipScript -UseBasicParsing
-# Use cmd.exe to avoid PowerShell's $ErrorActionPreference treating stderr as errors
-cmd.exe /c """$($py.Exe)"" ""$pipScript"" --quiet 2>&1"
-if ($LASTEXITCODE -ne 0) { throw 'get-pip.py failed' }
-Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
+# Install pip (source-built Python doesn't include it; idempotent shared helper)
+Install-CpythonPip -Python $py
 
 Write-Host 'Installing cmake, ninja, requests via pip...'
 cmd.exe /c """$($py.Exe)"" -m pip install cmake ninja requests --no-warn-script-location --quiet 2>&1"

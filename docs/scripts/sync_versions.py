@@ -163,6 +163,8 @@ def collect_versions() -> dict[str, str]:
         "windows_vulkan": extract(r"^ARG VULKAN_VERSION=([^\s]+)$", windows_base, "Windows Vulkan version"),
         "windows_gstreamer": extract(r"^ARG GSTREAMER_VERSION=([^\s]+)$", windows_media, "Windows GStreamer version"),
         "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_nvidia, "Windows CUDA version"),
+        # ONNX builds in Dockerfile.media-core; Dockerfile.media re-declares the ARG
+        # for the image's version env vars — both are checked against versions.env.
         "windows_onnx": extract(r"^ARG ONNXRUNTIME_VERSION=([^\s]+)$", windows_media, "Windows ONNX Runtime version"),
         "windows_vs": extract(
             r"Visual Studio\\([0-9]+)\\BuildTools",

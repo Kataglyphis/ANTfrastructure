@@ -15,6 +15,12 @@
     edits only invalidate their own stage. Use -NoCache for a deliberate clean
     rebuild.
 
+    The media stage fans out into three branch images built CONCURRENTLY
+    (media-core: ONNX->GenAI->OpenCV->FFmpeg; media-litert: LiteRT->LiteRT-LM;
+    media-tvm: TVM), then fans in via Dockerfile.media (merge + GStreamer).
+    Use -SequentialMedia to build the branches one after another on
+    memory-constrained hosts.
+
     The former Dockerfile.sdk no-op shim is replaced by a `docker tag`:
       - CPU lane (default): windows-base is tagged as windows-sdk.
       - GPU lane (-Gpu):    Dockerfile.nvidia builds FROM windows-base and is
@@ -38,13 +44,30 @@
     Tag for the final developer image.
 
 .PARAMETER MediaMemoryGb
-    --memory limit for the media stage build (ONNX Runtime AVX-512 + CUDA
-    compilation is memory-hungry; the build scripts scale ninja jobs to this).
+    --memory limit (GB) for the media-core branch and the merge/GStreamer stage.
+    Forwarded as MEMORY_LIMIT_GB so the build scripts scale their parallelism to
+    the cap instead of host RAM.
+
+.PARAMETER AuxMemoryGb
+    --memory limit (GB) for each auxiliary media branch (litert, tvm) when
+    building concurrently. Sized so MediaMemoryGb + 2*AuxMemoryGb roughly fits
+    host RAM.
+
+.PARAMETER SequentialMedia
+    Build the media branches one after another instead of concurrently.
+
+.PARAMETER SccacheEndpoint
+    Optional sccache WebDAV endpoint reachable FROM INSIDE build containers
+    (e.g. http://<host-lan-ip>:5000). Enables a persistent cross-build compile
+    cache; empty disables sccache entirely (a container-local cache would only
+    bloat layers). See docs/windows-builds.md § Persistent compile cache.
 
 .EXAMPLE
     .\windows\build.ps1 -Gpu
 .EXAMPLE
-    .\windows\build.ps1 -Stages media,final   # iterate on the media stage only
+    .\windows\build.ps1 -Gpu -Stages media,final   # iterate on media only
+.EXAMPLE
+    .\windows\build.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
 #>
 param(
     [switch]$Gpu,
@@ -53,7 +76,10 @@ param(
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'final'),
     [string]$Docker = '',
     [string]$FinalTag = 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64',
-    [int]$MediaMemoryGb = 48
+    [int]$MediaMemoryGb = 48,
+    [int]$AuxMemoryGb = 8,
+    [switch]$SequentialMedia,
+    [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT
 )
 
 Set-StrictMode -Version Latest
@@ -92,7 +118,7 @@ function Get-Ver([string]$Name) {
 # Windows uses dot notation (13.3); versions.env keeps the Linux apt hyphen form (13-3).
 $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 
-function Invoke-Stage {
+function Get-DockerBuildArgList {
     param(
         [Parameter(Mandatory)] [string]$Dockerfile,
         [Parameter(Mandatory)] [string]$Tag,
@@ -107,9 +133,119 @@ function Invoke-Stage {
     }
     $dockerArgs += $ExtraFlags
     $dockerArgs += '-t', $Tag, '-f', $Dockerfile, '.'
+    return $dockerArgs
+}
+
+function Invoke-Stage {
+    param(
+        [Parameter(Mandatory)] [string]$Dockerfile,
+        [Parameter(Mandatory)] [string]$Tag,
+        [hashtable]$BuildArgs = @{},
+        [string[]]$ExtraFlags = @()
+    )
+    $dockerArgs = Get-DockerBuildArgList -Dockerfile $Dockerfile -Tag $Tag -BuildArgs $BuildArgs -ExtraFlags $ExtraFlags
     Write-Host "`n==> docker $($dockerArgs -join ' ')" -ForegroundColor Cyan
     & $Docker @dockerArgs
     if ($LASTEXITCODE -ne 0) { throw "docker build failed for $Dockerfile (exit $LASTEXITCODE)" }
+}
+
+# Common per-branch args for the media fan-out
+function Get-MediaBranchSpecs {
+    $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
+    @(
+        @{
+            Name       = 'media-core'
+            Dockerfile = 'windows/Dockerfile.media-core'
+            Tag        = 'local/kataglyphis:windows-media-core'
+            MemoryGb   = $MediaMemoryGb
+            BuildArgs  = @{
+                BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
+                ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
+                ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
+                OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
+                FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
+                MEMORY_LIMIT_GB           = $MediaMemoryGb
+            } + $sccache
+        },
+        @{
+            Name       = 'media-litert'
+            Dockerfile = 'windows/Dockerfile.media-litert'
+            Tag        = 'local/kataglyphis:windows-media-litert'
+            MemoryGb   = $AuxMemoryGb
+            BuildArgs  = @{
+                BASE_IMAGE        = 'local/kataglyphis:windows-toolchain'
+                LITERT_VERSION    = Get-Ver 'LITERT_VERSION'
+                LITERT_LM_VERSION = Get-Ver 'LITERT_LM_VERSION'
+                MEMORY_LIMIT_GB   = $AuxMemoryGb
+            } + $sccache
+        },
+        @{
+            Name       = 'media-tvm'
+            Dockerfile = 'windows/Dockerfile.media-tvm'
+            Tag        = 'local/kataglyphis:windows-media-tvm'
+            MemoryGb   = $AuxMemoryGb
+            BuildArgs  = @{
+                BASE_IMAGE      = 'local/kataglyphis:windows-toolchain'
+                TVM_REF         = Get-Ver 'TVM_REF'
+                MEMORY_LIMIT_GB = $AuxMemoryGb
+            } + $sccache
+        }
+    )
+}
+
+function Invoke-MediaBranches {
+    $specs = Get-MediaBranchSpecs
+    if ($SequentialMedia) {
+        foreach ($spec in $specs) {
+            Invoke-Stage -Dockerfile $spec.Dockerfile -Tag $spec.Tag -BuildArgs $spec.BuildArgs `
+                -ExtraFlags @('--memory', "$($spec.MemoryGb)g")
+        }
+        return
+    }
+
+    $logDir = Join-Path $repoRoot 'out\windows-build-logs'
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    $procs = @()
+    foreach ($spec in $specs) {
+        $argList = Get-DockerBuildArgList -Dockerfile $spec.Dockerfile -Tag $spec.Tag `
+            -BuildArgs $spec.BuildArgs -ExtraFlags @('--memory', "$($spec.MemoryGb)g")
+        $outLog = Join-Path $logDir "$($spec.Name).log"
+        $errLog = Join-Path $logDir "$($spec.Name).err.log"
+        Write-Host "==> [$($spec.Name)] docker $($argList -join ' ')" -ForegroundColor Cyan
+        Write-Host "    log: $outLog"
+        # NB: docker's --progress=plain output goes to stderr — the .err.log is the live one
+        $proc = Start-Process -FilePath $Docker -ArgumentList $argList `
+            -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -WindowStyle Hidden
+        $procs += @{ Spec = $spec; Proc = $proc; Log = $outLog; ErrLog = $errLog }
+    }
+
+    Write-Host "`nBuilding $($procs.Count) media branches concurrently (tail the logs above for live progress)..."
+    $lastBeat = Get-Date
+    while ($true) {
+        $alive = @($procs | Where-Object { -not $_.Proc.HasExited })
+        if ($alive.Count -eq 0) { break }
+        if (((Get-Date) - $lastBeat).TotalSeconds -ge 120) {
+            $status = ($procs | ForEach-Object {
+                $state = if ($_.Proc.HasExited) { "done(exit $($_.Proc.ExitCode))" } else { 'running' }
+                "$($_.Spec.Name)=$state"
+            }) -join ', '
+            Write-Host "[media fan-out $(Get-Date -Format HH:mm:ss)] $status"
+            $lastBeat = Get-Date
+        }
+        Start-Sleep -Seconds 10
+    }
+
+    $failed = @($procs | Where-Object { $_.Proc.ExitCode -ne 0 })
+    foreach ($f in $failed) {
+        Write-Host "`n=== [$($f.Spec.Name)] FAILED (exit $($f.Proc.ExitCode)) — last 40 log lines ===" -ForegroundColor Red
+        foreach ($log in @($f.Log, $f.ErrLog)) {
+            if (Test-Path $log) { Get-Content $log -Tail 40 | ForEach-Object { Write-Host "  $_" } }
+        }
+    }
+    if ($failed.Count -gt 0) {
+        throw "media branch build(s) failed: $(($failed | ForEach-Object { $_.Spec.Name }) -join ', ')"
+    }
+    Write-Host 'All media branches built.' -ForegroundColor Green
 }
 
 $started = Get-Date
@@ -146,17 +282,23 @@ if ($Stages -contains 'toolchain') {
 }
 
 if ($Stages -contains 'media') {
+    # Fan-out: three branch images concurrently, then fan-in (merge + GStreamer).
+    Invoke-MediaBranches
     Invoke-Stage -Dockerfile 'windows/Dockerfile.media' -Tag 'local/kataglyphis:windows-media' `
         -ExtraFlags @('--memory', "$($MediaMemoryGb)g") -BuildArgs @{
         BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
+        CORE_IMAGE                = 'local/kataglyphis:windows-media-core'
+        LITERT_IMAGE              = 'local/kataglyphis:windows-media-litert'
+        TVM_IMAGE                 = 'local/kataglyphis:windows-media-tvm'
         GSTREAMER_VERSION         = Get-Ver 'GSTREAMER_VERSION'
         ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
         ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
-        FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
         OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
+        FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
         LITERT_VERSION            = Get-Ver 'LITERT_VERSION'
         LITERT_LM_VERSION         = Get-Ver 'LITERT_LM_VERSION'
         TVM_REF                   = Get-Ver 'TVM_REF'
+        MEMORY_LIMIT_GB           = $MediaMemoryGb
     }
 }
 

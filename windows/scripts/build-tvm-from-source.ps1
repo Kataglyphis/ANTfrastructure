@@ -99,11 +99,15 @@ Write-Host 'Installing...'
 if ($pythonModule -eq 'ON') {
     $py = Get-SourceBuildPython
     if (Test-Path $py.Exe) {
+        # Bootstrap pip if missing — this script can no longer rely on the GenAI
+        # build having installed it first (parallel media branches).
+        Install-CpythonPip -Python $py
         Write-Host 'Installing TVM Python wheel...'
         $wheelDir = Join-Path $buildDir 'python'
         if (Test-Path $wheelDir) {
             Push-Location $wheelDir
             cmd.exe /c """$($py.Exe)"" -m pip install . --no-deps --quiet 2>&1"
+            if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: TVM Python wheel install failed (exit $LASTEXITCODE) - C++ runtime is still installed" }
             Pop-Location
         }
     }

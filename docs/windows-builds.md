@@ -43,7 +43,11 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.3.3, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
 - `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.23 + TensorRT 11.1.0.106 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build.ps1` handles this automatically via its `-Gpu` switch.
 - `windows/Dockerfile.toolchain` builds CPython 3.14 from source (matching the canonical versions.env).
-- `windows/Dockerfile.media` layers the AI/media stack in dependency order so each finds the previous: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used), ONNX GenAI 0.14.0 (source build via CMake+clang-cl, bypassing `build.py`; CUDA is disabled at build time because clang-cl cannot compile cuRAND host headers — GenAI uses ONNX Runtime's CUDA EP at runtime), OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected), LiteRT 2.1.5 (GPU delegate enabled via Vulkan/OpenCL + external CUDA delegate), LiteRT-LM 0.13.1 (on-device LLM inference; CUDA auto-detected), TVM 0.25.0 (Ninja+clang-cl; auto-detects CUDA/Vulkan/LLVM; builds a Python wheel), FFmpeg `main` branch (MSVC toolchain via MSYS2 bash; `--enable-dnn --enable-libonnx` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters), GStreamer 1.29.2 (from source via Meson + clang-cl, with CUDA auto-detected).
+- The **media stage fans out into three branch images built concurrently** by `windows/build.ps1`, then fans in:
+  - `windows/Dockerfile.media-core` — the ONNX dependency chain, sequential: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used) → ONNX GenAI 0.14.0 (CMake+clang-cl, bypassing `build.py`; CUDA disabled at build time — GenAI uses ONNX Runtime's CUDA EP at runtime) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `main` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filter against the source-built ONNX Runtime).
+  - `windows/Dockerfile.media-litert` — LiteRT 2.1.5 → LiteRT-LM 0.13.1 (independent of ONNX).
+  - `windows/Dockerfile.media-tvm` — TVM 0.25.0 (independent; installs its Python wheel into the source-built CPython).
+  - `windows/Dockerfile.media` — merge stage: `COPY --from` fan-in of the three branch trees into one `C:\runtime`, canonical env layout, then GStreamer 1.29.2 (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
 - `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).
 
 ## Prerequisites
@@ -99,14 +103,47 @@ fallbacks), builds the stages in order, and applies the correct tags:
 Docker layer caching is **on by default**: the Dockerfiles are ordered so that
 editing one build script only rebuilds that script's stage and later ones.
 `-Docker` overrides the docker.exe path (default: `$env:DOCKER_EXE`, then the
-Stevedore install locations, then `docker` on PATH). `-MediaMemoryGb` adjusts
-the `--memory` limit for the media stage (default 48; ONNX Runtime AVX-512+AMX
-compilation with clang-cl is memory-hungry, and the build scripts scale their
-ninja `-j` to the container's memory — `--cpu-quota` is not supported on
-Windows). Set `KEEP_BUILD_ARTIFACTS=1` (e.g. via a temporary `ENV` line in
-`Dockerfile.media`) to keep the `C:\temp\*-src` build trees for debugging;
-by default each build script removes its source tree after installing so the
-trees don't bloat the image layers.
+Stevedore install locations, then `docker` on PATH). Set
+`KEEP_BUILD_ARTIFACTS=1` (e.g. via a temporary `ENV` line in a media
+Dockerfile) to keep the `C:\temp\*-src` build trees for debugging; by default
+each build script removes its source tree after installing so the trees don't
+bloat the image layers.
+
+### Media fan-out and memory budgeting
+
+The media branches build concurrently (branch logs land in
+`out\windows-build-logs\*.err.log` — docker's `--progress=plain` output goes to
+stderr). `-MediaMemoryGb` (default 48) caps the media-core branch and the
+merge/GStreamer stage; `-AuxMemoryGb` (default 8) caps each of the two
+auxiliary branches. Size them so `MediaMemoryGb + 2*AuxMemoryGb` roughly fits
+host RAM. Each cap is forwarded as `MEMORY_LIMIT_GB` so the build scripts scale
+their parallel job count to the container's cap instead of host RAM
+(`--cpu-quota` is not supported on Windows; `BUILD_JOBS` overrides the
+heuristic outright). On memory-constrained hosts pass `-SequentialMedia` to
+build the branches one after another.
+
+### Persistent compile cache (sccache)
+
+Without BuildKit cache mounts a container-local sccache cache dies with the
+layer, so sccache stays **disabled unless a remote backend is configured**.
+To enable a cross-build cache, run a small WebDAV server on the host and pass
+its endpoint:
+
+```powershell
+# one-time host setup (any WebDAV-capable server works; dufs is a single binary)
+scoop install dufs
+mkdir C:\sccache-cache
+dufs C:\sccache-cache -A -p 5000
+
+# then build with the endpoint (use an IP reachable from inside containers,
+# e.g. the host's LAN IP — not localhost)
+.\windows\build.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
+```
+
+CMake-based builds (ONNX, GenAI, OpenCV, LiteRT, LiteRT-LM, TVM) then route
+clang-cl through sccache; FFmpeg (MSVC/make) and GStreamer (Meson) are not
+cached. The first build populates the cache; subsequent `--no-cache` rebuilds
+and version bumps reuse unchanged object files.
 
 > **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (which use `linux/` context) but breaks Windows builds.
 

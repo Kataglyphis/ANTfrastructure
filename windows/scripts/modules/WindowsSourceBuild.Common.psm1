@@ -107,13 +107,23 @@ function Invoke-CmakeConfigure {
     if ($Linker) { $cmakeArgs += "-DCMAKE_LINKER=$Linker" }
     if ($Archiver) { $cmakeArgs += "-DCMAKE_AR=$Archiver" }
 
-    # Auto-detect sccache compiler launcher for max-speed incremental rebuilds
-    $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
-    if ($sccacheCmd) {
-        if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
-        $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-        $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-        Write-Host "sccache enabled at: $($sccacheCmd.Source) (max $env:SCCACHE_MAX_JOBS jobs)"
+    # sccache only pays off with a REMOTE backend: without BuildKit cache mounts a
+    # container-local disk cache dies with the layer (zero cross-build hits) while
+    # bloating the image. Enable the launcher only when a remote is configured
+    # (pass -SccacheEndpoint to windows/build.ps1 / see docs/windows-builds.md).
+    $sccacheRemoteConfigured = -not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT) -or
+        -not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET) -or
+        -not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT)
+    if ($sccacheRemoteConfigured) {
+        $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
+        if ($sccacheCmd) {
+            if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
+            $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
+            $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
+            Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs)"
+        }
+    } else {
+        Write-Host 'sccache disabled (no remote backend configured; a container-local cache would only bloat layers)'
     }
 
     if ($ExtraArgs.Count -gt 0) { $cmakeArgs += $ExtraArgs }
@@ -140,11 +150,14 @@ function Invoke-CmakeBuild {
         [string]$LogFile = ''
     )
 
-    Write-Host "Building (this may take 15-120 minutes)..."
+    # Bounded parallelism: bare `--parallel` lets ninja run cores+2 jobs, which can
+    # OOM a memory-capped container (MEMORY_LIMIT_GB / BUILD_JOBS scale this down).
+    $jobs = Get-BuildJobCount -MemGBPerJob 2
+    Write-Host "Building with $jobs parallel jobs (this may take 15-120 minutes)..."
     if ($LogFile) {
-        & cmake --build $BuildDir --config $Config --parallel 2>&1 | Tee-Object -FilePath $LogFile | Out-Null
+        & cmake --build $BuildDir --config $Config --parallel $jobs 2>&1 | Tee-Object -FilePath $LogFile | Out-Null
     } else {
-        & cmake --build $BuildDir --config $Config --parallel
+        & cmake --build $BuildDir --config $Config --parallel $jobs
     }
     if ($LASTEXITCODE -ne 0) {
         if ($LogFile -and (Test-Path $LogFile)) {
@@ -521,6 +534,9 @@ function Resolve-TensorRtRoot {
     $trtRoot = $env:TENSORRT_ROOT
     if (-not $trtRoot) { return $null }
     if (-not (Test-Path $trtRoot)) { return $null }
+    # An empty root means the extract stage ran without a TensorRT zip (graceful
+    # skip) — treat as not installed so builds don't enable a hollow TensorRT EP.
+    if (-not (Get-ChildItem $trtRoot -ErrorAction SilentlyContinue | Select-Object -First 1)) { return $null }
     $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($trtVerDir) { return $trtVerDir.FullName }
     return $trtRoot
@@ -565,6 +581,34 @@ function Get-GpuEnvironment {
         TensorRtRoot  = $trtRoot
         CudaBin       = $cudaBin
     }
+}
+
+function Install-CpythonPip {
+    <#
+    .SYNOPSIS
+        Idempotently bootstraps pip into the source-built CPython (toolchain layer).
+    .DESCRIPTION
+        The source-built interpreter ships without pip. With the media build split
+        into parallel branches, every script that needs pip (GenAI, TVM wheel,
+        GStreamer's meson install) must be able to bootstrap it independently —
+        no ordering assumption between branches. Skips instantly if pip is present.
+    .PARAMETER Python
+        Hashtable from Get-SourceBuildPython (resolved automatically if omitted).
+    #>
+    param(
+        [hashtable]$Python = $null
+    )
+    if (-not $Python) { $Python = Get-SourceBuildPython }
+    if (-not (Test-Path $Python.Exe)) { throw "Source-built Python not found at $($Python.Exe)" }
+    # cmd.exe avoids PowerShell treating pip's stderr chatter as errors
+    cmd.exe /c """$($Python.Exe)"" -m pip --version >nul 2>&1"
+    if ($LASTEXITCODE -eq 0) { Write-Host 'pip already installed'; return }
+    Write-Host 'Bootstrapping pip via get-pip.py...'
+    $pipScript = Join-Path $env:TEMP 'get-pip.py'
+    Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $pipScript -UseBasicParsing
+    cmd.exe /c """$($Python.Exe)"" ""$pipScript"" --quiet 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw 'get-pip.py failed' }
+    Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
 }
 
 function Remove-SourceBuildTree {
@@ -616,9 +660,16 @@ function Get-BuildJobCount {
     if ($env:BUILD_JOBS -match '^\d+$') { return [int]$env:BUILD_JOBS }
     $cores = [Environment]::ProcessorCount
     $memGB = 0
-    try {
-        $memGB = [int][Math]::Floor((Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize / 1MB)
-    } catch { }
+    # Under process isolation Win32_OperatingSystem reports HOST memory, not the
+    # container's --memory cap. The driver passes the cap as MEMORY_LIMIT_GB so
+    # parallel branch builds don't collectively oversubscribe the host.
+    if ($env:MEMORY_LIMIT_GB -match '^\d+$') {
+        $memGB = [int]$env:MEMORY_LIMIT_GB
+    } else {
+        try {
+            $memGB = [int][Math]::Floor((Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize / 1MB)
+        } catch { }
+    }
     if ($memGB -le 0) { return $cores }
     return [Math]::Max(2, [Math]::Min($cores, [int][Math]::Floor($memGB / $MemGBPerJob)))
 }
@@ -666,6 +717,7 @@ Export-ModuleMember -Function @(
     'Initialize-ToolchainPythonEnvironment',
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
+    'Install-CpythonPip',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
     'Get-GpuEnvironment',
