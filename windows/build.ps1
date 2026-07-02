@@ -254,17 +254,24 @@ function Invoke-MediaBranches {
         $logText = @($f.Log, $f.ErrLog) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Tail 10 } | Out-String
         if ($logText -match $transientPattern) {
             # Cool down before retrying: an immediate retry tends to hit the same
-            # still-wedged shim state. Two attempts, 60s apart.
+            # still-wedged shim state. Two attempts, 60s apart. Each attempt's output
+            # is captured so a REAL build error stops the retry loop instead of being
+            # re-classified from the stale pre-retry branch log.
             $recovered = $false
+            $retryLog = Join-Path $logDir "$($f.Spec.Name).retry.log"
             foreach ($attempt in 1..2) {
                 Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure — retry $attempt/2 in 60s (cached layers resume at the failed step)" -ForegroundColor Yellow
                 Start-Sleep -Seconds 60
-                try {
-                    Invoke-Stage -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag -BuildArgs $f.Spec.BuildArgs `
-                        -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
-                    $recovered = $true
+                $argList = Get-DockerBuildArgList -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag `
+                    -BuildArgs $f.Spec.BuildArgs -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
+                Write-Host "==> docker $($argList -join ' ')" -ForegroundColor Cyan
+                & $Docker @argList 2>&1 | Tee-Object -FilePath $retryLog
+                if ($LASTEXITCODE -eq 0) { $recovered = $true; break }
+                $retryTail = Get-Content $retryLog -Tail 10 | Out-String
+                if ($retryTail -notmatch $transientPattern) {
+                    Write-Host "[$($f.Spec.Name)] retry failed with a non-transient error — stopping retries" -ForegroundColor Red
                     break
-                } catch { }
+                }
             }
             if (-not $recovered) { $stillFailed += $f }
         } else {
