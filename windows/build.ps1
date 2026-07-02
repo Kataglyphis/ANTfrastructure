@@ -253,13 +253,20 @@ function Invoke-MediaBranches {
     foreach ($f in $failed) {
         $logText = @($f.Log, $f.ErrLog) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Tail 10 } | Out-String
         if ($logText -match $transientPattern) {
-            Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure detected — retrying once (cached layers resume at the failed step)" -ForegroundColor Yellow
-            try {
-                Invoke-Stage -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag -BuildArgs $f.Spec.BuildArgs `
-                    -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
-            } catch {
-                $stillFailed += $f
+            # Cool down before retrying: an immediate retry tends to hit the same
+            # still-wedged shim state. Two attempts, 60s apart.
+            $recovered = $false
+            foreach ($attempt in 1..2) {
+                Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure — retry $attempt/2 in 60s (cached layers resume at the failed step)" -ForegroundColor Yellow
+                Start-Sleep -Seconds 60
+                try {
+                    Invoke-Stage -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag -BuildArgs $f.Spec.BuildArgs `
+                        -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
+                    $recovered = $true
+                    break
+                } catch { }
             }
+            if (-not $recovered) { $stillFailed += $f }
         } else {
             $stillFailed += $f
         }
