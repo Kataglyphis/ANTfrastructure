@@ -276,6 +276,20 @@ ffmpeg_try_link_probe() {
     cmd=("${compiler_cmd[@]}")
     if cross_build_is_active; then
         cmd+=("--sysroot=/")
+        # The custom cross-GCC does not search the Debian multiarch dirs and does
+        # NOT honor LIBRARY_PATH/CPATH (verified empirically), so pass the target
+        # multiarch lib/include dirs explicitly with -L/-I. This is how the
+        # apt-installed :<arch> codec libs (/usr/lib/<triplet>/lib*.so) are found
+        # — without it every cross codec probe fails and the feature is dropped.
+        local _probe_triplet="${CROSS_TARGET_TRIPLET:-}"
+        if [ -z "${_probe_triplet}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
+            _probe_triplet="$(cross_target_triplet 2>/dev/null || true)"
+        fi
+        if [ -n "${_probe_triplet}" ]; then
+            [ -d "/usr/include/${_probe_triplet}" ] && cmd+=("-I/usr/include/${_probe_triplet}")
+            [ -d "/usr/lib/${_probe_triplet}" ] && cmd+=("-L/usr/lib/${_probe_triplet}")
+            [ -d "/lib/${_probe_triplet}" ] && cmd+=("-L/lib/${_probe_triplet}")
+        fi
     fi
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
         cmd+=("-fuse-ld=lld")
@@ -726,23 +740,21 @@ configure_ffmpeg() {
         configure_opts+=("--extra-ldflags=--sysroot=/")
         # The custom cross-GCC with --sysroot=/ does NOT search the Debian
         # multiarch dirs (/usr/lib/<triplet>, /usr/include/<triplet>) where apt
-        # installs the :<arch> target dev packages, and pkg-config omits -L for
-        # that libdir (treats it as a system path). Result: every apt-installed
-        # target codec (openjpeg, x264, theora, …) fails to link and FFmpeg's
-        # configure aborts. Point the compiler at the multiarch dirs via
-        # LIBRARY_PATH/CPATH (honored by both our probes and FFmpeg's configure
-        # child) and also pass -L explicitly to FFmpeg's own link — so we build
-        # with the MAXIMUM set of target libraries instead of skipping them.
+        # installs the :<arch> target dev packages, and it does NOT honor
+        # LIBRARY_PATH/CPATH (verified empirically — only explicit -L/-I work).
+        # pkg-config also omits -L for that libdir (treats it as a system path).
+        # Without this, every apt-installed target codec (openjpeg, x264, opus,
+        # …) fails to link and gets dropped. Pass the multiarch dirs explicitly
+        # to FFmpeg's own configure/link (the probe adds the same -L/-I itself)
+        # so we build with the MAXIMUM set of target libraries.
         local _ma_triplet="${CROSS_TARGET_TRIPLET:-}"
         if [ -z "${_ma_triplet}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
             _ma_triplet="$(cross_target_triplet 2>/dev/null || true)"
         fi
         if [ -n "${_ma_triplet}" ] && [ -d "/usr/lib/${_ma_triplet}" ]; then
-            export LIBRARY_PATH="/usr/lib/${_ma_triplet}:/lib/${_ma_triplet}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-            export CPATH="/usr/include/${_ma_triplet}${CPATH:+:${CPATH}}"
             configure_opts+=("--extra-ldflags=-L/usr/lib/${_ma_triplet} -L/lib/${_ma_triplet}")
             configure_opts+=("--extra-cflags=-I/usr/include/${_ma_triplet}")
-            echo "Cross: added multiarch lib/include dirs for ${_ma_triplet} (LIBRARY_PATH/CPATH + -L/-I) so apt-installed target codecs link"
+            echo "Cross: added multiarch lib/include dirs for ${_ma_triplet} (-L/-I) so apt-installed target codecs link"
         fi
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # Avoid cross-detecting host SDL when the target SDL dev package is unavailable.
