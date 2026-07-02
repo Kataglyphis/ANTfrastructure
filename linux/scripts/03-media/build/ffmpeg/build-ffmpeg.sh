@@ -721,6 +721,14 @@ configure_ffmpeg() {
         local host_cc
 
         setup_linux_cross_env
+        # The -L/usr/lib/<triplet> flags below (and the probes' own -L) expose the
+        # apt/Ports libstdc++ there, which is often the wrong arch or missing newer
+        # GLIBCXX symbols — any C++ probe/link (libopenmpt, onnx, …) then fails and,
+        # for an explicitly-enabled feature, hard-aborts configure. Pin it to GCC's
+        # target-arch superset first. Best-effort; no-op on native.
+        if command -v pin_target_libstdcxx >/dev/null 2>&1; then
+            pin_target_libstdcxx "$(cross_target_arch)" || true
+        fi
         host_cc="$(resolve_ffmpeg_host_compiler)"
         if [ -n "${host_cc}" ]; then
             host_cc="$(prepare_ffmpeg_host_compiler_wrapper "${host_cc}")"
