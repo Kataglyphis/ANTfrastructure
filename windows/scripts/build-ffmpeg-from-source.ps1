@@ -56,6 +56,12 @@ $srcDir = Get-ChildItem -Path $SourceDir -Directory | Select-Object -First 1 -Ex
 if (-not $srcDir) { throw "Failed to locate extracted FFmpeg source directory" }
 Write-Host "Source at: $srcDir"
 
+# git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path
+# (git apply). Without this, its git-repo probe writes to stderr, which PS 5.1
+# under EAP=Stop turns into a terminating NativeCommandError. cmd.exe shields
+# any git output from PowerShell's error stream.
+cmd.exe /c "git -C ""$srcDir"" init >nul 2>&1"
+
 # Set up environment: VsDevCmd (MSVC tools) + Git Bash + Scoop make/gawk
 Enter-VsDevCmdEnvironment
 $scoopShims = "$env:USERPROFILE\scoop\shims"

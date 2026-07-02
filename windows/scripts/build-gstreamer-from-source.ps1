@@ -181,6 +181,12 @@ try {
     }
     log 'Extraction complete.'
 
+    # git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path
+    # (git apply). Without this, its git-repo probe writes to stderr, which PS 5.1
+    # under EAP=Stop turns into a terminating NativeCommandError. cmd.exe shields
+    # any git output from PowerShell's error stream.
+    cmd.exe /c "git -C ""$gstSrcDir"" init >nul 2>&1"
+
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
     Get-ChildItem -Path $subprojDir -Filter '*.wrap' | ForEach-Object {
