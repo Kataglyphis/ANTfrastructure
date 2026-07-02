@@ -208,14 +208,18 @@ function Invoke-MediaBranches {
     $logDir = Join-Path $repoRoot 'out\windows-build-logs'
     New-Item -Path $logDir -ItemType Directory -Force | Out-Null
     $procs = @()
+    $first = $true
     foreach ($spec in $specs) {
+        # Stagger container creation: launching several builds in the same instant
+        # can trip hcsshim/containerd ("failed to create shim task: ttrpc: closed").
+        if (-not $first) { Start-Sleep -Seconds 20 }
+        $first = $false
         $argList = Get-DockerBuildArgList -Dockerfile $spec.Dockerfile -Tag $spec.Tag `
             -BuildArgs $spec.BuildArgs -ExtraFlags @('--memory', "$($spec.MemoryGb)g")
         $outLog = Join-Path $logDir "$($spec.Name).log"
         $errLog = Join-Path $logDir "$($spec.Name).err.log"
         Write-Host "==> [$($spec.Name)] docker $($argList -join ' ')" -ForegroundColor Cyan
         Write-Host "    log: $outLog"
-        # NB: docker's --progress=plain output goes to stderr — the .err.log is the live one
         $proc = Start-Process -FilePath $Docker -ArgumentList $argList `
             -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -WindowStyle Hidden
         $procs += @{ Spec = $spec; Proc = $proc; Log = $outLog; ErrLog = $errLog }
@@ -238,14 +242,34 @@ function Invoke-MediaBranches {
     }
 
     $failed = @($procs | Where-Object { $_.Proc.ExitCode -ne 0 })
+
+    # Transient-infrastructure failures (container never started) get one foreground
+    # retry — layer caching resumes the build at the failed step, so this is cheap.
+    $transientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
+    $stillFailed = @()
     foreach ($f in $failed) {
+        $logText = @($f.Log, $f.ErrLog) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Tail 10 } | Out-String
+        if ($logText -match $transientPattern) {
+            Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure detected — retrying once (cached layers resume at the failed step)" -ForegroundColor Yellow
+            try {
+                Invoke-Stage -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag -BuildArgs $f.Spec.BuildArgs `
+                    -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
+            } catch {
+                $stillFailed += $f
+            }
+        } else {
+            $stillFailed += $f
+        }
+    }
+
+    foreach ($f in $stillFailed) {
         Write-Host "`n=== [$($f.Spec.Name)] FAILED (exit $($f.Proc.ExitCode)) — last 40 log lines ===" -ForegroundColor Red
         foreach ($log in @($f.Log, $f.ErrLog)) {
             if (Test-Path $log) { Get-Content $log -Tail 40 | ForEach-Object { Write-Host "  $_" } }
         }
     }
-    if ($failed.Count -gt 0) {
-        throw "media branch build(s) failed: $(($failed | ForEach-Object { $_.Spec.Name }) -join ', ')"
+    if ($stillFailed.Count -gt 0) {
+        throw "media branch build(s) failed: $(($stillFailed | ForEach-Object { $_.Spec.Name }) -join ', ')"
     }
     Write-Host 'All media branches built.' -ForegroundColor Green
 }
