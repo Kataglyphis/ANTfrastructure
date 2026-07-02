@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
+﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 <#
