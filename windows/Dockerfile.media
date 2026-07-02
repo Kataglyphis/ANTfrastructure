@@ -1,97 +1,71 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# Cached Windows media layer.
-# Build order: ONNX Runtime/GenAI -> OpenCV -> LiteRT/LiteRT-LM -> TVM -> FFmpeg -> GStreamer
-# This allows OpenCV and GStreamer to auto-detect ONNX Runtime.
-# Binary install scripts (now under windows\scripts\archive\ as setup-opencv.ps1 /
-# setup-onnx.ps1) are kept for reference but are NOT used in this Dockerfile.
-# CUDA/cuDNN from the SDK layer are auto-detected by the build scripts.
+# Media merge stage: fan-in of the three parallel media branches, then GStreamer.
+#   branch A (Dockerfile.media-core):   ONNX Runtime → GenAI → OpenCV → FFmpeg
+#   branch B (Dockerfile.media-litert): LiteRT → LiteRT-LM
+#   branch C (Dockerfile.media-tvm):    TVM (+ Python wheel into CPython)
+# All branches install into C:\runtime from the same toolchain base, so the trees
+# merge cleanly via COPY --from. GStreamer builds last — it auto-detects CUDA,
+# OpenCV, ONNX and FFmpeg from the merged C:\runtime.
+# windows/build.ps1 builds the branches concurrently and then this file.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
+ARG CORE_IMAGE=local/kataglyphis:windows-media-core
+ARG LITERT_IMAGE=local/kataglyphis:windows-media-litert
+ARG TVM_IMAGE=local/kataglyphis:windows-media-tvm
+
+FROM ${CORE_IMAGE} AS media-core
+FROM ${LITERT_IMAGE} AS media-litert
+FROM ${TVM_IMAGE} AS media-tvm
+
 FROM ${BASE_IMAGE}
 
-# NOTE: ARG defaults should mirror linux/scripts/01-core/versions.env (single source of
-# truth). versions.env uses the `v` prefix (e.g. `v1.27.0`); the Windows build scripts
-# strip the `v` via `-replace '^v', ''` before re-adding it for the git tag, so the
-# v-prefixed ARG default is fully compatible with downstream env-driven consumption.
 ARG GSTREAMER_VERSION=1.29.2
+ARG MEMORY_LIMIT_GB=""
+# Component versions are consumed by the branch builds; they are re-declared here
+# only so the image carries the canonical version env vars (and so that
+# docs/scripts/sync_versions.py can verify them against versions.env).
 ARG ONNXRUNTIME_VERSION=v1.27.0
 ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
-ARG FFMPEG_VERSION=master
-
 ARG OPENCV_SOURCE_VERSION=5.x
+ARG FFMPEG_VERSION=master
 ARG LITERT_VERSION=v2.1.5
 ARG LITERT_LM_VERSION=0.13.1
 ARG TVM_REF=v0.25.0
 
+ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
+ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
+    ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
+    OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
+    FFMPEG_VERSION="${FFMPEG_VERSION}" `
+    LITERT_VERSION="${LITERT_VERSION}" `
+    LITERT_LM_VERSION="${LITERT_LM_VERSION}" `
+    TVM_REF="${TVM_REF}"
+
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Stable script layer: build-onnx + build-opencv scripts and modules.
-# The parent base stage already COPY's modules/; an explicit re-COPY here ensures
-# module edits take effect without rebuilding the base (practical dev speed).
-COPY windows\scripts\modules C:\temp\scripts\modules
-COPY windows\scripts\build-onnx-from-source.ps1 C:\temp\scripts\
+# ── Fan-in: merge the branch install trees ───────────────────────────────────
+# Branch A carries the largest tree (ORT, GenAI, OpenCV, FFmpeg) — copy it first,
+# then layer the independent branches' components on top.
+COPY --from=media-core C:\runtime C:\runtime
+COPY --from=media-litert C:\runtime\lib\litert C:\runtime\lib\litert
+COPY --from=media-litert C:\runtime\lib\litert-lm C:\runtime\lib\litert-lm
+COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
+# TVM's Python wheel (plus pip) lives in the branch CPython's site-packages;
+# merging it here makes `import tvm` work in this image's CPython. The GStreamer
+# script bootstraps pip itself if this copy ever lacks it.
+COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 
-# ── Stage 1: ONNX Runtime source build via clang-cl (git clone) ─────
-# Built before OpenCV so OpenCV can detect it.
-# NOTE: `--mount=type=cache` for sccache / pip / cargo would accelerate Windows rebuilds
-# but requires BuildKit, which is not available for Windows Containers (buildkit executor
-# not implemented for windows). These builds run from scratch on every cache miss.
-ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}"
-COPY windows\scripts\patches\onnxruntime C:\temp\scripts\patches\onnxruntime
-RUN & 'C:\temp\scripts\build-onnx-from-source.ps1' -SourceDir 'C:\temp\onnx-src' -InstallDir 'C:\runtime'
-
-# Volatile script (GenAI changes often — separate COPY to preserve ORT cache).
-COPY windows\scripts\build-onnx-genai-from-source.ps1 C:\temp\scripts\
-
-# ── Stage 2: ONNX GenAI source build via clang-cl (git clone) ───────
-ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
-RUN & 'C:\temp\scripts\build-onnx-genai-from-source.ps1' -SourceDir 'C:\temp\onnx-genai-src' -InstallDir 'C:\runtime'
-
-# ── Stage 3: OpenCV source build via clang-cl (CUDA auto-detected) ──
-# Can now detect ONNX Runtime from Stage 1.
-COPY windows\scripts\build-opencv-from-source.ps1 C:\temp\scripts\
-ENV OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}"
-RUN & 'C:\temp\scripts\build-opencv-from-source.ps1' -SourceDir 'C:\temp\opencv-src' -InstallDir 'C:\runtime'
-
-# Volatile scripts for LiteRT/LiteRT-LM (changes often)
-COPY windows\scripts\build-litert-from-source.ps1 C:\temp\scripts\
-COPY windows\scripts\build-litert-lm-from-source.ps1 C:\temp\scripts\
-
-# ── Stage 4a: LiteRT (TensorFlow Lite runtime, CUDA/GPU auto-detected) ──
-ENV LITERT_VERSION="${LITERT_VERSION}"
-RUN & 'C:\temp\scripts\build-litert-from-source.ps1' -SourceDir 'C:\temp\litert-src' -InstallDir 'C:\runtime'
-
-# ── Stage 4b: LiteRT-LM (on-device LLM inference, CUDA/GPU auto-detected) ──
-ENV LITERT_LM_VERSION="${LITERT_LM_VERSION}"
-RUN & 'C:\temp\scripts\build-litert-lm-from-source.ps1' -SourceDir 'C:\temp\litert-lm-src' -InstallDir 'C:\runtime'
-
-# Volatile scripts for TVM (changes often — separate COPY to preserve LiteRT cache)
-COPY windows\scripts\build-tvm-from-source.ps1 C:\temp\scripts\
-
-# ── Stage 4c: TVM (standalone build from source) ──────────────────────────────
-ENV TVM_REF="${TVM_REF}"
-RUN & 'C:\temp\scripts\build-tvm-from-source.ps1' -SourceDir 'C:\temp\tvm-src' -InstallDir 'C:\runtime'
-
-# Volatile scripts for FFmpeg (changes often — separate COPY to preserve TVM cache). The
-# FFmpeg build scripts apply patches/windows\scripts\patches\ffmpeg\ — COPY'd immediately here.
-COPY windows\scripts\build-ffmpeg-from-source.ps1 C:\temp\scripts\
-COPY windows\scripts\patches\ffmpeg C:\temp\scripts\patches\ffmpeg
-
-# ── Stage 4d: FFmpeg (standalone build, auto-detects CUDA) ──────────────────
-# FFmpeg uses MSVC (not clang-cl) for its source build, so sccache does not apply here.
-ENV FFMPEG_VERSION="${FFMPEG_VERSION}"
-RUN & 'C:\temp\scripts\build-ffmpeg-from-source.ps1' -SourceDir 'C:\temp\ffmpeg-src' -InstallDir 'C:\runtime'
-
-# ── Stage 5: GStreamer (auto-detects CUDA, OpenCV, ONNX, LiteRT, FFmpeg libs) ──
+# ── Canonical component layout for downstream consumers and verification ────
 ENV GST_VERSION=${GSTREAMER_VERSION}
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION}
 ENV GSTREAMER_BIN="C:\runtime\bin"
 ENV ONNX_ROOT="C:\runtime\lib\onnxruntime-source"
 ENV ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source"
 
-# Canonical version aliases for downstream consumers and verification scripts
+# Canonical version aliases (values propagate from the branch images' ARGs via
+# build.ps1 — kept as plain env vars here for verification scripts).
 ENV ONNX_VERSION="${ONNXRUNTIME_VERSION}"
 ENV ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 
@@ -120,14 +94,23 @@ ENV FFMPEG_ROOT="C:\runtime\ffmpeg"
 ENV FFMPEG_BIN="${FFMPEG_ROOT}\bin"
 ENV FFMPEG_LIB="${FFMPEG_ROOT}\lib"
 
-ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$PATH
+# TVM layout — TVM_LIBRARY_PATH lets the installed Python wheel locate tvm.dll
+# (the C:\temp\tvm-src build tree is removed after install to keep layers small).
+ENV TVM_ROOT="C:\runtime\lib\tvm"
+ENV TVM_LIBRARY_PATH="${TVM_ROOT}\lib"
+
+ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$PATH
 
 # PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg, OpenCV, ONNX Runtime.
 # LiteRT is excluded (TFLITE_ENABLE_INSTALL=OFF — no .pc files generated).
 # GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
 ENV PKG_CONFIG_PATH=$OPENCV_LIB\pkgconfig;$ONNX_ROOT\runtime\lib\pkgconfig;C:\runtime\lib\pkgconfig
 
-# Volatile script + patches for GStreamer (separate COPY to preserve FFmpeg cache).
+# ── GStreamer (auto-detects CUDA, OpenCV, ONNX, FFmpeg from merged C:\runtime) ──
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     windows\scripts\modules\WindowsInstaller.Common.psm1 `
+     C:\temp\scripts\modules\
 COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
 

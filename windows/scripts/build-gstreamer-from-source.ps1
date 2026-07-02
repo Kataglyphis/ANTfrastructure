@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
+﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 <#
@@ -103,13 +103,16 @@ try {
     $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
     # ---- 2. install Meson via source-built CPython ----
-    # The toolchain layer built CPython 3.14 at $env:TEMP_DIR\cpython\PCbuild\amd64\python.exe
-    # with pip pre-installed (by the ONNX GenAI build step). Use it to install meson.
+    # The toolchain layer built CPython 3.14 at $env:TEMP_DIR\cpython\PCbuild\amd64\python.exe.
+    # pip is bootstrapped here if missing (no ordering assumption on other build
+    # scripts — the media build runs in parallel branches).
     log 'Using source-built CPython from toolchain layer...'
     $py = Get-SourceBuildPython
     $pyExe = $py.Exe
     if (-not (Test-Path $pyExe)) { throw "Source-built Python not found at $pyExe" }
     log "Using Python: $pyExe"
+    Install-CpythonPip -Python $py
+    Copy-CpythonPyConfigHeader
 
     log 'Installing Meson via pip...'
     $pipLog = Join-Path $resolvedLogDir 'pip-install.log'

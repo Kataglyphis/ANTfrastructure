@@ -8,7 +8,9 @@ param(
     [string]$VcpkgRoot = ''
 )
 
-Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
@@ -34,6 +36,7 @@ if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
 $vcpkgInstalledX64 = Join-Path $VcpkgRoot 'installed\x64-windows'
 $env:CMAKE_PREFIX_PATH = "$vcpkgInstalledX64;$env:CMAKE_PREFIX_PATH"
 $protobufTools = Join-Path $vcpkgInstalledX64 'tools\protobuf'
+$vcpkgDir = $VcpkgRoot
 if (Test-Path $protobufTools) { $env:PATH = "$protobufTools;$env:PATH" }
 
 # Cargo: honor the existing $env:CARGO_HOME (set in Dockerfile.base); only fall back to a default if unset.
@@ -146,6 +149,10 @@ Write-Host "Build step completed with exit code: $LASTEXITCODE"
 Write-Host 'Installing...'
 & cmake --install $buildDir --config Release 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: cmake --install had errors (exit $LASTEXITCODE)" }
+
+Remove-SourceBuildTree -Path $SourceDir
+
 Write-Host '=== LiteRT-LM source build completed ==='
+
 
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
+﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 param(
@@ -7,7 +7,9 @@ param(
     [string]$FfmpegVersion = ''
 )
 
-Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`nif ([string]::IsNullOrWhiteSpace(`$InstallDir)) { `$InstallDir = 'C:\runtime' }
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
@@ -147,11 +149,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "FFmpeg configure failed (exit $LASTEXITCODE)"
 }
 
-# Use -j1 to avoid link race conditions with MSVC's incremental linking.
-# Parallel builds (-jN) can cause spurious LNK1120 errors when library
-# dependencies (libavutil -> libswscale) aren't fully linked before consumers.
-Write-Host 'Building FFmpeg with single job (avoids MSVC link race conditions)...'
-
 Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
 # Inline patches (kept inline, NOT .patch files): the targets below are *generated*
 # by FFmpeg's `./configure` (ffbuild/*.mak, library.mak, subdir.mak, Makefile,
@@ -205,10 +202,15 @@ if (Test-Path $configMakPath) {
 # Replace makedef with version that reads .ver directly (avoids Windows command-line length limit)
 Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\ffmpeg\002-replacement-makedef.patch') -SourceDir $srcDir -IgnoreWhitespace
 
-& cmd /c "`"$bashExe`" -c `"cd $cygSrc && make -j1`" 2>&1" | ForEach-Object { Write-Host $_ }
+# Parallel compile first; make is incremental, so the -j1 retry below only redoes
+# what failed. Parallel -jN can hit spurious LNK1120 link races with MSVC when
+# library dependencies (libavutil -> libswscale) aren't fully linked before
+# consumers — the serial retry resolves those deterministically.
+$makeJobs = Get-BuildJobCount -MemGBPerJob 2
+& cmd /c "`"$bashExe`" -c `"cd $cygSrc && make -j$makeJobs`" 2>&1" | ForEach-Object { Write-Host $_ }
 $builtFfmpeg = Join-Path $srcDir 'ffmpeg.exe'
 if (-not (Test-Path $builtFfmpeg)) {
-    Write-Host 'Retrying with single job...'
+    Write-Host 'Retrying with single job (resolves MSVC link races)...'
     & cmd /c "`"$bashExe`" -c `"cd $cygSrc && make -j1`" 2>&1" | ForEach-Object { Write-Host $_ }
 }
 # Source build may fail at link stage (EXTRALIBS config issue with MSVC/MSYS2).
@@ -236,13 +238,18 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
         Copy-Item "$binDir\*.exe" "$ffmpegDir\" -Force
         Copy-Item "$binDir\*.dll" "$ffmpegDir\" -Force
     }
+    Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+    Remove-Item "$env:TEMP\ffmpeg-extract" -Recurse -Force -ErrorAction SilentlyContinue
 } else {
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '1', 'Process')
 }
+
+Remove-SourceBuildTree -Path $SourceDir
 
 Write-Host "=== FFmpeg build completed ==="
 Write-Host "Artifacts at: $prefix"
 if (Test-Path "$ffmpegDir\ffmpeg.exe") { Write-Host "ffmpeg.exe installed" }
 if (Test-Path "$ffmpegDir\ffprobe.exe") { Write-Host "ffprobe.exe installed" }
+
 
 

@@ -26,8 +26,10 @@ source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" 
 # against newer interpreter releases. Keep the default aligned with the
 # source-built interpreter used by the container images.
 declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14t}"
-# Make Python 3.14 the default interpreter used when callers don't specify one.
-declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.14}"
+# Default interpreter used when callers don't specify one. DEFAULT_PYTHON_VERSION
+# was removed from versions.env — derived from the canonical PYTHON_MAJOR_MINOR
+# (itself derived from PYTHON_VERSION by common.sh).
+declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-${PYTHON_MAJOR_MINOR:-3.14}}"
 declare -g _CURRENT_VENV_PATH=""
 
 timestamp() {

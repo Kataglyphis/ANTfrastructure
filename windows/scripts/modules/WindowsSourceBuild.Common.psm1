@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
+﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 Set-StrictMode -Version Latest
@@ -51,7 +51,8 @@ function Invoke-GitClone {
 
     $oldEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $env:GIT_SSL_NO_VERIFY = '1'
+    # GIT_SSL_NO_VERIFY is honored if set by the caller's environment (e.g. behind a
+    # TLS-intercepting proxy) but is no longer forced on for every clone.
     $env:GIT_TERMINAL_PROMPT = '0'
 
     $null = & git @gitArgs 2>&1
@@ -106,13 +107,23 @@ function Invoke-CmakeConfigure {
     if ($Linker) { $cmakeArgs += "-DCMAKE_LINKER=$Linker" }
     if ($Archiver) { $cmakeArgs += "-DCMAKE_AR=$Archiver" }
 
-    # Auto-detect sccache compiler launcher for max-speed incremental rebuilds
-    $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
-    if ($sccacheCmd) {
-        if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
-        $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-        $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-        Write-Host "sccache enabled at: $($sccacheCmd.Source) (max $env:SCCACHE_MAX_JOBS jobs)"
+    # sccache only pays off with a REMOTE backend: without BuildKit cache mounts a
+    # container-local disk cache dies with the layer (zero cross-build hits) while
+    # bloating the image. Enable the launcher only when a remote is configured
+    # (pass -SccacheEndpoint to windows/build.ps1 / see docs/windows-builds.md).
+    $sccacheRemoteConfigured = -not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT) -or
+        -not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET) -or
+        -not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT)
+    if ($sccacheRemoteConfigured) {
+        $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
+        if ($sccacheCmd) {
+            if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
+            $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
+            $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
+            Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs)"
+        }
+    } else {
+        Write-Host 'sccache disabled (no remote backend configured; a container-local cache would only bloat layers)'
     }
 
     if ($ExtraArgs.Count -gt 0) { $cmakeArgs += $ExtraArgs }
@@ -139,11 +150,14 @@ function Invoke-CmakeBuild {
         [string]$LogFile = ''
     )
 
-    Write-Host "Building (this may take 15-120 minutes)..."
+    # Bounded parallelism: bare `--parallel` lets ninja run cores+2 jobs, which can
+    # OOM a memory-capped container (MEMORY_LIMIT_GB / BUILD_JOBS scale this down).
+    $jobs = Get-BuildJobCount -MemGBPerJob 2
+    Write-Host "Building with $jobs parallel jobs (this may take 15-120 minutes)..."
     if ($LogFile) {
-        & cmake --build $BuildDir --config $Config --parallel 2>&1 | Tee-Object -FilePath $LogFile | Out-Null
+        & cmake --build $BuildDir --config $Config --parallel $jobs 2>&1 | Tee-Object -FilePath $LogFile | Out-Null
     } else {
-        & cmake --build $BuildDir --config $Config --parallel
+        & cmake --build $BuildDir --config $Config --parallel $jobs
     }
     if ($LASTEXITCODE -ne 0) {
         if ($LogFile -and (Test-Path $LogFile)) {
@@ -178,27 +192,6 @@ function Get-CudaRoot {
     if ($env:CUDA_ROOT -and (Test-Path $env:CUDA_ROOT)) { return $env:CUDA_ROOT }
     if ($env:CUDA_PATH -and (Test-Path $env:CUDA_PATH)) { return $env:CUDA_PATH }
     return $null
-}
-
-function Assert-CudaAvailable {
-    $root = Get-CudaRoot
-    return -not [string]::IsNullOrWhiteSpace($root)
-}
-
-function Assert-CudnnInstalled {
-    param(
-        [string]$CudnnRoot = ''
-    )
-
-    if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { $CudnnRoot = $env:CUDNN_ROOT }
-    if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { return $false }
-    if (-not (Test-Path $CudnnRoot)) { return $false }
-
-    $headers = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue
-    $libs = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue
-    $dlls = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue
-
-    return ($headers.Count -gt 0) -and ($libs.Count -gt 0) -and ($dlls.Count -gt 0)
 }
 
 function Enter-VsDevCmdEnvironment {
@@ -334,19 +327,6 @@ function Replace-CppKeywordAlternatives {
     }
 }
 
-function Get-SccacheLauncher {
-    <#
-    .SYNOPSIS
-        Finds sccache.exe on PATH and sets SCCACHE_MAX_JOBS to the processor count.
-    .OUTPUTS
-        [string] Full path to sccache.exe, or $null if not found.
-    #>
-    $cmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
-    if (-not $cmd) { return $null }
-    $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount
-    return $cmd.Source
-}
-
 function Update-NinjaFile {
     <#
     .SYNOPSIS
@@ -420,8 +400,17 @@ function Invoke-SourcePatch {
     $wsFlag = @()
     if ($IgnoreWhitespace) { $wsFlag += '--ignore-whitespace' }
 
-    $isGitRepo = (Test-Path (Join-Path $SourceDir '.git')) -or `
-        ((& git -C $SourceDir rev-parse --git-dir 2>$null) -ne $null)
+    # Detect git repo: check .git directory first, then try git rev-parse with
+    # suppressed stderr (fatal: not a git repository) that PS 5.1 treats as an
+    # ErrorRecord even under $ErrorActionPreference = 'Continue'.
+    $isGitRepo = $false
+    if (Test-Path (Join-Path $SourceDir '.git')) {
+        $isGitRepo = $true
+    } else {
+        $gitErr = $null
+        $null = & git -C $SourceDir rev-parse --git-dir 2>$null
+        if ($LASTEXITCODE -eq 0) { $isGitRepo = $true }
+    }
 
     Push-Location $SourceDir
     try {
@@ -545,6 +534,9 @@ function Resolve-TensorRtRoot {
     $trtRoot = $env:TENSORRT_ROOT
     if (-not $trtRoot) { return $null }
     if (-not (Test-Path $trtRoot)) { return $null }
+    # An empty root means the extract stage ran without a TensorRT zip (graceful
+    # skip) — treat as not installed so builds don't enable a hollow TensorRT EP.
+    if (-not (Get-ChildItem $trtRoot -ErrorAction SilentlyContinue | Select-Object -First 1)) { return $null }
     $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($trtVerDir) { return $trtVerDir.FullName }
     return $trtRoot
@@ -591,6 +583,118 @@ function Get-GpuEnvironment {
     }
 }
 
+function Get-CudaArchitectureList {
+    <#
+    .SYNOPSIS
+        Returns the canonical CUDA architecture list (CMAKE_CUDA_ARCHITECTURES form).
+    .DESCRIPTION
+        Single source of truth is CUDA_ARCHITECTURES in versions.env (surfaced as an
+        env var by the Dockerfiles / load-versions.ps1). Consumers decorate per build
+        system — Windows clang-cl builds pass -Decoration '-real'.
+    .PARAMETER Decoration
+        Suffix appended to every architecture (e.g. '-real' -> '80-real;86-real;...').
+    #>
+    param(
+        [string]$Decoration = ''
+    )
+    $archs = if (-not [string]::IsNullOrWhiteSpace($env:CUDA_ARCHITECTURES)) { $env:CUDA_ARCHITECTURES } else { '80;86;89;90' }
+    if ($Decoration) {
+        return (($archs -split ';' | Where-Object { $_ } | ForEach-Object { "$_$Decoration" }) -join ';')
+    }
+    return $archs
+}
+
+function Install-CpythonPip {
+    <#
+    .SYNOPSIS
+        Idempotently bootstraps pip into the source-built CPython (toolchain layer).
+    .DESCRIPTION
+        The source-built interpreter ships without pip. With the media build split
+        into parallel branches, every script that needs pip (GenAI, TVM wheel,
+        GStreamer's meson install) must be able to bootstrap it independently —
+        no ordering assumption between branches. Skips instantly if pip is present.
+    .PARAMETER Python
+        Hashtable from Get-SourceBuildPython (resolved automatically if omitted).
+    #>
+    param(
+        [hashtable]$Python = $null
+    )
+    if (-not $Python) { $Python = Get-SourceBuildPython }
+    if (-not (Test-Path $Python.Exe)) { throw "Source-built Python not found at $($Python.Exe)" }
+    # cmd.exe avoids PowerShell treating pip's stderr chatter as errors
+    cmd.exe /c """$($Python.Exe)"" -m pip --version >nul 2>&1"
+    if ($LASTEXITCODE -eq 0) { Write-Host 'pip already installed'; return }
+    Write-Host 'Bootstrapping pip via get-pip.py...'
+    $pipScript = Join-Path $env:TEMP 'get-pip.py'
+    Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $pipScript -UseBasicParsing
+    cmd.exe /c """$($Python.Exe)"" ""$pipScript"" --quiet 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw 'get-pip.py failed' }
+    Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
+}
+
+function Remove-SourceBuildTree {
+    <#
+    .SYNOPSIS
+        Removes source/build trees after install so they don't bloat the Docker layer.
+    .DESCRIPTION
+        Each build-*-from-source.ps1 script clones + builds under C:\temp and installs
+        to C:\runtime. Without cleanup the clone/build tree (often several GB) is
+        committed into the image layer. Call this after a successful install.
+        Set KEEP_BUILD_ARTIFACTS=1 to keep the trees for debugging.
+    .PARAMETER Path
+        One or more directories to remove.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Path
+    )
+    if ($env:KEEP_BUILD_ARTIFACTS -eq '1') {
+        Write-Host "KEEP_BUILD_ARTIFACTS=1 - keeping: $($Path -join ', ')"
+        return
+    }
+    foreach ($p in $Path) {
+        if ([string]::IsNullOrWhiteSpace($p) -or -not (Test-Path $p)) { continue }
+        # Never delete from inside the tree being removed
+        if ((Get-Location).Path -like "$p*") { Set-Location (Split-Path $p -Parent) }
+        Write-Host "Removing build tree: $p"
+        # rd handles long paths and read-only .git objects more reliably than Remove-Item
+        & cmd.exe /c "rd /s /q ""$p""" 2>$null
+        if (Test-Path $p) { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Get-BuildJobCount {
+    <#
+    .SYNOPSIS
+        Returns a parallel job count scaled to available memory (min 2, max core count).
+    .DESCRIPTION
+        Heavy TUs (CUDA kernels, AVX-512 templates under clang-cl) can OOM a container
+        at full -j<cores>. jobs = min(cores, memGB / MemGBPerJob), floor 2.
+        Override explicitly with the BUILD_JOBS environment variable.
+    .PARAMETER MemGBPerJob
+        Estimated peak memory per compile job in GB (default 4; use 8 for
+        CUDA/AVX-512-heavy builds like ONNX Runtime).
+    #>
+    param(
+        [int]$MemGBPerJob = 4
+    )
+    if ($env:BUILD_JOBS -match '^\d+$') { return [int]$env:BUILD_JOBS }
+    $cores = [Environment]::ProcessorCount
+    $memGB = 0
+    # Under process isolation Win32_OperatingSystem reports HOST memory, not the
+    # container's --memory cap. The driver passes the cap as MEMORY_LIMIT_GB so
+    # parallel branch builds don't collectively oversubscribe the host.
+    if ($env:MEMORY_LIMIT_GB -match '^\d+$') {
+        $memGB = [int]$env:MEMORY_LIMIT_GB
+    } else {
+        try {
+            $memGB = [int][Math]::Floor((Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize / 1MB)
+        } catch { }
+    }
+    if ($memGB -le 0) { return $cores }
+    return [Math]::Max(2, [Math]::Min($cores, [int][Math]::Floor($memGB / $MemGBPerJob)))
+}
+
 function Initialize-ToolchainPythonEnvironment {
     <#
     .SYNOPSIS
@@ -624,9 +728,6 @@ Export-ModuleMember -Function @(
     'Get-CudaRoot',
     'Enter-VsDevCmdEnvironment',
     'Get-MsvcToolsRoot',
-    'Get-SccacheLauncher',
-    'Assert-CudaAvailable',
-    'Assert-CudnnInstalled',
     'Resolve-LlvmArchiver',
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
@@ -635,6 +736,10 @@ Export-ModuleMember -Function @(
     'Invoke-SourcePatch',
     'Initialize-SourceBuildEnvironment',
     'Initialize-ToolchainPythonEnvironment',
+    'Remove-SourceBuildTree',
+    'Get-BuildJobCount',
+    'Install-CpythonPip',
+    'Get-CudaArchitectureList',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
     'Get-GpuEnvironment',

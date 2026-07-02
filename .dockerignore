@@ -16,6 +16,11 @@ out/
 *.tar.gz
 *.zip
 !windows/downloads/*.zip
+# NVIDIA CUDA installer + cuDNN zip are downloaded at build time by setup-cuda.ps1;
+# only the TensorRT zip (EULA-gated download) is consumed from windows/downloads.
+# Excluding them keeps ~3.8 GB out of the build context and the nvidia image layer.
+windows/downloads/*.exe
+windows/downloads/cudnn-*.zip
 *.swp
 *.swo
 __pycache__/

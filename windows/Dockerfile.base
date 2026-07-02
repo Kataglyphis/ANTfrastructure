@@ -8,19 +8,23 @@
 ARG WINDOWS_LTSC=2025
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
 ARG VULKAN_VERSION=1.4.341.1
-ARG GSTREAMER_VERSION=1.29.1
 ARG CMAKE_VERSION=4.3.3
 ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-windows-x86_64.msi
 
+# GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 ENV TEMP_DIR="C:\temp"
-ENV GST_VERSION=$GSTREAMER_VERSION
 LABEL maintainer="contact@jonasheinle.de"
 
 # NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Stable scripts layer (cache-friendly — rarely changes)
-COPY windows\scripts\modules C:\temp\scripts\modules
+# Only the two modules the base/nvidia setup scripts import — copying the full
+# modules directory here would bust this most-expensive layer (VS Build Tools)
+# on every module edit. The media stage copies its own build modules; the full
+# module set ships in the final image (windows/Dockerfile) for in-container CI.
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsContainerImage.Common.psm1 `
+     C:\temp\scripts\modules\
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\

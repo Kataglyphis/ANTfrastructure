@@ -2,10 +2,38 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # NVIDIA GPU layer — CUDA + cuDNN + TensorRT.
-# Builds on top of the generic SDK and provides GPU acceleration.
+# Optional stage between base and toolchain: build this (tagged windows-sdk) for a
+# GPU image, or skip it and tag windows-base as windows-sdk for a CPU-only image
+# (windows/build.ps1 does this automatically; the former Dockerfile.sdk no-op shim
+# was removed). Lineage: base → [nvidia] → toolchain → media → final.
 # There is no Windows Dockerfile.amd (ROCm-on-Windows is not supported).
 
-ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
+ARG BASE_IMAGE=local/kataglyphis:windows-base
+
+# ── Stage 1: TensorRT extract (layers discarded — only the extracted tree ships) ──
+# The EULA-gated TensorRT zip is COPY'd and extracted here; the final stage pulls
+# just the extracted directory via COPY --from, so the ~2 GB zip layer never lands
+# in the shipped image. CUDA + cuDNN are downloaded from NVIDIA's CDN by
+# setup-cuda.ps1 and are excluded from windows\downloads via .dockerignore.
+FROM ${BASE_IMAGE} AS trt-extract
+
+ARG TENSORRT_VERSION=11.1.0.106
+ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+COPY windows\scripts\setup-tensorrt.ps1 C:\temp\scripts\
+COPY windows\downloads C:\temp\downloads
+
+# Extract to the space-free canonical root. If no zip is present the script skips
+# gracefully; the empty directory is created so COPY --from below always succeeds
+# (Resolve-TensorRtRoot treats an empty root as "not installed").
+RUN $trtZip = Get-ChildItem 'C:\temp\downloads\*TensorRT*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1; `
+    $trtPath = if ($trtZip) { $trtZip.FullName } else { '' }; `
+    & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'; `
+    if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }
+
+# ── Stage 2: CUDA + cuDNN + TensorRT ──────────────────────────────────────────
 FROM ${BASE_IMAGE}
 
 ARG CUDA_VERSION=13.3.0
@@ -15,16 +43,11 @@ ARG TENSORRT_VERSION=11.1.0.106
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Narrow COPY — only the two scripts this stage uses (a wildcard `windows\scripts`
-# would bust the CUDA layer on every unrelated script edit). Skip COPY of modules/ —
-# the parent base stage already populated C:\temp\scripts\modules.
+# Narrow COPY — only the script this stage runs (a wildcard `windows\scripts`
+# would bust the CUDA layer on every unrelated script edit). Modules were already
+# populated by the base stage.
 COPY windows\scripts\setup-cuda.ps1 C:\temp\scripts\
-COPY windows\scripts\setup-tensorrt.ps1 C:\temp\scripts\
-COPY windows\downloads C:\temp\downloads
 
-# Surface the TensorRT version ARG as an env var so setup-tensorrt.ps1's download
-# fallback (used only when no local zip is present under windows\downloads\) can
-# resolve the canonical URL — previously the ARG was declared but never consumed.
 ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 
@@ -34,12 +57,13 @@ ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 # the installed CUDA binaries.
 RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
 
-# Install TensorRT (from local zip or skip gracefully)
-RUN $trtZip = Get-ChildItem 'C:\temp\downloads\*TensorRT*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1; $trtPath = if ($trtZip) { $trtZip.FullName } else { '' }; & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath
+# TensorRT: only the extracted tree from stage 1 (no zip layer). Empty when no
+# zip was provided — build scripts then skip the TensorRT EP gracefully.
+COPY --from=trt-extract C:\tensorrt C:\tensorrt
 
 # Signal to downstream layers that NVIDIA GPU is available
 ENV GPU_TYPE="nvidia"
 ENV CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
 ENV CUDA_PATH="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}"
-ENV TENSORRT_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\TensorRT"
-ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\bin;$PATH
+ENV TENSORRT_ROOT="C:\tensorrt"
+ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib;$PATH

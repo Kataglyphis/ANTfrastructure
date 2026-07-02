@@ -38,8 +38,13 @@ RUN cd /d C:\temp\cpython && `
 # NOTE: `--mount=type=cache` requires BuildKit, which is not available for Windows
 # Containers (buildkit executor not implemented for windows). The sccache cache mount
 # cannot be used here. CPython is rebuilt from scratch on every cache miss.
+# The trailing cleanup runs in the SAME layer: PCbuild\obj (compile intermediates)
+# and externals\ (dependency source/build trees) are dead weight after the build —
+# the external DLLs (OpenSSL, sqlite3, libffi) are already copied into PCbuild\amd64.
 SHELL ["cmd", "/S", "/C"]
-RUN cd /d C:\temp\cpython && PCbuild\build.bat -e -p x64 -c Release
+RUN cd /d C:\temp\cpython && PCbuild\build.bat -e -p x64 -c Release && `
+    (if exist PCbuild\obj rd /s /q PCbuild\obj) && `
+    (if exist externals rd /s /q externals)
 
 # Verify built Python
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
