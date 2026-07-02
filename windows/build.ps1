@@ -125,7 +125,9 @@ function Get-DockerBuildArgList {
         [hashtable]$BuildArgs = @{},
         [string[]]$ExtraFlags = @()
     )
-    $dockerArgs = @('build', '--progress=plain')
+    # NB: no --progress flag — Stevedore's classic builder (no BuildKit on
+    # Windows Containers) rejects it.
+    $dockerArgs = @('build')
     if ($NoCache) { $dockerArgs += '--no-cache' }
     foreach ($key in ($BuildArgs.Keys | Sort-Object)) {
         $value = $BuildArgs[$key]
