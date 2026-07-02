@@ -85,8 +85,8 @@ if ($gpuEnv.GpuType -eq 'nvidia') {
     $gpuArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaRoot\bin\nvcc.exe"
     $gpuArgs += "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$((Get-Command cl.exe -ErrorAction Stop).Source)"
     $gpuArgs += '-DCMAKE_CUDA_STANDARD:STRING=17'
-    $gpuArgs += "-DCMAKE_CUDA_FLAGS:STRING=-Xcompiler=/wd4067 -Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING"
     $gpuArgs += '-DCMAKE_CUDA_ARCHITECTURES=80-real;86-real;89-real;90-real'
+    $gpuArgs += "-DCMAKE_CUDA_FLAGS:STRING=-Xcompiler=/wd4067 -Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING"
     $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
     $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnRoot\lib\x64", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
@@ -131,12 +131,25 @@ Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
     '(?<=\s)/experimental:external(?=\s)',
     '(?<=\s)-WX(?=\s)',
     '/arch:\S+',
-    '(?<!-Xcompiler\s)/bigobj'
+    '(?<!-Xcompiler\s)/bigobj',
+    '--threads \d+'
 )
 
 $env:NINJA_STATUS = "[%f/%t] "
-ninja -C $buildDir 2>&1; if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
+# Memory-scaled parallelism: AVX-512/CUDA TUs under clang-cl peak at several GB each,
+# so full -j<cores> can OOM the container. jobs = min(cores, memGB/8), floor 2
+# (override with BUILD_JOBS). Ninja is incremental, so the -j2 retry after an
+# OOM-style failure only redoes the jobs that died.
+$jobs = Get-BuildJobCount -MemGBPerJob 8
+Write-Host "Building with ninja -j$jobs..."
+ninja -j $jobs -C $buildDir 2>&1
+if ($LASTEXITCODE -ne 0 -and $jobs -gt 2) {
+    Write-Host "ninja -j$jobs failed (exit $LASTEXITCODE) - retrying incrementally with -j2..."
+    ninja -j2 -C $buildDir 2>&1
+}
+if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
 cmake --install $buildDir --config Release; if ($LASTEXITCODE -ne 0) { throw "Install failed" }
+Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='
 
 

@@ -165,6 +165,8 @@ if (Test-Path $altOutDir) {
     Copy-Item -Path (Join-Path $altOutDir '*') -Destination "$genaiInstallDir\lib" -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+Remove-SourceBuildTree -Path $SourceDir
+
 Write-Host '=== ONNX Runtime GenAI source build completed ==='
 Write-Host "Artifacts at: $genaiInstallDir"
 

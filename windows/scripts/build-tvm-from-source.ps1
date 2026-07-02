@@ -109,6 +109,8 @@ if ($pythonModule -eq 'ON') {
     }
 }
 
+Remove-SourceBuildTree -Path $SourceDir
+
 Write-Host '=== TVM source build completed ==='
 Write-Host "Artifacts at: $tvmInstallDir"
 

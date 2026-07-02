@@ -166,13 +166,21 @@ $ok = Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPref
 if (-not $ok) { throw 'OpenCV CMake configuration failed' }
 
 $buildLog = Join-Path $buildDir 'opencv-build.log'
-# Single-job build to get clear error output (parallel ninja can buffer/hide errors)
-Write-Host "Building with ninja -j1 for clear error output..."
+# Parallel build first; on failure re-run ninja -j1 (incremental — it jumps straight
+# to the failing TU) so the error output is unambiguous without paying the serial
+# build cost on the happy path.
+$jobs = Get-BuildJobCount -MemGBPerJob 4
+Write-Host "Building with ninja -j$jobs..."
 $env:NINJA_STATUS = "[%f/%t] "
 Push-Location $buildDir
 try {
-    ninja -j1 2>&1 | Tee-Object -FilePath $buildLog
+    ninja -j $jobs 2>&1 | Tee-Object -FilePath $buildLog
     $ok = ($LASTEXITCODE -eq 0)
+    if (-not $ok) {
+        Write-Host "ninja -j$jobs failed - re-running -j1 for clear error output..."
+        ninja -j1 2>&1 | Tee-Object -FilePath $buildLog -Append
+        $ok = ($LASTEXITCODE -eq 0)
+    }
 } finally {
     Pop-Location
 }
@@ -185,6 +193,8 @@ if ($ok) {
     if (Test-Path $buildLog) { Get-Content $buildLog -Tail 50 | ForEach-Object { Write-Host $_ } }
     throw "OpenCV build failed (see log)"
 }
+
+Remove-SourceBuildTree -Path $SourceDir
 
 Write-Host '=== OpenCV source build completed ==='
 

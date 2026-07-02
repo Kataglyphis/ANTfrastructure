@@ -27,10 +27,16 @@ ARG TVM_REF=v0.25.0
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Stable script layer: build-onnx + build-opencv scripts and modules.
-# The parent base stage already COPY's modules/; an explicit re-COPY here ensures
-# module edits take effect without rebuilding the base (practical dev speed).
-COPY windows\scripts\modules C:\temp\scripts\modules
+# Stable script layer: only the modules the media build scripts actually import
+# (SourceBuild + its Shared dependency + Installer for GStreamer's structured
+# logging). The parent base stage already COPY's the full modules/ directory;
+# this narrow re-COPY lets module edits take effect without rebuilding the base
+# while keeping edits to CI-only modules (WindowsBuild/WindowsUv/...) from
+# invalidating all eight source builds.
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     windows\scripts\modules\WindowsInstaller.Common.psm1 `
+     C:\temp\scripts\modules\
 COPY windows\scripts\build-onnx-from-source.ps1 C:\temp\scripts\
 
 # ── Stage 1: ONNX Runtime source build via clang-cl (git clone) ─────

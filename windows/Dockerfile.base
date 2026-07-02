@@ -8,12 +8,11 @@
 ARG WINDOWS_LTSC=2025
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
 ARG VULKAN_VERSION=1.4.341.1
-ARG GSTREAMER_VERSION=1.29.1
 ARG CMAKE_VERSION=4.3.3
 ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-windows-x86_64.msi
 
+# GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 ENV TEMP_DIR="C:\temp"
-ENV GST_VERSION=$GSTREAMER_VERSION
 LABEL maintainer="contact@jonasheinle.de"
 
 # NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values

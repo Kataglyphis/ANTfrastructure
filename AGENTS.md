@@ -197,7 +197,7 @@ build-cross-chain.sh → base → compiler → sdk → media → android → run
 
 Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate 5-stage build (`base → sdk → toolchain → media → final`) using Stevedore's `docker.exe` for builds (`nerdctl build` has broken DNS on Windows). An optional NVIDIA GPU stage (`Dockerfile.nvidia`) can replace the generic `Dockerfile.sdk` shim to produce a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → final`) driven by `windows/build.ps1`, which uses Stevedore's `docker.exe` for builds (`nerdctl build` has broken DNS on Windows). The `windows-sdk` tag is either a plain re-tag of `windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 

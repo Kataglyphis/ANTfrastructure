@@ -149,6 +149,9 @@ Write-Host "Build step completed with exit code: $LASTEXITCODE"
 Write-Host 'Installing...'
 & cmake --install $buildDir --config Release 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: cmake --install had errors (exit $LASTEXITCODE)" }
+
+Remove-SourceBuildTree -Path $SourceDir
+
 Write-Host '=== LiteRT-LM source build completed ==='
 
 

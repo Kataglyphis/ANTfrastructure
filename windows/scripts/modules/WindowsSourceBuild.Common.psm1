@@ -51,7 +51,8 @@ function Invoke-GitClone {
 
     $oldEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $env:GIT_SSL_NO_VERIFY = '1'
+    # GIT_SSL_NO_VERIFY is honored if set by the caller's environment (e.g. behind a
+    # TLS-intercepting proxy) but is no longer forced on for every clone.
     $env:GIT_TERMINAL_PROMPT = '0'
 
     $null = & git @gitArgs 2>&1
@@ -600,6 +601,62 @@ function Get-GpuEnvironment {
     }
 }
 
+function Remove-SourceBuildTree {
+    <#
+    .SYNOPSIS
+        Removes source/build trees after install so they don't bloat the Docker layer.
+    .DESCRIPTION
+        Each build-*-from-source.ps1 script clones + builds under C:\temp and installs
+        to C:\runtime. Without cleanup the clone/build tree (often several GB) is
+        committed into the image layer. Call this after a successful install.
+        Set KEEP_BUILD_ARTIFACTS=1 to keep the trees for debugging.
+    .PARAMETER Path
+        One or more directories to remove.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Path
+    )
+    if ($env:KEEP_BUILD_ARTIFACTS -eq '1') {
+        Write-Host "KEEP_BUILD_ARTIFACTS=1 - keeping: $($Path -join ', ')"
+        return
+    }
+    foreach ($p in $Path) {
+        if ([string]::IsNullOrWhiteSpace($p) -or -not (Test-Path $p)) { continue }
+        # Never delete from inside the tree being removed
+        if ((Get-Location).Path -like "$p*") { Set-Location (Split-Path $p -Parent) }
+        Write-Host "Removing build tree: $p"
+        # rd handles long paths and read-only .git objects more reliably than Remove-Item
+        & cmd.exe /c "rd /s /q ""$p""" 2>$null
+        if (Test-Path $p) { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Get-BuildJobCount {
+    <#
+    .SYNOPSIS
+        Returns a parallel job count scaled to available memory (min 2, max core count).
+    .DESCRIPTION
+        Heavy TUs (CUDA kernels, AVX-512 templates under clang-cl) can OOM a container
+        at full -j<cores>. jobs = min(cores, memGB / MemGBPerJob), floor 2.
+        Override explicitly with the BUILD_JOBS environment variable.
+    .PARAMETER MemGBPerJob
+        Estimated peak memory per compile job in GB (default 4; use 8 for
+        CUDA/AVX-512-heavy builds like ONNX Runtime).
+    #>
+    param(
+        [int]$MemGBPerJob = 4
+    )
+    if ($env:BUILD_JOBS -match '^\d+$') { return [int]$env:BUILD_JOBS }
+    $cores = [Environment]::ProcessorCount
+    $memGB = 0
+    try {
+        $memGB = [int][Math]::Floor((Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize / 1MB)
+    } catch { }
+    if ($memGB -le 0) { return $cores }
+    return [Math]::Max(2, [Math]::Min($cores, [int][Math]::Floor($memGB / $MemGBPerJob)))
+}
+
 function Initialize-ToolchainPythonEnvironment {
     <#
     .SYNOPSIS
@@ -644,6 +701,8 @@ Export-ModuleMember -Function @(
     'Invoke-SourcePatch',
     'Initialize-SourceBuildEnvironment',
     'Initialize-ToolchainPythonEnvironment',
+    'Remove-SourceBuildTree',
+    'Get-BuildJobCount',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
     'Get-GpuEnvironment',

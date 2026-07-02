@@ -112,6 +112,8 @@ if (Test-Path $tfliteIncludeDir) {
 }
 Write-Host 'LiteRT manual install completed'
 
+Remove-SourceBuildTree -Path $SourceDir
+
 Write-Host '=== LiteRT source build completed ==='
 
 
