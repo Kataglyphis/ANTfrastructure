@@ -202,10 +202,18 @@ fi
 
 # Networking / crypto
 # (libsoup-3.0-dev / libnice-dev are installed via install_target_packages below.)
+# HLS crypto backends FIRST and on their OWN apt-get calls: install_target_packages
+# runs one all-or-nothing `apt-get install` and silently swallows failure on cross,
+# so bundling libssl-dev with a sibling that can't be co-installed on a flaky ports
+# arch (e.g. libusrsctp-dev on riscv64) would leave gst-plugins-good's HLS with no
+# crypto and hard-abort meson ("Could not get define 'OPENSSL_VERSION_*'"). nettle
+# is HLS's preferred backend; libssl is the fallback — install both independently.
+install_target_packages nettle-dev || true
+install_target_packages libssl-dev || true
 install_target_packages \
   libcurl4-openssl-dev libxml2-dev \
   zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
-  libsrtp2-dev libssl-dev libusrsctp-dev || true
+  libsrtp2-dev libusrsctp-dev || true
 install_target_packages libsoup-3.0-dev libnice-dev || true
 
 # Csound conditionally
