@@ -106,9 +106,12 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
   esac
   if [ -n "${_lsx_triplet}" ] && [ -d "/usr/lib/${_lsx_triplet}" ]; then
     # Prefer the target-arch libstdc++ shipped under the GCC install's <triplet> tree.
+    # NB: `|| true` — a partially-matching glob makes ls exit non-zero, which
+    # under `set -euo pipefail` would abort the whole stage via the command
+    # substitution. Swallow it so a missing path is a no-op, not a build failure.
     _gcc_lsx="$(ls -1 /opt/gcc-*/"${_lsx_triplet}"/lib64/libstdc++.so.6.* \
                         /opt/gcc-*/"${_lsx_triplet}"/lib/libstdc++.so.6.* 2>/dev/null \
-                | sort -V | tail -1)"
+                | sort -V | tail -1 || true)"
     if [ -n "${_gcc_lsx}" ]; then
       ln -sf "${_gcc_lsx}" "/usr/lib/${_lsx_triplet}/libstdc++.so.6"
       ln -sf "${_gcc_lsx}" "/usr/lib/${_lsx_triplet}/libstdc++.so"
