@@ -92,6 +92,10 @@ fi
 cd /opt
 bash /opt/scripts/03-media/build/gstreamer/common/pre-setup.sh
 bash /opt/scripts/03-media/build/gstreamer/common/install-vvdec.sh
+# Provide the system rice-proto C library so gst-plugins-rs webrtcbin2 can build
+# (best-effort; only runs when GST_RS_BUILD_ALL=true). Must precede meson setup
+# so dependency('rice-proto') resolves.
+bash /opt/scripts/03-media/build/gstreamer/common/install-rice-proto.sh
 
 export SODIUM_USE_PKG_CONFIG=1
 export PKG_CONFIG_ALLOW_CROSS=1
