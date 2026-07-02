@@ -109,8 +109,13 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
     # NB: `|| true` — a partially-matching glob makes ls exit non-zero, which
     # under `set -euo pipefail` would abort the whole stage via the command
     # substitution. Swallow it so a missing path is a no-op, not a build failure.
+    # NB: exclude *-gdb.py — the GCC lib dir ships libstdc++.so.6.0.35-gdb.py
+    # (a GDB pretty-printer script) alongside the real .so.6.0.35, and it sorts
+    # AFTER the library under `sort -V`, so an unfiltered `tail -1` would pin the
+    # symlinks to a Python script and break the link.
     _gcc_lsx="$(ls -1 /opt/gcc-*/"${_lsx_triplet}"/lib64/libstdc++.so.6.* \
                         /opt/gcc-*/"${_lsx_triplet}"/lib/libstdc++.so.6.* 2>/dev/null \
+                | grep -vE '\.py$' \
                 | sort -V | tail -1 || true)"
     if [ -n "${_gcc_lsx}" ]; then
       ln -sf "${_gcc_lsx}" "/usr/lib/${_lsx_triplet}/libstdc++.so.6"
