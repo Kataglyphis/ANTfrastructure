@@ -157,6 +157,11 @@ ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 #   --cudnn_home          – path to cuDNN headers/libs
 #   --tensorrt_home       – path to TensorRT headers/libs
 
+# CUDA arch list from versions.env (CUDA_ARCHITECTURES); this build maps the
+# trailing 90 -> 90a to enable Hopper arch-specific kernels.
+ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-80;86;89;90}"
+ONNX_CUDA_ARCHS="${ONNX_CUDA_ARCHS/%90/90a}"
+
 BUILD_ARGS=(
   --build_dir          "${NATIVE_GPU_BUILD_DIR}"
   --config             "${NATIVE_CPU_CONFIG}"
@@ -173,7 +178,7 @@ BUILD_ARGS=(
   --cuda_home          "${CUDA_HOME}"
   --cudnn_home         "${CUDNN_HOME}"
   --tensorrt_home      "${TENSORRT_HOME}"
-  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=80;86;89;90a"
+  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${ONNX_CUDA_ARCHS}"
   --use_xnnpack
   --enable_lto
   --use_mimalloc

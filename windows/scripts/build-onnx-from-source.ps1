@@ -85,7 +85,7 @@ if ($gpuEnv.GpuType -eq 'nvidia') {
     $gpuArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaRoot\bin\nvcc.exe"
     $gpuArgs += "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$((Get-Command cl.exe -ErrorAction Stop).Source)"
     $gpuArgs += '-DCMAKE_CUDA_STANDARD:STRING=17'
-    $gpuArgs += '-DCMAKE_CUDA_ARCHITECTURES=80-real;86-real;89-real;90-real'
+    $gpuArgs += "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration '-real')"
     $gpuArgs += "-DCMAKE_CUDA_FLAGS:STRING=-Xcompiler=/wd4067 -Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING"
     $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
     $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnRoot\lib\x64", "-DCUDNN_LIBRARY=$cudnnLib"

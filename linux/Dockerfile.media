@@ -566,7 +566,10 @@ ARG GSTREAMER_PREFIX=/opt/gstreamer
 ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GCC_VERSION
-ARG PYTHON_MAJOR_MINOR
+ARG PYTHON_VERSION
+# Derived — versions.env only defines PYTHON_VERSION (empty PYTHON_VERSION falls
+# through to the :-3.14 defaults below, matching the previous behavior)
+ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \

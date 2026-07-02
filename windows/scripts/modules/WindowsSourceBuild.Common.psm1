@@ -583,6 +583,27 @@ function Get-GpuEnvironment {
     }
 }
 
+function Get-CudaArchitectureList {
+    <#
+    .SYNOPSIS
+        Returns the canonical CUDA architecture list (CMAKE_CUDA_ARCHITECTURES form).
+    .DESCRIPTION
+        Single source of truth is CUDA_ARCHITECTURES in versions.env (surfaced as an
+        env var by the Dockerfiles / load-versions.ps1). Consumers decorate per build
+        system — Windows clang-cl builds pass -Decoration '-real'.
+    .PARAMETER Decoration
+        Suffix appended to every architecture (e.g. '-real' -> '80-real;86-real;...').
+    #>
+    param(
+        [string]$Decoration = ''
+    )
+    $archs = if (-not [string]::IsNullOrWhiteSpace($env:CUDA_ARCHITECTURES)) { $env:CUDA_ARCHITECTURES } else { '80;86;89;90' }
+    if ($Decoration) {
+        return (($archs -split ';' | Where-Object { $_ } | ForEach-Object { "$_$Decoration" }) -join ';')
+    }
+    return $archs
+}
+
 function Install-CpythonPip {
     <#
     .SYNOPSIS
@@ -718,6 +739,7 @@ Export-ModuleMember -Function @(
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
     'Install-CpythonPip',
+    'Get-CudaArchitectureList',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
     'Get-GpuEnvironment',

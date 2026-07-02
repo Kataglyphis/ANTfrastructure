@@ -22,9 +22,12 @@ ARG FFMPEG_VERSION=master
 ARG MEMORY_LIMIT_GB=""
 # Optional persistent sccache remote (e.g. WebDAV server on the host); empty = off.
 ARG SCCACHE_WEBDAV_ENDPOINT=""
+# Target CUDA architectures (canonical form; build scripts append -real)
+ARG CUDA_ARCHITECTURES=80;86;89;90
 
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+ENV CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 

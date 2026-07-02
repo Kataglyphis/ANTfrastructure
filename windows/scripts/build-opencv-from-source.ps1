@@ -67,18 +67,21 @@ if (Test-Path $mlasSrcDir) {
 $pythonModuleDir = Join-Path $mainSrc 'cmake'
 $ocvPy = Get-SourceBuildPython
 $pyExePath = if (Test-Path $ocvPy.Exe) { $ocvPy.Exe -replace '\\', '/' } else { 'C:/temp/cpython/PCbuild/amd64/python.exe' }
+# Version derived from canonical PYTHON_VERSION (versions.env via load-versions/ENV)
+$pyVersion = if (-not [string]::IsNullOrWhiteSpace($env:PYTHON_VERSION)) { $env:PYTHON_VERSION } else { '3.14.6' }
+$pyParts = $pyVersion -split '\.'
 $findPythonInterpStub = @"
 # Stub FindPythonInterp.cmake — CMake 4.x removed the original module.
 set(PYTHONINTERP_FOUND TRUE)
 set(PYTHON_EXECUTABLE "$pyExePath" CACHE FILEPATH "Python interpreter" FORCE)
-set(PYTHON_VERSION_STRING "3.14.6")
-set(PYTHON_VERSION_MAJOR 3)
-set(PYTHON_VERSION_MINOR 14)
-set(PYTHON_VERSION_PATCH 6)
+set(PYTHON_VERSION_STRING "$pyVersion")
+set(PYTHON_VERSION_MAJOR $($pyParts[0]))
+set(PYTHON_VERSION_MINOR $($pyParts[1]))
+set(PYTHON_VERSION_PATCH $(if ($pyParts.Count -ge 3) { $pyParts[2] } else { 0 }))
 mark_as_advanced(PYTHONINTERP_FOUND PYTHON_EXECUTABLE)
 "@
 Set-Content -Path (Join-Path $pythonModuleDir 'FindPythonInterp.cmake') -Value $findPythonInterpStub
-Write-Host "Created FindPythonInterp.cmake stub for Python 3.14"
+Write-Host "Created FindPythonInterp.cmake stub for Python $pyVersion"
 
 $buildDir = Join-Path $SourceDir 'build'
 $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
@@ -150,7 +153,7 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
                          $cmakeExtra += "-DCUDAToolkit_ROOT=$cRootFwd"
                          $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cRootFwd"
                          $cmakeExtra += "-DCMAKE_CUDA_COMPILER:FILEPATH=$($env:CUDACXX -replace '\\', '/')"
-                         $cmakeExtra += '-DCMAKE_CUDA_ARCHITECTURES=80-real;86-real;89-real;90-real'
+                         $cmakeExtra += "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration '-real')"
                      }
 
 # CMAKE_AR: find llvm-lib on PATH and pass full path
