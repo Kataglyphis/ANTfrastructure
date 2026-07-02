@@ -366,8 +366,9 @@ if [ -n "${MESON_ARGS:-}" ]; then
   EXTRA_MESON_ARGS="${MESON_ARGS}"
 elif [ -z "${EXTRA_MESON_ARGS}" ]; then
   :
-  EXTRA_MESON_ARGS="-Dgst-plugins-rs:auto_plugin_features=enabled \
-    -Dgst-plugins-rs:sodium-source=built-in"
+  # auto_plugin_features is set below via append_meson_arg (auto vs enabled
+  # depends on GST_RS_BUILD_ALL), so it is intentionally not baked in here.
+  EXTRA_MESON_ARGS="-Dgst-plugins-rs:sodium-source=built-in"
   # burn is left to auto_plugin_features when GST_RS_BUILD_ALL=true (default);
   # otherwise force it off (heavy ML deps).
   [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} -Dgst-plugins-rs:burn=disabled"
@@ -378,7 +379,17 @@ append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
 if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
   append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
 fi
-append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
+# GST_RS_BUILD_ALL: use 'auto' so every gst-plugins-rs plugin is attempted and
+# built when its deps are present, and cleanly SKIPPED (not a hard meson error)
+# when a system dep is missing. 'enabled' force-requires every plugin, which
+# aborts meson setup on the first unsatisfiable dep (e.g. webrtcbin2 needs the
+# unpackaged rice-proto>=0.4.2). 'auto' still builds burn/skia/whisper/csound/
+# dav1d and everything else whose deps we ship.
+if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
+  append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=auto"
+else
+  append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
+fi
 [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
@@ -539,7 +550,17 @@ append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
 if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
   append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
 fi
-append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
+# GST_RS_BUILD_ALL: use 'auto' so every gst-plugins-rs plugin is attempted and
+# built when its deps are present, and cleanly SKIPPED (not a hard meson error)
+# when a system dep is missing. 'enabled' force-requires every plugin, which
+# aborts meson setup on the first unsatisfiable dep (e.g. webrtcbin2 needs the
+# unpackaged rice-proto>=0.4.2). 'auto' still builds burn/skia/whisper/csound/
+# dav1d and everything else whose deps we ship.
+if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
+  append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=auto"
+else
+  append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
+fi
 [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # whisper left enabled — do not force-disable here
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"

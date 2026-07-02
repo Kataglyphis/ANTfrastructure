@@ -360,7 +360,15 @@ build_standalone_gst_plugins_rs() {
   fi
 
   if ! "${build_cmd[@]}"; then
-    echo "ERROR: cargo build for gst-plugins-rs failed"
-    exit 1
+    if [ "${build_all_rs}" = "true" ]; then
+      # GST_RS_BUILD_ALL: --keep-going already built every member it could; a
+      # non-zero exit here just means some crate (e.g. webrtcbin2 needing the
+      # unpackaged rice-proto) failed. The monorepo meson build is the primary
+      # installer, so warn and continue instead of failing the whole stage.
+      echo "WARN: some gst-plugins-rs workspace members failed to build (GST_RS_BUILD_ALL, --keep-going); continuing with the members that built" >&2
+    else
+      echo "ERROR: cargo build for gst-plugins-rs failed"
+      exit 1
+    fi
   fi
 }
