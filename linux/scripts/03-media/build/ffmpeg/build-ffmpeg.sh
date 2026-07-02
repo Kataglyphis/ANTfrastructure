@@ -381,13 +381,16 @@ ffmpeg_probe_pkg_config_feature() {
     # it faithfully predicts whether FFmpeg's link will find the library, while
     # still enabling codecs whose only issue was a missing transitive -l in our
     # symbol test program (x264/opus/vpx/…).
-    if ffmpeg_try_cpp_condition "${headers}" "1" "${pc_cflags}" \
-       && ffmpeg_try_link_probe "" "" "${pc_cflags}" "${pc_libs}"; then
+    local _hdr_ok=1 _lnk_ok=1
+    ffmpeg_try_cpp_condition "${headers}" "1" "${pc_cflags}" || _hdr_ok=0
+    ffmpeg_try_link_probe "" "" "${pc_cflags}" "${pc_libs}" || _lnk_ok=0
+    if [ "${_hdr_ok}" = 1 ] && [ "${_lnk_ok}" = 1 ]; then
         echo "Note: ${feature} symbol micro-probe failed but its headers compile and its libraries link; enabling (FFmpeg's configure will verify the link)."
         return 0
     fi
 
-    echo "Skipping ${feature}: ${pkg_spec} resolves via pkg-config but is not usable for this target (library not linkable or headers do not compile); not enabling to avoid a hard FFmpeg configure failure."
+    echo "Skipping ${feature}: ${pkg_spec} resolves via pkg-config but is not usable for this target (header_compile=${_hdr_ok} lib_link=${_lnk_ok}); not enabling to avoid a hard FFmpeg configure failure."
+    echo "  probe-detail ${feature}: CC='${CC:-}' headers='${headers}' cflags='${pc_cflags}' libs='${pc_libs}'"
     return 1
 }
 
