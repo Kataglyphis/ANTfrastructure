@@ -147,22 +147,27 @@ ffmpeg_probe_compiler() {
     fi
 }
 
-# Extra -I/-L search flags the custom cross-GCC needs. Verified empirically: with
-# --sysroot=/ it searches ONLY its own /opt/gcc-*/... dirs, NOT /usr/include or
-# /usr/lib/<triplet>, and it ignores LIBRARY_PATH/CPATH. So apt-installed target
-# headers/libs (x264, openjpeg, …) are invisible unless passed explicitly here.
-# No-op on native builds. Emitted into probe compile/link commands and mirrored
-# into FFmpeg's own configure flags.
-ffmpeg_cross_search_flags() {
+# Append the extra -I/-L search flags the custom cross-GCC needs into the named
+# command array. Verified empirically: with --sysroot=/ it searches ONLY its own
+# /opt/gcc-*/... dirs, NOT /usr/include or /usr/lib/<triplet>, and it ignores
+# LIBRARY_PATH/CPATH — so apt-installed target headers/libs (x264, openjpeg, …)
+# are invisible unless passed explicitly. Flags are appended as INDIVIDUAL array
+# elements (NOT a space-joined string through split_shell_words, which the
+# script's IFS=$'\n\t' would fail to re-split). No-op on native builds.
+ffmpeg_append_cross_search_flags() {
+    local -n _cmd_ref="$1"
     cross_build_is_active || return 0
     local t="${CROSS_TARGET_TRIPLET:-}"
     if [ -z "${t}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
         t="$(cross_target_triplet 2>/dev/null || true)"
     fi
-    printf -- '-I/usr/include '
-    [ -n "${t}" ] && [ -d "/usr/include/${t}" ] && printf -- '-I/usr/include/%s ' "${t}"
-    [ -n "${t}" ] && [ -d "/usr/lib/${t}" ] && printf -- '-L/usr/lib/%s ' "${t}"
-    [ -n "${t}" ] && [ -d "/lib/${t}" ] && printf -- '-L/lib/%s ' "${t}"
+    _cmd_ref+=("-I/usr/include")
+    if [ -n "${t}" ]; then
+        [ -d "/usr/include/${t}" ] && _cmd_ref+=("-I/usr/include/${t}")
+        [ -d "/usr/lib/${t}" ] && _cmd_ref+=("-L/usr/lib/${t}")
+        [ -d "/lib/${t}" ] && _cmd_ref+=("-L/lib/${t}")
+    fi
+    return 0
 }
 
 resolve_ffmpeg_host_compiler() {
@@ -244,9 +249,7 @@ ffmpeg_try_cpp_condition() {
     cmd=("${compiler_cmd[@]}")
     if cross_build_is_active; then
         cmd+=("--sysroot=/")
-        local -a _xtra=()
-        split_shell_words _xtra "$(ffmpeg_cross_search_flags)"
-        cmd+=("${_xtra[@]}")
+        ffmpeg_append_cross_search_flags cmd
     fi
     cmd+=("${cflags[@]}" "-c" "${source_file}" "-o" "${output_file}")
 
@@ -301,9 +304,7 @@ ffmpeg_try_link_probe() {
         # /usr/lib/<triplet>) and ignores LIBRARY_PATH — add them explicitly so
         # apt-installed target headers/libs are found. Without it every cross
         # codec probe fails and the feature is dropped.
-        local -a _xtra=()
-        split_shell_words _xtra "$(ffmpeg_cross_search_flags)"
-        cmd+=("${_xtra[@]}")
+        ffmpeg_append_cross_search_flags cmd
     fi
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
         cmd+=("-fuse-ld=lld")
