@@ -15,6 +15,31 @@ configure_gstreamer_prefix_for_cargo() {
   fi
 }
 
+# Remove a member path (e.g. "analytics/burn") from the [workspace] members
+# array of the gst-plugins-rs Cargo.toml. cargo parses EVERY workspace member's
+# manifest for dependency resolution even when the member is --exclude'd from the
+# build, so members whose deps are unresolvable in this environment (burn, csound,
+# skia, whisper, dav1d, ...) must be dropped from the manifest itself, not merely
+# excluded. gst-plugins-rs uses an explicit members list with one quoted path per
+# line, so delete the line that is exactly that quoted path. No-op (success) if
+# the member or file is absent, so callers can prune unconditionally.
+prune_gst_plugins_rs_workspace_member() {
+  local cargo_toml="$1" member="$2" tmp
+  if [ -z "${cargo_toml}" ] || [ ! -f "${cargo_toml}" ]; then
+    echo "prune_gst_plugins_rs_workspace_member: Cargo.toml '${cargo_toml}' not found; skipping '${member}'"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  awk -v m="${member}" '
+    {
+      s = $0
+      gsub(/^[ \t]+|[ \t]+$/, "", s)
+      if (s == "\"" m "\"," || s == "\"" m "\"") next
+      print
+    }' "${cargo_toml}" > "${tmp}" && mv "${tmp}" "${cargo_toml}"
+  echo "prune_gst_plugins_rs_workspace_member: pruned '${member}' from $(basename "${cargo_toml}") (if present)"
+}
+
 compute_gst_plugins_rs_rust_jobs() {
   if command -v compute_rust_jobs >/dev/null 2>&1; then
     compute_rust_jobs
