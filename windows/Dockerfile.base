@@ -18,8 +18,13 @@ LABEL maintainer="contact@jonasheinle.de"
 # NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Stable scripts layer (cache-friendly — rarely changes)
-COPY windows\scripts\modules C:\temp\scripts\modules
+# Only the two modules the base/nvidia setup scripts import — copying the full
+# modules directory here would bust this most-expensive layer (VS Build Tools)
+# on every module edit. The media stage copies its own build modules; the full
+# module set ships in the final image (windows/Dockerfile) for in-container CI.
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsContainerImage.Common.psm1 `
+     C:\temp\scripts\modules\
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\

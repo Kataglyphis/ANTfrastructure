@@ -14,6 +14,11 @@ ARG VCS_REF=""
 COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
 # Smoke test is documented to run from inside the container (docs/windows-builds.md)
 COPY windows\scripts\smoke-test-container.ps1 C:\temp\scripts\smoke-test-container.ps1
+# Full module set for in-container CI tooling (WindowsBuild/WindowsUv/... are
+# imported from this path by downstream Invoke-Ci* / rust build scripts).
+# Copied here — the cheapest, last stage — so module edits never invalidate
+# the base or media layers.
+COPY windows\scripts\modules C:\temp\scripts\modules
 
 WORKDIR C:\workspace
 VOLUME ["C:\\workspace"]

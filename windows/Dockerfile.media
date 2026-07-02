@@ -126,7 +126,12 @@ ENV FFMPEG_ROOT="C:\runtime\ffmpeg"
 ENV FFMPEG_BIN="${FFMPEG_ROOT}\bin"
 ENV FFMPEG_LIB="${FFMPEG_ROOT}\lib"
 
-ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$PATH
+# TVM layout — TVM_LIBRARY_PATH lets the installed Python wheel locate tvm.dll
+# (the C:\temp\tvm-src build tree is removed after install to keep layers small).
+ENV TVM_ROOT="C:\runtime\lib\tvm"
+ENV TVM_LIBRARY_PATH="${TVM_ROOT}\lib"
+
+ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$PATH
 
 # PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg, OpenCV, ONNX Runtime.
 # LiteRT is excluded (TFLITE_ENABLE_INSTALL=OFF — no .pc files generated).

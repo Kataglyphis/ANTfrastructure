@@ -181,27 +181,6 @@ function Get-CudaRoot {
     return $null
 }
 
-function Assert-CudaAvailable {
-    $root = Get-CudaRoot
-    return -not [string]::IsNullOrWhiteSpace($root)
-}
-
-function Assert-CudnnInstalled {
-    param(
-        [string]$CudnnRoot = ''
-    )
-
-    if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { $CudnnRoot = $env:CUDNN_ROOT }
-    if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { return $false }
-    if (-not (Test-Path $CudnnRoot)) { return $false }
-
-    $headers = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue
-    $libs = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue
-    $dlls = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue
-
-    return ($headers.Count -gt 0) -and ($libs.Count -gt 0) -and ($dlls.Count -gt 0)
-}
-
 function Enter-VsDevCmdEnvironment {
     param(
         [string]$Arch = 'amd64',
@@ -333,19 +312,6 @@ function Replace-CppKeywordAlternatives {
         [System.IO.File]::WriteAllText($Path, $patched)
         Write-Host "Patched keyword alternatives in: $Path"
     }
-}
-
-function Get-SccacheLauncher {
-    <#
-    .SYNOPSIS
-        Finds sccache.exe on PATH and sets SCCACHE_MAX_JOBS to the processor count.
-    .OUTPUTS
-        [string] Full path to sccache.exe, or $null if not found.
-    #>
-    $cmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
-    if (-not $cmd) { return $null }
-    $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount
-    return $cmd.Source
 }
 
 function Update-NinjaFile {
@@ -690,9 +656,6 @@ Export-ModuleMember -Function @(
     'Get-CudaRoot',
     'Enter-VsDevCmdEnvironment',
     'Get-MsvcToolsRoot',
-    'Get-SccacheLauncher',
-    'Assert-CudaAvailable',
-    'Assert-CudnnInstalled',
     'Resolve-LlvmArchiver',
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
