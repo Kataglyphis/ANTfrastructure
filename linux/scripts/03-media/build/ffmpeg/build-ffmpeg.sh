@@ -336,14 +336,29 @@ ffmpeg_probe_pkg_config_feature() {
     #       .pc, e.g. libonnxruntime). Passing --enable-${feature} would make
     #       FFmpeg's configure hard-FAIL and abort the whole build, so skip and
     #       let the caller fall back to a direct-path probe if it has one.
-    local pc_cflags
+    local pc_cflags pc_libs
     pc_cflags="$(ffmpeg_collect_pkg_config_flags "${pkg_spec}" --cflags 2>/dev/null || true)"
-    if ffmpeg_try_cpp_condition "${headers}" "1" "${pc_cflags}"; then
-        echo "Note: ${feature} link micro-probe failed but its headers compile via pkg-config; enabling (FFmpeg's configure will verify the link)."
+    pc_libs="$(ffmpeg_collect_pkg_config_flags "${pkg_spec}" --libs 2>/dev/null || true)"
+    # Two conditions must BOTH hold to treat the link failure as spurious:
+    #   1. headers compile with the .pc cflags (the .pc's -I is valid), AND
+    #   2. an EMPTY main links against the .pc's libs (the target .so actually
+    #      exists and is linkable for this arch).
+    # Checking headers alone is not enough for cross builds: a host .pc can
+    # resolve via --exists and its arch-independent headers compile, while the
+    # target library is absent — so `-l<lib>` fails with "unable to find
+    # library" and FFmpeg's own require_pkg_config aborts the whole build (this
+    # is exactly what happened for libopenjp2/libdrm on arm64/riscv64). The
+    # empty-main link uses the same cross sysroot/lld path as the real probe, so
+    # it faithfully predicts whether FFmpeg's link will find the library, while
+    # still enabling codecs whose only issue was a missing transitive -l in our
+    # symbol test program (x264/opus/vpx/…).
+    if ffmpeg_try_cpp_condition "${headers}" "1" "${pc_cflags}" \
+       && ffmpeg_try_link_probe "" "" "${pc_cflags}" "${pc_libs}"; then
+        echo "Note: ${feature} symbol micro-probe failed but its headers compile and its libraries link; enabling (FFmpeg's configure will verify the link)."
         return 0
     fi
 
-    echo "Skipping ${feature}: pkg-config resolves ${pkg_spec} but its headers do not compile (broken/incomplete .pc); not enabling to avoid a hard FFmpeg configure failure."
+    echo "Skipping ${feature}: ${pkg_spec} resolves via pkg-config but is not usable for this target (library not linkable or headers do not compile); not enabling to avoid a hard FFmpeg configure failure."
     return 1
 }
 
@@ -357,17 +372,20 @@ ffmpeg_probe_library_feature() {
         return 0
     fi
 
-    # No pkg-config file for these libraries, so fall back to a header-presence
-    # check: if the dev headers compile, the library is installed — enable it and
-    # let FFmpeg's configure do the definitive link test. The full link
-    # micro-probe gives false negatives (e.g. a missing transitive -l in the
-    # generated test program), which silently dropped installed libraries.
-    if ffmpeg_try_cpp_condition "${headers}" "1"; then
-        echo "Note: ${feature} link micro-probe failed but its headers are present; enabling (FFmpeg's configure will verify the link)."
+    # No pkg-config file for these libraries, so fall back to header-presence
+    # AND an empty-main link against the given libs. Headers alone are not enough
+    # on cross builds: arch-independent headers can be present while the target
+    # .so is absent, so enabling would make FFmpeg's configure link hard-fail.
+    # The empty-main link (same libs, same cross sysroot/lld path) confirms the
+    # library is actually linkable, while still enabling libs whose only issue
+    # was a missing transitive -l in the symbol test program.
+    if ffmpeg_try_cpp_condition "${headers}" "1" \
+       && ffmpeg_try_link_probe "" "" "" "${libs_string}"; then
+        echo "Note: ${feature} symbol micro-probe failed but its headers are present and its libraries link; enabling (FFmpeg's configure will verify the link)."
         return 0
     fi
 
-    echo "Skipping ${feature}: headers not found (dev package missing?)."
+    echo "Skipping ${feature}: headers or libraries not usable for this target (dev package missing / not linkable?)."
     return 1
 }
 
