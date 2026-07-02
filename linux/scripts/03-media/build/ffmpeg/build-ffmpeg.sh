@@ -2,6 +2,12 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# Temporary diagnostic: capture the compiler stderr of failed codec probes so
+# skips print WHY (header not found, etc.). Default on while recovering codecs;
+# set FFMPEG_PROBE_DEBUG=0 to silence. Revert the default to 0 once codecs green.
+: "${FFMPEG_PROBE_DEBUG:=1}"
+export FFMPEG_PROBE_DEBUG
+
 # ==============================================================================
 # build-ffmpeg.sh - Build and install latest FFmpeg from source
 # ==============================================================================
@@ -107,7 +113,13 @@ split_shell_words() {
     out_ref=()
     [ -n "${words}" ] || return 0
 
-    # pkg-config emits whitespace-delimited flags that are safe to re-split here.
+    # pkg-config emits SPACE-delimited flags, but this script runs with a global
+    # IFS=$'\n\t' (no space), so a bare `out_ref=(${words})` would NOT split on
+    # spaces — a multi-flag string like "-I/a -I/b" collapses into ONE garbled
+    # argv element, breaking every probe whose .pc returns >1 flag (freetype,
+    # vpx, theora, svtav1, …). Force a whitespace IFS locally so the re-split
+    # works regardless of the caller's IFS.
+    local IFS=$' \t\n'
     # shellcheck disable=SC2206
     out_ref=(${words})
 }
@@ -253,6 +265,9 @@ ffmpeg_try_cpp_condition() {
     fi
     cmd+=("${cflags[@]}" "-c" "${source_file}" "-o" "${output_file}")
 
+    if [ "${FFMPEG_PROBE_DEBUG:-0}" = "1" ]; then
+        _FFMPEG_LAST_PROBE_ERR="$("${cmd[@]}" 2>&1 >/dev/null)"
+    fi
     if "${cmd[@]}" >/dev/null 2>&1; then
         rm -rf "${probe_dir}"
         return 0
@@ -382,7 +397,9 @@ ffmpeg_probe_pkg_config_feature() {
     # still enabling codecs whose only issue was a missing transitive -l in our
     # symbol test program (x264/opus/vpx/…).
     local _hdr_ok=1 _lnk_ok=1
+    _FFMPEG_LAST_PROBE_ERR=""
     ffmpeg_try_cpp_condition "${headers}" "1" "${pc_cflags}" || _hdr_ok=0
+    local _hdr_err="${_FFMPEG_LAST_PROBE_ERR}"
     ffmpeg_try_link_probe "" "" "${pc_cflags}" "${pc_libs}" || _lnk_ok=0
     if [ "${_hdr_ok}" = 1 ] && [ "${_lnk_ok}" = 1 ]; then
         echo "Note: ${feature} symbol micro-probe failed but its headers compile and its libraries link; enabling (FFmpeg's configure will verify the link)."
@@ -391,6 +408,9 @@ ffmpeg_probe_pkg_config_feature() {
 
     echo "Skipping ${feature}: ${pkg_spec} resolves via pkg-config but is not usable for this target (header_compile=${_hdr_ok} lib_link=${_lnk_ok}); not enabling to avoid a hard FFmpeg configure failure."
     echo "  probe-detail ${feature}: CC='${CC:-}' headers='${headers}' cflags='${pc_cflags}' libs='${pc_libs}'"
+    if [ "${FFMPEG_PROBE_DEBUG:-0}" = "1" ] && [ "${_hdr_ok}" = 0 ] && [ -n "${_hdr_err}" ]; then
+        echo "  header-stderr ${feature}: $(printf '%s' "${_hdr_err}" | head -3 | tr '\n' '|')"
+    fi
     return 1
 }
 
