@@ -89,6 +89,36 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
   fi
 fi
 
+# The fix above only repoints the libstdc++.so DEV symlink and only for a
+# wrong-ARCH target. But the onnx/onnxruntime plugin link resolves the RUNTIME
+# libstdc++.so.6 (via -rpath-link /usr/lib/<triplet>), and on cross that lib is
+# either the host-arch GCC copy or the older Ubuntu Ports libstdc++ — both lack
+# GLIBCXX_3.4.35 / std::__format that libonnxruntime.so (built with GCC 16)
+# needs, causing "undefined reference" link failures that abort the GStreamer
+# build. Pin BOTH the dev and runtime target-arch libstdc++ to GCC 16's
+# target-arch build (a backward-compatible superset).
+if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "amd64" ]; then
+  _lsx_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
+  _lsx_triplet="$(arch_deb_multiarch_triplet_for "${_lsx_arch}" 2>/dev/null || true)"
+  case "${_lsx_arch}" in
+    arm64)   [ -n "${_lsx_triplet}" ] || _lsx_triplet="aarch64-linux-gnu" ;;
+    riscv64) [ -n "${_lsx_triplet}" ] || _lsx_triplet="riscv64-linux-gnu" ;;
+  esac
+  if [ -n "${_lsx_triplet}" ] && [ -d "/usr/lib/${_lsx_triplet}" ]; then
+    # Prefer the target-arch libstdc++ shipped under the GCC install's <triplet> tree.
+    _gcc_lsx="$(ls -1 /opt/gcc-*/"${_lsx_triplet}"/lib64/libstdc++.so.6.* \
+                        /opt/gcc-*/"${_lsx_triplet}"/lib/libstdc++.so.6.* 2>/dev/null \
+                | sort -V | tail -1)"
+    if [ -n "${_gcc_lsx}" ]; then
+      ln -sf "${_gcc_lsx}" "/usr/lib/${_lsx_triplet}/libstdc++.so.6"
+      ln -sf "${_gcc_lsx}" "/usr/lib/${_lsx_triplet}/libstdc++.so"
+      echo "Cross: pinned /usr/lib/${_lsx_triplet}/libstdc++.so{,.6} -> ${_gcc_lsx} (GCC 16 superset, has GLIBCXX_3.4.35)"
+    else
+      echo "WARN: no target-arch GCC libstdc++ found under /opt/gcc-*/${_lsx_triplet}/; onnx plugin link may fail" >&2
+    fi
+  fi
+fi
+
 cd /opt
 bash /opt/scripts/03-media/build/gstreamer/common/pre-setup.sh
 bash /opt/scripts/03-media/build/gstreamer/common/install-vvdec.sh
