@@ -545,16 +545,14 @@ EOF
 }
 
 ffmpeg_probe_libonnxruntime() {
-    # A working pkg-config module is the only thing FFmpeg's require_pkg_config
-    # accepts; try it first.
-    if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime" \
-        "onnxruntime_c_api.h" "OrtGetApiBase"; then
-        return 0
-    fi
-
-    # ONNX Runtime is built into this stage but ships no usable libonnxruntime.pc
-    # (the vendor one resolves via --exists yet its -I does not locate the
-    # header). Synthesize a correct .pc from the known install path and re-probe.
+    # ONNX Runtime is built into this stage at a known prefix, but its VENDOR
+    # libonnxruntime.pc is unusable: it resolves via --exists yet its -I does not
+    # locate the header for FFmpeg. Worse, the generic probe can now "pass" it via
+    # the lenient headers-compile+empty-link fallback (our own -I/pkg-config flags
+    # find the header), after which FFmpeg's own require canNOT and HARD-ABORTS the
+    # whole build. So when the known install is present, go STRAIGHT to the
+    # synthesized .pc (correct -I + exported PKG_CONFIG_PATH, which is exactly what
+    # FFmpeg's require_pkg_config consumes) — do not trust the vendor .pc first.
     local onnx_base="/usr/local/lib/onnxruntime-cpu"
     if [ -f "${onnx_base}/lib/libonnxruntime.so" ] && [ -f "${onnx_base}/include/onnxruntime_c_api.h" ]; then
         if ffmpeg_enable_via_synth_pkgconfig "libonnxruntime" "libonnxruntime" \
@@ -564,6 +562,16 @@ ffmpeg_probe_libonnxruntime() {
             echo "ONNX Runtime enabled via synthesized pkg-config at ${onnx_base}."
             return 0
         fi
+        # Known install present but synth-probe failed → do NOT fall through to the
+        # vendor .pc (it would spuriously enable and hard-abort FFmpeg configure).
+        echo "Skipping libonnxruntime: install present but synthesized pkg-config probe failed."
+        return 1
+    fi
+
+    # No known install — try a vendor-provided working pkg-config module, if any.
+    if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime" \
+        "onnxruntime_c_api.h" "OrtGetApiBase"; then
+        return 0
     fi
 
     echo "Skipping libonnxruntime: no usable pkg-config module (ONNX Runtime absent or its headers do not compile)."
