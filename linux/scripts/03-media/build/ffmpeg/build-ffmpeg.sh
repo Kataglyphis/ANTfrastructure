@@ -266,7 +266,10 @@ ffmpeg_try_cpp_condition() {
     cmd+=("${cflags[@]}" "-c" "${source_file}" "-o" "${output_file}")
 
     if [ "${FFMPEG_PROBE_DEBUG:-0}" = "1" ]; then
-        _FFMPEG_LAST_PROBE_ERR="$("${cmd[@]}" 2>&1 >/dev/null)"
+        # `|| true`: the probe compile is EXPECTED to fail here (that's what we're
+        # diagnosing); without it the failing command substitution trips set -e
+        # and aborts the whole FFmpeg build.
+        _FFMPEG_LAST_PROBE_ERR="$("${cmd[@]}" 2>&1 >/dev/null || true)"
     fi
     if "${cmd[@]}" >/dev/null 2>&1; then
         rm -rf "${probe_dir}"

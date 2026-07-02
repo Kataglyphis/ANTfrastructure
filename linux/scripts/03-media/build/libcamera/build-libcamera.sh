@@ -145,6 +145,14 @@ if cross_build_is_active; then
   # libcamera runtime/plugin artifacts and skip that test tool.
   MESON_SETUP_ARGS+=(-Dlc-compliance=disabled)
 
+  # GCC 16 emits a FALSE-POSITIVE -Warray-bounds on libcamera's shared std::mutex
+  # teardown / logger path. The -Wno-error=array-bounds added to CXXFLAGS above
+  # does NOT reach the target compiler in a meson cross build (env C*FLAGS apply
+  # only to the build machine), so disable -Werror for ALL cross targets — not
+  # just riscv64. Without this a fresh arm64 libcamera compile hard-fails
+  # (arm64 previously only "passed" on a cached layer).
+  MESON_SETUP_ARGS+=(-Dwerror=false)
+
   # Generic target headers like elfutils/tiff live in /usr/include, while some
   # arch-specific target headers such as opensslconf.h live in the multiarch
   # include dir. The cross compiler does not reliably search both roots here.
@@ -160,10 +168,7 @@ if cross_build_is_active; then
   fi
 
   if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-    # GCC 16 still reports a false positive array-bounds warning in libcamera's
-    # logger path on the riscv64 cross build; don't treat that warning as fatal.
-    MESON_SETUP_ARGS+=(-Dwerror=false)
-
+    # (-Dwerror=false is now applied for all cross targets above.)
     # Upstream apps_lib compiles dng_writer.cpp (which uses libtiff) when libtiff
     # is found, but omits libtiff from its dependency list, so consumers fail to
     # link. Add the missing dependency.
