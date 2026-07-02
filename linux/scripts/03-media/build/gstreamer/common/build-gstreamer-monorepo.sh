@@ -177,7 +177,6 @@ build_gstreamer_monorepo() {
     "-Dgst-plugins-bad:tflite=enabled"
     "-Dgst-plugins-bad:opencv=enabled"
     "-Dgst-plugins-bad:onnx=enabled"
-    "-Dgst-plugins-rs:webrtcbin2=disabled"
     "-Dtools=enabled"
     "-Dlibav=enabled"
     "-Ddevtools=enabled"
@@ -188,6 +187,9 @@ build_gstreamer_monorepo() {
     "-Dintrospection=enabled"
   )
 
+  # webrtcbin2 is built when GST_RS_BUILD_ALL=true (default); force off otherwise.
+  [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || MESON_FLAGS+=("-Dgst-plugins-rs:webrtcbin2=disabled")
+
   if cross_build_is_active; then
     echo "Cross build detected: disabling devtools (avoid cargo host-toolchain collisions)"
     MESON_FLAGS+=("-Ddevtools=disabled")
@@ -196,7 +198,12 @@ build_gstreamer_monorepo() {
   case "${TARGET_MACHINE_ARCH}" in
     riscv*|*riscv*)
       echo "Target arch '${TARGET_MACHINE_ARCH}' detected: python disabled (no target Python dev for riscv64)"
-      MESON_FLAGS+=("-Drs=disabled")
+      if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
+        echo "GST_RS_BUILD_ALL=true: attempting Rust plugins on riscv64 (-Drs=enabled) — cross-compiling Rust to riscv64 is experimental and may fail"
+        MESON_FLAGS+=("-Drs=enabled")
+      else
+        MESON_FLAGS+=("-Drs=disabled")
+      fi
       # PTP helper fails to link on riscv64 (collect2 error with gcc cross linker).
       append_meson_arg "-Dgstreamer:ptp-helper=disabled"
       # Introspection kept enabled — exe_wrapper is provided via pre-setup.sh QEMU wrapper.
@@ -221,15 +228,16 @@ build_gstreamer_monorepo() {
       append_meson_arg "-Dharfbuzz:introspection=disabled"
       append_meson_arg "-Dgdk-pixbuf:glycin=disabled"
       append_meson_arg "-Dgdk-pixbuf:man=false"
-      append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
-      echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"
+      [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || { append_meson_arg "-Dgst-plugins-rs:whisper=disabled"; echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"; }
       ;;
     aarch64*|arm*)
-      echo "Target arch '${TARGET_MACHINE_ARCH}' detected: enabling -Drs (Rust bindings) but disabling csound"
+      echo "Target arch '${TARGET_MACHINE_ARCH}' detected: enabling -Drs (Rust bindings)"
       MESON_FLAGS+=("-Drs=enabled")
-      append_meson_arg "-Dgst-plugins-rs:csound=disabled"
-      append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
-      echo "Disabling gst-plugins-rs whisper plugin for ARM host arch"
+      if [ "${GST_RS_BUILD_ALL:-true}" != "true" ]; then
+        append_meson_arg "-Dgst-plugins-rs:csound=disabled"
+        append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
+        echo "Disabling gst-plugins-rs csound/whisper plugins for ARM host arch"
+      fi
       if [ "${BUILD_MODE:-native}" = "cross" ]; then
         echo "ARM cross build: disabling introspection (g-ir-compiler needs qemu exe_wrapper)"
         MESON_FLAGS+=("-Dintrospection=disabled")

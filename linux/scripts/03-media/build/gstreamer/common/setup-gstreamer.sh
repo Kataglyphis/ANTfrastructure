@@ -367,8 +367,10 @@ if [ -n "${MESON_ARGS:-}" ]; then
 elif [ -z "${EXTRA_MESON_ARGS}" ]; then
   :
   EXTRA_MESON_ARGS="-Dgst-plugins-rs:auto_plugin_features=enabled \
-    -Dgst-plugins-rs:burn=disabled \
     -Dgst-plugins-rs:sodium-source=built-in"
+  # burn is left to auto_plugin_features when GST_RS_BUILD_ALL=true (default);
+  # otherwise force it off (heavy ML deps).
+  [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} -Dgst-plugins-rs:burn=disabled"
 fi
 
 # Always enforce these, even if MESON_ARGS was supplied externally.
@@ -377,7 +379,7 @@ if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
   append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
 fi
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
-append_meson_arg "-Dgst-plugins-rs:burn=disabled"
+[ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
@@ -535,7 +537,7 @@ if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
   append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
 fi
 append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
-append_meson_arg "-Dgst-plugins-rs:burn=disabled"
+[ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_meson_arg "-Dgst-plugins-rs:burn=disabled"
 # whisper left enabled — do not force-disable here
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 

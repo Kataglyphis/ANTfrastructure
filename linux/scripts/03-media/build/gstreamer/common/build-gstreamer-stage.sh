@@ -107,7 +107,9 @@ fi
 export SODIUM_SHARED=1
 export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
 
-append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
+# skia is built when GST_RS_BUILD_ALL=true (default); skia-safe compiles Skia
+# from source where no prebuilt exists. Force it off only when build-all is off.
+[ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
 
 # Dump diagnostic logs on GStreamer build failure, then propagate the exit code.
 # This replaces the previous set +e / set -e pattern, keeping errexit active
