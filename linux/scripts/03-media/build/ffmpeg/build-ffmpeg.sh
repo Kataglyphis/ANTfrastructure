@@ -147,6 +147,24 @@ ffmpeg_probe_compiler() {
     fi
 }
 
+# Extra -I/-L search flags the custom cross-GCC needs. Verified empirically: with
+# --sysroot=/ it searches ONLY its own /opt/gcc-*/... dirs, NOT /usr/include or
+# /usr/lib/<triplet>, and it ignores LIBRARY_PATH/CPATH. So apt-installed target
+# headers/libs (x264, openjpeg, …) are invisible unless passed explicitly here.
+# No-op on native builds. Emitted into probe compile/link commands and mirrored
+# into FFmpeg's own configure flags.
+ffmpeg_cross_search_flags() {
+    cross_build_is_active || return 0
+    local t="${CROSS_TARGET_TRIPLET:-}"
+    if [ -z "${t}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
+        t="$(cross_target_triplet 2>/dev/null || true)"
+    fi
+    printf -- '-I/usr/include '
+    [ -n "${t}" ] && [ -d "/usr/include/${t}" ] && printf -- '-I/usr/include/%s ' "${t}"
+    [ -n "${t}" ] && [ -d "/usr/lib/${t}" ] && printf -- '-L/usr/lib/%s ' "${t}"
+    [ -n "${t}" ] && [ -d "/lib/${t}" ] && printf -- '-L/lib/%s ' "${t}"
+}
+
 resolve_ffmpeg_host_compiler() {
     if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
         resolve_host_compiler_for_lang c
@@ -226,6 +244,9 @@ ffmpeg_try_cpp_condition() {
     cmd=("${compiler_cmd[@]}")
     if cross_build_is_active; then
         cmd+=("--sysroot=/")
+        local -a _xtra=()
+        split_shell_words _xtra "$(ffmpeg_cross_search_flags)"
+        cmd+=("${_xtra[@]}")
     fi
     cmd+=("${cflags[@]}" "-c" "${source_file}" "-o" "${output_file}")
 
@@ -276,20 +297,13 @@ ffmpeg_try_link_probe() {
     cmd=("${compiler_cmd[@]}")
     if cross_build_is_active; then
         cmd+=("--sysroot=/")
-        # The custom cross-GCC does not search the Debian multiarch dirs and does
-        # NOT honor LIBRARY_PATH/CPATH (verified empirically), so pass the target
-        # multiarch lib/include dirs explicitly with -L/-I. This is how the
-        # apt-installed :<arch> codec libs (/usr/lib/<triplet>/lib*.so) are found
-        # — without it every cross codec probe fails and the feature is dropped.
-        local _probe_triplet="${CROSS_TARGET_TRIPLET:-}"
-        if [ -z "${_probe_triplet}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
-            _probe_triplet="$(cross_target_triplet 2>/dev/null || true)"
-        fi
-        if [ -n "${_probe_triplet}" ]; then
-            [ -d "/usr/include/${_probe_triplet}" ] && cmd+=("-I/usr/include/${_probe_triplet}")
-            [ -d "/usr/lib/${_probe_triplet}" ] && cmd+=("-L/usr/lib/${_probe_triplet}")
-            [ -d "/lib/${_probe_triplet}" ] && cmd+=("-L/lib/${_probe_triplet}")
-        fi
+        # The custom cross-GCC searches only its own dirs (not /usr/include or
+        # /usr/lib/<triplet>) and ignores LIBRARY_PATH — add them explicitly so
+        # apt-installed target headers/libs are found. Without it every cross
+        # codec probe fails and the feature is dropped.
+        local -a _xtra=()
+        split_shell_words _xtra "$(ffmpeg_cross_search_flags)"
+        cmd+=("${_xtra[@]}")
     fi
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
         cmd+=("-fuse-ld=lld")
@@ -448,7 +462,7 @@ ffmpeg_probe_libvpx() {
 
 ffmpeg_probe_libx264() {
     if ffmpeg_probe_pkg_config_feature "libx264" "x264" "stdint.h x264.h" "x264_encoder_encode" &&
-       ffmpeg_try_cpp_condition "x264.h" "X264_BUILD >= 155"; then
+       ffmpeg_try_cpp_condition "stdint.h x264.h" "X264_BUILD >= 155"; then
         return 0
     fi
 
@@ -457,8 +471,8 @@ ffmpeg_probe_libx264() {
 }
 
 ffmpeg_probe_libx265() {
-    if ffmpeg_probe_pkg_config_feature "libx265" "x265" "x265.h" "x265_api_get" &&
-       ffmpeg_try_cpp_condition "x265.h" "X265_BUILD >= 89"; then
+    if ffmpeg_probe_pkg_config_feature "libx265" "x265" "stdint.h x265.h" "x265_api_get" &&
+       ffmpeg_try_cpp_condition "stdint.h x265.h" "X265_BUILD >= 89"; then
         return 0
     fi
 
@@ -473,20 +487,6 @@ ffmpeg_probe_vdpau() {
     fi
 
     ffmpeg_probe_library_feature "vdpau" "vdpau/vdpau.h vdpau/vdpau_x11.h" "vdp_device_create_x11" "-lvdpau -lX11"
-}
-
-ffmpeg_probe_libfdk_aac() {
-    if ffmpeg_try_pkg_config_probe "fdk-aac" "fdk-aac/aacenc_lib.h" "aacEncOpen"; then
-        return 0
-    fi
-
-    if ffmpeg_try_link_probe "fdk-aac/aacenc_lib.h" "aacEncOpen" "" "-lfdk-aac"; then
-        echo "Enabling libfdk-aac without pkg-config metadata."
-        return 0
-    fi
-
-    echo "Skipping libfdk-aac: FFmpeg-style pkg-config and direct link probes failed."
-    return 1
 }
 
 # FFmpeg enables its external DNN backends (libonnxruntime/libtensorflow/
@@ -708,7 +708,6 @@ configure_ffmpeg() {
     local configure_opts=(
         "--prefix=${FFMPEG_PREFIX}"
         "--enable-gpl"
-        "--enable-nonfree"
         "--enable-version3"
         "--enable-shared"
         "--enable-pic"
@@ -753,8 +752,11 @@ configure_ffmpeg() {
         fi
         if [ -n "${_ma_triplet}" ] && [ -d "/usr/lib/${_ma_triplet}" ]; then
             configure_opts+=("--extra-ldflags=-L/usr/lib/${_ma_triplet} -L/lib/${_ma_triplet}")
-            configure_opts+=("--extra-cflags=-I/usr/include/${_ma_triplet}")
-            echo "Cross: added multiarch lib/include dirs for ${_ma_triplet} (-L/-I) so apt-installed target codecs link"
+            # -I/usr/include is required too: the custom cross-GCC does not search
+            # it by default, so headers like x264.h (in /usr/include, not the
+            # triplet dir) are otherwise invisible to FFmpeg's own compiles.
+            configure_opts+=("--extra-cflags=-I/usr/include -I/usr/include/${_ma_triplet}")
+            echo "Cross: added multiarch lib/include dirs for ${_ma_triplet} (-L/-I incl /usr/include) so apt-installed target codecs link"
         fi
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # Avoid cross-detecting host SDL when the target SDL dev package is unavailable.
@@ -807,10 +809,6 @@ configure_ffmpeg() {
         configure_opts+=("--enable-libass")
     fi
 
-    if ffmpeg_probe_libfdk_aac; then
-        configure_opts+=("--enable-libfdk-aac")
-    fi
-    
     if ffmpeg_probe_pkg_config_feature "libaom" "aom >= 2.0.0" "aom/aom_codec.h" "aom_codec_version"; then
         configure_opts+=("--enable-libaom")
     fi
