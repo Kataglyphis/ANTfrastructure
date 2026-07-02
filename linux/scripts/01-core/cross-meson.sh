@@ -176,6 +176,17 @@ needs_exe_wrapper = true
 sys_root = '/'
 pkg_config_libdir = '${pkg_config_libdir}'
 
+# The custom cross-GCC with --sysroot=/ does NOT search the Debian multiarch
+# dirs (/usr/include, /usr/include/<triplet>) where apt installs :<arch> target
+# dev headers, and meson CROSS builds do NOT apply the host CFLAGS/CPPFLAGS env
+# to the TARGET (host_machine) compiler — so meson's own cc.get_define /
+# has_header checks fail to find e.g. openssl's arch-specific opensslconf.h,
+# hard-aborting plugins like gst-plugins-good's HLS. Give the target compiler
+# those dirs here (lowest priority via -idirafter so GCC's own headers win).
+[built-in options]
+c_args = ['-idirafter', '/usr/include/${triplet}', '-idirafter', '/usr/include']
+cpp_args = ['-idirafter', '/usr/include/${triplet}', '-idirafter', '/usr/include']
+
 [cmake]
 CMAKE_LIBRARY_ARCHITECTURE = '${triplet}'
 CMAKE_SHARED_LINKER_FLAGS = '-L${target_libdir}'
