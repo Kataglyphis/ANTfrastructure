@@ -75,7 +75,11 @@ function Assert-Test {
 
 function Assert-CommandExists {
     param([string]$Name)
-    Assert-Test -Name "Command '$Name' on PATH" -Condition { (Get-Command $Name -ErrorAction SilentlyContinue) -ne $null } -FailMessage "$Name not found on PATH"
+    # GetNewClosure: the scriptblock is invoked inside Assert-Test, whose own $Name
+    # parameter shadows this one under PowerShell's dynamic scoping — without the
+    # closure this evaluated Get-Command "Command 'git' on PATH" and always failed.
+    $commandName = $Name
+    Assert-Test -Name "Command '$Name' on PATH" -Condition { (Get-Command $commandName -ErrorAction SilentlyContinue) -ne $null }.GetNewClosure() -FailMessage "$Name not found on PATH"
 }
 
 function Assert-FileExists {
@@ -90,12 +94,17 @@ function Assert-DirectoryExists {
 
 function Assert-EnvVarSet {
     param([string]$Name, [string]$ExpectedPrefix = '')
+    # GetNewClosure + renamed captures: Assert-Test's $Name parameter shadows this
+    # one at invocation time (dynamic scoping), so the env var that was actually
+    # queried used to be the test title — always failing.
+    $envName = $Name
+    $envPrefix = $ExpectedPrefix
     Assert-Test -Name "Env var $Name" -Condition {
-        $val = [Environment]::GetEnvironmentVariable($Name)
+        $val = [Environment]::GetEnvironmentVariable($envName)
         if ([string]::IsNullOrWhiteSpace($val)) { return $false }
-        if ($ExpectedPrefix) { return $val -like "$ExpectedPrefix*" }
+        if ($envPrefix) { return $val -like "$envPrefix*" }
         return $true
-    } -FailMessage "$Name is not set or doesn't match expected prefix"
+    }.GetNewClosure() -FailMessage "$Name is not set or doesn't match expected prefix"
 }
 
 function Get-CommandVersion {
@@ -236,8 +245,11 @@ Write-TestHeader '8. ONNX Runtime (source-built)'
 $onnxRoot = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
 if ($onnxRoot) {
     Assert-DirectoryExists -Path $onnxRoot -Description "ONNX_ROOT"
-    Assert-FileExists -Path (Join-Path $onnxRoot 'include\onnxruntime_cxx_api.h') -Description 'ONNX C++ API header'
-    Assert-FileExists -Path (Join-Path $onnxRoot 'include\onnxruntime_c_api.h') -Description 'ONNX C API header'
+    # Recursive search: ORT installs headers nested (include\onnxruntime\...), not flat
+    $onnxCxxHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name 'ONNX C++ API header' -Condition { $onnxCxxHdr.Count -gt 0 } -FailMessage "onnxruntime_cxx_api.h not found under $onnxRoot"
+    $onnxCHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_c_api.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name 'ONNX C API header' -Condition { $onnxCHdr.Count -gt 0 } -FailMessage "onnxruntime_c_api.h not found under $onnxRoot"
 
     $libFiles = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime*.lib' -Recurse -ErrorAction SilentlyContinue
     Assert-Test -Name "ONNX lib files" -Condition { $libFiles.Count -gt 0 } -FailMessage "No onnxruntime*.lib found in $onnxRoot"
@@ -255,7 +267,9 @@ Write-TestHeader '9. ONNX Runtime GenAI (source-built)'
 $genaiRoot = [Environment]::GetEnvironmentVariable('ONNX_GENAI_ROOT')
 if ($genaiRoot) {
     Assert-DirectoryExists -Path $genaiRoot -Description "ONNX_GENAI_ROOT"
-    Assert-FileExists -Path (Join-Path $genaiRoot 'include\onnxruntime-genai.h') -Description 'ONNX GenAI header'
+    $genaiHdr = Get-ChildItem -Path $genaiRoot -Filter 'ort_genai*.h' -Recurse -ErrorAction SilentlyContinue
+    if (-not $genaiHdr) { $genaiHdr = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.h' -Recurse -ErrorAction SilentlyContinue }
+    Assert-Test -Name 'ONNX GenAI header' -Condition { $genaiHdr.Count -gt 0 } -FailMessage "No GenAI header (ort_genai*.h / onnxruntime-genai.h) found under $genaiRoot"
 
     $genaiLibs = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai*.lib' -Recurse -ErrorAction SilentlyContinue
     Assert-Test -Name "ONNX GenAI lib files" -Condition { $genaiLibs.Count -gt 0 } -FailMessage "No onnxruntime-genai*.lib found"
@@ -303,9 +317,10 @@ Assert-Test -Name "GStreamer core plugin available" -Condition {
 $gstBin = [Environment]::GetEnvironmentVariable('GSTREAMER_BIN')
 Assert-DirectoryExists -Path $gstBin -Description "GSTREAMER_BIN"
 
-# Verify GStreamer can create a simple pipeline (don't actually run it, just verify it loads)
+# Verify GStreamer can create and run a trivial pipeline. num-buffers=1 is
+# essential: a bare fakesrc produces buffers FOREVER and hangs the smoke test.
 Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
-    $result = & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc ! fakesink 2>&1 | Out-String
+    $result = & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc num-buffers=1 ! fakesink 2>&1 | Out-String
     # If GST_PLUGIN_ERROR occurs but not a crash, the binary loads
     return $result -notmatch 'error while loading shared libraries'
 } -FailMessage "GStreamer gst-launch-1.0 failed to load"
