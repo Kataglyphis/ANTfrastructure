@@ -337,6 +337,12 @@ build_source_cross_gcc_targets() {
   chmod +x "${GCC_CROSS_BUILDER}" || true
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported GCC cross target list: ${targets_raw}"
 
+  # Share one downloaded GCC tarball across the host build and every
+  # per-target build below (each uses its own BUILD_DIR under the scratch
+  # root, so without this the same tarball is downloaded once per target).
+  # build-gcc.sh still runs its full SHA512/GPG verification on every use.
+  export GCC_TARBALL_CACHE_DIR="${GCC_TARBALL_CACHE_DIR:-$(gcc_cross_scratch_root)/gcc-tarball-cache}"
+
   build_host_gcc "${full_version}" "${prefix}"
 
   log "Building cross GCC toolchains from source for ${targets_raw}"

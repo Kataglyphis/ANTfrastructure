@@ -337,20 +337,20 @@ _gst_monorepo_pkgconfig_env() {
   fi
 
   if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ] && [ -d "/usr/include/${deb_host_multiarch_dir}" ]; then
-    append_env_flag CPPFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
-    append_env_flag CFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
-    append_env_flag CXXFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
+    append_flag_if_missing CPPFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
+    append_flag_if_missing CFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
+    append_flag_if_missing CXXFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
   fi
 
   if cross_build_is_active && [ -d /usr/include ]; then
-    append_env_flag CPPFLAGS "-idirafter /usr/include"
-    append_env_flag CFLAGS "-idirafter /usr/include"
-    append_env_flag CXXFLAGS "-idirafter /usr/include"
+    append_flag_if_missing CPPFLAGS "-idirafter /usr/include"
+    append_flag_if_missing CFLAGS "-idirafter /usr/include"
+    append_flag_if_missing CXXFLAGS "-idirafter /usr/include"
   fi
 
   if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ]; then
-    append_env_flag LDFLAGS "-L/usr/lib/${deb_host_multiarch_dir}"
-    append_env_flag LDFLAGS "-Wl,-rpath-link,/usr/lib/${deb_host_multiarch_dir}"
+    append_flag_if_missing LDFLAGS "-L/usr/lib/${deb_host_multiarch_dir}"
+    append_flag_if_missing LDFLAGS "-Wl,-rpath-link,/usr/lib/${deb_host_multiarch_dir}"
   fi
 }
 
@@ -362,8 +362,8 @@ _gst_monorepo_opencv_flags() {
     [ -d "${opencv_libdir}" ] || continue
     if [ -e "${opencv_libdir}/libopencv_tracking.so" ]; then
       # gst-plugins-bad/ext/opencv links opencv_tracking via a raw -l flag.
-      append_env_flag LDFLAGS "-L${opencv_libdir}"
-      append_env_flag LDFLAGS "-Wl,-rpath-link,${opencv_libdir}"
+      append_flag_if_missing LDFLAGS "-L${opencv_libdir}"
+      append_flag_if_missing LDFLAGS "-Wl,-rpath-link,${opencv_libdir}"
       break
     fi
   done
@@ -387,13 +387,13 @@ _gst_monorepo_tflite_flags() {
       tflite_libdir="$(pkg-config --variable=libdir "${tflite_pkg_config_name}" 2>/dev/null || true)"
 
       if [ -n "${tflite_includedir}" ]; then
-        append_env_flag CPPFLAGS "-idirafter ${tflite_includedir}"
-        append_env_flag CFLAGS "-idirafter ${tflite_includedir}"
-        append_env_flag CXXFLAGS "-idirafter ${tflite_includedir}"
+        append_flag_if_missing CPPFLAGS "-idirafter ${tflite_includedir}"
+        append_flag_if_missing CFLAGS "-idirafter ${tflite_includedir}"
+        append_flag_if_missing CXXFLAGS "-idirafter ${tflite_includedir}"
       fi
       if [ -n "${tflite_libdir}" ]; then
-        append_env_flag LDFLAGS "-L${tflite_libdir}"
-        append_env_flag LDFLAGS "-Wl,-rpath-link,${tflite_libdir}"
+        append_flag_if_missing LDFLAGS "-L${tflite_libdir}"
+        append_flag_if_missing LDFLAGS "-Wl,-rpath-link,${tflite_libdir}"
       fi
 
       echo "Resolved ${tflite_pkg_config_name} for Meson probes: includedir='${tflite_includedir:-}' libdir='${tflite_libdir:-}'"

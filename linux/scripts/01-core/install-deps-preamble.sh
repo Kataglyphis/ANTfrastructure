@@ -8,10 +8,14 @@
 #
 # The fallback definitions below are NOT dead weight: linux/Dockerfile.media
 # COPYs only install-deps-preamble.sh, python-host.sh, cmake-cache-linker.sh
-# and modules.sh into /opt/scripts/core, and most of its install-deps RUN
-# steps (litert, opencv, armnn, ffmpeg, libcamera, runtime) do NOT bind-mount
-# 01-core — so cross-env.sh is absent there and these fallbacks are what
+# and modules.sh into /opt/scripts/core. The install-deps RUN steps currently
+# also bind-mount the full 01-core there, but any RUN step (present or future)
+# that does not gets no cross-env.sh — and then these fallbacks are what
 # actually runs. Do not remove them without changing that deployment.
+#
+# This file is the single entry point for install-deps scripts: it locates and
+# sources cross-env.sh itself (container path first, then the repo layout next
+# to this file), so callers only need to source this one file.
 #
 # Usage:
 #   source /path/to/install-deps-preamble.sh
@@ -23,6 +27,17 @@ _INSTALL_DEPS_PREAMBLE_LOADED=1
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
+else
+  # Repo / local-dev layout: cross-env.sh sits next to this file in
+  # linux/scripts/01-core. Fail loudly if it exists but cannot be loaded
+  # (mirrors the FATAL semantics the install-deps callers used to apply when
+  # sourcing cross-env.sh directly).
+  _preamble_repo_cross_env="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cross-env.sh"
+  if [ -f "${_preamble_repo_cross_env}" ]; then
+    # shellcheck disable=SC1090
+    source "${_preamble_repo_cross_env}" || { echo "FATAL: cannot load ${_preamble_repo_cross_env}" >&2; exit 1; }
+  fi
+  unset _preamble_repo_cross_env
 fi
 
 # Fallback: define install_deps_preamble if the SDK image's cross-apt.sh doesn't have it yet

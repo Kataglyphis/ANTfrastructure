@@ -108,25 +108,9 @@ append_meson_arg() {
   esac
 }
 
-append_env_flag() {
-  local var_name="$1"
-  local flag="$2"
-  local current="${!var_name:-}"
-
-  case " ${current} " in
-    *" ${flag} "*)
-      return 0
-      ;;
-  esac
-
-  if [ -n "${current}" ]; then
-    printf -v "${var_name}" '%s %s' "${current}" "${flag}"
-  else
-    printf -v "${var_name}" '%s' "${flag}"
-  fi
-
-  export "${var_name}=${!var_name}"
-}
+# NOTE: dedup-guarded env-var flag appends use append_flag_if_missing from
+# 01-core/common.sh (loaded via media_common_init above); the local
+# append_env_flag duplicate was removed in favor of that canonical helper.
 
 resolve_host_gcc_for_cargo() {
   resolve_host_compiler_for_lang c

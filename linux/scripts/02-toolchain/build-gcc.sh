@@ -54,6 +54,9 @@ Environment (used as defaults when CLI args are omitted):
   NATIVE_SYSTEM_HEADER_DIR  Native system header dir for cross builds
   JOBS                      Parallel jobs
   GCC_BUILD_MB_PER_JOB      Memory cap per job for parallel build (default: 2500)
+  GCC_TARBALL_CACHE_DIR     Optional dir to reuse/store the release tarball
+                            across builds (verification still runs each time;
+                            unset = always download, unchanged behavior)
 USAGE
 }
 
@@ -281,6 +284,16 @@ mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
 echo "Downloading GCC sources to ${BUILD_DIR}..."
+# Opt-in tarball cache: when GCC_TARBALL_CACHE_DIR is set (e.g. by gcc.sh's
+# multi-target orchestration), reuse a previously downloaded tarball instead
+# of re-downloading it into every per-target BUILD_DIR. The copy still goes
+# through the exact same SHA512/GPG verification below — the cache only
+# replaces the network fetch, never the verification. With the variable unset
+# (the default), this block is inert and behavior is unchanged.
+if [ ! -f "${TARBALL}" ] && [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
+  echo "Reusing cached tarball: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
+  cp "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" "${TARBALL}"
+fi
 if [ ! -f "${TARBALL}" ]; then
   wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
 else
@@ -357,6 +370,17 @@ if wget -q --spider "${SIG_URL}"; then
   fi
 else
   echo "No .sig found or accessible."
+fi
+
+# Opt-in tarball cache: store the tarball (which has passed the verification
+# policy above) for reuse by later targets. Inert when GCC_TARBALL_CACHE_DIR
+# is unset. Copy via a temp name + rename so a concurrent reader never sees a
+# partially written cache entry.
+if [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ ! -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
+  mkdir -p "${GCC_TARBALL_CACHE_DIR}"
+  cp "${TARBALL}" "${GCC_TARBALL_CACHE_DIR}/${TARBALL}.tmp.$$"
+  mv "${GCC_TARBALL_CACHE_DIR}/${TARBALL}.tmp.$$" "${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
+  echo "Stored tarball in cache: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
 fi
 
 # 3) Extract and configure

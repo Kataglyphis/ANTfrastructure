@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Load the shared apt/cross helpers, trying the in-container path first and
-# falling back to the repo layout for local dev. Fail loudly if none load.
+# Load the shared apt/cross helpers via install-deps-preamble.sh (which
+# locates and sources cross-env.sh itself in both the container and repo
+# layouts), trying the in-container path first and falling back to the repo
+# layout for local dev. Fail loudly if one is found but cannot load.
 for _dep_env in \
     "/opt/scripts/core/install-deps-preamble.sh" \
-    "/opt/scripts/core/cross-env.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../01-core/cross-env.sh"; do
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../01-core/install-deps-preamble.sh"; do
     if [ -f "${_dep_env}" ]; then
         # shellcheck disable=SC1090
         source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
