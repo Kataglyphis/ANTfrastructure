@@ -1,0 +1,7 @@
+# PowerShell build scripts are COPY'd into Docker images; their byte content is
+# the layer-cache key. Disable git line-ending conversion so a checkout can never
+# silently flip LF<->CRLF and invalidate hours of cached build layers.
+*.ps1 -text
+*.psm1 -text
+*.env -text
+*.patch -text
