@@ -539,8 +539,9 @@ build_torchvision_wheel() {
         export TORCHVISION_TORCH_STAGING="${TORCH_STAGING_DIR}" && \
         export TORCHVISION_INCLUDE="${target_torch_include}:${target_torch_csrc}" && \
         export TORCHVISION_LIBRARY="${target_torch_lib}" && \
-        export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include" && \
-        export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include" && \
+        _vis_multiarch="$(cross_target_triplet 2>/dev/null || true)" && \
+        export CFLAGS="${CFLAGS:+${CFLAGS} }${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
+        export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
         "${BUILD_PYTHON}" setup.py bdist_wheel --plat-name "${wheel_platform}" -d "${dist_dir}"
     ); then
         warn "torchvision riscv64 cross wheel build failed; leaving it to the native torch stage"
