@@ -396,6 +396,29 @@ int _isatty(int);
     if (-not $mesonSucceeded) { throw 'meson setup failed after 2 attempts' }
     log 'meson setup completed.'
 
+    # Inline patch (kept inline, NOT a .patch file): the webrtc-audio-processing
+    # wrap version floats with the GStreamer release, so a static .patch would rot.
+    # Its AVX2/SSE2 kernels index SIMD vectors via MSVC's union members
+    # (x.m256_f32[i]); clang-cl's __m256 is a native vector type without members
+    # ("member reference base type '__m256' is not a structure or union") but
+    # supports direct subscripting x[i], which is what this substitution produces.
+    $wrtcDir = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'webrtc-audio-processing-*' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($wrtcDir) {
+        $simdMemberPatterns = @(
+            '\.m256_f32\[', '\.m256d_f64\[', '\.m256i_(?:i|u)(?:8|16|32|64)\[',
+            '\.m128_f32\[', '\.m128d_f64\[', '\.m128i_(?:i|u)(?:8|16|32|64)\['
+        )
+        Get-ChildItem -Path $wrtcDir.FullName -Recurse -Include '*.cc', '*.h' | ForEach-Object {
+            $content = [System.IO.File]::ReadAllText($_.FullName)
+            $patched = $content
+            foreach ($p in $simdMemberPatterns) { $patched = $patched -replace $p, '[' }
+            if ($patched -ne $content) {
+                [System.IO.File]::WriteAllText($_.FullName, $patched)
+                log "Patched MSVC SIMD member access for clang-cl: $($_.Name)"
+            }
+        }
+    }
+
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
     $compileSucceeded = $false
     for ($cAttempt = 1; $cAttempt -le 2; $cAttempt++) {
