@@ -77,7 +77,7 @@ fetch_ffmpeg() {
       *)                   tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_ref}.tar.gz" ;;
     esac
     echo "Downloading FFmpeg ${release_ref} from ${tarball_url}..."
-    curl -sL "${tarball_url}" | tar -xzf - -C "${FFMPEG_SRC}" --strip-components=1 || {
+    download_and_extract "${tarball_url}" "${FFMPEG_SRC}" 1 || {
         echo "Tarball download failed for ${tarball_url}" >&2
         exit 1
     }
@@ -634,7 +634,7 @@ ensure_tensorflow_c_sdk() {
     echo "Downloading TensorFlow C SDK ${tf_version}..."
     # Download just the C library from the TF release
     local tf_release_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/${tf_archive}"
-    if     curl -sL --connect-timeout 30 --max-time 300 -o "${cache_dir}/${tf_archive}" "${tf_release_url}" 2>/dev/null \
+    if     download_file "${tf_release_url}" "${cache_dir}/${tf_archive}" 3 30 300 2>/dev/null \
         && [ -s "${cache_dir}/${tf_archive}" ]; then
         tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}" 2>/dev/null || true
         # The tarball extracts to ./lib/ and ./include/ relative to cache_dir
@@ -663,7 +663,7 @@ PKGCONF
     echo "TensorFlow C SDK download failed (trying alternate URL)..."
     # Fallback: use the full TF source release (much larger but always available)
     local alt_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/libtensorflow-cpu-linux-x86_64-${tf_version}.tar.gz"
-    if curl -sL --connect-timeout 30 --max-time 600 -o "${cache_dir}/${tf_archive}" "${alt_url}" 2>/dev/null \
+    if download_file "${alt_url}" "${cache_dir}/${tf_archive}" 3 30 600 2>/dev/null \
         && [ -s "${cache_dir}/${tf_archive}" ]; then
         tar -xzf "${cache_dir}/${tf_archive}" -C "${tf_dir}" 2>/dev/null || true
         echo "TensorFlow C SDK ${tf_version} installed (fallback URL)"

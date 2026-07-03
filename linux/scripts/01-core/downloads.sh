@@ -12,17 +12,64 @@ if ! command -v die >/dev/null 2>&1; then
   die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 fi
 
+# download_file <url> <dest> [retries] [connect_timeout] [max_time]
+#   retries          number of retry attempts (default 3, the historical value)
+#   connect_timeout  per-connection timeout in seconds (default: tool default)
+#   max_time         hard cap on total transfer time in seconds (curl only;
+#                    wget has no equivalent, so it is ignored there)
+# With only <url> <dest> the invocation is flag-identical to the historical
+# behaviour; the optional arguments exist so call sites migrated from bespoke
+# wget/curl invocations can keep their exact retry/timeout characteristics.
 download_file() {
   local url="$1"
   local dest="$2"
+  local retries="${3:-3}"
+  local connect_timeout="${4:-}"
+  local max_time="${5:-}"
 
   if command -v curl >/dev/null 2>&1; then
-    curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --retry-delay 2 -o "$dest" "$url"
+    local -a curl_opts=()
+    [ -n "${connect_timeout}" ] && curl_opts+=(--connect-timeout "${connect_timeout}")
+    [ -n "${max_time}" ] && curl_opts+=(--max-time "${max_time}")
+    curl --proto '=https' --tlsv1.2 -fsSL --retry "${retries}" --retry-delay 2 ${curl_opts[@]+"${curl_opts[@]}"} -o "$dest" "$url"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q --tries=3 -O "$dest" "$url"
+    local -a wget_opts=()
+    [ -n "${connect_timeout}" ] && wget_opts+=(--timeout="${connect_timeout}")
+    wget -q --tries="${retries}" ${wget_opts[@]+"${wget_opts[@]}"} -O "$dest" "$url"
   else
     die "Neither curl nor wget is available for downloads"
   fi
+}
+
+# download_and_extract <url> <dest_dir> [strip_components] [retries] [connect_timeout] [max_time]
+# Fetch a tarball to a temp file and extract it into <dest_dir>
+# (tar auto-detects gz/xz/bz2 compression). The temp file is always
+# removed, including on download or extraction failure, so a partial
+# download never leaks. Returns non-zero on failure; caller decides
+# whether that is fatal.
+download_and_extract() {
+  local url="$1"
+  local dest_dir="$2"
+  local strip="${3:-0}"
+  local retries="${4:-3}"
+  local connect_timeout="${5:-}"
+  local max_time="${6:-}"
+  local tmp_tar
+
+  mkdir -p "${dest_dir}" || { printf 'Failed to create %s\n' "${dest_dir}" >&2; return 1; }
+  tmp_tar="$(mktemp "${TMPDIR:-/tmp}/download-extract-XXXXXX")" || { printf 'mktemp failed for %s\n' "${url}" >&2; return 1; }
+
+  if ! download_file "${url}" "${tmp_tar}" "${retries}" "${connect_timeout}" "${max_time}"; then
+    rm -f "${tmp_tar}"
+    printf 'Download failed: %s\n' "${url}" >&2
+    return 1
+  fi
+  if ! tar -xf "${tmp_tar}" -C "${dest_dir}" --strip-components="${strip}"; then
+    rm -f "${tmp_tar}"
+    printf 'Extraction failed for %s (into %s)\n' "${url}" "${dest_dir}" >&2
+    return 1
+  fi
+  rm -f "${tmp_tar}"
 }
 
 download_verified_file() {
@@ -34,6 +81,7 @@ download_verified_file() {
   download_file "$url" "$dest"
   checksum_output="$(printf '%s  %s\n' "$expected_sha256" "$dest" | sha256sum -c - 2>&1)" || {
     printf 'Checksum verification FAILED for %s: %s\n' "${dest}" "${checksum_output}" >&2
+    rm -f "$dest"
     return 1
   }
 }

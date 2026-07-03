@@ -6,6 +6,21 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
+# download_file lives in 01-core/downloads.sh (normally loaded via common.sh);
+# load it directly when a caller sourced this file without the module chain.
+if ! command -v download_file >/dev/null 2>&1; then
+  for _vulkan_dl in \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/downloads.sh" \
+    "/opt/scripts/core/downloads.sh"; do
+    if [ -f "${_vulkan_dl}" ]; then
+      # shellcheck disable=SC1090
+      source "${_vulkan_dl}"
+      break
+    fi
+  done
+  unset _vulkan_dl
+fi
+
 install_vulkan_prereqs() {
   log "Installing Vulkan SDK prerequisites"
   local -a host_packages=(
@@ -281,7 +296,7 @@ install_vulkan_sdk() {
   local tarball="vulkansdk-linux-x86_64-${version}.tar.xz"
   local url="https://sdk.lunarg.com/sdk/download/${version}/linux/${tarball}"
   log "Downloading ${tarball} from ${url}"
-  wget --timeout=30 --tries=3 -q "$url" -O "$tarball" || die "Failed to download Vulkan SDK"
+  download_file "$url" "$tarball" 3 30 || die "Failed to download Vulkan SDK"
   [ -s "$tarball" ] || die "Downloaded tarball is empty"
 
   log "Extracting Vulkan SDK to ${VULKAN_INSTALL_ROOT}/${version}..."

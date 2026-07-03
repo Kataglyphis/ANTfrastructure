@@ -11,6 +11,13 @@ if ! command -v warn >/dev/null 2>&1; then
   warn() { printf '[WARN] %s\n' "$*" >&2; }
 fi
 
+# download_file lives in downloads.sh (normally loaded via common.sh); load it
+# from the same directory when this file is sourced standalone.
+if ! command -v download_file >/dev/null 2>&1; then
+  # shellcheck disable=SC1091
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/downloads.sh"
+fi
+
 # install_abseil_headers — fetch and extract the abseil-cpp public headers so
 # downstream consumers of tflite/interpreter.h can resolve absl/types/span.h.
 #
@@ -37,14 +44,12 @@ install_abseil_headers() {
 
   info "Downloading abseil-cpp headers (tag ${absl_tag}) to ${dest_dir}/absl/ ..."
 
-  # Stage the tarball via curl or wget.
+  # Stage the tarball via the shared download helper (curl-preferred, wget
+  # fallback, 3 retries). Guarded so a missing tool degrades to the same
+  # warn-and-return-1 path as before instead of download_file's hard die().
   local absl_tar_resolved=""
-  if command -v curl >/dev/null 2>&1; then
-    if curl -fSL --retry 3 "${absl_url}" -o "${absl_tar}" 2>/dev/null; then
-      absl_tar_resolved="${absl_tar}"
-    fi
-  elif command -v wget >/dev/null 2>&1; then
-    if wget --retry-connrefused --timeout=30 -O "${absl_tar}" "${absl_url}" 2>/dev/null; then
+  if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
+    if download_file "${absl_url}" "${absl_tar}" 2>/dev/null; then
       absl_tar_resolved="${absl_tar}"
     fi
   fi
