@@ -2,10 +2,10 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Temporary diagnostic: capture the compiler stderr of failed codec probes so
-# skips print WHY (header not found, etc.). Default on while recovering codecs;
-# set FFMPEG_PROBE_DEBUG=0 to silence. Revert the default to 0 once codecs green.
-: "${FFMPEG_PROBE_DEBUG:=1}"
+# Optional diagnostic: capture the compiler stderr of failed codec probes so
+# skips print WHY (header not found, etc.). Off by default; set
+# FFMPEG_PROBE_DEBUG=1 in the environment to re-enable when investigating a skip.
+: "${FFMPEG_PROBE_DEBUG:=0}"
 export FFMPEG_PROBE_DEBUG
 
 # ==============================================================================
