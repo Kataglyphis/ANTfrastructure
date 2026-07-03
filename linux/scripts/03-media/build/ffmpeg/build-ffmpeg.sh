@@ -529,8 +529,11 @@ ffmpeg_enable_via_synth_pkgconfig() {
     [ -n "${version}" ] || version="1.0"
 
     local pc_dir="${prefix}/lib/pkgconfig"
-    mkdir -p "${pc_dir}" 2>/dev/null || return 1
-    cat > "${pc_dir}/${pkg_name}.pc" <<EOF
+    if ! mkdir -p "${pc_dir}"; then
+        echo "  synth-pc ${feature}: FAILED to mkdir ${pc_dir} (prefix not writable?)"
+        return 1
+    fi
+    if ! cat > "${pc_dir}/${pkg_name}.pc" <<EOF
 prefix=${prefix}
 Name: ${pkg_name}
 Description: ${feature} (pkg-config synthesized by build-ffmpeg.sh)
@@ -538,6 +541,11 @@ Version: ${version}
 Cflags: ${cflags}
 Libs: ${libs}
 EOF
+    then
+        echo "  synth-pc ${feature}: FAILED to write ${pc_dir}/${pkg_name}.pc"
+        return 1
+    fi
+    echo "  synth-pc ${feature}: wrote ${pc_dir}/${pkg_name}.pc (Cflags='${cflags}' Libs='${libs}')"
     # Prepend so this shadows any broken vendor .pc already on the path, and
     # export it so FFmpeg's configure (a child process) resolves the same module.
     export PKG_CONFIG_PATH="${pc_dir}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
@@ -558,7 +566,7 @@ ffmpeg_probe_libonnxruntime() {
         if ffmpeg_enable_via_synth_pkgconfig "libonnxruntime" "libonnxruntime" \
             "onnxruntime_c_api.h" "OrtGetApiBase" "${onnx_base}" \
             "-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session" \
-            "-L${onnx_base}/lib -lonnxruntime" "${ONNXRUNTIME_VERSION#v}"; then
+            "-L${onnx_base}/lib -lonnxruntime -lstdc++ -lpthread -lm -ldl" "${ONNXRUNTIME_VERSION#v}"; then
             echo "ONNX Runtime enabled via synthesized pkg-config at ${onnx_base}."
             return 0
         fi
