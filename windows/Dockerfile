@@ -11,6 +11,16 @@ FROM ${BASE_IMAGE}
 ARG BUILD_DATE=""
 ARG VCS_REF=""
 
+# Runtime DLL resolution: onnxruntime.dll lives in the install's bin\ (the media
+# PATH only carried lib\, which holds the provider DLLs) — without this, anything
+# linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
+ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
+
+# rustup ships in the base image but no default toolchain was ever installed —
+# `rustc` failed with "no default is configured". Install/set it here where the
+# layer is cheap to rebuild; move into setup-rust-toolchain.ps1 at the next base rebuild.
+RUN rustup default stable 2>&1
+
 COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
 # Smoke test is documented to run from inside the container (docs/windows-builds.md)
 COPY windows\scripts\smoke-test-container.ps1 C:\temp\scripts\smoke-test-container.ps1

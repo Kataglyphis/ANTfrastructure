@@ -488,8 +488,9 @@ if (Test-Path $tvmRoot) {
     Assert-DirectoryExists -Path $tvmRoot -Description "TVM install root ($tvmRoot)"
     $tvmInclude = Join-Path $tvmRoot 'include'
     if (Test-Path $tvmInclude) {
-        $tvmHeaders = Get-ChildItem -Path $tvmInclude -Filter 'tvm_runtime.h' -Recurse -ErrorAction SilentlyContinue
-        Assert-Test -Name "TVM runtime header (tvm_runtime.h)" -Condition { $tvmHeaders.Count -gt 0 } -FailMessage "No tvm_runtime.h found under $tvmInclude"
+        # TVM has no tvm_runtime.h — its runtime C API header is tvm/runtime/c_runtime_api.h
+        $tvmHeaders = Get-ChildItem -Path $tvmInclude -Filter 'c_runtime_api.h' -Recurse -ErrorAction SilentlyContinue
+        Assert-Test -Name "TVM runtime header (c_runtime_api.h)" -Condition { $tvmHeaders.Count -gt 0 } -FailMessage "No c_runtime_api.h found under $tvmInclude"
     } else {
         Write-Host '  [SKIP] TVM include dir not found' -ForegroundColor Yellow
         $script:skipped++
