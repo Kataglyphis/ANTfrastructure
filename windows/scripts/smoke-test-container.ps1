@@ -337,13 +337,14 @@ Assert-DirectoryExists -Path $litertRoot -Description 'LiteRT root dir'
 Assert-DirectoryExists -Path $litertInclude -Description 'LiteRT include dir'
 
 if (Test-Path $litertInclude) {
-    $litertHeaders = Get-ChildItem -Path $litertInclude -Filter 'tensorflow/lite/c_api.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT C API header" -Condition { $litertHeaders.Count -gt 0 } -FailMessage "No LiteRT C API header found"
-    $litertCxxHeaders = Get-ChildItem -Path $litertInclude -Filter 'tensorflow/lite/interpreter.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT C++ API header" -Condition { $litertCxxHeaders.Count -gt 0 } -FailMessage "No LiteRT interpreter header found"
-    # Check GPU delegate header
-    $litertGpuHeaders = Get-ChildItem -Path $litertInclude -Filter 'delegate/gpu/*.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT GPU delegate headers" -Condition { $litertGpuHeaders.Count -gt 0 } -FailMessage "No LiteRT GPU delegate headers found"
+    # NB: -Filter matches file NAMES only — the old 'tensorflow/lite/c_api.h'
+    # path-style filters could never match anything.
+    $litertHeaders = Get-ChildItem -Path $litertInclude -Filter 'c_api.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT C API header" -Condition { $litertHeaders.Count -gt 0 } -FailMessage "No c_api.h found under $litertInclude"
+    $litertCxxHeaders = Get-ChildItem -Path $litertInclude -Filter 'interpreter.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT C++ API header" -Condition { $litertCxxHeaders.Count -gt 0 } -FailMessage "No interpreter.h found under $litertInclude"
+    $litertGpuHeaders = Get-ChildItem -Path $litertInclude -Filter '*.h' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\gpu\\' }
+    Assert-Test -Name "LiteRT GPU delegate headers" -Condition { @($litertGpuHeaders).Count -gt 0 } -FailMessage "No GPU delegate headers found under $litertInclude"
 }
 
 if (Test-Path $litertLibDir) {
@@ -352,8 +353,17 @@ if (Test-Path $litertLibDir) {
 }
 
 if (Test-Path $litertBinDir) {
+    # LiteRT builds statically by default (TFLITE_ENABLE_INSTALL=OFF, no
+    # BUILD_SHARED_LIBS) — DLLs are optional; static .lib files above are the
+    # real artifact. Report informationally instead of failing.
     $litertDlls = Get-ChildItem -Path $litertBinDir -Filter '*.dll' -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT DLL files" -Condition { $litertDlls.Count -gt 0 } -FailMessage "No LiteRT .dll files found"
+    if ($litertDlls.Count -gt 0) {
+        Write-Host "  [PASS] LiteRT DLL files ($($litertDlls.Count) found)" -ForegroundColor Green
+        $script:passed++
+    } else {
+        Write-Host '  [SKIP] LiteRT DLL files (static build - .lib only)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 }
 
 # ============================================================================
