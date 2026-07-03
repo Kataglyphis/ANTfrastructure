@@ -214,8 +214,16 @@ if (Test-Path $configMakPath) {
     [System.IO.File]::WriteAllText($configMakPath, $cm)
 }
 
-# Replace makedef with version that reads .ver directly (avoids Windows command-line length limit)
-Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\ffmpeg\002-replacement-makedef.patch') -SourceDir $srcDir -IgnoreWhitespace
+# Replace makedef wholesale (full-file overwrite, deliberately NOT a .patch:
+# the file is completely rewritten, so a context diff adds only fragility —
+# it broke twice on upstream drift / git-apply quirks). The replacement expands
+# version-script globs against per-object llvm-nm symbol dumps via xargs,
+# avoiding the upstream script's single lib.exe call that exceeds the Windows
+# command-line length limit for libavcodec.
+$makedefSrc = Join-Path $PSScriptRoot 'patches\ffmpeg\makedef'
+$makedefDst = Join-Path $srcDir 'compat\windows\makedef'
+Copy-Item $makedefSrc $makedefDst -Force
+Write-Host "Replaced compat/windows/makedef (glob-expanding, response-file-aware)"
 
 # Parallel compile first; make is incremental, so the -j1 retry below only redoes
 # what failed. Parallel -jN can hit spurious LNK1120 link races with MSVC when
