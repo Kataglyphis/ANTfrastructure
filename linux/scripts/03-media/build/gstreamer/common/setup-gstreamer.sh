@@ -79,7 +79,9 @@ done
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.29.2}"
+# Positional arg wins; else the env value forwarded from versions.env; the
+# literal is a last-resort fallback only (keep in sync with versions.env).
+GSTREAMER_VERSION="${1:-${GSTREAMER_VERSION:-1.29.2}}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
