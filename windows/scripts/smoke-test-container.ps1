@@ -531,16 +531,19 @@ if (Test-Path $ffmpegBin) {
         return ($v -ne $null) -and ($v -match 'ffmpeg')
     } -FailMessage "ffmpeg -version failed"
 
-    # Verify DNN support is compiled in (--enable-dnn --enable-libonnx)
-    Assert-Test -Name "ffmpeg built with --enable-dnn" -Condition {
-        $cfg = & $ffmpegExe -hide_banner -configure 2>&1 | Out-String
-        return ($cfg -match '--enable-dnn')
-    } -FailMessage "ffmpeg was not configured with --enable-dnn"
+    # Verify ONNX-backed DNN support. NB: `-configure` is not an ffmpeg option
+    # (the old checks grepped an error message); the configuration line is part
+    # of the -version banner. `--enable-dnn` is not a real configure flag either
+    # — DNN filters are enabled by enabling a backend (libonnxruntime).
+    $ffCfg = & $ffmpegExe -version 2>&1 | Out-String
+    Assert-Test -Name "ffmpeg built with --enable-libonnxruntime" -Condition {
+        $ffCfg -match 'enable-libonnxruntime'
+    } -FailMessage "ffmpeg was not configured with --enable-libonnxruntime"
 
-    Assert-Test -Name "ffmpeg built with --enable-libonnx" -Condition {
-        $cfg = & $ffmpegExe -hide_banner -configure 2>&1 | Out-String
-        return ($cfg -match '--enable-libonnx')
-    } -FailMessage "ffmpeg was not configured with --enable-libonnx"
+    Assert-Test -Name "ffmpeg dnn_processing filter available" -Condition {
+        $filters = & $ffmpegExe -hide_banner -filters 2>&1 | Out-String
+        return ($filters -match 'dnn_')
+    } -FailMessage "no dnn_* filters reported by ffmpeg -filters"
 } else {
     Write-Host '  [SKIP] FFmpeg not installed (C:\runtime\ffmpeg\bin not found)' -ForegroundColor Yellow
     $script:skipped++
