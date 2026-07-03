@@ -21,9 +21,12 @@ ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 # layer is cheap to rebuild; move into setup-rust-toolchain.ps1 at the next base
 # rebuild. cmd.exe shields rustup's stderr progress from the inherited
 # powershell SHELL's $ErrorActionPreference=Stop.
-RUN cmd.exe /c "rustup default stable 2>&1"; `
+# EAP=Continue for this RUN only: rustup logs progress to stderr, which the
+# inherited EAP=Stop turns into terminating NativeCommandErrors even on success.
+RUN $ErrorActionPreference = 'Continue'; `
+    rustup default stable 2>&1 | ForEach-Object { "$_" }; `
     if ($LASTEXITCODE -ne 0) { throw "rustup default stable failed ($LASTEXITCODE)" }; `
-    cmd.exe /c "rustc --version 2>&1"
+    rustc --version
 
 COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
 # Smoke test is documented to run from inside the container (docs/windows-builds.md)
