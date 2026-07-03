@@ -121,6 +121,13 @@ install_build_dependencies() {
         # install_target_packages groups are all-or-nothing.
         install_target_packages libpython3-stdlib || \
             warn "Target libpython3-stdlib unavailable; wheel builds will use host sysconfig"
+        # Target sleef: pytorch's bundled sleef compiles its codegen tools
+        # (mkrename/mkdisp) for the TARGET under cross and dies with
+        # "Exec format error" when the build runs them on the host. With the
+        # target libsleef-dev present, build_torch_wheel sets USE_SYSTEM_SLEEF=1
+        # and skips the bundled build entirely. Best-effort (ports coverage).
+        install_target_packages libsleef-dev || \
+            warn "Target libsleef-dev unavailable; bundled sleef will fail under cross (Exec format error)"
         return 0
     fi
 
@@ -301,6 +308,19 @@ build_torch_wheel() {
     rm -rf "${dist_dir}"
     mkdir -p "${dist_dir}"
 
+    # Bundled sleef cross-compiles its host-run codegen tools (mkrename) for
+    # the target -> "Exec format error". Use the target's system sleef when the
+    # dev package landed (see install_build_dependencies); otherwise keep the
+    # bundled build so the failure stays visible in the log.
+    local use_system_sleef=0
+    if command -v cross_package_files_present >/dev/null 2>&1 && \
+       cross_package_files_present "libsleef-dev:$(cross_target_arch 2>/dev/null || echo none)"; then
+        use_system_sleef=1
+        log "Using target system sleef (libsleef-dev) instead of pytorch's bundled sleef"
+    else
+        warn "Target libsleef-dev not present; bundled sleef will likely fail (Exec format error on mkrename)"
+    fi
+
     append_common_cross_cmake_args cmake_args
     cmake_args+=("-DBLAS=OpenBLAS")
     cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
@@ -318,6 +338,7 @@ build_torch_wheel() {
         export USE_DISTRIBUTED=0 USE_GLOO=0 USE_MPI=0 USE_TENSORPIPE=0 USE_NCCL=0 && \
         export BUILD_TEST=0 BUILD_BINARY=0 USE_KINETO=0 && \
         export USE_FBGEMM=0 USE_MKLDNN=0 USE_NNPACK=0 USE_QNNPACK=0 USE_PYTORCH_QNNPACK=0 USE_XNNPACK=0 && \
+        export USE_SYSTEM_SLEEF="${use_system_sleef}" && \
         export USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_OPENMP=0 && \
         export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include" && \
         export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include" && \
