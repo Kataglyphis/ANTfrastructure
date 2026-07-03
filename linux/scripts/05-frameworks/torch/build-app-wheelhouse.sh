@@ -6,6 +6,22 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
     source /opt/scripts/core/cross-env.sh
 fi
 
+# shell_quote_args lives in common.sh, which cross-env.sh does NOT source.
+# Without it both wheel builds died instantly at
+# cmake_args_string="$(shell_quote_args ...)" ("command not found"), silently
+# absorbed by the best-effort WARN path — the long-standing "riscv64 cross
+# wheel build failed" was (at least partly) this.
+for _common in \
+    "/opt/scripts/core/common.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/common.sh"; do
+    if [ -f "${_common}" ]; then
+        # shellcheck disable=SC1090,SC1091
+        source "${_common}"
+        break
+    fi
+done
+unset _common
+
 # Source canonical versions.env so PYTORCH_VERSION / TORCHVISION_VERSION are
 # always available even when this script is invoked outside the orchestrator
 # (which is the typical case in the media app-wheelhouse stage). Fallback paths
