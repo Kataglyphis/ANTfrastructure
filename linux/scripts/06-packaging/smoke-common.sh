@@ -44,7 +44,7 @@ check_version() {
 # Check that a compiler's -dumpmachine starts with the expected prefix.
 # Usage: check_dumpmachine "/opt/gcc-16.1.0/bin/gcc" "x86_64" "host gcc"
 check_dumpmachine() {
-  local cc="$1 expected="$2" label="$3"
+  local cc="$1" expected="$2" label="$3"
   local dump
   [ -x "${cc}" ] || { fail "${label}: ${cc} not found"; return 1; }
   dump="$("${cc}" -dumpmachine 2>/dev/null || true)"
@@ -58,7 +58,7 @@ check_dumpmachine() {
 # Check that a binary's ELF Machine: field contains the expected substring.
 # Usage: check_elf_machine "/opt/gcc-16.1.0/bin/gcc" "X86-64" "host gcc"
 check_elf_machine() {
-  local bin="$1 expected="$2" label="$3"
+  local bin="$1" expected="$2" label="$3"
   local machine
   [ -f "${bin}" ] || { fail "${label}: ${bin} not found"; return 1; }
   if command -v readelf >/dev/null 2>&1; then
