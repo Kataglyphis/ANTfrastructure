@@ -86,8 +86,11 @@ $gitUsrBin = 'C:\Program Files\Git\usr\bin'
 $env:PATH = "$scoopShims;$gitUsrBin;$env:PATH"
 $bashExe = Join-Path $gitUsrBin 'bash.exe'
 
-# MSYS2 paths
-$cygPrefix = "/$($prefix.Substring(0,1).ToLower())$($prefix.Substring(2))"
+# MSYS2 paths. Backslashes MUST become forward slashes: the previous form
+# produced /c\runtime\ffmpeg, configure collapsed it to /cruntimeffmpeg, and
+# `make install` silently delivered everything into <git-root>\cruntimeffmpeg —
+# which is why the image only ever carried the fallback exes.
+$cygPrefix = '/' + $prefix.Substring(0,1).ToLower() + ($prefix.Substring(2) -replace '\\', '/')
 $cygSrc = $srcDir -replace '\\', '/' -replace '^C:', '/c'
 
 # Configure with --toolchain=msvc (officially supported by FFmpeg on Windows)
@@ -130,6 +133,10 @@ if ($onnxHeaderCopied) {
 }
 $confFlags += '--toolchain=msvc'
 $confFlags += '--disable-x86asm'
+# vfwcap links vfw32.lib -> imports AVICAP32.dll, which does NOT exist in
+# Windows Server Core containers: every process loading avdevice would die
+# with STATUS_DLL_NOT_FOUND. DirectShow capture (dshow) remains available.
+$confFlags += '--disable-indev=vfwcap'
 
 $confStr = $confFlags -join ' '
 
@@ -228,6 +235,17 @@ if (-not (Test-Path $builtFfmpeg)) {
 }
 Write-Host 'Attempting install from source if built...'
 & cmd /c "`"$bashExe`" -c `"cd $cygSrc && make install`" 2>&1" | ForEach-Object { Write-Host $_ }
+if ($LASTEXITCODE -ne 0) { Write-Warning "make install exited $LASTEXITCODE - verifying what landed..." }
+
+# A --enable-shared build is only usable if the av*.dll runtime libraries were
+# installed next to the exes; exes alone die with STATUS_DLL_NOT_FOUND. Treat an
+# incomplete install as a failed source build so the fallback (or a loud error)
+# kicks in instead of shipping a broken ffmpeg.
+$installedDlls = @(Get-ChildItem "$ffmpegDir\*.dll" -ErrorAction SilentlyContinue)
+if ((Test-Path "$ffmpegDir\ffmpeg.exe") -and $installedDlls.Count -eq 0) {
+    Write-Warning 'Source install produced exes but no av*.dll runtime libraries - discarding as incomplete.'
+    Remove-Item "$ffmpegDir\ffmpeg.exe", "$ffmpegDir\ffplay.exe", "$ffmpegDir\ffprobe.exe" -Force -ErrorAction SilentlyContinue
+}
 
 # Download pre-built MSVC FFmpeg if source build didn't produce ffmpeg.exe
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
@@ -258,6 +276,9 @@ Write-Host "=== FFmpeg build completed ==="
 Write-Host "Artifacts at: $prefix"
 if (Test-Path "$ffmpegDir\ffmpeg.exe") { Write-Host "ffmpeg.exe installed" }
 if (Test-Path "$ffmpegDir\ffprobe.exe") { Write-Host "ffprobe.exe installed" }
+$finalDlls = @(Get-ChildItem "$ffmpegDir\*.dll" -ErrorAction SilentlyContinue)
+Write-Host "runtime DLLs installed: $($finalDlls.Count)"
+if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete: no ffmpeg.exe (source build and fallback both failed)' }
 
 
 

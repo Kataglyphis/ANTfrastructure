@@ -1,8 +1,8 @@
 diff --git a/compat/windows/makedef b/compat/windows/makedef
-index c5755d6..7884a9b 100644
+index bb4d04f..f8a243e 100644
 --- a/compat/windows/makedef
 +++ b/compat/windows/makedef
-@@ -1,149 +1,6 @@
+@@ -1,148 +1,47 @@
 -#!/bin/sh
 -
 -# Copyright (c) 2013, Derek Buitenhuis
@@ -10,7 +10,12 @@ index c5755d6..7884a9b 100644
 -# Permission to use, copy, modify, and/or distribute this software for any
 -# purpose with or without fee is hereby granted, provided that the above
 -# copyright notice and this permission notice appear in all copies.
--#
++#!/usr/bin/env sh
++# Replacement makedef: expands version-script globs (e.g. `av*;`) against the
++# global defined symbols of the actual objects, dumped with llvm-nm via xargs
++# (xargs batches around the Windows command-line length limit that breaks the
++# upstream script's single lib.exe invocation for libavcodec's ~800 objects).
+ #
 -# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 -# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
 -# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -28,15 +33,22 @@ index c5755d6..7884a9b 100644
 -    echo "Usage: makedef <version_script> <objects>" >&2
 -    exit 0
 -fi
--
--vscript=$1
--shift
--
--if [ ! -f "$vscript" ]; then
++# Notes vs the previous replacement (which emitted an EMPTY export list):
++#  * FFmpeg version scripts contain GLOBS (av*;), not literal symbol names —
++#    they must be expanded against real object symbols.
++#  * The msvc toolchain invokes this with SLIB_CREATE_DEF_INPUTS=@target.objs —
++#    a RESPONSE FILE listing the objects — which must be read, not treated as
++#    an object itself.
+ 
+ vscript=$1
+ shift
+ 
+ if [ ! -f "$vscript" ]; then
 -    echo "Version script does not exist" >&2
--    exit 1
--fi
--
++    echo "Version script does not exist: $vscript" >&2
+     exit 1
+ fi
+ 
 -for object in "$@"; do
 -    case "$object" in
 -    @*)
@@ -150,10 +162,30 @@ index c5755d6..7884a9b 100644
 -          sed -e 's/^/    /')
 -done
 -
-+#!/usr/bin/env sh
-+# Replacement makedef: reads .ver file, generates .def directly, ignoring .o
-+# args (avoids Windows command-line length limit for avcodec).
-+ver_file="$1"
- echo "EXPORTS"
 -echo "${list}" | sort | uniq | tail -n +2
-+sed -n "s/^ *\([a-zA-Z][a-zA-Z0-9_]*\);.*/\1/p" "$ver_file"
++# Glob patterns from the global: section (semicolon-separated, may span lines)
++pats=$(sed -n '/global:/,/local:/p' "$vscript" \
++        | sed -e 's/.*global://' -e 's/local:.*//' \
++        | tr ';' '\n' \
++        | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d')
++
++# Object list: expand @response-file args, pass through plain object args
++objs=$(for a in "$@"; do
++           case "$a" in
++               @*) tr ' ' '\n' < "${a#@}" ;;
++               *)  printf '%s\n' "$a" ;;
++           esac
++       done | sed -e '/^[[:space:]]*$/d')
++
++# Global defined symbols from all objects (xargs batches the command lines)
++dump=$(printf '%s\n' "$objs" \
++        | xargs llvm-nm --defined-only -g 2>/dev/null \
++        | awk 'NF>=3 {print $3}' \
++        | sed -e "s/^${EXTERN_PREFIX}//" \
++        | sort -u)
++
++echo "EXPORTS"
++for p in $pats; do
++    rx=$(printf '%s' "$p" | sed -e 's/\./\\./g' -e 's/\*/.*/g')
++    printf '%s\n' "$dump" | grep -E "^${rx}\$" || true
++done | sort -u | sed 's/^/    /'
