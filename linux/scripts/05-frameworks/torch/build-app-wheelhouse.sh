@@ -544,6 +544,16 @@ build_torchvision_wheel() {
         "${BUILD_PYTHON}" setup.py bdist_wheel --plat-name "${wheel_platform}" -d "${dist_dir}"
     ); then
         warn "torchvision riscv64 cross wheel build failed; leaving it to the native torch stage"
+        # torch.utils.cpp_extension swallows ninja's compile output on the
+        # non-verbose path ("Error compiling objects for extension" with no
+        # detail). Re-run ninja in the extension build dir to surface the real
+        # compiler error in the log.
+        local _vis_ninja_dir
+        _vis_ninja_dir="$(find "${src_dir}/build" -name build.ninja -printf '%h\n' -quit 2>/dev/null || true)"
+        if [ -n "${_vis_ninja_dir}" ]; then
+            warn "torchvision ninja diagnostic (${_vis_ninja_dir}):"
+            (cd "${_vis_ninja_dir}" && ninja -v 2>&1 | tail -60) >&2 || true
+        fi
         return 1
     fi
 
