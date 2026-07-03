@@ -126,14 +126,19 @@ try {
     & cmd.exe /c """$pyExe"" -m pip install meson > ""$pipLog"" 2>&1"
     Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
 
-    # Find meson executable from Scripts dir
-    $pythonScripts = Join-Path (Split-Path $pyExe -Parent) 'Scripts'
-    $mesonExe = Join-Path $pythonScripts 'meson.exe'
-    if (-not (Test-Path $mesonExe)) {
-        $mesonVer = & $pyExe -m pip show meson 2>&1 | Select-String '^Location:' | ForEach-Object { $_ -replace '^Location: ', '' }
-        if ($mesonVer) { $mesonExe = (Get-Item $mesonVer.Trim()).Directory.Parent.FullName + '\Scripts\meson.exe' }
+    # Find meson.exe: ask Python where console scripts land. The in-tree PCbuild
+    # layout (sys.prefix = the source root) puts them at C:\temp\cpython\Scripts,
+    # NOT next to python.exe — pip's install warning confirms that location.
+    $pythonScripts = (cmd.exe /c """$pyExe"" -c ""import sysconfig; print(sysconfig.get_path('scripts'))""" | Select-Object -First 1)
+    if ($pythonScripts) { $pythonScripts = "$pythonScripts".Trim() }
+    if (-not $pythonScripts -or -not (Test-Path (Join-Path $pythonScripts 'meson.exe'))) {
+        $pythonScripts = @(
+            (Join-Path (Split-Path $pyExe -Parent) 'Scripts'),
+            (Join-Path $env:TEMP_DIR 'cpython\Scripts')
+        ) | Where-Object { Test-Path (Join-Path $_ 'meson.exe') } | Select-Object -First 1
     }
-    if (-not (Test-Path $mesonExe)) { throw 'meson.exe not found after pip install' }
+    if (-not $pythonScripts) { throw 'meson.exe not found after pip install' }
+    $mesonExe = Join-Path $pythonScripts 'meson.exe'
     $env:PATH = "$pythonScripts;$env:PATH"
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
