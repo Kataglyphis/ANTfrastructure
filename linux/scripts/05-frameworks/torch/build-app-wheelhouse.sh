@@ -193,6 +193,13 @@ set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR ${processor})
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 EOF
+    # The toolchain file is also our guaranteed channel for cache variables that
+    # pytorch's setup.py won't forward from CMAKE_ARGS: hand ProtoBuf.cmake a
+    # HOST-runnable protoc (see build_host_protoc in build_torch_wheel).
+    if [ -n "${CROSS_HOST_PROTOC:-}" ] && [ -x "${CROSS_HOST_PROTOC}" ]; then
+        printf 'set(CAFFE2_CUSTOM_PROTOC_EXECUTABLE "%s" CACHE FILEPATH "host protoc for cross builds")\n' \
+            "${CROSS_HOST_PROTOC}" >> "${path}"
+    fi
     printf '%s' "${path}"
 }
 
@@ -335,6 +342,30 @@ build_torch_wheel() {
 
     rm -rf "${dist_dir}"
     mkdir -p "${dist_dir}"
+
+    # Bundled protobuf builds protoc for the TARGET; onnx codegen then execs it
+    # on the HOST -> "Exec format error" (protoc-3.13.0.0). Build the canonical
+    # host protoc with pytorch's own helper (scrubbed env: no cross toolchain)
+    # and hand it to ProtoBuf.cmake via the generated toolchain file.
+    local CROSS_HOST_PROTOC=""
+    if [ -f "${src_dir}/scripts/build_host_protoc.sh" ]; then
+        log "Building host protoc via scripts/build_host_protoc.sh..."
+        if (cd "${src_dir}" && \
+            env -u CC -u CXX -u AR -u RANLIB -u LD -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+                -u CMAKE_TOOLCHAIN_FILE -u CMAKE_SYSTEM_NAME -u CMAKE_SYSTEM_PROCESSOR \
+                bash scripts/build_host_protoc.sh > /tmp/build_host_protoc.log 2>&1); then
+            CROSS_HOST_PROTOC="${src_dir}/build_host_protoc/bin/protoc"
+        fi
+        if [ -x "${CROSS_HOST_PROTOC}" ]; then
+            log "Host protoc ready: ${CROSS_HOST_PROTOC}"
+        else
+            CROSS_HOST_PROTOC=""
+            warn "build_host_protoc.sh failed (tail of /tmp/build_host_protoc.log follows); onnx codegen will hit Exec format error"
+            tail -20 /tmp/build_host_protoc.log >&2 || true
+        fi
+    else
+        warn "pytorch has no scripts/build_host_protoc.sh at this ref; onnx codegen will hit Exec format error"
+    fi
 
     # Bundled sleef cross-compiles its host-run codegen tools (mkrename) for
     # the target -> "Exec format error". Use the target's system sleef when the
