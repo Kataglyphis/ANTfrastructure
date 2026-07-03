@@ -488,9 +488,11 @@ if (Test-Path $tvmRoot) {
     Assert-DirectoryExists -Path $tvmRoot -Description "TVM install root ($tvmRoot)"
     $tvmInclude = Join-Path $tvmRoot 'include'
     if (Test-Path $tvmInclude) {
-        # TVM has no tvm_runtime.h — its runtime C API header is tvm/runtime/c_runtime_api.h
-        $tvmHeaders = Get-ChildItem -Path $tvmInclude -Filter 'c_runtime_api.h' -Recurse -ErrorAction SilentlyContinue
-        Assert-Test -Name "TVM runtime header (c_runtime_api.h)" -Condition { $tvmHeaders.Count -gt 0 } -FailMessage "No c_runtime_api.h found under $tvmInclude"
+        # Layout-agnostic: TVM's runtime header names change across releases
+        # (c_runtime_api.h was dropped by the new FFI in 0.25) — assert the
+        # tvm/runtime header directory exists and is non-empty instead.
+        $tvmHeaders = Get-ChildItem -Path (Join-Path $tvmInclude 'tvm\runtime') -Filter '*.h' -Recurse -ErrorAction SilentlyContinue
+        Assert-Test -Name "TVM runtime headers (tvm/runtime/*.h)" -Condition { $tvmHeaders.Count -gt 0 } -FailMessage "No headers found under $tvmInclude\tvm\runtime"
     } else {
         Write-Host '  [SKIP] TVM include dir not found' -ForegroundColor Yellow
         $script:skipped++
