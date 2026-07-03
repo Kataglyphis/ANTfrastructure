@@ -460,22 +460,32 @@ Write-TestHeader '16. VS MSBuild + ClangCL toolset integration'
 $tmpDir3 = Join-Path $env:TEMP 'kataglyphis-smoke-msbuild'
 New-Item -Path $tmpDir3 -ItemType Directory -Force | Out-Null
 
-# NB: single-quoted here-string — in the old double-quoted form PowerShell
-# evaluated MSBuild's $(VCTargetsPath) as a subexpression and the test always
-# failed before MSBuild even ran.
+# NB: single-quoted here-string — a double-quoted form makes PowerShell evaluate
+# MSBuild's $(VCTargetsPath) as a subexpression. The template also needs the
+# ProjectConfigurations item group + ConfigurationType, or VC targets reject it
+# with MSB8013 (validated in-container: builds clean with ClangCL).
 $vcxproj = @'
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{D497C90E-6D4C-4E96-9B21-000000000001}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup>
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>ClangCL</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ItemGroup>
     <ClCompile Include="smoke_msbuild.cpp" />
   </ItemGroup>
-  <PropertyGroup>
-    <Configuration>Release</Configuration>
-    <Platform>x64</Platform>
-    <PlatformToolset>ClangCL</PlatformToolset>
-  </PropertyGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
 '@
