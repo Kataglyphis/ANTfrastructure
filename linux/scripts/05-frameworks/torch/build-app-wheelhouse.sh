@@ -350,10 +350,14 @@ build_torch_wheel() {
     local CROSS_HOST_PROTOC=""
     if [ -f "${src_dir}/scripts/build_host_protoc.sh" ]; then
         log "Building host protoc via scripts/build_host_protoc.sh..."
+        # CMAKE_POLICY_VERSION_MINIMUM: bundled protobuf 3.13 declares
+        # cmake_minimum_required(<3.5), which cmake >=4 refuses outright; the
+        # flag is cmake's own documented escape hatch for exactly this.
         if (cd "${src_dir}" && \
             env -u CC -u CXX -u AR -u RANLIB -u LD -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
                 -u CMAKE_TOOLCHAIN_FILE -u CMAKE_SYSTEM_NAME -u CMAKE_SYSTEM_PROCESSOR \
-                bash scripts/build_host_protoc.sh > /tmp/build_host_protoc.log 2>&1); then
+                bash scripts/build_host_protoc.sh \
+                    --other-flags "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" > /tmp/build_host_protoc.log 2>&1); then
             CROSS_HOST_PROTOC="${src_dir}/build_host_protoc/bin/protoc"
         fi
         if [ -x "${CROSS_HOST_PROTOC}" ]; then
