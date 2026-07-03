@@ -551,7 +551,11 @@ install_manual() {
     
     # 3. Copy litert/c headers for C API compatibility
     info Ensuring strict C API compatibility...
-    cp -rv "litert/c" "${include_dir}/" 2>/dev/null || true
+    if [ -d "litert/c" ]; then
+        cp -rv "litert/c" "${include_dir}/"
+    else
+        warn "litert/c headers not found in source tree; C API consumers may miss headers"
+    fi
     
     # 4. Create tensorflow/lite -> tflite symlink for compatibility
     # libcamera and other projects expect headers at <tensorflow/lite/interpreter.h>

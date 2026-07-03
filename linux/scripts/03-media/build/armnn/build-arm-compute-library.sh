@@ -68,10 +68,19 @@ build_acl() {
     "${@}"
 
   mkdir -p "${ACL_INSTALL_DIR}/lib" "${ACL_INSTALL_DIR}/include"
+  # Each copy is individually tolerant (a build may produce only .so or only
+  # .a depending on flags), but the install as a WHOLE is verified below —
+  # these copies failing silently would leave armnn to fail much later with a
+  # missing-ACL mystery.
   cp -a build/*.so "${ACL_INSTALL_DIR}/lib/" 2>/dev/null || true
   cp -a build/*.a "${ACL_INSTALL_DIR}/lib/" 2>/dev/null || true
   cp -a include/* "${ACL_INSTALL_DIR}/include/" 2>/dev/null || true
   cp -a arm_compute "${ACL_INSTALL_DIR}/include/" 2>/dev/null || true
+
+  ls "${ACL_INSTALL_DIR}/lib/"libarm_compute* >/dev/null 2>&1 \
+    || die "ACL install verification failed: no libarm_compute* in ${ACL_INSTALL_DIR}/lib"
+  [ -d "${ACL_INSTALL_DIR}/include/arm_compute" ] \
+    || die "ACL install verification failed: arm_compute headers missing from ${ACL_INSTALL_DIR}/include"
 
   info "ACL installed to ${ACL_INSTALL_DIR}"
   ls -la "${ACL_INSTALL_DIR}/lib/" | head -10
