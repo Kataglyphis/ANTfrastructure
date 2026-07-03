@@ -49,13 +49,13 @@ param(
     [string[]]$MesonSetupArgs  = @()
 )
 
-$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
-
 # Backwards-compat: accept the deprecated -SrcDir alias (preferred form is -SourceDir).
 if ([string]::IsNullOrWhiteSpace($SourceDir) -and -not [string]::IsNullOrWhiteSpace($SrcDir)) { $SourceDir = $SrcDir }
 if ([string]::IsNullOrWhiteSpace($SourceDir)) { $SourceDir = 'C:\temp\gst-source' }
 
 # ---- module import (logging + build helpers + shared utilities) ----
+# NOTE: imports MUST precede any module-function call — Initialize-SourceBuildEnvironment
+# below used to be invoked before this block and died with CommandNotFoundException.
 $sharedPath = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
 if (-not (Test-Path $sharedPath)) { throw "Required module not found: $sharedPath" }
 Import-Module $sharedPath -Force
@@ -67,9 +67,10 @@ if (-not (Test-Path $modulePath)) {
 Import-Module $modulePath -Force
 
 $sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
-if (Test-Path $sourceBuildModule) {
-    Import-Module $sourceBuildModule -Force
-}
+if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
+Import-Module $sourceBuildModule -Force
+
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 # ---- logging ----
 $logContext = New-StructuredLogContext -LogDir $LogDir -Prefix 'gst-source-build'
