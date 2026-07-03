@@ -460,7 +460,10 @@ Write-TestHeader '16. VS MSBuild + ClangCL toolset integration'
 $tmpDir3 = Join-Path $env:TEMP 'kataglyphis-smoke-msbuild'
 New-Item -Path $tmpDir3 -ItemType Directory -Force | Out-Null
 
-$vcxproj = @"
+# NB: single-quoted here-string — in the old double-quoted form PowerShell
+# evaluated MSBuild's $(VCTargetsPath) as a subexpression and the test always
+# failed before MSBuild even ran.
+$vcxproj = @'
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
@@ -475,7 +478,7 @@ $vcxproj = @"
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
-"@
+'@
 $cppSource3 = @"
 int main() { return 0; }
 "@
