@@ -59,3 +59,12 @@ ENV FFMPEG_VERSION="${FFMPEG_VERSION}"
 COPY windows\scripts\patches\ffmpeg C:\temp\scripts\patches\ffmpeg
 COPY windows\scripts\build-ffmpeg-from-source.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\build-ffmpeg-from-source.ps1' -SourceDir 'C:\temp\ffmpeg-src' -InstallDir 'C:\runtime'
+
+# FFmpeg's msvc install routes the import libs (avcodec.lib, ...) into bin\
+# (SHLIB_INSTALL_EXTRA_SHLIB -> SHLIBDIR) while its pkgconfig files point
+# linkers at lib\ — gst-libav's link fails without this normalization.
+# Appended as its own layer so the expensive FFmpeg layer above stays cached.
+RUN if (Test-Path 'C:\runtime\ffmpeg\bin') { `
+        Copy-Item 'C:\runtime\ffmpeg\bin\*.lib' 'C:\runtime\ffmpeg\lib\' -Force -ErrorAction SilentlyContinue; `
+        Write-Host ('import libs in lib\: ' + @(Get-ChildItem 'C:\runtime\ffmpeg\lib\*.lib' -ErrorAction SilentlyContinue).Count) `
+    }
