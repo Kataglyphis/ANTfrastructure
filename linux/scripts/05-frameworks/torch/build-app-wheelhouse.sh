@@ -200,6 +200,23 @@ EOF
         printf 'set(CAFFE2_CUSTOM_PROTOC_EXECUTABLE "%s" CACHE FILEPATH "host protoc for cross builds")\n' \
             "${CROSS_HOST_PROTOC}" >> "${path}"
     fi
+    # Target Python Development artifacts: without these, FindPython reports
+    # "missing components: Development" under cross, pytorch silently flips
+    # BUILD_PYTHON to OFF, libtorch_python.so is never built, and the final
+    # torch._C stub link dies with "cannot find -ltorch_python" (all verified
+    # from configure/link logs). Explicit artifact cache vars satisfy
+    # FindPython/FindPython3 without probing.
+    local py_inc py_lib
+    py_inc="$(cross_target_python_include_dir 2>/dev/null || true)"
+    py_lib="$(cross_target_python_library 2>/dev/null || true)"
+    if [ -n "${py_inc}" ] && [ -d "${py_inc}" ] && [ -n "${py_lib}" ] && [ -f "${py_lib}" ]; then
+        cat >> "${path}" <<EOF
+set(Python_INCLUDE_DIR "${py_inc}" CACHE PATH "target Python include dir")
+set(Python_LIBRARY "${py_lib}" CACHE FILEPATH "target Python library")
+set(Python3_INCLUDE_DIR "${py_inc}" CACHE PATH "target Python include dir")
+set(Python3_LIBRARY "${py_lib}" CACHE FILEPATH "target Python library")
+EOF
+    fi
     printf '%s' "${path}"
 }
 
