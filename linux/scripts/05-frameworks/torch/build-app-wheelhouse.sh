@@ -114,6 +114,13 @@ install_build_dependencies() {
         if ! install_target_packages libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev; then
             warn "Some riscv64 target build dependencies are unavailable; continuing with the staged sysroot"
         fi
+        # Target Python stdlib provides /usr/lib/python3.X/_sysconfigdata__linux_<triplet>.py,
+        # which resolve_target_python_sysconfig_export needs so the wheel builds
+        # use the TARGET Python ABI metadata (correct extension suffixes) instead
+        # of falling back to the host sysconfig. Own apt call: best-effort, and
+        # install_target_packages groups are all-or-nothing.
+        install_target_packages libpython3-stdlib || \
+            warn "Target libpython3-stdlib unavailable; wheel builds will use host sysconfig"
         return 0
     fi
 
