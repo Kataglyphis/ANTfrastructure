@@ -37,6 +37,9 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
       org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" `
       org.opencontainers.image.licenses="Apache-2.0"
 
-# Exec-form entrypoint must go through cmd explicitly — "&&" as a bare array element
-# is not a shell operator and only worked by accident of .bat argument handling.
-ENTRYPOINT ["cmd","/S","/C","\"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat\" -arch=amd64 && powershell.exe -NoLogo -ExecutionPolicy Bypass"]
+# Launcher script instead of inline cmd: exec-form re-quoting mangles embedded
+# quotes around the spaces-in-path VsDevCmd.bat (literal \" reaches cmd.exe).
+# entrypoint.cmd loads VsDevCmd then runs the container command (or interactive
+# PowerShell when none is given).
+COPY windows\scripts\entrypoint.cmd C:\temp\scripts\entrypoint.cmd
+ENTRYPOINT ["cmd","/S","/C","C:\\temp\\scripts\\entrypoint.cmd"]
