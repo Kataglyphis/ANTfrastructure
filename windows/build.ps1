@@ -147,10 +147,26 @@ function Invoke-Stage {
         [hashtable]$BuildArgs = @{},
         [string[]]$ExtraFlags = @()
     )
+    # Transient hcsshim/containerd failures ("failed to create shim task: ttrpc:
+    # closed") intermittently kill container creation, typically right after a big
+    # layer commit. Capture output and retry up to twice with a cool-down; cached
+    # layers make each retry resume at the failed step. Non-transient errors throw
+    # immediately.
+    $transient = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
     $dockerArgs = Get-DockerBuildArgList -Dockerfile $Dockerfile -Tag $Tag -BuildArgs $BuildArgs -ExtraFlags $ExtraFlags
-    Write-Host "`n==> docker $($dockerArgs -join ' ')" -ForegroundColor Cyan
-    & $Docker @dockerArgs
-    if ($LASTEXITCODE -ne 0) { throw "docker build failed for $Dockerfile (exit $LASTEXITCODE)" }
+    $stageLog = Join-Path ([System.IO.Path]::GetTempPath()) ("stage-" + [IO.Path]::GetFileName($Dockerfile) + ".log")
+    foreach ($attempt in 1..3) {
+        Write-Host "`n==> docker $($dockerArgs -join ' ')" -ForegroundColor Cyan
+        & $Docker @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog
+        if ($LASTEXITCODE -eq 0) { return }
+        $tail = Get-Content $stageLog -Tail 10 | Out-String
+        if ($attempt -lt 3 -and $tail -match $transient) {
+            Write-Host "[$Dockerfile] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
+            Start-Sleep -Seconds 60
+            continue
+        }
+        throw "docker build failed for $Dockerfile (exit $LASTEXITCODE)"
+    }
 }
 
 # Common per-branch args for the media fan-out
