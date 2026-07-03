@@ -214,10 +214,26 @@ cross_filter_known_foreign_postinst_noise() {
   done
 }
 
+# Is this package present on disk in a usable state? On cross builds a
+# foreign-arch package whose postinst failed (Exec format error — target
+# binaries can't run on the build host) is still fully unpacked, so its
+# headers/libs ARE usable for cross-compiling. Treat unpacked/half-configured
+# as present; only "not installed at all" counts as missing.
+cross_package_files_present() {
+  local pkg="${1%%=*}"
+  local status
+  status="$(dpkg-query -W -f='${Status}' "${pkg}" 2>/dev/null || true)"
+  case "${status}" in
+    *" installed"|*" unpacked"|*" half-configured"|*" triggers-awaited"|*" triggers-pending")
+      return 0 ;;
+  esac
+  return 1
+}
+
 install_target_packages() {
   local pkg resolved
-  local had_pipefail=0
-  local -a pkgs=()
+  local apt_rc=0
+  local -a pkgs=() missing=()
 
   [ "$#" -gt 0 ] || return 0
   if cross_build_enabled; then
@@ -236,15 +252,30 @@ install_target_packages() {
   [ "${#pkgs[@]}" -gt 0 ] || return 0
 
   if cross_build_enabled; then
-    case ":${SHELLOPTS:-}:" in
-      *:pipefail:*) had_pipefail=1 ;;
-    esac
-    set -o pipefail
-    apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 | cross_filter_known_foreign_postinst_noise
-    if [ "${had_pipefail}" -ne 1 ]; then
-      set +o pipefail
+    # Run in a subshell so pipefail applies to the pipeline without leaking
+    # into (or depending on) the caller's shell options.
+    (
+      set -o pipefail
+      apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 \
+        | cross_filter_known_foreign_postinst_noise
+    ) || apt_rc=$?
+
+    [ "${apt_rc}" -eq 0 ] && return 0
+
+    # apt-get failed. On cross this is often only foreign-arch postinst noise
+    # while every requested package is unpacked and usable — but it can ALSO
+    # mean packages are genuinely absent (dependency conflicts, ports outages),
+    # which previously got silently swallowed here and surfaced much later as
+    # baffling feature-skips (e.g. gst HLS with no crypto). Distinguish the two.
+    for pkg in "${pkgs[@]}"; do
+      cross_package_files_present "${pkg}" || missing+=("${pkg}")
+    done
+    if [ "${#missing[@]}" -eq 0 ]; then
+      echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are unpacked (foreign-arch postinst noise); continuing." >&2
+      return 0
     fi
-    return 0
+    echo "install_target_packages: FAILED — missing after apt-get (rc=${apt_rc}): ${missing[*]}" >&2
+    return "${apt_rc}"
   fi
 
   apt-get install -y --no-install-recommends "${pkgs[@]}"

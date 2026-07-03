@@ -177,7 +177,7 @@ fi
 PREFIX="${PREFIX:-/opt/gcc-${GCC_VERSION}}"
 
 require_sudo
-detect_system || true
+detect_system || echo "WARNING: detect_system failed; ARCH/HOST_ARCH/DISTRO may be unset (downstream steps may fail on unset vars)." >&2
 
 # Determine requested jobs (only if user set JOBS in the environment).
 JOBS_REQUESTED=""
@@ -289,7 +289,12 @@ fi
 
 echo "Attempting SHA512 verification..."
 if wget -q --spider "${SHA_URL}"; then
-  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SHA_URL}" -O sha512.sum || true
+  # The server HAS a checksum file — from here on, failing to fetch or match it
+  # must abort, not silently downgrade to an unverified build.
+  if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SHA_URL}" -O sha512.sum; then
+    echo "ERROR: sha512.sum exists on server but could not be downloaded; refusing to continue unverified." >&2
+    exit 1
+  fi
   if grep -Eq "[[:space:]]${TARBALL}\$" sha512.sum 2>/dev/null; then
     grep -E "[[:space:]]${TARBALL}\$" sha512.sum > "${TARBALL}.sha512"
     if sha512sum -c --status "${TARBALL}.sha512"; then
@@ -308,23 +313,32 @@ fi
 # Optional: download signature for manual GPG verification
 if wget -q --spider "${SIG_URL}"; then
   echo "Signature available at ${SIG_URL} (downloading)..."
-  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}" || true
-  
+  if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}"; then
+    echo "ERROR: signature exists on server but could not be downloaded; refusing to continue unverified." >&2
+    exit 1
+  fi
+
   # GPG verification (GCC Release Signing Key)
   GCC_RELEASE_KEY="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62"
   echo "Attempting GPG verification..."
+  # Keyservers are frequently unreachable inside sandboxed build networks, so a
+  # failed key IMPORT is only a (loud) warning by default; set
+  # GCC_REQUIRE_GPG=1 to make any skipped GPG verification fatal. A failed
+  # VERIFY with an available key is always fatal.
+  _gpg_verified=0
   if command -v gpg >/dev/null 2>&1; then
     # Import GCC release key if not present
     if ! gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
       echo "Importing GCC release signing key..."
       gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
       gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
-      echo "Warning: Could not import GPG key, skipping signature verification"
+      echo "WARNING: could not import the GCC release signing key from any keyserver." >&2
     fi
-    
+
     if gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
       if gpg --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null; then
         echo "GPG signature verified successfully."
+        _gpg_verified=1
       else
         echo "ERROR: GPG verification FAILED for ${TARBALL}." >&2
         echo "The tarball may be corrupted or tampered with. Aborting." >&2
@@ -332,7 +346,14 @@ if wget -q --spider "${SIG_URL}"; then
       fi
     fi
   else
-    echo "Warning: gpg not installed, skipping signature verification" >&2
+    echo "WARNING: gpg not installed." >&2
+  fi
+  if [ "${_gpg_verified}" -ne 1 ]; then
+    echo "WARNING: GPG signature verification was SKIPPED (no gpg or key unavailable); tarball is only SHA512-verified." >&2
+    if [ "${GCC_REQUIRE_GPG:-0}" = "1" ]; then
+      echo "ERROR: GCC_REQUIRE_GPG=1 — refusing to build without GPG verification." >&2
+      exit 1
+    fi
   fi
 else
   echo "No .sig found or accessible."

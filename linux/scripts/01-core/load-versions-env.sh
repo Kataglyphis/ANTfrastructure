@@ -16,7 +16,13 @@ _LOAD_VERSIONS_ENV_SH_LOADED=1
 
 load_versions_env() {
   local _ve_file="${1:?versions env file required}" _ve_line _ve_name
-  [ -f "${_ve_file}" ] || return 0
+  # A missing file is tolerated (env/ARG values may already provide everything),
+  # but say so — a silently-skipped versions.env previously read as "loaded"
+  # and left consumers running on stale Dockerfile ARG defaults.
+  if [ ! -f "${_ve_file}" ]; then
+    echo "load_versions_env: ${_ve_file} not found; relying on environment/ARG values only." >&2
+    return 0
+  fi
   while IFS= read -r _ve_line || [ -n "${_ve_line}" ]; do
     case "${_ve_line}" in
       [A-Z]*=*) ;;

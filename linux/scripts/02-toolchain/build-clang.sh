@@ -169,7 +169,7 @@ BUILD_DIR="${WD}/llvm-build"
 INSTALL_DIR="${PREFIX}"
 
 require_sudo
-detect_system || true
+detect_system || echo "WARNING: detect_system failed; ARCH/HOST_ARCH/DISTRO may be unset (downstream steps may fail on unset vars)." >&2
 
 # ====== Preflight Checks ======
 run_preflight_checks() {
