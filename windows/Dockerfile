@@ -16,17 +16,11 @@ ARG VCS_REF=""
 # linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
 ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 
-# rustup ships in the base image but no default toolchain was ever installed —
-# `rustc` failed with "no default is configured". Install/set it here where the
-# layer is cheap to rebuild; move into setup-rust-toolchain.ps1 at the next base
-# rebuild. cmd.exe shields rustup's stderr progress from the inherited
-# powershell SHELL's $ErrorActionPreference=Stop.
-# EAP=Continue for this RUN only: rustup logs progress to stderr, which the
-# inherited EAP=Stop turns into terminating NativeCommandErrors even on success.
-RUN $ErrorActionPreference = 'Continue'; `
-    rustup default stable 2>&1 | ForEach-Object { "$_" }; `
-    if ($LASTEXITCODE -ne 0) { throw "rustup default stable failed ($LASTEXITCODE)" }; `
-    rustc --version
+# KNOWN GAP: rustup ships in the base image but no default toolchain was ever
+# installed ("rustup could not choose a version of rustc"). Installing it here
+# stalls (rustup downloads crawl inside build containers), so the fix belongs in
+# setup-rust-toolchain.ps1 at the next base rebuild. Workaround at runtime:
+#   rustup default stable
 
 COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
 # Smoke test is documented to run from inside the container (docs/windows-builds.md)
