@@ -5,3 +5,5 @@
 *.psm1 -text
 *.env -text
 *.patch -text
+# extensionless shell scripts shipped into images (MSYS sh chokes on CRLF)
+makedef -text eol=lf
