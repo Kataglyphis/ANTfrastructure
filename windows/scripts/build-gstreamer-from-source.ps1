@@ -70,6 +70,12 @@ $sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 Import-Module $sourceBuildModule -Force
 
+# Re-import Shared LAST: the nested `Import-Module ...Shared -Force` inside the two
+# modules above unloads the top-level Shared import (PS 5.1 module scoping) and
+# rebinds it into their private scopes, making Resolve-DirectoryPath & friends
+# invisible to this script. Verified in PS 5.1.
+Import-Module $sharedPath -Force
+
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 # ---- logging ----
