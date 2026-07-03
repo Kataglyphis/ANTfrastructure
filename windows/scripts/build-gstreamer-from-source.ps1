@@ -419,6 +419,25 @@ int _isatty(int);
         }
     }
 
+    # Inline patch (kept inline, NOT a .patch file): FFMPEG_VERSION=master floats,
+    # and FFmpeg master removed the V308/V408/V410 raw packed-video codec IDs that
+    # gst-libav 1.29.x still lists in its "no quasi codecs" EXCLUSION conditions.
+    # Excluding codecs that no longer exist is moot — drop those comparisons
+    # (R210 sharing the V410 line still exists and is kept).
+    foreach ($avFile in @('gstavvidenc.c', 'gstavviddec.c')) {
+        $avPath = Join-Path $gstSrcDir "subprojects\gst-libav\ext\libav\$avFile"
+        if (Test-Path $avPath) {
+            $avContent = [System.IO.File]::ReadAllText($avPath)
+            $avOrig = $avContent
+            $avContent = $avContent -replace '(?m)^\s*in_plugin->id == AV_CODEC_ID_V[34]08 \|\|\r?\n', ''
+            $avContent = $avContent -replace 'in_plugin->id == AV_CODEC_ID_V410 \|\| ', ''
+            if ($avContent -ne $avOrig) {
+                [System.IO.File]::WriteAllText($avPath, $avContent)
+                log "Patched ${avFile}: removed V308/V408/V410 exclusions (codec IDs dropped by FFmpeg master)"
+            }
+        }
+    }
+
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
     $compileSucceeded = $false
     for ($cAttempt = 1; $cAttempt -le 2; $cAttempt++) {
