@@ -528,10 +528,14 @@ ffmpeg_enable_via_synth_pkgconfig() {
     local prefix="$5" cflags="$6" libs="$7" version="${8:-1.0}"
     [ -n "${version}" ] || version="1.0"
 
-    local pc_dir="${prefix}/lib/pkgconfig"
+    # Write the synthesized .pc to a WRITABLE scratch dir, NOT inside ${prefix}:
+    # the backend prefix (e.g. /usr/local/lib/onnxruntime-cpu) is mounted
+    # read-only in the ffmpeg stage, so mkdir there fails. The .pc's Cflags/Libs
+    # are absolute paths, so the file itself can live anywhere on PKG_CONFIG_PATH.
+    local pc_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/synth-pkgconfig"
     if ! mkdir -p "${pc_dir}"; then
-        echo "  synth-pc ${feature}: FAILED to mkdir ${pc_dir} (prefix not writable?)"
-        return 1
+        pc_dir="$(mktemp -d 2>/dev/null)/pkgconfig"
+        mkdir -p "${pc_dir}" 2>/dev/null || { echo "  synth-pc ${feature}: no writable dir for synthesized .pc"; return 1; }
     fi
     if ! cat > "${pc_dir}/${pkg_name}.pc" <<EOF
 prefix=${prefix}
