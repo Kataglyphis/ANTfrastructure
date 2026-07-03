@@ -23,7 +23,7 @@ case "${1:-}" in
     echo "Build and install LiteRT (TensorFlow Lite) from source."
     echo ""
     echo "Arguments:"
-    echo "  version  LiteRT release tag (default: v2.1.5 or \$LITERT_VERSION)"
+    echo "  version  LiteRT release tag (default: v2.1.6 or \$LITERT_VERSION)"
     echo ""
     echo "Environment:"
     echo "  LITERT_PREFIX   Install prefix (default: /usr/local)"
@@ -35,7 +35,7 @@ case "${1:-}" in
     ;;
 esac
 
-LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
+LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.6}}"
 : "${LITERT_SRC:=${TMPDIR:-/tmp}/litert-$$}"
 : "${LITERT_PREFIX:=/usr/local}"
 : "${BUILD_TYPE:=Release}"
@@ -551,7 +551,11 @@ install_manual() {
     
     # 3. Copy litert/c headers for C API compatibility
     info Ensuring strict C API compatibility...
-    cp -rv "litert/c" "${include_dir}/" 2>/dev/null || true
+    if [ -d "litert/c" ]; then
+        cp -rv "litert/c" "${include_dir}/"
+    else
+        warn "litert/c headers not found in source tree; C API consumers may miss headers"
+    fi
     
     # 4. Create tensorflow/lite -> tflite symlink for compatibility
     # libcamera and other projects expect headers at <tensorflow/lite/interpreter.h>

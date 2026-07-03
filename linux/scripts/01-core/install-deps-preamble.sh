@@ -2,8 +2,16 @@
 # install-deps-preamble.sh - convenience preamble for install-deps scripts.
 #
 # Sources cross-env.sh (if available) and provides install_deps_preamble().
-# The canonical definition lives in cross-apt.sh (sourced by cross-env.sh),
-# but this file provides a fallback for older SDK images that lack it.
+# The CANONICAL definitions of every helper below live in cross-env.sh and the
+# files it sources (cross-apt.sh: install_deps_preamble, install_host_packages,
+# install_target_packages, ...; cross-python.sh: host_python_major_minor).
+#
+# The fallback definitions below are NOT dead weight: linux/Dockerfile.media
+# COPYs only install-deps-preamble.sh, python-host.sh, cmake-cache-linker.sh
+# and modules.sh into /opt/scripts/core, and most of its install-deps RUN
+# steps (litert, opencv, armnn, ffmpeg, libcamera, runtime) do NOT bind-mount
+# 01-core — so cross-env.sh is absent there and these fallbacks are what
+# actually runs. Do not remove them without changing that deployment.
 #
 # Usage:
 #   source /path/to/install-deps-preamble.sh

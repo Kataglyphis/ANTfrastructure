@@ -31,7 +31,7 @@
 # values from linux/scripts/01-core/versions.env via append_version_build_args).
 ARG ONNXRUNTIME_VERSION="v1.27.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.14.0"
-ARG LITERT_VERSION="v2.1.5"
+ARG LITERT_VERSION="v2.1.6"
 ARG OPENCV_VERSION="5.x"
 ARG GSTREAMER_VERSION="1.29.2"
 
@@ -106,7 +106,7 @@ RUN set -euo pipefail; \
 # that cause package version conflicts.  We start fresh here.
 # Uses the UBUNTU_CODENAME build arg (from versions.env) so the codename
 # stays in sync with the base image's Ubuntu version.
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,readonly \
     set -euo pipefail; \
     rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
           /etc/apt/preferences.d/* 2>/dev/null || true; \
@@ -275,6 +275,7 @@ ARG LITERT_BUILD_TYPE=Release
 ARG LITERT_OUTPUT_DIR=/usr/local
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
@@ -309,6 +310,7 @@ ENV OPENCV_PREFIX=${OPENCV_OUTPUT_DIR}
 ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
@@ -383,6 +385,7 @@ ARG TARGET_ARCH
 ARG BUILD_MODE
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
@@ -413,6 +416,7 @@ FROM base AS ffmpeg
 ENV FFMPEG_PREFIX=/opt/ffmpeg
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
@@ -525,6 +529,7 @@ RUN --mount=type=cache,target=/tmp \
 FROM gstreamer AS libcamera
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
@@ -597,6 +602,7 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packagin
 # linux/scripts/03-media/runtime/media-env.sh
 
 RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \

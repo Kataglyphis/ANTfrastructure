@@ -98,27 +98,8 @@ fi
 # build. Pin BOTH the dev and runtime target-arch libstdc++ to GCC 16's
 # target-arch build (a backward-compatible superset).
 if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "amd64" ]; then
-  _lsx_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
-  _lsx_triplet="$(arch_deb_multiarch_triplet_for "${_lsx_arch}" 2>/dev/null || true)"
-  case "${_lsx_arch}" in
-    arm64)   [ -n "${_lsx_triplet}" ] || _lsx_triplet="aarch64-linux-gnu" ;;
-    riscv64) [ -n "${_lsx_triplet}" ] || _lsx_triplet="riscv64-linux-gnu" ;;
-  esac
-  if [ -n "${_lsx_triplet}" ] && [ -d "/usr/lib/${_lsx_triplet}" ]; then
-    # Prefer the target-arch libstdc++ shipped under the GCC install's <triplet> tree.
-    # NB: `|| true` — a partially-matching glob makes ls exit non-zero, which
-    # under `set -euo pipefail` would abort the whole stage via the command
-    # substitution. Swallow it so a missing path is a no-op, not a build failure.
-    _gcc_lsx="$(ls -1 /opt/gcc-*/"${_lsx_triplet}"/lib64/libstdc++.so.6.* \
-                        /opt/gcc-*/"${_lsx_triplet}"/lib/libstdc++.so.6.* 2>/dev/null \
-                | sort -V | tail -1 || true)"
-    if [ -n "${_gcc_lsx}" ]; then
-      ln -sf "${_gcc_lsx}" "/usr/lib/${_lsx_triplet}/libstdc++.so.6"
-      ln -sf "${_gcc_lsx}" "/usr/lib/${_lsx_triplet}/libstdc++.so"
-      echo "Cross: pinned /usr/lib/${_lsx_triplet}/libstdc++.so{,.6} -> ${_gcc_lsx} (GCC 16 superset, has GLIBCXX_3.4.35)"
-    else
-      echo "WARN: no target-arch GCC libstdc++ found under /opt/gcc-*/${_lsx_triplet}/; onnx plugin link may fail" >&2
-    fi
+  if command -v pin_target_libstdcxx >/dev/null 2>&1; then
+    pin_target_libstdcxx "${TARGET_ARCH:-${TARGETARCH:-}}" || true
   fi
 fi
 

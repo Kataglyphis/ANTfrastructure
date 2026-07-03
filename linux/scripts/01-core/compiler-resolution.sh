@@ -161,3 +161,47 @@ fix_libstdcxx_symlink() {
 
   ln -sf "${gcc_lib}" "${sys_lib}"
 }
+
+# Pin BOTH the dev symlink (libstdc++.so) and the runtime soname (libstdc++.so.6)
+# under /usr/lib/<triplet> to GCC's target-arch libstdc++. On cross builds that
+# copy is frequently either the WRONG ARCH (host amd64, pulled in by apt) or an
+# older Ubuntu Ports libstdc++ lacking newer GLIBCXX symbols — both break any C++
+# link that resolves libstdc++ via -L/usr/lib/<triplet> (e.g. FFmpeg's libopenmpt
+# probe, or the GStreamer onnx plugin). GCC 16's libstdc++ is an ABI-compatible
+# superset, so pinning to it is safe. Broader/stronger than fix_libstdcxx_symlink
+# (which only repoints the dev .so and only when it is currently wrong-arch).
+# No-op on native/amd64. Always returns 0 so callers under `set -e` are safe.
+pin_target_libstdcxx() {
+  local arch="${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
+  [ -n "${arch}" ] || return 0
+  [ "${arch}" = "amd64" ] && return 0
+
+  local triplet=""
+  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
+    triplet="$(arch_deb_multiarch_triplet_for "${arch}" 2>/dev/null || true)"
+  fi
+  case "${arch}" in
+    arm64)   [ -n "${triplet}" ] || triplet="aarch64-linux-gnu" ;;
+    riscv64) [ -n "${triplet}" ] || triplet="riscv64-linux-gnu" ;;
+  esac
+  [ -n "${triplet}" ] || return 0
+  [ -d "/usr/lib/${triplet}" ] || return 0
+
+  # Exclude *-gdb.py: the GCC lib dir ships libstdc++.so.6.<v>-gdb.py (a GDB
+  # pretty-printer) next to the real .so.6.<v>, and it sorts AFTER the library
+  # under `sort -V`, so an unfiltered `tail -1` would pin to a Python script.
+  # `|| true`: a partially-matching glob makes the pipeline exit non-zero, which
+  # under `set -euo pipefail` would abort the caller via the command substitution.
+  local gcc_lsx
+  gcc_lsx="$(ls -1 /opt/gcc-*/"${triplet}"/lib64/libstdc++.so.6.* \
+                    /opt/gcc-*/"${triplet}"/lib/libstdc++.so.6.* 2>/dev/null \
+             | grep -vE '\.py$' | sort -V | tail -1 || true)"
+  if [ -n "${gcc_lsx}" ]; then
+    ln -sf "${gcc_lsx}" "/usr/lib/${triplet}/libstdc++.so.6"
+    ln -sf "${gcc_lsx}" "/usr/lib/${triplet}/libstdc++.so"
+    echo "Cross: pinned /usr/lib/${triplet}/libstdc++.so{,.6} -> ${gcc_lsx} (GCC target-arch superset, has newer GLIBCXX)"
+  else
+    echo "WARN: no target-arch GCC libstdc++ found under /opt/gcc-*/${triplet}/; C++ cross link may fail" >&2
+  fi
+  return 0
+}

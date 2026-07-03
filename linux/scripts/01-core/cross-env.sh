@@ -37,6 +37,11 @@ cross_build_enabled() {
   cross_target_is_foreign
 }
 
+# NAMING: cross_build_is_active() is the CANONICAL public name for the
+# cross-build guard — use it in new code. is_cross() and cross_build_enabled()
+# are kept as compatibility aliases for the 60+ existing callers; do not add
+# new callers of those names.
+
 # Compatibility alias used by media build scripts.
 is_cross() { cross_build_enabled; }
 
@@ -407,6 +412,16 @@ _cross_env_export_all() {
   export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/opt/cargo-target/${_eea[target_arch]}}"
   export "CARGO_TARGET_${_eea[rust_env]}_LINKER=${CC}"
   export "CARGO_TARGET_${_eea[rust_env]}_AR=${AR}"
+  # The `cc` crate (build scripts of ring, openssl-sys, …) does NOT read
+  # CARGO_TARGET_*_LINKER — it needs CC_<target>/CXX_<target>. Without it, it
+  # guesses `<triple>-gcc`, which for riscv64gc-unknown-linux-gnu does not exist,
+  # so it falls back to the host gcc and passes it the target -mabi=lp64d flag →
+  # "unrecognized argument in option '-mabi=lp64d'". Point it at the cross-GCC.
+  local _cross_rust_env_lc
+  _cross_rust_env_lc="$(cross_target_rust_triple | tr '[:upper:]-' '[:lower:]_')"
+  export "CC_${_cross_rust_env_lc}=${CC}"
+  [ -n "${CXX:-}" ] && export "CXX_${_cross_rust_env_lc}=${CXX}"
+  [ -n "${AR:-}" ] && export "AR_${_cross_rust_env_lc}=${AR}"
 }
 
 setup_linux_cross_env() {

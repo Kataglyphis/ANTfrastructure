@@ -2,6 +2,12 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# Optional diagnostic: capture the compiler stderr of failed codec probes so
+# skips print WHY (header not found, etc.). Off by default; set
+# FFMPEG_PROBE_DEBUG=1 in the environment to re-enable when investigating a skip.
+: "${FFMPEG_PROBE_DEBUG:=0}"
+export FFMPEG_PROBE_DEBUG
+
 # ==============================================================================
 # build-ffmpeg.sh - Build and install latest FFmpeg from source
 # ==============================================================================
@@ -71,7 +77,7 @@ fetch_ffmpeg() {
       *)                   tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_ref}.tar.gz" ;;
     esac
     echo "Downloading FFmpeg ${release_ref} from ${tarball_url}..."
-    curl -sL "${tarball_url}" | tar -xzf - -C "${FFMPEG_SRC}" --strip-components=1 || {
+    download_and_extract "${tarball_url}" "${FFMPEG_SRC}" 1 || {
         echo "Tarball download failed for ${tarball_url}" >&2
         exit 1
     }
@@ -107,7 +113,13 @@ split_shell_words() {
     out_ref=()
     [ -n "${words}" ] || return 0
 
-    # pkg-config emits whitespace-delimited flags that are safe to re-split here.
+    # pkg-config emits SPACE-delimited flags, but this script runs with a global
+    # IFS=$'\n\t' (no space), so a bare `out_ref=(${words})` would NOT split on
+    # spaces — a multi-flag string like "-I/a -I/b" collapses into ONE garbled
+    # argv element, breaking every probe whose .pc returns >1 flag (freetype,
+    # vpx, theora, svtav1, …). Force a whitespace IFS locally so the re-split
+    # works regardless of the caller's IFS.
+    local IFS=$' \t\n'
     # shellcheck disable=SC2206
     out_ref=(${words})
 }
@@ -253,6 +265,12 @@ ffmpeg_try_cpp_condition() {
     fi
     cmd+=("${cflags[@]}" "-c" "${source_file}" "-o" "${output_file}")
 
+    if [ "${FFMPEG_PROBE_DEBUG:-0}" = "1" ]; then
+        # `|| true`: the probe compile is EXPECTED to fail here (that's what we're
+        # diagnosing); without it the failing command substitution trips set -e
+        # and aborts the whole FFmpeg build.
+        _FFMPEG_LAST_PROBE_ERR="$("${cmd[@]}" 2>&1 >/dev/null || true)"
+    fi
     if "${cmd[@]}" >/dev/null 2>&1; then
         rm -rf "${probe_dir}"
         return 0
@@ -381,13 +399,21 @@ ffmpeg_probe_pkg_config_feature() {
     # it faithfully predicts whether FFmpeg's link will find the library, while
     # still enabling codecs whose only issue was a missing transitive -l in our
     # symbol test program (x264/opus/vpx/…).
-    if ffmpeg_try_cpp_condition "${headers}" "1" "${pc_cflags}" \
-       && ffmpeg_try_link_probe "" "" "${pc_cflags}" "${pc_libs}"; then
+    local _hdr_ok=1 _lnk_ok=1
+    _FFMPEG_LAST_PROBE_ERR=""
+    ffmpeg_try_cpp_condition "${headers}" "1" "${pc_cflags}" || _hdr_ok=0
+    local _hdr_err="${_FFMPEG_LAST_PROBE_ERR}"
+    ffmpeg_try_link_probe "" "" "${pc_cflags}" "${pc_libs}" || _lnk_ok=0
+    if [ "${_hdr_ok}" = 1 ] && [ "${_lnk_ok}" = 1 ]; then
         echo "Note: ${feature} symbol micro-probe failed but its headers compile and its libraries link; enabling (FFmpeg's configure will verify the link)."
         return 0
     fi
 
-    echo "Skipping ${feature}: ${pkg_spec} resolves via pkg-config but is not usable for this target (library not linkable or headers do not compile); not enabling to avoid a hard FFmpeg configure failure."
+    echo "Skipping ${feature}: ${pkg_spec} resolves via pkg-config but is not usable for this target (header_compile=${_hdr_ok} lib_link=${_lnk_ok}); not enabling to avoid a hard FFmpeg configure failure."
+    echo "  probe-detail ${feature}: CC='${CC:-}' headers='${headers}' cflags='${pc_cflags}' libs='${pc_libs}'"
+    if [ "${FFMPEG_PROBE_DEBUG:-0}" = "1" ] && [ "${_hdr_ok}" = 0 ] && [ -n "${_hdr_err}" ]; then
+        echo "  header-stderr ${feature}: $(printf '%s' "${_hdr_err}" | head -3 | tr '\n' '|')"
+    fi
     return 1
 }
 
@@ -502,9 +528,16 @@ ffmpeg_enable_via_synth_pkgconfig() {
     local prefix="$5" cflags="$6" libs="$7" version="${8:-1.0}"
     [ -n "${version}" ] || version="1.0"
 
-    local pc_dir="${prefix}/lib/pkgconfig"
-    mkdir -p "${pc_dir}" 2>/dev/null || return 1
-    cat > "${pc_dir}/${pkg_name}.pc" <<EOF
+    # Write the synthesized .pc to a WRITABLE scratch dir, NOT inside ${prefix}:
+    # the backend prefix (e.g. /usr/local/lib/onnxruntime-cpu) is mounted
+    # read-only in the ffmpeg stage, so mkdir there fails. The .pc's Cflags/Libs
+    # are absolute paths, so the file itself can live anywhere on PKG_CONFIG_PATH.
+    local pc_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/synth-pkgconfig"
+    if ! mkdir -p "${pc_dir}"; then
+        pc_dir="$(mktemp -d 2>/dev/null)/pkgconfig"
+        mkdir -p "${pc_dir}" 2>/dev/null || { echo "  synth-pc ${feature}: no writable dir for synthesized .pc"; return 1; }
+    fi
+    if ! cat > "${pc_dir}/${pkg_name}.pc" <<EOF
 prefix=${prefix}
 Name: ${pkg_name}
 Description: ${feature} (pkg-config synthesized by build-ffmpeg.sh)
@@ -512,6 +545,11 @@ Version: ${version}
 Cflags: ${cflags}
 Libs: ${libs}
 EOF
+    then
+        echo "  synth-pc ${feature}: FAILED to write ${pc_dir}/${pkg_name}.pc"
+        return 1
+    fi
+    echo "  synth-pc ${feature}: wrote ${pc_dir}/${pkg_name}.pc (Cflags='${cflags}' Libs='${libs}')"
     # Prepend so this shadows any broken vendor .pc already on the path, and
     # export it so FFmpeg's configure (a child process) resolves the same module.
     export PKG_CONFIG_PATH="${pc_dir}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
@@ -519,25 +557,41 @@ EOF
 }
 
 ffmpeg_probe_libonnxruntime() {
-    # A working pkg-config module is the only thing FFmpeg's require_pkg_config
-    # accepts; try it first.
-    if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime" \
-        "onnxruntime_c_api.h" "OrtGetApiBase"; then
-        return 0
-    fi
-
-    # ONNX Runtime is built into this stage but ships no usable libonnxruntime.pc
-    # (the vendor one resolves via --exists yet its -I does not locate the
-    # header). Synthesize a correct .pc from the known install path and re-probe.
+    # ONNX Runtime is built into this stage at a known prefix, but its VENDOR
+    # libonnxruntime.pc is unusable: it resolves via --exists yet its -I does not
+    # locate the header for FFmpeg. Worse, the generic probe can now "pass" it via
+    # the lenient headers-compile+empty-link fallback (our own -I/pkg-config flags
+    # find the header), after which FFmpeg's own require canNOT and HARD-ABORTS the
+    # whole build. So when the known install is present, go STRAIGHT to the
+    # synthesized .pc (correct -I + exported PKG_CONFIG_PATH, which is exactly what
+    # FFmpeg's require_pkg_config consumes) — do not trust the vendor .pc first.
     local onnx_base="/usr/local/lib/onnxruntime-cpu"
     if [ -f "${onnx_base}/lib/libonnxruntime.so" ] && [ -f "${onnx_base}/include/onnxruntime_c_api.h" ]; then
         if ffmpeg_enable_via_synth_pkgconfig "libonnxruntime" "libonnxruntime" \
             "onnxruntime_c_api.h" "OrtGetApiBase" "${onnx_base}" \
             "-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session" \
-            "-L${onnx_base}/lib -lonnxruntime" "${ONNXRUNTIME_VERSION#v}"; then
+            "-L${onnx_base}/lib -lonnxruntime -lstdc++ -lpthread -lm -ldl" "${ONNXRUNTIME_VERSION#v}"; then
+            # FFmpeg checks libonnxruntime with a BARE `require`/check_lib (NOT
+            # require_pkg_config), so it ignores the synth .pc and compiles
+            # `#include <onnxruntime_c_api.h>` with no -I. Export the resolved
+            # paths so configure_ffmpeg can add them to --extra-cflags/-ldflags/
+            # -libs; -lstdc++ is required because libonnxruntime.so is C++.
+            _FFMPEG_ONNX_EXTRA_CFLAGS="-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session"
+            _FFMPEG_ONNX_EXTRA_LDFLAGS="-L${onnx_base}/lib"
+            _FFMPEG_ONNX_EXTRA_LIBS="-lstdc++"
             echo "ONNX Runtime enabled via synthesized pkg-config at ${onnx_base}."
             return 0
         fi
+        # Known install present but synth-probe failed → do NOT fall through to the
+        # vendor .pc (it would spuriously enable and hard-abort FFmpeg configure).
+        echo "Skipping libonnxruntime: install present but synthesized pkg-config probe failed."
+        return 1
+    fi
+
+    # No known install — try a vendor-provided working pkg-config module, if any.
+    if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime" \
+        "onnxruntime_c_api.h" "OrtGetApiBase"; then
+        return 0
     fi
 
     echo "Skipping libonnxruntime: no usable pkg-config module (ONNX Runtime absent or its headers do not compile)."
@@ -580,7 +634,7 @@ ensure_tensorflow_c_sdk() {
     echo "Downloading TensorFlow C SDK ${tf_version}..."
     # Download just the C library from the TF release
     local tf_release_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/${tf_archive}"
-    if     curl -sL --connect-timeout 30 --max-time 300 -o "${cache_dir}/${tf_archive}" "${tf_release_url}" 2>/dev/null \
+    if     download_file "${tf_release_url}" "${cache_dir}/${tf_archive}" 3 30 300 2>/dev/null \
         && [ -s "${cache_dir}/${tf_archive}" ]; then
         tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}" 2>/dev/null || true
         # The tarball extracts to ./lib/ and ./include/ relative to cache_dir
@@ -609,7 +663,7 @@ PKGCONF
     echo "TensorFlow C SDK download failed (trying alternate URL)..."
     # Fallback: use the full TF source release (much larger but always available)
     local alt_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/libtensorflow-cpu-linux-x86_64-${tf_version}.tar.gz"
-    if curl -sL --connect-timeout 30 --max-time 600 -o "${cache_dir}/${tf_archive}" "${alt_url}" 2>/dev/null \
+    if download_file "${alt_url}" "${cache_dir}/${tf_archive}" 3 30 600 2>/dev/null \
         && [ -s "${cache_dir}/${tf_archive}" ]; then
         tar -xzf "${cache_dir}/${tf_archive}" -C "${tf_dir}" 2>/dev/null || true
         echo "TensorFlow C SDK ${tf_version} installed (fallback URL)"
@@ -721,6 +775,14 @@ configure_ffmpeg() {
         local host_cc
 
         setup_linux_cross_env
+        # The -L/usr/lib/<triplet> flags below (and the probes' own -L) expose the
+        # apt/Ports libstdc++ there, which is often the wrong arch or missing newer
+        # GLIBCXX symbols — any C++ probe/link (libopenmpt, onnx, …) then fails and,
+        # for an explicitly-enabled feature, hard-aborts configure. Pin it to GCC's
+        # target-arch superset first. Best-effort; no-op on native.
+        if command -v pin_target_libstdcxx >/dev/null 2>&1; then
+            pin_target_libstdcxx "$(cross_target_arch)" || true
+        fi
         host_cc="$(resolve_ffmpeg_host_compiler)"
         if [ -n "${host_cc}" ]; then
             host_cc="$(prepare_ffmpeg_host_compiler_wrapper "${host_cc}")"
@@ -824,6 +886,11 @@ configure_ffmpeg() {
     
     if ffmpeg_probe_libonnxruntime; then
         configure_opts+=("--enable-libonnxruntime")
+        # FFmpeg's onnxruntime check is a bare check_lib, so feed the header/lib
+        # paths through the global extra flags (see ffmpeg_probe_libonnxruntime).
+        [ -n "${_FFMPEG_ONNX_EXTRA_CFLAGS:-}" ] && configure_opts+=("--extra-cflags=${_FFMPEG_ONNX_EXTRA_CFLAGS}")
+        [ -n "${_FFMPEG_ONNX_EXTRA_LDFLAGS:-}" ] && configure_opts+=("--extra-ldflags=${_FFMPEG_ONNX_EXTRA_LDFLAGS}")
+        [ -n "${_FFMPEG_ONNX_EXTRA_LIBS:-}" ] && configure_opts+=("--extra-libs=${_FFMPEG_ONNX_EXTRA_LIBS}")
     fi
 
     # Deep Neural Network backends (always try; skip if SDK not available)

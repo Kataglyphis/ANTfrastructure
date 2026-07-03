@@ -20,6 +20,7 @@ source_module platform.sh
 source_module cross-env.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true
+source_module downloads.sh
 
 install_err_trap
 
@@ -372,7 +373,7 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
   info "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
 fi
 
-wget --tries=5 --retry-connrefused --timeout=30 -q "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "${PYTHON_TARBALL}"
+download_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TARBALL}" 5 30
 tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
 cd "${PYTHON_SOURCE_DIR}"

@@ -60,9 +60,18 @@ bash "${_scripts_dir}/01-core/apply-patch.sh" \
   --build
 
 mkdir -p "${INSTALL_DIR}/lib" "${INSTALL_DIR}/include" "${INSTALL_DIR}/java"
-cp -r include/* "${INSTALL_DIR}/include/" || true
-find build/Android/Release -name "libonnxruntime*.so" -print0 | xargs -0 cp -t "${INSTALL_DIR}/lib/" 2>/dev/null || true
-find build/Android/Release -name "*.aar" -print0 | xargs -0 cp -t "${INSTALL_DIR}/java/" 2>/dev/null || true
+# The headers always exist in the source tree — a failed copy here is a real
+# error, not an optional step.
+cp -r include/* "${INSTALL_DIR}/include/"
+find build/Android/Release -name "libonnxruntime*.so" -print0 | xargs -0 -r cp -t "${INSTALL_DIR}/lib/"
+find build/Android/Release -name "*.aar" -print0 | xargs -0 -r cp -t "${INSTALL_DIR}/java/"
+
+# Verify the install actually landed before deleting the build tree — these
+# copies failing silently used to produce an "installed" stage with no library.
+ls "${INSTALL_DIR}/lib/"libonnxruntime*.so >/dev/null 2>&1 \
+  || { echo "ERROR: no libonnxruntime*.so under ${INSTALL_DIR}/lib after build (--build_shared_lib output missing)" >&2; exit 1; }
+ls "${INSTALL_DIR}/java/"*.aar >/dev/null 2>&1 \
+  || { echo "ERROR: no .aar under ${INSTALL_DIR}/java after build (--build_java output missing)" >&2; exit 1; }
 
 cd /opt
 rm -rf onnxruntime-android

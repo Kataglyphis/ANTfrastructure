@@ -21,6 +21,8 @@ fi
 # shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/platform.sh" ] && source "${_COMMON_SH_DIR}/platform.sh"
 # shellcheck disable=SC1090,SC1091
+[ -f "${_COMMON_SH_DIR}/arch-mapping.sh" ] && source "${_COMMON_SH_DIR}/arch-mapping.sh"
+# shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/ubuntu-mirror.sh" ] && source "${_COMMON_SH_DIR}/ubuntu-mirror.sh"
 # shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/downloads.sh" ] && source "${_COMMON_SH_DIR}/downloads.sh"
@@ -31,6 +33,11 @@ export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
 # Provide cross_build_is_active when cross-env.sh hasn't been sourced.
+# The CANONICAL definition lives in cross-env.sh; this fallback is required
+# because several scripts source common.sh WITHOUT cross-env.sh and still call
+# cross_build_is_active (e.g. 03-media build-litert.sh, build-opencv.sh,
+# build-ffmpeg.sh, build-libcamera.sh, setup-gstreamer.sh, pre-setup.sh,
+# onnxruntime 30-build-native*.sh). Do NOT remove it.
 # The real definition in cross-env.sh checks BUILD_MODE=cross AND target arch != build arch.
 # This fallback approximates that when cross_build_enabled is unavailable.
 if ! command -v cross_build_is_active >/dev/null 2>&1; then

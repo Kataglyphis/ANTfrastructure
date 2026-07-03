@@ -81,7 +81,7 @@ compute_gstreamer_meson_jobs() {
   printf '%s' "${jobs}"
 }
 
-build_gstreamer_monorepo() {
+_gst_monorepo_env_setup() {
   # cross_build_is_active is provided by cross-env.sh via media_common_init.
   # Minimal fallback if the module chain didn't load it.
   if ! command -v cross_build_is_active >/dev/null 2>&1; then
@@ -92,16 +92,6 @@ build_gstreamer_monorepo() {
   fi
 
   local host_arch=""
-  local deb_host_multiarch_dir=""
-  local sys_pkgconf_dir=""
-  local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv5}"
-  local opencv_libdir=""
-  local target_python_libdir=""
-  local target_python_pkgconfig_dir=""
-  local tflite_pkg_config_name=""
-  local tflite_includedir=""
-  local tflite_libdir=""
-  local python_feature="enabled"
 
   echo ""
   echo "Setting up Meson build..."
@@ -127,6 +117,11 @@ build_gstreamer_monorepo() {
   if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" != "true" ]; then
     python_feature="disabled"
   fi
+}
+
+_gst_monorepo_python_config() {
+  local target_python_libdir=""
+  local target_python_pkgconfig_dir=""
 
   prepare_cross_python_build_config
 
@@ -160,7 +155,9 @@ build_gstreamer_monorepo() {
       esac
     fi
   fi
+}
 
+_gst_monorepo_meson_base_flags() {
   MESON_FLAGS=(
     "--prefix=${GSTREAMER_PREFIX}"
     "-Dbuildtype=${BUILD_TYPE_LOWER}"
@@ -194,7 +191,9 @@ build_gstreamer_monorepo() {
     echo "Cross build detected: disabling devtools (avoid cargo host-toolchain collisions)"
     MESON_FLAGS+=("-Ddevtools=disabled")
   fi
+}
 
+_gst_monorepo_arch_flags() {
   case "${TARGET_MACHINE_ARCH}" in
     riscv*|*riscv*)
       echo "Target arch '${TARGET_MACHINE_ARCH}' detected: python disabled (no target Python dev for riscv64)"
@@ -253,7 +252,9 @@ build_gstreamer_monorepo() {
     echo "(standalone cargo build handles Rust plugins independently)"
     MESON_FLAGS+=("-Drs=disabled")
   fi
+}
 
+_gst_monorepo_cross_flags() {
   if [ -n "${CROSS_PYTHON_BUILD_CONFIG:-}" ]; then
     append_meson_arg "-Dpython.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
     if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" = "true" ]; then
@@ -295,6 +296,11 @@ build_gstreamer_monorepo() {
   append_meson_arg "-Dpygobject:tests=false"
 
   dump_debug_info > /tmp/gstreamer-debug-info.log 2>&1 || true
+}
+
+_gst_monorepo_pkgconfig_env() {
+  local deb_host_multiarch_dir=""
+  local sys_pkgconf_dir=""
 
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     deb_host_multiarch_dir="$(cross_target_triplet)"
@@ -346,6 +352,11 @@ build_gstreamer_monorepo() {
     append_env_flag LDFLAGS "-L/usr/lib/${deb_host_multiarch_dir}"
     append_env_flag LDFLAGS "-Wl,-rpath-link,/usr/lib/${deb_host_multiarch_dir}"
   fi
+}
+
+_gst_monorepo_opencv_flags() {
+  local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv5}"
+  local opencv_libdir=""
 
   for opencv_libdir in "${opencv_prefix}/lib" "${opencv_prefix}/lib64"; do
     [ -d "${opencv_libdir}" ] || continue
@@ -356,6 +367,12 @@ build_gstreamer_monorepo() {
       break
     fi
   done
+}
+
+_gst_monorepo_tflite_flags() {
+  local tflite_pkg_config_name=""
+  local tflite_includedir=""
+  local tflite_libdir=""
 
   if cross_build_is_active; then
     for dep in tensorflowlite_c tensorflow-lite; do
@@ -406,7 +423,9 @@ build_gstreamer_monorepo() {
     done
     export LIBRARY_PATH="/usr/local/lib:${LIBRARY_PATH:-}"
   fi
+}
 
+_gst_monorepo_meson_setup_run() {
   if ! run_gstreamer_meson_setup > /tmp/meson-setup.log 2>&1; then
     echo "Meson setup failed; retrying with verbose output..." >&2
     if ! run_gstreamer_meson_setup -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1; then
@@ -426,7 +445,9 @@ build_gstreamer_monorepo() {
     patch_gstreamer_sources "$(pwd)" "${EXTRA_MESON_ARGS}"
   fi
   prebuild_gstreamer_riscv_targets
+}
 
+_gst_monorepo_compile() {
   echo "Compiling GStreamer (this may take a while)..."
   # Use the memory-aware job count (was previously raw `nproc`, uncapped, which
   # oversubscribed heavy C++/Rust link jobs and OOM-killed the compile).
@@ -444,7 +465,9 @@ build_gstreamer_monorepo() {
     dmesg | tail -n 100 | grep -i -E "out of memory|killed process" || true
     exit 1
   fi
+}
 
+_gst_monorepo_install() {
   echo "Installing GStreamer..."
   if cross_build_is_active; then
     # Cross-build: meson install may fail because post-install scripts
@@ -499,4 +522,20 @@ build_gstreamer_monorepo() {
       exit 1
     fi
   fi
+}
+
+build_gstreamer_monorepo() {
+  local python_feature="enabled"
+
+  _gst_monorepo_env_setup
+  _gst_monorepo_python_config
+  _gst_monorepo_meson_base_flags
+  _gst_monorepo_arch_flags
+  _gst_monorepo_cross_flags
+  _gst_monorepo_pkgconfig_env
+  _gst_monorepo_opencv_flags
+  _gst_monorepo_tflite_flags
+  _gst_monorepo_meson_setup_run
+  _gst_monorepo_compile
+  _gst_monorepo_install
 }

@@ -29,7 +29,7 @@ fi
 
 android_build_preamble_init "Android LiteRT build" "${ANDROID_API_LEVEL:-34}"
 
-LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.5}}"
+LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.6}}"
 INSTALL_DIR="${LITERT_ROOT_ANDROID:-/opt/android/litert}"
 
 apt-get update && apt-get install -y --no-install-recommends \

@@ -79,7 +79,9 @@ done
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.29.2}"
+# Positional arg wins; else the env value forwarded from versions.env; the
+# literal is a last-resort fallback only (keep in sync with versions.env).
+GSTREAMER_VERSION="${1:-${GSTREAMER_VERSION:-1.29.2}}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -565,12 +567,15 @@ fi
 # whisper left enabled — do not force-disable here
 append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
-# In cross mode the rustc ptp-helper link step receives empty -C link-arg=
-# flags from meson's env passthrough, causing ld.bfd to fail with
-# "cannot find : No such file or directory". The ptp helper is not essential
-# for container images (PTP clock sync requires setuid), disable it.
+# In cross mode the rustc ptp-helper link step receives empty `-C link-arg=`
+# flags from meson's env passthrough, so ld.bfd fails with
+# "cannot find : No such file or directory". `ptp-helper-permissions=none` does
+# NOT prevent this — it only drops the helper's setuid/setcap; the binary is
+# still built and linked. Since PTP clock sync needs setuid and is useless in a
+# container image, disable the helper entirely on ALL cross targets (previously
+# only riscv64 did this via build-gstreamer-monorepo.sh; arm64 hit the failure).
 if cross_build_is_active; then
-  append_meson_arg "-Dgstreamer:ptp-helper-permissions=none"
+  append_meson_arg "-Dgstreamer:ptp-helper=disabled"
 fi
 
 echo "=========================================="

@@ -58,7 +58,17 @@ else
     target_packages=(libgtk-4-1 libjson-glib-1.0-0 "${target_packages[@]}")
 fi
 
-DEBIAN_FRONTEND=noninteractive install_target_packages "${target_packages[@]}" || true
+# HOST packages, deliberately: this final image is a host-runnable cross-dev
+# container (PLATFORM linux/amd64 even for arm64/riscv64 targets), and these
+# are runtime/dev deps for the HOST-side tools baked into it. Historically this
+# ran through the install-deps-preamble FALLBACK (no 01-core mounted), whose
+# install_target_packages degraded to host installs — so host semantics is
+# what every shipped image has always had. Now that the final stage mounts
+# 01-core (real cross-env), keep that behavior EXPLICIT: with real
+# install_target_packages the whole group resolves as :<target-arch> and fails
+# wholesale on cross (co-installation conflicts), leaving the image with none
+# of these packages.
+DEBIAN_FRONTEND=noninteractive install_host_packages "${target_packages[@]}" || true
 apt-get autoremove --purge -y
 apt-get clean
 normalize_vvdec_soname_link
