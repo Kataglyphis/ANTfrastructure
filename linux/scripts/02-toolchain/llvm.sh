@@ -127,13 +127,9 @@ EOF
   done
 }
 
+# Mapping lives in 01-core/arch-mapping.sh (loaded via common.sh).
 llvm_cross_backend() {
-  case "$(arch_normalize "$1")" in
-    amd64|x86_64) printf '%s' "X86" ;;
-    arm64|aarch64) printf '%s' "AArch64" ;;
-    riscv64) printf '%s' "RISCV" ;;
-    *) return 1 ;;
-  esac
+  arch_to_llvm_target "$1" 2>/dev/null
 }
 
 llvm_cross_root() {

@@ -37,6 +37,11 @@ cross_build_enabled() {
   cross_target_is_foreign
 }
 
+# NAMING: cross_build_is_active() is the CANONICAL public name for the
+# cross-build guard — use it in new code. is_cross() and cross_build_enabled()
+# are kept as compatibility aliases for the 60+ existing callers; do not add
+# new callers of those names.
+
 # Compatibility alias used by media build scripts.
 is_cross() { cross_build_enabled; }
 

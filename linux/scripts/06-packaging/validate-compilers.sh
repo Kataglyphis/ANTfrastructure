@@ -29,6 +29,7 @@ for _vcs_mod_path in \
   fi
 done
 source_module platform.sh
+source_module arch-mapping.sh
 
 validate_resolve_arch() {
   canonical_target_arch "${1:-${TARGET_ARCH:-}}"
@@ -56,11 +57,7 @@ validate_artifact_source() {
       # Cross-built GCC binary (target-native) can't execute on build host.
       # Accept if the ELF machine matches the target arch.
       local expected_machine=""
-      case "${target_arch}" in
-        arm64)   expected_machine="AArch64" ;;
-        riscv64) expected_machine="RISC-V" ;;
-        amd64)   expected_machine="Advanced Micro Devices X86-64" ;;
-      esac
+      expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
       if echo "${host_elf}" | grep -qi "${expected_machine}"; then
         echo "OK: host gcc ${gcc_prefix}/bin/gcc is cross-built ELF for ${target_arch} (${host_elf})"
       else
@@ -108,11 +105,7 @@ validate_artifact_source() {
         echo "OK: target-native ${native_gcc}/bin/gcc reports ${native_ver}"
       else
         native_elf="$(readelf -h "${native_gcc}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
-        case "${target_arch}" in
-          arm64)   expected_machine="AArch64" ;;
-          riscv64) expected_machine="RISC-V" ;;
-          *)       expected_machine="" ;;
-        esac
+        expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
         if [ -n "${expected_machine}" ] && echo "${native_elf}" | grep -qi "${expected_machine}"; then
           echo "OK: target-native ${native_gcc}/bin/gcc is cross-built ELF for ${target_arch} (${native_elf})"
         else
@@ -126,11 +119,11 @@ validate_artifact_source() {
       # readelf), the swap succeeded.
       local main_gcc_dump main_gcc_elf
       main_gcc_dump="$("${gcc_prefix}/bin/gcc" -dumpmachine 2>/dev/null || true)"
-      case "${target_arch}" in
-        arm64)   expected_triple="aarch64-linux-gnu"; expected_machine="AArch64" ;;
-        riscv64) expected_triple="riscv64-linux-gnu"; expected_machine="RISC-V" ;;
-        *)       expected_triple=""; expected_machine="" ;;
-      esac
+      expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
+      expected_triple=""
+      if [ -n "${expected_machine}" ]; then
+        expected_triple="$(arch_deb_multiarch_triplet_for "${target_arch}" 2>/dev/null || true)"
+      fi
       if [ -n "${expected_triple}" ] && [ "${main_gcc_dump}" = "${expected_triple}" ]; then
         echo "OK: main gcc already reports target-native triple ${main_gcc_dump} (swap completed)"
       elif [ -n "${expected_machine}" ]; then
@@ -169,11 +162,7 @@ validate_artifact_source() {
         local clang_elf
         clang_elf="$(readelf -h "${llvm_target}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
         local expected_machine=""
-        case "${target_arch}" in
-          arm64)   expected_machine="AArch64" ;;
-          riscv64) expected_machine="RISC-V" ;;
-          amd64)   expected_machine="Advanced Micro Devices X86-64" ;;
-        esac
+        expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
         if [ -n "${expected_machine}" ] && echo "${clang_elf}" | grep -qi "${expected_machine}"; then
           echo "OK: target clang ${llvm_target} is cross-built ELF for ${target_arch} (${clang_elf})"
         else
