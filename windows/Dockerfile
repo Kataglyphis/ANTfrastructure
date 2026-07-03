@@ -18,8 +18,12 @@ ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 
 # rustup ships in the base image but no default toolchain was ever installed —
 # `rustc` failed with "no default is configured". Install/set it here where the
-# layer is cheap to rebuild; move into setup-rust-toolchain.ps1 at the next base rebuild.
-RUN rustup default stable 2>&1
+# layer is cheap to rebuild; move into setup-rust-toolchain.ps1 at the next base
+# rebuild. cmd.exe shields rustup's stderr progress from the inherited
+# powershell SHELL's $ErrorActionPreference=Stop.
+RUN cmd.exe /c "rustup default stable >nul 2>&1"; `
+    if ($LASTEXITCODE -ne 0) { throw "rustup default stable failed ($LASTEXITCODE)" }; `
+    rustc --version
 
 COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
 # Smoke test is documented to run from inside the container (docs/windows-builds.md)
