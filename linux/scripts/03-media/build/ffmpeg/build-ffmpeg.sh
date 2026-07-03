@@ -571,6 +571,14 @@ ffmpeg_probe_libonnxruntime() {
             "onnxruntime_c_api.h" "OrtGetApiBase" "${onnx_base}" \
             "-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session" \
             "-L${onnx_base}/lib -lonnxruntime -lstdc++ -lpthread -lm -ldl" "${ONNXRUNTIME_VERSION#v}"; then
+            # FFmpeg checks libonnxruntime with a BARE `require`/check_lib (NOT
+            # require_pkg_config), so it ignores the synth .pc and compiles
+            # `#include <onnxruntime_c_api.h>` with no -I. Export the resolved
+            # paths so configure_ffmpeg can add them to --extra-cflags/-ldflags/
+            # -libs; -lstdc++ is required because libonnxruntime.so is C++.
+            _FFMPEG_ONNX_EXTRA_CFLAGS="-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session"
+            _FFMPEG_ONNX_EXTRA_LDFLAGS="-L${onnx_base}/lib"
+            _FFMPEG_ONNX_EXTRA_LIBS="-lstdc++"
             echo "ONNX Runtime enabled via synthesized pkg-config at ${onnx_base}."
             return 0
         fi
@@ -878,6 +886,11 @@ configure_ffmpeg() {
     
     if ffmpeg_probe_libonnxruntime; then
         configure_opts+=("--enable-libonnxruntime")
+        # FFmpeg's onnxruntime check is a bare check_lib, so feed the header/lib
+        # paths through the global extra flags (see ffmpeg_probe_libonnxruntime).
+        [ -n "${_FFMPEG_ONNX_EXTRA_CFLAGS:-}" ] && configure_opts+=("--extra-cflags=${_FFMPEG_ONNX_EXTRA_CFLAGS}")
+        [ -n "${_FFMPEG_ONNX_EXTRA_LDFLAGS:-}" ] && configure_opts+=("--extra-ldflags=${_FFMPEG_ONNX_EXTRA_LDFLAGS}")
+        [ -n "${_FFMPEG_ONNX_EXTRA_LIBS:-}" ] && configure_opts+=("--extra-libs=${_FFMPEG_ONNX_EXTRA_LIBS}")
     fi
 
     # Deep Neural Network backends (always try; skip if SDK not available)
