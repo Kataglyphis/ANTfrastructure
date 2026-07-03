@@ -9,6 +9,22 @@ elif [ -f /opt/scripts/core/cross-env.sh ]; then
     source /opt/scripts/core/cross-env.sh
 fi
 
+# Load the data-driven per-arch MEDIA_SKIP_* flags (arch-flags-<arch>.env).
+# media_load_arch_flags lives in 03-media/core/common.sh: in the container it
+# is COPY'd to /opt/scripts/03-media/core (base stage), in the repo it sits at
+# linux/scripts/03-media/core. The preamble above already provided the
+# cross_build_is_active / cross_target_arch helpers it needs.
+for _media_common in \
+    "/opt/scripts/03-media/core/common.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../core/common.sh"; do
+    if [ -f "${_media_common}" ]; then
+        # shellcheck disable=SC1090
+        source "${_media_common}" || { echo "FATAL: cannot load ${_media_common}" >&2; exit 1; }
+        break
+    fi
+done
+media_load_arch_flags
+
 echo "Installing final stage dependencies..."
 
 install_deps_preamble
@@ -46,13 +62,11 @@ target_packages=(
     libgsl28 libgslcblas0 libnuma1
 )
 
-if is_cross && \
-   command -v cross_target_arch >/dev/null 2>&1 && \
-   [ "$(cross_target_arch)" = "riscv64" ]; then
-    # The riscv64 GStreamer build skips the GTK/json-glib dependent plugins
-    # because Ubuntu Ports cannot currently provide a clean cross dependency
-    # chain for them. Installing the runtime packages here only adds target-side
-    # postinst noise without enabling extra shipped functionality.
+# MEDIA_SKIP_GLIB_STACK (arch-flags-riscv64.env): when the GStreamer build
+# skipped the GTK/json-glib dependent plugins, installing the runtime packages
+# here only adds target-side postinst noise without enabling extra shipped
+# functionality.
+if [ "${MEDIA_SKIP_GLIB_STACK:-0}" = "1" ]; then
     echo "Skipping GTK/json-glib runtime packages for riscv64 cross final image"
 else
     target_packages=(libgtk-4-1 libjson-glib-1.0-0 "${target_packages[@]}")

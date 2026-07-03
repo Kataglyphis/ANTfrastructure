@@ -88,6 +88,13 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
 
 # Shared bootstrap + activation scripts (small, rarely change → COPY in base).
 COPY --chmod=755 linux/scripts/03-media/core/common.sh              /opt/scripts/03-media/core/common.sh
+# Data-driven per-arch MEDIA_SKIP_* flag files consumed by
+# media_load_arch_flags() (03-media/core/common.sh). COPY'd in base so they
+# are present in every derived stage, including install-deps RUN steps that
+# only bind-mount their own 03-media subtree + 01-core.
+COPY --chmod=644 linux/scripts/03-media/core/arch-flags-amd64.env   /opt/scripts/03-media/core/arch-flags-amd64.env
+COPY --chmod=644 linux/scripts/03-media/core/arch-flags-arm64.env   /opt/scripts/03-media/core/arch-flags-arm64.env
+COPY --chmod=644 linux/scripts/03-media/core/arch-flags-riscv64.env /opt/scripts/03-media/core/arch-flags-riscv64.env
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh    /opt/scripts/03-media/activate-cross-python.sh
 COPY --chmod=755 linux/scripts/03-media/runtime/verify-media-artifacts.sh /opt/scripts/03-media/runtime/verify-media-artifacts.sh
 COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh  /opt/scripts/core/install-deps-preamble.sh

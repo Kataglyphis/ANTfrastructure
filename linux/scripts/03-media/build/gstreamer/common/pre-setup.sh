@@ -34,8 +34,6 @@ if cross_build_is_active && \
   esac
 fi
 
-skip_csound_cross=$(is_cross_skip_csound && echo true || echo false)
-
 prefer_toolchain_vulkan=false
 if cross_build_is_active && \
    [ -d "${vulkan_prefix}" ]; then
@@ -139,7 +137,7 @@ if [ -n "${gi_cross_wrapper_arch}" ]; then
   host_packages+=(qemu-user)
 fi
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_CAIRO_PANGO_PIXBUF:-0}" = "1" ]; then
   echo "Skipping libpango1.0-dev and libgdk-pixbuf-2.0-dev target helper packages for riscv64 cross pre-setup because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
   core_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev "${core_packages[@]}")
@@ -423,7 +421,7 @@ update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # The later GStreamer build already disables/excludes csound on ARM and RISC-V
 # cross targets, so avoid redundant host-side package churn here.
 # Also check target arch directly in case cross_build_is_active is not available.
-if [ "${skip_csound_cross}" = "true" ] || echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
+if [ "${MEDIA_SKIP_CSOUND:-0}" = "1" ] || echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
   echo "Skipping Csound pre-setup for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
   apt-get install -y --no-install-recommends \
@@ -436,7 +434,7 @@ fi
 # stub when not building for riscv targets (we skipped installing Csound
 # packages above for skipped cross targets), otherwise creating a stub may mask
 # missing package problems on supported arches.
-if [ "${skip_csound_cross}" != "true" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
+if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
   triplet=""
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     triplet="$(cross_target_triplet)"
@@ -467,7 +465,7 @@ if [ "${skip_csound_cross}" != "true" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-
     "Cflags: -I\${includedir}" \
     > "$pcdir/csound.pc" || true
   # Verify that pkg-config can discover csound; fail with diagnostics if not.
-  if [ "${skip_csound_cross}" != "true" ] && ! pkg-config --exists csound 2>/dev/null; then
+  if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ] && ! pkg-config --exists csound 2>/dev/null; then
     echo "dpkg multiarch triplet: ${triplet:-unset}" >&2
     echo "PKG_CONFIG_LIBDIR=${PKG_CONFIG_LIBDIR:-unset}" >&2
     echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-unset}" >&2

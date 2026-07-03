@@ -14,6 +14,23 @@ for _dep_env in \
         break
     fi
 done
+
+# Load the data-driven per-arch MEDIA_SKIP_* flags (arch-flags-<arch>.env).
+# media_load_arch_flags lives in 03-media/core/common.sh: in the container it
+# is COPY'd to /opt/scripts/03-media/core (base stage), in the repo it sits at
+# linux/scripts/03-media/core. The preamble above already provided the
+# cross_build_is_active / cross_target_arch helpers it needs.
+for _media_common in \
+    "/opt/scripts/03-media/core/common.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../core/common.sh"; do
+    if [ -f "${_media_common}" ]; then
+        # shellcheck disable=SC1090
+        source "${_media_common}" || { echo "FATAL: cannot load ${_media_common}" >&2; exit 1; }
+        break
+    fi
+done
+media_load_arch_flags
+
 if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/toolchain/vulkan.sh
@@ -24,10 +41,6 @@ vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 echo "Installing GStreamer build dependencies..."
 
 install_deps_preamble build-essential cmake git pkg-config g++ flex bison
-
-is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
-
-skip_csound_cross=$(is_cross_skip_csound && echo true || echo false)
 
 prefer_toolchain_vulkan=false
 if is_cross; then
@@ -58,7 +71,7 @@ pre_setup_target_packages=(
   libsodium-dev
 )
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_CAIRO_PANGO_PIXBUF:-0}" = "1" ]; then
   echo "Skipping libcairo2-dev, libpango1.0-dev and libgdk-pixbuf-2.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
   pre_setup_target_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev "${pre_setup_target_packages[@]}")
@@ -92,7 +105,7 @@ gst_target_packages=(
   libpcre2-dev
 )
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_LIBCXX_DEV:-0}" = "1" ]; then
   echo "Skipping target libc++-dev and libc++abi-dev for riscv64 cross builds because Ubuntu Ports has broken dependencies for libc++-21-dev."
 else
   gst_target_packages+=(
@@ -101,7 +114,7 @@ else
   )
 fi
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_GLIB_STACK:-0}" = "1" ]; then
   echo "Skipping target GLib/GTK/introspection/cairo packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their helper dependency chain."
 else
   gst_target_packages+=(
@@ -122,7 +135,7 @@ install_target_packages libunwind-dev || true
 # Install libdw-dev as host package too — its headers (elfutils/libdwfl.h) are
 # arch-independent and required by GStreamer gstinfo.c for backtrace support.
 install_host_packages libdw-dev libxml2-utils glslc glslang-tools gobject-introspection || true
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_GTK_DEV:-0}" = "1" ]; then
   echo "Skipping target GTK dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
   install_target_packages libgtk-3-dev libgtk-4-dev
@@ -161,7 +174,7 @@ fi
 
 install_target_packages "${graphics_target_packages[@]}" || true
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_GUDEV:-0}" = "1" ]; then
   echo "Skipping libgudev-1.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy its libglib2.0-dev helper dependency chain."
 else
   install_target_packages libgudev-1.0-dev || true
@@ -218,7 +231,7 @@ install_target_packages \
 install_target_packages libsoup-3.0-dev libnice-dev || true
 
 # Csound conditionally
-if [ "${skip_csound_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_CSOUND:-0}" = "1" ]; then
   echo "Skipping target Csound packages for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
   install_target_packages \

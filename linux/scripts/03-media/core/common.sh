@@ -42,6 +42,12 @@ This file is sourced, not executed directly. It provides:
       target arch != build arch). Defined here as a fallback so downstream
       scripts always see it even when cross-env.sh's own guard skips reloading.
 
+  media_load_arch_flags
+      Source the per-target-arch MEDIA_SKIP_* flag file
+      (arch-flags-<arch>.env, next to this file) for the effective target
+      arch. Called automatically by media_common_init; preamble-based
+      install-deps scripts source this file and call it directly.
+
 Environment consumed:
   BUILD_MODE   native | cross   (default: native)
 
@@ -74,6 +80,54 @@ _media_find_core_dir() {
     d="$(cd "${d}/.." && pwd)"
   done
   return 1
+}
+
+# Data-driven per-arch skip flags --------------------------------------------
+#
+# The repeated boolean per-arch skip decisions in the media install/build
+# scripts (e.g. "skip target Csound packages on riscv64/arm64 cross") are
+# consolidated into declarative flag files next to this one:
+# arch-flags-{amd64,arm64,riscv64}.env — KEY=value lines only (MEDIA_SKIP_*;
+# 1 = skip, 0/unset = do not skip), with the per-flag justifications kept as
+# comments in those files.
+#
+# media_load_arch_flags resolves the effective target arch — cross_target_arch
+# when a cross build is active, otherwise the native amd64 defaults — and
+# sources the matching flag file if present. A missing file simply leaves
+# every MEDIA_SKIP_* flag unset (= do not skip), matching the old
+# is_cross_*-style helpers which only ever skipped on active cross builds.
+#
+# Consumers:
+#   - Scripts using media_common_init get the flags automatically (called at
+#     the end of media_common_init, after cross-env.sh is loaded).
+#   - install-deps-preamble based scripts source this file (container path
+#     /opt/scripts/03-media/core/common.sh first, repo layout second) and call
+#     media_load_arch_flags themselves; the preamble has already provided the
+#     cross_build_is_active / cross_target_arch helpers by then.
+media_load_arch_flags() {
+  local arch="amd64" candidate flags_file=""
+
+  if command -v cross_build_is_active >/dev/null 2>&1 && cross_build_is_active && \
+     command -v cross_target_arch >/dev/null 2>&1; then
+    arch="$(cross_target_arch 2>/dev/null || echo amd64)"
+  fi
+
+  # Container layout first (COPY'd into the media base stage), then the
+  # directory this file lives in (repo / local-dev layout).
+  for candidate in \
+      "/opt/scripts/03-media/core/arch-flags-${arch}.env" \
+      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/arch-flags-${arch}.env"; do
+    if [ -f "${candidate}" ]; then
+      flags_file="${candidate}"
+      break
+    fi
+  done
+
+  # No flag file for this arch → keep the all-unset defaults (do not skip).
+  [ -n "${flags_file}" ] || return 0
+
+  # shellcheck disable=SC1090
+  source "${flags_file}"
 }
 
 # The single entry point replacing the old media_build_preamble_init().
@@ -128,4 +182,8 @@ media_common_init() {
       }
     fi
   fi
+
+  # Load the data-driven per-arch MEDIA_SKIP_* flags now that the cross-env
+  # helpers are available.
+  media_load_arch_flags
 }
