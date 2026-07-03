@@ -33,9 +33,19 @@ git clone --depth 1 -b ${ORT_VERSION} https://github.com/microsoft/onnxruntime.g
 cd onnxruntime-android
 
 # Patch Android Gradle Plugin 7.4.2 -> 8.3.1 (JDK 21) and re-enable buildConfig
-_scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-bash "${_scripts_dir}/01-core/apply-patch.sh" \
-  "${_scripts_dir}/patches/onnxruntime/001-android-gradle-agp8-compat.patch" \
+# Container layout first (apply-patch.sh + patches/ are COPY'd into the
+# android stages; the 4-up repo-relative path resolves to /opt in-container
+# and broke with "bash: /opt/01-core/apply-patch.sh: No such file").
+if [ -f /opt/scripts/core/apply-patch.sh ]; then
+    _apply_patch=/opt/scripts/core/apply-patch.sh
+    _patches_root=/opt/scripts/patches
+else
+    _scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+    _apply_patch="${_scripts_dir}/01-core/apply-patch.sh"
+    _patches_root="${_scripts_dir}/patches"
+fi
+bash "${_apply_patch}" \
+  "${_patches_root}/onnxruntime/001-android-gradle-agp8-compat.patch" \
   "$(pwd)" \
   "ONNX Runtime Android Gradle AGP 8 compat"
 

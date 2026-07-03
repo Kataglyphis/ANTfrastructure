@@ -72,6 +72,8 @@ ARG ANDROID_LIB=gstreamer
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
 COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
+COPY --chmod=755 linux/scripts/01-core/apply-patch.sh /opt/scripts/core/apply-patch.sh
+COPY linux/scripts/patches/ /opt/scripts/patches/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -93,6 +95,8 @@ ARG ANDROID_LIB=onnxruntime
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
 COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
+COPY --chmod=755 linux/scripts/01-core/apply-patch.sh /opt/scripts/core/apply-patch.sh
+COPY linux/scripts/patches/ /opt/scripts/patches/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -114,6 +118,8 @@ ARG ANDROID_LIB=litert
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
 COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
+COPY --chmod=755 linux/scripts/01-core/apply-patch.sh /opt/scripts/core/apply-patch.sh
+COPY linux/scripts/patches/ /opt/scripts/patches/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -135,6 +141,8 @@ ARG ANDROID_LIB=opencv
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
 COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
+COPY --chmod=755 linux/scripts/01-core/apply-patch.sh /opt/scripts/core/apply-patch.sh
+COPY linux/scripts/patches/ /opt/scripts/patches/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \

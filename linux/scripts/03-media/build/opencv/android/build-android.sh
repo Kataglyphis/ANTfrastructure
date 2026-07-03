@@ -19,9 +19,19 @@ cd opencv-android
 # Same MLAS stub fix as build-opencv.sh via the canonical patch in
 # patches/opencv/001-mlas-hgemm-supported-stub.patch. apply-patch.sh is
 # idempotent (skips if already applied via reverse-check), so re-runs stay safe.
-_scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-bash "${_scripts_dir}/01-core/apply-patch.sh" \
-  "${_scripts_dir}/patches/opencv/001-mlas-hgemm-supported-stub.patch" \
+# Container layout first (apply-patch.sh + patches/ are COPY'd into the
+# android stages; the 4-up repo-relative path resolves to /opt in-container
+# and broke with "bash: /opt/01-core/apply-patch.sh: No such file").
+if [ -f /opt/scripts/core/apply-patch.sh ]; then
+    _apply_patch=/opt/scripts/core/apply-patch.sh
+    _patches_root=/opt/scripts/patches
+else
+    _scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+    _apply_patch="${_scripts_dir}/01-core/apply-patch.sh"
+    _patches_root="${_scripts_dir}/patches"
+fi
+bash "${_apply_patch}" \
+  "${_patches_root}/opencv/001-mlas-hgemm-supported-stub.patch" \
   "$(pwd)" \
   "OpenCV MLAS MlasHGemmSupported stub for MLAS_GEMM_ONLY"
 
