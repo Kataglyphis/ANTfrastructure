@@ -73,8 +73,20 @@ mkdir -p "${INSTALL_DIR}/lib" "${INSTALL_DIR}/include" "${INSTALL_DIR}/java"
 # The headers always exist in the source tree — a failed copy here is a real
 # error, not an optional step.
 cp -r include/* "${INSTALL_DIR}/include/"
-find build/Android/Release -name "libonnxruntime*.so" -print0 | xargs -0 -r cp -t "${INSTALL_DIR}/lib/"
-find build/Android/Release -name "*.aar" -print0 | xargs -0 -r cp -t "${INSTALL_DIR}/java/"
+# The build tree contains MULTIPLE copies of each .so/.aar (top level, java
+# build dirs, native-libs). A single `xargs cp -t` fails on the duplicate
+# basenames ("will not overwrite just-created", exit 123) — historically masked
+# by 2>/dev/null || true with first-copy-wins semantics. Keep that outcome
+# explicitly: copy the first occurrence of each basename, skip the rest, and
+# rely on the verification below for the real guarantee.
+while IFS= read -r -d '' _artifact; do
+  _base="$(basename "${_artifact}")"
+  [ -e "${INSTALL_DIR}/lib/${_base}" ] || cp "${_artifact}" "${INSTALL_DIR}/lib/"
+done < <(find build/Android/Release -name "libonnxruntime*.so" -print0)
+while IFS= read -r -d '' _artifact; do
+  _base="$(basename "${_artifact}")"
+  [ -e "${INSTALL_DIR}/java/${_base}" ] || cp "${_artifact}" "${INSTALL_DIR}/java/"
+done < <(find build/Android/Release -name "*.aar" -print0)
 
 # Verify the install actually landed before deleting the build tree — these
 # copies failing silently used to produce an "installed" stage with no library.
