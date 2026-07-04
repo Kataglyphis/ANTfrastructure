@@ -33,10 +33,17 @@ Write-Host 'Installing dependencies via vcpkg...'
 foreach ($pkg in @('zlib:x64-windows', 'protobuf:x64-windows')) {
     Write-Host "  Installing $pkg..."
     & "$VcpkgDir\vcpkg.exe" install $pkg --triplet x64-windows 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  $pkg installed successfully"
-    } else {
-        Write-Host "  WARNING: $pkg installation may have failed"
-    }
+    # Fail loudly: a silently-missing protobuf/zlib surfaces much later as an
+    # opaque link error deep in a media build.
+    if ($LASTEXITCODE -ne 0) { throw "vcpkg install $pkg failed (exit $LASTEXITCODE)" }
+    Write-Host "  $pkg installed successfully"
+}
+
+# Only installed\ is consumed downstream; buildtrees\, packages\ and downloads\ are
+# multi-GB intermediates that would otherwise bloat this layer.
+Write-Host 'Pruning vcpkg intermediates (buildtrees, packages, downloads)...'
+foreach ($sub in @('buildtrees', 'packages', 'downloads')) {
+    $path = Join-Path $VcpkgDir $sub
+    if (Test-Path $path) { Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue }
 }
 Write-Host 'vcpkg setup complete.'

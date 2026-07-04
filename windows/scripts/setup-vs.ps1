@@ -188,8 +188,11 @@ finally {
     Get-Process -Name '*vs_installer*', '*vs_buildtools*', '*vs_setup*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host 'Cleaned up lingering VS installer processes'
 
-    # Wenn im Fehlerfall noch der Installer existiert, lasse ihn zur Analyse bestehen.
+    # On failure keep the installer for analysis; on success remove it so it does
+    # not ride along in the base layer.
     if ($proc -and ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010)) {
-    Write-Host "Installer was not deleted (left for analysis at $installer)."
+        Write-Host "Installer was not deleted (left for analysis at $installer)."
+    } elseif (Test-Path $installer) {
+        Remove-Item $installer -Force -ErrorAction SilentlyContinue
     }
 }

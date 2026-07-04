@@ -52,17 +52,10 @@ scoop bucket add versions
 scoop install main/7zip
 scoop config use_external_7zip true
 
-$cargoHome = 'C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo'
-$rustupHome = 'C:\Users\ContainerAdministrator\scoop\persist\rustup\.rustup'
-[Environment]::SetEnvironmentVariable('CARGO_HOME', $cargoHome, 'Process')
-[Environment]::SetEnvironmentVariable('RUSTUP_HOME', $rustupHome, 'Process')
-New-Item -Path $cargoHome -ItemType Directory -Force | Out-Null
-New-Item -Path $rustupHome -ItemType Directory -Force | Out-Null
-
-$rustupInit = Join-Path $TempDir 'rustup-init.exe'
-Invoke-WebRequest -Uri 'https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe' -OutFile $rustupInit
-Start-Process -FilePath $rustupInit -ArgumentList '-y', '--default-toolchain', 'none', '--no-modify-path' -Wait -NoNewWindow
-Remove-Item $rustupInit -Force
+# Rust is provisioned by setup-rust-toolchain.ps1 via scoop (single provider).
+# We deliberately do NOT install rustup here: a toolchain-less rustup drops proxy
+# shims into CARGO_BIN that shadow scoop's real cargo/rustc on PATH and fail with
+# "no default toolchain". scoop's shims resolve to the actual binaries instead.
 
 if ([string]::IsNullOrWhiteSpace($VulkanVersion)) {
     scoop install main/vulkan
@@ -80,3 +73,8 @@ Write-Host 'Installing CMake nightly...'
 Start-Process msiexec.exe -ArgumentList '/i', $cmakeInstaller, '/quiet', '/norestart', 'ADD_CMAKE_TO_PATH=System' -Wait -NoNewWindow
 Remove-Item $cmakeInstaller -Force
 Write-Host 'CMake nightly installation complete.'
+
+# Drop scoop's download cache — the installers (LLVM, Flutter, Vulkan SDK, ...) are
+# already unpacked into the apps dir and only bloat this (large) layer otherwise.
+Write-Host 'Clearing scoop download cache...'
+scoop cache rm * 2>&1 | Out-Null

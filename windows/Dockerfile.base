@@ -59,8 +59,8 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     CMAKE_BIN="C:\Program Files\CMake\bin" `
     WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH `
     USERPROFILE=C:\Users\ContainerAdministrator `
-    CARGO_HOME=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo `
-    CARGO_BIN=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo\bin
+    CARGO_HOME=C:\Users\ContainerAdministrator\.cargo `
+    CARGO_BIN=C:\Users\ContainerAdministrator\.cargo\bin
 
 ENV PATH=$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 

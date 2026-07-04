@@ -25,7 +25,7 @@ RUN set "PYTHON_VERSION=%PYTHON_VERSION%" && if not exist "C:\temp\cpython\" git
 # PowerShell Set-Content with -Encoding ASCII produces XML that MSBuild rejects
 # with "unexpected token '1.0' at position 15" — the `^<?xml ` caret escaping in
 # cmd.exe is the canonical Windows form for correct XML prolog output).
-SHELL ["cmd", "/S", "/C"]
+# (SHELL is already cmd from the clone step above — no re-declaration needed.)
 RUN cd /d C:\temp\cpython && `
     echo ^<?xml version="1.0" encoding="utf-8"?^> > PCbuild\Directory.Build.props && `
     echo ^<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003"^> >> PCbuild\Directory.Build.props && `
@@ -38,13 +38,15 @@ RUN cd /d C:\temp\cpython && `
 # NOTE: `--mount=type=cache` requires BuildKit, which is not available for Windows
 # Containers (buildkit executor not implemented for windows). The sccache cache mount
 # cannot be used here. CPython is rebuilt from scratch on every cache miss.
-# The trailing cleanup runs in the SAME layer: PCbuild\obj (compile intermediates)
-# and externals\ (dependency source/build trees) are dead weight after the build —
-# the external DLLs (OpenSSL, sqlite3, libffi) are already copied into PCbuild\amd64.
-SHELL ["cmd", "/S", "/C"]
+# The trailing cleanup runs in the SAME layer: PCbuild\obj (compile intermediates),
+# externals\ (dependency source/build trees) and .git (the shallow clone history)
+# are all dead weight after the build — the external DLLs (OpenSSL, sqlite3, libffi)
+# are already copied into PCbuild\amd64.
+# (SHELL is already cmd — no re-declaration needed.)
 RUN cd /d C:\temp\cpython && PCbuild\build.bat -e -p x64 -c Release && `
     (if exist PCbuild\obj rd /s /q PCbuild\obj) && `
-    (if exist externals rd /s /q externals)
+    (if exist externals rd /s /q externals) && `
+    (if exist .git rd /s /q .git)
 
 # Verify built Python
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]

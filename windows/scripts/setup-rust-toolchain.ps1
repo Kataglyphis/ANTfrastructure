@@ -10,18 +10,14 @@ if (-not (Test-Path $modulePath)) {
 }
 Import-Module $modulePath -Force
 
-Write-Host 'Installing Rust via scoop...'
-try { scoop install main/rust 2>&1 | Out-Null } catch {}
-if ($LASTEXITCODE -eq 0) {
-    Write-Host 'Rust installed via scoop successfully'
-} else {
-    Write-Host 'Scoop rust install failed, falling back to rustup...'
-    try { rustup default stable } catch {}
-}
+Write-Host 'Installing Rust via scoop (single provider; no rustup)...'
+scoop install main/rust
+if ($LASTEXITCODE -ne 0) { throw 'scoop install main/rust failed' }
 
-# Prepend scoop's Rust bin dir to PATH so cargo/rustc resolve to the actual
-# binaries (not the rustup proxy shims which need a default toolchain).
-$scoopRustBin = "C:\Users\ContainerAdministrator\scoop\apps\rust\current\bin"
+# scoop drops cargo/rustc shims into its shim dir, which the persistent PATH
+# (Dockerfile.base) already carries for later build stages. Prepend the app's
+# bin dir to THIS process's PATH so the asserts below resolve immediately.
+$scoopRustBin = Join-Path $env:USERPROFILE 'scoop\apps\rust\current\bin'
 if (Test-Path "$scoopRustBin\rustc.exe") {
     $env:PATH = "$scoopRustBin;$env:PATH"
     Write-Host "Using scoop Rust binaries at $scoopRustBin"
