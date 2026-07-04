@@ -13,7 +13,7 @@ function Check {
         Write-Host "[PASS] $Label"
     } catch {
         Write-Host "[FAIL] $Label -- $_"
-        $failed = $true
+        $script:failed = $true
     }
 }
 

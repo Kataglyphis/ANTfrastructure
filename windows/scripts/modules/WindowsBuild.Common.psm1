@@ -417,7 +417,7 @@ function Initialize-BuildCacheEnvironment {
     $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue
     if ($sccacheCmd) {
         $sccacheExe = $sccacheCmd.Source
-        Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
+        Write-BuildLog -Context $Context -Message "sccache found at: $sccacheExe. Enabling compiler cache."
         $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
         $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
         $env:RUSTC_WRAPPER = $sccacheExe
@@ -426,7 +426,7 @@ function Initialize-BuildCacheEnvironment {
 
         if (-not $env:SCCACHE_MAX_JOBS) {
             $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString()
-            Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$($env:SCCACHE_MAX_JOBS) (from Initialize-BuildCacheEnvironment)"
+            Write-BuildLog -Context $Context -Message "Auto-set SCCACHE_MAX_JOBS=$($env:SCCACHE_MAX_JOBS)"
         }
     }
     return $fastLocalCache

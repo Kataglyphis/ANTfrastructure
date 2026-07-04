@@ -115,6 +115,30 @@ function Get-CommandVersion {
     } catch { return $null }
 }
 
+# Expected versions come from the single source of truth (versions.env), not
+# hardcoded literals that silently drift on a version bump. load-versions.ps1
+# bakes every versions.env key as a Machine-scoped env var during the base
+# build, so in-container that env var is authoritative; on the build host we
+# fall back to the repo's versions.env, then to a literal only as a last resort.
+$script:versionsFromFile = @{}
+$repoVersions = Join-Path $PSScriptRoot '..\..\linux\scripts\01-core\versions.env'
+if (Test-Path $repoVersions) {
+    Get-Content $repoVersions | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and $line -notmatch '^#') {
+            $kv = $line -split '=', 2
+            if ($kv.Count -eq 2) { $script:versionsFromFile[$kv[0].Trim()] = $kv[1].Trim().Trim('"', "'") }
+        }
+    }
+}
+function Get-ExpectedVersion {
+    param([string]$Key, [string]$Fallback)
+    $v = [Environment]::GetEnvironmentVariable($Key)
+    if ([string]::IsNullOrWhiteSpace($v)) { $v = $script:versionsFromFile[$Key] }
+    if ([string]::IsNullOrWhiteSpace($v)) { return $Fallback }
+    return $v.TrimStart('v')
+}
+
 # ============================================================================
 Write-TestHeader '1. Build Tools'
 # ============================================================================
@@ -127,23 +151,25 @@ Assert-CommandExists 'llvm-lib'
 Assert-CommandExists 'msbuild'  # from VS Build Tools
 Assert-CommandExists 'nuget'
 
-# Verify clang-cl version
+# Verify clang-cl version (major derived from LLVM_RELEASE in versions.env)
 $clangVer = Get-CommandVersion 'clang-cl'
+$clangMajor = (Get-ExpectedVersion 'LLVM_RELEASE' '22') -split '\.' | Select-Object -First 1
 Assert-Test -Name "clang-cl version" -Condition { $clangVer -ne $null } -FailMessage "Could not get clang-cl version"
-Assert-Test -Name "clang-cl version string" -Condition { $clangVer -match '22\.' } -FailMessage "clang-cl version is not 22.x"
+Assert-Test -Name "clang-cl version string" -Condition { $clangVer -match ([regex]::Escape($clangMajor) + '\.') } -FailMessage "clang-cl version is not $clangMajor.x"
 
 # Verify cmake version
 $cmakeVer = Get-CommandVersion 'cmake'
 Assert-Test -Name "cmake version" -Condition { $cmakeVer -ne $null } -FailMessage "Could not get cmake version"
 
 # ============================================================================
-Write-TestHeader '2. Python 3.14 (source-built)'
+Write-TestHeader '2. Python (source-built)'
 # ============================================================================
 Assert-CommandExists 'python'
-Assert-Test -Name "Python is 3.14.x" -Condition {
+$pyMajorMinor = ((Get-ExpectedVersion 'PYTHON_VERSION' '3.14') -split '\.')[0..1] -join '.'
+Assert-Test -Name "Python is $pyMajorMinor.x" -Condition {
     $ver = & python --version 2>&1
-    return $ver -match '3\.14\.'
-} -FailMessage "Python version is not 3.14.x"
+    return $ver -match ([regex]::Escape($pyMajorMinor) + '\.')
+} -FailMessage "Python version is not $pyMajorMinor.x"
 
 $cpythonDir = Join-Path $env:TEMP_DIR 'cpython'
 Assert-Test -Name "Python source-built from $cpythonDir" -Condition {
@@ -160,10 +186,17 @@ Write-TestHeader '3. Rust Toolchain'
 # ============================================================================
 Assert-CommandExists 'cargo'
 Assert-CommandExists 'rustc'
-Assert-Test -Name "Rust version is 1.96.0" -Condition {
+# Rust is provisioned via scoop (unpinned unless RUST_VERSION is set in
+# versions.env), so assert the pinned major.minor when known, otherwise just
+# that rustc reports a well-formed semver - avoids a literal that silently
+# drifts on every scoop bump.
+$rustExpected = Get-ExpectedVersion 'RUST_VERSION' ''
+$rustMajorMinor = if ($rustExpected) { ($rustExpected -split '\.')[0..1] -join '.' } else { '' }
+Assert-Test -Name "Rust version$(if ($rustMajorMinor) { " is $rustMajorMinor.x" })" -Condition {
     $ver = & rustc --version 2>&1
-    return $ver -match '1\.96\.'
-} -FailMessage "Rust version is not 1.96.x"
+    if ($rustMajorMinor) { return $ver -match ([regex]::Escape($rustMajorMinor) + '\.') }
+    return $ver -match '\d+\.\d+\.\d+'
+} -FailMessage "rustc --version did not report the expected version"
 
 # ============================================================================
 Write-TestHeader '4. LLVM / Clang + Flutter + WiX'
@@ -210,10 +243,11 @@ Write-TestHeader '7. CUDA Toolkit + cuDNN'
 # ============================================================================
 if (-not $SkipCudaTests) {
     Assert-CommandExists 'nvcc'
-    Assert-Test -Name "nvcc version" -Condition {
+    $cudaMajorMinor = ((Get-ExpectedVersion 'CUDA_VERSION' '13.3') -split '\.')[0..1] -join '.'
+    Assert-Test -Name "nvcc version is $cudaMajorMinor.x" -Condition {
         $ver = & nvcc --version 2>&1 | Out-String
-        return $ver -match '13\.3'
-    } -FailMessage "nvcc version is not 13.3.x"
+        return $ver -match [regex]::Escape($cudaMajorMinor)
+    } -FailMessage "nvcc version is not $cudaMajorMinor.x"
 
     Assert-EnvVarSet -Name 'CUDA_ROOT'
     Assert-EnvVarSet -Name 'CUDA_PATH'

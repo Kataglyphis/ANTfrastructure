@@ -75,7 +75,7 @@ param(
     [ValidateSet('base', 'sdk', 'toolchain', 'media', 'final')]
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'final'),
     [string]$Docker = '',
-    [string]$FinalTag = 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64',
+    [string]$FinalTag = '',
     [int]$MediaMemoryGb = 48,
     [int]$AuxMemoryGb = 8,
     [switch]$SequentialMedia,
@@ -86,7 +86,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-Set-Location $repoRoot
+Push-Location $repoRoot
+
+# Transient hcsshim/containerd failures ("failed to create shim task: ttrpc:
+# closed") intermittently kill container creation, typically right after a big
+# layer commit. Both Invoke-Stage and the media fan-out classify failures against
+# this single pattern.
+$script:TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
 
 # ---- resolve docker CLI (Stevedore's docker.exe preferred; nerdctl build has broken DNS) ----
 if ([string]::IsNullOrWhiteSpace($Docker)) {
@@ -120,6 +126,12 @@ function Get-Ver([string]$Name) {
 # its apt hyphen form (13-3) inside linux/Dockerfile.nvidia.
 $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 
+# Default the final image tag from the canonical registry prefix so it can never
+# drift from versions.env. Override with -FinalTag.
+if ([string]::IsNullOrWhiteSpace($FinalTag)) {
+    $FinalTag = (Get-Ver 'IMAGE_REGISTRY_PREFIX') + ':winamd64'
+}
+
 function Get-DockerBuildArgList {
     param(
         [Parameter(Mandatory)] [string]$Dockerfile,
@@ -147,12 +159,8 @@ function Invoke-Stage {
         [hashtable]$BuildArgs = @{},
         [string[]]$ExtraFlags = @()
     )
-    # Transient hcsshim/containerd failures ("failed to create shim task: ttrpc:
-    # closed") intermittently kill container creation, typically right after a big
-    # layer commit. Capture output and retry up to twice with a cool-down; cached
-    # layers make each retry resume at the failed step. Non-transient errors throw
-    # immediately.
-    $transient = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
+    # Capture output and retry up to twice with a cool-down; cached layers make
+    # each retry resume at the failed step. Non-transient errors throw immediately.
     $dockerArgs = Get-DockerBuildArgList -Dockerfile $Dockerfile -Tag $Tag -BuildArgs $BuildArgs -ExtraFlags $ExtraFlags
     $stageLog = Join-Path ([System.IO.Path]::GetTempPath()) ("stage-" + [IO.Path]::GetFileName($Dockerfile) + ".log")
     foreach ($attempt in 1..3) {
@@ -160,7 +168,7 @@ function Invoke-Stage {
         & $Docker @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog
         if ($LASTEXITCODE -eq 0) { return }
         $tail = Get-Content $stageLog -Tail 10 | Out-String
-        if ($attempt -lt 3 -and $tail -match $transient) {
+        if ($attempt -lt 3 -and $tail -match $script:TransientPattern) {
             Write-Host "[$Dockerfile] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
             Start-Sleep -Seconds 60
             continue
@@ -262,34 +270,21 @@ function Invoke-MediaBranches {
 
     $failed = @($procs | Where-Object { $_.Proc.ExitCode -ne 0 })
 
-    # Transient-infrastructure failures (container never started) get one foreground
-    # retry — layer caching resumes the build at the failed step, so this is cheap.
-    $transientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
+    # Transient-infrastructure failures (container never started) get a foreground
+    # retry via Invoke-Stage — layer caching resumes at the failed step, so this is
+    # cheap, and Invoke-Stage already owns the cool-down + transient-vs-real retry
+    # loop. Non-transient failures are collected and reported without a retry.
     $stillFailed = @()
     foreach ($f in $failed) {
         $logText = @($f.Log, $f.ErrLog) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Tail 10 } | Out-String
-        if ($logText -match $transientPattern) {
-            # Cool down before retrying: an immediate retry tends to hit the same
-            # still-wedged shim state. Two attempts, 60s apart. Each attempt's output
-            # is captured so a REAL build error stops the retry loop instead of being
-            # re-classified from the stale pre-retry branch log.
-            $recovered = $false
-            $retryLog = Join-Path $logDir "$($f.Spec.Name).retry.log"
-            foreach ($attempt in 1..2) {
-                Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure — retry $attempt/2 in 60s (cached layers resume at the failed step)" -ForegroundColor Yellow
-                Start-Sleep -Seconds 60
-                $argList = Get-DockerBuildArgList -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag `
+        if ($logText -match $script:TransientPattern) {
+            Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure — retrying in the foreground" -ForegroundColor Yellow
+            try {
+                Invoke-Stage -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag `
                     -BuildArgs $f.Spec.BuildArgs -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
-                Write-Host "==> docker $($argList -join ' ')" -ForegroundColor Cyan
-                & $Docker @argList 2>&1 | Tee-Object -FilePath $retryLog
-                if ($LASTEXITCODE -eq 0) { $recovered = $true; break }
-                $retryTail = Get-Content $retryLog -Tail 10 | Out-String
-                if ($retryTail -notmatch $transientPattern) {
-                    Write-Host "[$($f.Spec.Name)] retry failed with a non-transient error — stopping retries" -ForegroundColor Red
-                    break
-                }
+            } catch {
+                $stillFailed += $f
             }
-            if (-not $recovered) { $stillFailed += $f }
         } else {
             $stillFailed += $f
         }
@@ -309,67 +304,72 @@ function Invoke-MediaBranches {
 
 $started = Get-Date
 
-if ($Stages -contains 'base') {
-    Invoke-Stage -Dockerfile 'windows/Dockerfile.base' -Tag 'local/kataglyphis:windows-base' -BuildArgs @{
-        WINDOWS_LTSC   = Get-Ver 'WINDOWS_LTSC'
-        VULKAN_VERSION = Get-Ver 'VULKAN_VERSION'
-        CMAKE_VERSION  = Get-Ver 'CMAKE_VERSION'
-    }
-}
-
-if ($Stages -contains 'sdk') {
-    if ($Gpu) {
-        Invoke-Stage -Dockerfile 'windows/Dockerfile.nvidia' -Tag 'local/kataglyphis:windows-sdk' -BuildArgs @{
-            BASE_IMAGE               = 'local/kataglyphis:windows-base'
-            CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
-            CUDA_VERSION_MAJOR_MINOR = $cudaMajorMinor
-            CUDNN_VERSION            = Get-Ver 'CUDNN_VERSION'
-            TENSORRT_VERSION         = Get-Ver 'TENSORRT_VERSION'
+try {
+    if ($Stages -contains 'base') {
+        Invoke-Stage -Dockerfile 'windows/Dockerfile.base' -Tag 'local/kataglyphis:windows-base' -BuildArgs @{
+            WINDOWS_LTSC   = Get-Ver 'WINDOWS_LTSC'
+            VULKAN_VERSION = Get-Ver 'VULKAN_VERSION'
+            CMAKE_VERSION  = Get-Ver 'CMAKE_VERSION'
         }
-    } else {
-        Write-Host "`n==> CPU lane: tagging windows-base as windows-sdk (no GPU layer)" -ForegroundColor Cyan
-        & $Docker tag local/kataglyphis:windows-base local/kataglyphis:windows-sdk
-        if ($LASTEXITCODE -ne 0) { throw 'docker tag failed' }
     }
-}
 
-if ($Stages -contains 'toolchain') {
-    Invoke-Stage -Dockerfile 'windows/Dockerfile.toolchain' -Tag 'local/kataglyphis:windows-toolchain' -BuildArgs @{
-        BASE_IMAGE     = 'local/kataglyphis:windows-sdk'
-        PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
+    if ($Stages -contains 'sdk') {
+        if ($Gpu) {
+            Invoke-Stage -Dockerfile 'windows/Dockerfile.nvidia' -Tag 'local/kataglyphis:windows-sdk' -BuildArgs @{
+                BASE_IMAGE               = 'local/kataglyphis:windows-base'
+                CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
+                CUDA_VERSION_MAJOR_MINOR = $cudaMajorMinor
+                CUDNN_VERSION            = Get-Ver 'CUDNN_VERSION'
+                TENSORRT_VERSION         = Get-Ver 'TENSORRT_VERSION'
+            }
+        } else {
+            Write-Host "`n==> CPU lane: tagging windows-base as windows-sdk (no GPU layer)" -ForegroundColor Cyan
+            & $Docker tag local/kataglyphis:windows-base local/kataglyphis:windows-sdk
+            if ($LASTEXITCODE -ne 0) { throw 'docker tag failed' }
+        }
     }
-}
 
-if ($Stages -contains 'media') {
-    # Fan-out: three branch images concurrently, then fan-in (merge + GStreamer).
-    Invoke-MediaBranches
-    Invoke-Stage -Dockerfile 'windows/Dockerfile.media' -Tag 'local/kataglyphis:windows-media' `
-        -ExtraFlags @('--memory', "$($MediaMemoryGb)g") -BuildArgs @{
-        BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
-        CORE_IMAGE                = 'local/kataglyphis:windows-media-core'
-        LITERT_IMAGE              = 'local/kataglyphis:windows-media-litert'
-        TVM_IMAGE                 = 'local/kataglyphis:windows-media-tvm'
-        GSTREAMER_VERSION         = Get-Ver 'GSTREAMER_VERSION'
-        ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
-        ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
-        OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
-        FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
-        LITERT_VERSION            = Get-Ver 'LITERT_VERSION'
-        LITERT_LM_VERSION         = Get-Ver 'LITERT_LM_VERSION'
-        TVM_REF                   = Get-Ver 'TVM_REF'
-        MEMORY_LIMIT_GB           = $MediaMemoryGb
+    if ($Stages -contains 'toolchain') {
+        Invoke-Stage -Dockerfile 'windows/Dockerfile.toolchain' -Tag 'local/kataglyphis:windows-toolchain' -BuildArgs @{
+            BASE_IMAGE     = 'local/kataglyphis:windows-sdk'
+            PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
+        }
     }
-}
 
-if ($Stages -contains 'final') {
-    $vcsRef = ''
-    try { $vcsRef = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $vcsRef = '' } } catch { }
-    Invoke-Stage -Dockerfile 'windows/Dockerfile' -Tag $FinalTag -BuildArgs @{
-        BASE_IMAGE = 'local/kataglyphis:windows-media'
-        BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        VCS_REF    = $vcsRef
+    if ($Stages -contains 'media') {
+        # Fan-out: three branch images concurrently, then fan-in (merge + GStreamer).
+        Invoke-MediaBranches
+        Invoke-Stage -Dockerfile 'windows/Dockerfile.media' -Tag 'local/kataglyphis:windows-media' `
+            -ExtraFlags @('--memory', "$($MediaMemoryGb)g") -BuildArgs @{
+            BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
+            CORE_IMAGE                = 'local/kataglyphis:windows-media-core'
+            LITERT_IMAGE              = 'local/kataglyphis:windows-media-litert'
+            TVM_IMAGE                 = 'local/kataglyphis:windows-media-tvm'
+            GSTREAMER_VERSION         = Get-Ver 'GSTREAMER_VERSION'
+            ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
+            ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
+            OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
+            FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
+            LITERT_VERSION            = Get-Ver 'LITERT_VERSION'
+            LITERT_LM_VERSION         = Get-Ver 'LITERT_LM_VERSION'
+            TVM_REF                   = Get-Ver 'TVM_REF'
+            MEMORY_LIMIT_GB           = $MediaMemoryGb
+        }
     }
-}
 
-$elapsed = (Get-Date) - $started
-Write-Host ("`nDone in {0:hh\:mm\:ss}. Stages built: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Gpu) { ' (GPU lane)' } else { ' (CPU lane)' }))
+    if ($Stages -contains 'final') {
+        $vcsRef = ''
+        try { $vcsRef = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $vcsRef = '' } } catch { }
+        Invoke-Stage -Dockerfile 'windows/Dockerfile' -Tag $FinalTag -BuildArgs @{
+            BASE_IMAGE = 'local/kataglyphis:windows-media'
+            BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            VCS_REF    = $vcsRef
+        }
+    }
+
+    $elapsed = (Get-Date) - $started
+    Write-Host ("`nDone in {0:hh\:mm\:ss}. Stages built: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Gpu) { ' (GPU lane)' } else { ' (CPU lane)' }))
+}
+finally {
+    Pop-Location
+}
