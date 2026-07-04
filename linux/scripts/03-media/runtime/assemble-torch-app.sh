@@ -90,13 +90,21 @@ collect_locked_local_wheels() {
   for wheel_path in /opt/wheels/*.whl; do
     wheel_basename="$(basename "${wheel_path}")"
     case "${wheel_basename}" in
-      torch-*.whl|torchvision-*.whl|ai_edge_litert-*.whl|ai-edge-litert-*.whl|      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
+      torch-*.whl|torchvision-*.whl|ai_edge_litert-*.whl|ai-edge-litert-*.whl)
+        # Custom-built wheels are ALWAYS pinned as locked local wheels. A
+        # broken line-continuation used to merge this branch with the opencv
+        # one below (embedded-whitespace pattern), so with staged OpenCV
+        # bindings present these wheels were silently dropped from the locked
+        # set and pip could resolve UPSTREAM torch instead of the custom build.
+        out_wheels_ref+=("${wheel_path}")
+        ;;
+      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
         if staged_opencv_python_available; then
-          echo "Skipping /opt/wheels/ opencv wheel (source-built OpenCV5 bindings found)"
+          echo "Skipping ${wheel_basename} (source-built OpenCV5 bindings found)"
         else
           out_wheels_ref+=("${wheel_path}")
         fi
-        ;;      
+        ;;
     esac
   done
   shopt -u nullglob

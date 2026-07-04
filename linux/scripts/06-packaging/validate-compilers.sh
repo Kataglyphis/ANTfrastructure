@@ -265,9 +265,16 @@ _validate_cc_target() {
   esac
   cc_pattern="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
 
+  # VALIDATE_CC_STATIC_ONLY=1: cc is a TARGET-native ELF that cannot execute
+  # on the build host (cross package images). Execution probes (-dumpmachine,
+  # cc1, link) are skipped with a note; the readelf static checks below remain
+  # HARD — so alternatives mis-wiring still fails the build instead of being
+  # downgraded to a warning by the caller.
   cc_dump="$(cc -dumpmachine 2>/dev/null || true)"
   if [ -z "${cc_dump}" ]; then
-    if [ "${mode}" = "hard-fail" ]; then
+    if [ "${VALIDATE_CC_STATIC_ONLY:-0}" = "1" ]; then
+      echo "NOTE: 'cc -dumpmachine' skipped (target-native binary, not executable on build host); relying on ELF checks"
+    elif [ "${mode}" = "hard-fail" ]; then
       echo "ERROR: /usr/bin/cc (${cc_path}) exists but 'cc -dumpmachine' returned empty — binary may be the wrong architecture" >&2
       if command -v file >/dev/null 2>&1; then
         echo "Binary type: $(file "${cc_path}" 2>/dev/null || true)" >&2
@@ -316,6 +323,11 @@ _validate_cc_target() {
         fi
         ;;
     esac
+  fi
+
+  if [ "${VALIDATE_CC_STATIC_ONLY:-0}" = "1" ]; then
+    echo "NOTE: cc1/link execution smokes skipped (VALIDATE_CC_STATIC_ONLY=1); ELF checks above are authoritative"
+    return 0
   fi
 
   local _cc1_tmpdir; _cc1_tmpdir="$(mktemp -d)"
@@ -461,6 +473,11 @@ validate_smoke() {
   fi
 
   # --- optional runtime payloads ---
+  # These are genuinely OPTIONAL (the comment always said so): onnxruntime-gpu
+  # exists only on GPU variants, and the rest depend on copy-media-payloads.sh
+  # having sources in the artifact image. Missing => NOTE, not failure — the
+  # old validate_fail here failed every package build while the payload copy
+  # script was orphaned.
   local payload
   for payload in \
     /usr/local/lib/onnxruntime-genai \
@@ -471,7 +488,7 @@ validate_smoke() {
     if [ -e "${payload}" ]; then
       echo "SMOKE OK: payload ${payload}"
     else
-      validate_fail "payload-${payload##*/}" "optional payload missing: ${payload}"
+      echo "SMOKE NOTE: optional payload missing: ${payload}"
     fi
   done
 

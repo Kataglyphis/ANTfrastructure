@@ -79,8 +79,18 @@ COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSIO
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
-# Lightweight payload files (LiteRT libs, pkg-config, VVdec)
-# Copied via COPY --link to avoid QEMU emulation issues on foreign arches.
+# Lightweight payload files (LiteRT libs + pkg-config, VVdec, ONNX Runtime
+# GenAI/GPU, tflite/tensorflow headers). The dangling comment that used to sit
+# here documented COPYs that were REMOVED when copy-media-payloads.sh was
+# written — but that script was never invoked anywhere, so these payloads have
+# been silently absent from every package image (and validate_smoke failed on
+# them). Tolerant per-path copies (variant-dependent payloads like
+# onnxruntime-gpu may legitimately be absent on non-GPU builds).
+COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/copy-media-payloads.sh
+RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
+    set -euo pipefail; \
+    SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
+    rm -f /tmp/copy-media-payloads.sh
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
@@ -176,15 +186,17 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     bash /opt/scripts/packaging/setup-package-image.sh && \
     rm -rf /var/lib/apt/lists/*
 
-# Wire GCC/LLVM alternatives and hard-fail if cc -dumpmachine does not
-# match the target architecture. Uses the shared validate-compilers.sh.
-# For cross builds the compiler may not be executable on the build host.
+# Wire GCC/LLVM alternatives and HARD-FAIL if the wired cc does not match the
+# target architecture. For cross builds the target-native cc cannot EXECUTE on
+# the build host, so only the execution probes are skipped
+# (VALIDATE_CC_STATIC_ONLY=1) — the readelf/alternatives checks still fail the
+# build. The old `|| echo WARNING` downgraded ALL validation exactly for the
+# cross case it exists to protect.
 RUN set -euo pipefail; \
     _ta="${TARGET_ARCH:-${TARGETARCH}}"; \
     if [ "${BUILD_MODE}" = "cross" ] && [ -n "${_ta}" ] && [ "${_ta}" != "amd64" ]; then \
-        TARGET_ARCH="${_ta}" \
-        bash /opt/scripts/packaging/validate-compilers.sh package || \
-        echo "WARNING: compiler validation skipped (binary not executable on build host)"; \
+        TARGET_ARCH="${_ta}" VALIDATE_CC_STATIC_ONLY=1 \
+        bash /opt/scripts/packaging/validate-compilers.sh package; \
     else \
         TARGET_ARCH="${_ta}" \
         bash /opt/scripts/packaging/validate-compilers.sh package; \

@@ -15,9 +15,25 @@ set -euo pipefail
 #
 # Designed to run inside Dockerfile.toolchain during the final bundle step.
 
+# Prefer canonical versions.env over the fallback literals below (a stale
+# PYTHON_VERSION default here once made smoke fail against a correctly built
+# newer interpreter). Env values passed by the orchestrator still win.
+for _sve in /opt/scripts/core/load-versions-env.sh \
+            "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/load-versions-env.sh"; do
+  if [ -f "${_sve}" ]; then
+    # shellcheck disable=SC1090
+    source "${_sve}"
+    for _vef in /opt/scripts/core/versions.env \
+                "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/versions.env"; do
+      [ -f "${_vef}" ] && { load_versions_env "${_vef}"; break; }
+    done
+    break
+  fi
+done
+unset _sve _vef
 : "${GCC_VERSION:=16.1.0}"
 : "${LLVM_RELEASE:=22.1.8}"
-: "${PYTHON_VERSION:=3.14.5}"
+: "${PYTHON_VERSION:=3.14.6}"
 : "${PYTHON_MAJOR_MINOR:=3.14}"
 : "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION}}"
 

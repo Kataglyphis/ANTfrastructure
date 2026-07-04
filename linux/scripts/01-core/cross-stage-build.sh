@@ -311,6 +311,13 @@ cross_stage_run() {
         local -n built_flag="${built_flag_varname}"
         built_flag["${arch}"]=1
       fi
+      # Under --parallel-archs this function runs in a background SUBSHELL:
+      # the array writes above are lost to the parent. Persist to the loop's
+      # flag dir; parallel_loop_harvest() reads them back after the join.
+      if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
+        printf '%s' "${pinned_digest}" > "${PARALLEL_LOOP_FLAGDIR}/pin.${stage}.${arch}"
+        : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
+      fi
     fi
   else
     if declare -p "${pin_varname}" &>/dev/null; then
@@ -320,6 +327,32 @@ cross_stage_run() {
       log "[stage ${label}] pinned ${pinned_digest} (pin variable ${pin_varname} not in scope, skipping storage)"
     fi
   fi
+}
+
+# Harvest hook for run_parallel_arch_loop: read worker-persisted digest pins
+# and built-this-run flags back into the parent's arrays (background subshell
+# writes are otherwise lost — the pins silently vanished under
+# --parallel-archs before this existed).
+parallel_loop_harvest() {
+  local flagdir="$1" f name stage arch pin_varname built_varname
+  for f in "${flagdir}"/pin.*.*; do
+    [ -f "${f}" ] || continue
+    name="${f##*/pin.}"
+    stage="${name%%.*}"
+    arch="${name##*.}"
+    pin_varname="$(cross_stage_pin_varname "${stage}" 2>/dev/null || true)"
+    [ -n "${pin_varname}" ] || continue
+    if declare -p "${pin_varname}" &>/dev/null; then
+      local -n _hv_pin_map="${pin_varname}"
+      _hv_pin_map["${arch}"]="$(cat "${f}")"
+      log "[stage ${stage}-${arch}] pin harvested from parallel worker"
+    fi
+    built_varname="${stage^^}_BUILT_THIS_RUN"
+    if [ -f "${flagdir}/built.${stage}.${arch}" ] && declare -p "${built_varname}" &>/dev/null; then
+      local -n _hv_built="${built_varname}"
+      _hv_built["${arch}"]=1
+    fi
+  done
 }
 
 # ==============================================================================

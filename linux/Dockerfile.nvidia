@@ -114,7 +114,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 # ==============================================================================
 # 2. TensorRT — try local repo deb, then NVIDIA apt repo, then skip
 # ==============================================================================
-COPY tensorrt-local-repo*.deb /tmp/tensorrt-local-repo.deb
+# A bare `COPY tensorrt-local-repo*.deb` FAILS the whole build when no deb is
+# present ("no source files were specified") — contradicting the optional
+# 3-tier fallback below. COPY the committed drop-directory instead (always
+# exists via its README), then normalize inside the RUN: drop your EULA-gated
+# deb into linux/nvidia-local-debs/ to enable the local-repo path.
+COPY linux/nvidia-local-debs/ /tmp/tensorrt-staging/
+RUN set -euo pipefail; \
+    _trt_deb="$(find /tmp/tensorrt-staging -maxdepth 1 -name 'tensorrt-local-repo*.deb' | head -1)"; \
+    if [ -n "${_trt_deb}" ]; then mv "${_trt_deb}" /tmp/tensorrt-local-repo.deb; fi; \
+    rm -rf /tmp/tensorrt-staging
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \

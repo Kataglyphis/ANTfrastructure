@@ -176,7 +176,7 @@ check_python() {
   local cross_file="${WORKDIR}/cross-pip.txt"
 
   container_exec_strip "${NATIVE_IMAGE}" bash -lc \
-    'source /opt/python/.venv/bin/activate 2>/dev/null || true; pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
+    'for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { source "${_v}/bin/activate"; break; }; done 2>/dev/null || true; pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
     > "${native_file}" 2>/dev/null || {
     container_exec_strip "${NATIVE_IMAGE}" bash -lc 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
       > "${native_file}" 2>/dev/null || {
@@ -186,7 +186,7 @@ check_python() {
   }
 
   container_exec_strip "${CROSS_IMAGE}" bash -lc \
-    'source /opt/python/.venv/bin/activate 2>/dev/null || true; pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
+    'for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { source "${_v}/bin/activate"; break; }; done 2>/dev/null || true; pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
     > "${cross_file}" 2>/dev/null || {
     container_exec_strip "${CROSS_IMAGE}" bash -lc 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
       > "${cross_file}" 2>/dev/null || {
@@ -342,10 +342,10 @@ check_imports() {
     py_cmd="import ${mod}; print('${mod} ok:', ${mod}.__version__ if hasattr(${mod}, '__version__') else 'loaded')"
 
     native_out="$(container_exec_strip "${NATIVE_IMAGE}" bash -lc \
-      "source /opt/python/.venv/bin/activate 2>/dev/null || true; python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
+      "for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { source "${_v}/bin/activate"; break; }; done 2>/dev/null || true; python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
 
     cross_out="$(container_exec_strip "${CROSS_IMAGE}" bash -lc \
-      "source /opt/python/.venv/bin/activate 2>/dev/null || true; python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
+      "for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { source "${_v}/bin/activate"; break; }; done 2>/dev/null || true; python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
 
     local native_status="${native_out%% *}"
     local cross_status="${cross_out%% *}"
