@@ -90,18 +90,9 @@ ensure_tensorflow_c_sdk() {
             mv "${cache_dir}/include" "${tf_dir}/include" 2>/dev/null || true
         fi
         # Create a pkg-config file for FFmpeg's configure to find
-        cat > "${cache_dir}/tensorflow.pc" <<PKGCONF
-prefix=${tf_dir}
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: TensorFlow
-Description: TensorFlow C API
-Version: ${tf_version}
-Libs: -L\${libdir} -ltensorflow
-Cflags: -I\${includedir}
-PKGCONF
+        generate_pkgconfig_file "${cache_dir}/tensorflow.pc" \
+            "TensorFlow" "TensorFlow C API" "${tf_version}" "${tf_dir}" \
+            '-L${libdir} -ltensorflow'
         export PKG_CONFIG_PATH="${cache_dir}:${PKG_CONFIG_PATH:-}"
         echo "TensorFlow C SDK ${tf_version} installed to ${tf_dir}"
         return 0

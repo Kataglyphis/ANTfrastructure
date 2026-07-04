@@ -241,14 +241,45 @@ run_cmake_build_with_fallback() {
   }
 }
 
+# ── ccache environment setup ──────────────────────────────────────────────────
+# Ensure ccache is installed and CCACHE_DIR is created + exported. Shared
+# prologue for the from-source toolchain builders (build-gcc.sh, build-clang.sh).
+# Callers keep their own compiler wiring afterwards: build-gcc.sh exports
+# CC="ccache gcc"/CXX="ccache g++"; build-clang.sh passes
+# -DCMAKE_*_COMPILER_LAUNCHER=ccache.
+ensure_ccache_env() {
+  if ! command -v ccache >/dev/null 2>&1; then
+    warn "ccache not found, installing..."
+    apt_install ccache
+  fi
+  CCACHE_DIR="${CCACHE_DIR:-${HOME}/.cache/ccache}"
+  mkdir -p "${CCACHE_DIR}"
+  export CCACHE_DIR
+  info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
+}
+
+# ── update-alternatives install + select ──────────────────────────────────────
+# Register an alternative and immediately select it. Honors ${SUDO}. The --set
+# is tolerant: a --set of the path just --installed effectively never fails, and
+# a spurious failure must not abort a build running under `set -e`. For the
+# multi-binary --slave case (clang) or candidate-search case, call
+# update-alternatives directly.
+#
+# Usage: alt_install_and_set <name> <link> <path> [priority]
+alt_install_and_set() {
+  local name="$1" link="$2" path="$3" priority="${4:-100}"
+  ${SUDO} update-alternatives --install "${link}" "${name}" "${path}" "${priority}"
+  ${SUDO} update-alternatives --set "${name}" "${path}" || true
+}
+
 # ── pkg-config file generation ────────────────────────────────────────────────
 # Generate a standard .pc file.  DRYs the identical heredoc pattern found in
 # build-litert.sh and onnxruntime/runtime/31-generate-pkgconfig-native.sh.
 #
-# Usage: generate_pkgconfig_file <path> <name> <description> <version> <prefix> [libs] [cflags] [requires]
+# Usage: generate_pkgconfig_file <path> <name> <description> <version> <prefix> [libs] [cflags] [requires] [libs_private]
 generate_pkgconfig_file() {
   local pc_path="$1" name="$2" desc="$3" ver="$4" prefix="$5"
-  local libs cflags requires
+  local libs cflags requires libs_private
   # NOTE: do NOT use `${6:--L\${libdir}}` here — bash's expansion of `:-`
   # defaults eats the trailing `}` of `${libdir}` and emits a stray literal
   # `}` into the .pc file (the root cause of the LiteRT
@@ -259,12 +290,15 @@ generate_pkgconfig_file() {
   cflags="${7:-}"
   [ -n "${cflags}" ] || cflags='-I${includedir}'
   requires="${8:-}"
+  libs_private="${9:-}"
   local pc_dir
   pc_dir="$(dirname "${pc_path}")"
   mkdir -p "${pc_dir}"
 
   local req_line=""
   [ -n "${requires}" ] && req_line="Requires: ${requires}"
+  local libs_private_line=""
+  [ -n "${libs_private}" ] && libs_private_line="Libs.private: ${libs_private}"
 
   cat >"${pc_path}" <<EOF
 prefix=${prefix}
@@ -276,6 +310,7 @@ Name: ${name}
 Description: ${desc}
 Version: ${ver}
 Libs: ${libs}
+${libs_private_line}
 Cflags: ${cflags}
 EOF
 }

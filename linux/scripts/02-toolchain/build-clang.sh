@@ -128,14 +128,7 @@ if [ -z "${LLVM_TARGETS:-}" ]; then
 fi
 
 if [ "$USE_CCACHE" = "1" ]; then
-    if ! command -v ccache >/dev/null 2>&1; then
-        warn "ccache not found, installing..."
-        apt_install ccache
-    fi
-    CCACHE_DIR="${CCACHE_DIR:-${HOME}/.cache/ccache}"
-    mkdir -p "${CCACHE_DIR}"
-    export CCACHE_DIR
-    info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
+    ensure_ccache_env
 fi
 
 # Compute release version and tag if not specified

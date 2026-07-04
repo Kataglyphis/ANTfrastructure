@@ -60,12 +60,10 @@ resolve_host_compiler() {
     resolve_host_compiler_for_lang "${lang}"
 }
 
-prepare_host_compiler_wrapper() {
-    local compiler="$1"
-    local wrapper_name="${2:-host-gcc}"
-    local wrapper_dir; wrapper_dir="$(mktemp -d "${TMPDIR:-/tmp}/litert-host-toolchain.XXXXXX")"
-    make_named_host_compiler_wrapper "${wrapper_dir}" "${wrapper_name}" "${compiler}"
-}
+# prepare_host_compiler_wrapper is provided by 01-core/compiler-resolution.sh
+# (loaded via media_common_init). The canonical version is a superset of the
+# former local copy — it falls back to a hand-written wrapper when
+# make_named_host_compiler_wrapper is unavailable.
 
 resolve_litert_tflite_host_tools_dir() {
     local candidate=""

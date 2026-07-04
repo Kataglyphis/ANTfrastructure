@@ -343,16 +343,8 @@ _gst_monorepo_pkgconfig_env() {
     export PKG_CONFIG_LIBDIR
   fi
 
-  if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ] && [ -d "/usr/include/${deb_host_multiarch_dir}" ]; then
-    append_flag_if_missing CPPFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
-    append_flag_if_missing CFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
-    append_flag_if_missing CXXFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
-  fi
-
-  if cross_build_is_active && [ -d /usr/include ]; then
-    append_flag_if_missing CPPFLAGS "-idirafter /usr/include"
-    append_flag_if_missing CFLAGS "-idirafter /usr/include"
-    append_flag_if_missing CXXFLAGS "-idirafter /usr/include"
+  if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ]; then
+    append_cross_idirafter "${deb_host_multiarch_dir}"
   fi
 
   if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ]; then

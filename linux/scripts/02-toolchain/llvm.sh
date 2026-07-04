@@ -74,8 +74,7 @@ register_versioned_llvm_binaries() {
     base="$(basename "$full")"
     tool="${base%-${CLANG_WANTED}}"
 
-    $SUDO update-alternatives --install "/usr/bin/${tool}" "${tool}" "$full" 100
-    $SUDO update-alternatives --set "${tool}" "$full"
+    alt_install_and_set "${tool}" "/usr/bin/${tool}" "$full" 100
   done
 }
 
