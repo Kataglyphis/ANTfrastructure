@@ -434,6 +434,8 @@ int _isatty(int);
             if ($avContent -ne $avOrig) {
                 [System.IO.File]::WriteAllText($avPath, $avContent)
                 log "Patched ${avFile}: removed V308/V408/V410 exclusions (codec IDs dropped by FFmpeg master)"
+            } else {
+                log "WARNING: ${avFile} present but the V308/V408/V410 exclusion lines did not match the patterns; if the pinned FFmpeg has dropped these codec IDs, gst-libav will fail to compile with 'undeclared identifier AV_CODEC_ID_V308'. Verify the exclusion conditions in $avPath."
             }
         }
     }

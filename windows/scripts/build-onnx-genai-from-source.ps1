@@ -86,9 +86,13 @@ $coroHeader = Join-Path $msvcVersionDir 'include\experimental\coroutine'
 if (Test-Path $coroHeader) {
     $text = [System.IO.File]::ReadAllText($coroHeader)
     if ($text -match '_EMIT_STL_ERROR\(STL1009') {
-        $text = $text -replace '_EMIT_STL_ERROR\(STL1009, ".*?"\)', ''
-        [System.IO.File]::WriteAllText($coroHeader, $text)
-        Write-Host 'Patched MSVC experimental/coroutine header'
+        $patched = $text -replace '_EMIT_STL_ERROR\(STL1009, ".*?"\)', ''
+        if ($patched -eq $text) {
+            Write-Warning "experimental/coroutine: STL1009 macro matched the guard but not the replace pattern; MSVC layout may have changed. Verify $coroHeader (clang static_assert errors may resurface later)."
+        } else {
+            [System.IO.File]::WriteAllText($coroHeader, $patched)
+            Write-Host 'Patched MSVC experimental/coroutine header'
+        }
     }
 }
 # Also patch yvals_core.h to make _EMIT_STL_ERROR a no-op when __clang__
@@ -106,9 +110,13 @@ if (Test-Path $yvalsCore) {
 #else
 #define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)
 #endif'
-        $text = $text -replace [regex]::Escape($old), $new
-        [System.IO.File]::WriteAllText($yvalsCore, $text)
-        Write-Host 'Patched MSVC yvals_core.h for clang compat'
+        $patched = $text -replace [regex]::Escape($old), $new
+        if ($patched -eq $text) {
+            Write-Warning "yvals_core.h: _EMIT_STL_ERROR is present but its exact signature did not match the patch target. The MSVC toolset likely changed the #define format; clang static_assert errors may resurface mid-build. Update the `$old string in $yvalsCore."
+        } else {
+            [System.IO.File]::WriteAllText($yvalsCore, $patched)
+            Write-Host 'Patched MSVC yvals_core.h for clang compat'
+        }
     }
 }
 
