@@ -130,23 +130,6 @@ prepare_cargo_host_cxx_wrapper() {
   prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
 }
 
-remove_path_entry() {
-  local needle="$1"
-  local source_path="${2:-${PATH:-}}"
-  local old_ifs="${IFS}"
-  local entry=""
-  local new_path=""
-
-  IFS=':'
-  for entry in ${source_path}; do
-    [ "${entry}" = "${needle}" ] && continue
-    new_path="${new_path:+${new_path}:}${entry}"
-  done
-  IFS="${old_ifs}"
-
-  printf '%s' "${new_path}"
-}
-
 prepare_host_cargo_toolchain_env() {
   local build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
   local build_rust_lower="x86_64_unknown_linux_gnu"
@@ -168,11 +151,10 @@ prepare_host_cargo_toolchain_env() {
   [ -n "${build_rust_env}" ] || build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
   [ -n "${build_rust_lower}" ] || build_rust_lower="x86_64_unknown_linux_gnu"
 
-  if [ -d /opt/cross-bin ]; then
-    # Cargo still builds host-side proc-macros and build scripts during cross
-    # builds. Keep bare `cc`/`c++` on the host toolchain for those jobs.
-    export PATH="$(remove_path_entry /opt/cross-bin "${PATH}")"
-  fi
+  # No PATH scrub needed anymore: /opt/cross-bin carries only triplet-prefixed
+  # tool names (bare names live in /opt/cross-bin/bare, which is never on
+  # PATH), so host-side proc-macro / build-script jobs already resolve the
+  # native cc/c++.
 
   cargo_host_cc="$(resolve_host_gcc_for_cargo)"
   if [ -n "${cargo_host_cc}" ]; then

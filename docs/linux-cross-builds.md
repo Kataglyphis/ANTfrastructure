@@ -453,3 +453,45 @@ To prevent regressions during updates, always preserve the following five vital 
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), standard CPython build steps create standard cross-build library symlinks that end up dangling when packaged. We use `cp -a -L` to dereference those symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the target's `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Since target-packaged Python is staged into the compiler-cross image, the compiler itself must be rebuilt if this helper logic is changed.
 4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, GCC alternatives wire `/opt/gcc-16.1.0/bin/gcc` as `cc`/`c++`. On `amd64`, GCC is built natively. On `arm64`/`riscv64`, it is Canadian-cross-compiled; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native binary. The build hard-fails with three layered guards: (a) `cc -dumpmachine` must match `TARGET_ARCH`; (b) `readelf -h` on the `cc` binary itself checks ELF machine type (the real discriminator — `-dumpmachine` only reports the *target* triple, not the host arch); and (c) a cc1 compile-to-object smoke plus ELF check on the produced object, run under the target platform (QEMU for foreign arches). `wrapper-smoke` uses `linux/scripts/06-packaging/smoke-wrapper.sh` for end-to-end verification.
 5. **Fix 5 (OpenCV 5 GStreamer compat):** `patch-gstreamer-sources.sh` → `patch_gstreamer_opencv5_compat()` patches the GStreamer `gst-plugins-bad` opencv plugin sources at build time for OpenCV 5.x compatibility. Three API changes are handled: (a) `contourArea`/`approxPolyDP`/`convexHull` moved to new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`; (b) chessboard/circles-grid detection (`findChessboardCorners`/`findCirclesGrid`/`CALIB_CB_*`) moved to `objdetect` module → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`; (c) `cv::CascadeClassifier` removed from OpenCV 5 → drops the three cascade-dependent GStreamer elements (`faceblur`, `facedetect`, `handdetect`) from the monolithic `libgstopencv.so`. Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compatibility alias because GStreamer's meson dependency lookup queries `dependency('opencv4')`. All patches are idempotent (guarded with grep before applying). When changing OpenCV or GStreamer versions, verify the patch still applies correctly.
+
+## Cross env contract
+
+The cross environment set up by `linux/scripts/01-core/cross-env.sh`
+(`setup_linux_cross_env`) is organized in three tiers. Run
+`linux/scripts/01-core/cross-env-doctor.sh <arch>` (or source it and call
+`cross_env_doctor`) to validate the contract, print the effective
+configuration, and compile-smoke-check that `$CC` really emits target-arch
+ELF objects.
+
+### Tier 1 — core toolchain contract
+
+Always exported when a cross build is active: `TARGET_ARCH`, `TARGETARCH`,
+`TARGETPLATFORM`, `BUILDARCH`, `CROSS_TARGET_TRIPLET`, and the tool variables
+`CC`, `CXX`, `AR`, `AS`, `LD`, `NM`, `RANLIB`, `STRIP`, `OBJCOPY`, plus
+`PKG_CONFIG_LIBDIR`, `PKG_CONFIG_SYSROOT_DIR`, `PKG_CONFIG_ALLOW_CROSS`.
+`CC`/`CXX` must be absolute paths to existing executables. Consumers must use
+these variables — never bare `cc`/`gcc` from PATH — for target-side compiles.
+
+### Tier 2 — rust / cmake derivations
+
+Derived from Tier 1: `CROSS_RUST_TARGET`, `CARGO_BUILD_TARGET`,
+`CARGO_TARGET_DIR`, `CARGO_TARGET_<TRIPLE>_LINKER` / `_AR`, the cc-crate vars
+`CC_<triple>` / `CXX_<triple>` / `AR_<triple>` / `RANLIB_<triple>` (for both
+target and build triples), and the `CMAKE_*` toolchain variables
+(`CMAKE_SYSTEM_NAME/PROCESSOR`, `CMAKE_C/CXX_COMPILER`, `CMAKE_AR`,
+`CMAKE_RANLIB`, `CMAKE_FIND_ROOT_PATH_MODE_*`, ...).
+
+### Tier 3 — PATH policy and bare tool names (opt-in)
+
+`/opt/cross-bin` is prepended to PATH but contains **only triplet-prefixed**
+tool names (`<triplet>-gcc`, `<triplet>-ld`, ...), which can never shadow the
+host toolchain. Bare names (`gcc`, `cc`, `as`, `ld`, ...) live in
+`/opt/cross-bin/bare`, which is deliberately **not** on PATH — bare cross
+names fronting PATH historically broke every host-side compile (e.g. the
+riscv64 host-protoc "Exec format error" bug). The few consumers that
+genuinely need bare names (gcc `-B` tool lookup, rust cc-crate fallbacks)
+opt in per scope via `cross_bare_bin_path()`:
+
+```bash
+bare="$(cross_bare_bin_path)" && exec "${CC}" -B"${bare}/" "$@"
+```

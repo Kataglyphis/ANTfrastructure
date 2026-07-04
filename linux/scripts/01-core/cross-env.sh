@@ -112,6 +112,20 @@ cross_bin_dir() {
   printf '%s' "${CROSS_BIN_DIR:-/opt/cross-bin}"
 }
 
+# Directory holding BARE-named cross tools (gcc, cc, as, ld, ...). It is
+# deliberately NOT on PATH: bare cross names shadowing host tools broke every
+# host-side compile (e.g. the riscv64 host-protoc "Exec format error" bug).
+# Consumers that genuinely need bare names (gcc -B lookups, rust cc-crate
+# fallbacks) must prepend this directory themselves for that single scope:
+#   bare="$(cross_bare_bin_path)" && do_thing -B"${bare}/"
+# Echoes the path only if the directory exists; returns 1 otherwise.
+cross_bare_bin_path() {
+  local dir
+  dir="$(cross_bin_dir)/bare"
+  [ -d "${dir}" ] || return 1
+  printf '%s' "${dir}"
+}
+
 cross_target_triplet_for_arch() {
   arch_deb_multiarch_triplet_for "$1"
 }
@@ -188,24 +202,49 @@ install_cross_bin_symlinks() {
   strip="$(resolve_cross_gcc_tool strip "${triplet}")" || return 1
   objcopy="$(resolve_cross_gcc_tool objcopy "${triplet}")" || return 1
 
-  mkdir -p "${bin_dir}"
-  ln -sf "${cc}" "${bin_dir}/gcc"
-  ln -sf "${cxx}" "${bin_dir}/g++"
-  ln -sf "${cc}" "${bin_dir}/cc"
-  ln -sf "${cxx}" "${bin_dir}/c++"
-  ln -sf "${as}" "${bin_dir}/as"
-  ln -sf "${ld}" "${bin_dir}/ld"
-  ln -sf "${ar}" "${bin_dir}/ar"
-  ln -sf "${nm}" "${bin_dir}/nm"
-  ln -sf "${ranlib}" "${bin_dir}/ranlib"
-  ln -sf "${strip}" "${bin_dir}/strip"
-  ln -sf "${objcopy}" "${bin_dir}/objcopy"
+  # Layout contract (see cross_bare_bin_path):
+  #   ${bin_dir}       — ONLY triplet-prefixed names; safe to put on PATH,
+  #                      they can never shadow host cc/gcc/as/ld.
+  #   ${bin_dir}/bare  — bare names for the few consumers that need them
+  #                      (gcc -B, rust cc-crate); NEVER placed on PATH here.
+  local bare_dir="${bin_dir}/bare"
+  mkdir -p "${bin_dir}" "${bare_dir}"
+
+  ln -sf "${cc}" "${bin_dir}/${triplet}-gcc"
+  ln -sf "${cxx}" "${bin_dir}/${triplet}-g++"
+  ln -sf "${as}" "${bin_dir}/${triplet}-as"
+  ln -sf "${ld}" "${bin_dir}/${triplet}-ld"
+  ln -sf "${ar}" "${bin_dir}/${triplet}-ar"
+  ln -sf "${nm}" "${bin_dir}/${triplet}-nm"
+  ln -sf "${ranlib}" "${bin_dir}/${triplet}-ranlib"
+  ln -sf "${strip}" "${bin_dir}/${triplet}-strip"
+  ln -sf "${objcopy}" "${bin_dir}/${triplet}-objcopy"
+
+  ln -sf "${cc}" "${bare_dir}/gcc"
+  ln -sf "${cxx}" "${bare_dir}/g++"
+  ln -sf "${cc}" "${bare_dir}/cc"
+  ln -sf "${cxx}" "${bare_dir}/c++"
+  ln -sf "${as}" "${bare_dir}/as"
+  ln -sf "${ld}" "${bare_dir}/ld"
+  ln -sf "${ar}" "${bare_dir}/ar"
+  ln -sf "${nm}" "${bare_dir}/nm"
+  ln -sf "${ranlib}" "${bare_dir}/ranlib"
+  ln -sf "${strip}" "${bare_dir}/strip"
+  ln -sf "${objcopy}" "${bare_dir}/objcopy"
+
+  # Stale-layout cleanup: earlier revisions symlinked bare names directly in
+  # ${bin_dir} (which sat on PATH — the systemic footgun). Remove any leftovers
+  # so a rebuilt layer can never resurrect bare cross tools onto PATH.
+  local stale
+  for stale in gcc g++ cc c++ as ld ar nm ranlib strip objcopy clang clang++; do
+    [ -L "${bin_dir}/${stale}" ] && rm -f "${bin_dir}/${stale}"
+  done
 
   if command -v "clang-${target_arch}" >/dev/null 2>&1; then
-    ln -sf "$(command -v "clang-${target_arch}")" "${bin_dir}/clang"
+    ln -sf "$(command -v "clang-${target_arch}")" "${bare_dir}/clang"
   fi
   if command -v "clang++-${target_arch}" >/dev/null 2>&1; then
-    ln -sf "$(command -v "clang++-${target_arch}")" "${bin_dir}/clang++"
+    ln -sf "$(command -v "clang++-${target_arch}")" "${bare_dir}/clang++"
   fi
 }
 
@@ -345,6 +384,10 @@ _cross_env_export_all() {
   export CROSS_TARGET_PROCESSOR="${_eea[processor]}"
   export CROSS_RUST_TARGET="${_eea[rust_target]}"
 
+  # /opt/cross-bin holds ONLY triplet-prefixed tool names, so fronting PATH
+  # with it is harmless to host-side compiles. Bare names live in
+  # /opt/cross-bin/bare, which is intentionally NOT put on PATH — see
+  # cross_bare_bin_path() for the opt-in contract.
   local dir
   dir="$(cross_bin_dir 2>/dev/null || true)"
   if [ -n "${dir}" ] && [ -d "${dir}" ]; then

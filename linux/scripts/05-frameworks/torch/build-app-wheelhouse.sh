@@ -370,16 +370,14 @@ build_torch_wheel() {
         # CMAKE_POLICY_VERSION_MINIMUM: bundled protobuf 3.13 declares
         # cmake_minimum_required(<3.5), which cmake >=4 refuses outright; the
         # flag is cmake's own documented escape hatch for exactly this.
-        # PATH scrub: /opt/cross-bin puts CROSS compilers behind bare cc/gcc
-        # names, so merely unsetting CC/CXX still built a riscv64 "host" protoc
-        # (verified: Exec format error on our own build_host_protoc output).
-        # Strip it and pin the host compilers explicitly.
-        local host_path
-        host_path="$(printf '%s' "${PATH}" | awk -v RS=: -v ORS=: '$0 !~ /cross-bin/' | sed 's/:$//')"
+        # No PATH scrub needed: /opt/cross-bin now carries only triplet-prefixed
+        # names (bare cross cc/gcc live in /opt/cross-bin/bare, never on PATH),
+        # so bare gcc/g++ resolve to the host toolchain. CC=gcc/CXX=g++ pinning
+        # stays as defense-in-depth against any future PATH regression.
         if (cd "${src_dir}" && \
             env -u AR -u RANLIB -u LD -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
                 -u CMAKE_TOOLCHAIN_FILE -u CMAKE_SYSTEM_NAME -u CMAKE_SYSTEM_PROCESSOR \
-                PATH="${host_path}" CC=gcc CXX=g++ \
+                CC=gcc CXX=g++ \
                 bash scripts/build_host_protoc.sh \
                     --other-flags "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" > /tmp/build_host_protoc.log 2>&1); then
             CROSS_HOST_PROTOC="${src_dir}/build_host_protoc/bin/protoc"

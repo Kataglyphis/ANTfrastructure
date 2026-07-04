@@ -103,7 +103,10 @@ if matches:
 prepare_cargo_target_compiler_wrapper() {
   local compiler="$1"
   local wrapper_name="$2"
-  local cross_bindir="${3:-/opt/cross-bin}"
+  # -B<dir> makes the gcc driver look for BARE tool names (as, ld, ...) in
+  # <dir>, so this must be the bare/ subdirectory, not /opt/cross-bin itself
+  # (which now holds only triplet-prefixed names).
+  local cross_bindir="${3:-/opt/cross-bin/bare}"
   local wrapper_dir="${GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-target-toolchain}"
 
   [ -n "${compiler}" ] || return 1
@@ -192,10 +195,11 @@ build_standalone_gst_plugins_rs() {
   if cross_build_is_active &&
      command -v cross_target_arch >/dev/null 2>&1 &&
      [ "$(cross_target_arch)" = "riscv64" ]; then
-    # prepare_host_cargo_toolchain_env removes /opt/cross-bin from PATH so host
-    # build scripts keep using the native cc/c++. Wrap the target compiler driver
-    # with -B/opt/cross-bin so target-side cc-rs builds still resolve riscv64 as/ld.
-    cargo_target_cross_bindir="$(cross_bin_dir 2>/dev/null || printf '%s' '/opt/cross-bin')"
+    # Bare cross tool names (as, ld, ...) live only in /opt/cross-bin/bare,
+    # which is never on PATH, so host build scripts keep the native cc/c++.
+    # Wrap the target compiler driver with -B<bare dir> so target-side cc-rs
+    # builds still resolve riscv64 as/ld (gcc -B looks up BARE names).
+    cargo_target_cross_bindir="$(cross_bare_bin_path 2>/dev/null || printf '%s' '/opt/cross-bin/bare')"
     if command -v cross_target_upper_rust >/dev/null 2>&1; then
       cargo_target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
     fi
