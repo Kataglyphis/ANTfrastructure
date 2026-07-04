@@ -56,7 +56,15 @@ if ($gpuEnv.GpuType -eq 'nvidia') {
     } catch {
         Write-Host "002-disable-cuda-pch.patch did not apply cleanly -- falling back to inline regex"
         $pch = "$SourceDir\cmake\onnxruntime_providers_cuda.cmake"
-        if (Test-Path $pch) { [System.IO.File]::WriteAllText($pch, ([System.IO.File]::ReadAllText($pch) -replace 'target_precompile_headers\([^)]+\)', '')) }
+        if (Test-Path $pch) {
+            $pchText = [System.IO.File]::ReadAllText($pch)
+            $pchNew = $pchText -replace 'target_precompile_headers\([^)]+\)', ''
+            if ($pchNew -eq $pchText) {
+                Write-Warning "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $pch."
+            } else {
+                [System.IO.File]::WriteAllText($pch, $pchNew)
+            }
+        }
     }
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
         # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back
@@ -121,7 +129,15 @@ if ($env:GPU_TYPE -eq 'nvidia') {
     }
     # CUTLASS uint128: clang-cl lacks the MSVC-only `_udiv128` intrinsic.
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
-    if (Test-Path $cut) { [System.IO.File]::WriteAllText($cut, ([System.IO.File]::ReadAllText($cut) -replace '_udiv128', 'udiv128')) }
+    if (Test-Path $cut) {
+        $cutText = [System.IO.File]::ReadAllText($cut)
+        $cutNew = $cutText -replace '_udiv128', 'udiv128'
+        if ($cutNew -eq $cutText) {
+            Write-Warning "cutlass/uint128.h: _udiv128 not found; if CUTLASS still references the MSVC-only intrinsic, clang-cl will fail. Verify $cut."
+        } else {
+            [System.IO.File]::WriteAllText($cut, $cutNew)
+        }
+    }
     # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
 }
 
