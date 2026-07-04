@@ -94,6 +94,13 @@ Push-Location $repoRoot
 # this single pattern.
 $script:TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
 
+# Hyper-V-isolated build containers default to only 2 logical CPUs unless
+# --cpu-count is passed, which silently pins every in-container `ninja -j` to 2
+# (Get-BuildJobCount = min(ProcessorCount, memGB/perJob)). Give each build the
+# host's full logical-processor count; the per-build --memory cap still bounds
+# actual parallelism, so heavy CUDA/C++ TUs won't oversubscribe RAM.
+$script:CpuCount = [Environment]::ProcessorCount
+
 # ---- resolve docker CLI (Stevedore's docker.exe preferred; nerdctl build has broken DNS) ----
 if ([string]::IsNullOrWhiteSpace($Docker)) {
     $candidates = @(
@@ -143,6 +150,8 @@ function Get-DockerBuildArgList {
     # Windows Containers) rejects it.
     $dockerArgs = @('build')
     if ($NoCache) { $dockerArgs += '--no-cache' }
+    # Grant all host CPUs (default is 2 on Hyper-V isolation — the -j2 bottleneck).
+    $dockerArgs += '--cpu-count', "$script:CpuCount"
     foreach ($key in ($BuildArgs.Keys | Sort-Object)) {
         $value = $BuildArgs[$key]
         if ($null -ne $value -and "$value" -ne '') { $dockerArgs += '--build-arg', "$key=$value" }
