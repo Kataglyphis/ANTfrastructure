@@ -373,7 +373,14 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
   info "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
 fi
 
-download_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TARBALL}" 5 30
+# Verify the interpreter source when the pinned checksum is available
+# (PYTHON_TGZ_SHA256 in versions.env, maintained alongside PYTHON_VERSION).
+if [ -n "${PYTHON_TGZ_SHA256:-}" ]; then
+  download_verified_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TGZ_SHA256}" "${PYTHON_TARBALL}"
+else
+  echo "WARNING: PYTHON_TGZ_SHA256 unset — downloading Python source UNVERIFIED" >&2
+  download_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TARBALL}" 5 30
+fi
 tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
 cd "${PYTHON_SOURCE_DIR}"

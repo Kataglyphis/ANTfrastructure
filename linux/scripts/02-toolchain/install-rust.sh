@@ -22,11 +22,16 @@ else
   rust_targets="${host_arch}"
 fi
 
-curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+# Pin the toolchain: an unpinned `rustup | sh` installs TODAY's stable, so a
+# rebuild produced a different rustc/cargo than the shipped images (found in
+# the 2026-07 chain review). Pins live in versions.env; env wins if set.
+: "${RUST_VERSION:=1.96.0}"
+: "${CARGO_C_VERSION:=0.10.23}"
+curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION}"
 rustc --version
 cargo --version
 
-cargo install --locked cargo-c
+cargo install --locked --version "${CARGO_C_VERSION}" cargo-c
 
 try_rustup() {
   "$@" && return 0
@@ -35,7 +40,9 @@ try_rustup() {
 
 try_rustup rustup component add clippy
 
-nightly_toolchain="nightly-${host_rust_target}"
+# Pinned nightly (a bare "nightly" floats to today's build).
+: "${RUST_NIGHTLY_TOOLCHAIN:=nightly-2026-06-28}"
+nightly_toolchain="${RUST_NIGHTLY_TOOLCHAIN}-${host_rust_target}"
 try_rustup rustup toolchain install "${nightly_toolchain}"
 try_rustup rustup component add rust-src --toolchain "${nightly_toolchain}"
 try_rustup rustup target add wasm32-unknown-unknown --toolchain "${nightly_toolchain}"
