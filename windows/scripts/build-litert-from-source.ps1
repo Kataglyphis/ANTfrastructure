@@ -103,13 +103,23 @@ $libs = Get-ChildItem -Path $buildDir -Filter '*.lib' -Recurse -ErrorAction Sile
 $exps = Get-ChildItem -Path $buildDir -Filter '*.exp' -Recurse -ErrorAction SilentlyContinue
 if ($dlls) { $dlls | Copy-Item -Destination "$litertInstallDir\bin" -Force -ErrorAction SilentlyContinue; Write-Host "Copied $($dlls.Count) DLLs" }
 if ($libs) { $libs | Copy-Item -Destination "$litertInstallDir\lib" -Force -ErrorAction SilentlyContinue; Write-Host "Copied $($libs.Count) LIBs" }
-# Copy headers
-$tfliteIncludeDir = Join-Path $tfliteSrc 'include'
-if (Test-Path $tfliteIncludeDir) {
-    New-Item -Path "$litertInstallDir\include" -ItemType Directory -Force | Out-Null
-    Copy-Item -Path "$tfliteIncludeDir\*" -Destination "$litertInstallDir\include\" -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "Copied headers from $tfliteIncludeDir"
+# Copy headers. LiteRT ships NO include/ directory — its public headers live
+# in-tree (tflite\c\c_api.h, tflite\interpreter.h, ...). Mirror the header tree
+# under include\tflite\ preserving relative paths so consumers can
+# #include "tflite/c/c_api.h".
+Write-Host 'Copying LiteRT headers (tflite/ tree)...'
+$includeRoot = Join-Path $litertInstallDir 'include\tflite'
+New-Item -Path $includeRoot -ItemType Directory -Force | Out-Null
+$headerCount = 0
+Get-ChildItem -Path $tfliteSrc -Filter '*.h' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+    $rel = $_.FullName.Substring($tfliteSrc.Length).TrimStart('\')
+    $dest = Join-Path $includeRoot $rel
+    $destDir = Split-Path $dest -Parent
+    if (-not (Test-Path $destDir)) { New-Item -Path $destDir -ItemType Directory -Force | Out-Null }
+    Copy-Item $_.FullName $dest -Force
+    $headerCount++
 }
+Write-Host "Copied $headerCount headers to $includeRoot"
 Write-Host 'LiteRT manual install completed'
 
 Remove-SourceBuildTree -Path $SourceDir

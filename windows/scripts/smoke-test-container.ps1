@@ -75,7 +75,11 @@ function Assert-Test {
 
 function Assert-CommandExists {
     param([string]$Name)
-    Assert-Test -Name "Command '$Name' on PATH" -Condition { (Get-Command $Name -ErrorAction SilentlyContinue) -ne $null } -FailMessage "$Name not found on PATH"
+    # GetNewClosure: the scriptblock is invoked inside Assert-Test, whose own $Name
+    # parameter shadows this one under PowerShell's dynamic scoping — without the
+    # closure this evaluated Get-Command "Command 'git' on PATH" and always failed.
+    $commandName = $Name
+    Assert-Test -Name "Command '$Name' on PATH" -Condition { (Get-Command $commandName -ErrorAction SilentlyContinue) -ne $null }.GetNewClosure() -FailMessage "$Name not found on PATH"
 }
 
 function Assert-FileExists {
@@ -90,12 +94,17 @@ function Assert-DirectoryExists {
 
 function Assert-EnvVarSet {
     param([string]$Name, [string]$ExpectedPrefix = '')
+    # GetNewClosure + renamed captures: Assert-Test's $Name parameter shadows this
+    # one at invocation time (dynamic scoping), so the env var that was actually
+    # queried used to be the test title — always failing.
+    $envName = $Name
+    $envPrefix = $ExpectedPrefix
     Assert-Test -Name "Env var $Name" -Condition {
-        $val = [Environment]::GetEnvironmentVariable($Name)
+        $val = [Environment]::GetEnvironmentVariable($envName)
         if ([string]::IsNullOrWhiteSpace($val)) { return $false }
-        if ($ExpectedPrefix) { return $val -like "$ExpectedPrefix*" }
+        if ($envPrefix) { return $val -like "$envPrefix*" }
         return $true
-    } -FailMessage "$Name is not set or doesn't match expected prefix"
+    }.GetNewClosure() -FailMessage "$Name is not set or doesn't match expected prefix"
 }
 
 function Get-CommandVersion {
@@ -236,8 +245,11 @@ Write-TestHeader '8. ONNX Runtime (source-built)'
 $onnxRoot = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
 if ($onnxRoot) {
     Assert-DirectoryExists -Path $onnxRoot -Description "ONNX_ROOT"
-    Assert-FileExists -Path (Join-Path $onnxRoot 'include\onnxruntime_cxx_api.h') -Description 'ONNX C++ API header'
-    Assert-FileExists -Path (Join-Path $onnxRoot 'include\onnxruntime_c_api.h') -Description 'ONNX C API header'
+    # Recursive search: ORT installs headers nested (include\onnxruntime\...), not flat
+    $onnxCxxHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name 'ONNX C++ API header' -Condition { $onnxCxxHdr.Count -gt 0 } -FailMessage "onnxruntime_cxx_api.h not found under $onnxRoot"
+    $onnxCHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_c_api.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name 'ONNX C API header' -Condition { $onnxCHdr.Count -gt 0 } -FailMessage "onnxruntime_c_api.h not found under $onnxRoot"
 
     $libFiles = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime*.lib' -Recurse -ErrorAction SilentlyContinue
     Assert-Test -Name "ONNX lib files" -Condition { $libFiles.Count -gt 0 } -FailMessage "No onnxruntime*.lib found in $onnxRoot"
@@ -255,7 +267,9 @@ Write-TestHeader '9. ONNX Runtime GenAI (source-built)'
 $genaiRoot = [Environment]::GetEnvironmentVariable('ONNX_GENAI_ROOT')
 if ($genaiRoot) {
     Assert-DirectoryExists -Path $genaiRoot -Description "ONNX_GENAI_ROOT"
-    Assert-FileExists -Path (Join-Path $genaiRoot 'include\onnxruntime-genai.h') -Description 'ONNX GenAI header'
+    $genaiHdr = Get-ChildItem -Path $genaiRoot -Filter 'ort_genai*.h' -Recurse -ErrorAction SilentlyContinue
+    if (-not $genaiHdr) { $genaiHdr = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.h' -Recurse -ErrorAction SilentlyContinue }
+    Assert-Test -Name 'ONNX GenAI header' -Condition { $genaiHdr.Count -gt 0 } -FailMessage "No GenAI header (ort_genai*.h / onnxruntime-genai.h) found under $genaiRoot"
 
     $genaiLibs = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai*.lib' -Recurse -ErrorAction SilentlyContinue
     Assert-Test -Name "ONNX GenAI lib files" -Condition { $genaiLibs.Count -gt 0 } -FailMessage "No onnxruntime-genai*.lib found"
@@ -303,9 +317,10 @@ Assert-Test -Name "GStreamer core plugin available" -Condition {
 $gstBin = [Environment]::GetEnvironmentVariable('GSTREAMER_BIN')
 Assert-DirectoryExists -Path $gstBin -Description "GSTREAMER_BIN"
 
-# Verify GStreamer can create a simple pipeline (don't actually run it, just verify it loads)
+# Verify GStreamer can create and run a trivial pipeline. num-buffers=1 is
+# essential: a bare fakesrc produces buffers FOREVER and hangs the smoke test.
 Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
-    $result = & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc ! fakesink 2>&1 | Out-String
+    $result = & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc num-buffers=1 ! fakesink 2>&1 | Out-String
     # If GST_PLUGIN_ERROR occurs but not a crash, the binary loads
     return $result -notmatch 'error while loading shared libraries'
 } -FailMessage "GStreamer gst-launch-1.0 failed to load"
@@ -322,13 +337,14 @@ Assert-DirectoryExists -Path $litertRoot -Description 'LiteRT root dir'
 Assert-DirectoryExists -Path $litertInclude -Description 'LiteRT include dir'
 
 if (Test-Path $litertInclude) {
-    $litertHeaders = Get-ChildItem -Path $litertInclude -Filter 'tensorflow/lite/c_api.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT C API header" -Condition { $litertHeaders.Count -gt 0 } -FailMessage "No LiteRT C API header found"
-    $litertCxxHeaders = Get-ChildItem -Path $litertInclude -Filter 'tensorflow/lite/interpreter.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT C++ API header" -Condition { $litertCxxHeaders.Count -gt 0 } -FailMessage "No LiteRT interpreter header found"
-    # Check GPU delegate header
-    $litertGpuHeaders = Get-ChildItem -Path $litertInclude -Filter 'delegate/gpu/*.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT GPU delegate headers" -Condition { $litertGpuHeaders.Count -gt 0 } -FailMessage "No LiteRT GPU delegate headers found"
+    # NB: -Filter matches file NAMES only — the old 'tensorflow/lite/c_api.h'
+    # path-style filters could never match anything.
+    $litertHeaders = Get-ChildItem -Path $litertInclude -Filter 'c_api.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT C API header" -Condition { $litertHeaders.Count -gt 0 } -FailMessage "No c_api.h found under $litertInclude"
+    $litertCxxHeaders = Get-ChildItem -Path $litertInclude -Filter 'interpreter.h' -Recurse -ErrorAction SilentlyContinue
+    Assert-Test -Name "LiteRT C++ API header" -Condition { $litertCxxHeaders.Count -gt 0 } -FailMessage "No interpreter.h found under $litertInclude"
+    $litertGpuHeaders = Get-ChildItem -Path $litertInclude -Filter '*.h' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\gpu\\' }
+    Assert-Test -Name "LiteRT GPU delegate headers" -Condition { @($litertGpuHeaders).Count -gt 0 } -FailMessage "No GPU delegate headers found under $litertInclude"
 }
 
 if (Test-Path $litertLibDir) {
@@ -337,8 +353,17 @@ if (Test-Path $litertLibDir) {
 }
 
 if (Test-Path $litertBinDir) {
+    # LiteRT builds statically by default (TFLITE_ENABLE_INSTALL=OFF, no
+    # BUILD_SHARED_LIBS) — DLLs are optional; static .lib files above are the
+    # real artifact. Report informationally instead of failing.
     $litertDlls = Get-ChildItem -Path $litertBinDir -Filter '*.dll' -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT DLL files" -Condition { $litertDlls.Count -gt 0 } -FailMessage "No LiteRT .dll files found"
+    if ($litertDlls.Count -gt 0) {
+        Write-Host "  [PASS] LiteRT DLL files ($($litertDlls.Count) found)" -ForegroundColor Green
+        $script:passed++
+    } else {
+        Write-Host '  [SKIP] LiteRT DLL files (static build - .lib only)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 }
 
 # ============================================================================
@@ -435,22 +460,35 @@ Write-TestHeader '16. VS MSBuild + ClangCL toolset integration'
 $tmpDir3 = Join-Path $env:TEMP 'kataglyphis-smoke-msbuild'
 New-Item -Path $tmpDir3 -ItemType Directory -Force | Out-Null
 
-$vcxproj = @"
+# NB: single-quoted here-string — a double-quoted form makes PowerShell evaluate
+# MSBuild's $(VCTargetsPath) as a subexpression. The template also needs the
+# ProjectConfigurations item group + ConfigurationType, or VC targets reject it
+# with MSB8013 (validated in-container: builds clean with ClangCL).
+$vcxproj = @'
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{D497C90E-6D4C-4E96-9B21-000000000001}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup>
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>ClangCL</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ItemGroup>
     <ClCompile Include="smoke_msbuild.cpp" />
   </ItemGroup>
-  <PropertyGroup>
-    <Configuration>Release</Configuration>
-    <Platform>x64</Platform>
-    <PlatformToolset>ClangCL</PlatformToolset>
-  </PropertyGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
-"@
+'@
 $cppSource3 = @"
 int main() { return 0; }
 "@
@@ -473,8 +511,11 @@ if (Test-Path $tvmRoot) {
     Assert-DirectoryExists -Path $tvmRoot -Description "TVM install root ($tvmRoot)"
     $tvmInclude = Join-Path $tvmRoot 'include'
     if (Test-Path $tvmInclude) {
-        $tvmHeaders = Get-ChildItem -Path $tvmInclude -Filter 'tvm_runtime.h' -Recurse -ErrorAction SilentlyContinue
-        Assert-Test -Name "TVM runtime header (tvm_runtime.h)" -Condition { $tvmHeaders.Count -gt 0 } -FailMessage "No tvm_runtime.h found under $tvmInclude"
+        # Layout-agnostic: TVM's runtime header names change across releases
+        # (c_runtime_api.h was dropped by the new FFI in 0.25) — assert the
+        # tvm/runtime header directory exists and is non-empty instead.
+        $tvmHeaders = Get-ChildItem -Path (Join-Path $tvmInclude 'tvm\runtime') -Filter '*.h' -Recurse -ErrorAction SilentlyContinue
+        Assert-Test -Name "TVM runtime headers (tvm/runtime/*.h)" -Condition { $tvmHeaders.Count -gt 0 } -FailMessage "No headers found under $tvmInclude\tvm\runtime"
     } else {
         Write-Host '  [SKIP] TVM include dir not found' -ForegroundColor Yellow
         $script:skipped++
@@ -503,16 +544,19 @@ if (Test-Path $ffmpegBin) {
         return ($v -ne $null) -and ($v -match 'ffmpeg')
     } -FailMessage "ffmpeg -version failed"
 
-    # Verify DNN support is compiled in (--enable-dnn --enable-libonnx)
-    Assert-Test -Name "ffmpeg built with --enable-dnn" -Condition {
-        $cfg = & $ffmpegExe -hide_banner -configure 2>&1 | Out-String
-        return ($cfg -match '--enable-dnn')
-    } -FailMessage "ffmpeg was not configured with --enable-dnn"
+    # Verify ONNX-backed DNN support. NB: `-configure` is not an ffmpeg option
+    # (the old checks grepped an error message); the configuration line is part
+    # of the -version banner. `--enable-dnn` is not a real configure flag either
+    # — DNN filters are enabled by enabling a backend (libonnxruntime).
+    $ffCfg = & $ffmpegExe -version 2>&1 | Out-String
+    Assert-Test -Name "ffmpeg built with --enable-libonnxruntime" -Condition {
+        $ffCfg -match 'enable-libonnxruntime'
+    } -FailMessage "ffmpeg was not configured with --enable-libonnxruntime"
 
-    Assert-Test -Name "ffmpeg built with --enable-libonnx" -Condition {
-        $cfg = & $ffmpegExe -hide_banner -configure 2>&1 | Out-String
-        return ($cfg -match '--enable-libonnx')
-    } -FailMessage "ffmpeg was not configured with --enable-libonnx"
+    Assert-Test -Name "ffmpeg dnn_processing filter available" -Condition {
+        $filters = & $ffmpegExe -hide_banner -filters 2>&1 | Out-String
+        return ($filters -match 'dnn_')
+    } -FailMessage "no dnn_* filters reported by ffmpeg -filters"
 } else {
     Write-Host '  [SKIP] FFmpeg not installed (C:\runtime\ffmpeg\bin not found)' -ForegroundColor Yellow
     $script:skipped++

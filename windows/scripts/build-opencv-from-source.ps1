@@ -118,7 +118,11 @@ $cmakeExtra = @(
     # If not found via pkg-config, OpenCV falls back to its bundled download (v1.25.1).
                          '-DWITH_ONNXRUNTIME=ON',
     '-DWITH_VTK=OFF', '-DWITH_MSMF=ON', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
-    '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=ON',
+    # WITH_OPENMP=OFF: clang-cl compiles `#pragma omp` (e.g. contrib surface_matching)
+    # into __kmpc_* runtime calls but the generated link line never includes libomp.lib
+    # -> lld-link "undefined symbol: __kmpc_fork_call". TBB (WITH_TBB=ON above) is
+    # OpenCV's preferred cv::parallel backend anyway, so no parallelism is lost.
+    '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=OFF',
     # WITH_CUDA=ON via ENABLE_CUDA_FIRST_CLASS_LANGUAGE (bypasses removed FindCUDA.cmake)
                          '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON',
     # NVCUVID/NVCUVENC require NVidia Video Codec SDK (separate download, not in container)

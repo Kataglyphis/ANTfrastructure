@@ -1,0 +1,47 @@
+#!/usr/bin/env sh
+# Replacement makedef: expands version-script globs (e.g. `av*;`) against the
+# global defined symbols of the actual objects, dumped with llvm-nm via xargs
+# (xargs batches around the Windows command-line length limit that breaks the
+# upstream script's single lib.exe invocation for libavcodec's ~800 objects).
+#
+# Notes vs the previous replacement (which emitted an EMPTY export list):
+#  * FFmpeg version scripts contain GLOBS (av*;), not literal symbol names —
+#    they must be expanded against real object symbols.
+#  * The msvc toolchain invokes this with SLIB_CREATE_DEF_INPUTS=@target.objs —
+#    a RESPONSE FILE listing the objects — which must be read, not treated as
+#    an object itself.
+
+vscript=$1
+shift
+
+if [ ! -f "$vscript" ]; then
+    echo "Version script does not exist: $vscript" >&2
+    exit 1
+fi
+
+# Glob patterns from the global: section (semicolon-separated, may span lines)
+pats=$(sed -n '/global:/,/local:/p' "$vscript" \
+        | sed -e 's/.*global://' -e 's/local:.*//' \
+        | tr ';' '\n' \
+        | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d')
+
+# Object list: expand @response-file args, pass through plain object args
+objs=$(for a in "$@"; do
+           case "$a" in
+               @*) tr ' ' '\n' < "${a#@}" ;;
+               *)  printf '%s\n' "$a" ;;
+           esac
+       done | sed -e '/^[[:space:]]*$/d')
+
+# Global defined symbols from all objects (xargs batches the command lines)
+dump=$(printf '%s\n' "$objs" \
+        | xargs llvm-nm --defined-only -g 2>/dev/null \
+        | awk 'NF>=3 {print $3}' \
+        | sed -e "s/^${EXTERN_PREFIX}//" \
+        | sort -u)
+
+echo "EXPORTS"
+for p in $pats; do
+    rx=$(printf '%s' "$p" | sed -e 's/\./\\./g' -e 's/\*/.*/g')
+    printf '%s\n' "$dump" | grep -E "^${rx}\$" || true
+done | sort -u | sed 's/^/    /'

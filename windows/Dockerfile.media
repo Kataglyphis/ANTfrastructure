@@ -102,9 +102,10 @@ ENV TVM_LIBRARY_PATH="${TVM_ROOT}\lib"
 ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$PATH
 
 # PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg, OpenCV, ONNX Runtime.
+# FFMPEG_LIB\pkgconfig carries the libav*.pc files (enables gst-libav).
 # LiteRT is excluded (TFLITE_ENABLE_INSTALL=OFF — no .pc files generated).
 # GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
-ENV PKG_CONFIG_PATH=$OPENCV_LIB\pkgconfig;$ONNX_ROOT\runtime\lib\pkgconfig;C:\runtime\lib\pkgconfig
+ENV PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;$ONNX_ROOT\runtime\lib\pkgconfig;C:\runtime\lib\pkgconfig
 
 # ── GStreamer (auto-detects CUDA, OpenCV, ONNX, FFmpeg from merged C:\runtime) ──
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `

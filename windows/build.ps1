@@ -147,10 +147,26 @@ function Invoke-Stage {
         [hashtable]$BuildArgs = @{},
         [string[]]$ExtraFlags = @()
     )
+    # Transient hcsshim/containerd failures ("failed to create shim task: ttrpc:
+    # closed") intermittently kill container creation, typically right after a big
+    # layer commit. Capture output and retry up to twice with a cool-down; cached
+    # layers make each retry resume at the failed step. Non-transient errors throw
+    # immediately.
+    $transient = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
     $dockerArgs = Get-DockerBuildArgList -Dockerfile $Dockerfile -Tag $Tag -BuildArgs $BuildArgs -ExtraFlags $ExtraFlags
-    Write-Host "`n==> docker $($dockerArgs -join ' ')" -ForegroundColor Cyan
-    & $Docker @dockerArgs
-    if ($LASTEXITCODE -ne 0) { throw "docker build failed for $Dockerfile (exit $LASTEXITCODE)" }
+    $stageLog = Join-Path ([System.IO.Path]::GetTempPath()) ("stage-" + [IO.Path]::GetFileName($Dockerfile) + ".log")
+    foreach ($attempt in 1..3) {
+        Write-Host "`n==> docker $($dockerArgs -join ' ')" -ForegroundColor Cyan
+        & $Docker @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog
+        if ($LASTEXITCODE -eq 0) { return }
+        $tail = Get-Content $stageLog -Tail 10 | Out-String
+        if ($attempt -lt 3 -and $tail -match $transient) {
+            Write-Host "[$Dockerfile] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
+            Start-Sleep -Seconds 60
+            continue
+        }
+        throw "docker build failed for $Dockerfile (exit $LASTEXITCODE)"
+    }
 }
 
 # Common per-branch args for the media fan-out
@@ -253,13 +269,27 @@ function Invoke-MediaBranches {
     foreach ($f in $failed) {
         $logText = @($f.Log, $f.ErrLog) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Tail 10 } | Out-String
         if ($logText -match $transientPattern) {
-            Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure detected — retrying once (cached layers resume at the failed step)" -ForegroundColor Yellow
-            try {
-                Invoke-Stage -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag -BuildArgs $f.Spec.BuildArgs `
-                    -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
-            } catch {
-                $stillFailed += $f
+            # Cool down before retrying: an immediate retry tends to hit the same
+            # still-wedged shim state. Two attempts, 60s apart. Each attempt's output
+            # is captured so a REAL build error stops the retry loop instead of being
+            # re-classified from the stale pre-retry branch log.
+            $recovered = $false
+            $retryLog = Join-Path $logDir "$($f.Spec.Name).retry.log"
+            foreach ($attempt in 1..2) {
+                Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure — retry $attempt/2 in 60s (cached layers resume at the failed step)" -ForegroundColor Yellow
+                Start-Sleep -Seconds 60
+                $argList = Get-DockerBuildArgList -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag `
+                    -BuildArgs $f.Spec.BuildArgs -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
+                Write-Host "==> docker $($argList -join ' ')" -ForegroundColor Cyan
+                & $Docker @argList 2>&1 | Tee-Object -FilePath $retryLog
+                if ($LASTEXITCODE -eq 0) { $recovered = $true; break }
+                $retryTail = Get-Content $retryLog -Tail 10 | Out-String
+                if ($retryTail -notmatch $transientPattern) {
+                    Write-Host "[$($f.Spec.Name)] retry failed with a non-transient error — stopping retries" -ForegroundColor Red
+                    break
+                }
             }
+            if (-not $recovered) { $stillFailed += $f }
         } else {
             $stillFailed += $f
         }

@@ -56,6 +56,12 @@ $srcDir = Get-ChildItem -Path $SourceDir -Directory | Select-Object -First 1 -Ex
 if (-not $srcDir) { throw "Failed to locate extracted FFmpeg source directory" }
 Write-Host "Source at: $srcDir"
 
+# git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path
+# (git apply). Without this, its git-repo probe writes to stderr, which PS 5.1
+# under EAP=Stop turns into a terminating NativeCommandError. cmd.exe shields
+# any git output from PowerShell's error stream.
+cmd.exe /c "git -C ""$srcDir"" init >nul 2>&1"
+
 # Set up environment: VsDevCmd (MSVC tools) + Git Bash + Scoop make/gawk
 Enter-VsDevCmdEnvironment
 $scoopShims = "$env:USERPROFILE\scoop\shims"
@@ -80,8 +86,11 @@ $gitUsrBin = 'C:\Program Files\Git\usr\bin'
 $env:PATH = "$scoopShims;$gitUsrBin;$env:PATH"
 $bashExe = Join-Path $gitUsrBin 'bash.exe'
 
-# MSYS2 paths
-$cygPrefix = "/$($prefix.Substring(0,1).ToLower())$($prefix.Substring(2))"
+# MSYS2 paths. Backslashes MUST become forward slashes: the previous form
+# produced /c\runtime\ffmpeg, configure collapsed it to /cruntimeffmpeg, and
+# `make install` silently delivered everything into <git-root>\cruntimeffmpeg —
+# which is why the image only ever carried the fallback exes.
+$cygPrefix = '/' + $prefix.Substring(0,1).ToLower() + ($prefix.Substring(2) -replace '\\', '/')
 $cygSrc = $srcDir -replace '\\', '/' -replace '^C:', '/c'
 
 # Configure with --toolchain=msvc (officially supported by FFmpeg on Windows)
@@ -124,6 +133,10 @@ if ($onnxHeaderCopied) {
 }
 $confFlags += '--toolchain=msvc'
 $confFlags += '--disable-x86asm'
+# vfwcap links vfw32.lib -> imports AVICAP32.dll, which does NOT exist in
+# Windows Server Core containers: every process loading avdevice would die
+# with STATUS_DLL_NOT_FOUND. DirectShow capture (dshow) remains available.
+$confFlags += '--disable-indev=vfwcap'
 
 $confStr = $confFlags -join ' '
 
@@ -201,8 +214,16 @@ if (Test-Path $configMakPath) {
     [System.IO.File]::WriteAllText($configMakPath, $cm)
 }
 
-# Replace makedef with version that reads .ver directly (avoids Windows command-line length limit)
-Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\ffmpeg\002-replacement-makedef.patch') -SourceDir $srcDir -IgnoreWhitespace
+# Replace makedef wholesale (full-file overwrite, deliberately NOT a .patch:
+# the file is completely rewritten, so a context diff adds only fragility —
+# it broke twice on upstream drift / git-apply quirks). The replacement expands
+# version-script globs against per-object llvm-nm symbol dumps via xargs,
+# avoiding the upstream script's single lib.exe call that exceeds the Windows
+# command-line length limit for libavcodec.
+$makedefSrc = Join-Path $PSScriptRoot 'patches\ffmpeg\makedef'
+$makedefDst = Join-Path $srcDir 'compat\windows\makedef'
+Copy-Item $makedefSrc $makedefDst -Force
+Write-Host "Replaced compat/windows/makedef (glob-expanding, response-file-aware)"
 
 # Parallel compile first; make is incremental, so the -j1 retry below only redoes
 # what failed. Parallel -jN can hit spurious LNK1120 link races with MSVC when
@@ -222,6 +243,17 @@ if (-not (Test-Path $builtFfmpeg)) {
 }
 Write-Host 'Attempting install from source if built...'
 & cmd /c "`"$bashExe`" -c `"cd $cygSrc && make install`" 2>&1" | ForEach-Object { Write-Host $_ }
+if ($LASTEXITCODE -ne 0) { Write-Warning "make install exited $LASTEXITCODE - verifying what landed..." }
+
+# A --enable-shared build is only usable if the av*.dll runtime libraries were
+# installed next to the exes; exes alone die with STATUS_DLL_NOT_FOUND. Treat an
+# incomplete install as a failed source build so the fallback (or a loud error)
+# kicks in instead of shipping a broken ffmpeg.
+$installedDlls = @(Get-ChildItem "$ffmpegDir\*.dll" -ErrorAction SilentlyContinue)
+if ((Test-Path "$ffmpegDir\ffmpeg.exe") -and $installedDlls.Count -eq 0) {
+    Write-Warning 'Source install produced exes but no av*.dll runtime libraries - discarding as incomplete.'
+    Remove-Item "$ffmpegDir\ffmpeg.exe", "$ffmpegDir\ffplay.exe", "$ffmpegDir\ffprobe.exe" -Force -ErrorAction SilentlyContinue
+}
 
 # Download pre-built MSVC FFmpeg if source build didn't produce ffmpeg.exe
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
@@ -252,6 +284,9 @@ Write-Host "=== FFmpeg build completed ==="
 Write-Host "Artifacts at: $prefix"
 if (Test-Path "$ffmpegDir\ffmpeg.exe") { Write-Host "ffmpeg.exe installed" }
 if (Test-Path "$ffmpegDir\ffprobe.exe") { Write-Host "ffprobe.exe installed" }
+$finalDlls = @(Get-ChildItem "$ffmpegDir\*.dll" -ErrorAction SilentlyContinue)
+Write-Host "runtime DLLs installed: $($finalDlls.Count)"
+if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete: no ffmpeg.exe (source build and fallback both failed)' }
 
 
 

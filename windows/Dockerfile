@@ -11,6 +11,17 @@ FROM ${BASE_IMAGE}
 ARG BUILD_DATE=""
 ARG VCS_REF=""
 
+# Runtime DLL resolution: onnxruntime.dll lives in the install's bin\ (the media
+# PATH only carried lib\, which holds the provider DLLs) — without this, anything
+# linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
+ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
+
+# KNOWN GAP: rustup ships in the base image but no default toolchain was ever
+# installed ("rustup could not choose a version of rustc"). Installing it here
+# stalls (rustup downloads crawl inside build containers), so the fix belongs in
+# setup-rust-toolchain.ps1 at the next base rebuild. Workaround at runtime:
+#   rustup default stable
+
 COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
 # Smoke test is documented to run from inside the container (docs/windows-builds.md)
 COPY windows\scripts\smoke-test-container.ps1 C:\temp\scripts\smoke-test-container.ps1
@@ -37,6 +48,9 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
       org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" `
       org.opencontainers.image.licenses="Apache-2.0"
 
-# Exec-form entrypoint must go through cmd explicitly — "&&" as a bare array element
-# is not a shell operator and only worked by accident of .bat argument handling.
-ENTRYPOINT ["cmd","/S","/C","\"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat\" -arch=amd64 && powershell.exe -NoLogo -ExecutionPolicy Bypass"]
+# Launcher script instead of inline cmd: exec-form re-quoting mangles embedded
+# quotes around the spaces-in-path VsDevCmd.bat (literal \" reaches cmd.exe).
+# entrypoint.cmd loads VsDevCmd then runs the container command (or interactive
+# PowerShell when none is given).
+COPY windows\scripts\entrypoint.cmd C:\temp\scripts\entrypoint.cmd
+ENTRYPOINT ["cmd","/S","/C","C:\\temp\\scripts\\entrypoint.cmd"]

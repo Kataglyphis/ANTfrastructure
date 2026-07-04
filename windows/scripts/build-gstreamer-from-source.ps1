@@ -49,13 +49,13 @@ param(
     [string[]]$MesonSetupArgs  = @()
 )
 
-$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
-
 # Backwards-compat: accept the deprecated -SrcDir alias (preferred form is -SourceDir).
 if ([string]::IsNullOrWhiteSpace($SourceDir) -and -not [string]::IsNullOrWhiteSpace($SrcDir)) { $SourceDir = $SrcDir }
 if ([string]::IsNullOrWhiteSpace($SourceDir)) { $SourceDir = 'C:\temp\gst-source' }
 
 # ---- module import (logging + build helpers + shared utilities) ----
+# NOTE: imports MUST precede any module-function call — Initialize-SourceBuildEnvironment
+# below used to be invoked before this block and died with CommandNotFoundException.
 $sharedPath = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
 if (-not (Test-Path $sharedPath)) { throw "Required module not found: $sharedPath" }
 Import-Module $sharedPath -Force
@@ -67,9 +67,16 @@ if (-not (Test-Path $modulePath)) {
 Import-Module $modulePath -Force
 
 $sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
-if (Test-Path $sourceBuildModule) {
-    Import-Module $sourceBuildModule -Force
-}
+if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
+Import-Module $sourceBuildModule -Force
+
+# Re-import Shared LAST: the nested `Import-Module ...Shared -Force` inside the two
+# modules above unloads the top-level Shared import (PS 5.1 module scoping) and
+# rebinds it into their private scopes, making Resolve-DirectoryPath & friends
+# invisible to this script. Verified in PS 5.1.
+Import-Module $sharedPath -Force
+
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 # ---- logging ----
 $logContext = New-StructuredLogContext -LogDir $LogDir -Prefix 'gst-source-build'
@@ -119,14 +126,19 @@ try {
     & cmd.exe /c """$pyExe"" -m pip install meson > ""$pipLog"" 2>&1"
     Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
 
-    # Find meson executable from Scripts dir
-    $pythonScripts = Join-Path (Split-Path $pyExe -Parent) 'Scripts'
-    $mesonExe = Join-Path $pythonScripts 'meson.exe'
-    if (-not (Test-Path $mesonExe)) {
-        $mesonVer = & $pyExe -m pip show meson 2>&1 | Select-String '^Location:' | ForEach-Object { $_ -replace '^Location: ', '' }
-        if ($mesonVer) { $mesonExe = (Get-Item $mesonVer.Trim()).Directory.Parent.FullName + '\Scripts\meson.exe' }
+    # Find meson.exe: ask Python where console scripts land. The in-tree PCbuild
+    # layout (sys.prefix = the source root) puts them at C:\temp\cpython\Scripts,
+    # NOT next to python.exe — pip's install warning confirms that location.
+    $pythonScripts = (cmd.exe /c """$pyExe"" -c ""import sysconfig; print(sysconfig.get_path('scripts'))""" | Select-Object -First 1)
+    if ($pythonScripts) { $pythonScripts = "$pythonScripts".Trim() }
+    if (-not $pythonScripts -or -not (Test-Path (Join-Path $pythonScripts 'meson.exe'))) {
+        $pythonScripts = @(
+            (Join-Path (Split-Path $pyExe -Parent) 'Scripts'),
+            (Join-Path $env:TEMP_DIR 'cpython\Scripts')
+        ) | Where-Object { Test-Path (Join-Path $_ 'meson.exe') } | Select-Object -First 1
     }
-    if (-not (Test-Path $mesonExe)) { throw 'meson.exe not found after pip install' }
+    if (-not $pythonScripts) { throw 'meson.exe not found after pip install' }
+    $mesonExe = Join-Path $pythonScripts 'meson.exe'
     $env:PATH = "$pythonScripts;$env:PATH"
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
@@ -180,6 +192,12 @@ try {
         throw "Could not find GStreamer source with meson.build in $resolvedSrcDir"
     }
     log 'Extraction complete.'
+
+    # git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path
+    # (git apply). Without this, its git-repo probe writes to stderr, which PS 5.1
+    # under EAP=Stop turns into a terminating NativeCommandError. cmd.exe shields
+    # any git output from PowerShell's error stream.
+    cmd.exe /c "git -C ""$gstSrcDir"" init >nul 2>&1"
 
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
@@ -377,6 +395,48 @@ int _isatty(int);
     }
     if (-not $mesonSucceeded) { throw 'meson setup failed after 2 attempts' }
     log 'meson setup completed.'
+
+    # Inline patch (kept inline, NOT a .patch file): the webrtc-audio-processing
+    # wrap version floats with the GStreamer release, so a static .patch would rot.
+    # Its AVX2/SSE2 kernels index SIMD vectors via MSVC's union members
+    # (x.m256_f32[i]); clang-cl's __m256 is a native vector type without members
+    # ("member reference base type '__m256' is not a structure or union") but
+    # supports direct subscripting x[i], which is what this substitution produces.
+    $wrtcDir = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'webrtc-audio-processing-*' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($wrtcDir) {
+        $simdMemberPatterns = @(
+            '\.m256_f32\[', '\.m256d_f64\[', '\.m256i_(?:i|u)(?:8|16|32|64)\[',
+            '\.m128_f32\[', '\.m128d_f64\[', '\.m128i_(?:i|u)(?:8|16|32|64)\['
+        )
+        Get-ChildItem -Path $wrtcDir.FullName -Recurse -Include '*.cc', '*.h' | ForEach-Object {
+            $content = [System.IO.File]::ReadAllText($_.FullName)
+            $patched = $content
+            foreach ($p in $simdMemberPatterns) { $patched = $patched -replace $p, '[' }
+            if ($patched -ne $content) {
+                [System.IO.File]::WriteAllText($_.FullName, $patched)
+                log "Patched MSVC SIMD member access for clang-cl: $($_.Name)"
+            }
+        }
+    }
+
+    # Inline patch (kept inline, NOT a .patch file): FFMPEG_VERSION=master floats,
+    # and FFmpeg master removed the V308/V408/V410 raw packed-video codec IDs that
+    # gst-libav 1.29.x still lists in its "no quasi codecs" EXCLUSION conditions.
+    # Excluding codecs that no longer exist is moot — drop those comparisons
+    # (R210 sharing the V410 line still exists and is kept).
+    foreach ($avFile in @('gstavvidenc.c', 'gstavviddec.c')) {
+        $avPath = Join-Path $gstSrcDir "subprojects\gst-libav\ext\libav\$avFile"
+        if (Test-Path $avPath) {
+            $avContent = [System.IO.File]::ReadAllText($avPath)
+            $avOrig = $avContent
+            $avContent = $avContent -replace '(?m)^\s*in_plugin->id == AV_CODEC_ID_V[34]08 \|\|\r?\n', ''
+            $avContent = $avContent -replace 'in_plugin->id == AV_CODEC_ID_V410 \|\| ', ''
+            if ($avContent -ne $avOrig) {
+                [System.IO.File]::WriteAllText($avPath, $avContent)
+                log "Patched ${avFile}: removed V308/V408/V410 exclusions (codec IDs dropped by FFmpeg master)"
+            }
+        }
+    }
 
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
     $compileSucceeded = $false
