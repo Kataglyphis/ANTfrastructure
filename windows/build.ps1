@@ -94,12 +94,12 @@ Push-Location $repoRoot
 # this single pattern.
 $script:TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
 
-# Hyper-V-isolated build containers default to only 2 logical CPUs unless
-# --cpu-count is passed, which silently pins every in-container `ninja -j` to 2
-# (Get-BuildJobCount = min(ProcessorCount, memGB/perJob)). Give each build the
-# host's full logical-processor count; the per-build --memory cap still bounds
-# actual parallelism, so heavy CUDA/C++ TUs won't oversubscribe RAM.
-$script:CpuCount = [Environment]::ProcessorCount
+# Hyper-V-isolated build containers get only 2 CPUs, silently pinning every
+# in-container `ninja -j` to 2 (Get-BuildJobCount = min(ProcessorCount, memGB/perJob)) —
+# the real cause of slow CUDA/C++ builds. `docker build` has no --cpu-count and
+# --cpuset-cpus isn't honored on Windows, so we run builds with process isolation:
+# the container then sees all host CPUs (verified on this host: 2 -> 32). The
+# per-build --memory cap still bounds actual parallelism so heavy TUs don't OOM.
 
 # ---- resolve docker CLI (Stevedore's docker.exe preferred; nerdctl build has broken DNS) ----
 if ([string]::IsNullOrWhiteSpace($Docker)) {
@@ -150,8 +150,9 @@ function Get-DockerBuildArgList {
     # Windows Containers) rejects it.
     $dockerArgs = @('build')
     if ($NoCache) { $dockerArgs += '--no-cache' }
-    # Grant all host CPUs (default is 2 on Hyper-V isolation — the -j2 bottleneck).
-    $dockerArgs += '--cpu-count', "$script:CpuCount"
+    # Process isolation gives the build container all host CPUs (Hyper-V default is
+    # 2 — the -j2 bottleneck). --memory below still caps RAM.
+    $dockerArgs += '--isolation', 'process'
     foreach ($key in ($BuildArgs.Keys | Sort-Object)) {
         $value = $BuildArgs[$key]
         if ($null -ne $value -and "$value" -ne '') { $dockerArgs += '--build-arg', "$key=$value" }
