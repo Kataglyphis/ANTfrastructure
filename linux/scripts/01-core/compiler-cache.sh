@@ -21,7 +21,7 @@
 #   SCCACHE_DIR         - sccache cache directory (default: /var/cache/sccache)
 #   SCCACHE_CACHE_SIZE  - sccache max size (default: 10G)
 
-if [ -z "${_COMPILER_CACHE_LOADED:-}" ]; then
+[ -n "${_COMPILER_CACHE_LOADED:-}" ] && return 0
 _COMPILER_CACHE_LOADED=1
 
 # Default settings
@@ -94,6 +94,10 @@ setup_ccache() {
 
   _cc_info "ccache enabled: CCACHE_DIR=${CCACHE_DIR}, MAXSIZE=${CCACHE_MAXSIZE}"
   _cc_info "CMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}"
+
+  # Apply the max-size limit to the on-disk cache. Without this, ccache
+  # uses its compiled-in default (~5G), not the CCACHE_MAXSIZE env var.
+  ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || true
 
   # Print cache stats if available
   ccache --show-stats 2>/dev/null | head -5 || true
@@ -205,5 +209,3 @@ append_cmake_cache_args() {
     _acmca_out+=(-DCMAKE_LINKER_TYPE=lld)
   fi
 }
-
-fi

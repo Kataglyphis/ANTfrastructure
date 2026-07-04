@@ -121,39 +121,12 @@ EOF
   printf '%s' "${wrapper_dir}/${wrapper_name}"
 }
 
-build_standalone_gst_plugins_rs() {
-  local plugin_rs_dir="/opt/gst-plugins-rs"
-  local standalone_cargo_toml=""
-  local rust_jobs=""
-  local cargo_host_cc=""
-  local cargo_host_linker=""
-  local cargo_host_cxx=""
-  local cargo_host_cxx_wrapper=""
-  local cargo_target_rust_env=""
-  local cargo_target_rust_lower=""
-  local cargo_target_cross_bindir=""
-  local cargo_target_cc_wrapper=""
-  local cargo_target_cxx_wrapper=""
-  local arch_for_excludes=""
-  local arch_probes=""
-  local cs_pkg_names=""
-  local skia_pkg_names=""
-  local whisper_pkg_names=""
-  local validate_pkg_names=""
-  local dav1d_pkg_names=""
-  local -a cargo_flags=()
-  # GST_RS_BUILD_ALL=true (default): attempt to build EVERY gst-plugins-rs
-  # workspace member on every arch — no default excludes. Set to "false" to
-  # restore the conservative exclude/prune behavior below.
-  local build_all_rs="${GST_RS_BUILD_ALL:-true}"
-  local -a default_excludes=()
-  if [ "${build_all_rs}" != "true" ]; then
-    default_excludes=(--exclude gst-plugin-burn --exclude gst-plugin-webrtcbin2)
-  fi
-  local -a build_cmd=()
-
+_gst_rs_resolve_env() {
   configure_gstreamer_prefix_for_cargo
+}
 
+_gst_rs_clone() {
+  local plugin_rs_dir="$1"
   if [ -d "${plugin_rs_dir}" ]; then
     cd "${plugin_rs_dir}"
     git fetch origin --tags
@@ -165,6 +138,20 @@ build_standalone_gst_plugins_rs() {
     cd "${plugin_rs_dir}"
     sudo chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
   fi
+}
+
+_gst_rs_cargo_config() {
+  local plugin_rs_dir="$1"
+  local rust_jobs=""
+  local cargo_host_cc=""
+  local cargo_host_linker=""
+  local cargo_host_cxx=""
+  local cargo_host_cxx_wrapper=""
+  local cargo_target_rust_env=""
+  local cargo_target_rust_lower=""
+  local cargo_target_cross_bindir=""
+  local cargo_target_cc_wrapper=""
+  local cargo_target_cxx_wrapper=""
 
   [ "${BUILD_TYPE_LOWER}" = "release" ] && cargo_flags+=(--release)
 
@@ -237,6 +224,17 @@ build_standalone_gst_plugins_rs() {
       echo "RISC-V standalone gst-plugins-rs build detected: using target compiler wrappers with -B${cargo_target_cross_bindir%/}/"
     fi
   fi
+}
+
+_gst_rs_build_plugins() {
+  local arch_for_excludes=""
+  local arch_probes=""
+  local cs_pkg_names=""
+  local skia_pkg_names=""
+  local whisper_pkg_names=""
+  local validate_pkg_names=""
+  local dav1d_pkg_names=""
+  local -a build_cmd=()
 
   if [ "${build_all_rs}" != "true" ]; then
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "analytics/burn"
@@ -375,4 +373,23 @@ build_standalone_gst_plugins_rs() {
       exit 1
     fi
   fi
+}
+
+build_standalone_gst_plugins_rs() {
+  local plugin_rs_dir="/opt/gst-plugins-rs"
+  declare -g standalone_cargo_toml=""
+  declare -g build_all_rs="${GST_RS_BUILD_ALL:-true}"
+  declare -g cargo_flags=()
+  # GST_RS_BUILD_ALL=true (default): attempt to build EVERY gst-plugins-rs
+  # workspace member on every arch — no default excludes. Set to "false" to
+  # restore the conservative exclude/prune behavior below.
+  declare -g default_excludes=()
+  if [ "${build_all_rs}" != "true" ]; then
+    default_excludes=(--exclude gst-plugin-burn --exclude gst-plugin-webrtcbin2)
+  fi
+
+  _gst_rs_resolve_env
+  _gst_rs_clone "${plugin_rs_dir}"
+  _gst_rs_cargo_config "${plugin_rs_dir}"
+  _gst_rs_build_plugins
 }

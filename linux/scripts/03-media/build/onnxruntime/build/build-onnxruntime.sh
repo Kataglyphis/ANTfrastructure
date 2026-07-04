@@ -79,13 +79,13 @@ case "${STEP}" in
       info "Skipping all web builds (WASM/JS) on non-amd64 architecture (arch=$(detect_target_arch))"
     fi
     bash "${SCRIPT_DIR}/../runtime/31-generate-pkgconfig-native.sh" "${FORWARDED_ARGS[@]}"
-    bash "${SCRIPT_DIR}/70-build-litert.sh" "${FORWARDED_ARGS[@]}" || warn "LiteRT build script failed or was skipped (LiteRT is built in its own Dockerfile.media stage; failure here only affects the --step all convenience path)"
     info "Complete build finished. Artifacts:"
     info "  - Native CPU: ${NATIVE_CPU_OUTPUT_DIR}"
     if [[ "${BUILD_GENAI}" == "true" ]]; then
       info "  - GenAI: ${GENAI_OUTPUT_DIR}"
     fi
     info "  - Web: ${WASM_OUTPUT_DIR}"
+    info "  - LiteRT: built separately via the dedicated 03-media litert stage (Dockerfile.media); use --step litert-helper to build it here"
     ;;
   deps)
     bash "${SCRIPT_DIR}/10-deps.sh" "${FORWARDED_ARGS[@]}"

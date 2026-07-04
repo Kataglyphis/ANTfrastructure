@@ -33,10 +33,17 @@ prebuild_gstreamer_riscv_targets() {
   if [ "${#glib_subprojects[@]}" -gt 0 ]; then
     gmodule_visibility_target="subprojects/$(basename "${glib_subprojects[0]}")/gmodule/gmodule-visibility.h"
 
-    echo "Prebuilding ${gmodule_visibility_target} before Graphene GIR generation"
-    uv run meson compile -C builddir --jobs 1 "${gmodule_visibility_target}"
-    echo "Prebuilding ${glib_lib_target}, ${gobject_lib_target}, ${gmodule_lib_target} and ${gio_lib_target} before Graphene GIR generation"
-    uv run meson compile -C builddir --jobs 1 "${glib_lib_target}" "${gobject_lib_target}" "${gmodule_lib_target}" "${gio_lib_target}"
+    # Ninja/Makefile dependency ordering means a single meson compile call
+    # suffices to build the header before the libs it depends on; collapsing
+    # what was two sequential --jobs 1 invocations into one removes a full
+    # ninja startup/scheduling round-trip.
+    echo "Prebuilding ${gmodule_visibility_target}, ${glib_lib_target}, ${gobject_lib_target}, ${gmodule_lib_target} and ${gio_lib_target} before Graphene GIR generation"
+    uv run meson compile -C builddir --jobs 1 \
+        "${gmodule_visibility_target}" \
+        "${glib_lib_target}" \
+        "${gobject_lib_target}" \
+        "${gmodule_lib_target}" \
+        "${gio_lib_target}"
   fi
 
   if [ "${#graphene_subprojects[@]}" -gt 0 ]; then

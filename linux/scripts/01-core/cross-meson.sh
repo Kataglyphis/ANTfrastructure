@@ -22,36 +22,13 @@ make_meson_cross_rust_wrapper() {
   mkdir -p "$(dirname "${wrapper_path}")"
 
   local template="${_CROSS_ENV_DIR:-${BASH_SOURCE[0]%/*}}/meson-rust-wrapper.sh"
-  if [ -f "${template}" ]; then
-    sed -e "s|__RUSTC_BIN__|${rustc_bin}|g" \
-        -e "s|__RUST_TARGET__|${rust_target}|g" \
-        "${template}" > "${wrapper_path}"
-  else
-    cat > "${wrapper_path}" <<'HEREDOC_EOF'
-#!/usr/bin/env bash
-set -eu
-want_target='HEREDOC_TARGET'
-have_target=false
-expect_target_value=false
-cargo_managed=false
-for arg in "$@"; do
-  if [ "${expect_target_value}" = "true" ]; then
-    have_target=true
-    expect_target_value=false
-    continue
+  if [ ! -f "${template}" ]; then
+    err "meson-rust-wrapper template not found: ${template}"
+    return 1
   fi
-  case "${arg}" in
-    --target) expect_target_value=true ;;
-    --target=*) have_target=true ;;
-    */target/*) cargo_managed=true ;;
-  esac
-done
-if [ "${have_target}" = "true" ]; then exec 'HEREDOC_RUSTC' "$@"; fi
-if [ "${cargo_managed}" = "true" ]; then exec 'HEREDOC_RUSTC' "$@"; fi
-exec 'HEREDOC_RUSTC' --target "${want_target}" "$@"
-HEREDOC_EOF
-    sed -i "s|HEREDOC_TARGET|${rust_target}|g; s|HEREDOC_RUSTC|${rustc_bin}|g" "${wrapper_path}"
-  fi
+  sed -e "s|__RUSTC_BIN__|${rustc_bin}|g" \
+      -e "s|__RUST_TARGET__|${rust_target}|g" \
+      "${template}" > "${wrapper_path}"
 
   chmod +x "${wrapper_path}"
   printf '%s' "${wrapper_path}"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build-helpers.sh — nerdctl build wrappers and build-arg helpers.
 #
-[ -z "${_BUILD_HELPERS_LOADED:-}" ] || return 0
+[ -n "${_BUILD_HELPERS_LOADED:-}" ] && return 0
 _BUILD_HELPERS_LOADED=1
 #
 # Provides:
@@ -19,7 +19,6 @@ _BUILD_HELPERS_LOADED=1
 #   append_runtime_accelerator_build_args() — ENABLE_NVIDIA / ENABLE_AMD
 #   image_exists()                — check if an image exists locally
 #   run_nerdctl_build()           — nerdctl build with BUILDKIT_HOST support
-#   pull_platform_image()         — nerdctl pull --platform
 
 run() {
   printf '+ '
@@ -143,11 +142,4 @@ run_nerdctl_build() {
   append_buildkit_host_arg build_cmd
   build_cmd+=("$@")
   run "${build_cmd[@]}"
-}
-
-pull_platform_image() {
-  local nerdctl_bin="$1"
-  local platform="$2"
-  local image_ref="$3"
-  run "${nerdctl_bin}" pull --platform "${platform}" "${image_ref}"
 }

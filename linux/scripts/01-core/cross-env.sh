@@ -175,32 +175,21 @@ cross_build_lower_rust() {
 install_cross_bin_symlinks() {
   local target_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
   local bin_dir="${2:-$(cross_bin_dir)}"
-  local triplet=""
-  local cc=""
-  local cxx=""
-  local ar=""
-  local as=""
-  local ld=""
-  local nm=""
-  local ranlib=""
-  local strip=""
-  local objcopy=""
 
   target_arch="$(cross_require_single_target_arch "${target_arch}" "cross tool symlink setup")" || return 1
+  local triplet
   triplet="$(cross_target_triplet_for_arch "${target_arch}")" || {
     printf 'Unsupported cross tool target: %s\n' "${target_arch}" >&2
     return 1
   }
 
-  cc="$(resolve_cross_gcc_tool gcc "${triplet}")" || return 1
-  cxx="$(resolve_cross_gcc_tool g++ "${triplet}")" || return 1
-  ar="$(resolve_cross_gcc_tool ar "${triplet}")" || return 1
-  as="$(resolve_cross_gcc_tool as "${triplet}")" || return 1
-  ld="$(resolve_cross_gcc_tool ld "${triplet}")" || return 1
-  nm="$(resolve_cross_gcc_tool nm "${triplet}")" || return 1
-  ranlib="$(resolve_cross_gcc_tool ranlib "${triplet}")" || return 1
-  strip="$(resolve_cross_gcc_tool strip "${triplet}")" || return 1
-  objcopy="$(resolve_cross_gcc_tool objcopy "${triplet}")" || return 1
+  # Resolve all cross toolchain tools. Data-driven: each entry is "tool_name".
+  # All resolve via resolve_cross_gcc_tool (any failure short-circuits).
+  local -A tools=()
+  local tool
+  for tool in gcc g++ ar as ld nm ranlib strip objcopy; do
+    tools["${tool}"]="$(resolve_cross_gcc_tool "${tool}" "${triplet}")" || return 1
+  done
 
   # Layout contract (see cross_bare_bin_path):
   #   ${bin_dir}       — ONLY triplet-prefixed names; safe to put on PATH,
@@ -210,27 +199,19 @@ install_cross_bin_symlinks() {
   local bare_dir="${bin_dir}/bare"
   mkdir -p "${bin_dir}" "${bare_dir}"
 
-  ln -sf "${cc}" "${bin_dir}/${triplet}-gcc"
-  ln -sf "${cxx}" "${bin_dir}/${triplet}-g++"
-  ln -sf "${as}" "${bin_dir}/${triplet}-as"
-  ln -sf "${ld}" "${bin_dir}/${triplet}-ld"
-  ln -sf "${ar}" "${bin_dir}/${triplet}-ar"
-  ln -sf "${nm}" "${bin_dir}/${triplet}-nm"
-  ln -sf "${ranlib}" "${bin_dir}/${triplet}-ranlib"
-  ln -sf "${strip}" "${bin_dir}/${triplet}-strip"
-  ln -sf "${objcopy}" "${bin_dir}/${triplet}-objcopy"
+  # Triplet-prefixed symlinks (safe to put on PATH).
+  for tool in gcc g++ as ld ar nm ranlib strip objcopy; do
+    ln -sf "${tools[${tool}]}" "${bin_dir}/${triplet}-${tool}"
+  done
 
-  ln -sf "${cc}" "${bare_dir}/gcc"
-  ln -sf "${cxx}" "${bare_dir}/g++"
-  ln -sf "${cc}" "${bare_dir}/cc"
-  ln -sf "${cxx}" "${bare_dir}/c++"
-  ln -sf "${as}" "${bare_dir}/as"
-  ln -sf "${ld}" "${bare_dir}/ld"
-  ln -sf "${ar}" "${bare_dir}/ar"
-  ln -sf "${nm}" "${bare_dir}/nm"
-  ln -sf "${ranlib}" "${bare_dir}/ranlib"
-  ln -sf "${strip}" "${bare_dir}/strip"
-  ln -sf "${objcopy}" "${bare_dir}/objcopy"
+  # Bare-name symlinks (gcc-alias cc, g++-alias c++ — see cross_bare_bin_path
+  # for the NEVER-on-PATH contract; consumers must explicitly opt in).
+  local bare_aliases=(gcc g++ cc c++ as ld ar nm ranlib strip objcopy)
+  local bare_alias_tool=(gcc  g++ gcc g++ as ld ar nm ranlib strip objcopy)
+  local i
+  for i in "${!bare_aliases[@]}"; do
+    ln -sf "${tools[${bare_alias_tool[$i]}]}" "${bare_dir}/${bare_aliases[$i]}"
+  done
 
   # Stale-layout cleanup: earlier revisions symlinked bare names directly in
   # ${bin_dir} (which sat on PATH — the systemic footgun). Remove any leftovers
@@ -369,21 +350,22 @@ _cross_env_setup_python_staging() {
   export PYTHON_CROSS_ACTIVE_ROOT
 }
 
-# Private: export the full cross-compilation environment.
-# Consumes a single associative array with all the keys produced by
-# _cross_env_resolve_identifiers and _cross_env_resolve_tools.
-_cross_env_export_all() {
-  local -n _eea=$1
+# Each _export_* helper consumes the resolved associative array and exports a
+# single logical group. Together they form _cross_env_export_all.
 
-  export TARGET_ARCH="${_eea[target_arch]}"
-  export TARGETARCH="${_eea[target_arch]}"
-  export TARGETPLATFORM="linux/${_eea[target_arch]}"
-  export BUILDARCH="${_eea[build_arch]}"
-  export BUILDPLATFORM="linux/${_eea[build_arch]}"
-  export CROSS_TARGET_TRIPLET="${_eea[triplet]}"
-  export CROSS_TARGET_PROCESSOR="${_eea[processor]}"
-  export CROSS_RUST_TARGET="${_eea[rust_target]}"
+_export_arch_vars() {
+  local -n _eav=$1
+  export TARGET_ARCH="${_eav[target_arch]}"
+  export TARGETARCH="${_eav[target_arch]}"
+  export TARGETPLATFORM="linux/${_eav[target_arch]}"
+  export BUILDARCH="${_eav[build_arch]}"
+  export BUILDPLATFORM="linux/${_eav[build_arch]}"
+  export CROSS_TARGET_TRIPLET="${_eav[triplet]}"
+  export CROSS_TARGET_PROCESSOR="${_eav[processor]}"
+  export CROSS_RUST_TARGET="${_eav[rust_target]}"
+}
 
+_export_path() {
   # /opt/cross-bin holds ONLY triplet-prefixed tool names, so fronting PATH
   # with it is harmless to host-side compiles. Bare names live in
   # /opt/cross-bin/bare, which is intentionally NOT put on PATH — see
@@ -393,68 +375,84 @@ _cross_env_export_all() {
   if [ -n "${dir}" ] && [ -d "${dir}" ]; then
     export PATH="${dir}:${PATH}"
   fi
+}
 
-  export CC="${_eea[cc]}" CXX="${_eea[cxx]}" AR="${_eea[ar]}" AS="${_eea[as]}" \
-    LD="${_eea[ld]}" NM="${_eea[nm]}" RANLIB="${_eea[ranlib]}" \
-    STRIP="${_eea[strip]}" OBJCOPY="${_eea[objcopy]}"
-  export "CC_${_eea[rust_env_lower]}=${CC}"
-  export "CXX_${_eea[rust_env_lower]}=${CXX}"
-  export "AR_${_eea[rust_env_lower]}=${AR}"
-  export "RANLIB_${_eea[rust_env_lower]}=${RANLIB}"
-  if [ -n "${_eea[build_rust_lower]}" ]; then
-    [ -n "${_eea[build_cc]}" ] && export "CC_${_eea[build_rust_lower]}=${_eea[build_cc]}"
-    [ -n "${_eea[build_cxx]}" ] && export "CXX_${_eea[build_rust_lower]}=${_eea[build_cxx]}"
-    [ -n "${_eea[build_ar]}" ] && export "AR_${_eea[build_rust_lower]}=${_eea[build_ar]}"
-    [ -n "${_eea[build_ranlib]}" ] && export "RANLIB_${_eea[build_rust_lower]}=${_eea[build_ranlib]}"
+_export_toolchain_vars() {
+  local -n _etv=$1
+  export CC="${_etv[cc]}" CXX="${_etv[cxx]}" AR="${_etv[ar]}" AS="${_etv[as]}" \
+    LD="${_etv[ld]}" NM="${_etv[nm]}" RANLIB="${_etv[ranlib]}" \
+    STRIP="${_etv[strip]}" OBJCOPY="${_etv[objcopy]}"
+  export "CC_${_etv[rust_env_lower]}=${CC}"
+  export "CXX_${_etv[rust_env_lower]}=${CXX}"
+  export "AR_${_etv[rust_env_lower]}=${AR}"
+  export "RANLIB_${_etv[rust_env_lower]}=${RANLIB}"
+  if [ -n "${_etv[build_rust_lower]}" ]; then
+    [ -n "${_etv[build_cc]}" ] && export "CC_${_etv[build_rust_lower]}=${_etv[build_cc]}"
+    [ -n "${_etv[build_cxx]}" ] && export "CXX_${_etv[build_rust_lower]}=${_etv[build_cxx]}"
+    [ -n "${_etv[build_ar]}" ] && export "AR_${_etv[build_rust_lower]}=${_etv[build_ar]}"
+    [ -n "${_etv[build_ranlib]}" ] && export "RANLIB_${_etv[build_rust_lower]}=${_etv[build_ranlib]}"
   fi
 
-  if command -v "clang-${_eea[target_arch]}" >/dev/null 2>&1; then
-    export CLANG="clang-${_eea[target_arch]}"
+  if command -v "clang-${_etv[target_arch]}" >/dev/null 2>&1; then
+    export CLANG="clang-${_etv[target_arch]}"
   fi
-  if command -v "clang++-${_eea[target_arch]}" >/dev/null 2>&1; then
-    export CLANGXX="clang++-${_eea[target_arch]}"
+  if command -v "clang++-${_etv[target_arch]}" >/dev/null 2>&1; then
+    export CLANGXX="clang++-${_etv[target_arch]}"
   fi
+}
 
+_export_pkg_config() {
+  local -n _epc=$1
   export PKG_CONFIG_ALLOW_CROSS=1
   export PKG_CONFIG_SYSROOT_DIR="${PKG_CONFIG_SYSROOT_DIR:-/}"
-  PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${_eea[triplet]}")"
+  PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${_epc[triplet]}")"
   export PKG_CONFIG_LIBDIR
+}
 
-  local target_link_path=""
+_export_library_path() {
+  local -n _elp=$1
+  local target_link_path="" dir
   for dir in \
-    "${_eea[runtime_libdir]}" \
-    "${_eea[gcc_prefix]}/${_eea[triplet]}/lib" \
-    "/usr/lib/${_eea[triplet]}" \
-    "/lib/${_eea[triplet]}" \
-    "/usr/${_eea[triplet]}/lib"; do
+    "${_elp[runtime_libdir]}" \
+    "${_elp[gcc_prefix]}/${_elp[triplet]}/lib" \
+    "/usr/lib/${_elp[triplet]}" \
+    "/lib/${_elp[triplet]}" \
+    "/usr/${_elp[triplet]}/lib"; do
     [ -d "${dir}" ] || continue
     target_link_path="${target_link_path:+${target_link_path}:}${dir}"
   done
   if [ -n "${target_link_path}" ]; then
     export LIBRARY_PATH="${target_link_path}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
   fi
+}
 
+_export_cmake_vars() {
+  local -n _ecmv=$1
   export CMAKE_SYSTEM_NAME=Linux
-  export CMAKE_SYSTEM_PROCESSOR="${_eea[processor]}"
+  export CMAKE_SYSTEM_PROCESSOR="${_ecmv[processor]}"
   export CMAKE_SYSROOT="${CMAKE_SYSROOT:-/}"
   export CMAKE_C_COMPILER="${CC}"
   export CMAKE_CXX_COMPILER="${CXX}"
   export CMAKE_ASM_COMPILER="${CC}"
   export CMAKE_AR="${AR}"
   export CMAKE_RANLIB="${RANLIB}"
-  export CMAKE_LINKER="${_eea[ld]:-}"
-  export CMAKE_NM="${_eea[nm]:-}"
-  export CMAKE_OBJCOPY="${_eea[objcopy]}"
-  export CMAKE_STRIP="${_eea[strip]}"
-  export CMAKE_LIBRARY_ARCHITECTURE="${_eea[triplet]}"
+  export CMAKE_LINKER="${_ecmv[ld]:-}"
+  export CMAKE_NM="${_ecmv[nm]:-}"
+  export CMAKE_OBJCOPY="${_ecmv[objcopy]}"
+  export CMAKE_STRIP="${_ecmv[strip]}"
+  export CMAKE_LIBRARY_ARCHITECTURE="${_ecmv[triplet]}"
   export CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
   export CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
   export CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
   export CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
-  export CARGO_BUILD_TARGET="${_eea[rust_target]}"
-  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/opt/cargo-target/${_eea[target_arch]}}"
-  export "CARGO_TARGET_${_eea[rust_env]}_LINKER=${CC}"
-  export "CARGO_TARGET_${_eea[rust_env]}_AR=${AR}"
+}
+
+_export_cargo_vars() {
+  local -n _ecv=$1
+  export CARGO_BUILD_TARGET="${_ecv[rust_target]}"
+  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/opt/cargo-target/${_ecv[target_arch]}}"
+  export "CARGO_TARGET_${_ecv[rust_env]}_LINKER=${CC}"
+  export "CARGO_TARGET_${_ecv[rust_env]}_AR=${AR}"
   # The `cc` crate (build scripts of ring, openssl-sys, …) does NOT read
   # CARGO_TARGET_*_LINKER — it needs CC_<target>/CXX_<target>. Without it, it
   # guesses `<triple>-gcc`, which for riscv64gc-unknown-linux-gnu does not exist,
@@ -465,6 +463,20 @@ _cross_env_export_all() {
   export "CC_${_cross_rust_env_lc}=${CC}"
   [ -n "${CXX:-}" ] && export "CXX_${_cross_rust_env_lc}=${CXX}"
   [ -n "${AR:-}" ] && export "AR_${_cross_rust_env_lc}=${AR}"
+}
+
+# Export the full cross-compilation environment by dispatching to the per-group
+# helpers above. Consumes the associative array with all keys produced by
+# _cross_env_resolve_identifiers and _cross_env_resolve_tools.
+_cross_env_export_all() {
+  local -n _eea=$1
+  _export_arch_vars     _eea
+  _export_path
+  _export_toolchain_vars _eea
+  _export_pkg_config   _eea
+  _export_library_path _eea
+  _export_cmake_vars   _eea
+  _export_cargo_vars   _eea
 }
 
 setup_linux_cross_env() {

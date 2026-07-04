@@ -70,18 +70,6 @@ if [ -z "${PYTHON_MAJOR_MINOR:-}" ] && [ -n "${PYTHON_VERSION:-}" ]; then
   PYTHON_MAJOR_MINOR="$(version_major_minor "${PYTHON_VERSION}")"
 fi
 
-# ---------------------------------------------------------------------------
-# ensure_target_arch
-#
-# Normalizes TARGET_ARCH from TARGETARCH when TARGET_ARCH is unset.
-# Print the resolved value and export it.
-# ---------------------------------------------------------------------------
-ensure_target_arch() {
-  TARGET_ARCH="$(canonical_target_arch "${TARGET_ARCH:-}")"
-  export TARGET_ARCH
-  printf '%s\n' "TARGET_ARCH=${TARGET_ARCH}"
-}
-
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 APT_FLAGS=(-qq --no-install-recommends "${APT_OPTS[@]}")
 
@@ -178,6 +166,26 @@ shell_quote_args() {
     quoted+="${quoted:+ }$(printf '%q' "${arg}")"
   done
   printf '%s' "${quoted}"
+}
+
+# Append cross-compilation include-path fallback flags to CPPFLAGS, CFLAGS,
+# and CXXFLAGS. The custom cross-GCC with --sysroot=/ does NOT search the
+# Debian multiarch dirs where apt installs :<arch> dev headers, so cross
+# builds need -idirafter for both the triplet-specific and generic /usr/include
+# paths. Replaces the 6-line inline pattern duplicated across gstreamer,
+# libcamera, opencv, litert, python, and torch build scripts.
+#
+# Usage: append_cross_idirafter <triplet>
+# Example: append_cross_idirafter aarch64-linux-gnu
+append_cross_idirafter() {
+  local triplet="$1"
+  [ -n "${triplet}" ] || return 1
+  append_flag_if_missing CPPFLAGS "-idirafter /usr/include/${triplet}"
+  append_flag_if_missing CPPFLAGS "-idirafter /usr/include"
+  append_flag_if_missing CFLAGS  "-idirafter /usr/include/${triplet}"
+  append_flag_if_missing CFLAGS  "-idirafter /usr/include"
+  append_flag_if_missing CXXFLAGS "-idirafter /usr/include/${triplet}"
+  append_flag_if_missing CXXFLAGS "-idirafter /usr/include"
 }
 
 llvm_release_version() {

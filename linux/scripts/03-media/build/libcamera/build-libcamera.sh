@@ -63,7 +63,7 @@ fi
 
 # Clone (or refresh) the source via the shared 01-core helper — same fetch/
 # shallow-clone logic used by the litert/opencv build scripts.
-clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}"
+retry 3 10 "libcamera git clone" clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}"
 cd "${LIBCAMERA_SRC}"
 
 mkdir -p "${LIBCAMERA_BUILD_DIR}"
@@ -162,9 +162,7 @@ if cross_build_is_active; then
     append_flag_if_missing CXXFLAGS "-idirafter /usr/include"
   fi
   if [ -n "${cross_triplet}" ] && [ -d "/usr/include/${cross_triplet}" ]; then
-    append_flag_if_missing CPPFLAGS "-idirafter /usr/include/${cross_triplet}"
-    append_flag_if_missing CFLAGS "-idirafter /usr/include/${cross_triplet}"
-    append_flag_if_missing CXXFLAGS "-idirafter /usr/include/${cross_triplet}"
+    append_cross_idirafter "${cross_triplet}"
   fi
 
   if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
@@ -194,13 +192,13 @@ ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" -v || { echo "ninja build failed"
 # install (use sudo if not root)
 if [ "$EUID" -ne 0 ]; then
   if command -v sudo >/dev/null 2>&1; then
-    sudo ninja -C "${LIBCAMERA_BUILD_DIR}" install
+    sudo ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
   else
     echo "Not root and sudo missing — cannot install; exiting"
     exit 1
   fi
 else
-  ninja -C "${LIBCAMERA_BUILD_DIR}" install
+  ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
 fi
 
 # update ld cache if possible

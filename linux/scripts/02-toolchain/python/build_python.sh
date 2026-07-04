@@ -134,21 +134,18 @@ stage_host_python_payload() {
   python_stage_finalize "${target_arch}" "${stage_root}" "${python_mm}" "${target_triplet}"
 }
 
-build_cross_target_python_payload() {
+_python_cross_configure() {
   local source_dir="$1"
   local target_arch="$2"
-  local python_mm="${PYTHON_MAJOR_MINOR}"
-  local target_triplet build_triplet build_python_bin build_python_libdir
-  local cross_build_dir config_site pkg_config_libdir stage_root
-  local ext_build_dir
-
-  target_triplet="$(arch_deb_multiarch_triplet_for "${target_arch}")"
-  build_triplet="$(build_deb_multiarch_triplet)"
-  build_python_bin="/usr/local/bin/python${python_mm}"
-  build_python_libdir="/usr/local/lib"
-  cross_build_dir="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-cross-${target_triplet}-$$"
-  config_site="${TMPDIR:-/tmp}/python-config-site-${target_triplet}-$$"
-  stage_root="$(python_cross_stage_root_for_arch "${target_arch}")"
+  local python_mm="$3"
+  local target_triplet="$4"
+  local build_triplet="$5"
+  local build_python_bin="$6"
+  local build_python_libdir="$7"
+  local cross_build_dir="$8"
+  local config_site="$9"
+  local stage_root="${10}"
+  local pkg_config_libdir
 
   info "Cross mode detected; building target Python ${python_mm} for ${target_arch} (${target_triplet})"
 
@@ -168,7 +165,7 @@ build_cross_target_python_payload() {
   # Set up multiarch apt sources if not already present (the base image only has
   # the amd64 archive; arm64 packages come from ports.ubuntu.com).
   if [ ! -f /etc/apt/sources.list.d/ubuntu-ports.sources ]; then
-    _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-plucky}")"
+    _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
     printf 'Types: deb\nURIs: https://archive.ubuntu.com/ubuntu/\nSuites: %s %s-updates %s-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' \
       "${_codename}" "${_codename}" "${_codename}" \
@@ -223,6 +220,12 @@ EOF
         --without-ensurepip \
         --disable-test-modules
   )
+}
+
+_python_cross_build() {
+  local cross_build_dir="$1"
+  local target_arch="$2"
+  local python_mm="$3"
 
   (
     cd "${cross_build_dir}"
@@ -232,6 +235,13 @@ EOF
   if [ ! -x "${cross_build_dir}/python" ] || [ ! -f "${cross_build_dir}/libpython${python_mm}.so.1.0" ]; then
     err "target Python cross build for ${target_arch} did not produce the critical binary or shared library"
   fi
+}
+
+_python_cross_install_staging() {
+  local cross_build_dir="$1"
+  local stage_root="$2"
+  local python_mm="$3"
+  local source_dir="$4"
 
   # Stage the cross-built interpreter binary and libraries into the
   # per-architecture root. Do not run `make altinstall` because --
@@ -262,6 +272,13 @@ EOF
   cp -a "${cross_build_dir}/pyconfig.h" "${stage_root}/usr/local/include/python${python_mm}/pyconfig.h"
 
   cp -a "${source_dir}/Lib/." "${stage_root}/usr/local/lib/python${python_mm}/"
+}
+
+_python_cross_fixup_libdynload() {
+  local cross_build_dir="$1"
+  local stage_root="$2"
+  local python_mm="$3"
+  local dynload_dir ext_build_dir
 
   # CPython 3.14's Makefile-based extension build does not place the real
   # extension shared objects under build/lib.linux-*/. Instead it builds them
@@ -273,7 +290,7 @@ EOF
   # ANY C extension (import _struct -> ModuleNotFoundError) once it runs under
   # QEMU in the runtime/torch stage. Dereference symlinks (-L) so the real .so
   # files land in lib-dynload.
-  local dynload_dir="${stage_root}/usr/local/lib/python${python_mm}/lib-dynload"
+  dynload_dir="${stage_root}/usr/local/lib/python${python_mm}/lib-dynload"
   mkdir -p "${dynload_dir}"
   for ext_build_dir in "${cross_build_dir}/build/lib.linux"*; do
     if [ -d "${ext_build_dir}" ]; then
@@ -322,6 +339,14 @@ EOF
       warn "Optional C extension missing: ${_ext} (target dev package may not be installed)"
     fi
   done
+}
+
+_python_cross_stage_into_compiler() {
+  local cross_build_dir="$1"
+  local stage_root="$2"
+  local python_mm="$3"
+  local target_arch="$4"
+  local target_triplet="$5"
 
   mkdir -p "${stage_root}/usr/local/lib/pkgconfig"
   if [ -f "${cross_build_dir}/Misc/python.pc" ]; then
@@ -335,6 +360,40 @@ EOF
   fi
 
   python_stage_finalize "${target_arch}" "${stage_root}" "${python_mm}" "${target_triplet}"
+}
+
+build_cross_target_python_payload() {
+  local source_dir="$1"
+  local target_arch="$2"
+  local python_mm="${PYTHON_MAJOR_MINOR}"
+  local target_triplet build_triplet build_python_bin build_python_libdir
+  local cross_build_dir config_site stage_root
+
+  target_triplet="$(arch_deb_multiarch_triplet_for "${target_arch}")"
+  build_triplet="$(build_deb_multiarch_triplet)"
+  build_python_bin="/usr/local/bin/python${python_mm}"
+  build_python_libdir="/usr/local/lib"
+  cross_build_dir="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-cross-${target_triplet}-$$"
+  config_site="${TMPDIR:-/tmp}/python-config-site-${target_triplet}-$$"
+  stage_root="$(python_cross_stage_root_for_arch "${target_arch}")"
+
+  _python_cross_configure \
+    "${source_dir}" "${target_arch}" "${python_mm}" "${target_triplet}" \
+    "${build_triplet}" "${build_python_bin}" "${build_python_libdir}" \
+    "${cross_build_dir}" "${config_site}" "${stage_root}"
+
+  _python_cross_build \
+    "${cross_build_dir}" "${target_arch}" "${python_mm}"
+
+  _python_cross_install_staging \
+    "${cross_build_dir}" "${stage_root}" "${python_mm}" "${source_dir}"
+
+  _python_cross_fixup_libdynload \
+    "${cross_build_dir}" "${stage_root}" "${python_mm}"
+
+  _python_cross_stage_into_compiler \
+    "${cross_build_dir}" "${stage_root}" "${python_mm}" \
+    "${target_arch}" "${target_triplet}"
 }
 
 stage_requested_cross_python_payloads() {

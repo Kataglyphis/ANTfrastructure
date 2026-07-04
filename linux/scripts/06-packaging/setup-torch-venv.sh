@@ -135,68 +135,58 @@ setup_torch_deps() {
   rm -rf /var/lib/apt/lists/*
 }
 
-setup_torch_app() {
-  cross_skip "torch application install" && return 0
-
-  local host_arch
-  host_arch="$(uname -m)"
-  if [ "${host_arch}" = "riscv64" ]; then
-    # ---- riscv64/QEMU-specific bootstrap (arch bootstrap, NOT wheel logic) ----
-    # RISC-V has almost no pre-built Python wheels on PyPI, and sdist builds
-    # fail under QEMU because the GCC driver cannot fork cc1/as.  Seed the
-    # critical C-extension packages from apt into the venv so neither uv nor
-    # pip attempts a source build for them.  python3-contourpy is seeded
-    # (best-effort) because assemble-torch-app's verify step hard-imports
-    # contourpy and no riscv64 contourpy wheel exists on PyPI.
-    apt-get update
-    apt-get install -y --no-install-recommends python3-numpy python3-cairo python3-gi python3-gi-cairo
-    apt-get install -y --no-install-recommends python3-contourpy \
-      || echo "WARNING: python3-contourpy not available via apt"
-    rm -rf /var/lib/apt/lists/*
-    if [ -d /usr/lib/python3/dist-packages ] && [ -d "${VENV}/lib/python3."*/site-packages ]; then
-      for pkg in numpy cairo gi contourpy PyGObject-*.egg-info pycairo-*.egg-info contourpy-*.egg-info contourpy-*.dist-info; do
-        cp -a /usr/lib/python3/dist-packages/"${pkg}" "${VENV}/lib/python3."*/site-packages/ 2>/dev/null || true
-      done
-      echo "Seeded apt Python packages into venv (QEMU riscv64 mode)"
-    fi
-
-    if ! compgen -G "/opt/wheels/torch-*.whl" >/dev/null; then
-      # ---- Documented fallback: wheelhouse shipped no riscv64 torch wheel ----
-      # The media app-wheelhouse stage is best-effort: when the riscv64 cross
-      # torch/torchvision wheel builds fail, /opt/wheels carries no torch
-      # wheel.  Routing through assemble-torch-app.sh would then leave torch
-      # out of the locked-local set, so uv would resolve UPSTREAM torch from
-      # PyPI — which has no riscv64 wheels — and the sdist build dies under
-      # QEMU.  Keep the historic lightweight path instead: install the local
-      # OpenCV wheel (or copy the source-built cv2 from /opt/opencv5) and
-      # stop after an import check.
-      local opencv_wheel
-      opencv_wheel="$(ls /opt/wheels/opencv_contrib_python-*.whl 2>/dev/null | head -1 || true)"
-      if [ -n "${opencv_wheel}" ]; then
-        "${VENV}/bin/pip" install --no-deps "${opencv_wheel}"
-      elif [ -d /opt/opencv5/lib ]; then
-        local cv2_src
-        cv2_src="$(find /opt/opencv5/lib -maxdepth 3 -name cv2 -type d 2>/dev/null | head -1 || true)"
-        if [ -n "${cv2_src}" ]; then
-          cp -a "${cv2_src}" "${VENV}/lib/python3."*/site-packages/ 2>/dev/null || true
-        fi
-      fi
-      if "${VENV}/bin/python" -c "import cv2; print('cv2', cv2.__version__)" 2>/dev/null; then
-        echo "cv2 import OK"
-      else
-        echo "WARNING: cv2 not available (cross-compiled OpenCV may lack Python bindings for riscv64)"
-      fi
-      echo "riscv64 fallback venv ready (no torch wheel in /opt/wheels; skipped app assembly)"
-      return 0
-    fi
-    # A riscv64 torch wheel exists in /opt/wheels (media stage now ships
-    # torch/torchvision/onnxruntime/libcamera riscv64 wheels), so fall
-    # through to the shared assemble-torch-app.sh route below — it pins the
-    # local wheels as locked packages, installs the OpenCV wheel (or prefers
-    # staged /opt/opencv5 bindings), and verifies the environment.
-    echo "riscv64 torch wheel present in /opt/wheels; routing through assemble-torch-app.sh"
+seed_riscv64_apt_packages() {
+  # ---- riscv64/QEMU-specific bootstrap (arch bootstrap, NOT wheel logic) ----
+  # RISC-V has almost no pre-built Python wheels on PyPI, and sdist builds
+  # fail under QEMU because the GCC driver cannot fork cc1/as.  Seed the
+  # critical C-extension packages from apt into the venv so neither uv nor
+  # pip attempts a source build for them.  python3-contourpy is seeded
+  # (best-effort) because assemble-torch-app's verify step hard-imports
+  # contourpy and no riscv64 contourpy wheel exists on PyPI.
+  apt-get update
+  apt-get install -y --no-install-recommends python3-numpy python3-cairo python3-gi python3-gi-cairo
+  apt-get install -y --no-install-recommends python3-contourpy \
+    || echo "WARNING: python3-contourpy not available via apt"
+  rm -rf /var/lib/apt/lists/*
+  if [ -d /usr/lib/python3/dist-packages ] && [ -d "${VENV}/lib/python3."*/site-packages ]; then
+    for pkg in numpy cairo gi contourpy PyGObject-*.egg-info pycairo-*.egg-info contourpy-*.egg-info contourpy-*.dist-info; do
+      cp -a /usr/lib/python3/dist-packages/"${pkg}" "${VENV}/lib/python3."*/site-packages/ 2>/dev/null || true
+    done
+    echo "Seeded apt Python packages into venv (QEMU riscv64 mode)"
   fi
+}
 
+riscv64_torch_wheel_fallback() {
+  # ---- Documented fallback: wheelhouse shipped no riscv64 torch wheel ----
+  # The media app-wheelhouse stage is best-effort: when the riscv64 cross
+  # torch/torchvision wheel builds fail, /opt/wheels carries no torch
+  # wheel.  Routing through assemble-torch-app.sh would then leave torch
+  # out of the locked-local set, so uv would resolve UPSTREAM torch from
+  # PyPI — which has no riscv64 wheels — and the sdist build dies under
+  # QEMU.  Keep the historic lightweight path instead: install the local
+  # OpenCV wheel (or copy the source-built cv2 from /opt/opencv5) and
+  # stop after an import check.
+  local opencv_wheel
+  opencv_wheel="$(ls /opt/wheels/opencv_contrib_python-*.whl 2>/dev/null | head -1 || true)"
+  if [ -n "${opencv_wheel}" ]; then
+    "${VENV}/bin/pip" install --no-deps "${opencv_wheel}"
+  elif [ -d /opt/opencv5/lib ]; then
+    local cv2_src
+    cv2_src="$(find /opt/opencv5/lib -maxdepth 3 -name cv2 -type d 2>/dev/null | head -1 || true)"
+    if [ -n "${cv2_src}" ]; then
+      cp -a "${cv2_src}" "${VENV}/lib/python3."*/site-packages/ 2>/dev/null || true
+    fi
+  fi
+  if "${VENV}/bin/python" -c "import cv2; print('cv2', cv2.__version__)" 2>/dev/null; then
+    echo "cv2 import OK"
+  else
+    echo "WARNING: cv2 not available (cross-compiled OpenCV may lack Python bindings for riscv64)"
+  fi
+  echo "riscv64 fallback venv ready (no torch wheel in /opt/wheels; skipped app assembly)"
+}
+
+configure_foreign_arch_compiler_env() {
+  local host_arch="$1"
   if [ "${host_arch}" != "x86_64" ]; then
     export CC=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/gcc
     export CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
@@ -208,11 +198,17 @@ setup_torch_app() {
       echo "Copied system pycairo into venv"
     fi
   fi
+}
 
+apply_torch_app_env_defaults() {
   : "${ONNX_PACKAGE:=onnxruntime}"
   : "${PYTORCH_EXTRA:=none}"
   : "${SKIP_TORCH_TEST_EXTRAS:=true}"
   export ONNX_PACKAGE PYTORCH_EXTRA SKIP_TORCH_TEST_EXTRAS
+}
+
+pin_pycairo_constraint_for_foreign_arch() {
+  local host_arch="$1"
   if [ "${host_arch}" != "x86_64" ]; then
     local constraint_file
     constraint_file="$(mktemp)"
@@ -221,6 +217,31 @@ setup_torch_app() {
     export UV_CONSTRAINT="${constraint_file}"
     echo "Pinned pycairo to 1.27.0 via constraint ${constraint_file}"
   fi
+}
+
+setup_torch_app() {
+  cross_skip "torch application install" && return 0
+
+  local host_arch
+  host_arch="$(uname -m)"
+  if [ "${host_arch}" = "riscv64" ]; then
+    seed_riscv64_apt_packages
+    if ! compgen -G "/opt/wheels/torch-*.whl" >/dev/null; then
+      riscv64_torch_wheel_fallback
+      return 0
+    fi
+    # A riscv64 torch wheel exists in /opt/wheels (media stage now ships
+    # torch/torchvision/onnxruntime/libcamera riscv64 wheels), so fall
+    # through to the shared assemble-torch-app.sh route below — it pins the
+    # local wheels as locked packages, installs the OpenCV wheel (or prefers
+    # staged /opt/opencv5 bindings), and verifies the environment.
+    echo "riscv64 torch wheel present in /opt/wheels; routing through assemble-torch-app.sh"
+  fi
+
+  configure_foreign_arch_compiler_env "${host_arch}"
+
+  apply_torch_app_env_defaults
+  pin_pycairo_constraint_for_foreign_arch "${host_arch}"
   /opt/scripts/03-media/final/assemble-torch-app.sh "${TORCH_APP_MODE}"
 }
 

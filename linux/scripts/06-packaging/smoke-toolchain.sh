@@ -91,34 +91,46 @@ smoke_target() {
   echo ""
 }
 
-main() {
-  local target_arches="${1:-amd64,arm64,riscv64}"
+resolve_host_arch() {
   local host_arch
-
   host_arch="$(uname -m)"
   case "${host_arch}" in
     x86_64)  host_arch=amd64 ;;
     aarch64) host_arch=arm64 ;;
   esac
+  echo "${host_arch}"
+}
+
+print_smoke_header() {
+  local host_arch="$1"
+  local target_arches="$2"
 
   echo "=== Toolchain Smoke Test ==="
   echo "Host: ${host_arch}"
   echo "Targets: ${target_arches}"
   echo ""
+}
 
+check_host_gcc() {
   # Host GCC
   echo "--- Host GCC (amd64) ---"
   check_version "${GCC_PREFIX}/bin/gcc --version" "${GCC_VERSION}" "host gcc"
   check_dumpmachine "${GCC_PREFIX}/bin/gcc" "x86_64" "host gcc"
   check_version "${GCC_PREFIX}/bin/g++ --version" "${GCC_VERSION}" "host g++"
   echo ""
+}
 
+check_llvm_clang() {
   # LLVM/Clang
   echo "--- LLVM/Clang ---"
   check_version "clang --version" "${LLVM_RELEASE}" "clang"
   check_dumpmachine "$(command -v clang)" "x86_64" "host clang"
   check_version "clang++ --version" "${LLVM_RELEASE}" "clang++"
   echo ""
+}
+
+check_rust() {
+  local target_arches="$1"
 
   # Rust
   echo "--- Rust/Cargo ---"
@@ -144,6 +156,10 @@ main() {
     fi
   done
   echo ""
+}
+
+check_python() {
+  local target_arches="$1"
 
   # Python
   echo "--- Python ---"
@@ -167,12 +183,30 @@ main() {
     fi
   done
   echo ""
+}
+
+run_cross_targets() {
+  local target_arches="$1"
+  local host_arch="$2"
 
   # Cross-compilers for each target
   for arch in $(arch_list_to_words "${target_arches}"); do
     [ "${arch}" = "${host_arch}" ] && continue
     smoke_target "${arch}"
   done
+}
+
+main() {
+  local target_arches="${1:-amd64,arm64,riscv64}"
+  local host_arch
+
+  host_arch="$(resolve_host_arch)"
+  print_smoke_header "${host_arch}" "${target_arches}"
+  check_host_gcc
+  check_llvm_clang
+  check_rust "${target_arches}"
+  check_python "${target_arches}"
+  run_cross_targets "${target_arches}" "${host_arch}"
 
   echo "=== Results: ${FAILURES} failure(s) ==="
   [ "${FAILURES}" -eq 0 ] || exit 1

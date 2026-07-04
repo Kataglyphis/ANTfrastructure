@@ -2,7 +2,7 @@
 
 # ubuntu-mirror.sh - shared helpers for Ubuntu archive/security/ports mirrors
 
-[ -z "${_UBUNTU_MIRROR_SH_LOADED:-}" ] || return 0
+[ -n "${_UBUNTU_MIRROR_SH_LOADED:-}" ] && return 0
 _UBUNTU_MIRROR_SH_LOADED=1
 
 ubuntu_mirror_is_truthy() {

@@ -218,7 +218,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu
 
 # Validate ONNX Runtime CPU artifacts before downstream stages consume them.
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-cpu
 
@@ -248,7 +248,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step genai
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     if [ "${BUILD_GENAI:-true}" = "true" ]; then \
       bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-genai; \
@@ -279,7 +279,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step js; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step pkgconfig
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-pkgconfig
 
@@ -308,7 +308,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/litert/build-litert.sh "${LITERT_VERSION}"
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert-headers
@@ -349,7 +349,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         --with-python "${OPENCV_WITH_PYTHON}" \
         --skip-dep-install
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv
@@ -390,7 +390,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
         echo "WARNING: app wheelhouse is empty — riscv64 cross wheel builds may have failed; continuing"; \
     fi
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh app-wheels
 
@@ -455,7 +455,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     echo "--- ffmpeg build v3: DNN backends (TensorFlow, OpenVINO, ONNX) + CUDA HW accel ---"; \
     bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh ffmpeg
 
@@ -485,9 +485,15 @@ COPY --link --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=armnn /opt/armnn /opt/armnn
 COPY --link --from=armnn /opt/acl /opt/acl
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh media-inputs
+
+# Smoke-build alias: `nerdctl build --target media-smoke -f linux/Dockerfile.media`
+# Skips the slow gstreamer → libcamera serial tail (matches the `wrapper-smoke`
+# alias in Dockerfile.package). Useful for media-build validation before
+# kicking off the expensive full chain.
+FROM media-inputs AS media-smoke
 
 
 # ==============================================================================
@@ -537,7 +543,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
         "$GSTREAMER_PREFIX" \
         "$BUILD_TYPE"
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh gstreamer
 
@@ -569,7 +575,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/libcamera/build-libcamera.sh
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh libcamera
 
@@ -607,7 +613,7 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
-COPY --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
+COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 COPY --link --from=libcamera /opt/libcamera /opt/libcamera

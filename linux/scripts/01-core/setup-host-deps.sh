@@ -22,9 +22,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-if command -v apt-get >/dev/null 2>&1; then
-  echo "Detected apt-get. Installing via apt-get..."
-
+install_base_packages() {
   echo "[1/4] Updating package lists..."
   sudo apt-get update -qq
 
@@ -48,15 +46,15 @@ if command -v apt-get >/dev/null 2>&1; then
   sudo apt-get install -y --no-install-recommends "${BASE_PACKAGES[@]}"
 
   sudo apt-get install -y --no-install-recommends sccache ccache cppcheck iwyu lcov binutils graphviz doxygen llvm valgrind
-
   sudo apt-get install -y --no-install-recommends dpkg-dev fakeroot binutils
   sudo apt-get install -y --no-install-recommends python3-pip
+}
 
+setup_kitware_repo() {
   CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
   echo "Installing latest CMake via Kitware repo for codename: ${CODENAME}"
 
   sudo apt-get purge --auto-remove -y cmake || true
-
   sudo apt-get install -y --no-install-recommends wget gpg lsb-release ca-certificates
 
   wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc \
@@ -69,8 +67,9 @@ if command -v apt-get >/dev/null 2>&1; then
   sudo apt-get update -qq
   sudo apt-get install -y --no-install-recommends cmake
   cmake --version
+}
 
-  # Read canonical versions from versions.env, fall back to defaults
+load_toolchain_versions() {
   _core_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core"
   _versions_env="${_core_dir}/versions.env"
   if [ -f "${_versions_env}" ]; then
@@ -86,70 +85,74 @@ if command -v apt-get >/dev/null 2>&1; then
     GCC_WANTED=16
   fi
   export DEBIAN_FRONTEND=noninteractive
+}
 
+# Register a versioned tool as the default alternative, if installed.
+_register_alternative() {
+  local -a names=("$@")
+  local tool="${names[0]}"
+  local version="${names[1]}"
+  local weight="${names[2]:-100}"
+  local -a extra=("${names[@]:3}")
+  local binary="/usr/bin/${tool}-${version}"
+
+  [ -x "${binary}" ] || return 0
+  sudo update-alternatives --install "/usr/bin/${tool}" "${tool}" "${binary}" "${weight}"
+  sudo update-alternatives --set "${tool}" "${binary}"
+  for alt in "${extra[@]:-}"; do
+    [ -x "/usr/bin/${alt}-${version}" ] || continue
+    sudo update-alternatives --install "/usr/bin/${alt}" "${alt}" "/usr/bin/${alt}-${version}" "${weight}"
+  done
+}
+
+install_llvm_and_alternatives() {
   sudo apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates
-
   wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${LLVM_WANTED}" all
   # llvm.sh adds new repos; refresh package lists for subsequent installs
   sudo apt-get update -qq
 
-  if [ -x "/usr/bin/clang-${CLANG_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-"${CLANG_WANTED}" 100
-    sudo update-alternatives --set clang /usr/bin/clang-"${CLANG_WANTED}"
-  fi
-
-  if [ -x "/usr/bin/clang++-${CLANG_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-"${CLANG_WANTED}" 100
-    sudo update-alternatives --set clang++ /usr/bin/clang++-"${CLANG_WANTED}"
-  fi
-
-  if [ -x "/usr/bin/clang-tidy-${CLANG_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-"${CLANG_WANTED}" 100
-  fi
-
-  if [ -x "/usr/bin/clang-format-${CLANG_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-"${CLANG_WANTED}" 100
-  fi
-
-  if [ -x "/usr/bin/llvm-profdata-${CLANG_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/llvm-profdata llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}" 100
-    sudo update-alternatives --set llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}"
-  fi
-
-  if [ -x "/usr/bin/llvm-cov-${CLANG_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/llvm-cov llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}" 100
-    sudo update-alternatives --set llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}"
-  fi
+  _register_alternative clang "${CLANG_WANTED}" 100 clang-tidy clang-format llvm-profdata llvm-cov
+  [ -x "/usr/bin/clang-tidy-${CLANG_WANTED}" ] && sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-"${CLANG_WANTED}" 100
+  [ -x "/usr/bin/clang-format-${CLANG_WANTED}" ] && sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-"${CLANG_WANTED}" 100
+  [ -x "/usr/bin/llvm-profdata-${CLANG_WANTED}" ] && sudo update-alternatives --install /usr/bin/llvm-profdata llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}" 100
+  [ -x "/usr/bin/llvm-cov-${CLANG_WANTED}" ] && sudo update-alternatives --install /usr/bin/llvm-cov llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}" 100
 
   clang --version
   clang++ --version
+}
 
+install_gcc_and_alternatives() {
   sudo apt-get install -y --no-install-recommends \
     gcc-"${GCC_WANTED}" \
     g++-"${GCC_WANTED}" \
     gfortran-"${GCC_WANTED}"
 
-  if [ -x "/usr/bin/gcc-${GCC_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-"${GCC_WANTED}" 100
-    sudo update-alternatives --set gcc /usr/bin/gcc-"${GCC_WANTED}"
-  fi
-
-  if [ -x "/usr/bin/g++-${GCC_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-"${GCC_WANTED}" 100
-    sudo update-alternatives --set g++ /usr/bin/g++-"${GCC_WANTED}"
-  fi
-
-  if [ -x "/usr/bin/gcov-${GCC_WANTED}" ]; then
-    sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-"${GCC_WANTED}" 100
-    sudo update-alternatives --set gcov /usr/bin/gcov-"${GCC_WANTED}"
-  fi
+  _register_alternative gcc "${GCC_WANTED}" 100
+  _register_alternative g++ "${GCC_WANTED}" 100
+  _register_alternative gcov "${GCC_WANTED}" 100
 
   gcc --version
   g++ --version
+}
 
+cleanup_apt() {
   echo "[3/4] Cleaning up..."
   sudo apt-get clean
   sudo rm -rf /var/lib/apt/lists/*
+}
+
+install_via_apt() {
+  install_base_packages
+  setup_kitware_repo
+  load_toolchain_versions
+  install_llvm_and_alternatives
+  install_gcc_and_alternatives
+  cleanup_apt
+}
+
+if command -v apt-get >/dev/null 2>&1; then
+  echo "Detected apt-get. Installing via apt-get..."
+  install_via_apt
 
 elif command -v yum >/dev/null 2>&1; then
   echo "Detected yum. Installing via yum..."

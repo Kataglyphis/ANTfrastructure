@@ -52,7 +52,7 @@ FROM_STAGE="base"
 TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
 DESCRIBE_CHAIN=0
-MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc)}"
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
 # Digest reference pins captured during this run.
 # Variables are declared by cross_stage_init_pins() driven by the stage graph
@@ -179,7 +179,7 @@ _cross_per_arch_build() {
 
 # ── main driver ───────────────────────────────────────────────────────────────
 
-main() {
+_chain_parse_args() {
   local only_stage=""
   while [ $# -gt 0 ]; do
     consume_shared_arg usage \
@@ -205,14 +205,18 @@ main() {
     FROM_STAGE="${only_stage}"
     TO_STAGE="${only_stage}"
   fi
+}
 
+_chain_resolve_final_image() {
   cd "${REPO_ROOT}"
   # Default FINAL_IMAGE may reference the previous IMAGE_REPO default; recompute
   # it if the user changed --image-repo but not --final-image.
   if [ "${FINAL_IMAGE}" = "${IMAGE_REGISTRY_PREFIX}:latest-cross" ]; then
     FINAL_IMAGE="${IMAGE_REPO}:latest-cross"
   fi
+}
 
+_chain_validate_stages() {
   FROM_STAGE_IDX="$(stage_index "${FROM_STAGE}")" || exit 1
   TO_STAGE_IDX="$(stage_index "${TO_STAGE}")" || exit 1
   if [ "${FROM_STAGE_IDX}" -gt "${TO_STAGE_IDX}" ]; then
@@ -230,7 +234,9 @@ main() {
     verify_cross_chain_staleness "${TARGET_ARCHES}"
     exit 0
   fi
+}
 
+_chain_run_build_loop() {
   cross_stage_validate_graph || err "Stage graph validation failed"
 
   # Drive execution from the stage graph (stage-defs.sh).
@@ -255,6 +261,13 @@ main() {
         ;;
     esac
   done
+}
+
+main() {
+  _chain_parse_args "$@"
+  _chain_resolve_final_image
+  _chain_validate_stages
+  _chain_run_build_loop
 
   log "Cross chain complete."
 }

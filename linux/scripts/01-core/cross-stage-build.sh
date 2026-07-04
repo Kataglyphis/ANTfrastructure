@@ -237,61 +237,54 @@ resolve_pin() {
 #   cross_stage_run "media" "arm64"        # push (default)
 #   cross_stage_run "compiler" "" 0        # local only
 # ==============================================================================
-cross_stage_run() {
-  local stage="$1" arch="${2:-}" push_flag="${3:-1}"
-  local label tag dockerfile parent parent_pin pin_varname
-  local -a build_args=()
+# Resolve the parent image reference (digest-pinned for push, mutable tag for
+# local) and append it to the build_args nameref. Returns the pinned ref on
+# stdout (empty when local/no parent).
+_cross_stage_run_resolve_parent() {
+  local -n _csrrp_out="$1"
+  local stage="$2" arch="$3" push_flag="$4" parent="$5"
+  local parent_pin=""
 
-  label="${stage}"
-  cross_stage_is_per_arch "${stage}" && label="${stage}-${arch}"
-
-  dockerfile="$(cross_stage_dockerfile "${stage}")" || {
-    err "Stage '${stage}' is not known. Valid stages: ${CROSS_STAGE_ORDER[*]}"
-  }
-  [ -z "${dockerfile}" ] && {
-    err "Stage '${stage}' has no Dockerfile (it delegates to another script — use a different entry point)"
-  }
-  tag="$(cross_stage_tag "${stage}" "${arch}")"
-  [ -z "${tag}" ] && { err "No tag for stage: ${stage} ${arch:+arch=${arch}}"; }
-
-  parent="$(cross_stage_parent "${stage}")"
-
-  # Resolve parent reference: digest-pinned for push, mutable tag for local
-  if [ -n "${parent}" ]; then
-    if [ "${push_flag}" -eq 1 ]; then
-      parent_pin="$(cross_stage_resolve_parent_pin "${stage}" "${arch}")" || {
-        err "Failed to resolve parent pin for stage '${stage}' (parent: ${parent}). Ensure the parent image is pushed to the registry."
-      }
-      [ -n "${parent_pin}" ] && build_args+=(--build-arg "BASE_IMAGE=${parent_pin}")
-    else
-      local parent_tag
-      parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
-      [ -z "${parent_tag}" ] && { err "No tag for parent stage: ${parent}"; }
-      build_args+=(--build-arg "BASE_IMAGE=${parent_tag}")
-    fi
+  if [ -z "${parent}" ]; then
+    printf ''
+    return 0
   fi
 
-  # Append stage-specific build args from the stage graph
-  cross_stage_build_args build_args "${stage}" "${arch}"
-
-  # Build (push or local depending on flag)
   if [ "${push_flag}" -eq 1 ]; then
-    log "[stage ${label}] building ${tag}${parent_pin:+ FROM ${parent_pin}}"
-    cross_stage_build_and_push "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
+    parent_pin="$(cross_stage_resolve_parent_pin "${stage}" "${arch}")" || {
+      err "Failed to resolve parent pin for stage '${stage}' (parent: ${parent}). Ensure the parent image is pushed to the registry."
+    }
+    [ -n "${parent_pin}" ] && _csrrp_out+=(--build-arg "BASE_IMAGE=${parent_pin}")
   else
-    log "[stage ${label}] building ${tag} locally"
-    cross_stage_build_local "${label}" "${tag}" "${dockerfile}" "${build_args[@]}"
+    local parent_tag
+    parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
+    [ -z "${parent_tag}" ] && { err "No tag for parent stage: ${parent}"; }
+    _csrrp_out+=(--build-arg "BASE_IMAGE=${parent_tag}")
   fi
 
-  # Pin capture: only on push, and only when not a dry run
-  if [ "${push_flag}" -eq 0 ]; then
-    return 0
-  fi
-  if is_dry_run; then
-    log "[stage ${label}] [DRY RUN] would pin ${tag}"
-    return 0
-  fi
+  printf '%s' "${parent_pin}"
+}
 
+# Dispatch the build to cross_stage_build_and_push (push) or
+# cross_stage_build_local (local) based on the push_flag.
+_cross_stage_run_dispatch() {
+  local label="$1" tag="$2" dockerfile="$3" push_flag="$4"
+  shift 4
+  if [ "${push_flag}" -eq 1 ]; then
+    cross_stage_build_and_push "${label}" "${tag}" "${dockerfile}" "$@"
+  else
+    cross_stage_build_local "${label}" "${tag}" "${dockerfile}" "$@"
+  fi
+}
+
+# Capture the just-pushed image's registry digest and persist it into the
+# stage's pin variable (per-arch associative array for per-arch stages, scalar
+# for shared stages). Under --parallel-archs, also writes to the loop's flag dir
+# so parallel_loop_harvest() can read it back into the parent shell.
+_cross_stage_run_capture_pin() {
+  local stage="$1" arch="$2" label="$3" tag="$4"
+
+  local pin_varname
   pin_varname="$(cross_stage_pin_varname "${stage}")"
   [ -z "${pin_varname}" ] && { err "No pin varname for stage: ${stage}"; }
 
@@ -327,6 +320,51 @@ cross_stage_run() {
       log "[stage ${label}] pinned ${pinned_digest} (pin variable ${pin_varname} not in scope, skipping storage)"
     fi
   fi
+}
+
+cross_stage_run() {
+  local stage="$1" arch="${2:-}" push_flag="${3:-1}"
+  local label tag dockerfile parent parent_pin
+  local -a build_args=()
+
+  label="${stage}"
+  cross_stage_is_per_arch "${stage}" && label="${stage}-${arch}"
+
+  dockerfile="$(cross_stage_dockerfile "${stage}")" || {
+    err "Stage '${stage}' is not known. Valid stages: ${CROSS_STAGE_ORDER[*]}"
+  }
+  [ -z "${dockerfile}" ] && {
+    err "Stage '${stage}' has no Dockerfile (it delegates to another script — use a different entry point)"
+  }
+  tag="$(cross_stage_tag "${stage}" "${arch}")"
+  [ -z "${tag}" ] && { err "No tag for stage: ${stage} ${arch:+arch=${arch}}"; }
+
+  parent="$(cross_stage_parent "${stage}")"
+
+  parent_pin="$(_cross_stage_run_resolve_parent build_args "${stage}" "${arch}" "${push_flag}" "${parent}")"
+
+  # Append stage-specific build args from the stage graph
+  cross_stage_build_args build_args "${stage}" "${arch}"
+
+  log "[stage ${label}] building${tag:+ }${tag}${parent_pin:+ FROM ${parent_pin}}"
+  if [ "${push_flag}" -eq 1 ]; then
+    log "[stage ${label}] building ${tag}${parent_pin:+ FROM ${parent_pin}}"
+    _cross_stage_run_dispatch "${label}" "${tag}" "${dockerfile}" 1 "${build_args[@]}"
+  else
+    log "[stage ${label}] building ${tag} locally"
+    _cross_stage_run_dispatch "${label}" "${tag}" "${dockerfile}" 0 "${build_args[@]}"
+  fi
+
+  # Pin capture: only on push, and only when not a dry run
+  if [ "${push_flag}" -eq 0 ]; then
+    return 0
+  fi
+  if is_dry_run; then
+    log "[stage ${label}] [DRY RUN] would pin ${tag}"
+    return 0
+  fi
+
+  _cross_stage_run_capture_pin "${stage}" "${arch}" "${label}" "${tag}"
 }
 
 # Harvest hook for run_parallel_arch_loop: read worker-persisted digest pins

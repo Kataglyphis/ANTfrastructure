@@ -2,6 +2,9 @@
 
 # package-lists.sh - shared apt package lists for image/bootstrap scripts
 
+# Thin wrapper around apt_has_package (canonical, in common.sh). Exists so
+# callers that source package-lists.sh without common.sh still get a working
+# probe via the fallback body below.
 apt_package_exists() {
   if declare -F apt_has_package >/dev/null 2>&1; then
     apt_has_package "$@"

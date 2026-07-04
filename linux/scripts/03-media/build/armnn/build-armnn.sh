@@ -70,7 +70,7 @@ build_armnn() {
     -DCMAKE_C_FLAGS="-Wno-array-bounds" \
     "${cross_args[@]}"
 
-  cmake --build . -j "$(nproc)"
+  cmake --build . -j"$(compute_jobs_with_mem_cap "" 2000)"
   cmake --install .
 
   info "Arm NN installed to ${ARMNN_INSTALL_DIR}"

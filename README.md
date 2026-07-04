@@ -33,9 +33,9 @@ linux/
 ├── Dockerfile.nvidia        optional CUDA/cuDNN/TensorRT layer (FROM sdk)
 ├── Dockerfile.amd           optional MIGraphX layer (FROM sdk)
 └── scripts/
-    ├── 01-core/             shared utilities (41 modules: logging, platform, cross-env, tag-naming, stage-defs, digest-pinning, compiler-resolution)
+    ├── 01-core/             shared utilities (48 modules: logging, platform, cross-env, tag-naming, stage-defs, digest-pinning, compiler-resolution)
     ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
-    ├── 03-03-media/          media library build scripts
+    ├── 03-media/            media library build scripts
     │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
     │   ├── build/           per-library build scripts (onnxruntime, litert, opencv, ffmpeg, gstreamer, libcamera)
     │   └── runtime/         artifact collection, runtime config, verification, media-env.sh
@@ -75,23 +75,14 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 | `:webserver` | Slim nginx webserver |
 | `:winamd64` | Windows build image |
 
-## Quick Start
-
-### Run the prebuilt image
-
-```bash
-sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
-sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
-```
-
-### Build the full cross chain locally
+## Build the Full Cross Chain Locally
 
 Build logs are written to `out/build-logs/` by passing `--log-dir` to the orchestrator scripts.
 See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
 
-### Reinstall QEMU/binfmt after a host reboot
+## Reinstall QEMU/binfmt After a Host Reboot
 
-If foreign-architecture builds fail with `exec format error`, see [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for the binfmt fix.
+If foreign-architecture builds fail with `exec format error`, run `nerdctl run --rm --privileged tonistiigi/binfmt --install all` (see [`docs/linux-build-basics.md`](docs/linux-build-basics.md)).
 
 ## CI
 
@@ -100,6 +91,7 @@ If foreign-architecture builds fail with `exec format error`, see [`docs/linux-b
 | `ubuntu24.04.yml` | Trigger on push/PR: Sphinx docs + version-consistency checks |
 | `build-docs.yml` | Reusable workflow for docs build |
 | `ghcr-cleanup.yml` | Retains last 3 per tag, 14-day safety net |
+| `stale-docs-check.yml` | Scheduled scan for stale doc references and broken script paths |
 
 ## Documentation
 

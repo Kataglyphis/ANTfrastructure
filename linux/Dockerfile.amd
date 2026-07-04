@@ -14,7 +14,7 @@
 #   • MIGraphX (AMD graph inference engine) — replaces ROCm EP with MIGraphX EP
 #
 # Packages from the AMD ROCm repository (repo.radeon.com) for Ubuntu 24.04 (noble),
-# compatible with Ubuntu 26.04 (plucky).  No native plucky MIGraphX packages exist yet.
+# compatible with Ubuntu 26.04 (resolute).  No native resolute MIGraphX packages exist yet.
 #
 # Usage:
 #   docker buildx build \

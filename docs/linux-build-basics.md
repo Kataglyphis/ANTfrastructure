@@ -151,17 +151,17 @@ nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.29.2 --no
   . 2>&1 | tee ./out/build-logs/riscv64-build.log
 ```
 
-`linux/Dockerfile.torch` also exposes a `venv-export` stage for cases where you only want the built `/opt/venv` tree:
+`linux/Dockerfile.torch` is the final wrapper image; build it through the orchestrator or via the `wrapper-smoke` target in `Dockerfile.package` for cheaper packaging validation (see `docs/linux-cross-builds.md` § "Single-Stage Builds").
+
+For media-build validation before kicking off the slow gstreamer+libcamera serial tail, `Dockerfile.media` exposes a `media-smoke` alias that stops at the `media-inputs` aggregation stage:
 
 ```bash
 mkdir -p ./out/build-logs && \
-nerdctl build --platform linux/arm64 \
-  -f linux/Dockerfile.torch \
-  --target venv-export \
-  --output type=local,dest=out/torch-venv/arm64 \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android \
-  --build-arg TORCH_APP_MODE=install \
-  . 2>&1 | tee ./out/build-logs/venv-export.log
+nerdctl build --platform linux/amd64 \
+  -t local/kataglyphis:media-smoke-amd64 \
+  -f linux/Dockerfile.media --target media-smoke \
+  --build-arg BASE_IMAGE=local/kataglyphis:cross-sdk-amd64 \
+  . 2>&1 | tee ./out/build-logs/media-smoke-amd64.log
 ```
 
 For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` with digest-pinned stage handoff. See `docs/linux-cross-builds.md` for the full pipeline and `AGENTS.md` for the stage handoff rules.

@@ -172,21 +172,8 @@ prepare_host_cargo_toolchain_env() {
   fi
 }
 
-prepare_cross_python_build_config() {
+_gst_xpy_check_meson() {
   local meson_version=""
-  local target_triplet=""
-  local python_build_config=""
-  local target_python_include=""
-  local target_python_library=""
-  local target_python_pkgconfig_dir=""
-
-  CROSS_PYTHON_BUILD_CONFIG=""
-  export CROSS_PYTHON_BUILD_CONFIG
-
-  if ! cross_build_is_active; then
-    return 0
-  fi
-
   meson_version="$(uv run meson --version 2>/dev/null || meson --version 2>/dev/null || true)"
   if ! "${HOST_PYTHON}" - "${meson_version}" <<'PY'
 import re
@@ -202,9 +189,12 @@ raise SystemExit(0 if current >= (1, 10, 0) else 1)
 PY
   then
     echo "Meson ${meson_version:-unknown} does not support python.build_config; continuing without cross Python ABI metadata"
-    return 0
+    return 1
   fi
+  return 0
+}
 
+_gst_xpy_resolve_target_paths() {
   if command -v cross_target_triplet >/dev/null 2>&1; then
     target_triplet="$(cross_target_triplet)"
   else
@@ -212,7 +202,7 @@ PY
   fi
   if [ -z "${target_triplet}" ]; then
     echo "Could not determine cross target triplet for Meson python.build_config"
-    return 0
+    return 1
   fi
 
   if command -v cross_target_python_include_dir >/dev/null 2>&1; then
@@ -238,9 +228,13 @@ PY
   fi
   if [ -z "${target_python_include}" ] || [ -z "${target_python_library}" ] || [ -z "${target_python_pkgconfig_dir}" ]; then
     echo "Target Python development files are not ready for ${target_triplet}; skipping Meson python.build_config generation"
-    return 0
+    return 1
   fi
+  return 0
+}
 
+_gst_xpy_write_config() {
+  local python_build_config=""
   python_build_config="/tmp/meson-python-build-config-${target_triplet}.json"
   if "${HOST_PYTHON}" - "${python_build_config}" "${target_triplet}" "${target_python_include}" "${target_python_library}" "${target_python_pkgconfig_dir}" <<'PY'
 import json
@@ -322,6 +316,30 @@ PY
     rm -f "${python_build_config}" 2>/dev/null || true
     echo "WARNING: Failed to generate Meson python.build_config for ${target_triplet}; continuing without it"
   fi
+}
+
+prepare_cross_python_build_config() {
+  local target_triplet=""
+  local target_python_include=""
+  local target_python_library=""
+  local target_python_pkgconfig_dir=""
+
+  CROSS_PYTHON_BUILD_CONFIG=""
+  export CROSS_PYTHON_BUILD_CONFIG
+
+  if ! cross_build_is_active; then
+    return 0
+  fi
+
+  if ! _gst_xpy_check_meson; then
+    return 0
+  fi
+
+  if ! _gst_xpy_resolve_target_paths; then
+    return 0
+  fi
+
+  _gst_xpy_write_config
 }
 
 # Allow callers to provide MESON_ARGS (preferred) to control Meson options.
@@ -568,7 +586,7 @@ cd "${BUILD_DIR}"
 if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; else chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; fi
 
 if command -v clone_or_update_repo >/dev/null 2>&1; then
-  clone_or_update_repo "https://github.com/GStreamer/gstreamer.git" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}"
+  retry 3 10 "GStreamer git clone" clone_or_update_repo "https://github.com/GStreamer/gstreamer.git" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}"
   cd "${BUILD_DIR}/gstreamer"
 elif [ -d "gstreamer" ]; then
   echo "Updating existing GStreamer repository..."

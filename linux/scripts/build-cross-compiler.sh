@@ -68,15 +68,6 @@ Environment overrides:
 EOF
 }
 
-# ── Compiler build ────────────────────────────────────────────────────────────
-# Delegates to the shared cross_stage_run() from the stage graph.
-# When pushing, the base parent is digest-pinned (no stale reuse).  When staying
-# local, the base is built first via the stage graph (same logic as the
-# orchestrator) instead of using a custom ensure_base_image() wrapper.
-build_compiler() {
-  cross_stage_run "compiler" "" "${PUSH_IMAGES}"
-}
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   # Bind the shared parser's --target-arches arg to CROSS_TARGETS for this script

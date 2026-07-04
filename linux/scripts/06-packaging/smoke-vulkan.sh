@@ -16,10 +16,7 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 VULKAN_SDK_ROOT="${VULKAN_SDK_ROOT:-/opt/vulkan}"
 ACTIVE_LINK="${VULKAN_SDK_ROOT}/active"
 
-main() {
-  echo "=== Vulkan SDK Smoke Test ==="
-  echo ""
-
+check_active_sdk() {
   # 1. Check active Vulkan SDK symlink
   echo "--- Vulkan SDK root ---"
   if [ -L "${ACTIVE_LINK}" ] || [ -d "${ACTIVE_LINK}" ]; then
@@ -30,7 +27,9 @@ main() {
     fail "Vulkan SDK active link not found at ${ACTIVE_LINK}"
   fi
   echo ""
+}
 
+check_vulkan_headers() {
   # 2. Check Vulkan headers
   echo "--- Vulkan headers ---"
   local vulkan_include=""
@@ -50,7 +49,9 @@ main() {
     fail "vulkan/vulkan.h not found in any Vulkan SDK include path"
   fi
   echo ""
+}
 
+check_vulkan_loader() {
   # 3. Check Vulkan loader library
   echo "--- Vulkan loader ---"
   local vulkan_lib=""
@@ -72,7 +73,9 @@ main() {
     fail "libvulkan.so not found in any Vulkan SDK lib path"
   fi
   echo ""
+}
 
+check_vulkan_runtime() {
   # 4. Try to run vkEnumerateInstanceVersion via a dlopen test or vkvia
   echo "--- Vulkan runtime check ---"
   if command -v vkvia >/dev/null 2>&1; then
@@ -89,9 +92,23 @@ main() {
     fi
   fi
   echo ""
+}
 
+print_results() {
   echo "=== Results: ${FAILURES} failure(s) ==="
   [ "${FAILURES}" -eq 0 ] || exit 1
+}
+
+main() {
+  echo "=== Vulkan SDK Smoke Test ==="
+  echo ""
+
+  check_active_sdk
+  check_vulkan_headers
+  check_vulkan_loader
+  check_vulkan_runtime
+
+  print_results
 }
 
 main "$@"

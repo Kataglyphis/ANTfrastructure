@@ -77,8 +77,8 @@ fetch_ffmpeg() {
     mkdir -p "${FFMPEG_SRC}"
 
     # Use latest stable release tag (default from versions.env via orchestrator or env),
-    # or "main" to track the latest development branch.
-    local release_ref="${FFMPEG_VERSION:-n8.1.2}"
+    # or "master" to track the latest development branch.
+    local release_ref="${FFMPEG_VERSION:-master}"
 
     local tarball_url
     case "${release_ref}" in
@@ -87,8 +87,7 @@ fetch_ffmpeg() {
     esac
     echo "Downloading FFmpeg ${release_ref} from ${tarball_url}..."
     download_and_extract "${tarball_url}" "${FFMPEG_SRC}" 1 || {
-        echo "Tarball download failed for ${tarball_url}" >&2
-        exit 1
+        die "Tarball download failed for ${tarball_url}"
     }
     cd "${FFMPEG_SRC}"
     echo "FFmpeg version: ${release_ref} (from tarball)"
@@ -97,22 +96,11 @@ fetch_ffmpeg() {
 # ------------------------------------------------------------------------------
 # Configure FFmpeg build
 # ------------------------------------------------------------------------------
-configure_ffmpeg() {
-    echo "Configuring FFmpeg build..."
-    cd "${FFMPEG_SRC}"
-    
-    # Build configure options array
-    local configure_opts=(
-        "--prefix=${FFMPEG_PREFIX}"
-        "--enable-gpl"
-        "--enable-version3"
-        "--enable-shared"
-        "--enable-pic"
-        "--disable-static"
-        "--disable-debug"
-        "--disable-doc"
-    )
 
+# Append cross-compilation configure opts (arch, cross-prefix, sysroot,
+# multiarch lib/include dirs, riscv64 SDL/text-rels workarounds).
+_ffmpeg_cross_args() {
+    local -n _ffca_out="$1"
     if cross_build_is_active; then
         local host_cc
 
@@ -129,7 +117,7 @@ configure_ffmpeg() {
         if [ -n "${host_cc}" ]; then
             host_cc="$(prepare_ffmpeg_host_compiler_wrapper "${host_cc}")"
         fi
-        configure_opts+=(
+        _ffca_out+=(
             "--arch=$(cross_target_arch)"
             "--target-os=linux"
             "--enable-cross-compile"
@@ -137,11 +125,11 @@ configure_ffmpeg() {
             "--pkg-config=pkg-config"
         )
         if [ -n "${host_cc}" ]; then
-            configure_opts+=("--host-cc=${host_cc}")
+            _ffca_out+=("--host-cc=${host_cc}")
             echo "Using native host C compiler for FFmpeg build tools: ${host_cc}"
         fi
-        configure_opts+=("--extra-cflags=--sysroot=/")
-        configure_opts+=("--extra-ldflags=--sysroot=/")
+        _ffca_out+=("--extra-cflags=--sysroot=/")
+        _ffca_out+=("--extra-ldflags=--sysroot=/")
         # The custom cross-GCC with --sysroot=/ does NOT search the Debian
         # multiarch dirs (/usr/lib/<triplet>, /usr/include/<triplet>) where apt
         # installs the :<arch> target dev packages, and it does NOT honor
@@ -156,104 +144,119 @@ configure_ffmpeg() {
             _ma_triplet="$(cross_target_triplet 2>/dev/null || true)"
         fi
         if [ -n "${_ma_triplet}" ] && [ -d "/usr/lib/${_ma_triplet}" ]; then
-            configure_opts+=("--extra-ldflags=-L/usr/lib/${_ma_triplet} -L/lib/${_ma_triplet}")
+            _ffca_out+=("--extra-ldflags=-L/usr/lib/${_ma_triplet} -L/lib/${_ma_triplet}")
             # -I/usr/include is required too: the custom cross-GCC does not search
             # it by default, so headers like x264.h (in /usr/include, not the
             # triplet dir) are otherwise invisible to FFmpeg's own compiles.
-            configure_opts+=("--extra-cflags=-I/usr/include -I/usr/include/${_ma_triplet}")
+            _ffca_out+=("--extra-cflags=-I/usr/include -I/usr/include/${_ma_triplet}")
             echo "Cross: added multiarch lib/include dirs for ${_ma_triplet} (-L/-I incl /usr/include) so apt-installed target codecs link"
         fi
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # Avoid cross-detecting host SDL when the target SDL dev package is unavailable.
-            configure_opts+=("--disable-sdl2" "--disable-ffplay")
+            _ffca_out+=("--disable-sdl2" "--disable-ffplay")
             # RVV assembly uses absolute relocations; allow text rels in shared libs
-            configure_opts+=("--extra-ldflags=-Wl,-z,notext")
+            _ffca_out+=("--extra-ldflags=-Wl,-z,notext")
         fi
     fi
+}
 
-    # Workaround for glibc 2.43+ __pthread_cond_timedwait64 symbol (Clang sets __USE_TIME_BITS64)
-    configure_opts+=("--extra-cflags=-U__USE_TIME_BITS64")
+# Append probe-gated core codec/feature flags (freetype, mp3lame, opus, vorbis,
+# vpx, x264, gnutls, libass, aom, dav1d, svtav1, webp, vmaf). Each is enabled
+# only when its probe (declared in ffmpeg-probes-codecs.sh / -framework.sh) finds
+# the matching pkg-config/lib/header/symbol.
+#
+# NOTE: libx265 is intentionally NOT enabled here. The configure probe passes but
+# compilation fails with newer x265 releases (see the explicit --disable-libx265
+# later). Re-enable only after upstream x265/FFmpeg source compatibility is restored.
+_ffmpeg_probe_core_codecs() {
+    local -n _ffpcc_out="$1"
 
     if ffmpeg_probe_pkg_config_feature "libfreetype" "freetype2" "ft2build.h FT_FREETYPE_H" "FT_Init_FreeType"; then
-        configure_opts+=("--enable-libfreetype")
+        _ffpcc_out+=("--enable-libfreetype")
     fi
 
     if ffmpeg_probe_libmp3lame; then
-        configure_opts+=("--enable-libmp3lame")
+        _ffpcc_out+=("--enable-libmp3lame")
     fi
 
     if ffmpeg_probe_libopus; then
-        configure_opts+=("--enable-libopus")
+        _ffpcc_out+=("--enable-libopus")
     fi
 
     if ffmpeg_probe_libvorbis; then
-        configure_opts+=("--enable-libvorbis")
+        _ffpcc_out+=("--enable-libvorbis")
     fi
 
     if ffmpeg_probe_libvpx; then
-        configure_opts+=("--enable-libvpx")
+        _ffpcc_out+=("--enable-libvpx")
     fi
 
     if ffmpeg_probe_libx264; then
-        configure_opts+=("--enable-libx264")
+        _ffpcc_out+=("--enable-libx264")
     fi
 
-    # NOTE: libx265 is intentionally NOT enabled here. The configure probe
-    # passes but compilation fails with newer x265 releases (see the explicit
-    # --disable-libx265 later in this function). Re-enable only after upstream
-    # x265/FFmpeg source compatibility is restored.
-    
     # Optional codecs - add if libraries are available
     if cross_build_is_active && [ "$(cross_target_arch)" = "riscv64" ]; then
         echo "Skipping gnutls for riscv64 cross builds because FFmpeg's configure probe does not currently pass in this environment."
     elif ffmpeg_probe_pkg_config_feature "gnutls" "gnutls" "gnutls/gnutls.h" "gnutls_global_init"; then
-        configure_opts+=("--enable-gnutls")
+        _ffpcc_out+=("--enable-gnutls")
     fi
 
     if ffmpeg_probe_pkg_config_feature "libass" "libass >= 0.11.0" "ass/ass.h" "ass_library_init"; then
-        configure_opts+=("--enable-libass")
+        _ffpcc_out+=("--enable-libass")
     fi
 
     if ffmpeg_probe_pkg_config_feature "libaom" "aom >= 2.0.0" "aom/aom_codec.h" "aom_codec_version"; then
-        configure_opts+=("--enable-libaom")
-    fi
-    
-    if ffmpeg_probe_pkg_config_feature "libdav1d" "dav1d >= 1.0.0" "dav1d/dav1d.h" "dav1d_version"; then
-        configure_opts+=("--enable-libdav1d")
-    fi
-    
-    if ffmpeg_probe_pkg_config_feature "libsvtav1" "SvtAv1Enc >= 0.9.0" "EbSvtAv1Enc.h" "svt_av1_enc_init_handle"; then
-        configure_opts+=("--enable-libsvtav1")
-    fi
-    
-    if ffmpeg_probe_libonnxruntime; then
-        configure_opts+=("--enable-libonnxruntime")
-        # FFmpeg's onnxruntime check is a bare check_lib, so feed the header/lib
-        # paths through the global extra flags (see ffmpeg_probe_libonnxruntime).
-        [ -n "${_FFMPEG_ONNX_EXTRA_CFLAGS:-}" ] && configure_opts+=("--extra-cflags=${_FFMPEG_ONNX_EXTRA_CFLAGS}")
-        [ -n "${_FFMPEG_ONNX_EXTRA_LDFLAGS:-}" ] && configure_opts+=("--extra-ldflags=${_FFMPEG_ONNX_EXTRA_LDFLAGS}")
-        [ -n "${_FFMPEG_ONNX_EXTRA_LIBS:-}" ] && configure_opts+=("--extra-libs=${_FFMPEG_ONNX_EXTRA_LIBS}")
+        _ffpcc_out+=("--enable-libaom")
     fi
 
-    # Deep Neural Network backends (always try; skip if SDK not available)
-    if ffmpeg_probe_libtensorflow; then
-        configure_opts+=("--enable-libtensorflow")
+    if ffmpeg_probe_pkg_config_feature "libdav1d" "dav1d >= 1.0.0" "dav1d/dav1d.h" "dav1d_version"; then
+        _ffpcc_out+=("--enable-libdav1d")
     fi
-    
-    if ffmpeg_probe_libopenvino; then
-        configure_opts+=("--enable-libopenvino")
+
+    if ffmpeg_probe_pkg_config_feature "libsvtav1" "SvtAv1Enc >= 0.9.0" "EbSvtAv1Enc.h" "svt_av1_enc_init_handle"; then
+        _ffpcc_out+=("--enable-libsvtav1")
     fi
 
     # Image codecs
     if ffmpeg_probe_pkg_config_feature "libwebp" "libwebp" "webp/decode.h" "WebPGetDecoderVersion"; then
-        configure_opts+=("--enable-libwebp")
+        _ffpcc_out+=("--enable-libwebp")
     fi
 
     # Video quality metrics (if installed)
     if ffmpeg_probe_pkg_config_feature "libvmaf" "libvmaf" "libvmaf/libvmaf.h" "vmaf_version"; then
-        configure_opts+=("--enable-libvmaf")
+        _ffpcc_out+=("--enable-libvmaf")
+    fi
+}
+
+# Append DNN backend flags (onnxruntime, tensorflow, openvino). Each probe
+# also exports _FFMPEG_ONNX_EXTRA_* env used by the onnxruntime configure line.
+_ffmpeg_probe_dnn_backends() {
+    local -n _ffpdb_out="$1"
+
+    if ffmpeg_probe_libonnxruntime; then
+        _ffpdb_out+=("--enable-libonnxruntime")
+        # FFmpeg's onnxruntime check is a bare check_lib, so feed the header/lib
+        # paths through the global extra flags (see ffmpeg_probe_libonnxruntime).
+        [ -n "${_FFMPEG_ONNX_EXTRA_CFLAGS:-}" ] && _ffpdb_out+=("--extra-cflags=${_FFMPEG_ONNX_EXTRA_CFLAGS}")
+        [ -n "${_FFMPEG_ONNX_EXTRA_LDFLAGS:-}" ] && _ffpdb_out+=("--extra-ldflags=${_FFMPEG_ONNX_EXTRA_LDFLAGS}")
+        [ -n "${_FFMPEG_ONNX_EXTRA_LIBS:-}" ] && _ffpdb_out+=("--extra-libs=${_FFMPEG_ONNX_EXTRA_LIBS}")
     fi
 
+    # Deep Neural Network backends (always try; skip if SDK not available)
+    if ffmpeg_probe_libtensorflow; then
+        _ffpdb_out+=("--enable-libtensorflow")
+    fi
+
+    if ffmpeg_probe_libopenvino; then
+        _ffpdb_out+=("--enable-libopenvino")
+    fi
+}
+
+# Run the table-driven extra-pkgconfig probe loop (theora/openjpeg/speex/soxr/
+# zimg/opencore-amr/srt/ssh/rav1e/vidstab/openmpt/gme/mysofa/bluray/rsvg).
+_ffmpeg_probe_extra_pkgconfig_loop() {
+    local -n _ffepdl_out="$1"
     # ------------------------------------------------------------------
     # Extra optional codecs / protocols (max-feature expansion).
     # Each entry is probe-gated: "flag|pkg-config spec|headers|symbols".
@@ -279,82 +282,125 @@ configure_ffmpeg() {
         "--enable-libbluray|libbluray >= 0.6.0|libbluray/bluray.h|bd_open"
         "--enable-librsvg|librsvg-2.0 >= 2.36.1|librsvg-2.0/librsvg/rsvg.h|rsvg_handle_new"
     )
-    local _ff_feat _ff_flag _ff_pkg _ff_hdrs _ff_syms _ff_libs
+    local _ff_feat _ff_flag _ff_pkg _ff_hdrs _ff_syms
     for _ff_feat in "${_ff_extra_pkgconfig[@]}"; do
         IFS='|' read -r _ff_flag _ff_pkg _ff_hdrs _ff_syms <<<"${_ff_feat}"
         if ffmpeg_probe_pkg_config_feature "${_ff_flag}" "${_ff_pkg}" "${_ff_hdrs}" "${_ff_syms}"; then
-            configure_opts+=("${_ff_flag}")
+            _ffepdl_out+=("${_ff_flag}")
         fi
     done
+}
 
-    # Libraries that ship no pkg-config file — direct link probe instead.
+# Run the table-driven extra-link probe loop (twolame/gsm/xvid — libraries that
+# ship no pkg-config file, so we use a direct link probe instead).
+_ffmpeg_probe_extra_link_loop() {
+    local -n _ffpell_out="$1"
     local _ff_extra_link=(
         "--enable-libtwolame|twolame.h|twolame_init|-ltwolame"
         "--enable-libgsm|gsm/gsm.h|gsm_create|-lgsm"
         "--enable-libxvid|xvid.h|xvid_global|-lxvidcore"
     )
+    local _ff_feat _ff_flag _ff_hdrs _ff_syms _ff_libs
     for _ff_feat in "${_ff_extra_link[@]}"; do
         IFS='|' read -r _ff_flag _ff_hdrs _ff_syms _ff_libs <<<"${_ff_feat}"
         if ffmpeg_probe_library_feature "${_ff_flag}" "${_ff_hdrs}" "${_ff_syms}" "${_ff_libs}"; then
-            configure_opts+=("${_ff_flag}")
+            _ffpell_out+=("${_ff_flag}")
         fi
     done
+}
 
-    # Hardware acceleration (if available)
+# Append hardware-acceleration opts (vaapi, vdpau, vulkan, NVIDIA CUDA SDK).
+_ffmpeg_hwaccel_args() {
+    local -n _ffha_out="$1"
+
     if ffmpeg_probe_pkg_config_feature "vaapi" "libva >= 0.35.0" "va/va.h" "vaInitialize"; then
-        configure_opts+=("--enable-vaapi")
+        _ffha_out+=("--enable-vaapi")
     fi
-    
+
     if ffmpeg_probe_vdpau; then
-        configure_opts+=("--enable-vdpau")
+        _ffha_out+=("--enable-vdpau")
     fi
 
     # Vulkan HW acceleration — auto-detected by FFmpeg's configure but also
     # explicitly enabled via pkg-config probe for cross-build reliability.
     if ffmpeg_probe_pkg_config_feature "vulkan" "vulkan" "vulkan/vulkan.h" "vkCreateInstance"; then
-        configure_opts+=("--enable-vulkan")
+        _ffha_out+=("--enable-vulkan")
     fi
-    
+
     # NVIDIA Hardware acceleration — auto-probe for CUDA SDK
     CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
     if [ -f "${CUDA_HOME}/include/cuda.h" ] && [ -d "${CUDA_HOME}/lib64" ]; then
         echo "NVIDIA CUDA SDK detected at ${CUDA_HOME}. Enabling NVENC/NVDEC/CUDA..."
-        configure_opts+=("--enable-nvenc")
-        configure_opts+=("--enable-nvdec")
-        configure_opts+=("--enable-cuvid")
-        configure_opts+=("--enable-ffnvcodec")
-        configure_opts+=("--enable-cuda-nvcc")
-        configure_opts+=("--extra-cflags=-I${CUDA_HOME}/include")
-        configure_opts+=("--extra-ldflags=-L${CUDA_HOME}/lib64")
+        _ffha_out+=("--enable-nvenc")
+        _ffha_out+=("--enable-nvdec")
+        _ffha_out+=("--enable-cuvid")
+        _ffha_out+=("--enable-ffnvcodec")
+        _ffha_out+=("--enable-cuda-nvcc")
+        _ffha_out+=("--extra-cflags=-I${CUDA_HOME}/include")
+        _ffha_out+=("--extra-ldflags=-L${CUDA_HOME}/lib64")
     elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
         echo "ENABLE_NVIDIA=true but CUDA SDK not found at ${CUDA_HOME}. Skipping NVIDIA acceleration."
     fi
+}
+
+# Append lld linker + ccache/cc configuration.
+_ffmpeg_linker_ccache_args() {
+    local -n _fflc_out="$1"
 
     # Use lld linker for faster linking if available
     if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
-        configure_opts+=("--extra-ldflags=-fuse-ld=lld")
+        _fflc_out+=("--extra-ldflags=-fuse-ld=lld")
         echo "Using lld linker for faster linking"
     fi
 
     # Use ccache if available
     if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
         if cross_build_is_active; then
-            configure_opts+=("--cc=ccache ${CC}")
-            configure_opts+=("--cxx=ccache ${CXX}")
+            _fflc_out+=("--cc=ccache ${CC}")
+            _fflc_out+=("--cxx=ccache ${CXX}")
         else
-            configure_opts+=("--cc=ccache gcc")
-            configure_opts+=("--cxx=ccache g++")
+            _fflc_out+=("--cc=ccache gcc")
+            _fflc_out+=("--cxx=ccache g++")
         fi
         echo "Using ccache for faster compilation"
     elif cross_build_is_active; then
-        configure_opts+=("--cc=${CC}")
-        configure_opts+=("--cxx=${CXX}")
+        _fflc_out+=("--cc=${CC}")
+        _fflc_out+=("--cxx=${CXX}")
     fi
+}
+
+configure_ffmpeg() {
+    echo "Configuring FFmpeg build..."
+    cd "${FFMPEG_SRC}"
+
+    # Build configure options array
+    local configure_opts=(
+        "--prefix=${FFMPEG_PREFIX}"
+        "--enable-gpl"
+        "--enable-version3"
+        "--enable-shared"
+        "--enable-pic"
+        "--disable-static"
+        "--disable-debug"
+        "--disable-doc"
+    )
+
+    _ffmpeg_cross_args configure_opts
+
+    # Workaround for glibc 2.43+ __pthread_cond_timedwait64 symbol (Clang sets __USE_TIME_BITS64)
+    configure_opts+=("--extra-cflags=-U__USE_TIME_BITS64")
+
+    _ffmpeg_probe_core_codecs configure_opts
+    _ffmpeg_probe_dnn_backends configure_opts
+    _ffmpeg_probe_extra_pkgconfig_loop configure_opts
+    _ffmpeg_probe_extra_link_loop configure_opts
+    _ffmpeg_hwaccel_args configure_opts
+    _ffmpeg_linker_ccache_args configure_opts
 
     # Explicitly disable libx265: the configure probe passes but FFmpeg
     # compilation fails against newer x265 releases (see note above).
     configure_opts+=("--disable-libx265")
-    
+
     if ! ./configure "${configure_opts[@]}"; then
         echo "FFmpeg configure failed"
         if [ -f "ffbuild/config.log" ]; then
