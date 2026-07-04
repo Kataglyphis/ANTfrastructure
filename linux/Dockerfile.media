@@ -129,9 +129,20 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,read
     printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates %s-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' \
       "${_archive_url}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" \
       > /etc/apt/sources.list.d/ubuntu.sources; \
-    printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: arm64 riscv64\n' \
-      "${_ports_url}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" \
-      > /etc/apt/sources.list.d/ubuntu-ports.sources; \
+    # Ports sources: ONLY for the actual cross target, under the canonical
+    # per-arch filename (cross-apt.sh's prune globs ubuntu-ports*.sources and
+    # keeps the per-arch file). The old unconditional ubuntu-ports.sources with
+    # "Architectures: arm64 riscv64" double-defined the target arch once
+    # cross_configure_foreign_arch_apt_sources wrote the per-arch file (~16
+    # "configured multiple times" warnings per apt call, 1300+/build) and made
+    # every build download the OTHER arch's package indexes for nothing.
+    case "${TARGET_ARCH:-amd64}" in \
+      arm64|riscv64) \
+        printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: %s\n' \
+          "${_ports_url}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${TARGET_ARCH}" \
+          > "/etc/apt/sources.list.d/ubuntu-ports-${TARGET_ARCH}.sources" ;; \
+      *) : ;; \
+    esac; \
     apt-get update -qq
 
 # Ensure Python venv exists for downstream stages (OpenCV, LiteRT, ONNX build scripts)
