@@ -58,7 +58,8 @@ COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
 COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 
 # ── Canonical component layout for downstream consumers and verification ────
-ENV GST_VERSION=${GSTREAMER_VERSION}
+# build-gstreamer-from-source.ps1 reads GST_VERSION or GSTREAMER_VERSION; one
+# canonical var is enough.
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION}
 ENV GSTREAMER_BIN="C:\runtime\bin"
 ENV ONNX_ROOT="C:\runtime\lib\onnxruntime-source"

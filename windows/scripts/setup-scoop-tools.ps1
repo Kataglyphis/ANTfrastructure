@@ -18,7 +18,12 @@ if (-not (Test-Path $sharedModulePath)) {
 
 Import-Module $sharedModulePath -Force
 
-$CMakeNightlyUrl = Resolve-ContainerImageValue -Value $CMakeNightlyUrl -EnvironmentVariable 'CMAKE_NIGHTLY_URL' -DefaultValue 'https://cmake.org/files/v4.3/cmake-4.3.3-windows-x86_64.msi'
+# Derive the fallback CMake URL from CMAKE_VERSION (baked in by load-versions.ps1)
+# rather than a hardcoded literal that silently drifts from versions.env. The
+# primary value still comes from the CMAKE_NIGHTLY_URL build-arg / env when set.
+$cmakeVer = $env:CMAKE_VERSION
+$cmakeDefaultUrl = if ($cmakeVer) { "https://cmake.org/files/v$(($cmakeVer -split '\.')[0..1] -join '.')/cmake-$cmakeVer-windows-x86_64.msi" } else { '' }
+$CMakeNightlyUrl = Resolve-ContainerImageValue -Value $CMakeNightlyUrl -EnvironmentVariable 'CMAKE_NIGHTLY_URL' -DefaultValue $cmakeDefaultUrl
 $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentVariable 'VULKAN_VERSION'
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
