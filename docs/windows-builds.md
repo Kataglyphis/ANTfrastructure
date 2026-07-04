@@ -109,6 +109,27 @@ Dockerfile) to keep the `C:\temp\*-src` build trees for debugging; by default
 each build script removes its source tree after installing so the trees don't
 bloat the image layers.
 
+### Build isolation and CPU parallelism
+
+`build.ps1` runs **every** `docker build` with `--isolation process`. This is
+not optional: Hyper-V-isolated build containers (the Windows default) are given
+only **2 logical CPUs**, so `Get-BuildJobCount` — which is `min(ProcessorCount,
+memGB / memPerJob)` — pins every in-container `ninja -j` to 2 no matter how many
+cores the host has. That single default is the difference between a ~1-hour and a
+~6-hour ONNX/CUDA compile.
+
+The classic Windows `docker build` gives no other lever: `--cpu-count` is
+rejected outright ("unknown flag"), and `--cpuset-cpus` is silently ignored on
+Windows containers. Process isolation is the only mechanism that exposes all
+host logical processors to the build (verified on the dev host: `ProcessorCount`
+2 → 32). Actual parallelism is then bounded by `--memory` (see below), which is
+the correct cap for RAM-heavy CUDA translation units.
+
+Process isolation requires the container base image build to be compatible with
+the host (e.g. `servercore:ltsc2025` on Windows 11 26xxx). If a future host/image
+mismatch breaks it, the build falls back to 2 CPUs — the symptom is `ninja -j2`
+in `out\windows-build-logs\media-core.log`.
+
 ### Media fan-out and memory budgeting
 
 The media branches build concurrently (branch logs land in
@@ -118,9 +139,10 @@ merge/GStreamer stage; `-AuxMemoryGb` (default 8) caps each of the two
 auxiliary branches. Size them so `MediaMemoryGb + 2*AuxMemoryGb` roughly fits
 host RAM. Each cap is forwarded as `MEMORY_LIMIT_GB` so the build scripts scale
 their parallel job count to the container's cap instead of host RAM
-(`--cpu-quota` is not supported on Windows; `BUILD_JOBS` overrides the
-heuristic outright). On memory-constrained hosts pass `-SequentialMedia` to
-build the branches one after another.
+(`BUILD_JOBS` overrides the heuristic outright). Because the containers run
+with process isolation (see § Build isolation and CPU parallelism), the job
+count is bounded by memory, not CPUs. On memory-constrained hosts pass
+`-SequentialMedia` to build the branches one after another.
 
 ### Persistent compile cache (sccache)
 

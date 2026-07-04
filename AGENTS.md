@@ -74,6 +74,8 @@ nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Stevedore's `docker.exe` for builds (nerdctl has DNS issues in BuildKit on Windows).
 
+**Always build with `--isolation process`** (`build.ps1` passes this on every `docker build`). Hyper-V-isolated build containers get only **2 logical CPUs**, which silently pins every in-container `ninja -j` to 2 (`Get-BuildJobCount = min(ProcessorCount, memGB/perJob)`) — the real cause of multi-hour CUDA/C++ builds, independent of RAM. `docker build` rejects `--cpu-count` and Windows ignores `--cpuset-cpus`, so process isolation is the only way to expose all host cores (verified 2 → 32 on the dev host). Parallelism is then bounded by `--memory`, not CPUs.
+
 See `docs/windows-builds.md` § Build Commands for the full 5-stage Windows build sequence and `docs/windows-builds.md` § Stevedore Setup Fixes for post-install fixes.
 
 ### TensorRT Setup (Optional)
@@ -91,7 +93,7 @@ If no zip is found, the build skips TensorRT gracefully (CUDA + cuDNN still work
 | Component | Generator | Compiler | Notes |
 |-----------|-----------|----------|-------|
 | CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset |
-| ONNX Runtime 1.27.0 | Ninja | clang-cl, lld-link | DirectML disabled. CUDA EP enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). AVX-512+AMX compilation with clang-cl needs ~48 GB RAM — pass `--memory 48g` to docker build (--cpu-quota not supported on Windows). |
+| ONNX Runtime 1.27.0 | Ninja | clang-cl, lld-link | DirectML disabled. CUDA EP enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). AVX-512+AMX compilation with clang-cl needs ~48 GB RAM — `build.ps1` passes `--memory 48g`; CPU parallelism comes from `--isolation process` (see § Windows Container Build), since the classic Windows `docker build` honors neither `--cpu-count` nor `--cpu-quota`/`--cpuset-cpus`. |
 | ONNX GenAI 0.14.0 | CMake (Ninja) | clang-cl, lld-link | Source-built directly via CMake (bypasses `build.py` which always builds examples). CUDA is disabled at build time (clang-cl cannot compile cuRAND host headers); GenAI uses ONNX Runtime's CUDA execution provider at runtime. VsDevCmd environment loaded for MSVC STL headers. |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. CUDA auto-detected. Custom `CMAKE_AR` path fix. |
 | LiteRT 2.1.6 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. |
