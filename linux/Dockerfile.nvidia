@@ -110,6 +110,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     echo "WARNING: cuDNN packages not found; continuing without cuDNN"; \
     rm -rf /var/lib/apt/lists/*; \
     ldconfig
+    # NOTE: the CUDA repo (/etc/apt/sources.list.d/cuda*.list) is intentionally
+    # NOT removed here — the TensorRT RUN below still installs tensorrt-dev /
+    # tensorrt-libs from the NVIDIA apt repo.  Repo removal happens at the end
+    # of that RUN (the last apt install against NVIDIA repos in this file).
 
 # ==============================================================================
 # 2. TensorRT — try local repo deb, then NVIDIA apt repo, then skip
@@ -163,6 +167,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
             ln -snf "/usr/lib/${ARCH}" /usr/local/tensorrt/lib 2>/dev/null || true; \
         fi; \
     fi; \
+    # Repo hygiene, mirroring Dockerfile.amd (which rm's rocm.list after its
+    # last ROCm apt install): this is the LAST apt install against NVIDIA
+    # repos in this file, and no downstream stage (media/android/package/
+    # torch) apt-installs CUDA packages, so drop the CUDA repo and any
+    # TensorRT local-repo sources so shipped images do not fetch from —
+    # or silently upgrade against — NVIDIA repos.  The cuda-keyring PACKAGE
+    # and its keyring under /usr/share/keyrings intentionally STAY: the
+    # keyring only holds NVIDIA's signing key (a few kB), removing it would
+    # desync the installed cuda-keyring dpkg entry, and keeping it lets the
+    # repo be re-enabled later with a single sources line whose signature
+    # verification still works.
+    rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nv-tensorrt-local*.list; \
+    rm -rf /var/nv-tensorrt-local-repo* 2>/dev/null || true; \
     rm -rf /var/lib/apt/lists/*; \
     ldconfig
 
