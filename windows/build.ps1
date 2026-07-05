@@ -94,12 +94,13 @@ Push-Location $repoRoot
 # this single pattern.
 $script:TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
 
-# Hyper-V-isolated build containers get only 2 CPUs, silently pinning every
-# in-container `ninja -j` to 2 (Get-BuildJobCount = min(ProcessorCount, memGB/perJob)) —
-# the real cause of slow CUDA/C++ builds. `docker build` has no --cpu-count and
-# --cpuset-cpus isn't honored on Windows, so we run builds with process isolation:
-# the container then sees all host CPUs (verified on this host: 2 -> 32). The
-# per-build --memory cap still bounds actual parallelism so heavy TUs don't OOM.
+# CPU note: Hyper-V-isolated build containers get only 2 CPUs, pinning every
+# in-container `ninja -j` to 2 (Get-BuildJobCount = min(ProcessorCount, memGB/perJob)).
+# `docker build` on this host's classic builder offers NO working lever to raise it
+# (--cpu-count rejected, --cpuset-cpus fails), and --isolation process — which would
+# expose all host CPUs — cannot commit layers here (hcsshim::ActivateLayer 0x20). So
+# `docker build` stages run at 2 CPUs. Raising this requires a docker-run+commit
+# path (docker run --cpu-count N does honor the flag under Hyper-V).
 
 # ---- resolve docker CLI (Stevedore's docker.exe preferred; nerdctl build has broken DNS) ----
 if ([string]::IsNullOrWhiteSpace($Docker)) {
@@ -150,9 +151,14 @@ function Get-DockerBuildArgList {
     # Windows Containers) rejects it.
     $dockerArgs = @('build')
     if ($NoCache) { $dockerArgs += '--no-cache' }
-    # Process isolation gives the build container all host CPUs (Hyper-V default is
-    # 2 — the -j2 bottleneck). --memory below still caps RAM.
-    $dockerArgs += '--isolation', 'process'
+    # NB: we deliberately do NOT pass --isolation process. On this host process
+    # isolation cannot commit ANY file-writing layer: hcsshim::ActivateLayer fails
+    # 0x20 ("file used by another process"), reproduced even for a 100 MB dummy
+    # layer and NOT caused by Defender/Search/SysMain (all ruled out). Hyper-V
+    # isolation (the default) commits reliably but is hard-capped at 2 CPUs for
+    # `docker build` (--cpu-count is rejected, --cpuset-cpus fails). Getting >2 CPUs
+    # needs a `docker run --cpu-count N` + `docker commit` path, not a build flag.
+    # See docs/windows-builds.md § Build isolation and CPU parallelism.
     foreach ($key in ($BuildArgs.Keys | Sort-Object)) {
         $value = $BuildArgs[$key]
         if ($null -ne $value -and "$value" -ne '') { $dockerArgs += '--build-arg', "$key=$value" }
