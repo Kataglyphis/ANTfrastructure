@@ -32,11 +32,7 @@ main() {
 
   host_arch="$(canonical_target_arch 2>/dev/null || echo "${host_arch:-}")"
   if [ -z "${host_arch}" ]; then
-    host_arch="$(uname -m)"
-    case "${host_arch}" in
-      x86_64)  host_arch=amd64 ;;
-      aarch64) host_arch=arm64 ;;
-    esac
+    host_arch="$(smoke_host_arch)"
   fi
 
   echo "=== Cross-Compiler Multi-Arch Smoke Test ==="
@@ -65,15 +61,7 @@ main() {
   for arch in $(arch_list_to_words "${target_arches}"); do
     [ "${arch}" = "${host_arch}" ] && continue
     local triplet cross_gcc
-    if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-      triplet="$(arch_deb_multiarch_triplet_for "${arch}" 2>/dev/null || true)"
-    else
-      case "${arch}" in
-        arm64)   triplet="aarch64-linux-gnu" ;;
-        riscv64) triplet="riscv64-linux-gnu" ;;
-        *)       triplet="" ;;
-      esac
-    fi
+    triplet="$(smoke_deb_triplet "${arch}" 2>/dev/null || true)"
     [ -n "${triplet}" ] || { fail "Cannot determine triplet for ${arch}"; continue; }
 
     cross_gcc="${GCC_PREFIX}/bin/${triplet}-gcc"
@@ -89,15 +77,7 @@ main() {
       local gpp_dump
       gpp_dump="$("${cross_gpp}" -dumpmachine 2>/dev/null || true)"
       local gpp_expected
-      if command -v arch_uname_name_for >/dev/null 2>&1; then
-        gpp_expected="$(arch_uname_name_for "${arch}")"
-      else
-        case "${arch}" in
-          amd64)   gpp_expected="x86_64" ;;
-          arm64)   gpp_expected="aarch64" ;;
-          riscv64) gpp_expected="riscv64" ;;
-        esac
-      fi
+      gpp_expected="$(smoke_uname_name "${arch}" 2>/dev/null || true)"
       echo "${gpp_dump}" | grep -q "^${gpp_expected}" && \
         pass "${triplet}-g++: -dumpmachine=${gpp_dump}" || \
         fail "${triplet}-g++: -dumpmachine=${gpp_dump} != expected"
@@ -112,15 +92,7 @@ main() {
       local clang_arch
       clang_arch="$(/usr/local/llvm-target/bin/clang -dumpmachine 2>/dev/null || true)"
       local expected
-      if command -v arch_uname_name_for >/dev/null 2>&1; then
-        expected="$(arch_uname_name_for "${arch}")"
-      else
-        case "${arch}" in
-          amd64)   expected="x86_64" ;;
-          arm64)   expected="aarch64" ;;
-          riscv64) expected="riscv64" ;;
-        esac
-      fi
+      expected="$(smoke_uname_name "${arch}" 2>/dev/null || true)"
       if echo "${clang_arch}" | grep -q "^${expected}"; then
         pass "clang (llvm-target): -dumpmachine=${clang_arch} (expected ${arch})"
       fi

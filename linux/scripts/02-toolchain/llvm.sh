@@ -66,9 +66,36 @@ register_versioned_llvm_binaries() {
   done
 }
 
+# Per-target callback for for_each_cross_target: installs the clang/clang++
+# cross wrappers for one already-normalized target. host_clang, host_clangxx and
+# gcc_prefix are read from the enclosing install_cross_clang_wrappers scope.
+_llvm_install_cross_clang_wrapper() {
+  local target_label="$1"
+  local triplet sysroot wrapper _pair _name _bin
+
+  triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || return 0
+  if [ "${target_label}" = "amd64" ]; then
+    sysroot="/"
+  else
+    sysroot="/usr/${triplet}"
+    [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
+  fi
+
+  for _pair in "clang:${host_clang}" "clang++:${host_clangxx}"; do
+    _name="${_pair%%:*}"; _bin="${_pair#*:}"
+    wrapper="/usr/local/bin/${_name}-${target_label}"
+    cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+exec "${_bin}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
+EOF
+    chmod +x "${wrapper}"
+    log "Installed LLVM wrapper: $(basename "${wrapper}")"
+  done
+}
+
 install_cross_clang_wrappers() {
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local gcc_prefix target target_label triplet sysroot wrapper host_clang host_clangxx
+  local gcc_prefix host_clang host_clangxx
 
   cross_mode_requested || return 0
 
@@ -79,35 +106,8 @@ install_cross_clang_wrappers() {
   gcc_prefix="$(gcc_toolchain_prefix 2>/dev/null || true)"
   [ -d "${gcc_prefix}" ] || gcc_prefix="/usr"
 
-  for target in ${targets_raw//,/ }; do
-    target_label="$(arch_normalize "$target")"
-    case "${target_label}" in
-      amd64|arm64|riscv64) ;;
-      *)
-      log "Skipping unsupported LLVM cross target: ${target}"
-      continue
-      ;;
-    esac
-    triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || continue
-    if [ "${target_label}" = "amd64" ]; then
-      sysroot="/"
-    else
-      sysroot="/usr/${triplet}"
-      [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
-    fi
-
-    local _pair _name _bin
-    for _pair in "clang:${host_clang}" "clang++:${host_clangxx}"; do
-      _name="${_pair%%:*}"; _bin="${_pair#*:}"
-      wrapper="/usr/local/bin/${_name}-${target_label}"
-      cat > "${wrapper}" <<EOF
-#!/usr/bin/env bash
-exec "${_bin}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
-EOF
-      chmod +x "${wrapper}"
-      log "Installed LLVM wrapper: $(basename "${wrapper}")"
-    done
-  done
+  # amd64 is included (its wrapper targets sysroot "/").
+  for_each_cross_target _llvm_install_cross_clang_wrapper --include-amd64 "${targets_raw}"
 }
 
 # Mapping lives in 01-core/arch-mapping.sh (loaded via common.sh).

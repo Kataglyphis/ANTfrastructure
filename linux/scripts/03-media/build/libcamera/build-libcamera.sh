@@ -186,7 +186,7 @@ if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" "${MESON_SETUP_A
     exit 1
 fi
 
-: "${NPROC:=$(compute_jobs_with_mem_cap "" 2000)}"
+: "${NPROC:=$(media_jobs)}"
 ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" -v || { echo "ninja build failed"; exit 1; }
 
 # install (use sudo if not root)

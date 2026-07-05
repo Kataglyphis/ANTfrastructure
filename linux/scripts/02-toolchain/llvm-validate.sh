@@ -167,7 +167,6 @@ verify_cross_llvm_target() {
 
 verify_cross_llvm_targets() {
   local targets_raw=""
-  local target target_label
 
   cross_mode_requested || return 0
 
@@ -182,19 +181,8 @@ verify_cross_llvm_targets() {
     return 0
   }
 
-  for target in ${targets_raw//,/ }; do
-    target_label="$(arch_normalize "${target}")"
-    case "${target_label}" in
-      amd64|arm64|riscv64) ;;
-      *)
-      log "Skipping unsupported LLVM cross verification target: ${target}"
-      continue
-      ;;
-    esac
-
-    [ "${target_label}" = "amd64" ] && continue
-    verify_cross_llvm_target "${target_label}"
-  done
+  # amd64 is skipped by default; verify_cross_llvm_target runs per target.
+  for_each_cross_target verify_cross_llvm_target "${targets_raw}"
 }
 
 

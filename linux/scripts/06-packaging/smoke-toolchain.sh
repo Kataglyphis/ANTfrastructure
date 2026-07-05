@@ -50,16 +50,8 @@ smoke_target() {
   local target_arch="$1"
   local triplet
 
-  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-    triplet="$(arch_deb_multiarch_triplet_for "${target_arch}" 2>/dev/null || true)"
-  else
-    case "${target_arch}" in
-      amd64)   triplet="x86_64-linux-gnu" ;;
-      arm64)   triplet="aarch64-linux-gnu" ;;
-      riscv64) triplet="riscv64-linux-gnu" ;;
-      *)       fail "Unknown arch: ${target_arch}"; return ;;
-    esac
-  fi
+  triplet="$(smoke_deb_triplet "${target_arch}" 2>/dev/null || true)"
+  [ -n "${triplet}" ] || { fail "Unknown arch: ${target_arch}"; return; }
 
   echo "--- Target: ${target_arch} (${triplet}) ---"
 
@@ -71,15 +63,7 @@ smoke_target() {
 
   if [ -x "${cross_gpp}" ]; then
     local expected_pat
-    if command -v arch_uname_name_for >/dev/null 2>&1; then
-      expected_pat="$(arch_uname_name_for "${target_arch}")"
-    else
-      case "${target_arch}" in
-        amd64)   expected_pat="x86_64" ;;
-        arm64)   expected_pat="aarch64" ;;
-        riscv64) expected_pat="riscv64" ;;
-      esac
-    fi
+    expected_pat="$(smoke_uname_name "${target_arch}" 2>/dev/null || true)"
     check_dumpmachine "${cross_gpp}" "${expected_pat}" "cross-g++ (${target_arch})"
   fi
   if [ -x "${cross_ld}" ]; then
@@ -92,13 +76,7 @@ smoke_target() {
 }
 
 resolve_host_arch() {
-  local host_arch
-  host_arch="$(uname -m)"
-  case "${host_arch}" in
-    x86_64)  host_arch=amd64 ;;
-    aarch64) host_arch=arm64 ;;
-  esac
-  echo "${host_arch}"
+  smoke_host_arch
 }
 
 print_smoke_header() {
@@ -138,17 +116,7 @@ check_rust() {
   check_version "cargo --version" "cargo" "cargo"
   for target in $(arch_list_to_words "${target_arches}"); do
     local rust_target
-    if command -v arch_rust_target_triple_for >/dev/null 2>&1; then
-      rust_target="$(arch_rust_target_triple_for "${target}")"
-    elif command -v rust_target_triple >/dev/null 2>&1; then
-      rust_target="$(rust_target_triple "${target}")"
-    else
-      case "${target}" in
-        amd64)   rust_target="x86_64-unknown-linux-gnu" ;;
-        arm64)   rust_target="aarch64-unknown-linux-gnu" ;;
-        riscv64) rust_target="riscv64gc-unknown-linux-gnu" ;;
-      esac
-    fi
+    rust_target="$(smoke_rust_target "${target}" 2>/dev/null || true)"
     if rustup target list --installed 2>/dev/null | grep -q "${rust_target}"; then
       pass "Rust target ${rust_target} installed"
     else

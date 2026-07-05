@@ -13,14 +13,13 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+# shellcheck source=linux/scripts/lib-orchestrator.sh
+source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
+orchestrator_preamble
 
-IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 # CROSS_TARGETS is the compiler target arch list — distinct from TARGET_ARCHES
 # which is used for which arches to build per-arch stages for.
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-init_mirror_defaults
 
 PUSH_IMAGES=0
 
@@ -69,27 +68,19 @@ EOF
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+_compiler_extra_arg() {
+  case "$1" in
+    --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
+    *) return 1 ;;
+  esac
+}
+
 main() {
   # Bind the shared parser's --target-arches arg to CROSS_TARGETS for this script
-  while [ $# -gt 0 ]; do
-    consume_shared_arg usage \
-      parse_shared_orchestrator_args \
-      CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _cross_vulkan_version PUSH_IMAGES \
-      "$1" "${2:-}" || break
-    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
-    case "$1" in
-      --cross-targets)
-        CROSS_TARGETS="$2"
-        shift 2
-        ;;
-      *)
-        warn "Unknown option: $1"
-        usage >&2
-        exit 1
-        ;;
-    esac
-  done
+  run_orchestrator_arg_loop usage _compiler_extra_arg \
+    CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
+    FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _cross_vulkan_version PUSH_IMAGES \
+    "$@"
 
   cd "${REPO_ROOT}"
 

@@ -39,7 +39,7 @@ LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.6}}"
 : "${LITERT_SRC:=${TMPDIR:-/tmp}/litert-$$}"
 : "${LITERT_PREFIX:=/usr/local}"
 : "${BUILD_TYPE:=Release}"
-: "${NPROC:=$(compute_jobs_with_mem_cap "" 2000)}"
+: "${NPROC:=$(media_jobs)}"
 : "${SKIP_DEP_INSTALL:=false}"
 
 setup_host_python_with_major_minor

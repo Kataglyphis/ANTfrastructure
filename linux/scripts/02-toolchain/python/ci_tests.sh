@@ -14,7 +14,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../01-core/python_uv.sh" || { echo "Error: failed to source python_uv.sh" >&2; exit 1; }
+source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.sh" >&2; exit 1; }
 
 detect_workspace
 
@@ -26,11 +26,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-PACKAGE_NAME="${1:-${PACKAGE_NAME:-}}"
-if [ -z "$PACKAGE_NAME" ] && [ -f "$WORKSPACE_ROOT/pyproject.toml" ]; then
-  PACKAGE_NAME=$(grep -m1 'name[[:space:]]*=' "$WORKSPACE_ROOT/pyproject.toml" | sed 's/.*=[[:space:]]*"\([^"]*\)".*/\1/' || echo "")
-fi
-PACKAGE_NAME="${PACKAGE_NAME:-$(basename "$WORKSPACE_ROOT")}"
+PACKAGE_NAME="$(derive_package_name "${1:-${PACKAGE_NAME:-}}")"
 
 PY_VERSIONS="${2:-${PY_VERSIONS:-3.13 3.14}}"
 EXPERIMENTAL_VERSIONS="${EXPERIMENTAL_VERSIONS:-3.14t}"

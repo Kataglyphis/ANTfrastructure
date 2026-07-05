@@ -5,11 +5,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
-
-FAILURES=0
-
-pass() { printf '  PASS %s\n' "$*"; }
-fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
+# Reuse the shared pass/fail/smoke_summary harness instead of a local copy.
+# shellcheck source=linux/scripts/06-packaging/smoke-common.sh
+source "${REPO_ROOT}/linux/scripts/06-packaging/smoke-common.sh"
 
 fix1_python_pc() {
   echo "--- Fix 1: gst-python staged libpython (python pkg-config rewrite) ---"
@@ -166,6 +164,4 @@ for _fix_fn in "${FIX_FUNCS[@]}"; do
   echo ""
 done
 
-echo "=== Results: ${FAILURES} failure(s) ==="
-
-[ "${FAILURES}" -eq 0 ] || exit 1
+smoke_summary

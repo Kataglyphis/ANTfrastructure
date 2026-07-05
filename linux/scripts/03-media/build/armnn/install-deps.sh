@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../../core/common.sh"
-media_common_init "${SCRIPT_DIR}"
+media_install_deps_init "${SCRIPT_DIR}"
 
 echo "[INFO] Installing Arm NN dependencies..."
 

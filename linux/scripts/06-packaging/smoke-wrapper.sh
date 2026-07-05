@@ -5,6 +5,10 @@ set -euo pipefail
 # Hard-fail smoke verification for the runtime wrapper image.
 # Delegates all compiler and payload validation to validate-compilers.sh.
 
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=linux/scripts/06-packaging/smoke-common.sh
+source "${_SCRIPT_DIR}/smoke-common.sh"
+
 VALIDATE_COMPILERS="/opt/scripts/packaging/validate-compilers.sh"
 
 main() {
@@ -13,16 +17,10 @@ main() {
   local target_arch
 
   target_arch="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}"
-  if [ -f /opt/scripts/core/platform.sh ]; then
-    source /opt/scripts/core/platform.sh
-    target_arch="$(arch_normalize "${target_arch}")"
-  else
-    case "${target_arch}" in
-      x86_64) target_arch=amd64 ;;
-      aarch64) target_arch=arm64 ;;
-      riscv64) target_arch=riscv64 ;;
-    esac
-  fi
+  # Prefer the canonical platform.sh arch_normalize when the image ships it;
+  # smoke_host_arch falls back to the inline case otherwise.
+  [ -f /opt/scripts/core/platform.sh ] && source /opt/scripts/core/platform.sh
+  target_arch="$(smoke_host_arch "${target_arch}")"
 
   echo "=== smoke: target_arch=${target_arch} ==="
 

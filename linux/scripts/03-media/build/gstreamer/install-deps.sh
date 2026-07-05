@@ -1,35 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Load the shared apt/cross helpers via install-deps-preamble.sh (which
-# locates and sources cross-env.sh itself in both the container and repo
-# layouts), trying the in-container path first and falling back to the repo
-# layout for local dev. Fail loudly if one is found but cannot load.
-for _dep_env in \
-    "/opt/scripts/core/install-deps-preamble.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../01-core/install-deps-preamble.sh"; do
-    if [ -f "${_dep_env}" ]; then
-        # shellcheck disable=SC1090
-        source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
-        break
-    fi
-done
-
-# Load the data-driven per-arch MEDIA_SKIP_* flags (arch-flags-<arch>.env).
-# media_load_arch_flags lives in 03-media/core/common.sh: in the container it
-# is COPY'd to /opt/scripts/03-media/core (base stage), in the repo it sits at
-# linux/scripts/03-media/core. The preamble above already provided the
-# cross_build_is_active / cross_target_arch helpers it needs.
-for _media_common in \
-    "/opt/scripts/03-media/core/common.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../core/common.sh"; do
-    if [ -f "${_media_common}" ]; then
-        # shellcheck disable=SC1090
-        source "${_media_common}" || { echo "FATAL: cannot load ${_media_common}" >&2; exit 1; }
-        break
-    fi
-done
-media_load_arch_flags
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../core/common.sh"
+media_install_deps_init "${SCRIPT_DIR}"
 
 if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
   # shellcheck disable=SC1091

@@ -19,6 +19,7 @@ _BUILD_HELPERS_LOADED=1
 #   append_runtime_accelerator_build_args() — ENABLE_NVIDIA / ENABLE_AMD
 #   image_exists()                — check if an image exists locally
 #   run_nerdctl_build()           — nerdctl build with BUILDKIT_HOST support
+#   strip_elf_tree()              — parallel `strip --strip-all` over an ELF tree
 
 run() {
   printf '+ '
@@ -34,13 +35,13 @@ run_quiet() {
 }
 
 # Test whether a value is boolean-truthy (1, true, TRUE, yes, YES, on, ON).
+# Thin alias delegating to the canonical is_truthy() (platform.sh). Kept for
+# the existing callers in cross-stage-build.sh, parallel-loop.sh, and
+# context-management.sh.
 # Usage: _bool_truthy "${DRY_RUN}" && echo "dry run"
 #        _bool_truthy "${PARALLEL_ARCHS}" && echo "parallel"
 _bool_truthy() {
-  case "${1:-0}" in
-    1|true|TRUE|yes|YES|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
+  is_truthy "${1:-0}"
 }
 
 # Returns 0 (true) when DRY_RUN is set to a truthy value (1, true, yes).
@@ -76,7 +77,7 @@ append_buildkit_host_arg() {
 append_mirror_build_args() {
   local -n out_args_ref=$1
   local use_fast_mirror="${2:-${USE_FAST_UBUNTU_MIRROR:-false}}"
-  local archive_url="${3:-${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}}"
+  local archive_url="${3:-${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-$(ubuntu_default_archive_mirror_url)}}}"
   local ports_url="${4:-${FAST_UBUNTU_PORTS_MIRROR_URL:-}}"
 
   out_args_ref+=(
@@ -95,7 +96,7 @@ append_mirror_build_args_from_env() {
   local -n _amfe_out=$1
   append_mirror_build_args _amfe_out \
     "${USE_FAST_UBUNTU_MIRROR:-false}" \
-    "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}" \
+    "${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-$(ubuntu_default_archive_mirror_url)}}" \
     "${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
 }
 
@@ -142,4 +143,24 @@ run_nerdctl_build() {
   append_buildkit_host_arg build_cmd
   build_cmd+=("$@")
   run "${build_cmd[@]}"
+}
+
+# ── ELF tree stripping ────────────────────────────────────────────────────────
+# Strip every ELF object under <dir> in parallel. Detects ELF files via `file`
+# (both executables and shared objects), then pipes them to `strip --strip-all`
+# through `xargs -P<jobs>`. Honors ${SUDO}. Best-effort: it never aborts the
+# caller (mirrors the `|| true` used by build-clang.sh / build-gcc.sh).
+# Centralizes the find|file|awk|xargs strip pattern duplicated in 02-toolchain.
+#
+# Usage: strip_elf_tree <dir> <jobs> [strip-bin]
+#   <jobs>      defaults to $(nproc)
+#   <strip-bin> defaults to `strip`; pass a cross <triplet>-strip when stripping
+#               a foreign-arch tree.
+strip_elf_tree() {
+  local dir="$1" jobs="${2:-$(nproc)}" strip_bin="${3:-strip}"
+  [ -n "${dir}" ] || return 0
+  [ -d "${dir}" ] || return 0
+  ${SUDO:-} find "${dir}" -type f -exec file {} + 2>/dev/null \
+    | awk -F': *' '/ELF/{print $1}' \
+    | xargs -r -P"${jobs}" "${strip_bin}" --strip-all 2>/dev/null || true
 }

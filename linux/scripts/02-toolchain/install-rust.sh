@@ -10,6 +10,12 @@ if [ -f /opt/scripts/core/platform.sh ]; then
   source /opt/scripts/core/platform.sh
 fi
 
+# cross-env.sh provides for_each_cross_target (the shared cross-target loop).
+if [ -f /opt/scripts/core/cross-env.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/cross-env.sh
+fi
+
 host_arch="${TARGETARCH:-$(dpkg --print-architecture)}"
 host_rust_target="$(rust_target_triple_for_arch "${host_arch}")" || {
   echo "Unsupported Rust host architecture: ${host_arch}" >&2
@@ -47,11 +53,16 @@ try_rustup rustup toolchain install "${nightly_toolchain}"
 try_rustup rustup component add rust-src --toolchain "${nightly_toolchain}"
 try_rustup rustup target add wasm32-unknown-unknown --toolchain "${nightly_toolchain}"
 
-for target in ${rust_targets//,/ }; do
+# Per-target callback: add the stable + pinned-nightly rust target.
+add_rust_target() {
+  local target="$1" rust_target
   rust_target="$(rust_target_triple_for_arch "${target}")" || {
     echo "Unsupported Rust target: ${target}" >&2
     exit 1
   }
   rustup target add "${rust_target}"
   try_rustup rustup target add --toolchain "${nightly_toolchain}" "${rust_target}"
-done
+}
+
+# amd64 is included: the host/target arch itself must get its rust target added.
+for_each_cross_target add_rust_target --include-amd64 "${rust_targets}"

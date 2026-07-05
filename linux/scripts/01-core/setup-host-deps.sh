@@ -111,11 +111,9 @@ install_llvm_and_alternatives() {
   # llvm.sh adds new repos; refresh package lists for subsequent installs
   sudo apt-get update -qq
 
+  # Registers clang and, as slaves-by-name, clang-tidy/clang-format/llvm-profdata/
+  # llvm-cov (each --installed when its versioned binary exists).
   _register_alternative clang "${CLANG_WANTED}" 100 clang-tidy clang-format llvm-profdata llvm-cov
-  [ -x "/usr/bin/clang-tidy-${CLANG_WANTED}" ] && sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-"${CLANG_WANTED}" 100
-  [ -x "/usr/bin/clang-format-${CLANG_WANTED}" ] && sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-"${CLANG_WANTED}" 100
-  [ -x "/usr/bin/llvm-profdata-${CLANG_WANTED}" ] && sudo update-alternatives --install /usr/bin/llvm-profdata llvm-profdata /usr/bin/llvm-profdata-"${CLANG_WANTED}" 100
-  [ -x "/usr/bin/llvm-cov-${CLANG_WANTED}" ] && sudo update-alternatives --install /usr/bin/llvm-cov llvm-cov /usr/bin/llvm-cov-"${CLANG_WANTED}" 100
 
   clang --version
   clang++ --version

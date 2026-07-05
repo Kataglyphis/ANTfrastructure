@@ -7,7 +7,6 @@ verify_gcc_installation() {
   local PREFIX="$1"
   local GCC_VERSION="$2"
   local SUDO="${3:-}"
-  local TARGET_TRIPLET="${4:-}"
   local failed=0
 
   echo

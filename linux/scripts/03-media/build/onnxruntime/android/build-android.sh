@@ -18,34 +18,13 @@ INSTALL_DIR="${ONNXRUNTIME_ROOT_ANDROID:-/opt/android/onnxruntime}"
 apt-get update && apt-get install -y --no-install-recommends \
     git cmake ninja-build python3 python3-pip openjdk-21-jdk curl
 
-PARALLEL_JOBS="$(nproc)"
-if [ -f /opt/scripts/core/parallelism.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/parallelism.sh 2>/dev/null || true
-  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    PARALLEL_JOBS="$(compute_jobs_with_mem_cap "" 2000)"
-  fi
-fi
+PARALLEL_JOBS="$(media_jobs)"
 
-cd /opt
-rm -rf onnxruntime-android
-git clone --depth 1 -b ${ORT_VERSION} https://github.com/microsoft/onnxruntime.git onnxruntime-android
-cd onnxruntime-android
+android_clone_shallow "https://github.com/microsoft/onnxruntime.git" "${ORT_VERSION}" onnxruntime-android
 
 # Patch Android Gradle Plugin 7.4.2 -> 8.3.1 (JDK 21) and re-enable buildConfig
-# Container layout first (apply-patch.sh + patches/ are COPY'd into the
-# android stages; the 4-up repo-relative path resolves to /opt in-container
-# and broke with "bash: /opt/01-core/apply-patch.sh: No such file").
-if [ -f /opt/scripts/core/apply-patch.sh ]; then
-    _apply_patch=/opt/scripts/core/apply-patch.sh
-    _patches_root=/opt/scripts/patches
-else
-    _scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-    _apply_patch="${_scripts_dir}/01-core/apply-patch.sh"
-    _patches_root="${_scripts_dir}/patches"
-fi
-bash "${_apply_patch}" \
-  "${_patches_root}/onnxruntime/001-android-gradle-agp8-compat.patch" \
+android_apply_patch \
+  "onnxruntime/001-android-gradle-agp8-compat.patch" \
   "$(pwd)" \
   "ONNX Runtime Android Gradle AGP 8 compat"
 

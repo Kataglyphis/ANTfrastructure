@@ -38,14 +38,13 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+# shellcheck source=linux/scripts/lib-orchestrator.sh
+source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
+orchestrator_preamble
 
-IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-init_mirror_defaults
 LOG_DIR="${LOG_DIR:-}"
 
 FROM_STAGE="base"
@@ -179,31 +178,30 @@ _cross_per_arch_build() {
 
 # ── main driver ───────────────────────────────────────────────────────────────
 
-_chain_parse_args() {
-  local only_stage=""
-  while [ $# -gt 0 ]; do
-    consume_shared_arg usage \
-      parse_shared_orchestrator_args \
-      TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _chain_push_enabled \
-      "$1" "${2:-}" || break
-    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
-    case "$1" in
-      --cross-targets) CROSS_TARGETS="$2"; shift 2 ;;
-      --final-image) FINAL_IMAGE="$2"; shift 2 ;;
-      --from-stage) FROM_STAGE="$2"; shift 2 ;;
-      --to-stage) TO_STAGE="$2"; shift 2 ;;
-      --only) only_stage="$2"; shift 2 ;;
-      --log-dir) LOG_DIR="$2"; shift 2 ;;
-      --verify-chain) VERIFY_CHAIN_ONLY=1; shift ;;
-      --describe-chain) DESCRIBE_CHAIN=1; shift ;;
-      *) warn "Unknown option: $1"; usage >&2; exit 1 ;;
-    esac
-  done
+_chain_extra_arg() {
+  case "$1" in
+    --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
+    --final-image) FINAL_IMAGE="$2"; _OARG_SHIFT=2 ;;
+    --from-stage) FROM_STAGE="$2"; _OARG_SHIFT=2 ;;
+    --to-stage) TO_STAGE="$2"; _OARG_SHIFT=2 ;;
+    --only) ONLY_STAGE="$2"; _OARG_SHIFT=2 ;;
+    --log-dir) LOG_DIR="$2"; _OARG_SHIFT=2 ;;
+    --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
+    --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
+    *) return 1 ;;
+  esac
+}
 
-  if [ -n "${only_stage}" ]; then
-    FROM_STAGE="${only_stage}"
-    TO_STAGE="${only_stage}"
+_chain_parse_args() {
+  ONLY_STAGE=""
+  run_orchestrator_arg_loop usage _chain_extra_arg \
+    TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
+    FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _chain_push_enabled \
+    "$@"
+
+  if [ -n "${ONLY_STAGE}" ]; then
+    FROM_STAGE="${ONLY_STAGE}"
+    TO_STAGE="${ONLY_STAGE}"
   fi
 }
 

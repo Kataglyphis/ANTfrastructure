@@ -35,10 +35,7 @@ INSTALL_DIR="${LITERT_ROOT_ANDROID:-/opt/android/litert}"
 apt-get update && apt-get install -y --no-install-recommends \
     g++ git cmake ninja-build python3 python3-pip
 
-cd /opt
-rm -rf litert-android
-git clone --depth 1 -b ${LITERT_VERSION} https://github.com/google-ai-edge/LiteRT.git litert-android
-cd litert-android
+android_clone_shallow "https://github.com/google-ai-edge/LiteRT.git" "${LITERT_VERSION}" litert-android
 
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 
@@ -65,14 +62,7 @@ cmake -GNinja \
   -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
   ..
 
-PARALLEL_JOBS="$(nproc)"
-if [ -f /opt/scripts/core/parallelism.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/parallelism.sh 2>/dev/null || true
-  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    PARALLEL_JOBS="$(compute_jobs_with_mem_cap "" 2000)"
-  fi
-fi
+PARALLEL_JOBS="$(media_jobs)"
 ninja -j"${PARALLEL_JOBS}" install || cmake --build . --target install -j1
 
 cd /opt

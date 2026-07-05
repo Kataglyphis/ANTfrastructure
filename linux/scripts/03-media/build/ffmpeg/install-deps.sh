@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Load the shared apt/cross helpers via install-deps-preamble.sh (which
-# locates and sources cross-env.sh itself in both the container and repo
-# layouts), trying the in-container path first and falling back to the repo
-# layout for local dev. Fail loudly if one is found but cannot load.
-for _dep_env in \
-    "/opt/scripts/core/install-deps-preamble.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../01-core/install-deps-preamble.sh"; do
-    if [ -f "${_dep_env}" ]; then
-        # shellcheck disable=SC1090
-        source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
-        break
-    fi
-done
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../core/common.sh"
+media_install_deps_init "${SCRIPT_DIR}"
 
 echo "Installing FFmpeg build dependencies..."
 
@@ -114,7 +105,7 @@ done
 
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     echo "Installing nv-codec-headers for FFmpeg NVIDIA acceleration..."
-    local nv_codec_ref="${NV_CODEC_HEADERS_REF:-n12.2.1}"
+    nv_codec_ref="${NV_CODEC_HEADERS_REF:-n12.2.1}"
     git clone --branch "${nv_codec_ref}" --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers
     cd /tmp/nv-codec-headers
     make install

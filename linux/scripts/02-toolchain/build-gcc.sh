@@ -547,37 +547,22 @@ if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
     exit 1
   fi
 
-  _install_alt() {
-    local name="$1" link="$2" bin="$3" priority="${4:-${ALTS_PRIORITY}}"
-    echo "Registering ${name}..."
-    ${SUDO} update-alternatives --install "${link}" "${name}" "${bin}" "${priority}"
-  }
-  _set_alt() {
-    local name="$1" bin="$2"
-    ${SUDO} update-alternatives --set "${name}" "${bin}" || true
-  }
-
-  _install_alt gcc /usr/bin/gcc "${GCC_BIN}"
-  if [ -x "${GXX_BIN}" ]; then _install_alt g++ /usr/bin/g++ "${GXX_BIN}"; fi
+  # alt_install_and_set (01-core/common.sh) registers each link and immediately
+  # --sets it (the --set is tolerant, matching the previous _set_alt || true).
+  # ALTS_PRIORITY=150 is passed explicitly to preserve the historical priority.
+  alt_install_and_set gcc /usr/bin/gcc "${GCC_BIN}" "${ALTS_PRIORITY}"
+  if [ -x "${GXX_BIN}" ]; then alt_install_and_set g++ /usr/bin/g++ "${GXX_BIN}" "${ALTS_PRIORITY}"; fi
 
   if [ -x "${CPP_BIN}" ]; then
     CPP_LINK="/usr/bin/cpp"
     if [ -e "/lib/cpp" ]; then CPP_LINK="/lib/cpp"; fi
-    _install_alt cpp "${CPP_LINK}" "${CPP_BIN}"
+    alt_install_and_set cpp "${CPP_LINK}" "${CPP_BIN}" "${ALTS_PRIORITY}"
   fi
 
-  if [ -x "${GCOV_BIN}" ]; then _install_alt gcov /usr/bin/gcov "${GCOV_BIN}"; fi
-  if [ -x "${GFORTRAN_BIN}" ]; then _install_alt gfortran /usr/bin/gfortran "${GFORTRAN_BIN}"; fi
+  if [ -x "${GCOV_BIN}" ]; then alt_install_and_set gcov /usr/bin/gcov "${GCOV_BIN}" "${ALTS_PRIORITY}"; fi
+  if [ -x "${GFORTRAN_BIN}" ]; then alt_install_and_set gfortran /usr/bin/gfortran "${GFORTRAN_BIN}" "${ALTS_PRIORITY}"; fi
 
-  _install_alt cc /usr/bin/cc "${GCC_BIN}"
-
-  echo "Setting alternatives (gcc + cc + optional tools)..."
-  _set_alt gcc "${GCC_BIN}"
-  _set_alt cc "${GCC_BIN}"
-  if [ -x "${GXX_BIN}" ]; then _set_alt g++ "${GXX_BIN}"; fi
-  if [ -x "${CPP_BIN}" ]; then _set_alt cpp "${CPP_BIN}"; fi
-  if [ -x "${GCOV_BIN}" ]; then _set_alt gcov "${GCOV_BIN}"; fi
-  if [ -x "${GFORTRAN_BIN}" ]; then _set_alt gfortran "${GFORTRAN_BIN}"; fi
+  alt_install_and_set cc /usr/bin/cc "${GCC_BIN}" "${ALTS_PRIORITY}"
 
   echo "update-alternatives registration complete."
 fi

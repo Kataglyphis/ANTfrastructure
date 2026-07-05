@@ -61,18 +61,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh; \
-    ARCH="$(dpkg --print-architecture)"; \
-    case "${ARCH}" in \
-      amd64)   CUDA_ARCH="x86_64" ;; \
-      arm64)   CUDA_ARCH="sbsa" ;; \
-      *)       echo "WARNING: CUDA packages may not be available for arch ${ARCH}" >&2; CUDA_ARCH="${ARCH}" ;; \
-    esac; \
-    KEYRING_PKG="cuda-keyring_1.1-1_all.deb"; \
-    KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_CODENAME}/${CUDA_ARCH}/${KEYRING_PKG}"; \
-    curl -fSsL "${KEYRING_URL}" -o "/tmp/${KEYRING_PKG}"; \
-    dpkg -i "/tmp/${KEYRING_PKG}"; \
-    rm "/tmp/${KEYRING_PKG}"; \
-    apt-get update -qq
+    bash /tmp/core-scripts/setup-cuda-repo.sh
 
 # ==============================================================================
 # 1. NVIDIA Components (CUDA Toolkit, cuDNN, NCCL, Math Libraries)
@@ -128,45 +117,11 @@ RUN set -euo pipefail; \
     _trt_deb="$(find /tmp/tensorrt-staging -maxdepth 1 -name 'tensorrt-local-repo*.deb' | head -1)"; \
     if [ -n "${_trt_deb}" ]; then mv "${_trt_deb}" /tmp/tensorrt-local-repo.deb; fi; \
     rm -rf /tmp/tensorrt-staging
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    _trt_ok=0; \
-    if [ -f /tmp/tensorrt-local-repo.deb ]; then \
-        echo "TensorRT: installing local repo deb..."; \
-        dpkg -i /tmp/tensorrt-local-repo.deb 2>/dev/null || true; \
-        _trt_key="$(find /var -name 'nv-tensorrt-local-*-keyring.gpg' 2>/dev/null | head -1)"; \
-        if [ -n "${_trt_key}" ]; then \
-            cp "${_trt_key}" /usr/share/keyrings/ 2>/dev/null || true; \
-        fi; \
-        apt-get update -qq 2>/dev/null || true; \
-        if apt-get install -y --no-install-recommends tensorrt tensorrt-dev tensorrt-libs 2>/dev/null; then \
-            echo "TensorRT: installed from local repo"; \
-            _trt_ok=1; \
-        else \
-            echo "TensorRT: local repo install failed; trying NVIDIA repo..."; \
-        fi; \
-    fi; \
-    if [ "${_trt_ok}" -eq 0 ]; then \
-        if apt-get install -y --no-install-recommends "tensorrt-dev=${TENSORRT_VERSION}*" "tensorrt-libs=${TENSORRT_VERSION}*" 2>/dev/null; then \
-            echo "TensorRT: installed ${TENSORRT_VERSION} from NVIDIA apt repo"; \
-            _trt_ok=1; \
-        elif apt-get install -y --no-install-recommends tensorrt-dev tensorrt-libs 2>/dev/null; then \
-            echo "TensorRT: installed from NVIDIA apt repo (unpinned; ${TENSORRT_VERSION} not available)"; \
-            _trt_ok=1; \
-        else \
-            echo "TensorRT: not available in any repo; skipping"; \
-        fi; \
-    fi; \
-    if [ ! -f /usr/local/tensorrt/include/NvInfer.h ]; then \
-        TRT_INC=$(find /usr/include /usr/local -name "NvInfer.h" -print -quit 2>/dev/null || true); \
-        if [ -n "$TRT_INC" ]; then \
-            mkdir -p /usr/local/tensorrt; \
-            ln -snf "$(dirname "$TRT_INC")" /usr/local/tensorrt/include; \
-            ARCH="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || echo amd64)"; \
-            ln -snf "/usr/lib/${ARCH}" /usr/local/tensorrt/lib 2>/dev/null || true; \
-        fi; \
-    fi
+    bash /tmp/core-scripts/install-tensorrt.sh
 
 # Repo hygiene, mirroring Dockerfile.amd (which rm's rocm.list after its last
 # ROCm apt install).  This is the LAST apt install against NVIDIA repos in this

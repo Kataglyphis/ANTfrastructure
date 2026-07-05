@@ -52,11 +52,7 @@ case "${1:-}" in
     ;;
 esac
 
-if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-  NPROC="$(compute_jobs_with_mem_cap "" 2000)"
-else
-  NPROC="$(nproc)"
-fi
+NPROC="$(media_jobs)"
 
 # Defaults (can be overridden via env vars)
 : "${FFMPEG_SRC:=${TMPDIR:-/tmp}/ffmpeg-$$}"

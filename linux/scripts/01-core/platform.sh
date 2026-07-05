@@ -4,6 +4,19 @@
 [ -n "${_PLATFORM_SH_LOADED:-}" ] && return 0
 _PLATFORM_SH_LOADED=1
 
+# Canonical boolean-truthiness predicate. Returns 0 for 1/true/yes/on (any
+# case), 1 otherwise. This is the single source of truth; build-helpers.sh's
+# _bool_truthy() and ubuntu-mirror.sh's ubuntu_mirror_is_truthy() are thin
+# aliases that delegate here. platform.sh is a true leaf sourced before both
+# in every load chain (common.sh: logging→platform→…→ubuntu-mirror;
+# cross-env.sh: platform→ubuntu-mirror), so the alias is always resolvable.
+is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 arch_normalize() {
   case "$1" in
     amd64|x86_64) printf '%s' "amd64" ;;

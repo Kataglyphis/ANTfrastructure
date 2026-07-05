@@ -32,21 +32,20 @@ cross_target_is_foreign() {
   [ "$(build_arch_oci)" != "$(arch_oci)" ]
 }
 
-cross_build_enabled() {
+# NAMING: cross_build_is_active() is the CANONICAL public name for the
+# cross-build guard — use it in new code. is_cross() and cross_build_enabled()
+# are kept as compatibility aliases for the 60+ existing callers; do not add
+# new callers of those names. All three share this single implementation body.
+
+# All-purpose cross-build guard used by 60+ media/toolchain/framework scripts.
+cross_build_is_active() {
   cross_mode_requested || return 1
   cross_target_is_foreign
 }
 
-# NAMING: cross_build_is_active() is the CANONICAL public name for the
-# cross-build guard — use it in new code. is_cross() and cross_build_enabled()
-# are kept as compatibility aliases for the 60+ existing callers; do not add
-# new callers of those names.
-
-# Compatibility alias used by media build scripts.
-is_cross() { cross_build_enabled; }
-
-# All-purpose cross-build guard used by 60+ media/toolchain/framework scripts.
-cross_build_is_active() { cross_build_enabled; }
+# Compatibility aliases — delegate to the canonical implementation above.
+is_cross() { cross_build_is_active; }
+cross_build_enabled() { cross_build_is_active; }
 
 cross_target_arch() {
   arch_oci
@@ -106,6 +105,76 @@ prepare_cross_target_env() {
 
 cross_effective_targets_raw() {
   cross_targets_effective_raw "$@"
+}
+
+# ── cross-target iteration ────────────────────────────────────────────────────
+# Centralizes the "for each supported cross target" loop whose amd64|arm64|riscv64
+# set is otherwise hardcoded in ~6 places.
+#
+# Contract:
+#   for_each_cross_target <callback> [--include-amd64] [target_list]
+#
+#   * <callback>       required; invoked once per normalized target as
+#                      `<callback> <target>`.
+#   * --include-amd64  include amd64 in the iteration (default: amd64 is skipped,
+#                      since it is normally the native build arch).
+#   * [target_list]    CSV/space list to iterate; defaults to
+#                      cross_targets_effective_raw (VERIFY_CROSS_TARGETS /
+#                      CROSS_TARGETS / ARCH / TARGETARCH / TARGET_ARCH).
+#
+# The list is normalized via arch_list_csv_normalize, then each target is
+# validated against the supported cross set (amd64|arm64|riscv64); anything else
+# (e.g. 386) is logged and skipped. Returns 2 if no callback was given, 1 if the
+# list normalizes to nothing valid, otherwise the callback's aggregated non-zero
+# exit status (0 when every invocation succeeded).
+for_each_cross_target() {
+  local callback=""
+  local target_list=""
+  local include_amd64=0
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --include-amd64) include_amd64=1 ;;
+      *)
+        if [ -z "${callback}" ]; then
+          callback="${arg}"
+        else
+          target_list="${arg}"
+        fi
+        ;;
+    esac
+  done
+
+  [ -n "${callback}" ] || {
+    printf 'for_each_cross_target: a callback is required\n' >&2
+    return 2
+  }
+
+  [ -n "${target_list}" ] || target_list="$(cross_targets_effective_raw 2>/dev/null || true)"
+  [ -n "${target_list}" ] || return 0
+
+  local normalized
+  normalized="$(arch_list_csv_normalize "${target_list}")" || {
+    printf 'for_each_cross_target: no supported target in "%s"\n' "${target_list}" >&2
+    return 1
+  }
+
+  local target rc=0
+  for target in ${normalized//,/ }; do
+    case "${target}" in
+      amd64)
+        [ "${include_amd64}" -eq 1 ] || continue
+        "${callback}" "${target}" || rc=$?
+        ;;
+      arm64|riscv64)
+        "${callback}" "${target}" || rc=$?
+        ;;
+      *)
+        printf 'for_each_cross_target: skipping unsupported target %s\n' "${target}" >&2
+        ;;
+    esac
+  done
+  return "${rc}"
 }
 
 cross_bin_dir() {
@@ -295,7 +364,7 @@ _cross_env_resolve_identifiers() {
   _eri_out[rust_env]="$(cross_target_upper_rust)"
   _eri_out[rust_env_lower]="$(cross_target_lower_rust)"
   _eri_out[build_rust_lower]="$(cross_build_lower_rust 2>/dev/null || true)"
-  _eri_out[gcc_prefix]="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  _eri_out[gcc_prefix]="$(gcc_toolchain_prefix)"
   _eri_out[gcc_major]="${GCC_WANTED:-${GCC_VERSION:-16}}"
   _eri_out[gcc_major]="$(version_major "${_eri_out[gcc_major]}")"
   _eri_out[runtime_libdir]="${_eri_out[gcc_prefix]}/lib/gcc/${_eri_out[triplet]}/${_eri_out[gcc_major]}"

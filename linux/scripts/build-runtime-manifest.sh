@@ -3,15 +3,12 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
-# shellcheck disable=SC1091
-source "${_ARTIFACT_COMMON_DIR}/runtime-flow-common.sh"
-init_runtime_flow_defaults
+# shellcheck source=linux/scripts/lib-orchestrator.sh
+source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
+runtime_flow_preamble
 
 # Script-specific defaults (override shared where needed)
 IMAGE_NAME="${IMAGE_NAME:-}"
-TARGET_ARCHES="$(resolve_arch_list)"
 PUSH_MANIFEST=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
@@ -83,54 +80,21 @@ create_manifest() {
   fi
 }
 
+_manifest_extra_arg() {
+  case "$1" in
+    --image) IMAGE_NAME="$2"; _OARG_SHIFT=2 ;;
+    --push-images) PUSH_IMAGES=1; _OARG_SHIFT=1 ;;
+    --push-manifest) PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
+    --skip-manifest) CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
+    --manifest-only|--repair) BUILD_IMAGES=0; _OARG_SHIFT=1 ;;
+    --push) PUSH_IMAGES=1; PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
+    --push-all) PUSH_IMAGES=1; PUSH_MANIFEST=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
+    *) return 1 ;;
+  esac
+}
+
 main() {
-  while [ $# -gt 0 ]; do
-    consume_shared_arg usage \
-      parse_shared_runtime_args \
-      TARGET_ARCHES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
-      BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
-      TORCH_APP_MODE \
-      USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
-      PUSH_INTERMEDIATE_IMAGES \
-      "$1" "${2:-}" || break
-    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
-    case "$1" in
-      --image)
-        IMAGE_NAME="$2"
-        shift 2
-        ;;
-      --push-images)
-        PUSH_IMAGES=1
-        shift
-        ;;
-      --push-manifest)
-        PUSH_MANIFEST=1
-        shift
-        ;;
-      --skip-manifest)
-        CREATE_MANIFEST=0
-        shift
-        ;;
-      --manifest-only|--repair)
-        BUILD_IMAGES=0
-        shift
-        ;;
-      --push)
-        PUSH_IMAGES=1
-        PUSH_MANIFEST=1
-        shift
-        ;;
-      --push-all)
-        PUSH_IMAGES=1
-        PUSH_MANIFEST=1
-        PUSH_INTERMEDIATE_IMAGES=1
-        shift
-        ;;
-      *)
-        warn "Unknown option: $1"; usage >&2; exit 1
-        ;;
-    esac
-  done
+  run_runtime_arg_loop usage _manifest_extra_arg "$@"
 
   if [ -z "${IMAGE_NAME}" ]; then
     err "--image is required"

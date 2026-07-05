@@ -317,20 +317,74 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
   log "Installed native GCC ${full_version} for ${normalized_target} at ${native_prefix}"
 }
 
+# Normalize a GCC version to the strict X.Y.Z form, falling back to <default>
+# when the input does not already match. Shared by install_gcc's cross and
+# from-source paths (previously duplicated inline).
+gcc_resolve_full_version() {
+  local full="$1" default="$2"
+  if [[ ! "${full}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    full="${default}"
+  fi
+  printf '%s' "${full}"
+}
+
+# Locate build-gcc.sh next to this script, make it executable, and echo its
+# path (dies if missing). Centralizes the locate+chmod+die block previously
+# duplicated in build_source_cross_gcc_targets and install_gcc.
+gcc_locate_builder() {
+  local script_dir builder
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  builder="${script_dir}/build-gcc.sh"
+  [ -f "${builder}" ] || die "GCC build script not found: ${builder}"
+  chmod +x "${builder}" || true
+  printf '%s' "${builder}"
+}
+
+# Per-target callback for for_each_cross_target. Builds/links the cross GCC
+# toolchain for one already-normalized target. full_version, prefix and
+# requested_major are read from the enclosing build_source_cross_gcc_targets
+# scope via bash dynamic scoping.
+_gcc_build_cross_target() {
+  local normalized_target="$1"
+  local triplet tool actual_tool actual_version
+
+  install_cross_gcc_sysroot_packages "${normalized_target}"
+  triplet="$(arch_deb_multiarch_triplet_for "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
+
+  if [ "${normalized_target}" = "amd64" ]; then
+    link_amd64_host_as_cross "${prefix}" "${triplet}"
+  else
+    stage_cross_gcc_sysroot_libs "${prefix}" "${triplet}"
+    build_cross_gcc_for "${full_version}" "${prefix}" "${triplet}"
+    build_canadian_native_gcc_for "${full_version}" "${prefix}" "${triplet}" "${normalized_target}"
+  fi
+
+  for tool in gcc g++ ar; do
+    [ -x "${prefix}/bin/${triplet}-${tool}" ] || die "Expected cross compiler not found: ${prefix}/bin/${triplet}-${tool}"
+  done
+  log "Installed cross compiler commands for ${normalized_target}: ${triplet}-gcc ${triplet}-g++ ${triplet}-ar"
+
+  actual_tool="${prefix}/bin/${triplet}-g++"
+  actual_version="$(gcc_reported_version "${actual_tool}" || true)"
+  if [ -n "${actual_version}" ]; then
+    if [ -n "${requested_major}" ] && [ "$(version_major "${actual_version}")" != "${requested_major}" ]; then
+      warn "Cross mode requested GCC ${full_version}, but ${triplet}-g++ resolves to ${actual_tool} (GCC ${actual_version})."
+    else
+      log "Cross compiler version for ${normalized_target}: ${actual_tool} (${actual_version})"
+    fi
+  fi
+}
+
 build_source_cross_gcc_targets() {
   local full_version="$1"
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
   local gcc_major requested_major prefix compat_prefix
-  local target normalized_target triplet tool actual_tool actual_version
 
   gcc_major="$(version_major "${full_version}")"
   requested_major="${gcc_major}"
   prefix="/opt/gcc-${full_version}"
 
-  GCC_CROSS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  GCC_CROSS_BUILDER="${GCC_CROSS_SCRIPT_DIR}/build-gcc.sh"
-  [ -f "${GCC_CROSS_BUILDER}" ] || die "GCC build script not found: ${GCC_CROSS_BUILDER}"
-  chmod +x "${GCC_CROSS_BUILDER}" || true
+  GCC_CROSS_BUILDER="$(gcc_locate_builder)"
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported GCC cross target list: ${targets_raw}"
 
   # Share one downloaded GCC tarball across the host build and every
@@ -342,38 +396,8 @@ build_source_cross_gcc_targets() {
   build_host_gcc "${full_version}" "${prefix}"
 
   log "Building cross GCC toolchains from source for ${targets_raw}"
-  for target in ${targets_raw//,/ }; do
-    normalized_target="$(arch_normalize "$target")"
-    case "${normalized_target}" in
-      amd64|arm64|riscv64) ;;
-      *) die "Unsupported cross target: ${target}" ;;
-    esac
-    install_cross_gcc_sysroot_packages "${normalized_target}"
-    triplet="$(arch_deb_multiarch_triplet_for "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
-
-    if [ "${normalized_target}" = "amd64" ]; then
-      link_amd64_host_as_cross "${prefix}" "${triplet}"
-    else
-      stage_cross_gcc_sysroot_libs "${prefix}" "${triplet}"
-      build_cross_gcc_for "${full_version}" "${prefix}" "${triplet}"
-      build_canadian_native_gcc_for "${full_version}" "${prefix}" "${triplet}" "${normalized_target}"
-    fi
-
-    for tool in gcc g++ ar; do
-      [ -x "${prefix}/bin/${triplet}-${tool}" ] || die "Expected cross compiler not found: ${prefix}/bin/${triplet}-${tool}"
-    done
-    log "Installed cross compiler commands for ${normalized_target}: ${triplet}-gcc ${triplet}-g++ ${triplet}-ar"
-
-    actual_tool="${prefix}/bin/${triplet}-g++"
-    actual_version="$(gcc_reported_version "${actual_tool}" || true)"
-    if [ -n "${actual_version}" ]; then
-      if [ -n "${requested_major}" ] && [ "$(version_major "${actual_version}")" != "${requested_major}" ]; then
-        warn "Cross mode requested GCC ${full_version}, but ${triplet}-g++ resolves to ${actual_tool} (GCC ${actual_version})."
-      else
-        log "Cross compiler version for ${normalized_target}: ${actual_tool} (${actual_version})"
-      fi
-    fi
-  done
+  # amd64 is included: on an amd64 host it is linked from the native host GCC.
+  for_each_cross_target _gcc_build_cross_target --include-amd64 "${targets_raw}"
 
   compat_prefix="/opt/gcc-${full_version}"
   if [ ! -d "${compat_prefix}/bin" ]; then
@@ -396,30 +420,21 @@ install_gcc() {
   # In cross mode, keep the host compiler native and install target-specific
   # GNU toolchains under their triplet names (for example aarch64-linux-gnu-gcc).
   if cross_mode_requested; then
-    if [[ ! "${full_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      full_version="${default_full_version}"
-    fi
+    full_version="$(gcc_resolve_full_version "${full_version}" "${default_full_version}")"
 
     build_source_cross_gcc_targets "${full_version}"
     gcc --version || true
     return 0
   fi
-  
+
   # For GCC >= 15, build from source (no apt packages available)
   if [ -n "${gcc_major}" ] && [ "${gcc_major}" -ge 15 ] 2>/dev/null; then
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local builder="${script_dir}/build-gcc.sh"
-    if [ ! -f "${builder}" ]; then
-      die "GCC build script not found: ${builder}"
-    fi
-    chmod +x "${builder}" || true
-    
+    local builder
+    builder="$(gcc_locate_builder)"
+
     # Determine full version (e.g., 16.1.0 from GCC_WANTED=16)
-    if [[ ! "${full_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      full_version="${default_full_version}"
-    fi
-    
+    full_version="$(gcc_resolve_full_version "${full_version}" "${default_full_version}")"
+
     log "Building GCC ${full_version} from source..."
     PREFIX="${PREFIX:-/opt/gcc-${full_version}}" \
       BUILD_DIR="${BUILD_DIR:-${HOME}/tmp2/gcc-build-${full_version}}" \

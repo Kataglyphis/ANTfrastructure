@@ -12,6 +12,7 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${_SCRIPT_DIR}/bootstrap.sh"
 source_toolchain_common_or_fallback "${_SCRIPT_DIR}"
+source_toolchain_build_helpers_or_fallback "${_SCRIPT_DIR}"
 install_err_trap
 
 usage() {
@@ -56,6 +57,7 @@ LLVM_TARGETS=""
 
 if [ "$ARCH" = "riscv64" ]; then
     BOOTSTRAP="OFF"
+    info "RISC-V detected: Defaulting to NO-BOOTSTRAP to save time."
 else
     BOOTSTRAP="ON"
 fi
@@ -111,10 +113,6 @@ done
 # --- Validate and compute values ---
 if [ -z "${LLVM_VERSION:-}" ]; then
     die "Missing required option: --version (e.g., --version 22)"
-fi
-
-if [ "$ARCH" = "riscv64" ]; then
-    info "RISC-V detected: Defaulting to NO-BOOTSTRAP to save time."
 fi
 
 if [ -z "${LLVM_TARGETS:-}" ]; then
@@ -285,14 +283,12 @@ ${SUDO} cmake --build . --target install
 
 echo "==> Setting system defaults..."
 BIN_DIR="${INSTALL_DIR}/bin"
-${SUDO} update-alternatives --install /usr/bin/clang clang "${BIN_DIR}/clang" 200 \
+alt_install_and_set clang /usr/bin/clang "${BIN_DIR}/clang" 200 \
     --slave /usr/bin/clang++ clang++ "${BIN_DIR}/clang++" \
     --slave /usr/bin/clang-format clang-format "${BIN_DIR}/clang-format" \
     --slave /usr/bin/clang-tidy clang-tidy "${BIN_DIR}/clang-tidy" \
     --slave /usr/bin/clangd clangd "${BIN_DIR}/clangd" \
-    --slave /usr/bin/ld.lld ld.lld "${BIN_DIR}/ld.lld" || true
-
-${SUDO} update-alternatives --set clang "${BIN_DIR}/clang" || true
+    --slave /usr/bin/ld.lld ld.lld "${BIN_DIR}/ld.lld"
 
 # Keep the rest of the LLVM toolchain visible on PATH when apt.llvm.org is not
 # available and this script becomes the primary installation path.
@@ -305,10 +301,7 @@ fi
 
 if [[ "${DO_STRIP}" == "1" ]]; then
     info "Stripping binaries..."
-  strip_jobs="${NUM_JOBS:-$(nproc)}"
-  ${SUDO} find "${INSTALL_DIR}" -type f -exec file {} + 2>/dev/null \
-    | awk -F': *' '/ELF/{print $1}' \
-    | xargs -r -P"${strip_jobs}" strip --strip-all 2>/dev/null || true
+    strip_elf_tree "${INSTALL_DIR}" "${NUM_JOBS:-$(nproc)}"
 fi
 
 [[ "${KEEP_SRC}" != "1" ]] && rm -rf "${SRC_DIR}"

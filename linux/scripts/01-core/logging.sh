@@ -124,20 +124,34 @@ install_err_trap()  { _install_trap err; }
 install_warn_trap() { _install_trap warn; }
 
 # ── Sudo guard ────────────────────────────────────────────────────────────────
+# Canonical sudo-guard core. Populates BOTH SUDO_WRAP and SUDO to "sudo" (when
+# not root and sudo is available) or "" (when root), so callers of either
+# ensure_sudo_or_die (reads SUDO_WRAP) or require_sudo (reads SUDO) get a valid
+# wrapper. Dies with the provided message when non-root and sudo is missing.
+#
+# Usage: _ensure_sudo_wrapper [die-message]
+# shellcheck disable=SC2034  # SUDO_WRAP and SUDO are consumed by external callers
+_ensure_sudo_wrapper() {
+  local die_msg="${1:-This command requires sudo or root. Install sudo or run as root.}"
+  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then
+      SUDO_WRAP="sudo"
+      SUDO="sudo"
+    else
+      die "${die_msg}"
+    fi
+  else
+    SUDO_WRAP=""
+    SUDO=""
+  fi
+}
+
 # Ensure we can run privileged commands.  Sets SUDO_WRAP="sudo" or SUDO_WRAP=""
 # depending on EUID.  Exits if no sudo is available and we are not root.
 #
 # Usage: ensure_sudo_or_die
 ensure_sudo_or_die() {
-  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-    if command -v sudo >/dev/null 2>&1; then
-      SUDO_WRAP="sudo"
-    else
-      die "This command requires sudo or root. Install sudo or run as root."
-    fi
-  else
-    SUDO_WRAP=""
-  fi
+  _ensure_sudo_wrapper "This command requires sudo or root. Install sudo or run as root."
 }
 
 retry() {

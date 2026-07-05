@@ -84,7 +84,15 @@ tool_version() {
   fi
 }
 
+# Delegates to the canonical sudo-guard core in logging.sh (sourced above),
+# which sets BOTH SUDO and SUDO_WRAP. Preserves this script's original die
+# message. A defensive inline fallback covers the (unexpected) case where
+# logging.sh was not sourced.
 require_sudo() {
+  if command -v _ensure_sudo_wrapper >/dev/null 2>&1; then
+    _ensure_sudo_wrapper "This script requires sudo or root."
+    return
+  fi
   if [ "${EUID:-$(id -u)}" -ne 0 ]; then
     command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
     SUDO="sudo"
@@ -261,15 +269,77 @@ ensure_ccache_env() {
 # ── update-alternatives install + select ──────────────────────────────────────
 # Register an alternative and immediately select it. Honors ${SUDO}. The --set
 # is tolerant: a --set of the path just --installed effectively never fails, and
-# a spurious failure must not abort a build running under `set -e`. For the
-# multi-binary --slave case (clang) or candidate-search case, call
-# update-alternatives directly.
+# a spurious failure must not abort a build running under `set -e`.
 #
-# Usage: alt_install_and_set <name> <link> <path> [priority]
+# Usage: alt_install_and_set <name> <link> <path> [priority] \
+#            [--candidate <path>]...            # extra paths to search for the binary
+#            [--slave <link> <name> <path>]...  # slave alternatives (multi-binary groups)
+#
+# Backward compatible with the historical `<name> <link> <path> [priority]`
+# form. Extensions (so the 02-toolchain scripts can converge onto this helper):
+#
+#   --candidate <path>  Add <path> to the search list. The FIRST executable among
+#                       {<path>, candidates...} is the one registered. When one or
+#                       more --candidate are given and NONE (including <path>) is
+#                       executable, the function is a no-op (nothing to register).
+#                       With no --candidate, <path> is registered verbatim exactly
+#                       as the original 3/4-arg form did (no executability check).
+#   --slave L N P       Pass a `--slave L N P` group through to --install, so one
+#                       call can register a multi-binary group (e.g. clang + its
+#                       clang++/clang-format/… slaves).
 alt_install_and_set() {
-  local name="$1" link="$2" path="$3" priority="${4:-100}"
-  ${SUDO} update-alternatives --install "${link}" "${name}" "${path}" "${priority}"
-  ${SUDO} update-alternatives --set "${name}" "${path}" || true
+  local name="$1" link="$2" path="$3"
+  local priority=100
+  shift 3
+  # Optional positional priority (present iff the next token is not an option).
+  if [ "$#" -gt 0 ] && [ "${1#--}" = "$1" ]; then
+    priority="$1"
+    shift
+  fi
+
+  local -a candidates=("${path}")
+  local -a slave_args=()
+  local candidate_search=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --candidate)
+        candidate_search=1
+        candidates+=("${2:-}")
+        shift 2
+        ;;
+      --slave)
+        slave_args+=(--slave "${2:-}" "${3:-}" "${4:-}")
+        shift 4
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Resolve the binary to register: first executable candidate.
+  local resolved="" c
+  for c in "${candidates[@]}"; do
+    [ -n "${c}" ] || continue
+    if [ -x "${c}" ]; then
+      resolved="${c}"
+      break
+    fi
+  done
+  if [ -z "${resolved}" ]; then
+    if [ "${candidate_search}" -eq 1 ]; then
+      # A candidate search was requested but nothing exists — nothing to do.
+      return 0
+    fi
+    # No search requested: preserve the original verbatim-register behavior.
+    resolved="${path}"
+  fi
+
+  local -a install_args=(--install "${link}" "${name}" "${resolved}" "${priority}")
+  [ "${#slave_args[@]}" -eq 0 ] || install_args+=("${slave_args[@]}")
+
+  ${SUDO} update-alternatives "${install_args[@]}"
+  ${SUDO} update-alternatives --set "${name}" "${resolved}" || true
 }
 
 # ── pkg-config file generation ────────────────────────────────────────────────

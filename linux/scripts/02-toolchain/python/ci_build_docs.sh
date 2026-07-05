@@ -11,20 +11,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../01-core/python_uv.sh" || { echo "Error: failed to source python_uv.sh" >&2; exit 1; }
+source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.sh" >&2; exit 1; }
 
 detect_workspace
 
 COVERAGE_VERSION="${1:-${COVERAGE_VERSION:-3.13}}"
 
-if [ -d /workspace ] && [ -f /workspace/pyproject.toml ]; then
-  WORKSPACE_ROOT="/workspace"
-fi
-
-if [ -f "$WORKSPACE_ROOT/flutter/bin/flutter" ]; then
-  export PATH="$WORKSPACE_ROOT/flutter/bin:$PATH"
-fi
-git config --global --add safe.directory "$WORKSPACE_ROOT" || true
+prepare_ci_workspace
 
 VENV_DIR="$WORKSPACE_ROOT/.venv-docs"
 

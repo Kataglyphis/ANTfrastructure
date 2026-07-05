@@ -8,6 +8,20 @@ _COMPILER_RESOLUTION_SH_LOADED=1
 #   resolve_host_compiler_for_lang   — resolve host C/C++ compiler for the given language
 #   prepare_host_compiler_wrapper    — create a host compiler wrapper script
 
+_COMPILER_RESOLUTION_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Defensive: ensure the platform arch helpers (arch_deb_multiarch_triplet_for)
+# and the GCC prefix helper (gcc_toolchain_prefix) are available even when this
+# file is sourced standalone (03-media/core/common.sh and litert android do
+# exactly that). Both sourced files carry their own load guards, so these are
+# no-ops when already loaded.
+# shellcheck disable=SC1090,SC1091
+[ -n "${_PLATFORM_SH_LOADED:-}" ] || \
+  { [ -f "${_COMPILER_RESOLUTION_SH_DIR}/platform.sh" ] && source "${_COMPILER_RESOLUTION_SH_DIR}/platform.sh"; }
+# shellcheck disable=SC1090,SC1091
+[ -n "${_CROSS_GCC_LOADED:-}" ] || \
+  { [ -f "${_COMPILER_RESOLUTION_SH_DIR}/cross-gcc.sh" ] && source "${_COMPILER_RESOLUTION_SH_DIR}/cross-gcc.sh"; }
+
 # Resolve a host compiler for the given language (c or cxx).
 # Returns the compiler path on stdout; falls back through resolve_build_gcc_tool,
 # multiarch triplet-prefixed compilers, system compilers, and clang.
@@ -104,18 +118,10 @@ resolve_cross_cc_cxx_for_arch() {
 
   [ -n "${arch}" ] || return 1
 
-  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-    triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 1
-  else
-    case "${arch}" in
-      amd64) triplet="x86_64-linux-gnu" ;;
-      arm64) triplet="aarch64-linux-gnu" ;;
-      riscv64) triplet="riscv64-linux-gnu" ;;
-      *) return 1 ;;
-    esac
-  fi
+  triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 1
 
-  local gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  local gcc_prefix
+  gcc_prefix="$(gcc_toolchain_prefix)"
   cc="${gcc_prefix}/bin/${triplet}-gcc"
   cxx="${gcc_prefix}/bin/${triplet}-g++"
 
@@ -136,18 +142,10 @@ fix_libstdcxx_symlink() {
   [ -n "${arch}" ] || return 0
   [ "${arch}" = "amd64" ] && return 0
 
-  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-    triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 0
-  else
-    case "${arch}" in
-      arm64) triplet="aarch64-linux-gnu" ;;
-      riscv64) triplet="riscv64-linux-gnu" ;;
-      *) return 0 ;;
-    esac
-  fi
+  triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 0
 
   sys_lib="/usr/lib/${triplet}/libstdc++.so"
-  gcc_lib="/opt/gcc-${GCC_VERSION:-16.1.0}/${triplet}/lib64/libstdc++.so"
+  gcc_lib="$(gcc_toolchain_prefix)/${triplet}/lib64/libstdc++.so"
 
   [ -L "${sys_lib}" ] || return 0
   [ -f "${gcc_lib}" ] || return 0

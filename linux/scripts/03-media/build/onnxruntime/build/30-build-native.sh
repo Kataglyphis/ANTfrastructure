@@ -49,19 +49,9 @@ info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)
 # Prepare directories
 ensure_onnx_output_tree "${NATIVE_CPU_OUTPUT_DIR}"
 
-BUILD_ARGS=(
-  --build_dir "${NATIVE_CPU_BUILD_DIR}"
-  --config "${NATIVE_CPU_CONFIG}"
-  --build_shared_lib
-  --parallel "${JOBS}"
-  --compile_no_warning_as_error
-  --skip_submodule_sync
-  --skip_tests
-  --allow_running_as_root
-  --use_xnnpack
-  --use_mimalloc
-  --use_lock_free_queue
-)
+BUILD_ARGS=()
+append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
+BUILD_ARGS+=(--use_xnnpack)
 
 BUILD_ARGS+=(
   --cmake_extra_defines
@@ -161,11 +151,7 @@ copy_onnx_headers_to_output "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIV
 info "Listing copied headers:"
 ls -la "${NATIVE_CPU_OUTPUT_DIR}/include/"*.h 2>/dev/null || warn "No .h files found in include directory"
 
-verify_onnxruntime_core_header "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_CPU_BUILD_DIR}"
-
-copy_onnx_libraries_to_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}"
-ensure_onnxruntime_symlink "${NATIVE_CPU_OUTPUT_DIR}"
-symlink_output_libraries_into_usr_local "${NATIVE_CPU_OUTPUT_DIR}"
+finalize_onnx_native_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
 
 info "Build complete. Artifacts in ${NATIVE_CPU_OUTPUT_DIR}"
 info "Wheels in ${NATIVE_CPU_OUTPUT_DIR}/wheels"

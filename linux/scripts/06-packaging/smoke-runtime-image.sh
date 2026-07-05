@@ -36,11 +36,7 @@ main() {
   fi
 
   if [ -z "${target_arch}" ]; then
-    target_arch="$(uname -m)"
-    case "${target_arch}" in
-      x86_64)  target_arch=amd64 ;;
-      aarch64) target_arch=arm64 ;;
-    esac
+    target_arch="$(smoke_host_arch)"
   fi
 
   echo "=== Runtime Image Smoke Test ==="
@@ -54,8 +50,7 @@ main() {
     echo "  Pulling ${image_tag}..."
     "${NERDCTL_BIN}" pull --platform "linux/${target_arch}" "${image_tag}" || {
       fail "Cannot pull image ${image_tag}"
-      echo "=== Results: ${FAILURES} failure(s) ==="
-      exit 1
+      smoke_summary
     }
   fi
   pass "Image ${image_tag} available"

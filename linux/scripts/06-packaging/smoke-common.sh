@@ -36,6 +36,87 @@ smoke_summary() {
   [ "${FAILURES}" -eq 0 ] || exit 1
 }
 
+# ── arch-map helpers ────────────────────────────────────────────────────────
+# Always-available thin wrappers over the canonical 01-core/platform.sh arch
+# functions.  Each prefers the platform.sh function when it has been sourced,
+# and otherwise applies the inline case ONCE.  These replace the ~10 copies of
+# `command -v arch_* || case "${arch}" in …` scattered across the smoke scripts.
+# All cover the three supported target arches (amd64/arm64/riscv64).
+
+# uname -m style machine name for a target arch (amd64 -> x86_64, …).
+smoke_uname_name() {
+  if command -v arch_uname_name_for >/dev/null 2>&1; then
+    arch_uname_name_for "$1"
+  else
+    case "$1" in
+      amd64)   printf '%s' 'x86_64' ;;
+      arm64)   printf '%s' 'aarch64' ;;
+      riscv64) printf '%s' 'riscv64' ;;
+      *)       return 1 ;;
+    esac
+  fi
+}
+
+# OCI/Docker arch name for a machine name (default: $(uname -m)).
+# x86_64 -> amd64, aarch64 -> arm64, riscv64 -> riscv64; unknown passes through.
+smoke_host_arch() {
+  local raw="${1:-$(uname -m)}"
+  if command -v arch_normalize >/dev/null 2>&1; then
+    arch_normalize "${raw}"
+  else
+    case "${raw}" in
+      x86_64)  printf '%s' 'amd64' ;;
+      aarch64) printf '%s' 'arm64' ;;
+      riscv64) printf '%s' 'riscv64' ;;
+      *)       printf '%s' "${raw}" ;;
+    esac
+  fi
+}
+
+# Debian multiarch triplet for a target arch (amd64 -> x86_64-linux-gnu, …).
+smoke_deb_triplet() {
+  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
+    arch_deb_multiarch_triplet_for "$1"
+  else
+    case "$1" in
+      amd64)   printf '%s' 'x86_64-linux-gnu' ;;
+      arm64)   printf '%s' 'aarch64-linux-gnu' ;;
+      riscv64) printf '%s' 'riscv64-linux-gnu' ;;
+      *)       return 1 ;;
+    esac
+  fi
+}
+
+# readelf -h "Machine:" substring for a target arch (amd64 -> X86-64, …).
+smoke_elf_machine_grep() {
+  if command -v arch_elf_machine_grep_for >/dev/null 2>&1; then
+    arch_elf_machine_grep_for "$1"
+  else
+    case "$1" in
+      amd64)   printf '%s' 'X86-64' ;;
+      arm64)   printf '%s' 'AArch64' ;;
+      riscv64) printf '%s' 'RISC-V' ;;
+      *)       return 1 ;;
+    esac
+  fi
+}
+
+# Rust target triple for a target arch (amd64 -> x86_64-unknown-linux-gnu, …).
+smoke_rust_target() {
+  if command -v arch_rust_target_triple_for >/dev/null 2>&1; then
+    arch_rust_target_triple_for "$1"
+  elif command -v rust_target_triple >/dev/null 2>&1; then
+    rust_target_triple "$1"
+  else
+    case "$1" in
+      amd64)   printf '%s' 'x86_64-unknown-linux-gnu' ;;
+      arm64)   printf '%s' 'aarch64-unknown-linux-gnu' ;;
+      riscv64) printf '%s' 'riscv64gc-unknown-linux-gnu' ;;
+      *)       return 1 ;;
+    esac
+  fi
+}
+
 # Check that a command's output contains an expected string.
 # Usage: check_version "gcc --version" "16.1.0" "host gcc"
 check_version() {
@@ -87,27 +168,8 @@ validate_compiler_for_target() {
   local label="${3:-${cc_path}}"
   local expected_pattern expected_machine cc_dump cc_machine tmpdir cc_obj
 
-  if command -v arch_uname_name_for >/dev/null 2>&1; then
-    expected_pattern="$(arch_uname_name_for "${target_arch}")"
-  else
-    case "${target_arch}" in
-      amd64)   expected_pattern="x86_64" ;;
-      arm64)   expected_pattern="aarch64" ;;
-      riscv64) expected_pattern="riscv64" ;;
-      *)       fail "Unknown arch: ${target_arch}"; return 1 ;;
-    esac
-  fi
-
-  if command -v arch_elf_machine_grep_for >/dev/null 2>&1; then
-    expected_machine="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
-  else
-    case "${target_arch}" in
-      amd64)   expected_machine="X86-64" ;;
-      arm64)   expected_machine="AArch64" ;;
-      riscv64) expected_machine="RISC-V" ;;
-      *)       expected_machine="" ;;
-    esac
-  fi
+  expected_pattern="$(smoke_uname_name "${target_arch}")"
+  expected_machine="$(smoke_elf_machine_grep "${target_arch}" 2>/dev/null || true)"
 
   [ -n "${expected_pattern}" ] || { fail "Unknown arch: ${target_arch}"; return 1; }
 

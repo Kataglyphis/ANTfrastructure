@@ -154,3 +154,50 @@ media_common_init() {
   # helpers are available.
   media_load_arch_flags
 }
+
+# Bootstrap entry point for install-deps.sh scripts ---------------------------
+#
+# Replaces the ~9-line install-deps-preamble.sh source-loop (and, for
+# gstreamer, the extra core/common.sh load + media_load_arch_flags) that was
+# copy-pasted into every media install-deps.sh. Callers source THIS file
+# (03-media/core/common.sh, via the fixed ../../core relative path that is
+# identical in the container and repo layouts) and then invoke this.
+#
+# It sources the shared 01-core install-deps-preamble.sh (which itself locates
+# and loads cross-env.sh — providing is_cross / install_target_packages /
+# host_python_major_minor / ...), trying the in-container path first and the
+# repo layout second, then loads the data-driven per-arch MEDIA_SKIP_* flags.
+#
+# Usage (top of any install-deps.sh):
+#   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#   source "${SCRIPT_DIR}/../../core/common.sh"
+#   media_install_deps_init "${SCRIPT_DIR}"
+media_install_deps_init() {
+  local script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
+  local _dep_env
+  for _dep_env in \
+      "/opt/scripts/core/install-deps-preamble.sh" \
+      "${script_dir}/../../../01-core/install-deps-preamble.sh"; do
+    if [ -f "${_dep_env}" ]; then
+      # shellcheck disable=SC1090
+      source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
+      break
+    fi
+  done
+
+  media_load_arch_flags
+}
+
+# Parallel job-count helper --------------------------------------------------
+#
+# Consolidates the copy-pasted "compute_jobs_with_mem_cap else nproc" ladder
+# (2000-MB per-job memory cap) used across the media build scripts. The
+# canonical compute_jobs_with_mem_cap lives in 01-core/parallelism.sh and is
+# loaded by media_common_init; fall back to plain nproc if it is unavailable.
+media_jobs() {
+  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    compute_jobs_with_mem_cap "" 2000
+  else
+    nproc
+  fi
+}

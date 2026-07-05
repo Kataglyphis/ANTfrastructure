@@ -11,23 +11,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../01-core/python_uv.sh" || { echo "Error: failed to source python_uv.sh" >&2; exit 1; }
+source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.sh" >&2; exit 1; }
 
 detect_workspace
 
 PYTHON_VERSION="${1:-${PYTHON_VERSION:-3.14}}"
 info "Using Python version: $PYTHON_VERSION"
 
-if [ -d /workspace ] && [ -f /workspace/pyproject.toml ]; then
-  WORKSPACE_ROOT="/workspace"
-fi
-
-cd "$WORKSPACE_ROOT"
-
-if [ -d "$WORKSPACE_ROOT/flutter/bin" ]; then
-  export PATH="$WORKSPACE_ROOT/flutter/bin:$PATH"
-fi
-git config --global --add safe.directory "$WORKSPACE_ROOT" || true
+prepare_ci_workspace --cd
 
 if command -v patchelf >/dev/null 2>&1; then
   info "patchelf already installed"
@@ -41,13 +32,7 @@ else
 fi
 
 VENV_SOURCES="$WORKSPACE_ROOT/.venv_packaging_sources"
-if [ -f "$VENV_SOURCES/bin/activate" ]; then
-  info "Using existing source packaging venv at $VENV_SOURCES"
-  uv_venv_activate "$VENV_SOURCES"
-else
-  info "Creating source packaging venv with Python $PYTHON_VERSION at $VENV_SOURCES"
-  uv_venv_create "$VENV_SOURCES" "$PYTHON_VERSION"
-fi
+uv_venv_ensure "$VENV_SOURCES" "$PYTHON_VERSION" "source packaging venv"
 
 uv_sync_project --no-wxpython
 
@@ -56,13 +41,7 @@ uv build
 export CYTHONIZE="True"
 
 VENV_BINARIES="$WORKSPACE_ROOT/.venv_packaging_binaries"
-if [ -f "$VENV_BINARIES/bin/activate" ]; then
-  info "Using existing binary packaging venv at $VENV_BINARIES"
-  uv_venv_activate "$VENV_BINARIES"
-else
-  info "Creating binary packaging venv with Python $PYTHON_VERSION at $VENV_BINARIES"
-  uv_venv_create "$VENV_BINARIES" "$PYTHON_VERSION"
-fi
+uv_venv_ensure "$VENV_BINARIES" "$PYTHON_VERSION" "binary packaging venv"
 
 uv_sync_project --no-wxpython
 
@@ -77,7 +56,7 @@ for whl in dist/*.whl; do
   info "Inspecting wheel: $whl"
   if auditwheel show "$whl" >/dev/null 2>&1; then
     info "  Platform wheel detected -> repairing: $whl"
-    auditwheel repair "$whl" -w repaired/ || { error "auditwheel failed on $whl"; exit 1; }
+    auditwheel repair "$whl" -w repaired/ || { err "auditwheel failed on $whl"; exit 1; }
   else
     info "  Pure/Python wheel detected -> copying unchanged: $whl"
     cp "$whl" repaired/

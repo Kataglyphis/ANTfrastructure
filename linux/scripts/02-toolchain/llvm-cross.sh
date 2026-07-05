@@ -340,25 +340,19 @@ install_target_clang_toolchain() {
   _build_llvm_cross_core target-clang "${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
 }
 
+# Per-target callback for for_each_cross_target (amd64 is skipped by default).
+_build_cross_llvm_for_target() {
+  local target_label="$1"
+  install_cross_llvm_target_packages "${target_label}"
+  build_cross_llvm_target "${target_label}"
+}
+
 build_cross_llvm_targets() {
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local target target_label
 
   cross_mode_requested || return 0
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported LLVM cross target list: ${targets_raw}"
 
-  for target in ${targets_raw//,/ }; do
-    target_label="$(arch_normalize "${target}")"
-    case "${target_label}" in
-      amd64|arm64|riscv64) ;;
-      *)
-      log "Skipping unsupported LLVM cross target: ${target}"
-      continue
-      ;;
-    esac
-
-    [ "${target_label}" = "amd64" ] && continue
-    install_cross_llvm_target_packages "${target_label}"
-    build_cross_llvm_target "${target_label}"
-  done
+  # amd64 is skipped by default (the host already serves amd64 LLVM).
+  for_each_cross_target _build_cross_llvm_for_target "${targets_raw}"
 }
