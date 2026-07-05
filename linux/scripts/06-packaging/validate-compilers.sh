@@ -295,7 +295,7 @@ _cc_target_elf_check() {
   local cc_pattern="${_VCS_CC_PATTERN}"
   local cc_machine
   if [ -n "${cc_pattern}" ] && command -v readelf >/dev/null 2>&1; then
-    cc_machine="$(readelf -h "${cc_path}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+    cc_machine="$(elf_machine_name "${cc_path}")"
     if [ -z "${cc_machine}" ]; then
       if [ "${mode}" = "hard-fail" ]; then
         echo "ERROR: cannot read ELF machine type of cc (${cc_path})" >&2
@@ -327,7 +327,7 @@ _cc_target_object_elf_check() {
   local cc_pattern="${_VCS_CC_PATTERN}"
   local cc_obj="${_VCS_CC_OBJ}"
   local obj_machine
-  obj_machine="$(readelf -h "${cc_obj}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+  obj_machine="$(elf_machine_name "${cc_obj}")"
   case "${obj_machine}" in
     *"${cc_pattern}"*) echo "Verified cc1 output object ELF machine '${obj_machine}' matches ${target_arch}" ;;
     *)
