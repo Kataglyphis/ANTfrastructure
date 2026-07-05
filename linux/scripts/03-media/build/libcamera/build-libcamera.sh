@@ -190,23 +190,11 @@ fi
 ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" -v || { echo "ninja build failed"; exit 1; }
 
 # install (use sudo if not root)
-if [ "$EUID" -ne 0 ]; then
-  if command -v sudo >/dev/null 2>&1; then
-    sudo ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
-  else
-    echo "Not root and sudo missing — cannot install; exiting"
-    exit 1
-  fi
-else
-  ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
-fi
+ensure_sudo_or_die
+${SUDO_WRAP} ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
 
 # update ld cache if possible
-if command -v sudo >/dev/null 2>&1; then
-  sudo ldconfig || true
-else
-  ldconfig 2>/dev/null || true
-fi
+${SUDO_WRAP} ldconfig || true
 
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."
 

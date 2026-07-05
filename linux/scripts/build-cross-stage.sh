@@ -45,9 +45,9 @@ Options:
   --push               Push the built image to the registry with digest pinning
   --log-dir DIR        Tee build output into DIR/<stage>[-<arch>].log
   --dry-run            Print the build command without executing
-  --fast-ubuntu-mirror Replace Ubuntu archive/security/ports mirrors
-  --fast-ubuntu-mirror-url URL        Archive mirror URL
-  --fast-ubuntu-ports-mirror-url URL  Optional ubuntu-ports mirror URL
+EOF
+  orchestrator_usage_mirror_options
+  cat <<'EOF'
   --image-repo REPO    Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
   --cross-targets LIST Compiler target list (for compiler stage, default: amd64,arm64,riscv64)
   --vulkan-version VER Vulkan SDK version (for sdk stage)

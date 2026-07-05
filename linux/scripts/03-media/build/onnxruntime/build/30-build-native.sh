@@ -58,18 +58,7 @@ BUILD_ARGS+=(
   "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
 )
 
-if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
-  BUILD_ARGS+=(
-    --enable_lto
-  )
-fi
-
-if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
-  BUILD_ARGS+=(
-    --use_webgpu
-    --use_external_dawn
-  )
-fi
+append_onnx_optional_lto_webgpu_args BUILD_ARGS
 
 # oneDNN (DNNL) CPU execution provider. BUILD_DNNL_EP defaults to true (see
 # lib/common.sh) but the --use_dnnl flag was never actually passed to build.py,

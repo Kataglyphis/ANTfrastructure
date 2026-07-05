@@ -31,18 +31,18 @@ Builds an amd64-hosted cross-compiler image containing cross toolchains for all
 target architectures.  Internally delegates to the shared stage graph
 (stage-defs.sh) — same pipeline as build-cross-chain.sh and build-cross-stage.sh.
 
-The image stays local unless --push is requested.  If the remote base image is
-unavailable, the script builds a local amd64 base image first and then uses it
-for the compiler build.
+The image stays local unless --push is requested.  The amd64 base stage is
+always built first via the shared stage graph, then the compiler stage is built
+on top of it (with --push both stages are pushed and digest-pinned).
 
 Options:
   --cross-targets LIST   Comma-separated target list (default: amd64,arm64,riscv64)
   --image-repo REPO      Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
   --push                 Push the compiler image to the registry with digest pinning
   --dry-run              Print build commands without executing them
-  --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during builds
-  --fast-ubuntu-mirror-url URL        Archive mirror URL
-  --fast-ubuntu-ports-mirror-url URL  Optional ubuntu-ports mirror URL
+EOF
+  orchestrator_usage_mirror_options
+  cat <<'EOF'
   -h, --help             Show this help text
 
 Examples:
@@ -86,18 +86,12 @@ main() {
 
   log "Cross-compiler build: targets=${CROSS_TARGETS} repo=${IMAGE_REPO} push=${PUSH_IMAGES}"
 
-  if [ "${PUSH_IMAGES}" -eq 1 ]; then
-    # Push path: build and push both base and compiler via the stage graph.
-    # cross_stage_run handles digest-pinned parent resolution and pin capture,
-    # so the compiler always consumes the freshly pushed base digest.
-    cross_stage_run "base" "" 1
-    cross_stage_run "compiler" "" 1
-  else
-    # Local path: build base locally first (shared stage graph, same as
-    # orchestrator), then build compiler locally via the stage graph.
-    cross_stage_run "base" "" 0
-    cross_stage_run "compiler" "" 0
-  fi
+  # Build base first, then compiler, via the shared stage graph. cross_stage_run
+  # handles digest-pinned parent resolution and pin capture, so on the push path
+  # the compiler always consumes the freshly pushed base digest. The push flag is
+  # forwarded verbatim (1=push both, 0=local-only).
+  cross_stage_run "base" "" "${PUSH_IMAGES}"
+  cross_stage_run "compiler" "" "${PUSH_IMAGES}"
 }
 
 main "$@"

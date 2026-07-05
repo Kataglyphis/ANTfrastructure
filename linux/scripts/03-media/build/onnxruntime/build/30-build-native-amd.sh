@@ -60,16 +60,7 @@ BUILD_ARGS+=(
   "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
 )
 
-if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
-  BUILD_ARGS+=(--enable_lto)
-fi
-
-if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
-  BUILD_ARGS+=(
-    --use_webgpu
-    --use_external_dawn
-  )
-fi
+append_onnx_optional_lto_webgpu_args BUILD_ARGS
 
 if cross_build_is_active; then
   append_onnx_cross_cmake_build_args BUILD_ARGS

@@ -192,20 +192,3 @@ setup_lld_linker() {
 
   _cc_info "lld linker enabled: LDFLAGS contains ${lld_flag}"
 }
-
-# Append CMake cache args for ccache/sccache and lld to a named array.
-# Use this in scripts that build CMake args manually rather than exporting
-# CMAKE_C_COMPILER_LAUNCHER / CMAKE_LINKER_TYPE environment variables.
-#
-# Usage: local -a cmake_args=(); append_cmake_cache_args cmake_args
-append_cmake_cache_args() {
-  local -n _acmca_out=${1}
-  if _ccache_available && [ "${USE_CCACHE:-true}" != "false" ]; then
-    _acmca_out+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
-  elif _sccache_available && [ "${USE_SCCACHE:-true}" != "false" ]; then
-    _acmca_out+=(-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache)
-  fi
-  if _lld_available && [ "${USE_LLD:-true}" != "false" ]; then
-    _acmca_out+=(-DCMAKE_LINKER_TYPE=lld)
-  fi
-}

@@ -2,6 +2,13 @@
 [ -n "${_PARALLEL_LOOP_SH_LOADED:-}" ] && return 0
 _PARALLEL_LOOP_SH_LOADED=1
 
+# Build a flag-dir *prefix* for run_parallel_arch_loop, honoring $TMPDIR.
+# The loop itself mktemp's "<prefix>.XXXXXX" and cleans it up on RETURN, so
+# callers must pass a bare prefix here (NOT a pre-created dir).
+arch_loop_flag_prefix() {
+  printf '%s/%s' "${TMPDIR:-/tmp}" "$1"
+}
+
 run_parallel_arch_loop() {
   local fn_name="$1" flagdir_prefix="${2:-/tmp/arch-loop-flags}"
   local max_parallel="${3:-4}"

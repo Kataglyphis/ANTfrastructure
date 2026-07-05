@@ -146,14 +146,9 @@ RUN set -euo pipefail; \
         --upgrade pip setuptools wheel cython pybind11 numpy
 
 # Re-register GCC as the default after install-deps reset alternatives.
-# name:bin pairs — cc/c++ point at gcc/g++; install (prio 150) then set each.
-RUN set -euo pipefail; \
-    for _pair in "gcc:gcc" "g++:g++" "cc:gcc" "c++:g++"; do \
-      _name="${_pair%%:*}"; _bin="${_pair#*:}"; \
-      update-alternatives --install "/usr/bin/${_name}" "${_name}" "/opt/gcc-${GCC_VERSION}/bin/${_bin}" 150; \
-      update-alternatives --set "${_name}" "/opt/gcc-${GCC_VERSION}/bin/${_bin}"; \
-    done; \
-    cc --version 2>&1 | head -1; c++ --version 2>&1 | head -1
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    set -euo pipefail; \
+    bash /tmp/core-scripts/register-gcc-alternatives.sh
 
 # Also export CC/CXX so CMake (which searches PATH) always gets GCC
 ENV NVIDIA_CODEC_HEADERS=auto \

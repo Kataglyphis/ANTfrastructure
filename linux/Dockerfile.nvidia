@@ -60,49 +60,20 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh; \
     bash /tmp/core-scripts/setup-cuda-repo.sh
 
 # ==============================================================================
 # 1. NVIDIA Components (CUDA Toolkit, cuDNN, NCCL, Math Libraries)
 # ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
-    apt-get install -y --no-install-recommends \
-        cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-libraries-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-libraries-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-nvtx-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-command-line-tools-${CUDA_VERSION_MAJOR_MINOR} \
-        libnccl2 \
-        libnccl-dev \
-        libcublas-${CUDA_VERSION_MAJOR_MINOR} \
-        libcublas-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        libcusparse-${CUDA_VERSION_MAJOR_MINOR} \
-        libcusparse-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        libcufft-${CUDA_VERSION_MAJOR_MINOR} \
-        libcufft-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-cudart-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-compat-${CUDA_VERSION_MAJOR_MINOR}; \
-    CUDA_VER_DOT="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | tr '-' '.')"; \
-    apt-get install -y --no-install-recommends \
-        "libcudnn${CUDNN_MAJOR}-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*" \
-        "libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*" || \
-    apt-get install -y --no-install-recommends \
-        libcudnn${CUDNN_MAJOR}-cuda-${CUDA_VER_DOT} \
-        libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_VER_DOT} || \
-    apt-get install -y --no-install-recommends \
-        libcudnn${CUDNN_MAJOR}-cuda-${CUDA_MAJOR} \
-        libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR} || \
-    echo "WARNING: cuDNN packages not found; continuing without cuDNN"; \
-    rm -rf /var/lib/apt/lists/*; \
-    ldconfig
+    bash /tmp/core-scripts/install-cuda-stack.sh
     # NOTE: the CUDA repo (/etc/apt/sources.list.d/cuda*.list) is intentionally
-    # NOT removed here — the TensorRT RUN below still installs tensorrt-dev /
-    # tensorrt-libs from the NVIDIA apt repo.  Repo removal happens at the end
-    # of that RUN (the last apt install against NVIDIA repos in this file).
+    # NOT removed by install-cuda-stack.sh — the TensorRT RUN below still installs
+    # tensorrt-dev / tensorrt-libs from the NVIDIA apt repo.  Repo removal happens
+    # at the end of that RUN (the last apt install against NVIDIA repos in this file).
 
 # ==============================================================================
 # 2. TensorRT — try local repo deb, then NVIDIA apt repo, then skip
@@ -155,32 +126,8 @@ ENV CUDA_HOME=/usr/local/cuda \
 # ==============================================================================
 # 3. Verification
 # ==============================================================================
-RUN set -euo pipefail; \
-    export PATH="${CUDA_HOME}/bin:${PATH}"; \
-    command -v nvcc >/dev/null 2>&1 && nvcc --version || echo "WARNING: nvcc not found"; \
-    echo "--- cuDNN ---"; \
-    cudnn_hdr="$(find /usr -name "cudnn_version.h" 2>/dev/null | head -1)"; \
-    if [ -n "${cudnn_hdr}" ]; then \
-        grep "CUDNN_MAJOR\|CUDNN_MINOR\|CUDNN_PATCHLEVEL" "${cudnn_hdr}"; \
-    else \
-        echo "WARNING: cuDNN version header not found"; \
-    fi; \
-    echo "--- TensorRT ---"; \
-    trt_hdr="$(find /usr/include /usr/local/tensorrt/include -name "NvInferVersion.h" 2>/dev/null | head -1)"; \
-    if [ -n "${trt_hdr}" ]; then \
-        grep "NV_TENSORRT_MAJOR\|NV_TENSORRT_MINOR\|NV_TENSORRT_PATCH" "${trt_hdr}"; \
-    else \
-        echo "WARNING: TensorRT version header not found"; \
-    fi; \
-    echo "--- NCCL ---"; \
-    nccl_hdr="$(find /usr/include /usr/local/cuda -name "nccl.h" 2>/dev/null | head -1)"; \
-    if [ -n "${nccl_hdr}" ]; then \
-        grep "NCCL_MAJOR\|NCCL_MINOR" "${nccl_hdr}"; \
-    else \
-        echo "WARNING: NCCL header not found" >&2; \
-    fi; \
-    echo "--- CUDA libs ---"; \
-    ldconfig -p | grep -E "libcublas|libcusparse|libcufft|libcudnn|libnvinfer|libnccl" 2>/dev/null | head -20 || echo "WARNING: no CUDA libs found in ldconfig"; \
-    echo "NVIDIA layer build complete."
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    set -euo pipefail; \
+    bash /tmp/core-scripts/verify-cuda-stack.sh
 LABEL org.opencontainers.image.title="Kataglyphis Toolchain NVIDIA" \
       org.opencontainers.image.description="NVIDIA GPU library layer: CUDA, cuDNN, TensorRT, NCCL, math libs, NVTX"

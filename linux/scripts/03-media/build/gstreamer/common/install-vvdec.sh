@@ -39,10 +39,7 @@ cmake -S . -B build "${cmake_args[@]}" || {
   exit 1
 }
 
-NPROC="$(nproc)"
-if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-  NPROC="$(compute_jobs_with_mem_cap "" 2000)"
-fi
+NPROC="$(media_jobs)"
 cmake --build build --target install -- -j"${NPROC}" || {
   echo "ERROR: vvdec build failed" >&2
   exit 1

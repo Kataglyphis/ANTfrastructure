@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# setup-dependencies.sh
-# Installs common development dependencies across Linux package managers.
+# setup-host-deps.sh
+# Manual developer-onboarding helper: installs common host development
+# dependencies (toolchains, coverage/analysis tooling) across Linux package
+# managers (apt/yum/dnf/pacman). Run by hand; not invoked by CI or the build.
 
 SCRIPT_NAME=$(basename "$0")
 

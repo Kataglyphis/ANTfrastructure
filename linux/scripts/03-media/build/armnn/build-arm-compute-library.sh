@@ -50,11 +50,7 @@ build_acl() {
   # CL/NEON kernels compile serially and dominate the whole media build (~30 min
   # on cross). Parallelize with a memory-capped job count (ACL C++ is RAM-heavy).
   local acl_jobs
-  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    acl_jobs="$(compute_jobs_with_mem_cap "" 2000)"
-  else
-    acl_jobs="$(nproc)"
-  fi
+  acl_jobs="$(media_jobs)"
   info "Building ACL with -j${acl_jobs}"
 
   scons -j "${acl_jobs}" Werror=0 \

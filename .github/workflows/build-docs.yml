@@ -43,6 +43,9 @@ jobs:
       - name: Verify version ARG consistency
         run: bash linux/scripts/01-core/verify-arg-consistency.sh
 
+      - name: Verify Ubuntu mirror consistency
+        run: bash linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh
+
       - name: Verify Five Critical Fixes (source integrity)
         run: bash linux/scripts/verify-critical-fixes.sh
 

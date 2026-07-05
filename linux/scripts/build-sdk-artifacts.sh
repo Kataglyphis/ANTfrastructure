@@ -31,11 +31,9 @@ Options:
   --target-arches LIST   Comma-separated target list (default: amd64,arm64,riscv64)
   --architectures LIST   Alias for --target-arches
   --output-root DIR      Export directory root (default: out/linux-sdk)
-  --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during Docker builds
-  --fast-ubuntu-mirror-url URL
-                           Mirror URL to use with --fast-ubuntu-mirror
-  --fast-ubuntu-ports-mirror-url URL
-                          Optional mirror URL for ubuntu-ports entries
+EOF
+  orchestrator_usage_mirror_options
+  cat <<'EOF'
   --vulkan-version VER   Vulkan SDK version to build
   --push                 Push each built SDK artifact image after export
   --parallel-archs       Build per-architecture images in parallel
@@ -77,8 +75,7 @@ main() {
   # Build the compiler stage first (shared by all SDK per-arch builds).
   cross_stage_run "compiler" "" "${PUSH_IMAGES}"
 
-  local _flags_dir; _flags_dir="$(mktemp -d "${TMPDIR:-/tmp}/sdk-arch-loop-flags.XXXXXX")"
-  run_parallel_arch_loop _sdk_arch_build "${_flags_dir}" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+  run_parallel_arch_loop _sdk_arch_build "$(arch_loop_flag_prefix sdk-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
 }
 
 _sdk_arch_build() {

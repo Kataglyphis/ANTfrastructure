@@ -34,8 +34,13 @@ jobs:
         continue-on-error: true
         run: bash linux/scripts/01-core/verify-arg-consistency.sh
 
+      - name: Check Ubuntu mirror consistency
+        id: mirrorcheck
+        continue-on-error: true
+        run: bash linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh
+
       - name: Create issue if stale
-        if: steps.check.outcome != 'success' || steps.argcheck.outcome != 'success'
+        if: steps.check.outcome != 'success' || steps.argcheck.outcome != 'success' || steps.mirrorcheck.outcome != 'success'
         uses: actions/github-script@v7
         with:
           script: |

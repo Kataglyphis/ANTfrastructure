@@ -8,6 +8,13 @@
 # in Dockerfile.amd, which Docker exposes as an env var to the RUN command).
 set -euo pipefail
 
+# Apply the fast Ubuntu mirror rewrite (if enabled) before any apt access, so the
+# repo setup + package installs below use the configured mirror. No-op unless
+# USE_FAST_UBUNTU_MIRROR is truthy. Folded in here so callers invoke a single
+# script (was a separate use-fast-ubuntu-mirror.sh line in Dockerfile.amd).
+_SETUP_ROCM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "${_SETUP_ROCM_DIR}/use-fast-ubuntu-mirror.sh"
+
 apt-get update && apt-get install -y --no-install-recommends wget gpg
 mkdir -p /etc/apt/keyrings
 wget -qO- https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg

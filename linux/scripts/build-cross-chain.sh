@@ -118,9 +118,9 @@ Options:
   --dry-run                 Print build commands without executing them
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
   --max-parallel-archs N    Max concurrent arch builds (default: 4)
-  --fast-ubuntu-mirror     Replace Ubuntu archive/security/ports mirrors during builds
-  --fast-ubuntu-mirror-url URL        Archive mirror URL
-  --fast-ubuntu-ports-mirror-url URL  Optional ubuntu-ports mirror URL
+EOF
+  orchestrator_usage_mirror_options
+  cat <<'EOF'
   -h, --help               Show this help text
 
 Notes:
@@ -252,7 +252,7 @@ _chain_run_build_loop() {
       *)
         if cross_stage_is_per_arch "${stage}"; then
           _CROSS_CURRENT_STAGE="${stage}"
-          run_parallel_arch_loop _cross_per_arch_build "/tmp/cross-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+          run_parallel_arch_loop _cross_per_arch_build "$(arch_loop_flag_prefix cross-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
         else
           cross_stage_run "${stage}"
         fi

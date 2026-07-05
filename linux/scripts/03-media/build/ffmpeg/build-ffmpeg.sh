@@ -421,23 +421,11 @@ install_ffmpeg() {
     echo "Installing FFmpeg to ${FFMPEG_PREFIX}..."
     cd "${FFMPEG_SRC}"
     
-    if [ "$EUID" -ne 0 ]; then
-        if command -v sudo >/dev/null 2>&1; then
-            sudo make install
-        else
-            echo "Not root and sudo missing - cannot install; exiting"
-            exit 1
-        fi
-    else
-        make install
-    fi
-    
+    ensure_sudo_or_die
+    ${SUDO_WRAP} make install
+
     # Update ld cache
-    if command -v sudo >/dev/null 2>&1; then
-        sudo ldconfig || true
-    else
-        ldconfig 2>/dev/null || true
-    fi
+    ${SUDO_WRAP} ldconfig || true
 }
 
 # ------------------------------------------------------------------------------

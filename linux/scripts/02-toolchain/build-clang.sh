@@ -197,7 +197,7 @@ apt_install build-essential git cmake ninja-build python3 libedit-dev \
     libncurses5-dev zlib1g-dev libxml2-dev libssl-dev pkg-config \
     libffi-dev curl ca-certificates file binutils binutils-dev ccache
 
-if ${SUDO} apt-get install -y lld >/dev/null 2>&1; then
+if apt_has_package lld && apt_install lld; then
     info "LLD installed successfully."
     HAS_LLD=1
 else

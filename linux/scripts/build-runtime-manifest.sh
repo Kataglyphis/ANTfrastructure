@@ -112,7 +112,7 @@ main() {
 
   local arch
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
-    run_parallel_arch_loop runtime_build_chain "/tmp/runtime-arch-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+    run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
   fi
 
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then

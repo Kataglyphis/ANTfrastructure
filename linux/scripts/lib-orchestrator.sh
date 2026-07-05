@@ -51,6 +51,20 @@ orchestrator_preamble() {
   init_mirror_defaults
 }
 
+# ── shared usage: fast-ubuntu-mirror option lines ───────────────────────────────
+# Single source of truth for the three --fast-ubuntu-mirror* option lines shared
+# by every cross orchestrator usage() text (build-cross-chain / build-cross-stage
+# / build-cross-compiler / build-sdk-artifacts).  The descriptions had drifted
+# across the four copies; emit them here so they stay in sync.  Call between two
+# cat <<'EOF' blocks inside each usage().
+orchestrator_usage_mirror_options() {
+  cat <<'EOF'
+  --fast-ubuntu-mirror                Replace Ubuntu archive/security/ports mirrors during builds
+  --fast-ubuntu-mirror-url URL        Archive mirror URL
+  --fast-ubuntu-ports-mirror-url URL  Optional ubuntu-ports mirror URL
+EOF
+}
+
 # ── cross-lane argument loop ────────────────────────────────────────────────────
 # Usage:
 #   run_orchestrator_arg_loop <usage_fn> <case_handler_fn> \

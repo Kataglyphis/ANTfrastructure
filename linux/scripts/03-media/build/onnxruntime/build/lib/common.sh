@@ -429,6 +429,23 @@ append_onnx_cross_cmake_build_args() {
   )
 }
 
+# Append the optional LTO / WebGPU build flags, each gated on its ORT_ENABLE_*
+# env toggle (default false). Shared by the native CPU and AMD builds, which
+# opted into these identically. NOTE: the nvidia build inlines --use_webgpu
+# unconditionally, so it deliberately does NOT use this helper.
+append_onnx_optional_lto_webgpu_args() {
+  local build_args_name="$1"
+  # shellcheck disable=SC2178
+  local -n build_args_ref="${build_args_name}"
+
+  if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
+    build_args_ref+=(--enable_lto)
+  fi
+  if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
+    build_args_ref+=(--use_webgpu --use_external_dawn)
+  fi
+}
+
 append_onnx_lld_build_args() {
   local build_args_name="$1"
   # shellcheck disable=SC2178

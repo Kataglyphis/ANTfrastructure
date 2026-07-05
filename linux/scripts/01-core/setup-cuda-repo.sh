@@ -8,6 +8,13 @@
 # ARG in Dockerfile.nvidia, which Docker exposes as an env var to the RUN).
 set -euo pipefail
 
+# Apply the fast Ubuntu mirror rewrite (if enabled) before any apt access, so the
+# apt-get update below uses the configured mirror. No-op unless
+# USE_FAST_UBUNTU_MIRROR is truthy. Folded in here so callers invoke a single
+# script (was a separate use-fast-ubuntu-mirror.sh line in Dockerfile.nvidia).
+_SETUP_CUDA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "${_SETUP_CUDA_DIR}/use-fast-ubuntu-mirror.sh"
+
 ARCH="$(dpkg --print-architecture)"
 case "${ARCH}" in
   amd64)   CUDA_ARCH="x86_64" ;;
