@@ -23,39 +23,6 @@
 
 set -euo pipefail
 
-# Print usage for -h/--help. Sourced files expose the helper via a function so
-# callers can wire it into their own --help dispatch.
-media_common_help() {
-  cat <<'EOF'
-media/core/common.sh — shared bootstrap for media build scripts
-
-This file is sourced, not executed directly. It provides:
-
-  media_common_init [script_dir]
-      Locate the 01-core module framework (container or repo layout) and source
-      the standard set of media build helpers: common.sh, cross-env.sh,
-      logging.sh, parallelism.sh, downloads.sh, compiler-cache.sh,
-      compiler-resolution.sh, python-host.sh, cmake-cache-linker.sh.
-
-  cross_build_is_active
-      Returns 0 when the current build is a cross-compile (BUILD_MODE=cross and
-      target arch != build arch). Defined here as a fallback so downstream
-      scripts always see it even when cross-env.sh's own guard skips reloading.
-
-  media_load_arch_flags
-      Source the per-target-arch MEDIA_SKIP_* flag file
-      (arch-flags-<arch>.env, next to this file) for the effective target
-      arch. Called automatically by media_common_init; preamble-based
-      install-deps scripts source this file and call it directly.
-
-Environment consumed:
-  BUILD_MODE   native | cross   (default: native)
-
-Environment exported (via sourced 01-core modules):
-  HOST_PYTHON_BIN, PYTHON_EXECUTABLE, NPROC, ccache/lld configuration, ...
-EOF
-}
-
 # Resolve the shared 01-core module directory. Checks (in order):
 #   1. The in-container path /opt/scripts/core (where the Dockerfile COPYs it)
 #   2. An upward walk from the script dir for a `linux/scripts/01-core` or

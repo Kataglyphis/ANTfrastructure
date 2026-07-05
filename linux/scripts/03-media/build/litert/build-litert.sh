@@ -602,16 +602,14 @@ _install_manual_flatbuffers() {
 
     # 5. Flatbuffers (Required by the C++ API)
     fb_found=0
-    if [ -d "${build_dir}/_deps/flatbuffers-src/include" ]; then
-        info Copying flatbuffers headers from _deps/flatbuffers-src/include...
-        cp -rv "${build_dir}/_deps/flatbuffers-src/include"/* "${include_dir}/" 2>/dev/null || true
-        fb_found=1
-    fi
-    if [ -d "${build_dir}/flatbuffers-flatc/include" ]; then
-        info Copying flatbuffers headers from flatbuffers-flatc/include...
-        cp -rv "${build_dir}/flatbuffers-flatc/include"/* "${include_dir}/" 2>/dev/null || true
-        fb_found=1
-    fi
+    local _fbsrc
+    for _fbsrc in "_deps/flatbuffers-src/include" "flatbuffers-flatc/include"; do
+        if [ -d "${build_dir}/${_fbsrc}" ]; then
+            info "Copying flatbuffers headers from ${_fbsrc}..."
+            cp -rv "${build_dir}/${_fbsrc}"/* "${include_dir}/" 2>/dev/null || true
+            fb_found=1
+        fi
+    done
     # Also check for an installed location within the build tree
     if [ -d "${build_dir}/flatbuffers-flatc/include/flatbuffers" ]; then
         info Copying flatbuffers headers from flatbuffers-flatc/include/flatbuffers...
@@ -671,26 +669,23 @@ _install_manual_pkgconfig() {
       "-L\${libdir} -lLiteRt -ltensorflow-lite" \
       "-I\${includedir}"
 
+    # Libs.private passed as the 9th arg (requires left empty) so the helper
+    # emits the `Libs.private:` line — no post-hoc `cat >>` append needed.
     generate_pkgconfig_file "${lib_dir}/pkgconfig/tensorflow-lite.pc" \
       "TensorFlow Lite" "TensorFlow Lite Library (via LiteRT)" \
       "${LITERT_VERSION}" "${LITERT_PREFIX}" \
       "-L\${libdir} -ltensorflow-lite" \
-      "-I\${includedir}"
-
-    # Append Libs.private for tensorflow-lite.pc (not part of generic helper)
-    cat >> "${lib_dir}/pkgconfig/tensorflow-lite.pc" <<EOF
-Libs.private: ${static_libs} -lpthread -ldl
-EOF
+      "-I\${includedir}" \
+      "" \
+      "${static_libs} -lpthread -ldl"
 
     generate_pkgconfig_file "${lib_dir}/pkgconfig/tensorflowlite_c.pc" \
       "TensorFlow Lite C API" "TensorFlow Lite C API Library (via LiteRT)" \
       "${LITERT_VERSION}" "${LITERT_PREFIX}" \
       "-L\${libdir} -ltensorflowlite_c" \
-      "-I\${includedir}"
-
-    cat >> "${lib_dir}/pkgconfig/tensorflowlite_c.pc" <<EOF
-Libs.private: -lpthread -ldl
-EOF
+      "-I\${includedir}" \
+      "" \
+      "-lpthread -ldl"
 }
 
 install_manual() {

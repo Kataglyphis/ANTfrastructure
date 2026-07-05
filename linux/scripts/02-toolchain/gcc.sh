@@ -205,13 +205,9 @@ link_amd64_host_as_cross() {
   for tool in gcc g++ gcov; do
     [ -x "${prefix}/bin/${tool}" ] || die "Expected host GCC tool not found: ${prefix}/bin/${tool}"
   done
-  $SUDO ln -sfn "${prefix}/bin/gcc" "${prefix}/bin/${triplet}-gcc"
-  $SUDO ln -sfn "${prefix}/bin/g++" "${prefix}/bin/${triplet}-g++"
-  $SUDO ln -sfn "${prefix}/bin/cpp" "${prefix}/bin/${triplet}-cpp"
-  $SUDO ln -sfn "${prefix}/bin/gcov" "${prefix}/bin/${triplet}-gcov"
-  $SUDO ln -sfn "${prefix}/bin/gcc-ar" "${prefix}/bin/${triplet}-gcc-ar"
-  $SUDO ln -sfn "${prefix}/bin/gcc-nm" "${prefix}/bin/${triplet}-gcc-nm"
-  $SUDO ln -sfn "${prefix}/bin/gcc-ranlib" "${prefix}/bin/${triplet}-gcc-ranlib"
+  for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib; do
+    $SUDO ln -sfn "${prefix}/bin/${tool}" "${prefix}/bin/${triplet}-${tool}"
+  done
   link_cross_binutils "${prefix}" "${triplet}"
 }
 

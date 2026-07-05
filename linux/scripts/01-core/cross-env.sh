@@ -320,13 +320,10 @@ _cross_env_resolve_tools() {
       [ -x "${_cxx_fb}" ] && _ert_out[cxx]="${_cxx_fb}" || return 1
     fi
   fi
-  _ert_out[ar]="$(require_cross_gcc_tool ar "${triplet}" 'cross binutils tool')" || return 1
-  _ert_out[as]="$(require_cross_gcc_tool as "${triplet}" 'cross binutils tool')" || return 1
-  _ert_out[ld]="$(require_cross_gcc_tool ld "${triplet}" 'cross binutils tool')" || return 1
-  _ert_out[nm]="$(require_cross_gcc_tool nm "${triplet}" 'cross binutils tool')" || return 1
-  _ert_out[ranlib]="$(require_cross_gcc_tool ranlib "${triplet}" 'cross binutils tool')" || return 1
-  _ert_out[strip]="$(require_cross_gcc_tool strip "${triplet}" 'cross binutils tool')" || return 1
-  _ert_out[objcopy]="$(require_cross_gcc_tool objcopy "${triplet}" 'cross binutils tool')" || return 1
+  local _bt
+  for _bt in ar as ld nm ranlib strip objcopy; do
+    _ert_out[$_bt]="$(require_cross_gcc_tool "$_bt" "${triplet}" 'cross binutils tool')" || return 1
+  done
   _ert_out[build_cc]="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
   _ert_out[build_cxx]="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
   _ert_out[build_ar]="$(resolve_build_gcc_tool ar 2>/dev/null || true)"

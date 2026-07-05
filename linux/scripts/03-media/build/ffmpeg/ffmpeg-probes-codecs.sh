@@ -59,16 +59,6 @@ ffmpeg_probe_libx264() {
     return 1
 }
 
-ffmpeg_probe_libx265() {
-    if ffmpeg_probe_pkg_config_feature "libx265" "x265" "stdint.h x265.h" "x265_api_get" &&
-       ffmpeg_try_cpp_condition "stdint.h x265.h" "X265_BUILD >= 89"; then
-        return 0
-    fi
-
-    echo "Skipping libx265: FFmpeg-style pkg-config or build-version probe failed."
-    return 1
-}
-
 ffmpeg_probe_vdpau() {
     if ! ffmpeg_try_cpp_condition "vdpau/vdpau.h" "defined VDP_DECODER_PROFILE_MPEG4_PART2_ASP"; then
         echo "Skipping vdpau: FFmpeg-style header probe failed."

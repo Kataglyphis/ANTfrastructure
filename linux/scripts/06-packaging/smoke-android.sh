@@ -126,11 +126,6 @@ check_android_cmake() {
   echo ""
 }
 
-print_results() {
-  echo "=== Results: ${FAILURES} failure(s) ==="
-  [ "${FAILURES}" -eq 0 ] || exit 1
-}
-
 main() {
   echo "=== Android SDK/NDK Smoke Test ==="
   echo ""
@@ -141,7 +136,7 @@ main() {
   check_ndk
   check_build_tools
   check_android_cmake
-  print_results
+  smoke_summary
 }
 
 main "$@"

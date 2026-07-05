@@ -69,6 +69,21 @@ verify_file_exists() {
   return 0
 }
 
+# Locate a <pc_name>.pc under <prefix> and report. Required by default; pass
+# "optional" as the 4th arg to downgrade a miss to an INFO instead of a failure.
+verify_pkgconfig() {
+  local prefix="$1" pc_name="$2" label="$3" optional="${4:-}"
+  local pc
+  pc="$(find "${prefix}" -name "${pc_name}" -type f 2>/dev/null | head -1)"
+  if [ -n "${pc}" ]; then
+    pass_check "${label} pkg-config: ${pc}"
+  elif [ "${optional}" = "optional" ]; then
+    echo "INFO [${STAGE}]: ${pc_name} not found" >&2
+  else
+    fail_check "${label} pkg-config (${pc_name}) not found under ${prefix}"
+  fi
+}
+
 verify_shared_lib() {
   local dir="$1"
   local glob_pattern="$2"
@@ -168,12 +183,7 @@ case "${STAGE}" in
     else
       fail_check "No OpenCV lib dir found under ${PREFIX}"
     fi
-    pc="$(find "${PREFIX}" -name "opencv5.pc" -type f 2>/dev/null | head -1)"
-    if [ -n "${pc}" ]; then
-      pass_check "OpenCV pkg-config: ${pc}"
-    else
-      fail_check "OpenCV pkg-config (opencv5.pc) not found under ${PREFIX}"
-    fi
+    verify_pkgconfig "${PREFIX}" "opencv5.pc" "OpenCV"
     ;;
 
   ffmpeg)
@@ -205,12 +215,7 @@ case "${STAGE}" in
       echo "INFO [libcamera]: no cam or lc-compliance binary found" >&2
     fi
     # pkg-config may be in lib/pkgconfig, lib64/pkgconfig, or any subdirectory
-    pc="$(find "${PREFIX}" -name "libcamera.pc" -type f 2>/dev/null | head -1)"
-    if [ -n "${pc}" ]; then
-      pass_check "libcamera pkg-config: ${pc}"
-    else
-      echo "INFO [libcamera]: libcamera.pc not found" >&2
-    fi
+    verify_pkgconfig "${PREFIX}" "libcamera.pc" "libcamera" optional
     ;;
 
   app-wheels)

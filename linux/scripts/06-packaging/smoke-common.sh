@@ -28,6 +28,14 @@ fi
 pass() { printf '  PASS %s\n' "$*"; }
 fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
 
+# Print the standard result banner and exit non-zero on any failure.
+# Replaces the copy-pasted "=== Results: N failure(s) ===" + exit tail (and the
+# duplicate print_results() defs in smoke-android.sh / smoke-vulkan.sh).
+smoke_summary() {
+  echo "=== Results: ${FAILURES} failure(s) ==="
+  [ "${FAILURES}" -eq 0 ] || exit 1
+}
+
 # Check that a command's output contains an expected string.
 # Usage: check_version "gcc --version" "16.1.0" "host gcc"
 check_version() {

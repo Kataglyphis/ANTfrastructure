@@ -249,5 +249,4 @@ echo "--- Torch ---"
 echo "  INFO: torch not installed (only in :latest-cross-<arch> wrappers)"
 
 echo ""
-echo "=== Results: ${FAILURES} failure(s) ==="
-[ "${FAILURES}" -eq 0 ] || exit 1
+smoke_summary

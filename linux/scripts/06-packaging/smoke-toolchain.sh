@@ -208,8 +208,7 @@ main() {
   check_python "${target_arches}"
   run_cross_targets "${target_arches}" "${host_arch}"
 
-  echo "=== Results: ${FAILURES} failure(s) ==="
-  [ "${FAILURES}" -eq 0 ] || exit 1
+  smoke_summary
 }
 
 main "$@"

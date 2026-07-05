@@ -35,33 +35,21 @@ build_llvm_clang_from_source() {
   bash "${builder}" "${args[@]}"
 }
 
-llvm_selected_host_clang() {
-  local candidate=""
-
-  for candidate in \
-    "clang-${CLANG_WANTED}" \
-    clang; do
+# Resolve a host LLVM tool by base name, preferring the version-suffixed
+# variant (e.g. clang-${CLANG_WANTED}) then the bare name. Prints the resolved
+# path, returns 1 if none found.
+llvm_selected_host_tool() {
+  local base="$1" candidate=""
+  for candidate in "${base}-${CLANG_WANTED}" "${base}"; do
     command -v "${candidate}" >/dev/null 2>&1 || continue
     command -v "${candidate}"
     return 0
   done
-
   return 1
 }
 
-llvm_selected_host_clangxx() {
-  local candidate=""
-
-  for candidate in \
-    "clang++-${CLANG_WANTED}" \
-    clang++; do
-    command -v "${candidate}" >/dev/null 2>&1 || continue
-    command -v "${candidate}"
-    return 0
-  done
-
-  return 1
-}
+llvm_selected_host_clang() { llvm_selected_host_tool clang; }
+llvm_selected_host_clangxx() { llvm_selected_host_tool clang++; }
 
 register_versioned_llvm_binaries() {
   local full base tool
@@ -108,21 +96,17 @@ install_cross_clang_wrappers() {
       [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
     fi
 
-    wrapper="/usr/local/bin/clang-${target_label}"
-    cat > "${wrapper}" <<EOF
+    local _pair _name _bin
+    for _pair in "clang:${host_clang}" "clang++:${host_clangxx}"; do
+      _name="${_pair%%:*}"; _bin="${_pair#*:}"
+      wrapper="/usr/local/bin/${_name}-${target_label}"
+      cat > "${wrapper}" <<EOF
 #!/usr/bin/env bash
-exec "${host_clang}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
+exec "${_bin}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
 EOF
-    chmod +x "${wrapper}"
-    log "Installed LLVM wrapper: $(basename "${wrapper}")"
-
-    wrapper="/usr/local/bin/clang++-${target_label}"
-    cat > "${wrapper}" <<EOF
-#!/usr/bin/env bash
-exec "${host_clangxx}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
-EOF
-    chmod +x "${wrapper}"
-    log "Installed LLVM wrapper: $(basename "${wrapper}")"
+      chmod +x "${wrapper}"
+      log "Installed LLVM wrapper: $(basename "${wrapper}")"
+    done
   done
 }
 
@@ -397,15 +381,9 @@ llvm_cross_populate_tool_wrapper_dir() {
 
   mkdir -p "${wrapper_dir}"
   for tool in as ld ar nm ranlib strip objcopy; do
-    case "${tool}" in
-      as)      ln -sfn "${AS}"      "${wrapper_dir}/as" ;;
-      ld)      ln -sfn "${LD}"      "${wrapper_dir}/ld" ;;
-      ar)      ln -sfn "${AR}"      "${wrapper_dir}/ar" ;;
-      nm)      ln -sfn "${NM}"      "${wrapper_dir}/nm" ;;
-      ranlib)  ln -sfn "${RANLIB}"  "${wrapper_dir}/ranlib" ;;
-      strip)   ln -sfn "${STRIP}"   "${wrapper_dir}/strip" ;;
-      objcopy) ln -sfn "${OBJCOPY}" "${wrapper_dir}/objcopy" ;;
-    esac
+    # AS, LD, AR, NM, RANLIB, STRIP, OBJCOPY — env var name is the tool upper-cased
+    local _tv="${tool^^}"
+    ln -sfn "${!_tv}" "${wrapper_dir}/${tool}"
   done
 }
 

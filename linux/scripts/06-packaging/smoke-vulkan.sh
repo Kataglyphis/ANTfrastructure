@@ -94,11 +94,6 @@ check_vulkan_runtime() {
   echo ""
 }
 
-print_results() {
-  echo "=== Results: ${FAILURES} failure(s) ==="
-  [ "${FAILURES}" -eq 0 ] || exit 1
-}
-
 main() {
   echo "=== Vulkan SDK Smoke Test ==="
   echo ""
@@ -108,7 +103,7 @@ main() {
   check_vulkan_loader
   check_vulkan_runtime
 
-  print_results
+  smoke_summary
 }
 
 main "$@"
