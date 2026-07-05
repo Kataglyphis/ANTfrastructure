@@ -337,59 +337,67 @@ verify_gcc_gpg_signature() {
   exit 1
 }
 
-echo "Downloading GCC sources to ${BUILD_DIR}..."
-# Opt-in tarball cache: when GCC_TARBALL_CACHE_DIR is set (e.g. by gcc.sh's
-# multi-target orchestration), reuse a previously downloaded tarball instead
-# of re-downloading it into every per-target BUILD_DIR. The copy still goes
-# through the exact same SHA512/GPG verification below — the cache only
-# replaces the network fetch, never the verification. With the variable unset
-# (the default), this block is inert and behavior is unchanged.
-if [ ! -f "${TARBALL}" ] && [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
-  echo "Reusing cached tarball: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
-  cp "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" "${TARBALL}"
-fi
-if [ ! -f "${TARBALL}" ]; then
-  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
-else
-  echo "Tarball already exists: ${TARBALL}"
-fi
+# Fetch the GCC tarball into ${BUILD_DIR}. Opt-in tarball cache: when
+# GCC_TARBALL_CACHE_DIR is set (e.g. by gcc.sh's multi-target orchestration),
+# reuse a previously downloaded tarball instead of re-downloading into every
+# per-target BUILD_DIR. The reused copy still goes through the exact same
+# SHA512/GPG verification below — the cache only replaces the network fetch,
+# never the verification. Inert (behavior unchanged) when the variable is unset.
+fetch_gcc_tarball() {
+  if [ ! -f "${TARBALL}" ] && [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
+    echo "Reusing cached tarball: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
+    cp "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" "${TARBALL}"
+  fi
+  if [ ! -f "${TARBALL}" ]; then
+    wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
+  else
+    echo "Tarball already exists: ${TARBALL}"
+  fi
+}
 
-echo "Attempting SHA512 verification..."
-if wget -q --spider "${SHA_URL}"; then
-  # The server HAS a checksum file — from here on, failing to fetch or match it
-  # must abort, not silently downgrade to an unverified build.
+# Verify the tarball against the server's sha512.sum. If the server has a
+# checksum file, failing to fetch or match it aborts (no silent downgrade to an
+# unverified build); a missing checksum file is only a warning.
+verify_gcc_sha512() {
+  echo "Attempting SHA512 verification..."
+  if ! wget -q --spider "${SHA_URL}"; then
+    echo "No sha512.sum found on server; continuing." >&2
+    return 0
+  fi
   if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SHA_URL}" -O sha512.sum; then
     echo "ERROR: sha512.sum exists on server but could not be downloaded; refusing to continue unverified." >&2
     exit 1
   fi
-  if grep -Eq "[[:space:]]${TARBALL}\$" sha512.sum 2>/dev/null; then
-    grep -E "[[:space:]]${TARBALL}\$" sha512.sum > "${TARBALL}.sha512"
-    if sha512sum -c --status "${TARBALL}.sha512"; then
-      echo "SHA512 OK."
-    else
-      echo "ERROR: SHA512 mismatch - aborting." >&2
-      exit 1
-    fi
-  else
+  if ! grep -Eq "[[:space:]]${TARBALL}\$" sha512.sum 2>/dev/null; then
     echo "WARNING: tarball entry not found in sha512.sum; continuing without SHA check." >&2
+    return 0
   fi
-else
-  echo "No sha512.sum found on server; continuing." >&2
-fi
+  grep -E "[[:space:]]${TARBALL}\$" sha512.sum > "${TARBALL}.sha512"
+  if sha512sum -c --status "${TARBALL}.sha512"; then
+    echo "SHA512 OK."
+  else
+    echo "ERROR: SHA512 mismatch - aborting." >&2
+    exit 1
+  fi
+}
 
-# Optional: GPG signature verification (see verify_gcc_gpg_signature above).
-verify_gcc_gpg_signature
+# Opt-in tarball cache: store the verified tarball for reuse by later targets.
+# Inert when GCC_TARBALL_CACHE_DIR is unset. Copies via a temp name + rename so a
+# concurrent reader never sees a partially written cache entry.
+cache_store_gcc_tarball() {
+  if [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ ! -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
+    mkdir -p "${GCC_TARBALL_CACHE_DIR}"
+    cp "${TARBALL}" "${GCC_TARBALL_CACHE_DIR}/${TARBALL}.tmp.$$"
+    mv "${GCC_TARBALL_CACHE_DIR}/${TARBALL}.tmp.$$" "${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
+    echo "Stored tarball in cache: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
+  fi
+}
 
-# Opt-in tarball cache: store the tarball (which has passed the verification
-# policy above) for reuse by later targets. Inert when GCC_TARBALL_CACHE_DIR
-# is unset. Copy via a temp name + rename so a concurrent reader never sees a
-# partially written cache entry.
-if [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ ! -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
-  mkdir -p "${GCC_TARBALL_CACHE_DIR}"
-  cp "${TARBALL}" "${GCC_TARBALL_CACHE_DIR}/${TARBALL}.tmp.$$"
-  mv "${GCC_TARBALL_CACHE_DIR}/${TARBALL}.tmp.$$" "${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
-  echo "Stored tarball in cache: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
-fi
+echo "Downloading GCC sources to ${BUILD_DIR}..."
+fetch_gcc_tarball
+verify_gcc_sha512
+verify_gcc_gpg_signature   # optional GPG check (defined above)
+cache_store_gcc_tarball
 
 # 3) Extract and configure
 echo "Extracting ${TARBALL}..."
