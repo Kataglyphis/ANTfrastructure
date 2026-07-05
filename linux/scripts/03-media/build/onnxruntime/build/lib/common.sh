@@ -405,24 +405,22 @@ append_onnx_cross_cmake_build_args() {
   # shellcheck disable=SC2178
   local -n build_args_ref="${build_args_name}"
 
+  local -a cross_pairs=()
   local enable_python="OFF"
   if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
     enable_python="ON"
     info "Target Python dev files available; enabling ONNX Runtime Python in cross mode"
   fi
 
+  # Canonical cross defines (same source of truth as append_cmake_cross_args),
+  # fed to onnx's build.py as bare KEY=VALUE via --cmake_extra_defines. This
+  # brings onnx up to the full core set (adds CMAKE_AR/RANLIB/LIBRARY_ARCHITECTURE
+  # + PKG_CONFIG_USE_CMAKE_PREFIX_PATH it was previously missing).
+  cross_cmake_define_pairs cross_pairs
+
   build_args_ref+=(
     --cmake_extra_defines
-    CMAKE_SYSTEM_NAME=Linux
-    CMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}"
-    CMAKE_C_COMPILER="${CC}"
-    CMAKE_CXX_COMPILER="${CXX}"
-    CMAKE_ASM_COMPILER="${CC}"
-    CMAKE_SYSROOT=/
-    CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
-    CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
-    CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
-    CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+    "${cross_pairs[@]}"
     "onnxruntime_ENABLE_PYTHON=${enable_python}"
     onnxruntime_BUILD_UNIT_TESTS=OFF
     onnxruntime_GENERATE_TEST_REPORTS=OFF
