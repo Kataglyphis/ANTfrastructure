@@ -207,41 +207,6 @@ validate_detected_llvm_cmake_package() {
     die "Target LLVM package at ${llvm_dir} does not provide LLVM component metadata"
 }
 
-detect_llvm_major_version() {
-  local llvm_config_path="$1"
-  local llvm_dir="${2:-}"
-  local major=""
-  local llvm_release=""
-
-  if [ -n "${llvm_dir}" ] && cross_build_is_active; then
-    # linux/Dockerfile.toolchain pins both host and cross LLVM installs from the
-    # same LLVM_RELEASE, so in cross mode the target package should follow that
-    # pinned release rather than the build-host llvm-config.
-    if declare -F llvm_release_version >/dev/null 2>&1; then
-      llvm_release="$(llvm_release_version 2>/dev/null || true)"
-    elif [ -n "${LLVM_RELEASE:-}" ]; then
-      llvm_release="${LLVM_RELEASE}"
-    fi
-    if [ -n "${llvm_release}" ]; then
-      major="$(version_major "${llvm_release}" 2>/dev/null || true)"
-    fi
-  fi
-
-  if [ -z "${major}" ] && [ -n "${llvm_dir}" ]; then
-    major="$(detect_llvm_major_version_from_cmake_package "${llvm_dir}" 2>/dev/null || true)"
-  fi
-
-  if [ -z "${major}" ] && [ -n "${llvm_config_path}" ] && command -v "${llvm_config_path}" >/dev/null 2>&1; then
-    major="$(${llvm_config_path} --version 2>/dev/null | cut -d. -f1 || true)"
-  fi
-
-  if [ -z "${major}" ] && [ -n "${LLVM_RELEASE:-}" ]; then
-    major="$(version_major "${LLVM_RELEASE}")"
-  fi
-
-  printf '%s' "${major}"
-}
-
 detect_llvm_major_version_from_metadata_file() {
   local metadata_file="$1"
   local line=""

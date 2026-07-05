@@ -52,19 +52,9 @@ mkdir -p "${PREFIX}/lib/pkgconfig"
 
 PKGFILE="${PREFIX}/lib/pkgconfig/libvvdec.pc"
 vv_numeric="$(echo "${VV_VERSION}" | sed 's/^v//')"
-cat > "${PKGFILE}" <<EOF
-prefix=${PREFIX}
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: libvvdec
-Description: VVC/vvdec video decoder library
-Version: ${vv_numeric}
-Libs: -L\${libdir} -lvvdec
-Libs.private: -lstdc++ -lm -lgcc
-Cflags: -I\${includedir}
-EOF
+generate_pkgconfig_file "${PKGFILE}" \
+  "libvvdec" "VVC/vvdec video decoder library" "${vv_numeric}" "${PREFIX}" \
+  '-L${libdir} -lvvdec' '-I${includedir}' '' '-lstdc++ -lm -lgcc'
 
 cd /
 rm -rf "${TMPDIR}"

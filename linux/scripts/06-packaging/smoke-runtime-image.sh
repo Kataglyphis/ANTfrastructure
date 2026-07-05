@@ -18,6 +18,14 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
+# Evaluate a python expression against the image's `nerdctl image inspect` JSON
+# (the [0] element on stdin). Prints the expr's output, empty on any error.
+# DRYs the repeated `nerdctl image inspect | python3 -c` boilerplate. Uses the
+# caller's ${image_tag} via dynamic scope.
+inspect_image_config() {
+  "${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "$1" 2>/dev/null || true
+}
+
 main() {
   local image_tag="${1:-}"
   local target_arch="${2:-}"
@@ -65,7 +73,7 @@ main() {
   # 3. Check entrypoint
   echo "--- Entrypoint ---"
   local config
-  config="$("${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('Entrypoint',''))" 2>/dev/null || true)"
+  config="$(inspect_image_config "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('Entrypoint',''))")"
   if [ -n "${config}" ]; then
     pass "Entrypoint configured: ${config}"
   else
@@ -76,7 +84,7 @@ main() {
   # 4. Check HEALTHCHECK
   echo "--- HEALTHCHECK ---"
   local healthcheck
-  healthcheck="$("${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "import sys,json; cfg=json.load(sys.stdin)[0].get('Config',{}); hc=cfg.get('Healthcheck',{}); print(hc.get('Test',[''])[0] if hc else 'NONE')" 2>/dev/null || true)"
+  healthcheck="$(inspect_image_config "import sys,json; cfg=json.load(sys.stdin)[0].get('Config',{}); hc=cfg.get('Healthcheck',{}); print(hc.get('Test',[''])[0] if hc else 'NONE')")"
   if [ -n "${healthcheck}" ] && [ "${healthcheck}" != "NONE" ]; then
     pass "HEALTHCHECK configured: ${healthcheck}"
   else
@@ -96,7 +104,7 @@ main() {
   # 6. Check WORKDIR
   echo "--- WORKDIR ---"
   local workdir
-  workdir="$("${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('WorkingDir',''))" 2>/dev/null || true)"
+  workdir="$(inspect_image_config "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('WorkingDir',''))")"
   if [ -n "${workdir}" ]; then
     pass "WORKDIR: ${workdir}"
   else
@@ -107,7 +115,7 @@ main() {
   # 7. Check VOLUME
   echo "--- VOLUME ---"
   local volumes
-  volumes="$("${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "import sys,json; vols=json.load(sys.stdin)[0].get('Config',{}).get('Volumes',''); print(':'.join(vols.keys()) if vols and isinstance(vols,dict) else 'NONE')" 2>/dev/null || true)"
+  volumes="$(inspect_image_config "import sys,json; vols=json.load(sys.stdin)[0].get('Config',{}).get('Volumes',''); print(':'.join(vols.keys()) if vols and isinstance(vols,dict) else 'NONE')")"
   if [ -n "${volumes}" ] && [ "${volumes}" != "NONE" ]; then
     pass "VOLUME: ${volumes}"
   else
@@ -118,7 +126,7 @@ main() {
   # 8. Check OCI labels
   echo "--- OCI labels ---"
   local labels
-  labels="$("${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "import sys,json; lbs=json.load(sys.stdin)[0].get('Config',{}).get('Labels',{}); [print(f'{k}={v}') for k,v in sorted(lbs.items())]" 2>/dev/null || true)"
+  labels="$(inspect_image_config "import sys,json; lbs=json.load(sys.stdin)[0].get('Config',{}).get('Labels',{}); [print(f'{k}={v}') for k,v in sorted(lbs.items())]")"
   if [ -n "${labels}" ]; then
     local label_count
     label_count="$(echo "${labels}" | wc -l)"
@@ -128,8 +136,7 @@ main() {
   fi
   echo ""
 
-  echo "=== Results: ${FAILURES} failure(s) ==="
-  [ "${FAILURES}" -eq 0 ] || exit 1
+  smoke_summary
 }
 
 main "$@"

@@ -60,6 +60,17 @@ run_gpu_build_step() {
 
 ensure_onnx_gpu_placeholder_output_dir
 
+# Run a web (WASM/JS) build step only on amd64; emscripten/web builds are not
+# produced for the cross targets. DRYs the identical is_amd64_arch gate.
+run_web_build_step() {
+  local script="$1" label="$2"
+  if is_amd64_arch; then
+    bash "${SCRIPT_DIR}/${script}" "${FORWARDED_ARGS[@]}"
+  else
+    info "Skipping ${label} on non-amd64 architecture (arch=$(detect_target_arch))"
+  fi
+}
+
 case "${STEP}" in
   all)
     info "Running ONNX Runtime build pipeline"
@@ -72,12 +83,8 @@ case "${STEP}" in
     else
       info "Skipping GenAI build (BUILD_GENAI=${BUILD_GENAI})"
     fi
-    if is_amd64_arch; then
-      bash "${SCRIPT_DIR}/40-build-wasm.sh" "${FORWARDED_ARGS[@]}"
-      bash "${SCRIPT_DIR}/50-build-js.sh" "${FORWARDED_ARGS[@]}"
-    else
-      info "Skipping all web builds (WASM/JS) on non-amd64 architecture (arch=$(detect_target_arch))"
-    fi
+    run_web_build_step 40-build-wasm.sh "WASM build"
+    run_web_build_step 50-build-js.sh "JS build"
     bash "${SCRIPT_DIR}/../runtime/31-generate-pkgconfig-native.sh" "${FORWARDED_ARGS[@]}"
     info "Complete build finished. Artifacts:"
     info "  - Native CPU: ${NATIVE_CPU_OUTPUT_DIR}"
@@ -103,18 +110,10 @@ case "${STEP}" in
     bash "${SCRIPT_DIR}/60-build-genai.sh" "${FORWARDED_ARGS[@]}"
     ;;
   wasm)
-    if is_amd64_arch; then
-      bash "${SCRIPT_DIR}/40-build-wasm.sh" "${FORWARDED_ARGS[@]}"
-    else
-      info "Skipping WASM build on non-amd64 architecture (arch=$(detect_target_arch))"
-    fi
+    run_web_build_step 40-build-wasm.sh "WASM build"
     ;;
   js)
-    if is_amd64_arch; then
-      bash "${SCRIPT_DIR}/50-build-js.sh" "${FORWARDED_ARGS[@]}"
-    else
-      info "Skipping JS build on non-amd64 architecture (arch=$(detect_target_arch))"
-    fi
+    run_web_build_step 50-build-js.sh "JS build"
     ;;
   pkgconfig)
     bash "${SCRIPT_DIR}/../runtime/31-generate-pkgconfig-native.sh" "${FORWARDED_ARGS[@]}"

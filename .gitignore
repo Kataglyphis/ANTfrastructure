@@ -10,4 +10,4 @@ __pycache__/
 windows/downloads/*
 linux/llm-stack/ollama-binary.tar.zst
 linux/nextcloud-aio/.env
-
+.claude/

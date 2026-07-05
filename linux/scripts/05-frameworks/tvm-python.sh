@@ -24,10 +24,6 @@ require_toolchain_python() {
   printf '%s' "$python_bin"
 }
 
-tvm_cross_wheel_platform_tag() {
-  cross_wheel_platform_tag
-}
-
 tvm_build_wheel() {
     log "Setting up Python venv + TVM Python package"
     HOST_PYTHON="$(require_toolchain_python)"
@@ -67,7 +63,7 @@ append_tvm_cmake_args \
     if cross_build_is_active; then
       local wheel_platform
 
-      wheel_platform="$(tvm_cross_wheel_platform_tag || true)"
+      wheel_platform="$(cross_wheel_platform_tag || true)"
       if [ -z "$wheel_platform" ]; then
         log "Skipping TVM wheel build in cross mode; unsupported target architecture $(cross_target_arch 2>/dev/null || echo unknown)"
       elif [ -f "$tvm_dir/pyproject.toml" ]; then

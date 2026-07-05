@@ -117,15 +117,9 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,read
     set -euo pipefail; \
     rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
           /etc/apt/preferences.d/* 2>/dev/null || true; \
+    . /tmp/core-scripts/ubuntu-mirror.sh; \
     _archive_url="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"; \
-    _ports_url="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"; \
-    if [ -z "${_ports_url}" ]; then \
-      case "${_archive_url}" in \
-        *://archive.ubuntu.com/ubuntu/) _ports_url="http://ports.ubuntu.com/ubuntu-ports/" ;; \
-        */ubuntu/) _ports_url="${_archive_url%/ubuntu/}/ubuntu-ports/" ;; \
-        *) _ports_url="${_archive_url}" ;; \
-      esac; \
-    fi; \
+    _ports_url="$(ubuntu_effective_ports_mirror_url "${_archive_url}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}")"; \
     printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates %s-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' \
       "${_archive_url}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" "${UBUNTU_CODENAME}" \
       > /etc/apt/sources.list.d/ubuntu.sources; \
@@ -151,16 +145,14 @@ RUN set -euo pipefail; \
     UV_PYTHON="/opt/python/.venv/bin/python" uv pip install \
         --upgrade pip setuptools wheel cython pybind11 numpy
 
-# Re-register GCC as the default after install-deps reset alternatives
+# Re-register GCC as the default after install-deps reset alternatives.
+# name:bin pairs — cc/c++ point at gcc/g++; install (prio 150) then set each.
 RUN set -euo pipefail; \
-    update-alternatives --install /usr/bin/gcc gcc /opt/gcc-${GCC_VERSION}/bin/gcc 150; \
-    update-alternatives --install /usr/bin/g++ g++ /opt/gcc-${GCC_VERSION}/bin/g++ 150; \
-    update-alternatives --install /usr/bin/cc cc /opt/gcc-${GCC_VERSION}/bin/gcc 150; \
-    update-alternatives --install /usr/bin/c++ c++ /opt/gcc-${GCC_VERSION}/bin/g++ 150; \
-    update-alternatives --set gcc /opt/gcc-${GCC_VERSION}/bin/gcc; \
-    update-alternatives --set g++ /opt/gcc-${GCC_VERSION}/bin/g++; \
-    update-alternatives --set cc /opt/gcc-${GCC_VERSION}/bin/gcc; \
-    update-alternatives --set c++ /opt/gcc-${GCC_VERSION}/bin/g++; \
+    for _pair in "gcc:gcc" "g++:g++" "cc:gcc" "c++:g++"; do \
+      _name="${_pair%%:*}"; _bin="${_pair#*:}"; \
+      update-alternatives --install "/usr/bin/${_name}" "${_name}" "/opt/gcc-${GCC_VERSION}/bin/${_bin}" 150; \
+      update-alternatives --set "${_name}" "/opt/gcc-${GCC_VERSION}/bin/${_bin}"; \
+    done; \
     cc --version 2>&1 | head -1; c++ --version 2>&1 | head -1
 
 # Also export CC/CXX so CMake (which searches PATH) always gets GCC

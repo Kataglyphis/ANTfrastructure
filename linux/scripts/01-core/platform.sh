@@ -280,10 +280,6 @@ rust_target_triple_for_arch() {
   arch_rust_target_triple_for "$1"
 }
 
-android_abi_for_target() {
-  arch_android_abi_for "$(arch_oci)" || printf '%s' ""
-}
-
 android_abi_for_arch() {
   arch_android_abi_for "$1"
 }

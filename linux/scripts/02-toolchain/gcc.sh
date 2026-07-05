@@ -205,13 +205,9 @@ link_amd64_host_as_cross() {
   for tool in gcc g++ gcov; do
     [ -x "${prefix}/bin/${tool}" ] || die "Expected host GCC tool not found: ${prefix}/bin/${tool}"
   done
-  $SUDO ln -sfn "${prefix}/bin/gcc" "${prefix}/bin/${triplet}-gcc"
-  $SUDO ln -sfn "${prefix}/bin/g++" "${prefix}/bin/${triplet}-g++"
-  $SUDO ln -sfn "${prefix}/bin/cpp" "${prefix}/bin/${triplet}-cpp"
-  $SUDO ln -sfn "${prefix}/bin/gcov" "${prefix}/bin/${triplet}-gcov"
-  $SUDO ln -sfn "${prefix}/bin/gcc-ar" "${prefix}/bin/${triplet}-gcc-ar"
-  $SUDO ln -sfn "${prefix}/bin/gcc-nm" "${prefix}/bin/${triplet}-gcc-nm"
-  $SUDO ln -sfn "${prefix}/bin/gcc-ranlib" "${prefix}/bin/${triplet}-gcc-ranlib"
+  for tool in gcc g++ cpp gcov gcc-ar gcc-nm gcc-ranlib; do
+    $SUDO ln -sfn "${prefix}/bin/${tool}" "${prefix}/bin/${triplet}-${tool}"
+  done
   link_cross_binutils "${prefix}" "${triplet}"
 }
 
@@ -436,8 +432,7 @@ install_gcc() {
   apt_install gcc-"${GCC_WANTED}" g++-"${GCC_WANTED}" gfortran-"${GCC_WANTED}"
   for t in gcc g++ gcov; do
     if [ -x "/usr/bin/${t}-${GCC_WANTED}" ]; then
-      $SUDO update-alternatives --install "/usr/bin/${t}" "${t}" "/usr/bin/${t}-${GCC_WANTED}" 100
-      $SUDO update-alternatives --set "${t}" "/usr/bin/${t}-${GCC_WANTED}"
+      alt_install_and_set "${t}" "/usr/bin/${t}" "/usr/bin/${t}-${GCC_WANTED}" 100
     fi
   done
   gcc --version || true

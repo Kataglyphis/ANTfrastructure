@@ -60,6 +60,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     mkdir -p /opt/android-sdk /opt/android && \
     mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv
 
+# Arch/lib-independent helpers shared by every android-<lib> stage below —
+# hoisted into the common parent so the four children only COPY their per-lib dir.
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
+
 # ==============================================================================
 # android-gstreamer — GStreamer Android build (parallel with android-libs)
 # ==============================================================================
@@ -70,8 +75,6 @@ ARG TARGETARCH
 ARG ANDROID_LIB=gstreamer
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
-COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
-COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
@@ -93,8 +96,6 @@ ARG TARGETARCH
 ARG ANDROID_LIB=onnxruntime
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
-COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
-COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
@@ -116,8 +117,6 @@ ARG TARGETARCH
 ARG ANDROID_LIB=litert
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
-COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
-COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
@@ -139,8 +138,6 @@ ARG TARGETARCH
 ARG ANDROID_LIB=opencv
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
-COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
-COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \

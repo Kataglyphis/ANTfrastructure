@@ -23,6 +23,19 @@ LIB_DIRS=(
   "/usr/local/lib/onnxruntime-cpu/lib"
 )
 
+# Return 0 if <so_name> resolves under LIB_DIRS, the standard lib dirs, or the
+# ldconfig cache; 1 otherwise. DRYs the identical scan used by
+# find_missing_needed and scan_plugin_directory.
+so_name_resolvable() {
+  local so_name="$1" dir
+  for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
+    [ -d "${dir}" ] || continue
+    [ -f "${dir}/${so_name}" ] && return 0
+  done
+  ldconfig -p 2>/dev/null | grep -qF " ${so_name} " && return 0
+  return 1
+}
+
 known_so_packages_load() {
   local map_file="${1:-${SCRIPT_DIR:-.}/so-package-map.txt}"
   if [ -f "${map_file}" ]; then
@@ -54,23 +67,7 @@ find_missing_needed() {
   local so_name
   while IFS= read -r so_name; do
     [ -n "${so_name}" ] || continue
-    local found=false
-
-    for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
-      [ -d "${dir}" ] || continue
-      if [ -f "${dir}/${so_name}" ]; then
-        found=true
-        break
-      fi
-    done
-
-    if [ "${found}" = "false" ]; then
-      if ldconfig -p 2>/dev/null | grep -qF " ${so_name} "; then
-        found=true
-      fi
-    fi
-
-    if [ "${found}" = "false" ]; then
+    if ! so_name_resolvable "${so_name}"; then
       echo "  MISSING: ${so_name}" >&2
       missing+=("${so_name}")
     fi
@@ -127,23 +124,7 @@ scan_plugin_directory() {
     local so_name
     while IFS= read -r so_name; do
       [ -n "${so_name}" ] || continue
-      local found=false
-
-      for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
-        [ -d "${dir}" ] || continue
-        if [ -f "${dir}/${so_name}" ]; then
-          found=true
-          break
-        fi
-      done
-
-      if [ "${found}" = "false" ]; then
-        if ldconfig -p 2>/dev/null | grep -qF " ${so_name} "; then
-          found=true
-        fi
-      fi
-
-      if [ "${found}" = "false" ]; then
+      if ! so_name_resolvable "${so_name}"; then
         missing_all+=("${so_name}")
       fi
     done < <(objdump -p "${p}" 2>/dev/null | awk '/NEEDED/ {print $2}')

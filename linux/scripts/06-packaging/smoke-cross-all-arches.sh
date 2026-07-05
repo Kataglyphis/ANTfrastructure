@@ -142,8 +142,7 @@ main() {
   done
   echo ""
 
-  echo "=== Results: ${FAILURES} failure(s) ==="
-  [ "${FAILURES}" -eq 0 ] || exit 1
+  smoke_summary
 }
 
 main "$@"

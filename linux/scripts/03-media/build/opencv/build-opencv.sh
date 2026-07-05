@@ -137,24 +137,23 @@ configure_opencv_build_env
 fetch_opencv() {
     info "Fetching OpenCV ${OPENCV_VERSION} source..."
 
-    # Main repository
-    retry 3 10 "opencv git clone" clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_VERSION}" &
-    local main_pid=$!
+    # Main repository — cloned FIRST (not in parallel with contrib). contrib
+    # nests under OPENCV_SRC (${OPENCV_SRC}/opencv_contrib), so cloning both at
+    # once raced on creating OPENCV_SRC itself ("could not create work tree dir
+    # '<OPENCV_SRC>': File exists"), leaving contrib un-cloned. Sequential clone
+    # guarantees the parent exists before contrib is fetched into it.
+    retry 3 10 "opencv git clone" clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_VERSION}" \
+        || { echo "Failed to clone opencv"; exit 1; }
 
-    # Contrib modules (optional) — cloned in parallel (writes to a different dir).
-    local contrib_pid=""
+    # Contrib modules (optional) — fetched into the conventional opencv_contrib
+    # directory name so CMake's OPENCV_EXTRA_MODULES_PATH is the expected path.
     local contrib_dir=""
     if [ "${WITH_CONTRIB}" = "true" ]; then
         echo "Fetching OpenCV contrib modules..."
-        # Use the conventional opencv_contrib directory name so CMake's
-        # OPENCV_EXTRA_MODULES_PATH is the expected path
         contrib_dir="${OPENCV_SRC}/opencv_contrib"
-        retry 3 10 "opencv_contrib git clone" clone_or_update_repo "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" "${OPENCV_VERSION}" &
-        contrib_pid=$!
+        retry 3 10 "opencv_contrib git clone" clone_or_update_repo "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" "${OPENCV_VERSION}" \
+            || { echo "Failed to clone opencv_contrib"; exit 1; }
     fi
-
-    wait "${main_pid}" || { echo "Failed to clone opencv"; exit 1; }
-    [ -n "${contrib_pid}" ] && wait "${contrib_pid}" || { echo "Failed to clone opencv_contrib"; exit 1; }
 
     cd "${OPENCV_SRC}"
     git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout version ${OPENCV_VERSION}"; exit 1; }
@@ -533,18 +532,14 @@ install_opencv() {
     done
 
     # Sanity-check: fail early if core or tracking library is still missing
-    if ! (ls "${OPENCV_PREFIX}/lib/libopencv_core.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_core.so" >/dev/null 2>&1); then
-        echo "ERROR: libopencv_core was not found after install. Listing installed libs for debugging:"
-        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
-        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
-        die "Failing build so the image build doesn't continue with a broken OpenCV install."
-    fi
-    if ! (ls "${OPENCV_PREFIX}/lib/libopencv_tracking.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_tracking.so" >/dev/null 2>&1); then
-        echo "ERROR: libopencv_tracking was not found after install. Listing installed libs for debugging:"
-        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
-        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
-        die "Failing build so the image build doesn't continue with a broken OpenCV install."
-    fi
+    for _ocv_lib in libopencv_core libopencv_tracking; do
+        if ! (ls "${OPENCV_PREFIX}/lib/${_ocv_lib}.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/${_ocv_lib}.so" >/dev/null 2>&1); then
+            echo "ERROR: ${_ocv_lib} was not found after install. Listing installed libs for debugging:"
+            ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
+            ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
+            die "Failing build so the image build doesn't continue with a broken OpenCV install."
+        fi
+    done
 
     install_opencv4_compat_aliases
 }

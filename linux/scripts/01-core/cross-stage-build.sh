@@ -240,29 +240,34 @@ resolve_pin() {
 # Resolve the parent image reference (digest-pinned for push, mutable tag for
 # local) and append it to the build_args nameref. Returns the pinned ref on
 # stdout (empty when local/no parent).
+# Sets the resolved pin (empty for local/no-parent) into the global
+# _CROSS_STAGE_PARENT_PIN. NOTE: this function MUST be called directly (not in a
+# command substitution) — it mutates the build_args nameref in $1, and a $(...)
+# subshell would discard that mutation, silently dropping --build-arg BASE_IMAGE
+# and making the FROM fall back to the Dockerfile default. The pin is returned
+# via a global instead of stdout precisely so the caller need not use $(...).
 _cross_stage_run_resolve_parent() {
   local -n _csrrp_out="$1"
   local stage="$2" arch="$3" push_flag="$4" parent="$5"
-  local parent_pin=""
+  _CROSS_STAGE_PARENT_PIN=""
 
   if [ -z "${parent}" ]; then
-    printf ''
     return 0
   fi
 
   if [ "${push_flag}" -eq 1 ]; then
+    local parent_pin
     parent_pin="$(cross_stage_resolve_parent_pin "${stage}" "${arch}")" || {
       err "Failed to resolve parent pin for stage '${stage}' (parent: ${parent}). Ensure the parent image is pushed to the registry."
     }
     [ -n "${parent_pin}" ] && _csrrp_out+=(--build-arg "BASE_IMAGE=${parent_pin}")
+    _CROSS_STAGE_PARENT_PIN="${parent_pin}"
   else
     local parent_tag
     parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
     [ -z "${parent_tag}" ] && { err "No tag for parent stage: ${parent}"; }
     _csrrp_out+=(--build-arg "BASE_IMAGE=${parent_tag}")
   fi
-
-  printf '%s' "${parent_pin}"
 }
 
 # Dispatch the build to cross_stage_build_and_push (push) or
@@ -341,7 +346,10 @@ cross_stage_run() {
 
   parent="$(cross_stage_parent "${stage}")"
 
-  parent_pin="$(_cross_stage_run_resolve_parent build_args "${stage}" "${arch}" "${push_flag}" "${parent}")"
+  # Call directly (NOT via $(...)): the function mutates the build_args nameref;
+  # a command-substitution subshell would discard that and drop BASE_IMAGE.
+  _cross_stage_run_resolve_parent build_args "${stage}" "${arch}" "${push_flag}" "${parent}"
+  parent_pin="${_CROSS_STAGE_PARENT_PIN}"
 
   # Append stage-specific build args from the stage graph
   cross_stage_build_args build_args "${stage}" "${arch}"
