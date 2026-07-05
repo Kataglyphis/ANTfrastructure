@@ -276,6 +276,67 @@ export CFLAGS CXXFLAGS FFLAGS FCFLAGS CFLAGS_FOR_BUILD CXXFLAGS_FOR_BUILD BOOT_C
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
+# Emit the "GPG was skipped" warning and honor the GCC_REQUIRE_GPG policy: a
+# skipped verification (no gpg, or the release key was unreachable — common in
+# sandboxed build networks) is a loud warning by default, fatal when
+# GCC_REQUIRE_GPG=1. A failed VERIFY with the key present is handled separately
+# (always fatal) in verify_gcc_gpg_signature.
+_gcc_gpg_require_or_warn() {
+  echo "WARNING: GPG signature verification was SKIPPED (no gpg or key unavailable); tarball is only SHA512-verified." >&2
+  if [ "${GCC_REQUIRE_GPG:-0}" = "1" ]; then
+    echo "ERROR: GCC_REQUIRE_GPG=1 — refusing to build without GPG verification." >&2
+    exit 1
+  fi
+}
+
+# Optional GPG verification of the downloaded GCC tarball against the GCC Release
+# Signing Key. Flattened from a 5-level nested pyramid into guard clauses; the
+# policy is unchanged: no .sig on server → skip cleanly; .sig present but
+# undownloadable → fatal; verify FAILS with key present → fatal; otherwise
+# (no gpg / key unavailable) → _gcc_gpg_require_or_warn.
+verify_gcc_gpg_signature() {
+  local key="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62"  # GCC Release Signing Key
+
+  if ! wget -q --spider "${SIG_URL}"; then
+    echo "No .sig found or accessible."
+    return 0
+  fi
+
+  echo "Signature available at ${SIG_URL} (downloading)..."
+  if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}"; then
+    echo "ERROR: signature exists on server but could not be downloaded; refusing to continue unverified." >&2
+    exit 1
+  fi
+
+  if ! command -v gpg >/dev/null 2>&1; then
+    echo "WARNING: gpg not installed." >&2
+    _gcc_gpg_require_or_warn
+    return 0
+  fi
+
+  echo "Attempting GPG verification..."
+  if ! gpg --list-keys "${key}" >/dev/null 2>&1; then
+    echo "Importing GCC release signing key..."
+    gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "${key}" 2>/dev/null || \
+    gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "${key}" 2>/dev/null || \
+    echo "WARNING: could not import the GCC release signing key from any keyserver." >&2
+  fi
+
+  # Key still unavailable → cannot verify; treat as skipped, not failed.
+  if ! gpg --list-keys "${key}" >/dev/null 2>&1; then
+    _gcc_gpg_require_or_warn
+    return 0
+  fi
+
+  if gpg --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null; then
+    echo "GPG signature verified successfully."
+    return 0
+  fi
+  echo "ERROR: GPG verification FAILED for ${TARBALL}." >&2
+  echo "The tarball may be corrupted or tampered with. Aborting." >&2
+  exit 1
+}
+
 echo "Downloading GCC sources to ${BUILD_DIR}..."
 # Opt-in tarball cache: when GCC_TARBALL_CACHE_DIR is set (e.g. by gcc.sh's
 # multi-target orchestration), reuse a previously downloaded tarball instead
@@ -316,54 +377,8 @@ else
   echo "No sha512.sum found on server; continuing." >&2
 fi
 
-# Optional: download signature for manual GPG verification
-if wget -q --spider "${SIG_URL}"; then
-  echo "Signature available at ${SIG_URL} (downloading)..."
-  if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}"; then
-    echo "ERROR: signature exists on server but could not be downloaded; refusing to continue unverified." >&2
-    exit 1
-  fi
-
-  # GPG verification (GCC Release Signing Key)
-  GCC_RELEASE_KEY="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62"
-  echo "Attempting GPG verification..."
-  # Keyservers are frequently unreachable inside sandboxed build networks, so a
-  # failed key IMPORT is only a (loud) warning by default; set
-  # GCC_REQUIRE_GPG=1 to make any skipped GPG verification fatal. A failed
-  # VERIFY with an available key is always fatal.
-  _gpg_verified=0
-  if command -v gpg >/dev/null 2>&1; then
-    # Import GCC release key if not present
-    if ! gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
-      echo "Importing GCC release signing key..."
-      gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
-      gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
-      echo "WARNING: could not import the GCC release signing key from any keyserver." >&2
-    fi
-
-    if gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
-      if gpg --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null; then
-        echo "GPG signature verified successfully."
-        _gpg_verified=1
-      else
-        echo "ERROR: GPG verification FAILED for ${TARBALL}." >&2
-        echo "The tarball may be corrupted or tampered with. Aborting." >&2
-        exit 1
-      fi
-    fi
-  else
-    echo "WARNING: gpg not installed." >&2
-  fi
-  if [ "${_gpg_verified}" -ne 1 ]; then
-    echo "WARNING: GPG signature verification was SKIPPED (no gpg or key unavailable); tarball is only SHA512-verified." >&2
-    if [ "${GCC_REQUIRE_GPG:-0}" = "1" ]; then
-      echo "ERROR: GCC_REQUIRE_GPG=1 — refusing to build without GPG verification." >&2
-      exit 1
-    fi
-  fi
-else
-  echo "No .sig found or accessible."
-fi
+# Optional: GPG signature verification (see verify_gcc_gpg_signature above).
+verify_gcc_gpg_signature
 
 # Opt-in tarball cache: store the tarball (which has passed the verification
 # policy above) for reuse by later targets. Inert when GCC_TARBALL_CACHE_DIR

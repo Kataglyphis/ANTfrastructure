@@ -108,6 +108,30 @@ append_meson_arg() {
   esac
 }
 
+# Enforce the python-exe / gst-plugins-rs meson args. Called at two points: once
+# during initial arg assembly and again after monorepo setup, so they survive an
+# externally-supplied MESON_ARGS. Extracted from two verbatim-duplicated copies
+# to keep them from drifting.
+enforce_gst_rs_meson_args() {
+  append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
+  if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
+    append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
+  fi
+  # GST_RS_BUILD_ALL: 'auto' attempts every gst-plugins-rs plugin and cleanly
+  # SKIPS (not a hard meson error) when a system dep is missing; 'enabled'
+  # force-requires every plugin and aborts meson setup on the first unsatisfiable
+  # dep (e.g. webrtcbin2 needs the unpackaged rice-proto>=0.4.2). 'auto' still
+  # builds burn/skia/whisper/csound/dav1d and everything else whose deps we ship.
+  if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
+    append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=auto"
+  else
+    append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
+  fi
+  [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_meson_arg "-Dgst-plugins-rs:burn=disabled"
+  # whisper stays enabled unless explicitly disabled via MESON_ARGS.
+  append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
+}
+
 # NOTE: dedup-guarded env-var flag appends use append_flag_if_missing from
 # 01-core/common.sh (loaded via media_common_init above); the local
 # append_env_flag duplicate was removed in favor of that canonical helper.
@@ -361,24 +385,7 @@ elif [ -z "${EXTRA_MESON_ARGS}" ]; then
 fi
 
 # Always enforce these, even if MESON_ARGS was supplied externally.
-append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
-if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
-  append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
-fi
-# GST_RS_BUILD_ALL: use 'auto' so every gst-plugins-rs plugin is attempted and
-# built when its deps are present, and cleanly SKIPPED (not a hard meson error)
-# when a system dep is missing. 'enabled' force-requires every plugin, which
-# aborts meson setup on the first unsatisfiable dep (e.g. webrtcbin2 needs the
-# unpackaged rice-proto>=0.4.2). 'auto' still builds burn/skia/whisper/csound/
-# dav1d and everything else whose deps we ship.
-if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
-  append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=auto"
-else
-  append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
-fi
-[ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_meson_arg "-Dgst-plugins-rs:burn=disabled"
-# Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
-append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
+enforce_gst_rs_meson_args
 
 # The system Vulkan SDK headers (1.4.x) are incompatible with GCC 16's strict
 # C parsing when combined with XCB headers, causing syntax errors in
@@ -532,24 +539,7 @@ else
 fi
 
 # Enforce the gst-plugins-rs args again here so they survive external MESON_ARGS.
-append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
-if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
-  append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
-fi
-# GST_RS_BUILD_ALL: use 'auto' so every gst-plugins-rs plugin is attempted and
-# built when its deps are present, and cleanly SKIPPED (not a hard meson error)
-# when a system dep is missing. 'enabled' force-requires every plugin, which
-# aborts meson setup on the first unsatisfiable dep (e.g. webrtcbin2 needs the
-# unpackaged rice-proto>=0.4.2). 'auto' still builds burn/skia/whisper/csound/
-# dav1d and everything else whose deps we ship.
-if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
-  append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=auto"
-else
-  append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
-fi
-[ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_meson_arg "-Dgst-plugins-rs:burn=disabled"
-# whisper left enabled — do not force-disable here
-append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
+enforce_gst_rs_meson_args
 
 # In cross mode the rustc ptp-helper link step receives empty `-C link-arg=`
 # flags from meson's env passthrough, so ld.bfd fails with

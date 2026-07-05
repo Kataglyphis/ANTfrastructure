@@ -240,16 +240,18 @@ CMAKE_EOF
     cmake --preset "${preset}" "${cmake_args[@]}"
 }
 
+# Single source of truth for the CMake build subdirectory name, which encodes
+# the Debug/Release convention. Used bare (relative to litert/) and joined onto
+# ${LITERT_SRC}/litert/ by the install paths below.
+litert_build_subdir() {
+    [ "${BUILD_TYPE}" = "Debug" ] && printf 'cmake_build_debug' || printf 'cmake_build'
+}
+
 build_litert() {
     info Building LiteRT with ${NPROC} parallel jobs...
 
-    local build_dir="cmake_build"
-    if [ "${BUILD_TYPE}" = "Debug" ]; then
-        build_dir="cmake_build_debug"
-    fi
-
     cd "${LITERT_SRC}/litert"
-    run_cmake_build_with_fallback "${build_dir}" "${NPROC}"
+    run_cmake_build_with_fallback "$(litert_build_subdir)" "${NPROC}"
 }
 
 build_tflite_c_api() {
@@ -342,10 +344,7 @@ build_tflite_c_api() {
 install_litert() {
     info Installing LiteRT to ${LITERT_PREFIX}...
 
-    local build_dir="${LITERT_SRC}/litert/cmake_build"
-    if [ "${BUILD_TYPE}" = "Debug" ]; then
-        build_dir="${LITERT_SRC}/litert/cmake_build_debug"
-    fi
+    local build_dir="${LITERT_SRC}/litert/$(litert_build_subdir)"
 
     cd "${LITERT_SRC}/litert"
 
@@ -689,10 +688,7 @@ _install_manual_pkgconfig() {
 }
 
 install_manual() {
-    local build_dir="${LITERT_SRC}/litert/cmake_build"
-    if [ "${BUILD_TYPE}" = "Debug" ]; then
-        build_dir="${LITERT_SRC}/litert/cmake_build_debug"
-    fi
+    local build_dir="${LITERT_SRC}/litert/$(litert_build_subdir)"
 
     local lib_dir="${LITERT_PREFIX}/lib"
     local include_dir="${LITERT_PREFIX}/include"
