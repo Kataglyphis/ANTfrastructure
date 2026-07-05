@@ -69,14 +69,17 @@ If you used a custom `INSTALLDIR`, substitute `D:\Stevedore\bin\docker.exe` for 
 
 Reboot after installation. This enables the Windows Containers feature and adds your user to the `docker-users` group.
 
-**DNS note:** Windows `nerdctl build` has broken DNS in BuildKit containers.  
-Use Stevedore's bundled `docker.exe` for all builds below:
+**Use Stevedore's bundled `docker.exe` for both builds and runs on this host.**
+`nerdctl build` has broken DNS in BuildKit containers, and `nerdctl run` fails
+before the container starts — it needs the Windows CNI `nat` plugin in
+`C:\Program Files\containerd\cni\bin`, which is not installed (Stevedore does not
+bundle it). `docker.exe` has no such dependency: Docker Engine provides NAT
+networking natively, so both `docker build` and `docker run` just work.
 
 | Tool | Build | Run |
 |------|-------|-----|
-| `"D:\Stevedore\bin\docker.exe" build` | ✅ Working DNS | N/A |
-| `nerdctl build` | ❌ Broken DNS | N/A |
-| `nerdctl run` | N/A | ✅ Works |
+| `"D:\Stevedore\bin\docker.exe"` | ✅ Working DNS | ✅ Works (NAT + DNS + process isolation) |
+| `nerdctl` | ❌ Broken DNS | ❌ Fails: missing CNI `nat` plugin |
 
 ## Build Commands
 
@@ -255,21 +258,31 @@ Add-MpPreference -ExclusionPath "C:\ProgramData\nerdctl"
 Add-MpPreference -ExclusionPath "C:\temp"
 ```
 
-### Fix 4: Use docker.exe for builds (not nerdctl)
+### Fix 4: Use docker.exe for builds and runs (not nerdctl)
 
-Always use Stevedore's `docker.exe` for builds — `nerdctl build` lacks DNS resolution:
+Always use Stevedore's `docker.exe` — `nerdctl build` lacks DNS resolution, and
+`nerdctl run` fails on this host because the Windows CNI `nat` plugin is not
+installed (`failed to create default network: needs CNI plugin "nat" to be
+installed in CNI_PATH`). `docker.exe` needs no CNI plugin:
 
 ```powershell
 "D:\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
 ```
 
-`nerdctl run` works fine for running containers (DNS resolution is only broken during BuildKit builds, not for runs).
-
 ## Running the Image
 
+Run with **process isolation** to get the host's full CPU count (Hyper-V
+isolation, the Windows default, exposes only 2 logical CPUs). Process isolation
+is allowed here because the host build (26200) is ≥ the container base build
+(`servercore:ltsc2025`, 26100):
+
 ```powershell
-nerdctl run --memory 48g -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+& "D:\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
 ```
+
+Drop `--isolation process` to fall back to Hyper-V isolation (stronger boundary,
+but capped at 2 CPUs on this host). NAT networking and DNS work in both modes.
 
 ## Smoke Testing
 
@@ -277,7 +290,7 @@ After building, run the container smoke test to verify all components:
 
 ```powershell
 # Run smoke tests inside the built container
-nerdctl run --memory 48g -it --rm `
+& "D:\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
   powershell -File C:\temp\scripts\smoke-test-container.ps1
 ```

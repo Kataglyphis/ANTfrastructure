@@ -228,7 +228,7 @@ The **Windows lane** follows a separate staged build (`base → [nvidia] → too
 - **Stevedore** (`winget install stevedore` or `choco install stevedore`) — provides nerdctl + containerd for Windows Containers
 - **Reboot** after Stevedore install to enable the Windows Containers feature
 - **Docker Desktop or Rancher Desktop** can also be used with `docker` commands (swap `nerdctl` → `docker` in build commands)
-- **DNS workaround**: Windows `nerdctl build` has broken DNS in BuildKit containers. Use Stevedore's bundled `docker.exe` for builds: `"D:\Stevedore\bin\docker.exe" build`. `nerdctl run` works fine for running containers.
+- **DNS workaround**: Windows `nerdctl build` has broken DNS in BuildKit containers. Use Stevedore's bundled `docker.exe` for **both builds and runs**: `"D:\Stevedore\bin\docker.exe" build` / `... run --isolation process`. `nerdctl run` also fails on this host — it needs the Windows CNI `nat` plugin (not installed); `docker.exe` provides NAT networking natively. Run with `--isolation process` for the host's full CPU count (Hyper-V isolation is capped at 2 CPUs). See `docs/windows-builds.md` § Running the Image.
 
 ### Stevedore Fixes After Install
 
@@ -409,7 +409,8 @@ base ─┬─ onnxruntime ───────┐
 | Stale downstream images | Base image rebuilt but downstream not refreshed | Use `--verify-chain` or rebuild from replaced stage |
 | `registry_pin_ref` fails on fresh push | Registry hasn't propagated the new manifest | Now uses `retry()` with 5 attempts; wait a few seconds and retry |
 | Terminal freeze during long build | Build output overwhelms terminal | Use `setsid` / `disown` for very long builds |
-| nerdctl DNS failure in build | BuildKit container can't resolve hostnames on Windows (`--dns` and `--network host` unsupported) | Use Stevedore's bundled `"D:\Stevedore\bin\docker.exe" build` instead — same containerd backend, working DNS. `nerdctl run` works fine for running containers. |
+| nerdctl DNS failure in build | BuildKit container can't resolve hostnames on Windows (`--dns` and `--network host` unsupported) | Use Stevedore's bundled `"D:\Stevedore\bin\docker.exe" build` instead — same containerd backend, working DNS. |
+| `nerdctl run` (Windows): `needs CNI plugin "nat" to be installed in CNI_PATH` | Windows CNI plugins (`nat.exe`) are not installed and Stevedore doesn't bundle them | Use `docker.exe run` instead — Docker Engine provides NAT networking natively, no CNI plugin needed. Add `--isolation process` for the host's full CPU count. |
 | `hcsshim::ActivateLayer failed (0x20)` during build | Windows Defender scanning new layer files + containerd snapshot contention | Exclude `C:\ProgramData\containerd`, `C:\ProgramData\nerdctl` from Windows Defender. Or use `docker.exe` instead of `nerdctl` for builds (Docker's layer manager is more resilient). |
 | Stevedore docker build: `runtime "com.docker.hcsshim.v1" binary not installed` | Service default runtime uses `hcsshim-v1` shim which isn't shipped | Change to `runhcs-v1`: `sc config stevedore binPath="..." --default-runtime=io.containerd.runhcs.v1"` (see docs/windows-builds.md § Fix 2) |
 | Stevedore docker build: `failed to create TTRPC connection` | Shim binary mismatch (runhcs copied as hcsshim) | Remove the bad shim copy: `del "C:\Program Files\Stevedore\bin\containerd-shim-hcsshim-v1.exe"`. Apply Fix 2 instead. |

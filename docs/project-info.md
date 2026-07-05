@@ -31,7 +31,7 @@ Current automated validation in this repository is documentation-focused:
 
 ## Windows Image Chain
 
-Windows Container builds run on `windows/amd64` only and produce a single published tag (`ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`) on `windows/servercore:ltsc2025`. The lane uses Stevedore's bundled `docker.exe` for builds (`nerdctl build` has broken DNS in BuildKit on Windows; `nerdctl run` works fine for running containers). See `docs/windows-builds.md` for the full build commands and prerequisites.
+Windows Container builds run on `windows/amd64` only and produce a single published tag (`ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`) on `windows/servercore:ltsc2025`. The lane uses Stevedore's bundled `docker.exe` for both builds and runs (`nerdctl build` has broken DNS in BuildKit on Windows, and `nerdctl run` fails without the Windows CNI `nat` plugin; `docker.exe run --isolation process` works and exposes the host's full CPU count). See `docs/windows-builds.md` for the full build commands and prerequisites.
 
 Stage chain (each `FROM` the previous stage's local tag):
 
