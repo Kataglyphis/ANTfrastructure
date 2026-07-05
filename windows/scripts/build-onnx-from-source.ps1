@@ -153,10 +153,12 @@ Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
 
 $env:NINJA_STATUS = "[%f/%t] "
 # Memory-scaled parallelism: AVX-512/CUDA TUs under clang-cl peak at several GB each,
-# so full -j<cores> can OOM the container. jobs = min(cores, memGB/8), floor 2
-# (override with BUILD_JOBS). Ninja is incremental, so the -j2 retry after an
-# OOM-style failure only redoes the jobs that died.
-$jobs = Get-BuildJobCount -MemGBPerJob 8
+# so full -j<cores> can OOM the container. jobs = min(cores, memGB/4), floor 2
+# (override with BUILD_JOBS). 4 GB/job is tuned to use more host cores; typical TUs
+# use ~2-3 GB and only a few heavy CUDA kernels approach the cap. Ninja is
+# incremental, so the -j2 retry after an OOM-style failure only redoes the jobs
+# that died -- worst case is a slow tail, not a failed build.
+$jobs = Get-BuildJobCount -MemGBPerJob 4
 Write-Host "Building with ninja -j$jobs..."
 ninja -j $jobs -C $buildDir 2>&1
 if ($LASTEXITCODE -ne 0 -and $jobs -gt 2) {
