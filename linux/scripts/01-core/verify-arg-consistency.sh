@@ -89,4 +89,45 @@ else
   echo "All ARG defaults match versions.env"
 fi
 
+echo ""
+echo "=== Script :- default drift check (advisory) ==="
+# Many build scripts embed a hardcoded fallback for a versions.env variable as
+# ${VAR:-literal} (a "third channel": the value is neither an ARG default nor
+# read from versions.env at runtime — several scripts don't source
+# load_versions_env). Those literals can silently drift from versions.env.
+# This check surfaces such drift. It is ADVISORY (never fails the build) because,
+# unlike Dockerfile ARG defaults, script defaults legitimately diverge:
+#   * TVM_REF: tvm.sh defaults to the 'main' branch for standalone runs, while
+#     versions.env pins the built ref.
+#   * PYTHON_VERSION: CI tooling defaults to a MAJOR.MINOR (3.14) to name the
+#     interpreter, not the full patch version.
+# Add such intentional cases to SCRIPT_DEFAULT_DRIFT_ALLOW below.
+declare -A SCRIPT_DEFAULT_DRIFT_ALLOW=( [TVM_REF]=1 [PYTHON_VERSION]=1 )
+DRIFT_WARN=0
+while IFS= read -r hit; do
+  # hit is "path:${VAR:-literal}"
+  file="${hit%%:*}"; match="${hit#*:}"
+  var="${match#\$\{}"; var="${var%%:-*}"
+  lit="${match#*:-}"; lit="${lit%\}}"
+  # Only versions.env variables with a non-empty value are comparable.
+  env_val="${_version_values[$var]:-}"
+  [ -n "$env_val" ] || continue
+  [ -n "${SCRIPT_DEFAULT_DRIFT_ALLOW[$var]:-}" ] && continue
+  # Skip non-literal fallbacks: empty, the 'unset' sentinel, nested expansions
+  # (${..$..}), command substitutions, or backticks — not values to compare.
+  case "$lit" in ''|unset|*'$'*|*'('*|*'`'*) continue ;; esac
+  env_val="${env_val%\"}"; env_val="${env_val#\"}"   # strip surrounding quotes
+  if [ "$lit" != "$env_val" ]; then
+    echo "  WARN drift: ${file}  \${${var}:-${lit}}  ≠  versions.env ${var}=${env_val}"
+    DRIFT_WARN=$((DRIFT_WARN + 1))
+  fi
+done < <(grep -rloP '\$\{[A-Z][A-Z0-9_]*:-[^}]*\}' "${REPO_ROOT}/linux/scripts" --include='*.sh' 2>/dev/null \
+         | while read -r f; do grep -oP '\$\{[A-Z][A-Z0-9_]*:-[^}]*\}' "$f" | sed "s|^|${f}:|"; done)
+if [ "$DRIFT_WARN" -gt 0 ]; then
+  echo "NOTE: ${DRIFT_WARN} script default(s) differ from versions.env (advisory only)."
+  echo "If intentional, add the variable to SCRIPT_DEFAULT_DRIFT_ALLOW in this script."
+else
+  echo "No script :- default drift detected"
+fi
+
 echo "DONE: version ARG consistency check"
