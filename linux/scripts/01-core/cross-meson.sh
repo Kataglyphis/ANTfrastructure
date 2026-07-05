@@ -60,47 +60,31 @@ append_cmake_cross_archiver_args() {
   )
 }
 
-# Canonical cross-compile CMake defines as bare KEY=VALUE pairs (no -D prefix),
-# appended to the named array. Single source of truth shared by
-# append_cmake_cross_args (which prefixes -D) and onnxruntime's build.py
-# --cmake_extra_defines form (which takes bare KEY=VALUE). Emits nothing unless a
-# cross build is active. CMake also reads CMAKE_* from the environment, but the
-# explicit values take precedence and guard against stale inherited env / toolchain
-# files.
-cross_cmake_define_pairs() {
-  local -n _cdp_out="$1"
+append_cmake_cross_args() {
+  local -n _out="$1"
 
   cross_build_enabled || return 0
   setup_linux_cross_env
 
-  _cdp_out+=(
-    "CMAKE_SYSTEM_NAME=Linux"
-    "CMAKE_SYSTEM_PROCESSOR=${CROSS_TARGET_PROCESSOR}"
-    "CMAKE_SYSROOT=${CMAKE_SYSROOT:-/}"
-    "CMAKE_C_COMPILER=${CC}"
-    "CMAKE_CXX_COMPILER=${CXX}"
-    "CMAKE_ASM_COMPILER=${CC}"
-    "CMAKE_AR=${AR}"
-    "CMAKE_RANLIB=${RANLIB}"
-    "CMAKE_LIBRARY_ARCHITECTURE=${CROSS_TARGET_TRIPLET}"
-    "CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
-    "CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
-    "CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
-    "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY"
-    "PKG_CONFIG_USE_CMAKE_PREFIX_PATH=ON"
+  # CMake picks up CMAKE_* from the environment automatically, but explicit -D
+  # arguments take precedence and serve as defense-in-depth against stale
+  # inherited env vars or CMake toolchain files that might override them.
+  _out+=(
+    "-DCMAKE_SYSTEM_NAME=Linux"
+    "-DCMAKE_SYSTEM_PROCESSOR=${CROSS_TARGET_PROCESSOR}"
+    "-DCMAKE_SYSROOT=${CMAKE_SYSROOT:-/}"
+    "-DCMAKE_C_COMPILER=${CC}"
+    "-DCMAKE_CXX_COMPILER=${CXX}"
+    "-DCMAKE_ASM_COMPILER=${CC}"
+    "-DCMAKE_AR=${AR}"
+    "-DCMAKE_RANLIB=${RANLIB}"
+    "-DCMAKE_LIBRARY_ARCHITECTURE=${CROSS_TARGET_TRIPLET}"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY"
+    "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY"
+    "-DPKG_CONFIG_USE_CMAKE_PREFIX_PATH=ON"
   )
-}
-
-append_cmake_cross_args() {
-  local -n _out="$1"
-  local -a _acca_pairs=()
-  local _acca_p
-
-  cross_build_enabled || return 0
-  cross_cmake_define_pairs _acca_pairs
-  for _acca_p in "${_acca_pairs[@]}"; do
-    _out+=("-D${_acca_p}")
-  done
 }
 
 ensure_meson_cross_file() {
