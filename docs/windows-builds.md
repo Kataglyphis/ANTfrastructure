@@ -111,24 +111,58 @@ bloat the image layers.
 
 ### Build isolation and CPU parallelism
 
-`build.ps1` runs **every** `docker build` with `--isolation process`. This is
-not optional: Hyper-V-isolated build containers (the Windows default) are given
-only **2 logical CPUs**, so `Get-BuildJobCount` — which is `min(ProcessorCount,
-memGB / memPerJob)` — pins every in-container `ninja -j` to 2 no matter how many
-cores the host has. That single default is the difference between a ~1-hour and a
-~6-hour ONNX/CUDA compile.
+Hyper-V-isolated build containers (the Windows default) are given only **2
+logical CPUs**, so `Get-BuildJobCount` — `min(ProcessorCount, memGB / memPerJob)`
+— pins every in-container `ninja -j` to 2 no matter how many cores the host has.
+That is the difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the
+heavy **media-core** stage does **not** use `docker build` at all.
 
-The classic Windows `docker build` gives no other lever: `--cpu-count` is
-rejected outright ("unknown flag"), and `--cpuset-cpus` is silently ignored on
-Windows containers. Process isolation is the only mechanism that exposes all
-host logical processors to the build (verified on the dev host: `ProcessorCount`
-2 → 32). Actual parallelism is then bounded by `--memory` (see below), which is
-the correct cap for RAM-heavy CUDA translation units.
+**Why `docker build` can't be fixed on this host.** The classic Windows builder
+offers no working CPU lever, all verified with a ~6-second repro (a Dockerfile
+that writes a dummy layer):
 
-Process isolation requires the container base image build to be compatible with
-the host (e.g. `servercore:ltsc2025` on Windows 11 26xxx). If a future host/image
-mismatch breaks it, the build falls back to 2 CPUs — the symptom is `ninja -j2`
-in `out\windows-build-logs\media-core.log`.
+| Attempt | Result |
+|---|---|
+| `docker build --cpu-count N` | rejected — "unknown flag" |
+| `docker build --cpuset-cpus 0-15` | build fails |
+| `docker build --isolation process` | container sees all 32 CPUs **but cannot commit any layer** — `hcsshim::ActivateLayer failed 0x20 "file used by another process"`, even for a 100 MB dummy layer |
+
+The `ActivateLayer` failure is **not** Windows Defender, Windows Search, or
+SysMain — all were ruled out by disabling each and re-running the repro. It is a
+container-filter / Docker-Engine level defect with process isolation on this
+host, so `--isolation process` is unusable for building (every build dies at the
+first commit). Hyper-V isolation commits reliably but is stuck at 2 CPUs. **Do
+not add `--isolation process` to any `docker build`.**
+
+**The run+commit path (how media-core gets its cores).** `docker run` — unlike
+`docker build` — *does* honor `--cpu-count` under Hyper-V (verified: `docker run
+--isolation hyperv --cpu-count 16` → `NUMBER_OF_PROCESSORS=16`), and a Hyper-V
+container commits fine via `docker commit`. So `build.ps1` builds media-core as:
+
+1. `docker build` a thin **builder image** (`Dockerfile.media-core-builder`) —
+   toolchain + all media-core scripts/patches, no heavy RUN, so its cheap COPY
+   layers commit fine under Hyper-V.
+2. `docker run --isolation hyperv --cpu-count $MediaCoreCpus --memory
+   ${MediaMemoryGb}g <builder> powershell -File build-media-core-all.ps1` — runs
+   the whole ONNX → GenAI → OpenCV → FFmpeg chain in one container at the full
+   CPU count. `Get-BuildJobCount` sees `--cpu-count` as `ProcessorCount`, so ONNX
+   compiles at `min(cpu-count, memGB/4)` (e.g. `-j14` at `-MediaCoreCpus 16
+   -MediaMemoryGb 56`).
+3. `docker commit` the container to `local/kataglyphis:windows-media-core` — a
+   drop-in replacement for the old `Dockerfile.media-core` output.
+
+`Invoke-MediaCoreRunCommit` in `build.ps1` implements this; tune it with
+`-MediaCoreCpus` (default 16) and `-MediaMemoryGb` (default 48). The lighter
+`docker build` stages (base, sdk, toolchain, the litert/tvm aux branches, the
+merge/GStreamer stage) still run at 2 CPUs — acceptable, as they are far smaller
+than the ONNX/CUDA compile.
+
+**Trade-off:** a single `docker run` has no per-stage layer cache, so a mid-chain
+failure re-runs the whole chain (unlike a multi-`RUN` `docker build`, where each
+completed step is cached). The persistent **sccache** remote (below) covers the
+recompilation, so in practice only uncached objects rebuild. Regression symptom
+for the whole mechanism: `ninja -j2` in `out\windows-build-logs\media-core.log`,
+or an `ActivateLayer` error on any commit.
 
 ### Rust toolchain (scoop only — never rustup)
 
@@ -153,9 +187,10 @@ merge/GStreamer stage; `-AuxMemoryGb` (default 8) caps each of the two
 auxiliary branches. Size them so `MediaMemoryGb + 2*AuxMemoryGb` roughly fits
 host RAM. Each cap is forwarded as `MEMORY_LIMIT_GB` so the build scripts scale
 their parallel job count to the container's cap instead of host RAM
-(`BUILD_JOBS` overrides the heuristic outright). Because the containers run
-with process isolation (see § Build isolation and CPU parallelism), the job
-count is bounded by memory, not CPUs. On memory-constrained hosts pass
+(`BUILD_JOBS` overrides the heuristic outright). media-core builds via the
+run+commit path (see § Build isolation and CPU parallelism) so it gets
+`-MediaCoreCpus` CPUs; the aux branches are ordinary 2-CPU `docker build`s that
+run concurrently underneath it. On memory-constrained hosts pass
 `-SequentialMedia` to build the branches one after another.
 
 ### Persistent compile cache (sccache)
