@@ -30,6 +30,7 @@ for _vcs_mod_path in \
 done
 source_module platform.sh
 source_module arch-mapping.sh
+source_module common.sh   # alt_install_and_set (+ SUDO="" default)
 
 validate_resolve_arch() {
   canonical_target_arch "${1:-${TARGET_ARCH:-}}"
@@ -210,22 +211,17 @@ validate_package() {
   target_arch="$(validate_resolve_arch)"
   _VALIDATE_ERRORS=0
 
-  # --- wire target-native LLVM alternatives ---
+  local tool candidate
+  # --- wire target-native LLVM alternatives (install+set via canonical helper) ---
   if [ -d /usr/local/llvm-target ]; then
-    require_target_llvm_tool() {
-      local name="$1" priority="${2:-120}"
-      local candidate="/usr/local/llvm-target/bin/${name}"
-      [ -x "${candidate}" ] || {
+    for tool in clang clang++ llvm-ar llvm-ranlib; do
+      candidate="/usr/local/llvm-target/bin/${tool}"
+      if [ -x "${candidate}" ]; then
+        alt_install_and_set "${tool}" "/usr/bin/${tool}" "${candidate}" 120
+      else
         echo "WARNING: expected target-native LLVM tool missing: ${candidate}" >&2
-        return 0
-      }
-      update-alternatives --install "/usr/bin/${name}" "${name}" "${candidate}" "${priority}"
-      update-alternatives --set "${name}" "${candidate}"
-    }
-    require_target_llvm_tool clang
-    require_target_llvm_tool clang++
-    require_target_llvm_tool llvm-ar
-    require_target_llvm_tool llvm-ranlib
+      fi
+    done
   else
     echo "WARNING: /usr/local/llvm-target not found; using distro LLVM"
   fi
@@ -233,22 +229,12 @@ validate_package() {
   # --- wire GCC alternatives ---
   gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
   if [ -d "${gcc_prefix}" ]; then
-    local tool candidate
     for tool in gcc g++ gcov; do
       candidate="${gcc_prefix}/bin/${tool}"
-      if [ -x "${candidate}" ]; then
-        update-alternatives --install "/usr/bin/${tool}" "${tool}" "${candidate}" 150
-        update-alternatives --set "${tool}" "${candidate}"
-      fi
+      [ -x "${candidate}" ] && alt_install_and_set "${tool}" "/usr/bin/${tool}" "${candidate}" 150
     done
-    if [ -x "${gcc_prefix}/bin/gcc" ]; then
-      update-alternatives --install /usr/bin/cc cc "${gcc_prefix}/bin/gcc" 150
-      update-alternatives --set cc "${gcc_prefix}/bin/gcc"
-    fi
-    if [ -x "${gcc_prefix}/bin/g++" ]; then
-      update-alternatives --install /usr/bin/c++ c++ "${gcc_prefix}/bin/g++" 150
-      update-alternatives --set c++ "${gcc_prefix}/bin/g++"
-    fi
+    [ -x "${gcc_prefix}/bin/gcc" ] && alt_install_and_set cc  /usr/bin/cc  "${gcc_prefix}/bin/gcc" 150
+    [ -x "${gcc_prefix}/bin/g++" ] && alt_install_and_set c++ /usr/bin/c++ "${gcc_prefix}/bin/g++" 150
   else
     echo "WARNING: Custom GCC prefix ${gcc_prefix} not found"
   fi

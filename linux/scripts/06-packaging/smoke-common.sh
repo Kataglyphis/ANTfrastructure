@@ -144,13 +144,19 @@ check_dumpmachine() {
   fi
 }
 
-# Full cross-compiler validation for a target architecture.
+# Full compiler validation for a target architecture.
 # Runs: -dumpmachine, ELF machine, cc1 compile-to-object, link smoke.
-# Usage: validate_compiler_for_target "/path/to/cross-gcc" "arm64" "cross-gcc (arm64)"
+# Usage: validate_compiler_for_target <cc_path> <target_arch> [label] [mode]
+#   mode=native (default) — the compiler BINARY is expected to be target-arch
+#     (target-native compiler, e.g. the packaged cc); its ELF machine is checked.
+#   mode=cross            — the compiler is a cross compiler whose BINARY is
+#     host-arch (it merely emits target code), so the binary-ELF check is skipped;
+#     the produced object/exe ELF (checked below) is what must be target-arch.
 validate_compiler_for_target() {
   local cc_path="$1"
   local target_arch="$2"
   local label="${3:-${cc_path}}"
+  local mode="${4:-native}"
   local expected_pattern expected_machine cc_dump cc_machine tmpdir cc_obj
 
   expected_pattern="$(smoke_uname_name "${target_arch}")"
@@ -170,8 +176,10 @@ validate_compiler_for_target() {
     fail "${label}: -dumpmachine=${cc_dump} != expected ${expected_pattern}"
   fi
 
-  # ELF machine check
-  if command -v readelf >/dev/null 2>&1; then
+  # ELF machine check of the compiler BINARY — native mode only. A cross
+  # compiler's binary is host-arch (it emits target code), so this check does
+  # not apply; the object/exe ELF checks below verify the emitted code instead.
+  if [ "${mode}" != "cross" ] && command -v readelf >/dev/null 2>&1; then
     cc_machine="$(readelf -h "${cc_path}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
     if [ -n "${cc_machine}" ]; then
       case "${cc_machine}" in
@@ -210,4 +218,14 @@ validate_compiler_for_target() {
     fail "${label}: link smoke FAILED (missing crt/startup files?)"
   fi
   rm -rf "${tmpdir}"
+}
+
+# Split a comma/space-separated arch list into words. Self-contained on purpose:
+# the smoke scripts source only smoke-common.sh + platform.sh and run under a
+# non-login `bash -c` in Dockerfile.package, so they must NOT depend on
+# 01-core/build-helpers.sh being sourced. They previously called that file's
+# arch_list_to_words unqualified — undefined here, so the cross-compiler loops
+# silently produced an empty list ("0 failures" with nothing actually tested).
+smoke_arch_words() {
+  printf '%s' "${1:-}" | tr ',' ' '
 }

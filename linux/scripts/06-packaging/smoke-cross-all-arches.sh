@@ -58,7 +58,7 @@ main() {
   fi
 
   # 3. Test cross-compilers for each target arch
-  for arch in $(arch_list_to_words "${target_arches}"); do
+  for arch in $(smoke_arch_words "${target_arches}"); do
     [ "${arch}" = "${host_arch}" ] && continue
     local triplet cross_gcc
     triplet="$(smoke_deb_triplet "${arch}" 2>/dev/null || true)"
@@ -67,20 +67,16 @@ main() {
     cross_gcc="${GCC_PREFIX}/bin/${triplet}-gcc"
     if [ -x "${cross_gcc}" ]; then
       echo "--- Cross compiler: ${arch} (${cross_gcc}) ---"
-      validate_compiler_for_target "${cross_gcc}" "${arch}" "${triplet}-gcc (cross-${arch})"
+      validate_compiler_for_target "${cross_gcc}" "${arch}" "${triplet}-gcc (cross-${arch})" cross
     else
       fail "Cross GCC for ${arch} not found at ${cross_gcc}"
     fi
 
     cross_gpp="${GCC_PREFIX}/bin/${triplet}-g++"
     if [ -x "${cross_gpp}" ]; then
-      local gpp_dump
-      gpp_dump="$("${cross_gpp}" -dumpmachine 2>/dev/null || true)"
-      local gpp_expected
-      gpp_expected="$(smoke_uname_name "${arch}" 2>/dev/null || true)"
-      echo "${gpp_dump}" | grep -q "^${gpp_expected}" && \
-        pass "${triplet}-g++: -dumpmachine=${gpp_dump}" || \
-        fail "${triplet}-g++: -dumpmachine=${gpp_dump} != expected"
+      check_dumpmachine "${cross_gpp}" \
+        "$(smoke_uname_name "${arch}" 2>/dev/null || true)" \
+        "${triplet}-g++ (cross-${arch})"
     fi
     echo ""
   done
@@ -88,7 +84,7 @@ main() {
   # 4. Test target-native Clang if available
   if [ -x /usr/local/llvm-target/bin/clang ]; then
     echo "--- Target-native Clang (/usr/local/llvm-target/bin/clang) ---"
-    for arch in $(arch_list_to_words "${target_arches}"); do
+    for arch in $(smoke_arch_words "${target_arches}"); do
       local clang_arch
       clang_arch="$(/usr/local/llvm-target/bin/clang -dumpmachine 2>/dev/null || true)"
       local expected

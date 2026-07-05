@@ -59,7 +59,7 @@ smoke_target() {
   local cross_gpp="${GCC_PREFIX}/bin/${triplet}-g++"
   local cross_ld="${GCC_PREFIX}/bin/${triplet}-ld"
 
-  validate_compiler_for_target "${cross_gcc}" "${target_arch}" "cross-gcc (${target_arch})"
+  validate_compiler_for_target "${cross_gcc}" "${target_arch}" "cross-gcc (${target_arch})" cross
 
   if [ -x "${cross_gpp}" ]; then
     local expected_pat
@@ -114,7 +114,7 @@ check_rust() {
   echo "--- Rust/Cargo ---"
   check_version "rustc --version" "rustc" "rustc"
   check_version "cargo --version" "cargo" "cargo"
-  for target in $(arch_list_to_words "${target_arches}"); do
+  for target in $(smoke_arch_words "${target_arches}"); do
     local rust_target
     rust_target="$(smoke_rust_target "${target}" 2>/dev/null || true)"
     if rustup target list --installed 2>/dev/null | grep -q "${rust_target}"; then
@@ -139,7 +139,7 @@ check_python() {
   else
     fail "python${PYTHON_MAJOR_MINOR} sys.version: ${py_sysver:-MISSING} (expected ${PYTHON_VERSION})"
   fi
-  for cross_arch in $(arch_list_to_words "${target_arches}"); do
+  for cross_arch in $(smoke_arch_words "${target_arches}"); do
     local py_root="/opt/python-cross/${cross_arch}"
     if [ -d "${py_root}" ]; then
       if [ -f "${py_root}/usr/local/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR}.pc" ]; then
@@ -158,7 +158,7 @@ run_cross_targets() {
   local host_arch="$2"
 
   # Cross-compilers for each target
-  for arch in $(arch_list_to_words "${target_arches}"); do
+  for arch in $(smoke_arch_words "${target_arches}"); do
     [ "${arch}" = "${host_arch}" ] && continue
     smoke_target "${arch}"
   done
