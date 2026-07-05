@@ -30,22 +30,28 @@ build_armnn() {
 
   local cross_args=()
   if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${ARCH}" != "amd64" ]; then
-    local cross_prefix triplet
-    case "${ARCH}" in
-      arm64|aarch64)
-        cross_prefix="aarch64-linux-gnu"
-        triplet="aarch64-linux-gnu"
-        ;;
-      *) die "No cross config for ${ARCH}" ;;
-    esac
-    cross_args=(
-      -DCMAKE_C_COMPILER="${cross_prefix}-gcc"
-      -DCMAKE_CXX_COMPILER="${cross_prefix}-g++"
-      -DCMAKE_FIND_ROOT_PATH="/usr/${triplet}"
-      -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
-      -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
-      -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
-    )
+    if command -v append_cmake_cross_args >/dev/null 2>&1; then
+      # Canonical cross toolchain args (same helper opencv/litert/onnx use).
+      append_cmake_cross_args cross_args
+    else
+      # Fallback: hand-rolled cross toolchain args (pre-helper environments).
+      local cross_prefix triplet
+      case "${ARCH}" in
+        arm64|aarch64)
+          cross_prefix="aarch64-linux-gnu"
+          triplet="aarch64-linux-gnu"
+          ;;
+        *) die "No cross config for ${ARCH}" ;;
+      esac
+      cross_args=(
+        -DCMAKE_C_COMPILER="${cross_prefix}-gcc"
+        -DCMAKE_CXX_COMPILER="${cross_prefix}-g++"
+        -DCMAKE_FIND_ROOT_PATH="/usr/${triplet}"
+        -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+      )
+    fi
   fi
 
   mkdir -p "${ARMNN_BUILD_DIR}"
