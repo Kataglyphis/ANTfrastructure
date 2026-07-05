@@ -117,24 +117,15 @@ source "${SCRIPT_DIR}/tvm-llvm-compat.sh"
 # TVM v0.25.0 already includes LLVM 22 compatibility fixes.
 # patch_tvm_for_llvm_22 was removed after the v0.24.0 -> v0.25.0 bump.
 
-main() {
-  local workdir="${TVM_WORKDIR:-$(pick_default_workdir)}"
-  local ref="${TVM_REF:-main}"
-  local build_type="${TVM_BUILD_TYPE:-Release}"
-  local llvm_config="${TVM_LLVM_CONFIG:-}"
-  local llvm_dir="${TVM_LLVM_DIR:-}"
-  local llvm_ignore_paths=""
-  local prefix="${TVM_PREFIX:-}"
-  local use_vulkan="${TVM_USE_VULKAN:-1}"
-  local use_cuda="${TVM_USE_CUDA:-0}"
-  local use_opencl="${TVM_USE_OPENCL:-0}"
-  local requested_jobs="${TVM_JOBS:-}"
-  local mb_per_job="${TVM_MB_PER_JOB:-2000}"
-  local llvm_cmake_value="OFF"
-  local do_clean=0
-  local do_apt=1
-  local do_python=1
+# ── main() phase helpers ─────────────────────────────────────────────────────
+# These are extracted from main() and communicate through main()'s local
+# variables via bash dynamic scoping (the same pattern tvm-python.sh uses). They
+# must be called ONLY from main(), in the order main() calls them, so every input
+# local is already assigned under `set -u`.
+# shellcheck disable=SC2154
 
+# Parse CLI options into main()'s option locals.
+parse_tvm_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --workdir)     workdir="$2"; shift 2 ;;
@@ -153,37 +144,34 @@ main() {
       *) die "Unknown argument: $1" ;;
     esac
   done
+}
 
-  local jobs
+# Derive parallel jobs + workdir-relative paths; default the install prefix.
+resolve_tvm_paths() {
   jobs="$(compute_jobs_with_mem_cap "${requested_jobs}" "${mb_per_job}")"
-
   mkdir -p "$workdir"
-  local tvm_dir="$workdir/tvm"
-  local build_dir="$tvm_dir/build"
+  tvm_dir="$workdir/tvm"
+  build_dir="$tvm_dir/build"
+  [ -n "$prefix" ] || prefix="$workdir/tvm-install"
+}
 
-  if [ -z "$prefix" ]; then
-    prefix="$workdir/tvm-install"
-  fi
-
-  if cross_build_is_active; then
-    setup_linux_cross_env
-  fi
-
-  if [ "$do_apt" -eq 1 ]; then
-    log "Installing build dependencies via apt"
-    install_deps
-    if [ "$use_vulkan" -eq 1 ]; then
-      # If Vulkan SDK is already installed, try to source it and avoid extra apt installs.
-      if try_source_vulkan_env; then
-        log "Detected Vulkan SDK under ${VULKAN_PREFIX:-/opt/vulkan}; sourced setup-env.sh"
-      fi
-    fi
-  else
+# Install apt build deps and optionally source a pre-installed Vulkan SDK.
+install_tvm_deps_phase() {
+  if [ "$do_apt" -ne 1 ]; then
     log "Skipping apt dependency installation (--no-apt)"
+    return 0
   fi
+  log "Installing build dependencies via apt"
+  install_deps
+  # If a Vulkan SDK is already installed, source it and avoid extra apt installs.
+  if [ "$use_vulkan" -eq 1 ] && try_source_vulkan_env; then
+    log "Detected Vulkan SDK under ${VULKAN_PREFIX:-/opt/vulkan}; sourced setup-env.sh"
+  fi
+}
 
-  require_toolchain_compilers
-
+# Clone TVM if needed, then fetch + checkout the requested ref, refreshing
+# submodules on a fresh clone or when the checkout moved.
+fetch_tvm_source() {
   local _tvm_cloned=0
   if [ ! -d "$tvm_dir/.git" ]; then
     log "Cloning TVM into $tvm_dir"
@@ -198,19 +186,17 @@ main() {
   if [ "$_tvm_cloned" -eq 0 ] || [ "$_curr_ref" != "$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)" ]; then
     git -C "$tvm_dir" submodule update --init --recursive
   fi
+}
 
-  if [ -z "$llvm_config" ]; then
-    llvm_config="$(detect_llvm_config)"
-  fi
-
-  if [ -n "$llvm_dir" ]; then
-    llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
-  fi
+# Resolve the LLVM to build against, setting llvm_config / llvm_dir /
+# llvm_cmake_value / llvm_ignore_paths. Cross builds prefer a target LLVM CMake
+# package; otherwise fall back to a (target-sanitized) llvm-config.
+resolve_tvm_llvm() {
+  [ -n "$llvm_config" ] || llvm_config="$(detect_llvm_config)"
+  [ -z "$llvm_dir" ] || llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
 
   if cross_build_is_active; then
-    if [ -z "$llvm_dir" ]; then
-      llvm_dir="$(detect_cross_llvm_cmake_dir)"
-    fi
+    [ -n "$llvm_dir" ] || llvm_dir="$(detect_cross_llvm_cmake_dir)"
     if [ -n "$llvm_dir" ]; then
       llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
       validate_detected_llvm_cmake_package "$llvm_dir"
@@ -227,82 +213,76 @@ main() {
 
   if [ -n "$llvm_dir" ] && cross_build_is_active; then
     llvm_ignore_paths="$(detect_vulkan_llvm_cmake_ignore_paths)"
-    if [ -n "${llvm_ignore_paths}" ]; then
-      log "Ignoring Vulkan LLVM CMake packages: ${llvm_ignore_paths}"
-    fi
+    [ -z "${llvm_ignore_paths}" ] || log "Ignoring Vulkan LLVM CMake packages: ${llvm_ignore_paths}"
   fi
 
+  # Finalize llvm_cmake_value when a CMake package dir was not selected above.
   if [ -n "$llvm_dir" ]; then
-    :
+    return 0
   elif [ -z "$llvm_config" ]; then
     log "llvm-config not found; continuing without LLVM (some TVM features will be disabled)"
   else
     log "Using LLVM: $llvm_config"
     llvm_cmake_value="$llvm_config"
   fi
+}
 
-  if [ "$do_clean" -eq 1 ]; then
-    log "Cleaning build directory: $build_dir"
-    rm -rf "$build_dir"
-  fi
-
-  mkdir -p "$build_dir"
-
-  # Decide toolchain.
-  # Default to GCC/G++ to avoid known LLVM-packaging header conflicts with clang++ on Ubuntu.
+# Choose the C/C++ compilers (default GCC to avoid clang++/LLVM-packaging header
+# conflicts) and, if LLVM injects a conflicting cxxabi.h, wrap them to prefer
+# GCC's header. Sets desired_cc / desired_cxx.
+select_tvm_compilers() {
   local gcc_bin="gcc-${GCC_WANTED}"
   local gxx_bin="g++-${GCC_WANTED}"
   command -v "$gcc_bin" >/dev/null 2>&1 || gcc_bin="gcc"
   command -v "$gxx_bin" >/dev/null 2>&1 || gxx_bin="g++"
 
-  local desired_cc
-  local desired_cxx
   desired_cc="$(command -v "${CC:-$gcc_bin}" 2>/dev/null || echo "${CC:-$gcc_bin}")"
   desired_cxx="$(command -v "${CXX:-$gxx_bin}" 2>/dev/null || echo "${CXX:-$gxx_bin}")"
 
-  # If LLVM injects an include dir containing a conflicting cxxabi.h, prefer GCC's header.
-  # This does not change the chosen C++ standard library; it only fixes header precedence.
   local wrapped
   wrapped="$(maybe_wrap_compiler_to_prefer_gcc_cxxabi_header "$llvm_config" "$build_dir" "$desired_cc" "$desired_cxx")"
   desired_cc="${wrapped%% *}"
   desired_cxx="${wrapped#* }"
+}
 
+# Resolve the SPIRV-Tools library for Vulkan, dropping it when its ELF arch does
+# not match the target (loaded SDK libs may be x86_64-only). Sets spirv_tools_lib.
+resolve_tvm_spirv_tools() {
+  [ "$use_vulkan" -eq 1 ] || return 0
+
+  spirv_tools_lib="$(detect_spirv_tools_library || true)"
+
+  if [ -n "$spirv_tools_lib" ] && [ -f "$spirv_tools_lib" ] && command -v readelf >/dev/null 2>&1; then
+    local _st_machine _tvm_target_arch _st_expected
+    _st_machine="$(readelf -h "$spirv_tools_lib" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
+    _tvm_target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
+    _st_expected="$(arch_elf_machine_grep_for "${_tvm_target_arch}" 2>/dev/null || true)"
+    if [ -n "${_st_expected}" ] && ! echo "${_st_machine}" | grep -qF "${_st_expected}"; then
+      log "SPIRV-Tools library ${spirv_tools_lib} has ELF machine '${_st_machine}' but target is ${_tvm_target_arch} ('${_st_expected}'). Building with USE_VULKAN=ON without SPIRV-Tools."
+      spirv_tools_lib=""
+    fi
+  fi
+
+  if [ -z "$spirv_tools_lib" ]; then
+    log "Vulkan enabled without SPIRV-Tools library; TVM will use Vulkan without SPIRV assembly support."
+  elif ! is_under_opt_vulkan "$spirv_tools_lib"; then
+    die "Vulkan enabled but SPIRV-Tools library resolved outside /opt/vulkan ($spirv_tools_lib). Only /opt/vulkan is allowed."
+  fi
+}
+
+# Assemble the CMake args (incl. cross link flags + SPIRV-Tools) and configure.
+configure_tvm_cmake() {
   log "Configuring CMake (type=$build_type)"
   local cmake_args=(
     -G Ninja
     -DCMAKE_INSTALL_PREFIX="$prefix"
   )
   local cross_link_flags=""
-  local spirv_tools_lib=""
-
   if cross_build_is_active; then
     cross_link_flags="$(cross_linker_search_flags || true)"
   fi
 
-  if [ "$use_vulkan" -eq 1 ]; then
-    # Help CMake/TVM find the SPIRV-Tools library reliably.
-    spirv_tools_lib="$(detect_spirv_tools_library || true)"
-
-    # Check SPIRV-Tools arch matches target arch (loaded SDK libs may be x86_64 only).
-    if [ -n "$spirv_tools_lib" ] && [ -f "$spirv_tools_lib" ] && command -v readelf >/dev/null 2>&1; then
-      local _st_machine
-      _st_machine="$(readelf -h "$spirv_tools_lib" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
-      local _tvm_target_arch
-      _tvm_target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
-      local _st_expected
-      _st_expected="$(arch_elf_machine_grep_for "${_tvm_target_arch}" 2>/dev/null || true)"
-      if [ -n "${_st_expected}" ] && ! echo "${_st_machine}" | grep -qF "${_st_expected}"; then
-        log "SPIRV-Tools library ${spirv_tools_lib} has ELF machine '${_st_machine}' but target is ${_tvm_target_arch} ('${_st_expected}'). Building with USE_VULKAN=ON without SPIRV-Tools."
-        spirv_tools_lib=""
-      fi
-    fi
-
-    if [ -z "$spirv_tools_lib" ]; then
-      log "Vulkan enabled without SPIRV-Tools library; TVM will use Vulkan without SPIRV assembly support."
-    elif ! is_under_opt_vulkan "$spirv_tools_lib"; then
-      die "Vulkan enabled but SPIRV-Tools library resolved outside /opt/vulkan ($spirv_tools_lib). Only /opt/vulkan is allowed."
-    fi
-  fi
+  resolve_tvm_spirv_tools
 
   append_tvm_cmake_args \
     cmake_args \
@@ -320,6 +300,50 @@ main() {
     "$cross_link_flags"
 
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
+}
+
+main() {
+  # Option locals (populated by parse_tvm_args).
+  local workdir="${TVM_WORKDIR:-$(pick_default_workdir)}"
+  local ref="${TVM_REF:-main}"
+  local build_type="${TVM_BUILD_TYPE:-Release}"
+  local llvm_config="${TVM_LLVM_CONFIG:-}"
+  local llvm_dir="${TVM_LLVM_DIR:-}"
+  local llvm_ignore_paths=""
+  local prefix="${TVM_PREFIX:-}"
+  local use_vulkan="${TVM_USE_VULKAN:-1}"
+  local use_cuda="${TVM_USE_CUDA:-0}"
+  local use_opencl="${TVM_USE_OPENCL:-0}"
+  local requested_jobs="${TVM_JOBS:-}"
+  local mb_per_job="${TVM_MB_PER_JOB:-2000}"
+  local llvm_cmake_value="OFF"
+  local do_clean=0
+  local do_apt=1
+  local do_python=1
+  # Derived locals declared here so the phase helpers assign into main()'s scope.
+  local jobs="" tvm_dir="" build_dir=""
+  local desired_cc="" desired_cxx="" spirv_tools_lib=""
+
+  parse_tvm_args "$@"
+  resolve_tvm_paths
+
+  if cross_build_is_active; then
+    setup_linux_cross_env
+  fi
+
+  install_tvm_deps_phase
+  require_toolchain_compilers
+  fetch_tvm_source
+  resolve_tvm_llvm
+
+  if [ "$do_clean" -eq 1 ]; then
+    log "Cleaning build directory: $build_dir"
+    rm -rf "$build_dir"
+  fi
+  mkdir -p "$build_dir"
+
+  select_tvm_compilers
+  configure_tvm_cmake
 
   log "Building TVM (jobs=$jobs, mb_per_job=$mb_per_job)"
   cmake --build "$build_dir" --parallel "$jobs"
