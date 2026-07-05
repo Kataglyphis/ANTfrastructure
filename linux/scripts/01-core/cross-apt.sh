@@ -12,6 +12,46 @@ fi
 _CROSS_APT_LOADED=1
 
 
+# Set/overwrite the `Architectures:` line in every stanza of a deb822 sources
+# file. Self-contained (awk only; no cross_* deps), so it is also sourced by
+# 02-toolchain/android-sdk.sh for its "amd64 i386" host case.
+apt_sources_set_architectures() {
+  local sources_file="$1" arch_string="$2" tmp=""
+
+  [ -f "${sources_file}" ] || return 0
+
+  tmp="$(mktemp)"
+  awk -v archs="${arch_string}" '
+    BEGIN { in_stanza=0; has_arch=0 }
+    /^[[:space:]]*$/ {
+      if (in_stanza && !has_arch) print "Architectures: " archs
+      print
+      in_stanza=0
+      has_arch=0
+      next
+    }
+    /^[[:space:]]*#/ {
+      print
+      next
+    }
+    {
+      in_stanza=1
+    }
+    /^Architectures:[[:space:]]*/ {
+      print "Architectures: " archs
+      has_arch=1
+      next
+    }
+    {
+      print
+    }
+    END {
+      if (in_stanza && !has_arch) print "Architectures: " archs
+    }
+  ' "${sources_file}" > "${tmp}"
+  mv "${tmp}" "${sources_file}"
+}
+
 cross_target_uses_ubuntu_ports() {
   case "$(cross_target_arch)" in
     arm64|riscv64) return 0 ;;
@@ -101,7 +141,7 @@ cross_apt_update() {
 }
 
 cross_configure_foreign_arch_apt_sources() {
-  local target_arch build_arch distro ports_url host_sources ports_sources tmp existing_ports_source
+  local target_arch build_arch distro ports_url host_sources ports_sources existing_ports_source
 
   cross_build_enabled || return 0
   cross_target_uses_ubuntu_ports || return 0
@@ -118,38 +158,7 @@ cross_configure_foreign_arch_apt_sources() {
     *) ports_url="${ports_url}/" ;;
   esac
 
-  if [ -f "${host_sources}" ]; then
-    tmp="$(mktemp)"
-    awk -v arch="${build_arch}" '
-      BEGIN { in_stanza=0; has_arch=0 }
-      /^[[:space:]]*$/ {
-        if (in_stanza && !has_arch) print "Architectures: " arch
-        print
-        in_stanza=0
-        has_arch=0
-        next
-      }
-      /^[[:space:]]*#/ {
-        print
-        next
-      }
-      {
-        in_stanza=1
-      }
-      /^Architectures:[[:space:]]*/ {
-        print "Architectures: " arch
-        has_arch=1
-        next
-      }
-      {
-        print
-      }
-      END {
-        if (in_stanza && !has_arch) print "Architectures: " arch
-      }
-    ' "${host_sources}" > "${tmp}"
-    mv "${tmp}" "${host_sources}"
-  fi
+  apt_sources_set_architectures "${host_sources}" "${build_arch}"
 
   cross_prune_foreign_arch_apt_sources "${ports_sources}"
 
