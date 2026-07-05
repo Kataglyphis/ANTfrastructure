@@ -53,6 +53,13 @@
     building concurrently. Sized so MediaMemoryGb + 2*AuxMemoryGb roughly fits
     host RAM.
 
+.PARAMETER MediaCoreCpus
+    CPU count for the media-core run+commit build (docker run --cpu-count N).
+    `docker build` is hard-capped at 2 CPUs on this host and process isolation
+    cannot commit layers, so media-core builds via docker run + docker commit,
+    which DOES honor --cpu-count under Hyper-V. Actual ninja parallelism is
+    min(MediaCoreCpus, MediaMemoryGb / per-job-GB); ONNX is ~4 GB/job.
+
 .PARAMETER SequentialMedia
     Build the media branches one after another instead of concurrently.
 
@@ -78,6 +85,7 @@ param(
     [string]$FinalTag = '',
     [int]$MediaMemoryGb = 48,
     [int]$AuxMemoryGb = 8,
+    [int]$MediaCoreCpus = 16,
     [switch]$SequentialMedia,
     [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT
 )
@@ -93,6 +101,14 @@ Push-Location $repoRoot
 # layer commit. Both Invoke-Stage and the media fan-out classify failures against
 # this single pattern.
 $script:TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
+
+# CPU note: Hyper-V-isolated build containers get only 2 CPUs, pinning every
+# in-container `ninja -j` to 2 (Get-BuildJobCount = min(ProcessorCount, memGB/perJob)).
+# `docker build` on this host's classic builder offers NO working lever to raise it
+# (--cpu-count rejected, --cpuset-cpus fails), and --isolation process — which would
+# expose all host CPUs — cannot commit layers here (hcsshim::ActivateLayer 0x20). So
+# `docker build` stages run at 2 CPUs. Raising this requires a docker-run+commit
+# path (docker run --cpu-count N does honor the flag under Hyper-V).
 
 # ---- resolve docker CLI (Stevedore's docker.exe preferred; nerdctl build has broken DNS) ----
 if ([string]::IsNullOrWhiteSpace($Docker)) {
@@ -143,6 +159,14 @@ function Get-DockerBuildArgList {
     # Windows Containers) rejects it.
     $dockerArgs = @('build')
     if ($NoCache) { $dockerArgs += '--no-cache' }
+    # NB: we deliberately do NOT pass --isolation process. On this host process
+    # isolation cannot commit ANY file-writing layer: hcsshim::ActivateLayer fails
+    # 0x20 ("file used by another process"), reproduced even for a 100 MB dummy
+    # layer and NOT caused by Defender/Search/SysMain (all ruled out). Hyper-V
+    # isolation (the default) commits reliably but is hard-capped at 2 CPUs for
+    # `docker build` (--cpu-count is rejected, --cpuset-cpus fails). Getting >2 CPUs
+    # needs a `docker run --cpu-count N` + `docker commit` path, not a build flag.
+    # See docs/windows-builds.md § Build isolation and CPU parallelism.
     foreach ($key in ($BuildArgs.Keys | Sort-Object)) {
         $value = $BuildArgs[$key]
         if ($null -ne $value -and "$value" -ne '') { $dockerArgs += '--build-arg', "$key=$value" }
@@ -222,25 +246,82 @@ function Get-MediaBranchSpecs {
     )
 }
 
+function Invoke-MediaCoreRunCommit {
+    # media-core cannot use `docker build` for its heavy compiles: this host caps
+    # build containers at 2 CPUs (Hyper-V) and process isolation cannot commit
+    # layers. So build a thin builder image (cheap COPY layers -> Hyper-V build
+    # commits fine), run the compile chain with `docker run --cpu-count N` (which
+    # DOES get N CPUs under Hyper-V), then `docker commit` the result. There is no
+    # per-stage layer cache inside the run; the sccache remote covers recompilation.
+    param(
+        [Parameter(Mandatory)] [hashtable]$BuildArgs,
+        [Parameter(Mandatory)] [int]$Cpus,
+        [Parameter(Mandatory)] [int]$MemoryGb,
+        [string]$OutLog
+    )
+    $builderTag = 'local/kataglyphis:windows-media-core-builder'
+    $resultTag  = 'local/kataglyphis:windows-media-core'
+    $container  = 'kataglyphis-media-core-build'
+
+    # 1. Thin builder image via the shared Invoke-Stage (retry + transient handling).
+    Invoke-Stage -Dockerfile 'windows/Dockerfile.media-core-builder' -Tag $builderTag -BuildArgs $BuildArgs
+
+    # 2. Heavy compile chain, then commit; retry the run only on transient infra errors.
+    $runArgs = @('run', '--isolation', 'hyperv', '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
+        '--name', $container, $builderTag,
+        'powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+        'C:\temp\scripts\build-media-core-all.ps1')
+    foreach ($attempt in 1..3) {
+        & $Docker container rm -f $container 2>&1 | Out-Null
+        Write-Host "`n==> [media-core] docker run --isolation hyperv --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
+        if ($OutLog) { & $Docker @runArgs 2>&1 | Tee-Object -FilePath $OutLog }
+        else { & $Docker @runArgs 2>&1 }
+        $runExit = $LASTEXITCODE
+        if ($runExit -eq 0) {
+            & $Docker commit $container $resultTag 2>&1 | ForEach-Object { Write-Host $_ }
+            $commitExit = $LASTEXITCODE
+            & $Docker container rm -f $container 2>&1 | Out-Null
+            if ($commitExit -ne 0) { throw "media-core commit failed (exit $commitExit)" }
+            Write-Host "media-core built via run+commit ($Cpus CPUs) -> $resultTag" -ForegroundColor Green
+            return
+        }
+        $tail = if ($OutLog -and (Test-Path $OutLog)) { Get-Content $OutLog -Tail 15 | Out-String } else { '' }
+        & $Docker container rm -f $container 2>&1 | Out-Null
+        if ($attempt -lt 3 -and $tail -match $script:TransientPattern) {
+            Write-Host "[media-core] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
+            Start-Sleep -Seconds 60
+            continue
+        }
+        throw "media-core compile (docker run) failed (exit $runExit)"
+    }
+}
+
 function Invoke-MediaBranches {
-    $specs = Get-MediaBranchSpecs
+    $specs    = Get-MediaBranchSpecs
+    $coreSpec = $specs | Where-Object { $_.Name -eq 'media-core' } | Select-Object -First 1
+    $auxSpecs = @($specs | Where-Object { $_.Name -ne 'media-core' })
+    $logDir   = Join-Path $repoRoot 'out\windows-build-logs'
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    $coreLog  = Join-Path $logDir 'media-core.log'
+
     if ($SequentialMedia) {
-        foreach ($spec in $specs) {
+        Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
+            -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+        foreach ($spec in $auxSpecs) {
             Invoke-Stage -Dockerfile $spec.Dockerfile -Tag $spec.Tag -BuildArgs $spec.BuildArgs `
                 -ExtraFlags @('--memory', "$($spec.MemoryGb)g")
         }
         return
     }
 
-    $logDir = Join-Path $repoRoot 'out\windows-build-logs'
-    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    # Concurrent: launch the aux branches (docker build, 2 CPUs each) in the
+    # background, then run media-core (run+commit, N CPUs) in the foreground — it is
+    # the long pole, so the aux builds finish underneath it.
     $procs = @()
-    $first = $true
-    foreach ($spec in $specs) {
+    foreach ($spec in $auxSpecs) {
         # Stagger container creation: launching several builds in the same instant
         # can trip hcsshim/containerd ("failed to create shim task: ttrpc: closed").
-        if (-not $first) { Start-Sleep -Seconds 20 }
-        $first = $false
+        Start-Sleep -Seconds 20
         $argList = Get-DockerBuildArgList -Dockerfile $spec.Dockerfile -Tag $spec.Tag `
             -BuildArgs $spec.BuildArgs -ExtraFlags @('--memory', "$($spec.MemoryGb)g")
         $outLog = Join-Path $logDir "$($spec.Name).log"
@@ -252,22 +333,26 @@ function Invoke-MediaBranches {
         $procs += @{ Spec = $spec; Proc = $proc; Log = $outLog; ErrLog = $errLog }
     }
 
-    Write-Host "`nBuilding $($procs.Count) media branches concurrently (tail the logs above for live progress)..."
+    Write-Host "`n==> [media-core] run+commit on $MediaCoreCpus CPUs; $($procs.Count) aux branch(es) building concurrently (log: $coreLog)" -ForegroundColor Cyan
+    $coreFailed = $false; $coreError = $null
+    try {
+        Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
+            -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+    } catch { $coreFailed = $true; $coreError = $_ }
+
+    # Wait for the aux branches to finish (media-core already done in the foreground).
     $lastBeat = Get-Date
-    while ($true) {
-        $alive = @($procs | Where-Object { -not $_.Proc.HasExited })
-        if ($alive.Count -eq 0) { break }
+    while (@($procs | Where-Object { -not $_.Proc.HasExited }).Count -gt 0) {
         if (((Get-Date) - $lastBeat).TotalSeconds -ge 120) {
             $status = ($procs | ForEach-Object {
                 $state = if ($_.Proc.HasExited) { "done(exit $($_.Proc.ExitCode))" } else { 'running' }
                 "$($_.Spec.Name)=$state"
             }) -join ', '
-            Write-Host "[media fan-out $(Get-Date -Format HH:mm:ss)] $status"
+            Write-Host "[media aux $(Get-Date -Format HH:mm:ss)] $status"
             $lastBeat = Get-Date
         }
         Start-Sleep -Seconds 10
     }
-
     $failed = @($procs | Where-Object { $_.Proc.ExitCode -ne 0 })
 
     # Transient-infrastructure failures (container never started) get a foreground
@@ -296,8 +381,17 @@ function Invoke-MediaBranches {
             if (Test-Path $log) { Get-Content $log -Tail 40 | ForEach-Object { Write-Host "  $_" } }
         }
     }
-    if ($stillFailed.Count -gt 0) {
-        throw "media branch build(s) failed: $(($stillFailed | ForEach-Object { $_.Spec.Name }) -join ', ')"
+
+    $failNames = @()
+    if ($coreFailed) {
+        Write-Host "`n=== [media-core] FAILED (run+commit) ===" -ForegroundColor Red
+        Write-Host "  $coreError"
+        if (Test-Path $coreLog) { Get-Content $coreLog -Tail 40 | ForEach-Object { Write-Host "  $_" } }
+        $failNames += 'media-core'
+    }
+    $failNames += @($stillFailed | ForEach-Object { $_.Spec.Name })
+    if ($failNames.Count -gt 0) {
+        throw "media branch build(s) failed: $($failNames -join ', ')"
     }
     Write-Host 'All media branches built.' -ForegroundColor Green
 }

@@ -109,6 +109,75 @@ Dockerfile) to keep the `C:\temp\*-src` build trees for debugging; by default
 each build script removes its source tree after installing so the trees don't
 bloat the image layers.
 
+### Build isolation and CPU parallelism
+
+Hyper-V-isolated build containers (the Windows default) are given only **2
+logical CPUs**, so `Get-BuildJobCount` — `min(ProcessorCount, memGB / memPerJob)`
+— pins every in-container `ninja -j` to 2 no matter how many cores the host has.
+That is the difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the
+heavy **media-core** stage does **not** use `docker build` at all.
+
+**Why `docker build` can't be fixed on this host.** The classic Windows builder
+offers no working CPU lever, all verified with a ~6-second repro (a Dockerfile
+that writes a dummy layer):
+
+| Attempt | Result |
+|---|---|
+| `docker build --cpu-count N` | rejected — "unknown flag" |
+| `docker build --cpuset-cpus 0-15` | build fails |
+| `docker build --isolation process` | container sees all 32 CPUs **but cannot commit any layer** — `hcsshim::ActivateLayer failed 0x20 "file used by another process"`, even for a 100 MB dummy layer |
+
+The `ActivateLayer` failure is **not** Windows Defender, Windows Search, or
+SysMain — all were ruled out by disabling each and re-running the repro. It is a
+container-filter / Docker-Engine level defect with process isolation on this
+host, so `--isolation process` is unusable for building (every build dies at the
+first commit). Hyper-V isolation commits reliably but is stuck at 2 CPUs. **Do
+not add `--isolation process` to any `docker build`.**
+
+**The run+commit path (how media-core gets its cores).** `docker run` — unlike
+`docker build` — *does* honor `--cpu-count` under Hyper-V (verified: `docker run
+--isolation hyperv --cpu-count 16` → `NUMBER_OF_PROCESSORS=16`), and a Hyper-V
+container commits fine via `docker commit`. So `build.ps1` builds media-core as:
+
+1. `docker build` a thin **builder image** (`Dockerfile.media-core-builder`) —
+   toolchain + all media-core scripts/patches, no heavy RUN, so its cheap COPY
+   layers commit fine under Hyper-V.
+2. `docker run --isolation hyperv --cpu-count $MediaCoreCpus --memory
+   ${MediaMemoryGb}g <builder> powershell -File build-media-core-all.ps1` — runs
+   the whole ONNX → GenAI → OpenCV → FFmpeg chain in one container at the full
+   CPU count. `Get-BuildJobCount` sees `--cpu-count` as `ProcessorCount`, so ONNX
+   compiles at `min(cpu-count, memGB/4)` (e.g. `-j14` at `-MediaCoreCpus 16
+   -MediaMemoryGb 56`).
+3. `docker commit` the container to `local/kataglyphis:windows-media-core` — a
+   drop-in replacement for the old `Dockerfile.media-core` output.
+
+`Invoke-MediaCoreRunCommit` in `build.ps1` implements this; tune it with
+`-MediaCoreCpus` (default 16) and `-MediaMemoryGb` (default 48). The lighter
+`docker build` stages (base, sdk, toolchain, the litert/tvm aux branches, the
+merge/GStreamer stage) still run at 2 CPUs — acceptable, as they are far smaller
+than the ONNX/CUDA compile.
+
+**Trade-off:** a single `docker run` has no per-stage layer cache, so a mid-chain
+failure re-runs the whole chain (unlike a multi-`RUN` `docker build`, where each
+completed step is cached). The persistent **sccache** remote (below) covers the
+recompilation, so in practice only uncached objects rebuild. Regression symptom
+for the whole mechanism: `ninja -j2` in `out\windows-build-logs\media-core.log`,
+or an `ActivateLayer` error on any commit.
+
+### Rust toolchain (scoop only — never rustup)
+
+Rust is provisioned **exclusively via scoop** (`setup-rust-toolchain.ps1` runs
+`scoop install main/rust`). Do not install rustup in the base image. A
+toolchain-less rustup (`rustup-init --default-toolchain none`) drops proxy shims
+(`cargo.exe`, `rustc.exe`, …) into `CARGO_BIN`, and because `CARGO_BIN` sits ahead
+of scoop's shim dir on `PATH`, those proxies win and fail at runtime with *"rustup
+could not choose a version of cargo … no default is configured"* — which is what
+made the Rust smoke test fail for a long time. `setup-scoop-tools.ps1` installs no
+rustup and `Dockerfile.base` points `CARGO_HOME`/`CARGO_BIN` at a plain
+`C:\Users\ContainerAdministrator\.cargo` (not a rustup path), so scoop's real
+`cargo`/`rustc` resolve. If you need to "fix" Rust, fix the scoop path — do not
+re-introduce rustup.
+
 ### Media fan-out and memory budgeting
 
 The media branches build concurrently (branch logs land in
@@ -118,9 +187,11 @@ merge/GStreamer stage; `-AuxMemoryGb` (default 8) caps each of the two
 auxiliary branches. Size them so `MediaMemoryGb + 2*AuxMemoryGb` roughly fits
 host RAM. Each cap is forwarded as `MEMORY_LIMIT_GB` so the build scripts scale
 their parallel job count to the container's cap instead of host RAM
-(`--cpu-quota` is not supported on Windows; `BUILD_JOBS` overrides the
-heuristic outright). On memory-constrained hosts pass `-SequentialMedia` to
-build the branches one after another.
+(`BUILD_JOBS` overrides the heuristic outright). media-core builds via the
+run+commit path (see § Build isolation and CPU parallelism) so it gets
+`-MediaCoreCpus` CPUs; the aux branches are ordinary 2-CPU `docker build`s that
+run concurrently underneath it. On memory-constrained hosts pass
+`-SequentialMedia` to build the branches one after another.
 
 ### Persistent compile cache (sccache)
 
