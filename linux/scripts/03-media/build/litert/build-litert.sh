@@ -562,13 +562,15 @@ _install_manual_headers() {
     info "Copying headers (C++ and C API)..."
     cd "${src_dir}"
 
-    # 1. Copy ALL headers (C and C++) preserving the directory structure
+    # 1. Copy ALL headers (C and C++) preserving the directory structure.
+    # cpio needs --null to match find's -print0; without it cpio treats the whole
+    # NUL-delimited stream as one bogus path and copies only the first header.
     if [ -d "tensorflow/lite" ]; then
         info Found tensorflow/lite source layout...
-        find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm "${include_dir}/"
+        find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm --null "${include_dir}/"
     elif [ -d "litert" ]; then
         info Found litert source layout...
-        find litert -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm "${include_dir}/"
+        find litert -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm --null "${include_dir}/"
     fi
 
     # 2. Copy tflite directory (contains TensorFlow Lite C++ compatibility headers)
