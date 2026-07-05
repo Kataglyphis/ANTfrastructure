@@ -78,6 +78,16 @@ All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Steve
 
 See `docs/windows-builds.md` § Build Commands for the full 5-stage Windows build sequence and `docs/windows-builds.md` § Stevedore Setup Fixes for post-install fixes.
 
+### Windows Build Invariants (do not regress)
+
+Load-bearing fixes — preserve them or builds slow down / ship broken. Details in `docs/windows-builds.md`.
+
+- **Process isolation for CPU parallelism.** `build.ps1` passes `--isolation process` on every `docker build`; the Hyper-V default is 2 CPUs, which pins every `ninja -j` to 2. `docker build` rejects `--cpu-count` and Windows ignores `--cpuset-cpus`, so isolation is the only lever. Regression symptom: `-j2` in `out\windows-build-logs\media-core.log`. (§ Build isolation and CPU parallelism.)
+- **Rust: scoop is the sole provider — never install rustup.** A toolchain-less rustup drops proxy shims into `CARGO_BIN` that shadow scoop's real `cargo`/`rustc` on PATH and fail with "no default toolchain configured". `setup-scoop-tools.ps1` installs no rustup, `setup-rust-toolchain.ps1` uses `scoop install main/rust`, and `Dockerfile.base` keeps `CARGO_BIN` off any rustup path. Do **not** re-add rustup to "fix" Rust.
+- **Parallelism is memory-bounded, not CPU-bounded.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`. ONNX estimates ~8 GB/job (heavy CUDA/AVX-512 TUs) → `-j6` at 48 GB; lighter builds (OpenCV ~4 GB/job) run higher. Raise `-MediaMemoryGb` for more ONNX jobs; don't blindly lower the per-job estimate (OOM falls back to `-j2`).
+- **Preserve committed line endings when editing a COPY'd `.psm1`/`.ps1`.** Media modules are LF, some build scripts CRLF; `core.autocrlf=true` plus some editors can flip a whole file, busting the media layer cache. `.gitattributes` pins these `-text`; after editing, confirm `git diff` shows only your change, not a whole-file EOL flip.
+- **`versions.env` is the single source of truth.** `build.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. clang major from `LLVM_RELEASE`, CMake URL from `CMAKE_VERSION`). Don't hardcode versions in scripts or Dockerfiles.
+
 ### TensorRT Setup (Optional)
 
 TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's EULA. To include TensorRT:
@@ -406,6 +416,8 @@ base ─┬─ onnxruntime ───────┐
 | Stevedore service won't start (1053 timeout) | Windows Defender blocking dockerd.exe OR stale daemon.json from Docker Desktop | `Add-MpPreference -ExclusionProcess "dockerd.exe"` AND delete `C:\ProgramData\docker\config\daemon.json` |
 | `error getting credentials - err: exit status 1` | wincred credential helper fails because dockerd runs as SYSTEM without interactive session | OK to ignore for public images (MCR, GitHub). Use `nerdctl pull` instead for images that need auth, or set `"credsStore":""` in docker config. |
 | `failed to extract layer ... failed to find link target` when pulling servercore | containerd windows snapshotter can't handle certain Windows reparse points in the layer | Use `docker.exe pull` instead of `nerdctl pull`. Docker Engine's layer extraction handles reparse points correctly. |
+| Windows media build crawls; `Building with ninja -j2` in `media-core.log` | Build container has only 2 CPUs (Hyper-V isolation default) regardless of host cores | Ensure `build.ps1` passes `--isolation process` to every `docker build` (§ Windows Build Invariants). `--cpu-count`/`--cpuset-cpus` do not work on the classic Windows builder. |
+| Rust smoke test fails: "rustup could not choose a version of cargo/rustc" | A toolchain-less rustup shadowing scoop's real Rust on PATH via `CARGO_BIN` | Do not install rustup; scoop is the sole Rust provider. Keep `CARGO_BIN` off any rustup path (§ Windows Build Invariants). |
 
 ---
 

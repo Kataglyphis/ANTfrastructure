@@ -130,6 +130,20 @@ the host (e.g. `servercore:ltsc2025` on Windows 11 26xxx). If a future host/imag
 mismatch breaks it, the build falls back to 2 CPUs — the symptom is `ninja -j2`
 in `out\windows-build-logs\media-core.log`.
 
+### Rust toolchain (scoop only — never rustup)
+
+Rust is provisioned **exclusively via scoop** (`setup-rust-toolchain.ps1` runs
+`scoop install main/rust`). Do not install rustup in the base image. A
+toolchain-less rustup (`rustup-init --default-toolchain none`) drops proxy shims
+(`cargo.exe`, `rustc.exe`, …) into `CARGO_BIN`, and because `CARGO_BIN` sits ahead
+of scoop's shim dir on `PATH`, those proxies win and fail at runtime with *"rustup
+could not choose a version of cargo … no default is configured"* — which is what
+made the Rust smoke test fail for a long time. `setup-scoop-tools.ps1` installs no
+rustup and `Dockerfile.base` points `CARGO_HOME`/`CARGO_BIN` at a plain
+`C:\Users\ContainerAdministrator\.cargo` (not a rustup path), so scoop's real
+`cargo`/`rustc` resolve. If you need to "fix" Rust, fix the scoop path — do not
+re-introduce rustup.
+
 ### Media fan-out and memory budgeting
 
 The media branches build concurrently (branch logs land in
