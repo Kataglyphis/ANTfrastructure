@@ -276,7 +276,6 @@ RUN --mount=type=tmpfs,target=/tmp \
 FROM base AS litert
 
 ARG LITERT_VERSION
-ARG LITERT_BUILD_TYPE=Release
 ARG LITERT_OUTPUT_DIR=/usr/local
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \

@@ -24,26 +24,28 @@ require_toolchain_python() {
   printf '%s' "$python_bin"
 }
 
-tvm_build_wheel() {
+# Create the venv + install build deps, and assemble the wheel CMake args string.
+# Sets venv_python / TVM_WHEEL_DIR / wheel_cmake_args_string in tvm_build_wheel's
+# scope (dynamic scoping); reads main()'s build config locals the same way.
+_tvm_wheel_setup() {
     log "Setting up Python venv + TVM Python package"
     HOST_PYTHON="$(require_toolchain_python)"
     uv venv --seed "$tvm_dir/.venv" --python="$HOST_PYTHON"
     # shellcheck disable=SC1091
     source "$tvm_dir/.venv/bin/activate"
-    local venv_python="${VIRTUAL_ENV}/bin/python"
+    venv_python="${VIRTUAL_ENV}/bin/python"
     export UV_PYTHON="${VIRTUAL_ENV}/bin/python" \
            MEDIA_HOST_PYTHON="${VIRTUAL_ENV}/bin/python"
 
     uv pip install -U pip setuptools wheel build scikit-build-core cython setuptools-scm
     uv pip install -U numpy cloudpickle decorator psutil scipy attrs
 
-    local TVM_WHEEL_DIR="${prefix}/wheels"
-    local -a wheel_cmake_args=()
-    local wheel_cmake_args_string
+    TVM_WHEEL_DIR="${prefix}/wheels"
     mkdir -p "$TVM_WHEEL_DIR"
     rm -f "${TVM_WHEEL_DIR}"/*.whl
 
-append_tvm_cmake_args \
+    local -a wheel_cmake_args=()
+    append_tvm_cmake_args \
       wheel_cmake_args \
       ON \
       "$build_type" \
@@ -57,75 +59,94 @@ append_tvm_cmake_args \
       "$use_opencl" \
       "$spirv_tools_lib" \
       "$cross_link_flags"
-
     wheel_cmake_args_string="$(shell_quote_args "${wheel_cmake_args[@]}")"
+}
 
-    if cross_build_is_active; then
-      local wheel_platform
+# Cross mode: build the wheel for the target platform and retag it. Guard clauses
+# handle the unsupported-arch / no-pyproject / build-failed / no-artifact cases.
+_tvm_build_wheel_cross() {
+    local wheel_platform
+    wheel_platform="$(cross_wheel_platform_tag || true)"
+    if [ -z "$wheel_platform" ]; then
+      log "Skipping TVM wheel build in cross mode; unsupported target architecture $(cross_target_arch 2>/dev/null || echo unknown)"
+      return 0
+    fi
+    if [ ! -f "$tvm_dir/pyproject.toml" ]; then
+      log "TVM python packaging not detected for wheel build; skipped"
+      return 0
+    fi
 
-      wheel_platform="$(cross_wheel_platform_tag || true)"
-      if [ -z "$wheel_platform" ]; then
-        log "Skipping TVM wheel build in cross mode; unsupported target architecture $(cross_target_arch 2>/dev/null || echo unknown)"
-      elif [ -f "$tvm_dir/pyproject.toml" ]; then
-        log "Building cross TVM wheel into $TVM_WHEEL_DIR"
-        if CMAKE_GENERATOR=Ninja \
-          CMAKE_ARGS="${wheel_cmake_args_string}" \
-          "$venv_python" -m build --wheel --no-isolation \
-            --outdir "$TVM_WHEEL_DIR" \
-            -Cbuild-dir="${tvm_dir}/build-wheel-${wheel_platform}" \
-            "$tvm_dir"; then
-          shopt -s nullglob
-          local -a built_cross_wheels=("${TVM_WHEEL_DIR}"/*.whl)
-          shopt -u nullglob
-          if [ "${#built_cross_wheels[@]}" -eq 0 ]; then
-            log "Warning: cross TVM wheel build succeeded but produced no wheel artifact"
-          else
-            local cross_wheel
-            for cross_wheel in "${built_cross_wheels[@]}"; do
-              log "Retagging cross TVM wheel for ${wheel_platform}: $(basename "${cross_wheel}")"
-              "$venv_python" -m wheel tags --remove --platform-tag="${wheel_platform}" "${cross_wheel}" || \
-                log "Warning: failed to retag cross TVM wheel $(basename "${cross_wheel}")"
-            done
-          fi
-        else
-          log "Warning: cross TVM wheel build failed"
-        fi
-      else
-        log "TVM python packaging not detected for wheel build; skipped"
-      fi
+    log "Building cross TVM wheel into $TVM_WHEEL_DIR"
+    if ! CMAKE_GENERATOR=Ninja \
+      CMAKE_ARGS="${wheel_cmake_args_string}" \
+      "$venv_python" -m build --wheel --no-isolation \
+        --outdir "$TVM_WHEEL_DIR" \
+        -Cbuild-dir="${tvm_dir}/build-wheel-${wheel_platform}" \
+        "$tvm_dir"; then
+      log "Warning: cross TVM wheel build failed"
+      return 0
+    fi
+
+    shopt -s nullglob
+    local -a built_cross_wheels=("${TVM_WHEEL_DIR}"/*.whl)
+    shopt -u nullglob
+    if [ "${#built_cross_wheels[@]}" -eq 0 ]; then
+      log "Warning: cross TVM wheel build succeeded but produced no wheel artifact"
+      return 0
+    fi
+    local cross_wheel
+    for cross_wheel in "${built_cross_wheels[@]}"; do
+      log "Retagging cross TVM wheel for ${wheel_platform}: $(basename "${cross_wheel}")"
+      "$venv_python" -m wheel tags --remove --platform-tag="${wheel_platform}" "${cross_wheel}" || \
+        log "Warning: failed to retag cross TVM wheel $(basename "${cross_wheel}")"
+    done
+}
+
+# Native mode: build the wheel, install tvm-ffi + the built wheel (or source
+# fallback), then verify the import.
+_tvm_build_wheel_native() {
+    if [ -f "$tvm_dir/pyproject.toml" ]; then
+      log "Building TVM wheel into $TVM_WHEEL_DIR"
+      CMAKE_GENERATOR=Ninja \
+      CMAKE_ARGS="${wheel_cmake_args_string}" \
+      "$venv_python" -m build --wheel --no-isolation \
+        --outdir "$TVM_WHEEL_DIR" \
+        -Cbuild-dir="${tvm_dir}/build-wheel-native" \
+        "$tvm_dir" || log "Warning: TVM wheel build failed"
     else
-      if [ -f "$tvm_dir/pyproject.toml" ]; then
-        log "Building TVM wheel into $TVM_WHEEL_DIR"
-        CMAKE_GENERATOR=Ninja \
-        CMAKE_ARGS="${wheel_cmake_args_string}" \
-        "$venv_python" -m build --wheel --no-isolation \
-          --outdir "$TVM_WHEEL_DIR" \
-          -Cbuild-dir="${tvm_dir}/build-wheel-native" \
-          "$tvm_dir" || log "Warning: TVM wheel build failed"
-      else
-        log "TVM python packaging not detected for wheel build; skipped"
-      fi
+      log "TVM python packaging not detected for wheel build; skipped"
+    fi
 
-      if [ -f "$tvm_dir/3rdparty/tvm-ffi/pyproject.toml" ]; then
-        log "Installing Apache TVM FFI Python package from source tree"
-        uv pip install "$tvm_dir/3rdparty/tvm-ffi"
-      else
-        log "Local Apache TVM FFI package not found; relying on apache-tvm-ffi from the Python package resolver"
-      fi
+    if [ -f "$tvm_dir/3rdparty/tvm-ffi/pyproject.toml" ]; then
+      log "Installing Apache TVM FFI Python package from source tree"
+      uv pip install "$tvm_dir/3rdparty/tvm-ffi"
+    else
+      log "Local Apache TVM FFI package not found; relying on apache-tvm-ffi from the Python package resolver"
+    fi
 
-      shopt -s nullglob
-      local -a built_wheels=("${TVM_WHEEL_DIR}"/*.whl)
-      shopt -u nullglob
+    shopt -s nullglob
+    local -a built_wheels=("${TVM_WHEEL_DIR}"/*.whl)
+    shopt -u nullglob
 
-      if [ "${#built_wheels[@]}" -gt 0 ]; then
-        log "Installing TVM Python wheel ${built_wheels[0]}"
-        uv pip install "${built_wheels[0]}"
-      else
-        log "Wheel build unavailable; installing TVM Python package from source tree"
-        uv pip install "$tvm_dir"
-      fi
+    if [ "${#built_wheels[@]}" -gt 0 ]; then
+      log "Installing TVM Python wheel ${built_wheels[0]}"
+      uv pip install "${built_wheels[0]}"
+    else
+      log "Wheel build unavailable; installing TVM Python package from source tree"
+      uv pip install "$tvm_dir"
+    fi
 
-      uv pip install -U pytest
-      verify_python_import "tvm" "tvm.__version__"
+    uv pip install -U pytest
+    verify_python_import "tvm" "tvm.__version__"
+}
+
+tvm_build_wheel() {
+    # Shared across the phase helpers below (assigned by _tvm_wheel_setup).
+    local venv_python="" TVM_WHEEL_DIR="" wheel_cmake_args_string=""
+    _tvm_wheel_setup
+    if cross_build_is_active; then
+      _tvm_build_wheel_cross
+    else
+      _tvm_build_wheel_native
     fi
 }

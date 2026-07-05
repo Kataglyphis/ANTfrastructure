@@ -142,25 +142,65 @@ litert_cross_wheel_platform_tag() {
     esac
 }
 
+# GCC 16.1.0 ICEs on LiteRT's Samsung vendor code. The ICE is triggered by the
+# cross-compiler toolchain used in cross builds; on native amd64 we keep the
+# sources and use clang instead (see append_litert_preferred_cmake_compiler_args).
+# Replace the vendor sources with a stub CMakeLists so the build proceeds. Track
+# the upstream GCC bug and revisit once 16.x is fixed or pinned to an older minor.
+_litert_disable_samsung_vendor() {
+    local arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
+    info "Removing Samsung vendor sources to avoid GCC 16.1.0 ICE in cross builds (arch=${arch})"
+    rm -rf "${LITERT_SRC}/litert/vendors/samsung" 2>/dev/null || true
+    mkdir -p "${LITERT_SRC}/litert/vendors/samsung"
+    cat > "${LITERT_SRC}/litert/vendors/samsung/CMakeLists.txt" <<CMAKE_EOF
+message(STATUS "Samsung vendor disabled for ${arch}")
+CMAKE_EOF
+}
+
+# Cross builds only: wire the cross archiver and protect LiteRT's nested host-only
+# FlatBuffers/flatc build from the target toolchain env, pointing it at host
+# compilers. Appends -DLITERT_HOST_* to the caller's cmake_args array (nameref);
+# host_cc/host_cxx are passed by value (wrapping is internal, not needed back).
+_litert_configure_cross_host_flatbuffers() {
+    local -n _lcf_args="$1"
+    local host_cc="$2" host_cxx="$3"
+
+    if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
+        append_cmake_cross_archiver_args _lcf_args resolve_cross_archive_tool
+    fi
+
+    # Do not let the target-side toolchain/cache/linker environment leak into the
+    # host probe, or CMake's simple compiler checks can fail.
+    unset CC CXX AR AS LD NM RANLIB STRIP OBJCOPY
+    unset CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER CMAKE_ASM_COMPILER_LAUNCHER
+    unset CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS
+    unset LDFLAGS
+    [ -z "${host_cc}" ]  || host_cc="$(prepare_host_compiler_wrapper "${host_cc}" host-gcc)"
+    [ -z "${host_cxx}" ] || host_cxx="$(prepare_host_compiler_wrapper "${host_cxx}" host-g++)"
+    info Using host C compiler for flatbuffers: ${host_cc:-unresolved}
+    info Using host C++ compiler for flatbuffers: ${host_cxx:-unresolved}
+    [ -z "${host_cc}" ]  || _lcf_args+=("-DLITERT_HOST_C_COMPILER=${host_cc}")
+    [ -z "${host_cxx}" ] || _lcf_args+=("-DLITERT_HOST_CXX_COMPILER=${host_cxx}")
+    info Using cross archive tool: ${cross_ar:-unresolved}
+    info Using cross ranlib tool: ${cross_ranlib:-unresolved}
+}
+
 configure_litert() {
     info Configuring LiteRT build...
 
     cd "${LITERT_SRC}/litert"
 
-    local host_cc=""
-    local host_cxx=""
-
+    local host_cc host_cxx
     host_cc="$(resolve_host_compiler c)"
     host_cxx="$(resolve_host_compiler cxx)"
 
     local preset="default"
-    if [ "${BUILD_TYPE}" = "Debug" ]; then
-        preset="default-debug"
-    fi
-
+    [ "${BUILD_TYPE}" = "Debug" ] && preset="default-debug"
     info Using preset: ${preset}
 
-    # Build CMake arguments array
+    # Enable ruy but keep its profiler/instrumentation disabled to avoid linking
+    # against ruy_profiler_instrumentation (absent in some build environments /
+    # submodule combinations): RUY_PROFILER=0 disables the profiler, ruy stays on.
     local cmake_args=(
         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
         "-DRUY_PROFILER=0"
@@ -180,76 +220,102 @@ configure_litert() {
     )
 
     append_litert_preferred_cmake_compiler_args cmake_args
-
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
         append_cmake_cross_args cmake_args
     fi
 
     if command -v cross_target_arch >/dev/null 2>&1; then
-        local _litert_arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
-        # GCC 16.1.0 ICEs on LiteRT's Samsung vendor code. The ICE is
-        # triggered by the cross-compiler toolchain used in cross builds; on
-        # native amd64 we keep the sources and use clang instead (see
-        # append_litert_preferred_cmake_compiler_args above). Track upstream
-        # GCC bug and revisit once 16.x is fixed or pinned to an older minor.
-        info "Removing Samsung vendor sources to avoid GCC 16.1.0 ICE in cross builds (arch=${_litert_arch})"
-        rm -rf "${LITERT_SRC}/litert/vendors/samsung" 2>/dev/null || true
-        mkdir -p "${LITERT_SRC}/litert/vendors/samsung"
-        cat > "${LITERT_SRC}/litert/vendors/samsung/CMakeLists.txt" <<CMAKE_EOF
-message(STATUS "Samsung vendor disabled for ${_litert_arch}")
-CMAKE_EOF
+        _litert_disable_samsung_vendor
     fi
 
     if cross_build_is_active; then
-        if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
-            append_cmake_cross_archiver_args cmake_args resolve_cross_archive_tool
-        fi
-
-        # LiteRT configures a nested host-only FlatBuffers build for flatc.
-        # Do not let the target-side toolchain/cache/linker environment leak into
-        # that host probe, or CMake's simple compiler checks can fail.
-        unset CC CXX AR AS LD NM RANLIB STRIP OBJCOPY
-        unset CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER CMAKE_ASM_COMPILER_LAUNCHER
-        unset CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS
-        unset LDFLAGS
-        if [ -n "${host_cc}" ]; then
-            host_cc="$(prepare_host_compiler_wrapper "${host_cc}" host-gcc)"
-        fi
-        if [ -n "${host_cxx}" ]; then
-            host_cxx="$(prepare_host_compiler_wrapper "${host_cxx}" host-g++)"
-        fi
-        info Using host C compiler for flatbuffers: ${host_cc:-unresolved}
-        info Using host C++ compiler for flatbuffers: ${host_cxx:-unresolved}
-        if [ -n "${host_cc}" ]; then
-            cmake_args+=("-DLITERT_HOST_C_COMPILER=${host_cc}")
-        fi
-        if [ -n "${host_cxx}" ]; then
-            cmake_args+=("-DLITERT_HOST_CXX_COMPILER=${host_cxx}")
-        fi
-        info Using cross archive tool: ${cross_ar:-unresolved}
-        info Using cross ranlib tool: ${cross_ranlib:-unresolved}
+        _litert_configure_cross_host_flatbuffers cmake_args "${host_cc}" "${host_cxx}"
     fi
 
     append_litert_cache_linker_args cmake_args
 
-    # Enable ruy but keep its profiler/instrumentation disabled to avoid
-    # linking against ruy_profiler_instrumentation (not present in some
-    # build environments / submodule combinations). Explicitly set
-    # RUY_PROFILER=0 so the profiler is disabled while ruy remains enabled.
     info LiteRT CMake args: ${cmake_args[*]}
     cmake --preset "${preset}" "${cmake_args[@]}"
+}
+
+# Single source of truth for the CMake build subdirectory name, which encodes
+# the Debug/Release convention. Used bare (relative to litert/) and joined onto
+# ${LITERT_SRC}/litert/ by the install paths below.
+litert_build_subdir() {
+    [ "${BUILD_TYPE}" = "Debug" ] && printf 'cmake_build_debug' || printf 'cmake_build'
 }
 
 build_litert() {
     info Building LiteRT with ${NPROC} parallel jobs...
 
-    local build_dir="cmake_build"
-    if [ "${BUILD_TYPE}" = "Debug" ]; then
-        build_dir="cmake_build_debug"
+    cd "${LITERT_SRC}/litert"
+    run_cmake_build_with_fallback "$(litert_build_subdir)" "${NPROC}"
+}
+
+# The C API CMakeLists expects TF_SOURCE_DIR to contain tensorflow/lite, but
+# LiteRT lays out sources under tflite/. Create the compatibility symlink.
+_tflite_c_prepare_symlink() {
+    info Creating tensorflow/lite symlink for C API build compatibility...
+    mkdir -p "${LITERT_SRC}/tensorflow"
+    ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
+}
+
+# Assemble the TFLite C API CMake args into the caller's array (nameref),
+# including cross compiler/archiver args and the host flatc tools dir.
+_tflite_c_cmake_args() {
+    local -n _tca_args="$1"
+    _tca_args=(
+        "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
+        "-DCMAKE_INSTALL_PREFIX=${LITERT_PREFIX}"
+        "-DCMAKE_INSTALL_LIBDIR=lib"
+        "-DTFLITE_C_BUILD_SHARED_LIBS=ON"
+        "-DTF_SOURCE_DIR=${LITERT_SRC}"
+        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+        "-DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
+    )
+
+    append_litert_preferred_cmake_compiler_args _tca_args
+    if command -v append_cmake_cross_args >/dev/null 2>&1; then
+        append_cmake_cross_args _tca_args
     fi
 
-    cd "${LITERT_SRC}/litert"
-    run_cmake_build_with_fallback "${build_dir}" "${NPROC}"
+    if cross_build_is_active; then
+        local tflite_host_tools_dir
+        tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
+        if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
+            append_cmake_cross_archiver_args _tca_args resolve_cross_archive_tool
+        fi
+        if [ -z "${tflite_host_tools_dir}" ]; then
+            err Could not resolve TFLite host tools directory containing flatc for cross build
+        fi
+        _tca_args+=("-DTFLITE_HOST_TOOLS_DIR=${tflite_host_tools_dir}")
+        info Using TFLite host tools dir: ${tflite_host_tools_dir}
+    fi
+
+    append_litert_cache_linker_args _tca_args
+}
+
+# Install the C API (with a manual .so copy fallback — some LiteRT revisions omit
+# the install rule) and verify libtensorflowlite_c.so exists. Runs in the build
+# dir (cwd), passed as $1 for the diagnostic paths.
+_tflite_c_install_and_verify() {
+    local c_api_build="$1"
+    info Installing TFLite C API...
+    mkdir -p "${LITERT_PREFIX}/lib"
+    if ! cmake --install .; then
+        warn TFLite C API cmake install failed; falling back to manual library copy...
+    fi
+    find . -name "libtensorflowlite_c*.so*" -exec cp -av {} "${LITERT_PREFIX}/lib/" \; 2>/dev/null || true
+
+    if [ -f "${LITERT_PREFIX}/lib/libtensorflowlite_c.so" ] || \
+       ls "${c_api_build}"/libtensorflowlite_c*.so* 2>/dev/null; then
+        info TFLite C API build complete - libtensorflowlite_c.so available
+    else
+        warn libtensorflowlite_c.so not found after build!
+        info Checking build directory for any .so files:
+        find "${c_api_build}" -name "*.so*" -ls 2>/dev/null || echo "No .so files found"
+    fi
 }
 
 build_tflite_c_api() {
@@ -261,47 +327,14 @@ build_tflite_c_api() {
         return 0
     fi
 
-    # The C API CMakeLists.txt expects TF_SOURCE_DIR to contain tensorflow/lite
-    # but LiteRT uses tflite/ instead. Create the compatibility symlink.
-    info Creating tensorflow/lite symlink for C API build compatibility...
-    mkdir -p "${LITERT_SRC}/tensorflow"
-    ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
+    _tflite_c_prepare_symlink
 
     local c_api_build="${LITERT_SRC}/tflite_c_build"
-    local tflite_host_tools_dir=""
     mkdir -p "${c_api_build}"
     cd "${c_api_build}"
 
-    local cmake_args=(
-        "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
-        "-DCMAKE_INSTALL_PREFIX=${LITERT_PREFIX}"
-        "-DCMAKE_INSTALL_LIBDIR=lib"
-        "-DTFLITE_C_BUILD_SHARED_LIBS=ON"
-        "-DTF_SOURCE_DIR=${LITERT_SRC}"
-        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
-        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-        "-DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
-    )
-
-    append_litert_preferred_cmake_compiler_args cmake_args
-
-    if command -v append_cmake_cross_args >/dev/null 2>&1; then
-        append_cmake_cross_args cmake_args
-    fi
-
-    if cross_build_is_active; then
-        tflite_host_tools_dir="$(resolve_litert_tflite_host_tools_dir || true)"
-        if command -v append_cmake_cross_archiver_args >/dev/null 2>&1; then
-            append_cmake_cross_archiver_args cmake_args resolve_cross_archive_tool
-        fi
-        if [ -z "${tflite_host_tools_dir}" ]; then
-            err Could not resolve TFLite host tools directory containing flatc for cross build
-        fi
-        cmake_args+=("-DTFLITE_HOST_TOOLS_DIR=${tflite_host_tools_dir}")
-        info Using TFLite host tools dir: ${tflite_host_tools_dir}
-    fi
-
-    append_litert_cache_linker_args cmake_args
+    local cmake_args=()
+    _tflite_c_cmake_args cmake_args
 
     info Configuring TFLite C API...
     info C API source: ${c_api_src}
@@ -309,7 +342,7 @@ build_tflite_c_api() {
     info Expected tensorflow/lite at: ${LITERT_SRC}/tensorflow/lite
     info TFLite C API CMake args: ${cmake_args[*]}
     ls -la "${LITERT_SRC}/tensorflow/lite" 2>/dev/null || warn tensorflow/lite symlink may not exist
-    
+
     if ! cmake "${c_api_src}" "${cmake_args[@]}"; then
         err TFLite C API cmake configure failed!
         err This is required for GStreamer tflite plugin support.
@@ -319,33 +352,13 @@ build_tflite_c_api() {
     info Building TFLite C API...
     run_cmake_build_with_fallback . "${NPROC}" || err "TFLite C API build failed!"
 
-    info Installing TFLite C API...
-    mkdir -p "${LITERT_PREFIX}/lib"
-    if ! cmake --install .; then
-        warn TFLite C API cmake install failed; falling back to manual library copy...
-    fi
-    # Some LiteRT revisions build libtensorflowlite_c.so without an install
-    # rule. Copy it explicitly so downstream cross stages can link against it.
-    find . -name "libtensorflowlite_c*.so*" -exec cp -av {} "${LITERT_PREFIX}/lib/" \; 2>/dev/null || true
-
-    # Verify the library was built
-    if [ -f "${LITERT_PREFIX}/lib/libtensorflowlite_c.so" ] || \
-       ls "${c_api_build}"/libtensorflowlite_c*.so* 2>/dev/null; then
-        info TFLite C API build complete - libtensorflowlite_c.so available
-    else
-        warn libtensorflowlite_c.so not found after build!
-        info Checking build directory for any .so files:
-        find "${c_api_build}" -name "*.so*" -ls 2>/dev/null || echo "No .so files found"
-    fi
+    _tflite_c_install_and_verify "${c_api_build}"
 }
 
 install_litert() {
     info Installing LiteRT to ${LITERT_PREFIX}...
 
-    local build_dir="${LITERT_SRC}/litert/cmake_build"
-    if [ "${BUILD_TYPE}" = "Debug" ]; then
-        build_dir="${LITERT_SRC}/litert/cmake_build_debug"
-    fi
+    local build_dir="${LITERT_SRC}/litert/$(litert_build_subdir)"
 
     cd "${LITERT_SRC}/litert"
 
@@ -549,13 +562,15 @@ _install_manual_headers() {
     info "Copying headers (C++ and C API)..."
     cd "${src_dir}"
 
-    # 1. Copy ALL headers (C and C++) preserving the directory structure
+    # 1. Copy ALL headers (C and C++) preserving the directory structure.
+    # cpio needs --null to match find's -print0; without it cpio treats the whole
+    # NUL-delimited stream as one bogus path and copies only the first header.
     if [ -d "tensorflow/lite" ]; then
         info Found tensorflow/lite source layout...
-        find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm "${include_dir}/"
+        find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm --null "${include_dir}/"
     elif [ -d "litert" ]; then
         info Found litert source layout...
-        find litert -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm "${include_dir}/"
+        find litert -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm --null "${include_dir}/"
     fi
 
     # 2. Copy tflite directory (contains TensorFlow Lite C++ compatibility headers)
@@ -689,10 +704,7 @@ _install_manual_pkgconfig() {
 }
 
 install_manual() {
-    local build_dir="${LITERT_SRC}/litert/cmake_build"
-    if [ "${BUILD_TYPE}" = "Debug" ]; then
-        build_dir="${LITERT_SRC}/litert/cmake_build_debug"
-    fi
+    local build_dir="${LITERT_SRC}/litert/$(litert_build_subdir)"
 
     local lib_dir="${LITERT_PREFIX}/lib"
     local include_dir="${LITERT_PREFIX}/include"

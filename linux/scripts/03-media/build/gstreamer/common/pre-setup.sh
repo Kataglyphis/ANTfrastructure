@@ -153,10 +153,41 @@ if [ "${is_riscv64_cross}" = "true" ]; then
   rm -f /usr/lib/riscv64-linux-gnu/libpango*.so* /usr/lib/riscv64-linux-gnu/pkgconfig/pango*.pc 2>/dev/null || true
 fi
 
-# Keep the cross pkg-config path target-only, but expose the wrapped scanner
-# path through a focused shim without dropping the target package's real
-# include/library flags.
-if [ -n "${gi_cross_wrapper_arch}" ]; then
+# Render the qemu binary wrapper from the sibling template, substituting the
+# generation-time values (@WRAPPER_MODE@, @TARGET_TRIPLET@, @QEMU_RUNNER@,
+# @QEMU_SYSROOT@). Runtime expansions stay as plain ${var} in the template.
+# Pure-bash substitution is used instead of sed because the values are filesystem
+# paths that could contain any sed delimiter/replacement metacharacter; the
+# quoted replacement also keeps bash >= 5.2 patsub_replacement from interpreting
+# '&'. Hoisted to file scope (was defined inside the if-block); reads
+# target_triplet/qemu_runner/qemu_sysroot from setup_gi_cross_wrappers.
+# shellcheck disable=SC2154
+write_qemu_binary_wrapper() {
+  local wrapper_path="$1"
+  local mode="$2"
+  local template="${_PRE_SETUP_DIR}/qemu-binary-wrapper.sh.tpl"
+  local content
+
+  if [ ! -f "${template}" ]; then
+    echo "ERROR: Missing qemu binary wrapper template at ${template}" >&2
+    return 1
+  fi
+
+  content="$(cat "${template}")"
+  content="${content//@WRAPPER_MODE@/"${mode}"}"
+  content="${content//@TARGET_TRIPLET@/"${target_triplet}"}"
+  content="${content//@QEMU_RUNNER@/"${qemu_runner}"}"
+  content="${content//@QEMU_SYSROOT@/"${qemu_sysroot}"}"
+
+  printf '%s\n' "${content}" > "${wrapper_path}"
+  chmod +x "${wrapper_path}"
+}
+
+# Set up the cross gobject-introspection scanner/ldd/qemu wrappers + pkg-config
+# metadata. Keeps the cross pkg-config path target-only while exposing the
+# wrapped scanner path through a focused shim without dropping the target
+# package's real include/library flags. (Extracted from a 250-line inline block.)
+setup_gi_cross_wrappers() {
   build_triplet="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   target_triplet=""
   target_gi_bindir="/usr/bin"
@@ -326,34 +357,6 @@ exec "\${host_ldd}" "\$@"
 EOF
   chmod +x "${gi_ldd_default}"
 
-  # Render the qemu binary wrapper from the sibling template, substituting
-  # the generation-time values (@WRAPPER_MODE@, @TARGET_TRIPLET@,
-  # @QEMU_RUNNER@, @QEMU_SYSROOT@). Runtime expansions stay as plain ${var}
-  # in the template. Pure-bash substitution is used instead of sed because
-  # the values are filesystem paths that could contain any sed delimiter or
-  # replacement metacharacter; the quoted replacement also keeps bash >= 5.2
-  # patsub_replacement from interpreting '&'.
-  write_qemu_binary_wrapper() {
-    local wrapper_path="$1"
-    local mode="$2"
-    local template="${_PRE_SETUP_DIR}/qemu-binary-wrapper.sh.tpl"
-    local content
-
-    if [ ! -f "${template}" ]; then
-      echo "ERROR: Missing qemu binary wrapper template at ${template}" >&2
-      return 1
-    fi
-
-    content="$(cat "${template}")"
-    content="${content//@WRAPPER_MODE@/"${mode}"}"
-    content="${content//@TARGET_TRIPLET@/"${target_triplet}"}"
-    content="${content//@QEMU_RUNNER@/"${qemu_runner}"}"
-    content="${content//@QEMU_SYSROOT@/"${qemu_sysroot}"}"
-
-    printf '%s\n' "${content}" > "${wrapper_path}"
-    chmod +x "${wrapper_path}"
-  }
-
   write_qemu_binary_wrapper "${gi_binary_wrapper}" gi
   write_qemu_binary_wrapper "${meson_binary_wrapper}" meson
 
@@ -404,6 +407,10 @@ EOF
     "Cflags: ${target_gi_cflags}" \
     > /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc
   cp /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc /usr/local/lib/pkgconfig/gobject-introspection-no-export-1.0.pc
+}
+
+if [ -n "${gi_cross_wrapper_arch}" ]; then
+  setup_gi_cross_wrappers
 fi
 
 if [ "${prefer_toolchain_vulkan}" = "true" ]; then
