@@ -114,6 +114,9 @@ _resolve_first_path() {
   local candidate
   for candidate in "$@"; do
     [ -n "${candidate}" ] || continue
+    # test_flag is a dynamic operator (-d/-f); shellcheck can't parse it but it
+    # is a valid `[ -d PATH ]` / `[ -f PATH ]` at runtime.
+    # shellcheck disable=SC1072,SC1073
     [ "${test_flag}" "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
   done
   return 1

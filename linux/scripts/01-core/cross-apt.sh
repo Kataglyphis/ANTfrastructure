@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Source-only helper -- do not execute directly.
 # cross-apt.sh - Cross-compilation APT helpers.
 # Sourced by cross-env.sh.

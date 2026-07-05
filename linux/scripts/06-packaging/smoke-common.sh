@@ -144,21 +144,6 @@ check_dumpmachine() {
   fi
 }
 
-# Check that a binary's ELF Machine: field contains the expected substring.
-# Usage: check_elf_machine "/opt/gcc-16.1.0/bin/gcc" "X86-64" "host gcc"
-check_elf_machine() {
-  local bin="$1" expected="$2" label="$3"
-  local machine
-  [ -f "${bin}" ] || { fail "${label}: ${bin} not found"; return 1; }
-  if command -v readelf >/dev/null 2>&1; then
-    machine="$(readelf -h "${bin}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
-    case "${machine}" in
-      *"${expected}"*) pass "${label}: ELF machine=${machine}" ;;
-      *) fail "${label}: ELF machine=${machine} != ${expected}" ;;
-    esac
-  fi
-}
-
 # Full cross-compiler validation for a target architecture.
 # Runs: -dumpmachine, ELF machine, cc1 compile-to-object, link smoke.
 # Usage: validate_compiler_for_target "/path/to/cross-gcc" "arm64" "cross-gcc (arm64)"

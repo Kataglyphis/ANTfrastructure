@@ -200,73 +200,16 @@ validate_detected_llvm_cmake_package() {
   llvm_config_file="${llvm_dir}/LLVMConfig.cmake"
   [ -f "${llvm_config_file}" ] || die "LLVMConfig.cmake missing at ${llvm_config_file}"
   if ! llvm_cmake_package_has_umbrella_lib "${prefix}"; then
-    log "Sanitizing target LLVM CMake package: missing umbrella libLLVM under ${prefix}"
-    sanitize_llvm_cmake_package_for_missing_umbrella_lib "${prefix}" "${llvm_dir}"
+    # Was a call to sanitize_llvm_cmake_package_for_missing_umbrella_lib(), which
+    # has never been defined anywhere in the tree (predates the tvm.sh split) —
+    # so this branch previously died with a cryptic "command not found" (exit
+    # 127) whenever it was reached. Fail closed with an actionable message
+    # instead. If the sanitize-and-continue behavior is ever needed, implement
+    # that helper in 02-toolchain/llvm-cross.sh next to the other package helpers.
+    die "Target LLVM CMake package under ${prefix} is missing the umbrella libLLVM. TVM's cross build needs a target LLVM that ships libLLVM.so (build it with LLVM_LINK_LLVM_DYLIB=ON) or a CMake package that provides it."
   fi
   llvm_cmake_package_has_component_metadata "${llvm_config_file}" || \
     die "Target LLVM package at ${llvm_dir} does not provide LLVM component metadata"
-}
-
-detect_llvm_major_version_from_metadata_file() {
-  local metadata_file="$1"
-  local line=""
-
-  [ -f "${metadata_file}" ] || return 1
-
-  while IFS= read -r line; do
-    case "${line}" in
-      *LLVM_VERSION_MAJOR* )
-        if [[ "${line}" =~ LLVM_VERSION_MAJOR[^0-9]*([0-9]+) ]]; then
-          printf '%s' "${BASH_REMATCH[1]}"
-          return 0
-        fi
-        ;;
-      *LLVM_PACKAGE_VERSION*|*PACKAGE_VERSION* )
-        if [[ "${line}" =~ (LLVM_PACKAGE_VERSION|PACKAGE_VERSION)[^0-9]*([0-9]+) ]]; then
-          printf '%s' "${BASH_REMATCH[2]}"
-          return 0
-        fi
-        ;;
-    esac
-  done < "${metadata_file}"
-
-  return 1
-}
-
-detect_llvm_major_version_from_cmake_package() {
-  local llvm_dir="$1"
-  local prefix=""
-  local candidate=""
-  local major=""
-
-  [ -n "${llvm_dir}" ] || return 1
-
-  for candidate in \
-    "${llvm_dir}/LLVMConfigVersion.cmake" \
-    "${llvm_dir}/LLVMConfig.cmake"; do
-    major="$(detect_llvm_major_version_from_metadata_file "${candidate}" 2>/dev/null || true)"
-    if [ -n "${major}" ]; then
-      printf '%s' "${major}"
-      return 0
-    fi
-  done
-
-  prefix="$(llvm_cmake_package_prefix "${llvm_dir}" 2>/dev/null || true)"
-  if [ -z "${prefix}" ]; then
-    return 1
-  fi
-
-  for candidate in \
-    "${prefix}/include/llvm/Config/llvm-config.h" \
-    "${prefix}/include/llvm/Config/llvm-config.h.cmake"; do
-    major="$(detect_llvm_major_version_from_metadata_file "${candidate}" 2>/dev/null || true)"
-    if [ -n "${major}" ]; then
-      printf '%s' "${major}"
-      return 0
-    fi
-  done
-
-  return 1
 }
 
 detect_spirv_tools_library() {

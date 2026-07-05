@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Source-only helper -- do not execute directly.
 # package-groups.sh - shared package group catalog.
 # Sources that need cross-aware install functions should source cross-apt.sh first.

@@ -254,6 +254,9 @@ if [ -n "${gi_cross_wrapper_arch}" ]; then
         done
         ;;
       arm64)
+        # arm64 has a single loader path (riscv64 above has several); the
+        # one-element loop is intentional and keeps the break-2 structure uniform.
+        # shellcheck disable=SC2066
         for loader in \
           "${candidate}/lib/ld-linux-aarch64.so.1"; do
           if [ -e "${loader}" ]; then

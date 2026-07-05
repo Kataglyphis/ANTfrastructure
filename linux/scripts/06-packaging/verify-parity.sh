@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# This standalone host-side tool only needs the log/warn/err/pass/fail/info/retry
+# helpers, which all live in the self-contained logging.sh — no need to pull in
+# the heavyweight artifact-common.sh aggregator (~14 transitive modules). (The
+# old REPO_ROOT="../.." also mis-resolved: from 06-packaging it lands at
+# linux/scripts, so the source path doubled to linux/scripts/linux/scripts/...)
+_CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" && pwd)"
 
 # shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+source "${_CORE_DIR}/logging.sh"
 
 CONTAINER_BIN="${CONTAINER_BIN:-nerdctl}"
 NATIVE_IMAGE=""
@@ -166,6 +171,13 @@ check_packages() {
   run_diff_check "OS packages" "${native_file}.norm" "${cross_file}.norm" "All OS packages match ($(wc -l < "${native_file}.norm") packages)"
 }
 
+# Venv-activation prologue run inside the container before a python/pip command.
+# MUST be single-quoted so ${_v} stays literal in the value; because shell
+# variable expansion is not recursive, splicing it into a double-quoted command
+# string (e.g. "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}'") keeps ${_v}
+# literal for the container shell while ${py_cmd} still interpolates host-side.
+_VENV_ACTIVATE_PROLOGUE='for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { . "${_v}/bin/activate"; break; }; done 2>/dev/null || true;'
+
 # ---------------------------------------------------------------------------
 # Check: Python packages
 # ---------------------------------------------------------------------------
@@ -176,7 +188,7 @@ check_python() {
   local cross_file="${WORKDIR}/cross-pip.txt"
 
   container_exec_strip "${NATIVE_IMAGE}" bash -lc \
-    'for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { source "${_v}/bin/activate"; break; }; done 2>/dev/null || true; pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
+    "${_VENV_ACTIVATE_PROLOGUE} pip list --format=columns 2>/dev/null || pip3 list --format=columns" \
     > "${native_file}" 2>/dev/null || {
     container_exec_strip "${NATIVE_IMAGE}" bash -lc 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
       > "${native_file}" 2>/dev/null || {
@@ -186,7 +198,7 @@ check_python() {
   }
 
   container_exec_strip "${CROSS_IMAGE}" bash -lc \
-    'for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { source "${_v}/bin/activate"; break; }; done 2>/dev/null || true; pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
+    "${_VENV_ACTIVATE_PROLOGUE} pip list --format=columns 2>/dev/null || pip3 list --format=columns" \
     > "${cross_file}" 2>/dev/null || {
     container_exec_strip "${CROSS_IMAGE}" bash -lc 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
       > "${cross_file}" 2>/dev/null || {
@@ -342,10 +354,10 @@ check_imports() {
     py_cmd="import ${mod}; print('${mod} ok:', ${mod}.__version__ if hasattr(${mod}, '__version__') else 'loaded')"
 
     native_out="$(container_exec_strip "${NATIVE_IMAGE}" bash -lc \
-      "for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { source "${_v}/bin/activate"; break; }; done 2>/dev/null || true; python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
+      "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
 
     cross_out="$(container_exec_strip "${CROSS_IMAGE}" bash -lc \
-      "for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { source "${_v}/bin/activate"; break; }; done 2>/dev/null || true; python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
+      "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
 
     local native_status="${native_out%% *}"
     local cross_status="${cross_out%% *}"

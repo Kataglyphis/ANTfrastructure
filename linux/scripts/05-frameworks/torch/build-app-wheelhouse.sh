@@ -26,12 +26,24 @@ unset _common
 # always available even when this script is invoked outside the orchestrator
 # (which is the typical case in the media app-wheelhouse stage). Fallback paths
 # below still exist but now mirror versions.env rather than drifting.
+for _lvf in \
+    "/opt/scripts/core/load-versions-env.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/load-versions-env.sh"; do
+    if [ -f "${_lvf}" ]; then
+        # shellcheck disable=SC1091
+        source "${_lvf}"
+        break
+    fi
+done
+unset _lvf
 for _evf in \
     "/opt/scripts/core/versions.env" \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/versions.env"; do
     if [ -f "${_evf}" ]; then
-        # shellcheck disable=SC1091
-        set -a; source "${_evf}"; set +a
+        # load_versions_env respects already-set env (orchestrator-forwarded
+        # PYTORCH_VERSION/etc. win over the baked copy) — unlike `set -a; source`,
+        # which clobbered them and inverted the documented precedence contract.
+        load_versions_env "${_evf}"
         break
     fi
 done

@@ -17,6 +17,14 @@ cross_skip() {
   return 1
 }
 
+# Resolve the venv's python3.X/site-packages dir once, glob-safe. `test -d` does
+# NOT glob, so `[ -d "${VENV}/lib/python3."*/site-packages ]` misfires when the
+# venv contains more than one python3.X dir (or zero). Callers use the returned
+# path both as a -d test subject and as a cp destination. Empty output = none.
+venv_site_packages() {
+  compgen -G "${VENV}/lib/python3.*/site-packages" 2>/dev/null | head -1
+}
+
 setup_torch_venv() {
   cross_skip "torch venv creation" && return 0
 
@@ -57,7 +65,7 @@ seed_opencv5_bindings() {
   cv2_dir="$(find /opt/opencv5/lib/python3.*/site-packages -maxdepth 1 -name cv2 -type d 2>/dev/null | head -1 || true)"
   if [ -n "${cv2_dir}" ]; then
     local site_pkg_dir
-    site_pkg_dir="$(echo "${VENV}/lib/python3."*/site-packages 2>/dev/null | head -1 || true)"
+    site_pkg_dir="$(venv_site_packages)"
     local pth="${site_pkg_dir}/opencv5.pth"
     local parent
     parent="$(dirname "${cv2_dir}")"
@@ -148,9 +156,11 @@ seed_riscv64_apt_packages() {
   apt-get install -y --no-install-recommends python3-contourpy \
     || echo "WARNING: python3-contourpy not available via apt"
   rm -rf /var/lib/apt/lists/*
-  if [ -d /usr/lib/python3/dist-packages ] && [ -d "${VENV}/lib/python3."*/site-packages ]; then
+  local _sp
+  _sp="$(venv_site_packages)"
+  if [ -d /usr/lib/python3/dist-packages ] && [ -n "${_sp}" ] && [ -d "${_sp}" ]; then
     for pkg in numpy cairo gi contourpy PyGObject-*.egg-info pycairo-*.egg-info contourpy-*.egg-info contourpy-*.dist-info; do
-      cp -a /usr/lib/python3/dist-packages/"${pkg}" "${VENV}/lib/python3."*/site-packages/ 2>/dev/null || true
+      cp -a /usr/lib/python3/dist-packages/"${pkg}" "${_sp}/" 2>/dev/null || true
     done
     echo "Seeded apt Python packages into venv (QEMU riscv64 mode)"
   fi
@@ -173,8 +183,10 @@ riscv64_torch_wheel_fallback() {
   elif [ -d /opt/opencv5/lib ]; then
     local cv2_src
     cv2_src="$(find /opt/opencv5/lib -maxdepth 3 -name cv2 -type d 2>/dev/null | head -1 || true)"
-    if [ -n "${cv2_src}" ]; then
-      cp -a "${cv2_src}" "${VENV}/lib/python3."*/site-packages/ 2>/dev/null || true
+    local _sp
+    _sp="$(venv_site_packages)"
+    if [ -n "${cv2_src}" ] && [ -n "${_sp}" ]; then
+      cp -a "${cv2_src}" "${_sp}/" 2>/dev/null || true
     fi
   fi
   if "${VENV}/bin/python" -c "import cv2; print('cv2', cv2.__version__)" 2>/dev/null; then
@@ -192,9 +204,11 @@ configure_foreign_arch_compiler_env() {
     export CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
     unset CC_LD CXX_LD RUSTC_WRAPPER SCCACHE_RECACHE
     echo "sccache bypass: CC=${CC} CXX=${CXX} (host ${host_arch})"
-    if [ -d /usr/lib/python3/dist-packages ] && [ -d "${VENV}/lib/python3."*/site-packages ]; then
-      cp -a /usr/lib/python3/dist-packages/cairo     "${VENV}/lib/python3."*/site-packages/ 2>/dev/null || true
-      cp -a /usr/lib/python3/dist-packages/pycairo-*.egg-info "${VENV}/lib/python3."*/site-packages/ 2>/dev/null || true
+    local _sp
+    _sp="$(venv_site_packages)"
+    if [ -d /usr/lib/python3/dist-packages ] && [ -n "${_sp}" ] && [ -d "${_sp}" ]; then
+      cp -a /usr/lib/python3/dist-packages/cairo     "${_sp}/" 2>/dev/null || true
+      cp -a /usr/lib/python3/dist-packages/pycairo-*.egg-info "${_sp}/" 2>/dev/null || true
       echo "Copied system pycairo into venv"
     fi
   fi

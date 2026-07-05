@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Source-only helper -- do not execute directly.
 # cross-gcc.sh - GCC toolchain detection helpers.
 # Sourced by cross-env.sh.

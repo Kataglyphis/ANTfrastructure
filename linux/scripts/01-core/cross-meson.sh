@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Source-only helper -- do not execute directly.
 # cross-meson.sh - Meson cross-compilation helpers.
 # Sourced by cross-env.sh.
