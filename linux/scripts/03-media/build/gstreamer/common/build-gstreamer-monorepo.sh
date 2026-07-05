@@ -466,6 +466,26 @@ _gst_monorepo_compile() {
   fi
 }
 
+# Fallback when the cross DESTDIR install produced no libraries (post-install
+# scripts can't run target binaries): copy libs/plugins/binaries straight out of
+# the meson builddir into the prefix. Fatal if still no libgstreamer afterward.
+_gst_install_fallback_copy() {
+  if [ -d "builddir/subprojects/gstreamer/libs/gst" ]; then
+    cp -a builddir/subprojects/gstreamer/libs/gst/*/libgstreamer*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
+    cp -a builddir/subprojects/gstreamer/gst/libgstreamer*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
+    cp -a builddir/subprojects/*/gst-libs/gst/*/libgst*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
+  fi
+  # Also copy any .so from the builddir into prefix, plus the CLI binaries.
+  find builddir -name "*.so" -path "*/libgst*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/" \; 2>/dev/null || true
+  find builddir -name "*.so" -path "*/gstreamer-1.0/*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0/" \; 2>/dev/null || true
+  find builddir -name "gst-launch-1.0" -o -name "gst-inspect-1.0" -exec cp -aL {} "${GSTREAMER_PREFIX}/bin/" \; 2>/dev/null || true
+  ldconfig 2>/dev/null || true
+  if ! find "${GSTREAMER_PREFIX}" -name "libgstreamer*.so*" 2>/dev/null | grep -q .; then
+    echo "ERROR: GStreamer cross-install produced no libgstreamer libraries" >&2
+    exit 1
+  fi
+}
+
 _gst_monorepo_install() {
   echo "Installing GStreamer..."
   if cross_build_is_active; then
@@ -494,22 +514,7 @@ _gst_monorepo_install() {
     # binaries), fall back to copying directly from the meson builddir.
     if ! find "${GSTREAMER_PREFIX}" -name "libgstreamer*.so*" 2>/dev/null | grep -q .; then
       echo "WARNING: DESTDIR install produced no libraries; falling back to builddir copy"
-      local _build_libdirs=()
-      if [ -d "builddir/subprojects/gstreamer/libs/gst" ]; then
-        cp -a builddir/subprojects/gstreamer/libs/gst/*/libgstreamer*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
-        cp -a builddir/subprojects/gstreamer/gst/libgstreamer*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
-        cp -a builddir/subprojects/*/gst-libs/gst/*/libgst*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
-      fi
-      # Also copy any .so from the builddir into prefix
-      find builddir -name "*.so" -path "*/libgst*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/" \; 2>/dev/null || true
-      find builddir -name "*.so" -path "*/gstreamer-1.0/*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0/" \; 2>/dev/null || true
-      # Also copy binaries
-      find builddir -name "gst-launch-1.0" -o -name "gst-inspect-1.0" -exec cp -aL {} "${GSTREAMER_PREFIX}/bin/" \; 2>/dev/null || true
-      ldconfig 2>/dev/null || true
-      if ! find "${GSTREAMER_PREFIX}" -name "libgstreamer*.so*" 2>/dev/null | grep -q .; then
-        echo "ERROR: GStreamer cross-install produced no libgstreamer libraries" >&2
-        exit 1
-      fi
+      _gst_install_fallback_copy
     fi
   else
     if ! uv run meson install -C builddir; then
