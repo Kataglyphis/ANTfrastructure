@@ -154,11 +154,38 @@ container commits fine via `docker commit`. So `build.ps1` builds media-core as:
 3. `docker commit` the container to `local/kataglyphis:windows-media-core` — a
    drop-in replacement for the old `Dockerfile.media-core` output.
 
-`Invoke-MediaCoreRunCommit` in `build.ps1` implements this; tune it with
-`-MediaCoreCpus` (default 16) and `-MediaMemoryGb` (default 48). The lighter
-`docker build` stages (base, sdk, toolchain, the litert/tvm aux branches, the
-merge/GStreamer stage) still run at 2 CPUs — acceptable, as they are far smaller
-than the ONNX/CUDA compile.
+`Invoke-MediaCoreRunCommit` in `build.ps1` implements this via the generic
+`Invoke-RunCommitStage` helper; tune it with `-MediaCoreCpus` (default: the host's
+logical processor count, `[Environment]::ProcessorCount`) and `-MediaMemoryGb`
+(default 48).
+
+**Which stages use run+commit.** The same `Invoke-RunCommitStage` path is used for
+every **CPU-bound** stage, so they all build at `-MediaCoreCpus` cores instead of
+the 2-CPU `docker build` cap:
+
+| Stage | Builder Dockerfile | Run step (the heavy compile) |
+|-------|--------------------|------------------------------|
+| toolchain | `Dockerfile.toolchain-builder` (clones CPython + writes props) | `build-toolchain-all.ps1` (`PCbuild\build.bat`) |
+| media-core | `Dockerfile.media-core-builder` | `build-media-core-all.ps1` (ONNX→GenAI→OpenCV→FFmpeg) |
+| media merge | `Dockerfile.media-merge-builder` (fan-in `COPY --from` + env) | `build-gstreamer-from-source.ps1` |
+
+The **merge stage splits**: the fan-in (`COPY --from` of the three branch trees)
+*must* be a `docker build` because `docker run` can't `COPY --from`, but it is only
+IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
+`docker commit` preserves the builder image's ENV, so each result image is a
+drop-in replacement for the old single-Dockerfile output.
+
+The remaining `docker build` stages are genuinely **not CPU-bound**, so they stay
+at 2 CPUs (no benefit from more): `base`/`sdk` are network/install-bound, and the
+`litert`/`tvm` aux branches run *concurrently underneath* media-core so their
+2-CPU cap is hidden by the long pole.
+
+> **NOTE — parallelism is memory-bound, not core-bound.** `Get-BuildJobCount =
+> min(cpu-count, MEMORY_LIMIT_GB / per-job-GB)`. ONNX is ~4 GB/job, so at 48 GB it
+> runs `~j12` whether you give it 16 or 32 cores; extra cores only speed the
+> lighter TUs (FFmpeg, CPython, GStreamer). True `j32` on ONNX needs ~128 GB RAM,
+> which this host does not have — so on the ONNX long pole, **RAM is the ceiling,
+> not cores.**
 
 **Trade-off:** a single `docker run` has no per-stage layer cache, so a mid-chain
 failure re-runs the whole chain (unlike a multi-`RUN` `docker build`, where each
@@ -166,6 +193,53 @@ completed step is cached). The persistent **sccache** remote (below) covers the
 recompilation, so in practice only uncached objects rebuild. Regression symptom
 for the whole mechanism: `ninja -j2` in `out\windows-build-logs\media-core.log`,
 or an `ActivateLayer` error on any commit.
+
+**Root cause (fully diagnosed).** The commit failure is the **`wcifs`** minifilter
+(Windows Container Isolation FS) refusing to detach the process-isolation layer on
+container teardown — dockerd's `panic.log` shows
+`hcsshim::UnprepareLayer failed ... ERROR_FLT_DO_NOT_DETACH (0x801f0010)`, which
+leaves the layer files locked so the subsequent commit's `ActivateLayer` fails
+`0x20`. The trigger is an **OS-class mismatch**: the host is a Windows **client**
+build (26200 / 25H2) but the only base image is Windows **Server** `servercore:ltsc2025`
+(build 26100). A client-kernel `wcifs` will not detach a Server layer. This is
+below Docker *and* below containerd — it reproduces identically for `docker build`,
+`docker run`+`commit`, the containerd snapshotter, and `nerdctl commit`, on the
+newest stack (Docker 29.5.3 / containerd 2.3.1 / hcsshim 1.2.1). It is **not**
+contradicted by Microsoft's host≥image compatibility matrix: the matrix governs
+whether the image can *run* under process isolation (it does — the `RUN` step
+executes), not layer *commit/teardown*. The only real fixes are environmental:
+build on a **matching build-26100 host** (Windows 11 24H2 or Windows Server 2025),
+or wait for a Windows/hcsshim fix.
+
+### Re-testing process isolation on new versions (is the bug gone yet?)
+
+After **any** Docker Engine / containerd / hcsshim / Windows / base-image upgrade,
+re-check whether `docker build --isolation process` can commit a layer again — if
+it can, the *entire* Windows build (not just media-core) could run at full CPU
+count and the run+commit workaround could be retired. A durable, self-contained
+probe lives under `windows/diagnostics/`:
+
+```powershell
+.\windows\diagnostics\test-process-isolation-commit.ps1
+```
+
+It records the current Docker/containerd/host build numbers, runs a `docker run
+--isolation process` control (expected: PASS), then builds a tiny ~100 MB probe
+layer with `docker build --isolation process` (`Dockerfile.isolation-probe`) and
+prints a clear verdict:
+
+- **`BUG GONE` (exit 0):** the commit succeeded — process isolation is usable for
+  `docker build`. Follow the on-screen next steps (switch heavy stages to
+  process isolation, re-run the full build to confirm parity, then retire
+  `Invoke-MediaCoreRunCommit` and update this doc + the host-quirks notes).
+- **`BUG PRESENT` (exit 1):** the known `wcifs`/`ActivateLayer 0x20` failure still
+  occurs — keep the run+commit workaround.
+- **exit 2:** the build failed with a *different* signature — investigate; do not
+  assume it is fixed.
+
+To test a hypothetical newer *matching-build* base image, pass `-Base <image>`.
+Baseline as of Docker 29.5.3 / containerd 2.3.1 / host build 26200 with
+`servercore:ltsc2025`: **BUG PRESENT**.
 
 ### Rust toolchain (scoop only — never rustup)
 
@@ -183,18 +257,32 @@ re-introduce rustup.
 
 ### Media fan-out and memory budgeting
 
-The media branches build concurrently (branch logs land in
-`out\windows-build-logs\*.err.log` — docker's `--progress=plain` output goes to
-stderr). `-MediaMemoryGb` (default 48) caps the media-core branch and the
-merge/GStreamer stage; `-AuxMemoryGb` (default 8) caps each of the two
-auxiliary branches. Size them so `MediaMemoryGb + 2*AuxMemoryGb` roughly fits
-host RAM. Each cap is forwarded as `MEMORY_LIMIT_GB` so the build scripts scale
-their parallel job count to the container's cap instead of host RAM
-(`BUILD_JOBS` overrides the heuristic outright). media-core builds via the
-run+commit path (see § Build isolation and CPU parallelism) so it gets
-`-MediaCoreCpus` CPUs; the aux branches are ordinary 2-CPU `docker build`s that
-run concurrently underneath it. On memory-constrained hosts pass
-`-SequentialMedia` to build the branches one after another.
+**Media scheduling is sequential by default** (media branch logs land in
+`out\windows-build-logs\*.err.log`). Sequential gives media-core the *whole* host
+RAM budget — and since its parallelism is memory-bound, more RAM = more ONNX jobs,
+which matters more than overlapping the small aux branches. Pass `-ConcurrentMedia`
+to overlap the litert/tvm aux branches underneath media-core instead.
+
+**`-MediaMemoryGb` auto-detects from host RAM** (default `0` = auto). It resolves
+to `usable_physical_GB − HostReserveGb` in sequential mode, or
+`usable_physical_GB − HostReserveGb − 2*AuxMemoryGb` in concurrent mode (leaving
+room for the two aux branches). `-HostReserveGb` (default 8) is the RAM left for
+Windows + dockerd + Defender; lower it to push closer to the metal (riskier —
+under memory pressure the hcsshim `ttrpc` wedge is more likely). Pass an explicit
+`-MediaMemoryGb N` to override auto-detection. The cap is forwarded as
+`MEMORY_LIMIT_GB` so the build scripts scale their job count to the container's cap
+(`BUILD_JOBS` overrides the heuristic outright).
+
+Worked example (this 64 GB host, Windows reports 61.4 GB usable → floor 61):
+
+| Mode | Auto `-MediaMemoryGb` | ONNX jobs (`mem/4`, cores=32) |
+|------|----------------------|-------------------------------|
+| sequential (default) | `61 − 8` = **53 g** | **j13** |
+| `-ConcurrentMedia` | `61 − 8 − 16` = **37 g** | j9 |
+
+media-core, toolchain, and the merge/GStreamer stage all build via the run+commit
+path (see § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs; the
+litert/tvm aux branches are ordinary 2-CPU `docker build`s.
 
 ### Persistent compile cache (sccache)
 

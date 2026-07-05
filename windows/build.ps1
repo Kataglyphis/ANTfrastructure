@@ -44,24 +44,48 @@
     Tag for the final developer image.
 
 .PARAMETER MediaMemoryGb
-    --memory limit (GB) for the media-core branch and the merge/GStreamer stage.
-    Forwarded as MEMORY_LIMIT_GB so the build scripts scale their parallelism to
-    the cap instead of host RAM.
+    --memory limit (GB) for the run+commit stages (media-core, toolchain, and the
+    merge/GStreamer stage). Forwarded as MEMORY_LIMIT_GB so the build scripts scale
+    parallelism to the cap. Default 0 = AUTO-DETECT from host RAM: usable physical
+    GB minus -HostReserveGb (and minus 2*AuxMemoryGb in concurrent mode). Since
+    media-core parallelism is memory-bound (jobs = min(cpu-count, mem/per-job-GB),
+    ONNX ~4 GB/job), maximizing this is what actually raises the ONNX job count.
+    Pass an explicit value to override the auto-detection.
+
+.PARAMETER HostReserveGb
+    RAM (GB) to leave for the Windows host + dockerd + Defender when auto-detecting
+    -MediaMemoryGb (default 8). Lower it to push the container closer to the metal
+    (riskier: under memory pressure the hcsshim ttrpc wedge is more likely).
 
 .PARAMETER AuxMemoryGb
-    --memory limit (GB) for each auxiliary media branch (litert, tvm) when
-    building concurrently. Sized so MediaMemoryGb + 2*AuxMemoryGb roughly fits
-    host RAM.
+    --memory limit (GB) for each auxiliary media branch (litert, tvm) when building
+    concurrently (see -ConcurrentMedia). Ignored for the media-core budget in the
+    default sequential mode. When concurrent, the auto -MediaMemoryGb leaves room
+    for 2*AuxMemoryGb so MediaMemoryGb + 2*AuxMemoryGb fits host RAM.
 
 .PARAMETER MediaCoreCpus
     CPU count for the media-core run+commit build (docker run --cpu-count N).
-    `docker build` is hard-capped at 2 CPUs on this host and process isolation
+    Defaults to the host's logical processor count ([Environment]::ProcessorCount)
+    so the heavy compile uses all cores automatically; pass a smaller value to cap
+    it. `docker build` is hard-capped at 2 CPUs on this host and process isolation
     cannot commit layers, so media-core builds via docker run + docker commit,
-    which DOES honor --cpu-count under Hyper-V. Actual ninja parallelism is
-    min(MediaCoreCpus, MediaMemoryGb / per-job-GB); ONNX is ~4 GB/job.
+    which DOES honor --cpu-count under Hyper-V. NOTE: actual ninja parallelism is
+    min(MediaCoreCpus, MediaMemoryGb / per-job-GB), so it is MEMORY-bound, not
+    core-bound — ONNX is ~4 GB/job, so at 48 GB it runs ~j12 even with 32 cores.
+    More cores only help the lighter TUs (OpenCV/FFmpeg); true j32 on ONNX needs
+    ~128 GB RAM, which this host does not have.
 
 .PARAMETER SequentialMedia
-    Build the media branches one after another instead of concurrently.
+    Build the media branches one after another. This is the DEFAULT (it gives
+    media-core the whole host RAM budget, maximizing ONNX parallelism). Kept for
+    backward compatibility / explicitness.
+
+.PARAMETER ConcurrentMedia
+    Overlap the aux branches (litert, tvm) underneath media-core instead of the
+    default sequential schedule. Hides the aux wall-clock, but the auto
+    -MediaMemoryGb must then reserve 2*AuxMemoryGb, so media-core gets less RAM
+    (fewer ONNX jobs). On a memory-constrained host, sequential is usually faster
+    overall because the ONNX long pole gets more RAM.
 
 .PARAMETER SccacheEndpoint
     Optional sccache WebDAV endpoint reachable FROM INSIDE build containers
@@ -83,10 +107,12 @@ param(
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'final'),
     [string]$Docker = '',
     [string]$FinalTag = '',
-    [int]$MediaMemoryGb = 48,
+    [int]$MediaMemoryGb = 0,
+    [int]$HostReserveGb = 8,
     [int]$AuxMemoryGb = 8,
-    [int]$MediaCoreCpus = 16,
+    [int]$MediaCoreCpus = [Environment]::ProcessorCount,
     [switch]$SequentialMedia,
+    [switch]$ConcurrentMedia,
     [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT
 )
 
@@ -246,54 +272,81 @@ function Get-MediaBranchSpecs {
     )
 }
 
+function Invoke-RunCommitStage {
+    # Generic run+commit builder: the ONLY way to exceed the 2-CPU `docker build`
+    # cap on this host while still producing a committable image. `docker build` is
+    # hard-capped at 2 CPUs (Hyper-V) and process isolation cannot commit ANY layer
+    # (hcsshim::ActivateLayer 0x20 — the wcifs detach bug, re-verify with
+    # windows/diagnostics/test-process-isolation-commit.ps1). So:
+    #   1. `docker build` a THIN builder image (cheap COPY/clone layers commit fine
+    #      under Hyper-V) carrying the sources + build scripts but NO heavy compile.
+    #   2. `docker run --isolation hyperv --cpu-count N` the heavy compile — `docker
+    #      run` DOES honor --cpu-count under Hyper-V (unlike `docker build`).
+    #   3. `docker commit` the container to $ResultTag.
+    # There is no per-stage layer cache inside the run; the sccache remote (when set)
+    # covers recompilation. Used by media-core, toolchain (CPython), and the
+    # media/GStreamer merge. See docs/windows-builds.md § Build isolation and CPU
+    # parallelism.
+    param(
+        [Parameter(Mandatory)] [string]$BuilderDockerfile,
+        [Parameter(Mandatory)] [string]$BuilderTag,
+        [Parameter(Mandatory)] [string]$ResultTag,
+        [Parameter(Mandatory)] [string]$ContainerName,
+        [Parameter(Mandatory)] [string[]]$RunCommand,
+        [Parameter(Mandatory)] [int]$Cpus,
+        [Parameter(Mandatory)] [int]$MemoryGb,
+        [hashtable]$BuildArgs = @{},
+        [string]$Label = '',
+        [string]$OutLog
+    )
+    if (-not $Label) { $Label = $ResultTag }
+
+    # 1. Thin builder image via the shared Invoke-Stage (retry + transient handling).
+    Invoke-Stage -Dockerfile $BuilderDockerfile -Tag $BuilderTag -BuildArgs $BuildArgs
+
+    # 2. Heavy work via docker run, then commit; retry the run only on transient infra errors.
+    $runArgs = @('run', '--isolation', 'hyperv', '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
+        '--name', $ContainerName, $BuilderTag) + $RunCommand
+    foreach ($attempt in 1..3) {
+        & $Docker container rm -f $ContainerName 2>&1 | Out-Null
+        Write-Host "`n==> [$Label] docker run --isolation hyperv --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
+        if ($OutLog) { & $Docker @runArgs 2>&1 | Tee-Object -FilePath $OutLog }
+        else { & $Docker @runArgs 2>&1 }
+        $runExit = $LASTEXITCODE
+        if ($runExit -eq 0) {
+            & $Docker commit $ContainerName $ResultTag 2>&1 | ForEach-Object { Write-Host $_ }
+            $commitExit = $LASTEXITCODE
+            & $Docker container rm -f $ContainerName 2>&1 | Out-Null
+            if ($commitExit -ne 0) { throw "$Label commit failed (exit $commitExit)" }
+            Write-Host "$Label built via run+commit ($Cpus CPUs) -> $ResultTag" -ForegroundColor Green
+            return
+        }
+        $tail = if ($OutLog -and (Test-Path $OutLog)) { Get-Content $OutLog -Tail 15 | Out-String } else { '' }
+        & $Docker container rm -f $ContainerName 2>&1 | Out-Null
+        if ($attempt -lt 3 -and $tail -match $script:TransientPattern) {
+            Write-Host "[$Label] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
+            Start-Sleep -Seconds 60
+            continue
+        }
+        throw "$Label compile (docker run) failed (exit $runExit)"
+    }
+}
+
 function Invoke-MediaCoreRunCommit {
-    # media-core cannot use `docker build` for its heavy compiles: this host caps
-    # build containers at 2 CPUs (Hyper-V) and process isolation cannot commit
-    # layers. So build a thin builder image (cheap COPY layers -> Hyper-V build
-    # commits fine), run the compile chain with `docker run --cpu-count N` (which
-    # DOES get N CPUs under Hyper-V), then `docker commit` the result. There is no
-    # per-stage layer cache inside the run; the sccache remote covers recompilation.
+    # media-core: ONNX -> GenAI -> OpenCV -> FFmpeg chain via the run+commit path.
     param(
         [Parameter(Mandatory)] [hashtable]$BuildArgs,
         [Parameter(Mandatory)] [int]$Cpus,
         [Parameter(Mandatory)] [int]$MemoryGb,
         [string]$OutLog
     )
-    $builderTag = 'local/kataglyphis:windows-media-core-builder'
-    $resultTag  = 'local/kataglyphis:windows-media-core'
-    $container  = 'kataglyphis-media-core-build'
-
-    # 1. Thin builder image via the shared Invoke-Stage (retry + transient handling).
-    Invoke-Stage -Dockerfile 'windows/Dockerfile.media-core-builder' -Tag $builderTag -BuildArgs $BuildArgs
-
-    # 2. Heavy compile chain, then commit; retry the run only on transient infra errors.
-    $runArgs = @('run', '--isolation', 'hyperv', '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
-        '--name', $container, $builderTag,
-        'powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-        'C:\temp\scripts\build-media-core-all.ps1')
-    foreach ($attempt in 1..3) {
-        & $Docker container rm -f $container 2>&1 | Out-Null
-        Write-Host "`n==> [media-core] docker run --isolation hyperv --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
-        if ($OutLog) { & $Docker @runArgs 2>&1 | Tee-Object -FilePath $OutLog }
-        else { & $Docker @runArgs 2>&1 }
-        $runExit = $LASTEXITCODE
-        if ($runExit -eq 0) {
-            & $Docker commit $container $resultTag 2>&1 | ForEach-Object { Write-Host $_ }
-            $commitExit = $LASTEXITCODE
-            & $Docker container rm -f $container 2>&1 | Out-Null
-            if ($commitExit -ne 0) { throw "media-core commit failed (exit $commitExit)" }
-            Write-Host "media-core built via run+commit ($Cpus CPUs) -> $resultTag" -ForegroundColor Green
-            return
-        }
-        $tail = if ($OutLog -and (Test-Path $OutLog)) { Get-Content $OutLog -Tail 15 | Out-String } else { '' }
-        & $Docker container rm -f $container 2>&1 | Out-Null
-        if ($attempt -lt 3 -and $tail -match $script:TransientPattern) {
-            Write-Host "[media-core] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
-            Start-Sleep -Seconds 60
-            continue
-        }
-        throw "media-core compile (docker run) failed (exit $runExit)"
-    }
+    Invoke-RunCommitStage `
+        -BuilderDockerfile 'windows/Dockerfile.media-core-builder' `
+        -BuilderTag    'local/kataglyphis:windows-media-core-builder' `
+        -ResultTag     'local/kataglyphis:windows-media-core' `
+        -ContainerName 'kataglyphis-media-core-build' `
+        -RunCommand    @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'C:\temp\scripts\build-media-core-all.ps1') `
+        -Cpus $Cpus -MemoryGb $MemoryGb -BuildArgs $BuildArgs -Label 'media-core' -OutLog $OutLog
 }
 
 function Invoke-MediaBranches {
@@ -304,7 +357,7 @@ function Invoke-MediaBranches {
     New-Item -Path $logDir -ItemType Directory -Force | Out-Null
     $coreLog  = Join-Path $logDir 'media-core.log'
 
-    if ($SequentialMedia) {
+    if ($script:UseSequentialMedia) {
         Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
             -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
         foreach ($spec in $auxSpecs) {
@@ -396,6 +449,24 @@ function Invoke-MediaBranches {
     Write-Host 'All media branches built.' -ForegroundColor Green
 }
 
+# ---- resolve media scheduling + auto-detect the run+commit memory budget ----
+# Sequential is the default (media-core gets the whole RAM budget → most ONNX jobs);
+# -ConcurrentMedia overlaps the aux branches; -SequentialMedia forces sequential.
+$script:UseSequentialMedia = -not $ConcurrentMedia
+if ($SequentialMedia) { $script:UseSequentialMedia = $true }
+
+# -MediaMemoryGb 0 = auto-detect from host RAM. In sequential mode media-core runs
+# alone, so it gets usable-RAM minus the host reserve; in concurrent mode it must
+# also leave room for the two aux branches (2*AuxMemoryGb).
+if ($MediaMemoryGb -le 0) {
+    $usableGb = [int][math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+    $reserve  = $HostReserveGb + $(if ($script:UseSequentialMedia) { 0 } else { 2 * $AuxMemoryGb })
+    $MediaMemoryGb = [math]::Max(8, $usableGb - $reserve)
+    Write-Host ("Auto-detected -MediaMemoryGb=${MediaMemoryGb}g (usable ${usableGb}GB - ${reserve}GB reserve; mode=$(if ($script:UseSequentialMedia) { 'sequential' } else { 'concurrent' }); cores=$MediaCoreCpus)") -ForegroundColor Cyan
+} else {
+    Write-Host ("-MediaMemoryGb=${MediaMemoryGb}g (explicit); mode=$(if ($script:UseSequentialMedia) { 'sequential' } else { 'concurrent' }); cores=$MediaCoreCpus") -ForegroundColor Cyan
+}
+
 $started = Get-Date
 
 try {
@@ -424,31 +495,58 @@ try {
     }
 
     if ($Stages -contains 'toolchain') {
-        Invoke-Stage -Dockerfile 'windows/Dockerfile.toolchain' -Tag 'local/kataglyphis:windows-toolchain' -BuildArgs @{
-            BASE_IMAGE     = 'local/kataglyphis:windows-sdk'
-            PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
-        }
+        # CPython build.bat is CPU-bound, so it uses the run+commit path for full
+        # cores instead of the 2-CPU `docker build`. The thin builder clones CPython
+        # + writes Directory.Build.props (cheap, IO-bound); the run does the compile.
+        $tcLog = Join-Path $repoRoot 'out\windows-build-logs\toolchain.log'
+        New-Item -Path (Split-Path $tcLog) -ItemType Directory -Force | Out-Null
+        Invoke-RunCommitStage `
+            -BuilderDockerfile 'windows/Dockerfile.toolchain-builder' `
+            -BuilderTag    'local/kataglyphis:windows-toolchain-builder' `
+            -ResultTag     'local/kataglyphis:windows-toolchain' `
+            -ContainerName 'kataglyphis-toolchain-build' `
+            -RunCommand    @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'C:\temp\scripts\build-toolchain-all.ps1') `
+            -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
+            -BuildArgs @{
+                BASE_IMAGE     = 'local/kataglyphis:windows-sdk'
+                PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
+            } `
+            -Label 'toolchain' -OutLog $tcLog
     }
 
     if ($Stages -contains 'media') {
         # Fan-out: three branch images concurrently, then fan-in (merge + GStreamer).
         Invoke-MediaBranches
-        Invoke-Stage -Dockerfile 'windows/Dockerfile.media' -Tag 'local/kataglyphis:windows-media' `
-            -ExtraFlags @('--memory', "$($MediaMemoryGb)g") -BuildArgs @{
-            BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
-            CORE_IMAGE                = 'local/kataglyphis:windows-media-core'
-            LITERT_IMAGE              = 'local/kataglyphis:windows-media-litert'
-            TVM_IMAGE                 = 'local/kataglyphis:windows-media-tvm'
-            GSTREAMER_VERSION         = Get-Ver 'GSTREAMER_VERSION'
-            ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
-            ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
-            OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
-            FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
-            LITERT_VERSION            = Get-Ver 'LITERT_VERSION'
-            LITERT_LM_VERSION         = Get-Ver 'LITERT_LM_VERSION'
-            TVM_REF                   = Get-Ver 'TVM_REF'
-            MEMORY_LIMIT_GB           = $MediaMemoryGb
-        }
+        # The merge stage splits: the fan-in (COPY --from of the three branch trees)
+        # MUST be a `docker build` — `docker run` cannot COPY --from — but it is only
+        # IO, so 2 CPUs is fine. The CPU-bound GStreamer compile then runs via the
+        # run+commit path (Dockerfile.media-merge-builder carries the merged tree +
+        # env + GStreamer scripts but does NOT run the compile; the run does).
+        $gstLog = Join-Path $repoRoot 'out\windows-build-logs\gstreamer.log'
+        New-Item -Path (Split-Path $gstLog) -ItemType Directory -Force | Out-Null
+        Invoke-RunCommitStage `
+            -BuilderDockerfile 'windows/Dockerfile.media-merge-builder' `
+            -BuilderTag    'local/kataglyphis:windows-media-merge-builder' `
+            -ResultTag     'local/kataglyphis:windows-media' `
+            -ContainerName 'kataglyphis-media-merge-build' `
+            -RunCommand    @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'C:\temp\scripts\build-gstreamer-from-source.ps1', '-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs') `
+            -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
+            -BuildArgs @{
+                BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
+                CORE_IMAGE                = 'local/kataglyphis:windows-media-core'
+                LITERT_IMAGE              = 'local/kataglyphis:windows-media-litert'
+                TVM_IMAGE                 = 'local/kataglyphis:windows-media-tvm'
+                GSTREAMER_VERSION         = Get-Ver 'GSTREAMER_VERSION'
+                ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
+                ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
+                OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
+                FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
+                LITERT_VERSION            = Get-Ver 'LITERT_VERSION'
+                LITERT_LM_VERSION         = Get-Ver 'LITERT_LM_VERSION'
+                TVM_REF                   = Get-Ver 'TVM_REF'
+                MEMORY_LIMIT_GB           = $MediaMemoryGb
+            } `
+            -Label 'media-merge+gstreamer' -OutLog $gstLog
     }
 
     if ($Stages -contains 'final') {
