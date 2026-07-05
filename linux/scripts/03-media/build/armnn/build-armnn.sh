@@ -15,14 +15,10 @@ ACL_INSTALL_DIR="${ACL_INSTALL_DIR:-/opt/acl}"
 ARCH="${TARGET_ARCH:-${TARGETARCH:-$(uname -m)}}"
 
 clone_armnn() {
-  if [ ! -d "${ARMNN_SRC_DIR}" ]; then
-    info "Cloning Arm NN ${ARMNN_VERSION} into ${ARMNN_SRC_DIR}"
-    git clone --branch "${ARMNN_VERSION}" --depth 1 "${ARMNN_REPO}" "${ARMNN_SRC_DIR}"
-    cd "${ARMNN_SRC_DIR}"
-    git submodule update --init --recursive
-  else
-    info "Arm NN source already exists at ${ARMNN_SRC_DIR}"
-  fi
+  # Shared shallow-clone helper (same one litert/opencv/libcamera use); submodule
+  # sync runs in a subshell so it never leaks cwd (build_armnn cds itself).
+  retry 3 10 "Arm NN git clone" clone_or_update_repo "${ARMNN_REPO}" "${ARMNN_SRC_DIR}" "${ARMNN_VERSION}"
+  ( cd "${ARMNN_SRC_DIR}" && git submodule update --init --recursive )
 }
 
 build_armnn() {

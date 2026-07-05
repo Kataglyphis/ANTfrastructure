@@ -110,18 +110,8 @@ collect_locked_local_wheels() {
   shopt -u nullglob
 }
 
-install_project_environment() {
-  activate_project_environment
-  local -a local_wheels=()
-  local -a locked_skip_packages=()
-  local -a locked_local_wheels=()
-  local -a sync_args=()
-  local -a frozen_sync_args=()
-  local have_lock=false
-  local wheel_path wheel_basename
-  local have_onnx_family=false
-  local have_opencv_family=false
-
+# Remove prebuilt wheels that conflict with the selected ONNX_PACKAGE variant.
+prune_conflicting_onnx_wheels() {
   case "${ONNX_PACKAGE}" in
     onnxruntime|onnxruntime-webgpu)
       rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_migraphx-*.whl /opt/wheels/*genai*.whl || true
@@ -134,6 +124,119 @@ install_project_environment() {
       exit 1
       ;;
   esac
+}
+
+# Assemble the `uv sync` arg array into $1; when locked packages are served from
+# prebuilt local wheels ($2 names, $3 wheels), tell uv to skip them and install
+# those wheels. Namerefs are underscore-prefixed to avoid circular references.
+build_uv_sync_args() {
+  local -n _sync_args="$1"
+  local -n _locked_skip="$2"
+  local -n _locked_wheels="$3"
+  local package_name
+
+  # The runtime image only needs the ML/runtime extras; the optional GUI frontend
+  # pulls wxPython, which is not required here and currently fails on Python 3.14.
+  _sync_args=(--find-links /opt/wheels --active \
+    --extra "ml-ai" \
+    --extra "${PYTORCH_EXTRA}" \
+    --extra "docs")
+
+  if [ "${#_locked_skip[@]}" -gt 0 ]; then
+    printf 'Using prebuilt local wheels for locked packages: %s\n' "${_locked_skip[*]}"
+    for package_name in "${_locked_skip[@]}"; do
+      _sync_args+=(--no-install-package "${package_name}")
+    done
+    if [ "${#_locked_wheels[@]}" -gt 0 ]; then
+      uv pip install --force-reinstall "${_locked_wheels[@]}"
+    fi
+  fi
+
+  if [ "${SKIP_TORCH_TEST_EXTRAS:-false}" != "true" ]; then
+    _sync_args+=(--extra "test")
+  fi
+}
+
+# Run `uv sync` with $1 args. With a lockfile ($3=true) try --frozen first and
+# fall back to regenerating the lock; without one, lock then sync. Either
+# fallback force-reinstalls the local wheels ($2). Ordering is load-bearing.
+run_uv_sync_with_fallback() {
+  # shellcheck disable=SC2178  # nameref to caller's array (read as "${_sync_args[@]}")
+  local -n _sync_args="$1"
+  local -n _locked_wheels="$2"
+  local have_lock="$3"
+  local -a frozen_sync_args=()
+
+  if [ "${have_lock}" = "true" ]; then
+    frozen_sync_args=("${_sync_args[@]}" --frozen)
+    if ! uv sync "${frozen_sync_args[@]}"; then
+      echo "Frozen upstream uv.lock failed for this Python/platform; regenerating a local lock"
+      uv lock --find-links /opt/wheels
+      uv sync "${_sync_args[@]}" || echo "WARNING: uv sync after lock regeneration had issues; force-reinstalling local wheels"
+      if [ "${#_locked_wheels[@]}" -gt 0 ]; then
+        uv pip install --force-reinstall "${_locked_wheels[@]}" || true
+      fi
+    fi
+  else
+    uv lock --find-links /opt/wheels
+    uv sync "${_sync_args[@]}" || echo "WARNING: uv sync had issues; force-reinstalling local wheels"
+    if [ "${#_locked_wheels[@]}" -gt 0 ]; then
+      uv pip install --force-reinstall "${_locked_wheels[@]}" || true
+    fi
+  fi
+}
+
+# After uv sync, force-reinstall the prebuilt local wheels, first uninstalling
+# any PyPI onnxruntime/opencv families they replace so the local builds win.
+reconcile_local_wheels() {
+  local -a local_wheels=()
+  local wheel_path wheel_basename
+  local have_onnx_family=false have_opencv_family=false
+
+  shopt -s nullglob
+  local_wheels=(/opt/wheels/*.whl)
+  shopt -u nullglob
+
+  if [ "${#local_wheels[@]}" -eq 0 ]; then
+    echo "No local wheels found; keeping packages installed by uv sync"
+    return 0
+  fi
+
+  for wheel_path in "${local_wheels[@]}"; do
+    wheel_basename="$(basename "${wheel_path}")"
+    case "${wheel_basename}" in
+      onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl)
+        have_onnx_family=true
+        ;;
+      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
+        have_opencv_family=true
+        ;;
+    esac
+  done
+
+  if [ "${have_onnx_family}" = "true" ]; then
+    uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu 2>/dev/null || true
+  fi
+  if [ "${have_opencv_family}" = "true" ]; then
+    uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
+  fi
+
+  uv pip install --force-reinstall "${local_wheels[@]}"
+}
+
+install_project_environment() {
+  activate_project_environment
+  # The arrays below are populated/consumed by the helpers via nameref (SC2034
+  # can't see cross-function nameref use, hence the per-line disables).
+  # shellcheck disable=SC2034
+  local -a locked_skip_packages=()
+  # shellcheck disable=SC2034
+  local -a locked_local_wheels=()
+  # shellcheck disable=SC2034
+  local -a sync_args=()
+  local have_lock=false
+
+  prune_conflicting_onnx_wheels
 
   cd "${APP_DIR}"
   collect_locked_local_skip_packages locked_skip_packages
@@ -142,74 +245,9 @@ install_project_environment() {
     have_lock=true
   fi
 
-  # The runtime image only needs the ML/runtime extras; the optional GUI frontend
-  # pulls wxPython, which is not required here and currently fails on Python 3.14.
-  sync_args=(--find-links /opt/wheels --active \
-    --extra "ml-ai" \
-    --extra "${PYTORCH_EXTRA}" \
-    --extra "docs")
-
-  if [ "${#locked_skip_packages[@]}" -gt 0 ]; then
-    printf 'Using prebuilt local wheels for locked packages: %s\n' "${locked_skip_packages[*]}"
-    local package_name
-    for package_name in "${locked_skip_packages[@]}"; do
-      sync_args+=(--no-install-package "${package_name}")
-    done
-    if [ "${#locked_local_wheels[@]}" -gt 0 ]; then
-      uv pip install --force-reinstall "${locked_local_wheels[@]}"
-    fi
-  fi
-
-  if [ "${SKIP_TORCH_TEST_EXTRAS:-false}" != "true" ]; then
-    sync_args+=(--extra "test")
-  fi
-
-  if [ "${have_lock}" = "true" ]; then
-    frozen_sync_args=("${sync_args[@]}" --frozen)
-    if ! uv sync "${frozen_sync_args[@]}"; then
-      echo "Frozen upstream uv.lock failed for this Python/platform; regenerating a local lock"
-      uv lock --find-links /opt/wheels
-      uv sync "${sync_args[@]}" || echo "WARNING: uv sync after lock regeneration had issues; force-reinstalling local wheels"
-      if [ "${#locked_local_wheels[@]}" -gt 0 ]; then
-        uv pip install --force-reinstall "${locked_local_wheels[@]}" || true
-      fi
-    fi
-  else
-    uv lock --find-links /opt/wheels
-    uv sync "${sync_args[@]}" || echo "WARNING: uv sync had issues; force-reinstalling local wheels"
-    if [ "${#locked_local_wheels[@]}" -gt 0 ]; then
-      uv pip install --force-reinstall "${locked_local_wheels[@]}" || true
-    fi
-  fi
-
-  shopt -s nullglob
-  local_wheels=(/opt/wheels/*.whl)
-  shopt -u nullglob
-
-  if [ "${#local_wheels[@]}" -eq 0 ]; then
-    echo "No local wheels found; keeping packages installed by uv sync"
-  else
-    for wheel_path in "${local_wheels[@]}"; do
-      wheel_basename="$(basename "${wheel_path}")"
-      case "${wheel_basename}" in
-        onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl)
-          have_onnx_family=true
-          ;;
-        opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
-          have_opencv_family=true
-          ;;
-      esac
-    done
-
-    if [ "${have_onnx_family}" = "true" ]; then
-      uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu 2>/dev/null || true
-    fi
-    if [ "${have_opencv_family}" = "true" ]; then
-      uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
-    fi
-
-    uv pip install --force-reinstall "${local_wheels[@]}"
-  fi
+  build_uv_sync_args sync_args locked_skip_packages locked_local_wheels
+  run_uv_sync_with_fallback sync_args locked_local_wheels "${have_lock}"
+  reconcile_local_wheels
 
   # If any dependency pulled in a PyPI opencv-python (4.x), remove it
   # so the source-built OpenCV5 bindings win.

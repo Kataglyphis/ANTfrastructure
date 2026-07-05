@@ -14,12 +14,8 @@ ACL_BUILD_DIR="${ACL_BUILD_DIR:-${ACL_SRC_DIR}/build}"
 ARCH="${TARGET_ARCH:-${TARGETARCH:-$(uname -m)}}"
 
 clone_acl() {
-  if [ ! -d "${ACL_SRC_DIR}" ]; then
-    info "Cloning Arm Compute Library ${ACL_VERSION} into ${ACL_SRC_DIR}"
-    git clone --branch "${ACL_VERSION}" --depth 1 "${ACL_REPO}" "${ACL_SRC_DIR}"
-  else
-    info "ACL source already exists at ${ACL_SRC_DIR}"
-  fi
+  # Shared shallow-clone helper (same one litert/opencv/libcamera use).
+  retry 3 10 "ACL git clone" clone_or_update_repo "${ACL_REPO}" "${ACL_SRC_DIR}" "${ACL_VERSION}"
 }
 
 build_acl() {
