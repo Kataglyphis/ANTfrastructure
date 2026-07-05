@@ -162,8 +162,7 @@ cross_configure_foreign_arch_apt_sources() {
 
   cross_prune_foreign_arch_apt_sources "${ports_sources}"
 
-  printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nArchitectures: %s\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' \
-    "${ports_url}" "${distro}" "${distro}" "${distro}" "${distro}" "${target_arch}" > "${ports_sources}"
+  ubuntu_write_deb822_source "${ports_sources}" "${ports_url}" "${distro}" "${target_arch}" 1
 }
 
 cross_prepare_foreign_arch() {

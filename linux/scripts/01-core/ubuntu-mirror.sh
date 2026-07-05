@@ -88,6 +88,23 @@ ubuntu_effective_ports_mirror_url() {
   ubuntu_ports_mirror_from_archive "${archive_url}"
 }
 
+# Write a deb822 apt source stanza to a file. Single source of truth for the
+# Ubuntu source templates used by cross-apt.sh (foreign-arch ports) and the
+# Dockerfile.media base-stage apt reset. Args:
+#   $1 file  $2 URIs  $3 codename  $4 architecture  [$5 with_security=1]
+# Suites are <codename>{,-updates,-backports}, plus -security unless $5 = 0.
+ubuntu_write_deb822_source() {
+  local file="$1" uris="$2" codename="$3" arch="$4" with_security="${5:-1}"
+  local suites="${codename} ${codename}-updates ${codename}-backports"
+
+  if [ "${with_security}" = "1" ]; then
+    suites="${suites} ${codename}-security"
+  fi
+
+  printf 'Types: deb\nURIs: %s\nSuites: %s\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: %s\n' \
+    "${uris}" "${suites}" "${arch}" > "${file}"
+}
+
 init_mirror_defaults() {
   : "${USE_FAST_UBUNTU_MIRROR:=false}"
   : "${FAST_UBUNTU_MIRROR_URL:=${FAST_UBUNTU_MIRROR_URL_DEFAULT:-https://archive.ubuntu.com/ubuntu/}}"

@@ -76,25 +76,11 @@ if [ "${BUILD_DNNL_EP:-true}" = "true" ]; then
   esac
 fi
 
-if [ "${ORT_ENABLE_ARMNN:-true}" = "true" ]; then
-  case "${TARGET_ARCH:-${TARGETARCH:-}}" in
-    arm64|aarch64)
-      if [ -d /opt/armnn ] && [ -d /opt/acl ]; then
-        info "Arm NN EP enabled (armnn=/opt/armnn, acl=/opt/acl)"
-        BUILD_ARGS+=(
-          --use_armnn
-          --armnn_home /opt/armnn
-          --acl_home /opt/acl
-        )
-      else
-        warn "Arm NN EP enabled but /opt/armnn or /opt/acl not found; skipping"
-      fi
-      ;;
-    *)
-      info "Arm NN EP only supported on arm64; skipping on ${TARGET_ARCH:-${TARGETARCH:-unknown}}"
-      ;;
-  esac
-fi
+# NOTE: no Arm NN execution provider here. ONNX Runtime deprecated (~1.16) and
+# then removed the Arm NN EP; v1.27.0's build.py rejects --use_armnn/--armnn_home
+# ("unrecognized arguments"), which hard-failed the build wherever /opt/armnn was
+# present. The Arm NN / ACL libraries are still built and shipped (Dockerfile.media
+# armnn stage) for direct use by the application, just not wired as an ORT EP.
 
 if cross_build_is_active; then
   append_onnx_cross_cmake_build_args BUILD_ARGS
