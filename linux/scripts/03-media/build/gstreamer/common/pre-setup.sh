@@ -444,7 +444,10 @@ fi
 # stub when not building for riscv targets (we skipped installing Csound
 # packages above for skipped cross targets), otherwise creating a stub may mask
 # missing package problems on supported arches.
-if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
+if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ]; then
+  # Runs for native and for any cross target that ships Csound (arm64; riscv64
+  # keeps MEDIA_SKIP_CSOUND=1). cross_target_triplet gives the target multiarch
+  # dir so the stub + CSOUND_LIB_DIR point at the target libcsound64.
   triplet=""
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     triplet="$(cross_target_triplet)"
@@ -475,7 +478,7 @@ if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-
     "Cflags: -I\${includedir}" \
     > "$pcdir/csound.pc" || true
   # Verify that pkg-config can discover csound; fail with diagnostics if not.
-  if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ] && ! pkg-config --exists csound 2>/dev/null; then
+  if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ] && ! PKG_CONFIG_PATH="${pcdir}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}" pkg-config --exists csound 2>/dev/null; then
     echo "dpkg multiarch triplet: ${triplet:-unset}" >&2
     echo "PKG_CONFIG_LIBDIR=${PKG_CONFIG_LIBDIR:-unset}" >&2
     echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-unset}" >&2

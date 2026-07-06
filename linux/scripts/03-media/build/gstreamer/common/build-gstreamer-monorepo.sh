@@ -273,8 +273,17 @@ _gst_monorepo_arch_flags() {
     #   dav1d    -> libdav1d: RISC-V ONLY (arm64 has libdav1d and builds fine)
     # "all Rust plugins that can cross-compile for this arch"; re-enable a plugin
     # once its native dep is provided for the target.
-    local -a _rs_disable=(validate csound whisper skia burn)
-    [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ] && _rs_disable+=(dav1d)
+    # validate genuinely needs gstreamer-validate-1.0 (devtools, off for all cross).
+    local -a _rs_disable=(validate)
+    # arm64 cross-builds the full Rust plugin set — csound/whisper/skia/burn/dav1d
+    # all validated once the target Rust linker + libcsound64 (+ csound-sys
+    # char-signedness patch) were wired, so arm64 only disables `validate` (needs
+    # gstreamer-validate devtools, off for cross). riscv64 keeps the conservative
+    # set for now (its native deps are known-absent: no libcsound64/libdav1d in
+    # Ports, and whisper/skia/burn are unprobed there) — reduce via its own probe.
+    if [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
+      _rs_disable+=(csound whisper skia burn dav1d)
+    fi
     local _rs_plugin
     for _rs_plugin in "${_rs_disable[@]}"; do
       append_meson_arg "-Dgst-plugins-rs:${_rs_plugin}=disabled"
@@ -467,6 +476,30 @@ _gst_monorepo_meson_setup_run() {
   prebuild_gstreamer_riscv_targets
 }
 
+# csound-sys 0.1.2 (pulled by gst-plugin-csound) hardcodes signed-char array
+# initialisers `[0i8; 64usize]` for its CsoundParams-style structs. bindgen maps
+# the underlying C `char[64]` fields to `[u8; 64]` on unsigned-char targets
+# (aarch64, riscv64), so those literals fail to type-check when cross-compiling
+# ("expected u8, found i8"). It is a crates.io dependency, so we cannot patch it
+# in-tree; rewrite the extracted registry source to an *untyped* `[0; 64usize]`
+# instead — the literal then infers the field's element type on every arch,
+# including signed-char x86 where it stays i8. cargo has already unpacked the
+# crate into the registry (that is what produced the compile error), so the sed
+# lands on the real source before the incremental rebuild picks it up. Returns
+# success only if at least one file was rewritten; idempotent.
+patch_csound_sys_char_signedness() {
+  local cargo_home="${CARGO_HOME:-/usr/local/cargo}" f patched=0
+  while IFS= read -r f; do
+    if grep -q '\[0i8; 64usize\]' "$f" 2>/dev/null; then
+      sed -i 's/\[0i8; 64usize\]/[0; 64usize]/g' "$f" && {
+        patched=1
+        echo "  patched csound-sys char signedness: $f"
+      }
+    fi
+  done < <(find "${cargo_home}/registry/src" -path '*csound-sys-*/src/*.rs' 2>/dev/null || true)
+  [ "${patched}" = "1" ]
+}
+
 _gst_monorepo_compile() {
   echo "Compiling GStreamer (this may take a while)..."
   # Use the memory-aware job count (was previously raw `nproc`, uncapped, which
@@ -476,15 +509,29 @@ _gst_monorepo_compile() {
   echo "Using JOBS=$JOBS (mem-capped; GSTREAMER_MB_PER_JOB=${GSTREAMER_MB_PER_JOB:-2500}, AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
   echo "Compiling GStreamer..."
-  if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
-    echo "ERROR: Meson compile failed"
-    echo "==> Last lines of compile logs:"
-    tail -n 20000 /tmp/meson-compile.log || true
-    echo "==> Meson log:"
-    tail -n +1 builddir/meson-logs/meson-log.txt || true
-    dmesg | tail -n 100 | grep -i -E "out of memory|killed process" || true
-    exit 1
+  if uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
+    return 0
   fi
+
+  # Cross csound-sys char-signedness failure: patch the extracted crate and retry
+  # once (the retry is incremental — only csound-sys and its dependent plugins
+  # rebuild). Guarded so it only triggers for that specific, known failure.
+  if grep -q 'csound-sys' /tmp/meson-compile.log 2>/dev/null \
+     && grep -qE "expected .u8., found .i8." /tmp/meson-compile.log 2>/dev/null \
+     && patch_csound_sys_char_signedness; then
+    echo "Retrying meson compile after csound-sys char-signedness patch..."
+    if uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
+      return 0
+    fi
+  fi
+
+  echo "ERROR: Meson compile failed"
+  echo "==> Last lines of compile logs:"
+  tail -n 20000 /tmp/meson-compile.log || true
+  echo "==> Meson log:"
+  tail -n +1 builddir/meson-logs/meson-log.txt || true
+  dmesg | tail -n 100 | grep -i -E "out of memory|killed process" || true
+  exit 1
 }
 
 # Fallback when the cross DESTDIR install produced no libraries (post-install
