@@ -201,15 +201,13 @@ resolve_tvm_llvm() {
       llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
       validate_detected_llvm_cmake_package "$llvm_dir"
     fi
-    # TVM's FindLLVM falls back to executing the package's own llvm-config when
-    # find_package doesn't populate LLVM_LIBS. For a cross package that binary is
-    # the target arch and can't run on the build host (CMake dies: "llvm-config:
-    # Syntax error"), so LLVM is unusable — drop the package and disable LLVM.
-    if [ -n "$llvm_dir" ] && ! llvm_cmake_package_is_host_runnable "$llvm_dir"; then
-      log "Disabling TVM LLVM for cross target: ${llvm_dir} resolves a non-host-runnable llvm-config (TVM would execute it and fail)"
-      llvm_dir=""
-    fi
     if [ -n "$llvm_dir" ]; then
+      # Use the target LLVM CMake package. TVM's FindLLVM would normally fall
+      # back to executing this package's llvm-config (a target-arch binary that
+      # can't run on the build host) when llvm_map_components_to_libnames("all")
+      # comes back empty under a dylib build — patch_tvm_findllvm_dylib_fallback()
+      # rewrites that fallback to link the imported LLVM dylib target instead, so
+      # no target binary is ever executed on the host.
       log "Using target LLVM CMake package: $llvm_dir"
       llvm_cmake_value="ON"
     else
@@ -311,6 +309,32 @@ configure_tvm_cmake() {
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
 }
 
+# TVM's FindLLVM does find_package(LLVM CONFIG) then
+# llvm_map_components_to_libnames(LLVM_LIBS "all"). When the LLVM package was built
+# as a dylib (LLVM_LINK_LLVM_DYLIB=ON, LLVM_DYLIB_COMPONENTS=all), the LLVM CMake
+# macro strips "all" to an empty list, so LLVM_LIBS comes back empty and upstream
+# falls back to EXECUTING ${LLVM_TOOLS_BINARY_DIR}/llvm-config. For a cross build
+# that is the target-arch binary and can't run on the amd64 host (CMake dies with
+# "llvm-config: Syntax error"). The package still exports the imported "LLVM" dylib
+# target, and FindLLVM already links it when LLVM_LIBS contains "LLVM" (its
+# "Link with dynamic LLVM library" path). So rewrite the empty-LLVM_LIBS fallback
+# to point at that target instead of shelling out. No-op for static-lib packages
+# (LLVM_LIBS is already populated) and safe for native builds.
+patch_tvm_findllvm_dylib_fallback() {
+  local findllvm="${tvm_dir}/cmake/utils/FindLLVM.cmake"
+
+  [ -f "$findllvm" ] || die "TVM FindLLVM.cmake not found at ${findllvm}"
+  if grep -q 'cross-dylib fallback' "$findllvm"; then
+    log "TVM FindLLVM.cmake already patched for the dylib fallback"
+    return 0
+  fi
+  grep -q 'set(LLVM_CONFIG .*llvm-config")' "$findllvm" \
+    || die "TVM FindLLVM.cmake: expected llvm-config fallback line not found (TVM ${ref} layout changed?)"
+  sed -i 's|.*set(LLVM_CONFIG .*llvm-config").*|      set(LLVM_LIBS LLVM) # cross-dylib fallback: link imported dylib, do not exec target llvm-config|' "$findllvm"
+  grep -q 'cross-dylib fallback' "$findllvm" || die "Failed to patch TVM FindLLVM.cmake"
+  log "Patched TVM FindLLVM.cmake: link imported LLVM dylib target when components resolve empty"
+}
+
 main() {
   # Option locals (populated by parse_tvm_args).
   local workdir="${TVM_WORKDIR:-$(pick_default_workdir)}"
@@ -347,6 +371,7 @@ main() {
   install_tvm_deps_phase
   require_toolchain_compilers
   fetch_tvm_source
+  patch_tvm_findllvm_dylib_fallback
   resolve_tvm_llvm
 
   if [ "$do_clean" -eq 1 ]; then

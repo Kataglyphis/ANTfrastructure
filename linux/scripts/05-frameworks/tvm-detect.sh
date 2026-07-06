@@ -70,24 +70,6 @@ sanitize_llvm_config_for_target() {
   printf '%s' "$llvm_config_path"
 }
 
-# TVM's FindLLVM does find_package(LLVM CONFIG) when USE_LLVM=ON, but if that
-# doesn't populate LLVM_LIBS it falls back to EXECUTING ${LLVM_TOOLS_BINARY_DIR}/
-# llvm-config (the package's own llvm-config). For a cross LLVM CMake package that
-# binary is the target arch and can't run on the build host — CMake then dies with
-# "llvm-config: 1: Syntax error" as the shell reads the ELF. So a cross package is
-# only usable by TVM if its llvm-config actually runs here. Returns 0 if runnable.
-llvm_cmake_package_is_host_runnable() {
-  local pkg_dir="$1"
-  local prefix bin
-
-  [ -n "$pkg_dir" ] || return 1
-  prefix="${pkg_dir%/lib/cmake/llvm}"
-  prefix="${prefix%/lib64/cmake/llvm}"
-  bin="${prefix}/bin/llvm-config"
-  [ -x "$bin" ] || return 1
-  "$bin" --host-target >/dev/null 2>&1
-}
-
 normalize_llvm_cmake_dir() {
   local dir="$1"
   local alt=""
