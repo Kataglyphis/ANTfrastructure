@@ -9,12 +9,9 @@ param(
     [switch]$SkipPython
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
-
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.25.0'
 
@@ -66,9 +63,7 @@ $cmakeExtra = @(
     "-DTVM_BUILD_PYTHON_MODULE=$pythonModule"
 )
 
-if ($gpuEnv.CudaRoot) {
-    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$($gpuEnv.CudaRoot -replace '\\', '/')"
-}
+$cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv -ForwardSlash
 
 if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     $cmakeExtra += "-DVulkan_INCLUDE_DIR=$(Join-Path $vulkanSdk 'Include')"
@@ -79,10 +74,7 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
 }
 
 # CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
-$llvmLib = Resolve-LlvmArchiver
-if ($llvmLib) {
-    $cmakeExtra += "-DCMAKE_AR:FILEPATH=$llvmLib"
-}
+$cmakeExtra += Get-LlvmArchiverCmakeArg
 
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra
 if (-not $ok) { throw 'TVM CMake configuration failed' }

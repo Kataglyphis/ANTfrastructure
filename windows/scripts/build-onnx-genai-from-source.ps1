@@ -7,12 +7,9 @@ param(
     [string]$OnnxGenAiVersion = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
-
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 $OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.14.0'
 $OnnxGenAiVersion = $OnnxGenAiVersion -replace '^v', ''  # versions.env uses v-prefix; this script adds it back for the git tag
@@ -83,42 +80,25 @@ Write-Host "Using MSVC tools: $msvcVersionDir"
 
 # Patch MSVC STL experimental/coroutine header to disable clang static_assert
 $coroHeader = Join-Path $msvcVersionDir 'include\experimental\coroutine'
-if (Test-Path $coroHeader) {
-    $text = [System.IO.File]::ReadAllText($coroHeader)
-    if ($text -match '_EMIT_STL_ERROR\(STL1009') {
-        $patched = $text -replace '_EMIT_STL_ERROR\(STL1009, ".*?"\)', ''
-        if ($patched -eq $text) {
-            Write-Warning "experimental/coroutine: STL1009 macro matched the guard but not the replace pattern; MSVC layout may have changed. Verify $coroHeader (clang static_assert errors may resurface later)."
-        } else {
-            [System.IO.File]::WriteAllText($coroHeader, $patched)
-            Write-Host 'Patched MSVC experimental/coroutine header'
-        }
-    }
-}
+Invoke-InlineRegexPatch -Path $coroHeader -Guard '_EMIT_STL_ERROR\(STL1009' `
+    -Pattern '_EMIT_STL_ERROR\(STL1009, ".*?"\)' `
+    -Description 'MSVC experimental/coroutine header' `
+    -WarnMessage "experimental/coroutine: STL1009 macro matched the guard but not the replace pattern; MSVC layout may have changed. Verify $coroHeader (clang static_assert errors may resurface later)." | Out-Null
 # Also patch yvals_core.h to make _EMIT_STL_ERROR a no-op when __clang__
+# NOTE: This _EMIT_STL_ERROR regex patch is MSVC version-specific (v143/v145 toolset).
+# The exact #define line format changes between MSVC releases. When the MSVC toolset is
+# updated, verify the macro signature still matches before blindly applying this patch.
 $yvalsCore = Join-Path $msvcVersionDir 'include\yvals_core.h'
-if (Test-Path $yvalsCore) {
-    $text = [System.IO.File]::ReadAllText($yvalsCore)
-    # NOTE: This _EMIT_STL_ERROR regex patch is MSVC version-specific (v143/v145 toolset).
-    # The exact #define line format changes between MSVC releases.
-    # When the MSVC toolset is updated, verify the macro signature still matches
-    # before blindly applying this patch.
-    if ($text -match '#define _EMIT_STL_ERROR') {
-        $old = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
-        $new = '#ifdef __clang__
+$yvalsOld = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
+$yvalsNew = '#ifdef __clang__
 #define _EMIT_STL_ERROR(NUMBER, MESSAGE)
 #else
 #define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)
 #endif'
-        $patched = $text -replace [regex]::Escape($old), $new
-        if ($patched -eq $text) {
-            Write-Warning "yvals_core.h: _EMIT_STL_ERROR is present but its exact signature did not match the patch target. The MSVC toolset likely changed the #define format; clang static_assert errors may resurface mid-build. Update the `$old string in $yvalsCore."
-        } else {
-            [System.IO.File]::WriteAllText($yvalsCore, $patched)
-            Write-Host 'Patched MSVC yvals_core.h for clang compat'
-        }
-    }
-}
+Invoke-InlineRegexPatch -Path $yvalsCore -Guard '#define _EMIT_STL_ERROR' `
+    -Pattern ([regex]::Escape($yvalsOld)) -Replacement $yvalsNew `
+    -Description 'MSVC yvals_core.h for clang compat' `
+    -WarnMessage "yvals_core.h: _EMIT_STL_ERROR is present but its exact signature did not match the patch target. The MSVC toolset likely changed the #define format; clang static_assert errors may resurface mid-build. Update the yvalsOld string in $yvalsCore." | Out-Null
 
 # Patch build.ninja to strip MSVC-only flags clang-cl errors on
 Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatterns @(

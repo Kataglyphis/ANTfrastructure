@@ -17,6 +17,15 @@ Import-Module $sharedModulePath -Force
 $TensorRtVersion = Resolve-ContainerImageValue -Value $TensorRtVersion -EnvironmentVariable 'TENSORRT_VERSION' -DefaultValue ''
 $TensorRtRoot = Resolve-ContainerImageValue -Value $TensorRtRoot -EnvironmentVariable 'TENSORRT_ROOT' -DefaultValue 'C:\Program Files\NVIDIA GPU Computing Toolkit\TensorRT'
 
+# Returns the first *TensorRT*.zip in $Dir (or $null if the dir is absent / has none).
+function Find-TensorRtZipIn {
+    param([string]$Dir)
+    if (-not (Test-Path $Dir)) { return $null }
+    $found = Get-ChildItem (Join-Path $Dir '*TensorRT*.zip') -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { return $found.FullName }
+    return $null
+}
+
 # Find a TensorRT zip: local path arg > repo downloads dir > download from NVIDIA
 $trtZip = $null
 
@@ -28,20 +37,14 @@ if ($LocalZipPath -and (Test-Path $LocalZipPath)) {
 
 # 2. Check repo downloads dir (mounted in container at C:\temp\downloads)
 if (-not $trtZip) {
-    $repoDlDir = Join-Path $env:TEMP_DIR 'downloads'
-    if (Test-Path $repoDlDir) {
-        $found = Get-ChildItem "$repoDlDir\*TensorRT*.zip" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($found) { $trtZip = $found.FullName; Write-Host "Found TensorRT zip at: $trtZip" }
-    }
+    $trtZip = Find-TensorRtZipIn -Dir (Join-Path $env:TEMP_DIR 'downloads')
+    if ($trtZip) { Write-Host "Found TensorRT zip at: $trtZip" }
 }
 
 # 3. Try C:\Users\Public\Downloads (mapped from host)
 if (-not $trtZip) {
-    $pubDl = 'C:\Users\Public\Downloads'
-    if (Test-Path $pubDl) {
-        $found = Get-ChildItem "$pubDl\*TensorRT*.zip" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($found) { $trtZip = $found.FullName; Write-Host "Found TensorRT zip at: $trtZip" }
-    }
+    $trtZip = Find-TensorRtZipIn -Dir 'C:\Users\Public\Downloads'
+    if ($trtZip) { Write-Host "Found TensorRT zip at: $trtZip" }
 }
 
 # 4. Download from NVIDIA (fallback, may fail without auth)

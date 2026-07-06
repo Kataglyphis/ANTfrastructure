@@ -7,16 +7,12 @@ param(
     [string]$FfmpegVersion = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
-
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available
-$versionsScript = Join-Path $PSScriptRoot 'load-versions.ps1'
-if (Test-Path $versionsScript) { & $versionsScript }
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 $FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariables @('FFMPEG_VERSION') -DefaultValue 'main'
 $prefix = Join-Path $InstallDir 'ffmpeg'
@@ -49,18 +45,13 @@ if ($FfmpegVersion -in @('main', 'master', 'develop')) {
     $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz", $tarballPath)
 }
 Write-Host "Extracting tarball..."
-& 7z x "$tarballPath" -o"$SourceDir" -y -bd 2>&1 | Out-Null
-$tarFile = Get-ChildItem -Path $SourceDir -Filter '*.tar' | Select-Object -First 1 -ExpandProperty FullName
-if ($tarFile) { & 7z x "$tarFile" -o"$SourceDir" -y -bd 2>&1 | Out-Null }
-$srcDir = Get-ChildItem -Path $SourceDir -Directory | Select-Object -First 1 -ExpandProperty FullName
-if (-not $srcDir) { throw "Failed to locate extracted FFmpeg source directory" }
+$srcDir = Expand-SourceTarball -Archive $tarballPath -Destination $SourceDir
 Write-Host "Source at: $srcDir"
 
-# git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path
-# (git apply). Without this, its git-repo probe writes to stderr, which PS 5.1
-# under EAP=Stop turns into a terminating NativeCommandError. cmd.exe shields
-# any git output from PowerShell's error stream.
-cmd.exe /c "git -C ""$srcDir"" init >nul 2>&1"
+# git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path (git
+# apply). Without this its git-repo probe writes to stderr, which PS 5.1 under EAP=Stop
+# turns into a terminating NativeCommandError; the helper shields git output via cmd.exe.
+Initialize-ExtractedGitRepo -Path $srcDir
 
 # Set up environment: VsDevCmd (MSVC tools) + Git Bash + Scoop make/gawk
 Enter-VsDevCmdEnvironment

@@ -7,12 +7,9 @@ param(
     [string]$LiteRtVersion = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
-
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue '2.1.5'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
@@ -72,13 +69,10 @@ $cmakeExtra = @(
 )
 
 # Add CUDA paths for external delegate compilation if available
-if ($gpuEnv.CudaRoot) {
-    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$($gpuEnv.CudaRoot)"
-}
+$cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv
 
 # Fix CMAKE_AR path for llvm-lib (CMake resolves llvm-lib to C:\llvm-lib incorrectly)
-$llvmLib = Resolve-LlvmArchiver
-if ($llvmLib) { $cmakeExtra += "-DCMAKE_AR:FILEPATH=$llvmLib" }
+$cmakeExtra += Get-LlvmArchiverCmakeArg
 
 # Vulkan SDK is auto-detected by LiteRT via VULKAN_SDK env var; no need for explicit paths.
 

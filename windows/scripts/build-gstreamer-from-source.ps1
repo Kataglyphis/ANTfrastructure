@@ -87,8 +87,7 @@ function log($text) {
 }
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available
-$versionsScript = Join-Path $PSScriptRoot 'load-versions.ps1'
-if (Test-Path $versionsScript) { & $versionsScript }
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 if ([string]::IsNullOrWhiteSpace($GstVersion)) {
     $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GST_VERSION', 'GSTREAMER_VERSION') -DefaultValue '1.29.2'
@@ -193,11 +192,9 @@ try {
     }
     log 'Extraction complete.'
 
-    # git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path
-    # (git apply). Without this, its git-repo probe writes to stderr, which PS 5.1
-    # under EAP=Stop turns into a terminating NativeCommandError. cmd.exe shields
-    # any git output from PowerShell's error stream.
-    cmd.exe /c "git -C ""$gstSrcDir"" init >nul 2>&1"
+    # git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path (git
+    # apply); the helper shields git's stderr via cmd.exe (else PS 5.1 EAP=Stop throws).
+    Initialize-ExtractedGitRepo -Path $gstSrcDir
 
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
     $subprojDir = Join-Path $gstSrcDir 'subprojects'

@@ -695,6 +695,237 @@ function Get-BuildJobCount {
     return [Math]::Max(2, [Math]::Min($cores, [int][Math]::Floor($memGB / $MemGBPerJob)))
 }
 
+function Invoke-InlineRegexPatch {
+    <#
+    .SYNOPSIS
+        In-place regex substitution on a source file, warning loudly when the pattern didn't match.
+    .DESCRIPTION
+        Canonical form for the "kept inline, NOT a .patch" edits that target floating
+        upstream paths (CMake-fetched dep SHAs, installed MSVC toolset headers) where a
+        static .patch would silently rot. Reads the file, applies -replace and:
+          * if the (optional) -Guard regex is present and does NOT match, does nothing;
+          * if the replace is a no-op, emits -WarnMessage so a silent miss stays visible;
+          * otherwise writes the file back and logs the edit.
+        Collapses the read-replace-warn-or-write idiom duplicated across build-onnx
+        (CUDA PCH strip, cutlass _udiv128) and build-onnx-genai (MSVC coroutine / yvals_core).
+    .PARAMETER Path
+        File to patch in place. A missing file is skipped (returns $false) unless -Require.
+    .PARAMETER Pattern
+        Regex passed to -replace.
+    .PARAMETER Replacement
+        Replacement string (default '' — i.e. strip the match).
+    .PARAMETER Guard
+        Optional regex; the edit is only attempted when the file content matches it
+        (mirrors the `if ($text -match '...') { ... }` guard around the MSVC STL patches).
+    .PARAMETER WarnMessage
+        Emitted via Write-Warning when the pattern is present-but-unchanged. Defaults to a
+        generic "pattern not found" note naming the file.
+    .PARAMETER Require
+        Throw if the file does not exist (default: skip missing files quietly).
+    .PARAMETER Description
+        Human label for the success log line (defaults to the file leaf name).
+    .OUTPUTS
+        [bool] $true if the file was modified, else $false.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+        [Parameter(Mandatory)]
+        [string]$Pattern,
+        [string]$Replacement = '',
+        [string]$Guard = '',
+        [string]$WarnMessage = '',
+        [switch]$Require,
+        [string]$Description = ''
+    )
+    if (-not (Test-Path $Path)) {
+        if ($Require) { throw "Invoke-InlineRegexPatch: file not found: $Path" }
+        return $false
+    }
+    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
+    $text = [System.IO.File]::ReadAllText($Path)
+    if ($Guard -and ($text -notmatch $Guard)) { return $false }
+    $patched = $text -replace $Pattern, $Replacement
+    if ($patched -eq $text) {
+        if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
+            $WarnMessage = "$Description : pattern not found; upstream layout may have changed. Verify $Path."
+        }
+        Write-Warning $WarnMessage
+        return $false
+    }
+    [System.IO.File]::WriteAllText($Path, $patched)
+    Write-Host "Patched $Description ($Path)"
+    return $true
+}
+
+function Invoke-NinjaBuildWithRetry {
+    <#
+    .SYNOPSIS
+        Runs ninja at a memory-scaled -j, retries at a lower -j on failure, then optionally installs.
+    .DESCRIPTION
+        Consolidates the "parallel ninja -> incremental low-j retry -> cmake --install"
+        idiom hand-rolled in build-onnx (retry -j2) and build-opencv (retry -j1, tee log).
+        Ninja is incremental, so the retry only redoes the TUs that died. Sets NINJA_STATUS
+        for compact "[done/total]" progress.
+    .PARAMETER BuildDir
+        Ninja build directory (passed via -C).
+    .PARAMETER RetryJobs
+        -j for the fallback pass (ONNX uses 2, OpenCV uses 1). Default 1.
+    .PARAMETER MemGBPerJob
+        Per-job memory estimate handed to Get-BuildJobCount (default 4).
+    .PARAMETER LogFile
+        If set, tees build output here and prints its last 50 lines on failure.
+    .PARAMETER Install
+        Run `cmake --install <BuildDir> --config <InstallConfig>` after a successful build.
+    .PARAMETER InstallConfig
+        Config for cmake --install (default Release).
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$BuildDir,
+        [int]$RetryJobs = 1,
+        [int]$MemGBPerJob = 4,
+        [string]$LogFile = '',
+        [switch]$Install,
+        [string]$InstallConfig = 'Release'
+    )
+    $env:NINJA_STATUS = "[%f/%t] "
+    $jobs = Get-BuildJobCount -MemGBPerJob $MemGBPerJob
+    Write-Host "Building with ninja -j$jobs..."
+    if ($LogFile) {
+        ninja -j $jobs -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile
+    } else {
+        ninja -j $jobs -C $BuildDir 2>&1
+    }
+    if ($LASTEXITCODE -ne 0 -and $jobs -gt $RetryJobs) {
+        Write-Host "ninja -j$jobs failed (exit $LASTEXITCODE) - retrying incrementally with -j$RetryJobs..."
+        if ($LogFile) {
+            ninja -j $RetryJobs -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile -Append
+        } else {
+            ninja -j $RetryJobs -C $BuildDir 2>&1
+        }
+    }
+    if ($LASTEXITCODE -ne 0) {
+        if ($LogFile -and (Test-Path $LogFile)) {
+            Write-Host "`n=== BUILD FAILED - last 50 lines ==="
+            Get-Content $LogFile -Tail 50 | ForEach-Object { Write-Host $_ }
+        }
+        throw "Build failed (exit $LASTEXITCODE)"
+    }
+    if ($Install) {
+        Write-Host "Installing..."
+        & cmake --install $BuildDir --config $InstallConfig
+        if ($LASTEXITCODE -ne 0) { throw "Install failed" }
+    }
+}
+
+function Expand-SourceTarball {
+    <#
+    .SYNOPSIS
+        Two-pass 7z extract of a .tar.gz/.tar.bz2 into a directory; returns the single extracted source dir.
+    .DESCRIPTION
+        7z on Windows unwraps a .tar.gz in two passes (gzip layer, then the inner .tar).
+        This runs both passes, then returns the sole top-level directory produced (the
+        upstream project root). Consolidates the double-7z + "grab the single child dir"
+        idiom in build-ffmpeg. Throws if no extracted directory is found.
+    .PARAMETER Archive
+        Path to the downloaded .tar.gz / .tar archive.
+    .PARAMETER Destination
+        Directory to extract into.
+    .OUTPUTS
+        [string] Full path to the extracted source directory.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Archive,
+        [Parameter(Mandatory)]
+        [string]$Destination
+    )
+    & 7z x "$Archive" -o"$Destination" -y -bd 2>&1 | Out-Null
+    $tarFile = Get-ChildItem -Path $Destination -Filter '*.tar' | Select-Object -First 1 -ExpandProperty FullName
+    if ($tarFile) { & 7z x "$tarFile" -o"$Destination" -y -bd 2>&1 | Out-Null }
+    $srcDir = Get-ChildItem -Path $Destination -Directory | Select-Object -First 1 -ExpandProperty FullName
+    if (-not $srcDir) { throw "Failed to locate extracted source directory under $Destination" }
+    return $srcDir
+}
+
+function Initialize-ExtractedGitRepo {
+    <#
+    .SYNOPSIS
+        `git init`s an extracted tarball tree so Invoke-SourcePatch takes its git fast-path.
+    .DESCRIPTION
+        Byte-identical logic previously duplicated in build-ffmpeg and build-gstreamer.
+        Runs `git init` via cmd.exe so git's stderr chatter cannot become a terminating
+        NativeCommandError under PS 5.1 EAP=Stop.
+    .PARAMETER Path
+        Root of the extracted source tree.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+    cmd.exe /c "git -C ""$Path"" init >nul 2>&1"
+}
+
+function Import-CanonicalVersions {
+    <#
+    .SYNOPSIS
+        Sources load-versions.ps1 (canonical versions.env -> env vars) when present.
+    .DESCRIPTION
+        Replaces the identical "Test-Path load-versions.ps1; if present, invoke it" block
+        in build-ffmpeg and build-gstreamer. A no-op when the script is absent (e.g. the
+        env was already baked by the Dockerfile).
+    .PARAMETER ScriptRoot
+        Directory containing load-versions.ps1. Defaults to the scripts\ dir (this module's parent).
+    #>
+    param(
+        [string]$ScriptRoot = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($ScriptRoot)) { $ScriptRoot = Split-Path $PSScriptRoot -Parent }
+    $versionsScript = Join-Path $ScriptRoot 'load-versions.ps1'
+    if (Test-Path $versionsScript) { & $versionsScript }
+}
+
+function Get-CudaToolkitRootArg {
+    <#
+    .SYNOPSIS
+        Returns the -DCUDA_TOOLKIT_ROOT_DIR CMake arg for the detected CUDA root, or @() if none.
+    .DESCRIPTION
+        Small shared arg-builder for the `if ($gpuEnv.CudaRoot) { ... }` block repeated in
+        build-litert and build-tvm. Pass -ForwardSlash to emit forward-slashed paths (TVM's form).
+    .PARAMETER GpuEnv
+        Hashtable from Get-GpuEnvironment.
+    .PARAMETER ForwardSlash
+        Convert backslashes to forward slashes in the emitted path.
+    .OUTPUTS
+        [string[]] Either a one-element array with the -D arg, or an empty array.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$GpuEnv,
+        [switch]$ForwardSlash
+    )
+    if (-not $GpuEnv.CudaRoot) { return @() }
+    $root = if ($ForwardSlash) { $GpuEnv.CudaRoot -replace '\\', '/' } else { $GpuEnv.CudaRoot }
+    return @("-DCUDA_TOOLKIT_ROOT_DIR=$root")
+}
+
+function Get-LlvmArchiverCmakeArg {
+    <#
+    .SYNOPSIS
+        Returns the -DCMAKE_AR:FILEPATH=<llvm-lib> CMake arg, or @() when llvm-lib isn't found.
+    .DESCRIPTION
+        CMake can resolve CMAKE_AR to a bogus C:\llvm-lib; passing the full path via
+        :FILEPATH fixes it. Same three-line block appeared in build-opencv, build-litert
+        and build-tvm.
+    .OUTPUTS
+        [string[]] One-element array with the -D arg, or an empty array.
+    #>
+    $llvmLib = Resolve-LlvmArchiver
+    if ($llvmLib) { return @("-DCMAKE_AR:FILEPATH=$llvmLib") }
+    return @()
+}
+
 function Initialize-ToolchainPythonEnvironment {
     <#
     .SYNOPSIS
@@ -734,6 +965,13 @@ Export-ModuleMember -Function @(
     'Replace-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',
+    'Invoke-InlineRegexPatch',
+    'Invoke-NinjaBuildWithRetry',
+    'Expand-SourceTarball',
+    'Initialize-ExtractedGitRepo',
+    'Import-CanonicalVersions',
+    'Get-CudaToolkitRootArg',
+    'Get-LlvmArchiverCmakeArg',
     'Initialize-SourceBuildEnvironment',
     'Initialize-ToolchainPythonEnvironment',
     'Remove-SourceBuildTree',
