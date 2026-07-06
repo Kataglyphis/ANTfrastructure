@@ -46,7 +46,19 @@ sanitize_llvm_config_for_target() {
   fi
 
   target_arch="$(cross_target_arch 2>/dev/null || true)"
-  llvm_host_target="$($llvm_config_path --host-target 2>/dev/null || true)"
+
+  # If llvm-config can't run on the build host, --host-target yields nothing.
+  # This happens when it's the cross target's own llvm-config (an ELF the host
+  # can't exec). Passing it through would make CMake's FindLLVM invoke it and
+  # choke on a "Syntax error" as the shell reads the binary as a script. Treat a
+  # non-runnable llvm-config as unusable for the cross build and continue without
+  # LLVM (the target LLVM CMake package is preferred and checked separately).
+  if ! llvm_host_target="$("$llvm_config_path" --host-target 2>/dev/null)" \
+     || [ -z "$llvm_host_target" ]; then
+    log "Disabling TVM LLVM for cross target ${target_arch}: ${llvm_config_path} is not runnable on the build host" >&2
+    printf '%s' ""
+    return 0
+  fi
   llvm_host_arch="$(arch_from_target_triple "$llvm_host_target" 2>/dev/null || true)"
 
   if [ -n "$target_arch" ] && [ -n "$llvm_host_arch" ] && [ "$llvm_host_arch" != "$target_arch" ]; then
