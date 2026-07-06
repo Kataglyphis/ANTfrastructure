@@ -486,6 +486,17 @@ _litert_wheel_cross_args() {
     [ -n "${TF_CXX_FLAGS:-}" ] && litert_build_flags+=" ${TF_CXX_FLAGS}"
     [ -n "${target_python_include:-}" ] && litert_build_flags+=" -I${target_python_include}"
     [ -n "${target_python_arch_include:-}" ] && litert_build_flags+=" -I${target_python_arch_include}"
+    # The pywrap extension #includes "pybind11/functional.h" and
+    # "numpy/arrayobject.h". Both ship arch-independent C-API headers in the build
+    # venv (see install-deps.sh), so the host interpreter's include dirs are correct
+    # even for a cross target (only the target Python.h above must be arch-specific).
+    local _pybind11_inc="" _numpy_inc=""
+    if [ -n "${PYTHON:-}" ]; then
+        _pybind11_inc="$("${PYTHON}" -c 'import pybind11; print(pybind11.get_include())' 2>/dev/null || true)"
+        _numpy_inc="$("${PYTHON}" -c 'import numpy; print(numpy.get_include())' 2>/dev/null || true)"
+    fi
+    [ -n "${_pybind11_inc}" ] && litert_build_flags+=" -I${_pybind11_inc}"
+    [ -n "${_numpy_inc}" ] && litert_build_flags+=" -I${_numpy_inc}"
     export BUILD_FLAGS="${litert_build_flags}"
     info Building LiteRT wheel in cross mode for $(cross_target_arch)
     info Cross wheel platform tag: ${WHEEL_PLATFORM_NAME}
