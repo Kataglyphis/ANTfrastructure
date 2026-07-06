@@ -255,9 +255,30 @@ _gst_monorepo_arch_flags() {
   esac
 
   if cross_build_is_active; then
-    echo "Cross build detected: disabling gst-plugins-rs subproject in monorepo"
-    echo "(standalone cargo build handles Rust plugins independently)"
-    MESON_FLAGS+=("-Drs=disabled")
+    # Keep -Drs at whatever the per-arch block chose (enabled for arm64/riscv64).
+    # Previously forced to disabled for cross because target Rust crates linked
+    # with the host cc and failed; prepare_host_cargo_toolchain_env now exports
+    # CARGO_TARGET_<triple>_LINKER pointing at the cross gcc, so the monorepo can
+    # cross-build and install the gst-plugins-rs cdylibs directly.
+    echo "Cross build: gst-plugins-rs built in-monorepo (target Rust linker wired via cargo env)"
+
+    # Disable the Rust plugins whose native -sys deps / host tools are absent when
+    # cross-compiling — these hard-fail the cargo build (no meson dependency() gate
+    # to auto-skip them, unlike webrtcbin2 which auto-skips via dependency('rice-proto')).
+    # Per-arch set mirrors build-gst-plugins-rs.sh's standalone cross excludes:
+    #   validate -> gstreamer-validate-1.0.pc (devtools disabled on ALL cross)
+    #   csound   -> libcsound (excluded arm+riscv)   whisper -> whisper.cpp (arm+riscv)
+    #   skia     -> Skia built from source (skia-sys, cross-hostile both)
+    #   burn     -> heavy ML crate (pruned both)
+    #   dav1d    -> libdav1d: RISC-V ONLY (arm64 has libdav1d and builds fine)
+    # "all Rust plugins that can cross-compile for this arch"; re-enable a plugin
+    # once its native dep is provided for the target.
+    local -a _rs_disable=(validate csound whisper skia burn)
+    [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ] && _rs_disable+=(dav1d)
+    local _rs_plugin
+    for _rs_plugin in "${_rs_disable[@]}"; do
+      append_meson_arg "-Dgst-plugins-rs:${_rs_plugin}=disabled"
+    done
   fi
 }
 

@@ -194,6 +194,35 @@ prepare_host_cargo_toolchain_env() {
     export "CXX_${build_rust_lower}=${cargo_host_cxx_wrapper}"
     export HOST_CXX="${cargo_host_cxx_wrapper}"
   fi
+
+  # TARGET-side toolchain. Without CARGO_TARGET_<triple>_LINKER cargo links the
+  # cross artifacts (the gst-plugins-rs cdylibs, rice-proto, ...) with the host
+  # cc/rust-lld and fails: "<obj> is incompatible with elf64-x86-64". Point the
+  # target triple's linker + cc-rs compiler at the real cross gcc (which carries
+  # its own as/ld), leaving the host CARGO_TARGET_<build>/HOST_CC set above for
+  # proc-macros and build scripts. This is what lets -Drs=enabled work in cross.
+  local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
+  if command -v cross_target_upper_rust >/dev/null 2>&1; then
+    target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
+  fi
+  if command -v cross_target_lower_rust >/dev/null 2>&1; then
+    target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
+  fi
+  if [ -n "${target_rust_env}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
+    local _tgt_arch
+    _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
+    target_cc="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
+    target_cxx="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CXX:-}" )"
+    if [ -n "${target_cc}" ] && [ -x "${target_cc}" ]; then
+      export "CARGO_TARGET_${target_rust_env}_LINKER=${target_cc}"
+      [ -n "${target_rust_lower}" ] && export "CC_${target_rust_lower}=${target_cc}"
+      [ -n "${target_rust_lower}" ] && [ -n "${target_cxx}" ] && [ -x "${target_cxx}" ] && \
+        export "CXX_${target_rust_lower}=${target_cxx}"
+      echo "Cross cargo: target linker ${target_cc} (CARGO_TARGET_${target_rust_env}_LINKER)"
+    else
+      echo "WARN: could not resolve cross gcc for target; Rust target crates may fail to link" >&2
+    fi
+  fi
 }
 
 _gst_xpy_check_meson() {
@@ -609,9 +638,9 @@ fi
 build_gstreamer_monorepo
 
 if cross_build_is_active; then
-  echo "Cross build detected: skipping standalone gst-plugins-rs cargo build"
-  echo "(gst-plugins-rs subproject is disabled in monorepo; standalone cargo build"
-  echo "has host-toolchain path wrapping issues in cross mode)"
+  echo "Cross build: gst-plugins-rs is built + installed by the monorepo (-Drs=enabled"
+  echo "with the target Rust linker wired via prepare_host_cargo_toolchain_env), so the"
+  echo "separate standalone cargo build is redundant and skipped here."
 else
   build_standalone_gst_plugins_rs
 fi

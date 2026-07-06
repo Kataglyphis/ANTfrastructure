@@ -151,8 +151,17 @@ setup_lld_linker() {
     for _sl_var in LDFLAGS CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS RUSTFLAGS; do
       if [ -n "${!_sl_var:-}" ]; then
         _sl_cleaned="${!_sl_var}"
-        # Remove -fuse-ld=lld with optional leading/trailing whitespace
+        # RUSTFLAGS carries lld as the compound token "-C link-arg=-fuse-ld=lld".
+        # Strip it WHOLE first, otherwise removing just "-fuse-ld=lld" below leaves
+        # a dangling "-C link-arg=" (empty value) that rustc forwards to the linker
+        # as an empty "" argument -> "aarch64-linux-gnu-ld.bfd: cannot find : No
+        # such file or directory". (Latent until cross Rust linking was enabled for
+        # gst-plugins-rs; each earlier append leaves one, hence the "" "" pair.)
+        _sl_cleaned="${_sl_cleaned//-C link-arg=-fuse-ld=lld/}"
+        # Bare form in LDFLAGS / CMAKE_* linker flags.
         _sl_cleaned="${_sl_cleaned//-fuse-ld=lld/}"
+        # Defensive: drop any leftover empty "-C link-arg=" tokens.
+        _sl_cleaned="$(printf '%s' "${_sl_cleaned}" | sed -E 's/(^|[[:space:]])-C[[:space:]]+link-arg=($|[[:space:]])/ /g')"
         # Collapse repeated whitespace and trim
         _sl_cleaned="$(printf '%s' "${_sl_cleaned}" | sed 's/[[:space:]]\{2,\}/ /g; s/^[[:space:]]*//; s/[[:space:]]*$//')"
         export "${_sl_var}=${_sl_cleaned}"
