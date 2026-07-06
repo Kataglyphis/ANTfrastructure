@@ -24,6 +24,7 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 # module set ships in the final image (windows/Dockerfile) for in-container CI.
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsContainerImage.Common.psm1 `
+     windows\scripts\modules\WindowsInstaller.Common.psm1 `
      C:\temp\scripts\modules\
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
