@@ -297,6 +297,28 @@ EOF
   local _saved_cc="${CC:-}" _saved_cxx="${CXX:-}"
   local _saved_cmake_cc="${CMAKE_C_COMPILER:-}" _saved_cmake_cxx="${CMAKE_CXX_COMPILER:-}"
   unset CC CXX CMAKE_C_COMPILER CMAKE_CXX_COMPILER
+
+  # GCC 16 promotes several new -W diagnostics that fire (often as false
+  # positives) on the older SDK component sources — e.g. -Warray-bounds on
+  # SPIRV-Tools' timer.h. Those components build with -Werror, so the build
+  # dies. CXXFLAGS can't fix it: CMake places env flags BEFORE each project's
+  # own `-Wall -Werror`, so a later -Werror wins. Instead, shim the host
+  # compilers to append `-Wno-error` LAST on every invocation, which always
+  # wins and neutralises -Werror for all SDK components (host tools only; our
+  # own builds are unaffected). vulkansdk auto-detects cc/c++ from PATH.
+  local _cc_shim_dir _real_cc _real_cxx _shim
+  _cc_shim_dir="$(mktemp -d)"
+  _real_cc="$(command -v cc || command -v gcc || echo /usr/bin/cc)"
+  _real_cxx="$(command -v c++ || command -v g++ || echo /usr/bin/c++)"
+  for _shim in cc gcc; do
+    printf '#!/bin/sh\nexec "%s" "$@" -Wno-error\n' "${_real_cc}" > "${_cc_shim_dir}/${_shim}"
+  done
+  for _shim in c++ g++; do
+    printf '#!/bin/sh\nexec "%s" "$@" -Wno-error\n' "${_real_cxx}" > "${_cc_shim_dir}/${_shim}"
+  done
+  chmod +x "${_cc_shim_dir}"/*
+  export PATH="${_cc_shim_dir}:${PATH}"
+
   ${SUDO:-sudo} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
     ./vulkansdk -j "$JOBS" "$@"
   export CC="${_saved_cc}" CXX="${_saved_cxx}"
