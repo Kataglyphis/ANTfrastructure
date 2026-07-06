@@ -251,6 +251,43 @@ select_tvm_compilers() {
   desired_cxx="${wrapped#* }"
 }
 
+# Resolve the Vulkan loader for cross builds. LunarG's SDK ships only the host
+# (x86_64) libvulkan; linking it into a target binary fails "file in wrong format".
+# If vulkan.sh cross-built a target-arch libvulkan (under /opt/vulkan/<ver>/<arch>/
+# lib), point TVM at it; otherwise disable Vulkan for this cross target. Native
+# builds keep find_package(Vulkan) via the sourced SDK env. Sets use_vulkan /
+# vulkan_library / vulkan_include.
+resolve_tvm_vulkan() {
+  [ "$use_vulkan" -eq 1 ] || return 0
+  cross_build_is_active || return 0
+
+  local lib
+  lib="$(detect_vulkan_library || true)"
+  if [ -z "$lib" ] || [ ! -r "$lib" ]; then
+    log "No target-arch libvulkan found for cross build; disabling Vulkan (USE_VULKAN=OFF)."
+    use_vulkan=0
+    return 0
+  fi
+
+  if command -v readelf >/dev/null 2>&1; then
+    local _machine _target_arch _expected
+    _machine="$(readelf -h "$lib" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
+    _target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
+    _expected="$(arch_elf_machine_grep_for "${_target_arch}" 2>/dev/null || true)"
+    if [ -n "${_expected}" ] && ! echo "${_machine}" | grep -qF "${_expected}"; then
+      log "libvulkan ${lib} has ELF machine '${_machine}' but target is ${_target_arch} ('${_expected}'); disabling Vulkan."
+      use_vulkan=0
+      return 0
+    fi
+  fi
+
+  vulkan_library="$lib"
+  local archroot
+  archroot="$(dirname "$(dirname "$lib")")"
+  [ -d "${archroot}/include" ] && vulkan_include="${archroot}/include"
+  log "Using target Vulkan loader: ${vulkan_library} (include: ${vulkan_include:-default})"
+}
+
 # Resolve the SPIRV-Tools library for Vulkan, dropping it when its ELF arch does
 # not match the target (loaded SDK libs may be x86_64-only). Sets spirv_tools_lib.
 resolve_tvm_spirv_tools() {
@@ -289,6 +326,7 @@ configure_tvm_cmake() {
     cross_link_flags="$(cross_linker_search_flags || true)"
   fi
 
+  resolve_tvm_vulkan
   resolve_tvm_spirv_tools
 
   append_tvm_cmake_args \
@@ -304,7 +342,9 @@ configure_tvm_cmake() {
     "$use_cuda" \
     "$use_opencl" \
     "$spirv_tools_lib" \
-    "$cross_link_flags"
+    "$cross_link_flags" \
+    "$vulkan_library" \
+    "$vulkan_include"
 
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
 }
@@ -356,6 +396,8 @@ main() {
   # Derived locals declared here so the phase helpers assign into main()'s scope.
   local jobs="" tvm_dir="" build_dir=""
   local desired_cc="" desired_cxx="" spirv_tools_lib=""
+  # Cross Vulkan loader/headers resolved by resolve_tvm_vulkan (target arch dir).
+  local vulkan_library="" vulkan_include=""
   # Shared by BOTH the native configure path (configure_tvm_cmake) and the wheel
   # path (tvm_build_wheel); declared in main() so both siblings see it via
   # dynamic scope. configure_tvm_cmake computes it.

@@ -269,6 +269,40 @@ detect_spirv_tools_library() {
   return 1
 }
 
+# TVM's Vulkan runtime links libvulkan.so. LunarG's SDK ships only the host
+# (x86_64) loader; a cross build needs the target-arch loader, which vulkan.sh
+# cross-builds into /opt/vulkan/<version>/<arch_dir>/lib. Echo the target
+# libvulkan.so path for this arch, or "" if none exists (caller disables Vulkan).
+detect_vulkan_library() {
+  local candidates=()
+  local _arch_dir
+
+  case "${CROSS_TARGET_ARCH:-${TARGET_ARCH:-${TARGETARCH:-}}}" in
+    amd64|x86_64)  _arch_dir="x86_64" ;;
+    arm64|aarch64) _arch_dir="aarch64" ;;
+    riscv64)       _arch_dir="riscv64" ;;
+    *)             _arch_dir="" ;;
+  esac
+
+  shopt -s nullglob
+  if [ -n "${_arch_dir}" ]; then
+    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libvulkan.so)
+    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libvulkan.so.1)
+  fi
+  shopt -u nullglob
+
+  local c
+  for c in "${candidates[@]}"; do
+    if [ -r "$c" ]; then
+      echo "$c"
+      return 0
+    fi
+  done
+
+  echo ""
+  return 1
+}
+
 is_under_opt_vulkan() {
   case "${1:-}" in
     /opt/vulkan/*) return 0 ;;
