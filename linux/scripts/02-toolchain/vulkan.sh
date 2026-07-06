@@ -276,12 +276,22 @@ _vulkan_build_components() {
 }
 
 _vulkan_run_vulkansdk() {
+  # LunarG's ./vulkansdk installs its own build dependencies via a bare
+  # `apt-get install` (no -y). In a non-interactive container build that aborts
+  # at the "Do you want to continue? [Y/n]" prompt. Make apt auto-confirm and
+  # run non-interactively for that nested install (global config so the sudo'd
+  # apt-get inside vulkansdk picks it up regardless of env).
+  ${SUDO:-sudo} tee /etc/apt/apt.conf.d/90assume-yes >/dev/null <<'EOF'
+APT::Get::Assume-Yes "true";
+EOF
+  export DEBIAN_FRONTEND=noninteractive
+
   # The vulkansdk builds HOST-arch tools. Save/restore cross CC/CXX
   # so CMake uses the HOST compiler, not the cross-compiler.
   local _saved_cc="${CC:-}" _saved_cxx="${CXX:-}"
   local _saved_cmake_cc="${CMAKE_C_COMPILER:-}" _saved_cmake_cxx="${CMAKE_CXX_COMPILER:-}"
   unset CC CXX CMAKE_C_COMPILER CMAKE_CXX_COMPILER
-  ${SUDO:-sudo} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH \
+  ${SUDO:-sudo} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
     ./vulkansdk -j "$JOBS" "$@"
   export CC="${_saved_cc}" CXX="${_saved_cxx}"
   [ -n "${_saved_cmake_cc}" ] && export CMAKE_C_COMPILER="${_saved_cmake_cc}" || unset CMAKE_C_COMPILER

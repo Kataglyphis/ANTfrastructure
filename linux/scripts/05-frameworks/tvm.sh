@@ -277,7 +277,8 @@ configure_tvm_cmake() {
     -G Ninja
     -DCMAKE_INSTALL_PREFIX="$prefix"
   )
-  local cross_link_flags=""
+  # No `local`: assign into main()'s cross_link_flags so the wheel path sees it too.
+  cross_link_flags=""
   if cross_build_is_active; then
     cross_link_flags="$(cross_linker_search_flags || true)"
   fi
@@ -323,6 +324,10 @@ main() {
   # Derived locals declared here so the phase helpers assign into main()'s scope.
   local jobs="" tvm_dir="" build_dir=""
   local desired_cc="" desired_cxx="" spirv_tools_lib=""
+  # Shared by BOTH the native configure path (configure_tvm_cmake) and the wheel
+  # path (tvm_build_wheel); declared in main() so both siblings see it via
+  # dynamic scope. configure_tvm_cmake computes it.
+  local cross_link_flags=""
 
   parse_tvm_args "$@"
   resolve_tvm_paths
