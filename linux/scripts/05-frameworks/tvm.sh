@@ -201,6 +201,14 @@ resolve_tvm_llvm() {
       llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
       validate_detected_llvm_cmake_package "$llvm_dir"
     fi
+    # TVM's FindLLVM falls back to executing the package's own llvm-config when
+    # find_package doesn't populate LLVM_LIBS. For a cross package that binary is
+    # the target arch and can't run on the build host (CMake dies: "llvm-config:
+    # Syntax error"), so LLVM is unusable — drop the package and disable LLVM.
+    if [ -n "$llvm_dir" ] && ! llvm_cmake_package_is_host_runnable "$llvm_dir"; then
+      log "Disabling TVM LLVM for cross target: ${llvm_dir} resolves a non-host-runnable llvm-config (TVM would execute it and fail)"
+      llvm_dir=""
+    fi
     if [ -n "$llvm_dir" ]; then
       log "Using target LLVM CMake package: $llvm_dir"
       llvm_cmake_value="ON"
