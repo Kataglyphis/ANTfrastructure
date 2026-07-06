@@ -278,11 +278,17 @@ _gst_monorepo_arch_flags() {
     # arm64 cross-builds the full Rust plugin set — csound/whisper/skia/burn/dav1d
     # all validated once the target Rust linker + libcsound64 (+ csound-sys
     # char-signedness patch) were wired, so arm64 only disables `validate` (needs
-    # gstreamer-validate devtools, off for cross). riscv64 keeps the conservative
-    # set for now (its native deps are known-absent: no libcsound64/libdav1d in
-    # Ports, and whisper/skia/burn are unprobed there) — reduce via its own probe.
+    # gstreamer-validate devtools, off for cross).
+    # riscv64 PROBE: testing whether whisper/skia/burn/dav1d cross-build here the
+    # way they did on arm64. csound stays disabled — riscv64 Ports has no
+    # libcsound64 to link against. Re-add any crate that hard-fails below.
+    #   skia -> HARD-FAILS: skia-bindings' bundled gn/ninja build injects the
+    #     clang-only flag `--target=riscv64-linux-gnu`, which the GCC cross
+    #     compiler (riscv64-linux-gnu-g++) rejects with "unrecognized
+    #     command-line option". One cargo custom-target => this kills the whole
+    #     gst-plugins-rs set, so skia must be disabled for the riscv64 cross.
     if [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
-      _rs_disable+=(csound whisper skia burn dav1d)
+      _rs_disable+=(csound skia)
     fi
     local _rs_plugin
     for _rs_plugin in "${_rs_disable[@]}"; do
