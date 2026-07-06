@@ -475,7 +475,18 @@ _litert_wheel_cross_args() {
     export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
     export TENSORFLOW_TARGET="native"
     export WHEEL_PLATFORM_NAME="${wheel_platform_name}"
-    export BUILD_FLAGS="-idirafter /usr/include ${TF_CXX_FLAGS:-} -I${PYTHON_INCLUDE:-} -I${PYBIND11_INCLUDE:-} -I${NUMPY_INCLUDE:-}"
+    # Only emit -I flags for include dirs that actually resolved. The former
+    # unconditional "-I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
+    # expanded to bare "-I -I -I" (those vars are never set in cross mode), which
+    # corrupted the compiler command line and made Abseil's ABSL_INTERNAL_AT_LEAST_CXX17
+    # probe fail -> "must use the same C++ standard" configure error. Feed the
+    # resolved target Python include dirs (base + arch) so the pywrap extension
+    # finds Python.h/pyconfig.h during cross compilation.
+    local litert_build_flags="-idirafter /usr/include"
+    [ -n "${TF_CXX_FLAGS:-}" ] && litert_build_flags+=" ${TF_CXX_FLAGS}"
+    [ -n "${target_python_include:-}" ] && litert_build_flags+=" -I${target_python_include}"
+    [ -n "${target_python_arch_include:-}" ] && litert_build_flags+=" -I${target_python_arch_include}"
+    export BUILD_FLAGS="${litert_build_flags}"
     info Building LiteRT wheel in cross mode for $(cross_target_arch)
     info Cross wheel platform tag: ${WHEEL_PLATFORM_NAME}
     info Cross wheel host tools dir: ${tflite_host_tools_dir}
