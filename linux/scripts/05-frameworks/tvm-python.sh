@@ -58,7 +58,9 @@ _tvm_wheel_setup() {
       "$use_cuda" \
       "$use_opencl" \
       "$spirv_tools_lib" \
-      "$cross_link_flags"
+      "$cross_link_flags" \
+      "$vulkan_library" \
+      "$vulkan_include"
     wheel_cmake_args_string="$(shell_quote_args "${wheel_cmake_args[@]}")"
 }
 
