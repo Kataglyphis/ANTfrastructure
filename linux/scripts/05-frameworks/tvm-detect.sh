@@ -269,6 +269,22 @@ detect_spirv_tools_library() {
   return 1
 }
 
+# Return 0 if the ELF at $1 matches the cross target arch. Conservatively returns
+# 0 (treat as matching) when the arch or ELF machine can't be determined, so a
+# missing readelf never spuriously drops a library. Used to reject host-arch libs
+# that would break a cross link.
+elf_matches_target() {
+  local file="$1"
+  local machine target_arch expected
+
+  command -v readelf >/dev/null 2>&1 || return 0
+  machine="$(readelf -h "$file" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
+  target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
+  expected="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
+  [ -n "${expected}" ] || return 0
+  echo "${machine}" | grep -qF "${expected}"
+}
+
 # TVM's Vulkan runtime links libvulkan.so. LunarG's SDK ships only the host
 # (x86_64) loader; a cross build needs the target-arch loader, which vulkan.sh
 # cross-builds into /opt/vulkan/<version>/<arch_dir>/lib. Echo the target

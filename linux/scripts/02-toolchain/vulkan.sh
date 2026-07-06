@@ -345,81 +345,118 @@ _build_vulkan_sdk_cross() {
     _vulkan_build_components "${arch_suffix}" sdk_components
     _vulkan_run_vulkansdk "${sdk_components[@]}"
 
-    # ./vulkansdk only built HOST (x86_64) tools; also produce a TARGET-arch
-    # libvulkan so cross consumers (e.g. TVM) can link a matching loader.
-    _build_vulkan_loader_target "${arch_suffix}" "${target_dir}" "${target_triplet}"
+    # ./vulkansdk only built HOST (x86_64) tools; also produce TARGET-arch Vulkan
+    # libs (loader + SPIRV-Tools) so cross consumers (e.g. TVM) can link them.
+    _build_vulkan_targets "${arch_suffix}" "${target_dir}" "${target_triplet}"
   )
 }
 
-# Cross-build the Vulkan loader (libvulkan.so) for the target arch and install it,
-# plus the (arch-independent) Vulkan headers, under the target arch dir. LunarG's
-# ./vulkansdk only produces HOST (x86_64) tools, so without this a cross build has
-# no target libvulkan to link against: find_package(Vulkan) resolves the x86_64
-# loader and the target link fails with "file in wrong format" (e.g. TVM's
-# libtvm_runtime_vulkan.so). WSI is disabled — Vulkan is used here for compute, so
-# we avoid needing target windowing-system dev libraries. Non-fatal: on any failure
-# the target arch dir simply lacks libvulkan and consumers (e.g. tvm.sh) fall back
-# to disabling Vulkan for the cross target rather than failing the whole stage.
-_build_vulkan_loader_target() {
+# Cross-configure/build/install one bundled SDK component into the target arch dir.
+# $1=source dir, $2=label (for logs + build subdir); remaining args are extra cmake
+# -D flags (e.g. -DCMAKE_INSTALL_PREFIX=...). Reads the cross toolchain from the
+# caller's _xbuild_cc/_xbuild_cxx/_xbuild_proc (dynamic scope). Non-fatal: returns
+# non-zero on any failure so the caller can log and continue.
+_cross_build_sdk_component() {
+  local src="$1" label="$2"
+  shift 2
+  local build_dir
+  build_dir="$(mktemp -d)/${label}"
+
+  if ! cmake -S "${src}" -B "${build_dir}" -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_SYSTEM_NAME=Linux \
+      -DCMAKE_SYSTEM_PROCESSOR="${_xbuild_proc}" \
+      -DCMAKE_C_COMPILER="${_xbuild_cc}" \
+      -DCMAKE_CXX_COMPILER="${_xbuild_cxx}" \
+      -DCMAKE_INSTALL_LIBDIR=lib \
+      "$@"; then
+    log "${label}: cross-configure failed (non-fatal)"
+    return 1
+  fi
+  if ! cmake --build "${build_dir}" --parallel "$(compute_jobs "${JOBS:-}")"; then
+    log "${label}: cross-build failed (non-fatal)"
+    return 1
+  fi
+  if ! ${SUDO:-sudo} cmake --install "${build_dir}"; then
+    log "${label}: install failed (non-fatal)"
+    return 1
+  fi
+  return 0
+}
+
+# Cross-build the Vulkan target libraries TVM needs and install them under the
+# target arch dir. LunarG's ./vulkansdk only produces HOST (x86_64) tools, so a
+# cross build otherwise has no target libvulkan/libSPIRV-Tools: find_package(Vulkan)
+# resolves the x86_64 loader (target link fails "file in wrong format") and TVM's
+# cmake errors on Vulkan_SPIRV_TOOLS_LIBRARY=NOTFOUND. Build both from the SDK's
+# bundled sources with the target toolchain into /opt/vulkan/<ver>/<arch>/ (where
+# detect_vulkan_library / detect_spirv_tools_library already look). Each component
+# is non-fatal: if one can't build, the downstream guard disables that capability
+# rather than failing the whole stage. Vulkan headers are arch-independent, so the
+# host archdir's copy is reused. Loader WSI is off (Vulkan is used for compute).
+_build_vulkan_targets() {
   local arch_suffix="$1"
   local target_dir="$2"
   local target_triplet="$3"
-  local loader_src="${target_dir}/source/Vulkan-Loader"
   local host_archdir="${target_dir}/x86_64"
   local archdir="${target_dir}/${arch_suffix}"
-  local cc cxx cmake_proc build_dir
+  local loader_src="${target_dir}/source/Vulkan-Loader"
+  local spirv_tools_src="${target_dir}/source/SPIRV-Tools"
+  local spirv_headers_src="${target_dir}/source/SPIRV-Headers"
+  local _xbuild_cc _xbuild_cxx _xbuild_proc
 
-  [ -d "${loader_src}" ] || {
-    log "Vulkan-Loader source not at ${loader_src}; skipping target loader build (cross Vulkan will be disabled downstream)"
-    return 0
-  }
-  [ -d "${host_archdir}/include/vulkan" ] || {
-    log "Host Vulkan headers not at ${host_archdir}/include; skipping target loader build"
-    return 0
-  }
-
-  cc="${CC:-${target_triplet}-gcc}"
-  cxx="${CXX:-${target_triplet}-g++}"
+  _xbuild_cc="${CC:-${target_triplet}-gcc}"
+  _xbuild_cxx="${CXX:-${target_triplet}-g++}"
   case "${arch_suffix}" in
-    aarch64) cmake_proc="aarch64" ;;
-    riscv64) cmake_proc="riscv64" ;;
-    *)       cmake_proc="${arch_suffix}" ;;
+    aarch64) _xbuild_proc="aarch64" ;;
+    riscv64) _xbuild_proc="riscv64" ;;
+    *)       _xbuild_proc="${arch_suffix}" ;;
   esac
-  build_dir="$(mktemp -d)/vulkan-loader-${arch_suffix}"
 
-  log "Cross-building Vulkan loader for ${arch_suffix} -> ${archdir}/lib/libvulkan.so"
   ${SUDO:-sudo} mkdir -p "${archdir}/lib" "${archdir}/include"
   # Vulkan headers are arch-independent: reuse the host archdir's installed copy.
-  ${SUDO:-sudo} cp -a "${host_archdir}/include/vulkan" "${archdir}/include/" 2>/dev/null || true
+  [ -d "${host_archdir}/include/vulkan" ] && \
+    ${SUDO:-sudo} cp -a "${host_archdir}/include/vulkan" "${archdir}/include/" 2>/dev/null || true
   [ -d "${host_archdir}/include/vk_video" ] && \
     ${SUDO:-sudo} cp -a "${host_archdir}/include/vk_video" "${archdir}/include/" 2>/dev/null || true
 
-  if ! cmake -S "${loader_src}" -B "${build_dir}" -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_SYSTEM_NAME=Linux \
-      -DCMAKE_SYSTEM_PROCESSOR="${cmake_proc}" \
-      -DCMAKE_C_COMPILER="${cc}" \
-      -DCMAKE_CXX_COMPILER="${cxx}" \
-      -DCMAKE_INSTALL_PREFIX="${archdir}" \
-      -DCMAKE_INSTALL_LIBDIR=lib \
-      -DVULKAN_HEADERS_INSTALL_DIR="${host_archdir}" \
-      -DBUILD_TESTS=OFF \
-      -DBUILD_WSI_XCB_SUPPORT=OFF \
-      -DBUILD_WSI_XLIB_SUPPORT=OFF \
-      -DBUILD_WSI_WAYLAND_SUPPORT=OFF \
-      -DBUILD_WSI_DIRECTFB_SUPPORT=OFF; then
-    log "Vulkan loader cross-configure failed; cross Vulkan will be disabled downstream"
-    return 0
+  # Vulkan loader (libvulkan.so). WSI off: TVM uses Vulkan for compute only, so we
+  # avoid needing target windowing-system dev libraries.
+  if [ -d "${loader_src}" ] && [ -d "${host_archdir}/include/vulkan" ]; then
+    log "Cross-building Vulkan loader for ${arch_suffix}"
+    if _cross_build_sdk_component "${loader_src}" "vulkan-loader-${arch_suffix}" \
+        -DCMAKE_INSTALL_PREFIX="${archdir}" \
+        -DVULKAN_HEADERS_INSTALL_DIR="${host_archdir}" \
+        -DBUILD_TESTS=OFF \
+        -DBUILD_WSI_XCB_SUPPORT=OFF \
+        -DBUILD_WSI_XLIB_SUPPORT=OFF \
+        -DBUILD_WSI_WAYLAND_SUPPORT=OFF \
+        -DBUILD_WSI_DIRECTFB_SUPPORT=OFF; then
+      log "Installed target Vulkan loader: $(ls "${archdir}"/lib/libvulkan.so* 2>/dev/null | tr '\n' ' ')"
+    else
+      log "Target Vulkan loader unavailable; cross Vulkan will be disabled downstream"
+    fi
+  else
+    log "Vulkan-Loader source or host headers missing; skipping target loader"
   fi
-  if ! cmake --build "${build_dir}" --parallel "$(compute_jobs "${JOBS:-}")"; then
-    log "Vulkan loader cross-build failed; cross Vulkan will be disabled downstream"
-    return 0
+
+  # SPIRV-Tools (libSPIRV-Tools.a) — TVM's Vulkan build links it. SPIRV_WERROR=OFF:
+  # GCC 16's -Warray-bounds false-positives on timer.h would otherwise fail -Werror.
+  if [ -d "${spirv_tools_src}" ]; then
+    log "Cross-building SPIRV-Tools for ${arch_suffix}"
+    if _cross_build_sdk_component "${spirv_tools_src}" "spirv-tools-${arch_suffix}" \
+        -DCMAKE_INSTALL_PREFIX="${archdir}" \
+        -DSPIRV-Headers_SOURCE_DIR="${spirv_headers_src}" \
+        -DSPIRV_SKIP_TESTS=ON \
+        -DSPIRV_SKIP_EXECUTABLES=ON \
+        -DSPIRV_WERROR=OFF; then
+      log "Installed target SPIRV-Tools: $(ls "${archdir}"/lib/libSPIRV-Tools*.a 2>/dev/null | tr '\n' ' ')"
+    else
+      log "Target SPIRV-Tools unavailable; cross TVM Vulkan may fail to configure"
+    fi
+  else
+    log "SPIRV-Tools source missing at ${spirv_tools_src}; skipping target SPIRV-Tools"
   fi
-  if ! ${SUDO:-sudo} cmake --install "${build_dir}"; then
-    log "Vulkan loader install failed; cross Vulkan will be disabled downstream"
-    return 0
-  fi
-  log "Installed target Vulkan loader: $(ls "${archdir}"/lib/libvulkan.so* 2>/dev/null | tr '\n' ' ')"
 }
 
 install_vulkan_sdk() {

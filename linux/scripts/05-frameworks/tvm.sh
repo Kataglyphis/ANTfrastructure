@@ -269,16 +269,10 @@ resolve_tvm_vulkan() {
     return 0
   fi
 
-  if command -v readelf >/dev/null 2>&1; then
-    local _machine _target_arch _expected
-    _machine="$(readelf -h "$lib" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
-    _target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
-    _expected="$(arch_elf_machine_grep_for "${_target_arch}" 2>/dev/null || true)"
-    if [ -n "${_expected}" ] && ! echo "${_machine}" | grep -qF "${_expected}"; then
-      log "libvulkan ${lib} has ELF machine '${_machine}' but target is ${_target_arch} ('${_expected}'); disabling Vulkan."
-      use_vulkan=0
-      return 0
-    fi
+  if ! elf_matches_target "$lib"; then
+    log "libvulkan ${lib} ELF arch does not match target; disabling Vulkan (USE_VULKAN=OFF)."
+    use_vulkan=0
+    return 0
   fi
 
   vulkan_library="$lib"
@@ -295,15 +289,9 @@ resolve_tvm_spirv_tools() {
 
   spirv_tools_lib="$(detect_spirv_tools_library || true)"
 
-  if [ -n "$spirv_tools_lib" ] && [ -f "$spirv_tools_lib" ] && command -v readelf >/dev/null 2>&1; then
-    local _st_machine _tvm_target_arch _st_expected
-    _st_machine="$(readelf -h "$spirv_tools_lib" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
-    _tvm_target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
-    _st_expected="$(arch_elf_machine_grep_for "${_tvm_target_arch}" 2>/dev/null || true)"
-    if [ -n "${_st_expected}" ] && ! echo "${_st_machine}" | grep -qF "${_st_expected}"; then
-      log "SPIRV-Tools library ${spirv_tools_lib} has ELF machine '${_st_machine}' but target is ${_tvm_target_arch} ('${_st_expected}'). Building with USE_VULKAN=ON without SPIRV-Tools."
-      spirv_tools_lib=""
-    fi
+  if [ -n "$spirv_tools_lib" ] && [ -f "$spirv_tools_lib" ] && ! elf_matches_target "$spirv_tools_lib"; then
+    log "SPIRV-Tools library ${spirv_tools_lib} ELF arch does not match target; building Vulkan without SPIRV-Tools."
+    spirv_tools_lib=""
   fi
 
   if [ -z "$spirv_tools_lib" ]; then
@@ -370,7 +358,10 @@ patch_tvm_findllvm_dylib_fallback() {
   fi
   grep -q 'set(LLVM_CONFIG .*llvm-config")' "$findllvm" \
     || die "TVM FindLLVM.cmake: expected llvm-config fallback line not found (TVM ${ref} layout changed?)"
-  sed -i 's|.*set(LLVM_CONFIG .*llvm-config").*|      set(LLVM_LIBS LLVM) # cross-dylib fallback: link imported dylib, do not exec target llvm-config|' "$findllvm"
+  sed -i \
+    -e 's|.*message(STATUS "Fall back to using llvm-config").*|      message(STATUS "cross-dylib fallback: linking imported LLVM dylib target")|' \
+    -e 's|.*set(LLVM_CONFIG .*llvm-config").*|      set(LLVM_LIBS LLVM) # cross-dylib fallback: link imported dylib, do not exec target llvm-config|' \
+    "$findllvm"
   grep -q 'cross-dylib fallback' "$findllvm" || die "Failed to patch TVM FindLLVM.cmake"
   log "Patched TVM FindLLVM.cmake: link imported LLVM dylib target when components resolve empty"
 }
