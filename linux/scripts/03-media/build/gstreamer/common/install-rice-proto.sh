@@ -65,6 +65,26 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
   fi
   [ -n "${rust_target}" ] && cinstall_args+=(--target "${rust_target}")
   echo "Cross build: cinstalling rice-proto for target '${rust_target:-<default>}'"
+
+  # Without an explicit target linker, cargo links the target cdylib with the
+  # host cc/rust-lld and fails ("<obj> is incompatible with elf64-x86-64"). Point
+  # the target triple's linker + C compiler at the cross gcc. Only the
+  # target-specific CARGO_TARGET_*/CC_* vars are set, so host-side proc-macros and
+  # build scripts keep using the native toolchain. Best-effort: on any miss we
+  # fall through to the prior behaviour (cinstall may then fail -> webrtcbin2
+  # skipped), so this never turns a soft skip into a hard failure.
+  if [ -n "${rust_target}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
+    rice_cross_cc="$( resolve_cross_cc_cxx_for_arch "${TARGET_ARCH:-${TARGETARCH:-}}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
+    if [ -n "${rice_cross_cc}" ] && [ -x "${rice_cross_cc}" ]; then
+      rice_rust_env="$(printf '%s' "${rust_target}" | tr 'a-z-' 'A-Z_')"
+      rice_rust_lower="$(printf '%s' "${rust_target}" | tr '-' '_')"
+      export "CARGO_TARGET_${rice_rust_env}_LINKER=${rice_cross_cc}"
+      export "CC_${rice_rust_lower}=${rice_cross_cc}"
+      echo "Cross build: rice-proto target linker = ${rice_cross_cc} (CARGO_TARGET_${rice_rust_env}_LINKER)"
+    else
+      echo "WARN: could not resolve cross gcc for '${TARGET_ARCH:-?}'; rice-proto may fail to link (webrtcbin2 skipped)" >&2
+    fi
+  fi
 fi
 
 if ! cargo cinstall "${cinstall_args[@]}"; then

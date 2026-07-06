@@ -38,6 +38,8 @@ patch_libcamera_riscv64_cross_sources() {
 : "${LIBCAMERA_SRC:=${TMPDIR:-/tmp}/libcamera-$$}"
 : "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
 : "${LIBCAMERA_GIT:=https://git.libcamera.org/libcamera/libcamera.git}"
+# Official GitHub mirror, used as a fallback when the upstream edge is down.
+: "${LIBCAMERA_GIT_MIRROR:=https://github.com/libcamera-org/libcamera.git}"
 : "${LIBCAMERA_PREFIX:=/opt/libcamera}"
 : "${BUILD_TYPE_LOWER:=release}"
 
@@ -62,8 +64,15 @@ if pkg-config --exists libcamera >/dev/null 2>&1; then
 fi
 
 # Clone (or refresh) the source via the shared 01-core helper — same fetch/
-# shallow-clone logic used by the litert/opencv build scripts.
-retry 3 10 "libcamera git clone" clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}"
+# shallow-clone logic used by the litert/opencv build scripts. The upstream
+# git.libcamera.org edge intermittently serves a Traefik default cert (TLS
+# verify fails); fall back to the official GitHub mirror when the primary is
+# unreachable so the cross build isn't blocked by an upstream outage.
+if ! retry 3 10 "libcamera git clone" clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}"; then
+  echo "[WARN] libcamera primary remote ${LIBCAMERA_GIT} failed; falling back to mirror ${LIBCAMERA_GIT_MIRROR}"
+  rm -rf "${LIBCAMERA_SRC}"
+  retry 3 10 "libcamera git clone (mirror)" clone_or_update_repo "${LIBCAMERA_GIT_MIRROR}" "${LIBCAMERA_SRC}"
+fi
 cd "${LIBCAMERA_SRC}"
 
 mkdir -p "${LIBCAMERA_BUILD_DIR}"

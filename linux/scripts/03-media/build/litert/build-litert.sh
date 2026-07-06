@@ -475,7 +475,29 @@ _litert_wheel_cross_args() {
     export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
     export TENSORFLOW_TARGET="native"
     export WHEEL_PLATFORM_NAME="${wheel_platform_name}"
-    export BUILD_FLAGS="-idirafter /usr/include ${TF_CXX_FLAGS:-} -I${PYTHON_INCLUDE:-} -I${PYBIND11_INCLUDE:-} -I${NUMPY_INCLUDE:-}"
+    # Only emit -I flags for include dirs that actually resolved. The former
+    # unconditional "-I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
+    # expanded to bare "-I -I -I" (those vars are never set in cross mode), which
+    # corrupted the compiler command line and made Abseil's ABSL_INTERNAL_AT_LEAST_CXX17
+    # probe fail -> "must use the same C++ standard" configure error. Feed the
+    # resolved target Python include dirs (base + arch) so the pywrap extension
+    # finds Python.h/pyconfig.h during cross compilation.
+    local litert_build_flags="-idirafter /usr/include"
+    [ -n "${TF_CXX_FLAGS:-}" ] && litert_build_flags+=" ${TF_CXX_FLAGS}"
+    [ -n "${target_python_include:-}" ] && litert_build_flags+=" -I${target_python_include}"
+    [ -n "${target_python_arch_include:-}" ] && litert_build_flags+=" -I${target_python_arch_include}"
+    # The pywrap extension #includes "pybind11/functional.h" and
+    # "numpy/arrayobject.h". Both ship arch-independent C-API headers in the build
+    # venv (see install-deps.sh), so the host interpreter's include dirs are correct
+    # even for a cross target (only the target Python.h above must be arch-specific).
+    local _pybind11_inc="" _numpy_inc=""
+    if [ -n "${PYTHON:-}" ]; then
+        _pybind11_inc="$("${PYTHON}" -c 'import pybind11; print(pybind11.get_include())' 2>/dev/null || true)"
+        _numpy_inc="$("${PYTHON}" -c 'import numpy; print(numpy.get_include())' 2>/dev/null || true)"
+    fi
+    [ -n "${_pybind11_inc}" ] && litert_build_flags+=" -I${_pybind11_inc}"
+    [ -n "${_numpy_inc}" ] && litert_build_flags+=" -I${_numpy_inc}"
+    export BUILD_FLAGS="${litert_build_flags}"
     info Building LiteRT wheel in cross mode for $(cross_target_arch)
     info Cross wheel platform tag: ${WHEEL_PLATFORM_NAME}
     info Cross wheel host tools dir: ${tflite_host_tools_dir}

@@ -312,24 +312,27 @@ _llvm_cross_post_build_hooks() {
 _build_llvm_cross_core() {
   local mode="$1"
   local target_label="$2"
-  local -A _r=()
+  # NOTE: this array must NOT be named `_r` — the helpers below bind it with
+  # `local -n _r="$1"`, and a nameref whose target has the same name is a bash
+  # circular reference (breaks every _r[...] write → "unbound variable").
+  local -A _state=()
 
-  _llvm_cross_resolve_dirs _r "${mode}" "${target_label}" || return 0
+  _llvm_cross_resolve_dirs _state "${mode}" "${target_label}" || return 0
 
-  _llvm_cross_early_return _r || return 0
+  _llvm_cross_early_return _state || return 0
 
-  _llvm_cross_retrieve_source _r
+  _llvm_cross_retrieve_source _state
 
-  _llvm_cross_pre_build_hooks _r
+  _llvm_cross_pre_build_hooks _state
 
-  _r[native_tool_dir]="$(llvm_host_native_tool_dir)" || die "Host LLVM native tools not found"
+  _state[native_tool_dir]="$(llvm_host_native_tool_dir)" || die "Host LLVM native tools not found"
 
-  rm -rf "${_r[prefix]}" "${_r[build_dir]}" "${_r[wrapper_dir]}" ${_r[native_wrapper_dir]:+"${_r[native_wrapper_dir]}"}
-  log "Building LLVM ${_r[release]} for ${_r[target_label]} (${_r[triplet]}) in ${_r[mode]} mode — this will take a while"
+  rm -rf "${_state[prefix]}" "${_state[build_dir]}" "${_state[wrapper_dir]}" ${_state[native_wrapper_dir]:+"${_state[native_wrapper_dir]}"}
+  log "Building LLVM ${_state[release]} for ${_state[target_label]} (${_state[triplet]}) in ${_state[mode]} mode — this will take a while"
 
-  _llvm_cross_setup_and_build _r
+  _llvm_cross_setup_and_build _state
 
-  _llvm_cross_post_build_hooks _r
+  _llvm_cross_post_build_hooks _state
 }
 
 build_cross_llvm_target() {

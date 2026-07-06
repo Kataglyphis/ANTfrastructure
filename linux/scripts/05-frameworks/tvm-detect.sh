@@ -46,7 +46,19 @@ sanitize_llvm_config_for_target() {
   fi
 
   target_arch="$(cross_target_arch 2>/dev/null || true)"
-  llvm_host_target="$($llvm_config_path --host-target 2>/dev/null || true)"
+
+  # If llvm-config can't run on the build host, --host-target yields nothing.
+  # This happens when it's the cross target's own llvm-config (an ELF the host
+  # can't exec). Passing it through would make CMake's FindLLVM invoke it and
+  # choke on a "Syntax error" as the shell reads the binary as a script. Treat a
+  # non-runnable llvm-config as unusable for the cross build and continue without
+  # LLVM (the target LLVM CMake package is preferred and checked separately).
+  if ! llvm_host_target="$("$llvm_config_path" --host-target 2>/dev/null)" \
+     || [ -z "$llvm_host_target" ]; then
+    log "Disabling TVM LLVM for cross target ${target_arch}: ${llvm_config_path} is not runnable on the build host" >&2
+    printf '%s' ""
+    return 0
+  fi
   llvm_host_arch="$(arch_from_target_triple "$llvm_host_target" 2>/dev/null || true)"
 
   if [ -n "$target_arch" ] && [ -n "$llvm_host_arch" ] && [ "$llvm_host_arch" != "$target_arch" ]; then
@@ -242,6 +254,56 @@ detect_spirv_tools_library() {
     candidates+=("${VULKAN_SDK}/lib/libSPIRV-Tools.a")
     candidates+=("${VULKAN_SDK}/lib/libSPIRV-Tools-shared.so")
     candidates+=("${VULKAN_SDK}/lib/libSPIRV-Tools.so")
+  fi
+  shopt -u nullglob
+
+  local c
+  for c in "${candidates[@]}"; do
+    if [ -r "$c" ]; then
+      echo "$c"
+      return 0
+    fi
+  done
+
+  echo ""
+  return 1
+}
+
+# Return 0 if the ELF at $1 matches the cross target arch. Conservatively returns
+# 0 (treat as matching) when the arch or ELF machine can't be determined, so a
+# missing readelf never spuriously drops a library. Used to reject host-arch libs
+# that would break a cross link.
+elf_matches_target() {
+  local file="$1"
+  local machine target_arch expected
+
+  command -v readelf >/dev/null 2>&1 || return 0
+  machine="$(readelf -h "$file" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
+  target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
+  expected="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
+  [ -n "${expected}" ] || return 0
+  echo "${machine}" | grep -qF "${expected}"
+}
+
+# TVM's Vulkan runtime links libvulkan.so. LunarG's SDK ships only the host
+# (x86_64) loader; a cross build needs the target-arch loader, which vulkan.sh
+# cross-builds into /opt/vulkan/<version>/<arch_dir>/lib. Echo the target
+# libvulkan.so path for this arch, or "" if none exists (caller disables Vulkan).
+detect_vulkan_library() {
+  local candidates=()
+  local _arch_dir
+
+  case "${CROSS_TARGET_ARCH:-${TARGET_ARCH:-${TARGETARCH:-}}}" in
+    amd64|x86_64)  _arch_dir="x86_64" ;;
+    arm64|aarch64) _arch_dir="aarch64" ;;
+    riscv64)       _arch_dir="riscv64" ;;
+    *)             _arch_dir="" ;;
+  esac
+
+  shopt -s nullglob
+  if [ -n "${_arch_dir}" ]; then
+    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libvulkan.so)
+    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libvulkan.so.1)
   fi
   shopt -u nullglob
 

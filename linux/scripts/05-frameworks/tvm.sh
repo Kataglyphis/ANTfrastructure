@@ -202,6 +202,12 @@ resolve_tvm_llvm() {
       validate_detected_llvm_cmake_package "$llvm_dir"
     fi
     if [ -n "$llvm_dir" ]; then
+      # Use the target LLVM CMake package. TVM's FindLLVM would normally fall
+      # back to executing this package's llvm-config (a target-arch binary that
+      # can't run on the build host) when llvm_map_components_to_libnames("all")
+      # comes back empty under a dylib build — patch_tvm_findllvm_dylib_fallback()
+      # rewrites that fallback to link the imported LLVM dylib target instead, so
+      # no target binary is ever executed on the host.
       log "Using target LLVM CMake package: $llvm_dir"
       llvm_cmake_value="ON"
     else
@@ -245,6 +251,37 @@ select_tvm_compilers() {
   desired_cxx="${wrapped#* }"
 }
 
+# Resolve the Vulkan loader for cross builds. LunarG's SDK ships only the host
+# (x86_64) libvulkan; linking it into a target binary fails "file in wrong format".
+# If vulkan.sh cross-built a target-arch libvulkan (under /opt/vulkan/<ver>/<arch>/
+# lib), point TVM at it; otherwise disable Vulkan for this cross target. Native
+# builds keep find_package(Vulkan) via the sourced SDK env. Sets use_vulkan /
+# vulkan_library / vulkan_include.
+resolve_tvm_vulkan() {
+  [ "$use_vulkan" -eq 1 ] || return 0
+  cross_build_is_active || return 0
+
+  local lib
+  lib="$(detect_vulkan_library || true)"
+  if [ -z "$lib" ] || [ ! -r "$lib" ]; then
+    log "No target-arch libvulkan found for cross build; disabling Vulkan (USE_VULKAN=OFF)."
+    use_vulkan=0
+    return 0
+  fi
+
+  if ! elf_matches_target "$lib"; then
+    log "libvulkan ${lib} ELF arch does not match target; disabling Vulkan (USE_VULKAN=OFF)."
+    use_vulkan=0
+    return 0
+  fi
+
+  vulkan_library="$lib"
+  local archroot
+  archroot="$(dirname "$(dirname "$lib")")"
+  [ -d "${archroot}/include" ] && vulkan_include="${archroot}/include"
+  log "Using target Vulkan loader: ${vulkan_library} (include: ${vulkan_include:-default})"
+}
+
 # Resolve the SPIRV-Tools library for Vulkan, dropping it when its ELF arch does
 # not match the target (loaded SDK libs may be x86_64-only). Sets spirv_tools_lib.
 resolve_tvm_spirv_tools() {
@@ -252,15 +289,9 @@ resolve_tvm_spirv_tools() {
 
   spirv_tools_lib="$(detect_spirv_tools_library || true)"
 
-  if [ -n "$spirv_tools_lib" ] && [ -f "$spirv_tools_lib" ] && command -v readelf >/dev/null 2>&1; then
-    local _st_machine _tvm_target_arch _st_expected
-    _st_machine="$(readelf -h "$spirv_tools_lib" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
-    _tvm_target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
-    _st_expected="$(arch_elf_machine_grep_for "${_tvm_target_arch}" 2>/dev/null || true)"
-    if [ -n "${_st_expected}" ] && ! echo "${_st_machine}" | grep -qF "${_st_expected}"; then
-      log "SPIRV-Tools library ${spirv_tools_lib} has ELF machine '${_st_machine}' but target is ${_tvm_target_arch} ('${_st_expected}'). Building with USE_VULKAN=ON without SPIRV-Tools."
-      spirv_tools_lib=""
-    fi
+  if [ -n "$spirv_tools_lib" ] && [ -f "$spirv_tools_lib" ] && ! elf_matches_target "$spirv_tools_lib"; then
+    log "SPIRV-Tools library ${spirv_tools_lib} ELF arch does not match target; building Vulkan without SPIRV-Tools."
+    spirv_tools_lib=""
   fi
 
   if [ -z "$spirv_tools_lib" ]; then
@@ -277,11 +308,13 @@ configure_tvm_cmake() {
     -G Ninja
     -DCMAKE_INSTALL_PREFIX="$prefix"
   )
-  local cross_link_flags=""
+  # No `local`: assign into main()'s cross_link_flags so the wheel path sees it too.
+  cross_link_flags=""
   if cross_build_is_active; then
     cross_link_flags="$(cross_linker_search_flags || true)"
   fi
 
+  resolve_tvm_vulkan
   resolve_tvm_spirv_tools
 
   append_tvm_cmake_args \
@@ -297,9 +330,40 @@ configure_tvm_cmake() {
     "$use_cuda" \
     "$use_opencl" \
     "$spirv_tools_lib" \
-    "$cross_link_flags"
+    "$cross_link_flags" \
+    "$vulkan_library" \
+    "$vulkan_include"
 
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
+}
+
+# TVM's FindLLVM does find_package(LLVM CONFIG) then
+# llvm_map_components_to_libnames(LLVM_LIBS "all"). When the LLVM package was built
+# as a dylib (LLVM_LINK_LLVM_DYLIB=ON, LLVM_DYLIB_COMPONENTS=all), the LLVM CMake
+# macro strips "all" to an empty list, so LLVM_LIBS comes back empty and upstream
+# falls back to EXECUTING ${LLVM_TOOLS_BINARY_DIR}/llvm-config. For a cross build
+# that is the target-arch binary and can't run on the amd64 host (CMake dies with
+# "llvm-config: Syntax error"). The package still exports the imported "LLVM" dylib
+# target, and FindLLVM already links it when LLVM_LIBS contains "LLVM" (its
+# "Link with dynamic LLVM library" path). So rewrite the empty-LLVM_LIBS fallback
+# to point at that target instead of shelling out. No-op for static-lib packages
+# (LLVM_LIBS is already populated) and safe for native builds.
+patch_tvm_findllvm_dylib_fallback() {
+  local findllvm="${tvm_dir}/cmake/utils/FindLLVM.cmake"
+
+  [ -f "$findllvm" ] || die "TVM FindLLVM.cmake not found at ${findllvm}"
+  if grep -q 'cross-dylib fallback' "$findllvm"; then
+    log "TVM FindLLVM.cmake already patched for the dylib fallback"
+    return 0
+  fi
+  grep -q 'set(LLVM_CONFIG .*llvm-config")' "$findllvm" \
+    || die "TVM FindLLVM.cmake: expected llvm-config fallback line not found (TVM ${ref} layout changed?)"
+  sed -i \
+    -e 's|.*message(STATUS "Fall back to using llvm-config").*|      message(STATUS "cross-dylib fallback: linking imported LLVM dylib target")|' \
+    -e 's|.*set(LLVM_CONFIG .*llvm-config").*|      set(LLVM_LIBS LLVM) # cross-dylib fallback: link imported dylib, do not exec target llvm-config|' \
+    "$findllvm"
+  grep -q 'cross-dylib fallback' "$findllvm" || die "Failed to patch TVM FindLLVM.cmake"
+  log "Patched TVM FindLLVM.cmake: link imported LLVM dylib target when components resolve empty"
 }
 
 main() {
@@ -323,6 +387,12 @@ main() {
   # Derived locals declared here so the phase helpers assign into main()'s scope.
   local jobs="" tvm_dir="" build_dir=""
   local desired_cc="" desired_cxx="" spirv_tools_lib=""
+  # Cross Vulkan loader/headers resolved by resolve_tvm_vulkan (target arch dir).
+  local vulkan_library="" vulkan_include=""
+  # Shared by BOTH the native configure path (configure_tvm_cmake) and the wheel
+  # path (tvm_build_wheel); declared in main() so both siblings see it via
+  # dynamic scope. configure_tvm_cmake computes it.
+  local cross_link_flags=""
 
   parse_tvm_args "$@"
   resolve_tvm_paths
@@ -334,6 +404,7 @@ main() {
   install_tvm_deps_phase
   require_toolchain_compilers
   fetch_tvm_source
+  patch_tvm_findllvm_dylib_fallback
   resolve_tvm_llvm
 
   if [ "$do_clean" -eq 1 ]; then

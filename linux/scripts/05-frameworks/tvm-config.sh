@@ -44,6 +44,8 @@ append_tvm_cmake_args() {
   local use_opencl="${11:-0}"
   local spirv_tools_lib="${12:-}"
   local cross_link_flags="${13:-}"
+  local vulkan_library="${14:-}"
+  local vulkan_include="${15:-}"
   local -n out_ref="${out_name}"
 
   # Normalize 0/1 booleans to OFF/ON for TVM's CMake (which accepts both forms,
@@ -86,6 +88,15 @@ append_tvm_cmake_args() {
 
   if [ "$use_vulkan" -eq 1 ]; then
     out_ref+=( -DUSE_VULKAN=ON )
+    # For cross builds, point find_package(Vulkan) at the target-arch loader/
+    # headers (resolve_tvm_vulkan); otherwise it resolves the host x86_64 loader
+    # from the sourced SDK env and the target link fails "file in wrong format".
+    if [ -n "${vulkan_library:-}" ]; then
+      out_ref+=( -DVulkan_LIBRARY="${vulkan_library}" )
+    fi
+    if [ -n "${vulkan_include:-}" ]; then
+      out_ref+=( -DVulkan_INCLUDE_DIR="${vulkan_include}" )
+    fi
     if [ -n "${spirv_tools_lib:-}" ]; then
       out_ref+=( -DVulkan_SPIRV_TOOLS_LIBRARY="${spirv_tools_lib}" )
     fi

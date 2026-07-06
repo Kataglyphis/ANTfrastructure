@@ -209,8 +209,12 @@ install_target_packages libsoup-3.0-dev libnice-dev || true
 if [ "${MEDIA_SKIP_CSOUND:-0}" = "1" ]; then
   echo "Skipping target Csound packages for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
-  install_target_packages \
-    csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || true
+  # gst-plugin-csound only needs libcsound64 (lib + headers). Install it on its OWN
+  # call so a heavy/absent sibling (csoundqt pulls Qt, pd-csound pulls puredata)
+  # can't take the essential package down — install_target_packages is
+  # all-or-nothing per call. The rest are best-effort extras.
+  install_target_packages libcsound64-dev || true
+  install_optional_target_packages csound csound-utils csoundqt csoundqt-examples csound-doc pd-csound || true
 fi
 
 # NVIDIA

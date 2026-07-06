@@ -85,8 +85,16 @@ _cross_stage_build_impl() {
     if [ -z "${NO_CACHE:-}" ]; then
       build_cmd+=(
         --cache-from "type=registry,ref=${tag}-buildcache"
-        --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
       )
+      # The registry cache export (mode=max) can be rejected by some registries
+      # with "400 Bad Request" on oversized cache blobs (observed on ghcr.io).
+      # NO_CACHE_EXPORT drops the export while keeping --cache-from, so a rebuild
+      # still reuses cached layers but never fails the whole solve on cache push.
+      if [ -z "${NO_CACHE_EXPORT:-}" ]; then
+        build_cmd+=(
+          --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
+        )
+      fi
     fi
   fi
 

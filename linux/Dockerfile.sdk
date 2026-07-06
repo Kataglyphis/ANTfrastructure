@@ -37,8 +37,15 @@ RUN if [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "riscv64" ]; then \
 # Flutter is riscv64-skipped. Login shells pick them up via /etc/profile.d on
 # amd64/arm64 only (see RUN above), so on riscv64 the image honestly advertises
 # "no Flutter" instead of pointing at a non-existent dir.
-# 01-core/ and 02-toolchain/ scripts are inherited from the compiler base image.
-# Nothing additional needs to be copied here.
+# Refresh 01-core/ + 02-toolchain/ from the build context. The compiler base
+# bakes these in (Dockerfile.toolchain), but the sdk stage's own steps below
+# (vulkan setup, verify) call them too — and the compiler base image can be
+# OLDER than the current scripts (e.g. resuming the chain mid-way with a pinned
+# compiler). Re-copying here guarantees the sdk stage runs the CURRENT scripts,
+# mirroring the 05-frameworks COPY further down. Without this, a fix to e.g.
+# vulkan.sh would silently require a full compiler rebuild to take effect.
+COPY --chmod=755 linux/scripts/01-core/     /opt/scripts/core/
+COPY --chmod=755 linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup
