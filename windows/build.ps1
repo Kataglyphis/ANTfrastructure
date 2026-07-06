@@ -53,9 +53,14 @@
     Pass an explicit value to override the auto-detection.
 
 .PARAMETER HostReserveGb
-    RAM (GB) to leave for the Windows host + dockerd + Defender when auto-detecting
-    -MediaMemoryGb (default 8). Lower it to push the container closer to the metal
-    (riskier: under memory pressure the hcsshim ttrpc wedge is more likely).
+    RAM (GB) to leave for the Windows host when auto-detecting -MediaMemoryGb
+    (default 22). This is NOT just idle Windows: during a GPU build dockerd +
+    containerd juggling the ~50 GB CUDA image layers, plus svchost/Defender, hold
+    ~16-18 GB steady on this host — measured after a 53 GB container starved the
+    host to 0.3 GB free and hung media-core at 0% CPU. 22 GB reserve keeps the
+    container (~39 GB here) + host comfortably under physical RAM. Lower it only if
+    you have verified the host's real footprint is smaller (riskier: under memory
+    pressure the container starves and the compile deadlocks / hcsshim ttrpc wedges).
 
 .PARAMETER AuxMemoryGb
     --memory limit (GB) for each auxiliary media branch (litert, tvm) when building
@@ -108,7 +113,7 @@ param(
     [string]$Docker = '',
     [string]$FinalTag = '',
     [int]$MediaMemoryGb = 0,
-    [int]$HostReserveGb = 8,
+    [int]$HostReserveGb = 22,
     [int]$AuxMemoryGb = 8,
     [int]$MediaCoreCpus = [Environment]::ProcessorCount,
     [switch]$SequentialMedia,
@@ -247,10 +252,14 @@ function Get-MediaBranchSpecs {
             } + $sccache
         },
         @{
-            Name       = 'media-litert'
-            Dockerfile = 'windows/Dockerfile.media-litert'
-            Tag        = 'local/kataglyphis:windows-media-litert'
-            MemoryGb   = $AuxMemoryGb
+            Name              = 'media-litert'
+            Dockerfile        = 'windows/Dockerfile.media-litert'          # concurrent path: 2-CPU docker build
+            BuilderDockerfile = 'windows/Dockerfile.media-litert-builder'  # sequential path: run+commit (full cores)
+            BuilderTag        = 'local/kataglyphis:windows-media-litert-builder'
+            ContainerName     = 'kataglyphis-media-litert-build'
+            RunScript         = 'build-litert-all.ps1'
+            Tag               = 'local/kataglyphis:windows-media-litert'
+            MemoryGb          = $AuxMemoryGb
             BuildArgs  = @{
                 BASE_IMAGE        = 'local/kataglyphis:windows-toolchain'
                 LITERT_VERSION    = Get-Ver 'LITERT_VERSION'
@@ -259,10 +268,14 @@ function Get-MediaBranchSpecs {
             } + $sccache
         },
         @{
-            Name       = 'media-tvm'
-            Dockerfile = 'windows/Dockerfile.media-tvm'
-            Tag        = 'local/kataglyphis:windows-media-tvm'
-            MemoryGb   = $AuxMemoryGb
+            Name              = 'media-tvm'
+            Dockerfile        = 'windows/Dockerfile.media-tvm'          # concurrent path: 2-CPU docker build
+            BuilderDockerfile = 'windows/Dockerfile.media-tvm-builder'  # sequential path: run+commit (full cores)
+            BuilderTag        = 'local/kataglyphis:windows-media-tvm-builder'
+            ContainerName     = 'kataglyphis-media-tvm-build'
+            RunScript         = 'build-tvm-from-source.ps1'
+            Tag               = 'local/kataglyphis:windows-media-tvm'
+            MemoryGb          = $AuxMemoryGb
             BuildArgs  = @{
                 BASE_IMAGE      = 'local/kataglyphis:windows-toolchain'
                 TVM_REF         = Get-Ver 'TVM_REF'
@@ -360,9 +373,23 @@ function Invoke-MediaBranches {
     if ($script:UseSequentialMedia) {
         Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
             -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+        # Aux branches (litert, tvm) also via run+commit at FULL cores + RAM. In
+        # sequential mode media-core is already committed, so the whole CPU/RAM budget
+        # is free — no reason to leave the aux compiles pinned to the 2-CPU `docker
+        # build` cap. Parallelism stays memory-bound (jobs = min(cpu-count,
+        # MEMORY_LIMIT_GB / perJob)), so we forward MediaMemoryGb (not AuxMemoryGb):
+        # e.g. j2 @ 2cpu/8g  ->  ~j19 @ 32cpu/39g on this host.
         foreach ($spec in $auxSpecs) {
-            Invoke-Stage -Dockerfile $spec.Dockerfile -Tag $spec.Tag -BuildArgs $spec.BuildArgs `
-                -ExtraFlags @('--memory', "$($spec.MemoryGb)g")
+            $auxArgs = $spec.BuildArgs.Clone()
+            $auxArgs['MEMORY_LIMIT_GB'] = $MediaMemoryGb
+            $auxLog = Join-Path $logDir "$($spec.Name).log"
+            Invoke-RunCommitStage `
+                -BuilderDockerfile $spec.BuilderDockerfile `
+                -BuilderTag        $spec.BuilderTag `
+                -ResultTag         $spec.Tag `
+                -ContainerName     $spec.ContainerName `
+                -RunCommand        @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$($spec.RunScript)") `
+                -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb -BuildArgs $auxArgs -Label $spec.Name -OutLog $auxLog
         }
         return
     }

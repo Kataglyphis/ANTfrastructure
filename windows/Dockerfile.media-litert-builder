@@ -1,0 +1,46 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Builder image for the media-litert run+commit path (windows/build.ps1, sequential
+# mode). Carries the toolchain plus the LiteRT + LiteRT-LM build scripts and the
+# orchestration script build-litert-all.ps1 — but runs NO heavy compile, so it builds
+# with cheap COPY-only layers that Hyper-V `docker build` commits reliably.
+#
+# The LiteRT -> LiteRT-LM compile then runs via
+#   docker run --isolation hyperv --cpu-count N --memory Mg <this image> `
+#       powershell -File C:\temp\scripts\build-litert-all.ps1
+#   docker commit <container> local/kataglyphis:windows-media-litert
+# because `docker build` on this host is capped at 2 CPUs and process isolation
+# cannot commit layers. The committed image is a drop-in replacement for the old
+# Dockerfile.media-litert output (same windows-media-litert tag consumed by the merge).
+
+ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
+FROM ${BASE_IMAGE}
+
+ARG LITERT_VERSION=v2.1.5
+ARG LITERT_LM_VERSION=0.13.1
+# Container --memory cap (GB), forwarded so Get-BuildJobCount scales parallelism to
+# the cap. With the run+commit path the container also gets --cpu-count CPUs, so
+# jobs = min(cpu-count, MEMORY_LIMIT_GB / MemGBPerJob).
+ARG MEMORY_LIMIT_GB=""
+# Optional persistent sccache remote (e.g. WebDAV server on the host); empty = off.
+ARG SCCACHE_WEBDAV_ENDPOINT=""
+
+ENV LITERT_VERSION="${LITERT_VERSION}"
+ENV LITERT_LM_VERSION="${LITERT_LM_VERSION}"
+ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Only the modules the build scripts import (keeps CI-module edits from busting this image).
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     C:\temp\scripts\modules\
+
+# The two source-build scripts + the orchestration entrypoint.
+COPY windows\scripts\build-litert-from-source.ps1 `
+     windows\scripts\build-litert-lm-from-source.ps1 `
+     windows\scripts\build-litert-all.ps1 `
+     C:\temp\scripts\
