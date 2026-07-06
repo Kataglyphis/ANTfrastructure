@@ -197,9 +197,15 @@ _vulkan_setup_sdk_includes() {
         fi
       done
       export CMAKE_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${CMAKE_INCLUDE_PATH:+:${CMAKE_INCLUDE_PATH}}"
-      export CPATH="${SDK_ARCHDIR}/include:/usr/include${CPATH:+:${CPATH}}"
-      export C_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${C_INCLUDE_PATH:+:${C_INCLUDE_PATH}}"
-      export CPLUS_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
+      # Do NOT add /usr/include to the compiler include-path vars below. It is
+      # already a default system dir; forcing it in via CPATH/C_INCLUDE_PATH/
+      # CPLUS_INCLUDE_PATH makes GCC search it *before* the C++ header dir, so
+      # libstdc++'s `#include_next <stdlib.h>` (from <cstdlib>) skips it and
+      # fails with "stdlib.h: No such file or directory" when building the host
+      # SDK tools (e.g. SPIRV-Tools). Only prepend the Vulkan SDK headers.
+      export CPATH="${SDK_ARCHDIR}/include${CPATH:+:${CPATH}}"
+      export C_INCLUDE_PATH="${SDK_ARCHDIR}/include${C_INCLUDE_PATH:+:${C_INCLUDE_PATH}}"
+      export CPLUS_INCLUDE_PATH="${SDK_ARCHDIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
     fi
 
     _symlink_sdk_include() {
