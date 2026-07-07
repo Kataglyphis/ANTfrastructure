@@ -106,29 +106,10 @@ Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatte
     '(?<=\s)/WX(?=\s)'
 )
 
-Write-Host 'Building with ninja directly...'
-$batFile = Join-Path $env:TEMP 'build_genai.bat'
-try {
-    "@echo off
-    ninja -C `"$genaiBuildDir`" -j%NUMBER_OF_PROCESSORS% 2>&1
-    if errorlevel 1 ninja -C `"$genaiBuildDir`" 2>&1
-    " | Set-Content -Path $batFile -Encoding ASCII
-    cmd.exe /c $batFile
-    $buildExit = $LASTEXITCODE
-} finally {
-    if (Test-Path $batFile) { Remove-Item $batFile -Force -ErrorAction SilentlyContinue }
-}
-
-if ($buildExit -ne 0) {
-    # Try single-threaded to see full error
-    Write-Host 'Retrying single-threaded for clear error output...'
-    cmd.exe /c "ninja -C `"$genaiBuildDir`" -j1 2>&1"
-    throw "ONNX GenAI build failed"
-}
-
-Write-Host 'Installing...'
-& cmake --install $genaiBuildDir --config Release
-if ($LASTEXITCODE -ne 0) { throw 'Install failed' }
+# Memory-scaled ninja + incremental -j1 retry + install via the shared helper. Replaces
+# a hand-rolled -j%NUMBER_OF_PROCESSORS% .bat (full-core, no memory scaling) that could
+# OOM / deadlock a memory-capped container; the -j1 retry still yields clean error output.
+Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 4 -Install
 
 Write-Host "Installing to $genaiInstallDir..."
 # Copy built artifacts
