@@ -151,6 +151,11 @@ COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
 COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/
+# 03-media/core/ provides common.sh (media_load_arch_flags) + arch-flags-<arch>.env,
+# which the final install-deps.sh sources from /opt/scripts/03-media/core. Without
+# this COPY that path is absent and install-deps.sh fails with exit 127
+# (media_load_arch_flags: command not found).
+COPY --chmod=755 linux/scripts/03-media/core/ /opt/scripts/03-media/core/
 COPY --chmod=755 linux/scripts/03-media/build/gstreamer/android/ /opt/scripts/03-media/gstreamer/android/
 COPY --chmod=755 linux/scripts/03-media/build/litert/android/ /opt/scripts/03-media/litert/android/
 COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/android/ /opt/scripts/03-media/onnxruntime/android/
