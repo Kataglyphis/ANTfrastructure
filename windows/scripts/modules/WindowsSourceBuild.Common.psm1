@@ -758,6 +758,66 @@ function Invoke-InlineRegexPatch {
     return $true
 }
 
+function Add-FileBlockOnce {
+    <#
+    .SYNOPSIS
+        Idempotently append (or prepend) a text block to a file, guarded by a marker regex.
+    .DESCRIPTION
+        Canonical form for the "graft a patch block into an upstream .cmake/.cc file exactly
+        once" idiom (the protobuf/sentencepiece/tflite/litert *_patcher.cmake appends and the
+        rust-syslib #pragma prepend all share it). Collapses the
+        `if ((Test-Path $x) -and ((Get-Content -Raw $x) -notmatch 'MARKER')) { Add-Content ...;
+        Write-Host ... }` wrapper into one call. Skips the file when it is missing or already
+        contains -Marker; otherwise writes the block and logs it.
+    .PARAMETER Path
+        File to modify. A missing file is skipped (returns $false) unless -Require.
+    .PARAMETER Marker
+        Regex identifying an already-applied block; when present the file is left untouched.
+    .PARAMETER Content
+        Text block to add (typically a here-string).
+    .PARAMETER Prepend
+        Insert -Content BEFORE the existing file content (default: append after).
+    .PARAMETER Encoding
+        Optional encoding for the append path (e.g. 'ASCII'); default uses Add-Content's default.
+        Ignored for -Prepend, which writes UTF-8 (no BOM) via [System.IO.File]::WriteAllText.
+    .PARAMETER Require
+        Throw if the file does not exist (default: skip missing files quietly).
+    .PARAMETER Description
+        Human label for the success log line (defaults to the file leaf name).
+    .OUTPUTS
+        [bool] $true if the file was modified, else $false.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+        [Parameter(Mandatory)]
+        [string]$Marker,
+        [Parameter(Mandatory)]
+        [string]$Content,
+        [switch]$Prepend,
+        [string]$Encoding = '',
+        [switch]$Require,
+        [string]$Description = ''
+    )
+    if (-not (Test-Path $Path)) {
+        if ($Require) { throw "Add-FileBlockOnce: file not found: $Path" }
+        return $false
+    }
+    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
+    if ((Get-Content -Raw $Path) -match $Marker) { return $false }
+    if ($Prepend) {
+        [System.IO.File]::WriteAllText($Path, $Content + [System.IO.File]::ReadAllText($Path))
+    }
+    elseif ($Encoding) {
+        Add-Content -LiteralPath $Path -Value $Content -Encoding $Encoding
+    }
+    else {
+        Add-Content -LiteralPath $Path -Value $Content
+    }
+    Write-Host "Patched $Description"
+    return $true
+}
+
 function Invoke-NinjaBuildWithRetry {
     <#
     .SYNOPSIS
@@ -966,6 +1026,7 @@ Export-ModuleMember -Function @(
     'Update-NinjaFile',
     'Invoke-SourcePatch',
     'Invoke-InlineRegexPatch',
+    'Add-FileBlockOnce',
     'Invoke-NinjaBuildWithRetry',
     'Expand-SourceTarball',
     'Initialize-ExtractedGitRepo',
