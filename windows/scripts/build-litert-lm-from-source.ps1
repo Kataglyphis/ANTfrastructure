@@ -77,6 +77,27 @@ if (-not (Test-Path $hostProtoc)) {
 }
 Write-Host "Using version-matched host protoc: $hostProtoc ($(& $hostProtoc --version))"
 
+# litert-lm generates its tool-call JSON parser at build time by running the ANTLR jar
+# (java -jar antlr-4.13.2-complete.jar ...), so the build needs a JRE. The media base image
+# doesn't ship Java, so fetch a portable Temurin 21 JRE and put java.exe on PATH. (No JDK
+# needed -- ANTLR only runs the prebuilt jar.)
+$jreDir = 'C:\temp\jre'
+$javaExe = Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $javaExe) {
+    $jreZip = 'C:\temp\temurin-jre.zip'
+    $jreUrl = 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse'
+    Write-Host "Downloading Temurin 21 JRE (for ANTLR codegen) from $jreUrl"
+    $prevProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri $jreUrl -OutFile $jreZip -UseBasicParsing
+    Expand-Archive -Path $jreZip -DestinationPath $jreDir -Force
+    $ProgressPreference = $prevProgress
+    $javaExe = Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $javaExe) { throw "Failed to obtain a JRE (java.exe) under $jreDir" }
+}
+$env:PATH = "$($javaExe.Directory.FullName);$env:PATH"
+Write-Host "Using Java for ANTLR codegen: $($javaExe.FullName)"
+
 # Windows link-lib shim for the GNU-driver Unix libs. The inner build links with
 # clang++ (GNU driver) + lld-link, so CMake's platform/threads/zlib detection adds
 # POSIX link libs -- `-lz -lrt -lpthread -ldl` -> `z.lib rt.lib pthread.lib dl.lib` --
@@ -194,7 +215,20 @@ static inline int unsetenv(const char* name) { return _putenv_s(name, ""); }
 #endif
 '@
 Set-Content -LiteralPath (Join-Path $winShimDir 'unistd.h') -Value $unistdShim -Encoding ASCII
-Write-Host "Wrote Windows <dlfcn.h> + <unistd.h> shims to $winShimDir"
+
+# LiteRT's Qualcomm vendor code (vendors/qualcomm/compiler/qnn_compose_graph.cc) includes
+# <alloca.h>, which doesn't exist on Windows -- the CRT puts alloca (_alloca) in <malloc.h>.
+$allocaShim = @'
+#ifndef LITERTLM_WIN_ALLOCA_SHIM_H
+#define LITERTLM_WIN_ALLOCA_SHIM_H
+#include <malloc.h>
+#ifndef alloca
+#define alloca _alloca
+#endif
+#endif
+'@
+Set-Content -LiteralPath (Join-Path $winShimDir 'alloca.h') -Value $allocaShim -Encoding ASCII
+Write-Host "Wrote Windows <dlfcn.h> + <unistd.h> + <alloca.h> shims to $winShimDir"
 # CAUTION: clang auto-detects the MSVC/SDK/clang-runtime lib dirs ONLY while LIB is unset
 # (which it is in this container). The moment we set LIB to inject the shim dir, clang
 # stops emitting its own -libpath and defers entirely to LIB -- so LIB must ALSO carry
@@ -255,8 +289,14 @@ Write-Host "Set CXXFLAGS_x86_64_pc_windows_msvc for the cxx/cc bridge: $($env:CX
 # headers like litert_tensor_buffer_requirements.h ("expected unqualified-id" on std::max).
 # LiteRT is configured from ${CMAKE_CXX_FLAGS} (litert.cmake), which CMake seeds from
 # $ENV{CXXFLAGS}, so all of this reaches it.
-$env:CXXFLAGS = (@($env:CXXFLAGS, '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20', '-isystem C:/temp/winshims', '-DNOMINMAX', '-DNOGDI') | Where-Object { $_ }) -join ' '
-Write-Host "Set CXXFLAGS (delayed template parsing + dlfcn/unistd shim + NOMINMAX/NOGDI) for CMake sub-builds: $env:CXXFLAGS"
+# Force-include the <unistd.h> shim into every C++ TU: LiteRT's vendor backends (Qualcomm
+# qnn_manager.cc, Google Tensor dispatch, ...) call setenv()/close() WITHOUT including
+# <unistd.h> (they rely on it being pulled in transitively on POSIX), so the shim being on the
+# include path isn't enough -- it has to be injected. -include also brings <io.h>'s close()/
+# access(). It's harmless where unused (include-guarded, static-inline). The Rust cxx/cc bridge
+# reads the target-scoped CXXFLAGS_<target> instead, so it is unaffected.
+$env:CXXFLAGS = (@($env:CXXFLAGS, '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20', '-isystem C:/temp/winshims', '-DNOMINMAX', '-DNOGDI', '-include unistd.h', '-D_USE_MATH_DEFINES') | Where-Object { $_ }) -join ' '
+Write-Host "Set CXXFLAGS (delayed template parsing + dlfcn/unistd/alloca shim + NOMINMAX/NOGDI + force-include unistd.h) for CMake sub-builds: $env:CXXFLAGS"
 
 # Globally strip -fPIC from every clang++ invocation. Several bundled deps (sentencepiece
 # -- both litert-lm's own sentencepiece_external AND the copy vendored inside tokenizers-
@@ -581,6 +621,24 @@ endif()
 # `git checkout -- . && git clean -df` first, reverting any earlier edit. patch_file_content
 # (litert-lm's own helper, cmake/modules/utils.cmake) does a literal string(REPLACE) of ALL
 # occurrences when its IS_REGEX arg is FALSE.
+# LiteRT's Qualcomm compiler plugin (vendors/qualcomm/compiler/qnn_compose_graph.cc, via
+# litert/cc/internal/litert_op_options.h) includes "flatbuffers/flexbuffers.h", but litert's
+# global CXX flags (litert.cmake) add -isystem for tflite/absl/protobuf and NOT flatbuffers,
+# so it fails "'flatbuffers/flexbuffers.h' file not found". Add the flatbuffers install include.
+$litertCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
+if ((Test-Path $litertCmake) -and ((Get-Content -Raw $litertCmake) -notmatch '-isystem \$\{FLATBUFFERS_INCLUDE_DIR\}')) {
+    $lc = [System.IO.File]::ReadAllText($litertCmake)
+    $lcAnchor = '-isystem ${PROTOBUF_INSTALL_PREFIX}/include -w"'
+    if ($lc.Contains($lcAnchor)) {
+        $lc = $lc.Replace($lcAnchor, '-isystem ${PROTOBUF_INSTALL_PREFIX}/include -isystem ${FLATBUFFERS_INCLUDE_DIR} -w"')
+        [System.IO.File]::WriteAllText($litertCmake, $lc)
+        Write-Host 'Patched litert.cmake: add flatbuffers install include to litert CXX flags'
+    }
+    else {
+        Write-Host 'WARNING: litert.cmake CXX flags anchor not found; flexbuffers.h may be missing'
+    }
+}
+
 $litertPatcher = Join-Path $SourceDir 'cmake\packages\litert\litert_patcher.cmake'
 if ((Test-Path $litertPatcher) -and ((Get-Content -Raw $litertPatcher) -notmatch 'LiteRTLM-winfix dynamic-loading')) {
     $dlPatch = @'
@@ -591,9 +649,92 @@ patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "access(path.c_st
 patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "results.push_back(path);" "results.push_back(path.string());" FALSE)
 patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "FindLiteRtSharedLibsHelper(path, lib_pattern, full_match, results)" "FindLiteRtSharedLibsHelper(path.string(), lib_pattern, full_match, results)" FALSE)
 message(STATUS "[LiteRTLM-winfix] narrowed std::filesystem::path uses in core/dynamic_loading.cc")
+
+# The C API's SHARED LiteRt.dll (litert_runtime_c_api_shared_lib) is built unconditionally, but
+# litert-lm's target map links only the STATIC liblitert_c_api.a, so nothing needs the DLL. Its
+# link is broken under clang++/lld-link (GNU --whole-archive/--start-group are ignored and it
+# looks for the MSVC-named litert_cc_options.lib). EXCLUDE_FROM_ALL doesn't stop it (litert
+# builds the default `all`), so flip it SHARED->STATIC: a static archive of empty.cc records
+# its PUBLIC deps only as usage requirements and never links, so the litert_cc_options.lib
+# resolution simply doesn't happen. Nothing depends on it, and litert isn't installed
+# (INSTALL_COMMAND ""), so the leftover libLiteRt.a is harmless.
+patch_file_content("${LITERT_SRC_DIR}/c/CMakeLists.txt" "add_library(litert_runtime_c_api_shared_lib SHARED empty.cc)" "add_library(litert_runtime_c_api_shared_lib STATIC empty.cc)" FALSE)
+message(STATUS "[LiteRTLM-winfix] shared LiteRt.dll -> STATIC (avoids lld-link of GNU-named static deps; litert-lm links static c_api)")
+
+# The per-vendor NPU dispatch plugins (dispatch_api_<VENDOR>_so -> LiteRtDispatch_<VENDOR>.dll,
+# defined by _litert_add_dispatch_so in vendors/CMakeLists.txt) are SHARED and hit the SAME
+# broken lld-link path as LiteRt.dll (GNU --whole-archive/-Wl,-soname ignored; MSVC-named
+# litert_cc_options.lib not found). They're runtime-dlopen'd NPU backends, not in litert-lm's
+# target map and useless on a Windows desktop (no such NPU). One SHARED->STATIC on the shared
+# add_library covers every vendor at once. (The escaped \${TGT}/\${DISPATCH_SRCS} keep the
+# literal CMake variable names so string(REPLACE) matches the un-expanded source line.)
+patch_file_content("${LITERT_SRC_DIR}/vendors/CMakeLists.txt" "add_library(\${TGT} SHARED \${DISPATCH_SRCS})" "add_library(\${TGT} STATIC \${DISPATCH_SRCS})" FALSE)
+message(STATUS "[LiteRTLM-winfix] vendor dispatch LiteRtDispatch_*.dll -> STATIC (NPU plugins unused on Windows)")
+
+# Qualcomm defines its dispatch + compiler-plugin as their OWN explicit SHARED add_library
+# (not via the _litert_add_dispatch_so helper), so they need separate SHARED->STATIC patches.
+# Both are runtime-dlopen'd NPU plugins, absent from litert-lm's target map, and fail the same
+# lld-link path (they link the now-STATIC litert_runtime_c_api_shared_lib and want the
+# MSVC-named litert_cc_options.lib). qnn_compiler_plugin is distinct from litert-lm's mapped
+# litert::compiler_plugin (the generic static liblitert_compiler_plugin.a), so this is safe.
+patch_file_content("${LITERT_SRC_DIR}/vendors/qualcomm/dispatch/CMakeLists.txt" "add_library(dispatch_api_qualcomm_so SHARED)" "add_library(dispatch_api_qualcomm_so STATIC)" FALSE)
+patch_file_content("${LITERT_SRC_DIR}/vendors/qualcomm/compiler/CMakeLists.txt" "add_library(qnn_compiler_plugin SHARED" "add_library(qnn_compiler_plugin STATIC" FALSE)
+message(STATUS "[LiteRTLM-winfix] Qualcomm dispatch + qnn_compiler_plugin SHARED -> STATIC")
+
+# litert/tools builds standalone exes (run_model, analyze_model, apply_plugin_main) that are
+# NOT gated by LITERT_BUILD_TOOLS. They link abseil flags/log/str_format via bare CMake target
+# names, which under lld-link leaves those symbols undefined (litert-lm's abseil reaches
+# litert_lm_main only through the full-path local_aggregate, not these tools). litert-lm's
+# target map wants the tool LIBRARIES (liblitert_apply_plugin.a, etc.), not these exes, so
+# EXCLUDE_FROM_ALL them (nothing links an executable, so unlike LiteRt.dll the exclusion holds;
+# the install(TARGETS ...) is a no-op since litert's INSTALL_COMMAND is "").
+patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(run_model" "add_executable(run_model EXCLUDE_FROM_ALL" FALSE)
+patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(analyze_model" "add_executable(analyze_model EXCLUDE_FROM_ALL" FALSE)
+patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(apply_plugin_main" "add_executable(apply_plugin_main EXCLUDE_FROM_ALL" FALSE)
+message(STATUS "[LiteRTLM-winfix] litert tool exes (run_model/analyze_model/apply_plugin_main) EXCLUDE_FROM_ALL")
 '@
     Add-Content -LiteralPath $litertPatcher -Value $dlPatch -Encoding ASCII
     Write-Host 'Patched litert_patcher.cmake: dynamic_loading.cc std::filesystem::path narrowing'
+}
+
+# litert-lm's own runtime/executor/litert_compiled_model_executor_utils.cc calls
+# gpu_options.SetWeightCacheFd(fd) in the fd-based weight-cache branch, but litert::GpuOptions
+# exposes SetWeightCacheFd only on POSIX (it takes a raw file descriptor); on Windows the method
+# doesn't exist -> "no member named 'SetWeightCacheFd'". GPU is disabled on this lane anyway, so
+# guard just that call (the surrounding Duplicate()/Release() keep their side effects). This is
+# the top-level litert-lm repo (no ExternalProject git-checkout), so patch the source directly.
+$execUtils = Join-Path $SourceDir 'runtime\executor\litert_compiled_model_executor_utils.cc'
+if ((Test-Path $execUtils) -and ((Get-Content -Raw $execUtils) -notmatch 'LiteRTLM-winfix.*SetWeightCacheFd')) {
+    $eu = [System.IO.File]::ReadAllText($execUtils)
+    $euAnchor = 'gpu_options.SetWeightCacheFd(fd);'
+    if ($eu.Contains($euAnchor)) {
+        $euRepl = "#if !defined(_WIN32)`n      gpu_options.SetWeightCacheFd(fd);`n#else`n      (void)fd;  // [LiteRTLM-winfix] litert::GpuOptions has no fd-based weight cache on Windows`n#endif"
+        $eu = $eu.Replace($euAnchor, $euRepl)
+        [System.IO.File]::WriteAllText($execUtils, $eu)
+        Write-Host 'Patched litert_compiled_model_executor_utils.cc: guard SetWeightCacheFd on Windows'
+    }
+    else {
+        Write-Host 'WARNING: SetWeightCacheFd anchor not found in executor utils'
+    }
+}
+
+# Same story in runtime/executor/llm_executor_settings_utils.cc: it calls litert::GpuOptions /
+# litert::RuntimeOptions setters (SetKernelBatchSize, SetDisableDelegateClustering) that the
+# Windows litert build doesn't expose (GPU/delegate tuning). Wrap each full call statement in a
+# _WIN32 guard. The regex `\([^;]*\);` spans the multi-line call up to its terminating semicolon
+# ([^;] matches newlines in .NET regex), so exact indentation doesn't matter.
+$settingsUtils = Join-Path $SourceDir 'runtime\executor\llm_executor_settings_utils.cc'
+if ((Test-Path $settingsUtils) -and ((Get-Content -Raw $settingsUtils) -notmatch 'LiteRTLM-winfix')) {
+    $su = [System.IO.File]::ReadAllText($settingsUtils)
+    foreach ($m in @('gpu_compilation_options.SetKernelBatchSize', 'runtime_options.SetDisableDelegateClustering')) {
+        $pat = [regex]::Escape($m) + '\([^;]*\);'
+        $su = [regex]::Replace($su, $pat, {
+            param($mm)
+            "#if !defined(_WIN32)  // [LiteRTLM-winfix] litert GpuOptions/RuntimeOptions setter absent on Windows`n      " + $mm.Value + "`n#endif"
+        })
+    }
+    [System.IO.File]::WriteAllText($settingsUtils, $su)
+    Write-Host 'Patched llm_executor_settings_utils.cc: guard Windows-absent GpuOptions/RuntimeOptions setters'
 }
 
 $buildDir = Join-Path $SourceDir 'build_ninja'
