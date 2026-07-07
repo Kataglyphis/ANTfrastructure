@@ -981,6 +981,135 @@ if ((Test-Path $litertLmPkg) -and ((Get-Content -Raw $litertLmPkg) -notmatch 'Li
     Write-Host 'Patched litert_lm/CMakeLists.txt: route Windows clang++/lld-link to the MSVC /WHOLEARCHIVE link spec (-Wl, prefixed)'
 }
 
+# [LiteRTLM-winfix clean-link] Make ninja link litert_lm_main.exe cleanly IN ONE PASS (no post-ninja
+# manual relink). Three independent defects converge at this one link, all fixed in the CMake target:
+#   1. deprecated CRT globals (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr + POSIX and
+#      __imp_ dllimport spellings) that the split UCRT does not export as data under this -nostdlib link
+#      -> compile a CRT-compat shim that provides them (init from UCRT accessors) + /alternatename the
+#      POSIX/__imp_ variants onto it.
+#   2. flatbuffers::ClassicLocale::instance_ is compiled into no library (guarded by
+#      FLATBUFFERS_LOCALE_INDEPENDENT, ON for consumers but OFF in flatbuffers' own util.cpp build)
+#      -> compile flatbuffers util.cpp into litert_lm_main (auto-detects ON -> defines instance_).
+#   3. protoc.lib + protobuf-lite.lib carry __imp_ (dllimport) abseil hash_internal::MixingHashState
+#      (a protobuf-internal quirk; NOT an ABSL_CONSUME_DLL define). Neither is needed by the runtime exe
+#      (it links full protobuf.lib) and they are transitively pulled by-path (sentencepiece), so they
+#      cannot be dropped in CMake -> a PRE_LINK step empties both archives right before the link.
+$cleanCml = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
+if ((Test-Path $cleanCml) -and ((Get-Content -Raw $cleanCml) -notmatch 'LiteRTLM-winfix clean-link')) {
+    # (a) CRT-compat shim as a real compiled source alongside litert_lm_main.cc
+    $crtCc = Join-Path $SourceDir 'runtime\engine\crtcompat.cc'
+    $crtSrc = @'
+// [LiteRTLM-winfix] CRT compat shim: litert-lm objects reference deprecated CRT globals
+// (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr + POSIX and __imp_ dllimport forms)
+// that the split UCRT does not export as data under litert_lm_main's -nostdlib link. Provide real
+// storage initialised from the UCRT accessors + the __imp_ pointer forms the dllimport references
+// dereference. Accessors are declared by hand (NOT via <time.h>/<stdlib.h>) because those headers
+// declare the very globals we define here as dllimport, which conflicts ("illegal initializer").
+typedef unsigned long long crtcompat_size_t;
+extern "C" {
+int  _get_timezone(long*);
+int  _get_daylight(int*);
+int  _get_tzname(crtcompat_size_t*, char*, crtcompat_size_t, int);
+void _tzset(void);
+char*** __p__environ(void);
+long   _timezone = 0;
+int    _daylight = 0;
+char   _crtcompat_tzn0[128] = "";
+char   _crtcompat_tzn1[128] = "";
+char*  _tzname[2] = { _crtcompat_tzn0, _crtcompat_tzn1 };
+int    _sys_nerr = 0;
+char*  _sys_errlist[1] = { (char*)"" };
+char** _environ = 0;
+void* __imp__timezone    = &_timezone;
+void* __imp__daylight    = &_daylight;
+void* __imp__tzname      = &_tzname;
+void* __imp__sys_nerr    = &_sys_nerr;
+void* __imp__sys_errlist = &_sys_errlist;
+void* __imp__environ     = &_environ;
+}
+namespace {
+struct CrtCompatInit {
+    CrtCompatInit() {
+        _tzset();
+        long tz = 0;  if (_get_timezone(&tz) == 0) _timezone = tz;
+        int  dl = 0;  if (_get_daylight(&dl) == 0) _daylight = dl;
+        crtcompat_size_t n = 0;
+        _get_tzname(&n, _crtcompat_tzn0, sizeof(_crtcompat_tzn0), 0);
+        _get_tzname(&n, _crtcompat_tzn1, sizeof(_crtcompat_tzn1), 1);
+        _environ = __p__environ() ? *__p__environ() : 0;
+    }
+};
+CrtCompatInit _crt_compat_init;
+}
+'@
+    Set-Content -Path $crtCc -Value $crtSrc -Encoding ASCII
+    # (b) an empty object used to truncate the protobuf carriers to empty archives
+    $emptyCc = Join-Path $SourceDir 'winfix_empty.cc'
+    $emptyObj = Join-Path $SourceDir 'winfix_empty.obj'
+    Set-Content -Path $emptyCc -Value '// [LiteRTLM-winfix] intentionally empty' -Encoding ASCII
+    & (Get-Command clang++.exe).Source -c $emptyCc -o $emptyObj 2>&1 | Out-Null
+    $emptyObjFwd = $emptyObj -replace '\\', '/'
+    $llvmArFwd = ((Get-Command llvm-ar.exe).Source) -replace '\\', '/'
+    # (c) inject sources + CRT alternatenames + PRE_LINK neutralize into the litert_lm_main target
+    $winAlts = @('timezone=_timezone', 'daylight=_daylight', 'tzname=_tzname', 'sys_nerr=_sys_nerr', 'sys_errlist=_sys_errlist', 'environ=_environ',
+        '__imp_timezone=__imp__timezone', '__imp_daylight=__imp__daylight', '__imp_tzname=__imp__tzname', '__imp_sys_nerr=__imp__sys_nerr', '__imp_sys_errlist=__imp__sys_errlist', '__imp_environ=__imp__environ')
+    $altLines = ($winAlts | ForEach-Object { "    `"LINKER:/alternatename:$_`"" }) -join "`n"
+    # Single-quoted: ${CMAKE_BINARY_DIR} must reach the CMakeLists verbatim (CMake expands it, not PS).
+    # No backtick here -- these are inserted via $-interpolation into the here-string below, and PS does
+    # not re-expand a variable's contents, so a literal backtick would leak into the generated path.
+    $protoLibDir = '${CMAKE_BINARY_DIR}/external/protobuf/install/lib'
+    $fbUtil = '${CMAKE_BINARY_DIR}/external/flatbuffers/src/flatbuffers_external/src/util.cpp'
+    $fbInc = '${CMAKE_BINARY_DIR}/external/flatbuffers/install/include'
+    $inject = @"
+
+# [LiteRTLM-winfix clean-link] link a CRT-compat shim + flatbuffers util.cpp into litert_lm_main, alias
+# the POSIX/__imp_ CRT global variants onto the shim, and empty the protobuf __imp_-abseil carriers
+# (protoc.lib/protobuf-lite.lib) right before the link. Makes ninja link the exe in one pass.
+# crtcompat.cc AND util.cpp are compiled in ISOLATION (own custom commands, clean flags) rather than as
+# target sources: litert_lm_main's flags force -include unistd.h -> UCRT stdlib.h/time.h, which #define
+# the deprecated CRT globals (_environ/_sys_nerr/...) as accessor-wrapping MACROS, so the shim's
+# definitions would macro-expand into garbage ("illegal initializer"). The clean flags below match the
+# standalone recipe that was link-validated to 0 undefined symbols.
+if(WIN32)
+    add_custom_command(
+        OUTPUT "`${CMAKE_BINARY_DIR}/crtcompat_winfix.obj"
+        COMMAND "`${CMAKE_CXX_COMPILER}" -c "`${LITERTLM_PROJECT_ROOT}/runtime/engine/crtcompat.cc" -o "`${CMAKE_BINARY_DIR}/crtcompat_winfix.obj" -O2 -DNDEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrt
+        DEPENDS "`${LITERTLM_PROJECT_ROOT}/runtime/engine/crtcompat.cc"
+        COMMENT "[LiteRTLM-winfix] compiling crtcompat shim in isolation (clean CRT flags)"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "`${CMAKE_BINARY_DIR}/fbutil_winfix.obj"
+        COMMAND "`${CMAKE_CXX_COMPILER}" -c "$fbUtil" -o "`${CMAKE_BINARY_DIR}/fbutil_winfix.obj" -O2 -DNDEBUG -D_DLL -D_MT -I "$fbInc" -Xclang --dependent-lib=msvcrt
+        DEPENDS flatbuffers_external
+        COMMENT "[LiteRTLM-winfix] compiling flatbuffers util.cpp in isolation (defines ClassicLocale::instance_)"
+        VERBATIM
+    )
+    set_source_files_properties("`${CMAKE_BINARY_DIR}/crtcompat_winfix.obj" "`${CMAKE_BINARY_DIR}/fbutil_winfix.obj" PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+    target_sources(litert_lm_main PRIVATE
+        "`${CMAKE_BINARY_DIR}/crtcompat_winfix.obj"
+        "`${CMAKE_BINARY_DIR}/fbutil_winfix.obj"
+    )
+    if(TARGET flatbuffers_external)
+        add_dependencies(litert_lm_main flatbuffers_external)
+    endif()
+    target_link_options(litert_lm_main PRIVATE
+$altLines
+    )
+    add_custom_command(TARGET litert_lm_main PRE_LINK
+        COMMAND "`${CMAKE_COMMAND}" -E rm -f "$protoLibDir/protoc.lib" "$protoLibDir/protobuf-lite.lib"
+        COMMAND "$llvmArFwd" rcs "$protoLibDir/protoc.lib" "$emptyObjFwd"
+        COMMAND "$llvmArFwd" rcs "$protoLibDir/protobuf-lite.lib" "$emptyObjFwd"
+        COMMENT "[LiteRTLM-winfix] neutralizing protoc.lib/protobuf-lite.lib (abseil __imp_ MixingHashState carriers)"
+        VERBATIM
+    )
+endif()
+"@
+    $cc = [System.IO.File]::ReadAllText($cleanCml)
+    [System.IO.File]::WriteAllText($cleanCml, $cc + $inject)
+    Write-Host 'Patched litert_lm/CMakeLists.txt [clean-link]: crtcompat + flatbuffers util sources, CRT alternatenames, PRE_LINK protoc/protobuf-lite neutralize'
+}
+
 # The abseil ExternalProject builds MSVC-named static libs on Windows (absl_<name>.lib), but
 # cmake/packages/absl/absl_import_static_lib.cmake + absl_target_map.cmake hardcode GNU names
 # (${ABSL_LIB_DIR}/libabsl_<name>.a) with no MSVC branch -- the clang++ compiler-id=Clang trap
@@ -1203,140 +1332,59 @@ Write-Host 'Running ExternalProject step 6 (build)...'
 if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 101) { Write-Host "WARNING: ninja build step exited with code $LASTEXITCODE" }
 Write-Host "Build step completed with exit code: $LASTEXITCODE"
 
-# --- Final litert_lm_main link (fully clean, exit 0) -------------------------------------------
-# The ExternalProject link above stops on a stubborn 20-symbol tail. All 20 reduce to 3 root causes;
-# ninja has already built every lib + the .rsp, so fix them and do the final link explicitly:
-#   1. abseil hash_internal::MixingHashState __imp_ (dllimport): ONLY protoc.lib + protobuf-lite.lib
-#      carry it (they were compiled with ABSL_CONSUME_DLL). Neither is needed by the runtime exe
-#      (the full protobuf.lib is linked) -> drop both from the .rsp.
-#   2. flatbuffers::ClassicLocale::instance_: flatbuffers' util.cpp (locale support) is compiled into
-#      no library in the tree -> compile it here and add the .obj.
-#   3. deprecated CRT globals (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr, plus their
-#      POSIX and __imp_ dllimport spellings): the split UCRT does not export these as data under this
-#      -nostdlib link -> a small compat shim provides real storage (initialised from the UCRT
-#      _get_*/__p__environ accessors) and /alternatename maps the POSIX/underscore variants onto it.
+# --- litert_lm_main.exe: ninja links it cleanly in one pass -------------------------------------
+# The [LiteRTLM-winfix clean-link] CMake patch (crtcompat shim + flatbuffers util.cpp sources, CRT
+# /alternatename aliases, PRE_LINK protoc/protobuf-lite neutralize) makes the ExternalProject build
+# above produce a fully-linked litert_lm_main.exe directly -- no manual relink. Stage the exe + its
+# runtime DLLs so it runs standalone (the source tree is wiped below unless KEEP_BUILD_TREE is set).
 $mainExe = Join-Path $litertBuildDir 'litert_lm_main.exe'
-$mainRsp = Join-Path $litertBuildDir 'CMakeFiles\litert_lm_main.rsp'
-if ((Test-Path $mainRsp) -and -not (Test-Path $mainExe)) {
-    Write-Host 'Final litert_lm_main link: protobuf-lite/protoc drop + flatbuffers util + CRT compat shim...'
-    # clang/lld emit harmless warnings to stderr (e.g. "ignoring unknown argument --export-dynamic-symbol");
-    # under Windows PowerShell 5.1 + EAP=Stop native stderr becomes a TERMINATING error and aborts the
-    # script mid-link. Drop to Continue for the native compile/link calls; success is decided by Test-Path.
+if (Test-Path $mainExe) {
+    # clang/lld warnings on stderr must not trip EAP=Stop; success is decided by Test-Path.
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $clangxx = (Get-Command clang++.exe).Source
-    # (1) filtered rsp: remove the two dllimport-abseil carriers
-    $rspTxt = (Get-Content -Raw $mainRsp) -replace '[^\s"]*protoc\.lib', '' -replace '[^\s"]*protobuf-lite\.lib', ''
-    $mainRspFixed = Join-Path $litertBuildDir 'CMakeFiles\litert_lm_main_fixed.rsp'
-    Set-Content -Path $mainRspFixed -Value $rspTxt -Encoding ASCII
-    # (2) compile flatbuffers util.cpp (defines ClassicLocale::instance_ + ctor/dtor)
-    $fbUtil = Get-ChildItem (Join-Path $litertBuildDir 'external\flatbuffers') -Recurse -Filter 'util.cpp' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'flatbuffers_external' } | Select-Object -First 1
-    $fbInc = Join-Path $litertBuildDir 'external\flatbuffers\install\include'
-    $fbObj = Join-Path $litertBuildDir 'fbutil.obj'
-    & $clangxx -c $fbUtil.FullName -o $fbObj -O2 -DNDEBUG -D_DLL -D_MT -I $fbInc -Xclang --dependent-lib=msvcrt 2>&1 | Select-String 'error' | Select-Object -First 3
-    # (3) CRT compat shim
-    $shimCc = Join-Path $litertBuildDir 'crtcompat.cc'
-    $shimSrc = @'
-// CRT compat shim (LiteRTLM-winfix): litert-lm objects reference deprecated CRT globals
-// (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr, plus POSIX and __imp_ dllimport
-// forms) that the split UCRT does not export as data under this -nostdlib link. Provide real storage
-// initialised from the UCRT accessors. The accessors are declared by hand (NOT via <time.h>/<stdlib.h>)
-// because those headers declare the very globals we define as dllimport, which would conflict.
-typedef unsigned long long size_t_;
-extern "C" {
-int  _get_timezone(long*);
-int  _get_daylight(int*);
-int  _get_tzname(size_t_*, char*, size_t_, int);
-void _tzset(void);
-char*** __p__environ(void);
-long   _timezone = 0;
-int    _daylight = 0;
-char   _tzn0[128] = "";
-char   _tzn1[128] = "";
-char*  _tzname[2] = { _tzn0, _tzn1 };
-int    _sys_nerr = 0;
-char*  _sys_errlist[1] = { (char*)"" };
-char** _environ = 0;
-void* __imp__timezone    = &_timezone;
-void* __imp__daylight    = &_daylight;
-void* __imp__tzname      = &_tzname;
-void* __imp__sys_nerr    = &_sys_nerr;
-void* __imp__sys_errlist = &_sys_errlist;
-void* __imp__environ     = &_environ;
-}
-namespace {
-struct CrtCompatInit {
-    CrtCompatInit() {
-        _tzset();
-        long tz = 0;  if (_get_timezone(&tz) == 0) _timezone = tz;
-        int  dl = 0;  if (_get_daylight(&dl) == 0) _daylight = dl;
-        size_t_ n = 0;
-        _get_tzname(&n, _tzn0, sizeof(_tzn0), 0);
-        _get_tzname(&n, _tzn1, sizeof(_tzn1), 1);
-        _environ = __p__environ() ? *__p__environ() : 0;
-    }
-};
-CrtCompatInit _crt_compat_init;
-}
-'@
-    Set-Content -Path $shimCc -Value $shimSrc -Encoding ASCII
-    $shimObj = Join-Path $litertBuildDir 'crtcompat.obj'
-    & $clangxx -c $shimCc -o $shimObj -O2 -DNDEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrt 2>&1 | Select-String 'error' | Select-Object -First 3
-    # final link (mirrors the ninja CXX_EXECUTABLE_LINKER rule + our 3 fixes)
-    $alts = @('timezone=_timezone', 'daylight=_daylight', 'tzname=_tzname', 'sys_nerr=_sys_nerr', 'sys_errlist=_sys_errlist', 'environ=_environ',
-        '__imp_timezone=__imp__timezone', '__imp_daylight=__imp__daylight', '__imp_tzname=__imp__tzname', '__imp_sys_nerr=__imp__sys_nerr', '__imp_sys_errlist=__imp__sys_errlist', '__imp_environ=__imp__environ') |
-        ForEach-Object { '-Xlinker'; "/alternatename:$_" }
-    Push-Location $litertBuildDir
-    & $clangxx -nostartfiles -nostdlib -fdelayed-template-parsing -Wno-delayed-template-parsing-in-cxx20 -isystem $winShimDir -DNOMINMAX -DNOGDI -include unistd.h -D_USE_MATH_DEFINES -fpermissive -O3 -DNDEBUG -D_DLL -D_MT -Xclang --dependent-lib=msvcrt -Xlinker /subsystem:console -Xlinker --export-dynamic-symbol=LiteRt* -fuse-ld=lld-link '@CMakeFiles\litert_lm_main_fixed.rsp' $shimObj $fbObj @alts -o litert_lm_main.exe -Xlinker /MANIFEST:EMBED -Xlinker /implib:litert_lm_main.lib -Xlinker /pdb:litert_lm_main.pdb -Xlinker /version:0.0 2>&1 | Select-String 'error|undefined' | Select-Object -First 8
-    $linkExit = $LASTEXITCODE
-    Pop-Location
-    if (Test-Path $mainExe) {
-        Write-Host "SUCCESS: litert_lm_main.exe linked cleanly ($([math]::Round((Get-Item $mainExe).Length / 1MB, 1)) MB), exit $linkExit"
-        # Stage exe + pdb to the install prefix (the build tree is wiped below unless KEEP is set), then
-        # co-locate the runtime DLLs it needs (dynamic CRT + any vcpkg deps) so the exe actually runs.
-        $binOut = Join-Path $litertLmInstallDir 'bin'
-        New-Item -ItemType Directory -Force -Path $binOut | Out-Null
-        Copy-Item $mainExe $binOut -Force
-        Copy-Item (Join-Path $litertBuildDir 'litert_lm_main.pdb') $binOut -Force -ErrorAction SilentlyContinue
-        $redist = Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT' -Directory -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
-        if ($redist) { Copy-Item (Join-Path $redist.FullName '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
-        # vcruntime140_1.dll / msvcp140.dll are NOT in System32 on a bare Server Core base -- they ship with
-        # the VC toolset/redist. Search broadly (VS install + clang) and stage whatever copies are found.
-        foreach ($d in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'concrt140.dll', 'ucrtbase.dll')) {
-            if (-not (Test-Path (Join-Path $binOut $d))) {
-                $sys = Join-Path $env:SystemRoot "System32\$d"
-                if (Test-Path $sys) { Copy-Item $sys $binOut -Force -ErrorAction SilentlyContinue }
-                else { $found = Get-ChildItem 'C:\Program Files*' -Recurse -Filter $d -File -ErrorAction SilentlyContinue | Select-Object -First 1; if ($found) { Copy-Item $found.FullName $binOut -Force -ErrorAction SilentlyContinue } }
-            }
+    Write-Host "litert_lm_main.exe linked by ninja ($([math]::Round((Get-Item $mainExe).Length / 1MB, 1)) MB)"
+    $binOut = Join-Path $litertLmInstallDir 'bin'
+    New-Item -ItemType Directory -Force -Path $binOut | Out-Null
+    Copy-Item $mainExe $binOut -Force
+    Copy-Item (Join-Path $litertBuildDir 'litert_lm_main.pdb') $binOut -Force -ErrorAction SilentlyContinue
+    # dynamic-CRT redist DLLs (targeted glob into the VS redist tree)
+    $redist = Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT' -Directory -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
+    if ($redist) { Copy-Item (Join-Path $redist.FullName '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
+    # vcruntime140_1.dll / msvcp140.dll are not in a bare Server Core System32; search the resolved MSVC
+    # toolset (via Get-MsvcToolsRoot -- vswhere-based, ships them under bin\Hostx64\x64) rather than
+    # recursing all of Program Files.
+    $msvcRoot = try { Get-MsvcToolsRoot } catch { $null }
+    foreach ($d in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'concrt140.dll', 'ucrtbase.dll')) {
+        if (-not (Test-Path (Join-Path $binOut $d))) {
+            $sys = Join-Path $env:SystemRoot "System32\$d"
+            if (Test-Path $sys) { Copy-Item $sys $binOut -Force -ErrorAction SilentlyContinue }
+            elseif ($msvcRoot) { $found = Get-ChildItem $msvcRoot -Recurse -Filter $d -File -ErrorAction SilentlyContinue | Select-Object -First 1; if ($found) { Copy-Item $found.FullName $binOut -Force -ErrorAction SilentlyContinue } }
         }
-        $vcpkgBin = Join-Path $vcpkgDir 'installed\x64-windows\bin'
-        if (Test-Path $vcpkgBin) { Copy-Item (Join-Path $vcpkgBin '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
-        # Resolve the exe's imported DLLs. api-ms-win-* are UCRT API-set forwarders (virtual, resolved by
-        # the loader to ucrtbase.dll -- never physical files, so ignore them). For any REAL import not yet
-        # staged and not in System32 (e.g. kissfft-float.dll, z.dll -- built inside the tree), search the
-        # build tree and co-locate it.
-        $readobj = Get-ChildItem 'C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin\llvm-readobj.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($readobj) {
-            $imps = & $readobj.FullName --coff-imports $mainExe 2>$null | Select-String 'Name:' | ForEach-Object { ($_ -replace '.*Name:\s*', '').Trim() } | Where-Object { $_ -match '\.dll$' } | Sort-Object -Unique
-            Write-Host ("litert_lm_main.exe imports: " + ($imps -join ', '))
-            $treeDlls = @{}
-            Get-ChildItem $buildDir -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object { if (-not $treeDlls.ContainsKey($_.Name)) { $treeDlls[$_.Name] = $_.FullName } }
-            foreach ($imp in $imps) {
-                if ($imp -match '^api-ms-win-') { continue }
-                if ((Test-Path (Join-Path $binOut $imp)) -or (Test-Path (Join-Path $env:SystemRoot "System32\$imp"))) { continue }
-                if ($treeDlls.ContainsKey($imp)) { Copy-Item $treeDlls[$imp] $binOut -Force -ErrorAction SilentlyContinue }
-            }
-            $missing = $imps | Where-Object { $_ -notmatch '^api-ms-win-' -and -not (Test-Path (Join-Path $binOut $_)) -and -not (Test-Path (Join-Path $env:SystemRoot "System32\$_")) }
-            if ($missing) { Write-Host ("  STILL-MISSING DLLs (not found anywhere): " + ($missing -join ', ')) }
-        }
-        $stagedExe = Join-Path $binOut 'litert_lm_main.exe'
-        $env:PATH = "$binOut;$env:PATH"
-        & cmd /c "`"$stagedExe`" --help 2>&1" | Out-Null
-        Write-Host "litert_lm_main.exe staged to $binOut ; smoke-run exit: $LASTEXITCODE (0 or a usage/arg code = runs; 0xC0000135/-1073741515 = missing DLL)"
     }
-    else { Write-Host "ERROR: final litert_lm_main link did not produce the exe (exit $linkExit)" }
+    $vcpkgBin = Join-Path $vcpkgDir 'installed\x64-windows\bin'
+    if (Test-Path $vcpkgBin) { Copy-Item (Join-Path $vcpkgBin '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
+    # Co-locate any REAL imported DLL built inside the tree (kissfft-float.dll, z.dll, ...). api-ms-win-*
+    # are UCRT API-set forwarders (virtual, loader-resolved to ucrtbase.dll -- never physical files) -> skip.
+    $readobj = (Get-Command llvm-readobj.exe -ErrorAction SilentlyContinue).Source
+    if ($readobj) {
+        $imps = & $readobj --coff-imports $mainExe 2>$null | Select-String 'Name:' | ForEach-Object { ($_ -replace '.*Name:\s*', '').Trim() } | Where-Object { $_ -match '\.dll$' } | Sort-Object -Unique
+        Write-Host ("litert_lm_main.exe imports: " + ($imps -join ', '))
+        $treeDlls = @{}
+        Get-ChildItem $buildDir -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object { if (-not $treeDlls.ContainsKey($_.Name)) { $treeDlls[$_.Name] = $_.FullName } }
+        foreach ($imp in $imps) {
+            if ($imp -match '^api-ms-win-') { continue }
+            if ((Test-Path (Join-Path $binOut $imp)) -or (Test-Path (Join-Path $env:SystemRoot "System32\$imp"))) { continue }
+            if ($treeDlls.ContainsKey($imp)) { Copy-Item $treeDlls[$imp] $binOut -Force -ErrorAction SilentlyContinue }
+        }
+        $missing = $imps | Where-Object { $_ -notmatch '^api-ms-win-' -and -not (Test-Path (Join-Path $binOut $_)) -and -not (Test-Path (Join-Path $env:SystemRoot "System32\$_")) }
+        if ($missing) { Write-Host ("  STILL-MISSING DLLs (not found anywhere): " + ($missing -join ', ')) }
+    }
+    $env:PATH = "$binOut;$env:PATH"
+    & cmd /c "`"$(Join-Path $binOut 'litert_lm_main.exe')`" --help 2>&1" | Out-Null
+    Write-Host "litert_lm_main.exe staged to $binOut ; smoke-run exit: $LASTEXITCODE (0 or a usage/arg code = runs; 0xC0000135/-1073741515 = missing DLL)"
     $ErrorActionPreference = $prevEAP
 }
+else { Write-Host "WARNING: ninja did not produce litert_lm_main.exe -- the clean-link CMake patch may need attention" }
 # ----------------------------------------------------------------------------------------------
 
 Write-Host 'Installing...'
