@@ -8,6 +8,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 
+$installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
+if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
+Import-Module $installerModulePath -Force
+
 # Admin-Check
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
@@ -54,7 +58,7 @@ function Dump-InstallerLogs {
 
 # TLS 1.2 for downloads
 
-try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+Enable-Tls12ForDownloads
 
 # Prepare temp directory for installer logs
 

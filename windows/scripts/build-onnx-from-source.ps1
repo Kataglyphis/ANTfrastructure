@@ -56,15 +56,8 @@ if ($gpuEnv.GpuType -eq 'nvidia') {
     } catch {
         Write-Host "002-disable-cuda-pch.patch did not apply cleanly -- falling back to inline regex"
         $pch = "$SourceDir\cmake\onnxruntime_providers_cuda.cmake"
-        if (Test-Path $pch) {
-            $pchText = [System.IO.File]::ReadAllText($pch)
-            $pchNew = $pchText -replace 'target_precompile_headers\([^)]+\)', ''
-            if ($pchNew -eq $pchText) {
-                Write-Warning "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $pch."
-            } else {
-                [System.IO.File]::WriteAllText($pch, $pchNew)
-            }
-        }
+        Invoke-InlineRegexPatch -Path $pch -Pattern 'target_precompile_headers\([^)]+\)' `
+            -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $pch." | Out-Null
     }
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
         # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back
@@ -129,15 +122,8 @@ if ($env:GPU_TYPE -eq 'nvidia') {
     }
     # CUTLASS uint128: clang-cl lacks the MSVC-only `_udiv128` intrinsic.
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
-    if (Test-Path $cut) {
-        $cutText = [System.IO.File]::ReadAllText($cut)
-        $cutNew = $cutText -replace '_udiv128', 'udiv128'
-        if ($cutNew -eq $cutText) {
-            Write-Warning "cutlass/uint128.h: _udiv128 not found; if CUTLASS still references the MSVC-only intrinsic, clang-cl will fail. Verify $cut."
-        } else {
-            [System.IO.File]::WriteAllText($cut, $cutNew)
-        }
-    }
+    Invoke-InlineRegexPatch -Path $cut -Pattern '_udiv128' -Replacement 'udiv128' `
+        -WarnMessage "cutlass/uint128.h: _udiv128 not found; if CUTLASS still references the MSVC-only intrinsic, clang-cl will fail. Verify $cut." | Out-Null
     # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
 }
 
@@ -151,22 +137,13 @@ Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
     '--threads \d+'
 )
 
-$env:NINJA_STATUS = "[%f/%t] "
 # Memory-scaled parallelism: AVX-512/CUDA TUs under clang-cl peak at several GB each,
 # so full -j<cores> can OOM the container. jobs = min(cores, memGB/4), floor 2
 # (override with BUILD_JOBS). 4 GB/job is tuned to use more host cores; typical TUs
 # use ~2-3 GB and only a few heavy CUDA kernels approach the cap. Ninja is
 # incremental, so the -j2 retry after an OOM-style failure only redoes the jobs
 # that died -- worst case is a slow tail, not a failed build.
-$jobs = Get-BuildJobCount -MemGBPerJob 4
-Write-Host "Building with ninja -j$jobs..."
-ninja -j $jobs -C $buildDir 2>&1
-if ($LASTEXITCODE -ne 0 -and $jobs -gt 2) {
-    Write-Host "ninja -j$jobs failed (exit $LASTEXITCODE) - retrying incrementally with -j2..."
-    ninja -j2 -C $buildDir 2>&1
-}
-if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
-cmake --install $buildDir --config Release; if ($LASTEXITCODE -ne 0) { throw "Install failed" }
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Install
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='
 

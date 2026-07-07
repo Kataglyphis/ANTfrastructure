@@ -17,6 +17,20 @@ function Check {
     }
 }
 
+# Resolve a tool's full path, preferring an explicit <TOOL>_BIN env var (env-driven,
+# no hardcoded install roots) and falling back to PATH lookup. Returns $null if neither
+# yields a path. Kept local: healthcheck is a self-contained Docker HEALTHCHECK payload
+# with no module imports.
+function Resolve-ToolPath {
+    param(
+        [string]$BinEnvVar,
+        [Parameter(Mandatory)][string]$ExeName
+    )
+    $binDir = if ($BinEnvVar) { [Environment]::GetEnvironmentVariable($BinEnvVar) } else { $null }
+    if ($binDir) { return (Join-Path $binDir $ExeName) }
+    return (Get-Command $ExeName -ErrorAction SilentlyContinue).Source
+}
+
 # ONNX Runtime (source-built C/C++ runtime; ENABLE_PYTHON=OFF so no Python module)
 Check "onnxruntime DLL" {
     $onnxRoot = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
@@ -34,8 +48,7 @@ Check "python --version" {
 
 # FFmpeg -- prefer $env:FFMPEG_BIN, fall back to Get-Command (env-driven, no hardcoded C:\runtime\ffmpeg\bin).
 Check "ffmpeg --version" {
-    $ffmpegBin = $env:FFMPEG_BIN
-    $ffmpegExe = if ($ffmpegBin) { Join-Path $ffmpegBin 'ffmpeg.exe' } else { (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue).Source }
+    $ffmpegExe = Resolve-ToolPath -BinEnvVar 'FFMPEG_BIN' -ExeName 'ffmpeg.exe'
     if (-not $ffmpegExe) { throw 'ffmpeg.exe not found (FFMPEG_BIN env var unset and ffmpeg.exe not on PATH)' }
     $v = & $ffmpegExe -version 2>&1 | Select-Object -First 1
     if (-not $v) { throw "ffmpeg not found or failed" }
@@ -43,15 +56,14 @@ Check "ffmpeg --version" {
 
 # GStreamer -- prefer $env:GSTREAMER_BIN, fall back to Get-Command.
 Check "gst-launch-1.0 --version" {
-    $gstBin = $env:GSTREAMER_BIN
-    $gstLaunch = if ($gstBin) { Join-Path $gstBin 'gst-launch-1.0.exe' } else { (Get-Command gst-launch-1.0.exe -ErrorAction SilentlyContinue).Source }
+    $gstLaunch = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-launch-1.0.exe'
     if (-not $gstLaunch) { throw 'gst-launch-1.0.exe not found (GSTREAMER_BIN env var unset and gst-launch-1.0.exe not on PATH)' }
     $v = & $gstLaunch --version 2>&1 | Select-Object -First 1
     if (-not $v) { throw "gst-launch-1.0 not found or failed" }
 }
 
 # GStreamer plugin integrations (non-fatal -- auto-detected by meson at build time)
-$gstInspect = if ($env:GSTREAMER_BIN) { Join-Path $env:GSTREAMER_BIN 'gst-inspect-1.0.exe' } else { (Get-Command gst-inspect-1.0.exe -ErrorAction SilentlyContinue).Source }
+$gstInspect = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-inspect-1.0.exe'
 foreach ($gstPlugin in @('opencv', 'tensorfilter', 'libav')) {
     $v = & $gstInspect $gstPlugin 2>&1 | Select-Object -First 1
     if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] gst-plugin $gstPlugin found" } `

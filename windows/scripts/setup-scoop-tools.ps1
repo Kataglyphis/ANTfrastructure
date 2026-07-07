@@ -18,6 +18,10 @@ if (-not (Test-Path $sharedModulePath)) {
 
 Import-Module $sharedModulePath -Force
 
+$installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
+if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
+Import-Module $installerModulePath -Force
+
 # Derive the fallback CMake URL from CMAKE_VERSION (baked in by load-versions.ps1)
 # rather than a hardcoded literal that silently drifts from versions.env. The
 # primary value still comes from the CMAKE_NIGHTLY_URL build-arg / env when set.
@@ -41,7 +45,7 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 dotnet tool install --tool-path C:\WiX wix --version 4.0.6
 & 'C:\WiX\wix.exe' extension add --global WixToolset.UI.wixext/4.0.4
 
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
 irm get.scoop.sh -outfile $scoopInstallScript
 & $scoopInstallScript -RunAsAdmin

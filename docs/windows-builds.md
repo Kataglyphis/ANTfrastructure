@@ -167,6 +167,8 @@ the 2-CPU `docker build` cap:
 |-------|--------------------|------------------------------|
 | toolchain | `Dockerfile.toolchain-builder` (clones CPython + writes props) | `build-toolchain-all.ps1` (`PCbuild\build.bat`) |
 | media-core | `Dockerfile.media-core-builder` | `build-media-core-all.ps1` (ONNX→GenAI→OpenCV→FFmpeg) |
+| media-litert (sequential only) | `Dockerfile.media-litert-builder` | `build-litert-all.ps1` (LiteRT→LiteRT-LM) |
+| media-tvm (sequential only) | `Dockerfile.media-tvm-builder` | `build-tvm-from-source.ps1` |
 | media merge | `Dockerfile.media-merge-builder` (fan-in `COPY --from` + env) | `build-gstreamer-from-source.ps1` |
 
 The **merge stage splits**: the fan-in (`COPY --from` of the three branch trees)
@@ -175,10 +177,15 @@ IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
 `docker commit` preserves the builder image's ENV, so each result image is a
 drop-in replacement for the old single-Dockerfile output.
 
-The remaining `docker build` stages are genuinely **not CPU-bound**, so they stay
-at 2 CPUs (no benefit from more): `base`/`sdk` are network/install-bound, and the
-`litert`/`tvm` aux branches run *concurrently underneath* media-core so their
-2-CPU cap is hidden by the long pole.
+In the default **sequential** schedule the `litert`/`tvm` aux branches **also**
+run+commit at `-MediaCoreCpus` cores (via `Dockerfile.media-litert-builder` /
+`Dockerfile.media-tvm-builder`): media-core is already committed when they run, so the
+whole CPU/RAM budget is free — jobs jump from `~j2` (2 CPU / `AuxMemoryGb` 8 g) to
+`~j19` (32 CPU / `-MediaMemoryGb` 39 g, still memory-bound per the note below). Under
+**`-ConcurrentMedia`** they instead stay ordinary 2-CPU `docker build`s and run
+*underneath* media-core — giving them big RAM/cores there would oversubscribe the host
+and starve the media-core long pole (see the reserve note below). `base`/`sdk` are the
+only stages that never exceed 2 CPUs — they're network/install-bound (no benefit from more).
 
 > **NOTE — parallelism is memory-bound, not core-bound.** `Get-BuildJobCount =
 > min(cpu-count, MEMORY_LIMIT_GB / per-job-GB)`. ONNX is ~4 GB/job, so at 48 GB it
@@ -273,16 +280,32 @@ under memory pressure the hcsshim `ttrpc` wedge is more likely). Pass an explici
 `MEMORY_LIMIT_GB` so the build scripts scale their job count to the container's cap
 (`BUILD_JOBS` overrides the heuristic outright).
 
-Worked example (this 64 GB host, Windows reports 61.4 GB usable → floor 61):
+Worked example (this 64 GB host, Windows reports 61.4 GB usable → floor 61,
+default `-HostReserveGb 22`):
 
 | Mode | Auto `-MediaMemoryGb` | ONNX jobs (`mem/4`, cores=32) |
 |------|----------------------|-------------------------------|
-| sequential (default) | `61 − 8` = **53 g** | **j13** |
-| `-ConcurrentMedia` | `61 − 8 − 16` = **37 g** | j9 |
+| sequential (default) | `61 − 22` = **39 g** | **j10** |
+| `-ConcurrentMedia` | `61 − 22 − 16` = **23 g** | j5 |
 
 media-core, toolchain, and the merge/GStreamer stage all build via the run+commit
-path (see § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs; the
-litert/tvm aux branches are ordinary 2-CPU `docker build`s.
+path (see § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs. In the
+default sequential schedule the litert/tvm aux branches run+commit at `-MediaCoreCpus`
+too (the full budget is free once media-core has committed); only under
+`-ConcurrentMedia` do they fall back to ordinary 2-CPU `docker build`s, to avoid
+starving the concurrent media-core long pole.
+
+> **Why the reserve is 22 GB, not ~8 (learned the hard way).** An earlier default
+> of `-HostReserveGb 8` auto-sized media-core to **53 GB**, which **hung the build**:
+> during a GPU build dockerd + containerd juggling the ~50 GB CUDA image layers,
+> plus `svchost`/Defender, hold **~16–18 GB** steady — so 53 GB container + ~17 GB
+> host exceeded the 61 GB physical, the Hyper-V VM starved at ~43 GB, and media-core
+> deadlocked at **0 % CPU** with the host at **0.3 GB free** (log frozen mid-ONNX for
+> 2 h). The `--memory` cap is real RAM committed to the utility VM, so
+> `container_cap + host_footprint` must fit physical RAM with margin. 22 GB reserve
+> (→ ~39 GB container, ~56 GB peak) is the verified-safe budget here. The heavy
+> CUDA TUs (FlashAttention, MoE kernels) use **more than the ~4 GB/job estimate**, so
+> do not shrink the reserve without watching `docker stats` + host free RAM.
 
 ### Persistent compile cache (sccache)
 

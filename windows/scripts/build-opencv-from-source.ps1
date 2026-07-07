@@ -7,12 +7,9 @@ param(
     [string]$OpenCvVersion = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
-
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 $OpenCvVersion = Get-SourceBuildVersion -Value $OpenCvVersion -EnvironmentVariables @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION') -DefaultValue '5.x'
 
@@ -161,8 +158,7 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
                      }
 
 # CMAKE_AR: find llvm-lib on PATH and pass full path
-$llvmLib = Resolve-LlvmArchiver
-if ($llvmLib) { $cmakeExtra += "-DCMAKE_AR:FILEPATH=$llvmLib" }
+$cmakeExtra += Get-LlvmArchiverCmakeArg
 
 if ($contribSrc) {
     $cmakeExtra += "-DOPENCV_EXTRA_MODULES_PATH=$(Join-Path $contribSrc 'modules')"
@@ -176,30 +172,7 @@ $buildLog = Join-Path $buildDir 'opencv-build.log'
 # Parallel build first; on failure re-run ninja -j1 (incremental — it jumps straight
 # to the failing TU) so the error output is unambiguous without paying the serial
 # build cost on the happy path.
-$jobs = Get-BuildJobCount -MemGBPerJob 4
-Write-Host "Building with ninja -j$jobs..."
-$env:NINJA_STATUS = "[%f/%t] "
-Push-Location $buildDir
-try {
-    ninja -j $jobs 2>&1 | Tee-Object -FilePath $buildLog
-    $ok = ($LASTEXITCODE -eq 0)
-    if (-not $ok) {
-        Write-Host "ninja -j$jobs failed - re-running -j1 for clear error output..."
-        ninja -j1 2>&1 | Tee-Object -FilePath $buildLog -Append
-        $ok = ($LASTEXITCODE -eq 0)
-    }
-} finally {
-    Pop-Location
-}
-if ($ok) {
-    Write-Host "Installing..."
-    cmake --install $buildDir --config Release 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "Install failed" }
-} else {
-    Write-Host "=== BUILD FAILED - last 50 lines ==="
-    if (Test-Path $buildLog) { Get-Content $buildLog -Tail 50 | ForEach-Object { Write-Host $_ } }
-    throw "OpenCV build failed (see log)"
-}
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install
 
 Remove-SourceBuildTree -Path $SourceDir
 
