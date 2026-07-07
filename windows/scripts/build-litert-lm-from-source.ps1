@@ -94,6 +94,107 @@ foreach ($stub in @('rt', 'pthread', 'dl')) {
 }
 $vcpkgZlib = Join-Path $vcpkgInstalledX64 'lib\z.lib'
 if (Test-Path $vcpkgZlib) { Copy-Item $vcpkgZlib (Join-Path $stubLibDir 'z.lib') -Force }
+
+# LiteRT's core dynamic-loading path (litert/core/dynamic_loading.cc and the delegate/plugin
+# loaders) does `#include <dlfcn.h>` with no _WIN32 guard, so it fails "'dlfcn.h' file not
+# found" on Windows. Drop a header-only <dlfcn.h> shim on the include path that maps the POSIX
+# dl* API onto Win32 LoadLibrary/GetProcAddress. Header-only (static inline) => nothing extra to
+# link. Placed on CXXFLAGS below so every external that ports Unix dl code picks it up.
+$winShimDir = 'C:\temp\winshims'
+New-Item -ItemType Directory -Force $winShimDir | Out-Null
+$dlfcnShim = @'
+#ifndef LITERTLM_WIN_DLFCN_SHIM_H
+#define LITERTLM_WIN_DLFCN_SHIM_H
+/* Minimal <dlfcn.h> for the clang++ windows-msvc build of LiteRT / LiteRT-LM: maps the POSIX
+   dynamic-loader API onto Win32. Header-only so no extra object/library is required.
+   NOMINMAX/NOGDI come from the global CXXFLAGS; we deliberately do NOT force
+   WIN32_LEAN_AND_MEAN here so a TU that also needs the full <windows.h> is not starved. */
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <stdint.h>
+#include <stdio.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+#define RTLD_LAZY     0x0001
+#define RTLD_NOW      0x0002
+#define RTLD_LOCAL    0x0000
+#define RTLD_GLOBAL   0x0100
+#define RTLD_NODELETE 0x1000
+#define RTLD_NOLOAD   0x0004
+#define RTLD_DEEPBIND 0x0000
+#define RTLD_DEFAULT  ((void*)0)
+#define RTLD_NEXT     ((void*)-1)
+static inline void* dlopen(const char* filename, int flag) {
+    (void)flag;
+    if (filename == 0) return (void*)GetModuleHandleA(0);
+    return (void*)LoadLibraryA(filename);
+}
+static inline int dlclose(void* handle) {
+    return FreeLibrary((HMODULE)handle) ? 0 : -1;
+}
+static inline void* dlsym(void* handle, const char* name) {
+    return (void*)(uintptr_t)GetProcAddress((HMODULE)handle, name);
+}
+static inline char* dlerror(void) {
+    static char buf[256];
+    DWORD e = GetLastError();
+    if (e == 0) return (char*)0;
+    DWORD n = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                             NULL, e, 0, buf, (DWORD)sizeof(buf), NULL);
+    if (n == 0) snprintf(buf, sizeof(buf), "dlerror: Win32 error %lu", (unsigned long)e);
+    return buf;
+}
+#ifdef __cplusplus
+}
+#endif
+#endif
+'@
+Set-Content -LiteralPath (Join-Path $winShimDir 'dlfcn.h') -Value $dlfcnShim -Encoding ASCII
+
+# LiteRT's dynamic_loading.cc also does an unguarded `#include <unistd.h>` and calls
+# access(path, R_OK). MSVC's CRT already declares access() in <io.h> (deprecated -> _access);
+# the POSIX permission-mode constants are all it's missing. (Its `#include <link.h>` is under
+# `#if __has_include(<link.h>)`, so it simply drops out on Windows -- no shim needed there.)
+$unistdShim = @'
+#ifndef LITERTLM_WIN_UNISTD_SHIM_H
+#define LITERTLM_WIN_UNISTD_SHIM_H
+/* Minimal <unistd.h> for the clang++ windows-msvc build of LiteRT: access() via the CRT's
+   <io.h>, the POSIX permission-mode constants the CRT does not define, and setenv/unsetenv
+   mapped onto _putenv_s (LiteRT's dynamic_loading.cc uses setenv to edit LD_LIBRARY_PATH). */
+#include <io.h>
+#include <process.h>
+#include <direct.h>
+#include <stdlib.h>
+#include <string.h>
+#ifndef R_OK
+#define R_OK 4
+#endif
+#ifndef W_OK
+#define W_OK 2
+#endif
+#ifndef X_OK
+#define X_OK 0
+#endif
+#ifndef F_OK
+#define F_OK 0
+#endif
+#ifdef __cplusplus
+static inline int setenv(const char* name, const char* value, int overwrite) {
+    if (!overwrite) {
+        size_t sz = 0;
+        if (getenv_s(&sz, 0, 0, name) == 0 && sz != 0) return 0;
+    }
+    return _putenv_s(name, value ? value : "");
+}
+static inline int unsetenv(const char* name) { return _putenv_s(name, ""); }
+#endif
+#endif
+'@
+Set-Content -LiteralPath (Join-Path $winShimDir 'unistd.h') -Value $unistdShim -Encoding ASCII
+Write-Host "Wrote Windows <dlfcn.h> + <unistd.h> shims to $winShimDir"
 # CAUTION: clang auto-detects the MSVC/SDK/clang-runtime lib dirs ONLY while LIB is unset
 # (which it is in this container). The moment we set LIB to inject the shim dir, clang
 # stops emitting its own -libpath and defers entirely to LIB -- so LIB must ALSO carry
@@ -146,8 +247,16 @@ Write-Host "Set CXXFLAGS_x86_64_pc_windows_msvc for the cxx/cc bridge: $($env:CX
 # -Wno- silences clang's "deprecated after C++20" note so it can't trip a -Werror dep.
 # NOTE: cc/cxx-build reads the target-scoped CXXFLAGS_<target> above in preference to
 # this generic one, so the Rust bridge keeps just -std=c++17 (clang-cl already delays).
-$env:CXXFLAGS = (@($env:CXXFLAGS, '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20') | Where-Object { $_ }) -join ' '
-Write-Host "Set CXXFLAGS (delayed template parsing) for CMake sub-builds: $env:CXXFLAGS"
+# Also put the Windows <dlfcn.h>/<unistd.h> shim dir (written above) on the system include
+# path so LiteRT's Unix-style includes resolve; forward slashes + two tokens so it survives
+# being split out of CMAKE_CXX_FLAGS. And define NOMINMAX/NOGDI globally: LiteRT pulls in
+# <windows.h> (directly and via our dlfcn shim) but -- unlike TFLite -- its build doesn't set
+# these, so the `min`/`max` (and GDI `ERROR`) macros clobber std::max / absl and break
+# headers like litert_tensor_buffer_requirements.h ("expected unqualified-id" on std::max).
+# LiteRT is configured from ${CMAKE_CXX_FLAGS} (litert.cmake), which CMake seeds from
+# $ENV{CXXFLAGS}, so all of this reaches it.
+$env:CXXFLAGS = (@($env:CXXFLAGS, '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20', '-isystem C:/temp/winshims', '-DNOMINMAX', '-DNOGDI') | Where-Object { $_ }) -join ' '
+Write-Host "Set CXXFLAGS (delayed template parsing + dlfcn/unistd shim + NOMINMAX/NOGDI) for CMake sub-builds: $env:CXXFLAGS"
 
 # Globally strip -fPIC from every clang++ invocation. Several bundled deps (sentencepiece
 # -- both litert-lm's own sentencepiece_external AND the copy vendored inside tokenizers-
@@ -157,8 +266,16 @@ Write-Host "Set CXXFLAGS (delayed template parsing) for CMake sub-builds: $env:C
 # honours CCC_OVERRIDE_OPTIONS to edit the command line: `#` silences the notice, `x-fPIC`
 # deletes every literal `-fPIC` arg. This fixes all current and future -fPIC occurrences in
 # one place (more robust than patching each vendored CMakeLists).
-$env:CCC_OVERRIDE_OPTIONS = '#x-fPIC'
-Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC from clang++ (windows-msvc target rejects it)"
+#
+# Same mechanism also strips gemmlowp's MSVC-only cl.exe flags: its contrib/CMakeLists.txt
+# gates `add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm- /wd4800 /wd4805 /wd4244)` on
+# WIN32 (not MSVC), so clang++'s GNU driver receives them and dies ("no such file or
+# directory: '/bigobj'"). Delete each. NB: only `x` (delete) edits are safe here -- a `+`
+# (append) edit hits EVERY clang invocation including the resource compiler (.rc -> .res),
+# which rejects C/C++ flags; so big-object handling, if gemmlowp ever needs it, must be done
+# in a CXX-only channel, not via a global CCC_OVERRIDE_OPTIONS append.
+$env:CCC_OVERRIDE_OPTIONS = '#x-fPIC x/bigobj x/nologo x/EHsc x/GF x/MP x/Gm- x/wd4800 x/wd4805 x/wd4244'
+Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC + gemmlowp MSVC flags from clang++ (windows-msvc target rejects them)"
 
 # Inline patch (kept inline, NOT a .patch file): LiteRT-LM's runtime/proto/CMakeLists.txt
 # is a single small file but the regex substitutions (`protobuf_generate(...)`,
@@ -392,6 +509,93 @@ message(STATUS "[LiteRTLM-winfix] tokenizers-cpp rust staticlib name -> tokenize
     }
 }
 
+# TFLite's own tensorflow/lite/profiling/proto/CMakeLists.txt already generates
+# profiling_info.pb.cc / model_runtime_info.pb.cc and links them into
+# {profiling,model_runtime}_info_proto (which the tflite aggregate pulls in). But litert-lm's
+# tflite_shims *also* runs generate_protobuf(tflite_profiling) on the same two protos, so two
+# ninja custom commands emit the identical tensorflow/lite/profiling/proto/profiling_info.pb.cc
+# -> "multiple rules generate ..." at generate time, and (once that clears) duplicate proto
+# symbols when both tflite_profiling and profiling_info_proto reach the final link. Drop the
+# redundant generation; the profiling *.cc sources still need the generated headers, so order
+# them after TFLite's protoc via OBJECT_DEPENDS (target-order-independent, since
+# profiling_info_proto is configured after tflite_profiling).
+$tfliteShims = Join-Path $SourceDir 'cmake\packages\tflite\tflite_shims.cmake'
+if ((Test-Path $tfliteShims) -and ((Get-Content -Raw $tfliteShims) -notmatch 'LiteRTLM-winfix tflite-profiling-proto')) {
+    $ts = [System.IO.File]::ReadAllText($tfliteShims)
+    $tsAnchor = 'generate_protobuf(tflite_profiling ${TENSORFLOW_SOURCE_DIR})'
+    if ($ts.Contains($tsAnchor)) {
+        $tsRepl = @'
+# [LiteRTLM-winfix tflite-profiling-proto] TFLite's profiling/proto/CMakeLists already emits
+# profiling_info.pb.cc / model_runtime_info.pb.cc into {profiling,model_runtime}_info_proto,
+# which the aggregate links; regenerating them here produced a second ninja rule for the same
+# output ("multiple rules generate profiling_info.pb.cc") and duplicate proto symbols at link.
+# Depend on TFLite's generated headers instead of recompiling the protos into tflite_profiling.
+set_source_files_properties(${PROFILING_SRCS} PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tensorflow/lite/profiling/proto/profiling_info.pb.h;${CMAKE_CURRENT_BINARY_DIR}/tensorflow/lite/profiling/proto/model_runtime_info.pb.h")
+'@
+        $ts = $ts.Replace($tsAnchor, $tsRepl)
+        # tflite_profiling globs profiling/*.cc and only drops *_test.cc, but atrace_profiler.cc
+        # is Android-only (includes <dlfcn.h> to dlopen libandroid) and has no Windows path, so
+        # it fails "'dlfcn.h' file not found". Exclude it too (platform_profiler.cc already
+        # compiles to the no-op backend on non-Android/Apple).
+        $ts = $ts.Replace('EXCLUDE REGEX "_test\\.cc$"', 'EXCLUDE REGEX "(_test|atrace_profiler)\\.cc$"')
+        [System.IO.File]::WriteAllText($tfliteShims, $ts)
+        Write-Host 'Patched tflite_shims.cmake: drop redundant tflite_profiling proto gen + exclude Android-only atrace_profiler.cc'
+    }
+    else {
+        Write-Host 'WARNING: tflite_shims.cmake generate_protobuf(tflite_profiling) anchor not found'
+    }
+}
+
+# tensorflow/lite/core/model_building.h friends its same-namespace helper classes with
+# unqualified `friend class Helper;` / `friend class Tensor;`. clang++ (GNU driver, windows-msvc
+# target) applies the MSVC unqualified-friend extension and binds those names to a type in an
+# OUTER namespace, so the intended tflite::model_builder::{Helper,Tensor} are NOT friends and
+# Tensor's ctor can't read the private Buffer::builder_ ("'builder_' is a private member").
+# Forward-declare both classes in the local namespace immediately before Buffer so ordinary
+# lookup binds the friend names locally (which is what MSVC effectively did). This runs from
+# tflite_patcher.cmake because the tflite ExternalProject PATCH_COMMAND does
+# `git checkout -- . && git clean -df` first, which would revert any earlier edit.
+$tflitePatcher = Join-Path $SourceDir 'cmake\packages\tflite\tflite_patcher.cmake'
+if ((Test-Path $tflitePatcher) -and ((Get-Content -Raw $tflitePatcher) -notmatch 'LiteRTLM-winfix model_building-friend')) {
+    $mbPatch = @'
+
+# [LiteRTLM-winfix model_building-friend] see build-litert-lm-from-source.ps1
+set(_lrtlm_mb "${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/core/model_building.h")
+if(EXISTS "${_lrtlm_mb}")
+    file(READ "${_lrtlm_mb}" _lrtlm_mbc)
+    string(REPLACE "class [[nodiscard]] Buffer {" "class Helper;\nclass Tensor;\nclass [[nodiscard]] Buffer {" _lrtlm_mbc "${_lrtlm_mbc}")
+    file(WRITE "${_lrtlm_mb}" "${_lrtlm_mbc}")
+    message(STATUS "[LiteRTLM-winfix] forward-declared Helper/Tensor before Buffer in model_building.h")
+endif()
+'@
+    Add-Content -LiteralPath $tflitePatcher -Value $mbPatch -Encoding ASCII
+    Write-Host 'Patched tflite_patcher.cmake: model_building.h friend forward-declarations'
+}
+
+# LiteRT's core/dynamic_loading.cc is written for POSIX: std::filesystem::path::c_str() and the
+# path->string implicit conversion are WIDE (wchar_t / std::wstring) on Windows but narrow on
+# Linux, so access(path.c_str()), results.push_back(path) into a vector<string>, and
+# FindLiteRtSharedLibsHelper(path) all fail to compile. Narrow every such use with .string()
+# (UTF-8/native std::string on all platforms). setenv() is provided by our <unistd.h> shim.
+# Done from litert_patcher.cmake because the litert ExternalProject PATCH_COMMAND runs
+# `git checkout -- . && git clean -df` first, reverting any earlier edit. patch_file_content
+# (litert-lm's own helper, cmake/modules/utils.cmake) does a literal string(REPLACE) of ALL
+# occurrences when its IS_REGEX arg is FALSE.
+$litertPatcher = Join-Path $SourceDir 'cmake\packages\litert\litert_patcher.cmake'
+if ((Test-Path $litertPatcher) -and ((Get-Content -Raw $litertPatcher) -notmatch 'LiteRTLM-winfix dynamic-loading')) {
+    $dlPatch = @'
+
+# [LiteRTLM-winfix dynamic-loading] narrow std::filesystem::path uses for Windows (see
+# build-litert-lm-from-source.ps1). setenv is supplied by the Windows <unistd.h> shim.
+patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "access(path.c_str(), R_OK)" "access(path.string().c_str(), R_OK)" FALSE)
+patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "results.push_back(path);" "results.push_back(path.string());" FALSE)
+patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "FindLiteRtSharedLibsHelper(path, lib_pattern, full_match, results)" "FindLiteRtSharedLibsHelper(path.string(), lib_pattern, full_match, results)" FALSE)
+message(STATUS "[LiteRTLM-winfix] narrowed std::filesystem::path uses in core/dynamic_loading.cc")
+'@
+    Add-Content -LiteralPath $litertPatcher -Value $dlPatch -Encoding ASCII
+    Write-Host 'Patched litert_patcher.cmake: dynamic_loading.cc std::filesystem::path narrowing'
+}
+
 $buildDir = Join-Path $SourceDir 'build_ninja'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 $litertCmakeDir = Join-Path $litertInstallDir 'cmake'
@@ -490,7 +694,21 @@ if ((Test-Path $vcpkgProtoHeadersHidden) -and -not (Test-Path $vcpkgProtoHeaders
     Write-Host 'Restored vcpkg protobuf headers'
 }
 
-Remove-SourceBuildTree -Path $SourceDir
+if ($env:LITERTLM_KEEP_BUILD_TREE) {
+    Write-Host 'LITERTLM_KEEP_BUILD_TREE set: dumping tflite profiling_info.pb.cc rules (diagnostic)'
+    $tfBn = Join-Path $SourceDir 'build_ninja\litert_lm\build\external\tensorflow\src\tflite_external-build\build.ninja'
+    if (Test-Path $tfBn) {
+        $ln = 0
+        Get-Content $tfBn | ForEach-Object {
+            $ln++
+            if ($_ -match 'profiling_info\.pb\.(cc|h)' -and ($_ -match '^build ' -or $_ -match 'protoc|--cpp_out|COMMAND|command =')) {
+                Write-Host ("DIAG L{0}: {1}" -f $ln, $_)
+            }
+        }
+    } else { Write-Host "DIAG: tflite build.ninja not found at $tfBn" }
+    Remove-SourceBuildTree -Path $SourceDir
+}
+else { Remove-SourceBuildTree -Path $SourceDir }
 
 Write-Host '=== LiteRT-LM source build completed ==='
 
