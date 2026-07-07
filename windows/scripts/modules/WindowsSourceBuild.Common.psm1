@@ -478,11 +478,17 @@ function Invoke-SourcePatch {
 function Initialize-SourceBuildEnvironment {
     <#
     .SYNOPSIS
-        Standard preamble for every build-*-from-source.ps1 script.
+        Resolves a default InstallDir for build-*-from-source.ps1 scripts.
     .DESCRIPTION
-        Sets StrictMode + Stop error action, imports this module, and resolves
-        a default InstallDir. Call at the top of each build script instead of
-        duplicating the 4-line boilerplate.
+        Returns InstallDir (defaulting to 'C:\runtime').
+
+        WARNING - scope trap: the Set-StrictMode / $ErrorActionPreference below take
+        effect ONLY inside this function's scope; PowerShell does NOT propagate them
+        back to the calling script. Do NOT route a build script's preamble through
+        this helper expecting it to set Stop-on-error there - the caller MUST declare
+        its own `$ErrorActionPreference = 'Stop'` (and Set-StrictMode) at top level, as
+        every build-*-from-source.ps1 already does. Collapsing that preamble into this
+        call silently disables fail-fast and is a real regression, not dedup.
     .PARAMETER InstallDir
         Passed-through InstallDir value (empty -> 'C:\runtime').
     .OUTPUTS
@@ -491,6 +497,7 @@ function Initialize-SourceBuildEnvironment {
     param(
         [string]$InstallDir = ''
     )
+    # Function-scoped only (see WARNING above) - kept so this helper itself fails fast.
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
     if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }

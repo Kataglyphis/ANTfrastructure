@@ -42,8 +42,12 @@ Sync-ContainerProcessPath -AdditionalPaths @(
     'C:\Program Files\Git\usr\bin'
 ) | Out-Null
 
-dotnet tool install --tool-path C:\WiX wix --version 4.0.6
-& 'C:\WiX\wix.exe' extension add --global WixToolset.UI.wixext/4.0.4
+# WiX versions come from versions.env (single source of truth shared with the
+# verify-toolchain.ps1 assert); defaults keep the script runnable standalone.
+$WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '4.0.6'
+$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.4'
+dotnet tool install --tool-path C:\WiX wix --version $WixVersion
+& 'C:\WiX\wix.exe' extension add --global "WixToolset.UI.wixext/$WixUiExtVersion"
 
 Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
