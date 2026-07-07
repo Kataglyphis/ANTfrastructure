@@ -48,6 +48,36 @@ COPY --chmod=755 linux/scripts/01-core/     /opt/scripts/core/
 COPY --chmod=755 linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 
 # ------------------------------------------------------------------------------
+# Materialize the per-arch native Clang at the canonical /opt/llvm-target.
+# The SHARED compiler stage installs each cross target-clang into
+# /opt/llvm-target-<arch> (a single fixed prefix would clobber across arches and
+# leak one arch's clang into every image). Select THIS build's arch; amd64 is
+# native so it ships the host LLVM as its target-native clang. Downstream
+# (media/android/package) then inherits a correct, self-contained
+# /opt/llvm-target for every arch — the package image COPYs it to
+# /usr/local/llvm-target so each runtime ships its own native clang.
+# ------------------------------------------------------------------------------
+RUN set -euo pipefail; \
+    _arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"; \
+    _major="${LLVM_RELEASE%%.*}"; \
+    rm -rf /opt/llvm-target; \
+    if [ "${_arch}" = "amd64" ]; then \
+        _hostllvm="/usr/lib/llvm-${_major}"; \
+        if [ ! -d "${_hostllvm}" ]; then \
+            _cc="$(command -v clang || true)"; \
+            [ -n "${_cc}" ] && _hostllvm="$(dirname "$(dirname "$(readlink -f "${_cc}")")")"; \
+        fi; \
+        [ -d "${_hostllvm}" ] || { echo "ERROR: host LLVM dir not found for amd64 (tried /usr/lib/llvm-${_major})"; exit 1; }; \
+        cp -a "${_hostllvm}" /opt/llvm-target; \
+    elif [ -d "/opt/llvm-target-${_arch}" ]; then \
+        mv "/opt/llvm-target-${_arch}" /opt/llvm-target; \
+    else \
+        echo "ERROR: no target-clang toolchain for ${_arch} at /opt/llvm-target-${_arch}"; exit 1; \
+    fi; \
+    for _d in /opt/llvm-target-*; do [ -e "${_d}" ] && rm -rf "${_d}"; done; \
+    echo "Resolved /opt/llvm-target for ${_arch}:"; /opt/llvm-target/bin/clang --version 2>&1 | head -1 || true
+
+# ------------------------------------------------------------------------------
 # Vulkan SDK setup
 # ------------------------------------------------------------------------------
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \

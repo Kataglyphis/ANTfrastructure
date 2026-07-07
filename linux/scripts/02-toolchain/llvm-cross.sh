@@ -45,7 +45,12 @@ _llvm_cross_resolve_dirs() {
       _r[wrapper_dir_suffix]="${triplet}-tool-bin"
       ;;
     target-clang)
-      _r[prefix]="/opt/llvm-target"
+      # Per-arch install prefix. The compiler stage is SHARED and builds
+      # target-clang for every cross arch; a single fixed /opt/llvm-target would
+      # let the last arch built clobber the others and leak one arch's clang into
+      # all downstream images. The sdk stage resolves the canonical
+      # /opt/llvm-target from /opt/llvm-target-<arch> for its own target.
+      _r[prefix]="/opt/llvm-target-${target_label}"
       _r[release]="$(llvm_release_version)"
       _r[tag]="llvmorg-${_r[release]}"
       _r[build_dir_suffix]="target-clang-${target_label}"
