@@ -168,12 +168,21 @@ setup_torch_deps() {
 
 seed_riscv64_apt_packages() {
   # ---- riscv64/QEMU-specific bootstrap (arch bootstrap, NOT wheel logic) ----
-  # RISC-V has almost no pre-built Python wheels on PyPI, and sdist builds
-  # fail under QEMU because the GCC driver cannot fork cc1/as.  Seed the
-  # critical C-extension packages from apt into the venv so neither uv nor
-  # pip attempts a source build for them.  python3-contourpy is seeded
-  # (best-effort) because assemble-torch-app's verify step hard-imports
-  # contourpy and no riscv64 contourpy wheel exists on PyPI.
+  # RISC-V has almost no pre-built Python wheels on PyPI.  Seed the C-extension
+  # packages that would otherwise force a source build (or that a verify step
+  # hard-imports) from apt into the venv.  cairo/gi/contourpy are copied WITH
+  # their dist-info/egg-info so uv recognises them as already-installed and skips
+  # them.  python3-contourpy is best-effort (assemble-torch-app's verify step
+  # hard-imports contourpy and no riscv64 wheel exists on PyPI).
+  #
+  # numpy is deliberately NOT seeded into the venv: the resolved set pins a newer
+  # numpy than apt ships, so uv builds that version regardless. If the apt numpy
+  # tree were copied in (it has no dist-info uv trusts), uv would still build the
+  # pinned wheel and then fail to INSTALL it -- "failed to create directory
+  # numpy/random/lib: File exists" -- colliding with the seeded files. numpy now
+  # builds cleanly under QEMU (see the -idirafter header fix above), so let uv
+  # build + install it into a clean site-packages. python3-numpy is still apt-
+  # installed below as a dependency of the cairo/gi/contourpy stack.
   apt-get update
   apt-get install -y --no-install-recommends python3-numpy python3-cairo python3-gi python3-gi-cairo
   apt-get install -y --no-install-recommends python3-contourpy \
@@ -182,7 +191,7 @@ seed_riscv64_apt_packages() {
   local _sp
   _sp="$(venv_site_packages)"
   if [ -d /usr/lib/python3/dist-packages ] && [ -n "${_sp}" ] && [ -d "${_sp}" ]; then
-    for pkg in numpy cairo gi contourpy PyGObject-*.egg-info pycairo-*.egg-info contourpy-*.egg-info contourpy-*.dist-info; do
+    for pkg in cairo gi contourpy PyGObject-*.egg-info pycairo-*.egg-info contourpy-*.egg-info contourpy-*.dist-info; do
       cp -a /usr/lib/python3/dist-packages/"${pkg}" "${_sp}/" 2>/dev/null || true
     done
     echo "Seeded apt Python packages into venv (QEMU riscv64 mode)"
