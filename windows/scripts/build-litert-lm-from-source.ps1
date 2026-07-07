@@ -55,6 +55,28 @@ if ((Test-Path $vcpkgProtoHeaders) -and -not (Test-Path $vcpkgProtoHeadersHidden
     Write-Host "Hid vcpkg protobuf headers to avoid version skew with protobuf_external (v6.31.1)"
 }
 
+# Version-matched host protoc. The from-source runtime is protobuf 6.31.1, but vcpkg's
+# protoc is a DIFFERENT major (libprotoc 33.4). Using it for codegen emits .pb.h/.cc that
+# use newer macros (PROTOBUF_FUTURE_ADD_NODISCARD) and a gencode version stamp the 6.31.1
+# headers reject ("Protobuf C++ gencode is built with an incompatible version" #error).
+# Building a matching 6.31.1 protoc from source fails to link (abseil under clang++/lld-
+# link), so fetch the official prebuilt protoc for release v31.1 (== runtime 6.31.1) and
+# use it for every codegen step below (litert-lm protos, sentencepiece, WITH_PROTOC import).
+$hostProtocDir = 'C:\temp\protoc-31.1'
+$hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
+if (-not (Test-Path $hostProtoc)) {
+    $protocZip = 'C:\temp\protoc-31.1-win64.zip'
+    $protocUrl = 'https://github.com/protocolbuffers/protobuf/releases/download/v31.1/protoc-31.1-win64.zip'
+    Write-Host "Downloading version-matched protoc (v31.1) from $protocUrl"
+    $prevProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri $protocUrl -OutFile $protocZip -UseBasicParsing
+    Expand-Archive -Path $protocZip -DestinationPath $hostProtocDir -Force
+    $ProgressPreference = $prevProgress
+    if (-not (Test-Path $hostProtoc)) { throw "Failed to obtain prebuilt protoc 31.1 at $hostProtoc" }
+}
+Write-Host "Using version-matched host protoc: $hostProtoc ($(& $hostProtoc --version))"
+
 # Windows link-lib shim for the GNU-driver Unix libs. The inner build links with
 # clang++ (GNU driver) + lld-link, so CMake's platform/threads/zlib detection adds
 # POSIX link libs -- `-lz -lrt -lpthread -ldl` -> `z.lib rt.lib pthread.lib dl.lib` --
@@ -126,6 +148,17 @@ Write-Host "Set CXXFLAGS_x86_64_pc_windows_msvc for the cxx/cc bridge: $($env:CX
 # this generic one, so the Rust bridge keeps just -std=c++17 (clang-cl already delays).
 $env:CXXFLAGS = (@($env:CXXFLAGS, '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20') | Where-Object { $_ }) -join ' '
 Write-Host "Set CXXFLAGS (delayed template parsing) for CMake sub-builds: $env:CXXFLAGS"
+
+# Globally strip -fPIC from every clang++ invocation. Several bundled deps (sentencepiece
+# -- both litert-lm's own sentencepiece_external AND the copy vendored inside tokenizers-
+# cpp) hardcode `-fPIC` in an `if(NOT MSVC)` branch, which clang++ takes because its
+# compiler id is Clang, not MSVC. -fPIC is a HARD error on the windows-msvc target
+# ("unsupported option '-fPIC'") and is meaningless on Windows anyway. clang's driver
+# honours CCC_OVERRIDE_OPTIONS to edit the command line: `#` silences the notice, `x-fPIC`
+# deletes every literal `-fPIC` arg. This fixes all current and future -fPIC occurrences in
+# one place (more robust than patching each vendored CMakeLists).
+$env:CCC_OVERRIDE_OPTIONS = '#x-fPIC'
+Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC from clang++ (windows-msvc target rejects it)"
 
 # Inline patch (kept inline, NOT a .patch file): LiteRT-LM's runtime/proto/CMakeLists.txt
 # is a single small file but the regex substitutions (`protobuf_generate(...)`,
@@ -275,6 +308,90 @@ if ((Test-Path $protobufPkg) -and ((Get-Content -Raw $protobufPkg) -notmatch 'WI
     }
 }
 
+# Inline patch: strip -fPIC from sentencepiece's src/CMakeLists.txt. clang++ targets
+# x86_64-pc-windows-msvc but reports compiler id Clang (not MSVC), so sentencepiece's
+# `if(NOT MSVC)` branch adds `-O3 -Wall -fPIC` to CMAKE_CXX_FLAGS -- and -fPIC is a hard
+# error on the windows-msvc target ("unsupported option '-fPIC'"). PIC is meaningless on
+# Windows, so drop just the flag (keep -O3/-Wall). Grafted onto sentencepiece_patcher.cmake
+# (its PATCH_COMMAND hook), re-reading src/CMakeLists.txt after the patcher writes it.
+$spPatcher = Join-Path $SourceDir 'cmake\packages\sentencepiece\sentencepiece_patcher.cmake'
+if ((Test-Path $spPatcher) -and ((Get-Content -Raw $spPatcher) -notmatch 'LiteRTLM-winfix sentencepiece-fpic')) {
+    $spPatch = @'
+
+# [LiteRTLM-winfix sentencepiece-fpic] clang++ targets x86_64-pc-windows-msvc but its
+# compiler id is Clang (not MSVC), so sentencepiece's `if(NOT MSVC)` branch injects -fPIC,
+# a hard error on the windows-msvc target. Strip it (PIC is meaningless on Windows).
+# Also skip the spm_* CLI tools (spm_encode/decode/normalize/train/export_vocab +
+# compile_charsmap): litert-lm only needs the sentencepiece-static library, and those
+# standalone executables fail to link abseil-flags/protobuf under clang++/lld-link. Wrap
+# the exe region and its install-append each in if(FALSE); the library + its install stay.
+file(READ "${SENTENCE_SRC_DIR}/src/CMakeLists.txt" _sp_src)
+string(REPLACE "-O0 -Wall -fPIC -coverage" "-O0 -Wall -coverage" _sp_src "${_sp_src}")
+string(REPLACE "-O3 -Wall -fPIC" "-O3 -Wall" _sp_src "${_sp_src}")
+string(REPLACE "add_executable(spm_encode spm_encode_main.cc)" "if(FALSE) # LiteRTLM-winfix: skip unused spm CLI tools (abseil-flags/protobuf link failure)\nadd_executable(spm_encode spm_encode_main.cc)" _sp_src "${_sp_src}")
+string(REPLACE "list(APPEND SPM_INSTALLTARGETS" "endif() # LiteRTLM-winfix: end skip spm CLI tools\nif(FALSE) # LiteRTLM-winfix: exclude spm tools from install\nlist(APPEND SPM_INSTALLTARGETS" _sp_src "${_sp_src}")
+string(REPLACE "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)" "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)\nendif() # LiteRTLM-winfix" _sp_src "${_sp_src}")
+file(WRITE "${SENTENCE_SRC_DIR}/src/CMakeLists.txt" "${_sp_src}")
+message(STATUS "[LiteRTLM] Patched sentencepiece src/CMakeLists.txt: stripped -fPIC + skipped spm CLI tools")
+'@
+    Add-Content -LiteralPath $spPatcher -Value $spPatch
+    Write-Host 'Patched sentencepiece_patcher.cmake: strip -fPIC + skip spm CLI tools (windows-msvc/abseil link)'
+}
+
+# Inline patch: fix tokenizers-cpp's build for Windows. tokenizers.cmake uses a CUSTOM
+# CONFIGURE_COMMAND (`cmake -S <SOURCE_DIR> -B <BINARY_DIR>`) with no -G and relies on
+# ExternalProject's DEFAULT build/install commands. Two problems on Windows:
+#  (1) no -G -> the default Visual Studio generator, which ignores -DCMAKE_CXX_COMPILER=
+#      clang++ (uses CL.exe) and then rejects the clang-only flags this build puts in
+#      CMAKE_CXX_FLAGS (`-fdelayed-template-parsing` ...) -> "cl : command line error D8021".
+#  (2) the default BUILD_COMMAND is `make`, which does not exist on Windows ("'make' is not
+#      recognized").
+# Fix both: add -GNinja (so clang++ is used and the clang flags are valid) and set explicit
+# BUILD_COMMAND/INSTALL_COMMAND via `cmake --build` (generator-agnostic -> runs Ninja).
+# Third problem (3): the Rust static lib name. tokenizers-cpp's CMakeLists picks
+# `libtokenizers_c.a` in its `else()` (non-MSVC) branch -- taken because our C++ compiler
+# id is Clang -- but rustc builds the crate for the x86_64-pc-windows-msvc target and emits
+# MSVC-named `tokenizers_c.lib`, so the custom command's copy of libtokenizers_c.a fails
+# ("No such file"). Fix by (a) a PATCH_COMMAND that rewrites the fetched tokenizers-cpp
+# CMakeLists to use tokenizers_c.lib, and (b) rewriting litert-lm's own import refs the same
+# way. (The C++ libtokenizers_cpp.a is genuinely lib*.a -- CMake+clang++ GNU driver -- so it
+# is left alone.)
+$tokenizersCmake = Join-Path $SourceDir 'cmake\packages\tokenizers\tokenizers.cmake'
+if ((Test-Path $tokenizersCmake) -and ((Get-Content -Raw $tokenizersCmake) -notmatch '<BINARY_DIR> -GNinja')) {
+    $tk = [System.IO.File]::ReadAllText($tokenizersCmake)
+    $tkAnchor = '-S <SOURCE_DIR> -B <BINARY_DIR>'
+    $tkPrefixArg = '"-DCMAKE_PREFIX_PATH=${ABSL_INSTALL_PREFIX};${PROTO_INSTALL_PREFIX};${SENTENCE_INSTALL_PREFIX}"'
+    $tkCfgAnchor = 'CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env'
+    if ($tk.Contains($tkAnchor) -and $tk.Contains($tkPrefixArg) -and $tk.Contains($tkCfgAnchor)) {
+        # (1) Ninja generator
+        $tk = $tk.Replace($tkAnchor, '-S <SOURCE_DIR> -B <BINARY_DIR> -GNinja')
+        # (2) explicit build/install commands (no `make`)
+        $tkBuildInstall = $tkPrefixArg + "`n    BUILD_COMMAND " + '${CMAKE_COMMAND}' + " --build <BINARY_DIR>`n    INSTALL_COMMAND " + '${CMAKE_COMMAND}' + " --build <BINARY_DIR> --target install"
+        $tk = $tk.Replace($tkPrefixArg, $tkBuildInstall)
+        # (3a) PATCH_COMMAND to fix the fetched tokenizers-cpp CMakeLists rust-lib name
+        $tkPatchScript = Join-Path (Split-Path $tokenizersCmake) 'tokenizers_libname_patch.cmake'
+        $tkPatchContent = @'
+# [LiteRTLM-winfix] rustc builds the crate for x86_64-pc-windows-msvc and emits
+# tokenizers_c.lib, but tokenizers-cpp's CMakeLists picks libtokenizers_c.a in its
+# non-MSVC branch (our C++ compiler id is Clang), so its copy step can't find the output.
+file(READ "${TK_SRC}/CMakeLists.txt" _c)
+string(REPLACE "libtokenizers_c.a" "tokenizers_c.lib" _c "${_c}")
+file(WRITE "${TK_SRC}/CMakeLists.txt" "${_c}")
+message(STATUS "[LiteRTLM-winfix] tokenizers-cpp rust staticlib name -> tokenizers_c.lib")
+'@
+        Set-Content -LiteralPath $tkPatchScript -Value $tkPatchContent -Encoding ASCII
+        $tkPatchCmd = 'PATCH_COMMAND ${CMAKE_COMMAND} -DTK_SRC=<SOURCE_DIR> -P ${CMAKE_CURRENT_LIST_DIR}/tokenizers_libname_patch.cmake' + "`n    " + $tkCfgAnchor
+        $tk = $tk.Replace($tkCfgAnchor, $tkPatchCmd)
+        # (3b) litert-lm's own imports of the rust lib (leaves libtokenizers_cpp.a untouched)
+        $tk = $tk.Replace('libtokenizers_c.a', 'tokenizers_c.lib')
+        [System.IO.File]::WriteAllText($tokenizersCmake, $tk)
+        Write-Host 'Patched tokenizers.cmake: -GNinja + cmake --build + rust lib -> tokenizers_c.lib'
+    }
+    else {
+        Write-Host 'WARNING: tokenizers.cmake anchors not found; may still use CL.exe/make/libtokenizers_c.a'
+    }
+}
+
 $buildDir = Join-Path $SourceDir 'build_ninja'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 $litertCmakeDir = Join-Path $litertInstallDir 'cmake'
@@ -293,7 +410,7 @@ if (Test-Path $litertCmakeDir) { $cmakeExtra += "-DLiteRT_DIR=$litertCmakeDir" }
 $ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $litertLmInstallDir -ExtraArgs $cmakeExtra
 if (-not $ok) { throw 'LiteRT-LM CMake configure failed' }
 
-$vcpkgProtoc = Join-Path $vcpkgDir 'installed\x64-windows\tools\protobuf\protoc.exe'
+$vcpkgProtoc = $hostProtoc  # version-matched protoc 31.1 (== protobuf_external 6.31.1); NOT vcpkg's libprotoc 33.4
 $protoDir = Join-Path $SourceDir 'runtime\proto'
 foreach ($outSubDir in @('proto', 'protobuf')) {
     $protoOutDir = Join-Path $SourceDir "build_ninja\litert_lm\build\runtime\$outSubDir"
@@ -334,7 +451,7 @@ $buildNinjaFile = Join-Path $litertBuildDir 'build.ninja'
 $stubCount = 0
 if (Test-Path $buildNinjaFile) {
     Get-Content $buildNinjaFile | ForEach-Object {
-        [regex]::Matches($_, "[\x27""]?([^\x27""\s]+\.a)[\x27""]?") | ForEach-Object {
+        [regex]::Matches($_, "[\x27""]?([^\x27""\s]+(?:\.a|tokenizers_c\.lib))[\x27""]?") | ForEach-Object {
             $aRel = $_.Groups[1].Value
             $aPath = $aRel
             if ($aRel -match '^[a-zA-Z]:') {
@@ -354,7 +471,7 @@ if (Test-Path $buildNinjaFile) {
             }
         }
     }
-    Write-Host "Created $stubCount .a aggregate stubs"
+    Write-Host "Created $stubCount aggregate stubs (.a + rust tokenizers_c.lib)"
 }
 
 Write-Host 'Running ExternalProject step 6 (build)...'
