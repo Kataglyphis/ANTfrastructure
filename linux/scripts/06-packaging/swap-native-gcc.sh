@@ -68,6 +68,31 @@ main() {
         ln -sf "${sys_multiarch_include}" "${gcc_target_include}"
         echo "Linked GCC target include ${gcc_target_include} -> ${sys_multiarch_include}"
       fi
+
+      # The relocated Canadian-cross native GCC/G++ keeps the sysroot baked in at
+      # compiler-build time, so it does NOT search the runtime image's
+      # /usr/include by default. Source builds under QEMU (e.g. pip compiling C or
+      # C++ extensions when PyPI ships no target-arch wheel) then fail to find
+      # libc headers:
+      #   C:   "fatal error: string.h: No such file or directory"
+      #   C++: <cstdlib> does `#include_next <stdlib.h>` -> "stdlib.h: No such"
+      # CPATH (=-I, before system dirs) fixes plain C includes but NOT the C++
+      # #include_next, which must resolve /usr/include AFTER libstdc++ headers. So
+      # also inject the system dirs with -idirafter (appended AFTER all built-in
+      # dirs) via *FLAGS -- the pattern build-libcamera.sh uses. Written to
+      # profile.d so login-shell compiles inherit it (setup-torch-venv.sh runs
+      # under `bash -lc`). No-op on arches that ship prebuilt wheels; amd64 never
+      # reaches this block (host GCC, no swap).
+      mkdir -p /etc/profile.d
+      cat > /etc/profile.d/50-native-gcc-paths.sh <<EOF
+_idaf="-idirafter /usr/include/${triplet} -idirafter /usr/include"
+export CPATH="\${CPATH:+\${CPATH}:}/usr/include/${triplet}:/usr/include"
+export CPPFLAGS="\${CPPFLAGS:+\${CPPFLAGS} }\${_idaf}"
+export CFLAGS="\${CFLAGS:+\${CFLAGS} }\${_idaf}"
+export CXXFLAGS="\${CXXFLAGS:+\${CXXFLAGS} }\${_idaf}"
+export LIBRARY_PATH="\${LIBRARY_PATH:+\${LIBRARY_PATH}:}/usr/lib/${triplet}:/usr/lib"
+EOF
+      echo "Wrote /etc/profile.d/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)"
     fi
 
     echo "int main(){}" > /tmp/gcc_smoke.c

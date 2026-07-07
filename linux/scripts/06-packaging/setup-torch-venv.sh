@@ -9,6 +9,29 @@ TORCH_APP_MODE="${TORCH_APP_MODE:-all}"
 VENV="${VENV:-/opt/venv}"
 BUILD_MODE="${BUILD_MODE:-native}"
 
+# The target-native GCC/G++ swapped in by swap-native-gcc.sh is a relocated
+# Canadian-cross build whose baked-in sysroot does not include the runtime
+# image's /usr/include. When PyPI ships no wheel for the target arch (e.g. on
+# riscv64), pip compiles from source under QEMU and the build fails to find libc
+# headers:
+#   C:   "fatal error: string.h: No such file or directory"
+#   C++: <cstdlib> does `#include_next <stdlib.h>` -> "stdlib.h: No such file"
+# CPATH (=-I, searched BEFORE system dirs) fixes plain C includes but NOT the
+# C++ #include_next, which must resolve /usr/include AFTER the libstdc++ headers.
+# So also inject the system dirs with -idirafter (appended AFTER all built-in
+# dirs) via *FLAGS -- the same pattern build-libcamera.sh uses. Exported so
+# pip/setuptools child compiles (C and C++) inherit them. No-op when a prebuilt
+# wheel is used (no compilation).
+_mi="$(compgen -G '/usr/include/*-linux-gnu' 2>/dev/null | head -1 || true)"
+_ml="$(compgen -G '/usr/lib/*-linux-gnu' 2>/dev/null | head -1 || true)"
+_idaf="-idirafter /usr/include"
+[ -n "${_mi}" ] && _idaf="-idirafter ${_mi} ${_idaf}"
+export CPATH="${CPATH:+${CPATH}:}${_mi:+${_mi}:}/usr/include"
+export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }${_idaf}"
+export CFLAGS="${CFLAGS:+${CFLAGS} }${_idaf}"
+export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_idaf}"
+export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
+
 cross_skip() {
   if [ "${BUILD_MODE}" = "cross" ]; then
     echo "Skipping ${1:-torch step} in pure cross artifact mode"

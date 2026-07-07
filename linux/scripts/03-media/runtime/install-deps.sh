@@ -52,6 +52,11 @@ DEBIAN_FRONTEND=noninteractive apt-get purge -y $(dpkg -l 'gstreamer*' 'gstreame
 # target-side Python during cross builds and breaks on python3-minimal postinst.
 target_packages=(
     libunwind-dev libdw-dev libv4l-0 dbus-x11
+    # libjpeg-dev (jpeglib.h + native libjpeg): required for the torch venv's
+    # Pillow build. On riscv64, PyPI ships no wheel so pip compiles Pillow from
+    # source under QEMU; Pillow enables JPEG by default and hard-fails without
+    # these headers. zlib/freetype are already present in the base image.
+    libjpeg-dev
     libopenexr-dev libx264-dev libcdio-dev libspeex-dev libopenh264-dev libsrtp2-dev
     libtwolame-dev libgsm1-dev libdav1d-dev libwavpack-dev libx265-dev libdc1394-dev
     libvpx-dev libavcodec-dev libcsound64-dev libtbb12 libavfilter-dev libavformat-dev
