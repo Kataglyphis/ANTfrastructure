@@ -11,3 +11,7 @@ windows/downloads/*
 linux/llm-stack/ollama-binary.tar.zst
 linux/nextcloud-aio/.env
 .claude/
+
+# Throwaway litert-lm fast-rebuild harness (overlays the build script onto a local
+# windows-media-litert base image to re-iterate only litert-lm; dev-only, not reproducible in CI)
+.cxxtest.Dockerfile
