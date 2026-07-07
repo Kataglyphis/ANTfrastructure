@@ -28,12 +28,16 @@ echo ""
 echo "=== verify-critical-fixes.sh ==="
 bash linux/scripts/verify-critical-fixes.sh && pass "critical fixes" || fail "critical fixes failed"
 
-# 4. Shell syntax on changed .sh files
+# 4. Shell syntax + shellcheck gate on changed .sh files
 echo ""
 echo "=== shell syntax (staged .sh files) ==="
 STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
 if [ -n "$STAGED_SH" ]; then
   bash -n $STAGED_SH && pass "staged shell scripts parse OK" || fail "shell syntax error in staged .sh files"
+  echo ""
+  echo "=== shellcheck -S error (staged .sh files) ==="
+  # shellcheck disable=SC2086
+  bash linux/scripts/lint-shell.sh $STAGED_SH && pass "staged shellcheck gate" || fail "shellcheck -S error findings in staged .sh files"
 else
   pass "no staged .sh files to check"
 fi
