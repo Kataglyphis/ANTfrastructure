@@ -354,6 +354,83 @@ The new end-goal path keeps the existing QEMU lane for compatibility while addin
 
 `linux/Dockerfile.package` is the shared runtime packaging layer. It starts from a clean per-arch base, copies the selected target payload from the artifact image, replays final runtime dependency setup, and becomes `BASE_IMAGE` for `linux/Dockerfile.torch`. In `cross` mode the artifact image runs on amd64 (`cross-android-${TARGET_ARCH}`); in `native` mode it uses the target-platform sequential image directly.
 
+### Host prerequisite: QEMU/binfmt for the emulated runtime legs
+
+The `sdk`/`media`/`android` stages cross-compile *on amd64* and need no emulation.
+The **runtime** stage is different: `build-runtime-manifest.sh` builds the per-arch
+`base → package → torch` wrappers **on the real target platform**
+(`nerdctl build --platform linux/arm64|riscv64`). For foreign architectures those
+`RUN` steps (e.g. `base-image.sh bootstrap-ca`, `copy-media-payloads.sh`, `apt`,
+`dpkg`) execute under QEMU user-mode emulation, which requires QEMU emulators
+registered in `binfmt_misc` in the namespace where builds run.
+
+#### Rootless setup (this host — no sudo)
+
+Run the helper once per boot (it is idempotent, and `--install-service` makes it
+persistent via a systemd --user unit):
+
+```bash
+linux/scripts/setup-rootless-binfmt.sh                    # register arm64,riscv64 now
+linux/scripts/setup-rootless-binfmt.sh --install-service  # + auto-register on every login/boot
+linux/scripts/setup-rootless-binfmt.sh --verify           # check current state
+```
+
+Why the helper is needed (and why the "obvious" commands don't work rootless):
+
+- **`sudo apt install qemu-user-static` is not required and not wanted here** — this
+  host runs rootless containerd + BuildKit and must stay sudo-free.
+- **A plain `nerdctl run --privileged --rm tonistiigi/binfmt --install all` does NOT
+  work** even though it prints `arm64 OK`. A rootless `--rm` container registers
+  binfmt inside its *own* ephemeral user namespace, which is destroyed on exit — the
+  registration never reaches the namespace where real containers/builds run. Symptom:
+  `exec format error` on any nested exec, e.g. a `-d` container that returns an ID but
+  immediately exits `255` with `exec /docker-entrypoint.sh: exec format error`, or a
+  build step dying at `uname` / `apt`.
+- **The key insight this host relies on:** buildkitd is launched *nsenter'd into
+  containerd's rootlesskit namespace*
+  (`systemctl --user cat buildkit.service` → `ExecStart=... containerd-rootless-setuptool.sh nsenter -- buildkitd ...`),
+  so `nerdctl run` and `nerdctl build` **share one persistent rootless namespace**.
+  The helper registers QEMU *once* in that shared namespace (entering it the same way,
+  via `containerd-rootless-setuptool.sh nsenter`), so both emulate correctly. Because
+  `binfmt_misc` is user-namespace-mountable on this kernel, the helper overmounts a
+  fresh, namespace-owned (writable) `binfmt_misc` there without any host privilege.
+
+Registration flags matter — the helper uses **`POCF`**:
+
+| flag | meaning | why it's needed |
+|------|---------|-----------------|
+| `P`  | preserve-argv[0] | **critical** — without it qemu drops `argv[1]`; `sh -c CMD` loses `-c` and dash treats `CMD` as a filename (`cannot open …: No such file`) |
+| `O`  | open-binary as fd | lets qemu run a target that isn't on the interpreter's path |
+| `C`  | credentials | setuid/setgid handling |
+| `F`  | fix-binary | kernel opens the interpreter fd at registration time, so it is inherited into nested build/run namespaces where the qemu path isn't mounted |
+
+Symptom in an orchestrator run when binfmt is missing/misregistered: the `runtime`
+stage's arm64/riscv64 legs die with
+`error: failed to solve: process "/dev/.buildkit_qemu_emulator ... bootstrap-ca ..."
+did not complete successfully: exit code: 1`, while amd64 (native, no emulation)
+succeeds.
+
+Verify emulation actually works (not just "registered") before a runtime run:
+
+```bash
+# both should print the target machine, NOT "Exec format error"
+nerdctl run --rm --platform linux/arm64  ubuntu:26.04 uname -m   # -> aarch64
+nerdctl run --rm --platform linux/riscv64 ubuntu:26.04 uname -m  # -> riscv64
+```
+
+> `tonistiigi/binfmt`'s "OK" output means "a registration was written in my
+> namespace", **not** "emulation works". Always confirm with the run test above — a
+> `-d` container that returns an ID can still have exited immediately with `exec
+> format error`.
+
+#### Rootful hosts
+
+On a rootful Docker/containerd host the standard
+`docker run --privileged --rm tonistiigi/binfmt --install all` (or
+`apt install qemu-user-static`) registers in the host `binfmt_misc` and works
+directly, because containers there share the host (init) user namespace. The
+rootless helper above is only needed when the daemon runs rootless.
+
 The per-arch `latest-cross-base-*`, `latest-cross-package-*`, and `latest-cross-*`
 tags are internal publish tags used to assemble the public `latest-cross` manifest.
 Prefer the runtime helpers (see `AGENTS.md` § Runtime Helpers for the canonical commands).
