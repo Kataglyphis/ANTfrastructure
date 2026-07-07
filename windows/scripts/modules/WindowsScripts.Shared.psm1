@@ -118,9 +118,11 @@ function ConvertTo-ParameterList {
 
     if ($null -eq $Value) { return @() }
 
-    # If it's already an array, check for mixed types
+    # If it's already an array, check for mixed types. Wrap the Where-Object result in
+    # @() so .Count is safe on an empty pipeline under Set-StrictMode -Version Latest
+    # (a bare `(...).Count` on the AutomationNull from an all-string array throws).
     if ($Value -is [array] -and $Value.Count -gt 0) {
-        $allStrings = ($Value | Where-Object { $_ -isnot [string] }).Count -eq 0
+        $allStrings = @($Value | Where-Object { $_ -isnot [string] }).Count -eq 0
         if ($allStrings) {
             return @($Value)
         }
