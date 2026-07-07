@@ -48,36 +48,6 @@ function New-Timestamp {
 
 <#
 .SYNOPSIS
-    Creates a timestamped file path.
-.DESCRIPTION
-    Combines a directory, optional prefix, timestamp, and extension into a file path.
-.PARAMETER Directory
-    The target directory.
-.PARAMETER Prefix
-    Optional file name prefix.
-.PARAMETER Extension
-    File extension (default: .log).
-.PARAMETER Format
-    Timestamp format (default: yyyyMMdd-HHmmss).
-.OUTPUTS
-    [string] The full path to the timestamped file.
-#>
-function New-TimestampedFilePath {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Directory,
-        [string]$Prefix = '',
-        [string]$Extension = '.log',
-        [string]$Format = 'yyyyMMdd-HHmmss'
-    )
-
-    $ts = New-Timestamp -Format $Format
-    $name = if ($Prefix) { "$Prefix-$ts$Extension" } else { "$ts$Extension" }
-    return Join-Path $Directory $name
-}
-
-<#
-.SYNOPSIS
     Normalizes a file system path.
 .DESCRIPTION
     Returns a fully qualified, normalized path without trailing slashes.
@@ -164,35 +134,10 @@ function ConvertTo-ParameterList {
     return @("$Value")
 }
 
-<#
-.SYNOPSIS
-    Resolves and validates a workspace path.
-.DESCRIPTION
-    Returns a fully qualified, normalized workspace path.
-    Throws if the path does not exist.
-.PARAMETER Path
-    The workspace path to resolve.
-.OUTPUTS
-    [string] The resolved workspace path.
-#>
-function Resolve-WorkspacePath {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
-
-    if (-not (Test-Path $Path)) {
-        throw "Workspace path does not exist: $Path"
-    }
-    return (Resolve-Path $Path).Path
-}
-
 Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'New-TimestampedFilePath',
     'Resolve-NormalizedPath',
-    'ConvertTo-ParameterList',
-    'Resolve-WorkspacePath'
+    'ConvertTo-ParameterList'
 )
 
