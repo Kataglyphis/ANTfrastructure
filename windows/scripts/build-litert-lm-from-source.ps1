@@ -1300,9 +1300,35 @@ CrtCompatInit _crt_compat_init;
         Copy-Item (Join-Path $litertBuildDir 'litert_lm_main.pdb') $binOut -Force -ErrorAction SilentlyContinue
         $redist = Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT' -Directory -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
         if ($redist) { Copy-Item (Join-Path $redist.FullName '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
-        foreach ($d in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'ucrtbase.dll')) { $sys = Join-Path $env:SystemRoot "System32\$d"; if ((Test-Path $sys) -and -not (Test-Path (Join-Path $binOut $d))) { Copy-Item $sys $binOut -Force -ErrorAction SilentlyContinue } }
+        # vcruntime140_1.dll / msvcp140.dll are NOT in System32 on a bare Server Core base -- they ship with
+        # the VC toolset/redist. Search broadly (VS install + clang) and stage whatever copies are found.
+        foreach ($d in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'concrt140.dll', 'ucrtbase.dll')) {
+            if (-not (Test-Path (Join-Path $binOut $d))) {
+                $sys = Join-Path $env:SystemRoot "System32\$d"
+                if (Test-Path $sys) { Copy-Item $sys $binOut -Force -ErrorAction SilentlyContinue }
+                else { $found = Get-ChildItem 'C:\Program Files*' -Recurse -Filter $d -File -ErrorAction SilentlyContinue | Select-Object -First 1; if ($found) { Copy-Item $found.FullName $binOut -Force -ErrorAction SilentlyContinue } }
+            }
+        }
         $vcpkgBin = Join-Path $vcpkgDir 'installed\x64-windows\bin'
         if (Test-Path $vcpkgBin) { Copy-Item (Join-Path $vcpkgBin '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
+        # Resolve the exe's imported DLLs. api-ms-win-* are UCRT API-set forwarders (virtual, resolved by
+        # the loader to ucrtbase.dll -- never physical files, so ignore them). For any REAL import not yet
+        # staged and not in System32 (e.g. kissfft-float.dll, z.dll -- built inside the tree), search the
+        # build tree and co-locate it.
+        $readobj = Get-ChildItem 'C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin\llvm-readobj.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($readobj) {
+            $imps = & $readobj.FullName --coff-imports $mainExe 2>$null | Select-String 'Name:' | ForEach-Object { ($_ -replace '.*Name:\s*', '').Trim() } | Where-Object { $_ -match '\.dll$' } | Sort-Object -Unique
+            Write-Host ("litert_lm_main.exe imports: " + ($imps -join ', '))
+            $treeDlls = @{}
+            Get-ChildItem $buildDir -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object { if (-not $treeDlls.ContainsKey($_.Name)) { $treeDlls[$_.Name] = $_.FullName } }
+            foreach ($imp in $imps) {
+                if ($imp -match '^api-ms-win-') { continue }
+                if ((Test-Path (Join-Path $binOut $imp)) -or (Test-Path (Join-Path $env:SystemRoot "System32\$imp"))) { continue }
+                if ($treeDlls.ContainsKey($imp)) { Copy-Item $treeDlls[$imp] $binOut -Force -ErrorAction SilentlyContinue }
+            }
+            $missing = $imps | Where-Object { $_ -notmatch '^api-ms-win-' -and -not (Test-Path (Join-Path $binOut $_)) -and -not (Test-Path (Join-Path $env:SystemRoot "System32\$_")) }
+            if ($missing) { Write-Host ("  STILL-MISSING DLLs (not found anywhere): " + ($missing -join ', ')) }
+        }
         $stagedExe = Join-Path $binOut 'litert_lm_main.exe'
         $env:PATH = "$binOut;$env:PATH"
         & cmd /c "`"$stagedExe`" --help 2>&1" | Out-Null
