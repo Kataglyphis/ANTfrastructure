@@ -245,16 +245,21 @@ _chain_run_build_loop() {
   for stage in "${CROSS_STAGE_ORDER[@]}"; do
     stage_enabled "${stage}" || continue
 
+    # Explicit `|| err` on every stage: a failed stage MUST abort the chain,
+    # never fall through to the next stage on a stale/missing upstream image.
+    # set -e alone is unreliable here because the per-arch path runs under
+    # run_parallel_arch_loop's `if !` (which disables set -e for the call tree).
     case "${stage}" in
       runtime)
-        run_runtime_stage
+        run_runtime_stage || err "runtime stage failed"
         ;;
       *)
         if cross_stage_is_per_arch "${stage}"; then
           _CROSS_CURRENT_STAGE="${stage}"
-          run_parallel_arch_loop _cross_per_arch_build "$(arch_loop_flag_prefix cross-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+          run_parallel_arch_loop _cross_per_arch_build "$(arch_loop_flag_prefix cross-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}") \
+            || err "stage ${stage} failed for one or more arches"
         else
-          cross_stage_run "${stage}"
+          cross_stage_run "${stage}" || err "stage ${stage} failed"
         fi
         ;;
     esac

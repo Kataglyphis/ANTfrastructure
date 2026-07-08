@@ -168,7 +168,6 @@ COPY --link --from=android-opencv /opt/android/opencv /opt/android/opencv
 # the amd64-hosted GCC with the target-native GCC for non-amd64 architectures.
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-android.sh /opt/scripts/packaging/smoke-android.sh
-COPY --chmod=755 linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh
 COPY --chmod=755 linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
 RUN set -euo pipefail; \
     if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
@@ -178,11 +177,14 @@ RUN set -euo pipefail; \
     BUILD_MODE="${BUILD_MODE}" \
     bash /opt/scripts/packaging/swap-native-gcc.sh
 
-# Execute the Vulkan-SDK and Android-SDK/NDK smokes now that this stage's
-# artifacts are assembled: they were COPY'd in but never run. Hard-fail via
-# smoke_summary so a broken SDK/NDK surfaces at build time.
+# Execute the Android-SDK/NDK smoke now that this stage's artifacts are
+# assembled (it was COPY'd in but never run). Hard-fail via smoke_summary so a
+# broken SDK/NDK surfaces at build time. NOTE: smoke-vulkan is deliberately NOT
+# run here -- the full Vulkan *SDK* (/opt/vulkan/active, headers, loader) is only
+# assembled in the package stage by setup-vulkan-symlinks.sh; this android image
+# carries only base's runtime libvulkan.so.1, so smoke-vulkan runs in the
+# package wrapper-smoke stage instead.
 RUN set -euo pipefail; \
-    bash /opt/scripts/packaging/smoke-vulkan.sh; \
     bash /opt/scripts/packaging/smoke-android.sh
 
 # Ensure /opt/llvm-target exists for downstream stages (package build expects it)

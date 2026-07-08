@@ -399,12 +399,18 @@ cross_stage_run() {
   cross_stage_build_args build_args "${stage}" "${arch}"
 
   log "[stage ${label}] building${tag:+ }${tag}${parent_pin:+ FROM ${parent_pin}}"
+  # EXPLICIT failure propagation (|| return 1): this function is reached via
+  # run_parallel_arch_loop's `if ! _cross_per_arch_build`, which disables set -e
+  # for the whole call tree. Without the explicit check a failed build would
+  # fall through to _cross_stage_run_capture_pin below and the function would
+  # return success, so the chain would march on to the next stage on a broken
+  # (unpushed) image. Do NOT let that happen.
   if [ "${push_flag}" -eq 1 ]; then
     log "[stage ${label}] building ${tag}${parent_pin:+ FROM ${parent_pin}}"
-    _cross_stage_run_dispatch "${label}" "${tag}" "${dockerfile}" 1 "${build_args[@]}"
+    _cross_stage_run_dispatch "${label}" "${tag}" "${dockerfile}" 1 "${build_args[@]}" || return 1
   else
     log "[stage ${label}] building ${tag} locally"
-    _cross_stage_run_dispatch "${label}" "${tag}" "${dockerfile}" 0 "${build_args[@]}"
+    _cross_stage_run_dispatch "${label}" "${tag}" "${dockerfile}" 0 "${build_args[@]}" || return 1
   fi
 
   # Pin capture: only on push, and only when not a dry run
