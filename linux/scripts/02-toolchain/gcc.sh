@@ -289,6 +289,19 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
   rm -f "${scratch_root}/_cc_linktest_${normalized_target}"
   log "Cross-compiler link test passed for ${normalized_target}"
 
+  # KNOWN-BENIGN NOISE (do not chase): building libstdc++ for a Canadian cross
+  # (host==target==${triplet}, build=amd64) emits a burst of
+  #   .../libstdc++-v3/include/cfenv|fenv.h: error: 'fenv_t' has not been declared in '::'
+  #   std: error: failed to read compiled module: No such file or directory
+  #   make[3]: [Makefile:868: stamp-modules-bits] Error 1 (ignored)
+  # This is the C++23 `std`/`std.compat` MODULE build (std.cc) failing under the
+  # cross sysroot's #include_next fenv chain. libstdc++'s own Makefile builds the
+  # modules with error-IGNORED ('Error 1 (ignored)'), so it is NON-FATAL: the
+  # native gcc/g++ install fine (asserts below prove it) -- only the prebuilt
+  # `import std` module is absent for the foreign-arch native compiler. There is
+  # NO configure flag to disable the module build (confirmed against gcc-15/16
+  # acinclude.m4), and the amd64 native host GCC is unaffected (its std module
+  # builds against native headers). Verified 2026-07-08 on the arm64+riscv64 run.
   CC="${cross_cc}" CXX="${cross_cxx}" \
     ac_cv_prog_cc_works=yes \
     ac_cv_prog_CC_works=yes \
