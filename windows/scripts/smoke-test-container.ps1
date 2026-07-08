@@ -163,6 +163,47 @@ function Assert-NativeLinkRun {
     }.GetNewClosure() -FailMessage $FailMessage
 }
 
+function Assert-DllLoads {
+    # LoadLibrary a native DLL (with its own dir + any dependency dirs on PATH) and optionally
+    # GetProcAddress a known export. Proves the DLL AND its full dependent-DLL chain actually
+    # resolve at load time -- the header-agnostic complement to Assert-NativeLinkRun, for libs
+    # whose headers churn across releases (TVM) or whose C API is awkward to compile (GenAI).
+    # A successful LoadLibrary is the real signal (it catches a missing dependent DLL, the same
+    # 0xC0000135 class as the OpenCV/OpenGL defect); the export check is a bonus.
+    param(
+        [string]$Name,
+        [string]$DllPath,
+        [string[]]$DependencyDirs = @(),
+        [string]$Export = '',
+        [string]$FailMessage
+    )
+    $dllPath = $DllPath; $depDirs = $DependencyDirs; $export = $Export
+    Assert-Test -Name $Name -Condition {
+        if (-not ('KataNativeProbe' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class KataNativeProbe {
+    [DllImport("kernel32", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr LoadLibraryW(string p);
+    [DllImport("kernel32", SetLastError=true)] public static extern bool FreeLibrary(IntPtr h);
+    [DllImport("kernel32", SetLastError=true)] public static extern IntPtr GetProcAddress(IntPtr h, string n);
+}
+'@
+        }
+        if (-not (Test-Path $dllPath)) { return $false }
+        $prev = $env:PATH
+        $env:PATH = ((@((Split-Path $dllPath)) + $depDirs) -join ';') + ';' + $env:PATH
+        try {
+            $h = [KataNativeProbe]::LoadLibraryW($dllPath)
+            if ($h -eq [IntPtr]::Zero) { return $false }
+            $ok = $true
+            if ($export) { $ok = ([KataNativeProbe]::GetProcAddress($h, $export) -ne [IntPtr]::Zero) }
+            [void][KataNativeProbe]::FreeLibrary($h)
+            return $ok
+        } finally { $env:PATH = $prev }
+    }.GetNewClosure() -FailMessage $FailMessage
+}
+
 function Assert-EnvVarSet {
     param([string]$Name, [string]$ExpectedPrefix = '')
     # GetNewClosure + renamed captures: Assert-Test's $Name parameter shadows this
@@ -269,6 +310,24 @@ Assert-Test -Name "Rust version$(if ($rustMajorMinor) { " is $rustMajorMinor.x" 
     return $ver -match '\d+\.\d+\.\d+'
 } -FailMessage "rustc --version did not report the expected version"
 
+# rustc --version only proves the binary exists; this proves the toolchain can actually
+# COMPILE + LINK (via the MSVC linker) + RUN -- catches a broken linker / missing target / std.
+Assert-Test -Name 'rustc compiles + links + runs a program' -Condition {
+    $d = Join-Path $env:TEMP 'kataglyphis-smoke-rust'
+    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    $src = Join-Path $d 'main.rs'
+    'fn main() { println!("rust ok"); }' | Set-Content -Path $src -Encoding ASCII
+    $exe = Join-Path $d 'main.exe'
+    & rustc $src -o $exe 2>&1 | Out-Null
+    $ok = $false
+    if (($LASTEXITCODE -eq 0) -and (Test-Path $exe)) {
+        $out = (& $exe 2>&1 | Out-String)
+        $ok = ($LASTEXITCODE -eq 0) -and ($out -match 'rust ok')
+    }
+    Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+    return $ok
+} -FailMessage 'rustc could not compile/link/run a hello-world (broken MSVC linker or std?)'
+
 # ============================================================================
 Write-TestHeader '4. LLVM / Clang + Flutter + WiX'
 # ============================================================================
@@ -309,6 +368,20 @@ Assert-CommandExists 'glslc'
 Assert-CommandExists 'vulkaninfoSDK'
 Assert-EnvVarSet -Name 'VULKAN_SDK'
 
+# glslc on PATH != working; compile a trivial shader to SPIR-V. Needs no GPU/ICD (unlike
+# vulkaninfo, which we deliberately do NOT run headless), so it exercises the real toolchain.
+Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
+    $d = Join-Path $env:TEMP 'kataglyphis-smoke-glslc'
+    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    $src = Join-Path $d 'smoke.vert'
+    "#version 450`nvoid main() { gl_Position = vec4(0.0); }" | Set-Content -Path $src -Encoding ASCII
+    $spv = Join-Path $d 'smoke.spv'
+    & glslc $src -o $spv 2>&1 | Out-Null
+    $ok = ($LASTEXITCODE -eq 0) -and (Test-Path $spv) -and ((Get-Item $spv).Length -gt 0)
+    Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+    return $ok
+} -FailMessage 'glslc failed to compile a trivial shader to SPIR-V'
+
 # ============================================================================
 Write-TestHeader '7. CUDA Toolkit + cuDNN'
 # ============================================================================
@@ -339,6 +412,41 @@ if (-not $SkipCudaTests) {
     Assert-Test -Name "cuDNN headers (cudnn*.h)" -Condition { $cudnnHeaders.Count -gt 0 } -FailMessage "No cuDNN headers found"
     Assert-Test -Name "cuDNN libs (cudnn*.lib)" -Condition { $cudnnLibs.Count -gt 0 } -FailMessage "No cuDNN libs found"
     Assert-Test -Name "cuDNN DLLs (cudnn*.dll)" -Condition { $cudnnDlls.Count -gt 0 } -FailMessage "No cuDNN DLLs found"
+
+    # nvcc --version proves the tool exists; this proves it can COMPILE device code (validates
+    # the host_config.h / nv/target.h stubs + cl.exe host-compiler integration). PTX-only --
+    # the build container has no GPU device, so never a kernel launch. -ccbin points nvcc at
+    # the MSVC host compiler (cl.exe is not on the bare PATH in a plain container shell).
+    $nvccCcbin = if ($env:VCToolsInstallDir) { Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64' } else { $null }
+    Assert-Test -Name 'nvcc compiles a CUDA kernel to PTX' -Condition {
+        $d = Join-Path $env:TEMP 'kataglyphis-smoke-cuda'
+        New-Item -Path $d -ItemType Directory -Force | Out-Null
+        $src = Join-Path $d 'k.cu'
+        "__global__ void k(float* a) { a[threadIdx.x] *= 2.0f; }`nint main() { return 0; }" | Set-Content -Path $src -Encoding ASCII
+        $ptx = Join-Path $d 'k.ptx'
+        $nvccArgs = @('-std=c++17', '-ptx', $src, '-o', $ptx)
+        if ($nvccCcbin) { $nvccArgs += @('-ccbin', $nvccCcbin) }
+        & nvcc @nvccArgs 2>&1 | Out-Null
+        $ok = ($LASTEXITCODE -eq 0) -and (Test-Path $ptx) -and ((Get-Item $ptx).Length -gt 0)
+        Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+        return $ok
+    }.GetNewClosure() -FailMessage 'nvcc could not compile a trivial kernel to PTX (host_config/nv-target/cl.exe integration?)'
+
+    # Existence != loadable: link + call a HOST-only cuDNN API (cudnnGetVersion needs no GPU)
+    # to prove the cuDNN header/lib/DLL actually link + load together.
+    $cudnnHdr = $cudnnHeaders | Where-Object { $_.Name -eq 'cudnn.h' } | Select-Object -First 1
+    $cudnnMainLib = $cudnnLibs | Where-Object { $_.Name -eq 'cudnn.lib' } | Select-Object -First 1
+    $cudnnMainDll = $cudnnDlls | Where-Object { $_.Name -like 'cudnn64_*.dll' } | Select-Object -First 1
+    if ($cudnnHdr -and $cudnnMainLib -and $cudnnMainDll -and $env:CUDA_ROOT) {
+        Assert-NativeLinkRun -Name 'cuDNN links + host API works (cudnnGetVersion)' -WorkName 'cudnn' -Source @'
+#include <cudnn.h>
+#include <cstdio>
+int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
+'@ -IncludeDirs @($cudnnHdr.DirectoryName, (Join-Path $env:CUDA_ROOT 'include')) -LibDir $cudnnMainLib.DirectoryName -LibName $cudnnMainLib.Name -DllDir $cudnnMainDll.DirectoryName -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL'
+    } else {
+        Write-Host '  [SKIP] cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 } else {
     Write-Host '  [SKIP] CUDA/cuDNN tests skipped (--SkipCudaTests)' -ForegroundColor Yellow
     $script:skipped++
@@ -393,6 +501,20 @@ if ($genaiRoot) {
     Assert-Test -Name 'ONNX GenAI header' -Condition { $genaiHdr.Count -gt 0 } -FailMessage "No GenAI header (ort_genai*.h / onnxruntime-genai.h) found under $genaiRoot"
     Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.lib' -Description 'ONNX GenAI lib files'
     Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.dll' -Description 'ONNX GenAI DLL files'
+
+    # Existence != loadable: LoadLibrary the GenAI DLL (with onnxruntime.dll's dir on PATH,
+    # since GenAI depends on it) and resolve a known C export -- proves the whole dependency
+    # chain loads, catching a missing/mismatched onnxruntime.dll that file checks can't see.
+    $genaiDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $onnxRootForGenai = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
+    $onnxDepDir = if ($onnxRootForGenai) { (Get-ChildItem -Path $onnxRootForGenai -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName } else { $null }
+    if ($genaiDll) {
+        $genaiDepDirs = if ($onnxDepDir) { @($onnxDepDir) } else { @() }
+        Assert-DllLoads -Name 'ONNX GenAI DLL loads + C API resolves (OgaConfigClearProviders)' -DllPath $genaiDll.FullName -DependencyDirs $genaiDepDirs -Export 'OgaConfigClearProviders' -FailMessage 'onnxruntime-genai.dll failed to load or its C API symbol is missing (dependent onnxruntime.dll not resolved?)'
+    } else {
+        Write-Host '  [SKIP] GenAI load probe (onnxruntime-genai.dll not found)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 } else {
     Write-Host '  [SKIP] ONNX_GENAI_ROOT not set' -ForegroundColor Yellow
     $script:skipped++
@@ -681,6 +803,17 @@ if (Test-Path $tvmRoot) {
     }
     Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.lib' -Description 'TVM lib files'
     Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.dll' -Description 'TVM DLL files'
+
+    # Existence != loadable: LoadLibrary the TVM runtime DLL to prove its full dependent-DLL
+    # chain resolves (header-agnostic -- TVM's C API names churn across releases). No GPU needed.
+    $tvmRuntimeDll = Get-ChildItem -Path $tvmRoot -Filter 'tvm_runtime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $tvmRuntimeDll) { $tvmRuntimeDll = Get-ChildItem -Path $tvmRoot -Filter 'tvm*runtime*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if ($tvmRuntimeDll) {
+        Assert-DllLoads -Name 'TVM runtime DLL loads (dependent chain resolves)' -DllPath $tvmRuntimeDll.FullName -FailMessage 'tvm_runtime.dll failed to load -- a dependent DLL (LLVM/CUDA/Vulkan runtime) did not resolve'
+    } else {
+        Write-Host '  [SKIP] TVM load probe (tvm_runtime.dll not found)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 } else {
     Write-Host '  [SKIP] TVM not installed (C:\runtime\lib\tvm not found)' -ForegroundColor Yellow
     $script:skipped++
