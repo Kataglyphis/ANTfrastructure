@@ -22,17 +22,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 
-# Preference variables inherit into the child scripts invoked with '&' below, so
-# each behaves exactly as it did under the Dockerfile SHELL (EAP=Stop).
+Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -Force
+
+# LiteRT-LM depends on LiteRT's install, so the two stay sequential. Invoke-SourceBuildChain
+# owns the banner + native-exit check + EAP=Stop inheritance the child scripts rely on.
 $stages = @(
     @{ Name = 'LiteRT';    Script = 'build-litert-from-source.ps1';    SourceDir = 'C:\temp\litert-src' }
     @{ Name = 'LiteRT-LM'; Script = 'build-litert-lm-from-source.ps1'; SourceDir = 'C:\temp\litert-lm-src' }
 )
 
-foreach ($stage in $stages) {
-    Write-Host "`n=== media-litert stage: $($stage.Name) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
-    & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
-    if ($LASTEXITCODE) { throw "$($stage.Name) build failed (exit $LASTEXITCODE)" }
-}
+Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir
 
 Write-Host "`n=== media-litert chain completed ==="

@@ -1018,8 +1018,54 @@ function Initialize-ToolchainPythonEnvironment {
     return Get-SourceBuildPython
 }
 
+function Invoke-SourceBuildChain {
+    <#
+    .SYNOPSIS
+        Run an ordered chain of source-build scripts in one container (the shared
+        *-all.ps1 run+commit payload loop).
+    .DESCRIPTION
+        The loop behind the media *-all orchestrators (build-media-core-all,
+        build-litert-all): for each stage print a timestamped banner, invoke the stage's
+        build script with -SourceDir/-InstallDir, then hard-fail on a non-zero NATIVE exit
+        (a child that `exit N`s rather than throwing -- a safety net over EAP=Stop, which
+        already propagates child throws). Stages stay sequential because each consumes the
+        prior stage's install (LiteRT-LM needs LiteRT; ONNX GenAI needs ONNX Runtime).
+
+        Sets EAP=Stop so children that RELY on an inherited Stop (build-onnx-genai / opencv
+        / ffmpeg / litert-from-source do NOT set their own) abort exactly as they did under
+        the orchestrator's script scope. Verified empirically: a function-local EAP=Stop
+        propagates into an &-invoked external .ps1, so moving the loop off script scope into
+        this module function does not change child error semantics.
+    .PARAMETER Label
+        Chain name used in the banners/errors (e.g. 'media-core', 'media-litert').
+    .PARAMETER Stages
+        Ordered stage descriptors; each a hashtable with keys Name, Script, SourceDir.
+    .PARAMETER InstallDir
+        Shared install prefix forwarded to every stage script.
+    .PARAMETER ScriptDir
+        Directory holding the stage scripts (baked into the builder image).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][object[]]$Stages,
+        [string]$InstallDir = 'C:\runtime',
+        [string]$ScriptDir  = 'C:\temp\scripts'
+    )
+    $ErrorActionPreference = 'Stop'
+    foreach ($stage in $Stages) {
+        Write-Host "`n=== $Label stage: $($stage.Name) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
+        & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
+        # $LASTEXITCODE is unset until the FIRST native command runs; reading it while unset
+        # throws under Set-StrictMode. Treat "never set" as success (a child that ran only
+        # cmdlets and threw nothing succeeded); a child's `exit N` sets it, which we honor.
+        $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        if ($exitCode) { throw "$($stage.Name) build failed (exit $exitCode)" }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
+    'Invoke-SourceBuildChain',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
     'Invoke-CmakeBuild',
