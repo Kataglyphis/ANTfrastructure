@@ -368,7 +368,7 @@ _opencv_cmake_python_opts() {
             # In cross mode, FindPython3 cannot probe numpy at the target, so we
             # supply the include path explicitly.
             local numpy_include
-            numpy_include="$(${HOST_PYTHON:-$(host_python_bin)} -c 'import numpy; print(numpy.get_include())' 2>/dev/null || true)"
+            numpy_include="$(python_module_include "${HOST_PYTHON:-$(host_python_bin)}" numpy)"
             if [ -n "${numpy_include}" ] && [ -d "${numpy_include}" ]; then
                 _ocmpo_out+=("-DPYTHON3_NUMPY_INCLUDE_DIRS=${numpy_include}")
                 echo "Set PYTHON3_NUMPY_INCLUDE_DIRS=${numpy_include} for cross-compile"

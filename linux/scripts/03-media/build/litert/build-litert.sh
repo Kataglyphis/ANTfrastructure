@@ -492,8 +492,8 @@ _litert_wheel_cross_args() {
     # even for a cross target (only the target Python.h above must be arch-specific).
     local _pybind11_inc="" _numpy_inc=""
     if [ -n "${PYTHON:-}" ]; then
-        _pybind11_inc="$("${PYTHON}" -c 'import pybind11; print(pybind11.get_include())' 2>/dev/null || true)"
-        _numpy_inc="$("${PYTHON}" -c 'import numpy; print(numpy.get_include())' 2>/dev/null || true)"
+        _pybind11_inc="$(python_module_include "${PYTHON}" pybind11)"
+        _numpy_inc="$(python_module_include "${PYTHON}" numpy)"
     fi
     [ -n "${_pybind11_inc}" ] && litert_build_flags+=" -I${_pybind11_inc}"
     [ -n "${_numpy_inc}" ] && litert_build_flags+=" -I${_numpy_inc}"

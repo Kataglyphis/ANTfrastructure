@@ -385,6 +385,19 @@ Cflags: ${cflags}
 EOF
 }
 
+# Echo the C-header include dir a Python module exposes via get_include()
+# (numpy, pybind11, ...); empty string on any failure (missing interpreter or
+# module, no get_include). Consolidates the
+# `$PY -c 'import M; print(M.get_include())'` pattern the cross media builds use
+# to feed target include dirs into BUILD_FLAGS / cmake.
+#
+# Usage: python_module_include <python_bin> <module>
+python_module_include() {
+  local py="$1" module="$2"
+  [ -n "${py}" ] || return 0
+  "${py}" -c "import ${module}; print(${module}.get_include())" 2>/dev/null || true
+}
+
 # ── Python import verification ────────────────────────────────────────────────
 # Verify a Python module can be imported.  Set PYTHON_IMPORT_PYTHON to override
 # the interpreter (default: python3 or python).
