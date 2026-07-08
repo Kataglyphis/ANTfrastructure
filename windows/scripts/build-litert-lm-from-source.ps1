@@ -494,6 +494,20 @@ string(REPLACE "list(APPEND SPM_INSTALLTARGETS" "endif() # LiteRTLM-winfix: end 
 string(REPLACE "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)" "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)\nendif() # LiteRTLM-winfix" _sp_src "${_sp_src}")
 file(WRITE "${SENTENCE_SRC_DIR}/src/CMakeLists.txt" "${_sp_src}")
 message(STATUS "[LiteRTLM] Patched sentencepiece src/CMakeLists.txt: stripped -fPIC + skipped spm CLI tools")
+
+# [LiteRTLM-winfix] sentencepiece's src/error.cc defines ABSL_FLAG(int32, minloglevel, ...)
+# under _USE_EXTERNAL_ABSL as a "naive workaround" assuming external abseil does not provide
+# it. But litert-lm links abseil's FULL absl_log_flags.lib, which DOES define minloglevel, so
+# the two collide: duplicate FLAGS_minloglevel / FLAGS_nominloglevel are both registered at
+# static init and abseil aborts EVERY invocation ("Inconsistency between flag object and
+# registration for flag 'minloglevel'"). /FORCE:MULTIPLE hides it at link time, so it only
+# surfaces at runtime. Drop sentencepiece's duplicate ([^;]* spans the two-line statement,
+# eol-agnostic) so abseil's definition stands alone; litert_lm_main still links absl_log_flags
+# so the symbol resolves. This is THE fix for the litert_lm_main.exe startup ODR abort.
+file(READ "${SENTENCE_SRC_DIR}/src/error.cc" _sp_err)
+string(REGEX REPLACE "ABSL_FLAG\\(int32, minloglevel, 0,[^;]*;" "/* [LiteRTLM-winfix] dropped duplicate ABSL_FLAG(minloglevel); abseil absl_log_flags provides it (ODR fix) */" _sp_err "${_sp_err}")
+file(WRITE "${SENTENCE_SRC_DIR}/src/error.cc" "${_sp_err}")
+message(STATUS "[LiteRTLM] Patched sentencepiece error.cc: dropped duplicate ABSL_FLAG(minloglevel) -> fixes abseil flag ODR abort")
 '@
 [void](Add-FileBlockOnce -Path $spPatcher -Marker 'LiteRTLM-winfix sentencepiece-fpic' -Content $spPatch `
         -Description 'sentencepiece_patcher.cmake: strip -fPIC + skip spm CLI tools (windows-msvc/abseil link)')
@@ -1384,6 +1398,12 @@ if (Test-Path $mainExe) {
     }
     Write-Host "litert_lm_main.exe staged to $binOut"
     $ErrorActionPreference = $prevEAP
+    # Hard gate: a linked-but-non-functional exe must FAIL the build -- that is the whole point
+    # of smoke-RUNNING it (file existence never caught the abseil ODR abort). Skip only under
+    # LITERTLM_KEEP_BUILD_TREE so the link diagnostics below still run when debugging a break.
+    if ($script:litertLmRuntimeBroken -and -not $env:LITERTLM_KEEP_BUILD_TREE) {
+        throw "litert_lm_main.exe is non-functional at runtime (smoke-run flagged it BROKEN above). Set LITERTLM_KEEP_BUILD_TREE=1 to keep the build tree + dump link diagnostics."
+    }
 }
 else { Write-Host "WARNING: ninja did not produce litert_lm_main.exe -- the clean-link CMake patch may need attention" }
 # ----------------------------------------------------------------------------------------------
