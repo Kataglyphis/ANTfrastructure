@@ -9,9 +9,7 @@ param(
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
-# Shared last (after SourceBuild.Common) for Invoke-DownloadWithRetry; this order avoids the
-# nested -Force import clobber.
-Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available
@@ -166,24 +164,10 @@ Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
 # the msvc toolchain. See docs/windows-builds.md ?Patches.
 $ffbuildDir = Join-Path $srcDir 'ffbuild'
 Get-ChildItem -Path $ffbuildDir -Filter '*.mak' -ErrorAction SilentlyContinue | ForEach-Object {
-    $c = [System.IO.File]::ReadAllText($_.FullName)
-    $c = $c -replace '-showIncludes', ''
-    $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
-    $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
-    $c = $c -replace '\s*\|\s*awk.*', ''
-    [System.IO.File]::WriteAllText($_.FullName, $c)
+    Remove-MakefileShowIncludes -Path $_.FullName
 }
 foreach ($fn in @('library.mak', 'subdir.mak', 'Makefile')) {
-    $fp = Join-Path $srcDir $fn
-    if (Test-Path $fp) {
-        $c = [System.IO.File]::ReadAllText($fp)
-        $c = $c -replace '-showIncludes', ''
-        $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
-        $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
-        $c = $c -replace '\s*\|\s*awk.*', ''
-        $c = $c -replace '-include\s+\$\(wildcard\s+\*\.d\).*', ''
-        [System.IO.File]::WriteAllText($fp, $c)
-    }
+    Remove-MakefileShowIncludes -Path (Join-Path $srcDir $fn) -StripWildcardInclude
 }
 # Add avutil.lib to library link paths (configure may not generate EXTRALIBS correctly)
 $configMakPath = Join-Path $srcDir 'ffbuild/config.mak'

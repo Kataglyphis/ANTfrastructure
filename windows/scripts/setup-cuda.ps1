@@ -18,9 +18,7 @@ if (-not (Test-Path $sharedModulePath)) {
 }
 
 Import-Module $sharedModulePath -Force
-# Shared LAST for Invoke-DownloadWithRetry (WindowsContainerImage.Common re-imports Shared
-# -Force internally, so import Shared after it to avoid the nested-import clobber).
-Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through WindowsContainerImage.Common's re-export.
 
 $CudaVersion = Resolve-ContainerImageValue -Value $CudaVersion -EnvironmentVariable 'CUDA_VERSION'
 $CudaVersionMajorMinor = Resolve-ContainerImageValue -Value $CudaVersionMajorMinor -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR'

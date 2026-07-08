@@ -720,6 +720,36 @@ function Copy-BuildArtifact {
     }
 }
 
+function Remove-MakefileShowIncludes {
+    <#
+    .SYNOPSIS
+        Strip MSVC /showIncludes and its awk dep-file pipeline from a configure-generated
+        FFmpeg makefile so clang-cl/nmake don't choke on the GCC-style dependency scanning.
+    .DESCRIPTION
+        FFmpeg's ./configure writes the same /showIncludes + `| awk ... > *.d` dep-tracking
+        into both ffbuild/*.mak and the top-level library.mak/subdir.mak/Makefile. This applies
+        the identical invariant `-replace` set in one place (was duplicated across two loops in
+        build-ffmpeg-from-source.ps1). No-op if -Path does not exist.
+    .PARAMETER Path
+        Makefile to rewrite in place.
+    .PARAMETER StripWildcardInclude
+        Also drop the `-include $(wildcard *.d)` line -- present in the top-level makefiles,
+        not in the ffbuild/*.mak fragments.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$StripWildcardInclude
+    )
+    if (-not (Test-Path $Path)) { return }
+    $c = [System.IO.File]::ReadAllText($Path)
+    $c = $c -replace '-showIncludes', ''
+    $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
+    $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
+    $c = $c -replace '\s*\|\s*awk.*', ''
+    if ($StripWildcardInclude) { $c = $c -replace '-include\s+\$\(wildcard\s+\*\.d\).*', '' }
+    [System.IO.File]::WriteAllText($Path, $c)
+}
+
 function Remove-SourceBuildTree {
     <#
     .SYNOPSIS
@@ -1174,9 +1204,17 @@ Export-ModuleMember -Function @(
     'Install-CpythonPip',
     'Invoke-CpythonPip',
     'Copy-BuildArtifact',
+    'Remove-MakefileShowIncludes',
     'Get-CudaArchitectureList',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
     'Get-GpuEnvironment',
-    'Resolve-TensorRtRoot'
+    'Resolve-TensorRtRoot',
+    # Re-exported from WindowsScripts.Shared (imported above) so a caller gets these via a
+    # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
+    'Resolve-DirectoryPath',
+    'New-Timestamp',
+    'Resolve-NormalizedPath',
+    'ConvertTo-ParameterList',
+    'Invoke-DownloadWithRetry'
 )

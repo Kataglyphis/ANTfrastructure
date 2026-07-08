@@ -47,6 +47,36 @@ Describe 'Copy-BuildArtifact' {
     }
 }
 
+Describe 'Remove-MakefileShowIncludes' {
+
+    It 'strips /showIncludes and the awk dep pipeline, keeping unrelated lines' {
+        $dir = New-TestDir
+        $mk = Join-Path $dir 'library.mak'
+        Set-Content $mk "cc -showIncludes foo.c | awk '/including/' > foo.d`nother line" -Encoding ASCII
+        Remove-MakefileShowIncludes -Path $mk
+        $out = Get-Content $mk -Raw
+        Assert-False ($out -match 'showIncludes') '/showIncludes removed'
+        Assert-Match 'other line' $out 'unrelated lines preserved'
+    }
+
+    It 'drops the wildcard-include line only with -StripWildcardInclude' {
+        $dir = New-TestDir
+        $a = Join-Path $dir 'a.mak'; $b = Join-Path $dir 'b.mak'
+        $line = '-include $(wildcard *.d) # dep tracking'
+        Set-Content $a $line -Encoding ASCII
+        Set-Content $b $line -Encoding ASCII
+        Remove-MakefileShowIncludes -Path $a
+        Remove-MakefileShowIncludes -Path $b -StripWildcardInclude
+        Assert-Match 'wildcard' (Get-Content $a -Raw) 'wildcard include kept without the switch (ffbuild/*.mak fragments)'
+        Assert-False ((Get-Content $b -Raw) -match 'wildcard') 'wildcard include dropped with the switch (top-level makefiles)'
+    }
+
+    It 'is a no-op for a missing path' {
+        Remove-MakefileShowIncludes -Path (Join-Path (New-TestDir) 'nope.mak')
+        Assert-True $true 'no throw on a missing file'
+    }
+}
+
 Describe 'Get-SourceBuildVersion -StripVPrefix' {
 
     It 'strips a leading v only when the switch is set' {

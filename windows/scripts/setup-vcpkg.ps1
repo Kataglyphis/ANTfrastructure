@@ -11,9 +11,7 @@ $ProgressPreference = 'SilentlyContinue'
 $installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
-# Shared last (after Installer.Common) for Invoke-DownloadWithRetry; this order avoids the
-# nested -Force import clobber.
-Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through Installer.Common's re-export.
 
 Write-Host "Setting up vcpkg at $VcpkgDir..."
 

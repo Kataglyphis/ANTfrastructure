@@ -13,9 +13,7 @@ $ProgressPreference = 'SilentlyContinue'
 $sharedModulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $sharedModulePath)) { throw "Required module not found: $sharedModulePath" }
 Import-Module $sharedModulePath -Force
-# Shared LAST: WindowsContainerImage.Common re-imports Shared -Force internally, which would
-# clobber a caller's earlier import -- so import it after to keep Invoke-DownloadWithRetry live.
-Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through WindowsContainerImage.Common's re-export.
 
 $TensorRtVersion = Resolve-ContainerImageValue -Value $TensorRtVersion -EnvironmentVariable 'TENSORRT_VERSION' -DefaultValue ''
 $TensorRtRoot = Resolve-ContainerImageValue -Value $TensorRtRoot -EnvironmentVariable 'TENSORRT_ROOT' -DefaultValue 'C:\Program Files\NVIDIA GPU Computing Toolkit\TensorRT'

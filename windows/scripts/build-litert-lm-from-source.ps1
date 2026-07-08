@@ -14,9 +14,7 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
-# Shared last (after SourceBuild.Common) for Invoke-DownloadWithRetry; this order avoids the
-# nested -Force import clobber.
-Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
 
 $LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.13.1'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
