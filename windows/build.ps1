@@ -36,6 +36,14 @@
 .PARAMETER Stages
     Subset of stages to build (default: all, in order): base, sdk, toolchain, media, final.
 
+.PARAMETER MediaBranches
+    Subset of the media fan-out to (re)build within the 'media' stage (default: all
+    three): media-core, media-litert, media-tvm. Use this to rebuild ONE branch after a
+    source fix without recompiling the others -- e.g. -MediaBranches media-litert rebuilds
+    only the LiteRT/LiteRT-LM branch; the media merge that follows still fans in the other
+    branches from their existing images. Unselected branches must already be built (their
+    windows-media-<branch> image must exist) for the merge to succeed.
+
 .PARAMETER Docker
     Path to docker.exe. Defaults to $env:DOCKER_EXE, then the Stevedore install
     locations, then docker on PATH.
@@ -103,6 +111,9 @@
 .EXAMPLE
     .\windows\build.ps1 -Gpu -Stages media,final   # iterate on media only
 .EXAMPLE
+    .\windows\build.ps1 -Gpu -Stages media,final -MediaBranches media-litert -SequentialMedia
+    # rebuild ONLY the litert branch (full cores via run+commit), re-merge, re-final
+.EXAMPLE
     .\windows\build.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
 #>
 param(
@@ -110,6 +121,8 @@ param(
     [switch]$NoCache,
     [ValidateSet('base', 'sdk', 'toolchain', 'media', 'final')]
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'final'),
+    [ValidateSet('media-core', 'media-litert', 'media-tvm')]
+    [string[]]$MediaBranches = @('media-core', 'media-litert', 'media-tvm'),
     [string]$Docker = '',
     [string]$FinalTag = '',
     [int]$MediaMemoryGb = 0,
@@ -364,6 +377,12 @@ function Invoke-MediaCoreRunCommit {
 
 function Invoke-MediaBranches {
     $specs    = Get-MediaBranchSpecs
+    # -MediaBranches subsets the fan-out (rebuild one branch after a source fix without
+    # recompiling the others). The merge that follows still fans in the unselected branches
+    # from their existing windows-media-<branch> images.
+    $specs    = @($specs | Where-Object { $MediaBranches -contains $_.Name })
+    if ($specs.Count -eq 0) { throw "no media branches selected (-MediaBranches: $($MediaBranches -join ', '))" }
+    if ($specs.Count -lt 3) { Write-Host "==> media fan-out limited to: $(@($specs | ForEach-Object { $_.Name }) -join ', ')" -ForegroundColor Yellow }
     $coreSpec = $specs | Where-Object { $_.Name -eq 'media-core' } | Select-Object -First 1
     $auxSpecs = @($specs | Where-Object { $_.Name -ne 'media-core' })
     $logDir   = Join-Path $repoRoot 'out\windows-build-logs'
@@ -371,8 +390,10 @@ function Invoke-MediaBranches {
     $coreLog  = Join-Path $logDir 'media-core.log'
 
     if ($script:UseSequentialMedia) {
-        Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
-            -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+        if ($coreSpec) {
+            Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
+                -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+        }
         # Aux branches (litert, tvm) also via run+commit at FULL cores + RAM. In
         # sequential mode media-core is already committed, so the whole CPU/RAM budget
         # is free — no reason to leave the aux compiles pinned to the 2-CPU `docker
@@ -413,12 +434,17 @@ function Invoke-MediaBranches {
         $procs += @{ Spec = $spec; Proc = $proc; Log = $outLog; ErrLog = $errLog }
     }
 
-    Write-Host "`n==> [media-core] run+commit on $MediaCoreCpus CPUs; $($procs.Count) aux branch(es) building concurrently (log: $coreLog)" -ForegroundColor Cyan
     $coreFailed = $false; $coreError = $null
-    try {
-        Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
-            -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
-    } catch { $coreFailed = $true; $coreError = $_ }
+    if ($coreSpec) {
+        Write-Host "`n==> [media-core] run+commit on $MediaCoreCpus CPUs; $($procs.Count) aux branch(es) building concurrently (log: $coreLog)" -ForegroundColor Cyan
+        try {
+            Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
+                -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+        } catch { $coreFailed = $true; $coreError = $_ }
+    }
+    elseif ($procs.Count -gt 0) {
+        Write-Host "`n==> media-core not selected; waiting on $($procs.Count) aux branch(es) (2-CPU docker build)" -ForegroundColor Cyan
+    }
 
     # Wait for the aux branches to finish (media-core already done in the foreground).
     $lastBeat = Get-Date
