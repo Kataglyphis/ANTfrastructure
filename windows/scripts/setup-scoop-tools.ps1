@@ -22,6 +22,11 @@ $installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
 
+# Shared LAST: WindowsInstaller.Common (and WindowsContainerImage.Common) import
+# WindowsScripts.Shared with -Force internally, which clobbers a caller's earlier Shared
+# import -- so import it AFTER them, or Invoke-DownloadWithRetry goes missing at call time.
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
+
 # Derive the fallback CMake URL from CMAKE_VERSION (baked in by load-versions.ps1)
 # rather than a hardcoded literal that silently drifts from versions.env. The
 # primary value still comes from the CMAKE_NIGHTLY_URL build-arg / env when set.
