@@ -24,6 +24,8 @@ if (-not $wixCmd) { throw 'wix.exe not found on PATH (Assert-ContainerCommandAva
 & $wixCmd --version | Out-Host
 $wixExtensions = & $wixCmd extension list --global 2>&1
 $wixExtensions | Out-Host
-if (-not ($wixExtensions | Select-String -SimpleMatch 'WixToolset.UI.wixext 4.0.4')) {
-    throw 'Required WiX extension not installed: WixToolset.UI.wixext 4.0.4'
+# Assert against the same versions.env value the install used (no hand-synced literal).
+$wixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.4'
+if (-not ($wixExtensions | Select-String -SimpleMatch "WixToolset.UI.wixext $wixUiExtVersion")) {
+    throw "Required WiX extension not installed: WixToolset.UI.wixext $wixUiExtVersion"
 }

@@ -16,8 +16,7 @@ $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
 Write-Host "=== LiteRT source build (v$LiteRtVersion, Ninja+clang-cl) ==="
 
-$ok = Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT.git' -Tag "$LiteRtVersion" -SourceDir $SourceDir -Recursive
-if (-not $ok) { throw 'Failed to clone LiteRT' }
+Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT.git' -Tag "$LiteRtVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 $tfliteSrc = Join-Path $SourceDir 'tflite'
 
@@ -77,12 +76,10 @@ $cmakeExtra += Get-LlvmArchiverCmakeArg
 # Vulkan SDK is auto-detected by LiteRT via VULKAN_SDK env var; no need for explicit paths.
 
 # InstallPrefix passed for CMake generator expressions even though TFLITE_ENABLE_INSTALL=OFF
-$ok = Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra
-if (-not $ok) { throw 'LiteRT CMake configure failed' }
+Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 $buildLog = Join-Path $buildDir 'litert-build.log'
-$ok = Invoke-CmakeBuild -BuildDir $buildDir -Config Release -Install:$false -LogFile $buildLog
-if (-not $ok) { throw 'LiteRT build failed' }
+Invoke-CmakeBuild -BuildDir $buildDir -Config Release -Install:$false -LogFile $buildLog | Out-Null
 
 # Manual install (TFLITE_ENABLE_INSTALL=OFF disables cmake --install)
 # -InstallPrefix is still passed to Invoke-CmakeConfigure because CMake generator
@@ -90,13 +87,10 @@ if (-not $ok) { throw 'LiteRT build failed' }
 # the install() commands are no-ops. Without it, header search paths and
 # pkg-config .pc files may resolve incorrectly.
 Write-Host 'Installing LiteRT artifacts manually...'
-New-Item -Path "$litertInstallDir\lib" -ItemType Directory -Force | Out-Null
-New-Item -Path "$litertInstallDir\bin" -ItemType Directory -Force | Out-Null
-$dlls = Get-ChildItem -Path $buildDir -Filter '*.dll' -Recurse -ErrorAction SilentlyContinue
-$libs = Get-ChildItem -Path $buildDir -Filter '*.lib' -Recurse -ErrorAction SilentlyContinue
-$exps = Get-ChildItem -Path $buildDir -Filter '*.exp' -Recurse -ErrorAction SilentlyContinue
-if ($dlls) { $dlls | Copy-Item -Destination "$litertInstallDir\bin" -Force -ErrorAction SilentlyContinue; Write-Host "Copied $($dlls.Count) DLLs" }
-if ($libs) { $libs | Copy-Item -Destination "$litertInstallDir\lib" -Force -ErrorAction SilentlyContinue; Write-Host "Copied $($libs.Count) LIBs" }
+Copy-BuildArtifact -BuildDir $buildDir -InstallDir $litertInstallDir -Recurse -Map @(
+    @{ Filter = '*.dll'; Dest = 'bin' }
+    @{ Filter = '*.lib'; Dest = 'lib' }
+)
 # Copy headers. LiteRT ships NO include/ directory — its public headers live
 # in-tree (tflite\c\c_api.h, tflite\interpreter.h, ...). Mirror the header tree
 # under include\tflite\ preserving relative paths so consumers can

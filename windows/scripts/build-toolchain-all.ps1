@@ -15,6 +15,25 @@ $src = 'C:\temp\cpython'
 Write-Host "==> Building CPython from source at $src (NUMBER_OF_PROCESSORS=$env:NUMBER_OF_PROCESSORS)"
 if (-not (Test-Path $src)) { throw "CPython source tree missing at $src (builder image did not clone it)" }
 
+# CPython's PCbuild\find_python.bat bootstraps a build Python via nuget, fetching nuget.exe
+# from https://aka.ms/nugetclidl -- a Microsoft redirect that intermittently serves a ~190 KB
+# HTML error page instead of the ~8 MB binary, after which build.bat aborts with "The system
+# cannot execute the specified program". Pre-seed a valid nuget.exe at externals\nuget.exe from
+# the stable dist.nuget.org URL (via the resilient shared downloader): find_python's
+# `if NOT exist "%_Py_NUGET%"` guard then skips the flaky aka.ms fetch entirely.
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
+$nugetExe = Join-Path $src 'externals\nuget.exe'
+if (-not (Test-Path $nugetExe)) {
+    # -ExpectSignature MZ rejects AND retries an HTML error page served in place of the binary
+    # (the exact aka.ms-style flake this pre-seed exists to dodge) instead of choking build.bat.
+    Invoke-DownloadWithRetry -Url 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' `
+        -DestinationPath $nugetExe -Description 'nuget.exe (CPython build bootstrap)' -ExpectSignature MZ
+    Write-Host "Pre-seeded valid nuget.exe ($([int]((Get-Item $nugetExe).Length / 1KB)) KB) at $nugetExe"
+}
+# Belt-and-suspenders: point find_python.bat's own fallback download at the stable direct URL
+# instead of the flaky aka.ms redirect (used only if the seed above is ever absent).
+$env:NUGET_URL = 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe'
+
 # PCbuild\build.bat drives MSBuild, which parallelizes across available CPUs — under
 # the run+commit container that is --cpu-count, not the 2-CPU docker build cap.
 & cmd /c "cd /d $src && PCbuild\build.bat -e -p x64 -c Release"

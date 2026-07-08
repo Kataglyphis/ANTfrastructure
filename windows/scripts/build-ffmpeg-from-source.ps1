@@ -9,6 +9,7 @@ param(
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available
@@ -30,19 +31,17 @@ if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 
 Write-Host "Downloading FFmpeg $FfmpegVersion..."
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$wc = New-Object System.Net.WebClient
 if ($FfmpegVersion -in @('main', 'master', 'develop')) {
     try {
-        $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz", $tarballPath)
+        Invoke-DownloadWithRetry -Url "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz" -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
     } catch {
         # FFmpeg GitHub mirror uses 'master' as default branch; fall back if branch not found
         Write-Warning "FFmpeg branch '$FfmpegVersion' not found, trying 'master'..."
-        $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz", $tarballPath)
+        Invoke-DownloadWithRetry -Url 'https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz' -DestinationPath $tarballPath -Description 'FFmpeg master tarball'
         $FfmpegVersion = 'master'
     }
 } else {
-    $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz", $tarballPath)
+    Invoke-DownloadWithRetry -Url "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz" -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
 }
 Write-Host "Extracting tarball..."
 $srcDir = Expand-SourceTarball -Archive $tarballPath -Destination $SourceDir
@@ -165,24 +164,10 @@ Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
 # the msvc toolchain. See docs/windows-builds.md ?Patches.
 $ffbuildDir = Join-Path $srcDir 'ffbuild'
 Get-ChildItem -Path $ffbuildDir -Filter '*.mak' -ErrorAction SilentlyContinue | ForEach-Object {
-    $c = [System.IO.File]::ReadAllText($_.FullName)
-    $c = $c -replace '-showIncludes', ''
-    $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
-    $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
-    $c = $c -replace '\s*\|\s*awk.*', ''
-    [System.IO.File]::WriteAllText($_.FullName, $c)
+    Remove-MakefileShowIncludes -Path $_.FullName
 }
 foreach ($fn in @('library.mak', 'subdir.mak', 'Makefile')) {
-    $fp = Join-Path $srcDir $fn
-    if (Test-Path $fp) {
-        $c = [System.IO.File]::ReadAllText($fp)
-        $c = $c -replace '-showIncludes', ''
-        $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
-        $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
-        $c = $c -replace '\s*\|\s*awk.*', ''
-        $c = $c -replace '-include\s+\$\(wildcard\s+\*\.d\).*', ''
-        [System.IO.File]::WriteAllText($fp, $c)
-    }
+    Remove-MakefileShowIncludes -Path (Join-Path $srcDir $fn) -StripWildcardInclude
 }
 # Add avutil.lib to library link paths (configure may not generate EXTRALIBS correctly)
 $configMakPath = Join-Path $srcDir 'ffbuild/config.mak'
@@ -253,9 +238,7 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
     if (-not (Test-Path $prefix)) { New-Item -Path $prefix -ItemType Directory -Force | Out-Null }
     $dlUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
     $zipPath = "$env:TEMP\ffmpeg.zip"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $wc = New-Object System.Net.WebClient
-    $wc.DownloadFile($dlUrl, $zipPath)
+    Invoke-DownloadWithRetry -Url $dlUrl -DestinationPath $zipPath -Description 'BtbN prebuilt FFmpeg'
     & 7z x "$zipPath" -o"$env:TEMP\ffmpeg-extract" -y -bd 2>&1 | Out-Null
     $binDir = Get-ChildItem -Path "$env:TEMP\ffmpeg-extract" -Recurse -Filter 'ffmpeg.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty DirectoryName
     if ($binDir) {

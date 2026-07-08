@@ -18,7 +18,7 @@
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 FROM ${BASE_IMAGE}
 
-ARG LITERT_VERSION=v2.1.5
+ARG LITERT_VERSION=v2.1.6
 ARG LITERT_LM_VERSION=0.13.1
 # Container --memory cap (GB), forwarded so Get-BuildJobCount scales parallelism to
 # the cap. With the run+commit path the container also gets --cpu-count CPUs, so

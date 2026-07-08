@@ -26,8 +26,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 
-# Preference variables inherit into the child scripts invoked with '&' below, so
-# each behaves exactly as it did under the Dockerfile SHELL (EAP=Stop).
+Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -Force
+
+# Each stage consumes the prior stage's install, so they stay sequential.
+# Invoke-SourceBuildChain owns the banner + native-exit check + EAP=Stop inheritance.
 $stages = @(
     @{ Name = 'ONNX Runtime'; Script = 'build-onnx-from-source.ps1';       SourceDir = 'C:\temp\onnx-src' }
     @{ Name = 'ONNX GenAI';   Script = 'build-onnx-genai-from-source.ps1'; SourceDir = 'C:\temp\onnx-genai-src' }
@@ -35,11 +37,7 @@ $stages = @(
     @{ Name = 'FFmpeg';       Script = 'build-ffmpeg-from-source.ps1';     SourceDir = 'C:\temp\ffmpeg-src' }
 )
 
-foreach ($stage in $stages) {
-    Write-Host "`n=== media-core stage: $($stage.Name) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
-    & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
-    if ($LASTEXITCODE) { throw "$($stage.Name) build failed (exit $LASTEXITCODE)" }
-}
+Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir
 
 # FFmpeg's msvc install routes the import libs (avcodec.lib, ...) into bin\ while its
 # pkgconfig files point linkers at lib\ — gst-libav's link (downstream) fails without

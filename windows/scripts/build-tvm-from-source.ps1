@@ -17,8 +17,7 @@ $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @(
 
 Write-Host "=== TVM source build (v$TvmVersion, Ninja+clang-cl) ==="
 
-$ok = Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive
-if (-not $ok) { throw 'Failed to clone TVM' }
+Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive | Out-Null
 
 # TVM requires VsDevCmd for MSVC STL headers (but does not consume the source-built CPython directly
 # -- TVM builds its own Python wheel against the system Python), so do VsDevCmd alone, not the full
@@ -76,16 +75,29 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
 # CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
 $cmakeExtra += Get-LlvmArchiverCmakeArg
 
-$ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra
-if (-not $ok) { throw 'TVM CMake configuration failed' }
+Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 Write-Host 'Building TVM (this may take 30-60 minutes)...'
 $buildLog = Join-Path $buildDir 'tvm-build.log'
-$ok = Invoke-CmakeBuild -BuildDir $buildDir -Config $BuildType -LogFile $buildLog
-if (-not $ok) { throw 'TVM build failed' }
+Invoke-CmakeBuild -BuildDir $buildDir -Config $BuildType -LogFile $buildLog | Out-Null
 
 Write-Host 'Installing...'
 & cmake --install $buildDir --config $BuildType
+
+# TVM 0.25's FFI split builds libtvm_ffi as a SEPARATE shared lib that tvm_runtime.dll
+# imports, but `cmake --install` does not stage tvm_ffi.dll -> tvm_runtime.dll then fails to
+# load (0xC0000135 STATUS_DLL_NOT_FOUND) in the final image. Copy it next to the installed
+# tvm_runtime.dll. Caught by the smoke-test TVM load probe.
+$installedRuntime = Get-ChildItem -Path $tvmInstallDir -Filter 'tvm_runtime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($installedRuntime) {
+    $ffiSrc = Get-ChildItem -Path $buildDir -Filter 'tvm_ffi.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($ffiSrc) {
+        Copy-Item $ffiSrc.FullName -Destination $installedRuntime.DirectoryName -Force
+        Write-Host "Staged tvm_ffi.dll -> $($installedRuntime.DirectoryName) (cmake --install missed the FFI shared lib)"
+    } else {
+        Write-Host "WARNING: tvm_ffi.dll not found under $buildDir -- tvm_runtime.dll may fail to load at runtime"
+    }
+}
 
 # Install Python wheel if enabled
 if ($pythonModule -eq 'ON') {
@@ -98,8 +110,7 @@ if ($pythonModule -eq 'ON') {
         $wheelDir = Join-Path $buildDir 'python'
         if (Test-Path $wheelDir) {
             Push-Location $wheelDir
-            cmd.exe /c """$($py.Exe)"" -m pip install . --no-deps --quiet 2>&1"
-            if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: TVM Python wheel install failed (exit $LASTEXITCODE) - C++ runtime is still installed" }
+            Invoke-CpythonPip -Python $py -Arguments @('install', '.', '--no-deps', '--quiet') -Optional
             Pop-Location
         }
     }

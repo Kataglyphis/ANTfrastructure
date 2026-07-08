@@ -14,6 +14,7 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
 
 $LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.13.1'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
@@ -68,11 +69,8 @@ if (-not (Test-Path $hostProtoc)) {
     $protocZip = 'C:\temp\protoc-31.1-win64.zip'
     $protocUrl = 'https://github.com/protocolbuffers/protobuf/releases/download/v31.1/protoc-31.1-win64.zip'
     Write-Host "Downloading version-matched protoc (v31.1) from $protocUrl"
-    $prevProgress = $ProgressPreference
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $protocUrl -OutFile $protocZip -UseBasicParsing
+    Invoke-DownloadWithRetry -Url $protocUrl -DestinationPath $protocZip -Description 'version-matched protoc v31.1'
     Expand-Archive -Path $protocZip -DestinationPath $hostProtocDir -Force
-    $ProgressPreference = $prevProgress
     if (-not (Test-Path $hostProtoc)) { throw "Failed to obtain prebuilt protoc 31.1 at $hostProtoc" }
 }
 Write-Host "Using version-matched host protoc: $hostProtoc ($(& $hostProtoc --version))"
@@ -87,11 +85,8 @@ if (-not $javaExe) {
     $jreZip = 'C:\temp\temurin-jre.zip'
     $jreUrl = 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse'
     Write-Host "Downloading Temurin 21 JRE (for ANTLR codegen) from $jreUrl"
-    $prevProgress = $ProgressPreference
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $jreUrl -OutFile $jreZip -UseBasicParsing
+    Invoke-DownloadWithRetry -Url $jreUrl -DestinationPath $jreZip -Description 'Temurin 21 JRE'
     Expand-Archive -Path $jreZip -DestinationPath $jreDir -Force
-    $ProgressPreference = $prevProgress
     $javaExe = Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $javaExe) { throw "Failed to obtain a JRE (java.exe) under $jreDir" }
 }
@@ -494,6 +489,20 @@ string(REPLACE "list(APPEND SPM_INSTALLTARGETS" "endif() # LiteRTLM-winfix: end 
 string(REPLACE "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)" "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)\nendif() # LiteRTLM-winfix" _sp_src "${_sp_src}")
 file(WRITE "${SENTENCE_SRC_DIR}/src/CMakeLists.txt" "${_sp_src}")
 message(STATUS "[LiteRTLM] Patched sentencepiece src/CMakeLists.txt: stripped -fPIC + skipped spm CLI tools")
+
+# [LiteRTLM-winfix] sentencepiece's src/error.cc defines ABSL_FLAG(int32, minloglevel, ...)
+# under _USE_EXTERNAL_ABSL as a "naive workaround" assuming external abseil does not provide
+# it. But litert-lm links abseil's FULL absl_log_flags.lib, which DOES define minloglevel, so
+# the two collide: duplicate FLAGS_minloglevel / FLAGS_nominloglevel are both registered at
+# static init and abseil aborts EVERY invocation ("Inconsistency between flag object and
+# registration for flag 'minloglevel'"). /FORCE:MULTIPLE hides it at link time, so it only
+# surfaces at runtime. Drop sentencepiece's duplicate ([^;]* spans the two-line statement,
+# eol-agnostic) so abseil's definition stands alone; litert_lm_main still links absl_log_flags
+# so the symbol resolves. This is THE fix for the litert_lm_main.exe startup ODR abort.
+file(READ "${SENTENCE_SRC_DIR}/src/error.cc" _sp_err)
+string(REGEX REPLACE "ABSL_FLAG\\(int32, minloglevel, 0,[^;]*;" "/* [LiteRTLM-winfix] dropped duplicate ABSL_FLAG(minloglevel); abseil absl_log_flags provides it (ODR fix) */" _sp_err "${_sp_err}")
+file(WRITE "${SENTENCE_SRC_DIR}/src/error.cc" "${_sp_err}")
+message(STATUS "[LiteRTLM] Patched sentencepiece error.cc: dropped duplicate ABSL_FLAG(minloglevel) -> fixes abseil flag ODR abort")
 '@
 [void](Add-FileBlockOnce -Path $spPatcher -Marker 'LiteRTLM-winfix sentencepiece-fpic' -Content $spPatch `
         -Description 'sentencepiece_patcher.cmake: strip -fPIC + skip spm CLI tools (windows-msvc/abseil link)')
@@ -1121,13 +1130,11 @@ foreach ($abslCmakeRel in @('cmake\packages\absl\absl_import_static_lib.cmake', 
 # nm diag: libprotobuf.a = 0KB, protobuf.lib = 11MB (has the symbols). Rewrite /lib<name>.a ->
 # /<name>.lib. (protoc/upb/utf8_validity may not all exist as .lib; harmless -- unused ones stay
 # empty stubs from the sweep and nothing references them.)
-$protoMap = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf_target_map.cmake'
-if ((Test-Path $protoMap) -and ((Get-Content -Raw $protoMap) -match '/lib[a-z0-9_-]+\.a')) {
-    $pm = [System.IO.File]::ReadAllText($protoMap)
-    $pm = [regex]::Replace($pm, '/lib([a-z0-9_-]+)\.a', '/$1.lib')
-    [System.IO.File]::WriteAllText($protoMap, $pm)
-    Write-Host 'Patched protobuf_target_map.cmake: /lib*.a -> /*.lib (point at the real MSVC protobuf libs)'
-}
+# Same rename via the shared Invoke-InlineRegexPatch (was a hand-rolled ReadAllText/Replace block;
+# identical regex + guard, just routed through the helper the abseil/litert renames already use).
+[void](Invoke-InlineRegexPatch -Path (Join-Path $SourceDir 'cmake\packages\protobuf\protobuf_target_map.cmake') `
+        -Pattern '/lib([a-z0-9_-]+)\.a' -Replacement '/$1.lib' -Guard '/lib[a-z0-9_-]+\.a' `
+        -Description 'protobuf_target_map.cmake : /lib*.a -> /*.lib (point at the real MSVC protobuf libs)')
 
 # The Rust cxx-bridge libs are the same story: _cxxbridge_paths (generate_cxxbridge.cmake) references
 # ${CMAKE_BINARY_DIR}/liblitert_lm_deps.a + liblitertlm_cxx_bridge.a, but rustc/clang-cl emit MSVC
@@ -1362,9 +1369,37 @@ if (Test-Path $mainExe) {
         if ($missing) { Write-Host ("  STILL-MISSING DLLs (not found anywhere): " + ($missing -join ', ')) }
     }
     $env:PATH = "$binOut;$env:PATH"
-    & cmd /c "`"$(Join-Path $binOut 'litert_lm_main.exe')`" --help 2>&1" | Out-Null
-    Write-Host "litert_lm_main.exe staged to $binOut ; smoke-run exit: $LASTEXITCODE (0 or a usage/arg code = runs; 0xC0000135/-1073741515 = missing DLL)"
+    # Smoke-RUN the exe, not just check it exists: a linked-but-non-functional binary is the
+    # exact failure class the file-existence smoke test misses. Two runtime breakages to catch:
+    #   (1) missing DLL -> 0xC0000135 / -1073741515
+    #   (2) abseil flag ODR abort at static init (two copies of abseil linked -> 'minloglevel'
+    #       registered twice) -> the exe launches but aborts on EVERY invocation.
+    # Capture output (do NOT discard it) and classify; exit 1 is NOT automatically "benign usage".
+    # Initialize BEFORE the classification: it is only assigned in the BROKEN branches, and the
+    # healthy path must still leave it defined or the hard gate's read throws under Set-StrictMode.
+    $script:litertLmRuntimeBroken = $false
+    $smokeExe  = Join-Path $binOut 'litert_lm_main.exe'
+    $smokeOut  = & cmd /c "`"$smokeExe`" --help 2>&1"
+    $smokeExit = $LASTEXITCODE
+    $smokeText = ($smokeOut | Out-String)
+    if ($smokeText -match 'Inconsistency between flag|ODR violation|duplicate flags') {
+        Write-Host "*** litert_lm_main.exe BROKEN at runtime: abseil flag ODR violation (duplicate abseil linked). exit=$smokeExit ***"
+        ($smokeOut | Select-Object -First 3) | ForEach-Object { Write-Host "    $_" }
+        $script:litertLmRuntimeBroken = $true
+    } elseif ($smokeExit -eq -1073741515 -or $smokeExit -eq 3221225781) {
+        Write-Host "*** litert_lm_main.exe BROKEN at runtime: missing DLL (0xC0000135). exit=$smokeExit ***"
+        $script:litertLmRuntimeBroken = $true
+    } else {
+        Write-Host "litert_lm_main.exe smoke-run OK (exit $smokeExit = launches + runs)."
+    }
+    Write-Host "litert_lm_main.exe staged to $binOut"
     $ErrorActionPreference = $prevEAP
+    # Hard gate: a linked-but-non-functional exe must FAIL the build -- that is the whole point
+    # of smoke-RUNNING it (file existence never caught the abseil ODR abort). Skip only under
+    # LITERTLM_KEEP_BUILD_TREE so the link diagnostics below still run when debugging a break.
+    if ($script:litertLmRuntimeBroken -and -not $env:LITERTLM_KEEP_BUILD_TREE) {
+        throw "litert_lm_main.exe is non-functional at runtime (smoke-run flagged it BROKEN above). Set LITERTLM_KEEP_BUILD_TREE=1 to keep the build tree + dump link diagnostics."
+    }
 }
 else { Write-Host "WARNING: ninja did not produce litert_lm_main.exe -- the clean-link CMake patch may need attention" }
 # ----------------------------------------------------------------------------------------------
@@ -1424,6 +1459,22 @@ if ($env:LITERTLM_KEEP_BUILD_TREE) {
             if ($u) { Write-Host "  CONSUMER __imp MixingHashState <- $($lib.Name)" }
         }
     } else { Write-Host '  llvm-nm not found' }
+    Write-Host '===DIAG=== abseil DUPLICATE-flag scan: which rsp archives DEFINE minloglevel (>1 = the ODR culprit):'
+    if ($nmExe -and $rsp) {
+        $rspLibs2 = (Get-Content -Raw $rsp.FullName) -split '\s+' | Where-Object { $_ -match '\.(a|lib)$' } |
+            ForEach-Object { if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $innerBuild $_ } } |
+            Where-Object { Test-Path $_ } | Sort-Object -Unique
+        Write-Host "  rsp archives to scan: $($rspLibs2.Count)"
+        $mllHits = @()
+        foreach ($lp in $rspLibs2) {
+            $d = & $nmExe --defined-only $lp 2>$null | Select-String -Pattern 'minloglevel' -SimpleMatch | Select-Object -First 1
+            if ($d) { $mllHits += $lp; Write-Host "  DEFINES minloglevel: $lp" }
+        }
+        Write-Host "  >>> $($mllHits.Count) archive(s) define minloglevel (expect 1; >1 = duplicate abseil = ODR bug)"
+        # Also flag any second copy of the whole abseil log-flags TU by archive name.
+        $logFlagArch = $rspLibs2 | Where-Object { $_ -match 'log_flags|absl_log_flags|log.*flags' }
+        if ($logFlagArch) { Write-Host "  absl_log_flags-named archives in rsp:"; $logFlagArch | ForEach-Object { Write-Host "    $_" } }
+    } else { Write-Host '  (need llvm-nm + rsp)' }
     Write-Host '===DIAG END==='
 }
 else { Remove-SourceBuildTree -Path $SourceDir }

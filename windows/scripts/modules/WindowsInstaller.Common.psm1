@@ -273,5 +273,12 @@ Export-ModuleMember -Function @(
     'Invoke-InstallerProcess',
     'Invoke-SilentInstallWithStrategies',
     'Write-DownloadArtifactDetails',
-    'Add-MachinePathEntryIfMissing'
+    'Add-MachinePathEntryIfMissing',
+    # Re-exported from WindowsScripts.Shared (imported above) so a caller gets these via a
+    # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
+    'Resolve-DirectoryPath',
+    'New-Timestamp',
+    'Resolve-NormalizedPath',
+    'ConvertTo-ParameterList',
+    'Invoke-DownloadWithRetry'
 )

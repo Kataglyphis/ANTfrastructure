@@ -10,19 +10,26 @@ function Get-SourceBuildVersion {
     param(
         [string]$Value = '',
         [string[]]$EnvironmentVariables = @(),
-        [string]$DefaultValue = ''
+        [string]$DefaultValue = '',
+        [switch]$StripVPrefix
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($Value)) { return $Value }
-
-    foreach ($envVar in $EnvironmentVariables) {
-        if (-not [string]::IsNullOrWhiteSpace($envVar)) {
-            $envValue = [Environment]::GetEnvironmentVariable($envVar)
-            if (-not [string]::IsNullOrWhiteSpace($envValue)) { return $envValue }
+    $resolved = $DefaultValue
+    if (-not [string]::IsNullOrWhiteSpace($Value)) {
+        $resolved = $Value
+    } else {
+        foreach ($envVar in $EnvironmentVariables) {
+            if (-not [string]::IsNullOrWhiteSpace($envVar)) {
+                $envValue = [Environment]::GetEnvironmentVariable($envVar)
+                if (-not [string]::IsNullOrWhiteSpace($envValue)) { $resolved = $envValue; break }
+            }
         }
     }
 
-    return $DefaultValue
+    # -StripVPrefix drops a leading 'v' (versions.env uses a v-prefix; scripts that build a git
+    # tag re-add it themselves) so that strip lives here once instead of duplicated per script.
+    if ($StripVPrefix) { $resolved = $resolved -replace '^v', '' }
+    return $resolved
 }
 
 function Invoke-GitClone {
@@ -203,10 +210,7 @@ function Enter-VsDevCmdEnvironment {
 
     # Resolve VsDevCmd.bat via vswhere (robust across VS versions, not hardcoded to VS 18).
     if ([string]::IsNullOrWhiteSpace($VsDevCmdPath)) {
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere - Visual Studio Installer missing" }
-        $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        if ([string]::IsNullOrWhiteSpace($vsPath)) { throw 'No Visual Studio installation with VC Tools x86/x64 found via vswhere' }
+        $vsPath = Get-VsInstallPath   # single source of truth for VS discovery (shared with Get-MsvcToolsRoot)
         $VsDevCmdPath = Join-Path $vsPath 'Common7\Tools\VsDevCmd.bat'
     }
     if (-not (Test-Path $VsDevCmdPath)) { throw "VsDevCmd.bat not found at: $VsDevCmdPath" }
@@ -478,11 +482,17 @@ function Invoke-SourcePatch {
 function Initialize-SourceBuildEnvironment {
     <#
     .SYNOPSIS
-        Standard preamble for every build-*-from-source.ps1 script.
+        Resolves a default InstallDir for build-*-from-source.ps1 scripts.
     .DESCRIPTION
-        Sets StrictMode + Stop error action, imports this module, and resolves
-        a default InstallDir. Call at the top of each build script instead of
-        duplicating the 4-line boilerplate.
+        Returns InstallDir (defaulting to 'C:\runtime').
+
+        WARNING - scope trap: the Set-StrictMode / $ErrorActionPreference below take
+        effect ONLY inside this function's scope; PowerShell does NOT propagate them
+        back to the calling script. Do NOT route a build script's preamble through
+        this helper expecting it to set Stop-on-error there - the caller MUST declare
+        its own `$ErrorActionPreference = 'Stop'` (and Set-StrictMode) at top level, as
+        every build-*-from-source.ps1 already does. Collapsing that preamble into this
+        call silently disables fail-fast and is a real regression, not dedup.
     .PARAMETER InstallDir
         Passed-through InstallDir value (empty -> 'C:\runtime').
     .OUTPUTS
@@ -491,6 +501,7 @@ function Initialize-SourceBuildEnvironment {
     param(
         [string]$InstallDir = ''
     )
+    # Function-scoped only (see WARNING above) - kept so this helper itself fails fast.
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
     if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
@@ -630,6 +641,110 @@ function Install-CpythonPip {
     cmd.exe /c """$($Python.Exe)"" ""$pipScript"" --quiet 2>&1"
     if ($LASTEXITCODE -ne 0) { throw 'get-pip.py failed' }
     Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
+}
+
+function Invoke-CpythonPip {
+    <#
+    .SYNOPSIS
+        Run `python -m pip <args>` via cmd.exe so pip's stderr progress doesn't trip EAP=Stop.
+    .DESCRIPTION
+        The source-build scripts invoke pip through `cmd.exe /c` because pip writes progress
+        to stderr, which under $ErrorActionPreference='Stop' would abort the script. This
+        centralizes that idiom (and the $LASTEXITCODE check) so callers stop hand-rolling the
+        triple-quote cmd string. Throws on a non-zero pip exit unless -Optional is set (then it
+        warns and continues, e.g. the non-critical TVM Python wheel). Bootstrap pip first via
+        Install-CpythonPip. `.`-relative installs honor the caller's current directory.
+    .PARAMETER Python
+        Hashtable from Get-SourceBuildPython / Initialize-ToolchainPythonEnvironment (uses .Exe).
+    .PARAMETER Arguments
+        Tokens after `-m pip`, e.g. @('install','cmake','ninja','--quiet').
+    .PARAMETER Optional
+        Warn instead of throw on a non-zero exit.
+    #>
+    param(
+        [Parameter(Mandatory)][hashtable]$Python,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [switch]$Optional
+    )
+    if (-not (Test-Path $Python.Exe)) { throw "Source-built Python not found at $($Python.Exe)" }
+    $argLine = $Arguments -join ' '
+    cmd.exe /c """$($Python.Exe)"" -m pip $argLine 2>&1"
+    $exit = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    if ($exit -ne 0) {
+        $msg = "pip $argLine failed (exit $exit)"
+        if ($Optional) { Write-Host "WARNING: $msg -- continuing"; return }
+        throw $msg
+    }
+}
+
+function Copy-BuildArtifact {
+    <#
+    .SYNOPSIS
+        Stage built artifacts by extension into an install layout, for upstreams whose
+        `cmake --install` is disabled or incomplete.
+    .DESCRIPTION
+        For each -Map entry, ensures <InstallDir>\<Dest> exists and copies the files matching
+        the entry's Filter(s) from -BuildDir into it, logging the count. Replaces the hand-rolled
+        "New-Item dirs + Get-ChildItem -Filter + Copy-Item" install blocks in the
+        build-*-from-source scripts. -Recurse searches the whole build tree (deep artifacts);
+        omit it to copy only BuildDir's top level (matching a non-recursive wildcard copy).
+    .PARAMETER BuildDir
+        Directory to source artifacts from.
+    .PARAMETER InstallDir
+        Install root; each map entry's Dest subdir is created under it.
+    .PARAMETER Map
+        Array of @{ Filter = '*.dll'; Dest = 'bin' } entries; Filter may be a string or string[].
+    .PARAMETER Recurse
+        Search BuildDir recursively (default: top level only).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$InstallDir,
+        [Parameter(Mandatory)][object[]]$Map,
+        [switch]$Recurse
+    )
+    foreach ($entry in $Map) {
+        $destDir = Join-Path $InstallDir $entry.Dest
+        New-Item -Path $destDir -ItemType Directory -Force | Out-Null
+        $count = 0
+        foreach ($filter in @($entry.Filter)) {
+            Get-ChildItem -Path $BuildDir -Filter $filter -Recurse:$Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+                Copy-Item $_.FullName -Destination $destDir -Force -ErrorAction SilentlyContinue
+                $count++
+            }
+        }
+        Write-Host ("Staged {0} {1} -> {2}" -f $count, (@($entry.Filter) -join '/'), $destDir)
+    }
+}
+
+function Remove-MakefileShowIncludes {
+    <#
+    .SYNOPSIS
+        Strip MSVC /showIncludes and its awk dep-file pipeline from a configure-generated
+        FFmpeg makefile so clang-cl/nmake don't choke on the GCC-style dependency scanning.
+    .DESCRIPTION
+        FFmpeg's ./configure writes the same /showIncludes + `| awk ... > *.d` dep-tracking
+        into both ffbuild/*.mak and the top-level library.mak/subdir.mak/Makefile. This applies
+        the identical invariant `-replace` set in one place (was duplicated across two loops in
+        build-ffmpeg-from-source.ps1). No-op if -Path does not exist.
+    .PARAMETER Path
+        Makefile to rewrite in place.
+    .PARAMETER StripWildcardInclude
+        Also drop the `-include $(wildcard *.d)` line -- present in the top-level makefiles,
+        not in the ffbuild/*.mak fragments.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$StripWildcardInclude
+    )
+    if (-not (Test-Path $Path)) { return }
+    $c = [System.IO.File]::ReadAllText($Path)
+    $c = $c -replace '-showIncludes', ''
+    $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
+    $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
+    $c = $c -replace '\s*\|\s*awk.*', ''
+    if ($StripWildcardInclude) { $c = $c -replace '-include\s+\$\(wildcard\s+\*\.d\).*', '' }
+    [System.IO.File]::WriteAllText($Path, $c)
 }
 
 function Remove-SourceBuildTree {
@@ -1011,8 +1126,54 @@ function Initialize-ToolchainPythonEnvironment {
     return Get-SourceBuildPython
 }
 
+function Invoke-SourceBuildChain {
+    <#
+    .SYNOPSIS
+        Run an ordered chain of source-build scripts in one container (the shared
+        *-all.ps1 run+commit payload loop).
+    .DESCRIPTION
+        The loop behind the media *-all orchestrators (build-media-core-all,
+        build-litert-all): for each stage print a timestamped banner, invoke the stage's
+        build script with -SourceDir/-InstallDir, then hard-fail on a non-zero NATIVE exit
+        (a child that `exit N`s rather than throwing -- a safety net over EAP=Stop, which
+        already propagates child throws). Stages stay sequential because each consumes the
+        prior stage's install (LiteRT-LM needs LiteRT; ONNX GenAI needs ONNX Runtime).
+
+        Sets EAP=Stop so children that RELY on an inherited Stop (build-onnx-genai / opencv
+        / ffmpeg / litert-from-source do NOT set their own) abort exactly as they did under
+        the orchestrator's script scope. Verified empirically: a function-local EAP=Stop
+        propagates into an &-invoked external .ps1, so moving the loop off script scope into
+        this module function does not change child error semantics.
+    .PARAMETER Label
+        Chain name used in the banners/errors (e.g. 'media-core', 'media-litert').
+    .PARAMETER Stages
+        Ordered stage descriptors; each a hashtable with keys Name, Script, SourceDir.
+    .PARAMETER InstallDir
+        Shared install prefix forwarded to every stage script.
+    .PARAMETER ScriptDir
+        Directory holding the stage scripts (baked into the builder image).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][object[]]$Stages,
+        [string]$InstallDir = 'C:\runtime',
+        [string]$ScriptDir  = 'C:\temp\scripts'
+    )
+    $ErrorActionPreference = 'Stop'
+    foreach ($stage in $Stages) {
+        Write-Host "`n=== $Label stage: $($stage.Name) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
+        & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
+        # $LASTEXITCODE is unset until the FIRST native command runs; reading it while unset
+        # throws under Set-StrictMode. Treat "never set" as success (a child that ran only
+        # cmdlets and threw nothing succeeded); a child's `exit N` sets it, which we honor.
+        $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        if ($exitCode) { throw "$($stage.Name) build failed (exit $exitCode)" }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
+    'Invoke-SourceBuildChain',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
     'Invoke-CmakeBuild',
@@ -1038,9 +1199,19 @@ Export-ModuleMember -Function @(
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
     'Install-CpythonPip',
+    'Invoke-CpythonPip',
+    'Copy-BuildArtifact',
+    'Remove-MakefileShowIncludes',
     'Get-CudaArchitectureList',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
     'Get-GpuEnvironment',
-    'Resolve-TensorRtRoot'
+    'Resolve-TensorRtRoot',
+    # Re-exported from WindowsScripts.Shared (imported above) so a caller gets these via a
+    # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
+    'Resolve-DirectoryPath',
+    'New-Timestamp',
+    'Resolve-NormalizedPath',
+    'ConvertTo-ParameterList',
+    'Invoke-DownloadWithRetry'
 )

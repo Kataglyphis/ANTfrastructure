@@ -37,6 +37,8 @@ RUN cd /d C:\temp\cpython && `
 
 # The run+commit compile entrypoint (does the heavy build.bat at full --cpu-count).
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+# Shared module for build-toolchain-all.ps1's nuget pre-seed (Invoke-DownloadWithRetry).
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build-toolchain-all.ps1 C:\temp\scripts\
 
 # Expose the (to-be-built) source Python via PATH for downstream media builds.

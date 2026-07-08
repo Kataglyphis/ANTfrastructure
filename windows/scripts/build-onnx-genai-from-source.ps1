@@ -11,8 +11,7 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
-$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.14.0'
-$OnnxGenAiVersion = $OnnxGenAiVersion -replace '^v', ''  # versions.env uses v-prefix; this script adds it back for the git tag
+$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.14.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime GenAI source build (v$OnnxGenAiVersion, Ninja+clang-cl) ==="
 Write-Host "SourceDir: $SourceDir"
@@ -29,25 +28,21 @@ Write-Host "Using Python: $($py.Exe)"
 Install-CpythonPip -Python $py
 
 Write-Host 'Installing cmake, ninja, requests via pip...'
-cmd.exe /c """$($py.Exe)"" -m pip install cmake ninja requests --no-warn-script-location --quiet 2>&1"
-if ($LASTEXITCODE -ne 0) { throw 'pip install build deps failed' }
+Invoke-CpythonPip -Python $py -Arguments @('install', 'cmake', 'ninja', 'requests', '--no-warn-script-location', '--quiet')
 
 # Canonical preamble: VsDevCmd + Copy-CpythonPyConfigHeader in one call (replaces the
 # previously duplicated three-line invocation in a different order than build-onnx).
 Initialize-ToolchainPythonEnvironment | Out-Null
 
 # Clone onnxruntime-genai
-$ok = Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -Tag "v$OnnxGenAiVersion" -SourceDir $SourceDir -Recursive
-if (-not $ok) { throw 'Failed to clone ONNX GenAI' }
+Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -Tag "v$OnnxGenAiVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 Set-Location $SourceDir
 
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
-# GPU environment is detected once via the canonical helper. GenAI keeps CUDA OFF at build
-# time (clang-cl + nvcc host-compiler interplay issue with CUDA 13.x headers); GenAI uses
-# ONNX Runtime's CUDA execution provider at runtime instead.
-$gpuEnv = Get-GpuEnvironment
+# GenAI keeps CUDA OFF at build time (clang-cl + nvcc host-compiler interplay issue with CUDA
+# 13.x headers); it uses ONNX Runtime's CUDA execution provider at runtime instead.
 $genaiCudaArgs = @('-DUSE_CUDA=OFF')
 Write-Host 'CUDA disabled for ONNX GenAI build (uses ONNX Runtime CUDA EP at runtime)'
 
@@ -64,8 +59,7 @@ $cmakeExtraGenAi = @(
     "-DPYTHON_INCLUDE_DIR=$($py.Include)"
     "-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$($py.LibDir)"
 ) + $genaiCudaArgs
-$ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
-if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
+Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi | Out-Null
 
 # Resolve MSVC tools path dynamically (avoid hardcoded version)
 $msvcVersionDir = Get-MsvcToolsRoot
@@ -106,40 +100,19 @@ Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatte
     '(?<=\s)/WX(?=\s)'
 )
 
-Write-Host 'Building with ninja directly...'
-$batFile = Join-Path $env:TEMP 'build_genai.bat'
-try {
-    "@echo off
-    ninja -C `"$genaiBuildDir`" -j%NUMBER_OF_PROCESSORS% 2>&1
-    if errorlevel 1 ninja -C `"$genaiBuildDir`" 2>&1
-    " | Set-Content -Path $batFile -Encoding ASCII
-    cmd.exe /c $batFile
-    $buildExit = $LASTEXITCODE
-} finally {
-    if (Test-Path $batFile) { Remove-Item $batFile -Force -ErrorAction SilentlyContinue }
-}
-
-if ($buildExit -ne 0) {
-    # Try single-threaded to see full error
-    Write-Host 'Retrying single-threaded for clear error output...'
-    cmd.exe /c "ninja -C `"$genaiBuildDir`" -j1 2>&1"
-    throw "ONNX GenAI build failed"
-}
-
-Write-Host 'Installing...'
-& cmake --install $genaiBuildDir --config Release
-if ($LASTEXITCODE -ne 0) { throw 'Install failed' }
+# Memory-scaled ninja + incremental -j1 retry + install via the shared helper. Replaces
+# a hand-rolled -j%NUMBER_OF_PROCESSORS% .bat (full-core, no memory scaling) that could
+# OOM / deadlock a memory-capped container; the -j1 retry still yields clean error output.
+Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 4 -Install
 
 Write-Host "Installing to $genaiInstallDir..."
-# Copy built artifacts
-$buildOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
-if (Test-Path $buildOutDir) {
-    New-Item -Path $genaiInstallDir\include -ItemType Directory -Force | Out-Null
-    New-Item -Path $genaiInstallDir\lib -ItemType Directory -Force | Out-Null
-    Copy-Item -Path (Join-Path $buildOutDir '*.h') -Destination "$genaiInstallDir\include" -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $buildOutDir '*.lib') -Destination "$genaiInstallDir\lib" -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $buildOutDir '*.dll') -Destination "$genaiInstallDir\lib" -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $buildOutDir '*.pyd') -Destination "$genaiInstallDir\lib" -Force -ErrorAction SilentlyContinue
+# Copy built artifacts (top level only, matching the original non-recursive wildcard copy).
+# Reuse $genaiBuildDir (same path) instead of re-deriving it.
+if (Test-Path $genaiBuildDir) {
+    Copy-BuildArtifact -BuildDir $genaiBuildDir -InstallDir $genaiInstallDir -Map @(
+        @{ Filter = '*.h'; Dest = 'include' }
+        @{ Filter = @('*.lib', '*.dll', '*.pyd'); Dest = 'lib' }
+    )
 }
 # Also check alternate output dirs
 $altOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Windows\Release'

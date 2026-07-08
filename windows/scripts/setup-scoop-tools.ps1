@@ -22,6 +22,8 @@ $installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
 
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through the Common modules' re-export.
+
 # Derive the fallback CMake URL from CMAKE_VERSION (baked in by load-versions.ps1)
 # rather than a hardcoded literal that silently drifts from versions.env. The
 # primary value still comes from the CMAKE_NIGHTLY_URL build-arg / env when set.
@@ -33,7 +35,7 @@ $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentV
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
 $gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
-Invoke-WebRequest -Uri $GitInstallerUrl -OutFile $gitInstaller
+Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer'
 Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait
 Remove-Item $gitInstaller -Force
 Sync-ContainerProcessPath -AdditionalPaths @(
@@ -42,8 +44,12 @@ Sync-ContainerProcessPath -AdditionalPaths @(
     'C:\Program Files\Git\usr\bin'
 ) | Out-Null
 
-dotnet tool install --tool-path C:\WiX wix --version 4.0.6
-& 'C:\WiX\wix.exe' extension add --global WixToolset.UI.wixext/4.0.4
+# WiX versions come from versions.env (single source of truth shared with the
+# verify-toolchain.ps1 assert); defaults keep the script runnable standalone.
+$WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '4.0.6'
+$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.4'
+dotnet tool install --tool-path C:\WiX wix --version $WixVersion
+& 'C:\WiX\wix.exe' extension add --global "WixToolset.UI.wixext/$WixUiExtVersion"
 
 Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
@@ -77,7 +83,7 @@ scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nug
 
 Write-Host ('Downloading CMake nightly from {0}...' -f $CMakeNightlyUrl)
 $cmakeInstaller = Join-Path $TempDir 'cmake-nightly.msi'
-Invoke-WebRequest -Uri $CMakeNightlyUrl -OutFile $cmakeInstaller
+Invoke-DownloadWithRetry -Url $CMakeNightlyUrl -DestinationPath $cmakeInstaller -Description 'CMake nightly MSI'
 Write-Host 'Installing CMake nightly...'
 Start-Process msiexec.exe -ArgumentList '/i', $cmakeInstaller, '/quiet', '/norestart', 'ADD_CMAKE_TO_PATH=System' -Wait -NoNewWindow
 Remove-Item $cmakeInstaller -Force

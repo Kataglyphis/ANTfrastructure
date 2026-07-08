@@ -36,6 +36,14 @@
 .PARAMETER Stages
     Subset of stages to build (default: all, in order): base, sdk, toolchain, media, final.
 
+.PARAMETER MediaBranches
+    Subset of the media fan-out to (re)build within the 'media' stage (default: all
+    three): media-core, media-litert, media-tvm. Use this to rebuild ONE branch after a
+    source fix without recompiling the others -- e.g. -MediaBranches media-litert rebuilds
+    only the LiteRT/LiteRT-LM branch; the media merge that follows still fans in the other
+    branches from their existing images. Unselected branches must already be built (their
+    windows-media-<branch> image must exist) for the merge to succeed.
+
 .PARAMETER Docker
     Path to docker.exe. Defaults to $env:DOCKER_EXE, then the Stevedore install
     locations, then docker on PATH.
@@ -103,6 +111,9 @@
 .EXAMPLE
     .\windows\build.ps1 -Gpu -Stages media,final   # iterate on media only
 .EXAMPLE
+    .\windows\build.ps1 -Gpu -Stages media,final -MediaBranches media-litert -SequentialMedia
+    # rebuild ONLY the litert branch (full cores via run+commit), re-merge, re-final
+.EXAMPLE
     .\windows\build.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
 #>
 param(
@@ -110,6 +121,8 @@ param(
     [switch]$NoCache,
     [ValidateSet('base', 'sdk', 'toolchain', 'media', 'final')]
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'final'),
+    [ValidateSet('media-core', 'media-litert', 'media-tvm')]
+    [string[]]$MediaBranches = @('media-core', 'media-litert', 'media-tvm'),
     [string]$Docker = '',
     [string]$FinalTag = '',
     [int]$MediaMemoryGb = 0,
@@ -207,6 +220,28 @@ function Get-DockerBuildArgList {
     return $dockerArgs
 }
 
+function Invoke-TransientCooldown {
+    # Shared transient-failure decision for the docker retry loops (Invoke-Stage +
+    # Invoke-RunCommitStage). Returns $true when the captured tail looks like a transient
+    # container-infrastructure failure AND a retry remains -- after sleeping the cooldown --
+    # so the caller can `continue`; $false means treat it as a hard failure (throw). The
+    # divergent success/cleanup paths stay in each caller; only the transient-detect +
+    # message + cooldown policy is centralized here.
+    param(
+        [Parameter(Mandatory)] [string]$Tail,
+        [Parameter(Mandatory)] [int]$Attempt,
+        [int]$MaxAttempts = 3,
+        [string]$Label = '',
+        [int]$CooldownSeconds = 60
+    )
+    if ($Attempt -lt $MaxAttempts -and $Tail -match $script:TransientPattern) {
+        Write-Host "[$Label] transient container-infrastructure failure — retry $Attempt/$($MaxAttempts - 1) in ${CooldownSeconds}s" -ForegroundColor Yellow
+        Start-Sleep -Seconds $CooldownSeconds
+        return $true
+    }
+    return $false
+}
+
 function Invoke-Stage {
     param(
         [Parameter(Mandatory)] [string]$Dockerfile,
@@ -223,11 +258,7 @@ function Invoke-Stage {
         & $Docker @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog
         if ($LASTEXITCODE -eq 0) { return }
         $tail = Get-Content $stageLog -Tail 10 | Out-String
-        if ($attempt -lt 3 -and $tail -match $script:TransientPattern) {
-            Write-Host "[$Dockerfile] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
-            Start-Sleep -Seconds 60
-            continue
-        }
+        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -Label $Dockerfile) { continue }
         throw "docker build failed for $Dockerfile (exit $LASTEXITCODE)"
     }
 }
@@ -237,10 +268,14 @@ function Get-MediaBranchSpecs {
     $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
     @(
         @{
-            Name       = 'media-core'
-            Dockerfile = 'windows/Dockerfile.media-core'
-            Tag        = 'local/kataglyphis:windows-media-core'
-            MemoryGb   = $MediaMemoryGb
+            Name              = 'media-core'
+            Dockerfile        = 'windows/Dockerfile.media-core'            # superseded; kept for parity (media-core is always run+commit)
+            BuilderDockerfile = 'windows/Dockerfile.media-core-builder'    # run+commit path (full cores), same as the aux branches
+            BuilderTag        = 'local/kataglyphis:windows-media-core-builder'
+            ContainerName     = 'kataglyphis-media-core-build'
+            RunScript         = 'build-media-core-all.ps1'
+            Tag               = 'local/kataglyphis:windows-media-core'
+            MemoryGb          = $MediaMemoryGb
             BuildArgs  = @{
                 BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
                 ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
@@ -336,34 +371,19 @@ function Invoke-RunCommitStage {
         }
         $tail = if ($OutLog -and (Test-Path $OutLog)) { Get-Content $OutLog -Tail 15 | Out-String } else { '' }
         & $Docker container rm -f $ContainerName 2>&1 | Out-Null
-        if ($attempt -lt 3 -and $tail -match $script:TransientPattern) {
-            Write-Host "[$Label] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
-            Start-Sleep -Seconds 60
-            continue
-        }
+        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -Label $Label) { continue }
         throw "$Label compile (docker run) failed (exit $runExit)"
     }
 }
 
-function Invoke-MediaCoreRunCommit {
-    # media-core: ONNX -> GenAI -> OpenCV -> FFmpeg chain via the run+commit path.
-    param(
-        [Parameter(Mandatory)] [hashtable]$BuildArgs,
-        [Parameter(Mandatory)] [int]$Cpus,
-        [Parameter(Mandatory)] [int]$MemoryGb,
-        [string]$OutLog
-    )
-    Invoke-RunCommitStage `
-        -BuilderDockerfile 'windows/Dockerfile.media-core-builder' `
-        -BuilderTag    'local/kataglyphis:windows-media-core-builder' `
-        -ResultTag     'local/kataglyphis:windows-media-core' `
-        -ContainerName 'kataglyphis-media-core-build' `
-        -RunCommand    @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'C:\temp\scripts\build-media-core-all.ps1') `
-        -Cpus $Cpus -MemoryGb $MemoryGb -BuildArgs $BuildArgs -Label 'media-core' -OutLog $OutLog
-}
-
 function Invoke-MediaBranches {
     $specs    = Get-MediaBranchSpecs
+    # -MediaBranches subsets the fan-out (rebuild one branch after a source fix without
+    # recompiling the others). The merge that follows still fans in the unselected branches
+    # from their existing windows-media-<branch> images.
+    $specs    = @($specs | Where-Object { $MediaBranches -contains $_.Name })
+    if ($specs.Count -eq 0) { throw "no media branches selected (-MediaBranches: $($MediaBranches -join ', '))" }
+    if ($specs.Count -lt 3) { Write-Host "==> media fan-out limited to: $(@($specs | ForEach-Object { $_.Name }) -join ', ')" -ForegroundColor Yellow }
     $coreSpec = $specs | Where-Object { $_.Name -eq 'media-core' } | Select-Object -First 1
     $auxSpecs = @($specs | Where-Object { $_.Name -ne 'media-core' })
     $logDir   = Join-Path $repoRoot 'out\windows-build-logs'
@@ -371,8 +391,13 @@ function Invoke-MediaBranches {
     $coreLog  = Join-Path $logDir 'media-core.log'
 
     if ($script:UseSequentialMedia) {
-        Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
-            -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+        if ($coreSpec) {
+            Invoke-RunCommitStage `
+                -BuilderDockerfile $coreSpec.BuilderDockerfile -BuilderTag $coreSpec.BuilderTag `
+                -ResultTag $coreSpec.Tag -ContainerName $coreSpec.ContainerName `
+                -RunCommand @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$($coreSpec.RunScript)") `
+                -Cpus $MediaCoreCpus -MemoryGb $coreSpec.MemoryGb -BuildArgs $coreSpec.BuildArgs -Label $coreSpec.Name -OutLog $coreLog
+        }
         # Aux branches (litert, tvm) also via run+commit at FULL cores + RAM. In
         # sequential mode media-core is already committed, so the whole CPU/RAM budget
         # is free — no reason to leave the aux compiles pinned to the 2-CPU `docker
@@ -413,12 +438,20 @@ function Invoke-MediaBranches {
         $procs += @{ Spec = $spec; Proc = $proc; Log = $outLog; ErrLog = $errLog }
     }
 
-    Write-Host "`n==> [media-core] run+commit on $MediaCoreCpus CPUs; $($procs.Count) aux branch(es) building concurrently (log: $coreLog)" -ForegroundColor Cyan
     $coreFailed = $false; $coreError = $null
-    try {
-        Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
-            -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
-    } catch { $coreFailed = $true; $coreError = $_ }
+    if ($coreSpec) {
+        Write-Host "`n==> [media-core] run+commit on $MediaCoreCpus CPUs; $($procs.Count) aux branch(es) building concurrently (log: $coreLog)" -ForegroundColor Cyan
+        try {
+            Invoke-RunCommitStage `
+                -BuilderDockerfile $coreSpec.BuilderDockerfile -BuilderTag $coreSpec.BuilderTag `
+                -ResultTag $coreSpec.Tag -ContainerName $coreSpec.ContainerName `
+                -RunCommand @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$($coreSpec.RunScript)") `
+                -Cpus $MediaCoreCpus -MemoryGb $coreSpec.MemoryGb -BuildArgs $coreSpec.BuildArgs -Label $coreSpec.Name -OutLog $coreLog
+        } catch { $coreFailed = $true; $coreError = $_ }
+    }
+    elseif ($procs.Count -gt 0) {
+        Write-Host "`n==> media-core not selected; waiting on $($procs.Count) aux branch(es) (2-CPU docker build)" -ForegroundColor Cyan
+    }
 
     # Wait for the aux branches to finish (media-core already done in the foreground).
     $lastBeat = Get-Date

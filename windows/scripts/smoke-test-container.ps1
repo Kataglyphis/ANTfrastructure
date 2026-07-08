@@ -92,6 +92,118 @@ function Assert-DirectoryExists {
     Assert-Test -Name $Description -Condition { Test-Path $Path -PathType Container } -FailMessage "Directory not found: $Path"
 }
 
+function Assert-ArtifactPresent {
+    # Assert >=1 file matching $Filter exists under $Root (optionally a $Subdir),
+    # recursively. Collapses the "Get-ChildItem -Recurse then Assert-Test count>0"
+    # idiom repeated across the native-library sections (ONNX/GenAI/OpenCV/LiteRT/
+    # LiteRT-LM/TVM). With -Informational a miss is a [SKIP] (yellow) not a [FAIL]
+    # -- for optional artifacts like LiteRT's DLLs (it builds static by default).
+    param(
+        [string]$Root,
+        [string]$Filter,
+        [string]$Description,
+        [string]$Subdir = '',
+        [switch]$Informational
+    )
+    $searchRoot = if ($Subdir) { Join-Path $Root $Subdir } else { $Root }
+    $count = @(Get-ChildItem -Path $searchRoot -Filter $Filter -Recurse -ErrorAction SilentlyContinue).Count
+    if ($Informational) {
+        if ($count -gt 0) {
+            Write-Host "  [PASS] $Description ($count found)" -ForegroundColor Green
+            $script:passed++
+        } else {
+            Write-Host "  [SKIP] $Description (none found -- optional)" -ForegroundColor Yellow
+            $script:skipped++
+        }
+        return
+    }
+    # GetNewClosure: $count is function-local, so Assert-Test's scope can't see it
+    # via dynamic scoping (unlike the script-scope vars used in inline conditions).
+    Assert-Test -Name $Description -Condition { $count -gt 0 }.GetNewClosure() -FailMessage "No file matching '$Filter' found under $searchRoot"
+}
+
+function Assert-NativeLinkRun {
+    # Compile + link + RUN a tiny C++ TU against a native library to prove its
+    # header + import lib + DLL actually work together at runtime. Existence checks
+    # are blind to missing dependent DLLs, CRT mismatches, and ABI breaks -- the
+    # exact 'links clean but is dead' class the litert_lm abseil-ODR bug taught us.
+    # Only meaningful in the final image, where clang-cl and the libs coexist.
+    param(
+        [string]$Name,
+        [string]$WorkName,        # unique temp-dir suffix
+        [string]$Source,          # C++ source text
+        [string[]]$IncludeDirs,
+        [string]$LibDir,
+        [string]$LibName,
+        [string]$DllDir,          # prepended to PATH so the DLL resolves at run
+        [string]$ExpectMatch,     # regex the program's stdout must match
+        [string]$FailMessage
+    )
+    $work = $WorkName; $body = $Source; $incs = $IncludeDirs
+    $ldir = $LibDir; $lname = $LibName; $ddir = $DllDir; $expect = $ExpectMatch
+    Assert-Test -Name $Name -Condition {
+        $d = Join-Path $env:TEMP "kataglyphis-smoke-$work"
+        New-Item -Path $d -ItemType Directory -Force | Out-Null
+        $src = Join-Path $d 'main.cpp'
+        Set-Content -Path $src -Value $body -Encoding ASCII
+        $exe = Join-Path $d 'main.exe'
+        $clangArgs = @($src, '/std:c++17', '/EHsc', '/nologo')
+        foreach ($i in $incs) { $clangArgs += "/I$i" }
+        $clangArgs += @("/Fe$exe", '/link', "/LIBPATH:$ldir", $lname)
+        & clang-cl @clangArgs 2>&1 | Out-Null
+        $ok = $false
+        if (($LASTEXITCODE -eq 0) -and (Test-Path $exe)) {
+            $prev = $env:PATH
+            $env:PATH = "$ddir;$env:PATH"
+            try { $out = (& $exe 2>&1 | Out-String); $code = $LASTEXITCODE } finally { $env:PATH = $prev }
+            $ok = ($code -eq 0) -and ($out -match $expect)
+        }
+        Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+        return $ok
+    }.GetNewClosure() -FailMessage $FailMessage
+}
+
+function Assert-DllLoads {
+    # LoadLibrary a native DLL (with its own dir + any dependency dirs on PATH) and optionally
+    # GetProcAddress a known export. Proves the DLL AND its full dependent-DLL chain actually
+    # resolve at load time -- the header-agnostic complement to Assert-NativeLinkRun, for libs
+    # whose headers churn across releases (TVM) or whose C API is awkward to compile (GenAI).
+    # A successful LoadLibrary is the real signal (it catches a missing dependent DLL, the same
+    # 0xC0000135 class as the OpenCV/OpenGL defect); the export check is a bonus.
+    param(
+        [string]$Name,
+        [string]$DllPath,
+        [string[]]$DependencyDirs = @(),
+        [string]$Export = '',
+        [string]$FailMessage
+    )
+    $dllPath = $DllPath; $depDirs = $DependencyDirs; $export = $Export
+    Assert-Test -Name $Name -Condition {
+        if (-not ('KataNativeProbe' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class KataNativeProbe {
+    [DllImport("kernel32", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr LoadLibraryW(string p);
+    [DllImport("kernel32", SetLastError=true)] public static extern bool FreeLibrary(IntPtr h);
+    [DllImport("kernel32", SetLastError=true)] public static extern IntPtr GetProcAddress(IntPtr h, string n);
+}
+'@
+        }
+        if (-not (Test-Path $dllPath)) { return $false }
+        $prev = $env:PATH
+        $env:PATH = ((@((Split-Path $dllPath)) + $depDirs) -join ';') + ';' + $env:PATH
+        try {
+            $h = [KataNativeProbe]::LoadLibraryW($dllPath)
+            if ($h -eq [IntPtr]::Zero) { return $false }
+            $ok = $true
+            if ($export) { $ok = ([KataNativeProbe]::GetProcAddress($h, $export) -ne [IntPtr]::Zero) }
+            [void][KataNativeProbe]::FreeLibrary($h)
+            return $ok
+        } finally { $env:PATH = $prev }
+    }.GetNewClosure() -FailMessage $FailMessage
+}
+
 function Assert-EnvVarSet {
     param([string]$Name, [string]$ExpectedPrefix = '')
     # GetNewClosure + renamed captures: Assert-Test's $Name parameter shadows this
@@ -198,6 +310,24 @@ Assert-Test -Name "Rust version$(if ($rustMajorMinor) { " is $rustMajorMinor.x" 
     return $ver -match '\d+\.\d+\.\d+'
 } -FailMessage "rustc --version did not report the expected version"
 
+# rustc --version only proves the binary exists; this proves the toolchain can actually
+# COMPILE + LINK (via the MSVC linker) + RUN -- catches a broken linker / missing target / std.
+Assert-Test -Name 'rustc compiles + links + runs a program' -Condition {
+    $d = Join-Path $env:TEMP 'kataglyphis-smoke-rust'
+    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    $src = Join-Path $d 'main.rs'
+    'fn main() { println!("rust ok"); }' | Set-Content -Path $src -Encoding ASCII
+    $exe = Join-Path $d 'main.exe'
+    & rustc $src -o $exe 2>&1 | Out-Null
+    $ok = $false
+    if (($LASTEXITCODE -eq 0) -and (Test-Path $exe)) {
+        $out = (& $exe 2>&1 | Out-String)
+        $ok = ($LASTEXITCODE -eq 0) -and ($out -match 'rust ok')
+    }
+    Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+    return $ok
+} -FailMessage 'rustc could not compile/link/run a hello-world (broken MSVC linker or std?)'
+
 # ============================================================================
 Write-TestHeader '4. LLVM / Clang + Flutter + WiX'
 # ============================================================================
@@ -238,6 +368,20 @@ Assert-CommandExists 'glslc'
 Assert-CommandExists 'vulkaninfoSDK'
 Assert-EnvVarSet -Name 'VULKAN_SDK'
 
+# glslc on PATH != working; compile a trivial shader to SPIR-V. Needs no GPU/ICD (unlike
+# vulkaninfo, which we deliberately do NOT run headless), so it exercises the real toolchain.
+Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
+    $d = Join-Path $env:TEMP 'kataglyphis-smoke-glslc'
+    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    $src = Join-Path $d 'smoke.vert'
+    "#version 450`nvoid main() { gl_Position = vec4(0.0); }" | Set-Content -Path $src -Encoding ASCII
+    $spv = Join-Path $d 'smoke.spv'
+    & glslc $src -o $spv 2>&1 | Out-Null
+    $ok = ($LASTEXITCODE -eq 0) -and (Test-Path $spv) -and ((Get-Item $spv).Length -gt 0)
+    Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+    return $ok
+} -FailMessage 'glslc failed to compile a trivial shader to SPIR-V'
+
 # ============================================================================
 Write-TestHeader '7. CUDA Toolkit + cuDNN'
 # ============================================================================
@@ -268,6 +412,41 @@ if (-not $SkipCudaTests) {
     Assert-Test -Name "cuDNN headers (cudnn*.h)" -Condition { $cudnnHeaders.Count -gt 0 } -FailMessage "No cuDNN headers found"
     Assert-Test -Name "cuDNN libs (cudnn*.lib)" -Condition { $cudnnLibs.Count -gt 0 } -FailMessage "No cuDNN libs found"
     Assert-Test -Name "cuDNN DLLs (cudnn*.dll)" -Condition { $cudnnDlls.Count -gt 0 } -FailMessage "No cuDNN DLLs found"
+
+    # nvcc --version proves the tool exists; this proves it can COMPILE device code (validates
+    # the host_config.h / nv/target.h stubs + cl.exe host-compiler integration). PTX-only --
+    # the build container has no GPU device, so never a kernel launch. -ccbin points nvcc at
+    # the MSVC host compiler (cl.exe is not on the bare PATH in a plain container shell).
+    $nvccCcbin = if ($env:VCToolsInstallDir) { Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64' } else { $null }
+    Assert-Test -Name 'nvcc compiles a CUDA kernel to PTX' -Condition {
+        $d = Join-Path $env:TEMP 'kataglyphis-smoke-cuda'
+        New-Item -Path $d -ItemType Directory -Force | Out-Null
+        $src = Join-Path $d 'k.cu'
+        "__global__ void k(float* a) { a[threadIdx.x] *= 2.0f; }`nint main() { return 0; }" | Set-Content -Path $src -Encoding ASCII
+        $ptx = Join-Path $d 'k.ptx'
+        $nvccArgs = @('-std=c++17', '-ptx', $src, '-o', $ptx)
+        if ($nvccCcbin) { $nvccArgs += @('-ccbin', $nvccCcbin) }
+        & nvcc @nvccArgs 2>&1 | Out-Null
+        $ok = ($LASTEXITCODE -eq 0) -and (Test-Path $ptx) -and ((Get-Item $ptx).Length -gt 0)
+        Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+        return $ok
+    }.GetNewClosure() -FailMessage 'nvcc could not compile a trivial kernel to PTX (host_config/nv-target/cl.exe integration?)'
+
+    # Existence != loadable: link + call a HOST-only cuDNN API (cudnnGetVersion needs no GPU)
+    # to prove the cuDNN header/lib/DLL actually link + load together.
+    $cudnnHdr = $cudnnHeaders | Where-Object { $_.Name -eq 'cudnn.h' } | Select-Object -First 1
+    $cudnnMainLib = $cudnnLibs | Where-Object { $_.Name -eq 'cudnn.lib' } | Select-Object -First 1
+    $cudnnMainDll = $cudnnDlls | Where-Object { $_.Name -like 'cudnn64_*.dll' } | Select-Object -First 1
+    if ($cudnnHdr -and $cudnnMainLib -and $cudnnMainDll -and $env:CUDA_ROOT) {
+        Assert-NativeLinkRun -Name 'cuDNN links + host API works (cudnnGetVersion)' -WorkName 'cudnn' -Source @'
+#include <cudnn.h>
+#include <cstdio>
+int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
+'@ -IncludeDirs @($cudnnHdr.DirectoryName, (Join-Path $env:CUDA_ROOT 'include')) -LibDir $cudnnMainLib.DirectoryName -LibName $cudnnMainLib.Name -DllDir $cudnnMainDll.DirectoryName -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL'
+    } else {
+        Write-Host '  [SKIP] cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 } else {
     Write-Host '  [SKIP] CUDA/cuDNN tests skipped (--SkipCudaTests)' -ForegroundColor Yellow
     $script:skipped++
@@ -280,16 +459,32 @@ $onnxRoot = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
 if ($onnxRoot) {
     Assert-DirectoryExists -Path $onnxRoot -Description "ONNX_ROOT"
     # Recursive search: ORT installs headers nested (include\onnxruntime\...), not flat
-    $onnxCxxHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name 'ONNX C++ API header' -Condition { $onnxCxxHdr.Count -gt 0 } -FailMessage "onnxruntime_cxx_api.h not found under $onnxRoot"
-    $onnxCHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_c_api.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name 'ONNX C API header' -Condition { $onnxCHdr.Count -gt 0 } -FailMessage "onnxruntime_c_api.h not found under $onnxRoot"
+    Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Description 'ONNX C++ API header'
+    Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_c_api.h' -Description 'ONNX C API header'
+    Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime*.lib' -Description 'ONNX lib files'
+    Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime*.dll' -Description 'ONNX DLL files'
 
-    $libFiles = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime*.lib' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "ONNX lib files" -Condition { $libFiles.Count -gt 0 } -FailMessage "No onnxruntime*.lib found in $onnxRoot"
-
-    $dllFiles = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime*.dll' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "ONNX DLL files" -Condition { $dllFiles.Count -gt 0 } -FailMessage "No onnxruntime*.dll found in $onnxRoot"
+    # Existence != loadable: compile+link+run against the ORT C API to prove the header,
+    # import lib, and onnxruntime.dll actually work together at runtime.
+    $onnxCApiHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_c_api.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $onnxMainLib = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime.lib' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $onnxDll     = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($onnxCApiHdr -and $onnxMainLib -and $onnxDll) {
+        Assert-NativeLinkRun -Name 'ONNX Runtime loads + C API ABI works (OrtGetApiBase)' -WorkName 'onnx' -Source @'
+#include <onnxruntime_c_api.h>
+#include <cstdio>
+int main() {
+    const OrtApiBase* base = OrtGetApiBase();
+    if (!base) return 2;
+    if (!base->GetApi(ORT_API_VERSION)) return 3;
+    std::printf("onnxruntime %s\n", base->GetVersionString());
+    return 0;
+}
+'@ -IncludeDirs @($onnxCApiHdr.DirectoryName) -LibDir $onnxMainLib.DirectoryName -LibName $onnxMainLib.Name -DllDir $onnxDll.DirectoryName -ExpectMatch 'onnxruntime' -FailMessage 'ONNX Runtime C API did not compile/link/run (header+lib+DLL mismatch or missing dependent DLL)'
+    } else {
+        Write-Host '  [SKIP] ONNX Runtime link+run (onnxruntime.lib/.dll/c_api.h not all found)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 } else {
     Write-Host '  [SKIP] ONNX_ROOT not set' -ForegroundColor Yellow
     $script:skipped++
@@ -304,12 +499,22 @@ if ($genaiRoot) {
     $genaiHdr = Get-ChildItem -Path $genaiRoot -Filter 'ort_genai*.h' -Recurse -ErrorAction SilentlyContinue
     if (-not $genaiHdr) { $genaiHdr = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.h' -Recurse -ErrorAction SilentlyContinue }
     Assert-Test -Name 'ONNX GenAI header' -Condition { $genaiHdr.Count -gt 0 } -FailMessage "No GenAI header (ort_genai*.h / onnxruntime-genai.h) found under $genaiRoot"
+    Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.lib' -Description 'ONNX GenAI lib files'
+    Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.dll' -Description 'ONNX GenAI DLL files'
 
-    $genaiLibs = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai*.lib' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "ONNX GenAI lib files" -Condition { $genaiLibs.Count -gt 0 } -FailMessage "No onnxruntime-genai*.lib found"
-
-    $genaiDlls = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai*.dll' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "ONNX GenAI DLL files" -Condition { $genaiDlls.Count -gt 0 } -FailMessage "No onnxruntime-genai*.dll found"
+    # Existence != loadable: LoadLibrary the GenAI DLL (with onnxruntime.dll's dir on PATH,
+    # since GenAI depends on it) and resolve a known C export -- proves the whole dependency
+    # chain loads, catching a missing/mismatched onnxruntime.dll that file checks can't see.
+    $genaiDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $onnxRootForGenai = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
+    $onnxDepDir = if ($onnxRootForGenai) { (Get-ChildItem -Path $onnxRootForGenai -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName } else { $null }
+    if ($genaiDll) {
+        $genaiDepDirs = if ($onnxDepDir) { @($onnxDepDir) } else { @() }
+        Assert-DllLoads -Name 'ONNX GenAI DLL loads + C API resolves (OgaConfigClearProviders)' -DllPath $genaiDll.FullName -DependencyDirs $genaiDepDirs -Export 'OgaConfigClearProviders' -FailMessage 'onnxruntime-genai.dll failed to load or its C API symbol is missing (dependent onnxruntime.dll not resolved?)'
+    } else {
+        Write-Host '  [SKIP] GenAI load probe (onnxruntime-genai.dll not found)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 } else {
     Write-Host '  [SKIP] ONNX_GENAI_ROOT not set' -ForegroundColor Yellow
     $script:skipped++
@@ -319,22 +524,50 @@ if ($genaiRoot) {
 Write-TestHeader '10. OpenCV 5 (source-built)'
 # ============================================================================
 $opencvInclude = [Environment]::GetEnvironmentVariable('OPENCV_INCLUDE')
-$opencvLib = [Environment]::GetEnvironmentVariable('OPENCV_LIB')
-$opencvBin = [Environment]::GetEnvironmentVariable('OPENCV_BIN')
+$opencvRoot = [Environment]::GetEnvironmentVariable('OPENCV_ROOT')
+# This build installs OpenCV as per-module libs (opencv_core510.*, ...) under
+# <root>\x64\vc18\{bin,lib} -- NOT a single opencv_world, and NOT where OPENCV_BIN/
+# OPENCV_LIB point (<root>\bin|lib, which don't exist on disk). Search the whole
+# root so the module-vs-world layout and the misdirected env vars don't matter.
+$opencvSearchRoot = if ($opencvRoot -and (Test-Path $opencvRoot)) { $opencvRoot } elseif ($opencvInclude -and (Test-Path $opencvInclude)) { Split-Path $opencvInclude -Parent } else { $null }
 
 if ($opencvInclude -and (Test-Path $opencvInclude)) {
-    $cvHeaders = Get-ChildItem -Path $opencvInclude -Filter 'opencv.hpp' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "OpenCV headers (opencv.hpp)" -Condition { $cvHeaders.Count -gt 0 } -FailMessage "No OpenCV headers found"
+    Assert-ArtifactPresent -Root $opencvInclude -Filter 'opencv.hpp' -Description 'OpenCV headers (opencv.hpp)'
 } else {
     Write-Host '  [SKIP] OPENCV_INCLUDE not set or not found' -ForegroundColor Yellow
     $script:skipped++
 }
 
-if ($opencvBin -and (Test-Path $opencvBin)) {
-    $cvDlls = Get-ChildItem -Path $opencvBin -Filter 'opencv_world*.dll' -ErrorAction SilentlyContinue
-    Assert-Test -Name "OpenCV world DLL" -Condition { $cvDlls.Count -gt 0 } -FailMessage "No opencv_world*.dll found"
+if ($opencvSearchRoot) {
+    # opencv_core is always built (world only if BUILD_opencv_world=ON).
+    Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_core*.dll' -Description 'OpenCV core DLL'
 } else {
-    Write-Host '  [SKIP] OPENCV_BIN not set or not found' -ForegroundColor Yellow
+    Write-Host '  [SKIP] OpenCV DLLs (OPENCV_ROOT/INCLUDE not found)' -ForegroundColor Yellow
+    $script:skipped++
+}
+
+# Existence != loadable: compile+link+run against opencv_core to prove the header,
+# core import lib, and core DLL actually work together at runtime.
+$cvHpp = if ($opencvInclude -and (Test-Path $opencvInclude)) { Get-ChildItem -Path $opencvInclude -Filter 'core.hpp' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\opencv2\\' } | Select-Object -First 1 } else { $null }
+$cvCoreLib = if ($opencvSearchRoot) { Get-ChildItem -Path $opencvSearchRoot -Filter 'opencv_core*.lib' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
+$cvCoreDll = if ($opencvSearchRoot) { Get-ChildItem -Path $opencvSearchRoot -Filter 'opencv_core*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
+if ($cvHpp -and $cvCoreLib -and $cvCoreDll) {
+    # <opencv2/core.hpp> resolves relative to the dir CONTAINING opencv2\ -- core.hpp
+    # lives at <inc>\opencv2\core.hpp, so its grandparent is the include root.
+    $cvIncDir = Split-Path $cvHpp.DirectoryName -Parent
+    Assert-NativeLinkRun -Name 'OpenCV loads + core API works (cv::Mat / CV_VERSION)' -WorkName 'opencv' -Source @'
+#include <opencv2/core.hpp>
+#include <cstdio>
+int main() {
+    cv::Mat m(3, 3, CV_8UC1);
+    m.setTo(cv::Scalar(7));
+    if (m.total() != 9) return 2;
+    std::printf("opencv %s\n", CV_VERSION);
+    return 0;
+}
+'@ -IncludeDirs @($cvIncDir) -LibDir $cvCoreLib.DirectoryName -LibName $cvCoreLib.Name -DllDir $cvCoreDll.DirectoryName -ExpectMatch 'opencv' -FailMessage 'OpenCV core API did not compile/link/run (header+core lib+DLL mismatch or missing dependent DLL)'
+} else {
+    Write-Host '  [SKIP] OpenCV link+run (opencv_core lib/dll or core.hpp not all found)' -ForegroundColor Yellow
     $script:skipped++
 }
 
@@ -373,31 +606,22 @@ Assert-DirectoryExists -Path $litertInclude -Description 'LiteRT include dir'
 if (Test-Path $litertInclude) {
     # NB: -Filter matches file NAMES only — the old 'tensorflow/lite/c_api.h'
     # path-style filters could never match anything.
-    $litertHeaders = Get-ChildItem -Path $litertInclude -Filter 'c_api.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT C API header" -Condition { $litertHeaders.Count -gt 0 } -FailMessage "No c_api.h found under $litertInclude"
-    $litertCxxHeaders = Get-ChildItem -Path $litertInclude -Filter 'interpreter.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT C++ API header" -Condition { $litertCxxHeaders.Count -gt 0 } -FailMessage "No interpreter.h found under $litertInclude"
+    Assert-ArtifactPresent -Root $litertInclude -Filter 'c_api.h' -Description 'LiteRT C API header'
+    Assert-ArtifactPresent -Root $litertInclude -Filter 'interpreter.h' -Description 'LiteRT C++ API header'
+    # GPU headers matched by PATH (any *.h under a gpu\ dir), not by a name filter.
     $litertGpuHeaders = Get-ChildItem -Path $litertInclude -Filter '*.h' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\gpu\\' }
     Assert-Test -Name "LiteRT GPU delegate headers" -Condition { @($litertGpuHeaders).Count -gt 0 } -FailMessage "No GPU delegate headers found under $litertInclude"
 }
 
 if (Test-Path $litertLibDir) {
-    $litertLibs = Get-ChildItem -Path $litertLibDir -Filter '*.lib' -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT lib files" -Condition { $litertLibs.Count -gt 0 } -FailMessage "No LiteRT .lib files found"
+    Assert-ArtifactPresent -Root $litertLibDir -Filter '*.lib' -Description 'LiteRT lib files'
 }
 
 if (Test-Path $litertBinDir) {
     # LiteRT builds statically by default (TFLITE_ENABLE_INSTALL=OFF, no
-    # BUILD_SHARED_LIBS) — DLLs are optional; static .lib files above are the
-    # real artifact. Report informationally instead of failing.
-    $litertDlls = Get-ChildItem -Path $litertBinDir -Filter '*.dll' -ErrorAction SilentlyContinue
-    if ($litertDlls.Count -gt 0) {
-        Write-Host "  [PASS] LiteRT DLL files ($($litertDlls.Count) found)" -ForegroundColor Green
-        $script:passed++
-    } else {
-        Write-Host '  [SKIP] LiteRT DLL files (static build - .lib only)' -ForegroundColor Yellow
-        $script:skipped++
-    }
+    # BUILD_SHARED_LIBS) — DLLs are optional; the static .lib files are the real
+    # artifact, so report DLL presence informationally instead of failing.
+    Assert-ArtifactPresent -Root $litertBinDir -Filter '*.dll' -Description 'LiteRT DLL files' -Informational
 }
 
 # ============================================================================
@@ -410,15 +634,39 @@ $litertLmLibDir = Join-Path $litertLmRoot 'lib'
 Assert-DirectoryExists -Path $litertLmRoot -Description 'LiteRT-LM root dir'
 
 if (Test-Path $litertLmInclude) {
-    $litertLmHeaders = Get-ChildItem -Path $litertLmInclude -Filter '*.h' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT-LM headers" -Condition { $litertLmHeaders.Count -gt 0 } -FailMessage "No LiteRT-LM headers found"
+    Assert-ArtifactPresent -Root $litertLmInclude -Filter '*.h' -Description 'LiteRT-LM headers'
 }
 
 if (Test-Path $litertLmLibDir) {
-    $litertLmLibs = Get-ChildItem -Path $litertLmLibDir -Filter '*.lib' -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT-LM lib files" -Condition { $litertLmLibs.Count -gt 0 } -FailMessage "No LiteRT-LM .lib files found"
-    $litertLmDlls = Get-ChildItem -Path $litertLmLibDir -Filter '*.dll' -ErrorAction SilentlyContinue
-    Assert-Test -Name "LiteRT-LM DLL files" -Condition { $litertLmDlls.Count -gt 0 } -FailMessage "No LiteRT-LM .dll files found"
+    Assert-ArtifactPresent -Root $litertLmLibDir -Filter '*.lib' -Description 'LiteRT-LM lib files'
+    Assert-ArtifactPresent -Root $litertLmLibDir -Filter '*.dll' -Description 'LiteRT-LM DLL files'
+}
+
+# Smoke-RUN litert_lm_main.exe, not just check it exists: the shipped binary once linked
+# cleanly (35.8 MB, 0 undefined) yet aborted at startup on EVERY run -- an abseil flag ODR
+# (sentencepiece defined a duplicate ABSL_FLAG(minloglevel) that clashed with absl_log_flags).
+# File-existence checks are blind to that whole failure class. This validates the FINAL,
+# merged image's exe actually launches (co-located kissfft-float/z/vcruntime DLLs resolve)
+# and reaches its flag parser -- defense-in-depth over the build-time smoke gate.
+$litertLmBinDir = Join-Path $litertLmRoot 'bin'
+$litertLmExe    = Join-Path $litertLmBinDir 'litert_lm_main.exe'
+Assert-FileExists -Path $litertLmExe -Description 'litert_lm_main.exe (on-device LLM runner)'
+if (Test-Path $litertLmExe) {
+    Assert-Test -Name 'litert_lm_main.exe launches + parses flags (no abseil ODR / missing DLL)' -Condition {
+        $prevPath = $env:PATH
+        $env:PATH = "$litertLmBinDir;$env:PATH"
+        try {
+            $out  = & cmd /c "`"$litertLmExe`" --help 2>&1"
+            $code = $LASTEXITCODE
+            $text = ($out | Out-String)
+        } finally { $env:PATH = $prevPath }
+        # abseil flag ODR abort at static init (the exact bug that shipped).
+        if ($text -match 'Inconsistency between flag|ODR violation|duplicate flags') { return $false }
+        # 0xC0000135 STATUS_DLL_NOT_FOUND -> a dependent DLL did not resolve.
+        if ($code -eq -1073741515 -or $code -eq 3221225781) { return $false }
+        # Positive signal: it reached abseil's flag parser and printed its OWN flags.
+        return ($text -match 'model_path|input_prompt|Flags from')
+    } -FailMessage 'litert_lm_main.exe did not run cleanly (abseil flag ODR abort, missing DLL, or no flag output)'
 }
 
 # ============================================================================
@@ -548,16 +796,24 @@ if (Test-Path $tvmRoot) {
         # Layout-agnostic: TVM's runtime header names change across releases
         # (c_runtime_api.h was dropped by the new FFI in 0.25) — assert the
         # tvm/runtime header directory exists and is non-empty instead.
-        $tvmHeaders = Get-ChildItem -Path (Join-Path $tvmInclude 'tvm\runtime') -Filter '*.h' -Recurse -ErrorAction SilentlyContinue
-        Assert-Test -Name "TVM runtime headers (tvm/runtime/*.h)" -Condition { $tvmHeaders.Count -gt 0 } -FailMessage "No headers found under $tvmInclude\tvm\runtime"
+        Assert-ArtifactPresent -Root $tvmInclude -Subdir 'tvm\runtime' -Filter '*.h' -Description 'TVM runtime headers (tvm/runtime/*.h)'
     } else {
         Write-Host '  [SKIP] TVM include dir not found' -ForegroundColor Yellow
         $script:skipped++
     }
-    $tvmLibs = Get-ChildItem -Path $tvmRoot -Filter 'tvm*.lib' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "TVM lib files" -Condition { $tvmLibs.Count -gt 0 } -FailMessage "No tvm*.lib found under $tvmRoot"
-    $tvmDlls = Get-ChildItem -Path $tvmRoot -Filter 'tvm*.dll' -Recurse -ErrorAction SilentlyContinue
-    Assert-Test -Name "TVM DLL files" -Condition { $tvmDlls.Count -gt 0 } -FailMessage "No tvm*.dll found under $tvmRoot"
+    Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.lib' -Description 'TVM lib files'
+    Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.dll' -Description 'TVM DLL files'
+
+    # Existence != loadable: LoadLibrary the TVM runtime DLL to prove its full dependent-DLL
+    # chain resolves (header-agnostic -- TVM's C API names churn across releases). No GPU needed.
+    $tvmRuntimeDll = Get-ChildItem -Path $tvmRoot -Filter 'tvm_runtime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $tvmRuntimeDll) { $tvmRuntimeDll = Get-ChildItem -Path $tvmRoot -Filter 'tvm*runtime*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if ($tvmRuntimeDll) {
+        Assert-DllLoads -Name 'TVM runtime DLL loads (dependent chain resolves)' -DllPath $tvmRuntimeDll.FullName -FailMessage 'tvm_runtime.dll failed to load -- a dependent DLL (LLVM/CUDA/Vulkan runtime) did not resolve'
+    } else {
+        Write-Host '  [SKIP] TVM load probe (tvm_runtime.dll not found)' -ForegroundColor Yellow
+        $script:skipped++
+    }
 } else {
     Write-Host '  [SKIP] TVM not installed (C:\runtime\lib\tvm not found)' -ForegroundColor Yellow
     $script:skipped++
