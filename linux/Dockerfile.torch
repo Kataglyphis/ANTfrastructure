@@ -65,8 +65,13 @@ VOLUME ["${WORKDIR}"]
 # whole point of the VOLUME. PYTHONDONTWRITEBYTECODE stops Python trying to
 # write .pyc files into the root-owned /opt/venv on first import, which also
 # makes the image runnable with --read-only.
+# Drop the build-time fake `sudo` shim (created in Dockerfile.toolchain to work
+# around sudo-rs env filtering) from the shipped runtime image: it grants no
+# privilege, shadows any real sudo, and silently runs `sudo cmd` as the
+# unprivileged user -- misleading at runtime. Build stages that need it keep it.
 RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -s /bin/bash kataglyphis; \
-    mkdir -p ${WORKDIR} && chown -R kataglyphis:kataglyphis ${WORKDIR}
+    mkdir -p ${WORKDIR} && chown -R kataglyphis:kataglyphis ${WORKDIR}; \
+    rm -f /usr/local/bin/sudo
 
 ENV PYTHONDONTWRITEBYTECODE=1
 

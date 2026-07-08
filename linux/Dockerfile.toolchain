@@ -187,6 +187,12 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
     bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null; \
     bash /opt/scripts/python/fix-staged-python-pc.sh
 
+# Execute the toolchain smoke (GCC/LLVM/Rust/Python + every cross-linker's ELF
+# output) right after the bundle, so a broken compiler stage fails HERE instead
+# of hours later in a downstream media/package build. Hard-fail via smoke_summary.
+RUN set -euo pipefail; \
+    bash /opt/scripts/packaging/smoke-toolchain.sh
+
 # sudo pass-through wrapper: avoids sudo-rs env filtering issues in container.
 # Strips --preserve-env* flags (which sudo-rs mis-handles) and executes the
 # remaining command directly.  Warns on stderr when stripping flags and

@@ -230,5 +230,7 @@ RUN set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
     bash /opt/scripts/packaging/validate-compilers.sh smoke && \
     bash /opt/scripts/packaging/smoke-media.sh && \
+    bash /opt/scripts/packaging/smoke-vulkan.sh && \
+    bash /opt/scripts/packaging/smoke-torch-venv.sh && \
     GCC_VERSION="${GCC_VERSION}" \
     bash /opt/scripts/packaging/smoke-cross-all-arches.sh "${TARGET_ARCH}"

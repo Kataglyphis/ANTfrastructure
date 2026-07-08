@@ -178,6 +178,13 @@ RUN set -euo pipefail; \
     BUILD_MODE="${BUILD_MODE}" \
     bash /opt/scripts/packaging/swap-native-gcc.sh
 
+# Execute the Vulkan-SDK and Android-SDK/NDK smokes now that this stage's
+# artifacts are assembled: they were COPY'd in but never run. Hard-fail via
+# smoke_summary so a broken SDK/NDK surfaces at build time.
+RUN set -euo pipefail; \
+    bash /opt/scripts/packaging/smoke-vulkan.sh; \
+    bash /opt/scripts/packaging/smoke-android.sh
+
 # Ensure /opt/llvm-target exists for downstream stages (package build expects it)
 RUN mkdir -p /opt/llvm-target
 

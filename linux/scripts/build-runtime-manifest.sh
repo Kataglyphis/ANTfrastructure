@@ -118,6 +118,24 @@ main() {
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then
     create_manifest
   fi
+
+  # Host-side runtime-image boot smoke: run each freshly built wrapper via
+  # nerdctl and verify it starts and its entrypoint/HEALTHCHECK/user/paths are
+  # sane. Validates the ACTUAL published image, complementing the in-image
+  # wrapper-smoke stage. This was COPY'd into the package image but never run
+  # anywhere. Cross arches boot under binfmt/qemu; set RUNTIME_IMAGE_SMOKE=0 to
+  # skip (e.g. a host without qemu for a foreign arch).
+  if [ "${BUILD_IMAGES}" -eq 1 ] && [ "${RUNTIME_IMAGE_SMOKE:-1}" = "1" ]; then
+    local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
+    local wrapper_tag
+    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
+      log "Runtime-image smoke: ${wrapper_tag} (${arch})"
+      # Ensure the pushed image is present locally (build may not load it).
+      run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
+      run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
+    done
+  fi
 }
 
 main "$@"

@@ -193,10 +193,55 @@ fix6_native_gcc_system_paths() {
   fi
 }
 
+fix7_hardening_2026_07() {
+  echo "--- Fix 7: cross-build hardening (cache, base pin, non-root, apt retry, mount scope) ---"
+  local csb="${REPO_ROOT}/linux/scripts/01-core/cross-stage-build.sh"
+  local dbase="${REPO_ROOT}/linux/Dockerfile.base"
+  local dtorch="${REPO_ROOT}/linux/Dockerfile.torch"
+  local bimg="${REPO_ROOT}/linux/scripts/01-core/base-image.sh"
+  local venv="${REPO_ROOT}/linux/scripts/01-core/versions.env"
+
+  # Cache: must use a working cache backend (local/inline), NOT the self-defeating
+  # registry -buildcache ref whose --cache-to was gated out of existence.
+  # Match the real code token ${tag}-buildcache (the dead ref), not prose that
+  # merely mentions "-buildcache" while explaining why it was removed.
+  if grep -q 'type=local' "${csb}" 2>/dev/null && ! grep -qF '${tag}-buildcache' "${csb}" 2>/dev/null; then
+    pass "cross-stage-build.sh uses local/inline cache (no dead -buildcache ref)"
+  else
+    fail "cross-stage-build.sh reverted to the self-defeating registry -buildcache"
+  fi
+  # Base: the only floating external base must be digest-pinned (multi-arch list).
+  if grep -qE '^FROM ubuntu:\$\{UBUNTU_VERSION\}@\$\{UBUNTU_DIGEST\}' "${dbase}" 2>/dev/null && \
+     grep -qE '^UBUNTU_DIGEST=sha256:' "${venv}" 2>/dev/null; then
+    pass "Dockerfile.base pins ubuntu by manifest-list digest (UBUNTU_DIGEST)"
+  else
+    fail "Dockerfile.base ubuntu base is no longer digest-pinned"
+  fi
+  # Non-root: the runtime user must own its WORKDIR/VOLUME.
+  if grep -qE 'chown -R kataglyphis(:kataglyphis)? \$\{WORKDIR\}' "${dtorch}" 2>/dev/null; then
+    pass "Dockerfile.torch chowns WORKDIR to the non-root user"
+  else
+    fail "Dockerfile.torch no longer chowns WORKDIR (non-root user cannot write it)"
+  fi
+  # apt: image-wide retries for flaky QEMU networks.
+  if grep -q 'apt.conf.d/80-retries' "${bimg}" 2>/dev/null; then
+    pass "base-image.sh installs image-wide apt retries"
+  else
+    fail "base-image.sh lost the image-wide apt retry config"
+  fi
+  # Cache scope: base RUNs must NOT bind-mount the whole linux/scripts tree
+  # (that folds every script's checksum into the base cache key).
+  if grep -qE -- '--mount=type=bind,source=linux/scripts,target' "${dbase}" 2>/dev/null; then
+    fail "Dockerfile.base re-introduced a whole-tree scripts bind mount (busts base cache)"
+  else
+    pass "Dockerfile.base bind-mounts only the script sub-trees it uses"
+  fi
+}
+
 echo "=== Critical Fixes Regression Tests ==="
 echo ""
 
-FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths)
+FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07)
 for _fix_fn in "${FIX_FUNCS[@]}"; do
   "${_fix_fn}"
   echo ""

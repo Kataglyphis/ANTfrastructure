@@ -131,7 +131,11 @@ _cross_stage_build_impl() {
   fi
 
   if [ -n "${log_file}" ]; then
-    run "${build_cmd[@]}" > >(tee -a "${log_file}") 2>&1
+    # Real pipe, not process substitution: the shell waits for tee to drain, so
+    # a fast-failing build's tail is always flushed to the log. PIPESTATUS[0]
+    # returns the BUILD's exit code (not tee's 0), independent of pipefail.
+    run "${build_cmd[@]}" 2>&1 | tee -a "${log_file}"
+    return "${PIPESTATUS[0]}"
   else
     run "${build_cmd[@]}"
   fi
