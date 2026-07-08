@@ -421,6 +421,33 @@ if (Test-Path $litertLmLibDir) {
     Assert-Test -Name "LiteRT-LM DLL files" -Condition { $litertLmDlls.Count -gt 0 } -FailMessage "No LiteRT-LM .dll files found"
 }
 
+# Smoke-RUN litert_lm_main.exe, not just check it exists: the shipped binary once linked
+# cleanly (35.8 MB, 0 undefined) yet aborted at startup on EVERY run -- an abseil flag ODR
+# (sentencepiece defined a duplicate ABSL_FLAG(minloglevel) that clashed with absl_log_flags).
+# File-existence checks are blind to that whole failure class. This validates the FINAL,
+# merged image's exe actually launches (co-located kissfft-float/z/vcruntime DLLs resolve)
+# and reaches its flag parser -- defense-in-depth over the build-time smoke gate.
+$litertLmBinDir = Join-Path $litertLmRoot 'bin'
+$litertLmExe    = Join-Path $litertLmBinDir 'litert_lm_main.exe'
+Assert-FileExists -Path $litertLmExe -Description 'litert_lm_main.exe (on-device LLM runner)'
+if (Test-Path $litertLmExe) {
+    Assert-Test -Name 'litert_lm_main.exe launches + parses flags (no abseil ODR / missing DLL)' -Condition {
+        $prevPath = $env:PATH
+        $env:PATH = "$litertLmBinDir;$env:PATH"
+        try {
+            $out  = & cmd /c "`"$litertLmExe`" --help 2>&1"
+            $code = $LASTEXITCODE
+            $text = ($out | Out-String)
+        } finally { $env:PATH = $prevPath }
+        # abseil flag ODR abort at static init (the exact bug that shipped).
+        if ($text -match 'Inconsistency between flag|ODR violation|duplicate flags') { return $false }
+        # 0xC0000135 STATUS_DLL_NOT_FOUND -> a dependent DLL did not resolve.
+        if ($code -eq -1073741515 -or $code -eq 3221225781) { return $false }
+        # Positive signal: it reached abseil's flag parser and printed its OWN flags.
+        return ($text -match 'model_path|input_prompt|Flags from')
+    } -FailMessage 'litert_lm_main.exe did not run cleanly (abseil flag ODR abort, missing DLL, or no flag output)'
+}
+
 # ============================================================================
 Write-TestHeader '14. Compiler smoke test (clang-cl builds C++)'
 # ============================================================================
