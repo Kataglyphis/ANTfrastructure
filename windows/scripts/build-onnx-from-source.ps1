@@ -42,11 +42,13 @@ $gpuEnv = Get-GpuEnvironment
 $gpuArgs = @()
 # if/elseif/else used in place of `switch ($gpuEnv.GpuType) { ... }` for broad compatibility
 # with Windows PowerShell 5.1 (the switch-on-property syntax can trigger parser errors in PS 5.1).
-if ($gpuEnv.GpuType -eq 'nvidia') {
+if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
     $cudaRoot = $gpuEnv.CudaRoot
     $cudnnRoot = $gpuEnv.CudnnRoot
-    $cudnnLib = if ($cudnnRoot) { (Get-ChildItem "$cudnnRoot\lib\x64\cudnn*.lib" -ErrorAction SilentlyContinue)[0].FullName } else { $null }
+    # Select-Object -First 1 (not [0]) so an empty match yields $null instead of throwing
+    # "Cannot index into a null array" under Set-StrictMode -Version Latest.
+    $cudnnLib = if ($cudnnRoot) { (Get-ChildItem "$cudnnRoot\lib\x64\cudnn*.lib" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName } else { $null }
 
     # CUDA 13.x CCCL breaks clang-cl PCH -- disable via a reviewable .patch (inline regex fallback for context drift).
     try {

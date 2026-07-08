@@ -32,6 +32,25 @@ $gpuEnv = Get-GpuEnvironment
 $useCuda = if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) { 'ON' } else { 'OFF' }
 if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - enabling TVM CUDA support" }
 
+# GPU math libraries (CUDA lane only). cuBLAS ships inside the CUDA toolkit (found via
+# CUDAToolkit_ROOT), so it needs no extra hint. cuDNN is a SEPARATE install: enable it only
+# when cudnn.h + a cudnn*.lib actually resolve, and hand TVM the explicit include dir + lib
+# (the same resolution build-onnx uses) so FindCUDNN succeeds instead of half-configuring.
+$useCublas = $useCuda
+$useCudnn  = 'OFF'
+$cudnnArgs = @()
+if ($useCuda -eq 'ON' -and $gpuEnv.CudnnRoot -and (Test-Path (Join-Path $gpuEnv.CudnnRoot 'include\cudnn.h'))) {
+    $cudnnLibFile = Get-ChildItem (Join-Path $gpuEnv.CudnnRoot 'lib\x64\cudnn*.lib') -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($cudnnLibFile) {
+        $useCudnn  = 'ON'
+        $cudnnArgs = @(
+            "-DCUDNN_INCLUDE_DIR=$((Join-Path $gpuEnv.CudnnRoot 'include') -replace '\\','/')"
+            "-DCUDNN_LIBRARY=$($cudnnLibFile.FullName -replace '\\','/')"
+        )
+        Write-Host "cuDNN detected at $($gpuEnv.CudnnRoot) - enabling TVM cuDNN support"
+    }
+}
+
 # Auto-detect Vulkan SDK
 $vulkanSdk = if ($env:VULKAN_SDK) { $env:VULKAN_SDK } else { $null }
 $useVulkan = 'OFF'
@@ -57,12 +76,15 @@ $cmakeExtra = @(
     '-DUSE_OPENCL=OFF'
     '-DUSE_MICRO=OFF'
     "-DUSE_CUDA=$useCuda"
+    "-DUSE_CUBLAS=$useCublas"
+    "-DUSE_CUDNN=$useCudnn"
     "-DUSE_VULKAN=$useVulkan"
     "-DUSE_LLVM=$useLLVM"
     "-DTVM_BUILD_PYTHON_MODULE=$pythonModule"
 )
 
 $cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv -ForwardSlash
+$cmakeExtra += $cudnnArgs
 
 if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     $cmakeExtra += "-DVulkan_INCLUDE_DIR=$(Join-Path $vulkanSdk 'Include')"

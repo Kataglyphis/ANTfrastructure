@@ -41,10 +41,36 @@ Set-Location $SourceDir
 
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
-# GenAI keeps CUDA OFF at build time (clang-cl + nvcc host-compiler interplay issue with CUDA
-# 13.x headers); it uses ONNX Runtime's CUDA execution provider at runtime instead.
-$genaiCudaArgs = @('-DUSE_CUDA=OFF')
-Write-Host 'CUDA disabled for ONNX GenAI build (uses ONNX Runtime CUDA EP at runtime)'
+# GPU: build GenAI's own CUDA kernels (-> onnxruntime-genai-cuda.dll) on the nvidia lane.
+# GenAI compiles real .cu kernels (sampling / beam-search / top-k), so USE_CUDA=ON is REQUIRED
+# for GPU inference -- a CPU build compiles USE_CUDA=0 and strips the entire CUDA device layer;
+# it does NOT silently fall back to ORT's CUDA EP. nvcc's host compiler MUST be MSVC cl.exe
+# (nvcc rejects clang-cl on Windows -- the reason this was long left OFF); the C++ TUs still
+# compile with clang-cl + lld. Recipe proven in an isolated lab build against the toolchain.
+$gpuEnv = Get-GpuEnvironment
+if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+    $cudaRoot  = $gpuEnv.CudaRoot
+    $clExe     = (Get-Command cl.exe -ErrorAction Stop).Source
+    $cudaArch  = Get-CudaArchitectureList -Decoration '-real'
+    $genaiCudaArgs = @(
+        '-DUSE_CUDA=ON'
+        "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaRoot\bin\nvcc.exe"
+        "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
+        "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$clExe"   # nvcc host = MSVC cl.exe (NOT clang-cl); C++ stays clang-cl
+        "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch"
+        '-DCMAKE_CUDA_STANDARD=20'                     # genai C++ is C++20 (std::span in cuda_topk.cu); 17 fails to compile
+        # /Zc:preprocessor: nvcc-with-cl needs it; CCCL_IGNORE silences the MSVC traditional-preprocessor
+        # warning; /wd4996 survives CUDA 13.x curand double4 deprecation-as-error (genai issue #1877).
+        '-DCMAKE_CUDA_FLAGS:STRING=-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING -Xcompiler=/wd4996'
+    )
+    # genai's Python .pyd is a MODULE target, which the CMAKE_SHARED_LINKER_FLAGS /LIBPATH below
+    # does NOT reach; put the CPython lib dir on LIB so lld-link resolves the auto-linked python*.lib.
+    $env:LIB = "$($py.LibDir);$env:LIB"
+    Write-Host "CUDA ENABLED for ONNX GenAI (arch $cudaArch; nvcc host = cl.exe; C++ = clang-cl)"
+} else {
+    $genaiCudaArgs = @('-DUSE_CUDA=OFF')
+    Write-Host 'CUDA disabled for ONNX GenAI build (CPU-only lane -- no nvidia GPU detected)'
+}
 
 # Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
 $cmakeExtraGenAi = @(

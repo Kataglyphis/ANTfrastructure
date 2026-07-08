@@ -76,6 +76,49 @@ $gitUsrBin = 'C:\Program Files\Git\usr\bin'
 $env:PATH = "$scoopShims;$gitUsrBin;$env:PATH"
 $bashExe = Join-Path $gitUsrBin 'bash.exe'
 
+# ── NVIDIA hardware video (NVENC / NVDEC / CUVID) ────────────────────────────
+# nv-codec-headers ships the ffnvcodec headers + ffnvcodec.pc that FFmpeg's configure requires.
+# These paths are header-only: FFmpeg dlopen()s the encoder/decoder from the NVIDIA driver at
+# runtime, so NO nvcc and NO CUDA libs are needed -- they build under the existing --toolchain=msvc.
+# Guarded on an actual nvidia CUDA toolkit so the CPU-only lane is untouched. --enable-cuda-nvcc
+# (which COMPILES CUDA *filters* and would need nvcc under the msvc toolchain) is deliberately left off.
+$nvencFlags = @()
+$ffGpu = Get-GpuEnvironment
+if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
+    Write-Host 'NVIDIA CUDA detected -> enabling FFmpeg NVENC/NVDEC/CUVID via nv-codec-headers'
+    # pkg-config is required by configure to locate ffnvcodec and is not present in the media build
+    # image, so install it the same scoop way make/gawk are installed above.
+    if (-not (Get-Command pkg-config -ErrorAction SilentlyContinue)) {
+        Write-Host 'Installing pkg-config via scoop...'
+        & scoop install main/pkg-config 2>&1 | Out-Null
+    }
+    # Clone the pinned nv-codec-headers ref and `make install` into a private prefix. PREFIX is a
+    # forward-slash *Windows* path (C:/...), NOT an MSYS /c/... path, so the generated ffnvcodec.pc
+    # emits `-IC:/.../include` cflags that cl.exe consumes directly (verified in an isolated lab).
+    $nvHdrRef       = if ($env:NV_CODEC_HEADERS_REF) { $env:NV_CODEC_HEADERS_REF } else { 'n12.2.72.0' }
+    $nvHdrSrc       = 'C:\temp\nv-codec-headers'
+    $nvHdrPrefix    = 'C:\temp\nv-codec-headers-install'
+    $nvHdrPrefixFwd = $nvHdrPrefix -replace '\\', '/'
+    if (Test-Path $nvHdrSrc)    { Remove-Item $nvHdrSrc -Recurse -Force }
+    if (Test-Path $nvHdrPrefix) { Remove-Item $nvHdrPrefix -Recurse -Force }
+    & git clone --branch $nvHdrRef --depth 1 'https://github.com/FFmpeg/nv-codec-headers.git' $nvHdrSrc 2>&1 | ForEach-Object { Write-Host $_ }
+    $nvHdrSrcCyg = '/' + $nvHdrSrc.Substring(0, 1).ToLower() + ($nvHdrSrc.Substring(2) -replace '\\', '/')
+    & cmd /c "`"$bashExe`" -c `"cd $nvHdrSrcCyg && make install PREFIX=$nvHdrPrefixFwd`" 2>&1" | ForEach-Object { Write-Host $_ }
+    $nvPc = Join-Path $nvHdrPrefix 'lib\pkgconfig\ffnvcodec.pc'
+    if (Test-Path $nvPc) {
+        # Native (scoop) pkg-config reads a Windows-path PKG_CONFIG_PATH; the bash configure wrapper
+        # inherits this process env, so no wrapper change is needed.
+        $nvPcDir = Join-Path $nvHdrPrefix 'lib\pkgconfig'
+        $env:PKG_CONFIG_PATH = $nvPcDir + $(if ($env:PKG_CONFIG_PATH) { ";$env:PKG_CONFIG_PATH" } else { '' })
+        $nvencFlags = @('--enable-ffnvcodec', '--enable-nvenc', '--enable-nvdec', '--enable-cuvid')
+        Write-Host "ffnvcodec $nvHdrRef installed -> $nvPc"
+    } else {
+        Write-Warning 'nv-codec-headers install produced no ffnvcodec.pc -- FFmpeg will build without NVIDIA video accel.'
+    }
+} else {
+    Write-Host 'FFmpeg: no nvidia CUDA toolkit -> building without NVENC/NVDEC (CPU-only lane)'
+}
+
 # MSYS2 paths. Backslashes MUST become forward slashes: the previous form
 # produced /c\runtime\ffmpeg, configure collapsed it to /cruntimeffmpeg, and
 # `make install` silently delivered everything into <git-root>\cruntimeffmpeg —
@@ -127,6 +170,8 @@ $confFlags += '--disable-x86asm'
 # Windows Server Core containers: every process loading avdevice would die
 # with STATUS_DLL_NOT_FOUND. DirectShow capture (dshow) remains available.
 $confFlags += '--disable-indev=vfwcap'
+# NVIDIA hardware video accel: empty on the CPU-only lane, populated above when CUDA is present.
+$confFlags += $nvencFlags
 
 $confStr = $confFlags -join ' '
 

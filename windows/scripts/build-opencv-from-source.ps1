@@ -123,12 +123,12 @@ $cmakeExtra = @(
     # -> lld-link "undefined symbol: __kmpc_fork_call". TBB (WITH_TBB=ON above) is
     # OpenCV's preferred cv::parallel backend anyway, so no parallelism is lost.
     '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=OFF',
-    # WITH_CUDA=ON via ENABLE_CUDA_FIRST_CLASS_LANGUAGE (bypasses removed FindCUDA.cmake)
-                         '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON',
-    # NVCUVID/NVCUVENC require NVidia Video Codec SDK (separate download, not in container)
-    '-DWITH_NVCUVID=OFF', '-DWITH_NVCUVENC=OFF',
-    # Use CMake's first-class CUDA language (bypasses removed FindCUDA.cmake)
-    '-DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON'
+    # NVCUVID/NVCUVENC require the NVIDIA Video Codec SDK (separate download, not in container)
+    '-DWITH_NVCUVID=OFF', '-DWITH_NVCUVENC=OFF'
+    # NB: CUDA (WITH_CUDA/CUDNN/CUBLAS + ENABLE_CUDA_FIRST_CLASS_LANGUAGE + the cv::dnn CUDA
+    # backend) is added in the GPU-guarded block below, ONLY when an nvidia CUDA toolkit is
+    # detected. Enabling it here unconditionally would make a CPU-only build enable_language(CUDA)
+    # with no nvcc present and fail to configure.
 )
 
 # Provide our source-built ONNX Runtime root so FindONNX.cmake finds it.
@@ -147,6 +147,11 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
                          $env:CUDACXX = Join-Path $cudaRootForOpenCV 'bin\nvcc.exe'
                          $env:CUDA_PATH = $cudaRootForOpenCV
                          $env:PATH = "$(Join-Path $cudaRootForOpenCV 'bin');$env:PATH"
+                         # Enable CUDA only now that a toolkit is confirmed present (this is what
+                         # keeps the CPU-only lane from enable_language(CUDA)-ing with no nvcc).
+                         # OPENCV_DNN_CUDA adds the cv::dnn CUDA backend on top of the core modules.
+                         $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
+                         $cmakeExtra += '-DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON', '-DOPENCV_DNN_CUDA=ON'
                          # nvcc requires MSVC cl.exe as the host compiler on Windows.
                          # clang-cl-only flags forwarded via -Xcompiler (e.g. /Wno-undef,
                          # /clang:*, /FIcstring) are stripped from the CUDA host block by the
@@ -158,6 +163,9 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
                          $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cRootFwd"
                          $cmakeExtra += "-DCMAKE_CUDA_COMPILER:FILEPATH=$($env:CUDACXX -replace '\\', '/')"
                          $cmakeExtra += "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration '-real')"
+                     } else {
+                         $cmakeExtra += '-DWITH_CUDA=OFF'
+                         Write-Host 'OpenCV: no CUDA toolkit detected -> building CPU-only (WITH_CUDA=OFF)'
                      }
 
 # CMAKE_AR: find llvm-lib on PATH and pass full path
