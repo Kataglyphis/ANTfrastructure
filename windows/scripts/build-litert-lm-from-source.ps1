@@ -1382,6 +1382,9 @@ if (Test-Path $mainExe) {
     #   (2) abseil flag ODR abort at static init (two copies of abseil linked -> 'minloglevel'
     #       registered twice) -> the exe launches but aborts on EVERY invocation.
     # Capture output (do NOT discard it) and classify; exit 1 is NOT automatically "benign usage".
+    # Initialize BEFORE the classification: it is only assigned in the BROKEN branches, and the
+    # healthy path must still leave it defined or the hard gate's read throws under Set-StrictMode.
+    $script:litertLmRuntimeBroken = $false
     $smokeExe  = Join-Path $binOut 'litert_lm_main.exe'
     $smokeOut  = & cmd /c "`"$smokeExe`" --help 2>&1"
     $smokeExit = $LASTEXITCODE
