@@ -169,7 +169,6 @@ COPY --chmod=755 linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/script
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh
-COPY --chmod=755 linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-runtime-image.sh /opt/scripts/packaging/smoke-runtime-image.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-torch-venv.sh /opt/scripts/packaging/smoke-torch-venv.sh
 
@@ -230,7 +229,13 @@ RUN set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
     bash /opt/scripts/packaging/validate-compilers.sh smoke && \
     bash /opt/scripts/packaging/smoke-media.sh && \
-    bash /opt/scripts/packaging/smoke-vulkan.sh && \
     bash /opt/scripts/packaging/smoke-torch-venv.sh && \
     GCC_VERSION="${GCC_VERSION}" \
     bash /opt/scripts/packaging/smoke-cross-all-arches.sh "${TARGET_ARCH}"
+# NOTE: smoke-vulkan is intentionally NOT wired into any build stage. It probes
+# the full Vulkan *SDK* (/opt/vulkan/active symlink, vulkan/vulkan.h, libvulkan.so),
+# but this cross-build installs only the Vulkan *runtime* (libvulkan.so.1 + ICD/
+# layer JSONs via base-image.sh install-vulkan-runtime-files) -- the dev SDK is
+# never installed, and setup-vulkan-symlinks.sh's /opt/vulkan/active link is
+# best-effort (|| true). smoke-vulkan therefore cannot pass here; it is retained
+# as a standalone host tool for image variants that DO ship the full SDK.

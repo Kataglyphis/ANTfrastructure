@@ -236,6 +236,15 @@ fix7_hardening_2026_07() {
   else
     pass "Dockerfile.base bind-mounts only the script sub-trees it uses"
   fi
+  # smoke-vulkan must NOT be invoked in any build stage: it probes the full
+  # Vulkan SDK (/opt/vulkan/active, headers, loader) which this runtime-focused
+  # cross-build never installs, so it can only ever fail a build (learned the
+  # hard way in android + package). It stays a standalone host tool.
+  if grep -rlE 'bash[^\n]*smoke-vulkan\.sh' "${REPO_ROOT}"/linux/Dockerfile.* 2>/dev/null | grep -q .; then
+    fail "a Dockerfile RUNs smoke-vulkan.sh (no full Vulkan SDK here -> always fails)"
+  else
+    pass "smoke-vulkan.sh is not invoked in any build stage"
+  fi
 }
 
 echo "=== Critical Fixes Regression Tests ==="
