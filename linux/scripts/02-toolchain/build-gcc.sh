@@ -406,6 +406,31 @@ if [ ! -d "gcc-${GCC_VERSION}" ]; then
 else
     echo "Source already extracted: gcc-${GCC_VERSION}"
 fi
+# libstdc++ Canadian-cross fix (GCC PR100017 / PR101060), scoped to the C++23
+# MODULE directory upstream forgot to propagate it to.
+#
+# src/c++17/Makefile.am carries `-nostdinc++` in AM_CXXFLAGS precisely so the
+# TARGET libstdc++ build cannot pull in the *host* compiler's libstdc++ headers.
+# src/c++23 (which builds the `std`/`std.compat` modules from std.cc) is MISSING
+# it. In a Canadian cross (host != build) the host g++ headers are on the search
+# path; `#include <cfenv>` -> the target `<fenv.h>` wrapper -> `#include_next
+# <fenv.h>` then finds the *host* libstdc++ `<fenv.h>` wrapper, which shares the
+# guard `_GLIBCXX_FENV_H` with the target wrapper and is therefore guard-skipped,
+# so the underlying libc <fenv.h> is NEVER reached. Result: `::fenv_t` (and every
+# fe* symbol) is undeclared -> `error: 'fenv_t' has not been declared in '::'`,
+# the std.cc compile fails, and libstdc++'s recipe silently ships an EMPTY module
+# (stamp-modules-bits "Error 1 (ignored)").  The target sysroot's <fenv.h> is
+# fine; the header is simply never included.  Fix = mirror the c++17 flag into the
+# c++23 module dir.  Patch the shipped Makefile.in (release tarballs pre-generate
+# it; maintainer-mode is off so touching Makefile.in won't trigger a regen).
+_c23_mkin="gcc-${GCC_VERSION}/libstdc++-v3/src/c++23/Makefile.in"
+if [ -f "${_c23_mkin}" ] && ! grep -q -- '-nostdinc++' "${_c23_mkin}"; then
+  sed -i 's|^\(\t*\)-std=gnu++23[[:space:]]*\\$|\1-std=gnu++23 -nostdinc++ \\|' "${_c23_mkin}"
+  grep -q -- '-nostdinc++' "${_c23_mkin}" \
+    || die "libstdc++ PR100017 fix FAILED: could not insert -nostdinc++ into ${_c23_mkin} (GCC ${GCC_VERSION} AM_CXXFLAGS layout changed -- update this patch)"
+  echo "libstdc++: applied -nostdinc++ to src/c++23 (std module) Makefile.in [PR100017 parity with src/c++17]"
+fi
+
 rm -rf "gcc-${GCC_VERSION}-build"
 
 # Canadian cross (host != build): GCC's binaries run on the *host* arch and link
