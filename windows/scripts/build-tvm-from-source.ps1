@@ -84,6 +84,21 @@ Invoke-CmakeBuild -BuildDir $buildDir -Config $BuildType -LogFile $buildLog | Ou
 Write-Host 'Installing...'
 & cmake --install $buildDir --config $BuildType
 
+# TVM 0.25's FFI split builds libtvm_ffi as a SEPARATE shared lib that tvm_runtime.dll
+# imports, but `cmake --install` does not stage tvm_ffi.dll -> tvm_runtime.dll then fails to
+# load (0xC0000135 STATUS_DLL_NOT_FOUND) in the final image. Copy it next to the installed
+# tvm_runtime.dll. Caught by the smoke-test TVM load probe.
+$installedRuntime = Get-ChildItem -Path $tvmInstallDir -Filter 'tvm_runtime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($installedRuntime) {
+    $ffiSrc = Get-ChildItem -Path $buildDir -Filter 'tvm_ffi.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($ffiSrc) {
+        Copy-Item $ffiSrc.FullName -Destination $installedRuntime.DirectoryName -Force
+        Write-Host "Staged tvm_ffi.dll -> $($installedRuntime.DirectoryName) (cmake --install missed the FFI shared lib)"
+    } else {
+        Write-Host "WARNING: tvm_ffi.dll not found under $buildDir -- tvm_runtime.dll may fail to load at runtime"
+    }
+}
+
 # Install Python wheel if enabled
 if ($pythonModule -eq 'ON') {
     $py = Get-SourceBuildPython
