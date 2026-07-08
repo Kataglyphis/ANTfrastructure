@@ -639,6 +639,40 @@ function Install-CpythonPip {
     Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
 }
 
+function Invoke-CpythonPip {
+    <#
+    .SYNOPSIS
+        Run `python -m pip <args>` via cmd.exe so pip's stderr progress doesn't trip EAP=Stop.
+    .DESCRIPTION
+        The source-build scripts invoke pip through `cmd.exe /c` because pip writes progress
+        to stderr, which under $ErrorActionPreference='Stop' would abort the script. This
+        centralizes that idiom (and the $LASTEXITCODE check) so callers stop hand-rolling the
+        triple-quote cmd string. Throws on a non-zero pip exit unless -Optional is set (then it
+        warns and continues, e.g. the non-critical TVM Python wheel). Bootstrap pip first via
+        Install-CpythonPip. `.`-relative installs honor the caller's current directory.
+    .PARAMETER Python
+        Hashtable from Get-SourceBuildPython / Initialize-ToolchainPythonEnvironment (uses .Exe).
+    .PARAMETER Arguments
+        Tokens after `-m pip`, e.g. @('install','cmake','ninja','--quiet').
+    .PARAMETER Optional
+        Warn instead of throw on a non-zero exit.
+    #>
+    param(
+        [Parameter(Mandatory)][hashtable]$Python,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [switch]$Optional
+    )
+    if (-not (Test-Path $Python.Exe)) { throw "Source-built Python not found at $($Python.Exe)" }
+    $argLine = $Arguments -join ' '
+    cmd.exe /c """$($Python.Exe)"" -m pip $argLine 2>&1"
+    $exit = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    if ($exit -ne 0) {
+        $msg = "pip $argLine failed (exit $exit)"
+        if ($Optional) { Write-Host "WARNING: $msg -- continuing"; return }
+        throw $msg
+    }
+}
+
 function Remove-SourceBuildTree {
     <#
     .SYNOPSIS
@@ -1091,6 +1125,7 @@ Export-ModuleMember -Function @(
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
     'Install-CpythonPip',
+    'Invoke-CpythonPip',
     'Get-CudaArchitectureList',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',

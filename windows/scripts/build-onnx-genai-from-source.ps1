@@ -29,16 +29,14 @@ Write-Host "Using Python: $($py.Exe)"
 Install-CpythonPip -Python $py
 
 Write-Host 'Installing cmake, ninja, requests via pip...'
-cmd.exe /c """$($py.Exe)"" -m pip install cmake ninja requests --no-warn-script-location --quiet 2>&1"
-if ($LASTEXITCODE -ne 0) { throw 'pip install build deps failed' }
+Invoke-CpythonPip -Python $py -Arguments @('install', 'cmake', 'ninja', 'requests', '--no-warn-script-location', '--quiet')
 
 # Canonical preamble: VsDevCmd + Copy-CpythonPyConfigHeader in one call (replaces the
 # previously duplicated three-line invocation in a different order than build-onnx).
 Initialize-ToolchainPythonEnvironment | Out-Null
 
 # Clone onnxruntime-genai
-$ok = Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -Tag "v$OnnxGenAiVersion" -SourceDir $SourceDir -Recursive
-if (-not $ok) { throw 'Failed to clone ONNX GenAI' }
+Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -Tag "v$OnnxGenAiVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 Set-Location $SourceDir
 
@@ -64,8 +62,7 @@ $cmakeExtraGenAi = @(
     "-DPYTHON_INCLUDE_DIR=$($py.Include)"
     "-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$($py.LibDir)"
 ) + $genaiCudaArgs
-$ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi
-if (-not $ok) { throw 'ONNX GenAI CMake configure failed' }
+Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi | Out-Null
 
 # Resolve MSVC tools path dynamically (avoid hardcoded version)
 $msvcVersionDir = Get-MsvcToolsRoot

@@ -16,8 +16,7 @@ $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
 Write-Host "=== LiteRT source build (v$LiteRtVersion, Ninja+clang-cl) ==="
 
-$ok = Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT.git' -Tag "$LiteRtVersion" -SourceDir $SourceDir -Recursive
-if (-not $ok) { throw 'Failed to clone LiteRT' }
+Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT.git' -Tag "$LiteRtVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 $tfliteSrc = Join-Path $SourceDir 'tflite'
 
@@ -77,12 +76,10 @@ $cmakeExtra += Get-LlvmArchiverCmakeArg
 # Vulkan SDK is auto-detected by LiteRT via VULKAN_SDK env var; no need for explicit paths.
 
 # InstallPrefix passed for CMake generator expressions even though TFLITE_ENABLE_INSTALL=OFF
-$ok = Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra
-if (-not $ok) { throw 'LiteRT CMake configure failed' }
+Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 $buildLog = Join-Path $buildDir 'litert-build.log'
-$ok = Invoke-CmakeBuild -BuildDir $buildDir -Config Release -Install:$false -LogFile $buildLog
-if (-not $ok) { throw 'LiteRT build failed' }
+Invoke-CmakeBuild -BuildDir $buildDir -Config Release -Install:$false -LogFile $buildLog | Out-Null
 
 # Manual install (TFLITE_ENABLE_INSTALL=OFF disables cmake --install)
 # -InstallPrefix is still passed to Invoke-CmakeConfigure because CMake generator

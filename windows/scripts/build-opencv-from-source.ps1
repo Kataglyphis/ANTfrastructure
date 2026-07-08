@@ -17,8 +17,7 @@ Write-Host "=== OpenCV source build (branch $OpenCvVersion, Ninja+clang-cl) ==="
 
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 $mainSrc = Join-Path $SourceDir 'opencv'
-$ok = Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv.git' -Branch $OpenCvVersion -SourceDir $mainSrc
-if (-not $ok) { throw 'Failed to clone opencv main repo' }
+Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv.git' -Branch $OpenCvVersion -SourceDir $mainSrc | Out-Null
 
 $contribSrc = Join-Path $SourceDir 'opencv_contrib'
 $contribOk = Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv_contrib.git' -Branch $OpenCvVersion -SourceDir $contribSrc -SkipOnFailure
@@ -169,8 +168,7 @@ if ($contribSrc) {
     $cmakeExtra += '-DOPENCV_FORCE_3RDPARTY_BUILD=ON'
 }
 
-$ok = Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra
-if (-not $ok) { throw 'OpenCV CMake configuration failed' }
+Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 $buildLog = Join-Path $buildDir 'opencv-build.log'
 # Parallel build first; on failure re-run ninja -j1 (incremental — it jumps straight
