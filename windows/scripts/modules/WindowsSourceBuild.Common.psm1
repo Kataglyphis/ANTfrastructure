@@ -10,19 +10,26 @@ function Get-SourceBuildVersion {
     param(
         [string]$Value = '',
         [string[]]$EnvironmentVariables = @(),
-        [string]$DefaultValue = ''
+        [string]$DefaultValue = '',
+        [switch]$StripVPrefix
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($Value)) { return $Value }
-
-    foreach ($envVar in $EnvironmentVariables) {
-        if (-not [string]::IsNullOrWhiteSpace($envVar)) {
-            $envValue = [Environment]::GetEnvironmentVariable($envVar)
-            if (-not [string]::IsNullOrWhiteSpace($envValue)) { return $envValue }
+    $resolved = $DefaultValue
+    if (-not [string]::IsNullOrWhiteSpace($Value)) {
+        $resolved = $Value
+    } else {
+        foreach ($envVar in $EnvironmentVariables) {
+            if (-not [string]::IsNullOrWhiteSpace($envVar)) {
+                $envValue = [Environment]::GetEnvironmentVariable($envVar)
+                if (-not [string]::IsNullOrWhiteSpace($envValue)) { $resolved = $envValue; break }
+            }
         }
     }
 
-    return $DefaultValue
+    # -StripVPrefix drops a leading 'v' (versions.env uses a v-prefix; scripts that build a git
+    # tag re-add it themselves) so that strip lives here once instead of duplicated per script.
+    if ($StripVPrefix) { $resolved = $resolved -replace '^v', '' }
+    return $resolved
 }
 
 function Invoke-GitClone {
@@ -673,6 +680,46 @@ function Invoke-CpythonPip {
     }
 }
 
+function Copy-BuildArtifact {
+    <#
+    .SYNOPSIS
+        Stage built artifacts by extension into an install layout, for upstreams whose
+        `cmake --install` is disabled or incomplete.
+    .DESCRIPTION
+        For each -Map entry, ensures <InstallDir>\<Dest> exists and copies the files matching
+        the entry's Filter(s) from -BuildDir into it, logging the count. Replaces the hand-rolled
+        "New-Item dirs + Get-ChildItem -Filter + Copy-Item" install blocks in the
+        build-*-from-source scripts. -Recurse searches the whole build tree (deep artifacts);
+        omit it to copy only BuildDir's top level (matching a non-recursive wildcard copy).
+    .PARAMETER BuildDir
+        Directory to source artifacts from.
+    .PARAMETER InstallDir
+        Install root; each map entry's Dest subdir is created under it.
+    .PARAMETER Map
+        Array of @{ Filter = '*.dll'; Dest = 'bin' } entries; Filter may be a string or string[].
+    .PARAMETER Recurse
+        Search BuildDir recursively (default: top level only).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$InstallDir,
+        [Parameter(Mandatory)][object[]]$Map,
+        [switch]$Recurse
+    )
+    foreach ($entry in $Map) {
+        $destDir = Join-Path $InstallDir $entry.Dest
+        New-Item -Path $destDir -ItemType Directory -Force | Out-Null
+        $count = 0
+        foreach ($filter in @($entry.Filter)) {
+            Get-ChildItem -Path $BuildDir -Filter $filter -Recurse:$Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+                Copy-Item $_.FullName -Destination $destDir -Force -ErrorAction SilentlyContinue
+                $count++
+            }
+        }
+        Write-Host ("Staged {0} {1} -> {2}" -f $count, (@($entry.Filter) -join '/'), $destDir)
+    }
+}
+
 function Remove-SourceBuildTree {
     <#
     .SYNOPSIS
@@ -1126,6 +1173,7 @@ Export-ModuleMember -Function @(
     'Get-BuildJobCount',
     'Install-CpythonPip',
     'Invoke-CpythonPip',
+    'Copy-BuildArtifact',
     'Get-CudaArchitectureList',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',

@@ -11,8 +11,7 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
-$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.14.0'
-$OnnxGenAiVersion = $OnnxGenAiVersion -replace '^v', ''  # versions.env uses v-prefix; this script adds it back for the git tag
+$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.14.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime GenAI source build (v$OnnxGenAiVersion, Ninja+clang-cl) ==="
 Write-Host "SourceDir: $SourceDir"
@@ -109,15 +108,13 @@ Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatte
 Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 4 -Install
 
 Write-Host "Installing to $genaiInstallDir..."
-# Copy built artifacts
+# Copy built artifacts (top level only, matching the original non-recursive wildcard copy)
 $buildOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 if (Test-Path $buildOutDir) {
-    New-Item -Path $genaiInstallDir\include -ItemType Directory -Force | Out-Null
-    New-Item -Path $genaiInstallDir\lib -ItemType Directory -Force | Out-Null
-    Copy-Item -Path (Join-Path $buildOutDir '*.h') -Destination "$genaiInstallDir\include" -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $buildOutDir '*.lib') -Destination "$genaiInstallDir\lib" -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $buildOutDir '*.dll') -Destination "$genaiInstallDir\lib" -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $buildOutDir '*.pyd') -Destination "$genaiInstallDir\lib" -Force -ErrorAction SilentlyContinue
+    Copy-BuildArtifact -BuildDir $buildOutDir -InstallDir $genaiInstallDir -Map @(
+        @{ Filter = '*.h'; Dest = 'include' }
+        @{ Filter = @('*.lib', '*.dll', '*.pyd'); Dest = 'lib' }
+    )
 }
 # Also check alternate output dirs
 $altOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Windows\Release'
