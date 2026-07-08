@@ -226,6 +226,14 @@ bootstrap_ca() {
     bash "${SCRIPT_DIR}/use-fast-ubuntu-mirror.sh"
   fi
 
+  # Make EVERY apt-get in EVERY subsequent build layer retry transient network
+  # failures. QEMU-emulated arm64/riscv64 networks are flaky, and this is the
+  # first RUN in the base image, so dropping the config here covers the whole
+  # chain (install_os_packages, packaging-deps, media/android stages, ...) with
+  # one line -- not just this bootstrap function's own retry loop below.
+  mkdir -p /etc/apt/apt.conf.d
+  printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries
+
   # Retry apt-get under QEMU emulation (network can be flaky)
   local _retry=0 _max=3
   until apt-get update -qq; do

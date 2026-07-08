@@ -9,6 +9,20 @@ on:
 
 jobs:
 
+  # Fast, no-build gate: shellcheck + the verify-* suite (script-COPY coverage,
+  # critical-fixes, ARG consistency, version snapshot, mirror + runtime-path
+  # consistency). Catches the failure classes that otherwise only surface hours
+  # into a multi-arch build. Mirrors the local .githooks/pre-commit gate, which
+  # is opt-in and silently skipped by contributors who don't enable it.
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run preflight checks
+        run: bash linux/scripts/preflight.sh
+
   build-docs:
     uses: ./.github/workflows/build-docs.yml
     with:

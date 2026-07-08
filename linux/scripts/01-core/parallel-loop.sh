@@ -37,7 +37,13 @@ run_parallel_arch_loop() {
         running=$((running - 1))
       fi
     else
-      "${fn_name}" "${arch}" || failed=1
+      # Sequential path: name the failed arch too (the parallel path warns via
+      # the failed-* flag files below). set -e in the caller aborts the chain on
+      # the non-zero return, so a failed arch never silently proceeds.
+      if ! "${fn_name}" "${arch}"; then
+        warn "Arch ${arch} failed during build"
+        failed=1
+      fi
     fi
   done
   if _bool_truthy "${PARALLEL_ARCHS:-0}"; then

@@ -59,7 +59,16 @@ COPY --chmod=755 linux/scripts/04-runtime/start-webrtc-signalling.sh /usr/local/
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]
 
-RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -s /bin/bash kataglyphis
+# Create the unprivileged runtime user AND give it ownership of its WORKDIR/
+# VOLUME. Without the chown, WORKDIR/VOLUME are created root-owned (they run as
+# root here) and `USER kataglyphis` then cannot write into /workspace -- the
+# whole point of the VOLUME. PYTHONDONTWRITEBYTECODE stops Python trying to
+# write .pyc files into the root-owned /opt/venv on first import, which also
+# makes the image runnable with --read-only.
+RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -s /bin/bash kataglyphis; \
+    mkdir -p ${WORKDIR} && chown -R kataglyphis:kataglyphis ${WORKDIR}
+
+ENV PYTHONDONTWRITEBYTECODE=1
 
 USER kataglyphis
 

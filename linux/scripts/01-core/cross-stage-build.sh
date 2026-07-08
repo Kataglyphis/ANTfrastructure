@@ -82,19 +82,41 @@ _cross_stage_build_impl() {
     build_cmd+=(
       --output "type=image,name=${tag},push=true"
     )
-    if [ -z "${NO_CACHE:-}" ]; then
+  fi
+
+  # ---------------------------------------------------------------------------
+  # Build cache. A LOCAL buildkit cache is primary: it survives repeated
+  # rebuilds on the same host and never touches the registry, so it cannot hit
+  # ghcr.io's "400 Bad Request" on oversized mode=max cache blobs.
+  #
+  # This replaces a self-defeating scheme: the old code added --cache-from
+  # type=registry,ref=<tag>-buildcache always, but gated the matching
+  # --cache-to behind NO_CACHE_EXPORT. With NO_CACHE_EXPORT=1 the -buildcache
+  # ref was NEVER written, so --cache-from pointed at a ref that did not exist
+  # -> BuildKit failed the importer and every stage rebuilt from scratch.
+  #
+  # A missing/empty local src is a clean cache miss, never an error, so this is
+  # safe on the very first build. mode=max keeps intermediate-stage layers.
+  # ---------------------------------------------------------------------------
+  if [ -z "${NO_CACHE:-}" ]; then
+    local _cache_dir _cache_slug
+    _cache_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
+    _cache_slug="$(printf '%s' "${tag}" | tr '/:@' '___')"
+    mkdir -p "${_cache_dir}/${_cache_slug}" 2>/dev/null || true
+    build_cmd+=(
+      --cache-from "type=local,src=${_cache_dir}/${_cache_slug}"
+      --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
+    )
+    # When pushing, also ride an inline cache inside the image (mode=min,
+    # embedded in the image config -> no separate blob, so no 400) and read it
+    # back from the tag itself, letting other hosts warm-start from the
+    # registry. NO_CACHE_EXPORT keeps the local cache but skips this
+    # registry-facing export.
+    if [ "${push_flag}" -eq 1 ] && [ -z "${NO_CACHE_EXPORT:-}" ]; then
       build_cmd+=(
-        --cache-from "type=registry,ref=${tag}-buildcache"
+        --cache-from "type=registry,ref=${tag}"
+        --cache-to "type=inline"
       )
-      # The registry cache export (mode=max) can be rejected by some registries
-      # with "400 Bad Request" on oversized cache blobs (observed on ghcr.io).
-      # NO_CACHE_EXPORT drops the export while keeping --cache-from, so a rebuild
-      # still reuses cached layers but never fails the whole solve on cache push.
-      if [ -z "${NO_CACHE_EXPORT:-}" ]; then
-        build_cmd+=(
-          --cache-to "type=registry,ref=${tag}-buildcache,mode=max"
-        )
-      fi
     fi
   fi
 
