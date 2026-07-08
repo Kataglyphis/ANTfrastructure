@@ -38,6 +38,52 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 
 ## Pre-flight
 
-_(populated by task #17 once the checks land)_ — a single entrypoint that runs all the
-fast checks (shellcheck gate, script-copy coverage, arg/mirror consistency) in seconds so
-whole failure classes are caught before committing to a multi-hour cross rebuild.
+Run **`linux/scripts/preflight.sh`** before `build-cross-chain.sh`. It runs every
+fast (no-build) check in seconds/minutes so whole failure classes are caught
+before a multi-hour QEMU rebuild. All checks run even if one fails; the script
+exits non-zero if any did.
+
+| Check | Script | Catches (class) |
+|-------|--------|-----------------|
+| shellcheck gate | `lint-shell.sh` | 6, 7 |
+| script COPY coverage | `verify-script-copy-coverage.py` | 1 |
+| critical fixes (incl. fix6) | `verify-critical-fixes.sh` | 2, 3 (+ prior fixes) |
+| ARG consistency | `01-core/verify-arg-consistency.sh` | 8 |
+| version snapshot | `docs/scripts/sync_versions.py --check` | 8 |
+| ubuntu mirror consistency | `01-core/verify-ubuntu-mirror-consistency.sh` | 8 |
+| runtime path consistency | `04-runtime/verify-runtime-paths.sh` | 8 |
+
+Each is runnable standalone (same commands). The pre-commit hook
+(`.githooks/pre-commit`) runs the shellcheck gate (staged files), script COPY
+coverage, and critical-fixes checks on every commit.
+
+### In-image smoke tests (need a built image, not part of preflight)
+
+These validate a built/pulled image and also run during the build to fail fast:
+
+- **Native source-build header preflight** — inside `setup-torch-venv.sh`
+  (`verify_native_source_headers`): compiles tiny C / C++ / jpeglib probes with
+  the same compiler+flags the pip build uses, so a header/sysroot regression
+  (classes 2/3) aborts in <1s instead of after a ~9-min numpy/pillow compile.
+- **Torch venv integrity** — `06-packaging/smoke-torch-venv.sh`: imports
+  numpy/torch/torchvision/PIL/cv2/contourpy (+ torch↔numpy ABI bridge) from
+  `/opt/venv` (class 5). Wired into `smoke-wrapper.sh`; skips cleanly if no venv.
+  Run standalone: `VENV=/opt/venv smoke-torch-venv.sh`.
+
+## Dedup & factoring notes (2026-07)
+
+The tree has been through several dedup passes already; remaining duplication is
+largely **deliberate** and should not be "fixed":
+
+- `cross_build_is_active` / `install_host_packages` etc. are re-defined as
+  **fallbacks** in several modules so each can be sourced standalone. Removing
+  them breaks isolated use.
+- `build-libcamera.sh`'s inline `-idirafter /usr/include` (generic) plus its
+  `append_cross_idirafter` call is a **native/cross fallback pair**, not a copy.
+- The `-idirafter` logic in `setup-torch-venv.sh` + `swap-native-gcc.sh`
+  duplicates the canonical helper `append_cross_idirafter` (`01-core/common.sh`).
+  It is **inlined on purpose**: the torch/android stages do not COPY `common.sh`
+  (nor its `load-versions-env.sh` chain), and pulling that in for six flag lines
+  is not worth the surface on a verified critical path. The copies are
+  cross-referenced to the helper and kept in sync by `verify-critical-fixes.sh`
+  **fix6** — the pattern for necessary duplication: guard it, don't hide it.
