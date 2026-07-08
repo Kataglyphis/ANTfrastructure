@@ -229,6 +229,36 @@ riscv64_torch_wheel_fallback() {
   echo "riscv64 fallback venv ready (no torch wheel in /opt/wheels; skipped app assembly)"
 }
 
+# Fail-fast preflight: the relocated native GCC/G++ used for source builds under
+# QEMU has repeatedly been unable to find the runtime image's system headers —
+# C `string.h`, and C++ `<cstdlib>` -> `#include_next <stdlib.h>` — and Pillow's
+# JPEG support needs `jpeglib.h` (libjpeg-dev). Each of those was discovered only
+# after a ~9-min numpy/pillow compile died. Probe all three here in <1s using the
+# SAME compiler + CPPFLAGS/CFLAGS/CXXFLAGS the pip build will use, so a
+# header/sysroot regression aborts immediately with a clear message.
+# See docs/cross-build-verification.md (failure classes 2 & 3).
+verify_native_source_headers() {
+  local cc="${CC:-gcc}" cxx="${CXX:-g++}" tmp rc=0
+  command -v "${cc}" >/dev/null 2>&1 || cc=gcc
+  command -v "${cxx}" >/dev/null 2>&1 || cxx=g++
+  tmp="$(mktemp -d)"
+  printf '#include <string.h>\nint main(void){return (int)strlen("");}\n' > "${tmp}/t.c"
+  printf '#include <cstdlib>\n#include <string>\nint main(){std::string s; return std::atoi("0")+(int)s.size();}\n' > "${tmp}/t.cpp"
+  printf '#include <stdio.h>\n#include <jpeglib.h>\nint main(void){struct jpeg_decompress_struct c; (void)c; return 0;}\n' > "${tmp}/j.c"
+  # shellcheck disable=SC2086  # intentional word-splitting of the *FLAGS vars
+  "${cc}"  ${CPPFLAGS:-} ${CFLAGS:-}   "${tmp}/t.c"   -o "${tmp}/t_c"   2>"${tmp}/c.err"   || { echo "PREFLIGHT FAIL: native C compile cannot find system headers (e.g. string.h)" >&2; sed 's/^/    /' "${tmp}/c.err" >&2; rc=1; }
+  # shellcheck disable=SC2086
+  "${cxx}" ${CPPFLAGS:-} ${CXXFLAGS:-} "${tmp}/t.cpp" -o "${tmp}/t_cpp" 2>"${tmp}/cpp.err" || { echo "PREFLIGHT FAIL: native C++ compile cannot resolve libstdc++ #include_next (<cstdlib> -> stdlib.h)" >&2; sed 's/^/    /' "${tmp}/cpp.err" >&2; rc=1; }
+  # shellcheck disable=SC2086
+  "${cc}"  ${CPPFLAGS:-} ${CFLAGS:-}   "${tmp}/j.c"   -c -o "${tmp}/j.o" 2>"${tmp}/j.err"   || { echo "PREFLIGHT FAIL: jpeglib.h not usable (Pillow JPEG support needs libjpeg-dev)" >&2; sed 's/^/    /' "${tmp}/j.err" >&2; rc=1; }
+  rm -rf "${tmp}"
+  if [ "${rc}" -ne 0 ]; then
+    echo "Native source-build preflight FAILED with ${cc}/${cxx}; CPPFLAGS='${CPPFLAGS:-}' CXXFLAGS='${CXXFLAGS:-}'" >&2
+    return 1
+  fi
+  echo "Native source-build preflight OK (C string.h, C++ #include_next stdlib.h, jpeglib.h) via ${cc}/${cxx}"
+}
+
 configure_foreign_arch_compiler_env() {
   local host_arch="$1"
   if [ "${host_arch}" != "x86_64" ]; then
@@ -236,6 +266,9 @@ configure_foreign_arch_compiler_env() {
     export CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
     unset CC_LD CXX_LD RUSTC_WRAPPER SCCACHE_RECACHE
     echo "sccache bypass: CC=${CC} CXX=${CXX} (host ${host_arch})"
+    # Abort now (seconds) rather than after a multi-minute source build if the
+    # native compiler cannot resolve system headers for this target.
+    verify_native_source_headers || exit 1
     local _sp
     _sp="$(venv_site_packages)"
     if [ -d /usr/lib/python3/dist-packages ] && [ -n "${_sp}" ] && [ -d "${_sp}" ]; then
