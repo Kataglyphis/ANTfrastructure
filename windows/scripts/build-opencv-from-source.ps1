@@ -109,7 +109,11 @@ $cmakeExtra = @(
     '-DBUILD_CLAPACK=ON', '-DBUILD_IPP_IW=ON',
     '-DBUILD_opencv_python3=OFF', '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
-    '-DWITH_OPENGL=ON', '-DWITH_DIRECTX=ON', '-DWITH_DIRECTML=ON',
+    # WITH_OPENGL=OFF: WITH_OPENGL=ON makes opencv_core*.dll hard-import OPENGL32.dll,
+    # which the Windows Server Core base image lacks -> every OpenCV DLL fails to load
+    # (0xC0000135 STATUS_DLL_NOT_FOUND) in the final image. A headless container needs no
+    # GL windowing; this was caught by the smoke-test OpenCV link+run gate.
+    '-DWITH_OPENGL=OFF', '-DWITH_DIRECTX=ON', '-DWITH_DIRECTML=ON',
     '-DWITH_VULKAN=ON', '-DWITH_EIGEN=ON',
     # ONNX Runtime enabled -- OpenCV auto-detects our source-built ORT via PKG_CONFIG_PATH.
     # If not found via pkg-config, OpenCV falls back to its bundled download (v1.25.1).
