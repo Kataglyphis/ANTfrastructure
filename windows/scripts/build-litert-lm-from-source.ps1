@@ -1362,8 +1362,27 @@ if (Test-Path $mainExe) {
         if ($missing) { Write-Host ("  STILL-MISSING DLLs (not found anywhere): " + ($missing -join ', ')) }
     }
     $env:PATH = "$binOut;$env:PATH"
-    & cmd /c "`"$(Join-Path $binOut 'litert_lm_main.exe')`" --help 2>&1" | Out-Null
-    Write-Host "litert_lm_main.exe staged to $binOut ; smoke-run exit: $LASTEXITCODE (0 or a usage/arg code = runs; 0xC0000135/-1073741515 = missing DLL)"
+    # Smoke-RUN the exe, not just check it exists: a linked-but-non-functional binary is the
+    # exact failure class the file-existence smoke test misses. Two runtime breakages to catch:
+    #   (1) missing DLL -> 0xC0000135 / -1073741515
+    #   (2) abseil flag ODR abort at static init (two copies of abseil linked -> 'minloglevel'
+    #       registered twice) -> the exe launches but aborts on EVERY invocation.
+    # Capture output (do NOT discard it) and classify; exit 1 is NOT automatically "benign usage".
+    $smokeExe  = Join-Path $binOut 'litert_lm_main.exe'
+    $smokeOut  = & cmd /c "`"$smokeExe`" --help 2>&1"
+    $smokeExit = $LASTEXITCODE
+    $smokeText = ($smokeOut | Out-String)
+    if ($smokeText -match 'Inconsistency between flag|ODR violation|duplicate flags') {
+        Write-Host "*** litert_lm_main.exe BROKEN at runtime: abseil flag ODR violation (duplicate abseil linked). exit=$smokeExit ***"
+        ($smokeOut | Select-Object -First 3) | ForEach-Object { Write-Host "    $_" }
+        $script:litertLmRuntimeBroken = $true
+    } elseif ($smokeExit -eq -1073741515 -or $smokeExit -eq 3221225781) {
+        Write-Host "*** litert_lm_main.exe BROKEN at runtime: missing DLL (0xC0000135). exit=$smokeExit ***"
+        $script:litertLmRuntimeBroken = $true
+    } else {
+        Write-Host "litert_lm_main.exe smoke-run OK (exit $smokeExit = launches + runs)."
+    }
+    Write-Host "litert_lm_main.exe staged to $binOut"
     $ErrorActionPreference = $prevEAP
 }
 else { Write-Host "WARNING: ninja did not produce litert_lm_main.exe -- the clean-link CMake patch may need attention" }
@@ -1424,6 +1443,22 @@ if ($env:LITERTLM_KEEP_BUILD_TREE) {
             if ($u) { Write-Host "  CONSUMER __imp MixingHashState <- $($lib.Name)" }
         }
     } else { Write-Host '  llvm-nm not found' }
+    Write-Host '===DIAG=== abseil DUPLICATE-flag scan: which rsp archives DEFINE minloglevel (>1 = the ODR culprit):'
+    if ($nmExe -and $rsp) {
+        $rspLibs2 = (Get-Content -Raw $rsp.FullName) -split '\s+' | Where-Object { $_ -match '\.(a|lib)$' } |
+            ForEach-Object { if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $innerBuild $_ } } |
+            Where-Object { Test-Path $_ } | Sort-Object -Unique
+        Write-Host "  rsp archives to scan: $($rspLibs2.Count)"
+        $mllHits = @()
+        foreach ($lp in $rspLibs2) {
+            $d = & $nmExe --defined-only $lp 2>$null | Select-String -Pattern 'minloglevel' -SimpleMatch | Select-Object -First 1
+            if ($d) { $mllHits += $lp; Write-Host "  DEFINES minloglevel: $lp" }
+        }
+        Write-Host "  >>> $($mllHits.Count) archive(s) define minloglevel (expect 1; >1 = duplicate abseil = ODR bug)"
+        # Also flag any second copy of the whole abseil log-flags TU by archive name.
+        $logFlagArch = $rspLibs2 | Where-Object { $_ -match 'log_flags|absl_log_flags|log.*flags' }
+        if ($logFlagArch) { Write-Host "  absl_log_flags-named archives in rsp:"; $logFlagArch | ForEach-Object { Write-Host "    $_" } }
+    } else { Write-Host '  (need llvm-nm + rsp)' }
     Write-Host '===DIAG END==='
 }
 else { Remove-SourceBuildTree -Path $SourceDir }
