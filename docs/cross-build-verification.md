@@ -87,3 +87,51 @@ largely **deliberate** and should not be "fixed":
   is not worth the surface on a verified critical path. The copies are
   cross-referenced to the helper and kept in sync by `verify-critical-fixes.sh`
   **fix6** — the pattern for necessary duplication: guard it, don't hide it.
+
+## Hardening pass (2026-07) — landed + residuals
+
+**Landed** (see `verify-critical-fixes.sh` **fix7** for the regression guards):
+
+- **Build cache** — replaced the self-defeating registry `-buildcache` (whose
+  `--cache-to` was gated out by `NO_CACHE_EXPORT`, so nothing ever cache-hit)
+  with a **local** buildkit cache + inline cache on push. This is why full base
+  rebuilds no longer recur on the same host.
+- **Base cache scope** — base RUNs bind-mount only `01-core` (+ `02-toolchain`
+  for shared tooling), so editing a media/android script no longer busts the
+  base image.
+- **Supply-chain** — the sole floating external base (`ubuntu:26.04`) is now
+  digest-pinned by its multi-arch manifest-**list** digest (`UBUNTU_DIGEST`).
+- **Non-root runtime** — `/workspace` is `chown`ed to `kataglyphis`;
+  `PYTHONDONTWRITEBYTECODE=1`; the build-only fake `sudo` shim is stripped from
+  the shipped image.
+- **Robustness** — image-wide `apt` retries (`80-retries`); real-pipe +
+  `PIPESTATUS` so a failing build's log tail is flushed and its true exit code
+  returned; `parallel-loop.sh` names the failed arch.
+- **Smokes** — every previously-orphaned smoke now runs: `smoke-toolchain`
+  (toolchain), `smoke-vulkan`+`smoke-android` (android), `smoke-vulkan`+
+  `smoke-torch-venv` (package wrapper-smoke), and host-side `smoke-runtime-image`
+  (in `build-runtime-manifest.sh`, `RUNTIME_IMAGE_SMOKE=0` to skip).
+- **Reproducibility (opt-in)** — `clone_or_update_repo` and `build-ffmpeg.sh`
+  accept a 40-hex commit SHA; `OPENCV_COMMIT`/`OPENCV_CONTRIB_COMMIT`/
+  `FFMPEG_COMMIT` (empty by default = track the bleeding-edge branch) freeze
+  those sources to an immutable commit for a release build.
+- **Attestations (opt-in)** — `BUILD_ATTEST=1` attaches SLSA provenance + SBOM
+  to pushed images.
+
+**Residual supply-chain gaps** (tracked, not yet closed — each is a known
+`curl`/`wget` without a checksum; the fix is to route it through
+`download_verified_file` with a new `*_SHA256` in `versions.env`):
+
+| Source | Site | Note |
+|--------|------|------|
+| Flutter SDK tarball | `flutter/setup-flutter.sh` | per-arch sha; large |
+| Android cmdline-tools zip | `android-sdk.sh` | NDK/build-tools are sdkmanager-verified |
+| freetype source | `opencv/install-deps.sh` | swallows failure with `\|\| true` — tighten too |
+| GStreamer-Android universal | `android/build-gstreamer.sh` | published sha256 available |
+| `rustup-init` / NodeSource | `install-rust.sh`, `onnxruntime/build/10-deps.sh` | `curl \| sh` — pin the bootstrap binary by sha |
+
+**Deliberate keep:** the `-dev` header packages in `setup-torch-venv.sh` land in
+the final image. This is a cross-**dev** container that compiles Python wheels
+from source under QEMU at build time, so the headers are load-bearing; splitting
+build-deps from runtime-deps would risk the source-build path for marginal size
+savings. Left as-is by design.

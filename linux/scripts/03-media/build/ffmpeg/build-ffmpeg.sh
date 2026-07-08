@@ -72,14 +72,22 @@ fetch_ffmpeg() {
     rm -rf "${FFMPEG_SRC}"
     mkdir -p "${FFMPEG_SRC}"
 
-    # Use latest stable release tag (default from versions.env via orchestrator or env),
-    # or "master" to track the latest development branch.
-    local release_ref="${FFMPEG_VERSION:-master}"
+    # Track a branch ("master", default = bleeding edge) or pin reproducibly:
+    # set FFMPEG_COMMIT to a 40-hex SHA (immutable GitHub archive) or
+    # FFMPEG_VERSION to a release tag. FFMPEG_COMMIT wins when set.
+    local release_ref="${FFMPEG_COMMIT:-${FFMPEG_VERSION:-master}}"
 
     local tarball_url
     case "${release_ref}" in
       main|master|develop) tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/heads/${release_ref}.tar.gz" ;;
-      *)                   tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_ref}.tar.gz" ;;
+      *)
+        if [[ "${release_ref}" =~ ^[0-9a-f]{40}$ ]]; then
+          # Immutable commit archive (codeload) -> reproducible.
+          tarball_url="https://github.com/FFmpeg/FFmpeg/archive/${release_ref}.tar.gz"
+        else
+          tarball_url="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/${release_ref}.tar.gz"
+        fi
+        ;;
     esac
     echo "Downloading FFmpeg ${release_ref} from ${tarball_url}..."
     download_and_extract "${tarball_url}" "${FFMPEG_SRC}" 1 || {

@@ -301,6 +301,10 @@ RUN --mount=type=tmpfs,target=/tmp \
 FROM base AS opencv
 
 ARG OPENCV_VERSION
+# Opt-in reproducibility: 40-hex SHAs pin core/contrib to immutable commits;
+# empty (default) tracks the OPENCV_VERSION branch. core and contrib pin separately.
+ARG OPENCV_COMMIT=""
+ARG OPENCV_CONTRIB_COMMIT=""
 ARG OPENCV_BUILD_TYPE=Release
 ARG OPENCV_WITH_CONTRIB=true
 ARG OPENCV_WITH_PYTHON=true
@@ -323,6 +327,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
+    export OPENCV_COMMIT="${OPENCV_COMMIT}" OPENCV_CONTRIB_COMMIT="${OPENCV_CONTRIB_COMMIT}"; \
     bash /opt/scripts/03-media/build/opencv/build-opencv.sh \
         --opencv-version "${OPENCV_VERSION}" \
         --prefix "${OPENCV_OUTPUT_DIR}" \
@@ -413,6 +418,10 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
 # ==============================================================================
 FROM base AS ffmpeg
 
+# Opt-in reproducibility: set FFMPEG_COMMIT to a 40-hex SHA to pin FFmpeg to an
+# immutable commit archive; empty (default) tracks FFMPEG_VERSION/master.
+ARG FFMPEG_COMMIT=""
+
 ENV FFMPEG_PREFIX=/opt/ffmpeg
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
@@ -434,6 +443,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     export PKG_CONFIG_PATH="/var/cache/ffmpeg-sdks:/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"; \
     export ENABLE_NVIDIA="${ENABLE_NVIDIA}"; \
+    export FFMPEG_COMMIT="${FFMPEG_COMMIT}"; \
     echo "--- ffmpeg build v3: DNN backends (TensorFlow, OpenVINO, ONNX) + CUDA HW accel ---"; \
     bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh
 

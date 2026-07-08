@@ -93,6 +93,21 @@ clone_or_update_repo() {
   local dest_dir="$2"
   local branch="${3:-}"
 
+  # A 40-hex "branch" is an opt-in commit-SHA pin (reproducible builds). git's
+  # --branch only accepts refs, so fetch the exact commit instead. GitHub
+  # supports shallow fetch-by-SHA; failure here is loud (callers wrap this in
+  # retry ... || exit 1), never a silent wrong checkout. Tags/branches keep the
+  # existing shallow-clone path below unchanged.
+  if [[ "${branch}" =~ ^[0-9a-f]{40}$ ]]; then
+    rm -rf "${dest_dir}"
+    mkdir -p "${dest_dir}"
+    git -C "${dest_dir}" init -q
+    git -C "${dest_dir}" remote add origin "${repo_url}"
+    git -C "${dest_dir}" fetch --depth 1 origin "${branch}"
+    git -C "${dest_dir}" checkout -q FETCH_HEAD
+    return 0
+  fi
+
   if [ -d "${dest_dir}/.git" ]; then
     git -C "${dest_dir}" fetch --depth 1 origin "${branch}" 2>/dev/null || git -C "${dest_dir}" fetch --depth 1 --tags 2>/dev/null || true
     if [ -n "${branch}" ]; then

@@ -82,6 +82,16 @@ _cross_stage_build_impl() {
     build_cmd+=(
       --output "type=image,name=${tag},push=true"
     )
+    # Supply-chain attestations (opt-in via BUILD_ATTEST=1): SLSA provenance +
+    # an SBOM attached to the pushed image as OCI referrers. Off by default
+    # because the SBOM scanner adds time to every stage; enable for release/
+    # publish builds. nerdctl >=2 maps these to buildkit --attest.
+    if [ -n "${BUILD_ATTEST:-}" ]; then
+      build_cmd+=(
+        --provenance=mode=max
+        --sbom=true
+      )
+    fi
   fi
 
   # ---------------------------------------------------------------------------

@@ -142,7 +142,10 @@ fetch_opencv() {
     # once raced on creating OPENCV_SRC itself ("could not create work tree dir
     # '<OPENCV_SRC>': File exists"), leaving contrib un-cloned. Sequential clone
     # guarantees the parent exists before contrib is fetched into it.
-    retry 3 10 "opencv git clone" clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_VERSION}" \
+    # OPENCV_COMMIT (opt-in 40-hex SHA) pins reproducibly; default empty keeps
+    # tracking the OPENCV_VERSION branch (bleeding edge). core and contrib pin
+    # independently since they are separate repos with distinct HEADs.
+    retry 3 10 "opencv git clone" clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_COMMIT:-${OPENCV_VERSION}}" \
         || { echo "Failed to clone opencv"; exit 1; }
 
     # Contrib modules (optional) — fetched into the conventional opencv_contrib
@@ -151,7 +154,7 @@ fetch_opencv() {
     if [ "${WITH_CONTRIB}" = "true" ]; then
         echo "Fetching OpenCV contrib modules..."
         contrib_dir="${OPENCV_SRC}/opencv_contrib"
-        retry 3 10 "opencv_contrib git clone" clone_or_update_repo "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" "${OPENCV_VERSION}" \
+        retry 3 10 "opencv_contrib git clone" clone_or_update_repo "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" "${OPENCV_CONTRIB_COMMIT:-${OPENCV_VERSION}}" \
             || { echo "Failed to clone opencv_contrib"; exit 1; }
     fi
 

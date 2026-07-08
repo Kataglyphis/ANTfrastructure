@@ -25,6 +25,11 @@
 #   MAX_PARALLEL_ARCHS=N    concurrent per-arch stage builds (with --parallel-archs)
 #   PARALLEL_ARCHS=1        build sdk/media/android arches in parallel
 #   RUNTIME_IMAGE_SMOKE=0   skip the host-side runtime-image boot smoke
+#   BUILD_ATTEST=1          attach SLSA provenance + SBOM to pushed images (slower)
+#
+# Reproducibility pins (opt-in, see linux/scripts/01-core/versions.env):
+#   OPENCV_COMMIT / OPENCV_CONTRIB_COMMIT / FFMPEG_COMMIT = 40-hex SHA to freeze
+#   those branch-tracked sources to an immutable commit (empty = bleeding edge).
 # ==============================================================================
 
 ARCHES  ?= amd64,arm64,riscv64
