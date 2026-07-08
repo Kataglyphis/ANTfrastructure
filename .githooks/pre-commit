@@ -28,6 +28,11 @@ echo ""
 echo "=== verify-critical-fixes.sh ==="
 bash linux/scripts/verify-critical-fixes.sh && pass "critical fixes" || fail "critical fixes failed"
 
+# 3b. Sourced/COPY'd scripts are present in each image stage
+echo ""
+echo "=== verify-script-copy-coverage.py ==="
+python3 linux/scripts/verify-script-copy-coverage.py && pass "script COPY coverage" || fail "a referenced /opt/scripts path is not provided in its image"
+
 # 4. Shell syntax + shellcheck gate on changed .sh files
 echo ""
 echo "=== shell syntax (staged .sh files) ==="
