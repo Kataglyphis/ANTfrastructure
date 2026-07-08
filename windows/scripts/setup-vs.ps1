@@ -69,7 +69,6 @@ $env:TMP  = $TempDir
 Write-Host "Using TEMP=$env:TEMP for installer temporary files and logs."
 New-Item -Path $TempDir -ItemType Directory -Force | Out-Null
 $installer = Join-Path $TempDir 'vs_buildtools.exe'
-$installerLog = Join-Path $TempDir 'vs_installer.log'
 
 # Optionale ENV-Variablen analog Dockerfile
 

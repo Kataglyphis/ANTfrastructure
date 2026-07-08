@@ -41,10 +41,8 @@ Set-Location $SourceDir
 
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
-# GPU environment is detected once via the canonical helper. GenAI keeps CUDA OFF at build
-# time (clang-cl + nvcc host-compiler interplay issue with CUDA 13.x headers); GenAI uses
-# ONNX Runtime's CUDA execution provider at runtime instead.
-$gpuEnv = Get-GpuEnvironment
+# GenAI keeps CUDA OFF at build time (clang-cl + nvcc host-compiler interplay issue with CUDA
+# 13.x headers); it uses ONNX Runtime's CUDA execution provider at runtime instead.
 $genaiCudaArgs = @('-DUSE_CUDA=OFF')
 Write-Host 'CUDA disabled for ONNX GenAI build (uses ONNX Runtime CUDA EP at runtime)'
 
@@ -108,10 +106,10 @@ Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatte
 Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 4 -Install
 
 Write-Host "Installing to $genaiInstallDir..."
-# Copy built artifacts (top level only, matching the original non-recursive wildcard copy)
-$buildOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
-if (Test-Path $buildOutDir) {
-    Copy-BuildArtifact -BuildDir $buildOutDir -InstallDir $genaiInstallDir -Map @(
+# Copy built artifacts (top level only, matching the original non-recursive wildcard copy).
+# Reuse $genaiBuildDir (same path) instead of re-deriving it.
+if (Test-Path $genaiBuildDir) {
+    Copy-BuildArtifact -BuildDir $genaiBuildDir -InstallDir $genaiInstallDir -Map @(
         @{ Filter = '*.h'; Dest = 'include' }
         @{ Filter = @('*.lib', '*.dll', '*.pyd'); Dest = 'lib' }
     )

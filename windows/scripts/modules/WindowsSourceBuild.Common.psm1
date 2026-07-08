@@ -210,10 +210,7 @@ function Enter-VsDevCmdEnvironment {
 
     # Resolve VsDevCmd.bat via vswhere (robust across VS versions, not hardcoded to VS 18).
     if ([string]::IsNullOrWhiteSpace($VsDevCmdPath)) {
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere - Visual Studio Installer missing" }
-        $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        if ([string]::IsNullOrWhiteSpace($vsPath)) { throw 'No Visual Studio installation with VC Tools x86/x64 found via vswhere' }
+        $vsPath = Get-VsInstallPath   # single source of truth for VS discovery (shared with Get-MsvcToolsRoot)
         $VsDevCmdPath = Join-Path $vsPath 'Common7\Tools\VsDevCmd.bat'
     }
     if (-not (Test-Path $VsDevCmdPath)) { throw "VsDevCmd.bat not found at: $VsDevCmdPath" }

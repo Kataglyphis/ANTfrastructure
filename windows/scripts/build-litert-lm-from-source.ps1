@@ -1130,13 +1130,11 @@ foreach ($abslCmakeRel in @('cmake\packages\absl\absl_import_static_lib.cmake', 
 # nm diag: libprotobuf.a = 0KB, protobuf.lib = 11MB (has the symbols). Rewrite /lib<name>.a ->
 # /<name>.lib. (protoc/upb/utf8_validity may not all exist as .lib; harmless -- unused ones stay
 # empty stubs from the sweep and nothing references them.)
-$protoMap = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf_target_map.cmake'
-if ((Test-Path $protoMap) -and ((Get-Content -Raw $protoMap) -match '/lib[a-z0-9_-]+\.a')) {
-    $pm = [System.IO.File]::ReadAllText($protoMap)
-    $pm = [regex]::Replace($pm, '/lib([a-z0-9_-]+)\.a', '/$1.lib')
-    [System.IO.File]::WriteAllText($protoMap, $pm)
-    Write-Host 'Patched protobuf_target_map.cmake: /lib*.a -> /*.lib (point at the real MSVC protobuf libs)'
-}
+# Same rename via the shared Invoke-InlineRegexPatch (was a hand-rolled ReadAllText/Replace block;
+# identical regex + guard, just routed through the helper the abseil/litert renames already use).
+[void](Invoke-InlineRegexPatch -Path (Join-Path $SourceDir 'cmake\packages\protobuf\protobuf_target_map.cmake') `
+        -Pattern '/lib([a-z0-9_-]+)\.a' -Replacement '/$1.lib' -Guard '/lib[a-z0-9_-]+\.a' `
+        -Description 'protobuf_target_map.cmake : /lib*.a -> /*.lib (point at the real MSVC protobuf libs)')
 
 # The Rust cxx-bridge libs are the same story: _cxxbridge_paths (generate_cxxbridge.cmake) references
 # ${CMAKE_BINARY_DIR}/liblitert_lm_deps.a + liblitertlm_cxx_bridge.a, but rustc/clang-cl emit MSVC

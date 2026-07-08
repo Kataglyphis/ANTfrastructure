@@ -2,9 +2,9 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# SUPERSEDED AS A BUILD PATH — retained for reference and version-ARG consistency
-# (docs/scripts/sync_versions.py parses the ARG defaults here). windows/build.ps1 no
-# longer builds this file: `docker build` is capped at 2 CPUs on the Windows host and
+# SUPERSEDED AS A BUILD PATH — retained for reference and version-ARG parity only.
+# (Note: docs/scripts/sync_versions.py scrapes windows/Dockerfile.media, NOT this file.)
+# windows/build.ps1 no longer builds this file: `docker build` is capped at 2 CPUs on the Windows host and
 # process isolation cannot commit layers, so media-core is now built via
 # Dockerfile.media-core-builder + windows\scripts\build-media-core-all.ps1 run with
 # `docker run --cpu-count N` + `docker commit` (the run+commit path in build.ps1).

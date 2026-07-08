@@ -8,7 +8,11 @@
 # All branches install into C:\runtime from the same toolchain base, so the trees
 # merge cleanly via COPY --from. GStreamer builds last — it auto-detects CUDA,
 # OpenCV, ONNX and FFmpeg from the merged C:\runtime.
-# windows/build.ps1 builds the branches concurrently and then this file.
+# NOTE: build.ps1 builds Dockerfile.media-merge-builder (the run+commit variant), NOT this file.
+# This file is retained as the readable full-merge reference and as the source that
+# docs/scripts/sync_versions.py scrapes for GSTREAMER_VERSION / ONNXRUNTIME_VERSION -- keep its
+# stage body in sync with Dockerfile.media-merge-builder (which differs only by omitting the
+# final GStreamer RUN).
 
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 ARG CORE_IMAGE=local/kataglyphis:windows-media-core

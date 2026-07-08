@@ -268,10 +268,14 @@ function Get-MediaBranchSpecs {
     $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
     @(
         @{
-            Name       = 'media-core'
-            Dockerfile = 'windows/Dockerfile.media-core'
-            Tag        = 'local/kataglyphis:windows-media-core'
-            MemoryGb   = $MediaMemoryGb
+            Name              = 'media-core'
+            Dockerfile        = 'windows/Dockerfile.media-core'            # superseded; kept for parity (media-core is always run+commit)
+            BuilderDockerfile = 'windows/Dockerfile.media-core-builder'    # run+commit path (full cores), same as the aux branches
+            BuilderTag        = 'local/kataglyphis:windows-media-core-builder'
+            ContainerName     = 'kataglyphis-media-core-build'
+            RunScript         = 'build-media-core-all.ps1'
+            Tag               = 'local/kataglyphis:windows-media-core'
+            MemoryGb          = $MediaMemoryGb
             BuildArgs  = @{
                 BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
                 ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
@@ -372,23 +376,6 @@ function Invoke-RunCommitStage {
     }
 }
 
-function Invoke-MediaCoreRunCommit {
-    # media-core: ONNX -> GenAI -> OpenCV -> FFmpeg chain via the run+commit path.
-    param(
-        [Parameter(Mandatory)] [hashtable]$BuildArgs,
-        [Parameter(Mandatory)] [int]$Cpus,
-        [Parameter(Mandatory)] [int]$MemoryGb,
-        [string]$OutLog
-    )
-    Invoke-RunCommitStage `
-        -BuilderDockerfile 'windows/Dockerfile.media-core-builder' `
-        -BuilderTag    'local/kataglyphis:windows-media-core-builder' `
-        -ResultTag     'local/kataglyphis:windows-media-core' `
-        -ContainerName 'kataglyphis-media-core-build' `
-        -RunCommand    @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'C:\temp\scripts\build-media-core-all.ps1') `
-        -Cpus $Cpus -MemoryGb $MemoryGb -BuildArgs $BuildArgs -Label 'media-core' -OutLog $OutLog
-}
-
 function Invoke-MediaBranches {
     $specs    = Get-MediaBranchSpecs
     # -MediaBranches subsets the fan-out (rebuild one branch after a source fix without
@@ -405,8 +392,11 @@ function Invoke-MediaBranches {
 
     if ($script:UseSequentialMedia) {
         if ($coreSpec) {
-            Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
-                -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+            Invoke-RunCommitStage `
+                -BuilderDockerfile $coreSpec.BuilderDockerfile -BuilderTag $coreSpec.BuilderTag `
+                -ResultTag $coreSpec.Tag -ContainerName $coreSpec.ContainerName `
+                -RunCommand @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$($coreSpec.RunScript)") `
+                -Cpus $MediaCoreCpus -MemoryGb $coreSpec.MemoryGb -BuildArgs $coreSpec.BuildArgs -Label $coreSpec.Name -OutLog $coreLog
         }
         # Aux branches (litert, tvm) also via run+commit at FULL cores + RAM. In
         # sequential mode media-core is already committed, so the whole CPU/RAM budget
@@ -452,8 +442,11 @@ function Invoke-MediaBranches {
     if ($coreSpec) {
         Write-Host "`n==> [media-core] run+commit on $MediaCoreCpus CPUs; $($procs.Count) aux branch(es) building concurrently (log: $coreLog)" -ForegroundColor Cyan
         try {
-            Invoke-MediaCoreRunCommit -BuildArgs $coreSpec.BuildArgs -Cpus $MediaCoreCpus `
-                -MemoryGb $coreSpec.MemoryGb -OutLog $coreLog
+            Invoke-RunCommitStage `
+                -BuilderDockerfile $coreSpec.BuilderDockerfile -BuilderTag $coreSpec.BuilderTag `
+                -ResultTag $coreSpec.Tag -ContainerName $coreSpec.ContainerName `
+                -RunCommand @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$($coreSpec.RunScript)") `
+                -Cpus $MediaCoreCpus -MemoryGb $coreSpec.MemoryGb -BuildArgs $coreSpec.BuildArgs -Label $coreSpec.Name -OutLog $coreLog
         } catch { $coreFailed = $true; $coreError = $_ }
     }
     elseif ($procs.Count -gt 0) {
