@@ -155,10 +155,48 @@ fix5_gst_geometry_include() {
   fi
 }
 
-echo "=== Five Critical Fixes Regression Tests ==="
+fix6_native_gcc_system_paths() {
+  echo "--- Fix 6: native-GCC system header/lib paths for torch-venv source builds ---"
+  # Locks in bugs D & E from the 2026-07 cross rebuild (see
+  # docs/cross-build-verification.md). The relocated native GCC/G++ cannot find
+  # /usr/include for QEMU source builds; the canonical helper is
+  # append_cross_idirafter in 01-core/common.sh, inlined here in the torch/android
+  # stages to avoid pulling common.sh's dependency chain into them.
+  local stv="${REPO_ROOT}/linux/scripts/06-packaging/setup-torch-venv.sh"
+  local swp="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
+  local dep="${REPO_ROOT}/linux/scripts/03-media/runtime/install-deps.sh"
+
+  # D: -idirafter must reach C AND C++ compiles in both the in-script env and the
+  # persisted profile.d (CPATH alone does not fix C++ #include_next).
+  if grep -q 'idirafter /usr/include' "${stv}" 2>/dev/null && \
+     grep -qE 'export CXXFLAGS=.*idaf|CXXFLAGS.*idirafter' "${stv}" 2>/dev/null; then
+    pass "setup-torch-venv.sh injects -idirafter into CXXFLAGS (C++ #include_next)"
+  else
+    fail "setup-torch-venv.sh lost the -idirafter CXXFLAGS injection (bug D regression)"
+  fi
+  if grep -q 'idirafter /usr/include' "${swp}" 2>/dev/null; then
+    pass "swap-native-gcc.sh profile.d writes -idirafter system paths"
+  else
+    fail "swap-native-gcc.sh lost the -idirafter profile.d injection (bug D regression)"
+  fi
+  # D: Pillow needs jpeglib.h -> libjpeg-dev in the final-stage target packages.
+  if grep -qE '^[[:space:]]*libjpeg-dev' "${dep}" 2>/dev/null; then
+    pass "install-deps.sh installs libjpeg-dev (Pillow jpeglib.h)"
+  else
+    fail "install-deps.sh no longer installs libjpeg-dev (bug D regression)"
+  fi
+  # E: apt numpy must NOT be seeded into the venv (collides with uv's built wheel).
+  if grep -qE 'for pkg in .*\bnumpy\b' "${stv}" 2>/dev/null; then
+    fail "setup-torch-venv.sh re-seeds apt numpy into the venv (bug E regression)"
+  else
+    pass "setup-torch-venv.sh does not seed apt numpy into the venv"
+  fi
+}
+
+echo "=== Critical Fixes Regression Tests ==="
 echo ""
 
-FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include)
+FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths)
 for _fix_fn in "${FIX_FUNCS[@]}"; do
   "${_fix_fn}"
   echo ""

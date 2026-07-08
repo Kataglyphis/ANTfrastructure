@@ -79,7 +79,10 @@ main() {
       # CPATH (=-I, before system dirs) fixes plain C includes but NOT the C++
       # #include_next, which must resolve /usr/include AFTER libstdc++ headers. So
       # also inject the system dirs with -idirafter (appended AFTER all built-in
-      # dirs) via *FLAGS -- the pattern build-libcamera.sh uses. Written to
+      # dirs) via *FLAGS. Same logic as the canonical helper
+      # append_cross_idirafter() in 01-core/common.sh, inlined because this runs
+      # in the android stage without common.sh; kept in sync via
+      # verify-critical-fixes.sh fix6. Written to
       # profile.d so login-shell compiles inherit it (setup-torch-venv.sh runs
       # under `bash -lc`). No-op on arches that ship prebuilt wheels; amd64 never
       # reaches this block (host GCC, no swap).

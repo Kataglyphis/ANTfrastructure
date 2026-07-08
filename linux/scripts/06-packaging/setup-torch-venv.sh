@@ -19,8 +19,12 @@ BUILD_MODE="${BUILD_MODE:-native}"
 # CPATH (=-I, searched BEFORE system dirs) fixes plain C includes but NOT the
 # C++ #include_next, which must resolve /usr/include AFTER the libstdc++ headers.
 # So also inject the system dirs with -idirafter (appended AFTER all built-in
-# dirs) via *FLAGS -- the same pattern build-libcamera.sh uses. Exported so
-# pip/setuptools child compiles (C and C++) inherit them. No-op when a prebuilt
+# dirs) via *FLAGS. This is the same logic as the canonical helper
+# append_cross_idirafter() in 01-core/common.sh, inlined here deliberately: the
+# torch stage does not COPY common.sh (nor its load-versions-env.sh chain), and
+# pulling that in just for six flag lines is not worth the extra surface. Keep
+# the two in sync -- verify-critical-fixes.sh fix6 guards this. Exported so
+# pip/setuptools child compiles (C and C++) inherit them; no-op when a prebuilt
 # wheel is used (no compilation).
 _mi="$(compgen -G '/usr/include/*-linux-gnu' 2>/dev/null | head -1 || true)"
 _ml="$(compgen -G '/usr/lib/*-linux-gnu' 2>/dev/null | head -1 || true)"
