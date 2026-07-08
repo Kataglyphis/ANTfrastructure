@@ -220,6 +220,28 @@ function Get-DockerBuildArgList {
     return $dockerArgs
 }
 
+function Invoke-TransientCooldown {
+    # Shared transient-failure decision for the docker retry loops (Invoke-Stage +
+    # Invoke-RunCommitStage). Returns $true when the captured tail looks like a transient
+    # container-infrastructure failure AND a retry remains -- after sleeping the cooldown --
+    # so the caller can `continue`; $false means treat it as a hard failure (throw). The
+    # divergent success/cleanup paths stay in each caller; only the transient-detect +
+    # message + cooldown policy is centralized here.
+    param(
+        [Parameter(Mandatory)] [string]$Tail,
+        [Parameter(Mandatory)] [int]$Attempt,
+        [int]$MaxAttempts = 3,
+        [string]$Label = '',
+        [int]$CooldownSeconds = 60
+    )
+    if ($Attempt -lt $MaxAttempts -and $Tail -match $script:TransientPattern) {
+        Write-Host "[$Label] transient container-infrastructure failure — retry $Attempt/$($MaxAttempts - 1) in ${CooldownSeconds}s" -ForegroundColor Yellow
+        Start-Sleep -Seconds $CooldownSeconds
+        return $true
+    }
+    return $false
+}
+
 function Invoke-Stage {
     param(
         [Parameter(Mandatory)] [string]$Dockerfile,
@@ -236,11 +258,7 @@ function Invoke-Stage {
         & $Docker @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog
         if ($LASTEXITCODE -eq 0) { return }
         $tail = Get-Content $stageLog -Tail 10 | Out-String
-        if ($attempt -lt 3 -and $tail -match $script:TransientPattern) {
-            Write-Host "[$Dockerfile] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
-            Start-Sleep -Seconds 60
-            continue
-        }
+        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -Label $Dockerfile) { continue }
         throw "docker build failed for $Dockerfile (exit $LASTEXITCODE)"
     }
 }
@@ -349,11 +367,7 @@ function Invoke-RunCommitStage {
         }
         $tail = if ($OutLog -and (Test-Path $OutLog)) { Get-Content $OutLog -Tail 15 | Out-String } else { '' }
         & $Docker container rm -f $ContainerName 2>&1 | Out-Null
-        if ($attempt -lt 3 -and $tail -match $script:TransientPattern) {
-            Write-Host "[$Label] transient container-infrastructure failure — retry $attempt/2 in 60s" -ForegroundColor Yellow
-            Start-Sleep -Seconds 60
-            continue
-        }
+        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -Label $Label) { continue }
         throw "$Label compile (docker run) failed (exit $runExit)"
     }
 }
