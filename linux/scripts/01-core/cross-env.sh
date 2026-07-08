@@ -241,6 +241,32 @@ cross_build_lower_rust() {
   cross_build_rust_triple | tr '[:upper:]-' '[:lower:]_'
 }
 
+# Wire the Rust *target* toolchain env for a cross cdylib/staticlib link. Without
+# CARGO_TARGET_<triple>_LINKER cargo links target artifacts with the host
+# cc/rust-lld and fails ("<obj> is incompatible with elf64-x86-64"). Point the
+# target triple's linker + cc-rs compiler at the real cross gcc (which carries
+# its own as/ld); the host CARGO_TARGET_<build>/HOST_CC stay untouched so
+# proc-macros and build scripts keep using the native toolchain.
+#
+# Shared by setup-gstreamer.sh (prepare_host_cargo_toolchain_env) and
+# install-rice-proto.sh; the monorepo reuses the former. Callers keep their own
+# success/WARN logging so per-site log output is unchanged.
+#
+# Args: <rust_env> [rust_lower] [cc] [cxx]
+#   rust_env   uppercased/underscored target triple (RISCV64GC_UNKNOWN_LINUX_GNU)
+#   rust_lower lowercased/underscored triple for CC_<lower>/CXX_<lower> (optional)
+#   cc         target C compiler (must be executable)
+#   cxx        target C++ compiler (optional; exported as CXX_<lower> if executable)
+# Returns 0 on success; 1 when rust_env or a usable cc is missing.
+export_cargo_target_linker() {
+  local rust_env="$1" rust_lower="${2:-}" cc="${3:-}" cxx="${4:-}"
+  [ -n "${rust_env}" ] && [ -n "${cc}" ] && [ -x "${cc}" ] || return 1
+  export "CARGO_TARGET_${rust_env}_LINKER=${cc}"
+  [ -n "${rust_lower}" ] && export "CC_${rust_lower}=${cc}"
+  [ -n "${rust_lower}" ] && [ -n "${cxx}" ] && [ -x "${cxx}" ] && export "CXX_${rust_lower}=${cxx}"
+  return 0
+}
+
 install_cross_bin_symlinks() {
   local target_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
   local bin_dir="${2:-$(cross_bin_dir)}"

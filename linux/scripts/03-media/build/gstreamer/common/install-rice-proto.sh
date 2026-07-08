@@ -75,11 +75,9 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
   # skipped), so this never turns a soft skip into a hard failure.
   if [ -n "${rust_target}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
     rice_cross_cc="$( resolve_cross_cc_cxx_for_arch "${TARGET_ARCH:-${TARGETARCH:-}}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
-    if [ -n "${rice_cross_cc}" ] && [ -x "${rice_cross_cc}" ]; then
-      rice_rust_env="$(printf '%s' "${rust_target}" | tr 'a-z-' 'A-Z_')"
-      rice_rust_lower="$(printf '%s' "${rust_target}" | tr '-' '_')"
-      export "CARGO_TARGET_${rice_rust_env}_LINKER=${rice_cross_cc}"
-      export "CC_${rice_rust_lower}=${rice_cross_cc}"
+    rice_rust_env="$(printf '%s' "${rust_target}" | tr 'a-z-' 'A-Z_')"
+    rice_rust_lower="$(printf '%s' "${rust_target}" | tr '-' '_')"
+    if export_cargo_target_linker "${rice_rust_env}" "${rice_rust_lower}" "${rice_cross_cc}"; then
       echo "Cross build: rice-proto target linker = ${rice_cross_cc} (CARGO_TARGET_${rice_rust_env}_LINKER)"
     else
       echo "WARN: could not resolve cross gcc for '${TARGET_ARCH:-?}'; rice-proto may fail to link (webrtcbin2 skipped)" >&2

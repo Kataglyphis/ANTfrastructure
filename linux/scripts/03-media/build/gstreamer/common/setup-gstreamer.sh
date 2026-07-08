@@ -213,11 +213,7 @@ prepare_host_cargo_toolchain_env() {
     _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
     target_cc="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
     target_cxx="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CXX:-}" )"
-    if [ -n "${target_cc}" ] && [ -x "${target_cc}" ]; then
-      export "CARGO_TARGET_${target_rust_env}_LINKER=${target_cc}"
-      [ -n "${target_rust_lower}" ] && export "CC_${target_rust_lower}=${target_cc}"
-      [ -n "${target_rust_lower}" ] && [ -n "${target_cxx}" ] && [ -x "${target_cxx}" ] && \
-        export "CXX_${target_rust_lower}=${target_cxx}"
+    if export_cargo_target_linker "${target_rust_env}" "${target_rust_lower}" "${target_cc}" "${target_cxx}"; then
       echo "Cross cargo: target linker ${target_cc} (CARGO_TARGET_${target_rust_env}_LINKER)"
     else
       echo "WARN: could not resolve cross gcc for target; Rust target crates may fail to link" >&2
