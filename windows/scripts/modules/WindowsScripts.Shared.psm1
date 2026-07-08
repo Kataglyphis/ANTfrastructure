@@ -134,10 +134,77 @@ function ConvertTo-ParameterList {
     return @("$Value")
 }
 
+function Invoke-DownloadWithRetry {
+    <#
+    .SYNOPSIS
+        Download a URL to a file with retries + exponential backoff.
+    .DESCRIPTION
+        Hardened replacement for the raw Invoke-WebRequest / WebClient.DownloadFile calls
+        scattered across the build + setup scripts, any one of which could fail the whole
+        multi-hour build on a single transient network blip. Uses System.Net.WebClient (no
+        curl-on-PATH assumption; follows redirects), TLS 1.2, a browser User-Agent, optional
+        extra headers, and validates the result is non-empty. Retries MaxAttempts times with
+        exponential backoff (InitialDelaySeconds, doubling, capped at 30s), removing a
+        partial file between attempts, and throws after the last attempt.
+
+        Testable offline via file:// URLs (WebClient supports them), so the retry/verify
+        logic is covered without network access.
+    .PARAMETER Url
+        Source URL (http/https, or file:// in tests).
+    .PARAMETER DestinationPath
+        Full path to write to (parent directory is created if missing).
+    .PARAMETER MaxAttempts
+        Total attempts before giving up (default 4).
+    .PARAMETER InitialDelaySeconds
+        Backoff before the 2nd attempt; doubles each retry, capped at 30 (default 3).
+        Tests pass 0 to avoid sleeping.
+    .PARAMETER Headers
+        Optional extra request headers (name -> value).
+    .PARAMETER Description
+        Human label for the log lines (defaults to the URL).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$DestinationPath,
+        [int]$MaxAttempts = 4,
+        [int]$InitialDelaySeconds = 3,
+        [hashtable]$Headers = @{},
+        [string]$Description = ''
+    )
+    $label = if ([string]::IsNullOrWhiteSpace($Description)) { $Url } else { $Description }
+    $destDir = Split-Path -Parent $DestinationPath
+    if ($destDir -and -not (Test-Path $destDir)) { New-Item -ItemType Directory -Force -Path $destDir | Out-Null }
+    $delay = $InitialDelaySeconds
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+            $wc = New-Object System.Net.WebClient
+            try {
+                $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+                foreach ($k in $Headers.Keys) { $wc.Headers.Add($k, $Headers[$k]) }
+                $wc.DownloadFile($Url, $DestinationPath)
+            } finally { $wc.Dispose() }
+            if ((Test-Path $DestinationPath) -and ((Get-Item $DestinationPath).Length -gt 0)) {
+                if ($attempt -gt 1) { Write-Host "  download OK on attempt ${attempt}: $label" }
+                return
+            }
+            throw 'downloaded file is missing or empty'
+        } catch {
+            $msg = $_.Exception.Message
+            if (Test-Path $DestinationPath) { Remove-Item $DestinationPath -Force -ErrorAction SilentlyContinue }
+            if ($attempt -ge $MaxAttempts) { throw "Download failed after $MaxAttempts attempt(s) [$label]: $msg" }
+            Write-Host "  download attempt $attempt/$MaxAttempts failed [$label]: $msg -- retrying in ${delay}s"
+            if ($delay -gt 0) { Start-Sleep -Seconds $delay }
+            $delay = [Math]::Min($delay * 2, 30)
+        }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'Resolve-NormalizedPath',
-    'ConvertTo-ParameterList'
+    'ConvertTo-ParameterList',
+    'Invoke-DownloadWithRetry'
 )
 
