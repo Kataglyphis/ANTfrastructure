@@ -97,6 +97,15 @@ try {
     }
     if (-not $downloaded) { throw 'VS Build Tools Download failed.' }
 
+    # Validate the installer is a real PE, not an HTML error page: this pulls from the flaky
+    # aka.ms/vs/stable redirect (same class as the nuget aka.ms bug), and a captive-portal/CDN
+    # error page passes Test-Path but would later crash the installer with an opaque error.
+    $vsSig = [System.IO.File]::OpenRead($installer)
+    try { $vsB0 = $vsSig.ReadByte(); $vsB1 = $vsSig.ReadByte() } finally { $vsSig.Dispose() }
+    if ($vsB0 -ne 0x4D -or $vsB1 -ne 0x5A) {
+        throw "Downloaded vs_buildtools.exe is not a valid PE executable (first bytes ${vsB0},${vsB1}) -- aka.ms likely served an HTML error page instead of the installer."
+    }
+
     $installerArgs = @(
         '--quiet',
         '--wait', '--norestart', '--nocache',

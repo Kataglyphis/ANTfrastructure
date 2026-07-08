@@ -24,14 +24,10 @@ if (-not (Test-Path $src)) { throw "CPython source tree missing at $src (builder
 Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
 $nugetExe = Join-Path $src 'externals\nuget.exe'
 if (-not (Test-Path $nugetExe)) {
+    # -ExpectSignature MZ rejects AND retries an HTML error page served in place of the binary
+    # (the exact aka.ms-style flake this pre-seed exists to dodge) instead of choking build.bat.
     Invoke-DownloadWithRetry -Url 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' `
-        -DestinationPath $nugetExe -Description 'nuget.exe (CPython build bootstrap)'
-    # Guard the exact failure we are fixing: reject a non-PE download (e.g. an HTML error page
-    # served in place of the binary) up front instead of letting build.bat choke on it later.
-    $sig = [System.IO.File]::ReadAllBytes($nugetExe)[0..1]
-    if ($sig[0] -ne 0x4D -or $sig[1] -ne 0x5A) {
-        throw "Seeded nuget.exe is not a valid PE executable (first bytes: $($sig -join ',')); the download server returned a non-binary response."
-    }
+        -DestinationPath $nugetExe -Description 'nuget.exe (CPython build bootstrap)' -ExpectSignature MZ
     Write-Host "Pre-seeded valid nuget.exe ($([int]((Get-Item $nugetExe).Length / 1KB)) KB) at $nugetExe"
 }
 # Belt-and-suspenders: point find_python.bat's own fallback download at the stable direct URL

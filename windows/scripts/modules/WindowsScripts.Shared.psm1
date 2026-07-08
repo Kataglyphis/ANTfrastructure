@@ -162,6 +162,11 @@ function Invoke-DownloadWithRetry {
         Optional extra request headers (name -> value).
     .PARAMETER Description
         Human label for the log lines (defaults to the URL).
+    .PARAMETER ExpectSignature
+        Optional magic-byte guard: 'MZ' (PE .exe/.dll) or 'PK' (ZIP container). A response
+        whose first bytes don't match (e.g. an HTML error page served by a flaky aka.ms/CDN
+        redirect in place of the binary) is rejected and RETRIED like any transient failure --
+        the exact HTML-instead-of-binary class that broke CPython's nuget bootstrap.
     #>
     param(
         [Parameter(Mandatory)][string]$Url,
@@ -169,7 +174,8 @@ function Invoke-DownloadWithRetry {
         [int]$MaxAttempts = 4,
         [int]$InitialDelaySeconds = 3,
         [hashtable]$Headers = @{},
-        [string]$Description = ''
+        [string]$Description = '',
+        [ValidateSet('', 'MZ', 'PK')][string]$ExpectSignature = ''
     )
     $label = if ([string]::IsNullOrWhiteSpace($Description)) { $Url } else { $Description }
     $destDir = Split-Path -Parent $DestinationPath
@@ -185,6 +191,15 @@ function Invoke-DownloadWithRetry {
                 $wc.DownloadFile($Url, $DestinationPath)
             } finally { $wc.Dispose() }
             if ((Test-Path $DestinationPath) -and ((Get-Item $DestinationPath).Length -gt 0)) {
+                if ($ExpectSignature) {
+                    $fs = [System.IO.File]::OpenRead($DestinationPath)
+                    try { $b0 = $fs.ReadByte(); $b1 = $fs.ReadByte() } finally { $fs.Dispose() }
+                    $sigOk = switch ($ExpectSignature) {
+                        'MZ' { ($b0 -eq 0x4D) -and ($b1 -eq 0x5A) }   # PE executable (.exe / .dll)
+                        'PK' { ($b0 -eq 0x50) -and ($b1 -eq 0x4B) }   # ZIP container (.zip)
+                    }
+                    if (-not $sigOk) { throw "expected a $ExpectSignature-signature file but got first bytes ${b0},${b1} (likely an HTML error page served in place of the binary)" }
+                }
                 if ($attempt -gt 1) { Write-Host "  download OK on attempt ${attempt}: $label" }
                 return
             }

@@ -33,4 +33,31 @@ Describe 'Invoke-DownloadWithRetry' {
         Assert-Throws { Invoke-DownloadWithRetry -Url $emptyUrl -DestinationPath $dest -MaxAttempts 2 -InitialDelaySeconds 0 } 'a zero-byte download must be treated as failure'
         Assert-False (Test-Path $dest) 'the empty partial is cleaned up'
     }
+
+    It 'accepts a download whose magic bytes match -ExpectSignature (MZ)' {
+        $dir = New-TestDir
+        $src = Join-Path $dir 'ok.exe'
+        [System.IO.File]::WriteAllBytes($src, [byte[]]@(0x4D, 0x5A, 0x90, 0x00))   # "MZ" + filler
+        $dest = Join-Path $dir 'out.exe'
+        Invoke-DownloadWithRetry -Url ([Uri]$src).AbsoluteUri -DestinationPath $dest -InitialDelaySeconds 0 -ExpectSignature MZ
+        Assert-True (Test-Path $dest) 'a valid MZ file passed the signature guard'
+    }
+
+    It 'rejects (and cleans up) an HTML page served in place of an MZ binary' {
+        $dir = New-TestDir
+        $src = Join-Path $dir 'error.html'
+        [System.IO.File]::WriteAllBytes($src, [System.Text.Encoding]::ASCII.GetBytes('<!DOCTYPE html>'))
+        $dest = Join-Path $dir 'out.exe'
+        Assert-Throws { Invoke-DownloadWithRetry -Url ([Uri]$src).AbsoluteUri -DestinationPath $dest -MaxAttempts 2 -InitialDelaySeconds 0 -ExpectSignature MZ } 'an HTML page served as an .exe must be rejected + retried'
+        Assert-False (Test-Path $dest) 'the bad-signature partial is cleaned up'
+    }
+
+    It 'accepts a ZIP (PK) signature' {
+        $dir = New-TestDir
+        $src = Join-Path $dir 'ok.zip'
+        [System.IO.File]::WriteAllBytes($src, [byte[]]@(0x50, 0x4B, 0x03, 0x04))
+        $dest = Join-Path $dir 'out.zip'
+        Invoke-DownloadWithRetry -Url ([Uri]$src).AbsoluteUri -DestinationPath $dest -InitialDelaySeconds 0 -ExpectSignature PK
+        Assert-True (Test-Path $dest) 'a valid PK/ZIP file passed the signature guard'
+    }
 }

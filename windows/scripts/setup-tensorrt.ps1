@@ -13,6 +13,9 @@ $ProgressPreference = 'SilentlyContinue'
 $sharedModulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $sharedModulePath)) { throw "Required module not found: $sharedModulePath" }
 Import-Module $sharedModulePath -Force
+# Shared LAST: WindowsContainerImage.Common re-imports Shared -Force internally, which would
+# clobber a caller's earlier import -- so import it after to keep Invoke-DownloadWithRetry live.
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 $TensorRtVersion = Resolve-ContainerImageValue -Value $TensorRtVersion -EnvironmentVariable 'TENSORRT_VERSION' -DefaultValue ''
 $TensorRtRoot = Resolve-ContainerImageValue -Value $TensorRtRoot -EnvironmentVariable 'TENSORRT_ROOT' -DefaultValue 'C:\Program Files\NVIDIA GPU Computing Toolkit\TensorRT'
@@ -60,7 +63,10 @@ $trtZip = Join-Path $env:TEMP 'tensorrt.zip'
     $downloaded = $false
     foreach ($url in $urls) {
         Write-Host "Trying download: $url"
-        try { Invoke-WebRequest -Uri $url -OutFile $trtZip -UseBasicParsing -ErrorAction Stop; $downloaded = $true; break }
+        # -ExpectSignature PK rejects NVIDIA's login/auth HTML page (served when unauthenticated)
+        # so we fall through to the next URL / disable the EP instead of extracting a garbage zip.
+        # One attempt per URL (the alternates are version-suffix guesses; most 404).
+        try { Invoke-DownloadWithRetry -Url $url -DestinationPath $trtZip -MaxAttempts 1 -InitialDelaySeconds 0 -ExpectSignature PK -Description "TensorRT $TensorRtVersion"; $downloaded = $true; break }
         catch { Write-Host "  Failed: $($_.Exception.Message)" }
     }
     if (-not $downloaded) {
