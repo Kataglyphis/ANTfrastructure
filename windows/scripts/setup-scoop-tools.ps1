@@ -33,7 +33,7 @@ $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentV
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
 $gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
-Invoke-WebRequest -Uri $GitInstallerUrl -OutFile $gitInstaller
+Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer'
 Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait
 Remove-Item $gitInstaller -Force
 Sync-ContainerProcessPath -AdditionalPaths @(
@@ -81,7 +81,7 @@ scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nug
 
 Write-Host ('Downloading CMake nightly from {0}...' -f $CMakeNightlyUrl)
 $cmakeInstaller = Join-Path $TempDir 'cmake-nightly.msi'
-Invoke-WebRequest -Uri $CMakeNightlyUrl -OutFile $cmakeInstaller
+Invoke-DownloadWithRetry -Url $CMakeNightlyUrl -DestinationPath $cmakeInstaller -Description 'CMake nightly MSI'
 Write-Host 'Installing CMake nightly...'
 Start-Process msiexec.exe -ArgumentList '/i', $cmakeInstaller, '/quiet', '/norestart', 'ADD_CMAKE_TO_PATH=System' -Wait -NoNewWindow
 Remove-Item $cmakeInstaller -Force

@@ -9,6 +9,9 @@ param(
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+# Shared last (after SourceBuild.Common) for Invoke-DownloadWithRetry; this order avoids the
+# nested -Force import clobber.
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available
@@ -30,19 +33,17 @@ if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 
 Write-Host "Downloading FFmpeg $FfmpegVersion..."
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$wc = New-Object System.Net.WebClient
 if ($FfmpegVersion -in @('main', 'master', 'develop')) {
     try {
-        $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz", $tarballPath)
+        Invoke-DownloadWithRetry -Url "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/$FfmpegVersion.tar.gz" -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
     } catch {
         # FFmpeg GitHub mirror uses 'master' as default branch; fall back if branch not found
         Write-Warning "FFmpeg branch '$FfmpegVersion' not found, trying 'master'..."
-        $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz", $tarballPath)
+        Invoke-DownloadWithRetry -Url 'https://github.com/FFmpeg/FFmpeg/archive/refs/heads/master.tar.gz' -DestinationPath $tarballPath -Description 'FFmpeg master tarball'
         $FfmpegVersion = 'master'
     }
 } else {
-    $wc.DownloadFile("https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz", $tarballPath)
+    Invoke-DownloadWithRetry -Url "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$FfmpegVersion.tar.gz" -DestinationPath $tarballPath -Description "FFmpeg $FfmpegVersion tarball"
 }
 Write-Host "Extracting tarball..."
 $srcDir = Expand-SourceTarball -Archive $tarballPath -Destination $SourceDir
@@ -253,9 +254,7 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
     if (-not (Test-Path $prefix)) { New-Item -Path $prefix -ItemType Directory -Force | Out-Null }
     $dlUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
     $zipPath = "$env:TEMP\ffmpeg.zip"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $wc = New-Object System.Net.WebClient
-    $wc.DownloadFile($dlUrl, $zipPath)
+    Invoke-DownloadWithRetry -Url $dlUrl -DestinationPath $zipPath -Description 'BtbN prebuilt FFmpeg'
     & 7z x "$zipPath" -o"$env:TEMP\ffmpeg-extract" -y -bd 2>&1 | Out-Null
     $binDir = Get-ChildItem -Path "$env:TEMP\ffmpeg-extract" -Recurse -Filter 'ffmpeg.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty DirectoryName
     if ($binDir) {

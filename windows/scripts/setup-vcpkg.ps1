@@ -11,14 +11,16 @@ $ProgressPreference = 'SilentlyContinue'
 $installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
+# Shared last (after Installer.Common) for Invoke-DownloadWithRetry; this order avoids the
+# nested -Force import clobber.
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 Write-Host "Setting up vcpkg at $VcpkgDir..."
 
 if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
-    Write-Host 'Downloading vcpkg (DNS workaround: use Invoke-WebRequest instead of git clone)...'
+    Write-Host 'Downloading vcpkg (DNS workaround: HTTP download with retries instead of git clone)...'
     $vcpkgZip = Join-Path $env:TEMP 'vcpkg.zip'
-    Enable-Tls12ForDownloads
-    Invoke-WebRequest -Uri 'https://github.com/microsoft/vcpkg/archive/refs/heads/master.zip' -OutFile $vcpkgZip -UseBasicParsing
+    Invoke-DownloadWithRetry -Url 'https://github.com/microsoft/vcpkg/archive/refs/heads/master.zip' -DestinationPath $vcpkgZip -Description 'vcpkg (master.zip)'
     Expand-Archive -Path $vcpkgZip -DestinationPath $env:TEMP -Force
     $extracted = Get-ChildItem -Path $env:TEMP -Directory -Filter 'vcpkg*' | Select-Object -First 1 -ExpandProperty FullName
     if (-not $extracted) { throw 'Failed to locate extracted vcpkg directory' }

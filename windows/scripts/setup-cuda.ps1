@@ -32,7 +32,7 @@ Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaV
 $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/cuda_$CudaVersion`_windows.exe"
 Write-Host "Download URL: $cudaUrl"
 $cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
-Invoke-WebRequest -Uri $cudaUrl -OutFile $cudaInstaller -UseBasicParsing
+Invoke-DownloadWithRetry -Url $cudaUrl -DestinationPath $cudaInstaller -Description "CUDA Toolkit $CudaVersion installer"
 Write-Host 'Installing CUDA Toolkit (full silent install, no driver)...'
 $proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-download-driver' -Wait -PassThru
 $proc.WaitForExit()
@@ -125,7 +125,7 @@ $cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/wi
 Write-Host ('Download URL: {0}' -f $cudnnUrl)
 $cudnnArchive = Join-Path $TempDir 'cudnn.zip'
 $cudnnExtracted = Join-Path $TempDir 'cudnn_extracted'
-Invoke-WebRequest -Uri $cudnnUrl -OutFile $cudnnArchive -UseBasicParsing
+Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive"
 Write-Host 'Extracting cuDNN...'
 Expand-Archive -Path $cudnnArchive -DestinationPath $cudnnExtracted -Force
 $cudnnDir = Get-ChildItem -Path $cudnnExtracted -Directory | Select-Object -First 1

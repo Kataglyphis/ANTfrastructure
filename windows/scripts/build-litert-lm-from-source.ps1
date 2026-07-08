@@ -14,6 +14,9 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+# Shared last (after SourceBuild.Common) for Invoke-DownloadWithRetry; this order avoids the
+# nested -Force import clobber.
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 $LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.13.1'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
@@ -68,11 +71,8 @@ if (-not (Test-Path $hostProtoc)) {
     $protocZip = 'C:\temp\protoc-31.1-win64.zip'
     $protocUrl = 'https://github.com/protocolbuffers/protobuf/releases/download/v31.1/protoc-31.1-win64.zip'
     Write-Host "Downloading version-matched protoc (v31.1) from $protocUrl"
-    $prevProgress = $ProgressPreference
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $protocUrl -OutFile $protocZip -UseBasicParsing
+    Invoke-DownloadWithRetry -Url $protocUrl -DestinationPath $protocZip -Description 'version-matched protoc v31.1'
     Expand-Archive -Path $protocZip -DestinationPath $hostProtocDir -Force
-    $ProgressPreference = $prevProgress
     if (-not (Test-Path $hostProtoc)) { throw "Failed to obtain prebuilt protoc 31.1 at $hostProtoc" }
 }
 Write-Host "Using version-matched host protoc: $hostProtoc ($(& $hostProtoc --version))"
@@ -87,11 +87,8 @@ if (-not $javaExe) {
     $jreZip = 'C:\temp\temurin-jre.zip'
     $jreUrl = 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse'
     Write-Host "Downloading Temurin 21 JRE (for ANTLR codegen) from $jreUrl"
-    $prevProgress = $ProgressPreference
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri $jreUrl -OutFile $jreZip -UseBasicParsing
+    Invoke-DownloadWithRetry -Url $jreUrl -DestinationPath $jreZip -Description 'Temurin 21 JRE'
     Expand-Archive -Path $jreZip -DestinationPath $jreDir -Force
-    $ProgressPreference = $prevProgress
     $javaExe = Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $javaExe) { throw "Failed to obtain a JRE (java.exe) under $jreDir" }
 }
