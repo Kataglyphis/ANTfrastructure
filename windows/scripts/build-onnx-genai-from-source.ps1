@@ -41,6 +41,21 @@ Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -T
 
 Set-Location $SourceDir
 
+# DML: the genai CMake wires a RESTORE_PACKAGES target that nuget-restores Microsoft.Direct3D.DXC
+# solely to regenerate HLSL shaders -- but src/dml/generated_dml_shaders/*.h ship as checked-in DXIL
+# bytecode and nothing consumes dxc.exe at build time. The restore's nuget.config <clear/>s sources to
+# an ORT-Nightly-only feed, so on USE_DML=ON it becomes a pointless network dependency that can stall a
+# restricted build. Sever the (ALL) hard-dep so ninja never triggers it. No-op when USE_DML=OFF.
+$genaiCml = Join-Path $SourceDir 'CMakeLists.txt'
+Invoke-InlineRegexPatch -Path $genaiCml -Guard 'add_dependencies\(onnxruntime-genai RESTORE_PACKAGES\)' `
+    -Pattern 'add_dependencies\(onnxruntime-genai RESTORE_PACKAGES\)' -Replacement '# [genai DML] RESTORE_PACKAGES dep dropped: shaders are pre-generated, dxc.exe unused' `
+    -Description 'genai CMakeLists: drop RESTORE_PACKAGES dependency (pre-generated shaders)' `
+    -WarnMessage "genai CMakeLists: add_dependencies(onnxruntime-genai RESTORE_PACKAGES) not found -- genai layout may have changed; a USE_DML build may stall on the DXC nuget restore. Verify $genaiCml." | Out-Null
+Invoke-InlineRegexPatch -Path $genaiCml -Guard 'RESTORE_PACKAGES ALL' `
+    -Pattern 'RESTORE_PACKAGES ALL' -Replacement 'RESTORE_PACKAGES' `
+    -Description 'genai CMakeLists: de-ALL RESTORE_PACKAGES so it is not in the default build' `
+    -WarnMessage "genai CMakeLists: 'RESTORE_PACKAGES ALL' not found -- verify the DXC restore target is not force-built. $genaiCml." | Out-Null
+
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 # GPU: build GenAI's own CUDA kernels (-> onnxruntime-genai-cuda.dll) on the nvidia lane.
@@ -50,6 +65,13 @@ $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 # (nvcc rejects clang-cl on Windows -- the reason this was long left OFF); the C++ TUs still
 # compile with clang-cl + lld. Recipe proven in an isolated lab build against the toolchain.
 $gpuEnv = Get-GpuEnvironment
+# GENAI_FORCE_CPU=1 forces a CPU-only GenAI (skips the slow nvcc kernel compiles) so the DirectML
+# path (USE_DML=ON) can be iterated fast -- DML is D3D12 host C++, unaffected by CUDA. Dev knob only
+# (mirrors ONNX_FORCE_CPU in build-onnx); the media-core build never sets it.
+if ($env:GENAI_FORCE_CPU -eq '1') {
+    Write-Host 'GENAI_FORCE_CPU=1 -> CPU-only GenAI build (fast DirectML-patch iteration; CUDA disabled)'
+    $gpuEnv = @{ GpuType = 'none'; CudaRoot = $null; CudnnRoot = $null; TensorRtRoot = $null }
+}
 if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     $cudaRoot  = $gpuEnv.CudaRoot
     $clExe     = (Get-Command cl.exe -ErrorAction Stop).Source
@@ -77,7 +99,7 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
 # Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
 $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
-    '-DUSE_TRT_RTX=OFF', '-DUSE_DML=OFF'
+    '-DUSE_TRT_RTX=OFF', '-DUSE_DML=ON'
     '-DENABLE_JAVA=OFF', '-DBUILD_WHEEL=OFF', '-DUSE_GUIDANCE=OFF'
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
@@ -146,6 +168,20 @@ if (Test-Path $genaiBuildDir) {
 $altOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Windows\Release'
 if (Test-Path $altOutDir) {
     Copy-Item -Path (Join-Path $altOutDir '*') -Destination "$genaiInstallDir\lib" -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# DML: the D3D12 Agility SDK core DLL is NOT auto-copied when BUILD_WHEEL=OFF (ortgenai_embed_libs
+# is only consumed by the wheel's POST_BUILD step). onnxruntime-genai.dll loads D3D12Core.dll from its
+# own module dir at runtime (DmlHelpers -> D3D12SDKConfiguration), so stage it next to the genai DLL.
+# Needed whenever USE_DML=ON (independent of CUDA); the D3D12 FetchContent dir name floats, so resolve
+# by recursive find and no-op with a warning if absent (e.g. a hypothetical USE_DML=OFF build).
+$d3d12Core = Get-ChildItem -Path $genaiBuildDir -Filter 'D3D12Core.dll' -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match '_deps' } | Select-Object -First 1
+if ($d3d12Core) {
+    Copy-Item -LiteralPath $d3d12Core.FullName -Destination (Join-Path $genaiInstallDir 'lib') -Force
+    Write-Host "Staged D3D12Core.dll ($($d3d12Core.FullName)) -> $genaiInstallDir\lib"
+} else {
+    Write-Warning "D3D12Core.dll not found under $genaiBuildDir\_deps -- DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent."
 }
 
 Remove-SourceBuildTree -Path $SourceDir

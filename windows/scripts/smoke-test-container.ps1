@@ -590,6 +590,22 @@ if ($genaiRoot) {
                 Assert-DllLoads -Name 'ONNX GenAI CUDA DLL loads (CUDA runtime + onnxruntime chain resolves)' -DllPath $genaiCudaDll.FullName -DependencyDirs $genaiCudaDeps -FailMessage 'onnxruntime-genai-cuda.dll failed to load -- a dependent DLL (cudart/cublas/cudnn/onnxruntime) did not resolve'
             }
         }
+
+        # GenAI DirectML: USE_DML=ON compiles the DML provider straight into the main onnxruntime-genai.dll
+        # (there is no separate -dml.dll, unlike -cuda). The shippable evidence is D3D12Core.dll staged
+        # BESIDE the genai DLL -- the D3D12 Agility SDK core the DML device loads from its own module dir
+        # at runtime (not auto-copied when BUILD_WHEEL=OFF, so our build stages it). Present => the DML
+        # build path ran and staged correctly; absent => a CPU/USE_DML=OFF variant, so SKIP not fail.
+        $genaiDir = $genaiDll.DirectoryName
+        $d3d12Core = Get-ChildItem -Path $genaiRoot -Filter 'D3D12Core.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($d3d12Core) {
+            Assert-Test -Name 'ONNX GenAI DirectML: D3D12Core.dll staged beside onnxruntime-genai.dll' `
+                -Condition { $d3d12Core.DirectoryName -eq $genaiDir } `
+                -FailMessage "D3D12Core.dll is at $($d3d12Core.FullName) but not beside the genai DLL ($genaiDir); the DML device loads it from the genai module dir at runtime"
+        } else {
+            Write-Host '  [SKIP] GenAI DirectML evidence (D3D12Core.dll absent -- USE_DML=OFF variant)' -ForegroundColor Yellow
+            $script:skipped++
+        }
     } else {
         Write-Host '  [SKIP] GenAI load probe (onnxruntime-genai.dll not found)' -ForegroundColor Yellow
         $script:skipped++
