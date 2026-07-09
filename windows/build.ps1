@@ -282,6 +282,7 @@ function Get-MediaBranchSpecs {
                 ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
                 OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
+                NV_CODEC_HEADERS_REF      = Get-Ver 'NV_CODEC_HEADERS_REF'
                 CUDA_ARCHITECTURES        = Get-Ver 'CUDA_ARCHITECTURES'
                 MEMORY_LIMIT_GB           = $MediaMemoryGb
             } + $sccache

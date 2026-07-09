@@ -490,9 +490,12 @@ function Initialize-SourceBuildEnvironment {
         effect ONLY inside this function's scope; PowerShell does NOT propagate them
         back to the calling script. Do NOT route a build script's preamble through
         this helper expecting it to set Stop-on-error there - the caller MUST declare
-        its own `$ErrorActionPreference = 'Stop'` (and Set-StrictMode) at top level, as
-        every build-*-from-source.ps1 already does. Collapsing that preamble into this
-        call silently disables fail-fast and is a real regression, not dedup.
+        its own `$ErrorActionPreference = 'Stop'` at top level. Every build-*-from-source.ps1
+        now does so (build-onnx + build-litert-lm additionally set Set-StrictMode -Version
+        Latest; the rest set EAP only). In the media run these scripts also inherit Stop from
+        Invoke-SourceBuildChain's scope, but the explicit top-level declaration is what keeps
+        fail-fast working when a script is run standalone for debugging. Collapsing that
+        preamble into this call silently disables fail-fast and is a real regression, not dedup.
     .PARAMETER InstallDir
         Passed-through InstallDir value (empty -> 'C:\runtime').
     .OUTPUTS
@@ -966,18 +969,23 @@ function Invoke-NinjaBuildWithRetry {
     )
     $env:NINJA_STATUS = "[%f/%t] "
     $jobs = Get-BuildJobCount -MemGBPerJob $MemGBPerJob
+    # Dev-only: NINJA_KEEP_GOING=1 adds `-k 0` so a failing target does not halt the whole build.
+    # Used when porting a new compiler (e.g. clang-cl) to surface *every* TU error in one pass
+    # instead of one-per-rebuild. Off in production (media-core never sets it); the default stays
+    # fail-fast. Splatted (@ninjaKeep) so it contributes no args when unset.
+    $ninjaKeep = if ($env:NINJA_KEEP_GOING -eq '1') { @('-k', '0') } else { @() }
     Write-Host "Building with ninja -j$jobs..."
     if ($LogFile) {
-        ninja -j $jobs -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile
+        ninja -j $jobs @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile
     } else {
-        ninja -j $jobs -C $BuildDir 2>&1
+        ninja -j $jobs @ninjaKeep -C $BuildDir 2>&1
     }
     if ($LASTEXITCODE -ne 0 -and $jobs -gt $RetryJobs) {
         Write-Host "ninja -j$jobs failed (exit $LASTEXITCODE) - retrying incrementally with -j$RetryJobs..."
         if ($LogFile) {
-            ninja -j $RetryJobs -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile -Append
+            ninja -j $RetryJobs @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile -Append
         } else {
-            ninja -j $RetryJobs -C $BuildDir 2>&1
+            ninja -j $RetryJobs @ninjaKeep -C $BuildDir 2>&1
         }
     }
     if ($LASTEXITCODE -ne 0) {
@@ -1083,6 +1091,39 @@ function Get-CudaToolkitRootArg {
     if (-not $GpuEnv.CudaRoot) { return @() }
     $root = if ($ForwardSlash) { $GpuEnv.CudaRoot -replace '\\', '/' } else { $GpuEnv.CudaRoot }
     return @("-DCUDA_TOOLKIT_ROOT_DIR=$root")
+}
+
+function Get-CudnnLibrary {
+    <#
+    .SYNOPSIS
+        Returns the canonical cuDNN import library path under <CudnnRoot>\lib\x64, or $null when absent.
+    .DESCRIPTION
+        Shared by build-onnx and build-tvm, which both need the single import lib to feed their
+        respective CMake vars (onnxruntime CUDNN_LIBRARY / TVM CUDA_CUDNN_LIBRARY). Prefers exactly
+        'cudnn.lib' over the split sub-libs (cudnn_adv.lib, cudnn_graph.lib, ... that ship alongside it
+        in cuDNN 9.x); grabbing a sub-lib first would mislink. Returns $null when cuDNN is not installed
+        so callers cleanly fall back to a no-cuDNN path. Select-Object -First 1 (not [0]) keeps this
+        safe under Set-StrictMode when the glob matches nothing.
+    .PARAMETER CudnnRoot
+        cuDNN install root (e.g. $gpuEnv.CudnnRoot). Empty/$null -> $null.
+    .OUTPUTS
+        [string] Full path to the chosen cudnn*.lib, or $null.
+    #>
+    param(
+        [string]$CudnnRoot
+    )
+    if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { return $null }
+    # NB: build the search dir by string, then Test-Path it, BEFORE calling Get-ChildItem.
+    # Join-Path throws DriveNotFoundException on a nonexistent drive, and a Get-ChildItem whose
+    # -Path arg fails to bind silently falls back to listing the CURRENT directory -- which would
+    # return an arbitrary file as a bogus "cudnn.lib" and mislink. -LiteralPath + -Filter avoids
+    # any wildcard-in-path ambiguity.
+    $libDir = "$CudnnRoot\lib\x64"
+    if (-not (Test-Path -LiteralPath $libDir -ErrorAction SilentlyContinue)) { return $null }
+    $lib = Get-ChildItem -LiteralPath $libDir -Filter 'cudnn*.lib' -ErrorAction SilentlyContinue |
+        Sort-Object { $_.Name -ne 'cudnn.lib' } | Select-Object -First 1
+    if ($lib) { return $lib.FullName }
+    return $null
 }
 
 function Get-LlvmArchiverCmakeArg {
@@ -1193,6 +1234,7 @@ Export-ModuleMember -Function @(
     'Initialize-ExtractedGitRepo',
     'Import-CanonicalVersions',
     'Get-CudaToolkitRootArg',
+    'Get-CudnnLibrary',
     'Get-LlvmArchiverCmakeArg',
     'Initialize-SourceBuildEnvironment',
     'Initialize-ToolchainPythonEnvironment',

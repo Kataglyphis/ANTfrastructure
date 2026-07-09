@@ -89,3 +89,44 @@ Describe 'Resolve-TensorRtRoot' {
         } finally { Remove-Item $dir -Recurse -Force }
     }
 }
+
+Describe 'Get-CudnnLibrary' {
+
+    # Helper: build <root>\lib\x64 and drop the named empty .lib files into it.
+    function New-CudnnRoot {
+        param([string[]]$Libs)
+        $dir = New-TestDir
+        $x64 = Join-Path $dir 'lib\x64'
+        New-Item -ItemType Directory -Force -Path $x64 | Out-Null
+        foreach ($l in $Libs) { Set-Content -Path (Join-Path $x64 $l) -Value '' -NoNewline }
+        return $dir
+    }
+
+    It 'returns $null for an empty/whitespace root' {
+        Assert-Null (Get-CudnnLibrary -CudnnRoot '')
+        Assert-Null (Get-CudnnLibrary -CudnnRoot '   ')
+    }
+
+    It 'returns $null when the root does not exist' {
+        Assert-Null (Get-CudnnLibrary -CudnnRoot 'X:\does\not\exist\cudnn')
+    }
+
+    It 'returns $null when lib\x64 holds no cudnn*.lib' {
+        $dir = New-CudnnRoot -Libs @('somethingelse.lib')
+        try { Assert-Null (Get-CudnnLibrary -CudnnRoot $dir) } finally { Remove-Item $dir -Recurse -Force }
+    }
+
+    It 'prefers cudnn.lib over the 9.x split sub-libs' {
+        $dir = New-CudnnRoot -Libs @('cudnn_adv.lib', 'cudnn.lib', 'cudnn_graph.lib')
+        try {
+            Assert-Equal 'cudnn.lib' (Split-Path (Get-CudnnLibrary -CudnnRoot $dir) -Leaf)
+        } finally { Remove-Item $dir -Recurse -Force }
+    }
+
+    It 'falls back to a sub-lib when cudnn.lib is absent' {
+        $dir = New-CudnnRoot -Libs @('cudnn_graph.lib')
+        try {
+            Assert-Equal 'cudnn_graph.lib' (Split-Path (Get-CudnnLibrary -CudnnRoot $dir) -Leaf)
+        } finally { Remove-Item $dir -Recurse -Force }
+    }
+}

@@ -40,6 +40,13 @@ $script:failed = 0
 $script:skipped = 0
 $script:failureDetails = @()
 
+# GPU-lane discriminator. The NVIDIA execution-provider / codec probes below (ONNX CUDA + TensorRT
+# EP, GenAI-cuda, OpenCV DNN-CUDA, FFmpeg NVENC) only apply when the image was built on the nvidia
+# lane; without this guard they would FAIL on a legitimate CPU-only image. Keyed on CUDA_ROOT, which
+# the base image sets Machine-wide only on the nvidia lane, and honours -SkipCudaTests. (DirectML is
+# NOT gated here -- it is DX12-based and built unconditionally on Windows, so it is checked always.)
+$script:gpuNvidia = (-not $SkipCudaTests) -and (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('CUDA_ROOT')))
+
 function Write-TestHeader {
     param([string]$Title)
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -481,6 +488,64 @@ int main() {
     return 0;
 }
 '@ -IncludeDirs @($onnxCApiHdr.DirectoryName) -LibDir $onnxMainLib.DirectoryName -LibName $onnxMainLib.Name -DllDir $onnxDll.DirectoryName -ExpectMatch 'onnxruntime' -FailMessage 'ONNX Runtime C API did not compile/link/run (header+lib+DLL mismatch or missing dependent DLL)'
+
+        # GPU execution-provider coverage. The base probe above only exercises the CPU C-API surface,
+        # so a build that silently fell back to CPU-only would still pass it. GetAvailableProviders()
+        # enumerates the providers COMPILED INTO the runtime (no GPU device required), which is the
+        # real signal that USE_CUDA/USE_TENSORRT took effect. Runs on the nvidia lane only.
+        if ($script:gpuNvidia) {
+            # Cheap backstop first: the provider shared libs must exist by exact name.
+            Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_cuda.dll' -Description 'ONNX CUDA provider DLL (onnxruntime_providers_cuda.dll)'
+            Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Description 'ONNX TensorRT provider DLL (onnxruntime_providers_tensorrt.dll)'
+            # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
+            Assert-NativeLinkRun -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source @'
+#include <onnxruntime_c_api.h>
+#include <cstdio>
+#include <cstring>
+int main() {
+    const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    if (!api) return 2;
+    char** providers = nullptr; int n = 0;
+    if (api->GetAvailableProviders(&providers, &n) != nullptr) return 3;
+    int cuda = 0, trt = 0, dml = 0;
+    for (int i = 0; i < n; ++i) {
+        if (std::strcmp(providers[i], "CUDAExecutionProvider") == 0) cuda = 1;
+        if (std::strcmp(providers[i], "TensorrtExecutionProvider") == 0) trt = 1;
+        if (std::strcmp(providers[i], "DmlExecutionProvider") == 0) dml = 1;
+    }
+    api->ReleaseAvailableProviders(providers, n);
+    std::printf("providers cuda=%d trt=%d dml=%d\n", cuda, trt, dml);
+    return 0;
+}
+'@ -IncludeDirs @($onnxCApiHdr.DirectoryName) -LibDir $onnxMainLib.DirectoryName -LibName $onnxMainLib.Name -DllDir $onnxDll.DirectoryName -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'
+        }
+
+        # DirectML EP: built with USE_DML=ON on the clang-cl lane thanks to the "[clang-cl DML fix]"
+        # header patch (build-onnx out-of-lines AbstractOperatorDesc's accessors so clang-cl compiles
+        # DirectML's incomplete-type headers -- llvm #57700). If the redist shipped, require the EP to
+        # register; if some future CPU/no-DML build omits it, SKIP rather than fail.
+        $dmlRedist = Get-ChildItem -Path $onnxRoot -Filter 'DirectML.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($dmlRedist) {
+            Assert-NativeLinkRun -Name 'ONNX Runtime DirectML EP available (GetAvailableProviders)' -WorkName 'onnx-dml' -Source @'
+#include <onnxruntime_c_api.h>
+#include <cstdio>
+#include <cstring>
+int main() {
+    const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    if (!api) return 2;
+    char** providers = nullptr; int n = 0;
+    if (api->GetAvailableProviders(&providers, &n) != nullptr) return 3;
+    int dml = 0;
+    for (int i = 0; i < n; ++i) if (std::strcmp(providers[i], "DmlExecutionProvider") == 0) dml = 1;
+    api->ReleaseAvailableProviders(providers, n);
+    std::printf("dml=%d\n", dml);
+    return 0;
+}
+'@ -IncludeDirs @($onnxCApiHdr.DirectoryName) -LibDir $onnxMainLib.DirectoryName -LibName $onnxMainLib.Name -DllDir $onnxDll.DirectoryName -ExpectMatch 'dml=1' -FailMessage 'ONNX Runtime shipped DirectML.dll but does not expose DmlExecutionProvider'
+        } else {
+            Write-Host '  [SKIP] DirectML EP (USE_DML=OFF on the clang-cl lane -- DML provider sources are MSVC-only)' -ForegroundColor Yellow
+            $script:skipped++
+        }
     } else {
         Write-Host '  [SKIP] ONNX Runtime link+run (onnxruntime.lib/.dll/c_api.h not all found)' -ForegroundColor Yellow
         $script:skipped++
@@ -511,6 +576,20 @@ if ($genaiRoot) {
     if ($genaiDll) {
         $genaiDepDirs = if ($onnxDepDir) { @($onnxDepDir) } else { @() }
         Assert-DllLoads -Name 'ONNX GenAI DLL loads + C API resolves (OgaConfigClearProviders)' -DllPath $genaiDll.FullName -DependencyDirs $genaiDepDirs -Export 'OgaConfigClearProviders' -FailMessage 'onnxruntime-genai.dll failed to load or its C API symbol is missing (dependent onnxruntime.dll not resolved?)'
+
+        # GenAI CUDA variant: the probe above loads only the CPU onnxruntime-genai.dll. On the nvidia
+        # lane the build also emits onnxruntime-genai-cuda.dll (its .cu sampling/beam-search/top-k
+        # kernels); confirm it exists and its dependent chain (CUDA runtime + onnxruntime.dll) resolves.
+        if ($script:gpuNvidia) {
+            Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai-cuda.dll' -Description 'ONNX GenAI CUDA DLL (onnxruntime-genai-cuda.dll)'
+            $genaiCudaDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai-cuda.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($genaiCudaDll) {
+                $cudaBin  = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT 'bin' } else { $null }
+                $cudnnBin = if ($env:CUDNN_ROOT) { (Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName } else { $null }
+                $genaiCudaDeps = @($onnxDepDir, $cudaBin, $cudnnBin) | Where-Object { $_ }
+                Assert-DllLoads -Name 'ONNX GenAI CUDA DLL loads (CUDA runtime + onnxruntime chain resolves)' -DllPath $genaiCudaDll.FullName -DependencyDirs $genaiCudaDeps -FailMessage 'onnxruntime-genai-cuda.dll failed to load -- a dependent DLL (cudart/cublas/cudnn/onnxruntime) did not resolve'
+            }
+        }
     } else {
         Write-Host '  [SKIP] GenAI load probe (onnxruntime-genai.dll not found)' -ForegroundColor Yellow
         $script:skipped++
@@ -566,6 +645,21 @@ int main() {
     return 0;
 }
 '@ -IncludeDirs @($cvIncDir) -LibDir $cvCoreLib.DirectoryName -LibName $cvCoreLib.Name -DllDir $cvCoreDll.DirectoryName -ExpectMatch 'opencv' -FailMessage 'OpenCV core API did not compile/link/run (header+core lib+DLL mismatch or missing dependent DLL)'
+
+    # DNN-CUDA coverage. The cv::Mat probe above only proves the CPU core works; a build where
+    # WITH_CUDA/OPENCV_DNN_CUDA silently failed to configure would still pass it. cv::getBuildInformation()
+    # embeds the resolved build config as a string, so asserting "NVIDIA CUDA: YES" (+ cuDNN) proves the
+    # CUDA backend was actually compiled in -- no GPU device required. Runs on the nvidia lane only.
+    if ($script:gpuNvidia) {
+        Assert-NativeLinkRun -Name 'OpenCV built WITH_CUDA + cuDNN (getBuildInformation)' -WorkName 'opencv-cuda' -Source @'
+#include <opencv2/core.hpp>
+#include <cstdio>
+int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
+'@ -IncludeDirs @($cvIncDir) -LibDir $cvCoreLib.DirectoryName -LibName $cvCoreLib.Name -DllDir $cvCoreDll.DirectoryName -ExpectMatch 'NVIDIA CUDA:\s+YES' -FailMessage 'OpenCV getBuildInformation() does not report "NVIDIA CUDA: YES" (CUDA backend not compiled in -- build fell back to CPU?)'
+        # The cv::dnn CUDA backend + cudaarithm contrib module ship as their own DLLs.
+        Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_cudaarithm*.dll' -Description 'OpenCV CUDA arithm module DLL (opencv_cudaarithm*.dll)'
+        Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_dnn*.dll' -Description 'OpenCV DNN module DLL (opencv_dnn*.dll)'
+    }
 } else {
     Write-Host '  [SKIP] OpenCV link+run (opencv_core lib/dll or core.hpp not all found)' -ForegroundColor Yellow
     $script:skipped++
@@ -847,6 +941,22 @@ if (Test-Path $ffmpegBin) {
         $filters = & $ffmpegExe -hide_banner -filters 2>&1 | Out-String
         return ($filters -match 'dnn_')
     } -FailMessage "no dnn_* filters reported by ffmpeg -filters"
+
+    # NVENC/NVDEC/CUVID coverage. The banner check above says nothing about hardware codecs; the
+    # nv-codec-headers step is skippable (it warns and continues if ffnvcodec.pc is missing), so a
+    # build that silently dropped NVENC would still pass. Listing encoders/decoders needs no GPU
+    # device, so this is a clean container probe. Runs on the nvidia lane only.
+    if ($script:gpuNvidia) {
+        Assert-Test -Name "ffmpeg NVENC encoders present (h264_nvenc + hevc_nvenc)" -Condition {
+            $enc = & $ffmpegExe -hide_banner -encoders 2>&1 | Out-String
+            return ($enc -match 'h264_nvenc') -and ($enc -match 'hevc_nvenc')
+        } -FailMessage "ffmpeg -encoders did not list h264_nvenc/hevc_nvenc (NVENC not built -- nv-codec-headers step skipped?)"
+
+        Assert-Test -Name "ffmpeg CUVID/NVDEC decoders present (h264_cuvid)" -Condition {
+            $dec = & $ffmpegExe -hide_banner -decoders 2>&1 | Out-String
+            return ($dec -match 'h264_cuvid')
+        } -FailMessage "ffmpeg -decoders did not list h264_cuvid (NVDEC/CUVID not built)"
+    }
 } else {
     Write-Host '  [SKIP] FFmpeg not installed (C:\runtime\ffmpeg\bin not found)' -ForegroundColor Yellow
     $script:skipped++
