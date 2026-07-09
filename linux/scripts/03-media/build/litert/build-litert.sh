@@ -39,7 +39,14 @@ LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.6}}"
 : "${LITERT_SRC:=${TMPDIR:-/tmp}/litert-$$}"
 : "${LITERT_PREFIX:=/usr/local}"
 : "${BUILD_TYPE:=Release}"
-: "${NPROC:=$(media_jobs)}"
+# LiteRT-LM compiles PyTorch (torch_cpu); its aten/autograd translation units peak
+# at ~4GB per cc1plus -- far above the ~2GB/job that media_jobs assumes. At nproc-
+# scale parallelism (-j30 on a 32-core host) that OOM-kills cc1plus and can stall/
+# cancel the whole buildkit solve, especially under other memory load (e.g. a
+# Folding@home core). Budget ~4GB/job for THIS build so it stays OOM-safe; falls
+# back to media_jobs if the mem-cap helper is somehow unavailable. Override with
+# PARALLEL_JOBS=N or NPROC=N.
+: "${NPROC:=$(compute_jobs_with_mem_cap "" 4096 2>/dev/null || media_jobs)}"
 : "${SKIP_DEP_INSTALL:=false}"
 
 setup_host_python_with_major_minor
