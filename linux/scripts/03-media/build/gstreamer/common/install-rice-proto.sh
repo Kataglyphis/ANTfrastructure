@@ -83,6 +83,32 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
       echo "WARN: could not resolve cross gcc for '${TARGET_ARCH:-?}'; rice-proto may fail to link (webrtcbin2 skipped)" >&2
     fi
   fi
+
+  # rice-proto pulls in openssl-sys transitively. Its header-expansion probe
+  # compiles with the cross gcc, which does NOT search the Debian multiarch dir
+  # (/usr/include/<triplet>) where the target's arch-specific opensslconf.h lives
+  # -- so the probe dies with "openssl/opensslconf.h: No such file". pkg-config
+  # finds the target libssl but its openssl.pc ships EMPTY Cflags (native builds
+  # rely on gcc's built-in multiarch search), so it supplies no include path.
+  # Wire openssl-sys to the target OpenSSL explicitly and inject BOTH include
+  # roots via CFLAGS_<target> (honoured by the cc crate the probe uses). Without
+  # this, openssl-sys fails and webrtcbin2 is silently skipped on cross builds.
+  # Validated by cross-building rice-proto for arm64 (openssl-sys compiles,
+  # rice-proto.pc installs).
+  target_triplet=""
+  if command -v cross_target_triplet >/dev/null 2>&1; then
+    target_triplet="$(cross_target_triplet 2>/dev/null || true)"
+  fi
+  if [ -n "${rust_target}" ] && [ -n "${target_triplet}" ] && [ -d "/usr/lib/${target_triplet}" ]; then
+    rice_rust_env="${rice_rust_env:-$(printf '%s' "${rust_target}" | tr 'a-z-' 'A-Z_')}"
+    rice_rust_lower="${rice_rust_lower:-$(printf '%s' "${rust_target}" | tr '-' '_')}"
+    _rice_cflags_var="CFLAGS_${rice_rust_lower}"
+    _rice_prev_cflags="${!_rice_cflags_var:-}"
+    export "${rice_rust_env}_OPENSSL_LIB_DIR=/usr/lib/${target_triplet}"
+    export "${rice_rust_env}_OPENSSL_INCLUDE_DIR=/usr/include"
+    export "CFLAGS_${rice_rust_lower}=-I/usr/include -I/usr/include/${target_triplet}${_rice_prev_cflags:+ ${_rice_prev_cflags}}"
+    echo "Cross build: rice-proto openssl-sys wired to target OpenSSL (/usr/lib/${target_triplet} + multiarch include ${target_triplet})"
+  fi
 fi
 
 if ! cargo cinstall "${cinstall_args[@]}"; then
