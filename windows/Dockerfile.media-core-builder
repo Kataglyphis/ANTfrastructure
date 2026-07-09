@@ -25,6 +25,11 @@ ARG ONNXRUNTIME_VERSION=v1.27.0
 ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
 ARG OPENCV_SOURCE_VERSION=5.x
 ARG FFMPEG_VERSION=master
+# nv-codec-headers (ffnvcodec) tag for FFmpeg NVENC/NVDEC/CUVID. MUST be set as an ENV below:
+# the base image bakes a Machine-level NV_CODEC_HEADERS_REF from its copy of versions.env, and
+# build-ffmpeg's Import-CanonicalVersions is a no-op here (load-versions.ps1 isn't copied in), so
+# a Dockerfile ENV is the only thing that overrides the stale baked value in the run container.
+ARG NV_CODEC_HEADERS_REF=n13.0.19.0
 # Container --memory cap (GB), forwarded so Get-BuildJobCount scales parallelism to
 # the cap. With the run+commit path the container also gets --cpu-count CPUs, so
 # jobs = min(cpu-count, MEMORY_LIMIT_GB / MemGBPerJob).
@@ -38,11 +43,19 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}"
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 ENV OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}"
 ENV FFMPEG_VERSION="${FFMPEG_VERSION}"
+ENV NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}"
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
 ENV CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Refresh C:\temp\versions.env (base bakes a copy + runs load-versions.ps1 to set Machine env).
+# build-ffmpeg's Import-CanonicalVersions re-runs load-versions.ps1 at RUNTIME, which re-reads
+# THIS file and overwrites the Process env -- so the ENV above alone is silently reverted to the
+# stale base value. Re-COPYing the current versions.env here is what actually makes a versions.env
+# change (e.g. NV_CODEC_HEADERS_REF) reach the FFmpeg build without a full base rebuild.
+COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 
 # Only the modules the build scripts import (keeps CI-module edits from busting this image).
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `

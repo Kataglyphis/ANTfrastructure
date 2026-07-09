@@ -9,6 +9,8 @@ param(
     [switch]$SkipPython
 )
 
+$ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceBuildChain sets this in-scope for the media run)
+
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
@@ -34,20 +36,25 @@ if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - ena
 
 # GPU math libraries (CUDA lane only). cuBLAS ships inside the CUDA toolkit (found via
 # CUDAToolkit_ROOT), so it needs no extra hint. cuDNN is a SEPARATE install: enable it only
-# when cudnn.h + a cudnn*.lib actually resolve, and hand TVM the explicit include dir + lib
-# (the same resolution build-onnx uses) so FindCUDNN succeeds instead of half-configuring.
+# when cudnn.h + cudnn.lib actually resolve.
+# NOTE: TVM uses its legacy cmake/utils/FindCUDA.cmake, which looks up the variable
+# CUDA_CUDNN_LIBRARY (NOT the standard CUDNN_INCLUDE_DIR/CUDNN_LIBRARY -- those are silently
+# ignored). Because cuDNN lives OUTSIDE the CUDA toolkit dir here, TVM's find_library returns
+# NOTFOUND and configure dies, so we set CUDA_CUDNN_LIBRARY directly and also put cuDNN's
+# include/lib on INCLUDE/LIB so clang-cl finds cudnn.h and lld-link finds cudnn.lib at compile.
 $useCublas = $useCuda
 $useCudnn  = 'OFF'
 $cudnnArgs = @()
 if ($useCuda -eq 'ON' -and $gpuEnv.CudnnRoot -and (Test-Path (Join-Path $gpuEnv.CudnnRoot 'include\cudnn.h'))) {
-    $cudnnLibFile = Get-ChildItem (Join-Path $gpuEnv.CudnnRoot 'lib\x64\cudnn*.lib') -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($cudnnLibFile) {
+    # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.
+    $cudnnLibPath = Get-CudnnLibrary -CudnnRoot $gpuEnv.CudnnRoot
+    if ($cudnnLibPath) {
+        $cudnnLibDir = Split-Path $cudnnLibPath -Parent
         $useCudnn  = 'ON'
-        $cudnnArgs = @(
-            "-DCUDNN_INCLUDE_DIR=$((Join-Path $gpuEnv.CudnnRoot 'include') -replace '\\','/')"
-            "-DCUDNN_LIBRARY=$($cudnnLibFile.FullName -replace '\\','/')"
-        )
-        Write-Host "cuDNN detected at $($gpuEnv.CudnnRoot) - enabling TVM cuDNN support"
+        $cudnnArgs = @("-DCUDA_CUDNN_LIBRARY=$($cudnnLibPath -replace '\\','/')")
+        $env:INCLUDE = "$(Join-Path $gpuEnv.CudnnRoot 'include');$env:INCLUDE"
+        $env:LIB     = "$cudnnLibDir;$env:LIB"
+        Write-Host "cuDNN detected at $($gpuEnv.CudnnRoot) - enabling TVM cuDNN (CUDA_CUDNN_LIBRARY=$(Split-Path $cudnnLibPath -Leaf))"
     }
 }
 

@@ -7,6 +7,8 @@ param(
     [string]$FfmpegVersion = ''
 )
 
+$ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceBuildChain sets this in-scope for the media run)
+
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
@@ -19,7 +21,7 @@ $FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariab
 $prefix = Join-Path $InstallDir 'ffmpeg'
 $ffmpegDir = Join-Path $prefix 'bin'
 
-Write-Host "=== FFmpeg source build ($FfmpegVersion, MSVC toolchain) ==="
+Write-Host "=== FFmpeg source build ($FfmpegVersion, clang-cl+lld-link default; FFMPEG_TOOLCHAIN=msvc to override) ==="
 
 if (Test-Path "$ffmpegDir\ffmpeg.exe") {
     Write-Host "FFmpeg already installed at $prefix - skipping"; return
@@ -95,13 +97,17 @@ if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path 
     # Clone the pinned nv-codec-headers ref and `make install` into a private prefix. PREFIX is a
     # forward-slash *Windows* path (C:/...), NOT an MSYS /c/... path, so the generated ffnvcodec.pc
     # emits `-IC:/.../include` cflags that cl.exe consumes directly (verified in an isolated lab).
-    $nvHdrRef       = if ($env:NV_CODEC_HEADERS_REF) { $env:NV_CODEC_HEADERS_REF } else { 'n12.2.72.0' }
+    $nvHdrRef       = if ($env:NV_CODEC_HEADERS_REF) { $env:NV_CODEC_HEADERS_REF } else { 'n13.0.19.0' }
     $nvHdrSrc       = 'C:\temp\nv-codec-headers'
     $nvHdrPrefix    = 'C:\temp\nv-codec-headers-install'
     $nvHdrPrefixFwd = $nvHdrPrefix -replace '\\', '/'
     if (Test-Path $nvHdrSrc)    { Remove-Item $nvHdrSrc -Recurse -Force }
     if (Test-Path $nvHdrPrefix) { Remove-Item $nvHdrPrefix -Recurse -Force }
-    & git clone --branch $nvHdrRef --depth 1 'https://github.com/FFmpeg/nv-codec-headers.git' $nvHdrSrc 2>&1 | ForEach-Object { Write-Host $_ }
+    # Shield via cmd.exe /c: git writes "Cloning into..." to stderr, which under the in-container
+    # PS 5.1 EAP=Stop would otherwise surface as a terminating NativeCommandError (2>&1 alone does
+    # NOT prevent it in 5.1). cmd merges the streams so PS sees plain stdout. Same pattern as the
+    # `make install` line below.
+    & cmd /c "git clone --branch $nvHdrRef --depth 1 https://github.com/FFmpeg/nv-codec-headers.git `"$nvHdrSrc`" 2>&1" | ForEach-Object { Write-Host $_ }
     $nvHdrSrcCyg = '/' + $nvHdrSrc.Substring(0, 1).ToLower() + ($nvHdrSrc.Substring(2) -replace '\\', '/')
     & cmd /c "`"$bashExe`" -c `"cd $nvHdrSrcCyg && make install PREFIX=$nvHdrPrefixFwd`" 2>&1" | ForEach-Object { Write-Host $_ }
     $nvPc = Join-Path $nvHdrPrefix 'lib\pkgconfig\ffnvcodec.pc'
@@ -126,12 +132,10 @@ if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path 
 $cygPrefix = '/' + $prefix.Substring(0,1).ToLower() + ($prefix.Substring(2) -replace '\\', '/')
 $cygSrc = $srcDir -replace '\\', '/' -replace '^C:', '/c'
 
-# Configure with --toolchain=msvc (officially supported by FFmpeg on Windows)
-# Resulting binaries are ABI-compatible with clang-cl throughout the container.
 # Ensure ONNX Runtime is discoverable for --enable-libonnxruntime.
 # Copy the ONNX header into FFmpeg's include/compat directory so configure's
 # test_cc probes can find it without --extra-cflags (which doesn't get passed
-# to test compilations when using --toolchain=msvc).
+# to test compilations when using the msvc-preset flag conventions).
 $onnxRuntimeDir = Join-Path $InstallDir 'lib\onnxruntime-source'
 $onnxHeaderCopied = $false
 if (Test-Path $onnxRuntimeDir) {
@@ -164,7 +168,20 @@ if ($onnxHeaderCopied) {
     $confFlags += "--extra-cflags=-I$cygSrc/compat/onnx"
     $confFlags += "--extra-ldflags=-libpath:$($onnxRuntimeDir -replace '\\', '/')/lib"
 }
-$confFlags += '--toolchain=msvc'
+# Toolchain: clang-cl + lld-link by default, so FFmpeg's C sources are LLVM-compiled like every other
+# library in the container (set FFMPEG_TOOLCHAIN=msvc to fall back to the MSVC preset). FFmpeg has no
+# clang-cl toolchain preset, so we keep the msvc preset (MSVC-style flag conventions + the inherited
+# VsDevCmd SDK env, both of which clang-cl mimics) and override only the compiler/linker. x86asm is
+# disabled either way, so nasm/inline-asm is not in play. Proven: full clang-cl build links ffmpeg.exe
+# + 7 DLLs with --enable-libonnxruntime + NVENC, 0 errors (validated in windows-media-core).
+$ffToolchain = if ($env:FFMPEG_TOOLCHAIN) { $env:FFMPEG_TOOLCHAIN } else { 'clang-cl' }
+if ($ffToolchain -eq 'clang-cl') {
+    Write-Host 'FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset''s cc/ld)'
+    $confFlags += '--toolchain=msvc', '--cc=clang-cl', '--ld=lld-link'
+} else {
+    Write-Host 'FFmpeg toolchain: msvc (cl.exe + link.exe)'
+    $confFlags += '--toolchain=msvc'
+}
 $confFlags += '--disable-x86asm'
 # vfwcap links vfw32.lib -> imports AVICAP32.dll, which does NOT exist in
 # Windows Server Core containers: every process loading avdevice would die
@@ -191,7 +208,7 @@ $wrapperLines += "./configure $confStr"
 $wrapperPath = Join-Path $srcDir 'ffmpeg-configure-wrapper.sh'
 [System.IO.File]::WriteAllLines($wrapperPath, $wrapperLines)
 
-Write-Host 'Configuring FFmpeg with MSVC toolchain...'
+Write-Host "Configuring FFmpeg (toolchain: $ffToolchain)..."
 & $bashExe $wrapperPath 2>&1 | ForEach-Object { Write-Host $_ }
 if ($LASTEXITCODE -ne 0) {
     $logFile = Join-Path $srcDir 'ffbuild\config.log'

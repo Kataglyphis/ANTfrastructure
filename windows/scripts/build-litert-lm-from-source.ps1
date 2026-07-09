@@ -25,10 +25,12 @@ $ok = Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT-LM.git'
 if (-not $ok) { throw 'Failed to clone LiteRT-LM' }
 
 Write-Host 'Setting up git-lfs...'
-& git lfs install --skip-repo 2>&1 | Out-Null
-Push-Location $SourceDir
-& git lfs pull 2>&1 | Out-Null
-Pop-Location
+# Shield native git under the Dockerfile's PS 5.1 SHELL: `git lfs` writes progress to stderr, which
+# under $ErrorActionPreference='Stop' becomes a terminating NativeCommandError even with `2>&1` (5.1
+# merges the stream too late to prevent it). Route through cmd.exe so the stderr is consumed there and
+# never reaches PowerShell's pipeline -- same shield as Invoke-GitClone and build-ffmpeg's git clone.
+& cmd /c 'git lfs install --skip-repo 2>&1' | Out-Null
+& cmd /c "cd /d `"$SourceDir`" && git lfs pull 2>&1" | Out-Null
 
 # vcpkg paths: prefer -VcpkgRoot param, then $env:VCPKG_ROOT, then the container default.
 if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
