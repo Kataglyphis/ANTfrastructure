@@ -506,9 +506,17 @@ main() {
 
     _arch="${TARGET_ARCH:-${TARGETARCH:-$(uname -m)}}"
 
+    # "native" = target arch equals the build host. Compare NORMALIZED names:
+    # _arch is Debian-named (amd64) while `uname -m` returns x86_64, so a raw
+    # string compare wrongly treats a native amd64 build as cross — skipping its
+    # smoke test and the already-installed fast-path. arch_normalize() (loaded via
+    # media_common_init) maps both sides to a common token (amd64/arm64/riscv64).
+    local _is_native=0
+    [ "$(arch_normalize "${_arch}")" = "$(arch_normalize "$(uname -m)")" ] && _is_native=1
+
     # Only run version check / stamp read when the binary is native — cross-compiled
     # binaries cannot execute on the build host.
-    if [ "${_arch}" = "$(uname -m)" ]; then
+    if [ "${_is_native}" = "1" ]; then
         if [ -x "${FFMPEG_PREFIX}/bin/ffmpeg" ]; then
             INSTALLED_VERSION=$("${FFMPEG_PREFIX}/bin/ffmpeg" -version 2>/dev/null | head -n1 | awk '{print $3}')
             echo "FFmpeg ${INSTALLED_VERSION} already installed at ${FFMPEG_PREFIX}"
@@ -527,7 +535,7 @@ main() {
     install_ffmpeg
 
     # Only write stamp and run smoke test for native builds
-    if [ "${_arch}" = "$(uname -m)" ]; then
+    if [ "${_is_native}" = "1" ]; then
         echo "$(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}')" > "$_ff_stamp"
         smoke_test_ffmpeg
         echo "FFmpeg installed successfully to ${FFMPEG_PREFIX}"
