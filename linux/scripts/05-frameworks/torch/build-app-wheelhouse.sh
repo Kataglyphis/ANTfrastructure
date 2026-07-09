@@ -60,8 +60,14 @@ unset _evf
 if [ -f /opt/scripts/core/parallelism.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/parallelism.sh 2>/dev/null || true
-  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    MAX_JOBS="${MAX_JOBS:-$(compute_jobs_with_mem_cap "" 2000)}"
+  # This wheelhouse compiles PyTorch from source (PYTORCH_REF); its aten/autograd
+  # TUs peak ~4GB/cc1plus, so budget ~4GB/job (compute_cpp_heavy_jobs) rather than
+  # the generic 2GB -- same OOM class as the litert build. Fall back to the older
+  # 2GB helper, then nproc, if the newer helper is absent (older sourced copy).
+  if declare -F compute_cpp_heavy_jobs >/dev/null 2>&1; then
+    MAX_JOBS="${MAX_JOBS:-$(compute_cpp_heavy_jobs "")}"
+  elif declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    MAX_JOBS="${MAX_JOBS:-$(compute_jobs_with_mem_cap "" 4096)}"
   fi
 fi
 : "${MAX_JOBS:=$(nproc)}"

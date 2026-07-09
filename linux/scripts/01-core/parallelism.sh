@@ -210,3 +210,19 @@ compute_rust_jobs() {
 
   compute_jobs_with_mem_cap "${requested}" "${mb_per_job}"
 }
+
+# Compute jobs for memory-HEAVY C++ builds (PyTorch/torch_cpu, large LLVM/TU
+# link steps, etc.) whose individual cc1plus translation units peak far above
+# the ~2GB/job the generic default assumes. torch's aten/autograd TUs peak
+# ~4GB/cc1plus; running them at the media default (2GB/job) overcommits RAM and
+# the OOM-killer terminates cc1plus (observed on the riscv64 litert build,
+# 27 jobs x 4GB on a 60GB host, tipped over by concurrent external load).
+# Use this for any build that compiles PyTorch or comparably heavy C++.
+# Usage: compute_cpp_heavy_jobs [requested]
+compute_cpp_heavy_jobs() {
+  local requested="${1:-}"
+  # Aggressive mode still respects a real 4GB floor here -- these TUs do not get
+  # cheaper on a big host; more RAM just means more of them can run at once,
+  # which the avail_mb/mb_per_job cap already accounts for.
+  compute_jobs_with_mem_cap "${requested}" "${CPP_HEAVY_MB_PER_JOB:-4096}"
+}
