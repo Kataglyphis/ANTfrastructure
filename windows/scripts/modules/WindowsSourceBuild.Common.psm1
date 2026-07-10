@@ -411,7 +411,6 @@ function Invoke-SourcePatch {
     if (Test-Path (Join-Path $SourceDir '.git')) {
         $isGitRepo = $true
     } else {
-        $gitErr = $null
         $null = & git -C $SourceDir rev-parse --git-dir 2>$null
         if ($LASTEXITCODE -eq 0) { $isGitRepo = $true }
     }
@@ -1553,7 +1552,6 @@ Export-ModuleMember -Function @(
     'Get-CudaRoot',
     'Enter-VsDevCmdEnvironment',
     'Get-MsvcToolsRoot',
-    'Resolve-LlvmArchiver',
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
     'Edit-CppKeywordAlternatives',

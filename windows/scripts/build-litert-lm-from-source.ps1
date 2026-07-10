@@ -19,6 +19,7 @@ Import-Module $modulePath -Force
 $LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.13.1'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
 
+#region Phase 1 | Resolve version + clone LiteRT-LM (git-lfs)
 Write-Host "=== LiteRT-LM source build (v$LiteRtLmVersion, Ninja+clang-cl) ==="
 
 $ok = Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT-LM.git' -Tag "v$LiteRtLmVersion" -SourceDir $SourceDir -Recursive
@@ -32,6 +33,9 @@ Write-Host 'Setting up git-lfs...'
 & cmd /c 'git lfs install --skip-repo 2>&1' | Out-Null
 & cmd /c "cd /d `"$SourceDir`" && git lfs pull 2>&1" | Out-Null
 
+#endregion
+
+#region Phase 2 | Toolchain acquisition (vcpkg + host protoc 31.1 + Temurin JRE)
 # vcpkg paths: prefer -VcpkgRoot param, then $env:VCPKG_ROOT, then the container default.
 if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
     $VcpkgRoot = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { 'C:\vcpkg' }
@@ -95,6 +99,9 @@ if (-not $javaExe) {
 $env:PATH = "$($javaExe.Directory.FullName);$env:PATH"
 Write-Host "Using Java for ANTLR codegen: $($javaExe.FullName)"
 
+#endregion
+
+#region Phase 3 | Windows link-lib + POSIX header shims (rt/pthread/dl/z, dlfcn/unistd/alloca, LIB)
 # Windows link-lib shim for the GNU-driver Unix libs. The inner build links with
 # clang++ (GNU driver) + lld-link, so CMake's platform/threads/zlib detection adds
 # POSIX link libs -- `-lz -lrt -lpthread -ldl` -> `z.lib rt.lib pthread.lib dl.lib` --
@@ -251,6 +258,9 @@ if ([string]::IsNullOrWhiteSpace($env:CARGO_HOME)) { $env:CARGO_HOME = Join-Path
 $cargoBin = Join-Path $env:CARGO_HOME 'bin'
 if (($env:PATH -notlike "*$cargoBin*") -and (Test-Path $cargoBin)) { $env:PATH = "$cargoBin;$env:PATH" }
 
+#endregion
+
+#region Phase 4 | clang++ compiler environment (CXXFLAGS / CCC_OVERRIDE_OPTIONS)
 # clang-cl + modern MSVC STL fix for the Rust `cxx` crate (transitive dep). Its
 # build script compiles a generated C++ bridge via `cxx-build`/`cc`, which defaults
 # to -std=c++11. MSVC 14.51's <xutility> uses `constexpr void` return types (legal
@@ -321,6 +331,9 @@ Write-Host "Set CXXFLAGS (delayed template parsing + dlfcn/unistd/alloca shim + 
 $env:CCC_OVERRIDE_OPTIONS = '#x-fPIC x/bigobj x/nologo x/EHsc x/GF x/MP x/Gm- x/wd4800 x/wd4805 x/wd4244'
 Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC + gemmlowp MSVC flags from clang++ (windows-msvc target rejects them)"
 
+#endregion
+
+#region Phase 5 | Source tree & CMake winfix patches (clang-cl/lld-link port)
 # NOTE: LiteRT-LM v0.13.1 ships runtime/proto/ as Bazel-only (BUILD + *.proto, no CMakeLists.txt),
 # so the former runtime/proto/CMakeLists.txt patch (disable protobuf_generate / find_package Protobuf
 # QUIET) was a permanent no-op: the target file never exists at patch time, and the build succeeds
@@ -1175,6 +1188,9 @@ foreach ($rel in @(
             -Description "$rel : lib*.a -> *.lib (real MSVC litert/sentencepiece/tflite libs)")
 }
 
+#endregion
+
+#region Phase 6 | CMake configure + proto codegen
 $buildDir = Join-Path $SourceDir 'build_ninja'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 $litertCmakeDir = Join-Path $litertInstallDir 'cmake'
@@ -1213,6 +1229,9 @@ $protoInstallInclude = Join-Path $SourceDir 'build_ninja\prebuild\build\external
 New-Item -Path $protoInstallInclude -ItemType Directory -Force | Out-Null
 Copy-Item "$vcpkgInclude\*" $protoInstallInclude -Recurse -Force -ErrorAction SilentlyContinue
 
+#endregion
+
+#region Phase 7 | Ninja build + ExternalProject lib stubs
 $litertBuildDir = Join-Path $buildDir 'litert_lm\build'
 $llvmAr = (Get-Command llvm-ar.exe -ErrorAction Stop).Source
 $ninja = (Get-Command ninja.exe -ErrorAction Stop).Source
@@ -1265,6 +1284,9 @@ Write-Host 'Running ExternalProject step 6 (build)...'
 if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 101) { Write-Host "WARNING: ninja build step exited with code $LASTEXITCODE" }
 Write-Host "Build step completed with exit code: $LASTEXITCODE"
 
+#endregion
+
+#region Phase 8 | Stage litert_lm_main.exe + smoke test + restore vcpkg headers
 # --- litert_lm_main.exe: ninja links it cleanly in one pass -------------------------------------
 # The [LiteRTLM-winfix clean-link] CMake patch (crtcompat shim + flatbuffers util.cpp sources, CRT
 # /alternatename aliases, PRE_LINK protoc/protobuf-lite neutralize) makes the ExternalProject build
@@ -1427,3 +1449,4 @@ Write-Host '=== LiteRT-LM source build completed ==='
 
 
 
+#endregion

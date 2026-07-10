@@ -48,7 +48,7 @@ if ($contribSrc) {
 # Inline patch (kept inline, NOT a .patch file): the mlas `<cstring>` include is
 # a multi-file prepend loop that conditionally skips files which already include
 # <cstring>. A static .patch cannot express the per-file conditional guard, so the
-# loop form is the canonical representation. See docs/windows-builds.md ?Patches.
+# loop form is the canonical representation. See docs/windows-builds.md "Source Patch Policy".
 $mlasSrcDir = Join-Path $mainSrc '3rdparty\mlas'
 if (Test-Path $mlasSrcDir) {
     Get-ChildItem -Path $mlasSrcDir -Filter '*.cpp' -Recurse | ForEach-Object {

@@ -37,24 +37,6 @@ function Initialize-ContainerImageTempDirectory {
     return (Resolve-DirectoryPath -Path $TempDir)
 }
 
-function Resolve-ContainerDirectoryPath {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
-
-    return (Resolve-DirectoryPath -Path $Path)
-}
-
-function Resolve-ContainerNormalizedPath {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
-
-    return (Resolve-NormalizedPath -Path $Path)
-}
-
 function Assert-ContainerPathExists {
     param(
         [Parameter(Mandatory)]
@@ -148,8 +130,6 @@ function Assert-ContainerCommandAvailable {
 Export-ModuleMember -Function @(
     'Resolve-ContainerImageValue',
     'Initialize-ContainerImageTempDirectory',
-    'Resolve-ContainerDirectoryPath',
-    'Resolve-ContainerNormalizedPath',
     'Assert-ContainerPathExists',
     'Sync-ContainerProcessPath',
     'Assert-ContainerCommandAvailable',

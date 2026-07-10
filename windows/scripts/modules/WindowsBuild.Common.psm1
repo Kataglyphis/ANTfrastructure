@@ -32,10 +32,13 @@ function New-BuildContext {
         SuppressConsoleOutput = $false
         StopOnError = [bool]$StopOnError
         Results     = @{
-            Succeeded = New-Object System.Collections.Generic.List[string]
-            Failed    = New-Object System.Collections.Generic.List[string]
-            Errors    = @{}
-            Durations = [ordered]@{}
+            Succeeded       = New-Object System.Collections.Generic.List[string]
+            Failed          = New-Object System.Collections.Generic.List[string]
+            # Steps that failed but were declared non-gating (Invoke-BuildStep -AllowFailure),
+            # e.g. experimental toolchains. Reported in the summary but do NOT set exit 1.
+            AllowedFailures = New-Object System.Collections.Generic.List[string]
+            Errors          = @{}
+            Durations       = [ordered]@{}
         }
     }
 }
@@ -186,7 +189,10 @@ function Invoke-BuildStep {
         [string]$StepName,
         [Parameter(Mandatory)]
         [scriptblock]$Script,
-        [switch]$Critical
+        [switch]$Critical,
+        # When set, a failure is recorded as a non-gating AllowedFailure (warning, not error) and
+        # never throws -- for steps that are permitted to fail (e.g. experimental Python builds).
+        [switch]$AllowFailure
     )
 
     Write-BuildLog -Context $Context -Message ""
@@ -211,12 +217,20 @@ function Invoke-BuildStep {
     } catch {
         $stopwatch.Stop()
         $errorMessage = $_.Exception.Message
-        $Context.Results.Failed.Add($StepName) | Out-Null
         if ($null -eq $Context.Results.Durations) {
             $Context.Results.Durations = [ordered]@{}
         }
         $Context.Results.Durations[$StepName] = $stopwatch.Elapsed.TotalSeconds
         $Context.Results.Errors[$StepName] = $errorMessage
+
+        if ($AllowFailure) {
+            $Context.Results.AllowedFailures.Add($StepName) | Out-Null
+            Write-BuildLogWarning -Context $Context -Message "<<< FAILED (allowed, non-gating): $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
+            Write-BuildLogWarning -Context $Context -Message "    Error: $errorMessage"
+            return $false
+        }
+
+        $Context.Results.Failed.Add($StepName) | Out-Null
         Write-BuildLogError -Context $Context -Message "<<< FAILED: $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
         Write-BuildLogError -Context $Context -Message "    Error: $errorMessage"
 
@@ -259,6 +273,15 @@ function Write-BuildSummary {
         foreach ($step in $Context.Results.Failed) {
             Write-BuildLogError -Context $Context -Message "  [X] $step"
             Write-BuildLogError -Context $Context -Message "      Error: $($Context.Results.Errors[$step])"
+        }
+    }
+
+    if ($null -ne $Context.Results.AllowedFailures -and $Context.Results.AllowedFailures.Count -gt 0) {
+        Write-BuildLog -Context $Context -Message ""
+        Write-BuildLogWarning -Context $Context -Message "ALLOWED FAILURES ($($Context.Results.AllowedFailures.Count)) -- non-gating (did not fail the run):"
+        foreach ($step in $Context.Results.AllowedFailures) {
+            Write-BuildLogWarning -Context $Context -Message "  [!] $step"
+            Write-BuildLogWarning -Context $Context -Message "      Error: $($Context.Results.Errors[$step])"
         }
     }
 
@@ -327,55 +350,6 @@ function Write-BuildSummary {
     }
 }
 
-function Remove-BuildRoot {
-    param(
-        [Parameter(Mandatory)]
-        [pscustomobject]$Context,
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
-
-    if (-not (Test-Path $Path)) {
-        Write-BuildLog -Context $Context -Message "Build root does not exist: $Path"
-        return $true
-    }
-
-    Write-BuildLog -Context $Context -Message "Terminating potentially locking processes..."
-    $processNames = @(
-        "flutter", "dart",
-        "msbuild", "devenv",
-        "ninja", "cmake", "ctest",
-        "cl", "link",
-        "clang", "clang-cl", "lld-link",
-        "vstest.console", "testhost",
-        "cargo", "rustc"
-    )
-
-    foreach ($name in $processNames) {
-        Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    }
-
-    Start-Sleep -Seconds 3
-
-    for ($i = 1; $i -le 8; $i++) {
-        try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-            Write-BuildLog -Context $Context -Message "Build directory removed: $Path"
-            return $true
-        } catch {
-            Write-BuildLogWarning -Context $Context -Message "Attempt $i/8 failed: $($_.Exception.Message)"
-
-            foreach ($name in $processNames) {
-                Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-            }
-
-            if ($i -lt 8) { Start-Sleep -Seconds 2 }
-        }
-    }
-
-    return $false
-}
-
 Export-ModuleMember -Function @(
     'New-BuildContext',
     'Open-BuildLog',
@@ -388,7 +362,6 @@ Export-ModuleMember -Function @(
     'Invoke-BuildOptional',
     'Invoke-BuildStep',
     'Write-BuildSummary',
-    'Remove-BuildRoot',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'Resolve-NormalizedPath',

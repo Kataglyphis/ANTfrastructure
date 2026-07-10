@@ -165,8 +165,11 @@ try {
     $tarballUrl = "https://github.com/gstreamer/gstreamer/archive/refs/tags/$GstVersion.tar.gz"
     $tarballPath = Join-Path $resolvedLogDir "gstreamer-$GstVersion.tar.gz"
     log "Downloading GStreamer source tarball from $tarballUrl ..."
-    & curl.exe -fsSL --retry 3 $tarballUrl -o $tarballPath 2>&1 | ForEach-Object { if ($_) { log $_ } }
-    if ($LASTEXITCODE -ne 0) { throw 'Failed to download GStreamer source tarball' }
+    # Hardened retry/backoff + redirect-following (GitHub /archive/ -> codeload) via the shared
+    # helper -- replaces bare `curl --retry 3`, which no other source download uses. Throws on
+    # failure. (The subproject-wrap + libffi fetches below stay on cmd/curl: they need bulk
+    # cmd.exe extraction and are a different, per-item flow.)
+    Invoke-DownloadWithRetry -Url $tarballUrl -DestinationPath $tarballPath -Description "GStreamer $GstVersion source tarball"
     log 'Tarball downloaded. Extracting...'
 
     # 7z on Windows handles .tar.gz in two passes: gzip then tar

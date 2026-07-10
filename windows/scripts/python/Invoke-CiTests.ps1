@@ -124,9 +124,10 @@ try {
     New-TestResultsDir
 
     foreach ($version in $PythonVersions) {
+        # Experimental Python (e.g. 3.14t free-threaded) is permitted to fail without gating CI.
         $allowFailure = Test-ExperimentalPython -Version $version
 
-        Invoke-BuildStep -Context $script:BuildContext -StepName "Python $version - Tests" -Script {
+        Invoke-BuildStep -Context $script:BuildContext -StepName "Python $version - Tests" -AllowFailure:$allowFailure -Script {
             Write-Log "--- Python $version ---"
             $envPath = New-UvEnvironment -PythonVersion $version -EnvName ".venv-$version"
 
