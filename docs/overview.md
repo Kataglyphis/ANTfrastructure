@@ -50,6 +50,7 @@ Linux image chain (built as separate images for caching):
 | Cross-build | Digest-pinned stage handoff | ✔️ |
 | Cross-build | Runtime packaging via QEMU/binfmt | ✔️ |
 | GPU acceleration | NVIDIA CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN, TensorRT | ✔️ |
+| GPU acceleration | DirectML (Windows, vendor-agnostic — ONNX Runtime + GenAI DML EP) | ✔️ |
 | GPU acceleration | AMD MIGraphX | ✔️ |
 | GPU acceleration | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan --> | ✔️ |
 | Media | ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |
