@@ -133,7 +133,7 @@ def collect_versions() -> dict[str, str]:
     linux_webserver = read_repo_file("linux/webserver/Dockerfile")
     windows_base = read_repo_file("windows/Dockerfile.base")
     windows_nvidia = read_repo_file("windows/Dockerfile.nvidia")
-    windows_media = read_repo_file("windows/Dockerfile.media")
+    windows_media = read_repo_file("windows/Dockerfile.media-merge-builder")
     windows_vs = read_repo_file("windows/scripts/setup-vs.ps1")
 
     return {
@@ -162,8 +162,8 @@ def collect_versions() -> dict[str, str]:
         "windows_vulkan": extract(r"^ARG VULKAN_VERSION=([^\s]+)$", windows_base, "Windows Vulkan version"),
         "windows_gstreamer": extract(r"^ARG GSTREAMER_VERSION=([^\s]+)$", windows_media, "Windows GStreamer version"),
         "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_nvidia, "Windows CUDA version"),
-        # ONNX builds in Dockerfile.media-core; Dockerfile.media re-declares the ARG
-        # for the image's version env vars — both are checked against versions.env.
+        # ONNX builds in the media-core branch; Dockerfile.media-merge-builder re-declares the
+        # ARG for the merged image's version env vars — both are checked against versions.env.
         "windows_onnx": extract(r"^ARG ONNXRUNTIME_VERSION=([^\s]+)$", windows_media, "Windows ONNX Runtime version"),
         "windows_vs": extract(
             r"Visual Studio\\([0-9]+)\\BuildTools",

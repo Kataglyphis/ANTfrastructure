@@ -69,7 +69,7 @@ function Invoke-GitClone {
 
     if ($cloneExit -ne 0) {
         if ($SkipOnFailure) {
-            Write-Host "WARNING: git clone failed (exit $cloneExit) - skipped"
+            Write-Warning "git clone failed (exit $cloneExit) - skipped"
             return $false
         }
         throw "git clone failed (exit $cloneExit): $RepoUrl $ref"
@@ -139,7 +139,7 @@ function Invoke-CmakeConfigure {
     & cmake @cmakeArgs
     if ($LASTEXITCODE -ne 0) {
         if ($SkipOnFailure) {
-            Write-Host "WARNING: CMake configuration failed - skipped"
+            Write-Warning "CMake configuration failed - skipped"
             return $false
         }
         throw "CMake configuration failed"
@@ -174,7 +174,7 @@ function Invoke-CmakeBuild {
             Get-Content $LogFile -Tail 20 | ForEach-Object { Write-Host $_ }
         }
         if ($SkipOnFailure) {
-            Write-Host "WARNING: Build failed - skipped"
+            Write-Warning "Build failed - skipped"
             return $false
         }
         throw "Build failed"
@@ -307,7 +307,7 @@ function Get-SourceBuildPython {
     return @{ Exe = $exe; Include = $include; LibDir = $libDir; Lib = $lib }
 }
 
-function Replace-CppKeywordAlternatives {
+function Edit-CppKeywordAlternatives {
     <#
     .SYNOPSIS
         Replaces C++ keyword alternatives (and/or/not) with symbolic operators (&&/||/!) for clang-cl.
@@ -427,45 +427,40 @@ function Invoke-SourcePatch {
 
         Write-Host "Applying patch: $Description to $SourceDir"
 
+        # git and patch.exe share the same reverse-check / forward-check / apply flow -- only the
+        # commands differ. Bind them as scriptblocks once (invoked in this scope, so they see
+        # $pFlag/$wsFlag/$PatchFile/$patchExe), then run the common flow below.
         if ($isGitRepo) {
-            # 1. Already applied? (reverse-check)
-            $null = & git apply --reverse --check $pFlag $wsFlag $PatchFile 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  SKIP: $Description (already applied)"
-                return
-            }
-            # 2. Forward apply
-            $null = & git apply --check $pFlag $wsFlag $PatchFile 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                $null = & git apply $pFlag --verbose $wsFlag $PatchFile 2>&1
-                if ($LASTEXITCODE -ne 0) { throw "git apply failed (exit $LASTEXITCODE): $PatchFile" }
-                Write-Host "  [OK] $Description applied via git"
-                return
-            }
+            $tool         = 'git'
+            $reverseCheck = { & git apply --reverse --check $pFlag $wsFlag $PatchFile 2>&1 }
+            $forwardCheck = { & git apply --check $pFlag $wsFlag $PatchFile 2>&1 }
+            $applyPatch   = { & git apply $pFlag --verbose $wsFlag $PatchFile 2>&1 }
         } else {
             # Fallback: patch.exe (ships with Git for Windows at $GIT_USRBIN\patch.exe)
             $patchExe = (Get-Command patch.exe -ErrorAction SilentlyContinue).Source
             if (-not $patchExe) { throw "patch.exe not found and source is not a git repo -- cannot apply $PatchFile" }
-
-            # 1. Already applied? (reverse dry-run)
-            $null = & $patchExe $pFlag --dry-run --reverse $PatchFile 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  SKIP: $Description (already applied)"
-                return
-            }
-            # 2. Forward dry-run
-            $null = & $patchExe $pFlag --dry-run $PatchFile 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                $null = & $patchExe $pFlag $PatchFile 2>&1
-                if ($LASTEXITCODE -ne 0) { throw "patch.exe failed (exit $LASTEXITCODE): $PatchFile" }
-                Write-Host "  [OK] $Description applied via patch.exe"
-                return
-            }
+            $tool         = 'patch.exe'
+            $reverseCheck = { & $patchExe $pFlag --dry-run --reverse $PatchFile 2>&1 }
+            $forwardCheck = { & $patchExe $pFlag --dry-run $PatchFile 2>&1 }
+            $applyPatch   = { & $patchExe $pFlag $PatchFile 2>&1 }
         }
 
-        $ErrorActionPreference = $oldEAP
+        # 1. Already applied? (reverse-check)
+        $null = & $reverseCheck
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  SKIP: $Description (already applied)"
+            return
+        }
+        # 2. Forward-check, then apply
+        $null = & $forwardCheck
+        if ($LASTEXITCODE -eq 0) {
+            $null = & $applyPatch
+            if ($LASTEXITCODE -ne 0) { throw "$tool apply failed (exit $LASTEXITCODE): $PatchFile" }
+            Write-Host "  [OK] $Description applied via $tool"
+            return
+        }
 
-        # 3. Patch does not apply cleanly
+        # 3. Patch does not apply cleanly (EAP restored by the finally below)
         $msg = "ERROR: $Description -- patch does not apply cleanly to $SourceDir"
         Write-Host $msg
         Write-Host "       The upstream source may have changed. Regenerate the .patch file."
@@ -595,8 +590,8 @@ function Get-GpuEnvironment {
         if ($cudaBin -and (Test-Path $cudaBin) -and ($env:PATH -notlike "*$cudaBin*")) {
             $env:PATH = "$cudaBin;$env:PATH"
         }
-        if ($env:CUDA_PATH -eq $null -or $env:CUDA_PATH -ne $cudaRoot) { $env:CUDA_PATH = $cudaRoot }
-        if ($env:CUDA_HOME -eq $null -or $env:CUDA_HOME -ne $cudaRoot) { $env:CUDA_HOME = $cudaRoot }
+        if ($env:CUDA_PATH -ne $cudaRoot) { $env:CUDA_PATH = $cudaRoot }
+        if ($env:CUDA_HOME -ne $cudaRoot) { $env:CUDA_HOME = $cudaRoot }
     }
 
     return @{
@@ -686,7 +681,7 @@ function Invoke-CpythonPip {
     $exit = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     if ($exit -ne 0) {
         $msg = "pip $argLine failed (exit $exit)"
-        if ($Optional) { Write-Host "WARNING: $msg -- continuing"; return }
+        if ($Optional) { Write-Warning "$msg -- continuing"; return }
         throw $msg
     }
 }
@@ -818,7 +813,7 @@ function Get-BuildJobCount {
     } else {
         try {
             $memGB = [int][Math]::Floor((Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize / 1MB)
-        } catch { }
+        } catch { $memGB = 0 }   # CIM unavailable -> fall through to the $cores default below
     }
     if ($memGB -le 0) { return $cores }
     return [Math]::Max(2, [Math]::Min($cores, [int][Math]::Floor($memGB / $MemGBPerJob)))
@@ -944,6 +939,71 @@ function Add-FileBlockOnce {
         Add-Content -LiteralPath $Path -Value $Content
     }
     Write-Host "Patched $Description"
+    return $true
+}
+
+function Edit-SourceFile {
+    <#
+    .SYNOPSIS
+        In-place content transform of a source file via a scriptblock, guarded and logged.
+    .DESCRIPTION
+        Canonical form for the "read the whole file, run one string transform (literal .Replace,
+        several chained -replace, or an anchored inject), write it back once" idiom that the
+        litert-lm CMake patches duplicate ~20x. Use this -- NOT Invoke-InlineRegexPatch -- when the
+        edit is a literal .Replace() or injects text containing regex-special characters such as `$`
+        (e.g. a CMake `${VAR}` reference): routing those through -replace would misread `$` as a
+        replacement group reference and silently corrupt the injected text. The -Transform stays a
+        scriptblock so the edit is byte-identical to the hand-written read-modify-write it replaces.
+        Reads the file, optionally skips when -Marker is already present (idempotency), runs the
+        transform, and:
+          * if the transform made no change, emits -WarnMessage so a silent miss stays visible;
+          * otherwise writes the file back (UTF-8, no BOM) and logs the edit.
+        Collapses the `if (Test-Path $x) { $c = ReadAllText; ...; WriteAllText; Write-Host }` wrapper.
+    .PARAMETER Path
+        File to patch in place. A missing file is skipped (returns $false) unless -Require.
+    .PARAMETER Transform
+        Scriptblock receiving the current file content as its single argument (param($c)) and
+        returning the new content [string].
+    .PARAMETER Marker
+        Optional regex identifying an already-applied edit; when it matches the file is left
+        untouched (mirrors the `if ($text -notmatch 'marker') { ... }` idempotency guard).
+    .PARAMETER WarnMessage
+        Emitted via Write-Warning when the transform did not change the file. Defaults to a generic
+        "no change" note naming the file.
+    .PARAMETER Require
+        Throw if the file does not exist (default: skip missing files quietly).
+    .PARAMETER Description
+        Human label for the success log line (defaults to the file leaf name).
+    .OUTPUTS
+        [bool] $true if the file was modified, else $false.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+        [Parameter(Mandatory)]
+        [scriptblock]$Transform,
+        [string]$Marker = '',
+        [string]$WarnMessage = '',
+        [switch]$Require,
+        [string]$Description = ''
+    )
+    if (-not (Test-Path $Path)) {
+        if ($Require) { throw "Edit-SourceFile: file not found: $Path" }
+        return $false
+    }
+    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
+    $text = [System.IO.File]::ReadAllText($Path)
+    if ($Marker -and ($text -match $Marker)) { return $false }
+    $patched = [string](& $Transform $text)
+    if ($patched -eq $text) {
+        if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
+            $WarnMessage = "$Description : transform made no change; upstream layout may have changed. Verify $Path."
+        }
+        Write-Warning $WarnMessage
+        return $false
+    }
+    [System.IO.File]::WriteAllText($Path, $patched)
+    Write-Host "Patched $Description ($Path)"
     return $true
 }
 
@@ -1358,28 +1418,24 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
                 [System.IO.File]::AppendAllText($dmlTypes, $outOfLine)
                 Write-Host 'Applied [clang-cl DML fix]: out-of-lined AbstractOperatorDesc special members + GetTensors + 4 tensor accessors'
             } else {
-                Write-Host "WARNING: [clang-cl DML fix] anchors not found (ctor=$ctorHit accessors=$accHit gettensors=$gtHit) -- DirectML may fail under clang-cl. Verify $dmlAbstract."
+                Write-Warning "[clang-cl DML fix] anchors not found (ctor=$ctorHit accessors=$accHit gettensors=$gtHit) -- DirectML may fail under clang-cl. Verify $dmlAbstract."
             }
         }
     } else {
-        Write-Host 'NOTE: DirectMLHelpers headers not found -- skipping the clang-cl DML fix (USE_DML build may fail).'
+        Write-Warning 'DirectMLHelpers headers not found -- skipping the clang-cl DML fix (USE_DML build may fail).'
     }
 
     # [clang-cl DML fix #2] MLOperatorAuthorImpl.cpp's CASE_PROTO macro writes `initializer.##Z()`, pasting
     # the `.` punctuator onto the field name (e.g. `.float_data_size`). That is not a valid preprocessing
     # token: MSVC silently tolerates it, clang-cl errors (-Winvalid-token-paste). The `##` is spurious --
     # `initializer.Z()` expands Z normally to the intended `initializer.float_data_size()`. Drop the paste.
+    # Shared read/guard/replace/write idiom -> Invoke-InlineRegexPatch (byte-identical -replace;
+    # a missing file or absent pattern is a Write-Warning, never fatal).
     $dmlAuthorImpl = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\MLOperatorAuthorImpl.cpp"
-    if (Test-Path $dmlAuthorImpl) {
-        $impl = [System.IO.File]::ReadAllText($dmlAuthorImpl)
-        if ($impl -match '\.##Z\(\)') {
-            $impl = $impl -replace '(initializer)\.##Z\(\)', '$1.Z()'
-            [System.IO.File]::WriteAllText($dmlAuthorImpl, $impl)
-            Write-Host 'Applied [clang-cl DML fix #2]: dropped spurious `.##Z` token-paste in MLOperatorAuthorImpl.cpp CASE_PROTO'
-        } else {
-            Write-Host 'NOTE: [clang-cl DML fix #2] `.##Z` token-paste not found in MLOperatorAuthorImpl.cpp (already fixed upstream?) -- skipping.'
-        }
-    }
+    [void](Invoke-InlineRegexPatch -Path $dmlAuthorImpl `
+            -Pattern '(initializer)\.##Z\(\)' -Replacement '$1.Z()' `
+            -Description 'clang-cl DML fix #2 (dropped spurious `.##Z` token-paste in MLOperatorAuthorImpl.cpp CASE_PROTO)' `
+            -WarnMessage '[clang-cl DML fix #2] `.##Z` token-paste not found in MLOperatorAuthorImpl.cpp (already fixed upstream?) -- skipping.')
 
     # [clang-cl DML fix #3] DmlDFT.h and DmlGridSample.h declare `template <typename TConstants, uint32_t TSize>`
     # and deduce TSize from `std::array<ID3D12Resource*, TSize>&`. std::array's size parameter is size_t
@@ -1388,18 +1444,104 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
     # the parameter to size_t so deduction matches (TSize only sizes small local arrays / loop counts).
     $dmlOps = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\Operators"
     foreach ($opHeader in @('DmlDFT.h', 'DmlGridSample.h')) {
-        $opPath = Join-Path $dmlOps $opHeader
-        if (Test-Path $opPath) {
-            $op = [System.IO.File]::ReadAllText($opPath)
-            if ($op -match 'template <typename TConstants, uint32_t TSize>') {
-                $op = $op -replace 'template <typename TConstants, uint32_t TSize>', 'template <typename TConstants, size_t TSize>'
-                [System.IO.File]::WriteAllText($opPath, $op)
-                Write-Host "Applied [clang-cl DML fix #3]: widened Dispatch<TSize> to size_t in $opHeader"
-            } else {
-                Write-Host "NOTE: [clang-cl DML fix #3] uint32_t TSize decl not found in $opHeader (already fixed upstream?) -- skipping."
-            }
-        }
+        [void](Invoke-InlineRegexPatch -Path (Join-Path $dmlOps $opHeader) `
+                -Pattern 'template <typename TConstants, uint32_t TSize>' `
+                -Replacement 'template <typename TConstants, size_t TSize>' `
+                -Description "clang-cl DML fix #3 (widened Dispatch<TSize> to size_t in $opHeader)" `
+                -WarnMessage "[clang-cl DML fix #3] uint32_t TSize decl not found in $opHeader (already fixed upstream?) -- skipping.")
     }
+}
+
+function Copy-SidecarDll {
+    <#
+    .SYNOPSIS
+        Stage a runtime "sidecar" DLL that `cmake --install` misses, next to its consumer.
+    .DESCRIPTION
+        Several libraries here ship a primary DLL that depends at load time on a second DLL the
+        install step does not copy (onnxruntime.dll->DirectML.dll, tvm_runtime.dll->tvm_ffi.dll,
+        onnxruntime-genai.dll->D3D12Core.dll). Missing it => 0xC0000135 STATUS_DLL_NOT_FOUND (or a
+        DML device-init failure) only in the final image. This finds the sidecar under -SearchDir and
+        copies it into the destination, warning (never throwing) if absent so the build still ships.
+
+        Two destination modes:
+          -BesidePrimary <name> -InstallDir <dir>  : copy next to the installed primary DLL (found by
+             recursive search under InstallDir). If the primary is not found, silently no-op (the
+             primary's own build step is responsible for erroring).
+          -Destination <dir>                       : copy into a fixed directory.
+    .PARAMETER SidecarName    Sidecar DLL filename to stage (e.g. 'DirectML.dll').
+    .PARAMETER SearchDir      Root to recursively search for the sidecar.
+    .PARAMETER SidecarFilter  Optional Where-Object filter scriptblock to disambiguate multiple hits
+                              (e.g. the x64 copy of D3D12Core.dll: { $_.Directory.Name -eq 'x64' }).
+    .PARAMETER BesidePrimary  Primary DLL filename; the sidecar is copied into its directory.
+    .PARAMETER InstallDir     Root to recursively search for -BesidePrimary.
+    .PARAMETER Destination    Fixed destination directory (alternative to -BesidePrimary/-InstallDir).
+    .PARAMETER Reason         Appended to the not-found warning (what breaks at runtime).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SidecarName,
+        [Parameter(Mandatory)][string]$SearchDir,
+        [scriptblock]$SidecarFilter,
+        [string]$BesidePrimary,
+        [string]$InstallDir,
+        [string]$Destination,
+        [string]$Reason = 'the dependent DLL may fail to load at runtime'
+    )
+    if ($BesidePrimary) {
+        $primary = Get-ChildItem -Path $InstallDir -Filter $BesidePrimary -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $primary) { return }   # primary absent -> its own build step reports it; nothing to sidecar
+        $Destination = $primary.DirectoryName
+    }
+    if ([string]::IsNullOrWhiteSpace($Destination)) { throw 'Copy-SidecarDll: need -Destination or -BesidePrimary/-InstallDir' }
+
+    $sidecar = Get-ChildItem -Path $SearchDir -Filter $SidecarName -Recurse -File -ErrorAction SilentlyContinue
+    if ($SidecarFilter) { $sidecar = $sidecar | Where-Object $SidecarFilter }
+    $sidecar = $sidecar | Select-Object -First 1
+    if ($sidecar) {
+        Copy-Item -LiteralPath $sidecar.FullName -Destination $Destination -Force
+        Write-Host "Staged $SidecarName ($($sidecar.FullName)) -> $Destination"
+    } else {
+        Write-Warning "$SidecarName not found under $SearchDir -- $Reason"
+    }
+}
+
+function Get-NvccCudaCmakeArgs {
+    <#
+    .SYNOPSIS
+        The nvcc-with-MSVC-host CUDA CMake args shared by the ONNX Runtime and GenAI clang-cl builds.
+    .DESCRIPTION
+        Both builds compile CUDA kernels with nvcc using cl.exe as the host compiler (nvcc rejects
+        clang-cl on Windows) while the C++ TUs stay on clang-cl + lld. This returns the common nvcc
+        block (compiler / MSVC host / arch list / standard / the shared /Zc:preprocessor + CCCL
+        preamble). Library-specific flags stay in the caller: the enable toggle differs by name
+        (`onnxruntime_USE_CUDA` vs `USE_CUDA`), as do TensorRT/cuDNN. The two callers otherwise differ
+        only in CUDA standard (17 vs 20), one caller-specific /wd warning suppression (order-independent
+        vs the shared preamble), and whether CUDA_TOOLKIT_ROOT_DIR is emitted.
+    .PARAMETER CudaRoot         CUDA toolkit root (bin\nvcc.exe underneath).
+    .PARAMETER CudaStandard     '17' (ONNX) or '20' (GenAI: std::span in cuda_topk.cu needs C++20).
+    .PARAMETER ExtraCudaFlags   Caller-specific CUDA_FLAGS tokens, prepended to the shared preamble
+                                (e.g. '-Xcompiler=/wd4067' for ONNX, '-Xcompiler=/wd4996' for GenAI).
+    .PARAMETER IncludeToolkitRoot  Also emit -DCUDA_TOOLKIT_ROOT_DIR (GenAI needs it; ONNX does not).
+    .PARAMETER ArchDecoration   Passed to Get-CudaArchitectureList (default '-real').
+    #>
+    param(
+        [Parameter(Mandatory)][string]$CudaRoot,
+        [Parameter(Mandatory)][ValidateSet('17', '20')][string]$CudaStandard,
+        [string]$ExtraCudaFlags = '',
+        [switch]$IncludeToolkitRoot,
+        [string]$ArchDecoration = '-real'
+    )
+    $clExe = (Get-Command cl.exe -ErrorAction Stop).Source
+    $preamble = '-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING'
+    $cudaFlags = if ($ExtraCudaFlags) { "$ExtraCudaFlags $preamble" } else { $preamble }
+    $nvccArgs = @(
+        "-DCMAKE_CUDA_COMPILER:FILEPATH=$CudaRoot\bin\nvcc.exe"
+        "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$clExe"
+        "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration $ArchDecoration)"
+        "-DCMAKE_CUDA_STANDARD:STRING=$CudaStandard"
+        "-DCMAKE_CUDA_FLAGS:STRING=$cudaFlags"
+    )
+    if ($IncludeToolkitRoot) { $nvccArgs += "-DCUDA_TOOLKIT_ROOT_DIR=$CudaRoot" }
+    return $nvccArgs
 }
 
 Export-ModuleMember -Function @(
@@ -1414,11 +1556,12 @@ Export-ModuleMember -Function @(
     'Resolve-LlvmArchiver',
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
-    'Replace-CppKeywordAlternatives',
+    'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',
     'Invoke-InlineRegexPatch',
     'Add-FileBlockOnce',
+    'Edit-SourceFile',
     'Invoke-NinjaBuildWithRetry',
     'Expand-SourceTarball',
     'Initialize-ExtractedGitRepo',
@@ -1433,8 +1576,10 @@ Export-ModuleMember -Function @(
     'Install-CpythonPip',
     'Invoke-CpythonPip',
     'Copy-BuildArtifact',
+    'Copy-SidecarDll',
     'Remove-MakefileShowIncludes',
     'Get-CudaArchitectureList',
+    'Get-NvccCudaCmakeArgs',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
     'Get-GpuEnvironment',

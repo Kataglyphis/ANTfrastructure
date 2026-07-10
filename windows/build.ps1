@@ -17,7 +17,7 @@
 
     The media stage fans out into three branch images built CONCURRENTLY
     (media-core: ONNX->GenAI->OpenCV->FFmpeg; media-litert: LiteRT->LiteRT-LM;
-    media-tvm: TVM), then fans in via Dockerfile.media (merge + GStreamer).
+    media-tvm: TVM), then fans in via Dockerfile.media-merge-builder (merge + GStreamer).
     Use -SequentialMedia to build the branches one after another on
     memory-constrained hosts.
 
@@ -225,6 +225,15 @@ function Get-DockerBuildArgList {
     return $dockerArgs
 }
 
+function Test-TransientDockerFailure {
+    # Single source of truth for the "is this a transient container-infrastructure failure?"
+    # decision (ttrpc/shim/hcsshim/pipe — see $script:TransientPattern). Used by both the retry-loop
+    # cooldown (Invoke-TransientCooldown) and the concurrent-branch one-shot foreground-retry triage,
+    # so the two never drift.
+    param([string]$Tail)
+    return [bool]($Tail -and ($Tail -match $script:TransientPattern))
+}
+
 function Invoke-TransientCooldown {
     # Shared transient-failure decision for the docker retry loops (Invoke-Stage +
     # Invoke-RunCommitStage). Returns $true when the captured tail looks like a transient
@@ -239,12 +248,44 @@ function Invoke-TransientCooldown {
         [string]$Label = '',
         [int]$CooldownSeconds = 60
     )
-    if ($Attempt -lt $MaxAttempts -and $Tail -match $script:TransientPattern) {
+    if ($Attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $Tail)) {
         Write-Host "[$Label] transient container-infrastructure failure — retry $Attempt/$($MaxAttempts - 1) in ${CooldownSeconds}s" -ForegroundColor Yellow
         Start-Sleep -Seconds $CooldownSeconds
         return $true
     }
     return $false
+}
+
+function Invoke-DockerWithRetry {
+    # Shared docker retry skeleton behind Invoke-Stage (build) and Invoke-RunCommitStage (run+commit).
+    # Runs -Action (returns the exit code to test); on 0 runs -OnSuccess and returns; otherwise reads
+    # the -LogFile tail, runs -OnFailedAttempt (per-attempt cleanup, e.g. `container rm`), then either
+    # cools down + retries (transient) or throws. Callers build -Action/-OnSuccess with
+    # .GetNewClosure() so the scriptblocks capture their function-local vars ($dockerArgs, $runArgs,
+    # $ContainerName, ...) when invoked from here -- a plain scriptblock would not see them.
+    param(
+        [Parameter(Mandatory)] [scriptblock]$Action,   # param($attempt); runs docker, its output streams to the log
+        [Parameter(Mandatory)] [string]$Label,
+        [string]$LogFile,
+        [int]$TailLines = 10,
+        [scriptblock]$OnSuccess,
+        [scriptblock]$OnFailedAttempt,
+        [int]$MaxAttempts = 3
+    )
+    foreach ($attempt in 1..$MaxAttempts) {
+        # Do NOT capture -- let the action's docker output stream through to the console/log (as the
+        # inline loops did); read the native exit code from the global $LASTEXITCODE the docker call set.
+        & $Action $attempt
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -eq 0) {
+            if ($OnSuccess) { & $OnSuccess }
+            return
+        }
+        $tail = if ($LogFile -and (Test-Path $LogFile)) { Get-Content $LogFile -Tail $TailLines | Out-String } else { '' }
+        if ($OnFailedAttempt) { & $OnFailedAttempt }
+        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label) { continue }
+        throw "[$Label] docker step failed (exit $exitCode)"
+    }
 }
 
 function Invoke-Stage {
@@ -258,14 +299,13 @@ function Invoke-Stage {
     # each retry resume at the failed step. Non-transient errors throw immediately.
     $dockerArgs = Get-DockerBuildArgList -Dockerfile $Dockerfile -Tag $Tag -BuildArgs $BuildArgs -ExtraFlags $ExtraFlags
     $stageLog = Join-Path ([System.IO.Path]::GetTempPath()) ("stage-" + [IO.Path]::GetFileName($Dockerfile) + ".log")
-    foreach ($attempt in 1..3) {
+    $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker
+    $action = {
+        param($attempt)
         Write-Host "`n==> docker $($dockerArgs -join ' ')" -ForegroundColor Cyan
-        & $Docker @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog
-        if ($LASTEXITCODE -eq 0) { return }
-        $tail = Get-Content $stageLog -Tail 10 | Out-String
-        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -Label $Dockerfile) { continue }
-        throw "docker build failed for $Dockerfile (exit $LASTEXITCODE)"
-    }
+        & $dockerExe @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog
+    }.GetNewClosure()
+    Invoke-DockerWithRetry -Action $action -Label $Dockerfile -LogFile $stageLog
 }
 
 # Common per-branch args for the media fan-out
@@ -274,7 +314,9 @@ function Get-MediaBranchSpecs {
     @(
         @{
             Name              = 'media-core'
-            Dockerfile        = 'windows/Dockerfile.media-core'            # superseded; kept for parity (media-core is always run+commit)
+            # NB: media-core has no plain `Dockerfile` field — it is ALWAYS built via run+commit
+            # (BuilderDockerfile). Only the aux specs carry a `Dockerfile` for the concurrent 2-CPU
+            # `docker build` path (see Invoke-MediaConcurrent). There is no windows/Dockerfile.media-core.
             BuilderDockerfile = 'windows/Dockerfile.media-core-builder'    # run+commit path (full cores), same as the aux branches
             BuilderTag        = 'local/kataglyphis:windows-media-core-builder'
             ContainerName     = 'kataglyphis-media-core-build'
@@ -359,35 +401,184 @@ function Invoke-RunCommitStage {
     Invoke-Stage -Dockerfile $BuilderDockerfile -Tag $BuilderTag -BuildArgs $BuildArgs
 
     # 2. Heavy work via docker run, then commit; retry the run only on transient infra errors.
+    #    -Action runs the (pre-clean + run) each attempt; -OnSuccess commits + verifies + cleans up;
+    #    -OnFailedAttempt removes the container before the cool-down. Closures capture $runArgs etc.
     $runArgs = @('run', '--isolation', 'hyperv', '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
         '--name', $ContainerName, $BuilderTag) + $RunCommand
-    foreach ($attempt in 1..3) {
-        & $Docker container rm -f $ContainerName 2>&1 | Out-Null
+    $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker
+    $action = {
+        param($attempt)
+        & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
         Write-Host "`n==> [$Label] docker run --isolation hyperv --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
-        if ($OutLog) { & $Docker @runArgs 2>&1 | Tee-Object -FilePath $OutLog }
-        else { & $Docker @runArgs 2>&1 }
-        $runExit = $LASTEXITCODE
-        if ($runExit -eq 0) {
-            & $Docker commit $ContainerName $ResultTag 2>&1 | ForEach-Object { Write-Host $_ }
-            $commitExit = $LASTEXITCODE
-            & $Docker container rm -f $ContainerName 2>&1 | Out-Null
-            if ($commitExit -ne 0) { throw "$Label commit failed (exit $commitExit)" }
-            Write-Host "$Label built via run+commit ($Cpus CPUs) -> $ResultTag" -ForegroundColor Green
-            return
-        }
-        $tail = if ($OutLog -and (Test-Path $OutLog)) { Get-Content $OutLog -Tail 15 | Out-String } else { '' }
-        & $Docker container rm -f $ContainerName 2>&1 | Out-Null
-        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -Label $Label) { continue }
-        throw "$Label compile (docker run) failed (exit $runExit)"
+        if ($OutLog) { & $dockerExe @runArgs 2>&1 | Tee-Object -FilePath $OutLog }
+        else { & $dockerExe @runArgs 2>&1 }
+    }.GetNewClosure()
+    $onSuccess = {
+        & $dockerExe commit $ContainerName $ResultTag 2>&1 | ForEach-Object { Write-Host $_ }
+        $commitExit = $LASTEXITCODE
+        & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
+        if ($commitExit -ne 0) { throw "$Label commit failed (exit $commitExit)" }
+        Write-Host "$Label built via run+commit ($Cpus CPUs) -> $ResultTag" -ForegroundColor Green
+    }.GetNewClosure()
+    $onFailedAttempt = { & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null }.GetNewClosure()
+    Invoke-DockerWithRetry -Action $action -OnSuccess $onSuccess -OnFailedAttempt $onFailedAttempt `
+        -Label $Label -LogFile $OutLog -TailLines 15
+}
+
+function Get-MediaRunCommand {
+    # The `powershell -File C:\temp\scripts\<script> [extra args]` invocation array for a run+commit
+    # container (media branches, toolchain, and the GStreamer merge all use this exact prefix).
+    param(
+        [Parameter(Mandatory)] [string]$Script,
+        [string[]]$ExtraArgs = @()
+    )
+    return @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$Script") + $ExtraArgs
+}
+
+function Invoke-MediaBranchRunCommit {
+    # Build one media branch via the run+commit path at full cores. The Invoke-RunCommitStage splat
+    # was identical across media-core (both schedulers) and the sequential aux branches -- only the
+    # spec, memory budget, build args, and log differed -- so all three call sites route through here.
+    param(
+        [Parameter(Mandatory)] $Spec,
+        [Parameter(Mandatory)] [int]$MemoryGb,
+        [Parameter(Mandatory)] [hashtable]$BuildArgs,
+        [Parameter(Mandatory)] [string]$OutLog
+    )
+    Invoke-RunCommitStage `
+        -BuilderDockerfile $Spec.BuilderDockerfile -BuilderTag $Spec.BuilderTag `
+        -ResultTag $Spec.Tag -ContainerName $Spec.ContainerName `
+        -RunCommand (Get-MediaRunCommand $Spec.RunScript) `
+        -Cpus $MediaCoreCpus -MemoryGb $MemoryGb -BuildArgs $BuildArgs -Label $Spec.Name -OutLog $OutLog
+}
+
+function Show-BranchFailureLog {
+    # Dump the tail of a failed media branch's log(s) under a red header (shared by both schedulers).
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [string]$Detail = '',
+        [string]$Message = '',
+        [string[]]$Logs = @(),
+        [int]$TailLines = 40
+    )
+    Write-Host "`n=== [$Name] FAILED $Detail — last $TailLines log lines ===" -ForegroundColor Red
+    if ($Message) { Write-Host "  $Message" }
+    foreach ($log in $Logs) {
+        if ($log -and (Test-Path $log)) { Get-Content $log -Tail $TailLines | ForEach-Object { Write-Host "  $_" } }
     }
 }
 
+function Wait-BranchProcess {
+    # Block until every background aux-branch process has exited, emitting a per-branch running/done
+    # heartbeat at most every $HeartbeatSeconds so a multi-hour concurrent fan-out is never silent.
+    # $Procs is the @{ Spec; Proc; Log; ErrLog } list built by Invoke-MediaConcurrent (empty is fine).
+    param(
+        [array]$Procs = @(),
+        [int]$HeartbeatSeconds = 120
+    )
+    $lastBeat = Get-Date
+    while (@($Procs | Where-Object { -not $_.Proc.HasExited }).Count -gt 0) {
+        if (((Get-Date) - $lastBeat).TotalSeconds -ge $HeartbeatSeconds) {
+            $status = ($Procs | ForEach-Object {
+                $state = if ($_.Proc.HasExited) { "done(exit $($_.Proc.ExitCode))" } else { 'running' }
+                "$($_.Spec.Name)=$state"
+            }) -join ', '
+            Write-Host "[media aux $(Get-Date -Format HH:mm:ss)] $status"
+            $lastBeat = Get-Date
+        }
+        Start-Sleep -Seconds 10
+    }
+}
+
+function Invoke-MediaSequential {
+    # Sequential fan-out: media-core first (whole RAM budget -> most ONNX jobs), then each aux branch,
+    # ALL via run+commit at full cores. Invoke-RunCommitStage throws on failure, so a failed branch
+    # aborts the chain directly -- no accumulation needed. media-core is already committed before the
+    # aux branches run, so the aux compiles get the full MediaMemoryGb (not the smaller AuxMemoryGb):
+    # parallelism is memory-bound (jobs = min(cpu-count, MEMORY_LIMIT_GB / perJob)), so more RAM -> more
+    # ninja jobs. e.g. j2 @ 2cpu/8g  ->  ~j19 @ 32cpu/39g on this host.
+    param($CoreSpec, $AuxSpecs, $CoreLog, $LogDir)
+    if ($CoreSpec) {
+        Invoke-MediaBranchRunCommit -Spec $CoreSpec -MemoryGb $CoreSpec.MemoryGb -BuildArgs $CoreSpec.BuildArgs -OutLog $CoreLog
+    }
+    foreach ($spec in $AuxSpecs) {
+        # media-core is already committed, so the aux compiles get the full MediaMemoryGb budget.
+        $auxArgs = $spec.BuildArgs.Clone()
+        $auxArgs['MEMORY_LIMIT_GB'] = $MediaMemoryGb
+        Invoke-MediaBranchRunCommit -Spec $spec -MemoryGb $MediaMemoryGb -BuildArgs $auxArgs -OutLog (Join-Path $LogDir "$($spec.Name).log")
+    }
+}
+
+function Invoke-MediaConcurrent {
+    # Concurrent fan-out: launch the aux branches (docker build, 2 CPUs each) in the background, then
+    # run media-core (run+commit, N CPUs) in the foreground -- it is the long pole, so the aux builds
+    # finish underneath it. Aux transient infra failures (container never started) get one foreground
+    # retry via Invoke-Stage (layer cache resumes at the failed step); everything else is collected,
+    # reported via Show-BranchFailureLog, and thrown.
+    param($CoreSpec, $AuxSpecs, $CoreLog, $LogDir)
+    $procs = @()
+    foreach ($spec in $AuxSpecs) {
+        # Stagger container creation: launching several builds in the same instant
+        # can trip hcsshim/containerd ("failed to create shim task: ttrpc: closed").
+        Start-Sleep -Seconds 20
+        $argList = Get-DockerBuildArgList -Dockerfile $spec.Dockerfile -Tag $spec.Tag `
+            -BuildArgs $spec.BuildArgs -ExtraFlags @('--memory', "$($spec.MemoryGb)g")
+        $outLog = Join-Path $LogDir "$($spec.Name).log"
+        $errLog = Join-Path $LogDir "$($spec.Name).err.log"
+        Write-Host "==> [$($spec.Name)] docker $($argList -join ' ')" -ForegroundColor Cyan
+        Write-Host "    log: $outLog"
+        $proc = Start-Process -FilePath $Docker -ArgumentList $argList `
+            -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -WindowStyle Hidden
+        $procs += @{ Spec = $spec; Proc = $proc; Log = $outLog; ErrLog = $errLog }
+    }
+
+    $coreFailed = $false; $coreError = $null
+    if ($CoreSpec) {
+        Write-Host "`n==> [media-core] run+commit on $MediaCoreCpus CPUs; $($procs.Count) aux branch(es) building concurrently (log: $CoreLog)" -ForegroundColor Cyan
+        try {
+            Invoke-MediaBranchRunCommit -Spec $CoreSpec -MemoryGb $CoreSpec.MemoryGb -BuildArgs $CoreSpec.BuildArgs -OutLog $CoreLog
+        } catch { $coreFailed = $true; $coreError = $_ }
+    }
+    elseif ($procs.Count -gt 0) {
+        Write-Host "`n==> media-core not selected; waiting on $($procs.Count) aux branch(es) (2-CPU docker build)" -ForegroundColor Cyan
+    }
+
+    # Wait for the aux branches to finish (media-core already done in the foreground).
+    Wait-BranchProcess -Procs $procs
+
+    # Aux triage: one foreground transient-retry via Invoke-Stage; non-transient failures collected.
+    $stillFailed = @()
+    foreach ($f in @($procs | Where-Object { $_.Proc.ExitCode -ne 0 })) {
+        $logText = @($f.Log, $f.ErrLog) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Tail 10 } | Out-String
+        if (Test-TransientDockerFailure -Tail $logText) {
+            Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure — retrying in the foreground" -ForegroundColor Yellow
+            try {
+                Invoke-Stage -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag `
+                    -BuildArgs $f.Spec.BuildArgs -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
+            } catch { $stillFailed += $f }
+        } else {
+            $stillFailed += $f
+        }
+    }
+
+    $failNames = @()
+    foreach ($f in $stillFailed) {
+        Show-BranchFailureLog -Name $f.Spec.Name -Detail "(exit $($f.Proc.ExitCode))" -Logs @($f.Log, $f.ErrLog)
+        $failNames += $f.Spec.Name
+    }
+    if ($coreFailed) {
+        Show-BranchFailureLog -Name 'media-core' -Detail '(run+commit)' -Message "$coreError" -Logs @($CoreLog)
+        $failNames += 'media-core'
+    }
+    if ($failNames.Count -gt 0) { throw "media branch build(s) failed: $($failNames -join ', ')" }
+}
+
 function Invoke-MediaBranches {
-    $specs    = Get-MediaBranchSpecs
-    # -MediaBranches subsets the fan-out (rebuild one branch after a source fix without
-    # recompiling the others). The merge that follows still fans in the unselected branches
-    # from their existing windows-media-<branch> images.
-    $specs    = @($specs | Where-Object { $MediaBranches -contains $_.Name })
+    # Dispatcher: resolve + subset the branch specs, then hand off to the sequential or concurrent
+    # scheduler. -MediaBranches subsets the fan-out (rebuild one branch after a source fix without
+    # recompiling the others); the merge that follows still fans in the unselected branches from
+    # their existing windows-media-<branch> images.
+    $specs = @((Get-MediaBranchSpecs) | Where-Object { $MediaBranches -contains $_.Name })
     if ($specs.Count -eq 0) { throw "no media branches selected (-MediaBranches: $($MediaBranches -join ', '))" }
     if ($specs.Count -lt 3) { Write-Host "==> media fan-out limited to: $(@($specs | ForEach-Object { $_.Name }) -join ', ')" -ForegroundColor Yellow }
     $coreSpec = $specs | Where-Object { $_.Name -eq 'media-core' } | Select-Object -First 1
@@ -397,120 +588,9 @@ function Invoke-MediaBranches {
     $coreLog  = Join-Path $logDir 'media-core.log'
 
     if ($script:UseSequentialMedia) {
-        if ($coreSpec) {
-            Invoke-RunCommitStage `
-                -BuilderDockerfile $coreSpec.BuilderDockerfile -BuilderTag $coreSpec.BuilderTag `
-                -ResultTag $coreSpec.Tag -ContainerName $coreSpec.ContainerName `
-                -RunCommand @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$($coreSpec.RunScript)") `
-                -Cpus $MediaCoreCpus -MemoryGb $coreSpec.MemoryGb -BuildArgs $coreSpec.BuildArgs -Label $coreSpec.Name -OutLog $coreLog
-        }
-        # Aux branches (litert, tvm) also via run+commit at FULL cores + RAM. In
-        # sequential mode media-core is already committed, so the whole CPU/RAM budget
-        # is free — no reason to leave the aux compiles pinned to the 2-CPU `docker
-        # build` cap. Parallelism stays memory-bound (jobs = min(cpu-count,
-        # MEMORY_LIMIT_GB / perJob)), so we forward MediaMemoryGb (not AuxMemoryGb):
-        # e.g. j2 @ 2cpu/8g  ->  ~j19 @ 32cpu/39g on this host.
-        foreach ($spec in $auxSpecs) {
-            $auxArgs = $spec.BuildArgs.Clone()
-            $auxArgs['MEMORY_LIMIT_GB'] = $MediaMemoryGb
-            $auxLog = Join-Path $logDir "$($spec.Name).log"
-            Invoke-RunCommitStage `
-                -BuilderDockerfile $spec.BuilderDockerfile `
-                -BuilderTag        $spec.BuilderTag `
-                -ResultTag         $spec.Tag `
-                -ContainerName     $spec.ContainerName `
-                -RunCommand        @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$($spec.RunScript)") `
-                -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb -BuildArgs $auxArgs -Label $spec.Name -OutLog $auxLog
-        }
-        return
-    }
-
-    # Concurrent: launch the aux branches (docker build, 2 CPUs each) in the
-    # background, then run media-core (run+commit, N CPUs) in the foreground — it is
-    # the long pole, so the aux builds finish underneath it.
-    $procs = @()
-    foreach ($spec in $auxSpecs) {
-        # Stagger container creation: launching several builds in the same instant
-        # can trip hcsshim/containerd ("failed to create shim task: ttrpc: closed").
-        Start-Sleep -Seconds 20
-        $argList = Get-DockerBuildArgList -Dockerfile $spec.Dockerfile -Tag $spec.Tag `
-            -BuildArgs $spec.BuildArgs -ExtraFlags @('--memory', "$($spec.MemoryGb)g")
-        $outLog = Join-Path $logDir "$($spec.Name).log"
-        $errLog = Join-Path $logDir "$($spec.Name).err.log"
-        Write-Host "==> [$($spec.Name)] docker $($argList -join ' ')" -ForegroundColor Cyan
-        Write-Host "    log: $outLog"
-        $proc = Start-Process -FilePath $Docker -ArgumentList $argList `
-            -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -WindowStyle Hidden
-        $procs += @{ Spec = $spec; Proc = $proc; Log = $outLog; ErrLog = $errLog }
-    }
-
-    $coreFailed = $false; $coreError = $null
-    if ($coreSpec) {
-        Write-Host "`n==> [media-core] run+commit on $MediaCoreCpus CPUs; $($procs.Count) aux branch(es) building concurrently (log: $coreLog)" -ForegroundColor Cyan
-        try {
-            Invoke-RunCommitStage `
-                -BuilderDockerfile $coreSpec.BuilderDockerfile -BuilderTag $coreSpec.BuilderTag `
-                -ResultTag $coreSpec.Tag -ContainerName $coreSpec.ContainerName `
-                -RunCommand @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$($coreSpec.RunScript)") `
-                -Cpus $MediaCoreCpus -MemoryGb $coreSpec.MemoryGb -BuildArgs $coreSpec.BuildArgs -Label $coreSpec.Name -OutLog $coreLog
-        } catch { $coreFailed = $true; $coreError = $_ }
-    }
-    elseif ($procs.Count -gt 0) {
-        Write-Host "`n==> media-core not selected; waiting on $($procs.Count) aux branch(es) (2-CPU docker build)" -ForegroundColor Cyan
-    }
-
-    # Wait for the aux branches to finish (media-core already done in the foreground).
-    $lastBeat = Get-Date
-    while (@($procs | Where-Object { -not $_.Proc.HasExited }).Count -gt 0) {
-        if (((Get-Date) - $lastBeat).TotalSeconds -ge 120) {
-            $status = ($procs | ForEach-Object {
-                $state = if ($_.Proc.HasExited) { "done(exit $($_.Proc.ExitCode))" } else { 'running' }
-                "$($_.Spec.Name)=$state"
-            }) -join ', '
-            Write-Host "[media aux $(Get-Date -Format HH:mm:ss)] $status"
-            $lastBeat = Get-Date
-        }
-        Start-Sleep -Seconds 10
-    }
-    $failed = @($procs | Where-Object { $_.Proc.ExitCode -ne 0 })
-
-    # Transient-infrastructure failures (container never started) get a foreground
-    # retry via Invoke-Stage — layer caching resumes at the failed step, so this is
-    # cheap, and Invoke-Stage already owns the cool-down + transient-vs-real retry
-    # loop. Non-transient failures are collected and reported without a retry.
-    $stillFailed = @()
-    foreach ($f in $failed) {
-        $logText = @($f.Log, $f.ErrLog) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Tail 10 } | Out-String
-        if ($logText -match $script:TransientPattern) {
-            Write-Host "`n[$($f.Spec.Name)] transient container-infrastructure failure — retrying in the foreground" -ForegroundColor Yellow
-            try {
-                Invoke-Stage -Dockerfile $f.Spec.Dockerfile -Tag $f.Spec.Tag `
-                    -BuildArgs $f.Spec.BuildArgs -ExtraFlags @('--memory', "$($f.Spec.MemoryGb)g")
-            } catch {
-                $stillFailed += $f
-            }
-        } else {
-            $stillFailed += $f
-        }
-    }
-
-    foreach ($f in $stillFailed) {
-        Write-Host "`n=== [$($f.Spec.Name)] FAILED (exit $($f.Proc.ExitCode)) — last 40 log lines ===" -ForegroundColor Red
-        foreach ($log in @($f.Log, $f.ErrLog)) {
-            if (Test-Path $log) { Get-Content $log -Tail 40 | ForEach-Object { Write-Host "  $_" } }
-        }
-    }
-
-    $failNames = @()
-    if ($coreFailed) {
-        Write-Host "`n=== [media-core] FAILED (run+commit) ===" -ForegroundColor Red
-        Write-Host "  $coreError"
-        if (Test-Path $coreLog) { Get-Content $coreLog -Tail 40 | ForEach-Object { Write-Host "  $_" } }
-        $failNames += 'media-core'
-    }
-    $failNames += @($stillFailed | ForEach-Object { $_.Spec.Name })
-    if ($failNames.Count -gt 0) {
-        throw "media branch build(s) failed: $($failNames -join ', ')"
+        Invoke-MediaSequential -CoreSpec $coreSpec -AuxSpecs $auxSpecs -CoreLog $coreLog -LogDir $logDir
+    } else {
+        Invoke-MediaConcurrent -CoreSpec $coreSpec -AuxSpecs $auxSpecs -CoreLog $coreLog -LogDir $logDir
     }
     Write-Host 'All media branches built.' -ForegroundColor Green
 }
@@ -571,7 +651,7 @@ try {
             -BuilderTag    'local/kataglyphis:windows-toolchain-builder' `
             -ResultTag     'local/kataglyphis:windows-toolchain' `
             -ContainerName 'kataglyphis-toolchain-build' `
-            -RunCommand    @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'C:\temp\scripts\build-toolchain-all.ps1') `
+            -RunCommand    (Get-MediaRunCommand 'build-toolchain-all.ps1') `
             -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
             -BuildArgs @{
                 BASE_IMAGE     = 'local/kataglyphis:windows-sdk'
@@ -599,7 +679,7 @@ try {
             -BuilderTag    'local/kataglyphis:windows-media-merge-builder' `
             -ResultTag     'local/kataglyphis:windows-media' `
             -ContainerName 'kataglyphis-media-merge-build' `
-            -RunCommand    @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'C:\temp\scripts\build-gstreamer-from-source.ps1', '-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs') `
+            -RunCommand    (Get-MediaRunCommand 'build-gstreamer-from-source.ps1' -ExtraArgs @('-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs')) `
             -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
             -BuildArgs @{
                 BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
@@ -621,7 +701,8 @@ try {
 
     if ($Stages -contains 'final') {
         $vcsRef = ''
-        try { $vcsRef = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $vcsRef = '' } } catch { }
+        # VCS ref is best-effort provenance metadata: any failure (no git, not a repo) -> empty, never fatal.
+        try { $vcsRef = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $vcsRef = '' } } catch { $vcsRef = '' }
         Invoke-Stage -Dockerfile 'windows/Dockerfile' -Tag $FinalTag -BuildArgs @{
             BASE_IMAGE = 'local/kataglyphis:windows-media'
             BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')

@@ -86,7 +86,7 @@ function Assert-CommandExists {
     # parameter shadows this one under PowerShell's dynamic scoping — without the
     # closure this evaluated Get-Command "Command 'git' on PATH" and always failed.
     $commandName = $Name
-    Assert-Test -Name "Command '$Name' on PATH" -Condition { (Get-Command $commandName -ErrorAction SilentlyContinue) -ne $null }.GetNewClosure() -FailMessage "$Name not found on PATH"
+    Assert-Test -Name "Command '$Name' on PATH" -Condition { $null -ne (Get-Command $commandName -ErrorAction SilentlyContinue) }.GetNewClosure() -FailMessage "$Name not found on PATH"
 }
 
 function Assert-FileExists {

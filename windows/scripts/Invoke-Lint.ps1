@@ -55,9 +55,13 @@ $analyzerFindings = @()
 $analyzerModule = Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
 if ($analyzerModule) {
     Import-Module PSScriptAnalyzer -Force
-    $params = @{ Path = $targets.FullName; Recurse = $false }
-    if (Test-Path $settings) { $params['Settings'] = $settings }
-    $analyzerFindings = @(Invoke-ScriptAnalyzer @params)
+    # Invoke-ScriptAnalyzer -Path takes a SINGLE path (an array throws "cannot convert Object[] to
+    # String"), so analyze each target file and aggregate.
+    foreach ($t in $targets) {
+        $params = @{ Path = $t.FullName }
+        if (Test-Path $settings) { $params['Settings'] = $settings }
+        $analyzerFindings += @(Invoke-ScriptAnalyzer @params)
+    }
     $errs = @($analyzerFindings | Where-Object { $_.Severity -eq 'Error' })
     $warns = @($analyzerFindings | Where-Object { $_.Severity -eq 'Warning' })
     $color = if ($errs.Count -gt 0) { 'Red' } elseif ($warns.Count -gt 0) { 'Yellow' } else { 'Green' }

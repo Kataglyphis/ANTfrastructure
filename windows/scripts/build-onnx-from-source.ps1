@@ -30,11 +30,18 @@ $ortInstallDir = "$InstallDir\lib\onnxruntime-source"
 $bytes = [System.IO.File]::ReadAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc")
 [System.IO.File]::WriteAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc", [byte[]]@($bytes | Where-Object { $_ -le 127 }))
 
-# -- DirectML EP clang-cl fixes (3 source patches; needed because we build ONNX with clang-cl + USE_DML=ON) --
-# Extracted to the module so the (long, delicate) patch bodies live in one reviewable place. See
-# Invoke-OnnxDmlClangClPatch for the full rationale of each fix (#1 incomplete-type out-lining,
-# #2 `.##Z` token-paste, #3 Dispatch<size_t>). All guarded/idempotent; warn-not-throw on anchor drift.
-Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir
+# -- DirectML EP clang-cl fixes (needed because we build ONNX with clang-cl + USE_DML=ON) --
+# Applied via a reviewable, upstreamable .patch (003-dml-clangcl-compat.patch). The delicate inline regex
+# patcher (Invoke-OnnxDmlClangClPatch) stays as a drift fallback: it is EOL/context-tolerant (\r?\n anchors,
+# warn-not-throw), so if a future onnxruntime bump shifts the anchors and the static .patch stops applying,
+# the build self-heals instead of failing. See that function for the full rationale of each fix
+# (#1 incomplete-type out-lining, #2 `.##Z` token-paste, #3 Dispatch<size_t>).
+try {
+    Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\003-dml-clangcl-compat.patch') -SourceDir $SourceDir -IgnoreWhitespace
+} catch {
+    Write-Host '003-dml-clangcl-compat.patch did not apply cleanly -- falling back to inline regex patcher'
+    Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir
+}
 
 $py = Initialize-ToolchainPythonEnvironment
 
@@ -69,14 +76,14 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     }
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
         # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back
-        # to the generic Replace-CppKeywordAlternatives helper against the two softmax source files.
+        # to the generic Edit-CppKeywordAlternatives helper against the two softmax source files.
         try {
             Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir -IgnoreWhitespace
         } catch {
             Write-Host "001-softmax-clangcl-keywords.patch did not apply cleanly -- falling back to keyword-alternatives in softmax sources"
             foreach ($sf in @('softmax.cc', 'softmax.h')) {
                 $sfp = Join-Path $SourceDir 'onnxruntime\core\providers\cuda\math' $sf
-                if (Test-Path $sfp) { Replace-CppKeywordAlternatives -Path $sfp }
+                if (Test-Path $sfp) { Edit-CppKeywordAlternatives -Path $sfp }
             }
         }
 
@@ -91,11 +98,8 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     } else {
         $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
     }
-    $gpuArgs += "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaRoot\bin\nvcc.exe"
-    $gpuArgs += "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$((Get-Command cl.exe -ErrorAction Stop).Source)"
-    $gpuArgs += '-DCMAKE_CUDA_STANDARD:STRING=17'
-    $gpuArgs += "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration '-real')"
-    $gpuArgs += "-DCMAKE_CUDA_FLAGS:STRING=-Xcompiler=/wd4067 -Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING"
+    # nvcc host = MSVC cl.exe (nvcc rejects clang-cl); C++17; /wd4067 is ORT-specific. Shared nvcc block.
+    $gpuArgs += Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '17' -ExtraCudaFlags '-Xcompiler=/wd4067'
     $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
     $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnRoot\lib\x64", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
@@ -124,13 +128,13 @@ Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $o
 #   * CUTLASS is a CMake-fetched third-party dep; the fetched version's SHA varies
 #     with onnxruntime's `cutlass-src` ExternalProject pointer. A static .patch
 #     against a pinned tag would silently rot when the pinned SHA changes, so
-#     the `Replace-CppKeywordAlternatives` helper walks the fetched tree and
+#     the `Edit-CppKeywordAlternatives` helper walks the fetched tree and
 #     the `_udiv128->udiv128` substitution targets `cutlass/uint128.h` directly.
 if ($env:GPU_TYPE -eq 'nvidia') {
     # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keyword alternatives.
     $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
     if (Test-Path $cutlassInclude) {
-        Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object { Replace-CppKeywordAlternatives -Path $_.FullName }
+        Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object { Edit-CppKeywordAlternatives -Path $_.FullName }
     }
     # CUTLASS uint128: clang-cl lacks the MSVC-only `_udiv128` intrinsic.
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
@@ -161,16 +165,9 @@ Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Inst
 # --install does not stage that redist, so a DML session would fail (0xC0000135) in the final image.
 # Copy it next to the installed onnxruntime.dll (mirrors the tvm_ffi.dll staging). Must run BEFORE
 # Remove-SourceBuildTree deletes the build tree. Verified by the smoke-test DmlExecutionProvider probe.
-$installedOrtDll = Get-ChildItem -Path $ortInstallDir -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($installedOrtDll) {
-    $dmlDll = Get-ChildItem -Path $SourceDir -Filter 'DirectML.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($dmlDll) {
-        Copy-Item $dmlDll.FullName -Destination $installedOrtDll.DirectoryName -Force
-        Write-Host "Staged DirectML.dll ($($dmlDll.FullName)) -> $($installedOrtDll.DirectoryName)"
-    } else {
-        Write-Host 'WARNING: DirectML.dll not found under build tree -- DML EP may fail to load at runtime'
-    }
-}
+Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
+    -BesidePrimary 'onnxruntime.dll' -InstallDir $ortInstallDir `
+    -Reason 'the DirectML EP may fail to load at runtime (0xC0000135)'
 
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='

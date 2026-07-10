@@ -328,13 +328,11 @@ Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC + gemmlowp MSVC flags from c
 # REQUIRED)` near the bottom. A static .patch would rot; the `-replace` form is
 # the canonical representation. See docs/windows-builds.md ?Patches.
 $runtimeProtoCmake = Join-Path $SourceDir 'runtime\proto\CMakeLists.txt'
-if (Test-Path $runtimeProtoCmake) {
-    $content = [System.IO.File]::ReadAllText($runtimeProtoCmake)
-    $content = $content -replace 'protobuf_generate\([^)]*\)', '# protobuf_generate disabled (vcpkg)'
-    $content = $content -replace 'find_package\(Protobuf', 'find_package(Protobuf QUIET'
-    [System.IO.File]::WriteAllText($runtimeProtoCmake, $content)
-    Write-Host 'Patched runtime/proto/CMakeLists.txt before configure'
-}
+[void](Edit-SourceFile -Path $runtimeProtoCmake -Description 'runtime/proto/CMakeLists.txt before configure' -Transform {
+    param($c)
+    $c = $c -replace 'protobuf_generate\([^)]*\)', '# protobuf_generate disabled (vcpkg)'
+    $c -replace 'find_package\(Protobuf', 'find_package(Protobuf QUIET'
+})
 
 # Inline patch: correct a typo in LiteRT-LM's own cmake/modules/fetch_content.cmake.
 # It sets `MINJA_EXAMPLE_ENABLE OFF` to skip minja's example programs, but minja's
@@ -345,12 +343,10 @@ if (Test-Path $runtimeProtoCmake) {
 # The examples are not part of the LiteRT-LM runtime -- fix the option name so they
 # are actually disabled. \b keeps the correctly-spelled ENABLED untouched (idempotent).
 $fetchContentCmake = Join-Path $SourceDir 'cmake\modules\fetch_content.cmake'
-if (Test-Path $fetchContentCmake) {
-    $fc = [System.IO.File]::ReadAllText($fetchContentCmake)
-    $fc = $fc -replace 'MINJA_EXAMPLE_ENABLE\b', 'MINJA_EXAMPLE_ENABLED'
-    [System.IO.File]::WriteAllText($fetchContentCmake, $fc)
-    Write-Host 'Patched fetch_content.cmake: MINJA_EXAMPLE_ENABLE -> MINJA_EXAMPLE_ENABLED (disable minja example programs)'
-}
+[void](Edit-SourceFile -Path $fetchContentCmake -Description 'fetch_content.cmake: MINJA_EXAMPLE_ENABLE -> MINJA_EXAMPLE_ENABLED (disable minja example programs)' -Transform {
+    param($c)
+    $c -replace 'MINJA_EXAMPLE_ENABLE\b', 'MINJA_EXAMPLE_ENABLED'
+})
 
 # Inline patch: fix the Flatbuffers schema-compile step for NATIVE Windows builds.
 # LiteRT-LM's CMakeLists.txt unconditionally sets LITERTLM_HOST_FLATC to a "host
@@ -364,21 +360,17 @@ if (Test-Path $fetchContentCmake) {
 # before the ExternalProject_Add_Step captures the variable (cmake is whitespace-
 # insensitive, so indentation of the injected block does not matter).
 $flatbuffersCmake = Join-Path $SourceDir 'cmake\packages\flatbuffers\flatbuffers.cmake'
-if (Test-Path $flatbuffersCmake) {
-    $fbText = [System.IO.File]::ReadAllText($flatbuffersCmake)
-    if ($fbText -notmatch 'native win flatc') {
-        $anchor = 'ExternalProject_Add_Step(flatbuffers_external compile_schemas'
-        $inject = @(
-            'if(WIN32)',
-            'set(FLATC_EXECUTABLE "${FLATBUFFERS_INSTALL_PREFIX}/bin/flatc.exe" CACHE INTERNAL "native win flatc" FORCE)',
-            'endif()',
-            ''
-        ) -join "`n"
-        $fbText = $fbText.Replace($anchor, $inject + $anchor)
-        [System.IO.File]::WriteAllText($flatbuffersCmake, $fbText)
-        Write-Host 'Patched flatbuffers.cmake: force native flatc.exe for compile_schemas (WIN32)'
-    }
-}
+[void](Edit-SourceFile -Path $flatbuffersCmake -Marker 'native win flatc' -Description 'flatbuffers.cmake: force native flatc.exe for compile_schemas (WIN32)' -Transform {
+    param($c)
+    $anchor = 'ExternalProject_Add_Step(flatbuffers_external compile_schemas'
+    $inject = @(
+        'if(WIN32)',
+        'set(FLATC_EXECUTABLE "${FLATBUFFERS_INSTALL_PREFIX}/bin/flatc.exe" CACHE INTERNAL "native win flatc" FORCE)',
+        'endif()',
+        ''
+    ) -join "`n"
+    $c.Replace($anchor, $inject + $anchor)
+})
 
 # Inline patch: force the inner litert_lm build to CMAKE_BUILD_TYPE=Release. The
 # top-level superbuild (CMakeLists.txt) forwards LITERTLM_HOST_* to the inner
@@ -393,16 +385,12 @@ if (Test-Path $flatbuffersCmake) {
 # build type into the inner litert_lm ExternalProject's CMAKE_ARGS (anchored on the
 # HOST_FLATC_BIN_DIR line, which is unique to that block, not the prebuild block).
 $superCmake = Join-Path $SourceDir 'CMakeLists.txt'
-if (Test-Path $superCmake) {
-    $sc = [System.IO.File]::ReadAllText($superCmake)
-    if ($sc -notmatch 'force-release-buildtype') {
-        $btAnchor = '"-DLITERTLM_HOST_FLATC_BIN_DIR=${LITERTLM_HOST_FLATC_BIN_DIR}"'
-        $btRepl = $btAnchor + "`n        `"-DCMAKE_BUILD_TYPE=Release`"  # force-release-buildtype"
-        $sc = $sc.Replace($btAnchor, $btRepl)
-        [System.IO.File]::WriteAllText($superCmake, $sc)
-        Write-Host 'Patched CMakeLists.txt: force inner litert_lm CMAKE_BUILD_TYPE=Release'
-    }
-}
+[void](Edit-SourceFile -Path $superCmake -Marker 'force-release-buildtype' -Description 'CMakeLists.txt: force inner litert_lm CMAKE_BUILD_TYPE=Release' -Transform {
+    param($c)
+    $btAnchor = '"-DLITERTLM_HOST_FLATC_BIN_DIR=${LITERTLM_HOST_FLATC_BIN_DIR}"'
+    $btRepl = $btAnchor + "`n        `"-DCMAKE_BUILD_TYPE=Release`"  # force-release-buildtype"
+    $c.Replace($btAnchor, $btRepl)
+})
 
 # Inline patch: skip building protobuf's upb generator TOOLS (protoc-gen-upb /
 # protoc-gen-upbdefs). They fail to link under clang++/lld-link -- undefined abseil
@@ -453,19 +441,12 @@ endif()
 # libupb.a still build (their own BUILD_* options), and BUILD_PROTOC_BINARIES=OFF also
 # skips the protoc-binaries install block outright.
 $protobufPkg = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf.cmake'
-if ((Test-Path $protobufPkg) -and ((Get-Content -Raw $protobufPkg) -notmatch 'WITH_PROTOC')) {
-    $pk = [System.IO.File]::ReadAllText($protobufPkg)
+[void](Edit-SourceFile -Path $protobufPkg -Marker 'WITH_PROTOC' -Description 'protobuf.cmake: -DWITH_PROTOC=host protoc (skip building protoc.exe; abseil link failure)' -WarnMessage 'protobuf.cmake anchor for WITH_PROTOC not found; protoc.exe may still build' -Transform {
+    param($c)
     $anchor = '-Dprotobuf_BUILD_PROTOBUF_BINARIES=ON'
-    if ($pk.Contains($anchor)) {
-        $repl = $anchor + "`n        " + '-DWITH_PROTOC=${LITERTLM_HOST_PROTOC}'
-        $pk = $pk.Replace($anchor, $repl)
-        [System.IO.File]::WriteAllText($protobufPkg, $pk)
-        Write-Host 'Patched protobuf.cmake: -DWITH_PROTOC=host protoc (skip building protoc.exe; abseil link failure)'
-    }
-    else {
-        Write-Host 'WARNING: protobuf.cmake anchor for WITH_PROTOC not found; protoc.exe may still build'
-    }
-}
+    $repl = $anchor + "`n        " + '-DWITH_PROTOC=${LITERTLM_HOST_PROTOC}'
+    $c.Replace($anchor, $repl)
+})
 
 # Inline patch: strip -fPIC from sentencepiece's src/CMakeLists.txt. clang++ targets
 # x86_64-pc-windows-msvc but reports compiler id Clang (not MSVC), so sentencepiece's
@@ -574,11 +555,10 @@ message(STATUS "[LiteRTLM-winfix] tokenizers-cpp rust staticlib name -> tokenize
 # them after TFLite's protoc via OBJECT_DEPENDS (target-order-independent, since
 # profiling_info_proto is configured after tflite_profiling).
 $tfliteShims = Join-Path $SourceDir 'cmake\packages\tflite\tflite_shims.cmake'
-if ((Test-Path $tfliteShims) -and ((Get-Content -Raw $tfliteShims) -notmatch 'LiteRTLM-winfix tflite-profiling-proto')) {
-    $ts = [System.IO.File]::ReadAllText($tfliteShims)
+[void](Edit-SourceFile -Path $tfliteShims -Marker 'LiteRTLM-winfix tflite-profiling-proto' -Description 'tflite_shims.cmake: drop redundant tflite_profiling proto gen + exclude Android-only atrace_profiler.cc' -WarnMessage 'tflite_shims.cmake generate_protobuf(tflite_profiling) anchor not found' -Transform {
+    param($c)
     $tsAnchor = 'generate_protobuf(tflite_profiling ${TENSORFLOW_SOURCE_DIR})'
-    if ($ts.Contains($tsAnchor)) {
-        $tsRepl = @'
+    $tsRepl = @'
 # [LiteRTLM-winfix tflite-profiling-proto] TFLite's profiling/proto/CMakeLists already emits
 # profiling_info.pb.cc / model_runtime_info.pb.cc into {profiling,model_runtime}_info_proto,
 # which the aggregate links; regenerating them here produced a second ninja rule for the same
@@ -586,19 +566,13 @@ if ((Test-Path $tfliteShims) -and ((Get-Content -Raw $tfliteShims) -notmatch 'Li
 # Depend on TFLite's generated headers instead of recompiling the protos into tflite_profiling.
 set_source_files_properties(${PROFILING_SRCS} PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/tensorflow/lite/profiling/proto/profiling_info.pb.h;${CMAKE_CURRENT_BINARY_DIR}/tensorflow/lite/profiling/proto/model_runtime_info.pb.h")
 '@
-        $ts = $ts.Replace($tsAnchor, $tsRepl)
-        # tflite_profiling globs profiling/*.cc and only drops *_test.cc, but atrace_profiler.cc
-        # is Android-only (includes <dlfcn.h> to dlopen libandroid) and has no Windows path, so
-        # it fails "'dlfcn.h' file not found". Exclude it too (platform_profiler.cc already
-        # compiles to the no-op backend on non-Android/Apple).
-        $ts = $ts.Replace('EXCLUDE REGEX "_test\\.cc$"', 'EXCLUDE REGEX "(_test|atrace_profiler)\\.cc$"')
-        [System.IO.File]::WriteAllText($tfliteShims, $ts)
-        Write-Host 'Patched tflite_shims.cmake: drop redundant tflite_profiling proto gen + exclude Android-only atrace_profiler.cc'
-    }
-    else {
-        Write-Host 'WARNING: tflite_shims.cmake generate_protobuf(tflite_profiling) anchor not found'
-    }
-}
+    $c = $c.Replace($tsAnchor, $tsRepl)
+    # tflite_profiling globs profiling/*.cc and only drops *_test.cc, but atrace_profiler.cc
+    # is Android-only (includes <dlfcn.h> to dlopen libandroid) and has no Windows path, so
+    # it fails "'dlfcn.h' file not found". Exclude it too (platform_profiler.cc already
+    # compiles to the no-op backend on non-Android/Apple).
+    $c.Replace('EXCLUDE REGEX "_test\\.cc$"', 'EXCLUDE REGEX "(_test|atrace_profiler)\\.cc$"')
+})
 
 # tensorflow/lite/core/model_building.h friends its same-namespace helper classes with
 # unqualified `friend class Helper;` / `friend class Tensor;`. clang++ (GNU driver, windows-msvc
@@ -638,18 +612,11 @@ endif()
 # global CXX flags (litert.cmake) add -isystem for tflite/absl/protobuf and NOT flatbuffers,
 # so it fails "'flatbuffers/flexbuffers.h' file not found". Add the flatbuffers install include.
 $litertCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
-if ((Test-Path $litertCmake) -and ((Get-Content -Raw $litertCmake) -notmatch '-isystem \$\{FLATBUFFERS_INCLUDE_DIR\}')) {
-    $lc = [System.IO.File]::ReadAllText($litertCmake)
+[void](Edit-SourceFile -Path $litertCmake -Marker '-isystem \$\{FLATBUFFERS_INCLUDE_DIR\}' -Description 'litert.cmake: add flatbuffers install include to litert CXX flags' -WarnMessage 'litert.cmake CXX flags anchor not found; flexbuffers.h may be missing' -Transform {
+    param($c)
     $lcAnchor = '-isystem ${PROTOBUF_INSTALL_PREFIX}/include -w"'
-    if ($lc.Contains($lcAnchor)) {
-        $lc = $lc.Replace($lcAnchor, '-isystem ${PROTOBUF_INSTALL_PREFIX}/include -isystem ${FLATBUFFERS_INCLUDE_DIR} -w"')
-        [System.IO.File]::WriteAllText($litertCmake, $lc)
-        Write-Host 'Patched litert.cmake: add flatbuffers install include to litert CXX flags'
-    }
-    else {
-        Write-Host 'WARNING: litert.cmake CXX flags anchor not found; flexbuffers.h may be missing'
-    }
-}
+    $c.Replace($lcAnchor, '-isystem ${PROTOBUF_INSTALL_PREFIX}/include -isystem ${FLATBUFFERS_INCLUDE_DIR} -w"')
+})
 
 $litertPatcher = Join-Path $SourceDir 'cmake\packages\litert\litert_patcher.cmake'
 $dlPatch = @'
@@ -714,19 +681,12 @@ message(STATUS "[LiteRTLM-winfix] litert tool exes (run_model/analyze_model/appl
 # guard just that call (the surrounding Duplicate()/Release() keep their side effects). This is
 # the top-level litert-lm repo (no ExternalProject git-checkout), so patch the source directly.
 $execUtils = Join-Path $SourceDir 'runtime\executor\litert_compiled_model_executor_utils.cc'
-if ((Test-Path $execUtils) -and ((Get-Content -Raw $execUtils) -notmatch 'LiteRTLM-winfix.*SetWeightCacheFd')) {
-    $eu = [System.IO.File]::ReadAllText($execUtils)
+[void](Edit-SourceFile -Path $execUtils -Marker 'LiteRTLM-winfix.*SetWeightCacheFd' -Description 'litert_compiled_model_executor_utils.cc: guard SetWeightCacheFd on Windows' -WarnMessage 'SetWeightCacheFd anchor not found in executor utils' -Transform {
+    param($c)
     $euAnchor = 'gpu_options.SetWeightCacheFd(fd);'
-    if ($eu.Contains($euAnchor)) {
-        $euRepl = "#if !defined(_WIN32)`n      gpu_options.SetWeightCacheFd(fd);`n#else`n      (void)fd;  // [LiteRTLM-winfix] litert::GpuOptions has no fd-based weight cache on Windows`n#endif"
-        $eu = $eu.Replace($euAnchor, $euRepl)
-        [System.IO.File]::WriteAllText($execUtils, $eu)
-        Write-Host 'Patched litert_compiled_model_executor_utils.cc: guard SetWeightCacheFd on Windows'
-    }
-    else {
-        Write-Host 'WARNING: SetWeightCacheFd anchor not found in executor utils'
-    }
-}
+    $euRepl = "#if !defined(_WIN32)`n      gpu_options.SetWeightCacheFd(fd);`n#else`n      (void)fd;  // [LiteRTLM-winfix] litert::GpuOptions has no fd-based weight cache on Windows`n#endif"
+    $c.Replace($euAnchor, $euRepl)
+})
 
 # Same story in runtime/executor/llm_executor_settings_utils.cc: it calls litert::GpuOptions /
 # litert::RuntimeOptions setters (SetKernelBatchSize, SetDisableDelegateClustering) that the
@@ -806,18 +766,16 @@ Get-ChildItem (Join-Path $SourceDir 'runtime\executor') -Filter '*_litert_compil
 # GENERATED_SRC_DIR, so every file must exist before configure; runtime/core/CMakeLists.txt is
 # litert-lm's own file (no ExternalProject git-reset), so patch it directly.
 $coreCmake = Join-Path $SourceDir 'runtime\core\CMakeLists.txt'
-if ((Test-Path $coreCmake) -and ((Get-Content -Raw $coreCmake) -notmatch 'LiteRTLM-winfix')) {
-    $cc = [System.IO.File]::ReadAllText($coreCmake)
+[void](Edit-SourceFile -Path $coreCmake -Marker 'LiteRTLM-winfix' -Description 'runtime/core/CMakeLists.txt: point runtime_core_engine_impl at engine_advanced_impl.cc' -Transform {
+    param($c)
     # Redirect only the first engine target (runtime_core_engine_impl, NOT ..._cpu_only) to the
     # shipped engine implementation. Regex is tolerant of CRLF/LF + indentation; the space before
     # STATIC disambiguates from the cpu_only target whose name shares the runtime_core_engine_impl
     # prefix, and \s+ spans the newline between the target and its source argument.
-    $cc = [regex]::Replace($cc,
+    [regex]::Replace($c,
         '(runtime_core_engine_impl STATIC\s+)engine_impl\.cc',
         '${1}engine_advanced_impl.cc  # [LiteRTLM-winfix] engine_impl.cc stripped from OSS; real engine is engine_advanced_impl.cc')
-    [System.IO.File]::WriteAllText($coreCmake, $cc)
-    Write-Host 'Patched runtime/core/CMakeLists.txt: point runtime_core_engine_impl at engine_advanced_impl.cc'
-}
+})
 
 $strippedStubs = @{
     'runtime\core\session_basic.cc'   = 'session_basic'
@@ -846,20 +804,18 @@ namespace litert::lm::winfix_${tag}_placeholder {}
 # Bazel-vs-CMake gap in the OSS export -> the symbols are never compiled and litert_lm_main fails to
 # link. Add the source to runtime_engine_litert_lm_lib (a local lib that IS in the aggregate).
 $engineCmake = Join-Path $SourceDir 'runtime\engine\CMakeLists.txt'
-if ((Test-Path $engineCmake) -and ((Get-Content -Raw $engineCmake) -notmatch 'LiteRTLM-winfix cpu_affinity')) {
-    $ec = [System.IO.File]::ReadAllText($engineCmake)
+[void](Edit-SourceFile -Path $engineCmake -Marker 'LiteRTLM-winfix cpu_affinity' -Description 'runtime/engine/CMakeLists.txt: compile cpu_affinity_utils.cc + 6 orphan sources into runtime_engine_litert_lm_lib' -Transform {
+    param($c)
     # Same Bazel-vs-CMake gap for a batch of other sources that exist in the tree but are listed in NO
     # CMakeLists (channel_util, image_preprocessor_utils, the VLM/Gemma4 data processors, litert_util,
     # llg_tool_call_utils) -> their symbols (ExtractChannelContent, GetEnvironment, AppendToolRules,
     # FastVlmDataProcessor::Create, ...) are undefined at the litert_lm_main link. Compile them into
     # the same engine lib (relative to runtime/engine/); it carries the broad LITERTLM_DEPS + include
     # paths, and it is in the aggregate that litert_lm_main links.
-    $ec = [regex]::Replace($ec,
+    [regex]::Replace($c,
         '(add_litertlm_library\(runtime_engine_litert_lm_lib STATIC\s+litert_lm_lib\.cc)',
         "`$1`n  cpu_affinity_utils.cc  # [LiteRTLM-winfix cpu_affinity] compiled by Bazel but omitted from the CMake target`n  ../conversation/channel_util.cc  # [LiteRTLM-winfix orphans]`n  ../components/preprocessor/image_preprocessor_utils.cc`n  ../conversation/model_data_processor/fastvlm_data_processor.cc`n  ../conversation/model_data_processor/gemma4_data_processor.cc`n  ../util/litert_util.cc`n  ../components/constrained_decoding/llg_tool_call_utils.cc`n  ../components/model_resources_streaming.cc`n  ../core/session_advanced.cc`n  ../executor/litert/kv_cache.cc`n  ../executor/llm_litert_npu_compiled_model_executor_utils.cc`n  ../framework/execution_queue.cc`n  ../framework/resource_management/context_handler/context_handler.cc`n  ../framework/resource_management/resource_manager.cc`n  ../framework/resource_management/serial_execution_manager.cc`n  ../framework/resource_management/threaded_execution_manager.cc`n  ../framework/resource_management/utils/resource_manager_utils.cc`n  ../util/data_stream.cc`n  ../util/file_data_stream.cc`n  ../util/litert_lm_streaming_loader.cc`n  ../util/log_tensor_buffer.cc")
-    [System.IO.File]::WriteAllText($engineCmake, $ec)
-    Write-Host 'Patched runtime/engine/CMakeLists.txt: compile cpu_affinity_utils.cc + 6 orphan sources into runtime_engine_litert_lm_lib'
-}
+})
 
 # litert_util.cc AND resource_manager.cc both set EnvironmentOptions::Tag::kMinLoggerSeverity, which
 # the litert core pinned by litert-lm v0.13.1 does not expose (the litert-lm source tree is ahead of
@@ -925,13 +881,11 @@ $pragmaBlock = @'
 # _ITERATOR_DEBUG_LEVEL=2 while every other lib (Release/NDEBUG) is 0 -> lld-link /failifmismatch
 # rejects re2.lib vs sentencepiece_train.lib. Inject Release + dynamic CRT (same as the other EPs).
 $re2Cmake = Join-Path $SourceDir 'cmake\packages\re2\re2.cmake'
-if ((Test-Path $re2Cmake) -and ((Get-Content -Raw $re2Cmake) -notmatch 'LiteRTLM-winfix re2-idl')) {
-    $r2 = [System.IO.File]::ReadAllText($re2Cmake)
+[void](Edit-SourceFile -Path $re2Cmake -Marker 'LiteRTLM-winfix re2-idl' -Description 're2.cmake: force Release/NDEBUG + dynamic CRT (fix _ITERATOR_DEBUG_LEVEL mismatch)' -Transform {
+    param($c)
     $inject = "CMAKE_ARGS`n        -DCMAKE_BUILD_TYPE=" + '${CMAKE_BUILD_TYPE}' + "  # [LiteRTLM-winfix re2-idl] NDEBUG -> _ITERATOR_DEBUG_LEVEL=0 to match the rest`n        -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL"
-    $r2 = $r2.Replace('CMAKE_ARGS', $inject)
-    [System.IO.File]::WriteAllText($re2Cmake, $r2)
-    Write-Host 'Patched re2.cmake: force Release/NDEBUG + dynamic CRT (fix _ITERATOR_DEBUG_LEVEL mismatch)'
-}
+    $c.Replace('CMAKE_ARGS', $inject)
+})
 
 # cmake/modules/fetch_content.cmake builds ANTLR's antlr4_static with WITH_STATIC_CRT defaulting ON,
 # which forces that target's MSVC_RUNTIME_LIBRARY to the STATIC CRT (/MT -> MT_StaticRelease) while
@@ -940,15 +894,13 @@ if ((Test-Path $re2Cmake) -and ((Get-Content -Raw $re2Cmake) -notmatch 'LiteRTLM
 # litert_lm_main link, lld-link's /failifmismatch rejects the mixed RuntimeLibrary. Force
 # WITH_STATIC_CRT OFF so antlr inherits the same dynamic CRT as the rest.
 $fetchContent = Join-Path $SourceDir 'cmake\modules\fetch_content.cmake'
-if ((Test-Path $fetchContent) -and ((Get-Content -Raw $fetchContent) -notmatch 'LiteRTLM-winfix WITH_STATIC_CRT')) {
-    $fc = [System.IO.File]::ReadAllText($fetchContent)
-    $fc = $fc.Replace(
+[void](Edit-SourceFile -Path $fetchContent -Marker 'LiteRTLM-winfix WITH_STATIC_CRT' -Description 'fetch_content.cmake: force antlr WITH_STATIC_CRT OFF (dynamic CRT to match)' -Transform {
+    param($c)
+    $c.Replace(
         'set(ANTLR_BUILD_STATIC ON)',
         'set(ANTLR_BUILD_STATIC ON)
   set(WITH_STATIC_CRT OFF CACHE BOOL "" FORCE)  # [LiteRTLM-winfix WITH_STATIC_CRT] match the dynamic CRT (/MD) of the rest; avoids lld-link /failifmismatch')
-    [System.IO.File]::WriteAllText($fetchContent, $fc)
-    Write-Host 'Patched fetch_content.cmake: force antlr WITH_STATIC_CRT OFF (dynamic CRT to match)'
-}
+})
 
 # cmake/packages/litert_lm/CMakeLists.txt assembles litert_lm_main's link spec
 # (LITERTLM_UNIFIED_LINK_SPEC) with a branch on CMAKE_CXX_COMPILER_ID: the "Clang|GNU" branch emits
@@ -961,12 +913,12 @@ if ((Test-Path $fetchContent) -and ((Get-Content -Raw $fetchContent) -notmatch '
 # Windows to the MSVC branch regardless of compiler-id: drop WIN32 from the Clang|GNU branch and add
 # it to the MSVC branch (anchored to the link-spec block so other MSVC logic is untouched).
 $litertLmPkg = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
-if ((Test-Path $litertLmPkg) -and ((Get-Content -Raw $litertLmPkg) -notmatch 'LiteRTLM-winfix link-spec')) {
-    $lp = [System.IO.File]::ReadAllText($litertLmPkg)
-    $lp = [regex]::Replace($lp,
+[void](Edit-SourceFile -Path $litertLmPkg -Marker 'LiteRTLM-winfix link-spec' -Description 'litert_lm/CMakeLists.txt: route Windows clang++/lld-link to the MSVC /WHOLEARCHIVE link spec (-Wl, prefixed)' -Transform {
+    param($c)
+    $c = [regex]::Replace($c,
         'if\(CMAKE_CXX_COMPILER_ID MATCHES "Clang\|GNU"\)(\s*if\(APPLE\))',
         'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)  # [LiteRTLM-winfix link-spec] lld-link ignores GNU --whole-archive/--start-group; route Windows to the MSVC branch$1')
-    $lp = [regex]::Replace($lp,
+    $c = [regex]::Replace($c,
         'elseif\(MSVC\)(\s*#\s*Windows Linker)',
         'elseif(MSVC OR WIN32)$1')
     # The MSVC branch's flags are raw link.exe syntax (/FORCE:MULTIPLE, /WHOLEARCHIVE) added via
@@ -976,11 +928,9 @@ if ((Test-Path $litertLmPkg) -and ((Get-Content -Raw $litertLmPkg) -notmatch 'Li
     # lld-link as linker flags instead (the GNU-branch items pass through precisely because they lead
     # with '-'). /WHOLEARCHIVE (no arg) force-includes every following archive, which is what resolves
     # the abseil circular deps + static registrars on Windows.
-    $lp = $lp.Replace('set(_LITERTLM_LINK_MULTIDEF "/FORCE:MULTIPLE")', 'set(_LITERTLM_LINK_MULTIDEF "-Wl,/FORCE:MULTIPLE")')
-    $lp = $lp.Replace('set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")', 'set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")')
-    [System.IO.File]::WriteAllText($litertLmPkg, $lp)
-    Write-Host 'Patched litert_lm/CMakeLists.txt: route Windows clang++/lld-link to the MSVC /WHOLEARCHIVE link spec (-Wl, prefixed)'
-}
+    $c = $c.Replace('set(_LITERTLM_LINK_MULTIDEF "/FORCE:MULTIPLE")', 'set(_LITERTLM_LINK_MULTIDEF "-Wl,/FORCE:MULTIPLE")')
+    $c.Replace('set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")', 'set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")')
+})
 
 # [LiteRTLM-winfix clean-link] Make ninja link litert_lm_main.exe cleanly IN ONE PASS (no post-ninja
 # manual relink). Three independent defects converge at this one link, all fixed in the CMake target:
@@ -1237,7 +1187,6 @@ $litertCmakeDir = Join-Path $litertInstallDir 'cmake'
 if (-not (Test-Path $litertCmakeDir)) {
     $litertCmakeDir = Join-Path $litertInstallDir 'lib\cmake\LiteRT'
 }
-$litertIncludeDir = Join-Path $litertInstallDir 'include'
 $gpuEnv = Get-GpuEnvironment
 
 $cmakeExtra = @(
@@ -1271,7 +1220,6 @@ New-Item -Path $protoInstallInclude -ItemType Directory -Force | Out-Null
 Copy-Item "$vcpkgInclude\*" $protoInstallInclude -Recurse -Force -ErrorAction SilentlyContinue
 
 $litertBuildDir = Join-Path $buildDir 'litert_lm\build'
-$stampDir = Join-Path $buildDir 'litert_lm\stamps'
 $llvmAr = (Get-Command llvm-ar.exe -ErrorAction Stop).Source
 $ninja = (Get-Command ninja.exe -ErrorAction Stop).Source
 
@@ -1306,12 +1254,12 @@ if (Test-Path $buildNinjaFile) {
             if (-not (Test-Path $aPath)) {
                 $parent = Split-Path $aPath -Parent
                 if (-not [string]::IsNullOrWhiteSpace($parent) -and -not (Test-Path $parent)) {
-                    try { $null = New-Item -Path $parent -ItemType Directory -Force -ErrorAction SilentlyContinue } catch { }
+                    try { $null = New-Item -Path $parent -ItemType Directory -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "stub parent dir best-effort skip: $_" }
                 }
                 try {
                     $null = & $llvmAr rcs $aPath -- 2>&1
                     $stubCount++
-                } catch { }
+                } catch { Write-Verbose "stub archive best-effort skip: $_" }
             }
         }
     }
