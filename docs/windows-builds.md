@@ -248,6 +248,61 @@ To test a hypothetical newer *matching-build* base image, pass `-Base <image>`.
 Baseline as of Docker 29.5.3 / containerd 2.3.1 / host build 26200 with
 `servercore:ltsc2025`: **BUG PRESENT**.
 
+### GPU acceleration in containers (DirectML on the host GPU)
+
+On Windows, **GPU acceleration in containers is DirectX-only** — Direct3D 12 and
+everything layered on it, which includes **DirectML** (the ONNX `DmlExecutionProvider`
+and onnxruntime-genai's DML path). CUDA/TensorRT cannot be GPU-accelerated in a
+Windows container. On this host that is exactly the point: the machine has an **AMD
+Radeon RX 9070 XT** (+ iGPU) and **no NVIDIA GPU**, so DirectML — being
+vendor-agnostic — is the *only* GPU path. (The CUDA/TensorRT EPs are still built and
+smoke-checked for availability, but they have no device to run on here.)
+
+Running DirectML on the physical GPU **inside a container** requires all of:
+
+1. **Process isolation** — Hyper-V-isolated containers get **no** GPU. (The default
+   isolation on this host is `hyperv`, so you must pass `--isolation process`.)
+2. **The DirectX GPU device**, attached with the **exact** device interface class GUID:
+   `--device class/5B45201D-F2F2-4F3B-85BB-30FF1F953599`. A wrong variant is *silently
+   accepted* by `docker run` but matches no device, so the container falls back to the
+   WARP software renderer with no error.
+3. **A base-image OS build that matches the host build.** Basic process isolation
+   tolerates skew (a `26100` image runs on a `26200` host), but GPU **driver-store
+   injection does not** — `hcs::CreateComputeSystem` fails with *"The system cannot
+   find the path specified"* when the builds differ. This is the **same** client-host
+   (`26200` / 25H2) vs Server base image (`servercore:ltsc2025` = `26100`) skew that
+   breaks `docker build --isolation process` layer commits.
+
+**Current status on this host: BLOCKED by the build skew.** The GPUs *are* GPU-PV
+partitionable (`Get-VMHostPartitionableGpu` lists both AMD adapters), process
+isolation works, and the DirectML runtime is built correctly — but GPU device
+assignment fails at `CreateComputeSystem` because the `ltsc2025` (`26100`) base does
+not match the host (`26200`), and no public client `26200` base image exists to
+rebuild against. A DXGI enumeration inside the (correctly-flagged) container therefore
+sees only `Microsoft Basic Render Driver` (WARP), zero hardware adapters.
+
+To retire the block: rebuild the base on a `servercore`/`nanoserver` tag whose build
+equals the host, **or** run the image on a host whose build equals the image
+(`26100`, e.g. a Windows Server 2025 host). Until then, **DirectML on the AMD GPU
+still works fine _outside_ containers** — run the source-built ORT / GenAI binaries
+directly on the bare host and the `DmlExecutionProvider` selects the RX 9070 XT.
+
+Re-check after any Docker / containerd / hcsshim / Windows / base-image / GPU-driver
+upgrade with the self-contained probe under `windows/diagnostics/`:
+
+```powershell
+.\windows\diagnostics\test-gpu-passthrough.ps1
+```
+
+It prints host/image builds and partitionable GPUs, runs a process-isolation control,
+attaches the GPU device, compiles + runs a DXGI adapter enumerator inside the
+container, and gives a verdict: **PASSTHROUGH WORKS** (a HARDWARE adapter is visible),
+**BLOCKED** (build-skew `CreateComputeSystem` failure), or **DEVICE-NOT-INJECTED**
+(started but only WARP). Note the DML probes in `smoke-test-container.ps1` validate
+that the provider is *built and registered* (`GetAvailableProviders` → `dml=1`, plus
+the x64 `D3D12Core.dll` PE-machine check); they do **not** create a device, so they
+pass under either isolation regardless of whether a hardware adapter is present.
+
 ### Rust toolchain (scoop only — never rustup)
 
 Rust is provisioned **exclusively via scoop** (`setup-rust-toolchain.ps1` runs
