@@ -312,10 +312,49 @@ fix8_push_retry_2026_07() {
   fi
 }
 
+fix9_riscv_isaspec_and_noise_2026_07() {
+  echo "--- Fix 9: riscv64 ISA-spec pin (A2) + torch-less sentinel (A3) + benign-noise classifiers (B2) ---"
+  local gcc="${REPO_ROOT}/linux/scripts/02-toolchain/build-gcc.sh"
+  local venv="${REPO_ROOT}/linux/scripts/06-packaging/setup-torch-venv.sh"
+  local rw="${REPO_ROOT}/linux/scripts/03-media/runtime/repair-wheels.sh"
+  local swap="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
+
+  # A2: build-gcc.sh pins the riscv64 ISA spec so the shipped native GCC's
+  # default -march stays assembler-compatible. Assert BOTH the riscv64 case arm
+  # and the --with-isa-spec flag with its 20191213 default survive together.
+  if grep -qE '^[[:space:]]*riscv64-\*\)' "${gcc}" && \
+     grep -q -- '--with-isa-spec=' "${gcc}" && \
+     grep -q 'RISCV_GCC_ISA_SPEC-20191213' "${gcc}"; then
+    pass "build-gcc.sh pins riscv64 --with-isa-spec (default 20191213) (A2)"
+  else
+    fail "build-gcc.sh lost the riscv64 ISA-spec pin (A2 regression)"
+  fi
+
+  # A3: the riscv64 torch-wheel fallback drops a loud sentinel the runtime smoke
+  # keys on -- a silently torch-less image must never look healthy.
+  if grep -qF '.torch-missing' "${venv}"; then
+    pass "setup-torch-venv.sh writes the /opt/venv/.torch-missing sentinel (A3)"
+  else
+    fail "setup-torch-venv.sh lost the torch-less sentinel (A3 regression)"
+  fi
+
+  # B2: expected build noise stays classified as NOTE, not surfaced as failure.
+  if grep -q 'too-recent versioned symbols' "${rw}"; then
+    pass "repair-wheels.sh classifies benign auditwheel glibc mismatch (B2)"
+  else
+    fail "repair-wheels.sh lost the benign-auditwheel classifier (B2 regression)"
+  fi
+  if grep -q 'invalid -march=' "${swap}"; then
+    pass "swap-native-gcc.sh classifies benign riscv64 -march skew (B2)"
+  else
+    fail "swap-native-gcc.sh lost the benign -march classifier (B2 regression)"
+  fi
+}
+
 echo "=== Critical Fixes Regression Tests ==="
 echo ""
 
-FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07 fix8_push_retry_2026_07)
+FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07 fix8_push_retry_2026_07 fix9_riscv_isaspec_and_noise_2026_07)
 for _fix_fn in "${FIX_FUNCS[@]}"; do
   "${_fix_fn}"
   echo ""
