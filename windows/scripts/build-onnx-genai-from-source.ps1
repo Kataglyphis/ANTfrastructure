@@ -110,7 +110,7 @@ Write-Host "Using MSVC tools: $msvcVersionDir"
 # not the cloned source tree. The MSVC tools version floats (resolved via
 # Get-MsvcToolsRoot), so a static .patch against a pinned MSVC build would only
 # work for one toolset version. The `-replace` form tolerates surrounding-text
-# drift across MSVC v143/v145 releases. See docs/windows-builds.md ?Patches.
+# drift across MSVC v143/v145 releases. See docs/windows-builds.md "Source Patch Policy".
 
 # Neutralize MSVC STL's clang-incompatible static_asserts. yvals_core.h defines
 #   _EMIT_STL_ERROR(NUMBER, MESSAGE) -> static_assert(false, ...)

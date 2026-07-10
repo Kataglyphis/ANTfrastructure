@@ -18,25 +18,28 @@ This repository applies a **patch-first** policy to upstream sources on the Wind
 
 3. **Multi-file conditional substitutions** — LiteRT's `proto/CMakeLists.txt` disable loop (`build-litert-from-source.ps1`) walks ~17 files under `$tfliteSrc` and skips files whose content already lacks `protobuf_generate|protoc`. A static `.patch` against a pinned LiteRT tag cannot express the per-file predicate and would only cover a fraction of the proto directories. Similarly, the OpenCV mlas `<cstring>` prepend loop (`build-opencv-from-source.ps1`) walks every `3rdparty/mlas/**/*.cpp` and skips files that already include `<cstring>` — same canonical-form rationale.
 
-4. **Installed toolchain headers (not the upstream source tree)** — `build-onnx-genai-from-source.ps1` patches the installed MSVC STL `experimental/coroutine` and `yvals_core.h`. The MSVC toolset version floats (resolved via `Get-MsvcToolsRoot`), so a static `.patch` against a pinned MSVC build would only work for one toolset version.
+4. **Installed toolchain headers (not the upstream source tree)** — `build-onnx-genai-from-source.ps1` patches the installed MSVC STL `yvals_core.h` (wrapping the single `_EMIT_STL_ERROR` define in `#ifdef __clang__`, which no-ops *every* STL error code — STL1009/1010/1011, etc. — under clang-cl, so no per-header patch such as one for `<experimental/coroutine>` is needed). The MSVC toolset version floats (resolved via `Get-MsvcToolsRoot`), so a static `.patch` against a pinned MSVC build would only work for one toolset version; the edit is guarded by a drift-assertion that fails the build loudly if a future toolset changes the macro's format.
 
 5. **Binary byte-filter edits** — `onnxruntime.rc` non-ASCII byte stripping (`-le 127`) is a byte filter, not a textual diff. Not expressible as unified diff.
 
-6. **Single-file regex edits on aggressively-changing-generated-as-schema upstream files** — Two single-file regex edits are kept inline *not* because a `.patch` couldn't be authored today, but because the upstream context drifts enough between minor releases (`protobuf_generate(...)` argument shape on LiteRT-LM's `runtime/proto/CMakeLists.txt`; `add_extra_compiler_option(-include cstring)` plus surrounding CMake add-to-flags lines on OpenCV's `cmake/OpenCVCompilerOptions.cmake`) that a static `.patch` would need re-generation on every tag bump:
-   - `build-litert-lm-from-source.ps1:44-48` — `runtime/proto/CMakeLists.txt` regex substitutions
-   - `build-opencv-from-source.ps1:48-52` — `cmake/OpenCVCompilerOptions.cmake` `-include cstring` removal
+6. **Single-file regex edits on aggressively-changing generated-as-schema upstream files** — The OpenCV `add_extra_compiler_option(-include cstring)` removal (plus surrounding CMake add-to-flags lines on `cmake/OpenCVCompilerOptions.cmake`) is kept inline *not* because a `.patch` couldn't be authored today, but because the upstream context drifts enough between minor releases that a static `.patch` would need re-generation on every tag bump:
+   - `build-opencv-from-source.ps1` — `cmake/OpenCVCompilerOptions.cmake` `-include cstring` removal
 
 Every inline substitution in a build script carries a `# Inline patch (kept inline, NOT a .patch file):` block comment explaining the canonical-form rationale. The current `.patch` inventory:
 
 | Component | Patch | Upstream target | Purpose |
 |-----------|-------|-----------------|---------|
 | FFmpeg | `001-allow-msys-builds.patch` | `configure` | Replace `die` with `echo` for MSYS2 build env |
-| FFmpeg | `002-replacement-makedef.patch` | `makedef` | Read `.ver` directly (avoid Windows cmdline length limit) |
 | GStreamer | `001-ges-commit-rename.patch` | `subprojects/gst-editing-services/ges/ges-validate.c` | `#define _commit ges__commit` to dodge `-FIio.h` macro collision |
-| ONNX Runtime | `001-softmax-clangcl-keywords.patch` | `core/providers/cuda/math/softmax.{cc,h}` | Replace `and`/`or`/`not` keyword alternatives with `&&`/`||`/`!` for clang-cl |
+| ONNX Runtime | `001-softmax-clangcl-keywords.patch` | `core/providers/cuda/math/softmax.cc` | Change the one real ISO-646 `or` → `\|\|` on the dispatch `if` (clang-cl in MS-compat mode treats `or` as an identifier); comments left as upstream |
 | ONNX Runtime | `002-disable-cuda-pch.patch` | `cmake/onnxruntime_providers_cuda.cmake` | Disable CUDA EP `target_precompile_headers` (CUDA 13.x CCCL broken with clang-cl) |
+| ONNX Runtime | `003-dml-clangcl-compat.patch` | DirectML EP (5 files under `core/providers/dml/`) | clang-cl + `USE_DML=ON`: out-of-line `AbstractOperatorDesc` members past `OperatorField` (incomplete-type), drop the `.##Z` token-paste, widen `Dispatch<uint32_t>` → `size_t` |
+| OpenCV | `001-cmake-clang-cl-compat.patch` | `CMakeLists.txt` + `cmake/FindONNX.cmake` | CMP0146/CMP0148 OLD→NEW + clang-cl/CUDA detection compat |
+| OpenCV (contrib) | `001-cudev-windows-llp64.patch` | `cudev/.../common.hpp` | Add `ulong`/`longlong`/`ulonglong` typedefs for Windows LLP64 |
 
-When bumping any upstream version, audit these `.patch` files (`git apply --reverse --check` against the new tag) before letting the orchestrator loose. If a patch no longer applies, regenerate with `git diff` against the new tag and update the inventory above.
+`ffmpeg/makedef` is **not** a patch — it is a whole-file replacement script staged over FFmpeg's `makedef` (a byte swap, not a diff), so it is not in the table above.
+
+When bumping any upstream version, audit these `.patch` files before letting the orchestrator loose: run `windows/scripts/tests/Test-PatchesApplyClean.ps1`, which clones each pinned upstream and runs the exact `git apply --check` the build uses (see `windows/scripts/patches/README.md`). If a patch no longer applies, regenerate with `git diff` against the new tag and update the inventory above.
 
 The Windows container build uses [Stevedore](https://github.com/slonopotamus/stevedore) (a Docker distribution for Windows Containers) and is split into staged images:
 
@@ -45,7 +48,7 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 - `windows/Dockerfile.toolchain` builds CPython 3.14 from source (matching the canonical versions.env).
 - The **media stage fans out into three branch images built concurrently** by `windows/build.ps1`, then fans in:
   - **media-core** (built via `Dockerfile.media-core-builder` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.14.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `master` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
-  - `windows/Dockerfile.media-litert` — LiteRT 2.1.5 → LiteRT-LM 0.13.1 (independent of ONNX).
+  - `windows/Dockerfile.media-litert` — LiteRT 2.1.6 → LiteRT-LM 0.13.1 (independent of ONNX).
   - `windows/Dockerfile.media-tvm` — TVM 0.25.0 (independent; installs its Python wheel into the source-built CPython).
   - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, then GStreamer 1.29.2 built via `build-gstreamer-from-source.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
 - `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).

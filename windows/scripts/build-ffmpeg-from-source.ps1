@@ -224,7 +224,7 @@ Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
 # (probe results, lib list, OS detection), so a static .patch cannot match
 # reliably across builds. The `-replace` form targets invariant sub-sequences
 # (`-showIncludes`, `EXTRALIBS-lib*=`) that configure writes the same way for
-# the msvc toolchain. See docs/windows-builds.md ?Patches.
+# the msvc toolchain. See docs/windows-builds.md "Source Patch Policy".
 $ffbuildDir = Join-Path $srcDir 'ffbuild'
 Get-ChildItem -Path $ffbuildDir -Filter '*.mak' -ErrorAction SilentlyContinue | ForEach-Object {
     Remove-MakefileShowIncludes -Path $_.FullName

@@ -28,7 +28,7 @@ $tfliteSrc = Join-Path $SourceDir 'tflite'
 # `protobuf_generate|protoc`) drives a per-file conditional stub. A static .patch
 # against a pinned tag would silently rot when the proto set changes. Removed the
 # orphaned windows/scripts/patches/litert/001-disable-proto-generation.patch (it
-# only covered 2 of the ~15 files). See docs/windows-builds.md ?Patches.
+# only covered 2 of the ~15 files). See docs/windows-builds.md "Source Patch Policy".
 $patchedIndex = 0
 Get-ChildItem -Path $tfliteSrc -Filter 'CMakeLists.txt' -Recurse -ErrorAction SilentlyContinue | Where-Object {
     $_.FullName -match 'proto\\CMakeLists\.txt'
