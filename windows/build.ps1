@@ -131,6 +131,11 @@ param(
     [int]$MediaCoreCpus = [Environment]::ProcessorCount,
     [switch]$SequentialMedia,
     [switch]$ConcurrentMedia,
+    # Skip the media-branch fan-out and run ONLY the fan-in (merge + GStreamer) + final on the
+    # EXISTING windows-media-<branch> images. Use to re-merge/re-final after updating a branch image
+    # out-of-band (e.g. an incremental component rebuild committed straight onto windows-media-core)
+    # without paying to recompile the whole branch. All three branch images must already exist.
+    [switch]$SkipMediaBranches,
     [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT
 )
 
@@ -577,7 +582,11 @@ try {
 
     if ($Stages -contains 'media') {
         # Fan-out: three branch images concurrently, then fan-in (merge + GStreamer).
-        Invoke-MediaBranches
+        if ($SkipMediaBranches) {
+            Write-Host "`n==> [media] -SkipMediaBranches: skipping branch fan-out; re-merging existing windows-media-<branch> images" -ForegroundColor Yellow
+        } else {
+            Invoke-MediaBranches
+        }
         # The merge stage splits: the fan-in (COPY --from of the three branch trees)
         # MUST be a `docker build` — `docker run` cannot COPY --from — but it is only
         # IO, so 2 CPUs is fine. The CPU-bound GStreamer compile then runs via the
