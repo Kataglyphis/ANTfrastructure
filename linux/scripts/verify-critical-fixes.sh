@@ -247,10 +247,75 @@ fix7_hardening_2026_07() {
   fi
 }
 
+fix8_push_retry_2026_07() {
+  echo "--- Fix 8: transient push retry + per-run stage logs (2026-07) ---"
+  local csb="${REPO_ROOT}/linux/scripts/01-core/cross-stage-build.sh"
+  local rbf="${REPO_ROOT}/linux/scripts/01-core/runtime-build-fns.sh"
+  local brm="${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh"
+
+  # A1: stage build+push retries transient failures.
+  if grep -q '_cross_stage_push_error_is_transient' "${csb}" && grep -q 'PUSH_MAX_ATTEMPTS' "${csb}"; then
+    pass "cross-stage-build.sh retries transient pushes (A1)"
+  else
+    fail "cross-stage-build.sh lost the transient push-retry (A1 regression)"
+  fi
+
+  # A1: runtime image pushes go through the retry helper -- every `push "${tag}"`
+  # line must be immediately preceded by a `retry ...` line (the only such push
+  # lives inside runtime_push_tag; callers invoke that helper, not push directly).
+  local _bare_pushes
+  _bare_pushes="$(awk '
+    /run .*push "\$\{tag\}"/ { if (prev !~ /retry/) c++ }
+    { prev=$0 }
+    END { print c+0 }' "${rbf}")"
+  if grep -q '^runtime_push_tag()' "${rbf}" && [ "${_bare_pushes}" = "0" ]; then
+    pass "runtime-build-fns.sh pushes via runtime_push_tag (A1)"
+  else
+    fail "runtime-build-fns.sh has a bare (unretried) image push (A1 regression)"
+  fi
+
+  # A1: the multi-arch manifest push is retried too.
+  if grep -qE 'retry .*manifest push' "${brm}"; then
+    pass "build-runtime-manifest.sh retries the manifest push (A1)"
+  else
+    fail "build-runtime-manifest.sh manifest push is not retried (A1 regression)"
+  fi
+
+  # A1: the transient classifier must accept network drops and reject build errors.
+  local _fn _t
+  _fn="$(sed -n '/^_cross_stage_push_error_is_transient() {/,/^}/p' "${csb}")"
+  if [ -n "${_fn}" ]; then
+    eval "${_fn}"
+    _t="$(mktemp)"
+    printf 'write tcp: use of closed network connection\n' > "${_t}"
+    if _cross_stage_push_error_is_transient "${_t}"; then
+      pass "classifier flags 'closed network connection' as transient"
+    else
+      fail "classifier no longer flags network drops as transient (A1 regression)"
+    fi
+    printf 'ERROR: process did not complete successfully: exit code: 1\n' > "${_t}"
+    if _cross_stage_push_error_is_transient "${_t}"; then
+      fail "classifier wrongly treats a build error as transient (A1 regression)"
+    else
+      pass "classifier treats a real build error as non-transient"
+    fi
+    rm -f "${_t}"
+  else
+    fail "could not extract _cross_stage_push_error_is_transient for the functional check"
+  fi
+
+  # B1: per-run stage-log truncation (guarded by the .run marker / CROSS_RUN_ID).
+  if grep -q 'CROSS_RUN_ID' "${csb}" && grep -q '\.run' "${csb}"; then
+    pass "cross-stage-build.sh truncates stage logs per run (B1)"
+  else
+    fail "cross-stage-build.sh lost per-run log truncation (B1 regression)"
+  fi
+}
+
 echo "=== Critical Fixes Regression Tests ==="
 echo ""
 
-FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07)
+FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07 fix8_push_retry_2026_07)
 for _fix_fn in "${FIX_FUNCS[@]}"; do
   "${_fix_fn}"
   echo ""
