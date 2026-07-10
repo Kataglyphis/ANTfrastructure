@@ -86,7 +86,7 @@ function Assert-CommandExists {
     # parameter shadows this one under PowerShell's dynamic scoping — without the
     # closure this evaluated Get-Command "Command 'git' on PATH" and always failed.
     $commandName = $Name
-    Assert-Test -Name "Command '$Name' on PATH" -Condition { (Get-Command $commandName -ErrorAction SilentlyContinue) -ne $null }.GetNewClosure() -FailMessage "$Name not found on PATH"
+    Assert-Test -Name "Command '$Name' on PATH" -Condition { $null -ne (Get-Command $commandName -ErrorAction SilentlyContinue) }.GetNewClosure() -FailMessage "$Name not found on PATH"
 }
 
 function Assert-FileExists {
@@ -602,6 +602,18 @@ if ($genaiRoot) {
             Assert-Test -Name 'ONNX GenAI DirectML: D3D12Core.dll staged beside onnxruntime-genai.dll' `
                 -Condition { $d3d12Core.DirectoryName -eq $genaiDir } `
                 -FailMessage "D3D12Core.dll is at $($d3d12Core.FullName) but not beside the genai DLL ($genaiDir); the DML device loads it from the genai module dir at runtime"
+            # Arch guard: the D3D12 Agility SDK nuget ships x64/arm64/win32 D3D12Core.dll -- only x64
+            # loads on this image. Read the PE COFF Machine field (0x8664 = AMD64) so a wrong-arch stage
+            # fails HERE, not silently at DML device init (a naive recursive copy can grab arm64 first).
+            Assert-Test -Name 'ONNX GenAI DirectML: D3D12Core.dll is x64 (PE machine 0x8664)' `
+                -Condition {
+                    try {
+                        $bytes = [System.IO.File]::ReadAllBytes($d3d12Core.FullName)
+                        $peOff = [BitConverter]::ToInt32($bytes, 0x3C)
+                        ([BitConverter]::ToUInt16($bytes, $peOff + 4)) -eq 0x8664
+                    } catch { $false }
+                } `
+                -FailMessage "D3D12Core.dll at $($d3d12Core.FullName) is not an x64 PE -- wrong-arch stage would fail DML device init on the x64 image"
         } else {
             Write-Host '  [SKIP] GenAI DirectML evidence (D3D12Core.dll absent -- USE_DML=OFF variant)' -ForegroundColor Yellow
             $script:skipped++

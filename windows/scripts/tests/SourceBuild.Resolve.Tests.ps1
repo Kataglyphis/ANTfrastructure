@@ -130,3 +130,46 @@ Describe 'Get-CudnnLibrary' {
         } finally { Remove-Item $dir -Recurse -Force }
     }
 }
+
+Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {
+
+    It 'short-circuits to a CPU-only environment when the named var is 1 (all GPU paths null)' {
+        Invoke-WithEnv @{ ONNX_FORCE_CPU = '1'; GPU_TYPE = 'nvidia' } {
+            $r = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
+            Assert-Equal 'cpu' $r.GpuType
+            Assert-Null $r.CudaRoot
+            Assert-Null $r.CudnnRoot
+            Assert-Null $r.TensorRtRoot
+            Assert-Null $r.CudaBin
+        }
+    }
+
+    It 'returns all five contract keys in the forced-CPU hashtable (CudaBin included)' {
+        Invoke-WithEnv @{ GENAI_FORCE_CPU = '1' } {
+            $r = Get-GpuEnvironment -ForceCpuEnvVar 'GENAI_FORCE_CPU'
+            foreach ($k in 'GpuType', 'CudaRoot', 'CudnnRoot', 'TensorRtRoot', 'CudaBin') {
+                Assert-True ($r.ContainsKey($k)) "missing key $k"
+            }
+        }
+    }
+
+    It 'the force override wins over GPU_TYPE=nvidia' {
+        Invoke-WithEnv @{ ONNX_FORCE_CPU = '1'; GPU_TYPE = 'nvidia' } {
+            Assert-Equal 'cpu' (Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU').GpuType
+        }
+    }
+
+    It 'does NOT short-circuit when the named var is not 1 (normal detection runs)' {
+        # var present but '0' -> the guard must not fire; GPU_TYPE=amd flows through untouched
+        # (the nvidia-only PATH/CUDA_PATH side effects never run for a non-nvidia type).
+        Invoke-WithEnv @{ ONNX_FORCE_CPU = '0'; GPU_TYPE = 'amd'; TENSORRT_ROOT = '' } {
+            Assert-Equal 'amd' (Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU').GpuType
+        }
+    }
+
+    It 'defaults to cpu detection when neither ForceCpuEnvVar nor GPU_TYPE is set' {
+        Invoke-WithEnv @{ GPU_TYPE = ''; TENSORRT_ROOT = '' } {
+            Assert-Equal 'cpu' (Get-GpuEnvironment).GpuType
+        }
+    }
+}

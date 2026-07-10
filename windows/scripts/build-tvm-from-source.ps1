@@ -9,6 +9,7 @@ param(
     [switch]$SkipPython
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceBuildChain sets this in-scope for the media run)
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
@@ -79,7 +80,7 @@ $pythonModule = if ($SkipPython) { 'OFF' } else { 'ON' }
 
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
-    '-DCMAKE_CXX_FLAGS="-Wno-unknown-attributes"'
+    '-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes'   # :STRING= + no embedded quotes (matches onnx/opencv/genai; bare quotes leaked into the flag value)
     '-DUSE_OPENCL=OFF'
     '-DUSE_MICRO=OFF'
     "-DUSE_CUDA=$useCuda"
@@ -112,21 +113,15 @@ Invoke-CmakeBuild -BuildDir $buildDir -Config $BuildType -LogFile $buildLog | Ou
 
 Write-Host 'Installing...'
 & cmake --install $buildDir --config $BuildType
+if ($LASTEXITCODE -ne 0) { throw "TVM cmake --install failed (exit $LASTEXITCODE)" }
 
 # TVM 0.25's FFI split builds libtvm_ffi as a SEPARATE shared lib that tvm_runtime.dll
 # imports, but `cmake --install` does not stage tvm_ffi.dll -> tvm_runtime.dll then fails to
 # load (0xC0000135 STATUS_DLL_NOT_FOUND) in the final image. Copy it next to the installed
 # tvm_runtime.dll. Caught by the smoke-test TVM load probe.
-$installedRuntime = Get-ChildItem -Path $tvmInstallDir -Filter 'tvm_runtime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($installedRuntime) {
-    $ffiSrc = Get-ChildItem -Path $buildDir -Filter 'tvm_ffi.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($ffiSrc) {
-        Copy-Item $ffiSrc.FullName -Destination $installedRuntime.DirectoryName -Force
-        Write-Host "Staged tvm_ffi.dll -> $($installedRuntime.DirectoryName) (cmake --install missed the FFI shared lib)"
-    } else {
-        Write-Host "WARNING: tvm_ffi.dll not found under $buildDir -- tvm_runtime.dll may fail to load at runtime"
-    }
-}
+Copy-SidecarDll -SidecarName 'tvm_ffi.dll' -SearchDir $buildDir `
+    -BesidePrimary 'tvm_runtime.dll' -InstallDir $tvmInstallDir `
+    -Reason 'tvm_runtime.dll may fail to load at runtime (cmake --install missed the FFI shared lib)'
 
 # Install Python wheel if enabled
 if ($pythonModule -eq 'ON') {

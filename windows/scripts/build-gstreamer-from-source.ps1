@@ -33,15 +33,11 @@
 
 .PARAMETER MesonSetupArgs
     Additional arguments passed through to meson setup.
-
-.PARAMETER SrcDir
-    DEPRECATED alias for -SourceDir (kept for backwards compatibility).
 #>
 param(
     [string]$GstVersion        = '',
     [string]$InstallDir        = '',
     [string]$SourceDir         = 'C:\temp\gst-source',
-    [string]$SrcDir            = '',
     [string]$BuildDir          = 'C:\temp\gst-builddir',
     [string]$LogDir            = 'C:\temp\logs',
     [string]$GitRepo           = 'https://github.com/gstreamer/gstreamer.git',
@@ -49,8 +45,6 @@ param(
     [string[]]$MesonSetupArgs  = @()
 )
 
-# Backwards-compat: accept the deprecated -SrcDir alias (preferred form is -SourceDir).
-if ([string]::IsNullOrWhiteSpace($SourceDir) -and -not [string]::IsNullOrWhiteSpace($SrcDir)) { $SourceDir = $SrcDir }
 if ([string]::IsNullOrWhiteSpace($SourceDir)) { $SourceDir = 'C:\temp\gst-source' }
 
 # ---- module import (logging + build helpers + shared utilities) ----
@@ -154,7 +148,10 @@ try {
     }
     log "clang-cl found at: $($clangCheck.Source)"
 
-    # Prevent git from hanging/interactive prompts during meson subproject downloads
+    # Prevent git from hanging/interactive prompts during meson subproject downloads.
+    # GIT_SSL_NO_VERIFY is intentionally scoped to THIS ephemeral build container's meson
+    # subproject git fetches (not a runtime/production trust boundary); the shared
+    # Invoke-GitClone deliberately does NOT force it for ordinary clones.
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:GIT_SSL_NO_VERIFY = '1'
 
@@ -502,7 +499,7 @@ int _isatty(int);
     }
 
     # ---- 9. cleanup ----
-    if (-not $KeepBuildArtifacts.IsPresent) {
+    if (-not $KeepBuildArtifacts.IsPresent -and $env:KEEP_BUILD_ARTIFACTS -ne '1') {
         log 'Cleaning up source and build directories...'
         if (Test-Path $gstSrcDir) {
             Remove-Item -Path $gstSrcDir -Recurse -Force

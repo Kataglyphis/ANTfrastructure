@@ -7,6 +7,7 @@ param(
     [string]$OnnxGenAiVersion = ''
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceBuildChain sets this in-scope for the media run)
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
@@ -64,29 +65,18 @@ $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 # it does NOT silently fall back to ORT's CUDA EP. nvcc's host compiler MUST be MSVC cl.exe
 # (nvcc rejects clang-cl on Windows -- the reason this was long left OFF); the C++ TUs still
 # compile with clang-cl + lld. Recipe proven in an isolated lab build against the toolchain.
-$gpuEnv = Get-GpuEnvironment
 # GENAI_FORCE_CPU=1 forces a CPU-only GenAI (skips the slow nvcc kernel compiles) so the DirectML
 # path (USE_DML=ON) can be iterated fast -- DML is D3D12 host C++, unaffected by CUDA. Dev knob only
 # (mirrors ONNX_FORCE_CPU in build-onnx); the media-core build never sets it.
-if ($env:GENAI_FORCE_CPU -eq '1') {
-    Write-Host 'GENAI_FORCE_CPU=1 -> CPU-only GenAI build (fast DirectML-patch iteration; CUDA disabled)'
-    $gpuEnv = @{ GpuType = 'none'; CudaRoot = $null; CudnnRoot = $null; TensorRtRoot = $null }
-}
+$gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'GENAI_FORCE_CPU'
 if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     $cudaRoot  = $gpuEnv.CudaRoot
-    $clExe     = (Get-Command cl.exe -ErrorAction Stop).Source
     $cudaArch  = Get-CudaArchitectureList -Decoration '-real'
-    $genaiCudaArgs = @(
-        '-DUSE_CUDA=ON'
-        "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaRoot\bin\nvcc.exe"
-        "-DCUDA_TOOLKIT_ROOT_DIR=$cudaRoot"
-        "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$clExe"   # nvcc host = MSVC cl.exe (NOT clang-cl); C++ stays clang-cl
-        "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch"
-        '-DCMAKE_CUDA_STANDARD=20'                     # genai C++ is C++20 (std::span in cuda_topk.cu); 17 fails to compile
-        # /Zc:preprocessor: nvcc-with-cl needs it; CCCL_IGNORE silences the MSVC traditional-preprocessor
-        # warning; /wd4996 survives CUDA 13.x curand double4 deprecation-as-error (genai issue #1877).
-        '-DCMAKE_CUDA_FLAGS:STRING=-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING -Xcompiler=/wd4996'
-    )
+    # nvcc host = MSVC cl.exe (NOT clang-cl); C++ stays clang-cl. C++20 (std::span in cuda_topk.cu; 17
+    # fails). /wd4996 survives the CUDA 13.x curand double4 deprecation-as-error (genai issue #1877);
+    # the shared /Zc:preprocessor + CCCL preamble + toolkit root come from Get-NvccCudaCmakeArgs.
+    $genaiCudaArgs = @('-DUSE_CUDA=ON') +
+        (Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '20' -ExtraCudaFlags '-Xcompiler=/wd4996' -IncludeToolkitRoot)
     # genai's Python .pyd is a MODULE target, which the CMAKE_SHARED_LINKER_FLAGS /LIBPATH below
     # does NOT reach; put the CPython lib dir on LIB so lld-link resolves the auto-linked python*.lib.
     $env:LIB = "$($py.LibDir);$env:LIB"
@@ -175,14 +165,13 @@ if (Test-Path $altOutDir) {
 # own module dir at runtime (DmlHelpers -> D3D12SDKConfiguration), so stage it next to the genai DLL.
 # Needed whenever USE_DML=ON (independent of CUDA); the D3D12 FetchContent dir name floats, so resolve
 # by recursive find and no-op with a warning if absent (e.g. a hypothetical USE_DML=OFF build).
-$d3d12Core = Get-ChildItem -Path $genaiBuildDir -Filter 'D3D12Core.dll' -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -match '_deps' } | Select-Object -First 1
-if ($d3d12Core) {
-    Copy-Item -LiteralPath $d3d12Core.FullName -Destination (Join-Path $genaiInstallDir 'lib') -Force
-    Write-Host "Staged D3D12Core.dll ($($d3d12Core.FullName)) -> $genaiInstallDir\lib"
-} else {
-    Write-Warning "D3D12Core.dll not found under $genaiBuildDir\_deps -- DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent."
-}
+# The Microsoft.Direct3D.D3D12 nuget ships D3D12Core.dll for x64/arm64/win32; MUST pick x64 (its
+# immediate parent dir is 'x64') -- an unqualified -Recurse|Select -First 1 grabs arm64 alphabetically,
+# which then fails to load on the x64 image at DML device init.
+Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
+    -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq 'x64' } `
+    -Destination (Join-Path $genaiInstallDir 'lib') `
+    -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent'
 
 Remove-SourceBuildTree -Path $SourceDir
 

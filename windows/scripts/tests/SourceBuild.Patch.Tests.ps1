@@ -121,3 +121,61 @@ Describe 'Add-FileBlockOnce' {
         } finally { Remove-Item $dir -Recurse -Force }
     }
 }
+
+Describe 'Edit-SourceFile' {
+
+    It 'runs the transform, writes the file, and returns $true' {
+        $dir = New-TestDir
+        try {
+            $f = Join-Path $dir 'a.txt'
+            Set-Content -Path $f -Value 'hello world' -NoNewline
+            $r = Edit-SourceFile -Path $f -Transform { param($c) $c.Replace('world', 'there') }
+            Assert-True $r 'should report a modification'
+            Assert-Equal 'hello there' (Get-Content $f -Raw)
+        } finally { Remove-Item $dir -Recurse -Force }
+    }
+
+    It 'preserves a literal $-bearing injection verbatim (the reason this exists, not Invoke-InlineRegexPatch)' {
+        # A CMake ${VAR} routed through -replace would be misread as a replacement group ref and vanish;
+        # Edit-SourceFile keeps it because the transform is a scriptblock doing a literal .Replace.
+        $dir = New-TestDir
+        try {
+            $f = Join-Path $dir 'b.cmake'
+            Set-Content -Path $f -Value 'set(X ANCHOR)' -NoNewline
+            $inject = 'set(FLATC "${FLATBUFFERS_INSTALL_PREFIX}/bin/flatc.exe")'
+            [void](Edit-SourceFile -Path $f -Transform { param($c) $c.Replace('ANCHOR', ($inject + 'ANCHOR')) })
+            Assert-Equal ('set(X ' + $inject + 'ANCHOR)') (Get-Content $f -Raw)
+        } finally { Remove-Item $dir -Recurse -Force }
+    }
+
+    It 'skips (returns $false) when -Marker is already present' {
+        $dir = New-TestDir
+        try {
+            $f = Join-Path $dir 'c.txt'
+            Set-Content -Path $f -Value 'already MARKER here' -NoNewline
+            $r = Edit-SourceFile -Path $f -Marker 'MARKER' -Transform { param($c) $c.Replace('here', 'THERE') }
+            Assert-False $r 'marker present must skip'
+            Assert-Equal 'already MARKER here' (Get-Content $f -Raw) 'file must be untouched'
+        } finally { Remove-Item $dir -Recurse -Force }
+    }
+
+    It 'warns and returns $false when the transform makes no change (anchor absent)' {
+        $dir = New-TestDir
+        try {
+            $f = Join-Path $dir 'd.txt'
+            Set-Content -Path $f -Value 'unchanged' -NoNewline
+            $captured = & { Edit-SourceFile -Path $f -Transform { param($c) $c.Replace('ZZZ', 'QQQ') } -WarnMessage 'anchor not found' } 3>&1
+            $warns = @($captured | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
+            Assert-True ($warns.Count -ge 1) 'a no-op transform must surface a warning'
+            Assert-Equal 'unchanged' (Get-Content $f -Raw) 'file must be unchanged on no-op'
+        } finally { Remove-Item $dir -Recurse -Force }
+    }
+
+    It 'returns $false for a missing file, throws with -Require' {
+        $dir = New-TestDir
+        try {
+            Assert-False (Edit-SourceFile -Path (Join-Path $dir 'ghost') -Transform { param($c) $c })
+            Assert-Throws { Edit-SourceFile -Path (Join-Path $dir 'ghost') -Transform { param($c) $c } -Require }
+        } finally { Remove-Item $dir -Recurse -Force }
+    }
+}
