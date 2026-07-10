@@ -8,14 +8,18 @@ set -euo pipefail
 # Usage:
 #   setup-flutter.sh --arch x64|arm64 --version 3.44.4 [--dir /opt/flutter]
 #
-# The --arch flag selects the correct download archive (x86-64 vs arm64).
-# riscv64 is rejected — Flutter does not support it.
+# NOTE on --arch: Google publishes NO linux-arm64 Flutter SDK archive, so
+# arm64 DELIBERATELY receives the same x86-64 archive as x64 (see commit
+# ac13fc3); the flag only validates the target. riscv64 is skipped (exit 0)
+# — Flutter does not support it.
 
 usage() {
   cat <<EOF
 Usage: $0 --arch <x64|arm64> --version <ver> [--dir <path>]
 
-  --arch, -a     Target architecture: x64 or arm64 (riscv64 unsupported)
+  --arch, -a     Target architecture: x64 or arm64 (riscv64 unsupported).
+                 arm64 receives the x86-64 archive — Google ships no
+                 linux-arm64 Flutter SDK.
   --version, -v  Flutter SDK version (e.g. 3.44.4)
   --dir, -d      Installation directory (default: /opt)
   -h, --help     Show this help
@@ -43,9 +47,15 @@ if [ -z "${ARCH}" ] || [ -z "${FLUTTER_VERSION}" ]; then
 fi
 
 case "${ARCH}" in
-  x64|x86-64|amd64|arm64|aarch64)
+  x64|x86-64|amd64)
     ARCH_SUFFIX=""
     ARCH_LABEL="x86-64"
+    ;;
+  arm64|aarch64)
+    # Deliberate: no linux-arm64 SDK exists upstream — arm64 gets the x86-64
+    # archive (same ARCHIVE name below). Do not "fix" this to a per-arch URL.
+    ARCH_SUFFIX=""
+    ARCH_LABEL="arm64 (using the x86-64 archive — Google ships no linux-arm64 SDK)"
     ;;
   riscv64)
     echo "Error: Flutter does not support riscv64. Skipping." >&2
@@ -73,7 +83,12 @@ rm -f "${ARCHIVE}"
 # Clean up unnecessary cache artifacts
 rm -rf "${FLUTTER_PATH}/bin/cache"
 
-# Verify
+# Verify (best-effort, but never silent: on arm64 the x86-64 tooling may not
+# execute natively — warn instead of masking the failure entirely)
 export PATH="${FLUTTER_PATH}/bin:${PATH}"
-flutter --version 2>&1 | head -1 || true
+if _flutter_ver="$(flutter --version 2>&1)"; then
+  printf '%s\n' "${_flutter_ver}" | head -1
+else
+  echo "WARNING: 'flutter --version' failed after install (expected on arm64, where the x86-64 archive cannot run natively): $(printf '%s' "${_flutter_ver}" | head -1)" >&2
+fi
 echo "Flutter installed at ${FLUTTER_PATH}"

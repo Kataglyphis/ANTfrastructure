@@ -125,7 +125,7 @@ setup_torch_deps() {
   cross_skip "torch environment assembly" && return 0
 
   # Register /opt library paths so Python imports find FFmpeg etc.
-  export LD_LIBRARY_PATH="/usr/local/lib:/opt/opencv5/lib:/opt/gstreamer/lib:/opt/libcamera/lib:/opt/ffmpeg/lib:${LD_LIBRARY_PATH}"
+  export LD_LIBRARY_PATH="/usr/local/lib:/opt/opencv5/lib:/opt/gstreamer/lib:/opt/libcamera/lib:/opt/ffmpeg/lib:${LD_LIBRARY_PATH:-}"
 
   apt-get update
   # The locally-built OpenCV python wheel (opencv-contrib-python) in /opt/wheels is

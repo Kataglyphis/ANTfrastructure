@@ -163,7 +163,8 @@ _artifact_source_check_llvm() {
     if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:-22.1.8}"; then
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
-      clang_major_minor="${LLVM_RELEASE%.*}"
+      clang_major_minor="${LLVM_RELEASE:-22.1.8}"
+      clang_major_minor="${clang_major_minor%.*}"
       if [[ "${clang_ver}" == *"clang version ${clang_major_minor}"* ]]; then
         echo "OK: target clang ${llvm_target} reports ${clang_ver} (major.minor ${clang_major_minor} matches)"
       else
@@ -558,7 +559,6 @@ validate_smoke() {
   target_arch="$(validate_resolve_arch)"
   _VCS_SMOKE_GCC_VER="${gcc_ver}"
   _VCS_SMOKE_LLVM_VER="${llvm_ver}"
-  _VCS_SMOKE_TARGET_ARCH="${target_arch}"
   echo "=== smoke: target_arch=${target_arch} ==="
   _VALIDATE_ERRORS=0
 

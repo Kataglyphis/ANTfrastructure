@@ -41,10 +41,8 @@ unset _sve _vef
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
 
-# Load platform helpers from 01-core if available
-if [ -f "${_SCRIPT_DIR}/../01-core/platform.sh" ]; then
-  source "${_SCRIPT_DIR}/../01-core/platform.sh" 2>/dev/null || true
-fi
+# Load platform helpers (from 01-core or /opt/scripts/core) if available
+smoke_load_platform
 
 smoke_target() {
   local target_arch="$1"
@@ -73,10 +71,6 @@ smoke_target() {
   fi
 
   echo ""
-}
-
-resolve_host_arch() {
-  smoke_host_arch
 }
 
 print_smoke_header() {
@@ -117,7 +111,11 @@ check_rust() {
   for target in $(smoke_arch_words "${target_arches}"); do
     local rust_target
     rust_target="$(smoke_rust_target "${target}" 2>/dev/null || true)"
-    if rustup target list --installed 2>/dev/null | grep -q "${rust_target}"; then
+    # Guard: an unknown arch yields an empty rust_target, and `grep -q ""`
+    # matches every line — which used to fake-pass the check.
+    if [ -z "${rust_target}" ]; then
+      fail "Rust target unknown for arch ${target} (no triple mapping)"
+    elif rustup target list --installed 2>/dev/null | grep -q "${rust_target}"; then
       pass "Rust target ${rust_target} installed"
     else
       fail "Rust target ${rust_target} not installed"
@@ -141,12 +139,18 @@ check_python() {
   fi
   for cross_arch in $(smoke_arch_words "${target_arches}"); do
     local py_root="/opt/python-cross/${cross_arch}"
+    # A staged dir that is missing its .pc or binary is a broken staging —
+    # fail explicitly instead of only pass-ing on the happy path.
     if [ -d "${py_root}" ]; then
       if [ -f "${py_root}/usr/local/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR}.pc" ]; then
         pass "Python ${PYTHON_MAJOR_MINOR} pkg-config exists for ${cross_arch}"
+      else
+        fail "Python ${PYTHON_MAJOR_MINOR} pkg-config missing for ${cross_arch} (expected ${py_root}/usr/local/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR}.pc)"
       fi
       if [ -f "${py_root}/usr/local/bin/python${PYTHON_MAJOR_MINOR}" ]; then
         pass "Python ${PYTHON_MAJOR_MINOR} binary staged for ${cross_arch}"
+      else
+        fail "Python ${PYTHON_MAJOR_MINOR} binary not staged for ${cross_arch} (expected ${py_root}/usr/local/bin/python${PYTHON_MAJOR_MINOR})"
       fi
     fi
   done
@@ -168,7 +172,7 @@ main() {
   local target_arches="${1:-amd64,arm64,riscv64}"
   local host_arch
 
-  host_arch="$(resolve_host_arch)"
+  host_arch="$(smoke_host_arch)"
   print_smoke_header "${host_arch}" "${target_arches}"
   check_host_gcc
   check_llvm_clang

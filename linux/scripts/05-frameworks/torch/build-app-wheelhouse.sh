@@ -155,8 +155,9 @@ install_build_dependencies() {
 }
 
 prepare_build_environment() {
-    prepare_workspace
-
+    # NOTE: prepare_workspace is NOT called here — main() already runs it
+    # (unconditionally, before this function) so the wheelhouse dir exists
+    # even when this function bails out early.
     if ! cross_build_is_active; then
         log "Skipping app wheelhouse build outside of amd64-hosted cross mode"
         return 1

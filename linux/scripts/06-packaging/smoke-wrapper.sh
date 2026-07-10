@@ -19,7 +19,7 @@ main() {
   target_arch="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}"
   # Prefer the canonical platform.sh arch_normalize when the image ships it;
   # smoke_host_arch falls back to the inline case otherwise.
-  [ -f /opt/scripts/core/platform.sh ] && source /opt/scripts/core/platform.sh
+  smoke_load_platform
   target_arch="$(smoke_host_arch "${target_arch}")"
 
   echo "=== smoke: target_arch=${target_arch} ==="

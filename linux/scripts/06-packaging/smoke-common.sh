@@ -123,6 +123,24 @@ smoke_rust_target() {
   fi
 }
 
+# Load the canonical 01-core/platform.sh arch helpers when available, from the
+# baked-image layout (/opt/scripts/core) or the repo layout — whichever exists
+# first. Best-effort: the smoke_* wrappers above fall back to their inline
+# maps when platform.sh is absent. Replaces the hand-rolled copies that lived
+# in smoke-cross-all-arches.sh, smoke-toolchain.sh, and smoke-wrapper.sh.
+smoke_load_platform() {
+  local _dir _p
+  _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  for _p in /opt/scripts/core/platform.sh "${_dir}/../01-core/platform.sh"; do
+    if [ -f "${_p}" ]; then
+      # shellcheck disable=SC1090
+      source "${_p}" 2>/dev/null || true
+      return 0
+    fi
+  done
+  return 0
+}
+
 # Check that a command's output contains an expected string.
 # Usage: check_version "gcc --version" "16.1.0" "host gcc"
 check_version() {

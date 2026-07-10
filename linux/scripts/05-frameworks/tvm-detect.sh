@@ -224,18 +224,24 @@ validate_detected_llvm_cmake_package() {
     die "Target LLVM package at ${llvm_dir} does not provide LLVM component metadata"
 }
 
+# Map canonical arch → Vulkan SDK arch directory name (/opt/vulkan/<ver>/<dir>).
+# Echoes "" for unknown arches. Shared by detect_spirv_tools_library and
+# detect_vulkan_library.
+vulkan_sdk_arch_dir() {
+  case "${CROSS_TARGET_ARCH:-${TARGET_ARCH:-${TARGETARCH:-}}}" in
+    amd64|x86_64)  printf '%s' "x86_64" ;;
+    arm64|aarch64) printf '%s' "aarch64" ;;
+    riscv64)       printf '%s' "riscv64" ;;
+    *)             printf '%s' "" ;;
+  esac
+}
+
 detect_spirv_tools_library() {
   # TVM's Vulkan build requires the SPIRV-Tools *library*.
   local candidates=()
 
-  # Map canonical arch → Vulkan SDK arch directory name.
   local _arch_dir
-  case "${CROSS_TARGET_ARCH:-${TARGET_ARCH:-${TARGETARCH:-}}}" in
-    amd64|x86_64)  _arch_dir="x86_64" ;;
-    arm64|aarch64) _arch_dir="aarch64" ;;
-    riscv64)       _arch_dir="riscv64" ;;
-    *)             _arch_dir="" ;;
-  esac
+  _arch_dir="$(vulkan_sdk_arch_dir)"
 
   shopt -s nullglob
   # 1) Target-arch path from cross-rebuilt SPIRV-Tools (Dockerfile.sdk).
@@ -293,12 +299,7 @@ detect_vulkan_library() {
   local candidates=()
   local _arch_dir
 
-  case "${CROSS_TARGET_ARCH:-${TARGET_ARCH:-${TARGETARCH:-}}}" in
-    amd64|x86_64)  _arch_dir="x86_64" ;;
-    arm64|aarch64) _arch_dir="aarch64" ;;
-    riscv64)       _arch_dir="riscv64" ;;
-    *)             _arch_dir="" ;;
-  esac
+  _arch_dir="$(vulkan_sdk_arch_dir)"
 
   shopt -s nullglob
   if [ -n "${_arch_dir}" ]; then
