@@ -8,6 +8,10 @@ set -euo pipefail
 #   - HEALTHCHECK responds
 #   - Kataglyphis user exists
 #   - Key runtime paths exist
+#   - Functional: onnxruntime/numpy/torch import + ffmpeg executes inside the
+#     image (under qemu for cross arches); torch-less sentinel is flagged.
+#     Skip with RUNTIME_FUNCTIONAL_SMOKE=0; accept torch-less with
+#     ALLOW_TORCHLESS_RUNTIME=1.
 #
 # Usage:
 #   smoke-runtime-image.sh <image-tag> [target-arch]
@@ -130,6 +134,69 @@ main() {
     fail "No OCI labels configured"
   fi
   echo ""
+
+  # 9. Functional checks (D1/D2): actually LOAD the compiled ML stack and RUN
+  #    ffmpeg INSIDE the image -- under binfmt/qemu for cross arches. The checks
+  #    above prove the image boots and its metadata is sane; these prove the
+  #    arch-specific NATIVE extensions genuinely import/execute on the target
+  #    (previously only validated on native amd64 or on real hardware). Runs
+  #    through the entrypoint so the gstreamer/libcamera/vulkan env matches
+  #    runtime. Gate RUNTIME_FUNCTIONAL_SMOKE=0 to skip (e.g. no qemu handler).
+  if [ "${RUNTIME_FUNCTIONAL_SMOKE:-1}" = "1" ]; then
+    echo "--- Functional: torch-less sentinel (A3) ---"
+    local torch_expected=1
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         test -f /opt/venv/.torch-missing >/dev/null 2>&1; then
+      torch_expected=0
+      if [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
+        echo "  INFO: /opt/venv/.torch-missing present -- image ships WITHOUT torch (allowed)"
+      else
+        fail "Image ships WITHOUT torch (/opt/venv/.torch-missing present); set ALLOW_TORCHLESS_RUNTIME=1 to accept"
+      fi
+    else
+      pass "No torch-less sentinel (torch expected in image)"
+    fi
+    echo ""
+
+    echo "--- Functional: ML imports ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         /opt/venv/bin/python -c "import onnxruntime, numpy; print('onnxruntime', onnxruntime.__version__, '| numpy', numpy.__version__)"; then
+      pass "onnxruntime + numpy import OK (${target_arch})"
+    else
+      fail "onnxruntime/numpy failed to import in the runtime image (${target_arch})"
+    fi
+    if [ "${torch_expected}" = "1" ]; then
+      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+           /opt/venv/bin/python -c "import torch; print('torch', torch.__version__)"; then
+        pass "torch import OK (${target_arch})"
+      else
+        fail "torch failed to import in the runtime image (${target_arch})"
+      fi
+    else
+      echo "  INFO: skipping torch import (torch-less image)"
+    fi
+    # cv2 needs the source-built OpenCV5 bindings + GL/EGL runtime libs; report
+    # informationally so a missing optional binding does not fail the gate.
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         /opt/venv/bin/python -c "import cv2; print('cv2', cv2.__version__)" 2>/dev/null; then
+      pass "cv2 import OK (${target_arch})"
+    else
+      echo "  INFO: cv2 did not import (optional; verify /opt/opencv5 bindings on ${target_arch})"
+    fi
+    echo ""
+
+    echo "--- Functional: ffmpeg ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         bash -lc 'v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'; then
+      pass "ffmpeg executes (${target_arch})"
+    else
+      fail "ffmpeg failed to execute in the runtime image (${target_arch})"
+    fi
+    echo ""
+  else
+    echo "--- Functional checks skipped (RUNTIME_FUNCTIONAL_SMOKE=0) ---"
+    echo ""
+  fi
 
   smoke_summary
 }
