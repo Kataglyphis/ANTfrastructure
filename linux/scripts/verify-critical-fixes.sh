@@ -247,10 +247,114 @@ fix7_hardening_2026_07() {
   fi
 }
 
+fix8_push_retry_2026_07() {
+  echo "--- Fix 8: transient push retry + per-run stage logs (2026-07) ---"
+  local csb="${REPO_ROOT}/linux/scripts/01-core/cross-stage-build.sh"
+  local rbf="${REPO_ROOT}/linux/scripts/01-core/runtime-build-fns.sh"
+  local brm="${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh"
+
+  # A1: stage build+push retries transient failures.
+  if grep -q '_cross_stage_push_error_is_transient' "${csb}" && grep -q 'PUSH_MAX_ATTEMPTS' "${csb}"; then
+    pass "cross-stage-build.sh retries transient pushes (A1)"
+  else
+    fail "cross-stage-build.sh lost the transient push-retry (A1 regression)"
+  fi
+
+  # A1: runtime image pushes go through the retry helper -- every `push "${tag}"`
+  # line must be immediately preceded by a `retry ...` line (the only such push
+  # lives inside runtime_push_tag; callers invoke that helper, not push directly).
+  local _bare_pushes
+  _bare_pushes="$(awk '
+    /run .*push "\$\{tag\}"/ { if (prev !~ /retry/) c++ }
+    { prev=$0 }
+    END { print c+0 }' "${rbf}")"
+  if grep -q '^runtime_push_tag()' "${rbf}" && [ "${_bare_pushes}" = "0" ]; then
+    pass "runtime-build-fns.sh pushes via runtime_push_tag (A1)"
+  else
+    fail "runtime-build-fns.sh has a bare (unretried) image push (A1 regression)"
+  fi
+
+  # A1: the multi-arch manifest push is retried too.
+  if grep -qE 'retry .*manifest push' "${brm}"; then
+    pass "build-runtime-manifest.sh retries the manifest push (A1)"
+  else
+    fail "build-runtime-manifest.sh manifest push is not retried (A1 regression)"
+  fi
+
+  # A1: the transient classifier must accept network drops and reject build errors.
+  local _fn _t
+  _fn="$(sed -n '/^_cross_stage_push_error_is_transient() {/,/^}/p' "${csb}")"
+  if [ -n "${_fn}" ]; then
+    eval "${_fn}"
+    _t="$(mktemp)"
+    printf 'write tcp: use of closed network connection\n' > "${_t}"
+    if _cross_stage_push_error_is_transient "${_t}"; then
+      pass "classifier flags 'closed network connection' as transient"
+    else
+      fail "classifier no longer flags network drops as transient (A1 regression)"
+    fi
+    printf 'ERROR: process did not complete successfully: exit code: 1\n' > "${_t}"
+    if _cross_stage_push_error_is_transient "${_t}"; then
+      fail "classifier wrongly treats a build error as transient (A1 regression)"
+    else
+      pass "classifier treats a real build error as non-transient"
+    fi
+    rm -f "${_t}"
+  else
+    fail "could not extract _cross_stage_push_error_is_transient for the functional check"
+  fi
+
+  # B1: per-run stage-log truncation (guarded by the .run marker / CROSS_RUN_ID).
+  if grep -q 'CROSS_RUN_ID' "${csb}" && grep -q '\.run' "${csb}"; then
+    pass "cross-stage-build.sh truncates stage logs per run (B1)"
+  else
+    fail "cross-stage-build.sh lost per-run log truncation (B1 regression)"
+  fi
+}
+
+fix9_riscv_isaspec_and_noise_2026_07() {
+  echo "--- Fix 9: riscv64 ISA-spec pin (A2) + torch-less sentinel (A3) + benign-noise classifiers (B2) ---"
+  local gcc="${REPO_ROOT}/linux/scripts/02-toolchain/build-gcc.sh"
+  local venv="${REPO_ROOT}/linux/scripts/06-packaging/setup-torch-venv.sh"
+  local rw="${REPO_ROOT}/linux/scripts/03-media/runtime/repair-wheels.sh"
+  local swap="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
+
+  # A2: build-gcc.sh pins the riscv64 ISA spec so the shipped native GCC's
+  # default -march stays assembler-compatible. Assert BOTH the riscv64 case arm
+  # and the --with-isa-spec flag with its 20191213 default survive together.
+  if grep -qE '^[[:space:]]*riscv64-\*\)' "${gcc}" && \
+     grep -q -- '--with-isa-spec=' "${gcc}" && \
+     grep -q 'RISCV_GCC_ISA_SPEC-20191213' "${gcc}"; then
+    pass "build-gcc.sh pins riscv64 --with-isa-spec (default 20191213) (A2)"
+  else
+    fail "build-gcc.sh lost the riscv64 ISA-spec pin (A2 regression)"
+  fi
+
+  # A3: the riscv64 torch-wheel fallback drops a loud sentinel the runtime smoke
+  # keys on -- a silently torch-less image must never look healthy.
+  if grep -qF '.torch-missing' "${venv}"; then
+    pass "setup-torch-venv.sh writes the /opt/venv/.torch-missing sentinel (A3)"
+  else
+    fail "setup-torch-venv.sh lost the torch-less sentinel (A3 regression)"
+  fi
+
+  # B2: expected build noise stays classified as NOTE, not surfaced as failure.
+  if grep -q 'too-recent versioned symbols' "${rw}"; then
+    pass "repair-wheels.sh classifies benign auditwheel glibc mismatch (B2)"
+  else
+    fail "repair-wheels.sh lost the benign-auditwheel classifier (B2 regression)"
+  fi
+  if grep -q 'invalid -march=' "${swap}"; then
+    pass "swap-native-gcc.sh classifies benign riscv64 -march skew (B2)"
+  else
+    fail "swap-native-gcc.sh lost the benign -march classifier (B2 regression)"
+  fi
+}
+
 echo "=== Critical Fixes Regression Tests ==="
 echo ""
 
-FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07)
+FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07 fix8_push_retry_2026_07 fix9_riscv_isaspec_and_noise_2026_07)
 for _fix_fn in "${FIX_FUNCS[@]}"; do
   "${_fix_fn}"
   echo ""

@@ -450,6 +450,15 @@ BUILD_SUBDIR="${BUILD_DIR}/gcc-${GCC_VERSION}-build"
 mkdir -p "${BUILD_SUBDIR}"
 cd "${BUILD_SUBDIR}"
 
+# Pre-create the install prefix BEFORE configure. GCC's in-tree prerequisite
+# configures (isl in particular) resolve/cd into the eventual --prefix while
+# probing; when it does not exist yet they print a spurious
+# "cd: ${PREFIX}: No such file or directory" to stderr. It is harmless (the dir
+# is also created at install time below) but reads as an error in the toolchain
+# build log. Creating it up front keeps the log clean. Idempotent; mirrors the
+# install-time mkdir and uses ${SUDO} for the same non-root-host case.
+${SUDO} mkdir -p "${PREFIX}"
+
 echo "Configuring build (languages: c,c++,fortran)..."
 CONFIG_CMD=(
   "../gcc-${GCC_VERSION}/configure"
@@ -507,6 +516,22 @@ if [ -n "${TARGET_TRIPLET}" ]; then
     "--with-sysroot=${SYSROOT}"
     "--with-native-system-header-dir=${NATIVE_SYSTEM_HEADER_DIR}"
   )
+  # riscv64 (A2): GCC 16 defaults to the newer RISC-V ISA spec, whose canonical
+  # -march expansion uses profile extension names (zmmul/zaamo/zalrsc/zca/zcd)
+  # that an older binutils `as` rejects with "invalid -march= option". The build
+  # itself is unaffected (it drives the assembler explicitly), but the SHIPPED
+  # native riscv64 GCC then cannot assemble its own default output on-device.
+  # Pin the ISA spec the bundled assembler understands so the default -march
+  # stays assembler-compatible; this changes only the march NAMING, not codegen
+  # (same ISA). Override with RISCV_GCC_ISA_SPEC=<spec>, or RISCV_GCC_ISA_SPEC=
+  # (empty) to disable. NOTE: validated by shellcheck only in-repo; confirm with
+  # a real riscv64 GCC rebuild (an on-device `gcc hello.c` must assemble).
+  case "${TARGET_TRIPLET}" in
+    riscv64-*)
+      _isa_spec="${RISCV_GCC_ISA_SPEC-20191213}"
+      [ -n "${_isa_spec}" ] && CONFIG_CMD+=("--with-isa-spec=${_isa_spec}")
+      ;;
+  esac
 fi
 
 # Canadian cross: GCC itself is cross-compiled to run on a different host. The

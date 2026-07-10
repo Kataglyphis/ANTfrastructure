@@ -230,6 +230,21 @@ riscv64_torch_wheel_fallback() {
   else
     echo "WARNING: cv2 not available (cross-compiled OpenCV may lack Python bindings for riscv64)"
   fi
+  # LOUD, assertable marker: this image ships WITHOUT torch. Without it the
+  # degradation is silent -- a torch-less riscv64 runtime image looks identical
+  # to a good one until something imports torch on real hardware. Drop a sentinel
+  # so smoke-runtime-image.sh can surface it and a torch-less image can't pass
+  # unnoticed. Set ALLOW_TORCHLESS_RUNTIME=1 to accept it knowingly.
+  mkdir -p "${VENV}" 2>/dev/null || true
+  printf 'riscv64: no torch wheel in /opt/wheels at build time; assemble-torch-app.sh skipped\n' \
+    > "${VENV}/.torch-missing" 2>/dev/null || true
+  {
+    echo "############################################################"
+    echo "WARNING: SHIPPING riscv64 RUNTIME IMAGE WITHOUT PYTORCH"
+    echo "  (no torch wheel in /opt/wheels; app assembly was skipped)"
+    echo "  Sentinel: ${VENV}/.torch-missing -- runtime smoke will flag it."
+    echo "############################################################"
+  } >&2
   echo "riscv64 fallback venv ready (no torch wheel in /opt/wheels; skipped app assembly)"
 }
 

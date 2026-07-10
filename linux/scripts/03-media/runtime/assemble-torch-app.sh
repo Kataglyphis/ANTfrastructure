@@ -8,6 +8,14 @@ set -euo pipefail
 APP_DIR="/opt/Kataglyphis-Orchestr-ANT-ion"
 APP_REF="${APP_REF:-v0.0.19}"
 
+# Uninstall any PyPI opencv-family packages (best-effort). Centralizes the four
+# package names that were repeated verbatim across reconcile/install/verify so
+# the list can no longer drift between the call sites.
+uv_uninstall_pip_opencv() {
+  uv pip uninstall opencv-python opencv-python-headless \
+    opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
+}
+
 activate_project_environment() {
   # Verify-only runs may happen in a later image or on real hardware.
   source "${VENV}/bin/activate"
@@ -192,6 +200,7 @@ reconcile_local_wheels() {
   local -a local_wheels=()
   local wheel_path wheel_basename
   local have_onnx_family=false have_opencv_family=false
+  local have_torch_family=false have_litert_family=false
 
   shopt -s nullglob
   local_wheels=(/opt/wheels/*.whl)
@@ -211,14 +220,31 @@ reconcile_local_wheels() {
       opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
         have_opencv_family=true
         ;;
+      torch-*.whl|torchvision-*.whl)
+        have_torch_family=true
+        ;;
+      ai_edge_litert-*.whl|ai-edge-litert-*.whl)
+        have_litert_family=true
+        ;;
     esac
   done
 
+  # Uninstall any PyPI build of a family we ship locally BEFORE force-reinstalling
+  # our wheels, so an upstream pulled transitively (often under a variant name --
+  # onnxruntime-gpu, opencv-python 4.x) can't shadow the custom build. torch/
+  # torchvision/ai-edge-litert are purged here too for symmetry -- previously they
+  # relied on build_uv_sync_args' --no-install-package + --force-reinstall alone.
   if [ "${have_onnx_family}" = "true" ]; then
     uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu 2>/dev/null || true
   fi
   if [ "${have_opencv_family}" = "true" ]; then
-    uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
+    uv_uninstall_pip_opencv
+  fi
+  if [ "${have_torch_family}" = "true" ]; then
+    uv pip uninstall torch torchvision 2>/dev/null || true
+  fi
+  if [ "${have_litert_family}" = "true" ]; then
+    uv pip uninstall ai-edge-litert 2>/dev/null || true
   fi
 
   uv pip install --force-reinstall "${local_wheels[@]}"
@@ -252,7 +278,7 @@ install_project_environment() {
   # If any dependency pulled in a PyPI opencv-python (4.x), remove it
   # so the source-built OpenCV5 bindings win.
   if staged_opencv_python_available; then
-    uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
+    uv_uninstall_pip_opencv
   fi
 
   if python3 -c 'import gi; print(gi.__version__)' 2>/dev/null; then
@@ -268,7 +294,7 @@ verify_project_environment() {
   # Uninstall any pip-installed opencv packages so the source-built
   # OpenCV5 bindings at /opt/opencv5 (visible via .pth) are used.
   if staged_opencv_python_available; then
-    uv pip uninstall opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
+    uv_uninstall_pip_opencv
   fi
 
   find "${VENV}" -name "cv2*.so" -exec ldd {} \; || true

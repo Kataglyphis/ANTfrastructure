@@ -37,6 +37,9 @@ run_check "script COPY coverage"       python3 linux/scripts/verify-script-copy-
 # 3. Critical-fix source integrity (incl. fix6: native-GCC system paths, bugs D/E).
 run_check "critical fixes"             bash linux/scripts/verify-critical-fixes.sh
 
+# 3b. Patch files are well-formed unified diffs AND still referenced (no orphans).
+run_check "patch integrity"            bash linux/scripts/verify-patch-integrity.sh
+
 # 4. Dockerfile ARG names/values agree with versions.env + forwarding.
 run_check "ARG consistency"            bash linux/scripts/01-core/verify-arg-consistency.sh
 

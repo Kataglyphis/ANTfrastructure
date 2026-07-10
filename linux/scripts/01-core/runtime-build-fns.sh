@@ -18,6 +18,20 @@
 #   runtime_stage_context_*, runtime_use_local_*, etc.
 
 # Post-build: export to OCI layout locally, or push remotely, then clean up.
+# Push a built runtime image tag, retrying on transient registry/network
+# failures. A ~8GiB wrapper push over a throttled link can reset mid-transfer
+# ("use of closed network connection: Put .../blobs/upload/..."); without a
+# retry that discards the whole runtime stage -- and pre-fix, exited the entire
+# chain run after hours of work. Bounded by PUSH_MAX_ATTEMPTS (default 4) with
+# PUSH_RETRY_BASE_SECS (default 15s) between attempts. Pure network op, so any
+# failure is retried up to the cap (a genuine auth/config error just exhausts it
+# in <1min); the image layers are already built, only the upload repeats.
+runtime_push_tag() {
+  local tag="$1"
+  retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "push ${tag}" \
+    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+}
+
 _runtime_finish_stage() {
   local kind="$1"
   local arch="$2"
@@ -31,7 +45,7 @@ _runtime_finish_stage() {
     remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
   else
     if runtime_pushes_intermediate_images; then
-      run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+      runtime_push_tag "${tag}"
     fi
     if [ "${kind}" != "wrapper" ] || ! runtime_pushes_wrapper_images; then
       runtime_refresh_stage_context "${kind}" "${arch}" "${tag}"
@@ -73,7 +87,7 @@ runtime_build_base_image() {
   fi
 
   if runtime_pushes_intermediate_images; then
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+    runtime_push_tag "${tag}"
   fi
 
   runtime_refresh_stage_context base "${arch}" "${tag}"
@@ -196,7 +210,7 @@ runtime_build_wrapper_image() {
   _runtime_build_wrapper "${arch}" tag parent_image build_args
 
   if runtime_pushes_wrapper_images; then
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+    runtime_push_tag "${tag}"
   fi
 }
 
@@ -212,7 +226,7 @@ runtime_build_wrapper_rootfs() {
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}"
 
   if runtime_pushes_wrapper_images; then
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+    runtime_push_tag "${tag}"
   fi
 }
 
