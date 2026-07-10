@@ -367,7 +367,12 @@ _gcc_build_cross_target() {
   else
     stage_cross_gcc_sysroot_libs "${prefix}" "${triplet}"
     build_cross_gcc_for "${full_version}" "${prefix}" "${triplet}"
-    build_canadian_native_gcc_for "${full_version}" "${prefix}" "${triplet}" "${normalized_target}"
+    # build_canadian_native_gcc_for returns 1 (instead of dying) when the
+    # opt-in skip knob is set; keep that skip from aborting the remaining
+    # targets even with errexit live.
+    if ! build_canadian_native_gcc_for "${full_version}" "${prefix}" "${triplet}" "${normalized_target}"; then
+      warn "Skipping Canadian native GCC for ${normalized_target}; continuing with remaining targets"
+    fi
   fi
 
   for tool in gcc g++ ar; do

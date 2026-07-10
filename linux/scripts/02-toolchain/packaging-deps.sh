@@ -6,19 +6,21 @@ PACKAGING_DEPS_MODE="${PACKAGING_DEPS_MODE:-required}"
 INSTALL_FLATPAK_RUNTIMES="${INSTALL_FLATPAK_RUNTIMES:-false}"
 PACKAGING_DEPS_COMMAND="${PACKAGING_DEPS_COMMAND:-all}"
 
-# Source shared helpers if available
+# common.sh is a hard dependency: it provides download_verified_file,
+# apt_has_package and the logging helpers used throughout this script. Fail
+# early with a clear message instead of dying mid-flight on "command not found".
+if [ ! -f "$SCRIPT_DIR/../01-core/common.sh" ]; then
+    echo "[ERROR] packaging-deps.sh requires $SCRIPT_DIR/../01-core/common.sh (download_verified_file, apt_has_package, logging); not found" >&2
+    exit 1
+fi
 # shellcheck disable=SC1090,SC1091
-[ -f "$SCRIPT_DIR/../01-core/common.sh" ] && source "$SCRIPT_DIR/../01-core/common.sh"
-# shellcheck disable=SC1090,SC1091
-[ -f "$SCRIPT_DIR/../01-core/logging.sh" ] && source "$SCRIPT_DIR/../01-core/logging.sh"
+source "$SCRIPT_DIR/../01-core/common.sh"
 # shellcheck disable=SC1090,SC1091
 [ -f "$SCRIPT_DIR/../01-core/package-lists.sh" ] && source "$SCRIPT_DIR/../01-core/package-lists.sh"
 
-# ── Fallback logging (if sourced files are missing) ────────────────────
-
-declare -F info >/dev/null 2>&1 || info()  { printf '[INFO]  %s\n' "$*"; }
-declare -F warn >/dev/null 2>&1 || warn()  { printf '[WARN]  %s\n' "$*" >&2; }
-declare -F error >/dev/null 2>&1 || error() { printf '[ERROR] %s\n' "$*" >&2; }
+# logging.sh (via common.sh) provides info/warn but only the exiting `err`;
+# this script needs a non-exiting error logger for its usage/arg handling.
+error() { printf '[ERROR] %s\n' "$*" >&2; }
 
 # ── Cleanup trap ───────────────────────────────────────────────────────
 

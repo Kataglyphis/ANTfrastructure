@@ -209,6 +209,11 @@ runtime_build_wrapper_image() {
 
   _runtime_build_wrapper "${arch}" tag parent_image build_args
 
+  if is_dry_run; then
+    log "[DRY RUN] would push wrapper image ${tag}"
+    return 0
+  fi
+
   if runtime_pushes_wrapper_images; then
     runtime_push_tag "${tag}"
   fi
@@ -221,6 +226,11 @@ runtime_build_wrapper_rootfs() {
   local -a build_args=()
 
   _runtime_build_wrapper "${arch}" tag parent_image build_args
+
+  if is_dry_run; then
+    log "[DRY RUN] would export rootfs from ${tag} to ${rootfs_dir} and push"
+    return 0
+  fi
 
   artifact_dir="$(dirname "${rootfs_dir}")"
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}"

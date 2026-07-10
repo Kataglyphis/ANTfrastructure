@@ -56,7 +56,8 @@ cross_build_arch() {
 }
 
 cross_require_single_target_arch() {
-  local raw="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+  local raw
+  raw="$(default_target_arch "${1:-}")"
   local scope="${2:-cross build}"
   local target_arch=""
 
@@ -87,7 +88,7 @@ cross_require_single_target_arch() {
 cross_set_target_env() {
   local target_arch=""
 
-  target_arch="$(cross_require_single_target_arch "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}" "${2:-cross build}")" || return 1
+  target_arch="$(cross_require_single_target_arch "$(default_target_arch "${1:-}")" "${2:-cross build}")" || return 1
   export TARGET_ARCH="${target_arch}"
   export TARGETARCH="${target_arch}"
   export TARGETPLATFORM="linux/${target_arch}"
@@ -96,7 +97,7 @@ cross_set_target_env() {
 prepare_cross_target_env() {
   local scope="${2:-cross build}"
 
-  cross_set_target_env "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}" "${scope}" || return 1
+  cross_set_target_env "$(default_target_arch "${1:-}")" "${scope}" || return 1
   if cross_build_enabled; then
     install_cross_bin_symlinks "${TARGET_ARCH}"
   fi
@@ -268,7 +269,8 @@ export_cargo_target_linker() {
 }
 
 install_cross_bin_symlinks() {
-  local target_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+  local target_arch
+  target_arch="$(default_target_arch "${1:-}")"
   local bin_dir="${2:-$(cross_bin_dir)}"
 
   target_arch="$(cross_require_single_target_arch "${target_arch}" "cross tool symlink setup")" || return 1

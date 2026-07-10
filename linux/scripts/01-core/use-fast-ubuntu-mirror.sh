@@ -13,39 +13,21 @@ else
   exit 1
 fi
 
-rewrite_mirror_entries() {
+# Apply a mirror rewrite to a sources file.  Returns 0 if the file was
+# modified, 1 if the file is missing or nothing matched (not an error).
+apply_mirror_rewrite() {
   local sources_file="$1"
   local regex="$2"
   local replacement_url="$3"
   local label="$4"
   local escaped_replacement_url
 
-  [ -f "${sources_file}" ] || return 0
-  if ! grep -Eq "${regex}" "${sources_file}"; then
-    return 0
-  fi
+  [ -f "${sources_file}" ] || return 1
+  grep -Eq "${regex}" "${sources_file}" || return 1
 
   escaped_replacement_url="$(printf '%s' "${replacement_url}" | sed 's/[&|]/\\&/g')"
   sed -E -i "s|${regex}|${escaped_replacement_url}|g" "${sources_file}"
   printf '[INFO] Switched Ubuntu %s mirror entries in %s to %s\n' "${label}" "${sources_file}" "${replacement_url}"
-  return 0
-}
-
-# Apply a mirror rewrite to a sources file.  Returns 0 if the file was modified,
-# 1 if the file exists but nothing matched (not an error), or 2 if the file is
-# missing or sed failed.
-apply_mirror_rewrite() {
-  local sources_file="$1"
-  local regex="$2"
-  local replacement_url="$3"
-  local label="$4"
-
-  [ -f "${sources_file}" ] || return 1
-  grep -Eq "${regex}" "${sources_file}" || return 1
-
-  if ! rewrite_mirror_entries "${sources_file}" "${regex}" "${replacement_url}" "${label}"; then
-    return 2
-  fi
   return 0
 }
 

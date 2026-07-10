@@ -9,9 +9,11 @@
 # build arg and used as a fallback.
 
 ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
+# TARGET_ARCH must be declared BEFORE ARTIFACT_IMAGE so a --build-arg TARGET_ARCH
+# influences the ARTIFACT_IMAGE default (ARG expansion only sees prior ARGs).
+ARG TARGET_ARCH
 ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGET_ARCH:-amd64}
 ARG BUILD_MODE=native
-ARG TARGET_ARCH
 ARG TARGETARCH
 ARG TARGETPLATFORM
 ARG ARTIFACT_PLATFORM=${TARGETPLATFORM}
@@ -188,8 +190,10 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    bash /opt/scripts/packaging/setup-package-image.sh && \
-    rm -rf /var/lib/apt/lists/*
+    bash /opt/scripts/packaging/setup-package-image.sh
+# NOTE: no `rm -rf /var/lib/apt/lists/*` in the RUN above — /var/lib/apt is a
+# cache mount (never committed to the image); removing lists would only wipe
+# the SHARED apt cache for other builds (see Dockerfile.nvidia for the pattern).
 
 # Wire GCC/LLVM alternatives and HARD-FAIL if the wired cc does not match the
 # target architecture. For cross builds the target-native cc cannot EXECUTE on

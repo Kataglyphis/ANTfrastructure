@@ -163,7 +163,8 @@ _doctor_phase_verdict() {
 }
 
 cross_env_doctor() {
-  local target_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+  local target_arch
+  target_arch="$(default_target_arch "${1:-}")"
   local -a failures=()
 
   export BUILD_MODE="${BUILD_MODE:-cross}"

@@ -13,11 +13,15 @@ ffmpeg_probe_libonnxruntime() {
     # synthesized .pc (correct -I + exported PKG_CONFIG_PATH, which is exactly what
     # FFmpeg's require_pkg_config consumes) — do not trust the vendor .pc first.
     local onnx_base="/usr/local/lib/onnxruntime-cpu"
+    # ONNXRUNTIME_VERSION may be unset (set -u); the synth-pkgconfig callee
+    # already defaults an empty version, so pass "" rather than dying here.
+    local onnx_ver="${ONNXRUNTIME_VERSION:-}"
+    onnx_ver="${onnx_ver#v}"
     if [ -f "${onnx_base}/lib/libonnxruntime.so" ] && [ -f "${onnx_base}/include/onnxruntime_c_api.h" ]; then
         if ffmpeg_enable_via_synth_pkgconfig "libonnxruntime" "libonnxruntime" \
             "onnxruntime_c_api.h" "OrtGetApiBase" "${onnx_base}" \
             "-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session" \
-            "-L${onnx_base}/lib -lonnxruntime -lstdc++ -lpthread -lm -ldl" "${ONNXRUNTIME_VERSION#v}"; then
+            "-L${onnx_base}/lib -lonnxruntime -lstdc++ -lpthread -lm -ldl" "${onnx_ver}"; then
             # FFmpeg checks libonnxruntime with a BARE `require`/check_lib (NOT
             # require_pkg_config), so it ignores the synth .pc and compiles
             # `#include <onnxruntime_c_api.h>` with no -I. Export the resolved
@@ -55,14 +59,17 @@ ensure_tensorflow_c_sdk() {
     local cache_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
     local tf_dir="${cache_dir}/tensorflow-c"
     local tf_version="${TENSORFLOW_C_VERSION:-2.16.1}"
-    local tf_archive tf_url
+    local tf_archive
 
     if [ -f "${tf_dir}/lib/libtensorflow.so" ] && [ -f "${tf_dir}/include/tensorflow/c/c_api.h" ]; then
         echo "TensorFlow C SDK ${tf_version} already cached at ${tf_dir}"
         return 0
     fi
 
-    mkdir -p "${cache_dir}" "${tf_dir}/lib" "${tf_dir}/include"
+    # Do NOT pre-create ${tf_dir}/lib and ${tf_dir}/include: the mv below would
+    # then nest lib under lib/ (mv into an existing dir), so the cached-SDK check
+    # never passes and the SDK re-downloads on every build.
+    mkdir -p "${cache_dir}" "${tf_dir}"
 
     case "$(uname -m)" in
         x86_64)
@@ -77,7 +84,6 @@ ensure_tensorflow_c_sdk() {
             ;;
     esac
 
-    tf_url="https://github.com/tensorflow/tensorflow/archive/refs/tags/v${tf_version}.tar.gz"
     echo "Downloading TensorFlow C SDK ${tf_version}..."
     # Download just the C library from the TF release
     local tf_release_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/${tf_archive}"
@@ -95,16 +101,6 @@ ensure_tensorflow_c_sdk() {
             '-L${libdir} -ltensorflow'
         export PKG_CONFIG_PATH="${cache_dir}:${PKG_CONFIG_PATH:-}"
         echo "TensorFlow C SDK ${tf_version} installed to ${tf_dir}"
-        return 0
-    fi
-
-    echo "TensorFlow C SDK download failed (trying alternate URL)..."
-    # Fallback: use the full TF source release (much larger but always available)
-    local alt_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/libtensorflow-cpu-linux-x86_64-${tf_version}.tar.gz"
-    if download_file "${alt_url}" "${cache_dir}/${tf_archive}" 3 30 600 2>/dev/null \
-        && [ -s "${cache_dir}/${tf_archive}" ]; then
-        tar -xzf "${cache_dir}/${tf_archive}" -C "${tf_dir}" 2>/dev/null || true
-        echo "TensorFlow C SDK ${tf_version} installed (fallback URL)"
         return 0
     fi
 

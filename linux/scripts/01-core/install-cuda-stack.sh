@@ -29,9 +29,12 @@ apt-get install -y --no-install-recommends \
     cuda-cudart-dev-${CUDA_VERSION_MAJOR_MINOR} \
     cuda-compat-${CUDA_VERSION_MAJOR_MINOR}
 CUDA_VER_DOT="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | tr '-' '.')"
+# CUDNN_VERSION is optional (see header): when unset/empty, skip the pinned
+# tier and fall through to the unpinned fallbacks below.
+{ [ -n "${CUDNN_VERSION:-}" ] && \
 apt-get install -y --no-install-recommends \
     "libcudnn${CUDNN_MAJOR}-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*" \
-    "libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*" || \
+    "libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*"; } || \
 apt-get install -y --no-install-recommends \
     libcudnn${CUDNN_MAJOR}-cuda-${CUDA_VER_DOT} \
     libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_VER_DOT} || \

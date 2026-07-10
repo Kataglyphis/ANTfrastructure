@@ -42,39 +42,13 @@ if cross_build_is_active && \
     esac
 fi
 
-for helper in \
-    "/opt/scripts/core/compiler-cache.sh" \
-    "${_SETUP_GST_DIR}/../../../01-core/compiler-cache.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        setup_ccache
-        setup_sccache
-        setup_lld_linker
-        break
-    fi
-done
-
-# Source parallelism helpers
-for helper in \
-    "/opt/scripts/core/parallelism.sh" \
-    "${_SETUP_GST_DIR}/../../../01-core/parallelism.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        break
-    fi
-done
-
-for helper in \
-    "/opt/scripts/core/compiler-resolution.sh" \
-    "${_SETUP_GST_DIR}/../../../01-core/compiler-resolution.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        break
-    fi
-done
+# compiler-cache.sh, parallelism.sh and compiler-resolution.sh are already
+# loaded by media_common_init above (which also ran setup_ccache and
+# setup_lld_linker). The only net-new effects the old re-source loops had were
+# setup_sccache (not run by media_common_init) and re-running setup_lld_linker
+# so the cross-arch USE_LLD=false override above takes effect.
+setup_sccache
+setup_lld_linker
 
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
@@ -99,8 +73,11 @@ export GSTREAMER_ENABLE_PYTHON_BINDINGS
 
 append_meson_arg() {
   local arg="$1"
+  # The haystack is space-padded on both sides, so *" ${arg} "* is an exact
+  # whole-token match. (The old extra *" ${arg}"* alternative false-skipped
+  # when an existing arg merely had the new one as a strict prefix.)
   case " ${EXTRA_MESON_ARGS} " in
-    *" ${arg} "*|*" ${arg}"*)
+    *" ${arg} "*)
       ;;
     *)
       EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} ${arg}"
@@ -437,9 +414,10 @@ if [ -f /usr/local/bin/gstreamer-env.sh ]; then
 else
   :
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/03-media/* subfolders
+  # Repo layout: this script lives in 03-media/build/gstreamer/common/ and
+  # 04-runtime/ is a SIBLING of 03-media/, i.e. four levels up from here.
   # shellcheck disable=SC1091
-  source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
+  source "${SCRIPT_DIR}/../../../../04-runtime/gstreamer-env.sh"
 fi
 
 # --- Debug/logging helpers -------------------------------------------------
@@ -496,8 +474,9 @@ fi
 # Install Astral uv, use existing venv, install Meson/Ninja
 # ------------------------------------------------------------------------------
 
-if command -v sudo >/dev/null 2>&1; then sudo mkdir -p "${GSTREAMER_PREFIX}"; else mkdir -p "${GSTREAMER_PREFIX}"; fi
-if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"; else chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"; fi
+ensure_sudo_or_die
+${SUDO_WRAP} mkdir -p "${GSTREAMER_PREFIX}"
+${SUDO_WRAP} chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"
 
 echo "Using existing Python venv (expected at /opt/python/.venv)..."
 
@@ -540,6 +519,12 @@ ninja --version
 # Honor MESON_ARGS env var if present (takes precedence over CLI args).
 if [ -n "${MESON_ARGS:-}" ]; then
   EXTRA_MESON_ARGS="${MESON_ARGS}"
+  # The reset above discards everything appended since initial assembly, so
+  # re-apply the mandatory gst-plugins-bad vulkan-windowing disable (see the
+  # GCC-16/vulkan_xcb.h comment where it is first appended). The
+  # enforce_gst_rs_meson_args set is re-applied separately below, and the
+  # cross-only ptp-helper disable is appended after this point.
+  append_meson_arg "-Dgst-plugins-bad:vulkan-windowing="
 fi
 
 if [ -f "${_SETUP_GST_DIR}/patch-gstreamer-sources.sh" ]; then
@@ -593,12 +578,12 @@ if [ -x "${GSTREAMER_PREFIX}/bin/gst-launch-1.0" ] && [ "${FORCE_REBUILD:-0}" !=
 fi
 
 mkdir -p "${GSTREAMER_PREFIX}"
-if command -v sudo >/dev/null 2>&1; then sudo chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; else chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; fi
+${SUDO_WRAP} chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true
 # do not write directly into tmp; its reserved for apt
 BUILD_DIR="/opt/tmp/gstreamer-build-$$"
-if command -v sudo >/dev/null 2>&1; then sudo mkdir -p "${BUILD_DIR}"; else mkdir -p "${BUILD_DIR}"; fi
+${SUDO_WRAP} mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
-if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; else chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; fi
+${SUDO_WRAP} chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true
 
 if command -v clone_or_update_repo >/dev/null 2>&1; then
   retry 3 10 "GStreamer git clone" clone_or_update_repo "https://github.com/GStreamer/gstreamer.git" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}"
@@ -628,7 +613,7 @@ else
 fi
 
 if command -v patch_gstreamer_sources >/dev/null 2>&1; then
-  patch_gstreamer_sources "$(pwd)" "${EXTRA_MESON_ARGS}"
+  patch_gstreamer_sources "$(pwd)"
 fi
 
 build_gstreamer_monorepo
@@ -645,7 +630,7 @@ echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly
 
 echo "Cleaning up..."
 cd /
-if command -v sudo >/dev/null 2>&1; then sudo rm -rf "${BUILD_DIR:?}" 2>/dev/null || true; else rm -rf "${BUILD_DIR:?}" 2>/dev/null || true; fi
+${SUDO_WRAP} rm -rf "${BUILD_DIR:?}" 2>/dev/null || true
 
 echo ""
 echo "=========================================="

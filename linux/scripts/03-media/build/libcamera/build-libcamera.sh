@@ -51,8 +51,10 @@ if [ -f /usr/local/bin/gstreamer-env.sh ]; then
   source /usr/local/bin/gstreamer-env.sh
 else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Repo layout: this script lives in 03-media/build/libcamera/ and 04-runtime/
+  # is a SIBLING of 03-media/, i.e. three levels up from here.
   # shellcheck disable=SC1091
-  source "${SCRIPT_DIR}/../../04-runtime/gstreamer-env.sh"
+  source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
 fi
 
 

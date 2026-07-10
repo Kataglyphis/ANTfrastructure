@@ -18,10 +18,16 @@ FAILURES=0
 # Fallback for cross_build_is_active when cross-env.sh is not loaded.
 # The real definition in cross-env.sh checks both BUILD_MODE and arch mismatch.
 # This fallback approximates it by checking BUILD_MODE and TARGET_ARCH != build arch.
+# Both sides are normalized to OCI names via smoke_host_arch (defined below;
+# resolved at call time) — TARGET_ARCH is usually an OCI name (amd64/arm64)
+# while uname -m yields machine names (x86_64/aarch64), so a raw comparison
+# never matched and native wrapper images skipped their functional checks.
 if ! command -v cross_build_is_active >/dev/null 2>&1; then
   cross_build_is_active() {
-    [ "${BUILD_MODE:-native}" = "cross" ] && \
-    [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+    [ "${BUILD_MODE:-native}" = "cross" ] || return 1
+    local _target="${TARGET_ARCH:-${TARGETARCH:-}}"
+    [ -n "${_target}" ] && _target="$(smoke_host_arch "${_target}")"
+    [ "${_target}" != "$(smoke_host_arch "${BUILDARCH:-$(uname -m)}")" ]
   }
 fi
 

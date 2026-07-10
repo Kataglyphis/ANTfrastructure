@@ -446,7 +446,6 @@ cross_stage_run() {
   # Append stage-specific build args from the stage graph
   cross_stage_build_args build_args "${stage}" "${arch}"
 
-  log "[stage ${label}] building${tag:+ }${tag}${parent_pin:+ FROM ${parent_pin}}"
   # EXPLICIT failure propagation (|| return 1): this function is reached via
   # run_parallel_arch_loop's `if ! _cross_per_arch_build`, which disables set -e
   # for the whole call tree. Without the explicit check a failed build would

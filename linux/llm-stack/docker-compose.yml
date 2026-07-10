@@ -34,7 +34,7 @@ services:
       - "3000:8080"
     environment:
       OLLAMA_BASE_URL: "http://ollama:8080"
-      WEBUI_SECRET_KEY: "JISkhH48FSp-iZdjcfAphVRueyTm2TbC-PJE2_Ufknuyr6JsKlI_v6YpcBKwO0Q5QF4Y3LT4PK6vo-5_HBuc6w"
+      WEBUI_SECRET_KEY: "${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set (e.g. in .env)}"
     volumes:
       - open-webui-data:/app/backend/data
     restart: unless-stopped

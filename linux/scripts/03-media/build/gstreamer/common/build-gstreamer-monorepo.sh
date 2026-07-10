@@ -477,7 +477,7 @@ _gst_monorepo_meson_setup_run() {
   if command -v patch_gstreamer_sources >/dev/null 2>&1; then
     # Wrapped subprojects such as gst-plugins-rs may only exist after Meson has
     # populated the source tree, so reapply source patches here before compile.
-    patch_gstreamer_sources "$(pwd)" "${EXTRA_MESON_ARGS}"
+    patch_gstreamer_sources "$(pwd)"
   fi
   prebuild_gstreamer_riscv_targets
 }
@@ -552,7 +552,7 @@ _gst_install_fallback_copy() {
   # Also copy any .so from the builddir into prefix, plus the CLI binaries.
   find builddir -name "*.so" -path "*/libgst*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/" \; 2>/dev/null || true
   find builddir -name "*.so" -path "*/gstreamer-1.0/*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0/" \; 2>/dev/null || true
-  find builddir -name "gst-launch-1.0" -o -name "gst-inspect-1.0" -exec cp -aL {} "${GSTREAMER_PREFIX}/bin/" \; 2>/dev/null || true
+  find builddir \( -name "gst-launch-1.0" -o -name "gst-inspect-1.0" \) -exec cp -aL {} "${GSTREAMER_PREFIX}/bin/" \; 2>/dev/null || true
   ldconfig 2>/dev/null || true
   if ! find "${GSTREAMER_PREFIX}" -name "libgstreamer*.so*" 2>/dev/null | grep -q .; then
     echo "ERROR: GStreamer cross-install produced no libgstreamer libraries" >&2

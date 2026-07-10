@@ -24,7 +24,6 @@ fi
 
 patch_gstreamer_sources() {
   local repo_root="$1"
-  local meson_args="$2"
 
   [ -d "${repo_root}" ] || {
     echo "ERROR: GStreamer repo root not found: ${repo_root}" >&2
@@ -69,6 +68,5 @@ patch_gstreamer_sources() {
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   repo_root="${1:-$PWD}"
-  meson_args="${2:-${MESON_ARGS:-${EXTRA_MESON_ARGS:-}}}"
-  patch_gstreamer_sources "${repo_root}" "${meson_args}"
+  patch_gstreamer_sources "${repo_root}"
 fi

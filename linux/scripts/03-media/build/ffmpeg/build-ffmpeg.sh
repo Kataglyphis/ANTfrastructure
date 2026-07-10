@@ -60,7 +60,6 @@ NPROC="$(media_jobs)"
 : "${FFMPEG_GIT:=https://git.ffmpeg.org/ffmpeg.git}"
 : "${FFMPEG_GIT_MIRROR:=https://github.com/FFmpeg/FFmpeg.git}"
 : "${BUILD_TYPE:=release}"
-: "${NPROC:=${NPROC}}"
 
 echo "build-ffmpeg: src=${FFMPEG_SRC} prefix=${FFMPEG_PREFIX} buildtype=${BUILD_TYPE}"
 

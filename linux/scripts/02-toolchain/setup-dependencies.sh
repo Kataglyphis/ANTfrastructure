@@ -28,7 +28,7 @@ source_module verify.sh
 
 usage() {
   cat <<EOF
-Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm>
+Usage: $0 [--llvm N] [--clang N] [--gcc N] [--vulkan-version V] [--arch A] <all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm|target-clang>
 
 Examples:
   $0 --llvm 22 --clang 22 --gcc 16 cmake
@@ -164,6 +164,7 @@ main() {
       install_gcc
       ;;
     vulkan)
+      [ -n "${VULKAN_VERSION_DEFAULT:-}" ] || die "--vulkan-version is required for the vulkan command"
       install_core_tools_if_needed
       install_vulkan_for_current_env "$VULKAN_VERSION_DEFAULT"
       ;;
@@ -181,6 +182,7 @@ main() {
       install_target_clang_toolchain "${normalized_arch_override:-${TARGET_ARCH:-${TARGETARCH:-}}}"
       ;;
     all)
+      [ -n "${VULKAN_VERSION_DEFAULT:-}" ] || die "--vulkan-version is required for the all command"
       install_core_tools_if_needed
       install_cmake
       install_llvm_clang

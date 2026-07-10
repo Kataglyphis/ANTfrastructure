@@ -58,12 +58,13 @@ host_python_major_minor() {
 cross_target_python_stage_root() {
   local target_arch=""
 
-  target_arch="$(cross_require_single_target_arch "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}" "target Python staging")" || return 1
+  target_arch="$(cross_require_single_target_arch "$(default_target_arch "${1:-}")" "target Python staging")" || return 1
   printf '%s' "${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${target_arch}"
 }
 
 cross_target_python_active_stage_root() {
-  local requested_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+  local requested_arch
+  requested_arch="$(default_target_arch "${1:-}")"
   local active_root="${PYTHON_CROSS_ACTIVE_ROOT:-/opt/python-target}"
   local stage_root=""
 

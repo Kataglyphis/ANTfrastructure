@@ -150,8 +150,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 ENV NVIDIA_CODEC_HEADERS=auto \
     UV_PYTHON="/opt/python/.venv/bin/python" \
     VIRTUAL_ENV="/opt/python/.venv" \
-    CC=/opt/gcc-${GCC_VERSION}/bin/gcc \
-    CXX=/opt/gcc-${GCC_VERSION}/bin/g++
+    CC=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/gcc \
+    CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
 
 # ==============================================================================
 # ONNX Runtime stage

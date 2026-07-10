@@ -29,6 +29,8 @@ ENV BUILD_MODE=${BUILD_MODE} \
     LLVM_RELEASE=${LLVM_RELEASE}
 # Flutter is amd64+arm64 only (riscv64 is silently skipped by setup-flutter.sh).
 # Only advertise FLUTTER_ROOT / prepend PATH on arches that actually install Flutter.
+# NOTE: arm64 images carry the x86-64 Flutter SDK (no linux-arm64 upstream archive
+# exists), so this advertisement does not imply a native arm64 Flutter toolchain.
 RUN if [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "riscv64" ]; then \
       echo 'export PATH="/opt/flutter/bin:${PATH}"' >> /etc/profile.d/flutter.sh && \
       echo 'export FLUTTER_ROOT=/opt/flutter'        >> /etc/profile.d/flutter.sh ; \
@@ -134,7 +136,7 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
 RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-cache-${TARGETARCH},sharing=locked \
     set -euo pipefail; \
     mkdir -p /var/cache/flutter; \
-    cp -an /var/cache/flutter/. /opt/ 2>/dev/null || true; \
+    mkdir -p /opt/flutter && cp -an /var/cache/flutter/. /opt/flutter/ 2>/dev/null || true; \
     if [ ! -x /opt/flutter/bin/flutter ]; then \
         bash /opt/scripts/frameworks/flutter/setup-flutter.sh \
           --arch "${TARGET_ARCH}" \

@@ -69,21 +69,23 @@ fix2_abseil_span() {
 
 fix3_libdynload_dangling() {
   echo "--- Fix 3: cross lib-dynload no dangling symlinks ---"
-  local dir="/opt/python-cross/lib/python${PYTHON_MAJOR_MINOR:-3.14}/lib-dynload"
-  if [ -d "${dir}" ]; then
-    local count
-    count=$(find "${dir}" -xtype l 2>/dev/null | wc -l)
-    if [ "${count}" -eq 0 ]; then
-      pass "No dangling symlinks in ${dir}"
-    else
-      fail "${count} dangling symlinks found in ${dir}"
-      find "${dir}" -xtype l 2>/dev/null | while read -r sl; do
-        echo "    dangling: ${sl}" >&2
-      done
+  local found=0 arch dir count
+  for arch in $(arch_list_to_words "${CROSS_DEFAULT_ARCHES:-amd64,arm64,riscv64}"); do
+    dir="/opt/python-cross/${arch}/usr/local/lib/python${PYTHON_MAJOR_MINOR:-3.14}/lib-dynload"
+    if [ -d "${dir}" ]; then
+      found=1
+      count=$(find "${dir}" -xtype l 2>/dev/null | wc -l)
+      if [ "${count}" -eq 0 ]; then
+        pass "No dangling symlinks in lib-dynload (${arch})"
+      else
+        fail "${count} dangling symlinks found in lib-dynload (${arch})"
+        find "${dir}" -xtype l 2>/dev/null | while read -r sl; do
+          echo "    dangling: ${sl}" >&2
+        done
+      fi
     fi
-  else
-    echo "  SKIP: ${dir} not found (not in cross-compiler context)"
-  fi
+  done
+  [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch lib-dynload found (not in cross-compiler context)"
 }
 
 fix4_cc_dumpmachine() {

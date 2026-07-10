@@ -98,10 +98,17 @@ patch_cerbero_system_m4_usage() {
 PER_JOB_MB="${ANDROID_GSTREAMER_PER_JOB_MB:-1500}"
 
 if [ -z "${JOBS:-}" ]; then
-    if [ -f /opt/scripts/core/parallelism.sh ] && declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-        JOBS="$(compute_jobs_with_mem_cap "" "${PER_JOB_MB}")"
-    else
-        JOBS="$(nproc --all)"
+    JOBS="$(nproc --all)"
+    # Nothing in this script pre-loads parallelism.sh, so source it on demand
+    # (container path) before probing for compute_jobs_with_mem_cap — mirrors
+    # media_jobs() in android-build-preamble.sh, but keeps the configurable
+    # ANDROID_GSTREAMER_PER_JOB_MB cap instead of its fixed 2000 MB.
+    if [ -f /opt/scripts/core/parallelism.sh ]; then
+        # shellcheck disable=SC1091
+        source /opt/scripts/core/parallelism.sh 2>/dev/null || true
+        if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+            JOBS="$(compute_jobs_with_mem_cap "" "${PER_JOB_MB}")"
+        fi
     fi
 fi
 

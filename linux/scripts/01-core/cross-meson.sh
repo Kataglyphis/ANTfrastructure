@@ -25,7 +25,6 @@ make_meson_cross_rust_wrapper() {
   local template="${_CROSS_ENV_DIR:-${BASH_SOURCE[0]%/*}}/meson-rust-wrapper.sh"
   if [ ! -f "${template}" ]; then
     err "meson-rust-wrapper template not found: ${template}"
-    return 1
   fi
   sed -e "s|__RUSTC_BIN__|${rustc_bin}|g" \
       -e "s|__RUST_TARGET__|${rust_target}|g" \

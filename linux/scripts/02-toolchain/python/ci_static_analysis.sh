@@ -27,16 +27,8 @@ info "Running static analysis for package: $PACKAGE_NAME"
 git config --global --add safe.directory "$WORKSPACE_ROOT" || true
 
 VENV_DIR="$WORKSPACE_ROOT/.venv_static_analysis"
-VENV_WAS_PRESENT=0
 
-if [ -d "$VENV_DIR" ]; then
-  info "Using existing virtual environment at: $VENV_DIR"
-  VENV_WAS_PRESENT=1
-  uv_venv_activate "$VENV_DIR"
-else
-  info "Creating virtual environment with Python $PYTHON_VERSION at: $VENV_DIR"
-  UV_VENV_CLEAR=1 uv_venv_create "$VENV_DIR" "$PYTHON_VERSION"
-fi
+UV_VENV_CLEAR=1 uv_venv_ensure "$VENV_DIR" "$PYTHON_VERSION" "virtual environment" VENV_WAS_PRESENT
 
 uv_sync_project --no-wxpython
 

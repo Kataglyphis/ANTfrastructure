@@ -8,9 +8,7 @@ fix_python_pc_file() {
 
   sed -i \
     -e 's|^prefix=/usr/local$|prefix=${pcfiledir}/../..|' \
-    -e 's|^exec_prefix=\${prefix}$|exec_prefix=${prefix}|' \
     -e 's|^libdir=\${exec_prefix}/lib$|libdir=${prefix}/lib|' \
-    -e 's|^includedir=\${prefix}/include$|includedir=${prefix}/include|' \
     "${pc_file}"
 }
 

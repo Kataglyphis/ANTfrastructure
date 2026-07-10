@@ -231,7 +231,11 @@ configure_litert() {
         append_cmake_cross_args cmake_args
     fi
 
-    if command -v cross_target_arch >/dev/null 2>&1; then
+    # Only cross builds hit the GCC 16.1.0 ICE; native amd64 keeps the Samsung
+    # vendor sources and builds them with clang (see comment above
+    # _litert_disable_samsung_vendor). Gating on `command -v cross_target_arch`
+    # was always true after media_common_init, stubbing native builds too.
+    if cross_build_is_active; then
         _litert_disable_samsung_vendor
     fi
 

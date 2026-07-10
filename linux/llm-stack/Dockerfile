@@ -2,11 +2,13 @@
 ARG UBUNTU_VERSION=26.04
 FROM ubuntu:${UBUNTU_VERSION} AS base
 
-ARG TARGETARCH
-ARG OLLAMA_VERSION=0.30.10
+# The Ollama tarball is downloaded OUTSIDE the build by scripts/download-ollama.sh
+# (which owns the version default) and COPY'd in below — no version ARG here.
 
+# curl is required by the HEALTHCHECK below and by entrypoint.sh's readiness poll.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     zstd \
     && rm -rf /var/lib/apt/lists/*
 

@@ -159,12 +159,20 @@ fetch_opencv() {
     fi
 
     cd "${OPENCV_SRC}"
-    git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout version ${OPENCV_VERSION}"; exit 1; }
+    # When a commit pin is set, clone_or_update_repo already checked out the SHA
+    # via FETCH_HEAD and no ${OPENCV_VERSION} branch ref exists locally — a
+    # branch checkout here would fail and abort the build. Only re-checkout the
+    # branch in the unpinned (branch-tracking) case.
+    if [ -z "${OPENCV_COMMIT:-}" ]; then
+        git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout version ${OPENCV_VERSION}"; exit 1; }
+    fi
     echo "OpenCV version: $(git describe --tags 2>/dev/null || echo 'unknown')"
 
     if [ "${WITH_CONTRIB}" = "true" ]; then
         cd "${contrib_dir}"
-        git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout contrib version ${OPENCV_VERSION}"; exit 1; }
+        if [ -z "${OPENCV_CONTRIB_COMMIT:-}" ]; then
+            git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout contrib version ${OPENCV_VERSION}"; exit 1; }
+        fi
         echo "OpenCV contrib version: $(git describe --tags 2>/dev/null || echo 'unknown')"
         cd "${OPENCV_SRC}"
     fi
@@ -460,10 +468,17 @@ configure_opencv() {
     mkdir -p "${build_dir}"
     cd "${build_dir}"
 
-    _opencv_target_adjustments cmake_opts with_gtk with_gstreamer with_opengl \
+    # Target adjustments must be computed FIRST (they set with_gtk/with_gstreamer/
+    # target_zlib_* consumed by the core opts) but their CMake overrides (e.g.
+    # riscv64 -DWITH_PNG=OFF) must land AFTER the core opts in the final command:
+    # _opencv_cmake_core_opts does a full array reassignment (and cmake is
+    # last-wins), so collect them separately and append after the core opts.
+    local target_cmake_opts=()
+    _opencv_target_adjustments target_cmake_opts with_gtk with_gstreamer with_opengl \
         target_zlib_include target_zlib_library target_shared_include_fallback
 
     _opencv_cmake_core_opts cmake_opts "${with_gtk}" "${with_gstreamer}" "${with_opengl}"
+    cmake_opts+=("${target_cmake_opts[@]}")
     _opencv_cmake_cross_opts cmake_opts \
         "${target_zlib_include}" "${target_zlib_library}" "${target_shared_include_fallback}"
 

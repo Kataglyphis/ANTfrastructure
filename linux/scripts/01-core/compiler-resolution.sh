@@ -109,11 +109,12 @@ derive_cxx_from_cc() {
   [ -x "${cxx}" ] && printf '%s' "${cxx}"
 }
 
-# Resolve both CC and CXX for a target architecture. Expects TARGET_ARCH or
-# TARGETARCH to be set. Exports CC and CXX on success. Returns 1 if either
-# compiler cannot be found.
+# Resolve both CC and CXX for a target architecture. Expects a target arch
+# argument or env (see default_target_arch). Exports CC and CXX on success.
+# Returns 1 if either compiler cannot be found.
 resolve_cross_cc_cxx_for_arch() {
-  local arch="${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
+  local arch
+  arch="$(default_target_arch "${1:-}")"
   local triplet cc cxx
 
   [ -n "${arch}" ] || return 1
@@ -136,7 +137,8 @@ resolve_cross_cc_cxx_for_arch() {
 # The SDK image's apt packages may create symlinks in /usr/lib/<triplet>/
 # that point to the host (amd64) libstdc++ instead of the target arch one.
 fix_libstdcxx_symlink() {
-  local arch="${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
+  local arch
+  arch="$(default_target_arch "${1:-}")"
   local triplet gcc_lib sys_lib
 
   [ -n "${arch}" ] || return 0
@@ -170,7 +172,8 @@ fix_libstdcxx_symlink() {
 # (which only repoints the dev .so and only when it is currently wrong-arch).
 # No-op on native/amd64. Always returns 0 so callers under `set -e` are safe.
 pin_target_libstdcxx() {
-  local arch="${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
+  local arch
+  arch="$(default_target_arch "${1:-}")"
   [ -n "${arch}" ] || return 0
   [ "${arch}" = "amd64" ] && return 0
 

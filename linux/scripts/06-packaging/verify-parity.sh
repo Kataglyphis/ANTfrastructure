@@ -187,20 +187,25 @@ check_python() {
   local native_file="${WORKDIR}/native-pip.txt"
   local cross_file="${WORKDIR}/cross-pip.txt"
 
-  container_exec_strip "${NATIVE_IMAGE}" bash -lc \
+  # NOTE: no `bash -lc` prefix here — container_exec is the single wrapper
+  # (it already runs the flattened "$*" via `--entrypoint=/bin/bash ... -lc`).
+  # A prefixed `bash -lc "cmd"` used to double-wrap: the inner bash received
+  # only `bash` as its -c payload, so the venv prologue never ran and this
+  # check silently compared SYSTEM packages instead of the venv.
+  container_exec_strip "${NATIVE_IMAGE}" \
     "${_VENV_ACTIVATE_PROLOGUE} pip list --format=columns 2>/dev/null || pip3 list --format=columns" \
     > "${native_file}" 2>/dev/null || {
-    container_exec_strip "${NATIVE_IMAGE}" bash -lc 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
+    container_exec_strip "${NATIVE_IMAGE}" 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
       > "${native_file}" 2>/dev/null || {
       warn "Cannot extract Python packages from native image (venv may not exist)"
       return 0
     }
   }
 
-  container_exec_strip "${CROSS_IMAGE}" bash -lc \
+  container_exec_strip "${CROSS_IMAGE}" \
     "${_VENV_ACTIVATE_PROLOGUE} pip list --format=columns 2>/dev/null || pip3 list --format=columns" \
     > "${cross_file}" 2>/dev/null || {
-    container_exec_strip "${CROSS_IMAGE}" bash -lc 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
+    container_exec_strip "${CROSS_IMAGE}" 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \
       > "${cross_file}" 2>/dev/null || {
       warn "Cannot extract Python packages from cross image (venv may not exist)"
       return 0
@@ -248,8 +253,9 @@ check_versions() {
   :> "${cross_file}"
 
   for tool_spec in "${tools[@]}"; do
-    native_out="$(container_exec_strip "${NATIVE_IMAGE}" bash -lc "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
-    cross_out="$(container_exec_strip "${CROSS_IMAGE}" bash -lc "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
+    # No `bash -lc` prefix — container_exec already wraps (see check_python).
+    native_out="$(container_exec_strip "${NATIVE_IMAGE}" "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
+    cross_out="$(container_exec_strip "${CROSS_IMAGE}" "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
 
     printf '%s\t%s\n' "${tool_spec%% *}" "${native_out}" >> "${native_file}"
     printf '%s\t%s\n' "${tool_spec%% *}" "${cross_out}" >> "${cross_file}"
@@ -284,12 +290,17 @@ check_files() {
   local native_file="${WORKDIR}/native-files.txt"
   local cross_file="${WORKDIR}/cross-files.txt"
 
-  container_exec_strip "${NATIVE_IMAGE}" find / -type f \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -print 2>/dev/null | sort > "${native_file}" || true
+  # Single-quoted so the container shell receives the \( ... \) grouping
+  # intact. The prune group must come FIRST (no leading -type f, no trailing
+  # slash on the -path patterns) or it never prunes anything.
+  local find_cmd='find / \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -print'
+
+  container_exec_strip "${NATIVE_IMAGE}" "${find_cmd}" 2>/dev/null | sort > "${native_file}" || true
   if [ ! -s "${native_file}" ]; then
     fail "Failed to list files from native image (empty or missing output)"
     return 1
   fi
-  container_exec_strip "${CROSS_IMAGE}" find / -type f \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -print 2>/dev/null | sort > "${cross_file}" || true
+  container_exec_strip "${CROSS_IMAGE}" "${find_cmd}" 2>/dev/null | sort > "${cross_file}" || true
   if [ ! -s "${cross_file}" ]; then
     fail "Failed to list files from cross image (empty or missing output)"
     return 1
@@ -310,18 +321,18 @@ check_libs() {
   local native_file="${WORKDIR}/native-libs.txt"
   local cross_file="${WORKDIR}/cross-libs.txt"
 
-  container_exec_strip "${NATIVE_IMAGE}" find \
-    /usr/lib /usr/local/lib /opt \
-    -maxdepth 5 -name '*.so*' -type f 2>/dev/null \
+  # Single-quoted payload so '*.so*' stays quoted for the container shell
+  # instead of being re-globbed against the container workdir.
+  local libs_cmd="find /usr/lib /usr/local/lib /opt -maxdepth 5 -name '*.so*' -type f"
+
+  container_exec_strip "${NATIVE_IMAGE}" "${libs_cmd}" 2>/dev/null \
     | sed -E 's/\.so\.[0-9.]+$/.so.X/' | sort -u > "${native_file}" || true
   if [ ! -s "${native_file}" ]; then
     warn "Cannot list shared libs from native image"
     return 0
   fi
 
-  container_exec_strip "${CROSS_IMAGE}" find \
-    /usr/lib /usr/local/lib /opt \
-    -maxdepth 5 -name '*.so*' -type f 2>/dev/null \
+  container_exec_strip "${CROSS_IMAGE}" "${libs_cmd}" 2>/dev/null \
     | sed -E 's/\.so\.[0-9.]+$/.so.X/' | sort -u > "${cross_file}" || true
   if [ ! -s "${cross_file}" ]; then
     warn "Cannot list shared libs from cross image"
@@ -351,12 +362,16 @@ check_imports() {
   local native_out cross_out
 
   for mod in "${modules[@]}"; do
-    py_cmd="import ${mod}; print('${mod} ok:', ${mod}.__version__ if hasattr(${mod}, '__version__') else 'loaded')"
+    # Python strings use DOUBLE quotes: py_cmd is spliced into a single-quoted
+    # `python3 -c '...'` below, so a single quote inside it would terminate
+    # that quoting in the container shell and break the -c payload.
+    py_cmd="import ${mod}; print(\"${mod} ok:\", ${mod}.__version__ if hasattr(${mod}, \"__version__\") else \"loaded\")"
 
-    native_out="$(container_exec_strip "${NATIVE_IMAGE}" bash -lc \
+    # No `bash -lc` prefix — container_exec already wraps (see check_python).
+    native_out="$(container_exec_strip "${NATIVE_IMAGE}" \
       "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
 
-    cross_out="$(container_exec_strip "${CROSS_IMAGE}" bash -lc \
+    cross_out="$(container_exec_strip "${CROSS_IMAGE}" \
       "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
 
     local native_status="${native_out%% *}"

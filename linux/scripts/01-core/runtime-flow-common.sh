@@ -31,6 +31,10 @@ init_runtime_flow_defaults() {
   TORCH_APP_MODE="${TORCH_APP_MODE:-}"
   init_mirror_defaults
 
+  # Deliberately CLI-only: these flag vars are hard-reset here and any env
+  # values are intentionally discarded (accidental env leakage must never be
+  # able to trigger pushes), unlike MAX_PARALLEL_ARCHS below which is
+  # env-overridable.
   PUSH_IMAGES=0
   PUSH_INTERMEDIATE_IMAGES=0
   DRY_RUN=0

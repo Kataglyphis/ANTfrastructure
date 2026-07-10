@@ -77,12 +77,13 @@ _llvm_cross_early_return() {
   # --- Early-return if already installed ---
   case "${mode}" in
     target-llvm)
-      if cmake_dir="$(llvm_cross_cmake_dir "${target_label}" 2>/dev/null || true)"; then
-        if [ -n "${cmake_dir}" ] && llvm_cross_install_looks_complete "${target_label}"; then
-          validate_cross_llvm_cmake_package "${target_label}"
-          log "Reusing target LLVM install for ${target_label}: ${cmake_dir}"
-          return 1
-        fi
+      cmake_dir="$(llvm_cross_cmake_dir "${target_label}" 2>/dev/null)" || cmake_dir=""
+      if [ -n "${cmake_dir}" ] && llvm_cross_install_looks_complete "${target_label}"; then
+        validate_cross_llvm_cmake_package "${target_label}"
+        log "Reusing target LLVM install for ${target_label}: ${cmake_dir}"
+        return 1
+      fi
+      if [ -d "${prefix}" ]; then
         log "Discarding incomplete target LLVM install for ${target_label}: ${prefix}"
         rm -rf "${prefix}"
       fi

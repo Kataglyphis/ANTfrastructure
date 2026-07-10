@@ -133,45 +133,15 @@ llvm_cross_bin_dir() {
   printf '%s' "${prefix}/bin"
 }
 
-llvm_cross_lib_dir() {
-  local prefix="$1"
-  local dir
+# _llvm_first_existing <test-flag> <candidate...>
+# Print the first candidate that satisfies `test <test-flag>` (one of
+# -e/-x/-d/-f) and return 0; return 1 when none matches.
+_llvm_first_existing() {
+  local test_flag="$1" candidate
+  shift
 
-  for dir in \
-    "${prefix}/lib" \
-    "${prefix}/lib64"; do
-    [ -d "${dir}" ] || continue
-    printf '%s' "${dir}"
-    return 0
-  done
-
-  return 1
-}
-
-llvm_cross_cmake_dir() {
-  local prefix
-  local dir
-
-  prefix="$(llvm_cross_install_prefix "$1")" || return 1
-  for dir in \
-    "${prefix}/lib/cmake/llvm" \
-    "${prefix}/lib64/cmake/llvm"; do
-    [ -f "${dir}/LLVMConfig.cmake" ] || continue
-    printf '%s' "${dir}"
-    return 0
-  done
-
-  return 1
-}
-
-llvm_cross_shared_umbrella_lib_path() {
-  local prefix="$1"
-  local candidate
-
-  for candidate in \
-    "${prefix}/lib/libLLVM.so" \
-    "${prefix}/lib64/libLLVM.so"; do
-    [ -e "${candidate}" ] || continue
+  for candidate in "$@"; do
+    test "${test_flag}" "${candidate}" || continue
     printf '%s' "${candidate}"
     return 0
   done
@@ -179,9 +149,34 @@ llvm_cross_shared_umbrella_lib_path() {
   return 1
 }
 
+llvm_cross_lib_dir() {
+  local prefix="$1"
+
+  _llvm_first_existing -d \
+    "${prefix}/lib" \
+    "${prefix}/lib64"
+}
+
+llvm_cross_cmake_dir() {
+  local prefix config
+
+  prefix="$(llvm_cross_install_prefix "$1")" || return 1
+  config="$(_llvm_first_existing -f \
+    "${prefix}/lib/cmake/llvm/LLVMConfig.cmake" \
+    "${prefix}/lib64/cmake/llvm/LLVMConfig.cmake")" || return 1
+  printf '%s' "${config%/LLVMConfig.cmake}"
+}
+
+llvm_cross_shared_umbrella_lib_path() {
+  local prefix="$1"
+
+  _llvm_first_existing -e \
+    "${prefix}/lib/libLLVM.so" \
+    "${prefix}/lib64/libLLVM.so"
+}
+
 llvm_cross_versioned_shared_umbrella_lib_path() {
   local prefix="$1"
-  local candidate
   local nullglob_was_set=0
   local -a matches=()
 
@@ -194,47 +189,27 @@ llvm_cross_versioned_shared_umbrella_lib_path() {
     shopt -u nullglob
   fi
 
-  for candidate in "${matches[@]}"; do
-    [ -e "${candidate}" ] || continue
-    printf '%s' "${candidate}"
-    return 0
-  done
-
-  return 1
+  _llvm_first_existing -e "${matches[@]}"
 }
 
 llvm_cross_compat_shared_umbrella_lib_path() {
   local prefix="$1"
   local major="$(llvm_wanted_major)"
-  local candidate
 
   major="$(version_major "${major}")"
-  for candidate in \
+  _llvm_first_existing -e \
     "${prefix}/lib/libLLVM-${major}.so" \
-    "${prefix}/lib64/libLLVM-${major}.so"; do
-    [ -e "${candidate}" ] || continue
-    printf '%s' "${candidate}"
-    return 0
-  done
-
-  return 1
+    "${prefix}/lib64/libLLVM-${major}.so"
 }
 
 llvm_cross_llvm_config_path() {
   local prefix="$1"
   local major="$(llvm_wanted_major)"
-  local candidate
 
   major="$(version_major "${major}")"
-  for candidate in \
+  _llvm_first_existing -x \
     "${prefix}/bin/llvm-config" \
-    "${prefix}/bin/llvm-config-${major}"; do
-    [ -x "${candidate}" ] || continue
-    printf '%s' "${candidate}"
-    return 0
-  done
-
-  return 1
+    "${prefix}/bin/llvm-config-${major}"
 }
 
 llvm_cross_install_looks_complete() {

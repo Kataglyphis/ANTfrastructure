@@ -74,7 +74,8 @@ verify_cross_mode_requested() {
 }
 
 verify_cross_target_versions() {
-  local target_arch="${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}"
+  local target_arch
+  target_arch="$(default_target_arch)"
   local triplet=""
   local clang_target=""
   local requested_major="$(version_major "${GCC_WANTED}")"

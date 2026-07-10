@@ -53,7 +53,7 @@ known_so_packages_load() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 declare -A KNOWN_SO_PACKAGES=()
 known_so_packages_load || {
-  echo "WARNING: so-package-map.txt not found, using embedded fallback map" >&2
+  echo "WARNING: so-package-map.txt not found; continuing with an empty known-so map (dpkg-query/apt-cache lookups only)" >&2
 }
 
 find_missing_needed() {
@@ -220,7 +220,7 @@ if [ ${#UNIQ_PKGS[@]} -gt 0 ]; then
     echo "These libraries could not be found in any apt package. The artifacts"
     echo "that depend on them (and the plugins that load them) will fail at"
     echo "runtime. Review the build configuration or add package mappings"
-    echo "to KNOWN_SO_PACKAGES in validate-media-runtime.sh."
+    echo "to so-package-map.txt (next to validate-media-runtime.sh)."
   else
     echo "All dependencies resolved after package install."
   fi
@@ -230,7 +230,7 @@ if [ ${#STILL_MISSING[@]} -gt 0 ]; then
   echo ""
   echo "=== WARNING: ${#STILL_MISSING[@]} dependencies have no known apt package ==="
   printf '  %s\n' "${STILL_MISSING[@]}"
-  echo "Add entries to KNOWN_SO_PACKAGES in validate-media-runtime.sh."
+  echo "Add entries to so-package-map.txt (next to validate-media-runtime.sh)."
 fi
 
 # ---------------------------------------------------------------------------

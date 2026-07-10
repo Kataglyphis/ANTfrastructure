@@ -21,14 +21,12 @@ prepare_ci_workspace
 
 VENV_DIR="$WORKSPACE_ROOT/.venv-docs"
 
-if [ -f "$VENV_DIR/bin/activate" ]; then
-  info "Using existing docs venv at $VENV_DIR"
-else
-  info "Creating docs venv at $VENV_DIR"
-  uv_venv_create "$VENV_DIR" "${COVERAGE_VERSION}"
+# uv_venv_ensure activates the venv itself when it already exists; only the
+# freshly-created case still needs an explicit activation.
+uv_venv_ensure "$VENV_DIR" "${COVERAGE_VERSION}" "docs venv" venv_existed
+if [ "$venv_existed" -eq 0 ]; then
+  uv_venv_activate "$VENV_DIR"
 fi
-
-uv_venv_activate "$VENV_DIR"
 uv_sync_project --no-wxpython
 
 cp "$WORKSPACE_ROOT/README.md" "$WORKSPACE_ROOT/docs/source/README.md" 2>/dev/null || true

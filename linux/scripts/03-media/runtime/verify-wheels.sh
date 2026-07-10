@@ -20,7 +20,6 @@ else
   echo "Verifying wheels in ${WHEELS_DIR} have the correct tag (${PY_TAG} or generic)..."
 fi
 
-FAILURES=0
 shopt -s nullglob
 for wheel in "${WHEELS_DIR}"/*.whl; do
   case "$(basename "${wheel}")" in

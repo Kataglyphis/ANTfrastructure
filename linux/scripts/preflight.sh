@@ -40,6 +40,10 @@ run_check "critical fixes"             bash linux/scripts/verify-critical-fixes.
 # 3b. Patch files are well-formed unified diffs AND still referenced (no orphans).
 run_check "patch integrity"            bash linux/scripts/verify-patch-integrity.sh
 
+# 3c. Dockerfile.package artifact COPY lane: artifact-source stage exists and
+#     src/dst paths stay canonical (undocumented relocations fail).
+run_check "artifact copy parity"       bash linux/scripts/verify-artifact-copy-parity.sh
+
 # 4. Dockerfile ARG names/values agree with versions.env + forwarding.
 run_check "ARG consistency"            bash linux/scripts/01-core/verify-arg-consistency.sh
 

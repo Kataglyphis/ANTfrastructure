@@ -134,11 +134,12 @@ _gst_rs_clone() {
     git fetch origin --tags
     git checkout "gstreamer-${GSTREAMER_VERSION}"
   else
-    sudo mkdir -p "${plugin_rs_dir}"
-    sudo chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
+    ensure_sudo_or_die
+    ${SUDO_WRAP} mkdir -p "${plugin_rs_dir}"
+    ${SUDO_WRAP} chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
     git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${plugin_rs_dir}"
     cd "${plugin_rs_dir}"
-    sudo chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
+    ${SUDO_WRAP} chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
   fi
 }
 

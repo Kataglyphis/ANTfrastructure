@@ -40,17 +40,24 @@ prepare_ci_workspace() {
   git config --global --add safe.directory "$WORKSPACE_ROOT" || true
 }
 
-# uv_venv_ensure <dir> <python-version> [label]
+# uv_venv_ensure <dir> <python-version> [label] [existed-outvar]
 # Reuse the venv at <dir> if it already exists (activating it), otherwise create
 # it. Matches the create-does-not-activate semantics of uv_venv_create so the
 # packaging scripts keep behaving exactly as their previous inline blocks did.
+# When <existed-outvar> is given, that variable is set to 1 if the venv
+# pre-existed and 0 if it was freshly created.
 uv_venv_ensure() {
-  local dir="$1" pyver="$2" label="${3:-venv}"
+  local dir="$1" pyver="$2" label="${3:-venv}" existed_outvar="${4:-}"
+  local existed=0
   if [ -f "$dir/bin/activate" ]; then
+    existed=1
     info "Using existing ${label} at $dir"
     uv_venv_activate "$dir"
   else
     info "Creating ${label} with Python $pyver at $dir"
     uv_venv_create "$dir" "$pyver"
+  fi
+  if [ -n "$existed_outvar" ]; then
+    printf -v "$existed_outvar" '%s' "$existed"
   fi
 }

@@ -197,6 +197,14 @@ arch_list_csv_normalize() {
   printf '%s' "${normalized_arches[*]}" | tr ' ' ','
 }
 
+# Canonical target-arch fallback chain: an explicit argument wins, then
+# TARGET_ARCH, then TARGETARCH, then ARCH; prints empty when none is set.
+# Single source of truth for the chain formerly copy-pasted (with drift)
+# across cross-env/cross-python/compiler-resolution/verify.
+default_target_arch() {
+  printf '%s' "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+}
+
 cross_targets_effective_raw() {
   printf '%s' "${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}}}"
 }

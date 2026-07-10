@@ -69,31 +69,24 @@ for V in $PY_VERSIONS; do
 
   uv_sync_project --no-wxpython
 
+  pytest_args=(
+    tests/unit -v
+    --cov="$PACKAGE_NAME"
+    --cov-report=term-missing
+    --cov-report="html:$WORKSPACE_ROOT/docs/test_results/coverage-html-${V}"
+    --cov-report="xml:$WORKSPACE_ROOT/docs/test_results/coverage-${V}.xml"
+    --junitxml="$WORKSPACE_ROOT/docs/test_results/report-${V}.xml"
+    --html="$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.html"
+    --self-contained-html
+    --md-report
+    --md-report-verbose=1
+    --md-report-output "$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.md"
+  )
+
   if is_experimental_python "$V"; then
-    uv_run pytest tests/unit -v \
-      --cov="$PACKAGE_NAME" \
-      --cov-report=term-missing \
-      --cov-report="html:$WORKSPACE_ROOT/docs/test_results/coverage-html-${V}" \
-      --cov-report="xml:$WORKSPACE_ROOT/docs/test_results/coverage-${V}.xml" \
-      --junitxml="$WORKSPACE_ROOT/docs/test_results/report-${V}.xml" \
-      --html="$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.html" \
-      --self-contained-html \
-      --md-report \
-      --md-report-verbose=1 \
-      --md-report-output "$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.md" \
-      || warn "[experimental] Unit tests failed for $V; continuing"
+    uv_run pytest "${pytest_args[@]}" || warn "[experimental] Unit tests failed for $V; continuing"
   else
-    uv_run pytest tests/unit -v \
-      --cov="$PACKAGE_NAME" \
-      --cov-report=term-missing \
-      --cov-report="html:$WORKSPACE_ROOT/docs/test_results/coverage-html-${V}" \
-      --cov-report="xml:$WORKSPACE_ROOT/docs/test_results/coverage-${V}.xml" \
-      --junitxml="$WORKSPACE_ROOT/docs/test_results/report-${V}.xml" \
-      --html="$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.html" \
-      --self-contained-html \
-      --md-report \
-      --md-report-verbose=1 \
-      --md-report-output "$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.md" || TEST_EXIT=$?
+    uv_run pytest "${pytest_args[@]}" || TEST_EXIT=$?
   fi
 
   uv_run python bench/demo_cprofile.py 2>/dev/null || info "demo_cprofile.py skipped"

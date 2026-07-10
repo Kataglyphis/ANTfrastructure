@@ -16,8 +16,8 @@ _append_env_var() {
   else
     existing="${var_value}"
   fi
-  sed -i "/^${var_name}=/d" "${env_file}" 2>/dev/null || true
-  echo "${var_name}=\"${existing}\"" | tee -a "${env_file}" >/dev/null
+  ${SUDO:-} sed -i "/^${var_name}=/d" "${env_file}" 2>/dev/null || true
+  echo "${var_name}=\"${existing}\"" | ${SUDO:-} tee -a "${env_file}" >/dev/null
 }
 
 _configure_gcc_environment() {
