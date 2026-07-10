@@ -442,8 +442,13 @@ int _isatty(int);
         if ($LASTEXITCODE -eq 0) { $compileSucceeded = $true; break }
         if ($cAttempt -eq 1) {
             log 'Compile attempt 1 failed; patching _commit conflict in GES and retrying...'
-            # The -FIio.h conflicts with ges-validate.c's _commit function.
-            # Apply the reviewable .patch from windows/scripts/patches/gstreamer/.
+            # Reactive by design -- only rename GES's `_commit` when a compile actually failed. clang-cl's
+            # -FIio.h force-include declares the CRT `_commit`, which can collide with ges-validate.c's own
+            # `_commit` validate-action. In gstreamer 1.29.2 there is NO collision (ges-validate.c compiles
+            # clean on attempt 1), so this path stays DORMANT -- applying the rename unconditionally would
+            # needlessly redefine `_commit` where there is nothing to fix. The reviewable .patch below
+            # (patches/gstreamer/001-ges-commit-rename.patch, kept git-appliable) fires only if a future
+            # clang / io.h / gstreamer combination reintroduces the clash. NOT dead code: dormant insurance.
             $gesValidate = Join-Path $gstSrcDir 'subprojects/gst-editing-services/ges/ges-validate.c'
             $gesPatch = Join-Path $PSScriptRoot 'patches\gstreamer\001-ges-commit-rename.patch'
             if ((Test-Path $gesValidate) -and (Test-Path $gesPatch)) {

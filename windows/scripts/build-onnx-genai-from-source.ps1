@@ -112,16 +112,14 @@ Write-Host "Using MSVC tools: $msvcVersionDir"
 # work for one toolset version. The `-replace` form tolerates surrounding-text
 # drift across MSVC v143/v145 releases. See docs/windows-builds.md ?Patches.
 
-# Patch MSVC STL experimental/coroutine header to disable clang static_assert
-$coroHeader = Join-Path $msvcVersionDir 'include\experimental\coroutine'
-Invoke-InlineRegexPatch -Path $coroHeader -Guard '_EMIT_STL_ERROR\(STL1009' `
-    -Pattern '_EMIT_STL_ERROR\(STL1009, ".*?"\)' `
-    -Description 'MSVC experimental/coroutine header' `
-    -WarnMessage "experimental/coroutine: STL1009 macro matched the guard but not the replace pattern; MSVC layout may have changed. Verify $coroHeader (clang static_assert errors may resurface later)." | Out-Null
-# Also patch yvals_core.h to make _EMIT_STL_ERROR a no-op when __clang__
-# NOTE: This _EMIT_STL_ERROR regex patch is MSVC version-specific (v143/v145 toolset).
-# The exact #define line format changes between MSVC releases. When the MSVC toolset is
-# updated, verify the macro signature still matches before blindly applying this patch.
+# Neutralize MSVC STL's clang-incompatible static_asserts. yvals_core.h defines
+#   _EMIT_STL_ERROR(NUMBER, MESSAGE) -> static_assert(false, ...)
+# Wrapping that define in `#ifdef __clang__` makes EVERY STL error code a no-op under clang-cl
+# (STL1009/1010/1011 in <experimental/coroutine>, etc.). This single edit carries the whole load.
+# A former <experimental/coroutine>-specific patch was REMOVED here: it was (a) redundant with this
+# (yvals no-ops _EMIT_STL_ERROR for all codes), and (b) permanently broken -- its single-line regex
+# `_EMIT_STL_ERROR\(STL1009, ".*?"\)` never matched MSVC's MULTI-line STL1009 macro call, so it was a
+# silent no-op while GenAI built fine on the yvals patch alone. Validated vs MSVC 14.51.36231 (VS 18).
 $yvalsCore = Join-Path $msvcVersionDir 'include\yvals_core.h'
 $yvalsOld = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
 $yvalsNew = '#ifdef __clang__
@@ -129,10 +127,21 @@ $yvalsNew = '#ifdef __clang__
 #else
 #define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)
 #endif'
-Invoke-InlineRegexPatch -Path $yvalsCore -Guard '#define _EMIT_STL_ERROR' `
-    -Pattern ([regex]::Escape($yvalsOld)) -Replacement $yvalsNew `
-    -Description 'MSVC yvals_core.h for clang compat' `
-    -WarnMessage "yvals_core.h: _EMIT_STL_ERROR is present but its exact signature did not match the patch target. The MSVC toolset likely changed the #define format; clang static_assert errors may resurface mid-build. Update the yvalsOld string in $yvalsCore." | Out-Null
+[void](Invoke-InlineRegexPatch -Path $yvalsCore -Guard '#define _EMIT_STL_ERROR' `
+        -Pattern ([regex]::Escape($yvalsOld)) -Replacement $yvalsNew `
+        -Description 'MSVC yvals_core.h for clang compat')
+# Loud drift assertion: this patch is load-bearing, so if the _EMIT_STL_ERROR #define is present but
+# our exact target line no longer matches (a future MSVC toolset changed its format), FAIL NOW with a
+# clear message instead of letting clang static_asserts resurface mid-compile with a confusing error.
+# (An already-patched header contains the `#ifdef __clang__` wrapper, so that is not treated as drift.)
+if (Test-Path $yvalsCore) {
+    $yvalsText = [System.IO.File]::ReadAllText($yvalsCore)
+    if (($yvalsText -match '#define _EMIT_STL_ERROR') -and
+        ($yvalsText -notmatch '#ifdef __clang__\r?\n#define _EMIT_STL_ERROR\(NUMBER, MESSAGE\)')) {
+        $msvcVer = Split-Path $msvcVersionDir -Leaf
+        throw "yvals_core.h: _EMIT_STL_ERROR is present but the exact patch target did not match (MSVC $msvcVer likely changed the macro format). Update `$yvalsOld in build-onnx-genai-from-source.ps1 -- clang static_asserts will otherwise resurface mid-build."
+    }
+}
 
 # Patch build.ninja to strip MSVC-only flags clang-cl errors on
 Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatterns @(

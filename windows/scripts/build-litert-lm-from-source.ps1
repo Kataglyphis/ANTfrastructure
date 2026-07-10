@@ -321,18 +321,12 @@ Write-Host "Set CXXFLAGS (delayed template parsing + dlfcn/unistd/alloca shim + 
 $env:CCC_OVERRIDE_OPTIONS = '#x-fPIC x/bigobj x/nologo x/EHsc x/GF x/MP x/Gm- x/wd4800 x/wd4805 x/wd4244'
 Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC + gemmlowp MSVC flags from clang++ (windows-msvc target rejects them)"
 
-# Inline patch (kept inline, NOT a .patch file): LiteRT-LM's runtime/proto/CMakeLists.txt
-# is a single small file but the regex substitutions (`protobuf_generate(...)`,
-# `find_package(Protobuf` -> QUIET) are not stable across LiteRT-LM tags -- newer
-# releases rename the proto target list and add an extra `find_package(Protobuf
-# REQUIRED)` near the bottom. A static .patch would rot; the `-replace` form is
-# the canonical representation. See docs/windows-builds.md ?Patches.
-$runtimeProtoCmake = Join-Path $SourceDir 'runtime\proto\CMakeLists.txt'
-[void](Edit-SourceFile -Path $runtimeProtoCmake -Description 'runtime/proto/CMakeLists.txt before configure' -Transform {
-    param($c)
-    $c = $c -replace 'protobuf_generate\([^)]*\)', '# protobuf_generate disabled (vcpkg)'
-    $c -replace 'find_package\(Protobuf', 'find_package(Protobuf QUIET'
-})
+# NOTE: LiteRT-LM v0.13.1 ships runtime/proto/ as Bazel-only (BUILD + *.proto, no CMakeLists.txt),
+# so the former runtime/proto/CMakeLists.txt patch (disable protobuf_generate / find_package Protobuf
+# QUIET) was a permanent no-op: the target file never exists at patch time, and the build succeeds
+# without it (verified across full media-litert rebuilds -- it never logged "Patched"). Removed to cut
+# dead weight. If a future LiteRT-LM tag reintroduces a committed runtime/proto/CMakeLists.txt that
+# needs the vcpkg-protobuf handling, re-add an Edit-SourceFile block here.
 
 # Inline patch: correct a typo in LiteRT-LM's own cmake/modules/fetch_content.cmake.
 # It sets `MINJA_EXAMPLE_ENABLE OFF` to skip minja's example programs, but minja's

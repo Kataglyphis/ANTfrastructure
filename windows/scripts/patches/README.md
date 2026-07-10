@@ -52,8 +52,24 @@ These are documented here so a reviewer knows the omission is intentional, not a
 | CUTLASS `_udiv128` | `build-onnx-from-source.ps1` | Targets onnxruntime's `cutlass-src` **ExternalProject SHA** — a fixed diff would rot. |
 | mlas `<cstring>` include | `build-opencv-from-source.ps1` | **Per-file conditional** loop over every `3rdparty/mlas/*.cpp` (add only if absent) — a static diff can't express the guard. |
 | GenAI `RESTORE_PACKAGES` drop | `build-onnx-genai-from-source.ps1` | Small guarded regex on genai's `CMakeLists.txt`; kept as drift-tolerant `Invoke-InlineRegexPatch`. |
-| MSVC STL `experimental/coroutine` + `yvals_core.h` | `build-onnx-genai-from-source.ps1` | Patches the **installed MSVC toolset headers**, not an upstream repo — version-specific, floats with the toolchain. |
+| MSVC STL `yvals_core.h` `_EMIT_STL_ERROR` no-op | `build-onnx-genai-from-source.ps1` | Patches an **installed MSVC toolset header**, not an upstream repo — version-specific, floats with the toolchain. Wrapping the one `_EMIT_STL_ERROR` define in `#ifdef __clang__` no-ops **every** STL error code (STL1009/1010/1011) under clang-cl, so no per-header (e.g. `<experimental/coroutine>`) patch is needed. Guarded by a loud drift-assertion that fails fast if a future toolset changes the macro's format. |
 | ~30 LiteRT-LM CMake/source edits | `build-litert-lm-from-source.ps1` | Target **ExternalProject-fetched trees** (protobuf / sentencepiece / tflite / re2 / tokenizers) and LiteRT-LM's own `*_patcher.cmake` hooks; the tags float and the anchors move between releases. Applied via `Edit-SourceFile` / `Invoke-InlineRegexPatch` / `Add-FileBlockOnce`, each guarded + warn-on-miss. |
 
 To regenerate a `.patch` against its pinned tag: shallow-clone the upstream at the version above,
 apply the edit, `git diff`, and verify with `git apply --check -p1 --ignore-whitespace`.
+
+## Verifying the patches still apply (before a version bump)
+
+`windows/scripts/tests/Test-PatchesApplyClean.ps1` automates the whole-catalogue check: for every
+`.patch` above it parses the `+++ b/<path>` headers, blobless-sparse-clones the pinned upstream, and
+runs the exact `git apply --check -p1 --ignore-whitespace` the build uses — no container rebuild. Run
+it after bumping a version in `versions.env`; any `FAIL` means that patch must be regenerated against
+the new tree.
+
+```powershell
+pwsh -File windows/scripts/tests/Test-PatchesApplyClean.ps1
+# override a pin without editing the script:
+pwsh -File windows/scripts/tests/Test-PatchesApplyClean.ps1 -Versions @{ ONNXRUNTIME = 'v1.28.0' }
+```
+
+Keep the pinned refs in that script's `$defaultRefs`/`$repoMap` in sync with `versions.env`.
