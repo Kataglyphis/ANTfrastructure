@@ -31,8 +31,35 @@ cross_stage_log_redirect() {
   local label="$1"
   if [ -n "${LOG_DIR:-}" ]; then
     mkdir -p "${LOG_DIR}"
-    printf '%s/%s.log' "${LOG_DIR}" "${label}"
+    local f="${LOG_DIR}/${label}.log"
+    # Truncate once per orchestrator run so repeated runs don't accumulate into
+    # huge files that interleave old failures with current output (a 575k-line
+    # media log spanning several rebuilds made "is this failure current?"
+    # needlessly hard to answer). The guard is a sibling marker holding the run
+    # id -- $$ is the orchestrator's PID, stable across its parallel-arch
+    # subshells -- so within a single run we append, and only a NEW run wipes.
+    local marker="${f}.run" rid="${CROSS_RUN_ID:-$$}"
+    if [ "$(cat "${marker}" 2>/dev/null || true)" != "${rid}" ]; then
+      : > "${f}"
+      printf '%s' "${rid}" > "${marker}" 2>/dev/null || true
+    fi
+    printf '%s' "${f}"
   fi
+}
+
+# ==============================================================================
+# _cross_stage_push_error_is_transient
+#
+# True when the tail of the (optional) log file shows a transient registry/
+# network PUSH failure worth retrying, rather than a real build error. When no
+# log file is available we cannot classify, so treat the failure as transient
+# (a re-push of cache-hit layers is cheap and bounded by PUSH_MAX_ATTEMPTS).
+# ==============================================================================
+_cross_stage_push_error_is_transient() {
+  local log_file="${1:-}"
+  [ -n "${log_file}" ] && [ -r "${log_file}" ] || return 0
+  tail -n 300 "${log_file}" 2>/dev/null | grep -qiE \
+    'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|[^0-9]429[^0-9]'
 }
 
 # ==============================================================================
@@ -140,15 +167,36 @@ _cross_stage_build_impl() {
     return 0
   fi
 
-  if [ -n "${log_file}" ]; then
-    # Real pipe, not process substitution: the shell waits for tee to drain, so
-    # a fast-failing build's tail is always flushed to the log. PIPESTATUS[0]
-    # returns the BUILD's exit code (not tee's 0), independent of pipefail.
-    run "${build_cmd[@]}" 2>&1 | tee -a "${log_file}"
-    return "${PIPESTATUS[0]}"
-  else
-    run "${build_cmd[@]}"
-  fi
+  # Execute the build. When pushing, a transient registry/network hiccup
+  # (dropped upload, 5xx, EOF -- e.g. a ~8GiB wrapper push over a throttled link
+  # that resets mid-transfer) must not discard a completed multi-GB build:
+  # retry the whole command -- BuildKit cache-hits the built layers and only
+  # re-pushes -- but ONLY when the failure looks transient, so a real build
+  # error still fails immediately. Tunables: PUSH_MAX_ATTEMPTS (default 4),
+  # PUSH_RETRY_BASE_SECS (default 15, linear backoff: 15s, 30s, 45s...).
+  local _max_attempts=1
+  [ "${push_flag}" -eq 1 ] && _max_attempts="${PUSH_MAX_ATTEMPTS:-4}"
+  local _attempt=1 _rc=0 _delay
+  while :; do
+    if [ -n "${log_file}" ]; then
+      # Real pipe, not process substitution: the shell waits for tee to drain,
+      # so a fast-failing build's tail is always flushed to the log.
+      # PIPESTATUS[0] returns the BUILD's exit code (not tee's 0), independent
+      # of pipefail.
+      run "${build_cmd[@]}" 2>&1 | tee -a "${log_file}"
+      _rc="${PIPESTATUS[0]}"
+    else
+      run "${build_cmd[@]}"
+      _rc=$?
+    fi
+    [ "${_rc}" -eq 0 ] && return 0
+    [ "${_attempt}" -ge "${_max_attempts}" ] && return "${_rc}"
+    _cross_stage_push_error_is_transient "${log_file}" || return "${_rc}"
+    _delay="$(( _attempt * ${PUSH_RETRY_BASE_SECS:-15} ))"
+    warn "Push attempt ${_attempt}/${_max_attempts} for ${tag} hit a transient registry/network error; retrying in ${_delay}s (built layers are cached, only the push repeats)"
+    sleep "${_delay}"
+    _attempt="$(( _attempt + 1 ))"
+  done
 }
 
 # ==============================================================================

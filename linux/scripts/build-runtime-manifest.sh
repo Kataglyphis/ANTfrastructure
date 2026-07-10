@@ -76,7 +76,11 @@ create_manifest() {
   run "${NERDCTL_BIN:-nerdctl}" manifest create "${IMAGE_NAME}" "${refs[@]}"
 
   if [ "${PUSH_MANIFEST}" -eq 1 ]; then
-    run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${IMAGE_NAME}"
+    # Retry the manifest push on the same transient registry/network class the
+    # per-arch image pushes guard against (runtime_push_tag). The index blob is
+    # tiny, but a dropped connection here still fails the whole stage.
+    retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${IMAGE_NAME}" \
+      run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${IMAGE_NAME}"
   fi
 }
 
