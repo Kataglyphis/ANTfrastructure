@@ -450,6 +450,15 @@ BUILD_SUBDIR="${BUILD_DIR}/gcc-${GCC_VERSION}-build"
 mkdir -p "${BUILD_SUBDIR}"
 cd "${BUILD_SUBDIR}"
 
+# Pre-create the install prefix BEFORE configure. GCC's in-tree prerequisite
+# configures (isl in particular) resolve/cd into the eventual --prefix while
+# probing; when it does not exist yet they print a spurious
+# "cd: ${PREFIX}: No such file or directory" to stderr. It is harmless (the dir
+# is also created at install time below) but reads as an error in the toolchain
+# build log. Creating it up front keeps the log clean. Idempotent; mirrors the
+# install-time mkdir and uses ${SUDO} for the same non-root-host case.
+${SUDO} mkdir -p "${PREFIX}"
+
 echo "Configuring build (languages: c,c++,fortran)..."
 CONFIG_CMD=(
   "../gcc-${GCC_VERSION}/configure"
