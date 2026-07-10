@@ -3,6 +3,12 @@
 [ -n "${_PARALLELISM_SH_LOADED:-}" ] && return 0
 _PARALLELISM_SH_LOADED=1
 #
+# BEFORE changing any *_MB_PER_JOB value or job count, read
+#   docs/build-parallelism-memory-tuning.md
+# The per-job memory numbers are CALIBRATED to host RAM (jobs x PEAK-per-TU-RAM
+# must stay under usable RAM). Lowering them by eyeballing "free" RAM OOM-kills
+# multi-hour builds -- the average usage lies because heavy TUs are staggered.
+#
 # Environment Variables:
 #   AGGRESSIVE_PARALLELISM  - Set to "true" for lower memory caps (faster builds)
 #                              Auto-enabled when host RAM >= 16GB.
