@@ -69,29 +69,31 @@ if ((Test-Path $vcpkgProtoHeaders) -and -not (Test-Path $vcpkgProtoHeadersHidden
 # Building a matching 6.31.1 protoc from source fails to link (abseil under clang++/lld-
 # link), so fetch the official prebuilt protoc for release v31.1 (== runtime 6.31.1) and
 # use it for every codegen step below (litert-lm protos, sentencepiece, WITH_PROTOC import).
-$hostProtocDir = 'C:\temp\protoc-31.1'
+$protocVer = if ($env:PROTOC_VERSION) { $env:PROTOC_VERSION } else { '31.1' }
+$hostProtocDir = "C:\temp\protoc-$protocVer"
 $hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
 if (-not (Test-Path $hostProtoc)) {
-    $protocZip = 'C:\temp\protoc-31.1-win64.zip'
-    $protocUrl = 'https://github.com/protocolbuffers/protobuf/releases/download/v31.1/protoc-31.1-win64.zip'
-    Write-Host "Downloading version-matched protoc (v31.1) from $protocUrl"
-    Invoke-DownloadWithRetry -Url $protocUrl -DestinationPath $protocZip -Description 'version-matched protoc v31.1'
+    $protocZip = "C:\temp\protoc-$protocVer-win64.zip"
+    $protocUrl = "https://github.com/protocolbuffers/protobuf/releases/download/v$protocVer/protoc-$protocVer-win64.zip"
+    Write-Host "Downloading version-matched protoc (v$protocVer) from $protocUrl"
+    Invoke-DownloadWithRetry -Url $protocUrl -DestinationPath $protocZip -Description "version-matched protoc v$protocVer"
     Expand-Archive -Path $protocZip -DestinationPath $hostProtocDir -Force
-    if (-not (Test-Path $hostProtoc)) { throw "Failed to obtain prebuilt protoc 31.1 at $hostProtoc" }
+    if (-not (Test-Path $hostProtoc)) { throw "Failed to obtain prebuilt protoc $protocVer at $hostProtoc" }
 }
 Write-Host "Using version-matched host protoc: $hostProtoc ($(& $hostProtoc --version))"
 
 # litert-lm generates its tool-call JSON parser at build time by running the ANTLR jar
 # (java -jar antlr-4.13.2-complete.jar ...), so the build needs a JRE. The media base image
-# doesn't ship Java, so fetch a portable Temurin 21 JRE and put java.exe on PATH. (No JDK
+# doesn't ship Java, so fetch a portable Temurin JRE and put java.exe on PATH. (No JDK
 # needed -- ANTLR only runs the prebuilt jar.)
+$jreVer = if ($env:JRE_VERSION) { $env:JRE_VERSION } else { '21' }
 $jreDir = 'C:\temp\jre'
 $javaExe = Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $javaExe) {
     $jreZip = 'C:\temp\temurin-jre.zip'
-    $jreUrl = 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse'
-    Write-Host "Downloading Temurin 21 JRE (for ANTLR codegen) from $jreUrl"
-    Invoke-DownloadWithRetry -Url $jreUrl -DestinationPath $jreZip -Description 'Temurin 21 JRE'
+    $jreUrl = "https://api.adoptium.net/v3/binary/latest/$jreVer/ga/windows/x64/jre/hotspot/normal/eclipse"
+    Write-Host "Downloading Temurin $jreVer JRE (for ANTLR codegen) from $jreUrl"
+    Invoke-DownloadWithRetry -Url $jreUrl -DestinationPath $jreZip -Description "Temurin $jreVer JRE"
     Expand-Archive -Path $jreZip -DestinationPath $jreDir -Force
     $javaExe = Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $javaExe) { throw "Failed to obtain a JRE (java.exe) under $jreDir" }

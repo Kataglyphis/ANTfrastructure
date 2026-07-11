@@ -363,18 +363,20 @@ Assert-CommandExists 'nano'
 # ============================================================================
 Write-TestHeader '5. Visual Studio Build Tools'
 # ============================================================================
-$vsDevCmd = 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat'
+$vsVer = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
+$msvcPlatformToolset = "v$($vsVer)0"
+$vsDevCmd = "C:\Program Files (x86)\Microsoft Visual Studio\$vsVer\BuildTools\Common7\Tools\VsDevCmd.bat"
 Assert-FileExists -Path $vsDevCmd -Description 'VsDevCmd.bat'
 
 Assert-Test -Name "MSBuild works (ClangCL toolset available)" -Condition {
     $msbuildOutput = & msbuild /version 2>&1 | Out-String
-    return $msbuildOutput -match '18\.'
-} -FailMessage "MSBuild /version doesn't show VS 18"
+    return $msbuildOutput -match "$vsVer\."
+} -FailMessage "MSBuild /version doesn't show VS $vsVer"
 
 Assert-EnvVarSet -Name 'VCToolsInstallDir'
 
 # Verify ClangCL platform toolset is available
-$clangClToolsetPath = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Microsoft\VC\v180\Platforms\x64\PlatformToolsets\ClangCL"
+$clangClToolsetPath = "C:\Program Files (x86)\Microsoft Visual Studio\$vsVer\BuildTools\MSBuild\Microsoft\VC\$msvcPlatformToolset\Platforms\x64\PlatformToolsets\ClangCL"
 Assert-DirectoryExists -Path $clangClToolsetPath -Description 'ClangCL MSBuild toolset'
 
 # ============================================================================

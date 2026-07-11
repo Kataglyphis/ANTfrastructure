@@ -50,13 +50,31 @@ if (-not $PatchRoot) { $PatchRoot = Join-Path (Split-Path $PSScriptRoot -Parent)
 if (-not (Test-Path $PatchRoot)) { throw "patch root not found: $PatchRoot" }
 if (-not $WorkDir) { $WorkDir = Join-Path ([System.IO.Path]::GetTempPath()) ("patchcheck_{0}" -f ([guid]::NewGuid().ToString('N'))) }
 
-# Map each patch subdirectory to its upstream repo + the pinned ref (mirror of versions.env).
-# eol='crlf' marks repos whose Windows checkout is CRLF (matches how the build's clone lands).
+# Map each patch subdirectory to its upstream repo + the pinned ref.
+# Read from versions.env (single source of truth) — no hand-synced duplicate.
+$versionsFile = Join-Path (Split-Path $PSScriptRoot -Parent | Split-Path -Parent | Split-Path -Parent) 'linux\scripts\01-core\versions.env'
 $defaultRefs = @{
     ONNXRUNTIME = 'v1.27.0'
     OPENCV      = '5.x'
     FFMPEG      = 'master'
     GSTREAMER   = '1.29.2'
+}
+if (Test-Path $versionsFile) {
+    Get-Content $versionsFile | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and $line -notmatch '^#') {
+            $parts = $line -split '=', 2
+            if ($parts.Count -eq 2) {
+                $key = $parts[0].Trim(); $val = $parts[1].Trim().Trim('"', "'")
+                switch ($key) {
+                    'ONNXRUNTIME_VERSION' { $defaultRefs.ONNXRUNTIME = $val }
+                    'OPENCV_VERSION'      { $defaultRefs.OPENCV = $val }
+                    'FFMPEG_VERSION'      { $defaultRefs.FFMPEG = $val }
+                    'GSTREAMER_VERSION'   { $defaultRefs.GSTREAMER = $val }
+                }
+            }
+        }
+    }
 }
 foreach ($k in $Versions.Keys) { $defaultRefs[$k] = $Versions[$k] }
 

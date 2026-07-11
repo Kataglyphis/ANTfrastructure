@@ -101,7 +101,7 @@ try {
         
         # Windows SDK & Native Desktop
 
-        '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.26100',      # Windows 11 SDK (26100)
+        '--add', "Microsoft.VisualStudio.Component.Windows11SDK.$(if ($env:WINDOWS_SDK_BUILD) { $env:WINDOWS_SDK_BUILD } else { '26100' })", # Windows 11 SDK
         # '--add','Microsoft.VisualStudio.Workload.NativeDesktop',           # only for full GUI functionality 
                                                                              # NOT for CICD
 
