@@ -11,8 +11,7 @@ $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceB
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
-$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
-Import-CanonicalVersions -ScriptRoot $PSScriptRoot
+$InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.1.6'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'

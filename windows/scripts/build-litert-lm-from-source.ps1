@@ -12,9 +12,8 @@ $ErrorActionPreference = 'Stop'  # fail-fast before module import
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
-$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
-Import-CanonicalVersions -ScriptRoot $PSScriptRoot
+$InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.13.1'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
@@ -129,111 +128,17 @@ if (Test-Path $vcpkgZlib) { Copy-Item $vcpkgZlib (Join-Path $stubLibDir 'z.lib')
 # link. Placed on CXXFLAGS below so every external that ports Unix dl code picks it up.
 $winShimDir = 'C:\temp\winshims'
 New-Item -ItemType Directory -Force $winShimDir | Out-Null
-$dlfcnShim = @'
-#ifndef LITERTLM_WIN_DLFCN_SHIM_H
-#define LITERTLM_WIN_DLFCN_SHIM_H
-/* Minimal <dlfcn.h> for the clang++ windows-msvc build of LiteRT / LiteRT-LM: maps the POSIX
-   dynamic-loader API onto Win32. Header-only so no extra object/library is required.
-   NOMINMAX/NOGDI come from the global CXXFLAGS; we deliberately do NOT force
-   WIN32_LEAN_AND_MEAN here so a TU that also needs the full <windows.h> is not starved. */
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <stdint.h>
-#include <stdio.h>
-#ifdef __cplusplus
-extern "C" {
-#endif
-#define RTLD_LAZY     0x0001
-#define RTLD_NOW      0x0002
-#define RTLD_LOCAL    0x0000
-#define RTLD_GLOBAL   0x0100
-#define RTLD_NODELETE 0x1000
-#define RTLD_NOLOAD   0x0004
-#define RTLD_DEEPBIND 0x0000
-#define RTLD_DEFAULT  ((void*)0)
-#define RTLD_NEXT     ((void*)-1)
-static inline void* dlopen(const char* filename, int flag) {
-    (void)flag;
-    if (filename == 0) return (void*)GetModuleHandleA(0);
-    return (void*)LoadLibraryA(filename);
-}
-static inline int dlclose(void* handle) {
-    return FreeLibrary((HMODULE)handle) ? 0 : -1;
-}
-static inline void* dlsym(void* handle, const char* name) {
-    return (void*)(uintptr_t)GetProcAddress((HMODULE)handle, name);
-}
-static inline char* dlerror(void) {
-    static char buf[256];
-    DWORD e = GetLastError();
-    if (e == 0) return (char*)0;
-    DWORD n = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                             NULL, e, 0, buf, (DWORD)sizeof(buf), NULL);
-    if (n == 0) snprintf(buf, sizeof(buf), "dlerror: Win32 error %lu", (unsigned long)e);
-    return buf;
-}
-#ifdef __cplusplus
-}
-#endif
-#endif
-'@
-Set-Content -LiteralPath (Join-Path $winShimDir 'dlfcn.h') -Value $dlfcnShim -Encoding ASCII
+Copy-Item (Join-Path $PSScriptRoot 'shims\dlfcn.h') $winShimDir -Force
 
 # LiteRT's dynamic_loading.cc also does an unguarded `#include <unistd.h>` and calls
 # access(path, R_OK). MSVC's CRT already declares access() in <io.h> (deprecated -> _access);
 # the POSIX permission-mode constants are all it's missing. (Its `#include <link.h>` is under
 # `#if __has_include(<link.h>)`, so it simply drops out on Windows -- no shim needed there.)
-$unistdShim = @'
-#ifndef LITERTLM_WIN_UNISTD_SHIM_H
-#define LITERTLM_WIN_UNISTD_SHIM_H
-/* Minimal <unistd.h> for the clang++ windows-msvc build of LiteRT: access() via the CRT's
-   <io.h>, the POSIX permission-mode constants the CRT does not define, and setenv/unsetenv
-   mapped onto _putenv_s (LiteRT's dynamic_loading.cc uses setenv to edit LD_LIBRARY_PATH). */
-#include <io.h>
-#include <process.h>
-#include <direct.h>
-#include <stdlib.h>
-#include <string.h>
-#ifndef R_OK
-#define R_OK 4
-#endif
-#ifndef W_OK
-#define W_OK 2
-#endif
-#ifndef X_OK
-#define X_OK 0
-#endif
-#ifndef F_OK
-#define F_OK 0
-#endif
-#ifdef __cplusplus
-static inline int setenv(const char* name, const char* value, int overwrite) {
-    if (!overwrite) {
-        size_t sz = 0;
-        if (getenv_s(&sz, 0, 0, name) == 0 && sz != 0) return 0;
-    }
-    return _putenv_s(name, value ? value : "");
-}
-static inline int unsetenv(const char* name) { return _putenv_s(name, ""); }
-#endif
-#endif
-'@
-Set-Content -LiteralPath (Join-Path $winShimDir 'unistd.h') -Value $unistdShim -Encoding ASCII
+Copy-Item (Join-Path $PSScriptRoot 'shims\unistd.h') $winShimDir -Force
 
 # LiteRT's Qualcomm vendor code (vendors/qualcomm/compiler/qnn_compose_graph.cc) includes
 # <alloca.h>, which doesn't exist on Windows -- the CRT puts alloca (_alloca) in <malloc.h>.
-$allocaShim = @'
-#ifndef LITERTLM_WIN_ALLOCA_SHIM_H
-#define LITERTLM_WIN_ALLOCA_SHIM_H
-#include <malloc.h>
-#ifndef alloca
-#define alloca _alloca
-#endif
-#endif
-'@
-Set-Content -LiteralPath (Join-Path $winShimDir 'alloca.h') -Value $allocaShim -Encoding ASCII
+Copy-Item (Join-Path $PSScriptRoot 'shims\alloca.h') $winShimDir -Force
 Write-Host "Wrote Windows <dlfcn.h> + <unistd.h> + <alloca.h> shims to $winShimDir"
 # CAUTION: clang auto-detects the MSVC/SDK/clang-runtime lib dirs ONLY while LIB is unset
 # (which it is in this container). The moment we set LIB to inject the shim dir, clang
@@ -412,31 +317,7 @@ $superCmake = Join-Path $SourceDir 'CMakeLists.txt'
 # `include(.../upb_generators.cmake)` -- grafted into litert-lm's protobuf_patcher.cmake,
 # which already runs post-fetch on the protobuf tree.
 $protobufPatcher = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf_patcher.cmake'
-$upbPatch = @'
-
-# [LiteRTLM-winfix upb_generators] skip protoc-gen-upb/-upbdefs tools (never invoked by
-# protobuf or litert-lm; they fail to link abseil under clang++/lld-link). libupb.a is
-# still built by libupb.cmake, so the runtime library is unaffected.
-set(_proot "${PROTO_SRC_DIR}/CMakeLists.txt")
-if(EXISTS "${_proot}")
-    file(READ "${_proot}" _pr)
-    string(REPLACE
-      [[include(${protobuf_SOURCE_DIR}/cmake/upb_generators.cmake)]]
-      [[# [LiteRTLM-winfix] upb_generators tools skipped (unused; abseil/lld-link link failure)]]
-      _pr "${_pr}")
-    file(WRITE "${_proot}" "${_pr}")
-    message(STATUS "[LiteRTLM] Skipped upb_generators.cmake include (protoc-gen-upb tools not built)")
-endif()
-# ...and stop install.cmake from installing the now-nonexistent protoc-gen-* targets by
-# emptying its generator loop (protoc's own install stays intact).
-set(_pinstall "${PROTO_SRC_DIR}/cmake/install.cmake")
-if(EXISTS "${_pinstall}")
-    file(READ "${_pinstall}" _pi)
-    string(REPLACE [[foreach (generator upb upbdefs)]] [[foreach (generator)]] _pi "${_pi}")
-    file(WRITE "${_pinstall}" "${_pi}")
-    message(STATUS "[LiteRTLM] Patched install.cmake: drop protoc-gen-* install (targets not built)")
-endif()
-'@
+$upbPatch = Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\protobuf-upb-generators-skip.cmake')
 [void](Add-FileBlockOnce -Path $protobufPatcher -Marker 'LiteRTLM-winfix upb_generators' -Content $upbPatch `
         -Description 'protobuf_patcher.cmake: skip protoc-gen-upb/-upbdefs tools (unused, abseil link failure)')
 
@@ -464,38 +345,7 @@ $protobufPkg = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf.cmake'
 # Windows, so drop just the flag (keep -O3/-Wall). Grafted onto sentencepiece_patcher.cmake
 # (its PATCH_COMMAND hook), re-reading src/CMakeLists.txt after the patcher writes it.
 $spPatcher = Join-Path $SourceDir 'cmake\packages\sentencepiece\sentencepiece_patcher.cmake'
-$spPatch = @'
-
-# [LiteRTLM-winfix sentencepiece-fpic] clang++ targets x86_64-pc-windows-msvc but its
-# compiler id is Clang (not MSVC), so sentencepiece's `if(NOT MSVC)` branch injects -fPIC,
-# a hard error on the windows-msvc target. Strip it (PIC is meaningless on Windows).
-# Also skip the spm_* CLI tools (spm_encode/decode/normalize/train/export_vocab +
-# compile_charsmap): litert-lm only needs the sentencepiece-static library, and those
-# standalone executables fail to link abseil-flags/protobuf under clang++/lld-link. Wrap
-# the exe region and its install-append each in if(FALSE); the library + its install stay.
-file(READ "${SENTENCE_SRC_DIR}/src/CMakeLists.txt" _sp_src)
-string(REPLACE "-O0 -Wall -fPIC -coverage" "-O0 -Wall -coverage" _sp_src "${_sp_src}")
-string(REPLACE "-O3 -Wall -fPIC" "-O3 -Wall" _sp_src "${_sp_src}")
-string(REPLACE "add_executable(spm_encode spm_encode_main.cc)" "if(FALSE) # LiteRTLM-winfix: skip unused spm CLI tools (abseil-flags/protobuf link failure)\nadd_executable(spm_encode spm_encode_main.cc)" _sp_src "${_sp_src}")
-string(REPLACE "list(APPEND SPM_INSTALLTARGETS" "endif() # LiteRTLM-winfix: end skip spm CLI tools\nif(FALSE) # LiteRTLM-winfix: exclude spm tools from install\nlist(APPEND SPM_INSTALLTARGETS" _sp_src "${_sp_src}")
-string(REPLACE "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)" "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)\nendif() # LiteRTLM-winfix" _sp_src "${_sp_src}")
-file(WRITE "${SENTENCE_SRC_DIR}/src/CMakeLists.txt" "${_sp_src}")
-message(STATUS "[LiteRTLM] Patched sentencepiece src/CMakeLists.txt: stripped -fPIC + skipped spm CLI tools")
-
-# [LiteRTLM-winfix] sentencepiece's src/error.cc defines ABSL_FLAG(int32, minloglevel, ...)
-# under _USE_EXTERNAL_ABSL as a "naive workaround" assuming external abseil does not provide
-# it. But litert-lm links abseil's FULL absl_log_flags.lib, which DOES define minloglevel, so
-# the two collide: duplicate FLAGS_minloglevel / FLAGS_nominloglevel are both registered at
-# static init and abseil aborts EVERY invocation ("Inconsistency between flag object and
-# registration for flag 'minloglevel'"). /FORCE:MULTIPLE hides it at link time, so it only
-# surfaces at runtime. Drop sentencepiece's duplicate ([^;]* spans the two-line statement,
-# eol-agnostic) so abseil's definition stands alone; litert_lm_main still links absl_log_flags
-# so the symbol resolves. This is THE fix for the litert_lm_main.exe startup ODR abort.
-file(READ "${SENTENCE_SRC_DIR}/src/error.cc" _sp_err)
-string(REGEX REPLACE "ABSL_FLAG\\(int32, minloglevel, 0,[^;]*;" "/* [LiteRTLM-winfix] dropped duplicate ABSL_FLAG(minloglevel); abseil absl_log_flags provides it (ODR fix) */" _sp_err "${_sp_err}")
-file(WRITE "${SENTENCE_SRC_DIR}/src/error.cc" "${_sp_err}")
-message(STATUS "[LiteRTLM] Patched sentencepiece error.cc: dropped duplicate ABSL_FLAG(minloglevel) -> fixes abseil flag ODR abort")
-'@
+$spPatch = Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\sentencepiece-winfix.cmake')
 [void](Add-FileBlockOnce -Path $spPatcher -Marker 'LiteRTLM-winfix sentencepiece-fpic' -Content $spPatch `
         -Description 'sentencepiece_patcher.cmake: strip -fPIC + skip spm CLI tools (windows-msvc/abseil link)')
 
@@ -531,16 +381,7 @@ if ((Test-Path $tokenizersCmake) -and ((Get-Content -Raw $tokenizersCmake) -notm
         $tk = $tk.Replace($tkPrefixArg, $tkBuildInstall)
         # (3a) PATCH_COMMAND to fix the fetched tokenizers-cpp CMakeLists rust-lib name
         $tkPatchScript = Join-Path (Split-Path $tokenizersCmake) 'tokenizers_libname_patch.cmake'
-        $tkPatchContent = @'
-# [LiteRTLM-winfix] rustc builds the crate for x86_64-pc-windows-msvc and emits
-# tokenizers_c.lib, but tokenizers-cpp's CMakeLists picks libtokenizers_c.a in its
-# non-MSVC branch (our C++ compiler id is Clang), so its copy step can't find the output.
-file(READ "${TK_SRC}/CMakeLists.txt" _c)
-string(REPLACE "libtokenizers_c.a" "tokenizers_c.lib" _c "${_c}")
-file(WRITE "${TK_SRC}/CMakeLists.txt" "${_c}")
-message(STATUS "[LiteRTLM-winfix] tokenizers-cpp rust staticlib name -> tokenizers_c.lib")
-'@
-        Set-Content -LiteralPath $tkPatchScript -Value $tkPatchContent -Encoding ASCII
+        Copy-Item (Join-Path $PSScriptRoot 'patches\litert-lm\tokenizers_libname_patch.cmake') $tkPatchScript -Force
         $tkPatchCmd = 'PATCH_COMMAND ${CMAKE_COMMAND} -DTK_SRC=<SOURCE_DIR> -P ${CMAKE_CURRENT_LIST_DIR}/tokenizers_libname_patch.cmake' + "`n    " + $tkCfgAnchor
         $tk = $tk.Replace($tkCfgAnchor, $tkPatchCmd)
         # (3b) litert-lm's own imports of the rust lib (leaves libtokenizers_cpp.a untouched)
@@ -593,17 +434,7 @@ set_source_files_properties(${PROFILING_SRCS} PROPERTIES OBJECT_DEPENDS "${CMAKE
 # tflite_patcher.cmake because the tflite ExternalProject PATCH_COMMAND does
 # `git checkout -- . && git clean -df` first, which would revert any earlier edit.
 $tflitePatcher = Join-Path $SourceDir 'cmake\packages\tflite\tflite_patcher.cmake'
-$mbPatch = @'
-
-# [LiteRTLM-winfix model_building-friend] see build-litert-lm-from-source.ps1
-set(_lrtlm_mb "${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/core/model_building.h")
-if(EXISTS "${_lrtlm_mb}")
-    file(READ "${_lrtlm_mb}" _lrtlm_mbc)
-    string(REPLACE "class [[nodiscard]] Buffer {" "class Helper;\nclass Tensor;\nclass [[nodiscard]] Buffer {" _lrtlm_mbc "${_lrtlm_mbc}")
-    file(WRITE "${_lrtlm_mb}" "${_lrtlm_mbc}")
-    message(STATUS "[LiteRTLM-winfix] forward-declared Helper/Tensor before Buffer in model_building.h")
-endif()
-'@
+$mbPatch = Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\tflite-model-building-friend.cmake')
 [void](Add-FileBlockOnce -Path $tflitePatcher -Marker 'LiteRTLM-winfix model_building-friend' -Content $mbPatch -Encoding ASCII `
         -Description 'tflite_patcher.cmake: model_building.h friend forward-declarations')
 
@@ -628,58 +459,7 @@ $litertCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
 })
 
 $litertPatcher = Join-Path $SourceDir 'cmake\packages\litert\litert_patcher.cmake'
-$dlPatch = @'
-
-# [LiteRTLM-winfix dynamic-loading] narrow std::filesystem::path uses for Windows (see
-# build-litert-lm-from-source.ps1). setenv is supplied by the Windows <unistd.h> shim.
-patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "access(path.c_str(), R_OK)" "access(path.string().c_str(), R_OK)" FALSE)
-patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "results.push_back(path);" "results.push_back(path.string());" FALSE)
-patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "FindLiteRtSharedLibsHelper(path, lib_pattern, full_match, results)" "FindLiteRtSharedLibsHelper(path.string(), lib_pattern, full_match, results)" FALSE)
-message(STATUS "[LiteRTLM-winfix] narrowed std::filesystem::path uses in core/dynamic_loading.cc")
-
-# The C API's SHARED LiteRt.dll (litert_runtime_c_api_shared_lib) is built unconditionally, but
-# litert-lm's target map links only the STATIC liblitert_c_api.a, so nothing needs the DLL. Its
-# link is broken under clang++/lld-link (GNU --whole-archive/--start-group are ignored and it
-# looks for the MSVC-named litert_cc_options.lib). EXCLUDE_FROM_ALL doesn't stop it (litert
-# builds the default `all`), so flip it SHARED->STATIC: a static archive of empty.cc records
-# its PUBLIC deps only as usage requirements and never links, so the litert_cc_options.lib
-# resolution simply doesn't happen. Nothing depends on it, and litert isn't installed
-# (INSTALL_COMMAND ""), so the leftover libLiteRt.a is harmless.
-patch_file_content("${LITERT_SRC_DIR}/c/CMakeLists.txt" "add_library(litert_runtime_c_api_shared_lib SHARED empty.cc)" "add_library(litert_runtime_c_api_shared_lib STATIC empty.cc)" FALSE)
-message(STATUS "[LiteRTLM-winfix] shared LiteRt.dll -> STATIC (avoids lld-link of GNU-named static deps; litert-lm links static c_api)")
-
-# The per-vendor NPU dispatch plugins (dispatch_api_<VENDOR>_so -> LiteRtDispatch_<VENDOR>.dll,
-# defined by _litert_add_dispatch_so in vendors/CMakeLists.txt) are SHARED and hit the SAME
-# broken lld-link path as LiteRt.dll (GNU --whole-archive/-Wl,-soname ignored; MSVC-named
-# litert_cc_options.lib not found). They're runtime-dlopen'd NPU backends, not in litert-lm's
-# target map and useless on a Windows desktop (no such NPU). One SHARED->STATIC on the shared
-# add_library covers every vendor at once. (The escaped \${TGT}/\${DISPATCH_SRCS} keep the
-# literal CMake variable names so string(REPLACE) matches the un-expanded source line.)
-patch_file_content("${LITERT_SRC_DIR}/vendors/CMakeLists.txt" "add_library(\${TGT} SHARED \${DISPATCH_SRCS})" "add_library(\${TGT} STATIC \${DISPATCH_SRCS})" FALSE)
-message(STATUS "[LiteRTLM-winfix] vendor dispatch LiteRtDispatch_*.dll -> STATIC (NPU plugins unused on Windows)")
-
-# Qualcomm defines its dispatch + compiler-plugin as their OWN explicit SHARED add_library
-# (not via the _litert_add_dispatch_so helper), so they need separate SHARED->STATIC patches.
-# Both are runtime-dlopen'd NPU plugins, absent from litert-lm's target map, and fail the same
-# lld-link path (they link the now-STATIC litert_runtime_c_api_shared_lib and want the
-# MSVC-named litert_cc_options.lib). qnn_compiler_plugin is distinct from litert-lm's mapped
-# litert::compiler_plugin (the generic static liblitert_compiler_plugin.a), so this is safe.
-patch_file_content("${LITERT_SRC_DIR}/vendors/qualcomm/dispatch/CMakeLists.txt" "add_library(dispatch_api_qualcomm_so SHARED)" "add_library(dispatch_api_qualcomm_so STATIC)" FALSE)
-patch_file_content("${LITERT_SRC_DIR}/vendors/qualcomm/compiler/CMakeLists.txt" "add_library(qnn_compiler_plugin SHARED" "add_library(qnn_compiler_plugin STATIC" FALSE)
-message(STATUS "[LiteRTLM-winfix] Qualcomm dispatch + qnn_compiler_plugin SHARED -> STATIC")
-
-# litert/tools builds standalone exes (run_model, analyze_model, apply_plugin_main) that are
-# NOT gated by LITERT_BUILD_TOOLS. They link abseil flags/log/str_format via bare CMake target
-# names, which under lld-link leaves those symbols undefined (litert-lm's abseil reaches
-# litert_lm_main only through the full-path local_aggregate, not these tools). litert-lm's
-# target map wants the tool LIBRARIES (liblitert_apply_plugin.a, etc.), not these exes, so
-# EXCLUDE_FROM_ALL them (nothing links an executable, so unlike LiteRt.dll the exclusion holds;
-# the install(TARGETS ...) is a no-op since litert's INSTALL_COMMAND is "").
-patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(run_model" "add_executable(run_model EXCLUDE_FROM_ALL" FALSE)
-patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(analyze_model" "add_executable(analyze_model EXCLUDE_FROM_ALL" FALSE)
-patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(apply_plugin_main" "add_executable(apply_plugin_main EXCLUDE_FROM_ALL" FALSE)
-message(STATUS "[LiteRTLM-winfix] litert tool exes (run_model/analyze_model/apply_plugin_main) EXCLUDE_FROM_ALL")
-'@
+$dlPatch = Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\litert-patcher-winfix.cmake')
 [void](Add-FileBlockOnce -Path $litertPatcher -Marker 'LiteRTLM-winfix dynamic-loading' -Content $dlPatch -Encoding ASCII `
         -Description 'litert_patcher.cmake: dynamic_loading.cc std::filesystem::path narrowing')
 
@@ -857,32 +637,7 @@ foreach ($rel in @('runtime\util\litert_util.cc', 'runtime\framework\resource_ma
 # cpu_affinity_utils.cc qualifies (its IsPixelTensorDevice/etc. resolve into the exe), so lld-link
 # reads its .drectve and pulls each system lib from the SDK LIB path (kernel32.lib already resolves).
 $cpuAffCc = Join-Path $SourceDir 'runtime\engine\cpu_affinity_utils.cc'
-$pragmaBlock = @'
-// [LiteRTLM-winfix rust-syslibs] force-link rust-std's windows-msvc system libs via /DEFAULTLIB
-// directives baked into this .obj (the CMake link-flag routes silently dropped them). Same mechanism
-// clang uses for msvcrt via --dependent-lib.
-#if defined(_WIN32)
-#pragma comment(lib, "ws2_32.lib")
-#pragma comment(lib, "ntdll.lib")
-#pragma comment(lib, "userenv.lib")
-#pragma comment(lib, "bcrypt.lib")
-#pragma comment(lib, "advapi32.lib")
-#pragma comment(lib, "secur32.lib")
-#pragma comment(lib, "crypt32.lib")
-#pragma comment(lib, "dbghelp.lib")
-// CRT compat: oldnames maps POSIX names (cprintf/timezone/tzname/sys_errlist -> _cprintf/_timezone
-// /...); legacy_stdio_definitions supplies the deprecated global data (_timezone/_tzname/_sys_errlist)
-// that the split UCRT no longer auto-provides under --dependent-lib=msvcrt alone.
-#pragma comment(lib, "oldnames.lib")
-#pragma comment(lib, "legacy_stdio_definitions.lib")
-// Complete the dynamic-CRT set: --dependent-lib=msvcrt pulls only the VCRuntime forwarder; the
-// deprecated UCRT global data (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr, pulled in
-// by rust-std/C deps) lives in ucrt.lib + vcruntime.lib, which /MD would normally auto-link.
-#pragma comment(lib, "ucrt.lib")
-#pragma comment(lib, "vcruntime.lib")
-#endif
-
-'@
+$pragmaBlock = Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\cpu-affinity-rust-syslibs.cc')
 [void](Add-FileBlockOnce -Path $cpuAffCc -Marker 'LiteRTLM-winfix rust-syslibs' -Content $pragmaBlock -Prepend `
         -Description 'cpu_affinity_utils.cc: #pragma comment(lib) rust-std windows system libs into litert_lm_main')
 
@@ -958,51 +713,7 @@ $cleanCml = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
 if ((Test-Path $cleanCml) -and ((Get-Content -Raw $cleanCml) -notmatch 'LiteRTLM-winfix clean-link')) {
     # (a) CRT-compat shim as a real compiled source alongside litert_lm_main.cc
     $crtCc = Join-Path $SourceDir 'runtime\engine\crtcompat.cc'
-    $crtSrc = @'
-// [LiteRTLM-winfix] CRT compat shim: litert-lm objects reference deprecated CRT globals
-// (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr + POSIX and __imp_ dllimport forms)
-// that the split UCRT does not export as data under litert_lm_main's -nostdlib link. Provide real
-// storage initialised from the UCRT accessors + the __imp_ pointer forms the dllimport references
-// dereference. Accessors are declared by hand (NOT via <time.h>/<stdlib.h>) because those headers
-// declare the very globals we define here as dllimport, which conflicts ("illegal initializer").
-typedef unsigned long long crtcompat_size_t;
-extern "C" {
-int  _get_timezone(long*);
-int  _get_daylight(int*);
-int  _get_tzname(crtcompat_size_t*, char*, crtcompat_size_t, int);
-void _tzset(void);
-char*** __p__environ(void);
-long   _timezone = 0;
-int    _daylight = 0;
-char   _crtcompat_tzn0[128] = "";
-char   _crtcompat_tzn1[128] = "";
-char*  _tzname[2] = { _crtcompat_tzn0, _crtcompat_tzn1 };
-int    _sys_nerr = 0;
-char*  _sys_errlist[1] = { (char*)"" };
-char** _environ = 0;
-void* __imp__timezone    = &_timezone;
-void* __imp__daylight    = &_daylight;
-void* __imp__tzname      = &_tzname;
-void* __imp__sys_nerr    = &_sys_nerr;
-void* __imp__sys_errlist = &_sys_errlist;
-void* __imp__environ     = &_environ;
-}
-namespace {
-struct CrtCompatInit {
-    CrtCompatInit() {
-        _tzset();
-        long tz = 0;  if (_get_timezone(&tz) == 0) _timezone = tz;
-        int  dl = 0;  if (_get_daylight(&dl) == 0) _daylight = dl;
-        crtcompat_size_t n = 0;
-        _get_tzname(&n, _crtcompat_tzn0, sizeof(_crtcompat_tzn0), 0);
-        _get_tzname(&n, _crtcompat_tzn1, sizeof(_crtcompat_tzn1), 1);
-        _environ = __p__environ() ? *__p__environ() : 0;
-    }
-};
-CrtCompatInit _crt_compat_init;
-}
-'@
-    Set-Content -Path $crtCc -Value $crtSrc -Encoding ASCII
+    Copy-Item (Join-Path $PSScriptRoot 'shims\crtcompat.cc') $crtCc -Force
     # (b) an empty object used to truncate the protobuf carriers to empty archives
     $emptyCc = Join-Path $SourceDir 'winfix_empty.cc'
     $emptyObj = Join-Path $SourceDir 'winfix_empty.obj'
@@ -1106,24 +817,7 @@ foreach ($abslCmakeRel in @('cmake\packages\absl\absl_import_static_lib.cmake', 
 # names the aggregate expects (byte-for-byte, so lld-link reads them despite the .a extension).
 $findCopy = Get-ChildItem $SourceDir -Recurse -Filter 'find_and_copy_cxxbridge.cmake' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($findCopy -and ((Get-Content -Raw $findCopy.FullName) -notmatch 'LiteRTLM-winfix rust-lib-stage')) {
-    Add-Content -LiteralPath $findCopy.FullName -Value @'
-
-# [LiteRTLM-winfix rust-lib-stage] stage the MSVC-named rust staticlib + cxxbridge C++ glue under the
-# GNU lib*.a names that _cxxbridge_paths references (rustc/clang-cl emit <name>.lib on windows-msvc).
-foreach(_winfix_pair "litert_lm_deps.lib|liblitert_lm_deps.a" "litertlm_cxx_bridge.lib|liblitertlm_cxx_bridge.a")
-    string(REPLACE "|" ";" _winfix_kv "${_winfix_pair}")
-    list(GET _winfix_kv 0 _winfix_src_name)
-    list(GET _winfix_kv 1 _winfix_dst_name)
-    file(GLOB_RECURSE _winfix_found "${CMAKE_BINARY_DIR}/${_winfix_src_name}")
-    if(_winfix_found)
-        list(GET _winfix_found 0 _winfix_src)
-        file(COPY_FILE "${_winfix_src}" "${CMAKE_BINARY_DIR}/${_winfix_dst_name}")
-        message(STATUS "[LiteRTLM-winfix] staged ${_winfix_src} -> ${_winfix_dst_name}")
-    else()
-        message(WARNING "[LiteRTLM-winfix] rust lib ${_winfix_src_name} not found under ${CMAKE_BINARY_DIR}")
-    endif()
-endforeach()
-'@
+    Add-Content -LiteralPath $findCopy.FullName -Value (Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\rust-lib-stage.cmake'))
     Write-Host 'Patched find_and_copy_cxxbridge.cmake: stage rust litert_lm_deps.lib + litertlm_cxx_bridge.lib as lib*.a'
 }
 
@@ -1385,65 +1079,7 @@ if ((Test-Path $vcpkgProtoHeadersHidden) -and -not (Test-Path $vcpkgProtoHeaders
 
 if ($env:LITERTLM_KEEP_BUILD_TREE) {
     Write-Host 'LITERTLM_KEEP_BUILD_TREE set: dumping litert_lm_main link diagnostics (and KEEPING the tree)'
-    $innerBuild = Join-Path $SourceDir 'build_ninja\litert_lm\build'
-    Write-Host '===DIAG=== litert_lm_main.rsp (link inputs/flags, order preserved):'
-    $rsp = Get-ChildItem $innerBuild -Recurse -Filter 'litert_lm_main.rsp' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($rsp) { Write-Host "RSP: $($rsp.FullName)"; (Get-Content -Raw $rsp.FullName) -split '\s+' | ForEach-Object { Write-Host "  $_" } }
-    else { Write-Host 'RSP not found'; Get-ChildItem $innerBuild -Recurse -Filter '*.rsp' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  found rsp: $($_.FullName)" } }
-    Write-Host '===DIAG=== WHOLEARCHIVE / FORCE:MULTIPLE presence in the link rule (build.ninja):'
-    $bn = Join-Path $innerBuild 'build.ninja'
-    if (Test-Path $bn) { Get-Content $bn | Select-String -Pattern 'litert_lm_main.*(WHOLEARCHIVE|FORCE:MULTIPLE)|WHOLEARCHIVE' | Select-Object -First 4 | ForEach-Object { Write-Host "  $($_.Line.Substring(0,[Math]::Min(240,$_.Line.Length)))" } }
-    Write-Host '===DIAG=== abseil libs actually built (strings/log/flags/status present?):'
-    $abslLib = Join-Path $innerBuild 'external\abseil-cpp\install\lib'
-    if (Test-Path $abslLib) { Get-ChildItem $abslLib -Filter '*.lib' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'strings|log|flags|status|str_format|str_cat' } | ForEach-Object { Write-Host "  $($_.Name)" } }
-    else { Write-Host "  abseil lib dir not found at $abslLib"; Get-ChildItem (Join-Path $innerBuild 'external\abseil-cpp') -Recurse -Filter 'libabsl_strings*' -ErrorAction SilentlyContinue | Select-Object -First 3 | ForEach-Object { Write-Host "  $($_.FullName)" } }
-    Write-Host '===DIAG=== referenced libs in rsp that are MISSING or 0-byte (empty stubs -> undefined symbols):'
-    if ($rsp) {
-        (Get-Content -Raw $rsp.FullName) -split '\s+' | Where-Object { $_ -match '\.(a|lib)$' } | ForEach-Object {
-            $p = if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $innerBuild $_ }
-            if (-not (Test-Path $p)) { Write-Host "  MISSING: $_" }
-            elseif ((Get-Item $p).Length -lt 16) { Write-Host "  EMPTY($((Get-Item $p).Length)B): $_" }
-        }
-    }
-    Write-Host '===DIAG=== which built lib DEFINES the leftover undefined symbols (nm scan; T/D/W = defined):'
-    $nmExe = (Get-Command 'llvm-nm.exe' -ErrorAction SilentlyContinue).Source
-    if ($nmExe) {
-        $fragments = @('ClassicLocale', 'MixingHashState', 'combine_raw', 'HashStateBase')
-        $libs = Get-ChildItem $innerBuild -Recurse -File -Include '*.a', '*.lib' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'flatbuffers|absl_hash|absl_city|absl_low_level_hash|tensorflow|tflite' }
-        Write-Host "  candidate libs found: $($libs.Count)"
-        $libs | ForEach-Object { Write-Host "    lib: $($_.Name)  ($([math]::Round($_.Length/1KB))KB)" }
-        foreach ($lib in $libs) {
-            $syms = & $nmExe --defined-only $lib.FullName 2>$null
-            foreach ($frag in $fragments) {
-                $def = $syms | Select-String -Pattern $frag -SimpleMatch | Select-Object -First 1
-                if ($def) { Write-Host "  DEFINED [$frag] in $($lib.Name)" }
-            }
-        }
-        # find the dllimport CONSUMER: which lib has an UNDEFINED __imp reference to MixingHashState
-        Write-Host '  --- dllimport consumers (libs with UNDEFINED __imp MixingHashState) ---'
-        $consumerLibs = Get-ChildItem $innerBuild -Recurse -File -Include '*.a', '*.lib' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'litert|runtime_|tflite|tensorflow|flatbuffers' }
-        foreach ($lib in $consumerLibs) {
-            $u = & $nmExe --undefined-only $lib.FullName 2>$null | Select-String -Pattern 'MixingHashState' -SimpleMatch | Where-Object { $_ -match '__imp|imp_' } | Select-Object -First 1
-            if ($u) { Write-Host "  CONSUMER __imp MixingHashState <- $($lib.Name)" }
-        }
-    } else { Write-Host '  llvm-nm not found' }
-    Write-Host '===DIAG=== abseil DUPLICATE-flag scan: which rsp archives DEFINE minloglevel (>1 = the ODR culprit):'
-    if ($nmExe -and $rsp) {
-        $rspLibs2 = (Get-Content -Raw $rsp.FullName) -split '\s+' | Where-Object { $_ -match '\.(a|lib)$' } |
-            ForEach-Object { if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $innerBuild $_ } } |
-            Where-Object { Test-Path $_ } | Sort-Object -Unique
-        Write-Host "  rsp archives to scan: $($rspLibs2.Count)"
-        $mllHits = @()
-        foreach ($lp in $rspLibs2) {
-            $d = & $nmExe --defined-only $lp 2>$null | Select-String -Pattern 'minloglevel' -SimpleMatch | Select-Object -First 1
-            if ($d) { $mllHits += $lp; Write-Host "  DEFINES minloglevel: $lp" }
-        }
-        Write-Host "  >>> $($mllHits.Count) archive(s) define minloglevel (expect 1; >1 = duplicate abseil = ODR bug)"
-        # Also flag any second copy of the whole abseil log-flags TU by archive name.
-        $logFlagArch = $rspLibs2 | Where-Object { $_ -match 'log_flags|absl_log_flags|log.*flags' }
-        if ($logFlagArch) { Write-Host "  absl_log_flags-named archives in rsp:"; $logFlagArch | ForEach-Object { Write-Host "    $_" } }
-    } else { Write-Host '  (need llvm-nm + rsp)' }
-    Write-Host '===DIAG END==='
+    & (Join-Path $PSScriptRoot 'debug-litertlm-link.ps1') -SourceDir $SourceDir
 }
 else { Remove-SourceBuildTree -Path $SourceDir }
 

@@ -13,10 +13,7 @@ $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceB
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
-$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
-
-# Load canonical versions from linux/scripts/01-core/versions.env if available
-Import-CanonicalVersions -ScriptRoot $PSScriptRoot
+$InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariables @('FFMPEG_VERSION') -DefaultValue 'master'
 $prefix = Join-Path $InstallDir 'ffmpeg'

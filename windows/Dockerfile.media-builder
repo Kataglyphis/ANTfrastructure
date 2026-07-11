@@ -50,7 +50,7 @@ ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
 ARG OPENCV_SOURCE_VERSION=5.x
 ARG FFMPEG_VERSION=master
 ARG NV_CODEC_HEADERS_REF=n13.0.19.0
-ARG CUDA_ARCHITECTURES=80;86;89;90
+ARG CUDA_ARCHITECTURES="80;86;89;90"
 
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}"
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
@@ -80,9 +80,15 @@ ARG LITERT_LM_VERSION=0.13.1
 ENV LITERT_VERSION="${LITERT_VERSION}"
 ENV LITERT_LM_VERSION="${LITERT_LM_VERSION}"
 
+# LiteRT-LM's Windows shims (POSIX headers + CRT-compat source) and CMake patch
+# snippets -- the build script stages them from these $PSScriptRoot-relative dirs.
+COPY windows\scripts\shims C:\temp\scripts\shims
+COPY windows\scripts\patches\litert-lm C:\temp\scripts\patches\litert-lm
+
 COPY windows\scripts\build-litert-from-source.ps1 `
      windows\scripts\build-litert-lm-from-source.ps1 `
      windows\scripts\build-litert-all.ps1 `
+     windows\scripts\debug-litertlm-link.ps1 `
      C:\temp\scripts\
 
 # ── media-tvm builder (TVM) ──────────────────────────────────────────────────

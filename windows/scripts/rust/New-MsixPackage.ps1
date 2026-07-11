@@ -39,15 +39,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Import ContainerHub build framework (relative to this script's location in ContainerHub)
-$modulesPath = Join-Path $PSScriptRoot "..\modules"
-$buildModule = Join-Path $modulesPath "WindowsBuild.Common.psm1"
-
-if (-not (Test-Path $buildModule)) {
-    Write-Error "Required module not found: $buildModule."
-    exit 1
-}
-
-Import-Module $buildModule -Force
+. (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
+Initialize-CiEnvironment -ScriptRoot $PSScriptRoot
 
 # Initialize Build Context
 $logDir = Join-Path $Workspace "logs"

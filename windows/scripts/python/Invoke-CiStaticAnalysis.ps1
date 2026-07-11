@@ -27,24 +27,8 @@ Param(
 
 $ErrorActionPreference = "Stop"
 
-$scriptDir = $PSScriptRoot
-$containerHubModulesPath = Join-Path $scriptDir "..\modules"
-$buildCommonModulePath = Join-Path $containerHubModulesPath "WindowsBuild.Common.psm1"
-$uvCommonModulePath = Join-Path $containerHubModulesPath "WindowsUv.Common.psm1"
-
-if (-not (Test-Path -Path $buildCommonModulePath)) {
-    throw "Required reusable module not found: $buildCommonModulePath"
-}
-
-if (-not (Test-Path -Path $uvCommonModulePath)) {
-    throw "Required reusable module not found: $uvCommonModulePath"
-}
-
-Import-Module $buildCommonModulePath -Force
-Import-Module $uvCommonModulePath -Force
-
-$repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..")
-Set-Location $repoRoot
+. (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
+$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot
 
 if ([string]::IsNullOrEmpty($PackageName)) {
     if (Test-Path (Join-Path $repoRoot "pyproject.toml")) {

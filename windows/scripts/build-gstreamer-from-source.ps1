@@ -84,7 +84,7 @@ function log($text) {
 Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GST_VERSION', 'GSTREAMER_VERSION') -DefaultValue '1.29.2'
+    $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GSTREAMER_VERSION') -DefaultValue '1.29.2'
 }
 
 try {
