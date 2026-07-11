@@ -78,6 +78,21 @@ _cross_stage_extra_arg() {
   esac
 }
 
+_stage_start_resource_monitor() {
+  # Same comprehensive, low-overhead resource logging as the full chain (best
+  # effort; RESOURCE_MONITOR=0 disables). Self-terminates via --watch-pid when
+  # this process exits, so no trap/cleanup is needed here.
+  [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0
+  local mon="${REPO_ROOT}/linux/scripts/01-core/resource-monitor.sh"
+  [ -x "${mon}" ] || return 0
+  local out="${LOG_DIR:-${REPO_ROOT}}"
+  local rid="${CROSS_RUN_ID:-stage-${STAGE}${TARGET_ARCH:+-${TARGET_ARCH}}}"
+  pgrep -f "resource-monitor.sh.*${rid}" >/dev/null 2>&1 && return 0
+  bash "${mon}" --out-dir "${out}" --run-id "${rid}" --stage-log-dir "${out}" \
+    --disk-path "${BUILDKIT_CACHE_DIR:-/}" --watch-pid "$$" </dev/null >/dev/null 2>&1 &
+  log "resource-monitor: sampling -> ${out}/resources-${rid}.csv (RESOURCE_MONITOR=0 to disable)"
+}
+
 main() {
   run_orchestrator_arg_loop usage _cross_stage_extra_arg \
     TARGET_ARCH USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
@@ -89,6 +104,8 @@ main() {
   fi
 
   cd "${REPO_ROOT}"
+
+  _stage_start_resource_monitor
 
   # Init pin arrays so cross_stage_run can access parent pin variables
   cross_stage_init_pins
