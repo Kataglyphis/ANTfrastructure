@@ -147,8 +147,21 @@ build_uv_sync_args() {
   # pulls wxPython, which is not required here and currently fails on Python 3.14.
   _sync_args=(--find-links /opt/wheels --active \
     --extra "ml-ai" \
-    --extra "${PYTORCH_EXTRA}" \
     --extra "docs")
+
+  # PYTORCH_EXTRA is a SENTINEL, not always a real extra: "none" (the default, set
+  # in Dockerfile.torch) means "CPU torch from the ml-ai deps, no CUDA/ROCm backend
+  # extra". Only append it when it names an ACTUAL optional-dependencies group.
+  # Passing `--extra none` makes every `uv sync` fail hard ("Extra `none` is not
+  # defined in the project's optional-dependencies table"), which silently drops
+  # the ENTIRE resolved dependency tree -- torch included -- on any arch without a
+  # local torch wheel. That is exactly the 2026-07-11 amd64 runtime smoke failure
+  # (ModuleNotFoundError: torch); riscv64 only survived because it force-reinstalls
+  # a LOCAL torch wheel in the fallback path.
+  case "${PYTORCH_EXTRA:-none}" in
+    none|"") ;;
+    *) _sync_args+=(--extra "${PYTORCH_EXTRA}") ;;
+  esac
 
   if [ "${#_locked_skip[@]}" -gt 0 ]; then
     printf 'Using prebuilt local wheels for locked packages: %s\n' "${_locked_skip[*]}"
