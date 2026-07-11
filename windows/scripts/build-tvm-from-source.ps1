@@ -19,7 +19,7 @@ Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.25.0'
 
-Write-Host "=== TVM source build (v$TvmVersion, Ninja+clang-cl) ==="
+Write-Host "=== TVM source build ($TvmVersion, Ninja+clang-cl) ==="
 
 Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive | Out-Null
 

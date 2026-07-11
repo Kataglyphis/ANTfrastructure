@@ -343,6 +343,18 @@ path (see § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs. The
 litert/tvm aux branches run+commit at `-MediaCoreCpus` too — the full budget is
 free once media-core has committed.
 
+**Per-run resource log.** Every `build.ps1` run samples host CPU / free RAM /
+commit charge / container-VM (`vmmem`) size every 20 s into
+`out\windows-build-logs\resources-<timestamp>.csv`, tagged with the current build
+phase (`build:<dockerfile>`, `run:<stage>`, `commit:<stage>`), and prints a
+per-phase exhaustion summary at the end — including on failure. Re-analyze any
+run later with
+`pwsh -File windows/scripts/build-resource-sampler.ps1 -Summarize -CsvPath <csv>`;
+`MinFreeGB` per phase shows which step pushed the host hardest, and an
+`AvgCpuPct` far below 100 during a compile phase means the step was memory-bound
+(`jobs = min(cores, MEMORY_LIMIT_GB/perJob)`), not CPU-bound. Disable with
+`-NoResourceLog`.
+
 > **Why the reserve is 22 GB, not ~8 (learned the hard way).** An earlier default
 > of `-HostReserveGb 8` auto-sized media-core to **53 GB**, which **hung the build**:
 > during a GPU build dockerd + containerd juggling the ~50 GB CUDA image layers,

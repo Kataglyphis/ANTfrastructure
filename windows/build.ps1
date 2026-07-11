@@ -124,7 +124,11 @@ param(
     # out-of-band (e.g. an incremental component rebuild committed straight onto windows-media-core)
     # without paying to recompile the whole branch. All three branch images must already exist.
     [switch]$SkipMediaBranches,
-    [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT
+    [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT,
+    # Disable the per-run host resource log (CPU/RAM/commit/vmmem sampled every 20s into
+    # out\windows-build-logs\resources-<ts>.csv, tagged with the current build phase, plus an
+    # end-of-run per-phase exhaustion summary). On by default -- the cost is one idle pwsh.
+    [switch]$NoResourceLog
 )
 
 Set-StrictMode -Version Latest
@@ -137,6 +141,29 @@ Push-Location $repoRoot
 # previously split between %TEMP% and out\windows-build-logs, computed at three sites.
 $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
+
+# ---- per-run host resource log (which steps exhaust the machine?) ----
+# A detached sampler (windows/scripts/build-resource-sampler.ps1) appends CPU/RAM/commit/vmmem
+# rows every 20s, tagged with the CURRENT PHASE via a state file that Set-BuildPhase rewrites at
+# every docker build / run / commit chokepoint. The finally block stops the sampler and prints a
+# per-phase exhaustion summary (also available later: the sampler script's -Summarize mode).
+$script:ResourceCsv = $null
+$script:SamplerProc = $null
+$script:PhaseFile = Join-Path $script:LogDir 'current-phase.txt'
+function Set-BuildPhase {
+    param([Parameter(Mandatory)][string]$Name)
+    # Best-effort: phase tagging must never fail a build.
+    try { Set-Content -Path $script:PhaseFile -Value $Name -ErrorAction Stop } catch { Write-Verbose "phase write skipped: $_" }
+}
+if (-not $NoResourceLog) {
+    $script:ResourceCsv = Join-Path $script:LogDir ("resources-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".csv")
+    Set-BuildPhase 'init'
+    $samplerScript = Join-Path $PSScriptRoot 'scripts\build-resource-sampler.ps1'
+    $script:SamplerProc = Start-Process -FilePath ((Get-Process -Id $PID).Path) -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile', '-File', $samplerScript,
+        '-CsvPath', $script:ResourceCsv, '-PhaseFile', $script:PhaseFile, '-IntervalSeconds', '20')
+    Write-Host "Resource log: $script:ResourceCsv (20s samples, phase-tagged; disable with -NoResourceLog)"
+}
 
 # Transient hcsshim/containerd failures ("failed to create shim task: ttrpc:
 # closed") intermittently kill container creation, typically right after a big
@@ -318,6 +345,7 @@ function Invoke-Stage {
     $targetIdx = [array]::IndexOf($ExtraFlags, '--target')
     $targetSuffix = if ($targetIdx -ge 0 -and $targetIdx -lt $ExtraFlags.Count - 1) { '-' + $ExtraFlags[$targetIdx + 1] } else { '' }
     $stageLog = Join-Path $script:LogDir ("stage-" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix + ".log")
+    Set-BuildPhase ("build:" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix)
     $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker
     $action = {
         param($attempt)
@@ -445,6 +473,7 @@ function Invoke-RunCommitStage {
     $action = {
         param($attempt)
         & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
+        Set-BuildPhase "run:$Label"
         Write-Host "`n==> [$Label] docker run --isolation hyperv --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
         & $dockerExe @runArgs 2>&1 | Tee-Object -FilePath $OutLog
     }.GetNewClosure()
@@ -458,6 +487,7 @@ function Invoke-RunCommitStage {
         # contract removes the container, the one thing this path must never do. The loop
         # cannot exhaust silently: Invoke-TransientCooldown returns $false exactly when no
         # retry remains (or the failure is non-transient), which throws here.
+        Set-BuildPhase "commit:$Label"
         foreach ($commitAttempt in 1..3) {
             $commitOut = & $dockerExe commit $ContainerName $ResultTag 2>&1
             $commitOut | ForEach-Object { Write-Host $_ }
@@ -666,5 +696,15 @@ try {
     Write-Host ("`nDone in {0:hh\:mm\:ss}. Stages built: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Gpu) { ' (GPU lane)' } else { ' (CPU lane)' }))
 }
 finally {
+    # Stop the resource sampler and print the per-phase exhaustion summary -- ALSO on failure
+    # (that is when you most want to know which step ate the machine). Re-runnable later via:
+    #   pwsh -File windows/scripts/build-resource-sampler.ps1 -Summarize -CsvPath <csv>
+    Set-BuildPhase 'done'
+    if ($script:SamplerProc -and -not $script:SamplerProc.HasExited) {
+        Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue
+    }
+    if ($script:ResourceCsv -and (Test-Path $script:ResourceCsv)) {
+        & (Join-Path $PSScriptRoot 'scripts\build-resource-sampler.ps1') -Summarize -CsvPath $script:ResourceCsv
+    }
     Pop-Location
 }
