@@ -45,8 +45,8 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.3.3, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
 - `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.23 + TensorRT 11.1.0.106 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build.ps1` handles this automatically via its `-Gpu` switch.
-- `windows/Dockerfile.toolchain` builds CPython 3.14 from source (matching the canonical versions.env).
-- The **media stage fans out into three branch images built concurrently** by `windows/build.ps1`, then fans in:
+- The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `build-toolchain-all.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
+- The **media stage fans out into three branch images** by `windows/build.ps1` — **sequentially by default** (media-core alone gets the whole RAM budget, maximizing ONNX parallelism; `-ConcurrentMedia` overlaps the aux branches instead), then fans in:
   - **media-core** (built via `Dockerfile.media-core-builder` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.14.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `master` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
   - `windows/Dockerfile.media-litert` — LiteRT 2.1.6 → LiteRT-LM 0.13.1 (independent of ONNX).
   - `windows/Dockerfile.media-tvm` — TVM 0.25.0 (independent; installs its Python wheel into the source-built CPython).
@@ -157,7 +157,7 @@ container commits fine via `docker commit`. So `build.ps1` builds media-core as:
 3. `docker commit` the container to `local/kataglyphis:windows-media-core` — a
    drop-in replacement for the old `Dockerfile.media-core` output.
 
-`Invoke-MediaCoreRunCommit` in `build.ps1` implements this via the generic
+`Invoke-MediaBranchRunCommit` in `build.ps1` implements this via the generic
 `Invoke-RunCommitStage` helper; tune it with `-MediaCoreCpus` (default: the host's
 logical processor count, `[Environment]::ProcessorCount`) and `-MediaMemoryGb`
 (default 48).
@@ -241,7 +241,7 @@ prints a clear verdict:
 - **`BUG GONE` (exit 0):** the commit succeeded — process isolation is usable for
   `docker build`. Follow the on-screen next steps (switch heavy stages to
   process isolation, re-run the full build to confirm parity, then retire
-  `Invoke-MediaCoreRunCommit` and update this doc + the host-quirks notes).
+  `Invoke-RunCommitStage` and update this doc + the host-quirks notes).
 - **`BUG PRESENT` (exit 1):** the known `wcifs`/`ActivateLayer 0x20` failure still
   occurs — keep the run+commit workaround.
 - **exit 2:** the build failed with a *different* signature — investigate; do not

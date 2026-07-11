@@ -33,7 +33,7 @@ Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaV
 $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/cuda_$CudaVersion`_windows.exe"
 Write-Host "Download URL: $cudaUrl"
 $cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
-Invoke-DownloadWithRetry -Url $cudaUrl -DestinationPath $cudaInstaller -Description "CUDA Toolkit $CudaVersion installer"
+Invoke-DownloadWithRetry -Url $cudaUrl -DestinationPath $cudaInstaller -Description "CUDA Toolkit $CudaVersion installer" -ExpectSignature MZ
 Write-Host 'Installing CUDA Toolkit (full silent install, no driver)...'
 $proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-download-driver' -Wait -PassThru
 $proc.WaitForExit()
@@ -126,7 +126,7 @@ $cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/wi
 Write-Host ('Download URL: {0}' -f $cudnnUrl)
 $cudnnArchive = Join-Path $TempDir 'cudnn.zip'
 $cudnnExtracted = Join-Path $TempDir 'cudnn_extracted'
-Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive"
+Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive" -ExpectSignature PK
 Write-Host 'Extracting cuDNN...'
 Expand-Archive -Path $cudnnArchive -DestinationPath $cudnnExtracted -Force
 $cudnnDir = Get-ChildItem -Path $cudnnExtracted -Directory | Select-Object -First 1
@@ -149,9 +149,8 @@ if (-not $cudnnDlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $CudnnRoot
 Write-Host ('cuDNN verified: {0} headers, {1} libs, {2} DLLs' -f $cudnnHeaders.Count, $cudnnLibs.Count, $cudnnDlls.Count)
 Write-Host 'cuDNN installation complete.'
 
-# Final GC push to release any lingering file handles before layer commit
+# Final GC push to release any lingering file handles before layer commit.
+# (The installer/archive files themselves were already removed right after use above.)
 [System.GC]::Collect()
 [System.GC]::WaitForPendingFinalizers()
-Remove-Item "$TempDir\cudnn.zip" -Force -ErrorAction SilentlyContinue
-Remove-Item "$TempDir\cuda_installer.exe" -Force -ErrorAction SilentlyContinue
 & cmd.exe /c 'ver > nul' 2>&1 | Out-Null

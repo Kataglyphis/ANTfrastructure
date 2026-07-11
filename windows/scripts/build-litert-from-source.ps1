@@ -12,8 +12,9 @@ $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceB
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
-$LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue '2.1.5'
+$LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue '2.1.6'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
 Write-Host "=== LiteRT source build (v$LiteRtVersion, Ninja+clang-cl) ==="
@@ -81,7 +82,7 @@ $cmakeExtra += Get-LlvmArchiverCmakeArg
 Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 $buildLog = Join-Path $buildDir 'litert-build.log'
-Invoke-CmakeBuild -BuildDir $buildDir -Config Release -Install:$false -LogFile $buildLog | Out-Null
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog
 
 # Manual install (TFLITE_ENABLE_INSTALL=OFF disables cmake --install)
 # -InstallPrefix is still passed to Invoke-CmakeConfigure because CMake generator

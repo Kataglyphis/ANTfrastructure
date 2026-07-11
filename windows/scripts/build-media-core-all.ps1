@@ -9,7 +9,7 @@
 # by `docker commit`. This script therefore replaces the sequential RUN steps that
 # Dockerfile.media-core used to contain.
 #
-# It is baked into windows-media-core-builder (see Dockerfile.media-core-builder)
+# It is baked into windows-media-core-builder (see Dockerfile.media-builder --target media-core)
 # and invoked as: powershell -NoProfile -ExecutionPolicy Bypass -File <thisscript>.
 # Version/config come from environment variables baked into the builder image.
 #

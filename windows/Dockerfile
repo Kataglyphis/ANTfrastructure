@@ -16,11 +16,10 @@ ARG VCS_REF=""
 # linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
 ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 
-# KNOWN GAP: rustup ships in the base image but no default toolchain was ever
-# installed ("rustup could not choose a version of rustc"). Installing it here
-# stalls (rustup downloads crawl inside build containers), so the fix belongs in
-# setup-rust-toolchain.ps1 at the next base rebuild. Workaround at runtime:
-#   rustup default stable
+# Rust note: FIXED in setup-rust-toolchain.ps1 (scoop-provisioned rust pinned to
+# versions.env's RUST_VERSION; no rustup at all -- a toolchain-less rustup used to
+# shadow the real cargo/rustc with proxy shims). Ships with the next base rebuild;
+# images from older bases may still need `rustup default stable` at runtime.
 
 COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
 # Smoke test is documented to run from inside the container (docs/windows-builds.md)
@@ -44,8 +43,8 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
       org.opencontainers.image.revision="${VCS_REF}" `
       org.opencontainers.image.created="${BUILD_DATE}" `
       org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" `
-      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-DockerHub" `
-      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" `
+      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
+      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
       org.opencontainers.image.licenses="Apache-2.0"
 
 # Launcher script instead of inline cmd: exec-form re-quoting mangles embedded

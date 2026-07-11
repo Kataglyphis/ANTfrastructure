@@ -8,13 +8,13 @@ param(
     [string]$VcpkgRoot = ''
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
+$ErrorActionPreference = 'Stop'  # fail-fast before module import
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 $LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.13.1'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'

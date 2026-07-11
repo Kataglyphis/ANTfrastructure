@@ -15,6 +15,7 @@ $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceB
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.25.0'
 
@@ -109,11 +110,7 @@ Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $
 
 Write-Host 'Building TVM (this may take 30-60 minutes)...'
 $buildLog = Join-Path $buildDir 'tvm-build.log'
-Invoke-CmakeBuild -BuildDir $buildDir -Config $BuildType -LogFile $buildLog | Out-Null
-
-Write-Host 'Installing...'
-& cmake --install $buildDir --config $BuildType
-if ($LASTEXITCODE -ne 0) { throw "TVM cmake --install failed (exit $LASTEXITCODE)" }
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install -InstallConfig $BuildType
 
 # TVM 0.25's FFI split builds libtvm_ffi as a SEPARATE shared lib that tvm_runtime.dll
 # imports, but `cmake --install` does not stage tvm_ffi.dll -> tvm_runtime.dll then fails to

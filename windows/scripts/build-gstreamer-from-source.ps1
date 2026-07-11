@@ -107,12 +107,11 @@ try {
     # pip is bootstrapped here if missing (no ordering assumption on other build
     # scripts — the media build runs in parallel branches).
     log 'Using source-built CPython from toolchain layer...'
-    $py = Get-SourceBuildPython
+    $py = Initialize-ToolchainPythonEnvironment
     $pyExe = $py.Exe
     if (-not (Test-Path $pyExe)) { throw "Source-built Python not found at $pyExe" }
     log "Using Python: $pyExe"
     Install-CpythonPip -Python $py
-    Copy-CpythonPyConfigHeader
 
     log 'Installing Meson via pip...'
     $pipLog = Join-Path $resolvedLogDir 'pip-install.log'
@@ -335,8 +334,8 @@ int _isatty(int);
         '-Dexamples=disabled',
         # Enable all GStreamer plugin sets.
         # Individual lib integrations (opencv, onnx, tflite) are auto-detected
-        # via PKG_CONFIG_PATH set in Dockerfile.media. If a dependency is not
-        # found, that plugin is simply skipped -- no build failure.
+        # via PKG_CONFIG_PATH set in Dockerfile.media-merge-builder. If a
+        # dependency is not found, that plugin is simply skipped -- no build failure.
         '-Dgpl=enabled',
         '-Dbase=enabled',
         '-Dgood=enabled',
@@ -509,14 +508,7 @@ int _isatty(int);
     # ---- 9. cleanup ----
     if (-not $KeepBuildArtifacts.IsPresent -and $env:KEEP_BUILD_ARTIFACTS -ne '1') {
         log 'Cleaning up source and build directories...'
-        if (Test-Path $gstSrcDir) {
-            Remove-Item -Path $gstSrcDir -Recurse -Force
-            log "Removed: $gstSrcDir"
-        }
-        if (Test-Path $resolvedBuildDir) {
-            Remove-Item -Path $resolvedBuildDir -Recurse -Force
-            log "Removed: $resolvedBuildDir"
-        }
+        Remove-SourceBuildTree -Path @($gstSrcDir, $resolvedBuildDir)
     }
 
     log 'END - GStreamer source build completed successfully.'

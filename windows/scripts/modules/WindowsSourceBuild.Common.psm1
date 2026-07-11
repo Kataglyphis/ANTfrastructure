@@ -6,6 +6,12 @@ Set-StrictMode -Version Latest
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 Import-Module $sharedPath -Force
 
+# Load sub-modules for patch and GPU utilities (split out to reduce this module's size).
+$patchesPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Patches.psm1'
+$cudaPath    = Join-Path $PSScriptRoot 'WindowsSourceBuild.Cuda.psm1'
+if (Test-Path $patchesPath) { Import-Module $patchesPath -Force }
+if (Test-Path $cudaPath)    { Import-Module $cudaPath -Force }
+
 function Get-SourceBuildVersion {
     param(
         [string]$Value = '',
@@ -26,8 +32,6 @@ function Get-SourceBuildVersion {
         }
     }
 
-    # -StripVPrefix drops a leading 'v' (versions.env uses a v-prefix; scripts that build a git
-    # tag re-add it themselves) so that strip lives here once instead of duplicated per script.
     if ($StripVPrefix) { $resolved = $resolved -replace '^v', '' }
     return $resolved
 }
@@ -58,8 +62,6 @@ function Invoke-GitClone {
 
     $oldEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    # GIT_SSL_NO_VERIFY is honored if set by the caller's environment (e.g. behind a
-    # TLS-intercepting proxy) but is no longer forced on for every clone.
     $env:GIT_TERMINAL_PROMPT = '0'
 
     $null = & git @gitArgs 2>&1
@@ -114,10 +116,6 @@ function Invoke-CmakeConfigure {
     if ($Linker) { $cmakeArgs += "-DCMAKE_LINKER=$Linker" }
     if ($Archiver) { $cmakeArgs += "-DCMAKE_AR=$Archiver" }
 
-    # sccache only pays off with a REMOTE backend: without BuildKit cache mounts a
-    # container-local disk cache dies with the layer (zero cross-build hits) while
-    # bloating the image. Enable the launcher only when a remote is configured
-    # (pass -SccacheEndpoint to windows/build.ps1 / see docs/windows-builds.md).
     $sccacheRemoteConfigured = -not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT) -or
         -not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET) -or
         -not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT)
@@ -157,8 +155,6 @@ function Invoke-CmakeBuild {
         [string]$LogFile = ''
     )
 
-    # Bounded parallelism: bare `--parallel` lets ninja run cores+2 jobs, which can
-    # OOM a memory-capped container (MEMORY_LIMIT_GB / BUILD_JOBS scale this down).
     $jobs = Get-BuildJobCount -MemGBPerJob 2
     Write-Host "Building with $jobs parallel jobs (this may take 15-120 minutes)..."
     if ($LogFile) {
@@ -188,19 +184,6 @@ function Invoke-CmakeBuild {
     return $true
 }
 
-function Get-CudaRoot {
-    <#
-    .SYNOPSIS
-        Returns the CUDA root directory from environment variables.
-    .DESCRIPTION
-        Checks $env:CUDA_ROOT first, then $env:CUDA_PATH, returns $null if neither is set.
-        This is the SINGLE source of truth for CUDA detection across all build scripts.
-    #>
-    if ($env:CUDA_ROOT -and (Test-Path $env:CUDA_ROOT)) { return $env:CUDA_ROOT }
-    if ($env:CUDA_PATH -and (Test-Path $env:CUDA_PATH)) { return $env:CUDA_PATH }
-    return $null
-}
-
 function Enter-VsDevCmdEnvironment {
     param(
         [string]$Arch = 'amd64',
@@ -208,9 +191,8 @@ function Enter-VsDevCmdEnvironment {
         [string]$VsDevCmdPath = ''
     )
 
-    # Resolve VsDevCmd.bat via vswhere (robust across VS versions, not hardcoded to VS 18).
     if ([string]::IsNullOrWhiteSpace($VsDevCmdPath)) {
-        $vsPath = Get-VsInstallPath   # single source of truth for VS discovery (shared with Get-MsvcToolsRoot)
+        $vsPath = Get-VsInstallPath
         $VsDevCmdPath = Join-Path $vsPath 'Common7\Tools\VsDevCmd.bat'
     }
     if (-not (Test-Path $VsDevCmdPath)) { throw "VsDevCmd.bat not found at: $VsDevCmdPath" }
@@ -223,12 +205,6 @@ function Enter-VsDevCmdEnvironment {
 }
 
 function Get-VsInstallPath {
-    <#
-    .SYNOPSIS
-        Resolves the latest Visual Studio installation path via vswhere.
-    .OUTPUTS
-        [string] The VS installation path (e.g. C:\Program Files\Microsoft Visual Studio\18\BuildTools).
-    #>
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere - Visual Studio Installer missing" }
     $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -237,12 +213,6 @@ function Get-VsInstallPath {
 }
 
 function Get-MsvcToolsRoot {
-    <#
-    .SYNOPSIS
-        Resolves the latest MSVC tools directory (include/lib headers) via vswhere.
-    .OUTPUTS
-        [string] Full path to the MSVC tools version directory (e.g. ...\VC\Tools\MSVC\14.51.32910).
-    #>
     $vsPath = Get-VsInstallPath
     $msvcRoot = Join-Path $vsPath 'VC\Tools\MSVC'
     $dirs = Get-ChildItem -Path $msvcRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
@@ -251,30 +221,12 @@ function Get-MsvcToolsRoot {
 }
 
 function Resolve-LlvmArchiver {
-    <#
-    .SYNOPSIS
-        Resolves the full path to llvm-lib.exe for use as CMAKE_AR in clang-cl builds.
-    .DESCRIPTION
-        CMake's default CMAKE_AR resolution can find llvm-lib incorrectly (e.g. C:\llvm-lib).
-        This returns the full path so it can be passed via -DCMAKE_AR:FILEPATH=...
-    .OUTPUTS
-        [string] Full path to llvm-lib.exe, or $null if not found.
-    #>
     $llvmLib = (Get-Command 'llvm-lib' -ErrorAction SilentlyContinue).Source
     if (-not $llvmLib) { $llvmLib = (Get-Command 'llvm-lib.exe' -ErrorAction SilentlyContinue).Source }
     return $llvmLib
 }
 
 function Copy-CpythonPyConfigHeader {
-    <#
-    .SYNOPSIS
-        Copies CPython's PC\pyconfig.h to Include\pyconfig.h (source build puts it in PC/, not Include/).
-    .DESCRIPTION
-        The source-built CPython generates pyconfig.h under PC\ but many build systems
-        expect it under Include\. This copies it if the destination is missing.
-    .PARAMETER CpythonDir
-        Path to the CPython source checkout (default: $env:TEMP_DIR\cpython).
-    #>
     param(
         [string]$CpythonDir = ''
     )
@@ -288,14 +240,6 @@ function Copy-CpythonPyConfigHeader {
 }
 
 function Get-SourceBuildPython {
-    <#
-    .SYNOPSIS
-        Returns paths for the source-built CPython interpreter (built in the toolchain layer).
-    .OUTPUTS
-        [hashtable] @{ Exe=...; Include=...; LibDir=...; Lib=... }
-    .PARAMETER CpythonDir
-        Path to the CPython source checkout (default: $env:TEMP_DIR\cpython).
-    #>
     param(
         [string]$CpythonDir = ''
     )
@@ -307,198 +251,10 @@ function Get-SourceBuildPython {
     return @{ Exe = $exe; Include = $include; LibDir = $libDir; Lib = $lib }
 }
 
-function Edit-CppKeywordAlternatives {
-    <#
-    .SYNOPSIS
-        Replaces C++ keyword alternatives (and/or/not) with symbolic operators (&&/||/!) for clang-cl.
-    .DESCRIPTION
-        clang-cl does not support the ISO-C++ keyword alternatives `and`, `or`, `not`
-        (they require including <iso646.h> on MSVC). This in-place patches a source file
-        to replace all word-boundary occurrences with symbolic operators.
-    .PARAMETER Path
-        File to patch in-place.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
-    if (-not (Test-Path $Path)) { return }
-    $content = [System.IO.File]::ReadAllText($Path)
-    $patched = $content -replace '\bor\b', '||' -replace '\band\b', '&&' -replace '\bnot\b', '!'
-    if ($content -ne $patched) {
-        [System.IO.File]::WriteAllText($Path, $patched)
-        Write-Host "Patched keyword alternatives in: $Path"
-    }
-}
-
-function Update-NinjaFile {
-    <#
-    .SYNOPSIS
-        Strips MSVC-only flags from a build.ninja file that clang-cl errors on.
-    .DESCRIPTION
-        clang-cl doesn't understand several MSVC-only flags (/experimental:external,
-        /arch:, /bigobj, -WX, /Qspectre). This patches the generated build.ninja in-place
-        after CMake configure but before ninja build.
-    .PARAMETER NinjaFile
-        Path to the build.ninja file.
-    .PARAMETER StripPatterns
-        Array of regex patterns to remove from build.ninja.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$NinjaFile,
-        [string[]]$StripPatterns = @()
-    )
-    if (-not (Test-Path $NinjaFile)) { return }
-    $text = [System.IO.File]::ReadAllText($NinjaFile)
-    $original = $text
-    foreach ($pattern in $StripPatterns) {
-        $text = $text -replace $pattern, ''
-    }
-    $text = $text -replace '  +', ' '
-    if ($text -ne $original) {
-        [System.IO.File]::WriteAllText($NinjaFile, $text)
-        Write-Host "Patched build.ninja for clang-cl compatibility: $NinjaFile"
-    }
-}
-
-function Invoke-SourcePatch {
-    <#
-    .SYNOPSIS
-        Idempotently applies a patch file to source code using git apply / patch.exe.
-    .DESCRIPTION
-        Mirrors linux/scripts/01-core/apply-patch.sh behaviour:
-          1. If the patch is already applied (reverse-apply check passes), SKIP.
-          2. If the patch applies cleanly (forward check passes), APPLY.
-          3. Otherwise, throw a loud error.
-
-        Prefers `git apply` when SourceDir is a git working tree; falls back to
-        `patch.exe -p1` for extracted tarballs (Patch.exe ships with Git for Windows).
-        The patch file is a standard unified diff with a/ b/ prefix.
-    .PARAMETER PatchFile
-        Path to the .patch file to apply.
-    .PARAMETER SourceDir
-        Root directory of the source tree to patch (cwd during apply).
-    .PARAMETER Strip
-        Number of leading path components to strip (default 1, strips a/).
-    .PARAMETER IgnoreWhitespace
-        If set, passes --ignore-whitespace to git apply (for whitespace drift).
-    .PARAMETER Description
-        Optional human-friendly label for log output (defaults to patch file name).
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$PatchFile,
-        [Parameter(Mandatory)]
-        [string]$SourceDir,
-        [int]$Strip = 1,
-        [switch]$IgnoreWhitespace,
-        [string]$Description = ''
-    )
-
-    if (-not (Test-Path $PatchFile)) { throw "Patch file not found: $PatchFile" }
-    if (-not (Test-Path $SourceDir)) { throw "Source directory not found: $SourceDir" }
-    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $PatchFile -Leaf }
-
-    $pFlag = "-p$Strip"
-    $wsFlag = @()
-    if ($IgnoreWhitespace) { $wsFlag += '--ignore-whitespace' }
-
-    # Detect git repo: check .git directory first, then try git rev-parse with
-    # suppressed stderr (fatal: not a git repository) that PS 5.1 treats as an
-    # ErrorRecord even under $ErrorActionPreference = 'Continue'.
-    $isGitRepo = $false
-    if (Test-Path (Join-Path $SourceDir '.git')) {
-        $isGitRepo = $true
-    } else {
-        $null = & git -C $SourceDir rev-parse --git-dir 2>$null
-        if ($LASTEXITCODE -eq 0) { $isGitRepo = $true }
-    }
-
-    Push-Location $SourceDir
-    try {
-        # Suppress $ErrorActionPreference for git/patch native commands: in PS 5.1,
-        # stderr output from git apply (e.g. "patch failed: softmax.h:41") is treated
-        # as a PowerShell ErrorRecord that triggers `$ErrorActionPreference = 'Stop'`
-        # even when `2>$null` is used. We rely on `$LASTEXITCODE` instead.
-        $oldEAP = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-
-        Write-Host "Applying patch: $Description to $SourceDir"
-
-        # git and patch.exe share the same reverse-check / forward-check / apply flow -- only the
-        # commands differ. Bind them as scriptblocks once (invoked in this scope, so they see
-        # $pFlag/$wsFlag/$PatchFile/$patchExe), then run the common flow below.
-        if ($isGitRepo) {
-            $tool         = 'git'
-            $reverseCheck = { & git apply --reverse --check $pFlag $wsFlag $PatchFile 2>&1 }
-            $forwardCheck = { & git apply --check $pFlag $wsFlag $PatchFile 2>&1 }
-            $applyPatch   = { & git apply $pFlag --verbose $wsFlag $PatchFile 2>&1 }
-        } else {
-            # Fallback: patch.exe (ships with Git for Windows at $GIT_USRBIN\patch.exe)
-            $patchExe = (Get-Command patch.exe -ErrorAction SilentlyContinue).Source
-            if (-not $patchExe) { throw "patch.exe not found and source is not a git repo -- cannot apply $PatchFile" }
-            $tool         = 'patch.exe'
-            $reverseCheck = { & $patchExe $pFlag --dry-run --reverse $PatchFile 2>&1 }
-            $forwardCheck = { & $patchExe $pFlag --dry-run $PatchFile 2>&1 }
-            $applyPatch   = { & $patchExe $pFlag $PatchFile 2>&1 }
-        }
-
-        # 1. Already applied? (reverse-check)
-        $null = & $reverseCheck
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "  SKIP: $Description (already applied)"
-            return
-        }
-        # 2. Forward-check, then apply
-        $null = & $forwardCheck
-        if ($LASTEXITCODE -eq 0) {
-            $null = & $applyPatch
-            if ($LASTEXITCODE -ne 0) { throw "$tool apply failed (exit $LASTEXITCODE): $PatchFile" }
-            Write-Host "  [OK] $Description applied via $tool"
-            return
-        }
-
-        # 3. Patch does not apply cleanly (EAP restored by the finally below)
-        $msg = "ERROR: $Description -- patch does not apply cleanly to $SourceDir"
-        Write-Host $msg
-        Write-Host "       The upstream source may have changed. Regenerate the .patch file."
-        Write-Host "--- patch file: $PatchFile ---"
-        Get-Content $PatchFile -TotalCount 40 | ForEach-Object { Write-Host "       $_" }
-        Write-Host '       ...'
-        throw $msg
-    } finally {
-        $ErrorActionPreference = $oldEAP
-        Pop-Location
-    }
-}
-
 function Initialize-SourceBuildEnvironment {
-    <#
-    .SYNOPSIS
-        Resolves a default InstallDir for build-*-from-source.ps1 scripts.
-    .DESCRIPTION
-        Returns InstallDir (defaulting to 'C:\runtime').
-
-        WARNING - scope trap: the Set-StrictMode / $ErrorActionPreference below take
-        effect ONLY inside this function's scope; PowerShell does NOT propagate them
-        back to the calling script. Do NOT route a build script's preamble through
-        this helper expecting it to set Stop-on-error there - the caller MUST declare
-        its own `$ErrorActionPreference = 'Stop'` at top level. Every build-*-from-source.ps1
-        now does so (build-onnx + build-litert-lm additionally set Set-StrictMode -Version
-        Latest; the rest set EAP only). In the media run these scripts also inherit Stop from
-        Invoke-SourceBuildChain's scope, but the explicit top-level declaration is what keeps
-        fail-fast working when a script is run standalone for debugging. Collapsing that
-        preamble into this call silently disables fail-fast and is a real regression, not dedup.
-    .PARAMETER InstallDir
-        Passed-through InstallDir value (empty -> 'C:\runtime').
-    .OUTPUTS
-        [string] The resolved InstallDir.
-    #>
     param(
         [string]$InstallDir = ''
     )
-    # Function-scoped only (see WARNING above) - kept so this helper itself fails fast.
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
     if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
@@ -506,141 +262,19 @@ function Initialize-SourceBuildEnvironment {
 }
 
 function Get-WindowsX86SimdFlags {
-    <#
-    .SYNOPSIS
-        Returns the canonical x86 SIMD /feature flag string for clang-cl on Windows.
-    .DESCRIPTION
-        Single source of truth for the SIMD flag set used by both OpenCV and ONNX
-        Runtime Windows builds. AVX2 baseline + AVX-512 + AMX + popcnt/aes/pclmul.
-    .OUTPUTS
-        [string] Space-separated /clang:... flags (no leading space).
-    #>
     return '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
 }
 
 function Get-WindowsX86Avx512Flags {
-    <#
-    .SYNOPSIS
-        Returns the AVX-512 + AMX sub-flag string used by ONNX Runtime.
-    .OUTPUTS
-        [string] Space-separated /clang:... flags covering AVX-512 + AMX.
-    #>
     return '/clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16'
 }
 
-function Resolve-TensorRtRoot {
-    <#
-    .SYNOPSIS
-        Resolves the canonical TensorRT install root from $env:TENSORRT_ROOT.
-    .DESCRIPTION
-        Looks for a `TensorRT-*` versioned subdirectory below the env var; falls
-        back to the env value itself when only a flat layout is present. Returns
-        $null if TENSORRT_ROOT is unset or doesn't exist on disk.
-    .OUTPUTS
-        [string] Resolved TensorRT root path (or $null).
-    #>
-    $trtRoot = $env:TENSORRT_ROOT
-    if (-not $trtRoot) { return $null }
-    if (-not (Test-Path $trtRoot)) { return $null }
-    # An empty root means the extract stage ran without a TensorRT zip (graceful
-    # skip) — treat as not installed so builds don't enable a hollow TensorRT EP.
-    if (-not (Get-ChildItem $trtRoot -ErrorAction SilentlyContinue | Select-Object -First 1)) { return $null }
-    $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($trtVerDir) { return $trtVerDir.FullName }
-    return $trtRoot
-}
-
-function Get-GpuEnvironment {
-    <#
-    .SYNOPSIS
-        Detect GPU/CUDA/cuDNN/TensorRT/ROCm environment once for all GPU-aware build scripts.
-    .DESCRIPTION
-        Single source of truth for GPU detection across onnx, opencv, litert,
-        litert-lm, tvm, gstreamer. Returns a hashtable of resolved paths + a
-        GpuType discriminator ('nvidia' / 'amd' / 'cpu'). Per-script CMake args
-        remain in the build scripts (each library has its own flag names like
-        `Donnxruntime_USE_TENSORRT` vs `DUSE_CUDA`) -- the helper only resolves
-        *environment paths*, not project-specific flags.
-    .PARAMETER ForceCpuEnvVar
-        Name of an env var that, when set to '1', short-circuits to a CPU-only environment
-        (GpuType='cpu', all GPU paths null) regardless of GPU_TYPE. Dev/iteration knob for the
-        GPU-aware build scripts (e.g. ONNX_FORCE_CPU, GENAI_FORCE_CPU) to skip the slow CUDA/TensorRT
-        nvcc kernel compiles while still exercising the CPU/DirectML paths. Omit for normal detection;
-        the media build never sets these vars.
-    .OUTPUTS
-        [hashtable] @{ GpuType='nvidia'|'amd'|'cpu'; CudaRoot=$string|null;
-                       CudnnRoot=$string|null; TensorRtRoot=$string|null;
-                       CudaBin=$string|null }
-    #>
-    param([string]$ForceCpuEnvVar)
-    if ($ForceCpuEnvVar -and ([Environment]::GetEnvironmentVariable($ForceCpuEnvVar) -eq '1')) {
-        Write-Host "$ForceCpuEnvVar=1 -> CPU-only build (GPU detection overridden; CUDA/TensorRT/cuDNN skipped)"
-        return @{ GpuType = 'cpu'; CudaRoot = $null; CudnnRoot = $null; TensorRtRoot = $null; CudaBin = $null }
-    }
-    $gpuType = if ($env:GPU_TYPE) { $env:GPU_TYPE.ToLowerInvariant() } else { 'cpu' }
-    $cudaRoot = Get-CudaRoot
-    $cudnnRoot = $env:CUDNN_ROOT
-    $trtRoot = Resolve-TensorRtRoot
-    $cudaBin = if ($cudaRoot) { Join-Path $cudaRoot 'bin' } else { $null }
-
-    if ($gpuType -eq 'nvidia' -and $cudaRoot -and (Test-Path $cudaRoot)) {
-        # Prepend CUDA bin to PATH so nvcc / cudnn DLLs are discoverable by the
-        # single build script that needs PATH-based lookup (FFmpeg auto-detect).
-        if ($cudaBin -and (Test-Path $cudaBin) -and ($env:PATH -notlike "*$cudaBin*")) {
-            $env:PATH = "$cudaBin;$env:PATH"
-        }
-        if ($env:CUDA_PATH -ne $cudaRoot) { $env:CUDA_PATH = $cudaRoot }
-        if ($env:CUDA_HOME -ne $cudaRoot) { $env:CUDA_HOME = $cudaRoot }
-    }
-
-    return @{
-        GpuType       = $gpuType
-        CudaRoot      = $cudaRoot
-        CudnnRoot     = $cudnnRoot
-        TensorRtRoot  = $trtRoot
-        CudaBin       = $cudaBin
-    }
-}
-
-function Get-CudaArchitectureList {
-    <#
-    .SYNOPSIS
-        Returns the canonical CUDA architecture list (CMAKE_CUDA_ARCHITECTURES form).
-    .DESCRIPTION
-        Single source of truth is CUDA_ARCHITECTURES in versions.env (surfaced as an
-        env var by the Dockerfiles / load-versions.ps1). Consumers decorate per build
-        system — Windows clang-cl builds pass -Decoration '-real'.
-    .PARAMETER Decoration
-        Suffix appended to every architecture (e.g. '-real' -> '80-real;86-real;...').
-    #>
-    param(
-        [string]$Decoration = ''
-    )
-    $archs = if (-not [string]::IsNullOrWhiteSpace($env:CUDA_ARCHITECTURES)) { $env:CUDA_ARCHITECTURES } else { '80;86;89;90' }
-    if ($Decoration) {
-        return (($archs -split ';' | Where-Object { $_ } | ForEach-Object { "$_$Decoration" }) -join ';')
-    }
-    return $archs
-}
-
 function Install-CpythonPip {
-    <#
-    .SYNOPSIS
-        Idempotently bootstraps pip into the source-built CPython (toolchain layer).
-    .DESCRIPTION
-        The source-built interpreter ships without pip. With the media build split
-        into parallel branches, every script that needs pip (GenAI, TVM wheel,
-        GStreamer's meson install) must be able to bootstrap it independently —
-        no ordering assumption between branches. Skips instantly if pip is present.
-    .PARAMETER Python
-        Hashtable from Get-SourceBuildPython (resolved automatically if omitted).
-    #>
     param(
         [hashtable]$Python = $null
     )
     if (-not $Python) { $Python = Get-SourceBuildPython }
     if (-not (Test-Path $Python.Exe)) { throw "Source-built Python not found at $($Python.Exe)" }
-    # cmd.exe avoids PowerShell treating pip's stderr chatter as errors
     cmd.exe /c """$($Python.Exe)"" -m pip --version >nul 2>&1"
     if ($LASTEXITCODE -eq 0) { Write-Host 'pip already installed'; return }
     Write-Host 'Bootstrapping pip via get-pip.py...'
@@ -652,23 +286,6 @@ function Install-CpythonPip {
 }
 
 function Invoke-CpythonPip {
-    <#
-    .SYNOPSIS
-        Run `python -m pip <args>` via cmd.exe so pip's stderr progress doesn't trip EAP=Stop.
-    .DESCRIPTION
-        The source-build scripts invoke pip through `cmd.exe /c` because pip writes progress
-        to stderr, which under $ErrorActionPreference='Stop' would abort the script. This
-        centralizes that idiom (and the $LASTEXITCODE check) so callers stop hand-rolling the
-        triple-quote cmd string. Throws on a non-zero pip exit unless -Optional is set (then it
-        warns and continues, e.g. the non-critical TVM Python wheel). Bootstrap pip first via
-        Install-CpythonPip. `.`-relative installs honor the caller's current directory.
-    .PARAMETER Python
-        Hashtable from Get-SourceBuildPython / Initialize-ToolchainPythonEnvironment (uses .Exe).
-    .PARAMETER Arguments
-        Tokens after `-m pip`, e.g. @('install','cmake','ninja','--quiet').
-    .PARAMETER Optional
-        Warn instead of throw on a non-zero exit.
-    #>
     param(
         [Parameter(Mandatory)][hashtable]$Python,
         [Parameter(Mandatory)][string[]]$Arguments,
@@ -686,25 +303,6 @@ function Invoke-CpythonPip {
 }
 
 function Copy-BuildArtifact {
-    <#
-    .SYNOPSIS
-        Stage built artifacts by extension into an install layout, for upstreams whose
-        `cmake --install` is disabled or incomplete.
-    .DESCRIPTION
-        For each -Map entry, ensures <InstallDir>\<Dest> exists and copies the files matching
-        the entry's Filter(s) from -BuildDir into it, logging the count. Replaces the hand-rolled
-        "New-Item dirs + Get-ChildItem -Filter + Copy-Item" install blocks in the
-        build-*-from-source scripts. -Recurse searches the whole build tree (deep artifacts);
-        omit it to copy only BuildDir's top level (matching a non-recursive wildcard copy).
-    .PARAMETER BuildDir
-        Directory to source artifacts from.
-    .PARAMETER InstallDir
-        Install root; each map entry's Dest subdir is created under it.
-    .PARAMETER Map
-        Array of @{ Filter = '*.dll'; Dest = 'bin' } entries; Filter may be a string or string[].
-    .PARAMETER Recurse
-        Search BuildDir recursively (default: top level only).
-    #>
     param(
         [Parameter(Mandatory)][string]$BuildDir,
         [Parameter(Mandatory)][string]$InstallDir,
@@ -726,21 +324,6 @@ function Copy-BuildArtifact {
 }
 
 function Remove-MakefileShowIncludes {
-    <#
-    .SYNOPSIS
-        Strip MSVC /showIncludes and its awk dep-file pipeline from a configure-generated
-        FFmpeg makefile so clang-cl/nmake don't choke on the GCC-style dependency scanning.
-    .DESCRIPTION
-        FFmpeg's ./configure writes the same /showIncludes + `| awk ... > *.d` dep-tracking
-        into both ffbuild/*.mak and the top-level library.mak/subdir.mak/Makefile. This applies
-        the identical invariant `-replace` set in one place (was duplicated across two loops in
-        build-ffmpeg-from-source.ps1). No-op if -Path does not exist.
-    .PARAMETER Path
-        Makefile to rewrite in place.
-    .PARAMETER StripWildcardInclude
-        Also drop the `-include $(wildcard *.d)` line -- present in the top-level makefiles,
-        not in the ffbuild/*.mak fragments.
-    #>
     param(
         [Parameter(Mandatory)][string]$Path,
         [switch]$StripWildcardInclude
@@ -756,17 +339,6 @@ function Remove-MakefileShowIncludes {
 }
 
 function Remove-SourceBuildTree {
-    <#
-    .SYNOPSIS
-        Removes source/build trees after install so they don't bloat the Docker layer.
-    .DESCRIPTION
-        Each build-*-from-source.ps1 script clones + builds under C:\temp and installs
-        to C:\runtime. Without cleanup the clone/build tree (often several GB) is
-        committed into the image layer. Call this after a successful install.
-        Set KEEP_BUILD_ARTIFACTS=1 to keep the trees for debugging.
-    .PARAMETER Path
-        One or more directories to remove.
-    #>
     param(
         [Parameter(Mandatory)]
         [string[]]$Path
@@ -777,257 +349,32 @@ function Remove-SourceBuildTree {
     }
     foreach ($p in $Path) {
         if ([string]::IsNullOrWhiteSpace($p) -or -not (Test-Path $p)) { continue }
-        # Never delete from inside the tree being removed
         if ((Get-Location).Path -like "$p*") { Set-Location (Split-Path $p -Parent) }
         Write-Host "Removing build tree: $p"
-        # rd handles long paths and read-only .git objects more reliably than Remove-Item
         & cmd.exe /c "rd /s /q ""$p""" 2>$null
         if (Test-Path $p) { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
 
 function Get-BuildJobCount {
-    <#
-    .SYNOPSIS
-        Returns a parallel job count scaled to available memory (min 2, max core count).
-    .DESCRIPTION
-        Heavy TUs (CUDA kernels, AVX-512 templates under clang-cl) can OOM a container
-        at full -j<cores>. jobs = min(cores, memGB / MemGBPerJob), floor 2.
-        Override explicitly with the BUILD_JOBS environment variable.
-    .PARAMETER MemGBPerJob
-        Estimated peak memory per compile job in GB (default 4; use 8 for
-        CUDA/AVX-512-heavy builds like ONNX Runtime).
-    #>
     param(
         [int]$MemGBPerJob = 4
     )
     if ($env:BUILD_JOBS -match '^\d+$') { return [int]$env:BUILD_JOBS }
     $cores = [Environment]::ProcessorCount
     $memGB = 0
-    # Under process isolation Win32_OperatingSystem reports HOST memory, not the
-    # container's --memory cap. The driver passes the cap as MEMORY_LIMIT_GB so
-    # parallel branch builds don't collectively oversubscribe the host.
     if ($env:MEMORY_LIMIT_GB -match '^\d+$') {
         $memGB = [int]$env:MEMORY_LIMIT_GB
     } else {
         try {
             $memGB = [int][Math]::Floor((Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize / 1MB)
-        } catch { $memGB = 0 }   # CIM unavailable -> fall through to the $cores default below
+        } catch { $memGB = 0 }
     }
     if ($memGB -le 0) { return $cores }
     return [Math]::Max(2, [Math]::Min($cores, [int][Math]::Floor($memGB / $MemGBPerJob)))
 }
 
-function Invoke-InlineRegexPatch {
-    <#
-    .SYNOPSIS
-        In-place regex substitution on a source file, warning loudly when the pattern didn't match.
-    .DESCRIPTION
-        Canonical form for the "kept inline, NOT a .patch" edits that target floating
-        upstream paths (CMake-fetched dep SHAs, installed MSVC toolset headers) where a
-        static .patch would silently rot. Reads the file, applies -replace and:
-          * if the (optional) -Guard regex is present and does NOT match, does nothing;
-          * if the replace is a no-op, emits -WarnMessage so a silent miss stays visible;
-          * otherwise writes the file back and logs the edit.
-        Collapses the read-replace-warn-or-write idiom duplicated across build-onnx
-        (CUDA PCH strip, cutlass _udiv128) and build-onnx-genai (MSVC coroutine / yvals_core).
-    .PARAMETER Path
-        File to patch in place. A missing file is skipped (returns $false) unless -Require.
-    .PARAMETER Pattern
-        Regex passed to -replace.
-    .PARAMETER Replacement
-        Replacement string (default '' — i.e. strip the match).
-    .PARAMETER Guard
-        Optional regex; the edit is only attempted when the file content matches it
-        (mirrors the `if ($text -match '...') { ... }` guard around the MSVC STL patches).
-    .PARAMETER WarnMessage
-        Emitted via Write-Warning when the pattern is present-but-unchanged. Defaults to a
-        generic "pattern not found" note naming the file.
-    .PARAMETER Require
-        Throw if the file does not exist (default: skip missing files quietly).
-    .PARAMETER Description
-        Human label for the success log line (defaults to the file leaf name).
-    .OUTPUTS
-        [bool] $true if the file was modified, else $false.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path,
-        [Parameter(Mandatory)]
-        [string]$Pattern,
-        [string]$Replacement = '',
-        [string]$Guard = '',
-        [string]$WarnMessage = '',
-        [switch]$Require,
-        [string]$Description = ''
-    )
-    if (-not (Test-Path $Path)) {
-        if ($Require) { throw "Invoke-InlineRegexPatch: file not found: $Path" }
-        return $false
-    }
-    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
-    $text = [System.IO.File]::ReadAllText($Path)
-    if ($Guard -and ($text -notmatch $Guard)) { return $false }
-    $patched = $text -replace $Pattern, $Replacement
-    if ($patched -eq $text) {
-        if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
-            $WarnMessage = "$Description : pattern not found; upstream layout may have changed. Verify $Path."
-        }
-        Write-Warning $WarnMessage
-        return $false
-    }
-    [System.IO.File]::WriteAllText($Path, $patched)
-    Write-Host "Patched $Description ($Path)"
-    return $true
-}
-
-function Add-FileBlockOnce {
-    <#
-    .SYNOPSIS
-        Idempotently append (or prepend) a text block to a file, guarded by a marker regex.
-    .DESCRIPTION
-        Canonical form for the "graft a patch block into an upstream .cmake/.cc file exactly
-        once" idiom (the protobuf/sentencepiece/tflite/litert *_patcher.cmake appends and the
-        rust-syslib #pragma prepend all share it). Collapses the
-        `if ((Test-Path $x) -and ((Get-Content -Raw $x) -notmatch 'MARKER')) { Add-Content ...;
-        Write-Host ... }` wrapper into one call. Skips the file when it is missing or already
-        contains -Marker; otherwise writes the block and logs it.
-    .PARAMETER Path
-        File to modify. A missing file is skipped (returns $false) unless -Require.
-    .PARAMETER Marker
-        Regex identifying an already-applied block; when present the file is left untouched.
-    .PARAMETER Content
-        Text block to add (typically a here-string).
-    .PARAMETER Prepend
-        Insert -Content BEFORE the existing file content (default: append after).
-    .PARAMETER Encoding
-        Optional encoding for the append path (e.g. 'ASCII'); default uses Add-Content's default.
-        Ignored for -Prepend, which writes UTF-8 (no BOM) via [System.IO.File]::WriteAllText.
-    .PARAMETER Require
-        Throw if the file does not exist (default: skip missing files quietly).
-    .PARAMETER Description
-        Human label for the success log line (defaults to the file leaf name).
-    .OUTPUTS
-        [bool] $true if the file was modified, else $false.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path,
-        [Parameter(Mandatory)]
-        [string]$Marker,
-        [Parameter(Mandatory)]
-        [string]$Content,
-        [switch]$Prepend,
-        [string]$Encoding = '',
-        [switch]$Require,
-        [string]$Description = ''
-    )
-    if (-not (Test-Path $Path)) {
-        if ($Require) { throw "Add-FileBlockOnce: file not found: $Path" }
-        return $false
-    }
-    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
-    if ((Get-Content -Raw $Path) -match $Marker) { return $false }
-    if ($Prepend) {
-        [System.IO.File]::WriteAllText($Path, $Content + [System.IO.File]::ReadAllText($Path))
-    }
-    elseif ($Encoding) {
-        Add-Content -LiteralPath $Path -Value $Content -Encoding $Encoding
-    }
-    else {
-        Add-Content -LiteralPath $Path -Value $Content
-    }
-    Write-Host "Patched $Description"
-    return $true
-}
-
-function Edit-SourceFile {
-    <#
-    .SYNOPSIS
-        In-place content transform of a source file via a scriptblock, guarded and logged.
-    .DESCRIPTION
-        Canonical form for the "read the whole file, run one string transform (literal .Replace,
-        several chained -replace, or an anchored inject), write it back once" idiom that the
-        litert-lm CMake patches duplicate ~20x. Use this -- NOT Invoke-InlineRegexPatch -- when the
-        edit is a literal .Replace() or injects text containing regex-special characters such as `$`
-        (e.g. a CMake `${VAR}` reference): routing those through -replace would misread `$` as a
-        replacement group reference and silently corrupt the injected text. The -Transform stays a
-        scriptblock so the edit is byte-identical to the hand-written read-modify-write it replaces.
-        Reads the file, optionally skips when -Marker is already present (idempotency), runs the
-        transform, and:
-          * if the transform made no change, emits -WarnMessage so a silent miss stays visible;
-          * otherwise writes the file back (UTF-8, no BOM) and logs the edit.
-        Collapses the `if (Test-Path $x) { $c = ReadAllText; ...; WriteAllText; Write-Host }` wrapper.
-    .PARAMETER Path
-        File to patch in place. A missing file is skipped (returns $false) unless -Require.
-    .PARAMETER Transform
-        Scriptblock receiving the current file content as its single argument (param($c)) and
-        returning the new content [string].
-    .PARAMETER Marker
-        Optional regex identifying an already-applied edit; when it matches the file is left
-        untouched (mirrors the `if ($text -notmatch 'marker') { ... }` idempotency guard).
-    .PARAMETER WarnMessage
-        Emitted via Write-Warning when the transform did not change the file. Defaults to a generic
-        "no change" note naming the file.
-    .PARAMETER Require
-        Throw if the file does not exist (default: skip missing files quietly).
-    .PARAMETER Description
-        Human label for the success log line (defaults to the file leaf name).
-    .OUTPUTS
-        [bool] $true if the file was modified, else $false.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path,
-        [Parameter(Mandatory)]
-        [scriptblock]$Transform,
-        [string]$Marker = '',
-        [string]$WarnMessage = '',
-        [switch]$Require,
-        [string]$Description = ''
-    )
-    if (-not (Test-Path $Path)) {
-        if ($Require) { throw "Edit-SourceFile: file not found: $Path" }
-        return $false
-    }
-    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
-    $text = [System.IO.File]::ReadAllText($Path)
-    if ($Marker -and ($text -match $Marker)) { return $false }
-    $patched = [string](& $Transform $text)
-    if ($patched -eq $text) {
-        if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
-            $WarnMessage = "$Description : transform made no change; upstream layout may have changed. Verify $Path."
-        }
-        Write-Warning $WarnMessage
-        return $false
-    }
-    [System.IO.File]::WriteAllText($Path, $patched)
-    Write-Host "Patched $Description ($Path)"
-    return $true
-}
-
 function Invoke-NinjaBuildWithRetry {
-    <#
-    .SYNOPSIS
-        Runs ninja at a memory-scaled -j, retries at a lower -j on failure, then optionally installs.
-    .DESCRIPTION
-        Consolidates the "parallel ninja -> incremental low-j retry -> cmake --install"
-        idiom hand-rolled in build-onnx (retry -j2) and build-opencv (retry -j1, tee log).
-        Ninja is incremental, so the retry only redoes the TUs that died. Sets NINJA_STATUS
-        for compact "[done/total]" progress.
-    .PARAMETER BuildDir
-        Ninja build directory (passed via -C).
-    .PARAMETER RetryJobs
-        -j for the fallback pass (ONNX uses 2, OpenCV uses 1). Default 1.
-    .PARAMETER MemGBPerJob
-        Per-job memory estimate handed to Get-BuildJobCount (default 4).
-    .PARAMETER LogFile
-        If set, tees build output here and prints its last 50 lines on failure.
-    .PARAMETER Install
-        Run `cmake --install <BuildDir> --config <InstallConfig>` after a successful build.
-    .PARAMETER InstallConfig
-        Config for cmake --install (default Release).
-    #>
     param(
         [Parameter(Mandatory)]
         [string]$BuildDir,
@@ -1039,10 +386,6 @@ function Invoke-NinjaBuildWithRetry {
     )
     $env:NINJA_STATUS = "[%f/%t] "
     $jobs = Get-BuildJobCount -MemGBPerJob $MemGBPerJob
-    # Dev-only: NINJA_KEEP_GOING=1 adds `-k 0` so a failing target does not halt the whole build.
-    # Used when porting a new compiler (e.g. clang-cl) to surface *every* TU error in one pass
-    # instead of one-per-rebuild. Off in production (media-core never sets it); the default stays
-    # fail-fast. Splatted (@ninjaKeep) so it contributes no args when unset.
     $ninjaKeep = if ($env:NINJA_KEEP_GOING -eq '1') { @('-k', '0') } else { @() }
     Write-Host "Building with ninja -j$jobs..."
     if ($LogFile) {
@@ -1073,21 +416,6 @@ function Invoke-NinjaBuildWithRetry {
 }
 
 function Expand-SourceTarball {
-    <#
-    .SYNOPSIS
-        Two-pass 7z extract of a .tar.gz/.tar.bz2 into a directory; returns the single extracted source dir.
-    .DESCRIPTION
-        7z on Windows unwraps a .tar.gz in two passes (gzip layer, then the inner .tar).
-        This runs both passes, then returns the sole top-level directory produced (the
-        upstream project root). Consolidates the double-7z + "grab the single child dir"
-        idiom in build-ffmpeg. Throws if no extracted directory is found.
-    .PARAMETER Archive
-        Path to the downloaded .tar.gz / .tar archive.
-    .PARAMETER Destination
-        Directory to extract into.
-    .OUTPUTS
-        [string] Full path to the extracted source directory.
-    #>
     param(
         [Parameter(Mandatory)]
         [string]$Archive,
@@ -1103,16 +431,6 @@ function Expand-SourceTarball {
 }
 
 function Initialize-ExtractedGitRepo {
-    <#
-    .SYNOPSIS
-        `git init`s an extracted tarball tree so Invoke-SourcePatch takes its git fast-path.
-    .DESCRIPTION
-        Byte-identical logic previously duplicated in build-ffmpeg and build-gstreamer.
-        Runs `git init` via cmd.exe so git's stderr chatter cannot become a terminating
-        NativeCommandError under PS 5.1 EAP=Stop.
-    .PARAMETER Path
-        Root of the extracted source tree.
-    #>
     param(
         [Parameter(Mandatory)]
         [string]$Path
@@ -1121,16 +439,6 @@ function Initialize-ExtractedGitRepo {
 }
 
 function Import-CanonicalVersions {
-    <#
-    .SYNOPSIS
-        Sources load-versions.ps1 (canonical versions.env -> env vars) when present.
-    .DESCRIPTION
-        Replaces the identical "Test-Path load-versions.ps1; if present, invoke it" block
-        in build-ffmpeg and build-gstreamer. A no-op when the script is absent (e.g. the
-        env was already baked by the Dockerfile).
-    .PARAMETER ScriptRoot
-        Directory containing load-versions.ps1. Defaults to the scripts\ dir (this module's parent).
-    #>
     param(
         [string]$ScriptRoot = ''
     )
@@ -1139,95 +447,13 @@ function Import-CanonicalVersions {
     if (Test-Path $versionsScript) { & $versionsScript }
 }
 
-function Get-CudaToolkitRootArg {
-    <#
-    .SYNOPSIS
-        Returns the -DCUDA_TOOLKIT_ROOT_DIR CMake arg for the detected CUDA root, or @() if none.
-    .DESCRIPTION
-        Small shared arg-builder for the `if ($gpuEnv.CudaRoot) { ... }` block repeated in
-        build-litert and build-tvm. Pass -ForwardSlash to emit forward-slashed paths (TVM's form).
-    .PARAMETER GpuEnv
-        Hashtable from Get-GpuEnvironment.
-    .PARAMETER ForwardSlash
-        Convert backslashes to forward slashes in the emitted path.
-    .OUTPUTS
-        [string[]] Either a one-element array with the -D arg, or an empty array.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [hashtable]$GpuEnv,
-        [switch]$ForwardSlash
-    )
-    if (-not $GpuEnv.CudaRoot) { return @() }
-    $root = if ($ForwardSlash) { $GpuEnv.CudaRoot -replace '\\', '/' } else { $GpuEnv.CudaRoot }
-    return @("-DCUDA_TOOLKIT_ROOT_DIR=$root")
-}
-
-function Get-CudnnLibrary {
-    <#
-    .SYNOPSIS
-        Returns the canonical cuDNN import library path under <CudnnRoot>\lib\x64, or $null when absent.
-    .DESCRIPTION
-        Shared by build-onnx and build-tvm, which both need the single import lib to feed their
-        respective CMake vars (onnxruntime CUDNN_LIBRARY / TVM CUDA_CUDNN_LIBRARY). Prefers exactly
-        'cudnn.lib' over the split sub-libs (cudnn_adv.lib, cudnn_graph.lib, ... that ship alongside it
-        in cuDNN 9.x); grabbing a sub-lib first would mislink. Returns $null when cuDNN is not installed
-        so callers cleanly fall back to a no-cuDNN path. Select-Object -First 1 (not [0]) keeps this
-        safe under Set-StrictMode when the glob matches nothing.
-    .PARAMETER CudnnRoot
-        cuDNN install root (e.g. $gpuEnv.CudnnRoot). Empty/$null -> $null.
-    .OUTPUTS
-        [string] Full path to the chosen cudnn*.lib, or $null.
-    #>
-    param(
-        [string]$CudnnRoot
-    )
-    if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { return $null }
-    # NB: build the search dir by string, then Test-Path it, BEFORE calling Get-ChildItem.
-    # Join-Path throws DriveNotFoundException on a nonexistent drive, and a Get-ChildItem whose
-    # -Path arg fails to bind silently falls back to listing the CURRENT directory -- which would
-    # return an arbitrary file as a bogus "cudnn.lib" and mislink. -LiteralPath + -Filter avoids
-    # any wildcard-in-path ambiguity.
-    $libDir = "$CudnnRoot\lib\x64"
-    if (-not (Test-Path -LiteralPath $libDir -ErrorAction SilentlyContinue)) { return $null }
-    $lib = Get-ChildItem -LiteralPath $libDir -Filter 'cudnn*.lib' -ErrorAction SilentlyContinue |
-        Sort-Object { $_.Name -ne 'cudnn.lib' } | Select-Object -First 1
-    if ($lib) { return $lib.FullName }
-    return $null
-}
-
 function Get-LlvmArchiverCmakeArg {
-    <#
-    .SYNOPSIS
-        Returns the -DCMAKE_AR:FILEPATH=<llvm-lib> CMake arg, or @() when llvm-lib isn't found.
-    .DESCRIPTION
-        CMake can resolve CMAKE_AR to a bogus C:\llvm-lib; passing the full path via
-        :FILEPATH fixes it. Same three-line block appeared in build-opencv, build-litert
-        and build-tvm.
-    .OUTPUTS
-        [string[]] One-element array with the -D arg, or an empty array.
-    #>
     $llvmLib = Resolve-LlvmArchiver
     if ($llvmLib) { return @("-DCMAKE_AR:FILEPATH=$llvmLib") }
     return @()
 }
 
 function Initialize-ToolchainPythonEnvironment {
-    <#
-    .SYNOPSIS
-        Load VsDevCmd (MSVC tools), copy CPython pyconfig.h, resolve source-built CPython.
-    .DESCRIPTION
-        Canonical preamble for any build script that needs MSVC STL headers +
-        the source-built CPython interpreter (built in the toolchain layer).
-        Replaces the 3-line boilerplate duplicated (in different orders!) across
-        build-onnx, build-onnx-genai, build-tvm.
-    .PARAMETER Arch
-        Target architecture passed to VsDevCmd (default 'amd64').
-    .PARAMETER HostArch
-        Host architecture passed to VsDevCmd (default 'amd64').
-    .OUTPUTS
-        [hashtable] Same as Get-SourceBuildPython: @{ Exe; Include; LibDir; Lib }.
-    #>
     param(
         [string]$Arch = 'amd64',
         [string]$HostArch = 'amd64'
@@ -1238,32 +464,6 @@ function Initialize-ToolchainPythonEnvironment {
 }
 
 function Invoke-SourceBuildChain {
-    <#
-    .SYNOPSIS
-        Run an ordered chain of source-build scripts in one container (the shared
-        *-all.ps1 run+commit payload loop).
-    .DESCRIPTION
-        The loop behind the media *-all orchestrators (build-media-core-all,
-        build-litert-all): for each stage print a timestamped banner, invoke the stage's
-        build script with -SourceDir/-InstallDir, then hard-fail on a non-zero NATIVE exit
-        (a child that `exit N`s rather than throwing -- a safety net over EAP=Stop, which
-        already propagates child throws). Stages stay sequential because each consumes the
-        prior stage's install (LiteRT-LM needs LiteRT; ONNX GenAI needs ONNX Runtime).
-
-        Sets EAP=Stop so children that RELY on an inherited Stop (build-onnx-genai / opencv
-        / ffmpeg / litert-from-source do NOT set their own) abort exactly as they did under
-        the orchestrator's script scope. Verified empirically: a function-local EAP=Stop
-        propagates into an &-invoked external .ps1, so moving the loop off script scope into
-        this module function does not change child error semantics.
-    .PARAMETER Label
-        Chain name used in the banners/errors (e.g. 'media-core', 'media-litert').
-    .PARAMETER Stages
-        Ordered stage descriptors; each a hashtable with keys Name, Script, SourceDir.
-    .PARAMETER InstallDir
-        Shared install prefix forwarded to every stage script.
-    .PARAMETER ScriptDir
-        Directory holding the stage scripts (baked into the builder image).
-    #>
     param(
         [Parameter(Mandatory)][string]$Label,
         [Parameter(Mandatory)][object[]]$Stages,
@@ -1274,59 +474,22 @@ function Invoke-SourceBuildChain {
     foreach ($stage in $Stages) {
         Write-Host "`n=== $Label stage: $($stage.Name) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
         & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
-        # $LASTEXITCODE is unset until the FIRST native command runs; reading it while unset
-        # throws under Set-StrictMode. Treat "never set" as success (a child that ran only
-        # cmdlets and threw nothing succeeded); a child's `exit N` sets it, which we honor.
         $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
         if ($exitCode) { throw "$($stage.Name) build failed (exit $exitCode)" }
     }
 }
 
 function Invoke-OnnxDmlClangClPatch {
-    <#
-    .SYNOPSIS
-        Patch onnxruntime's DirectML EP source so it compiles under clang-cl (USE_DML=ON).
-    .DESCRIPTION
-        clang-cl is stricter than MSVC in three spots the DirectML EP relies on MSVC leniency for.
-        Each sub-patch is guarded/idempotent and WARNS (never throws) if its anchor is missing, so an
-        upstream fix or version bump degrades to a NOTE rather than a hard build failure. Call after the
-        git clone, before CMake configure. Validated against onnxruntime v1.27.0.
-          #1 DirectMLHelpers mutual-recursion incomplete-type (AbstractOperatorDesc <-> OperatorField)
-          #2 MLOperatorAuthorImpl.cpp CASE_PROTO `.##Z` invalid token-paste
-          #3 DmlDFT.h / DmlGridSample.h Dispatch<uint32_t TSize> deduced-from-size_t mismatch
-    .PARAMETER SourceDir
-        Root of the cloned onnxruntime tree.
-    #>
     param([Parameter(Mandatory)][string]$SourceDir)
 
-    # -- #1 DirectML EP clang-cl fix (needed because we build ONNX with clang-cl and enable USE_DML) --
-    # AbstractOperatorDesc and OperatorField are mutually recursive: AbstractOperatorDesc holds
-    # std::vector<OperatorField>, while OperatorField's variant (OperatorFieldTypes, GeneratedSchemaTypes.h)
-    # holds AbstractOperatorDesc by value. AbstractOperatorDesc's non-template tensor accessors are defined
-    # INLINE and call GetTensors<>(), which iterates/derefs OperatorField -- but there OperatorField is only
-    # forward-declared. MSVC compiles those bodies lazily (end-of-TU, OperatorField complete); clang-cl
-    # instantiates them eagerly while OperatorField is incomplete -> "member access into incomplete type /
-    # cannot increment const_iterator" (llvm #57700). Fix (textbook mutual-recursion resolution): turn the
-    # 4 accessors into DECLARATIONS in AbstractOperatorDesc.h and emit their DEFINITIONS out-of-line at the
-    # end of GeneratedSchemaTypes.h, after OperatorField is fully defined. GetTensors<>() (which dereferences
-    # OperatorField members) is likewise reduced to a template DECLARATION and defined out-of-line there --
-    # leaving NO OperatorField-touching body in AbstractOperatorDesc.h while the type is still incomplete.
     $dmlHelpers  = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\External\DirectMLHelpers"
     $dmlAbstract = Join-Path $dmlHelpers 'AbstractOperatorDesc.h'
     $dmlTypes    = Join-Path $dmlHelpers 'GeneratedSchemaTypes.h'
     if ((Test-Path $dmlAbstract) -and (Test-Path $dmlTypes)) {
         $abs = [System.IO.File]::ReadAllText($dmlAbstract)
         if ($abs -notmatch '\[clang-cl DML fix\]') {
-            # Two things must move out-of-line so clang-cl never touches std::vector<OperatorField> or
-            # OperatorField members while the type is incomplete:
-            #  (1) the 4 tensor accessors (they call GetTensors<>() which iterates `fields`), and
-            #  (2) AbstractOperatorDesc's special members -- the vector<OperatorField> member makes the
-            #      implicit dtor/move instantiate the vector's element-dtor loop, and those get pulled in
-            #      via std::optional<AbstractOperatorDesc> in OperatorFieldTypes (defined BEFORE OperatorField).
             $ctorRx = 'AbstractOperatorDesc\(\) = default;\r?\n\s*AbstractOperatorDesc\(const DML_OPERATOR_SCHEMA\* schema, std::vector<OperatorField>&& fields\)\r?\n\s*: schema\(schema\)\r?\n\s*, fields\(std::move\(fields\)\)\r?\n\s*\{\}'
             $accessorRx = '(?s)(std::vector<[^\r\n]+?> Get(?:Input|Output)Tensors\(\)(?: const)?)\r?\n\s*\{\r?\n\s*return GetTensors<[^\r\n]+?>\(\);\r?\n\s*\}'
-            # The private GetTensors<>() template body dereferences OperatorField (field.GetSchema() etc.) --
-            # collapse it to a declaration; its definition is emitted out-of-line below (after OperatorField).
             $getTensorsRx = '(?s)template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>\r?\n\s*std::vector<TensorType\*> GetTensors\(\) const\r?\n\s*\{.*?return tensors;\r?\n\s*\}'
             $ctorHit = [regex]::IsMatch($abs, $ctorRx)
             $accHit  = ([regex]::Matches($abs, $accessorRx)).Count
@@ -1348,7 +511,6 @@ template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
                 $abs = [regex]::Replace($abs, $ctorRx, $ctorDecls)
                 $abs = [regex]::Replace($abs, $accessorRx, '$1;')
                 $abs = [regex]::Replace($abs, $getTensorsRx, $gtDecl)
-                # Insert the fix marker right after the forward declaration so the guard above is stable.
                 $abs = $abs -replace '(class OperatorField;)', "`$1`r`n// [clang-cl DML fix] special members + GetTensors + accessors moved out-of-line to GeneratedSchemaTypes.h"
                 [System.IO.File]::WriteAllText($dmlAbstract, $abs)
                 $outOfLine = @'
@@ -1424,23 +586,12 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
         Write-Warning 'DirectMLHelpers headers not found -- skipping the clang-cl DML fix (USE_DML build may fail).'
     }
 
-    # [clang-cl DML fix #2] MLOperatorAuthorImpl.cpp's CASE_PROTO macro writes `initializer.##Z()`, pasting
-    # the `.` punctuator onto the field name (e.g. `.float_data_size`). That is not a valid preprocessing
-    # token: MSVC silently tolerates it, clang-cl errors (-Winvalid-token-paste). The `##` is spurious --
-    # `initializer.Z()` expands Z normally to the intended `initializer.float_data_size()`. Drop the paste.
-    # Shared read/guard/replace/write idiom -> Invoke-InlineRegexPatch (byte-identical -replace;
-    # a missing file or absent pattern is a Write-Warning, never fatal).
     $dmlAuthorImpl = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\MLOperatorAuthorImpl.cpp"
     [void](Invoke-InlineRegexPatch -Path $dmlAuthorImpl `
             -Pattern '(initializer)\.##Z\(\)' -Replacement '$1.Z()' `
             -Description 'clang-cl DML fix #2 (dropped spurious `.##Z` token-paste in MLOperatorAuthorImpl.cpp CASE_PROTO)' `
             -WarnMessage '[clang-cl DML fix #2] `.##Z` token-paste not found in MLOperatorAuthorImpl.cpp (already fixed upstream?) -- skipping.')
 
-    # [clang-cl DML fix #3] DmlDFT.h and DmlGridSample.h declare `template <typename TConstants, uint32_t TSize>`
-    # and deduce TSize from `std::array<ID3D12Resource*, TSize>&`. std::array's size parameter is size_t
-    # (unsigned long long on Win64), so clang refuses to deduce a uint32_t TSize from a size_t value
-    # ("deduced non-type template argument does not have the same type"); MSVC allows the narrowing. Widen
-    # the parameter to size_t so deduction matches (TSize only sizes small local arrays / loop counts).
     $dmlOps = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\Operators"
     foreach ($opHeader in @('DmlDFT.h', 'DmlGridSample.h')) {
         [void](Invoke-InlineRegexPatch -Path (Join-Path $dmlOps $opHeader) `
@@ -1452,30 +603,6 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
 }
 
 function Copy-SidecarDll {
-    <#
-    .SYNOPSIS
-        Stage a runtime "sidecar" DLL that `cmake --install` misses, next to its consumer.
-    .DESCRIPTION
-        Several libraries here ship a primary DLL that depends at load time on a second DLL the
-        install step does not copy (onnxruntime.dll->DirectML.dll, tvm_runtime.dll->tvm_ffi.dll,
-        onnxruntime-genai.dll->D3D12Core.dll). Missing it => 0xC0000135 STATUS_DLL_NOT_FOUND (or a
-        DML device-init failure) only in the final image. This finds the sidecar under -SearchDir and
-        copies it into the destination, warning (never throwing) if absent so the build still ships.
-
-        Two destination modes:
-          -BesidePrimary <name> -InstallDir <dir>  : copy next to the installed primary DLL (found by
-             recursive search under InstallDir). If the primary is not found, silently no-op (the
-             primary's own build step is responsible for erroring).
-          -Destination <dir>                       : copy into a fixed directory.
-    .PARAMETER SidecarName    Sidecar DLL filename to stage (e.g. 'DirectML.dll').
-    .PARAMETER SearchDir      Root to recursively search for the sidecar.
-    .PARAMETER SidecarFilter  Optional Where-Object filter scriptblock to disambiguate multiple hits
-                              (e.g. the x64 copy of D3D12Core.dll: { $_.Directory.Name -eq 'x64' }).
-    .PARAMETER BesidePrimary  Primary DLL filename; the sidecar is copied into its directory.
-    .PARAMETER InstallDir     Root to recursively search for -BesidePrimary.
-    .PARAMETER Destination    Fixed destination directory (alternative to -BesidePrimary/-InstallDir).
-    .PARAMETER Reason         Appended to the not-found warning (what breaks at runtime).
-    #>
     param(
         [Parameter(Mandatory)][string]$SidecarName,
         [Parameter(Mandatory)][string]$SearchDir,
@@ -1487,7 +614,7 @@ function Copy-SidecarDll {
     )
     if ($BesidePrimary) {
         $primary = Get-ChildItem -Path $InstallDir -Filter $BesidePrimary -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $primary) { return }   # primary absent -> its own build step reports it; nothing to sidecar
+        if (-not $primary) { return }
         $Destination = $primary.DirectoryName
     }
     if ([string]::IsNullOrWhiteSpace($Destination)) { throw 'Copy-SidecarDll: need -Destination or -BesidePrimary/-InstallDir' }
@@ -1503,54 +630,14 @@ function Copy-SidecarDll {
     }
 }
 
-function Get-NvccCudaCmakeArgs {
-    <#
-    .SYNOPSIS
-        The nvcc-with-MSVC-host CUDA CMake args shared by the ONNX Runtime and GenAI clang-cl builds.
-    .DESCRIPTION
-        Both builds compile CUDA kernels with nvcc using cl.exe as the host compiler (nvcc rejects
-        clang-cl on Windows) while the C++ TUs stay on clang-cl + lld. This returns the common nvcc
-        block (compiler / MSVC host / arch list / standard / the shared /Zc:preprocessor + CCCL
-        preamble). Library-specific flags stay in the caller: the enable toggle differs by name
-        (`onnxruntime_USE_CUDA` vs `USE_CUDA`), as do TensorRT/cuDNN. The two callers otherwise differ
-        only in CUDA standard (17 vs 20), one caller-specific /wd warning suppression (order-independent
-        vs the shared preamble), and whether CUDA_TOOLKIT_ROOT_DIR is emitted.
-    .PARAMETER CudaRoot         CUDA toolkit root (bin\nvcc.exe underneath).
-    .PARAMETER CudaStandard     '17' (ONNX) or '20' (GenAI: std::span in cuda_topk.cu needs C++20).
-    .PARAMETER ExtraCudaFlags   Caller-specific CUDA_FLAGS tokens, prepended to the shared preamble
-                                (e.g. '-Xcompiler=/wd4067' for ONNX, '-Xcompiler=/wd4996' for GenAI).
-    .PARAMETER IncludeToolkitRoot  Also emit -DCUDA_TOOLKIT_ROOT_DIR (GenAI needs it; ONNX does not).
-    .PARAMETER ArchDecoration   Passed to Get-CudaArchitectureList (default '-real').
-    #>
-    param(
-        [Parameter(Mandatory)][string]$CudaRoot,
-        [Parameter(Mandatory)][ValidateSet('17', '20')][string]$CudaStandard,
-        [string]$ExtraCudaFlags = '',
-        [switch]$IncludeToolkitRoot,
-        [string]$ArchDecoration = '-real'
-    )
-    $clExe = (Get-Command cl.exe -ErrorAction Stop).Source
-    $preamble = '-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING'
-    $cudaFlags = if ($ExtraCudaFlags) { "$ExtraCudaFlags $preamble" } else { $preamble }
-    $nvccArgs = @(
-        "-DCMAKE_CUDA_COMPILER:FILEPATH=$CudaRoot\bin\nvcc.exe"
-        "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$clExe"
-        "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration $ArchDecoration)"
-        "-DCMAKE_CUDA_STANDARD:STRING=$CudaStandard"
-        "-DCMAKE_CUDA_FLAGS:STRING=$cudaFlags"
-    )
-    if ($IncludeToolkitRoot) { $nvccArgs += "-DCUDA_TOOLKIT_ROOT_DIR=$CudaRoot" }
-    return $nvccArgs
-}
-
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
     'Invoke-SourceBuildChain',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
     'Invoke-CmakeBuild',
-    'Get-CudaRoot',
     'Enter-VsDevCmdEnvironment',
+    'Get-VsInstallPath',
     'Get-MsvcToolsRoot',
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
@@ -1564,6 +651,10 @@ Export-ModuleMember -Function @(
     'Expand-SourceTarball',
     'Initialize-ExtractedGitRepo',
     'Import-CanonicalVersions',
+    'Get-CudaRoot',
+    'Resolve-TensorRtRoot',
+    'Get-GpuEnvironment',
+    'Get-CudaArchitectureList',
     'Get-CudaToolkitRootArg',
     'Get-CudnnLibrary',
     'Get-LlvmArchiverCmakeArg',
@@ -1576,15 +667,10 @@ Export-ModuleMember -Function @(
     'Copy-BuildArtifact',
     'Copy-SidecarDll',
     'Remove-MakefileShowIncludes',
-    'Get-CudaArchitectureList',
     'Get-NvccCudaCmakeArgs',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
-    'Get-GpuEnvironment',
     'Invoke-OnnxDmlClangClPatch',
-    'Resolve-TensorRtRoot',
-    # Re-exported from WindowsScripts.Shared (imported above) so a caller gets these via a
-    # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'Resolve-NormalizedPath',

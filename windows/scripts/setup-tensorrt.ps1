@@ -52,12 +52,16 @@ if (-not $trtZip) {
 if (-not $trtZip -and $TensorRtVersion) {
     $parts = $TensorRtVersion.Split('.')
     $dirVersion = if ($parts.Length -ge 3) { "$($parts[0]).$($parts[1]).$($parts[2])" } else { $TensorRtVersion }
-$trtZip = Join-Path $env:TEMP 'tensorrt.zip'
+    $trtZip = Join-Path $env:TEMP 'tensorrt.zip'
+    # First candidate derives its cuda suffix from CUDA_VERSION_MAJOR_MINOR (baked by the
+    # nvidia stage) so a CUDA bump moves this fallback automatically; the fixed alternates
+    # cover NVIDIA's usual per-major zip names. Auth-gated: any of these may 404/redirect.
+    $cudaSuffix = if ($env:CUDA_VERSION_MAJOR_MINOR) { $env:CUDA_VERSION_MAJOR_MINOR } else { '13.3' }
     $urls = @(
-        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-13.3.zip",
+        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-$cudaSuffix.zip",
         "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-13.0.zip",
         "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-12.8.zip"
-    )
+    ) | Select-Object -Unique
     $downloaded = $false
     foreach ($url in $urls) {
         Write-Host "Trying download: $url"

@@ -3,7 +3,9 @@
 
 param(
     [string]$TempDir = 'C:\temp',
-    [string]$GitInstallerUrl = 'https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/Git-2.54.0-64-bit.exe',
+    # Default derived below from versions.env's GIT_VERSION (baked by load-versions.ps1);
+    # pass an explicit URL only for a git-for-windows respin (…windows.2 tag).
+    [string]$GitInstallerUrl = '',
     [string]$CMakeNightlyUrl = '',
     [string]$VulkanVersion = ''
 )
@@ -34,8 +36,16 @@ $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentV
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
+# Derive the Git installer URL from GIT_VERSION (versions.env) so the pin cannot drift
+# invisibly in a param default -- same pattern as the CMake fallback above. The
+# ".windows.1" tag suffix covers normal releases; a respun release needs -GitInstallerUrl.
+$gitVer = $env:GIT_VERSION
+$gitDefaultUrl = if ($gitVer) { "https://github.com/git-for-windows/git/releases/download/v$gitVer.windows.1/Git-$gitVer-64-bit.exe" }
+                 else { 'https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/Git-2.54.0-64-bit.exe' }
+$GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' -DefaultValue $gitDefaultUrl
+
 $gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
-Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer'
+Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer' -ExpectSignature MZ
 Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait
 Remove-Item $gitInstaller -Force
 Sync-ContainerProcessPath -AdditionalPaths @(
@@ -53,7 +63,9 @@ dotnet tool install --tool-path C:\WiX wix --version $WixVersion
 
 Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
-irm get.scoop.sh -outfile $scoopInstallScript
+# Hardened fetch (retry + TLS) instead of a bare one-shot irm -- a transient blip here
+# killed the whole base build.
+Invoke-DownloadWithRetry -Url 'https://get.scoop.sh' -DestinationPath $scoopInstallScript -Description 'scoop installer script'
 & $scoopInstallScript -RunAsAdmin
 Sync-ContainerProcessPath -AdditionalPaths @(
     'C:\Users\ContainerAdministrator\scoop\shims',
@@ -79,6 +91,9 @@ if ([string]::IsNullOrWhiteSpace($VulkanVersion)) {
 }
 
 scoop install --global extras/flutter
+# llvm DELIBERATELY UNPINNED (Windows tracks scoop's latest; versions.env's LLVM_RELEASE
+# pins only the Linux lane -- the smoke test asserts a well-formed clang-cl version, not
+# that value).
 scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib main/nasm main/openssl
 
 Write-Host ('Downloading CMake nightly from {0}...' -f $CMakeNightlyUrl)

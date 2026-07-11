@@ -46,3 +46,16 @@ First rebuild after the code-health pass (commits `8fc1f8c` docs refresh, `5be9b
 - **#45 litert-lm `#region` markers:** media-litert built LiteRT-LM v0.13.1 + linked `litert_lm_main.exe` unchanged (comment-only, as designed).
 
 Smoke test (process isolation, `smoke-postcleanup.log`): **104 passed / 0 failed / 1 skipped** — **identical** to the pre-cleanup baseline (the 1 skip = GPU/CUDA, passthrough blocked on this 26200 host). Final image `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` 49.4 GB tagged. Cleanup confirmed behaviour-preserving end-to-end.
+
+## Observation — gst plugins opencv/libav/tensorfilter are NOT in the shipped image (2026-07-11)
+Ground-truthed while fixing healthcheck.ps1's stale-`$LASTEXITCODE` false-PASS: `gst-inspect-1.0
+opencv|tensorfilter|libav` all exit -1 ("No such element or plugin") in `winamd64`. The old
+healthcheck printed `[PASS] gst-plugin opencv found` for all three — a lie; the fixed check now
+reports `[SKIP]` (non-fatal by design). Consistent root cause: meson auto-detection never found
+the deps at build time (ONNX Runtime's install ships NO .pc files at all — its PKG_CONFIG_PATH
+entry pointed at a nonexistent dir and has been removed from Dockerfile.media-merge-builder; the
+OpenCV/FFmpeg .pc situation for gst plugin detection is unverified). **Future work item** if these
+plugins are wanted: make opencv/ffmpeg .pc files reach GStreamer's meson (and give ORT a .pc or a
+cmake-based detection path), then assert the plugins in the smoke test instead of the healthcheck.
+Pre-existing image state, not a regression — nothing except the (formerly lying) healthcheck ever
+claimed they existed.

@@ -14,7 +14,11 @@ ARG BASE_IMAGE=local/kataglyphis:windows-base
 # The EULA-gated TensorRT zip is COPY'd and extracted here; the final stage pulls
 # just the extracted directory via COPY --from, so the ~2 GB zip layer never lands
 # in the shipped image. CUDA + cuDNN are downloaded from NVIDIA's CDN by
-# setup-cuda.ps1 and are excluded from windows\downloads via .dockerignore.
+# setup-cuda.ps1.
+# NB: build.ps1 builds THIS file with context `windows` (not the repo root) so the
+# ~2 GB zip stays out of every other stage's build context — the root .dockerignore
+# excludes *.zip with no re-include. COPY paths below are therefore RELATIVE TO
+# windows/ (no windows\ prefix).
 FROM ${BASE_IMAGE} AS trt-extract
 
 ARG TENSORRT_VERSION=11.1.0.106
@@ -22,8 +26,8 @@ ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-COPY windows\scripts\setup-tensorrt.ps1 C:\temp\scripts\
-COPY windows\downloads C:\temp\downloads
+COPY scripts\setup-tensorrt.ps1 C:\temp\scripts\
+COPY downloads C:\temp\downloads
 
 # Extract to the space-free canonical root. If no zip is present the script skips
 # gracefully; the empty directory is created so COPY --from below always succeeds
@@ -43,10 +47,10 @@ ARG TENSORRT_VERSION=11.1.0.106
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Narrow COPY — only the script this stage runs (a wildcard `windows\scripts`
-# would bust the CUDA layer on every unrelated script edit). Modules were already
-# populated by the base stage.
-COPY windows\scripts\setup-cuda.ps1 C:\temp\scripts\
+# Narrow COPY — only the script this stage runs (a wildcard `scripts` would bust
+# the CUDA layer on every unrelated script edit). Modules were already populated
+# by the base stage. (Path relative to the `windows` build context.)
+COPY scripts\setup-cuda.ps1 C:\temp\scripts\
 
 ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"

@@ -18,31 +18,34 @@ LABEL maintainer="contact@jonasheinle.de"
 # NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Only the two modules the base/nvidia setup scripts import — copying the full
-# modules directory here would bust this most-expensive layer (VS Build Tools)
-# on every module edit. The media stage copies its own build modules; the full
-# module set ships in the final image (windows/Dockerfile) for in-container CI.
+# COPY-immediately-before-RUN throughout this file: each input lands in the layer
+# right before the step that consumes it, so editing a LATER script (or versions.env)
+# can never bust an EARLIER expensive layer. The most expensive layer of the whole
+# chain -- VS Build Tools -- therefore depends ONLY on the three modules its script
+# imports + setup-vs.ps1 itself. (Copying the full modules directory here would bust
+# it on every module edit; the media stage copies its own build modules and the full
+# module set ships in the final image (windows/Dockerfile) for in-container CI.)
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsContainerImage.Common.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      C:\temp\scripts\modules\
+# setup-vs.ps1 consumes NOTHING from versions.env (verified: only TEMP/TMP), so VS
+# Build Tools installs before load-versions -- a versions.env bump cannot bust it.
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
-COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
-COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
-COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
-
-COPY windows\scripts\verify-*.ps1 C:\temp\scripts\
-COPY windows\scripts\finalize-container.ps1 C:\temp\scripts\
-COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 
 # versions.env is the single source of truth for version numbers.
-# load-versions.ps1 reads it and sets matching env vars.
-# Dockerfile ARG defaults should mirror versions.env entries.
+# load-versions.ps1 reads it and sets matching (Machine + Process) env vars for
+# every later RUN. Dockerfile ARG defaults should mirror versions.env entries.
+COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
 COPY linux\scripts\01-core\versions.env C:\temp\
 RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 
-RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
+# Needs load-versions first: pins scoop's llvm/git installs (LLVM_RELEASE/GIT_VERSION).
+COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeNightlyUrl $env:CMAKE_NIGHTLY_URL
+
+COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
 
 ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
@@ -65,6 +68,14 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
 
 ENV PATH=$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
+# Tail scripts land here (not at the top) so editing them only rebuilds from this
+# point. verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
+# matched exactly this one file, but a future verify-* script would have silently
+# busted the layers above).
+COPY windows\scripts\verify-toolchain.ps1 `
+     windows\scripts\setup-rust-toolchain.ps1 `
+     windows\scripts\finalize-container.ps1 `
+     C:\temp\scripts\
 RUN & 'C:\temp\scripts\verify-toolchain.ps1'
 RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
 RUN & 'C:\temp\scripts\finalize-container.ps1'

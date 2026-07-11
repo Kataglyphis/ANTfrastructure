@@ -1,0 +1,95 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Consolidated builder image for all three media run+commit branches
+# (windows/build.ps1). A multi-stage build where each stage name matches
+# the branch name (media-core / media-litert / media-tvm). The orchestrator
+# selects the target stage via `--target <name>`.
+#
+# Each stage carries its build scripts + patches but runs NO heavy compile,
+# so layers commit reliably under Hyper-V `docker build`. The heavy compile
+# runs via:
+#   docker run --isolation hyperv --cpu-count N --memory Mg <--target image> \
+#       powershell -File C:\temp\scripts\<build-*-all.ps1>
+#   docker commit <container> local/kataglyphis:windows-media-<branch>
+# because `docker build` on this host is capped at 2 CPUs and process isolation
+# cannot commit layers (see build.ps1 CPU note).
+
+ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
+
+# ── Common base: shared boilerplate for all three builders ────────────────────
+FROM ${BASE_IMAGE} AS common
+
+ARG MEMORY_LIMIT_GB=""
+ARG SCCACHE_WEBDAV_ENDPOINT=""
+
+ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Refresh C:\temp\versions.env — base bakes a copy + runs load-versions.ps1 to
+# set Machine env. Build scripts re-run load-versions.ps1 at run time, which reads
+# THIS file. Without this re-COPY, a versions.env change would silently use the
+# stale base copy (requiring a full base rebuild to take effect).
+COPY linux\scripts\01-core\versions.env C:\temp\versions.env
+
+# Common modules for all builder images.
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 \
+     windows\scripts\modules\WindowsSourceBuild.Common.psm1 \
+     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 \
+     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 \
+     C:\temp\scripts\modules\
+
+# ── media-core builder (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg) ───────────
+FROM common AS media-core
+
+ARG ONNXRUNTIME_VERSION=v1.27.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
+ARG OPENCV_SOURCE_VERSION=5.x
+ARG FFMPEG_VERSION=master
+ARG NV_CODEC_HEADERS_REF=n13.0.19.0
+ARG CUDA_ARCHITECTURES=80;86;89;90
+
+ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}"
+ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
+ENV OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}"
+ENV FFMPEG_VERSION="${FFMPEG_VERSION}"
+ENV NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}"
+ENV CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
+
+COPY windows\scripts\patches\onnxruntime     C:\temp\scripts\patches\onnxruntime
+COPY windows\scripts\patches\opencv          C:\temp\scripts\patches\opencv
+COPY windows\scripts\patches\opencv_contrib  C:\temp\scripts\patches\opencv_contrib
+COPY windows\scripts\patches\ffmpeg          C:\temp\scripts\patches\ffmpeg
+
+COPY windows\scripts\build-onnx-from-source.ps1 \
+     windows\scripts\build-onnx-genai-from-source.ps1 \
+     windows\scripts\build-opencv-from-source.ps1 \
+     windows\scripts\build-ffmpeg-from-source.ps1 \
+     windows\scripts\build-media-core-all.ps1 \
+     C:\temp\scripts\
+
+# ── media-litert builder (LiteRT -> LiteRT-LM) ───────────────────────────────
+FROM common AS media-litert
+
+ARG LITERT_VERSION=v2.1.6
+ARG LITERT_LM_VERSION=0.13.1
+
+ENV LITERT_VERSION="${LITERT_VERSION}"
+ENV LITERT_LM_VERSION="${LITERT_LM_VERSION}"
+
+COPY windows\scripts\build-litert-from-source.ps1 \
+     windows\scripts\build-litert-lm-from-source.ps1 \
+     windows\scripts\build-litert-all.ps1 \
+     C:\temp\scripts\
+
+# ── media-tvm builder (TVM) ──────────────────────────────────────────────────
+FROM common AS media-tvm
+
+ARG TVM_REF=v0.25.0
+
+ENV TVM_REF="${TVM_REF}"
+
+COPY windows\scripts\build-tvm-from-source.ps1 C:\temp\scripts\

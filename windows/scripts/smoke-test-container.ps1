@@ -40,6 +40,13 @@ $script:failed = 0
 $script:skipped = 0
 $script:failureDetails = @()
 
+function Skip-Test {
+    # One-liner for the repeated [SKIP]-print + counter idiom (was hand-rolled at 15 sites,
+    # where forgetting $script:skipped++ silently under-counted skips).
+    param([Parameter(Mandatory)][string]$Reason)
+    Write-Host "  [SKIP] $Reason" -ForegroundColor Yellow
+    $script:skipped++
+}
 # GPU-lane discriminator. The NVIDIA execution-provider / codec probes below (ONNX CUDA + TensorRT
 # EP, GenAI-cuda, OpenCV DNN-CUDA, FFmpeg NVENC) only apply when the image was built on the nvidia
 # lane; without this guard they would FAIL on a legitimate CPU-only image. Keyed on CUDA_ROOT, which
@@ -270,11 +277,13 @@ Assert-CommandExists 'llvm-lib'
 Assert-CommandExists 'msbuild'  # from VS Build Tools
 Assert-CommandExists 'nuget'
 
-# Verify clang-cl version (major derived from LLVM_RELEASE in versions.env)
+# clang-cl: assert a well-formed version only. The Windows lane installs scoop's LATEST
+# llvm deliberately (versions.env's LLVM_RELEASE pins the Linux lane), so asserting that
+# value here would fail the image's own smoke test on every scoop bump. Actual
+# functionality is proven by the compile/link/run probes in sections 14-16.
 $clangVer = Get-CommandVersion 'clang-cl'
-$clangMajor = (Get-ExpectedVersion 'LLVM_RELEASE' '22') -split '\.' | Select-Object -First 1
 Assert-Test -Name "clang-cl version" -Condition { $clangVer -ne $null } -FailMessage "Could not get clang-cl version"
-Assert-Test -Name "clang-cl version string" -Condition { $clangVer -match ([regex]::Escape($clangMajor) + '\.') } -FailMessage "clang-cl version is not $clangMajor.x"
+Assert-Test -Name "clang-cl version string" -Condition { $clangVer -match '\d+\.\d+' } -FailMessage "clang-cl did not report a well-formed version"
 
 # Verify cmake version
 $cmakeVer = Get-CommandVersion 'cmake'
@@ -297,7 +306,10 @@ Assert-Test -Name "Python source-built from $cpythonDir" -Condition {
 } -FailMessage "Python source build artifacts not found at $cpythonDir"
 
 Assert-Test -Name "Python pip available" -Condition {
-    & python -m pip --version 2>&1 | Select-Object -First 1 | ForEach-Object { $_ -ne $null }
+    # Exit-code based: stderr is merged, so a FAILING pip still emitted a non-null first
+    # object and false-passed the old object-based check.
+    & python -m pip --version 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
 } -FailMessage "pip not available"
 
 # ============================================================================
@@ -305,17 +317,14 @@ Write-TestHeader '3. Rust Toolchain'
 # ============================================================================
 Assert-CommandExists 'cargo'
 Assert-CommandExists 'rustc'
-# Rust is provisioned via scoop (unpinned unless RUST_VERSION is set in
-# versions.env), so assert the pinned major.minor when known, otherwise just
-# that rustc reports a well-formed semver - avoids a literal that silently
-# drifts on every scoop bump.
-$rustExpected = Get-ExpectedVersion 'RUST_VERSION' ''
-$rustMajorMinor = if ($rustExpected) { ($rustExpected -split '\.')[0..1] -join '.' } else { '' }
-Assert-Test -Name "Rust version$(if ($rustMajorMinor) { " is $rustMajorMinor.x" })" -Condition {
+# rustc: assert a well-formed semver only. Rust is DELIBERATELY unpinned on the Windows
+# lane (scoop's latest; versions.env's RUST_VERSION pins the Linux lane), so comparing
+# against that value would fail the image's own smoke test on every scoop bump. The
+# compile+link+run probe below proves the toolchain actually works.
+Assert-Test -Name 'Rust version (well-formed)' -Condition {
     $ver = & rustc --version 2>&1
-    if ($rustMajorMinor) { return $ver -match ([regex]::Escape($rustMajorMinor) + '\.') }
     return $ver -match '\d+\.\d+\.\d+'
-} -FailMessage "rustc --version did not report the expected version"
+} -FailMessage "rustc --version did not report a well-formed version"
 
 # rustc --version only proves the binary exists; this proves the toolchain can actually
 # COMPILE + LINK (via the MSVC linker) + RUN -- catches a broken linker / missing target / std.
@@ -451,12 +460,10 @@ if (-not $SkipCudaTests) {
 int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
 '@ -IncludeDirs @($cudnnHdr.DirectoryName, (Join-Path $env:CUDA_ROOT 'include')) -LibDir $cudnnMainLib.DirectoryName -LibName $cudnnMainLib.Name -DllDir $cudnnMainDll.DirectoryName -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL'
     } else {
-        Write-Host '  [SKIP] cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)' -ForegroundColor Yellow
-        $script:skipped++
+        Skip-Test 'cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)'
     }
 } else {
-    Write-Host '  [SKIP] CUDA/cuDNN tests skipped (--SkipCudaTests)' -ForegroundColor Yellow
-    $script:skipped++
+    Skip-Test 'CUDA/cuDNN tests skipped (--SkipCudaTests)'
 }
 
 # ============================================================================
@@ -543,16 +550,13 @@ int main() {
 }
 '@ -IncludeDirs @($onnxCApiHdr.DirectoryName) -LibDir $onnxMainLib.DirectoryName -LibName $onnxMainLib.Name -DllDir $onnxDll.DirectoryName -ExpectMatch 'dml=1' -FailMessage 'ONNX Runtime shipped DirectML.dll but does not expose DmlExecutionProvider'
         } else {
-            Write-Host '  [SKIP] DirectML EP (USE_DML=OFF on the clang-cl lane -- DML provider sources are MSVC-only)' -ForegroundColor Yellow
-            $script:skipped++
+            Skip-Test 'DirectML EP (USE_DML=OFF on the clang-cl lane -- DML provider sources are MSVC-only)'
         }
     } else {
-        Write-Host '  [SKIP] ONNX Runtime link+run (onnxruntime.lib/.dll/c_api.h not all found)' -ForegroundColor Yellow
-        $script:skipped++
+        Skip-Test 'ONNX Runtime link+run (onnxruntime.lib/.dll/c_api.h not all found)'
     }
 } else {
-    Write-Host '  [SKIP] ONNX_ROOT not set' -ForegroundColor Yellow
-    $script:skipped++
+    Skip-Test 'ONNX_ROOT not set'
 }
 
 # ============================================================================
@@ -615,16 +619,13 @@ if ($genaiRoot) {
                 } `
                 -FailMessage "D3D12Core.dll at $($d3d12Core.FullName) is not an x64 PE -- wrong-arch stage would fail DML device init on the x64 image"
         } else {
-            Write-Host '  [SKIP] GenAI DirectML evidence (D3D12Core.dll absent -- USE_DML=OFF variant)' -ForegroundColor Yellow
-            $script:skipped++
+            Skip-Test 'GenAI DirectML evidence (D3D12Core.dll absent -- USE_DML=OFF variant)'
         }
     } else {
-        Write-Host '  [SKIP] GenAI load probe (onnxruntime-genai.dll not found)' -ForegroundColor Yellow
-        $script:skipped++
+        Skip-Test 'GenAI load probe (onnxruntime-genai.dll not found)'
     }
 } else {
-    Write-Host '  [SKIP] ONNX_GENAI_ROOT not set' -ForegroundColor Yellow
-    $script:skipped++
+    Skip-Test 'ONNX_GENAI_ROOT not set'
 }
 
 # ============================================================================
@@ -641,16 +642,14 @@ $opencvSearchRoot = if ($opencvRoot -and (Test-Path $opencvRoot)) { $opencvRoot 
 if ($opencvInclude -and (Test-Path $opencvInclude)) {
     Assert-ArtifactPresent -Root $opencvInclude -Filter 'opencv.hpp' -Description 'OpenCV headers (opencv.hpp)'
 } else {
-    Write-Host '  [SKIP] OPENCV_INCLUDE not set or not found' -ForegroundColor Yellow
-    $script:skipped++
+    Skip-Test 'OPENCV_INCLUDE not set or not found'
 }
 
 if ($opencvSearchRoot) {
     # opencv_core is always built (world only if BUILD_opencv_world=ON).
     Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_core*.dll' -Description 'OpenCV core DLL'
 } else {
-    Write-Host '  [SKIP] OpenCV DLLs (OPENCV_ROOT/INCLUDE not found)' -ForegroundColor Yellow
-    $script:skipped++
+    Skip-Test 'OpenCV DLLs (OPENCV_ROOT/INCLUDE not found)'
 }
 
 # Existence != loadable: compile+link+run against opencv_core to prove the header,
@@ -689,8 +688,7 @@ int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
         Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_dnn*.dll' -Description 'OpenCV DNN module DLL (opencv_dnn*.dll)'
     }
 } else {
-    Write-Host '  [SKIP] OpenCV link+run (opencv_core lib/dll or core.hpp not all found)' -ForegroundColor Yellow
-    $script:skipped++
+    Skip-Test 'OpenCV link+run (opencv_core lib/dll or core.hpp not all found)'
 }
 
 # ============================================================================
@@ -717,7 +715,7 @@ Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
 # ============================================================================
 Write-TestHeader '12. LiteRT (AI Edge runtime, source-built)'
 # ============================================================================
-$litertRoot = 'C:\runtime\lib\litert'
+$litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { 'C:\runtime\lib\litert' }
 $litertInclude = Join-Path $litertRoot 'include'
 $litertLibDir = Join-Path $litertRoot 'lib'
 $litertBinDir = Join-Path $litertRoot 'bin'
@@ -749,7 +747,7 @@ if (Test-Path $litertBinDir) {
 # ============================================================================
 Write-TestHeader '13. LiteRT-LM (on-device LLM inference, source-built)'
 # ============================================================================
-$litertLmRoot = 'C:\runtime\lib\litert-lm'
+$litertLmRoot = if ($env:LITERT_LM_ROOT) { $env:LITERT_LM_ROOT } else { 'C:\runtime\lib\litert-lm' }
 $litertLmInclude = Join-Path $litertLmRoot 'include'
 $litertLmLibDir = Join-Path $litertLmRoot 'lib'
 
@@ -910,7 +908,7 @@ Remove-Item $tmpDir3 -Recurse -Force -ErrorAction SilentlyContinue
 # ============================================================================
 Write-TestHeader '17. TVM (source-built)'
 # ============================================================================
-$tvmRoot = Join-Path 'C:\runtime\lib' 'tvm'
+$tvmRoot = if ($env:TVM_ROOT) { $env:TVM_ROOT } else { Join-Path 'C:\runtime\lib' 'tvm' }
 if (Test-Path $tvmRoot) {
     Assert-DirectoryExists -Path $tvmRoot -Description "TVM install root ($tvmRoot)"
     $tvmInclude = Join-Path $tvmRoot 'include'
@@ -920,8 +918,7 @@ if (Test-Path $tvmRoot) {
         # tvm/runtime header directory exists and is non-empty instead.
         Assert-ArtifactPresent -Root $tvmInclude -Subdir 'tvm\runtime' -Filter '*.h' -Description 'TVM runtime headers (tvm/runtime/*.h)'
     } else {
-        Write-Host '  [SKIP] TVM include dir not found' -ForegroundColor Yellow
-        $script:skipped++
+        Skip-Test 'TVM include dir not found'
     }
     Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.lib' -Description 'TVM lib files'
     Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.dll' -Description 'TVM DLL files'
@@ -933,18 +930,16 @@ if (Test-Path $tvmRoot) {
     if ($tvmRuntimeDll) {
         Assert-DllLoads -Name 'TVM runtime DLL loads (dependent chain resolves)' -DllPath $tvmRuntimeDll.FullName -FailMessage 'tvm_runtime.dll failed to load -- a dependent DLL (LLVM/CUDA/Vulkan runtime) did not resolve'
     } else {
-        Write-Host '  [SKIP] TVM load probe (tvm_runtime.dll not found)' -ForegroundColor Yellow
-        $script:skipped++
+        Skip-Test 'TVM load probe (tvm_runtime.dll not found)'
     }
 } else {
-    Write-Host '  [SKIP] TVM not installed (C:\runtime\lib\tvm not found)' -ForegroundColor Yellow
-    $script:skipped++
+    Skip-Test 'TVM not installed (C:\runtime\lib\tvm not found)'
 }
 
 # ============================================================================
 Write-TestHeader '18. FFmpeg (source-built with DNN/ONNX)'
 # ============================================================================
-$ffmpegBin = 'C:\runtime\ffmpeg\bin'
+$ffmpegBin = if ($env:FFMPEG_BIN) { $env:FFMPEG_BIN } else { 'C:\runtime\ffmpeg\bin' }
 if (Test-Path $ffmpegBin) {
     $ffmpegExe = Join-Path $ffmpegBin 'ffmpeg.exe'
     $ffprobeExe = Join-Path $ffmpegBin 'ffprobe.exe'
@@ -986,14 +981,13 @@ if (Test-Path $ffmpegBin) {
         } -FailMessage "ffmpeg -decoders did not list h264_cuvid (NVDEC/CUVID not built)"
     }
 } else {
-    Write-Host '  [SKIP] FFmpeg not installed (C:\runtime\ffmpeg\bin not found)' -ForegroundColor Yellow
-    $script:skipped++
+    Skip-Test 'FFmpeg not installed (C:\runtime\ffmpeg\bin not found)'
 }
 
 # ============================================================================
 Write-TestHeader '== SUMMARY =='
 # ============================================================================
-$total = $script:passed + $script:failed
+$total = $script:passed + $script:failed + $script:skipped
 Write-Host "  Passed:  $($script:passed)" -ForegroundColor Green
 Write-Host "  Failed:  $($script:failed)" -ForegroundColor Red
 Write-Host "  Skipped: $($script:skipped)" -ForegroundColor Yellow

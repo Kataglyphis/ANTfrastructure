@@ -11,9 +11,9 @@
 #   docker run --isolation hyperv --cpu-count N --memory Mg <this image> `
 #       powershell -File C:\temp\scripts\build-gstreamer-from-source.ps1 -InstallDir C:\runtime -LogDir C:\temp\logs
 #   docker commit <container> local/kataglyphis:windows-media
-# `docker commit` preserves the ENV set below, so the result image matches the old
-# Dockerfile.media output. Keep this file in sync with Dockerfile.media except for
-# the final RUN (which moved to the run step).
+# `docker commit` preserves the ENV set below. This file IS the former
+# Dockerfile.media (since removed) minus the final GStreamer RUN, which moved to
+# the run+commit step above.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 ARG CORE_IMAGE=local/kataglyphis:windows-media-core
@@ -64,7 +64,7 @@ COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site
 # ── Canonical component layout for downstream consumers and verification ────
 # build-gstreamer-from-source.ps1 reads GST_VERSION or GSTREAMER_VERSION; one
 # canonical var is enough.
-ENV GSTREAMER_VERSION=${GSTREAMER_VERSION}
+ENV GSTREAMER_VERSION="${GSTREAMER_VERSION}"
 ENV GSTREAMER_BIN="C:\runtime\bin"
 ENV ONNX_ROOT="C:\runtime\lib\onnxruntime-source"
 ENV ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source"
@@ -106,16 +106,26 @@ ENV TVM_LIBRARY_PATH="${TVM_ROOT}\lib"
 
 ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$PATH
 
-# PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg, OpenCV, ONNX Runtime.
+# PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg and OpenCV.
 # FFMPEG_LIB\pkgconfig carries the libav*.pc files (enables gst-libav).
 # LiteRT is excluded (TFLITE_ENABLE_INSTALL=OFF — no .pc files generated).
+# ONNX Runtime is excluded too: its source install ships NO .pc files at all
+# (verified in the built media-core image), so the former $ONNX_ROOT\runtime\lib\pkgconfig
+# entry pointed at a nonexistent dir — GStreamer's onnx plugin cannot be found via
+# pkg-config regardless.
 # GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
-ENV PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;$ONNX_ROOT\runtime\lib\pkgconfig;C:\runtime\lib\pkgconfig
+ENV PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
 
 # ── GStreamer scripts (the compile itself runs in the run+commit step, NOT here) ──
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      C:\temp\scripts\modules\
 COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
+
+# Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).
+# See the identical pattern in Dockerfile.media-builder (common stage).
+COPY linux\scripts\01-core\versions.env C:\temp\versions.env

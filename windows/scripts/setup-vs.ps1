@@ -74,36 +74,12 @@ $installer = Join-Path $TempDir 'vs_buildtools.exe'
 
 try {
     Write-Host 'Downloading Visual Studio Build Tools Installer...'
-    $downloaded = $false
-    try {
-        Write-Host 'Trying curl.exe (custom DNS resolver)...'
-        & curl.exe -fsSL --retry 3 'https://aka.ms/vs/stable/vs_buildtools.exe' -o $installer
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $installer)) { $downloaded = $true; Write-Host 'curl succeeded.' }
-    } catch { Write-Host "curl failed: $($_.Exception.Message)" }
-    if (-not $downloaded) {
-        try {
-            Write-Host 'Falling back to BITS transfer...'
-            Start-BitsTransfer -Source 'https://aka.ms/vs/stable/vs_buildtools.exe' -Destination $installer -ErrorAction Stop
-            Write-Host 'BITS transfer succeeded.'; $downloaded = $true
-        } catch { Write-Host "BITS transfer failed: $($_.Exception.Message)" }
-    }
-    if (-not $downloaded) {
-        try {
-            Write-Host 'Falling back to Invoke-WebRequest...'
-            Invoke-WebRequest -Uri 'https://aka.ms/vs/stable/vs_buildtools.exe' -OutFile $installer
-            $downloaded = $true
-        } catch { Write-Host "Invoke-WebRequest failed: $($_.Exception.Message)" }
-    }
-    if (-not $downloaded) { throw 'VS Build Tools Download failed.' }
-
-    # Validate the installer is a real PE, not an HTML error page: this pulls from the flaky
-    # aka.ms/vs/stable redirect (same class as the nuget aka.ms bug), and a captive-portal/CDN
-    # error page passes Test-Path but would later crash the installer with an opaque error.
-    $vsSig = [System.IO.File]::OpenRead($installer)
-    try { $vsB0 = $vsSig.ReadByte(); $vsB1 = $vsSig.ReadByte() } finally { $vsSig.Dispose() }
-    if ($vsB0 -ne 0x4D -or $vsB1 -ne 0x5A) {
-        throw "Downloaded vs_buildtools.exe is not a valid PE executable (first bytes ${vsB0},${vsB1}) -- aka.ms likely served an HTML error page instead of the installer."
-    }
+    # Shared hardened download (retry + backoff + redirect-following). -ExpectSignature MZ
+    # rejects-and-retries the flaky aka.ms/vs/stable redirect's HTML error pages (same class
+    # as the nuget aka.ms bug) -- this replaces a 30-line hand-rolled curl/BITS/IWR fallback
+    # chain plus a manual PE-signature check with the one helper every other setup script uses.
+    Invoke-DownloadWithRetry -Url 'https://aka.ms/vs/stable/vs_buildtools.exe' -DestinationPath $installer `
+        -Description 'VS Build Tools installer' -ExpectSignature MZ
 
     $installerArgs = @(
         '--quiet',

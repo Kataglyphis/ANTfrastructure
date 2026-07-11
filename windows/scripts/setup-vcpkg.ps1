@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 param(
-    [string]$VcpkgDir = 'C:\vcpkg'
+    [string]$VcpkgDir = 'C:\vcpkg',
+    # Pinned vcpkg ref (stable release tag). master.zip is non-reproducible, so pin a
+    # dated tag. Override explicitly to move to a newer release.
+    [string]$VcpkgRef = '2024.07.12'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,9 +21,9 @@ Write-Host "Setting up vcpkg at $VcpkgDir..."
 if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
     Write-Host 'Downloading vcpkg (DNS workaround: HTTP download with retries instead of git clone)...'
     $vcpkgZip = Join-Path $env:TEMP 'vcpkg.zip'
-    Invoke-DownloadWithRetry -Url 'https://github.com/microsoft/vcpkg/archive/refs/heads/master.zip' -DestinationPath $vcpkgZip -Description 'vcpkg (master.zip)'
+    Invoke-DownloadWithRetry -Url "https://github.com/microsoft/vcpkg/archive/refs/tags/$VcpkgRef.zip" -DestinationPath $vcpkgZip -Description "vcpkg (pinned tag $VcpkgRef)"
     Expand-Archive -Path $vcpkgZip -DestinationPath $env:TEMP -Force
-    $extracted = Get-ChildItem -Path $env:TEMP -Directory -Filter 'vcpkg*' | Select-Object -First 1 -ExpandProperty FullName
+    $extracted = Get-ChildItem -Path $env:TEMP -Directory -Filter 'vcpkg-*' | Select-Object -First 1 -ExpandProperty FullName
     if (-not $extracted) { throw 'Failed to locate extracted vcpkg directory' }
     Move-Item -Path $extracted -Destination $VcpkgDir -Force
     Remove-Item $vcpkgZip -Force -ErrorAction SilentlyContinue

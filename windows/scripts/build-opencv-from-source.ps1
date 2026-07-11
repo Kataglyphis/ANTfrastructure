@@ -13,6 +13,7 @@ $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceB
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 $OpenCvVersion = Get-SourceBuildVersion -Value $OpenCvVersion -EnvironmentVariables @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION') -DefaultValue '5.x'
 
@@ -85,6 +86,10 @@ Write-Host "Created FindPythonInterp.cmake stub for Python $pyVersion"
 $buildDir = Join-Path $SourceDir 'build'
 $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 
+# Load MSVC SDK paths unconditionally (every other build script does this).
+# OpenCV needs INCLUDE/LIB env vars even without CUDA (for SDK headers).
+Enter-VsDevCmdEnvironment
+
 # Pre-create the bin/ directory so OpenCV's cmake file(COPY ...) for the bundled
 # ONNX Runtime download has a valid destination (avoids "Invalid argument" error
 # on Windows when the destination directory doesn't exist yet during configure).
@@ -143,33 +148,28 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
 
 # Enable CUDA via CMake's first-class language support (ENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON
 # above tells OpenCV to use modern CUDA detection instead of the deprecated FindCUDA.cmake).
-# Set CUDACXX and CUDA_PATH env vars for CMake's built-in enable_language(CUDA) probe.
-                     $cudaRootForOpenCV = Get-CudaRoot
-                     if ($cudaRootForOpenCV -and (Test-Path $cudaRootForOpenCV)) {
-                         Enter-VsDevCmdEnvironment
-                         $env:CUDACXX = Join-Path $cudaRootForOpenCV 'bin\nvcc.exe'
-                         $env:CUDA_PATH = $cudaRootForOpenCV
-                         $env:PATH = "$(Join-Path $cudaRootForOpenCV 'bin');$env:PATH"
-                         # Enable CUDA only now that a toolkit is confirmed present (this is what
-                         # keeps the CPU-only lane from enable_language(CUDA)-ing with no nvcc).
-                         # OPENCV_DNN_CUDA adds the cv::dnn CUDA backend on top of the core modules.
-                         $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
-                         $cmakeExtra += '-DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON', '-DOPENCV_DNN_CUDA=ON'
-                         # nvcc requires MSVC cl.exe as the host compiler on Windows.
-                         # clang-cl-only flags forwarded via -Xcompiler (e.g. /Wno-undef,
-                         # /clang:*, /FIcstring) are stripped from the CUDA host block by the
-                         # ocv_cuda_filter_options patch (opencv/001-cmake-clang-cl-compat.patch).
-                         # Provide CUDAToolkit_ROOT + CUDAToolkit_DIR so CMake's CONFIG-mode
-                         # find_package(CUDAToolkit) can find CUDA 13.3 (MODULE mode broken in CMake 4.x).
-                         $cRootFwd = $cudaRootForOpenCV -replace '\\', '/'
-                         $cmakeExtra += "-DCUDAToolkit_ROOT=$cRootFwd"
-                         $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cRootFwd"
-                         $cmakeExtra += "-DCMAKE_CUDA_COMPILER:FILEPATH=$($env:CUDACXX -replace '\\', '/')"
-                         $cmakeExtra += "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration '-real')"
-                     } else {
-                         $cmakeExtra += '-DWITH_CUDA=OFF'
-                         Write-Host 'OpenCV: no CUDA toolkit detected -> building CPU-only (WITH_CUDA=OFF)'
-                     }
+# Get-GpuEnvironment sets $env:CUDA_PATH / CUDA_HOME and prepends CUDA bin to PATH; we only
+# need CUDACXX on top (CMake's built-in enable_language(CUDA) probe uses it).
+$gpuEnv = Get-GpuEnvironment
+if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot -and (Test-Path $gpuEnv.CudaRoot)) {
+    $env:CUDACXX = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
+    $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
+    $cmakeExtra += '-DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON', '-DOPENCV_DNN_CUDA=ON'
+    # nvcc requires MSVC cl.exe as the host compiler on Windows.
+    # clang-cl-only flags forwarded via -Xcompiler (e.g. /Wno-undef,
+    # /clang:*, /FIcstring) are stripped from the CUDA host block by the
+    # ocv_cuda_filter_options patch (opencv/001-cmake-clang-cl-compat.patch).
+    # Provide CUDAToolkit_ROOT + CUDAToolkit_DIR so CMake's CONFIG-mode
+    # find_package(CUDAToolkit) can find CUDA 13.3 (MODULE mode broken in CMake 4.x).
+    $cRootFwd = $gpuEnv.CudaRoot -replace '\\', '/'
+    $cmakeExtra += "-DCUDAToolkit_ROOT=$cRootFwd"
+    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cRootFwd"
+    $cmakeExtra += "-DCMAKE_CUDA_COMPILER:FILEPATH=$($env:CUDACXX -replace '\\', '/')"
+    $cmakeExtra += "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration '-real')"
+} else {
+    $cmakeExtra += '-DWITH_CUDA=OFF'
+    Write-Host 'OpenCV: no CUDA toolkit detected -> building CPU-only (WITH_CUDA=OFF)'
+}
 
 # CMAKE_AR: find llvm-lib on PATH and pass full path
 $cmakeExtra += Get-LlvmArchiverCmakeArg

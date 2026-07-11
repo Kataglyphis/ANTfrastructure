@@ -6,10 +6,9 @@
 # because this host's `docker build` is hard-capped at 2 CPUs (Hyper-V) and process
 # isolation cannot commit layers, the CPU-bound LiteRT/LiteRT-LM compiles run via
 # `docker run --cpu-count N` (which DOES get N CPUs under Hyper-V) followed by
-# `docker commit`. This replaces the two sequential RUN steps that Dockerfile.media-litert
-# used to contain. LiteRT-LM depends on LiteRT's install, so the two stay sequential.
+# `docker commit`. LiteRT-LM depends on LiteRT's install, so the two stay sequential.
 #
-# It is baked into windows-media-litert-builder (see Dockerfile.media-litert-builder)
+# It is baked into windows-media-litert-builder (see Dockerfile.media-builder --target media-litert)
 # and invoked as: powershell -NoProfile -ExecutionPolicy Bypass -File <thisscript>.
 # Version/config come from environment variables baked into the builder image.
 

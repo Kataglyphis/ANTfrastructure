@@ -18,7 +18,7 @@ $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 # Load canonical versions from linux/scripts/01-core/versions.env if available
 Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
-$FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariables @('FFMPEG_VERSION') -DefaultValue 'main'
+$FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariables @('FFMPEG_VERSION') -DefaultValue 'master'
 $prefix = Join-Path $InstallDir 'ffmpeg'
 $ffmpegDir = Join-Path $prefix 'bin'
 

@@ -7,13 +7,12 @@ param(
     [string]$OnnxVersion = ''
 )
 
-# Inline initialization (avoids module-load dependency for the first media build script).
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
+$ErrorActionPreference = 'Stop'  # fail-fast before module import
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.27.0' -StripVPrefix
 

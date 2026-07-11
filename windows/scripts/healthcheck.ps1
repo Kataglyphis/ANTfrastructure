@@ -65,8 +65,16 @@ Check "gst-launch-1.0 --version" {
 # GStreamer plugin integrations (non-fatal -- auto-detected by meson at build time)
 $gstInspect = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-inspect-1.0.exe'
 foreach ($gstPlugin in @('opencv', 'tensorfilter', 'libav')) {
-    $v = & $gstInspect $gstPlugin 2>&1 | Select-Object -First 1
-    if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] gst-plugin $gstPlugin found" } `
+    # Guard the invoke: with $gstInspect null/missing, `& $null` throws a statement-terminating
+    # error while $LASTEXITCODE keeps the PREVIOUS native call's 0 -- printing a false [PASS]
+    # for a plugin that was never probed. Reset the exit code before each probe for the same reason.
+    if (-not $gstInspect -or -not (Test-Path $gstInspect)) {
+        Write-Host "[SKIP] gst-plugin $gstPlugin not probed (gst-inspect-1.0.exe not found)"
+        continue
+    }
+    $global:LASTEXITCODE = 1
+    $null = & $gstInspect $gstPlugin 2>&1
+    if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] gst-plugin $gstPlugin found" }
     else { Write-Host "[SKIP] gst-plugin $gstPlugin not available" }
 }
 
