@@ -45,8 +45,6 @@ param(
     [string[]]$MesonSetupArgs  = @()
 )
 
-if ([string]::IsNullOrWhiteSpace($SourceDir)) { $SourceDir = 'C:\temp\gst-source' }
-
 # ---- module import (logging + build helpers + shared utilities) ----
 # NOTE: imports MUST precede any module-function call — Initialize-SourceBuildEnvironment
 # below used to be invoked before this block and died with CommandNotFoundException.
@@ -78,6 +76,34 @@ Start-StructuredLogging -Context $logContext
 
 function log($text) {
     Write-StructuredLogEntry -Context $logContext -Text $text
+}
+
+# Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
+# beside $Target (7z two-pass: decompress, then untar the largest inner .tar),
+# then moves the single top-level source dir onto $Target. Returns $true when a
+# directory was moved. Shared by the wrap pre-extraction loop and the libffi
+# force-download below, which used to carry two copies of this body.
+function Expand-SubprojectArchive {
+    param(
+        [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Target
+    )
+    $extractDir = Join-Path (Split-Path -Parent $Target) ('_ext_' + (Split-Path -Leaf $Target))
+    New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+    cmd.exe /c "7z.exe x ""$Archive"" -o""$extractDir"" -y >nul 2>&1"
+    $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
+    if ($tarFile) {
+        cmd.exe /c "7z.exe x ""$($tarFile[0].FullName)"" -o""$extractDir"" -y >nul 2>&1"
+        Remove-Item $tarFile[0].FullName -Force -ErrorAction SilentlyContinue
+    }
+    $extracted = @(Get-ChildItem -Path $extractDir -Directory)
+    $moved = $false
+    if ($extracted.Count -ge 1) {
+        Move-Item -Path $extracted[0].FullName -Destination $Target -Force
+        $moved = $true
+    }
+    Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    return $moved
 }
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available
@@ -218,21 +244,10 @@ try {
             log "Pre-extracting $fname..."
             cmd.exe /c "curl.exe -fsSL --retry 3 ""$tarballUrl"" -o ""$tmpFile"" 2>nul"
             if ($LASTEXITCODE -eq 0 -and (Test-Path $tmpFile)) {
-                $extractDir = Join-Path $subprojDir "_ext_$dir"
-                New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-                cmd.exe /c "7z.exe x ""$tmpFile"" -o""$extractDir"" -y >nul 2>&1"
-                $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
-                if ($tarFile) {
-                    cmd.exe /c "7z.exe x ""$($tarFile[0].FullName)"" -o""$extractDir"" -y >nul 2>&1"
-                    Remove-Item $tarFile[0].FullName -Force -ErrorAction SilentlyContinue
-                }
-                $extracted = @(Get-ChildItem -Path $extractDir -Directory)
-                if ($extracted.Count -ge 1) {
-                    Move-Item -Path $extracted[0].FullName -Destination $target -Force
+                if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
                     Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
                     log "Pre-extracted $fname to $target"
                 }
-                Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
             } else {
                 log "WARNING: Failed to download $fname, features may be disabled"
             }
@@ -248,20 +263,9 @@ try {
         $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
         & curl.exe -fsSL --retry 3 $libffiUrl -o $libffiTmp 2>$null
         if ($LASTEXITCODE -eq 0 -and (Test-Path $libffiTmp)) {
-            $extractDir = Join-Path $subprojDir '_ext_libffi'
-            New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-            cmd.exe /c "7z.exe x ""$libffiTmp"" -o""$extractDir"" -y >nul 2>&1"
-            $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
-            if ($tarFile) {
-                cmd.exe /c "7z.exe x ""$($tarFile[0].FullName)"" -o""$extractDir"" -y >nul 2>&1"
-                Remove-Item $tarFile[0].FullName -Force -ErrorAction SilentlyContinue
-            }
-            $extracted = @(Get-ChildItem -Path $extractDir -Directory)
-            if ($extracted.Count -ge 1) {
-                Move-Item -Path $extracted[0].FullName -Destination $libffiTarget -Force
+            if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
                 log "Force-pre-extracted libffi"
             }
-            Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
         } else {
             log "WARNING: Force-download of libffi failed (exit $LASTEXITCODE)"
         }

@@ -21,8 +21,7 @@ $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
 #region Phase 1 | Resolve version + clone LiteRT-LM (git-lfs)
 Write-Host "=== LiteRT-LM source build (v$LiteRtLmVersion, Ninja+clang-cl) ==="
 
-$ok = Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT-LM.git' -Tag "v$LiteRtLmVersion" -SourceDir $SourceDir -Recursive
-if (-not $ok) { throw 'Failed to clone LiteRT-LM' }
+Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT-LM.git' -Tag "v$LiteRtLmVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 Write-Host 'Setting up git-lfs...'
 # Shield native git under the Dockerfile's PS 5.1 SHELL: `git lfs` writes progress to stderr, which
@@ -901,8 +900,7 @@ $cmakeExtra = @(
 if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) { $cmakeExtra += '-DUSE_CUDA=ON' }
 if (Test-Path $litertCmakeDir) { $cmakeExtra += "-DLiteRT_DIR=$litertCmakeDir" }
 
-$ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $litertLmInstallDir -ExtraArgs $cmakeExtra
-if (-not $ok) { throw 'LiteRT-LM CMake configure failed' }
+Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $litertLmInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 # $hostProtoc below is the version-matched protoc 31.1 (== protobuf_external 6.31.1); NOT vcpkg's libprotoc 33.4
 $protoDir = Join-Path $SourceDir 'runtime\proto'

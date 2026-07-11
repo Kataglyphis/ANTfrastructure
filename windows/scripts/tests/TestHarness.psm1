@@ -88,8 +88,21 @@ function New-TestDir {
     return $d
 }
 
+# Run $Body with a fresh throwaway directory (passed as its first argument),
+# guaranteeing cleanup afterwards. Also zeroes $LASTEXITCODE first so cases that
+# inspect native exit codes are isolated from whatever ran before. Replaces the
+# hand-rolled `$d = New-TestDir; try { ... } finally { Remove-Item ... }` blocks
+# (several of which forgot the finally and leaked wbt-* dirs under %TEMP%).
+function Invoke-InTestDir {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $d = New-TestDir
+    $global:LASTEXITCODE = 0
+    try { & $Body $d }
+    finally { Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 function Get-TestResult { return $script:Results }
 
 Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, `
     Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
-    Invoke-WithEnv, New-TestDir
+    Invoke-WithEnv, New-TestDir, Invoke-InTestDir

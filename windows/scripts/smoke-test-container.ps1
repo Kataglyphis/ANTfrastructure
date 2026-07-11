@@ -267,14 +267,10 @@ function Get-ExpectedVersion {
 # ============================================================================
 Write-TestHeader '1. Build Tools'
 # ============================================================================
-Assert-CommandExists 'git'
-Assert-CommandExists 'cmake'
-Assert-CommandExists 'ninja'
-Assert-CommandExists 'clang-cl'
-Assert-CommandExists 'lld-link'
-Assert-CommandExists 'llvm-lib'
-Assert-CommandExists 'msbuild'  # from VS Build Tools
-Assert-CommandExists 'nuget'
+# msbuild comes from VS Build Tools; the rest from scoop/LLVM.
+foreach ($tool in 'git', 'cmake', 'ninja', 'clang-cl', 'lld-link', 'llvm-lib', 'msbuild', 'nuget') {
+    Assert-CommandExists $tool
+}
 
 # clang-cl: assert a well-formed version only. The Windows lane installs scoop's LATEST
 # llvm deliberately (versions.env's LLVM_RELEASE pins the Linux lane), so asserting that
@@ -353,11 +349,9 @@ Assert-Test -Name "Flutter works" -Condition {
 } -FailMessage "Flutter --version failed"
 
 Assert-FileExists -Path 'C:\WiX\wix.exe' -Description 'WiX toolset'
-Assert-CommandExists 'sccache'
-Assert-CommandExists 'cppcheck'
-Assert-CommandExists '7z'
-Assert-CommandExists 'uv'
-Assert-CommandExists 'nano'
+foreach ($tool in 'sccache', 'cppcheck', '7z', 'uv', 'nano') {
+    Assert-CommandExists $tool
+}
 
 # ============================================================================
 Write-TestHeader '5. Visual Studio Build Tools'
@@ -485,7 +479,14 @@ if ($onnxRoot) {
     $onnxMainLib = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime.lib' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     $onnxDll     = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($onnxCApiHdr -and $onnxMainLib -and $onnxDll) {
-        Assert-NativeLinkRun -Name 'ONNX Runtime loads + C API ABI works (OrtGetApiBase)' -WorkName 'onnx' -Source @'
+        # Shared link inputs for every ORT probe below (same header/lib/DLL triple).
+        $onnxLink = @{
+            IncludeDirs = @($onnxCApiHdr.DirectoryName)
+            LibDir      = $onnxMainLib.DirectoryName
+            LibName     = $onnxMainLib.Name
+            DllDir      = $onnxDll.DirectoryName
+        }
+        Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime loads + C API ABI works (OrtGetApiBase)' -WorkName 'onnx' -Source @'
 #include <onnxruntime_c_api.h>
 #include <cstdio>
 int main() {
@@ -495,18 +496,12 @@ int main() {
     std::printf("onnxruntime %s\n", base->GetVersionString());
     return 0;
 }
-'@ -IncludeDirs @($onnxCApiHdr.DirectoryName) -LibDir $onnxMainLib.DirectoryName -LibName $onnxMainLib.Name -DllDir $onnxDll.DirectoryName -ExpectMatch 'onnxruntime' -FailMessage 'ONNX Runtime C API did not compile/link/run (header+lib+DLL mismatch or missing dependent DLL)'
+'@ -ExpectMatch 'onnxruntime' -FailMessage 'ONNX Runtime C API did not compile/link/run (header+lib+DLL mismatch or missing dependent DLL)'
 
-        # GPU execution-provider coverage. The base probe above only exercises the CPU C-API surface,
-        # so a build that silently fell back to CPU-only would still pass it. GetAvailableProviders()
-        # enumerates the providers COMPILED INTO the runtime (no GPU device required), which is the
-        # real signal that USE_CUDA/USE_TENSORRT took effect. Runs on the nvidia lane only.
-        if ($script:gpuNvidia) {
-            # Cheap backstop first: the provider shared libs must exist by exact name.
-            Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_cuda.dll' -Description 'ONNX CUDA provider DLL (onnxruntime_providers_cuda.dll)'
-            Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Description 'ONNX TensorRT provider DLL (onnxruntime_providers_tensorrt.dll)'
-            # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
-            Assert-NativeLinkRun -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source @'
+        # One EP-enumeration TU serves both GPU-lane gates below: it prints every
+        # provider flag and each assertion matches only the flags its lane requires
+        # (previously two near-identical copies of this program).
+        $onnxEpProbeSource = @'
 #include <onnxruntime_c_api.h>
 #include <cstdio>
 #include <cstring>
@@ -525,7 +520,18 @@ int main() {
     std::printf("providers cuda=%d trt=%d dml=%d\n", cuda, trt, dml);
     return 0;
 }
-'@ -IncludeDirs @($onnxCApiHdr.DirectoryName) -LibDir $onnxMainLib.DirectoryName -LibName $onnxMainLib.Name -DllDir $onnxDll.DirectoryName -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'
+'@
+
+        # GPU execution-provider coverage. The base probe above only exercises the CPU C-API surface,
+        # so a build that silently fell back to CPU-only would still pass it. GetAvailableProviders()
+        # enumerates the providers COMPILED INTO the runtime (no GPU device required), which is the
+        # real signal that USE_CUDA/USE_TENSORRT took effect. Runs on the nvidia lane only.
+        if ($script:gpuNvidia) {
+            # Cheap backstop first: the provider shared libs must exist by exact name.
+            Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_cuda.dll' -Description 'ONNX CUDA provider DLL (onnxruntime_providers_cuda.dll)'
+            Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Description 'ONNX TensorRT provider DLL (onnxruntime_providers_tensorrt.dll)'
+            # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
+            Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'
         }
 
         # DirectML EP: built with USE_DML=ON on the clang-cl lane thanks to the "[clang-cl DML fix]"
@@ -534,22 +540,7 @@ int main() {
         # register; if some future CPU/no-DML build omits it, SKIP rather than fail.
         $dmlRedist = Get-ChildItem -Path $onnxRoot -Filter 'DirectML.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($dmlRedist) {
-            Assert-NativeLinkRun -Name 'ONNX Runtime DirectML EP available (GetAvailableProviders)' -WorkName 'onnx-dml' -Source @'
-#include <onnxruntime_c_api.h>
-#include <cstdio>
-#include <cstring>
-int main() {
-    const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-    if (!api) return 2;
-    char** providers = nullptr; int n = 0;
-    if (api->GetAvailableProviders(&providers, &n) != nullptr) return 3;
-    int dml = 0;
-    for (int i = 0; i < n; ++i) if (std::strcmp(providers[i], "DmlExecutionProvider") == 0) dml = 1;
-    api->ReleaseAvailableProviders(providers, n);
-    std::printf("dml=%d\n", dml);
-    return 0;
-}
-'@ -IncludeDirs @($onnxCApiHdr.DirectoryName) -LibDir $onnxMainLib.DirectoryName -LibName $onnxMainLib.Name -DllDir $onnxDll.DirectoryName -ExpectMatch 'dml=1' -FailMessage 'ONNX Runtime shipped DirectML.dll but does not expose DmlExecutionProvider'
+            Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime DirectML EP available (GetAvailableProviders)' -WorkName 'onnx-dml' -Source $onnxEpProbeSource -ExpectMatch 'dml=1' -FailMessage 'ONNX Runtime shipped DirectML.dll but does not expose DmlExecutionProvider'
         } else {
             Skip-Test 'DirectML EP (USE_DML=OFF on the clang-cl lane -- DML provider sources are MSVC-only)'
         }

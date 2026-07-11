@@ -364,7 +364,6 @@ function New-MediaBranchSpec {
         [Parameter(Mandatory)][string]$ContainerName,
         [Parameter(Mandatory)][string]$RunScript,
         [Parameter(Mandatory)][string]$Tag,
-        [int]$MemoryGb = 0,
         [hashtable]$BuildArgs = @{}
     )
     return @{
@@ -374,7 +373,6 @@ function New-MediaBranchSpec {
         ContainerName     = $ContainerName
         RunScript         = $RunScript
         Tag               = $Tag
-        MemoryGb          = $MemoryGb
         BuildArgs         = $BuildArgs
     }
 }
@@ -389,7 +387,6 @@ function Get-MediaBranchSpecs {
             -ContainerName 'kataglyphis-media-core-build' `
             -RunScript 'build-media-core-all.ps1' `
             -Tag 'local/kataglyphis:windows-media-core' `
-            -MemoryGb $MediaMemoryGb `
             -BuildArgs (@{
                 BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
                 ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
@@ -406,7 +403,6 @@ function Get-MediaBranchSpecs {
             -ContainerName 'kataglyphis-media-litert-build' `
             -RunScript 'build-litert-all.ps1' `
             -Tag 'local/kataglyphis:windows-media-litert' `
-            -MemoryGb $MediaMemoryGb `
             -BuildArgs (@{
                 BASE_IMAGE        = 'local/kataglyphis:windows-toolchain'
                 LITERT_VERSION    = Get-Ver 'LITERT_VERSION'
@@ -419,7 +415,6 @@ function Get-MediaBranchSpecs {
             -ContainerName 'kataglyphis-media-tvm-build' `
             -RunScript 'build-tvm-from-source.ps1' `
             -Tag 'local/kataglyphis:windows-media-tvm' `
-            -MemoryGb $MediaMemoryGb `
             -BuildArgs (@{
                 BASE_IMAGE      = 'local/kataglyphis:windows-toolchain'
                 TVM_REF         = Get-Ver 'TVM_REF'
@@ -517,20 +512,19 @@ function Get-MediaRunCommand {
 }
 
 function Invoke-MediaBranchRunCommit {
-    # Build one media branch via the run+commit path at full cores.
+    # Build one media branch via the run+commit path at full cores and the full
+    # $MediaMemoryGb budget (sequential schedule: every branch gets all the RAM).
     # Passes --target <name> so the consolidated Dockerfile.media-builder
     # multi-stage build selects the correct stage.
     param(
         [Parameter(Mandatory)] $Spec,
-        [Parameter(Mandatory)] [int]$MemoryGb,
-        [Parameter(Mandatory)] [hashtable]$BuildArgs,
         [Parameter(Mandatory)] [string]$OutLog
     )
     Invoke-RunCommitStage `
         -BuilderDockerfile $Spec.BuilderDockerfile -BuilderTag $Spec.BuilderTag `
         -ResultTag $Spec.Tag -ContainerName $Spec.ContainerName `
         -RunCommand (Get-MediaRunCommand $Spec.RunScript) `
-        -Cpus $MediaCoreCpus -MemoryGb $MemoryGb -BuildArgs $BuildArgs `
+        -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb -BuildArgs $Spec.BuildArgs `
         -BuilderExtraFlags @('--target', $Spec.Name) `
         -Label $Spec.Name -OutLog $OutLog
 }
@@ -542,12 +536,10 @@ function Invoke-MediaSequential {
     # compiles get the full MediaMemoryGb budget (parallelism is memory-bound).
     param($CoreSpec, $AuxSpecs, $CoreLog, $LogDir)
     if ($CoreSpec) {
-        Invoke-MediaBranchRunCommit -Spec $CoreSpec -MemoryGb $CoreSpec.MemoryGb -BuildArgs $CoreSpec.BuildArgs -OutLog $CoreLog
+        Invoke-MediaBranchRunCommit -Spec $CoreSpec -OutLog $CoreLog
     }
     foreach ($spec in $AuxSpecs) {
-        # Every spec already carries the full MediaMemoryGb budget (Get-MediaBranchSpecs) --
-        # the former per-aux override was a relic of the removed concurrent scheduler.
-        Invoke-MediaBranchRunCommit -Spec $spec -MemoryGb $spec.MemoryGb -BuildArgs $spec.BuildArgs -OutLog (Join-Path $LogDir "$($spec.Name).log")
+        Invoke-MediaBranchRunCommit -Spec $spec -OutLog (Join-Path $LogDir "$($spec.Name).log")
     }
 }
 

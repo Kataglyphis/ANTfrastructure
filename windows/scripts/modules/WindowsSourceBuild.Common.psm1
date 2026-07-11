@@ -145,45 +145,6 @@ function Invoke-CmakeConfigure {
     return $true
 }
 
-function Invoke-CmakeBuild {
-    param(
-        [Parameter(Mandatory)]
-        [string]$BuildDir,
-        [string]$Config = 'Release',
-        [switch]$Install,
-        [switch]$SkipOnFailure,
-        [string]$LogFile = ''
-    )
-
-    $jobs = Get-BuildJobCount -MemGBPerJob 2
-    Write-Host "Building with $jobs parallel jobs (this may take 15-120 minutes)..."
-    if ($LogFile) {
-        & cmake --build $BuildDir --config $Config --parallel $jobs 2>&1 | Tee-Object -FilePath $LogFile | Out-Null
-    } else {
-        & cmake --build $BuildDir --config $Config --parallel $jobs
-    }
-    if ($LASTEXITCODE -ne 0) {
-        if ($LogFile -and (Test-Path $LogFile)) {
-            Write-Host "`n=== BUILD LOG ERRORS ==="
-            Select-String -Path $LogFile -Pattern 'FAILED:|error:' -SimpleMatch | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
-            Write-Host "--- last 20 lines ---"
-            Get-Content $LogFile -Tail 20 | ForEach-Object { Write-Host $_ }
-        }
-        if ($SkipOnFailure) {
-            Write-Warning "Build failed - skipped"
-            return $false
-        }
-        throw "Build failed"
-    }
-
-    if ($Install) {
-        Write-Host "Installing..."
-        & cmake --install $BuildDir --config $Config
-        if ($LASTEXITCODE -ne 0) { throw "Install failed" }
-    }
-    return $true
-}
-
 function Enter-VsDevCmdEnvironment {
     param(
         [string]$Arch = 'amd64',
@@ -294,7 +255,7 @@ function Install-CpythonPip {
     if ($LASTEXITCODE -eq 0) { Write-Host 'pip already installed'; return }
     Write-Host 'Bootstrapping pip via get-pip.py...'
     $pipScript = Join-Path $env:TEMP 'get-pip.py'
-    Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $pipScript -UseBasicParsing
+    Invoke-DownloadWithRetry -Url 'https://bootstrap.pypa.io/get-pip.py' -DestinationPath $pipScript
     cmd.exe /c """$($Python.Exe)"" ""$pipScript"" --quiet 2>&1"
     if ($LASTEXITCODE -ne 0) { throw 'get-pip.py failed' }
     Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
@@ -527,7 +488,6 @@ Export-ModuleMember -Function @(
     'Invoke-SourceBuildChain',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
-    'Invoke-CmakeBuild',
     'Enter-VsDevCmdEnvironment',
     'Get-VsInstallPath',
     'Get-MsvcToolsRoot',
