@@ -20,8 +20,8 @@ set -euo pipefail
 
 _vcs_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for _vcs_mod_path in \
-  "${_vcs_script_dir}/../01-core/modules.sh" \
-  "/opt/scripts/core/modules.sh"; do
+  "/opt/scripts/core/modules.sh" \
+  "${_vcs_script_dir}/../01-core/modules.sh"; do
   if [ -f "${_vcs_mod_path}" ]; then
     # shellcheck disable=SC1090
     source "${_vcs_mod_path}"

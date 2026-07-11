@@ -55,7 +55,7 @@ images).  Each upstream component carries its own license terms.
 | libcamera | git master | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20240722.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 | FreeType | 2.14.2 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
-| nv-codec-headers | n12.2.1 | [git.videolan.org/git/ffmpeg/nv-codec-headers.git](https://git.videolan.org/git/ffmpeg/nv-codec-headers.git) | MIT |
+| nv-codec-headers | n13.0.19.0 | [git.videolan.org/git/ffmpeg/nv-codec-headers.git](https://git.videolan.org/git/ffmpeg/nv-codec-headers.git) | MIT |
 | GObject-Introspection | 1.80.1 | [gitlab.gnome.org/GNOME/gobject-introspection](https://gitlab.gnome.org/GNOME/gobject-introspection) | LGPLv2+ |
 
 ### Android Layer (`Dockerfile.android`)

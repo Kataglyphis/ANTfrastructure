@@ -52,14 +52,20 @@ For each section, provide practical recommendations based on real-world producti
 
 
 def get_glances_data(endpoint):
-    """Fetch JSON data from the Glances REST API."""
+    """Fetch JSON data from the Glances REST API (v4, falling back to v3).
+
+    Glances 4 (the latest-full image) serves /api/4 and dropped /api/3, so
+    probe v4 first and fall back to v3 for older Glances containers.
+    """
     import requests
-    try:
-        r = requests.get(f"{GLANCES_URL}/api/3/{endpoint}", timeout=5)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
+    for api_ver in ("4", "3"):
+        try:
+            r = requests.get(f"{GLANCES_URL}/api/{api_ver}/{endpoint}", timeout=5)
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            continue
+    return None
 
 
 def sample_resources_psutil():
@@ -121,7 +127,8 @@ def detect_model_via_api():
     """Detect the currently loaded model via the Ollama API."""
     import requests
     try:
-        r = requests.get(f"{OLLAMA_BASE_URL}/api/show/gemma4:26b", timeout=5)
+        # Ollama's show API is POST /api/show with a JSON body, not a GET path param.
+        r = requests.post(f"{OLLAMA_BASE_URL}/api/show", json={"model": "gemma4:26b"}, timeout=5)
         if r.status_code == 200:
             return "gemma4:26b"
     except Exception:

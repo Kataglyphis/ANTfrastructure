@@ -27,7 +27,7 @@ jobs:
             
             // --- CONFIGURATION ---
             const keepPerTag = 3;      // Keep 3 versions for every unique tag
-            const keepUntagged = 500;   // Keep 50 newest untagged images (buffers multi-arch layers)
+            const keepUntagged = 500;   // Keep 500 newest untagged images (buffers multi-arch layers)
             const minAgeDays = 14;     // SAFETY NET: Never delete anything younger than 14 days
             // ---------------------
 

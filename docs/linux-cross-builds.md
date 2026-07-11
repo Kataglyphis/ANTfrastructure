@@ -4,7 +4,7 @@
 
 > Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. See `docs/project-info.md` for the drop-in config and `AGENTS.md` for the do-not-regress note. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
 
-> **Build logging:** All orchestrator scripts accept `--log-dir ./out/build-logs` to write per-stage build logs. For manual `nerdctl build` commands, capture output with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
+> **Build logging:** `build-cross-chain.sh` and `build-cross-stage.sh` accept `--log-dir ./out/build-logs` to write per-stage build logs. The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not — capture their output, and any manual `nerdctl build`, with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
 
 ## Cross-Compiler builder (nerdctl, amd64 host; amd64/arm64/riscv64 targets)
 
@@ -20,8 +20,7 @@ Fastest entry point:
 
 ```bash
 ./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror \
-  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
-  --log-dir ./out/build-logs
+  --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/
 ```
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`). For example: `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
@@ -81,7 +80,7 @@ Expected result: the build log ends with `ghcr.io/kataglyphis/kataglyphis_beschl
 Or let the helper do the push too:
 
 ```bash
-./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror --push --log-dir ./out/build-logs
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --fast-ubuntu-mirror --push
 ```
 
 ## Recommended: digest-pinned orchestrator (`build-cross-chain.sh`)
@@ -286,7 +285,7 @@ The per-arch wrappers are assembled into the `:latest-cross` multi-arch manifest
 
 ### OpenCV 5.x GStreamer compatibility (applies to all architectures)
 
-OpenCV 5.x reorganized several modules relative to OpenCV 4.x. GStreamer's bundled `gst-plugins-bad` "opencv" plugin (1.29.x) still targets the 4.x layout, so it fails to compile against the source-built OpenCV 5 in this image. The build system applies an automatic source patch via `patch-gstreamer-sources.sh` → `patch_gstreamer_opencv5_compat()` that addresses three upstream API changes:
+OpenCV 5.x reorganized several modules relative to OpenCV 4.x. GStreamer's bundled `gst-plugins-bad` "opencv" plugin (1.29.x) still targets the 4.x layout, so it fails to compile against the source-built OpenCV 5 in this image. The build system applies an automatic source patch via `patch-gstreamer-sources.sh` → `patch_gstreamer_sources()` that addresses three upstream API changes:
 
 1. **`contourArea`/`approxPolyDP`/`convexHull`** moved from `imgproc` to the new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`.
 2. **`findChessboardCorners`/`findCirclesGrid`/`drawChessboardCorners` + `CALIB_CB_*`** moved from `calib3d` into `objdetect` → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`.
@@ -468,8 +467,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --artifact-build-mode cross \
   --fast-ubuntu-mirror \
   --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
-  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/ \
-  --log-dir ./out/build-logs
+  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
 Validated for both `arm64` and `riscv64`: `gcc 16.1.0`, `clang 22.1.8`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.1.0/bin/gcc`, and optional runtime payloads under `/usr/local/lib/onnxruntime-*`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, `/usr/local/lib/pkgconfig/litert.pc`.
@@ -486,8 +484,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --artifact-build-mode cross \
   --fast-ubuntu-mirror \
   --fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/ \
-  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/ \
-  --log-dir ./out/build-logs
+  --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
 Result: `gcc 16.1.0`, `clang 22.1.8`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.1.0/bin/gcc`, `/usr/bin/clang → /etc/alternatives/clang → /usr/local/llvm-target/bin/clang`.
@@ -529,7 +526,7 @@ To prevent regressions during updates, always preserve the following five vital 
 2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, the build must copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent downstream `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), standard CPython build steps create standard cross-build library symlinks that end up dangling when packaged. We use `cp -a -L` to dereference those symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the target's `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Since target-packaged Python is staged into the compiler-cross image, the compiler itself must be rebuilt if this helper logic is changed.
 4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, GCC alternatives wire `/opt/gcc-16.1.0/bin/gcc` as `cc`/`c++`. On `amd64`, GCC is built natively. On `arm64`/`riscv64`, it is Canadian-cross-compiled; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native binary. The build hard-fails with three layered guards: (a) `cc -dumpmachine` must match `TARGET_ARCH`; (b) `readelf -h` on the `cc` binary itself checks ELF machine type (the real discriminator — `-dumpmachine` only reports the *target* triple, not the host arch); and (c) a cc1 compile-to-object smoke plus ELF check on the produced object, run under the target platform (QEMU for foreign arches). `wrapper-smoke` uses `linux/scripts/06-packaging/smoke-wrapper.sh` for end-to-end verification.
-5. **Fix 5 (OpenCV 5 GStreamer compat):** `patch-gstreamer-sources.sh` → `patch_gstreamer_opencv5_compat()` patches the GStreamer `gst-plugins-bad` opencv plugin sources at build time for OpenCV 5.x compatibility. Three API changes are handled: (a) `contourArea`/`approxPolyDP`/`convexHull` moved to new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`; (b) chessboard/circles-grid detection (`findChessboardCorners`/`findCirclesGrid`/`CALIB_CB_*`) moved to `objdetect` module → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`; (c) `cv::CascadeClassifier` removed from OpenCV 5 → drops the three cascade-dependent GStreamer elements (`faceblur`, `facedetect`, `handdetect`) from the monolithic `libgstopencv.so`. Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compatibility alias because GStreamer's meson dependency lookup queries `dependency('opencv4')`. All patches are idempotent (guarded with grep before applying). When changing OpenCV or GStreamer versions, verify the patch still applies correctly.
+5. **Fix 5 (OpenCV 5 GStreamer compat):** `patch-gstreamer-sources.sh` → `patch_gstreamer_sources()` patches the GStreamer `gst-plugins-bad` opencv plugin sources at build time for OpenCV 5.x compatibility. Three API changes are handled: (a) `contourArea`/`approxPolyDP`/`convexHull` moved to new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`; (b) chessboard/circles-grid detection (`findChessboardCorners`/`findCirclesGrid`/`CALIB_CB_*`) moved to `objdetect` module → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`; (c) `cv::CascadeClassifier` removed from OpenCV 5 → drops the three cascade-dependent GStreamer elements (`faceblur`, `facedetect`, `handdetect`) from the monolithic `libgstopencv.so`. Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compatibility alias because GStreamer's meson dependency lookup queries `dependency('opencv4')`. All patches are idempotent (guarded with grep before applying). When changing OpenCV or GStreamer versions, verify the patch still applies correctly.
 
 ## Cross env contract
 

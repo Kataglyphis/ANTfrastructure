@@ -165,8 +165,38 @@ setup_torch_deps() {
     libva2 libva-drm2 libva-x11-2 libvdpau1 \
     libaom3 libdav1d7 libsvtav1enc2 libx265-215 libvpx12 \
     libmp3lame0 libopus0 libvorbis0a libvorbisenc2 \
+    libopencore-amrnb0 libopencore-amrwb0 \
     libass9 libsndio7.0 libopenexr-3-1-30 libgraphene-1.0-0 \
     libavformat62 libavcodec62 libswscale9 libswresample6 libavdevice62 libavfilter11
+
+  # FFmpeg external-codec RUNTIME libraries: install EXACTLY the apt packages the
+  # media stage recorded as /opt/ffmpeg's real link-time deps (see
+  # emit_runtime_apt_manifest in build-ffmpeg.sh). This auto-tracks whatever
+  # codecs were probe-enabled per arch -- no soname guessing against the Ubuntu
+  # base. Best-effort per package so a name unavailable for this arch can't fail
+  # the build; the ffmpeg smoke (now pipefail-correct) is the backstop that flags
+  # a genuinely missing soname. The hardcoded opencore-amr entries above remain as
+  # a baseline for when the manifest is absent (older media images).
+  if [ -s /opt/ffmpeg/runtime-apt-packages.txt ]; then
+    local _ff_pkgs
+    _ff_pkgs="$(tr '\n' ' ' < /opt/ffmpeg/runtime-apt-packages.txt)"
+    if [ -n "${_ff_pkgs// /}" ]; then
+      # shellcheck disable=SC2086
+      if apt-get install -y --no-install-recommends ${_ff_pkgs} 2>/dev/null; then
+        echo "Installed FFmpeg runtime codec libs from manifest: ${_ff_pkgs}"
+      else
+        echo "Batch ffmpeg runtime-lib install failed; retrying best-effort per package"
+        local _ff_pkg
+        for _ff_pkg in ${_ff_pkgs}; do
+          apt-get install -y --no-install-recommends "${_ff_pkg}" >/dev/null 2>&1 \
+            || echo "  (best-effort: ${_ff_pkg} unavailable for this arch, skipped)"
+        done
+      fi
+    fi
+  else
+    echo "No /opt/ffmpeg/runtime-apt-packages.txt manifest; relying on the hardcoded codec-lib baseline"
+  fi
+
   rm -rf /var/lib/apt/lists/*
 }
 
@@ -202,16 +232,18 @@ seed_riscv64_apt_packages() {
   fi
 }
 
-riscv64_torch_wheel_fallback() {
-  # ---- Documented fallback: wheelhouse shipped no riscv64 torch wheel ----
-  # The media app-wheelhouse stage is best-effort: when the riscv64 cross
-  # torch/torchvision wheel builds fail, /opt/wheels carries no torch
+torch_wheel_missing_fallback() {
+  # ---- Documented fallback: wheelhouse shipped no torch wheel ----
+  # The media app-wheelhouse stage is best-effort: when the cross
+  # torch/torchvision wheel builds fail (or the media image was a stale
+  # cache-hit predating torch wheels), /opt/wheels carries no torch
   # wheel.  Routing through assemble-torch-app.sh would then leave torch
   # out of the locked-local set, so uv would resolve UPSTREAM torch from
   # PyPI — which has no riscv64 wheels — and the sdist build dies under
   # QEMU.  Keep the historic lightweight path instead: install the local
   # OpenCV wheel (or copy the source-built cv2 from /opt/opencv5) and
   # stop after an import check.
+  local arch="${1:-$(uname -m)}"
   local opencv_wheel
   opencv_wheel="$(ls /opt/wheels/opencv_contrib_python-*.whl 2>/dev/null | head -1 || true)"
   if [ -n "${opencv_wheel}" ]; then
@@ -236,16 +268,16 @@ riscv64_torch_wheel_fallback() {
   # so smoke-runtime-image.sh can surface it and a torch-less image can't pass
   # unnoticed. Set ALLOW_TORCHLESS_RUNTIME=1 to accept it knowingly.
   mkdir -p "${VENV}" 2>/dev/null || true
-  printf 'riscv64: no torch wheel in /opt/wheels at build time; assemble-torch-app.sh skipped\n' \
-    > "${VENV}/.torch-missing" 2>/dev/null || true
+  printf '%s: no torch wheel in /opt/wheels at build time; assemble-torch-app.sh skipped\n' \
+    "${arch}" > "${VENV}/.torch-missing" 2>/dev/null || true
   {
     echo "############################################################"
-    echo "WARNING: SHIPPING riscv64 RUNTIME IMAGE WITHOUT PYTORCH"
+    echo "WARNING: SHIPPING ${arch} RUNTIME IMAGE WITHOUT PYTORCH"
     echo "  (no torch wheel in /opt/wheels; app assembly was skipped)"
     echo "  Sentinel: ${VENV}/.torch-missing -- runtime smoke will flag it."
     echo "############################################################"
   } >&2
-  echo "riscv64 fallback venv ready (no torch wheel in /opt/wheels; skipped app assembly)"
+  echo "${arch} fallback venv ready (no torch wheel in /opt/wheels; skipped app assembly)"
 }
 
 # Fail-fast preflight: the relocated native GCC/G++ used for source builds under
@@ -322,19 +354,33 @@ setup_torch_app() {
 
   local host_arch
   host_arch="$(uname -m)"
-  if [ "${host_arch}" = "riscv64" ]; then
-    seed_riscv64_apt_packages
-    if ! compgen -G "/opt/wheels/torch-*.whl" >/dev/null; then
-      riscv64_torch_wheel_fallback
+  [ "${host_arch}" = "riscv64" ] && seed_riscv64_apt_packages
+
+  # torch MUST be present as a LOCAL wheel in /opt/wheels for EVERY arch. The
+  # media app-wheelhouse stage builds it per-arch; a missing wheel means that
+  # stage was a stale cache-hit or its torch build failed. Historically only
+  # riscv64 guarded this -- so a stale amd64 media cache-hit (2026-07-11) shipped
+  # a torch-LESS image that no sentinel flagged, and only the runtime smoke
+  # caught it ~5h into the run, failing the whole rebuild at the very end.
+  # Guard here so the defect fails FAST at packaging:
+  #   - riscv64 (upstream has no riscv64 torch wheels)  -> tolerated fallback + sentinel.
+  #   - amd64/arm64 (torch is expected)                 -> hard error, unless
+  #     ALLOW_TORCHLESS_RUNTIME=1 knowingly accepts a torch-less image.
+  if ! compgen -G "/opt/wheels/torch-*.whl" >/dev/null; then
+    if [ "${host_arch}" = "riscv64" ] || [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
+      torch_wheel_missing_fallback "${host_arch}"
       return 0
     fi
-    # A riscv64 torch wheel exists in /opt/wheels (media stage now ships
-    # torch/torchvision/onnxruntime/libcamera riscv64 wheels), so fall
-    # through to the shared assemble-torch-app.sh route below — it pins the
-    # local wheels as locked packages, installs the OpenCV wheel (or prefers
-    # staged /opt/opencv5 bindings), and verifies the environment.
-    echo "riscv64 torch wheel present in /opt/wheels; routing through assemble-torch-app.sh"
+    {
+      echo "ERROR: no /opt/wheels/torch-*.whl for ${host_arch}."
+      echo "  The media app-wheelhouse stage shipped no torch wheel -- almost"
+      echo "  always a stale media cache-hit (rebuild the media stage for this"
+      echo "  arch WITHOUT cache) or a failed torch build. Set"
+      echo "  ALLOW_TORCHLESS_RUNTIME=1 to knowingly ship a torch-less image."
+    } >&2
+    exit 1
   fi
+  echo "torch wheel present in /opt/wheels (${host_arch}); routing through assemble-torch-app.sh"
 
   configure_foreign_arch_compiler_env "${host_arch}"
 

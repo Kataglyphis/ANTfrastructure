@@ -14,15 +14,19 @@ echo "WebRTC signalling server started (PID: ${child_pid})"
 
 # Forward container stop signals to the child so it can shut down cleanly
 # (bare `wait` does NOT forward signals — without the trap, docker stop would
-# leave the server to be SIGKILLed after the grace period).
-trap 'kill -TERM "${child_pid}" 2>/dev/null' TERM INT
+# leave the server to be SIGKILLed after the grace period). The trap records
+# that IT fired so we only re-wait in that case; a child that dies on its own
+# by a signal (e.g. OOM-kill → 137) must keep its real 128+N status, not be
+# re-waited into bash's "not a child" 127.
+signalled=0
+trap 'signalled=1; kill -TERM "${child_pid}" 2>/dev/null' TERM INT
 
-# Keep container running. If wait is interrupted by a trapped signal it
-# returns 128+signum before the child has exited; wait again to reap the
-# child and propagate its real exit code.
+# Keep container running. When our trap interrupts `wait` it returns 128+signum
+# before the child has exited, so wait again to reap it and propagate its real
+# exit code. When the child died on its own, propagate the first status as-is.
 status=0
 wait "${child_pid}" || status=$?
-if [ "${status}" -gt 128 ]; then
+if [ "${signalled}" -eq 1 ]; then
   status=0
   wait "${child_pid}" || status=$?
 fi

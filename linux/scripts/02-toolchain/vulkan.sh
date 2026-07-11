@@ -148,24 +148,24 @@ source_vulkan_sdk_env() {
 
 _vulkan_setup_gcc_runtime() {
   ARCH_LIB_DIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "${ARCH}-linux-gnu")"
-  ${SUDO:-sudo} mkdir -p "${ARCH_LIB_DIR}" /usr/lib
+  ${SUDO:-} mkdir -p "${ARCH_LIB_DIR}" /usr/lib
   if [[ -n "${LIBRARY_PATH:-}" ]]; then
     log "Setting up GCC runtime library symlinks for linking..."
     for libdir in ${LIBRARY_PATH//:/ }; do
       for lib in libgcc_s.so.1 libgcc_s.so libstdc++.so.6 libstdc++.so; do
         if [[ -f "${libdir}/${lib}" ]]; then
           if [[ ! -e "${ARCH_LIB_DIR}/${lib}" ]]; then
-            ${SUDO:-sudo} ln -sf "${libdir}/${lib}" "${ARCH_LIB_DIR}/${lib}" 2>/dev/null || true
+            ${SUDO:-} ln -sf "${libdir}/${lib}" "${ARCH_LIB_DIR}/${lib}" 2>/dev/null || true
           fi
           if [[ ! -e "/usr/lib/${lib}" ]]; then
-            ${SUDO:-sudo} ln -sf "${libdir}/${lib}" "/usr/lib/${lib}" 2>/dev/null || true
+            ${SUDO:-} ln -sf "${libdir}/${lib}" "/usr/lib/${lib}" 2>/dev/null || true
           fi
         fi
       done
     done
     log "Symlinked GCC runtime libraries to ${ARCH_LIB_DIR} and /usr/lib"
   fi
-  ${SUDO:-sudo} ldconfig 2>/dev/null || true
+  ${SUDO:-} ldconfig 2>/dev/null || true
 }
 
 _vulkan_setup_sdk_includes() {
@@ -182,10 +182,10 @@ _vulkan_setup_sdk_includes() {
     log "Preferring Vulkan SDK headers and CMake packages from ${SDK_ARCHDIR}"
     export CMAKE_PREFIX_PATH="${SDK_ARCHDIR}:${SDK_ARCHDIR}/share/cmake:${SDK_ARCHDIR}/lib/cmake${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
     if [[ -d "${SDK_ARCHDIR}/include" ]]; then
-      ${SUDO:-sudo} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
+      ${SUDO:-} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
       for entry in X11 xcb; do
         if [[ -e "/usr/include/${entry}" && ! -e "${target_include_dir}/${entry}" ]]; then
-          ${SUDO:-sudo} ln -s "/usr/include/${entry}" "${target_include_dir}/${entry}"
+          ${SUDO:-} ln -s "/usr/include/${entry}" "${target_include_dir}/${entry}"
         fi
       done
       local header base
@@ -193,7 +193,7 @@ _vulkan_setup_sdk_includes() {
         [[ -e "${header}" ]] || continue
         base="$(basename "${header}")"
         if [[ ! -e "${target_include_dir}/${base}" ]]; then
-          ${SUDO:-sudo} ln -s "${header}" "${target_include_dir}/${base}"
+          ${SUDO:-} ln -s "${header}" "${target_include_dir}/${base}"
         fi
       done
       export CMAKE_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${CMAKE_INCLUDE_PATH:+:${CMAKE_INCLUDE_PATH}}"
@@ -211,11 +211,11 @@ _vulkan_setup_sdk_includes() {
     _symlink_sdk_include() {
       local name="$1" target_include_dir="$2" sdkincludedir="$3"
       if [ -d "${sdkincludedir}/include/${name}" ]; then
-        ${SUDO:-sudo} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
-        ${SUDO:-sudo} rm -rf "/usr/include/${name}" "/usr/local/include/${name}" "${target_include_dir}/${name}"
-        ${SUDO:-sudo} ln -s "${sdkincludedir}/include/${name}" "/usr/include/${name}"
-        ${SUDO:-sudo} ln -s "${sdkincludedir}/include/${name}" "/usr/local/include/${name}"
-        ${SUDO:-sudo} ln -s "${sdkincludedir}/include/${name}" "${target_include_dir}/${name}"
+        ${SUDO:-} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
+        ${SUDO:-} rm -rf "/usr/include/${name}" "/usr/local/include/${name}" "${target_include_dir}/${name}"
+        ${SUDO:-} ln -s "${sdkincludedir}/include/${name}" "/usr/include/${name}"
+        ${SUDO:-} ln -s "${sdkincludedir}/include/${name}" "/usr/local/include/${name}"
+        ${SUDO:-} ln -s "${sdkincludedir}/include/${name}" "${target_include_dir}/${name}"
       fi
     }
     log "Replacing standard Vulkan include paths with SDK headers"
@@ -287,7 +287,7 @@ _vulkan_run_vulkansdk() {
   # at the "Do you want to continue? [Y/n]" prompt. Make apt auto-confirm and
   # run non-interactively for that nested install (global config so the sudo'd
   # apt-get inside vulkansdk picks it up regardless of env).
-  ${SUDO:-sudo} tee /etc/apt/apt.conf.d/90assume-yes >/dev/null <<'EOF'
+  ${SUDO:-} tee /etc/apt/apt.conf.d/90assume-yes >/dev/null <<'EOF'
 APT::Get::Assume-Yes "true";
 EOF
   export DEBIAN_FRONTEND=noninteractive
@@ -319,7 +319,7 @@ EOF
   chmod +x "${_cc_shim_dir}"/*
   export PATH="${_cc_shim_dir}:${PATH}"
 
-  ${SUDO:-sudo} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
+  ${SUDO:-} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
     ./vulkansdk -j "$JOBS" "$@"
   export CC="${_saved_cc}" CXX="${_saved_cxx}"
   [ -n "${_saved_cmake_cc}" ] && export CMAKE_C_COMPILER="${_saved_cmake_cc}" || unset CMAKE_C_COMPILER
@@ -333,7 +333,7 @@ _build_vulkan_sdk_cross() {
 
   (
     cd "${target_dir}"
-    ${SUDO:-sudo} chmod +x vulkansdk
+    ${SUDO:-} chmod +x vulkansdk
 
     log "Building vulkansdk for cross-build..."
 
@@ -377,7 +377,7 @@ _cross_build_sdk_component() {
     log "${label}: cross-build failed (non-fatal)"
     return 1
   fi
-  if ! ${SUDO:-sudo} cmake --install "${build_dir}"; then
+  if ! ${SUDO:-} cmake --install "${build_dir}"; then
     log "${label}: install failed (non-fatal)"
     return 1
   fi
@@ -413,12 +413,12 @@ _build_vulkan_targets() {
     *)       _xbuild_proc="${arch_suffix}" ;;
   esac
 
-  ${SUDO:-sudo} mkdir -p "${archdir}/lib" "${archdir}/include"
+  ${SUDO:-} mkdir -p "${archdir}/lib" "${archdir}/include"
   # Vulkan headers are arch-independent: reuse the host archdir's installed copy.
   [ -d "${host_archdir}/include/vulkan" ] && \
-    ${SUDO:-sudo} cp -a "${host_archdir}/include/vulkan" "${archdir}/include/" 2>/dev/null || true
+    ${SUDO:-} cp -a "${host_archdir}/include/vulkan" "${archdir}/include/" 2>/dev/null || true
   [ -d "${host_archdir}/include/vk_video" ] && \
-    ${SUDO:-sudo} cp -a "${host_archdir}/include/vk_video" "${archdir}/include/" 2>/dev/null || true
+    ${SUDO:-} cp -a "${host_archdir}/include/vk_video" "${archdir}/include/" 2>/dev/null || true
 
   # Vulkan loader (libvulkan.so). WSI off: TVM uses Vulkan for compute only, so we
   # avoid needing target windowing-system dev libraries.
@@ -477,29 +477,29 @@ install_vulkan_sdk() {
   [ -s "$tarball" ] || die "Downloaded tarball is empty"
 
   log "Extracting Vulkan SDK to ${VULKAN_INSTALL_ROOT}/${version}..."
-  ${SUDO:-sudo} mkdir -p "$VULKAN_TMP_DIR" || die "Failed to create ${VULKAN_TMP_DIR}"
-  ${SUDO:-sudo} chmod 1777 "$VULKAN_TMP_DIR" || die "Failed to set permissions on ${VULKAN_TMP_DIR}"
+  ${SUDO:-} mkdir -p "$VULKAN_TMP_DIR" || die "Failed to create ${VULKAN_TMP_DIR}"
+  ${SUDO:-} chmod 1777 "$VULKAN_TMP_DIR" || die "Failed to set permissions on ${VULKAN_TMP_DIR}"
 
   tmpd="$(mktemp -d -p "$VULKAN_TMP_DIR" vulkan-sdk-XXXXXX 2>/dev/null)" || die "mktemp failed in ${VULKAN_TMP_DIR}"
   tar -xJf "$tarball" -C "$tmpd" || die "tar extraction failed"
 
-  ${SUDO:-sudo} mkdir -p "$VULKAN_INSTALL_ROOT" || die "Failed to create ${VULKAN_INSTALL_ROOT}"
+  ${SUDO:-} mkdir -p "$VULKAN_INSTALL_ROOT" || die "Failed to create ${VULKAN_INSTALL_ROOT}"
   entries=( "$tmpd"/* )
   target_dir="${VULKAN_INSTALL_ROOT}/${version}"
   if [ "${#entries[@]}" -eq 1 ] && [ -d "${entries[0]}" ]; then
-    ${SUDO:-sudo} rm -rf "${target_dir}"
-    ${SUDO:-sudo} mv "${entries[0]}" "${target_dir}" || die "Failed to move SDK to ${target_dir}"
+    ${SUDO:-} rm -rf "${target_dir}"
+    ${SUDO:-} mv "${entries[0]}" "${target_dir}" || die "Failed to move SDK to ${target_dir}"
   else
-    ${SUDO:-sudo} rm -rf "${target_dir}"
-    ${SUDO:-sudo} mkdir -p "${target_dir}"
-    ${SUDO:-sudo} mv "$tmpd"/* "${target_dir}/" || die "Failed to move SDK contents to ${target_dir}"
+    ${SUDO:-} rm -rf "${target_dir}"
+    ${SUDO:-} mkdir -p "${target_dir}"
+    ${SUDO:-} mv "$tmpd"/* "${target_dir}/" || die "Failed to move SDK contents to ${target_dir}"
   fi
 
   rm -rf "$tmpd"
   rm -f "$tarball"
 
-  ${SUDO:-sudo} chown -R root:root "${target_dir}"
-  ${SUDO:-sudo} chmod -R a+rX "${target_dir}"
+  ${SUDO:-} chown -R root:root "${target_dir}"
+  ${SUDO:-} chmod -R a+rX "${target_dir}"
   log "Extracted to: ${target_dir}"
   log "To use in a shell: source ${target_dir}/setup-env.sh"
 

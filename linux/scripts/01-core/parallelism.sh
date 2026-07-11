@@ -1,13 +1,35 @@
 #!/usr/bin/env bash
-# parallelism.sh - build parallelism helpers (CPU quota + optional memory cap)
+# parallelism.sh - build parallelism helpers (CPU quota + memory cap)
 [ -n "${_PARALLELISM_SH_LOADED:-}" ] && return 0
 _PARALLELISM_SH_LOADED=1
 #
+# ONE model, used by every helper:
+#
+#     jobs = min( cores , usable_RAM / BUILD_MEM_DIVISOR / peak_MB_per_job )
+#
+#   cores        detected CPU cores, honoring any cgroup CPU quota.
+#   usable_RAM   MemAvailable, or the cgroup memory limit remaining (smaller wins).
+#   peak_MB      the PEAK per-translation-unit RSS of the workload (NOT average) --
+#                one value per "profile" (generic / rust / heavy), see _profile_mb.
+#   DIVISOR      how many builds share this host's RAM concurrently (default 1).
+#                Set BUILD_MEM_DIVISOR=N when running N per-arch builds in parallel
+#                (--parallel-archs) so N concurrent builds don't N-times overcommit.
+#
+# BEFORE changing any *_MB_PER_JOB value, read
+#   docs/build-parallelism-memory-tuning.md
+# The peak numbers are CALIBRATED to host RAM. Lowering them by eyeballing "free"
+# RAM OOM-kills multi-hour builds -- the average usage lies because heavy TUs are
+# staggered. torch's aten TUs peak ~4GB; that is why heavy stays at 4096.
+#
 # Environment Variables:
-#   AGGRESSIVE_PARALLELISM  - Set to "true" for lower memory caps (faster builds)
-#                              Auto-enabled when host RAM >= 16GB.
-#   PARALLEL_JOBS           - Override all auto-detection with explicit job count
-#   DEFAULT_MB_PER_JOB      - Override default memory per job (default: 2000 or 800 if aggressive)
+#   PARALLEL_JOBS           - Hard override: exact job count for every helper.
+#   AGGRESSIVE_PARALLELISM  - "true" lowers the LIGHT profiles (faster); auto-on
+#                             when usable RAM >= 16GB. "false" forces it off.
+#   BUILD_MEM_DIVISOR       - Divide usable RAM by this (default 1). Injected by
+#                             the orchestrator under --parallel-archs = #arches.
+#   DEFAULT_MB_PER_JOB      - Override generic peak (default 2000, or 800 aggressive)
+#   RUST_MB_PER_JOB         - Override rust peak    (default 2500, or 1200 aggressive)
+#   CPP_HEAVY_MB_PER_JOB    - Override torch/heavy peak (default 4096; see doc)
 
 _cgroup_cpu_quota_cores() {
   local quota=""
@@ -140,12 +162,7 @@ _cgroup_mem_remaining_mb() {
 _auto_aggressive_parallelism() {
   # Enable AGGRESSIVE_PARALLELISM automatically when host has plenty of RAM.
   # Explicit AGGRESSIVE_PARALLELISM=false disables this auto-detection.
-  if [ "${AGGRESSIVE_PARALLELISM:-}" = "false" ]; then
-    return 0
-  fi
-  if [ "${AGGRESSIVE_PARALLELISM:-}" = "true" ]; then
-    return 0
-  fi
+  case "${AGGRESSIVE_PARALLELISM:-}" in true|false) return 0 ;; esac
   local avail_mb
   avail_mb="$(_mem_available_mb)"
   if [ -n "${avail_mb}" ] && [ "${avail_mb}" -ge 16384 ] 2>/dev/null; then
@@ -153,76 +170,80 @@ _auto_aggressive_parallelism() {
   fi
 }
 
-compute_jobs_with_mem_cap() {
-  # Usage: compute_jobs_with_mem_cap [requested] [mb_per_job]
-  # Defaults to ~2000MB/job to avoid OOM on build steps.
-  # Set AGGRESSIVE_PARALLELISM=false to disable (auto-enabled when RAM >= 16GB).
-  # Set PARALLEL_JOBS=N to override all auto-detection.
-  local requested="${1:-}"
-  local mb_per_job="${2:-}"
+_usable_mem_mb() {
+  # usable RAM this build may assume, after dividing the host pool by the number
+  # of builds sharing it concurrently (BUILD_MEM_DIVISOR, default 1). This is the
+  # ONLY concurrency knob: N parallel per-arch builds each pass DIVISOR=N so the
+  # sum of their job counts still fits one host's RAM.
+  local avail_mb divisor
+  avail_mb="$(_mem_available_mb)"
+  [ -z "${avail_mb}" ] && { printf '%s\n' ""; return 0; }
+  divisor="${BUILD_MEM_DIVISOR:-1}"
+  [ "${divisor}" -ge 1 ] 2>/dev/null || divisor=1
+  printf '%s\n' $(( avail_mb / divisor ))
+}
 
-  # Allow explicit override via PARALLEL_JOBS
+_profile_mb() {
+  # Peak per-TU RAM (MB) for a workload profile. Aggressive mode lowers only the
+  # LIGHT profiles -- heavy (torch) TUs do not get cheaper on a big host, so the
+  # 4GB floor is unconditional. See docs/build-parallelism-memory-tuning.md.
+  local aggressive="${AGGRESSIVE_PARALLELISM:-false}"
+  case "$1" in
+    generic) [ "${aggressive}" = "true" ] && printf '%s\n' "${DEFAULT_MB_PER_JOB:-800}"  || printf '%s\n' "${DEFAULT_MB_PER_JOB:-2000}" ;;
+    rust)    [ "${aggressive}" = "true" ] && printf '%s\n' "${RUST_MB_PER_JOB:-1200}"    || printf '%s\n' "${RUST_MB_PER_JOB:-2500}" ;;
+    heavy)   printf '%s\n' "${CPP_HEAVY_MB_PER_JOB:-4096}" ;;
+    *)       printf '%s\n' "2000" ;;
+  esac
+}
+
+mem_capped_jobs() {
+  # THE core helper: jobs = min(cores, usable_RAM / peak_mb).
+  # Usage: mem_capped_jobs <peak_mb> [requested]
+  local peak_mb="$1" requested="${2:-}"
+
+  # Hard override wins over everything.
   if [ -n "${PARALLEL_JOBS:-}" ]; then
     printf '%s\n' "${PARALLEL_JOBS}"
     return 0
   fi
 
-  # Auto-enable aggressive mode on high-memory hosts if not explicitly set
-  _auto_aggressive_parallelism
-
-  # Determine default memory per job based on AGGRESSIVE_PARALLELISM
-  if [ -z "${mb_per_job}" ]; then
-    if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-      mb_per_job="${DEFAULT_MB_PER_JOB:-800}"
-    else
-      mb_per_job="${DEFAULT_MB_PER_JOB:-2000}"
-    fi
-  fi
-
-  local jobs
+  local jobs avail_mb cap
   jobs="$(compute_jobs "${requested}")"
-
-  local avail_mb max_by_mem
-  avail_mb="$(_mem_available_mb)"
-  if [ -n "${avail_mb}" ] && [ "${mb_per_job}" -gt 0 ] 2>/dev/null; then
-    max_by_mem=$(( avail_mb / mb_per_job ))
-    [ "${max_by_mem}" -lt 1 ] && max_by_mem=1
-    if [ "${jobs}" -gt "${max_by_mem}" ] 2>/dev/null; then
-      jobs="${max_by_mem}"
-    fi
+  avail_mb="$(_usable_mem_mb)"
+  if [ -n "${avail_mb}" ] && [ "${peak_mb}" -gt 0 ] 2>/dev/null; then
+    cap=$(( avail_mb / peak_mb ))
+    [ "${cap}" -lt 1 ] && cap=1
+    [ "${jobs}" -gt "${cap}" ] 2>/dev/null && jobs="${cap}"
   fi
 
   [ "${jobs}" -lt 1 ] && jobs=1
   printf '%s\n' "${jobs}"
 }
 
-# Compute jobs for Rust/Cargo builds (typically need more memory)
-# Usage: compute_rust_jobs [requested]
-compute_rust_jobs() {
-  local requested="${1:-}"
-  local mb_per_job
+# --- Named wrappers (stable API for callers) --------------------------------
+# Each just names a profile; all the logic lives in mem_capped_jobs.
 
-  if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-    mb_per_job="${RUST_MB_PER_JOB:-1200}"
-  else
-    mb_per_job="${RUST_MB_PER_JOB:-2500}"
-  fi
-
-  compute_jobs_with_mem_cap "${requested}" "${mb_per_job}"
+# Generic C/C++ (OpenCV, ONNX, ...). Optional 2nd arg overrides the peak MB.
+# Usage: compute_jobs_with_mem_cap [requested] [mb_per_job]
+compute_jobs_with_mem_cap() {
+  local requested="${1:-}" mb_per_job="${2:-}"
+  _auto_aggressive_parallelism
+  [ -z "${mb_per_job}" ] && mb_per_job="$(_profile_mb generic)"
+  mem_capped_jobs "${mb_per_job}" "${requested}"
 }
 
-# Compute jobs for memory-HEAVY C++ builds (PyTorch/torch_cpu, large LLVM/TU
-# link steps, etc.) whose individual cc1plus translation units peak far above
-# the ~2GB/job the generic default assumes. torch's aten/autograd TUs peak
-# ~4GB/cc1plus; running them at the media default (2GB/job) overcommits RAM and
-# the OOM-killer terminates cc1plus (observed on the riscv64 litert build,
-# 27 jobs x 4GB on a 60GB host, tipped over by concurrent external load).
-# Use this for any build that compiles PyTorch or comparably heavy C++.
+# Rust/Cargo (gst-plugins-rs) -- heavier link steps than generic C++.
+# Usage: compute_rust_jobs [requested]
+compute_rust_jobs() {
+  _auto_aggressive_parallelism
+  mem_capped_jobs "$(_profile_mb rust)" "${1:-}"
+}
+
+# Memory-HEAVY C++ (PyTorch/torch_cpu, large LTO). aten/autograd TUs peak
+# ~4GB/cc1plus; the generic 2GB estimate overcommits and the OOM-killer kills
+# cc1plus (observed: riscv64 litert, 27 jobs x 4GB on a 60GB host). Ignores
+# aggressive mode -- these TUs never get cheaper; more RAM just fits more at once.
 # Usage: compute_cpp_heavy_jobs [requested]
 compute_cpp_heavy_jobs() {
-  local requested="${1:-}"
-  # Aggressive mode still respects a real 4GB floor here -- these TUs do not get
-  # cheaper on a big host; more RAM just means more of them can run at once,
-  # which the avail_mb/mb_per_job cap already accounts for.
-  compute_jobs_with_mem_cap "${requested}" "${CPP_HEAVY_MB_PER_JOB:-4096}"
+  mem_capped_jobs "$(_profile_mb heavy)" "${1:-}"
 }

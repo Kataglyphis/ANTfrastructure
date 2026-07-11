@@ -4,9 +4,11 @@ set -euo pipefail
 ARCH="${1:-$(uname -m)}"
 OLLAMA_VERSION="${OLLAMA_VERSION:-0.30.10}"
 
+# Ollama's release assets are named with Go arch names (amd64/arm64), NOT the
+# uname -m spellings (x86_64/aarch64). Mapping to the wrong name 404s.
 case "$ARCH" in
-    x86_64|amd64)  ARCH_ALT="x86_64" ;;
-    aarch64|arm64)  ARCH_ALT="aarch64" ;;
+    x86_64|amd64)  ARCH_ALT="amd64" ;;
+    aarch64|arm64)  ARCH_ALT="arm64" ;;
     *) echo "Unsupported arch: $ARCH"; exit 1 ;;
 esac
 

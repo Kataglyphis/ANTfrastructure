@@ -75,10 +75,22 @@ echo "Installing Flutter ${FLUTTER_VERSION} for ${ARCH_LABEL}..."
 echo "  Archive: ${ARCHIVE}"
 echo "  Target:  ${FLUTTER_PATH}"
 
-wget -q "${URL}"
-mkdir -p "${INSTALL_DIR}"
-tar xf "${ARCHIVE}" -C "${INSTALL_DIR}"
-rm -f "${ARCHIVE}"
+# download_and_extract (retry-capable, temp-file hygiene) lives in
+# 01-core/downloads.sh; load it directly since this installer runs standalone.
+if ! command -v download_and_extract >/dev/null 2>&1; then
+  for _flutter_dl in \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/downloads.sh" \
+    "/opt/scripts/core/downloads.sh"; do
+    if [ -f "${_flutter_dl}" ]; then
+      # shellcheck disable=SC1090
+      source "${_flutter_dl}"
+      break
+    fi
+  done
+  unset _flutter_dl
+fi
+
+download_and_extract "${URL}" "${INSTALL_DIR}"
 
 # Clean up unnecessary cache artifacts
 rm -rf "${FLUTTER_PATH}/bin/cache"

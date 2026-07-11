@@ -9,14 +9,24 @@ PACKAGING_DEPS_COMMAND="${PACKAGING_DEPS_COMMAND:-all}"
 # common.sh is a hard dependency: it provides download_verified_file,
 # apt_has_package and the logging helpers used throughout this script. Fail
 # early with a clear message instead of dying mid-flight on "command not found".
-if [ ! -f "$SCRIPT_DIR/../01-core/common.sh" ]; then
-    echo "[ERROR] packaging-deps.sh requires $SCRIPT_DIR/../01-core/common.sh (download_verified_file, apt_has_package, logging); not found" >&2
+# Probe the baked container layout (/opt/scripts/core) before the repo layout
+# (../01-core), matching install-deps-preamble.sh — this script is baked into
+# the toolchain image where 01-core lives at /opt/scripts/core, not ../01-core.
+CORE_DIR=""
+for _candidate in "/opt/scripts/core" "$SCRIPT_DIR/../01-core"; do
+    if [ -f "${_candidate}/common.sh" ]; then
+        CORE_DIR="${_candidate}"
+        break
+    fi
+done
+if [ -z "${CORE_DIR}" ]; then
+    echo "[ERROR] packaging-deps.sh requires common.sh (download_verified_file, apt_has_package, logging) in /opt/scripts/core or $SCRIPT_DIR/../01-core; not found" >&2
     exit 1
 fi
 # shellcheck disable=SC1090,SC1091
-source "$SCRIPT_DIR/../01-core/common.sh"
+source "${CORE_DIR}/common.sh"
 # shellcheck disable=SC1090,SC1091
-[ -f "$SCRIPT_DIR/../01-core/package-lists.sh" ] && source "$SCRIPT_DIR/../01-core/package-lists.sh"
+[ -f "${CORE_DIR}/package-lists.sh" ] && source "${CORE_DIR}/package-lists.sh"
 
 # logging.sh (via common.sh) provides info/warn but only the exiting `err`;
 # this script needs a non-exiting error logger for its usage/arg handling.

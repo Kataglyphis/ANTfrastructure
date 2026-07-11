@@ -7,7 +7,7 @@
 # reported but non-fatal (48 files still carry warning-level lint).
 #
 # Usage:
-#   lint-shell.sh                 # check ALL linux/scripts/**/*.sh at -S error
+#   lint-shell.sh                 # check ALL bash under linux/{scripts,llm-stack,webserver} at -S error
 #   lint-shell.sh a.sh b.sh ...   # check only the given files (pre-commit staged mode)
 #   lint-shell.sh --warning ...   # additionally print warning-level findings (non-fatal)
 #
@@ -35,9 +35,14 @@ if ! command -v shellcheck >/dev/null 2>&1; then
   exit 0
 fi
 
-# Default target set: every tracked .sh under linux/scripts.
+# Default target set: every tracked .sh under linux/scripts plus the runtime
+# service scripts (llm-stack, webserver) that ship their own entrypoints.
 if [ "${#FILES[@]}" -eq 0 ]; then
-  mapfile -t FILES < <(find "${REPO_ROOT}/linux/scripts" -name '*.sh' -type f | sort)
+  mapfile -t FILES < <(find \
+    "${REPO_ROOT}/linux/scripts" \
+    "${REPO_ROOT}/linux/llm-stack" \
+    "${REPO_ROOT}/linux/webserver" \
+    -name '*.sh' -type f | sort)
 fi
 
 # Keep only existing .sh files (a staged list may include deletions / non-sh).

@@ -427,12 +427,61 @@ build_ffmpeg() {
 install_ffmpeg() {
     echo "Installing FFmpeg to ${FFMPEG_PREFIX}..."
     cd "${FFMPEG_SRC}"
-    
+
     ensure_sudo_or_die
     ${SUDO_WRAP} make install
 
     # Update ld cache
     ${SUDO_WRAP} ldconfig || true
+}
+
+emit_runtime_apt_manifest() {
+    # Record the EXACT apt packages that provide the external codec .so libraries
+    # this FFmpeg build actually links, so the runtime image can install exactly
+    # them -- no soname guessing (the base is Ubuntu ${UBUNTU_VERSION:-26.04}, whose
+    # versioned package names, e.g. libx264-NNN, we cannot hardcode reliably).
+    #
+    # Why this exists: /opt/ffmpeg is source-built against a broad, PROBE-GATED set
+    # of apt -dev codec libs (see ffmpeg/install-deps.sh). Every enabled codec
+    # becomes a NEEDED .so on libavcodec/ffmpeg; if its runtime package is absent
+    # from the final image, `ffmpeg` dies at load (observed 2026-07-11:
+    # `libopencore-amrwb.so.0: cannot open shared object file`). Prior to this the
+    # runtime lib list was hand-maintained and silently drifted.
+    #
+    # Build and runtime share the same base, so names resolved here are valid there.
+    # objdump reads NEEDED from foreign-arch ELF too, and cross builds keep target
+    # libs under /usr/lib/<triplet>/ where `find` locates them; `dpkg -S` maps the
+    # file to its package and we strip any :arch qualifier. Entirely best-effort --
+    # never fail the ffmpeg build over manifest generation.
+    command -v objdump >/dev/null 2>&1 || { echo "objdump unavailable; skip ffmpeg runtime-apt manifest"; return 0; }
+    command -v dpkg    >/dev/null 2>&1 || { echo "dpkg unavailable; skip ffmpeg runtime-apt manifest"; return 0; }
+
+    local manifest="${FFMPEG_PREFIX}/runtime-apt-packages.txt" tmp
+    tmp="$(mktemp)"
+    {
+        find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
+        find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
+    } | while IFS= read -r _f; do
+        objdump -p "${_f}" 2>/dev/null | awk '/NEEDED/{print $2}'
+    done | sort -u | while IFS= read -r _soname; do
+        local _path _pkg
+        _path="$(find /usr/lib /lib -maxdepth 3 -name "${_soname}" 2>/dev/null | head -1)"
+        [ -n "${_path}" ] || continue
+        case "${_path}" in /opt/*) continue ;; esac   # our own payload, not apt
+        _pkg="$(dpkg -S "${_path}" 2>/dev/null | head -1 | cut -d: -f1)"
+        [ -n "${_pkg}" ] && printf '%s\n' "${_pkg}"
+    done | sort -u > "${tmp}"
+
+    if [ -s "${tmp}" ]; then
+        ${SUDO_WRAP} mkdir -p "${FFMPEG_PREFIX}"
+        ${SUDO_WRAP} cp "${tmp}" "${manifest}"
+        echo "FFmpeg runtime-apt manifest: $(wc -l < "${tmp}") package(s) -> ${manifest}"
+        sed 's/^/  /' "${tmp}"
+    else
+        echo "WARNING: FFmpeg runtime-apt manifest came out EMPTY (objdump/dpkg/find resolution failed?);"
+        echo "         the runtime image will fall back to its hardcoded codec-lib list."
+    fi
+    rm -f "${tmp}"
 }
 
 # ------------------------------------------------------------------------------
@@ -545,6 +594,7 @@ main() {
             if [ "${FORCE_REBUILD:-0}" != "1" ]; then
                 if [ -f "$_ff_stamp" ] && [ "$(cat "$_ff_stamp")" = "${INSTALLED_VERSION}" ]; then
                     echo "Skipping rebuild (set FORCE_REBUILD=1 to force)"
+                    emit_runtime_apt_manifest   # regenerate even on the cache-skip fast-path
                     return 0
                 fi
             fi
@@ -555,6 +605,7 @@ main() {
     configure_ffmpeg
     build_ffmpeg
     install_ffmpeg
+    emit_runtime_apt_manifest
 
     # Only write stamp and run smoke test for native builds
     if [ "${_is_native}" = "1" ]; then
