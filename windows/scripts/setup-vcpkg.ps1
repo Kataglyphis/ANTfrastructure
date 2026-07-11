@@ -3,9 +3,7 @@
 
 param(
     [string]$VcpkgDir = 'C:\vcpkg',
-    # Pinned vcpkg ref (stable release tag). master.zip is non-reproducible, so pin a
-    # dated tag. Override explicitly to move to a newer release.
-    [string]$VcpkgRef = '2024.07.12'
+    [string]$VcpkgRef = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,7 +14,12 @@ if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $
 Import-Module $installerModulePath -Force
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through Installer.Common's re-export.
 
-Write-Host "Setting up vcpkg at $VcpkgDir..."
+# Source canonical version from versions.env (VCPKG_REF; fallback to '2024.07.12').
+if ([string]::IsNullOrWhiteSpace($VcpkgRef)) {
+    $VcpkgRef = if ($env:VCPKG_REF) { $env:VCPKG_REF } else { '2024.07.12' }
+}
+
+Write-Host "Setting up vcpkg ($VcpkgRef) at $VcpkgDir..."
 
 if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
     Write-Host 'Downloading vcpkg (DNS workaround: HTTP download with retries instead of git clone)...'

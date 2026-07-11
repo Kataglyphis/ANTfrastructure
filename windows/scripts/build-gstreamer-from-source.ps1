@@ -243,7 +243,8 @@ try {
     $libffiTarget = Join-Path $subprojDir 'libffi'
     if (-not (Test-Path $libffiTarget)) {
         log 'Force-downloading libffi...'
-        $libffiUrl = 'https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-3.2.9999.4/libffi-meson-3.2.9999.4.tar.bz2'
+        $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
+        $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$libffiVer/libffi-meson-$libffiVer.tar.bz2"
         $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
         & curl.exe -fsSL --retry 3 $libffiUrl -o $libffiTmp 2>$null
         if ($LASTEXITCODE -eq 0 -and (Test-Path $libffiTmp)) {
