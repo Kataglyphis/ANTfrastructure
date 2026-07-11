@@ -47,4 +47,7 @@ if (Test-Path 'C:\runtime\ffmpeg\bin') {
     Write-Host ('import libs in lib\: ' + @(Get-ChildItem 'C:\runtime\ffmpeg\lib\*.lib' -ErrorAction SilentlyContinue).Count)
 }
 
+# Hit/miss counters die with this container -- dump them into the run log now.
+Write-SccacheStats -Label 'media-core'
+
 Write-Host "`n=== media-core chain completed ==="

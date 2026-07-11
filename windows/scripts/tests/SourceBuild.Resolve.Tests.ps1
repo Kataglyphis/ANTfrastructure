@@ -170,3 +170,31 @@ Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {
         }
     }
 }
+
+Describe 'Test-SccacheRemoteConfigured' {
+
+    It 'is false when no backend env var is set' {
+        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = ''; SCCACHE_BUCKET = ''; SCCACHE_REDIS_ENDPOINT = '' } {
+            Assert-False (Test-SccacheRemoteConfigured)
+        }
+    }
+
+    It 'is true when any single backend is set' {
+        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = 'http://cache:8080'; SCCACHE_BUCKET = ''; SCCACHE_REDIS_ENDPOINT = '' } {
+            Assert-True (Test-SccacheRemoteConfigured) 'WebDAV endpoint alone should count'
+        }
+        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = ''; SCCACHE_BUCKET = 'bucket'; SCCACHE_REDIS_ENDPOINT = '' } {
+            Assert-True (Test-SccacheRemoteConfigured) 'S3 bucket alone should count'
+        }
+        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = ''; SCCACHE_BUCKET = ''; SCCACHE_REDIS_ENDPOINT = 'redis://cache' } {
+            Assert-True (Test-SccacheRemoteConfigured) 'redis endpoint alone should count'
+        }
+    }
+
+    It 'Write-SccacheStats is a silent no-op without a remote backend (never spawns a server)' {
+        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = ''; SCCACHE_BUCKET = ''; SCCACHE_REDIS_ENDPOINT = '' } {
+            Write-SccacheStats -Label 'unit'
+            Assert-True $true 'returned without throwing'
+        }
+    }
+}

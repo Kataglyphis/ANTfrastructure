@@ -138,6 +138,9 @@ if ($pythonModule -eq 'ON') {
 
 Remove-SourceBuildTree -Path $SourceDir
 
+# Hit/miss counters die with this container -- dump them into the run log now.
+Write-SccacheStats -Label 'media-tvm'
+
 Write-Host '=== TVM source build completed ==='
 Write-Host "Artifacts at: $tvmInstallDir"
 

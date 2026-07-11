@@ -116,10 +116,7 @@ function Invoke-CmakeConfigure {
     if ($Linker) { $cmakeArgs += "-DCMAKE_LINKER=$Linker" }
     if ($Archiver) { $cmakeArgs += "-DCMAKE_AR=$Archiver" }
 
-    $sccacheRemoteConfigured = -not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT) -or
-        -not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET) -or
-        -not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT)
-    if ($sccacheRemoteConfigured) {
+    if (Test-SccacheRemoteConfigured) {
         $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
         if ($sccacheCmd) {
             if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
@@ -143,6 +140,33 @@ function Invoke-CmakeConfigure {
         throw "CMake configuration failed"
     }
     return $true
+}
+
+function Test-SccacheRemoteConfigured {
+    # True when any sccache remote backend is configured. Shared by the cmake
+    # launcher wiring (Invoke-CmakeConfigure) and the end-of-build stats dump --
+    # without a remote there is no cache, so neither should activate.
+    return (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT)) -or
+        (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET)) -or
+        (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT))
+}
+
+function Write-SccacheStats {
+    # Dump sccache's hit/miss counters into the build log. The counters live in the
+    # sccache server, which dies with the container at the end of a run+commit step,
+    # so this is the only moment the numbers exist -- the host cannot query them
+    # after the run. Tee'd run output lands them in the host-side branch log, where
+    # they answer "is the remote cache actually hitting or are we compiling cold?".
+    # Never fails the build: stats are diagnostics, not a gate.
+    param([string]$Label = 'build')
+    if (-not (Test-SccacheRemoteConfigured)) { return }
+    $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if (-not $sccacheCmd) { return }
+    Write-Host "`n=== sccache stats ($Label) ==="
+    # cmd.exe routing: sccache may write diagnostics to stderr, which PS 5.1 under
+    # EAP=Stop escalates into a terminating NativeCommandError even through 2>&1.
+    cmd.exe /c """$($sccacheCmd.Source)"" --show-stats 2>&1" | ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0) { Write-Host "(sccache --show-stats exited $LASTEXITCODE -- stats unavailable)" }
 }
 
 function Enter-VsDevCmdEnvironment {
@@ -488,6 +512,8 @@ Export-ModuleMember -Function @(
     'Invoke-SourceBuildChain',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
+    'Test-SccacheRemoteConfigured',
+    'Write-SccacheStats',
     'Enter-VsDevCmdEnvironment',
     'Get-VsInstallPath',
     'Get-MsvcToolsRoot',

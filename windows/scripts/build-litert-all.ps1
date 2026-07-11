@@ -32,4 +32,7 @@ $stages = @(
 
 Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir
 
+# Hit/miss counters die with this container -- dump them into the run log now.
+Write-SccacheStats -Label 'media-litert'
+
 Write-Host "`n=== media-litert chain completed ==="
