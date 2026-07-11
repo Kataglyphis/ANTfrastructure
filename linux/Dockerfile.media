@@ -135,9 +135,17 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,read
     esac; \
     apt-get update -qq
 
-# Ensure Python venv exists for downstream stages (OpenCV, LiteRT, ONNX build scripts)
+# Ensure Python venv exists for downstream stages (OpenCV, LiteRT, ONNX build scripts).
+# The base image sets UV_PYTHON=/opt/python/.venv/bin/python — the very venv this
+# step (re)creates. `uv venv --clear` deletes that interpreter first, so uv would
+# have nothing to seed the new venv from ("No interpreter found at path
+# /opt/python/.venv/bin/python"). Seed explicitly from the source-built base
+# CPython (build_python.sh installs it under /usr/local) and drop the inherited
+# UV_PYTHON for the create step so uv can't chase the just-cleared venv.
 RUN set -euo pipefail; \
-    uv venv --clear /opt/python/.venv; \
+    _base_py=/usr/local/bin/python3; \
+    [ -x "${_base_py}" ] || _base_py="$(command -v python3.14 || command -v python3)"; \
+    env -u UV_PYTHON uv venv --clear --python "${_base_py}" /opt/python/.venv; \
     UV_PYTHON="/opt/python/.venv/bin/python" uv pip install \
         --upgrade pip setuptools wheel cython pybind11 numpy
 
