@@ -266,10 +266,28 @@ _chain_run_build_loop() {
   done
 }
 
+_chain_start_resource_monitor() {
+  # Comprehensive, low-overhead system-resource logging for the whole run (best
+  # effort; RESOURCE_MONITOR=0 disables). The monitor self-terminates via
+  # --watch-pid when this orchestrator exits (no trap/cleanup needed here), and
+  # writes resources-<run>.csv + a summary pinpointing peak RAM/disk pressure.
+  [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0
+  local mon="${REPO_ROOT}/linux/scripts/01-core/resource-monitor.sh"
+  [ -x "${mon}" ] || return 0
+  local out="${LOG_DIR:-${REPO_ROOT}}" rid="${CROSS_RUN_ID:-cross}"
+  # Idempotent: skip if a monitor is already sampling this run (e.g. started by
+  # the launcher or a wrapping build-cross-stage.sh).
+  pgrep -f "resource-monitor.sh.*${rid}" >/dev/null 2>&1 && return 0
+  bash "${mon}" --out-dir "${out}" --run-id "${rid}" --stage-log-dir "${out}" \
+    --disk-path "${BUILDKIT_CACHE_DIR:-/}" --watch-pid "$$" </dev/null >/dev/null 2>&1 &
+  log "resource-monitor: sampling -> ${out}/resources-${rid}.csv (RESOURCE_MONITOR=0 to disable)"
+}
+
 main() {
   _chain_parse_args "$@"
   _chain_resolve_final_image
   _chain_validate_stages
+  _chain_start_resource_monitor
   _chain_run_build_loop
 
   log "Cross chain complete."
