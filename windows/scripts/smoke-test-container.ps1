@@ -126,8 +126,7 @@ function Assert-ArtifactPresent {
             Write-Host "  [PASS] $Description ($count found)" -ForegroundColor Green
             $script:passed++
         } else {
-            Write-Host "  [SKIP] $Description (none found -- optional)" -ForegroundColor Yellow
-            $script:skipped++
+            Skip-Test "$Description (none found -- optional)"
         }
         return
     }

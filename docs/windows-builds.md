@@ -46,10 +46,10 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.3.3, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
 - `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.23 + TensorRT 11.1.0.106 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build.ps1` handles this automatically via its `-Gpu` switch.
 - The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `build-toolchain-all.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
-- The **media stage fans out into three branch images** by `windows/build.ps1` — **sequentially by default** (media-core alone gets the whole RAM budget, maximizing ONNX parallelism; `-ConcurrentMedia` overlaps the aux branches instead), then fans in:
-  - **media-core** (built via `Dockerfile.media-core-builder` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.14.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `master` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
-  - `windows/Dockerfile.media-litert` — LiteRT 2.1.6 → LiteRT-LM 0.13.1 (independent of ONNX).
-  - `windows/Dockerfile.media-tvm` — TVM 0.25.0 (independent; installs its Python wheel into the source-built CPython).
+- The **media stage fans out into three branch images** by `windows/build.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
+  - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.14.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `master` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
+  - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 → LiteRT-LM 0.13.1 (independent of ONNX).
+  - **media-tvm** (`--target media-tvm` + `build-tvm-from-source.ps1`) — TVM 0.25.0 (independent; installs its Python wheel into the source-built CPython).
   - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, then GStreamer 1.29.2 built via `build-gstreamer-from-source.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
 - `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).
 
@@ -145,7 +145,7 @@ not add `--isolation process` to any `docker build`.**
 --isolation hyperv --cpu-count 16` → `NUMBER_OF_PROCESSORS=16`), and a Hyper-V
 container commits fine via `docker commit`. So `build.ps1` builds media-core as:
 
-1. `docker build` a thin **builder image** (`Dockerfile.media-core-builder`) —
+1. `docker build` a thin **builder image** (`Dockerfile.media-builder --target media-core`) —
    toolchain + all media-core scripts/patches, no heavy RUN, so its cheap COPY
    layers commit fine under Hyper-V.
 2. `docker run --isolation hyperv --cpu-count $MediaCoreCpus --memory
@@ -160,7 +160,7 @@ container commits fine via `docker commit`. So `build.ps1` builds media-core as:
 `Invoke-MediaBranchRunCommit` in `build.ps1` implements this via the generic
 `Invoke-RunCommitStage` helper; tune it with `-MediaCoreCpus` (default: the host's
 logical processor count, `[Environment]::ProcessorCount`) and `-MediaMemoryGb`
-(default 48).
+(default 0 = auto-detect from host RAM minus `-HostReserveGb`).
 
 **Which stages use run+commit.** The same `Invoke-RunCommitStage` path is used for
 every **CPU-bound** stage, so they all build at `-MediaCoreCpus` cores instead of
@@ -169,9 +169,9 @@ the 2-CPU `docker build` cap:
 | Stage | Builder Dockerfile | Run step (the heavy compile) |
 |-------|--------------------|------------------------------|
 | toolchain | `Dockerfile.toolchain-builder` (clones CPython + writes props) | `build-toolchain-all.ps1` (`PCbuild\build.bat`) |
-| media-core | `Dockerfile.media-core-builder` | `build-media-core-all.ps1` (ONNX→GenAI→OpenCV→FFmpeg) |
-| media-litert (sequential only) | `Dockerfile.media-litert-builder` | `build-litert-all.ps1` (LiteRT→LiteRT-LM) |
-| media-tvm (sequential only) | `Dockerfile.media-tvm-builder` | `build-tvm-from-source.ps1` |
+| media-core | `Dockerfile.media-builder --target media-core` | `build-media-core-all.ps1` (ONNX→GenAI→OpenCV→FFmpeg) |
+| media-litert | `Dockerfile.media-builder --target media-litert` | `build-litert-all.ps1` (LiteRT→LiteRT-LM) |
+| media-tvm | `Dockerfile.media-builder --target media-tvm` | `build-tvm-from-source.ps1` |
 | media merge | `Dockerfile.media-merge-builder` (fan-in `COPY --from` + env) | `build-gstreamer-from-source.ps1` |
 
 The **merge stage splits**: the fan-in (`COPY --from` of the three branch trees)
@@ -180,15 +180,11 @@ IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
 `docker commit` preserves the builder image's ENV, so each result image is a
 drop-in replacement for the old single-Dockerfile output.
 
-In the default **sequential** schedule the `litert`/`tvm` aux branches **also**
-run+commit at `-MediaCoreCpus` cores (via `Dockerfile.media-litert-builder` /
-`Dockerfile.media-tvm-builder`): media-core is already committed when they run, so the
-whole CPU/RAM budget is free — jobs jump from `~j2` (2 CPU / `AuxMemoryGb` 8 g) to
-`~j19` (32 CPU / `-MediaMemoryGb` 39 g, still memory-bound per the note below). Under
-**`-ConcurrentMedia`** they instead stay ordinary 2-CPU `docker build`s and run
-*underneath* media-core — giving them big RAM/cores there would oversubscribe the host
-and starve the media-core long pole (see the reserve note below). `base`/`sdk` are the
-only stages that never exceed 2 CPUs — they're network/install-bound (no benefit from more).
+The `litert`/`tvm` aux branches **also** run+commit at `-MediaCoreCpus` cores (via
+their `Dockerfile.media-builder` targets): media-core is already committed when they
+run, so the whole CPU/RAM budget is free — e.g. `~j19` at 32 CPU / 39 g on this host
+(still memory-bound per the note below). `base`/`sdk` are the only stages that never
+exceed 2 CPUs — they're network/install-bound (no benefit from more).
 
 > **NOTE — parallelism is memory-bound, not core-bound.** `Get-BuildJobCount =
 > min(cpu-count, MEMORY_LIMIT_GB / per-job-GB)`. ONNX is ~4 GB/job, so at 48 GB it
@@ -322,36 +318,30 @@ re-introduce rustup.
 
 ### Media fan-out and memory budgeting
 
-**Media scheduling is sequential by default** (media branch logs land in
-`out\windows-build-logs\*.err.log`). Sequential gives media-core the *whole* host
+**Media scheduling is sequential** (media branch logs land in
+`out\windows-build-logs\media-core.log` / `media-litert.log` / `media-tvm.log`,
+plus `gstreamer.log` for the merge). Sequential gives media-core the *whole* host
 RAM budget — and since its parallelism is memory-bound, more RAM = more ONNX jobs,
-which matters more than overlapping the small aux branches. Pass `-ConcurrentMedia`
-to overlap the litert/tvm aux branches underneath media-core instead.
+which matters more than overlapping the small aux branches (a former
+`-ConcurrentMedia` overlap mode was removed for exactly that reason).
 
 **`-MediaMemoryGb` auto-detects from host RAM** (default `0` = auto). It resolves
-to `usable_physical_GB − HostReserveGb` in sequential mode, or
-`usable_physical_GB − HostReserveGb − 2*AuxMemoryGb` in concurrent mode (leaving
-room for the two aux branches). `-HostReserveGb` (default 8) is the RAM left for
-Windows + dockerd + Defender; lower it to push closer to the metal (riskier —
-under memory pressure the hcsshim `ttrpc` wedge is more likely). Pass an explicit
-`-MediaMemoryGb N` to override auto-detection. The cap is forwarded as
-`MEMORY_LIMIT_GB` so the build scripts scale their job count to the container's cap
-(`BUILD_JOBS` overrides the heuristic outright).
+to `usable_physical_GB − HostReserveGb`. `-HostReserveGb` (default 22 — see the
+learned-the-hard-way note below) is the RAM left for Windows + dockerd + Defender;
+lower it to push closer to the metal (riskier — under memory pressure the hcsshim
+`ttrpc` wedge is more likely). Pass an explicit `-MediaMemoryGb N` to override
+auto-detection. The cap is forwarded as `MEMORY_LIMIT_GB` so the build scripts
+scale their job count to the container's cap (`BUILD_JOBS` overrides the heuristic
+outright).
 
 Worked example (this 64 GB host, Windows reports 61.4 GB usable → floor 61,
-default `-HostReserveGb 22`):
-
-| Mode | Auto `-MediaMemoryGb` | ONNX jobs (`mem/4`, cores=32) |
-|------|----------------------|-------------------------------|
-| sequential (default) | `61 − 22` = **39 g** | **j10** |
-| `-ConcurrentMedia` | `61 − 22 − 16` = **23 g** | j5 |
+default `-HostReserveGb 22`): auto `-MediaMemoryGb` = `61 − 22` = **39 g** →
+ONNX runs `~j10` (`mem/4`, cores=32).
 
 media-core, toolchain, and the merge/GStreamer stage all build via the run+commit
-path (see § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs. In the
-default sequential schedule the litert/tvm aux branches run+commit at `-MediaCoreCpus`
-too (the full budget is free once media-core has committed); only under
-`-ConcurrentMedia` do they fall back to ordinary 2-CPU `docker build`s, to avoid
-starving the concurrent media-core long pole.
+path (see § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs. The
+litert/tvm aux branches run+commit at `-MediaCoreCpus` too — the full budget is
+free once media-core has committed.
 
 > **Why the reserve is 22 GB, not ~8 (learned the hard way).** An earlier default
 > of `-HostReserveGb 8` auto-sized media-core to **53 GB**, which **hung the build**:
