@@ -434,13 +434,22 @@ def dockerfile_target_files() -> list[Path]:
         p = REPO_ROOT / f"linux/Dockerfile.{name}"
         if p.exists():
             result.append(p)
+    # Windows Dockerfiles carry the same versions.env-named ARG defaults (build.ps1
+    # overrides them with --build-arg, but the defaults must not drift). ARGs whose
+    # names are not versions.env keys (BASE_IMAGE, CUDA_VERSION_MAJOR_MINOR,
+    # OPENCV_SOURCE_VERSION, ...) are untouched by name-matching.
+    result.extend(sorted(REPO_ROOT.glob("windows/Dockerfile*")))
     return result
 
 
 def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
     """Return True if file needs updating (or was updated when not dry_run)."""
     version_vars = set(versions.keys())
-    original = file_path.read_text(encoding="utf-8")
+    # newline='' preserves each line's own terminator through the round-trip: the repo
+    # freezes per-file line endings (-text; windows Dockerfiles are CRLF, linux LF), so
+    # universal-newline translation here would rewrite whole files to the host's EOL.
+    with open(file_path, encoding="utf-8", newline="") as fh:
+        original = fh.read()
     lines = original.splitlines(keepends=True)
     changed = False
     for i, line in enumerate(lines):
@@ -451,6 +460,11 @@ def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry
         if var_name not in version_vars:
             continue
         env_val = versions[var_name]
+        # versions.env values may carry surrounding quotes (e.g. CUDA_ARCHITECTURES);
+        # strip them so the quote style below comes from the ARG line alone --
+        # otherwise a quoted env value re-quotes on every run (never idempotent).
+        if len(env_val) >= 2 and env_val[0] == env_val[-1] and env_val[0] in "\"'":
+            env_val = env_val[1:-1]
         old_raw = m.group(3)
         if old_raw.startswith('"') and old_raw.endswith('"'):
             formatted = f'"{env_val}"'
@@ -461,10 +475,12 @@ def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry
         if old_raw == formatted:
             continue
         if not dry_run:
-            lines[i] = f"{m.group(1)}{var_name}={formatted}\n"
+            eol = "\r\n" if line.endswith("\r\n") else ("\n" if line.endswith("\n") else "")
+            lines[i] = f"{m.group(1)}{var_name}={formatted}{eol}"
         changed = True
     if not dry_run and changed:
-        file_path.write_text(''.join(lines), encoding="utf-8")
+        with open(file_path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(''.join(lines))
     return changed
 
 
@@ -494,6 +510,88 @@ def write_dockerfile_args(versions: dict[str, str]) -> int:
             print(f"- {p}")
     else:
         print("Dockerfile ARG defaults already match versions.env.")
+    return 0
+
+
+# -- Windows build-script -DefaultValue syncing ------------------------------
+# The build-*-from-source.ps1 scripts carry a hardcoded fallback version in
+# Get-SourceBuildVersion's -DefaultValue (a third copy of the pin, after
+# versions.env and the Dockerfile ARG default). Normally the container env
+# provides the value and the fallback is dead — which is exactly why it drifts
+# silently. Keep it honest the same way as the ARG defaults.
+
+_SCRIPT_DEFAULT_RE = re.compile(r"-DefaultValue '([^']*)'")
+_SCRIPT_ENVVARS_RE = re.compile(r"-EnvironmentVariables @\(([^)]*)\)")
+
+
+def script_default_target_files() -> list[Path]:
+    return sorted(REPO_ROOT.glob("windows/scripts/build-*-from-source.ps1"))
+
+
+def _update_script_defaults_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
+    """Return True if file needs updating (or was updated when not dry_run)."""
+    # newline='' round-trips each line's own terminator (frozen per-file EOLs).
+    with open(file_path, encoding="utf-8", newline="") as fh:
+        original = fh.read()
+    lines = original.splitlines(keepends=True)
+    changed = False
+    for i, line in enumerate(lines):
+        if "Get-SourceBuildVersion" not in line:
+            continue
+        m_def = _SCRIPT_DEFAULT_RE.search(line)
+        m_env = _SCRIPT_ENVVARS_RE.search(line)
+        if not m_def or not m_env:
+            continue
+        env_names = re.findall(r"'([^']+)'", m_env.group(1))
+        # The first listed env var that versions.env defines is the canonical pin
+        # (e.g. OpenCV lists OPENCV_SOURCE_VERSION first but versions.env's key is
+        # OPENCV_VERSION).
+        key = next((n for n in env_names if n in versions), None)
+        if key is None:
+            continue
+        expected = versions[key]
+        if len(expected) >= 2 and expected[0] == expected[-1] and expected[0] in "\"'":
+            expected = expected[1:-1]
+        # Mirror Get-SourceBuildVersion's -StripVPrefix (-replace '^v', '').
+        if "-StripVPrefix" in line and expected.startswith("v"):
+            expected = expected[1:]
+        if m_def.group(1) == expected:
+            continue
+        if not dry_run:
+            lines[i] = line[: m_def.start(1)] + expected + line[m_def.end(1):]
+        changed = True
+    if not dry_run and changed:
+        with open(file_path, "w", encoding="utf-8", newline="") as fh:
+            fh.write("".join(lines))
+    return changed
+
+
+def check_script_defaults(versions: dict[str, str]) -> int:
+    stale = []
+    for path in script_default_target_files():
+        if _update_script_defaults_inner(path, versions, dry_run=True):
+            stale.append(str(path.relative_to(REPO_ROOT)))
+    if stale:
+        print("Windows build-script -DefaultValue pins are stale:", file=sys.stderr)
+        for p in stale:
+            print(f"- {p}", file=sys.stderr)
+        print("Run: python3 docs/scripts/sync_versions.py --write", file=sys.stderr)
+        return 1
+    print("Windows build-script -DefaultValue pins match versions.env.")
+    return 0
+
+
+def write_script_defaults(versions: dict[str, str]) -> int:
+    changed = []
+    for path in script_default_target_files():
+        if _update_script_defaults_inner(path, versions, dry_run=False):
+            changed.append(str(path.relative_to(REPO_ROOT)))
+    if changed:
+        print("Synced Windows build-script -DefaultValue pins in:")
+        for p in changed:
+            print(f"- {p}")
+    else:
+        print("Windows build-script -DefaultValue pins already match versions.env.")
     return 0
 
 
@@ -564,6 +662,7 @@ def main() -> int:
         result |= check_inline_markers(versions)
         result |= check_deps_table(versions)
         result |= check_dockerfile_args(versions)
+        result |= check_script_defaults(versions)
         # Also check website license files.
         import subprocess
         lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
@@ -577,6 +676,7 @@ def main() -> int:
     result |= write_inline_markers(versions)
     result |= write_deps_table(versions)
     result |= write_dockerfile_args(versions)
+    result |= write_script_defaults(versions)
     # Auto-regenerate website license files so they never go stale.
     import subprocess
     lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
