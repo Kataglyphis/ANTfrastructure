@@ -13,17 +13,18 @@ counter-intuitive, and how to tune it *safely* with data.
 
 ## TL;DR — the one rule
 
-Every memory-capped stage obeys this invariant:
+Every memory-capped stage obeys **one** formula:
 
 ```
-concurrent_jobs  ×  PEAK_per-TU_RAM  ≤  usable_RAM
+jobs = min( cores ,  usable_RAM / BUILD_MEM_DIVISOR / PEAK_per-TU_RAM )
 ```
 
-The config knob is `mb_per_job`, which **is** `PEAK_per-TU_RAM`. The scheduler
-then runs `jobs = min(cores, usable_RAM / mb_per_job)`.
+The config knob is `mb_per_job`, which **is** `PEAK_per-TU_RAM`.
 
 - Lowering `mb_per_job` **raises** `jobs` → faster **only if** RAM allows it.
 - If `jobs × PEAK` exceeds RAM, `cc1plus` gets **OOM-killed** and the build dies.
+- `BUILD_MEM_DIVISOR` (default 1) is the **only** concurrency knob: set it to the
+  number of builds sharing the host RAM at once (see *Max speed* below).
 
 **Tune against the PEAK per-TU footprint, never the average.** See the trap below.
 
@@ -31,17 +32,24 @@ then runs `jobs = min(cores, usable_RAM / mb_per_job)`.
 
 ## The helpers (`linux/scripts/01-core/parallelism.sh`)
 
-| Helper | Used for | `mb_per_job` (normal) | `mb_per_job` (aggressive) |
+All logic lives in **one** core function; the named helpers just pick a profile:
+
+```
+mem_capped_jobs <peak_mb> [requested]        # the core: jobs = min(cores, usable/peak)
+```
+
+| Named wrapper | Profile / used for | peak (normal) | peak (aggressive) |
 |---|---|---|---|
 | `compute_jobs` | pure CPU-bound, no mem cap | — (just `cores`) | — |
-| `compute_jobs_with_mem_cap` | generic C/C++ (OpenCV, ONNX, …) | `DEFAULT_MB_PER_JOB:-2000` | `DEFAULT_MB_PER_JOB:-800` |
-| `compute_rust_jobs` | Rust / Cargo (gst-plugins-rs) | `RUST_MB_PER_JOB:-2500` | `RUST_MB_PER_JOB:-1200` |
-| `compute_cpp_heavy_jobs` | **PyTorch / torch_cpu / heavy LTO** | `CPP_HEAVY_MB_PER_JOB:-4096` | `4096` (floor kept) |
+| `compute_jobs_with_mem_cap` | `generic` — C/C++ (OpenCV, ONNX, …) | `DEFAULT_MB_PER_JOB:-2000` | `DEFAULT_MB_PER_JOB:-800` |
+| `compute_rust_jobs` | `rust` — Cargo (gst-plugins-rs) | `RUST_MB_PER_JOB:-2500` | `RUST_MB_PER_JOB:-1200` |
+| `compute_cpp_heavy_jobs` | `heavy` — **PyTorch / torch_cpu / LTO** | `CPP_HEAVY_MB_PER_JOB:-4096` | `4096` (floor kept) |
 
-Job count = `min(cores, usable_RAM / mb_per_job)`, where:
+Peak values come from `_profile_mb <profile>`; the wrappers are one-liners over
+`mem_capped_jobs`. Where:
 - `cores` = `detect_available_cores()` (respects cgroup CPU quota).
-- `usable_RAM` = `_mem_available_mb()` = `MemAvailable` from `/proc/meminfo`,
-  or the cgroup memory limit remaining, **whichever is smaller**.
+- `usable_RAM` = `_usable_mem_mb()` = `_mem_available_mb()` (`MemAvailable`, or the
+  cgroup memory limit remaining — smaller wins) **divided by `BUILD_MEM_DIVISOR`**.
 
 Each workload gets a *different* estimate because its **peak translation unit**
 is different — torch's `aten/autograd` TUs peak ~4 GB per `cc1plus`, while a
@@ -66,9 +74,49 @@ already grants automatically.
 |---|---|
 | `PARALLEL_JOBS=N` | Hard override — bypasses all auto-detection for every helper. |
 | `AGGRESSIVE_PARALLELISM=true\|false` | Force aggressive on/off (auto ≥16 GB). |
+| `BUILD_MEM_DIVISOR=N` | Divide usable RAM by N. Set = #concurrent builds. **See *Max speed*.** |
 | `DEFAULT_MB_PER_JOB` | Per-job estimate for generic C/C++. |
 | `RUST_MB_PER_JOB` | Per-job estimate for Rust. |
 | `CPP_HEAVY_MB_PER_JOB` | Per-job estimate for torch/heavy C++. **See warning.** |
+
+---
+
+## 🚀 Max speed — the real lever is `--parallel-archs`, not the per-job numbers
+
+On any ≥16 GB host the per-job math is **already optimal**: generic and rust run
+at **full core count** (aggressive mode), and torch is **RAM-bound** at 4 GB/TU
+(can't go faster without more RAM — see below). There is **no idle throughput**
+to reclaim by tuning `*_MB_PER_JOB` for a *single* build.
+
+The wall-clock win is at the **orchestration** layer. `build-cross-chain.sh`
+builds the three arches of each per-arch stage (sdk / media / android)
+**sequentially** by default. `--parallel-archs` runs them **concurrently** —
+close to a **3× speedup** on those stages.
+
+**The catch it used to have:** each per-arch build runs its own
+`parallelism.sh`, which reads the *full* host RAM. Three concurrent torch builds
+would each launch `RAM/4096` jobs → **3× overcommit → OOM at hour six.**
+
+**The fix (now built in):** `BUILD_MEM_DIVISOR`. When the orchestrator runs N
+arches in parallel it passes `BUILD_MEM_DIVISOR=N` into each build; every helper
+then sizes against `usable_RAM / N`, so the **sum** of all N builds' jobs still
+fits one host. Sequential builds pass nothing (divisor 1) → unchanged.
+
+```
+# 62 GB host, 3 arches in parallel:
+#   without divisor:  3 × (62000/4096)=15 jobs × 4 GB = 184 GB  → OOM
+#   with DIVISOR=3:   3 × (20666/4096)= 5 jobs × 4 GB =  61 GB  → fits
+```
+
+Because a container can't know how many siblings share the host, the divisor
+**must be injected** — it is the one number auto-detection can't supply. Wiring:
+the orchestrator computes `min(--max-parallel-archs, #arches)` and forwards it as
+a build-arg → `ENV BUILD_MEM_DIVISOR` in each heavy Dockerfile.
+
+> **Before the first `--parallel-archs` run**, validate the divisor actually
+> reaches the container (grep a build log for the job count on a *cheap* stage),
+> and watch `dmesg | grep -i oom`. Trading 3× disk + bandwidth too — the parallel
+> arches all push large images at once.
 
 ---
 
