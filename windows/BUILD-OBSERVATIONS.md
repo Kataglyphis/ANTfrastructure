@@ -37,3 +37,12 @@
 
 ## Rebuild outcome — T3 (2026-07-10, `rebuild-t3-final.log`)
 Validates the T3 patch work (#29 DirectML→`.patch`, #30 patch fixes, #25 litert `Edit-SourceFile` migration). `build.ps1 -Gpu -Stages media,final` finished in **02:36:51** (baseline 02:35:09 — no regression), final image tagged, smoke **104/0/1** (identical). In-build confirmations: `[OK] 001/002/003 applied via git` (zero inline fallbacks — cuda-pch ERROR dump gone), all 13 migrated `Edit-SourceFile` blocks logged `Patched` with **zero no-ops/fallbacks**, `litert_lm_main.exe` linked + smoke-ran OK + committed. Items #1 and #2 above both RESOLVED — no open items remain.
+
+## Rebuild outcome — post-cleanup (2026-07-10/11, `rebuild-postcleanup.log`)
+First rebuild after the code-health pass (commits `8fc1f8c` docs refresh, `5be9b1e` dead-code/CI-fix/gstreamer, `43463bb` litert-lm `#region` markers — plus the earlier `8460c38` #33–36 fixes). `build.ps1 -Gpu -Stages media,final` finished **exit 0** in **~2h18m** (media-core ONNX RT 20:53:26 → final tag 23:11:38; **faster** than the 02:35 baseline — Stevedore updated to **29.6.1** + warm base/toolchain caches). **0 failures across the entire log** (no `does not apply`, no `LNK1xxx`/unresolved, no `error Cxxxx`, no exceptions, no drift-assertion throw). In-build confirmations:
+- **#33 yvals patch:** `Patched MSVC yvals_core.h for clang compat (…MSVC\14.51.36231\…)` applied cleanly; the new drift-assertion stayed **quiet** (no "patch target did not match"); the removed `<experimental/coroutine>` edit is gone and only the pre-existing `-D_SILENCE_CLANG_COROUTINE_MESSAGE` flag remains. GenAI built with `USE_DML=ON`+`USE_CUDA=ON`; `DirectML.dll` staged (DML patch `003` intact).
+- **#43 gstreamer download:** `Downloading GStreamer source tarball …1.29.2.tar.gz` via `Invoke-DownloadWithRetry` (23:00:24) → extracted `gstreamer 1.29.2` (23:06:23) → merge committed. The one functional change, validated.
+- **#39 doc fix:** log shows LiteRT **`vv2.1.6`** (matches the corrected docs).
+- **#45 litert-lm `#region` markers:** media-litert built LiteRT-LM v0.13.1 + linked `litert_lm_main.exe` unchanged (comment-only, as designed).
+
+Smoke test (process isolation, `smoke-postcleanup.log`): **104 passed / 0 failed / 1 skipped** — **identical** to the pre-cleanup baseline (the 1 skip = GPU/CUDA, passthrough blocked on this 26200 host). Final image `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` 49.4 GB tagged. Cleanup confirmed behaviour-preserving end-to-end.
