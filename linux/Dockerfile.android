@@ -52,6 +52,10 @@ ENV ANDROID_HOME=/opt/android-sdk \
 
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
 COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
+# downloads.sh (retry-capable download_file/download_and_extract) is consumed by
+# android-sdk.sh here and by the gstreamer android build in downstream stages;
+# all android-* stages FROM android-sdk, so this one COPY covers them.
+COPY --chmod=755 linux/scripts/01-core/downloads.sh /opt/scripts/core/downloads.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \

@@ -6,7 +6,13 @@ Designed for integration with Nextcloud Assistant.
 ## Quick start
 
 ```bash
-# Pull images and start all services (auto-pulls gemma4:26b on first start)
+# 1. Set the required Open WebUI secret (compose refuses to start without it).
+#    The .env must sit next to the compose file so compose picks it up.
+cp linux/llm-stack/.env.example linux/llm-stack/.env
+# then edit linux/llm-stack/.env and set WEBUI_SECRET_KEY, e.g.:
+#    printf 'WEBUI_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" > linux/llm-stack/.env
+
+# 2. Pull images and start all services (auto-pulls gemma4:26b on first start)
 nerdctl compose -f linux/llm-stack/docker-compose.yml pull
 nerdctl compose -f linux/llm-stack/docker-compose.yml up -d
 ```
@@ -76,7 +82,10 @@ nerdctl run -d --name llm-stack -p 11434:8080 \
 ## Architecture notes
 
 - Standalone subproject (not part of the cross-build chain)
-- Uses the official `ollama/ollama` image — no custom Dockerfile
+- The compose stack pulls the official `ollama/ollama` image. A separate custom
+  `Dockerfile` + `scripts/download-ollama.sh` also exist for an offline / pre-baked
+  binary lane (bake the tarball with `bash linux/llm-stack/scripts/download-ollama.sh`,
+  then `nerdctl build linux/llm-stack`); compose does **not** use that image.
 - Model auto-pulled on container startup via compose `command` override
 - Multi-arch: amd64, arm64 (riscv64 unsupported — Ollama does not ship riscv64 binaries)
 - CPU-only inference (no GPU required)

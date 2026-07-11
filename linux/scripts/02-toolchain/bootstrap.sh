@@ -7,8 +7,8 @@ source_toolchain_common_or_fallback() {
 
   for candidate in \
     "${script_dir}/common.sh" \
-    "${script_dir}/../01-core/common.sh" \
-    "/opt/scripts/core/common.sh"; do
+    "/opt/scripts/core/common.sh" \
+    "${script_dir}/../01-core/common.sh"; do
     [ -f "${candidate}" ] || continue
     # shellcheck disable=SC1090
     source "${candidate}"

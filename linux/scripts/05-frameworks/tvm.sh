@@ -21,15 +21,7 @@ source_module llvm.sh
 source_module gcc.sh
 source_module vulkan.sh
 
-for helper in \
-  "/opt/scripts/core/cross-env.sh" \
-  "${SCRIPT_DIR}/../01-core/cross-env.sh"; do
-  if [ -f "${helper}" ]; then
-    # shellcheck disable=SC1090
-    source "${helper}"
-    break
-  fi
-done
+source_module cross-env.sh
 
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/tvm-detect.sh"

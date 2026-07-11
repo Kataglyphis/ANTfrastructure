@@ -77,7 +77,7 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 
 ## Build the Full Cross Chain Locally
 
-Build logs are written to `out/build-logs/` by passing `--log-dir` to the orchestrator scripts.
+Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh`; for the other orchestrators, pipe output through `2>&1 | tee ./out/build-logs/<name>.log`.
 See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
 
 ## Reinstall QEMU/binfmt After a Host Reboot

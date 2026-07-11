@@ -1,8 +1,11 @@
 # Build
 
 ```bash
-sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
+sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile linux
 ```
+
+The build context must be `linux` (not the repo root): the Dockerfile `COPY`s
+context-relative `./webserver/...` paths, which only resolve under `linux/`.
 
 `linux/webserver/Dockerfile` does not currently expose the fast Ubuntu mirror build flag used by the main Linux image chain.
 
@@ -10,7 +13,7 @@ sudo nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile
 ```bash
 sudo nerdctl run -d --name kataglyphis-webserver \
   -p 8080:80 \
-  -p 8443:8443 \
+  -p 8443:443 \
   -v "$(pwd)/linux/webserver/dist:/var/www/html" \
   -v "$(pwd)/linux/webserver/nginx.conf:/etc/nginx/nginx.conf:ro" \
   kataglyphis-webserver:latest

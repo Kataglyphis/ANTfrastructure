@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ARCHIVED — unmaintained, kept for historical reference only.
+# Superseded by linux/scripts/02-toolchain/setup-dependencies.sh (the modular
+# toolchain installer). Nothing in the repo references this file; do not wire
+# it into builds or CI.
 
 # --- make apt non-interactive and robust for docker builds -------------------
 export DEBIAN_FRONTEND=noninteractive

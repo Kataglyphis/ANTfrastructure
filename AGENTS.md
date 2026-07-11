@@ -28,7 +28,7 @@ The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`,
 
 ## Quick Reference
 
-Build logs are written to `out/build-logs/` by passing `--log-dir` to the orchestrator scripts, or by piping manual `nerdctl build` output through `2>&1 | tee ./out/build-logs/<name>.log`.
+Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`.
 
 Most common build commands:
 
@@ -37,10 +37,10 @@ Most common build commands:
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Compiler image only (amd64-hosted, contains cross toolchains for all arches)
-./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --log-dir ./out/build-logs
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
 
 # Compiler with custom image repo (matches --image-repo on the orchestrator)
-./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push --log-dir ./out/build-logs
+./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push
 
 # Single cross stage — the canonical way to rebuild one stage for one arch.
 # Handles parent digest pinning, build-arg assembly, log capture, and push.
@@ -163,20 +163,17 @@ bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
   --target-arches amd64,arm64,riscv64 \
   --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
-  --push \
-  --log-dir ./out/build-logs
+  --push
 
 # Build local artifacts only (no push)
 bash linux/scripts/build-runtime-artifacts.sh \
   --image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 \
-  --log-dir ./out/build-logs
+  --target-arches amd64,arm64,riscv64
 
 # Dry-run: print what would be built without executing
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --dry-run \
-  --log-dir ./out/build-logs
+  --target-arches amd64,arm64,riscv64 --dry-run
 
 # Manifest repair (rebuild manifest from existing per-arch wrappers)
 nerdctl manifest rm "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" >/dev/null 2>&1 || true
@@ -189,14 +186,12 @@ nerdctl manifest push --purge "ghcr.io/kataglyphis/kataglyphis_beschleuniger:lat
 # Or use the helper: rebuild just the manifest (no image rebuilds)
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest \
-  --log-dir ./out/build-logs
+  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest
 
 # Shorthand: --repair is an alias for --manifest-only
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --repair --push-manifest \
-  --log-dir ./out/build-logs
+  --target-arches amd64,arm64,riscv64 --repair --push-manifest
 ```
 
 ---
