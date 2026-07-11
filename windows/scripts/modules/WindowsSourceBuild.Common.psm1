@@ -261,6 +261,21 @@ function Initialize-SourceBuildEnvironment {
     return $InstallDir
 }
 
+function Initialize-SourceBuildScript {
+    # Standard preamble for the build-*-from-source.ps1 scripts: resolve the install
+    # prefix (default C:\runtime) and load canonical versions.env values into the
+    # process environment (so Get-SourceBuildVersion sees them). Returns the resolved
+    # InstallDir. Scripts with work between the two steps (build-gstreamer's logging
+    # setup) call the underlying functions directly instead.
+    param(
+        [string]$InstallDir = '',
+        [string]$ScriptRoot = ''
+    )
+    $resolved = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
+    Import-CanonicalVersions -ScriptRoot $ScriptRoot
+    return $resolved
+}
+
 function Get-WindowsX86SimdFlags {
     return '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
 }
@@ -479,129 +494,6 @@ function Invoke-SourceBuildChain {
     }
 }
 
-function Invoke-OnnxDmlClangClPatch {
-    param([Parameter(Mandatory)][string]$SourceDir)
-
-    $dmlHelpers  = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\External\DirectMLHelpers"
-    $dmlAbstract = Join-Path $dmlHelpers 'AbstractOperatorDesc.h'
-    $dmlTypes    = Join-Path $dmlHelpers 'GeneratedSchemaTypes.h'
-    if ((Test-Path $dmlAbstract) -and (Test-Path $dmlTypes)) {
-        $abs = [System.IO.File]::ReadAllText($dmlAbstract)
-        if ($abs -notmatch '\[clang-cl DML fix\]') {
-            $ctorRx = 'AbstractOperatorDesc\(\) = default;\r?\n\s*AbstractOperatorDesc\(const DML_OPERATOR_SCHEMA\* schema, std::vector<OperatorField>&& fields\)\r?\n\s*: schema\(schema\)\r?\n\s*, fields\(std::move\(fields\)\)\r?\n\s*\{\}'
-            $accessorRx = '(?s)(std::vector<[^\r\n]+?> Get(?:Input|Output)Tensors\(\)(?: const)?)\r?\n\s*\{\r?\n\s*return GetTensors<[^\r\n]+?>\(\);\r?\n\s*\}'
-            $getTensorsRx = '(?s)template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>\r?\n\s*std::vector<TensorType\*> GetTensors\(\) const\r?\n\s*\{.*?return tensors;\r?\n\s*\}'
-            $ctorHit = [regex]::IsMatch($abs, $ctorRx)
-            $accHit  = ([regex]::Matches($abs, $accessorRx)).Count
-            $gtHit   = ([regex]::Matches($abs, $getTensorsRx)).Count
-            if ($ctorHit -and $accHit -eq 4 -and $gtHit -eq 1) {
-                $ctorDecls = @'
-AbstractOperatorDesc();
-    AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields);
-    AbstractOperatorDesc(const AbstractOperatorDesc&);
-    AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept;
-    AbstractOperatorDesc& operator=(const AbstractOperatorDesc&);
-    AbstractOperatorDesc& operator=(AbstractOperatorDesc&&) noexcept;
-    ~AbstractOperatorDesc();
-'@
-                $gtDecl = @'
-template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
-    std::vector<TensorType*> GetTensors() const;
-'@
-                $abs = [regex]::Replace($abs, $ctorRx, $ctorDecls)
-                $abs = [regex]::Replace($abs, $accessorRx, '$1;')
-                $abs = [regex]::Replace($abs, $getTensorsRx, $gtDecl)
-                $abs = $abs -replace '(class OperatorField;)', "`$1`r`n// [clang-cl DML fix] special members + GetTensors + accessors moved out-of-line to GeneratedSchemaTypes.h"
-                [System.IO.File]::WriteAllText($dmlAbstract, $abs)
-                $outOfLine = @'
-
-// [clang-cl DML fix] Out-of-line AbstractOperatorDesc members. Defined here, AFTER OperatorField is
-// complete, so the std::vector<OperatorField> special members (dtor/move), GetTensors<>() and the 4
-// tensor accessors instantiate against a complete type. Left inline they instantiate via
-// optional<AbstractOperatorDesc> while OperatorField is still forward-declared, which clang-cl rejects
-// (MSVC defers method/special-member instantiation to end-of-TU, where the type is complete).
-inline AbstractOperatorDesc::AbstractOperatorDesc() = default;
-inline AbstractOperatorDesc::AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields)
-    : schema(schema), fields(std::move(fields)) {}
-inline AbstractOperatorDesc::AbstractOperatorDesc(const AbstractOperatorDesc&) = default;
-inline AbstractOperatorDesc::AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept = default;
-inline AbstractOperatorDesc& AbstractOperatorDesc::operator=(const AbstractOperatorDesc&) = default;
-inline AbstractOperatorDesc& AbstractOperatorDesc::operator=(AbstractOperatorDesc&&) noexcept = default;
-inline AbstractOperatorDesc::~AbstractOperatorDesc() = default;
-template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
-std::vector<TensorType*> AbstractOperatorDesc::GetTensors() const
-{
-    std::vector<TensorType*> tensors;
-    for (auto& field : fields)
-    {
-        const DML_SCHEMA_FIELD* fieldSchema = field.GetSchema();
-        if (fieldSchema->Kind != Kind)
-        {
-            continue;
-        }
-
-        if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
-        {
-            auto& tensor = field.AsTensorDesc();
-            tensors.push_back(tensor ? const_cast<TensorType*>(&*tensor) : nullptr);
-        }
-        else if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC_ARRAY)
-        {
-            auto& tensorArray = field.AsTensorDescArray();
-            if (tensorArray)
-            {
-                for (auto& tensor : *tensorArray)
-                {
-                    tensors.push_back(const_cast<TensorType*>(&tensor));
-                }
-            }
-        }
-    }
-    return tensors;
-}
-inline std::vector<DmlBufferTensorDesc*> AbstractOperatorDesc::GetInputTensors()
-{
-    return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
-}
-inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetInputTensors() const
-{
-    return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
-}
-inline std::vector<DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTensors()
-{
-    return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
-}
-inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTensors() const
-{
-    return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
-}
-'@
-                [System.IO.File]::AppendAllText($dmlTypes, $outOfLine)
-                Write-Host 'Applied [clang-cl DML fix]: out-of-lined AbstractOperatorDesc special members + GetTensors + 4 tensor accessors'
-            } else {
-                Write-Warning "[clang-cl DML fix] anchors not found (ctor=$ctorHit accessors=$accHit gettensors=$gtHit) -- DirectML may fail under clang-cl. Verify $dmlAbstract."
-            }
-        }
-    } else {
-        Write-Warning 'DirectMLHelpers headers not found -- skipping the clang-cl DML fix (USE_DML build may fail).'
-    }
-
-    $dmlAuthorImpl = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\MLOperatorAuthorImpl.cpp"
-    [void](Invoke-InlineRegexPatch -Path $dmlAuthorImpl `
-            -Pattern '(initializer)\.##Z\(\)' -Replacement '$1.Z()' `
-            -Description 'clang-cl DML fix #2 (dropped spurious `.##Z` token-paste in MLOperatorAuthorImpl.cpp CASE_PROTO)' `
-            -WarnMessage '[clang-cl DML fix #2] `.##Z` token-paste not found in MLOperatorAuthorImpl.cpp (already fixed upstream?) -- skipping.')
-
-    $dmlOps = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\Operators"
-    foreach ($opHeader in @('DmlDFT.h', 'DmlGridSample.h')) {
-        [void](Invoke-InlineRegexPatch -Path (Join-Path $dmlOps $opHeader) `
-                -Pattern 'template <typename TConstants, uint32_t TSize>' `
-                -Replacement 'template <typename TConstants, size_t TSize>' `
-                -Description "clang-cl DML fix #3 (widened Dispatch<TSize> to size_t in $opHeader)" `
-                -WarnMessage "[clang-cl DML fix #3] uint32_t TSize decl not found in $opHeader (already fixed upstream?) -- skipping.")
-    }
-}
-
 function Copy-SidecarDll {
     param(
         [Parameter(Mandatory)][string]$SidecarName,
@@ -659,6 +551,7 @@ Export-ModuleMember -Function @(
     'Get-CudnnLibrary',
     'Get-LlvmArchiverCmakeArg',
     'Initialize-SourceBuildEnvironment',
+    'Initialize-SourceBuildScript',
     'Initialize-ToolchainPythonEnvironment',
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
@@ -670,7 +563,6 @@ Export-ModuleMember -Function @(
     'Get-NvccCudaCmakeArgs',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
-    'Invoke-OnnxDmlClangClPatch',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'Resolve-NormalizedPath',

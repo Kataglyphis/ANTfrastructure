@@ -12,8 +12,7 @@ $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceB
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
-$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
-Import-CanonicalVersions -ScriptRoot $PSScriptRoot
+$InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $OpenCvVersion = Get-SourceBuildVersion -Value $OpenCvVersion -EnvironmentVariables @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION') -DefaultValue '5.x'
 
