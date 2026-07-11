@@ -186,8 +186,12 @@ main() {
     echo ""
 
     echo "--- Functional: ffmpeg ---"
+    # pipefail is REQUIRED: without it, `ffmpeg -version | head -1` returns head's
+    # exit (0), so a broken binary -- e.g. `error while loading shared libraries:
+    # libopencore-amrwb.so.0` (observed 2026-07-11) -- silently PASSES. With
+    # pipefail the missing-.so exit code propagates and the smoke fails as it must.
     if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         bash -lc 'v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'; then
+         bash -lc 'set -o pipefail; v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'; then
       pass "ffmpeg executes (${target_arch})"
     else
       fail "ffmpeg failed to execute in the runtime image (${target_arch})"
