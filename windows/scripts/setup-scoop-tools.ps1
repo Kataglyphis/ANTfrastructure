@@ -39,10 +39,9 @@ $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 # Derive the Git installer URL from GIT_VERSION (versions.env) so the pin cannot drift
 # invisibly in a param default -- same pattern as the CMake fallback above. The
 # ".windows.1" tag suffix covers normal releases; a respun release needs -GitInstallerUrl.
-$gitVer = $env:GIT_VERSION
-$gitDefaultUrl = if ($gitVer) { "https://github.com/git-for-windows/git/releases/download/v$gitVer.windows.1/Git-$gitVer-64-bit.exe" }
-                 else { 'https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/Git-2.54.0-64-bit.exe' }
-$GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' -DefaultValue $gitDefaultUrl
+$gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.54.0'
+$GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' `
+    -DefaultValue "https://github.com/git-for-windows/git/releases/download/v$gitVer.windows.1/Git-$gitVer-64-bit.exe"
 
 $gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
 Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer' -ExpectSignature MZ

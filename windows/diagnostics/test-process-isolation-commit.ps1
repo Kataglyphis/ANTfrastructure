@@ -109,7 +109,7 @@ Write-Head 'RESULT'
 if ($buildExit -eq 0) {
     Write-Host 'BUG GONE: `docker build --isolation process` committed a layer successfully!' -ForegroundColor Green
     Write-Host 'Next: you can now switch heavy build stages to process isolation for full-CPU builds.' -ForegroundColor Green
-    Write-Host '      Retire the media-core run+commit workaround (Invoke-MediaCoreRunCommit in' -ForegroundColor Green
+    Write-Host '      Retire the media-core run+commit workaround (Invoke-RunCommitStage in' -ForegroundColor Green
     Write-Host '      windows/build.ps1) once you have re-run the full build and confirmed parity.' -ForegroundColor Green
     Write-Host '      Update docs/windows-builds.md and the windows-container-host-quirks memory.' -ForegroundColor Green
     & $Docker image rm -f $probeTag 2>&1 | Out-Null

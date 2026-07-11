@@ -29,8 +29,13 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsContainerImage.Common.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      C:\temp\scripts\modules\
-# setup-vs.ps1 consumes NOTHING from versions.env (verified: only TEMP/TMP), so VS
-# Build Tools installs before load-versions -- a versions.env bump cannot bust it.
+# setup-vs.ps1 deliberately runs BEFORE load-versions so a versions.env bump cannot
+# bust the most expensive layer. Its ONE versioned input -- the Windows SDK component
+# build -- therefore arrives as an ARG (build.ps1 passes versions.env's
+# WINDOWS_SDK_BUILD as --build-arg; ARG values are env vars during this stage's RUNs,
+# which is where setup-vs.ps1's $env:WINDOWS_SDK_BUILD read gets its value). Changing
+# the SDK pin SHOULD rebuild the VS layer.
+ARG WINDOWS_SDK_BUILD=26100
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 

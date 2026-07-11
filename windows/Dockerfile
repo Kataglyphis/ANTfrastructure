@@ -16,10 +16,11 @@ ARG VCS_REF=""
 # linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
 ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 
-# Rust note: FIXED in setup-rust-toolchain.ps1 (scoop-provisioned rust pinned to
-# versions.env's RUST_VERSION; no rustup at all -- a toolchain-less rustup used to
-# shadow the real cargo/rustc with proxy shims). Ships with the next base rebuild;
-# images from older bases may still need `rustup default stable` at runtime.
+# Rust note: FIXED in setup-rust-toolchain.ps1 (scoop-provisioned rust, DELIBERATELY
+# unpinned -- the Windows lane tracks scoop's latest; versions.env's RUST_VERSION pins
+# only the Linux lane. No rustup at all: a toolchain-less rustup used to shadow the
+# real cargo/rustc with proxy shims). Ships with the next base rebuild; images from
+# older bases may still need `rustup default stable` at runtime.
 
 COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
 # Smoke test is documented to run from inside the container (docs/windows-builds.md)

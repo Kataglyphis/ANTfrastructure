@@ -21,11 +21,10 @@
     rebuild.
 
     The media stage fans out into three branch images (media-core:
-    ONNX->GenAI->OpenCV->FFmpeg; media-litert: LiteRT->LiteRT-LM; media-tvm: TVM)
-    built SEQUENTIALLY by default -- media-core alone gets the whole RAM budget,
+    ONNX->GenAI->OpenCV->FFmpeg; media-litert: LiteRT->LiteRT-LM; media-tvm: TVM),
+    built sequentially -- media-core first, so it alone gets the whole RAM budget,
     which maximizes ONNX parallelism -- then fans in via
-    Dockerfile.media-merge-builder (merge + GStreamer). The branches build
-    sequentially (media-core first with full RAM, then the aux branches).
+    Dockerfile.media-merge-builder (merge + GStreamer).
 
     The former Dockerfile.sdk no-op shim is replaced by a `docker tag`:
       - CPU lane (default): windows-base is tagged as windows-sdk.
@@ -59,8 +58,8 @@
 
 .PARAMETER MediaMemoryGb
     --memory limit (GB) for the run+commit stages (media-core, toolchain, and the
-    merge/GStreamer stage; in the default sequential mode the aux branches also get
-    this full budget, since media-core has already committed by the time they run).
+    merge/GStreamer stage; the aux branches also get this full budget, since
+    media-core has already committed by the time they run).
     Forwarded as MEMORY_LIMIT_GB so the build scripts scale
     parallelism to the cap. Default 0 = AUTO-DETECT from host RAM: usable physical
     GB minus -HostReserveGb. Since
@@ -103,7 +102,7 @@
 .EXAMPLE
     .\windows\build.ps1 -Gpu -Stages media,final   # iterate on media only
 .EXAMPLE
-    .\windows\build.ps1 -Gpu -Stages media,final -MediaBranches media-litert -SequentialMedia
+    .\windows\build.ps1 -Gpu -Stages media,final -MediaBranches media-litert
     # rebuild ONLY the litert branch (full cores via run+commit), re-merge, re-final
 .EXAMPLE
     .\windows\build.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
@@ -120,7 +119,6 @@ param(
     [int]$MediaMemoryGb = 0,
     [int]$HostReserveGb = 22,
     [int]$MediaCoreCpus = [Environment]::ProcessorCount,
-    [switch]$SequentialMedia,
     # Skip the media-branch fan-out and run ONLY the fan-in (merge + GStreamer) + final on the
     # EXISTING windows-media-<branch> images. Use to re-merge/re-final after updating a branch image
     # out-of-band (e.g. an incremental component rebuild committed straight onto windows-media-core)
@@ -456,17 +454,19 @@ function Invoke-RunCommitStage {
         # and NEVER remove the container until a commit has SUCCEEDED: it holds hours of finished
         # compile work, and deleting it on a transient failure would make manual recovery
         # impossible. On a final failure, keep the container and print the recovery command.
-        $committed = $false
+        # NB: deliberately NOT routed through Invoke-DockerWithRetry -- its OnFailedAttempt
+        # contract removes the container, the one thing this path must never do. The loop
+        # cannot exhaust silently: Invoke-TransientCooldown returns $false exactly when no
+        # retry remains (or the failure is non-transient), which throws here.
         foreach ($commitAttempt in 1..3) {
             $commitOut = & $dockerExe commit $ContainerName $ResultTag 2>&1
             $commitOut | ForEach-Object { Write-Host $_ }
-            if ($LASTEXITCODE -eq 0) { $committed = $true; break }
+            if ($LASTEXITCODE -eq 0) { break }
             $commitTail = ($commitOut | Select-Object -Last 15) -join "`n"
-            if (-not (Invoke-TransientCooldown -Tail $commitTail -Attempt $commitAttempt -MaxAttempts 3 -Label "$Label commit")) { break }
-        }
-        if (-not $committed) {
-            throw ("$Label commit failed -- container '$ContainerName' PRESERVED (it holds the finished build). " +
-                "Recover manually: docker commit $ContainerName $ResultTag ; docker container rm -f $ContainerName")
+            if (-not (Invoke-TransientCooldown -Tail $commitTail -Attempt $commitAttempt -MaxAttempts 3 -Label "$Label commit")) {
+                throw ("$Label commit failed -- container '$ContainerName' PRESERVED (it holds the finished build). " +
+                    "Recover manually: docker commit $ContainerName $ResultTag ; docker container rm -f $ContainerName")
+            }
         }
         & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
         Write-Host "$Label built via run+commit ($Cpus CPUs) -> $ResultTag" -ForegroundColor Green
@@ -515,9 +515,9 @@ function Invoke-MediaSequential {
         Invoke-MediaBranchRunCommit -Spec $CoreSpec -MemoryGb $CoreSpec.MemoryGb -BuildArgs $CoreSpec.BuildArgs -OutLog $CoreLog
     }
     foreach ($spec in $AuxSpecs) {
-        $auxArgs = $spec.BuildArgs.Clone()
-        $auxArgs['MEMORY_LIMIT_GB'] = $MediaMemoryGb
-        Invoke-MediaBranchRunCommit -Spec $spec -MemoryGb $MediaMemoryGb -BuildArgs $auxArgs -OutLog (Join-Path $LogDir "$($spec.Name).log")
+        # Every spec already carries the full MediaMemoryGb budget (Get-MediaBranchSpecs) --
+        # the former per-aux override was a relic of the removed concurrent scheduler.
+        Invoke-MediaBranchRunCommit -Spec $spec -MemoryGb $spec.MemoryGb -BuildArgs $spec.BuildArgs -OutLog (Join-Path $LogDir "$($spec.Name).log")
     }
 }
 
@@ -530,7 +530,7 @@ function Invoke-MediaBranches {
     $allSpecs = @(Get-MediaBranchSpecs)
     $specs = @($allSpecs | Where-Object { $MediaBranches -contains $_.Name })
     if ($specs.Count -eq 0) { throw "no media branches selected (-MediaBranches: $($MediaBranches -join ', '))" }
-    if ($specs.Count -lt 3) {
+    if ($specs.Count -lt $allSpecs.Count) {
         Write-Host "==> media fan-out limited to: $(@($specs | ForEach-Object { $_.Name }) -join ', ')" -ForegroundColor Yellow
         $unselected = @($allSpecs | Where-Object { $MediaBranches -notcontains $_.Name })
         Assert-ImageExists -Tags @($unselected | ForEach-Object { $_.Tag }) `
@@ -565,9 +565,13 @@ $started = Get-Date
 try {
     if ($Stages -contains 'base') {
         Invoke-Stage -Dockerfile 'windows/Dockerfile.base' -Tag 'local/kataglyphis:windows-base' -BuildArgs @{
-            WINDOWS_LTSC   = Get-Ver 'WINDOWS_LTSC'
-            VULKAN_VERSION = Get-Ver 'VULKAN_VERSION'
-            CMAKE_VERSION  = Get-Ver 'CMAKE_VERSION'
+            WINDOWS_LTSC      = Get-Ver 'WINDOWS_LTSC'
+            VULKAN_VERSION    = Get-Ver 'VULKAN_VERSION'
+            CMAKE_VERSION     = Get-Ver 'CMAKE_VERSION'
+            # As a --build-arg (not versions.env-baked env): setup-vs runs BEFORE load-versions
+            # by design (protects the VS layer from versions.env bumps), so the SDK pin must
+            # reach it via ARG -- and changing it SHOULD bust the VS layer.
+            WINDOWS_SDK_BUILD = Get-Ver 'WINDOWS_SDK_BUILD'
         }
     }
 

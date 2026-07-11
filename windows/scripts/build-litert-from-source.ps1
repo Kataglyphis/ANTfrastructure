@@ -17,7 +17,7 @@ Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.1.6'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
-Write-Host "=== LiteRT source build (v$LiteRtVersion, Ninja+clang-cl) ==="
+Write-Host "=== LiteRT source build ($LiteRtVersion, Ninja+clang-cl) ==="
 
 Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT.git' -Tag "$LiteRtVersion" -SourceDir $SourceDir -Recursive | Out-Null
 

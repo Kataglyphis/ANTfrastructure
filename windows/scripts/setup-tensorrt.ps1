@@ -56,7 +56,7 @@ if (-not $trtZip -and $TensorRtVersion) {
     # First candidate derives its cuda suffix from CUDA_VERSION_MAJOR_MINOR (baked by the
     # nvidia stage) so a CUDA bump moves this fallback automatically; the fixed alternates
     # cover NVIDIA's usual per-major zip names. Auth-gated: any of these may 404/redirect.
-    $cudaSuffix = if ($env:CUDA_VERSION_MAJOR_MINOR) { $env:CUDA_VERSION_MAJOR_MINOR } else { '13.3' }
+    $cudaSuffix = Resolve-ContainerImageValue -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR' -DefaultValue '13.3'
     $urls = @(
         "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-$cudaSuffix.zip",
         "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-13.0.zip",

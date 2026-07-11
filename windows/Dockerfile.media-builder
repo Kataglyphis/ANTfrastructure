@@ -36,10 +36,10 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 
 # Common modules for all builder images.
-COPY windows\scripts\modules\WindowsScripts.Shared.psm1 \
-     windows\scripts\modules\WindowsSourceBuild.Common.psm1 \
-     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 \
-     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 \
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      C:\temp\scripts\modules\
 
 # ── media-core builder (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg) ───────────
@@ -64,11 +64,11 @@ COPY windows\scripts\patches\opencv          C:\temp\scripts\patches\opencv
 COPY windows\scripts\patches\opencv_contrib  C:\temp\scripts\patches\opencv_contrib
 COPY windows\scripts\patches\ffmpeg          C:\temp\scripts\patches\ffmpeg
 
-COPY windows\scripts\build-onnx-from-source.ps1 \
-     windows\scripts\build-onnx-genai-from-source.ps1 \
-     windows\scripts\build-opencv-from-source.ps1 \
-     windows\scripts\build-ffmpeg-from-source.ps1 \
-     windows\scripts\build-media-core-all.ps1 \
+COPY windows\scripts\build-onnx-from-source.ps1 `
+     windows\scripts\build-onnx-genai-from-source.ps1 `
+     windows\scripts\build-opencv-from-source.ps1 `
+     windows\scripts\build-ffmpeg-from-source.ps1 `
+     windows\scripts\build-media-core-all.ps1 `
      C:\temp\scripts\
 
 # ── media-litert builder (LiteRT -> LiteRT-LM) ───────────────────────────────
@@ -80,9 +80,9 @@ ARG LITERT_LM_VERSION=0.13.1
 ENV LITERT_VERSION="${LITERT_VERSION}"
 ENV LITERT_LM_VERSION="${LITERT_LM_VERSION}"
 
-COPY windows\scripts\build-litert-from-source.ps1 \
-     windows\scripts\build-litert-lm-from-source.ps1 \
-     windows\scripts\build-litert-all.ps1 \
+COPY windows\scripts\build-litert-from-source.ps1 `
+     windows\scripts\build-litert-lm-from-source.ps1 `
+     windows\scripts\build-litert-all.ps1 `
      C:\temp\scripts\
 
 # ── media-tvm builder (TVM) ──────────────────────────────────────────────────
