@@ -319,8 +319,18 @@ EOF
   chmod +x "${_cc_shim_dir}"/*
   export PATH="${_cc_shim_dir}:${PATH}"
 
-  ${SUDO:-} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
+  # --preserve-env is a sudo-only flag: it stops sudo from stripping the PATH
+  # (compiler shims), PKG_CONFIG_*, CMAKE_* and other exports set above. When
+  # SUDO is empty (already root, e.g. foreign-arch cross containers) there is no
+  # sudo to strip anything, so run vulkansdk directly — prefixing a bare
+  # `--preserve-env=...` there makes the shell treat the flag as the command
+  # (exit 127). Guard the flag on SUDO being set.
+  if [ -n "${SUDO:-}" ]; then
+    ${SUDO} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
+      ./vulkansdk -j "$JOBS" "$@"
+  else
     ./vulkansdk -j "$JOBS" "$@"
+  fi
   export CC="${_saved_cc}" CXX="${_saved_cxx}"
   [ -n "${_saved_cmake_cc}" ] && export CMAKE_C_COMPILER="${_saved_cmake_cc}" || unset CMAKE_C_COMPILER
   [ -n "${_saved_cmake_cxx}" ] && export CMAKE_CXX_COMPILER="${_saved_cmake_cxx}" || unset CMAKE_CXX_COMPILER
