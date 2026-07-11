@@ -354,39 +354,60 @@ setup_torch_app() {
 
   local host_arch
   host_arch="$(uname -m)"
-  [ "${host_arch}" = "riscv64" ] && seed_riscv64_apt_packages
 
-  # torch MUST be present as a LOCAL wheel in /opt/wheels for EVERY arch. The
-  # media app-wheelhouse stage builds it per-arch; a missing wheel means that
-  # stage was a stale cache-hit or its torch build failed. Historically only
-  # riscv64 guarded this -- so a stale amd64 media cache-hit (2026-07-11) shipped
-  # a torch-LESS image that no sentinel flagged, and only the runtime smoke
-  # caught it ~5h into the run, failing the whole rebuild at the very end.
-  # Guard here so the defect fails FAST at packaging:
-  #   - riscv64 (upstream has no riscv64 torch wheels)  -> tolerated fallback + sentinel.
-  #   - amd64/arm64 (torch is expected)                 -> hard error, unless
-  #     ALLOW_TORCHLESS_RUNTIME=1 knowingly accepts a torch-less image.
-  if ! compgen -G "/opt/wheels/torch-*.whl" >/dev/null; then
-    if [ "${host_arch}" = "riscv64" ] || [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
+  # riscv64 is special: upstream ships no riscv64 torch wheels, so torch is a
+  # LOCAL cross-built wheel in /opt/wheels (media app-wheelhouse, riscv64-only). If
+  # that wheel is absent the shared assemble path would resolve UPSTREAM torch and
+  # die under QEMU, so keep the tolerated lightweight fallback (writes the
+  # .torch-missing sentinel). amd64/arm64 do NOT get a local torch wheel -- torch
+  # is a normal resolved dependency installed by assemble-torch-app's `uv sync`
+  # (the ml-ai extra) -- so they must NOT be gated on a local wheel.
+  if [ "${host_arch}" = "riscv64" ]; then
+    seed_riscv64_apt_packages
+    if ! compgen -G "/opt/wheels/torch-*.whl" >/dev/null; then
       torch_wheel_missing_fallback "${host_arch}"
       return 0
     fi
-    {
-      echo "ERROR: no /opt/wheels/torch-*.whl for ${host_arch}."
-      echo "  The media app-wheelhouse stage shipped no torch wheel -- almost"
-      echo "  always a stale media cache-hit (rebuild the media stage for this"
-      echo "  arch WITHOUT cache) or a failed torch build. Set"
-      echo "  ALLOW_TORCHLESS_RUNTIME=1 to knowingly ship a torch-less image."
-    } >&2
-    exit 1
+    echo "riscv64 torch wheel present in /opt/wheels; routing through assemble-torch-app.sh"
   fi
-  echo "torch wheel present in /opt/wheels (${host_arch}); routing through assemble-torch-app.sh"
 
   configure_foreign_arch_compiler_env "${host_arch}"
 
   apply_torch_app_env_defaults
   pin_pycairo_constraint_for_foreign_arch "${host_arch}"
   /opt/scripts/03-media/final/assemble-torch-app.sh "${TORCH_APP_MODE}"
+
+  verify_torch_import_or_fail "${host_arch}"
+}
+
+verify_torch_import_or_fail() {
+  # Fail FAST at packaging if torch is expected but did not land in the venv.
+  # torch on amd64/arm64 comes from `uv sync`, not a local wheel, so a silent
+  # uv-sync failure (e.g. the `--extra none` bug, or lock/index trouble) drops it
+  # without any local-wheel signal -- and the ONLY thing that caught it before was
+  # the runtime smoke ~5h into the build (2026-07-11). This import check turns that
+  # into an immediate packaging failure. riscv64 already returned above when it has
+  # no wheel; here it just double-confirms.
+  local host_arch="$1" ver
+  if ver="$("${VENV}/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null)"; then
+    echo "torch import OK (${ver}, ${host_arch})"
+    return 0
+  fi
+  if [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
+    mkdir -p "${VENV}" 2>/dev/null || true
+    printf '%s: torch not importable after assemble-torch-app; ALLOW_TORCHLESS_RUNTIME=1\n' \
+      "${host_arch}" > "${VENV}/.torch-missing" 2>/dev/null || true
+    echo "WARNING: torch not importable but ALLOW_TORCHLESS_RUNTIME=1 -- shipping torch-less (sentinel written)" >&2
+    return 0
+  fi
+  {
+    echo "ERROR: torch is not importable in ${VENV} after assemble-torch-app (${host_arch})."
+    echo "  torch is expected here (installed by uv sync via the ml-ai extra). A silent"
+    echo "  uv-sync failure most likely dropped it -- scan the assemble output above for"
+    echo "  'uv sync ... had issues' or 'Extra ... is not defined'. Set"
+    echo "  ALLOW_TORCHLESS_RUNTIME=1 to knowingly ship a torch-less image."
+  } >&2
+  exit 1
 }
 
 cleanup_wheelhouse() {
