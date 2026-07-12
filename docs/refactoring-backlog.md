@@ -223,3 +223,23 @@ immediately surfaced a real class the old smokes missed, on ALL three arches:
   copy-from-build-stage or static-link. The new smoke's "GStreamer plugins that cannot
   load: N" line makes the count visible every run; promote specific app-critical
   elements (webrtcbin2?) to a fail-loud curated list once their deps are fixed. — M · ★★
+
+## Harvested 2026-07-12 (cont) — app wheel smoke caught broken LiteRT
+
+Building `orchestr_ant_ion.smoke` (the app-owned wheel smoke that the runtime
+image now delegates to) surfaced a real packaging defect:
+
+- **LiteRT interpreter can't load its native wrapper (amd64).** The source-built
+  `ai-edge-litert` 2.1.6 wheel installs its module as `tflite_runtime` (per
+  `top_level.txt`), but `import tflite_runtime.interpreter` dies with
+  `ImportError: cannot import name '_pywrap_litert_interpreter_wrapper' from
+  'tflite_runtime'`. The shipped `.so` is `tflite_runtime/_pywrap_tensorflow_interpreter_wrapper.so`
+  — a NAME MISMATCH: interpreter.py imports `_pywrap_litert_interpreter_wrapper`
+  but the build produced `_pywrap_tensorflow_interpreter_wrapper.so`. So LiteRT
+  imports at the dist level (metadata present, version 2.1.6) but its Interpreter
+  API is unusable. build-litert.sh packages the wrong wrapper soname (or the
+  interpreter.py expects the newer litert name while the build still emits the
+  tflite_runtime one). The smoke treats LiteRT as OPTIONAL (WARN, not a gate
+  fail) so it surfaces without blocking, but this is a real fix: align the
+  built wrapper `.so` name with what `tflite_runtime/tflite_runtime.interpreter`
+  imports, then verify `Interpreter` instantiates. — M · ★★
