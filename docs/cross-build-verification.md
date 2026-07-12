@@ -15,7 +15,7 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 | 1 | Script not COPY'd into a stage → sourced fn missing at runtime (`command not found`, exit 127) | `media_load_arch_flags` not found (03-media/core never COPY'd into Dockerfile.package) | `da41e19` | **sourced-scripts-present** static check (`verify-script-copy-coverage.py`) |
 | 2 | Relocated native GCC/G++ can't find `/usr/include` for source builds under QEMU — C *and* C++ (`#include_next`) | `string.h: No such file` (Pillow); `<cstdlib>`→`stdlib.h: No such` (numpy) | `3c623fa`, `349e32b`, `dc93d11` | **compile smoke test** (C + C++ `#include_next` + `jpeglib.h`) in `validate-compilers.sh` |
 | 3 | Missing dev headers for QEMU source builds | `jpeglib.h` missing for Pillow (`libjpeg-dev`) | `3c623fa` | same compile smoke test (header presence probe) |
-| 4 | Cross toolchain artifact wrong-arch / not runnable on host | `/opt/llvm-target` clobbered by shared compiler; non-runnable `llvm-config`; missing target linker | `8e66c5f`, `fb634a3`, `b1dd72e`, `312a4d8` | **`validate-compilers.sh`** per-arch ELF/machine check (exists) |
+| 4 | Cross toolchain artifact wrong-arch / not runnable on host | `/opt/llvm-target` clobbered by shared compiler; non-runnable `llvm-config`; missing target linker | `8e66c5f`, `fb634a3`, `b1dd72e`, `312a4d8` | **`validate-compilers.sh`** per-arch ELF/machine check (build-time) **+ compile+link+RUN under qemu** in `smoke-runtime-image.sh` (`bcbd19d`) |
 | 5 | venv/wheel install collision & bad seeding | apt numpy seeded into venv without dist-info → uv install `File exists` | `9f07334` | **torch-venv integrity** smoke (`smoke-torch-venv.sh`) |
 | 6 | Undefined/typo'd bash function or quoting bug | `tvm-detect` undefined; verify-parity venv quoting | (dedup passes) | **shellcheck gate** (`-S error`) in pre-commit |
 | 7 | Include-flag construction bugs | bare `-I -I -I` broke Abseil C++17 probe; missing pybind11/numpy include dirs | `ab3776b`, `5412ec4` | shellcheck + compile smoke test |
@@ -69,6 +69,22 @@ These validate a built/pulled image and also run during the build to fail fast:
   numpy/torch/torchvision/PIL/cv2/contourpy (+ torch↔numpy ABI bridge) from
   `/opt/venv` (class 5). Wired into `smoke-wrapper.sh`; skips cleanly if no venv.
   Run standalone: `VENV=/opt/venv smoke-torch-venv.sh`.
+- **Runtime-image boot + functional smoke** — `06-packaging/smoke-runtime-image.sh
+  <image> <arch>`, run per-arch by `build-runtime-manifest.sh` against the freshly
+  built wrapper. Boots the actual published image and, under **binfmt/qemu for the
+  cross arches**, runs real workloads *on-target*:
+  - ML imports (`onnxruntime`, `numpy`, `torch`) + `ffmpeg -version` (pipefail-guarded
+    so a missing `.so` can't pass silently); torch-less sentinel flagged.
+  - **Native compiler compile+link+RUN** — compiles a trivial C **and** C++ program
+    with the image's `gcc`/`g++`, runs the resulting binary on-target and asserts its
+    output (C++ exercises libstdc++). This is what upgrades class 4 from a static
+    ELF/machine check to genuine **execution** proof: a cross arch's binary can't run
+    on the x86_64 build host, so the shipped native GCC (esp. the riscv64
+    `--with-isa-spec` toolchain) was previously never actually executed — under qemu
+    here it is. Gate `RUNTIME_COMPILER_SMOKE=0` to skip just this;
+    `RUNTIME_FUNCTIONAL_SMOKE=0` skips all functional checks; `RUNTIME_IMAGE_SMOKE=0`
+    (in `build-runtime-manifest.sh`) skips the whole runtime-image smoke (e.g. a host
+    without a qemu handler for a foreign arch).
 
 ## Dedup & factoring notes (2026-07)
 

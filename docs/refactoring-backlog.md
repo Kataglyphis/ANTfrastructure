@@ -15,6 +15,10 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ (nice) … ★★★ (h
   + `wasm-opt` (single-tool, low-parallelism, ~minutes of wall-clock per arch) is
   compiled even though a native container runtime never loads a `.wasm`. Gate it
   off unless explicitly wanted. — S · ★★
+  _CONFIRMED LIVE (0711f media-amd64): the `onnxruntime_webassembly` link
+  (`ort-wasm-simd-threaded.mjs`, via an emsdk 4.0.23 install) ran at load ~6.5
+  while the native framework compiles held load ~35 — a serial, under-parallel
+  wall-clock sink on the critical path, ×3 arches._
 - **`01-core/parallelism.sh` is bind-mounted into ~21 media RUN steps.** Any edit to
   it (even behaviour-preserving, e.g. the 2026-07-11 refactor) changes the mount
   content and cache-misses **every** framework build (opencv/onnx/litert/gstreamer/
@@ -44,11 +48,14 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ (nice) … ★★★ (h
   (`--extra none` → uv sync fails → whole tree incl torch dropped). Fixed for that
   one call site, but the "none means no extra" convention is fragile — prefer empty
   string / an explicit boolean, and audit other `${PYTORCH_EXTRA}` / sentinel uses. — S · ★★
-- **The riscv64 native-GCC smoke can't actually validate A2.** In the android stage
-  the riscv64 gcc runs on the x86_64 host → `Exec format error` → classified as a
-  benign "cross-build host limitation", so the `--march`/ISA-spec path is never
-  exercised. Run the smoke under riscv64 binfmt/QEMU (or in the compiler stage) to
-  get a real pass/fail. — M · ★★
+- ~~**The riscv64 native-GCC smoke can't actually validate A2.**~~ **DONE (bcbd19d).**
+  The android-stage smoke runs on the x86_64 host → `Exec format error` → benign
+  "cross-build host limitation", so the native riscv64 gcc was never executed.
+  Fixed by adding a compile+link+**RUN** check to `smoke-runtime-image.sh`, which
+  already boots each per-arch wrapper under binfmt/qemu — the native gcc/g++ now
+  actually compiles, links AND runs a C and C++ binary on-target (riscv64 included,
+  C++ exercising libstdc++). The android-stage ELF-only smoke remains as a cheap
+  early check.
 - **ffmpeg runtime-lib list is doubly-maintained.** `setup-torch-venv.sh` now installs
   the auto-derived `/opt/ffmpeg/runtime-apt-packages.txt` manifest, but the hardcoded
   codec baseline (lines ~158-170) remains and can drift. Once the manifest is proven
@@ -72,6 +79,35 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ (nice) … ★★★ (h
 
 _(build-log signals collected while 0711f runs — triage into the sections above)_
 
+- **`install_optional_target_packages` installs the whole batch atomically, so one
+  missing package can drop them all.** It resolves N opencv codec deps and passes
+  them to `install_target_packages` in a single `apt-get install A B C …`. If any
+  one (e.g. arm64 `libopenexr-3-dev`, absent in Ubuntu Ports) is uninstallable,
+  apt rejects the *entire* transaction — the available codecs (jpeg/png/tiff) can
+  go down with it, silently reducing opencv features with only a "continuing" log.
+  Observed 0711f media-arm64 (libopenexr-3-dev + libvvdec-dev missing; build
+  correctly continued, but the blast radius is wider than intended). Refactor:
+  install optional deps one-by-one (or retry-without-the-missing) so a single
+  ports outage doesn't drop the whole set. Also: the `install_target_packages:
+  FAILED — missing` line reads as fatal but isn't when wrapped — worth a
+  gentler wording (`optional: skipped …`) so log scans don't false-alarm. — M · ★★
+- **Media parity-check line `INFO: torch not installed (only in :latest-cross-<arch>
+  wrappers)` is confusing + trips log scanners.** It's benign (torch is added in the
+  runtime wrapper, not the media image), but the literal string `:latest-cross`
+  false-matched a completion watcher, and reads like a warning. Reword to something
+  like `INFO: torch deferred to runtime wrapper (expected in media)`. — S · ★
+- **External-source pinning relies on forge auto-archives that aren't byte-stable.**
+  (fixed 9f4a3ce for one case) android cerbero fetched `soundtouch 2.4.1` from
+  `codeberg.org/soundtouch/soundtouch/archive/2.4.1.tar.gz`; Forgejo regenerated
+  the archive → sha256 drift → all 3 android stages died. This is a *class*: any
+  recipe/download pinned to a GitHub/GitLab/Codeberg `/archive/<tag>.tar.gz` can
+  break the same way at any time. Refactor: prefer release *assets* or a
+  git-clone-at-tag (byte-stable) over auto-archives, and/or maintain a small
+  vendored mirror for the handful of upstreams that pin auto-archives. Also the
+  current re-pin is a hardcoded hash in build-android-from-source.sh — fine as a
+  point fix, but a small `patches/cerbero/checksums.env` override table would
+  scale better if more recipes drift. — M · ★★
+
 ### 0711f (full no-cache, launched 2026-07-11 17:58)
 
 - **Stale-log false positives, confirmed twice.** The A2 smoke-watcher matched a
@@ -90,5 +126,27 @@ _(build-log signals collected while 0711f runs — triage into the sections abov
   each GCC/binutils configure. Harmless (we don't ship GCC info docs) but printed
   N times. Install `texinfo` in the toolchain base *or* pass `MAKEINFO=true` to
   silence — trivially removes a recurring scary-looking warning. — S · ★
-- _No real defects observed through base + early compiler. A2 (riscv64 GCC
-  `--with-isa-spec`) not yet reached — compiler is still on the native x86_64 GCC._
+- _base + compiler: no real defects. A2 (riscv64 GCC `--with-isa-spec`) built
+  clean end-to-end (GCC+LLVM+Rust, no `invalid -march`)._
+- **REAL BUG (fixed 7f10bfe): `${SUDO:-} <sudo-flag>` collapses to a bad command
+  when SUDO is empty.** `vulkan.sh:322` ran `${SUDO:-} --preserve-env=... ./vulkansdk`;
+  on root cross containers SUDO is empty → `--preserve-env` became the command →
+  exit 127, killing sdk-arm64 + sdk-riscv64 (amd64 had SUDO set, survived). Added
+  today in 7e6d627, masked by sdk cache until this no-cache run. **Refactor angle:**
+  the `${SUDO:-}` prefix idiom is only safe when the next token is a real command;
+  a bare flag after it is a latent bug. Worth a lint rule / a `run_priv()` helper
+  that appends `--preserve-env` *only* when actually invoking sudo, instead of the
+  raw `${SUDO:-}` sprinkle (24+ call sites in this one file). — M · ★★
+  Reinforces the standing lesson: **cache-bust exposes latent bugs** — a from-scratch
+  no-cache run is the only thing that exercises foreign-arch-only code paths.
+- **REAL BUG (fixed e3ffb0a): `uv venv --clear` seeded from the venv it deletes.**
+  `Dockerfile.media:140` ran `uv venv --clear /opt/python/.venv` while the base
+  image ENV had `UV_PYTHON=/opt/python/.venv/bin/python`; `--clear` deletes that
+  interpreter, so uv had nothing to seed from → "No interpreter found" (exit 2),
+  killing all media arches at [base 14/15]. Cached until this no-cache run. Fixed
+  by seeding from the source-built `/usr/local/bin/python3` with `env -u UV_PYTHON`.
+  **Refactor angle:** every OTHER `uv venv` in the tree passes explicit `--python`
+  (setup-package-image, tvm-python, android, python_uv) — this one was the lone
+  outlier. A lint/CI grep for `uv venv` without `--python` would have caught both
+  this and prevented the class. Also: the base-image `UV_PYTHON` pointing at a
+  not-yet-created venv is a footgun for any `uv` call before the venv exists. — S · ★★
