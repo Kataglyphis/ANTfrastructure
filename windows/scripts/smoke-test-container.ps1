@@ -283,6 +283,17 @@ Assert-Test -Name "clang-cl version string" -Condition { $clangVer -match '\d+\.
 $cmakeVer = Get-CommandVersion 'cmake'
 Assert-Test -Name "cmake version" -Condition { $cmakeVer -ne $null } -FailMessage "Could not get cmake version"
 
+# CMake is pinned (scoop main/cmake@CMAKE_VERSION) -- assert the shipped binary
+# matches versions.env, catching a stale base layer riding into the final image.
+$cmakeExpected = Get-ExpectedVersion 'CMAKE_VERSION' ''
+if ($cmakeExpected) {
+    Assert-Test -Name "cmake matches versions.env pin ($cmakeExpected)" -Condition {
+        $cmakeVer -match [regex]::Escape($cmakeExpected)
+    } -FailMessage "cmake banner '$cmakeVer' does not contain pinned $cmakeExpected -- stale base layer shipped?"
+} else {
+    Skip-Test 'cmake pin assert (CMAKE_VERSION not resolvable from env or versions.env)'
+}
+
 # ============================================================================
 Write-TestHeader '2. Python (source-built)'
 # ============================================================================
@@ -305,6 +316,23 @@ Assert-Test -Name "Python pip available" -Condition {
     & python -m pip --version 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
 } -FailMessage "pip not available"
+
+# Exact pin, not just major.minor: a stale toolchain layer surviving a
+# PYTHON_VERSION bump would still pass the x.y check above.
+$pyExpected = Get-ExpectedVersion 'PYTHON_VERSION' ''
+if ($pyExpected) {
+    Assert-Test -Name "python matches versions.env pin ($pyExpected)" -Condition {
+        (& python --version 2>&1) -match [regex]::Escape($pyExpected)
+    } -FailMessage "python --version is not the pinned $pyExpected -- stale toolchain layer shipped?"
+}
+
+# Source-built CPython silently OMITS optional extension modules whose deps were
+# missing at build time (OpenSSL, sqlite, bzip2, xz) -- each import below loads a
+# real .pyd plus its dependent DLLs, so this catches the whole class at once.
+Assert-Test -Name "Python stdlib extension modules import (ssl/sqlite3/zlib/ctypes/bz2/lzma)" -Condition {
+    $out = & python -c "import ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; print('stdlib-ok')" 2>&1 | Out-String
+    ($LASTEXITCODE -eq 0) -and ($out -match 'stdlib-ok')
+} -FailMessage "one or more stdlib extension modules failed to import (dep missing at CPython build time?)"
 
 # ============================================================================
 Write-TestHeader '3. Rust Toolchain'
@@ -496,6 +524,54 @@ int main() {
     return 0;
 }
 '@ -ExpectMatch 'onnxruntime' -FailMessage 'ONNX Runtime C API did not compile/link/run (header+lib+DLL mismatch or missing dependent DLL)'
+
+        # The probes above prove the API surface loads; this proves the RUNTIME works
+        # end-to-end: create a real session and push one float through it on the CPU
+        # EP. The model is a hand-encoded 63-byte ONNX ModelProto (ir_version=8,
+        # opset 13, single Identity node x:float[1] -> y) -- no external files, no
+        # GPU device, and it exercises graph load, session init, and Run().
+        $ortModelDir = Join-Path $env:TEMP 'kataglyphis-smoke-ort-model'
+        New-Item -Path $ortModelDir -ItemType Directory -Force | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $ortModelDir 'identity.onnx'), [byte[]]@(
+            0x08,0x08,0x3A,0x37,0x0A,0x10,0x0A,0x01,0x78,0x12,0x01,0x79,0x22,0x08,0x49,0x64,
+            0x65,0x6E,0x74,0x69,0x74,0x79,0x12,0x01,0x67,0x5A,0x0F,0x0A,0x01,0x78,0x12,0x0A,
+            0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x62,0x0F,0x0A,0x01,0x79,0x12,
+            0x0A,0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x42,0x02,0x10,0x0D))
+        $onnxCxxHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($onnxCxxHdr) {
+            $onnxInferLink = @{
+                IncludeDirs = @(@($onnxCApiHdr.DirectoryName, $onnxCxxHdr.DirectoryName) | Select-Object -Unique)
+                LibDir      = $onnxMainLib.DirectoryName
+                LibName     = $onnxMainLib.Name
+                DllDir      = $onnxDll.DirectoryName
+            }
+            Assert-NativeLinkRun @onnxInferLink -Name 'ONNX Runtime CPU inference end-to-end (session create + Run)' -WorkName 'onnx-infer' -Source @'
+#include <onnxruntime_cxx_api.h>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+int main() {
+    const char* temp = std::getenv("TEMP");
+    if (!temp) return 4;
+    std::string p = std::string(temp) + "\\kataglyphis-smoke-ort-model\\identity.onnx";
+    std::wstring wp(p.begin(), p.end());
+    Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "smoke");
+    Ort::SessionOptions so;
+    Ort::Session session(env, wp.c_str(), so);
+    float v = 42.0f; int64_t shape[1] = {1};
+    Ort::MemoryInfo mi = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    Ort::Value in = Ort::Value::CreateTensor<float>(mi, &v, 1, shape, 1);
+    const char* inNames[] = {"x"}; const char* outNames[] = {"y"};
+    auto outs = session.Run(Ort::RunOptions{nullptr}, inNames, &in, 1, outNames, 1);
+    float o = outs[0].GetTensorMutableData<float>()[0];
+    std::printf("ort_cpu_infer=%s\n", (o == 42.0f) ? "ok" : "bad");
+    return (o == 42.0f) ? 0 : 1;
+}
+'@ -ExpectMatch 'ort_cpu_infer=ok' -FailMessage 'ORT session create/Run failed on the CPU EP (runtime graph init broken despite the C API loading)'
+        } else {
+            Skip-Test 'ORT CPU inference (onnxruntime_cxx_api.h not found)'
+        }
+        Remove-Item $ortModelDir -Recurse -Force -ErrorAction SilentlyContinue
 
         # One EP-enumeration TU serves both GPU-lane gates below: it prints every
         # provider flag and each assertion matches only the flags its lane requires
@@ -702,6 +778,23 @@ Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
     # If GST_PLUGIN_ERROR occurs but not a crash, the binary loads
     return $result -notmatch 'error while loading shared libraries'
 } -FailMessage "GStreamer gst-launch-1.0 failed to load"
+
+# Pin assert: the version actually shipped must match versions.env, catching a
+# stale media layer riding into the final image.
+$gstExpected = Get-ExpectedVersion 'GSTREAMER_VERSION' ''
+if ($gstExpected) {
+    Assert-Test -Name "gst-launch matches versions.env pin ($gstExpected)" -Condition {
+        (& gst-launch-1.0 --version 2>&1 | Select-Object -First 1) -match [regex]::Escape($gstExpected)
+    } -FailMessage "gst-launch-1.0 --version is not the pinned $gstExpected -- stale media layer shipped?"
+}
+
+# fakesrc/fakesink only exercise coreelements; push real video buffers through
+# videotestsrc -> videoconvert to prove the video plugin DLLs (and their
+# dependent chains) actually load and negotiate caps at runtime.
+Assert-Test -Name "GStreamer real pipeline runs (videotestsrc ! videoconvert ! fakesink)" -Condition {
+    & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" videotestsrc num-buffers=5 ! videoconvert ! fakesink 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+} -FailMessage "videotestsrc pipeline failed (video plugin DLLs broken or missing)"
 
 # ============================================================================
 Write-TestHeader '12. LiteRT (AI Edge runtime, source-built)'
@@ -956,6 +1049,14 @@ if (Test-Path $ffmpegBin) {
         return ($filters -match 'dnn_')
     } -FailMessage "no dnn_* filters reported by ffmpeg -filters"
 
+    # -version/-filters only parse the binary's tables; run a REAL graph end-to-end
+    # (lavfi synthesizes the input, the null muxer discards output -- no files, no
+    # GPU) to prove the runtime filter/codec DLL chain actually executes.
+    Assert-Test -Name "ffmpeg runs a real filter graph (lavfi testsrc2 -> null)" -Condition {
+        & $ffmpegExe -hide_banner -loglevel error -f lavfi -i testsrc2=duration=0.2:size=64x64:rate=10 -f null - 2>&1 | Out-Null
+        $LASTEXITCODE -eq 0
+    } -FailMessage "ffmpeg failed a trivial lavfi->null graph (runtime codec/filter chain broken)"
+
     # NVENC/NVDEC/CUVID coverage. The banner check above says nothing about hardware codecs; the
     # nv-codec-headers step is skippable (it warns and continues if ffnvcodec.pc is missing), so a
     # build that silently dropped NVENC would still pass. Listing encoders/decoders needs no GPU
@@ -974,6 +1075,45 @@ if (Test-Path $ffmpegBin) {
 } else {
     Skip-Test 'FFmpeg not installed (C:\runtime\ffmpeg\bin not found)'
 }
+
+# ============================================================================
+Write-TestHeader '19. Environment pointer integrity'
+# ============================================================================
+# Every *_BIN/*_ROOT env var the Dockerfiles bake must point at a real directory.
+# A stale pointer is exactly how the CMake MSI->scoop switch left CMAKE_BIN aimed
+# at the deleted 'C:\Program Files\CMake\bin' (caught 2026-07-12).
+# Deliberately NOT asserted: CARGO_HOME/CARGO_BIN (pre-provisioned for a future
+# `cargo install`; nonexistent until first use) and LLVM_GLOBAL_BIN /
+# SCOOP_GLOBAL_SHIMS (known-stale base ENV -- llvm/scoop shims are user-scope
+# installs; fix rides with the next base rebuild).
+$envPointerNames = @(
+    'CMAKE_BIN', 'FLUTTER_BIN', 'VULKAN_SDK', 'WIX', 'LLVM_USER_BIN',
+    'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
+    'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
+    'ONNX_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB',
+    'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
+    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT'
+)
+if ($script:gpuNvidia) {
+    $envPointerNames += @('CUDA_ROOT', 'CUDA_PATH', 'CUDNN_ROOT', 'TENSORRT_ROOT')
+}
+foreach ($envPointer in $envPointerNames) {
+    $pointerName = $envPointer
+    Assert-Test -Name "$envPointer points at an existing directory" -Condition {
+        $v = [Environment]::GetEnvironmentVariable($pointerName)
+        (-not [string]::IsNullOrWhiteSpace($v)) -and (Test-Path $v -PathType Container)
+    }.GetNewClosure() -FailMessage "$envPointer is unset or points at a nonexistent path (stale Dockerfile ENV?)"
+}
+
+# vcpkg's protoc must RUN, not just exist -- media builds shell out to it, and a
+# broken vcpkg surfaces hours into a media compile otherwise (see the VCPKG_REF
+# >= 2026.06 note in versions.env).
+Assert-Test -Name "vcpkg protoc runs (media-build toolchain dependency)" -Condition {
+    $protoc = 'C:\vcpkg\installed\x64-windows\tools\protobuf\protoc.exe'
+    if (-not (Test-Path $protoc)) { return $false }
+    & $protoc --version 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+} -FailMessage "vcpkg protoc.exe missing or fails to run (vcpkg install broken in the base image)"
 
 # ============================================================================
 Write-TestHeader '== SUMMARY =='
