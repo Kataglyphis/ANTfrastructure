@@ -91,6 +91,25 @@ patch_cerbero_system_m4_usage() {
       "Cerbero drop m4 dependency from autoconf/libtool recipes"
 }
 
+override_soundtouch_codeberg_checksum() {
+    # soundtouch is fetched from Codeberg's auto-generated archive
+    # (codeberg.org/soundtouch/soundtouch/archive/<version>.tar.gz). Forgejo
+    # periodically regenerates these archives with different compression, so the
+    # tarball hash drifts from cerbero's pinned value while the SOURCE is
+    # unchanged (verified: upstream cerbero main still pins the same version).
+    # A from-scratch fetch then fails: "Checksum ... instead of ...". Re-pin to
+    # the currently-served hash. Guarded on the OLD hash still being present, so
+    # this becomes a no-op the moment upstream cerbero updates the recipe.
+    local recipe="recipes/soundtouch.recipe"
+    local old="e07abf20ce8f95850c280132e1f61ad400fc1f4011b7fac698a503de6aab6733"
+    local new="87c6c9599d71a2f839213792eeed322340f0ccce67c296bd9b5cb60b6488a5d6"
+    [ -f "${recipe}" ] || return 0
+    if grep -q "${old}" "${recipe}"; then
+        sed -i "s/${old}/${new}/g" "${recipe}"
+        echo "Re-pinned soundtouch tarball checksum to current Codeberg archive: ${new}"
+    fi
+}
+
 # ------------------------------------------------------------------------------
 # Concurrency limiting (similar to the desktop GStreamer build)
 # ------------------------------------------------------------------------------
@@ -206,6 +225,7 @@ else
 fi
 
 patch_cerbero_system_m4_usage
+override_soundtouch_codeberg_checksum
 
 # 5. Setup Python Virtual Environment
 HOST_PYTHON="$(resolve_host_python)"
