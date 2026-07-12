@@ -151,12 +151,29 @@ $cmakeExtra = @(
     # with no nvcc present and fail to configure.
 )
 
-# cv2 python module inputs (OpenCV's detection needs explicit hints for the
-# source-built interpreter; forward slashes for CMake).
+# cv2 python module inputs. OpenCV 5.x's find_python() still round-trips through
+# find_package(PythonInterp)/find_package(PythonLibs) -- BOTH removed in CMake
+# 4.x -- so its detection can never succeed here and python3 silently drops out
+# of the module list (cost one rebuild to learn, 2026-07-12). find_python() is
+# wrapped in `if(NOT PYTHON3INTERP_FOUND)`, so preset EVERY output it would
+# produce and skip detection wholesale (forward slashes for CMake).
+$numpyVersion = (& $ocvPy.Exe -c 'import numpy; print(numpy.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
+$pyLibFwd = ($ocvPy.Lib) -replace '\\', '/'
+$pyIncFwd = ($ocvPy.Include) -replace '\\', '/'
+$cmakeExtra += '-DPYTHON3INTERP_FOUND=TRUE'
 $cmakeExtra += "-DPYTHON3_EXECUTABLE=$pyExePath"
-$cmakeExtra += "-DPYTHON3_INCLUDE_DIR=$(($ocvPy.Include) -replace '\\', '/')"
-$cmakeExtra += "-DPYTHON3_LIBRARY=$(($ocvPy.Lib) -replace '\\', '/')"
+$cmakeExtra += "-DPYTHON3_VERSION_STRING=$pyVersion"
+$cmakeExtra += "-DPYTHON3_VERSION_MAJOR=$($pyParts[0])"
+$cmakeExtra += "-DPYTHON3_VERSION_MINOR=$($pyParts[1])"
+$cmakeExtra += '-DPYTHON3LIBS_FOUND=TRUE'
+$cmakeExtra += "-DPYTHON3LIBS_VERSION_STRING=$pyVersion"
+$cmakeExtra += "-DPYTHON3_LIBRARY=$pyLibFwd"
+$cmakeExtra += "-DPYTHON3_LIBRARIES=$pyLibFwd"
+$cmakeExtra += "-DPYTHON3_INCLUDE_DIR=$pyIncFwd"
+$cmakeExtra += "-DPYTHON3_INCLUDE_PATH=$pyIncFwd"
+$cmakeExtra += '-DPYTHON3_PACKAGES_PATH=C:/temp/cpython/Lib/site-packages'
 $cmakeExtra += "-DPYTHON3_NUMPY_INCLUDE_DIRS=$numpyInclude"
+$cmakeExtra += "-DPYTHON3_NUMPY_VERSION=$numpyVersion"
 
 # Provide our source-built ONNX Runtime root so FindONNX.cmake finds it.
 $ortRoot = 'C:/runtime/lib/onnxruntime-source'
@@ -205,6 +222,17 @@ $buildLog = Join-Path $buildDir 'opencv-build.log'
 # to the failing TU) so the error output is unambiguous without paying the serial
 # build cost on the happy path.
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install
+
+# Fail HERE if cv2 didn't land + import -- a silently-skipped python3 module
+# otherwise only surfaces hours later in the final image's smoke test.
+$cv2Check = ''
+$cv2Ok = $false
+try {
+    $cv2Check = (& $ocvPy.Exe -c 'import cv2; print(cv2.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
+    $cv2Ok = ($LASTEXITCODE -eq 0)
+} catch { $cv2Check = $_.Exception.Message }
+if (-not $cv2Ok) { throw "cv2 import failed right after install: $cv2Check (BUILD_opencv_python3 skipped or loader broken)" }
+Write-Host "cv2 python binding OK ($cv2Check)"
 
 Remove-SourceBuildTree -Path $SourceDir
 

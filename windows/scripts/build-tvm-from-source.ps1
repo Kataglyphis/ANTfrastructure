@@ -148,9 +148,19 @@ if ($pythonModule -eq 'ON') {
                 Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut)
             }
         } finally { Pop-Location }
-        $staged = Save-PythonWheel -SourceDir $wheelOut -Required
-        # Path UNQUOTED + --only-binary: see the build-onnx wheel-install note.
+        # @() is LOAD-BEARING (single-element unwrap -> [0] = first char; see build-onnx).
+        $staged = @(Save-PythonWheel -SourceDir $wheelOut -Required)
+        if (-not (Test-Path $staged[0])) { throw "staged wheel path invalid: '$($staged[0])'" }
         Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $staged[0])
+        # Import assert: fail in-branch, not hours later at smoke time.
+        $tvmImport = ''
+        $tvmImportOk = $false
+        try {
+            $tvmImport = (& $py.Exe -c 'import tvm; print(tvm.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
+            $tvmImportOk = ($LASTEXITCODE -eq 0)
+        } catch { $tvmImport = $_.Exception.Message }
+        if (-not $tvmImportOk) { throw "import tvm failed right after wheel install: $tvmImport" }
+        Write-Host "tvm python binding OK ($tvmImport)"
     }
 }
 

@@ -309,13 +309,26 @@ try {
     cmd.exe /c """$($py.Exe)"" ""$SourceDir\setup.py"" bdist_wheel 2>&1"
     if ($LASTEXITCODE -ne 0) { throw "onnxruntime setup.py bdist_wheel failed (exit $LASTEXITCODE)" }
 } finally { Pop-Location }
-$ortStagedWheel = Save-PythonWheel -SourceDir (Join-Path $buildDir 'dist') -Required
+# @() is LOAD-BEARING: PS unwraps a single-element return to a string, and
+# [0] on a string is its FIRST CHARACTER -- pip then installed the PyPI package
+# literally named "c" with exit 0 (the c-0.0.1 incident, cost a rebuild, 2026-07-12).
+$ortStagedWheel = @(Save-PythonWheel -SourceDir (Join-Path $buildDir 'dist') -Required)
+if (-not (Test-Path $ortStagedWheel[0])) { throw "staged wheel path invalid: '$($ortStagedWheel[0])'" }
 # Install the wheel (WITH pypi deps) so the shipped image can `import onnxruntime`
 # out of the box -- the media merge fans CPython's site-packages into the image.
-# Path passed UNQUOTED (space-free by construction): embedded quotes get mangled
-# by Invoke-CpythonPip's cmd.exe layer (pip saw a truncated "C" -- 2026-07-12).
 # --only-binary :all: forbids sdist fallbacks that cannot build on 3.14.
 Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $ortStagedWheel[0])
+
+# Fail HERE if the binding cannot import (a silent no-op install must not
+# survive to the final image's smoke test).
+$ortImport = ''
+$ortImportOk = $false
+try {
+    $ortImport = (& $py.Exe -c 'import onnxruntime; print(onnxruntime.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
+    $ortImportOk = ($LASTEXITCODE -eq 0)
+} catch { $ortImport = $_.Exception.Message }
+if (-not $ortImportOk) { throw "import onnxruntime failed right after wheel install: $ortImport" }
+Write-Host "onnxruntime python binding OK ($ortImport)"
 
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='
