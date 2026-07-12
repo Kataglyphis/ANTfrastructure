@@ -200,3 +200,29 @@ breakages. Three fixed in 2500d60; one is a deeper toolchain residual:
   gate is the template — assert the property natively in the torch stage under qemu,
   independent of the runtime-image smoke's binfmt gating), (3) the in-build
   verify_torch_import_or_fail must not fail-open when its `import torch` exec can't run.
+
+## Harvested 2026-07-12 (cont) — new runtime smokes found a GStreamer-plugin gap
+
+Adding the native `.so`-closure gate + functional runtime smokes (commit 19a86a5)
+immediately surfaced a real class the old smokes missed, on ALL three arches:
+
+- **GStreamer plugins ship but can't load — their runtime `.so` deps aren't installed.**
+  Confirmed via `gst-inspect-1.0` (the element genuinely fails to load), not just a
+  dangling file. Most-relevant offenders:
+  - **`webrtcbin2` -> `librice-proto.so.0`** — the Rust `gst-plugins-rs` WebRTC element
+    (a deliberate cross-build feature this session: rice-proto/openssl-sys work) does
+    NOT load at runtime because `librice-proto.so.0` was never packaged into the image.
+    `webrtcbin` (the C element) loads fine; only `webrtcbin2` is dead. Likely a real
+    regression to fix (copy the Rust-built `librice-proto.so.0` into the runtime image,
+    or static-link it into the plugin) — same shape as the libsleef fix but the lib is
+    Rust-built, not an apt package.
+  - **`openh264enc` -> `libopenh264.so.8`** (apt `libopenh264-8`? verify) and the tail:
+    `libgudev-1.0.so.0` (breaks gl/v4l2/gtk/va/nvcodec/hip/uvch264 plugins),
+    `libv4l2.so.0`, `libwavpack.so.1`, `libsrtp2.so.1`, `libcsound64.so.6.0`,
+    `libcdda_{paranoia,interface}.so.0`, and (arm64) `libgstlibav.so`.
+  Triage: decide which of these the app actually needs. The apt-satisfiable ones
+  (libgudev-1.0-0, libopenh264, libv4l2-0, libwavpack1, libsrtp2-1, …) are a cheap
+  `setup_torch_deps` add (like the ffmpeg codec libs); `librice-proto.so.0` needs a
+  copy-from-build-stage or static-link. The new smoke's "GStreamer plugins that cannot
+  load: N" line makes the count visible every run; promote specific app-critical
+  elements (webrtcbin2?) to a fail-loud curated list once their deps are fixed. — M · ★★
