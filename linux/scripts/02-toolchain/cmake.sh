@@ -3,7 +3,7 @@ set -euo pipefail
 # cmake.sh - CMake from Kitware
 
 install_cmake() {
-  local version="${CMAKE_VERSION:-4.3.3}"
+  local version="${CMAKE_VERSION:-4.4.0}"
   local arch="${ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
   local asset=""
   local sha256=""
@@ -14,11 +14,11 @@ install_cmake() {
   case "${arch}" in
     amd64|x86_64)
       asset="cmake-${version}-linux-x86_64.tar.gz"
-      sha256="${CMAKE_AMD64_SHA256:-927b2368a946c37269c3a66225ab00544e756459cdd0b5d0da438694fb9ff802}"
+      sha256="${CMAKE_AMD64_SHA256:-3864eb649b4466ae126a64bbde1657adad78efbbaa068bf38201de5cf1b5349f}"
       ;;
     arm64|aarch64)
       asset="cmake-${version}-linux-aarch64.tar.gz"
-      sha256="${CMAKE_ARM64_SHA256:-9ea38356dbd3e32e51029a3e09a0f2f8e117ef4fbcaad7a21ffb36409bbd5cb4}"
+      sha256="${CMAKE_ARM64_SHA256:-e98bb53e0b00a8f672424517d34c05bb9b94fd1c888c89e0b81bc8df51d1a94b}"
       ;;
     riscv64)
       log "Using distro CMake on riscv64; Kitware does not publish a prebuilt archive for this architecture"

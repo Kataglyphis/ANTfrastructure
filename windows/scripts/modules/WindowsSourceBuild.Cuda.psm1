@@ -123,7 +123,6 @@ Export-ModuleMember -Function @(
     'Get-NvccCudaCmakeArgs',
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'Resolve-NormalizedPath',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry'
 )

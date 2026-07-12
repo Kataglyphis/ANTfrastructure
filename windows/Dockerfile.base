@@ -8,8 +8,7 @@
 ARG WINDOWS_LTSC=2025
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
 ARG VULKAN_VERSION=1.4.341.1
-ARG CMAKE_VERSION=4.3.3
-ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-windows-x86_64.msi
+ARG CMAKE_VERSION=4.4.0
 
 # GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 ENV TEMP_DIR="C:\temp"
@@ -36,6 +35,9 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
 # which is where setup-vs.ps1's $env:WINDOWS_SDK_BUILD read gets its value). Changing
 # the SDK pin SHOULD rebuild the VS layer.
 ARG WINDOWS_SDK_BUILD=26100
+# Same ARG route for the VS Build Tools major (versions.env VISUAL_STUDIO_VERSION):
+# setup-vs.ps1's VsDevCmd sanity check derives its path from it instead of a literal.
+ARG VISUAL_STUDIO_VERSION=18
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 
@@ -48,7 +50,7 @@ RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 
 # Needs load-versions first: pins scoop's llvm/git installs (LLVM_RELEASE/GIT_VERSION).
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeNightlyUrl $env:CMAKE_NIGHTLY_URL
+RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION
 
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
@@ -65,7 +67,7 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     WIX=C:\WiX `
     LLVM_USER_BIN=C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin `
     LLVM_GLOBAL_BIN=C:\ProgramData\scoop\apps\llvm\current\bin `
-    CMAKE_BIN="C:\Program Files\CMake\bin" `
+    CMAKE_BIN=C:\Users\ContainerAdministrator\scoop\apps\cmake\current\bin `
     WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH `
     USERPROFILE=C:\Users\ContainerAdministrator `
     CARGO_HOME=C:\Users\ContainerAdministrator\.cargo `

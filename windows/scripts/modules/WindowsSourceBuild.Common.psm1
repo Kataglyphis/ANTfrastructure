@@ -551,7 +551,6 @@ Export-ModuleMember -Function @(
     'Get-WindowsX86Avx512Flags',
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'Resolve-NormalizedPath',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry'
 )

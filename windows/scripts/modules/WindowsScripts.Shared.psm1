@@ -48,26 +48,6 @@ function New-Timestamp {
 
 <#
 .SYNOPSIS
-    Normalizes a file system path.
-.DESCRIPTION
-    Returns a fully qualified, normalized path without trailing slashes.
-.PARAMETER Path
-    The path to normalize.
-.OUTPUTS
-    [string] The normalized path.
-#>
-function Resolve-NormalizedPath {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
-
-    $resolved = [System.IO.Path]::GetFullPath($Path)
-    return $resolved.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-}
-
-<#
-.SYNOPSIS
     Converts a value to a list of command-line parameters.
 .DESCRIPTION
     Transforms hashtables, arrays, or strings into an array of strings suitable for process arguments.
@@ -215,11 +195,84 @@ function Invoke-DownloadWithRetry {
     }
 }
 
+<#
+.SYNOPSIS
+    Parses a versions.env file into an ordered key/value dictionary.
+.DESCRIPTION
+    Canonical parser for the repo's single source of truth
+    (linux/scripts/01-core/versions.env): blank lines and #-comments are skipped,
+    each remaining line is split on the FIRST '=', keys/values are trimmed and
+    surrounding quotes stripped from values. Replaces the hand-rolled copies that
+    used to live in load-versions.ps1, build.ps1, smoke-test-container.ps1 and
+    Test-PatchesApplyClean.ps1.
+.PARAMETER Path
+    Path to the versions.env file (must exist).
+.OUTPUTS
+    [System.Collections.Specialized.OrderedDictionary] key -> value in file order.
+    NOTE: membership test is .Contains($key) -- OrderedDictionary has no .ContainsKey.
+#>
+function ConvertFrom-VersionsEnv {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $versions = [ordered]@{}
+    foreach ($rawLine in (Get-Content $Path)) {
+        $line = $rawLine.Trim()
+        if (-not $line -or $line -match '^#') { continue }
+        $parts = $line -split '=', 2
+        if ($parts.Count -eq 2) {
+            $versions[$parts[0].Trim()] = $parts[1].Trim().Trim('"', "'")
+        }
+    }
+    return $versions
+}
+
+<#
+.SYNOPSIS
+    Expands a .zip archive and returns the top-level directory it unpacked to.
+.DESCRIPTION
+    Shared "extract, then locate the versioned subdirectory" pattern used by the
+    vcpkg / cuDNN / TensorRT setup scripts (each archive wraps its payload in a
+    single versioned root folder). Creates DestinationPath when missing, expands
+    the archive into it, and returns the full path of the first directory matching
+    Filter -- or $null when none matches (the caller decides whether that is
+    fatal; TensorRT legitimately ships flat-layout zips).
+.PARAMETER ArchivePath
+    Path to the .zip archive.
+.PARAMETER DestinationPath
+    Directory to expand into (created when missing).
+.PARAMETER Filter
+    Directory-name wildcard to locate (default '*').
+.OUTPUTS
+    [string] Full path of the matched directory, or $null.
+#>
+function Expand-ArchiveSubdirectory {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ArchivePath,
+        [Parameter(Mandatory)]
+        [string]$DestinationPath,
+        [string]$Filter = '*'
+    )
+
+    if (-not (Test-Path $DestinationPath)) {
+        New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
+    }
+    Expand-Archive -Path $ArchivePath -DestinationPath $DestinationPath -Force
+    $subdir = Get-ChildItem -Path $DestinationPath -Directory -Filter $Filter -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($subdir) { return $subdir.FullName }
+    return $null
+}
+
 Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'Resolve-NormalizedPath',
     'ConvertTo-ParameterList',
-    'Invoke-DownloadWithRetry'
+    'Invoke-DownloadWithRetry',
+    'ConvertFrom-VersionsEnv',
+    'Expand-ArchiveSubdirectory'
 )
 

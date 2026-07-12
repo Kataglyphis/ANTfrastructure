@@ -15,6 +15,19 @@ Assert-ContainerCommandAvailable -Name 'flutter' | Out-Null
 Assert-ContainerCommandAvailable -Name 'wix' | Out-Null
 Assert-ContainerCommandAvailable -Name 'clang-cl' | Out-Null
 Assert-ContainerCommandAvailable -Name 'lld-link' | Out-Null
+Assert-ContainerCommandAvailable -Name 'cmake' | Out-Null
+
+# CMake is pinned (scoop main/cmake@CMAKE_VERSION from versions.env, baked by
+# load-versions.ps1) -- fail the base build here on a pin mismatch instead of
+# surfacing it hours later in a media build or the smoke test.
+$expectedCmake = Resolve-ContainerImageValue -EnvironmentVariable 'CMAKE_VERSION' -DefaultValue ''
+if ($expectedCmake) {
+    $cmakeBanner = (& cmake --version | Select-Object -First 1)
+    if ($cmakeBanner -notmatch [regex]::Escape($expectedCmake)) {
+        throw "cmake version mismatch: expected $expectedCmake (versions.env), got '$cmakeBanner'"
+    }
+    Write-Host "cmake OK: $cmakeBanner"
+}
 
 # Resolve wix.exe via Get-Command (single source of truth, survives WiX install relocations
 # instead of hardcoding C:\WiX\wix.exe).
