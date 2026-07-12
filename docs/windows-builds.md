@@ -343,6 +343,36 @@ path (see § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs. The
 litert/tvm aux branches run+commit at `-MediaCoreCpus` too — the full budget is
 free once media-core has committed.
 
+### Maximum resource envelope (verified 2026-07-12)
+
+The defaults ARE the maximum for this 64 GB / 32-thread host — there is no
+faster configuration to unlock, and the full-chain rebuild of 2026-07-12
+(base → sdk → toolchain → media → final, phase-tagged resource CSV) is the proof:
+
+| Phase        | Minutes | AvgCpuPct | MaxCpuPct | MinFreeGB |
+|--------------|---------|-----------|-----------|-----------|
+| media-core   | 111     | 37        | 100       | **0.2**   |
+| media-litert | 18      | 38        | 100       | 24.9      |
+| media-tvm    | ~25     | 42        | 100       | 41.8      |
+
+- **CPUs: 32/32 on every heavy stage.** `docker run --cpu-count 32` (run+commit)
+  is the only >2-CPU path on this host; every compile stage uses it. `docker
+  build` stages are pinned at 2 CPUs by the host defect — that is why they carry
+  only cheap COPY/clone layers.
+- **RAM: 39 GB is the measured optimum, not a conservative default.** During
+  media-core the host bottomed out at **0.2 GB free** — the 22 GB reserve was
+  consumed almost exactly. Raising `-MediaMemoryGb` (or cutting
+  `-HostReserveGb`) does not add jobs fast enough to beat the starvation
+  cliff: the 53 GB experiment deadlocked media-core at 0 % CPU (see the
+  hard-way note below).
+- **Average CPU of ~35–45 % during compiles is CORRECT and expected** — it is
+  the memory-bound signature (`jobs = min(32, 39 GB / ~4 GB-per-ONNX-job) ≈ 10`),
+  not a tuning failure. Do not chase 100 % average CPU on this host.
+- **The only real "go faster" levers are infrastructural:** ~128 GB RAM (true
+  `j32` on ONNX), or a populated sccache remote (`-SccacheEndpoint` /
+  `SCCACHE_WEBDAV_ENDPOINT`) to make *re*builds warm — cold full-chain is
+  ~5–6 h with ~2.5 h of that in the media fan-out.
+
 **Per-run resource log.** Every `build.ps1` run samples host CPU / free RAM /
 commit charge / container-VM (`vmmem`) size every 20 s into
 `out\windows-build-logs\resources-<timestamp>.csv`, tagged with the current build
