@@ -8,8 +8,7 @@
 ARG WINDOWS_LTSC=2025
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
 ARG VULKAN_VERSION=1.4.341.1
-ARG CMAKE_VERSION=4.3.3
-ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-windows-x86_64.msi
+ARG CMAKE_VERSION=4.4.0
 
 # GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 ENV TEMP_DIR="C:\temp"
@@ -48,7 +47,7 @@ RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 
 # Needs load-versions first: pins scoop's llvm/git installs (LLVM_RELEASE/GIT_VERSION).
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeNightlyUrl $env:CMAKE_NIGHTLY_URL
+RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION
 
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'

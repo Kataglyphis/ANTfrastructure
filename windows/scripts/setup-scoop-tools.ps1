@@ -6,7 +6,7 @@ param(
     # Default derived below from versions.env's GIT_VERSION (baked by load-versions.ps1);
     # pass an explicit URL only for a git-for-windows respin (…windows.2 tag).
     [string]$GitInstallerUrl = '',
-    [string]$CMakeNightlyUrl = '',
+    [string]$CMakeVersion = '',
     [string]$VulkanVersion = ''
 )
 
@@ -26,18 +26,16 @@ Import-Module $installerModulePath -Force
 
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through the Common modules' re-export.
 
-# Derive the fallback CMake URL from CMAKE_VERSION (baked in by load-versions.ps1)
-# rather than a hardcoded literal that silently drifts from versions.env. The
-# primary value still comes from the CMAKE_NIGHTLY_URL build-arg / env when set.
-$cmakeVer = $env:CMAKE_VERSION
-$cmakeDefaultUrl = if ($cmakeVer) { "https://cmake.org/files/v$(($cmakeVer -split '\.')[0..1] -join '.')/cmake-$cmakeVer-windows-x86_64.msi" } else { '' }
-$CMakeNightlyUrl = Resolve-ContainerImageValue -Value $CMakeNightlyUrl -EnvironmentVariable 'CMAKE_NIGHTLY_URL' -DefaultValue $cmakeDefaultUrl
+# CMake stable pin comes from versions.env's CMAKE_VERSION (baked in by
+# load-versions.ps1 / passed as -CMakeVersion from the Dockerfile ARG); empty
+# falls through to scoop's current stable manifest.
+$CMakeVersion = Resolve-ContainerImageValue -Value $CMakeVersion -EnvironmentVariable 'CMAKE_VERSION'
 $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentVariable 'VULKAN_VERSION'
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
 # Derive the Git installer URL from GIT_VERSION (versions.env) so the pin cannot drift
-# invisibly in a param default -- same pattern as the CMake fallback above. The
+# invisibly in a param default -- same pattern as the CMake/Vulkan pins above. The
 # ".windows.1" tag suffix covers normal releases; a respun release needs -GitInstallerUrl.
 $gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.54.0'
 $GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' `
@@ -95,13 +93,14 @@ scoop install --global extras/flutter
 # that value).
 scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib main/nasm main/openssl
 
-Write-Host ('Downloading CMake nightly from {0}...' -f $CMakeNightlyUrl)
-$cmakeInstaller = Join-Path $TempDir 'cmake-nightly.msi'
-Invoke-DownloadWithRetry -Url $CMakeNightlyUrl -DestinationPath $cmakeInstaller -Description 'CMake nightly MSI'
-Write-Host 'Installing CMake nightly...'
-Start-Process msiexec.exe -ArgumentList '/i', $cmakeInstaller, '/quiet', '/norestart', 'ADD_CMAKE_TO_PATH=System' -Wait -NoNewWindow
-Remove-Item $cmakeInstaller -Force
-Write-Host 'CMake nightly installation complete.'
+# CMake stable release via scoop (replaces the old cmake.org MSI download); the
+# shim lands on the scoop user-shims PATH like every other tool installed here.
+if ([string]::IsNullOrWhiteSpace($CMakeVersion)) {
+    scoop install main/cmake
+} else {
+    Write-Host ('Installing CMake {0} (stable) via scoop...' -f $CMakeVersion)
+    scoop install "main/cmake@$CMakeVersion"
+}
 
 # Drop scoop's download cache — the installers (LLVM, Flutter, Vulkan SDK, ...) are
 # already unpacked into the apps dir and only bloat this (large) layer otherwise.

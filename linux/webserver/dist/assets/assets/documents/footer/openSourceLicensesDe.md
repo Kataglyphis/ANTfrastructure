@@ -17,7 +17,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| CMake | 4.3.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| CMake | 4.4.0 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Node.js | 26.4.0 | [nodejs.org](https://nodejs.org/) | MIT |
 | uv | 0.11.25 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.341.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
