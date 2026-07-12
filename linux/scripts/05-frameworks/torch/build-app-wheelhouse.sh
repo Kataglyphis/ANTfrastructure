@@ -51,9 +51,9 @@ unset _evf
 
 : "${APP_WHEELHOUSE_DIR:=/opt/app-wheels}"
 : "${APP_WHEELHOUSE_BUILD_ROOT:=/tmp/app-wheelhouse}"
-: "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.12.1}}"
+: "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.13.0}}"
 : "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
-: "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.27.1}}"
+: "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.28.0}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 

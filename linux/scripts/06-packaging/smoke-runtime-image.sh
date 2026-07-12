@@ -158,30 +158,31 @@ main() {
     fi
     echo ""
 
-    echo "--- Functional: ML imports ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         /opt/venv/bin/python -c "import onnxruntime, numpy; print('onnxruntime', onnxruntime.__version__, '| numpy', numpy.__version__)"; then
-      pass "onnxruntime + numpy import OK (${target_arch})"
-    else
-      fail "onnxruntime/numpy failed to import in the runtime image (${target_arch})"
-    fi
+    # Wheel smoke -- delegate to the APP's own smoke module (single source of
+    # truth). `python -m orchestr_ant_ion.smoke` exercises each shipped wheel with
+    # REAL work (torch autograd + a linear forward/backward, torchvision ops.nms,
+    # an embedded ONNX inference, an OpenCV encode/decode/cvtColor round-trip,
+    # Pillow, the torch<->numpy ABI bridge); LiteRT is optional there (WARN, not a
+    # gate failure). The app OWNS what its wheels must do; this gate just runs that
+    # suite on-target under qemu. Replaces the old ad-hoc torch/onnx/cv2 import +
+    # inference checks. Torch-less images skip it (falling back to a bare
+    # onnx/numpy import) since the suite treats torch as required.
     if [ "${torch_expected}" = "1" ]; then
+      echo "--- Functional: app wheel smoke (python -m orchestr_ant_ion.smoke) ---"
       if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-           /opt/venv/bin/python -c "import torch; print('torch', torch.__version__)"; then
-        pass "torch import OK (${target_arch})"
+           /opt/venv/bin/python -m orchestr_ant_ion.smoke; then
+        pass "app wheel smoke passed on-target (${target_arch})"
       else
-        fail "torch failed to import in the runtime image (${target_arch})"
+        fail "app wheel smoke FAILED in the runtime image (${target_arch})"
       fi
     else
-      echo "  INFO: skipping torch import (torch-less image)"
-    fi
-    # cv2 needs the source-built OpenCV5 bindings + GL/EGL runtime libs; report
-    # informationally so a missing optional binding does not fail the gate.
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         /opt/venv/bin/python -c "import cv2; print('cv2', cv2.__version__)" 2>/dev/null; then
-      pass "cv2 import OK (${target_arch})"
-    else
-      echo "  INFO: cv2 did not import (optional; verify /opt/opencv5 bindings on ${target_arch})"
+      echo "--- Functional: ML imports (torch-less image) ---"
+      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+           /opt/venv/bin/python -c "import onnxruntime, numpy; print('onnxruntime', onnxruntime.__version__, '| numpy', numpy.__version__)"; then
+        pass "onnxruntime + numpy import OK (torch-less, ${target_arch})"
+      else
+        fail "onnxruntime/numpy failed to import in the runtime image (${target_arch})"
+      fi
     fi
     echo ""
 
@@ -258,41 +259,9 @@ done < <(find /opt/gstreamer -path "*gstreamer-1.0/*.so" 2>/dev/null | head -300
 echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || true
     echo ""
 
-    echo "--- Functional: onnxruntime inference ---"
-    # Import alone (above) does not prove the CPU EP can EXECUTE a graph. Run a
-    # tiny embedded Add model and assert the output -- catches a broken/mislinked
-    # execution-provider .so that still imports.
-    local _onnx_b64='CAk6SwoOCgFYCgFDEgFZIgNBZGQSBHRpbnkqEQgCEAEiCAAAIEEAACBBQgFDWg8KAVgSCgoICAESBAoCCAJiDwoBWRIKCggIARIECgIIAkIECgAQEg=='
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         bash -lc "printf '%s' '${_onnx_b64}' | base64 -d > /tmp/tiny.onnx && /opt/venv/bin/python - <<'PY'
-import numpy as np, onnxruntime as ort
-s = ort.InferenceSession('/tmp/tiny.onnx', providers=['CPUExecutionProvider'])
-r = s.run(None, {'X': np.array([1.0, 2.0], dtype=np.float32)})[0]
-assert r.tolist() == [11.0, 12.0], r.tolist()
-print('onnxruntime CPU inference OK', r.tolist())
-PY"; then
-      pass "onnxruntime runs inference (${target_arch})"
-    else
-      fail "onnxruntime failed to run inference in the runtime image (${target_arch})"
-    fi
-    echo ""
-
-    # cv2 is optional (see import check above); when it IS present, prove it can
-    # actually encode/decode (exercises the imgcodecs backends) rather than just
-    # import. Info-only to match the optional treatment of the cv2 import.
-    echo "--- Functional: cv2 encode/decode ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         /opt/venv/bin/python -c "import cv2" >/dev/null 2>&1; then
-      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-           /opt/venv/bin/python -c "import numpy as np, cv2; i=(np.random.rand(24,24,3)*255).astype('uint8'); ok,b=cv2.imencode('.png',i); d=cv2.imdecode(b,cv2.IMREAD_COLOR); assert ok and d is not None and d.shape==i.shape; print('cv2 imencode/imdecode OK')"; then
-        pass "cv2 encode/decode roundtrip OK (${target_arch})"
-      else
-        fail "cv2 imports but encode/decode roundtrip FAILED (${target_arch})"
-      fi
-    else
-      echo "  INFO: cv2 not importable -- skipping encode/decode (optional)"
-    fi
-    echo ""
+    # (onnxruntime inference + cv2 encode/decode roundtrip now live in the app
+    # wheel smoke above -- `python -m orchestr_ant_ion.smoke` runs the same
+    # embedded Add model and the same imencode/imdecode round-trip on-target.)
 
     echo "--- Functional: GStreamer core pipeline ---"
     if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
