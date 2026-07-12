@@ -75,6 +75,16 @@ These validate a built/pulled image and also run during the build to fail fast:
   cross arches**, runs real workloads *on-target*:
   - ML imports (`onnxruntime`, `numpy`, `torch`) + `ffmpeg -version` (pipefail-guarded
     so a missing `.so` can't pass silently); torch-less sentinel flagged.
+  - **ML version-pin assertion** (fail) — not just *importable* but the *correct
+    versions*. Delegates to `smoke-torch-venv.sh` (assert-only), which asserts each
+    ML package's installed version equals one of **{uv.lock} ∪ {versions.env pin}**:
+    uv.lock is authoritative for the uv-resolved packages (numpy/pillow/contourpy +
+    the amd64/arm64 torch/vision/onnx wheels), versions.env for the ones we build or
+    force-reinstall from a **local wheel** (riscv64 torch/vision, the source-built
+    onnxruntime whose `__version__` 1.27.0 ≠ its pip dist 1.24.4, ai-edge-litert).
+    Also checks the `+cpu`/`+cu130` build variant vs `PYTORCH_EXTRA` and the OpenCV
+    major. Catches a wrong version silently slipping in (lock drift, a stale local
+    wheel, a floated index) — the class a presence/import check can't see.
   - **Native `/opt` `.so`-closure gate** — `ldd` over the ffmpeg/opencv5/libcamera/
     vulkan payload; any unresolved soname fails the gate. Generalises the ffmpeg
     check to the whole native stack (the class that shipped libopencore-amrwb.so.0-
