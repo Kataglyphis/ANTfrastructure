@@ -86,6 +86,38 @@ These validate a built/pulled image and also run during the build to fail fast:
     (in `build-runtime-manifest.sh`) skips the whole runtime-image smoke (e.g. a host
     without a qemu handler for a foreign arch).
 
+### Foreign-arch execution needs QEMU binfmt — registered **without sudo**
+
+The foreign-arch smokes above only mean something if the image's binaries can
+actually *execute* on the build host. That requires a `binfmt_misc` QEMU handler.
+**`build-runtime-manifest.sh` registers it automatically, with no sudo**, before the
+smoke loop (`ensure_foreign_binfmt` → `linux/scripts/setup-rootless-binfmt.sh`).
+Opt out with `RUNTIME_REGISTER_BINFMT=0` (e.g. a rootful/CI host where qemu is
+already registered via `docker run --privileged tonistiigi/binfmt` or
+`update-binfmts`).
+
+Two dead-ends to know about, because both *look* like they work and don't:
+
+- **`nerdctl run --privileged tonistiigi/binfmt --install …` (rootless)** registers
+  binfmt inside the throwaway container's own user namespace, which `--rm` destroys.
+  It prints "arch OK" but never reaches the namespace where builds/runs happen.
+- **BuildKit's embedded `/dev/.buildkit_qemu_emulator`** only wraps the *top-level*
+  process of a `RUN`. The shell starts, but its first *child* exec
+  (`uname`, `mktemp`, `gcc`, `python`, `ffmpeg`) dies with **`Exec format error`** —
+  so it cannot run any real multi-process smoke.
+
+`setup-rootless-binfmt.sh` is the working no-sudo path on a rootless
+containerd/BuildKit host: buildkitd runs `nsenter`'d into containerd's rootlesskit
+namespace, so `nerdctl run` and `nerdctl build` **share one persistent namespace**.
+The script extracts the static `qemu-<arch>` emulators from `tonistiigi/binfmt`,
+enters that shared namespace via `containerd-rootless-setuptool.sh nsenter` (where
+the mapped uid-0 *does* hold `CAP_SYS_ADMIN` over its own mounts — no host sudo), and
+registers each with flags **`POCF`**. The **`F` (fix-binary)** flag is the crux: the
+kernel opens the interpreter fd at registration time, so emulation is inherited into
+the nested build/run namespaces where the qemu path isn't even mounted — which is
+exactly what makes *child* execs work. Register once per boot (or install the
+`systemd --user` unit with `--install-service`); verify with `--verify`.
+
 ## Dedup & factoring notes (2026-07)
 
 The tree has been through several dedup passes already; remaining duplication is

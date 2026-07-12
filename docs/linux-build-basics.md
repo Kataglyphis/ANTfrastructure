@@ -138,7 +138,7 @@ Not supported / not needed:
 
 ## Multi-Arch Build
 
-> **QEMU/binfmt:** If foreign-architecture builds fail with `exec format error`, run `nerdctl run --rm --privileged tonistiigi/binfmt --install all` in a terminal first. The binfmt registration may need to be reinstalled after a host reboot.
+> **QEMU/binfmt:** If foreign-architecture builds/runs fail with `exec format error`, register the QEMU emulators first. On this **rootless** host use `linux/scripts/setup-rootless-binfmt.sh` (**no sudo**) — a plain `nerdctl run --rm --privileged tonistiigi/binfmt --install all` prints "OK" but does **not** take effect rootless (it registers in a throwaway namespace). See *Host prerequisite: QEMU/binfmt* in `docs/linux-cross-builds.md` for why, and note that `build-runtime-manifest.sh` now auto-registers before its runtime smokes. Registration is per-boot; `--install-service` makes it persistent.
 
 ### RISC-V64 example
 
