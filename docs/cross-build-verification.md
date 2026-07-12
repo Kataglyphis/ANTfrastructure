@@ -75,6 +75,18 @@ These validate a built/pulled image and also run during the build to fail fast:
   cross arches**, runs real workloads *on-target*:
   - ML imports (`onnxruntime`, `numpy`, `torch`) + `ffmpeg -version` (pipefail-guarded
     so a missing `.so` can't pass silently); torch-less sentinel flagged.
+  - **Native `/opt` `.so`-closure gate** — `ldd` over the ffmpeg/opencv5/libcamera/
+    vulkan payload; any unresolved soname fails the gate. Generalises the ffmpeg
+    check to the whole native stack (the class that shipped libopencore-amrwb.so.0-
+    broken ffmpeg). Venv Python extensions are excluded (import-time lib paths defeat
+    bare `ldd`; the import checks are their gate).
+  - **GStreamer plugin health** (warn) — lists plugins whose runtime `.so` is absent
+    (they degrade gracefully); surfaces app-critical regressions like
+    `webrtcbin2`→`librice-proto.so.0`. **GStreamer core pipeline** (fail) —
+    `videotestsrc ! videoconvert ! fakesink`.
+  - **onnxruntime inference** (fail) — runs a tiny embedded Add model and asserts the
+    output (proves the CPU EP executes, not just imports). **cv2 encode/decode**
+    roundtrip. **Application import** — the shipped venv must `import orchestr_ant_ion`.
   - **Native compiler compile+link+RUN** — compiles a trivial C **and** C++ program
     with the image's `gcc`/`g++`, runs the resulting binary on-target and asserts its
     output (C++ exercises libstdc++). This is what upgrades class 4 from a static

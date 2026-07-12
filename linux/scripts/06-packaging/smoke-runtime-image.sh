@@ -198,6 +198,102 @@ main() {
     fi
     echo ""
 
+    # Native shared-library dependency closure over the source-built /opt stacks
+    # (ffmpeg, opencv5, libcamera, vulkan). GENERALISES the ffmpeg .so gate to the
+    # whole native payload: any binary/lib whose NEEDED soname is absent from the
+    # runtime loader path is a real defect (this is exactly the class that shipped
+    # libopencore-amrwb.so.0-broken ffmpeg + libsleef.so.3-broken torch while amd64
+    # stayed green). Python venv extensions are deliberately EXCLUDED here -- torch
+    # etc. add their own package lib dirs at import time, which a bare `ldd` cannot
+    # replicate (false positives); the import checks above are their real gate.
+    echo "--- Functional: native /opt .so dependency closure ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         bash -lc 'set -uo pipefail
+n=0
+while IFS= read -r f; do
+  case "$f" in *.debug|*.a|*.la|*.pc) continue;; esac
+  nf="$(ldd "$f" 2>/dev/null | awk "/=> not found/{print \$1}")"
+  [ -n "$nf" ] && { printf "  BROKEN %s -> %s\n" "$f" "$(echo $nf | tr "\n" " ")"; n=$((n+1)); }
+done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/lib /opt/vulkan/active/lib -type f \( -name "*.so*" -o -perm -u+x \) 2>/dev/null | head -400)
+[ "$n" = 0 ]'; then
+      pass "native /opt .so closure fully resolves (${target_arch})"
+    else
+      fail "native /opt library has unresolved shared-object deps (${target_arch}) -- see BROKEN lines above"
+    fi
+    echo ""
+
+    # GStreamer plugin health -- WARN only. Unlike ffmpeg/opencv, a GStreamer
+    # plugin whose runtime .so is absent degrades gracefully (the element is just
+    # unavailable), so a broken optional plugin must not fail the gate. But surface
+    # them: this is what makes an app-critical regression visible (e.g. webrtcbin2
+    # -> librice-proto.so.0, openh264enc -> libopenh264.so.8). The functional
+    # pipeline check below is the fail-loud gate for GStreamer CORE.
+    echo "--- Functional: GStreamer plugin health (informational) ---"
+    "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+      bash -lc 'g=0
+while IFS= read -r p; do
+  ldd "$p" 2>/dev/null | grep -q "=> not found" && { g=$((g+1)); printf "  degraded: %s -> %s\n" "$(basename "$p")" "$(ldd "$p" 2>/dev/null | awk "/not found/{print \$1}" | tr "\n" " ")"; }
+done < <(find /opt/gstreamer -path "*gstreamer-1.0/*.so" 2>/dev/null | head -300)
+echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || true
+    echo ""
+
+    echo "--- Functional: onnxruntime inference ---"
+    # Import alone (above) does not prove the CPU EP can EXECUTE a graph. Run a
+    # tiny embedded Add model and assert the output -- catches a broken/mislinked
+    # execution-provider .so that still imports.
+    local _onnx_b64='CAk6SwoOCgFYCgFDEgFZIgNBZGQSBHRpbnkqEQgCEAEiCAAAIEEAACBBQgFDWg8KAVgSCgoICAESBAoCCAJiDwoBWRIKCggIARIECgIIAkIECgAQEg=='
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         bash -lc "printf '%s' '${_onnx_b64}' | base64 -d > /tmp/tiny.onnx && /opt/venv/bin/python - <<'PY'
+import numpy as np, onnxruntime as ort
+s = ort.InferenceSession('/tmp/tiny.onnx', providers=['CPUExecutionProvider'])
+r = s.run(None, {'X': np.array([1.0, 2.0], dtype=np.float32)})[0]
+assert r.tolist() == [11.0, 12.0], r.tolist()
+print('onnxruntime CPU inference OK', r.tolist())
+PY"; then
+      pass "onnxruntime runs inference (${target_arch})"
+    else
+      fail "onnxruntime failed to run inference in the runtime image (${target_arch})"
+    fi
+    echo ""
+
+    # cv2 is optional (see import check above); when it IS present, prove it can
+    # actually encode/decode (exercises the imgcodecs backends) rather than just
+    # import. Info-only to match the optional treatment of the cv2 import.
+    echo "--- Functional: cv2 encode/decode ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         /opt/venv/bin/python -c "import cv2" >/dev/null 2>&1; then
+      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+           /opt/venv/bin/python -c "import numpy as np, cv2; i=(np.random.rand(24,24,3)*255).astype('uint8'); ok,b=cv2.imencode('.png',i); d=cv2.imdecode(b,cv2.IMREAD_COLOR); assert ok and d is not None and d.shape==i.shape; print('cv2 imencode/imdecode OK')"; then
+        pass "cv2 encode/decode roundtrip OK (${target_arch})"
+      else
+        fail "cv2 imports but encode/decode roundtrip FAILED (${target_arch})"
+      fi
+    else
+      echo "  INFO: cv2 not importable -- skipping encode/decode (optional)"
+    fi
+    echo ""
+
+    echo "--- Functional: GStreamer core pipeline ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         bash -lc 'gl="$(command -v gst-launch-1.0 || echo /opt/gstreamer/bin/gst-launch-1.0)"; timeout 40 "$gl" -q videotestsrc num-buffers=3 ! videoconvert ! fakesink'; then
+      pass "GStreamer core pipeline runs (${target_arch})"
+    else
+      fail "GStreamer core pipeline FAILED (${target_arch})"
+    fi
+    echo ""
+
+    echo "--- Functional: application import ---"
+    # The actual deliverable: the Orchestr-ANT-ion app must import in the shipped
+    # venv. A broken/incomplete app install (missing runtime dep) shipped silently
+    # before -- import it through the venv python to catch that.
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         /opt/venv/bin/python -c "import orchestr_ant_ion" >/dev/null 2>&1; then
+      pass "application module imports (${target_arch})"
+    else
+      fail "application module (orchestr_ant_ion) failed to import in the venv (${target_arch})"
+    fi
+    echo ""
+
     # Native compiler compile + link + RUN. The build-time validate-compilers.sh
     # smoke compiles AND links a program in every wrapper image, but never RUNS
     # the result: on the x86_64 build host a cross arch's binary cannot execute,
