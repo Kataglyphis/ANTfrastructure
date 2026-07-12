@@ -201,7 +201,8 @@ if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
     $genaiStagedWheel = Save-PythonWheel -SourceDir (Join-Path $genaiWheelDir 'dist') -Required
     # Install it so the shipped site-packages is import-ready (onnxruntime dep is
     # already satisfied by the wheel installed in the preceding build-onnx step).
-    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', "`"$($genaiStagedWheel[0])`"")
+    # Path UNQUOTED + --only-binary: see the build-onnx wheel-install note.
+    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $genaiStagedWheel[0])
 } else {
     Write-Warning "genai wheel dir has no setup.py under $genaiWheelDir -- BUILD_WHEEL layout changed? Wheel NOT staged."
 }

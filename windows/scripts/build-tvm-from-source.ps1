@@ -141,7 +141,8 @@ if ($pythonModule -eq 'ON') {
             Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'setuptools', 'wheel')
             Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', 'dist')
             $staged = Save-PythonWheel -SourceDir (Join-Path $wheelSrcDir 'dist') -Required
-            Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', "`"$($staged[0])`"")
+            # Path UNQUOTED + --only-binary: see the build-onnx wheel-install note.
+            Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $staged[0])
         } finally { Pop-Location }
     }
 }

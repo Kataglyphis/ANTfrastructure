@@ -312,7 +312,10 @@ try {
 $ortStagedWheel = Save-PythonWheel -SourceDir (Join-Path $buildDir 'dist') -Required
 # Install the wheel (WITH pypi deps) so the shipped image can `import onnxruntime`
 # out of the box -- the media merge fans CPython's site-packages into the image.
-Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', "`"$($ortStagedWheel[0])`"")
+# Path passed UNQUOTED (space-free by construction): embedded quotes get mangled
+# by Invoke-CpythonPip's cmd.exe layer (pip saw a truncated "C" -- 2026-07-12).
+# --only-binary :all: forbids sdist fallbacks that cannot build on 3.14.
+Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $ortStagedWheel[0])
 
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='
