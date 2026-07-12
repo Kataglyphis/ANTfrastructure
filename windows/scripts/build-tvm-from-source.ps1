@@ -119,9 +119,13 @@ Copy-SidecarDll -SidecarName 'tvm_ffi.dll' -SearchDir $buildDir `
     -BesidePrimary 'tvm_runtime.dll' -InstallDir $tvmInstallDir `
     -Reason 'tvm_runtime.dll may fail to load at runtime (cmake --install missed the FFI shared lib)'
 
-# Python wheel: build it into the central store, then install it (WITH pypi deps,
-# so the fan-in ships an import-ready site-packages). No longer -Optional: the
-# python side is a shipped feature now, so a broken wheel must fail the branch.
+# Python wheel: TVM 0.25 packages via scikit-build-core at the REPO ROOT -- the
+# old cmake-generated build\python dir is GONE (TVM_BUILD_PYTHON_MODULE no longer
+# emits one; the previous -Optional site install silently did nothing, which is
+# why `import tvm` never worked in earlier images). Reuse the just-built ninja
+# dir: its CMake cache already carries USE_CUDA/LLVM/etc., so scikit-build-core's
+# configure mostly no-ops and the wheel packs existing objects; if the reuse
+# trips, fall back to a fresh tree (full ~25 min recompile, still correct).
 if ($pythonModule -eq 'ON') {
     $py = Get-SourceBuildPython
     if (Test-Path $py.Exe) {
@@ -131,19 +135,22 @@ if ($pythonModule -eq 'ON') {
         # 64-bit platform tag BEFORE any pip resolution (clang-built CPython
         # self-reports win32 and pulls 32-bit wheels otherwise).
         Initialize-PythonPlatformTag | Out-Null
-        $wheelSrcDir = Join-Path $buildDir 'python'
-        if (-not (Test-Path $wheelSrcDir)) {
-            throw "TVM python package dir not found at $wheelSrcDir (TVM_BUILD_PYTHON_MODULE=ON should have generated it)"
-        }
-        Write-Host 'Building + installing TVM python wheel...'
-        Push-Location $wheelSrcDir
+        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'scikit-build-core', 'setuptools-scm', 'wheel')
+        # The DNS-workaround clone may lack git tags -- pin the scm version directly.
+        $env:SETUPTOOLS_SCM_PRETEND_VERSION = ($TvmVersion -replace '^v', '')
+        $wheelOut = Join-Path $SourceDir 'dist'
+        Write-Host 'Building TVM python wheel (scikit-build-core, reusing the ninja build dir)...'
+        Push-Location $SourceDir
         try {
-            Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'setuptools', 'wheel')
-            Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', 'dist')
-            $staged = Save-PythonWheel -SourceDir (Join-Path $wheelSrcDir 'dist') -Required
-            # Path UNQUOTED + --only-binary: see the build-onnx wheel-install note.
-            Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $staged[0])
+            Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut, "--config-settings=build-dir=$buildDir") -Optional
+            if (-not (Test-Path (Join-Path $wheelOut '*.whl'))) {
+                Write-Warning 'build-dir reuse produced no wheel -- retrying with a fresh scikit-build tree (full recompile)'
+                Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut)
+            }
         } finally { Pop-Location }
+        $staged = Save-PythonWheel -SourceDir $wheelOut -Required
+        # Path UNQUOTED + --only-binary: see the build-onnx wheel-install note.
+        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $staged[0])
     }
 }
 
