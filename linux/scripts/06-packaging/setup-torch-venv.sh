@@ -332,7 +332,7 @@ configure_foreign_arch_compiler_env() {
 
 apply_torch_app_env_defaults() {
   : "${ONNX_PACKAGE:=onnxruntime}"
-  : "${PYTORCH_EXTRA:=none}"
+  : "${PYTORCH_EXTRA:=pytorch-cpu}"
   : "${SKIP_TORCH_TEST_EXTRAS:=true}"
   export ONNX_PACKAGE PYTORCH_EXTRA SKIP_TORCH_TEST_EXTRAS
 }
