@@ -185,6 +185,27 @@ main() {
     fi
     echo ""
 
+    # Not just "importable" but the CORRECT versions. Delegate to the canonical
+    # venv-integrity smoke's assert-only mode: it asserts each ML package matches
+    # its pin -- uv.lock for uv-resolved packages (numpy/pillow/contourpy + the
+    # amd64/arm64 torch/vision/onnx wheels) and versions.env for the ones we build
+    # or force-reinstall from a LOCAL wheel (riscv64 torch/vision, source-built
+    # onnxruntime, ai-edge-litert) -- plus the +cpu/+cu130 build variant and
+    # OpenCV major. This is the check that catches a wrong version silently
+    # slipping in (lock drift, a stale local wheel, a floated index). cv2 stays
+    # optional here to match the informational import above. Torch-less images
+    # skip it (no versions to assert).
+    if [ "${torch_expected}" = "1" ]; then
+      echo "--- Functional: ML version-pin assertion (${target_arch}) ---"
+      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+           bash -lc 'STV_ASSERT_ONLY=1 STV_CV2_REQUIRED=0 bash /opt/scripts/packaging/smoke-torch-venv.sh'; then
+        pass "ML-stack versions match pins (${target_arch})"
+      else
+        fail "ML-stack version-pin assertion FAILED in the runtime image (${target_arch})"
+      fi
+      echo ""
+    fi
+
     echo "--- Functional: ffmpeg ---"
     # pipefail is REQUIRED: without it, `ffmpeg -version | head -1` returns head's
     # exit (0), so a broken binary -- e.g. `error while loading shared libraries:
