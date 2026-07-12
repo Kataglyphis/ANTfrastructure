@@ -343,6 +343,36 @@ path (see § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs. The
 litert/tvm aux branches run+commit at `-MediaCoreCpus` too — the full budget is
 free once media-core has committed.
 
+### Maximum resource envelope (verified 2026-07-12)
+
+The defaults ARE the maximum for this 64 GB / 32-thread host — there is no
+faster configuration to unlock, and the full-chain rebuild of 2026-07-12
+(base → sdk → toolchain → media → final, phase-tagged resource CSV) is the proof:
+
+| Phase        | Minutes | AvgCpuPct | MaxCpuPct | MinFreeGB |
+|--------------|---------|-----------|-----------|-----------|
+| media-core   | 111     | 37        | 100       | **0.2**   |
+| media-litert | 18      | 38        | 100       | 24.9      |
+| media-tvm    | ~25     | 42        | 100       | 41.8      |
+
+- **CPUs: 32/32 on every heavy stage.** `docker run --cpu-count 32` (run+commit)
+  is the only >2-CPU path on this host; every compile stage uses it. `docker
+  build` stages are pinned at 2 CPUs by the host defect — that is why they carry
+  only cheap COPY/clone layers.
+- **RAM: 39 GB is the measured optimum, not a conservative default.** During
+  media-core the host bottomed out at **0.2 GB free** — the 22 GB reserve was
+  consumed almost exactly. Raising `-MediaMemoryGb` (or cutting
+  `-HostReserveGb`) does not add jobs fast enough to beat the starvation
+  cliff: the 53 GB experiment deadlocked media-core at 0 % CPU (see the
+  hard-way note below).
+- **Average CPU of ~35–45 % during compiles is CORRECT and expected** — it is
+  the memory-bound signature (`jobs = min(32, 39 GB / ~4 GB-per-ONNX-job) ≈ 10`),
+  not a tuning failure. Do not chase 100 % average CPU on this host.
+- **The only real "go faster" levers are infrastructural:** ~128 GB RAM (true
+  `j32` on ONNX), or a populated sccache remote (`-SccacheEndpoint` /
+  `SCCACHE_WEBDAV_ENDPOINT`) to make *re*builds warm — cold full-chain is
+  ~5–6 h with ~2.5 h of that in the media fan-out.
+
 **Per-run resource log.** Every `build.ps1` run samples host CPU / free RAM /
 commit charge / container-VM (`vmmem`) size every 20 s into
 `out\windows-build-logs\resources-<timestamp>.csv`, tagged with the current build
@@ -461,9 +491,32 @@ After building, run the container smoke test to verify all components:
 
 ```powershell
 # Run smoke tests inside the built container
-& "D:\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
+& "C:\Program Files\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
   powershell -File C:\temp\scripts\smoke-test-container.ps1
 ```
 
-The smoke test validates 18 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), and compiler integration.
+The smoke test validates 19 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), compiler integration, and environment-pointer integrity. **Current baseline (2026-07-12, GPU lane): 137 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew.
+
+### What is verified: native vs. Python
+
+**Native (C++/CLI) functionality is verified end-to-end.** The suite does not stop
+at existence checks: it compiles, links, and *runs* probe programs against the
+source-built libraries — ONNX Runtime (C API ABI + a real inference session over
+an embedded 63-byte Identity model on the CPU EP), OpenCV (core API call), TVM
+(full dependent-DLL chain load), LiteRT-LM (its `litert_lm_main.exe` smoke-run is
+a hard gate of the media build itself), FFmpeg (a real lavfi→null filter graph),
+GStreamer (a live `videotestsrc ! videoconvert` pipeline), plus clang-cl /
+CMake+Ninja / MSBuild integration builds. Version pins (cmake, python, gstreamer)
+are asserted against versions.env to catch stale baked layers.
+
+**Python coverage is interpreter-only, by design.** CPython 3.14 itself is
+verified (exact pin, pip, and the optional stdlib extension modules
+ssl/sqlite3/zlib/ctypes/bz2/lzma — the ones source builds silently drop when a
+dependency is missing). The AI/media libraries deliberately ship **without**
+Python bindings: ONNX Runtime is built `ENABLE_PYTHON=OFF`, OpenCV without
+`cv2` (no numpy in the build environment), TVM without its python package. This
+is a native developer image — Python consumers install upstream wheels, which
+would not exercise these source builds anyway. If in-image Python bindings are
+ever wanted, that is a media-stage feature change (numpy build dep + wheel
+builds), not a smoke-test addition.

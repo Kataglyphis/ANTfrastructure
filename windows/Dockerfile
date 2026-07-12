@@ -16,6 +16,13 @@ ARG VCS_REF=""
 # linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
 ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 
+# OPENCV_BIN/OPENCV_LIB as baked by the media merge point at <root>\bin|lib,
+# which OpenCV's per-module install layout never creates — the real dirs are
+# x64\vc18\{bin,lib}. Re-point here (cheapest layer; smoke §19 asserts them);
+# fix at the source with the next media-merge rebuild.
+ENV OPENCV_BIN=C:\runtime\lib\opencv5\x64\vc18\bin `
+    OPENCV_LIB=C:\runtime\lib\opencv5\x64\vc18\lib
+
 # Rust note: FIXED in setup-rust-toolchain.ps1 (scoop-provisioned rust, DELIBERATELY
 # unpinned -- the Windows lane tracks scoop's latest; versions.env's RUST_VERSION pins
 # only the Linux lane. No rustup at all: a toolchain-less rustup used to shadow the
