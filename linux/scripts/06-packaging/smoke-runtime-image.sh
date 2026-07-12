@@ -303,28 +303,54 @@ PY"; then
     # actually compiles, links AND executes a real binary. The C++ case also
     # exercises the libstdc++ runtime. Gate RUNTIME_COMPILER_SMOKE=0 to skip.
     if [ "${RUNTIME_COMPILER_SMOKE:-1}" = "1" ]; then
-      echo "--- Functional: native compiler compile+link+run (${target_arch}) ---"
+      echo "--- Functional: native compiler battery compile+link+run (${target_arch}) ---"
+      # A battery, not just hello-world: each case exercises a distinct piece of
+      # the shipped toolchain that a hello-world would not. C++ exceptions+STL is
+      # the load-bearing one -- it regression-guards the -idirafter WRAPPER fix in
+      # swap-native-gcc.sh (an installed specs file made throw/catch terminate at
+      # runtime; the wrapper leaves the EH link specs intact). std::thread proves
+      # libstdc++ threading + libpthread; libatomic proves 64-bit atomics link
+      # (riscv64 needs the runtime lib); -flto proves the LTO plugin loads. All six
+      # validated to pass on arm64+riscv64 with the wrapper fix. Sources use only
+      # double quotes / return-code checks so they stay clean inside bash -lc.
       if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-           bash -lc 'set -euo pipefail
+           bash -lc 'set -uo pipefail
 cc="$(command -v gcc || command -v cc || true)"
 cxx="$(command -v g++ || command -v c++ || true)"
 [ -n "$cc" ] || { echo "no gcc/cc on PATH"; exit 3; }
-d="$(mktemp -d)"
-printf "#include <stdio.h>\nint main(void){puts(\"c-ok\");return 0;}\n" > "$d/t.c"
-"$cc" -O2 "$d/t.c" -o "$d/tc"
-cout="$("$d/tc")"
-[ "$cout" = "c-ok" ] || { echo "C binary printed [$cout] not c-ok"; exit 4; }
-echo "  C  : gcc $("$cc" -dumpversion) [$("$cc" -dumpmachine)] compiled+linked+RAN"
+d="$(mktemp -d)"; rc=0
+report(){ if [ "$2" = 0 ]; then echo "  OK  $1"; else echo "  XX  $1"; sed "s/^/       /" "$d/e" 2>/dev/null | head -4; rc=1; fi; }
+# C: hello (compile+link+RUN, verify stdout)
+printf "#include <stdio.h>\nint main(void){puts(\"c-ok\");return 0;}\n" > "$d/c.c"
+{ "$cc" -O2 "$d/c.c" -o "$d/c" 2>"$d/e" && [ "$("$d/c")" = c-ok ]; }; report "C   hello (stdout=c-ok)" $?
+# C: pthreads
+printf "#include <pthread.h>\nstatic void* w(void*a){*(int*)a=42;return 0;}\nint main(void){pthread_t t;int v=0;pthread_create(&t,0,w,&v);pthread_join(t,0);return v==42?0:1;}\n" > "$d/th.c"
+{ "$cc" -O2 "$d/th.c" -o "$d/th" -pthread 2>"$d/e" && "$d/th"; }; report "C   pthreads (-pthread)" $?
+# C: libm
+printf "#include <math.h>\nint main(void){double x=sqrt(2.0)*sqrt(2.0);return (int)(x+0.5)==2?0:1;}\n" > "$d/m.c"
+{ "$cc" -O2 "$d/m.c" -o "$d/m" -lm 2>"$d/e" && "$d/m"; }; report "C   libm (-lm)" $?
+# C: libatomic (64-bit atomics; riscv64 requires the runtime lib)
+printf "#include <stdio.h>\nint main(void){long long v=0;__atomic_fetch_add(&v,42,__ATOMIC_SEQ_CST);return v==42?0:1;}\n" > "$d/a.c"
+{ "$cc" -O2 "$d/a.c" -o "$d/a" -latomic 2>"$d/e" && "$d/a"; }; report "C   libatomic (-latomic)" $?
 if [ -n "$cxx" ]; then
-  printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/t.cpp"
-  "$cxx" -O2 "$d/t.cpp" -o "$d/tx"
-  xout="$("$d/tx")"
-  [ "$xout" = "cxx-ok" ] || { echo "C++ binary printed [$xout] not cxx-ok"; exit 5; }
-  echo "  C++: g++ $("$cxx" -dumpversion) [$("$cxx" -dumpmachine)] compiled+linked+RAN libstdc++"
-fi'; then
-        pass "native gcc/g++ compiles, links AND runs a ${target_arch} binary under emulation"
+  # C++: hello (compile+link+RUN libstdc++, verify stdout)
+  printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/x.cpp"
+  { "$cxx" -O2 "$d/x.cpp" -o "$d/x" 2>"$d/e" && [ "$("$d/x")" = cxx-ok ]; }; report "C++ hello (stdout=cxx-ok)" $?
+  # C++: exceptions + STL -- regression guard for the -idirafter wrapper fix
+  printf "#include <vector>\n#include <string>\n#include <stdexcept>\n#include <algorithm>\nint main(){std::vector<std::string> v{\"c\",\"a\",\"b\"};std::sort(v.begin(),v.end());std::string j;for(auto&s:v)j+=s;try{throw std::runtime_error(\"x\");}catch(const std::exception&e){j+=e.what();}return j==\"abcx\"?0:1;}\n" > "$d/e.cpp"
+  { "$cxx" -O2 "$d/e.cpp" -o "$d/ex" 2>"$d/e" && "$d/ex"; }; report "C++ exceptions+STL (throw/catch/sort)" $?
+  # C++: std::thread
+  printf "#include <thread>\n#include <atomic>\nint main(){std::atomic<int> n{0};std::thread t([&]{n=42;});t.join();return n==42?0:1;}\n" > "$d/t.cpp"
+  { "$cxx" -O2 "$d/t.cpp" -o "$d/tt" -pthread 2>"$d/e" && "$d/tt"; }; report "C++ std::thread" $?
+  # C++: link-time optimization
+  printf "int sq(int x){return x*x;}\nint main(){return sq(7)==49?0:1;}\n" > "$d/l.cpp"
+  { "$cxx" -O2 -flto "$d/l.cpp" -o "$d/l" 2>"$d/e" && "$d/l"; }; report "C++ LTO (-flto)" $?
+fi
+echo "  gcc $("$cc" -dumpversion) [$("$cc" -dumpmachine)]"
+exit $rc'; then
+        pass "native compiler battery (C hello/pthreads/libm/atomic + C++ hello/exceptions/thread/LTO) all pass on ${target_arch}"
       else
-        fail "native compiler compile+link+run FAILED in the runtime image (${target_arch})"
+        fail "native compiler battery had FAILURES in the runtime image (${target_arch}) -- see XX lines above"
       fi
       echo ""
     fi
