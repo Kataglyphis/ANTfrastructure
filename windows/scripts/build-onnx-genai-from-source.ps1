@@ -208,7 +208,10 @@ if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
     $genaiImport = ''
     $genaiImportOk = $false
     try {
-        $genaiImport = (& $py.Exe -c 'import onnxruntime_genai as og; print(getattr(og, "__version__", "n/a"))' 2>&1 | Select-Object -Last 1).ToString().Trim()
+        # NO embedded double quotes in the -c string: PS 5.1 native-arg passing
+        # strips them, python saw bare __version__ -> NameError -> false negative
+        # (killed attempt 3 despite a perfectly working wheel).
+        $genaiImport = (& $py.Exe -c 'import onnxruntime_genai; print(onnxruntime_genai.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
         $genaiImportOk = ($LASTEXITCODE -eq 0)
     } catch { $genaiImport = $_.Exception.Message }
     if (-not $genaiImportOk) { throw "import onnxruntime_genai failed right after wheel install: $genaiImport" }
