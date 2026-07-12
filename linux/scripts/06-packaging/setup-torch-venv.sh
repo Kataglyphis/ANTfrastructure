@@ -197,6 +197,34 @@ setup_torch_deps() {
     echo "No /opt/ffmpeg/runtime-apt-packages.txt manifest; relying on the hardcoded codec-lib baseline"
   fi
 
+  # Fail-loud gate: every shared library the shipped ffmpeg needs (its full
+  # transitive closure) MUST resolve on the runtime loader path. The codec-lib
+  # installs above are best-effort, and historically a silently-skipped package
+  # (e.g. libopencore-amrwb0 -> libopencore-amrwb.so.0) shipped undetected --
+  # ffmpeg then died at load on arm64/riscv64 while amd64 stayed green, and the
+  # only backstop (the runtime-image ffmpeg smoke) is skipped whenever binfmt/QEMU
+  # is absent. `ldd` honours the LD_LIBRARY_PATH set above (so /opt/ffmpeg's own
+  # libav* resolve too) and runs natively in this torch stage under QEMU, so this
+  # asserts the property that actually matters regardless of smoke gating. Escape
+  # hatch: ALLOW_BROKEN_FFMPEG=1.
+  if [ -x /opt/ffmpeg/bin/ffmpeg ] && command -v ldd >/dev/null 2>&1; then
+    local _ff_unresolved
+    _ff_unresolved="$(ldd /opt/ffmpeg/bin/ffmpeg 2>/dev/null | awk '/=> not found/{print $1}' | sort -u || true)"
+    if [ -n "${_ff_unresolved}" ]; then
+      echo "FATAL: /opt/ffmpeg/bin/ffmpeg has unresolved shared libraries on the runtime loader path:" >&2
+      printf '  %s (not found)\n' ${_ff_unresolved} >&2
+      echo "  Install the providing apt package(s) in setup_torch_deps or via the ffmpeg runtime-apt manifest (emit_runtime_apt_manifest)." >&2
+      if [ "${ALLOW_BROKEN_FFMPEG:-0}" = "1" ]; then
+        echo "WARNING: ALLOW_BROKEN_FFMPEG=1 -- shipping ffmpeg with unresolved libraries anyway." >&2
+      else
+        rm -rf /var/lib/apt/lists/*
+        exit 1
+      fi
+    else
+      echo "FFmpeg shared-library closure fully resolved on the runtime loader path"
+    fi
+  fi
+
   rm -rf /var/lib/apt/lists/*
 }
 
@@ -221,6 +249,15 @@ seed_riscv64_apt_packages() {
   apt-get install -y --no-install-recommends python3-numpy python3-cairo python3-gi python3-gi-cairo
   apt-get install -y --no-install-recommends python3-contourpy \
     || echo "WARNING: python3-contourpy not available via apt"
+  # The riscv64 torch wheel is cross-built with USE_SYSTEM_SLEEF=1
+  # (build-app-wheelhouse.sh _torch_detect_system_sleef): PyTorch links
+  # libsleef.so.3 dynamically instead of bundling SLEEF, and the cross-build
+  # path deliberately skips auditwheel-repair (repair-wheels.sh), so the .so is
+  # never vendored into the wheel. Install the SLEEF runtime lib (libsleef-dev's
+  # runtime half, same Ubuntu release as the build sysroot) so `import torch`
+  # can resolve libsleef.so.3 -- without it the venv torch fails to import.
+  apt-get install -y --no-install-recommends libsleef3 \
+    || echo "WARNING: libsleef3 unavailable via apt; import torch will fail (libsleef.so.3 missing)"
   rm -rf /var/lib/apt/lists/*
   local _sp
   _sp="$(venv_site_packages)"
