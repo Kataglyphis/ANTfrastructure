@@ -158,32 +158,54 @@ main() {
     fi
     echo ""
 
-    echo "--- Functional: ML imports ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         /opt/venv/bin/python -c "import onnxruntime, numpy; print('onnxruntime', onnxruntime.__version__, '| numpy', numpy.__version__)"; then
-      pass "onnxruntime + numpy import OK (${target_arch})"
-    else
-      fail "onnxruntime/numpy failed to import in the runtime image (${target_arch})"
-    fi
+    # Wheel smoke -- delegate to the APP's own smoke module (single source of
+    # truth). `python -m orchestr_ant_ion.smoke` exercises each shipped wheel with
+    # REAL work (torch autograd + a linear forward/backward, torchvision ops.nms,
+    # an embedded ONNX inference, an OpenCV encode/decode/cvtColor round-trip,
+    # Pillow, the torch<->numpy ABI bridge); LiteRT is optional there (WARN, not a
+    # gate failure). The app OWNS what its wheels must do; this gate just runs that
+    # suite on-target under qemu. Replaces the old ad-hoc torch/onnx/cv2 import +
+    # inference checks. Torch-less images skip it (falling back to a bare
+    # onnx/numpy import) since the suite treats torch as required.
     if [ "${torch_expected}" = "1" ]; then
+      echo "--- Functional: app wheel smoke (python -m orchestr_ant_ion.smoke) ---"
       if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-           /opt/venv/bin/python -c "import torch; print('torch', torch.__version__)"; then
-        pass "torch import OK (${target_arch})"
+           /opt/venv/bin/python -m orchestr_ant_ion.smoke; then
+        pass "app wheel smoke passed on-target (${target_arch})"
       else
-        fail "torch failed to import in the runtime image (${target_arch})"
+        fail "app wheel smoke FAILED in the runtime image (${target_arch})"
       fi
     else
-      echo "  INFO: skipping torch import (torch-less image)"
-    fi
-    # cv2 needs the source-built OpenCV5 bindings + GL/EGL runtime libs; report
-    # informationally so a missing optional binding does not fail the gate.
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         /opt/venv/bin/python -c "import cv2; print('cv2', cv2.__version__)" 2>/dev/null; then
-      pass "cv2 import OK (${target_arch})"
-    else
-      echo "  INFO: cv2 did not import (optional; verify /opt/opencv5 bindings on ${target_arch})"
+      echo "--- Functional: ML imports (torch-less image) ---"
+      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+           /opt/venv/bin/python -c "import onnxruntime, numpy; print('onnxruntime', onnxruntime.__version__, '| numpy', numpy.__version__)"; then
+        pass "onnxruntime + numpy import OK (torch-less, ${target_arch})"
+      else
+        fail "onnxruntime/numpy failed to import in the runtime image (${target_arch})"
+      fi
     fi
     echo ""
+
+    # Not just "importable" but the CORRECT versions. Delegate to the canonical
+    # venv-integrity smoke's assert-only mode: it asserts each ML package matches
+    # its pin -- uv.lock for uv-resolved packages (numpy/pillow/contourpy + the
+    # amd64/arm64 torch/vision/onnx wheels) and versions.env for the ones we build
+    # or force-reinstall from a LOCAL wheel (riscv64 torch/vision, source-built
+    # onnxruntime, ai-edge-litert) -- plus the +cpu/+cu130 build variant and
+    # OpenCV major. This is the check that catches a wrong version silently
+    # slipping in (lock drift, a stale local wheel, a floated index). cv2 stays
+    # optional here to match the informational import above. Torch-less images
+    # skip it (no versions to assert).
+    if [ "${torch_expected}" = "1" ]; then
+      echo "--- Functional: ML version-pin assertion (${target_arch}) ---"
+      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+           bash -lc 'STV_ASSERT_ONLY=1 STV_CV2_REQUIRED=0 bash /opt/scripts/packaging/smoke-torch-venv.sh'; then
+        pass "ML-stack versions match pins (${target_arch})"
+      else
+        fail "ML-stack version-pin assertion FAILED in the runtime image (${target_arch})"
+      fi
+      echo ""
+    fi
 
     echo "--- Functional: ffmpeg ---"
     # pipefail is REQUIRED: without it, `ffmpeg -version | head -1` returns head's
@@ -237,41 +259,9 @@ done < <(find /opt/gstreamer -path "*gstreamer-1.0/*.so" 2>/dev/null | head -300
 echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || true
     echo ""
 
-    echo "--- Functional: onnxruntime inference ---"
-    # Import alone (above) does not prove the CPU EP can EXECUTE a graph. Run a
-    # tiny embedded Add model and assert the output -- catches a broken/mislinked
-    # execution-provider .so that still imports.
-    local _onnx_b64='CAk6SwoOCgFYCgFDEgFZIgNBZGQSBHRpbnkqEQgCEAEiCAAAIEEAACBBQgFDWg8KAVgSCgoICAESBAoCCAJiDwoBWRIKCggIARIECgIIAkIECgAQEg=='
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         bash -lc "printf '%s' '${_onnx_b64}' | base64 -d > /tmp/tiny.onnx && /opt/venv/bin/python - <<'PY'
-import numpy as np, onnxruntime as ort
-s = ort.InferenceSession('/tmp/tiny.onnx', providers=['CPUExecutionProvider'])
-r = s.run(None, {'X': np.array([1.0, 2.0], dtype=np.float32)})[0]
-assert r.tolist() == [11.0, 12.0], r.tolist()
-print('onnxruntime CPU inference OK', r.tolist())
-PY"; then
-      pass "onnxruntime runs inference (${target_arch})"
-    else
-      fail "onnxruntime failed to run inference in the runtime image (${target_arch})"
-    fi
-    echo ""
-
-    # cv2 is optional (see import check above); when it IS present, prove it can
-    # actually encode/decode (exercises the imgcodecs backends) rather than just
-    # import. Info-only to match the optional treatment of the cv2 import.
-    echo "--- Functional: cv2 encode/decode ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         /opt/venv/bin/python -c "import cv2" >/dev/null 2>&1; then
-      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-           /opt/venv/bin/python -c "import numpy as np, cv2; i=(np.random.rand(24,24,3)*255).astype('uint8'); ok,b=cv2.imencode('.png',i); d=cv2.imdecode(b,cv2.IMREAD_COLOR); assert ok and d is not None and d.shape==i.shape; print('cv2 imencode/imdecode OK')"; then
-        pass "cv2 encode/decode roundtrip OK (${target_arch})"
-      else
-        fail "cv2 imports but encode/decode roundtrip FAILED (${target_arch})"
-      fi
-    else
-      echo "  INFO: cv2 not importable -- skipping encode/decode (optional)"
-    fi
-    echo ""
+    # (onnxruntime inference + cv2 encode/decode roundtrip now live in the app
+    # wheel smoke above -- `python -m orchestr_ant_ion.smoke` runs the same
+    # embedded Add model and the same imencode/imdecode round-trip on-target.)
 
     echo "--- Functional: GStreamer core pipeline ---"
     if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
@@ -303,28 +293,54 @@ PY"; then
     # actually compiles, links AND executes a real binary. The C++ case also
     # exercises the libstdc++ runtime. Gate RUNTIME_COMPILER_SMOKE=0 to skip.
     if [ "${RUNTIME_COMPILER_SMOKE:-1}" = "1" ]; then
-      echo "--- Functional: native compiler compile+link+run (${target_arch}) ---"
+      echo "--- Functional: native compiler battery compile+link+run (${target_arch}) ---"
+      # A battery, not just hello-world: each case exercises a distinct piece of
+      # the shipped toolchain that a hello-world would not. C++ exceptions+STL is
+      # the load-bearing one -- it regression-guards the -idirafter WRAPPER fix in
+      # swap-native-gcc.sh (an installed specs file made throw/catch terminate at
+      # runtime; the wrapper leaves the EH link specs intact). std::thread proves
+      # libstdc++ threading + libpthread; libatomic proves 64-bit atomics link
+      # (riscv64 needs the runtime lib); -flto proves the LTO plugin loads. All six
+      # validated to pass on arm64+riscv64 with the wrapper fix. Sources use only
+      # double quotes / return-code checks so they stay clean inside bash -lc.
       if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-           bash -lc 'set -euo pipefail
+           bash -lc 'set -uo pipefail
 cc="$(command -v gcc || command -v cc || true)"
 cxx="$(command -v g++ || command -v c++ || true)"
 [ -n "$cc" ] || { echo "no gcc/cc on PATH"; exit 3; }
-d="$(mktemp -d)"
-printf "#include <stdio.h>\nint main(void){puts(\"c-ok\");return 0;}\n" > "$d/t.c"
-"$cc" -O2 "$d/t.c" -o "$d/tc"
-cout="$("$d/tc")"
-[ "$cout" = "c-ok" ] || { echo "C binary printed [$cout] not c-ok"; exit 4; }
-echo "  C  : gcc $("$cc" -dumpversion) [$("$cc" -dumpmachine)] compiled+linked+RAN"
+d="$(mktemp -d)"; rc=0
+report(){ if [ "$2" = 0 ]; then echo "  OK  $1"; else echo "  XX  $1"; sed "s/^/       /" "$d/e" 2>/dev/null | head -4; rc=1; fi; }
+# C: hello (compile+link+RUN, verify stdout)
+printf "#include <stdio.h>\nint main(void){puts(\"c-ok\");return 0;}\n" > "$d/c.c"
+{ "$cc" -O2 "$d/c.c" -o "$d/c" 2>"$d/e" && [ "$("$d/c")" = c-ok ]; }; report "C   hello (stdout=c-ok)" $?
+# C: pthreads
+printf "#include <pthread.h>\nstatic void* w(void*a){*(int*)a=42;return 0;}\nint main(void){pthread_t t;int v=0;pthread_create(&t,0,w,&v);pthread_join(t,0);return v==42?0:1;}\n" > "$d/th.c"
+{ "$cc" -O2 "$d/th.c" -o "$d/th" -pthread 2>"$d/e" && "$d/th"; }; report "C   pthreads (-pthread)" $?
+# C: libm
+printf "#include <math.h>\nint main(void){double x=sqrt(2.0)*sqrt(2.0);return (int)(x+0.5)==2?0:1;}\n" > "$d/m.c"
+{ "$cc" -O2 "$d/m.c" -o "$d/m" -lm 2>"$d/e" && "$d/m"; }; report "C   libm (-lm)" $?
+# C: libatomic (64-bit atomics; riscv64 requires the runtime lib)
+printf "#include <stdio.h>\nint main(void){long long v=0;__atomic_fetch_add(&v,42,__ATOMIC_SEQ_CST);return v==42?0:1;}\n" > "$d/a.c"
+{ "$cc" -O2 "$d/a.c" -o "$d/a" -latomic 2>"$d/e" && "$d/a"; }; report "C   libatomic (-latomic)" $?
 if [ -n "$cxx" ]; then
-  printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/t.cpp"
-  "$cxx" -O2 "$d/t.cpp" -o "$d/tx"
-  xout="$("$d/tx")"
-  [ "$xout" = "cxx-ok" ] || { echo "C++ binary printed [$xout] not cxx-ok"; exit 5; }
-  echo "  C++: g++ $("$cxx" -dumpversion) [$("$cxx" -dumpmachine)] compiled+linked+RAN libstdc++"
-fi'; then
-        pass "native gcc/g++ compiles, links AND runs a ${target_arch} binary under emulation"
+  # C++: hello (compile+link+RUN libstdc++, verify stdout)
+  printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/x.cpp"
+  { "$cxx" -O2 "$d/x.cpp" -o "$d/x" 2>"$d/e" && [ "$("$d/x")" = cxx-ok ]; }; report "C++ hello (stdout=cxx-ok)" $?
+  # C++: exceptions + STL -- regression guard for the -idirafter wrapper fix
+  printf "#include <vector>\n#include <string>\n#include <stdexcept>\n#include <algorithm>\nint main(){std::vector<std::string> v{\"c\",\"a\",\"b\"};std::sort(v.begin(),v.end());std::string j;for(auto&s:v)j+=s;try{throw std::runtime_error(\"x\");}catch(const std::exception&e){j+=e.what();}return j==\"abcx\"?0:1;}\n" > "$d/e.cpp"
+  { "$cxx" -O2 "$d/e.cpp" -o "$d/ex" 2>"$d/e" && "$d/ex"; }; report "C++ exceptions+STL (throw/catch/sort)" $?
+  # C++: std::thread
+  printf "#include <thread>\n#include <atomic>\nint main(){std::atomic<int> n{0};std::thread t([&]{n=42;});t.join();return n==42?0:1;}\n" > "$d/t.cpp"
+  { "$cxx" -O2 "$d/t.cpp" -o "$d/tt" -pthread 2>"$d/e" && "$d/tt"; }; report "C++ std::thread" $?
+  # C++: link-time optimization
+  printf "int sq(int x){return x*x;}\nint main(){return sq(7)==49?0:1;}\n" > "$d/l.cpp"
+  { "$cxx" -O2 -flto "$d/l.cpp" -o "$d/l" 2>"$d/e" && "$d/l"; }; report "C++ LTO (-flto)" $?
+fi
+echo "  gcc $("$cc" -dumpversion) [$("$cc" -dumpmachine)]"
+exit $rc'; then
+        pass "native compiler battery (C hello/pthreads/libm/atomic + C++ hello/exceptions/thread/LTO) all pass on ${target_arch}"
       else
-        fail "native compiler compile+link+run FAILED in the runtime image (${target_arch})"
+        fail "native compiler battery had FAILURES in the runtime image (${target_arch}) -- see XX lines above"
       fi
       echo ""
     fi

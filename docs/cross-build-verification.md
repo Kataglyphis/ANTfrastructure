@@ -75,6 +75,16 @@ These validate a built/pulled image and also run during the build to fail fast:
   cross arches**, runs real workloads *on-target*:
   - ML imports (`onnxruntime`, `numpy`, `torch`) + `ffmpeg -version` (pipefail-guarded
     so a missing `.so` can't pass silently); torch-less sentinel flagged.
+  - **ML version-pin assertion** (fail) — not just *importable* but the *correct
+    versions*. Delegates to `smoke-torch-venv.sh` (assert-only), which asserts each
+    ML package's installed version equals one of **{uv.lock} ∪ {versions.env pin}**:
+    uv.lock is authoritative for the uv-resolved packages (numpy/pillow/contourpy +
+    the amd64/arm64 torch/vision/onnx wheels), versions.env for the ones we build or
+    force-reinstall from a **local wheel** (riscv64 torch/vision, the source-built
+    onnxruntime whose `__version__` 1.27.0 ≠ its pip dist 1.24.4, ai-edge-litert).
+    Also checks the `+cpu`/`+cu130` build variant vs `PYTORCH_EXTRA` and the OpenCV
+    major. Catches a wrong version silently slipping in (lock drift, a stale local
+    wheel, a floated index) — the class a presence/import check can't see.
   - **Native `/opt` `.so`-closure gate** — `ldd` over the ffmpeg/opencv5/libcamera/
     vulkan payload; any unresolved soname fails the gate. Generalises the ffmpeg
     check to the whole native stack (the class that shipped libopencore-amrwb.so.0-
@@ -87,13 +97,18 @@ These validate a built/pulled image and also run during the build to fail fast:
   - **onnxruntime inference** (fail) — runs a tiny embedded Add model and asserts the
     output (proves the CPU EP executes, not just imports). **cv2 encode/decode**
     roundtrip. **Application import** — the shipped venv must `import orchestr_ant_ion`.
-  - **Native compiler compile+link+RUN** — compiles a trivial C **and** C++ program
-    with the image's `gcc`/`g++`, runs the resulting binary on-target and asserts its
-    output (C++ exercises libstdc++). This is what upgrades class 4 from a static
+  - **Native compiler battery compile+link+RUN** — an 8-case battery with the image's
+    `gcc`/`g++`, each running the resulting binary on-target: C hello (stdout),
+    pthreads, libm, libatomic; C++ hello (libstdc++), **exceptions+STL** (throw/catch +
+    `std::sort`), std::thread, and `-flto`. This is what upgrades class 4 from a static
     ELF/machine check to genuine **execution** proof: a cross arch's binary can't run
     on the x86_64 build host, so the shipped native GCC (esp. the riscv64
     `--with-isa-spec` toolchain) was previously never actually executed — under qemu
-    here it is. Gate `RUNTIME_COMPILER_SMOKE=0` to skip just this;
+    here it is. The **exceptions+STL** case is the regression guard for the
+    `swap-native-gcc.sh` **wrapper** fix (`c46da5f`): the compiler reaches the runtime
+    image's system headers via command-line `-idirafter` wrappers, *not* an installed
+    `specs` file — a specs file silently drops `-lgcc_s`/`--eh-frame-hdr` and makes
+    every throwing C++ program terminate at runtime. Gate `RUNTIME_COMPILER_SMOKE=0` to skip just this;
     `RUNTIME_FUNCTIONAL_SMOKE=0` skips all functional checks; `RUNTIME_IMAGE_SMOKE=0`
     (in `build-runtime-manifest.sh`) skips the whole runtime-image smoke (e.g. a host
     without a qemu handler for a foreign arch).

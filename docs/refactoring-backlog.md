@@ -166,32 +166,29 @@ _(build-log signals collected while 0711f runs — triage into the sections abov
 Registering QEMU binfmt without sudo (setup-rootless-binfmt.sh, wired into
 build-runtime-manifest.sh) made the arm64/riscv64 runtime smokes actually EXECUTE
 for the first time — amd64's all-green smoke had hidden four real foreign-arch
-breakages. Three fixed in 2500d60; one is a deeper toolchain residual:
+breakages. All four now fixed:
 
-- **RESIDUAL (toolchain): foreign-arch native GCC can't link C++ exceptions.** The
-  Canadian-cross GCC-16 for riscv64/arm64 links a `try/throw/catch` program with
-  `undefined reference to _Unwind_Resume` / `libgcc_s.so.1: DSO missing from command
-  line`; amd64 (identical driver spec + identical `INPUT(AS_NEEDED(-lgcc_s))`
-  ld-scripts + identical link line incl. `--eh-frame-hdr`) links+runs it fine. Root:
-  binutils ld 2.46 for these targets treats the explicitly-referenced libgcc_s as a
-  duplicate of the copy libstdc++ pulls via DT_NEEDED, so under the default
-  `--no-copy-dt-needed-entries` a regular object may not bind its symbols. NOT a spec
-  bug (the `-l*_asneeded` tokens are standard GCC-16 literals, not corruption) and
-  PROVEN not fixable post-hoc (full-dumpspecs reinstall breaks includes; hand-written
-  `*lib`/`*libgcc` overrides crash/malform the driver; AS_NEEDED/GROUP aliases + `-L`
-  + `--copy-dt-needed-entries` via self_spec + `--eh-frame-hdr` all fail — copy-dt
-  only helps as a *user* flag at the right link position, unreachable from self_spec).
-  Header search WAS fixed (swap-native-gcc.sh installs a minimal `*self_spec`
-  -idirafter), so bare `gcc hello.c` and simple/`std::cout` C++ compile+link+run —
-  the RUNTIME_COMPILER_SMOKE passes; only explicit exception-throwing C++ is affected,
-  an edge case (the app's prebuilt torch/onnx/cv2/ffmpeg don't compile on-device).
-  Needs a dedicated toolchain pass: try a newer/gold/lld linker for these targets, or
-  rebuild GCC with `--enable-multiarch` + verify the libgcc_s link ordering; also rule
-  out a qemu-user-only artifact (untested on real riscv64/arm64 hardware). — L · ★★
+- **RESOLVED c46da5f (toolchain): foreign-arch native GCC C++ exceptions.** The
+  Canadian-cross GCC-16 for riscv64/arm64 linked a `try/throw/catch` program that
+  then terminated at runtime (rc=134, catch never fired). The earlier RESIDUAL note
+  here mis-diagnosed this as a binutils ld-2.46 duplicate-DSO issue; the TRUE root
+  cause was self-inflicted: the header fix in 2500d60 installed a `*self_spec` file,
+  and installing *any* specs file RESETS the driver's dynamically-computed link specs
+  — it silently drops `-lgcc_s` (from `*libgcc`) and `--eh-frame-hdr` (from the EH
+  link spec). Restoring them by hand is fragile whack-a-mole under QEMU (restoring
+  `*libgcc` got `-lgcc_s` back but runtime unwinding still failed — `--eh-frame-hdr`
+  also gone). Fix: drop the installed specs file entirely and instead wrap
+  gcc/g++/cpp/cc/c++/gfortran with thin scripts that prepend `-idirafter
+  /usr/include/<triplet> -idirafter /usr/include` on the *command line* (honouring
+  `-nostdinc`, skipping symlinks). Command-line injection fixes header search for C
+  AND C++ (`#include_next`) while leaving the link specs untouched. Validated on
+  arm64+riscv64: bare `gcc hello.c`, simple C++, exception-throwing C++ (throw/catch
+  + STL sort), std::thread, libm, libatomic, and `-flto` all compile+link+run. The
+  RUNTIME_COMPILER_SMOKE battery (d2da044) regression-guards all of these.
 - _Fixed 2500d60: riscv64 torch libsleef.so.3 (USE_SYSTEM_SLEEF wheel, runtime lib
   never installed → add libsleef3); ffmpeg libopencore-amrwb.so.0 (silent best-effort
   codec install → add a fail-loud `ldd` closure gate in setup_torch_deps); foreign-arch
-  gcc <stdio.h> (baked cross sysroot header dir → self_spec -idirafter)._
+  gcc <stdio.h> (baked cross sysroot header dir → superseded by the c46da5f wrapper)._
 - **Class lesson (★★★): amd64-green ≠ shipped-green for a multi-arch manifest.** Every
   one of these shipped inside a "validated" `:latest-cross` because the foreign-arch
   smokes silently no-op'd on `exec format error` (no host qemu) and were read as a host
@@ -226,3 +223,23 @@ immediately surfaced a real class the old smokes missed, on ALL three arches:
   copy-from-build-stage or static-link. The new smoke's "GStreamer plugins that cannot
   load: N" line makes the count visible every run; promote specific app-critical
   elements (webrtcbin2?) to a fail-loud curated list once their deps are fixed. — M · ★★
+
+## Harvested 2026-07-12 (cont) — app wheel smoke caught broken LiteRT
+
+Building `orchestr_ant_ion.smoke` (the app-owned wheel smoke that the runtime
+image now delegates to) surfaced a real packaging defect:
+
+- **LiteRT interpreter can't load its native wrapper (amd64).** The source-built
+  `ai-edge-litert` 2.1.6 wheel installs its module as `tflite_runtime` (per
+  `top_level.txt`), but `import tflite_runtime.interpreter` dies with
+  `ImportError: cannot import name '_pywrap_litert_interpreter_wrapper' from
+  'tflite_runtime'`. The shipped `.so` is `tflite_runtime/_pywrap_tensorflow_interpreter_wrapper.so`
+  — a NAME MISMATCH: interpreter.py imports `_pywrap_litert_interpreter_wrapper`
+  but the build produced `_pywrap_tensorflow_interpreter_wrapper.so`. So LiteRT
+  imports at the dist level (metadata present, version 2.1.6) but its Interpreter
+  API is unusable. build-litert.sh packages the wrong wrapper soname (or the
+  interpreter.py expects the newer litert name while the build still emits the
+  tflite_runtime one). The smoke treats LiteRT as OPTIONAL (WARN, not a gate
+  fail) so it surfaces without blocking, but this is a real fix: align the
+  built wrapper `.so` name with what `tflite_runtime/tflite_runtime.interpreter`
+  imports, then verify `Interpreter` instantiates. — M · ★★
