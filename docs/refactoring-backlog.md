@@ -77,6 +77,16 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ (nice) … ★★★ (h
 
 ## Harvested during runs
 
+- **Pinned-tarball downloads have no per-download retry → one truncated fetch fails
+  the whole stage.** 0711f runtime/package: `base-image.sh install-shared-build-tooling`
+  fetched the cmake 4.3.3 GitHub release asset, got a truncated download → checksum
+  mismatch → the entire package-image build failed (recovered only by the
+  orchestrator's build-level retry, which redoes the whole image). The pin is
+  correct (verified: independent download matched byte-for-byte); it was pure
+  GitHub truncation. Refactor: wrap the pinned downloads in `curl --retry N
+  --retry-all-errors` (or the repo's existing download-with-retry helper) so a
+  transient truncation costs one re-fetch, not a full-stage rebuild. Cheap, ★★.
+
 _(build-log signals collected while 0711f runs — triage into the sections above)_
 
 - **`install_optional_target_packages` installs the whole batch atomically, so one
