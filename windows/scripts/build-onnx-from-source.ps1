@@ -166,6 +166,13 @@ try {
 
 $py = Initialize-ToolchainPythonEnvironment
 
+# Python bindings ride this build (onnxruntime_ENABLE_PYTHON=ON below): pybind11
+# needs numpy headers at compile time and the wheel step needs setuptools/wheel.
+# (Initialize-ToolchainPythonEnvironment wrote the win-amd64 platform-tag shim, so
+# pip resolves 64-bit wheels and our wheel tags correctly.)
+Install-CpythonPip -Python $py
+Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setuptools', 'wheel', 'packaging')
+
 # ONNX-specific CPU feature flags added on top of the shared SIMD base.
 # mwaitpkg is required by spin_pause.cc (_tpause intrinsic); aes/pclmul are
 # used by CUDA provider crc64; f16c accelerates float16 on Haswell+.
@@ -238,7 +245,7 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
 # USE_DML=ON makes cmake fetch the Microsoft.AI.DirectML redist via NuGet (nuget.exe is pre-seeded).
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
-    '-Donnxruntime_USE_DML=ON', '-Donnxruntime_ENABLE_PYTHON=OFF', '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
+    '-Donnxruntime_USE_DML=ON', '-Donnxruntime_ENABLE_PYTHON=ON', '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
     "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)"
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 ) + $gpuArgs
@@ -289,6 +296,23 @@ Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Inst
 Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
     -BesidePrimary 'onnxruntime.dll' -InstallDir $ortInstallDir `
     -Reason 'the DirectML EP may fail to load at runtime (0xC0000135)'
+
+# -- Python wheel (onnxruntime) --
+# ENABLE_PYTHON=ON made cmake assemble the full python package tree at
+# $buildDir\onnxruntime (onnxruntime_python.cmake); the upstream wheel is just the
+# source-root setup.py run as bdist_wheel FROM the build dir. No
+# --wheel_name_suffix: our CUDA+TensorRT+DML combo matches no upstream package
+# split, so it ships as plain `onnxruntime`. Must run BEFORE Remove-SourceBuildTree.
+Write-Host 'Building onnxruntime python wheel...'
+Push-Location $buildDir
+try {
+    cmd.exe /c """$($py.Exe)"" ""$SourceDir\setup.py"" bdist_wheel 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw "onnxruntime setup.py bdist_wheel failed (exit $LASTEXITCODE)" }
+} finally { Pop-Location }
+$ortStagedWheel = Save-PythonWheel -SourceDir (Join-Path $buildDir 'dist') -Required
+# Install the wheel (WITH pypi deps) so the shipped image can `import onnxruntime`
+# out of the box -- the media merge fans CPython's site-packages into the image.
+Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', "`"$($ortStagedWheel[0])`"")
 
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='

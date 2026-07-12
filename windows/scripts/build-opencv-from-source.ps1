@@ -82,6 +82,16 @@ mark_as_advanced(PYTHONINTERP_FOUND PYTHON_EXECUTABLE)
 Set-Content -Path (Join-Path $pythonModuleDir 'FindPythonInterp.cmake') -Value $findPythonInterpStub
 Write-Host "Created FindPythonInterp.cmake stub for Python $pyVersion"
 
+# Python bindings (cv2): numpy is required at configure + compile time. The
+# platform-tag shim must exist BEFORE pip runs so a 64-bit numpy is resolved
+# (clang-built CPython otherwise self-reports win32 and pip grabs a 32-bit wheel).
+Initialize-PythonPlatformTag | Out-Null
+Install-CpythonPip -Python $ocvPy
+Invoke-CpythonPip -Python $ocvPy -Arguments @('install', '--quiet', 'numpy')
+$numpyInclude = (& $ocvPy.Exe -c 'import numpy; print(numpy.get_include())' 2>&1 | Select-Object -Last 1).ToString().Trim() -replace '\\', '/'
+if (-not (Test-Path $numpyInclude)) { throw "numpy include dir not resolved (got '$numpyInclude')" }
+Write-Host "numpy include: $numpyInclude"
+
 $buildDir = Join-Path $SourceDir 'build'
 $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 
@@ -113,7 +123,10 @@ $cmakeExtra = @(
     '-DBUILD_JPEG=ON', '-DBUILD_PNG=ON', '-DBUILD_TIFF=ON', '-DBUILD_WEBP=ON',
     '-DBUILD_OPENJPEG=ON', '-DBUILD_HARFBUZZ=ON', '-DBUILD_TBB=OFF',  # source build only on ARM Windows
     '-DBUILD_CLAPACK=ON', '-DBUILD_IPP_IW=ON',
-    '-DBUILD_opencv_python3=OFF', '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
+    # cv2 python module: cmake --install drops it into CPython's site-packages
+    # (queried from the interpreter); the media merge fans site-packages into the
+    # shipped image. numpy include dir resolved above.
+    '-DBUILD_opencv_python3=ON', '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
     # WITH_OPENGL=OFF: WITH_OPENGL=ON makes opencv_core*.dll hard-import OPENGL32.dll,
     # which the Windows Server Core base image lacks -> every OpenCV DLL fails to load
@@ -137,6 +150,13 @@ $cmakeExtra = @(
     # detected. Enabling it here unconditionally would make a CPU-only build enable_language(CUDA)
     # with no nvcc present and fail to configure.
 )
+
+# cv2 python module inputs (OpenCV's detection needs explicit hints for the
+# source-built interpreter; forward slashes for CMake).
+$cmakeExtra += "-DPYTHON3_EXECUTABLE=$pyExePath"
+$cmakeExtra += "-DPYTHON3_INCLUDE_DIR=$(($ocvPy.Include) -replace '\\', '/')"
+$cmakeExtra += "-DPYTHON3_LIBRARY=$(($ocvPy.Lib) -replace '\\', '/')"
+$cmakeExtra += "-DPYTHON3_NUMPY_INCLUDE_DIRS=$numpyInclude"
 
 # Provide our source-built ONNX Runtime root so FindONNX.cmake finds it.
 $ortRoot = 'C:/runtime/lib/onnxruntime-source'

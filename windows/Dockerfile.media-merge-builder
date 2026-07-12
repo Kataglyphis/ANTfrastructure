@@ -53,9 +53,17 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 # Branch A carries the largest tree (ORT, GenAI, OpenCV, FFmpeg) — copy it first,
 # then layer the independent branches' components on top.
 COPY --from=media-core C:\runtime C:\runtime
+# media-core's CPython site-packages carry the installed python bindings
+# (onnxruntime + onnxruntime-genai wheels, cv2 from cmake --install) plus their
+# pypi deps (numpy, ...) and the win-amd64 platform-tag sitecustomize shim —
+# fan them in so `import onnxruntime/cv2` works in this image's CPython.
+COPY --from=media-core C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 COPY --from=media-litert C:\runtime\lib\litert C:\runtime\lib\litert
 COPY --from=media-litert C:\runtime\lib\litert-lm C:\runtime\lib\litert-lm
 COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
+# media-tvm's wheel store entry (tvm-*.whl) merges over media-core's wheels
+# (distinct filenames; C:\runtime\wheels is the central store, see PYTHON_WHEELS).
+COPY --from=media-tvm C:\runtime\wheels C:\runtime\wheels
 # TVM's Python wheel (plus pip) lives in the branch CPython's site-packages;
 # merging it here makes `import tvm` work in this image's CPython. The GStreamer
 # script bootstraps pip itself if this copy ever lacks it.
@@ -102,6 +110,11 @@ ENV FFMPEG_LIB="${FFMPEG_ROOT}\lib"
 # (the C:\temp\tvm-src build tree is removed after install to keep layers small).
 ENV TVM_ROOT="C:\runtime\lib\tvm"
 ENV TVM_LIBRARY_PATH="${TVM_ROOT}\lib"
+
+# Central store for the python wheels built by the media branches
+# (onnxruntime, onnxruntime-genai, tvm). cv2 ships installed-in-place instead
+# (OpenCV has no in-repo wheel machinery; opencv-python is a separate project).
+ENV PYTHON_WHEELS="C:\runtime\wheels"
 
 ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$PATH
 

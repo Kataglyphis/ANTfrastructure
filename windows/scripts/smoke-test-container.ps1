@@ -240,6 +240,15 @@ function Get-CommandVersion {
     } catch { return $null }
 }
 
+# Hand-encoded 63-byte ONNX ModelProto (ir_version=8, opset 13, one Identity node
+# x:float[1] -> y). Shared by the native ORT inference probe (section 8) and the
+# python-side probe (section 20) -- real inference with zero external model files.
+$script:identityOnnxBytes = [byte[]]@(
+    0x08,0x08,0x3A,0x37,0x0A,0x10,0x0A,0x01,0x78,0x12,0x01,0x79,0x22,0x08,0x49,0x64,
+    0x65,0x6E,0x74,0x69,0x74,0x79,0x12,0x01,0x67,0x5A,0x0F,0x0A,0x01,0x78,0x12,0x0A,
+    0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x62,0x0F,0x0A,0x01,0x79,0x12,
+    0x0A,0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x42,0x02,0x10,0x0D)
+
 # Expected versions come from the single source of truth (versions.env), not
 # hardcoded literals that silently drift on a version bump. load-versions.ps1
 # bakes every versions.env key as a Machine-scoped env var during the base
@@ -527,16 +536,12 @@ int main() {
 
         # The probes above prove the API surface loads; this proves the RUNTIME works
         # end-to-end: create a real session and push one float through it on the CPU
-        # EP. The model is a hand-encoded 63-byte ONNX ModelProto (ir_version=8,
-        # opset 13, single Identity node x:float[1] -> y) -- no external files, no
-        # GPU device, and it exercises graph load, session init, and Run().
+        # EP. The model is the shared hand-encoded 63-byte Identity ModelProto
+        # ($script:identityOnnxBytes, also used by the python probe in section 20) --
+        # no external files, no GPU device; exercises graph load, session init, Run().
         $ortModelDir = Join-Path $env:TEMP 'kataglyphis-smoke-ort-model'
         New-Item -Path $ortModelDir -ItemType Directory -Force | Out-Null
-        [IO.File]::WriteAllBytes((Join-Path $ortModelDir 'identity.onnx'), [byte[]]@(
-            0x08,0x08,0x3A,0x37,0x0A,0x10,0x0A,0x01,0x78,0x12,0x01,0x79,0x22,0x08,0x49,0x64,
-            0x65,0x6E,0x74,0x69,0x74,0x79,0x12,0x01,0x67,0x5A,0x0F,0x0A,0x01,0x78,0x12,0x0A,
-            0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x62,0x0F,0x0A,0x01,0x79,0x12,
-            0x0A,0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x42,0x02,0x10,0x0D))
+        [IO.File]::WriteAllBytes((Join-Path $ortModelDir 'identity.onnx'), $script:identityOnnxBytes)
         $onnxCxxHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($onnxCxxHdr) {
             $onnxInferLink = @{
@@ -1092,7 +1097,7 @@ $envPointerNames = @(
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
     'ONNX_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB',
     'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
-    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT'
+    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'PYTHON_WHEELS'
 )
 if ($script:gpuNvidia) {
     $envPointerNames += @('CUDA_ROOT', 'CUDA_PATH', 'CUDNN_ROOT', 'TENSORRT_ROOT')
@@ -1114,6 +1119,66 @@ Assert-Test -Name "vcpkg protoc runs (media-build toolchain dependency)" -Condit
     & $protoc --version 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
 } -FailMessage "vcpkg protoc.exe missing or fails to run (vcpkg install broken in the base image)"
+
+# ============================================================================
+Write-TestHeader '20. Python bindings (wheels + imports + inference)'
+# ============================================================================
+# The media branches build python bindings for the source-built libraries, stage
+# the wheels centrally (PYTHON_WHEELS = C:\runtime\wheels) and install them into
+# CPython's site-packages (fanned into this image by the media merge). cv2 ships
+# installed-in-place only (the opencv repo has no wheel machinery; opencv-python
+# is a separate upstream project). LiteRT has NO python bindings on this lane
+# (bazel-only python package).
+$wheelStore = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
+if ($wheelStore -and (Test-Path $wheelStore)) {
+
+    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl')) {
+        $wp = $wheelPattern
+        Assert-Test -Name "wheel staged: $wheelPattern" -Condition {
+            @(Get-ChildItem -Path $wheelStore -Filter $wp -ErrorAction SilentlyContinue).Count -gt 0
+        }.GetNewClosure() -FailMessage "no $wheelPattern found in $wheelStore"
+    }
+
+    # All wheels must be tagged win_amd64 -- a win32 tag means the sitecustomize
+    # platform shim was missing at build time (clang-CPython self-reports win32).
+    Assert-Test -Name "all staged wheels are win_amd64-tagged" -Condition {
+        @(Get-ChildItem -Path $wheelStore -Filter '*.whl' | Where-Object { $_.Name -notmatch 'win_amd64|any\.whl$' }).Count -eq 0
+    } -FailMessage "wheel(s) with a non-win_amd64 platform tag in $wheelStore (platform-tag shim missing at build time?)"
+
+    Assert-Test -Name "python platform tag is win-amd64 (sitecustomize shim)" -Condition {
+        (& python -c "import sysconfig; print(sysconfig.get_platform())" 2>&1 | Out-String) -match 'win-amd64'
+    } -FailMessage "sysconfig.get_platform() is not win-amd64 (shim missing -- pip resolves 32-bit wheels)"
+
+    # onnxruntime: real python-side inference over the shared 63-byte Identity model.
+    Assert-Test -Name "python onnxruntime inference end-to-end (CPU EP)" -Condition {
+        $mdir = Join-Path $env:TEMP 'kataglyphis-smoke-pyort'
+        New-Item -Path $mdir -ItemType Directory -Force | Out-Null
+        try {
+            [IO.File]::WriteAllBytes((Join-Path $mdir 'identity.onnx'), $script:identityOnnxBytes)
+            $out = & python -c "import os, numpy, onnxruntime as ort; s = ort.InferenceSession(os.path.join(os.environ['TEMP'], 'kataglyphis-smoke-pyort', 'identity.onnx'), providers=['CPUExecutionProvider']); y = s.run(['y'], {'x': numpy.array([42.0], numpy.float32)})[0]; print('py-ort', ort.__version__, float(y[0]))" 2>&1 | Out-String
+            ($LASTEXITCODE -eq 0) -and ($out -match 'py-ort .*42\.0')
+        } finally { Remove-Item $mdir -Recurse -Force -ErrorAction SilentlyContinue }
+    } -FailMessage "onnxruntime python inference failed (pyd, dependent DLLs, or numpy broken)"
+
+    Assert-Test -Name "python onnxruntime-genai imports" -Condition {
+        $out = & python -c "import onnxruntime_genai as og; print('py-genai', getattr(og, '__version__', 'n/a'))" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'py-genai')
+    } -FailMessage "import onnxruntime_genai failed (pyd or embedded DLL chain broken)"
+
+    # cv2: PNG encode/decode round-trip exercises core + imgcodecs via python.
+    Assert-Test -Name "python cv2 imports + PNG round-trip" -Condition {
+        $out = & python -c "import cv2, numpy; img = numpy.zeros((8, 8, 3), numpy.uint8); ok, buf = cv2.imencode('.png', img); d = cv2.imdecode(buf, cv2.IMREAD_COLOR); print('py-cv2', cv2.__version__, bool(ok) and d.shape == (8, 8, 3))" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'py-cv2 .* True')
+    } -FailMessage "cv2 import or PNG round-trip failed (cv2 pyd, loader config, or OpenCV DLL chain broken)"
+
+    Assert-Test -Name "python tvm imports (runtime device reachable)" -Condition {
+        $out = & python -c "import tvm; print('py-tvm', tvm.__version__, tvm.cpu(0))" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'py-tvm')
+    } -FailMessage "import tvm failed (wheel, tvm_runtime/tvm_ffi DLLs, or deps broken)"
+
+} else {
+    Skip-Test 'Python bindings (PYTHON_WHEELS unset or missing -- image predates the wheel feature)'
+}
 
 # ============================================================================
 Write-TestHeader '== SUMMARY =='

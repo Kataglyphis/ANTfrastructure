@@ -119,20 +119,30 @@ Copy-SidecarDll -SidecarName 'tvm_ffi.dll' -SearchDir $buildDir `
     -BesidePrimary 'tvm_runtime.dll' -InstallDir $tvmInstallDir `
     -Reason 'tvm_runtime.dll may fail to load at runtime (cmake --install missed the FFI shared lib)'
 
-# Install Python wheel if enabled
+# Python wheel: build it into the central store, then install it (WITH pypi deps,
+# so the fan-in ships an import-ready site-packages). No longer -Optional: the
+# python side is a shipped feature now, so a broken wheel must fail the branch.
 if ($pythonModule -eq 'ON') {
     $py = Get-SourceBuildPython
     if (Test-Path $py.Exe) {
         # Bootstrap pip if missing — this script can no longer rely on the GenAI
         # build having installed it first (parallel media branches).
         Install-CpythonPip -Python $py
-        Write-Host 'Installing TVM Python wheel...'
-        $wheelDir = Join-Path $buildDir 'python'
-        if (Test-Path $wheelDir) {
-            Push-Location $wheelDir
-            Invoke-CpythonPip -Python $py -Arguments @('install', '.', '--no-deps', '--quiet') -Optional
-            Pop-Location
+        # 64-bit platform tag BEFORE any pip resolution (clang-built CPython
+        # self-reports win32 and pulls 32-bit wheels otherwise).
+        Initialize-PythonPlatformTag | Out-Null
+        $wheelSrcDir = Join-Path $buildDir 'python'
+        if (-not (Test-Path $wheelSrcDir)) {
+            throw "TVM python package dir not found at $wheelSrcDir (TVM_BUILD_PYTHON_MODULE=ON should have generated it)"
         }
+        Write-Host 'Building + installing TVM python wheel...'
+        Push-Location $wheelSrcDir
+        try {
+            Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'setuptools', 'wheel')
+            Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', 'dist')
+            $staged = Save-PythonWheel -SourceDir (Join-Path $wheelSrcDir 'dist') -Required
+            Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', "`"$($staged[0])`"")
+        } finally { Pop-Location }
     }
 }
 

@@ -453,6 +453,54 @@ function Get-LlvmArchiverCmakeArg {
     return @()
 }
 
+function Initialize-PythonPlatformTag {
+    # Clang-built CPython's sys.version lacks the "64 bit (AMD64)" marker that
+    # sysconfig.get_platform() keys on, so the 64-bit interpreter reports win32:
+    # pip then resolves 32-bit wheels (numpy import dies on a cp314-win32 pyd)
+    # and locally-built wheels get mis-tagged. _PYTHON_HOST_PLATFORM is POSIX-only,
+    # so drop a sitecustomize.py shim forcing win-amd64 (verified 2026-07-12).
+    param([string]$CpythonDir = '')
+    if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
+    $sitePackages = Join-Path $CpythonDir 'Lib\site-packages'
+    New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
+    $shim = Join-Path $sitePackages 'sitecustomize.py'
+    Set-Content -Path $shim -Encoding ASCII -Value @(
+        '# Clang-built CPython lacks the "64 bit (AMD64)" marker in sys.version, so',
+        '# sysconfig.get_platform() misreports win32 on this 64-bit interpreter: pip',
+        '# then resolves 32-bit wheels and locally-built wheels get mis-tagged.',
+        '# Written by Initialize-PythonPlatformTag (WindowsSourceBuild.Common.psm1).',
+        'import sys',
+        'import sysconfig',
+        "if sysconfig.get_platform() == 'win32' and sys.maxsize > 2**32:",
+        "    sysconfig.get_platform = lambda: 'win-amd64'"
+    )
+    Write-Host "Wrote python platform-tag shim (win-amd64): $shim"
+    return $shim
+}
+
+function Save-PythonWheel {
+    # Stage built wheel(s) into the central wheel store shipped in the image
+    # (C:\runtime\wheels; the final image exposes it as PYTHON_WHEELS).
+    param(
+        [Parameter(Mandatory)][string]$SourceDir,
+        [string]$Filter = '*.whl',
+        [string]$WheelDir = 'C:\runtime\wheels',
+        [switch]$Required
+    )
+    New-Item -Path $WheelDir -ItemType Directory -Force | Out-Null
+    $wheels = @(Get-ChildItem -Path $SourceDir -Filter $Filter -File -Recurse -ErrorAction SilentlyContinue)
+    if ($wheels.Count -eq 0) {
+        if ($Required) { throw "no wheel matching '$Filter' under $SourceDir" }
+        Write-Warning "no wheel matching '$Filter' under $SourceDir -- skipping"
+        return @()
+    }
+    foreach ($w in $wheels) {
+        Copy-Item $w.FullName -Destination $WheelDir -Force
+        Write-Host "Staged wheel: $($w.Name) -> $WheelDir"
+    }
+    return @($wheels | ForEach-Object { Join-Path $WheelDir $_.Name })
+}
+
 function Initialize-ToolchainPythonEnvironment {
     param(
         [string]$Arch = 'amd64',
@@ -460,6 +508,7 @@ function Initialize-ToolchainPythonEnvironment {
     )
     Enter-VsDevCmdEnvironment -Arch $Arch -HostArch $HostArch
     Copy-CpythonPyConfigHeader
+    Initialize-PythonPlatformTag | Out-Null
     return Get-SourceBuildPython
 }
 
@@ -539,6 +588,8 @@ Export-ModuleMember -Function @(
     'Initialize-SourceBuildEnvironment',
     'Initialize-SourceBuildScript',
     'Initialize-ToolchainPythonEnvironment',
+    'Initialize-PythonPlatformTag',
+    'Save-PythonWheel',
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
     'Install-CpythonPip',
