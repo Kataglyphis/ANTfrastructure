@@ -464,17 +464,47 @@ function Initialize-PythonPlatformTag {
     $sitePackages = Join-Path $CpythonDir 'Lib\site-packages'
     New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
     $shim = Join-Path $sitePackages 'sitecustomize.py'
-    Set-Content -Path $shim -Encoding ASCII -Value @(
-        '# Clang-built CPython lacks the "64 bit (AMD64)" marker in sys.version, so',
-        '# sysconfig.get_platform() misreports win32 on this 64-bit interpreter: pip',
-        '# then resolves 32-bit wheels and locally-built wheels get mis-tagged.',
-        '# Written by Initialize-PythonPlatformTag (WindowsSourceBuild.Common.psm1).',
-        'import sys',
-        'import sysconfig',
-        "if sysconfig.get_platform() == 'win32' and sys.maxsize > 2**32:",
-        "    sysconfig.get_platform = lambda: 'win-amd64'"
-    )
-    Write-Host "Wrote python platform-tag shim (win-amd64): $shim"
+    Set-Content -Path $shim -Encoding ASCII -Value @'
+# Written by Initialize-PythonPlatformTag (WindowsSourceBuild.Common.psm1).
+# 1) Clang-built CPython lacks the "64 bit (AMD64)" marker in sys.version, so
+#    sysconfig.get_platform() misreports win32 -> pip resolves 32-bit wheels and
+#    locally-built wheels get mis-tagged.
+# 2) Python 3.8+ ignores PATH when resolving extension-module dependencies;
+#    register this image's native DLL homes (CUDA 13 keeps its runtime libs in
+#    bin\x64, cuDNN 9 likewise) so cv2/onnxruntime/tvm pyds import cleanly.
+import os
+import sys
+import sysconfig
+if sysconfig.get_platform() == 'win32' and sys.maxsize > 2**32:
+    sysconfig.get_platform = lambda: 'win-amd64'
+if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
+    _dirs = []
+    for _env in ('CUDA_PATH', 'CUDNN_ROOT'):
+        _root = os.environ.get(_env) or ''
+        if _root:
+            _dirs += [os.path.join(_root, 'bin'), os.path.join(_root, 'bin', 'x64')]
+    _trt = os.environ.get('TENSORRT_ROOT') or ''
+    if _trt and os.path.isdir(_trt):
+        for _n in os.listdir(_trt):
+            if _n.startswith('TensorRT-'):
+                _dirs.append(os.path.join(_trt, _n, 'lib'))
+    _dirs += [
+        r'C:\runtime\lib\opencv5\x64\vc18\bin',
+        r'C:\runtime\lib\onnxruntime-source\bin',
+        r'C:\runtime\lib\onnxruntime-source\lib',
+        r'C:\runtime\lib\onnxruntime-genai-source\lib',
+        r'C:\runtime\lib\tvm\lib',
+        r'C:\runtime\ffmpeg\bin',
+        r'C:\runtime\bin',
+    ]
+    for _d in _dirs:
+        if os.path.isdir(_d):
+            try:
+                os.add_dll_directory(_d)
+            except OSError:
+                pass
+'@
+    Write-Host "Wrote python platform-tag + dll-directory shim: $shim"
     return $shim
 }
 
