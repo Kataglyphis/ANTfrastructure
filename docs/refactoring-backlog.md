@@ -160,3 +160,43 @@ _(build-log signals collected while 0711f runs — triage into the sections abov
   outlier. A lint/CI grep for `uv venv` without `--python` would have caught both
   this and prevented the class. Also: the base-image `UV_PYTHON` pointing at a
   not-yet-created venv is a footgun for any `uv` call before the venv exists. — S · ★★
+
+## Harvested 2026-07-12 — foreign-arch runtime defects (no-sudo QEMU unmasked)
+
+Registering QEMU binfmt without sudo (setup-rootless-binfmt.sh, wired into
+build-runtime-manifest.sh) made the arm64/riscv64 runtime smokes actually EXECUTE
+for the first time — amd64's all-green smoke had hidden four real foreign-arch
+breakages. Three fixed in 2500d60; one is a deeper toolchain residual:
+
+- **RESIDUAL (toolchain): foreign-arch native GCC can't link C++ exceptions.** The
+  Canadian-cross GCC-16 for riscv64/arm64 links a `try/throw/catch` program with
+  `undefined reference to _Unwind_Resume` / `libgcc_s.so.1: DSO missing from command
+  line`; amd64 (identical driver spec + identical `INPUT(AS_NEEDED(-lgcc_s))`
+  ld-scripts + identical link line incl. `--eh-frame-hdr`) links+runs it fine. Root:
+  binutils ld 2.46 for these targets treats the explicitly-referenced libgcc_s as a
+  duplicate of the copy libstdc++ pulls via DT_NEEDED, so under the default
+  `--no-copy-dt-needed-entries` a regular object may not bind its symbols. NOT a spec
+  bug (the `-l*_asneeded` tokens are standard GCC-16 literals, not corruption) and
+  PROVEN not fixable post-hoc (full-dumpspecs reinstall breaks includes; hand-written
+  `*lib`/`*libgcc` overrides crash/malform the driver; AS_NEEDED/GROUP aliases + `-L`
+  + `--copy-dt-needed-entries` via self_spec + `--eh-frame-hdr` all fail — copy-dt
+  only helps as a *user* flag at the right link position, unreachable from self_spec).
+  Header search WAS fixed (swap-native-gcc.sh installs a minimal `*self_spec`
+  -idirafter), so bare `gcc hello.c` and simple/`std::cout` C++ compile+link+run —
+  the RUNTIME_COMPILER_SMOKE passes; only explicit exception-throwing C++ is affected,
+  an edge case (the app's prebuilt torch/onnx/cv2/ffmpeg don't compile on-device).
+  Needs a dedicated toolchain pass: try a newer/gold/lld linker for these targets, or
+  rebuild GCC with `--enable-multiarch` + verify the libgcc_s link ordering; also rule
+  out a qemu-user-only artifact (untested on real riscv64/arm64 hardware). — L · ★★
+- _Fixed 2500d60: riscv64 torch libsleef.so.3 (USE_SYSTEM_SLEEF wheel, runtime lib
+  never installed → add libsleef3); ffmpeg libopencore-amrwb.so.0 (silent best-effort
+  codec install → add a fail-loud `ldd` closure gate in setup_torch_deps); foreign-arch
+  gcc <stdio.h> (baked cross sysroot header dir → self_spec -idirafter)._
+- **Class lesson (★★★): amd64-green ≠ shipped-green for a multi-arch manifest.** Every
+  one of these shipped inside a "validated" `:latest-cross` because the foreign-arch
+  smokes silently no-op'd on `exec format error` (no host qemu) and were read as a host
+  limitation. The durable countermeasures: (1) register binfmt with no sudo before the
+  smokes (done), (2) make foreign-arch verification FAIL LOUD not skip (the ffmpeg ldd
+  gate is the template — assert the property natively in the torch stage under qemu,
+  independent of the runtime-image smoke's binfmt gating), (3) the in-build
+  verify_torch_import_or_fail must not fail-open when its `import torch` exec can't run.
