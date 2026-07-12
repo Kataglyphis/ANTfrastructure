@@ -14,9 +14,11 @@ if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $
 Import-Module $installerModulePath -Force
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through Installer.Common's re-export.
 
-# Source canonical version from versions.env (VCPKG_REF; fallback to '2024.07.12').
+# Source canonical version from versions.env (VCPKG_REF). Fallback mirrors that pin;
+# must stay >= 2026.06 -- older snapshots pin a vcpkg-tool that cannot see VS 18's
+# v145 toolset ("Unable to find a valid Visual Studio instance").
 if ([string]::IsNullOrWhiteSpace($VcpkgRef)) {
-    $VcpkgRef = if ($env:VCPKG_REF) { $env:VCPKG_REF } else { '2024.07.12' }
+    $VcpkgRef = if ($env:VCPKG_REF) { $env:VCPKG_REF } else { '2026.06.24' }
 }
 
 Write-Host "Setting up vcpkg ($VcpkgRef) at $VcpkgDir..."
