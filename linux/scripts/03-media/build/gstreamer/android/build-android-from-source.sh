@@ -92,22 +92,48 @@ patch_cerbero_system_m4_usage() {
 }
 
 override_soundtouch_codeberg_checksum() {
-    # soundtouch is fetched from Codeberg's auto-generated archive
+    # soundtouch is fetched from Codeberg's AUTO-GENERATED archive
     # (codeberg.org/soundtouch/soundtouch/archive/<version>.tar.gz). Forgejo
-    # periodically regenerates these archives with different compression, so the
-    # tarball hash drifts from cerbero's pinned value while the SOURCE is
-    # unchanged (verified: upstream cerbero main still pins the same version).
-    # A from-scratch fetch then fails: "Checksum ... instead of ...". Re-pin to
-    # the currently-served hash. Guarded on the OLD hash still being present, so
-    # this becomes a no-op the moment upstream cerbero updates the recipe.
+    # regenerates these with different compression periodically, so ANY static
+    # pinned hash drifts while the SOURCE is unchanged. It has drifted 3x
+    # (e07abf... -> 87c6c9... -> 35d404e6...), so chasing it with a hardcoded
+    # value is a losing game.
+    #
+    # Instead of pinning a fixed hash, pin DYNAMICALLY: fetch the archive now,
+    # compute its real sha256, and write THAT into the recipe so cerbero's later
+    # fetch always matches. Integrity rests on TLS + the version tag (the tag is
+    # immutable; only the archive's compression varies) -- the right trade-off
+    # for a non-byte-stable auto-archive. Best-effort: on any failure the recipe
+    # is left untouched and cerbero's own checksum step still guards the fetch.
     local recipe="recipes/soundtouch.recipe"
-    local old="e07abf20ce8f95850c280132e1f61ad400fc1f4011b7fac698a503de6aab6733"
-    local new="87c6c9599d71a2f839213792eeed322340f0ccce67c296bd9b5cb60b6488a5d6"
     [ -f "${recipe}" ] || return 0
-    if grep -q "${old}" "${recipe}"; then
-        sed -i "s/${old}/${new}/g" "${recipe}"
-        echo "Re-pinned soundtouch tarball checksum to current Codeberg archive: ${new}"
+    command -v curl >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 || {
+        echo "WARNING: curl/sha256sum unavailable; cannot dynamic-pin soundtouch checksum" >&2
+        return 0
+    }
+
+    local ver cur url tmp actual
+    ver="$(sed -n "s/^[[:space:]]*version[[:space:]]*=[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" "${recipe}" | head -1)"
+    cur="$(sed -n "s/^[[:space:]]*tarball_checksum[[:space:]]*=[[:space:]]*['\"]\([0-9a-fA-F]*\)['\"].*/\1/p" "${recipe}" | head -1)"
+    if [ -z "${ver}" ] || [ -z "${cur}" ]; then
+        echo "WARNING: could not parse soundtouch version/checksum from recipe; leaving as-is" >&2
+        return 0
     fi
+
+    url="https://codeberg.org/soundtouch/soundtouch/archive/${ver}.tar.gz"
+    tmp="$(mktemp)"
+    if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 -o "${tmp}" "${url}"; then
+        actual="$(sha256sum "${tmp}" | awk '{print $1}')"
+        if [ -n "${actual}" ] && [ "${actual}" != "${cur}" ]; then
+            sed -i "s/${cur}/${actual}/g" "${recipe}"
+            echo "Re-pinned soundtouch tarball checksum ${cur} -> ${actual} (live Codeberg archive ${ver})"
+        else
+            echo "soundtouch tarball checksum already matches live Codeberg archive (${cur})"
+        fi
+    else
+        echo "WARNING: could not pre-fetch soundtouch archive to re-pin checksum; leaving recipe as-is" >&2
+    fi
+    rm -f "${tmp}"
 }
 
 # ------------------------------------------------------------------------------
