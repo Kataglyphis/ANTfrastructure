@@ -18,7 +18,7 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 ENV VENV=/opt/venv \
     TORCH_APP_MODE=${TORCH_APP_MODE} \
     ONNX_PACKAGE=onnxruntime \
-    PYTORCH_EXTRA="none" \
+    PYTORCH_EXTRA="pytorch-cpu" \
     SKIP_TORCH_TEST_EXTRAS=true
 
 COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/ubuntu-mirror.sh linux/scripts/01-core/cross-env.sh /opt/scripts/core/

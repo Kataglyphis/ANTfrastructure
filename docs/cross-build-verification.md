@@ -15,7 +15,7 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 | 1 | Script not COPY'd into a stage → sourced fn missing at runtime (`command not found`, exit 127) | `media_load_arch_flags` not found (03-media/core never COPY'd into Dockerfile.package) | `da41e19` | **sourced-scripts-present** static check (`verify-script-copy-coverage.py`) |
 | 2 | Relocated native GCC/G++ can't find `/usr/include` for source builds under QEMU — C *and* C++ (`#include_next`) | `string.h: No such file` (Pillow); `<cstdlib>`→`stdlib.h: No such` (numpy) | `3c623fa`, `349e32b`, `dc93d11` | **compile smoke test** (C + C++ `#include_next` + `jpeglib.h`) in `validate-compilers.sh` |
 | 3 | Missing dev headers for QEMU source builds | `jpeglib.h` missing for Pillow (`libjpeg-dev`) | `3c623fa` | same compile smoke test (header presence probe) |
-| 4 | Cross toolchain artifact wrong-arch / not runnable on host | `/opt/llvm-target` clobbered by shared compiler; non-runnable `llvm-config`; missing target linker | `8e66c5f`, `fb634a3`, `b1dd72e`, `312a4d8` | **`validate-compilers.sh`** per-arch ELF/machine check (exists) |
+| 4 | Cross toolchain artifact wrong-arch / not runnable on host | `/opt/llvm-target` clobbered by shared compiler; non-runnable `llvm-config`; missing target linker | `8e66c5f`, `fb634a3`, `b1dd72e`, `312a4d8` | **`validate-compilers.sh`** per-arch ELF/machine check (build-time) **+ compile+link+RUN under qemu** in `smoke-runtime-image.sh` (`bcbd19d`) |
 | 5 | venv/wheel install collision & bad seeding | apt numpy seeded into venv without dist-info → uv install `File exists` | `9f07334` | **torch-venv integrity** smoke (`smoke-torch-venv.sh`) |
 | 6 | Undefined/typo'd bash function or quoting bug | `tvm-detect` undefined; verify-parity venv quoting | (dedup passes) | **shellcheck gate** (`-S error`) in pre-commit |
 | 7 | Include-flag construction bugs | bare `-I -I -I` broke Abseil C++17 probe; missing pybind11/numpy include dirs | `ab3776b`, `5412ec4` | shellcheck + compile smoke test |
@@ -69,6 +69,54 @@ These validate a built/pulled image and also run during the build to fail fast:
   numpy/torch/torchvision/PIL/cv2/contourpy (+ torch↔numpy ABI bridge) from
   `/opt/venv` (class 5). Wired into `smoke-wrapper.sh`; skips cleanly if no venv.
   Run standalone: `VENV=/opt/venv smoke-torch-venv.sh`.
+- **Runtime-image boot + functional smoke** — `06-packaging/smoke-runtime-image.sh
+  <image> <arch>`, run per-arch by `build-runtime-manifest.sh` against the freshly
+  built wrapper. Boots the actual published image and, under **binfmt/qemu for the
+  cross arches**, runs real workloads *on-target*:
+  - ML imports (`onnxruntime`, `numpy`, `torch`) + `ffmpeg -version` (pipefail-guarded
+    so a missing `.so` can't pass silently); torch-less sentinel flagged.
+  - **Native compiler compile+link+RUN** — compiles a trivial C **and** C++ program
+    with the image's `gcc`/`g++`, runs the resulting binary on-target and asserts its
+    output (C++ exercises libstdc++). This is what upgrades class 4 from a static
+    ELF/machine check to genuine **execution** proof: a cross arch's binary can't run
+    on the x86_64 build host, so the shipped native GCC (esp. the riscv64
+    `--with-isa-spec` toolchain) was previously never actually executed — under qemu
+    here it is. Gate `RUNTIME_COMPILER_SMOKE=0` to skip just this;
+    `RUNTIME_FUNCTIONAL_SMOKE=0` skips all functional checks; `RUNTIME_IMAGE_SMOKE=0`
+    (in `build-runtime-manifest.sh`) skips the whole runtime-image smoke (e.g. a host
+    without a qemu handler for a foreign arch).
+
+### Foreign-arch execution needs QEMU binfmt — registered **without sudo**
+
+The foreign-arch smokes above only mean something if the image's binaries can
+actually *execute* on the build host. That requires a `binfmt_misc` QEMU handler.
+**`build-runtime-manifest.sh` registers it automatically, with no sudo**, before the
+smoke loop (`ensure_foreign_binfmt` → `linux/scripts/setup-rootless-binfmt.sh`).
+Opt out with `RUNTIME_REGISTER_BINFMT=0` (e.g. a rootful/CI host where qemu is
+already registered via `docker run --privileged tonistiigi/binfmt` or
+`update-binfmts`).
+
+Two dead-ends to know about, because both *look* like they work and don't:
+
+- **`nerdctl run --privileged tonistiigi/binfmt --install …` (rootless)** registers
+  binfmt inside the throwaway container's own user namespace, which `--rm` destroys.
+  It prints "arch OK" but never reaches the namespace where builds/runs happen.
+- **BuildKit's embedded `/dev/.buildkit_qemu_emulator`** only wraps the *top-level*
+  process of a `RUN`. The shell starts, but its first *child* exec
+  (`uname`, `mktemp`, `gcc`, `python`, `ffmpeg`) dies with **`Exec format error`** —
+  so it cannot run any real multi-process smoke.
+
+`setup-rootless-binfmt.sh` is the working no-sudo path on a rootless
+containerd/BuildKit host: buildkitd runs `nsenter`'d into containerd's rootlesskit
+namespace, so `nerdctl run` and `nerdctl build` **share one persistent namespace**.
+The script extracts the static `qemu-<arch>` emulators from `tonistiigi/binfmt`,
+enters that shared namespace via `containerd-rootless-setuptool.sh nsenter` (where
+the mapped uid-0 *does* hold `CAP_SYS_ADMIN` over its own mounts — no host sudo), and
+registers each with flags **`POCF`**. The **`F` (fix-binary)** flag is the crux: the
+kernel opens the interpreter fd at registration time, so emulation is inherited into
+the nested build/run namespaces where the qemu path isn't even mounted — which is
+exactly what makes *child* execs work. Register once per boot (or install the
+`systemd --user` unit with `--install-service`); verify with `--verify`.
 
 ## Dedup & factoring notes (2026-07)
 

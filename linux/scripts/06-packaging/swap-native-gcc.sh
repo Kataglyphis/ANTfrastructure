@@ -96,6 +96,31 @@ export CXXFLAGS="\${CXXFLAGS:+\${CXXFLAGS} }\${_idaf}"
 export LIBRARY_PATH="\${LIBRARY_PATH:+\${LIBRARY_PATH}:}/usr/lib/${triplet}:/usr/lib"
 EOF
       echo "Wrote /etc/profile.d/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)"
+
+      # --- Bake system-header search INTO the foreign-arch native GCC ---
+      # The relocated Canadian-cross GCC keeps its compile-time --native-system-
+      # header-dir (/usr/${triplet}/include) baked in; that path is absent in the
+      # runtime image, so a bare `gcc hello.c` cannot find <stdio.h>. The profile.d
+      # block above only helps make-style builds -- a bare `gcc`/`g++` reads
+      # neither CFLAGS nor CPPFLAGS, and CPATH cannot satisfy the C++
+      # `#include_next`. An installed *self_spec appends the system include dirs
+      # via -idirafter (validated for C and C++, no login shell needed). Keep this
+      # spec MINIMAL -- reinstalling a full `gcc -dumpspecs` dump breaks the
+      # built-in include-path specs, and a hand-written *lib/*libgcc override
+      # crashes the driver under QEMU. (The mangled link spec -- `--as-needed`
+      # corrupted to `-l*_asneeded` and a dropped `--eh-frame-hdr` -- is a
+      # systematic corruption baked into this compiler by the GCC build's linker
+      # feature detection; it is fixed at build time in build-gcc.sh, NOT here.)
+      local gcclib="/opt/gcc-${GCC_VERSION}/lib/gcc/${triplet}/${GCC_VERSION}"
+      if [ -d "${gcclib}" ]; then
+        cat > "${gcclib}/specs" <<EOF
+*self_spec:
++ %{!nostdinc:-idirafter /usr/include/${triplet} -idirafter /usr/include}
+EOF
+        echo "Installed native-GCC self_spec (-idirafter system include dirs) into ${gcclib}"
+      else
+        echo "WARNING: gcc lib dir ${gcclib} not found; skipped native-GCC include self_spec (bare gcc hello.c may fail on target)"
+      fi
     fi
 
     echo "int main(){}" > /tmp/gcc_smoke.c

@@ -97,6 +97,35 @@ _manifest_extra_arg() {
   esac
 }
 
+# Register QEMU emulators for any non-native target arch, WITHOUT sudo, so the
+# foreign-arch runtime smokes can actually execute inside the image (nested exec
+# of the compiler/python/ffmpeg needs binfmt_misc with the F=fix-binary flag,
+# which buildkit's top-level-only emulator does NOT provide). Delegates to
+# setup-rootless-binfmt.sh (rootless containerd/BuildKit nsenter path). Best-
+# effort: a failure here is a warning, not a hard error — the smokes still run
+# and report their own "exec format error" if emulation is genuinely missing.
+ensure_foreign_binfmt() {
+  local arches="$1"
+  [ "${RUNTIME_REGISTER_BINFMT:-1}" = "1" ] || { log "RUNTIME_REGISTER_BINFMT=0 — skipping QEMU binfmt registration"; return 0; }
+  local native foreign="" a
+  native="$(arch_normalize "$(uname -m)")"
+  for a in $(arch_list_to_words "${arches}"); do
+    [ "$(arch_normalize "${a}")" = "${native}" ] && continue
+    foreign="${foreign:+${foreign},}$(arch_normalize "${a}")"
+  done
+  [ -n "${foreign}" ] || return 0   # all targets are native; nothing to emulate
+  local reg="${REPO_ROOT}/linux/scripts/setup-rootless-binfmt.sh"
+  if [ ! -x "${reg}" ] && [ ! -f "${reg}" ]; then
+    warn "setup-rootless-binfmt.sh not found — foreign-arch (${foreign}) smokes may fail with 'exec format error'"
+    return 0
+  fi
+  log "Registering QEMU binfmt (no sudo) for foreign arches: ${foreign}"
+  if ! run bash "${reg}" --arches "${foreign}"; then
+    warn "no-sudo QEMU binfmt registration failed for [${foreign}] — foreign-arch smokes may report 'exec format error'."
+    warn "  On a rootless host: ensure containerd-rootless-setuptool.sh is on PATH. On a rootful/CI host qemu is usually pre-registered."
+  fi
+}
+
 main() {
   run_runtime_arg_loop usage _manifest_extra_arg "$@"
 
@@ -130,6 +159,13 @@ main() {
   # anywhere. Cross arches boot under binfmt/qemu; set RUNTIME_IMAGE_SMOKE=0 to
   # skip (e.g. a host without qemu for a foreign arch).
   if [ "${BUILD_IMAGES}" -eq 1 ] && [ "${RUNTIME_IMAGE_SMOKE:-1}" = "1" ]; then
+    # Foreign-arch runtime smokes execute inside the image under QEMU/binfmt.
+    # Register the emulators up-front WITHOUT sudo (rootless containerd/BuildKit
+    # share one persistent namespace; see setup-rootless-binfmt.sh). Best-effort:
+    # if registration is unavailable (non-rootless host, no nsenter tool) we warn
+    # and let the per-arch smokes surface "exec format error" themselves. Opt out
+    # with RUNTIME_REGISTER_BINFMT=0 (e.g. host already has qemu via update-binfmts).
+    ensure_foreign_binfmt "${TARGET_ARCHES}"
     local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
     local wrapper_tag
     for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do

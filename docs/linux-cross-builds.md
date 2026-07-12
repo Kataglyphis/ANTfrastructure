@@ -374,6 +374,13 @@ linux/scripts/setup-rootless-binfmt.sh --install-service  # + auto-register on e
 linux/scripts/setup-rootless-binfmt.sh --verify           # check current state
 ```
 
+You normally don't run it by hand: **`build-runtime-manifest.sh` invokes it for you
+(no sudo)** right before the per-arch runtime-image smokes, for whichever target
+arches are non-native (`ensure_foreign_binfmt`). Set `RUNTIME_REGISTER_BINFMT=0` to
+skip that auto-registration (e.g. a rootful/CI host where qemu is already registered
+via `docker run --privileged tonistiigi/binfmt` or `update-binfmts`). The standalone
+invocations above are for registering ahead of time or debugging.
+
 Why the helper is needed (and why the "obvious" commands don't work rootless):
 
 - **`sudo apt install qemu-user-static` is not required and not wanted here** — this

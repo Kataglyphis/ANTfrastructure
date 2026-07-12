@@ -3,7 +3,7 @@ set -euo pipefail
 
 : "${VENV:?VENV must be set}"
 : "${ONNX_PACKAGE:?ONNX_PACKAGE must be set}"
-: "${PYTORCH_EXTRA:=none}"
+: "${PYTORCH_EXTRA:=pytorch-cpu}"
 
 APP_DIR="/opt/Kataglyphis-Orchestr-ANT-ion"
 APP_REF="${APP_REF:-v0.0.19}"
@@ -149,19 +149,29 @@ build_uv_sync_args() {
     --extra "ml-ai" \
     --extra "docs")
 
-  # PYTORCH_EXTRA is a SENTINEL, not always a real extra: "none" (the default, set
-  # in Dockerfile.torch) means "CPU torch from the ml-ai deps, no CUDA/ROCm backend
-  # extra". Only append it when it names an ACTUAL optional-dependencies group.
-  # Passing `--extra none` makes every `uv sync` fail hard ("Extra `none` is not
-  # defined in the project's optional-dependencies table"), which silently drops
-  # the ENTIRE resolved dependency tree -- torch included -- on any arch without a
-  # local torch wheel. That is exactly the 2026-07-11 amd64 runtime smoke failure
-  # (ModuleNotFoundError: torch); riscv64 only survived because it force-reinstalls
-  # a LOCAL torch wheel in the fallback path.
-  case "${PYTORCH_EXTRA:-none}" in
-    none|"") ;;
-    *) _sync_args+=(--extra "${PYTORCH_EXTRA}") ;;
-  esac
+  # Is torch served from a prebuilt LOCAL wheel (the riscv64 cross-build path)?
+  # If so, the torch BACKEND extra below must NOT be requested: its torch entry
+  # would make uv resolve/clone the upstream torch source instead of our wheel.
+  local _torch_from_local_wheel=false
+  for package_name in "${_locked_skip[@]}"; do
+    case "${package_name}" in torch|torchvision) _torch_from_local_wheel=true ;; esac
+  done
+
+  # PYTORCH_EXTRA selects the torch BACKEND index-extra: pytorch-cpu (the default),
+  # pytorch-cu130, or pytorch-rocm71. In the app's pyproject, `torch` is declared
+  # ONLY inside these backend extras (NEVER in ml-ai), each wired to an explicit
+  # uv index (download.pytorch.org/whl/{cpu,cu130,rocm7.1}). So for arches that
+  # get torch from uv sync (amd64/arm64) the backend extra MUST be requested --
+  # without it uv resolves the whole tree WITHOUT torch and the image ships
+  # torch-less (the 2026-07-12 runtime smoke failure). "none"/"" disables it; it
+  # is also skipped when torch is supplied by a local wheel (riscv64).
+  # (An earlier default of "none" wrongly assumed ml-ai carried torch -- it does not.)
+  if [ "${_torch_from_local_wheel}" = "false" ]; then
+    case "${PYTORCH_EXTRA:-pytorch-cpu}" in
+      none|"") ;;
+      *) _sync_args+=(--extra "${PYTORCH_EXTRA}") ;;
+    esac
+  fi
 
   if [ "${#_locked_skip[@]}" -gt 0 ]; then
     printf 'Using prebuilt local wheels for locked packages: %s\n' "${_locked_skip[*]}"
