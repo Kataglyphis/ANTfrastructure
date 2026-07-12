@@ -197,6 +197,41 @@ main() {
       fail "ffmpeg failed to execute in the runtime image (${target_arch})"
     fi
     echo ""
+
+    # Native compiler compile + link + RUN. The build-time validate-compilers.sh
+    # smoke compiles AND links a program in every wrapper image, but never RUNS
+    # the result: on the x86_64 build host a cross arch's binary cannot execute,
+    # so the shipped native GCC/G++ was only ever ELF/version/link-verified for
+    # arm64+riscv64 (the riscv64 --with-isa-spec GCC especially). HERE the wrapper
+    # runs under binfmt/qemu, so we can finally prove the on-target compiler
+    # actually compiles, links AND executes a real binary. The C++ case also
+    # exercises the libstdc++ runtime. Gate RUNTIME_COMPILER_SMOKE=0 to skip.
+    if [ "${RUNTIME_COMPILER_SMOKE:-1}" = "1" ]; then
+      echo "--- Functional: native compiler compile+link+run (${target_arch}) ---"
+      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+           bash -lc 'set -euo pipefail
+cc="$(command -v gcc || command -v cc || true)"
+cxx="$(command -v g++ || command -v c++ || true)"
+[ -n "$cc" ] || { echo "no gcc/cc on PATH"; exit 3; }
+d="$(mktemp -d)"
+printf "#include <stdio.h>\nint main(void){puts(\"c-ok\");return 0;}\n" > "$d/t.c"
+"$cc" -O2 "$d/t.c" -o "$d/tc"
+cout="$("$d/tc")"
+[ "$cout" = "c-ok" ] || { echo "C binary printed [$cout] not c-ok"; exit 4; }
+echo "  C  : gcc $("$cc" -dumpversion) [$("$cc" -dumpmachine)] compiled+linked+RAN"
+if [ -n "$cxx" ]; then
+  printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/t.cpp"
+  "$cxx" -O2 "$d/t.cpp" -o "$d/tx"
+  xout="$("$d/tx")"
+  [ "$xout" = "cxx-ok" ] || { echo "C++ binary printed [$xout] not cxx-ok"; exit 5; }
+  echo "  C++: g++ $("$cxx" -dumpversion) [$("$cxx" -dumpmachine)] compiled+linked+RAN libstdc++"
+fi'; then
+        pass "native gcc/g++ compiles, links AND runs a ${target_arch} binary under emulation"
+      else
+        fail "native compiler compile+link+run FAILED in the runtime image (${target_arch})"
+      fi
+      echo ""
+    fi
   else
     echo "--- Functional checks skipped (RUNTIME_FUNCTIONAL_SMOKE=0) ---"
     echo ""
