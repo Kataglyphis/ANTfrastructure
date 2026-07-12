@@ -191,18 +191,12 @@ if ([string]::IsNullOrWhiteSpace($Docker)) {
 Write-Host "Using docker: $Docker"
 
 # ---- load canonical versions (single source of truth) ----
+Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Shared.psm1') -Force
 $versionsFile = Join-Path $repoRoot 'linux\scripts\01-core\versions.env'
 if (-not (Test-Path $versionsFile)) { throw "versions.env not found at $versionsFile" }
-$versions = @{}
-Get-Content $versionsFile | ForEach-Object {
-    $line = $_.Trim()
-    if ($line -and $line -notmatch '^#') {
-        $parts = $line -split '=', 2
-        if ($parts.Count -eq 2) { $versions[$parts[0].Trim()] = $parts[1].Trim().Trim('"', "'") }
-    }
-}
+$versions = ConvertFrom-VersionsEnv -Path $versionsFile
 function Get-Ver([string]$Name) {
-    if (-not $versions.ContainsKey($Name)) { throw "versions.env is missing $Name" }
+    if (-not $versions.Contains($Name)) { throw "versions.env is missing $Name" }
     return $versions[$Name]
 }
 
@@ -594,6 +588,7 @@ try {
             # by design (protects the VS layer from versions.env bumps), so the SDK pin must
             # reach it via ARG -- and changing it SHOULD bust the VS layer.
             WINDOWS_SDK_BUILD = Get-Ver 'WINDOWS_SDK_BUILD'
+            VISUAL_STUDIO_VERSION = Get-Ver 'VISUAL_STUDIO_VERSION'
         }
     }
 

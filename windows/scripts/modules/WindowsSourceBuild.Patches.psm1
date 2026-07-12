@@ -221,7 +221,6 @@ Export-ModuleMember -Function @(
     'Edit-SourceFile',
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'Resolve-NormalizedPath',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry'
 )

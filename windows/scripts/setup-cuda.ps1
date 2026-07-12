@@ -39,17 +39,14 @@ $proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-downloa
 $proc.WaitForExit()
 $exitCode = $proc.ExitCode
 $proc.Dispose()
-[System.GC]::Collect()
-[System.GC]::WaitForPendingFinalizers()
+Clear-PendingFileHandle
 Remove-Item $cudaInstaller -Force
 if ($exitCode -ne 0) {
     throw ('CUDA installation failed with exit code: {0}' -f $exitCode)
 }
 Write-Host 'CUDA Toolkit installation complete. Waiting for files to settle...'
 Start-Sleep -Seconds 5
-# Force any lingering handles closed
-& cmd.exe /c 'ver > nul' 2>&1 | Out-Null
-[System.GC]::Collect()
+Clear-PendingFileHandle
 
 # Full installer puts CUDA at Program Files
 $cudaInstallRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA"
@@ -128,13 +125,12 @@ $cudnnArchive = Join-Path $TempDir 'cudnn.zip'
 $cudnnExtracted = Join-Path $TempDir 'cudnn_extracted'
 Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive" -ExpectSignature PK
 Write-Host 'Extracting cuDNN...'
-Expand-Archive -Path $cudnnArchive -DestinationPath $cudnnExtracted -Force
-$cudnnDir = Get-ChildItem -Path $cudnnExtracted -Directory | Select-Object -First 1
+$cudnnDir = Expand-ArchiveSubdirectory -ArchivePath $cudnnArchive -DestinationPath $cudnnExtracted
 if (-not $cudnnDir) {
     throw ('Extracted cuDNN directory not found under {0}' -f $cudnnExtracted)
 }
 New-Item -Path $CudnnRoot -ItemType Directory -Force | Out-Null
-Copy-Item -Path (Join-Path $cudnnDir.FullName '*') -Destination $CudnnRoot -Recurse -Force
+Copy-Item -Path (Join-Path $cudnnDir '*') -Destination $CudnnRoot -Recurse -Force
 Remove-Item $cudnnArchive -Force
 Remove-Item $cudnnExtracted -Recurse -Force
 
@@ -149,8 +145,6 @@ if (-not $cudnnDlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $CudnnRoot
 Write-Host ('cuDNN verified: {0} headers, {1} libs, {2} DLLs' -f $cudnnHeaders.Count, $cudnnLibs.Count, $cudnnDlls.Count)
 Write-Host 'cuDNN installation complete.'
 
-# Final GC push to release any lingering file handles before layer commit.
+# Final push to release any lingering file handles before layer commit.
 # (The installer/archive files themselves were already removed right after use above.)
-[System.GC]::Collect()
-[System.GC]::WaitForPendingFinalizers()
-& cmd.exe /c 'ver > nul' 2>&1 | Out-Null
+Clear-PendingFileHandle

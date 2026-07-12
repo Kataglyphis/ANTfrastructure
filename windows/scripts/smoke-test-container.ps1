@@ -247,14 +247,13 @@ function Get-CommandVersion {
 # fall back to the repo's versions.env, then to a literal only as a last resort.
 $script:versionsFromFile = @{}
 $repoVersions = Join-Path $PSScriptRoot '..\..\linux\scripts\01-core\versions.env'
-if (Test-Path $repoVersions) {
-    Get-Content $repoVersions | ForEach-Object {
-        $line = $_.Trim()
-        if ($line -and $line -notmatch '^#') {
-            $kv = $line -split '=', 2
-            if ($kv.Count -eq 2) { $script:versionsFromFile[$kv[0].Trim()] = $kv[1].Trim().Trim('"', "'") }
-        }
-    }
+$sharedModule = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
+# Both paths exist only host-side (in-container the baked Machine env is authoritative
+# and this fallback never runs); the module guard keeps the smoke test runnable
+# standalone inside an image whose modules directory is broken or absent.
+if ((Test-Path $repoVersions) -and (Test-Path $sharedModule)) {
+    Import-Module $sharedModule -Force
+    $script:versionsFromFile = ConvertFrom-VersionsEnv -Path $repoVersions
 }
 function Get-ExpectedVersion {
     param([string]$Key, [string]$Fallback)

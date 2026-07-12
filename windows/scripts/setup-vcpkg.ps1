@@ -25,8 +25,7 @@ if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
     Write-Host 'Downloading vcpkg (DNS workaround: HTTP download with retries instead of git clone)...'
     $vcpkgZip = Join-Path $env:TEMP 'vcpkg.zip'
     Invoke-DownloadWithRetry -Url "https://github.com/microsoft/vcpkg/archive/refs/tags/$VcpkgRef.zip" -DestinationPath $vcpkgZip -Description "vcpkg (pinned tag $VcpkgRef)"
-    Expand-Archive -Path $vcpkgZip -DestinationPath $env:TEMP -Force
-    $extracted = Get-ChildItem -Path $env:TEMP -Directory -Filter 'vcpkg-*' | Select-Object -First 1 -ExpandProperty FullName
+    $extracted = Expand-ArchiveSubdirectory -ArchivePath $vcpkgZip -DestinationPath $env:TEMP -Filter 'vcpkg-*'
     if (-not $extracted) { throw 'Failed to locate extracted vcpkg directory' }
     Move-Item -Path $extracted -Destination $VcpkgDir -Force
     Remove-Item $vcpkgZip -Force -ErrorAction SilentlyContinue

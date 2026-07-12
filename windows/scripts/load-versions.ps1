@@ -4,6 +4,10 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+$sharedModulePath = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
+if (-not (Test-Path $sharedModulePath)) { throw "Required module not found: $sharedModulePath" }
+Import-Module $sharedModulePath -Force
+
 $versionsFile = Join-Path $env:TEMP_DIR 'versions.env'
 if (-not (Test-Path $versionsFile)) {
     Write-Host 'versions.env not found -- skipping'
@@ -11,17 +15,11 @@ if (-not (Test-Path $versionsFile)) {
 }
 
 Write-Host "Loading versions from: $versionsFile"
-Get-Content $versionsFile | ForEach-Object {
-    $line = $_.Trim()
-    if ($line -and $line -notmatch '^#') {
-        $parts = $line -split '=', 2
-        if ($parts.Count -eq 2) {
-            $name = $parts[0].Trim()
-            $value = $parts[1].Trim().Trim('"', "'")
-            [Environment]::SetEnvironmentVariable($name, $value, 'Machine')
-            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
-            Write-Host "  $name = $value"
-        }
-    }
+$versions = ConvertFrom-VersionsEnv -Path $versionsFile
+foreach ($name in $versions.Keys) {
+    $value = $versions[$name]
+    [Environment]::SetEnvironmentVariable($name, $value, 'Machine')
+    [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+    Write-Host "  $name = $value"
 }
 Write-Host 'versions.env loaded'

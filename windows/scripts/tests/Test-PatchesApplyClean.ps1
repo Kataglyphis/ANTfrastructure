@@ -60,20 +60,15 @@ $defaultRefs = @{
     GSTREAMER   = '1.29.2'
 }
 if (Test-Path $versionsFile) {
-    Get-Content $versionsFile | ForEach-Object {
-        $line = $_.Trim()
-        if ($line -and $line -notmatch '^#') {
-            $parts = $line -split '=', 2
-            if ($parts.Count -eq 2) {
-                $key = $parts[0].Trim(); $val = $parts[1].Trim().Trim('"', "'")
-                switch ($key) {
-                    'ONNXRUNTIME_VERSION' { $defaultRefs.ONNXRUNTIME = $val }
-                    'OPENCV_VERSION'      { $defaultRefs.OPENCV = $val }
-                    'FFMPEG_VERSION'      { $defaultRefs.FFMPEG = $val }
-                    'GSTREAMER_VERSION'   { $defaultRefs.GSTREAMER = $val }
-                }
-            }
-        }
+    Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
+    $fileVersions = ConvertFrom-VersionsEnv -Path $versionsFile
+    foreach ($entry in @(
+            @{ Ref = 'ONNXRUNTIME'; Key = 'ONNXRUNTIME_VERSION' },
+            @{ Ref = 'OPENCV';      Key = 'OPENCV_VERSION' },
+            @{ Ref = 'FFMPEG';      Key = 'FFMPEG_VERSION' },
+            @{ Ref = 'GSTREAMER';   Key = 'GSTREAMER_VERSION' }
+        )) {
+        if ($fileVersions.Contains($entry.Key)) { $defaultRefs[$entry.Ref] = $fileVersions[$entry.Key] }
     }
 }
 foreach ($k in $Versions.Keys) { $defaultRefs[$k] = $Versions[$k] }

@@ -37,28 +37,13 @@ function Initialize-ContainerImageTempDirectory {
     return (Resolve-DirectoryPath -Path $TempDir)
 }
 
-function Assert-ContainerPathExists {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path,
-
-        [string]$Description = $Path,
-
-        [ValidateSet('Any', 'Leaf', 'Container')]
-        [string]$PathType = 'Any'
-    )
-
-    $pathExists = switch ($PathType) {
-        'Leaf' { Test-Path -LiteralPath $Path -PathType Leaf }
-        'Container' { Test-Path -LiteralPath $Path -PathType Container }
-        default { Test-Path -LiteralPath $Path }
-    }
-
-    if (-not $pathExists) {
-        throw "${Description} not found at ${Path}"
-    }
-
-    return $Path
+function Clear-PendingFileHandle {
+    # GC + finalizer drain + a no-op child process to flush lingering async file
+    # handles before a docker layer commit (the CUDA installer leaves handles
+    # behind that otherwise make the immediately-following Remove-Item/commit flaky).
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    & cmd.exe /c 'ver > nul' 2>&1 | Out-Null
 }
 
 function Sync-ContainerProcessPath {
@@ -130,14 +115,14 @@ function Assert-ContainerCommandAvailable {
 Export-ModuleMember -Function @(
     'Resolve-ContainerImageValue',
     'Initialize-ContainerImageTempDirectory',
-    'Assert-ContainerPathExists',
+    'Clear-PendingFileHandle',
     'Sync-ContainerProcessPath',
     'Assert-ContainerCommandAvailable',
     # Re-exported from WindowsScripts.Shared (imported above) so a caller gets these via a
     # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'Resolve-NormalizedPath',
     'ConvertTo-ParameterList',
-    'Invoke-DownloadWithRetry'
+    'Invoke-DownloadWithRetry',
+    'Expand-ArchiveSubdirectory'
 )

@@ -35,6 +35,9 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
 # which is where setup-vs.ps1's $env:WINDOWS_SDK_BUILD read gets its value). Changing
 # the SDK pin SHOULD rebuild the VS layer.
 ARG WINDOWS_SDK_BUILD=26100
+# Same ARG route for the VS Build Tools major (versions.env VISUAL_STUDIO_VERSION):
+# setup-vs.ps1's VsDevCmd sanity check derives its path from it instead of a literal.
+ARG VISUAL_STUDIO_VERSION=18
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 

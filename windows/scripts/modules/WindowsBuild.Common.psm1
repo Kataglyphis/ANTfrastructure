@@ -481,6 +481,5 @@ Export-ModuleMember -Function @(
     'Write-BuildSummary',
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'Resolve-NormalizedPath',
     'ConvertTo-ParameterList'
 )

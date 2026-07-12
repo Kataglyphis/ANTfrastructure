@@ -56,9 +56,8 @@ function Dump-InstallerLogs {
     try { Test-Connection -ComputerName www.microsoft.com -Count 1 -ErrorAction Stop | Select-Object Address,ResponseTime } catch { Write-Host "Network check failed: $($_.Exception.Message)" }
 }
 
-# TLS 1.2 for downloads
-
-Enable-Tls12ForDownloads
+# (TLS 1.2 is set per-attempt by Invoke-DownloadWithRetry -- no separate
+# Enable-Tls12ForDownloads needed; nothing else here downloads.)
 
 # Prepare temp directory for installer logs
 
@@ -161,9 +160,12 @@ try {
         Write-Host 'Installation succeeded.'
     }
 
-    if (Test-Path 'C:\Program Files\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat') {
+    # VS major from versions.env's VISUAL_STUDIO_VERSION (reaches this pre-load-versions
+    # layer as a --build-arg, same route as WINDOWS_SDK_BUILD above).
+    $vsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
+    if (Test-Path "C:\Program Files\Microsoft Visual Studio\$vsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
         Write-Host 'VsDevCmd found.'
-    } elseif (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat') {
+    } elseif (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\$vsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
         Write-Host 'VsDevCmd (x86) found, path adjusted.'
     } else {
         Write-Host 'VsDevCmd not found -- printing logs.'

@@ -81,7 +81,7 @@ Export-ModuleMember -Function @(
     # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'Resolve-NormalizedPath',
     'ConvertTo-ParameterList',
-    'Invoke-DownloadWithRetry'
+    'Invoke-DownloadWithRetry',
+    'Expand-ArchiveSubdirectory'
 )

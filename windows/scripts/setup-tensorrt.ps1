@@ -84,17 +84,15 @@ if (-not $trtZip -or -not (Test-Path $trtZip)) {
 }
 
 Write-Host "Extracting TensorRT to $TensorRtRoot..."
-New-Item -Path $TensorRtRoot -ItemType Directory -Force | Out-Null
-Expand-Archive -Path $trtZip -DestinationPath $TensorRtRoot -Force
+# $null result = flat-layout zip (no TensorRT-* subdir), a legitimate NVIDIA packaging.
+$trtDir = Expand-ArchiveSubdirectory -ArchivePath $trtZip -DestinationPath $TensorRtRoot -Filter 'TensorRT-*'
 if ($trtZip -ne $LocalZipPath -and $trtZip -notlike (Join-Path $env:TEMP_DIR 'downloads\*')) { Remove-Item $trtZip -Force -ErrorAction SilentlyContinue }
 
-# Find the actual versioned subdirectory
-$trtDir = Get-ChildItem "$TensorRtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($trtDir) {
-    Write-Host "TensorRT installed at: $($trtDir.FullName)"
-    [Environment]::SetEnvironmentVariable('TENSORRT_ROOT', $trtDir.FullName, 'Process')
+    Write-Host "TensorRT installed at: $trtDir"
+    [Environment]::SetEnvironmentVariable('TENSORRT_ROOT', $trtDir, 'Process')
     # Also expose via MSBuild/CMake convention
-    [Environment]::SetEnvironmentVariable('TENSORRT_ROOT_DIR', $trtDir.FullName, 'Process')
+    [Environment]::SetEnvironmentVariable('TENSORRT_ROOT_DIR', $trtDir, 'Process')
 } else {
     Write-Host "TensorRT installed at: $TensorRtRoot"
     [Environment]::SetEnvironmentVariable('TENSORRT_ROOT', $TensorRtRoot, 'Process')
