@@ -491,9 +491,32 @@ After building, run the container smoke test to verify all components:
 
 ```powershell
 # Run smoke tests inside the built container
-& "D:\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
+& "C:\Program Files\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
   powershell -File C:\temp\scripts\smoke-test-container.ps1
 ```
 
-The smoke test validates 18 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), and compiler integration.
+The smoke test validates 19 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), compiler integration, and environment-pointer integrity. **Current baseline (2026-07-12, GPU lane): 137 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew.
+
+### What is verified: native vs. Python
+
+**Native (C++/CLI) functionality is verified end-to-end.** The suite does not stop
+at existence checks: it compiles, links, and *runs* probe programs against the
+source-built libraries — ONNX Runtime (C API ABI + a real inference session over
+an embedded 63-byte Identity model on the CPU EP), OpenCV (core API call), TVM
+(full dependent-DLL chain load), LiteRT-LM (its `litert_lm_main.exe` smoke-run is
+a hard gate of the media build itself), FFmpeg (a real lavfi→null filter graph),
+GStreamer (a live `videotestsrc ! videoconvert` pipeline), plus clang-cl /
+CMake+Ninja / MSBuild integration builds. Version pins (cmake, python, gstreamer)
+are asserted against versions.env to catch stale baked layers.
+
+**Python coverage is interpreter-only, by design.** CPython 3.14 itself is
+verified (exact pin, pip, and the optional stdlib extension modules
+ssl/sqlite3/zlib/ctypes/bz2/lzma — the ones source builds silently drop when a
+dependency is missing). The AI/media libraries deliberately ship **without**
+Python bindings: ONNX Runtime is built `ENABLE_PYTHON=OFF`, OpenCV without
+`cv2` (no numpy in the build environment), TVM without its python package. This
+is a native developer image — Python consumers install upstream wheels, which
+would not exercise these source builds anyway. If in-image Python bindings are
+ever wanted, that is a media-stage feature change (numpy build dep + wheel
+builds), not a smoke-test addition.
