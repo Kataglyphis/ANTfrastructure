@@ -357,14 +357,14 @@ verify_project_environment() {
   fi
 
   find "${VENV}" -name "cv2*.so" -exec ldd {} \; || true
-  uv run --active python -c "import gi, numpy, contourpy; print('gi OK'); print('numpy', numpy.__version__);"
-  uv run --active python -c "import os; os.environ['OPENCV_LOG_LEVEL']='DEBUG'; import cv2; print('cv2', cv2.__version__);"
+  uv run --no-sync --active python -c "import gi, numpy, contourpy; print('gi OK'); print('numpy', numpy.__version__);"
+  uv run --no-sync --active python -c "import os; os.environ['OPENCV_LOG_LEVEL']='DEBUG'; import cv2; print('cv2', cv2.__version__);"
 
   if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     echo "Testing GPU Support (Build checks only, not runtime)"
     rm -f /usr/local/tensorrt/lib/libstdc++.so* || true
-    uv run --active python -c "import torch; cuda_ver = torch.version.cuda; print(f'PyTorch CUDA Build Version: {cuda_ver}'); assert cuda_ver is not None, 'ERROR: PyTorch was NOT built with CUDA!'"
-    uv run --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CUDAExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have CUDAExecutionProvider!'"
+    uv run --no-sync --active python -c "import torch; cuda_ver = torch.version.cuda; print(f'PyTorch CUDA Build Version: {cuda_ver}'); assert cuda_ver is not None, 'ERROR: PyTorch was NOT built with CUDA!'"
+    uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CUDAExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have CUDAExecutionProvider!'"
   fi
 
   echo "Installed packages in the virtual environment:"
