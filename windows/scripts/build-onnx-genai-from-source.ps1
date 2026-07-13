@@ -31,7 +31,7 @@ Write-Host "Using Python: $($py.Exe)"
 Install-CpythonPip -Python $py
 
 Write-Host 'Installing cmake, ninja, requests via pip...'
-Invoke-CpythonPip -Python $py -Arguments @('install', 'cmake', 'ninja', 'requests', '--no-warn-script-location', '--quiet')
+Invoke-CpythonPip -Python $py -Arguments @('install', 'cmake', 'ninja', 'requests', 'setuptools', 'wheel', '--no-warn-script-location', '--quiet')
 
 # Canonical preamble: VsDevCmd + Copy-CpythonPyConfigHeader in one call (replaces the
 # previously duplicated three-line invocation in a different order than build-onnx).
@@ -90,7 +90,10 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
 $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
     '-DUSE_TRT_RTX=OFF', '-DUSE_DML=ON'
-    '-DENABLE_JAVA=OFF', '-DBUILD_WHEEL=OFF', '-DUSE_GUIDANCE=OFF'
+    # BUILD_WHEEL=ON: cmake configures build\wheel\setup.py and a POST_BUILD step
+    # copies onnxruntime_genai.pyd + embed libs (incl. D3D12Core) into build\wheel;
+    # the wheel itself is packed after the build below.
+    '-DENABLE_JAVA=OFF', '-DBUILD_WHEEL=ON', '-DUSE_GUIDANCE=OFF'
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
     "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE"
@@ -181,6 +184,41 @@ Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
     -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq 'x64' } `
     -Destination (Join-Path $genaiInstallDir 'lib') `
     -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent'
+
+# -- Python wheel (onnxruntime-genai-cuda / onnxruntime-genai) --
+# BUILD_WHEEL=ON assembled build\wheel (configured setup.py + onnxruntime_genai
+# package with the .pyd + embed libs). Pack it; --no-build-isolation so the pack
+# uses the deps installed above instead of a fresh pip env. Must run BEFORE
+# Remove-SourceBuildTree.
+$genaiWheelDir = Join-Path $genaiBuildDir 'wheel'
+if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
+    Write-Host 'Building onnxruntime-genai python wheel...'
+    Push-Location $genaiWheelDir
+    try {
+        cmd.exe /c """$($py.Exe)"" -m pip wheel . --no-deps --no-build-isolation -w dist 2>&1"
+        if ($LASTEXITCODE -ne 0) { throw "onnxruntime-genai pip wheel failed (exit $LASTEXITCODE)" }
+    } finally { Pop-Location }
+    # @() is LOAD-BEARING (single-element unwrap -> [0] = first char; see build-onnx).
+    $genaiStagedWheel = @(Save-PythonWheel -SourceDir (Join-Path $genaiWheelDir 'dist') -Required)
+    if (-not (Test-Path $genaiStagedWheel[0])) { throw "staged wheel path invalid: '$($genaiStagedWheel[0])'" }
+    # Install it so the shipped site-packages is import-ready (onnxruntime dep is
+    # already satisfied by the wheel installed in the preceding build-onnx step).
+    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $genaiStagedWheel[0])
+    # Import assert: fail in-branch, not hours later at smoke time.
+    $genaiImport = ''
+    $genaiImportOk = $false
+    try {
+        # NO embedded double quotes in the -c string: PS 5.1 native-arg passing
+        # strips them, python saw bare __version__ -> NameError -> false negative
+        # (killed attempt 3 despite a perfectly working wheel).
+        $genaiImport = (& $py.Exe -c 'import onnxruntime_genai; print(onnxruntime_genai.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
+        $genaiImportOk = ($LASTEXITCODE -eq 0)
+    } catch { $genaiImport = $_.Exception.Message }
+    if (-not $genaiImportOk) { throw "import onnxruntime_genai failed right after wheel install: $genaiImport" }
+    Write-Host "onnxruntime-genai python binding OK ($genaiImport)"
+} else {
+    Write-Warning "genai wheel dir has no setup.py under $genaiWheelDir -- BUILD_WHEEL layout changed? Wheel NOT staged."
+}
 
 Remove-SourceBuildTree -Path $SourceDir
 

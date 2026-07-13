@@ -119,20 +119,48 @@ Copy-SidecarDll -SidecarName 'tvm_ffi.dll' -SearchDir $buildDir `
     -BesidePrimary 'tvm_runtime.dll' -InstallDir $tvmInstallDir `
     -Reason 'tvm_runtime.dll may fail to load at runtime (cmake --install missed the FFI shared lib)'
 
-# Install Python wheel if enabled
+# Python wheel: TVM 0.25 packages via scikit-build-core at the REPO ROOT -- the
+# old cmake-generated build\python dir is GONE (TVM_BUILD_PYTHON_MODULE no longer
+# emits one; the previous -Optional site install silently did nothing, which is
+# why `import tvm` never worked in earlier images). Reuse the just-built ninja
+# dir: its CMake cache already carries USE_CUDA/LLVM/etc., so scikit-build-core's
+# configure mostly no-ops and the wheel packs existing objects; if the reuse
+# trips, fall back to a fresh tree (full ~25 min recompile, still correct).
 if ($pythonModule -eq 'ON') {
     $py = Get-SourceBuildPython
     if (Test-Path $py.Exe) {
         # Bootstrap pip if missing — this script can no longer rely on the GenAI
         # build having installed it first (parallel media branches).
         Install-CpythonPip -Python $py
-        Write-Host 'Installing TVM Python wheel...'
-        $wheelDir = Join-Path $buildDir 'python'
-        if (Test-Path $wheelDir) {
-            Push-Location $wheelDir
-            Invoke-CpythonPip -Python $py -Arguments @('install', '.', '--no-deps', '--quiet') -Optional
-            Pop-Location
-        }
+        # 64-bit platform tag BEFORE any pip resolution (clang-built CPython
+        # self-reports win32 and pulls 32-bit wheels otherwise).
+        Initialize-PythonPlatformTag | Out-Null
+        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'scikit-build-core', 'setuptools-scm', 'wheel')
+        # The DNS-workaround clone may lack git tags -- pin the scm version directly.
+        $env:SETUPTOOLS_SCM_PRETEND_VERSION = ($TvmVersion -replace '^v', '')
+        $wheelOut = Join-Path $SourceDir 'dist'
+        Write-Host 'Building TVM python wheel (scikit-build-core, reusing the ninja build dir)...'
+        Push-Location $SourceDir
+        try {
+            Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut, "--config-settings=build-dir=$buildDir") -Optional
+            if (-not (Test-Path (Join-Path $wheelOut '*.whl'))) {
+                Write-Warning 'build-dir reuse produced no wheel -- retrying with a fresh scikit-build tree (full recompile)'
+                Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut)
+            }
+        } finally { Pop-Location }
+        # @() is LOAD-BEARING (single-element unwrap -> [0] = first char; see build-onnx).
+        $staged = @(Save-PythonWheel -SourceDir $wheelOut -Required)
+        if (-not (Test-Path $staged[0])) { throw "staged wheel path invalid: '$($staged[0])'" }
+        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $staged[0])
+        # Import assert: fail in-branch, not hours later at smoke time.
+        $tvmImport = ''
+        $tvmImportOk = $false
+        try {
+            $tvmImport = (& $py.Exe -c 'import tvm; print(tvm.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
+            $tvmImportOk = ($LASTEXITCODE -eq 0)
+        } catch { $tvmImport = $_.Exception.Message }
+        if (-not $tvmImportOk) { throw "import tvm failed right after wheel install: $tvmImport" }
+        Write-Host "tvm python binding OK ($tvmImport)"
     }
 }
 

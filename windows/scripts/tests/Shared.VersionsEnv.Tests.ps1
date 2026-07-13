@@ -64,6 +64,28 @@ Describe 'ConvertFrom-VersionsEnv' {
     }
 }
 
+Describe 'Save-PythonWheel' {
+
+    It 'returns exactly the staged path for a single wheel (callers MUST @()-wrap: unwrap made [0] the first CHAR -> pip installed PyPI package "c")' {
+        Invoke-InTestDir { param($dir)
+            $src = Join-Path $dir 'dist'
+            New-Item -ItemType Directory -Force -Path $src | Out-Null
+            Set-Content -Path (Join-Path $src 'pkg-1.0-py3-none-any.whl') -Value 'x' -NoNewline
+            $store = Join-Path $dir 'wheels'
+            $r = @(Save-PythonWheel -SourceDir $src -WheelDir $store -Required)
+            Assert-Equal 1 $r.Count
+            Assert-True (Test-Path $r[0]) 'returned path exists on disk'
+            Assert-Equal 'pkg-1.0-py3-none-any.whl' (Split-Path $r[0] -Leaf)
+        }
+    }
+
+    It 'throws with -Required when no wheel matches' {
+        Invoke-InTestDir { param($dir)
+            Assert-Throws { Save-PythonWheel -SourceDir $dir -WheelDir (Join-Path $dir 'w') -Required }
+        }
+    }
+}
+
 Describe 'Expand-ArchiveSubdirectory' {
 
     # Helper: zip a <Name>\inner.txt payload inside $Dir and return the zip path.
