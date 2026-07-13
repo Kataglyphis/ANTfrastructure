@@ -352,6 +352,62 @@ extract_torch_wheel() {
     unzip -q -o "${TARGET_TORCH_WHEEL}" -d "${TORCH_STAGING_DIR}"
 }
 
+# pytorch 2.13 restructured how torch._C is built for the wheel and REGRESSED it
+# under cross-compile. In 2.12 setup.py compiled the distutils stub torch/csrc/
+# stub.c and linked it straight to build/lib/torch/_C.cpython-<abi>.so (correct
+# EXT_SUFFIX), which bdist_wheel then packaged. In 2.13 there is no "building
+# 'torch._C' extension" step at all: cmake links a generic, un-suffixed
+# torch/_C.so (ninja: "Linking C shared module torch/_C.so") and bdist_wheel never
+# copies it into the wheel. The wheel then ships ONLY the torch/_C/ *.pyi stub
+# folder, so on install `torch._C` resolves to that namespace folder
+# (torch._C.__file__ is None) and `import torch` dies with the misleading
+# "Failed to load PyTorch C extensions ... loaded the torch/_C folder" (the real
+# cause -- no compiled _C extension -- is masked by pytorch's `raise ... from
+# None`). The compiled module IS produced by cmake at
+# ${src_dir}/torch/_C.so; if the built wheel lacks a top-level torch/_C*.so,
+# inject that under the target ABI name and repack (wheel pack recomputes RECORD).
+# Version-agnostic: a no-op once the wheel already carries torch/_C*.so.
+_torch_ensure_c_extension() {
+    local dist_dir="$1"
+    local wheel_path built_c_ext staging suffix triplet pyabi
+    shopt -s nullglob
+    local -a wheels=("${dist_dir}"/torch-*.whl)
+    shopt -u nullglob
+    [ "${#wheels[@]}" -gt 0 ] || return 0
+    wheel_path="${wheels[0]}"
+
+    # Already carries the top-level compiled extension? nothing to do.
+    if unzip -l "${wheel_path}" 2>/dev/null | grep -qE ' torch/_C[^/]*\.so$'; then
+        return 0
+    fi
+
+    built_c_ext="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch/torch/_C.so"
+    if [ ! -f "${built_c_ext}" ]; then
+        warn "torch wheel lacks torch/_C*.so and cmake-built ${built_c_ext} is absent; import torch WILL fail (missing C extension)"
+        return 0
+    fi
+
+    # Target extension suffix cpython-<pyABI>-<triplet>.so: pyABI from the wheel's
+    # abi tag (…-cpXYZ-cpXYZ-…), triplet from the cross helper.
+    triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
+    pyabi="$(basename "${wheel_path}" | sed -nE 's/.*-cp([0-9]+)-cp[0-9]+-.*/\1/p')"
+    [ -n "${pyabi}" ] || pyabi="314"
+    suffix="cpython-${pyabi}-${triplet}.so"
+
+    staging="${APP_WHEELHOUSE_BUILD_ROOT}/torch-cext-repack"
+    rm -rf "${staging}"
+    mkdir -p "${staging}"
+    unzip -q -o "${wheel_path}" -d "${staging}"
+    cp "${built_c_ext}" "${staging}/torch/_C.${suffix}"
+    log "Injected missing torch/_C.${suffix} into $(basename "${wheel_path}") (pytorch ${PYTORCH_REF} cross bdist_wheel dropped the compiled C extension)"
+
+    rm -f "${wheel_path}"
+    if ! ( cd "${staging}" && "${BUILD_PYTHON}" -m wheel pack . -d "${dist_dir}" ); then
+        warn "wheel pack failed while repackaging the torch _C extension"
+        return 1
+    fi
+}
+
 # The build_torch_wheel phase helpers below read build_torch_wheel's locals via
 # bash dynamic scoping (the subshell inherits them; nested calls resolve them on
 # the call stack). They must be called only from build_torch_wheel.
@@ -441,6 +497,9 @@ _torch_run_setup_py() {
 # TARGET_TORCH_VERSION (globals) and extract it. Reads dist_dir + wheel_platform.
 _collect_torch_wheel() {
     local -a built_wheels=()
+    # Repair the 2.13 cross-build gap (missing torch/_C*.so) BEFORE retag/collect
+    # so the fixed wheel flows through the normal path.
+    _torch_ensure_c_extension "${dist_dir}"
     retag_directory_wheels "${dist_dir}" torch "${wheel_platform}"
 
     shopt -s nullglob
