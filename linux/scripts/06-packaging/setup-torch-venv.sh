@@ -426,15 +426,21 @@ verify_torch_import_or_fail() {
   # into an immediate packaging failure. riscv64 already returned above when it has
   # no wheel; here it just double-confirms.
   local host_arch="$1" ver _import_err
-  if ver="$("${VENV}/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null)"; then
+  # Run the import from a NEUTRAL directory (/). On riscv64 the env-gate strip
+  # (assemble-torch-app) makes uv fetch the pytorch git source, which can leave a
+  # pytorch-repo `torch/` source tree in the working directory. `python -c` puts
+  # CWD on sys.path[0], so importing from there loads that source `torch/` (whose
+  # `torch/_C` is a plain folder, not the compiled extension) and torch dies with
+  # "Failed to load PyTorch C extensions". `cd /` guarantees the installed
+  # site-packages torch wins. Harmless on amd64/arm64 (import works from anywhere).
+  if ver="$(cd / && "${VENV}/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null)"; then
     echo "torch import OK (${ver}, ${host_arch})"
     return 0
   fi
-  # Capture the ACTUAL import error (previously swallowed by 2>/dev/null). On a
-  # cross-built wheel the usual cause is a missing system shared library the wheel
-  # links but does not bundle (e.g. libsleef.so.3); hiding it forced blind QEMU
-  # archaeology. Surface it right here so the next build names the missing .so.
-  _import_err="$("${VENV}/bin/python" -c 'import torch' 2>&1 || true)"
+  # Capture the ACTUAL import error (previously swallowed by 2>/dev/null) so a real
+  # runtime failure (missing .so, ABI skew, C-extension shadowing) is named here
+  # instead of forcing blind QEMU archaeology. Also from the neutral dir.
+  _import_err="$(cd / && "${VENV}/bin/python" -c 'import torch' 2>&1 || true)"
   if [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
     mkdir -p "${VENV}" 2>/dev/null || true
     printf '%s: torch not importable after assemble-torch-app; ALLOW_TORCHLESS_RUNTIME=1\n' \
