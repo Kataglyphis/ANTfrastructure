@@ -496,7 +496,7 @@ After building, run the container smoke test to verify all components:
   powershell -File C:\temp\scripts\smoke-test-container.ps1
 ```
 
-The smoke test validates 19 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), compiler integration, and environment-pointer integrity. **Current baseline (2026-07-12, GPU lane): 137 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew.
+The smoke test validates 20 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-13, GPU lane): 147 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew.
 
 ### What is verified: native vs. Python
 
@@ -510,13 +510,21 @@ GStreamer (a live `videotestsrc ! videoconvert` pipeline), plus clang-cl /
 CMake+Ninja / MSBuild integration builds. Version pins (cmake, python, gstreamer)
 are asserted against versions.env to catch stale baked layers.
 
-**Python coverage is interpreter-only, by design.** CPython 3.14 itself is
-verified (exact pin, pip, and the optional stdlib extension modules
-ssl/sqlite3/zlib/ctypes/bz2/lzma — the ones source builds silently drop when a
-dependency is missing). The AI/media libraries deliberately ship **without**
-Python bindings: ONNX Runtime is built `ENABLE_PYTHON=OFF`, OpenCV without
-`cv2` (no numpy in the build environment), TVM without its python package. This
-is a native developer image — Python consumers install upstream wheels, which
-would not exercise these source builds anyway. If in-image Python bindings are
-ever wanted, that is a media-stage feature change (numpy build dep + wheel
-builds), not a smoke-test addition.
+**Python bindings are built, shipped, and functionally verified (since
+2026-07-13).** The media branches build python bindings for every source-built
+library that supports them and stage the wheels centrally at
+**`C:\runtime\wheels`** (`PYTHON_WHEELS` env): `onnxruntime` (CUDA+TRT+DML EPs,
+`ENABLE_PYTHON=ON`), `onnxruntime-genai-cuda` (`BUILD_WHEEL=ON`), and
+`apache-tvm` (scikit-build-core). `cv2` ships installed into CPython's
+site-packages (the opencv repo has no wheel machinery — opencv-python is a
+separate upstream project); LiteRT has no python bindings on this lane
+(bazel-only python package). All bindings are pre-installed with their PyPI
+deps, so `python -c "import onnxruntime, onnxruntime_genai, cv2, tvm"` works
+out of the box. Smoke section 20 verifies wheels + `win_amd64` tags, real
+python-side ONNX inference, a cv2 PNG round-trip, and genai/tvm imports.
+Load-bearing plumbing (do not remove): the `sitecustomize.py` shim fixes the
+clang-built CPython's win32 platform misreport AND registers the image's
+native DLL homes via `os.add_dll_directory` (CUDA 13/cuDNN 9 keep their
+runtime DLLs in `bin\x64`; python 3.8+ ignores PATH for pyd dependencies);
+OpenCV builds with `WITH_MSMF=OFF` *and* `WITH_OBSENSOR=OFF` because both
+hard-import Media Foundation, which Server Core does not ship.
