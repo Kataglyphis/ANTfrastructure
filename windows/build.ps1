@@ -672,10 +672,28 @@ try {
         $vcsRef = ''
         # VCS ref is best-effort provenance metadata: any failure (no git, not a repo) -> empty, never fatal.
         try { $vcsRef = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $vcsRef = '' } } catch { $vcsRef = '' }
+        # Orchestr-ANT-ion ref for the torch-app stage: LATEST tag by design
+        # (per-build resolution keeps the app current and busts the layer only
+        # when a new tag lands); offline/failed resolution falls back to the
+        # versions.env APP_REF pin.
+        $appRef = ''
+        try {
+            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
+            if ($LASTEXITCODE -eq 0 -and $tagRaw) {
+                $appRef = @($tagRaw | ForEach-Object { ($_ -split "`t")[1] } |
+                        Where-Object { $_ -and $_ -notmatch '\^\{\}$' } |
+                        ForEach-Object { $_ -replace '^refs/tags/', '' } |
+                        Where-Object { $_ -match '^v?\d+(\.\d+)*$' } |
+                        Sort-Object { [version]($_ -replace '^v', '') })[-1]
+            }
+        } catch { $appRef = '' }
+        if ([string]::IsNullOrWhiteSpace($appRef)) { $appRef = Get-Ver 'APP_REF' }
+        Write-Host "Orchestr-ANT-ion ref for torch-app stage: $appRef"
         Invoke-Stage -Dockerfile 'windows/Dockerfile' -Tag $FinalTag -BuildArgs @{
             BASE_IMAGE = 'local/kataglyphis:windows-media'
             BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
             VCS_REF    = $vcsRef
+            APP_REF    = $appRef
         }
     }
 
