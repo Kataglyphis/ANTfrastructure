@@ -137,11 +137,14 @@ $cmakeExtra = @(
     # ONNX Runtime enabled -- OpenCV auto-detects our source-built ORT via PKG_CONFIG_PATH.
     # If not found via pkg-config, OpenCV falls back to its bundled download (v1.25.1).
                          '-DWITH_ONNXRUNTIME=ON',
-    # WITH_MSMF=OFF: Server Core ships NO Media Foundation (MF.dll/MFPlat.DLL) --
-    # MSMF=ON makes opencv_videoio510.dll hard-import them, so videoio (and any
-    # consumer that links all modules, e.g. the cv2 pyd) dies with 0xC0000135.
-    # Same class as the WITH_OPENGL=OFF fix; FFmpeg + GStreamer backends remain.
-    '-DWITH_VTK=OFF', '-DWITH_MSMF=OFF', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
+    # WITH_MSMF=OFF *and* WITH_OBSENSOR=OFF: Server Core ships NO Media Foundation
+    # (MF.dll/MFPlat.DLL/MFReadWrite.dll). BOTH backends hard-import it into
+    # opencv_videoio510.dll -- obsensor (Orbbec depth cams, default ON) does so
+    # INDEPENDENTLY of WITH_MSMF via its MSMFStreamChannel UVC path, which is why
+    # MSMF=OFF alone still produced an unloadable videoio (dep-walk 2026-07-13).
+    # Any consumer linking all modules (the cv2 pyd!) then dies 0xC0000135. Same
+    # class as the WITH_OPENGL=OFF fix; FFmpeg + GStreamer backends remain.
+    '-DWITH_VTK=OFF', '-DWITH_MSMF=OFF', '-DWITH_OBSENSOR=OFF', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
     # WITH_OPENMP=OFF: clang-cl compiles `#pragma omp` (e.g. contrib surface_matching)
     # into __kmpc_* runtime calls but the generated link line never includes libomp.lib
     # -> lld-link "undefined symbol: __kmpc_fork_call". TBB (WITH_TBB=ON above) is
