@@ -312,6 +312,47 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '1', 'Process')
 }
 
+# ── Import-lib normalization (PyAV and other MSVC-style consumers link these) ──
+# `make install` places avformat.lib / avformat-63.def per configure's SHLIBDIR/
+# LIBDIR split, and ffmpeg master (a live branch) has already moved that layout
+# once (2026-07-13: lib\ suddenly had no .lib at all -> PyAV LNK1181). Instead of
+# chasing upstream, normalize: harvest every .lib/.def from the whole install
+# prefix AND the build tree into lib\, then regenerate any still-missing import
+# lib from its .def (lib.exe is in the VsDevCmd env). Each step logs what it
+# found so the next drift is visible in the build log, not a linker error.
+if (Test-Path "$ffmpegDir\ffmpeg.exe") {
+    $ffLibDir = Join-Path $prefix 'lib'
+    New-Item -Path $ffLibDir -ItemType Directory -Force | Out-Null
+    foreach ($pattern in @('*.lib', '*.def')) {
+        $harvest = @(Get-ChildItem $prefix -Recurse -Filter $pattern -ErrorAction SilentlyContinue) +
+                   @(Get-ChildItem $srcDir -Recurse -Filter $pattern -ErrorAction SilentlyContinue |
+                     Where-Object { $_.Name -match '^(av|sw)' })
+        foreach ($f in $harvest) {
+            if ($f.DirectoryName -ne $ffLibDir) {
+                Write-Host "harvesting $($f.Name) from $($f.DirectoryName)"
+                Copy-Item $f.FullName $ffLibDir -Force
+                # inside the install prefix this is a relocation, not a copy:
+                # bin\ must ship only runtime DLLs + exes
+                if ($f.FullName.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    Remove-Item $f.FullName -Force
+                }
+            }
+        }
+    }
+    foreach ($defFile in @(Get-ChildItem $ffLibDir -Filter '*.def' -ErrorAction SilentlyContinue)) {
+        # avformat-63.def -> avformat.lib (unversioned, what PyAV's -lavformat resolves)
+        $libName = ($defFile.BaseName -replace '-\d+$', '') + '.lib'
+        $libPath = Join-Path $ffLibDir $libName
+        if (-not (Test-Path $libPath)) {
+            Write-Host "regenerating $libName from $($defFile.Name)"
+            # /name pins the DLL the import lib binds to (our makedef emits EXPORTS only)
+            & cmd /c "lib.exe /nologo /machine:x64 /def:`"$($defFile.FullName)`" /name:$($defFile.BaseName).dll /out:`"$libPath`" 2>&1" | ForEach-Object { Write-Host $_ }
+        }
+    }
+    $libCount = @(Get-ChildItem $ffLibDir -Filter '*.lib' -ErrorAction SilentlyContinue).Count
+    Write-Host "import libs in ${ffLibDir}: $libCount"
+}
+
 Remove-SourceBuildTree -Path $SourceDir
 
 Write-Host "=== FFmpeg build completed ==="
@@ -331,8 +372,22 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete
 # Compiles clean against ffmpeg master (verified 2026-07-13); OUR avdevice
 # imports only Server-Core-present system DLLs. The wheel's av* DLL deps
 # resolve at runtime via the sitecustomize dll-dir shim (ffmpeg\bin is listed).
+if ([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -ne '1') {
+    Write-Warning 'FFmpeg came from the prebuilt fallback (no headers/import libs) -- skipping the PyAV wheel build.'
+    return
+}
 $pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '18.0.0'
 Write-Host "=== PyAV $pyavVersion wheel build (against $prefix) ==="
+# Precondition: PyAV links the import libs that ffmpeg's `make install` stages
+# into lib\. If a master drop stops producing them, fail HERE with an inventory
+# instead of a bare LNK1181 deep inside setup.py (bit us 2026-07-13).
+$ffLibDir = Join-Path $prefix 'lib'
+$ffImportLibs = @(Get-ChildItem $ffLibDir -Filter '*.lib' -ErrorAction SilentlyContinue | ForEach-Object Name)
+Write-Host ("ffmpeg import libs present: " + (($ffImportLibs | Sort-Object) -join ', '))
+if (-not (Test-Path (Join-Path $ffLibDir 'avformat.lib'))) {
+    Write-Host ("lib dir inventory: " + ((Get-ChildItem $ffLibDir -Name -ErrorAction SilentlyContinue) -join ', '))
+    throw "ffmpeg install has no avformat.lib in $ffLibDir -- master drift broke import-lib generation; PyAV cannot link"
+}
 $py = Get-SourceBuildPython
 Install-CpythonPip -Python $py
 Initialize-PythonPlatformTag | Out-Null
