@@ -38,6 +38,19 @@ COPY windows\scripts\smoke-test-container.ps1 C:\temp\scripts\smoke-test-contain
 # the base or media layers.
 COPY windows\scripts\modules C:\temp\scripts\modules
 
+# ── Orchestr-ANT-ion app environment (the Windows "torch step") ──────────────
+# Mirror of the linux assemble-torch-app stage: clone the runtime orchestrator
+# at APP_REF (build.ps1 resolves the LATEST tag at build time; the ARG default
+# mirrors versions.env's pin), uv sync it on the source CPython, and reconcile
+# so this lane's wheels (onnxruntime/genai/tvm from C:\runtime\wheels) always
+# win -- everything else from PyPI / the pytorch-cpu index. Network-bound RUN;
+# fine at the classic builder's 2 CPUs.
+ARG APP_REF=v0.0.22
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+COPY windows\scripts\assemble-torch-app.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -Mode all
+ENV TORCH_APP_DIR="C:\opt\Kataglyphis-Orchestr-ANT-ion"
+
 WORKDIR C:\workspace
 VOLUME ["C:\\workspace"]
 

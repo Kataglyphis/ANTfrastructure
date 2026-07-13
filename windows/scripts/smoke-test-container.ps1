@@ -1181,6 +1181,25 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
 }
 
 # ============================================================================
+Write-TestHeader '21. Orchestr-ANT-ion app environment (torch step)'
+# ============================================================================
+# The final image bakes the runtime orchestrator (clone + uv sync + reconcile
+# with this lane's wheels -- see assemble-torch-app.ps1). Verification re-runs
+# the script's own verify mode OFFLINE against the baked venv: imports numpy,
+# cv2, torch, onnxruntime (CUDA EP build-assert on the GPU lane), genai, tvm.
+$torchAppDir = [Environment]::GetEnvironmentVariable('TORCH_APP_DIR')
+$torchAppScript = Join-Path $PSScriptRoot 'assemble-torch-app.ps1'
+if ($torchAppDir -and (Test-Path $torchAppDir) -and (Test-Path $torchAppScript)) {
+    Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
+    Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm)" -Condition {
+        $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'torch-app-env OK')
+    } -FailMessage "assemble-torch-app.ps1 -Mode verify failed (baked venv broken or local wheels lost)"
+} else {
+    Skip-Test 'Orchestr-ANT-ion app env (TORCH_APP_DIR unset or missing -- image predates the torch step)'
+}
+
+# ============================================================================
 Write-TestHeader '== SUMMARY =='
 # ============================================================================
 $total = $script:passed + $script:failed + $script:skipped
