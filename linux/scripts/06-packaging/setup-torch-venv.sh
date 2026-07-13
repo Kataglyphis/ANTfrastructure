@@ -425,11 +425,16 @@ verify_torch_import_or_fail() {
   # the runtime smoke ~5h into the build (2026-07-11). This import check turns that
   # into an immediate packaging failure. riscv64 already returned above when it has
   # no wheel; here it just double-confirms.
-  local host_arch="$1" ver
+  local host_arch="$1" ver _import_err
   if ver="$("${VENV}/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null)"; then
     echo "torch import OK (${ver}, ${host_arch})"
     return 0
   fi
+  # Capture the ACTUAL import error (previously swallowed by 2>/dev/null). On a
+  # cross-built wheel the usual cause is a missing system shared library the wheel
+  # links but does not bundle (e.g. libsleef.so.3); hiding it forced blind QEMU
+  # archaeology. Surface it right here so the next build names the missing .so.
+  _import_err="$("${VENV}/bin/python" -c 'import torch' 2>&1 || true)"
   if [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
     mkdir -p "${VENV}" 2>/dev/null || true
     printf '%s: torch not importable after assemble-torch-app; ALLOW_TORCHLESS_RUNTIME=1\n' \
@@ -443,6 +448,9 @@ verify_torch_import_or_fail() {
     echo "  uv-sync failure most likely dropped it -- scan the assemble output above for"
     echo "  'uv sync ... had issues' or 'Extra ... is not defined'. Set"
     echo "  ALLOW_TORCHLESS_RUNTIME=1 to knowingly ship a torch-less image."
+    echo "  ---- actual 'import torch' error ----"
+    printf '  %s\n' "${_import_err:-(no output captured)}"
+    echo "  -------------------------------------"
   } >&2
   exit 1
 }
