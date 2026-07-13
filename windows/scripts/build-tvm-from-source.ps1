@@ -152,15 +152,11 @@ if ($pythonModule -eq 'ON') {
         $staged = @(Save-PythonWheel -SourceDir $wheelOut -Required)
         if (-not (Test-Path $staged[0])) { throw "staged wheel path invalid: '$($staged[0])'" }
         Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $staged[0])
-        # Import assert: fail in-branch, not hours later at smoke time.
-        $tvmImport = ''
-        $tvmImportOk = $false
-        try {
-            $tvmImport = (& $py.Exe -c 'import tvm; print(tvm.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
-            $tvmImportOk = ($LASTEXITCODE -eq 0)
-        } catch { $tvmImport = $_.Exception.Message }
-        if (-not $tvmImportOk) { throw "import tvm failed right after wheel install: $tvmImport" }
-        Write-Host "tvm python binding OK ($tvmImport)"
+        # Import assert: fail in-branch, not hours later at smoke time. MUST be
+        # the shared EAP=Stop-safe helper: tvm prints [HH:MM:SS] warnings to
+        # stderr on a SUCCESSFUL import, which the old &-based check turned into
+        # a NativeCommandError false negative (killed the 2026-07-13 e2e run).
+        Test-PythonImport -Python $py -ModuleName 'tvm'
     }
 }
 

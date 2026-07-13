@@ -232,14 +232,8 @@ Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogF
 
 # Fail HERE if cv2 didn't land + import -- a silently-skipped python3 module
 # otherwise only surfaces hours later in the final image's smoke test.
-$cv2Check = ''
-$cv2Ok = $false
-try {
-    $cv2Check = (& $ocvPy.Exe -c 'import cv2; print(cv2.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
-    $cv2Ok = ($LASTEXITCODE -eq 0)
-} catch { $cv2Check = $_.Exception.Message }
-if (-not $cv2Ok) { throw "cv2 import failed right after install: $cv2Check (BUILD_opencv_python3 skipped or loader broken)" }
-Write-Host "cv2 python binding OK ($cv2Check)"
+# (Shared EAP=Stop-safe helper: exit-code based, stderr-noise tolerant.)
+Test-PythonImport -Python $ocvPy -ModuleName 'cv2'
 
 Remove-SourceBuildTree -Path $SourceDir
 

@@ -320,15 +320,9 @@ if (-not (Test-Path $ortStagedWheel[0])) { throw "staged wheel path invalid: '$(
 Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $ortStagedWheel[0])
 
 # Fail HERE if the binding cannot import (a silent no-op install must not
-# survive to the final image's smoke test).
-$ortImport = ''
-$ortImportOk = $false
-try {
-    $ortImport = (& $py.Exe -c 'import onnxruntime; print(onnxruntime.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
-    $ortImportOk = ($LASTEXITCODE -eq 0)
-} catch { $ortImport = $_.Exception.Message }
-if (-not $ortImportOk) { throw "import onnxruntime failed right after wheel install: $ortImport" }
-Write-Host "onnxruntime python binding OK ($ortImport)"
+# survive to the final image's smoke test). Shared EAP=Stop-safe helper:
+# judging by stderr instead of exit code false-negatived on tvm's warnings.
+Test-PythonImport -Python $py -ModuleName 'onnxruntime'
 
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='
