@@ -1097,7 +1097,11 @@ $envPointerNames = @(
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
     'ONNX_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB',
     'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
-    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'PYTHON_WHEELS'
+    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'PYTHON_WHEELS',
+    # Hard-assert TORCH_APP_DIR here: section 21 deliberately SKIPs when it is
+    # unset (old-image tolerance), so without this pointer check a lost env var
+    # would silently drop the whole app-env verification.
+    'TORCH_APP_DIR'
 )
 if ($script:gpuNvidia) {
     $envPointerNames += @('CUDA_ROOT', 'CUDA_PATH', 'CUDNN_ROOT', 'TENSORRT_ROOT')
