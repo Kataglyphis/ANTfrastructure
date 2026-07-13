@@ -555,7 +555,8 @@ The final image bakes the runtime orchestrator at
   battery (numpy/cv2/torch/onnxruntime with a CUDA-EP build assert/genai/tvm)
   **and the app's own wheel-smoke suite** (`python -m orchestr_ant_ion.smoke`
   — real torch/torchvision/ORT-inference/OpenCV work; expected report on this
-  lane: 7/8 ok with one WARN for the litert skip). Smoke section 21 re-runs
+  lane: 9/10 ok with one WARN for the litert skip, since app v0.0.23 added
+  genai + tvm checks). Smoke section 21 re-runs
   the same verification offline on every suite run.
 - **Usage**: `C:\opt\Kataglyphis-Orchestr-ANT-ion\.venv\Scripts\python.exe`
   (or `uv run` from `TORCH_APP_DIR`) is a ready environment where
