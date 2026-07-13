@@ -528,3 +528,36 @@ native DLL homes via `os.add_dll_directory` (CUDA 13/cuDNN 9 keep their
 runtime DLLs in `bin\x64`; python 3.8+ ignores PATH for pyd dependencies);
 OpenCV builds with `WITH_MSMF=OFF` *and* `WITH_OBSENSOR=OFF` because both
 hard-import Media Foundation, which Server Core does not ship.
+
+### The torch step (Orchestr-ANT-ion app environment)
+
+The final image bakes the runtime orchestrator at
+**`C:\opt\Kataglyphis-Orchestr-ANT-ion`** (`TORCH_APP_DIR`), assembled by
+`windows/scripts/assemble-torch-app.ps1` (mirror of the linux
+`assemble-torch-app.sh` stage) during the final `docker build`:
+
+- **Ref**: `build.ps1` resolves the app's **latest tag** per build
+  (`git ls-remote`), falling back to versions.env's `APP_REF` pin offline; the
+  resolved tag reaches the Dockerfile as the `APP_REF` build-arg, so a new
+  release busts exactly the torch-step layer.
+- **Environment**: `uv sync` on the source-built CPython (extras `ml-ai`,
+  `docs`, `pytorch-cpu`, `test`; the wxPython GUI extra excluded, like linux),
+  then a reconcile so this lane's wheels always win: PyPI onnx/genai/opencv
+  families are uninstalled, `C:\runtime\wheels` force-installed `--no-deps`
+  (genai-cuda's metadata names `onnxruntime-gpu`, which our combined wheel
+  replaces), and `cv2` + `tvm_ffi` + the sitecustomize shim staged from base
+  site-packages into the venv.
+- **Known limitation**: `ai-edge-litert` is skipped
+  (`--no-install-package`) — its pinned version ships no cp314 wheel and the
+  LiteRT python package is bazel-only on Windows, so the app's LiteRT code
+  path is unavailable in this venv.
+- **Gates**: the docker build itself fails unless the venv passes the import
+  battery (numpy/cv2/torch/onnxruntime with a CUDA-EP build assert/genai/tvm)
+  **and the app's own wheel-smoke suite** (`python -m orchestr_ant_ion.smoke`
+  — real torch/torchvision/ORT-inference/OpenCV work; expected report on this
+  lane: 7/8 ok with one WARN for the litert skip). Smoke section 21 re-runs
+  the same verification offline on every suite run.
+- **Usage**: `C:\opt\Kataglyphis-Orchestr-ANT-ion\.venv\Scripts\python.exe`
+  (or `uv run` from `TORCH_APP_DIR`) is a ready environment where
+  `import onnxruntime, onnxruntime_genai, cv2, tvm, torch` all resolve to the
+  source-built wheels plus the app's locked PyPI dependency set.
