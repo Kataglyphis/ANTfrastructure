@@ -508,6 +508,24 @@ if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
     return $shim
 }
 
+function Test-PythonImport {
+    # EAP=Stop-safe binding assert: a stderr-noisy SUCCESS (tvm prints [HH:MM:SS]
+    # warnings to stderr on import) must not read as failure, so route through
+    # cmd.exe (the house pattern for native stderr under EAP=Stop) and judge by
+    # exit code only. Throws with the last output line on a real failure.
+    param(
+        [Parameter(Mandatory)][hashtable]$Python,
+        [Parameter(Mandatory)][string]$ModuleName,
+        [string]$VersionExpression = ''
+    )
+    if (-not $VersionExpression) { $VersionExpression = "$ModuleName.__version__" }
+    $out = cmd.exe /c """$($Python.Exe)"" -c ""import $ModuleName; print($VersionExpression)"" 2>&1"
+    $code = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    $tail = if ($out) { (@($out) | Select-Object -Last 1).ToString().Trim() } else { '' }
+    if ($code -ne 0) { throw "import $ModuleName failed right after install (exit $code): $tail" }
+    Write-Host "$ModuleName python binding OK ($tail)"
+}
+
 function Save-PythonWheel {
     # Stage built wheel(s) into the central wheel store shipped in the image
     # (C:\runtime\wheels; the final image exposes it as PYTHON_WHEELS).
@@ -620,6 +638,7 @@ Export-ModuleMember -Function @(
     'Initialize-ToolchainPythonEnvironment',
     'Initialize-PythonPlatformTag',
     'Save-PythonWheel',
+    'Test-PythonImport',
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
     'Install-CpythonPip',

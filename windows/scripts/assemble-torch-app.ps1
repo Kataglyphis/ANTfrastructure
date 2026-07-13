@@ -151,6 +151,12 @@ print('torch-app-env OK')
     $cudaFlag = if ($gpuLane) { ' --require-cuda-ep' } else { '' }
     Invoke-TorchAppNative -Label 'venv import verification' -CommandLine """$venvPython"" ""$verifyPy""$cudaFlag"
     Remove-Item $verifyPy -Force -ErrorAction SilentlyContinue
+    # The app's OWN wheel-smoke suite ("exercise the installed ML wheels with
+    # real work"; exits non-zero on any required failure -- upstream designed it
+    # to gate container builds). Expected report on this lane: 7/8 ok with ONE
+    # WARN (ai-edge-litert -- skipped by design, no cp314 wheel exists).
+    Invoke-TorchAppNative -Label 'app smoke suite (python -m orchestr_ant_ion.smoke)' `
+        -CommandLine """$venvPython"" -m orchestr_ant_ion.smoke"
     Invoke-TorchAppNative -Optional -Label 'uv pip list' -CommandLine "uv pip list --python ""$venvPython"""
     Write-Host '=== torch app: verify complete ==='
 }

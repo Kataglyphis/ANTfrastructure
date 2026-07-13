@@ -204,18 +204,10 @@ if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
     # Install it so the shipped site-packages is import-ready (onnxruntime dep is
     # already satisfied by the wheel installed in the preceding build-onnx step).
     Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $genaiStagedWheel[0])
-    # Import assert: fail in-branch, not hours later at smoke time.
-    $genaiImport = ''
-    $genaiImportOk = $false
-    try {
-        # NO embedded double quotes in the -c string: PS 5.1 native-arg passing
-        # strips them, python saw bare __version__ -> NameError -> false negative
-        # (killed attempt 3 despite a perfectly working wheel).
-        $genaiImport = (& $py.Exe -c 'import onnxruntime_genai; print(onnxruntime_genai.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
-        $genaiImportOk = ($LASTEXITCODE -eq 0)
-    } catch { $genaiImport = $_.Exception.Message }
-    if (-not $genaiImportOk) { throw "import onnxruntime_genai failed right after wheel install: $genaiImport" }
-    Write-Host "onnxruntime-genai python binding OK ($genaiImport)"
+    # Import assert: fail in-branch, not hours later at smoke time (shared
+    # EAP=Stop-safe helper; also avoids the PS inner-double-quote stripping
+    # that false-negatived attempt 3).
+    Test-PythonImport -Python $py -ModuleName 'onnxruntime_genai'
 } else {
     Write-Warning "genai wheel dir has no setup.py under $genaiWheelDir -- BUILD_WHEEL layout changed? Wheel NOT staged."
 }
