@@ -165,8 +165,12 @@ def collect_versions() -> dict[str, str]:
         # ONNX builds in the media-core branch; Dockerfile.media-merge-builder re-declares the
         # ARG for the merged image's version env vars — both are checked against versions.env.
         "windows_onnx": extract(r"^ARG ONNXRUNTIME_VERSION=([^\s]+)$", windows_media, "Windows ONNX Runtime version"),
+        # setup-vs.ps1 no longer hardcodes a `Visual Studio\<major>\BuildTools`
+        # path (refactored 2026-07-12, 63d405c). The VS major now lives only in
+        # the `$vsMajor = ... else { '<major>' }` fallback, which must stay in
+        # sync with versions.env's VISUAL_STUDIO_VERSION.
         "windows_vs": extract(
-            r"Visual Studio\\([0-9]+)\\BuildTools",
+            r"\$vsMajor\s*=.*'([0-9]+)'",
             windows_vs,
             "Visual Studio Build Tools major version",
         ),

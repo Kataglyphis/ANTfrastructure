@@ -88,15 +88,15 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| PyTorch | v2.12.1 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
-| TorchVision | v0.27.1 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
+| PyTorch | v2.13.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
+| TorchVision | v0.28.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
 | Flutter SDK | 3.44.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Runtime (`Dockerfile.torch`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Kataglyphis Orchestr-ANT-ion | v0.0.19 | [github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion](https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion) | MIT |
+| Kataglyphis Orchestr-ANT-ion | v0.0.22 | [github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion](https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion) | MIT |
 
 ### LLM Stack (`llm-stack/Dockerfile`)
 
