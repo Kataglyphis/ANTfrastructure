@@ -514,13 +514,18 @@ are asserted against versions.env to catch stale baked layers.
 2026-07-13).** The media branches build python bindings for every source-built
 library that supports them and stage the wheels centrally at
 **`C:\runtime\wheels`** (`PYTHON_WHEELS` env): `onnxruntime` (CUDA+TRT+DML EPs,
-`ENABLE_PYTHON=ON`), `onnxruntime-genai-cuda` (`BUILD_WHEEL=ON`), and
-`apache-tvm` (scikit-build-core). `cv2` ships installed into CPython's
+`ENABLE_PYTHON=ON`), `onnxruntime-genai-cuda` (`BUILD_WHEEL=ON`),
+`apache-tvm` (scikit-build-core), and `av` (PyAV compiled from sdist against
+the source-built FFmpeg via `setup.py --ffmpeg-dir` — PyPI's own av wheel is
+structurally unloadable on Server Core because its bundled avdevice imports
+the desktop-only `AVICAP32.dll`; note the generic `h264` encoder alias
+resolves to `h264_d3d12va`, so headless code should request software codecs
+like `mpeg4`/`libx264` by name). `cv2` ships installed into CPython's
 site-packages (the opencv repo has no wheel machinery — opencv-python is a
 separate upstream project); LiteRT has no python bindings on this lane
 (bazel-only python package). All bindings are pre-installed with their PyPI
-deps, so `python -c "import onnxruntime, onnxruntime_genai, cv2, tvm"` works
-out of the box. Smoke section 20 verifies wheels + `win_amd64` tags, real
+deps, so `python -c "import onnxruntime, onnxruntime_genai, cv2, tvm, av"`
+works out of the box. Smoke section 20 verifies wheels + `win_amd64` tags, real
 python-side ONNX inference, a cv2 PNG round-trip, and genai/tvm imports.
 Load-bearing plumbing (do not remove): the `sitecustomize.py` shim fixes the
 clang-built CPython's win32 platform misreport AND registers the image's
