@@ -294,12 +294,23 @@ _cc_target_elf_check() {
   local mode="${_VCS_CC_MODE}"
   local cc_path="${_VCS_CC_PATH}"
   local cc_pattern="${_VCS_CC_PATTERN}"
-  local cc_machine
+  local cc_machine cc_elf
+  # swap-native-gcc.sh replaces the foreign-arch gcc/cc on disk with a
+  # `#!/bin/sh` wrapper (it execs `<cc>.real` with -idirafter injected to fix the
+  # runtime image's system headers). readelf cannot inspect a shell script, so
+  # point the ELF machine-type check at the underlying real binary when a
+  # `.real` sibling exists. Unwrapped compilers (amd64) have no `.real` and are
+  # inspected directly, exactly as before.
+  cc_elf="${cc_path}"
+  [ -e "${cc_path}.real" ] && cc_elf="${cc_path}.real"
   if [ -n "${cc_pattern}" ] && command -v readelf >/dev/null 2>&1; then
-    cc_machine="$(elf_machine_name "${cc_path}")"
+    # `|| true`: elf_machine_name returns non-zero (under the caller's pipefail)
+    # when handed a non-ELF file; tolerate it so the empty-result branch below
+    # emits a real diagnostic instead of a silent `set -e` abort.
+    cc_machine="$(elf_machine_name "${cc_elf}" || true)"
     if [ -z "${cc_machine}" ]; then
       if [ "${mode}" = "hard-fail" ]; then
-        echo "ERROR: cannot read ELF machine type of cc (${cc_path})" >&2
+        echo "ERROR: cannot read ELF machine type of cc (${cc_elf})" >&2
         exit 1
       else
         validate_fail "cc-elf" "cannot read ELF machine of cc"
@@ -311,7 +322,7 @@ _cc_target_elf_check() {
         echo "Verified /usr/bin/cc ELF machine: '${cc_machine}' matches ${target_arch}" ;;
       *)
         if [ "${mode}" = "hard-fail" ]; then
-          echo "ERROR: /usr/bin/cc (${cc_path}) ELF machine '${cc_machine}' does not match '${cc_pattern}' for ${target_arch}" >&2
+          echo "ERROR: /usr/bin/cc (${cc_elf}) ELF machine '${cc_machine}' does not match '${cc_pattern}' for ${target_arch}" >&2
           exit 1
         else
           validate_fail "cc-elf" "ELF machine '${cc_machine}' != '${cc_pattern}' for ${target_arch}"
