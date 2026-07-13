@@ -526,6 +526,29 @@ function Test-PythonImport {
     Write-Host "$ModuleName python binding OK ($tail)"
 }
 
+function Install-StagedPythonWheel {
+    # One-stop wheel publish: stage the built wheel into the central store,
+    # install it into the source CPython (--no-deps optional for wheels whose
+    # dependency metadata is unsatisfiable-by-design, e.g. genai-cuda's
+    # onnxruntime-gpu), and import-assert the binding. Encapsulates the
+    # single-element array-unwrap footgun (the c-0.0.1 incident) so call sites
+    # can never reintroduce it.
+    param(
+        [Parameter(Mandatory)][hashtable]$Python,
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$ModuleName,
+        [string]$WheelDir = 'C:\runtime\wheels',
+        [switch]$NoDeps
+    )
+    $staged = @(Save-PythonWheel -SourceDir $SourceDir -WheelDir $WheelDir -Required)
+    if (-not (Test-Path $staged[0])) { throw "staged wheel path invalid: '$($staged[0])'" }
+    $pipArgs = @('install', '--quiet', '--only-binary', ':all:')
+    if ($NoDeps) { $pipArgs += '--no-deps' }
+    Invoke-CpythonPip -Python $Python -Arguments ($pipArgs + @($staged[0]))
+    Test-PythonImport -Python $Python -ModuleName $ModuleName
+    return $staged[0]
+}
+
 function Save-PythonWheel {
     # Stage built wheel(s) into the central wheel store shipped in the image
     # (C:\runtime\wheels; the final image exposes it as PYTHON_WHEELS).
@@ -638,6 +661,7 @@ Export-ModuleMember -Function @(
     'Initialize-ToolchainPythonEnvironment',
     'Initialize-PythonPlatformTag',
     'Save-PythonWheel',
+    'Install-StagedPythonWheel',
     'Test-PythonImport',
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',

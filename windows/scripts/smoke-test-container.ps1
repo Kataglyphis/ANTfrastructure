@@ -911,6 +911,35 @@ Assert-Test -Name "Compiled program runs" -Condition {
 
 Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 
+# AddressSanitizer runtime: the VS ASAN component is installed, but "installed"
+# is not "functional" (the OpenGL32 lesson) -- compile + RUN a TU under
+# /fsanitize=address to prove the ASAN runtime DLLs resolve in-container. The
+# probe must also DETECT a real bug: it exits 0 only if ASAN reports the
+# intentional heap-buffer-overflow (output contains the report marker).
+Assert-Test -Name "AddressSanitizer compile + runtime works (clang-cl /fsanitize=address)" -Condition {
+    $d = Join-Path $env:TEMP 'kataglyphis-smoke-asan'
+    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    try {
+        $src = Join-Path $d 'main.cpp'
+        Set-Content -Path $src -Encoding ASCII -Value @'
+#include <cstdio>
+int main() {
+    int* p = new int[4];
+    int v = p[4];  // intentional heap-buffer-overflow for ASAN to catch
+    std::printf("should not survive: %d\n", v);
+    delete[] p;
+    return 0;
+}
+'@
+        $exe = Join-Path $d 'main.exe'
+        & clang-cl $src '/fsanitize=address' '/Zi' '/EHsc' '/nologo' "/Fe$exe" 2>&1 | Out-Null
+        if (($LASTEXITCODE -ne 0) -or -not (Test-Path $exe)) { return $false }
+        $out = & $exe 2>&1 | Out-String
+        # ASAN aborts the process (non-zero exit) and prints its report.
+        return ($LASTEXITCODE -ne 0) -and ($out -match 'AddressSanitizer: heap-buffer-overflow')
+    } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+} -FailMessage "ASAN probe failed: /fsanitize=address did not compile, or the runtime did not detect the intentional overflow (ASAN runtime DLLs missing?)"
+
 # ============================================================================
 Write-TestHeader '15. CMake + Ninja + clang-cl integration'
 # ============================================================================
@@ -1163,6 +1192,22 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
             ($LASTEXITCODE -eq 0) -and ($out -match 'py-ort .*42\.0')
         } finally { Remove-Item $mdir -Recurse -Force -ErrorAction SilentlyContinue }
     } -FailMessage "onnxruntime python inference failed (pyd, dependent DLLs, or numpy broken)"
+
+    # The base interpreter's onnxruntime must be OUR combined wheel, not a PyPI
+    # variant that shadowed it: PyPI onnxruntime-gpu (dragged in via genai's
+    # dep metadata before the -NoDeps fix) ships NO DmlExecutionProvider, so
+    # asserting DML here detects any same-version shadowing (caught 2026-07-13).
+    Assert-Test -Name "python onnxruntime exposes DML EP (not shadowed by a PyPI variant)" -Condition {
+        $out = & python -c "import onnxruntime; print(onnxruntime.get_available_providers())" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'DmlExecutionProvider')
+    } -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
+
+    if ($script:gpuNvidia) {
+        Assert-Test -Name "python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)" -Condition {
+            $out = & python -c "import onnxruntime; print(onnxruntime.get_available_providers())" 2>&1 | Out-String
+            ($LASTEXITCODE -eq 0) -and ($out -match 'CUDAExecutionProvider') -and ($out -match 'TensorrtExecutionProvider')
+        } -FailMessage "base-interpreter onnxruntime lacks CUDA/TensorRT EPs"
+    }
 
     Assert-Test -Name "python onnxruntime-genai imports" -Condition {
         $out = & python -c "import onnxruntime_genai as og; print('py-genai', getattr(og, '__version__', 'n/a'))" 2>&1 | Out-String

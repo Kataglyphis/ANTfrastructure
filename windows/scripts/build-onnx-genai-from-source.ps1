@@ -198,16 +198,13 @@ if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
         cmd.exe /c """$($py.Exe)"" -m pip wheel . --no-deps --no-build-isolation -w dist 2>&1"
         if ($LASTEXITCODE -ne 0) { throw "onnxruntime-genai pip wheel failed (exit $LASTEXITCODE)" }
     } finally { Pop-Location }
-    # @() is LOAD-BEARING (single-element unwrap -> [0] = first char; see build-onnx).
-    $genaiStagedWheel = @(Save-PythonWheel -SourceDir (Join-Path $genaiWheelDir 'dist') -Required)
-    if (-not (Test-Path $genaiStagedWheel[0])) { throw "staged wheel path invalid: '$($genaiStagedWheel[0])'" }
-    # Install it so the shipped site-packages is import-ready (onnxruntime dep is
-    # already satisfied by the wheel installed in the preceding build-onnx step).
-    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $genaiStagedWheel[0])
-    # Import assert: fail in-branch, not hours later at smoke time (shared
-    # EAP=Stop-safe helper; also avoids the PS inner-double-quote stripping
-    # that false-negatived attempt 3).
-    Test-PythonImport -Python $py -ModuleName 'onnxruntime_genai'
+    # Stage + install + import-assert via the shared helper. -NoDeps is
+    # LOAD-BEARING: genai-cuda's dependency metadata names `onnxruntime-gpu`,
+    # and letting pip resolve it pulled PyPI's onnxruntime-gpu whose files
+    # OVERWROTE our combined wheel's module -- the base interpreter silently
+    # lost its DmlExecutionProvider (caught 2026-07-13). Our onnxruntime is
+    # already installed by the preceding build-onnx step.
+    Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $genaiWheelDir 'dist') -ModuleName 'onnxruntime_genai' -NoDeps | Out-Null
 } else {
     Write-Warning "genai wheel dir has no setup.py under $genaiWheelDir -- BUILD_WHEEL layout changed? Wheel NOT staged."
 }

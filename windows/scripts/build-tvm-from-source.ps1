@@ -148,15 +148,10 @@ if ($pythonModule -eq 'ON') {
                 Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut)
             }
         } finally { Pop-Location }
-        # @() is LOAD-BEARING (single-element unwrap -> [0] = first char; see build-onnx).
-        $staged = @(Save-PythonWheel -SourceDir $wheelOut -Required)
-        if (-not (Test-Path $staged[0])) { throw "staged wheel path invalid: '$($staged[0])'" }
-        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $staged[0])
-        # Import assert: fail in-branch, not hours later at smoke time. MUST be
-        # the shared EAP=Stop-safe helper: tvm prints [HH:MM:SS] warnings to
-        # stderr on a SUCCESSFUL import, which the old &-based check turned into
-        # a NativeCommandError false negative (killed the 2026-07-13 e2e run).
-        Test-PythonImport -Python $py -ModuleName 'tvm'
+        # Stage + install (WITH deps -- apache-tvm-ffi must resolve) +
+        # import-assert via the shared helper (EAP=Stop-safe: tvm warns to
+        # stderr on successful imports, which killed the first e2e run).
+        Install-StagedPythonWheel -Python $py -SourceDir $wheelOut -ModuleName 'tvm' | Out-Null
     }
 }
 
