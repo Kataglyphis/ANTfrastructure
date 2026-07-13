@@ -43,24 +43,48 @@ HOST_CC="$(resolve_host_compiler c)"
 HOST_CXX="$(resolve_host_compiler cxx)"
 
 mkdir -p litert/build-android && cd litert/build-android
-cmake -GNinja \
-  -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
-  -DANDROID_ABI="${ANDROID_ABI}" \
-  -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-  -DTFLITE_ENABLE_XNNPACK=ON \
-  -DTFLITE_ENABLE_RUY=ON \
-  -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-  -DRUY_PROFILER=0 \
-  -DRUY_ENABLE_INSTRUMENTATION=OFF \
-  -DRUY_PROFILER_INSTRUMENTATION=OFF \
-  -DRUY_BUILD_TOOLS=OFF \
-  -DRUY_BUILD_TESTING=OFF \
-  -DLITERT_HOST_C_COMPILER="${HOST_CC}" \
-  -DLITERT_HOST_CXX_COMPILER="${HOST_CXX}" \
-  -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
-  ..
+
+# LiteRT's cmake configure pulls several vendored archives via FetchContent
+# (e.g. qnn_headers.zip). Those downloads occasionally truncate mid-transfer and
+# cmake then aborts at configure time with "ZIP decompression failed (-5) / file
+# failed to extract" -- a transient flake, not a real error. Retry the configure,
+# wiping the partial FetchContent state between attempts so it re-downloads from
+# scratch. Same transient-download hardening used for the pinned tarballs
+# elsewhere in the tree.
+configure_litert_android() {
+  cmake -GNinja \
+    -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+    -DANDROID_ABI="${ANDROID_ABI}" \
+    -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DTFLITE_ENABLE_XNNPACK=ON \
+    -DTFLITE_ENABLE_RUY=ON \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DRUY_PROFILER=0 \
+    -DRUY_ENABLE_INSTRUMENTATION=OFF \
+    -DRUY_PROFILER_INSTRUMENTATION=OFF \
+    -DRUY_BUILD_TOOLS=OFF \
+    -DRUY_BUILD_TESTING=OFF \
+    -DLITERT_HOST_C_COMPILER="${HOST_CC}" \
+    -DLITERT_HOST_CXX_COMPILER="${HOST_CXX}" \
+    -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
+    ..
+}
+
+_cfg_max="${LITERT_ANDROID_CONFIGURE_RETRIES:-3}"
+for _cfg_try in $(seq 1 "${_cfg_max}"); do
+  if configure_litert_android; then
+    break
+  fi
+  if [ "${_cfg_try}" -eq "${_cfg_max}" ]; then
+    echo "FATAL: LiteRT Android cmake configure failed after ${_cfg_max} attempts (repeated vendored-download failure, e.g. a truncated qnn_headers.zip)" >&2
+    exit 1
+  fi
+  echo "WARNING: LiteRT Android cmake configure failed (attempt ${_cfg_try}/${_cfg_max}); wiping partial FetchContent downloads and retrying..." >&2
+  rm -rf _deps CMakeCache.txt CMakeFiles 2>/dev/null || true
+  sleep 5
+done
 
 PARALLEL_JOBS="$(media_jobs)"
 ninja -j"${PARALLEL_JOBS}" install || cmake --build . --target install -j1
