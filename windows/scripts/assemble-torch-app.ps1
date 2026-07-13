@@ -143,6 +143,8 @@ import onnxruntime_genai
 print('onnxruntime-genai', getattr(onnxruntime_genai, '__version__', 'n/a'))
 import tvm
 print('tvm', tvm.__version__)
+import av
+print('pyav', av.__version__)
 if '--require-cuda-ep' in sys.argv:
     assert 'CUDAExecutionProvider' in providers, 'ERROR: local onnxruntime wheel lost its CUDAExecutionProvider!'
     print('CUDAExecutionProvider present (build check, no device required)')

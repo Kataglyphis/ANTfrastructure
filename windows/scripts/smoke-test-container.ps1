@@ -1165,7 +1165,7 @@ Write-TestHeader '20. Python bindings (wheels + imports + inference)'
 $wheelStore = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
 if ($wheelStore -and (Test-Path $wheelStore)) {
 
-    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl')) {
+    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl', 'av-*.whl')) {
         $wp = $wheelPattern
         Assert-Test -Name "wheel staged: $wheelPattern" -Condition {
             @(Get-ChildItem -Path $wheelStore -Filter $wp -ErrorAction SilentlyContinue).Count -gt 0
@@ -1224,6 +1224,15 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         $out = & python -c "import tvm; print('py-tvm', tvm.__version__, tvm.cpu(0))" 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'py-tvm')
     } -FailMessage "import tvm failed (wheel, tvm_runtime/tvm_ffi DLLs, or deps broken)"
+
+    # PyAV built against OUR ffmpeg (PyPI's wheel is unloadable on Server Core:
+    # bundled avdevice imports AVICAP32). Real work: an in-memory mpeg4 encode
+    # (SOFTWARE codec by name -- the generic 'h264' resolves to h264_d3d12va,
+    # a hardware encoder that cannot open without a D3D12 device in-container).
+    Assert-Test -Name "python av (PyAV vs our ffmpeg): in-memory mpeg4 encode" -Condition {
+        $out = & python -c "import io, av; buf = io.BytesIO(); c = av.open(buf, mode='w', format='mp4'); s = c.add_stream('mpeg4', rate=24); s.width = 64; s.height = 64; s.pix_fmt = 'yuv420p'; f = av.VideoFrame(64, 64, 'yuv420p'); [c.mux(p) for p in s.encode(f)]; [c.mux(p) for p in s.encode()]; c.close(); print('py-av', av.__version__, len(buf.getvalue()) > 0)" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'py-av .* True')
+    } -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
 
 } else {
     Skip-Test 'Python bindings (PYTHON_WHEELS unset or missing -- image predates the wheel feature)'

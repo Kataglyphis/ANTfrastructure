@@ -322,5 +322,38 @@ $finalDlls = @(Get-ChildItem "$ffmpegDir\*.dll" -ErrorAction SilentlyContinue)
 Write-Host "runtime DLLs installed: $($finalDlls.Count)"
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete: no ffmpeg.exe (source build and fallback both failed)' }
 
+# ── PyAV wheel built against THIS FFmpeg ─────────────────────────────────────
+# The PyPI av wheel is structurally unloadable on Server Core (its bundled
+# avdevice hard-imports AVICAP32.dll, a desktop-only VfW DLL), so build PyAV
+# from sdist against OUR install: setup.py's --ffmpeg-dir argv flag supplies
+# include/lib directly (its pkg-config path never engages on this lane), and
+# python314.lib lives in PCbuild\amd64, reachable only via the LIB env var.
+# Compiles clean against ffmpeg master (verified 2026-07-13); OUR avdevice
+# imports only Server-Core-present system DLLs. The wheel's av* DLL deps
+# resolve at runtime via the sitecustomize dll-dir shim (ffmpeg\bin is listed).
+$pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '18.0.0'
+Write-Host "=== PyAV $pyavVersion wheel build (against $prefix) ==="
+$py = Get-SourceBuildPython
+Install-CpythonPip -Python $py
+Initialize-PythonPlatformTag | Out-Null
+Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'cython', 'setuptools', 'wheel')
+$pyavSrcRoot = 'C:\temp\pyav-src'
+New-Item -Path $pyavSrcRoot -ItemType Directory -Force | Out-Null
+Invoke-CpythonPip -Python $py -Arguments @('download', "av==$pyavVersion", '--no-binary', ':all:', '--no-deps', '--no-build-isolation', '-d', $pyavSrcRoot)
+$pyavSdist = Get-ChildItem $pyavSrcRoot -Filter 'av-*.tar.gz' | Select-Object -First 1
+if (-not $pyavSdist) { throw "PyAV sdist not downloaded to $pyavSrcRoot" }
+cmd.exe /c """$($py.Exe)"" -m tarfile -e ""$($pyavSdist.FullName)"" ""$pyavSrcRoot"" 2>&1"
+if ($LASTEXITCODE -ne 0) { throw 'PyAV sdist extraction failed' }
+$pyavDir = (Get-ChildItem $pyavSrcRoot -Directory | Select-Object -First 1).FullName
+$env:LIB = "$($py.LibDir);$env:LIB"
+Push-Location $pyavDir
+try {
+    cmd.exe /c """$($py.Exe)"" setup.py --ffmpeg-dir=""$prefix"" bdist_wheel 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw "PyAV setup.py bdist_wheel failed (exit $LASTEXITCODE)" }
+} finally { Pop-Location }
+Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
+Remove-SourceBuildTree -Path $pyavSrcRoot
+Write-Host '=== PyAV wheel build completed ==='
+
 
 
