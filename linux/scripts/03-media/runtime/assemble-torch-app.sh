@@ -26,6 +26,24 @@ activate_project_environment() {
 prepare_project_tree() {
   rm -rf "${APP_DIR}"
   git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git "${APP_DIR}"
+
+  # riscv64: the app's pyproject `[tool.uv] environments` list deliberately
+  # EXCLUDES riscv64 (`sys_platform == 'linux' and platform_machine != 'riscv64'`)
+  # because the pytorch-custom extra has no lockable upstream riscv64 torch source
+  # -- riscv64 torch/vision/opencv ship as local cross-built wheels in /opt/wheels
+  # instead. But when `environments` is declared, uv HARD-REJECTS an excluded
+  # platform with exit 2 for lock/sync/run -- it does NOT "fall back to a live
+  # resolve" as the app's comment claims. Strip the gate from THIS throwaway clone
+  # only (the committed app lock stays untouched for every other consumer) so uv
+  # can resolve for the riscv64 build platform against --find-links + the
+  # riscv64-gated git sources; the local-wheel packages are excluded from the sync
+  # via --no-install-package and force-installed separately.
+  if [ "$(uname -m)" = "riscv64" ] && [ -f "${APP_DIR}/pyproject.toml" ]; then
+    if grep -qE '^environments[[:space:]]*=[[:space:]]*\[' "${APP_DIR}/pyproject.toml"; then
+      sed -i '/^environments[[:space:]]*=[[:space:]]*\[/,/^\]/d' "${APP_DIR}/pyproject.toml"
+      echo "riscv64: stripped [tool.uv] environments gate from the app clone so uv can resolve for the build platform"
+    fi
+  fi
 }
 
 append_unique_arg() {
@@ -188,6 +206,24 @@ build_uv_sync_args() {
   fi
 }
 
+# `uv lock` regeneration for the fallback paths below. On riscv64 a full lock can
+# still fail to resolve every workspace extra (e.g. a pytorch backend extra whose
+# torch has no lockable upstream riscv64 source); the runtime only needs the
+# packages served by --find-links + the local wheels, so treat a riscv64 lock
+# failure as non-fatal and let the subsequent `uv sync` + local-wheel
+# force-install carry the venv. On amd64/arm64 a lock failure is a genuine error
+# and still aborts (set -e).
+uv_lock_regen() {
+  if uv lock --find-links /opt/wheels; then
+    return 0
+  fi
+  if [ "$(uname -m)" = "riscv64" ]; then
+    echo "WARNING: uv lock regeneration had issues on riscv64; continuing with --find-links + local wheels"
+    return 0
+  fi
+  return 1
+}
+
 # Run `uv sync` with $1 args. With a lockfile ($3=true) try --frozen first and
 # fall back to regenerating the lock; without one, lock then sync. Either
 # fallback force-reinstalls the local wheels ($2). Ordering is load-bearing.
@@ -202,14 +238,14 @@ run_uv_sync_with_fallback() {
     frozen_sync_args=("${_sync_args[@]}" --frozen)
     if ! uv sync "${frozen_sync_args[@]}"; then
       echo "Frozen upstream uv.lock failed for this Python/platform; regenerating a local lock"
-      uv lock --find-links /opt/wheels
+      uv_lock_regen
       uv sync "${_sync_args[@]}" || echo "WARNING: uv sync after lock regeneration had issues; force-reinstalling local wheels"
       if [ "${#_locked_wheels[@]}" -gt 0 ]; then
         uv pip install --force-reinstall "${_locked_wheels[@]}" || true
       fi
     fi
   else
-    uv lock --find-links /opt/wheels
+    uv_lock_regen
     uv sync "${_sync_args[@]}" || echo "WARNING: uv sync had issues; force-reinstalling local wheels"
     if [ "${#_locked_wheels[@]}" -gt 0 ]; then
       uv pip install --force-reinstall "${_locked_wheels[@]}" || true
