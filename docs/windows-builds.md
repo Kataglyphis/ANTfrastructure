@@ -496,7 +496,7 @@ After building, run the container smoke test to verify all components:
   powershell -File C:\temp\scripts\smoke-test-container.ps1
 ```
 
-The smoke test validates 21 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-13, GPU lane): 153 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew.
+The smoke test validates 21 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 155 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. The two additions over the 153 baseline are the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg).
 
 ### What is verified: native vs. Python
 
@@ -520,7 +520,13 @@ the source-built FFmpeg via `setup.py --ffmpeg-dir` — PyPI's own av wheel is
 structurally unloadable on Server Core because its bundled avdevice imports
 the desktop-only `AVICAP32.dll`; note the generic `h264` encoder alias
 resolves to `h264_d3d12va`, so headless code should request software codecs
-like `mpeg4`/`libx264` by name). `cv2` ships installed into CPython's
+like `mpeg4`/`libx264` by name). Because `FFMPEG_VERSION=master` tracks a live
+branch, `build-ffmpeg-from-source.ps1` normalizes the import-lib layout after
+`make install` — an upstream drop moved `avformat.lib` et al. from `lib\` to
+`bin\` overnight (2026-07-13, PyAV died with LNK1181): every `.lib`/`.def` is
+harvested into `lib\`, missing import libs are regenerated from their `.def`
+via `lib.exe`, and the PyAV step logs the lib inventory up front so the next
+layout drift fails loudly with data. `cv2` ships installed into CPython's
 site-packages (the opencv repo has no wheel machinery — opencv-python is a
 separate upstream project); LiteRT has no python bindings on this lane
 (bazel-only python package). All bindings are pre-installed with their PyPI
