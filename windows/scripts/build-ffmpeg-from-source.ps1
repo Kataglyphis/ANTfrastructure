@@ -232,23 +232,28 @@ Get-ChildItem -Path $ffbuildDir -Filter '*.mak' -ErrorAction SilentlyContinue | 
 foreach ($fn in @('library.mak', 'subdir.mak', 'Makefile')) {
     Remove-MakefileShowIncludes -Path (Join-Path $srcDir $fn) -StripWildcardInclude
 }
-# Add avutil.lib to library link paths (configure may not generate EXTRALIBS correctly)
+# Inter-library import-lib deps for the linker (configure may not generate
+# EXTRALIBS at all under the msvc preset). ONE map drives both the in-place
+# replace and the append fallback -- the previous twin lists had to be kept
+# byte-identical by hand.
 $configMakPath = Join-Path $srcDir 'ffbuild/config.mak'
 if (Test-Path $configMakPath) {
+    $extraLibs = [ordered]@{
+        'libswresample' = 'avutil.lib'
+        'libswscale'    = 'avutil.lib'
+        'libavcodec'    = 'avutil.lib'
+        'libavfilter'   = 'avutil.lib'
+        'libavformat'   = 'avutil.lib avcodec.lib'
+        'libavdevice'   = 'avformat.lib avcodec.lib avutil.lib'
+    }
     $cm = [System.IO.File]::ReadAllText($configMakPath)
-    $cm = $cm -replace '^(EXTRALIBS-libswresample\s*=).*', '$1 avutil.lib'
-    $cm = $cm -replace '^(EXTRALIBS-libswscale\s*=).*', '$1 avutil.lib'
-    $cm = $cm -replace '^(EXTRALIBS-libavcodec\s*=).*', '$1 avutil.lib'
-    $cm = $cm -replace '^(EXTRALIBS-libavfilter\s*=).*', '$1 avutil.lib'
-    $cm = $cm -replace '^(EXTRALIBS-libavformat\s*=).*', '$1 avutil.lib avcodec.lib'
-    $cm = $cm -replace '^(EXTRALIBS-libavdevice\s*=).*', '$1 avformat.lib avcodec.lib avutil.lib'
-    if (-not ($cm -match 'EXTRALIBS-libswresample')) {
-        $cm += "`nEXTRALIBS-libswresample=avutil.lib"
-        $cm += "`nEXTRALIBS-libswscale=avutil.lib"
-        $cm += "`nEXTRALIBS-libavcodec=avutil.lib"
-        $cm += "`nEXTRALIBS-libavfilter=avutil.lib"
-        $cm += "`nEXTRALIBS-libavformat=avcodec.lib avutil.lib"
-        $cm += "`nEXTRALIBS-libavdevice=avformat.lib avcodec.lib avutil.lib"
+    foreach ($lib in $extraLibs.Keys) {
+        $line = "EXTRALIBS-$lib=$($extraLibs[$lib])"
+        if ($cm -match "(?m)^EXTRALIBS-$lib\s*=") {
+            $cm = $cm -replace "(?m)^EXTRALIBS-$lib\s*=.*", $line
+        } else {
+            $cm += "`n$line"
+        }
     }
     [System.IO.File]::WriteAllText($configMakPath, $cm)
 }
@@ -352,8 +357,18 @@ if (Test-Path "$ffmpegDir\ffmpeg.exe") {
             & cmd /c "lib.exe /nologo /machine:x64 /def:`"$($defFile.FullName)`" /name:$($defFile.BaseName).dll /out:`"$libPath`" 2>&1" | ForEach-Object { Write-Host $_ }
         }
     }
-    $libCount = @(Get-ChildItem $ffLibDir -Filter '*.lib' -ErrorAction SilentlyContinue).Count
-    Write-Host "import libs in ${ffLibDir}: $libCount"
+    # Single authoritative inventory + assertion: the PyAV step (and any other
+    # MSVC-style consumer) links these; fail HERE with data instead of a bare
+    # LNK1181 deep inside a setup.py (bit us 2026-07-13). The BtbN prebuilt
+    # fallback legitimately ships no import libs, so only a SOURCE build
+    # asserts (the fallback already warned and skips PyAV below).
+    $ffImportLibs = @(Get-ChildItem $ffLibDir -Filter '*.lib' -ErrorAction SilentlyContinue | ForEach-Object Name)
+    Write-Host ("import libs in ${ffLibDir}: " + (($ffImportLibs | Sort-Object) -join ', '))
+    if (([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -eq '1') -and
+        ($ffImportLibs -notcontains 'avformat.lib')) {
+        Write-Host ("lib dir inventory: " + ((Get-ChildItem $ffLibDir -Name -ErrorAction SilentlyContinue) -join ', '))
+        throw "ffmpeg install has no avformat.lib in $ffLibDir -- master drift broke import-lib generation"
+    }
 }
 
 Remove-SourceBuildTree -Path $SourceDir
@@ -381,16 +396,8 @@ if ([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -ne 
 }
 $pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '18.0.0'
 Write-Host "=== PyAV $pyavVersion wheel build (against $prefix) ==="
-# Precondition: PyAV links the import libs that ffmpeg's `make install` stages
-# into lib\. If a master drop stops producing them, fail HERE with an inventory
-# instead of a bare LNK1181 deep inside setup.py (bit us 2026-07-13).
-$ffLibDir = Join-Path $prefix 'lib'
-$ffImportLibs = @(Get-ChildItem $ffLibDir -Filter '*.lib' -ErrorAction SilentlyContinue | ForEach-Object Name)
-Write-Host ("ffmpeg import libs present: " + (($ffImportLibs | Sort-Object) -join ', '))
-if (-not (Test-Path (Join-Path $ffLibDir 'avformat.lib'))) {
-    Write-Host ("lib dir inventory: " + ((Get-ChildItem $ffLibDir -Name -ErrorAction SilentlyContinue) -join ', '))
-    throw "ffmpeg install has no avformat.lib in $ffLibDir -- master drift broke import-lib generation; PyAV cannot link"
-}
+# Import libs already inventoried + asserted by the normalization block above
+# (source-built path is guaranteed here by the FFMPEG_SOURCE_BUILD gate).
 $py = Get-SourceBuildPython
 Install-CpythonPip -Python $py
 Initialize-PythonPlatformTag | Out-Null

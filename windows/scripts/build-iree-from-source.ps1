@@ -96,14 +96,17 @@ $ireeRun     = Join-Path $ireeInstallDir 'bin\iree-run-module.exe'
 foreach ($tool in @($ireeCompile, $ireeRun)) {
     if (-not (Test-Path $tool)) { throw "IREE install incomplete: $tool missing" }
 }
-$mlirPath = Join-Path $env:TEMP 'iree-gate.mlir'
-$vmfbPath = Join-Path $env:TEMP 'iree-gate.vmfb'
-@'
+# ONE test module for both gates (native + python); MLIR is whitespace-
+# insensitive, so the python gate embeds the same text collapsed to one line.
+$gateMlir = @'
 func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
   %result = math.absf %input : tensor<f32>
   return %result : tensor<f32>
 }
-'@ | Set-Content -Path $mlirPath -Encoding ascii
+'@
+$mlirPath = Join-Path $env:TEMP 'iree-gate.mlir'
+$vmfbPath = Join-Path $env:TEMP 'iree-gate.vmfb'
+$gateMlir | Set-Content -Path $mlirPath -Encoding ascii
 & cmd /c """$ireeCompile"" --iree-hal-target-backends=llvm-cpu ""$mlirPath"" -o ""$vmfbPath"" 2>&1" | ForEach-Object { Write-Host $_ }
 if ($LASTEXITCODE -ne 0) { throw "iree-compile gate failed (exit $LASTEXITCODE)" }
 $runOut = & cmd /c """$ireeRun"" --module=""$vmfbPath"" --device=local-task --function=abs --input=f32=-5 2>&1" | Out-String
@@ -151,16 +154,11 @@ if ($pythonBindings -eq 'ON') {
     # End-to-end binding gate: compile MLIR through the python compiler API and
     # execute it on the python runtime -- proves the two wheels interoperate.
     $pyGate = Join-Path $env:TEMP 'iree-py-gate.py'
-    @'
+    @"
 import numpy as np
 import iree.compiler.tools as tools
 import iree.runtime as rt
-MLIR = """
-func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
-  %result = math.absf %input : tensor<f32>
-  return %result : tensor<f32>
-}
-"""
+MLIR = '$($gateMlir -replace '\s+', ' ')'
 vmfb = tools.compile_str(MLIR, target_backends=["llvm-cpu"])
 module = rt.load_vm_flatbuffer(vmfb, driver="local-task")
 # tensor<f32> inputs must be numpy arrays -- a bare python float dies in the
@@ -168,7 +166,7 @@ module = rt.load_vm_flatbuffer(vmfb, driver="local-task")
 value = float(module.abs(np.asarray(-5.0, dtype=np.float32)).to_host())
 assert value == 5.0, value
 print("iree python gate OK: abs(-5) =", value)
-'@ | Set-Content -Path $pyGate -Encoding ascii
+"@ | Set-Content -Path $pyGate -Encoding ascii
     cmd.exe /c """$($py.Exe)"" ""$pyGate"" 2>&1"
     if ($LASTEXITCODE -ne 0) { throw "IREE python end-to-end gate failed (exit $LASTEXITCODE)" }
     Remove-Item $pyGate -Force -ErrorAction SilentlyContinue
