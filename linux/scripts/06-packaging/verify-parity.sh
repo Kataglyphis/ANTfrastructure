@@ -479,37 +479,20 @@ main() {
   local passed=0
   local check_name
 
+  # Data-driven dispatch: each known check maps to its check_<name> function, so
+  # adding a check is one set entry rather than another copy-pasted case arm.
+  local -A KNOWN_CHECKS=(
+    [packages]=1 [python]=1 [versions]=1 [files]=1 [libs]=1 [imports]=1
+  )
+
   for check_name in "${CHECK_LIST[@]}"; do
     check_name="$(trim "${check_name}")"
-    case "${check_name}" in
-      packages)
-        ((total++)) || true
-        check_packages && ((passed++)) || true
-        ;;
-      python)
-        ((total++)) || true
-        check_python && ((passed++)) || true
-        ;;
-      versions)
-        ((total++)) || true
-        check_versions && ((passed++)) || true
-        ;;
-      files)
-        ((total++)) || true
-        check_files && ((passed++)) || true
-        ;;
-      libs)
-        ((total++)) || true
-        check_libs && ((passed++)) || true
-        ;;
-      imports)
-        ((total++)) || true
-        check_imports && ((passed++)) || true
-        ;;
-      *)
-        err "Unknown check: ${check_name}"
-        ;;
-    esac
+    if [ -z "${KNOWN_CHECKS[${check_name}]:-}" ]; then
+      err "Unknown check: ${check_name}"
+      continue
+    fi
+    ((total++)) || true
+    "check_${check_name}" && ((passed++)) || true
   done
 
   printf '\n%b' "\033[1;37m"

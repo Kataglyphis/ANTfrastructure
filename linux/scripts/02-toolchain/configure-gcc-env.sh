@@ -20,13 +20,11 @@ _append_env_var() {
   echo "${var_name}=\"${existing}\"" | ${SUDO:-} tee -a "${env_file}" >/dev/null
 }
 
-_configure_gcc_environment() {
-  local PREFIX="$1"
-  local GCC_VERSION="$2"
-  local SUDO="${3:-}"
+# 6) Add library path to loader and run ldconfig
+_gcc_env_ldconfig() {
+  local PREFIX="$1" GCC_VERSION="$2" SUDO="${3:-}"
   local CONF_FILE="/etc/ld.so.conf.d/gcc-${GCC_VERSION}.conf"
 
-  # 6) Add library path to loader and run ldconfig
   ${SUDO} sh -c ": > \"${CONF_FILE}\""
 
   if [ -d "${PREFIX}/lib64" ]; then
@@ -43,8 +41,11 @@ _configure_gcc_environment() {
     ${SUDO} rm -f "${CONF_FILE}"
     echo "No GCC lib directories found under ${PREFIX}; skipping ldconfig step." >&2
   fi
+}
 
-  # 6b) Add pkg-config path configuration
+# 6b) Add pkg-config path configuration
+_gcc_env_pkgconfig() {
+  local PREFIX="$1" GCC_VERSION="$2" SUDO="${3:-}"
   echo "Configuring PKG_CONFIG_PATH..."
   local PKG_CONFIG_DIR="/etc/profile.d"
   local PKG_CONFIG_FILE="${PKG_CONFIG_DIR}/gcc-${GCC_VERSION}-pkgconfig.sh"
@@ -64,8 +65,11 @@ EOF
   else
     echo "No pkg-config directories found; skipping PKG_CONFIG_PATH setup."
   fi
+}
 
-  # 6c) Add to system PATH
+# 6c) Add to system PATH
+_gcc_env_path() {
+  local PREFIX="$1" GCC_VERSION="$2" SUDO="${3:-}"
   echo "Configuring PATH..."
   local PATH_FILE="/etc/profile.d/gcc-${GCC_VERSION}-path.sh"
   ${SUDO} sh -c "cat > \"${PATH_FILE}\"" <<EOF
@@ -74,8 +78,13 @@ export PATH="${PREFIX}/bin:\${PATH}"
 EOF
   ${SUDO} chmod 644 "${PATH_FILE}"
   echo "Created ${PATH_FILE}"
+}
 
-  # 6d) For Docker: Also add to /etc/environment for non-interactive shells
+# 6d) For Docker: Also add to /etc/environment for non-interactive shells.
+# SUDO is declared local so _append_env_var's ${SUDO:-} resolves to it (as it did
+# when this block lived inline in _configure_gcc_environment).
+_gcc_env_docker_environment() {
+  local PREFIX="$1" SUDO="${2:-}"
   echo "Adding GCC paths to /etc/environment for Docker compatibility..."
   if [ -f /etc/environment ]; then
     _append_env_var PATH "${PREFIX}/bin" /etc/environment
@@ -97,8 +106,11 @@ EOF
   else
     echo "WARNING: /etc/environment not found; skipping Docker-friendly environment setup"
   fi
+}
 
-  # 6e) Configure man pages
+# 6e) Configure man pages
+_gcc_env_manpages() {
+  local PREFIX="$1" SUDO="${2:-}"
   echo "Configuring man pages..."
   local MANPATH_FILE="/etc/manpath.config"
   if [ -d "${PREFIX}/share/man" ] && [ -f "${MANPATH_FILE}" ]; then
@@ -111,4 +123,16 @@ EOF
   elif [ -d "${PREFIX}/share/man" ]; then
     echo "MANPATH_FILE not found at ${MANPATH_FILE}; skipping man page configuration."
   fi
+}
+
+_configure_gcc_environment() {
+  local PREFIX="$1"
+  local GCC_VERSION="$2"
+  local SUDO="${3:-}"
+
+  _gcc_env_ldconfig          "${PREFIX}" "${GCC_VERSION}" "${SUDO}"
+  _gcc_env_pkgconfig         "${PREFIX}" "${GCC_VERSION}" "${SUDO}"
+  _gcc_env_path              "${PREFIX}" "${GCC_VERSION}" "${SUDO}"
+  _gcc_env_docker_environment "${PREFIX}" "${SUDO}"
+  _gcc_env_manpages          "${PREFIX}" "${SUDO}"
 }

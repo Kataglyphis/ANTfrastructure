@@ -136,17 +136,15 @@ litert_cross_wheel_platform_tag() {
         cross_wheel_platform_tag
         return $?
     fi
-    if ! command -v cross_target_arch >/dev/null 2>&1; then
-        return 1
+    # Fallback when cross_wheel_platform_tag isn't sourced: reuse the canonical
+    # arch->wheel-tag map instead of a private copy. LiteRT only targets
+    # amd64/arm64/riscv64, all covered by arch_linux_platform_tag_for.
+    if command -v arch_linux_platform_tag_for >/dev/null 2>&1 \
+       && command -v cross_target_arch >/dev/null 2>&1; then
+        arch_linux_platform_tag_for "$(cross_target_arch)"
+        return $?
     fi
-
-    case "$(cross_target_arch)" in
-        amd64) printf '%s' "linux_x86_64" ;;
-        arm64) printf '%s' "linux_aarch64" ;;
-        armhf) printf '%s' "linux_armv7l" ;;
-        riscv64) printf '%s' "linux_riscv64" ;;
-        *) return 1 ;;
-    esac
+    return 1
 }
 
 # GCC 16.1.0 ICEs on LiteRT's Samsung vendor code. The ICE is triggered by the
