@@ -586,3 +586,68 @@ setup_linux_cross_env() {
   _cross_env_export_all _env
 }
 
+# cross_compile_cmake_lib_from_source NAME URL INSTALL_PREFIX SENTINEL [EXTRA_CMAKE_ARG...]
+#
+# Fetch a source tarball and cross-cmake build+install a small library into the
+# target sysroot. For libraries whose Ubuntu Ports dev package is missing/broken,
+# or whose OpenCV-vendored copy can't cross-build (freetype, libpng). No-op if
+# SENTINEL already exists (e.g. an apt package already provided the lib).
+#
+# Behaviour-preserving extraction of the freetype/libpng blocks that were copy
+# -pasted in 03-media/build/opencv/install-deps.sh: same cross toolchain
+# (${triplet}-gcc/g++), same find-root scaffold. Per-library flags (FT_DISABLE_*,
+# PNG_STATIC/PNG_HARDWARE_OPTIMIZATIONS, ZLIB_*, and any MODE_LIBRARY/INCLUDE
+# override) are passed as trailing EXTRA_CMAKE_ARGs. Fetch goes through
+# download_and_extract for curl --retry + temp-file hygiene (a hand-rolled
+# `curl | tar` had neither). Never hard-fails: a download/build failure logs a
+# WARN and returns 0 so the caller can degrade (e.g. OpenCV falls back to
+# WITH_<lib>=OFF) instead of aborting the whole media stage.
+cross_compile_cmake_lib_from_source() {
+  local name="$1" url="$2" prefix="$3" sentinel="$4"
+  shift 4
+
+  local triplet arch src
+  triplet="$(cross_target_triplet 2>/dev/null || true)"
+  arch="$(cross_target_arch 2>/dev/null || true)"
+  if [ -z "${triplet}" ]; then
+    echo "[WARN] ${name}: no cross triplet resolved; skipping source build"
+    return 0
+  fi
+  if [ -f "${sentinel}" ]; then
+    return 0
+  fi
+
+  echo "[INFO] Cross-compiling ${name} from source for ${arch:-target} (${url})..."
+  src="$(mktemp -d "${TMPDIR:-/tmp}/${name}-src-XXXXXX")" || return 0
+  if ! download_and_extract "${url}" "${src}" 1; then
+    echo "[WARN] ${name}: source download failed; skipping"
+    rm -rf "${src}"
+    return 0
+  fi
+  if [ ! -f "${src}/CMakeLists.txt" ]; then
+    echo "[WARN] ${name}: no CMakeLists.txt in source tree; skipping"
+    rm -rf "${src}"
+    return 0
+  fi
+
+  local -a cmake_args=(
+    -DCMAKE_SYSTEM_NAME=Linux
+    -DCMAKE_SYSTEM_PROCESSOR="${arch}"
+    -DCMAKE_C_COMPILER="${triplet}-gcc"
+    -DCMAKE_CXX_COMPILER="${triplet}-g++"
+    -DCMAKE_FIND_ROOT_PATH="/usr/${triplet};/usr/lib/${triplet}"
+    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+    -DCMAKE_INSTALL_PREFIX="${prefix}"
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    "$@"
+  )
+  if cmake -S "${src}" -B "${src}/build" "${cmake_args[@]}" \
+     && cmake --build "${src}/build" --target install -j"$(nproc)"; then
+    echo "[INFO] ${name}: installed to ${prefix}"
+  else
+    echo "[WARN] ${name}: source build/install failed; continuing without it"
+  fi
+  rm -rf "${src}"
+}
+
