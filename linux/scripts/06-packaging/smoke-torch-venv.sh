@@ -103,7 +103,16 @@ assert_pinned_versions() {
       UVLOCK="${uvlock}" \
       PYTORCH_EXTRA="${PYTORCH_EXTRA:-}" \
       "${PY}" - <<'PYEOF'
-import os, sys, importlib
+import os, sys, importlib, platform
+
+# riscv64 has no upstream torch/vision/numpy/pillow wheels: torch/torchvision are
+# LOCAL cross-built wheels (+gitXXXX / +hashXXXX variants, never +cpu) and the
+# lock-only packages (numpy/pillow/contourpy) are re-resolved+source-built to newer
+# versions than the amd64/arm64 uv.lock pins. Both are expected and correct on
+# riscv64, so the variant check is not asserted and lock-only version drift is
+# accepted there (riscv64 is its own version authority). Packages carrying an
+# explicit build-pin (torch/vision base, onnx, litert) are still enforced.
+is_riscv64 = (os.environ.get("STV_ARCH") or platform.machine()) == "riscv64"
 
 def base(v):
     return v.split("+", 1)[0].strip() if v else v
@@ -173,12 +182,22 @@ for import_name, dist_name, build_pin, torchlike in SPECS:
     if ib in allowed:
         src = "uv.lock" if ib in from_lock else "versions.env"
         print("  OK  %-16s %-16s (matches %s)" % (dist_name, inst, src))
+    elif is_riscv64 and not build_pin:
+        # lock-only package (numpy/pillow/contourpy) re-resolved+source-built newer on
+        # riscv64; accept (no upstream riscv64 wheel to pin against).
+        print("  ~~  %-16s installed %s (riscv64 re-resolved; accepted, lock pin %s)"
+              % (dist_name, inst, sorted(allowed)))
     else:
         fails.append("%s installed %s not in %s" % (dist_name, inst, sorted(allowed)))
         print("  XX  %-16s installed %s NOT in expected %s" % (dist_name, inst, sorted(allowed)))
     if torchlike and want_variant:
         lv = localseg(inst)
-        if lv and lv != want_variant:
+        if is_riscv64:
+            # torch/torchvision are riscv64 LOCAL cross wheels (+gitXXXX / +hashXXXX),
+            # never the +cpu upstream variant; the variant is not asserted here.
+            print("  ~~  %-16s build variant +%s (riscv64 local wheel; not asserted)"
+                  % (dist_name, lv or "?"))
+        elif lv and lv != want_variant:
             fails.append("%s variant +%s != +%s" % (dist_name, lv, want_variant))
             print("  XX  %-16s build variant +%s != expected +%s (PYTORCH_EXTRA=%s)"
                   % (dist_name, lv, want_variant, extra))

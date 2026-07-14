@@ -345,6 +345,25 @@ install_project_environment() {
   else
     uv pip install PyGObject
   fi
+
+  ensure_project_package_installed
+}
+
+# `uv sync` installs the app project itself (Orchestr-ANT-ion -> orchestr_ant_ion)
+# alongside its dependencies on amd64/arm64. On riscv64 the [tool.uv] environments-gate
+# strip + the git-source-timeout fallback path leave the venv with only the resolved
+# DEPENDENCIES and not the project, so the runtime app-wheel smoke dies with
+# `ModuleNotFoundError: orchestr_ant_ion`. Install the project explicitly from source
+# when it is missing. --no-deps: every runtime dep is already present (uv sync + local
+# wheels), and it must NOT re-resolve the riscv64-gated `torch @ git+...` inline dep.
+# Guarded by an import probe so it is a no-op on arches where uv sync already did it.
+ensure_project_package_installed() {
+  if uv run --no-sync --active python -c 'import orchestr_ant_ion' >/dev/null 2>&1; then
+    echo "Project package orchestr_ant_ion already installed"
+    return 0
+  fi
+  echo "Project package orchestr_ant_ion missing after uv sync; installing from ${APP_DIR} (--no-deps)"
+  uv pip install --no-deps "${APP_DIR}"
 }
 
 verify_project_environment() {
