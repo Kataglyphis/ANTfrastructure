@@ -117,6 +117,21 @@ function Install-TorchAppEnvironment {
                 Write-Warning "$src not found -- venv will miss $staged"
             }
         }
+        # abi3 wheels (IREE's cp312-abi3 pyds) link python3.dll, which uv venvs
+        # do NOT stage next to their python.exe -- the import then dies with
+        # STATUS_DLL_NOT_FOUND (same trap PyAV hit in the pip-route spikes).
+        # Copy it from the source CPython beside the venv interpreter.
+        $venvScripts = Split-Path $venvPython -Parent
+        $py3Dll = Join-Path $venvScripts 'python3.dll'
+        if (-not (Test-Path $py3Dll)) {
+            $srcPy3 = 'C:\temp\cpython\PCbuild\amd64\python3.dll'
+            if (Test-Path $srcPy3) {
+                Copy-Item $srcPy3 $py3Dll -Force
+                Write-Host 'Staged python3.dll into venv Scripts (abi3 wheel support)'
+            } else {
+                Write-Warning "python3.dll not found at $srcPy3 -- abi3 wheels (iree) may fail to import"
+            }
+        }
     } finally { Pop-Location }
     Write-Host '=== torch app: install complete ==='
 }
@@ -145,6 +160,9 @@ import tvm
 print('tvm', tvm.__version__)
 import av
 print('pyav', av.__version__)
+import iree.compiler
+import iree.runtime
+print('iree-compiler', getattr(iree.compiler, '__version__', 'n/a'))
 if '--require-cuda-ep' in sys.argv:
     assert 'CUDAExecutionProvider' in providers, 'ERROR: local onnxruntime wheel lost its CUDAExecutionProvider!'
     print('CUDAExecutionProvider present (build check, no device required)')
@@ -155,9 +173,10 @@ print('torch-app-env OK')
     Remove-Item $verifyPy -Force -ErrorAction SilentlyContinue
     # The app's OWN wheel-smoke suite ("exercise the installed ML wheels with
     # real work"; exits non-zero on any required failure -- upstream designed it
-    # to gate container builds). Expected report on this lane (app >= v0.0.24,
-    # which added the pyav check on top of v0.0.23's genai + tvm): 10/11 ok with
-    # ONE WARN (ai-edge-litert -- skipped by design, no cp314 wheel exists).
+    # to gate container builds). Expected report on this lane: 10/11 ok on app
+    # v0.0.24/v0.0.25 (pyav check on top of v0.0.23's genai + tvm), 11/12 ok
+    # once a tag ships the iree check -- always with ONE WARN (ai-edge-litert,
+    # skipped by design: no cp314 wheel exists).
     Invoke-TorchAppNative -Label 'app smoke suite (python -m orchestr_ant_ion.smoke)' `
         -CommandLine """$venvPython"" -m orchestr_ant_ion.smoke"
     Invoke-TorchAppNative -Optional -Label 'uv pip list' -CommandLine "uv pip list --python ""$venvPython"""

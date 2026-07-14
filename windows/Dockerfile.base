@@ -55,10 +55,11 @@ RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVers
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
 
+# LLVM_GLOBAL_BIN / SCOOP_GLOBAL_SHIMS removed 2026-07-14: llvm + shims are
+# user-scope installs; both pointed at never-created C:\ProgramData dirs.
 ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     SCOOP_GLOBAL=C:\ProgramData\scoop `
     SCOOP_USER_SHIMS=C:\Users\ContainerAdministrator\scoop\shims `
-    SCOOP_GLOBAL_SHIMS=C:\ProgramData\scoop\shims `
     GIT_CMD="C:\Program Files\Git\cmd" `
     GIT_BIN="C:\Program Files\Git\bin" `
     GIT_USRBIN="C:\Program Files\Git\usr\bin" `
@@ -66,14 +67,13 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     VULKAN_SDK=C:\Users\ContainerAdministrator\scoop\apps\vulkan\current `
     WIX=C:\WiX `
     LLVM_USER_BIN=C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin `
-    LLVM_GLOBAL_BIN=C:\ProgramData\scoop\apps\llvm\current\bin `
     CMAKE_BIN=C:\Users\ContainerAdministrator\scoop\apps\cmake\current\bin `
     WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH `
     USERPROFILE=C:\Users\ContainerAdministrator `
     CARGO_HOME=C:\Users\ContainerAdministrator\.cargo `
     CARGO_BIN=C:\Users\ContainerAdministrator\.cargo\bin
 
-ENV PATH=$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+ENV PATH=$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
 # Tail scripts land here (not at the top) so editing them only rebuilds from this
 # point. verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard

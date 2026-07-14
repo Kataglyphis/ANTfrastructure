@@ -49,7 +49,7 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 - The **media stage fans out into three branch images** by `windows/build.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
   - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.14.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `master` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
   - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 → LiteRT-LM 0.13.1 (independent of ONNX).
-  - **media-tvm** (`--target media-tvm` + `build-tvm-from-source.ps1`) — TVM 0.25.0 (independent; installs its Python wheel into the source-built CPython).
+  - **media-tvm** (`--target media-tvm` + `build-media-tvm-all.ps1`) — TVM 0.25.0 → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
   - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, then GStreamer 1.29.2 built via `build-gstreamer-from-source.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
 - `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).
 
@@ -171,7 +171,7 @@ the 2-CPU `docker build` cap:
 | toolchain | `Dockerfile.toolchain-builder` (clones CPython + writes props) | `build-toolchain-all.ps1` (`PCbuild\build.bat`) |
 | media-core | `Dockerfile.media-builder --target media-core` | `build-media-core-all.ps1` (ONNX→GenAI→OpenCV→FFmpeg) |
 | media-litert | `Dockerfile.media-builder --target media-litert` | `build-litert-all.ps1` (LiteRT→LiteRT-LM) |
-| media-tvm | `Dockerfile.media-builder --target media-tvm` | `build-tvm-from-source.ps1` |
+| media-tvm | `Dockerfile.media-builder --target media-tvm` | `build-media-tvm-all.ps1` (TVM → IREE) |
 | media merge | `Dockerfile.media-merge-builder` (fan-in `COPY --from` + env) | `build-gstreamer-from-source.ps1` |
 
 The **merge stage splits**: the fan-in (`COPY --from` of the three branch trees)
@@ -496,7 +496,7 @@ After building, run the container smoke test to verify all components:
   powershell -File C:\temp\scripts\smoke-test-container.ps1
 ```
 
-The smoke test validates 21 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 155 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. The two additions over the 153 baseline are the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg).
+The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 155 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. The two additions over the 153 baseline are the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg).
 
 ### What is verified: native vs. Python
 
@@ -515,7 +515,10 @@ are asserted against versions.env to catch stale baked layers.
 library that supports them and stage the wheels centrally at
 **`C:\runtime\wheels`** (`PYTHON_WHEELS` env): `onnxruntime` (CUDA+TRT+DML EPs,
 `ENABLE_PYTHON=ON`), `onnxruntime-genai-cuda` (`BUILD_WHEEL=ON`),
-`apache-tvm` (scikit-build-core), and `av` (PyAV compiled from sdist against
+`apache-tvm` (scikit-build-core), `iree-base-compiler` + `iree-base-runtime`
+(built from the IREE ninja tree's synthesized `compiler/`+`runtime` pip dirs
+with `--no-build-isolation` so the wheels pack the existing LLVM objects
+instead of rebuilding them), and `av` (PyAV compiled from sdist against
 the source-built FFmpeg via `setup.py --ffmpeg-dir` — PyPI's own av wheel is
 structurally unloadable on Server Core because its bundled avdevice imports
 the desktop-only `AVICAP32.dll`; note the generic `h264` encoder alias
@@ -566,9 +569,10 @@ The final image bakes the runtime orchestrator at
   battery (numpy/cv2/torch/onnxruntime with a CUDA-EP build assert/genai/tvm)
   **and the app's own wheel-smoke suite** (`python -m orchestr_ant_ion.smoke`
   — real torch/torchvision/ORT-inference/OpenCV work; expected report on this
-  lane: 10/11 ok with one WARN for the litert skip, since app v0.0.23 added
-  genai + tvm checks and v0.0.24 added pyav). Smoke section 21 re-runs
-  the same verification offline on every suite run.
+  lane: 10/11 ok with one WARN for the litert skip on app v0.0.24/v0.0.25
+  (v0.0.23 added genai + tvm, v0.0.24 pyav), 11/12 once a tag ships the iree
+  check). Smoke section 21 re-runs the same verification offline on every
+  suite run.
 - **Usage**: `C:\opt\Kataglyphis-Orchestr-ANT-ion\.venv\Scripts\python.exe`
   (or `uv run` from `TORCH_APP_DIR`) is a ready environment where
   `import onnxruntime, onnxruntime_genai, cv2, tvm, torch` all resolve to the

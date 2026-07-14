@@ -1116,9 +1116,9 @@ Write-TestHeader '19. Environment pointer integrity'
 # A stale pointer is exactly how the CMake MSI->scoop switch left CMAKE_BIN aimed
 # at the deleted 'C:\Program Files\CMake\bin' (caught 2026-07-12).
 # Deliberately NOT asserted: CARGO_HOME/CARGO_BIN (pre-provisioned for a future
-# `cargo install`; nonexistent until first use) and LLVM_GLOBAL_BIN /
-# SCOOP_GLOBAL_SHIMS (known-stale base ENV -- llvm/scoop shims are user-scope
-# installs; fix rides with the next base rebuild).
+# `cargo install`; nonexistent until first use). LLVM_GLOBAL_BIN /
+# SCOOP_GLOBAL_SHIMS were REMOVED from the base image 2026-07-14 (they pointed
+# at never-created ProgramData dirs); tolerate them either way on old images.
 $envPointerNames = @(
     'CMAKE_BIN', 'FLUTTER_BIN', 'VULKAN_SDK', 'WIX', 'LLVM_USER_BIN',
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
@@ -1126,6 +1126,7 @@ $envPointerNames = @(
     'ONNX_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB',
     'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
     'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'PYTHON_WHEELS',
+    'IREE_ROOT', 'IREE_BIN',
     # Hard-assert TORCH_APP_DIR here: section 21 deliberately SKIPs when it is
     # unset (old-image tolerance), so without this pointer check a lost env var
     # would silently drop the whole app-env verification.
@@ -1164,7 +1165,7 @@ Write-TestHeader '20. Python bindings (wheels + imports + inference)'
 $wheelStore = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
 if ($wheelStore -and (Test-Path $wheelStore)) {
 
-    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl', 'av-*.whl')) {
+    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl', 'av-*.whl', '*iree*compiler*.whl', '*iree*runtime*.whl')) {
         $wp = $wheelPattern
         Assert-Test -Name "wheel staged: $wheelPattern" -Condition {
             @(Get-ChildItem -Path $wheelStore -Filter $wp -ErrorAction SilentlyContinue).Count -gt 0
@@ -1233,6 +1234,16 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         ($LASTEXITCODE -eq 0) -and ($out -match 'py-av .* True')
     } -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
 
+    # IREE python end-to-end: compile MLIR through iree.compiler and execute on
+    # iree.runtime's local-task driver -- proves the two wheels interoperate
+    # (MLIR is whitespace-insensitive, so the module fits a single -c line with
+    # no embedded double quotes -- PS 5.1 strips those).
+    # tensor<f32> args must be numpy arrays (a bare float dies in VM marshaling).
+    Assert-Test -Name "python iree compile+run end-to-end (abs(-5)=5, local-task)" -Condition {
+        $out = & python -c "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('func.func @abs(%i : tensor<f32>) -> (tensor<f32>) { %r = math.absf %i : tensor<f32> return %r : tensor<f32> }', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'py-iree 5\.0')
+    } -FailMessage "iree.compiler/iree.runtime end-to-end failed (wheels, bundled iree-compile, or runtime driver broken)"
+
 } else {
     Skip-Test 'Python bindings (PYTHON_WHEELS unset or missing -- image predates the wheel feature)'
 }
@@ -1243,17 +1254,75 @@ Write-TestHeader '21. Orchestr-ANT-ion app environment (torch step)'
 # The final image bakes the runtime orchestrator (clone + uv sync + reconcile
 # with this lane's wheels -- see assemble-torch-app.ps1). Verification re-runs
 # the script's own verify mode OFFLINE against the baked venv: imports numpy,
-# cv2, torch, onnxruntime (CUDA EP build-assert on the GPU lane), genai, tvm.
+# cv2, torch, onnxruntime (CUDA EP build-assert on the GPU lane), genai, tvm,
+# av, iree.
 $torchAppDir = [Environment]::GetEnvironmentVariable('TORCH_APP_DIR')
 $torchAppScript = Join-Path $PSScriptRoot 'assemble-torch-app.ps1'
 if ($torchAppDir -and (Test-Path $torchAppDir) -and (Test-Path $torchAppScript)) {
     Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
-    Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm)" -Condition {
+    Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree)" -Condition {
         $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'torch-app-env OK')
     } -FailMessage "assemble-torch-app.ps1 -Mode verify failed (baked venv broken or local wheels lost)"
 } else {
     Skip-Test 'Orchestr-ANT-ion app env (TORCH_APP_DIR unset or missing -- image predates the torch step)'
+}
+
+# ============================================================================
+Write-TestHeader '22. IREE (source-built ML compiler + runtime)'
+# ============================================================================
+# Native tools live at IREE_BIN (on PATH via the media merge); the python
+# bindings ship as self-contained wheels (asserted in section 20). Real work,
+# not existence checks: compile MLIR to a vmfb and execute it.
+$ireeBin = [Environment]::GetEnvironmentVariable('IREE_BIN')
+if ($ireeBin -and (Test-Path $ireeBin)) {
+    Assert-CommandExists 'iree-compile'
+    Assert-CommandExists 'iree-run-module'
+
+    # Pin assert: the shipped compiler must match versions.env, catching a
+    # stale media layer riding into the final image.
+    $ireeExpected = (Get-ExpectedVersion 'IREE_VERSION' '') -replace '^v', ''
+    if ($ireeExpected) {
+        Assert-Test -Name "iree-compile matches versions.env pin ($ireeExpected)" -Condition {
+            (& iree-compile --version 2>&1 | Out-String) -match [regex]::Escape($ireeExpected)
+        } -FailMessage "iree-compile --version is not the pinned $ireeExpected -- stale media layer shipped?"
+    }
+
+    $ireeDir = Join-Path $env:TEMP 'kataglyphis-smoke-iree'
+    New-Item -Path $ireeDir -ItemType Directory -Force | Out-Null
+    $ireeMlir = Join-Path $ireeDir 'abs.mlir'
+    $ireeVmfb = Join-Path $ireeDir 'abs-cpu.vmfb'
+    Set-Content -Path $ireeMlir -Encoding ascii -Value @'
+func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
+  %result = math.absf %input : tensor<f32>
+  return %result : tensor<f32>
+}
+'@
+
+    Assert-Test -Name "iree-compile: MLIR -> vmfb (llvm-cpu)" -Condition {
+        & iree-compile --iree-hal-target-backends=llvm-cpu $ireeMlir -o $ireeVmfb 2>&1 | Out-Null
+        ($LASTEXITCODE -eq 0) -and (Test-Path $ireeVmfb) -and ((Get-Item $ireeVmfb).Length -gt 0)
+    } -FailMessage "iree-compile failed to lower MLIR for llvm-cpu"
+
+    Assert-Test -Name "iree-run-module: local-task executes abs(-5)=5" -Condition {
+        $out = & iree-run-module --module=$ireeVmfb --device=local-task --function=abs --input=f32=-5 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'f32=5')
+    } -FailMessage "iree-run-module failed or returned wrong result (runtime/HAL broken)"
+
+    if ($script:gpuNvidia) {
+        # Compile-only on the GPU lane (PTX via IREE's NVPTX backend; execution
+        # needs a CUDA device, which containers on this host cannot see --
+        # mirrors the ORT CUDA-EP build assert pattern).
+        Assert-Test -Name "iree-compile: MLIR -> vmfb (cuda target, compile-only)" -Condition {
+            $cudaVmfb = Join-Path $ireeDir 'abs-cuda.vmfb'
+            & iree-compile --iree-hal-target-backends=cuda $ireeMlir -o $cudaVmfb 2>&1 | Out-Null
+            ($LASTEXITCODE -eq 0) -and (Test-Path $cudaVmfb) -and ((Get-Item $cudaVmfb).Length -gt 0)
+        } -FailMessage "iree-compile cuda target failed (NVPTX backend broken)"
+    }
+
+    Remove-Item $ireeDir -Recurse -Force -ErrorAction SilentlyContinue
+} else {
+    Skip-Test 'IREE (IREE_BIN unset or missing -- image predates the IREE step)'
 }
 
 # ============================================================================

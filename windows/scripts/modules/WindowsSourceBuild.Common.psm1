@@ -518,7 +518,10 @@ function Test-PythonImport {
         [Parameter(Mandatory)][string]$ModuleName,
         [string]$VersionExpression = ''
     )
-    if (-not $VersionExpression) { $VersionExpression = "$ModuleName.__version__" }
+    # getattr fallback: not every binding exposes __version__ (iree.compiler
+    # does not) and the assert is about IMPORTABILITY, not version metadata.
+    # Single quotes only -- PS 5.1 strips embedded double quotes in -c strings.
+    if (-not $VersionExpression) { $VersionExpression = "getattr($ModuleName, '__version__', 'imported')" }
     $out = cmd.exe /c """$($Python.Exe)"" -c ""import $ModuleName; print($VersionExpression)"" 2>&1"
     $code = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     $tail = if ($out) { (@($out) | Select-Object -Last 1).ToString().Trim() } else { '' }

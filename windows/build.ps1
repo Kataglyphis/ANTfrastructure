@@ -388,6 +388,7 @@ function Get-MediaBranchSpecs {
                 ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
                 OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
+                PYAV_VERSION              = Get-Ver 'PYAV_VERSION'
                 NV_CODEC_HEADERS_REF      = Get-Ver 'NV_CODEC_HEADERS_REF'
                 CUDA_ARCHITECTURES        = Get-Ver 'CUDA_ARCHITECTURES'
                 MEMORY_LIMIT_GB           = $MediaMemoryGb
@@ -408,11 +409,12 @@ function Get-MediaBranchSpecs {
             -BuilderDockerfile $builderDf `
             -BuilderTag 'local/kataglyphis:windows-media-tvm-builder' `
             -ContainerName 'kataglyphis-media-tvm-build' `
-            -RunScript 'build-tvm-from-source.ps1' `
+            -RunScript 'build-media-tvm-all.ps1' `
             -Tag 'local/kataglyphis:windows-media-tvm' `
             -BuildArgs (@{
                 BASE_IMAGE      = 'local/kataglyphis:windows-toolchain'
                 TVM_REF         = Get-Ver 'TVM_REF'
+                IREE_VERSION    = Get-Ver 'IREE_VERSION'
                 MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
     )
@@ -665,9 +667,11 @@ try {
                 ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
                 OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
+                PYAV_VERSION              = Get-Ver 'PYAV_VERSION'
                 LITERT_VERSION            = Get-Ver 'LITERT_VERSION'
                 LITERT_LM_VERSION         = Get-Ver 'LITERT_LM_VERSION'
                 TVM_REF                   = Get-Ver 'TVM_REF'
+                IREE_VERSION              = Get-Ver 'IREE_VERSION'
                 MEMORY_LIMIT_GB           = $MediaMemoryGb
             } `
             -Label 'media-merge+gstreamer' -OutLog $gstLog
