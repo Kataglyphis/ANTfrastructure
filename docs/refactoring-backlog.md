@@ -243,3 +243,16 @@ image now delegates to) surfaced a real packaging defect:
   fail) so it surfaces without blocking, but this is a real fix: align the
   built wrapper `.so` name with what `tflite_runtime/tflite_runtime.interpreter`
   imports, then verify `Interpreter` instantiates. — M · ★★
+
+- **Runtime manifest cleanup: `nerdctl rmi` of intermediate `latest-cross-<x>-<arch>`
+  tags conflicts with stopped containers.** Observed 2026-07-13 (run 0712a resume,
+  runtime stage): build-runtime-manifest.sh tears down each intermediate tag
+  (`latest-cross-base-amd64`, ...) with `nerdctl rmi`, which emits
+  `level=fatal msg="conflict: unable to delete ... image is being used by stopped
+  container <id> (must be forced)"`. BENIGN — the build proceeds to the next
+  `--target package` step — but it (a) prints an alarming `level=fatal` line that
+  reads like a hard failure in logs/monitors, and (b) leaks the intermediate image
+  + its stopped container (never reclaimed → disk creep over repeated runs). Fix:
+  `nerdctl rm` the stopped build container (or `rmi -f`) before/instead of the plain
+  rmi, or skip the intermediate-tag rmi entirely and let a final prune reclaim them.
+  Guard so a real rmi failure still surfaces. — S · ★
