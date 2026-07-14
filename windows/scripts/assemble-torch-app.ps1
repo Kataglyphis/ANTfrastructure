@@ -155,9 +155,9 @@ print('torch-app-env OK')
     Remove-Item $verifyPy -Force -ErrorAction SilentlyContinue
     # The app's OWN wheel-smoke suite ("exercise the installed ML wheels with
     # real work"; exits non-zero on any required failure -- upstream designed it
-    # to gate container builds). Expected report on this lane (app >= v0.0.23,
-    # which added genai + tvm checks): 9/10 ok with ONE WARN (ai-edge-litert --
-    # skipped by design, no cp314 wheel exists).
+    # to gate container builds). Expected report on this lane (app >= v0.0.24,
+    # which added the pyav check on top of v0.0.23's genai + tvm): 10/11 ok with
+    # ONE WARN (ai-edge-litert -- skipped by design, no cp314 wheel exists).
     Invoke-TorchAppNative -Label 'app smoke suite (python -m orchestr_ant_ion.smoke)' `
         -CommandLine """$venvPython"" -m orchestr_ant_ion.smoke"
     Invoke-TorchAppNative -Optional -Label 'uv pip list' -CommandLine "uv pip list --python ""$venvPython"""
