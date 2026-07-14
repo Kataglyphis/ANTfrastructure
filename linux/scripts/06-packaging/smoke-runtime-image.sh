@@ -284,6 +284,47 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     fi
     echo ""
 
+    # Run the ACTUAL HEALTHCHECK command, not just parse it. Step 4 above only reads
+    # the configured Test string; the HC is `/opt/venv/bin/python3 -c import
+    # onnxruntime`, so a broken interpreter path or a mislinked onnxruntime leaves
+    # the container perpetually `unhealthy` while a string-only check stays green.
+    # This runs the real command so that fail-open class can actually fail.
+    echo "--- Functional: HEALTHCHECK command executes ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         /opt/venv/bin/python3 -c 'import onnxruntime' >/dev/null 2>&1; then
+      pass "HEALTHCHECK command runs (import onnxruntime via /opt/venv/bin/python3) (${target_arch})"
+    else
+      fail "HEALTHCHECK command FAILED (${target_arch}) -- container would report unhealthy"
+    fi
+    echo ""
+
+    # WebRTC signalling server: start-webrtc-signalling.sh (a shipped entrypoint)
+    # execs gst-webrtc-signalling-server. WARN-only -- it belongs to the same
+    # gst-plugins-rs/webrtc lane as the known webrtcbin2 gap (backlog), so its
+    # absence must not gate the manifest, but a dead signalling entrypoint should be
+    # visible every run.
+    echo "--- Functional: WebRTC signalling-server binary (informational) ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         bash -lc 's="$(command -v gst-webrtc-signalling-server || echo /opt/gstreamer/bin/gst-webrtc-signalling-server)"; [ -x "$s" ] && "$s" --help >/dev/null 2>&1'; then
+      echo "  OK  gst-webrtc-signalling-server present + runnable (${target_arch})"
+    else
+      echo "  WARN gst-webrtc-signalling-server missing/not runnable (${target_arch}) -- WebRTC signalling entrypoint would fail (non-fatal)"
+    fi
+    echo ""
+
+    # Vulkan loader load test. The .so-closure gate proves libvulkan resolves, but
+    # not that the loader dlopen()s at runtime. WARN-only: a headless CI container
+    # has no GPU/ICD so device enumeration legitimately finds nothing -- we only
+    # assert the loader library itself loads.
+    echo "--- Functional: Vulkan loader (informational) ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         /opt/venv/bin/python -c 'import ctypes; ctypes.CDLL("libvulkan.so.1")' >/dev/null 2>&1; then
+      echo "  OK  libvulkan.so.1 loads (${target_arch})"
+    else
+      echo "  WARN libvulkan.so.1 did not load (${target_arch}) -- non-fatal (no ICD/GPU in CI)"
+    fi
+    echo ""
+
     # Native compiler compile + link + RUN. The build-time validate-compilers.sh
     # smoke compiles AND links a program in every wrapper image, but never RUNS
     # the result: on the x86_64 build host a cross arch's binary cannot execute,
