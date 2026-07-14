@@ -42,6 +42,7 @@ ENV ANDROID_HOME=/opt/android-sdk \
     ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime \
     LITERT_ROOT_ANDROID=/opt/android/litert \
     OPENCV_ROOT_ANDROID=/opt/android/opencv \
+    IREE_ROOT_ANDROID=/opt/android/iree \
     BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
     TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
@@ -62,7 +63,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; /opt/scripts/android-sdk.sh && \
     mkdir -p /opt/android-sdk /opt/android && \
-    mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv
+    mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv /opt/android/iree
 
 # Arch/lib-independent helpers shared by every android-<lib> stage below —
 # hoisted into the common parent so the four children only COPY their per-lib dir.
@@ -154,6 +155,29 @@ RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/sc
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
 # ==============================================================================
+# android-iree — IREE (iree.dev) runtime Android build (parallel with the others)
+# Best-effort/non-gating (see build-android.sh): a failure leaves /opt/android/iree
+# empty rather than breaking the android image.
+# ==============================================================================
+FROM android-sdk AS android-iree
+
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG ANDROID_LIB=iree
+
+COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
+
+RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+        /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
+
+# ==============================================================================
 # Final stage — aggregate parallel stage outputs + native GCC swap
 # ==============================================================================
 FROM android-sdk AS final
@@ -167,6 +191,7 @@ COPY --link --from=android-gstreamer /opt/android/gstreamer /opt/android/gstream
 COPY --link --from=android-onnx /opt/android/onnxruntime /opt/android/onnxruntime
 COPY --link --from=android-litert /opt/android/litert /opt/android/litert
 COPY --link --from=android-opencv /opt/android/opencv /opt/android/opencv
+COPY --link --from=android-iree /opt/android/iree /opt/android/iree
 
 # Preserve the cross-compiled Python staging tree from the base image and swap
 # the amd64-hosted GCC with the target-native GCC for non-amd64 architectures.

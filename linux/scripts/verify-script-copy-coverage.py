@@ -52,6 +52,7 @@ KNOWN_BASE_PROVIDED: dict[str, list[str]] = {
         "/opt/scripts/03-media/litert/android/build-android.sh",
         "/opt/scripts/03-media/onnxruntime/android/build-android.sh",
         "/opt/scripts/03-media/opencv/android/build-android.sh",
+        "/opt/scripts/03-media/iree/android/build-android.sh",
         "/opt/scripts/core/cross-apt.sh",
         "/opt/scripts/core/modules.sh",
     ],

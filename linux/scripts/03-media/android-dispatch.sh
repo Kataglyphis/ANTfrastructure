@@ -9,15 +9,16 @@
 # android-litert and android-opencv stages.
 set -euo pipefail
 
-LIB="${1:?usage: android-dispatch.sh <gstreamer|onnxruntime|litert|opencv>}"
+LIB="${1:?usage: android-dispatch.sh <gstreamer|onnxruntime|litert|opencv|iree>}"
 
 case "${LIB}" in
   gstreamer)   SCRIPT=/opt/scripts/03-media/gstreamer/android/build-gstreamer.sh ;;
   onnxruntime) SCRIPT=/opt/scripts/03-media/onnxruntime/android/build-android.sh ;;
   litert)      SCRIPT=/opt/scripts/03-media/litert/android/build-android.sh ;;
   opencv)      SCRIPT=/opt/scripts/03-media/opencv/android/build-android.sh ;;
+  iree)        SCRIPT=/opt/scripts/03-media/iree/android/build-android.sh ;;
   *)
-    echo "android-dispatch.sh: unknown Android library '${LIB}' (expected gstreamer|onnxruntime|litert|opencv)" >&2
+    echo "android-dispatch.sh: unknown Android library '${LIB}' (expected gstreamer|onnxruntime|litert|opencv|iree)" >&2
     exit 1
     ;;
 esac
