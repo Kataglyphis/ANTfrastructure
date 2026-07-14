@@ -256,3 +256,46 @@ image now delegates to) surfaced a real packaging defect:
   `nerdctl rm` the stopped build container (or `rmi -f`) before/instead of the plain
   rmi, or skip the intermediate-tag rmi entirely and let a final prune reclaim them.
   Guard so a real rmi failure still surfaces. — S · ★
+
+## Refactoring pass 2026-07-14 (post-riscv64-green audit)
+
+Three parallel audits (DRY/reuse, complexity, smoke coverage) after the 3-arch
+`:latest-cross` went green. Done this pass (all shellcheck-clean; build-path items
+validated by the 0717 media→android→runtime rebuild unless noted):
+
+- **DONE (438ac45): freetype/libpng cross-build dedup.** Extracted
+  `cross_compile_cmake_lib_from_source` (01-core/cross-env.sh) reused by both
+  opencv/install-deps.sh source-build blocks; adopts `download_and_extract`
+  (retry + temp-file hygiene). install-deps.sh 172→124 lines.
+- **DONE (26bf2b7): litert platform-tag dedup + verify-parity data-driven dispatch
+  + configure-gcc-env decomposed** into 5 `_gcc_env_*` helpers.
+  (configure-gcc-env is TOOLCHAIN-stage → validates only on a full from-scratch
+  rebuild.)
+- **DONE (5354c9c): swap-native-gcc `main` decomposed** (guard clauses + 5 helpers,
+  nest 4→1; fix6 -idirafter invariant re-verified) **+ setup_torch_deps decomposed**
+  into `_install_cv2_runtime_apt`/`_install_ffmpeg_runtime_codecs`/
+  `_assert_ffmpeg_so_closure`.
+- **DONE (52ee5b9): build_python multiarch-apt bootstrap extracted** from
+  `_python_cross_configure`. (TOOLCHAIN-stage → full-rebuild validation.)
+- **DONE (52b9618): runtime-image smokes** — HEALTHCHECK now EXECUTED not just
+  parsed (gated); WebRTC signalling-server binary + Vulkan loader probes (WARN).
+- **DONE (app v0.0.26, afbca10): wheel smokes** — JPEG imencode + onnxruntime-EP
+  asserts (gated); optional cv2 dnn / tiff-webp-exr codecs / freetype-text checks.
+  ContainerHub APP_REF v0.0.24→v0.0.26 (a1e8236).
+
+**DEFERRED — `setup_gi_cross_wrappers` decomposition (C1, gstreamer/common/
+pre-setup.sh:190, ~221 lines, M·★★★).** The single largest complexity win, but the
+highest-risk mechanical lift: ~30 implicitly-global vars shared across the block +
+FIVE `cat <<EOF` wrapper heredocs whose `\$`/`${}` escaping cannot be validated by
+shellcheck/`bash -n` (they check the outer script, not the generated wrapper
+semantics), and — unlike swap-native-gcc — there is NO verify-critical-fixes check
+that greps the generated content. A silent heredoc-escape slip would only surface
+deep in a media rebuild (broken g-ir-scanner wrapper). Do it as a dedicated pass
+with a content-diff of the generated wrappers before/after, not inside a batch.
+Split into `_gi_resolve_paths` / `_gi_detect_qemu_runner` / `_gi_detect_qemu_sysroot`
+/ `_gi_write_ldd_wrappers` / `_gi_write_scanner_wrappers` / `_gi_write_pc_metadata`,
+keeping every var global (no `local`) to preserve the shared-state behaviour.
+
+**Audit-surfaced items NOT yet actioned (triage):** the ffmpeg install-deps
+`NV_CODEC_HEADERS_REF:-n12.2.1` script default still drifts from versions.env
+(n13.0.19.0) — advisory-only in verify-arg-consistency, worth aligning.
