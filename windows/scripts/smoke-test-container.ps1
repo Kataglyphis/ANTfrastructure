@@ -779,10 +779,9 @@ Assert-DirectoryExists -Path $gstBin -Description "GSTREAMER_BIN"
 # Verify GStreamer can create and run a trivial pipeline. num-buffers=1 is
 # essential: a bare fakesrc produces buffers FOREVER and hangs the smoke test.
 Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
-    $result = & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc num-buffers=1 ! fakesink 2>&1 | Out-String
-    # If GST_PLUGIN_ERROR occurs but not a crash, the binary loads
-    return $result -notmatch 'error while loading shared libraries'
-} -FailMessage "GStreamer gst-launch-1.0 failed to load"
+    & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc num-buffers=1 ! fakesink 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+} -FailMessage "GStreamer fakesrc pipeline failed (coreelements broken or gst-launch cannot run)"
 
 # Pin assert: the version actually shipped must match versions.env, catching a
 # stale media layer riding into the final image.
