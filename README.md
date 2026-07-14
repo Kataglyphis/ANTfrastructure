@@ -150,7 +150,7 @@ nerdctl run --rm --privileged tonistiigi/binfmt --install all
 <!-- generated:version-snapshot:start -->
 ## Source-Controlled Version Snapshot
 
-This block is generated from the Dockerfiles and setup scripts by `python3 docs/scripts/sync_versions.py --write`.
+This block is generated from the Dockerfiles and setup scripts by `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/sync_versions.py --write`.
 
 | Target | Source-controlled defaults |
 | --- | --- |

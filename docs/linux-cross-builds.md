@@ -490,7 +490,7 @@ All version numbers are now tracked in a single file: `linux/scripts/01-core/ver
 
 `common.sh` and `artifact-common.sh` both source `versions.env` at load time with `set -a`, so all build scripts and orchestrators automatically receive canonical values. The per-Dockerfile ARG defaults are kept as safety nets and should match `versions.env`.
 
-After bumping versions, run `python3 docs/scripts/sync_versions.py --write` to update the version snapshot in `README.md`.
+After bumping versions, run `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/sync_versions.py --write --repo-root .` to update the version snapshot in `README.md`.
 
 ## Five Critical Fixes To Maintain
 

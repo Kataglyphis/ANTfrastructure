@@ -17,7 +17,7 @@
 
 Current automated validation in this repository is documentation-focused:
 
-- GitHub Actions runs the docs workflow and checks the generated version snapshot with `python3 docs/scripts/sync_versions.py --check`.
+- GitHub Actions runs the docs workflow and checks the generated version snapshot with `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/sync_versions.py --check --repo-root .`.
 - Local container validation is currently documented as targeted smoke builds in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md`.
 - The `wrapper-smoke` target in `Dockerfile.package` provides cheap packaging validation before publish.
 - `build-cross-chain.sh --verify-chain` performs a dry-run stale-check of the entire cross chain against registry digests without building anything.
