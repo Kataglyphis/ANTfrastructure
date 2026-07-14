@@ -15,10 +15,17 @@ ARG TORCH_APP_MODE=all
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
+# APP_REF: the Orchestr-ANT-ion tag assemble-torch-app.sh clones. The runtime
+# orchestrator already forwards --build-arg APP_REF from versions.env; this ARG +
+# ENV is what actually lets it reach the assemble RUN (previously unconsumed, so the
+# clone always fell back to the script default). Default kept in sync with
+# versions.env so a plain `docker build` matches the orchestrated build.
+ARG APP_REF=v0.0.24
 ENV VENV=/opt/venv \
     TORCH_APP_MODE=${TORCH_APP_MODE} \
     ONNX_PACKAGE=onnxruntime \
     PYTORCH_EXTRA="pytorch-cpu" \
+    APP_REF=${APP_REF} \
     SKIP_TORCH_TEST_EXTRAS=true
 
 COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/ubuntu-mirror.sh linux/scripts/01-core/cross-env.sh /opt/scripts/core/

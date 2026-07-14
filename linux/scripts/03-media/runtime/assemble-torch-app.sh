@@ -6,7 +6,7 @@ set -euo pipefail
 : "${PYTORCH_EXTRA:=pytorch-cpu}"
 
 APP_DIR="/opt/Kataglyphis-Orchestr-ANT-ion"
-APP_REF="${APP_REF:-v0.0.22}"
+APP_REF="${APP_REF:-v0.0.24}"
 
 # Uninstall any PyPI opencv-family packages (best-effort). Centralizes the four
 # package names that were repeated verbatim across reconcile/install/verify so
