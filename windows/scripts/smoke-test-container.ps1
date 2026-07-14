@@ -1279,14 +1279,23 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
     Assert-CommandExists 'iree-compile'
     Assert-CommandExists 'iree-run-module'
 
-    # Pin assert: the shipped compiler must match versions.env, catching a
-    # stale media layer riding into the final image.
+    # Pin assert: the SOURCE-built iree-compile reports "version (unknown)"
+    # (upstream stamps release info only in its own release pipeline), so the
+    # stale-media-layer detector pins on the staged compiler WHEEL filename,
+    # which git-describe stamps with the tag (iree_base_compiler-3.11.0...).
     $ireeExpected = (Get-ExpectedVersion 'IREE_VERSION' '') -replace '^v', ''
     if ($ireeExpected) {
-        Assert-Test -Name "iree-compile matches versions.env pin ($ireeExpected)" -Condition {
-            (& iree-compile --version 2>&1 | Out-String) -match [regex]::Escape($ireeExpected)
-        } -FailMessage "iree-compile --version is not the pinned $ireeExpected -- stale media layer shipped?"
+        Assert-Test -Name "iree compiler wheel matches versions.env pin ($ireeExpected)" -Condition {
+            $ws = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
+            @(Get-ChildItem -Path $ws -Filter '*iree*compiler*.whl' -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match [regex]::Escape($ireeExpected) }).Count -gt 0
+        } -FailMessage "no staged iree compiler wheel carries the pinned $ireeExpected -- stale media layer shipped?"
     }
+
+    Assert-Test -Name "iree-compile runs (--version exits 0)" -Condition {
+        & iree-compile --version 2>&1 | Out-Null
+        $LASTEXITCODE -eq 0
+    } -FailMessage "iree-compile --version failed (tool or DLL chain broken)"
 
     $ireeDir = Join-Path $env:TEMP 'kataglyphis-smoke-iree'
     New-Item -Path $ireeDir -ItemType Directory -Force | Out-Null
