@@ -121,21 +121,16 @@ seed_opencv5_bindings() {
   fi
 }
 
-setup_torch_deps() {
-  cross_skip "torch environment assembly" && return 0
-
-  # Register /opt library paths so Python imports find FFmpeg etc.
-  export LD_LIBRARY_PATH="/usr/local/lib:/opt/opencv5/lib:/opt/gstreamer/lib:/opt/libcamera/lib:/opt/ffmpeg/lib:${LD_LIBRARY_PATH:-}"
-
-  apt-get update
-  # The locally-built OpenCV python wheel (opencv-contrib-python) in /opt/wheels is
-  # a plain linux_x86_64 wheel (not manylinux): it bundles nothing and dynamically
-  # links the full system stack plus the source-built ffmpeg in /opt/ffmpeg. The
-  # ffmpeg libs in turn pull external codec runtime libraries that are NOT part of
-  # the GTK/GLib stack and are not otherwise installed in the runtime image. The
-  # block below (libtbb12 .. libgraphene-1.0-0) provides exactly the sonames that
-  # `ldd` reports as unresolved for cv2.abi3.so once /opt payload dirs are on the
-  # loader path. Removing any of them breaks `import cv2` in the torch venv.
+# cv2.abi3.so's dynamic deps. The locally-built OpenCV python wheel
+# (opencv-contrib-python) in /opt/wheels is a plain linux_x86_64 wheel (not
+# manylinux): it bundles nothing and dynamically links the full system stack plus
+# the source-built ffmpeg in /opt/ffmpeg. The ffmpeg libs in turn pull external
+# codec runtime libraries that are NOT part of the GTK/GLib stack and are not
+# otherwise installed in the runtime image. The list below (libtbb12 ..
+# libgraphene-1.0-0) provides exactly the sonames that `ldd` reports as unresolved
+# for cv2.abi3.so once /opt payload dirs are on the loader path. Removing any of
+# them breaks `import cv2` in the torch venv.
+_install_cv2_runtime_apt() {
   apt-get install -y --no-install-recommends \
     libgirepository-2.0-dev libcairo2-dev libgirepository1.0-dev \
     python3-gi python3-cairo python3-cairo-dev python3-gi-cairo \
@@ -168,15 +163,17 @@ setup_torch_deps() {
     libopencore-amrnb0 libopencore-amrwb0 \
     libass9 libsndio7.0 libopenexr-3-1-30 libgraphene-1.0-0 \
     libavformat62 libavcodec62 libswscale9 libswresample6 libavdevice62 libavfilter11
+}
 
-  # FFmpeg external-codec RUNTIME libraries: install EXACTLY the apt packages the
-  # media stage recorded as /opt/ffmpeg's real link-time deps (see
-  # emit_runtime_apt_manifest in build-ffmpeg.sh). This auto-tracks whatever
-  # codecs were probe-enabled per arch -- no soname guessing against the Ubuntu
-  # base. Best-effort per package so a name unavailable for this arch can't fail
-  # the build; the ffmpeg smoke (now pipefail-correct) is the backstop that flags
-  # a genuinely missing soname. The hardcoded opencore-amr entries above remain as
-  # a baseline for when the manifest is absent (older media images).
+# FFmpeg external-codec RUNTIME libraries: install EXACTLY the apt packages the
+# media stage recorded as /opt/ffmpeg's real link-time deps (see
+# emit_runtime_apt_manifest in build-ffmpeg.sh). This auto-tracks whatever
+# codecs were probe-enabled per arch -- no soname guessing against the Ubuntu
+# base. Best-effort per package so a name unavailable for this arch can't fail
+# the build; the ffmpeg smoke (now pipefail-correct) is the backstop that flags
+# a genuinely missing soname. The hardcoded opencore-amr entries above remain as
+# a baseline for when the manifest is absent (older media images).
+_install_ffmpeg_runtime_codecs() {
   if [ -s /opt/ffmpeg/runtime-apt-packages.txt ]; then
     local _ff_pkgs
     _ff_pkgs="$(tr '\n' ' ' < /opt/ffmpeg/runtime-apt-packages.txt)"
@@ -196,17 +193,19 @@ setup_torch_deps() {
   else
     echo "No /opt/ffmpeg/runtime-apt-packages.txt manifest; relying on the hardcoded codec-lib baseline"
   fi
+}
 
-  # Fail-loud gate: every shared library the shipped ffmpeg needs (its full
-  # transitive closure) MUST resolve on the runtime loader path. The codec-lib
-  # installs above are best-effort, and historically a silently-skipped package
-  # (e.g. libopencore-amrwb0 -> libopencore-amrwb.so.0) shipped undetected --
-  # ffmpeg then died at load on arm64/riscv64 while amd64 stayed green, and the
-  # only backstop (the runtime-image ffmpeg smoke) is skipped whenever binfmt/QEMU
-  # is absent. `ldd` honours the LD_LIBRARY_PATH set above (so /opt/ffmpeg's own
-  # libav* resolve too) and runs natively in this torch stage under QEMU, so this
-  # asserts the property that actually matters regardless of smoke gating. Escape
-  # hatch: ALLOW_BROKEN_FFMPEG=1.
+# Fail-loud gate: every shared library the shipped ffmpeg needs (its full
+# transitive closure) MUST resolve on the runtime loader path. The codec-lib
+# installs above are best-effort, and historically a silently-skipped package
+# (e.g. libopencore-amrwb0 -> libopencore-amrwb.so.0) shipped undetected --
+# ffmpeg then died at load on arm64/riscv64 while amd64 stayed green, and the
+# only backstop (the runtime-image ffmpeg smoke) is skipped whenever binfmt/QEMU
+# is absent. `ldd` honours the LD_LIBRARY_PATH exported by setup_torch_deps (so
+# /opt/ffmpeg's own libav* resolve too) and runs natively in this torch stage
+# under QEMU, so this asserts the property that actually matters regardless of
+# smoke gating. Escape hatch: ALLOW_BROKEN_FFMPEG=1.
+_assert_ffmpeg_so_closure() {
   if [ -x /opt/ffmpeg/bin/ffmpeg ] && command -v ldd >/dev/null 2>&1; then
     local _ff_unresolved
     _ff_unresolved="$(ldd /opt/ffmpeg/bin/ffmpeg 2>/dev/null | awk '/=> not found/{print $1}' | sort -u || true)"
@@ -224,6 +223,19 @@ setup_torch_deps() {
       echo "FFmpeg shared-library closure fully resolved on the runtime loader path"
     fi
   fi
+}
+
+setup_torch_deps() {
+  cross_skip "torch environment assembly" && return 0
+
+  # Register /opt library paths so Python imports (and the ldd closure gate below)
+  # find FFmpeg etc. Exported so it reaches the helper subshells and ldd/apt.
+  export LD_LIBRARY_PATH="/usr/local/lib:/opt/opencv5/lib:/opt/gstreamer/lib:/opt/libcamera/lib:/opt/ffmpeg/lib:${LD_LIBRARY_PATH:-}"
+
+  apt-get update
+  _install_cv2_runtime_apt
+  _install_ffmpeg_runtime_codecs
+  _assert_ffmpeg_so_closure
 
   rm -rf /var/lib/apt/lists/*
 }
