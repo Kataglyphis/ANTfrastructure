@@ -19,6 +19,13 @@ $FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariab
 $prefix = Join-Path $InstallDir 'ffmpeg'
 $ffmpegDir = Join-Path $prefix 'bin'
 
+# Windows -> MSYS path (C:\x\y -> /c/x/y). Every bash-facing path MUST go through
+# this: a half-converted path once collapsed to /cruntimeffmpeg and make install
+# silently delivered the whole tree into <git-root>\cruntimeffmpeg.
+function ConvertTo-MsysPath([string]$Path) {
+    return '/' + $Path.Substring(0, 1).ToLower() + ($Path.Substring(2) -replace '\\', '/')
+}
+
 Write-Host "=== FFmpeg source build ($FfmpegVersion, clang-cl+lld-link default; FFMPEG_TOOLCHAIN=msvc to override) ==="
 
 if (Test-Path "$ffmpegDir\ffmpeg.exe") {
@@ -106,7 +113,7 @@ if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path 
     # NOT prevent it in 5.1). cmd merges the streams so PS sees plain stdout. Same pattern as the
     # `make install` line below.
     & cmd /c "git clone --branch $nvHdrRef --depth 1 https://github.com/FFmpeg/nv-codec-headers.git `"$nvHdrSrc`" 2>&1" | ForEach-Object { Write-Host $_ }
-    $nvHdrSrcCyg = '/' + $nvHdrSrc.Substring(0, 1).ToLower() + ($nvHdrSrc.Substring(2) -replace '\\', '/')
+    $nvHdrSrcCyg = ConvertTo-MsysPath $nvHdrSrc
     & cmd /c "`"$bashExe`" -c `"cd $nvHdrSrcCyg && make install PREFIX=$nvHdrPrefixFwd`" 2>&1" | ForEach-Object { Write-Host $_ }
     $nvPc = Join-Path $nvHdrPrefix 'lib\pkgconfig\ffnvcodec.pc'
     if (Test-Path $nvPc) {
@@ -123,12 +130,8 @@ if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path 
     Write-Host 'FFmpeg: no nvidia CUDA toolkit -> building without NVENC/NVDEC (CPU-only lane)'
 }
 
-# MSYS2 paths. Backslashes MUST become forward slashes: the previous form
-# produced /c\runtime\ffmpeg, configure collapsed it to /cruntimeffmpeg, and
-# `make install` silently delivered everything into <git-root>\cruntimeffmpeg —
-# which is why the image only ever carried the fallback exes.
-$cygPrefix = '/' + $prefix.Substring(0,1).ToLower() + ($prefix.Substring(2) -replace '\\', '/')
-$cygSrc = $srcDir -replace '\\', '/' -replace '^C:', '/c'
+$cygPrefix = ConvertTo-MsysPath $prefix
+$cygSrc = ConvertTo-MsysPath $srcDir
 
 # Ensure ONNX Runtime is discoverable for --enable-libonnxruntime.
 # Copy the ONNX header into FFmpeg's include/compat directory so configure's
