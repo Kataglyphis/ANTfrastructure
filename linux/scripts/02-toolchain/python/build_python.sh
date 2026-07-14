@@ -134,6 +134,41 @@ stage_host_python_payload() {
   python_stage_finalize "${target_arch}" "${stage_root}" "${python_mm}" "${target_triplet}"
 }
 
+# Enable the target architecture + ports.ubuntu.com apt sources. The base image
+# only carries the amd64 archive; arm64/riscv64 packages come from ports.
+_python_cross_enable_multiarch_apt() {
+  local target_arch="$1"
+  if ! dpkg --print-architecture 2>/dev/null | grep -qx "${target_arch}" && \
+     ! dpkg --print-foreign-architectures 2>/dev/null | grep -qx "${target_arch}"; then
+    dpkg --add-architecture "${target_arch}"
+  fi
+  if [ ! -f /etc/apt/sources.list.d/ubuntu-ports.sources ]; then
+    local _codename
+    _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+    printf 'Types: deb\nURIs: https://archive.ubuntu.com/ubuntu/\nSuites: %s %s-updates %s-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' \
+      "${_codename}" "${_codename}" "${_codename}" \
+      > /etc/apt/sources.list.d/ubuntu.sources
+    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: arm64 riscv64\n' \
+      "${_codename}" "${_codename}" "${_codename}" "${_codename}" \
+      > /etc/apt/sources.list.d/ubuntu-ports.sources
+    apt-get update -qq 2>&1 || warn "apt-get update failed; multiarch repos may be unavailable"
+  fi
+}
+
+# Install the target-arch dev packages CPython's extension modules link against.
+# Explicit architecture qualifier avoids install_target_packages' silent amd64
+# fallback (cross_build_enabled() returns false when TARGET_ARCH == BUILD_ARCH).
+_python_cross_stage_target_dev_pkgs() {
+  local target_arch="$1"
+  apt-get install -y --no-install-recommends \
+    "zlib1g-dev:${target_arch}" "libbz2-dev:${target_arch}" \
+    "liblzma-dev:${target_arch}" "libzstd-dev:${target_arch}" \
+    "libffi-dev:${target_arch}" "libssl-dev:${target_arch}" \
+    "uuid-dev:${target_arch}" "libbz2-dev" 2>&1 || \
+    warn "Some target dev packages failed to install; extension modules may be missing"
+}
+
 _python_cross_configure() {
   local source_dir="$1"
   local target_arch="$2"
@@ -155,32 +190,9 @@ _python_cross_configure() {
 
   prepare_cross_target_env "${target_arch}" "cross Python ${target_arch} staging"
 
-  # Install cross-target dev packages for ${target_arch} with explicit
-  # architecture qualifier (avoids install_target_packages' silent amd64 fallback
-  # since cross_build_enabled() returns false when TARGET_ARCH == BUILD_ARCH).
-  if ! dpkg --print-architecture 2>/dev/null | grep -qx "${target_arch}" && \
-     ! dpkg --print-foreign-architectures 2>/dev/null | grep -qx "${target_arch}"; then
-    dpkg --add-architecture "${target_arch}"
-  fi
-  # Set up multiarch apt sources if not already present (the base image only has
-  # the amd64 archive; arm64 packages come from ports.ubuntu.com).
-  if [ ! -f /etc/apt/sources.list.d/ubuntu-ports.sources ]; then
-    _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
-    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
-    printf 'Types: deb\nURIs: https://archive.ubuntu.com/ubuntu/\nSuites: %s %s-updates %s-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' \
-      "${_codename}" "${_codename}" "${_codename}" \
-      > /etc/apt/sources.list.d/ubuntu.sources
-    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: arm64 riscv64\n' \
-      "${_codename}" "${_codename}" "${_codename}" "${_codename}" \
-      > /etc/apt/sources.list.d/ubuntu-ports.sources
-    apt-get update -qq 2>&1 || warn "apt-get update failed; multiarch repos may be unavailable"
-  fi
-  apt-get install -y --no-install-recommends \
-    "zlib1g-dev:${target_arch}" "libbz2-dev:${target_arch}" \
-    "liblzma-dev:${target_arch}" "libzstd-dev:${target_arch}" \
-    "libffi-dev:${target_arch}" "libssl-dev:${target_arch}" \
-    "uuid-dev:${target_arch}" "libbz2-dev" 2>&1 || \
-    warn "Some target dev packages failed to install; extension modules may be missing"
+  _python_cross_enable_multiarch_apt "${target_arch}"
+  _python_cross_stage_target_dev_pkgs "${target_arch}"
+
   pkg_config_libdir="$(cross_pkg_config_libdir "${target_triplet}")"
   export CFLAGS="${CFLAGS:--O2} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export CPPFLAGS="${CPPFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
