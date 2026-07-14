@@ -2,8 +2,10 @@ docs/_build/*
 *.log
 logs/**/*
 out/**/*
-#Ignore vscode AI rules
-.github\instructions\codacy.instructions.md
+#Ignore vscode AI rules (forward slashes: gitignore treats backslash as an
+# escape character, so the old backslash form never matched and add -A kept
+# resurrecting the deleted file)
+.github/instructions/codacy.instructions.md
 __pycache__/
 *.pyc
 *.deb
