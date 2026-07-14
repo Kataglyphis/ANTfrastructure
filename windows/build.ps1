@@ -112,6 +112,7 @@ param(
     [switch]$NoCache,
     [ValidateSet('base', 'sdk', 'toolchain', 'media', 'final')]
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'final'),
+    # ValidateSet must be literal; keep in lockstep with Get-MediaBranchSpecs -Name values
     [ValidateSet('media-core', 'media-litert', 'media-tvm')]
     [string[]]$MediaBranches = @('media-core', 'media-litert', 'media-tvm'),
     [string]$Docker = '',
@@ -643,6 +644,10 @@ try {
         # run+commit path (Dockerfile.media-merge-builder carries the merged tree +
         # env + GStreamer scripts but does NOT run the compile; the run does).
         $gstLog = Join-Path $script:LogDir 'gstreamer.log'
+        # Branch result tags come from the specs (single source of truth) so a
+        # renamed -Tag cannot leave the merge COPY --from pointing at the old name.
+        $branchTag = @{}
+        foreach ($spec in Get-MediaBranchSpecs) { $branchTag[$spec.Name] = $spec.Tag }
         Invoke-RunCommitStage `
             -BuilderDockerfile 'windows/Dockerfile.media-merge-builder' `
             -BuilderTag    'local/kataglyphis:windows-media-merge-builder' `
@@ -652,9 +657,9 @@ try {
             -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
             -BuildArgs @{
                 BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
-                CORE_IMAGE                = 'local/kataglyphis:windows-media-core'
-                LITERT_IMAGE              = 'local/kataglyphis:windows-media-litert'
-                TVM_IMAGE                 = 'local/kataglyphis:windows-media-tvm'
+                CORE_IMAGE                = $branchTag['media-core']
+                LITERT_IMAGE              = $branchTag['media-litert']
+                TVM_IMAGE                 = $branchTag['media-tvm']
                 GSTREAMER_VERSION         = Get-Ver 'GSTREAMER_VERSION'
                 ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
                 ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
