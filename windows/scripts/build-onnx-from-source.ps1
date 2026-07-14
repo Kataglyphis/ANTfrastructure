@@ -309,20 +309,12 @@ try {
     cmd.exe /c """$($py.Exe)"" ""$SourceDir\setup.py"" bdist_wheel 2>&1"
     if ($LASTEXITCODE -ne 0) { throw "onnxruntime setup.py bdist_wheel failed (exit $LASTEXITCODE)" }
 } finally { Pop-Location }
-# @() is LOAD-BEARING: PS unwraps a single-element return to a string, and
-# [0] on a string is its FIRST CHARACTER -- pip then installed the PyPI package
-# literally named "c" with exit 0 (the c-0.0.1 incident, cost a rebuild, 2026-07-12).
-$ortStagedWheel = @(Save-PythonWheel -SourceDir (Join-Path $buildDir 'dist') -Required)
-if (-not (Test-Path $ortStagedWheel[0])) { throw "staged wheel path invalid: '$($ortStagedWheel[0])'" }
-# Install the wheel (WITH pypi deps) so the shipped image can `import onnxruntime`
-# out of the box -- the media merge fans CPython's site-packages into the image.
-# --only-binary :all: forbids sdist fallbacks that cannot build on 3.14.
-Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', $ortStagedWheel[0])
-
-# Fail HERE if the binding cannot import (a silent no-op install must not
-# survive to the final image's smoke test). Shared EAP=Stop-safe helper:
-# judging by stderr instead of exit code false-negatived on tvm's warnings.
-Test-PythonImport -Python $py -ModuleName 'onnxruntime'
+# Stage + install (WITH pypi deps) + import-assert via the shared helper, so the
+# shipped image can `import onnxruntime` out of the box (the media merge fans
+# CPython's site-packages into the image). The helper encapsulates the
+# single-element array-unwrap footgun (the c-0.0.1 incident) and the
+# EAP=Stop-safe import check.
+Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $buildDir 'dist') -ModuleName 'onnxruntime' | Out-Null
 
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='

@@ -518,12 +518,38 @@ function Test-PythonImport {
         [Parameter(Mandatory)][string]$ModuleName,
         [string]$VersionExpression = ''
     )
-    if (-not $VersionExpression) { $VersionExpression = "$ModuleName.__version__" }
+    # getattr fallback: not every binding exposes __version__ (iree.compiler
+    # does not) and the assert is about IMPORTABILITY, not version metadata.
+    # Single quotes only -- PS 5.1 strips embedded double quotes in -c strings.
+    if (-not $VersionExpression) { $VersionExpression = "getattr($ModuleName, '__version__', 'imported')" }
     $out = cmd.exe /c """$($Python.Exe)"" -c ""import $ModuleName; print($VersionExpression)"" 2>&1"
     $code = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     $tail = if ($out) { (@($out) | Select-Object -Last 1).ToString().Trim() } else { '' }
     if ($code -ne 0) { throw "import $ModuleName failed right after install (exit $code): $tail" }
     Write-Host "$ModuleName python binding OK ($tail)"
+}
+
+function Install-StagedPythonWheel {
+    # One-stop wheel publish: stage the built wheel into the central store,
+    # install it into the source CPython (--no-deps optional for wheels whose
+    # dependency metadata is unsatisfiable-by-design, e.g. genai-cuda's
+    # onnxruntime-gpu), and import-assert the binding. Encapsulates the
+    # single-element array-unwrap footgun (the c-0.0.1 incident) so call sites
+    # can never reintroduce it.
+    param(
+        [Parameter(Mandatory)][hashtable]$Python,
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$ModuleName,
+        [string]$WheelDir = 'C:\runtime\wheels',
+        [switch]$NoDeps
+    )
+    $staged = @(Save-PythonWheel -SourceDir $SourceDir -WheelDir $WheelDir -Required)
+    if (-not (Test-Path $staged[0])) { throw "staged wheel path invalid: '$($staged[0])'" }
+    $pipArgs = @('install', '--quiet', '--only-binary', ':all:')
+    if ($NoDeps) { $pipArgs += '--no-deps' }
+    Invoke-CpythonPip -Python $Python -Arguments ($pipArgs + @($staged[0]))
+    Test-PythonImport -Python $Python -ModuleName $ModuleName
+    return $staged[0]
 }
 
 function Save-PythonWheel {
@@ -638,6 +664,7 @@ Export-ModuleMember -Function @(
     'Initialize-ToolchainPythonEnvironment',
     'Initialize-PythonPlatformTag',
     'Save-PythonWheel',
+    'Install-StagedPythonWheel',
     'Test-PythonImport',
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',

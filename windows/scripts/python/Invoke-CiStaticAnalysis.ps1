@@ -30,30 +30,17 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot
 
-if ([string]::IsNullOrEmpty($PackageName)) {
-    if (Test-Path (Join-Path $repoRoot "pyproject.toml")) {
-        $pyprojectContent = Get-Content (Join-Path $repoRoot "pyproject.toml") -Raw
-        if ($pyprojectContent -match 'name\s*=\s*"([^"]+)"') {
-            $PackageName = $Matches[1]
-        }
-    }
-    if ([string]::IsNullOrEmpty($PackageName)) {
-        $PackageName = Split-Path $repoRoot -Leaf
-    }
-}
+$PackageName = Get-PyprojectPackageName -RepoRoot $repoRoot -Default $PackageName
 
 $script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir "logs"
 
 function Write-Log { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
 function Write-LogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
 
-$script:UvCommandRunner = {
-    param([string]$File, [string[]]$CommandArgs)
-    Invoke-BuildExternal -Context $script:BuildContext -File $File -Parameters $CommandArgs | Out-Null
-}
-
-$script:UvLogInfo = { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-$script:UvLogWarning = { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
+$uvDelegates = New-UvBuildDelegates -Context $script:BuildContext
+$script:UvCommandRunner = $uvDelegates.CommandRunner
+$script:UvLogInfo = $uvDelegates.LogInfo
+$script:UvLogWarning = $uvDelegates.LogWarning
 
 Open-BuildLog -Context $script:BuildContext
 

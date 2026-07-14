@@ -9,6 +9,11 @@ call "C:\Program Files (x86)\Microsoft Visual Studio\%VISUAL_STUDIO_VERSION%\Bui
 rem Fail loudly if the VS env did not load -- otherwise every downstream build fails
 rem confusingly with missing cl/link/msbuild instead of one clear message.
 if errorlevel 1 (echo [entrypoint] ERROR: VsDevCmd.bat failed with errorlevel %errorlevel% & exit /b 1)
+rem clang-cl /fsanitize=address runtime: clang_rt.asan_dynamic-x86_64.dll lives in
+rem LLVM's VERSIONED lib\clang\<N>\lib\windows dir, which the baked PATH cannot
+rem carry (the version floats with scoop's llvm). Resolve it dynamically so
+rem ASAN-instrumented exes run instead of dying STATUS_ENTRYPOINT_NOT_FOUND.
+for /d %%v in ("C:\Users\ContainerAdministrator\scoop\apps\llvm\current\lib\clang\*") do if exist "%%v\lib\windows" set "PATH=%%v\lib\windows;%PATH%"
 if "%~1"=="" (
   powershell.exe -NoLogo -ExecutionPolicy Bypass
 ) else (

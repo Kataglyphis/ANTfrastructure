@@ -31,13 +31,10 @@ $script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir "logs"
 function Write-Log { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
 function Write-LogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
 
-$script:UvCommandRunner = {
-    param([string]$File, [string[]]$CommandArgs)
-    Invoke-BuildExternal -Context $script:BuildContext -File $File -Parameters $CommandArgs | Out-Null
-}
-
-$script:UvLogInfo = { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-$script:UvLogWarning = { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
+$uvDelegates = New-UvBuildDelegates -Context $script:BuildContext
+$script:UvCommandRunner = $uvDelegates.CommandRunner
+$script:UvLogInfo = $uvDelegates.LogInfo
+$script:UvLogWarning = $uvDelegates.LogWarning
 
 Open-BuildLog -Context $script:BuildContext
 

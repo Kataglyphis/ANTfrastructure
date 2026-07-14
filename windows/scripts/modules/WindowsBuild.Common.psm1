@@ -248,7 +248,9 @@ function Invoke-BuildExternal {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $previousLastExitCode = $global:LASTEXITCODE
+    # Test-Path guard: before the first native call of a session LASTEXITCODE
+    # does not exist, and reading it under StrictMode raises a noisy error.
+    $previousLastExitCode = if (Test-Path variable:global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
     $global:LASTEXITCODE = 0
 
     try {
@@ -467,7 +469,47 @@ function Write-BuildSummary {
     }
 }
 
+function Get-PyprojectPackageName {
+    # Package name for CI runs: pyproject.toml [project] name, falling back to
+    # the repo-root leaf directory. Shared by the python CI entry scripts.
+    param(
+        [Parameter(Mandatory)]
+        [string]$RepoRoot,
+        [string]$Default = ''
+    )
+
+    if (-not [string]::IsNullOrEmpty($Default)) { return $Default }
+    $pyproject = Join-Path $RepoRoot 'pyproject.toml'
+    if (Test-Path $pyproject) {
+        $content = Get-Content $pyproject -Raw
+        if ($content -match 'name\s*=\s*"([^"]+)"') { return $Matches[1] }
+    }
+    return (Split-Path $RepoRoot -Leaf)
+}
+
+function New-UvBuildDelegates {
+    # The three delegates every python CI entry script hands to
+    # New-UvProjectEnvironment/Remove-UvProjectEnvironment, bound to one build
+    # context. Defined HERE (not WindowsUv.Common) so the closures resolve
+    # Invoke-BuildExternal/Write-BuildLog* in the module that owns them.
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context
+    )
+
+    return @{
+        CommandRunner = {
+            param([string]$File, [string[]]$CommandArgs)
+            Invoke-BuildExternal -Context $Context -File $File -Parameters $CommandArgs | Out-Null
+        }.GetNewClosure()
+        LogInfo    = { param([string]$Message); Write-BuildLog -Context $Context -Message $Message }.GetNewClosure()
+        LogWarning = { param([string]$Message); Write-BuildLogWarning -Context $Context -Message $Message }.GetNewClosure()
+    }
+}
+
 Export-ModuleMember -Function @(
+    'Get-PyprojectPackageName',
+    'New-UvBuildDelegates',
     'New-BuildContext',
     'Open-BuildLog',
     'Close-BuildLog',

@@ -779,10 +779,9 @@ Assert-DirectoryExists -Path $gstBin -Description "GSTREAMER_BIN"
 # Verify GStreamer can create and run a trivial pipeline. num-buffers=1 is
 # essential: a bare fakesrc produces buffers FOREVER and hangs the smoke test.
 Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
-    $result = & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc num-buffers=1 ! fakesink 2>&1 | Out-String
-    # If GST_PLUGIN_ERROR occurs but not a crash, the binary loads
-    return $result -notmatch 'error while loading shared libraries'
-} -FailMessage "GStreamer gst-launch-1.0 failed to load"
+    & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc num-buffers=1 ! fakesink 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+} -FailMessage "GStreamer fakesrc pipeline failed (coreelements broken or gst-launch cannot run)"
 
 # Pin assert: the version actually shipped must match versions.env, catching a
 # stale media layer riding into the final image.
@@ -910,6 +909,35 @@ Assert-Test -Name "Compiled program runs" -Condition {
 } -FailMessage "Compiled program produced wrong output"
 
 Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# AddressSanitizer runtime: the VS ASAN component is installed, but "installed"
+# is not "functional" (the OpenGL32 lesson) -- compile + RUN a TU under
+# /fsanitize=address to prove the ASAN runtime DLLs resolve in-container. The
+# probe must also DETECT a real bug: it exits 0 only if ASAN reports the
+# intentional heap-buffer-overflow (output contains the report marker).
+Assert-Test -Name "AddressSanitizer compile + runtime works (clang-cl /fsanitize=address)" -Condition {
+    $d = Join-Path $env:TEMP 'kataglyphis-smoke-asan'
+    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    try {
+        $src = Join-Path $d 'main.cpp'
+        Set-Content -Path $src -Encoding ASCII -Value @'
+#include <cstdio>
+int main() {
+    int* p = new int[4];
+    int v = p[4];  // intentional heap-buffer-overflow for ASAN to catch
+    std::printf("should not survive: %d\n", v);
+    delete[] p;
+    return 0;
+}
+'@
+        $exe = Join-Path $d 'main.exe'
+        & clang-cl $src '/fsanitize=address' '/Zi' '/EHsc' '/nologo' "/Fe$exe" 2>&1 | Out-Null
+        if (($LASTEXITCODE -ne 0) -or -not (Test-Path $exe)) { return $false }
+        $out = & $exe 2>&1 | Out-String
+        # ASAN aborts the process (non-zero exit) and prints its report.
+        return ($LASTEXITCODE -ne 0) -and ($out -match 'AddressSanitizer: heap-buffer-overflow')
+    } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+} -FailMessage "ASAN probe failed: /fsanitize=address did not compile, or the runtime did not detect the intentional overflow (ASAN runtime DLLs missing?)"
 
 # ============================================================================
 Write-TestHeader '15. CMake + Ninja + clang-cl integration'
@@ -1088,16 +1116,21 @@ Write-TestHeader '19. Environment pointer integrity'
 # A stale pointer is exactly how the CMake MSI->scoop switch left CMAKE_BIN aimed
 # at the deleted 'C:\Program Files\CMake\bin' (caught 2026-07-12).
 # Deliberately NOT asserted: CARGO_HOME/CARGO_BIN (pre-provisioned for a future
-# `cargo install`; nonexistent until first use) and LLVM_GLOBAL_BIN /
-# SCOOP_GLOBAL_SHIMS (known-stale base ENV -- llvm/scoop shims are user-scope
-# installs; fix rides with the next base rebuild).
+# `cargo install`; nonexistent until first use). LLVM_GLOBAL_BIN /
+# SCOOP_GLOBAL_SHIMS were REMOVED from the base image 2026-07-14 (they pointed
+# at never-created ProgramData dirs); tolerate them either way on old images.
 $envPointerNames = @(
     'CMAKE_BIN', 'FLUTTER_BIN', 'VULKAN_SDK', 'WIX', 'LLVM_USER_BIN',
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
     'ONNX_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB',
     'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
-    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'PYTHON_WHEELS'
+    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'PYTHON_WHEELS',
+    'IREE_ROOT', 'IREE_BIN',
+    # Hard-assert TORCH_APP_DIR here: section 21 deliberately SKIPs when it is
+    # unset (old-image tolerance), so without this pointer check a lost env var
+    # would silently drop the whole app-env verification.
+    'TORCH_APP_DIR'
 )
 if ($script:gpuNvidia) {
     $envPointerNames += @('CUDA_ROOT', 'CUDA_PATH', 'CUDNN_ROOT', 'TENSORRT_ROOT')
@@ -1132,7 +1165,7 @@ Write-TestHeader '20. Python bindings (wheels + imports + inference)'
 $wheelStore = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
 if ($wheelStore -and (Test-Path $wheelStore)) {
 
-    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl')) {
+    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl', 'av-*.whl', '*iree*compiler*.whl', '*iree*runtime*.whl')) {
         $wp = $wheelPattern
         Assert-Test -Name "wheel staged: $wheelPattern" -Condition {
             @(Get-ChildItem -Path $wheelStore -Filter $wp -ErrorAction SilentlyContinue).Count -gt 0
@@ -1160,6 +1193,22 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         } finally { Remove-Item $mdir -Recurse -Force -ErrorAction SilentlyContinue }
     } -FailMessage "onnxruntime python inference failed (pyd, dependent DLLs, or numpy broken)"
 
+    # The base interpreter's onnxruntime must be OUR combined wheel, not a PyPI
+    # variant that shadowed it: PyPI onnxruntime-gpu (dragged in via genai's
+    # dep metadata before the -NoDeps fix) ships NO DmlExecutionProvider, so
+    # asserting DML here detects any same-version shadowing (caught 2026-07-13).
+    Assert-Test -Name "python onnxruntime exposes DML EP (not shadowed by a PyPI variant)" -Condition {
+        $out = & python -c "import onnxruntime; print(onnxruntime.get_available_providers())" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'DmlExecutionProvider')
+    } -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
+
+    if ($script:gpuNvidia) {
+        Assert-Test -Name "python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)" -Condition {
+            $out = & python -c "import onnxruntime; print(onnxruntime.get_available_providers())" 2>&1 | Out-String
+            ($LASTEXITCODE -eq 0) -and ($out -match 'CUDAExecutionProvider') -and ($out -match 'TensorrtExecutionProvider')
+        } -FailMessage "base-interpreter onnxruntime lacks CUDA/TensorRT EPs"
+    }
+
     Assert-Test -Name "python onnxruntime-genai imports" -Condition {
         $out = & python -c "import onnxruntime_genai as og; print('py-genai', getattr(og, '__version__', 'n/a'))" 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'py-genai')
@@ -1176,6 +1225,25 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         ($LASTEXITCODE -eq 0) -and ($out -match 'py-tvm')
     } -FailMessage "import tvm failed (wheel, tvm_runtime/tvm_ffi DLLs, or deps broken)"
 
+    # PyAV built against OUR ffmpeg (PyPI's wheel is unloadable on Server Core:
+    # bundled avdevice imports AVICAP32). Real work: an in-memory mpeg4 encode
+    # (SOFTWARE codec by name -- the generic 'h264' resolves to h264_d3d12va,
+    # a hardware encoder that cannot open without a D3D12 device in-container).
+    Assert-Test -Name "python av (PyAV vs our ffmpeg): in-memory mpeg4 encode" -Condition {
+        $out = & python -c "import io, av; buf = io.BytesIO(); c = av.open(buf, mode='w', format='mp4'); s = c.add_stream('mpeg4', rate=24); s.width = 64; s.height = 64; s.pix_fmt = 'yuv420p'; f = av.VideoFrame(64, 64, 'yuv420p'); [c.mux(p) for p in s.encode(f)]; [c.mux(p) for p in s.encode()]; c.close(); print('py-av', av.__version__, len(buf.getvalue()) > 0)" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'py-av .* True')
+    } -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
+
+    # IREE python end-to-end: compile MLIR through iree.compiler and execute on
+    # iree.runtime's local-task driver -- proves the two wheels interoperate
+    # (MLIR is whitespace-insensitive, so the module fits a single -c line with
+    # no embedded double quotes -- PS 5.1 strips those).
+    # tensor<f32> args must be numpy arrays (a bare float dies in VM marshaling).
+    Assert-Test -Name "python iree compile+run end-to-end (abs(-5)=5, local-task)" -Condition {
+        $out = & python -c "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('func.func @abs(%i : tensor<f32>) -> (tensor<f32>) { %r = math.absf %i : tensor<f32> return %r : tensor<f32> }', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'py-iree 5\.0')
+    } -FailMessage "iree.compiler/iree.runtime end-to-end failed (wheels, bundled iree-compile, or runtime driver broken)"
+
 } else {
     Skip-Test 'Python bindings (PYTHON_WHEELS unset or missing -- image predates the wheel feature)'
 }
@@ -1186,17 +1254,84 @@ Write-TestHeader '21. Orchestr-ANT-ion app environment (torch step)'
 # The final image bakes the runtime orchestrator (clone + uv sync + reconcile
 # with this lane's wheels -- see assemble-torch-app.ps1). Verification re-runs
 # the script's own verify mode OFFLINE against the baked venv: imports numpy,
-# cv2, torch, onnxruntime (CUDA EP build-assert on the GPU lane), genai, tvm.
+# cv2, torch, onnxruntime (CUDA EP build-assert on the GPU lane), genai, tvm,
+# av, iree.
 $torchAppDir = [Environment]::GetEnvironmentVariable('TORCH_APP_DIR')
 $torchAppScript = Join-Path $PSScriptRoot 'assemble-torch-app.ps1'
 if ($torchAppDir -and (Test-Path $torchAppDir) -and (Test-Path $torchAppScript)) {
     Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
-    Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm)" -Condition {
+    Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree)" -Condition {
         $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'torch-app-env OK')
     } -FailMessage "assemble-torch-app.ps1 -Mode verify failed (baked venv broken or local wheels lost)"
 } else {
     Skip-Test 'Orchestr-ANT-ion app env (TORCH_APP_DIR unset or missing -- image predates the torch step)'
+}
+
+# ============================================================================
+Write-TestHeader '22. IREE (source-built ML compiler + runtime)'
+# ============================================================================
+# Native tools live at IREE_BIN (on PATH via the media merge); the python
+# bindings ship as self-contained wheels (asserted in section 20). Real work,
+# not existence checks: compile MLIR to a vmfb and execute it.
+$ireeBin = [Environment]::GetEnvironmentVariable('IREE_BIN')
+if ($ireeBin -and (Test-Path $ireeBin)) {
+    Assert-CommandExists 'iree-compile'
+    Assert-CommandExists 'iree-run-module'
+
+    # Pin assert: the SOURCE-built iree-compile reports "version (unknown)"
+    # (upstream stamps release info only in its own release pipeline), so the
+    # stale-media-layer detector pins on the staged compiler WHEEL filename,
+    # which git-describe stamps with the tag (iree_base_compiler-3.11.0...).
+    $ireeExpected = (Get-ExpectedVersion 'IREE_VERSION' '') -replace '^v', ''
+    if ($ireeExpected) {
+        Assert-Test -Name "iree compiler wheel matches versions.env pin ($ireeExpected)" -Condition {
+            $ws = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
+            @(Get-ChildItem -Path $ws -Filter '*iree*compiler*.whl' -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match [regex]::Escape($ireeExpected) }).Count -gt 0
+        } -FailMessage "no staged iree compiler wheel carries the pinned $ireeExpected -- stale media layer shipped?"
+    }
+
+    Assert-Test -Name "iree-compile runs (--version exits 0)" -Condition {
+        & iree-compile --version 2>&1 | Out-Null
+        $LASTEXITCODE -eq 0
+    } -FailMessage "iree-compile --version failed (tool or DLL chain broken)"
+
+    $ireeDir = Join-Path $env:TEMP 'kataglyphis-smoke-iree'
+    New-Item -Path $ireeDir -ItemType Directory -Force | Out-Null
+    $ireeMlir = Join-Path $ireeDir 'abs.mlir'
+    $ireeVmfb = Join-Path $ireeDir 'abs-cpu.vmfb'
+    Set-Content -Path $ireeMlir -Encoding ascii -Value @'
+func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
+  %result = math.absf %input : tensor<f32>
+  return %result : tensor<f32>
+}
+'@
+
+    Assert-Test -Name "iree-compile: MLIR -> vmfb (llvm-cpu)" -Condition {
+        & iree-compile --iree-hal-target-backends=llvm-cpu $ireeMlir -o $ireeVmfb 2>&1 | Out-Null
+        ($LASTEXITCODE -eq 0) -and (Test-Path $ireeVmfb) -and ((Get-Item $ireeVmfb).Length -gt 0)
+    } -FailMessage "iree-compile failed to lower MLIR for llvm-cpu"
+
+    Assert-Test -Name "iree-run-module: local-task executes abs(-5)=5" -Condition {
+        $out = & iree-run-module --module=$ireeVmfb --device=local-task --function=abs --input=f32=-5 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'f32=5')
+    } -FailMessage "iree-run-module failed or returned wrong result (runtime/HAL broken)"
+
+    if ($script:gpuNvidia) {
+        # Compile-only on the GPU lane (PTX via IREE's NVPTX backend; execution
+        # needs a CUDA device, which containers on this host cannot see --
+        # mirrors the ORT CUDA-EP build assert pattern).
+        Assert-Test -Name "iree-compile: MLIR -> vmfb (cuda target, compile-only)" -Condition {
+            $cudaVmfb = Join-Path $ireeDir 'abs-cuda.vmfb'
+            & iree-compile --iree-hal-target-backends=cuda $ireeMlir -o $cudaVmfb 2>&1 | Out-Null
+            ($LASTEXITCODE -eq 0) -and (Test-Path $cudaVmfb) -and ((Get-Item $cudaVmfb).Length -gt 0)
+        } -FailMessage "iree-compile cuda target failed (NVPTX backend broken)"
+    }
+
+    Remove-Item $ireeDir -Recurse -Force -ErrorAction SilentlyContinue
+} else {
+    Skip-Test 'IREE (IREE_BIN unset or missing -- image predates the IREE step)'
 }
 
 # ============================================================================

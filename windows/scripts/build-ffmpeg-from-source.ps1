@@ -19,6 +19,13 @@ $FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariab
 $prefix = Join-Path $InstallDir 'ffmpeg'
 $ffmpegDir = Join-Path $prefix 'bin'
 
+# Windows -> MSYS path (C:\x\y -> /c/x/y). Every bash-facing path MUST go through
+# this: a half-converted path once collapsed to /cruntimeffmpeg and make install
+# silently delivered the whole tree into <git-root>\cruntimeffmpeg.
+function ConvertTo-MsysPath([string]$Path) {
+    return '/' + $Path.Substring(0, 1).ToLower() + ($Path.Substring(2) -replace '\\', '/')
+}
+
 Write-Host "=== FFmpeg source build ($FfmpegVersion, clang-cl+lld-link default; FFMPEG_TOOLCHAIN=msvc to override) ==="
 
 if (Test-Path "$ffmpegDir\ffmpeg.exe") {
@@ -106,7 +113,7 @@ if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path 
     # NOT prevent it in 5.1). cmd merges the streams so PS sees plain stdout. Same pattern as the
     # `make install` line below.
     & cmd /c "git clone --branch $nvHdrRef --depth 1 https://github.com/FFmpeg/nv-codec-headers.git `"$nvHdrSrc`" 2>&1" | ForEach-Object { Write-Host $_ }
-    $nvHdrSrcCyg = '/' + $nvHdrSrc.Substring(0, 1).ToLower() + ($nvHdrSrc.Substring(2) -replace '\\', '/')
+    $nvHdrSrcCyg = ConvertTo-MsysPath $nvHdrSrc
     & cmd /c "`"$bashExe`" -c `"cd $nvHdrSrcCyg && make install PREFIX=$nvHdrPrefixFwd`" 2>&1" | ForEach-Object { Write-Host $_ }
     $nvPc = Join-Path $nvHdrPrefix 'lib\pkgconfig\ffnvcodec.pc'
     if (Test-Path $nvPc) {
@@ -123,12 +130,8 @@ if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path 
     Write-Host 'FFmpeg: no nvidia CUDA toolkit -> building without NVENC/NVDEC (CPU-only lane)'
 }
 
-# MSYS2 paths. Backslashes MUST become forward slashes: the previous form
-# produced /c\runtime\ffmpeg, configure collapsed it to /cruntimeffmpeg, and
-# `make install` silently delivered everything into <git-root>\cruntimeffmpeg —
-# which is why the image only ever carried the fallback exes.
-$cygPrefix = '/' + $prefix.Substring(0,1).ToLower() + ($prefix.Substring(2) -replace '\\', '/')
-$cygSrc = $srcDir -replace '\\', '/' -replace '^C:', '/c'
+$cygPrefix = ConvertTo-MsysPath $prefix
+$cygSrc = ConvertTo-MsysPath $srcDir
 
 # Ensure ONNX Runtime is discoverable for --enable-libonnxruntime.
 # Copy the ONNX header into FFmpeg's include/compat directory so configure's
@@ -312,6 +315,47 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '1', 'Process')
 }
 
+# ── Import-lib normalization (PyAV and other MSVC-style consumers link these) ──
+# `make install` places avformat.lib / avformat-63.def per configure's SHLIBDIR/
+# LIBDIR split, and ffmpeg master (a live branch) has already moved that layout
+# once (2026-07-13: lib\ suddenly had no .lib at all -> PyAV LNK1181). Instead of
+# chasing upstream, normalize: harvest every .lib/.def from the whole install
+# prefix AND the build tree into lib\, then regenerate any still-missing import
+# lib from its .def (lib.exe is in the VsDevCmd env). Each step logs what it
+# found so the next drift is visible in the build log, not a linker error.
+if (Test-Path "$ffmpegDir\ffmpeg.exe") {
+    $ffLibDir = Join-Path $prefix 'lib'
+    New-Item -Path $ffLibDir -ItemType Directory -Force | Out-Null
+    foreach ($pattern in @('*.lib', '*.def')) {
+        $harvest = @(Get-ChildItem $prefix -Recurse -Filter $pattern -ErrorAction SilentlyContinue) +
+                   @(Get-ChildItem $srcDir -Recurse -Filter $pattern -ErrorAction SilentlyContinue |
+                     Where-Object { $_.Name -match '^(av|sw)' })
+        foreach ($f in $harvest) {
+            if ($f.DirectoryName -ne $ffLibDir) {
+                Write-Host "harvesting $($f.Name) from $($f.DirectoryName)"
+                Copy-Item $f.FullName $ffLibDir -Force
+                # inside the install prefix this is a relocation, not a copy:
+                # bin\ must ship only runtime DLLs + exes
+                if ($f.FullName.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    Remove-Item $f.FullName -Force
+                }
+            }
+        }
+    }
+    foreach ($defFile in @(Get-ChildItem $ffLibDir -Filter '*.def' -ErrorAction SilentlyContinue)) {
+        # avformat-63.def -> avformat.lib (unversioned, what PyAV's -lavformat resolves)
+        $libName = ($defFile.BaseName -replace '-\d+$', '') + '.lib'
+        $libPath = Join-Path $ffLibDir $libName
+        if (-not (Test-Path $libPath)) {
+            Write-Host "regenerating $libName from $($defFile.Name)"
+            # /name pins the DLL the import lib binds to (our makedef emits EXPORTS only)
+            & cmd /c "lib.exe /nologo /machine:x64 /def:`"$($defFile.FullName)`" /name:$($defFile.BaseName).dll /out:`"$libPath`" 2>&1" | ForEach-Object { Write-Host $_ }
+        }
+    }
+    $libCount = @(Get-ChildItem $ffLibDir -Filter '*.lib' -ErrorAction SilentlyContinue).Count
+    Write-Host "import libs in ${ffLibDir}: $libCount"
+}
+
 Remove-SourceBuildTree -Path $SourceDir
 
 Write-Host "=== FFmpeg build completed ==="
@@ -321,6 +365,53 @@ if (Test-Path "$ffmpegDir\ffprobe.exe") { Write-Host "ffprobe.exe installed" }
 $finalDlls = @(Get-ChildItem "$ffmpegDir\*.dll" -ErrorAction SilentlyContinue)
 Write-Host "runtime DLLs installed: $($finalDlls.Count)"
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete: no ffmpeg.exe (source build and fallback both failed)' }
+
+# ── PyAV wheel built against THIS FFmpeg ─────────────────────────────────────
+# The PyPI av wheel is structurally unloadable on Server Core (its bundled
+# avdevice hard-imports AVICAP32.dll, a desktop-only VfW DLL), so build PyAV
+# from sdist against OUR install: setup.py's --ffmpeg-dir argv flag supplies
+# include/lib directly (its pkg-config path never engages on this lane), and
+# python314.lib lives in PCbuild\amd64, reachable only via the LIB env var.
+# Compiles clean against ffmpeg master (verified 2026-07-13); OUR avdevice
+# imports only Server-Core-present system DLLs. The wheel's av* DLL deps
+# resolve at runtime via the sitecustomize dll-dir shim (ffmpeg\bin is listed).
+if ([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -ne '1') {
+    Write-Warning 'FFmpeg came from the prebuilt fallback (no headers/import libs) -- skipping the PyAV wheel build.'
+    return
+}
+$pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '18.0.0'
+Write-Host "=== PyAV $pyavVersion wheel build (against $prefix) ==="
+# Precondition: PyAV links the import libs that ffmpeg's `make install` stages
+# into lib\. If a master drop stops producing them, fail HERE with an inventory
+# instead of a bare LNK1181 deep inside setup.py (bit us 2026-07-13).
+$ffLibDir = Join-Path $prefix 'lib'
+$ffImportLibs = @(Get-ChildItem $ffLibDir -Filter '*.lib' -ErrorAction SilentlyContinue | ForEach-Object Name)
+Write-Host ("ffmpeg import libs present: " + (($ffImportLibs | Sort-Object) -join ', '))
+if (-not (Test-Path (Join-Path $ffLibDir 'avformat.lib'))) {
+    Write-Host ("lib dir inventory: " + ((Get-ChildItem $ffLibDir -Name -ErrorAction SilentlyContinue) -join ', '))
+    throw "ffmpeg install has no avformat.lib in $ffLibDir -- master drift broke import-lib generation; PyAV cannot link"
+}
+$py = Get-SourceBuildPython
+Install-CpythonPip -Python $py
+Initialize-PythonPlatformTag | Out-Null
+Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'cython', 'setuptools', 'wheel')
+$pyavSrcRoot = 'C:\temp\pyav-src'
+New-Item -Path $pyavSrcRoot -ItemType Directory -Force | Out-Null
+Invoke-CpythonPip -Python $py -Arguments @('download', "av==$pyavVersion", '--no-binary', ':all:', '--no-deps', '--no-build-isolation', '-d', $pyavSrcRoot)
+$pyavSdist = Get-ChildItem $pyavSrcRoot -Filter 'av-*.tar.gz' | Select-Object -First 1
+if (-not $pyavSdist) { throw "PyAV sdist not downloaded to $pyavSrcRoot" }
+cmd.exe /c """$($py.Exe)"" -m tarfile -e ""$($pyavSdist.FullName)"" ""$pyavSrcRoot"" 2>&1"
+if ($LASTEXITCODE -ne 0) { throw 'PyAV sdist extraction failed' }
+$pyavDir = (Get-ChildItem $pyavSrcRoot -Directory | Select-Object -First 1).FullName
+$env:LIB = "$($py.LibDir);$env:LIB"
+Push-Location $pyavDir
+try {
+    cmd.exe /c """$($py.Exe)"" setup.py --ffmpeg-dir=""$prefix"" bdist_wheel 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw "PyAV setup.py bdist_wheel failed (exit $LASTEXITCODE)" }
+} finally { Pop-Location }
+Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
+Remove-SourceBuildTree -Path $pyavSrcRoot
+Write-Host '=== PyAV wheel build completed ==='
 
 
 

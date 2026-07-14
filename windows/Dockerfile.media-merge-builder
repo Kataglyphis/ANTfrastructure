@@ -34,18 +34,22 @@ ARG ONNXRUNTIME_VERSION=v1.27.0
 ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
 ARG OPENCV_SOURCE_VERSION=5.x
 ARG FFMPEG_VERSION=master
+ARG PYAV_VERSION=18.0.0
 ARG LITERT_VERSION=v2.1.6
 ARG LITERT_LM_VERSION=0.13.1
 ARG TVM_REF=v0.25.0
+ARG IREE_VERSION=v3.11.0
 
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
     OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
     FFMPEG_VERSION="${FFMPEG_VERSION}" `
+    PYAV_VERSION="${PYAV_VERSION}" `
     LITERT_VERSION="${LITERT_VERSION}" `
     LITERT_LM_VERSION="${LITERT_LM_VERSION}" `
-    TVM_REF="${TVM_REF}"
+    TVM_REF="${TVM_REF}" `
+    IREE_VERSION="${IREE_VERSION}"
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
@@ -61,7 +65,9 @@ COPY --from=media-core C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\sit
 COPY --from=media-litert C:\runtime\lib\litert C:\runtime\lib\litert
 COPY --from=media-litert C:\runtime\lib\litert-lm C:\runtime\lib\litert-lm
 COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
-# media-tvm's wheel store entry (tvm-*.whl) merges over media-core's wheels
+# IREE native tools + libs (iree-compile, iree-run-module) from the same branch.
+COPY --from=media-tvm C:\runtime\iree C:\runtime\iree
+# media-tvm's wheel store entries (tvm/iree wheels) merge over media-core's
 # (distinct filenames; C:\runtime\wheels is the central store, see PYTHON_WHEELS).
 COPY --from=media-tvm C:\runtime\wheels C:\runtime\wheels
 # TVM's Python wheel (plus pip) lives in the branch CPython's site-packages;
@@ -95,11 +101,14 @@ ENV LITERT_LM_ROOT="C:\runtime\lib\litert-lm"
 ENV LITERT_LM_INCLUDE="${LITERT_LM_ROOT}\include"
 ENV LITERT_LM_LIB="${LITERT_LM_ROOT}\lib"
 
-# OpenCV layout
+# OpenCV layout. bin/lib live under the MSVC-style x64\vc18 subtree that
+# OpenCV's Windows install emits — pointing at <root>\bin|lib (which do not
+# exist) forced the final Dockerfile to re-point these for months; fixed at
+# the source now, final carries no override.
 ENV OPENCV_ROOT="C:\runtime\lib\opencv5"
 ENV OPENCV_INCLUDE="${OPENCV_ROOT}\include"
-ENV OPENCV_LIB="${OPENCV_ROOT}\lib"
-ENV OPENCV_BIN="${OPENCV_ROOT}\bin"
+ENV OPENCV_LIB="${OPENCV_ROOT}\x64\vc18\lib"
+ENV OPENCV_BIN="${OPENCV_ROOT}\x64\vc18\bin"
 
 # FFmpeg layout
 ENV FFMPEG_ROOT="C:\runtime\ffmpeg"
@@ -111,12 +120,17 @@ ENV FFMPEG_LIB="${FFMPEG_ROOT}\lib"
 ENV TVM_ROOT="C:\runtime\lib\tvm"
 ENV TVM_LIBRARY_PATH="${TVM_ROOT}\lib"
 
+# IREE layout — native compiler/runtime tools (iree-compile, iree-run-module);
+# the python bindings ship as self-contained wheels in PYTHON_WHEELS.
+ENV IREE_ROOT="C:\runtime\iree"
+ENV IREE_BIN="${IREE_ROOT}\bin"
+
 # Central store for the python wheels built by the media branches
 # (onnxruntime, onnxruntime-genai, tvm). cv2 ships installed-in-place instead
 # (OpenCV has no in-repo wheel machinery; opencv-python is a separate project).
 ENV PYTHON_WHEELS="C:\runtime\wheels"
 
-ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$PATH
+ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH
 
 # PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg and OpenCV.
 # FFMPEG_LIB\pkgconfig carries the libav*.pc files (enables gst-libav).

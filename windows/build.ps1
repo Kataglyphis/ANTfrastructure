@@ -112,6 +112,7 @@ param(
     [switch]$NoCache,
     [ValidateSet('base', 'sdk', 'toolchain', 'media', 'final')]
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'final'),
+    # ValidateSet must be literal; keep in lockstep with Get-MediaBranchSpecs -Name values
     [ValidateSet('media-core', 'media-litert', 'media-tvm')]
     [string[]]$MediaBranches = @('media-core', 'media-litert', 'media-tvm'),
     [string]$Docker = '',
@@ -387,6 +388,7 @@ function Get-MediaBranchSpecs {
                 ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
                 OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
+                PYAV_VERSION              = Get-Ver 'PYAV_VERSION'
                 NV_CODEC_HEADERS_REF      = Get-Ver 'NV_CODEC_HEADERS_REF'
                 CUDA_ARCHITECTURES        = Get-Ver 'CUDA_ARCHITECTURES'
                 MEMORY_LIMIT_GB           = $MediaMemoryGb
@@ -407,11 +409,12 @@ function Get-MediaBranchSpecs {
             -BuilderDockerfile $builderDf `
             -BuilderTag 'local/kataglyphis:windows-media-tvm-builder' `
             -ContainerName 'kataglyphis-media-tvm-build' `
-            -RunScript 'build-tvm-from-source.ps1' `
+            -RunScript 'build-media-tvm-all.ps1' `
             -Tag 'local/kataglyphis:windows-media-tvm' `
             -BuildArgs (@{
                 BASE_IMAGE      = 'local/kataglyphis:windows-toolchain'
                 TVM_REF         = Get-Ver 'TVM_REF'
+                IREE_VERSION    = Get-Ver 'IREE_VERSION'
                 MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
     )
@@ -643,6 +646,10 @@ try {
         # run+commit path (Dockerfile.media-merge-builder carries the merged tree +
         # env + GStreamer scripts but does NOT run the compile; the run does).
         $gstLog = Join-Path $script:LogDir 'gstreamer.log'
+        # Branch result tags come from the specs (single source of truth) so a
+        # renamed -Tag cannot leave the merge COPY --from pointing at the old name.
+        $branchTag = @{}
+        foreach ($spec in Get-MediaBranchSpecs) { $branchTag[$spec.Name] = $spec.Tag }
         Invoke-RunCommitStage `
             -BuilderDockerfile 'windows/Dockerfile.media-merge-builder' `
             -BuilderTag    'local/kataglyphis:windows-media-merge-builder' `
@@ -652,17 +659,19 @@ try {
             -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
             -BuildArgs @{
                 BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
-                CORE_IMAGE                = 'local/kataglyphis:windows-media-core'
-                LITERT_IMAGE              = 'local/kataglyphis:windows-media-litert'
-                TVM_IMAGE                 = 'local/kataglyphis:windows-media-tvm'
+                CORE_IMAGE                = $branchTag['media-core']
+                LITERT_IMAGE              = $branchTag['media-litert']
+                TVM_IMAGE                 = $branchTag['media-tvm']
                 GSTREAMER_VERSION         = Get-Ver 'GSTREAMER_VERSION'
                 ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
                 ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
                 OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
+                PYAV_VERSION              = Get-Ver 'PYAV_VERSION'
                 LITERT_VERSION            = Get-Ver 'LITERT_VERSION'
                 LITERT_LM_VERSION         = Get-Ver 'LITERT_LM_VERSION'
                 TVM_REF                   = Get-Ver 'TVM_REF'
+                IREE_VERSION              = Get-Ver 'IREE_VERSION'
                 MEMORY_LIMIT_GB           = $MediaMemoryGb
             } `
             -Label 'media-merge+gstreamer' -OutLog $gstLog
