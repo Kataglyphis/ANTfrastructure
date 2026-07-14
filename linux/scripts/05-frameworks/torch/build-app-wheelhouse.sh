@@ -736,30 +736,54 @@ build_iree_wheels() {
     wheel_platform="$(wheel_platform_tag || true)"
     [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 0; }
 
-    # Clone at the pinned tag, then init submodules EXCLUDING llvm-project (huge,
-    # compiler-only). The runtime needs flatcc/cpuinfo/etc., not LLVM.
+    # Clone at the pinned tag, then init submodules EXCLUDING the compiler-only
+    # heavyweights: llvm-project AND torch-mlir + stablehlo (both are MLIR-dialect
+    # compiler inputs the runtime never needs, and torch-mlir drags a full NESTED
+    # externals/llvm-project via --recursive — the first run wasted ~35s cloning
+    # it). The runtime needs flatcc/cpuinfo/musl/etc., not LLVM.
     rm -rf "${src_dir}"
     if ! git clone --branch "${IREE_REF}" --depth 1 https://github.com/iree-org/iree.git "${src_dir}"; then
         warn "IREE clone ${IREE_REF} failed; skipping riscv64 runtime wheel"; return 0
     fi
-    if ! ( cd "${src_dir}" && git -c submodule."third_party/llvm-project".update=none \
+    if ! ( cd "${src_dir}" && git \
+             -c submodule."third_party/llvm-project".update=none \
+             -c submodule."third_party/torch-mlir".update=none \
+             -c submodule."third_party/stablehlo".update=none \
              submodule update --init --recursive --depth 1 ); then
         warn "IREE submodule init failed; skipping riscv64 runtime wheel"; return 0
     fi
 
-    # Stage 1 — LLVM-free host tools for IREE_HOST_BIN_DIR.
+    # Stage 1 — LLVM-free host tools for IREE_HOST_BIN_DIR, built with the NATIVE
+    # amd64 compiler. This function runs inside the riscv64 cross environment,
+    # where CC/CXX/*FLAGS/CMAKE_TOOLCHAIN_FILE all point at the riscv64 cross
+    # toolchain (set up for the torch build). The host tools MUST be native or
+    # they can't execute on the build host to drive the target build — the first
+    # run (2026-07-14) failed here precisely because the host cmake inherited the
+    # cross CC/CXX. So strip the cross env for BOTH the configure and the build,
+    # and pin the host compiler + both Python executables (FindPython /
+    # FindPython3 disagreed on the first run).
+    local host_cc="" host_cxx=""
+    for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
+    for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
     rm -rf "${host_build}"
-    if ! cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
+    if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+             -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
+            cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="${host_cc}" \
+            -DCMAKE_CXX_COMPILER="${host_cxx}" \
             -DIREE_BUILD_COMPILER=OFF \
             -DIREE_BUILD_PYTHON_BINDINGS=OFF \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
             -DCMAKE_INSTALL_PREFIX="${host_install}" \
+            -DPython_EXECUTABLE="${BUILD_PYTHON}" \
             -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
         warn "IREE host-tools configure failed; skipping riscv64 runtime wheel"; return 0
     fi
-    if ! cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}"; then
+    if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+             -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
+            cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}"; then
         warn "IREE host-tools build failed; skipping riscv64 runtime wheel"; return 0
     fi
 
