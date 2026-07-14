@@ -108,7 +108,10 @@ function Install-TorchAppEnvironment {
         # - sitecustomize.py: win-amd64 tag + add_dll_directory for the image's
         #   native DLL homes (everything else is lazy/optional or rides the app
         #   lock; force-adding e.g. ml_dtypes drags a cp314-less sdist build in)
-        foreach ($staged in @('cv2', 'tvm_ffi', 'sitecustomize.py')) {
+        # ml_dtypes: iree.runtime hard-imports it; our wheels install --no-deps
+        # here and the app lock does not carry it, so stage the base copy (pip
+        # resolution risks a cp314-less sdist -- same reason as tvm_ffi).
+        foreach ($staged in @('cv2', 'tvm_ffi', 'ml_dtypes', 'sitecustomize.py')) {
             $src = Join-Path $baseSite $staged
             if (Test-Path $src) {
                 Copy-Item $src -Destination $venvSite -Recurse -Force
