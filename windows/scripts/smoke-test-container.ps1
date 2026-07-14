@@ -249,6 +249,13 @@ $script:identityOnnxBytes = [byte[]]@(
     0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x62,0x0F,0x0A,0x01,0x79,0x12,
     0x0A,0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x42,0x02,0x10,0x0D)
 
+# One-op MLIR test module (abs(-5)=5). Shared by the IREE python end-to-end
+# probe (section 20) and the native iree-compile/iree-run-module probes
+# (section 22). MLIR is whitespace-insensitive, so the one-liner form is valid
+# both inline in python -c and written to a .mlir file. No double quotes:
+# PS 5.1 strips them from -c strings.
+$script:ireeGateMlir = 'func.func @abs(%input : tensor<f32>) -> (tensor<f32>) { %result = math.absf %input : tensor<f32> return %result : tensor<f32> }'
+
 # Expected versions come from the single source of truth (versions.env), not
 # hardcoded literals that silently drift on a version bump. load-versions.ps1
 # bakes every versions.env key as a Machine-scoped env var during the base
@@ -1235,12 +1242,13 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     } -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
 
     # IREE python end-to-end: compile MLIR through iree.compiler and execute on
-    # iree.runtime's local-task driver -- proves the two wheels interoperate
-    # (MLIR is whitespace-insensitive, so the module fits a single -c line with
-    # no embedded double quotes -- PS 5.1 strips those).
-    # tensor<f32> args must be numpy arrays (a bare float dies in VM marshaling).
+    # iree.runtime's local-task driver -- proves the two wheels interoperate.
+    # $script:ireeGateMlir is the ONE test module shared with section 22
+    # (whitespace-insensitive one-liner; no embedded double quotes -- PS 5.1
+    # strips those from -c strings). tensor<f32> args must be numpy arrays
+    # (a bare float dies in VM marshaling).
     Assert-Test -Name "python iree compile+run end-to-end (abs(-5)=5, local-task)" -Condition {
-        $out = & python -c "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('func.func @abs(%i : tensor<f32>) -> (tensor<f32>) { %r = math.absf %i : tensor<f32> return %r : tensor<f32> }', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" 2>&1 | Out-String
+        $out = & python -c "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('$script:ireeGateMlir', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'py-iree 5\.0')
     } -FailMessage "iree.compiler/iree.runtime end-to-end failed (wheels, bundled iree-compile, or runtime driver broken)"
 
@@ -1301,12 +1309,7 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
     New-Item -Path $ireeDir -ItemType Directory -Force | Out-Null
     $ireeMlir = Join-Path $ireeDir 'abs.mlir'
     $ireeVmfb = Join-Path $ireeDir 'abs-cpu.vmfb'
-    Set-Content -Path $ireeMlir -Encoding ascii -Value @'
-func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
-  %result = math.absf %input : tensor<f32>
-  return %result : tensor<f32>
-}
-'@
+    Set-Content -Path $ireeMlir -Encoding ascii -Value $script:ireeGateMlir
 
     Assert-Test -Name "iree-compile: MLIR -> vmfb (llvm-cpu)" -Condition {
         & iree-compile --iree-hal-target-backends=llvm-cpu $ireeMlir -o $ireeVmfb 2>&1 | Out-Null

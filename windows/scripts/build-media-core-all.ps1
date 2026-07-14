@@ -39,13 +39,9 @@ $stages = @(
 
 Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir
 
-# FFmpeg's msvc install routes the import libs (avcodec.lib, ...) into bin\ while its
-# pkgconfig files point linkers at lib\ — gst-libav's link (downstream) fails without
-# this normalization. (Mirrors the final RUN that Dockerfile.media-core carried.)
-if (Test-Path 'C:\runtime\ffmpeg\bin') {
-    Copy-Item 'C:\runtime\ffmpeg\bin\*.lib' 'C:\runtime\ffmpeg\lib\' -Force -ErrorAction SilentlyContinue
-    Write-Host ('import libs in lib\: ' + @(Get-ChildItem 'C:\runtime\ffmpeg\lib\*.lib' -ErrorAction SilentlyContinue).Count)
-}
+# (FFmpeg import-lib normalization now lives INSIDE build-ffmpeg-from-source.ps1
+# — it harvests .lib/.def from prefix+build tree and regenerates from .def; the
+# bin\->lib\ copy that used to sit here would silently mask a regression there.)
 
 # Hit/miss counters die with this container -- dump them into the run log now.
 Write-SccacheStats -Label 'media-core'
