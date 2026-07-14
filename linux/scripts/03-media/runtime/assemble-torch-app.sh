@@ -351,19 +351,26 @@ install_project_environment() {
 
 # `uv sync` installs the app project itself (Orchestr-ANT-ion -> orchestr_ant_ion)
 # alongside its dependencies on amd64/arm64. On riscv64 the [tool.uv] environments-gate
-# strip + the git-source-timeout fallback path leave the venv with only the resolved
-# DEPENDENCIES and not the project, so the runtime app-wheel smoke dies with
-# `ModuleNotFoundError: orchestr_ant_ion`. Install the project explicitly from source
-# when it is missing. --no-deps: every runtime dep is already present (uv sync + local
-# wheels), and it must NOT re-resolve the riscv64-gated `torch @ git+...` inline dep.
-# Guarded by an import probe so it is a no-op on arches where uv sync already did it.
+# strip makes uv re-resolve, which drags the riscv64-gated `torch @ git+...` source build
+# into the graph; that build times out, so `uv sync` aborts BEFORE installing the app's
+# own pure-Python deps (loguru, tqdm, hydra-core, matplotlib, flask, ...) OR the project
+# itself. The local-wheel fallback only force-reinstalls the torch closure, so BOTH the
+# project and its core deps are absent -> the runtime app-wheel smoke dies with
+# `ModuleNotFoundError: No module named 'loguru'` (its first-imported core dep).
+#
+# Install the project WITH its core dependencies. torch/torchvision live ONLY in the
+# `pytorch-*` extras (never in [project].dependencies), so installing without any extra
+# pulls just the pure-Python deps and NEVER re-resolves the git torch source. The already
+# -installed local torch/vision wheels are left untouched (uv pip install is additive and
+# no core dep requires torch). Guarded by an import probe -- a no-op on amd64/arm64 where
+# uv sync already installed project + deps (the probe imports cleanly there).
 ensure_project_package_installed() {
   if uv run --no-sync --active python -c 'import orchestr_ant_ion' >/dev/null 2>&1; then
     echo "Project package orchestr_ant_ion already installed"
     return 0
   fi
-  echo "Project package orchestr_ant_ion missing after uv sync; installing from ${APP_DIR} (--no-deps)"
-  uv pip install --no-deps "${APP_DIR}"
+  echo "Project package orchestr_ant_ion (+ core deps) missing after uv sync; installing from ${APP_DIR}"
+  uv pip install "${APP_DIR}"
 }
 
 verify_project_environment() {
