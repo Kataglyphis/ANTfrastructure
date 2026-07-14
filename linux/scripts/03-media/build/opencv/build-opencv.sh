@@ -235,10 +235,31 @@ _opencv_target_adjustments() {
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # Ubuntu Ports cannot currently satisfy the target GStreamer/GLib dev chain for riscv64 cross builds.
             _ota_with_gstreamer="OFF"
-            # Vendored libpng in OpenCV 5.x requires RISC-V Vector extension detection
-            # which fails with GCC 16.1.0 (the CMake test program uses incompatible intrinsics).
-            # Disable PNG for riscv64 to avoid the configure error.
-            _ota_cmake_opts+=("-DWITH_PNG=OFF")
+            # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
+            # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
+            # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL
+            # libpng that install-deps.sh provides (Ubuntu Ports package or, as a
+            # fallback, cross-compiled from source): WITH_PNG=ON + BUILD_PNG=OFF bypasses
+            # the vendored copy and its RVV probe. If no external libpng is present, fall
+            # back to disabling PNG so the OpenCV build still succeeds.
+            local _png_triplet _png_lib="" _png_inc="" _png_cand
+            _png_triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
+            for _png_cand in \
+                "/usr/${_png_triplet}/lib/libpng16.a" \
+                "/usr/${_png_triplet}/lib/libpng16_static.a" \
+                "/usr/lib/${_png_triplet}/libpng16.a"; do
+                [ -f "${_png_cand}" ] && { _png_lib="${_png_cand}"; break; }
+            done
+            for _png_cand in "/usr/${_png_triplet}/include/libpng16" "/usr/${_png_triplet}/include"; do
+                [ -f "${_png_cand}/png.h" ] && { _png_inc="${_png_cand}"; break; }
+            done
+            if [ -n "${_png_lib}" ] && [ -n "${_png_inc}" ]; then
+                echo "riscv64 OpenCV: linking external static libpng (${_png_lib}, headers ${_png_inc})"
+                _ota_cmake_opts+=("-DWITH_PNG=ON" "-DBUILD_PNG=OFF" "-DPNG_PNG_INCLUDE_DIR=${_png_inc}" "-DPNG_LIBRARY=${_png_lib}")
+            else
+                echo "[WARN] riscv64 OpenCV: no external libpng found; disabling PNG (cv2 PNG encode unavailable)"
+                _ota_cmake_opts+=("-DWITH_PNG=OFF")
+            fi
         fi
         if [ "${WITH_PYTHON}" = "true" ] && command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
             echo "Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling OpenCV Python bindings in cross mode"

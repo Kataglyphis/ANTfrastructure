@@ -117,3 +117,57 @@ if is_cross && [ "$(cross_target_arch)" != "amd64" ]; then
         fi
     fi
 fi
+
+# OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under GCC
+# 16.1.0, so the riscv64 OpenCV build links an EXTERNAL libpng instead (WITH_PNG=ON
+# + BUILD_PNG=OFF in build-opencv.sh) so cv2.imencode('.png', ...) works. Build a
+# PIC STATIC libpng from source so it links directly into opencv_imgcodecs.so --
+# matching how the vendored libpng is bundled on the other arches, with NO extra
+# runtime .so to stage into the final image (its only symbols, zlib's, resolve
+# against the libz OpenCV already links). Ubuntu Ports' libpng-dev:riscv64 dep set
+# is frequently broken, so we don't rely on apt. Same source pattern as freetype.
+if is_cross && [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
+    _png_triplet="$(cross_target_triplet 2>/dev/null || true)"
+    if [ -n "${_png_triplet}" ] \
+       && [ ! -f "/usr/${_png_triplet}/lib/libpng16.a" ] \
+       && [ ! -f "/usr/${_png_triplet}/lib/libpng16_static.a" ]; then
+        echo "[INFO] Cross-compiling static libpng for riscv64 OpenCV PNG support..."
+        _png_src="/tmp/libpng-src-$$"
+        _png_ver="${LIBPNG_VERSION:-1.6.44}"
+        rm -rf "${_png_src}"
+        mkdir -p "${_png_src}"
+        curl -sL "https://github.com/pnggroup/libpng/archive/refs/tags/v${_png_ver}.tar.gz" \
+          | tar -xzf - -C "${_png_src}" --strip-components=1 || true
+        if [ ! -f "${_png_src}/CMakeLists.txt" ]; then
+            echo "[WARN] Failed to download libpng source; riscv64 OpenCV will build without PNG"
+        else
+            mkdir -p "${_png_src}/build"
+            cd "${_png_src}/build"
+            # PNG_HARDWARE_OPTIMIZATIONS=OFF skips the RISC-V Vector intrinsics probe
+            # that breaks OpenCV's vendored copy; scalar libpng is correct, just slower.
+            # Static + PIC so it links straight into the opencv_imgcodecs shared lib.
+            cmake .. \
+              -DCMAKE_SYSTEM_NAME=Linux \
+              -DCMAKE_SYSTEM_PROCESSOR=riscv64 \
+              -DCMAKE_C_COMPILER="${_png_triplet}-gcc" \
+              -DCMAKE_FIND_ROOT_PATH="/usr/${_png_triplet};/usr/lib/${_png_triplet}" \
+              -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+              -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
+              -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
+              -DCMAKE_INSTALL_PREFIX="/usr/${_png_triplet}" \
+              -DZLIB_INCLUDE_DIR=/usr/include \
+              -DZLIB_LIBRARY="/usr/lib/${_png_triplet}/libz.so" \
+              -DPNG_SHARED=OFF \
+              -DPNG_STATIC=ON \
+              -DPNG_TESTS=OFF \
+              -DPNG_HARDWARE_OPTIMIZATIONS=OFF \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+            cmake --build . --target install -j"$(nproc)" || {
+                echo "[WARN] Failed to build libpng from source; riscv64 OpenCV will build without PNG"
+            }
+            rm -rf "${_png_src}"
+        fi
+    fi
+fi
