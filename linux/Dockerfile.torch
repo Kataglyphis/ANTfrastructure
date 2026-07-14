@@ -20,7 +20,7 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 # ENV is what actually lets it reach the assemble RUN (previously unconsumed, so the
 # clone always fell back to the script default). Default kept in sync with
 # versions.env so a plain `docker build` matches the orchestrated build.
-ARG APP_REF=v0.0.26
+ARG APP_REF=v0.0.27
 ENV VENV=/opt/venv \
     TORCH_APP_MODE=${TORCH_APP_MODE} \
     ONNX_PACKAGE=onnxruntime \

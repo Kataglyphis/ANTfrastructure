@@ -6,7 +6,7 @@ set -euo pipefail
 : "${PYTORCH_EXTRA:=pytorch-cpu}"
 
 APP_DIR="/opt/Kataglyphis-Orchestr-ANT-ion"
-APP_REF="${APP_REF:-v0.0.26}"
+APP_REF="${APP_REF:-v0.0.27}"
 
 # Uninstall any PyPI opencv-family packages (best-effort). Centralizes the four
 # package names that were repeated verbatim across reconcile/install/verify so
@@ -306,7 +306,29 @@ reconcile_local_wheels() {
     uv pip uninstall ai-edge-litert 2>/dev/null || true
   fi
 
-  uv pip install --force-reinstall "${local_wheels[@]}"
+  # Partition IREE runtime wheels (riscv64 cross-built, best-effort) out of the
+  # main force-reinstall: they pull ml_dtypes, which has no riscv64 PyPI wheel and
+  # would source-build under QEMU -- a failure there must NOT abort venv assembly
+  # (this function runs under set -e). Install them WITHOUT deps and best-effort;
+  # numpy is already present, so iree.runtime + native iree-run-module still work,
+  # and if a hard dep is genuinely missing check_iree just optional-fails.
+  local -a iree_wheels=() other_wheels=()
+  for wheel_path in "${local_wheels[@]}"; do
+    case "$(basename "${wheel_path}")" in
+      iree_base_runtime-*.whl|iree_base_compiler-*.whl|iree-*.whl)
+        iree_wheels+=("${wheel_path}") ;;
+      *)
+        other_wheels+=("${wheel_path}") ;;
+    esac
+  done
+
+  if [ "${#other_wheels[@]}" -gt 0 ]; then
+    uv pip install --force-reinstall "${other_wheels[@]}"
+  fi
+  if [ "${#iree_wheels[@]}" -gt 0 ]; then
+    uv pip install --no-deps --force-reinstall "${iree_wheels[@]}" || \
+      echo "WARNING: IREE riscv64 runtime wheel install failed (non-fatal; check_iree will optional-fail)"
+  fi
 }
 
 install_project_environment() {

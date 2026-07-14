@@ -207,6 +207,43 @@ main() {
       echo ""
     fi
 
+    # IREE native tools -- the C side of the same thing check_iree exercises in
+    # Python. iree-compile lowers a one-op MLIR module (math.absf) and
+    # iree-run-module executes it on the local-task driver (abs(-5)=5), proving
+    # the compiled binaries interoperate on-target, not just the Python bindings.
+    # The wheels install both as console scripts in /opt/venv/bin. GATES when the
+    # tools are present (amd64/arm64 always ship them via the abi3 PyPI wheels;
+    # riscv64 only when the best-effort compiler cross-build succeeded) and is
+    # WARN-only when absent, mirroring the app's optional-when-missing policy for
+    # the riscv64 lane where only the runtime wheel ships.
+    echo "--- Functional: IREE native compile + run (iree-compile/iree-run-module) ---"
+    if iree_out="$("${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         bash -lc 'set -o pipefail
+ic="$(command -v iree-compile || echo /opt/venv/bin/iree-compile)"
+ir="$(command -v iree-run-module || echo /opt/venv/bin/iree-run-module)"
+{ [ -x "$ic" ] && [ -x "$ir" ]; } || { echo "IREE_NATIVE_TOOLS_ABSENT"; exit 3; }
+d="$(mktemp -d)"
+cat > "$d/abs.mlir" <<MLIR
+func.func @abs(%input : tensor<1xf32>) -> tensor<1xf32> {
+  %result = math.absf %input : tensor<1xf32>
+  return %result : tensor<1xf32>
+}
+MLIR
+"$ic" --iree-hal-target-backends=llvm-cpu "$d/abs.mlir" -o "$d/abs.vmfb" || exit 1
+o="$("$ir" --module="$d/abs.vmfb" --function=abs --input=1xf32=-5.0 2>&1)" || { echo "$o"; exit 1; }
+echo "$o"
+echo "$o" | grep -Eq "\b5(\.0+)?\b" || exit 2' 2>&1)"; then
+      pass "IREE native compile+run OK (abs(-5)=5) (${target_arch})"
+    else
+      if printf '%s' "${iree_out}" | grep -q IREE_NATIVE_TOOLS_ABSENT; then
+        echo "  WARN IREE native tools (iree-compile/iree-run-module) absent (${target_arch}) -- riscv64 compiler is best-effort; check_iree stays optional-fail there (non-fatal)"
+      else
+        fail "IREE native tools present but compile/run FAILED (${target_arch})"
+        printf '%s\n' "${iree_out}" | tail -6
+      fi
+    fi
+    echo ""
+
     echo "--- Functional: ffmpeg ---"
     # pipefail is REQUIRED: without it, `ffmpeg -version | head -1` returns head's
     # exit (0), so a broken binary -- e.g. `error while loading shared libraries:

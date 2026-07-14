@@ -54,6 +54,10 @@ unset _evf
 : "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.13.0}}"
 : "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
 : "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.28.0}}"
+# IREE (iree.dev) source tag for the riscv64 runtime wheel cross-build. Mirrors
+# versions.env IREE_VERSION (load_versions_env sets it above); the v3.11.0
+# fallback keeps this runnable outside the orchestrator. See build_iree_wheels.
+: "${IREE_REF:=${IREE_VERSION:-v3.11.0}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 
@@ -696,6 +700,112 @@ build_torchvision_wheel() {
     _collect_torchvision_wheel
 }
 
+# ---------------------------------------------------------------------------
+# IREE (iree.dev) riscv64 runtime wheel — best-effort, NON-GATING.
+#
+# PyPI ships iree-base-{compiler,runtime} cp312-abi3 wheels for x86_64+aarch64
+# only; riscv64 has none, so we cross-build the RUNTIME wheel here. IREE cross-
+# builds in two stages (https://iree.dev/building-from-source/riscv/):
+#   1. a HOST build producing the codegen tools referenced via IREE_HOST_BIN_DIR
+#      (flatcc / c-embed-data), and
+#   2. a TARGET build that cross-compiles the runtime + its Python bindings
+#      against those host tools.
+# BUILD_COMPILER stays OFF on BOTH stages: the IREE *compiler* embeds LLVM/MLIR
+# and upstream does not support a riscv64 target compiler without a full cross-
+# LLVM (their own riscv64 lane sets IREE_BUILD_COMPILER=OFF). Keeping the host
+# stage LLVM-free is what makes this bounded. Consequence: on riscv64
+# iree.runtime + native iree-run-module ship, but iree.compiler does NOT, so the
+# app's check_iree degrades to optional-fail there (agreed for the riscv64 lane).
+#
+# Everything here is best-effort: any failure WARNs and returns 0 so torch/vision
+# and the rest of the media build proceed. This cannot be validated on the amd64
+# dev host — expect a round of iteration the first time it runs under the real
+# cross toolchain.
+build_iree_wheels() {
+    local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/iree"
+    local host_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-host"
+    local host_install="${host_build}/install"
+    local target_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-target"
+    local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-iree"
+    local wheel_platform="" toolchain_file=""
+    local -a cmake_args=()
+
+    command -v cmake >/dev/null 2>&1 || { warn "cmake absent; skipping IREE riscv64 runtime wheel"; return 0; }
+    command -v ninja >/dev/null 2>&1 || { warn "ninja absent; skipping IREE riscv64 runtime wheel"; return 0; }
+
+    wheel_platform="$(wheel_platform_tag || true)"
+    [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 0; }
+
+    # Clone at the pinned tag, then init submodules EXCLUDING llvm-project (huge,
+    # compiler-only). The runtime needs flatcc/cpuinfo/etc., not LLVM.
+    rm -rf "${src_dir}"
+    if ! git clone --branch "${IREE_REF}" --depth 1 https://github.com/iree-org/iree.git "${src_dir}"; then
+        warn "IREE clone ${IREE_REF} failed; skipping riscv64 runtime wheel"; return 0
+    fi
+    if ! ( cd "${src_dir}" && git -c submodule."third_party/llvm-project".update=none \
+             submodule update --init --recursive --depth 1 ); then
+        warn "IREE submodule init failed; skipping riscv64 runtime wheel"; return 0
+    fi
+
+    # Stage 1 — LLVM-free host tools for IREE_HOST_BIN_DIR.
+    rm -rf "${host_build}"
+    if ! cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DIREE_BUILD_COMPILER=OFF \
+            -DIREE_BUILD_PYTHON_BINDINGS=OFF \
+            -DIREE_BUILD_SAMPLES=OFF \
+            -DIREE_BUILD_TESTS=OFF \
+            -DCMAKE_INSTALL_PREFIX="${host_install}" \
+            -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
+        warn "IREE host-tools configure failed; skipping riscv64 runtime wheel"; return 0
+    fi
+    if ! cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}"; then
+        warn "IREE host-tools build failed; skipping riscv64 runtime wheel"; return 0
+    fi
+
+    # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
+    toolchain_file="$(write_cross_cmake_toolchain_file || true)"
+    [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 0; }
+    append_common_cross_cmake_args cmake_args
+
+    rm -rf "${target_build}"
+    if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+            -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
+            "${cmake_args[@]}" \
+            -DIREE_HOST_BIN_DIR="${host_install}/bin" \
+            -DIREE_BUILD_COMPILER=OFF \
+            -DIREE_BUILD_PYTHON_BINDINGS=ON \
+            -DIREE_BUILD_SAMPLES=OFF \
+            -DIREE_BUILD_TESTS=OFF \
+            -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+            -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+            -DCMAKE_BUILD_TYPE=Release; then
+        warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"; return 0
+    fi
+    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}"; then
+        warn "IREE riscv64 runtime build failed (best-effort); continuing without it"; return 0
+    fi
+
+    # The build tree exposes a runtime/ wheel project; build + retag it.
+    if [ ! -d "${target_build}/runtime" ]; then
+        warn "IREE target build produced no runtime/ wheel project; skipping"; return 0
+    fi
+    rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
+    if ! "${BUILD_PYTHON}" -m pip wheel "${target_build}/runtime" -w "${dist_dir}" --no-deps --no-build-isolation; then
+        warn "IREE riscv64 runtime wheel packaging failed (best-effort); continuing"; return 0
+    fi
+    retag_directory_wheels "${dist_dir}" "iree_base_runtime" "${wheel_platform}"
+
+    shopt -s nullglob
+    local -a wheels=("${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
+    shopt -u nullglob
+    if [ "${#wheels[@]}" -eq 0 ]; then
+        warn "IREE riscv64 runtime build produced no wheel; continuing"; return 0
+    fi
+    cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
+    log "Built IREE riscv64 runtime wheel $(basename "${wheels[0]}") (compiler intentionally not built for riscv64)"
+}
+
 main() {
     prepare_workspace
     if ! prepare_build_environment; then
@@ -710,6 +820,8 @@ main() {
     if ! build_torchvision_wheel; then
         warn "Continuing without a prebuilt riscv64 torchvision wheel"
     fi
+
+    build_iree_wheels || warn "Continuing without a prebuilt riscv64 IREE runtime wheel"
 
     shopt -s nullglob
     local wheel_path
