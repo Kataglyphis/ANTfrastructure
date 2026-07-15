@@ -732,11 +732,11 @@ build_iree_wheels() {
     local wheel_platform="" toolchain_file=""
     local -a cmake_args=()
 
-    command -v cmake >/dev/null 2>&1 || { warn "cmake absent; skipping IREE riscv64 runtime wheel"; return 0; }
-    command -v ninja >/dev/null 2>&1 || { warn "ninja absent; skipping IREE riscv64 runtime wheel"; return 0; }
+    command -v cmake >/dev/null 2>&1 || { warn "cmake absent; skipping IREE riscv64 runtime wheel"; return 1; }
+    command -v ninja >/dev/null 2>&1 || { warn "ninja absent; skipping IREE riscv64 runtime wheel"; return 1; }
 
     wheel_platform="$(wheel_platform_tag || true)"
-    [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 0; }
+    [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 1; }
 
     # Clone at the pinned tag, then init submodules. llvm-project IS initialised
     # now (the host compiler build needs it to produce llvm-link for the target's
@@ -749,13 +749,13 @@ build_iree_wheels() {
     # and disables the matching input dialects (-DIREE_INPUT_TORCH/STABLEHLO=OFF).
     rm -rf "${src_dir}"
     if ! git clone --branch "${IREE_REF}" --depth 1 https://github.com/iree-org/iree.git "${src_dir}"; then
-        warn "IREE clone ${IREE_REF} failed; skipping riscv64 runtime wheel"; return 0
+        warn "IREE clone ${IREE_REF} failed; skipping riscv64 runtime wheel"; return 1
     fi
     if ! ( cd "${src_dir}" && git \
              -c submodule."third_party/torch-mlir".update=none \
              -c submodule."third_party/stablehlo".update=none \
              submodule update --init --recursive --depth 1 ); then
-        warn "IREE submodule init failed; skipping riscv64 runtime wheel"; return 0
+        warn "IREE submodule init failed; skipping riscv64 runtime wheel"; return 1
     fi
 
     # Stage 1 — FULL host compiler build (LLVM) for IREE_HOST_BIN_DIR, with the
@@ -789,7 +789,7 @@ build_iree_wheels() {
             -DCMAKE_INSTALL_PREFIX="${host_install}" \
             -DPython_EXECUTABLE="${BUILD_PYTHON}" \
             -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
-        warn "IREE host-compiler configure failed; skipping riscv64 runtime wheel"; return 0
+        warn "IREE host-compiler configure failed; skipping riscv64 runtime wheel"; return 1
     fi
     # Capture build output to a log and echo its tail on failure. BuildKit
     # collapses the tens-of-thousands of ninja progress lines, so a bare failure
@@ -803,12 +803,12 @@ build_iree_wheels() {
         echo "----- IREE host build: last 80 log lines -----"
         tail -n 80 "${host_build}.log" 2>/dev/null
         echo "----- end IREE host build log -----"
-        return 0
+        return 1
     fi
 
     # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
     toolchain_file="$(write_cross_cmake_toolchain_file || true)"
-    [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 0; }
+    [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
     append_common_cross_cmake_args cmake_args
 
     rm -rf "${target_build}"
@@ -828,23 +828,23 @@ build_iree_wheels() {
         echo "----- IREE target configure: last 80 log lines -----"
         tail -n 80 "${target_build}.cfg.log" 2>/dev/null
         echo "----- end IREE target configure log -----"
-        return 0
+        return 1
     fi
     if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
         warn "IREE riscv64 runtime build failed (best-effort); continuing without it"
         echo "----- IREE target build: last 80 log lines -----"
         tail -n 80 "${target_build}.log" 2>/dev/null
         echo "----- end IREE target build log -----"
-        return 0
+        return 1
     fi
 
     # The build tree exposes a runtime/ wheel project; build + retag it.
     if [ ! -d "${target_build}/runtime" ]; then
-        warn "IREE target build produced no runtime/ wheel project; skipping"; return 0
+        warn "IREE target build produced no runtime/ wheel project; skipping"; return 1
     fi
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
     if ! "${BUILD_PYTHON}" -m pip wheel "${target_build}/runtime" -w "${dist_dir}" --no-deps --no-build-isolation; then
-        warn "IREE riscv64 runtime wheel packaging failed (best-effort); continuing"; return 0
+        warn "IREE riscv64 runtime wheel packaging failed (best-effort); continuing"; return 1
     fi
     retag_directory_wheels "${dist_dir}" "iree_base_runtime" "${wheel_platform}"
 
@@ -852,7 +852,7 @@ build_iree_wheels() {
     local -a wheels=("${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
     shopt -u nullglob
     if [ "${#wheels[@]}" -eq 0 ]; then
-        warn "IREE riscv64 runtime build produced no wheel; continuing"; return 0
+        warn "IREE riscv64 runtime build produced no wheel; continuing"; return 1
     fi
     cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
     log "Built IREE riscv64 runtime wheel $(basename "${wheels[0]}") (compiler intentionally not built for riscv64)"
@@ -873,7 +873,18 @@ main() {
         warn "Continuing without a prebuilt riscv64 torchvision wheel"
     fi
 
-    build_iree_wheels || warn "Continuing without a prebuilt riscv64 IREE runtime wheel"
+    # IREE is REQUIRED on riscv64 (no PyPI wheel exists for it, unlike amd64/arm64),
+    # not best-effort: a failed cross-build must FAIL THE BUILD (fail early) so it gets
+    # fixed, never silently ship an image missing iree.runtime. The failure paths above
+    # dump the real cmake/ninja tail before returning non-zero. Bypass only with an
+    # explicit ALLOW_IREE_BUILD_FAIL=1 for a deliberate IREE-less debugging image.
+    if ! build_iree_wheels; then
+        if [ "${ALLOW_IREE_BUILD_FAIL:-0}" = "1" ]; then
+            warn "riscv64 IREE build failed but ALLOW_IREE_BUILD_FAIL=1 set — continuing without it"
+        else
+            err "riscv64 IREE runtime build FAILED — IREE is required (see the dumped build log above). Set ALLOW_IREE_BUILD_FAIL=1 only for a deliberate IREE-less image."
+        fi
+    fi
 
     shopt -s nullglob
     local wheel_path
