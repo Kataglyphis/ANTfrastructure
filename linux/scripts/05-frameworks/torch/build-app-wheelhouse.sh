@@ -872,9 +872,13 @@ main() {
         return 0
     fi
 
+    # torch/vision cross-wheels are best-effort (a native torch stage is the
+    # fallback), but IREE is REQUIRED — so a torch failure must NOT short-circuit
+    # main() before build_iree_wheels runs (that fail-open skipped the required IREE
+    # entirely when a transient ports.ubuntu.com outage broke torch in iree-0714k).
+    # Warn and continue to IREE instead of returning.
     if ! build_torch_wheel; then
-        warn "Continuing without prebuilt riscv64 torch/vision wheels"
-        return 0
+        warn "riscv64 torch cross-wheel failed — native torch stage is the fallback; continuing to IREE"
     fi
 
     if ! build_torchvision_wheel; then
