@@ -830,6 +830,8 @@ build_iree_wheels() {
             -DIREE_BUILD_TESTS=OFF \
             -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
             -DIREE_ENABLE_WERROR_FLAG=OFF \
+            -DIREE_INPUT_TORCH=OFF \
+            -DIREE_INPUT_STABLEHLO=OFF \
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
             -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
