@@ -791,10 +791,19 @@ build_iree_wheels() {
             -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
         warn "IREE host-compiler configure failed; skipping riscv64 runtime wheel"; return 0
     fi
+    # Capture build output to a log and echo its tail on failure. BuildKit
+    # collapses the tens-of-thousands of ninja progress lines, so a bare failure
+    # surfaces NO error (the silent-fast-fail gotcha, iree-0714f) — the tail dump
+    # is the only way to see why the cross build actually died.
     if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
              -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
-            cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}"; then
-        warn "IREE host-compiler build failed; skipping riscv64 runtime wheel"; return 0
+            cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}" \
+            > "${host_build}.log" 2>&1; then
+        warn "IREE host-compiler build failed; skipping riscv64 runtime wheel"
+        echo "----- IREE host build: last 80 log lines -----"
+        tail -n 80 "${host_build}.log" 2>/dev/null
+        echo "----- end IREE host build log -----"
+        return 0
     fi
 
     # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
@@ -814,11 +823,19 @@ build_iree_wheels() {
             -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
-            -DCMAKE_BUILD_TYPE=Release; then
-        warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"; return 0
+            -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
+        warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"
+        echo "----- IREE target configure: last 80 log lines -----"
+        tail -n 80 "${target_build}.cfg.log" 2>/dev/null
+        echo "----- end IREE target configure log -----"
+        return 0
     fi
-    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}"; then
-        warn "IREE riscv64 runtime build failed (best-effort); continuing without it"; return 0
+    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
+        warn "IREE riscv64 runtime build failed (best-effort); continuing without it"
+        echo "----- IREE target build: last 80 log lines -----"
+        tail -n 80 "${target_build}.log" 2>/dev/null
+        echo "----- end IREE target build log -----"
+        return 0
     fi
 
     # The build tree exposes a runtime/ wheel project; build + retag it.
