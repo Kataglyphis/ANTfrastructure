@@ -738,6 +738,31 @@ build_iree_wheels() {
     wheel_platform="$(wheel_platform_tag || true)"
     [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 1; }
 
+    # ccache — the decisive lever for IREE build cost. IREE pins its OWN LLVM fork
+    # (github.com/iree-org/llvm-project @ a bleeding-edge commit) and MLIR has no
+    # stable API, so we CANNOT substitute ContainerHub's release-tag toolchain LLVM;
+    # IREE must compile its bundled LLVM/MLIR (both host tools AND the riscv64 cross)
+    # itself — ~1h. But the build tree lives on tmpfs (wiped each run) while
+    # /var/cache/ccache is a PERSISTENT BuildKit cache mount (Dockerfile.media
+    # app-wheelhouse RUN). Wiring the cmake compiler-launcher to ccache makes that
+    # ~1h LLVM compile a ONE-TIME cost: every rerun cache-hits the objects. ccache
+    # keys on compiler+flags, so the native-host build and the riscv64-cross build
+    # keep separate entries and never collide. Guarded: plain rebuild if ccache is
+    # absent. (Applies to the bundled llvm-project add_subdirectory too, which
+    # inherits CMAKE_*_COMPILER_LAUNCHER; the small NATIVE tblgen sub-build may not.)
+    local -a ccache_cmake_args=()
+    if command -v ccache >/dev/null 2>&1; then
+        export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}"
+        export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-25G}"
+        export CCACHE_COMPRESS=1
+        export CCACHE_SLOPPINESS="pch_defines,time_macros,include_file_mtime,include_file_ctime"
+        mkdir -p "${CCACHE_DIR}" 2>/dev/null || true
+        ccache_cmake_args=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+        echo "[INFO] IREE ccache ON: CCACHE_DIR=${CCACHE_DIR} MAXSIZE=${CCACHE_MAXSIZE} (LLVM rebuild is one-time; reruns cache-hit)"
+    else
+        warn "ccache not found — IREE bundled LLVM will rebuild from scratch every run (no cross-run cache)"
+    fi
+
     # Clone at the pinned tag, then init ALL submodules recursively — including
     # third_party/torch-mlir + third_party/stablehlo — so the compiler ships the
     # full frontend set (stablehlo + torch input dialects), not just TOSA/linalg.
@@ -769,6 +794,7 @@ build_iree_wheels() {
     if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
              -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
             cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
+            "${ccache_cmake_args[@]}" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER="${host_cc}" \
             -DCMAKE_CXX_COMPILER="${host_cxx}" \
@@ -813,6 +839,7 @@ build_iree_wheels() {
     if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
             -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
             "${cmake_args[@]}" \
+            "${ccache_cmake_args[@]}" \
             -DIREE_HOST_BIN_DIR="${host_install}/bin" \
             -DIREE_BUILD_COMPILER=ON \
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
