@@ -824,7 +824,7 @@ build_iree_wheels() {
             -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
             "${cmake_args[@]}" \
             -DIREE_HOST_BIN_DIR="${host_install}/bin" \
-            -DIREE_BUILD_COMPILER=OFF \
+            -DIREE_BUILD_COMPILER=ON \
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
@@ -847,24 +847,34 @@ build_iree_wheels() {
         return 1
     fi
 
-    # The build tree exposes a runtime/ wheel project; build + retag it.
-    if [ ! -d "${target_build}/runtime" ]; then
-        warn "IREE target build produced no runtime/ wheel project; skipping"; return 1
-    fi
+    # The build tree exposes compiler/ and runtime/ wheel projects (COMPILER=ON
+    # cross-builds LLVM/MLIR for riscv64 so iree-compile + iree.compiler ship too,
+    # not just iree.runtime). Package BOTH — both are REQUIRED on riscv64.
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
-    if ! "${BUILD_PYTHON}" -m pip wheel "${target_build}/runtime" -w "${dist_dir}" --no-deps --no-build-isolation; then
-        warn "IREE riscv64 runtime wheel packaging failed (best-effort); continuing"; return 1
-    fi
-    retag_directory_wheels "${dist_dir}" "iree_base_runtime" "${wheel_platform}"
+    local _proj _pkg
+    for _proj in compiler runtime; do
+        _pkg="iree_base_${_proj}"
+        if [ ! -d "${target_build}/${_proj}" ]; then
+            warn "IREE target build produced no ${_proj}/ wheel project"; return 1
+        fi
+        if ! "${BUILD_PYTHON}" -m pip wheel "${target_build}/${_proj}" -w "${dist_dir}" --no-deps --no-build-isolation > "${target_build}.${_proj}-wheel.log" 2>&1; then
+            warn "IREE riscv64 ${_proj} wheel packaging failed"
+            echo "----- IREE ${_proj} wheel: last 60 log lines -----"
+            tail -n 60 "${target_build}.${_proj}-wheel.log" 2>/dev/null
+            echo "----- end IREE ${_proj} wheel log -----"
+            return 1
+        fi
+        retag_directory_wheels "${dist_dir}" "${_pkg}" "${wheel_platform}"
+    done
 
     shopt -s nullglob
-    local -a wheels=("${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
+    local -a wheels=("${dist_dir}"/iree_base_compiler-*.whl "${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
     shopt -u nullglob
-    if [ "${#wheels[@]}" -eq 0 ]; then
-        warn "IREE riscv64 runtime build produced no wheel; continuing"; return 1
+    if [ "${#wheels[@]}" -lt 2 ]; then
+        warn "IREE riscv64 build did not produce BOTH compiler+runtime wheels (got ${#wheels[@]})"; return 1
     fi
     cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
-    log "Built IREE riscv64 runtime wheel $(basename "${wheels[0]}") (compiler intentionally not built for riscv64)"
+    log "Built IREE riscv64 wheels: $(cd "${dist_dir}" && echo iree_base_*-*.whl)"
 }
 
 main() {
