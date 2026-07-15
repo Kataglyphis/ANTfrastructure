@@ -738,24 +738,17 @@ build_iree_wheels() {
     wheel_platform="$(wheel_platform_tag || true)"
     [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 1; }
 
-    # Clone at the pinned tag, then init submodules. llvm-project IS initialised
-    # now (the host compiler build needs it to produce llvm-link for the target's
-    # device-bitcode libs). Still EXCLUDE torch-mlir + stablehlo: they are
-    # MLIR-dialect compiler INPUTS the runtime never needs, and torch-mlir drags a
-    # second full NESTED externals/llvm-project via --recursive (pure waste).
-    # Because those two submodules stay uninitialised, IREE's configure-time
-    # check_submodule_init.py (CMakeLists.txt) would hard-fail (run iree-0714d,
-    # 2026-07-15), so the host build passes -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF
-    # and disables the matching input dialects (-DIREE_INPUT_TORCH/STABLEHLO=OFF).
+    # Clone at the pinned tag, then init ALL submodules recursively — including
+    # third_party/torch-mlir + third_party/stablehlo — so the compiler ships the
+    # full frontend set (stablehlo + torch input dialects), not just TOSA/linalg.
+    # (--recursive also pulls torch-mlir's nested externals; --depth 1 keeps every
+    # clone shallow. Disk is cheap; a complete tree is what we want here.)
     rm -rf "${src_dir}"
     if ! git clone --branch "${IREE_REF}" --depth 1 https://github.com/iree-org/iree.git "${src_dir}"; then
-        warn "IREE clone ${IREE_REF} failed; skipping riscv64 runtime wheel"; return 1
+        warn "IREE clone ${IREE_REF} failed"; return 1
     fi
-    if ! ( cd "${src_dir}" && git \
-             -c submodule."third_party/torch-mlir".update=none \
-             -c submodule."third_party/stablehlo".update=none \
-             submodule update --init --recursive --depth 1 ); then
-        warn "IREE submodule init failed; skipping riscv64 runtime wheel"; return 1
+    if ! ( cd "${src_dir}" && git submodule update --init --recursive --depth 1 ); then
+        warn "IREE submodule init failed"; return 1
     fi
 
     # Stage 1 — FULL host compiler build (LLVM) for IREE_HOST_BIN_DIR, with the
@@ -783,10 +776,7 @@ build_iree_wheels() {
             -DIREE_BUILD_PYTHON_BINDINGS=OFF \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
-            -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
             -DIREE_ENABLE_WERROR_FLAG=OFF \
-            -DIREE_INPUT_TORCH=OFF \
-            -DIREE_INPUT_STABLEHLO=OFF \
             -DCMAKE_INSTALL_PREFIX="${host_install}" \
             -DPython_EXECUTABLE="${BUILD_PYTHON}" \
             -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
@@ -828,10 +818,7 @@ build_iree_wheels() {
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
-            -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
             -DIREE_ENABLE_WERROR_FLAG=OFF \
-            -DIREE_INPUT_TORCH=OFF \
-            -DIREE_INPUT_STABLEHLO=OFF \
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
             -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
