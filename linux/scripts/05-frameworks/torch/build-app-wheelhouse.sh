@@ -776,6 +776,27 @@ build_iree_wheels() {
         warn "IREE submodule init failed"; return 1
     fi
 
+    # Build VERSION-SPECIFIC Python bindings against the container's from-source
+    # CPython (3.14), NOT IREE's default cp312-abi3 stable-ABI wheel. IREE otherwise
+    # forces abi3 two ways, and BOTH must be defeated:
+    #   1. CMakeLists.txt auto-enables IREE_ENABLE_PYTHON_STABLE_ABI on any CPython
+    #      >=3.12 (so nanobind builds a limited-API .so) — countered by passing
+    #      -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF on the target configure (below).
+    #   2. {runtime,compiler}/setup.py hard-code
+    #      `_is_abi3_build = sys.version_info >= (3,12) and not Py_GIL_DISABLED`,
+    #      whose bdist_wheel.get_tag() override then stamps the wheel "cp312"/"abi3"
+    #      regardless of the built .so — with no env escape hatch. Patch it to False
+    #      so the wheel takes its true tag (cp314-cp314) from the version-specific
+    #      extension. `False and ...` short-circuits, parens stay balanced.
+    # Result: iree_base_{compiler,runtime}-*-cp314-cp314-linux_riscv64.whl, bound to
+    # exactly the interpreter we ship. (verify-wheels.sh then matches on cp314-.)
+    local _sp
+    for _sp in "${src_dir}/runtime/setup.py" "${src_dir}/compiler/setup.py"; do
+        if [ -f "${_sp}" ]; then
+            sed -i 's/sys\.version_info >= (3, 12) and not /False and /' "${_sp}"
+        fi
+    done
+
     # Stage 1 — FULL host compiler build (LLVM) for IREE_HOST_BIN_DIR, with the
     # NATIVE amd64 compiler. This produces iree-compile + iree-tblgen + llvm-link.
     # This function runs inside the riscv64 cross environment, where
@@ -857,6 +878,7 @@ build_iree_wheels() {
             -DIREE_HOST_BIN_DIR="${host_install}/bin" \
             -DIREE_BUILD_COMPILER=ON \
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
+            -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
             -DIREE_OUTPUT_FORMAT_C=OFF \
