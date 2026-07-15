@@ -38,7 +38,7 @@ COPY windows\scripts\modules C:\temp\scripts\modules
 # so this lane's wheels (onnxruntime/genai/tvm from C:\runtime\wheels) always
 # win -- everything else from PyPI / the pytorch-cpu index. Network-bound RUN;
 # fine at the classic builder's 2 CPUs.
-ARG APP_REF=v0.0.22
+ARG APP_REF=v0.0.27
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 COPY windows\scripts\assemble-torch-app.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -Mode all

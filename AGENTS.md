@@ -458,22 +458,26 @@ than blocking `linux/` itself.
 
 ## Reusable Sphinx Theme Package
 
-`docs/conf.py` delegates to `sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py` (`setup_theme()`), which provides all shared Sphinx config and loads the canonical CSS from the package's `_static/` directory.
-
-**For other projects** — copy the `sphinx-kataglyphis-theme/` directory alongside their repo root (or `pip install -e` in dev mode), then `conf.py` is just:
+The shared theme now lives in the **Kataglyphis-DocumANTation** repo, vendored here
+as a submodule at `external/Kataglyphis-DocumANTation`. `requirements.txt` installs it
+editable (`-e ./external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme`), so
+`docs/conf.py` just imports it:
 
 ```python
 from sphinx_kataglyphis import setup_theme
 setup_theme(globals(), repository_url="https://github.com/org/repo")
 ```
 
-The canonical CSS lives at `sphinx_kataglyphis/_static/css/custom.css` — edit that file to change the global look. The project's own `_static/css/` can hold additional per-project overrides.
+`setup_theme()` provides all shared Sphinx config and loads the canonical CSS from the
+package's `_static/` directory.
 
-To add the package to a new project's `sys.path`:
-```python
-_repo_root = Path(__file__).resolve().parent
-sys.path.insert(0, str(_repo_root / "sphinx-kataglyphis-theme"))
-```
+**For other projects** — add the DocumANTation submodule and the same `-e` line to
+their `requirements.txt`, then use the `conf.py` snippet above.
+
+The canonical CSS lives in the submodule at
+`external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css`
+— edit it **in the DocumANTation repo** to change the global look. The project's own
+`docs/_static/css/` can hold additional per-project overrides.
 
 ## Documentation Maintenance
 
@@ -481,4 +485,4 @@ sys.path.insert(0, str(_repo_root / "sphinx-kataglyphis-theme"))
 - If Dockerfiles or Linux helpers change, update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`.
 - If Windows Dockerfiles/scripts change, update `docs/windows-builds.md`.
 - If version defaults change, run `python3 docs/scripts/sync_versions.py --write` then `python3 docs/scripts/generate-website-licenses.py --write`.
-- If `custom.css` changes, update both `docs/_static/css/custom.css` (project) AND `sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css` (canonical source). Run `python -m sphinx -b html docs/source docs/_build/html` to verify.
+- The canonical `custom.css` lives in the DocumANTation submodule at `external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css` — change it there (and commit in that repo). `docs/_static/css/custom.css` is only for per-project overrides. Run `cd docs && make html` to verify.

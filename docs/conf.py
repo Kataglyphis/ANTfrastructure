@@ -3,13 +3,9 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-import sys
-from pathlib import Path
-
-# Allow importing the reusable theme package from the repo root.
-_repo_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_repo_root / "sphinx-kataglyphis-theme"))
-
+# The reusable theme package (sphinx_kataglyphis) is installed via
+# requirements.txt as an editable install from the Kataglyphis-DocumANTation
+# submodule under external/. See requirements.txt.
 from sphinx_kataglyphis import setup_theme
 
 # -- Project information -----------------------------------------------------
@@ -22,5 +18,5 @@ setup_theme(
     copyright_="2025, Jonas Heinle",
     author="Jonas Heinle",
     release="0.0.1",
-    exclude_patterns=["_build", ".venv", "Thumbs.db", ".DS_Store", "source_templates"],
+    exclude_patterns=["_build", ".venv", "Thumbs.db", ".DS_Store"],
 )

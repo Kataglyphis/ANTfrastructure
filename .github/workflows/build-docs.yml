@@ -23,7 +23,11 @@ jobs:
         uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
-          submodules: recursive
+          # Non-recursive: we only need the flat docs tooling from the
+          # Kataglyphis-DocumANTation submodule, not its own nested submodules.
+          # (DocumANTation also references ContainerHub, so recursing would
+          # re-clone this repo in a cycle.)
+          submodules: true
 
       - name: Install uv (Astral)
         uses: astral-sh/setup-uv@v8.1.0
@@ -37,8 +41,13 @@ jobs:
           source .venv/bin/activate
           uv pip install -r requirements.txt
 
+      # These scripts read this repo's Dockerfiles and versions.env, so they
+      # live here rather than in the DocumANTation submodule -- only the shared
+      # theme and templates do. sync_versions.py --check also checks the website
+      # licence files.
       - name: Check generated version snapshot (also checks website licenses)
         run: python docs/scripts/sync_versions.py --check
+
 
       - name: Verify version ARG consistency
         run: bash linux/scripts/01-core/verify-arg-consistency.sh

@@ -1,4 +1,3 @@
-sphinx
-sphinx-book-theme
-sphinx_design
-myst-parser
+# Shared Sphinx theme + its transitive docs deps (sphinx, sphinx-book-theme,
+# sphinx-design, myst-parser) come from the Kataglyphis-DocumANTation submodule.
+-e ./external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme
