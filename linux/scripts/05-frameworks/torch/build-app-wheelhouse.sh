@@ -743,6 +743,10 @@ build_iree_wheels() {
     # device-bitcode libs). Still EXCLUDE torch-mlir + stablehlo: they are
     # MLIR-dialect compiler INPUTS the runtime never needs, and torch-mlir drags a
     # second full NESTED externals/llvm-project via --recursive (pure waste).
+    # Because those two submodules stay uninitialised, IREE's configure-time
+    # check_submodule_init.py (CMakeLists.txt) would hard-fail (run iree-0714d,
+    # 2026-07-15), so the host build passes -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF
+    # and disables the matching input dialects (-DIREE_INPUT_TORCH/STABLEHLO=OFF).
     rm -rf "${src_dir}"
     if ! git clone --branch "${IREE_REF}" --depth 1 https://github.com/iree-org/iree.git "${src_dir}"; then
         warn "IREE clone ${IREE_REF} failed; skipping riscv64 runtime wheel"; return 0
@@ -779,6 +783,9 @@ build_iree_wheels() {
             -DIREE_BUILD_PYTHON_BINDINGS=OFF \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
+            -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
+            -DIREE_INPUT_TORCH=OFF \
+            -DIREE_INPUT_STABLEHLO=OFF \
             -DCMAKE_INSTALL_PREFIX="${host_install}" \
             -DPython_EXECUTABLE="${BUILD_PYTHON}" \
             -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
@@ -804,6 +811,7 @@ build_iree_wheels() {
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
+            -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
             -DCMAKE_BUILD_TYPE=Release; then
