@@ -76,10 +76,11 @@ scoop bucket add versions
 scoop install main/7zip
 scoop config use_external_7zip true
 
-# Rust is provisioned by setup-rust-toolchain.ps1 via scoop (single provider).
-# We deliberately do NOT install rustup here: a toolchain-less rustup drops proxy
-# shims into CARGO_BIN that shadow scoop's real cargo/rustc on PATH and fail with
-# "no default toolchain". scoop's shims resolve to the actual binaries instead.
+# Rust is provisioned by setup-rust-toolchain.ps1 via rustup WITH a default
+# toolchain (single provider; Flutter's Cargokit hard-requires rustup). We
+# deliberately install NO rust here: scoop rust would compete with the rustup
+# proxies in CARGO_BIN, and a toolchain-LESS rustup would drop proxy shims that
+# resolve no toolchain (the failure the old "never rustup" rule guarded against).
 
 if ([string]::IsNullOrWhiteSpace($VulkanVersion)) {
     scoop install main/vulkan
@@ -91,7 +92,11 @@ scoop install --global extras/flutter
 # llvm DELIBERATELY UNPINNED (Windows tracks scoop's latest; versions.env's LLVM_RELEASE
 # pins only the Linux lane -- the smoke test asserts a well-formed clang-cl version, not
 # that value).
-scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib main/nasm main/openssl
+# pkg-config: consumers' CMake `find_package(PkgConfig)` + `pkg_check_modules(...)` need
+# the BINARY -- the image bakes PKG_CONFIG_PATH and the .pc files, but the source-built
+# GStreamer (unlike the old MSI) ships no pkg-config tool. NOTE: scoop main has no
+# `pkgconf` manifest; the package name is `pkg-config`.
+scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib main/nasm main/openssl main/pkg-config
 
 # CMake stable release via scoop (replaces the old cmake.org MSI download); the
 # shim lands on the scoop user-shims PATH like every other tool installed here.
