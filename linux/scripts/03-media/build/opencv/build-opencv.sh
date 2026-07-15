@@ -31,7 +31,7 @@ install_warn_trap
 : "${OPENCV_REPO:=https://github.com/opencv/opencv.git}"
 : "${OPENCV_CONTRIB_REPO:=https://github.com/opencv/opencv_contrib.git}"
 : "${BUILD_TYPE:=Release}"
-: "${NPROC:=$(compute_jobs_with_mem_cap "" 2000)}"
+: "${NPROC:=$(media_jobs)}"
 : "${WITH_CONTRIB:=true}"
 : "${WITH_PYTHON:=true}"
 : "${OPENCV_PYTHON_VERSION:=$(host_python_major_minor)}"
@@ -94,62 +94,97 @@ done
 echo "build-opencv: version=${OPENCV_VERSION} prefix=${OPENCV_PREFIX} buildtype=${BUILD_TYPE}"
 
 # ------------------------------------------------------------------------------
+# Build environment configuration
+#
+# OpenCV's vendored dependency graph produces duplicate symbol definitions
+# when linking the monolithic libopencv_core.so. --allow-multiple-definition
+# works around this without needing to patch OpenCV's CMakeLists.
+#
+# lld is disabled for OpenCV because its strict duplicate-symbol handling
+# rejects symbols that GNU ld accepts with --allow-multiple-definition.
+#
+# CC/CXX are pinned to GCC explicitly because CMake may otherwise pick clang
+# from PATH (the SDK image has both). The ${GCC_VERSION} env is set by the
+# toolchain stage; fall back to scanning /opt/gcc-* if unset.
+# ------------------------------------------------------------------------------
+configure_opencv_build_env() {
+    rm -rf "${OPENCV_PREFIX}"
+
+    # Resolve GCC version if not already set in the environment
+    if [ -z "${GCC_VERSION:-}" ]; then
+        local _gcc_dir
+        _gcc_dir="$(ls -d /opt/gcc-*/bin 2>/dev/null | sort -V | tail -1)"
+        if [ -n "${_gcc_dir}" ]; then
+            GCC_VERSION="${_gcc_dir#/opt/gcc-}"
+            GCC_VERSION="${GCC_VERSION%/bin}"
+        fi
+    fi
+
+    unset LDFLAGS
+    export USE_LLD=false
+    if [ -n "${GCC_VERSION:-}" ]; then
+        export CMAKE_C_COMPILER="/opt/gcc-${GCC_VERSION}/bin/gcc"
+        export CMAKE_CXX_COMPILER="/opt/gcc-${GCC_VERSION}/bin/g++"
+    fi
+    export LDFLAGS="-Wl,--allow-multiple-definition"
+}
+
+configure_opencv_build_env
+
+# ------------------------------------------------------------------------------
 # Fetch OpenCV source
 # ------------------------------------------------------------------------------
 fetch_opencv() {
     info "Fetching OpenCV ${OPENCV_VERSION} source..."
-    
-    # Main repository
-    clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_VERSION}"
-    
-    cd "${OPENCV_SRC}"
-    git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout version ${OPENCV_VERSION}"; exit 1; }
-    echo "OpenCV version: $(git describe --tags 2>/dev/null || echo 'unknown')"
-    
-    # Contrib modules (optional)
+
+    # Main repository — cloned FIRST (not in parallel with contrib). contrib
+    # nests under OPENCV_SRC (${OPENCV_SRC}/opencv_contrib), so cloning both at
+    # once raced on creating OPENCV_SRC itself ("could not create work tree dir
+    # '<OPENCV_SRC>': File exists"), leaving contrib un-cloned. Sequential clone
+    # guarantees the parent exists before contrib is fetched into it.
+    # OPENCV_COMMIT (opt-in 40-hex SHA) pins reproducibly; default empty keeps
+    # tracking the OPENCV_VERSION branch (bleeding edge). core and contrib pin
+    # independently since they are separate repos with distinct HEADs.
+    retry 3 10 "opencv git clone" clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_COMMIT:-${OPENCV_VERSION}}" \
+        || { echo "Failed to clone opencv"; exit 1; }
+
+    # Contrib modules (optional) — fetched into the conventional opencv_contrib
+    # directory name so CMake's OPENCV_EXTRA_MODULES_PATH is the expected path.
+    local contrib_dir=""
     if [ "${WITH_CONTRIB}" = "true" ]; then
         echo "Fetching OpenCV contrib modules..."
-        # Use the conventional opencv_contrib directory name so CMake's
-        # OPENCV_EXTRA_MODULES_PATH is the expected path
-        local contrib_dir="${OPENCV_SRC}/opencv_contrib"
-
-        clone_or_update_repo "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" "${OPENCV_VERSION}"
-
-        cd "${contrib_dir}"
-        git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout contrib version ${OPENCV_VERSION}"; exit 1; }
-        echo "OpenCV contrib version: $(git describe --tags 2>/dev/null || echo 'unknown')"
+        contrib_dir="${OPENCV_SRC}/opencv_contrib"
+        retry 3 10 "opencv_contrib git clone" clone_or_update_repo "${OPENCV_CONTRIB_REPO}" "${contrib_dir}" "${OPENCV_CONTRIB_COMMIT:-${OPENCV_VERSION}}" \
+            || { echo "Failed to clone opencv_contrib"; exit 1; }
     fi
 
-    # OpenCV 5.x vendored MLAS: MlasHGemmSupported is declared in inc/mlas.h
-    # but never defined, yet compute.cpp calls it from the FP16 template
-    # MlasGQASupported<MLAS_FP16> regardless of MLAS_GEMM_ONLY. On riscv64
-    # this produces an undefined-symbol link error. Provide a stub that
-    # returns false when MLAS_GEMM_ONLY is set (SGEMM-only build).
-    local mlas_compute="${OPENCV_SRC}/3rdparty/mlas/lib/compute.cpp"
-    if [ -f "${mlas_compute}" ] && ! grep -Fq 'MLAS_GEMM_ONLY stub' "${mlas_compute}"; then
-        echo "Patching vendored MLAS: adding MlasHGemmSupported stub for MLAS_GEMM_ONLY"
-        cat >> "${mlas_compute}" <<'MLAS_STUB_EOF'
+    cd "${OPENCV_SRC}"
+    # When a commit pin is set, clone_or_update_repo already checked out the SHA
+    # via FETCH_HEAD and no ${OPENCV_VERSION} branch ref exists locally — a
+    # branch checkout here would fail and abort the build. Only re-checkout the
+    # branch in the unpinned (branch-tracking) case.
+    if [ -z "${OPENCV_COMMIT:-}" ]; then
+        git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout version ${OPENCV_VERSION}"; exit 1; }
+    fi
+    echo "OpenCV version: $(git describe --tags 2>/dev/null || echo 'unknown')"
 
-#ifdef MLAS_GEMM_ONLY
-// MLAS_GEMM_ONLY stub: MlasHGemmSupported is declared but never defined
-// in SGEMM-only builds; provide a fallback that always returns false.
-// Weak attribute resolves duplicate-symbol conflicts when upstream MLAS
-// also defines this function (e.g. Android NDK lld rejects duplicates).
-__attribute__((weak))
-MLASCALL
-bool
-MlasHGemmSupported(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB
-    )
-{
-    (void)TransA;
-    (void)TransB;
-    return false;
-}
-#endif
-MLAS_STUB_EOF
-        echo "OpenCV MLAS stub patch applied"
+    if [ "${WITH_CONTRIB}" = "true" ]; then
+        cd "${contrib_dir}"
+        if [ -z "${OPENCV_CONTRIB_COMMIT:-}" ]; then
+            git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout contrib version ${OPENCV_VERSION}"; exit 1; }
+        fi
+        echo "OpenCV contrib version: $(git describe --tags 2>/dev/null || echo 'unknown')"
+        cd "${OPENCV_SRC}"
+    fi
+
+    # OpenCV 5.x vendored MLAS declares MlasHGemmSupported (inc/mlas.h) but never
+    # defines it, yet compute.cpp calls it from MlasGQASupported<MLAS_FP16>,
+    # producing an undefined-symbol link error. Apply a weak-stub patch.
+    if [ -f "${OPENCV_SRC}/3rdparty/mlas/lib/compute.cpp" ]; then
+        bash /opt/scripts/core/apply-patch.sh \
+            /opt/scripts/patches/opencv/001-mlas-hgemm-supported-stub.patch \
+            "${OPENCV_SRC}" \
+            "OpenCV MLAS MlasHGemmSupported stub for MLAS_GEMM_ONLY"
     fi
 }
 
@@ -168,19 +203,18 @@ target_machine() {
 # ------------------------------------------------------------------------------
 # Configure OpenCV build
 # ------------------------------------------------------------------------------
-configure_opencv() {
-    echo "Configuring OpenCV build..."
-    
-    local build_dir="${OPENCV_SRC}/build"
-    local with_gtk="ON"
-    local with_gstreamer="ON"
-    local with_opengl="ON"
-    local target_zlib_include=""
-    local target_zlib_library=""
-    local target_shared_include_fallback=""
-    mkdir -p "${build_dir}"
-    cd "${build_dir}"
-    
+
+# Adjust build flags for non-x86 targets and cross-mode gating of GTK/GStreamer/
+# Python. Mutates the surrounding with_* and target_* locals.
+_opencv_target_adjustments() {
+    local -n _ota_cmake_opts="$1"
+    local -n _ota_with_gtk="$2"
+    local -n _ota_with_gstreamer="$3"
+    local -n _ota_with_opengl="$4"
+    local -n _ota_zlib_inc="$5"
+    local -n _ota_zlib_lib="$6"
+    local -n _ota_shared_inc="$7"
+
     # Disable IPP automatically on non-x86 hosts because OpenCV bundles
     # prebuilt ippicv libraries for x86 which will fail when linking on
     # architectures like aarch64 or riscv. Allow explicit override via
@@ -192,34 +226,53 @@ configure_opencv() {
 
     if cross_build_is_active; then
         # GTK pulls target-side Pango GIR files that are not coinstallable with the host arch.
-        with_gtk="OFF"
-        with_opengl="OFF"
+        _ota_with_gtk="OFF"
+        _ota_with_opengl="OFF"
         # Debian/Ubuntu multiarch keeps zlib.h in the shared include directory.
-        target_zlib_include="/usr/include"
-        target_zlib_library="/usr/lib/$(cross_target_triplet)/libz.so"
-        target_shared_include_fallback="-idirafter /usr/include"
+        _ota_zlib_inc="/usr/include"
+        _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
+        _ota_shared_inc="-idirafter /usr/include"
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # Ubuntu Ports cannot currently satisfy the target GStreamer/GLib dev chain for riscv64 cross builds.
-            with_gstreamer="OFF"
-            # Vendored libpng in OpenCV 5.x requires RISC-V Vector extension detection
-            # which fails with GCC 16.1.0 (the CMake test program uses incompatible intrinsics).
-            # Disable PNG for riscv64 to avoid the configure error.
-            cmake_opts+=("-DWITH_PNG=OFF")
+            _ota_with_gstreamer="OFF"
+            # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
+            # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
+            # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL
+            # libpng that install-deps.sh provides (Ubuntu Ports package or, as a
+            # fallback, cross-compiled from source): WITH_PNG=ON + BUILD_PNG=OFF bypasses
+            # the vendored copy and its RVV probe. If no external libpng is present, fall
+            # back to disabling PNG so the OpenCV build still succeeds.
+            local _png_triplet _png_lib="" _png_inc="" _png_cand
+            _png_triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
+            for _png_cand in \
+                "/usr/${_png_triplet}/lib/libpng16.a" \
+                "/usr/${_png_triplet}/lib/libpng16_static.a" \
+                "/usr/lib/${_png_triplet}/libpng16.a"; do
+                [ -f "${_png_cand}" ] && { _png_lib="${_png_cand}"; break; }
+            done
+            for _png_cand in "/usr/${_png_triplet}/include/libpng16" "/usr/${_png_triplet}/include"; do
+                [ -f "${_png_cand}/png.h" ] && { _png_inc="${_png_cand}"; break; }
+            done
+            if [ -n "${_png_lib}" ] && [ -n "${_png_inc}" ]; then
+                echo "riscv64 OpenCV: linking external static libpng (${_png_lib}, headers ${_png_inc})"
+                _ota_cmake_opts+=("-DWITH_PNG=ON" "-DBUILD_PNG=OFF" "-DPNG_PNG_INCLUDE_DIR=${_png_inc}" "-DPNG_LIBRARY=${_png_lib}")
+            else
+                echo "[WARN] riscv64 OpenCV: no external libpng found; disabling PNG (cv2 PNG encode unavailable)"
+                _ota_cmake_opts+=("-DWITH_PNG=OFF")
+            fi
         fi
         if [ "${WITH_PYTHON}" = "true" ] && command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
             echo "Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling OpenCV Python bindings in cross mode"
             WITH_PYTHON="false"
         fi
     fi
+}
 
-    if [ "${WITH_PYTHON}" = "true" ]; then
-        echo "Using existing Python venv (expected at /opt/python/.venv)..."
-        setup_host_python_environment
-        uv pip install numpy wheel
-    fi
-
-    # Build cmake options array
-    local cmake_opts=(
+# Append core CMake options (build type, install path, modules, codecs).
+_opencv_cmake_core_opts() {
+    local -n _occmo_out="$1"
+    local with_gtk="$2" with_gstreamer="$3" with_opengl="$4"
+    _occmo_out=(
         "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
         "-DCMAKE_INSTALL_PREFIX=${OPENCV_PREFIX}"
         "-DCMAKE_INSTALL_LIBDIR=lib"
@@ -255,37 +308,40 @@ configure_opencv() {
         "-DWITH_ITT=ON"
         "-DWITH_IPP=${WITH_IPP}"
     )
+}
+
+# Append cross-compilation CMake flags (find-root modes, archiver tools,
+# zlib, idirafter include fallback).
+_opencv_cmake_cross_opts() {
+    local -n _ocmco_out="$1"
+    local target_zlib_include="$2" target_zlib_library="$3" target_shared_include_fallback="$4"
 
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
-        append_cmake_cross_args cmake_opts
+        append_cmake_cross_args _ocmco_out
     fi
 
     if cross_build_is_active; then
         # OpenCV's mixed vendored/system dependency graph needs access to the
         # target sysroot headers and libraries under /usr while still finding
         # generated build artifacts in the normal build tree.
-        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH")
-        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH")
-        cmake_opts+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
-        cmake_opts+=("-DCMAKE_AR=$(resolve_cross_archive_tool ar)")
-        cmake_opts+=("-DCMAKE_RANLIB=$(resolve_cross_archive_tool ranlib)")
-        cmake_opts+=("-DCMAKE_C_COMPILER_AR=$(resolve_cross_archive_tool ar)")
-        cmake_opts+=("-DCMAKE_CXX_COMPILER_AR=$(resolve_cross_archive_tool ar)")
-        cmake_opts+=("-DCMAKE_C_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
-        cmake_opts+=("-DCMAKE_CXX_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
-        cmake_opts+=("-DZLIB_INCLUDE_DIR=${target_zlib_include}")
-        cmake_opts+=("-DZLIB_LIBRARY=${target_zlib_library}")
-        cmake_opts+=("-DCMAKE_C_FLAGS=${target_shared_include_fallback}")
-        cmake_opts+=("-DCMAKE_CXX_FLAGS=${target_shared_include_fallback}")
+        _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH")
+        _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH")
+        _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+        _ocmco_out+=("-DCMAKE_AR=$(resolve_cross_archive_tool ar)")
+        _ocmco_out+=("-DCMAKE_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        _ocmco_out+=("-DCMAKE_C_COMPILER_AR=$(resolve_cross_archive_tool ar)")
+        _ocmco_out+=("-DCMAKE_CXX_COMPILER_AR=$(resolve_cross_archive_tool ar)")
+        _ocmco_out+=("-DCMAKE_C_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        _ocmco_out+=("-DCMAKE_CXX_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        _ocmco_out+=("-DZLIB_INCLUDE_DIR=${target_zlib_include}")
+        _ocmco_out+=("-DZLIB_LIBRARY=${target_zlib_library}")
+        _ocmco_out+=("-DCMAKE_C_FLAGS=${target_shared_include_fallback}")
+        _ocmco_out+=("-DCMAKE_CXX_FLAGS=${target_shared_include_fallback}")
     fi
+}
 
-    append_cmake_cache_linker_args cmake_opts
-
-    # Ensure tracking contrib module is explicitly enabled (some builds/platforms
-    # may not build it by default even when contrib modules are available).
-    cmake_opts+=("-DBUILD_opencv_tracking=ON")
-
-    # Help CMake find the Vulkan SDK if it's installed in the default location
+# Help CMake find the Vulkan SDK if installed in the default /opt/vulkan location.
+_opencv_vulkan_setup() {
     if [ -d "/opt/vulkan" ]; then
         local vulkan_ver
         vulkan_ver=$(ls /opt/vulkan | sort -V | tail -n 1)
@@ -300,17 +356,28 @@ configure_opencv() {
             fi
         fi
     fi
-    
-    # Contrib modules
+}
+
+# Append contrib modules path when WITH_CONTRIB=true.
+_opencv_cmake_contrib_opts() {
+    local -n _ocmco_out="$1"
     if [ "${WITH_CONTRIB}" = "true" ]; then
-        cmake_opts+=("-DOPENCV_EXTRA_MODULES_PATH=${OPENCV_SRC}/opencv_contrib/modules")
-        cmake_opts+=("-DBUILD_opencv_python3=${WITH_PYTHON}")
+        _ocmco_out+=("-DOPENCV_EXTRA_MODULES_PATH=${OPENCV_SRC}/opencv_contrib/modules")
+        _ocmco_out+=("-DBUILD_opencv_python3=${WITH_PYTHON}")
     fi
-    
-    # Python bindings
+}
+
+# Append Python bindings CMake opts (executable, library, include, numpy).
+_opencv_cmake_python_opts() {
+    local -n _ocmpo_out="$1"
+
     if [ "${WITH_PYTHON}" = "true" ]; then
-        PY_EXEC="${HOST_PYTHON:-$(host_python_bin)}"
-        cmake_opts+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
+        echo "Using existing Python venv (expected at /opt/python/.venv)..."
+        setup_host_python_environment
+        uv pip install numpy wheel
+
+        local PY_EXEC="${HOST_PYTHON:-$(host_python_bin)}"
+        _ocmpo_out+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
         # Explicitly set library and include paths since FindPython3 might not find free-threaded (t) libraries
         if cross_build_is_active; then
             local target_python_library=""
@@ -324,8 +391,8 @@ configure_opencv() {
             fi
 
             if [ -n "${target_python_library}" ] && [ -d "${target_python_include}" ]; then
-                cmake_opts+=("-DPYTHON3_LIBRARY=${target_python_library}")
-                cmake_opts+=("-DPYTHON3_INCLUDE_DIR=${target_python_include}")
+                _ocmpo_out+=("-DPYTHON3_LIBRARY=${target_python_library}")
+                _ocmpo_out+=("-DPYTHON3_INCLUDE_DIR=${target_python_include}")
             fi
 
             # Numpy headers are architecture-independent; use the host venv numpy.
@@ -333,75 +400,124 @@ configure_opencv() {
             # In cross mode, FindPython3 cannot probe numpy at the target, so we
             # supply the include path explicitly.
             local numpy_include
-            numpy_include="$(${HOST_PYTHON:-$(host_python_bin)} -c 'import numpy; print(numpy.get_include())' 2>/dev/null || true)"
+            numpy_include="$(python_module_include "${HOST_PYTHON:-$(host_python_bin)}" numpy)"
             if [ -n "${numpy_include}" ] && [ -d "${numpy_include}" ]; then
-                cmake_opts+=("-DPYTHON3_NUMPY_INCLUDE_DIRS=${numpy_include}")
+                _ocmpo_out+=("-DPYTHON3_NUMPY_INCLUDE_DIRS=${numpy_include}")
                 echo "Set PYTHON3_NUMPY_INCLUDE_DIRS=${numpy_include} for cross-compile"
             else
                 echo "[WARN] Numpy not available in host venv; Python3 wrappers will not be generated"
             fi
         elif [ -f "/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so" ]; then
-            cmake_opts+=("-DPYTHON3_LIBRARY=/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so")
-            cmake_opts+=("-DPYTHON3_INCLUDE_DIR=/usr/local/include/python${OPENCV_PYTHON_VERSION}")
+            _ocmpo_out+=("-DPYTHON3_LIBRARY=/usr/local/lib/libpython${OPENCV_PYTHON_VERSION}.so")
+            _ocmpo_out+=("-DPYTHON3_INCLUDE_DIR=/usr/local/include/python${OPENCV_PYTHON_VERSION}")
         fi
     fi
-    
-    # Java bindings
+}
+
+# Append Java bindings CMake opts.
+_opencv_cmake_java_opts() {
+    local -n _ocmjo_out="$1"
     if [ "${WITH_JAVA}" = "true" ]; then
-        cmake_opts+=("-DBUILD_JAVA=ON")
-        cmake_opts+=("-DBUILD_opencv_java=ON")
+        _ocmjo_out+=("-DBUILD_JAVA=ON")
+        _ocmjo_out+=("-DBUILD_opencv_java=ON")
     else
-        cmake_opts+=("-DBUILD_JAVA=OFF")
-        cmake_opts+=("-DBUILD_opencv_java=OFF")
+        _ocmjo_out+=("-DBUILD_JAVA=OFF")
+        _ocmjo_out+=("-DBUILD_opencv_java=OFF")
     fi
-    
-    # Hardware acceleration options
+}
+
+# Append NVIDIA CUDA / cuDNN / TensorRT CMake opts when ENABLE_NVIDIA=true.
+_opencv_cmake_cuda_opts() {
+    local -n _ocmcd_out="$1"
     if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
         echo "Enabling NVIDIA CUDA and cuDNN support in OpenCV..."
-        # CUDA path should be available from base image (typically /usr/local/cuda)
-        cmake_opts+=("-DWITH_CUDA=ON")
-        cmake_opts+=("-DCUDA_FAST_MATH=ON")
-        cmake_opts+=("-DWITH_CUDNN=ON")
-        cmake_opts+=("-DOPENCV_DNN_CUDA=ON")
-        cmake_opts+=("-DWITH_CUBLAS=ON")
-        cmake_opts+=("-DWITH_NVCUVID=ON")
-        cmake_opts+=("-DWITH_TENSORRT=ON")
-        
+        _ocmcd_out+=("-DWITH_CUDA=ON")
+        _ocmcd_out+=("-DCUDA_FAST_MATH=ON")
+        _ocmcd_out+=("-DWITH_CUDNN=ON")
+        _ocmcd_out+=("-DOPENCV_DNN_CUDA=ON")
+        _ocmcd_out+=("-DWITH_CUBLAS=ON")
+        _ocmcd_out+=("-DWITH_NVCUVID=ON")
+        _ocmcd_out+=("-DWITH_TENSORRT=ON")
+        # Target GPU arch list from versions.env (CUDA_ARCHITECTURES).
+        _ocmcd_out+=("-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES:-80;86;89;90}")
+
         # Explicitly provide the CUDA library stub so we can build without a GPU present
         if [ -f "/usr/local/cuda/lib64/stubs/libcuda.so" ]; then
-            cmake_opts+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/lib64/stubs/libcuda.so")
+            _ocmcd_out+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/lib64/stubs/libcuda.so")
         elif [ -f "/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so" ]; then
-            cmake_opts+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so")
+            _ocmcd_out+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so")
         else
-            # fallback if stub isn't found
-            cmake_opts+=("-DBUILD_opencv_cudacodec=OFF")
+            _ocmcd_out+=("-DBUILD_opencv_cudacodec=OFF")
         fi
     fi
+}
 
-    # For cross-builds, ensure freetype can be found (headers from host, library from target)
+# For cross-builds, ensure freetype/harfbuzz can be found (host headers, target libs).
+_opencv_cmake_freetype_opts() {
+    local -n _ocmfo_out="$1"
     if cross_build_is_active && [ "$(cross_target_arch)" != "amd64" ]; then
         local _cv_triplet
         _cv_triplet="$(cross_target_triplet 2>/dev/null || true)"
         if [ -n "${_cv_triplet}" ]; then
             local _cv_target_lib="/usr/lib/${_cv_triplet}"
-            # Host headers are arch-independent; point CMake to them
             if [ -d /usr/include/freetype2 ]; then
-                cmake_opts+=("-DFREETYPE_INCLUDE_DIRS=/usr/include/freetype2")
+                _ocmfo_out+=("-DFREETYPE_INCLUDE_DIRS=/usr/include/freetype2")
             fi
             if [ -d /usr/include/harfbuzz ]; then
-                cmake_opts+=("-DHARFBUZZ_INCLUDE_DIRS=/usr/include/harfbuzz")
+                _ocmfo_out+=("-DHARFBUZZ_INCLUDE_DIRS=/usr/include/harfbuzz")
             fi
-            # Prefer target library, fall back to host library at link time
             if [ -f "${_cv_target_lib}/libfreetype.so" ]; then
-                cmake_opts+=("-DFREETYPE_LIBRARY=${_cv_target_lib}/libfreetype.so")
+                _ocmfo_out+=("-DFREETYPE_LIBRARY=${_cv_target_lib}/libfreetype.so")
             fi
             if [ -f "${_cv_target_lib}/libharfbuzz.so" ]; then
-                cmake_opts+=("-DHARFBUZZ_LIBRARY=${_cv_target_lib}/libharfbuzz.so")
+                _ocmfo_out+=("-DHARFBUZZ_LIBRARY=${_cv_target_lib}/libharfbuzz.so")
             fi
         fi
     fi
+}
+
+configure_opencv() {
+    echo "Configuring OpenCV build..."
+
+    local build_dir="${OPENCV_SRC}/build"
+    local with_gtk="ON"
+    local with_gstreamer="ON"
+    local with_opengl="ON"
+    local target_zlib_include=""
+    local target_zlib_library=""
+    local target_shared_include_fallback=""
+    mkdir -p "${build_dir}"
+    cd "${build_dir}"
+
+    # Target adjustments must be computed FIRST (they set with_gtk/with_gstreamer/
+    # target_zlib_* consumed by the core opts) but their CMake overrides (e.g.
+    # riscv64 -DWITH_PNG=OFF) must land AFTER the core opts in the final command:
+    # _opencv_cmake_core_opts does a full array reassignment (and cmake is
+    # last-wins), so collect them separately and append after the core opts.
+    local target_cmake_opts=()
+    _opencv_target_adjustments target_cmake_opts with_gtk with_gstreamer with_opengl \
+        target_zlib_include target_zlib_library target_shared_include_fallback
+
+    _opencv_cmake_core_opts cmake_opts "${with_gtk}" "${with_gstreamer}" "${with_opengl}"
+    cmake_opts+=("${target_cmake_opts[@]}")
+    _opencv_cmake_cross_opts cmake_opts \
+        "${target_zlib_include}" "${target_zlib_library}" "${target_shared_include_fallback}"
+
+    append_cmake_cache_linker_args cmake_opts
+
+    # Ensure tracking module is explicitly enabled (some builds/platforms
+    # may not build it by default even when contrib modules are available).
+    cmake_opts+=("-DBUILD_opencv_tracking=ON")
+
+    _opencv_vulkan_setup
+    _opencv_cmake_contrib_opts cmake_opts
+    _opencv_cmake_python_opts cmake_opts
+    _opencv_cmake_java_opts cmake_opts
+    _opencv_cmake_cuda_opts cmake_opts
+    _opencv_cmake_freetype_opts cmake_opts
+
     echo "CMake options: ${cmake_opts[*]}"
-    cmake -G Ninja "${OPENCV_SRC}" "${cmake_opts[@]}" || { echo "OpenCV configure failed"; exit 1; }
+    cmake -G Ninja "${OPENCV_SRC}" "${cmake_opts[@]}" || die "OpenCV configure failed"
 }
 
 # ------------------------------------------------------------------------------
@@ -455,18 +571,14 @@ install_opencv() {
     done
 
     # Sanity-check: fail early if core or tracking library is still missing
-    if ! (ls "${OPENCV_PREFIX}/lib/libopencv_core.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_core.so" >/dev/null 2>&1); then
-        echo "ERROR: libopencv_core was not found after install. Listing installed libs for debugging:"
-        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
-        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
-        die "Failing build so the image build doesn't continue with a broken OpenCV install."
-    fi
-    if ! (ls "${OPENCV_PREFIX}/lib/libopencv_tracking.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/libopencv_tracking.so" >/dev/null 2>&1); then
-        echo "ERROR: libopencv_tracking was not found after install. Listing installed libs for debugging:"
-        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
-        ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
-        die "Failing build so the image build doesn't continue with a broken OpenCV install."
-    fi
+    for _ocv_lib in libopencv_core libopencv_tracking; do
+        if ! (ls "${OPENCV_PREFIX}/lib/${_ocv_lib}.so" >/dev/null 2>&1 || ls "${OPENCV_PREFIX}/lib64/${_ocv_lib}.so" >/dev/null 2>&1); then
+            echo "ERROR: ${_ocv_lib} was not found after install. Listing installed libs for debugging:"
+            ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null || true
+            ${SUDO_WRAP} ls -la "${OPENCV_PREFIX}/lib64" 2>/dev/null || true
+            die "Failing build so the image build doesn't continue with a broken OpenCV install."
+        fi
+    done
 
     install_opencv4_compat_aliases
 }

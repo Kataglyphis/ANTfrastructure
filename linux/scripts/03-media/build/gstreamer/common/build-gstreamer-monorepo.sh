@@ -33,10 +33,17 @@ prebuild_gstreamer_riscv_targets() {
   if [ "${#glib_subprojects[@]}" -gt 0 ]; then
     gmodule_visibility_target="subprojects/$(basename "${glib_subprojects[0]}")/gmodule/gmodule-visibility.h"
 
-    echo "Prebuilding ${gmodule_visibility_target} before Graphene GIR generation"
-    uv run meson compile -C builddir --jobs 1 "${gmodule_visibility_target}"
-    echo "Prebuilding ${glib_lib_target}, ${gobject_lib_target}, ${gmodule_lib_target} and ${gio_lib_target} before Graphene GIR generation"
-    uv run meson compile -C builddir --jobs 1 "${glib_lib_target}" "${gobject_lib_target}" "${gmodule_lib_target}" "${gio_lib_target}"
+    # Ninja/Makefile dependency ordering means a single meson compile call
+    # suffices to build the header before the libs it depends on; collapsing
+    # what was two sequential --jobs 1 invocations into one removes a full
+    # ninja startup/scheduling round-trip.
+    echo "Prebuilding ${gmodule_visibility_target}, ${glib_lib_target}, ${gobject_lib_target}, ${gmodule_lib_target} and ${gio_lib_target} before Graphene GIR generation"
+    uv run meson compile -C builddir --jobs 1 \
+        "${gmodule_visibility_target}" \
+        "${glib_lib_target}" \
+        "${gobject_lib_target}" \
+        "${gmodule_lib_target}" \
+        "${gio_lib_target}"
   fi
 
   if [ "${#graphene_subprojects[@]}" -gt 0 ]; then
@@ -47,18 +54,41 @@ prebuild_gstreamer_riscv_targets() {
 }
 
 compute_gstreamer_meson_jobs() {
+  # GStreamer's monorepo links heavy C++ TUs (gtk4, webrtc, opencv/onnx plugins)
+  # and Rust crates (gst-plugins-rs) whose peak RSS is ~2-3 GB per job — far more
+  # than the global AGGRESSIVE 800-1000 MB/job estimate. Size the job count by
+  # AVAILABLE memory at a realistic per-job budget: big-RAM hosts (>=32 GB) get
+  # more jobs (RAM used fully) while smaller hosts throttle automatically, and
+  # neither oversubscribes into OOM. Deliberately ignores AGGRESSIVE_PARALLELISM
+  # here — its estimate is too optimistic for this stage. Override the budget
+  # with GSTREAMER_MB_PER_JOB, or pin the count with PARALLEL_JOBS.
+  local jobs mb_per_job
+  mb_per_job="${GSTREAMER_MB_PER_JOB:-2500}"
+
   if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    if [ "${AGGRESSIVE_PARALLELISM:-false}" = "true" ]; then
-      compute_jobs_with_mem_cap "" 1000
-    else
-      compute_jobs_with_mem_cap "" 1500
-    fi
-    return 0
+    jobs="$(compute_jobs_with_mem_cap "" "${mb_per_job}")"
+  else
+    jobs="$(nproc --all 2>/dev/null || echo 1)"
   fi
-  nproc --all 2>/dev/null || echo 1
+
+  # arm64/riscv64 cross subprojects build under QEMU, which uses ~3x the memory
+  # per job; apply an extra memory-derived headroom cap (scales with RAM instead
+  # of a hardcoded ceiling, so a big host still gets more than 2 jobs).
+  if cross_build_is_active; then
+    case "${TARGET_MACHINE_ARCH:-}" in
+      arm64|aarch64|riscv64|riscv*)
+        local qemu_jobs
+        qemu_jobs="$(compute_jobs_with_mem_cap "" "$(( mb_per_job * 3 ))" 2>/dev/null || echo 2)"
+        [ "${jobs}" -gt "${qemu_jobs}" ] 2>/dev/null && jobs="${qemu_jobs}"
+        ;;
+    esac
+  fi
+
+  [ "${jobs}" -ge 1 ] 2>/dev/null || jobs=1
+  printf '%s' "${jobs}"
 }
 
-build_gstreamer_monorepo() {
+_gst_monorepo_env_setup() {
   # cross_build_is_active is provided by cross-env.sh via media_common_init.
   # Minimal fallback if the module chain didn't load it.
   if ! command -v cross_build_is_active >/dev/null 2>&1; then
@@ -69,16 +99,6 @@ build_gstreamer_monorepo() {
   fi
 
   local host_arch=""
-  local deb_host_multiarch_dir=""
-  local sys_pkgconf_dir=""
-  local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv5}"
-  local opencv_libdir=""
-  local target_python_libdir=""
-  local target_python_pkgconfig_dir=""
-  local tflite_pkg_config_name=""
-  local tflite_includedir=""
-  local tflite_libdir=""
-  local python_feature="enabled"
 
   echo ""
   echo "Setting up Meson build..."
@@ -104,6 +124,11 @@ build_gstreamer_monorepo() {
   if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" != "true" ]; then
     python_feature="disabled"
   fi
+}
+
+_gst_monorepo_python_config() {
+  local target_python_libdir=""
+  local target_python_pkgconfig_dir=""
 
   prepare_cross_python_build_config
 
@@ -137,7 +162,9 @@ build_gstreamer_monorepo() {
       esac
     fi
   fi
+}
 
+_gst_monorepo_meson_base_flags() {
   MESON_FLAGS=(
     "--prefix=${GSTREAMER_PREFIX}"
     "-Dbuildtype=${BUILD_TYPE_LOWER}"
@@ -150,6 +177,7 @@ build_gstreamer_monorepo() {
     "-Dugly=enabled"
     "-Dges=enabled"
     "-Dbad=enabled"
+    "-Dgst-plugins-bad:introspection=disabled"
     "-Dgst-plugins-bad:tflite=enabled"
     "-Dgst-plugins-bad:opencv=enabled"
     "-Dgst-plugins-bad:onnx=enabled"
@@ -163,15 +191,25 @@ build_gstreamer_monorepo() {
     "-Dintrospection=enabled"
   )
 
+  # webrtcbin2 is built when GST_RS_BUILD_ALL=true (default); force off otherwise.
+  [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || MESON_FLAGS+=("-Dgst-plugins-rs:webrtcbin2=disabled")
+
   if cross_build_is_active; then
     echo "Cross build detected: disabling devtools (avoid cargo host-toolchain collisions)"
     MESON_FLAGS+=("-Ddevtools=disabled")
   fi
+}
 
+_gst_monorepo_arch_flags() {
   case "${TARGET_MACHINE_ARCH}" in
     riscv*|*riscv*)
       echo "Target arch '${TARGET_MACHINE_ARCH}' detected: python disabled (no target Python dev for riscv64)"
-      MESON_FLAGS+=("-Drs=disabled")
+      if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
+        echo "GST_RS_BUILD_ALL=true: attempting Rust plugins on riscv64 (-Drs=enabled) — cross-compiling Rust to riscv64 is experimental and may fail"
+        MESON_FLAGS+=("-Drs=enabled")
+      else
+        MESON_FLAGS+=("-Drs=disabled")
+      fi
       # PTP helper fails to link on riscv64 (collect2 error with gcc cross linker).
       append_meson_arg "-Dgstreamer:ptp-helper=disabled"
       # Introspection kept enabled — exe_wrapper is provided via pre-setup.sh QEMU wrapper.
@@ -196,15 +234,16 @@ build_gstreamer_monorepo() {
       append_meson_arg "-Dharfbuzz:introspection=disabled"
       append_meson_arg "-Dgdk-pixbuf:glycin=disabled"
       append_meson_arg "-Dgdk-pixbuf:man=false"
-      append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
-      echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"
+      [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || { append_meson_arg "-Dgst-plugins-rs:whisper=disabled"; echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"; }
       ;;
     aarch64*|arm*)
-      echo "Target arch '${TARGET_MACHINE_ARCH}' detected: enabling -Drs (Rust bindings) but disabling csound"
+      echo "Target arch '${TARGET_MACHINE_ARCH}' detected: enabling -Drs (Rust bindings)"
       MESON_FLAGS+=("-Drs=enabled")
-      append_meson_arg "-Dgst-plugins-rs:csound=disabled"
-      append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
-      echo "Disabling gst-plugins-rs whisper plugin for ARM host arch"
+      if [ "${GST_RS_BUILD_ALL:-true}" != "true" ]; then
+        append_meson_arg "-Dgst-plugins-rs:csound=disabled"
+        append_meson_arg "-Dgst-plugins-rs:whisper=disabled"
+        echo "Disabling gst-plugins-rs csound/whisper plugins for ARM host arch"
+      fi
       if [ "${BUILD_MODE:-native}" = "cross" ]; then
         echo "ARM cross build: disabling introspection (g-ir-compiler needs qemu exe_wrapper)"
         MESON_FLAGS+=("-Dintrospection=disabled")
@@ -216,11 +255,49 @@ build_gstreamer_monorepo() {
   esac
 
   if cross_build_is_active; then
-    echo "Cross build detected: disabling gst-plugins-rs subproject in monorepo"
-    echo "(standalone cargo build handles Rust plugins independently)"
-    MESON_FLAGS+=("-Drs=disabled")
-  fi
+    # Keep -Drs at whatever the per-arch block chose (enabled for arm64/riscv64).
+    # Previously forced to disabled for cross because target Rust crates linked
+    # with the host cc and failed; prepare_host_cargo_toolchain_env now exports
+    # CARGO_TARGET_<triple>_LINKER pointing at the cross gcc, so the monorepo can
+    # cross-build and install the gst-plugins-rs cdylibs directly.
+    echo "Cross build: gst-plugins-rs built in-monorepo (target Rust linker wired via cargo env)"
 
+    # Disable the Rust plugins whose native -sys deps / host tools are absent when
+    # cross-compiling — these hard-fail the cargo build (no meson dependency() gate
+    # to auto-skip them, unlike webrtcbin2 which auto-skips via dependency('rice-proto')).
+    # Per-arch set mirrors build-gst-plugins-rs.sh's standalone cross excludes:
+    #   validate -> gstreamer-validate-1.0.pc (devtools disabled on ALL cross)
+    #   csound   -> libcsound (excluded arm+riscv)   whisper -> whisper.cpp (arm+riscv)
+    #   skia     -> Skia built from source (skia-sys, cross-hostile both)
+    #   burn     -> heavy ML crate (pruned both)
+    #   dav1d    -> libdav1d: RISC-V ONLY (arm64 has libdav1d and builds fine)
+    # "all Rust plugins that can cross-compile for this arch"; re-enable a plugin
+    # once its native dep is provided for the target.
+    # validate genuinely needs gstreamer-validate-1.0 (devtools, off for all cross).
+    local -a _rs_disable=(validate)
+    # arm64 cross-builds the full Rust plugin set — csound/whisper/skia/burn/dav1d
+    # all validated once the target Rust linker + libcsound64 (+ csound-sys
+    # char-signedness patch) were wired, so arm64 only disables `validate` (needs
+    # gstreamer-validate devtools, off for cross).
+    # riscv64 PROBE: testing whether whisper/skia/burn/dav1d cross-build here the
+    # way they did on arm64. csound stays disabled — riscv64 Ports has no
+    # libcsound64 to link against. Re-add any crate that hard-fails below.
+    #   skia -> HARD-FAILS: skia-bindings' bundled gn/ninja build injects the
+    #     clang-only flag `--target=riscv64-linux-gnu`, which the GCC cross
+    #     compiler (riscv64-linux-gnu-g++) rejects with "unrecognized
+    #     command-line option". One cargo custom-target => this kills the whole
+    #     gst-plugins-rs set, so skia must be disabled for the riscv64 cross.
+    if [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
+      _rs_disable+=(csound skia)
+    fi
+    local _rs_plugin
+    for _rs_plugin in "${_rs_disable[@]}"; do
+      append_meson_arg "-Dgst-plugins-rs:${_rs_plugin}=disabled"
+    done
+  fi
+}
+
+_gst_monorepo_cross_flags() {
   if [ -n "${CROSS_PYTHON_BUILD_CONFIG:-}" ]; then
     append_meson_arg "-Dpython.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
     if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" = "true" ]; then
@@ -262,6 +339,11 @@ build_gstreamer_monorepo() {
   append_meson_arg "-Dpygobject:tests=false"
 
   dump_debug_info > /tmp/gstreamer-debug-info.log 2>&1 || true
+}
+
+_gst_monorepo_pkgconfig_env() {
+  local deb_host_multiarch_dir=""
+  local sys_pkgconf_dir=""
 
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     deb_host_multiarch_dir="$(cross_target_triplet)"
@@ -297,32 +379,35 @@ build_gstreamer_monorepo() {
     export PKG_CONFIG_LIBDIR
   fi
 
-  if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ] && [ -d "/usr/include/${deb_host_multiarch_dir}" ]; then
-    append_env_flag CPPFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
-    append_env_flag CFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
-    append_env_flag CXXFLAGS "-idirafter /usr/include/${deb_host_multiarch_dir}"
-  fi
-
-  if cross_build_is_active && [ -d /usr/include ]; then
-    append_env_flag CPPFLAGS "-idirafter /usr/include"
-    append_env_flag CFLAGS "-idirafter /usr/include"
-    append_env_flag CXXFLAGS "-idirafter /usr/include"
+  if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ]; then
+    append_cross_idirafter "${deb_host_multiarch_dir}"
   fi
 
   if cross_build_is_active && [ -n "${deb_host_multiarch_dir}" ]; then
-    append_env_flag LDFLAGS "-L/usr/lib/${deb_host_multiarch_dir}"
-    append_env_flag LDFLAGS "-Wl,-rpath-link,/usr/lib/${deb_host_multiarch_dir}"
+    append_flag_if_missing LDFLAGS "-L/usr/lib/${deb_host_multiarch_dir}"
+    append_flag_if_missing LDFLAGS "-Wl,-rpath-link,/usr/lib/${deb_host_multiarch_dir}"
   fi
+}
+
+_gst_monorepo_opencv_flags() {
+  local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv5}"
+  local opencv_libdir=""
 
   for opencv_libdir in "${opencv_prefix}/lib" "${opencv_prefix}/lib64"; do
     [ -d "${opencv_libdir}" ] || continue
     if [ -e "${opencv_libdir}/libopencv_tracking.so" ]; then
       # gst-plugins-bad/ext/opencv links opencv_tracking via a raw -l flag.
-      append_env_flag LDFLAGS "-L${opencv_libdir}"
-      append_env_flag LDFLAGS "-Wl,-rpath-link,${opencv_libdir}"
+      append_flag_if_missing LDFLAGS "-L${opencv_libdir}"
+      append_flag_if_missing LDFLAGS "-Wl,-rpath-link,${opencv_libdir}"
       break
     fi
   done
+}
+
+_gst_monorepo_tflite_flags() {
+  local tflite_pkg_config_name=""
+  local tflite_includedir=""
+  local tflite_libdir=""
 
   if cross_build_is_active; then
     for dep in tensorflowlite_c tensorflow-lite; do
@@ -337,21 +422,23 @@ build_gstreamer_monorepo() {
       tflite_libdir="$(pkg-config --variable=libdir "${tflite_pkg_config_name}" 2>/dev/null || true)"
 
       if [ -n "${tflite_includedir}" ]; then
-        append_env_flag CPPFLAGS "-idirafter ${tflite_includedir}"
-        append_env_flag CFLAGS "-idirafter ${tflite_includedir}"
-        append_env_flag CXXFLAGS "-idirafter ${tflite_includedir}"
+        append_flag_if_missing CPPFLAGS "-idirafter ${tflite_includedir}"
+        append_flag_if_missing CFLAGS "-idirafter ${tflite_includedir}"
+        append_flag_if_missing CXXFLAGS "-idirafter ${tflite_includedir}"
       fi
       if [ -n "${tflite_libdir}" ]; then
-        append_env_flag LDFLAGS "-L${tflite_libdir}"
-        append_env_flag LDFLAGS "-Wl,-rpath-link,${tflite_libdir}"
+        append_flag_if_missing LDFLAGS "-L${tflite_libdir}"
+        append_flag_if_missing LDFLAGS "-Wl,-rpath-link,${tflite_libdir}"
       fi
 
       echo "Resolved ${tflite_pkg_config_name} for Meson probes: includedir='${tflite_includedir:-}' libdir='${tflite_libdir:-}'"
     fi
   fi
 
-  # Fix the tensorflow-lite.pc file if it has trailing braces from the
-  # LiteRT .pc generation.
+  # Defensive cleanup: the root-cause was a bash `${6:--L\${libdir}}` parsing
+  # bug in generate_pkgconfig_file() that left a stray `}` after `-ltensorflow-lite`.
+  # That's been fixed in 01-core/common.sh, but keep this idempotent sanitizer so
+  # images rebuilt from older toolchain still produce a valid pc file at runtime.
   if [ -f /usr/local/lib/pkgconfig/tensorflow-lite.pc ]; then
     if grep -q 'ltensorflow-lite}' /usr/local/lib/pkgconfig/tensorflow-lite.pc 2>/dev/null; then
       sed -i 's/-ltensorflow-lite}/-ltensorflow-lite/g' /usr/local/lib/pkgconfig/tensorflow-lite.pc
@@ -371,7 +458,9 @@ build_gstreamer_monorepo() {
     done
     export LIBRARY_PATH="/usr/local/lib:${LIBRARY_PATH:-}"
   fi
+}
 
+_gst_monorepo_meson_setup_run() {
   if ! run_gstreamer_meson_setup > /tmp/meson-setup.log 2>&1; then
     echo "Meson setup failed; retrying with verbose output..." >&2
     if ! run_gstreamer_meson_setup -Dwarning_level=2 | tee /tmp/meson-setup-fallback.log 2>&1; then
@@ -388,26 +477,90 @@ build_gstreamer_monorepo() {
   if command -v patch_gstreamer_sources >/dev/null 2>&1; then
     # Wrapped subprojects such as gst-plugins-rs may only exist after Meson has
     # populated the source tree, so reapply source patches here before compile.
-    patch_gstreamer_sources "$(pwd)" "${EXTRA_MESON_ARGS}"
+    patch_gstreamer_sources "$(pwd)"
   fi
   prebuild_gstreamer_riscv_targets
+}
 
+# csound-sys 0.1.2 (pulled by gst-plugin-csound) hardcodes signed-char array
+# initialisers `[0i8; 64usize]` for its CsoundParams-style structs. bindgen maps
+# the underlying C `char[64]` fields to `[u8; 64]` on unsigned-char targets
+# (aarch64, riscv64), so those literals fail to type-check when cross-compiling
+# ("expected u8, found i8"). It is a crates.io dependency, so we cannot patch it
+# in-tree; rewrite the extracted registry source to an *untyped* `[0; 64usize]`
+# instead — the literal then infers the field's element type on every arch,
+# including signed-char x86 where it stays i8. cargo has already unpacked the
+# crate into the registry (that is what produced the compile error), so the sed
+# lands on the real source before the incremental rebuild picks it up. Returns
+# success only if at least one file was rewritten; idempotent.
+patch_csound_sys_char_signedness() {
+  local cargo_home="${CARGO_HOME:-/usr/local/cargo}" f patched=0
+  while IFS= read -r f; do
+    if grep -q '\[0i8; 64usize\]' "$f" 2>/dev/null; then
+      sed -i 's/\[0i8; 64usize\]/[0; 64usize]/g' "$f" && {
+        patched=1
+        echo "  patched csound-sys char signedness: $f"
+      }
+    fi
+  done < <(find "${cargo_home}/registry/src" -path '*csound-sys-*/src/*.rs' 2>/dev/null || true)
+  [ "${patched}" = "1" ]
+}
+
+_gst_monorepo_compile() {
   echo "Compiling GStreamer (this may take a while)..."
+  # Use the memory-aware job count (was previously raw `nproc`, uncapped, which
+  # oversubscribed heavy C++/Rust link jobs and OOM-killed the compile).
   JOBS="$(compute_gstreamer_meson_jobs)"
   export JOBS
-  echo "Using JOBS=$JOBS (AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
+  echo "Using JOBS=$JOBS (mem-capped; GSTREAMER_MB_PER_JOB=${GSTREAMER_MB_PER_JOB:-2500}, AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
   echo "Compiling GStreamer..."
-  if ! uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
-    echo "ERROR: Meson compile failed"
-    echo "==> Letzte Zeilen der Compile-Logs:"
-    tail -n 20000 /tmp/meson-compile.log || true
-    echo "==> Meson log:"
-    tail -n +1 builddir/meson-logs/meson-log.txt || true
-    dmesg | tail -n 100 | grep -i -E "out of memory|killed process" || true
-    exit 1
+  if uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
+    return 0
   fi
 
+  # Cross csound-sys char-signedness failure: patch the extracted crate and retry
+  # once (the retry is incremental — only csound-sys and its dependent plugins
+  # rebuild). Guarded so it only triggers for that specific, known failure.
+  if grep -q 'csound-sys' /tmp/meson-compile.log 2>/dev/null \
+     && grep -qE "expected .u8., found .i8." /tmp/meson-compile.log 2>/dev/null \
+     && patch_csound_sys_char_signedness; then
+    echo "Retrying meson compile after csound-sys char-signedness patch..."
+    if uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
+      return 0
+    fi
+  fi
+
+  echo "ERROR: Meson compile failed"
+  echo "==> Last lines of compile logs:"
+  tail -n 20000 /tmp/meson-compile.log || true
+  echo "==> Meson log:"
+  tail -n +1 builddir/meson-logs/meson-log.txt || true
+  dmesg | tail -n 100 | grep -i -E "out of memory|killed process" || true
+  exit 1
+}
+
+# Fallback when the cross DESTDIR install produced no libraries (post-install
+# scripts can't run target binaries): copy libs/plugins/binaries straight out of
+# the meson builddir into the prefix. Fatal if still no libgstreamer afterward.
+_gst_install_fallback_copy() {
+  if [ -d "builddir/subprojects/gstreamer/libs/gst" ]; then
+    cp -a builddir/subprojects/gstreamer/libs/gst/*/libgstreamer*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
+    cp -a builddir/subprojects/gstreamer/gst/libgstreamer*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
+    cp -a builddir/subprojects/*/gst-libs/gst/*/libgst*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
+  fi
+  # Also copy any .so from the builddir into prefix, plus the CLI binaries.
+  find builddir -name "*.so" -path "*/libgst*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/" \; 2>/dev/null || true
+  find builddir -name "*.so" -path "*/gstreamer-1.0/*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0/" \; 2>/dev/null || true
+  find builddir \( -name "gst-launch-1.0" -o -name "gst-inspect-1.0" \) -exec cp -aL {} "${GSTREAMER_PREFIX}/bin/" \; 2>/dev/null || true
+  ldconfig 2>/dev/null || true
+  if ! find "${GSTREAMER_PREFIX}" -name "libgstreamer*.so*" 2>/dev/null | grep -q .; then
+    echo "ERROR: GStreamer cross-install produced no libgstreamer libraries" >&2
+    exit 1
+  fi
+}
+
+_gst_monorepo_install() {
   echo "Installing GStreamer..."
   if cross_build_is_active; then
     # Cross-build: meson install may fail because post-install scripts
@@ -431,9 +584,11 @@ build_gstreamer_monorepo() {
       cp -a "${gst_stage}/usr/local/"* /usr/local/ 2>/dev/null || true
     fi
     rm -rf "${gst_stage}"
+    # If DESTDIR install failed (e.g. post-install scripts can't run cross
+    # binaries), fall back to copying directly from the meson builddir.
     if ! find "${GSTREAMER_PREFIX}" -name "libgstreamer*.so*" 2>/dev/null | grep -q .; then
-      echo "ERROR: GStreamer cross-install produced no libgstreamer libraries" >&2
-      exit 1
+      echo "WARNING: DESTDIR install produced no libraries; falling back to builddir copy"
+      _gst_install_fallback_copy
     fi
   else
     if ! uv run meson install -C builddir; then
@@ -445,4 +600,20 @@ build_gstreamer_monorepo() {
       exit 1
     fi
   fi
+}
+
+build_gstreamer_monorepo() {
+  local python_feature="enabled"
+
+  _gst_monorepo_env_setup
+  _gst_monorepo_python_config
+  _gst_monorepo_meson_base_flags
+  _gst_monorepo_arch_flags
+  _gst_monorepo_cross_flags
+  _gst_monorepo_pkgconfig_env
+  _gst_monorepo_opencv_flags
+  _gst_monorepo_tflite_flags
+  _gst_monorepo_meson_setup_run
+  _gst_monorepo_compile
+  _gst_monorepo_install
 }

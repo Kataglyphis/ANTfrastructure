@@ -3,7 +3,7 @@
 output.log
 *.log
 .codacy
-archive
+**/archive/
 README.md
 AGENTS.md
 CHANGELOG.md
@@ -15,7 +15,14 @@ out/
 *.tar
 *.tar.gz
 *.zip
-!windows/downloads/*.zip
+# windows/downloads is consumed ONLY by Dockerfile.nvidia, which build.ps1 builds with
+# its own `windows` context (this root .dockerignore does not apply there; see
+# windows/.dockerignore). Excluding the whole dir here keeps the ~2 GB EULA-gated
+# TensorRT zip (plus any locally parked CUDA/cuDNN downloads) out of the ROOT context
+# that every other docker build in the chain uploads (~9 per full run, classic builder
+# = full context upload each). NB: a bare `*.zip` above matches only root-LEVEL zips
+# (Docker pattern semantics), so this explicit dir exclusion is load-bearing.
+windows/downloads/
 *.swp
 *.swo
 __pycache__/
@@ -47,3 +54,8 @@ sphinx-kataglyphis-theme/
 *.pdb
 *.exp
 *.ilk
+
+# Windows CI/template scaffolding — not consumed by any Windows Dockerfile
+windows/scripts/rust/
+windows/scripts/python/
+windows/scripts/certificates/

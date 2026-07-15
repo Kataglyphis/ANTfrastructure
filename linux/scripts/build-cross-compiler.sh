@@ -13,16 +13,14 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+# shellcheck source=linux/scripts/lib-orchestrator.sh
+source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
+orchestrator_preamble
 
-IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 # CROSS_TARGETS is the compiler target arch list — distinct from TARGET_ARCHES
 # which is used for which arches to build per-arch stages for.
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-init_mirror_defaults
 
-REBUILD_BASE=0
 PUSH_IMAGES=0
 
 usage() {
@@ -33,19 +31,18 @@ Builds an amd64-hosted cross-compiler image containing cross toolchains for all
 target architectures.  Internally delegates to the shared stage graph
 (stage-defs.sh) — same pipeline as build-cross-chain.sh and build-cross-stage.sh.
 
-The image stays local unless --push is requested.  If the remote base image is
-unavailable, the script builds a local amd64 base image first and then uses it
-for the compiler build.
+The image stays local unless --push is requested.  The amd64 base stage is
+always built first via the shared stage graph, then the compiler stage is built
+on top of it (with --push both stages are pushed and digest-pinned).
 
 Options:
   --cross-targets LIST   Comma-separated target list (default: amd64,arm64,riscv64)
   --image-repo REPO      Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
   --push                 Push the compiler image to the registry with digest pinning
-  --rebuild-base         Always rebuild the local base image instead of trying pull first
   --dry-run              Print build commands without executing them
-  --fast-ubuntu-mirror   Replace Ubuntu archive/security/ports mirrors during builds
-  --fast-ubuntu-mirror-url URL        Archive mirror URL
-  --fast-ubuntu-ports-mirror-url URL  Optional ubuntu-ports mirror URL
+EOF
+  orchestrator_usage_mirror_options
+  cat <<'EOF'
   -h, --help             Show this help text
 
 Examples:
@@ -70,58 +67,31 @@ Environment overrides:
 EOF
 }
 
-# ── Compiler build ────────────────────────────────────────────────────────────
-# Delegates to the shared cross_stage_run() from the stage graph.
-# When pushing, the base parent is digest-pinned (no stale reuse).  When staying
-# local, the base is built first via the stage graph (same logic as the
-# orchestrator) instead of using a custom ensure_base_image() wrapper.
-build_compiler() {
-  cross_stage_run "compiler" "" "${PUSH_IMAGES}"
+# ── Main ──────────────────────────────────────────────────────────────────────
+_compiler_extra_arg() {
+  case "$1" in
+    --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
+    *) return 1 ;;
+  esac
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   # Bind the shared parser's --target-arches arg to CROSS_TARGETS for this script
-  while [ $# -gt 0 ]; do
-    consume_shared_arg usage \
-      parse_shared_orchestrator_args \
-      CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _cross_vulkan_version PUSH_IMAGES \
-      "$1" "${2:-}" || break
-    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
-    case "$1" in
-      --cross-targets)
-        CROSS_TARGETS="$2"
-        shift 2
-        ;;
-      --rebuild-base)
-        REBUILD_BASE=1
-        shift
-        ;;
-      *)
-        warn "Unknown option: $1"
-        usage >&2
-        exit 1
-        ;;
-    esac
-  done
+  run_orchestrator_arg_loop usage _compiler_extra_arg \
+    CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
+    FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _cross_vulkan_version PUSH_IMAGES \
+    "$@"
 
   cd "${REPO_ROOT}"
 
   log "Cross-compiler build: targets=${CROSS_TARGETS} repo=${IMAGE_REPO} push=${PUSH_IMAGES}"
 
-  if [ "${PUSH_IMAGES}" -eq 1 ]; then
-    # Push path: build and push both base and compiler via the stage graph.
-    # cross_stage_run handles digest-pinned parent resolution and pin capture,
-    # so the compiler always consumes the freshly pushed base digest.
-    cross_stage_run "base" "" 1
-    cross_stage_run "compiler" "" 1
-  else
-    # Local path: build base locally first (shared stage graph, same as
-    # orchestrator), then build compiler locally via the stage graph.
-    cross_stage_run "base" "" 0
-    cross_stage_run "compiler" "" 0
-  fi
+  # Build base first, then compiler, via the shared stage graph. cross_stage_run
+  # handles digest-pinned parent resolution and pin capture, so on the push path
+  # the compiler always consumes the freshly pushed base digest. The push flag is
+  # forwarded verbatim (1=push both, 0=local-only).
+  cross_stage_run "base" "" "${PUSH_IMAGES}"
+  cross_stage_run "compiler" "" "${PUSH_IMAGES}"
 }
 
 main "$@"

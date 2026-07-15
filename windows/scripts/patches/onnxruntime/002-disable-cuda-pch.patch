@@ -1,0 +1,20 @@
+diff --git a/cmake/onnxruntime_providers_cuda.cmake b/cmake/onnxruntime_providers_cuda.cmake
+index 2c574f2..72caa32 100644
+--- a/cmake/onnxruntime_providers_cuda.cmake
++++ b/cmake/onnxruntime_providers_cuda.cmake
+@@ -420,10 +420,11 @@
+     if (WIN32)
+       # *.cu cannot use PCH
+       if (NOT onnxruntime_BUILD_CACHE)
+-        target_precompile_headers(${target} PUBLIC
+-          "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+-          "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+-        )
++        # target_precompile_headers disabled for clang-cl + CUDA 13.x (CCCL PCH breaks on interleaving)
++        # target_precompile_headers(${target} PUBLIC
++        #   "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
++        #   "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
++        # )
+       endif()
+ 
+       # minimize the Windows includes.

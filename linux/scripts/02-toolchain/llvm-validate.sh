@@ -30,7 +30,7 @@ validate_cross_llvm_cmake_package() {
   llvm_cross_versioned_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || \
     die "Target LLVM versioned shared umbrella lib missing for ${target_label} under ${prefix}"
   llvm_cross_compat_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || \
-    die "Target LLVM compatibility shared umbrella lib missing for ${target_label}: ${prefix}/lib/libLLVM-${LLVM_WANTED:-${CLANG_WANTED:-22}}.so"
+    die "Target LLVM compatibility shared umbrella lib missing for ${target_label}: ${prefix}/lib/libLLVM-$(llvm_wanted_major).so"
   llvm_cross_llvm_config_path "${prefix}" >/dev/null 2>&1 || \
     die "Target llvm-config missing for ${target_label} under ${prefix}/bin"
 
@@ -77,7 +77,7 @@ install_cross_llvm_config_binary() {
   [ -x "${llvm_config_src}" ] || die "Cross llvm-config build output missing for ${target_label}: ${llvm_config_src}"
 
   bin_dir="$(llvm_cross_bin_dir "${target_label}")" || die "Unable to resolve LLVM bin dir for ${target_label}"
-  major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  major="$(llvm_wanted_major)"
   major="$(version_major "${major}")"
 
   mkdir -p "${bin_dir}"
@@ -167,7 +167,6 @@ verify_cross_llvm_target() {
 
 verify_cross_llvm_targets() {
   local targets_raw=""
-  local target target_label
 
   cross_mode_requested || return 0
 
@@ -182,44 +181,8 @@ verify_cross_llvm_targets() {
     return 0
   }
 
-  for target in ${targets_raw//,/ }; do
-    target_label="$(arch_normalize "${target}")"
-    case "${target_label}" in
-      amd64|arm64|riscv64) ;;
-      *)
-      log "Skipping unsupported LLVM cross verification target: ${target}"
-      continue
-      ;;
-    esac
-
-    [ "${target_label}" = "amd64" ] && continue
-    verify_cross_llvm_target "${target_label}"
-  done
+  # amd64 is skipped by default; verify_cross_llvm_target runs per target.
+  for_each_cross_target verify_cross_llvm_target "${targets_raw}"
 }
 
-patch_cross_llvm_config_template() {
-  local source_dir="$1"
-  local template_file="${source_dir}/llvm/cmake/modules/LLVMConfig.cmake.in"
 
-  [ -f "${template_file}" ] || die "LLVMConfig.cmake.in not found: ${template_file}"
-
-  python3 - "${template_file}" <<'PY'
-from pathlib import Path
-import sys
-
-template_path = Path(sys.argv[1])
-text = template_path.read_text()
-line = 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")'
-marker = 'include(${LLVM_CMAKE_DIR}/LLVM-Config.cmake)'
-
-if line in text:
-    raise SystemExit(0)
-if marker not in text:
-    raise SystemExit(f"expected marker not found in {template_path}")
-
-template_path.write_text(text.replace(marker, marker + '\n' + line, 1))
-PY
-
-  grep -q 'set_property(GLOBAL PROPERTY LLVM_COMPONENT_LIBS "${LLVM_AVAILABLE_LIBS}")' "${template_file}" || \
-    die "Failed to patch LLVMConfig.cmake.in for installed package component metadata"
-}

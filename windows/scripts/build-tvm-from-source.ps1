@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
+﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 param(
@@ -10,33 +10,53 @@ param(
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceBuildChain sets this in-scope for the media run)
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
+$InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.24.0'
-if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
+$TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.25.0'
 
-Write-Host "=== TVM source build (v$TvmVersion, Ninja+clang-cl) ==="
+Write-Host "=== TVM source build ($TvmVersion, Ninja+clang-cl) ==="
 
-$ok = Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive
-if (-not $ok) { throw 'Failed to clone TVM' }
+Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive | Out-Null
 
+# TVM requires VsDevCmd for MSVC STL headers (but does not consume the source-built CPython directly
+# -- TVM builds its own Python wheel against the system Python), so do VsDevCmd alone, not the full
+# Initialize-ToolchainPythonEnvironment preamble.
 Enter-VsDevCmdEnvironment
 
 $buildDir = Join-Path $SourceDir 'build'
 $tvmInstallDir = Join-Path $InstallDir 'lib\tvm'
 
-# Auto-detect CUDA
-$cudaRoot = Get-CudaRoot
-$useCuda = 'OFF'
-if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    Write-Host "CUDA detected at: $cudaRoot - enabling TVM CUDA support"
-    $useCuda = 'ON'
-    $env:CUDA_PATH = $cudaRoot
-    $cudaBin = Join-Path $cudaRoot 'bin'
-    if (Test-Path $cudaBin) { $env:PATH = "$cudaBin;$env:PATH" }
+# Auto-detect CUDA via the canonical GPU environment helper (CUDA_PATH / PATH already set by it).
+$gpuEnv = Get-GpuEnvironment
+$useCuda = if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) { 'ON' } else { 'OFF' }
+if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - enabling TVM CUDA support" }
+
+# GPU math libraries (CUDA lane only). cuBLAS ships inside the CUDA toolkit (found via
+# CUDAToolkit_ROOT), so it needs no extra hint. cuDNN is a SEPARATE install: enable it only
+# when cudnn.h + cudnn.lib actually resolve.
+# NOTE: TVM uses its legacy cmake/utils/FindCUDA.cmake, which looks up the variable
+# CUDA_CUDNN_LIBRARY (NOT the standard CUDNN_INCLUDE_DIR/CUDNN_LIBRARY -- those are silently
+# ignored). Because cuDNN lives OUTSIDE the CUDA toolkit dir here, TVM's find_library returns
+# NOTFOUND and configure dies, so we set CUDA_CUDNN_LIBRARY directly and also put cuDNN's
+# include/lib on INCLUDE/LIB so clang-cl finds cudnn.h and lld-link finds cudnn.lib at compile.
+$useCublas = $useCuda
+$useCudnn  = 'OFF'
+$cudnnArgs = @()
+if ($useCuda -eq 'ON' -and $gpuEnv.CudnnRoot -and (Test-Path (Join-Path $gpuEnv.CudnnRoot 'include\cudnn.h'))) {
+    # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.
+    $cudnnLibPath = Get-CudnnLibrary -CudnnRoot $gpuEnv.CudnnRoot
+    if ($cudnnLibPath) {
+        $cudnnLibDir = Split-Path $cudnnLibPath -Parent
+        $useCudnn  = 'ON'
+        $cudnnArgs = @("-DCUDA_CUDNN_LIBRARY=$($cudnnLibPath -replace '\\','/')")
+        $env:INCLUDE = "$(Join-Path $gpuEnv.CudnnRoot 'include');$env:INCLUDE"
+        $env:LIB     = "$cudnnLibDir;$env:LIB"
+        Write-Host "cuDNN detected at $($gpuEnv.CudnnRoot) - enabling TVM cuDNN (CUDA_CUDNN_LIBRARY=$(Split-Path $cudnnLibPath -Leaf))"
+    }
 }
 
 # Auto-detect Vulkan SDK
@@ -60,18 +80,19 @@ $pythonModule = if ($SkipPython) { 'OFF' } else { 'ON' }
 
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
-    '-DCMAKE_CXX_FLAGS="-Wno-unknown-attributes"'
+    '-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes'   # :STRING= + no embedded quotes (matches onnx/opencv/genai; bare quotes leaked into the flag value)
     '-DUSE_OPENCL=OFF'
     '-DUSE_MICRO=OFF'
     "-DUSE_CUDA=$useCuda"
+    "-DUSE_CUBLAS=$useCublas"
+    "-DUSE_CUDNN=$useCudnn"
     "-DUSE_VULKAN=$useVulkan"
     "-DUSE_LLVM=$useLLVM"
     "-DTVM_BUILD_PYTHON_MODULE=$pythonModule"
 )
 
-if ($cudaRoot -and (Test-Path $cudaRoot)) {
-    $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$($cudaRoot -replace '\\', '/')"
-}
+$cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv -ForwardSlash
+$cmakeExtra += $cudnnArgs
 
 if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     $cmakeExtra += "-DVulkan_INCLUDE_DIR=$(Join-Path $vulkanSdk 'Include')"
@@ -81,44 +102,66 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     }
 }
 
-# Fix llvm-lib archiver path for clang-cl builds
-$llvmLib = Get-Command llvm-lib.exe -ErrorAction SilentlyContinue
-if ($llvmLib) {
-    $cmakeExtra += "-DCMAKE_AR:PATH=$($llvmLib.Source)"
-}
+# CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
+$cmakeExtra += Get-LlvmArchiverCmakeArg
 
-$ok = Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra
-if (-not $ok) { throw 'TVM CMake configuration failed' }
+Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 Write-Host 'Building TVM (this may take 30-60 minutes)...'
 $buildLog = Join-Path $buildDir 'tvm-build.log'
-Write-Host "Building..."
-& cmake --build $buildDir --config $BuildType --parallel 2>&1 | Tee-Object -FilePath $buildLog
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "`n=== BUILD FAILED: FAILED: lines ==="
-    Select-String -Path $buildLog -Pattern 'FAILED:' -SimpleMatch | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
-    Write-Host "=== BUILD FAILED: error: lines ==="
-    Select-String -Path $buildLog -Pattern '^.*error:.*$' | Select-Object -First 10 | ForEach-Object { Write-Host "  $_" }
-    Write-Host "=== BUILD FAILED: last 20 lines ==="
-    Get-Content $buildLog -Tail 20 | ForEach-Object { Write-Host $_ }
-    throw 'TVM build failed'
-}
-Write-Host 'Installing...'
-& cmake --install $buildDir --config $BuildType
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install -InstallConfig $BuildType
 
-# Install Python wheel if enabled
+# TVM 0.25's FFI split builds libtvm_ffi as a SEPARATE shared lib that tvm_runtime.dll
+# imports, but `cmake --install` does not stage tvm_ffi.dll -> tvm_runtime.dll then fails to
+# load (0xC0000135 STATUS_DLL_NOT_FOUND) in the final image. Copy it next to the installed
+# tvm_runtime.dll. Caught by the smoke-test TVM load probe.
+Copy-SidecarDll -SidecarName 'tvm_ffi.dll' -SearchDir $buildDir `
+    -BesidePrimary 'tvm_runtime.dll' -InstallDir $tvmInstallDir `
+    -Reason 'tvm_runtime.dll may fail to load at runtime (cmake --install missed the FFI shared lib)'
+
+# Python wheel: TVM 0.25 packages via scikit-build-core at the REPO ROOT -- the
+# old cmake-generated build\python dir is GONE (TVM_BUILD_PYTHON_MODULE no longer
+# emits one; the previous -Optional site install silently did nothing, which is
+# why `import tvm` never worked in earlier images). Reuse the just-built ninja
+# dir: its CMake cache already carries USE_CUDA/LLVM/etc., so scikit-build-core's
+# configure mostly no-ops and the wheel packs existing objects; if the reuse
+# trips, fall back to a fresh tree (full ~25 min recompile, still correct).
 if ($pythonModule -eq 'ON') {
-    $pythonExe = Join-Path $env:TEMP_DIR 'cpython\PCbuild\amd64\python.exe'
-    if (Test-Path $pythonExe) {
-        Write-Host 'Installing TVM Python wheel...'
-        $wheelDir = Join-Path $buildDir 'python'
-        if (Test-Path $wheelDir) {
-            Push-Location $wheelDir
-            cmd.exe /c """$pythonExe"" -m pip install . --no-deps --quiet 2>&1"
-            Pop-Location
-        }
+    $py = Get-SourceBuildPython
+    if (Test-Path $py.Exe) {
+        # Bootstrap pip if missing — this script can no longer rely on the GenAI
+        # build having installed it first (parallel media branches).
+        Install-CpythonPip -Python $py
+        # 64-bit platform tag BEFORE any pip resolution (clang-built CPython
+        # self-reports win32 and pulls 32-bit wheels otherwise).
+        Initialize-PythonPlatformTag | Out-Null
+        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'scikit-build-core', 'setuptools-scm', 'wheel')
+        # The DNS-workaround clone may lack git tags -- pin the scm version directly.
+        $env:SETUPTOOLS_SCM_PRETEND_VERSION = ($TvmVersion -replace '^v', '')
+        $wheelOut = Join-Path $SourceDir 'dist'
+        Write-Host 'Building TVM python wheel (scikit-build-core, reusing the ninja build dir)...'
+        Push-Location $SourceDir
+        try {
+            Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut, "--config-settings=build-dir=$buildDir") -Optional
+            if (-not (Test-Path (Join-Path $wheelOut '*.whl'))) {
+                Write-Warning 'build-dir reuse produced no wheel -- retrying with a fresh scikit-build tree (full recompile)'
+                Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut)
+            }
+        } finally { Pop-Location }
+        # Stage + install (WITH deps -- apache-tvm-ffi must resolve) +
+        # import-assert via the shared helper (EAP=Stop-safe: tvm warns to
+        # stderr on successful imports, which killed the first e2e run).
+        Install-StagedPythonWheel -Python $py -SourceDir $wheelOut -ModuleName 'tvm' | Out-Null
     }
 }
 
+Remove-SourceBuildTree -Path $SourceDir
+
+# Hit/miss counters die with this container -- dump them into the run log now.
+Write-SccacheStats -Label 'media-tvm'
+
 Write-Host '=== TVM source build completed ==='
 Write-Host "Artifacts at: $tvmInstallDir"
+
+
+

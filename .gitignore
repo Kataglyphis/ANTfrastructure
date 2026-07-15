@@ -2,8 +2,18 @@ docs/_build/*
 *.log
 logs/**/*
 out/**/*
-#Ignore vscode AI rules
-.github\instructions\codacy.instructions.md
+#Ignore vscode AI rules (forward slashes: gitignore treats backslash as an
+# escape character, so the old backslash form never matched and add -A kept
+# resurrecting the deleted file)
+.github/instructions/codacy.instructions.md
+__pycache__/
+*.pyc
 *.deb
 windows/downloads/*
 linux/llm-stack/ollama-binary.tar.zst
+linux/nextcloud-aio/.env
+.claude/
+
+# Throwaway litert-lm fast-rebuild harness (overlays the build script onto a local
+# windows-media-litert base image to re-iterate only litert-lm; dev-only, not reproducible in CI)
+.cxxtest.Dockerfile

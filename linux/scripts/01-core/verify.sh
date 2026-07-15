@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # verify.sh - print versions
 
+# Read a `--version`-style stream on stdin and print the first whitespace-
+# separated token on line 1 that looks like a dotted version number
+# (e.g. "1.2" or "20.1.8"). Used to extract clang/generic tool versions.
+_first_version_token() {
+  awk 'NR==1 {for (i = 1; i <= NF; ++i) if ($i ~ /^[0-9]+(\.[0-9]+)+$/) {print $i; exit}}'
+}
+
 verify_tool_with_path() {
   local tool="$1"
   shift || true
@@ -31,14 +38,13 @@ verify_tool_major_version() {
     gcc|g++|*-gcc|*-g++)
       raw_version="$(${tool} -dumpfullversion -dumpversion 2>/dev/null || true)"
       ;;
-    clang|clang++|clang-*|clang++-*)
-      raw_version="$(${tool} --version 2>/dev/null | awk 'NR==1 {for (i = 1; i <= NF; ++i) if ($i ~ /^[0-9]+(\.[0-9]+)+$/) {print $i; exit}}' || true)"
-      ;;
     llvm-config|llvm-config-*)
       raw_version="$(${tool} --version 2>/dev/null || true)"
       ;;
     *)
-      raw_version="$(${tool} --version 2>/dev/null | awk 'NR==1 {for (i = 1; i <= NF; ++i) if ($i ~ /^[0-9]+(\.[0-9]+)+$/) {print $i; exit}}' || true)"
+      # clang/clang++ (and any other tool) fall through here: extract the first
+      # dotted version token from line 1 of `--version`.
+      raw_version="$(${tool} --version 2>/dev/null | _first_version_token || true)"
       ;;
   esac
 
@@ -68,7 +74,8 @@ verify_cross_mode_requested() {
 }
 
 verify_cross_target_versions() {
-  local target_arch="${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}"
+  local target_arch
+  target_arch="$(default_target_arch)"
   local triplet=""
   local clang_target=""
   local requested_major="$(version_major "${GCC_WANTED}")"

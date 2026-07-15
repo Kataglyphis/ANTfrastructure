@@ -19,9 +19,9 @@ source_module common.sh
 source_module package-lists.sh
 source_module cmake.sh
 
-BASE_IMAGE_CMAKE_VERSION="${CMAKE_VERSION:-4.3.2}"
-BASE_IMAGE_NODE_VERSION="${NODE_VERSION:-24.16.0}"
-BASE_IMAGE_UV_VERSION="${UV_VERSION:-0.11.16}"
+BASE_IMAGE_CMAKE_VERSION="${CMAKE_VERSION:-4.4.0}"
+BASE_IMAGE_NODE_VERSION="${NODE_VERSION:-26.4.0}"
+BASE_IMAGE_UV_VERSION="${UV_VERSION:-0.11.25}"
 BASE_IMAGE_VULKAN_VERSION="${VULKAN_VERSION}"
 BASE_IMAGE_CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-30G}"
 
@@ -226,6 +226,14 @@ bootstrap_ca() {
     bash "${SCRIPT_DIR}/use-fast-ubuntu-mirror.sh"
   fi
 
+  # Make EVERY apt-get in EVERY subsequent build layer retry transient network
+  # failures. QEMU-emulated arm64/riscv64 networks are flaky, and this is the
+  # first RUN in the base image, so dropping the config here covers the whole
+  # chain (install_os_packages, packaging-deps, media/android stages, ...) with
+  # one line -- not just this bootstrap function's own retry loop below.
+  mkdir -p /etc/apt/apt.conf.d
+  printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries
+
   # Retry apt-get under QEMU emulation (network can be flaky)
   local _retry=0 _max=3
   until apt-get update -qq; do
@@ -279,11 +287,11 @@ install_nodejs() {
   case "${arch}" in
     amd64|x86_64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-x64.tar.xz"
-      node_sha256="${NODE_AMD64_SHA256:-d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9}"
+      node_sha256="${NODE_AMD64_SHA256:-5c4286dcd5bbd5acb1ccc7eb0e088bd5eb1e3affad671ee9364004f8f6a4a431}"
       ;;
     arm64|aarch64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-arm64.tar.xz"
-      node_sha256="${NODE_ARM64_SHA256:-524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78}"
+      node_sha256="${NODE_ARM64_SHA256:-f6d8eedc52170667d45730ac2f413c4aa1e7cd2165c9cac5746ef3cb0f4ec45a}"
       ;;
     riscv64)
       # RISC-V: no official Node.js tarball. Pin to a known version from distro packages.
@@ -346,15 +354,15 @@ install_uv() {
   case "${arch}" in
     amd64|x86_64)
       uv_asset="uv-x86_64-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_AMD64_SHA256:-74947fe2c03315cf07e82ab3acc703eddef01aba4d5232a98e4c6825ec116131}"
+      uv_sha256="${UV_AMD64_SHA256:-1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2}"
       ;;
     arm64|aarch64)
       uv_asset="uv-aarch64-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_ARM64_SHA256:-8c9d0f0ee98166ae6ab198747519ba6f25db29d185bd2ae5960ecebc91a5c22a}"
+      uv_sha256="${UV_ARM64_SHA256:-e0e9d73f74e06a7dcd53910d5962146ab48f0af9c92cc8df33a37baa0121014d}"
       ;;
     riscv64)
       uv_asset="uv-riscv64gc-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_RISCV64_SHA256:-0314895f159ce97bcedac00a4b97fa7e53c16fee911a6a2d9f0b69ee6461b7d5}"
+      uv_sha256="${UV_RISCV64_SHA256:-29e74713e89242c6bf0971b28e904836298a04fb7e0d83262c7bd5aff695ae33}"
       ;;
     *)
       die "Unsupported uv architecture: ${arch}"

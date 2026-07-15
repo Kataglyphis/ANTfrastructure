@@ -9,16 +9,18 @@
 # build arg and used as a fallback.
 
 ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
+# TARGET_ARCH must be declared BEFORE ARTIFACT_IMAGE so a --build-arg TARGET_ARCH
+# influences the ARTIFACT_IMAGE default (ARG expansion only sees prior ARGs).
+ARG TARGET_ARCH
 ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGET_ARCH:-amd64}
 ARG BUILD_MODE=native
-ARG TARGET_ARCH
 ARG TARGETARCH
 ARG TARGETPLATFORM
 ARG ARTIFACT_PLATFORM=${TARGETPLATFORM}
 ARG PACKAGE_BASE_STAGE=package-image
 ARG ENABLE_NVIDIA=false
 ARG ENABLE_AMD=false
-ARG GSTREAMER_VERSION=1.29.1
+ARG GSTREAMER_VERSION=1.29.2
 ARG OPENCV_OUTPUT_DIR=/opt/opencv5
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
@@ -30,9 +32,10 @@ ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
 ARG ANDROID_API_LEVEL=34
 ARG GCC_VERSION=16.1.0
-ARG LLVM_RELEASE=22.1.6
-ARG PYTHON_VERSION=3.14.5
-ARG PYTHON_MAJOR_MINOR=3.14
+ARG LLVM_RELEASE=22.1.8
+ARG PYTHON_VERSION=3.14.6
+# Derived — versions.env only defines PYTHON_VERSION
+ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
@@ -74,12 +77,22 @@ COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --link --from=artifact-source /opt/android /opt/android
 COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
-# The SDK stage cross-compiles a native Clang 22.1.6 toolchain for the
+# The SDK stage cross-compiles a native Clang 22.1.8 toolchain for the
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
 COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
-# Lightweight payload files (LiteRT libs, pkg-config, VVdec)
-# Copied via COPY --link to avoid QEMU emulation issues on foreign arches.
+# Lightweight payload files (LiteRT libs + pkg-config, VVdec, ONNX Runtime
+# GenAI/GPU, tflite/tensorflow headers). The dangling comment that used to sit
+# here documented COPYs that were REMOVED when copy-media-payloads.sh was
+# written — but that script was never invoked anywhere, so these payloads have
+# been silently absent from every package image (and validate_smoke failed on
+# them). Tolerant per-path copies (variant-dependent payloads like
+# onnxruntime-gpu may legitimately be absent on non-GPU builds).
+COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/copy-media-payloads.sh
+RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
+    set -euo pipefail; \
+    SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
+    rm -f /tmp/copy-media-payloads.sh
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
@@ -128,18 +141,23 @@ ENV BUILD_MODE=${BUILD_MODE} \
     CCACHE_SECONDARY_STORAGE=true \
     # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
     # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
-    PATH="/opt/vulkan/active/bin:/opt/gstreamer/bin:${OPENCV_OUTPUT_DIR}/bin:/opt/libcamera/bin:/opt/ffmpeg/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/opt/gstreamer/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:/opt/libcamera/lib/pkgconfig:/opt/libcamera/lib64/pkgconfig:/opt/ffmpeg/lib/pkgconfig" \
-    LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:/opt/gstreamer/lib/multiarch:/opt/gstreamer/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:/opt/libcamera/lib:/opt/libcamera/lib64:/opt/ffmpeg/lib:/opt/ffmpeg/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
+    PATH="/opt/vulkan/active/bin:${GSTREAMER_PREFIX}/bin:${OPENCV_OUTPUT_DIR}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
+    LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib:${FFMPEG_PREFIX}/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
     LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
     GDK_BACKEND=x11 \
-    GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0" \
+    GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
 COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/
+# 03-media/core/ provides common.sh (media_load_arch_flags) + arch-flags-<arch>.env,
+# which the final install-deps.sh sources from /opt/scripts/03-media/core. Without
+# this COPY that path is absent and install-deps.sh fails with exit 127
+# (media_load_arch_flags: command not found).
+COPY --chmod=755 linux/scripts/03-media/core/ /opt/scripts/03-media/core/
 COPY --chmod=755 linux/scripts/03-media/build/gstreamer/android/ /opt/scripts/03-media/gstreamer/android/
 COPY --chmod=755 linux/scripts/03-media/build/litert/android/ /opt/scripts/03-media/litert/android/
 COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/android/ /opt/scripts/03-media/onnxruntime/android/
@@ -153,8 +171,8 @@ COPY --chmod=755 linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/script
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh
-COPY --chmod=755 linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-runtime-image.sh /opt/scripts/packaging/smoke-runtime-image.sh
+COPY --chmod=755 linux/scripts/06-packaging/smoke-torch-venv.sh /opt/scripts/packaging/smoke-torch-venv.sh
 
 # Wire LLVM-target and Vulkan symlinks. LLVM-target was cross-compiled for the
 # target arch in the SDK stage; Vulkan SDK installs under x86_64/ so we create
@@ -172,18 +190,22 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    bash /opt/scripts/packaging/setup-package-image.sh && \
-    rm -rf /var/lib/apt/lists/*
+    bash /opt/scripts/packaging/setup-package-image.sh
+# NOTE: no `rm -rf /var/lib/apt/lists/*` in the RUN above — /var/lib/apt is a
+# cache mount (never committed to the image); removing lists would only wipe
+# the SHARED apt cache for other builds (see Dockerfile.nvidia for the pattern).
 
-# Wire GCC/LLVM alternatives and hard-fail if cc -dumpmachine does not
-# match the target architecture. Uses the shared validate-compilers.sh.
-# For cross builds the compiler may not be executable on the build host.
+# Wire GCC/LLVM alternatives and HARD-FAIL if the wired cc does not match the
+# target architecture. For cross builds the target-native cc cannot EXECUTE on
+# the build host, so only the execution probes are skipped
+# (VALIDATE_CC_STATIC_ONLY=1) — the readelf/alternatives checks still fail the
+# build. The old `|| echo WARNING` downgraded ALL validation exactly for the
+# cross case it exists to protect.
 RUN set -euo pipefail; \
     _ta="${TARGET_ARCH:-${TARGETARCH}}"; \
     if [ "${BUILD_MODE}" = "cross" ] && [ -n "${_ta}" ] && [ "${_ta}" != "amd64" ]; then \
-        TARGET_ARCH="${_ta}" \
-        bash /opt/scripts/packaging/validate-compilers.sh package || \
-        echo "WARNING: compiler validation skipped (binary not executable on build host)"; \
+        TARGET_ARCH="${_ta}" VALIDATE_CC_STATIC_ONLY=1 \
+        bash /opt/scripts/packaging/validate-compilers.sh package; \
     else \
         TARGET_ARCH="${_ta}" \
         bash /opt/scripts/packaging/validate-compilers.sh package; \
@@ -211,5 +233,13 @@ RUN set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
     bash /opt/scripts/packaging/validate-compilers.sh smoke && \
     bash /opt/scripts/packaging/smoke-media.sh && \
+    bash /opt/scripts/packaging/smoke-torch-venv.sh && \
     GCC_VERSION="${GCC_VERSION}" \
     bash /opt/scripts/packaging/smoke-cross-all-arches.sh "${TARGET_ARCH}"
+# NOTE: smoke-vulkan is intentionally NOT wired into any build stage. It probes
+# the full Vulkan *SDK* (/opt/vulkan/active symlink, vulkan/vulkan.h, libvulkan.so),
+# but this cross-build installs only the Vulkan *runtime* (libvulkan.so.1 + ICD/
+# layer JSONs via base-image.sh install-vulkan-runtime-files) -- the dev SDK is
+# never installed, and setup-vulkan-symlinks.sh's /opt/vulkan/active link is
+# best-effort (|| true). smoke-vulkan therefore cannot pass here; it is retained
+# as a standalone host tool for image variants that DO ship the full SDK.

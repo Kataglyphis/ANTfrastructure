@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
+﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 <#
@@ -11,12 +11,12 @@
     compiler (msvc-compatible ABI) with Visual Studio SDK paths.
 
 .PARAMETER GstVersion
-    Git tag or branch to build (default: 1.28.3).
+    Git tag or branch to build (default: 1.29.2).
 
 .PARAMETER InstallDir
-    Target install prefix (default: C:\gstreamer).
+    Target install prefix (default: empty -> resolves to C:\runtime via Initialize-SourceBuildEnvironment).
 
-.PARAMETER SrcDir
+.PARAMETER SourceDir
     Temporary directory for the git clone (default: C:\temp\gst-source).
 
 .PARAMETER BuildDir
@@ -36,8 +36,8 @@
 #>
 param(
     [string]$GstVersion        = '',
-    [string]$InstallDir        = 'C:\runtime',
-    [string]$SrcDir            = 'C:\temp\gst-source',
+    [string]$InstallDir        = '',
+    [string]$SourceDir         = 'C:\temp\gst-source',
     [string]$BuildDir          = 'C:\temp\gst-builddir',
     [string]$LogDir            = 'C:\temp\logs',
     [string]$GitRepo           = 'https://github.com/gstreamer/gstreamer.git',
@@ -45,16 +45,13 @@ param(
     [string[]]$MesonSetupArgs  = @()
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+# ---- module import (logging + build helpers + shared utilities) ----
+# NOTE: imports MUST precede any module-function call — Initialize-SourceBuildEnvironment
+# below used to be invoked before this block and died with CommandNotFoundException.
+$sharedPath = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
+if (-not (Test-Path $sharedPath)) { throw "Required module not found: $sharedPath" }
+Import-Module $sharedPath -Force
 
-# ---- helpers (inline, avoids module scope issues) ----
-function Ensure-Dir($path) {
-    if (-not (Test-Path $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
-    return (Resolve-Path $path).Path
-}
-
-# ---- module import (logging + build helpers) ----
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "Required module not found: $modulePath"
@@ -62,9 +59,16 @@ if (-not (Test-Path $modulePath)) {
 Import-Module $modulePath -Force
 
 $sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
-if (Test-Path $sourceBuildModule) {
-    Import-Module $sourceBuildModule -Force
-}
+if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
+Import-Module $sourceBuildModule -Force
+
+# Re-import Shared LAST: the nested `Import-Module ...Shared -Force` inside the two
+# modules above unloads the top-level Shared import (PS 5.1 module scoping) and
+# rebinds it into their private scopes, making Resolve-DirectoryPath & friends
+# invisible to this script. Verified in PS 5.1.
+Import-Module $sharedPath -Force
+
+$InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
 # ---- logging ----
 $logContext = New-StructuredLogContext -LogDir $LogDir -Prefix 'gst-source-build'
@@ -74,75 +78,89 @@ function log($text) {
     Write-StructuredLogEntry -Context $logContext -Text $text
 }
 
+# Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
+# beside $Target (7z two-pass: decompress, then untar the largest inner .tar),
+# then moves the single top-level source dir onto $Target. Returns $true when a
+# directory was moved. Shared by the wrap pre-extraction loop and the libffi
+# force-download below, which used to carry two copies of this body.
+function Expand-SubprojectArchive {
+    param(
+        [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Target
+    )
+    $extractDir = Join-Path (Split-Path -Parent $Target) ('_ext_' + (Split-Path -Leaf $Target))
+    New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+    cmd.exe /c "7z.exe x ""$Archive"" -o""$extractDir"" -y >nul 2>&1"
+    $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
+    if ($tarFile) {
+        cmd.exe /c "7z.exe x ""$($tarFile[0].FullName)"" -o""$extractDir"" -y >nul 2>&1"
+        Remove-Item $tarFile[0].FullName -Force -ErrorAction SilentlyContinue
+    }
+    $extracted = @(Get-ChildItem -Path $extractDir -Directory)
+    $moved = $false
+    if ($extracted.Count -ge 1) {
+        Move-Item -Path $extracted[0].FullName -Destination $Target -Force
+        $moved = $true
+    }
+    Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    return $moved
+}
+
 # Load canonical versions from linux/scripts/01-core/versions.env if available
-$versionsScript = Join-Path $PSScriptRoot 'load-versions.ps1'
-if (Test-Path $versionsScript) { & $versionsScript }
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
 if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = $env:GST_VERSION
-}
-if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = $env:GSTREAMER_VERSION
-}
-if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = '1.29.1'  # keep in sync with versions.env
+    $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GSTREAMER_VERSION') -DefaultValue '1.29.2'
 }
 
 try {
     log "START - GStreamer source build"
     log "Version:   $GstVersion"
     log "Install:   $InstallDir"
-    log "SrcDir:    $SrcDir"
+    log "SourceDir: $SourceDir"
     log "BuildDir:  $BuildDir"
     log "LogDir:    $LogDir"
     log "GitRepo:   $GitRepo"
 
     # ---- 1. resolve directories ----
-    $resolvedInstallDir = Ensure-Dir $InstallDir
-    $resolvedSrcDir     = Ensure-Dir $SrcDir
-    $resolvedBuildDir   = Ensure-Dir $BuildDir
-    $resolvedLogDir     = Ensure-Dir $LogDir
+    $resolvedInstallDir = Resolve-DirectoryPath -Path $InstallDir
+    $resolvedSrcDir     = Resolve-DirectoryPath -Path $SourceDir
+    $resolvedBuildDir   = Resolve-DirectoryPath -Path $BuildDir
+    $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
-    # ---- 2. install Meson via uv ----
-    # uv needs CPython, download embeddable Python manually (uv's built-in
-    # Python download can fail on some Windows hosts).  Then use uv pip.
-    log 'Downloading embeddable Python for uv...'
-    $pythonUrl = 'https://www.python.org/ftp/python/3.14.6/python-3.14.6-embed-amd64.zip'
-    $pythonZip = Join-Path $resolvedLogDir 'python-embed.zip'
-    $pythonDir = Join-Path $resolvedSrcDir 'cpython'
-    & curl.exe -fsSL --retry 3 $pythonUrl -o $pythonZip
-    if ($LASTEXITCODE -ne 0) { throw 'Failed to download embedded Python' }
-    Expand-Archive -Path $pythonZip -DestinationPath $pythonDir -Force
-    $pyExe = Join-Path $pythonDir 'python.exe'
-    Remove-Item "$pythonDir\python*._pth" -Force -ErrorAction SilentlyContinue
-    # Enable site-packages by importing site (needed after _pth removal)
-    & $pyExe -c "import site" 2>&1 | ForEach-Object { if ($_) { log $_ } }
+    # ---- 2. install Meson via source-built CPython ----
+    # The toolchain layer built CPython 3.14 at $env:TEMP_DIR\cpython\PCbuild\amd64\python.exe.
+    # pip is bootstrapped here if missing (no ordering assumption on other build
+    # scripts — the media build runs in parallel branches).
+    log 'Using source-built CPython from toolchain layer...'
+    $py = Initialize-ToolchainPythonEnvironment
+    $pyExe = $py.Exe
+    if (-not (Test-Path $pyExe)) { throw "Source-built Python not found at $pyExe" }
+    log "Using Python: $pyExe"
+    Install-CpythonPip -Python $py
 
-    log 'Installing pip + Meson...'
-    & curl.exe -fsSL 'https://bootstrap.pypa.io/get-pip.py' -o "$pythonDir\get-pip.py"
+    log 'Installing Meson via pip...'
     $pipLog = Join-Path $resolvedLogDir 'pip-install.log'
-    & cmd.exe /c """$pyExe"" ""$pythonDir\get-pip.py"" > ""$pipLog"" 2>&1"
-    Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
     & cmd.exe /c """$pyExe"" -m pip install meson > ""$pipLog"" 2>&1"
     Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
 
-    # Find meson executable from Scripts dir (embedded Python's -m may not
-    # find site-packages even after _pth removal; direct exe is reliable)
-    $pythonScripts = Join-Path $pythonDir 'Scripts'
-    $mesonExe = Join-Path $pythonScripts 'meson.exe'
-    if (-not (Test-Path $mesonExe)) {
-        # Fallback: try pip show to locate
-        $mesonVer = & $pyExe -m pip show meson 2>&1 | Select-String '^Location:' | ForEach-Object { $_ -replace '^Location: ', '' }
-        if ($mesonVer) {
-            $mesonExe = (Get-Item $mesonVer.Trim()).Directory.Parent.FullName + '\Scripts\meson.exe'
-        }
+    # Find meson.exe: ask Python where console scripts land. The in-tree PCbuild
+    # layout (sys.prefix = the source root) puts them at C:\temp\cpython\Scripts,
+    # NOT next to python.exe — pip's install warning confirms that location.
+    $pythonScripts = (cmd.exe /c """$pyExe"" -c ""import sysconfig; print(sysconfig.get_path('scripts'))""" | Select-Object -First 1)
+    if ($pythonScripts) { $pythonScripts = "$pythonScripts".Trim() }
+    if (-not $pythonScripts -or -not (Test-Path (Join-Path $pythonScripts 'meson.exe'))) {
+        $pythonScripts = @(
+            (Join-Path (Split-Path $pyExe -Parent) 'Scripts'),
+            (Join-Path $env:TEMP_DIR 'cpython\Scripts')
+        ) | Where-Object { Test-Path (Join-Path $_ 'meson.exe') } | Select-Object -First 1
     }
-    if (-not (Test-Path $mesonExe)) { throw 'meson.exe not found after pip install' }
+    if (-not $pythonScripts) { throw 'meson.exe not found after pip install' }
+    $mesonExe = Join-Path $pythonScripts 'meson.exe'
     $env:PATH = "$pythonScripts;$env:PATH"
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
     $script:mesonExe = $mesonExe
-    $env:UV_PYTHON = $pyExe
 
     # ---- 3. set clang-cl as the compiler ----
     log 'Setting CC/CXX to clang-cl...'
@@ -155,7 +173,10 @@ try {
     }
     log "clang-cl found at: $($clangCheck.Source)"
 
-    # Prevent git from hanging/interactive prompts during meson subproject downloads
+    # Prevent git from hanging/interactive prompts during meson subproject downloads.
+    # GIT_SSL_NO_VERIFY is intentionally scoped to THIS ephemeral build container's meson
+    # subproject git fetches (not a runtime/production trust boundary); the shared
+    # Invoke-GitClone deliberately does NOT force it for ordinary clones.
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:GIT_SSL_NO_VERIFY = '1'
 
@@ -169,8 +190,11 @@ try {
     $tarballUrl = "https://github.com/gstreamer/gstreamer/archive/refs/tags/$GstVersion.tar.gz"
     $tarballPath = Join-Path $resolvedLogDir "gstreamer-$GstVersion.tar.gz"
     log "Downloading GStreamer source tarball from $tarballUrl ..."
-    & curl.exe -fsSL --retry 3 $tarballUrl -o $tarballPath 2>&1 | ForEach-Object { if ($_) { log $_ } }
-    if ($LASTEXITCODE -ne 0) { throw 'Failed to download GStreamer source tarball' }
+    # Hardened retry/backoff + redirect-following (GitHub /archive/ -> codeload) via the shared
+    # helper -- replaces bare `curl --retry 3`, which no other source download uses. Throws on
+    # failure. (The subproject-wrap + libffi fetches below stay on cmd/curl: they need bulk
+    # cmd.exe extraction and are a different, per-item flow.)
+    Invoke-DownloadWithRetry -Url $tarballUrl -DestinationPath $tarballPath -Description "GStreamer $GstVersion source tarball"
     log 'Tarball downloaded. Extracting...'
 
     # 7z on Windows handles .tar.gz in two passes: gzip then tar
@@ -192,6 +216,10 @@ try {
         throw "Could not find GStreamer source with meson.build in $resolvedSrcDir"
     }
     log 'Extraction complete.'
+
+    # git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path (git
+    # apply); the helper shields git's stderr via cmd.exe (else PS 5.1 EAP=Stop throws).
+    Initialize-ExtractedGitRepo -Path $gstSrcDir
 
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
@@ -216,21 +244,10 @@ try {
             log "Pre-extracting $fname..."
             cmd.exe /c "curl.exe -fsSL --retry 3 ""$tarballUrl"" -o ""$tmpFile"" 2>nul"
             if ($LASTEXITCODE -eq 0 -and (Test-Path $tmpFile)) {
-                $extractDir = Join-Path $subprojDir "_ext_$dir"
-                New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-                cmd.exe /c "7z.exe x ""$tmpFile"" -o""$extractDir"" -y >nul 2>&1"
-                $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
-                if ($tarFile) {
-                    cmd.exe /c "7z.exe x ""$($tarFile[0].FullName)"" -o""$extractDir"" -y >nul 2>&1"
-                    Remove-Item $tarFile[0].FullName -Force -ErrorAction SilentlyContinue
-                }
-                $extracted = @(Get-ChildItem -Path $extractDir -Directory)
-                if ($extracted.Count -ge 1) {
-                    Move-Item -Path $extracted[0].FullName -Destination $target -Force
+                if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
                     Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
                     log "Pre-extracted $fname to $target"
                 }
-                Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
             } else {
                 log "WARNING: Failed to download $fname, features may be disabled"
             }
@@ -241,24 +258,14 @@ try {
     $libffiTarget = Join-Path $subprojDir 'libffi'
     if (-not (Test-Path $libffiTarget)) {
         log 'Force-downloading libffi...'
-        $libffiUrl = 'https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-3.2.9999.4/libffi-meson-3.2.9999.4.tar.bz2'
+        $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
+        $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$libffiVer/libffi-meson-$libffiVer.tar.bz2"
         $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
         & curl.exe -fsSL --retry 3 $libffiUrl -o $libffiTmp 2>$null
         if ($LASTEXITCODE -eq 0 -and (Test-Path $libffiTmp)) {
-            $extractDir = Join-Path $subprojDir '_ext_libffi'
-            New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-            cmd.exe /c "7z.exe x ""$libffiTmp"" -o""$extractDir"" -y >nul 2>&1"
-            $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
-            if ($tarFile) {
-                cmd.exe /c "7z.exe x ""$($tarFile[0].FullName)"" -o""$extractDir"" -y >nul 2>&1"
-                Remove-Item $tarFile[0].FullName -Force -ErrorAction SilentlyContinue
-            }
-            $extracted = @(Get-ChildItem -Path $extractDir -Directory)
-            if ($extracted.Count -ge 1) {
-                Move-Item -Path $extracted[0].FullName -Destination $libffiTarget -Force
+            if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
                 log "Force-pre-extracted libffi"
             }
-            Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
         } else {
             log "WARNING: Force-download of libffi failed (exit $LASTEXITCODE)"
         }
@@ -297,23 +304,22 @@ int _isatty(int);
     # (LLVM 22 mmintrin.h bug: cairo Win32 backend disabled via -Dcairo:win32=disabled)
     # (Cairo Win32 stubs handled in retry loop after meson downloads cairo)
 
-    # ---- 5c. detect CUDA (available from Dockerfile.ai layer) ----
-    $cudaDetected = $false
-    $cudaRoot = Get-CudaRoot
-    if ($cudaRoot -and (Test-Path $cudaRoot)) {
-        $cudaDetected = $true
-        log "CUDA detected at: $cudaRoot"
-        $env:CUDA_PATH = $cudaRoot
-        $env:CUDA_HOME = $cudaRoot
-        # Add CUDA bins to PATH for nvcc detection by Meson
-        $cudaBin = Join-Path $cudaRoot 'bin'
-        if (Test-Path $cudaBin) { $env:PATH = "$cudaBin;$env:PATH" }
+    # ---- 5c. detect CUDA (available from Dockerfile.nvidia layer) ----
+    # Get-GpuEnvironment sets $env:CUDA_PATH / CUDA_HOME and prepends CUDA bin to PATH
+    # -- all this script needs on top is logging and the GpuType for downstream logic.
+    $gpuEnv = Get-GpuEnvironment
+    if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+        log "CUDA detected at: $($gpuEnv.CudaRoot)"
     } else {
-        log 'CUDA not detected — nvcodec/cuda plugins will be auto-detected by Meson'
+        log 'CUDA not detected -- nvcodec/cuda plugins will be auto-detected by Meson'
     }
 
     # ---- 5d. find compiler-rt for lld-link (__udivti3, etc.) ----
-    $compilerRtLib = @(Get-ChildItem -Path "$env:USERPROFILE\scoop\apps\llvm\current\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue | Select-Object -First 1)
+    # Resolve the LLVM install dir via clang-cl on PATH (single source of truth) rather
+    # than hardcoding the scoop app dir layout -- survives a LLVM/scoop install relocation.
+    $clangClCmd = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
+    $llvmRoot = if ($clangClCmd) { Split-Path (Split-Path $clangClCmd.Source) } else { Join-Path $env:USERPROFILE 'scoop\apps\llvm\current' }
+    $compilerRtLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue | Select-Object -First 1)
     $rtFullPath = ''
     if ($compilerRtLib) {
         $rtFullPath = $compilerRtLib.FullName -replace '\\', '/'
@@ -333,8 +339,8 @@ int _isatty(int);
         '-Dexamples=disabled',
         # Enable all GStreamer plugin sets.
         # Individual lib integrations (opencv, onnx, tflite) are auto-detected
-        # via PKG_CONFIG_PATH set in Dockerfile.media. If a dependency is not
-        # found, that plugin is simply skipped — no build failure.
+        # via PKG_CONFIG_PATH set in Dockerfile.media-merge-builder. If a
+        # dependency is not found, that plugin is simply skipped -- no build failure.
         '-Dgpl=enabled',
         '-Dbase=enabled',
         '-Dgood=enabled',
@@ -343,8 +349,13 @@ int _isatty(int);
         '-Dges=enabled',
         '-Drtsp_server=enabled',
         '-Dtools=enabled',
-        # Provide stub unistd.h; disable cairo Win32 (avoids LLVM 22 mmintrin.h bug)
+        # Provide stub unistd.h for Windows CRT compatibility
         "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
+        # svtjpegxs disabled: defines local access() function that conflicts with Windows CRT
+        '-Dgst-plugins-bad:svtjpegxs=disabled',
+        # cairo:win32=disabled intentionally fails cairo at meson setup (unknown option in
+        # cairo-1.18.4) -- this prevents the LLVM 22 mmintrin.h __builtin_shufflevector crash
+        # that occurs when cairo tries to compile with clang-cl on Windows.
         '-Dcairo:win32=disabled',
         '-Dopus:intrinsics=disabled',
         # nvcodec disabled: D3D11 interop code in gstnvdecoder.cpp uses
@@ -386,6 +397,50 @@ int _isatty(int);
     if (-not $mesonSucceeded) { throw 'meson setup failed after 2 attempts' }
     log 'meson setup completed.'
 
+    # Inline patch (kept inline, NOT a .patch file): the webrtc-audio-processing
+    # wrap version floats with the GStreamer release, so a static .patch would rot.
+    # Its AVX2/SSE2 kernels index SIMD vectors via MSVC's union members
+    # (x.m256_f32[i]); clang-cl's __m256 is a native vector type without members
+    # ("member reference base type '__m256' is not a structure or union") but
+    # supports direct subscripting x[i], which is what this substitution produces.
+    $wrtcDir = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'webrtc-audio-processing-*' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($wrtcDir) {
+        $simdMemberPatterns = @(
+            '\.m256_f32\[', '\.m256d_f64\[', '\.m256i_(?:i|u)(?:8|16|32|64)\[',
+            '\.m128_f32\[', '\.m128d_f64\[', '\.m128i_(?:i|u)(?:8|16|32|64)\['
+        )
+        Get-ChildItem -Path $wrtcDir.FullName -Recurse -Include '*.cc', '*.h' | ForEach-Object {
+            $content = [System.IO.File]::ReadAllText($_.FullName)
+            $patched = $content
+            foreach ($p in $simdMemberPatterns) { $patched = $patched -replace $p, '[' }
+            if ($patched -ne $content) {
+                [System.IO.File]::WriteAllText($_.FullName, $patched)
+                log "Patched MSVC SIMD member access for clang-cl: $($_.Name)"
+            }
+        }
+    }
+
+    # Inline patch (kept inline, NOT a .patch file): FFMPEG_VERSION=master floats,
+    # and FFmpeg master removed the V308/V408/V410 raw packed-video codec IDs that
+    # gst-libav 1.29.x still lists in its "no quasi codecs" EXCLUSION conditions.
+    # Excluding codecs that no longer exist is moot — drop those comparisons
+    # (R210 sharing the V410 line still exists and is kept).
+    foreach ($avFile in @('gstavvidenc.c', 'gstavviddec.c')) {
+        $avPath = Join-Path $gstSrcDir "subprojects\gst-libav\ext\libav\$avFile"
+        if (Test-Path $avPath) {
+            $avContent = [System.IO.File]::ReadAllText($avPath)
+            $avOrig = $avContent
+            $avContent = $avContent -replace '(?m)^\s*in_plugin->id == AV_CODEC_ID_V[34]08 \|\|\r?\n', ''
+            $avContent = $avContent -replace 'in_plugin->id == AV_CODEC_ID_V410 \|\| ', ''
+            if ($avContent -ne $avOrig) {
+                [System.IO.File]::WriteAllText($avPath, $avContent)
+                log "Patched ${avFile}: removed V308/V408/V410 exclusions (codec IDs dropped by FFmpeg master)"
+            } else {
+                log "WARNING: ${avFile} present but the V308/V408/V410 exclusion lines did not match the patterns; if the pinned FFmpeg has dropped these codec IDs, gst-libav will fail to compile with 'undeclared identifier AV_CODEC_ID_V308'. Verify the exclusion conditions in $avPath."
+            }
+        }
+    }
+
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
     $compileSucceeded = $false
     for ($cAttempt = 1; $cAttempt -le 2; $cAttempt++) {
@@ -394,16 +449,29 @@ int _isatty(int);
         if ($LASTEXITCODE -eq 0) { $compileSucceeded = $true; break }
         if ($cAttempt -eq 1) {
             log 'Compile attempt 1 failed; patching _commit conflict in GES and retrying...'
-            # The -FIio.h conflicts with ges-validate.c's _commit function;
-            # rename it locally via a #define before the macro invocation.
+            # Reactive by design -- only rename GES's `_commit` when a compile actually failed. clang-cl's
+            # -FIio.h force-include declares the CRT `_commit`, which can collide with ges-validate.c's own
+            # `_commit` validate-action. In gstreamer 1.29.2 there is NO collision (ges-validate.c compiles
+            # clean on attempt 1), so this path stays DORMANT -- applying the rename unconditionally would
+            # needlessly redefine `_commit` where there is nothing to fix. The reviewable .patch below
+            # (patches/gstreamer/001-ges-commit-rename.patch, kept git-appliable) fires only if a future
+            # clang / io.h / gstreamer combination reintroduces the clash. NOT dead code: dormant insurance.
             $gesValidate = Join-Path $gstSrcDir 'subprojects/gst-editing-services/ges/ges-validate.c'
-            if (Test-Path $gesValidate) {
-                $content = Get-Content $gesValidate -Raw
-                $patch = '#define _commit ges__commit
-'
-                if (-not ($content -match '#define _commit ges__commit')) {
-                    Set-Content -Path $gesValidate -Value ($patch + $content) -NoNewline
+            $gesPatch = Join-Path $PSScriptRoot 'patches\gstreamer\001-ges-commit-rename.patch'
+            if ((Test-Path $gesValidate) -and (Test-Path $gesPatch)) {
+                try {
+                    Invoke-SourcePatch -PatchFile $gesPatch -SourceDir $gstSrcDir -IgnoreWhitespace
                     log "Patched: ges-validate.c (_commit -> ges__commit)"
+                } catch {
+                    # Fallback to the previous inline form if the .patch context has drifted.
+                    log "GES .patch did not apply cleanly, falling back to inline #define"
+                    $content = Get-Content $gesValidate -Raw
+                    $patch = '#define _commit ges__commit
+'
+                    if (-not ($content -match '#define _commit ges__commit')) {
+                        Set-Content -Path $gesValidate -Value ($patch + $content) -NoNewline
+                        log "Inline-patched: ges-validate.c (_commit -> ges__commit)"
+                    }
                 }
             }
         }
@@ -443,16 +511,9 @@ int _isatty(int);
     }
 
     # ---- 9. cleanup ----
-    if (-not $KeepBuildArtifacts.IsPresent) {
+    if (-not $KeepBuildArtifacts.IsPresent -and $env:KEEP_BUILD_ARTIFACTS -ne '1') {
         log 'Cleaning up source and build directories...'
-        if (Test-Path $gstSrcDir) {
-            Remove-Item -Path $gstSrcDir -Recurse -Force
-            log "Removed: $gstSrcDir"
-        }
-        if (Test-Path $resolvedBuildDir) {
-            Remove-Item -Path $resolvedBuildDir -Recurse -Force
-            log "Removed: $resolvedBuildDir"
-        }
+        Remove-SourceBuildTree -Path @($gstSrcDir, $resolvedBuildDir)
     }
 
     log 'END - GStreamer source build completed successfully.'
@@ -467,3 +528,4 @@ int _isatty(int);
 } finally {
     Stop-StructuredLogging -Context $logContext
 }
+

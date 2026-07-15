@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../../core/common.sh"
-media_common_init "${SCRIPT_DIR}"
+media_install_deps_init "${SCRIPT_DIR}"
 
 echo "[INFO] Installing Arm NN dependencies..."
 
@@ -17,10 +18,8 @@ target_packages=(
   libflatbuffers-dev
 )
 
-if is_cross; then
-  install_target_packages "${target_packages[@]}"
-else
-  apt_install "${target_packages[@]}"
-fi
+# install_target_packages handles both native and cross builds (it resolves
+# :arch suffixes and foreign-arch prep only when cross-compiling).
+install_target_packages "${target_packages[@]}"
 
 echo "[INFO] Arm NN dependencies installed"

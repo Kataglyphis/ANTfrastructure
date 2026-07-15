@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../android-build-preamble.sh"
 
 # 1. Parse Arguments
-GST_VERSION="${GSTREAMER_VERSION:-1.29.1}"
+GST_VERSION="${GSTREAMER_VERSION:-1.29.2}"
 ANDROID_SDK="${ANDROID_HOME:-/opt/android-sdk}"
 ANDROID_NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/${ANDROID_NDK_VERSION:-29.0.14206865}}"
 INSTALL_PATH="${GSTREAMER_ROOT_ANDROID:-/opt/android/gstreamer}"
@@ -72,8 +72,68 @@ patch_cerbero_system_m4_usage() {
     [ -f "${autoconf_recipe}" ] || return 0
     [ -f "${libtool_recipe}" ] || return 0
 
-    # Cerbero's bundled m4 1.4.20 currently fails against the host libc/toolchain.
-    perl -0pi -e "s/deps = \['m4'\]/deps = []/" "${autoconf_recipe}" "${libtool_recipe}"
+    # Container layout first (apply-patch.sh + patches/ are COPY'd into the
+    # android stages); the 4-up repo-relative path resolves to /opt in the
+    # flattened container layout ("bash: /opt/01-core/apply-patch.sh: No such
+    # file", exit 127).
+    local _apply_patch _patches_root _scripts_dir
+    if [ -f /opt/scripts/core/apply-patch.sh ]; then
+        _apply_patch=/opt/scripts/core/apply-patch.sh
+        _patches_root=/opt/scripts/patches
+    else
+        _scripts_dir="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+        _apply_patch="${_scripts_dir}/01-core/apply-patch.sh"
+        _patches_root="${_scripts_dir}/patches"
+    fi
+    bash "${_apply_patch}" \
+      "${_patches_root}/cerbero/001-drop-m4-dependency.patch" \
+      "$(pwd)" \
+      "Cerbero drop m4 dependency from autoconf/libtool recipes"
+}
+
+override_soundtouch_codeberg_checksum() {
+    # soundtouch is fetched from Codeberg's AUTO-GENERATED archive
+    # (codeberg.org/soundtouch/soundtouch/archive/<version>.tar.gz). Forgejo
+    # regenerates these with different compression periodically, so ANY static
+    # pinned hash drifts while the SOURCE is unchanged. It has drifted 3x
+    # (e07abf... -> 87c6c9... -> 35d404e6...), so chasing it with a hardcoded
+    # value is a losing game.
+    #
+    # Instead of pinning a fixed hash, pin DYNAMICALLY: fetch the archive now,
+    # compute its real sha256, and write THAT into the recipe so cerbero's later
+    # fetch always matches. Integrity rests on TLS + the version tag (the tag is
+    # immutable; only the archive's compression varies) -- the right trade-off
+    # for a non-byte-stable auto-archive. Best-effort: on any failure the recipe
+    # is left untouched and cerbero's own checksum step still guards the fetch.
+    local recipe="recipes/soundtouch.recipe"
+    [ -f "${recipe}" ] || return 0
+    command -v curl >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 || {
+        echo "WARNING: curl/sha256sum unavailable; cannot dynamic-pin soundtouch checksum" >&2
+        return 0
+    }
+
+    local ver cur url tmp actual
+    ver="$(sed -n "s/^[[:space:]]*version[[:space:]]*=[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" "${recipe}" | head -1)"
+    cur="$(sed -n "s/^[[:space:]]*tarball_checksum[[:space:]]*=[[:space:]]*['\"]\([0-9a-fA-F]*\)['\"].*/\1/p" "${recipe}" | head -1)"
+    if [ -z "${ver}" ] || [ -z "${cur}" ]; then
+        echo "WARNING: could not parse soundtouch version/checksum from recipe; leaving as-is" >&2
+        return 0
+    fi
+
+    url="https://codeberg.org/soundtouch/soundtouch/archive/${ver}.tar.gz"
+    tmp="$(mktemp)"
+    if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 -o "${tmp}" "${url}"; then
+        actual="$(sha256sum "${tmp}" | awk '{print $1}')"
+        if [ -n "${actual}" ] && [ "${actual}" != "${cur}" ]; then
+            sed -i "s/${cur}/${actual}/g" "${recipe}"
+            echo "Re-pinned soundtouch tarball checksum ${cur} -> ${actual} (live Codeberg archive ${ver})"
+        else
+            echo "soundtouch tarball checksum already matches live Codeberg archive (${cur})"
+        fi
+    else
+        echo "WARNING: could not pre-fetch soundtouch archive to re-pin checksum; leaving recipe as-is" >&2
+    fi
+    rm -f "${tmp}"
 }
 
 # ------------------------------------------------------------------------------
@@ -83,10 +143,17 @@ patch_cerbero_system_m4_usage() {
 PER_JOB_MB="${ANDROID_GSTREAMER_PER_JOB_MB:-1500}"
 
 if [ -z "${JOBS:-}" ]; then
-    if [ -f /opt/scripts/core/parallelism.sh ] && declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-        JOBS="$(compute_jobs_with_mem_cap "" "${PER_JOB_MB}")"
-    else
-        JOBS="$(nproc --all)"
+    JOBS="$(nproc --all)"
+    # Nothing in this script pre-loads parallelism.sh, so source it on demand
+    # (container path) before probing for compute_jobs_with_mem_cap — mirrors
+    # media_jobs() in android-build-preamble.sh, but keeps the configurable
+    # ANDROID_GSTREAMER_PER_JOB_MB cap instead of its fixed 2000 MB.
+    if [ -f /opt/scripts/core/parallelism.sh ]; then
+        # shellcheck disable=SC1091
+        source /opt/scripts/core/parallelism.sh 2>/dev/null || true
+        if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+            JOBS="$(compute_jobs_with_mem_cap "" "${PER_JOB_MB}")"
+        fi
     fi
 fi
 
@@ -184,6 +251,7 @@ else
 fi
 
 patch_cerbero_system_m4_usage
+override_soundtouch_codeberg_checksum
 
 # 5. Setup Python Virtual Environment
 HOST_PYTHON="$(resolve_host_python)"

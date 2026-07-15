@@ -8,6 +8,20 @@ _COMPILER_RESOLUTION_SH_LOADED=1
 #   resolve_host_compiler_for_lang   — resolve host C/C++ compiler for the given language
 #   prepare_host_compiler_wrapper    — create a host compiler wrapper script
 
+_COMPILER_RESOLUTION_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Defensive: ensure the platform arch helpers (arch_deb_multiarch_triplet_for)
+# and the GCC prefix helper (gcc_toolchain_prefix) are available even when this
+# file is sourced standalone (03-media/core/common.sh and litert android do
+# exactly that). Both sourced files carry their own load guards, so these are
+# no-ops when already loaded.
+# shellcheck disable=SC1090,SC1091
+[ -n "${_PLATFORM_SH_LOADED:-}" ] || \
+  { [ -f "${_COMPILER_RESOLUTION_SH_DIR}/platform.sh" ] && source "${_COMPILER_RESOLUTION_SH_DIR}/platform.sh"; }
+# shellcheck disable=SC1090,SC1091
+[ -n "${_CROSS_GCC_LOADED:-}" ] || \
+  { [ -f "${_COMPILER_RESOLUTION_SH_DIR}/cross-gcc.sh" ] && source "${_COMPILER_RESOLUTION_SH_DIR}/cross-gcc.sh"; }
+
 # Resolve a host compiler for the given language (c or cxx).
 # Returns the compiler path on stdout; falls back through resolve_build_gcc_tool,
 # multiarch triplet-prefixed compilers, system compilers, and clang.
@@ -95,27 +109,20 @@ derive_cxx_from_cc() {
   [ -x "${cxx}" ] && printf '%s' "${cxx}"
 }
 
-# Resolve both CC and CXX for a target architecture. Expects TARGET_ARCH or
-# TARGETARCH to be set. Exports CC and CXX on success. Returns 1 if either
-# compiler cannot be found.
+# Resolve both CC and CXX for a target architecture. Expects a target arch
+# argument or env (see default_target_arch). Exports CC and CXX on success.
+# Returns 1 if either compiler cannot be found.
 resolve_cross_cc_cxx_for_arch() {
-  local arch="${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
+  local arch
+  arch="$(default_target_arch "${1:-}")"
   local triplet cc cxx
 
   [ -n "${arch}" ] || return 1
 
-  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-    triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 1
-  else
-    case "${arch}" in
-      amd64) triplet="x86_64-linux-gnu" ;;
-      arm64) triplet="aarch64-linux-gnu" ;;
-      riscv64) triplet="riscv64-linux-gnu" ;;
-      *) return 1 ;;
-    esac
-  fi
+  triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 1
 
-  local gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  local gcc_prefix
+  gcc_prefix="$(gcc_toolchain_prefix)"
   cc="${gcc_prefix}/bin/${triplet}-gcc"
   cxx="${gcc_prefix}/bin/${triplet}-g++"
 
@@ -130,24 +137,17 @@ resolve_cross_cc_cxx_for_arch() {
 # The SDK image's apt packages may create symlinks in /usr/lib/<triplet>/
 # that point to the host (amd64) libstdc++ instead of the target arch one.
 fix_libstdcxx_symlink() {
-  local arch="${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
+  local arch
+  arch="$(default_target_arch "${1:-}")"
   local triplet gcc_lib sys_lib
 
   [ -n "${arch}" ] || return 0
   [ "${arch}" = "amd64" ] && return 0
 
-  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-    triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 0
-  else
-    case "${arch}" in
-      arm64) triplet="aarch64-linux-gnu" ;;
-      riscv64) triplet="riscv64-linux-gnu" ;;
-      *) return 0 ;;
-    esac
-  fi
+  triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 0
 
   sys_lib="/usr/lib/${triplet}/libstdc++.so"
-  gcc_lib="/opt/gcc-${GCC_VERSION:-16.1.0}/${triplet}/lib64/libstdc++.so"
+  gcc_lib="$(gcc_toolchain_prefix)/${triplet}/lib64/libstdc++.so"
 
   [ -L "${sys_lib}" ] || return 0
   [ -f "${gcc_lib}" ] || return 0
@@ -160,4 +160,49 @@ fix_libstdcxx_symlink() {
   esac
 
   ln -sf "${gcc_lib}" "${sys_lib}"
+}
+
+# Pin BOTH the dev symlink (libstdc++.so) and the runtime soname (libstdc++.so.6)
+# under /usr/lib/<triplet> to GCC's target-arch libstdc++. On cross builds that
+# copy is frequently either the WRONG ARCH (host amd64, pulled in by apt) or an
+# older Ubuntu Ports libstdc++ lacking newer GLIBCXX symbols — both break any C++
+# link that resolves libstdc++ via -L/usr/lib/<triplet> (e.g. FFmpeg's libopenmpt
+# probe, or the GStreamer onnx plugin). GCC 16's libstdc++ is an ABI-compatible
+# superset, so pinning to it is safe. Broader/stronger than fix_libstdcxx_symlink
+# (which only repoints the dev .so and only when it is currently wrong-arch).
+# No-op on native/amd64. Always returns 0 so callers under `set -e` are safe.
+pin_target_libstdcxx() {
+  local arch
+  arch="$(default_target_arch "${1:-}")"
+  [ -n "${arch}" ] || return 0
+  [ "${arch}" = "amd64" ] && return 0
+
+  local triplet=""
+  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
+    triplet="$(arch_deb_multiarch_triplet_for "${arch}" 2>/dev/null || true)"
+  fi
+  case "${arch}" in
+    arm64)   [ -n "${triplet}" ] || triplet="aarch64-linux-gnu" ;;
+    riscv64) [ -n "${triplet}" ] || triplet="riscv64-linux-gnu" ;;
+  esac
+  [ -n "${triplet}" ] || return 0
+  [ -d "/usr/lib/${triplet}" ] || return 0
+
+  # Exclude *-gdb.py: the GCC lib dir ships libstdc++.so.6.<v>-gdb.py (a GDB
+  # pretty-printer) next to the real .so.6.<v>, and it sorts AFTER the library
+  # under `sort -V`, so an unfiltered `tail -1` would pin to a Python script.
+  # `|| true`: a partially-matching glob makes the pipeline exit non-zero, which
+  # under `set -euo pipefail` would abort the caller via the command substitution.
+  local gcc_lsx
+  gcc_lsx="$(ls -1 /opt/gcc-*/"${triplet}"/lib64/libstdc++.so.6.* \
+                    /opt/gcc-*/"${triplet}"/lib/libstdc++.so.6.* 2>/dev/null \
+             | grep -vE '\.py$' | sort -V | tail -1 || true)"
+  if [ -n "${gcc_lsx}" ]; then
+    ln -sf "${gcc_lsx}" "/usr/lib/${triplet}/libstdc++.so.6"
+    ln -sf "${gcc_lsx}" "/usr/lib/${triplet}/libstdc++.so"
+    echo "Cross: pinned /usr/lib/${triplet}/libstdc++.so{,.6} -> ${gcc_lsx} (GCC target-arch superset, has newer GLIBCXX)"
+  else
+    echo "WARN: no target-arch GCC libstdc++ found under /opt/gcc-*/${triplet}/; C++ cross link may fail" >&2
+  fi
+  return 0
 }

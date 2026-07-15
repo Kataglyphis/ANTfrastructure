@@ -4,17 +4,13 @@ IFS=$'\n\t'
 
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
-# Fallback if cross-env.sh didn't define cross_build_is_active
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() {
-    [ "${BUILD_MODE:-native}" = "cross" ] && \
-    [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
-  }
+  source /opt/scripts/core/cross-env.sh   # defines cross_build_is_active
 fi
 
-WHEELS_DIR="${WHEELS_DIR:-/opt/wheels}"
+# WHEELS_DIR comes from the canonical media-env.sh (sibling of this script).
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_SCRIPT_DIR}/media-env.sh"
 
 if cross_build_is_active; then
   target_arch="$(cross_target_arch 2>/dev/null || true)"
@@ -51,6 +47,8 @@ runtime_ld_path="$(find /opt /usr/local -type d \( -name 'lib*' -o -name '*linux
 export LD_LIBRARY_PATH="${runtime_ld_path}:${LD_LIBRARY_PATH:-}"
 
 mkdir -p "${REPAIRED_WHEELS_DIR}"
+_aw_err="$(mktemp)"
+trap 'rm -f "${_aw_err}"' EXIT
 shopt -s nullglob
 for wheel in "${WHEELS_DIR}"/*.whl; do
   case "$(basename "${wheel}")" in
@@ -58,7 +56,22 @@ for wheel in "${WHEELS_DIR}"/*.whl; do
       cp "${wheel}" "${REPAIRED_WHEELS_DIR}/"
       ;;
     *)
-      auditwheel repair "${wheel}" -w "${REPAIRED_WHEELS_DIR}/" || cp "${wheel}" "${REPAIRED_WHEELS_DIR}/"
+      # auditwheel repair fails on Ubuntu 26.04 (resolute), whose glibc is newer
+      # than any manylinux profile ("too-recent versioned symbols"). These are
+      # LOCAL wheels consumed in the same image, so the manylinux tag is purely
+      # cosmetic -- fall back to the raw wheel. Classify the failure so the
+      # EXPECTED case logs a quiet NOTE instead of auditwheel's raw argparse
+      # "error:" (which reads like a real failure in the build log), while an
+      # UNEXPECTED failure still surfaces auditwheel's output.
+      if ! auditwheel repair "${wheel}" -w "${REPAIRED_WHEELS_DIR}/" 2>"${_aw_err}"; then
+        if grep -q 'too-recent versioned symbols' "${_aw_err}"; then
+          echo "NOTE: auditwheel cannot retag $(basename "${wheel}") to manylinux (host glibc newer than the profile); shipping the unrepaired local wheel (expected; tag is cosmetic for in-image use)"
+        else
+          echo "WARN: auditwheel repair failed unexpectedly for $(basename "${wheel}"); shipping unrepaired wheel. auditwheel said:" >&2
+          sed 's/^/    /' "${_aw_err}" >&2
+        fi
+        cp "${wheel}" "${REPAIRED_WHEELS_DIR}/"
+      fi
       ;;
   esac
 done

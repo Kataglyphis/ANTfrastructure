@@ -24,7 +24,7 @@ Four-tier dependency chain with shared script tree:
 ```
 linux/
 ├── Dockerfile.base          ubuntu:26.04 + CMake/Node/uv
-├── Dockerfile.toolchain     GCC 16.1.0 + LLVM/Clang 22.1.6 + Python 3.14 (FROM base)
+├── Dockerfile.toolchain     GCC 16.1.0 + LLVM/Clang 22.1.8 + Python 3.14 (FROM base)
 ├── Dockerfile.sdk           Vulkan SDK + TVM (FROM toolchain)
 ├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera (FROM sdk)
 ├── Dockerfile.android       Android SDK/NDK + native GCC swap (FROM media)
@@ -33,9 +33,9 @@ linux/
 ├── Dockerfile.nvidia        optional CUDA/cuDNN/TensorRT layer (FROM sdk)
 ├── Dockerfile.amd           optional MIGraphX layer (FROM sdk)
 └── scripts/
-    ├── 01-core/             shared utilities (41 modules: logging, platform, cross-env, tag-naming, stage-defs, digest-pinning, compiler-resolution)
+    ├── 01-core/             shared utilities (48 modules: logging, platform, cross-env, tag-naming, stage-defs, digest-pinning, compiler-resolution)
     ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
-    ├── 03-03-media/          media library build scripts
+    ├── 03-media/            media library build scripts
     │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
     │   ├── build/           per-library build scripts (onnxruntime, litert, opencv, ffmpeg, gstreamer, libcamera)
     │   └── runtime/         artifact collection, runtime config, verification, media-env.sh
@@ -75,54 +75,14 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 | `:webserver` | Slim nginx webserver |
 | `:winamd64` | Windows build image |
 
-## Quick Start
+## Build the Full Cross Chain Locally
 
-### Run the prebuilt image
+Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh`; for the other orchestrators, pipe output through `2>&1 | tee ./out/build-logs/<name>.log`.
+See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
 
-```bash
-sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
-sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
-```
+## Reinstall QEMU/binfmt After a Host Reboot
 
-### Build the full cross chain locally
-
-Build logs are written to `out/build-logs/` by passing `--log-dir` to the orchestrator scripts.
-
-```bash
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
-```
-
-### Build just the media layer for one architecture
-
-Use `build-cross-stage.sh` — it resolves the parent SDK digest, assembles all
-build args from `versions.env`, pins the result, and writes logs to `out/build-logs/`.
-**This is the recommended way to build any single cross-lane stage.**
-
-```bash
-bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
-```
-
-Build all three architectures sequentially:
-
-```bash
-for arch in amd64 arm64 riscv64; do
-  bash linux/scripts/build-cross-stage.sh --stage media --arch "$arch" --push --log-dir ./out/build-logs
-done
-```
-
-See `docs/linux-cross-builds.md` for the full stage graph and `docs/linux-build-basics.md` for build fundamentals.
-
-### Verify a single cross stage without building
-
-```bash
-bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
-```
-
-### Reinstall QEMU/binfmt after a host reboot
-
-```bash
-nerdctl run --rm --privileged tonistiigi/binfmt --install all
-```
+If foreign-architecture builds fail with `exec format error`, run `nerdctl run --rm --privileged tonistiigi/binfmt --install all` (see [`docs/linux-build-basics.md`](docs/linux-build-basics.md)).
 
 ## CI
 
@@ -131,6 +91,7 @@ nerdctl run --rm --privileged tonistiigi/binfmt --install all
 | `ubuntu24.04.yml` | Trigger on push/PR: Sphinx docs + version-consistency checks |
 | `build-docs.yml` | Reusable workflow for docs build |
 | `ghcr-cleanup.yml` | Retains last 3 per tag, 14-day safety net |
+| `stale-docs-check.yml` | Scheduled scan for stale doc references and broken script paths |
 
 ## Documentation
 
@@ -150,14 +111,14 @@ nerdctl run --rm --privileged tonistiigi/binfmt --install all
 <!-- generated:version-snapshot:start -->
 ## Source-Controlled Version Snapshot
 
-This block is generated from the Dockerfiles and setup scripts by `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/sync_versions.py --write`.
+This block is generated from the Dockerfiles and setup scripts by `python3 docs/scripts/sync_versions.py --write`.
 
 | Target | Source-controlled defaults |
 | --- | --- |
-| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.6, GCC 16, CMake 4.3.2, Vulkan SDK 1.4.341.1 |
+| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.0, Vulkan SDK 1.4.341.1 |
 | Android layer | Android SDK 14742923, NDK 29.0.14206865, CMake 4.1.2 |
 | Webserver image | Ubuntu 26.04 |
-| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.341.1, GStreamer 1.29.1, CUDA 13.3.0, ONNX Runtime 1.27.0 |
+| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.341.1, GStreamer 1.29.2, CUDA 13.3.0, ONNX Runtime v1.27.0 |
 <!-- generated:version-snapshot:end -->
 
 ## Quick Start 🏁
@@ -175,26 +136,7 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 
 ### Windows 🪟
 
-```powershell
-docker build --platform windows/amd64 `
-  --progress=plain --no-cache `
-  -t local/kataglyphis:windows-base `
-  -f windows/Dockerfile.base .
-
-docker build --platform windows/amd64 `
-  --progress=plain --no-cache --memory 48g `
-  -t local/kataglyphis:windows-media `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
-  -f windows/Dockerfile.media .
-
-docker build --platform windows/amd64 `
-  --progress=plain --no-cache `
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-ai `
-  -f windows/Dockerfile .
-```
-
-Windows-specific build notes are in [Windows Build Image](docs/windows-builds.md).
+Windows build commands are in [Windows Build Image](docs/windows-builds.md) § Build Commands.
 
 ### Clone The Repository
 

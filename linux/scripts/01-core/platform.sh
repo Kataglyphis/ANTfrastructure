@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 # platform.sh - small, side-effect-free platform helpers
 
-[ -z "${_PLATFORM_SH_LOADED:-}" ] || return 0
+[ -n "${_PLATFORM_SH_LOADED:-}" ] && return 0
 _PLATFORM_SH_LOADED=1
+
+# Canonical boolean-truthiness predicate. Returns 0 for 1/true/yes/on (any
+# case), 1 otherwise. This is the single source of truth; build-helpers.sh's
+# _bool_truthy() and ubuntu-mirror.sh's ubuntu_mirror_is_truthy() are thin
+# aliases that delegate here. platform.sh is a true leaf sourced before both
+# in every load chain (common.sh: logging→platform→…→ubuntu-mirror;
+# cross-env.sh: platform→ubuntu-mirror), so the alias is always resolvable.
+is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 arch_normalize() {
   case "$1" in
@@ -184,6 +197,14 @@ arch_list_csv_normalize() {
   printf '%s' "${normalized_arches[*]}" | tr ' ' ','
 }
 
+# Canonical target-arch fallback chain: an explicit argument wins, then
+# TARGET_ARCH, then TARGETARCH, then ARCH; prints empty when none is set.
+# Single source of truth for the chain formerly copy-pasted (with drift)
+# across cross-env/cross-python/compiler-resolution/verify.
+default_target_arch() {
+  printf '%s' "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
+}
+
 cross_targets_effective_raw() {
   printf '%s' "${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}}}"
 }
@@ -278,10 +299,6 @@ rust_target_triple() {
 
 rust_target_triple_for_arch() {
   arch_rust_target_triple_for "$1"
-}
-
-android_abi_for_target() {
-  arch_android_abi_for "$(arch_oci)" || printf '%s' ""
 }
 
 android_abi_for_arch() {

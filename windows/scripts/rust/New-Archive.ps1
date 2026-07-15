@@ -61,15 +61,9 @@ if ([string]::IsNullOrWhiteSpace($BinaryFile)) {
     $BinaryFile = "$Binary.exe"
 }
 
-$modulesPath = Join-Path $PSScriptRoot "..\modules"
-$buildModule = Join-Path $modulesPath "WindowsBuild.Common.psm1"
-
-if (-not (Test-Path $buildModule)) {
-    Write-Error "Required module not found: $buildModule"
-    exit 1
-}
-
-Import-Module $buildModule -Force
+# Import ContainerHub build framework (relative to this script's location in ContainerHub)
+. (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
+Initialize-CiEnvironment -ScriptRoot $PSScriptRoot
 
 $logDir = Join-Path $Workspace "logs"
 if (-not (Test-Path $logDir)) {

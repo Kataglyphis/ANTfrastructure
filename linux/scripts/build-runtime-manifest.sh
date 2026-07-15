@@ -3,15 +3,12 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
-# shellcheck disable=SC1091
-source "${_ARTIFACT_COMMON_DIR}/runtime-flow-common.sh"
-init_runtime_flow_defaults
+# shellcheck source=linux/scripts/lib-orchestrator.sh
+source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
+runtime_flow_preamble
 
 # Script-specific defaults (override shared where needed)
 IMAGE_NAME="${IMAGE_NAME:-}"
-TARGET_ARCHES="$(resolve_arch_list)"
 PUSH_MANIFEST=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
@@ -73,64 +70,64 @@ create_manifest() {
     return 0
   fi
 
-  if "${NERDCTL_BIN}" manifest inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
-    "${NERDCTL_BIN}" manifest rm "${IMAGE_NAME}" >/dev/null 2>&1 || true
+  if "${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
+    "${NERDCTL_BIN:-nerdctl}" manifest rm "${IMAGE_NAME}" >/dev/null 2>&1 || true
   fi
-  run "${NERDCTL_BIN}" manifest create "${IMAGE_NAME}" "${refs[@]}"
+  run "${NERDCTL_BIN:-nerdctl}" manifest create "${IMAGE_NAME}" "${refs[@]}"
 
   if [ "${PUSH_MANIFEST}" -eq 1 ]; then
-    run "${NERDCTL_BIN}" manifest push --purge "${IMAGE_NAME}"
+    # Retry the manifest push on the same transient registry/network class the
+    # per-arch image pushes guard against (runtime_push_tag). The index blob is
+    # tiny, but a dropped connection here still fails the whole stage.
+    retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${IMAGE_NAME}" \
+      run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${IMAGE_NAME}"
+  fi
+}
+
+_manifest_extra_arg() {
+  case "$1" in
+    --image) IMAGE_NAME="$2"; _OARG_SHIFT=2 ;;
+    --push-images) PUSH_IMAGES=1; _OARG_SHIFT=1 ;;
+    --push-manifest) PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
+    --skip-manifest) CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
+    --manifest-only|--repair) BUILD_IMAGES=0; _OARG_SHIFT=1 ;;
+    --push) PUSH_IMAGES=1; PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
+    --push-all) PUSH_IMAGES=1; PUSH_MANIFEST=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Register QEMU emulators for any non-native target arch, WITHOUT sudo, so the
+# foreign-arch runtime smokes can actually execute inside the image (nested exec
+# of the compiler/python/ffmpeg needs binfmt_misc with the F=fix-binary flag,
+# which buildkit's top-level-only emulator does NOT provide). Delegates to
+# setup-rootless-binfmt.sh (rootless containerd/BuildKit nsenter path). Best-
+# effort: a failure here is a warning, not a hard error — the smokes still run
+# and report their own "exec format error" if emulation is genuinely missing.
+ensure_foreign_binfmt() {
+  local arches="$1"
+  [ "${RUNTIME_REGISTER_BINFMT:-1}" = "1" ] || { log "RUNTIME_REGISTER_BINFMT=0 — skipping QEMU binfmt registration"; return 0; }
+  local native foreign="" a
+  native="$(arch_normalize "$(uname -m)")"
+  for a in $(arch_list_to_words "${arches}"); do
+    [ "$(arch_normalize "${a}")" = "${native}" ] && continue
+    foreign="${foreign:+${foreign},}$(arch_normalize "${a}")"
+  done
+  [ -n "${foreign}" ] || return 0   # all targets are native; nothing to emulate
+  local reg="${REPO_ROOT}/linux/scripts/setup-rootless-binfmt.sh"
+  if [ ! -x "${reg}" ] && [ ! -f "${reg}" ]; then
+    warn "setup-rootless-binfmt.sh not found — foreign-arch (${foreign}) smokes may fail with 'exec format error'"
+    return 0
+  fi
+  log "Registering QEMU binfmt (no sudo) for foreign arches: ${foreign}"
+  if ! run bash "${reg}" --arches "${foreign}"; then
+    warn "no-sudo QEMU binfmt registration failed for [${foreign}] — foreign-arch smokes may report 'exec format error'."
+    warn "  On a rootless host: ensure containerd-rootless-setuptool.sh is on PATH. On a rootful/CI host qemu is usually pre-registered."
   fi
 }
 
 main() {
-  while [ $# -gt 0 ]; do
-    consume_shared_arg usage \
-      parse_shared_runtime_args \
-      TARGET_ARCHES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
-      BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
-      TORCH_APP_MODE \
-      USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
-      PUSH_INTERMEDIATE_IMAGES \
-      "$1" "${2:-}" || break
-    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
-    case "$1" in
-      --image)
-        IMAGE_NAME="$2"
-        shift 2
-        ;;
-      --push-images)
-        PUSH_IMAGES=1
-        shift
-        ;;
-      --push-manifest)
-        PUSH_MANIFEST=1
-        shift
-        ;;
-      --skip-manifest)
-        CREATE_MANIFEST=0
-        shift
-        ;;
-      --manifest-only|--repair)
-        BUILD_IMAGES=0
-        shift
-        ;;
-      --push)
-        PUSH_IMAGES=1
-        PUSH_MANIFEST=1
-        shift
-        ;;
-      --push-all)
-        PUSH_IMAGES=1
-        PUSH_MANIFEST=1
-        PUSH_INTERMEDIATE_IMAGES=1
-        shift
-        ;;
-      *)
-        warn "Unknown option: $1"; usage >&2; exit 1
-        ;;
-    esac
-  done
+  run_runtime_arg_loop usage _manifest_extra_arg "$@"
 
   if [ -z "${IMAGE_NAME}" ]; then
     err "--image is required"
@@ -148,11 +145,36 @@ main() {
 
   local arch
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
-    run_parallel_arch_loop runtime_build_chain "/tmp/runtime-arch-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+    run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
   fi
 
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then
     create_manifest
+  fi
+
+  # Host-side runtime-image boot smoke: run each freshly built wrapper via
+  # nerdctl and verify it starts and its entrypoint/HEALTHCHECK/user/paths are
+  # sane. Validates the ACTUAL published image, complementing the in-image
+  # wrapper-smoke stage. This was COPY'd into the package image but never run
+  # anywhere. Cross arches boot under binfmt/qemu; set RUNTIME_IMAGE_SMOKE=0 to
+  # skip (e.g. a host without qemu for a foreign arch).
+  if [ "${BUILD_IMAGES}" -eq 1 ] && [ "${RUNTIME_IMAGE_SMOKE:-1}" = "1" ]; then
+    # Foreign-arch runtime smokes execute inside the image under QEMU/binfmt.
+    # Register the emulators up-front WITHOUT sudo (rootless containerd/BuildKit
+    # share one persistent namespace; see setup-rootless-binfmt.sh). Best-effort:
+    # if registration is unavailable (non-rootless host, no nsenter tool) we warn
+    # and let the per-arch smokes surface "exec format error" themselves. Opt out
+    # with RUNTIME_REGISTER_BINFMT=0 (e.g. host already has qemu via update-binfmts).
+    ensure_foreign_binfmt "${TARGET_ARCHES}"
+    local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
+    local wrapper_tag
+    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
+      log "Runtime-image smoke: ${wrapper_tag} (${arch})"
+      # Ensure the pushed image is present locally (build may not load it).
+      run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
+      run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
+    done
   fi
 }
 

@@ -21,6 +21,8 @@
 #   runtime_artifact_context_ref()
 #   runtime_stage_export_is_oci()
 #   _runtime_resolve_parent_context()
+[ -n "${_CONTEXT_MANAGEMENT_SH_LOADED:-}" ] && return 0
+_CONTEXT_MANAGEMENT_SH_LOADED=1
 
 _CM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Build helpers (run, nerdctl wrappers) are required.

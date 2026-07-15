@@ -54,6 +54,9 @@ Environment (used as defaults when CLI args are omitted):
   NATIVE_SYSTEM_HEADER_DIR  Native system header dir for cross builds
   JOBS                      Parallel jobs
   GCC_BUILD_MB_PER_JOB      Memory cap per job for parallel build (default: 2500)
+  GCC_TARBALL_CACHE_DIR     Optional dir to reuse/store the release tarball
+                            across builds (verification still runs each time;
+                            unset = always download, unchanged behavior)
 USAGE
 }
 
@@ -177,7 +180,7 @@ fi
 PREFIX="${PREFIX:-/opt/gcc-${GCC_VERSION}}"
 
 require_sudo
-detect_system || true
+detect_system || echo "WARNING: detect_system failed; ARCH/HOST_ARCH/DISTRO may be unset (downstream steps may fail on unset vars)." >&2
 
 # Determine requested jobs (only if user set JOBS in the environment).
 JOBS_REQUESTED=""
@@ -193,16 +196,9 @@ else
 fi
 
 if [ "${USE_CCACHE}" = "1" ] && [ -z "${HOST_TRIPLET}" ]; then
-  if ! command -v ccache >/dev/null 2>&1; then
-    warn "ccache not found, installing..."
-    apt_install ccache
-  fi
-  CCACHE_DIR="${CCACHE_DIR:-${HOME}/.cache/ccache}"
-  mkdir -p "${CCACHE_DIR}"
-  export CCACHE_DIR
+  ensure_ccache_env
   export CC="ccache gcc"
   export CXX="ccache g++"
-  info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
 fi
 
 TARBALL="gcc-${GCC_VERSION}.tar.xz"
@@ -280,61 +276,128 @@ export CFLAGS CXXFLAGS FFLAGS FCFLAGS CFLAGS_FOR_BUILD CXXFLAGS_FOR_BUILD BOOT_C
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
-echo "Downloading GCC sources to ${BUILD_DIR}..."
-if [ ! -f "${TARBALL}" ]; then
-  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
-else
-  echo "Tarball already exists: ${TARBALL}"
-fi
-
-echo "Attempting SHA512 verification..."
-if wget -q --spider "${SHA_URL}"; then
-  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SHA_URL}" -O sha512.sum || true
-  if grep -Eq "[[:space:]]${TARBALL}\$" sha512.sum 2>/dev/null; then
-    grep -E "[[:space:]]${TARBALL}\$" sha512.sum > "${TARBALL}.sha512"
-    if sha512sum -c --status "${TARBALL}.sha512"; then
-      echo "SHA512 OK."
-    else
-      echo "ERROR: SHA512 mismatch - aborting." >&2
-      exit 1
-    fi
-  else
-    echo "WARNING: tarball entry not found in sha512.sum; continuing without SHA check." >&2
+# Emit the "GPG was skipped" warning and honor the GCC_REQUIRE_GPG policy: a
+# skipped verification (no gpg, or the release key was unreachable — common in
+# sandboxed build networks) is a loud warning by default, fatal when
+# GCC_REQUIRE_GPG=1. A failed VERIFY with the key present is handled separately
+# (always fatal) in verify_gcc_gpg_signature.
+_gcc_gpg_require_or_warn() {
+  echo "WARNING: GPG signature verification was SKIPPED (no gpg or key unavailable); tarball is only SHA512-verified." >&2
+  if [ "${GCC_REQUIRE_GPG:-0}" = "1" ]; then
+    echo "ERROR: GCC_REQUIRE_GPG=1 — refusing to build without GPG verification." >&2
+    exit 1
   fi
-else
-  echo "No sha512.sum found on server; continuing." >&2
-fi
+}
 
-# Optional: download signature for manual GPG verification
-if wget -q --spider "${SIG_URL}"; then
+# Optional GPG verification of the downloaded GCC tarball against the GCC Release
+# Signing Key. Flattened from a 5-level nested pyramid into guard clauses; the
+# policy is unchanged: no .sig on server → skip cleanly; .sig present but
+# undownloadable → fatal; verify FAILS with key present → fatal; otherwise
+# (no gpg / key unavailable) → _gcc_gpg_require_or_warn.
+verify_gcc_gpg_signature() {
+  local key="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62"  # GCC Release Signing Key
+
+  if ! wget -q --spider "${SIG_URL}"; then
+    echo "No .sig found or accessible."
+    return 0
+  fi
+
   echo "Signature available at ${SIG_URL} (downloading)..."
-  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}" || true
-  
-  # GPG verification (GCC Release Signing Key)
-  GCC_RELEASE_KEY="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62"
-  echo "Attempting GPG verification..."
-  if command -v gpg >/dev/null 2>&1; then
-    # Import GCC release key if not present
-    if ! gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
-      echo "Importing GCC release signing key..."
-      gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
-      gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "${GCC_RELEASE_KEY}" 2>/dev/null || \
-      echo "Warning: Could not import GPG key, skipping signature verification"
-    fi
-    
-    if gpg --list-keys "${GCC_RELEASE_KEY}" >/dev/null 2>&1; then
-      if gpg --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null; then
-        echo "GPG signature verified successfully."
-      else
-        echo "WARNING: GPG verification FAILED. Proceeding with caution." >&2
-      fi
-    fi
-  else
-    echo "Warning: gpg not installed, skipping signature verification" >&2
+  if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}"; then
+    echo "ERROR: signature exists on server but could not be downloaded; refusing to continue unverified." >&2
+    exit 1
   fi
-else
-  echo "No .sig found or accessible."
-fi
+
+  if ! command -v gpg >/dev/null 2>&1; then
+    echo "WARNING: gpg not installed." >&2
+    _gcc_gpg_require_or_warn
+    return 0
+  fi
+
+  echo "Attempting GPG verification..."
+  if ! gpg --list-keys "${key}" >/dev/null 2>&1; then
+    echo "Importing GCC release signing key..."
+    gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "${key}" 2>/dev/null || \
+    gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "${key}" 2>/dev/null || \
+    echo "WARNING: could not import the GCC release signing key from any keyserver." >&2
+  fi
+
+  # Key still unavailable → cannot verify; treat as skipped, not failed.
+  if ! gpg --list-keys "${key}" >/dev/null 2>&1; then
+    _gcc_gpg_require_or_warn
+    return 0
+  fi
+
+  if gpg --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null; then
+    echo "GPG signature verified successfully."
+    return 0
+  fi
+  echo "ERROR: GPG verification FAILED for ${TARBALL}." >&2
+  echo "The tarball may be corrupted or tampered with. Aborting." >&2
+  exit 1
+}
+
+# Fetch the GCC tarball into ${BUILD_DIR}. Opt-in tarball cache: when
+# GCC_TARBALL_CACHE_DIR is set (e.g. by gcc.sh's multi-target orchestration),
+# reuse a previously downloaded tarball instead of re-downloading into every
+# per-target BUILD_DIR. The reused copy still goes through the exact same
+# SHA512/GPG verification below — the cache only replaces the network fetch,
+# never the verification. Inert (behavior unchanged) when the variable is unset.
+fetch_gcc_tarball() {
+  if [ ! -f "${TARBALL}" ] && [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
+    echo "Reusing cached tarball: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
+    cp "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" "${TARBALL}"
+  fi
+  if [ ! -f "${TARBALL}" ]; then
+    wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
+  else
+    echo "Tarball already exists: ${TARBALL}"
+  fi
+}
+
+# Verify the tarball against the server's sha512.sum. If the server has a
+# checksum file, failing to fetch or match it aborts (no silent downgrade to an
+# unverified build); a missing checksum file is only a warning.
+verify_gcc_sha512() {
+  echo "Attempting SHA512 verification..."
+  if ! wget -q --spider "${SHA_URL}"; then
+    echo "No sha512.sum found on server; continuing." >&2
+    return 0
+  fi
+  if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SHA_URL}" -O sha512.sum; then
+    echo "ERROR: sha512.sum exists on server but could not be downloaded; refusing to continue unverified." >&2
+    exit 1
+  fi
+  if ! grep -Eq "[[:space:]]${TARBALL}\$" sha512.sum 2>/dev/null; then
+    echo "WARNING: tarball entry not found in sha512.sum; continuing without SHA check." >&2
+    return 0
+  fi
+  grep -E "[[:space:]]${TARBALL}\$" sha512.sum > "${TARBALL}.sha512"
+  if sha512sum -c --status "${TARBALL}.sha512"; then
+    echo "SHA512 OK."
+  else
+    echo "ERROR: SHA512 mismatch - aborting." >&2
+    exit 1
+  fi
+}
+
+# Opt-in tarball cache: store the verified tarball for reuse by later targets.
+# Inert when GCC_TARBALL_CACHE_DIR is unset. Copies via a temp name + rename so a
+# concurrent reader never sees a partially written cache entry.
+cache_store_gcc_tarball() {
+  if [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ ! -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
+    mkdir -p "${GCC_TARBALL_CACHE_DIR}"
+    cp "${TARBALL}" "${GCC_TARBALL_CACHE_DIR}/${TARBALL}.tmp.$$"
+    mv "${GCC_TARBALL_CACHE_DIR}/${TARBALL}.tmp.$$" "${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
+    echo "Stored tarball in cache: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
+  fi
+}
+
+echo "Downloading GCC sources to ${BUILD_DIR}..."
+fetch_gcc_tarball
+verify_gcc_sha512
+verify_gcc_gpg_signature   # optional GPG check (defined above)
+cache_store_gcc_tarball
 
 # 3) Extract and configure
 echo "Extracting ${TARBALL}..."
@@ -343,6 +406,31 @@ if [ ! -d "gcc-${GCC_VERSION}" ]; then
 else
     echo "Source already extracted: gcc-${GCC_VERSION}"
 fi
+# libstdc++ Canadian-cross fix (GCC PR100017 / PR101060), scoped to the C++23
+# MODULE directory upstream forgot to propagate it to.
+#
+# src/c++17/Makefile.am carries `-nostdinc++` in AM_CXXFLAGS precisely so the
+# TARGET libstdc++ build cannot pull in the *host* compiler's libstdc++ headers.
+# src/c++23 (which builds the `std`/`std.compat` modules from std.cc) is MISSING
+# it. In a Canadian cross (host != build) the host g++ headers are on the search
+# path; `#include <cfenv>` -> the target `<fenv.h>` wrapper -> `#include_next
+# <fenv.h>` then finds the *host* libstdc++ `<fenv.h>` wrapper, which shares the
+# guard `_GLIBCXX_FENV_H` with the target wrapper and is therefore guard-skipped,
+# so the underlying libc <fenv.h> is NEVER reached. Result: `::fenv_t` (and every
+# fe* symbol) is undeclared -> `error: 'fenv_t' has not been declared in '::'`,
+# the std.cc compile fails, and libstdc++'s recipe silently ships an EMPTY module
+# (stamp-modules-bits "Error 1 (ignored)").  The target sysroot's <fenv.h> is
+# fine; the header is simply never included.  Fix = mirror the c++17 flag into the
+# c++23 module dir.  Patch the shipped Makefile.in (release tarballs pre-generate
+# it; maintainer-mode is off so touching Makefile.in won't trigger a regen).
+_c23_mkin="gcc-${GCC_VERSION}/libstdc++-v3/src/c++23/Makefile.in"
+if [ -f "${_c23_mkin}" ] && ! grep -q -- '-nostdinc++' "${_c23_mkin}"; then
+  sed -i 's|^\(\t*\)-std=gnu++23[[:space:]]*\\$|\1-std=gnu++23 -nostdinc++ \\|' "${_c23_mkin}"
+  grep -q -- '-nostdinc++' "${_c23_mkin}" \
+    || die "libstdc++ PR100017 fix FAILED: could not insert -nostdinc++ into ${_c23_mkin} (GCC ${GCC_VERSION} AM_CXXFLAGS layout changed -- update this patch)"
+  echo "libstdc++: applied -nostdinc++ to src/c++23 (std module) Makefile.in [PR100017 parity with src/c++17]"
+fi
+
 rm -rf "gcc-${GCC_VERSION}-build"
 
 # Canadian cross (host != build): GCC's binaries run on the *host* arch and link
@@ -361,6 +449,15 @@ fi
 BUILD_SUBDIR="${BUILD_DIR}/gcc-${GCC_VERSION}-build"
 mkdir -p "${BUILD_SUBDIR}"
 cd "${BUILD_SUBDIR}"
+
+# Pre-create the install prefix BEFORE configure. GCC's in-tree prerequisite
+# configures (isl in particular) resolve/cd into the eventual --prefix while
+# probing; when it does not exist yet they print a spurious
+# "cd: ${PREFIX}: No such file or directory" to stderr. It is harmless (the dir
+# is also created at install time below) but reads as an error in the toolchain
+# build log. Creating it up front keeps the log clean. Idempotent; mirrors the
+# install-time mkdir and uses ${SUDO} for the same non-root-host case.
+${SUDO} mkdir -p "${PREFIX}"
 
 echo "Configuring build (languages: c,c++,fortran)..."
 CONFIG_CMD=(
@@ -419,6 +516,22 @@ if [ -n "${TARGET_TRIPLET}" ]; then
     "--with-sysroot=${SYSROOT}"
     "--with-native-system-header-dir=${NATIVE_SYSTEM_HEADER_DIR}"
   )
+  # riscv64 (A2): GCC 16 defaults to the newer RISC-V ISA spec, whose canonical
+  # -march expansion uses profile extension names (zmmul/zaamo/zalrsc/zca/zcd)
+  # that an older binutils `as` rejects with "invalid -march= option". The build
+  # itself is unaffected (it drives the assembler explicitly), but the SHIPPED
+  # native riscv64 GCC then cannot assemble its own default output on-device.
+  # Pin the ISA spec the bundled assembler understands so the default -march
+  # stays assembler-compatible; this changes only the march NAMING, not codegen
+  # (same ISA). Override with RISCV_GCC_ISA_SPEC=<spec>, or RISCV_GCC_ISA_SPEC=
+  # (empty) to disable. NOTE: validated by shellcheck only in-repo; confirm with
+  # a real riscv64 GCC rebuild (an on-device `gcc hello.c` must assemble).
+  case "${TARGET_TRIPLET}" in
+    riscv64-*)
+      _isa_spec="${RISCV_GCC_ISA_SPEC-20191213}"
+      [ -n "${_isa_spec}" ] && CONFIG_CMD+=("--with-isa-spec=${_isa_spec}")
+      ;;
+  esac
 fi
 
 # Canadian cross: GCC itself is cross-compiled to run on a different host. The
@@ -507,37 +620,22 @@ if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
     exit 1
   fi
 
-  _install_alt() {
-    local name="$1" link="$2" bin="$3" priority="${4:-${ALTS_PRIORITY}}"
-    echo "Registering ${name}..."
-    ${SUDO} update-alternatives --install "${link}" "${name}" "${bin}" "${priority}"
-  }
-  _set_alt() {
-    local name="$1" bin="$2"
-    ${SUDO} update-alternatives --set "${name}" "${bin}" || true
-  }
-
-  _install_alt gcc /usr/bin/gcc "${GCC_BIN}"
-  if [ -x "${GXX_BIN}" ]; then _install_alt g++ /usr/bin/g++ "${GXX_BIN}"; fi
+  # alt_install_and_set (01-core/common.sh) registers each link and immediately
+  # --sets it (the --set is tolerant, matching the previous _set_alt || true).
+  # ALTS_PRIORITY=150 is passed explicitly to preserve the historical priority.
+  alt_install_and_set gcc /usr/bin/gcc "${GCC_BIN}" "${ALTS_PRIORITY}"
+  if [ -x "${GXX_BIN}" ]; then alt_install_and_set g++ /usr/bin/g++ "${GXX_BIN}" "${ALTS_PRIORITY}"; fi
 
   if [ -x "${CPP_BIN}" ]; then
     CPP_LINK="/usr/bin/cpp"
     if [ -e "/lib/cpp" ]; then CPP_LINK="/lib/cpp"; fi
-    _install_alt cpp "${CPP_LINK}" "${CPP_BIN}"
+    alt_install_and_set cpp "${CPP_LINK}" "${CPP_BIN}" "${ALTS_PRIORITY}"
   fi
 
-  if [ -x "${GCOV_BIN}" ]; then _install_alt gcov /usr/bin/gcov "${GCOV_BIN}"; fi
-  if [ -x "${GFORTRAN_BIN}" ]; then _install_alt gfortran /usr/bin/gfortran "${GFORTRAN_BIN}"; fi
+  if [ -x "${GCOV_BIN}" ]; then alt_install_and_set gcov /usr/bin/gcov "${GCOV_BIN}" "${ALTS_PRIORITY}"; fi
+  if [ -x "${GFORTRAN_BIN}" ]; then alt_install_and_set gfortran /usr/bin/gfortran "${GFORTRAN_BIN}" "${ALTS_PRIORITY}"; fi
 
-  _install_alt cc /usr/bin/cc "${GCC_BIN}"
-
-  echo "Setting alternatives (gcc + cc + optional tools)..."
-  _set_alt gcc "${GCC_BIN}"
-  _set_alt cc "${GCC_BIN}"
-  if [ -x "${GXX_BIN}" ]; then _set_alt g++ "${GXX_BIN}"; fi
-  if [ -x "${CPP_BIN}" ]; then _set_alt cpp "${CPP_BIN}"; fi
-  if [ -x "${GCOV_BIN}" ]; then _set_alt gcov "${GCOV_BIN}"; fi
-  if [ -x "${GFORTRAN_BIN}" ]; then _set_alt gfortran "${GFORTRAN_BIN}"; fi
+  alt_install_and_set cc /usr/bin/cc "${GCC_BIN}" "${ALTS_PRIORITY}"
 
   echo "update-alternatives registration complete."
 fi

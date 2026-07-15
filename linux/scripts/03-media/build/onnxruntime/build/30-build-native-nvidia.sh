@@ -157,27 +157,24 @@ ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 #   --cudnn_home          – path to cuDNN headers/libs
 #   --tensorrt_home       – path to TensorRT headers/libs
 
-BUILD_ARGS=(
-  --build_dir          "${NATIVE_GPU_BUILD_DIR}"
-  --config             "${NATIVE_CPU_CONFIG}"
-  --build_shared_lib
-  --parallel           "${JOBS}"
+# CUDA arch list from versions.env (CUDA_ARCHITECTURES); this build maps the
+# trailing 90 -> 90a to enable Hopper arch-specific kernels.
+ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-80;86;89;90}"
+ONNX_CUDA_ARCHS="${ONNX_CUDA_ARCHS/%90/90a}"
+
+BUILD_ARGS=()
+append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
+BUILD_ARGS+=(
   --build_wheel
-  --compile_no_warning_as_error
-  --skip_submodule_sync
-  --skip_tests
-  --allow_running_as_root
   --use_cuda
   --use_tensorrt
   --use_full_protobuf
   --cuda_home          "${CUDA_HOME}"
   --cudnn_home         "${CUDNN_HOME}"
   --tensorrt_home      "${TENSORRT_HOME}"
-  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=80;86;89;90a"
+  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${ONNX_CUDA_ARCHS}"
   --use_xnnpack
   --enable_lto
-  --use_mimalloc
-  --use_lock_free_queue
   --use_webgpu
   --use_external_dawn
 )
@@ -190,10 +187,7 @@ append_onnx_ccache_build_args BUILD_ARGS
 # --------------------------------------------------------------------------
 collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "GPU wheel"
 copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
-verify_onnxruntime_core_header "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
-copy_onnx_libraries_to_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}"
-ensure_onnxruntime_symlink "${NATIVE_GPU_OUTPUT_DIR}"
-symlink_output_libraries_into_usr_local "${NATIVE_GPU_OUTPUT_DIR}"
+finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
 
 info "GPU build complete. Artifacts in ${NATIVE_GPU_OUTPUT_DIR}"
 info "Wheels in ${NATIVE_GPU_OUTPUT_DIR}/wheels"

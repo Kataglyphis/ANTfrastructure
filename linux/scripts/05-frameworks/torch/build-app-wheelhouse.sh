@@ -6,19 +6,72 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
     source /opt/scripts/core/cross-env.sh
 fi
 
+# shell_quote_args lives in common.sh, which cross-env.sh does NOT source.
+# Without it both wheel builds died instantly at
+# cmake_args_string="$(shell_quote_args ...)" ("command not found"), silently
+# absorbed by the best-effort WARN path — the long-standing "riscv64 cross
+# wheel build failed" was (at least partly) this.
+for _common in \
+    "/opt/scripts/core/common.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/common.sh"; do
+    if [ -f "${_common}" ]; then
+        # shellcheck disable=SC1090,SC1091
+        source "${_common}"
+        break
+    fi
+done
+unset _common
+
+# Source canonical versions.env so PYTORCH_VERSION / TORCHVISION_VERSION are
+# always available even when this script is invoked outside the orchestrator
+# (which is the typical case in the media app-wheelhouse stage). Fallback paths
+# below still exist but now mirror versions.env rather than drifting.
+for _lvf in \
+    "/opt/scripts/core/load-versions-env.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/load-versions-env.sh"; do
+    if [ -f "${_lvf}" ]; then
+        # shellcheck disable=SC1091
+        source "${_lvf}"
+        break
+    fi
+done
+unset _lvf
+for _evf in \
+    "/opt/scripts/core/versions.env" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/versions.env"; do
+    if [ -f "${_evf}" ]; then
+        # load_versions_env respects already-set env (orchestrator-forwarded
+        # PYTORCH_VERSION/etc. win over the baked copy) — unlike `set -a; source`,
+        # which clobbered them and inverted the documented precedence contract.
+        load_versions_env "${_evf}"
+        break
+    fi
+done
+unset _evf
+
 : "${APP_WHEELHOUSE_DIR:=/opt/app-wheels}"
 : "${APP_WHEELHOUSE_BUILD_ROOT:=/tmp/app-wheelhouse}"
-: "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.12.0}}"
+: "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.13.0}}"
 : "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
-: "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.27.0}}"
+: "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.28.0}}"
+# IREE (iree.dev) source tag for the riscv64 runtime wheel cross-build. Mirrors
+# versions.env IREE_VERSION (load_versions_env sets it above); the v3.11.0
+# fallback keeps this runnable outside the orchestrator. See build_iree_wheels.
+: "${IREE_REF:=${IREE_VERSION:-v3.11.0}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 
 if [ -f /opt/scripts/core/parallelism.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/parallelism.sh 2>/dev/null || true
-  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    MAX_JOBS="${MAX_JOBS:-$(compute_jobs_with_mem_cap "" 2000)}"
+  # This wheelhouse compiles PyTorch from source (PYTORCH_REF); its aten/autograd
+  # TUs peak ~4GB/cc1plus, so budget ~4GB/job (compute_cpp_heavy_jobs) rather than
+  # the generic 2GB -- same OOM class as the litert build. Fall back to the older
+  # 2GB helper, then nproc, if the newer helper is absent (older sourced copy).
+  if declare -F compute_cpp_heavy_jobs >/dev/null 2>&1; then
+    MAX_JOBS="${MAX_JOBS:-$(compute_cpp_heavy_jobs "")}"
+  elif declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    MAX_JOBS="${MAX_JOBS:-$(compute_jobs_with_mem_cap "" 4096)}"
   fi
 fi
 : "${MAX_JOBS:=$(nproc)}"
@@ -83,6 +136,20 @@ install_build_dependencies() {
         if ! install_target_packages libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev; then
             warn "Some riscv64 target build dependencies are unavailable; continuing with the staged sysroot"
         fi
+        # Target Python stdlib provides /usr/lib/python3.X/_sysconfigdata__linux_<triplet>.py,
+        # which resolve_target_python_sysconfig_export needs so the wheel builds
+        # use the TARGET Python ABI metadata (correct extension suffixes) instead
+        # of falling back to the host sysconfig. Own apt call: best-effort, and
+        # install_target_packages groups are all-or-nothing.
+        install_target_packages libpython3-stdlib || \
+            warn "Target libpython3-stdlib unavailable; wheel builds will use host sysconfig"
+        # Target sleef: pytorch's bundled sleef compiles its codegen tools
+        # (mkrename/mkdisp) for the TARGET under cross and dies with
+        # "Exec format error" when the build runs them on the host. With the
+        # target libsleef-dev present, build_torch_wheel sets USE_SYSTEM_SLEEF=1
+        # and skips the bundled build entirely. Best-effort (ports coverage).
+        install_target_packages libsleef-dev || \
+            warn "Target libsleef-dev unavailable; bundled sleef will fail under cross (Exec format error)"
         return 0
     fi
 
@@ -92,8 +159,9 @@ install_build_dependencies() {
 }
 
 prepare_build_environment() {
-    prepare_workspace
-
+    # NOTE: prepare_workspace is NOT called here — main() already runs it
+    # (unconditionally, before this function) so the wheelhouse dir exists
+    # even when this function bails out early.
     if ! cross_build_is_active; then
         log "Skipping app wheelhouse build outside of amd64-hosted cross mode"
         return 1
@@ -121,6 +189,88 @@ prepare_build_environment() {
     uv pip install --python "${BUILD_PYTHON}" -U \
         "setuptools<82" wheel build cmake ninja numpy packaging pyyaml requests six typing-extensions \
         sympy filelock networkx jinja2
+}
+
+# pytorch's setup.py does NOT forward our CMAKE_ARGS -D flags into its cmake
+# invocation (verified from the logged configure line: none of the cross args
+# were present; only CC/CXX env reached the build, so cmake configured as a
+# NATIVE x86_64 build with a riscv64 compiler and cpuinfo picked x86 sources).
+# CMake >= 3.21 honors the CMAKE_TOOLCHAIN_FILE ENVIRONMENT variable natively
+# at project() time — the only reliable way to make a setup.py-driven cmake
+# cross-aware. Keep it minimal: system identity only; compilers keep flowing
+# via CC/CXX env exactly as they already (working) do.
+write_cross_cmake_toolchain_file() {
+    local path="${APP_WHEELHOUSE_BUILD_ROOT}/cross-toolchain.cmake"
+    local processor="${CMAKE_SYSTEM_PROCESSOR:-}"
+    if [ -z "${processor}" ]; then
+        case "$(cross_target_arch 2>/dev/null || echo)" in
+            riscv64) processor=riscv64 ;;
+            arm64)   processor=aarch64 ;;
+            *) return 1 ;;
+        esac
+    fi
+    cat > "${path}" <<EOF
+# Generated by build-app-wheelhouse.sh — minimal cross identity for
+# setup.py-driven cmake builds (compilers come from CC/CXX env).
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR ${processor})
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+EOF
+    # The toolchain file is also our guaranteed channel for cache variables that
+    # pytorch's setup.py won't forward from CMAKE_ARGS: hand ProtoBuf.cmake a
+    # HOST-runnable protoc (see build_host_protoc in build_torch_wheel).
+    if [ -n "${CROSS_HOST_PROTOC:-}" ] && [ -x "${CROSS_HOST_PROTOC}" ]; then
+        printf 'set(CAFFE2_CUSTOM_PROTOC_EXECUTABLE "%s" CACHE FILEPATH "host protoc for cross builds")\n' \
+            "${CROSS_HOST_PROTOC}" >> "${path}"
+    fi
+    # Target Python Development artifacts: without these, FindPython reports
+    # "missing components: Development" under cross, pytorch silently flips
+    # BUILD_PYTHON to OFF, libtorch_python.so is never built, and the final
+    # torch._C stub link dies with "cannot find -ltorch_python" (all verified
+    # from configure/link logs). Explicit artifact cache vars satisfy
+    # FindPython/FindPython3 without probing.
+    local py_inc py_lib
+    py_inc="$(cross_target_python_include_dir 2>/dev/null || true)"
+    py_lib="$(cross_target_python_library 2>/dev/null || true)"
+    if [ -n "${py_inc}" ] && [ -d "${py_inc}" ] && [ -n "${py_lib}" ] && [ -f "${py_lib}" ]; then
+        cat >> "${path}" <<EOF
+set(Python_INCLUDE_DIR "${py_inc}" CACHE PATH "target Python include dir")
+set(Python_LIBRARY "${py_lib}" CACHE FILEPATH "target Python library")
+set(Python3_INCLUDE_DIR "${py_inc}" CACHE PATH "target Python include dir")
+set(Python3_LIBRARY "${py_lib}" CACHE FILEPATH "target Python library")
+EOF
+    fi
+    printf '%s' "${path}"
+}
+
+# Build the sysconfigdata export string for the target Python, but ONLY if the
+# module file is actually importable. Setting _PYTHON_SYSCONFIGDATA_NAME
+# without providing the module GUARANTEES an instant ModuleNotFoundError in
+# setup.py (that's exactly how the wheel builds used to die once they got past
+# shell_quote_args). Searches the staged target Python first, then the apt
+# target Python. Prints the export string (name + PYTHONPATH) or nothing.
+resolve_target_python_sysconfig_export() {
+    local target_triplet="" name="" stage_root="" dir="" search_root
+    target_triplet="$(cross_target_triplet 2>/dev/null || true)"
+    [ -n "${target_triplet}" ] || return 0
+    name="_sysconfigdata__linux_${target_triplet}"
+
+    stage_root="$(cross_target_python_root 2>/dev/null || true)"
+    for search_root in \
+        ${stage_root:+"${stage_root}/lib"} \
+        "/usr/lib" ; do
+        [ -d "${search_root}" ] || continue
+        dir="$(find "${search_root}" -maxdepth 2 -name "${name}.py" -printf '%h\n' -quit 2>/dev/null || true)"
+        [ -n "${dir}" ] && break
+    done
+
+    if [ -z "${dir}" ]; then
+        warn "Target Python sysconfigdata ${name}.py not found under ${stage_root:-<no staged python>}/lib or /usr/lib; building with the HOST sysconfig (extension tags may need retagging)."
+        return 0
+    fi
+
+    printf 'export _PYTHON_SYSCONFIGDATA_NAME=%q; export PYTHONPATH=%q${PYTHONPATH:+:${PYTHONPATH}}' \
+        "${name}" "${dir}"
 }
 
 append_common_cross_cmake_args() {
@@ -206,45 +356,130 @@ extract_torch_wheel() {
     unzip -q -o "${TARGET_TORCH_WHEEL}" -d "${TORCH_STAGING_DIR}"
 }
 
-build_torch_wheel() {
-    local wheel_platform=""
-    local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch"
-    local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-torch"
-    local -a cmake_args=()
-    local -a built_wheels=()
-    local cmake_args_string=""
-    local target_triplet=""
-    local python_sysconfigdata=""
-    local python_sysconfig_export=""
+# pytorch 2.13 restructured how torch._C is built for the wheel and REGRESSED it
+# under cross-compile. In 2.12 setup.py compiled the distutils stub torch/csrc/
+# stub.c and linked it straight to build/lib/torch/_C.cpython-<abi>.so (correct
+# EXT_SUFFIX), which bdist_wheel then packaged. In 2.13 there is no "building
+# 'torch._C' extension" step at all: cmake links a generic, un-suffixed
+# torch/_C.so (ninja: "Linking C shared module torch/_C.so") and bdist_wheel never
+# copies it into the wheel. The wheel then ships ONLY the torch/_C/ *.pyi stub
+# folder, so on install `torch._C` resolves to that namespace folder
+# (torch._C.__file__ is None) and `import torch` dies with the misleading
+# "Failed to load PyTorch C extensions ... loaded the torch/_C folder" (the real
+# cause -- no compiled _C extension -- is masked by pytorch's `raise ... from
+# None`). The compiled module IS produced by cmake at
+# ${src_dir}/torch/_C.so; if the built wheel lacks a top-level torch/_C*.so,
+# inject that under the target ABI name and repack (wheel pack recomputes RECORD).
+# Version-agnostic: a no-op once the wheel already carries torch/_C*.so.
+_torch_ensure_c_extension() {
+    local dist_dir="$1"
+    local wheel_path built_c_ext staging suffix triplet pyabi
+    shopt -s nullglob
+    local -a wheels=("${dist_dir}"/torch-*.whl)
+    shopt -u nullglob
+    [ "${#wheels[@]}" -gt 0 ] || return 0
+    wheel_path="${wheels[0]}"
 
-    wheel_platform="$(wheel_platform_tag || true)"
-    if [ -z "${wheel_platform}" ]; then
-        warn "Could not determine the riscv64 wheel platform tag for PyTorch"
-        return 1
+    # Already carries the top-level compiled extension? nothing to do.
+    if unzip -l "${wheel_path}" 2>/dev/null | grep -qE ' torch/_C[^/]*\.so$'; then
+        return 0
     fi
 
-    target_triplet="$(cross_target_triplet 2>/dev/null || true)"
-    if [ -n "${target_triplet}" ]; then
-        python_sysconfigdata="_sysconfigdata__linux_${target_triplet}"
-        python_sysconfig_export="export _PYTHON_SYSCONFIGDATA_NAME=${python_sysconfigdata}"
+    built_c_ext="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch/torch/_C.so"
+    if [ ! -f "${built_c_ext}" ]; then
+        warn "torch wheel lacks torch/_C*.so and cmake-built ${built_c_ext} is absent; import torch WILL fail (missing C extension)"
+        return 0
     fi
 
-    git_clone_ref https://github.com/pytorch/pytorch.git "${PYTORCH_REF}" "${src_dir}" --recursive --shallow-submodules || {
-        warn "Failed to clone PyTorch ${PYTORCH_REF}"
+    # Target extension suffix cpython-<pyABI>-<triplet>.so: pyABI from the wheel's
+    # abi tag (…-cpXYZ-cpXYZ-…), triplet from the cross helper.
+    triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
+    pyabi="$(basename "${wheel_path}" | sed -nE 's/.*-cp([0-9]+)-cp[0-9]+-.*/\1/p')"
+    [ -n "${pyabi}" ] || pyabi="314"
+    suffix="cpython-${pyabi}-${triplet}.so"
+
+    staging="${APP_WHEELHOUSE_BUILD_ROOT}/torch-cext-repack"
+    rm -rf "${staging}"
+    mkdir -p "${staging}"
+    unzip -q -o "${wheel_path}" -d "${staging}"
+    cp "${built_c_ext}" "${staging}/torch/_C.${suffix}"
+    log "Injected missing torch/_C.${suffix} into $(basename "${wheel_path}") (pytorch ${PYTORCH_REF} cross bdist_wheel dropped the compiled C extension)"
+
+    rm -f "${wheel_path}"
+    if ! ( cd "${staging}" && "${BUILD_PYTHON}" -m wheel pack . -d "${dist_dir}" ); then
+        warn "wheel pack failed while repackaging the torch _C extension"
         return 1
-    }
+    fi
+}
 
-    rm -rf "${dist_dir}"
-    mkdir -p "${dist_dir}"
+# The build_torch_wheel phase helpers below read build_torch_wheel's locals via
+# bash dynamic scoping (the subshell inherits them; nested calls resolve them on
+# the call stack). They must be called only from build_torch_wheel.
+# shellcheck disable=SC2154
 
-    append_common_cross_cmake_args cmake_args
-    cmake_args+=("-DBLAS=OpenBLAS")
-    cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
+# Build the canonical HOST protoc with pytorch's own helper (scrubbed env: no
+# cross toolchain). Bundled protobuf otherwise builds protoc for the TARGET and
+# onnx codegen execs it on the host -> "Exec format error" (protoc-3.13.0.0).
+# Sets CROSS_HOST_PROTOC (consumed by write_cross_cmake_toolchain_file via the
+# generated toolchain file).
+_torch_build_host_protoc() {
+    CROSS_HOST_PROTOC=""
+    if [ ! -f "${src_dir}/scripts/build_host_protoc.sh" ]; then
+        warn "pytorch has no scripts/build_host_protoc.sh at this ref; onnx codegen will hit Exec format error"
+        return 0
+    fi
+    log "Building host protoc via scripts/build_host_protoc.sh..."
+    # CMAKE_POLICY_VERSION_MINIMUM: bundled protobuf 3.13 declares
+    # cmake_minimum_required(<3.5), which cmake >=4 refuses outright; the flag is
+    # cmake's own documented escape hatch. No PATH scrub needed: /opt/cross-bin
+    # carries only triplet-prefixed names (bare cross cc/gcc live in
+    # /opt/cross-bin/bare, never on PATH), so bare gcc/g++ resolve to the host
+    # toolchain. CC=gcc/CXX=g++ pinning stays as defense-in-depth.
+    if (cd "${src_dir}" && \
+        env -u AR -u RANLIB -u LD -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+            -u CMAKE_TOOLCHAIN_FILE -u CMAKE_SYSTEM_NAME -u CMAKE_SYSTEM_PROCESSOR \
+            CC=gcc CXX=g++ \
+            bash scripts/build_host_protoc.sh \
+                --other-flags "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" > /tmp/build_host_protoc.log 2>&1); then
+        CROSS_HOST_PROTOC="${src_dir}/build_host_protoc/bin/protoc"
+    fi
+    # Readiness gate = EXECUTE it, not just -x: a cross-built protoc is
+    # executable-on-disk but dies with Exec format error at run time.
+    if [ -n "${CROSS_HOST_PROTOC}" ] && "${CROSS_HOST_PROTOC}" --version >/dev/null 2>&1; then
+        log "Host protoc ready: ${CROSS_HOST_PROTOC} ($("${CROSS_HOST_PROTOC}" --version 2>/dev/null))"
+    else
+        CROSS_HOST_PROTOC=""
+        warn "build_host_protoc.sh failed or produced a non-host binary (tail of /tmp/build_host_protoc.log follows); onnx codegen will hit Exec format error"
+        tail -20 /tmp/build_host_protoc.log >&2 || true
+    fi
+}
 
-    if ! (
+# Bundled sleef cross-compiles its host-run codegen (mkrename) for the target ->
+# "Exec format error". Prefer the target's system sleef when libsleef-dev landed
+# (see install_build_dependencies); otherwise keep the bundled build so the
+# failure stays visible. Sets use_system_sleef.
+_torch_detect_system_sleef() {
+    use_system_sleef=0
+    if command -v cross_package_files_present >/dev/null 2>&1 && \
+       cross_package_files_present "libsleef-dev:$(cross_target_arch 2>/dev/null || echo none)"; then
+        use_system_sleef=1
+        log "Using target system sleef (libsleef-dev) instead of pytorch's bundled sleef"
+    else
+        warn "Target libsleef-dev not present; bundled sleef will likely fail (Exec format error on mkrename)"
+    fi
+}
+
+# Run pytorch's setup.py bdist_wheel in a scrubbed subshell with the full cross
+# env. Reads src_dir/cmake_args_string/wheel_platform/python_sysconfig_export/
+# use_system_sleef/dist_dir + CROSS_HOST_PROTOC (via write_cross_cmake_toolchain_
+# file) through dynamic scope. Returns non-zero on build failure.
+_torch_run_setup_py() {
+    (
         cd "${src_dir}" && \
         export CMAKE_GENERATOR=Ninja && \
         export CMAKE_ARGS="${cmake_args_string}" && \
+        { cross_toolchain_file="$(write_cross_cmake_toolchain_file || true)"; \
+          [ -n "${cross_toolchain_file}" ] && export CMAKE_TOOLCHAIN_FILE="${cross_toolchain_file}"; true; } && \
         export _PYTHON_HOST_PLATFORM="${wheel_platform}" && \
         if [ -n "${python_sysconfig_export}" ]; then eval "${python_sysconfig_export}"; fi && \
         export PYTHON_EXECUTABLE="${BUILD_PYTHON}" Python_EXECUTABLE="${BUILD_PYTHON}" Python3_EXECUTABLE="${BUILD_PYTHON}" && \
@@ -254,15 +489,21 @@ build_torch_wheel() {
         export USE_DISTRIBUTED=0 USE_GLOO=0 USE_MPI=0 USE_TENSORPIPE=0 USE_NCCL=0 && \
         export BUILD_TEST=0 BUILD_BINARY=0 USE_KINETO=0 && \
         export USE_FBGEMM=0 USE_MKLDNN=0 USE_NNPACK=0 USE_QNNPACK=0 USE_PYTORCH_QNNPACK=0 USE_XNNPACK=0 && \
+        export USE_SYSTEM_SLEEF="${use_system_sleef}" && \
         export USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_OPENMP=0 && \
         export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include" && \
         export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include" && \
         "${BUILD_PYTHON}" setup.py bdist_wheel --plat-name "${wheel_platform}" -d "${dist_dir}"
-    ); then
-        warn "PyTorch riscv64 cross wheel build failed; leaving it to the native torch stage"
-        return 1
-    fi
+    )
+}
 
+# Retag, collect, install the built torch wheel; set TARGET_TORCH_WHEEL /
+# TARGET_TORCH_VERSION (globals) and extract it. Reads dist_dir + wheel_platform.
+_collect_torch_wheel() {
+    local -a built_wheels=()
+    # Repair the 2.13 cross-build gap (missing torch/_C*.so) BEFORE retag/collect
+    # so the fixed wheel flows through the normal path.
+    _torch_ensure_c_extension "${dist_dir}"
     retag_directory_wheels "${dist_dir}" torch "${wheel_platform}"
 
     shopt -s nullglob
@@ -281,6 +522,49 @@ build_torch_wheel() {
     log "Built PyTorch cross wheel $(basename "${TARGET_TORCH_WHEEL}")"
 }
 
+build_torch_wheel() {
+    local wheel_platform=""
+    local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch"
+    local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-torch"
+    local -a cmake_args=()
+    local cmake_args_string=""
+    local python_sysconfig_export=""
+    local CROSS_HOST_PROTOC=""   # set by _torch_build_host_protoc; read by toolchain file
+    local use_system_sleef=0     # set by _torch_detect_system_sleef
+
+    wheel_platform="$(wheel_platform_tag || true)"
+    if [ -z "${wheel_platform}" ]; then
+        warn "Could not determine the riscv64 wheel platform tag for PyTorch"
+        return 1
+    fi
+
+    # Export target sysconfigdata ONLY when the module is importable (name +
+    # PYTHONPATH together); see resolve_target_python_sysconfig_export.
+    python_sysconfig_export="$(resolve_target_python_sysconfig_export)"
+
+    git_clone_ref https://github.com/pytorch/pytorch.git "${PYTORCH_REF}" "${src_dir}" --recursive --shallow-submodules || {
+        warn "Failed to clone PyTorch ${PYTORCH_REF}"
+        return 1
+    }
+
+    rm -rf "${dist_dir}"
+    mkdir -p "${dist_dir}"
+
+    _torch_build_host_protoc
+    _torch_detect_system_sleef
+
+    append_common_cross_cmake_args cmake_args
+    cmake_args+=("-DBLAS=OpenBLAS")
+    cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
+
+    if ! _torch_run_setup_py; then
+        warn "PyTorch riscv64 cross wheel build failed; leaving it to the native torch stage"
+        return 1
+    fi
+
+    _collect_torch_wheel
+}
+
 install_host_torch_for_vision() {
     uv pip install --python "${BUILD_PYTHON}" \
         --default-index "${DEFAULT_PYPI_INDEX_URL}" \
@@ -292,38 +576,68 @@ install_host_torch_for_vision() {
 patch_torchvision_setup() {
     local setup_py="$1"
 
-    "${BUILD_PYTHON}" - "${setup_py}" <<'PY'
-from pathlib import Path
-import sys
+    bash /opt/scripts/core/apply-patch.sh \
+        /opt/scripts/patches/torchvision/001-torch-staging-paths.patch \
+        "$(dirname "${setup_py}")" \
+        "torchvision setup.py: TORCHVISION_TORCH_STAGING env var support"
+}
 
-path = Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
-anchor = "from torch.utils.cpp_extension import BuildExtension, CppExtension, CUDA_HOME, CUDAExtension, ROCM_HOME\n"
-if "TORCHVISION_TORCH_STAGING" in text:
-    raise SystemExit(0)
-if anchor not in text:
-    raise SystemExit("expected torchvision cpp_extension import not found")
-insertion = anchor + """
-STAGED_TORCH_ROOT = os.environ.get(\"TORCHVISION_TORCH_STAGING\")
-if STAGED_TORCH_ROOT:
-    from torch.utils import cpp_extension as _torchvision_cpp_extension
+# The build_torchvision_wheel phase helpers read that function's locals via bash
+# dynamic scoping; call them only from build_torchvision_wheel.
+# shellcheck disable=SC2154
 
-    _staged_torch_root = Path(STAGED_TORCH_ROOT)
-    _staged_torch_include = _staged_torch_root / \"torch\" / \"include\"
-    _staged_torch_csrc = _staged_torch_include / \"torch\" / \"csrc\" / \"api\" / \"include\"
-    _staged_torch_lib = _staged_torch_root / \"torch\" / \"lib\"
+# Run torchvision's setup.py bdist_wheel in a scrubbed subshell with the full
+# cross env + staged libtorch paths. Reads src_dir/cmake_args_string/
+# wheel_platform/python_sysconfig_export/target_torch_* via dynamic scope.
+# Returns non-zero on build failure.
+_torchvision_run_setup_py() {
+    (
+        cd "${src_dir}" && \
+        export CMAKE_GENERATOR=Ninja && \
+        export CMAKE_ARGS="${cmake_args_string}" && \
+        { cross_toolchain_file="$(write_cross_cmake_toolchain_file || true)"; \
+          [ -n "${cross_toolchain_file}" ] && export CMAKE_TOOLCHAIN_FILE="${cross_toolchain_file}"; true; } && \
+        export _PYTHON_HOST_PLATFORM="${wheel_platform}" && \
+        if [ -n "${python_sysconfig_export}" ]; then eval "${python_sysconfig_export}"; fi && \
+        export FORCE_CUDA=0 FORCE_MPS=0 DEBUG=0 && \
+        export PYTORCH_VERSION="${TARGET_TORCH_VERSION}" && \
+        export TORCHVISION_TORCH_STAGING="${TORCH_STAGING_DIR}" && \
+        export TORCHVISION_INCLUDE="${target_torch_include}:${target_torch_csrc}" && \
+        export TORCHVISION_LIBRARY="${target_torch_lib}" && \
+        _vis_multiarch="$(cross_target_triplet 2>/dev/null || true)" && \
+        export CFLAGS="${CFLAGS:+${CFLAGS} }${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
+        export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
+        "${BUILD_PYTHON}" setup.py bdist_wheel --plat-name "${wheel_platform}" -d "${dist_dir}"
+    )
+}
 
-    def _staged_include_paths(*args, **kwargs):
-        return [str(_staged_torch_include), str(_staged_torch_csrc)]
+# torch.utils.cpp_extension swallows ninja's compile output on the non-verbose
+# path ("Error compiling objects for extension" with no detail). Re-run ninja in
+# the extension build dir to surface the real compiler error. Reads src_dir.
+_torchvision_ninja_diagnostic() {
+    local _vis_ninja_dir
+    _vis_ninja_dir="$(find "${src_dir}/build" -name build.ninja -printf '%h\n' -quit 2>/dev/null || true)"
+    if [ -n "${_vis_ninja_dir}" ]; then
+        warn "torchvision ninja diagnostic (${_vis_ninja_dir}):"
+        (cd "${_vis_ninja_dir}" && ninja -v 2>&1 | tail -60) >&2 || true
+    fi
+}
 
-    def _staged_library_paths(*args, **kwargs):
-        return [str(_staged_torch_lib)]
+# Retag, collect, install the built torchvision wheel. Reads dist_dir + wheel_platform.
+_collect_torchvision_wheel() {
+    local -a built_wheels=()
+    retag_directory_wheels "${dist_dir}" torchvision "${wheel_platform}"
 
-    _torchvision_cpp_extension.include_paths = _staged_include_paths
-    _torchvision_cpp_extension.library_paths = _staged_library_paths
-"""
-path.write_text(text.replace(anchor, insertion, 1), encoding="utf-8")
-PY
+    shopt -s nullglob
+    built_wheels=("${dist_dir}"/torchvision-*.whl)
+    shopt -u nullglob
+    if [ "${#built_wheels[@]}" -eq 0 ]; then
+        warn "torchvision cross build completed without producing a wheel"
+        return 1
+    fi
+
+    cp -a "${built_wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
+    log "Built torchvision cross wheel $(basename "${built_wheels[0]}")"
 }
 
 build_torchvision_wheel() {
@@ -331,13 +645,10 @@ build_torchvision_wheel() {
     local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/vision"
     local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-vision"
     local -a cmake_args=()
-    local -a built_wheels=()
     local cmake_args_string=""
     local target_torch_include=""
     local target_torch_csrc=""
     local target_torch_lib=""
-    local target_triplet=""
-    local python_sysconfigdata=""
     local python_sysconfig_export=""
 
     if [ -z "${TARGET_TORCH_WHEEL}" ] || [ -z "${TORCH_STAGING_DIR}" ]; then
@@ -356,11 +667,9 @@ build_torchvision_wheel() {
         return 1
     fi
 
-    target_triplet="$(cross_target_triplet 2>/dev/null || true)"
-    if [ -n "${target_triplet}" ]; then
-        python_sysconfigdata="_sysconfigdata__linux_${target_triplet}"
-        python_sysconfig_export="export _PYTHON_SYSCONFIGDATA_NAME=${python_sysconfigdata}"
-    fi
+    # Export target sysconfigdata ONLY when the module is importable (name +
+    # PYTHONPATH together); see resolve_target_python_sysconfig_export.
+    python_sysconfig_export="$(resolve_target_python_sysconfig_export)"
 
     git_clone_ref https://github.com/pytorch/vision.git "${TORCHVISION_REF}" "${src_dir}" || {
         warn "Failed to clone torchvision ${TORCHVISION_REF}"
@@ -382,37 +691,119 @@ build_torchvision_wheel() {
     append_common_cross_cmake_args cmake_args
     cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
 
-    if ! (
-        cd "${src_dir}" && \
-        export CMAKE_GENERATOR=Ninja && \
-        export CMAKE_ARGS="${cmake_args_string}" && \
-        export _PYTHON_HOST_PLATFORM="${wheel_platform}" && \
-        if [ -n "${python_sysconfig_export}" ]; then eval "${python_sysconfig_export}"; fi && \
-        export FORCE_CUDA=0 FORCE_MPS=0 DEBUG=0 && \
-        export PYTORCH_VERSION="${TARGET_TORCH_VERSION}" && \
-        export TORCHVISION_TORCH_STAGING="${TORCH_STAGING_DIR}" && \
-        export TORCHVISION_INCLUDE="${target_torch_include}:${target_torch_csrc}" && \
-        export TORCHVISION_LIBRARY="${target_torch_lib}" && \
-        export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include" && \
-        export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include" && \
-        "${BUILD_PYTHON}" setup.py bdist_wheel --plat-name "${wheel_platform}" -d "${dist_dir}"
-    ); then
+    if ! _torchvision_run_setup_py; then
         warn "torchvision riscv64 cross wheel build failed; leaving it to the native torch stage"
+        _torchvision_ninja_diagnostic
         return 1
     fi
 
-    retag_directory_wheels "${dist_dir}" torchvision "${wheel_platform}"
+    _collect_torchvision_wheel
+}
+
+# ---------------------------------------------------------------------------
+# IREE (iree.dev) riscv64 runtime wheel — best-effort, NON-GATING.
+#
+# PyPI ships iree-base-{compiler,runtime} cp312-abi3 wheels for x86_64+aarch64
+# only; riscv64 has none, so we cross-build the RUNTIME wheel here. IREE cross-
+# builds in two stages (https://iree.dev/building-from-source/riscv/):
+#   1. a HOST build producing the codegen tools referenced via IREE_HOST_BIN_DIR
+#      (flatcc / c-embed-data), and
+#   2. a TARGET build that cross-compiles the runtime + its Python bindings
+#      against those host tools.
+# BUILD_COMPILER stays OFF on BOTH stages: the IREE *compiler* embeds LLVM/MLIR
+# and upstream does not support a riscv64 target compiler without a full cross-
+# LLVM (their own riscv64 lane sets IREE_BUILD_COMPILER=OFF). Keeping the host
+# stage LLVM-free is what makes this bounded. Consequence: on riscv64
+# iree.runtime + native iree-run-module ship, but iree.compiler does NOT, so the
+# app's check_iree degrades to optional-fail there (agreed for the riscv64 lane).
+#
+# Everything here is best-effort: any failure WARNs and returns 0 so torch/vision
+# and the rest of the media build proceed. This cannot be validated on the amd64
+# dev host — expect a round of iteration the first time it runs under the real
+# cross toolchain.
+build_iree_wheels() {
+    local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/iree"
+    local host_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-host"
+    local host_install="${host_build}/install"
+    local target_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-target"
+    local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-iree"
+    local wheel_platform="" toolchain_file=""
+    local -a cmake_args=()
+
+    command -v cmake >/dev/null 2>&1 || { warn "cmake absent; skipping IREE riscv64 runtime wheel"; return 0; }
+    command -v ninja >/dev/null 2>&1 || { warn "ninja absent; skipping IREE riscv64 runtime wheel"; return 0; }
+
+    wheel_platform="$(wheel_platform_tag || true)"
+    [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 0; }
+
+    # Clone at the pinned tag, then init submodules EXCLUDING llvm-project (huge,
+    # compiler-only). The runtime needs flatcc/cpuinfo/etc., not LLVM.
+    rm -rf "${src_dir}"
+    if ! git clone --branch "${IREE_REF}" --depth 1 https://github.com/iree-org/iree.git "${src_dir}"; then
+        warn "IREE clone ${IREE_REF} failed; skipping riscv64 runtime wheel"; return 0
+    fi
+    if ! ( cd "${src_dir}" && git -c submodule."third_party/llvm-project".update=none \
+             submodule update --init --recursive --depth 1 ); then
+        warn "IREE submodule init failed; skipping riscv64 runtime wheel"; return 0
+    fi
+
+    # Stage 1 — LLVM-free host tools for IREE_HOST_BIN_DIR.
+    rm -rf "${host_build}"
+    if ! cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DIREE_BUILD_COMPILER=OFF \
+            -DIREE_BUILD_PYTHON_BINDINGS=OFF \
+            -DIREE_BUILD_SAMPLES=OFF \
+            -DIREE_BUILD_TESTS=OFF \
+            -DCMAKE_INSTALL_PREFIX="${host_install}" \
+            -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
+        warn "IREE host-tools configure failed; skipping riscv64 runtime wheel"; return 0
+    fi
+    if ! cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}"; then
+        warn "IREE host-tools build failed; skipping riscv64 runtime wheel"; return 0
+    fi
+
+    # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
+    toolchain_file="$(write_cross_cmake_toolchain_file || true)"
+    [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 0; }
+    append_common_cross_cmake_args cmake_args
+
+    rm -rf "${target_build}"
+    if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+            -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
+            "${cmake_args[@]}" \
+            -DIREE_HOST_BIN_DIR="${host_install}/bin" \
+            -DIREE_BUILD_COMPILER=OFF \
+            -DIREE_BUILD_PYTHON_BINDINGS=ON \
+            -DIREE_BUILD_SAMPLES=OFF \
+            -DIREE_BUILD_TESTS=OFF \
+            -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+            -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+            -DCMAKE_BUILD_TYPE=Release; then
+        warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"; return 0
+    fi
+    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}"; then
+        warn "IREE riscv64 runtime build failed (best-effort); continuing without it"; return 0
+    fi
+
+    # The build tree exposes a runtime/ wheel project; build + retag it.
+    if [ ! -d "${target_build}/runtime" ]; then
+        warn "IREE target build produced no runtime/ wheel project; skipping"; return 0
+    fi
+    rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
+    if ! "${BUILD_PYTHON}" -m pip wheel "${target_build}/runtime" -w "${dist_dir}" --no-deps --no-build-isolation; then
+        warn "IREE riscv64 runtime wheel packaging failed (best-effort); continuing"; return 0
+    fi
+    retag_directory_wheels "${dist_dir}" "iree_base_runtime" "${wheel_platform}"
 
     shopt -s nullglob
-    built_wheels=("${dist_dir}"/torchvision-*.whl)
+    local -a wheels=("${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
     shopt -u nullglob
-    if [ "${#built_wheels[@]}" -eq 0 ]; then
-        warn "torchvision cross build completed without producing a wheel"
-        return 1
+    if [ "${#wheels[@]}" -eq 0 ]; then
+        warn "IREE riscv64 runtime build produced no wheel; continuing"; return 0
     fi
-
-    cp -a "${built_wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
-    log "Built torchvision cross wheel $(basename "${built_wheels[0]}")"
+    cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
+    log "Built IREE riscv64 runtime wheel $(basename "${wheels[0]}") (compiler intentionally not built for riscv64)"
 }
 
 main() {
@@ -429,6 +820,8 @@ main() {
     if ! build_torchvision_wheel; then
         warn "Continuing without a prebuilt riscv64 torchvision wheel"
     fi
+
+    build_iree_wheels || warn "Continuing without a prebuilt riscv64 IREE runtime wheel"
 
     shopt -s nullglob
     local wheel_path

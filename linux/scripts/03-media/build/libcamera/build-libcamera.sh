@@ -28,24 +28,18 @@ patch_libcamera_riscv64_cross_sources() {
 
   [ -f "${common_meson}" ] || return 0
 
-  if grep -Fq "dependencies : [libcamera_public, libtiff])" "${common_meson}"; then
-    return 0
-  fi
-
-  # Upstream builds dng_writer.cpp into apps_lib when libtiff is found, but the
-  # static library itself only depends on libcamera_public. Native builds still
-  # see /usr/include, while riscv64 cross builds need libtiff's pkg-config
-  # include flags on apps_lib too.
-  if grep -Fq "dependencies : [libcamera_public])" "${common_meson}"; then
-    sed -i "s/dependencies : \[libcamera_public\])/dependencies : [libcamera_public, libtiff])/" "${common_meson}"
-    echo "Patched libcamera apps_lib to propagate libtiff includes for riscv64 cross builds"
-  fi
+  local _apply_patch="/opt/scripts/core/apply-patch.sh"
+  local _patch_file="/opt/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch"
+  bash "${_apply_patch}" "${_patch_file}" "${LIBCAMERA_SRC}" \
+    "libcamera riscv64 cross: add libtiff to apps_lib dependencies"
 }
 
 # Defaults (can be overridden via env vars)
 : "${LIBCAMERA_SRC:=${TMPDIR:-/tmp}/libcamera-$$}"
 : "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
 : "${LIBCAMERA_GIT:=https://git.libcamera.org/libcamera/libcamera.git}"
+# Official GitHub mirror, used as a fallback when the upstream edge is down.
+: "${LIBCAMERA_GIT_MIRROR:=https://github.com/libcamera-org/libcamera.git}"
 : "${LIBCAMERA_PREFIX:=/opt/libcamera}"
 : "${BUILD_TYPE_LOWER:=release}"
 
@@ -57,8 +51,10 @@ if [ -f /usr/local/bin/gstreamer-env.sh ]; then
   source /usr/local/bin/gstreamer-env.sh
 else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Repo layout: this script lives in 03-media/build/libcamera/ and 04-runtime/
+  # is a SIBLING of 03-media/, i.e. three levels up from here.
   # shellcheck disable=SC1091
-  source "${SCRIPT_DIR}/../../04-runtime/gstreamer-env.sh"
+  source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
 fi
 
 
@@ -69,18 +65,17 @@ if pkg-config --exists libcamera >/dev/null 2>&1; then
   exit 0
 fi
 
-# Ensure minimal build deps (apt-based distros)
-# clone or update
-if [ -d "${LIBCAMERA_SRC}/.git" ]; then
-  echo "Updating existing libcamera checkout..."
-  cd "${LIBCAMERA_SRC}"
-  git fetch --depth 1 origin || true
-  git checkout origin/HEAD || true
-else
+# Clone (or refresh) the source via the shared 01-core helper — same fetch/
+# shallow-clone logic used by the litert/opencv build scripts. The upstream
+# git.libcamera.org edge intermittently serves a Traefik default cert (TLS
+# verify fails); fall back to the official GitHub mirror when the primary is
+# unreachable so the cross build isn't blocked by an upstream outage.
+if ! retry 3 10 "libcamera git clone" clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}"; then
+  echo "[WARN] libcamera primary remote ${LIBCAMERA_GIT} failed; falling back to mirror ${LIBCAMERA_GIT_MIRROR}"
   rm -rf "${LIBCAMERA_SRC}"
-  git clone --depth 1 "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}" || { echo "Failed cloning libcamera"; exit 1; }
-  cd "${LIBCAMERA_SRC}"
+  retry 3 10 "libcamera git clone (mirror)" clone_or_update_repo "${LIBCAMERA_GIT_MIRROR}" "${LIBCAMERA_SRC}"
 fi
+cd "${LIBCAMERA_SRC}"
 
 mkdir -p "${LIBCAMERA_BUILD_DIR}"
 
@@ -113,26 +108,11 @@ fi
 
 # Ensure abseil-cpp headers are available for tflite-dependent sources
 # (rpi/awb_nn.cpp includes tflite/interpreter.h -> tflite/util.h -> absl/types/span.h).
-if [ ! -f /usr/local/include/absl/types/span.h ]; then
-  echo "Downloading abseil-cpp headers for tflite compat..."
-  local absl_ver="${ABSEIL_VERSION:-20240722.0}"
-  local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_ver}.tar.gz"
-  local absl_tar="/tmp/abseil-${absl_ver}.tar.gz"
-  mkdir -p /usr/local/include/absl
-  if command -v curl >/dev/null 2>&1; then
-    curl -fSL --retry 3 "${absl_url}" -o "${absl_tar}" 2>/dev/null
-  elif command -v wget >/dev/null 2>&1; then
-    wget --retry-connrefused --timeout=30 -O "${absl_tar}" "${absl_url}" 2>/dev/null
-  fi
-  if [ -f "${absl_tar}" ]; then
-    tar -xzf "${absl_tar}" -C /usr/local/include --strip-components=1 \
-      "abseil-cpp-${absl_ver}/absl" 2>/dev/null && rm -f "${absl_tar}"
-  fi
-  if [ ! -f /usr/local/include/absl/types/span.h ]; then
-    echo "ERROR: Failed to install abseil-cpp headers for tflite compat"
-    exit 1
-  fi
-  echo "abseil-cpp headers installed to /usr/local/include/absl/"
+# Canonical implementation: 01-core/abseil-headers.sh (Critical Fix #2).
+# libcamera ships in the same image as LiteRT which installs abseil under
+# /usr/local/include/absl, so this install pinpoints the same location.
+if ! install_abseil_headers "/usr/local/include"; then
+  err "Failed to install abseil-cpp headers for tflite compat"
 fi
 
 MESON_SETUP_ARGS=(
@@ -176,6 +156,14 @@ if cross_build_is_active; then
   # libcamera runtime/plugin artifacts and skip that test tool.
   MESON_SETUP_ARGS+=(-Dlc-compliance=disabled)
 
+  # GCC 16 emits a FALSE-POSITIVE -Warray-bounds on libcamera's shared std::mutex
+  # teardown / logger path. The -Wno-error=array-bounds added to CXXFLAGS above
+  # does NOT reach the target compiler in a meson cross build (env C*FLAGS apply
+  # only to the build machine), so disable -Werror for ALL cross targets — not
+  # just riscv64. Without this a fresh arm64 libcamera compile hard-fails
+  # (arm64 previously only "passed" on a cached layer).
+  MESON_SETUP_ARGS+=(-Dwerror=false)
+
   # Generic target headers like elfutils/tiff live in /usr/include, while some
   # arch-specific target headers such as opensslconf.h live in the multiarch
   # include dir. The cross compiler does not reliably search both roots here.
@@ -185,15 +173,14 @@ if cross_build_is_active; then
     append_flag_if_missing CXXFLAGS "-idirafter /usr/include"
   fi
   if [ -n "${cross_triplet}" ] && [ -d "/usr/include/${cross_triplet}" ]; then
-    append_flag_if_missing CPPFLAGS "-idirafter /usr/include/${cross_triplet}"
-    append_flag_if_missing CFLAGS "-idirafter /usr/include/${cross_triplet}"
-    append_flag_if_missing CXXFLAGS "-idirafter /usr/include/${cross_triplet}"
+    append_cross_idirafter "${cross_triplet}"
   fi
 
   if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-    # GCC 16 still reports a false positive array-bounds warning in libcamera's
-    # logger path on the riscv64 cross build; don't treat that warning as fatal.
-    MESON_SETUP_ARGS+=(-Dwerror=false)
+    # (-Dwerror=false is now applied for all cross targets above.)
+    # Upstream apps_lib compiles dng_writer.cpp (which uses libtiff) when libtiff
+    # is found, but omits libtiff from its dependency list, so consumers fail to
+    # link. Add the missing dependency.
     patch_libcamera_riscv64_cross_sources
   fi
 fi
@@ -210,27 +197,15 @@ if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" "${MESON_SETUP_A
     exit 1
 fi
 
-: "${NPROC:=$(compute_jobs_with_mem_cap "" 2000)}"
+: "${NPROC:=$(media_jobs)}"
 ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" -v || { echo "ninja build failed"; exit 1; }
 
 # install (use sudo if not root)
-if [ "$EUID" -ne 0 ]; then
-  if command -v sudo >/dev/null 2>&1; then
-    sudo ninja -C "${LIBCAMERA_BUILD_DIR}" install
-  else
-    echo "Not root and sudo missing — cannot install; exiting"
-    exit 1
-  fi
-else
-  ninja -C "${LIBCAMERA_BUILD_DIR}" install
-fi
+ensure_sudo_or_die
+${SUDO_WRAP} ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
 
 # update ld cache if possible
-if command -v sudo >/dev/null 2>&1; then
-  sudo ldconfig || true
-else
-  ldconfig 2>/dev/null || true
-fi
+${SUDO_WRAP} ldconfig || true
 
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."
 

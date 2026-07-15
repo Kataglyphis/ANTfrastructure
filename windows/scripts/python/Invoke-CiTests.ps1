@@ -35,36 +35,10 @@ Param(
 
 $ErrorActionPreference = "Stop"
 
-$scriptDir = $PSScriptRoot
-$containerHubModulesPath = Join-Path $scriptDir "..\modules"
-$buildCommonModulePath = Join-Path $containerHubModulesPath "WindowsBuild.Common.psm1"
-$uvCommonModulePath = Join-Path $containerHubModulesPath "WindowsUv.Common.psm1"
+. (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
+$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot
 
-if (-not (Test-Path -Path $buildCommonModulePath)) {
-    throw "Required reusable module not found: $buildCommonModulePath"
-}
-
-if (-not (Test-Path -Path $uvCommonModulePath)) {
-    throw "Required reusable module not found: $uvCommonModulePath"
-}
-
-Import-Module $buildCommonModulePath -Force
-Import-Module $uvCommonModulePath -Force
-
-$repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..")
-Set-Location $repoRoot
-
-if ([string]::IsNullOrEmpty($PackageName)) {
-    if (Test-Path (Join-Path $repoRoot "pyproject.toml")) {
-        $pyprojectContent = Get-Content (Join-Path $repoRoot "pyproject.toml") -Raw
-        if ($pyprojectContent -match 'name\s*=\s*"([^"]+)"') {
-            $PackageName = $Matches[1]
-        }
-    }
-    if ([string]::IsNullOrEmpty($PackageName)) {
-        $PackageName = Split-Path $repoRoot -Leaf
-    }
-}
+$PackageName = Get-PyprojectPackageName -RepoRoot $repoRoot -Default $PackageName
 
 $script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir $LogDir -StopOnError:$StopOnError
 $script:BuildContext.SuppressConsoleOutput = $false
@@ -101,13 +75,10 @@ function Remove-UvEnvironment {
     Remove-UvProjectEnvironment -EnvPath $EnvPath -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning
 }
 
-$script:UvCommandRunner = {
-    param([string]$File, [string[]]$CommandArgs)
-    Invoke-BuildExternal -Context $script:BuildContext -File $File -Parameters $CommandArgs | Out-Null
-}
-
-$script:UvLogInfo = { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-$script:UvLogWarning = { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
+$uvDelegates = New-UvBuildDelegates -Context $script:BuildContext
+$script:UvCommandRunner = $uvDelegates.CommandRunner
+$script:UvLogInfo = $uvDelegates.LogInfo
+$script:UvLogWarning = $uvDelegates.LogWarning
 
 $experimentalVersions = @("3.14t")
 
@@ -124,9 +95,10 @@ try {
     New-TestResultsDir
 
     foreach ($version in $PythonVersions) {
+        # Experimental Python (e.g. 3.14t free-threaded) is permitted to fail without gating CI.
         $allowFailure = Test-ExperimentalPython -Version $version
 
-        Invoke-BuildStep -Context $script:BuildContext -StepName "Python $version - Tests" -Script {
+        Invoke-BuildStep -Context $script:BuildContext -StepName "Python $version - Tests" -AllowFailure:$allowFailure -Script {
             Write-Log "--- Python $version ---"
             $envPath = New-UvEnvironment -PythonVersion $version -EnvName ".venv-$version"
 

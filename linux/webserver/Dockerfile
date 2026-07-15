@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.24.0
-FROM ubuntu:26.04
+ARG UBUNTU_VERSION=26.04
+FROM ubuntu:${UBUNTU_VERSION}
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install nginx and openssl (minimal) utilizing BuildKit cache mounts
@@ -24,8 +25,9 @@ COPY ./webserver/nginx.conf /etc/nginx/nginx.conf
 # Copy entrypoint script to generate self-signed cert if none exists
 COPY --chmod=755 ./webserver/entrypoint.sh /docker-entrypoint.sh
 
-# Copy website files
+# Copy website files and license assets
 COPY --chown=nginx:nginx --chmod=755 ./webserver/dist/ /var/www/html/
+COPY --chown=nginx:nginx --chmod=755 ./webserver/license-assets/ /var/www/html/assets/
 
 EXPOSE 80 443
 

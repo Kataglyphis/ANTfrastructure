@@ -8,7 +8,7 @@ SHELL ["bash", "-lc"]
 ARG BUILD_TYPE=Release
 ARG BUILD_MODE=native
 ARG VULKAN_VERSION=1.4.341.1
-ARG LLVM_RELEASE=22.1.6
+ARG LLVM_RELEASE=22.1.8
 ARG TARGET_ARCH
 ARG TARGETARCH
 ARG TARGETPLATFORM
@@ -27,8 +27,57 @@ ENV BUILD_MODE=${BUILD_MODE} \
     BUILDPLATFORM=${BUILDPLATFORM} \
     VULKAN_VERSION=${VULKAN_VERSION} \
     LLVM_RELEASE=${LLVM_RELEASE}
-# 01-core/ and 02-toolchain/ scripts are inherited from the compiler base image.
-# Nothing additional needs to be copied here.
+# Flutter is amd64+arm64 only (riscv64 is silently skipped by setup-flutter.sh).
+# Only advertise FLUTTER_ROOT / prepend PATH on arches that actually install Flutter.
+# NOTE: arm64 images carry the x86-64 Flutter SDK (no linux-arm64 upstream archive
+# exists), so this advertisement does not imply a native arm64 Flutter toolchain.
+RUN if [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "riscv64" ]; then \
+      echo 'export PATH="/opt/flutter/bin:${PATH}"' >> /etc/profile.d/flutter.sh && \
+      echo 'export FLUTTER_ROOT=/opt/flutter'        >> /etc/profile.d/flutter.sh ; \
+    fi
+# FLUTTER_ROOT / Flutter PATH are intentionally NOT in a global ENV because
+# Flutter is riscv64-skipped. Login shells pick them up via /etc/profile.d on
+# amd64/arm64 only (see RUN above), so on riscv64 the image honestly advertises
+# "no Flutter" instead of pointing at a non-existent dir.
+# Refresh 01-core/ + 02-toolchain/ from the build context. The compiler base
+# bakes these in (Dockerfile.toolchain), but the sdk stage's own steps below
+# (vulkan setup, verify) call them too — and the compiler base image can be
+# OLDER than the current scripts (e.g. resuming the chain mid-way with a pinned
+# compiler). Re-copying here guarantees the sdk stage runs the CURRENT scripts,
+# mirroring the 05-frameworks COPY further down. Without this, a fix to e.g.
+# vulkan.sh would silently require a full compiler rebuild to take effect.
+COPY --chmod=755 linux/scripts/01-core/     /opt/scripts/core/
+COPY --chmod=755 linux/scripts/02-toolchain/ /opt/scripts/toolchain/
+
+# ------------------------------------------------------------------------------
+# Materialize the per-arch native Clang at the canonical /opt/llvm-target.
+# The SHARED compiler stage installs each cross target-clang into
+# /opt/llvm-target-<arch> (a single fixed prefix would clobber across arches and
+# leak one arch's clang into every image). Select THIS build's arch; amd64 is
+# native so it ships the host LLVM as its target-native clang. Downstream
+# (media/android/package) then inherits a correct, self-contained
+# /opt/llvm-target for every arch — the package image COPYs it to
+# /usr/local/llvm-target so each runtime ships its own native clang.
+# ------------------------------------------------------------------------------
+RUN set -euo pipefail; \
+    _arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"; \
+    _major="${LLVM_RELEASE%%.*}"; \
+    rm -rf /opt/llvm-target; \
+    if [ "${_arch}" = "amd64" ]; then \
+        _hostllvm="/usr/lib/llvm-${_major}"; \
+        if [ ! -d "${_hostllvm}" ]; then \
+            _cc="$(command -v clang || true)"; \
+            [ -n "${_cc}" ] && _hostllvm="$(dirname "$(dirname "$(readlink -f "${_cc}")")")"; \
+        fi; \
+        [ -d "${_hostllvm}" ] || { echo "ERROR: host LLVM dir not found for amd64 (tried /usr/lib/llvm-${_major})"; exit 1; }; \
+        cp -a "${_hostllvm}" /opt/llvm-target; \
+    elif [ -d "/opt/llvm-target-${_arch}" ]; then \
+        mv "/opt/llvm-target-${_arch}" /opt/llvm-target; \
+    else \
+        echo "ERROR: no target-clang toolchain for ${_arch} at /opt/llvm-target-${_arch}"; exit 1; \
+    fi; \
+    for _d in /opt/llvm-target-*; do [ -e "${_d}" ] && rm -rf "${_d}"; done; \
+    echo "Resolved /opt/llvm-target for ${_arch}:"; /opt/llvm-target/bin/clang --version 2>&1 | head -1 || true
 
 # ------------------------------------------------------------------------------
 # Vulkan SDK setup
@@ -40,94 +89,31 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
 
-# Post-Vulkan: rebuild SPIRV-Tools for target arch if cross-built,
-# so TVM can link it on arm64/riscv64 without x86_64 arch mismatch.
-RUN set -euo pipefail; \
-    if [ "${TARGET_ARCH}" != "amd64" ]; then \
-        _spirv_src=""; \
-        for d in /opt/vulkan/*/source/spirv-tools /opt/vulkan/*/source/SPIRV-Tools; do \
-            [ -d "$d" ] && _spirv_src="$d" && break; \
-        done; \
-        if [ -n "$_spirv_src" ]; then \
-            _spirv_headers="$(dirname "$_spirv_src")/SPIRV-Headers"; \
-            [ -d "$_spirv_headers" ] || _spirv_headers="$(dirname "$_spirv_src")/spirv-headers"; \
-            case "${TARGET_ARCH}" in \
-                arm64) _cross_tuple="aarch64-linux-gnu" ; _arch_dir="aarch64" ;; \
-                riscv64) _cross_tuple="riscv64-linux-gnu" ; _arch_dir="riscv64" ;; \
-                *) _cross_tuple="" ; _arch_dir="" ;; \
-            esac; \
-            if [ -n "${_cross_tuple}" ]; then \
-                echo "Rebuilding SPIRV-Tools for target arch ${TARGET_ARCH} from $_spirv_src"; \
-                mkdir -p "/tmp/spirv-tools-${TARGET_ARCH}build"; \
-                cd "/tmp/spirv-tools-${TARGET_ARCH}build"; \
-                cmake "$_spirv_src" -DCMAKE_BUILD_TYPE=Release -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF \
-                    -DSPIRV-Headers_SOURCE_DIR="$_spirv_headers" \
-                    -DSPIRVHeaders_DIR="$_spirv_headers" \
-                    -DCMAKE_C_COMPILER="${_cross_tuple}-gcc" \
-                    -DCMAKE_CXX_COMPILER="${_cross_tuple}-g++" && \
-                cmake --build . -j"$(nproc)" --target SPIRV-Tools-static && \
-                _spirv_lib="$(find "/tmp/spirv-tools-${TARGET_ARCH}build" -name 'libSPIRV-Tools.a' -type f 2>/dev/null | head -1)" && \
-                _vk_base="$(ls -d /opt/vulkan/*/ 2>/dev/null | head -1)" && \
-                if [ -n "$_spirv_lib" ] && [ -n "$_vk_base" ]; then \
-                    mkdir -p "${_vk_base}/${_arch_dir}/lib"; \
-                    cp "$_spirv_lib" "${_vk_base}/${_arch_dir}/lib/"; \
-                    echo "SPIRV-Tools rebuilt for target arch ${TARGET_ARCH}"; \
-                fi; \
-            fi; \
-            # Always rebuild host SPIRV-Tools too (fixes Werror for host tools) \
-            echo "Rebuilding SPIRV-Tools for host arch from $_spirv_src"; \
-            mkdir -p /tmp/spirv-tools-hostbuild; \
-            cd /tmp/spirv-tools-hostbuild; \
-            unset CC CXX CMAKE_C_COMPILER CMAKE_CXX_COMPILER; \
-            cmake "$_spirv_src" -DCMAKE_BUILD_TYPE=Release -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF \
-                -DSPIRV-Headers_SOURCE_DIR="$_spirv_headers" \
-                -DSPIRVHeaders_DIR="$_spirv_headers" && \
-            cmake --build . -j"$(nproc)" --target SPIRV-Tools-static && \
-            _spirv_lib="$(find /tmp/spirv-tools-hostbuild -name 'libSPIRV-Tools.a' -type f 2>/dev/null | head -1)" && \
-            _vk_libdir="$(ls -d /opt/vulkan/*/x86_64/lib 2>/dev/null | head -1)" && \
-            [ -n "$_spirv_lib" ] && [ -n "$_vk_libdir" ] && cp "$_spirv_lib" "$_vk_libdir/" && \
-            echo "SPIRV-Tools rebuilt for host arch" \
-        else \
-            echo "SPIRV-Tools source not found under /opt/vulkan; rebuild skipped"; \
-        fi; \
-    fi
 # 6. VERIFICATION
 RUN set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
-
-# ------------------------------------------------------------------------------
-# Cross-compile a native Clang/LDD/compiler-rt toolchain for the target
-# architecture so :latest-cross ships with clang 22.1.6 on every arch.
-# Keep the checked-in LLVM release pin authoritative even when BASE_IMAGE
-# carries an older LLVM_RELEASE environment variable.
-# ------------------------------------------------------------------------------
-RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
-    --mount=type=tmpfs,target=/tmp \
-    set -euo pipefail; \
-    apt-get update -qq && \
-    apt-get install -y --no-install-recommends binutils-dev && \
-    rm -rf /var/lib/apt/lists/*; \
-    SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
-    LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
-    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" target-clang
 
 # ==============================================================================
 # Frameworks; TVM
 # ==============================================================================
 COPY --chmod=755 linux/scripts/05-frameworks/ /opt/scripts/frameworks/
 
-ARG TVM_REF=v0.24.0
+ARG TVM_REF=v0.25.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
+# CUDA / OpenCL are disabled by default — GPU EP layers build separately via
+# Dockerfile.nvidia / Dockerfile.amd. Exposed as ARGs for parity with
+# TVM_USE_VULKAN so callers can opt in without editing the script.
+ARG TVM_USE_CUDA=0
+ARG TVM_USE_OPENCL=0
 ARG TVM_INSTALL_PYTHON=1
+ARG FLUTTER_VERSION=3.44.4
 
 ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \
     TVM_USE_VULKAN=${TVM_USE_VULKAN} \
+    TVM_USE_CUDA=${TVM_USE_CUDA} \
+    TVM_USE_OPENCL=${TVM_USE_OPENCL} \
     TVM_INSTALL_PYTHON=${TVM_INSTALL_PYTHON}
 
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
@@ -143,6 +129,21 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
         tvm_args+=(--no-python); \
     fi; \
     bash /opt/scripts/frameworks/tvm.sh "${tvm_args[@]}"
+
+# ==============================================================================
+# Frameworks; Flutter SDK (amd64 + arm64; riscv64 skipped)
+# ==============================================================================
+RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-cache-${TARGETARCH},sharing=locked \
+    set -euo pipefail; \
+    mkdir -p /var/cache/flutter; \
+    mkdir -p /opt/flutter && cp -an /var/cache/flutter/. /opt/flutter/ 2>/dev/null || true; \
+    if [ ! -x /opt/flutter/bin/flutter ]; then \
+        bash /opt/scripts/frameworks/flutter/setup-flutter.sh \
+          --arch "${TARGET_ARCH}" \
+          --version "${FLUTTER_VERSION}" \
+          --dir /opt; \
+        cp -an /opt/flutter/. /var/cache/flutter/ 2>/dev/null || true; \
+    fi
 
 LABEL org.opencontainers.image.title="Kataglyphis SDK" \
       org.opencontainers.image.description="SDK layer with Vulkan on top of compiler toolchain and the amd64-hosted cross artifact lane"

@@ -1,15 +1,27 @@
 services:
   ollama:
-    build: .
-    image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:llm-stack
+    image: ollama/ollama:latest
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        ollama serve &
+        for i in $$(seq 1 30); do
+          if ollama list >/dev/null 2>&1; then
+            break
+          fi
+          sleep 2
+        done
+        ollama pull gemma4:26b
+        wait
     ports:
-      - "8080:8080"
+      - "11434:8080"
     environment:
-      OLLAMA_PULL_MODELS: "gemma4:26b"
+      OLLAMA_HOST: "0.0.0.0:8080"
       OLLAMA_FLASH_ATTENTION: "1"
       OLLAMA_NUM_THREADS: "6"
       OLLAMA_KV_CACHE_TYPE: "q8_0"
-      OLLAMA_KEEP_ALIVE: "24h"
+      OLLAMA_KEEP_ALIVE: "-1"
       OLLAMA_NUM_PARALLEL: "1"
       OLLAMA_MAX_LOADED_MODELS: "1"
     volumes:
@@ -22,11 +34,9 @@ services:
       - "3000:8080"
     environment:
       OLLAMA_BASE_URL: "http://ollama:8080"
-      WEBUI_SECRET_KEY: "JISkhH48FSp-iZdjcfAphVRueyTm2TbC-PJE2_Ufknuyr6JsKlI_v6YpcBKwO0Q5QF4Y3LT4PK6vo-5_HBuc6w"
+      WEBUI_SECRET_KEY: "${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set (e.g. in .env)}"
     volumes:
       - open-webui-data:/app/backend/data
-    depends_on:
-      - ollama
     restart: unless-stopped
 
   glances:

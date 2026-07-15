@@ -1,0 +1,199 @@
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/DirectMLHelpers/AbstractOperatorDesc.h b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/DirectMLHelpers/AbstractOperatorDesc.h
+index 6d7a691..7321d5f 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/DirectMLHelpers/AbstractOperatorDesc.h
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/DirectMLHelpers/AbstractOperatorDesc.h
+@@ -1,71 +1,33 @@
+-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
++// Copyright (c) Microsoft Corporation. All rights reserved.
+ // Licensed under the MIT License.
+ 
+ #pragma once
+ 
+ class OperatorField;
++// [clang-cl DML fix] special members + GetTensors + accessors moved out-of-line to GeneratedSchemaTypes.h
+ 
+ struct AbstractOperatorDesc
+ {
+     const DML_OPERATOR_SCHEMA* schema = nullptr;
+     std::vector<OperatorField> fields;
+ 
+-    AbstractOperatorDesc() = default;
+-    AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields)
+-        : schema(schema)
+-        , fields(std::move(fields))
+-    {}
++    AbstractOperatorDesc();
++    AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields);
++    AbstractOperatorDesc(const AbstractOperatorDesc&);
++    AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept;
++    AbstractOperatorDesc& operator=(const AbstractOperatorDesc&);
++    AbstractOperatorDesc& operator=(AbstractOperatorDesc&&) noexcept;
++    ~AbstractOperatorDesc();
+ 
+-    std::vector<DmlBufferTensorDesc*> GetInputTensors()
+-    {
+-        return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
+-    }
++    std::vector<DmlBufferTensorDesc*> GetInputTensors();
+ 
+-    std::vector<const DmlBufferTensorDesc*> GetInputTensors() const
+-    {
+-        return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
+-    }
++    std::vector<const DmlBufferTensorDesc*> GetInputTensors() const;
+ 
+-    std::vector<DmlBufferTensorDesc*> GetOutputTensors()
+-    {
+-        return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
+-    }
++    std::vector<DmlBufferTensorDesc*> GetOutputTensors();
+ 
+-    std::vector<const DmlBufferTensorDesc*> GetOutputTensors() const
+-    {
+-        return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
+-    }
++    std::vector<const DmlBufferTensorDesc*> GetOutputTensors() const;
+ 
+ private:
+     template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
+-    std::vector<TensorType*> GetTensors() const
+-    {
+-        std::vector<TensorType*> tensors;
+-        for (auto& field : fields)
+-        {
+-            const DML_SCHEMA_FIELD* fieldSchema = field.GetSchema();
+-            if (fieldSchema->Kind != Kind)
+-            {
+-                continue;
+-            }
+-
+-            if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
+-            {
+-                auto& tensor = field.AsTensorDesc();
+-                tensors.push_back(tensor ? const_cast<TensorType*>(&*tensor) : nullptr);
+-            }
+-            else if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC_ARRAY)
+-            {
+-                auto& tensorArray = field.AsTensorDescArray();
+-                if (tensorArray)
+-                {
+-                    for (auto& tensor : *tensorArray)
+-                    {
+-                        tensors.push_back(const_cast<TensorType*>(&tensor));
+-                    }
+-                }
+-            }
+-        }
+-        return tensors;
+-    }
++    std::vector<TensorType*> GetTensors() const;
+ };
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/DirectMLHelpers/GeneratedSchemaTypes.h b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/DirectMLHelpers/GeneratedSchemaTypes.h
+index 5ea0d47..366f463 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/DirectMLHelpers/GeneratedSchemaTypes.h
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/DirectMLHelpers/GeneratedSchemaTypes.h
+@@ -126,3 +126,64 @@ private:
+     const DML_SCHEMA_FIELD* m_schema;
+     OperatorFieldVariant m_data;
+ };
++
++// [clang-cl DML fix] Out-of-line AbstractOperatorDesc members. Defined here, AFTER OperatorField is
++// complete, so the std::vector<OperatorField> special members (dtor/move), GetTensors<>() and the 4
++// tensor accessors instantiate against a complete type. Left inline they instantiate via
++// optional<AbstractOperatorDesc> while OperatorField is still forward-declared, which clang-cl rejects
++// (MSVC defers method/special-member instantiation to end-of-TU, where the type is complete).
++inline AbstractOperatorDesc::AbstractOperatorDesc() = default;
++inline AbstractOperatorDesc::AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields)
++    : schema(schema), fields(std::move(fields)) {}
++inline AbstractOperatorDesc::AbstractOperatorDesc(const AbstractOperatorDesc&) = default;
++inline AbstractOperatorDesc::AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept = default;
++inline AbstractOperatorDesc& AbstractOperatorDesc::operator=(const AbstractOperatorDesc&) = default;
++inline AbstractOperatorDesc& AbstractOperatorDesc::operator=(AbstractOperatorDesc&&) noexcept = default;
++inline AbstractOperatorDesc::~AbstractOperatorDesc() = default;
++template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
++std::vector<TensorType*> AbstractOperatorDesc::GetTensors() const
++{
++    std::vector<TensorType*> tensors;
++    for (auto& field : fields)
++    {
++        const DML_SCHEMA_FIELD* fieldSchema = field.GetSchema();
++        if (fieldSchema->Kind != Kind)
++        {
++            continue;
++        }
++
++        if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
++        {
++            auto& tensor = field.AsTensorDesc();
++            tensors.push_back(tensor ? const_cast<TensorType*>(&*tensor) : nullptr);
++        }
++        else if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC_ARRAY)
++        {
++            auto& tensorArray = field.AsTensorDescArray();
++            if (tensorArray)
++            {
++                for (auto& tensor : *tensorArray)
++                {
++                    tensors.push_back(const_cast<TensorType*>(&tensor));
++                }
++            }
++        }
++    }
++    return tensors;
++}
++inline std::vector<DmlBufferTensorDesc*> AbstractOperatorDesc::GetInputTensors()
++{
++    return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
++}
++inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetInputTensors() const
++{
++    return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
++}
++inline std::vector<DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTensors()
++{
++    return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
++}
++inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTensors() const
++{
++    return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
++}
+\ No newline at end of file
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp
+index 338b57a..1cbade6 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp
+@@ -3091,7 +3091,7 @@ namespace Windows::AI::MachineLearning::Adapter
+ 
+ #define CASE_PROTO(X, Y, Z)                                                                        \
+   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X: {                           \
+-    size_t elementCount = initializer.##Z();                                                       \
++    size_t elementCount = initializer.Z();                                                       \
+     tensorByteSize = elementCount * sizeof(Y);                                                     \
+     unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
+     ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h
+index 25210c1..3286c51 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h
+@@ -920,7 +920,7 @@ public:
+         return dims;
+     }
+ 
+-    template <typename TConstants, uint32_t TSize>
++    template <typename TConstants, size_t TSize>
+     void Dispatch(
+         std::array<ID3D12Resource*, TSize>& resources,
+         TConstants& constants,
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlGridSample.h b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlGridSample.h
+index 6d7a089..a14e267 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlGridSample.h
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlGridSample.h
+@@ -645,7 +645,7 @@ public:
+         return dims;
+     }
+ 
+-    template <typename TConstants, uint32_t TSize>
++    template <typename TConstants, size_t TSize>
+     void Dispatch(
+         std::array<ID3D12Resource*, TSize>& resources,
+         TConstants& constants,

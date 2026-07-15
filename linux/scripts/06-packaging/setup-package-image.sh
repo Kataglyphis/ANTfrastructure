@@ -60,19 +60,14 @@ add_prefix_python_paths_to_venv() {
     done
 }
 
-main() {
-    local python_mm="${PYTHON_MAJOR_MINOR:?PYTHON_MAJOR_MINOR is required}"
-    local gcc_major="${GCC_VERSION%%.*}"
-    [ -n "${gcc_major}" ] || { echo "ERROR: GCC_VERSION is required" >&2; exit 1; }
-    local python_bin python_cfg pip_bin triplet gcc_prefix
-    local staged_python_root=""
-    local -a packages=(libtbb-dev python3-venv python3-pip cargo rustc)
+# Install the source-built target Python (staged at /opt/python-cross by the
+# cross build) into /usr/local, if present for this arch.
+install_staged_target_python() {
+    local python_mm="$1"
+    local target_arch="${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
+    local staged_python_root="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${target_arch}"
 
-    bash /opt/scripts/03-media/final/install-deps.sh
-    apt-get update
-
-    staged_python_root="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
-    case "$(arch_normalize "${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}")" in
+    case "$(arch_normalize "${target_arch}")" in
         amd64|arm64|riscv64)
             if [ -x "${staged_python_root}/usr/local/bin/python${python_mm}" ]; then
                 echo "Installing source-built target Python ${python_mm} from ${staged_python_root}/usr/local"
@@ -86,6 +81,13 @@ main() {
             fi
             ;;
     esac
+}
+
+# Choose the dev/runtime apt packages (python-dev, matching gcc/g++, llvm/clang
+# extras) based on what's available, then install them.
+select_and_install_dev_packages() {
+    local python_mm="$1" gcc_major="$2"
+    local -a packages=(libtbb-dev python3-venv python3-pip cargo rustc)
 
     if [ ! -x "/usr/local/bin/python${python_mm}" ]; then
         if apt_package_exists "python${python_mm}-dev"; then
@@ -103,6 +105,13 @@ main() {
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
 
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
+}
+
+# Wire /usr/local python/pip/config + libpython symlinks (and create the dirs
+# the cargo/venv phases below rely on).
+wire_python_symlinks() {
+    local python_mm="$1"
+    local python_bin python_cfg pip_bin triplet lib
 
     python_bin="$(command -v "python${python_mm}" || command -v python3)"
     python_cfg="$(command -v "python${python_mm}-config" || true)"
@@ -132,21 +141,34 @@ main() {
         [ -e "${lib}" ] || continue
         ln -sf "${lib}" "/usr/local/lib/$(basename "${lib}")"
     done
+}
 
-    gcc_prefix="/opt/gcc-${GCC_VERSION}"
+# If a custom source-built GCC is present, add its libs to the loader path.
+preserve_custom_gcc() {
+    local gcc_prefix="/opt/gcc-$1"
+
     if [ -f "${gcc_prefix}/bin/gcc" ]; then
         echo "Custom GCC already present at ${gcc_prefix}; preserving it."
         echo "${gcc_prefix}/lib64" > "/etc/ld.so.conf.d/gcc-custom.conf"
         echo "${gcc_prefix}/lib" >> "/etc/ld.so.conf.d/gcc-custom.conf"
         ldconfig
     fi
+}
 
+# Symlink the cargo/rust toolchain binaries into CARGO_HOME/bin.
+wire_cargo_symlinks() {
     link_command_if_present cargo "${CARGO_HOME}/bin/cargo"
     link_command_if_present rustc "${CARGO_HOME}/bin/rustc"
     link_command_if_present rustdoc "${CARGO_HOME}/bin/rustdoc"
     link_command_if_present cargo-cbuild "${CARGO_HOME}/bin/cargo-cbuild"
     link_command_if_present cargo-cinstall "${CARGO_HOME}/bin/cargo-cinstall"
     link_command_if_present rustup "${CARGO_HOME}/bin/rustup"
+}
+
+# Create the runtime uv venv with build tooling. riscv64 can't run compiled
+# wheels under QEMU, so it uses apt packages via --system-site-packages instead.
+create_runtime_venv() {
+    local python_mm="$1"
 
     rm -rf "${VIRTUAL_ENV}"
     uv venv --seed --python "/usr/local/bin/python${python_mm}" "${VIRTUAL_ENV}"
@@ -163,6 +185,22 @@ main() {
     else
         uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools numpy meson ninja cmake packaging
     fi
+}
+
+main() {
+    local python_mm="${PYTHON_MAJOR_MINOR:?PYTHON_MAJOR_MINOR is required}"
+    local gcc_major="${GCC_VERSION%%.*}"
+    [ -n "${gcc_major}" ] || { echo "ERROR: GCC_VERSION is required" >&2; exit 1; }
+
+    bash /opt/scripts/03-media/final/install-deps.sh
+    apt-get update
+
+    install_staged_target_python "${python_mm}"
+    select_and_install_dev_packages "${python_mm}" "${gcc_major}"
+    wire_python_symlinks "${python_mm}"
+    preserve_custom_gcc "${GCC_VERSION}"
+    wire_cargo_symlinks
+    create_runtime_venv "${python_mm}"
 
     add_prefix_python_paths_to_venv "/opt/opencv5" "${VIRTUAL_ENV}/bin/python"
 

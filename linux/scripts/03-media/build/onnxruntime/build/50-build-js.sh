@@ -121,8 +121,13 @@ if ! ls "${ORT_SRC_DIR}/js/web/dist"/*.js >/dev/null 2>&1 && ! ls "${ORT_SRC_DIR
   err "No .js or .mjs files found in js/web/dist/ after build"
 fi
 
-cp -v "${ORT_SRC_DIR}/js/web/dist"/*.js "${WASM_OUTPUT_DIR}/" || true
-cp -v "${ORT_SRC_DIR}/js/web/dist"/*.mjs "${WASM_OUTPUT_DIR}/" || true
+# Per-glob tolerance (dist may contain only .js or only .mjs — the validation
+# above is an OR), but the COPY as a whole must land: verify the destination.
+cp -v "${ORT_SRC_DIR}/js/web/dist"/*.js "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+cp -v "${ORT_SRC_DIR}/js/web/dist"/*.mjs "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+if ! ls "${WASM_OUTPUT_DIR}"/*.js >/dev/null 2>&1 && ! ls "${WASM_OUTPUT_DIR}"/*.mjs >/dev/null 2>&1; then
+  err "JS artifacts copy failed: no .js/.mjs in ${WASM_OUTPUT_DIR} despite dist/ containing them"
+fi
 
 rm -rf "${ORT_SRC_DIR}/js/node_modules" \
 	"${ORT_SRC_DIR}/js/common/node_modules" \

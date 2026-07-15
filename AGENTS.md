@@ -28,7 +28,7 @@ The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`,
 
 ## Quick Reference
 
-Build logs are written to `out/build-logs/` by passing `--log-dir` to the orchestrator scripts, or by piping manual `nerdctl build` output through `2>&1 | tee ./out/build-logs/<name>.log`.
+Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`.
 
 Most common build commands:
 
@@ -37,10 +37,10 @@ Most common build commands:
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Compiler image only (amd64-hosted, contains cross toolchains for all arches)
-./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64 --log-dir ./out/build-logs
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
 
 # Compiler with custom image repo (matches --image-repo on the orchestrator)
-./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push --log-dir ./out/build-logs
+./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push
 
 # Single cross stage — the canonical way to rebuild one stage for one arch.
 # Handles parent digest pinning, build-arg assembly, log capture, and push.
@@ -70,74 +70,30 @@ nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 > **See also:** [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the full stage graph, digest pinning, and single-stage build details. [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for build fundamentals, caching, and troubleshooting.
 
-### Windows Container Build (see `docs/windows-builds.md`)
+### Windows Container Build
 
 All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Stevedore's `docker.exe` for builds (nerdctl has DNS issues in BuildKit on Windows).
 
-```powershell
-# Install Stevedore (prerequisite for Windows Containers)
-winget install stevedore   # or: choco install stevedore
+**`docker build` is capped at 2 CPUs on this host — the heavy media-core stage builds via `docker run --cpu-count N` + `docker commit` instead.** Hyper-V-isolated build containers get only **2 logical CPUs** (pinning `ninja -j` to 2, `Get-BuildJobCount = min(ProcessorCount, memGB/perJob)`), and `docker build` has **no working lever** to raise it: `--cpu-count` is rejected, `--cpuset-cpus` fails the build, and `--isolation process` exposes all CPUs but **cannot commit any layer** here (`hcsshim::ActivateLayer 0x20 "file used by another process"`, reproduced even for a 100 MB dummy layer; not Defender/Search/SysMain). `docker run`, however, **does** honor `--cpu-count` under Hyper-V (verified `NPROC=32`) and commits fine — so `build.ps1` builds every **CPU-bound** stage via a generic run+commit path (`Invoke-RunCommitStage`): **media-core** (`Dockerfile.media-builder --target media-core` + `build-media-core-all.ps1`), **toolchain**/CPython (`Dockerfile.toolchain-builder` + `build-toolchain-all.ps1`), and the **media merge / GStreamer** stage (`Dockerfile.media-merge-builder` + `build-gstreamer-from-source.ps1`; the fan-in `COPY --from` stays a `docker build` since `docker run` can't `COPY --from`, but the GStreamer compile runs+commits). `-MediaCoreCpus` defaults to `[Environment]::ProcessorCount` (32 here) — but parallelism is **memory-bound**: `min(cpu-count, memGB/perJob)`, so ONNX stays `~j12` at 48 GB regardless of cores. `base`/`sdk` stay at 2 CPUs by design (network/install-bound). The `litert`/`tvm` aux branches also run+commit at `-MediaCoreCpus` (`Dockerfile.media-builder --target media-litert` + `build-litert-all.ps1`; `--target media-tvm` + `build-tvm-from-source.ps1`) — media-core is already committed then, so the full CPU/RAM budget is free (`~j2`→`~j19`, still memory-bound). All three branch builders are targets of the ONE consolidated `Dockerfile.media-builder`, and the schedule is strictly sequential (a former `-ConcurrentMedia` overlap mode was removed — overlapping starved the media-core long pole).
 
-# === POST-INSTALL FIXES (apply once) ===
-# 1. Exclude Stevedore from Windows Defender:
-Add-MpPreference -ExclusionProcess "dockerd.exe"
-Add-MpPreference -ExclusionPath "$env:ProgramFiles\Stevedore"
-Add-MpPreference -ExclusionPath "$env:ProgramData\containerd"
+See `docs/windows-builds.md` § Build Commands for the full 5-stage Windows build sequence and `docs/windows-builds.md` § Stevedore Setup Fixes for post-install fixes.
 
-# 2. Remove stale Docker Desktop daemon.json (if Docker Desktop was previously installed):
-if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\ProgramData\docker\config\daemon.json" }
+### Windows Build Invariants (do not regress)
 
-# 3. Change default runtime from hcsshim to runhcs:
-sc config stevedore binPath="\"C:\Program Files\Stevedore\dockerd.exe\" --run-service --service-name stevedore --group docker-users --host npipe:////./pipe/dockerDesktopWindowsEngine --host npipe:////./pipe/docker_engine --containerd=npipe:////./pipe/containerd-containerd --default-runtime=io.containerd.runhcs.v1"
-net stop stevedore /y
-net start stevedore
+Load-bearing fixes — preserve them or builds slow down / ship broken. Details in `docs/windows-builds.md`.
 
-# === BUILD SEQUENCE ===
-# All commands use Stevedore's docker.exe (nerdctl has DNS issues on Windows BuildKit):
-
-# Stage 1: Windows toolchain base (VS Build Tools 18, Scoop tools, LLVM 22)
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
-  -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
-
-# Stage 2: GPU SDK layer (CUDA 13.3 Toolkit + cuDNN 9.23, verified post-install)
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
-  -t local/kataglyphis:windows-sdk `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-base `
-  -f windows/Dockerfile.sdk .
-
-# Stage 3: CPython 3.14 built from source with ClangCL toolset (not MSVC v143)
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
-  -t local/kataglyphis:windows-toolchain `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-sdk `
-  -f windows/Dockerfile.toolchain .
-
-# Stage 4: Media layer — all source-built with Ninja+clang-cl:
-#   - ONNX Runtime 1.26 (CPU-only; DirectML disabled due to VS 2026 STL hardening
-#     + clang-cl incomplete-type incompatibility in DirectML helper headers)
-#   - ONNX GenAI 0.13.1 (source-built via build.py with Ninja)
-#   - OpenCV 5.x (with global AVX2/SSSE3/SIMD flags for clang-cl)
-#   - LiteRT 2.1.5 (GPU delegate with Vulkan, XNNPACK, external CUDA delegate)
-#   - LiteRT-LM 0.13.1 (on-device LLM inference, CUDA enabled, links LiteRT)
-#   - GStreamer 1.29.1 (Meson+clang-cl, CUDA auto-detected)
-# NOTE: ONNX Runtime AVX-512+AMX compilation with clang-cl needs ~48 GB RAM.
-# Adjust --memory to your host's available resources (--cpu-quota not supported on Windows).
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache --memory 48g `
-  -t local/kataglyphis:windows-media `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-toolchain `
-  -f windows/Dockerfile.media .
-
-# Stage 5: Final developer image (VsDevCmd entrypoint)
-"%ProgramFiles%\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache `
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
-  --build-arg BASE_IMAGE=local/kataglyphis:windows-media `
-  -f windows/Dockerfile .
-```
+- **media-core builds via run+commit for CPU parallelism — never re-add `--isolation process`.** `docker build` is 2-CPU-capped here and process isolation **cannot commit layers** (`hcsshim::ActivateLayer 0x20`, reproduced even for a 100 MB dummy). media-core builds via `docker run --isolation hyperv --cpu-count $MediaCoreCpus` + `docker commit` (`Invoke-RunCommitStage`), which is the only way to get >2 CPUs *and* a committable image. Regression symptoms: `-j2` in `out\windows-build-logs\media-core.log`, or `ActivateLayer` on any commit. Full rationale: `docs/windows-builds.md` § Build isolation and CPU parallelism. **Before assuming this is still needed after a Docker/Windows/base-image upgrade, re-check with `windows/diagnostics/test-process-isolation-commit.ps1`** — if it reports `BUG GONE`, process isolation for `docker build` is usable again and the workaround can be retired (see § Re-testing process isolation on new versions).
+- **Rust: scoop is the sole provider — never install rustup.** A toolchain-less rustup drops proxy shims into `CARGO_BIN` that shadow scoop's real `cargo`/`rustc` on PATH and fail with "no default toolchain configured". `setup-scoop-tools.ps1` installs no rustup, `setup-rust-toolchain.ps1` uses `scoop install main/rust`, and `Dockerfile.base` keeps `CARGO_BIN` off any rustup path. Do **not** re-add rustup to "fix" Rust.
+- **Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; inside a run+commit stage, `ProcessorCount` = `--cpu-count` (default = all host logical processors, 32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-builds.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the only real speed levers are more physical RAM or an sccache remote.
+- **Preserve committed line endings when editing a COPY'd `.psm1`/`.ps1`.** Media modules are LF, some build scripts CRLF; `core.autocrlf=true` plus some editors can flip a whole file, busting the media layer cache. `.gitattributes` pins these `-text`; after editing, confirm `git diff` shows only your change, not a whole-file EOL flip.
+- **`versions.env` is the single source of truth.** `build.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. clang major from `LLVM_RELEASE`, CMake URL from `CMAKE_VERSION`). Don't hardcode versions in scripts or Dockerfiles.
+- **Python bindings plumbing is load-bearing (added 2026-07-13; full detail in `docs/windows-builds.md` § python coverage).** (1) The `sitecustomize.py` shim written by `Initialize-PythonPlatformTag` fixes clang-built CPython's win32 platform misreport (pip pulls 32-bit wheels without it) AND registers native DLL dirs (`os.add_dll_directory`; python ignores PATH for pyd deps) — never remove it. (2) OpenCV must keep `WITH_MSMF=OFF` **and** `WITH_OBSENSOR=OFF`: both hard-import Media Foundation, absent on Server Core — either ON makes videoio and the cv2 pyd unloadable. (3) Always `@()`-wrap `Save-PythonWheel` results: PS unwraps a 1-element array so `[0]` becomes the first *character* and pip once installed the PyPI package literally named `c`. (4) Binding asserts go through `Test-PythonImport` (cmd.exe-shielded): tvm writes warnings to stderr on successful imports, which raw `&` under EAP=Stop turns into false failures. (5) Wheels live at `C:\runtime\wheels` (`PYTHON_WHEELS`); the Orchestr-ANT-ion torch step resolves the app's LATEST tag per build and its wheel-smoke suite gates the final docker build. (6) PyAV is built from sdist against OUR FFmpeg (`setup.py --ffmpeg-dir`) — PyPI's `av` wheel is unloadable on Server Core (bundled avdevice imports desktop-only `AVICAP32.dll`); in headless code request software encoders by name (`mpeg4`) — the generic `h264` alias resolves to the hardware `h264_d3d12va`. (7) IREE (media-tvm branch, TVM→IREE chain) is a shallow-submodule git clone (release tarballs lack LLVM); its wheels come from the ninja build tree's synthesized `compiler/`+`runtime` pip dirs with `--no-build-isolation` — plain `pip wheel` of the repo would rebuild all of LLVM in an isolated tree. Native tools at `IREE_ROOT` (`C:\runtime\iree`); CUDA HAL/target need no nvcc (PTX via NVPTX, driver dlopens nvcuda.dll).
 
 ### TensorRT Setup (Optional)
 
 TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's EULA. To include TensorRT:
 
-1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-10.10.0.39.Windows10.x86_64.cuda-*.zip`)
+1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-11.1.0.106.Windows10.x86_64.cuda-13.3.zip`)
 2. Place the zip in `windows/downloads/`
 3. It will be auto-detected during the `Dockerfile.nvidia` build
 
@@ -148,24 +104,39 @@ If no zip is found, the build skips TensorRT gracefully (CUDA + cuDNN still work
 | Component | Generator | Compiler | Notes |
 |-----------|-----------|----------|-------|
 | CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset |
-| ONNX Runtime 1.26 | Ninja | clang-cl, lld-link | DirectML disabled. CUDA enabled via CUDA 13.3 provider (includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). AVX-512+AMX compilation with clang-cl needs ~48 GB RAM — pass `--memory 48g` to docker build (--cpu-quota not supported on Windows). |
-| ONNX GenAI 0.13.1 | `python build.py` | clang-cl (Ninja generator) | Source-built via `build.py --cmake_generator Ninja --cmake_extra_defines CMAKE_C_COMPILER=clang-cl CMAKE_CXX_COMPILER=clang-cl`. CUDA enabled. VsDevCmd environment loaded for MSVC STL headers. |
+| ONNX Runtime 1.27.0 | Ninja | clang-cl, lld-link | DirectML EP **enabled** (`USE_DML=ON`) via 3 clang-cl source patches applied by `Invoke-OnnxDmlClangClPatch` in `WindowsSourceBuild.Common.psm1` (DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`). CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). AVX-512+AMX compilation with clang-cl needs ~48 GB RAM — media-core runs with `--memory ${MediaMemoryGb}g`; CPU parallelism comes from the `docker run --cpu-count N` + `docker commit` path (see § Windows Container Build), since `docker build` is 2-CPU-capped on this host and process isolation can't commit. |
+| ONNX GenAI 0.14.0 | CMake (Ninja) | clang-cl, lld-link | Source-built directly via CMake (bypasses `build.py` which always builds examples). DirectML **enabled** (`USE_DML=ON`) — compiled straight into `onnxruntime-genai.dll` with 0 source patches (`src/dml` is clang-clean; the `RESTORE_PACKAGES` DXC nuget dep is pruned since shaders are pre-generated DXIL; the x64 `D3D12Core.dll` is staged beside the DLL). CUDA **enabled** (`USE_CUDA=ON`) — builds a separate `onnxruntime-genai-cuda.dll`; CUDA and DML are independent CMake blocks so they coexist. VsDevCmd environment loaded for MSVC STL headers. |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. CUDA auto-detected. Custom `CMAKE_AR` path fix. |
-| LiteRT 2.1.5 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. |
+| LiteRT 2.1.6 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. |
 | LiteRT-LM 0.13.1 | Ninja | clang-cl, lld-link | On-device LLM inference. CUDA support enabled when detected. Links against LiteRT from previous stage. |
-| GStreamer 1.29 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
+| TVM 0.25.0 | Ninja | clang-cl, lld-link | Auto-detects CUDA/Vulkan/LLVM. Builds a Python wheel. VsDevCmd environment loaded for MSVC STL headers. |
+| FFmpeg `master` | MSYS2 `make` (MSVC toolchain) | clang-cl via `--toolchain=msvc` | Source build from the `master` branch (default in `versions.env`). `--enable-libonnxruntime` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters (DNN filters ship with the backend; no separate `--enable-dnn` flag). Disabled x86asm. Falls back to a BtbN pre-built GPL binary if the source build fails (the sentinel env var `FFMPEG_SOURCE_BUILD=0` is then set). |
+| GStreamer 1.29.2 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
 
 ### Windows Scripts
 
 | Script | Location | Purpose |
 |--------|----------|---------|
 | `build-onnx-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl build with build.ninja patching and VsDevCmd wrapper |
-| `build-onnx-genai-from-source.ps1` | `windows/scripts/` | Source build via `python build.py` with Ninja+clang-cl (not NuGet). Loads VsDevCmd environment, clones git tag, runs official `build.py --cmake_generator Ninja`. |
+| `build-onnx-genai-from-source.ps1` | `windows/scripts/` | Source-built directly via CMake+clang-cl (bypasses `build.py` which always builds examples). Loads VsDevCmd via `vswhere`, clones git tag, runs `cmake`/`ninja` directly. CUDA disabled at build time. |
 | `build-opencv-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl with global SIMD flags and mlas `<cstring>` patch |
-| `build-gstreamer-from-source.ps1` | `windows/scripts/` | Meson+clang-cl with wrap pre-extraction |
-| `WindowsSourceBuild.Common.psm1` | `windows/scripts/modules/` | Reusable build helpers: `Invoke-GitClone`, `Invoke-CmakeConfigure`, `Invoke-CmakeBuild` |
-| `setup-cuda.ps1` | `windows/scripts/` | Now includes cuDNN post-install verification (headers/libs/DLLs) |
-| `smoke-test-container.ps1` | `windows/scripts/` | Comprehensive container validation (14 test categories) |
+| `build-litert-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; GPU delegate (Vulkan+OpenCL), XNNPACK, external CUDA delegate |
+| `build-litert-lm-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; on-device LLM inference; links against LiteRT from previous stage |
+| `build-tvm-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; auto-detects CUDA/Vulkan/LLVM; builds Python wheel; VsDevCmd for MSVC STL headers |
+| `build-ffmpeg-from-source.ps1` | `windows/scripts/` | MSYS2 `make` with `--toolchain=msvc`; `--enable-libonnxruntime` links against the source-built ONNX Runtime. Loads `versions.env` via `load-versions.ps1` for centralized branch config. Falls back to BtbN pre-built GPL binary on source-build failure (`FFMPEG_SOURCE_BUILD=0` sentinel). |
+| `build-gstreamer-from-source.ps1` | `windows/scripts/` | Meson+clang-cl with wrap pre-extraction; loads `versions.env` via `load-versions.ps1` |
+| `WindowsSourceBuild.Common.psm1` | `windows/scripts/modules/` | Reusable build helpers: `Invoke-GitClone`, `Invoke-CmakeConfigure`, `Get-SourceBuildVersion`, `Get-CudaRoot`, `Enter-VsDevCmdEnvironment`, `Invoke-SourcePatch` (idempotent, reverse-check, patch.exe fallback), `Edit-CppKeywordAlternatives`, `Update-NinjaFile`, `Initialize-SourceBuildEnvironment`, `Initialize-ToolchainPythonEnvironment`, `Get-GpuEnvironment`, `Resolve-TensorRtRoot`, `Get-WindowsX86SimdFlags`, `Get-WindowsX86Avx512Flags` |
+| `setup-vs.ps1` | `windows/scripts/` | Installs VS Build Tools 18 with ClangCL toolset |
+| `setup-scoop-tools.ps1` | `windows/scripts/` | Installs LLVM, ninja, sccache, uv, Rust, Flutter, Vulkan SDK via Scoop |
+| `setup-vcpkg.ps1` | `windows/scripts/` | Bootstraps vcpkg for Windows |
+| `setup-rust-toolchain.ps1` | `windows/scripts/` | Installs/verifies the Rust toolchain (rustc, cargo) |
+| `setup-cuda.ps1` | `windows/scripts/` | Installs CUDA 13.3 + cuDNN; includes post-install verification (headers/libs/DLLs) |
+| `setup-tensorrt.ps1` | `windows/scripts/` | Auto-detects a TensorRT zip in `windows/downloads/` and installs it |
+| `load-versions.ps1` | `windows/scripts/` | Reads `C:\temp\versions.env` (COPY'd from `linux/scripts/01-core/versions.env`) and sets matching process env vars so Windows build scripts consume the same canonical versions as Linux |
+| `finalize-container.ps1` | `windows/scripts/` | Enables git long paths and sets `core.longpaths` in the final image |
+| `verify-toolchain.ps1` | `windows/scripts/` | Verifies clang-cl, lld-link, WiX, Flutter are present after base setup |
+| `healthcheck.ps1` | `windows/scripts/` | Docker `HEALTHCHECK` script — verifies ONNX Runtime DLL, FFmpeg, GStreamer, CMake, clang-cl |
+| `smoke-test-container.ps1` | `windows/scripts/` | Comprehensive container validation (18 test categories) |
 
 For detailed build commands, see `docs/windows-builds.md`.
 
@@ -193,20 +164,17 @@ bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
   --target-arches amd64,arm64,riscv64 \
   --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
-  --push \
-  --log-dir ./out/build-logs
+  --push
 
 # Build local artifacts only (no push)
 bash linux/scripts/build-runtime-artifacts.sh \
   --image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 \
-  --log-dir ./out/build-logs
+  --target-arches amd64,arm64,riscv64
 
 # Dry-run: print what would be built without executing
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --dry-run \
-  --log-dir ./out/build-logs
+  --target-arches amd64,arm64,riscv64 --dry-run
 
 # Manifest repair (rebuild manifest from existing per-arch wrappers)
 nerdctl manifest rm "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" >/dev/null 2>&1 || true
@@ -219,14 +187,12 @@ nerdctl manifest push --purge "ghcr.io/kataglyphis/kataglyphis_beschleuniger:lat
 # Or use the helper: rebuild just the manifest (no image rebuilds)
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest \
-  --log-dir ./out/build-logs
+  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest
 
 # Shorthand: --repair is an alias for --manifest-only
 bash linux/scripts/build-runtime-manifest.sh \
   --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --repair --push-manifest \
-  --log-dir ./out/build-logs
+  --target-arches amd64,arm64,riscv64 --repair --push-manifest
 ```
 
 ---
@@ -239,7 +205,7 @@ build-cross-chain.sh → base → compiler → sdk → media → android → run
 
 Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate 3-stage build (`base → ai → final`) using nerdctl with Stevedore. See `docs/windows-builds.md` for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → final`) driven by `windows/build.ps1`, which uses Stevedore's `docker.exe` for builds (`nerdctl build` has broken DNS on Windows). The `windows-sdk` tag is either a plain re-tag of `windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 
@@ -258,37 +224,11 @@ The **Windows lane** follows a separate 3-stage build (`base → ai → final`) 
 - **Stevedore** (`winget install stevedore` or `choco install stevedore`) — provides nerdctl + containerd for Windows Containers
 - **Reboot** after Stevedore install to enable the Windows Containers feature
 - **Docker Desktop or Rancher Desktop** can also be used with `docker` commands (swap `nerdctl` → `docker` in build commands)
-- **DNS workaround**: Windows `nerdctl build` has broken DNS in BuildKit containers. Use Stevedore's bundled `docker.exe` for builds: `"%ProgramFiles%\Stevedore\bin\docker.exe" build`. `nerdctl run` works fine for running containers.
+- **DNS workaround**: Windows `nerdctl build` has broken DNS in BuildKit containers. Use Stevedore's bundled `docker.exe` for **both builds and runs**: `"D:\Stevedore\bin\docker.exe" build` / `... run --isolation process`. `nerdctl run` also fails on this host — it needs the Windows CNI `nat` plugin (not installed); `docker.exe` provides NAT networking natively. Run with `--isolation process` for the host's full CPU count (Hyper-V isolation is capped at 2 CPUs). See `docs/windows-builds.md` § Running the Image.
 
 ### Stevedore Fixes After Install
 
-After installing Stevedore, apply these fixes exactly once:
-
-1. **Exclude Stevedore from Windows Defender:**
-   ```powershell
-   Add-MpPreference -ExclusionProcess "dockerd.exe"
-   Add-MpPreference -ExclusionPath "$env:ProgramFiles\Stevedore"
-   Add-MpPreference -ExclusionPath "$env:ProgramData\containerd"
-   Add-MpPreference -ExclusionPath "$env:ProgramData\nerdctl"
-   Add-MpPreference -ExclusionPath "$env:ProgramData\Docker"
-   ```
-
-2. **Remove stale Docker Desktop daemon.json** (if Docker Desktop was previously installed):
-   ```powershell
-   if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\ProgramData\docker\config\daemon.json" }
-   ```
-
-3. **Change default runtime from hcsshim to runhcs** (the `com.docker.hcsshim.v1` shim binary is not shipped — use `io.containerd.runhcs.v1`):
-   ```powershell
-   sc config stevedore binPath="\"C:\Program Files\Stevedore\dockerd.exe\" --run-service --service-name stevedore --group docker-users --host npipe:////./pipe/dockerDesktopWindowsEngine --host npipe:////./pipe/docker_engine --containerd=npipe:////./pipe/containerd-containerd --default-runtime=io.containerd.runhcs.v1"
-   net stop stevedore /y
-   net start stevedore
-   ```
-
-4. **Verify** with:
-   ```cmd
-   "%ProgramFiles%\Stevedore\bin\docker.exe" run --rm mcr.microsoft.com/windows/servercore:ltsc2025 powershell -Command "Write-Host OK"
-   ```
+Apply the post-install fixes documented in `docs/windows-builds.md` § Stevedore Setup Fixes (Defender exclusions, daemon.json cleanup, default runtime change, verification). Those instructions are the canonical source — keep them in sync instead of duplicating here.
 
 ### Supported Platforms
 
@@ -312,9 +252,9 @@ After a successful `build-cross-chain.sh` run:
 
 ```
 linux/scripts/
-├── 01-core/             shared utilities (41 modules: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, build-helpers, cli-parsers, …)
+├── 01-core/             shared utilities (48 modules: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, build-helpers, cli-parsers, …)
 ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
-├── 03-03-media/            media library build scripts
+├── 03-media/            media library build scripts
 │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
 │   ├── build/           per-library build scripts
 │   │   ├── onnxruntime/   ONNX Runtime + GenAI (build/ steps, runtime/ pkgconfig, android/)
@@ -403,20 +343,14 @@ Rules:
 
 ## Five Critical Fixes To Maintain
 
-Always preserve these. See `docs/linux-cross-builds.md` § "Five Critical Fixes".
-
-1. **gst-python staged libpython** — `rewrite_staged_python_pc()` in `02-toolchain/python/build_python.sh`
-2. **libcamera abseil** — copy `absl/types/span.h` in `03-media/build/litert/build-litert.sh`
-3. **cross lib-dynload dangling symlinks** — `cp -a -L` + `find -xtype l` guard in `02-toolchain/python/build_python.sh`
-4. **cross GCC architecture guard** — three-layer ELF + dumpmachine + cc1 smoke check in `Dockerfile.package`
-5. **OpenCV 5 GStreamer compat** — `patch_gstreamer_opencv5_compat()` in `03-media/build/gstreamer/common/patch-gstreamer-sources.sh`
+Always preserve these. The canonical reference is `docs/linux-cross-builds.md` § "Five Critical Fixes"; CI validates them via `linux/scripts/verify-critical-fixes.sh`.
 
 ## Linux Build Rules
 
 - Use `nerdctl` first on this host. `buildctl`/`ctr` commonly fail with permission errors.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all arches. Not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep source-built `clang 22.1.6` (not Ubuntu `clang 22.1.2`). Source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
+- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep source-built `clang 22.1.8` (not Ubuntu `clang 22.1.2`). Source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
 - Preserve optional runtime payloads and LLVM normalization in `Dockerfile.package`. Do not drop `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
 
 ## Dockerfile.media BuildKit Strategy
@@ -449,7 +383,7 @@ base ─┬─ onnxruntime ───────┐
 ## Validation
 
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
-- Confirm on all arches: `clang --version` reports `22.1.6`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.1.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
+- Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.1.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
 
 ## Host Constraints
@@ -471,13 +405,17 @@ base ─┬─ onnxruntime ───────┐
 | Stale downstream images | Base image rebuilt but downstream not refreshed | Use `--verify-chain` or rebuild from replaced stage |
 | `registry_pin_ref` fails on fresh push | Registry hasn't propagated the new manifest | Now uses `retry()` with 5 attempts; wait a few seconds and retry |
 | Terminal freeze during long build | Build output overwhelms terminal | Use `setsid` / `disown` for very long builds |
-| nerdctl DNS failure in build | BuildKit container can't resolve hostnames on Windows (`--dns` and `--network host` unsupported) | Use Stevedore's bundled `"%ProgramFiles%\Stevedore\bin\docker.exe" build` instead — same containerd backend, working DNS. `nerdctl run` works fine for running containers. |
+| nerdctl DNS failure in build | BuildKit container can't resolve hostnames on Windows (`--dns` and `--network host` unsupported) | Use Stevedore's bundled `"D:\Stevedore\bin\docker.exe" build` instead — same containerd backend, working DNS. |
+| `nerdctl run` (Windows): `needs CNI plugin "nat" to be installed in CNI_PATH` | Windows CNI plugins (`nat.exe`) are not installed and Stevedore doesn't bundle them | Use `docker.exe run` instead — Docker Engine provides NAT networking natively, no CNI plugin needed. Add `--isolation process` for the host's full CPU count. |
 | `hcsshim::ActivateLayer failed (0x20)` during build | Windows Defender scanning new layer files + containerd snapshot contention | Exclude `C:\ProgramData\containerd`, `C:\ProgramData\nerdctl` from Windows Defender. Or use `docker.exe` instead of `nerdctl` for builds (Docker's layer manager is more resilient). |
-| Stevedore docker build: `runtime "com.docker.hcsshim.v1" binary not installed` | Service default runtime uses `hcsshim-v1` shim which isn't shipped | Change to `runhcs-v1`: `sc config stevedore binPath="..." --default-runtime=io.containerd.runhcs.v1"` (see docs/windows-builds.md § Fix 3) |
-| Stevedore docker build: `failed to create TTRPC connection` | Shim binary mismatch (runhcs copied as hcsshim) | Remove the bad shim copy: `del "C:\Program Files\Stevedore\bin\containerd-shim-hcsshim-v1.exe"`. Apply Fix 3 instead. |
+| Stevedore docker build: `runtime "com.docker.hcsshim.v1" binary not installed` | Service default runtime uses `hcsshim-v1` shim which isn't shipped | Change to `runhcs-v1`: `sc config stevedore binPath="..." --default-runtime=io.containerd.runhcs.v1"` (see docs/windows-builds.md § Fix 2) |
+| Stevedore docker build: `failed to create TTRPC connection` | Shim binary mismatch (runhcs copied as hcsshim) | Remove the bad shim copy: `del "C:\Program Files\Stevedore\bin\containerd-shim-hcsshim-v1.exe"`. Apply Fix 2 instead. |
 | Stevedore service won't start (1053 timeout) | Windows Defender blocking dockerd.exe OR stale daemon.json from Docker Desktop | `Add-MpPreference -ExclusionProcess "dockerd.exe"` AND delete `C:\ProgramData\docker\config\daemon.json` |
 | `error getting credentials - err: exit status 1` | wincred credential helper fails because dockerd runs as SYSTEM without interactive session | OK to ignore for public images (MCR, GitHub). Use `nerdctl pull` instead for images that need auth, or set `"credsStore":""` in docker config. |
 | `failed to extract layer ... failed to find link target` when pulling servercore | containerd windows snapshotter can't handle certain Windows reparse points in the layer | Use `docker.exe pull` instead of `nerdctl pull`. Docker Engine's layer extraction handles reparse points correctly. |
+| Windows media build crawls; `Building with ninja -j2` in `media-core.log` | media-core fell back to a 2-CPU `docker build` instead of the run+commit path | Ensure `Invoke-RunCommitStage` runs (`docker run --cpu-count $MediaCoreCpus`); `docker build` is 2-CPU-capped here and no flag raises it (§ Windows Build Invariants). |
+| `hcsshim::ActivateLayer failed ... 0x20 "file used by another process"` on commit | `--isolation process` was used for a `docker build` — it cannot commit layers on this host | Never pass `--isolation process`. Use Hyper-V (the default) for `docker build`; for CPUs use the `docker run --cpu-count N` + `docker commit` path. Not Defender/Search/SysMain (all ruled out). |
+| Rust smoke test fails: "rustup could not choose a version of cargo/rustc" | A toolchain-less rustup shadowing scoop's real Rust on PATH via `CARGO_BIN` | Do not install rustup; scoop is the sole Rust provider. Keep `CARGO_BIN` off any rustup path (§ Windows Build Invariants). |
 
 ---
 
@@ -488,13 +426,13 @@ base ─┬─ onnxruntime ───────┐
 `common.sh` and `artifact-common.sh` source `versions.env` at load time with `set -a`. Per-Dockerfile ARG defaults are safety nets and should match.
 
 After changing versions:
-1. `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/sync_versions.py --check --repo-root .` (run `--write` if drift)
-2. `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/generate-website-licenses.py --write --repo-root .` (regenerate website /openSourceLicenses page)
+1. `python3 docs/scripts/sync_versions.py --check` (run `--write` if drift)
+2. `python3 docs/scripts/generate-website-licenses.py --write` (regenerate website /openSourceLicenses page)
 3. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
 4. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
 5. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
 
-GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `plucky`/26.04). MIGraphX packages currently come from the AMD ROCm noble (24.04) repo since no plucky builds exist yet.
+GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `resolute`/26.04). MIGraphX packages currently come from the AMD ROCm noble (24.04) repo since no resolute builds exist yet.
 
 ## Development Rules
 
@@ -543,7 +481,8 @@ The canonical CSS lives in the submodule at
 
 ## Documentation Maintenance
 
+- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, and shell syntax before each commit — the same checks CI enforces.
 - If Dockerfiles or Linux helpers change, update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`.
 - If Windows Dockerfiles/scripts change, update `docs/windows-builds.md`.
-- If version defaults change, run `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/sync_versions.py --write --repo-root .` then `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/generate-website-licenses.py --write --repo-root .`.
+- If version defaults change, run `python3 docs/scripts/sync_versions.py --write` then `python3 docs/scripts/generate-website-licenses.py --write`.
 - The canonical `custom.css` lives in the DocumANTation submodule at `external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css` — change it there (and commit in that repo). `docs/_static/css/custom.css` is only for per-project overrides. Run `cd docs && make html` to verify.

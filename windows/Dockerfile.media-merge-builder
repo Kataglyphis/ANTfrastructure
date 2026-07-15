@@ -1,0 +1,157 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Thin builder image for the media-merge run+commit path (windows/build.ps1
+# Invoke-RunCommitStage). It performs the fan-in (COPY --from of the three media
+# branch trees) and sets the canonical env layout + GStreamer scripts, but does NOT
+# run the GStreamer compile. The fan-in MUST be a `docker build` (docker run cannot
+# COPY --from) and is only IO, so 2 CPUs is fine. The CPU-bound GStreamer build then
+# runs via:
+#   docker run --isolation hyperv --cpu-count N --memory Mg <this image> `
+#       powershell -File C:\temp\scripts\build-gstreamer-from-source.ps1 -InstallDir C:\runtime -LogDir C:\temp\logs
+#   docker commit <container> local/kataglyphis:windows-media
+# `docker commit` preserves the ENV set below. This file IS the former
+# Dockerfile.media (since removed) minus the final GStreamer RUN, which moved to
+# the run+commit step above.
+
+ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
+ARG CORE_IMAGE=local/kataglyphis:windows-media-core
+ARG LITERT_IMAGE=local/kataglyphis:windows-media-litert
+ARG TVM_IMAGE=local/kataglyphis:windows-media-tvm
+
+FROM ${CORE_IMAGE} AS media-core
+FROM ${LITERT_IMAGE} AS media-litert
+FROM ${TVM_IMAGE} AS media-tvm
+
+FROM ${BASE_IMAGE}
+
+ARG GSTREAMER_VERSION=1.29.2
+ARG MEMORY_LIMIT_GB=""
+# Component versions are consumed by the branch builds; re-declared here only so the
+# image carries the canonical version env vars (sync_versions.py verifies them).
+ARG ONNXRUNTIME_VERSION=v1.27.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
+ARG OPENCV_SOURCE_VERSION=5.x
+ARG FFMPEG_VERSION=master
+ARG PYAV_VERSION=18.0.0
+ARG LITERT_VERSION=v2.1.6
+ARG LITERT_LM_VERSION=0.13.1
+ARG TVM_REF=v0.25.0
+ARG IREE_VERSION=v3.11.0
+
+ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
+ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
+    ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
+    OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
+    FFMPEG_VERSION="${FFMPEG_VERSION}" `
+    PYAV_VERSION="${PYAV_VERSION}" `
+    LITERT_VERSION="${LITERT_VERSION}" `
+    LITERT_LM_VERSION="${LITERT_LM_VERSION}" `
+    TVM_REF="${TVM_REF}" `
+    IREE_VERSION="${IREE_VERSION}"
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# ── Fan-in: merge the branch install trees ───────────────────────────────────
+# Branch A carries the largest tree (ORT, GenAI, OpenCV, FFmpeg) — copy it first,
+# then layer the independent branches' components on top.
+COPY --from=media-core C:\runtime C:\runtime
+# media-core's CPython site-packages carry the installed python bindings
+# (onnxruntime + onnxruntime-genai wheels, cv2 from cmake --install) plus their
+# pypi deps (numpy, ...) and the win-amd64 platform-tag sitecustomize shim —
+# fan them in so `import onnxruntime/cv2` works in this image's CPython.
+COPY --from=media-core C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
+COPY --from=media-litert C:\runtime\lib\litert C:\runtime\lib\litert
+COPY --from=media-litert C:\runtime\lib\litert-lm C:\runtime\lib\litert-lm
+COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
+# IREE native tools + libs (iree-compile, iree-run-module) from the same branch.
+COPY --from=media-tvm C:\runtime\iree C:\runtime\iree
+# media-tvm's wheel store entries (tvm/iree wheels) merge over media-core's
+# (distinct filenames; C:\runtime\wheels is the central store, see PYTHON_WHEELS).
+COPY --from=media-tvm C:\runtime\wheels C:\runtime\wheels
+# TVM's Python wheel (plus pip) lives in the branch CPython's site-packages;
+# merging it here makes `import tvm` work in this image's CPython. The GStreamer
+# script bootstraps pip itself if this copy ever lacks it.
+COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
+
+# ── Canonical component layout for downstream consumers and verification ────
+# build-gstreamer-from-source.ps1 reads GSTREAMER_VERSION.
+ENV GSTREAMER_VERSION="${GSTREAMER_VERSION}"
+ENV GSTREAMER_BIN="C:\runtime\bin"
+ENV ONNX_ROOT="C:\runtime\lib\onnxruntime-source"
+ENV ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source"
+
+# Canonical version aliases (values propagate from the branch images' ARGs via
+# build.ps1 — kept as plain env vars here for verification scripts).
+ENV ONNX_VERSION="${ONNXRUNTIME_VERSION}"
+ENV ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
+
+# GPU variant: CUDA detected from SDK layer (set by Dockerfile.nvidia; empty = CPU-only)
+ENV ONNX_GPU_VARIANT="${GPU_TYPE}"
+
+# LiteRT layout
+ENV LITERT_ROOT="C:\runtime\lib\litert"
+ENV LITERT_INCLUDE="${LITERT_ROOT}\include"
+ENV LITERT_LIB="${LITERT_ROOT}\lib"
+ENV LITERT_BIN="${LITERT_ROOT}\bin"
+
+# LiteRT-LM layout
+ENV LITERT_LM_ROOT="C:\runtime\lib\litert-lm"
+ENV LITERT_LM_INCLUDE="${LITERT_LM_ROOT}\include"
+ENV LITERT_LM_LIB="${LITERT_LM_ROOT}\lib"
+
+# OpenCV layout. bin/lib live under the MSVC-style x64\vc18 subtree that
+# OpenCV's Windows install emits — pointing at <root>\bin|lib (which do not
+# exist) forced the final Dockerfile to re-point these for months; fixed at
+# the source now, final carries no override.
+ENV OPENCV_ROOT="C:\runtime\lib\opencv5"
+ENV OPENCV_INCLUDE="${OPENCV_ROOT}\include"
+ENV OPENCV_LIB="${OPENCV_ROOT}\x64\vc18\lib"
+ENV OPENCV_BIN="${OPENCV_ROOT}\x64\vc18\bin"
+
+# FFmpeg layout
+ENV FFMPEG_ROOT="C:\runtime\ffmpeg"
+ENV FFMPEG_BIN="${FFMPEG_ROOT}\bin"
+ENV FFMPEG_LIB="${FFMPEG_ROOT}\lib"
+
+# TVM layout — TVM_LIBRARY_PATH lets the installed Python wheel locate tvm.dll
+# (the C:\temp\tvm-src build tree is removed after install to keep layers small).
+ENV TVM_ROOT="C:\runtime\lib\tvm"
+ENV TVM_LIBRARY_PATH="${TVM_ROOT}\lib"
+
+# IREE layout — native compiler/runtime tools (iree-compile, iree-run-module);
+# the python bindings ship as self-contained wheels in PYTHON_WHEELS.
+ENV IREE_ROOT="C:\runtime\iree"
+ENV IREE_BIN="${IREE_ROOT}\bin"
+
+# Central store for the python wheels built by the media branches
+# (onnxruntime, onnxruntime-genai, tvm). cv2 ships installed-in-place instead
+# (OpenCV has no in-repo wheel machinery; opencv-python is a separate project).
+ENV PYTHON_WHEELS="C:\runtime\wheels"
+
+ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH
+
+# PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg and OpenCV.
+# FFMPEG_LIB\pkgconfig carries the libav*.pc files (enables gst-libav).
+# LiteRT is excluded (TFLITE_ENABLE_INSTALL=OFF — no .pc files generated).
+# ONNX Runtime is excluded too: its source install ships NO .pc files at all
+# (verified in the built media-core image), so the former $ONNX_ROOT\runtime\lib\pkgconfig
+# entry pointed at a nonexistent dir — GStreamer's onnx plugin cannot be found via
+# pkg-config regardless.
+# GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
+ENV PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
+
+# ── GStreamer scripts (the compile itself runs in the run+commit step, NOT here) ──
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
+     windows\scripts\modules\WindowsInstaller.Common.psm1 `
+     C:\temp\scripts\modules\
+COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
+COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
+
+# Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).
+# See the identical pattern in Dockerfile.media-builder (common stage).
+COPY linux\scripts\01-core\versions.env C:\temp\versions.env

@@ -15,33 +15,37 @@ configure_gstreamer_prefix_for_cargo() {
   fi
 }
 
+# Remove a member path (e.g. "analytics/burn") from the [workspace] members
+# array of the gst-plugins-rs Cargo.toml. cargo parses EVERY workspace member's
+# manifest for dependency resolution even when the member is --exclude'd from the
+# build, so members whose deps are unresolvable in this environment (burn, csound,
+# skia, whisper, dav1d, ...) must be dropped from the manifest itself, not merely
+# excluded. gst-plugins-rs uses an explicit members list with one quoted path per
+# line, so delete the line that is exactly that quoted path. No-op (success) if
+# the member or file is absent, so callers can prune unconditionally.
+prune_gst_plugins_rs_workspace_member() {
+  local cargo_toml="$1" member="$2" tmp
+  if [ -z "${cargo_toml}" ] || [ ! -f "${cargo_toml}" ]; then
+    echo "prune_gst_plugins_rs_workspace_member: Cargo.toml '${cargo_toml}' not found; skipping '${member}'"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  awk -v m="${member}" '
+    {
+      s = $0
+      gsub(/^[ \t]+|[ \t]+$/, "", s)
+      if (s == "\"" m "\"," || s == "\"" m "\"") next
+      print
+    }' "${cargo_toml}" > "${tmp}" && mv "${tmp}" "${cargo_toml}"
+  echo "prune_gst_plugins_rs_workspace_member: pruned '${member}' from $(basename "${cargo_toml}") (if present)"
+}
+
 compute_gst_plugins_rs_rust_jobs() {
   if command -v compute_rust_jobs >/dev/null 2>&1; then
     compute_rust_jobs
     return 0
   fi
   nproc --all 2>/dev/null || echo 1
-}
-
-cargo_metadata_package_names() {
-  local pattern="$1"
-
-  cargo metadata --no-deps --format-version=1 2>/dev/null | "${HOST_PYTHON}" -c '
-import json
-import re
-import sys
-
-pattern = re.compile(sys.argv[1])
-try:
-    data = json.load(sys.stdin)
-except Exception:
-    raise SystemExit(1)
-
-names = [pkg.get("name", "") for pkg in data.get("packages", [])]
-matches = [name for name in names if pattern.search(name)]
-if matches:
-    print(" ".join(matches))
-' "$pattern"
 }
 
 # Cached variant: calls cargo metadata once, caches JSON, reuses for subsequent calls.
@@ -75,10 +79,36 @@ if matches:
 ' "$pattern"
 }
 
+# Append `--exclude <pkg>` flags for one plugin family to the caller's build_cmd
+# array (visible via dynamic scope). Prefers the exact package names reported by
+# cargo metadata for <key>; falls back to the explicit <fallback...> list when
+# metadata returns nothing or is unavailable. Produces the SAME --exclude set as
+# the previous inline per-family blocks (only log wording is generalized).
+_gst_rs_exclude_family() {
+  local key="$1"; shift
+  local -a fallback=("$@")
+  local pkg_names name
+  if pkg_names="$(_cargo_metadata_cached_package_names "${key}")"; then
+    if [ -n "${pkg_names}" ]; then
+      for name in ${pkg_names}; do build_cmd+=(--exclude "${name}"); done
+      echo "Excluding ${key} packages: ${pkg_names}"
+    else
+      for name in "${fallback[@]}"; do build_cmd+=(--exclude "${name}"); done
+      echo "No ${key} package names found via cargo metadata; excluding ${fallback[*]}"
+    fi
+  else
+    for name in "${fallback[@]}"; do build_cmd+=(--exclude "${name}"); done
+    echo "cargo metadata unavailable; excluding ${fallback[*]} by default"
+  fi
+}
+
 prepare_cargo_target_compiler_wrapper() {
   local compiler="$1"
   local wrapper_name="$2"
-  local cross_bindir="${3:-/opt/cross-bin}"
+  # -B<dir> makes the gcc driver look for BARE tool names (as, ld, ...) in
+  # <dir>, so this must be the bare/ subdirectory, not /opt/cross-bin itself
+  # (which now holds only triplet-prefixed names).
+  local cross_bindir="${3:-/opt/cross-bin/bare}"
   local wrapper_dir="${GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-target-toolchain}"
 
   [ -n "${compiler}" ] || return 1
@@ -93,9 +123,28 @@ EOF
   printf '%s' "${wrapper_dir}/${wrapper_name}"
 }
 
-build_standalone_gst_plugins_rs() {
-  local plugin_rs_dir="/opt/gst-plugins-rs"
-  local standalone_cargo_toml=""
+_gst_rs_resolve_env() {
+  configure_gstreamer_prefix_for_cargo
+}
+
+_gst_rs_clone() {
+  local plugin_rs_dir="$1"
+  if [ -d "${plugin_rs_dir}" ]; then
+    cd "${plugin_rs_dir}"
+    git fetch origin --tags
+    git checkout "gstreamer-${GSTREAMER_VERSION}"
+  else
+    ensure_sudo_or_die
+    ${SUDO_WRAP} mkdir -p "${plugin_rs_dir}"
+    ${SUDO_WRAP} chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
+    git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${plugin_rs_dir}"
+    cd "${plugin_rs_dir}"
+    ${SUDO_WRAP} chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
+  fi
+}
+
+_gst_rs_cargo_config() {
+  local plugin_rs_dir="$1"
   local rust_jobs=""
   local cargo_host_cc=""
   local cargo_host_linker=""
@@ -106,30 +155,6 @@ build_standalone_gst_plugins_rs() {
   local cargo_target_cross_bindir=""
   local cargo_target_cc_wrapper=""
   local cargo_target_cxx_wrapper=""
-  local arch_for_excludes=""
-  local arch_probes=""
-  local cs_pkg_names=""
-  local skia_pkg_names=""
-  local whisper_pkg_names=""
-  local validate_pkg_names=""
-  local dav1d_pkg_names=""
-  local -a cargo_flags=()
-  local -a default_excludes=(--exclude gst-plugin-burn)
-  local -a build_cmd=()
-
-  configure_gstreamer_prefix_for_cargo
-
-  if [ -d "${plugin_rs_dir}" ]; then
-    cd "${plugin_rs_dir}"
-    git fetch origin --tags
-    git checkout "gstreamer-${GSTREAMER_VERSION}"
-  else
-    sudo mkdir -p "${plugin_rs_dir}"
-    sudo chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
-    git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${plugin_rs_dir}"
-    cd "${plugin_rs_dir}"
-    sudo chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
-  fi
 
   [ "${BUILD_TYPE_LOWER}" = "release" ] && cargo_flags+=(--release)
 
@@ -160,10 +185,11 @@ build_standalone_gst_plugins_rs() {
   if cross_build_is_active &&
      command -v cross_target_arch >/dev/null 2>&1 &&
      [ "$(cross_target_arch)" = "riscv64" ]; then
-    # prepare_host_cargo_toolchain_env removes /opt/cross-bin from PATH so host
-    # build scripts keep using the native cc/c++. Wrap the target compiler driver
-    # with -B/opt/cross-bin so target-side cc-rs builds still resolve riscv64 as/ld.
-    cargo_target_cross_bindir="$(cross_bin_dir 2>/dev/null || printf '%s' '/opt/cross-bin')"
+    # Bare cross tool names (as, ld, ...) live only in /opt/cross-bin/bare,
+    # which is never on PATH, so host build scripts keep the native cc/c++.
+    # Wrap the target compiler driver with -B<bare dir> so target-side cc-rs
+    # builds still resolve riscv64 as/ld (gcc -B looks up BARE names).
+    cargo_target_cross_bindir="$(cross_bare_bin_path 2>/dev/null || printf '%s' '/opt/cross-bin/bare')"
     if command -v cross_target_upper_rust >/dev/null 2>&1; then
       cargo_target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
     fi
@@ -201,128 +227,96 @@ build_standalone_gst_plugins_rs() {
       echo "RISC-V standalone gst-plugins-rs build detected: using target compiler wrappers with -B${cargo_target_cross_bindir%/}/"
     fi
   fi
+}
 
-  prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "analytics/burn"
+_gst_rs_build_plugins() {
+  local arch_for_excludes=""
+  local arch_probes=""
+  local -a build_cmd=()
+
+  if [ "${build_all_rs}" != "true" ]; then
+    prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "analytics/burn"
+  fi
 
   arch_for_excludes="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true) $(uname -m 2>/dev/null || true)"
-  if echo "${arch_for_excludes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
+  if [ "${build_all_rs}" != "true" ] && echo "${arch_for_excludes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
     default_excludes+=(--exclude gst-plugin-csound --exclude csound --exclude csound-sys)
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "audio/csound"
     echo "Host arch detected in (${arch_for_excludes}): added csound-related excludes to DEFAULT_EXCLUDES"
   fi
 
   build_cmd=(cargo build --workspace "${cargo_flags[@]}" --jobs "${CARGO_BUILD_JOBS}")
+  # --keep-going: with GST_RS_BUILD_ALL we attempt every member, so build as many
+  # as possible and surface ALL failures in one pass rather than stopping at the
+  # first (stable since Rust 1.74; toolchain here is newer).
+  [ "${build_all_rs}" = "true" ] && build_cmd+=(--keep-going)
   build_cmd+=("${default_excludes[@]}")
   if cross_build_is_active; then
     build_cmd+=(--target "${CARGO_BUILD_TARGET}")
   fi
 
   arch_probes="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
-  if echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
+  if [ "${build_all_rs}" != "true" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
     echo "Host arch detected in (${arch_probes}): excluding csound-related workspace crates from cargo build"
-    if cs_pkg_names="$(_cargo_metadata_cached_package_names 'csound')"; then
-      if [ -n "${cs_pkg_names}" ]; then
-        for name in ${cs_pkg_names}; do
-          build_cmd+=(--exclude "${name}")
-        done
-        echo "Excluding csound packages: ${cs_pkg_names}"
-      else
-        build_cmd+=(--exclude gst-plugin-csound)
-        build_cmd+=(--exclude csound)
-        build_cmd+=(--exclude csound-sys)
-        echo "No csound package names found via cargo metadata; excluding gst-plugin-csound, csound and csound-sys"
-      fi
-    else
-      build_cmd+=(--exclude gst-plugin-csound)
-      build_cmd+=(--exclude csound)
-      build_cmd+=(--exclude csound-sys)
-      echo "cargo metadata unavailable; excluding gst-plugin-csound, csound and csound-sys by default"
-    fi
+    _gst_rs_exclude_family csound gst-plugin-csound csound csound-sys
   fi
 
-  if echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
+  if [ "${build_all_rs}" != "true" ] && echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
     echo "skia disabled via Meson args: excluding skia-related workspace crates from cargo build"
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "video/skia"
-    if skia_pkg_names="$(_cargo_metadata_cached_package_names 'skia')"; then
-      if [ -n "${skia_pkg_names}" ]; then
-        for name in ${skia_pkg_names}; do
-          build_cmd+=(--exclude "${name}")
-        done
-        echo "Excluding skia packages: ${skia_pkg_names}"
-      else
-        build_cmd+=(--exclude gst-plugin-skia)
-        build_cmd+=(--exclude gst-plugin-skia-sys)
-        echo "No skia package names found via cargo metadata; excluding gst-plugin-skia and gst-plugin-skia-sys"
-      fi
-    else
-      build_cmd+=(--exclude gst-plugin-skia)
-      build_cmd+=(--exclude gst-plugin-skia-sys)
-      echo "cargo metadata unavailable; excluding gst-plugin-skia and gst-plugin-skia-sys by default"
-    fi
+    _gst_rs_exclude_family skia gst-plugin-skia gst-plugin-skia-sys
   fi
 
-  if [ "${BUILD_TYPE_LOWER}" = "release" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
+  if [ "${build_all_rs}" != "true" ] && [ "${BUILD_TYPE_LOWER}" = "release" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
     echo "Release build on ARM/RISC-V detected in (${arch_probes}): excluding whisper-related workspace crates from cargo build"
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "audio/whisper"
-    if whisper_pkg_names="$(_cargo_metadata_cached_package_names 'whisper')"; then
-      if [ -n "${whisper_pkg_names}" ]; then
-        for name in ${whisper_pkg_names}; do
-          build_cmd+=(--exclude "${name}")
-        done
-        echo "Excluding whisper packages: ${whisper_pkg_names}"
-      else
-        build_cmd+=(--exclude gst-plugin-whisper)
-        echo "No whisper package names found via cargo metadata; excluding gst-plugin-whisper"
-      fi
-    else
-      build_cmd+=(--exclude gst-plugin-whisper)
-      echo "cargo metadata unavailable; excluding gst-plugin-whisper by default"
-    fi
+    _gst_rs_exclude_family whisper gst-plugin-whisper
   fi
 
-  if cross_build_is_active || echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
+  if [ "${build_all_rs}" != "true" ] && { cross_build_is_active || echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; }; then
     echo "Cross/RISC-V build detected: devtools is disabled, gstreamer-validate-1.0.pc not available"
     echo "Excluding validate cargo plugin that requires gstreamer-validate pkg-config dep"
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "utils/validate"
 
-    if validate_pkg_names="$(_cargo_metadata_cached_package_names 'validate')"; then
-      if [ -n "${validate_pkg_names}" ]; then
-        for name in ${validate_pkg_names}; do
-          build_cmd+=(--exclude "${name}")
-        done
-        echo "Excluding validate packages: ${validate_pkg_names}"
-      else
-        build_cmd+=(--exclude gst-plugin-validate)
-        echo "No validate package names found via cargo metadata; excluding gst-plugin-validate"
-      fi
-    else
-      build_cmd+=(--exclude gst-plugin-validate)
-      echo "cargo metadata unavailable; excluding gst-plugin-validate by default"
-    fi
+    _gst_rs_exclude_family validate gst-plugin-validate
   fi
 
-  if echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
+  if [ "${build_all_rs}" != "true" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
     echo "RISC-V detected in (${arch_probes}): excluding dav1d cargo plugin"
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "video/dav1d"
 
-    if dav1d_pkg_names="$(_cargo_metadata_cached_package_names 'dav1d')"; then
-      if [ -n "${dav1d_pkg_names}" ]; then
-        for name in ${dav1d_pkg_names}; do
-          build_cmd+=(--exclude "${name}")
-        done
-        echo "Excluding dav1d packages: ${dav1d_pkg_names}"
-      else
-        build_cmd+=(--exclude gst-plugin-dav1d)
-        echo "No dav1d package names found via cargo metadata; excluding gst-plugin-dav1d"
-      fi
-    else
-      build_cmd+=(--exclude gst-plugin-dav1d)
-      echo "cargo metadata unavailable; excluding gst-plugin-dav1d by default"
-    fi
+    _gst_rs_exclude_family dav1d gst-plugin-dav1d
   fi
 
   if ! "${build_cmd[@]}"; then
-    echo "ERROR: cargo build for gst-plugins-rs failed"
-    exit 1
+    if [ "${build_all_rs}" = "true" ]; then
+      # GST_RS_BUILD_ALL: --keep-going already built every member it could; a
+      # non-zero exit here just means some crate (e.g. webrtcbin2 needing the
+      # unpackaged rice-proto) failed. The monorepo meson build is the primary
+      # installer, so warn and continue instead of failing the whole stage.
+      echo "WARN: some gst-plugins-rs workspace members failed to build (GST_RS_BUILD_ALL, --keep-going); continuing with the members that built" >&2
+    else
+      echo "ERROR: cargo build for gst-plugins-rs failed"
+      exit 1
+    fi
   fi
+}
+
+build_standalone_gst_plugins_rs() {
+  local plugin_rs_dir="/opt/gst-plugins-rs"
+  declare -g standalone_cargo_toml=""
+  declare -g build_all_rs="${GST_RS_BUILD_ALL:-true}"
+  declare -g cargo_flags=()
+  # GST_RS_BUILD_ALL=true (default): attempt to build EVERY gst-plugins-rs
+  # workspace member on every arch — no default excludes. Set to "false" to
+  # restore the conservative exclude/prune behavior below.
+  declare -g default_excludes=()
+  if [ "${build_all_rs}" != "true" ]; then
+    default_excludes=(--exclude gst-plugin-burn --exclude gst-plugin-webrtcbin2)
+  fi
+
+  _gst_rs_resolve_env
+  _gst_rs_clone "${plugin_rs_dir}"
+  _gst_rs_cargo_config "${plugin_rs_dir}"
+  _gst_rs_build_plugins
 }

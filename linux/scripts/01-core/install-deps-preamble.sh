@@ -2,8 +2,20 @@
 # install-deps-preamble.sh - convenience preamble for install-deps scripts.
 #
 # Sources cross-env.sh (if available) and provides install_deps_preamble().
-# The canonical definition lives in cross-apt.sh (sourced by cross-env.sh),
-# but this file provides a fallback for older SDK images that lack it.
+# The CANONICAL definitions of every helper below live in cross-env.sh and the
+# files it sources (cross-apt.sh: install_deps_preamble, install_host_packages,
+# install_target_packages, ...; cross-python.sh: host_python_major_minor).
+#
+# The fallback definitions below are NOT dead weight: linux/Dockerfile.media
+# COPYs only install-deps-preamble.sh, python-host.sh, cmake-cache-linker.sh
+# and modules.sh into /opt/scripts/core. The install-deps RUN steps currently
+# also bind-mount the full 01-core there, but any RUN step (present or future)
+# that does not gets no cross-env.sh — and then these fallbacks are what
+# actually runs. Do not remove them without changing that deployment.
+#
+# This file is the single entry point for install-deps scripts: it locates and
+# sources cross-env.sh itself (container path first, then the repo layout next
+# to this file), so callers only need to source this one file.
 #
 # Usage:
 #   source /path/to/install-deps-preamble.sh
@@ -15,6 +27,17 @@ _INSTALL_DEPS_PREAMBLE_LOADED=1
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
+else
+  # Repo / local-dev layout: cross-env.sh sits next to this file in
+  # linux/scripts/01-core. Fail loudly if it exists but cannot be loaded
+  # (mirrors the FATAL semantics the install-deps callers used to apply when
+  # sourcing cross-env.sh directly).
+  _preamble_repo_cross_env="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cross-env.sh"
+  if [ -f "${_preamble_repo_cross_env}" ]; then
+    # shellcheck disable=SC1090
+    source "${_preamble_repo_cross_env}" || { echo "FATAL: cannot load ${_preamble_repo_cross_env}" >&2; exit 1; }
+  fi
+  unset _preamble_repo_cross_env
 fi
 
 # Fallback: define install_deps_preamble if the SDK image's cross-apt.sh doesn't have it yet

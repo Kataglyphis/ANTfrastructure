@@ -42,44 +42,20 @@ if cross_build_is_active && \
     esac
 fi
 
-for helper in \
-    "/opt/scripts/core/compiler-cache.sh" \
-    "${_SETUP_GST_DIR}/../../../01-core/compiler-cache.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        setup_ccache
-        setup_sccache
-        setup_lld_linker
-        break
-    fi
-done
-
-# Source parallelism helpers
-for helper in \
-    "/opt/scripts/core/parallelism.sh" \
-    "${_SETUP_GST_DIR}/../../../01-core/parallelism.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        break
-    fi
-done
-
-for helper in \
-    "/opt/scripts/core/compiler-resolution.sh" \
-    "${_SETUP_GST_DIR}/../../../01-core/compiler-resolution.sh"; do
-    if [ -f "${helper}" ]; then
-        # shellcheck disable=SC1090
-        source "${helper}"
-        break
-    fi
-done
+# compiler-cache.sh, parallelism.sh and compiler-resolution.sh are already
+# loaded by media_common_init above (which also ran setup_ccache and
+# setup_lld_linker). The only net-new effects the old re-source loops had were
+# setup_sccache (not run by media_common_init) and re-running setup_lld_linker
+# so the cross-arch USE_LLD=false override above takes effect.
+setup_sccache
+setup_lld_linker
 
 # ------------------------------------------------------------------------------
 # Args (set early so we can place the venv under prefix)
 # ------------------------------------------------------------------------------
-GSTREAMER_VERSION="${1:-1.29.1}"
+# Positional arg wins; else the env value forwarded from versions.env; the
+# literal is a last-resort fallback only (keep in sync with versions.env).
+GSTREAMER_VERSION="${1:-${GSTREAMER_VERSION:-1.29.2}}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
@@ -97,8 +73,11 @@ export GSTREAMER_ENABLE_PYTHON_BINDINGS
 
 append_meson_arg() {
   local arg="$1"
+  # The haystack is space-padded on both sides, so *" ${arg} "* is an exact
+  # whole-token match. (The old extra *" ${arg}"* alternative false-skipped
+  # when an existing arg merely had the new one as a strict prefix.)
   case " ${EXTRA_MESON_ARGS} " in
-    *" ${arg} "*|*" ${arg}"*)
+    *" ${arg} "*)
       ;;
     *)
       EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} ${arg}"
@@ -106,25 +85,33 @@ append_meson_arg() {
   esac
 }
 
-append_env_flag() {
-  local var_name="$1"
-  local flag="$2"
-  local current="${!var_name:-}"
-
-  case " ${current} " in
-    *" ${flag} "*)
-      return 0
-      ;;
-  esac
-
-  if [ -n "${current}" ]; then
-    printf -v "${var_name}" '%s %s' "${current}" "${flag}"
-  else
-    printf -v "${var_name}" '%s' "${flag}"
+# Enforce the python-exe / gst-plugins-rs meson args. Called at two points: once
+# during initial arg assembly and again after monorepo setup, so they survive an
+# externally-supplied MESON_ARGS. Extracted from two verbatim-duplicated copies
+# to keep them from drifting.
+enforce_gst_rs_meson_args() {
+  append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
+  if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
+    append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
   fi
-
-  export "${var_name}=${!var_name}"
+  # GST_RS_BUILD_ALL: 'auto' attempts every gst-plugins-rs plugin and cleanly
+  # SKIPS (not a hard meson error) when a system dep is missing; 'enabled'
+  # force-requires every plugin and aborts meson setup on the first unsatisfiable
+  # dep (e.g. webrtcbin2 needs the unpackaged rice-proto>=0.4.2). 'auto' still
+  # builds burn/skia/whisper/csound/dav1d and everything else whose deps we ship.
+  if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
+    append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=auto"
+  else
+    append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
+  fi
+  [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_meson_arg "-Dgst-plugins-rs:burn=disabled"
+  # whisper stays enabled unless explicitly disabled via MESON_ARGS.
+  append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 }
+
+# NOTE: dedup-guarded env-var flag appends use append_flag_if_missing from
+# 01-core/common.sh (loaded via media_common_init above); the local
+# append_env_flag duplicate was removed in favor of that canonical helper.
 
 resolve_host_gcc_for_cargo() {
   resolve_host_compiler_for_lang c
@@ -142,23 +129,6 @@ resolve_host_gxx_for_cargo() {
 prepare_cargo_host_cxx_wrapper() {
   local compiler="$1"
   prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
-}
-
-remove_path_entry() {
-  local needle="$1"
-  local source_path="${2:-${PATH:-}}"
-  local old_ifs="${IFS}"
-  local entry=""
-  local new_path=""
-
-  IFS=':'
-  for entry in ${source_path}; do
-    [ "${entry}" = "${needle}" ] && continue
-    new_path="${new_path:+${new_path}:}${entry}"
-  done
-  IFS="${old_ifs}"
-
-  printf '%s' "${new_path}"
 }
 
 prepare_host_cargo_toolchain_env() {
@@ -182,11 +152,10 @@ prepare_host_cargo_toolchain_env() {
   [ -n "${build_rust_env}" ] || build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
   [ -n "${build_rust_lower}" ] || build_rust_lower="x86_64_unknown_linux_gnu"
 
-  if [ -d /opt/cross-bin ]; then
-    # Cargo still builds host-side proc-macros and build scripts during cross
-    # builds. Keep bare `cc`/`c++` on the host toolchain for those jobs.
-    export PATH="$(remove_path_entry /opt/cross-bin "${PATH}")"
-  fi
+  # No PATH scrub needed anymore: /opt/cross-bin carries only triplet-prefixed
+  # tool names (bare names live in /opt/cross-bin/bare, which is never on
+  # PATH), so host-side proc-macro / build-script jobs already resolve the
+  # native cc/c++.
 
   cargo_host_cc="$(resolve_host_gcc_for_cargo)"
   if [ -n "${cargo_host_cc}" ]; then
@@ -202,23 +171,35 @@ prepare_host_cargo_toolchain_env() {
     export "CXX_${build_rust_lower}=${cargo_host_cxx_wrapper}"
     export HOST_CXX="${cargo_host_cxx_wrapper}"
   fi
+
+  # TARGET-side toolchain. Without CARGO_TARGET_<triple>_LINKER cargo links the
+  # cross artifacts (the gst-plugins-rs cdylibs, rice-proto, ...) with the host
+  # cc/rust-lld and fails: "<obj> is incompatible with elf64-x86-64". Point the
+  # target triple's linker + cc-rs compiler at the real cross gcc (which carries
+  # its own as/ld), leaving the host CARGO_TARGET_<build>/HOST_CC set above for
+  # proc-macros and build scripts. This is what lets -Drs=enabled work in cross.
+  local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
+  if command -v cross_target_upper_rust >/dev/null 2>&1; then
+    target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
+  fi
+  if command -v cross_target_lower_rust >/dev/null 2>&1; then
+    target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
+  fi
+  if [ -n "${target_rust_env}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
+    local _tgt_arch
+    _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
+    target_cc="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
+    target_cxx="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CXX:-}" )"
+    if export_cargo_target_linker "${target_rust_env}" "${target_rust_lower}" "${target_cc}" "${target_cxx}"; then
+      echo "Cross cargo: target linker ${target_cc} (CARGO_TARGET_${target_rust_env}_LINKER)"
+    else
+      echo "WARN: could not resolve cross gcc for target; Rust target crates may fail to link" >&2
+    fi
+  fi
 }
 
-prepare_cross_python_build_config() {
+_gst_xpy_check_meson() {
   local meson_version=""
-  local target_triplet=""
-  local python_build_config=""
-  local target_python_include=""
-  local target_python_library=""
-  local target_python_pkgconfig_dir=""
-
-  CROSS_PYTHON_BUILD_CONFIG=""
-  export CROSS_PYTHON_BUILD_CONFIG
-
-  if ! cross_build_is_active; then
-    return 0
-  fi
-
   meson_version="$(uv run meson --version 2>/dev/null || meson --version 2>/dev/null || true)"
   if ! "${HOST_PYTHON}" - "${meson_version}" <<'PY'
 import re
@@ -234,9 +215,12 @@ raise SystemExit(0 if current >= (1, 10, 0) else 1)
 PY
   then
     echo "Meson ${meson_version:-unknown} does not support python.build_config; continuing without cross Python ABI metadata"
-    return 0
+    return 1
   fi
+  return 0
+}
 
+_gst_xpy_resolve_target_paths() {
   if command -v cross_target_triplet >/dev/null 2>&1; then
     target_triplet="$(cross_target_triplet)"
   else
@@ -244,7 +228,7 @@ PY
   fi
   if [ -z "${target_triplet}" ]; then
     echo "Could not determine cross target triplet for Meson python.build_config"
-    return 0
+    return 1
   fi
 
   if command -v cross_target_python_include_dir >/dev/null 2>&1; then
@@ -270,9 +254,13 @@ PY
   fi
   if [ -z "${target_python_include}" ] || [ -z "${target_python_library}" ] || [ -z "${target_python_pkgconfig_dir}" ]; then
     echo "Target Python development files are not ready for ${target_triplet}; skipping Meson python.build_config generation"
-    return 0
+    return 1
   fi
+  return 0
+}
 
+_gst_xpy_write_config() {
+  local python_build_config=""
   python_build_config="/tmp/meson-python-build-config-${target_triplet}.json"
   if "${HOST_PYTHON}" - "${python_build_config}" "${target_triplet}" "${target_python_include}" "${target_python_library}" "${target_python_pkgconfig_dir}" <<'PY'
 import json
@@ -356,6 +344,30 @@ PY
   fi
 }
 
+prepare_cross_python_build_config() {
+  local target_triplet=""
+  local target_python_include=""
+  local target_python_library=""
+  local target_python_pkgconfig_dir=""
+
+  CROSS_PYTHON_BUILD_CONFIG=""
+  export CROSS_PYTHON_BUILD_CONFIG
+
+  if ! cross_build_is_active; then
+    return 0
+  fi
+
+  if ! _gst_xpy_check_meson; then
+    return 0
+  fi
+
+  if ! _gst_xpy_resolve_target_paths; then
+    return 0
+  fi
+
+  _gst_xpy_write_config
+}
+
 # Allow callers to provide MESON_ARGS (preferred) to control Meson options.
 # If MESON_ARGS is set in the environment, use it verbatim; otherwise fall
 # back to the caller-provided fourth positional arg (EXTRA_MESON_ARGS).
@@ -366,20 +378,26 @@ if [ -n "${MESON_ARGS:-}" ]; then
   EXTRA_MESON_ARGS="${MESON_ARGS}"
 elif [ -z "${EXTRA_MESON_ARGS}" ]; then
   :
-  EXTRA_MESON_ARGS="-Dgst-plugins-rs:auto_plugin_features=enabled \
-    -Dgst-plugins-rs:burn=disabled \
-    -Dgst-plugins-rs:sodium-source=built-in"
+  # auto_plugin_features is set below via append_meson_arg (auto vs enabled
+  # depends on GST_RS_BUILD_ALL), so it is intentionally not baked in here.
+  EXTRA_MESON_ARGS="-Dgst-plugins-rs:sodium-source=built-in"
+  # burn is left to auto_plugin_features when GST_RS_BUILD_ALL=true (default);
+  # otherwise force it off (heavy ML deps).
+  [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} -Dgst-plugins-rs:burn=disabled"
 fi
 
 # Always enforce these, even if MESON_ARGS was supplied externally.
-append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
-if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
-  append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
-fi
-append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
-append_meson_arg "-Dgst-plugins-rs:burn=disabled"
-# Note: whisper plugin is enabled by default unless explicitly disabled by MESON_ARGS
-append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
+enforce_gst_rs_meson_args
+
+# The system Vulkan SDK headers (1.4.x) are incompatible with GCC 16's strict
+# C parsing when combined with XCB headers, causing syntax errors in
+# vulkan_xcb.h. Disable the vulkan WSI backends (xcb/wayland) to avoid
+# compilation failures in gst-plugins-bad's vulkan library.
+# Vulkan compute/processing still works without display backends in a container.
+# NOTE: the option is 'vulkan-windowing' (an array of WSI backends) — the old
+# 'vulkan_wsi' name does not exist in gst-plugins-bad 1.29.2 and makes meson
+# setup fail with "Unknown option". Empty array = no windowing backends.
+append_meson_arg "-Dgst-plugins-bad:vulkan-windowing="
 
 BUILD_TYPE_LOWER="${BUILD_TYPE,,}"
 
@@ -396,9 +414,10 @@ if [ -f /usr/local/bin/gstreamer-env.sh ]; then
 else
   :
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # runtime scripts live under /opt/scripts/04-runtime — reference them relative to /opt/scripts/03-media/* subfolders
+  # Repo layout: this script lives in 03-media/build/gstreamer/common/ and
+  # 04-runtime/ is a SIBLING of 03-media/, i.e. four levels up from here.
   # shellcheck disable=SC1091
-  source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
+  source "${SCRIPT_DIR}/../../../../04-runtime/gstreamer-env.sh"
 fi
 
 # --- Debug/logging helpers -------------------------------------------------
@@ -455,8 +474,9 @@ fi
 # Install Astral uv, use existing venv, install Meson/Ninja
 # ------------------------------------------------------------------------------
 
-if command -v sudo >/dev/null 2>&1; then sudo mkdir -p "${GSTREAMER_PREFIX}"; else mkdir -p "${GSTREAMER_PREFIX}"; fi
-if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"; else chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"; fi
+ensure_sudo_or_die
+${SUDO_WRAP} mkdir -p "${GSTREAMER_PREFIX}"
+${SUDO_WRAP} chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"
 
 echo "Using existing Python venv (expected at /opt/python/.venv)..."
 
@@ -499,6 +519,12 @@ ninja --version
 # Honor MESON_ARGS env var if present (takes precedence over CLI args).
 if [ -n "${MESON_ARGS:-}" ]; then
   EXTRA_MESON_ARGS="${MESON_ARGS}"
+  # The reset above discards everything appended since initial assembly, so
+  # re-apply the mandatory gst-plugins-bad vulkan-windowing disable (see the
+  # GCC-16/vulkan_xcb.h comment where it is first appended). The
+  # enforce_gst_rs_meson_args set is re-applied separately below, and the
+  # cross-only ptp-helper disable is appended after this point.
+  append_meson_arg "-Dgst-plugins-bad:vulkan-windowing="
 fi
 
 if [ -f "${_SETUP_GST_DIR}/patch-gstreamer-sources.sh" ]; then
@@ -523,14 +549,18 @@ else
 fi
 
 # Enforce the gst-plugins-rs args again here so they survive external MESON_ARGS.
-append_meson_arg "-Dpython-exe=${HOST_PYTHON}"
-if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS}" = "true" ]; then
-  append_meson_arg "-Dgst-python:python-exe=${HOST_PYTHON}"
+enforce_gst_rs_meson_args
+
+# In cross mode the rustc ptp-helper link step receives empty `-C link-arg=`
+# flags from meson's env passthrough, so ld.bfd fails with
+# "cannot find : No such file or directory". `ptp-helper-permissions=none` does
+# NOT prevent this — it only drops the helper's setuid/setcap; the binary is
+# still built and linked. Since PTP clock sync needs setuid and is useless in a
+# container image, disable the helper entirely on ALL cross targets (previously
+# only riscv64 did this via build-gstreamer-monorepo.sh; arm64 hit the failure).
+if cross_build_is_active; then
+  append_meson_arg "-Dgstreamer:ptp-helper=disabled"
 fi
-append_meson_arg "-Dgst-plugins-rs:auto_plugin_features=enabled"
-append_meson_arg "-Dgst-plugins-rs:burn=disabled"
-# whisper left enabled — do not force-disable here
-append_meson_arg "-Dgst-plugins-rs:sodium-source=built-in"
 
 echo "=========================================="
 echo "Building GStreamer ${GSTREAMER_VERSION}"
@@ -548,15 +578,15 @@ if [ -x "${GSTREAMER_PREFIX}/bin/gst-launch-1.0" ] && [ "${FORCE_REBUILD:-0}" !=
 fi
 
 mkdir -p "${GSTREAMER_PREFIX}"
-if command -v sudo >/dev/null 2>&1; then sudo chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; else chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true; fi
+${SUDO_WRAP} chown "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}" 2>/dev/null || true
 # do not write directly into tmp; its reserved for apt
 BUILD_DIR="/opt/tmp/gstreamer-build-$$"
-if command -v sudo >/dev/null 2>&1; then sudo mkdir -p "${BUILD_DIR}"; else mkdir -p "${BUILD_DIR}"; fi
+${SUDO_WRAP} mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
-if command -v sudo >/dev/null 2>&1; then sudo chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; else chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true; fi
+${SUDO_WRAP} chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true
 
 if command -v clone_or_update_repo >/dev/null 2>&1; then
-  clone_or_update_repo "https://github.com/GStreamer/gstreamer.git" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}"
+  retry 3 10 "GStreamer git clone" clone_or_update_repo "https://github.com/GStreamer/gstreamer.git" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}"
   cd "${BUILD_DIR}/gstreamer"
 elif [ -d "gstreamer" ]; then
   echo "Updating existing GStreamer repository..."
@@ -583,15 +613,15 @@ else
 fi
 
 if command -v patch_gstreamer_sources >/dev/null 2>&1; then
-  patch_gstreamer_sources "$(pwd)" "${EXTRA_MESON_ARGS}"
+  patch_gstreamer_sources "$(pwd)"
 fi
 
 build_gstreamer_monorepo
 
 if cross_build_is_active; then
-  echo "Cross build detected: skipping standalone gst-plugins-rs cargo build"
-  echo "(gst-plugins-rs subproject is disabled in monorepo; standalone cargo build"
-  echo "has host-toolchain path wrapping issues in cross mode)"
+  echo "Cross build: gst-plugins-rs is built + installed by the monorepo (-Drs=enabled"
+  echo "with the target Rust linker wired via prepare_host_cargo_toolchain_env), so the"
+  echo "separate standalone cargo build is redundant and skipped here."
 else
   build_standalone_gst_plugins_rs
 fi
@@ -600,7 +630,7 @@ echo "Done. Set PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH accordingly
 
 echo "Cleaning up..."
 cd /
-if command -v sudo >/dev/null 2>&1; then sudo rm -rf "${BUILD_DIR:?}"; else rm -rf "${BUILD_DIR:?}"; fi
+${SUDO_WRAP} rm -rf "${BUILD_DIR:?}" 2>/dev/null || true
 
 echo ""
 echo "=========================================="

@@ -26,8 +26,10 @@ source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" 
 # against newer interpreter releases. Keep the default aligned with the
 # source-built interpreter used by the container images.
 declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14t}"
-# Make Python 3.14 the default interpreter used when callers don't specify one.
-declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.14}"
+# Default interpreter used when callers don't specify one. DEFAULT_PYTHON_VERSION
+# was removed from versions.env — derived from the canonical PYTHON_MAJOR_MINOR
+# (itself derived from PYTHON_VERSION by common.sh).
+declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-${PYTHON_MAJOR_MINOR:-3.14}}"
 declare -g _CURRENT_VENV_PATH=""
 
 timestamp() {
@@ -69,7 +71,7 @@ uv_ensure_installed() {
 # Ensure a given Python interpreter is available, attempting to install it via
 # Astral uv if it's missing. The function is conservative: it strips any
 # non-digit/dot suffix from the requested version to form an executable name
-# like `python3.14`, then tries `uv install python@<version>` and re-checks.
+# like `python3.14`, then tries `uv python install <version>` and re-checks.
 uv_ensure_python_available() {
   local req_version="$1"
   # Normalize version to numeric+dot only for executable name
@@ -88,16 +90,16 @@ uv_ensure_python_available() {
 
   # Try uv install; don't fail the entire script if uv cannot install — emit
   # a warning and let callers decide how to proceed.
-  if uv install "python@${exe_ver}" 2>/dev/null; then
-    info "uv installed python@${exe_ver}; re-checking for ${exe_name}"
-    # Ensure uv's bin is on PATH (uv install may place runtimes in ~/.local)
+  if uv python install "${exe_ver}" 2>/dev/null; then
+    info "uv installed python ${exe_ver}; re-checking for ${exe_name}"
+    # Ensure uv's bin is on PATH (uv python install may place runtimes in ~/.local)
     export PATH="$HOME/.local/bin:$PATH"
     if command -v "${exe_name}" >/dev/null 2>&1; then
       info "Successfully installed ${exe_name} via uv"
       return 0
     fi
   else
-    warn "uv could not install python@${exe_ver} (uv install failed)"
+    warn "uv could not install python ${exe_ver} (uv python install failed)"
   fi
 
   warn "Interpreter ${exe_name} still not available. Ensure Python ${req_version} is installed on the system or provide an explicit path when creating the venv."
@@ -166,13 +168,11 @@ uv_venv_remove() {
 uv_sync_project() {
   local use_locked=0
   local no_wxpython=0
-  local active=1
-  
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --locked) use_locked=1; shift ;;
       --no-wxpython) no_wxpython=1; shift ;;
-      --active) active=1; shift ;;
       *) shift ;;
     esac
   done
@@ -194,10 +194,8 @@ uv_sync_project() {
     sync_args+=(--no-build-isolation-package wxpython)
   fi
   
-  if [ $active -eq 1 ]; then
-    sync_args+=(--active)
-  fi
-  
+  sync_args+=(--active)
+
   uv "${sync_args[@]}"
 }
 

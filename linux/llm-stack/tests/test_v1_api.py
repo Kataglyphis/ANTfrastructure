@@ -2,7 +2,7 @@
 
 Run against a running Ollama instance:
     pytest linux/llm-stack/tests/ -v
-    OLLAMA_BASE_URL=http://localhost:8080 pytest linux/llm-stack/tests/ -v
+    OLLAMA_BASE_URL=http://localhost:11434 pytest linux/llm-stack/tests/ -v
 
 Skip slow inference tests:
     pytest linux/llm-stack/tests/ -v -m "not inference"
@@ -15,7 +15,7 @@ import time
 import pytest
 import requests
 
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:8080")
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 TIMEOUT = float(os.environ.get("TEST_TIMEOUT", "30"))
 STREAM_TIMEOUT = float(os.environ.get("TEST_STREAM_TIMEOUT", "120"))
@@ -64,7 +64,7 @@ def available_models(session, wait_for_ollama):
 @pytest.fixture(scope="session")
 def default_model(available_models):
     if not available_models:
-        pytest.skip("No models pulled — run download-ollama.sh or set OLLAMA_PULL_MODELS")
+        pytest.skip("No models pulled — run `ollama pull <model>` or let compose auto-pull on first start")
     return available_models[0]
 
 

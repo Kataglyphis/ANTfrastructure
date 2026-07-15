@@ -18,6 +18,7 @@ if (-not (Test-Path $sharedModulePath)) {
 }
 
 Import-Module $sharedModulePath -Force
+# Shared helpers (Invoke-DownloadWithRetry, etc.) come through WindowsContainerImage.Common's re-export.
 
 $CudaVersion = Resolve-ContainerImageValue -Value $CudaVersion -EnvironmentVariable 'CUDA_VERSION'
 $CudaVersionMajorMinor = Resolve-ContainerImageValue -Value $CudaVersionMajorMinor -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR'
@@ -26,25 +27,42 @@ $CudnnRoot = Resolve-ContainerImageValue -Value $CudnnRoot -EnvironmentVariable 
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
-# Use NVIDIA's full CUDA installer (not Scoop — Scoop's portable install strips CCCL headers).
+# Use NVIDIA's full CUDA installer (not Scoop -- Scoop's portable install strips CCCL headers).
 # The full installer includes CUB, Thrust, libcudacxx at include/cccl/ and a proper nv/target.h.
 Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaVersion)
 $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/cuda_$CudaVersion`_windows.exe"
 Write-Host "Download URL: $cudaUrl"
 $cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
-Invoke-WebRequest -Uri $cudaUrl -OutFile $cudaInstaller -UseBasicParsing
+Invoke-DownloadWithRetry -Url $cudaUrl -DestinationPath $cudaInstaller -Description "CUDA Toolkit $CudaVersion installer" -ExpectSignature MZ
 Write-Host 'Installing CUDA Toolkit (full silent install, no driver)...'
 $proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-download-driver' -Wait -PassThru
-if ($proc.ExitCode -ne 0) {
-    throw ('CUDA installation failed with exit code: {0}' -f $proc.ExitCode)
-}
+$proc.WaitForExit()
+$exitCode = $proc.ExitCode
+$proc.Dispose()
+Clear-PendingFileHandle
 Remove-Item $cudaInstaller -Force
-Write-Host 'CUDA Toolkit installation complete.'
+if ($exitCode -ne 0) {
+    throw ('CUDA installation failed with exit code: {0}' -f $exitCode)
+}
+Write-Host 'CUDA Toolkit installation complete. Waiting for files to settle...'
+Start-Sleep -Seconds 5
+Clear-PendingFileHandle
 
 # Full installer puts CUDA at Program Files
-$effectiveCudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$($CudaVersionMajorMinor -replace '-', '.')"
+$cudaInstallRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA"
+Write-Host "Listing $cudaInstallRoot ..."
+Get-ChildItem $cudaInstallRoot -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  Found: $_" }
+
+$effectiveCudaRoot = "$cudaInstallRoot\v$($CudaVersionMajorMinor -replace '-', '.')"
 if (-not (Test-Path (Join-Path $effectiveCudaRoot 'bin\nvcc.exe'))) {
-    throw "nvcc.exe not found at $effectiveCudaRoot after full installer"
+    Write-Host "nvcc.exe not found at $effectiveCudaRoot, searching..."
+    $nvcc = Get-ChildItem "$cudaInstallRoot\*\bin\nvcc.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($nvcc) {
+        $effectiveCudaRoot = $nvcc.Directory.Parent.FullName
+        Write-Host "Found nvcc at alternate path: $effectiveCudaRoot"
+    } else {
+        throw "nvcc.exe not found anywhere under $cudaInstallRoot after full installer"
+    }
 }
 Write-Host "CUDA root: $effectiveCudaRoot"
 
@@ -62,7 +80,7 @@ $ccclDir = Join-Path $cudaIncludeDir 'cccl'
 if (Test-Path (Join-Path $ccclDir 'cub\cub.cuh')) {
     Write-Host 'CCCL headers verified present (cub/cub.cuh found).'
 } else {
-    Write-Host 'WARNING: CCCL cub/cub.cuh not found — CUDA installer may not have included CCCL.'
+    Write-Host 'WARNING: CCCL cub/cub.cuh not found -- CUDA installer may not have included CCCL.'
 }
 
 # nv/target.h: the full installer provides a proper version that handles both
@@ -91,7 +109,7 @@ foreach ($targetFile in @((Join-Path $nvDir 'target.h'), (Join-Path $nvDir 'targ
     }
 }
 
-# CRT stubs (only if missing — full installer should have them)
+# CRT stubs (only if missing -- full installer should have them)
 if (-not (Test-Path (Join-Path $cudaIncludeDir 'crt\host_config.h'))) {
     $crtDir = Join-Path $cudaIncludeDir 'crt'
     if (-not (Test-Path $crtDir)) { New-Item -Path $crtDir -ItemType Directory -Force | Out-Null }
@@ -105,15 +123,14 @@ $cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/wi
 Write-Host ('Download URL: {0}' -f $cudnnUrl)
 $cudnnArchive = Join-Path $TempDir 'cudnn.zip'
 $cudnnExtracted = Join-Path $TempDir 'cudnn_extracted'
-Invoke-WebRequest -Uri $cudnnUrl -OutFile $cudnnArchive -UseBasicParsing
+Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive" -ExpectSignature PK
 Write-Host 'Extracting cuDNN...'
-Expand-Archive -Path $cudnnArchive -DestinationPath $cudnnExtracted -Force
-$cudnnDir = Get-ChildItem -Path $cudnnExtracted -Directory | Select-Object -First 1
+$cudnnDir = Expand-ArchiveSubdirectory -ArchivePath $cudnnArchive -DestinationPath $cudnnExtracted
 if (-not $cudnnDir) {
     throw ('Extracted cuDNN directory not found under {0}' -f $cudnnExtracted)
 }
 New-Item -Path $CudnnRoot -ItemType Directory -Force | Out-Null
-Copy-Item -Path (Join-Path $cudnnDir.FullName '*') -Destination $CudnnRoot -Recurse -Force
+Copy-Item -Path (Join-Path $cudnnDir '*') -Destination $CudnnRoot -Recurse -Force
 Remove-Item $cudnnArchive -Force
 Remove-Item $cudnnExtracted -Recurse -Force
 
@@ -127,3 +144,7 @@ if (-not $cudnnLibs) { throw "cuDNN import libs (cudnn*.lib) not found under $Cu
 if (-not $cudnnDlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $CudnnRoot" }
 Write-Host ('cuDNN verified: {0} headers, {1} libs, {2} DLLs' -f $cudnnHeaders.Count, $cudnnLibs.Count, $cudnnDlls.Count)
 Write-Host 'cuDNN installation complete.'
+
+# Final push to release any lingering file handles before layer commit.
+# (The installer/archive files themselves were already removed right after use above.)
+Clear-PendingFileHandle

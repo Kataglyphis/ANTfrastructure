@@ -42,6 +42,7 @@ ENV ANDROID_HOME=/opt/android-sdk \
     ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime \
     LITERT_ROOT_ANDROID=/opt/android/litert \
     OPENCV_ROOT_ANDROID=/opt/android/opencv \
+    IREE_ROOT_ANDROID=/opt/android/iree \
     BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
     TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
@@ -52,13 +53,22 @@ ENV ANDROID_HOME=/opt/android-sdk \
 
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
 COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
+# downloads.sh (retry-capable download_file/download_and_extract) is consumed by
+# android-sdk.sh here and by the gstreamer android build in downstream stages;
+# all android-* stages FROM android-sdk, so this one COPY covers them.
+COPY --chmod=755 linux/scripts/01-core/downloads.sh /opt/scripts/core/downloads.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; /opt/scripts/android-sdk.sh && \
     mkdir -p /opt/android-sdk /opt/android && \
-    mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv
+    mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv /opt/android/iree
+
+# Arch/lib-independent helpers shared by every android-<lib> stage below —
+# hoisted into the common parent so the four children only COPY their per-lib dir.
+COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
 
 # ==============================================================================
 # android-gstreamer — GStreamer Android build (parallel with android-libs)
@@ -67,17 +77,19 @@ FROM android-sdk AS android-gstreamer
 
 ARG TARGET_ARCH
 ARG TARGETARCH
+ARG ANDROID_LIB=gstreamer
 
-COPY --chmod=755 linux/scripts/03-media/build/gstreamer/android/ /opt/scripts/03-media/gstreamer/android/
-COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-        /opt/scripts/03-media/gstreamer/android/build-gstreamer.sh
+        /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
 # ==============================================================================
 # android-onnx — ONNX Runtime Android build (parallel with gstreamer, litert, opencv)
@@ -86,17 +98,19 @@ FROM android-sdk AS android-onnx
 
 ARG TARGET_ARCH
 ARG TARGETARCH
+ARG ANDROID_LIB=onnxruntime
 
-COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/android/ /opt/scripts/03-media/onnxruntime/android/
-COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-        /opt/scripts/03-media/onnxruntime/android/build-android.sh
+        /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
 # ==============================================================================
 # android-litert — LiteRT Android build (parallel with gstreamer, onnx, opencv)
@@ -105,17 +119,19 @@ FROM android-sdk AS android-litert
 
 ARG TARGET_ARCH
 ARG TARGETARCH
+ARG ANDROID_LIB=litert
 
-COPY --chmod=755 linux/scripts/03-media/build/litert/android/ /opt/scripts/03-media/litert/android/
-COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-        /opt/scripts/03-media/litert/android/build-android.sh
+        /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
 # ==============================================================================
 # android-opencv — OpenCV Android build (parallel with gstreamer, onnx, litert)
@@ -124,17 +140,42 @@ FROM android-sdk AS android-opencv
 
 ARG TARGET_ARCH
 ARG TARGETARCH
+ARG ANDROID_LIB=opencv
 
-COPY --chmod=755 linux/scripts/03-media/build/opencv/android/ /opt/scripts/03-media/opencv/android/
-COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
+COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-        /opt/scripts/03-media/opencv/android/build-android.sh
+        /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
+
+# ==============================================================================
+# android-iree — IREE (iree.dev) runtime Android build (parallel with the others)
+# Best-effort/non-gating (see build-android.sh): a failure leaves /opt/android/iree
+# empty rather than breaking the android image.
+# ==============================================================================
+FROM android-sdk AS android-iree
+
+ARG TARGET_ARCH
+ARG TARGETARCH
+ARG ANDROID_LIB=iree
+
+COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
+
+RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+        /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
 # ==============================================================================
 # Final stage — aggregate parallel stage outputs + native GCC swap
@@ -150,12 +191,12 @@ COPY --link --from=android-gstreamer /opt/android/gstreamer /opt/android/gstream
 COPY --link --from=android-onnx /opt/android/onnxruntime /opt/android/onnxruntime
 COPY --link --from=android-litert /opt/android/litert /opt/android/litert
 COPY --link --from=android-opencv /opt/android/opencv /opt/android/opencv
+COPY --link --from=android-iree /opt/android/iree /opt/android/iree
 
 # Preserve the cross-compiled Python staging tree from the base image and swap
 # the amd64-hosted GCC with the target-native GCC for non-amd64 architectures.
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-android.sh /opt/scripts/packaging/smoke-android.sh
-COPY --chmod=755 linux/scripts/06-packaging/smoke-vulkan.sh /opt/scripts/packaging/smoke-vulkan.sh
 COPY --chmod=755 linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
 RUN set -euo pipefail; \
     if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
@@ -164,6 +205,16 @@ RUN set -euo pipefail; \
     GCC_VERSION="${GCC_VERSION}" \
     BUILD_MODE="${BUILD_MODE}" \
     bash /opt/scripts/packaging/swap-native-gcc.sh
+
+# Execute the Android-SDK/NDK smoke now that this stage's artifacts are
+# assembled (it was COPY'd in but never run). Hard-fail via smoke_summary so a
+# broken SDK/NDK surfaces at build time. NOTE: smoke-vulkan is deliberately NOT
+# run here -- the full Vulkan *SDK* (/opt/vulkan/active, headers, loader) is only
+# assembled in the package stage by setup-vulkan-symlinks.sh; this android image
+# carries only base's runtime libvulkan.so.1, so smoke-vulkan runs in the
+# package wrapper-smoke stage instead.
+RUN set -euo pipefail; \
+    bash /opt/scripts/packaging/smoke-android.sh
 
 # Ensure /opt/llvm-target exists for downstream stages (package build expects it)
 RUN mkdir -p /opt/llvm-target

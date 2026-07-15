@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/../../01-core/modules.sh"
 source_modules_framework "${SCRIPT_DIR}"
 source_module common.sh
 
-# Provide fallback build helpers if not loaded from common.sh
+# Build step helpers (defined only here; common.sh does not provide them)
 build_init() { local ws="$1" logd="$2"; _BUILD_WORKSPACE="${ws}"; mkdir -p "${logd}"; }
 build_log()  { printf '[BUILD] %s\n' "$*"; }
 build_run_step() { local label="$1"; shift; printf '[STEP] %s: ' "${label}"; "$@" && printf 'OK\n' || { printf 'FAIL\n'; return 1; }; }
@@ -34,8 +34,10 @@ build_run_step "Verify Cargo" cargo --version || true
 if [ "$SkipSecurity" != "true" ]; then
   build_run_step "Security Checks (audit & deny)" bash -c '
     cargo install --locked cargo-audit cargo-deny 2>/dev/null || true
-    cargo audit 2>/dev/null || warn "cargo audit failed, continuing..."
-    cargo deny check advisories licenses bans sources 2>/dev/null || warn "cargo deny failed, continuing..."
+    rc=0
+    cargo audit 2>/dev/null || rc=1
+    cargo deny check advisories licenses bans sources 2>/dev/null || rc=1
+    exit "$rc"
   ' || build_warn "Security checks completed with warnings"
 fi
 
@@ -52,9 +54,9 @@ fi
   build_run_step "Unit Tests" cargo test --all --verbose
 
 if [ "$SkipBench" != "true" ]; then
-  build_run_step "Benchmarks" bash -c 'cargo bench "$@"' || build_warn "Benchmarks skipped or failed"
+  build_run_step "Benchmarks" cargo bench || build_warn "Benchmarks skipped or failed"
 fi
 
-  build_run_step "Release Build" bash -c 'cargo build --release "$@"'
+  build_run_step "Release Build" cargo build --release
 
 build_finish 0

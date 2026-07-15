@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/core/install-deps-preamble.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/install-deps-preamble.sh
-elif [ -f /opt/scripts/core/cross-env.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../core/common.sh"
+media_install_deps_init "${SCRIPT_DIR}"
 
 echo "Installing libcamera build dependencies..."
 

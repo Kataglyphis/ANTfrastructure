@@ -32,18 +32,23 @@ FROM ${BASE_IMAGE}
 
 # ------------------------------------------------------------------------------
 # Version ARGs — override at build time as needed
+# Single source of truth: linux/scripts/01-core/versions.env. The full semvers
+# are SHARED with the Windows build (windows/Dockerfile.nvidia) so both
+# platforms pin the exact same NVIDIA releases.
 # ------------------------------------------------------------------------------
 # CUDA 13.3 requires driver >= 590.44.01 (Linux)
-ARG CUDA_VERSION_MAJOR_MINOR=13-3
-
-# cuDNN 9.x is compatible with CUDA 13.x
-ARG CUDNN_VERSION=9
-
-ARG TENSORRT_VERSION=10
+ARG CUDA_VERSION=13.3.0
+ARG CUDNN_VERSION=9.23.2.1
+ARG TENSORRT_VERSION=11.1.0.106
+# Apt package-name forms derived from the shared semvers:
+#   13.3.0 → 13.3 (repo paths) → 13-3 (apt package suffix); 9.23.2.1 → 9 (cuDNN major)
+ARG CUDA_VERSION_DOT=${CUDA_VERSION%.*}
+ARG CUDA_VERSION_MAJOR_MINOR=${CUDA_VERSION_DOT/./-}
+ARG CUDNN_MAJOR=${CUDNN_VERSION%%.*}
 
 ARG TARGETARCH
-ARG UBUNTU_CODENAME=2604
-# UBUNTU_CODENAME is derived from UBUNTU_VERSION (26.04 → 2604). Update in lockstep.
+ARG UBUNTU_CODENAME=resolute
+# UBUNTU_CODENAME is the official codename (resolute for 26.04). Update in lockstep.
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
@@ -55,93 +60,53 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh; \
-    ARCH="$(dpkg --print-architecture)"; \
-    case "${ARCH}" in \
-      amd64)   CUDA_ARCH="x86_64" ;; \
-      arm64)   CUDA_ARCH="sbsa" ;; \
-      *)       echo "WARNING: CUDA packages may not be available for arch ${ARCH}" >&2; CUDA_ARCH="${ARCH}" ;; \
-    esac; \
-    KEYRING_PKG="cuda-keyring_1.1-1_all.deb"; \
-    KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_CODENAME}/${CUDA_ARCH}/${KEYRING_PKG}"; \
-    curl -fSsL "${KEYRING_URL}" -o "/tmp/${KEYRING_PKG}"; \
-    dpkg -i "/tmp/${KEYRING_PKG}"; \
-    rm "/tmp/${KEYRING_PKG}"; \
-    apt-get update -qq
+    bash /tmp/core-scripts/setup-cuda-repo.sh
 
 # ==============================================================================
 # 1. NVIDIA Components (CUDA Toolkit, cuDNN, NCCL, Math Libraries)
 # ==============================================================================
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"; \
-    apt-get install -y --no-install-recommends \
-        cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-libraries-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-libraries-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-nvtx-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-command-line-tools-${CUDA_VERSION_MAJOR_MINOR} \
-        libnccl2 \
-        libnccl-dev \
-        libcublas-${CUDA_VERSION_MAJOR_MINOR} \
-        libcublas-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        libcusparse-${CUDA_VERSION_MAJOR_MINOR} \
-        libcusparse-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        libcufft-${CUDA_VERSION_MAJOR_MINOR} \
-        libcufft-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-cudart-dev-${CUDA_VERSION_MAJOR_MINOR} \
-        cuda-compat-${CUDA_VERSION_MAJOR_MINOR}; \
-    CUDA_VER_DOT="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | tr '-' '.')"; \
-    apt-get install -y --no-install-recommends \
-        libcudnn${CUDNN_VERSION}-cuda-${CUDA_VER_DOT} \
-        libcudnn${CUDNN_VERSION}-dev-cuda-${CUDA_VER_DOT} || \
-    apt-get install -y --no-install-recommends \
-        libcudnn${CUDNN_VERSION}-cuda-${CUDA_MAJOR} \
-        libcudnn${CUDNN_VERSION}-dev-cuda-${CUDA_MAJOR} || \
-    echo "WARNING: cuDNN packages not found; continuing without cuDNN"; \
-    rm -rf /var/lib/apt/lists/*; \
-    ldconfig
+    bash /tmp/core-scripts/install-cuda-stack.sh
+    # NOTE: the CUDA repo (/etc/apt/sources.list.d/cuda*.list) is intentionally
+    # NOT removed by install-cuda-stack.sh — the TensorRT RUN below still installs
+    # tensorrt-dev / tensorrt-libs from the NVIDIA apt repo.  Repo removal happens
+    # at the end of that RUN (the last apt install against NVIDIA repos in this file).
 
 # ==============================================================================
 # 2. TensorRT — try local repo deb, then NVIDIA apt repo, then skip
 # ==============================================================================
-COPY tensorrt-local-repo*.deb /tmp/tensorrt-local-repo.deb
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+# A bare `COPY tensorrt-local-repo*.deb` FAILS the whole build when no deb is
+# present ("no source files were specified") — contradicting the optional
+# 3-tier fallback below. COPY the committed drop-directory instead (always
+# exists via its README), then normalize inside the RUN: drop your EULA-gated
+# deb into linux/nvidia-local-debs/ to enable the local-repo path.
+COPY linux/nvidia-local-debs/ /tmp/tensorrt-staging/
+RUN set -euo pipefail; \
+    _trt_deb="$(find /tmp/tensorrt-staging -maxdepth 1 -name 'tensorrt-local-repo*.deb' | head -1)"; \
+    if [ -n "${_trt_deb}" ]; then mv "${_trt_deb}" /tmp/tensorrt-local-repo.deb; fi; \
+    rm -rf /tmp/tensorrt-staging
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    _trt_ok=0; \
-    if [ -f /tmp/tensorrt-local-repo.deb ]; then \
-        echo "TensorRT: installing local repo deb..."; \
-        dpkg -i /tmp/tensorrt-local-repo.deb 2>/dev/null || true; \
-        if [ -f /var/nv-tensorrt-local-repo-ubuntu2404-11.1.0-cuda-13.3/nv-tensorrt-local-0B248249-keyring.gpg ]; then \
-            cp /var/nv-tensorrt-local-repo-ubuntu2404-11.1.0-cuda-13.3/nv-tensorrt-local-0B248249-keyring.gpg /usr/share/keyrings/ 2>/dev/null || true; \
-        fi; \
-        apt-get update -qq 2>/dev/null || true; \
-        if apt-get install -y --no-install-recommends tensorrt tensorrt-dev tensorrt-libs 2>/dev/null; then \
-            echo "TensorRT: installed from local repo"; \
-            _trt_ok=1; \
-        else \
-            echo "TensorRT: local repo install failed; trying NVIDIA repo..."; \
-        fi; \
-    fi; \
-    if [ "${_trt_ok}" -eq 0 ]; then \
-        if apt-get install -y --no-install-recommends tensorrt-dev tensorrt-libs 2>/dev/null; then \
-            echo "TensorRT: installed from NVIDIA apt repo"; \
-            _trt_ok=1; \
-        else \
-            echo "TensorRT: not available in any repo; skipping"; \
-        fi; \
-    fi; \
-    if [ ! -f /usr/local/tensorrt/include/NvInfer.h ]; then \
-        TRT_INC=$(find /usr/include /usr/local -name "NvInfer.h" -print -quit 2>/dev/null || true); \
-        if [ -n "$TRT_INC" ]; then \
-            mkdir -p /usr/local/tensorrt; \
-            ln -snf "$(dirname "$TRT_INC")" /usr/local/tensorrt/include; \
-            ARCH="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || echo amd64)"; \
-            ln -snf "/usr/lib/${ARCH}" /usr/local/tensorrt/lib 2>/dev/null || true; \
-        fi; \
-    fi; \
+    bash /tmp/core-scripts/install-tensorrt.sh
+
+# Repo hygiene, mirroring Dockerfile.amd (which rm's rocm.list after its last
+# ROCm apt install).  This is the LAST apt install against NVIDIA repos in this
+# file, and no downstream stage (media/android/package/torch) apt-installs CUDA
+# packages, so drop the CUDA repo and any TensorRT local-repo sources so
+# shipped images do not fetch from — or silently upgrade against — NVIDIA
+# repos.  The cuda-keyring PACKAGE and its keyring under /usr/share/keyrings
+# intentionally STAY: the keyring only holds NVIDIA's signing key (a few kB),
+# removing it would desync the installed cuda-keyring dpkg entry, and keeping
+# it lets the repo be re-enabled later with a single sources line whose
+# signature verification still works.
+RUN set -euo pipefail; \
+    rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nv-tensorrt-local*.list; \
+    rm -rf /var/nv-tensorrt-local-repo* 2>/dev/null || true; \
     rm -rf /var/lib/apt/lists/*; \
     ldconfig
 
@@ -161,32 +126,8 @@ ENV CUDA_HOME=/usr/local/cuda \
 # ==============================================================================
 # 3. Verification
 # ==============================================================================
-RUN set -euo pipefail; \
-    export PATH="${CUDA_HOME}/bin:${PATH}"; \
-    command -v nvcc >/dev/null 2>&1 && nvcc --version || echo "WARNING: nvcc not found"; \
-    echo "--- cuDNN ---"; \
-    cudnn_hdr="$(find /usr -name "cudnn_version.h" 2>/dev/null | head -1)"; \
-    if [ -n "${cudnn_hdr}" ]; then \
-        grep "CUDNN_MAJOR\|CUDNN_MINOR\|CUDNN_PATCHLEVEL" "${cudnn_hdr}"; \
-    else \
-        echo "WARNING: cuDNN version header not found"; \
-    fi; \
-    echo "--- TensorRT ---"; \
-    trt_hdr="$(find /usr/include /usr/local/tensorrt/include -name "NvInferVersion.h" 2>/dev/null | head -1)"; \
-    if [ -n "${trt_hdr}" ]; then \
-        grep "NV_TENSORRT_MAJOR\|NV_TENSORRT_MINOR\|NV_TENSORRT_PATCH" "${trt_hdr}"; \
-    else \
-        echo "WARNING: TensorRT version header not found"; \
-    fi; \
-    echo "--- NCCL ---"; \
-    nccl_hdr="$(find /usr/include /usr/local/cuda -name "nccl.h" 2>/dev/null | head -1)"; \
-    if [ -n "${nccl_hdr}" ]; then \
-        grep "NCCL_MAJOR\|NCCL_MINOR" "${nccl_hdr}"; \
-    else \
-        echo "WARNING: NCCL header not found" >&2; \
-    fi; \
-    echo "--- CUDA libs ---"; \
-    ldconfig -p | grep -E "libcublas|libcusparse|libcufft|libcudnn|libnvinfer|libnccl" 2>/dev/null | head -20 || echo "WARNING: no CUDA libs found in ldconfig"; \
-    echo "NVIDIA layer build complete."
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    set -euo pipefail; \
+    bash /tmp/core-scripts/verify-cuda-stack.sh
 LABEL org.opencontainers.image.title="Kataglyphis Toolchain NVIDIA" \
       org.opencontainers.image.description="NVIDIA GPU library layer: CUDA, cuDNN, TensorRT, NCCL, math libs, NVTX"

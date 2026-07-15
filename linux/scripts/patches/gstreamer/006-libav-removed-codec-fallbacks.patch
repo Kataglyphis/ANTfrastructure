@@ -1,0 +1,46 @@
+diff --git a/subprojects/gst-libav/ext/libav/gstavviddec.c b/subprojects/gst-libav/ext/libav/gstavviddec.c
+index e21f3e1..7c3c1a1 100644
+--- a/subprojects/gst-libav/ext/libav/gstavviddec.c
++++ b/subprojects/gst-libav/ext/libav/gstavviddec.c
+@@ -19,7 +19,18 @@
+ #ifdef HAVE_CONFIG_H
+ #include "config.h"
+ #endif
+ 
++/* Fallback defines for codec IDs removed from FFmpeg main */
++#ifndef AV_CODEC_ID_V308
++#define AV_CODEC_ID_V308 0
++#endif
++#ifndef AV_CODEC_ID_V408
++#define AV_CODEC_ID_V408 0
++#endif
++#ifndef AV_CODEC_ID_V410
++#define AV_CODEC_ID_V410 0
++#endif
++
+ #include <assert.h>
+ #include <string.h>
+ 
+diff --git a/subprojects/gst-libav/ext/libav/gstavvidenc.c b/subprojects/gst-libav/ext/libav/gstavvidenc.c
+index 2ae6a1b..9c0e3e2 100644
+--- a/subprojects/gst-libav/ext/libav/gstavvidenc.c
++++ b/subprojects/gst-libav/ext/libav/gstavvidenc.c
+@@ -19,7 +19,18 @@
+ #ifdef HAVE_CONFIG_H
+ #include "config.h"
+ #endif
+ 
++/* Fallback defines for codec IDs removed from FFmpeg main */
++#ifndef AV_CODEC_ID_V308
++#define AV_CODEC_ID_V308 0
++#endif
++#ifndef AV_CODEC_ID_V408
++#define AV_CODEC_ID_V408 0
++#endif
++#ifndef AV_CODEC_ID_V410
++#define AV_CODEC_ID_V410 0
++#endif
++
+ #include <assert.h>
+ #include <string.h>
+ /* for stats file handling */

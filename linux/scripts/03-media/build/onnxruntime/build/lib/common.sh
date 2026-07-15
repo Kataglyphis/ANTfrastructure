@@ -18,90 +18,26 @@ elif [ -f "${_ONNX_LIB_DIR}/../../../../core/common.sh" ]; then
   media_common_init "${_ONNX_LIB_DIR}"
 fi
 
-# Fallback definitions — safety nets when modules.sh framework is unavailable.
-# Fallback loggers if shared logging is not present
-if ! command -v info >/dev/null 2>&1; then
-  info() { printf '[INFO] %s\n' "$*"; }
-fi
-if ! command -v warn >/dev/null 2>&1; then
-  warn() { printf '[WARN] %s\n' "$*" >&2; }
-fi
-if ! command -v err >/dev/null 2>&1; then
-  err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
-fi
+# media_common_init (above) provides the canonical logging (info/warn/err),
+# platform (arch_oci), cross (cross_build_enabled) and host-Python
+# (host_python_bin/host_python_major_minor) helpers via the 01-core module
+# framework — the same set armnn and every build-*.sh already rely on. The
+# previously copy-pasted re-implementations of these are gone; guard instead
+# that they actually loaded, so a broken bootstrap fails loudly HERE rather
+# than much later with a confusing "command not found".
+for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor; do
+  if ! command -v "${_req_fn}" >/dev/null 2>&1; then
+    printf '[ERROR] onnxruntime lib/common.sh: required helper %s is undefined after media_common_init (01-core framework not loaded)\n' "${_req_fn}" >&2
+    exit 1
+  fi
+done
+unset _req_fn
 
-# Fallbacks if shared helpers are not present
-if ! command -v arch_oci >/dev/null 2>&1; then
-  arch_oci() {
-    local raw="${TARGETARCH:-${TARGET_ARCH:-}}"
-    if [ -z "${raw}" ]; then
-      raw="$(uname -m 2>/dev/null || echo unknown)"
-    fi
-    case "${raw}" in
-      amd64|x86_64) printf '%s' "amd64" ;;
-      arm64|aarch64) printf '%s' "arm64" ;;
-      *) printf '%s' "${raw}" ;;
-    esac
-  }
-fi
-if ! command -v is_amd64_arch >/dev/null 2>&1; then
-  is_amd64_arch() { [ "$(arch_oci)" = "amd64" ]; }
-fi
-if ! command -v cross_build_enabled >/dev/null 2>&1; then
-  cross_build_enabled() { return 1; }
-fi
-if ! command -v host_python_bin >/dev/null 2>&1; then
-  host_python_bin() {
-    if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
-      printf '%s' "${MEDIA_HOST_PYTHON}"
-      return 0
-    fi
+# is_amd64_arch has no canonical 01-core definition (arch_oci does), so it is
+# defined here — it is used by the sibling ONNX step scripts
+# (build-onnxruntime.sh, 40-build-wasm.sh, 50-build-js.sh).
+is_amd64_arch() { [ "$(arch_oci)" = "amd64" ]; }
 
-    if [ -n "${UV_PYTHON:-}" ] && [ -x "${UV_PYTHON}" ]; then
-      printf '%s' "${UV_PYTHON}"
-      return 0
-    fi
-
-    if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
-      printf '%s' "${VIRTUAL_ENV}/bin/python"
-      return 0
-    fi
-
-    if [ -n "${PYTHON_MAJOR_MINOR:-}" ] && [ -x "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" ]; then
-      printf '%s' "/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
-      return 0
-    fi
-
-    if [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
-      local python_mm=""
-      python_mm="$(version_major_minor "${PYTHON_VERSION}" 2>/dev/null || true)"
-      if [ -n "${python_mm}" ] && [ -x "/usr/local/bin/python${python_mm}" ]; then
-        printf '%s' "/usr/local/bin/python${python_mm}"
-        return 0
-      fi
-    fi
-
-    command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
-  }
-fi
-if ! command -v host_python_major_minor >/dev/null 2>&1; then
-  host_python_major_minor() {
-    local python_bin
-
-    if [ -n "${PYTHON_MAJOR_MINOR:-}" ]; then
-      printf '%s' "${PYTHON_MAJOR_MINOR}"
-      return 0
-    fi
-
-    if [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
-      version_major_minor "${PYTHON_VERSION}"
-      return 0
-    fi
-
-    python_bin="$(host_python_bin)" || return 1
-    "${python_bin}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
-  }
-fi
 # compute_jobs_with_mem_cap is loaded from the canonical parallelism.sh module
 # (sourced above via source_module). Do not add a fallback here — the canonical
 # version includes cgroup awareness, AGGRESSIVE_PARALLELISM, and PARALLEL_JOBS.
@@ -131,7 +67,7 @@ EOF
 }
 
 init_defaults() {
-  ORT_VERSION="${ORT_VERSION:-v1.26.0}"
+  ORT_VERSION="${ORT_VERSION:-${ONNXRUNTIME_VERSION:-v1.27.0}}"
   ORT_REPO="${ORT_REPO:-https://github.com/microsoft/onnxruntime.git}"
   ORT_SRC_DIR="${ORT_SRC_DIR:-/opt/onnxruntime}"
 
@@ -147,13 +83,9 @@ init_defaults() {
   BUILD_NATIVE_CPU="${BUILD_NATIVE_CPU:-true}"
   BUILD_DNNL_EP="${BUILD_DNNL_EP:-true}"
   BUILD_XNNPACK_EP="${BUILD_XNNPACK_EP:-true}"
-  BUILD_ACL_EP="${BUILD_ACL_EP:-false}"
-  ACL_HOME="${ACL_HOME:-}"
-  ACL_LIBS="${ACL_LIBS:-}"
-  ORT_ENABLE_ARMNN="${ORT_ENABLE_ARMNN:-true}"
 
   BUILD_GENAI="${BUILD_GENAI:-true}"
-  GENAI_VERSION="${GENAI_VERSION:-v0.13.1}"
+  GENAI_VERSION="${GENAI_VERSION:-${ONNXRUNTIME_GENAI_VERSION:-v0.14.0}}"
   GENAI_REPO="${GENAI_REPO:-https://github.com/microsoft/onnxruntime-genai.git}"
   GENAI_SRC_DIR="${GENAI_SRC_DIR:-${ORT_SRC_DIR}-genai}"
   GENAI_BUILD_DIR="${GENAI_BUILD_DIR:-${GENAI_SRC_DIR}/build}"
@@ -225,7 +157,7 @@ parse_common_args() {
   export ORT_VERSION ORT_REPO ORT_SRC_DIR
   export WASM_OUTPUT_DIR WASM_CONFIG BUILD_DIR
   export NATIVE_CPU_BUILD_DIR NATIVE_CPU_OUTPUT_DIR NATIVE_GPU_OUTPUT_DIR NATIVE_CPU_CONFIG
-  export BUILD_NATIVE_CPU BUILD_DNNL_EP BUILD_XNNPACK_EP BUILD_ACL_EP ACL_HOME ACL_LIBS ORT_ENABLE_ARMNN
+  export BUILD_NATIVE_CPU BUILD_DNNL_EP BUILD_XNNPACK_EP
   export BUILD_GENAI GENAI_VERSION GENAI_REPO GENAI_SRC_DIR GENAI_BUILD_DIR GENAI_OUTPUT_DIR GENAI_CONFIG
   export USE_UV_VENV UV_VENV_DIR
   export CMAKE_POLICY_VERSION_MINIMUM
@@ -417,6 +349,53 @@ symlink_output_libraries_into_usr_local() {
   ldconfig 2>/dev/null || true
 }
 
+# Shared BUILD_ARGS base for the native ONNX Runtime builds ------------------
+#
+# The three native build scripts (30-build-native{,-amd,-nvidia}.sh) share an
+# identical leading set of build.sh flags; only the EP-specific flags
+# (--use_dnnl / --use_migraphx / --use_cuda / ...), cross handling, retry and
+# some diagnostics differ. This appends the common base to the named BUILD_ARGS
+# array; each EP script then appends only its own EP flags afterwards. build.sh
+# parses flags via argparse (no positionals), so flag order is not significant.
+# Args: <build_args_array_name> <build_dir> <config> <jobs>.
+append_onnx_native_base_build_args() {
+  local build_args_name="$1"
+  # shellcheck disable=SC2178
+  local -n build_args_ref="${build_args_name}"
+  local build_dir="$2" config="$3" jobs="$4"
+
+  build_args_ref+=(
+    --build_dir "${build_dir}"
+    --config "${config}"
+    --build_shared_lib
+    --parallel "${jobs}"
+    --compile_no_warning_as_error
+    --skip_submodule_sync
+    --skip_tests
+    --allow_running_as_root
+    --use_mimalloc
+    --use_lock_free_queue
+  )
+}
+
+# Shared artifact-finalization tail for the native ONNX Runtime builds -------
+#
+# The verify -> copy-libs -> ensure-symlink -> usr-local-symlink sequence is
+# byte-identical across the three native build scripts. The preceding wheel and
+# header copies (and each script's own diagnostics) differ, so those stay in
+# the callers. Args: <build_dir> <config> <output_dir> <src_dir>.
+finalize_onnx_native_output() {
+  local build_dir="${1:?build dir required}"
+  local build_config="${2:?build config required}"
+  local output_dir="${3:?output dir required}"
+  local src_dir="${4:?source dir required}"
+
+  verify_onnxruntime_core_header "${output_dir}" "${src_dir}" "${build_dir}"
+  copy_onnx_libraries_to_output "${build_dir}" "${build_config}" "${output_dir}"
+  ensure_onnxruntime_symlink "${output_dir}"
+  symlink_output_libraries_into_usr_local "${output_dir}"
+}
+
 append_onnx_cross_cmake_build_args() {
   local build_args_name="$1"
   # shellcheck disable=SC2178
@@ -428,6 +407,15 @@ append_onnx_cross_cmake_build_args() {
     info "Target Python dev files available; enabling ONNX Runtime Python in cross mode"
   fi
 
+  # Deliberately a REDUCED cross set — do NOT switch this to the shared
+  # cross_cmake_define_pairs / append_cmake_cross_args set. In particular onnx must
+  # NOT receive CMAKE_LIBRARY_ARCHITECTURE: it breaks ONNX Runtime's FindPython
+  # NumPy detection (onnxruntime_python.cmake), failing the cross Python-wheel
+  # build with "Target Python::NumPy ... not found". Proven by an arm64 cross-build
+  # A/B: with CMAKE_LIBRARY_ARCHITECTURE the wheel build fails at cmake configure;
+  # without it, onnx configures and compiles cleanly. (CMAKE_AR/RANLIB and
+  # PKG_CONFIG_USE_CMAKE_PREFIX_PATH are harmless but omitted for parity with the
+  # long-proven working set.)
   build_args_ref+=(
     --cmake_extra_defines
     CMAKE_SYSTEM_NAME=Linux
@@ -444,6 +432,23 @@ append_onnx_cross_cmake_build_args() {
     onnxruntime_BUILD_UNIT_TESTS=OFF
     onnxruntime_GENERATE_TEST_REPORTS=OFF
   )
+}
+
+# Append the optional LTO / WebGPU build flags, each gated on its ORT_ENABLE_*
+# env toggle (default false). Shared by the native CPU and AMD builds, which
+# opted into these identically. NOTE: the nvidia build inlines --use_webgpu
+# unconditionally, so it deliberately does NOT use this helper.
+append_onnx_optional_lto_webgpu_args() {
+  local build_args_name="$1"
+  # shellcheck disable=SC2178
+  local -n build_args_ref="${build_args_name}"
+
+  if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
+    build_args_ref+=(--enable_lto)
+  fi
+  if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
+    build_args_ref+=(--use_webgpu --use_external_dawn)
+  fi
 }
 
 append_onnx_lld_build_args() {

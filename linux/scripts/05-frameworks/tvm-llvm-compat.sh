@@ -17,35 +17,26 @@ set -euo pipefail
 #
 # Prints: "<wrapped_cc> <wrapped_cxx>" (or original compilers if no action needed)
 
-maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
-  local llvm_config_path="$1"
-  local build_dir="$2"
-  local real_cc="$3"
-  local real_cxx="$4"
+# Locate GCC's libstdc++ cxxabi.h (the one that must shadow LLVM's). Resolves the
+# GCC version + install prefix from the real g++, then returns the first readable
+# candidate header. Prints the path, or nothing if none is found.
+_detect_gcc_cxxabi_header() {
+  local real_cxx="$1"
 
-  local out_cc="$real_cc"
-  local out_cxx="$real_cxx"
-
-  if [ -z "$llvm_config_path" ] || ! command -v "$llvm_config_path" >/dev/null 2>&1; then
-    echo "$out_cc $out_cxx"
-    return 0
-  fi
-
-  local llvm_includedir
-  llvm_includedir="$($llvm_config_path --includedir 2>/dev/null || true)"
-  if [ -z "$llvm_includedir" ] || [ ! -f "$llvm_includedir/cxxabi.h" ]; then
-    echo "$out_cc $out_cxx"
-    return 0
-  fi
-
-  local gcc_major=""
-  local gcc_full=""
+  local gcc_major="" gcc_full=""
   if command -v "$real_cxx" >/dev/null 2>&1; then
     gcc_full="$($real_cxx -dumpfullversion -dumpversion 2>/dev/null || true)"
     [ -n "$gcc_full" ] || gcc_full="$($real_cxx -dumpversion 2>/dev/null || true)"
     gcc_major="${gcc_full%%.*}"
   fi
-  [ -n "$gcc_major" ] || gcc_major="14"
+  # Fallback to the canonical GCC version from versions.env if present
+  # (avoids the stale hardcoded `14` that predates the source-built GCC 16.x
+  # toolchain). GCC_VERSION is exported by artifact-common.sh / common.sh.
+  if [ -z "$gcc_major" ] && [ -n "${GCC_VERSION:-}" ]; then
+    gcc_major="${GCC_VERSION%%.*}"
+  fi
+  # Last-resort safety net (matches versions.env GCC_VERSION=16.1.0).
+  [ -n "$gcc_major" ] || gcc_major="16"
 
   local real_cxx_path="${real_cxx}"
   if [ -x "$real_cxx" ]; then
@@ -62,7 +53,6 @@ maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
     */bin/*) gcc_prefix="${real_cxx_path%/bin/*}" ;;
   esac
 
-  local gcc_cxxabi_header=""
   local -a cxxabi_candidates=(
     "/usr/include/c++/${gcc_full}/cxxabi.h"
     "/usr/include/c++/${gcc_major}/cxxabi.h"
@@ -77,16 +67,17 @@ maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
   local c
   for c in "${cxxabi_candidates[@]}"; do
     if [ -n "$c" ] && [ -r "$c" ]; then
-      gcc_cxxabi_header="$c"
-      break
+      echo "$c"
+      return 0
     fi
   done
+}
 
-  if [ -z "$gcc_cxxabi_header" ]; then
-    log "Workaround skipped: could not locate GCC libstdc++ cxxabi.h (needed to override $llvm_includedir/cxxabi.h)" >&2
-    echo "$out_cc $out_cxx"
-    return 0
-  fi
+# Create the shim cxxabi.h (forwarding to GCC's header) plus cc/cxx wrapper
+# scripts that inject -I<shim> as the first arg so it wins over LLVM's -isystem.
+# Prints "<wrapper_cc> <wrapper_cxx>".
+_write_cxxabi_shim_and_wrappers() {
+  local build_dir="$1" real_cc="$2" real_cxx="$3" gcc_cxxabi_header="$4"
 
   local shim_root="$build_dir/.kataglyphis-include-shim"
   local shim_include="$shim_root/include"
@@ -116,10 +107,37 @@ exec "$real_cxx" -I"$shim_include" "\$@"
 EOF
 
   chmod +x "$wrapper_cc" "$wrapper_cxx"
+  echo "$wrapper_cc $wrapper_cxx"
+}
+
+maybe_wrap_compiler_to_prefer_gcc_cxxabi_header() {
+  local llvm_config_path="$1"
+  local build_dir="$2"
+  local real_cc="$3"
+  local real_cxx="$4"
+
+  # No usable llvm-config → nothing injects a conflicting cxxabi.h.
+  if [ -z "$llvm_config_path" ] || ! command -v "$llvm_config_path" >/dev/null 2>&1; then
+    echo "$real_cc $real_cxx"
+    return 0
+  fi
+
+  # LLVM include dir has no top-level cxxabi.h → no conflict to work around.
+  local llvm_includedir
+  llvm_includedir="$($llvm_config_path --includedir 2>/dev/null || true)"
+  if [ -z "$llvm_includedir" ] || [ ! -f "$llvm_includedir/cxxabi.h" ]; then
+    echo "$real_cc $real_cxx"
+    return 0
+  fi
+
+  local gcc_cxxabi_header
+  gcc_cxxabi_header="$(_detect_gcc_cxxabi_header "$real_cxx")"
+  if [ -z "$gcc_cxxabi_header" ]; then
+    log "Workaround skipped: could not locate GCC libstdc++ cxxabi.h (needed to override $llvm_includedir/cxxabi.h)" >&2
+    echo "$real_cc $real_cxx"
+    return 0
+  fi
 
   log "Workaround: preferring GCC cxxabi.h over LLVM's ($llvm_includedir/cxxabi.h) via compiler wrapper" >&2
-  out_cc="$wrapper_cc"
-  out_cxx="$wrapper_cxx"
-
-  echo "$out_cc $out_cxx"
+  _write_cxxabi_shim_and_wrappers "$build_dir" "$real_cc" "$real_cxx" "$gcc_cxxabi_header"
 }

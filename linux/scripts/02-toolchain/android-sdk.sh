@@ -5,43 +5,30 @@ if [ -f /opt/scripts/core/platform.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/platform.sh
 fi
+# apt_sources_set_architectures lives in cross-apt.sh (self-contained; sourcing
+# it only defines functions, no cross-env.sh dependency needed here).
+if [ -f /opt/scripts/core/cross-apt.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/cross-apt.sh
+fi
+
+# download_file (retry-capable) lives in 01-core/downloads.sh; load it directly
+# since this installer runs without the full module chain.
+if ! command -v download_file >/dev/null 2>&1; then
+  for _asdk_dl in \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/downloads.sh" \
+    "/opt/scripts/core/downloads.sh"; do
+    if [ -f "${_asdk_dl}" ]; then
+      # shellcheck disable=SC1090
+      source "${_asdk_dl}"
+      break
+    fi
+  done
+  unset _asdk_dl
+fi
 
 ensure_host_apt_architectures() {
-  local host_sources="/etc/apt/sources.list.d/ubuntu.sources"
-  local tmp=""
-
-  [ -f "${host_sources}" ] || return 0
-
-  tmp="$(mktemp)"
-  awk -v archs="amd64 i386" '
-    BEGIN { in_stanza=0; has_arch=0 }
-    /^[[:space:]]*$/ {
-      if (in_stanza && !has_arch) print "Architectures: " archs
-      print
-      in_stanza=0
-      has_arch=0
-      next
-    }
-    /^[[:space:]]*#/ {
-      print
-      next
-    }
-    {
-      in_stanza=1
-    }
-    /^Architectures:[[:space:]]*/ {
-      print "Architectures: " archs
-      has_arch=1
-      next
-    }
-    {
-      print
-    }
-    END {
-      if (in_stanza && !has_arch) print "Architectures: " archs
-    }
-  ' "${host_sources}" > "${tmp}"
-  mv "${tmp}" "${host_sources}"
+  apt_sources_set_architectures "/etc/apt/sources.list.d/ubuntu.sources" "amd64 i386"
 }
 
 if ! android_require_amd64_build_host "Android SDK/NDK installation"; then
@@ -83,7 +70,7 @@ trap 'rm -rf "${tmpdir}"' EXIT
 
 cd "${tmpdir}"
 zip_name="commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip"
-wget -q "https://dl.google.com/android/repository/${zip_name}"
+download_file "https://dl.google.com/android/repository/${zip_name}" "${zip_name}"
 unzip -q "${zip_name}"
 
 # Ensure a clean install of 'latest' cmdline-tools.

@@ -2,7 +2,10 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-WHEELS_DIR="${WHEELS_DIR:-/opt/wheels}"
+# WHEELS_DIR (and the media path env) come from the canonical media-env.sh.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${_SCRIPT_DIR}/media-env.sh"
 
 collect_component_wheels() {
   local source_dir="$1"

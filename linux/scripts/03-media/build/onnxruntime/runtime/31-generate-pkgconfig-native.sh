@@ -31,31 +31,27 @@ generate_pkgconfig() {
   # Some ONNX Runtime builds only install a versioned SONAME file
   # (e.g. libonnxruntime.so.1.23.2) without the linker-name symlink
   # libonnxruntime.so. In that case, -lonnxruntime fails.
+  # NOTE: ${libdir} below is a literal pkg-config variable reference that must
+  # land verbatim in the .pc file (single quotes, same idiom as every other
+  # generate_pkgconfig_file caller) — NOT the shell variable of the same name.
   if [ -f "${libdir}/libonnxruntime.so" ]; then
-    libs_line="Libs: -L\\${libdir} -lonnxruntime"
+    libs_line='-L${libdir} -lonnxruntime'
   else
     onnx_lib="$(find "${libdir}" -maxdepth 1 -type f -name 'libonnxruntime.so.*' 2>/dev/null | LC_ALL=C sort | head -n 1 || true)"
     if [ -n "${onnx_lib}" ]; then
-      libs_line="Libs: -L\\${libdir} -l:$(basename "${onnx_lib}")"
+      libs_line='-L${libdir}'" -l:$(basename "${onnx_lib}")"
       ln -sf "$(basename "${onnx_lib}")" "${libdir}/libonnxruntime.so" || true
     else
       warn "No libonnxruntime.so or libonnxruntime.so.* found in ${libdir}"
-      libs_line="Libs: -L\\${libdir} -lonnxruntime"
+      libs_line='-L${libdir} -lonnxruntime'
     fi
   fi
 
-  cat >"${pc_path}" <<EOF
-prefix=${NATIVE_CPU_OUTPUT_DIR}
-exec_prefix=\${prefix}
-libdir=${libdir}
-includedir=${includedir}
-
-Name: libonnxruntime
-Description: ONNX Runtime (native CPU build)
-Version: ${pc_version}
-${libs_line}
-Cflags: -I\${includedir} -I\${includedir}/onnxruntime/core/session -I\${includedir}/onnxruntime/core/providers/cpu
-EOF
+  generate_pkgconfig_file "${pc_path}" \
+    "libonnxruntime" "ONNX Runtime (native CPU build)" "${pc_version}" \
+    "${NATIVE_CPU_OUTPUT_DIR}" \
+    "${libs_line}" \
+    '-I${includedir} -I${includedir}/onnxruntime/core/session -I${includedir}/onnxruntime/core/providers/cpu'
 
   info "Wrote pkg-config file: ${pc_path}"
 }

@@ -2,14 +2,23 @@
 
 # ubuntu-mirror.sh - shared helpers for Ubuntu archive/security/ports mirrors
 
-[ -z "${_UBUNTU_MIRROR_SH_LOADED:-}" ] || return 0
+[ -n "${_UBUNTU_MIRROR_SH_LOADED:-}" ] && return 0
 _UBUNTU_MIRROR_SH_LOADED=1
 
+_UBUNTU_MIRROR_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Defensive: guarantee the canonical is_truthy() (platform.sh) is available even
+# when this file is sourced standalone (use-fast-ubuntu-mirror.sh sources ONLY
+# ubuntu-mirror.sh). platform.sh has its own load guard, so this is a no-op when
+# it is already loaded.
+# shellcheck disable=SC1090,SC1091
+[ -n "${_PLATFORM_SH_LOADED:-}" ] || \
+  { [ -f "${_UBUNTU_MIRROR_SH_DIR}/platform.sh" ] && source "${_UBUNTU_MIRROR_SH_DIR}/platform.sh"; }
+
+# Thin alias delegating to the canonical is_truthy() (platform.sh). Kept for the
+# existing callers (base-image.sh, cross-env.sh, use-fast-ubuntu-mirror.sh).
 ubuntu_mirror_is_truthy() {
-  case "${1:-false}" in
-    1|true|TRUE|yes|YES|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
+  is_truthy "${1:-false}"
 }
 
 ubuntu_mirror_normalize_url() {
@@ -77,6 +86,23 @@ ubuntu_effective_ports_mirror_url() {
   fi
 
   ubuntu_ports_mirror_from_archive "${archive_url}"
+}
+
+# Write a deb822 apt source stanza to a file. Single source of truth for the
+# Ubuntu source templates used by cross-apt.sh (foreign-arch ports) and the
+# Dockerfile.media base-stage apt reset. Args:
+#   $1 file  $2 URIs  $3 codename  $4 architecture  [$5 with_security=1]
+# Suites are <codename>{,-updates,-backports}, plus -security unless $5 = 0.
+ubuntu_write_deb822_source() {
+  local file="$1" uris="$2" codename="$3" arch="$4" with_security="${5:-1}"
+  local suites="${codename} ${codename}-updates ${codename}-backports"
+
+  if [ "${with_security}" = "1" ]; then
+    suites="${suites} ${codename}-security"
+  fi
+
+  printf 'Types: deb\nURIs: %s\nSuites: %s\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: %s\n' \
+    "${uris}" "${suites}" "${arch}" > "${file}"
 }
 
 init_mirror_defaults() {

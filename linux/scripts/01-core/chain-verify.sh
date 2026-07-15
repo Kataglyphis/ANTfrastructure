@@ -22,10 +22,18 @@ _CHAIN_VERIFY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #
 # Usage: _verify_link "compiler->sdk-arm64" "${parent_tag}" "${child_tag}"
 # ==============================================================================
+_resolve_pin_or_empty() {
+  local nerdctl_bin="$1" tag="$2" d
+  d="$(registry_pin_ref "${nerdctl_bin}" "${tag}" 2>/dev/null || true)"
+  [ -n "${d}" ] || return 1
+  printf '%s' "${d}"
+}
+
 _verify_link() {
   local label="$1" parent_tag="$2" child_tag="$3" parent_digest child_base_digest
 
-  parent_digest="$(registry_pin_ref "${NERDCTL_BIN:-nerdctl}" "${parent_tag}" 2>/dev/null || true)"
+  parent_digest="$(retry 5 5 "registry digest for ${parent_tag}" \
+    _resolve_pin_or_empty "${NERDCTL_BIN:-nerdctl}" "${parent_tag}" 2>/dev/null || true)"
   if [ -z "${parent_digest}" ]; then
     warn "[verify] ${label}: parent tag ${parent_tag} not resolvable in registry"
     return 0

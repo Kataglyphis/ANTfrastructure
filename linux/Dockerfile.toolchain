@@ -12,7 +12,7 @@ SHELL ["bash", "-lc"]
 # intentional asymmetry: toolchain stays cached through script updates, while sdk,
 # media, and later stages rebuild when their scripts change.
 
-ARG LLVM_RELEASE=22.1.6
+ARG LLVM_RELEASE=22.1.8
 ARG GCC_VERSION=16.1.0
 ARG TARGETARCH
 ARG TARGETPLATFORM
@@ -20,7 +20,11 @@ ARG BUILDARCH
 ARG BUILDPLATFORM
 ARG BUILD_MODE=native
 ARG CROSS_TARGETS=amd64,arm64,riscv64
-ARG PYTHON_VERSION=3.14.5
+ARG PYTHON_VERSION=3.14.6
+# SHA-256 of the CPython source tarball, mirrored from versions.env (enforced by
+# verify-arg-consistency.sh). MUST be declared + forwarded to the Python RUN
+# below, else build_python.sh sees it empty and downloads CPython UNVERIFIED.
+ARG PYTHON_TGZ_SHA256=74d0d71d0600e477651a077101d6e62d1e2e69b8e992ba18c993dd643b7ba222
 ARG GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=0
 ARG GCC_HOST_BOOTSTRAP=1
 ARG USE_FAST_UBUNTU_MIRROR=false
@@ -99,9 +103,35 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
+# 3d. Target-architecture Clang/LLD/compiler-rt (for arm64, riscv64)
+# Cross-compile a native clang 22.1.8 for each target arch so the final
+# runtime image ships with clang on every architecture.
+# Uses the LLVM source cache from the host LLVM build above.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends binutils-dev; \
+    for _target in $(echo ${CROSS_TARGETS} | tr ',' ' '); do \
+      [ "${_target}" = "amd64" ] && continue; \
+      SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
+      LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
+      bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${_target}" target-clang; \
+    done
+
 # 4. RUST / CARGO
 # Install the host Rust toolchain in the compiler layer and add the target stdlibs
 # plus Cargo linker hints needed by the amd64-hosted cross build lane.
+# Pins from versions.env (auto-forwarded as build args by the orchestrator).
+ARG RUST_VERSION
+ARG CARGO_C_VERSION
+ARG RUST_NIGHTLY_TOOLCHAIN
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
@@ -122,18 +152,14 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     set -euo pipefail; \
     PYTHON_CROSS_STAGE_ROOT=/opt/python-cross \
     PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \
+    PYTHON_TGZ_SHA256="${PYTHON_TGZ_SHA256}" \
     bash /opt/scripts/python/build_python.sh "${PYTHON_VERSION}"
 
-# Pre-create the shared Python virtual environment so downstream images
-# (media, sdk) can skip the costly uv venv + pip install step.
-RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    --mount=type=tmpfs,target=/tmp \
-    set -euo pipefail; \
-    VIRTUAL_ENV=/opt/python/.venv; \
-    uv venv --seed --python /usr/local/bin/python3 "${VIRTUAL_ENV}"; \
-    uv pip install --python "${VIRTUAL_ENV}/bin/python" \
-        wheel setuptools numpy meson ninja cmake packaging
-
+# Canonical venv path/env for downstream stages. The venv itself is deliberately
+# NOT created here: Dockerfile.media's base stage recreates it from scratch
+# (`uv venv --clear`) with its own package set, sdk's TVM build uses a private
+# venv, and the package image builds its own via setup-package-image.sh — a
+# toolchain-level pre-create was always discarded downstream.
 ENV VIRTUAL_ENV=/opt/python/.venv \
     PATH=/opt/python/.venv/bin:${PATH} \
     UV_PYTHON=/opt/python/.venv/bin/python \
@@ -152,21 +178,43 @@ RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
     cp -av /tmp/scripts/06-packaging/smoke-toolchain.sh /opt/scripts/packaging/smoke-toolchain.sh; \
     cp -av /tmp/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh; \
     chmod 755 /opt/scripts -R; \
-    for f in $(find /opt/scripts -name '*.sh' -type f); do chmod 755 "$f" && bash -n "$f"; done; \
+    find /opt/scripts -name '*.sh' -type f -print0 | while IFS= read -r -d '' f; do chmod 755 "$f" && bash -n "$f"; done; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null; \
     bash /opt/scripts/python/fix-staged-python-pc.sh
 
-# sudo pass-through wrapper: avoids sudo-rs env filtering issues in container
-RUN echo '#!/bin/bash' > /usr/local/bin/sudo && \
-    echo 'args=()' >> /usr/local/bin/sudo && \
-    echo 'while [ $# -gt 0 ]; do' >> /usr/local/bin/sudo && \
-    echo '  case "$1" in' >> /usr/local/bin/sudo && \
-    echo '    --preserve-env*) shift ;;' >> /usr/local/bin/sudo && \
-    echo '    *) args+=("$1"); shift ;;' >> /usr/local/bin/sudo && \
-    echo '  esac' >> /usr/local/bin/sudo && \
-    echo 'done' >> /usr/local/bin/sudo && \
-    echo 'exec "${args[@]}"' >> /usr/local/bin/sudo && \
-    chmod +x /usr/local/bin/sudo
+# Execute the toolchain smoke (GCC/LLVM/Rust/Python + every cross-linker's ELF
+# output) right after the bundle, so a broken compiler stage fails HERE instead
+# of hours later in a downstream media/package build. Hard-fail via smoke_summary.
+RUN set -euo pipefail; \
+    bash /opt/scripts/packaging/smoke-toolchain.sh
+
+# sudo pass-through wrapper: avoids sudo-rs env filtering issues in container.
+# Strips --preserve-env* flags (which sudo-rs mis-handles) and executes the
+# remaining command directly.  Warns on stderr when stripping flags and
+# errors when no command remains after stripping.
+RUN cat > /usr/local/bin/sudo <<'SUDO_WRAPPER' && chmod +x /usr/local/bin/sudo
+#!/bin/bash
+args=()
+stripped=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --preserve-env*)
+      [ "$stripped" -eq 0 ] && echo "sudo-wrapper: stripping $1" >&2
+      stripped=1
+      shift
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+if [ "${#args[@]}" -eq 0 ]; then
+  echo "sudo-wrapper: no command to execute after stripping flags" >&2
+  exit 1
+fi
+exec "${args[@]}"
+SUDO_WRAPPER
 
 LABEL org.opencontainers.image.title="Kataglyphis Compiler" \
       org.opencontainers.image.description="Compiler toolchain with GCC and LLVM/Clang"

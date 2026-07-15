@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Source-only helper -- do not execute directly.
 # cross-meson.sh - Meson cross-compilation helpers.
 # Sourced by cross-env.sh.
@@ -22,36 +23,12 @@ make_meson_cross_rust_wrapper() {
   mkdir -p "$(dirname "${wrapper_path}")"
 
   local template="${_CROSS_ENV_DIR:-${BASH_SOURCE[0]%/*}}/meson-rust-wrapper.sh"
-  if [ -f "${template}" ]; then
-    sed -e "s|__RUSTC_BIN__|${rustc_bin}|g" \
-        -e "s|__RUST_TARGET__|${rust_target}|g" \
-        "${template}" > "${wrapper_path}"
-  else
-    cat > "${wrapper_path}" <<'HEREDOC_EOF'
-#!/usr/bin/env bash
-set -eu
-want_target='HEREDOC_TARGET'
-have_target=false
-expect_target_value=false
-cargo_managed=false
-for arg in "$@"; do
-  if [ "${expect_target_value}" = "true" ]; then
-    have_target=true
-    expect_target_value=false
-    continue
+  if [ ! -f "${template}" ]; then
+    err "meson-rust-wrapper template not found: ${template}"
   fi
-  case "${arg}" in
-    --target) expect_target_value=true ;;
-    --target=*) have_target=true ;;
-    */target/*) cargo_managed=true ;;
-  esac
-done
-if [ "${have_target}" = "true" ]; then exec 'HEREDOC_RUSTC' "$@"; fi
-if [ "${cargo_managed}" = "true" ]; then exec 'HEREDOC_RUSTC' "$@"; fi
-exec 'HEREDOC_RUSTC' --target "${want_target}" "$@"
-HEREDOC_EOF
-    sed -i "s|HEREDOC_TARGET|${rust_target}|g; s|HEREDOC_RUSTC|${rustc_bin}|g" "${wrapper_path}"
-  fi
+  sed -e "s|__RUSTC_BIN__|${rustc_bin}|g" \
+      -e "s|__RUST_TARGET__|${rust_target}|g" \
+      "${template}" > "${wrapper_path}"
 
   chmod +x "${wrapper_path}"
   printf '%s' "${wrapper_path}"
@@ -150,6 +127,16 @@ ensure_meson_cross_file() {
     rust_binary_line="rust = '${rustc_bin}'"
   fi
 
+  # Meson generates a private CMake toolchain for CMake-based subprojects
+  # (e.g. libcamera's bundled libyuv) from this cross file's [cmake] section —
+  # it does NOT inherit the CMAKE_* environment variables exported by
+  # setup_linux_cross_env. Without CMAKE_LIBRARY_ARCHITECTURE, a subproject's
+  # find_package(JPEG)/find_library() cannot locate the target's multiarch
+  # libraries under /usr/lib/<triplet>, and raw "-l<name>" link flags fail with
+  # "unable to find library". Mirroring the multiarch dir here keeps CMake
+  # subprojects cross-aware for every consumer, not just libcamera.
+  local target_libdir="/usr/lib/${triplet}"
+
   cat > "${path}" <<EOF
 [binaries]
 c = '${CC}'
@@ -165,6 +152,23 @@ ${exe_wrapper_line}
 needs_exe_wrapper = true
 sys_root = '/'
 pkg_config_libdir = '${pkg_config_libdir}'
+
+# The custom cross-GCC with --sysroot=/ does NOT search the Debian multiarch
+# dirs (/usr/include, /usr/include/<triplet>) where apt installs :<arch> target
+# dev headers, and meson CROSS builds do NOT apply the host CFLAGS/CPPFLAGS env
+# to the TARGET (host_machine) compiler — so meson's own cc.get_define /
+# has_header checks fail to find e.g. openssl's arch-specific opensslconf.h,
+# hard-aborting plugins like gst-plugins-good's HLS. Give the target compiler
+# those dirs here (lowest priority via -idirafter so GCC's own headers win).
+[built-in options]
+c_args = ['-idirafter', '/usr/include/${triplet}', '-idirafter', '/usr/include']
+cpp_args = ['-idirafter', '/usr/include/${triplet}', '-idirafter', '/usr/include']
+
+[cmake]
+CMAKE_LIBRARY_ARCHITECTURE = '${triplet}'
+CMAKE_SHARED_LINKER_FLAGS = '-L${target_libdir}'
+CMAKE_EXE_LINKER_FLAGS = '-L${target_libdir}'
+CMAKE_MODULE_LINKER_FLAGS = '-L${target_libdir}'
 
 [host_machine]
 system = 'linux'

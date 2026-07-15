@@ -19,10 +19,7 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 : "${ANDROID_API_LEVEL:=34}"
 : "${ANDROID_BUILD_TOOLS:=35.0.0}"
 
-main() {
-  echo "=== Android SDK/NDK Smoke Test ==="
-  echo ""
-
+check_sdk_root() {
   # 1. Android SDK root
   echo "--- Android SDK root ---"
   if [ -d "${ANDROID_SDK_ROOT}" ]; then
@@ -31,7 +28,9 @@ main() {
     fail "Android SDK root not found at ${ANDROID_SDK_ROOT}"
   fi
   echo ""
+}
 
+check_sdkmanager() {
   # 2. sdkmanager
   echo "--- sdkmanager ---"
   local sdkmanager="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
@@ -47,7 +46,9 @@ main() {
     fail "sdkmanager not found at ${sdkmanager}"
   fi
   echo ""
+}
 
+check_adb() {
   # 3. adb
   echo "--- adb ---"
   local adb="${ANDROID_SDK_ROOT}/platform-tools/adb"
@@ -57,7 +58,9 @@ main() {
     echo "  INFO: adb not found (only in full Android SDK install)"
   fi
   echo ""
+}
 
+check_ndk() {
   # 4. NDK
   echo "--- NDK ---"
   local ndk_dir="${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}"
@@ -86,7 +89,9 @@ main() {
     fail "NDK ${ANDROID_NDK_VERSION} not found at ${ndk_dir}"
   fi
   echo ""
+}
 
+check_build_tools() {
   # 5. Build tools
   echo "--- Build tools ---"
   local build_tools="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}"
@@ -101,7 +106,9 @@ main() {
     fail "Build tools ${ANDROID_BUILD_TOOLS} not found at ${build_tools}"
   fi
   echo ""
+}
 
+check_android_cmake() {
   # 6. CMake (Android)
   echo "--- Android CMake ---"
   local android_cmake="${ANDROID_SDK_ROOT}/cmake"
@@ -117,9 +124,19 @@ main() {
     echo "  INFO: Android CMake not found (optional)"
   fi
   echo ""
+}
 
-  echo "=== Results: ${FAILURES} failure(s) ==="
-  [ "${FAILURES}" -eq 0 ] || exit 1
+main() {
+  echo "=== Android SDK/NDK Smoke Test ==="
+  echo ""
+
+  check_sdk_root
+  check_sdkmanager
+  check_adb
+  check_ndk
+  check_build_tools
+  check_android_cmake
+  smoke_summary
 }
 
 main "$@"

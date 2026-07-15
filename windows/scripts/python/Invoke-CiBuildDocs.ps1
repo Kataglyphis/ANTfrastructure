@@ -23,37 +23,18 @@ Param(
 
 $ErrorActionPreference = "Stop"
 
-$scriptDir = $PSScriptRoot
-$containerHubModulesPath = Join-Path $scriptDir "..\modules"
-$buildCommonModulePath = Join-Path $containerHubModulesPath "WindowsBuild.Common.psm1"
-$uvCommonModulePath = Join-Path $containerHubModulesPath "WindowsUv.Common.psm1"
-
-if (-not (Test-Path -Path $buildCommonModulePath)) {
-    throw "Required reusable module not found: $buildCommonModulePath"
-}
-
-if (-not (Test-Path -Path $uvCommonModulePath)) {
-    throw "Required reusable module not found: $uvCommonModulePath"
-}
-
-Import-Module $buildCommonModulePath -Force
-Import-Module $uvCommonModulePath -Force
-
-$repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..")
-Set-Location $repoRoot
+. (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
+$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot
 
 $script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir "logs"
 
 function Write-Log { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
 function Write-LogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
 
-$script:UvCommandRunner = {
-    param([string]$File, [string[]]$CommandArgs)
-    Invoke-BuildExternal -Context $script:BuildContext -File $File -Parameters $CommandArgs | Out-Null
-}
-
-$script:UvLogInfo = { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-$script:UvLogWarning = { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
+$uvDelegates = New-UvBuildDelegates -Context $script:BuildContext
+$script:UvCommandRunner = $uvDelegates.CommandRunner
+$script:UvLogInfo = $uvDelegates.LogInfo
+$script:UvLogWarning = $uvDelegates.LogWarning
 
 Open-BuildLog -Context $script:BuildContext
 

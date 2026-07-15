@@ -21,7 +21,7 @@ Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://gith
 
 - 🔥 `linux/Dockerfile.torch`: Final Linux wrapper image — Torch/Python layer + runtime scripts + entrypoint.
 - 🌐 `linux/webserver/Dockerfile`: Minimal nginx static webserver (config at `linux/webserver/nginx.conf`).
-- 🪟 `windows/Dockerfile.base`, `windows/Dockerfile.ai`, `windows/Dockerfile`: Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
+- 🪟 `windows/Dockerfile.base`, `windows/Dockerfile.nvidia` (optional GPU layer), `windows/Dockerfile.toolchain`, `windows/Dockerfile.media-merge-builder` (+ per-branch media builders), `windows/Dockerfile` (driven by `windows/build.ps1`): Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
 
 ## Linux Image Chain
 
@@ -42,19 +42,6 @@ Linux image chain (built as separate images for caching):
 - 🧠 Torch/Python runtime included in the final Linux image chain.
 - 📡 Ready-to-serve static web content with nginx.
 
-<!-- generated:version-snapshot:start -->
-## Source-Controlled Version Snapshot
-
-This block is generated from the Dockerfiles and setup scripts by `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/sync_versions.py --write`.
-
-| Target | Source-controlled defaults |
-| --- | --- |
-| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.6, GCC 16, CMake 4.3.2, Vulkan SDK 1.4.341.1 |
-| Android layer | Android SDK 14742923, NDK 29.0.14206865, CMake 4.1.2 |
-| Webserver image | Ubuntu 26.04 |
-| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.341.1, GStreamer 1.29.1, CUDA 13.3.0, ONNX Runtime 1.27.0 |
-<!-- generated:version-snapshot:end -->
-
 ## Key Features
 
 | Category | Feature | Status |
@@ -63,15 +50,16 @@ This block is generated from the Dockerfiles and setup scripts by `python3 exter
 | Cross-build | Digest-pinned stage handoff | ✔️ |
 | Cross-build | Runtime packaging via QEMU/binfmt | ✔️ |
 | GPU acceleration | NVIDIA CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN, TensorRT | ✔️ |
+| GPU acceleration | DirectML (Windows, vendor-agnostic — ONNX Runtime + GenAI DML EP) | ✔️ |
 | GPU acceleration | AMD MIGraphX | ✔️ |
 | GPU acceleration | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan --> | ✔️ |
 | Media | ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |
-| Media | GStreamer <!-- generated:gstreamer -->1.29.1<!-- /generated:gstreamer -->, OpenCV <!-- generated:opencv -->5.x<!-- /generated:opencv -->, LiteRT | ✔️ |
+| Media | GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer -->, OpenCV <!-- generated:opencv -->5.x<!-- /generated:opencv -->, LiteRT | ✔️ |
 | Media | libcamera, FFmpeg | ✔️ |
-| Compiler | GCC <!-- generated:gcc -->16.1.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->22.1.6<!-- /generated:llvm --> | ✔️ |
-| Language runtime | Python <!-- generated:python -->3.14.5<!-- /generated:python -->, Node.js <!-- generated:node -->24.16.0<!-- /generated:node --> | ✔️ |
+| Compiler | GCC <!-- generated:gcc -->16.1.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->22.1.8<!-- /generated:llvm --> | ✔️ |
+| Language runtime | Python <!-- generated:python -->3.14.6<!-- /generated:python -->, Node.js <!-- generated:node -->26.4.0<!-- /generated:node --> | ✔️ |
 | Android | SDK <!-- generated:android_sdk -->14742923<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
-| Windows | MSVC Build Tools, CUDA 12.9, GStreamer 1.28.3 | ✔️ |
+| Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer --> | ✔️ |
 | Windows | Vulkan SDK <!-- generated:vulkan -->1.4.341.1<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.27.0<!-- /generated:onnx --> | ✔️ |
 
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started

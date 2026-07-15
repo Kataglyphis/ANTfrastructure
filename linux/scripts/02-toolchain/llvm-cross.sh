@@ -22,73 +22,90 @@ install_cross_llvm_target_packages() {
   )
 }
 
-_build_llvm_cross_core() {
-  local mode="$1"
-  local target_label="$2"
-  local triplet backend prefix release tag source_root build_root source_dir build_dir
-  local wrapper_dir native_wrapper_dir jobs native_tool_dir
-  local build_cc build_cxx build_cc_real build_cxx_real host_path
-  local target_runtime_link_path linker_flags_init link_dir clang_triple
+_llvm_cross_resolve_dirs() {
+  local -n _r="$1"
+  local mode="$2" target_label="$3" triplet release tag build_dir_suffix wrapper_dir_suffix
 
   [ -n "${target_label}" ] || die "_build_llvm_cross_core: target architecture required"
   target_label="$(arch_normalize "${target_label}")"
-  [ "${target_label}" = "amd64" ] && { log "Skipping cross LLVM build for amd64 (host already serves)"; return 0; }
+  [ "${target_label}" = "amd64" ] && { log "Skipping cross LLVM build for amd64 (host already serves)"; return 1; }
 
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || die "No triplet for ${target_label}"
 
+  _r[mode]="${mode}"
+  _r[target_label]="${target_label}"
+  _r[triplet]="${triplet}"
+
   case "${mode}" in
     target-llvm)
-      prefix="$(llvm_cross_install_prefix "${target_label}")" || die "Unable to resolve LLVM cross install prefix for ${target_label}"
-      release="$(llvm_release_version)"
-      tag="$(llvm_git_tag)"
-      build_dir_suffix="${triplet}"
-      wrapper_dir_suffix="${triplet}-tool-bin"
+      _r[prefix]="$(llvm_cross_install_prefix "${target_label}")" || die "Unable to resolve LLVM cross install prefix for ${target_label}"
+      _r[release]="$(llvm_release_version)"
+      _r[tag]="$(llvm_git_tag)"
+      _r[build_dir_suffix]="${triplet}"
+      _r[wrapper_dir_suffix]="${triplet}-tool-bin"
       ;;
     target-clang)
-      prefix="/opt/llvm-target"
-      release="${LLVM_RELEASE:-22.1.6}"
-      tag="llvmorg-${release}"
-      build_dir_suffix="target-clang-${target_label}"
-      wrapper_dir_suffix="target-clang-${target_label}-tool-bin"
+      # Per-arch install prefix. The compiler stage is SHARED and builds
+      # target-clang for every cross arch; a single fixed /opt/llvm-target would
+      # let the last arch built clobber the others and leak one arch's clang into
+      # all downstream images. The sdk stage resolves the canonical
+      # /opt/llvm-target from /opt/llvm-target-<arch> for its own target.
+      _r[prefix]="/opt/llvm-target-${target_label}"
+      _r[release]="$(llvm_release_version)"
+      _r[tag]="llvmorg-${_r[release]}"
+      _r[build_dir_suffix]="target-clang-${target_label}"
+      _r[wrapper_dir_suffix]="target-clang-${target_label}-tool-bin"
       ;;
     *) die "Unknown LLVM cross build mode: ${mode}" ;;
   esac
 
-  backend="$(llvm_cross_backend "${target_label}")" || die "No LLVM backend for ${target_label}"
-  source_root="${LLVM_CROSS_SOURCE_ROOT:-/var/cache/llvm-src}"
-  build_root="${LLVM_CROSS_BUILD_ROOT:-/var/tmp/llvm-cross-build}"
-  source_dir="${source_root}/llvm-project-${release}"
-  build_dir="${build_root}/${build_dir_suffix}"
-  wrapper_dir="${build_root}/${wrapper_dir_suffix}"
-  jobs="$(compute_jobs_with_mem_cap "${LLVM_CROSS_JOBS:-}" "${LLVM_CROSS_MB_PER_JOB:-3500}")"
+  _r[backend]="$(llvm_cross_backend "${target_label}")" || die "No LLVM backend for ${target_label}"
+  _r[source_root]="${LLVM_CROSS_SOURCE_ROOT:-/var/cache/llvm-src}"
+  _r[build_root]="${LLVM_CROSS_BUILD_ROOT:-/var/tmp/llvm-cross-build}"
+  _r[source_dir]="${_r[source_root]}/llvm-project-${_r[release]}"
+  _r[build_dir]="${_r[build_root]}/${_r[build_dir_suffix]}"
+  _r[wrapper_dir]="${_r[build_root]}/${_r[wrapper_dir_suffix]}"
+  _r[jobs]="$(compute_jobs_with_mem_cap "${LLVM_CROSS_JOBS:-}" "${LLVM_CROSS_MB_PER_JOB:-3500}")"
+  return 0
+}
+
+_llvm_cross_early_return() {
+  local -n _r="$1"
+  local mode="${_r[mode]}" target_label="${_r[target_label]}" prefix="${_r[prefix]}" release="${_r[release]}"
+  local cmake_dir installed_version
 
   # --- Early-return if already installed ---
   case "${mode}" in
     target-llvm)
-      local cmake_dir
-      if cmake_dir="$(llvm_cross_cmake_dir "${target_label}" 2>/dev/null || true)"; then
-        if [ -n "${cmake_dir}" ] && llvm_cross_install_looks_complete "${target_label}"; then
-          validate_cross_llvm_cmake_package "${target_label}"
-          log "Reusing target LLVM install for ${target_label}: ${cmake_dir}"
-          return 0
-        fi
+      cmake_dir="$(llvm_cross_cmake_dir "${target_label}" 2>/dev/null)" || cmake_dir=""
+      if [ -n "${cmake_dir}" ] && llvm_cross_install_looks_complete "${target_label}"; then
+        validate_cross_llvm_cmake_package "${target_label}"
+        log "Reusing target LLVM install for ${target_label}: ${cmake_dir}"
+        return 1
+      fi
+      if [ -d "${prefix}" ]; then
         log "Discarding incomplete target LLVM install for ${target_label}: ${prefix}"
         rm -rf "${prefix}"
       fi
       ;;
     target-clang)
       if [ -x "${prefix}/bin/clang" ]; then
-        local installed_version
         installed_version="$("${prefix}/bin/clang" --version 2>/dev/null | awk 'NR==1{print $NF}' || true)"
         if [ "${installed_version}" = "${release}" ]; then
           log "Target clang ${release} for ${target_label} already installed at ${prefix}"
-          return 0
+          return 1
         fi
         log "Replacing existing target clang at ${prefix} (wanted ${release}, found ${installed_version})"
         rm -rf "${prefix}"
       fi
       ;;
   esac
+  return 0
+}
+
+_llvm_cross_retrieve_source() {
+  local -n _r="$1"
+  local source_root="${_r[source_root]}" build_root="${_r[build_root]}" source_dir="${_r[source_dir]}" tag="${_r[tag]}" mode="${_r[mode]}" target_label="${_r[target_label]}"
 
   # --- Source retrieval ---
   mkdir -p "${source_root}" "${build_root}"
@@ -97,26 +114,36 @@ _build_llvm_cross_core() {
     log "Cloning llvm-project ${tag} for ${mode} ${target_label}"
     git clone --depth 1 --branch "${tag}" https://github.com/llvm/llvm-project.git "${source_dir}"
   fi
+}
+
+_llvm_cross_pre_build_hooks() {
+  local -n _r="$1"
+  local mode="${_r[mode]}" target_label="${_r[target_label]}" build_root="${_r[build_root]}"
 
   # --- Mode-specific pre-build hooks ---
   case "${mode}" in
     target-llvm)
-      patch_cross_llvm_config_template "${source_dir}"
       ;;
     target-clang)
-      native_wrapper_dir="${build_root}/target-clang-${target_label}-native-tool-bin"
-      build_cc_real="$(resolve_build_gcc_tool gcc 2>/dev/null || command -v gcc 2>/dev/null || true)"
-      build_cxx_real="$(resolve_build_gcc_tool g++ 2>/dev/null || command -v g++ 2>/dev/null || true)"
-      [ -n "${build_cc_real}" ] || die "Host C compiler not found for LLVM native helper tools"
-      [ -n "${build_cxx_real}" ] || die "Host C++ compiler not found for LLVM native helper tools"
-      host_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      _r[native_wrapper_dir]="${build_root}/target-clang-${target_label}-native-tool-bin"
+      _r[build_cc_real]="$(resolve_build_gcc_tool gcc 2>/dev/null || command -v gcc 2>/dev/null || true)"
+      _r[build_cxx_real]="$(resolve_build_gcc_tool g++ 2>/dev/null || command -v g++ 2>/dev/null || true)"
+      [ -n "${_r[build_cc_real]}" ] || die "Host C compiler not found for LLVM native helper tools"
+      [ -n "${_r[build_cxx_real]}" ] || die "Host C++ compiler not found for LLVM native helper tools"
+      _r[host_path]="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       ;;
   esac
+}
 
-  native_tool_dir="$(llvm_host_native_tool_dir)" || die "Host LLVM native tools not found"
-
-  rm -rf "${prefix}" "${build_dir}" "${wrapper_dir}" ${native_wrapper_dir:+"${native_wrapper_dir}"}
-  log "Building LLVM ${release} for ${target_label} (${triplet}) in ${mode} mode — this will take a while"
+_llvm_cross_setup_and_build() {
+  local -n _r="$1"
+  local mode="${_r[mode]}" target_label="${_r[target_label]}" triplet="${_r[triplet]}" prefix="${_r[prefix]}"
+  local release="${_r[release]}" source_dir="${_r[source_dir]}" build_dir="${_r[build_dir]}"
+  local wrapper_dir="${_r[wrapper_dir]}" jobs="${_r[jobs]}" backend="${_r[backend]}"
+  local native_tool_dir="${_r[native_tool_dir]}"
+  local native_wrapper_dir="${_r[native_wrapper_dir]:-}"
+  local build_cc build_cxx build_cc_real="${_r[build_cc_real]:-}" build_cxx_real="${_r[build_cxx_real]:-}" host_path="${_r[host_path]:-}"
+  local target_runtime_link_path linker_flags_init link_dir clang_triple
 
   (
     export BUILD_MODE=cross
@@ -263,6 +290,12 @@ _build_llvm_cross_core() {
 
     cmake --install "${build_dir}"
   )
+}
+
+_llvm_cross_post_build_hooks() {
+  local -n _r="$1"
+  local mode="${_r[mode]}" target_label="${_r[target_label]}" prefix="${_r[prefix]}" release="${_r[release]}"
+  local build_dir="${_r[build_dir]}" cmake_dir
 
   # --- Mode-specific post-build hooks ---
   case "${mode}" in
@@ -282,6 +315,32 @@ _build_llvm_cross_core() {
   esac
 }
 
+_build_llvm_cross_core() {
+  local mode="$1"
+  local target_label="$2"
+  # NOTE: this array must NOT be named `_r` — the helpers below bind it with
+  # `local -n _r="$1"`, and a nameref whose target has the same name is a bash
+  # circular reference (breaks every _r[...] write → "unbound variable").
+  local -A _state=()
+
+  _llvm_cross_resolve_dirs _state "${mode}" "${target_label}" || return 0
+
+  _llvm_cross_early_return _state || return 0
+
+  _llvm_cross_retrieve_source _state
+
+  _llvm_cross_pre_build_hooks _state
+
+  _state[native_tool_dir]="$(llvm_host_native_tool_dir)" || die "Host LLVM native tools not found"
+
+  rm -rf "${_state[prefix]}" "${_state[build_dir]}" "${_state[wrapper_dir]}" ${_state[native_wrapper_dir]:+"${_state[native_wrapper_dir]}"}
+  log "Building LLVM ${_state[release]} for ${_state[target_label]} (${_state[triplet]}) in ${_state[mode]} mode — this will take a while"
+
+  _llvm_cross_setup_and_build _state
+
+  _llvm_cross_post_build_hooks _state
+}
+
 build_cross_llvm_target() {
   _build_llvm_cross_core target-llvm "$1"
 }
@@ -290,25 +349,19 @@ install_target_clang_toolchain() {
   _build_llvm_cross_core target-clang "${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
 }
 
+# Per-target callback for for_each_cross_target (amd64 is skipped by default).
+_build_cross_llvm_for_target() {
+  local target_label="$1"
+  install_cross_llvm_target_packages "${target_label}"
+  build_cross_llvm_target "${target_label}"
+}
+
 build_cross_llvm_targets() {
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local target target_label
 
   cross_mode_requested || return 0
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported LLVM cross target list: ${targets_raw}"
 
-  for target in ${targets_raw//,/ }; do
-    target_label="$(arch_normalize "${target}")"
-    case "${target_label}" in
-      amd64|arm64|riscv64) ;;
-      *)
-      log "Skipping unsupported LLVM cross target: ${target}"
-      continue
-      ;;
-    esac
-
-    [ "${target_label}" = "amd64" ] && continue
-    install_cross_llvm_target_packages "${target_label}"
-    build_cross_llvm_target "${target_label}"
-  done
+  # amd64 is skipped by default (the host already serves amd64 LLVM).
+  for_each_cross_target _build_cross_llvm_for_target "${targets_raw}"
 }

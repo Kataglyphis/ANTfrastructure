@@ -30,10 +30,10 @@
 # Global Version Arguments (safety-net defaults; orchestrator passes canonical
 # values from linux/scripts/01-core/versions.env via append_version_build_args).
 ARG ONNXRUNTIME_VERSION="v1.27.0"
-ARG ONNXRUNTIME_GENAI_VERSION="v0.13.1"
-ARG LITERT_VERSION="v2.1.5"
+ARG ONNXRUNTIME_GENAI_VERSION="v0.14.0"
+ARG LITERT_VERSION="v2.1.6"
 ARG OPENCV_VERSION="5.x"
-ARG GSTREAMER_VERSION="1.29.1"
+ARG GSTREAMER_VERSION="1.29.2"
 
 # Build Acceleration Arguments
 # Set AGGRESSIVE_PARALLELISM=true for faster builds on high-memory machines (16GB+)
@@ -58,6 +58,7 @@ SHELL ["bash", "-lc"]
 ARG BUILD_MODE=native
 ARG TARGET_ARCH
 ARG TARGETARCH
+ARG GCC_VERSION
 ARG TARGETPLATFORM
 ARG BUILDARCH
 ARG BUILDPLATFORM
@@ -70,6 +71,7 @@ ARG USE_SCCACHE
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
+ARG UBUNTU_CODENAME=resolute
 
 ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
     ENABLE_AMD=${ENABLE_AMD} \
@@ -86,6 +88,13 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
 
 # Shared bootstrap + activation scripts (small, rarely change → COPY in base).
 COPY --chmod=755 linux/scripts/03-media/core/common.sh              /opt/scripts/03-media/core/common.sh
+# Data-driven per-arch MEDIA_SKIP_* flag files consumed by
+# media_load_arch_flags() (03-media/core/common.sh). COPY'd in base so they
+# are present in every derived stage, including install-deps RUN steps that
+# only bind-mount their own 03-media subtree + 01-core.
+COPY --chmod=644 linux/scripts/03-media/core/arch-flags-amd64.env   /opt/scripts/03-media/core/arch-flags-amd64.env
+COPY --chmod=644 linux/scripts/03-media/core/arch-flags-arm64.env   /opt/scripts/03-media/core/arch-flags-arm64.env
+COPY --chmod=644 linux/scripts/03-media/core/arch-flags-riscv64.env /opt/scripts/03-media/core/arch-flags-riscv64.env
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh    /opt/scripts/03-media/activate-cross-python.sh
 COPY --chmod=755 linux/scripts/03-media/runtime/verify-media-artifacts.sh /opt/scripts/03-media/runtime/verify-media-artifacts.sh
 COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh  /opt/scripts/core/install-deps-preamble.sh
@@ -99,41 +108,58 @@ RUN set -euo pipefail; \
     fi; \
     bash /opt/scripts/03-media/activate-cross-python.sh
 
-# Strip all external apt sources and configure only standard resolute repos.
+# Strip all external apt sources and configure only standard Ubuntu repos.
 # The SDK base image may carry external repo traces (ROCm, Kitware, etc.)
 # that cause package version conflicts.  We start fresh here.
-RUN set -euo pipefail; \
+# Uses the UBUNTU_CODENAME build arg (from versions.env) so the codename
+# stays in sync with the base image's Ubuntu version.
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,readonly \
+    set -euo pipefail; \
     rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
           /etc/apt/preferences.d/* 2>/dev/null || true; \
-    printf 'Types: deb\nURIs: http://archive.ubuntu.com/ubuntu/\nSuites: resolute resolute-updates resolute-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' > /etc/apt/sources.list.d/ubuntu.sources; \
-    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: resolute resolute-updates resolute-backports resolute-security\nComponents: main universe restricted multiverse\nArchitectures: arm64 riscv64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' > /etc/apt/sources.list.d/ubuntu-ports.sources; \
-    rm -rf /var/lib/apt/lists/*; \
+    . /tmp/core-scripts/ubuntu-mirror.sh; \
+    _archive_url="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"; \
+    _ports_url="$(ubuntu_effective_ports_mirror_url "${_archive_url}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}")"; \
+    ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources "${_archive_url}" "${UBUNTU_CODENAME}" amd64 0; \
+    # Ports sources: ONLY for the actual cross target, under the canonical
+    # per-arch filename (cross-apt.sh's prune globs ubuntu-ports*.sources and
+    # keeps the per-arch file). The old unconditional ubuntu-ports.sources with
+    # "Architectures: arm64 riscv64" double-defined the target arch once
+    # cross_configure_foreign_arch_apt_sources wrote the per-arch file (~16
+    # "configured multiple times" warnings per apt call, 1300+/build) and made
+    # every build download the OTHER arch's package indexes for nothing.
+    case "${TARGET_ARCH:-amd64}" in \
+      arm64|riscv64) \
+        ubuntu_write_deb822_source "/etc/apt/sources.list.d/ubuntu-ports-${TARGET_ARCH}.sources" "${_ports_url}" "${UBUNTU_CODENAME}" "${TARGET_ARCH}" 1 ;; \
+      *) : ;; \
+    esac; \
     apt-get update -qq
 
-# Ensure Python venv exists for downstream stages (OpenCV, LiteRT, ONNX build scripts)
+# Ensure Python venv exists for downstream stages (OpenCV, LiteRT, ONNX build scripts).
+# The base image sets UV_PYTHON=/opt/python/.venv/bin/python — the very venv this
+# step (re)creates. `uv venv --clear` deletes that interpreter first, so uv would
+# have nothing to seed the new venv from ("No interpreter found at path
+# /opt/python/.venv/bin/python"). Seed explicitly from the source-built base
+# CPython (build_python.sh installs it under /usr/local) and drop the inherited
+# UV_PYTHON for the create step so uv can't chase the just-cleared venv.
 RUN set -euo pipefail; \
-    uv venv --clear /opt/python/.venv; \
+    _base_py=/usr/local/bin/python3; \
+    [ -x "${_base_py}" ] || _base_py="$(command -v python3.14 || command -v python3)"; \
+    env -u UV_PYTHON uv venv --clear --python "${_base_py}" /opt/python/.venv; \
     UV_PYTHON="/opt/python/.venv/bin/python" uv pip install \
         --upgrade pip setuptools wheel cython pybind11 numpy
 
-# Re-register GCC 16.1.0 as the default after install-deps reset alternatives
-RUN set -euo pipefail; \
-    update-alternatives --install /usr/bin/gcc gcc /opt/gcc-16.1.0/bin/gcc 150; \
-    update-alternatives --install /usr/bin/g++ g++ /opt/gcc-16.1.0/bin/g++ 150; \
-    update-alternatives --install /usr/bin/cc cc /opt/gcc-16.1.0/bin/gcc 150; \
-    update-alternatives --install /usr/bin/c++ c++ /opt/gcc-16.1.0/bin/g++ 150; \
-    update-alternatives --set gcc /opt/gcc-16.1.0/bin/gcc; \
-    update-alternatives --set g++ /opt/gcc-16.1.0/bin/g++; \
-    update-alternatives --set cc /opt/gcc-16.1.0/bin/gcc; \
-    update-alternatives --set c++ /opt/gcc-16.1.0/bin/g++; \
-    cc --version 2>&1 | head -1; c++ --version 2>&1 | head -1
+# Re-register GCC as the default after install-deps reset alternatives.
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+    set -euo pipefail; \
+    bash /tmp/core-scripts/register-gcc-alternatives.sh
 
-# Also export CC/CXX so CMake (which searches PATH) always gets GCC 16.1.0
+# Also export CC/CXX so CMake (which searches PATH) always gets GCC
 ENV NVIDIA_CODEC_HEADERS=auto \
     UV_PYTHON="/opt/python/.venv/bin/python" \
     VIRTUAL_ENV="/opt/python/.venv" \
-    CC=/opt/gcc-16.1.0/bin/gcc \
-    CXX=/opt/gcc-16.1.0/bin/g++
+    CC=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/gcc \
+    CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
 
 # ==============================================================================
 # ONNX Runtime stage
@@ -183,7 +209,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu
 
 # Validate ONNX Runtime CPU artifacts before downstream stages consume them.
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-cpu
 
@@ -213,7 +239,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step genai
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     if [ "${BUILD_GENAI:-true}" = "true" ]; then \
       bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-genai; \
@@ -221,23 +247,30 @@ RUN --mount=type=cache,target=/tmp \
       echo "Skipping onnxruntime-genai verification (BUILD_GENAI=${BUILD_GENAI:-true})"; \
     fi
 
-# wasm step — heavy compilation, kept separate to avoid cache loss on pkgconfig failure.
+# wasm step — only useful for native amd64 builds (WASM is browser-targeted);
+# skip for cross-builds and non-amd64 to avoid unnecessary downloads/caching.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm
+    if [ "${TARGET_ARCH}" = "${BUILDARCH}" ] && [ "${TARGET_ARCH}" = "amd64" ]; then \
+        bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm; \
+    else \
+        echo "Skipping WASM build (target=${TARGET_ARCH}, build=${BUILDARCH})"; \
+    fi
 
 # js + pkgconfig steps (fast, IO-bound)
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step js; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step pkgconfig
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-pkgconfig
 
@@ -247,16 +280,17 @@ RUN --mount=type=cache,target=/tmp \
 FROM base AS litert
 
 ARG LITERT_VERSION
-ARG LITERT_BUILD_TYPE=Release
 ARG LITERT_OUTPUT_DIR=/usr/local
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/litert/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
@@ -264,7 +298,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/litert/build-litert.sh "${LITERT_VERSION}"
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert-headers
@@ -275,6 +309,10 @@ RUN --mount=type=cache,target=/tmp \
 FROM base AS opencv
 
 ARG OPENCV_VERSION
+# Opt-in reproducibility: 40-hex SHAs pin core/contrib to immutable commits;
+# empty (default) tracks the OPENCV_VERSION branch. core and contrib pin separately.
+ARG OPENCV_COMMIT=""
+ARG OPENCV_CONTRIB_COMMIT=""
 ARG OPENCV_BUILD_TYPE=Release
 ARG OPENCV_WITH_CONTRIB=true
 ARG OPENCV_WITH_PYTHON=true
@@ -284,22 +322,20 @@ ENV OPENCV_PREFIX=${OPENCV_OUTPUT_DIR}
 ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/opencv/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    rm -rf /opt/opencv; \
-    unset LDFLAGS; \
-    export USE_LLD=false \
-      CMAKE_C_COMPILER=/opt/gcc-16.1.0/bin/gcc CMAKE_CXX_COMPILER=/opt/gcc-16.1.0/bin/g++ \
-      LDFLAGS="-Wl,--allow-multiple-definition"; \
+    export OPENCV_COMMIT="${OPENCV_COMMIT}" OPENCV_CONTRIB_COMMIT="${OPENCV_CONTRIB_COMMIT}"; \
     bash /opt/scripts/03-media/build/opencv/build-opencv.sh \
         --opencv-version "${OPENCV_VERSION}" \
         --prefix "${OPENCV_OUTPUT_DIR}" \
@@ -308,7 +344,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         --with-python "${OPENCV_WITH_PYTHON}" \
         --skip-dep-install
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv
@@ -321,6 +357,8 @@ FROM base AS app-wheelhouse
 ARG TARGET_ARCH
 
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -347,7 +385,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
         echo "WARNING: app wheelhouse is empty — riscv64 cross wheel builds may have failed; continuing"; \
     fi
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh app-wheels
 
@@ -360,36 +398,42 @@ ARG TARGET_ARCH
 ARG BUILD_MODE
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    if echo "${TARGET_ARCH}" | grep -qiE 'arm64|aarch64'; then \
-        bash /opt/scripts/03-media/build/armnn/install-deps.sh; \
-    else \
-        echo "Skipping Arm NN deps (arm64 only, got ${TARGET_ARCH})"; \
-    fi
+    case "${TARGET_ARCH:-${TARGETARCH:-}}" in \
+        arm64|aarch64) bash /opt/scripts/03-media/build/armnn/install-deps.sh ;; \
+        *) echo "Skipping Arm NN deps (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-}})" ;; \
+    esac
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    if echo "${TARGET_ARCH}" | grep -qiE 'arm64|aarch64'; then \
-        bash /opt/scripts/03-media/build/armnn/build-arm-compute-library.sh && \
-        bash /opt/scripts/03-media/build/armnn/build-armnn.sh; \
-    else \
-        echo "Skipping Arm NN build (arm64 only, got ${TARGET_ARCH})"; \
-        mkdir -p /opt/armnn /opt/acl; \
-    fi
+    case "${TARGET_ARCH:-${TARGETARCH:-}}" in \
+        arm64|aarch64) \
+            bash /opt/scripts/03-media/build/armnn/build-arm-compute-library.sh && \
+            bash /opt/scripts/03-media/build/armnn/build-armnn.sh ;; \
+        *) \
+            echo "Skipping Arm NN build (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-}})"; \
+            mkdir -p /opt/armnn /opt/acl ;; \
+    esac
 
 # ==============================================================================
 # FFmpeg stage
 # ==============================================================================
 FROM base AS ffmpeg
 
+# Opt-in reproducibility: set FFMPEG_COMMIT to a 40-hex SHA to pin FFmpeg to an
+# immutable commit archive; empty (default) tracks FFMPEG_VERSION/master.
+ARG FFMPEG_COMMIT=""
+
 ENV FFMPEG_PREFIX=/opt/ffmpeg
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
@@ -397,14 +441,21 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scr
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
+    --mount=type=bind,from=onnxruntime,source=/usr/local/lib/onnxruntime-cpu,target=/usr/local/lib/onnxruntime-cpu,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ffmpeg-sdks,id=ffmpeg-sdks-${TARGETARCH},sharing=shared \
     --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    export PKG_CONFIG_PATH="/var/cache/ffmpeg-sdks:/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"; \
+    export ENABLE_NVIDIA="${ENABLE_NVIDIA}"; \
+    export FFMPEG_COMMIT="${FFMPEG_COMMIT}"; \
+    echo "--- ffmpeg build v3: DNN backends (TensorFlow, OpenVINO, ONNX) + CUDA HW accel ---"; \
     bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh ffmpeg
 
@@ -434,9 +485,15 @@ COPY --link --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=armnn /opt/armnn /opt/armnn
 COPY --link --from=armnn /opt/acl /opt/acl
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh media-inputs
+
+# Smoke-build alias: `nerdctl build --target media-smoke -f linux/Dockerfile.media`
+# Skips the slow gstreamer → libcamera serial tail (matches the `wrapper-smoke`
+# alias in Dockerfile.package). Useful for media-build validation before
+# kicking off the expensive full chain.
+FROM media-inputs AS media-smoke
 
 
 # ==============================================================================
@@ -461,6 +518,8 @@ ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     TARGET_ARCH=${TARGET_ARCH}
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -468,6 +527,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     bash /opt/scripts/03-media/build/gstreamer/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -477,15 +538,12 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    if [ "${BUILD_MODE}" = "cross" ] && [ "${TARGET_ARCH}" != "amd64" ]; then \
-        export GSTREAMER_ENABLE_PYTHON_BINDINGS=false; \
-    fi; \
     bash /opt/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh \
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \
         "$BUILD_TYPE"
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh gstreamer
 
@@ -495,12 +553,15 @@ RUN --mount=type=cache,target=/tmp \
 FROM gstreamer AS libcamera
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/libcamera/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -514,7 +575,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/libcamera/build-libcamera.sh
 
-RUN --mount=type=cache,target=/tmp \
+RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh libcamera
 
@@ -533,7 +594,10 @@ ARG GSTREAMER_PREFIX=/opt/gstreamer
 ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GCC_VERSION
-ARG PYTHON_MAJOR_MINOR
+ARG PYTHON_VERSION
+# Derived — versions.env only defines PYTHON_VERSION (empty PYTHON_VERSION falls
+# through to the :-3.14 defaults below, matching the previous behavior)
+ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
@@ -546,10 +610,10 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR:-3.14} \
     PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python${PYTHON_MAJOR_MINOR:-3.14}/site-packages:${PYTHONPATH}"
 
-COPY --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
+COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
-COPY --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
+COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 COPY --link --from=libcamera /opt/libcamera /opt/libcamera
@@ -562,24 +626,20 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packagin
 # linux/scripts/03-media/runtime/media-env.sh
 
 RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    export PATH="${GSTREAMER_PREFIX:-/opt/gstreamer}/bin:${OPENCV_PREFIX:-/opt/opencv5}/bin:${LIBCAMERA_PREFIX:-/opt/libcamera}/bin:${FFMPEG_PREFIX:-/opt/ffmpeg}/bin:/usr/local/bin:${PATH:-}"; \
-    export LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION:-16.1.0}/lib64:/usr/local/lib:${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch:${GSTREAMER_PREFIX:-/opt/gstreamer}/lib:${OPENCV_PREFIX:-/opt/opencv5}/lib:${OPENCV_PREFIX:-/opt/opencv5}/lib64:${LIBCAMERA_PREFIX:-/opt/libcamera}/lib:${LIBCAMERA_PREFIX:-/opt/libcamera}/lib64:${FFMPEG_PREFIX:-/opt/ffmpeg}/lib:${FFMPEG_PREFIX:-/opt/ffmpeg}/lib64:${LD_LIBRARY_PATH:-}"; \
-    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/pkgconfig:${OPENCV_PREFIX:-/opt/opencv5}/lib/pkgconfig:${LIBCAMERA_PREFIX:-/opt/libcamera}/lib/pkgconfig:${LIBCAMERA_PREFIX:-/opt/libcamera}/lib64/pkgconfig:${FFMPEG_PREFIX:-/opt/ffmpeg}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"; \
-    export GST_PLUGIN_PATH="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX:-/opt/libcamera}/lib/gstreamer-1.0"; \
-    export GI_TYPELIB_PATH="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/girepository-1.0"; \
-    export GDK_BACKEND="x11"; \
+    source /opt/scripts/03-media/runtime/media-env.sh; \
     bash /opt/scripts/03-media/runtime/collect-artifacts.sh && \
     bash /opt/scripts/03-media/runtime/install-deps.sh && \
     bash /opt/scripts/03-media/runtime/configure-runtime.sh && \
     bash /opt/scripts/03-media/runtime/repair-wheels.sh && \
     bash /opt/scripts/03-media/runtime/verify-wheels.sh && \
-    uv pip install --no-deps /opt/wheels/*.whl 2>/dev/null || true && \
+    { uv pip install --no-deps /opt/wheels/*.whl || echo "WARNING: uv pip install of collected wheels failed (expected for cross-arch wheels)" >&2; } && \
     bash /opt/scripts/03-media/runtime/validate-media-runtime.sh && \
     PYTHONPATH="$(echo /opt/opencv5/lib/python*/site-packages 2>/dev/null):${PYTHONPATH:-}" \
     bash /opt/scripts/packaging/smoke-media.sh
@@ -587,7 +647,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/
 # Keep in sync with linux/scripts/03-media/runtime/media-env.sh (canonical definition)
 ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
-    LD_LIBRARY_PATH="/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib:${OPENCV_PREFIX}/lib:${OPENCV_PREFIX}/lib64:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib:${FFMPEG_PREFIX}/lib64:${LD_LIBRARY_PATH}" \
+    LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib:/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib:${OPENCV_PREFIX}/lib:${OPENCV_PREFIX}/lib64:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib:${FFMPEG_PREFIX}/lib64:${LD_LIBRARY_PATH}" \
     GDK_BACKEND="x11" \
     GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"

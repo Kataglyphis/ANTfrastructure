@@ -8,6 +8,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 
+$installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
+if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
+Import-Module $installerModulePath -Force
+
 # Admin-Check
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
@@ -52,11 +56,10 @@ function Dump-InstallerLogs {
     try { Test-Connection -ComputerName www.microsoft.com -Count 1 -ErrorAction Stop | Select-Object Address,ResponseTime } catch { Write-Host "Network check failed: $($_.Exception.Message)" }
 }
 
-# TLS 1.2 sicherstellen (für Downloads)
+# (TLS 1.2 is set per-attempt by Invoke-DownloadWithRetry -- no separate
+# Enable-Tls12ForDownloads needed; nothing else here downloads.)
 
-try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
-
-# Temp-Verzeichnis vorbereiten
+# Prepare temp directory for installer logs
 
 # ensure we run the installer with the temp dir we control
 $env:TEMP = $TempDir
@@ -65,35 +68,19 @@ $env:TMP  = $TempDir
 Write-Host "Using TEMP=$env:TEMP for installer temporary files and logs."
 New-Item -Path $TempDir -ItemType Directory -Force | Out-Null
 $installer = Join-Path $TempDir 'vs_buildtools.exe'
-$installerLog = Join-Path $TempDir 'vs_installer.log'
 
 # Optionale ENV-Variablen analog Dockerfile
 
 try {
     Write-Host 'Downloading Visual Studio Build Tools Installer...'
-    $downloaded = $false
-    try {
-        Write-Host 'Trying curl.exe (custom DNS resolver)...'
-        & curl.exe -fsSL --retry 3 'https://aka.ms/vs/stable/vs_buildtools.exe' -o $installer
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $installer)) { $downloaded = $true; Write-Host 'curl succeeded.' }
-    } catch { Write-Host "curl failed: $($_.Exception.Message)" }
-    if (-not $downloaded) {
-        try {
-            Write-Host 'Falling back to BITS transfer...'
-            Start-BitsTransfer -Source 'https://aka.ms/vs/stable/vs_buildtools.exe' -Destination $installer -ErrorAction Stop
-            Write-Host 'BITS transfer succeeded.'; $downloaded = $true
-        } catch { Write-Host "BITS transfer failed: $($_.Exception.Message)" }
-    }
-    if (-not $downloaded) {
-        try {
-            Write-Host 'Falling back to Invoke-WebRequest...'
-            Invoke-WebRequest -Uri 'https://aka.ms/vs/stable/vs_buildtools.exe' -OutFile $installer
-            $downloaded = $true
-        } catch { Write-Host "Invoke-WebRequest failed: $($_.Exception.Message)" }
-    }
-    if (-not $downloaded) { throw 'VS Build Tools Download failed.' }
+    # Shared hardened download (retry + backoff + redirect-following). -ExpectSignature MZ
+    # rejects-and-retries the flaky aka.ms/vs/stable redirect's HTML error pages (same class
+    # as the nuget aka.ms bug) -- this replaces a 30-line hand-rolled curl/BITS/IWR fallback
+    # chain plus a manual PE-signature check with the one helper every other setup script uses.
+    Invoke-DownloadWithRetry -Url 'https://aka.ms/vs/stable/vs_buildtools.exe' -DestinationPath $installer `
+        -Description 'VS Build Tools installer' -ExpectSignature MZ
 
-    $args = @(
+    $installerArgs = @(
         '--quiet',
         '--wait', '--norestart', '--nocache',
 
@@ -113,7 +100,7 @@ try {
         
         # Windows SDK & Native Desktop
 
-        '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.26100',      # Windows 11 SDK (26100)
+        '--add', "Microsoft.VisualStudio.Component.Windows11SDK.$(if ($env:WINDOWS_SDK_BUILD) { $env:WINDOWS_SDK_BUILD } else { '26100' })", # Windows 11 SDK
         # '--add','Microsoft.VisualStudio.Workload.NativeDesktop',           # only for full GUI functionality 
                                                                              # NOT for CICD
 
@@ -151,7 +138,7 @@ try {
 
     Write-Host "Starting Visual Studio Build Tools installation ..."
     try {
-        $proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -NoNewWindow -PassThru
+        $proc = Start-Process -FilePath $installer -ArgumentList $installerArgs -Wait -NoNewWindow -PassThru
     }
     catch {
         Write-Host "Start-Process Exception: $($_.Exception.Message)"
@@ -162,7 +149,7 @@ try {
     Write-Host "Installer ExitCode: $($proc.ExitCode)"
 
     if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
-        Write-Host 'Installation failed — printing logs:'
+        Write-Host 'Installation failed -- printing logs:'
         Dump-InstallerLogs -TempDir $TempDir
         throw "Build Tools Setup failed (ExitCode $($proc.ExitCode))."
     }
@@ -173,12 +160,15 @@ try {
         Write-Host 'Installation succeeded.'
     }
 
-    if (Test-Path 'C:\Program Files\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat') {
+    # VS major from versions.env's VISUAL_STUDIO_VERSION (reaches this pre-load-versions
+    # layer as a --build-arg, same route as WINDOWS_SDK_BUILD above).
+    $vsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
+    if (Test-Path "C:\Program Files\Microsoft Visual Studio\$vsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
         Write-Host 'VsDevCmd found.'
-    } elseif (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat') {
+    } elseif (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\$vsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
         Write-Host 'VsDevCmd (x86) found, path adjusted.'
     } else {
-        Write-Host 'VsDevCmd not found — printing logs.'
+        Write-Host 'VsDevCmd not found -- printing logs.'
         Dump-InstallerLogs -TempDir $TempDir
         throw 'VS Build Tools not installed. Check dd_bootstrapper*.log and dd_setup_*.log under %TEMP%.'
     }
@@ -188,8 +178,11 @@ finally {
     Get-Process -Name '*vs_installer*', '*vs_buildtools*', '*vs_setup*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host 'Cleaned up lingering VS installer processes'
 
-    # Wenn im Fehlerfall noch der Installer existiert, lasse ihn zur Analyse bestehen.
+    # On failure keep the installer for analysis; on success remove it so it does
+    # not ride along in the base layer.
     if ($proc -and ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010)) {
-    Write-Host "Installer was not deleted (left for analysis at $installer)."
+        Write-Host "Installer was not deleted (left for analysis at $installer)."
+    } elseif (Test-Path $installer) {
+        Remove-Item $installer -Force -ErrorAction SilentlyContinue
     }
 }

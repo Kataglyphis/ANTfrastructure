@@ -39,10 +39,7 @@ cmake -S . -B build "${cmake_args[@]}" || {
   exit 1
 }
 
-NPROC="$(nproc)"
-if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-  NPROC="$(compute_jobs_with_mem_cap "" 2000)"
-fi
+NPROC="$(media_jobs)"
 cmake --build build --target install -- -j"${NPROC}" || {
   echo "ERROR: vvdec build failed" >&2
   exit 1
@@ -52,19 +49,9 @@ mkdir -p "${PREFIX}/lib/pkgconfig"
 
 PKGFILE="${PREFIX}/lib/pkgconfig/libvvdec.pc"
 vv_numeric="$(echo "${VV_VERSION}" | sed 's/^v//')"
-cat > "${PKGFILE}" <<EOF
-prefix=${PREFIX}
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: libvvdec
-Description: VVC/vvdec video decoder library
-Version: ${vv_numeric}
-Libs: -L\${libdir} -lvvdec
-Libs.private: -lstdc++ -lm -lgcc
-Cflags: -I\${includedir}
-EOF
+generate_pkgconfig_file "${PKGFILE}" \
+  "libvvdec" "VVC/vvdec video decoder library" "${vv_numeric}" "${PREFIX}" \
+  '-L${libdir} -lvvdec' '-I${includedir}' '' '-lstdc++ -lm -lgcc'
 
 cd /
 rm -rf "${TMPDIR}"

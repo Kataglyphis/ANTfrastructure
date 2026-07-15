@@ -2,6 +2,13 @@
 [ -n "${_PARALLEL_LOOP_SH_LOADED:-}" ] && return 0
 _PARALLEL_LOOP_SH_LOADED=1
 
+# Build a flag-dir *prefix* for run_parallel_arch_loop, honoring $TMPDIR.
+# The loop itself mktemp's "<prefix>.XXXXXX" and cleans it up on RETURN, so
+# callers must pass a bare prefix here (NOT a pre-created dir).
+arch_loop_flag_prefix() {
+  printf '%s/%s' "${TMPDIR:-/tmp}" "$1"
+}
+
 run_parallel_arch_loop() {
   local fn_name="$1" flagdir_prefix="${2:-/tmp/arch-loop-flags}"
   local max_parallel="${3:-4}"
@@ -12,6 +19,11 @@ run_parallel_arch_loop() {
   local _flagdir
   _flagdir="$(mktemp -d "${flagdir_prefix}.XXXXXX")"
   trap "rm -rf ${_flagdir}" RETURN
+  # Background workers are SUBSHELLS: variables they set (digest pins,
+  # built-this-run flags) are silently lost to the parent. Publish the flag
+  # dir so workers can persist small results as files, harvested after the
+  # join via an optional caller-defined parallel_loop_harvest() hook.
+  export PARALLEL_LOOP_FLAGDIR="${_flagdir}"
   running=0
   for arch in "${arches[@]}"; do
     if _bool_truthy "${PARALLEL_ARCHS:-0}"; then
@@ -25,7 +37,13 @@ run_parallel_arch_loop() {
         running=$((running - 1))
       fi
     else
-      "${fn_name}" "${arch}" || failed=1
+      # Sequential path: name the failed arch too (the parallel path warns via
+      # the failed-* flag files below). set -e in the caller aborts the chain on
+      # the non-zero return, so a failed arch never silently proceeds.
+      if ! "${fn_name}" "${arch}"; then
+        warn "Arch ${arch} failed during build"
+        failed=1
+      fi
     fi
   done
   if _bool_truthy "${PARALLEL_ARCHS:-0}"; then
@@ -40,6 +58,12 @@ run_parallel_arch_loop() {
         failed=1
       fi
     done
+    # Harvest worker-persisted results (e.g. digest pins) back into the
+    # parent shell. No-op unless the caller defines the hook.
+    if declare -F parallel_loop_harvest >/dev/null 2>&1; then
+      parallel_loop_harvest "${_flagdir}"
+    fi
   fi
+  unset PARALLEL_LOOP_FLAGDIR
   return "${failed}"
 }

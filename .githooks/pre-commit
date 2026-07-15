@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# pre-commit — run CI-consistent checks before each commit.
+# Activate with: git config core.hooksPath .githooks
+set -euo pipefail
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+pass() { printf "${GREEN}✓${NC} %s\n" "$1"; }
+fail() { printf "${RED}✗${NC} %s\n" "$1"; exit 1; }
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+
+cd "$REPO_ROOT"
+
+# 1. Version consistency (snapshots, inline markers, deps table, Dockerfile ARGs)
+echo "=== sync_versions.py --check ==="
+python3 docs/scripts/sync_versions.py --check && pass "version snapshot check" || fail "sync_versions.py --check failed"
+
+# 2. ARG name coverage + value match
+echo ""
+echo "=== verify-arg-consistency.sh ==="
+bash linux/scripts/01-core/verify-arg-consistency.sh && pass "ARG consistency" || fail "ARG consistency failed"
+
+# 3. Five Critical Fixes source integrity
+echo ""
+echo "=== verify-critical-fixes.sh ==="
+bash linux/scripts/verify-critical-fixes.sh && pass "critical fixes" || fail "critical fixes failed"
+
+# 3b. Sourced/COPY'd scripts are present in each image stage
+echo ""
+echo "=== verify-script-copy-coverage.py ==="
+python3 linux/scripts/verify-script-copy-coverage.py && pass "script COPY coverage" || fail "a referenced /opt/scripts path is not provided in its image"
+
+# 4. Shell syntax + shellcheck gate on changed .sh files
+echo ""
+echo "=== shell syntax (staged .sh files) ==="
+STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
+if [ -n "$STAGED_SH" ]; then
+  bash -n $STAGED_SH && pass "staged shell scripts parse OK" || fail "shell syntax error in staged .sh files"
+  echo ""
+  echo "=== shellcheck -S error (staged .sh files) ==="
+  # shellcheck disable=SC2086
+  bash linux/scripts/lint-shell.sh $STAGED_SH && pass "staged shellcheck gate" || fail "shellcheck -S error findings in staged .sh files"
+else
+  pass "no staged .sh files to check"
+fi
+
+# 5. Sphinx docs build (if deps are installed)
+echo ""
+echo "=== sphinx-build ==="
+if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
+  . "${REPO_ROOT}/.venv/bin/activate"
+  if python -c "import sphinx_kataglyphis" 2>/dev/null; then
+    cd "${REPO_ROOT}/docs"
+    python -m sphinx -W -E -b html source _build/html > /dev/null 2>&1 \
+      && pass "sphinx docs build" \
+      || fail "sphinx build failed (run 'make html' in docs/)"
+  else
+    pass "sphinx_kataglyphis not in .venv (skipping docs build)"
+  fi
+else
+  pass "no .venv found (skipping sphinx docs build)"
+fi
+
+exit 0

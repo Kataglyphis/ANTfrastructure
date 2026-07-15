@@ -125,33 +125,50 @@ CROSS_PER_ARCH_STAGES=(sdk media android)
 # shellcheck disable=SC2034
 RUNTIME_STAGE_ORDER=(base package wrapper)
 
+# ── Stage property tables ─────────────────────────────────────────────────────
+# Single source of truth for the pure stage→string maps (dockerfile, parent, pin
+# variable). Adding a stage = one entry per table. `tag` and `build_args` carry
+# real logic and stay as functions below.
+# shellcheck disable=SC2034
+declare -A CROSS_STAGE_DOCKERFILE=(
+  [base]="linux/Dockerfile.base"
+  [compiler]="linux/Dockerfile.toolchain"
+  [sdk]="linux/Dockerfile.sdk"
+  [media]="linux/Dockerfile.media"
+  [android]="linux/Dockerfile.android"
+  [runtime]=""   # delegates to build-runtime-manifest.sh, not a single Dockerfile
+)
+# shellcheck disable=SC2034
+declare -A CROSS_STAGE_PARENT_MAP=(
+  [compiler]="base"
+  [sdk]="compiler"
+  [media]="sdk"
+  [android]="media"
+  [runtime]="android"
+)
+# shellcheck disable=SC2034
+declare -A CROSS_STAGE_PIN_VARNAME_MAP=(
+  [base]="BASE_PIN"
+  [compiler]="COMPILER_PIN"
+  [sdk]="SDK_PIN"
+  [media]="MEDIA_PIN"
+  [android]="ANDROID_PIN"
+)
+
 # ── Dockerfile mapping ────────────────────────────────────────────────────────
 # Returns the Dockerfile path for a stage.  Runtime returns empty (delegates to
-# build-runtime-manifest.sh, not a single Dockerfile).
+# build-runtime-manifest.sh, not a single Dockerfile). Returns 1 for an unknown
+# stage (existence check, since `runtime` is a valid stage with an empty value).
 cross_stage_dockerfile() {
-  case "${1}" in
-    base)      printf '%s' "linux/Dockerfile.base" ;;
-    compiler)  printf '%s' "linux/Dockerfile.toolchain" ;;
-    sdk)       printf '%s' "linux/Dockerfile.sdk" ;;
-    media)     printf '%s' "linux/Dockerfile.media" ;;
-    android)   printf '%s' "linux/Dockerfile.android" ;;
-    runtime)   printf '%s' "" ;;  # delegates to build-runtime-manifest.sh
-    *)         return 1 ;;
-  esac
+  [ -n "${CROSS_STAGE_DOCKERFILE[$1]+set}" ] || return 1
+  printf '%s' "${CROSS_STAGE_DOCKERFILE[$1]}"
 }
 
 # ── Parent stage (empty for base = no parent) ─────────────────────────────────
 # Returns the parent stage name.  base has no parent.  Every other stage depends
 # on exactly one parent in the chain.
 cross_stage_parent() {
-  case "${1}" in
-    compiler)  printf '%s' "base" ;;
-    sdk)       printf '%s' "compiler" ;;
-    media)     printf '%s' "sdk" ;;
-    android)   printf '%s' "media" ;;
-    runtime)   printf '%s' "android" ;;
-    *)         printf '%s' "" ;;
-  esac
+  printf '%s' "${CROSS_STAGE_PARENT_MAP[$1]:-}"
 }
 
 # ── Per-arch check ────────────────────────────────────────────────────────────
@@ -240,15 +257,7 @@ cross_stage_build_args() {
 # Returns the variable name used to store the digest pin for a stage.
 # Per-arch stages use associative arrays: SDK_PIN[arch], MEDIA_PIN[arch], etc.
 cross_stage_pin_varname() {
-  local stage="$1"
-  case "${stage}" in
-    base)      printf '%s' "BASE_PIN" ;;
-    compiler)  printf '%s' "COMPILER_PIN" ;;
-    sdk)       printf '%s' "SDK_PIN" ;;
-    media)     printf '%s' "MEDIA_PIN" ;;
-    android)   printf '%s' "ANDROID_PIN" ;;
-    *)         printf '%s' "" ;;
-  esac
+  printf '%s' "${CROSS_STAGE_PIN_VARNAME_MAP[$1]:-}"
 }
 
 # ── Pin variable initialization ────────────────────────────────────────────────

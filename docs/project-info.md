@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Docker with buildx/nerdctl support.
+- nerdctl with BuildKit support.
 - GPU passthrough configured when building Vulkan-enabled images.
 
 ## Installation
@@ -10,14 +10,14 @@
 1. Clone the repo:
 
    ```bash
-   git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
+   git clone --recurse-submodules https://github.com/Kataglyphis/Kataglyphis-ContainerHub.git
    ```
 
 ## Tests
 
 Current automated validation in this repository is documentation-focused:
 
-- GitHub Actions runs the docs workflow and checks the generated version snapshot with `python3 external/Kataglyphis-DocumANTation/docs-tooling/scripts/sync_versions.py --check --repo-root .`.
+- GitHub Actions runs the docs workflow and checks the generated version snapshot with `python3 docs/scripts/sync_versions.py --check`.
 - Local container validation is currently documented as targeted smoke builds in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md`.
 - The `wrapper-smoke` target in `Dockerfile.package` provides cheap packaging validation before publish.
 - `build-cross-chain.sh --verify-chain` performs a dry-run stale-check of the entire cross chain against registry digests without building anything.
@@ -28,6 +28,24 @@ Current automated validation in this repository is documentation-focused:
 - `verify-critical-fixes.sh` validates the five critical fixes documented in `AGENTS.md`.
 - `build-cross-chain.sh --dry-run` prints all build commands without executing them, useful for auditing the stage transitions.
 - There is not yet a single end-to-end CI workflow that builds every Linux, accelerator, and Windows image variant on each change.
+
+## Windows Image Chain
+
+Windows Container builds run on `windows/amd64` only and produce a single published tag (`ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`) on `windows/servercore:ltsc2025`. The lane uses Stevedore's bundled `docker.exe` for both builds and runs (`nerdctl build` has broken DNS in BuildKit on Windows, and `nerdctl run` fails without the Windows CNI `nat` plugin; `docker.exe run --isolation process` works and exposes the host's full CPU count). See `docs/windows-builds.md` for the full build commands and prerequisites.
+
+Stage chain (each `FROM` the previous stage's local tag):
+
+| Stage | Dockerfile | Produces | Contents |
+|-------|------------|----------|----------|
+| 1 | `windows/Dockerfile.base` | `local/kataglyphis:windows-base` | VS Build Tools 18 (ClangCL toolset), Scoop (LLVM 22, Rust, Flutter, Vulkan SDK, WiX 4), Git, Python bootstrapping, `versions.env` |
+| 2 | `docker tag` of base (CPU) **or** `windows/Dockerfile.nvidia` (GPU) | `local/kataglyphis:windows-sdk` | CPU lane simply re-tags `windows-base` (the former `Dockerfile.sdk` no-op shim was removed); GPU lane builds the NVIDIA layer (CUDA 13.3 + cuDNN 9.23 + optional TensorRT 11.1.0.106). `windows/build.ps1 [-Gpu]` picks the variant — both produce the `windows-sdk` tag. |
+| 3 | `windows/Dockerfile.toolchain-builder` (+ run+commit) | `local/kataglyphis:windows-toolchain` | CPython 3.14 source-built with ClangCL via `build-toolchain-all.ps1` (`PCbuild\build.bat`) |
+| 4 | `windows/Dockerfile.media-merge-builder` (+ per-branch media builders) | `local/kataglyphis:windows-media` | AI/media stack: ONNX Runtime 1.27.0, ONNX GenAI 0.14.0, OpenCV 5.x, LiteRT 2.1.6, LiteRT-LM 0.13.1, TVM 0.25.0, FFmpeg `master` (`--enable-libonnxruntime`; DNN filters ship with the backend, no separate `--enable-dnn`), GStreamer 1.29.2 — all source-built with Ninja/clang-cl in dependency order |
+| 5 | `windows/Dockerfile` | `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` | Final developer image (VsDevCmd entrypoint, HEALTHCHECK, smoke-test script) |
+
+Container validation uses `windows/scripts/smoke-test-container.ps1` (18 test categories) and the Docker `HEALTHCHECK` defined in `windows/scripts/healthcheck.ps1`.
+
+The smoke test validates (1) build tools, (2) Python 3.14, (3) Rust, (4) LLVM/Clang+Flutter+WiX, (5) VS Build Tools, (6) Vulkan SDK, (7) CUDA+cuDNN (skippable), (8) ONNX Runtime, (9) ONNX GenAI, (10) OpenCV 5, (11) GStreamer, (12) LiteRT, (13) LiteRT-LM, (14) compiler smoke, (15) CMake+Ninja+clang-cl integration, (16) MSBuild+ClangCL, (17) TVM (source-built), (18) FFmpeg (source-built with DNN/ONNX).
 
 ## Roadmap
 
@@ -41,13 +59,10 @@ Current automated validation in this repository is documentation-focused:
 
 **Symptom:** caching is weird or files cannot be found.
 
-**Solution:**
+**Solution:** If sccache is interfering with builds, unset the wrapper:
 
 ```bash
-# change this line
-RUSTC_WRAPPER= /usr/bin/sccache 
-# to
-RUSTC_WRAPPER="" 
+RUSTC_WRAPPER=
 ```
 
 ### No space left on this device
@@ -130,6 +145,16 @@ RUSTC_WRAPPER=""
 - With `--oci-worker-net=host` set, plain `nerdctl build` already uses host networking; you do not need to pass `--network host`.
 - For repeated LLVM rebuilds, the host-net change is the main lever. For an even bigger win, cache the LLVM source on the host instead of re-fetching it every build.
 
+### Local runtime artifacts: OCI layouts, rootfs, and disk usage
+
+When feeding locally saved runtime artifacts back into later builds:
+
+- Keep `.dockerignore` excluding `out/local-oci`, `out/local-android-dir`, `out/linux-sdk`, `out/linux-runtime`, and `out/runtime-repair-*` so exported OCI layouts and rootfs trees do not get sent back as a later build context.
+- Prefer saved OCI layouts such as `out/local-oci/android/<arch>` for foreign-architecture runtime packaging. The plain directory exports under `out/local-android-dir/<arch>` are much larger, and an earlier OCI-to-directory conversion dropped `/usr/local/lib/onnxruntime-cpu`.
+- On this host, the verified local runtime path mixes context types: the heavy `runtime_artifact` input comes from an `oci-layout://...` context, while the intermediate `runtime_base` handoff stays a plain rootfs directory because one build still fails when it consumes two named OCI image contexts at once.
+- `readlink -f` on symlinks inside `out/linux-runtime/*/rootfs` resolves absolute links against the host root, so use plain `readlink` or validate from inside the built image when checking `/usr/bin/cc`, `/usr/bin/clang`, `/etc/alternatives/cc`, and `/etc/alternatives/clang`.
+- Local BuildKit and containerd stores can still grow very large during repeated runtime rebuilds, so prune old images and exported artifacts if disk pressure returns.
+
 ### Terminal Freeze or Slowness During Large/Interactive Rebuilds
 
 **Symptom:** Running long interactive `nerdctl build` loops in the foreground causes the terminal to freeze, lag, or experience extremely slow download rates with direct terminal stdout.
@@ -140,13 +165,11 @@ RUSTC_WRAPPER=""
 
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are greatly appreciated.
-
 1. Fork the project.
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4. Push to the branch (`git push origin feature/AmazingFeature`).
-5. Open a pull request.
+2. Create a feature branch (`git checkout -b feature/my-change`).
+3. Make your changes. If modifying build scripts or Dockerfiles, run `python3 docs/scripts/sync_versions.py --check` to verify version consistency.
+4. Commit your changes — the pre-commit hook (`.githooks/pre-commit`) runs version-staleness checks and shell syntax validation.
+5. Push and open a pull request.
 
 ## License
 

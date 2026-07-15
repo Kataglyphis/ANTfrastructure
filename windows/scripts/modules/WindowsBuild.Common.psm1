@@ -7,9 +7,126 @@ Set-StrictMode -Version Latest
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 Import-Module $sharedPath -Force
 
-# Import logging helpers (New-LogContext, Write-ContextLog, etc.)
-$loggingPath = Join-Path $PSScriptRoot 'WindowsLogging.Common.psm1'
-Import-Module $loggingPath -Force
+# -- Logging primitives (module-internal; formerly WindowsLogging.Common.psm1, whose
+# only consumer was this module). Scripts use the Write-BuildLog* wrappers below. --
+
+function New-LogContext {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Workspace,
+        [Parameter(Mandatory)]
+        [string]$LogDir,
+        [string]$LogFilePrefix = 'session'
+    )
+
+    $effectiveLogDir = if ([System.IO.Path]::IsPathRooted($LogDir)) { $LogDir } else { Join-Path $Workspace $LogDir }
+    $logDirPath = Resolve-DirectoryPath -Path $effectiveLogDir
+    $timestamp = New-Timestamp -Format 'yyyyMMdd-HHmmss'
+    $logPath = Join-Path $logDirPath "$LogFilePrefix-$timestamp.log"
+
+    [pscustomobject]@{
+        Workspace = $Workspace
+        LogPath   = $logPath
+        StartedAt = (Get-Date).ToString('o')
+        LogWriter = $null
+    }
+}
+
+function Open-LogWriter {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context
+    )
+
+    $parentDir = Split-Path -Parent $Context.LogPath
+    if ($parentDir) {
+        Resolve-DirectoryPath -Path $parentDir | Out-Null
+    }
+
+    $fileStream = New-Object System.IO.FileStream(
+        $Context.LogPath,
+        [System.IO.FileMode]::Append,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::ReadWrite
+    )
+
+    $writer = New-Object System.IO.StreamWriter($fileStream, [System.Text.Encoding]::UTF8)
+    $writer.AutoFlush = $true
+    $Context.LogWriter = $writer
+}
+
+function Close-LogWriter {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context
+    )
+
+    if ($Context.LogWriter) {
+        try {
+            $Context.LogWriter.Flush()
+            $Context.LogWriter.Dispose()
+        } catch {
+        } finally {
+            $Context.LogWriter = $null
+        }
+    }
+}
+
+function Write-ContextLog {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string]$Message,
+        [ValidateSet('Info', 'Warning', 'Error', 'Success')]
+        [string]$Level = 'Info'
+    )
+
+    $suppressConsoleOutput = $false
+    if ($null -ne $Context.PSObject.Properties['SuppressConsoleOutput']) {
+        $suppressConsoleOutput = [bool]$Context.SuppressConsoleOutput
+    }
+
+    if (-not $Message) {
+        if (-not $suppressConsoleOutput) {
+            Write-Host ''
+        }
+        if ($Context.LogWriter) {
+            $Context.LogWriter.WriteLine('')
+        }
+        return
+    }
+
+    if (-not $suppressConsoleOutput) {
+        switch ($Level) {
+            'Warning' {
+                Write-Warning $Message
+            }
+            'Error' {
+                Write-Host $Message -ForegroundColor Red
+            }
+            'Success' {
+                Write-Host $Message -ForegroundColor Green
+            }
+            default {
+                Write-Host $Message
+            }
+        }
+    }
+
+    if ($Context.LogWriter) {
+        $timestamp = Get-Date -Format 'HH:mm:ss'
+        $prefix = switch ($Level) {
+            'Warning' { 'WARNING: ' }
+            'Error' { 'ERROR: ' }
+            'Success' { 'SUCCESS: ' }
+            default { '' }
+        }
+
+        $Context.LogWriter.WriteLine("[$timestamp] $prefix$Message")
+    }
+}
 
 function New-BuildContext {
     param(
@@ -32,10 +149,13 @@ function New-BuildContext {
         SuppressConsoleOutput = $false
         StopOnError = [bool]$StopOnError
         Results     = @{
-            Succeeded = New-Object System.Collections.Generic.List[string]
-            Failed    = New-Object System.Collections.Generic.List[string]
-            Errors    = @{}
-            Durations = [ordered]@{}
+            Succeeded       = New-Object System.Collections.Generic.List[string]
+            Failed          = New-Object System.Collections.Generic.List[string]
+            # Steps that failed but were declared non-gating (Invoke-BuildStep -AllowFailure),
+            # e.g. experimental toolchains. Reported in the summary but do NOT set exit 1.
+            AllowedFailures = New-Object System.Collections.Generic.List[string]
+            Errors          = @{}
+            Durations       = [ordered]@{}
         }
     }
 }
@@ -128,7 +248,9 @@ function Invoke-BuildExternal {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $previousLastExitCode = $global:LASTEXITCODE
+    # Test-Path guard: before the first native call of a session LASTEXITCODE
+    # does not exist, and reading it under StrictMode raises a noisy error.
+    $previousLastExitCode = if (Test-Path variable:global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
     $global:LASTEXITCODE = 0
 
     try {
@@ -186,7 +308,10 @@ function Invoke-BuildStep {
         [string]$StepName,
         [Parameter(Mandatory)]
         [scriptblock]$Script,
-        [switch]$Critical
+        [switch]$Critical,
+        # When set, a failure is recorded as a non-gating AllowedFailure (warning, not error) and
+        # never throws -- for steps that are permitted to fail (e.g. experimental Python builds).
+        [switch]$AllowFailure
     )
 
     Write-BuildLog -Context $Context -Message ""
@@ -211,12 +336,20 @@ function Invoke-BuildStep {
     } catch {
         $stopwatch.Stop()
         $errorMessage = $_.Exception.Message
-        $Context.Results.Failed.Add($StepName) | Out-Null
         if ($null -eq $Context.Results.Durations) {
             $Context.Results.Durations = [ordered]@{}
         }
         $Context.Results.Durations[$StepName] = $stopwatch.Elapsed.TotalSeconds
         $Context.Results.Errors[$StepName] = $errorMessage
+
+        if ($AllowFailure) {
+            $Context.Results.AllowedFailures.Add($StepName) | Out-Null
+            Write-BuildLogWarning -Context $Context -Message "<<< FAILED (allowed, non-gating): $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
+            Write-BuildLogWarning -Context $Context -Message "    Error: $errorMessage"
+            return $false
+        }
+
+        $Context.Results.Failed.Add($StepName) | Out-Null
         Write-BuildLogError -Context $Context -Message "<<< FAILED: $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
         Write-BuildLogError -Context $Context -Message "    Error: $errorMessage"
 
@@ -259,6 +392,15 @@ function Write-BuildSummary {
         foreach ($step in $Context.Results.Failed) {
             Write-BuildLogError -Context $Context -Message "  [X] $step"
             Write-BuildLogError -Context $Context -Message "      Error: $($Context.Results.Errors[$step])"
+        }
+    }
+
+    if ($null -ne $Context.Results.AllowedFailures -and $Context.Results.AllowedFailures.Count -gt 0) {
+        Write-BuildLog -Context $Context -Message ""
+        Write-BuildLogWarning -Context $Context -Message "ALLOWED FAILURES ($($Context.Results.AllowedFailures.Count)) -- non-gating (did not fail the run):"
+        foreach ($step in $Context.Results.AllowedFailures) {
+            Write-BuildLogWarning -Context $Context -Message "  [!] $step"
+            Write-BuildLogWarning -Context $Context -Message "      Error: $($Context.Results.Errors[$step])"
         }
     }
 
@@ -327,234 +469,47 @@ function Write-BuildSummary {
     }
 }
 
-function Remove-BuildRoot {
+function Get-PyprojectPackageName {
+    # Package name for CI runs: pyproject.toml [project] name, falling back to
+    # the repo-root leaf directory. Shared by the python CI entry scripts.
     param(
         [Parameter(Mandatory)]
-        [pscustomobject]$Context,
+        [string]$RepoRoot,
+        [string]$Default = ''
+    )
+
+    if (-not [string]::IsNullOrEmpty($Default)) { return $Default }
+    $pyproject = Join-Path $RepoRoot 'pyproject.toml'
+    if (Test-Path $pyproject) {
+        $content = Get-Content $pyproject -Raw
+        if ($content -match 'name\s*=\s*"([^"]+)"') { return $Matches[1] }
+    }
+    return (Split-Path $RepoRoot -Leaf)
+}
+
+function New-UvBuildDelegates {
+    # The three delegates every python CI entry script hands to
+    # New-UvProjectEnvironment/Remove-UvProjectEnvironment, bound to one build
+    # context. Defined HERE (not WindowsUv.Common) so the closures resolve
+    # Invoke-BuildExternal/Write-BuildLog* in the module that owns them.
+    param(
         [Parameter(Mandatory)]
-        [string]$Path
-    )
-
-    if (-not (Test-Path $Path)) {
-        Write-BuildLog -Context $Context -Message "Build root does not exist: $Path"
-        return $true
-    }
-
-    Write-BuildLog -Context $Context -Message "Terminating potentially locking processes..."
-    $processNames = @(
-        "flutter", "dart",
-        "msbuild", "devenv",
-        "ninja", "cmake", "ctest",
-        "cl", "link",
-        "clang", "clang-cl", "lld-link",
-        "vstest.console", "testhost",
-        "cargo", "rustc"
-    )
-
-    foreach ($name in $processNames) {
-        Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    }
-
-    Start-Sleep -Seconds 3
-
-    for ($i = 1; $i -le 8; $i++) {
-        try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-            Write-BuildLog -Context $Context -Message "Build directory removed: $Path"
-            return $true
-        } catch {
-            Write-BuildLogWarning -Context $Context -Message "Attempt $i/8 failed: $($_.Exception.Message)"
-
-            foreach ($name in $processNames) {
-                Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-            }
-
-            if ($i -lt 8) { Start-Sleep -Seconds 2 }
-        }
-    }
-
-    return $false
-}
-
-function Initialize-BuildCacheEnvironment {
-    param(
-        [Parameter(Mandatory=$true)]
-        [pscustomobject]$Context,
-        [string]$FastBuildDir = ""
-    )
-
-    $fastLocalCache = if (-not [string]::IsNullOrWhiteSpace($FastBuildDir)) {
-        $FastBuildDir
-    } elseif ($env:KATAGLYPHIS_FAST_BUILD_DIR) {
-        $env:KATAGLYPHIS_FAST_BUILD_DIR
-    } else {
-        "C:\kataglyphis_fast_build"
-    }
-
-    $env:GLOBAL_CACHE_DIR = Join-Path $fastLocalCache ".cache"
-    $env:SCCACHE_DIR      = Join-Path $env:GLOBAL_CACHE_DIR "sccache"
-    $env:CARGO_HOME       = Join-Path $env:GLOBAL_CACHE_DIR "cargo"
-    $env:PUB_CACHE        = Join-Path $env:GLOBAL_CACHE_DIR "pub-cache"
-
-    foreach ($cachePath in @($env:SCCACHE_DIR, $env:CARGO_HOME, $env:PUB_CACHE)) {
-        if (-not (Test-Path -LiteralPath $cachePath -PathType Container)) {
-            New-Item -ItemType Directory -Force -Path $cachePath | Out-Null
-        }
-    }
-
-    $cargoBin = Join-Path $env:CARGO_HOME "bin"
-    if ($env:PATH -notlike "*$cargoBin*") {
-        $env:PATH = "$cargoBin;$env:PATH"
-    }
-
-    Write-BuildLog -Context $Context -Message "Initialized Fast Local Cache at: $fastLocalCache"
-    
-    # If sccache is present on PATH, enable compiler wrapper environment
-    # variables globally so downstream CMake/configure steps will pick up
-    # sccache without requiring explicit caller configuration. This can be
-    # disabled by clearing the variables later or passing DisableSccache to
-    # the specific build invocation.
-    $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue
-    if ($sccacheCmd) {
-        $sccacheExe = $sccacheCmd.Source
-        Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
-        $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
-        $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
-        $env:RUSTC_WRAPPER = $sccacheExe
-        $env:CC_WRAPPER = $sccacheExe
-        $env:CXX_WRAPPER = $sccacheExe
-
-        if (-not $env:SCCACHE_MAX_JOBS) {
-            $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString()
-            Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$($env:SCCACHE_MAX_JOBS) (from Initialize-BuildCacheEnvironment)"
-        }
-    }
-    return $fastLocalCache
-}
-
-function Sync-BuildArtifacts {
-    param(
-        [Parameter(Mandatory=$true)]
-        [pscustomobject]$Context,
-        [Parameter(Mandatory=$true)]
-        [string]$Source,
-        [Parameter(Mandatory=$true)]
-        [string]$Destination,
-        [string[]]$ExcludeFiles = @(),
-        [string[]]$ExcludeDirs = @(),
-        [switch]$ExcludeCommonRustAndCppCache
-    )
-
-    if ($ExcludeCommonRustAndCppCache) {
-        $ExcludeFiles += @("*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.rlib", "*.rmeta", "*.d", "*.o", "*.pcm", "*.modmap", ".ninja_deps", ".ninja_log", "CMakeCache.txt")
-        $ExcludeDirs += @("*.dir", ".fingerprint", "build", "deps", "incremental", "CMakeFiles", "vcpkg_installed", ".cmake")
-    }
-
-    Write-BuildLog -Context $Context -Message "Syncing artifacts from $Source to $Destination..."
-
-    if (-not (Test-Path -LiteralPath $Destination)) {
-        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    }
-
-    $robocopyArgs = @(
-        $Source,
-        $Destination,
-        "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD"
-    )
-
-    if ($ExcludeFiles -and $ExcludeFiles.Count -gt 0) {
-        $robocopyArgs += "/XF"
-        $robocopyArgs += $ExcludeFiles
-    }
-
-    if ($ExcludeDirs -and $ExcludeDirs.Count -gt 0) {
-        $robocopyArgs += "/XD"
-        $robocopyArgs += $ExcludeDirs
-    }
-
-    $robocopyArgs += @("/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul")
-
-    & robocopy.exe $robocopyArgs > $null 2>&1
-    $exitCode = $LASTEXITCODE
-    # Robocopy exit codes < 8 are considered success
-    if ($exitCode -ge 8) {
-        Write-BuildLogWarning -Context $Context -Message "Robocopy returned exit code $exitCode while syncing $Source to $Destination."
-    }
-}
-
-function Show-SccacheStats {
-    param(
-        [Parameter(Mandatory=$true)]
         [pscustomobject]$Context
     )
 
-    if (Get-Command "sccache" -ErrorAction SilentlyContinue) {
-        Invoke-BuildStep -Context $Context -StepName "Sccache Statistics" -Script {
-            Invoke-BuildExternal -Context $Context -File "sccache" -Parameters @("--show-stats")
-        }
-    }
-}
-
-function Assert-FlutterPluginsBuilt {
-    param(
-        [Parameter(Mandatory=$true)]
-        [pscustomobject]$Context,
-        [Parameter(Mandatory=$true)]
-        [string]$CMakeFile,
-        [Parameter(Mandatory=$true)]
-        [string[]]$SearchDirectories
-    )
-
-    $expectedPlugins = @()
-    if (Test-Path -LiteralPath $CMakeFile -PathType Leaf) {
-        $cmakeContent = Get-Content $CMakeFile
-        foreach ($line in $cmakeContent) {
-            if ($line -match 'list\(APPEND FLUTTER_PLUGIN_LIST\s+"([^"]+)"\)') {
-                $expectedPlugins += $matches[1]
-            }
-        }
-        Write-BuildLog -Context $Context -Message "Expected Flutter plugins from generated CMake: $($expectedPlugins.Count)"
-        foreach ($plugin in $expectedPlugins) {
-            Write-BuildLog -Context $Context -Message "  - $plugin"
-        }
-    } else {
-        Write-BuildLogWarning -Context $Context -Message "generated_plugins.cmake not found at '$CMakeFile'. Skipping expected plugin list."
-    }
-
-    $pluginArtifacts = @()
-    foreach ($dir in $SearchDirectories) {
-        if (Test-Path -LiteralPath $dir -PathType Container) {
-            $pluginArtifacts += Get-ChildItem -LiteralPath $dir -Recurse -File -Filter "*.dll"
-        }
-    }
-
-    $pluginArtifacts = @($pluginArtifacts | Sort-Object -Property FullName -Unique)
-
-    if ($pluginArtifacts.Count -eq 0) {
-        Write-BuildLogWarning -Context $Context -Message "No plugin DLL artifacts found in search directories."
-    } else {
-        Write-BuildLog -Context $Context -Message "Built plugin DLL artifacts: $($pluginArtifacts.Count)"
-        foreach ($artifact in $pluginArtifacts) {
-            Write-BuildLog -Context $Context -Message "  - $($artifact.FullName)"
-        }
-    }
-
-    if ($expectedPlugins.Count -gt 0 -and $pluginArtifacts.Count -gt 0) {
-        foreach ($plugin in $expectedPlugins) {
-            $matchedArtifact = $pluginArtifacts | Where-Object {
-                $_.Name -like "$plugin*.dll" -or $_.FullName -like "*$plugin*"
-            } | Select-Object -First 1
-
-            if ($null -eq $matchedArtifact) {
-                Write-BuildLogWarning -Context $Context -Message "Expected plugin '$plugin' has no matching DLL artifact name."
-            } else {
-                Write-BuildLog -Context $Context -Message "Plugin '$plugin' mapped to artifact: $($matchedArtifact.Name)"
-            }
-        }
+    return @{
+        CommandRunner = {
+            param([string]$File, [string[]]$CommandArgs)
+            Invoke-BuildExternal -Context $Context -File $File -Parameters $CommandArgs | Out-Null
+        }.GetNewClosure()
+        LogInfo    = { param([string]$Message); Write-BuildLog -Context $Context -Message $Message }.GetNewClosure()
+        LogWarning = { param([string]$Message); Write-BuildLogWarning -Context $Context -Message $Message }.GetNewClosure()
     }
 }
 
 Export-ModuleMember -Function @(
+    'Get-PyprojectPackageName',
+    'New-UvBuildDelegates',
     'New-BuildContext',
     'Open-BuildLog',
     'Close-BuildLog',
@@ -566,15 +521,7 @@ Export-ModuleMember -Function @(
     'Invoke-BuildOptional',
     'Invoke-BuildStep',
     'Write-BuildSummary',
-    'Remove-BuildRoot',
-    'Resolve-WorkspacePath',
     'Resolve-DirectoryPath',
     'New-Timestamp',
-    'New-TimestampedFilePath',
-    'Resolve-NormalizedPath',
-    'ConvertTo-ParameterList',
-    'Initialize-BuildCacheEnvironment',
-    'Sync-BuildArtifacts',
-    'Show-SccacheStats',
-    'Assert-FlutterPluginsBuilt'
+    'ConvertTo-ParameterList'
 )

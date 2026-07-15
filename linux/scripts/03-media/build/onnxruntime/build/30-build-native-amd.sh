@@ -48,19 +48,11 @@ info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)
 
 ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 
-BUILD_ARGS=(
-  --build_dir "${NATIVE_GPU_BUILD_DIR}"
-  --config "${NATIVE_CPU_CONFIG}"
-  --build_shared_lib
-  --parallel "${JOBS}"
-  --compile_no_warning_as_error
-  --skip_submodule_sync
-  --skip_tests
-  --allow_running_as_root
+BUILD_ARGS=()
+append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
+BUILD_ARGS+=(
   --use_migraphx
   --migraphx_home "${MIGRAPHX_HOME}"
-  --use_mimalloc
-  --use_lock_free_queue
 )
 
 BUILD_ARGS+=(
@@ -68,16 +60,7 @@ BUILD_ARGS+=(
   "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
 )
 
-if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
-  BUILD_ARGS+=(--enable_lto)
-fi
-
-if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
-  BUILD_ARGS+=(
-    --use_webgpu
-    --use_external_dawn
-  )
-fi
+append_onnx_optional_lto_webgpu_args BUILD_ARGS
 
 if cross_build_is_active; then
   append_onnx_cross_cmake_build_args BUILD_ARGS
@@ -107,10 +90,7 @@ if [ -z "$(ls -A "${NATIVE_GPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { 
 fi
 
 copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
-verify_onnxruntime_core_header "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
-copy_onnx_libraries_to_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}"
-ensure_onnxruntime_symlink "${NATIVE_GPU_OUTPUT_DIR}"
-symlink_output_libraries_into_usr_local "${NATIVE_GPU_OUTPUT_DIR}"
+finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
 
 info "AMD GPU build complete. Artifacts in ${NATIVE_GPU_OUTPUT_DIR}"
 info "Wheels in ${NATIVE_GPU_OUTPUT_DIR}/wheels"

@@ -8,7 +8,7 @@ Kataglyphis-ContainerHub documentation
 
 .. rst-class:: hero-section
 
-Docker templates for Linux GPU development stacks, a slim nginx webserver, and a Windows build image.
+Multi-stage Linux container images for GPU development stacks, a slim nginx webserver, and a Windows build image.
 
 - Multi-stage Linux images for reproducible caching
 - Windows toolchain container for CI and local builds
@@ -30,7 +30,7 @@ build cross-architecture artifacts, enable GPU variants, use runtime services, o
       :link: linux-build-basics
       :link-type: doc
 
-      Local runs, multi-arch builds, buildx workflows, and sequential ``nerdctl`` builds.
+      Local runs, multi-arch builds, and sequential ``nerdctl`` builds.
 
    .. grid-item-card:: Linux Cross Builds
       :link: linux-cross-builds
@@ -81,12 +81,12 @@ Common development targets:
 
 .. code-block:: bash
 
-   docker buildx build -f linux/Dockerfile.base -t local/kataglyphis:base .
-   docker buildx build -f linux/Dockerfile.toolchain -t local/kataglyphis:compiler .
-   docker buildx build -f linux/Dockerfile.sdk -t local/kataglyphis:sdk .
-   docker buildx build -f linux/Dockerfile.media -t local/kataglyphis:media .
-   docker buildx build -f linux/Dockerfile.android -t local/kataglyphis:android .
-   docker buildx build -f linux/Dockerfile.torch -t local/kataglyphis:latest .
+   nerdctl build -f linux/Dockerfile.base -t local/kataglyphis:base .
+   nerdctl build -f linux/Dockerfile.toolchain -t local/kataglyphis:compiler .
+   nerdctl build -f linux/Dockerfile.sdk -t local/kataglyphis:sdk .
+   nerdctl build -f linux/Dockerfile.media -t local/kataglyphis:media .
+   nerdctl build -f linux/Dockerfile.android -t local/kataglyphis:android .
+   nerdctl build -f linux/Dockerfile.torch -t local/kataglyphis:latest .
 
 
 .. toctree::

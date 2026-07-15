@@ -140,7 +140,6 @@ function Sync-UvProjectDependencies {
 }
 
 Export-ModuleMember -Function @(
-    'Invoke-UvCommand',
     'New-UvProjectEnvironment',
     'Remove-UvProjectEnvironment',
     'Sync-UvProjectDependencies'

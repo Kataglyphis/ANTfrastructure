@@ -5,19 +5,28 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 PATHS_ENV="${REPO_ROOT}/linux/scripts/04-runtime/runtime-paths.env"
+VERSIONS_ENV="${REPO_ROOT}/linux/scripts/01-core/versions.env"
 errors=0
 
 echo "=== Runtime paths consistency check ==="
 
-# Load canonical paths
+# Load version defaults from the single source of truth so variable references
+# (${GCC_VERSION}, ${OPENCV_OUTPUT_DIR}, etc.) can be expanded dynamically.
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/load-versions-env.sh"
+load_versions_env "${VERSIONS_ENV}"
+
+# Load canonical paths (may reference $GCC_VERSION etc.)
 source "${PATHS_ENV}" 2>/dev/null || true
 
 # Extract the explicit paths (values that look like absolute paths)
+# Use envsubst to expand any remaining ${VAR} references with actual values.
 canonical_paths="$(
   grep -E '^[A-Z_]+=' "${PATHS_ENV}" \
     | grep -vE '^(GCC_PREFIX|OPENCV_PREFIX|GSTREAMER_PREFIX|FFMPEG_PREFIX|LIBCAMERA_PREFIX|VULKAN_SDK)=' \
     | cut -d= -f2- \
     | grep '^/' \
+    | while IFS= read -r line; do envsubst <<<"$line"; done \
     | sort -u
 )"
 
@@ -37,18 +46,9 @@ for df in "${DOCKERFILES[@]}"; do
   df_env_text="$(
     awk '/^ENV /{flag=1} flag{print; if(!/\\$/){flag=0}}' "$df_path" | tr -d '\\'
   )"
-  # Expand variable refs to their literal values for matching
-  df_env_expanded="$(
-    echo "$df_env_text" \
-      | sed 's|\${GCC_PREFIX}|\/opt\/gcc-16.1.0|g' \
-      | sed 's|\${OPENCV_OUTPUT_DIR}|\/opt\/opencv5|g' \
-      | sed 's|\${GSTREAMER_PREFIX}|\/opt\/gstreamer|g' \
-      | sed 's|\${GCC_VERSION}|16.1.0|g' \
-      | sed 's|\${VIRTUAL_ENV}|\/opt\/python\/.venv|g' \
-      | sed 's|\${OPENCV_PREFIX}|\/opt\/opencv5|g' \
-      | sed 's|\${LIBCAMERA_PREFIX}|\/opt\/libcamera|g' \
-      | sed 's|\${FFMPEG_PREFIX}|\/opt\/ffmpeg|g'
-  )"
+  # Expand variable refs to their literal values via envsubst (reads the
+  # versions.env vars sourced above, no hardcoded sed substitutions needed).
+  df_env_expanded="$(envsubst <<<"$df_env_text")"
   df_env_values="$(echo "$df_env_expanded" | grep -oP '/[A-Za-z0-9/._-]+' | sort -u)"
 
   for path in $canonical_paths; do

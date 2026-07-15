@@ -35,33 +35,21 @@ build_llvm_clang_from_source() {
   bash "${builder}" "${args[@]}"
 }
 
-llvm_selected_host_clang() {
-  local candidate=""
-
-  for candidate in \
-    "clang-${CLANG_WANTED}" \
-    clang; do
+# Resolve a host LLVM tool by base name, preferring the version-suffixed
+# variant (e.g. clang-${CLANG_WANTED}) then the bare name. Prints the resolved
+# path, returns 1 if none found.
+llvm_selected_host_tool() {
+  local base="$1" candidate=""
+  for candidate in "${base}-${CLANG_WANTED}" "${base}"; do
     command -v "${candidate}" >/dev/null 2>&1 || continue
     command -v "${candidate}"
     return 0
   done
-
   return 1
 }
 
-llvm_selected_host_clangxx() {
-  local candidate=""
-
-  for candidate in \
-    "clang++-${CLANG_WANTED}" \
-    clang++; do
-    command -v "${candidate}" >/dev/null 2>&1 || continue
-    command -v "${candidate}"
-    return 0
-  done
-
-  return 1
-}
+llvm_selected_host_clang() { llvm_selected_host_tool clang; }
+llvm_selected_host_clangxx() { llvm_selected_host_tool clang++; }
 
 register_versioned_llvm_binaries() {
   local full base tool
@@ -74,14 +62,40 @@ register_versioned_llvm_binaries() {
     base="$(basename "$full")"
     tool="${base%-${CLANG_WANTED}}"
 
-    $SUDO update-alternatives --install "/usr/bin/${tool}" "${tool}" "$full" 100
-    $SUDO update-alternatives --set "${tool}" "$full"
+    alt_install_and_set "${tool}" "/usr/bin/${tool}" "$full" 100
+  done
+}
+
+# Per-target callback for for_each_cross_target: installs the clang/clang++
+# cross wrappers for one already-normalized target. host_clang, host_clangxx and
+# gcc_prefix are read from the enclosing install_cross_clang_wrappers scope.
+_llvm_install_cross_clang_wrapper() {
+  local target_label="$1"
+  local triplet sysroot wrapper _pair _name _bin
+
+  triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || return 0
+  if [ "${target_label}" = "amd64" ]; then
+    sysroot="/"
+  else
+    sysroot="/usr/${triplet}"
+    [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
+  fi
+
+  for _pair in "clang:${host_clang}" "clang++:${host_clangxx}"; do
+    _name="${_pair%%:*}"; _bin="${_pair#*:}"
+    wrapper="/usr/local/bin/${_name}-${target_label}"
+    cat > "${wrapper}" <<EOF
+#!/usr/bin/env bash
+exec "${_bin}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
+EOF
+    chmod +x "${wrapper}"
+    log "Installed LLVM wrapper: $(basename "${wrapper}")"
   done
 }
 
 install_cross_clang_wrappers() {
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
-  local gcc_prefix target target_label triplet sysroot wrapper host_clang host_clangxx
+  local gcc_prefix host_clang host_clangxx
 
   cross_mode_requested || return 0
 
@@ -92,48 +106,13 @@ install_cross_clang_wrappers() {
   gcc_prefix="$(gcc_toolchain_prefix 2>/dev/null || true)"
   [ -d "${gcc_prefix}" ] || gcc_prefix="/usr"
 
-  for target in ${targets_raw//,/ }; do
-    target_label="$(arch_normalize "$target")"
-    case "${target_label}" in
-      amd64|arm64|riscv64) ;;
-      *)
-      log "Skipping unsupported LLVM cross target: ${target}"
-      continue
-      ;;
-    esac
-    triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || continue
-    if [ "${target_label}" = "amd64" ]; then
-      sysroot="/"
-    else
-      sysroot="/usr/${triplet}"
-      [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
-    fi
-
-    wrapper="/usr/local/bin/clang-${target_label}"
-    cat > "${wrapper}" <<EOF
-#!/usr/bin/env bash
-exec "${host_clang}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
-EOF
-    chmod +x "${wrapper}"
-    log "Installed LLVM wrapper: $(basename "${wrapper}")"
-
-    wrapper="/usr/local/bin/clang++-${target_label}"
-    cat > "${wrapper}" <<EOF
-#!/usr/bin/env bash
-exec "${host_clangxx}" --target=${triplet} --sysroot=${sysroot} --gcc-toolchain=${gcc_prefix} "\$@"
-EOF
-    chmod +x "${wrapper}"
-    log "Installed LLVM wrapper: $(basename "${wrapper}")"
-  done
+  # amd64 is included (its wrapper targets sysroot "/").
+  for_each_cross_target _llvm_install_cross_clang_wrapper --include-amd64 "${targets_raw}"
 }
 
+# Mapping lives in 01-core/arch-mapping.sh (loaded via common.sh).
 llvm_cross_backend() {
-  case "$(arch_normalize "$1")" in
-    amd64|x86_64) printf '%s' "X86" ;;
-    arm64|aarch64) printf '%s' "AArch64" ;;
-    riscv64) printf '%s' "RISCV" ;;
-    *) return 1 ;;
-  esac
+  arch_to_llvm_target "$1" 2>/dev/null
 }
 
 llvm_cross_root() {
@@ -154,45 +133,15 @@ llvm_cross_bin_dir() {
   printf '%s' "${prefix}/bin"
 }
 
-llvm_cross_lib_dir() {
-  local prefix="$1"
-  local dir
+# _llvm_first_existing <test-flag> <candidate...>
+# Print the first candidate that satisfies `test <test-flag>` (one of
+# -e/-x/-d/-f) and return 0; return 1 when none matches.
+_llvm_first_existing() {
+  local test_flag="$1" candidate
+  shift
 
-  for dir in \
-    "${prefix}/lib" \
-    "${prefix}/lib64"; do
-    [ -d "${dir}" ] || continue
-    printf '%s' "${dir}"
-    return 0
-  done
-
-  return 1
-}
-
-llvm_cross_cmake_dir() {
-  local prefix
-  local dir
-
-  prefix="$(llvm_cross_install_prefix "$1")" || return 1
-  for dir in \
-    "${prefix}/lib/cmake/llvm" \
-    "${prefix}/lib64/cmake/llvm"; do
-    [ -f "${dir}/LLVMConfig.cmake" ] || continue
-    printf '%s' "${dir}"
-    return 0
-  done
-
-  return 1
-}
-
-llvm_cross_shared_umbrella_lib_path() {
-  local prefix="$1"
-  local candidate
-
-  for candidate in \
-    "${prefix}/lib/libLLVM.so" \
-    "${prefix}/lib64/libLLVM.so"; do
-    [ -e "${candidate}" ] || continue
+  for candidate in "$@"; do
+    test "${test_flag}" "${candidate}" || continue
     printf '%s' "${candidate}"
     return 0
   done
@@ -200,9 +149,34 @@ llvm_cross_shared_umbrella_lib_path() {
   return 1
 }
 
+llvm_cross_lib_dir() {
+  local prefix="$1"
+
+  _llvm_first_existing -d \
+    "${prefix}/lib" \
+    "${prefix}/lib64"
+}
+
+llvm_cross_cmake_dir() {
+  local prefix config
+
+  prefix="$(llvm_cross_install_prefix "$1")" || return 1
+  config="$(_llvm_first_existing -f \
+    "${prefix}/lib/cmake/llvm/LLVMConfig.cmake" \
+    "${prefix}/lib64/cmake/llvm/LLVMConfig.cmake")" || return 1
+  printf '%s' "${config%/LLVMConfig.cmake}"
+}
+
+llvm_cross_shared_umbrella_lib_path() {
+  local prefix="$1"
+
+  _llvm_first_existing -e \
+    "${prefix}/lib/libLLVM.so" \
+    "${prefix}/lib64/libLLVM.so"
+}
+
 llvm_cross_versioned_shared_umbrella_lib_path() {
   local prefix="$1"
-  local candidate
   local nullglob_was_set=0
   local -a matches=()
 
@@ -215,47 +189,27 @@ llvm_cross_versioned_shared_umbrella_lib_path() {
     shopt -u nullglob
   fi
 
-  for candidate in "${matches[@]}"; do
-    [ -e "${candidate}" ] || continue
-    printf '%s' "${candidate}"
-    return 0
-  done
-
-  return 1
+  _llvm_first_existing -e "${matches[@]}"
 }
 
 llvm_cross_compat_shared_umbrella_lib_path() {
   local prefix="$1"
-  local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
-  local candidate
+  local major="$(llvm_wanted_major)"
 
   major="$(version_major "${major}")"
-  for candidate in \
+  _llvm_first_existing -e \
     "${prefix}/lib/libLLVM-${major}.so" \
-    "${prefix}/lib64/libLLVM-${major}.so"; do
-    [ -e "${candidate}" ] || continue
-    printf '%s' "${candidate}"
-    return 0
-  done
-
-  return 1
+    "${prefix}/lib64/libLLVM-${major}.so"
 }
 
 llvm_cross_llvm_config_path() {
   local prefix="$1"
-  local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
-  local candidate
+  local major="$(llvm_wanted_major)"
 
   major="$(version_major "${major}")"
-  for candidate in \
+  _llvm_first_existing -x \
     "${prefix}/bin/llvm-config" \
-    "${prefix}/bin/llvm-config-${major}"; do
-    [ -x "${candidate}" ] || continue
-    printf '%s' "${candidate}"
-    return 0
-  done
-
-  return 1
+    "${prefix}/bin/llvm-config-${major}"
 }
 
 llvm_cross_install_looks_complete() {
@@ -402,15 +356,9 @@ llvm_cross_populate_tool_wrapper_dir() {
 
   mkdir -p "${wrapper_dir}"
   for tool in as ld ar nm ranlib strip objcopy; do
-    case "${tool}" in
-      as)      ln -sfn "${AS}"      "${wrapper_dir}/as" ;;
-      ld)      ln -sfn "${LD}"      "${wrapper_dir}/ld" ;;
-      ar)      ln -sfn "${AR}"      "${wrapper_dir}/ar" ;;
-      nm)      ln -sfn "${NM}"      "${wrapper_dir}/nm" ;;
-      ranlib)  ln -sfn "${RANLIB}"  "${wrapper_dir}/ranlib" ;;
-      strip)   ln -sfn "${STRIP}"   "${wrapper_dir}/strip" ;;
-      objcopy) ln -sfn "${OBJCOPY}" "${wrapper_dir}/objcopy" ;;
-    esac
+    # AS, LD, AR, NM, RANLIB, STRIP, OBJCOPY — env var name is the tool upper-cased
+    local _tv="${tool^^}"
+    ln -sfn "${!_tv}" "${wrapper_dir}/${tool}"
   done
 }
 
@@ -418,7 +366,7 @@ _LLVM_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_LLVM_SH_DIR}/llvm-validate.sh"
 
 llvm_host_native_tool_dir() {
-  local major="${LLVM_WANTED:-${CLANG_WANTED:-22}}"
+  local major="$(llvm_wanted_major)"
   local candidate
 
   major="$(version_major "${major}")"

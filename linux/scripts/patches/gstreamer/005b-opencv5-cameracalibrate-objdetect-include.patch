@@ -1,0 +1,12 @@
+diff --git a/subprojects/gst-plugins-bad/ext/opencv/gstcameracalibrate.cpp b/subprojects/gst-plugins-bad/ext/opencv/gstcameracalibrate.cpp
+index b24dea0..bbabf02 100644
+--- a/subprojects/gst-plugins-bad/ext/opencv/gstcameracalibrate.cpp
++++ b/subprojects/gst-plugins-bad/ext/opencv/gstcameracalibrate.cpp
+@@ -85,6 +85,7 @@
+ 
+ #include <opencv2/imgproc.hpp>
+ #include <opencv2/calib3d.hpp>
++#include <opencv2/objdetect.hpp>
+ 
+ #include <gst/opencv/gstopencvutils.h>
+ 

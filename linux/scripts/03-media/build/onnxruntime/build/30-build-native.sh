@@ -49,62 +49,38 @@ info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)
 # Prepare directories
 ensure_onnx_output_tree "${NATIVE_CPU_OUTPUT_DIR}"
 
-BUILD_ARGS=(
-  --build_dir "${NATIVE_CPU_BUILD_DIR}"
-  --config "${NATIVE_CPU_CONFIG}"
-  --build_shared_lib
-  --parallel "${JOBS}"
-  --compile_no_warning_as_error
-  --skip_submodule_sync
-  --skip_tests
-  --allow_running_as_root
-  --use_xnnpack
-  --use_mimalloc
-  --use_lock_free_queue
-)
+BUILD_ARGS=()
+append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
+BUILD_ARGS+=(--use_xnnpack)
 
 BUILD_ARGS+=(
   --cmake_extra_defines
   "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
 )
 
-if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
-  BUILD_ARGS+=(
-    --enable_lto
-  )
-fi
+append_onnx_optional_lto_webgpu_args BUILD_ARGS
 
-if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
-  BUILD_ARGS+=(
-    --use_webgpu
-    --use_external_dawn
-  )
-fi
-
-if [ "${ORT_ENABLE_TVM:-false}" = "true" ]; then
-  warn "TVM EP requested but ORT build.py no longer supports --use_tvm (removed after ORT 1.16)."
-  warn "TVM integration is handled via the TVM runtime, not the ORT EP. Skipping."
-fi
-
-if [ "${ORT_ENABLE_ARMNN:-true}" = "true" ]; then
+# oneDNN (DNNL) CPU execution provider. BUILD_DNNL_EP defaults to true (see
+# lib/common.sh) but the --use_dnnl flag was never actually passed to build.py,
+# so the EP was silently never built. Wire it up, gated to x86_64: oneDNN's
+# kernels are x86-tuned and this is the native (host==target) build there.
+if [ "${BUILD_DNNL_EP:-true}" = "true" ]; then
   case "${TARGET_ARCH:-${TARGETARCH:-}}" in
-    arm64|aarch64)
-      if [ -d /opt/armnn ] && [ -d /opt/acl ]; then
-        info "Arm NN EP enabled (armnn=/opt/armnn, acl=/opt/acl)"
-        BUILD_ARGS+=(
-          --use_armnn
-          --armnn_home /opt/armnn
-          --acl_home /opt/acl
-        )
-      else
-        warn "Arm NN EP enabled but /opt/armnn or /opt/acl not found; skipping"
-      fi
+    amd64|x86_64)
+      info "oneDNN (DNNL) execution provider enabled"
+      BUILD_ARGS+=(--use_dnnl)
       ;;
     *)
-      info "Arm NN EP only supported on arm64; skipping on ${TARGET_ARCH:-${TARGETARCH:-unknown}}"
+      info "Skipping oneDNN EP (x86_64-only; arch=${TARGET_ARCH:-${TARGETARCH:-unknown}})"
       ;;
   esac
 fi
+
+# NOTE: no Arm NN execution provider here. ONNX Runtime deprecated (~1.16) and
+# then removed the Arm NN EP; v1.27.0's build.py rejects --use_armnn/--armnn_home
+# ("unrecognized arguments"), which hard-failed the build wherever /opt/armnn was
+# present. The Arm NN / ACL libraries are still built and shipped (Dockerfile.media
+# armnn stage) for direct use by the application, just not wired as an ORT EP.
 
 if cross_build_is_active; then
   append_onnx_cross_cmake_build_args BUILD_ARGS
@@ -150,11 +126,7 @@ copy_onnx_headers_to_output "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIV
 info "Listing copied headers:"
 ls -la "${NATIVE_CPU_OUTPUT_DIR}/include/"*.h 2>/dev/null || warn "No .h files found in include directory"
 
-verify_onnxruntime_core_header "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_CPU_BUILD_DIR}"
-
-copy_onnx_libraries_to_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}"
-ensure_onnxruntime_symlink "${NATIVE_CPU_OUTPUT_DIR}"
-symlink_output_libraries_into_usr_local "${NATIVE_CPU_OUTPUT_DIR}"
+finalize_onnx_native_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
 
 info "Build complete. Artifacts in ${NATIVE_CPU_OUTPUT_DIR}"
 info "Wheels in ${NATIVE_CPU_OUTPUT_DIR}/wheels"

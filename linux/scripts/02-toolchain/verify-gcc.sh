@@ -7,7 +7,6 @@ verify_gcc_installation() {
   local PREFIX="$1"
   local GCC_VERSION="$2"
   local SUDO="${3:-}"
-  local TARGET_TRIPLET="${4:-}"
   local failed=0
 
   echo
@@ -62,27 +61,3 @@ verify_gcc_installation() {
   return "${failed}"
 }
 
-verify_cross_compiler() {
-  local PREFIX="$1"
-  local TARGET_TRIPLET="$2"
-
-  echo
-  echo "============================================"
-  echo "=== Cross Compiler Verification ==="
-  echo "============================================"
-  echo
-  if [ -n "${TARGET_TRIPLET}" ]; then
-    if [ -x "${PREFIX}/bin/${TARGET_TRIPLET}-gcc" ]; then
-      echo "Installed cross GCC:"
-      "${PREFIX}/bin/${TARGET_TRIPLET}-gcc" --version 2>/dev/null | head -n1 || true
-      echo
-    fi
-    if [ -x "${PREFIX}/bin/${TARGET_TRIPLET}-g++" ]; then
-      echo "Installed cross G++:"
-      "${PREFIX}/bin/${TARGET_TRIPLET}-g++" --version 2>/dev/null | head -n1 || true
-      echo
-    fi
-  fi
-  echo "Skipped system registration for this targeted install."
-  echo
-}

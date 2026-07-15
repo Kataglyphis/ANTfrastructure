@@ -34,8 +34,6 @@ if cross_build_is_active && \
   esac
 fi
 
-skip_csound_cross=$(is_cross_skip_csound && echo true || echo false)
-
 prefer_toolchain_vulkan=false
 if cross_build_is_active && \
    [ -d "${vulkan_prefix}" ]; then
@@ -139,7 +137,7 @@ if [ -n "${gi_cross_wrapper_arch}" ]; then
   host_packages+=(qemu-user)
 fi
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_CAIRO_PANGO_PIXBUF:-0}" = "1" ]; then
   echo "Skipping libpango1.0-dev and libgdk-pixbuf-2.0-dev target helper packages for riscv64 cross pre-setup because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
   core_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev "${core_packages[@]}")
@@ -155,10 +153,41 @@ if [ "${is_riscv64_cross}" = "true" ]; then
   rm -f /usr/lib/riscv64-linux-gnu/libpango*.so* /usr/lib/riscv64-linux-gnu/pkgconfig/pango*.pc 2>/dev/null || true
 fi
 
-# Keep the cross pkg-config path target-only, but expose the wrapped scanner
-# path through a focused shim without dropping the target package's real
-# include/library flags.
-if [ -n "${gi_cross_wrapper_arch}" ]; then
+# Render the qemu binary wrapper from the sibling template, substituting the
+# generation-time values (@WRAPPER_MODE@, @TARGET_TRIPLET@, @QEMU_RUNNER@,
+# @QEMU_SYSROOT@). Runtime expansions stay as plain ${var} in the template.
+# Pure-bash substitution is used instead of sed because the values are filesystem
+# paths that could contain any sed delimiter/replacement metacharacter; the
+# quoted replacement also keeps bash >= 5.2 patsub_replacement from interpreting
+# '&'. Hoisted to file scope (was defined inside the if-block); reads
+# target_triplet/qemu_runner/qemu_sysroot from setup_gi_cross_wrappers.
+# shellcheck disable=SC2154
+write_qemu_binary_wrapper() {
+  local wrapper_path="$1"
+  local mode="$2"
+  local template="${_PRE_SETUP_DIR}/qemu-binary-wrapper.sh.tpl"
+  local content
+
+  if [ ! -f "${template}" ]; then
+    echo "ERROR: Missing qemu binary wrapper template at ${template}" >&2
+    return 1
+  fi
+
+  content="$(cat "${template}")"
+  content="${content//@WRAPPER_MODE@/"${mode}"}"
+  content="${content//@TARGET_TRIPLET@/"${target_triplet}"}"
+  content="${content//@QEMU_RUNNER@/"${qemu_runner}"}"
+  content="${content//@QEMU_SYSROOT@/"${qemu_sysroot}"}"
+
+  printf '%s\n' "${content}" > "${wrapper_path}"
+  chmod +x "${wrapper_path}"
+}
+
+# Set up the cross gobject-introspection scanner/ldd/qemu wrappers + pkg-config
+# metadata. Keeps the cross pkg-config path target-only while exposing the
+# wrapped scanner path through a focused shim without dropping the target
+# package's real include/library flags. (Extracted from a 250-line inline block.)
+setup_gi_cross_wrappers() {
   build_triplet="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   target_triplet=""
   target_gi_bindir="/usr/bin"
@@ -256,6 +285,9 @@ if [ -n "${gi_cross_wrapper_arch}" ]; then
         done
         ;;
       arm64)
+        # arm64 has a single loader path (riscv64 above has several); the
+        # one-element loop is intentional and keeps the break-2 structure uniform.
+        # shellcheck disable=SC2066
         for loader in \
           "${candidate}/lib/ld-linux-aarch64.so.1"; do
           if [ -e "${loader}" ]; then
@@ -325,157 +357,6 @@ exec "\${host_ldd}" "\$@"
 EOF
   chmod +x "${gi_ldd_default}"
 
-  write_qemu_binary_wrapper() {
-    local wrapper_path="$1"
-    local mode="$2"
-
-    cat > "${wrapper_path}" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-
-wrapper_mode='${mode}'
-
-[ "\$#" -ge 1 ] || exit 2
-
-binary="\$1"
-shift
-
-target_ld_library_path=""
-
-append_target_libdir() {
-  local dir="\$1"
-  [ -n "\${dir}" ] || return 0
-  [ -d "\${dir}" ] || return 0
-
-  case ":\${target_ld_library_path}:" in
-    *":\${dir}:"*)
-      ;;
-    *)
-      if [ -n "\${target_ld_library_path}" ]; then
-        target_ld_library_path="\${target_ld_library_path}:\${dir}"
-      else
-        target_ld_library_path="\${dir}"
-      fi
-      ;;
-  esac
-}
-
-append_binary_runpaths() {
-  local binary_path="\$1"
-  local binary_dir objdump_cmd runpath old_ifs entry
-
-  [ -n "\${binary_path}" ] || return 0
-  [ -f "\${binary_path}" ] || return 0
-
-  binary_dir="\$(cd "\$(dirname "\${binary_path}")" 2>/dev/null && pwd)"
-
-  if [ -n "${target_triplet}" ] && command -v "${target_triplet}-objdump" >/dev/null 2>&1; then
-    objdump_cmd="${target_triplet}-objdump"
-  else
-    objdump_cmd="objdump"
-  fi
-
-  while IFS= read -r runpath; do
-    [ -n "\${runpath}" ] || continue
-
-    old_ifs="\${IFS}"
-    IFS=':'
-    for entry in \${runpath}; do
-      case "\${entry}" in
-        '\$ORIGIN'|'\${ORIGIN}')
-          entry="\${binary_dir}"
-          ;;
-        '\$ORIGIN'/*|'\${ORIGIN}'/*)
-          entry="\${binary_dir}/\${entry#*/}"
-          ;;
-      esac
-      append_target_libdir "\${entry}"
-    done
-    IFS="\${old_ifs}"
-  done < <("\${objdump_cmd}" -p "\${binary_path}" | awk '
-    /^[[:space:]]*RUNPATH/ || /^[[:space:]]*RPATH/ {
-      \$1 = ""
-      sub(/^[[:space:]]+/, "")
-      print
-    }
-  ')
-}
-
-merge_target_libdirs() {
-  local value="\$1" dir old_ifs
-  [ -n "\${value}" ] || return 0
-
-  old_ifs="\${IFS}"
-  IFS=':'
-  for dir in \${value}; do
-    append_target_libdir "\${dir}"
-  done
-  IFS="\${old_ifs}"
-}
-
-append_meson_uninstalled_libdirs() {
-  local meson_uninstalled="" entry pc_file pkg_name lib_flag
-  local old_ifs
-  local -a pkg_config_entries
-
-  IFS=':' read -r -a pkg_config_entries <<< "\${PKG_CONFIG_PATH:-}"
-  for entry in "\${pkg_config_entries[@]}"; do
-    case "\${entry}" in
-      */meson-uninstalled)
-        meson_uninstalled="\${entry}"
-        break
-        ;;
-    esac
-  done
-
-  if [ -n "\${meson_uninstalled}" ] && [ -d "\${meson_uninstalled}" ]; then
-    while IFS= read -r pc_file; do
-      pkg_name="\$(basename "\${pc_file}" .pc)"
-      for lib_flag in \$(pkg-config --libs-only-L "\${pkg_name}" 2>/dev/null || true); do
-        case "\${lib_flag}" in
-          -L*)
-            append_target_libdir "\${lib_flag#-L}"
-            ;;
-        esac
-      done
-    done < <(find "\${meson_uninstalled}" -maxdepth 1 -type f -name '*.pc' -print)
-  fi
-}
-
-if [ "\${wrapper_mode}" = "gi" ]; then
-  # For temporary GIR dump binaries, prefer the current build-tree libraries
-  # from meson-uninstalled metadata before broader inherited target paths.
-  append_meson_uninstalled_libdirs
-  merge_target_libdirs "\${LD_LIBRARY_PATH:-}"
-  merge_target_libdirs "\${GI_TARGET_LD_LIBRARY_PATH:-}"
-  merge_target_libdirs "\${LIBRARY_PATH:-}"
-  append_target_libdir "\$(dirname "\${binary}")"
-else
-  # Generic Meson target helpers like orcc need their executable-local
-  # RUNPATH/RPATH ahead of broader target library fallbacks.
-  append_target_libdir "\$(dirname "\${binary}")"
-  append_binary_runpaths "\${binary}"
-  append_meson_uninstalled_libdirs
-  merge_target_libdirs "\${LD_LIBRARY_PATH:-}"
-  merge_target_libdirs "\${GI_TARGET_LD_LIBRARY_PATH:-}"
-  merge_target_libdirs "\${LIBRARY_PATH:-}"
-fi
-
-if [ -n "${target_triplet}" ]; then
-  append_target_libdir "/lib/${target_triplet}"
-  append_target_libdir "/usr/lib/${target_triplet}"
-fi
-
-qemu_args=( "${qemu_runner}" -L "${qemu_sysroot}" )
-if [ -n "\${target_ld_library_path}" ]; then
-  qemu_args+=( -E "LD_LIBRARY_PATH=\${target_ld_library_path}" )
-fi
-
-exec env -u LD_LIBRARY_PATH "\${qemu_args[@]}" "\${binary}" "\$@"
-EOF
-    chmod +x "${wrapper_path}"
-  }
-
   write_qemu_binary_wrapper "${gi_binary_wrapper}" gi
   write_qemu_binary_wrapper "${meson_binary_wrapper}" meson
 
@@ -526,6 +407,10 @@ EOF
     "Cflags: ${target_gi_cflags}" \
     > /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc
   cp /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc /usr/local/lib/pkgconfig/gobject-introspection-no-export-1.0.pc
+}
+
+if [ -n "${gi_cross_wrapper_arch}" ]; then
+  setup_gi_cross_wrappers
 fi
 
 if [ "${prefer_toolchain_vulkan}" = "true" ]; then
@@ -546,7 +431,7 @@ update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
 # The later GStreamer build already disables/excludes csound on ARM and RISC-V
 # cross targets, so avoid redundant host-side package churn here.
 # Also check target arch directly in case cross_build_is_active is not available.
-if [ "${skip_csound_cross}" = "true" ] || echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
+if [ "${MEDIA_SKIP_CSOUND:-0}" = "1" ] || echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
   echo "Skipping Csound pre-setup for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
   apt-get install -y --no-install-recommends \
@@ -559,7 +444,10 @@ fi
 # stub when not building for riscv targets (we skipped installing Csound
 # packages above for skipped cross targets), otherwise creating a stub may mask
 # missing package problems on supported arches.
-if [ "${skip_csound_cross}" != "true" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
+if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ]; then
+  # Runs for native and for any cross target that ships Csound (arm64; riscv64
+  # keeps MEDIA_SKIP_CSOUND=1). cross_target_triplet gives the target multiarch
+  # dir so the stub + CSOUND_LIB_DIR point at the target libcsound64.
   triplet=""
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     triplet="$(cross_target_triplet)"
@@ -590,7 +478,7 @@ if [ "${skip_csound_cross}" != "true" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-
     "Cflags: -I\${includedir}" \
     > "$pcdir/csound.pc" || true
   # Verify that pkg-config can discover csound; fail with diagnostics if not.
-  if [ "${skip_csound_cross}" != "true" ] && ! pkg-config --exists csound 2>/dev/null; then
+  if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ] && ! PKG_CONFIG_PATH="${pcdir}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}" pkg-config --exists csound 2>/dev/null; then
     echo "dpkg multiarch triplet: ${triplet:-unset}" >&2
     echo "PKG_CONFIG_LIBDIR=${PKG_CONFIG_LIBDIR:-unset}" >&2
     echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-unset}" >&2
@@ -616,4 +504,7 @@ if [ "${skip_csound_cross}" != "true" ] && ! echo "${TARGET_ARCH:-${TARGETARCH:-
 else
   echo "Skipping creation of csound.pc stub for cross targets where Csound is disabled"
 fi
-rm -rf /var/lib/apt/lists/*
+# NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
+# BuildKit cache mount in Dockerfile.media, so wiping it only forces the next
+# stage's `apt-get update` to re-download every index (and it saves no image
+# size, since a cache mount is not a layer).

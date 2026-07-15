@@ -1,0 +1,81 @@
+# Weekly check: file an issue if version markers, deps table, Dockerfile ARGs,
+# or website license files are out of sync with versions.env.
+name: Stale Docs Check
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # every Monday 06:00 UTC
+  workflow_dispatch:       # manual trigger
+
+jobs:
+  stale-docs:
+    name: Check for stale docs
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Check version consistency
+        id: check
+        continue-on-error: true
+        run: python3 docs/scripts/sync_versions.py --check
+        # This also checks inline markers, deps table, Dockerfile ARGs,
+        # and website license files (delegates to generate-website-licenses.py --check).
+
+      - name: Check ARG consistency
+        id: argcheck
+        continue-on-error: true
+        run: bash linux/scripts/01-core/verify-arg-consistency.sh
+
+      - name: Check Ubuntu mirror consistency
+        id: mirrorcheck
+        continue-on-error: true
+        run: bash linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh
+
+      - name: Create issue if stale
+        if: steps.check.outcome != 'success' || steps.argcheck.outcome != 'success' || steps.mirrorcheck.outcome != 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '📋 Stale docs detected — run sync_versions.py --write';
+            const body = [
+              'Weekly stale-doc check found out-of-date documentation.',
+              '',
+              'Run locally to fix:',
+              '```bash',
+              'python3 docs/scripts/sync_versions.py --write',
+              'python3 docs/scripts/generate-website-licenses.py --write',
+              '```',
+              '',
+              'Then commit and push the changes.',
+              '',
+              '---',
+              '_Generated automatically by the Stale Docs Check workflow._',
+            ].join('\n');
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'documentation',
+            });
+            const alreadyOpen = issues.find(i =>
+              i.title.includes('Stale docs detected')
+            );
+            if (alreadyOpen) {
+              console.log('Issue already exists, skipping.');
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['documentation'],
+            });

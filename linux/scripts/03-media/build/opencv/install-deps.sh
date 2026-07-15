@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for _cv_env in \
-    "/opt/scripts/core/install-deps-preamble.sh" \
-    "/opt/scripts/core/cross-env.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/cross-env.sh"; do
-    if [ -f "${_cv_env}" ]; then
-        source "${_cv_env}" || { echo "FATAL: cannot load ${_cv_env}" >&2; exit 1; }
-        break
-    fi
-done
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../core/common.sh"
+media_install_deps_init "${SCRIPT_DIR}"
 
 : "${WITH_PYTHON:=true}"
 : "${WITH_JAVA:=false}"
@@ -83,42 +78,47 @@ if is_cross && [ "$(cross_target_arch)" != "amd64" ]; then
     if ! dpkg -l "libfreetype-dev:${_ft_arch}" >/dev/null 2>&1; then
         install_target_packages libfreetype-dev libharfbuzz-dev || true
     fi
-    # If still not installed (package not available), cross-compile freetype from source
+    # If still not installed (package not available), cross-compile freetype from source.
     _ft_triplet="$(cross_target_triplet 2>/dev/null || true)"
-    if [ -n "${_ft_triplet}" ] && [ ! -f "/usr/lib/${_ft_triplet}/libfreetype.so" ]; then
-        echo "[INFO] Target libfreetype-dev:${_ft_arch} not in repos. Cross-compiling from source..."
-        _ft_src="/tmp/freetype-src-$$"
-        _ft_ver="${FREETYPE_VERSION:-2.14.2}"
-        rm -rf "${_ft_src}"
-        mkdir -p "${_ft_src}"
-        curl -sL "https://github.com/freetype/freetype/archive/refs/tags/VER-${_ft_ver//./-}.tar.gz" \
-          | tar -xzf - -C "${_ft_src}" --strip-components=1 || true
-        if [ ! -f "${_ft_src}/CMakeLists.txt" ]; then
-            echo "[WARN] Failed to download freetype source"
-        else
-        mkdir -p "${_ft_src}/build"
-        cd "${_ft_src}/build"
-        cmake .. \
-          -DCMAKE_SYSTEM_NAME=Linux \
-          -DCMAKE_SYSTEM_PROCESSOR="${_ft_arch}" \
-          -DCMAKE_C_COMPILER="${_ft_triplet}-gcc" \
-          -DCMAKE_CXX_COMPILER="${_ft_triplet}-g++" \
-          -DCMAKE_FIND_ROOT_PATH="/usr/${_ft_triplet};/usr/lib/${_ft_triplet}" \
-          -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+    _ft_ver="${FREETYPE_VERSION:-2.14.2}"
+    if [ -n "${_ft_triplet}" ]; then
+        cross_compile_cmake_lib_from_source freetype \
+          "https://github.com/freetype/freetype/archive/refs/tags/VER-${_ft_ver//./-}.tar.gz" \
+          "/usr/${_ft_triplet}" "/usr/lib/${_ft_triplet}/libfreetype.so" \
           -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
           -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-          -DCMAKE_INSTALL_PREFIX="/usr/${_ft_triplet}" \
           -DBUILD_SHARED_LIBS=ON \
           -DFT_DISABLE_BZIP2=ON \
           -DFT_DISABLE_PNG=ON \
           -DFT_DISABLE_HARFBUZZ=ON \
-          -DFT_DISABLE_BROTLI=ON \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-        cmake --build . --target install -j"$(nproc)" 2>/dev/null || {
-            echo "[WARN] Failed to build freetype from source"
-        }
-        rm -rf "${_ft_src}"
-        fi
+          -DFT_DISABLE_BROTLI=ON
+    fi
+fi
+
+# OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under GCC
+# 16.1.0, so the riscv64 OpenCV build links an EXTERNAL libpng instead (WITH_PNG=ON
+# + BUILD_PNG=OFF in build-opencv.sh) so cv2.imencode('.png', ...) works. Build a
+# PIC STATIC libpng from source so it links directly into opencv_imgcodecs.so --
+# matching how the vendored libpng is bundled on the other arches, with NO extra
+# runtime .so to stage into the final image (its only symbols, zlib's, resolve
+# against the libz OpenCV already links). PNG_HARDWARE_OPTIMIZATIONS=OFF skips the
+# RISC-V Vector intrinsics probe. Ubuntu Ports' libpng-dev:riscv64 dep set is
+# frequently broken, so we build from source not apt.
+if is_cross && [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
+    _png_triplet="$(cross_target_triplet 2>/dev/null || true)"
+    _png_ver="${LIBPNG_VERSION:-1.6.44}"
+    if [ -n "${_png_triplet}" ]; then
+        cross_compile_cmake_lib_from_source libpng \
+          "https://github.com/pnggroup/libpng/archive/refs/tags/v${_png_ver}.tar.gz" \
+          "/usr/${_png_triplet}" "/usr/${_png_triplet}/lib/libpng16.a" \
+          -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
+          -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
+          -DZLIB_INCLUDE_DIR=/usr/include \
+          -DZLIB_LIBRARY="/usr/lib/${_png_triplet}/libz.so" \
+          -DPNG_SHARED=OFF \
+          -DPNG_STATIC=ON \
+          -DPNG_TESTS=OFF \
+          -DPNG_HARDWARE_OPTIMIZATIONS=OFF \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     fi
 fi

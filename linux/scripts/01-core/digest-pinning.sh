@@ -42,21 +42,24 @@ registry_pin_ref() {
     return 1
   fi
 
-  local err_output
-  err_output="$(mktemp)"
-  digest="$("${nerdctl_bin}" manifest inspect --verbose "${image_ref}" 2>"${err_output}" \
-    | python3 "${digest_script}" 2>"${err_output}")"
+  # Separate stderr capture per pipeline stage: both stages run concurrently,
+  # so sharing one file with 2> would have each truncate/garble the other.
+  local inspect_err digest_err
+  inspect_err="$(mktemp)"
+  digest_err="$(mktemp)"
+  digest="$("${nerdctl_bin}" manifest inspect --verbose "${image_ref}" 2>"${inspect_err}" \
+    | python3 "${digest_script}" 2>"${digest_err}")"
 
   if [ -z "${digest}" ]; then
     printf '[ERROR] Could not resolve registry digest for %s\n' "${image_ref}" >&2
-    if [ -s "${err_output}" ]; then
+    if [ -s "${inspect_err}" ] || [ -s "${digest_err}" ]; then
       printf '[ERROR] Registry/digest diagnostic output:\n' >&2
-      cat "${err_output}" >&2
+      cat "${inspect_err}" "${digest_err}" >&2
     fi
-    rm -f "${err_output}"
+    rm -f "${inspect_err}" "${digest_err}"
     return 1
   fi
-  rm -f "${err_output}"
+  rm -f "${inspect_err}" "${digest_err}"
 
   printf '%s@%s' "${repo}" "${digest}"
 }

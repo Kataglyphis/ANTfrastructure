@@ -8,47 +8,58 @@
 ARG WINDOWS_LTSC=2025
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
 ARG VULKAN_VERSION=1.4.341.1
-ARG GSTREAMER_VERSION=1.29.1
-ARG ARCH=x86_64
-ARG FLAVOR=msvc
-ARG CMAKE_VERSION=4.3.2
-ARG CMAKE_NIGHTLY_URL=https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-windows-x86_64.msi
+ARG CMAKE_VERSION=4.4.0
 
+# GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 ENV TEMP_DIR="C:\temp"
-ENV GST_VERSION=$GSTREAMER_VERSION
 LABEL maintainer="contact@jonasheinle.de"
 
 # NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Stable scripts layer (cache-friendly — rarely changes)
-COPY windows\scripts\modules C:\temp\scripts\modules
+# COPY-immediately-before-RUN throughout this file: each input lands in the layer
+# right before the step that consumes it, so editing a LATER script (or versions.env)
+# can never bust an EARLIER expensive layer. The most expensive layer of the whole
+# chain -- VS Build Tools -- therefore depends ONLY on the three modules its script
+# imports + setup-vs.ps1 itself. (Copying the full modules directory here would bust
+# it on every module edit; the media stage copies its own build modules and the full
+# module set ships in the final image (windows/Dockerfile) for in-container CI.)
+COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsContainerImage.Common.psm1 `
+     windows\scripts\modules\WindowsInstaller.Common.psm1 `
+     C:\temp\scripts\modules\
+# setup-vs.ps1 deliberately runs BEFORE load-versions so a versions.env bump cannot
+# bust the most expensive layer. Its ONE versioned input -- the Windows SDK component
+# build -- therefore arrives as an ARG (build.ps1 passes versions.env's
+# WINDOWS_SDK_BUILD as --build-arg; ARG values are env vars during this stage's RUNs,
+# which is where setup-vs.ps1's $env:WINDOWS_SDK_BUILD read gets its value). Changing
+# the SDK pin SHOULD rebuild the VS layer.
+ARG WINDOWS_SDK_BUILD=26100
+# Same ARG route for the VS Build Tools major (versions.env VISUAL_STUDIO_VERSION):
+# setup-vs.ps1's VsDevCmd sanity check derives its path from it instead of a literal.
+ARG VISUAL_STUDIO_VERSION=18
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
-COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
-COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
-COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 
-COPY windows\scripts\configure-dns.ps1 C:\temp\scripts\
-COPY windows\scripts\verify-*.ps1 C:\temp\scripts\
-COPY windows\scripts\finalize-container.ps1 C:\temp\scripts\
-COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
 # versions.env is the single source of truth for version numbers.
-# load-versions.ps1 reads it and sets matching env vars.
-# Dockerfile ARG defaults should mirror versions.env entries.
+# load-versions.ps1 reads it and sets matching (Machine + Process) env vars for
+# every later RUN. Dockerfile ARG defaults should mirror versions.env entries.
+COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
 COPY linux\scripts\01-core\versions.env C:\temp\
 RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 
-# Configure DNS inside BuildKit container (nerdctl build can't pass --dns on Windows)
-RUN & 'C:\temp\scripts\configure-dns.ps1'
+# Needs load-versions first: pins scoop's llvm/git installs (LLVM_RELEASE/GIT_VERSION).
+COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION
 
-RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
-RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR
+COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
 
+# LLVM_GLOBAL_BIN / SCOOP_GLOBAL_SHIMS removed 2026-07-14: llvm + shims are
+# user-scope installs; both pointed at never-created C:\ProgramData dirs.
 ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     SCOOP_GLOBAL=C:\ProgramData\scoop `
     SCOOP_USER_SHIMS=C:\Users\ContainerAdministrator\scoop\shims `
-    SCOOP_GLOBAL_SHIMS=C:\ProgramData\scoop\shims `
     GIT_CMD="C:\Program Files\Git\cmd" `
     GIT_BIN="C:\Program Files\Git\bin" `
     GIT_USRBIN="C:\Program Files\Git\usr\bin" `
@@ -56,15 +67,22 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     VULKAN_SDK=C:\Users\ContainerAdministrator\scoop\apps\vulkan\current `
     WIX=C:\WiX `
     LLVM_USER_BIN=C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin `
-    LLVM_GLOBAL_BIN=C:\ProgramData\scoop\apps\llvm\current\bin `
-    CMAKE_BIN="C:\Program Files\CMake\bin" `
+    CMAKE_BIN=C:\Users\ContainerAdministrator\scoop\apps\cmake\current\bin `
     WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH `
     USERPROFILE=C:\Users\ContainerAdministrator `
-    CARGO_HOME=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo `
-    CARGO_BIN=C:\Users\ContainerAdministrator\scoop\persist\rustup\.cargo\bin
+    CARGO_HOME=C:\Users\ContainerAdministrator\.cargo `
+    CARGO_BIN=C:\Users\ContainerAdministrator\.cargo\bin
 
-ENV PATH=$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$LLVM_GLOBAL_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_GLOBAL_SHIMS;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+ENV PATH=$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
+# Tail scripts land here (not at the top) so editing them only rebuilds from this
+# point. verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
+# matched exactly this one file, but a future verify-* script would have silently
+# busted the layers above).
+COPY windows\scripts\verify-toolchain.ps1 `
+     windows\scripts\setup-rust-toolchain.ps1 `
+     windows\scripts\finalize-container.ps1 `
+     C:\temp\scripts\
 RUN & 'C:\temp\scripts\verify-toolchain.ps1'
 RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
 RUN & 'C:\temp\scripts\finalize-container.ps1'

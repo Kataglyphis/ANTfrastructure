@@ -22,15 +22,20 @@ elif command -v python3 >/dev/null 2>&1; then
   if python3 -c "import onnxruntime" 2>/dev/null; then
     onnx_ver="$(python3 -c "import onnxruntime; print(onnxruntime.__version__)" 2>/dev/null || echo '?')"
     pass "onnxruntime Python module imports (v${onnx_ver})"
+    # Functional check that can both pass AND fail: the previous variant fed
+    # ort.SessionOptions() to InferenceSession as the model argument (always
+    # TypeError) and had no fail branch, so it silently proved nothing.
     if python3 -c "
+import sys
 import onnxruntime as ort
-import numpy as np
-sess = ort.InferenceSession(
-    ort.SessionOptions(),
-    providers=['CPUExecutionProvider']
-)
+providers = ort.get_available_providers()
+if 'CPUExecutionProvider' not in providers:
+    print('CPUExecutionProvider missing, got:', providers, file=sys.stderr)
+    sys.exit(1)
 " 2>/dev/null; then
-      pass "onnxruntime InferenceSession created (CPUExecutionProvider)"
+      pass "onnxruntime CPUExecutionProvider available"
+    else
+      fail "onnxruntime CPUExecutionProvider not available (get_available_providers failed or lacks CPU EP)"
     fi
   else
     pass "onnxruntime library present at ${_ort_lib_dir} (import failed in build sandbox — will work at runtime)"
@@ -249,5 +254,4 @@ echo "--- Torch ---"
 echo "  INFO: torch not installed (only in :latest-cross-<arch> wrappers)"
 
 echo ""
-echo "=== Results: ${FAILURES} failure(s) ==="
-[ "${FAILURES}" -eq 0 ] || exit 1
+smoke_summary

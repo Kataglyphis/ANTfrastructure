@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -f /opt/scripts/core/install-deps-preamble.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/install-deps-preamble.sh
-elif [ -f /opt/scripts/core/cross-env.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../core/common.sh"
+media_install_deps_init "${SCRIPT_DIR}"
+
 if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/toolchain/vulkan.sh
@@ -18,10 +16,6 @@ vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 echo "Installing GStreamer build dependencies..."
 
 install_deps_preamble build-essential cmake git pkg-config g++ flex bison
-
-is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
-
-skip_csound_cross=$(is_cross_skip_csound && echo true || echo false)
 
 prefer_toolchain_vulkan=false
 if is_cross; then
@@ -52,7 +46,7 @@ pre_setup_target_packages=(
   libsodium-dev
 )
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_CAIRO_PANGO_PIXBUF:-0}" = "1" ]; then
   echo "Skipping libcairo2-dev, libpango1.0-dev and libgdk-pixbuf-2.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
   pre_setup_target_packages=(libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev "${pre_setup_target_packages[@]}")
@@ -86,7 +80,7 @@ gst_target_packages=(
   libpcre2-dev
 )
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_LIBCXX_DEV:-0}" = "1" ]; then
   echo "Skipping target libc++-dev and libc++abi-dev for riscv64 cross builds because Ubuntu Ports has broken dependencies for libc++-21-dev."
 else
   gst_target_packages+=(
@@ -95,7 +89,7 @@ else
   )
 fi
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_GLIB_STACK:-0}" = "1" ]; then
   echo "Skipping target GLib/GTK/introspection/cairo packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their helper dependency chain."
 else
   gst_target_packages+=(
@@ -116,21 +110,21 @@ install_target_packages libunwind-dev || true
 # Install libdw-dev as host package too — its headers (elfutils/libdwfl.h) are
 # arch-independent and required by GStreamer gstinfo.c for backtrace support.
 install_host_packages libdw-dev libxml2-utils glslc glslang-tools gobject-introspection || true
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_GTK_DEV:-0}" = "1" ]; then
   echo "Skipping target GTK dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
 else
   install_target_packages libgtk-3-dev libgtk-4-dev
 fi
 
-# Audio I/O and DSP
-apt-get install -y --no-install-recommends \
+# Audio I/O and DSP — target-side dev packages (linked into cross plugins).
+install_target_packages \
   libasound2-dev libpulse-dev libjack-dev libpipewire-0.3-dev \
-  libsndfile1-dev libsamplerate0-dev
+  libsndfile1-dev libsamplerate0-dev || true
 
-# Video capture / devices
-apt-get install -y --no-install-recommends \
+# Video capture / devices — target-side dev packages.
+install_target_packages \
   libv4l-dev libusb-1.0-0-dev libdc1394-dev libraw1394-dev \
-  libcdio-dev libcdparanoia-dev
+  libcdio-dev libcdparanoia-dev || true
 
 # Graphics stacks
 # GTK and several video sinks probe these through the target-only pkg-config
@@ -155,7 +149,7 @@ fi
 
 install_target_packages "${graphics_target_packages[@]}" || true
 
-if [ "${is_riscv64_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_GUDEV:-0}" = "1" ]; then
   echo "Skipping libgudev-1.0-dev for riscv64 cross builds because Ubuntu Ports cannot satisfy its libglib2.0-dev helper dependency chain."
 else
   install_target_packages libgudev-1.0-dev || true
@@ -170,7 +164,7 @@ install_target_packages \
 install_target_packages libopenexr-3-dev || \
 install_target_packages libopenexr-dev || true
 
-apt-get install -y --no-install-recommends libvvdec-dev || true
+install_target_packages libvvdec-dev || true
 
 # Codecs (audio)
 # These are linked into target-side plugins such as gst-plugins-good/ext/lame,
@@ -190,25 +184,37 @@ install_target_packages libsvtav1enc-dev || install_target_packages libsvtav1-de
 if [ -f /opt/ffmpeg/lib/pkgconfig/libavcodec.pc ]; then
   echo "Using staged FFmpeg build from /opt/ffmpeg for gst-libav; skipping distro FFmpeg dev packages."
 else
-  apt-get install -y --no-install-recommends \
+  install_target_packages \
     libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev \
-    libswscale-dev libswresample-dev
+    libswscale-dev libswresample-dev || true
 fi
 
 # Networking / crypto
-apt-get install -y --no-install-recommends libsoup-3.0-dev libnice-dev || true
+# (libsoup-3.0-dev / libnice-dev are installed via install_target_packages below.)
+# HLS crypto backends FIRST and on their OWN apt-get calls: install_target_packages
+# runs one all-or-nothing `apt-get install` and silently swallows failure on cross,
+# so bundling libssl-dev with a sibling that can't be co-installed on a flaky ports
+# arch (e.g. libusrsctp-dev on riscv64) would leave gst-plugins-good's HLS with no
+# crypto and hard-abort meson ("Could not get define 'OPENSSL_VERSION_*'"). nettle
+# is HLS's preferred backend; libssl is the fallback — install both independently.
+install_target_packages nettle-dev || true
+install_target_packages libssl-dev || true
 install_target_packages \
   libcurl4-openssl-dev libxml2-dev \
   zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
-  libsrtp2-dev libssl-dev libusrsctp-dev || true
+  libsrtp2-dev libusrsctp-dev || true
 install_target_packages libsoup-3.0-dev libnice-dev || true
 
 # Csound conditionally
-if [ "${skip_csound_cross}" = "true" ]; then
+if [ "${MEDIA_SKIP_CSOUND:-0}" = "1" ]; then
   echo "Skipping target Csound packages for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
-  install_target_packages \
-    csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || true
+  # gst-plugin-csound only needs libcsound64 (lib + headers). Install it on its OWN
+  # call so a heavy/absent sibling (csoundqt pulls Qt, pd-csound pulls puredata)
+  # can't take the essential package down — install_target_packages is
+  # all-or-nothing per call. The rest are best-effort extras.
+  install_target_packages libcsound64-dev || true
+  install_optional_target_packages csound csound-utils csoundqt csoundqt-examples csound-doc pd-csound || true
 fi
 
 # NVIDIA
@@ -223,4 +229,7 @@ if [ "${NVIDIA_GPU}" = "yes" ]; then
   install_host_packages nv-codec-headers || true
 fi
 
-rm -rf /var/lib/apt/lists/*
+# NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
+# BuildKit cache mount in Dockerfile.media, so wiping it only forces the next
+# stage's `apt-get update` to re-download every index (and it saves no image
+# size, since a cache mount is not a layer).

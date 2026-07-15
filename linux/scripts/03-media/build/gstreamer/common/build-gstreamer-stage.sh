@@ -14,7 +14,7 @@ case "${1:-}" in
     echo "Build GStreamer from the monorepo source with all plugins."
     echo ""
     echo "Arguments:"
-    echo "  gstreamer_version  Required (e.g. 1.29.1)"
+    echo "  gstreamer_version  Required (e.g. 1.29.2)"
     echo "  prefix             Install prefix (default: /opt/gstreamer)"
     echo "  build_type         Release | Debug (default: Release)"
     echo ""
@@ -28,6 +28,17 @@ esac
 GSTREAMER_VERSION="${1:?gstreamer version is required}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
+
+# Disable Python bindings for cross builds targeting foreign arches.
+# setup-gstreamer.sh and build-gstreamer-monorepo.sh also check
+# cross_target_python_dev_ready and arch-specific patterns, but those
+# are finer-grained checks that may not cover all edge cases (e.g.
+# arm64 with staged Python that still fails GIR generation).
+# This early override ensures consistent behavior regardless of the
+# downstream script's own detection logic.
+if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "amd64" ]; then
+  export GSTREAMER_ENABLE_PYTHON_BINDINGS=false
+fi
 
 ensure_gstreamer_multiarch_layout() {
   local triplet
@@ -64,7 +75,8 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
       _fix_triplet="$(arch_deb_multiarch_triplet_for "${_fix_arch}" 2>/dev/null || true)"
     else
       case "${_fix_arch}" in
-        arm64) _fix_triplet="aarch64-linux-gnu" ;;
+        amd64)   _fix_triplet="x86_64-linux-gnu" ;;
+        arm64)   _fix_triplet="aarch64-linux-gnu" ;;
         riscv64) _fix_triplet="riscv64-linux-gnu" ;;
       esac
     fi
@@ -77,9 +89,27 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
   fi
 fi
 
+# The fix above only repoints the libstdc++.so DEV symlink and only for a
+# wrong-ARCH target. But the onnx/onnxruntime plugin link resolves the RUNTIME
+# libstdc++.so.6 (via -rpath-link /usr/lib/<triplet>), and on cross that lib is
+# either the host-arch GCC copy or the older Ubuntu Ports libstdc++ — both lack
+# GLIBCXX_3.4.35 / std::__format that libonnxruntime.so (built with GCC 16)
+# needs, causing "undefined reference" link failures that abort the GStreamer
+# build. Pin BOTH the dev and runtime target-arch libstdc++ to GCC 16's
+# target-arch build (a backward-compatible superset).
+if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "amd64" ]; then
+  if command -v pin_target_libstdcxx >/dev/null 2>&1; then
+    pin_target_libstdcxx "${TARGET_ARCH:-${TARGETARCH:-}}" || true
+  fi
+fi
+
 cd /opt
 bash /opt/scripts/03-media/build/gstreamer/common/pre-setup.sh
 bash /opt/scripts/03-media/build/gstreamer/common/install-vvdec.sh
+# Provide the system rice-proto C library so gst-plugins-rs webrtcbin2 can build
+# (best-effort; only runs when GST_RS_BUILD_ALL=true). Must precede meson setup
+# so dependency('rice-proto') resolves.
+bash /opt/scripts/03-media/build/gstreamer/common/install-rice-proto.sh
 
 export SODIUM_USE_PKG_CONFIG=1
 export PKG_CONFIG_ALLOW_CROSS=1
@@ -95,19 +125,25 @@ fi
 export SODIUM_SHARED=1
 export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
 
-append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
+# skia is built when GST_RS_BUILD_ALL=true (default); skia-safe compiles Skia
+# from source where no prebuilt exists. Force it off only when build-all is off.
+[ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
 
-set +e
+# Dump diagnostic logs on GStreamer build failure, then propagate the exit code.
+# This replaces the previous set +e / set -e pattern, keeping errexit active
+# throughout the script so intermediate command failures are not masked.
+_dump_gst_build_logs() {
+  local _log
+  echo "=== GStreamer build failed — dumping diagnostic logs ===" >&2
+  for _log in /tmp/meson-compile.log /tmp/meson-setup.log /tmp/gst-install.log /tmp/gstreamer-cairo-debug.txt; do
+    [ -f "${_log}" ] && echo "--- ${_log} ---" >&2 && cat "${_log}" >&2
+  done
+}
+trap '_dump_gst_build_logs' ERR
+
 bash /opt/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh \
   "${GSTREAMER_VERSION}" \
   "${GSTREAMER_PREFIX}" \
   "${BUILD_TYPE}" 2>&1
-rc=$?
-set -e
-if [ ${rc} -ne 0 ]; then
-  echo "ERROR: GStreamer build failed (rc=${rc})" >&2
-  for _log in /tmp/meson-compile.log /tmp/meson-setup.log /tmp/gst-install.log /tmp/gstreamer-cairo-debug.txt; do
-    [ -f "${_log}" ] && echo "=== ${_log} ===" >&2 && cat "${_log}" >&2
-  done
-fi
-exit ${rc}
+
+trap - ERR

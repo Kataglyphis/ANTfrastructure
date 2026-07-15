@@ -38,21 +38,20 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
+# shellcheck source=linux/scripts/lib-orchestrator.sh
+source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
+orchestrator_preamble
 
-IMAGE_REPO="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}"
 FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-init_mirror_defaults
 LOG_DIR="${LOG_DIR:-}"
 
 FROM_STAGE="base"
 TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
 DESCRIBE_CHAIN=0
-MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc)}"
+MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 
 # Digest reference pins captured during this run.
 # Variables are declared by cross_stage_init_pins() driven by the stage graph
@@ -119,9 +118,9 @@ Options:
   --dry-run                 Print build commands without executing them
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
   --max-parallel-archs N    Max concurrent arch builds (default: 4)
-  --fast-ubuntu-mirror     Replace Ubuntu archive/security/ports mirrors during builds
-  --fast-ubuntu-mirror-url URL        Archive mirror URL
-  --fast-ubuntu-ports-mirror-url URL  Optional ubuntu-ports mirror URL
+EOF
+  orchestrator_usage_mirror_options
+  cat <<'EOF'
   -h, --help               Show this help text
 
 Notes:
@@ -179,40 +178,43 @@ _cross_per_arch_build() {
 
 # ── main driver ───────────────────────────────────────────────────────────────
 
-main() {
-  local only_stage=""
-  while [ $# -gt 0 ]; do
-    consume_shared_arg usage \
-      parse_shared_orchestrator_args \
-      TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
-      FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _chain_push_enabled \
-      "$1" "${2:-}" || break
-    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
-    case "$1" in
-      --cross-targets) CROSS_TARGETS="$2"; shift 2 ;;
-      --final-image) FINAL_IMAGE="$2"; shift 2 ;;
-      --from-stage) FROM_STAGE="$2"; shift 2 ;;
-      --to-stage) TO_STAGE="$2"; shift 2 ;;
-      --only) only_stage="$2"; shift 2 ;;
-      --log-dir) LOG_DIR="$2"; shift 2 ;;
-      --verify-chain) VERIFY_CHAIN_ONLY=1; shift ;;
-      --describe-chain) DESCRIBE_CHAIN=1; shift ;;
-      *) warn "Unknown option: $1"; usage >&2; exit 1 ;;
-    esac
-  done
+_chain_extra_arg() {
+  case "$1" in
+    --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
+    --final-image) FINAL_IMAGE="$2"; _OARG_SHIFT=2 ;;
+    --from-stage) FROM_STAGE="$2"; _OARG_SHIFT=2 ;;
+    --to-stage) TO_STAGE="$2"; _OARG_SHIFT=2 ;;
+    --only) ONLY_STAGE="$2"; _OARG_SHIFT=2 ;;
+    --log-dir) LOG_DIR="$2"; _OARG_SHIFT=2 ;;
+    --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
+    --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
+    *) return 1 ;;
+  esac
+}
 
-  if [ -n "${only_stage}" ]; then
-    FROM_STAGE="${only_stage}"
-    TO_STAGE="${only_stage}"
+_chain_parse_args() {
+  ONLY_STAGE=""
+  run_orchestrator_arg_loop usage _chain_extra_arg \
+    TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
+    FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _chain_push_enabled \
+    "$@"
+
+  if [ -n "${ONLY_STAGE}" ]; then
+    FROM_STAGE="${ONLY_STAGE}"
+    TO_STAGE="${ONLY_STAGE}"
   fi
+}
 
+_chain_resolve_final_image() {
   cd "${REPO_ROOT}"
   # Default FINAL_IMAGE may reference the previous IMAGE_REPO default; recompute
   # it if the user changed --image-repo but not --final-image.
   if [ "${FINAL_IMAGE}" = "${IMAGE_REGISTRY_PREFIX}:latest-cross" ]; then
     FINAL_IMAGE="${IMAGE_REPO}:latest-cross"
   fi
+}
 
+_chain_validate_stages() {
   FROM_STAGE_IDX="$(stage_index "${FROM_STAGE}")" || exit 1
   TO_STAGE_IDX="$(stage_index "${TO_STAGE}")" || exit 1
   if [ "${FROM_STAGE_IDX}" -gt "${TO_STAGE_IDX}" ]; then
@@ -230,7 +232,9 @@ main() {
     verify_cross_chain_staleness "${TARGET_ARCHES}"
     exit 0
   fi
+}
 
+_chain_run_build_loop() {
   cross_stage_validate_graph || err "Stage graph validation failed"
 
   # Drive execution from the stage graph (stage-defs.sh).
@@ -241,20 +245,50 @@ main() {
   for stage in "${CROSS_STAGE_ORDER[@]}"; do
     stage_enabled "${stage}" || continue
 
+    # Explicit `|| err` on every stage: a failed stage MUST abort the chain,
+    # never fall through to the next stage on a stale/missing upstream image.
+    # set -e alone is unreliable here because the per-arch path runs under
+    # run_parallel_arch_loop's `if !` (which disables set -e for the call tree).
     case "${stage}" in
       runtime)
-        run_runtime_stage
+        run_runtime_stage || err "runtime stage failed"
         ;;
       *)
         if cross_stage_is_per_arch "${stage}"; then
           _CROSS_CURRENT_STAGE="${stage}"
-          run_parallel_arch_loop _cross_per_arch_build "/tmp/cross-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+          run_parallel_arch_loop _cross_per_arch_build "$(arch_loop_flag_prefix cross-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}") \
+            || err "stage ${stage} failed for one or more arches"
         else
-          cross_stage_run "${stage}"
+          cross_stage_run "${stage}" || err "stage ${stage} failed"
         fi
         ;;
     esac
   done
+}
+
+_chain_start_resource_monitor() {
+  # Comprehensive, low-overhead system-resource logging for the whole run (best
+  # effort; RESOURCE_MONITOR=0 disables). The monitor self-terminates via
+  # --watch-pid when this orchestrator exits (no trap/cleanup needed here), and
+  # writes resources-<run>.csv + a summary pinpointing peak RAM/disk pressure.
+  [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0
+  local mon="${REPO_ROOT}/linux/scripts/01-core/resource-monitor.sh"
+  [ -x "${mon}" ] || return 0
+  local out="${LOG_DIR:-${REPO_ROOT}}" rid="${CROSS_RUN_ID:-cross}"
+  # Idempotent: skip if a monitor is already sampling this run (e.g. started by
+  # the launcher or a wrapping build-cross-stage.sh).
+  pgrep -f "resource-monitor.sh.*${rid}" >/dev/null 2>&1 && return 0
+  bash "${mon}" --out-dir "${out}" --run-id "${rid}" --stage-log-dir "${out}" \
+    --disk-path "${BUILDKIT_CACHE_DIR:-/}" --watch-pid "$$" </dev/null >/dev/null 2>&1 &
+  log "resource-monitor: sampling -> ${out}/resources-${rid}.csv (RESOURCE_MONITOR=0 to disable)"
+}
+
+main() {
+  _chain_parse_args "$@"
+  _chain_resolve_final_image
+  _chain_validate_stages
+  _chain_start_resource_monitor
+  _chain_run_build_loop
 
   log "Cross chain complete."
 }

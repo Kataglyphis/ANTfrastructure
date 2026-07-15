@@ -13,6 +13,12 @@ set -euo pipefail
 
 SRCPREFIX="${SRCPREFIX:-}"
 
+# This script historically called warn without defining it (it was never
+# invoked anywhere, so the bug was latent). Provide a fallback.
+if ! command -v warn >/dev/null 2>&1; then
+  warn() { printf '[WARN] %s\n' "$*" >&2; }
+fi
+
 _dest() {
   local rel="${1:-}"
   local target_dir="${COPY_TARGET_DIR:-}"
@@ -28,7 +34,9 @@ copy_path() {
     return 0
   fi
   mkdir -p "$(dirname "${dst}")"
-  cp -a "${src}" "${dst}"
+  # -T: treat dst as the exact destination — plain cp -a into an existing
+  # directory would NEST (dst/srcname) instead of overlaying.
+  cp -aT "${src}" "${dst}"
 }
 
 copy_glob() {
@@ -58,9 +66,8 @@ copy_media_payloads() {
     /usr/local/lib/pkgconfig/litert.pc \
     /usr/local/lib/pkgconfig/tensorflow-lite.pc \
     /usr/local/lib/pkgconfig/tensorflowlite_c.pc \
-    /usr/local/lib/pkgconfig/libvvdec.pc \
-    /usr/local/llvm-target \
-    /usr/local/llvm-22; do
+    /usr/local/lib/pkgconfig/libvvdec.pc; do
+    # (llvm-target is COPY'd explicitly by Dockerfile.package; not repeated here)
     copy_path "${path}"
   done
 

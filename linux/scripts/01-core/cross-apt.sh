@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Source-only helper -- do not execute directly.
 # cross-apt.sh - Cross-compilation APT helpers.
 # Sourced by cross-env.sh.
@@ -10,6 +11,46 @@ fi
 [ -z "${_CROSS_APT_LOADED:-}" ] || return 0
 _CROSS_APT_LOADED=1
 
+
+# Set/overwrite the `Architectures:` line in every stanza of a deb822 sources
+# file. Self-contained (awk only; no cross_* deps), so it is also sourced by
+# 02-toolchain/android-sdk.sh for its "amd64 i386" host case.
+apt_sources_set_architectures() {
+  local sources_file="$1" arch_string="$2" tmp=""
+
+  [ -f "${sources_file}" ] || return 0
+
+  tmp="$(mktemp)"
+  awk -v archs="${arch_string}" '
+    BEGIN { in_stanza=0; has_arch=0 }
+    /^[[:space:]]*$/ {
+      if (in_stanza && !has_arch) print "Architectures: " archs
+      print
+      in_stanza=0
+      has_arch=0
+      next
+    }
+    /^[[:space:]]*#/ {
+      print
+      next
+    }
+    {
+      in_stanza=1
+    }
+    /^Architectures:[[:space:]]*/ {
+      print "Architectures: " archs
+      has_arch=1
+      next
+    }
+    {
+      print
+    }
+    END {
+      if (in_stanza && !has_arch) print "Architectures: " archs
+    }
+  ' "${sources_file}" > "${tmp}"
+  mv "${tmp}" "${sources_file}"
+}
 
 cross_target_uses_ubuntu_ports() {
   case "$(cross_target_arch)" in
@@ -54,7 +95,7 @@ cross_prune_foreign_arch_apt_sources() {
   local existing_ports_source
 
   shopt -s nullglob
-  for existing_ports_source in /etc/apt/sources.list.d/ubuntu-ports-*.sources; do
+  for existing_ports_source in /etc/apt/sources.list.d/ubuntu-ports*.sources; do
     [ -n "${keep_source}" ] && [ "${existing_ports_source}" = "${keep_source}" ] && continue
     rm -f "${existing_ports_source}"
   done
@@ -100,7 +141,7 @@ cross_apt_update() {
 }
 
 cross_configure_foreign_arch_apt_sources() {
-  local target_arch build_arch distro ports_url host_sources ports_sources tmp existing_ports_source
+  local target_arch build_arch distro ports_url host_sources ports_sources existing_ports_source
 
   cross_build_enabled || return 0
   cross_target_uses_ubuntu_ports || return 0
@@ -117,43 +158,11 @@ cross_configure_foreign_arch_apt_sources() {
     *) ports_url="${ports_url}/" ;;
   esac
 
-  if [ -f "${host_sources}" ]; then
-    tmp="$(mktemp)"
-    awk -v arch="${build_arch}" '
-      BEGIN { in_stanza=0; has_arch=0 }
-      /^[[:space:]]*$/ {
-        if (in_stanza && !has_arch) print "Architectures: " arch
-        print
-        in_stanza=0
-        has_arch=0
-        next
-      }
-      /^[[:space:]]*#/ {
-        print
-        next
-      }
-      {
-        in_stanza=1
-      }
-      /^Architectures:[[:space:]]*/ {
-        print "Architectures: " arch
-        has_arch=1
-        next
-      }
-      {
-        print
-      }
-      END {
-        if (in_stanza && !has_arch) print "Architectures: " arch
-      }
-    ' "${host_sources}" > "${tmp}"
-    mv "${tmp}" "${host_sources}"
-  fi
+  apt_sources_set_architectures "${host_sources}" "${build_arch}"
 
   cross_prune_foreign_arch_apt_sources "${ports_sources}"
 
-  printf 'Types: deb\nURIs: %s\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nArchitectures: %s\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' \
-    "${ports_url}" "${distro}" "${distro}" "${distro}" "${distro}" "${target_arch}" > "${ports_sources}"
+  ubuntu_write_deb822_source "${ports_sources}" "${ports_url}" "${distro}" "${target_arch}" 1
 }
 
 cross_prepare_foreign_arch() {
@@ -214,10 +223,26 @@ cross_filter_known_foreign_postinst_noise() {
   done
 }
 
+# Is this package present on disk in a usable state? On cross builds a
+# foreign-arch package whose postinst failed (Exec format error — target
+# binaries can't run on the build host) is still fully unpacked, so its
+# headers/libs ARE usable for cross-compiling. Treat unpacked/half-configured
+# as present; only "not installed at all" counts as missing.
+cross_package_files_present() {
+  local pkg="${1%%=*}"
+  local status
+  status="$(dpkg-query -W -f='${Status}' "${pkg}" 2>/dev/null || true)"
+  case "${status}" in
+    *" installed"|*" unpacked"|*" half-configured"|*" triggers-awaited"|*" triggers-pending")
+      return 0 ;;
+  esac
+  return 1
+}
+
 install_target_packages() {
   local pkg resolved
-  local had_pipefail=0
-  local -a pkgs=()
+  local apt_rc=0
+  local -a pkgs=() missing=()
 
   [ "$#" -gt 0 ] || return 0
   if cross_build_enabled; then
@@ -236,15 +261,30 @@ install_target_packages() {
   [ "${#pkgs[@]}" -gt 0 ] || return 0
 
   if cross_build_enabled; then
-    case ":${SHELLOPTS:-}:" in
-      *:pipefail:*) had_pipefail=1 ;;
-    esac
-    set -o pipefail
-    apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 | cross_filter_known_foreign_postinst_noise
-    if [ "${had_pipefail}" -ne 1 ]; then
-      set +o pipefail
+    # Run in a subshell so pipefail applies to the pipeline without leaking
+    # into (or depending on) the caller's shell options.
+    (
+      set -o pipefail
+      apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 \
+        | cross_filter_known_foreign_postinst_noise
+    ) || apt_rc=$?
+
+    [ "${apt_rc}" -eq 0 ] && return 0
+
+    # apt-get failed. On cross this is often only foreign-arch postinst noise
+    # while every requested package is unpacked and usable — but it can ALSO
+    # mean packages are genuinely absent (dependency conflicts, ports outages),
+    # which previously got silently swallowed here and surfaced much later as
+    # baffling feature-skips (e.g. gst HLS with no crypto). Distinguish the two.
+    for pkg in "${pkgs[@]}"; do
+      cross_package_files_present "${pkg}" || missing+=("${pkg}")
+    done
+    if [ "${#missing[@]}" -eq 0 ]; then
+      echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are unpacked (foreign-arch postinst noise); continuing." >&2
+      return 0
     fi
-    return 0
+    echo "install_target_packages: FAILED — missing after apt-get (rc=${apt_rc}): ${missing[*]}" >&2
+    return "${apt_rc}"
   fi
 
   apt-get install -y --no-install-recommends "${pkgs[@]}"
@@ -285,15 +325,6 @@ install_deps_preamble() {
 is_cross_riscv64() {
   cross_build_is_active && \
   command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]
-}
-
-is_cross_skip_csound() {
-  cross_build_is_active && \
-  command -v cross_target_arch >/dev/null 2>&1 || return 1
-  case "$(cross_target_arch)" in
-    arm64|riscv64) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 cross_pkg_config_libdir() {

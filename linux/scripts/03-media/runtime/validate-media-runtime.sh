@@ -3,11 +3,7 @@ set -euo pipefail
 
 if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
-  source /opt/scripts/core/cross-env.sh
-fi
-# Fallback if cross-env.sh didn't define cross_build_is_active
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { [ "${BUILD_MODE:-native}" = "cross" ]; }
+  source /opt/scripts/core/cross-env.sh   # defines cross_build_is_active
 fi
 
 ARTIFACTS=(
@@ -27,6 +23,19 @@ LIB_DIRS=(
   "/usr/local/lib/onnxruntime-cpu/lib"
 )
 
+# Return 0 if <so_name> resolves under LIB_DIRS, the standard lib dirs, or the
+# ldconfig cache; 1 otherwise. DRYs the identical scan used by
+# find_missing_needed and scan_plugin_directory.
+so_name_resolvable() {
+  local so_name="$1" dir
+  for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
+    [ -d "${dir}" ] || continue
+    [ -f "${dir}/${so_name}" ] && return 0
+  done
+  ldconfig -p 2>/dev/null | grep -qF " ${so_name} " && return 0
+  return 1
+}
+
 known_so_packages_load() {
   local map_file="${1:-${SCRIPT_DIR:-.}/so-package-map.txt}"
   if [ -f "${map_file}" ]; then
@@ -44,7 +53,7 @@ known_so_packages_load() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 declare -A KNOWN_SO_PACKAGES=()
 known_so_packages_load || {
-  echo "WARNING: so-package-map.txt not found, using embedded fallback map" >&2
+  echo "WARNING: so-package-map.txt not found; continuing with an empty known-so map (dpkg-query/apt-cache lookups only)" >&2
 }
 
 find_missing_needed() {
@@ -57,27 +66,12 @@ find_missing_needed() {
 
   local so_name
   while IFS= read -r so_name; do
-    local found=false
-
-    for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
-      [ -d "${dir}" ] || continue
-      if [ -f "${dir}/${so_name}" ]; then
-        found=true
-        break
-      fi
-    done
-
-    if [ "${found}" = "false" ]; then
-      if ldconfig -p 2>/dev/null | grep -qF " ${so_name} "; then
-        found=true
-      fi
-    fi
-
-    if [ "${found}" = "false" ]; then
+    [ -n "${so_name}" ] || continue
+    if ! so_name_resolvable "${so_name}"; then
       echo "  MISSING: ${so_name}" >&2
       missing+=("${so_name}")
     fi
-  done
+  done < <(objdump -p "${binary}" 2>/dev/null | awk '/NEEDED/ {print $2}')
 
   if [ ${#missing[@]} -gt 0 ]; then
     printf '%s\n' "${missing[@]}"
@@ -128,28 +122,12 @@ scan_plugin_directory() {
     [ -f "${p}" ] || continue
 
     local so_name
-    for so_name in $(objdump -p "${p}" 2>/dev/null | awk '/NEEDED/ {print $2}'); do
-      local found=false
-
-      for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
-        [ -d "${dir}" ] || continue
-        if [ -f "${dir}/${so_name}" ]; then
-          found=true
-          break
-        fi
-      done
-
-      if [ "${found}" = "false" ]; then
-        if ldconfig -p 2>/dev/null | grep -qF " ${so_name} "; then
-          found=true
-        fi
-      fi
-
-      if [ "${found}" = "false" ]; then
+    while IFS= read -r so_name; do
+      [ -n "${so_name}" ] || continue
+      if ! so_name_resolvable "${so_name}"; then
         missing_all+=("${so_name}")
-        break
       fi
-    done
+    done < <(objdump -p "${p}" 2>/dev/null | awk '/NEEDED/ {print $2}')
   done
 
   if [ ${#missing_all[@]} -gt 0 ]; then
@@ -242,7 +220,7 @@ if [ ${#UNIQ_PKGS[@]} -gt 0 ]; then
     echo "These libraries could not be found in any apt package. The artifacts"
     echo "that depend on them (and the plugins that load them) will fail at"
     echo "runtime. Review the build configuration or add package mappings"
-    echo "to KNOWN_SO_PACKAGES in validate-media-runtime.sh."
+    echo "to so-package-map.txt (next to validate-media-runtime.sh)."
   else
     echo "All dependencies resolved after package install."
   fi
@@ -252,7 +230,7 @@ if [ ${#STILL_MISSING[@]} -gt 0 ]; then
   echo ""
   echo "=== WARNING: ${#STILL_MISSING[@]} dependencies have no known apt package ==="
   printf '  %s\n' "${STILL_MISSING[@]}"
-  echo "Add entries to KNOWN_SO_PACKAGES in validate-media-runtime.sh."
+  echo "Add entries to so-package-map.txt (next to validate-media-runtime.sh)."
 fi
 
 # ---------------------------------------------------------------------------

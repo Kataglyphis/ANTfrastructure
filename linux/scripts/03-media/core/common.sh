@@ -23,33 +23,6 @@
 
 set -euo pipefail
 
-# Print usage for -h/--help. Sourced files expose the helper via a function so
-# callers can wire it into their own --help dispatch.
-media_common_help() {
-  cat <<'EOF'
-media/core/common.sh — shared bootstrap for media build scripts
-
-This file is sourced, not executed directly. It provides:
-
-  media_common_init [script_dir]
-      Locate the 01-core module framework (container or repo layout) and source
-      the standard set of media build helpers: common.sh, cross-env.sh,
-      logging.sh, parallelism.sh, downloads.sh, compiler-cache.sh,
-      compiler-resolution.sh, python-host.sh, cmake-cache-linker.sh.
-
-  cross_build_is_active
-      Returns 0 when the current build is a cross-compile (BUILD_MODE=cross and
-      target arch != build arch). Defined here as a fallback so downstream
-      scripts always see it even when cross-env.sh's own guard skips reloading.
-
-Environment consumed:
-  BUILD_MODE   native | cross   (default: native)
-
-Environment exported (via sourced 01-core modules):
-  HOST_PYTHON_BIN, PYTHON_EXECUTABLE, NPROC, ccache/lld configuration, ...
-EOF
-}
-
 # Resolve the shared 01-core module directory. Checks (in order):
 #   1. The in-container path /opt/scripts/core (where the Dockerfile COPYs it)
 #   2. An upward walk from the script dir for a `linux/scripts/01-core` or
@@ -74,6 +47,54 @@ _media_find_core_dir() {
     d="$(cd "${d}/.." && pwd)"
   done
   return 1
+}
+
+# Data-driven per-arch skip flags --------------------------------------------
+#
+# The repeated boolean per-arch skip decisions in the media install/build
+# scripts (e.g. "skip target Csound packages on riscv64/arm64 cross") are
+# consolidated into declarative flag files next to this one:
+# arch-flags-{amd64,arm64,riscv64}.env — KEY=value lines only (MEDIA_SKIP_*;
+# 1 = skip, 0/unset = do not skip), with the per-flag justifications kept as
+# comments in those files.
+#
+# media_load_arch_flags resolves the effective target arch — cross_target_arch
+# when a cross build is active, otherwise the native amd64 defaults — and
+# sources the matching flag file if present. A missing file simply leaves
+# every MEDIA_SKIP_* flag unset (= do not skip), matching the old
+# is_cross_*-style helpers which only ever skipped on active cross builds.
+#
+# Consumers:
+#   - Scripts using media_common_init get the flags automatically (called at
+#     the end of media_common_init, after cross-env.sh is loaded).
+#   - install-deps-preamble based scripts source this file (container path
+#     /opt/scripts/03-media/core/common.sh first, repo layout second) and call
+#     media_load_arch_flags themselves; the preamble has already provided the
+#     cross_build_is_active / cross_target_arch helpers by then.
+media_load_arch_flags() {
+  local arch="amd64" candidate flags_file=""
+
+  if command -v cross_build_is_active >/dev/null 2>&1 && cross_build_is_active && \
+     command -v cross_target_arch >/dev/null 2>&1; then
+    arch="$(cross_target_arch 2>/dev/null || echo amd64)"
+  fi
+
+  # Container layout first (COPY'd into the media base stage), then the
+  # directory this file lives in (repo / local-dev layout).
+  for candidate in \
+      "/opt/scripts/03-media/core/arch-flags-${arch}.env" \
+      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/arch-flags-${arch}.env"; do
+    if [ -f "${candidate}" ]; then
+      flags_file="${candidate}"
+      break
+    fi
+  done
+
+  # No flag file for this arch → keep the all-unset defaults (do not skip).
+  [ -n "${flags_file}" ] || return 0
+
+  # shellcheck disable=SC1090
+  source "${flags_file}"
 }
 
 # The single entry point replacing the old media_build_preamble_init().
@@ -113,6 +134,7 @@ media_common_init() {
   source_module compiler-resolution.sh || true
   source_module python-host.sh       || true
   source_module cmake-cache-linker.sh || true
+  source_module abseil-headers.sh    || true
 
   # Ensure cross_build_is_active is always defined. The canonical definition
   # lives in cross-env.sh (sourced above), and a fallback exists in
@@ -126,5 +148,56 @@ media_common_init() {
         [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
       }
     fi
+  fi
+
+  # Load the data-driven per-arch MEDIA_SKIP_* flags now that the cross-env
+  # helpers are available.
+  media_load_arch_flags
+}
+
+# Bootstrap entry point for install-deps.sh scripts ---------------------------
+#
+# Replaces the ~9-line install-deps-preamble.sh source-loop (and, for
+# gstreamer, the extra core/common.sh load + media_load_arch_flags) that was
+# copy-pasted into every media install-deps.sh. Callers source THIS file
+# (03-media/core/common.sh, via the fixed ../../core relative path that is
+# identical in the container and repo layouts) and then invoke this.
+#
+# It sources the shared 01-core install-deps-preamble.sh (which itself locates
+# and loads cross-env.sh — providing is_cross / install_target_packages /
+# host_python_major_minor / ...), trying the in-container path first and the
+# repo layout second, then loads the data-driven per-arch MEDIA_SKIP_* flags.
+#
+# Usage (top of any install-deps.sh):
+#   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#   source "${SCRIPT_DIR}/../../core/common.sh"
+#   media_install_deps_init "${SCRIPT_DIR}"
+media_install_deps_init() {
+  local script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
+  local _dep_env
+  for _dep_env in \
+      "/opt/scripts/core/install-deps-preamble.sh" \
+      "${script_dir}/../../../01-core/install-deps-preamble.sh"; do
+    if [ -f "${_dep_env}" ]; then
+      # shellcheck disable=SC1090
+      source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
+      break
+    fi
+  done
+
+  media_load_arch_flags
+}
+
+# Parallel job-count helper --------------------------------------------------
+#
+# Consolidates the copy-pasted "compute_jobs_with_mem_cap else nproc" ladder
+# (2000-MB per-job memory cap) used across the media build scripts. The
+# canonical compute_jobs_with_mem_cap lives in 01-core/parallelism.sh and is
+# loaded by media_common_init; fall back to plain nproc if it is unavailable.
+media_jobs() {
+  if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+    compute_jobs_with_mem_cap "" 2000
+  else
+    nproc
   fi
 }

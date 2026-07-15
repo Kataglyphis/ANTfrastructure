@@ -20,10 +20,11 @@ source_module platform.sh
 source_module cross-env.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true
+source_module downloads.sh
 
 install_err_trap
 
-PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.5}}"
+PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.6}}"
 PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSION}")}"
 PYTHON_TARBALL="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-$$.tgz"
 PYTHON_SOURCE_DIR="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}"
@@ -133,21 +134,53 @@ stage_host_python_payload() {
   python_stage_finalize "${target_arch}" "${stage_root}" "${python_mm}" "${target_triplet}"
 }
 
-build_cross_target_python_payload() {
+# Enable the target architecture + ports.ubuntu.com apt sources. The base image
+# only carries the amd64 archive; arm64/riscv64 packages come from ports.
+_python_cross_enable_multiarch_apt() {
+  local target_arch="$1"
+  if ! dpkg --print-architecture 2>/dev/null | grep -qx "${target_arch}" && \
+     ! dpkg --print-foreign-architectures 2>/dev/null | grep -qx "${target_arch}"; then
+    dpkg --add-architecture "${target_arch}"
+  fi
+  if [ ! -f /etc/apt/sources.list.d/ubuntu-ports.sources ]; then
+    local _codename
+    _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
+    rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+    printf 'Types: deb\nURIs: https://archive.ubuntu.com/ubuntu/\nSuites: %s %s-updates %s-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' \
+      "${_codename}" "${_codename}" "${_codename}" \
+      > /etc/apt/sources.list.d/ubuntu.sources
+    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: arm64 riscv64\n' \
+      "${_codename}" "${_codename}" "${_codename}" "${_codename}" \
+      > /etc/apt/sources.list.d/ubuntu-ports.sources
+    apt-get update -qq 2>&1 || warn "apt-get update failed; multiarch repos may be unavailable"
+  fi
+}
+
+# Install the target-arch dev packages CPython's extension modules link against.
+# Explicit architecture qualifier avoids install_target_packages' silent amd64
+# fallback (cross_build_enabled() returns false when TARGET_ARCH == BUILD_ARCH).
+_python_cross_stage_target_dev_pkgs() {
+  local target_arch="$1"
+  apt-get install -y --no-install-recommends \
+    "zlib1g-dev:${target_arch}" "libbz2-dev:${target_arch}" \
+    "liblzma-dev:${target_arch}" "libzstd-dev:${target_arch}" \
+    "libffi-dev:${target_arch}" "libssl-dev:${target_arch}" \
+    "uuid-dev:${target_arch}" "libbz2-dev" 2>&1 || \
+    warn "Some target dev packages failed to install; extension modules may be missing"
+}
+
+_python_cross_configure() {
   local source_dir="$1"
   local target_arch="$2"
-  local python_mm="${PYTHON_MAJOR_MINOR}"
-  local target_triplet build_triplet build_python_bin build_python_libdir
-  local cross_build_dir config_site pkg_config_libdir stage_root
-  local ext_build_dir
-
-  target_triplet="$(arch_deb_multiarch_triplet_for "${target_arch}")"
-  build_triplet="$(build_deb_multiarch_triplet)"
-  build_python_bin="/usr/local/bin/python${python_mm}"
-  build_python_libdir="/usr/local/lib"
-  cross_build_dir="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-cross-${target_triplet}-$$"
-  config_site="${TMPDIR:-/tmp}/python-config-site-${target_triplet}-$$"
-  stage_root="$(python_cross_stage_root_for_arch "${target_arch}")"
+  local python_mm="$3"
+  local target_triplet="$4"
+  local build_triplet="$5"
+  local build_python_bin="$6"
+  local build_python_libdir="$7"
+  local cross_build_dir="$8"
+  local config_site="$9"
+  local stage_root="${10}"
+  local pkg_config_libdir
 
   info "Cross mode detected; building target Python ${python_mm} for ${target_arch} (${target_triplet})"
 
@@ -156,15 +189,23 @@ build_cross_target_python_payload() {
   fi
 
   prepare_cross_target_env "${target_arch}" "cross Python ${target_arch} staging"
-  install_target_packages zlib1g-dev libbz2-dev liblzma-dev libzstd-dev libffi-dev libssl-dev 2>/dev/null || true
+
+  _python_cross_enable_multiarch_apt "${target_arch}"
+  _python_cross_stage_target_dev_pkgs "${target_arch}"
+
   pkg_config_libdir="$(cross_pkg_config_libdir "${target_triplet}")"
   export CFLAGS="${CFLAGS:--O2} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export CPPFLAGS="${CPPFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
+  export LDFLAGS="-L/usr/lib/${target_triplet} ${LDFLAGS:-}"
+  export LIBRARY_PATH="/usr/lib/${target_triplet}:${LIBRARY_PATH:-}"
   cat > "${config_site}" <<EOF
 ac_cv_buggy_getaddrinfo=no
 ac_cv_file__dev_ptmx=yes
 ac_cv_file__dev_ptc=no
 ac_cv_header_ffi_h=no
+ac_cv_header_bzlib_h=yes
+ac_cv_lib_bz2_BZ2_bzlibVersion=yes
+ac_cv_header_uuid_uuid_h=yes
 EOF
 
   rm -f "${source_dir}/Python/frozen_modules/"*.h "${source_dir}/Python/frozen_modules/MANIFEST"
@@ -176,6 +217,7 @@ EOF
   (
     cd "${cross_build_dir}"
     CONFIG_SITE="${config_site}" \
+      LDFLAGS="${LDFLAGS}" \
       LD_LIBRARY_PATH="${build_python_libdir}:${LD_LIBRARY_PATH:-}" \
       PKG_CONFIG_ALLOW_CROSS=1 \
       PKG_CONFIG_SYSROOT_DIR=/ \
@@ -190,6 +232,12 @@ EOF
         --without-ensurepip \
         --disable-test-modules
   )
+}
+
+_python_cross_build() {
+  local cross_build_dir="$1"
+  local target_arch="$2"
+  local python_mm="$3"
 
   (
     cd "${cross_build_dir}"
@@ -199,6 +247,13 @@ EOF
   if [ ! -x "${cross_build_dir}/python" ] || [ ! -f "${cross_build_dir}/libpython${python_mm}.so.1.0" ]; then
     err "target Python cross build for ${target_arch} did not produce the critical binary or shared library"
   fi
+}
+
+_python_cross_install_staging() {
+  local cross_build_dir="$1"
+  local stage_root="$2"
+  local python_mm="$3"
+  local source_dir="$4"
 
   # Stage the cross-built interpreter binary and libraries into the
   # per-architecture root. Do not run `make altinstall` because --
@@ -229,6 +284,13 @@ EOF
   cp -a "${cross_build_dir}/pyconfig.h" "${stage_root}/usr/local/include/python${python_mm}/pyconfig.h"
 
   cp -a "${source_dir}/Lib/." "${stage_root}/usr/local/lib/python${python_mm}/"
+}
+
+_python_cross_fixup_libdynload() {
+  local cross_build_dir="$1"
+  local stage_root="$2"
+  local python_mm="$3"
+  local dynload_dir ext_build_dir
 
   # CPython 3.14's Makefile-based extension build does not place the real
   # extension shared objects under build/lib.linux-*/. Instead it builds them
@@ -240,7 +302,7 @@ EOF
   # ANY C extension (import _struct -> ModuleNotFoundError) once it runs under
   # QEMU in the runtime/torch stage. Dereference symlinks (-L) so the real .so
   # files land in lib-dynload.
-  local dynload_dir="${stage_root}/usr/local/lib/python${python_mm}/lib-dynload"
+  dynload_dir="${stage_root}/usr/local/lib/python${python_mm}/lib-dynload"
   mkdir -p "${dynload_dir}"
   for ext_build_dir in "${cross_build_dir}/build/lib.linux"*; do
     if [ -d "${ext_build_dir}" ]; then
@@ -262,6 +324,42 @@ EOF
     err "dangling extension symlinks remain in ${dynload_dir} after staging"
   fi
 
+  # Guard: refuse to ship a target Python missing critical C extensions.
+  # make -k || true above can silently skip failed extension builds; the
+  # dangling-symlink check only catches broken links, not missing files.
+  # These extensions have no external dependencies and must always build.
+  local -a _critical_exts=(_struct math cmath _csv _json _pickle _socket)
+  local _ext _missing=()
+  for _ext in "${_critical_exts[@]}"; do
+    if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
+       ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then
+      _missing+=("$_ext")
+    fi
+  done
+  if [ "${#_missing[@]}" -gt 0 ]; then
+    warn "Missing critical C extensions in ${dynload_dir}: ${_missing[*]}"
+    err "target Python is missing critical C extensions (make -k may have silently failed)"
+  fi
+
+  # Warn about missing optional extensions (depend on target dev packages).
+  # _ctypes is intentionally disabled via ac_cv_header_ffi_h=no in the
+  # config.site above; the warning is expected on cross builds.
+  local -a _optional_exts=(zlib _bz2 _lzma _ssl _hashlib _ctypes)
+  for _ext in "${_optional_exts[@]}"; do
+    if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
+       ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then
+      warn "Optional C extension missing: ${_ext} (target dev package may not be installed)"
+    fi
+  done
+}
+
+_python_cross_stage_into_compiler() {
+  local cross_build_dir="$1"
+  local stage_root="$2"
+  local python_mm="$3"
+  local target_arch="$4"
+  local target_triplet="$5"
+
   mkdir -p "${stage_root}/usr/local/lib/pkgconfig"
   if [ -f "${cross_build_dir}/Misc/python.pc" ]; then
     cp -a "${cross_build_dir}/Misc/python.pc" "${stage_root}/usr/local/lib/pkgconfig/python-${python_mm}.pc"
@@ -274,6 +372,40 @@ EOF
   fi
 
   python_stage_finalize "${target_arch}" "${stage_root}" "${python_mm}" "${target_triplet}"
+}
+
+build_cross_target_python_payload() {
+  local source_dir="$1"
+  local target_arch="$2"
+  local python_mm="${PYTHON_MAJOR_MINOR}"
+  local target_triplet build_triplet build_python_bin build_python_libdir
+  local cross_build_dir config_site stage_root
+
+  target_triplet="$(arch_deb_multiarch_triplet_for "${target_arch}")"
+  build_triplet="$(build_deb_multiarch_triplet)"
+  build_python_bin="/usr/local/bin/python${python_mm}"
+  build_python_libdir="/usr/local/lib"
+  cross_build_dir="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-cross-${target_triplet}-$$"
+  config_site="${TMPDIR:-/tmp}/python-config-site-${target_triplet}-$$"
+  stage_root="$(python_cross_stage_root_for_arch "${target_arch}")"
+
+  _python_cross_configure \
+    "${source_dir}" "${target_arch}" "${python_mm}" "${target_triplet}" \
+    "${build_triplet}" "${build_python_bin}" "${build_python_libdir}" \
+    "${cross_build_dir}" "${config_site}" "${stage_root}"
+
+  _python_cross_build \
+    "${cross_build_dir}" "${target_arch}" "${python_mm}"
+
+  _python_cross_install_staging \
+    "${cross_build_dir}" "${stage_root}" "${python_mm}" "${source_dir}"
+
+  _python_cross_fixup_libdynload \
+    "${cross_build_dir}" "${stage_root}" "${python_mm}"
+
+  _python_cross_stage_into_compiler \
+    "${cross_build_dir}" "${stage_root}" "${python_mm}" \
+    "${target_arch}" "${target_triplet}"
 }
 
 stage_requested_cross_python_payloads() {
@@ -312,8 +444,15 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
   info "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
 fi
 
-wget --tries=5 --retry-connrefused --timeout=30 -q "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -O "${PYTHON_TARBALL}"
-tar -xf "${PYTHON_TARBALL}" -C /tmp
+# Verify the interpreter source when the pinned checksum is available
+# (PYTHON_TGZ_SHA256 in versions.env, maintained alongside PYTHON_VERSION).
+if [ -n "${PYTHON_TGZ_SHA256:-}" ]; then
+  download_verified_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TGZ_SHA256}" "${PYTHON_TARBALL}"
+else
+  echo "WARNING: PYTHON_TGZ_SHA256 unset — downloading Python source UNVERIFIED" >&2
+  download_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TARBALL}" 5 30
+fi
+tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
 cd "${PYTHON_SOURCE_DIR}"
 ./configure --enable-shared --enable-optimizations --prefix=/usr/local

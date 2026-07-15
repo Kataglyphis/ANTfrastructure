@@ -13,18 +13,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../01-core/python_uv.sh" || { echo "Error: failed to source python_uv.sh" >&2; exit 1; }
+source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.sh" >&2; exit 1; }
 
 detect_workspace
 
 ARCH="${1:-${ARCH:-}}"
 PYTHON_VERSION="${2:-${PYTHON_VERSION:-3.14}}"
-PACKAGE_NAME="${3:-${PACKAGE_NAME:-}}"
-
-if [ -z "$PACKAGE_NAME" ] && [ -f "$WORKSPACE_ROOT/pyproject.toml" ]; then
-  PACKAGE_NAME=$(grep -m1 'name[[:space:]]*=' "$WORKSPACE_ROOT/pyproject.toml" | sed 's/.*=[[:space:]]*"\([^"]*\)".*/\1/' || echo "")
-fi
-PACKAGE_NAME="${PACKAGE_NAME:-$(basename "$WORKSPACE_ROOT")}"
+PACKAGE_NAME="$(derive_package_name "${3:-${PACKAGE_NAME:-}}")"
 
 info "Using Python version: $PYTHON_VERSION"
 info "Running static analysis for package: $PACKAGE_NAME"
@@ -32,16 +27,8 @@ info "Running static analysis for package: $PACKAGE_NAME"
 git config --global --add safe.directory "$WORKSPACE_ROOT" || true
 
 VENV_DIR="$WORKSPACE_ROOT/.venv_static_analysis"
-VENV_WAS_PRESENT=0
 
-if [ -d "$VENV_DIR" ]; then
-  info "Using existing virtual environment at: $VENV_DIR"
-  VENV_WAS_PRESENT=1
-  uv_venv_activate "$VENV_DIR"
-else
-  info "Creating virtual environment with Python $PYTHON_VERSION at: $VENV_DIR"
-  UV_VENV_CLEAR=1 uv_venv_create "$VENV_DIR" "$PYTHON_VERSION"
-fi
+UV_VENV_CLEAR=1 uv_venv_ensure "$VENV_DIR" "$PYTHON_VERSION" "virtual environment" VENV_WAS_PRESENT
 
 uv_sync_project --no-wxpython
 

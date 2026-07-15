@@ -3,14 +3,11 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
-# shellcheck disable=SC1091
-source "${_ARTIFACT_COMMON_DIR}/runtime-flow-common.sh"
-init_runtime_flow_defaults
+# shellcheck source=linux/scripts/lib-orchestrator.sh
+source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
+runtime_flow_preamble
 
 # Script-specific defaults (override shared where needed)
-TARGET_ARCHES="$(resolve_arch_list)"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-runtime}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:latest-cross}"
 
@@ -72,40 +69,18 @@ _build_one_artifact() {
   fi
 }
 
+_artifacts_extra_arg() {
+  case "$1" in
+    --output-root) OUTPUT_ROOT="$2"; _OARG_SHIFT=2 ;;
+    --image-prefix) IMAGE_PREFIX="$2"; _OARG_SHIFT=2 ;;
+    --push) PUSH_IMAGES=1; _OARG_SHIFT=1 ;;
+    --push-all) PUSH_IMAGES=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
+    *) return 1 ;;
+  esac
+}
+
 main() {
-  while [ $# -gt 0 ]; do
-    consume_shared_arg usage \
-      parse_shared_runtime_args \
-      TARGET_ARCHES ARTIFACT_IMAGE_PREFIX ARTIFACT_BUILD_MODE \
-      BASE_DOCKERFILE_PATH PACKAGE_DOCKERFILE_PATH WRAPPER_DOCKERFILE_PATH \
-      TORCH_APP_MODE \
-      USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL \
-      PUSH_INTERMEDIATE_IMAGES \
-      "$1" "${2:-}" || break
-    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
-    case "$1" in
-      --output-root)
-        OUTPUT_ROOT="$2"
-        shift 2
-        ;;
-      --image-prefix)
-        IMAGE_PREFIX="$2"
-        shift 2
-        ;;
-      --push)
-        PUSH_IMAGES=1
-        shift
-        ;;
-      --push-all)
-        PUSH_IMAGES=1
-        PUSH_INTERMEDIATE_IMAGES=1
-        shift
-        ;;
-      *)
-        warn "Unknown option: $1"; usage >&2; exit 1
-        ;;
-    esac
-  done
+  run_runtime_arg_loop usage _artifacts_extra_arg "$@"
 
   # Post-parse setup (replaces runtime_flow_export_setup)
   export DRY_RUN
@@ -113,7 +88,7 @@ main() {
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 
-  run_parallel_arch_loop _build_one_artifact "/tmp/runtime-artifact-loop-flags" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+  run_parallel_arch_loop _build_one_artifact "$(arch_loop_flag_prefix runtime-artifact-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
 }
 
 main "$@"

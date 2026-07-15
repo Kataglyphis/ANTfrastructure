@@ -20,21 +20,18 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 : "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION:-16.1.0}}"
 : "${GCC_VERSION:=16.1.0}"
 
-# Load platform helpers (from 01-core) if available
-if [ -f "${_SCRIPT_DIR}/../01-core/platform.sh" ]; then
-  source "${_SCRIPT_DIR}/../01-core/platform.sh" 2>/dev/null || true
-fi
+# Load platform helpers (from 01-core or /opt/scripts/core) if available
+smoke_load_platform
 
 main() {
   local target_arches="${1:-amd64,arm64,riscv64}"
   local arch
   local host_arch
 
-  host_arch="$(uname -m)"
-  case "${host_arch}" in
-    x86_64)  host_arch=amd64 ;;
-    aarch64) host_arch=arm64 ;;
-  esac
+  host_arch="$(canonical_target_arch 2>/dev/null || true)"
+  if [ -z "${host_arch}" ]; then
+    host_arch="$(smoke_host_arch)"
+  fi
 
   echo "=== Cross-Compiler Multi-Arch Smoke Test ==="
   echo "Host arch: ${host_arch}"
@@ -59,70 +56,51 @@ main() {
   fi
 
   # 3. Test cross-compilers for each target arch
-  for arch in $(arch_list_to_words "${target_arches}"); do
+  for arch in $(smoke_arch_words "${target_arches}"); do
     [ "${arch}" = "${host_arch}" ] && continue
     local triplet cross_gcc
-    if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-      triplet="$(arch_deb_multiarch_triplet_for "${arch}" 2>/dev/null || true)"
-    else
-      case "${arch}" in
-        arm64)   triplet="aarch64-linux-gnu" ;;
-        riscv64) triplet="riscv64-linux-gnu" ;;
-        *)       triplet="" ;;
-      esac
-    fi
+    triplet="$(smoke_deb_triplet "${arch}" 2>/dev/null || true)"
     [ -n "${triplet}" ] || { fail "Cannot determine triplet for ${arch}"; continue; }
 
     cross_gcc="${GCC_PREFIX}/bin/${triplet}-gcc"
     if [ -x "${cross_gcc}" ]; then
       echo "--- Cross compiler: ${arch} (${cross_gcc}) ---"
-      validate_compiler_for_target "${cross_gcc}" "${arch}" "${triplet}-gcc (cross-${arch})"
+      validate_compiler_for_target "${cross_gcc}" "${arch}" "${triplet}-gcc (cross-${arch})" cross
     else
       fail "Cross GCC for ${arch} not found at ${cross_gcc}"
     fi
 
     cross_gpp="${GCC_PREFIX}/bin/${triplet}-g++"
     if [ -x "${cross_gpp}" ]; then
-      local gpp_dump
-      gpp_dump="$("${cross_gpp}" -dumpmachine 2>/dev/null || true)"
-      local gpp_expected
-      if command -v arch_uname_name_for >/dev/null 2>&1; then
-        gpp_expected="$(arch_uname_name_for "${arch}")"
-      else
-        case "${arch}" in
-          amd64)   gpp_expected="x86_64" ;;
-          arm64)   gpp_expected="aarch64" ;;
-          riscv64) gpp_expected="riscv64" ;;
-        esac
-      fi
-      echo "${gpp_dump}" | grep -q "^${gpp_expected}" && \
-        pass "${triplet}-g++: -dumpmachine=${gpp_dump}" || \
-        fail "${triplet}-g++: -dumpmachine=${gpp_dump} != expected"
+      check_dumpmachine "${cross_gpp}" \
+        "$(smoke_uname_name "${arch}" 2>/dev/null || true)" \
+        "${triplet}-g++ (cross-${arch})"
     fi
     echo ""
   done
 
-  # 4. Test target-native Clang if available
+  # 4. Test target-native Clang if available. The binary has a single default
+  # triple; it must match ONE of the requested target arches. The previous
+  # loop broke after the first arch and had no fail branch, so a wrong
+  # -dumpmachine was silently ignored.
   if [ -x /usr/local/llvm-target/bin/clang ]; then
     echo "--- Target-native Clang (/usr/local/llvm-target/bin/clang) ---"
-    for arch in $(arch_list_to_words "${target_arches}"); do
-      local clang_arch
-      clang_arch="$(/usr/local/llvm-target/bin/clang -dumpmachine 2>/dev/null || true)"
-      local expected
-      if command -v arch_uname_name_for >/dev/null 2>&1; then
-        expected="$(arch_uname_name_for "${arch}")"
-      else
-        case "${arch}" in
-          amd64)   expected="x86_64" ;;
-          arm64)   expected="aarch64" ;;
-          riscv64) expected="riscv64" ;;
-        esac
+    local clang_dump clang_matched expected
+    clang_dump="$(/usr/local/llvm-target/bin/clang -dumpmachine 2>/dev/null || true)"
+    clang_matched=""
+    for arch in $(smoke_arch_words "${target_arches}"); do
+      expected="$(smoke_uname_name "${arch}" 2>/dev/null || true)"
+      [ -n "${expected}" ] || continue
+      if echo "${clang_dump}" | grep -q "^${expected}"; then
+        clang_matched="${arch}"
+        break
       fi
-      if echo "${clang_arch}" | grep -q "^${expected}"; then
-        pass "clang (llvm-target): -dumpmachine=${clang_arch} (expected ${arch})"
-      fi
-      break  # single target
     done
+    if [ -n "${clang_matched}" ]; then
+      pass "clang (llvm-target): -dumpmachine=${clang_dump} (matches ${clang_matched})"
+    else
+      fail "clang (llvm-target): -dumpmachine=${clang_dump:-EMPTY} matches none of: ${target_arches}"
+    fi
     echo ""
   fi
 
@@ -139,8 +117,7 @@ main() {
   done
   echo ""
 
-  echo "=== Results: ${FAILURES} failure(s) ==="
-  [ "${FAILURES}" -eq 0 ] || exit 1
+  smoke_summary
 }
 
 main "$@"
