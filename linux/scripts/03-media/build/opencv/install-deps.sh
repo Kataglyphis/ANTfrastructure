@@ -108,12 +108,13 @@ if is_cross && [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
     _png_triplet="$(cross_target_triplet 2>/dev/null || true)"
     _png_ver="${LIBPNG_VERSION:-1.6.44}"
     if [ -n "${_png_triplet}" ]; then
-        # Primary GitHub codeload + SourceForge fallback ('|'-separated, tried in
-        # order by cross_compile_cmake_lib_from_source): a sustained GitHub
-        # codeload throttle exhausted all curl retries in iree-0714a and silently
-        # disabled PNG, so a second independent mirror guards cv2 PNG encode.
+        # Mirrors tried in order by cross_compile_cmake_lib_from_source. curl to
+        # codeload.github.com / downloads.sourceforge.net FAILS inside the buildkit
+        # RUN (iree-0714a..0714e), silently dropping PNG, so the git-clone spec
+        # leads — git reaches github.com where curl to codeload cannot — with the
+        # two tarball mirrors kept as fallbacks for environments where curl works.
         cross_compile_cmake_lib_from_source libpng \
-          "https://github.com/pnggroup/libpng/archive/refs/tags/v${_png_ver}.tar.gz|https://downloads.sourceforge.net/project/libpng/libpng16/${_png_ver}/libpng-${_png_ver}.tar.gz" \
+          "git+https://github.com/pnggroup/libpng#v${_png_ver}|https://github.com/pnggroup/libpng/archive/refs/tags/v${_png_ver}.tar.gz|https://downloads.sourceforge.net/project/libpng/libpng16/${_png_ver}/libpng-${_png_ver}.tar.gz" \
           "/usr/${_png_triplet}" "/usr/${_png_triplet}/lib/libpng16.a" \
           -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
           -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
