@@ -831,6 +831,20 @@ build_iree_wheels() {
     # default -Werror turns fatal. Dropping -Werror keeps it a warning and lets the
     # riscv64 iree_base_runtime wheel build. (Python.h-include-order can't be fixed from
     # our side without patching IREE headers.)
+    # IREE_OUTPUT_FORMAT_C=OFF is REQUIRED here (iree-0714m). It is a
+    # cmake_dependent_option that defaults ON whenever IREE_BUILD_COMPILER=ON
+    # (CMakeLists.txt:517), enabling the EmitC "vm-c" output format. That pulls in
+    # runtime/src/iree/vm/test/emitc/CMakeLists.txt, which is gated on
+    # IREE_OUTPUT_FORMAT_C (NOT IREE_BUILD_TESTS — so TESTS=OFF does not stop it) and
+    # generates VM headers by RUNNING iree-compile at build time. With COMPILER=ON on
+    # the TARGET, the tool name 'iree-compile' resolves to the just-built riscv64
+    # binary, not the host tool in IREE_HOST_BIN_DIR, so the codegen tries to execute
+    # a riscv64 iree-compile on the amd64 host and dies with
+    # 'libIREECompiler.so: cannot open shared object file' (code 127). Turning the
+    # format OFF removes the only build-time consumer of the target compiler; the
+    # riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
+    # wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
+    # bytecode compilation, which the app's check_iree uses, is unaffected.
     toolchain_file="$(write_cross_cmake_toolchain_file || true)"
     [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
     append_common_cross_cmake_args cmake_args
@@ -845,6 +859,7 @@ build_iree_wheels() {
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
+            -DIREE_OUTPUT_FORMAT_C=OFF \
             -DIREE_ENABLE_WERROR_FLAG=OFF \
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
