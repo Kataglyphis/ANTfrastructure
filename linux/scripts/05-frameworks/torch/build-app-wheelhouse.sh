@@ -784,6 +784,7 @@ build_iree_wheels() {
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
             -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
+            -DIREE_ENABLE_WERROR_FLAG=OFF \
             -DIREE_INPUT_TORCH=OFF \
             -DIREE_INPUT_STABLEHLO=OFF \
             -DCMAKE_INSTALL_PREFIX="${host_install}" \
@@ -807,6 +808,13 @@ build_iree_wheels() {
     fi
 
     # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
+    # IREE_ENABLE_WERROR_FLAG=OFF is REQUIRED here (iree-0714g): the nanobind Python
+    # bindings pull in the cross Python 3.14 pyconfig.h, which defines _POSIX_C_SOURCE/
+    # _XOPEN_SOURCE to OLDER values than resolute's glibc features.h (already included
+    # via <optional>/<cstdint> in binding.h) — a benign macro redefinition that IREE's
+    # default -Werror turns fatal. Dropping -Werror keeps it a warning and lets the
+    # riscv64 iree_base_runtime wheel build. (Python.h-include-order can't be fixed from
+    # our side without patching IREE headers.)
     toolchain_file="$(write_cross_cmake_toolchain_file || true)"
     [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
     append_common_cross_cmake_args cmake_args
@@ -821,6 +829,7 @@ build_iree_wheels() {
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
             -DIREE_ERROR_ON_MISSING_SUBMODULES=OFF \
+            -DIREE_ENABLE_WERROR_FLAG=OFF \
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
             -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
