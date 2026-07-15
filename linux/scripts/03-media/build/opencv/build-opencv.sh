@@ -239,9 +239,12 @@ _opencv_target_adjustments() {
             # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
             # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL
             # libpng that install-deps.sh provides (Ubuntu Ports package or, as a
-            # fallback, cross-compiled from source): WITH_PNG=ON + BUILD_PNG=OFF bypasses
-            # the vendored copy and its RVV probe. If no external libpng is present, fall
-            # back to disabling PNG so the OpenCV build still succeeds.
+            # fallback, cross-compiled from source via git+ mirror): WITH_PNG=ON +
+            # BUILD_PNG=OFF bypasses the vendored copy and its RVV probe. External libpng
+            # is a HARD REQUIREMENT on riscv64 — if it is absent we FAIL EARLY here rather
+            # than silently shipping a PNG-less OpenCV that only surfaces as a red
+            # runtime smoke a stage later (that fail-late footgun cost us iree-0714a..e).
+            # Deliberate opt-out: OPENCV_ALLOW_NO_PNG=1 downgrades it to WITH_PNG=OFF.
             local _png_triplet _png_lib="" _png_inc="" _png_cand
             _png_triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
             for _png_cand in \
@@ -256,9 +259,14 @@ _opencv_target_adjustments() {
             if [ -n "${_png_lib}" ] && [ -n "${_png_inc}" ]; then
                 echo "riscv64 OpenCV: linking external static libpng (${_png_lib}, headers ${_png_inc})"
                 _ota_cmake_opts+=("-DWITH_PNG=ON" "-DBUILD_PNG=OFF" "-DPNG_PNG_INCLUDE_DIR=${_png_inc}" "-DPNG_LIBRARY=${_png_lib}")
-            else
-                echo "[WARN] riscv64 OpenCV: no external libpng found; disabling PNG (cv2 PNG encode unavailable)"
+            elif [ "${OPENCV_ALLOW_NO_PNG:-0}" = "1" ]; then
+                echo "[WARN] riscv64 OpenCV: no external libpng found and OPENCV_ALLOW_NO_PNG=1 set; disabling PNG (cv2 PNG encode unavailable)"
                 _ota_cmake_opts+=("-DWITH_PNG=OFF")
+            else
+                echo "[ERROR] riscv64 OpenCV: external static libpng NOT found (searched /usr/${_png_triplet}/lib and /usr/lib/${_png_triplet})." >&2
+                echo "[ERROR] PNG is required on riscv64; install-deps.sh must build libpng (git+ mirror). Failing early instead of shipping a PNG-less OpenCV." >&2
+                echo "[ERROR] Set OPENCV_ALLOW_NO_PNG=1 only if a PNG-less riscv64 OpenCV is genuinely acceptable." >&2
+                exit 1
             fi
         fi
         if [ "${WITH_PYTHON}" = "true" ] && command -v cross_target_python_dev_ready >/dev/null 2>&1 && ! cross_target_python_dev_ready; then
