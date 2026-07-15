@@ -247,6 +247,40 @@ To test a hypothetical newer *matching-build* base image, pass `-Base <image>`.
 Baseline as of Docker 29.5.3 / containerd 2.3.1 / host build 26200 with
 `servercore:ltsc2025`: **BUG PRESENT**.
 
+### Run-side wcifs symptoms (process isolation)
+
+The same `wcifs` filter that breaks layer *commits* on this host/base skew also
+breaks **runtime file operations inside image-layer directories** of
+process-isolated containers (surfaced 2026-07 building
+Kataglyphis-Inference-Engine inside the image):
+
+- **Create-then-rename of fresh files fails `ERROR_PATH_NOT_FOUND`**
+  (deterministic in hot paths). This breaks `git init/clone/checkout` (*"could
+  not write config file"*, *"unable to write new index file"*) and Dart's
+  `File.renameSync` (e.g. the sqlite3 package's native-asset hook).
+- Plain **copies and tar extractions** in the same directories succeed.
+- Directories **created fresh in the sandbox** (e.g. `C:\foo`) are unaffected.
+- **Bind-mounted paths bypass wcifs entirely** — the recommended consumer setup
+  is a bind mount from plain NTFS. A **Dev Drive** source needs
+  `fsutil devdrv setfiltersallowed bindFlt, wcifs` once (elevated), then a
+  remount.
+- `docker cp` into a **running** Windows container silently copies nothing, and
+  against a **stopped** container it triggers the ActivateLayer lock. Use
+  `tar -cf - . | docker exec -i <container> tar -xf - -C <dir>` instead.
+
+The run-side variant has its own "is the bug gone yet?" probe, mirroring the
+commit-side one — re-run it after any Docker / containerd / hcsshim / Windows /
+base-image upgrade:
+
+```powershell
+.\windows\diagnostics\test-layer-rename.ps1
+```
+
+It renames files in a fresh sandbox dir (CONTROL, expected PASS) and in an
+image-layer dir (`C:\Windows\Temp`; VERDICT, **expected FAIL today**) and prints
+**BUG GONE** (exit 0) / **BUG PRESENT** (exit 1) / unexpected-signature (exit 2).
+Pass `-Base <image>` to probe the built developer image's own layers.
+
 ### GPU acceleration in containers (DirectML on the host GPU)
 
 On Windows, **GPU acceleration in containers is DirectX-only** — Direct3D 12 and
@@ -302,19 +336,34 @@ that the provider is *built and registered* (`GetAvailableProviders` → `dml=1`
 the x64 `D3D12Core.dll` PE-machine check); they do **not** create a device, so they
 pass under either isolation regardless of whether a hardware adapter is present.
 
-### Rust toolchain (scoop only — never rustup)
+### Rust toolchain (rustup WITH a default toolchain — never toolchain-less rustup)
 
-Rust is provisioned **exclusively via scoop** (`setup-rust-toolchain.ps1` runs
-`scoop install main/rust`). Do not install rustup in the base image. A
-toolchain-less rustup (`rustup-init --default-toolchain none`) drops proxy shims
-(`cargo.exe`, `rustc.exe`, …) into `CARGO_BIN`, and because `CARGO_BIN` sits ahead
-of scoop's shim dir on `PATH`, those proxies win and fail at runtime with *"rustup
-could not choose a version of cargo … no default is configured"* — which is what
-made the Rust smoke test fail for a long time. `setup-scoop-tools.ps1` installs no
-rustup and `Dockerfile.base` points `CARGO_HOME`/`CARGO_BIN` at a plain
-`C:\Users\ContainerAdministrator\.cargo` (not a rustup path), so scoop's real
-`cargo`/`rustc` resolve. If you need to "fix" Rust, fix the scoop path — do not
-re-introduce rustup.
+Rust is provisioned **exclusively via rustup** (`setup-rust-toolchain.ps1` runs
+`rustup-init.exe -y --default-toolchain stable --profile minimal`), and
+`flutter_rust_bridge_codegen` is baked alongside so Flutter+Rust consumers skip a
+minutes-long cold `cargo install` per fresh container.
+
+rustup is **required**, not merely tolerated: Flutter's **Cargokit** (the build
+glue used by `flutter_rust_bridge`-style plugins, e.g. `rust_builder/cargokit` in
+Kataglyphis-Inference-Engine) enumerates toolchains/targets via rustup and aborts
+with *"rustup not found in PATH."* otherwise — a scoop-only Rust (the previous
+setup) failed every Flutter+Rust consumer build at the CMake install step.
+
+The failure mode the old "never rustup" rule guarded against is real but
+**narrower than the rule**: a **toolchain-less** rustup (`rustup-init
+--default-toolchain none`) drops proxy shims (`cargo.exe`, `rustc.exe`, …) into
+`CARGO_BIN` that resolve **no** toolchain and fail with *"rustup could not choose
+a version of cargo … no default is configured"*. A rustup installed **with a
+default toolchain** resolves fine — and because `Dockerfile.base` points
+`CARGO_HOME`/`CARGO_BIN` at `C:\Users\ContainerAdministrator\.cargo`, which sits
+ahead of scoop's shim dir on `PATH`, the proxies winning is now the *correct*
+outcome. Keep exactly one Rust provider: no `scoop install main/rust` alongside.
+
+Rust is DELIBERATELY unpinned on this lane (`stable` at build time;
+versions.env's `RUST_VERSION` pins only the Linux lane). The smoke test asserts a
+well-formed rustc version, the Cargokit probe shape (`rustup show
+active-toolchain`, `rustup which cargo`), `flutter_rust_bridge_codegen
+--version`, and a compile/link/run probe — never the versions.env value.
 
 ### Media fan-out and memory budgeting
 

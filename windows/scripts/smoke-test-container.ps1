@@ -355,10 +355,32 @@ Write-TestHeader '3. Rust Toolchain'
 # ============================================================================
 Assert-CommandExists 'cargo'
 Assert-CommandExists 'rustc'
+Assert-CommandExists 'rustup'
+
+# Cargokit (flutter_rust_bridge's build_tool) enumerates toolchains via rustup and
+# aborts with "rustup not found in PATH." without it; these two calls mirror its
+# probe shape. They also catch the toolchain-LESS rustup failure mode (proxy shims
+# that resolve no toolchain) -- see docs/windows-builds.md, "Rust toolchain".
+Assert-Test -Name 'rustup resolves an active toolchain' -Condition {
+    & rustup show active-toolchain 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+} -FailMessage 'rustup show active-toolchain failed (toolchain-less rustup shipped?)'
+Assert-Test -Name 'rustup which cargo resolves' -Condition {
+    & rustup which cargo 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+} -FailMessage 'rustup which cargo failed (proxy shims resolve no real toolchain?)'
+
+# Baked so Flutter+Rust consumers skip a minutes-long cold `cargo install` per
+# fresh container (setup-rust-toolchain.ps1).
+Assert-Test -Name 'flutter_rust_bridge_codegen available' -Condition {
+    & flutter_rust_bridge_codegen --version 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+} -FailMessage 'flutter_rust_bridge_codegen missing or broken (bake step in setup-rust-toolchain.ps1 failed?)'
+
 # rustc: assert a well-formed semver only. Rust is DELIBERATELY unpinned on the Windows
-# lane (scoop's latest; versions.env's RUST_VERSION pins the Linux lane), so comparing
-# against that value would fail the image's own smoke test on every scoop bump. The
-# compile+link+run probe below proves the toolchain actually works.
+# lane (rustup stable at build time; versions.env's RUST_VERSION pins the Linux lane),
+# so comparing against that value would fail the image's own smoke test on every rust
+# release. The compile+link+run probe below proves the toolchain actually works.
 Assert-Test -Name 'Rust version (well-formed)' -Condition {
     $ver = & rustc --version 2>&1
     return $ver -match '\d+\.\d+\.\d+'
@@ -798,6 +820,18 @@ if ($gstExpected) {
         (& gst-launch-1.0 --version 2>&1 | Select-Object -First 1) -match [regex]::Escape($gstExpected)
     } -FailMessage "gst-launch-1.0 --version is not the pinned $gstExpected -- stale media layer shipped?"
 }
+
+# Consumers resolve GStreamer via CMake find_package(PkgConfig) + pkg_check_modules,
+# which needs the pkg-config BINARY (scoop main/pkg-config) on top of the baked
+# PKG_CONFIG_PATH/.pc files. Asserting the gstreamer-1.0 modversion validates the
+# tool AND the baked PKG_CONFIG_PATH in one shot.
+Assert-CommandExists 'pkg-config'
+Assert-Test -Name "pkg-config resolves gstreamer-1.0$(if ($gstExpected) { " ($gstExpected)" })" -Condition {
+    $pcVer = (& pkg-config --modversion gstreamer-1.0 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { return $false }
+    if ($gstExpected) { return ($pcVer -eq $gstExpected) }
+    return ($pcVer -match '^\d+\.\d+')
+} -FailMessage "pkg-config --modversion gstreamer-1.0 failed or mismatched versions.env (missing pkg-config binary or broken PKG_CONFIG_PATH)"
 
 # fakesrc/fakesink only exercise coreelements; push real video buffers through
 # videotestsrc -> videoconvert to prove the video plugin DLLs (and their
