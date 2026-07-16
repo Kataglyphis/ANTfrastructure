@@ -48,12 +48,17 @@ apt-get update && apt-get install -y --no-install-recommends \
     g++ git cmake ninja-build python3 python3-pip \
   || { warn "Android IREE: apt deps install failed; skipping (non-gating)"; exit 0; }
 
-# Clone at the pinned tag, EXCLUDING the huge compiler-only llvm-project submodule.
+# Clone at the pinned tag, EXCLUDING the compiler-only heavyweights: llvm-project
+# plus torch-mlir + stablehlo (MLIR-dialect compiler inputs the runtime never
+# needs; torch-mlir also drags a full nested externals/llvm-project via --recursive).
 cd /opt
 rm -rf iree-android
 git clone --depth 1 -b "${IREE_VERSION}" https://github.com/iree-org/iree.git iree-android \
   || { warn "Android IREE: clone ${IREE_VERSION} failed; skipping (non-gating)"; exit 0; }
-( cd iree-android && git -c submodule."third_party/llvm-project".update=none \
+( cd iree-android && git \
+    -c submodule."third_party/llvm-project".update=none \
+    -c submodule."third_party/torch-mlir".update=none \
+    -c submodule."third_party/stablehlo".update=none \
     submodule update --init --recursive --depth 1 ) \
   || { warn "Android IREE: submodule init failed; skipping (non-gating)"; exit 0; }
 

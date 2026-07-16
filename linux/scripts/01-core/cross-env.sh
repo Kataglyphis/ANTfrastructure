@@ -586,7 +586,12 @@ setup_linux_cross_env() {
   _cross_env_export_all _env
 }
 
-# cross_compile_cmake_lib_from_source NAME URL INSTALL_PREFIX SENTINEL [EXTRA_CMAKE_ARG...]
+# cross_compile_cmake_lib_from_source NAME URL[|MIRROR...] INSTALL_PREFIX SENTINEL [EXTRA_CMAKE_ARG...]
+#
+# URL may list '|'-separated fallback mirrors, tried in order until one lands
+# (guards against a single-host outage silently disabling the lib). Each mirror is
+# either a plain https tarball or a `git+<repo>#<ref>` spec (shallow git clone —
+# reliable where the buildkit RUN can git-clone github.com but curl fails).
 #
 # Fetch a source tarball and cross-cmake build+install a small library into the
 # target sysroot. For libraries whose Ubuntu Ports dev package is missing/broken,
@@ -619,8 +624,40 @@ cross_compile_cmake_lib_from_source() {
 
   echo "[INFO] Cross-compiling ${name} from source for ${arch:-target} (${url})..."
   src="$(mktemp -d "${TMPDIR:-/tmp}/${name}-src-XXXXXX")" || return 0
-  if ! download_and_extract "${url}" "${src}" 1; then
-    echo "[WARN] ${name}: source download failed; skipping"
+  # URL may carry '|'-separated fallback mirrors so a single-source outage does
+  # not skip the whole lib. Try each in order until one lands. Two mirror kinds:
+  #   * a plain https tarball  -> download_and_extract (curl + strip 1)
+  #   * a `git+<repo>#<ref>`   -> shallow git clone
+  # The git kind exists because the buildkit RUN network can reach github.com via
+  # git (OpenCV clones fine) + the apt mirrors, but curl to codeload.github.com /
+  # downloads.sourceforge.net fails there — which is exactly what silently
+  # disabled riscv64 OpenCV PNG across iree-0714a..0714e (2026-07-15). git clone
+  # is the reliable primitive in that environment.
+  # NOTE: split into a local array — do NOT `set --`, which would clobber the
+  # extra cmake args still held in "$@" (used below) after the shift 4.
+  local _dl_ok="" _u _repo _ref
+  local -a _mirrors=()
+  local _IFS_save="$IFS"; IFS='|' read -r -a _mirrors <<< "${url}"; IFS="${_IFS_save}"
+  for _u in "${_mirrors[@]}"; do
+    [ -n "${_u}" ] || continue
+    case "${_u}" in
+      git+*)
+        _repo="${_u#git+}"; _ref="${_repo##*#}"; _repo="${_repo%#*}"
+        rm -rf "${src}"
+        if git clone --branch "${_ref}" --depth 1 "${_repo}" "${src}" >/dev/null 2>&1; then
+          _dl_ok=1; break
+        fi
+        echo "[WARN] ${name}: git mirror failed (${_repo}@${_ref}); trying next"
+        mkdir -p "${src}"
+        ;;
+      *)
+        if download_and_extract "${_u}" "${src}" 1; then _dl_ok=1; break; fi
+        echo "[WARN] ${name}: mirror failed (${_u}); trying next"
+        ;;
+    esac
+  done
+  if [ -z "${_dl_ok}" ]; then
+    echo "[WARN] ${name}: source download failed (all mirrors); skipping"
     rm -rf "${src}"
     return 0
   fi

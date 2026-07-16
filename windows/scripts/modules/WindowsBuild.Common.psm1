@@ -525,3 +525,187 @@ Export-ModuleMember -Function @(
     'New-Timestamp',
     'ConvertTo-ParameterList'
 )
+
+# --------------------------------------------------------------------------
+# Restored from 04e1e07 (pre-refactor): functions still consumed by
+# downstream Build-Windows.ps1 scripts (Kataglyphis-Inference-Engine).
+# --------------------------------------------------------------------------
+function Initialize-BuildCacheEnvironment {
+    param(
+        [Parameter(Mandatory=$true)]
+        [pscustomobject]$Context,
+        [string]$FastBuildDir = ""
+    )
+
+    $fastLocalCache = if (-not [string]::IsNullOrWhiteSpace($FastBuildDir)) {
+        $FastBuildDir
+    } elseif ($env:KATAGLYPHIS_FAST_BUILD_DIR) {
+        $env:KATAGLYPHIS_FAST_BUILD_DIR
+    } else {
+        "C:\kataglyphis_fast_build"
+    }
+
+    $env:GLOBAL_CACHE_DIR = Join-Path $fastLocalCache ".cache"
+    $env:SCCACHE_DIR      = Join-Path $env:GLOBAL_CACHE_DIR "sccache"
+    $env:CARGO_HOME       = Join-Path $env:GLOBAL_CACHE_DIR "cargo"
+    $env:PUB_CACHE        = Join-Path $env:GLOBAL_CACHE_DIR "pub-cache"
+
+    foreach ($cachePath in @($env:SCCACHE_DIR, $env:CARGO_HOME, $env:PUB_CACHE)) {
+        if (-not (Test-Path -LiteralPath $cachePath -PathType Container)) {
+            New-Item -ItemType Directory -Force -Path $cachePath | Out-Null
+        }
+    }
+
+    $cargoBin = Join-Path $env:CARGO_HOME "bin"
+    if ($env:PATH -notlike "*$cargoBin*") {
+        $env:PATH = "$cargoBin;$env:PATH"
+    }
+
+    Write-BuildLog -Context $Context -Message "Initialized Fast Local Cache at: $fastLocalCache"
+    
+    # If sccache is present on PATH, enable compiler wrapper environment
+    # variables globally so downstream CMake/configure steps will pick up
+    # sccache without requiring explicit caller configuration. This can be
+    # disabled by clearing the variables later or passing DisableSccache to
+    # the specific build invocation.
+    $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue
+    if ($sccacheCmd) {
+        $sccacheExe = $sccacheCmd.Source
+        Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
+        $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
+        $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
+        $env:RUSTC_WRAPPER = $sccacheExe
+        $env:CC_WRAPPER = $sccacheExe
+        $env:CXX_WRAPPER = $sccacheExe
+
+        if (-not $env:SCCACHE_MAX_JOBS) {
+            $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString()
+            Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$($env:SCCACHE_MAX_JOBS) (from Initialize-BuildCacheEnvironment)"
+        }
+    }
+    return $fastLocalCache
+}
+
+function Remove-BuildRoot {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path $Path)) {
+        Write-BuildLog -Context $Context -Message "Build root does not exist: $Path"
+        return $true
+    }
+
+    Write-BuildLog -Context $Context -Message "Terminating potentially locking processes..."
+    $processNames = @(
+        "flutter", "dart",
+        "msbuild", "devenv",
+        "ninja", "cmake", "ctest",
+        "cl", "link",
+        "clang", "clang-cl", "lld-link",
+        "vstest.console", "testhost",
+        "cargo", "rustc"
+    )
+
+    foreach ($name in $processNames) {
+        Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+
+    Start-Sleep -Seconds 3
+
+    for ($i = 1; $i -le 8; $i++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            Write-BuildLog -Context $Context -Message "Build directory removed: $Path"
+            return $true
+        } catch {
+            Write-BuildLogWarning -Context $Context -Message "Attempt $i/8 failed: $($_.Exception.Message)"
+
+            foreach ($name in $processNames) {
+                Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            }
+
+            if ($i -lt 8) { Start-Sleep -Seconds 2 }
+        }
+    }
+
+    return $false
+}
+
+function Show-SccacheStats {
+    param(
+        [Parameter(Mandatory=$true)]
+        [pscustomobject]$Context
+    )
+
+    if (Get-Command "sccache" -ErrorAction SilentlyContinue) {
+        Invoke-BuildStep -Context $Context -StepName "Sccache Statistics" -Script {
+            Invoke-BuildExternal -Context $Context -File "sccache" -Parameters @("--show-stats")
+        }
+    }
+}
+
+function Assert-FlutterPluginsBuilt {
+    param(
+        [Parameter(Mandatory=$true)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory=$true)]
+        [string]$CMakeFile,
+        [Parameter(Mandatory=$true)]
+        [string[]]$SearchDirectories
+    )
+
+    $expectedPlugins = @()
+    if (Test-Path -LiteralPath $CMakeFile -PathType Leaf) {
+        $cmakeContent = Get-Content $CMakeFile
+        foreach ($line in $cmakeContent) {
+            if ($line -match 'list\(APPEND FLUTTER_PLUGIN_LIST\s+"([^"]+)"\)') {
+                $expectedPlugins += $matches[1]
+            }
+        }
+        Write-BuildLog -Context $Context -Message "Expected Flutter plugins from generated CMake: $($expectedPlugins.Count)"
+        foreach ($plugin in $expectedPlugins) {
+            Write-BuildLog -Context $Context -Message "  - $plugin"
+        }
+    } else {
+        Write-BuildLogWarning -Context $Context -Message "generated_plugins.cmake not found at '$CMakeFile'. Skipping expected plugin list."
+    }
+
+    $pluginArtifacts = @()
+    foreach ($dir in $SearchDirectories) {
+        if (Test-Path -LiteralPath $dir -PathType Container) {
+            $pluginArtifacts += Get-ChildItem -LiteralPath $dir -Recurse -File -Filter "*.dll"
+        }
+    }
+
+    $pluginArtifacts = @($pluginArtifacts | Sort-Object -Property FullName -Unique)
+
+    if ($pluginArtifacts.Count -eq 0) {
+        Write-BuildLogWarning -Context $Context -Message "No plugin DLL artifacts found in search directories."
+    } else {
+        Write-BuildLog -Context $Context -Message "Built plugin DLL artifacts: $($pluginArtifacts.Count)"
+        foreach ($artifact in $pluginArtifacts) {
+            Write-BuildLog -Context $Context -Message "  - $($artifact.FullName)"
+        }
+    }
+
+    if ($expectedPlugins.Count -gt 0 -and $pluginArtifacts.Count -gt 0) {
+        foreach ($plugin in $expectedPlugins) {
+            $matchedArtifact = $pluginArtifacts | Where-Object {
+                $_.Name -like "$plugin*.dll" -or $_.FullName -like "*$plugin*"
+            } | Select-Object -First 1
+
+            if ($null -eq $matchedArtifact) {
+                Write-BuildLogWarning -Context $Context -Message "Expected plugin '$plugin' has no matching DLL artifact name."
+            } else {
+                Write-BuildLog -Context $Context -Message "Plugin '$plugin' mapped to artifact: $($matchedArtifact.Name)"
+            }
+        }
+    }
+}
+
+Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt
+

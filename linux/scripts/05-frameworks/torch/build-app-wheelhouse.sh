@@ -706,16 +706,18 @@ build_torchvision_wheel() {
 # PyPI ships iree-base-{compiler,runtime} cp312-abi3 wheels for x86_64+aarch64
 # only; riscv64 has none, so we cross-build the RUNTIME wheel here. IREE cross-
 # builds in two stages (https://iree.dev/building-from-source/riscv/):
-#   1. a HOST build producing the codegen tools referenced via IREE_HOST_BIN_DIR
-#      (flatcc / c-embed-data), and
+#   1. a HOST build producing the tools referenced via IREE_HOST_BIN_DIR, and
 #   2. a TARGET build that cross-compiles the runtime + its Python bindings
 #      against those host tools.
-# BUILD_COMPILER stays OFF on BOTH stages: the IREE *compiler* embeds LLVM/MLIR
-# and upstream does not support a riscv64 target compiler without a full cross-
-# LLVM (their own riscv64 lane sets IREE_BUILD_COMPILER=OFF). Keeping the host
-# stage LLVM-free is what makes this bounded. Consequence: on riscv64
-# iree.runtime + native iree-run-module ship, but iree.compiler does NOT, so the
-# app's check_iree degrades to optional-fail there (agreed for the riscv64 lane).
+# HOST build is IREE_BUILD_COMPILER=ON (full LLVM). An earlier LLVM-free host
+# (BUILD_COMPILER=OFF) got the host stage passing but the riscv64 TARGET runtime
+# build then failed wanting `llvm-link` from IREE_HOST_BIN_DIR — IREE compiles
+# its device-bitcode libraries with llvm-link, which only exists when the host
+# built LLVM (run iree-0714c, 2026-07-15). So we now init the llvm-project
+# submodule and build the host compiler; that produces iree-compile + iree-tblgen
+# + llvm-link. The TARGET still sets BUILD_COMPILER=OFF (no riscv64 cross-LLVM;
+# upstream's riscv64 lane does the same). Cost: the host LLVM build is heavy
+# (~1h+, tens of GB) — bounded only by "host, not cross".
 #
 # Everything here is best-effort: any failure WARNs and returns 0 so torch/vision
 # and the rest of the media build proceed. This cannot be validated on the amd64
@@ -730,80 +732,180 @@ build_iree_wheels() {
     local wheel_platform="" toolchain_file=""
     local -a cmake_args=()
 
-    command -v cmake >/dev/null 2>&1 || { warn "cmake absent; skipping IREE riscv64 runtime wheel"; return 0; }
-    command -v ninja >/dev/null 2>&1 || { warn "ninja absent; skipping IREE riscv64 runtime wheel"; return 0; }
+    command -v cmake >/dev/null 2>&1 || { warn "cmake absent; skipping IREE riscv64 runtime wheel"; return 1; }
+    command -v ninja >/dev/null 2>&1 || { warn "ninja absent; skipping IREE riscv64 runtime wheel"; return 1; }
 
     wheel_platform="$(wheel_platform_tag || true)"
-    [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 0; }
+    [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 1; }
 
-    # Clone at the pinned tag, then init submodules EXCLUDING llvm-project (huge,
-    # compiler-only). The runtime needs flatcc/cpuinfo/etc., not LLVM.
+    # ccache — the decisive lever for IREE build cost. IREE pins its OWN LLVM fork
+    # (github.com/iree-org/llvm-project @ a bleeding-edge commit) and MLIR has no
+    # stable API, so we CANNOT substitute ContainerHub's release-tag toolchain LLVM;
+    # IREE must compile its bundled LLVM/MLIR (both host tools AND the riscv64 cross)
+    # itself — ~1h. But the build tree lives on tmpfs (wiped each run) while
+    # /var/cache/ccache is a PERSISTENT BuildKit cache mount (Dockerfile.media
+    # app-wheelhouse RUN). Wiring the cmake compiler-launcher to ccache makes that
+    # ~1h LLVM compile a ONE-TIME cost: every rerun cache-hits the objects. ccache
+    # keys on compiler+flags, so the native-host build and the riscv64-cross build
+    # keep separate entries and never collide. Guarded: plain rebuild if ccache is
+    # absent. (Applies to the bundled llvm-project add_subdirectory too, which
+    # inherits CMAKE_*_COMPILER_LAUNCHER; the small NATIVE tblgen sub-build may not.)
+    local -a ccache_cmake_args=()
+    if command -v ccache >/dev/null 2>&1; then
+        export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}"
+        export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-25G}"
+        export CCACHE_COMPRESS=1
+        export CCACHE_SLOPPINESS="pch_defines,time_macros,include_file_mtime,include_file_ctime"
+        mkdir -p "${CCACHE_DIR}" 2>/dev/null || true
+        ccache_cmake_args=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+        echo "[INFO] IREE ccache ON: CCACHE_DIR=${CCACHE_DIR} MAXSIZE=${CCACHE_MAXSIZE} (LLVM rebuild is one-time; reruns cache-hit)"
+    else
+        warn "ccache not found — IREE bundled LLVM will rebuild from scratch every run (no cross-run cache)"
+    fi
+
+    # Clone at the pinned tag, then init ALL submodules recursively — including
+    # third_party/torch-mlir + third_party/stablehlo — so the compiler ships the
+    # full frontend set (stablehlo + torch input dialects), not just TOSA/linalg.
+    # (--recursive also pulls torch-mlir's nested externals; --depth 1 keeps every
+    # clone shallow. Disk is cheap; a complete tree is what we want here.)
     rm -rf "${src_dir}"
     if ! git clone --branch "${IREE_REF}" --depth 1 https://github.com/iree-org/iree.git "${src_dir}"; then
-        warn "IREE clone ${IREE_REF} failed; skipping riscv64 runtime wheel"; return 0
+        warn "IREE clone ${IREE_REF} failed"; return 1
     fi
-    if ! ( cd "${src_dir}" && git -c submodule."third_party/llvm-project".update=none \
-             submodule update --init --recursive --depth 1 ); then
-        warn "IREE submodule init failed; skipping riscv64 runtime wheel"; return 0
+    if ! ( cd "${src_dir}" && git submodule update --init --recursive --depth 1 ); then
+        warn "IREE submodule init failed"; return 1
     fi
 
-    # Stage 1 — LLVM-free host tools for IREE_HOST_BIN_DIR.
+    # Stage 1 — FULL host compiler build (LLVM) for IREE_HOST_BIN_DIR, with the
+    # NATIVE amd64 compiler. This produces iree-compile + iree-tblgen + llvm-link.
+    # This function runs inside the riscv64 cross environment, where
+    # CC/CXX/*FLAGS/CMAKE_TOOLCHAIN_FILE all point at the riscv64 cross toolchain
+    # (set up for the torch build). The host tools MUST be native or they can't
+    # execute on the build host to drive the target build — the first run
+    # (2026-07-14) failed here precisely because the host cmake inherited the cross
+    # CC/CXX. So strip the cross env for BOTH the configure and the build, and pin
+    # the host compiler + both Python executables (FindPython/FindPython3 disagreed
+    # on the first run). The LLVM build is heavy; MAX_JOBS is already the
+    # cpp-heavy (≈4GB/job) count for this stage.
+    local host_cc="" host_cxx=""
+    for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
+    for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
     rm -rf "${host_build}"
-    if ! cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
+    if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+             -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
+            cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
+            "${ccache_cmake_args[@]}" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DIREE_BUILD_COMPILER=OFF \
+            -DCMAKE_C_COMPILER="${host_cc}" \
+            -DCMAKE_CXX_COMPILER="${host_cxx}" \
+            -DIREE_BUILD_COMPILER=ON \
             -DIREE_BUILD_PYTHON_BINDINGS=OFF \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
+            -DIREE_ENABLE_WERROR_FLAG=OFF \
             -DCMAKE_INSTALL_PREFIX="${host_install}" \
+            -DPython_EXECUTABLE="${BUILD_PYTHON}" \
             -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
-        warn "IREE host-tools configure failed; skipping riscv64 runtime wheel"; return 0
+        warn "IREE host-compiler configure failed; skipping riscv64 runtime wheel"; return 1
     fi
-    if ! cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}"; then
-        warn "IREE host-tools build failed; skipping riscv64 runtime wheel"; return 0
+    # Capture build output to a log and echo its tail on failure. BuildKit
+    # collapses the tens-of-thousands of ninja progress lines, so a bare failure
+    # surfaces NO error (the silent-fast-fail gotcha, iree-0714f) — the tail dump
+    # is the only way to see why the cross build actually died.
+    if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+             -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
+            cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}" \
+            > "${host_build}.log" 2>&1; then
+        warn "IREE host-compiler build failed; skipping riscv64 runtime wheel"
+        echo "----- IREE host build: last 80 log lines -----"
+        tail -n 80 "${host_build}.log" 2>/dev/null
+        echo "----- end IREE host build log -----"
+        return 1
     fi
 
     # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
+    # IREE_ENABLE_WERROR_FLAG=OFF is REQUIRED here (iree-0714g): the nanobind Python
+    # bindings pull in the cross Python 3.14 pyconfig.h, which defines _POSIX_C_SOURCE/
+    # _XOPEN_SOURCE to OLDER values than resolute's glibc features.h (already included
+    # via <optional>/<cstdint> in binding.h) — a benign macro redefinition that IREE's
+    # default -Werror turns fatal. Dropping -Werror keeps it a warning and lets the
+    # riscv64 iree_base_runtime wheel build. (Python.h-include-order can't be fixed from
+    # our side without patching IREE headers.)
+    # IREE_OUTPUT_FORMAT_C=OFF is REQUIRED here (iree-0714m). It is a
+    # cmake_dependent_option that defaults ON whenever IREE_BUILD_COMPILER=ON
+    # (CMakeLists.txt:517), enabling the EmitC "vm-c" output format. That pulls in
+    # runtime/src/iree/vm/test/emitc/CMakeLists.txt, which is gated on
+    # IREE_OUTPUT_FORMAT_C (NOT IREE_BUILD_TESTS — so TESTS=OFF does not stop it) and
+    # generates VM headers by RUNNING iree-compile at build time. With COMPILER=ON on
+    # the TARGET, the tool name 'iree-compile' resolves to the just-built riscv64
+    # binary, not the host tool in IREE_HOST_BIN_DIR, so the codegen tries to execute
+    # a riscv64 iree-compile on the amd64 host and dies with
+    # 'libIREECompiler.so: cannot open shared object file' (code 127). Turning the
+    # format OFF removes the only build-time consumer of the target compiler; the
+    # riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
+    # wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
+    # bytecode compilation, which the app's check_iree uses, is unaffected.
     toolchain_file="$(write_cross_cmake_toolchain_file || true)"
-    [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 0; }
+    [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
     append_common_cross_cmake_args cmake_args
 
     rm -rf "${target_build}"
     if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
             -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
             "${cmake_args[@]}" \
+            "${ccache_cmake_args[@]}" \
             -DIREE_HOST_BIN_DIR="${host_install}/bin" \
-            -DIREE_BUILD_COMPILER=OFF \
+            -DIREE_BUILD_COMPILER=ON \
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
             -DIREE_BUILD_SAMPLES=OFF \
             -DIREE_BUILD_TESTS=OFF \
+            -DIREE_OUTPUT_FORMAT_C=OFF \
+            -DIREE_ENABLE_WERROR_FLAG=OFF \
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
-            -DCMAKE_BUILD_TYPE=Release; then
-        warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"; return 0
+            -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
+        warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"
+        echo "----- IREE target configure: last 80 log lines -----"
+        tail -n 80 "${target_build}.cfg.log" 2>/dev/null
+        echo "----- end IREE target configure log -----"
+        return 1
     fi
-    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}"; then
-        warn "IREE riscv64 runtime build failed (best-effort); continuing without it"; return 0
+    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
+        warn "IREE riscv64 runtime build failed (best-effort); continuing without it"
+        echo "----- IREE target build: last 80 log lines -----"
+        tail -n 80 "${target_build}.log" 2>/dev/null
+        echo "----- end IREE target build log -----"
+        return 1
     fi
 
-    # The build tree exposes a runtime/ wheel project; build + retag it.
-    if [ ! -d "${target_build}/runtime" ]; then
-        warn "IREE target build produced no runtime/ wheel project; skipping"; return 0
-    fi
+    # The build tree exposes compiler/ and runtime/ wheel projects (COMPILER=ON
+    # cross-builds LLVM/MLIR for riscv64 so iree-compile + iree.compiler ship too,
+    # not just iree.runtime). Package BOTH — both are REQUIRED on riscv64.
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
-    if ! "${BUILD_PYTHON}" -m pip wheel "${target_build}/runtime" -w "${dist_dir}" --no-deps --no-build-isolation; then
-        warn "IREE riscv64 runtime wheel packaging failed (best-effort); continuing"; return 0
-    fi
-    retag_directory_wheels "${dist_dir}" "iree_base_runtime" "${wheel_platform}"
+    local _proj _pkg
+    for _proj in compiler runtime; do
+        _pkg="iree_base_${_proj}"
+        if [ ! -d "${target_build}/${_proj}" ]; then
+            warn "IREE target build produced no ${_proj}/ wheel project"; return 1
+        fi
+        if ! "${BUILD_PYTHON}" -m pip wheel "${target_build}/${_proj}" -w "${dist_dir}" --no-deps --no-build-isolation > "${target_build}.${_proj}-wheel.log" 2>&1; then
+            warn "IREE riscv64 ${_proj} wheel packaging failed"
+            echo "----- IREE ${_proj} wheel: last 60 log lines -----"
+            tail -n 60 "${target_build}.${_proj}-wheel.log" 2>/dev/null
+            echo "----- end IREE ${_proj} wheel log -----"
+            return 1
+        fi
+        retag_directory_wheels "${dist_dir}" "${_pkg}" "${wheel_platform}"
+    done
 
     shopt -s nullglob
-    local -a wheels=("${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
+    local -a wheels=("${dist_dir}"/iree_base_compiler-*.whl "${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
     shopt -u nullglob
-    if [ "${#wheels[@]}" -eq 0 ]; then
-        warn "IREE riscv64 runtime build produced no wheel; continuing"; return 0
+    if [ "${#wheels[@]}" -lt 2 ]; then
+        warn "IREE riscv64 build did not produce BOTH compiler+runtime wheels (got ${#wheels[@]})"; return 1
     fi
     cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
-    log "Built IREE riscv64 runtime wheel $(basename "${wheels[0]}") (compiler intentionally not built for riscv64)"
+    log "Built IREE riscv64 wheels: $(cd "${dist_dir}" && echo iree_base_*-*.whl)"
 }
 
 main() {
@@ -812,16 +914,31 @@ main() {
         return 0
     fi
 
+    # torch/vision cross-wheels are best-effort (a native torch stage is the
+    # fallback), but IREE is REQUIRED — so a torch failure must NOT short-circuit
+    # main() before build_iree_wheels runs (that fail-open skipped the required IREE
+    # entirely when a transient ports.ubuntu.com outage broke torch in iree-0714k).
+    # Warn and continue to IREE instead of returning.
     if ! build_torch_wheel; then
-        warn "Continuing without prebuilt riscv64 torch/vision wheels"
-        return 0
+        warn "riscv64 torch cross-wheel failed — native torch stage is the fallback; continuing to IREE"
     fi
 
     if ! build_torchvision_wheel; then
         warn "Continuing without a prebuilt riscv64 torchvision wheel"
     fi
 
-    build_iree_wheels || warn "Continuing without a prebuilt riscv64 IREE runtime wheel"
+    # IREE is REQUIRED on riscv64 (no PyPI wheel exists for it, unlike amd64/arm64),
+    # not best-effort: a failed cross-build must FAIL THE BUILD (fail early) so it gets
+    # fixed, never silently ship an image missing iree.runtime. The failure paths above
+    # dump the real cmake/ninja tail before returning non-zero. Bypass only with an
+    # explicit ALLOW_IREE_BUILD_FAIL=1 for a deliberate IREE-less debugging image.
+    if ! build_iree_wheels; then
+        if [ "${ALLOW_IREE_BUILD_FAIL:-0}" = "1" ]; then
+            warn "riscv64 IREE build failed but ALLOW_IREE_BUILD_FAIL=1 set — continuing without it"
+        else
+            err "riscv64 IREE runtime build FAILED — IREE is required (see the dumped build log above). Set ALLOW_IREE_BUILD_FAIL=1 only for a deliberate IREE-less image."
+        fi
+    fi
 
     shopt -s nullglob
     local wheel_path
