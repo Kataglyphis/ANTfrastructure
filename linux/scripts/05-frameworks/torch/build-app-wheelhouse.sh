@@ -750,7 +750,7 @@ build_iree_wheels() {
     local host_install="${host_build}/install"
     local target_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-target"
     local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-iree"
-    local wheel_platform="" toolchain_file=""
+    local wheel_platform="" toolchain_file="" iree_target_triple=""
     local -a cmake_args=()
 
     command -v cmake >/dev/null 2>&1 || { warn "cmake absent; skipping IREE riscv64 runtime wheel"; return 1; }
@@ -896,6 +896,37 @@ build_iree_wheels() {
     toolchain_file="$(write_cross_cmake_toolchain_file || true)"
     [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
     append_common_cross_cmake_args cmake_args
+
+    # The cross-built iree-compile bakes in its DEFAULT codegen target triple at
+    # compile time via LLVM_HOST_TRIPLE (llvm::sys::getProcessTriple(), which IREE's
+    # llvm-cpu backend uses when --iree-llvmcpu-target-triple is unset). Bundled
+    # LLVM's CMake auto-detects that triple from the BUILD host during a cross-build,
+    # so without this override an arm64/riscv64 iree-compile defaults to the x86_64
+    # build host and emits `embedded-elf-x86_64` — iree-run-module on the target then
+    # fails "HAL device not found" (INCOMPATIBLE). Pin both triples to the actual
+    # target so the shipped compiler defaults to the arch it runs on. (iree-0714t:
+    # arm64 native iree-compile smoke failed exactly this way.)
+    iree_target_triple="$(cross_target_triplet 2>/dev/null || true)"
+    if [ -n "${iree_target_triple}" ]; then
+        cmake_args+=(
+            "-DLLVM_HOST_TRIPLE=${iree_target_triple}"
+            "-DLLVM_DEFAULT_TARGET_TRIPLE=${iree_target_triple}"
+        )
+    fi
+
+    # Build IREE's nanobind Python extensions with the TARGET Python's SOABI so the
+    # compiled module is named _runtime.cpython-314-<target>-linux-gnu.so, not the
+    # x86_64 build host's suffix. Without this, FindPython/nanobind introspect the
+    # host BUILD_PYTHON and stamp cpython-314-x86_64-linux-gnu.so, which the target
+    # (aarch64) Python cannot import — "cannot import name '_runtime' from
+    # 'iree._runtime_libs'" (iree-0714t). _PYTHON_SYSCONFIGDATA_NAME redirects the
+    # host interpreter's sysconfig to the target's EXT_SUFFIX, the same mechanism the
+    # torch/vision cross builds use (resolve_target_python_sysconfig_export). Applied
+    # only HERE — after the Stage-1 host tools build (bindings OFF) — so host binaries
+    # keep the x86_64 config; it stays in effect for the Stage-2 build + wheel pack.
+    local iree_sysconfig_export=""
+    iree_sysconfig_export="$(resolve_target_python_sysconfig_export)"
+    if [ -n "${iree_sysconfig_export}" ]; then eval "${iree_sysconfig_export}"; fi
 
     rm -rf "${target_build}"
     if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
