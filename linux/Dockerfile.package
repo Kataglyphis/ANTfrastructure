@@ -186,6 +186,24 @@ RUN set -euo pipefail; \
     fi; \
     bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" 2>/dev/null || true
 
+# Redirect this stage's apt sources off ports.ubuntu.com onto the configured
+# fast ports mirror (leaseweb) BEFORE setup-package-image.sh runs apt. The
+# inherited cross-android base carries ports.ubuntu.com sources; Dockerfile.media
+# rewrote them only in the media lane, so the package stage (arm64/riscv64, run
+# natively under QEMU) otherwise hits ports.ubuntu.com directly — which is often
+# unreachable and fails the whole runtime build. This is a host-only swap that
+# preserves the existing (already arch-correct) source layout; amd64 uses
+# archive.ubuntu.com and is untouched.
+RUN set -euo pipefail; \
+    if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL:-}" ]; then \
+        _m="${FAST_UBUNTU_PORTS_MIRROR_URL%/}"; \
+        find /etc/apt/sources.list.d -type f \( -name '*.sources' -o -name '*.list' \) 2>/dev/null | while read -r _f; do \
+            sed -i "s#https\\?://ports.ubuntu.com/ubuntu-ports#${_m}#g" "${_f}"; \
+        done; \
+        [ -f /etc/apt/sources.list ] && sed -i "s#https\\?://ports.ubuntu.com/ubuntu-ports#${_m}#g" /etc/apt/sources.list || true; \
+        echo "Rewrote ports.ubuntu.com -> ${_m} for package-stage apt"; \
+    fi
+
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
