@@ -996,10 +996,10 @@ build_iree_wheels() {
     local -a wheels=("${dist_dir}"/iree_base_compiler-*.whl "${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
     shopt -u nullglob
     if [ "${#wheels[@]}" -lt 2 ]; then
-        warn "IREE riscv64 build did not produce BOTH compiler+runtime wheels (got ${#wheels[@]})"; return 1
+        warn "IREE build did not produce BOTH compiler+runtime wheels (got ${#wheels[@]})"; return 1
     fi
     cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
-    log "Built IREE riscv64 wheels: $(cd "${dist_dir}" && echo iree_base_*-*.whl)"
+    log "Built IREE wheels: $(cd "${dist_dir}" && echo iree_base_*-*.whl)"
 }
 
 main() {
