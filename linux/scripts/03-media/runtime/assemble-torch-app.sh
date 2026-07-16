@@ -100,6 +100,12 @@ collect_locked_local_skip_packages() {
       ai_edge_litert-*.whl|ai-edge-litert-*.whl)
         append_unique_arg out_packages_ref ai-edge-litert
         ;;
+      iree_base_compiler-*.whl)
+        append_unique_arg out_packages_ref iree-base-compiler
+        ;;
+      iree_base_runtime-*.whl)
+        append_unique_arg out_packages_ref iree-base-runtime
+        ;;
       opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
         append_unique_arg out_packages_ref opencv-python
         ;;
@@ -326,8 +332,18 @@ reconcile_local_wheels() {
     uv pip install --force-reinstall "${other_wheels[@]}"
   fi
   if [ "${#iree_wheels[@]}" -gt 0 ]; then
-    uv pip install --no-deps --force-reinstall "${iree_wheels[@]}" || \
-      echo "WARNING: IREE riscv64 runtime wheel install failed (non-fatal; check_iree will optional-fail)"
+    if [ "$(uname -m)" = "riscv64" ]; then
+      # riscv64: ml_dtypes has no riscv64 PyPI wheel and would source-build under
+      # QEMU; install --no-deps and tolerate failure (check_iree optional-fails).
+      # numpy is already present from the sync.
+      uv pip install --no-deps --force-reinstall "${iree_wheels[@]}" || \
+        echo "WARNING: IREE riscv64 runtime wheel install failed (non-fatal; check_iree will optional-fail)"
+    else
+      # amd64/arm64: resolve IREE's runtime deps (ml_dtypes, numpy) from PyPI so the
+      # source-built cp314 wheels are fully functional; the cp314 wheel replaces any
+      # PyPI cp312-abi3 build. Hard-fail under set -e -- IREE is REQUIRED here.
+      uv pip install --force-reinstall "${iree_wheels[@]}"
+    fi
   fi
 }
 

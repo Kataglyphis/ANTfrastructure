@@ -350,7 +350,7 @@ RUN --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv
 
 # ==============================================================================
-# App wheelhouse stage (best-effort riscv64 cross-only)
+# App wheelhouse stage (riscv64: torch+vision+IREE cross; amd64/arm64: IREE only)
 # ==============================================================================
 FROM base AS app-wheelhouse
 
@@ -369,11 +369,12 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    if [ "${TARGET_ARCH}" != "riscv64" ]; then \
-        echo "Skipping app-wheelhouse (riscv64 cross-only, got ${TARGET_ARCH})"; \
-        mkdir -p /opt/app-wheels; \
-        exit 0; \
-    fi; \
+    case "${TARGET_ARCH:-amd64}" in \
+      amd64|arm64|riscv64) ;; \
+      *) echo "Skipping app-wheelhouse (unsupported arch ${TARGET_ARCH})"; \
+         mkdir -p /opt/app-wheels; \
+         exit 0 ;; \
+    esac; \
     if ! command -v uv >/dev/null 2>&1; then \
       echo "WARNING: uv not found in app-wheelhouse stage; installing..."; \
       pip3 install uv 2>/dev/null || echo "WARNING: could not install uv"; \

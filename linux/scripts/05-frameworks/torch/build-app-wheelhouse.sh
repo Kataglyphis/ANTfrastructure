@@ -158,31 +158,52 @@ install_build_dependencies() {
         libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev
 }
 
+install_native_build_dependencies() {
+    # amd64 native IREE build: minimal host toolchain. ccache is the decisive lever
+    # (bundled LLVM is a ~1h one-time compile; /var/cache/ccache is a persistent
+    # BuildKit mount). git/cmake/ninja are usually already present from the base
+    # image; this is a best-effort top-up. No cross apt mirror needed (native).
+    apt-get update -y || true
+    apt-get install -y --no-install-recommends \
+        git ninja-build cmake pkg-config unzip rsync ccache || return 1
+}
+
 prepare_build_environment() {
     # NOTE: prepare_workspace is NOT called here — main() already runs it
     # (unconditionally, before this function) so the wheelhouse dir exists
     # even when this function bails out early.
-    if ! cross_build_is_active; then
-        log "Skipping app wheelhouse build outside of amd64-hosted cross mode"
-        return 1
+    #
+    # Two modes:
+    #   * CROSS  (arm64/riscv64 foreign target): stage the foreign target Python
+    #     dev tree + cross toolchain (the proven riscv64 machinery, now also arm64).
+    #   * NATIVE (amd64 target == build arch): no foreign target-python staging;
+    #     IREE builds against the container's own from-source CPython 3.14.
+    if cross_build_is_active; then
+        if ! command -v prepare_cross_target_env >/dev/null 2>&1; then
+            warn "Cross environment helpers are unavailable; leaving the app wheelhouse empty"
+            return 1
+        fi
+
+        prepare_cross_target_env "${TARGET_ARCH:-${TARGETARCH:-riscv64}}" "app wheelhouse"
+
+        if ! command -v cross_target_python_dev_ready >/dev/null 2>&1 || ! cross_target_python_dev_ready; then
+            warn "Target Python development files are not staged for $(cross_target_arch 2>/dev/null || echo target); leaving the app wheelhouse empty"
+            return 1
+        fi
+
+        install_build_dependencies || {
+            warn "Failed to install app wheelhouse build dependencies; leaving the app wheelhouse empty"
+            return 1
+        }
+    else
+        # amd64 NATIVE: only IREE is source-built here (torch/vision come from PyPI
+        # on amd64), against the container's own CPython 3.14 — no foreign target
+        # Python staging, no cross toolchain.
+        install_native_build_dependencies || {
+            warn "Failed to install native IREE build dependencies; leaving the app wheelhouse empty"
+            return 1
+        }
     fi
-
-    if ! command -v prepare_cross_target_env >/dev/null 2>&1; then
-        warn "Cross environment helpers are unavailable; leaving the app wheelhouse empty"
-        return 1
-    fi
-
-    prepare_cross_target_env "${TARGET_ARCH:-${TARGETARCH:-riscv64}}" "app wheelhouse"
-
-    if ! command -v cross_target_python_dev_ready >/dev/null 2>&1 || ! cross_target_python_dev_ready; then
-        warn "Target Python development files are not staged for $(cross_target_arch 2>/dev/null || echo target); leaving the app wheelhouse empty"
-        return 1
-    fi
-
-    install_build_dependencies || {
-        warn "Failed to install app wheelhouse build dependencies; leaving the app wheelhouse empty"
-        return 1
-    }
 
     BUILD_PYTHON="$(require_host_python)" || return 1
 
@@ -801,6 +822,8 @@ build_iree_wheels() {
         fi
     done
 
+    if cross_build_is_active; then
+    # ===== CROSS (arm64/riscv64 foreign target): two-stage host + target build =====
     # Stage 1 — FULL host compiler build (LLVM) for IREE_HOST_BIN_DIR, with the
     # NATIVE amd64 compiler. This produces iree-compile + iree-tblgen + llvm-link.
     # This function runs inside the riscv64 cross environment, where
@@ -904,6 +927,51 @@ build_iree_wheels() {
         return 1
     fi
 
+    else
+        # ===== amd64 NATIVE: single-stage build =====
+        # build arch == target arch, so no host/target split, no toolchain file,
+        # no IREE_HOST_BIN_DIR, no qemu emulator. One cmake configure builds LLVM
+        # + iree-compile + the runtime + the cp314 Python bindings for the host.
+        # IREE_ENABLE_PYTHON_STABLE_ABI=OFF (plus the setup.py abi3 sed patch above)
+        # forces version-specific cp314-cp314-linux_x86_64 wheels instead of IREE's
+        # default cp312-abi3. OUTPUT_FORMAT_C=OFF is harmless natively (iree-compile
+        # runs on the host) — kept OFF for parity + speed. Native build => the CPU
+        # host-detection that fails the riscv64 iree-compile under QEMU is a non-issue.
+        local native_cc="" native_cxx=""
+        for native_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${native_cc}" ] && break; done
+        for native_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${native_cxx}" ] && break; done
+        rm -rf "${target_build}"
+        if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+                "${ccache_cmake_args[@]}" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER="${native_cc}" \
+                -DCMAKE_CXX_COMPILER="${native_cxx}" \
+                -DIREE_BUILD_COMPILER=ON \
+                -DIREE_BUILD_PYTHON_BINDINGS=ON \
+                -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
+                -DIREE_BUILD_SAMPLES=OFF \
+                -DIREE_BUILD_TESTS=OFF \
+                -DIREE_OUTPUT_FORMAT_C=OFF \
+                -DIREE_ENABLE_WERROR_FLAG=OFF \
+                -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+                -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+                -DPython_EXECUTABLE="${BUILD_PYTHON}" \
+                -DPython3_EXECUTABLE="${BUILD_PYTHON}" > "${target_build}.cfg.log" 2>&1; then
+            warn "IREE native configure failed"
+            echo "----- IREE native configure: last 80 log lines -----"
+            tail -n 80 "${target_build}.cfg.log" 2>/dev/null
+            echo "----- end IREE native configure log -----"
+            return 1
+        fi
+        if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
+            warn "IREE native build failed"
+            echo "----- IREE native build: last 80 log lines -----"
+            tail -n 80 "${target_build}.log" 2>/dev/null
+            echo "----- end IREE native build log -----"
+            return 1
+        fi
+    fi
+
     # The build tree exposes compiler/ and runtime/ wheel projects (COMPILER=ON
     # cross-builds LLVM/MLIR for riscv64 so iree-compile + iree.compiler ship too,
     # not just iree.runtime). Package BOTH — both are REQUIRED on riscv64.
@@ -940,29 +1008,33 @@ main() {
         return 0
     fi
 
-    # torch/vision cross-wheels are best-effort (a native torch stage is the
-    # fallback), but IREE is REQUIRED — so a torch failure must NOT short-circuit
-    # main() before build_iree_wheels runs (that fail-open skipped the required IREE
-    # entirely when a transient ports.ubuntu.com outage broke torch in iree-0714k).
-    # Warn and continue to IREE instead of returning.
-    if ! build_torch_wheel; then
-        warn "riscv64 torch cross-wheel failed — native torch stage is the fallback; continuing to IREE"
+    # torch/torchvision are cross-built ONLY for riscv64 (no upstream riscv64
+    # wheels exist). On amd64/arm64 torch/vision come from PyPI; only IREE is
+    # source-built there (PyPI ships cp312-abi3, but we need version-specific
+    # cp314). They are best-effort even on riscv64 (a native torch stage is the
+    # fallback), so a failure must NOT short-circuit main() before the REQUIRED
+    # build_iree_wheels runs (that fail-open skipped IREE when a transient
+    # ports.ubuntu.com outage broke torch in iree-0714k) — warn and continue.
+    if [ "$(cross_target_arch 2>/dev/null || echo)" = "riscv64" ]; then
+        if ! build_torch_wheel; then
+            warn "riscv64 torch cross-wheel failed — native torch stage is the fallback; continuing to IREE"
+        fi
+        if ! build_torchvision_wheel; then
+            warn "Continuing without a prebuilt riscv64 torchvision wheel"
+        fi
     fi
 
-    if ! build_torchvision_wheel; then
-        warn "Continuing without a prebuilt riscv64 torchvision wheel"
-    fi
-
-    # IREE is REQUIRED on riscv64 (no PyPI wheel exists for it, unlike amd64/arm64),
-    # not best-effort: a failed cross-build must FAIL THE BUILD (fail early) so it gets
-    # fixed, never silently ship an image missing iree.runtime. The failure paths above
-    # dump the real cmake/ninja tail before returning non-zero. Bypass only with an
-    # explicit ALLOW_IREE_BUILD_FAIL=1 for a deliberate IREE-less debugging image.
+    # IREE is REQUIRED on ALL arches (amd64/arm64/riscv64): we ship version-specific
+    # cp314 wheels built from source, never the PyPI cp312-abi3 build. A failed build
+    # must FAIL THE IMAGE (fail early) so it gets fixed, never silently ship an image
+    # missing iree. The failure paths above dump the real cmake/ninja tail before
+    # returning non-zero. Bypass only with an explicit ALLOW_IREE_BUILD_FAIL=1 for a
+    # deliberate IREE-less debugging image.
     if ! build_iree_wheels; then
         if [ "${ALLOW_IREE_BUILD_FAIL:-0}" = "1" ]; then
-            warn "riscv64 IREE build failed but ALLOW_IREE_BUILD_FAIL=1 set — continuing without it"
+            warn "IREE build failed but ALLOW_IREE_BUILD_FAIL=1 set — continuing without it"
         else
-            err "riscv64 IREE runtime build FAILED — IREE is required (see the dumped build log above). Set ALLOW_IREE_BUILD_FAIL=1 only for a deliberate IREE-less image."
+            err "IREE build FAILED — IREE is required (see the dumped build log above). Set ALLOW_IREE_BUILD_FAIL=1 only for a deliberate IREE-less image."
         fi
     fi
 
