@@ -753,7 +753,11 @@ build_iree_wheels() {
     local -a ccache_cmake_args=()
     if command -v ccache >/dev/null 2>&1; then
         export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}"
-        export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-25G}"
+        # 64G, not 25G: IREE builds TWO full LLVM object sets (native host tools +
+        # the target cross-LLVM), which together overflow a 25G cache and evict each
+        # other (0714p thrashed — app-wheelhouse took 3.5h with a warm-but-too-small
+        # cache). 64G comfortably holds both so reruns actually hit.
+        export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-64G}"
         export CCACHE_COMPRESS=1
         export CCACHE_SLOPPINESS="pch_defines,time_macros,include_file_mtime,include_file_ctime"
         mkdir -p "${CCACHE_DIR}" 2>/dev/null || true
