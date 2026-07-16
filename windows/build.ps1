@@ -462,10 +462,18 @@ function Invoke-RunCommitStage {
     $runArgs = @('run', '--isolation', 'hyperv', '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
         '--name', $ContainerName, $BuilderTag) + $RunCommand
     $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker
+    # Script FUNCTIONS need the same treatment as $Docker: a .GetNewClosure() block
+    # resolves function names against its dynamic module -> global scope, NOT this
+    # script's scope. That resolution only happens to work when build.ps1 is the
+    # pwsh -File entry point; invoked via the call operator from another session,
+    # "Set-BuildPhase is not recognized" killed the run (2026-07-15). Capture
+    # ${function:...} refs as locals and invoke via & instead.
+    $setBuildPhase = ${function:Set-BuildPhase}
+    $transientCooldown = ${function:Invoke-TransientCooldown}
     $action = {
         param($attempt)
         & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
-        Set-BuildPhase "run:$Label"
+        & $setBuildPhase "run:$Label"
         Write-Host "`n==> [$Label] docker run --isolation hyperv --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
         & $dockerExe @runArgs 2>&1 | Tee-Object -FilePath $OutLog
     }.GetNewClosure()
@@ -479,13 +487,13 @@ function Invoke-RunCommitStage {
         # contract removes the container, the one thing this path must never do. The loop
         # cannot exhaust silently: Invoke-TransientCooldown returns $false exactly when no
         # retry remains (or the failure is non-transient), which throws here.
-        Set-BuildPhase "commit:$Label"
+        & $setBuildPhase "commit:$Label"
         foreach ($commitAttempt in 1..3) {
             $commitOut = & $dockerExe commit $ContainerName $ResultTag 2>&1
             $commitOut | ForEach-Object { Write-Host $_ }
             if ($LASTEXITCODE -eq 0) { break }
             $commitTail = ($commitOut | Select-Object -Last 15) -join "`n"
-            if (-not (Invoke-TransientCooldown -Tail $commitTail -Attempt $commitAttempt -MaxAttempts 3 -Label "$Label commit")) {
+            if (-not (& $transientCooldown -Tail $commitTail -Attempt $commitAttempt -MaxAttempts 3 -Label "$Label commit")) {
                 throw ("$Label commit failed -- container '$ContainerName' PRESERVED (it holds the finished build). " +
                     "Recover manually: docker commit $ContainerName $ResultTag ; docker container rm -f $ContainerName")
             }

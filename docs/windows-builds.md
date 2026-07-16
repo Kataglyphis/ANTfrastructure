@@ -260,10 +260,23 @@ Kataglyphis-Inference-Engine inside the image):
   `File.renameSync` (e.g. the sqlite3 package's native-asset hook).
 - Plain **copies and tar extractions** in the same directories succeed.
 - Directories **created fresh in the sandbox** (e.g. `C:\foo`) are unaffected.
-- **Bind-mounted paths bypass wcifs entirely** — the recommended consumer setup
-  is a bind mount from plain NTFS. A **Dev Drive** source needs
+- **Bind mounts avoid the layer FS but are NOT a full fix** (verified 2026-07-16):
+  on mounted paths, plain writes and cmd `copy`/`ren` work, but **Dart's
+  `copySync`/`renameSync` fail with errno 3** (`bindFlt` rejects the Dart
+  runtime's two-path file operations on this skewed host). Consumer recipe:
+  bind-mount the sources, then junction the Dart/Flutter write dirs
+  (`.dart_tool`, `build`) from the mounted workspace to **container-local**
+  dirs (`mklink /J`, run inside the container) — Dart ops work in fresh
+  sandbox dirs. A **Dev Drive** source additionally needs
   `fsutil devdrv setfiltersallowed bindFlt, wcifs` once (elevated), then a
   remount.
+- **The bind-mount target must NOT already exist in the image** (verified
+  2026-07-16): `--mount target=C:\workspace` (a baked image dir) fails at
+  container creation with `hcs::CreateComputeSystem ... Die Anforderung wird
+  nicht unterstützt`, while the same source mounted to a fresh target
+  (`target=C:\ws-mnt`) works. Version-matched CI runners mount over existing
+  dirs fine — consider not pre-creating `C:\workspace` in the image, or adopt a
+  fresh-target convention on skewed hosts.
 - `docker cp` into a **running** Windows container silently copies nothing, and
   against a **stopped** container it triggers the ActivateLayer lock. Use
   `tar -cf - . | docker exec -i <container> tar -xf - -C <dir>` instead.

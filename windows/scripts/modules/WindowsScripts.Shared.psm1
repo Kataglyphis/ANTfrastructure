@@ -276,3 +276,32 @@ Export-ModuleMember -Function @(
     'Expand-ArchiveSubdirectory'
 )
 
+
+# --------------------------------------------------------------------------
+# Restored from 04e1e07 (pre-refactor): functions still consumed by
+# downstream Build-Windows.ps1 scripts (Kataglyphis-Inference-Engine).
+# --------------------------------------------------------------------------
+function Resolve-WorkspacePath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path $Path)) {
+        throw "Workspace path does not exist: $Path"
+    }
+    return (Resolve-Path $Path).Path
+}
+
+function Resolve-NormalizedPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $resolved = [System.IO.Path]::GetFullPath($Path)
+    return $resolved.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+}
+
+Export-ModuleMember -Function Resolve-WorkspacePath, Resolve-NormalizedPath
+
