@@ -24,6 +24,21 @@ android_apply_patch \
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 : "${ANDROID_HOME:?ANDROID_HOME must be set}"
 
+# OpenCV 5.x RVV handling for the riscv64 Android ABI. The baseline universal-
+# intrinsic sources (e.g. modules/imgproc/src/thresh.cpp) capture sizeless RVV
+# types (__rvv_uint16m2_t, ...) by-copy inside lambdas. The Android NDK's clang
+# rejects that ("by-copy capture of variable with sizeless type"), whereas the
+# Linux riscv64 build (GCC 16) tolerates it — so this is an Android/clang-only
+# breakage. Drop RVV from the CPU baseline + disable the RVV HAL for the riscv64
+# ABI so those paths fall back to scalar. Other ABIs (arm64-v8a, x86_64) have no
+# RVV and are unaffected; the Linux riscv64 OpenCV keeps RVV under GCC.
+declare -a OPENCV_ANDROID_EXTRA_ARGS=()
+case "${ANDROID_ABI}" in
+  riscv64)
+    OPENCV_ANDROID_EXTRA_ARGS+=( -DWITH_HAL_RVV=OFF -DCPU_BASELINE_DISABLE=RVV )
+    ;;
+esac
+
 mkdir -p build-android && cd build-android
 cmake -GNinja \
   -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
@@ -37,6 +52,7 @@ cmake -GNinja \
   -DBUILD_JAVA=ON \
   -DBUILD_ANDROID_PROJECTS=OFF \
   -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
+  "${OPENCV_ANDROID_EXTRA_ARGS[@]}" \
   ..
 
 PARALLEL_JOBS="$(media_jobs)"
