@@ -87,6 +87,21 @@ else
   echo "  INFO: LiteRT headers not found in standard locations (optional)"
 fi
 
+# LiteRT web (WASM/JS) — prebuilt browser runtimes vendored for all arches.
+echo "--- LiteRT web (WASM/JS) ---"
+if [ -n "$(find /usr/local/lib/litert-web -name '*.wasm' -print -quit 2>/dev/null)" ]; then
+  _n="$(find /usr/local/lib/litert-web -name '*.wasm' 2>/dev/null | wc -l)"
+  pass "LiteRT.js web runtime present (${_n} .wasm in /usr/local/lib/litert-web)"
+else
+  echo "  INFO: LiteRT.js web assets not found (vendoring may have been skipped)"
+fi
+if [ -n "$(find /usr/local/lib/litert-lm-web -name '*.wasm' -print -quit 2>/dev/null)" ]; then
+  _n="$(find /usr/local/lib/litert-lm-web -name '*.wasm' 2>/dev/null | wc -l)"
+  pass "LiteRT-LM web runtime present (mediapipe-genai, ${_n} .wasm in /usr/local/lib/litert-lm-web)"
+else
+  echo "  INFO: LiteRT-LM web assets not found (vendoring may have been skipped)"
+fi
+
 # ---------------------------------------------------------------------------
 # OpenCV — import + functional test
 # ---------------------------------------------------------------------------

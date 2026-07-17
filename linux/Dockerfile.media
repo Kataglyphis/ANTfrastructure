@@ -281,6 +281,8 @@ FROM base AS litert
 
 ARG LITERT_VERSION
 ARG LITERT_OUTPUT_DIR=/usr/local
+ARG LITERTJS_VERSION
+ARG MEDIAPIPE_GENAI_VERSION
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
@@ -288,6 +290,18 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scr
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/litert/install-deps.sh
+
+# LiteRT web runtimes (LiteRT.js @litertjs/core + LiteRT-LM's @mediapipe/tasks-genai).
+# Prebuilt WASM/JS npm packages, so this is a pinned download + extract (no compile)
+# and arch-INDEPENDENT — it runs for every target arch and ships identical assets to
+# amd64/arm64/riscv64. Best-effort (script exits 0) so a registry hiccup can't break
+# the media build. Output: /usr/local/lib/litert-web + /usr/local/lib/litert-lm-web.
+RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    LITERTJS_VERSION="${LITERTJS_VERSION}" MEDIAPIPE_GENAI_VERSION="${MEDIAPIPE_GENAI_VERSION}" \
+    bash /opt/scripts/03-media/build/litert/install-litert-web.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
@@ -649,6 +663,10 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
+# LiteRT web runtimes (prebuilt WASM/JS, arch-independent) — served like
+# onnxruntime-web. Ship on every arch. Dirs always exist (script mkdir's them).
+COPY --link --from=litert /usr/local/lib/litert-web /usr/local/lib/litert-web
+COPY --link --from=litert /usr/local/lib/litert-lm-web /usr/local/lib/litert-lm-web
 COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 # TVM (amd64 native; empty dirs on other arches). The wheel goes to /opt/tvm-wheels
 # where collect-artifacts.sh gathers it into /opt/wheels; libtvm.so goes to
