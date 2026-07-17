@@ -11,14 +11,14 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ (nice) … ★★★ (h
 
 ## Build efficiency / speed
 
-- **onnxruntime WebAssembly target is built in the media stage.** `build_wasm_output`
-  + `wasm-opt` (single-tool, low-parallelism, ~minutes of wall-clock per arch) is
-  compiled even though a native container runtime never loads a `.wasm`. Gate it
-  off unless explicitly wanted. — S · ★★
-  _CONFIRMED LIVE (0711f media-amd64): the `onnxruntime_webassembly` link
-  (`ort-wasm-simd-threaded.mjs`, via an emsdk 4.0.23 install) ran at load ~6.5
-  while the native framework compiles held load ~35 — a serial, under-parallel
-  wall-clock sink on the critical path, ×3 arches._
+- **onnxruntime WebAssembly target — RESOLVED (commit 63fd9d3): now build-once,
+  ship-to-all.** Was: compiled amd64-only AND orphaned (never COPY'd anywhere — the
+  original "gate it off" note assumed it wasn't wanted). User wants onnx-web shipped
+  on ALL arches. Since the WASM is arch-independent, it's now compiled ONCE on amd64
+  (~45min emscripten) and shared to arm64/riscv64 via a version-keyed cross-arch cache
+  mount (id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}); the assets are COPY'd into
+  the final image + carried by copy-media-payloads; smoke-media validates the .wasm
+  magic bytes. Single-compile wall-clock cost (not ×3), and it actually ships now.
 - **`01-core/parallelism.sh` is bind-mounted into ~21 media RUN steps.** Any edit to
   it (even behaviour-preserving, e.g. the 2026-07-11 refactor) changes the mount
   content and cache-misses **every** framework build (opencv/onnx/litert/gstreamer/
