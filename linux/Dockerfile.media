@@ -304,6 +304,41 @@ RUN --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert-headers
 
 # ==============================================================================
+# TVM stage — Apache TVM ML compiler.
+# amd64 builds natively (tvm.sh) and stages a wheel + libtvm into the final image
+# so `import tvm` works in /opt/venv. arm64/riscv64 are a no-op placeholder for now
+# (TVM's LLVM cross-build is a tracked follow-up — see refactoring-backlog P6); the
+# always-present empty /opt/tvm/{wheels,lib} dirs keep the final-stage COPYs valid
+# across arches. The build is BEST-EFFORT: a failure warns and continues so it can
+# never break the media image (TVM was absent before this stage existed).
+# ==============================================================================
+FROM base AS tvm
+
+ARG TVM_REF
+ARG TARGET_ARCH
+ARG TARGETARCH
+
+RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-frameworks,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    mkdir -p /opt/tvm/wheels /opt/tvm/lib; \
+    case "${TARGET_ARCH:-${TARGETARCH:-amd64}}" in \
+      amd64) \
+        if bash /opt/scripts/05-frameworks/tvm.sh --ref "${TVM_REF}" --prefix /opt/tvm --workdir /tmp/tvm-src; then \
+            echo "TVM native build OK; wheel(s):"; ls -1 /opt/tvm/wheels/ 2>/dev/null || true; \
+        else \
+            echo "WARNING: native TVM build failed; shipping media image without TVM python"; \
+            rm -f /opt/tvm/wheels/*.whl 2>/dev/null || true; \
+        fi ;; \
+      *) echo "Skipping TVM build (amd64-only for now; ${TARGET_ARCH:-?} cross is a follow-up)" ;; \
+    esac
+
+# ==============================================================================
 # OpenCV stage
 # ==============================================================================
 FROM base AS opencv
@@ -615,6 +650,12 @@ COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onn
 
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
 COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
+# TVM (amd64 native; empty dirs on other arches). The wheel goes to /opt/tvm-wheels
+# where collect-artifacts.sh gathers it into /opt/wheels; libtvm.so goes to
+# /usr/local/lib (already on the runtime LD path) so `import tvm` resolves it.
+# Dir-to-dir COPYs are tolerant of the empty (non-amd64 / build-failed) case.
+COPY --link --from=tvm /opt/tvm/wheels /opt/tvm-wheels
+COPY --link --from=tvm /opt/tvm/lib/ /usr/local/lib/
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 # libvvdec.pc lives in the pkgconfig/ subdir, which the libvvdec* glob above does

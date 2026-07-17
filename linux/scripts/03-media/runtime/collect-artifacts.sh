@@ -21,6 +21,7 @@ wheel_source_dirs=(
   /opt/opencv5/wheels
   /opt/app-wheels
   /opt/litert-wheels
+  /opt/tvm-wheels
   /opt/libcamera/wheels
 )
 
