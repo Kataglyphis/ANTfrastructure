@@ -404,14 +404,16 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   tensorflow name errors "no PyInit__pywrap_tensorflow…", i.e. the binary IS the litert
   module, just misnamed. build-litert.sh now unpacks each staged wheel, renames the ext
   to match its symbol, and repacks (recomputes RECORD).
-- **tvm — ROOT-CAUSED, not force-fixed (design call).** `import tvm` fails in /opt/venv
-  because tvm-python.sh's wheel build falls back to `uv pip install "$tvm_dir"` (source
-  install) into the media BUILD venv, which never ships; no tvm wheel reaches /opt/wheels
-  (0 tvm wheels in the v2 log). Properly shipping TVM to the base image needs: (1) the
-  wheel build to actually succeed, (2) staging it to /opt/wheels like LiteRT, (3) shipping
-  native libtvm.so, (4) a size decision — TVM is a large ML compiler and may be intended
-  as an app-extra, not a base component. Left as a decision rather than a possibly-wrong
-  bloating change.
+- **tvm — amd64 WIRED (commit 0a7d99e); arm64/riscv64 cross = OPEN follow-up.** Root cause:
+  tvm.sh was only COPY'd, never RUN — TVM was never built (0 tvm wheels in the v2 log).
+  Added a native `tvm` build stage (FROM base) that runs tvm.sh on amd64 → wheel to
+  /opt/tvm-wheels (collect-artifacts → /opt/wheels → runtime venv installs WITH deps) +
+  libtvm.so → /usr/local/lib. Best-effort so it can't break the media build. **NEEDS a
+  rebuild's `import tvm` smoke to validate** (first-pass; may need a lib-path/deps cycle
+  like IREE). **STILL OPEN:** arm64/riscv64 — TVM's LLVM cross-build is a 2-stage host/
+  target cross like IREE (the cross path in tvm-python.sh exists but has NEVER run in the
+  pipeline); the tvm stage currently no-ops on those arches. Also weigh the base-image
+  size cost of shipping TVM on all arches.
 - **BY-DESIGN (not defects):** `pyav` (av) — only a `PYAV_VERSION` pin exists, NO build;
   app-extra (dead pin = minor cleanup). `onnxruntime-genai` python — ships as a native
   binding (media smoke PASSes "native binding present"); the python import is optional.
