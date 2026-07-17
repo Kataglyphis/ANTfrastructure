@@ -88,19 +88,35 @@ else
 fi
 
 # LiteRT web (WASM/JS) — prebuilt browser runtimes vendored for all arches.
+# Validate each .wasm is REAL WebAssembly (4-byte magic \0asm = 00 61 73 6d) and
+# that a JS loader ships alongside — a genuine "is this a usable runtime" check,
+# not just "a file exists". Non-fatal: vendoring is best-effort (registry hiccup),
+# so a miss is INFO, but a PRESENT-but-CORRUPT asset is a real FAIL.
 echo "--- LiteRT web (WASM/JS) ---"
-if [ -n "$(find /usr/local/lib/litert-web -name '*.wasm' -print -quit 2>/dev/null)" ]; then
-  _n="$(find /usr/local/lib/litert-web -name '*.wasm' 2>/dev/null | wc -l)"
-  pass "LiteRT.js web runtime present (${_n} .wasm in /usr/local/lib/litert-web)"
-else
-  echo "  INFO: LiteRT.js web assets not found (vendoring may have been skipped)"
-fi
-if [ -n "$(find /usr/local/lib/litert-lm-web -name '*.wasm' -print -quit 2>/dev/null)" ]; then
-  _n="$(find /usr/local/lib/litert-lm-web -name '*.wasm' 2>/dev/null | wc -l)"
-  pass "LiteRT-LM web runtime present (mediapipe-genai, ${_n} .wasm in /usr/local/lib/litert-lm-web)"
-else
-  echo "  INFO: LiteRT-LM web assets not found (vendoring may have been skipped)"
-fi
+_check_web_runtime() {
+  local label="$1" dir="$2"
+  local wasm bad=0 n=0 magic
+  if [ -z "$(find "${dir}" -name '*.wasm' -print -quit 2>/dev/null)" ]; then
+    echo "  INFO: ${label} web assets not found in ${dir} (vendoring may have been skipped)"
+    return 0
+  fi
+  while IFS= read -r wasm; do
+    n=$((n + 1))
+    # First 4 bytes must be the WebAssembly magic number.
+    magic="$(head -c4 "${wasm}" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')"
+    [ "${magic}" = "0061736d" ] || { echo "  bad magic (${magic:-empty}) in ${wasm}"; bad=$((bad + 1)); }
+  done < <(find "${dir}" -name '*.wasm' 2>/dev/null)
+  if find "${dir}" \( -name '*.js' -o -name '*.mjs' \) -print -quit 2>/dev/null | grep -q .; then :; else
+    echo "  INFO: ${label} has .wasm but no JS loader alongside"
+  fi
+  if [ "${bad}" -eq 0 ]; then
+    pass "${label} web runtime valid (${n} verified .wasm in ${dir})"
+  else
+    fail "${label} web runtime has ${bad}/${n} corrupt .wasm in ${dir}"
+  fi
+}
+_check_web_runtime "LiteRT.js"  /usr/local/lib/litert-web
+_check_web_runtime "LiteRT-LM (mediapipe-genai)" /usr/local/lib/litert-lm-web
 
 # ---------------------------------------------------------------------------
 # OpenCV — import + functional test
