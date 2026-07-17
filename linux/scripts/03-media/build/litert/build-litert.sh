@@ -536,7 +536,44 @@ _litert_wheel_run() {
     tail -n 50 pip_build.log
 
     find "gen/tflite_pip" -name "*.whl" -type f -exec cp -v {} "${LITERT_PREFIX}/wheels/" \; 2>/dev/null || warn No wheels found after build script
+    _litert_fix_pywrap_ext_name
     popd > /dev/null
+}
+
+# LiteRT v2.1.6's pip build ships the interpreter pybind extension FILE named
+# `_pywrap_tensorflow_interpreter_wrapper*.so`, but its PyInit_ symbol — and every
+# importer (tflite_runtime/interpreter.py imports `_pywrap_litert_interpreter_wrapper`)
+# — uses the litert name. So `import _pywrap_litert_interpreter_wrapper` can't find
+# the file and ai-edge-litert import dies with "cannot import name
+# '_pywrap_litert_interpreter_wrapper' from 'tflite_runtime'". The binary is already
+# the litert module (importing it under the tensorflow name fails with a missing
+# PyInit_ symbol), so the fix is purely to rename the FILE to match its symbol.
+# Post-process each staged wheel: unpack, rename the ext, repack (which recomputes
+# RECORD). Best-effort — a repack failure leaves the original wheel untouched.
+_litert_fix_pywrap_ext_name() {
+    local py="${PYTHON:-python3}" wheel tmp unpacked tf_so _renamed
+    command -v "${py}" >/dev/null 2>&1 || return 0
+    for wheel in "${LITERT_PREFIX}/wheels/"ai_edge_litert-*.whl; do
+        [ -f "${wheel}" ] || continue
+        tmp="$(mktemp -d)"
+        if ! "${py}" -m wheel unpack "${wheel}" -d "${tmp}" >/dev/null 2>&1; then
+            rm -rf "${tmp}"; continue
+        fi
+        _renamed=""
+        while IFS= read -r tf_so; do
+            [ -n "${tf_so}" ] || continue
+            mv "${tf_so}" "${tf_so/_pywrap_tensorflow_/_pywrap_litert_}" && _renamed=1
+        done < <(find "${tmp}" -name '_pywrap_tensorflow_interpreter_wrapper*.so')
+        if [ -n "${_renamed}" ]; then
+            unpacked="$(find "${tmp}" -mindepth 1 -maxdepth 1 -type d | head -1)"
+            if "${py}" -m wheel pack "${unpacked}" -d "${LITERT_PREFIX}/wheels/" >/dev/null 2>&1; then
+                info "Renamed misnamed LiteRT pywrap ext to _pywrap_litert_interpreter_wrapper in $(basename "${wheel}")"
+            else
+                warn "Failed to repack LiteRT wheel after pywrap rename: $(basename "${wheel}")"
+            fi
+        fi
+        rm -rf "${tmp}"
+    done
 }
 
 _litert_build_wheel() {
