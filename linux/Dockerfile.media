@@ -361,6 +361,9 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-
       amd64) \
         if bash /opt/scripts/05-frameworks/tvm.sh --ref "${TVM_REF}" --prefix /opt/tvm --workdir /tmp/tvm-src; then \
             echo "TVM native build OK; wheel(s):"; ls -1 /opt/tvm/wheels/ 2>/dev/null || true; \
+            # TVM's cmake install may land libtvm.so in lib64 (GNUInstallDirs);
+            # consolidate into lib/ so the final `COPY /opt/tvm/lib` ships it.
+            [ -d /opt/tvm/lib64 ] && cp -a /opt/tvm/lib64/. /opt/tvm/lib/ 2>/dev/null || true; \
         else \
             echo "WARNING: native TVM build failed; shipping media image without TVM python"; \
             rm -f /opt/tvm/wheels/*.whl 2>/dev/null || true; \

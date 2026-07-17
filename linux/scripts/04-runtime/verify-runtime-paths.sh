@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Pin C collation so `sort` and `comm` below agree on byte order. Without this,
+# UTF-8 locales sort '-' (0x2d) and '/' (0x2f) differently from `comm`'s byte
+# order, so sibling paths like /opt/tvm-wheels vs /opt/tvm/lib make comm abort
+# with "file N is not in sorted order" and fail the whole check spuriously.
+export LC_ALL=C
 # verify-runtime-paths.sh - Verify that PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH
 # components in Dockerfiles match the canonical runtime-paths.env reference.
 
