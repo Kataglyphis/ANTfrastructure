@@ -622,6 +622,12 @@ COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 # "optional payload missing: libvvdec.pc", disabling downstream VVC/H.266 pkg-config
 # detection even though libvvdec.so was shipped.
 COPY --link --from=gstreamer /usr/local/lib/pkgconfig/libvvdec.pc /usr/local/lib/pkgconfig/libvvdec.pc
+# NOTE: rice-proto (librice-proto.so.0, needed by gst-plugins-rs webrtcbin2) is a
+# BEST-EFFORT build (install-rice-proto.sh exits 0 if cargo-c is unavailable), so
+# it cannot be pulled with a hard `COPY /usr/local/lib/librice-proto.so*` (that
+# fails the whole build when absent). Instead install-rice-proto.sh mirrors the
+# built lib into ${GSTREAMER_PREFIX}/lib on success, so it rides the existing
+# `COPY --from=gstreamer ${GSTREAMER_PREFIX}` above and stays tolerant of a skip.
 COPY --link --from=libcamera /opt/libcamera /opt/libcamera
 
 # Runtime scripts (must persist in the final image) + smoke-test harness.

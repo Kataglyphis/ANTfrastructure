@@ -60,7 +60,7 @@ target_packages=(
     libopenexr-dev libx264-dev libcdio-dev libspeex-dev libopenh264-dev libsrtp2-dev
     libtwolame-dev libgsm1-dev libdav1d-dev libwavpack-dev libx265-dev libdc1394-dev
     libvpx-dev libavcodec-dev libcsound64-dev libtbb12 libavfilter-dev libavformat-dev
-    libxml2 libbz2-1.0 liblzma5 libzstd1
+    libxml2-16 libbz2-1.0 liblzma5 libzstd1
     # libgudev-1.0-0 provides libgudev-1.0.so.0 — a single missing lib that
     # otherwise fails ~9 GStreamer plugins at once (video4linux2, uvch264, gtk,
     # gtk4, va, nvcodec, opengl, hip, v4l2codecs) with "cannot open shared object

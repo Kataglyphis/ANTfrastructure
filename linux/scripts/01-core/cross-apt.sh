@@ -207,7 +207,25 @@ cross_resolve_target_package() {
 
 install_host_packages() {
   [ "$#" -gt 0 ] || return 0
-  apt-get install -y --no-install-recommends "$@"
+  # Fast path: one atomic transaction.
+  if apt-get install -y --no-install-recommends "$@"; then
+    return 0
+  fi
+  # A SINGLE unavailable/renamed package (e.g. a SONAME rename across an Ubuntu
+  # release — resolute dropped the `libxml2` runtime name for `libxml2-16`) makes
+  # the whole atomic install fail, which silently drops EVERY other requested lib
+  # (callers use `|| true`). That is exactly how the final image ended up missing
+  # libopenh264/libsrtp2/libwavpack/libcsound64/libv4l/libgudev runtime libs even
+  # though those packages are perfectly installable. Fall back to per-package
+  # installs so one bad name can't take the rest down, and report what was skipped.
+  echo "WARN: batch host-package install failed; retrying per-package to isolate unavailable names" >&2
+  local pkg
+  local -a _skipped=()
+  for pkg in "$@"; do
+    apt-get install -y --no-install-recommends "${pkg}" >/dev/null 2>&1 || _skipped+=("${pkg}")
+  done
+  [ "${#_skipped[@]}" -eq 0 ] || echo "WARN: skipped unavailable host packages: ${_skipped[*]}" >&2
+  return 0
 }
 
 cross_filter_known_foreign_postinst_noise() {

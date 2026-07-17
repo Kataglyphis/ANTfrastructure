@@ -127,5 +127,20 @@ else
   echo "WARN: rice-proto.pc not found after install; webrtcbin2 may be skipped" >&2
 fi
 
+# Mirror the runtime lib into GSTREAMER_PREFIX/lib so it reaches the FINAL image.
+# rice-proto installs to /usr/local/lib, which Dockerfile.media does NOT copy into
+# cross-media (only /opt/gstreamer + a couple of explicit globs are). Because this
+# builder is best-effort (exits 0 on failure above), a hard Dockerfile COPY of
+# librice-proto* can't be used. Riding the already-copied ${GSTREAMER_PREFIX} tree
+# keeps webrtcbin2's librice-proto.so.0 loadable at runtime without a build-break
+# risk. Best-effort: only mirrors what was actually built.
+_gst_prefix="${GSTREAMER_PREFIX:-/opt/gstreamer}"
+if ls "${LIBDIR}"/librice-proto.so* >/dev/null 2>&1; then
+  mkdir -p "${_gst_prefix}/lib/pkgconfig"
+  cp -a "${LIBDIR}"/librice-proto.so* "${_gst_prefix}/lib/" 2>/dev/null || true
+  cp -a "${LIBDIR}/pkgconfig/rice-proto.pc" "${_gst_prefix}/lib/pkgconfig/" 2>/dev/null || true
+  echo "Mirrored librice-proto into ${_gst_prefix}/lib for the final image"
+fi
+
 cd /
 rm -rf "${TMPDIR}"
