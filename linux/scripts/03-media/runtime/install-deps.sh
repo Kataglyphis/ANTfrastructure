@@ -61,6 +61,12 @@ target_packages=(
     libtwolame-dev libgsm1-dev libdav1d-dev libwavpack-dev libx265-dev libdc1394-dev
     libvpx-dev libavcodec-dev libcsound64-dev libtbb12 libavfilter-dev libavformat-dev
     libxml2 libbz2-1.0 liblzma5 libzstd1
+    # libgudev-1.0-0 provides libgudev-1.0.so.0 — a single missing lib that
+    # otherwise fails ~9 GStreamer plugins at once (video4linux2, uvch264, gtk,
+    # gtk4, va, nvcodec, opengl, hip, v4l2codecs) with "cannot open shared object
+    # file" in the runtime smoke. libcdparanoia0 provides libcdda_paranoia.so.0
+    # for the cdparanoia plugin (both were absent from this list).
+    libgudev-1.0-0 libcdparanoia0
     libevent-core-2.1-7t64 libevent-pthreads-2.1-7t64 libevent-2.1-7t64
     liborc-0.4-0t64 libsoup-3.0-0
     libexif12 libboost-program-options1.83.0

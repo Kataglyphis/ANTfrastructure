@@ -617,6 +617,11 @@ COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
 COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
+# libvvdec.pc lives in the pkgconfig/ subdir, which the libvvdec* glob above does
+# NOT match — without this the .pc is dropped and copy-media-payloads later warns
+# "optional payload missing: libvvdec.pc", disabling downstream VVC/H.266 pkg-config
+# detection even though libvvdec.so was shipped.
+COPY --link --from=gstreamer /usr/local/lib/pkgconfig/libvvdec.pc /usr/local/lib/pkgconfig/libvvdec.pc
 COPY --link --from=libcamera /opt/libcamera /opt/libcamera
 
 # Runtime scripts (must persist in the final image) + smoke-test harness.

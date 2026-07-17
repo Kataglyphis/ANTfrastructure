@@ -49,6 +49,12 @@ export LD_LIBRARY_PATH="${runtime_ld_path}:${LD_LIBRARY_PATH:-}"
 mkdir -p "${REPAIRED_WHEELS_DIR}"
 _aw_err="$(mktemp)"
 trap 'rm -f "${_aw_err}"' EXIT
+# The manylinux-retag failure is EXPECTED for every local wheel on resolute (glibc
+# newer than any manylinux profile), so accumulate the skipped names and emit ONE
+# summary NOTE at the end instead of an identical line per wheel (was N-wheels ×
+# 3-arches of noise). An UNEXPECTED failure still surfaces auditwheel's output
+# inline per-wheel.
+_aw_retag_skipped=()
 shopt -s nullglob
 for wheel in "${WHEELS_DIR}"/*.whl; do
   case "$(basename "${wheel}")" in
@@ -59,13 +65,12 @@ for wheel in "${WHEELS_DIR}"/*.whl; do
       # auditwheel repair fails on Ubuntu 26.04 (resolute), whose glibc is newer
       # than any manylinux profile ("too-recent versioned symbols"). These are
       # LOCAL wheels consumed in the same image, so the manylinux tag is purely
-      # cosmetic -- fall back to the raw wheel. Classify the failure so the
-      # EXPECTED case logs a quiet NOTE instead of auditwheel's raw argparse
-      # "error:" (which reads like a real failure in the build log), while an
-      # UNEXPECTED failure still surfaces auditwheel's output.
+      # cosmetic -- fall back to the raw wheel. Classify the failure: the EXPECTED
+      # case is collected for a single summary NOTE below; an UNEXPECTED failure
+      # still surfaces auditwheel's output.
       if ! auditwheel repair "${wheel}" -w "${REPAIRED_WHEELS_DIR}/" 2>"${_aw_err}"; then
         if grep -q 'too-recent versioned symbols' "${_aw_err}"; then
-          echo "NOTE: auditwheel cannot retag $(basename "${wheel}") to manylinux (host glibc newer than the profile); shipping the unrepaired local wheel (expected; tag is cosmetic for in-image use)"
+          _aw_retag_skipped+=("$(basename "${wheel}")")
         else
           echo "WARN: auditwheel repair failed unexpectedly for $(basename "${wheel}"); shipping unrepaired wheel. auditwheel said:" >&2
           sed 's/^/    /' "${_aw_err}" >&2
@@ -76,6 +81,9 @@ for wheel in "${WHEELS_DIR}"/*.whl; do
   esac
 done
 shopt -u nullglob
+if [ "${#_aw_retag_skipped[@]}" -gt 0 ]; then
+  echo "NOTE: auditwheel cannot retag ${#_aw_retag_skipped[@]} local wheel(s) to manylinux (host glibc newer than the profile); shipping them unrepaired (expected; tag is cosmetic for in-image use): ${_aw_retag_skipped[*]}"
+fi
 
 rm -f "${WHEELS_DIR}"/*.whl
 shopt -s nullglob

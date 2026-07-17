@@ -224,7 +224,12 @@ uv_lock_regen() {
     return 0
   fi
   if [ "$(uname -m)" = "riscv64" ]; then
-    echo "WARNING: uv lock regeneration had issues on riscv64; continuing with --find-links + local wheels"
+    # EXPECTED on riscv64: some workspace extras (e.g. a pytorch backend whose
+    # torch has no lockable upstream riscv64 source) can't fully resolve under
+    # QEMU. This is by design — the caller (run_uv_sync_with_fallback) then
+    # force-reinstalls the local /opt/wheels, which is what the runtime actually
+    # needs — so this is INFO, not a failure.
+    echo "INFO: uv lock not fully regenerated on riscv64 (expected); runtime venv is carried by --find-links + force-installed local wheels"
     return 0
   fi
   return 1

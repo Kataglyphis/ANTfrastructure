@@ -140,8 +140,14 @@ _cross_stage_build_impl() {
     _cache_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
     _cache_slug="$(printf '%s' "${tag}" | tr '/:@' '___')"
     mkdir -p "${_cache_dir}/${_cache_slug}" 2>/dev/null || true
+    # Only READ from the local cache when it actually holds a manifest. A freshly
+    # created or pruned slug dir has no index.json, and pointing --cache-from at it
+    # makes BuildKit log a spurious "could not read .../kata-buildcache/..." that
+    # reads like a cache fault (it is just a clean miss). Always WRITE (--cache-to).
+    if [ -s "${_cache_dir}/${_cache_slug}/index.json" ]; then
+      build_cmd+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
+    fi
     build_cmd+=(
-      --cache-from "type=local,src=${_cache_dir}/${_cache_slug}"
       --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
     )
     # When pushing, also ride an inline cache inside the image (mode=min,
