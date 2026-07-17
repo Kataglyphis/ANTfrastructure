@@ -247,18 +247,34 @@ RUN --mount=type=tmpfs,target=/tmp \
       echo "Skipping onnxruntime-genai verification (BUILD_GENAI=${BUILD_GENAI:-true})"; \
     fi
 
-# wasm step — only useful for native amd64 builds (WASM is browser-targeted);
-# skip for cross-builds and non-amd64 to avoid unnecessary downloads/caching.
+# onnxruntime-web (WASM/JS) — BUILD ONCE, SHIP TO ALL ARCHES.
+# The browser WASM runtime is arch-INDEPENDENT (emscripten targets wasm32 on the
+# amd64 host regardless of TARGET_ARCH), but its emscripten compile is expensive
+# (~45 min, and 40-build-wasm.sh only runs on the amd64 target). So compile it ONCE
+# and share the identical assets to every arch via a cross-arch cache mount
+# (id keyed on the onnxruntime VERSION, NOT on TARGETARCH): the amd64 media build
+# compiles + populates it; the arm64/riscv64 media builds (later in the sequential
+# chain, same buildkitd) READ the assets from it instead of recompiling. Output dir
+# is always created so the final-stage COPY stays valid on every arch. Versioned id
+# means an ONNXRUNTIME_VERSION bump invalidates the shared cache and recompiles.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/onnxruntime-web-shared,id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION},sharing=locked \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    if [ "${TARGET_ARCH}" = "${BUILDARCH}" ] && [ "${TARGET_ARCH}" = "amd64" ]; then \
+    _ortweb=/usr/local/lib/onnxruntime-web; _shared=/var/cache/onnxruntime-web-shared; \
+    mkdir -p "${_ortweb}"; \
+    if [ -n "$(find "${_shared}" -name '*.wasm' -print -quit 2>/dev/null)" ]; then \
+        echo "Reusing shared onnxruntime-web assets (compiled once, arch-independent)"; \
+        cp -a "${_shared}/." "${_ortweb}/"; \
+    elif [ "${TARGET_ARCH}" = "${BUILDARCH}" ] && [ "${TARGET_ARCH}" = "amd64" ]; then \
         bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm; \
+        cp -a "${_ortweb}/." "${_shared}/" 2>/dev/null || true; \
+        echo "Populated shared onnxruntime-web cache for the other arches"; \
     else \
-        echo "Skipping WASM build (target=${TARGET_ARCH}, build=${BUILDARCH})"; \
+        echo "onnxruntime-web not in shared cache yet (the amd64 media build compiles + populates it first); shipping empty on target=${TARGET_ARCH}"; \
     fi
 
 # js + pkgconfig steps (fast, IO-bound)
@@ -667,6 +683,10 @@ COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
 # onnxruntime-web. Ship on every arch. Dirs always exist (script mkdir's them).
 COPY --link --from=litert /usr/local/lib/litert-web /usr/local/lib/litert-web
 COPY --link --from=litert /usr/local/lib/litert-lm-web /usr/local/lib/litert-lm-web
+# onnxruntime-web (WASM/JS) — compiled once on amd64, shared to every arch via the
+# versioned cache mount; the onnxruntime stage always creates the dir so this COPY
+# is valid on all arches (empty only if amd64 hasn't populated the shared cache).
+COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-web /usr/local/lib/onnxruntime-web
 COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 # TVM (amd64 native; empty dirs on other arches). The wheel goes to /opt/tvm-wheels
 # where collect-artifacts.sh gathers it into /opt/wheels; libtvm.so goes to

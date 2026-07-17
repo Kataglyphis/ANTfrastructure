@@ -68,7 +68,8 @@ copy_media_payloads() {
     /usr/local/lib/pkgconfig/tensorflowlite_c.pc \
     /usr/local/lib/pkgconfig/libvvdec.pc \
     /usr/local/lib/litert-web \
-    /usr/local/lib/litert-lm-web; do
+    /usr/local/lib/litert-lm-web \
+    /usr/local/lib/onnxruntime-web; do
     # (llvm-target is COPY'd explicitly by Dockerfile.package; not repeated here)
     copy_path "${path}"
   done

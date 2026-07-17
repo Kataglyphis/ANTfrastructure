@@ -117,6 +117,10 @@ _check_web_runtime() {
 }
 _check_web_runtime "LiteRT.js"  /usr/local/lib/litert-web
 _check_web_runtime "LiteRT-LM (mediapipe-genai)" /usr/local/lib/litert-lm-web
+# onnxruntime-web: compiled once on amd64, shared to all arches. INFO (not FAIL)
+# when absent — it is only populated after the amd64 media build in a chain.
+echo "--- onnxruntime web (WASM/JS) ---"
+_check_web_runtime "onnxruntime-web" /usr/local/lib/onnxruntime-web
 
 # ---------------------------------------------------------------------------
 # OpenCV — import + functional test
