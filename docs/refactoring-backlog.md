@@ -299,3 +299,82 @@ keeping every var global (no `local`) to preserve the shared-state behaviour.
 **Audit-surfaced items NOT yet actioned (triage):** the ffmpeg install-deps
 `NV_CODEC_HEADERS_REF:-n12.2.1` script default still drifts from versions.env
 (n13.0.19.0) — advisory-only in verify-arg-consistency, worth aligning.
+
+## Harvested 2026-07-17 — full from-base 3-arch rebuild retrospective (cp314 IREE campaign)
+
+Observations from running the cp314-IREE integration end to end: three per-arch
+validation builds (`--from-stage media`, 0714r/u/v — all green) followed by a full
+`--target-arches amd64,arm64,riscv64` from-base rebuild that ENOSPC-failed once,
+then succeeded after freeing 151G. Prioritised by time-saved.
+
+### P1 — Disk (by far the biggest time sink; caused a whole wasted 10h+ run)
+- **Pre-flight disk gate in build-cross-chain.sh (S·★★★).** The full from-base
+  rebuild launched with only ~140G free and ENOSPC-died 2h in at amd64 litert
+  (`cmake -E tar: ZIP decompression failed (-5)` = truncated extract on a full
+  disk). Add a launch-time check: require ~`70G × n_arches` free for a from-base
+  run (less for `--from-stage media`), else refuse with a prune hint. Fail-fast at
+  t=0 beats failing 2h in. The "prune if <150G" rule lives only in memory today.
+- **`kata-buildcache` grows unbounded (S·★★★).** The `--cache-to type=local,mode=max`
+  export (cross-stage-build.sh:~140) ballooned 77G→151G across the campaign with no
+  eviction — it was the single biggest SAFE reclaim (clearing it freed 151G,
+  114G→265G, and a clean from-base rebuild doesn't need it). Add a size cap / prune
+  of stale per-stage dirs, or drop to `mode=min`, or a `make clean-buildcache`.
+- **Stage BARRIER wastes cross-arch work on one failure (M·★★★).** amd64's media
+  ENOSPC failed the media stage and aborted ALL arches — arm64/riscv64 media had
+  already built fine but 0 arches reached android/runtime ("[ERROR] stage media
+  failed for one or more arches", 0 "Cross chain complete"). Either continue the
+  other arches past a single-arch stage failure and report at the end, or (simpler)
+  document/auto-select **sequential single-arch full builds** on disk-constrained
+  hosts (`--target-arches <one>` ×3, prune between): lower peak disk + failure
+  isolation. See [[rebuild-disk-management]].
+- **buildkit state (~/.local/share/buildkit) hit 289G (M·★★).** Holds the ccache
+  cache-mounts (valuable) AND step cache. Needs a GC policy that keeps ccache warm
+  but trims stale step cache between campaigns; `buildctl prune --keep-duration`
+  alone reclaimed 0B because everything was recent-or-referenced.
+
+### P2 — Speed (reach the goal faster)
+- **`--no-push` / local-only validation mode (M·★★★).** The final ~2h was almost
+  entirely PUSHING three ~9GB images to ghcr at ~5 MiB/s (`push=true`,
+  `--cache-to type=registry`). For validation-only runs, output `type=docker`
+  locally and skip publishing intermediates+finals — saves ~1.5–2h/run. Push only
+  on an explicit `--publish`/release flag.
+- **Fast path is `--from-stage media`, not from-base (doc·★★★).** The functional
+  goal (cp314 IREE on 3 arches) was proven by the per-arch `--from-stage media`
+  runs HOURS before the from-base rebuild even finished. base/compiler/sdk hadn't
+  changed (edits were media/package/runtime only), so the from-base pass mostly
+  re-validated unchanged stages. Guidance: use `--from-stage media` to validate
+  media/runtime changes; reserve full from-base for toolchain/base/compiler/sdk
+  changes or a release cut. Consider a "highest-unchanged-cached-stage" auto-start.
+- **CCACHE_MAXSIZE for concurrent 3-arch (S·★★).** 64G held one arch's host+target
+  LLVM object sets warm; a barriered 3-arch build wants all three arches' sets —
+  confirm the cap isn't thrashing across `ccache-{amd64,arm64,riscv64}` ids.
+
+### P3 — Correctness (the two arm64 IREE bugs were a single class)
+- **Cross-wheel SOABI + default-triple preflight (M·★★★).** Both arm64 IREE defects
+  (fixed c1ce2f1) were "cross-build introspected the x86_64 build host, not the
+  target": the nanobind ext shipped as `_runtime.cpython-314-x86_64-linux-gnu.so`
+  (unimportable on aarch64) and iree-compile defaulted to `embedded-elf-x86_64`.
+  Add a post-build assertion per cross wheel: the compiled `.so` SOABI matches the
+  target arch, and (compiler wheels) the default target triple is the target.
+  Would have caught both instantly instead of a full rebuild cycle each.
+- **Runtime IREE gating smoke didn't run inline in the full-chain flow (M·★★).**
+  The `--from-stage media` runs ran the native `iree-compile`+run and `import iree`
+  gating smoke (smoke-runtime-image.sh) per arch; the full base→runtime run showed
+  no such lines. The gating smoke must run in EVERY flow that produces a runtime
+  image — investigate & unify so a full rebuild can't publish an unsmoked image.
+- **Shared apt-source/mirror include (S·★★).** Dockerfile.package lacked the
+  ports.ubuntu.com→mirror rewrite that Dockerfile.media had (fixed 7593ccb). Factor
+  the deb822 mirror-rewrite into one include sourced by every Dockerfile that
+  apt-installs (media/package/nvidia/amd/android) so the outage-resilience is
+  uniform and this class of gap can't recur.
+
+### P4 — Observability
+- **Per-arch / per-stage log namespacing (M·★★★, already listed above).** Monitoring
+  the single interleaved orchestrator.log across 3 arches × 6 stages was painful —
+  stage numbers differ per arch, "Built IREE wheels" only logs on cache-miss, arch
+  is inferable only from `ccache-<arch>` mount ids. Split logs per arch+stage (or
+  tag every line) so progress/failure is greppable. Reiterates the ★★★ item above.
+- **Build-integrated disk monitor with ENOSPC preempt (S·★★).** External disk-guard
+  loops are fragile (got killed mid-run). resource-monitor.sh already samples disk;
+  give it a hard threshold that WARNs early and can auto-prune stale buildcache
+  before ENOSPC, instead of relying on a babysitter.
