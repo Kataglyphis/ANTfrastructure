@@ -378,3 +378,43 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   loops are fragile (got killed mid-run). resource-monitor.sh already samples disk;
   give it a hard threshold that WARNs early and can auto-prune stale buildcache
   before ENOSPC, instead of relying on a babysitter.
+
+### P5 — Observable defects harvested from the v2 build log (concrete, evidence-based)
+- **`libgudev-1.0.so.0` missing breaks ~9 GStreamer plugins at once (S·★★★).** The
+  runtime smoke logs `degraded: libgstvideo4linux2.so`, `libgstuvch264.so`,
+  `libgstgtk.so`, `libgstgtk4.so`, `libgstva.so`, `libgstnvcodec.so`,
+  `libgstopengl.so`, `libgsthip.so`, `libgstv4l2codecs.so` — ALL failing on the same
+  `libgudev-1.0.so.0: cannot open shared object file`. Adding one runtime dep
+  (libgudev-1.0-0) to the package image likely un-degrades that whole cluster.
+  Highest value-per-effort media fix. Remaining single-plugin gaps (lower priority):
+  `libopenh264.so.8`, `libsrtp2.so.1`, `libwavpack.so.1`, `libv4l2.so.0` (also needs
+  gudev), `librice-proto.so.0` (webrtcbin2), `libcsound64.so.6.0`,
+  `libcdda_paranoia.so.0`. Decide per plugin: ship the runtime lib or drop the plugin.
+- **`libvvdec.pc` not collected → possible H.266/VVC gap (S·★★).** copy-media-payloads
+  warns `optional payload missing: /usr/local/lib/pkgconfig/libvvdec.pc` on every arch.
+  VVdec (VVDEC_VERSION=v3.1.0) builds but its pkg-config isn't in the artifact set, so
+  ffmpeg/gstreamer VVC detection downstream can't find it. Verify VVdec is actually
+  wired into the finals or fix collect-artifacts to include libvvdec.pc.
+- **riscv64 `uv.lock` regeneration fails, silently falls back (S·★★).** The riscv64
+  torch/wrapper stage logs `WARNING: uv lock regeneration had issues on riscv64;
+  continuing with --find-links + local`. Works, but the venv is then resolved off a
+  different path than amd64/arm64 (drift risk). Root-cause why `uv lock` breaks under
+  qemu-riscv64 and make the fallback explicit/asserted rather than a warning.
+- **riscv64 Python `iree` blocked on `ml_dtypes` (M·★★).** `[WARN] iree
+  ModuleNotFoundError: No module named 'ml_dtypes'` — the iree_base_runtime wheel deps
+  ml_dtypes, which has no riscv64 PyPI wheel, so `import iree.runtime` degrades on
+  riscv64 (native iree-compile PASSES). Options: source-build ml_dtypes into the
+  riscv64 wheelhouse, vendor it, or formally accept riscv64 python-iree as best-effort.
+- **`--cache-from type=local` noise when the dir is absent (S·★).** 11× `could not
+  read .../kata-buildcache/...` when a local cache-export dir doesn't exist (first run
+  or after pruning). cross-stage-build.sh should only pass `--cache-from type=local`
+  when the dir exists, to keep logs clean and avoid implying a cache problem.
+- **auditwheel manylinux-retag NOTE spam (S·★).** Every local wheel (iree, litert,
+  libcamera, onnxruntime_dnnl, …) logs `auditwheel cannot retag … host glibc newer
+  than the profile; shipping unrepaired`. Expected (in-image use), but N-wheels ×
+  3-arches of NOTEs is noise — emit once per stage, not per wheel.
+- **IREE LLVM builds are the media time sink (data point, not new action).** The two
+  slowest single stages were ~4020s and ~3971s (~67 min each) = the from-source IREE
+  LLVM app-wheelhouse builds; next tier ~2100–2260s are the gcc/llvm compiler stages.
+  Confirms the ccache-warmth and `--from-stage media` fast-path items above are where
+  the wall-clock actually is.
