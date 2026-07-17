@@ -380,6 +380,17 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   before ENOSPC, instead of relying on a babysitter.
 
 ### P5 — Observable defects harvested from the v2 build log (concrete, evidence-based)
+> **Status 2026-07-17 (commit 1305426): the 6 items below are FIXED** — libgudev +
+> libcdparanoia added, libvvdec.pc COPY added, python3-ml-dtypes on riscv64,
+> cache-from-local guarded on index.json, auditwheel NOTE collapsed to one/stage,
+> riscv64 uv-lock message → INFO. **STILL OPEN:** the single-plugin GStreamer gaps
+> `libopenh264.so.8`, `libsrtp2.so.1`, `libwavpack.so.1`, `libcsound64.so.6.0`
+> (their `-dev` pkgs ARE installed, so these are SONAME-version mismatches — resolute
+> ships a different soname than gstreamer was built against; fix = rebuild the plugin
+> against the available lib or drop it) and `librice-proto.so.0` (webrtcbin2 — the
+> rust rice-proto lib is built to /usr/local but not on the runtime loader path;
+> rpath/LD fix, not apt). Verify libgudev actually un-degrades the cluster on the
+> next rebuild's runtime smoke.
 - **`libgudev-1.0.so.0` missing breaks ~9 GStreamer plugins at once (S·★★★).** The
   runtime smoke logs `degraded: libgstvideo4linux2.so`, `libgstuvch264.so`,
   `libgstgtk.so`, `libgstgtk4.so`, `libgstva.so`, `libgstnvcodec.so`,
