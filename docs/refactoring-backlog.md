@@ -394,6 +394,29 @@ then succeeded after freeing 151G. Prioritised by time-saved.
 > (c) rice-proto (webrtcbin2) mirrored into ${GSTREAMER_PREFIX}/lib by
 > install-rice-proto.sh (tolerant, no build-break). **Verify on next rebuild's runtime
 > smoke that the degraded-plugin list is empty/minimal.**
+
+### P6 — Optional python-binding WARNs from the runtime smoke (triaged)
+- **ai-edge-litert `_pywrap_litert_interpreter_wrapper` — FIXED (commit after d3815e7).**
+  Real defect: LiteRT v2.1.6's pip build ships the pybind ext FILE as
+  `_pywrap_tensorflow_interpreter_wrapper.so` but its PyInit_ symbol + all importers use
+  the litert name, so `import` couldn't find the file (fails on ALL arches incl. native
+  amd64 — so NOT a cross/SOABI issue). Ground-truth: importing the ext under the
+  tensorflow name errors "no PyInit__pywrap_tensorflow…", i.e. the binary IS the litert
+  module, just misnamed. build-litert.sh now unpacks each staged wheel, renames the ext
+  to match its symbol, and repacks (recomputes RECORD).
+- **tvm — ROOT-CAUSED, not force-fixed (design call).** `import tvm` fails in /opt/venv
+  because tvm-python.sh's wheel build falls back to `uv pip install "$tvm_dir"` (source
+  install) into the media BUILD venv, which never ships; no tvm wheel reaches /opt/wheels
+  (0 tvm wheels in the v2 log). Properly shipping TVM to the base image needs: (1) the
+  wheel build to actually succeed, (2) staging it to /opt/wheels like LiteRT, (3) shipping
+  native libtvm.so, (4) a size decision — TVM is a large ML compiler and may be intended
+  as an app-extra, not a base component. Left as a decision rather than a possibly-wrong
+  bloating change.
+- **BY-DESIGN (not defects):** `pyav` (av) — only a `PYAV_VERSION` pin exists, NO build;
+  app-extra (dead pin = minor cleanup). `onnxruntime-genai` python — ships as a native
+  binding (media smoke PASSes "native binding present"); the python import is optional.
+  `libatlas-base-dev` — deliberate OpenBLAS/LAPACK fallback (candidate checked first).
+  `iree` ml_dtypes on riscv64 — fixed (python3-ml-dtypes).
 - **`libgudev-1.0.so.0` missing breaks ~9 GStreamer plugins at once (S·★★★).** The
   runtime smoke logs `degraded: libgstvideo4linux2.so`, `libgstuvch264.so`,
   `libgstgtk.so`, `libgstgtk4.so`, `libgstva.so`, `libgstnvcodec.so`,
