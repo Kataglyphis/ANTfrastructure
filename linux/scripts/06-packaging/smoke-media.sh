@@ -93,8 +93,10 @@ fi
 # not just "a file exists". Non-fatal: vendoring is best-effort (registry hiccup),
 # so a miss is INFO, but a PRESENT-but-CORRUPT asset is a real FAIL.
 echo "--- LiteRT web (WASM/JS) ---"
+# $3 = expected .wasm count: a PARTIAL vendor (e.g. 2 of 4) is flagged so a truncated
+# download can't pass just because the files present are individually valid.
 _check_web_runtime() {
-  local label="$1" dir="$2"
+  local label="$1" dir="$2" expect="${3:-1}"
   local wasm bad=0 n=0 magic
   if [ -z "$(find "${dir}" -name '*.wasm' -print -quit 2>/dev/null)" ]; then
     echo "  INFO: ${label} web assets not found in ${dir} (vendoring may have been skipped)"
@@ -109,18 +111,20 @@ _check_web_runtime() {
   if find "${dir}" \( -name '*.js' -o -name '*.mjs' \) -print -quit 2>/dev/null | grep -q .; then :; else
     echo "  INFO: ${label} has .wasm but no JS loader alongside"
   fi
-  if [ "${bad}" -eq 0 ]; then
-    pass "${label} web runtime valid (${n} verified .wasm in ${dir})"
-  else
+  if [ "${bad}" -ne 0 ]; then
     fail "${label} web runtime has ${bad}/${n} corrupt .wasm in ${dir}"
+  elif [ "${n}" -lt "${expect}" ]; then
+    fail "${label} web runtime incomplete: ${n}/${expect} expected .wasm in ${dir} (partial vendor?)"
+  else
+    pass "${label} web runtime valid (${n} verified .wasm in ${dir})"
   fi
 }
-_check_web_runtime "LiteRT.js"  /usr/local/lib/litert-web
-_check_web_runtime "LiteRT-LM (mediapipe-genai)" /usr/local/lib/litert-lm-web
+_check_web_runtime "LiteRT.js"  /usr/local/lib/litert-web 4
+_check_web_runtime "LiteRT-LM (mediapipe-genai)" /usr/local/lib/litert-lm-web 3
 # onnxruntime-web: compiled once on amd64, shared to all arches. INFO (not FAIL)
 # when absent — it is only populated after the amd64 media build in a chain.
 echo "--- onnxruntime web (WASM/JS) ---"
-_check_web_runtime "onnxruntime-web" /usr/local/lib/onnxruntime-web
+_check_web_runtime "onnxruntime-web" /usr/local/lib/onnxruntime-web 3
 
 # ---------------------------------------------------------------------------
 # OpenCV — import + functional test
