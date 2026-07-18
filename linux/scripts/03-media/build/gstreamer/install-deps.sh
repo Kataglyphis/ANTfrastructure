@@ -226,7 +226,12 @@ if [ "${NVIDIA_GPU}" = "auto" ]; then
   else NVIDIA_GPU="no"; fi
 fi
 if [ "${NVIDIA_GPU}" = "yes" ]; then
-  install_host_packages nv-codec-headers || true
+  # nv-codec-headers is NOT an apt package (it is the ffnvcodec git repo). The
+  # ffmpeg stage git-clones + installs it to /usr/local (install-deps.sh:108-113),
+  # so it is already available to gstreamer's nvcodec plugin. The old
+  # `install_host_packages nv-codec-headers` here was a no-op that only logged a
+  # spurious "skipped unavailable host package" from the resilient-apt fallback.
+  :
 fi
 
 # NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared

@@ -116,6 +116,9 @@ Options:
   --verify-chain           Resolve all upstream digests and warn if downstream images are stale
   --describe-chain          Print the full stage graph with tag names (no builds)
   --dry-run                 Print build commands without executing them
+  --no-push                 Build every stage LOCALLY and skip all ghcr pushes
+                            (validation runs: saves the slow multi-GB uploads; the
+                            chain still resolves via the local image store)
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
   --max-parallel-archs N    Max concurrent arch builds (default: 4)
 EOF
@@ -188,6 +191,7 @@ _chain_extra_arg() {
     --log-dir) LOG_DIR="$2"; _OARG_SHIFT=2 ;;
     --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
     --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
+    --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1 ;;
     *) return 1 ;;
   esac
 }
@@ -266,6 +270,37 @@ _chain_run_build_loop() {
   done
 }
 
+# Fail-fast disk preflight. A from-base 3-arch rebuild once ENOSPC-died mid-run
+# and wasted ~10h; refuse to launch when free space is clearly insufficient,
+# scaled by arch count and how heavy the starting stage is, with a concrete prune
+# hint. Override with FORCE_LOW_DISK=1 (downgrades to a warning); DISK_PREFLIGHT=0
+# skips it entirely.
+_chain_disk_preflight() {
+  [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
+  local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
+  local free_gb n_arch per_arch need_gb bc_gb
+  free_gb="$(df -BG --output=avail "${bc_dir%/*}" 2>/dev/null | tail -1 | tr -dc '0-9')"
+  [ -n "${free_gb}" ] || { free_gb="$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -dc '0-9')"; }
+  [ -n "${free_gb}" ] || return 0
+  n_arch="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"; [ "${n_arch}" -ge 1 ] || n_arch=1
+  case "${FROM_STAGE}" in base|compiler|sdk) per_arch=60 ;; *) per_arch=40 ;; esac
+  need_gb=$(( n_arch * per_arch )); [ "${need_gb}" -ge 60 ] || need_gb=60
+  bc_gb="$(du -sBG "${bc_dir}" 2>/dev/null | cut -f1 | tr -dc '0-9')"
+  if [ "${free_gb}" -lt "${need_gb}" ]; then
+    log "DISK PREFLIGHT: ${free_gb}G free < ~${need_gb}G recommended (${n_arch} arch(es), from-stage ${FROM_STAGE})."
+    [ -n "${bc_gb}" ] && [ "${bc_gb}" -gt 40 ] && \
+      log "  Reclaim ~${bc_gb}G: rm -rf ${bc_dir}/* (regenerable cross-run cache export)."
+    log "  Also: buildctl prune ; nerdctl --namespace default system prune -f."
+    if [ "${FORCE_LOW_DISK:-0}" = "1" ]; then
+      log "  FORCE_LOW_DISK=1 — continuing despite low disk (ENOSPC risk accepted)."
+    else
+      err "Insufficient disk: ${free_gb}G free, ~${need_gb}G recommended. Free space or set FORCE_LOW_DISK=1."
+    fi
+  else
+    log "disk preflight OK: ${free_gb}G free (>= ~${need_gb}G for ${n_arch} arch from-stage ${FROM_STAGE})."
+  fi
+}
+
 _chain_start_resource_monitor() {
   # Comprehensive, low-overhead system-resource logging for the whole run (best
   # effort; RESOURCE_MONITOR=0 disables). The monitor self-terminates via
@@ -287,6 +322,7 @@ main() {
   _chain_parse_args "$@"
   _chain_resolve_final_image
   _chain_validate_stages
+  _chain_disk_preflight
   _chain_start_resource_monitor
   _chain_run_build_loop
 

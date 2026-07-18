@@ -427,6 +427,8 @@ _cross_stage_run_capture_pin() {
 
 cross_stage_run() {
   local stage="$1" arch="${2:-}" push_flag="${3:-1}"
+  # --no-push (CROSS_NO_PUSH=1): build every stage locally, skip the ghcr push.
+  [ "${CROSS_NO_PUSH:-0}" = "1" ] && push_flag=0
   local label tag dockerfile parent parent_pin
   local -a build_args=()
 
@@ -522,8 +524,11 @@ cross_stage_assemble_runtime_helper_args() {
     --target-arches "${TARGET_ARCHES}"
     --artifact-image-prefix "${IMAGE_REPO}:cross-android"
     --artifact-build-mode cross
-    --push
   )
+  # Publish final images + manifest unless CROSS_NO_PUSH (validation runs stay
+  # local to skip the slow multi-GB ghcr uploads; the chain still works via the
+  # local image store). See build-cross-chain.sh --no-push.
+  [ "${CROSS_NO_PUSH:-0}" = "1" ] || _arha_out+=(--push)
   if _bool_truthy "${USE_FAST_UBUNTU_MIRROR:-false}"; then
     _arha_out+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")
     if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL:-}" ]; then
