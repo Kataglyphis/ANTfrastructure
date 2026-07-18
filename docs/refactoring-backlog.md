@@ -505,3 +505,68 @@ Verified findings (each ground-truthed against the webval log or live images bef
 - **Validated SAFE by the changes-review agent:** all new Dockerfile COPYs (source dirs
   always mkdir'd), --no-push/CROSS_NO_PUSH wiring, disk gate, pywrap rename, ml_dtypes
   relocation, nv-codec removal.
+
+## 2026-07-18 — second deep audit (post-tvmval-launch, 2-agent fresh sweep)
+
+Re-audited the surface changed SINCE the first deep audit (the audit-fix commits
+themselves + TVM cross + orchestrator DX), which the earlier pass never reviewed.
+
+### FIXED (commits 2630844, 48b5a7b)
+- **`install_target_packages` had no per-package fallback (2630844).** The cross
+  primitive every media build routes through did a single atomic `apt-get install`;
+  one unresolvable/renamed SONAME aborts the whole transaction (apt installs
+  nothing) and callers `|| true` it, so ~20 required libs (gstreamer graphics/HLS/X11
+  batches at install-deps.sh:105/150/206) vanish silently — the exact bug the
+  host-side `install_host_packages` fix already addressed, left on the target twin.
+  Ported the isolate-and-retry-per-package loop; `cross_package_files_present`
+  stays the arbiter (preserves foreign-postinst-noise tolerance).
+- **ELF-arch mismatch check was toothless (2630844).** validate-media-runtime.sh
+  printed `MISMATCH: <bin> ELF machine=...` for a wrong-arch artifact but exited 0;
+  smoke-media skips execution on cross, so nothing caught it. Now counts non-vendor
+  mismatches and `exit 1`s (escape hatch `MEDIA_ELF_MISMATCH_FATAL=0`). Directly the
+  host-vs-target-triple defect class this whole effort fights.
+- **`--no-push` broke the runtime manifest step (48b5a7b) — HIGH.** First `--no-push`
+  run to reach the runtime stage (every prior validation run actually pushed). Under
+  --no-push the wrapper tags are never pushed, but create_manifest still ran
+  registry-based `nerdctl manifest create` → "no such manifest" → set -e aborts at
+  the very end, before the boot-smoke. Fixed both ways: orchestrator passes
+  --skip-manifest under CROSS_NO_PUSH, AND build-runtime-manifest.sh honors the
+  exported env directly (reaches an already-running orchestrator, which reads that
+  script live). Per-arch images still build + load locally + boot-smoke.
+- **`gtk_feature` was a global, not `local` (48b5a7b).** Stale `disabled` from a prior
+  cross arm64/riscv64 call could leak into a later native/amd64 call in the same
+  shell. Declared `local` to match its sibling `python_feature`. Latent (each arch
+  builds in its own process today).
+
+### VERIFIED SAFE (checked, no change)
+- **TVM cross / BUILD_MODE inheritance.** `BUILD_MODE` is a real ENV in the `base`
+  stage (inherited by `tvm` FROM base); orchestrator passes `--build-arg
+  BUILD_MODE=cross` for every arch; `cross_build_is_active` = `BUILD_MODE=cross AND
+  target≠host`, so amd64 correctly takes native and arm64/riscv64 take cross. Wheel
+  glob (`apache_tvm-*|tvm-*|tvm_ffi-*|apache_tvm_ffi-*`) matches `python -m build`
+  output; retag rewrites only the platform tag, never the dist name → stays best-effort.
+- **smoke-media non-fatal web checks + gst-inspect health check** — no residual `fail`,
+  heredoc parses, gst-inspect stderr-capture correct, all WARN-only.
+- **disk gate math** — sound; two limitations (measures buildcache-parent fs not the
+  containerd data-root when split-mounted; coreutils-only `df --output`), neither a
+  false-abort. Logged as low-priority below.
+
+### STILL OPEN (lower priority, from the robustness sweep)
+- **opencv sends ALL target_packages through `install_optional_target_packages` on
+  arm64/riscv64** (install-deps.sh:51-53) — core codecs (libjpeg/png/x264/avcodec) are
+  silently droppable, not just the flaky harfbuzz/gst chain that motivated best-effort.
+  Split genuinely-required codecs into a fatal `install_target_packages` call. (Now
+  lower risk since #1's per-package fallback makes a required batch tolerant of one
+  bad name.)
+- **media runtime image uses a hand-maintained codec runtime-lib list**
+  (03-media/runtime/install-deps.sh:53-96) while the torch image auto-derives from the
+  ffmpeg manifest + fail-loud SO-closure assert. This list already drifted once
+  (libgudev/libcdparanoia comment). Converge on the manifest + closure assert.
+- **`so-package-map.txt` is a third source of runtime-lib truth** with hardcoded
+  versioned SONAMEs — manual edits needed on each Ubuntu base bump.
+- **disk gate: measure the containerd/buildkit data-root fs**, not the buildcache dir's
+  parent, for the split-mount case; guard the coreutils-only `df --output` path.
+- **riscv64 ffmpeg TLS via openssl** — libssl-dev is already installed on all arches
+  (gstreamer/install-deps.sh:201), so `--enable-openssl` is an available alternate TLS
+  backend for riscv64 instead of the unconditional gnutls skip (like the openssl-sys
+  cross fix). Attempt an openssl cross-probe rather than short-circuiting.
