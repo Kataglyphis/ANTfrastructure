@@ -470,3 +470,38 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   LLVM app-wheelhouse builds; next tier ~2100–2260s are the gcc/llvm compiler stages.
   Confirms the ccache-warmth and `--from-stage media` fast-path items above are where
   the wall-clock actually is.
+
+## Harvested 2026-07-18 — deep 3-agent audit of the webval build (log + changes + cross-correctness)
+
+Verified findings (each ground-truthed against the webval log or live images before acting):
+- **FIXED (9d793d1):** web-asset smokes were FATAL under set -e but the vendor is
+  best-effort → a truncated/partial vendor or an upstream variant-count change would
+  break the media build. Downgraded magic/count/node-compile checks to WARN (optional
+  browser assets, served not loaded).
+- **FIXED (9d793d1):** GStreamer plugin health check only counted `ldd => not found`
+  (missing .so), MISSING undefined-symbol load failures → reported "0 cannot load"
+  while gtk4/gtk were actually broken on arm64/riscv64. Now drives gst-inspect (real
+  scanner) — verified it reports the 2 genuinely-broken plugins.
+- **FIXED (9d793d1):** onnx-web WASM compile became load-bearing on any arch (amd64-only
+  skip removed) → made best-effort (ships empty on failure, not a build break).
+- **FIXED (d60c166):** gtk4/gtk sinks unloadable on arm64/riscv64 — libgtk-4.so.1
+  `undefined symbol: vkCreateWaylandSurfaceKHR` (cross runtime Vulkan lacks the Wayland
+  surface ext amd64's full SDK has). Disabled the gtk plugin on those cross arches
+  (display-only, useless headless). Confirm on next rebuild.
+- **FIXED earlier (5d18bc8):** riscv64 ml_dtypes → source-built into the venv.
+- **FALSE POSITIVE (verified):** an agent flagged the LiteRT cross wheel as shipping a
+  host-x86_64 SOABI ext. Live riscv64 image proves otherwise: the ext is
+  `_pywrap_litert_interpreter_wrapper.so` (plain name, no SOABI), ELF machine=riscv64,
+  and `from tflite_runtime.interpreter import Interpreter` imports fine. No fix needed.
+- **NOT A DEFECT (reviewed):** smoke `installed_version()` metadata fallback "masks import
+  failures" — it's INTENTIONAL for the cross-build sandbox (imports legitimately fail
+  there); the functional on-target import IS gated by the app-wheel smoke. Leave as is.
+- **OPEN (deliberate cross limitation, low priority):** riscv64 ffmpeg ships without
+  gnutls (HTTPS/TLS), libass (subtitles), sdl2, freetype (drawtext), svt-av1 — each an
+  explicit documented skip because Ubuntu-Ports/FFmpeg's cross-probe can't satisfy them
+  on riscv64. Improvable (like the earlier openssl-sys cross fix) but non-trivial.
+- **COSMETIC:** `import ai_edge_litert` (branded top-level) fails while `tflite_runtime`
+  works; the app + smoke use tflite_runtime, so functionally fine.
+- **Validated SAFE by the changes-review agent:** all new Dockerfile COPYs (source dirs
+  always mkdir'd), --no-push/CROSS_NO_PUSH wiring, disk gate, pywrap rename, ml_dtypes
+  relocation, nv-codec removal.
