@@ -303,11 +303,18 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
     # -> librice-proto.so.0, openh264enc -> libopenh264.so.8). The functional
     # pipeline check below is the fail-loud gate for GStreamer CORE.
     echo "--- Functional: GStreamer plugin health (informational) ---"
+    # Use gst-inspect (which drives the plugin SCANNER) rather than a plain
+    # `ldd => not found` scan: the scanner actually dlopen()s each plugin and
+    # reports EVERY load failure to stderr as "Failed to load plugin", including
+    # UNDEFINED-SYMBOL failures (e.g. gtk4 -> libgtk-4.so.1: undefined symbol
+    # vkCreateWaylandSurfaceKHR) that ldd cannot see (the dep .so is present, just
+    # missing a symbol). Still WARN-only: a broken OPTIONAL plugin degrades
+    # gracefully; the functional pipeline check below is the fail-loud CORE gate.
     "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-      bash -lc 'g=0
-while IFS= read -r p; do
-  ldd "$p" 2>/dev/null | grep -q "=> not found" && { g=$((g+1)); printf "  degraded: %s -> %s\n" "$(basename "$p")" "$(ldd "$p" 2>/dev/null | awk "/not found/{print \$1}" | tr "\n" " ")"; }
-done < <(find /opt/gstreamer -path "*gstreamer-1.0/*.so" 2>/dev/null | head -300)
+      bash -lc '
+scan="$(gst-inspect-1.0 2>&1 >/dev/null || true)"
+printf "%s\n" "${scan}" | grep "Failed to load plugin" | sed "s/^.*Failed/  degraded: Failed/" | sort -u | head -40
+g="$(printf "%s\n" "${scan}" | grep -c "Failed to load plugin" || true)"
 echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || true
     echo ""
 

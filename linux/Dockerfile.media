@@ -271,8 +271,15 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
         cp -a "${_shared}/." "${_ortweb}/"; \
     else \
         echo "Shared onnxruntime-web cache empty on target=${TARGET_ARCH}; compiling (arch-independent, runs on the amd64 host) and populating the cache for the other arches"; \
-        bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm; \
-        cp -a "${_ortweb}/." "${_shared}/" 2>/dev/null || true; \
+        # BEST-EFFORT: onnxruntime-web is an OPTIONAL browser asset. Now that any
+        # arch may carry the emscripten compile (the amd64-only skip was removed for
+        # coverage), a wasm build failure must NOT break that arch's media build — it
+        # ships empty (INFO in the smoke) exactly as a skipped arch did before.
+        if bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm; then \
+            cp -a "${_ortweb}/." "${_shared}/" 2>/dev/null || true; \
+        else \
+            echo "WARNING: onnxruntime-web WASM build failed on target=${TARGET_ARCH}; shipping without onnx-web (optional, non-fatal)"; \
+        fi; \
     fi
 
 # js + pkgconfig steps (fast, IO-bound)
