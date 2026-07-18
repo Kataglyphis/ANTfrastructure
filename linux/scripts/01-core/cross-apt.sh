@@ -287,22 +287,39 @@ install_target_packages() {
         | cross_filter_known_foreign_postinst_noise
     ) || apt_rc=$?
 
-    [ "${apt_rc}" -eq 0 ] && return 0
+    if [ "${apt_rc}" -ne 0 ]; then
+      # The atomic transaction failed. That can be harmless foreign-arch postinst
+      # noise (every package still unpacked), but it can ALSO be a single
+      # unresolvable/renamed name (e.g. a SONAME rename across an Ubuntu release)
+      # that aborts the WHOLE transaction and takes every other requested package
+      # down with it — apt installs nothing. Because callers routinely `|| true`
+      # this (gstreamer graphics/HLS/X11 batches), that silently strips ~20 libs
+      # at once. Retry each package on its own so one bad name can't drop the rest;
+      # the package-files-present check below stays the source of truth.
+      echo "install_target_packages: batch apt-get exited ${apt_rc}; retrying per-package to isolate unavailable names" >&2
+      for pkg in "${pkgs[@]}"; do
+        (
+          set -o pipefail
+          apt-get install -y --no-install-recommends "${pkg}" 2>&1 \
+            | cross_filter_known_foreign_postinst_noise
+        ) || true
+      done
+    fi
 
-    # apt-get failed. On cross this is often only foreign-arch postinst noise
-    # while every requested package is unpacked and usable — but it can ALSO
-    # mean packages are genuinely absent (dependency conflicts, ports outages),
-    # which previously got silently swallowed here and surfaced much later as
-    # baffling feature-skips (e.g. gst HLS with no crypto). Distinguish the two.
+    # Source of truth is which package files actually landed — this tolerates
+    # foreign-arch postinst noise (rc!=0 but files present) while still catching
+    # genuinely-absent packages (dependency conflicts, ports outages) that would
+    # otherwise surface much later as baffling feature-skips (e.g. gst HLS with
+    # no crypto).
     for pkg in "${pkgs[@]}"; do
       cross_package_files_present "${pkg}" || missing+=("${pkg}")
     done
     if [ "${#missing[@]}" -eq 0 ]; then
-      echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are unpacked (foreign-arch postinst noise); continuing." >&2
+      [ "${apt_rc}" -eq 0 ] || echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are present (postinst noise or resolved via per-package retry); continuing." >&2
       return 0
     fi
     echo "install_target_packages: FAILED — missing after apt-get (rc=${apt_rc}): ${missing[*]}" >&2
-    return "${apt_rc}"
+    return 1
   fi
 
   apt-get install -y --no-install-recommends "${pkgs[@]}"

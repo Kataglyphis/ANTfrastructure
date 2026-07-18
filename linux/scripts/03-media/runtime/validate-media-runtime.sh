@@ -278,6 +278,7 @@ is_vendor_binary() {
   return 1
 }
 
+elf_mismatches=0
 if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
   elf_binaries=(
     "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-launch-1.0"
@@ -294,6 +295,7 @@ if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
         ;;
       *)
         echo "  MISMATCH: $(basename "${bin}") ELF machine=${elf_machine} != expected ${elf_machine_grep} (arch=${target_arch})" >&2
+        elf_mismatches=$((elf_mismatches + 1))
         ;;
     esac
   done
@@ -310,12 +312,28 @@ if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
         "") continue ;;
         *)
           echo "  MISMATCH: ${_so_base} ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
+          elf_mismatches=$((elf_mismatches + 1))
           ;;
       esac
     done
   done
 else
   echo "  SKIP: readelf not available or unknown arch ${target_arch}" >&2
+fi
+
+# A non-vendor ELF whose machine != the target arch is a genuine wrong-arch
+# artifact (the exact host-vs-target-triple defect class this build fights) —
+# vendor/foreign binaries and empty-machine entries are already skipped above,
+# so anything counted here is a real defect. Previously this was echo-only and
+# the script still exited 0, so a foreign ffmpeg/gst binary shipped silently.
+# Fail loud. Escape hatch MEDIA_ELF_MISMATCH_FATAL=0 downgrades to a warning if
+# a legit foreign binary ever needs the vendor skip-list extended instead.
+if [ "${elf_mismatches}" -gt 0 ]; then
+  if [ "${MEDIA_ELF_MISMATCH_FATAL:-1}" = "1" ]; then
+    echo "  FAIL: ${elf_mismatches} ELF architecture mismatch(es) for target ${target_arch} — wrong-arch artifact(s) present" >&2
+    exit 1
+  fi
+  echo "  WARN: ${elf_mismatches} ELF architecture mismatch(es) (MEDIA_ELF_MISMATCH_FATAL=0; not failing)" >&2
 fi
 
 # ---------------------------------------------------------------------------
