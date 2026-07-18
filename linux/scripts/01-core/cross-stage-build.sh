@@ -528,7 +528,19 @@ cross_stage_assemble_runtime_helper_args() {
   # Publish final images + manifest unless CROSS_NO_PUSH (validation runs stay
   # local to skip the slow multi-GB ghcr uploads; the chain still works via the
   # local image store). See build-cross-chain.sh --no-push.
-  [ "${CROSS_NO_PUSH:-0}" = "1" ] || _arha_out+=(--push)
+  #
+  # Under --no-push the per-arch wrapper tags are never pushed, so a multi-arch
+  # manifest index has no registry descriptors to reference — `nerdctl manifest
+  # create` is registry-based (docker-manifest semantics; it resolves the
+  # referenced manifests FROM the registry, not the local containerd store) and
+  # would fail "no such manifest" at the very end of an otherwise-green run.
+  # Skip manifest creation too; the per-arch images are still built, loaded
+  # locally, and boot-smoked, which is all a local validation run needs.
+  if [ "${CROSS_NO_PUSH:-0}" = "1" ]; then
+    _arha_out+=(--skip-manifest)
+  else
+    _arha_out+=(--push)
+  fi
   if _bool_truthy "${USE_FAST_UBUNTU_MIRROR:-false}"; then
     _arha_out+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")
     if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL:-}" ]; then

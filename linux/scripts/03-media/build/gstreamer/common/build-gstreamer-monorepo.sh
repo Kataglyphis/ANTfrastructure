@@ -618,6 +618,10 @@ _gst_monorepo_install() {
 
 build_gstreamer_monorepo() {
   local python_feature="enabled"
+  # Declared local (not just assigned in _gst_monorepo_env_setup) so a prior
+  # cross arm64/riscv64 invocation that set gtk_feature=disabled can't leak a
+  # stale value into a later native/amd64 call in the same shell process.
+  local gtk_feature="enabled"
 
   _gst_monorepo_env_setup
   _gst_monorepo_python_config

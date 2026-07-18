@@ -137,6 +137,17 @@ main() {
   export DRY_RUN
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_NAME}"
 
+  # Belt-and-suspenders for --no-push orchestrator runs (CROSS_NO_PUSH=1): the
+  # per-arch wrapper tags are never pushed, so a registry-based `nerdctl manifest
+  # create` has no descriptors to reference and fails "no such manifest" at the
+  # very end of an otherwise-green validation run. The orchestrator now also
+  # passes --skip-manifest, but honor the exported env var directly so the guard
+  # holds regardless of caller. Per-arch images are still built + boot-smoked.
+  if [ "${CROSS_NO_PUSH:-0}" = "1" ] && [ "${CREATE_MANIFEST}" -eq 1 ]; then
+    log "CROSS_NO_PUSH=1 — skipping multi-arch manifest creation (no pushed per-arch refs to index)"
+    CREATE_MANIFEST=0
+  fi
+
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
     log "Building ${ARTIFACT_BUILD_MODE} runtime package flow for architectures: ${TARGET_ARCHES}"
   else
