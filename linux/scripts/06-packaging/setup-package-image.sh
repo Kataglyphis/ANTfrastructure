@@ -177,14 +177,14 @@ create_runtime_venv() {
         # fail.  Install packages via apt (system-wide) and make them
         # visible to the venv via --system-site-packages.
         rm -rf "${VIRTUAL_ENV}"
-        # python3-ml-dtypes (apt) satisfies the cp314 iree_base_runtime wheel's
-        # ml_dtypes dependency on riscv64, which has no PyPI wheel and would
-        # source-build under QEMU. Without it `import iree.runtime` fails
-        # "No module named 'ml_dtypes'" in the runtime smoke (native iree-compile
-        # still works). --system-site-packages then exposes it to the venv.
+        # NOTE: ml_dtypes for iree is NOT installed here via apt — python3-ml-dtypes
+        # lands in the DISTRO python's /usr/lib/python3/dist-packages, which the
+        # from-source CPython 3.14 venv (site under /usr/local/lib/python3.14) never
+        # sees even with --system-site-packages. It is source-built into the venv in
+        # assemble-torch-app.sh's riscv64 IREE branch instead.
         apt-get install -y --no-install-recommends \
             python3-numpy python3-meson python3-ninja python3-cmake \
-            python3-wheel python3-setuptools python3-packaging python3-ml-dtypes 2>/dev/null || true
+            python3-wheel python3-setuptools python3-packaging 2>/dev/null || true
         uv venv --seed --system-site-packages --python "/usr/local/bin/python${python_mm}" "${VIRTUAL_ENV}"
         uv pip install --python "${VIRTUAL_ENV}/bin/python" wheel setuptools cmake packaging
     else

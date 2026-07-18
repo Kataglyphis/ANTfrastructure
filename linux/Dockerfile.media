@@ -269,12 +269,10 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
     if [ -n "$(find "${_shared}" -name '*.wasm' -print -quit 2>/dev/null)" ]; then \
         echo "Reusing shared onnxruntime-web assets (compiled once, arch-independent)"; \
         cp -a "${_shared}/." "${_ortweb}/"; \
-    elif [ "${TARGET_ARCH}" = "${BUILDARCH}" ] && [ "${TARGET_ARCH}" = "amd64" ]; then \
+    else \
+        echo "Shared onnxruntime-web cache empty on target=${TARGET_ARCH}; compiling (arch-independent, runs on the amd64 host) and populating the cache for the other arches"; \
         bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm; \
         cp -a "${_ortweb}/." "${_shared}/" 2>/dev/null || true; \
-        echo "Populated shared onnxruntime-web cache for the other arches"; \
-    else \
-        echo "onnxruntime-web not in shared cache yet (the amd64 media build compiles + populates it first); shipping empty on target=${TARGET_ARCH}"; \
     fi
 
 # js + pkgconfig steps (fast, IO-bound)

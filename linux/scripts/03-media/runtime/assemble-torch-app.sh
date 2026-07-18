@@ -338,11 +338,18 @@ reconcile_local_wheels() {
   fi
   if [ "${#iree_wheels[@]}" -gt 0 ]; then
     if [ "$(uname -m)" = "riscv64" ]; then
-      # riscv64: ml_dtypes has no riscv64 PyPI wheel and would source-build under
-      # QEMU; install --no-deps and tolerate failure (check_iree optional-fails).
-      # numpy is already present from the sync.
+      # riscv64: install IREE --no-deps (its ml_dtypes/numpy deps have no riscv64
+      # wheels and a full-deps resolve would try to pull them). numpy is already
+      # present from the sync.
       uv pip install --no-deps --force-reinstall "${iree_wheels[@]}" || \
         echo "WARNING: IREE riscv64 runtime wheel install failed (non-fatal; check_iree will optional-fail)"
+      # ml_dtypes has no riscv64 PyPI wheel, so source-build it INTO this venv
+      # (best-effort). It must go here, not via apt in setup-package-image.sh — the
+      # from-source py3.14 venv can't see the distro python's dist-packages. Without
+      # it `import iree.runtime` fails "No module named 'ml_dtypes'" (the runtime
+      # smoke WARN); the native iree-compile path is unaffected either way.
+      uv pip install ml_dtypes || \
+        echo "WARNING: ml_dtypes source-build failed on riscv64 (iree.runtime bf16 dtypes unavailable; native iree-compile unaffected)"
     else
       # amd64/arm64: resolve IREE's runtime deps (ml_dtypes, numpy) from PyPI so the
       # source-built cp314 wheels are fully functional; the cp314 wheel replaces any

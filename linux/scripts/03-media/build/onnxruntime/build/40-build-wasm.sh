@@ -9,10 +9,13 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
-if ! is_amd64_arch; then
-  info "Skipping WASM/web build on non-amd64 architecture (arch=$(detect_target_arch))"
-  exit 0
-fi
+# WASM is arch-INDEPENDENT: emscripten targets wasm32 and this always runs on the
+# amd64 BUILD host (cross-builds use --platform linux/amd64), so the TARGET arch is
+# irrelevant to the output. We therefore no longer skip on a non-amd64 target — the
+# Dockerfile drives build-once via a shared cache mount, and letting whichever arch
+# reaches an EMPTY cache first do the compile guarantees every arch ends up with the
+# assets (fixes arm64/riscv64 racing ahead of amd64 and shipping without onnx-web).
+# The only hard requirement is a usable emscripten toolchain, checked below.
 
 cd "${ORT_SRC_DIR}"
 
