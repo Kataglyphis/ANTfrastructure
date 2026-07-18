@@ -119,12 +119,45 @@ _check_web_runtime() {
     pass "${label} web runtime valid (${n} verified .wasm in ${dir})"
   fi
 }
+# Functional step-up: make the V8 WASM engine (via node) actually COMPILE every
+# module's full bytecode — catches body truncation/corruption/invalid-opcode that
+# the 4-byte magic check cannot. No browser shims needed (compile, not instantiate).
+# Best-effort: skipped when node is absent; a miss/absent-assets is not a failure,
+# but a present .wasm the engine REJECTS is a hard FAIL.
+_web_wasm_node_compile() {
+  local label="$1" dir="$2"
+  command -v node >/dev/null 2>&1 || { echo "  INFO: node unavailable; skipping ${label} WASM engine-compile"; return 0; }
+  [ -n "$(find "${dir}" -name '*.wasm' -print -quit 2>/dev/null)" ] || return 0
+  if WEB_DIR="${dir}" WEB_LABEL="${label}" node <<'NODE_EOF'
+const fs = require('fs'), path = require('path');
+const dir = process.env.WEB_DIR, label = process.env.WEB_LABEL;
+function walk(d){ let o=[]; for(const e of fs.readdirSync(d,{withFileTypes:true})){ const p=path.join(d,e.name); if(e.isDirectory()) o=o.concat(walk(p)); else if(e.name.endsWith('.wasm')) o.push(p);} return o; }
+(async () => {
+  const ws = walk(dir); let ok=0, bad=0;
+  for (const w of ws) {
+    try { await WebAssembly.compile(fs.readFileSync(w)); ok++; }
+    catch (e) { console.log('  wasm engine-compile FAILED: ' + path.basename(w) + ' :: ' + String(e.message).slice(0,80)); bad++; }
+  }
+  console.log(`  ${label}: ${ok}/${ws.length} .wasm engine-compiled`);
+  process.exit(bad === 0 ? 0 : 1);
+})();
+NODE_EOF
+  then
+    pass "${label} WASM engine-compiles in node (V8 accepts every module)"
+  else
+    fail "${label} has WASM the engine rejects (corrupt/incompatible module)"
+  fi
+}
+
 _check_web_runtime "LiteRT.js"  /usr/local/lib/litert-web 4
+_web_wasm_node_compile "LiteRT.js" /usr/local/lib/litert-web
 _check_web_runtime "LiteRT-LM (mediapipe-genai)" /usr/local/lib/litert-lm-web 3
+_web_wasm_node_compile "LiteRT-LM (mediapipe-genai)" /usr/local/lib/litert-lm-web
 # onnxruntime-web: compiled once on amd64, shared to all arches. INFO (not FAIL)
 # when absent — it is only populated after the amd64 media build in a chain.
 echo "--- onnxruntime web (WASM/JS) ---"
 _check_web_runtime "onnxruntime-web" /usr/local/lib/onnxruntime-web 3
+_web_wasm_node_compile "onnxruntime-web" /usr/local/lib/onnxruntime-web
 
 # ---------------------------------------------------------------------------
 # OpenCV — import + functional test
