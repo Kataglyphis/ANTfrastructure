@@ -59,6 +59,20 @@ ffmpeg_probe_libx264() {
     return 1
 }
 
+# HEVC encoder. x265 version-macros its public symbols (x265_api_get ->
+# x265_api_get_<build>), but the probe micro-program includes x265.h so the
+# macro expands before linking, and the framework's spurious-link-failure
+# fallback (headers-compile + empty-main-links) covers the versioned .so case.
+# Only consulted when FFMPEG_ENABLE_X265 is set (see build-ffmpeg.sh).
+ffmpeg_probe_libx265() {
+    if ffmpeg_probe_pkg_config_feature "libx265" "x265" "stdint.h x265.h" "x265_api_get"; then
+        return 0
+    fi
+
+    echo "Skipping libx265: FFmpeg-style pkg-config or link probe failed."
+    return 1
+}
+
 ffmpeg_probe_vdpau() {
     if ! ffmpeg_try_cpp_condition "vdpau/vdpau.h" "defined VDP_DECODER_PROFILE_MPEG4_PART2_ASP"; then
         echo "Skipping vdpau: FFmpeg-style header probe failed."

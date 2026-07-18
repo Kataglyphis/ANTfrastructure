@@ -513,7 +513,12 @@ FROM base AS ffmpeg
 # immutable commit archive; empty (default) tracks FFMPEG_VERSION/master.
 ARG FFMPEG_COMMIT=""
 
-ENV FFMPEG_PREFIX=/opt/ffmpeg
+# HEVC (libx265) encoding. Default 0 = disabled (historical behavior); set to 1
+# (forwarded from versions.env) to probe-gate --enable-libx265. See build-ffmpeg.sh.
+ARG FFMPEG_ENABLE_X265=0
+
+ENV FFMPEG_PREFIX=/opt/ffmpeg \
+    FFMPEG_ENABLE_X265=${FFMPEG_ENABLE_X265}
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \

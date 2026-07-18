@@ -168,9 +168,8 @@ _ffmpeg_cross_args() {
 # only when its probe (declared in ffmpeg-probes-codecs.sh / -framework.sh) finds
 # the matching pkg-config/lib/header/symbol.
 #
-# NOTE: libx265 is intentionally NOT enabled here. The configure probe passes but
-# compilation fails with newer x265 releases (see the explicit --disable-libx265
-# later). Re-enable only after upstream x265/FFmpeg source compatibility is restored.
+# NOTE: libx265 (HEVC encode) is handled separately below, gated behind
+# FFMPEG_ENABLE_X265 (default off), not in this always-on core-codec probe list.
 _ffmpeg_probe_core_codecs() {
     local -n _ffpcc_out="$1"
 
@@ -400,9 +399,18 @@ configure_ffmpeg() {
     _ffmpeg_hwaccel_args configure_opts
     _ffmpeg_linker_ccache_args configure_opts
 
-    # Explicitly disable libx265: the configure probe passes but FFmpeg
-    # compilation fails against newer x265 releases (see note above).
-    configure_opts+=("--disable-libx265")
+    # libx265 (HEVC encoding). Historically force-disabled because FFmpeg master
+    # could fail to COMPILE against a bleeding-edge source-built x265. libx265-dev
+    # (a stable distro release) is installed on all arches, so it's now gated
+    # behind FFMPEG_ENABLE_X265: default off keeps the exact prior behavior
+    # (--disable-libx265); when set it's probe-gated like every other codec, so a
+    # genuinely-absent/unusable x265 still falls back to disabled rather than
+    # hard-failing configure.
+    if is_truthy "${FFMPEG_ENABLE_X265:-0}" && ffmpeg_probe_libx265; then
+        configure_opts+=("--enable-libx265")
+    else
+        configure_opts+=("--disable-libx265")
+    fi
 
     if ! ./configure "${configure_opts[@]}"; then
         echo "FFmpeg configure failed"
