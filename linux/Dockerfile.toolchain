@@ -19,6 +19,9 @@ ARG TARGETPLATFORM
 ARG BUILDARCH
 ARG BUILDPLATFORM
 ARG BUILD_MODE=native
+# Divide usable RAM by this in parallelism.sh so N concurrent per-arch builds
+# (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
+ARG BUILD_MEM_DIVISOR=1
 ARG CROSS_TARGETS=amd64,arm64,riscv64
 ARG PYTHON_VERSION=3.14.6
 # SHA-256 of the CPython source tarball, mirrored from versions.env (enforced by
@@ -32,6 +35,7 @@ ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 ENV BUILD_MODE=${BUILD_MODE} \
+    BUILD_MEM_DIVISOR=${BUILD_MEM_DIVISOR} \
     GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=${GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE} \
     GCC_HOST_BOOTSTRAP=${GCC_HOST_BOOTSTRAP} \
     BUILDARCH=${BUILDARCH} \

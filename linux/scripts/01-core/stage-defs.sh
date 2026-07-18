@@ -205,9 +205,28 @@ cross_stage_tag() {
 #   append_cross_build_args <nameref>          → adds BUILD_MODE=cross
 #   append_per_arch_build_args <nameref> <arch> → adds TARGET_ARCH=<arch>
 #   append_cross_per_arch_build_args <nameref> <arch> → both of the above
+# Effective RAM divisor for per-arch parallel builds. When --parallel-archs is
+# active, up to min(MAX_PARALLEL_ARCHS, #arches) per-arch builds compile
+# CONCURRENTLY and share one host's RAM, so each must size its make/ninja job
+# counts for RAM/N — parallelism.sh reads BUILD_MEM_DIVISOR to do exactly that.
+# Historically this was documented as "injected by the orchestrator" but never
+# actually set anywhere (only read), so --parallel-archs would N-times overcommit
+# RAM and OOM. Serial builds (the default) → 1, i.e. unchanged behavior.
+cross_build_mem_divisor() {
+  _bool_truthy "${PARALLEL_ARCHS:-0}" || { printf '1'; return 0; }
+  local n_arch max
+  n_arch="$(arch_list_to_words "${TARGET_ARCHES:-}" | wc -w)"
+  [ "${n_arch}" -ge 1 ] 2>/dev/null || n_arch=1
+  max="${MAX_PARALLEL_ARCHS:-1}"
+  [ "${max}" -ge 1 ] 2>/dev/null || max=1
+  [ "${n_arch}" -lt "${max}" ] && max="${n_arch}"
+  printf '%s' "${max}"
+}
+
 append_cross_build_args() {
   local -n _acba_out=$1
   _acba_out+=(--build-arg "BUILD_MODE=cross")
+  _acba_out+=(--build-arg "BUILD_MEM_DIVISOR=$(cross_build_mem_divisor)")
 }
 
 append_per_arch_build_args() {
