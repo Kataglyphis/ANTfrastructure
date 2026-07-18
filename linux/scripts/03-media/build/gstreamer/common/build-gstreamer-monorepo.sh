@@ -119,6 +119,20 @@ _gst_monorepo_env_setup() {
     esac
   fi
 
+  # gtk (gtk4/gtk3 display sinks) is built from source with the Vulkan renderer,
+  # which references vkCreateWaylandSurfaceKHR. The full Vulkan SDK on amd64 exports
+  # it, but the cross-built RUNTIME Vulkan on arm64/riscv64 does NOT — so
+  # libgtk-4.so.1 fails to load ("undefined symbol: vkCreateWaylandSurfaceKHR") and
+  # libgstgtk4.so / libgstgtk.so become unloadable. They are display-only sinks,
+  # useless in a headless container, so disable the gtk plugin (and its heavy gtk4
+  # subproject build) on the affected cross arches; amd64 keeps it.
+  gtk_feature="${gtk_feature:-enabled}"
+  if cross_build_is_active; then
+    case "${TARGET_MACHINE_ARCH}" in
+      riscv*|*riscv*|aarch64*|arm*) gtk_feature="disabled" ;;
+    esac
+  fi
+
   # GSTREAMER_ENABLE_PYTHON_BINDINGS env var (set externally) can force-disable
   # Python bindings even outside the cross-build check, preventing pycairo builds.
   if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" != "true" ]; then
@@ -173,7 +187,7 @@ _gst_monorepo_meson_base_flags() {
     "-Dbase=enabled"
     "-Dgood=enabled"
     "-Dgtk_doc=disabled"
-    "-Dgtk=enabled"
+    "-Dgtk=${gtk_feature:-enabled}"
     "-Dugly=enabled"
     "-Dges=enabled"
     "-Dbad=enabled"
