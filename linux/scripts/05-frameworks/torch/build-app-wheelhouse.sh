@@ -131,7 +131,14 @@ install_build_dependencies() {
     fi
 
     if command -v install_host_packages >/dev/null 2>&1; then
-        install_host_packages git ninja-build cmake pkg-config unzip rsync
+        # ccache is a HOST tool (it wraps the cross-compiler invocations that run
+        # on the amd64 build host), so install it host-side. Without it the IREE
+        # bundled-LLVM (~1h) and riscv64 torch aten compiles rebuild from scratch
+        # every run even though the persistent /var/cache/ccache mount exists and
+        # build_iree_wheels/build_torch_wheel already wire the ccache launcher
+        # behind `command -v ccache`. This omission was the sole reason those
+        # multi-hour cross builds never cache-hit (amd64-native path already had it).
+        install_host_packages git ninja-build cmake pkg-config unzip rsync ccache
         install_host_packages libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev
         if ! install_target_packages libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev; then
             warn "Some riscv64 target build dependencies are unavailable; continuing with the staged sysroot"
@@ -154,7 +161,7 @@ install_build_dependencies() {
     fi
 
     apt-get install -y --no-install-recommends \
-        git ninja-build cmake pkg-config unzip rsync \
+        git ninja-build cmake pkg-config unzip rsync ccache \
         libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev
 }
 
@@ -505,6 +512,7 @@ _torch_run_setup_py() {
         if [ -n "${python_sysconfig_export}" ]; then eval "${python_sysconfig_export}"; fi && \
         export PYTHON_EXECUTABLE="${BUILD_PYTHON}" Python_EXECUTABLE="${BUILD_PYTHON}" Python3_EXECUTABLE="${BUILD_PYTHON}" && \
         export MAX_JOBS="${MAX_JOBS}" && \
+        export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}" CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-64G}" CCACHE_COMPRESS=1 && \
         export BLAS=OpenBLAS USE_NUMPY=1 && \
         export USE_CUDA=0 USE_CUDNN=0 USE_CUSPARSELT=0 USE_CUDSS=0 USE_CUFILE=0 USE_ROCM=0 USE_XPU=0 && \
         export USE_DISTRIBUTED=0 USE_GLOO=0 USE_MPI=0 USE_TENSORPIPE=0 USE_NCCL=0 && \
@@ -576,6 +584,13 @@ build_torch_wheel() {
 
     append_common_cross_cmake_args cmake_args
     cmake_args+=("-DBLAS=OpenBLAS")
+    # Route the (multi-hour) aten compile through ccache so it cache-hits on
+    # rebuilds. The launcher works with the cross compiler; CCACHE_DIR is pointed
+    # at the persistent /var/cache/ccache mount in _torch_run_setup_py. Guarded so
+    # a host without ccache still builds (plain, no launcher).
+    if command -v ccache >/dev/null 2>&1; then
+        cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache" "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+    fi
     cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
 
     if ! _torch_run_setup_py; then
