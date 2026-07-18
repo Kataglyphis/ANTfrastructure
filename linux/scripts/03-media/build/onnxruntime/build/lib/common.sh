@@ -446,9 +446,24 @@ append_onnx_optional_lto_webgpu_args() {
   if [ "${ORT_ENABLE_LTO:-false}" = "true" ]; then
     build_args_ref+=(--enable_lto)
   fi
-  if [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ]; then
+  if onnx_webgpu_enabled_for_target; then
     build_args_ref+=(--use_webgpu --use_external_dawn)
   fi
+}
+
+# Decide whether to enable the WebGPU (Dawn) execution provider for THIS target.
+# Master toggle ORT_ENABLE_WEBGPU (default false). Dawn is validated on the amd64
+# native build; cross-compiling Dawn to arm64/riscv64 is unproven and would
+# hard-fail the onnx build, so on those arches WebGPU is enabled only when
+# ORT_WEBGPU_ALLOW_CROSS=true is ALSO set. This lets "turn WebGPU on" light up
+# amd64 without silently breaking the cross builds.
+onnx_webgpu_enabled_for_target() {
+  [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ] || return 1
+  local arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
+  case "${arch}" in
+    amd64|x86_64) return 0 ;;
+    *) [ "${ORT_WEBGPU_ALLOW_CROSS:-false}" = "true" ] ;;
+  esac
 }
 
 append_onnx_lld_build_args() {

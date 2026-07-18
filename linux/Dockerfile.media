@@ -178,6 +178,11 @@ ARG ONNXRUNTIME_GENAI_BUILD_TYPE=Release
 ARG BUILD_GENAI=true
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
+# WebGPU (Dawn) execution provider. Default off; amd64 lights up when
+# ORT_ENABLE_WEBGPU=true, arm64/riscv64 additionally need ORT_WEBGPU_ALLOW_CROSS=true
+# (Dawn cross-build unproven). See onnxruntime/build/lib/common.sh.
+ARG ORT_ENABLE_WEBGPU=false
+ARG ORT_WEBGPU_ALLOW_CROSS=false
 
 ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     GENAI_OUTPUT_DIR=${ONNXRUNTIME_GENAI_OUTPUT_DIR} \
@@ -186,7 +191,9 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     WASM_CONFIG=${ONNXRUNTIME_WASM_BUILD_TYPE} \
     GENAI_VERSION=${ONNXRUNTIME_GENAI_VERSION} \
     GENAI_CONFIG=${ONNXRUNTIME_GENAI_BUILD_TYPE} \
-    BUILD_GENAI=${BUILD_GENAI}
+    BUILD_GENAI=${BUILD_GENAI} \
+    ORT_ENABLE_WEBGPU=${ORT_ENABLE_WEBGPU} \
+    ORT_WEBGPU_ALLOW_CROSS=${ORT_WEBGPU_ALLOW_CROSS}
 
 # deps + fetch combined: both are fast IO-bound operations.
 # Bind-mount the onnxruntime build scripts (readonly) so changes to them only
