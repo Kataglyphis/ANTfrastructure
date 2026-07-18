@@ -362,19 +362,24 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     mkdir -p /opt/tvm/wheels /opt/tvm/lib; \
-    case "${TARGET_ARCH:-${TARGETARCH:-amd64}}" in \
-      amd64) \
-        if bash /opt/scripts/05-frameworks/tvm.sh --ref "${TVM_REF}" --prefix /opt/tvm --workdir /tmp/tvm-src; then \
-            echo "TVM native build OK; wheel(s):"; ls -1 /opt/tvm/wheels/ 2>/dev/null || true; \
-            # TVM's cmake install may land libtvm.so in lib64 (GNUInstallDirs);
-            # consolidate into lib/ so the final `COPY /opt/tvm/lib` ships it.
-            [ -d /opt/tvm/lib64 ] && cp -a /opt/tvm/lib64/. /opt/tvm/lib/ 2>/dev/null || true; \
-        else \
-            echo "WARNING: native TVM build failed; shipping media image without TVM python"; \
-            rm -f /opt/tvm/wheels/*.whl 2>/dev/null || true; \
-        fi ;; \
-      *) echo "Skipping TVM build (amd64-only for now; ${TARGET_ARCH:-?} cross is a follow-up)" ;; \
-    esac
+    # tvm.sh auto-selects native (amd64, BUILD_MODE=native) vs the 2-stage LLVM
+    # cross (arm64/riscv64, BUILD_MODE=cross inherited from base) via its own
+    # cross-env: detect_cross_llvm_cmake_dir finds the target LLVM from the cross-sdk
+    # base, append_cmake_cross_args wires the cross toolchain, and _tvm_build_wheel_cross
+    # produces a target-arch wheel (TVM's compiled ext is tvm_ffi/core.abi3.so — an
+    # arch-agnostic abi3 FILENAME, so no host-SOABI-naming bug like IREE/litert; only
+    # the ELF must be the target arch, which the cross toolchain handles).
+    # BEST-EFFORT on EVERY arch: a build failure ships the media image without TVM
+    # python (WARN) exactly as before — it can never break the media build. The cross
+    # path is newly exercised here; the runtime smoke's `import tvm` gates it per-arch.
+    echo "TVM build: target=${TARGET_ARCH:-amd64} BUILD_MODE=${BUILD_MODE:-native}"; \
+    if bash /opt/scripts/05-frameworks/tvm.sh --ref "${TVM_REF}" --prefix /opt/tvm --workdir /tmp/tvm-src; then \
+        echo "TVM build OK; wheel(s):"; ls -1 /opt/tvm/wheels/ 2>/dev/null || true; \
+        [ -d /opt/tvm/lib64 ] && cp -a /opt/tvm/lib64/. /opt/tvm/lib/ 2>/dev/null || true; \
+    else \
+        echo "WARNING: TVM build failed for target=${TARGET_ARCH:-?}; shipping media image without TVM python (non-fatal)"; \
+        rm -f /opt/tvm/wheels/*.whl 2>/dev/null || true; \
+    fi
 
 # ==============================================================================
 # OpenCV stage

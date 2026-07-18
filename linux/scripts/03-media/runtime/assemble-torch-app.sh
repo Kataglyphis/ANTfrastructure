@@ -323,11 +323,19 @@ reconcile_local_wheels() {
   # (this function runs under set -e). Install them WITHOUT deps and best-effort;
   # numpy is already present, so iree.runtime + native iree-run-module still work,
   # and if a hard dep is genuinely missing check_iree just optional-fails.
-  local -a iree_wheels=() other_wheels=()
+  # TVM is partitioned out for the same reason as IREE: it's an OPTIONAL framework
+  # whose deps (ml_dtypes, scipy, ...) may have no riscv64 wheel and source-build
+  # under QEMU. Installing it in the main (non-best-effort) force-reinstall could
+  # abort venv assembly on a dep failure, breaking the runtime build for a wheel
+  # that's meant to be optional. Install it best-effort so `import tvm` degrades to
+  # the runtime smoke's optional-fail instead of failing the build.
+  local -a iree_wheels=() tvm_wheels=() other_wheels=()
   for wheel_path in "${local_wheels[@]}"; do
     case "$(basename "${wheel_path}")" in
       iree_base_runtime-*.whl|iree_base_compiler-*.whl|iree-*.whl)
         iree_wheels+=("${wheel_path}") ;;
+      apache_tvm-*.whl|apache-tvm-*.whl|tvm-*.whl|tvm_ffi-*.whl|apache_tvm_ffi-*.whl)
+        tvm_wheels+=("${wheel_path}") ;;
       *)
         other_wheels+=("${wheel_path}") ;;
     esac
@@ -335,6 +343,10 @@ reconcile_local_wheels() {
 
   if [ "${#other_wheels[@]}" -gt 0 ]; then
     uv pip install --force-reinstall "${other_wheels[@]}"
+  fi
+  if [ "${#tvm_wheels[@]}" -gt 0 ]; then
+    uv pip install --force-reinstall "${tvm_wheels[@]}" || \
+      echo "WARNING: TVM wheel install failed (optional; import tvm will optional-fail; native libs unaffected)"
   fi
   if [ "${#iree_wheels[@]}" -gt 0 ]; then
     if [ "$(uname -m)" = "riscv64" ]; then
