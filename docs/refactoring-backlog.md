@@ -308,6 +308,13 @@ validation builds (`--from-stage media`, 0714r/u/v — all green) followed by a 
 then succeeded after freeing 151G. Prioritised by time-saved.
 
 ### P1 — Disk (by far the biggest time sink; caused a whole wasted 10h+ run)
+> **Status 2026-07-18: pre-flight disk gate DONE (commit 08c7161)** —
+> `_chain_disk_preflight` refuses to launch below ~60G/arch (base) / ~40G/arch
+> (media+), with a kata-buildcache prune hint; FORCE_LOW_DISK=1 overrides. The
+> kata-buildcache unbounded-growth item stays OPEN (the gate only *hints* to prune;
+> no automatic cap — an eviction policy would still help). Stage-barrier failure
+> isolation stays OPEN but is now LOWER value: the disk gate removes its main
+> trigger (ENOSPC mid-run), so a barrier-abort is far less likely.
 - **Pre-flight disk gate in build-cross-chain.sh (S·★★★).** The full from-base
   rebuild launched with only ~140G free and ENOSPC-died 2h in at amd64 litert
   (`cmake -E tar: ZIP decompression failed (-5)` = truncated extract on a full
@@ -333,6 +340,12 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   alone reclaimed 0B because everything was recent-or-referenced.
 
 ### P2 — Speed (reach the goal faster)
+> **Status 2026-07-18: `--no-push` DONE (commit 08c7161)** — CROSS_NO_PUSH builds
+> every stage locally and skips the ghcr uploads that dominated each validation
+> run's ~1.5-2h tail; the chain resolves via the local image store. The
+> `--from-stage media` fast-path guidance below stands (it's guidance, not code).
+> P4 log-namespacing: ALREADY DONE — `--log-dir` writes per-arch/stage logs
+> (media-<arch>.log, android-<arch>.log) alongside the interleaved orchestrator.log.
 - **`--no-push` / local-only validation mode (M·★★★).** The final ~2h was almost
   entirely PUSHING three ~9GB images to ghcr at ~5 MiB/s (`push=true`,
   `--cache-to type=registry`). For validation-only runs, output `type=docker`
