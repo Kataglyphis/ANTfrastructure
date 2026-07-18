@@ -287,35 +287,39 @@ install_target_packages() {
         | cross_filter_known_foreign_postinst_noise
     ) || apt_rc=$?
 
-    if [ "${apt_rc}" -ne 0 ]; then
-      # The atomic transaction failed. That can be harmless foreign-arch postinst
-      # noise (every package still unpacked), but it can ALSO be a single
-      # unresolvable/renamed name (e.g. a SONAME rename across an Ubuntu release)
-      # that aborts the WHOLE transaction and takes every other requested package
-      # down with it — apt installs nothing. Because callers routinely `|| true`
-      # this (gstreamer graphics/HLS/X11 batches), that silently strips ~20 libs
-      # at once. Retry each package on its own so one bad name can't drop the rest;
-      # the package-files-present check below stays the source of truth.
-      echo "install_target_packages: batch apt-get exited ${apt_rc}; retrying per-package to isolate unavailable names" >&2
-      for pkg in "${pkgs[@]}"; do
-        (
-          set -o pipefail
-          apt-get install -y --no-install-recommends "${pkg}" 2>&1 \
-            | cross_filter_known_foreign_postinst_noise
-        ) || true
-      done
-    fi
+    # Trust a clean atomic install: apt-get succeeded, every package is unpacked.
+    # Do NOT run the cross_package_files_present sweep on this path — that check
+    # is only a heuristic (it hunts for a representative file) and returns false
+    # negatives for some packages (e.g. libfreetype6-dev), which would turn a
+    # perfectly good install into a spurious failure. It is used ONLY below, as a
+    # disambiguator AFTER apt has already errored.
+    [ "${apt_rc}" -eq 0 ] && return 0
 
-    # Source of truth is which package files actually landed — this tolerates
-    # foreign-arch postinst noise (rc!=0 but files present) while still catching
-    # genuinely-absent packages (dependency conflicts, ports outages) that would
-    # otherwise surface much later as baffling feature-skips (e.g. gst HLS with
-    # no crypto).
+    # The atomic transaction failed. That can be harmless foreign-arch postinst
+    # noise (every package still unpacked), but it can ALSO be a single
+    # unresolvable/renamed name (e.g. a SONAME rename across an Ubuntu release)
+    # that aborts the WHOLE transaction and takes every other requested package
+    # down with it — apt installs nothing. Because callers routinely `|| true`
+    # this (gstreamer graphics/HLS/X11 batches), that silently strips ~20 libs
+    # at once. Retry each package on its own so one bad name can't drop the rest.
+    echo "install_target_packages: batch apt-get exited ${apt_rc}; retrying per-package to isolate unavailable names" >&2
+    for pkg in "${pkgs[@]}"; do
+      (
+        set -o pipefail
+        apt-get install -y --no-install-recommends "${pkg}" 2>&1 \
+          | cross_filter_known_foreign_postinst_noise
+      ) || true
+    done
+
+    # Now disambiguate: which packages genuinely did not land? The files-present
+    # check tolerates foreign-arch postinst noise (apt errored but files present)
+    # while still catching genuinely-absent packages (dependency conflicts, ports
+    # outages) that would otherwise surface much later as baffling feature-skips.
     for pkg in "${pkgs[@]}"; do
       cross_package_files_present "${pkg}" || missing+=("${pkg}")
     done
     if [ "${#missing[@]}" -eq 0 ]; then
-      [ "${apt_rc}" -eq 0 ] || echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are present (postinst noise or resolved via per-package retry); continuing." >&2
+      echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are present (postinst noise or resolved via per-package retry); continuing." >&2
       return 0
     fi
     echo "install_target_packages: FAILED — missing after apt-get (rc=${apt_rc}): ${missing[*]}" >&2
