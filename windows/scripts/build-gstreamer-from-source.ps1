@@ -326,6 +326,49 @@ int _isatty(int);
         log "Found compiler-rt: $rtFullPath"
     }
 
+    # ---- 5e. Windows SDK GUID import libs for clang-cl/lld-link ----
+    # MSVC's link.exe auto-pulls COM/DirectShow/MediaFoundation/KernelStreaming
+    # GUIDs (IID_*/CLSID_*) from the default uuid.lib; clang-cl's lld-link does
+    # NOT resolve all of them the same way, which is what previously forced
+    # wasapi off and would also break mediafoundation. Naming these SDK import
+    # libs explicitly in the link args resolves the GUID symbols. They are on
+    # the --vsenv lib path; unreferenced symbols are not pulled, so this is
+    # harmless for plugins that don't need them (/FORCE:MULTIPLE covers dups).
+    $guidLibs = @(
+        'uuid.lib', 'mfuuid.lib', 'strmiids.lib', 'ksuser.lib', 'dxguid.lib',
+        'dmoguids.lib', 'wmcodecdspuuid.lib', 'mfplat.lib', 'mf.lib', 'mfreadwrite.lib'
+    )
+    $linkArgElems = ((@('/FORCE:MULTIPLE', $rtFullPath) + $guidLibs) |
+        Where-Object { $_ } | ForEach-Object { "'$_'" }) -join ','
+    log "Link args: [$linkArgElems]"
+
+    # ---- 5f. patch gst-plugins-bad mediafoundation for clang-cl ----
+    # The mediafoundation plugin's WinRT-app-partition detection lacks the
+    # `cxx.get_id() == 'msvc'` guard that its required GstWinRt helper library
+    # DOES have (gst-libs/gst/winrt/meson.build: `if cxx.get_id() != 'msvc' ->
+    # subdir_done()`). So under clang-cl, GstWinRt is never built, yet
+    # mediafoundation still detects winapi_app (the WinRT test compiles fine
+    # with the desktop SDK) and demands gstwinrt_dep -> hard error when the
+    # plugin is enabled explicitly. Gate winapi_app on msvc too, matching the
+    # library's own guard: under clang-cl only the desktop path (mfvideosrc, the
+    # webcam source) builds; the UWP app path is msvc-only and not needed here.
+    $mfMeson = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\sys\mediafoundation\meson.build'
+    if (Test-Path $mfMeson) {
+        $mfContent = [System.IO.File]::ReadAllText($mfMeson)
+        $mfNeedle = "if runtimeobject_lib.found()`n"
+        $mfReplace = "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`n"
+        # normalize CRLF for the match, operate on the raw text
+        if ($mfContent -match [regex]::Escape("if runtimeobject_lib.found() and cxx.get_id() == 'msvc'")) {
+            log 'mediafoundation meson.build already gated on msvc'
+        } elseif ($mfContent -match "if runtimeobject_lib\.found\(\)\s*\r?\n") {
+            $mfContent = [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
+            [System.IO.File]::WriteAllText($mfMeson, $mfContent)
+            log 'Patched mediafoundation meson.build: gated winapi_app detection on msvc (clang-cl builds desktop path only)'
+        } else {
+            log 'WARNING: mediafoundation winapi_app guard not found; mediafoundation=enabled may fail if GstWinRt is unavailable under clang-cl'
+        }
+    }
+
     # ---- 6. meson setup (retry with wrap cleanup) ----
     $setupArgs = @(
         'setup', '--vsenv',
@@ -351,26 +394,42 @@ int _isatty(int);
         '-Dtools=enabled',
         # Provide stub unistd.h for Windows CRT compatibility
         "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
-        # svtjpegxs disabled: defines local access() function that conflicts with Windows CRT
+        # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
+        # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc +
+        # MF device provider) required by the Rust capture path. Needs the GUID
+        # import libs added to the link args below.
+        '-Dgst-plugins-bad:mediafoundation=enabled',
+        # wasapi (v1) stays DISABLED: it links against Core Audio interface
+        # GUIDs (IID_IAudioClient, IID_IMMEndpoint, IID_IAudioRenderClient,
+        # IID_IAudioCaptureClient, IID_IAudioClock, ...) that live in NO SDK
+        # import lib -- upstream expects them instantiated via source-level
+        # INITGUID, which doesn't happen under clang-cl, so lld-link reports
+        # them undefined even with the $guidLibs above. NOT a feature loss:
+        # wasapi2 (the modern replacement, built by default and present in the
+        # image) provides WASAPI capture/render. Only the deprecated v1 is off.
+        '-Dgst-plugins-bad:wasapi=disabled',
+        # svtjpegxs stays DISABLED: its SVT-JPEG-XS codec subproject does not
+        # compile under clang-cl (Mct.c: "conflicting types" / "too many
+        # arguments" -- the local access() clash was only the first of several
+        # incompatibilities; remapping access did not make the rest build). A
+        # niche JPEG-XS codec; not worth patching the vendored SVT source.
         '-Dgst-plugins-bad:svtjpegxs=disabled',
-        # cairo:win32=disabled intentionally fails cairo at meson setup (unknown option in
-        # cairo-1.18.4) -- this prevents the LLVM 22 mmintrin.h __builtin_shufflevector crash
-        # that occurs when cairo tries to compile with clang-cl on Windows.
+        # ── Genuinely-hard blockers under clang-cl: kept OFF (documented) ──
+        # cairo:win32 crashes clang-cl (LLVM 22 mmintrin.h __builtin_shufflevector);
+        # -Dcairo:win32=disabled intentionally fails cairo at meson setup.
         '-Dcairo:win32=disabled',
         '-Dopus:intrinsics=disabled',
-        # nvcodec disabled: D3D11 interop code in gstnvdecoder.cpp uses
-        # GST_CAPS_FEATURE_MEMORY_D3D11_MEMORY which is undeclared with
-        # clang-cl (gst-d3d11 library's headers aren't found). CUDA gst-lib
-        # is auto-detected separately and works fine.
+        # nvcodec: gstnvdecoder.cpp uses GST_CAPS_FEATURE_MEMORY_D3D11_MEMORY,
+        # undeclared under clang-cl (gst-d3d11 headers not found). GPU-specific;
+        # CUDA gst-lib is auto-detected separately. Kept off pending a headers fix.
         '-Dgst-plugins-bad:nvcodec=disabled',
-        # wasapi disabled: IID_* COM GUID symbols not resolved by lld-link
-        # (uuid.lib doesn't provide them in clang-cl's linking model)
-        '-Dgst-plugins-bad:wasapi=disabled',
-        # dots-viewer disabled: cargo crates.io index fetch fails in
-        # containers behind proxies
+        # dots-viewer: Rust subproject; cargo crates.io index fetch fails in the
+        # offline container. Dev tool, not a media feature.
         '-Dgst-devtools:dots-viewer=disabled',
-        # /FORCE:MULTIPLE for libffi dups; compiler-rt for lld-link (__udivti3 etc.)
-        "-Dc_link_args=['/FORCE:MULTIPLE','$rtFullPath']"
+        # /FORCE:MULTIPLE for libffi dups; compiler-rt for lld-link (__udivti3
+        # etc.); GUID import libs (see $guidLibs) for MF/WASAPI/DShow/KS symbols.
+        "-Dc_link_args=[$linkArgElems]",
+        "-Dcpp_link_args=[$linkArgElems]"
     ) + $MesonSetupArgs
 
     $setupArgsString = "meson $($setupArgs -join ' ')"

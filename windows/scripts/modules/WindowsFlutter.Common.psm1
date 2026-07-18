@@ -67,11 +67,23 @@ function Fix-FlutterPluginSymlinks {
                 & cmd.exe /c "rmdir /q /s `"$junctionPath`" 2>nul"
                 & cmd.exe /c "del /q /f `"$junctionPath`" 2>nul"
 
-                Write-BuildLog -Context $Context -Message "Copying plugin directory for $pluginName to avoid symlink access denied issues..."
-                try {
-                    Copy-Item -Path $pluginPath -Destination $junctionPath -Recurse -Force -ErrorAction Stop
-                } catch {
-                    Write-BuildLogWarning -Context $Context -Message "Failed to copy plugin ${pluginName}: $($_.Exception.Message)"
+                # Prefer a junction over a recursive copy: for plugins with a deep
+                # vendored tree (e.g. kataglyphis_native_inference's
+                # native/KataglyphisCppInference/ExternalLib/*), copying into the
+                # even-deeper .plugin_symlinks path overruns MAX_PATH (260 chars) and
+                # aborts before windows\ is copied, leaving a broken junction. A
+                # junction is container-local-safe and immune to MAX_PATH; fall back to
+                # a copy only if it fails to resolve (the copy rationale — avoiding
+                # symlink access-denied — applies only to bind-mounted paths).
+                Write-BuildLog -Context $Context -Message "Creating junction for $pluginName..."
+                & cmd.exe /c "mklink /J `"$junctionPath`" `"$pluginPath`"" 2>&1 | Out-Null
+                if (-not (Test-Path (Join-Path $junctionPath 'windows'))) {
+                    Write-BuildLogWarning -Context $Context -Message "Junction for ${pluginName} did not resolve; falling back to copy..."
+                    try {
+                        Copy-Item -Path $pluginPath -Destination $junctionPath -Recurse -Force -ErrorAction Stop
+                    } catch {
+                        Write-BuildLogWarning -Context $Context -Message "Failed to copy plugin ${pluginName}: $($_.Exception.Message)"
+                    }
                 }
             }
         }
