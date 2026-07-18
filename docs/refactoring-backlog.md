@@ -570,3 +570,52 @@ themselves + TVM cross + orchestrator DX), which the earlier pass never reviewed
   (gstreamer/install-deps.sh:201), so `--enable-openssl` is an available alternate TLS
   backend for riscv64 instead of the unconditional gnutls skip (like the openssl-sys
   cross fix). Attempt an openssl cross-probe rather than short-circuiting.
+
+## 2026-07-18 — speed + feature pass (3-agent audit: speed / features / complexity)
+
+Third deep audit lens (maintainability/speed/features/complexity). User picked: ccache +
+wire/enable --parallel-archs (speed); ONNX WebGPU + ffmpeg x265 (features). All committed;
+the two features are gated OFF so the in-flight tvmval run is unaffected — flip on in the
+combined validating rebuild.
+
+### DONE — speed
+- **ccache on the cross app-wheelhouse (dcc6ce8).** install_build_dependencies omitted
+  ccache on the arm64/riscv64 paths (only amd64-native had it), so the ~1h IREE
+  bundled-LLVM (×2 arches) + multi-hour riscv64 torch aten compiles rebuilt from scratch
+  every run despite the persistent /var/cache/ccache mount + already-wired cmake launcher.
+  Added ccache to both cross branches; build_torch_wheel now sets the launcher + CCACHE_DIR.
+- **BUILD_MEM_DIVISOR wired (9df9414).** parallelism.sh sizes jobs as RAM/BUILD_MEM_DIVISOR
+  but nothing ever SET the divisor (only read) — so --parallel-archs would N× overcommit RAM
+  and OOM. Added cross_build_mem_divisor()=min(MAX_PARALLEL_ARCHS,#arches) under
+  PARALLEL_ARCHS, forwarded via append_cross_build_args + ARG/ENV in toolchain/sdk/media/
+  android Dockerfiles. Serial default=1 (inert). Enable --parallel-archs in the validating
+  rebuild; watch resource-monitor for OOM (intra-Dockerfile stage parallelism means model
+  holds total RAM ~constant vs serial, but verify).
+
+### DONE — features (gated off; enable in validating rebuild)
+- **ffmpeg libx265 HEVC encode (02f8718).** Was unconditionally --disable-libx265 despite
+  libx265-dev installed. New ffmpeg_probe_libx265 + FFMPEG_ENABLE_X265 gate (versions.env,
+  default 0). Flip to 1 to validate; if the old source-x265 compile break recurs, pin a
+  known-good x265/ffmpeg pair.
+- **ONNX WebGPU (Dawn) EP (9adcdd5).** Was wired but dormant (ORT_ENABLE_WEBGPU never set).
+  New onnx_webgpu_enabled_for_target(): amd64 on when ORT_ENABLE_WEBGPU=true; arm64/riscv64
+  need ORT_WEBGPU_ALLOW_CROSS=true too (Dawn cross unproven). Validate amd64 first.
+
+### DEFERRED (until tvmval completes — critical runtime-venv path)
+- **Wheel-family glob classifier (assemble-torch-app.sh).** opencv 4-name glob verbatim ×3
+  (109/133/290), torch/litert/iree/tvm globs split across ~8 sites — already bit once
+  (dropped-torch-wheel). DRY into one _wheel_family classifier. Behavior-sensitive; do
+  post-tvmval with full verification.
+
+### NOT TAKEN this round (offered, user deferred) — still open
+- Toolchain speed flags (host GCC 3-stage bootstrap, host clang double-build, CPython PGO
+  all ON) → ~50-100min CI saving, trades self-miscompile checks. GCC_HOST_BOOTSTRAP=0 /
+  clang --no-bootstrap / PYTHON_PGO gate.
+- Trim built-but-maybe-unused: clang-tools-extra ×3, BUILD_GENAI source ×3, redundant
+  SDK-stage TVM (built then wiped by media `uv venv --clear`).
+- Feature: llama.cpp + Vulkan backend (absent all arches; agent's top pick), ONNX ACL EP
+  on arm64 (verify --use_acl survives ORT 1.27), ffmpeg libvvenc (VVC encode), TVM
+  CUDA/OpenCL codegen tied to ENABLE_NVIDIA, riscv64 ffmpeg TLS-via-openssl.
+- Minor: GCC install/clang install single-threaded (add -j/--parallel); onnx WASM 4×
+  no-ccache; tvm.sh non-shallow recursive clone; pre-existing NV_CODEC_HEADERS_REF script
+  default drift (n12.2.1 vs versions.env n13.0.19.0, advisory).
