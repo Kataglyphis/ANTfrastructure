@@ -127,8 +127,133 @@ function Copy-FromBuildContainer {
     return ($LASTEXITCODE -eq 0)
 }
 
+
+<#
+.SYNOPSIS
+  Locates docker.exe, preferring Stevedore's copy.
+.DESCRIPTION
+  nerdctl has DNS issues in BuildKit on Windows, so Stevedore's docker.exe is
+  the supported client. Checks an explicit override, then $env:DOCKER_EXE,
+  then the usual Stevedore install locations, then PATH.
+#>
+function Resolve-DockerExe {
+    [CmdletBinding()]
+    param([string]$Override)
+
+    $candidates = @(
+        $Override,
+        $env:DOCKER_EXE,
+        (Join-Path $env:ProgramFiles 'Stevedore\bin\docker.exe'),
+        'D:\Stevedore\bin\docker.exe'
+    ) | Where-Object { $_ }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
+    }
+
+    $onPath = Get-Command docker -ErrorAction SilentlyContinue
+    if ($onPath) { return $onPath.Source }
+
+    throw 'docker.exe not found. Install Stevedore (winget install stevedore) or pass an explicit path.'
+}
+
+<#
+.SYNOPSIS
+  Builds docker isolation arguments.
+.DESCRIPTION
+  Process isolation exposes all host CPUs; Hyper-V isolation defaults to 2, so
+  CPU and memory are passed explicitly for that mode only.
+#>
+function Get-ContainerIsolationArgs {
+    [CmdletBinding()]
+    param(
+        [ValidateSet('process', 'hyperv')][string]$Isolation = 'process',
+        [int]$CpuCount = 0,
+        [int]$MemoryGb = 16
+    )
+
+    $isolationArgs = @('--isolation', $Isolation)
+    if ($Isolation -eq 'hyperv') {
+        $cpus = if ($CpuCount -gt 0) { $CpuCount } else { [Environment]::ProcessorCount }
+        $isolationArgs += @('--cpu-count', "$cpus", '--memory', "${MemoryGb}g")
+    }
+    return $isolationArgs
+}
+
+<#
+.SYNOPSIS
+  Tests whether a bind mount of $SourcePath actually attaches.
+.DESCRIPTION
+  EXPECTED to fail on Dev Drive hosts: the filesystem minifilter cannot attach
+  unless 'fsutil devdrv setfiltersallowed bindFlt, wcifs' has been run. Callers
+  fall back to a tar-pipe transport. Docker's stderr must not become a
+  terminating NativeCommandError (Windows PowerShell turns redirected native
+  stderr into ErrorRecords under $ErrorActionPreference = 'Stop').
+.NOTES
+  Mount onto a FRESH target path: mounting over a directory baked into the
+  image (e.g. C:\workspace) fails at CreateComputeSystem when the host OS
+  build differs from the image base build.
+#>
+function Test-ContainerBindMount {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$DockerExe,
+        [Parameter(Mandatory)][string]$Image,
+        [Parameter(Mandatory)][string]$SourcePath,
+        [string]$TargetPath = 'C:\ws-mnt',
+        [string]$ProbeFile = 'CMakePresets.json',
+        [string[]]$RunArgs = @()
+    )
+
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $DockerExe run --rm @RunArgs `
+            --mount "type=bind,source=$SourcePath,target=$TargetPath" `
+            --entrypoint cmd $Image /c "dir $TargetPath\$ProbeFile > nul" 2>&1 | Out-Null
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    return ($LASTEXITCODE -eq 0)
+}
+
+<#
+.SYNOPSIS
+  Removes a container, tolerating the wcifs layer-teardown lock.
+.DESCRIPTION
+  On some hosts the immediate remove fails even though a later manual
+  'docker rm' succeeds. Surface it as a warning; never let docker's stderr flip
+  a green build to a failure.
+#>
+function Remove-BuildContainerSafe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$DockerExe,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $DockerExe rm -f $Name 2>&1 | Out-Null
+        & $DockerExe inspect $Name 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Warning ("Container '$Name' could not be removed yet (wcifs teardown lock?). " +
+                "Remove it later with: docker rm -f $Name")
+            return $false
+        }
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    return $true
+}
+
 Export-ModuleMember -Function @(
     'Get-ReusableBuildContainer',
     'Copy-IntoBuildContainer',
-    'Copy-FromBuildContainer'
+    'Copy-FromBuildContainer',
+    'Resolve-DockerExe',
+    'Get-ContainerIsolationArgs',
+    'Test-ContainerBindMount',
+    'Remove-BuildContainerSafe'
 )
