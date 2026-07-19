@@ -15,7 +15,7 @@ host. Concrete script:
 | Approach | Outcome |
 | --- | --- |
 | **Reusable container + tar-pipe** | ✅ **9.6 s** ninja / **44 s** wall, no-change |
-| Bind mount instead of the tar-pipe | ❌ 32.7 s ninja / 159 s wall — **slower**, see below |
+| Reusable container + bind mount | ✅ works; 32.7 s ninja / 159 s wall — slower *here* |
 | Streaming the build tree in and out | 🟡 ~230 s (worked, but moved ~17 GB per build) |
 | sccache with a persistent named volume | ❌ 0.00 % hit rate, 0 bytes stored |
 | Named volume mounted as the build directory | ❌ CMake cannot configure inside it |
@@ -24,6 +24,124 @@ host. Concrete script:
 Cold builds, for reference: 327.9 s (tar-pipe, fresh container) and 318.1 s
 (bind mount). The transport barely matters cold — it is the *incremental* case
 where the difference is decisive.
+
+## Transports: how to set up both
+
+Getting sources into the container and artifacts back out has two working
+implementations. **Both are supported and worth keeping** — which one wins
+depends on the host, and the answer here was the opposite of what we expected.
+Keep them behind a switch and measure rather than assume.
+
+### Which one should I use?
+
+| | tar-pipe | bind mount |
+| --- | --- | --- |
+| Host setup needed | none | elevated `fsutil` + reboot (Dev Drive only) |
+| Where the build tree lives | inside the container | on the host volume |
+| Incremental cost | copies sources each build (~35 s here) | none |
+| Per-file I/O cost | container-local, fast | crosses the filter, slow |
+| **Measured here (no-change)** | **9.6 s ninja / 44 s wall** | 32.7 s ninja / 159 s wall |
+| Survives `docker rm` | ❌ tree is lost | ✅ tree is on the host |
+
+Rules of thumb:
+
+- **Large build tree, incremental edit-build loop → tar-pipe.** You pay a
+  fixed bulk copy once per build instead of filtered I/O on every one of
+  ~1000 targets. This is why it wins on the reference project.
+- **Small tree, or a host where the transport dominates → bind mount.** The
+  fixed copy cost stops being amortised and removing it wins.
+- **Non-Dev-Drive volume → measure again.** The penalty below is specific to
+  a Dev Drive with filters allow-listed; an ordinary NTFS volume does not
+  behave the same way.
+- **You want the build tree to survive the container → bind mount.**
+
+### Transport A — tar-pipe (no host setup)
+
+Works everywhere, including Dev Drive hosts with default settings, because it
+never asks the filesystem to attach anything.
+
+```powershell
+# in:  sources only, excluding .git and build trees
+tar -cf - --exclude .git -C $repoRoot . | docker exec -i $c tar -xf - -C C:\ws
+# out: only what the host runs, selected by EXCLUSION (tar does not expand globs)
+docker exec $c tar -cf - --exclude "*/CMakeFiles" --exclude "*.obj" -C C:\ws build-x | tar -xf - -C $repoRoot
+```
+
+Requirements: none. Caveats: the deletion hazard (safety rail 2 below), and
+`tar` aborting a whole transfer on one over-long path (see Gotchas).
+
+### Transport B — bind mount (Dev Drive needs setup)
+
+A Dev Drive refuses bind mounts by default — the minifilter cannot attach
+("Der Dateisystem-Minifilter kann nicht an das Entwicklervolume angefügt
+werden"). Allow-list the two filters, **elevated**:
+
+```powershell
+fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"
+```
+
+Four things that cost time here:
+
+1. **The filter list is ONE quoted argument.** `bindFlt, wcifs` unquoted is
+   parsed as two arguments and fails with a bare syntax dump.
+2. **It needs a reboot.** The setting persists immediately, but the filters
+   only attach when the volume is dismounted. You will see
+   `Fehler 5: Zugriff verweigert` — that is the *dismount* failing because the
+   volume is in use, not the setting failing. `/f` force-dismounts instead;
+   do not use it on the volume holding your repo.
+3. **`query` shows "allowed" before "attached".** After the reboot the filters
+   are listed as allowed but still not attached — they attach *on demand*, the
+   first time something actually requests a bind mount. Do not read that as
+   failure; probe instead.
+4. **Omitting `/volume` sets it machine-wide.** Scope it to the volume you
+   mean.
+
+Verify — allow-list, then an actual mount:
+
+```powershell
+fsutil devdrv query D:        # expect: bindFlt, wcifs under "allowed"
+docker run --rm --isolation process `
+  --mount "type=bind,source=$repoRoot,target=C:\ws" `
+  --entrypoint cmd $image /c "dir C:\ws\CMakePresets.json"
+```
+
+Revert (a Dev Drive is fast *because* filters do not attach — allow-listing
+them slows general I/O on that volume, not just container builds):
+
+```powershell
+fsutil devdrv clearFiltersAllowed /volume D:   # + reboot
+```
+
+#### Mount both transports at the SAME in-container path
+
+If you support both — and you should — mount at the path the tar-pipe already
+uses. CMake bakes absolute paths into `CMakeCache.txt` and refuses to reuse a
+cache generated elsewhere:
+
+```
+CMake Error: The source "C:/ws-mnt/CMakeLists.txt" does not match
+the source "C:/ws/CMakeLists.txt" used to generate cache.
+```
+
+Without a shared path, every switch between transports forces a cold rebuild
+and the two are not really interchangeable. One path (here `C:\ws`) fixes it.
+
+The path must still be **absent from the image**: mounting over a directory
+baked in (`C:\workspace`) fails at `CreateComputeSystem` when the host OS build
+differs from the image base build. Verify with
+`docker run --rm --entrypoint cmd $image /c "if exist C:\ws (echo BAKED IN)"`.
+
+#### Why the bind mount lost here
+
+With a bind mount the build tree lives on the Dev Drive, so every ninja stat
+and every object write crosses the `bindFlt` filter from inside the container.
+Copying sources in bulk once is cheaper than paying filtered I/O across ~1000
+targets — **ninja alone tripled**, 9.6 s → 32.7 s on an identical tree.
+Repeated to rule out a first-run artifact.
+
+Cold builds are near-identical (327.9 s vs 318.1 s), which is the tell: the
+penalty is per-file-operation, not per-byte, so it only shows up once
+compilation stops dominating.
 
 ## What works: reuse one container
 
@@ -92,59 +210,6 @@ Reuse trades isolation for speed, so guard it:
    working best.
 
 ## What does not work
-
-### A bind mount instead of the tar-pipe (on a Dev Drive)
-
-The tar-pipe exists because Dev Drive hosts reject bind mounts. Allow-listing
-the filters removes that restriction:
-
-```powershell
-fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"   # elevated; needs a reboot
-```
-
-Note the quoting — the filter list is **one argument**. `bindFlt, wcifs`
-unquoted is parsed as two and fails with a syntax error. The setting persists
-immediately but the filters only attach after the volume is dismounted, so
-reboot (or `/f`, which force-dismounts a volume that is in use — a bad idea
-for the volume holding your repo).
-
-It works, and it is **slower**. Measured on the same tree, both transports
-using the same in-container path:
-
-| | ninja | wall |
-| --- | --- | --- |
-| tar-pipe + reused container, no-change | **9.6 s** | **44 s** |
-| bind mount, no-change | 32.7 s | 159 s |
-
-Removing the transport does not pay for what it adds. With a bind mount the
-build tree lives on the Dev Drive, so every ninja stat and every object write
-crosses the `bindFlt` filter from inside the container. Copying sources in
-bulk once is cheaper than paying filtered I/O across ~1000 targets — ninja
-alone tripled on an identical tree. Repeated to rule out a first-run artifact.
-
-There is a second cost: a Dev Drive is fast precisely *because* filters do not
-attach to it. Allow-listing them slows general I/O on that volume, not just
-container builds. `fsutil devdrv clearFiltersAllowed /volume D:` reverts it.
-
-**Do not assume this generalises.** On a normal (non-Dev-Drive) volume, or
-with a much smaller build tree, the transport can dominate and the bind mount
-can win. Measure before choosing; keep both paths behind a switch.
-
-### Mount both transports at the SAME in-container path
-
-If you support both, mount at the path the tar-pipe already uses. CMake bakes
-absolute paths into `CMakeCache.txt` and refuses to reuse a cache generated
-elsewhere:
-
-```
-CMake Error: The source "C:/ws-mnt/CMakeLists.txt" does not match
-the source "C:/ws/CMakeLists.txt" used to generate cache.
-```
-
-Switching transports then forces a cold rebuild every time. One shared path
-(here `C:\ws`) keeps the trees interchangeable. The path must still be absent
-from the image — mounting over a directory baked in (`C:\workspace`) fails at
-`CreateComputeSystem` when the host OS build differs from the image base.
 
 ### sccache on a C++23 modules build
 
