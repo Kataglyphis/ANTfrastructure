@@ -78,6 +78,19 @@ All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Steve
 
 See `docs/windows-builds.md` § Build Commands for the full 5-stage Windows build sequence and `docs/windows-builds.md` § Stevedore Setup Fixes for post-install fixes.
 
+### Contributing Reusable Work Here
+
+Consumer projects are expected to push reusable work upstream rather than keep
+local copies (BeschleunigerBallett's AGENTS.md states this as a rule). When
+adding here:
+
+- PowerShell goes in `windows/scripts/modules/` with `Export-ModuleMember`, and
+  consumers resolve it ContainerHub-first with a vendored fallback.
+- Document the **symptom**, not just the fix — platform traps here are found by
+  recognising an error message, not by reading code.
+- Keep functions free of consumer-specific paths, preset names and build
+  directories; pass those in as parameters.
+
 ### Reusable Module: WindowsContainerBuild.Reuse
 
 `windows/scripts/modules/WindowsContainerBuild.Reuse.psm1` implements the

@@ -21,8 +21,10 @@ Set-StrictMode -Version Latest
   check a rebuilt toolchain image is silently ignored and you keep building
   against the old one.
 .OUTPUTS
-  [bool] $true when an existing container was reused (its build tree is intact),
-  $false when a new one was created (callers may want to seed it).
+  [pscustomobject] with Reused ([bool] - true when an existing container was
+  reused and its build tree is intact) and Name ([string] - the container that
+  was actually used, which may differ from -Name when a -Fresh removal was
+  blocked by the wcifs teardown lock).
 #>
 function Get-ReusableBuildContainer {
     [CmdletBinding()]
@@ -37,6 +39,27 @@ function Get-ReusableBuildContainer {
     if ($Fresh) {
         Write-Host "Fresh container requested - discarding '$Name'."
         & $DockerExe rm -f $Name 2>&1 | Out-Null
+
+        # Removal can FAIL silently on hosts with the wcifs teardown lock. If it
+        # did, the old container is still there and would simply be reused -
+        # making -Fresh a no-op exactly when someone needs it (stale sources,
+        # deleted files, a corrupted tree). Verify, and fall back to a uniquely
+        # named container so "fresh" always means fresh.
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & $DockerExe inspect $Name 2>&1 | Out-Null
+            $survived = ($LASTEXITCODE -eq 0)
+        } finally {
+            $ErrorActionPreference = $previous
+        }
+
+        if ($survived) {
+            $unique = "$Name-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
+            Write-Warning ("Could not remove '$Name' (wcifs teardown lock?). Using '$unique' instead so " +
+                "-Fresh is honoured; remove the old one later with: docker rm -f $Name")
+            $Name = $unique
+        }
     }
 
     $previousPreference = $ErrorActionPreference
@@ -58,11 +81,11 @@ function Get-ReusableBuildContainer {
             & $DockerExe rm -f $Name 2>&1 | Out-Null
         } elseif ($isRunning) {
             Write-Host "Reusing build container '$Name' (build tree preserved)."
-            return $true
+            return [pscustomobject]@{ Reused = $true; Name = $Name }
         } else {
             Write-Host "Starting existing build container '$Name'..."
             & $DockerExe start $Name 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) { return $true }
+            if ($LASTEXITCODE -eq 0) { return [pscustomobject]@{ Reused = $true; Name = $Name } }
             & $DockerExe rm -f $Name 2>&1 | Out-Null
         }
     }
@@ -71,7 +94,7 @@ function Get-ReusableBuildContainer {
     & $DockerExe run -d --name $Name @RunArgs --entrypoint cmd $Image `
         /c 'ping -n 604800 127.0.0.1 > nul' | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to start build container '$Name'." }
-    return $false
+    return [pscustomobject]@{ Reused = $false; Name = $Name }
 }
 
 <#
