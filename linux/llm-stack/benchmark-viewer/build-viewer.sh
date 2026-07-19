@@ -8,12 +8,17 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 NODE_IMAGE="node:20-alpine"
-SRC_DIR="/src"
-OUT_DIR="/src/dist"
+
+# We mount the repo root so Vite can resolve the @import of brand.css
+# from the Kataglyphis-DocumANTation submodule at build time.
+REPO_ROOT="$(cd ../../.. && pwd)"
+SRC_DIR="/repo"
+VIEWER_DIR="$SRC_DIR/linux/llm-stack/benchmark-viewer"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Building benchmark viewer (Vite + React)"
 echo "  Using image: $NODE_IMAGE"
+echo "  Repo root: $REPO_ROOT"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Use nerdctl or docker
@@ -23,8 +28,8 @@ if ! command -v nerdctl &>/dev/null; then
 fi
 
 $CMD run --rm \
-  -v "$(pwd):$SRC_DIR" \
-  -w "$SRC_DIR" \
+  -v "$REPO_ROOT:$SRC_DIR" \
+  -w "$VIEWER_DIR" \
   "$NODE_IMAGE" \
   sh -c "
     npm install && \
