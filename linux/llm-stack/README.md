@@ -31,6 +31,12 @@ nerdctl compose -f linux/llm-stack/docker-compose.yml logs -f
 | Ollama | 11434 | http://localhost:11434/v1 | OpenAI-compatible API |
 | Open WebUI | 3000 | http://localhost:3000 | Chat UI for debugging |
 | Glances | 61208 | http://localhost:61208 | System monitoring dashboard |
+| Benchmark Viewer | 4173 | http://localhost:4173 | Interactive benchmark charts (profile `viewer`) |
+
+### Benchmark Viewer
+
+The `benchmark-viewer` is a standalone nginx container (not part of the compose
+stack). Start it after building the viewer app.
 
 ## Nextcloud Assistant configuration
 
@@ -78,6 +84,51 @@ nerdctl run -d --name llm-stack -p 11434:8080 \
   -e OLLAMA_HOST=0.0.0.0:8080 \
   ollama/ollama:latest
 ```
+
+## Benchmarking
+
+The stack includes an automated benchmark suite and an interactive React viewer.
+
+### 1. Run benchmarks
+
+```bash
+cd linux/llm-stack
+bash run_benchmarks.sh
+```
+
+This runs 5 configurations (different `num_ctx` × `max_tokens`) through a set of
+short and medium prompts, measuring tokens/sec, latency, CPU, and RAM via the
+Glances API. Results land in `benchmark_results/` as individual JSON files plus
+a consolidated `_manifest.json`.
+
+### 2. Build the viewer
+
+```bash
+cd linux/llm-stack/benchmark-viewer
+bash build-viewer.sh
+```
+
+Builds the React + Recharts app using a Node 20 container (no host Node needed).
+
+### 3. View results
+
+```bash
+# Start the viewer (nginx container, available at http://localhost:4173)
+bash linux/llm-stack/serve-viewer.sh
+
+# Stop it when done
+nerdctl stop llm-benchmark-viewer
+```
+
+The viewer shows hardware info, a config comparison table, bar charts for T/s /
+latency / CPU / RAM, and an expandable per-prompt drill-down for each config.
+
+### Adding new configs
+
+Edit the `CONFIGS` array in `run_benchmarks.sh` and re-run. Each config is a
+`num_ctx:max_tokens` pair. The manifest regenerates automatically, and the
+viewer picks up all configs — rebuild the viewer (`build-viewer.sh`) to deploy
+updates.
 
 ## Architecture notes
 

@@ -22,6 +22,76 @@ from datetime import datetime, timezone
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 GLANCES_URL = os.environ.get("GLANCES_URL", "http://localhost:61208")
 
+
+def collect_hardware_info():
+    """Collect system hardware info for reproducibility."""
+    info = {}
+    info["timestamp"] = datetime.now(timezone.utc).isoformat()
+
+    # OS info
+    try:
+        import platform
+        info["os"] = platform.system()
+        info["os_release"] = platform.release()
+        info["os_version"] = platform.version()
+        info["architecture"] = platform.machine()
+        info["processor"] = platform.processor()
+    except Exception:
+        pass
+
+    # CPU info from /proc/cpuinfo (Linux)
+    try:
+        with open("/proc/cpuinfo") as f:
+            cpuinfo = f.read()
+        cpus = [p for p in cpuinfo.split("\n\n") if p.strip()]
+        info["cpu_count"] = len(cpus)
+        for line in cpus[0].split("\n") if cpus else []:
+            if "model name" in line.lower():
+                info["cpu_model"] = line.split(":")[1].strip()
+                break
+        # Total cores per CPU (core id max + 1)
+        core_ids = set()
+        for cpu in cpus:
+            for line in cpu.split("\n"):
+                if "core id" in line.lower():
+                    core_ids.add(line.split(":")[1].strip())
+        if core_ids:
+            info["cpu_physical_cores"] = len(core_ids)
+        # Thread(s) per core
+        for line in cpus[0].split("\n") if cpus else []:
+            if "siblings" in line.lower():
+                info["cpu_threads_per_core"] = int(line.split(":")[1].strip())
+                break
+        info["cpu_total_threads"] = info["cpu_count"]
+    except Exception:
+        pass
+
+    # RAM
+    try:
+        with open("/proc/meminfo") as f:
+            mem = f.read()
+        for line in mem.split("\n"):
+            if line.startswith("MemTotal:"):
+                info["ram_total_kb"] = int(line.split()[1])
+                info["ram_total_gb"] = round(info["ram_total_kb"] / (1024**2), 1)
+                break
+    except Exception:
+        pass
+
+    # Container info via cgroup
+    try:
+        with open("/proc/1/cgroup") as f:
+            cgroup = f.read()
+        info["in_container"] = "docker" in cgroup or "containerd" in cgroup or len(cgroup.splitlines()) > 0
+    except Exception:
+        info["in_container"] = None
+
+    # OLLAMA_HOST env
+    info["ollama_host"] = os.environ.get("OLLAMA_HOST", "default")
+
+    return info
+
+
 # ── Prompts of varying length for realistic benchmarking ──────────────────────
 
 SHORT_PROMPTS = [
@@ -151,6 +221,7 @@ def benchmark_chat(
     max_tokens=256,
     temperature=0.0,
     stream=False,
+    extra_params=None,
     sample_interval=0.2,
     warmup=True,
 ):
@@ -166,15 +237,14 @@ def benchmark_chat(
     # Warmup: one short request to load the model into memory
     if warmup:
         try:
-            session.post(
-                endpoint,
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": "Warmup"}],
-                    "max_tokens": 1,
-                },
-                timeout=120,
-            )
+            wp_payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": "Warmup"}],
+                "max_tokens": 1,
+            }
+            if extra_params:
+                wp_payload.update(extra_params)
+            session.post(endpoint, json=wp_payload, timeout=120)
         except Exception:
             pass
         time.sleep(1)
@@ -187,6 +257,11 @@ def benchmark_chat(
             "temperature": temperature,
             "stream": stream,
         }
+        if extra_params:
+            payload.update(extra_params)
+        # Request usage in streaming mode (Ollama supports this)
+        if stream:
+            payload["stream_options"] = {"include_usage": True}
 
         # Sample resources before request
         resources_before = sample_resources()
@@ -197,6 +272,7 @@ def benchmark_chat(
                 r = session.post(endpoint, json=payload, stream=True, timeout=300)
                 r.raise_for_status()
                 content_chunks = []
+                usage = None
                 for line in r.iter_lines(decode_unicode=True):
                     if line.startswith("data: "):
                         data = line[6:]
@@ -204,12 +280,17 @@ def benchmark_chat(
                             break
                         try:
                             chunk = json.loads(data)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content_chunks.append(delta.get("content", ""))
+                            # Usage in final streaming chunk (choices may be empty)
+                            if "usage" in chunk:
+                                usage = chunk["usage"]
+                            choices = chunk.get("choices", [])
+                            if not choices:
+                                continue
+                            delta = choices[0].get("delta", {})
+                            content_chunks.append(delta.get("content", "") or delta.get("reasoning", ""))
                         except json.JSONDecodeError:
                             pass
                 content = "".join(content_chunks)
-                usage = None
             else:
                 r = session.post(endpoint, json=payload, timeout=300)
                 r.raise_for_status()
@@ -339,6 +420,8 @@ def main():
     parser.add_argument("--stream", action="store_true", help="Use streaming responses")
     parser.add_argument("--output", default=None, help="Write results as JSON to this file")
     parser.add_argument("--no-warmup", action="store_true", help="Skip warmup request")
+    parser.add_argument("--extra-params", default=None,
+                        help='Extra JSON params for the request body (e.g. \'{"num_ctx":16000,"repeat_penalty":1.1}\')')
     parser.add_argument("--load", default=None, help="Load and re-display results from a JSON file")
 
     args = parser.parse_args()
@@ -366,6 +449,7 @@ def main():
     print(f"  Running {len(all_prompts)} benchmark prompts (max_tokens={args.max_tokens}, stream={args.stream})")
     print()
 
+    extra_params = json.loads(args.extra_params) if args.extra_params else None
     results = list(
         benchmark_chat(
             model,
@@ -373,6 +457,7 @@ def main():
             max_tokens=args.max_tokens,
             temperature=args.temperature,
             stream=args.stream,
+            extra_params=extra_params,
             warmup=not args.no_warmup,
         )
     )
@@ -383,10 +468,12 @@ def main():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "model": model,
         "api_url": f"{OLLAMA_BASE_URL}/v1",
+        "hardware": collect_hardware_info(),
         "config": {
             "max_tokens": args.max_tokens,
             "temperature": args.temperature,
             "stream": args.stream,
+            "extra_params": extra_params,
             "prompts_requested": len(all_prompts),
             "prompts_completed": len([r for r in results if "error" not in r]),
         },

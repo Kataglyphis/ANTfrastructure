@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run benchmarks across multiple num_ctx and max_tokens configs.
+# Uses the existing benchmark_openai_api.py with Ollama extra params
+# passed via extra_body (supported by Ollama's OAI-compatible endpoint).
+
+cd "$(dirname "$0")"
+
+MODEL="gemma4:26b"
+API_URL="http://localhost:11434/v1"
+OUTDIR="./benchmark_results"
+mkdir -p "$OUTDIR"
+
+# Configs to test:  (num_ctx x max_tokens)
+CONFIGS=(
+  "8192:256"      # baseline
+  "16000:256"     # user asked about this
+  "8192:4096"     # baseline + long gen
+  "16000:4096"    # long ctx + long gen
+  "32768:4096"    # pushing further
+)
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Gemma 4 26B — Config Benchmark Suite"
+echo "  Model: $MODEL"
+echo "  API:   $API_URL"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+for cfg in "${CONFIGS[@]}"; do
+  NUM_CTX="${cfg%%:*}"
+  MAX_TOKENS="${cfg##*:}"
+  OUTFILE="$OUTDIR/ctx${NUM_CTX}_tok${MAX_TOKENS}.json"
+
+  echo "▸ Config: num_ctx=$NUM_CTX  max_tokens=$MAX_TOKENS"
+  echo "  Output: $OUTFILE"
+  echo ""
+
+  python3 benchmark_openai_api.py \
+    --model "$MODEL" \
+    --max-tokens "$MAX_TOKENS" \
+    --temperature 0.0 \
+    --stream \
+    --prompts 8 \
+    --extra-params "{\"num_ctx\":$NUM_CTX}" \
+    --output "$OUTFILE"
+
+  # brief summary
+  python3 -c "
+import json
+with open('$OUTFILE') as f:
+    d = json.load(f)
+results = [r for r in d['results'] if 'error' not in r]
+if results:
+    tps = [r['tokens_per_sec'] for r in results]
+    lats = [r['latency_s'] for r in results]
+    cpu = [r['cpu_percent'] for r in results]
+    ram = [r['ram_used_gb'] for r in results]
+    print(f'  → T/s: {sum(tps)/len(tps):.1f} avg  '
+          f'Lat: {sum(lats)/len(lats):.1f}s avg  '
+          f'CPU: {sum(cpu)/len(cpu):.1f}%  '
+          f'RAM: {sum(ram)/len(ram):.1f}GB')
+else:
+    print(f'  → No successful results')
+" 2>&1
+
+  echo ""
+  echo "──────────────────────────────────────────────────────"
+  echo ""
+done
+
+# ── Generate manifest for the React viewer ────────────────────────────────
+MANIFEST="$OUTDIR/_manifest.json"
+python3 -c "
+import json, os, glob
+
+results_dir = '$OUTDIR'
+manifest = {
+    'title': 'LLM Benchmark — $MODEL',
+    'generated': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+    'model': '$MODEL',
+    'host_hardware': {},
+    'configs': [],
+}
+
+for fname in sorted(glob.glob(os.path.join(results_dir, '*.json'))):
+    if os.path.basename(fname).startswith('_'):
+        continue
+    with open(fname) as f:
+        d = json.load(f)
+    # Take hardware info from first result
+    if d.get('hardware') and not manifest['host_hardware']:
+        manifest['host_hardware'] = d['hardware']
+    config = {
+        'label': os.path.basename(fname).replace('.json', ''),
+        'file': os.path.basename(fname),
+        'config': d.get('config', {}),
+        'results': d.get('results', []),
+    }
+    manifest['configs'].append(config)
+
+with open('$MANIFEST', 'w') as f:
+    json.dump(manifest, f, indent=2)
+print(f'  Manifest: $MANIFEST ({len(manifest[\"configs\"])} configs)')
+" 2>&1
+
+echo ""
+echo "All benchmarks complete. Results in $OUTDIR/"
+echo ""
+echo "Quick comparison:"
+python3 -c "
+import json, os
+results_dir = '$OUTDIR'
+for fname in sorted(os.listdir(results_dir)):
+    if not fname.endswith('.json'):
+        continue
+    with open(os.path.join(results_dir, fname)) as f:
+        d = json.load(f)
+    results = [r for r in d['results'] if 'error' not in r]
+    if not results:
+        continue
+    tps = [r['tokens_per_sec'] for r in results]
+    lats = [r['latency_s'] for r in results]
+    cpu = [r['cpu_percent'] for r in results]
+    ram = [r['ram_used_gb'] for r in results]
+    ct = sum(r.get('completion_tokens', 0) for r in results)
+    pt = sum(r.get('prompt_tokens', 0) for r in results)
+    name = fname.replace('.json','')
+    print(f'  {name:25s}  '
+          f'T/s: {sum(tps)/len(tps):5.1f}  '
+          f'Lat: {sum(lats)/len(lats):5.1f}s  '
+          f'CPU: {sum(cpu)/len(cpu):5.1f}%  '
+          f'RAM: {sum(ram)/len(ram):5.1f}GB  '
+          f'CT: {ct:4d}  PT: {pt:4d}')
+" 2>&1

@@ -11,6 +11,10 @@ __pycache__/
 *.deb
 windows/downloads/*
 linux/llm-stack/ollama-binary.tar.zst
+linux/llm-stack/.env
+linux/llm-stack/benchmark_results/
+linux/llm-stack/benchmark-viewer/dist/
+linux/llm-stack/benchmark-viewer/node_modules/
 linux/nextcloud-aio/.env
 .claude/
 
