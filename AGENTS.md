@@ -110,11 +110,16 @@ BeschleunigerBallett's `Scripts/Windows/Resolve-BuildModule.ps1`).
 
 Consumers building large projects in this image should read
 `docs/windows-container-build-performance.md`. Measured on a ~690-object C++23
-modules project: **48 s** incremental vs **352-484 s** when every build got a
-fresh container. Headlines:
+modules project: **9.6 s ninja / 44 s wall** for a no-change incremental build
+vs **352-484 s** when every build got a fresh container. Headlines:
 
 - **Reuse ONE container** (recreate it when the image ID changes); stream
   sources in and only executables/logs out - never the intermediate build tree.
+- **Two transports, both supported**: tar-pipe (no host setup) and bind mount
+  (needs an elevated `fsutil` allow-list plus a reboot on a Dev Drive). The
+  bind mount measured *slower* on that host - 32.7 s ninja vs 9.6 s - because
+  the build tree then sits behind a filesystem filter. Host-specific: measure
+  before choosing. Setup for both is in the doc.
 - **sccache does not work on C++20/23 modules builds** - measured 0.00 % hit
   rate, 0 bytes stored. It remains useful for non-module codebases.
 - **A named volume cannot be a CMake build directory** - configure fails with

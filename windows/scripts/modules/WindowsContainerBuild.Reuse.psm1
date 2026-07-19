@@ -5,9 +5,10 @@
 # build tree in and out. Reusing ONE container removes both - the build tree,
 # ninja graph and C++ module BMIs simply stay where they are.
 #
-# Measured on a ~690-object C++23 modules project: 48 s incremental vs
-# 352-484 s with a fresh container per build. Background, including three
-# approaches that do NOT work, is in
+# Measured on a ~690-object C++23 modules project: 9.6 s ninja / 44 s wall for
+# a no-change incremental build, vs 352-484 s with a fresh container per build.
+# Background - including the two supported transports and how to set each up,
+# plus three approaches that do NOT work - is in
 # docs/windows-container-build-performance.md.
 
 Set-StrictMode -Version Latest

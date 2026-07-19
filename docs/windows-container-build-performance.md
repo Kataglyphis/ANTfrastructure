@@ -282,7 +282,10 @@ ordinary directory for the operations CMake's compiler test performs.
 
 - **Mount over a fresh path.** Mounting onto a directory baked into the image
   (e.g. `C:\workspace`) fails at `CreateComputeSystem` when the host OS build
-  differs from the image base build. Use a new path such as `C:\ws-mnt`.
+  differs from the image base build. Use a path absent from the image — and if
+  you support both transports, make it the *same* path the tar-pipe extracts
+  to (`C:\ws`), not a separate one, or CMake rejects the cache on every switch.
+  See [Transports](#transports-how-to-set-up-both).
 
 ## Reusable implementation
 
