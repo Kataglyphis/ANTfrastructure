@@ -1,23 +1,116 @@
+/* Kataglyphis brand theme — generated tokens from style/brand.json */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
+
 :root {
-  --bg: #0f172a;
-  --bg-card: #1e293b;
-  --bg-alt: #1a2332;
-  --text: #e2e8f0;
-  --text-muted: #94a3b8;
-  --border: #334155;
-  --accent: #6366f1;
-  --accent2: #a855f7;
-  --success: #22c55e;
+  --brand-font-main: 'Roboto', sans-serif;
+  --brand-white: #ffffff;
+  --brand-black: #000000;
+  --brand-accent: #6af0ad;
+  --brand-accent-strong: #2ad488;
+  --brand-accent-soft: #e9fbf2;
+  --brand-accent-deep: #145a3c;
+  --brand-link: #1ca06a;
+  --brand-link-hover: #167d52;
+  --brand-link-active: #0f6b47;
+  --brand-text-main: #1f2a24;
+  --brand-text-on-accent: #ffffff;
+  --brand-surface-soft: #f7fbf9;
+  --brand-surface-border: #dcefe5;
+  --brand-surface-gradient-from: #fbfefd;
+  --brand-surface-gradient-to: #f3fbf7;
+  --brand-card-gradient-from: #ffffff;
+  --brand-card-gradient-to: #f1fbf5;
+  --brand-dark-link: #7df5ba;
+  --brand-dark-link-hover: #a0f9cc;
+  --brand-dark-text-base: #e7efe9;
+  --brand-dark-text-muted: #b8cbc0;
+  --brand-dark-hero-text: #000000;
+  --brand-dark-surface-gradient-from: #101712;
+  --brand-dark-surface-gradient-to: #0d1410;
+  --brand-dark-surface-border: #2b3b33;
+  --brand-dark-code-bg: #1a2d23;
+  --brand-dark-code-border: #2b4a3a;
+  --brand-dark-quote-bg: #0f1f17;
+  --brand-dark-table-stripe-bg: #132018;
+  --brand-dark-sidebar-link: #d7e7de;
+  --brand-dark-sidebar-link-hover: #f0fbf5;
+  --brand-dark-sidebar-link-hover-bg: #1d2d25;
+  --brand-dark-sidebar-link-active: #f4fdf8;
+  --brand-dark-sidebar-link-active-bg: #233a2f;
   --error: #ef4444;
+  --success: #22c55e;
 }
+
+/* ── Light mode (default) ───────────────────── */
+
+:root,
+[data-theme="light"] {
+  --bg: var(--brand-surface-soft);
+  --bg-card: var(--brand-white);
+  --bg-alt: var(--brand-accent-soft);
+  --text: var(--brand-text-main);
+  --text-muted: #5e7a6b;
+  --border: var(--brand-surface-border);
+  --accent: var(--brand-accent-strong);
+  --accent-soft: var(--brand-accent-soft);
+  --gradient-from: var(--brand-card-gradient-from);
+  --gradient-to: var(--brand-card-gradient-to);
+  --header-gradient: linear-gradient(135deg, var(--brand-accent), var(--brand-accent-strong));
+  --sidebar-gradient: linear-gradient(180deg, var(--brand-surface-gradient-from), var(--brand-surface-gradient-to));
+  --table-header-bg: var(--brand-accent-strong);
+  --table-header-text: var(--brand-text-on-accent);
+  --table-stripe: var(--brand-accent-soft);
+  --chip-bg: var(--brand-accent-soft);
+  --chip-border: var(--brand-surface-border);
+  --chip-active-bg: var(--brand-accent-strong);
+  --chip-active-text: var(--brand-white);
+  --stat-value-color: var(--brand-accent-strong);
+  --heading-underline: var(--brand-accent-strong);
+  --hover-bg: rgba(42, 212, 136, 0.06);
+  --code-bg: var(--brand-accent-soft);
+  --code-border: var(--brand-surface-border);
+}
+
+/* ── Dark mode ──────────────────────────────── */
+
+[data-theme="dark"] {
+  --bg: #0d1410;
+  --bg-card: #131f19;
+  --bg-alt: #1a2d23;
+  --text: var(--brand-dark-text-base);
+  --text-muted: var(--brand-dark-text-muted);
+  --border: var(--brand-dark-surface-border);
+  --accent: var(--brand-accent);
+  --accent-soft: var(--brand-dark-code-bg);
+  --gradient-from: #16271f;
+  --gradient-to: #111f18;
+  --header-gradient: linear-gradient(135deg, var(--brand-accent), var(--brand-accent-strong));
+  --sidebar-gradient: linear-gradient(180deg, var(--brand-dark-surface-gradient-from), var(--brand-dark-surface-gradient-to));
+  --table-header-bg: var(--brand-accent-strong);
+  --table-header-text: var(--brand-text-on-accent);
+  --table-stripe: var(--brand-dark-table-stripe-bg);
+  --chip-bg: var(--brand-dark-code-bg);
+  --chip-border: var(--brand-dark-surface-border);
+  --chip-active-bg: var(--brand-accent-strong);
+  --chip-active-text: var(--brand-white);
+  --stat-value-color: var(--brand-accent);
+  --heading-underline: var(--brand-accent);
+  --hover-bg: rgba(106, 240, 173, 0.06);
+  --code-bg: var(--brand-dark-code-bg);
+  --code-border: var(--brand-dark-code-border);
+}
+
+/* ── Base ───────────────────────────────────── */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { font-family: var(--brand-font-main); }
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {
@@ -26,39 +119,93 @@ body {
   padding: 24px;
 }
 
-/* ── Header ─────────────────────────────────────── */
+/* ── Header ─────────────────────────────────── */
 
 .app-header {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .app-header h1 {
   font-size: 1.75rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  background: var(--header-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  padding-bottom: 0.3rem;
+  border-bottom: 2px solid var(--border);
+  position: relative;
+}
+.app-header h1::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 80px;
+  height: 2px;
+  background: var(--heading-underline);
 }
 .subtitle {
   color: var(--text-muted);
   font-size: 0.9rem;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
-/* ── Cards ───────────────────────────────────────── */
+/* ── Dark mode toggle ───────────────────────── */
+
+.theme-toggle {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--brand-font-main);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Cards ──────────────────────────────────── */
 
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 20px;
   margin-bottom: 20px;
+  box-shadow: 0 6px 18px rgba(32, 78, 56, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.card:hover {
+  box-shadow: 0 10px 26px rgba(32, 78, 56, 0.14);
 }
 .card h2 {
   font-size: 1.1rem;
   font-weight: 600;
   margin-bottom: 16px;
-  color: var(--text);
+  color: var(--accent);
+  padding-bottom: 0.3rem;
+  border-bottom: 2px solid var(--border);
+  position: relative;
+}
+.card h2::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 80px;
+  height: 2px;
+  background: var(--heading-underline);
 }
 .card h3 { font-size: 1rem; font-weight: 600; }
 .card h4 {
@@ -66,12 +213,12 @@ body {
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   margin: 16px 0 8px;
 }
 .full-width { grid-column: 1 / -1; }
 
-/* ── Summary / Model Card ────────────────────────── */
+/* ── Summary / Model Card ───────────────────── */
 
 .layout-top {
   display: grid;
@@ -86,91 +233,91 @@ body {
 .summary-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 20px;
 }
-.stat {
-  text-align: center;
-  min-width: 80px;
-}
+.stat { text-align: center; min-width: 80px; }
 .stat-value {
   display: block;
   font-size: 1.3rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--stat-value-color);
 }
 .stat-label {
   display: block;
   font-size: 0.75rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
+  font-weight: 500;
 }
 
-/* ── KV Table (hardware, params) ─────────────────── */
+.summary-card {
+  background: linear-gradient(140deg, var(--gradient-from) 10%, var(--gradient-to) 100%);
+}
 
-.kv-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.kv-table td {
-  padding: 4px 12px 4px 0;
-  font-size: 0.85rem;
-}
+/* ── Hardware card ──────────────────────────── */
+
+.hardware-card { min-width: 280px; }
+
+.kv-table { width: 100%; border-collapse: collapse; }
+.kv-table td { padding: 4px 12px 4px 0; font-size: 0.85rem; }
 .kv-label {
   color: var(--text-muted);
   white-space: nowrap;
   width: 1%;
+  font-weight: 500;
 }
 .kv-value {
   color: var(--text);
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
   font-size: 0.82rem;
 }
 
-.hardware-card { min-width: 280px; }
-
-/* ── Data Table ──────────────────────────────────── */
+/* ── Data Table ─────────────────────────────── */
 
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 0.5rem;
 }
 .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.82rem;
 }
-.data-table th {
-  background: var(--bg);
-  padding: 8px 12px;
+.data-table thead th {
+  background: var(--table-header-bg);
+  color: var(--table-header-text);
+  padding: 0.6rem 0.8rem;
   text-align: left;
   font-weight: 600;
-  color: var(--text-muted);
   text-transform: uppercase;
-  font-size: 0.72rem;
-  letter-spacing: 0.05em;
-  border-bottom: 2px solid var(--border);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
   white-space: nowrap;
 }
-.data-table td {
-  padding: 6px 12px;
+.data-table tbody td {
+  padding: 0.5rem 0.8rem;
   border-bottom: 1px solid var(--border);
+}
+.data-table tbody tr:nth-child(even) {
+  background: var(--table-stripe);
 }
 .data-table .num {
   text-align: right;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
   font-size: 0.8rem;
 }
 .data-table code {
-  background: rgba(99, 102, 241, 0.15);
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.78rem;
 }
-.data-table tr:hover td {
-  background: rgba(99, 102, 241, 0.05);
+.data-table tbody tr:hover td {
+  background: var(--hover-bg);
 }
 
-/* ── Charts ──────────────────────────────────────── */
+/* ── Charts ─────────────────────────────────── */
 
 .chart-grid {
   display: grid;
@@ -180,7 +327,7 @@ body {
 }
 .chart-card h2 { margin-bottom: 8px; }
 
-/* ── Drill Down ──────────────────────────────────── */
+/* ── Drill Down ─────────────────────────────── */
 
 .drill-selector {
   display: flex;
@@ -189,21 +336,22 @@ body {
   margin-bottom: 16px;
 }
 .chip {
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
   color: var(--text);
   padding: 6px 14px;
   border-radius: 20px;
   font-size: 0.82rem;
   cursor: pointer;
   transition: all 0.15s;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--brand-font-main);
+  font-weight: 500;
 }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
 .chip.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--chip-active-bg);
+  border-color: var(--chip-active-bg);
+  color: var(--chip-active-text);
 }
 
 .config-detail-header {
@@ -222,7 +370,7 @@ body {
   padding-top: 12px;
 }
 
-/* ── Errors ──────────────────────────────────────── */
+/* ── Errors ─────────────────────────────────── */
 
 .error-list {
   list-style: none;
@@ -244,12 +392,13 @@ body {
   text-align: center;
 }
 .error-banner code {
-  background: rgba(255,255,255,0.1);
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
   padding: 2px 6px;
   border-radius: 4px;
 }
 
-/* ── Loading ─────────────────────────────────────── */
+/* ── Loading ────────────────────────────────── */
 
 .loading {
   text-align: center;
@@ -258,7 +407,7 @@ body {
   font-size: 1.1rem;
 }
 
-/* ── Footer ──────────────────────────────────────── */
+/* ── Footer ─────────────────────────────────── */
 
 .app-footer {
   text-align: center;
@@ -267,4 +416,22 @@ body {
   padding: 20px 0;
   border-top: 1px solid var(--border);
   margin-top: 20px;
+}
+
+/* ── Chart tooltip overrides ────────────────── */
+
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+}
+.recharts-legend-item-text {
+  color: var(--text) !important;
+}
+.recharts-text {
+  fill: var(--text-muted) !important;
+}
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--border) !important;
 }

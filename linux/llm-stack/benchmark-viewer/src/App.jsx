@@ -223,9 +223,24 @@ function ConfigDetail({ config }) {
   )
 }
 
+function useTheme() {
+  const getInitial = () => {
+    const stored = localStorage.getItem('kataglyphis-theme')
+    if (stored) return stored
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+  const [theme, setTheme] = useState(getInitial)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('kataglyphis-theme', theme)
+  }, [theme])
+  return [theme, () => setTheme(t => t === 'light' ? 'dark' : 'light')]
+}
+
 function App() {
   const [data, err] = initFetch(DATA_URL)
   const [selectedIdx, setSelectedIdx] = useState(null)
+  const [theme, toggleTheme] = useTheme()
 
   if (err) return (
     <div className="app">
@@ -249,8 +264,13 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>LLM Benchmark Viewer</h1>
-        <p className="subtitle">{title || 'Model benchmarks'}</p>
+        <div>
+          <h1>LLM Benchmark Viewer</h1>
+          <p className="subtitle">{title || 'Model benchmarks'}</p>
+        </div>
+        <button className="theme-toggle" onClick={toggleTheme}>
+          {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+        </button>
       </header>
 
       <div className="layout-top">
