@@ -14,11 +14,16 @@ host. Concrete script:
 
 | Approach | Outcome |
 | --- | --- |
-| **Reusable build container** | ✅ **48 s** no-change, **63 s** one header touched |
+| **Reusable container + tar-pipe** | ✅ **9.6 s** ninja / **44 s** wall, no-change |
+| Bind mount instead of the tar-pipe | ❌ 32.7 s ninja / 159 s wall — **slower**, see below |
 | Streaming the build tree in and out | 🟡 ~230 s (worked, but moved ~17 GB per build) |
 | sccache with a persistent named volume | ❌ 0.00 % hit rate, 0 bytes stored |
 | Named volume mounted as the build directory | ❌ CMake cannot configure inside it |
 | Fresh container per build (starting point) | 352–484 s |
+
+Cold builds, for reference: 327.9 s (tar-pipe, fresh container) and 318.1 s
+(bind mount). The transport barely matters cold — it is the *incremental* case
+where the difference is decisive.
 
 ## What works: reuse one container
 
@@ -64,8 +69,82 @@ Reuse trades isolation for speed, so guard it:
 3. Keep the build root: if the build script wipes its build directory before
    configuring, gate that behaviour behind an env var (this project uses
    `KATAGLYPHIS_KEEP_BUILD_ROOT`) or reuse buys nothing.
+4. **Verify the artifacts exist and arrived.** A zero exit code proves neither.
+   Both halves failed silently in the reference project:
+
+   - A build was **cut off before linking**, reported success, and produced no
+     test executable at all. The log simply stopped partway through the step
+     count (`[982/1022]`) with no summary and no error.
+   - The outbound `tar` selected files by **glob** — which `tar` does not
+     expand. It copied nothing, reported success, and looked correct only
+     because stale artifacts from an earlier build were already on the host.
+     Select by `--exclude` instead.
+
+   Hours went into diagnosing a "transport bug" that was really a truncated
+   build, because a green build was taken as evidence that binaries existed.
+   After the transfer, list the executables **inside** the container and assert
+   each one reached the host; fail the build if the container produced none, or
+   if any did not arrive.
+
+   Check **existence, not timestamps**: on a no-change incremental build the
+   linker does not run, so the executables are legitimately older than the
+   current run. A freshness check would false-fail exactly when the cache is
+   working best.
 
 ## What does not work
+
+### A bind mount instead of the tar-pipe (on a Dev Drive)
+
+The tar-pipe exists because Dev Drive hosts reject bind mounts. Allow-listing
+the filters removes that restriction:
+
+```powershell
+fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"   # elevated; needs a reboot
+```
+
+Note the quoting — the filter list is **one argument**. `bindFlt, wcifs`
+unquoted is parsed as two and fails with a syntax error. The setting persists
+immediately but the filters only attach after the volume is dismounted, so
+reboot (or `/f`, which force-dismounts a volume that is in use — a bad idea
+for the volume holding your repo).
+
+It works, and it is **slower**. Measured on the same tree, both transports
+using the same in-container path:
+
+| | ninja | wall |
+| --- | --- | --- |
+| tar-pipe + reused container, no-change | **9.6 s** | **44 s** |
+| bind mount, no-change | 32.7 s | 159 s |
+
+Removing the transport does not pay for what it adds. With a bind mount the
+build tree lives on the Dev Drive, so every ninja stat and every object write
+crosses the `bindFlt` filter from inside the container. Copying sources in
+bulk once is cheaper than paying filtered I/O across ~1000 targets — ninja
+alone tripled on an identical tree. Repeated to rule out a first-run artifact.
+
+There is a second cost: a Dev Drive is fast precisely *because* filters do not
+attach to it. Allow-listing them slows general I/O on that volume, not just
+container builds. `fsutil devdrv clearFiltersAllowed /volume D:` reverts it.
+
+**Do not assume this generalises.** On a normal (non-Dev-Drive) volume, or
+with a much smaller build tree, the transport can dominate and the bind mount
+can win. Measure before choosing; keep both paths behind a switch.
+
+### Mount both transports at the SAME in-container path
+
+If you support both, mount at the path the tar-pipe already uses. CMake bakes
+absolute paths into `CMakeCache.txt` and refuses to reuse a cache generated
+elsewhere:
+
+```
+CMake Error: The source "C:/ws-mnt/CMakeLists.txt" does not match
+the source "C:/ws/CMakeLists.txt" used to generate cache.
+```
+
+Switching transports then forces a cold rebuild every time. One shared path
+(here `C:\ws`) keeps the trees interchangeable. The path must still be absent
+from the image — mounting over a directory baked in (`C:\workspace`) fails at
+`CreateComputeSystem` when the host OS build differs from the image base.
 
 ### sccache on a C++23 modules build
 
@@ -115,12 +194,9 @@ ordinary directory for the operations CMake's compiler test performs.
 
 - **Dev Drive rejects bind mounts.** The filesystem minifilter cannot attach
   ("Der Dateisystem-Minifilter kann nicht an das Entwicklervolume angefügt
-  werden"), which forces the tar-pipe transport in the first place. To use
-  bind mounts instead, run once elevated and remount:
-
-  ```powershell
-  fsutil devdrv setfiltersallowed bindFlt, wcifs
-  ```
+  werden"), which forces the tar-pipe transport in the first place. Allow-
+  listing the filters lifts the restriction — but measured slower here; see
+  "What does not work" above before reaching for it.
 
 - **Containers survive successful builds** (`wcifs` teardown lock). A
   lingering container makes it look like a build is still running. Compare the
