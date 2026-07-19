@@ -619,3 +619,28 @@ combined validating rebuild.
 - Minor: GCC install/clang install single-threaded (add -j/--parallel); onnx WASM 4×
   no-ccache; tvm.sh non-shallow recursive clone; pre-existing NV_CODEC_HEADERS_REF script
   default drift (n12.2.1 vs versions.env n13.0.19.0, advisory).
+
+## 2026-07-19 — disk strategy + feature-enabled publish run
+
+### Disk findings (rootless nerdctl+buildkit)
+- **buildkit OCI-worker cache (~348G) is NOT pruneable mid/post-run** — `buildctl prune
+  --all` and `nerdctl builder prune --all` both reclaim 0B; every record pins as
+  `Reclaimable:false` (held as image results). Only a buildkitd restart w/ a
+  keepstorage GC policy would cap it (avoided: "never kill buildkitd").
+- **Deleting an intermediate image TAG frees ~nothing** — cross-android-<arch> is FROM
+  cross-media-<arch>, so they share layers; only deleting a FULL image set (all of an
+  arch's chain, or the whole tag family) frees space.
+- **Effective bulk cleanup** (done out-of-band before a run, freed 210G: 75G→285G):
+  `nerdctl rmi` the stale feature-less intermediates (cross-media-*/cross-android-*)
+  and the re-pullable published `latest-cross-*` locals (they're on ghcr; the new build
+  replaces them). containerd 258G→48G.
+- **Wired mid-build guard (56adf0c):** `_chain_stage_disk_guard()` clears the regenerable
+  kata-buildcache export between stages when free < CROSS_DISK_GUARD_GB (default 40) —
+  the only reclaimable mid-run space. Off with CROSS_DISK_GUARD_GB=0.
+- **Push mode is more disk-friendly than --no-push** — offloads images to ghcr instead of
+  retaining all locally, so a publishing chain fits where a --no-push validation didn't.
+
+### Publish run (in progress)
+Full media→android→runtime, 3 arches, PUSH (new :latest-cross), SERIAL, x265+WebGPU(amd64)
+enabled. parallel-archs deliberately NOT used — it 3×'s peak disk on the exact constraint
+being managed; validate it separately on a cached scope, not on a 10h production publish.
