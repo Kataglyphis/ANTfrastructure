@@ -117,6 +117,13 @@ ordinary directory for the operations CMake's compiler test performs.
   (e.g. `C:\workspace`) fails at `CreateComputeSystem` when the host OS build
   differs from the image base build. Use a new path such as `C:\ws-mnt`.
 
+## Reusable implementation
+
+The pattern is implemented here so consumers do not copy it:
+`windows/scripts/modules/WindowsContainerBuild.Reuse.psm1`
+(`Get-ReusableBuildContainer`, `Copy-IntoBuildContainer`,
+`Copy-FromBuildContainer`). Import it via the consumer's module resolver.
+
 ## Applying this elsewhere
 
 The pattern generalises to any large project built in a Windows container:

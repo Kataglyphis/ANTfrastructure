@@ -78,6 +78,21 @@ All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Steve
 
 See `docs/windows-builds.md` § Build Commands for the full 5-stage Windows build sequence and `docs/windows-builds.md` § Stevedore Setup Fixes for post-install fixes.
 
+### Reusable Module: WindowsContainerBuild.Reuse
+
+`windows/scripts/modules/WindowsContainerBuild.Reuse.psm1` implements the
+container-reuse pattern so consumers do not each reinvent it:
+
+- `Get-ReusableBuildContainer` - reuse/start/recreate a named build container,
+  recreating it when the image ID changes. Returns whether an existing
+  container was reused.
+- `Copy-IntoBuildContainer` / `Copy-FromBuildContainer` - tar-pipe transfers
+  with exclusion support (mandatory for deep paths; one over-long path aborts
+  the whole transfer).
+
+Consumers resolve it ContainerHub-first with a vendored fallback (see
+BeschleunigerBallett's `Scripts/Windows/Resolve-BuildModule.ps1`).
+
 ### Building Projects Inside the Windows Image (performance)
 
 Consumers building large projects in this image should read
