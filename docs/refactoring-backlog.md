@@ -644,3 +644,12 @@ combined validating rebuild.
 Full media→android→runtime, 3 arches, PUSH (new :latest-cross), SERIAL, x265+WebGPU(amd64)
 enabled. parallel-archs deliberately NOT used — it 3×'s peak disk on the exact constraint
 being managed; validate it separately on a cached scope, not on a 10h production publish.
+
+## 2026-07-19 — WebGPU (Dawn) does NOT build with GCC 16.1.0 [FINDING]
+Enabling ORT_ENABLE_WEBGPU=true failed the amd64 onnxruntime NATIVE build:
+Dawn's tint compiler (`_deps/dawn-build/src/tint/.../tint_lang_core_intrinsic`) fails to
+compile (`type_matchers.h` MatchMat error → gmake Error 2 → "ONNX Runtime CPU build failed
+after 3 attempts"). This is on amd64 native — not even cross — so Dawn is incompatible with
+the toolchain (GCC 16.1.0), not a cross-only gap. WebGPU reverted to gated-OFF (its default).
+To ship WebGPU later: pin a Dawn/onnxruntime combo that builds under GCC 16, or build Dawn
+with clang. x265 kept ON for the publish (probe-gated; libx265 4.1-4 installs cleanly).

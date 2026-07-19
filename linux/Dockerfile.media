@@ -181,7 +181,7 @@ ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
 # WebGPU (Dawn) execution provider. Default off; amd64 lights up when
 # ORT_ENABLE_WEBGPU=true, arm64/riscv64 additionally need ORT_WEBGPU_ALLOW_CROSS=true
 # (Dawn cross-build unproven). See onnxruntime/build/lib/common.sh.
-ARG ORT_ENABLE_WEBGPU=true
+ARG ORT_ENABLE_WEBGPU=false
 ARG ORT_WEBGPU_ALLOW_CROSS=false
 
 ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
