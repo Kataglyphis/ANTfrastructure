@@ -113,6 +113,18 @@ ordinary directory for the operations CMake's compiler test performs.
   newest build-summary timestamp against the container start time before
   assuming, and reap stale containers by name.
 
+- **`docker exec` bypasses the image entrypoint.** When driving a long-lived
+  container with `docker exec` (rather than `docker run`), the entrypoint that
+  sets up the VS developer environment and the clang-cl ASAN runtime DLL
+  directory never runs. Invoke it explicitly:
+
+  ```powershell
+  docker exec -w C:\ws $container cmd /S /C C:	emp\scripts\entrypoint.cmd @buildArgs
+  ```
+
+  Symptoms if you forget: compilers "not found", or ASAN binaries failing to
+  start because `clang_rt.asan*.dll` is not on `PATH`.
+
 - **Mount over a fresh path.** Mounting onto a directory baked into the image
   (e.g. `C:\workspace`) fails at `CreateComputeSystem` when the host OS build
   differs from the image base build. Use a new path such as `C:\ws-mnt`.
