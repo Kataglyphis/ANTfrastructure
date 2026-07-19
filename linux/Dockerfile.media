@@ -181,7 +181,7 @@ ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
 # WebGPU (Dawn) execution provider. Default off; amd64 lights up when
 # ORT_ENABLE_WEBGPU=true, arm64/riscv64 additionally need ORT_WEBGPU_ALLOW_CROSS=true
 # (Dawn cross-build unproven). See onnxruntime/build/lib/common.sh.
-ARG ORT_ENABLE_WEBGPU=false
+ARG ORT_ENABLE_WEBGPU=true
 ARG ORT_WEBGPU_ALLOW_CROSS=false
 
 ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
@@ -522,7 +522,7 @@ ARG FFMPEG_COMMIT=""
 
 # HEVC (libx265) encoding. Default 0 = disabled (historical behavior); set to 1
 # (forwarded from versions.env) to probe-gate --enable-libx265. See build-ffmpeg.sh.
-ARG FFMPEG_ENABLE_X265=0
+ARG FFMPEG_ENABLE_X265=1
 
 ENV FFMPEG_PREFIX=/opt/ffmpeg \
     FFMPEG_ENABLE_X265=${FFMPEG_ENABLE_X265}

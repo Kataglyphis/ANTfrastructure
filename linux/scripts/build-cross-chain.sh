@@ -267,6 +267,9 @@ _chain_run_build_loop() {
         fi
         ;;
     esac
+    # Reclaim regenerable cache between stages if the host is running low, so the
+    # next (heavier) stage doesn't ENOSPC. No-op above CROSS_DISK_GUARD_GB free.
+    _chain_stage_disk_guard
   done
 }
 
@@ -298,6 +301,27 @@ _chain_disk_preflight() {
     fi
   else
     log "disk preflight OK: ${free_gb}G free (>= ~${need_gb}G for ${n_arch} arch from-stage ${FROM_STAGE})."
+  fi
+}
+
+# Between-stage disk safety valve. On a disk-constrained host the buildkit
+# OCI-worker cache cannot be pruned mid-run (its records pin as non-reclaimable),
+# and deleting an intermediate image tag frees ~nothing because the child stage
+# shares its layers. The ONE regenerable space is the --cache-to local export.
+# After each stage, if free space has dropped below CROSS_DISK_GUARD_GB, clear it
+# to buy headroom for the next (heavier) stage. Off with CROSS_DISK_GUARD_GB=0.
+_chain_stage_disk_guard() {
+  local threshold="${CROSS_DISK_GUARD_GB:-40}"
+  [ "${threshold}" -gt 0 ] 2>/dev/null || return 0
+  local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
+  local free_gb
+  free_gb="$(df -BG --output=avail "${bc_dir%/*}" 2>/dev/null | tail -1 | tr -dc '0-9')"
+  [ -n "${free_gb}" ] || return 0
+  if [ "${free_gb}" -lt "${threshold}" ]; then
+    log "[disk-guard] ${free_gb}G free < ${threshold}G after stage — clearing regenerable cache export ${bc_dir}"
+    [ -d "${bc_dir}" ] && rm -rf "${bc_dir:?}/"* 2>/dev/null || true
+    free_gb="$(df -BG --output=avail "${bc_dir%/*}" 2>/dev/null | tail -1 | tr -dc '0-9')"
+    log "[disk-guard] after clear: ${free_gb}G free"
   fi
 }
 
