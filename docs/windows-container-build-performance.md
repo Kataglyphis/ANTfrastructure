@@ -47,6 +47,20 @@ Reuse trades isolation for speed, so guard it:
 2. **Provide an explicit reset switch** (`-FreshContainer`, or
    `docker rm -f <name>`). Sources are overwritten in place and never pruned,
    so a file **deleted** on the host still exists inside the container.
+
+   This is not theoretical - measured 2026-07-19. A probe test file was added,
+   built and observed to run; the file was then deleted on the host and the
+   project rebuilt. **The test still ran**, and the `.cpp` was still present
+   inside the container. Consequences worth internalising: tests keep passing
+   against deleted code, and a deletion that breaks the build passes locally
+   and fails in CI, where nothing is reused.
+
+   If you want reuse without this hazard, prune the source tree inside the
+   container before streaming (keeping the build directory and logs) rather
+   than extracting over it. Sources re-stream in seconds; only the build tree
+   is worth preserving. Get the exclusion pattern right first - a wrong one
+   deletes the build tree on every build and silently undoes the whole
+   optimisation.
 3. Keep the build root: if the build script wipes its build directory before
    configuring, gate that behaviour behind an env var (this project uses
    `KATAGLYPHIS_KEEP_BUILD_ROOT`) or reuse buys nothing.
