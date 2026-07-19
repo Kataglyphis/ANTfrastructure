@@ -50,6 +50,12 @@ build cross-architecture artifacts, enable GPU variants, use runtime services, o
 
       Webserver, display forwarding, Raspberry Pi camera notes, and WebRTC signalling and streaming.
 
+   .. grid-item-card:: Windows Build Performance
+      :link: windows-container-build-performance
+      :link-type: doc
+
+      Making container builds incremental: what works, what does not, and why.
+
    .. grid-item-card:: Windows Build Image
       :link: windows-builds
       :link-type: doc
@@ -99,5 +105,6 @@ Common development targets:
    linux-accelerator-images
    runtime-services
    windows-builds
+   windows-container-build-performance
    project-info
    third-party-licenses
