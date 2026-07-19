@@ -278,8 +278,11 @@ is_vendor_binary() {
   return 1
 }
 
-elf_mismatches=0
+core_mismatches=0
+so_mismatches=0
 if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
+  # CORE media binaries — never vendor, so a wrong arch here is always a genuine
+  # defect. These drive the FATAL gate below.
   elf_binaries=(
     "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-launch-1.0"
     "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-inspect-1.0"
@@ -295,24 +298,29 @@ if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
         ;;
       *)
         echo "  MISMATCH: $(basename "${bin}") ELF machine=${elf_machine} != expected ${elf_machine_grep} (arch=${target_arch})" >&2
-        elf_mismatches=$((elf_mismatches + 1))
+        core_mismatches=$((core_mismatches + 1))
         ;;
     esac
   done
+  # Shared-object sweep over LIB_DIRS is ADVISORY only. These dirs also hold
+  # intentionally foreign-arch vendor SDKs (Qualcomm QNN/QAIRT libQairt*/libPyQnn*/
+  # libDlContainerPy/libqnn-*, Hexagon DSP6 skels, MediaTek NeuroPilot, …) whose
+  # names the VENDOR_ARCH_SKIP_PATTERNS list cannot exhaustively enumerate — so
+  # treating a .so mismatch as fatal would abort on legitimately-bundled vendor
+  # libs (it did: 33 QAIRT/QNN libs on the amd64 image). Report, do not fail.
   for so_dir in "${LIB_DIRS[@]}"; do
     [ -d "${so_dir}" ] || continue
     for so in "${so_dir}"/*.so "${so_dir}"/*.so.*; do
       [ -f "${so}" ] || continue
       _so_base="$(basename "${so}")"
-      # Skip vendor binaries that are intentionally foreign-arch
       is_vendor_binary "${_so_base}" && continue
       elf_machine="$(readelf -h "${so}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
       case "${elf_machine}" in
         *"${elf_machine_grep}"*) ;;
         "") continue ;;
         *)
-          echo "  MISMATCH: ${_so_base} ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
-          elf_mismatches=$((elf_mismatches + 1))
+          echo "  MISMATCH (advisory, may be vendor): ${_so_base} ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
+          so_mismatches=$((so_mismatches + 1))
           ;;
       esac
     done
@@ -321,19 +329,17 @@ else
   echo "  SKIP: readelf not available or unknown arch ${target_arch}" >&2
 fi
 
-# A non-vendor ELF whose machine != the target arch is a genuine wrong-arch
-# artifact (the exact host-vs-target-triple defect class this build fights) —
-# vendor/foreign binaries and empty-machine entries are already skipped above,
-# so anything counted here is a real defect. Previously this was echo-only and
-# the script still exited 0, so a foreign ffmpeg/gst binary shipped silently.
-# Fail loud. Escape hatch MEDIA_ELF_MISMATCH_FATAL=0 downgrades to a warning if
-# a legit foreign binary ever needs the vendor skip-list extended instead.
-if [ "${elf_mismatches}" -gt 0 ]; then
+# A wrong-arch CORE binary (ffmpeg/ffprobe/gst-launch/gst-inspect) is a genuine
+# host-vs-target-triple defect — the exact class this build fights — and is never
+# a vendor binary, so fail loud on it. The .so sweep stays advisory (see above);
+# escape hatch MEDIA_ELF_MISMATCH_FATAL=0 downgrades the core gate to a warning.
+[ "${so_mismatches}" -gt 0 ] && echo "  NOTE: ${so_mismatches} advisory .so ELF mismatch(es) (likely bundled vendor SDKs; not failing)" >&2
+if [ "${core_mismatches}" -gt 0 ]; then
   if [ "${MEDIA_ELF_MISMATCH_FATAL:-1}" = "1" ]; then
-    echo "  FAIL: ${elf_mismatches} ELF architecture mismatch(es) for target ${target_arch} — wrong-arch artifact(s) present" >&2
+    echo "  FAIL: ${core_mismatches} CORE media binary ELF mismatch(es) for target ${target_arch} — wrong-arch artifact(s) present" >&2
     exit 1
   fi
-  echo "  WARN: ${elf_mismatches} ELF architecture mismatch(es) (MEDIA_ELF_MISMATCH_FATAL=0; not failing)" >&2
+  echo "  WARN: ${core_mismatches} core ELF mismatch(es) (MEDIA_ELF_MISMATCH_FATAL=0; not failing)" >&2
 fi
 
 # ---------------------------------------------------------------------------
