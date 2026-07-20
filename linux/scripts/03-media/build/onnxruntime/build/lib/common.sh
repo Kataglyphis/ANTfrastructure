@@ -448,6 +448,17 @@ append_onnx_optional_lto_webgpu_args() {
   fi
   if onnx_webgpu_enabled_for_target; then
     build_args_ref+=(--use_webgpu --use_external_dawn)
+    # Dawn's tint generates constexpr matcher functions (data.cc) that call the
+    # non-constexpr MatchMat helper. clang (Dawn's primary toolchain) ignores this;
+    # GCC 16 raises -Winvalid-constexpr and treats it as an ERROR — 36 in data.cc
+    # alone — because Dawn's build feeds clang-only -Wno-* flags (e.g.
+    # -Wno-unknown-warning-option) that GCC silently drops, leaving the diagnostic
+    # unsuppressed. It's the ONLY error blocking the Dawn build. Disable exactly
+    # that diagnostic for this build so Dawn compiles under GCC 16; harmless
+    # elsewhere (a single relaxed pedantic warning). Both spellings for safety:
+    # -Wno-error demotes it if Dawn uses -Werror, -Wno- disables it if it's a
+    # default-error.
+    build_args_ref+=(--cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-error=invalid-constexpr -Wno-invalid-constexpr")
   fi
 }
 

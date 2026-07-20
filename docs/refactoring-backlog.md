@@ -653,3 +653,15 @@ after 3 attempts"). This is on amd64 native — not even cross — so Dawn is in
 the toolchain (GCC 16.1.0), not a cross-only gap. WebGPU reverted to gated-OFF (its default).
 To ship WebGPU later: pin a Dawn/onnxruntime combo that builds under GCC 16, or build Dawn
 with clang. x265 kept ON for the publish (probe-gated; libx265 4.1-4 installs cleanly).
+
+## 2026-07-20 — WebGPU (Dawn) FIXED for GCC 16.1.0 ✅
+Root cause of the earlier Dawn build failure: tint's generated data.cc has 36 constexpr
+matcher functions calling the non-constexpr MatchMat; GCC 16 raises -Winvalid-constexpr
+and errors on it, because Dawn feeds clang-only -Wno-* flags (e.g.
+-Wno-unknown-warning-option) that GCC silently drops, leaving the diagnostic unsuppressed
+(clang ignores it by design → Dawn builds everywhere else). It was the ONLY error type.
+Fix (common.sh, append_onnx_optional_lto_webgpu_args): when WebGPU is enabled, inject
+`CMAKE_CXX_FLAGS=-Wno-error=invalid-constexpr -Wno-invalid-constexpr` into the Dawn build.
+VALIDATED via a targeted onnxruntime-stage diagnostic (ORT_ENABLE_WEBGPU=true): 0
+invalid-constexpr errors, onnxruntime CPU build + WebGPU EP "Build complete", all artifact
+checks pass. Re-enabled ORT_ENABLE_WEBGPU=true (amd64; ALLOW_CROSS stays false).
