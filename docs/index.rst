@@ -106,5 +106,6 @@ Common development targets:
    runtime-services
    windows-builds
    windows-container-build-performance
+   github-cli-pipeline-monitoring
    project-info
    third-party-licenses

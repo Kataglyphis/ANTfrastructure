@@ -78,6 +78,35 @@ All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Steve
 
 See `docs/windows-builds.md` § Build Commands for the full 5-stage Windows build sequence and `docs/windows-builds.md` § Stevedore Setup Fixes for post-install fixes.
 
+### Reading CI status with the GitHub CLI
+
+**Check the pipeline after every push, and again before starting unrelated
+work.** `gh` is installed (winget) and authenticated; see
+[`docs/github-cli-pipeline-monitoring.md`](docs/github-cli-pipeline-monitoring.md).
+
+```powershell
+gh run list --limit 10
+gh run view <run-id> --json jobs --jq '.jobs[] | .name + " => " + .conclusion, (.steps[] | select(.conclusion=="failure") | "   FAILED STEP: " + .name)'
+```
+
+Three things that will otherwise cost you an hour:
+
+- **A shell opened before the winget install cannot find `gh`.** Use a new
+  shell, or `C:\Program Files\GitHub CLI\gh.exe`. Prefer PowerShell — Git
+  Bash may not see winget's user PATH at all.
+- **Never open with `gh run view --log-failed`.** It dumps every failed job's
+  full log — one antlr4 `llvm-ar` line alone is ~15 KB — and grepping it for
+  `error` mostly returns the runner's apt-get cleanup echoes. Ask which STEP
+  failed first (command above), then grep the log for `SUMMARY:` (sanitizers)
+  or `[  FAILED  ]` (GoogleTest).
+- **`skipped` is not a pass.** Gated workflows (the Windows container build
+  wants `[build-win]` in the commit message) report `skipped`, which reads as
+  success at a glance.
+
+Green local tests do not imply green CI: the Linux lane runs ASan/UBSan fuzzing
+that the Windows dev box does not, so some bugs are only ever observable there.
+Fix what failed — do not edit the workflow to silence it.
+
 ### Contributing Reusable Work Here
 
 Consumer projects are expected to push reusable work upstream rather than keep
