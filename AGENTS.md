@@ -78,6 +78,35 @@ All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Steve
 
 See `docs/windows-builds.md` § Build Commands for the full 5-stage Windows build sequence and `docs/windows-builds.md` § Stevedore Setup Fixes for post-install fixes.
 
+### Running Linux containers (Rancher Desktop)
+
+**Rancher Desktop is the preferred Linux-container runtime on this host**, and
+the way to reproduce a Linux CI failure locally instead of guessing through
+pipeline round trips. It does not replace the Windows lane — Windows containers
+still go through Stevedore's `docker.exe`. Full details:
+[`docs/rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md).
+
+```powershell
+$nerdctl = "C:\Program Files\Rancher Desktopesourcesesources\win32in
+erdctl.exe"
+& $nerdctl --namespace default run --rm alpine:3.20 uname -a   # expect ...WSL2... x86_64 Linux
+```
+
+- **Use `nerdctl`, not `docker`.** Rancher defaults to the **containerd** engine,
+  and `docker.exe` ships in the same directory while talking to a different
+  engine entirely — `docker info` on this host reports `OSType=windows`, because
+  the default context is the Windows lane. Both CLIs are present; only one is
+  talking to Linux. (Switching Rancher's engine to `dockerd (moby)` flips this —
+  pick one and stay with it.)
+- Pass `--namespace default` explicitly. containerd namespaces are real
+  isolation, so an image pulled into another namespace is genuinely "not found".
+- **Linux builds use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`,
+  in CI *and* locally.** Not `:latest` — that tag went unrebuilt from 2026-04-16
+  while the cross lane was refreshed (2026-07-20). Both publish amd64/arm64/
+  riscv64. `Linux.yml` sets `CONTAINER_IMAGE` to `:latest-cross`; if a local run
+  uses a different tag, reproducing a CI failure proves nothing. Neither tag is
+  digest-pinned, so both still float.
+
 ### Reading CI status with the GitHub CLI
 
 **Check the pipeline after every push, and again before starting unrelated
