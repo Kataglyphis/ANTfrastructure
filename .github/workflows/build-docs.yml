@@ -20,7 +20,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           # Non-recursive: we only need the flat docs tooling from the
@@ -30,7 +30,7 @@ jobs:
           submodules: true
 
       - name: Install uv (Astral)
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@v8.3.2
         with:
           python-version: 3.14
           enable-cache: true
