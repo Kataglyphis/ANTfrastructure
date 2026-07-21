@@ -9,6 +9,12 @@ _CARGO_WRAPPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$_CARGO_WRAPPER_DIR/../../01-core/logging.sh"
 
+# Writable-CARGO_HOME guard, shared with cargo_security_checks.sh (which does
+# `cargo install` and hit the same root-owned CARGO_HOME). Extracted so a third
+# cargo step cannot regress by forgetting it.
+# shellcheck source=/dev/null
+source "$_CARGO_WRAPPER_DIR/_cargo_home_guard.sh"
+
 # cargo_step <start-msg> <done-msg> -- <command...>
 # Logs <start-msg>, runs <command...>, then logs <done-msg>. The `--` separates
 # the two message args from the command so messages may contain spaces.

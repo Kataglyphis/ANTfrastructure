@@ -107,5 +107,7 @@ Common development targets:
    windows-builds
    windows-container-build-performance
    github-cli-pipeline-monitoring
+   ci-build-triggers
+   rancher-desktop-linux-containers
    project-info
    third-party-licenses
