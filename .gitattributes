@@ -7,3 +7,12 @@
 *.patch -text
 # extensionless shell scripts shipped into images (MSYS sh chokes on CRLF)
 makedef -text eol=lf
+# Shell scripts must stay LF in the working tree on EVERY platform. They are
+# sourced by bash - both inside the images and, on a Windows host, when this
+# repo is bind-mounted into a Linux container (the documented Rancher Desktop
+# workflow). A CRLF checkout makes bash choke on the trailing \r
+# ("$'\r': command not found", "syntax error near unexpected token $'{\r'"),
+# which silently defeats the logging/module bootstrap. Without this rule
+# core.autocrlf=true flips all of them to CRLF on a Windows checkout.
+*.sh text eol=lf
+*.bash text eol=lf
