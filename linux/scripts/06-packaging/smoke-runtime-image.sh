@@ -444,6 +444,41 @@ exit $rc'; then
       fi
       echo ""
     fi
+
+    # Clang/LLVM version alignment on the ACTUAL shipped image, per-arch under
+    # qemu. The build-time smoke-toolchain/validate-compilers checks run in the
+    # TOOLCHAIN stage where clang and LLVM_RELEASE are consistent by construction;
+    # they do NOT catch a STALE toolchain — e.g. a --from-stage media publish that
+    # reuses an old cross-sdk whose clang predates a LLVM_RELEASE bump (shipped
+    # clang 22.1.2 while versions.env says 22.1.8). Assert the runtime image's
+    # clang == LLVM_RELEASE so that drift fails the smoke on every arch. Disable
+    # with RUNTIME_CLANG_VERSION_SMOKE=0.
+    if [ "${RUNTIME_CLANG_VERSION_SMOKE:-1}" = "1" ]; then
+      echo "--- Functional: clang/clang++ version == LLVM_RELEASE (${target_arch}) ---"
+      local _llvm_release="${LLVM_RELEASE:-}"
+      if [ -z "${_llvm_release}" ]; then
+        local _venv
+        _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
+        [ -f "${_venv}" ] && _llvm_release="$(grep -E '^LLVM_RELEASE=' "${_venv}" | head -1 | cut -d= -f2)"
+      fi
+      if [ -z "${_llvm_release}" ]; then
+        fail "clang-version smoke: could not resolve LLVM_RELEASE (env or versions.env)"
+      elif "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" -e "WANT_LLVM=${_llvm_release}" "${image_tag}" \
+             bash -lc 'set -uo pipefail
+rc=0
+for tool in clang clang++; do
+  p="$(command -v "$tool" || true)"
+  [ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
+  ver="$("$tool" --version 2>/dev/null | grep -oiE "clang version [0-9]+\.[0-9]+\.[0-9]+" | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")"
+  if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-MISSING} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
+done
+exit $rc'; then
+        pass "clang/clang++ report LLVM_RELEASE ${_llvm_release} on ${target_arch}"
+      else
+        fail "clang/clang++ version != LLVM_RELEASE ${_llvm_release} on ${target_arch} (stale toolchain / cross-sdk not rebuilt?)"
+      fi
+      echo ""
+    fi
   else
     echo "--- Functional checks skipped (RUNTIME_FUNCTIONAL_SMOKE=0) ---"
     echo ""
