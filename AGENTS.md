@@ -87,7 +87,9 @@ still go through Stevedore's `docker.exe`. Full details:
 [`docs/rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md).
 
 ```powershell
-$nerdctl = "C:\Program Files\Rancher Desktopesourcesesources\win32in
+$nerdctl = "C:\Program Files\Rancher Desktop
+esources
+esources\win32in
 erdctl.exe"
 & $nerdctl --namespace default run --rm alpine:3.20 uname -a   # expect ...WSL2... x86_64 Linux
 ```
@@ -106,6 +108,18 @@ erdctl.exe"
   riscv64. `Linux.yml` sets `CONTAINER_IMAGE` to `:latest-cross`; if a local run
   uses a different tag, reproducing a CI failure proves nothing. Neither tag is
   digest-pinned, so both still float.
+
+### Triggering the opt-in CI lanes
+
+The Linux x86 lane runs on every push; **Windows and ARM are opt-in per commit**.
+Put `[build-win]` and/or `[build-arm]` in the pushed HEAD commit message. A green
+tick without `[build-win]` says nothing about Windows - the workflow reports
+`skipped`. Full detail:
+[`docs/ci-build-triggers.md`](docs/ci-build-triggers.md).
+
+```
+git commit -m "build: check every target [build-win][build-arm]"
+```
 
 ### Reading CI status with the GitHub CLI
 
