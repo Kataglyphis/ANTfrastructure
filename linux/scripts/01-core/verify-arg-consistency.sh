@@ -9,7 +9,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 VERSIONS_ENV="${REPO_ROOT}/linux/scripts/01-core/versions.env"
 
-# Same Dockerfile set as docs/scripts/sync_versions.py dockerfile_target_files().
+# The cross-chain Dockerfiles: the ones the forwarding in version-forwarding.sh
+# actually feeds. sync_versions.py dockerfile_target_files() syncs ARG defaults
+# for a wider set (these plus windows/ and the documentation image), which are
+# built by their own scripts and so are deliberately not checked for forwarding.
 DOCKERFILES=(base toolchain sdk media android package torch nvidia amd)
 
 echo "=== Version ARG consistency check ==="

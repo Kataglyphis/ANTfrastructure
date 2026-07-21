@@ -443,6 +443,13 @@ def dockerfile_target_files() -> list[Path]:
     # names are not versions.env keys (BASE_IMAGE, CUDA_VERSION_MAJOR_MINOR,
     # OPENCV_SOURCE_VERSION, ...) are untouched by name-matching.
     result.extend(sorted(REPO_ROOT.glob("windows/Dockerfile*")))
+    # The documentation image lives in a submodule and is built on its own rather
+    # than by the cross chain, so its PANDOC_*/UV_VERSION pins are `# noforward`.
+    # Its ARG defaults are still the real values that image is built from, so they
+    # are synced here like any other. Guarded: the submodule may not be checked out.
+    doc_image = REPO_ROOT / "external/Kataglyphis-DocumANTation/Dockerfile"
+    if doc_image.exists():
+        result.append(doc_image)
     return result
 
 
