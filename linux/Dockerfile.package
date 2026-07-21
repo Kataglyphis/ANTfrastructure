@@ -138,7 +138,6 @@ ENV BUILD_MODE=${BUILD_MODE} \
     VULKAN_SDK=/opt/vulkan/active \
     VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
     CCACHE_DIR=/workspace/.ccache \
-    CCACHE_SECONDARY_STORAGE=true \
     # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
     # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
     PATH="/opt/vulkan/active/bin:${GSTREAMER_PREFIX}/bin:${OPENCV_OUTPUT_DIR}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
