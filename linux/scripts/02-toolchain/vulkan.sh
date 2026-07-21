@@ -467,6 +467,47 @@ _build_vulkan_targets() {
   else
     log "SPIRV-Tools source missing at ${spirv_tools_src}; skipping target SPIRV-Tools"
   fi
+
+  # glslang / glslangValidator — a BUILD-TIME shader compiler. LunarG's ./vulkansdk
+  # only produced the HOST (x86_64) glslangValidator, which cannot run on a native
+  # aarch64/riscv64 runner, so a project that compiles GLSL during its build (e.g.
+  # KOMPUTE: `find_program(glslangValidator)` -> FATAL_ERROR) fails on those arches.
+  # Cross-build glslang into the target archdir/bin so ARM and RISC-V images ship a
+  # runnable one. ENABLE_OPT=OFF drops the SPIRV-Tools-Opt dependency (the validator
+  # does not need the optimiser); the Python source generation glslang runs at
+  # configure time is host-side and arch-independent, so it cross-builds cleanly.
+  local glslang_src="${target_dir}/source/glslang"
+  [ -d "${glslang_src}" ] || glslang_src="${target_dir}/source/glslang-main"
+  if [ -d "${glslang_src}" ]; then
+    log "Cross-building glslang (glslangValidator) for ${arch_suffix}"
+    if _cross_build_sdk_component "${glslang_src}" "glslang-${arch_suffix}" \
+        -DCMAKE_INSTALL_PREFIX="${archdir}" \
+        -DENABLE_OPT=OFF \
+        -DGLSLANG_TESTS=OFF \
+        -DBUILD_TESTING=OFF \
+        -DENABLE_GLSLANG_BINARIES=ON \
+        -DENABLE_SPVREMAPPER=OFF; then
+      # Recent glslang installs the tool as `glslang`; KOMPUTE and older tooling
+      # look for `glslangValidator`. Guarantee both names exist.
+      if [ -x "${archdir}/bin/glslang" ] && [ ! -e "${archdir}/bin/glslangValidator" ]; then
+        ${SUDO:-} ln -s glslang "${archdir}/bin/glslangValidator"
+      elif [ -x "${archdir}/bin/glslangValidator" ] && [ ! -e "${archdir}/bin/glslang" ]; then
+        ${SUDO:-} ln -s glslangValidator "${archdir}/bin/glslang"
+      fi
+      # The SDK setup-env.sh only puts <ver>/x86_64/bin on PATH (the host tools),
+      # so the target arch dir is NOT searched. Symlink the tool into /usr/local/bin
+      # (on the default PATH) so `find_program(glslangValidator)` resolves it on a
+      # native aarch64/riscv64 build.
+      for _b in glslang glslangValidator; do
+        [ -e "${archdir}/bin/${_b}" ] && ${SUDO:-} ln -sf "${archdir}/bin/${_b}" "/usr/local/bin/${_b}"
+      done
+      log "Installed target glslang: $(ls "${archdir}"/bin/glslang* 2>/dev/null | tr '\n' ' '); on PATH: $(command -v glslangValidator 2>/dev/null || echo none)"
+    else
+      log "Target glslang unavailable; GLSL shader compilation will fail on ${arch_suffix}"
+    fi
+  else
+    log "glslang source missing at ${target_dir}/source/glslang; skipping target glslang"
+  fi
 }
 
 install_vulkan_sdk() {
