@@ -19,12 +19,28 @@ runs:
       run: |
         $ErrorActionPreference = 'Continue'
 
+        # Fast recursive delete: `rmdir /s /q` is dramatically faster than
+        # PowerShell `Remove-Item -Recurse` on huge trees (tens of thousands of
+        # small files, e.g. C:\hostedtoolcache) - the difference is minutes vs
+        # tens of minutes on a CI runner. Supports wildcards by expanding first.
+        function Fast-Remove($pathPattern) {
+          foreach ($p in @(Get-Item -Path $pathPattern -Force -ErrorAction SilentlyContinue)) {
+            $path = $p.FullName
+            Write-Host "Removing $path ..."
+            if ($p.PSIsContainer) {
+              & cmd.exe /c "rmdir /s /q `"$path`"" 2>$null
+            }
+            # Sweep up anything rmdir left (files, or a locked leaf).
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+          }
+        }
+
         # Remove ENTIRE Visual Studio installation (do this FIRST, before partial removals)
         Write-Host "Removing Visual Studio completely..."
-        Remove-Item "C:\Program Files\Microsoft Visual Studio\2022" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item "C:\Program Files\Microsoft Visual Studio\2019" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item "C:\Program Files (x86)\Microsoft Visual Studio" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item "$env:ProgramData\Microsoft\VisualStudio" -Recurse -Force -ErrorAction SilentlyContinue
+        Fast-Remove "C:\Program Files\Microsoft Visual Studio\2022"
+        Fast-Remove "C:\Program Files\Microsoft Visual Studio\2019"
+        Fast-Remove "C:\Program Files (x86)\Microsoft Visual Studio"
+        Fast-Remove "$env:ProgramData\Microsoft\VisualStudio"
 
         # Remove more language toolchains you don't need
         $toolchainsRemove = @(
@@ -41,10 +57,7 @@ runs:
         )
 
         foreach ($path in $toolchainsRemove) {
-            if (Test-Path $path) {
-                Write-Host "Removing $path ..."
-                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Fast-Remove $path
         }
 
         # Remove databases if not needed
@@ -56,10 +69,7 @@ runs:
         )
 
         foreach ($path in $dbRemove) {
-            if (Test-Path $path) {
-                Write-Host "Removing $path ..."
-                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Fast-Remove $path
         }
 
         # Remove old .NET Framework reference assemblies
@@ -72,10 +82,7 @@ runs:
         )
 
         foreach ($path in $netRemove) {
-            if (Test-Path $path) {
-                Write-Host "Removing $path ..."
-                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Fast-Remove $path
         }
 
         # Remove IIS if not needed
@@ -85,10 +92,7 @@ runs:
         )
 
         foreach ($path in $iisRemove) {
-            if (Test-Path $path) {
-                Write-Host "Removing $path ..."
-                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Fast-Remove $path
         }
 
         # Remove Azure tools if not needed
@@ -189,10 +193,7 @@ runs:
         )
 
         foreach ($path in $maybeRemove) {
-          if (Test-Path $path) {
-            Write-Host "Removing $path ..."
-            Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-          }
+          Fast-Remove $path
         }
 
         # Windows Update cache
