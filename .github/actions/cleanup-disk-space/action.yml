@@ -250,4 +250,11 @@ runs:
         # winamd64 is ~54 GB to import; the largest FreeGB above must exceed that,
         # on whatever drive Docker's data-root lives, or `docker pull` fails with
         # hcsshim::ImportLayer "not enough space on the disk (0x70)".
-        Write-Host ("Docker data-root: " + (docker info --format '{{.DockerRootDir}}' 2>$null))
+        $dataRoot = docker info --format '{{.DockerRootDir}}' 2>$null
+        Write-Host ("Docker data-root: " + $dataRoot)
+        # This step is a diagnostic - it PRINTS disk space, it never gates on it.
+        # The Docker prune two steps up leaves the daemon briefly unavailable, so
+        # `docker info` can exit non-zero; the GitHub pwsh wrapper appends
+        # `exit $LASTEXITCODE`, which would then red-light the whole Windows lane
+        # over an informational line. Reset it so only real command failures fail.
+        $global:LASTEXITCODE = 0
