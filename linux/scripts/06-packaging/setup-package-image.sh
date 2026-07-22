@@ -105,6 +105,27 @@ select_and_install_dev_packages() {
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
 
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
+
+    # The apt clang-<major> package is kept for its libLLVM/libclang dev libs, but
+    # apt.llvm.org LAGS LLVM's point releases (clang-22 = 22.1.2 while we source-build
+    # LLVM_RELEASE=22.1.8), and it owns /usr/bin/clang{,++} — so `clang` / CMake's
+    # find_program resolve the STALE apt binary, not our source-built target clang at
+    # /usr/local/llvm-target/bin/clang. Force clang{,++} onto the source toolchain at
+    # top priority so the shipped clang matches LLVM_RELEASE (asserted by the runtime
+    # clang-version smoke). This is also what validate-compilers.sh already expects.
+    if [ -x /usr/local/llvm-target/bin/clang ]; then
+        update-alternatives --install /usr/bin/clang clang /usr/local/llvm-target/bin/clang 1000 \
+            --slave /usr/bin/clang++ clang++ /usr/local/llvm-target/bin/clang++ 2>/dev/null || true
+        update-alternatives --set clang /usr/local/llvm-target/bin/clang 2>/dev/null || true
+        # Belt-and-suspenders: if the apt package installed plain symlinks that
+        # alternatives did not adopt, point them at the source toolchain directly.
+        [ "$(readlink -f /usr/bin/clang 2>/dev/null)" = "$(readlink -f /usr/local/llvm-target/bin/clang)" ] || \
+            ln -sf /usr/local/llvm-target/bin/clang /usr/bin/clang
+        [ -x /usr/local/llvm-target/bin/clang++ ] && \
+            { [ "$(readlink -f /usr/bin/clang++ 2>/dev/null)" = "$(readlink -f /usr/local/llvm-target/bin/clang++)" ] || \
+              ln -sf /usr/local/llvm-target/bin/clang++ /usr/bin/clang++; }
+        echo "[INFO] Pinned /usr/bin/clang -> $(readlink -f /usr/bin/clang) ($(/usr/bin/clang --version 2>/dev/null | head -1))"
+    fi
 }
 
 # Wire /usr/local python/pip/config + libpython symlinks (and create the dirs
