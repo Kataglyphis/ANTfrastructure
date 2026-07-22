@@ -17,7 +17,13 @@ alt_install() {
   local priority="${2:-120}"
   local candidate
 
+  # Prefer the SOURCE-built toolchain (/usr/local/llvm-<major>, = LLVM_RELEASE like
+  # 22.1.8) over the apt bootstrap clang (/usr/lib/llvm-<major>, from apt.llvm.org
+  # which lags point releases -> 22.1.2). Otherwise `clang`/CMake resolve the stale
+  # apt binary despite the source build (the runtime clang-version smoke asserts the
+  # shipped clang == LLVM_RELEASE).
   for candidate in \
+    "/usr/local/llvm-${llvm_major}/bin/${name}" \
     "/usr/lib/llvm-${llvm_major}/bin/${name}" \
     "/usr/bin/${name}-${llvm_major}"; do
     if [ -x "${candidate}" ]; then

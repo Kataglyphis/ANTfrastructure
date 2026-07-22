@@ -68,12 +68,22 @@ RUN set -euo pipefail; \
     _major="${LLVM_RELEASE%%.*}"; \
     rm -rf /opt/llvm-target; \
     if [ "${_arch}" = "amd64" ]; then \
-        _hostllvm="/usr/lib/llvm-${_major}"; \
-        if [ ! -d "${_hostllvm}" ]; then \
+        # Ship the SOURCE-built host clang (LLVM_RELEASE = 22.1.8) at
+        # /usr/local/llvm-<major> as amd64's target-native clang. /usr/lib/llvm-<major>
+        # is the APT bootstrap clang (apt.llvm.org LAGS point releases -> 22.1.2) and
+        # must NOT become the shipped clang, or amd64 ships a stale clang that mismatches
+        # LLVM_RELEASE (caught by the runtime clang-version smoke). Prefer source; fall
+        # back to the apt path / PATH clang only if the source build is somehow absent. \
+        _hostllvm=""; \
+        for _cand in "/usr/local/llvm-${_major}" "/usr/lib/llvm-${_major}"; do \
+            if [ -x "${_cand}/bin/clang" ]; then _hostllvm="${_cand}"; break; fi; \
+        done; \
+        if [ -z "${_hostllvm}" ]; then \
             _cc="$(command -v clang || true)"; \
             [ -n "${_cc}" ] && _hostllvm="$(dirname "$(dirname "$(readlink -f "${_cc}")")")"; \
         fi; \
-        [ -d "${_hostllvm}" ] || { echo "ERROR: host LLVM dir not found for amd64 (tried /usr/lib/llvm-${_major})"; exit 1; }; \
+        [ -n "${_hostllvm}" ] && [ -d "${_hostllvm}" ] || { echo "ERROR: host LLVM dir not found for amd64 (tried /usr/local/llvm-${_major}, /usr/lib/llvm-${_major})"; exit 1; }; \
+        echo "amd64 target-native clang from ${_hostllvm} ($("${_hostllvm}/bin/clang" --version 2>/dev/null | head -1))"; \
         cp -a "${_hostllvm}" /opt/llvm-target; \
     elif [ -d "/opt/llvm-target-${_arch}" ]; then \
         mv "/opt/llvm-target-${_arch}" /opt/llvm-target; \
