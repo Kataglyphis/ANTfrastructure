@@ -106,25 +106,51 @@ select_and_install_dev_packages() {
 
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
 
-    # The apt clang-<major> package is kept for its libLLVM/libclang dev libs, but
-    # apt.llvm.org LAGS LLVM's point releases (clang-22 = 22.1.2 while we source-build
-    # LLVM_RELEASE=22.1.8), and it owns /usr/bin/clang{,++} — so `clang` / CMake's
-    # find_program resolve the STALE apt binary, not our source-built target clang at
-    # /usr/local/llvm-target/bin/clang. Force clang{,++} onto the source toolchain at
-    # top priority so the shipped clang matches LLVM_RELEASE (asserted by the runtime
-    # clang-version smoke). This is also what validate-compilers.sh already expects.
-    if [ -x /usr/local/llvm-target/bin/clang ]; then
-        update-alternatives --install /usr/bin/clang clang /usr/local/llvm-target/bin/clang 1000 \
-            --slave /usr/bin/clang++ clang++ /usr/local/llvm-target/bin/clang++ 2>/dev/null || true
-        update-alternatives --set clang /usr/local/llvm-target/bin/clang 2>/dev/null || true
+    # The shipped clang{,++} MUST equal LLVM_RELEASE (asserted by the runtime
+    # clang-version smoke). Two candidate toolchains can provide it:
+    #   1. /usr/local/llvm-target  — the source-built target clang. For arm64/riscv64
+    #      this is cross-built to exactly LLVM_RELEASE. For amd64 it is a COPY of the
+    #      compiler stage's apt clang, which LAGS if that (heavy, long-cached) layer
+    #      was baked before apt.llvm.org published the point release (e.g. ships 22.1.2
+    #      while LLVM_RELEASE=22.1.8).
+    #   2. /usr/lib/llvm-<major>   — the apt clang-<major> just (re)installed in THIS
+    #      freshly apt-updated package stage. Once apt.llvm.org catches up it is exactly
+    #      LLVM_RELEASE, which rescues amd64 without rebuilding the compiler layer.
+    # Pin whichever candidate's version == LLVM_RELEASE, PREFERRING the source toolchain
+    # (so arm64/riscv64 keep their cross-built clang); fall back to the first present
+    # candidate if neither matches (better a working clang than none). The apt clang-<major>
+    # package is retained regardless for its libLLVM/libclang dev libs.
+    local _want_llvm _llvm_major _cand _chosen=""
+    _want_llvm="${LLVM_RELEASE:-}"
+    if [ -z "${_want_llvm}" ] && [ -f /opt/scripts/core/versions.env ]; then
+        _want_llvm="$( . /opt/scripts/core/versions.env 2>/dev/null; printf '%s' "${LLVM_RELEASE:-}" )"
+    fi
+    _llvm_major="${_want_llvm%%.*}"
+    _clang_ver() {
+        "$1" --version 2>/dev/null \
+            | grep -oiE 'clang version [0-9]+\.[0-9]+\.[0-9]+' \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
+    }
+    for _cand in /usr/local/llvm-target "/usr/lib/llvm-${_llvm_major}"; do
+        [ -x "${_cand}/bin/clang" ] || continue
+        [ -n "${_chosen}" ] || _chosen="${_cand}"   # fallback = first present (source preferred)
+        if [ -n "${_want_llvm}" ] && [ "$(_clang_ver "${_cand}/bin/clang")" = "${_want_llvm}" ]; then
+            _chosen="${_cand}"; break
+        fi
+    done
+
+    if [ -n "${_chosen}" ] && [ -x "${_chosen}/bin/clang" ]; then
+        update-alternatives --install /usr/bin/clang clang "${_chosen}/bin/clang" 1000 \
+            --slave /usr/bin/clang++ clang++ "${_chosen}/bin/clang++" 2>/dev/null || true
+        update-alternatives --set clang "${_chosen}/bin/clang" 2>/dev/null || true
         # Belt-and-suspenders: if the apt package installed plain symlinks that
-        # alternatives did not adopt, point them at the source toolchain directly.
-        [ "$(readlink -f /usr/bin/clang 2>/dev/null)" = "$(readlink -f /usr/local/llvm-target/bin/clang)" ] || \
-            ln -sf /usr/local/llvm-target/bin/clang /usr/bin/clang
-        [ -x /usr/local/llvm-target/bin/clang++ ] && \
-            { [ "$(readlink -f /usr/bin/clang++ 2>/dev/null)" = "$(readlink -f /usr/local/llvm-target/bin/clang++)" ] || \
-              ln -sf /usr/local/llvm-target/bin/clang++ /usr/bin/clang++; }
-        echo "[INFO] Pinned /usr/bin/clang -> $(readlink -f /usr/bin/clang) ($(/usr/bin/clang --version 2>/dev/null | head -1))"
+        # alternatives did not adopt, point them at the chosen toolchain directly.
+        [ "$(readlink -f /usr/bin/clang 2>/dev/null)" = "$(readlink -f "${_chosen}/bin/clang")" ] || \
+            ln -sf "${_chosen}/bin/clang" /usr/bin/clang
+        [ -x "${_chosen}/bin/clang++" ] && \
+            { [ "$(readlink -f /usr/bin/clang++ 2>/dev/null)" = "$(readlink -f "${_chosen}/bin/clang++")" ] || \
+              ln -sf "${_chosen}/bin/clang++" /usr/bin/clang++; }
+        echo "[INFO] Pinned /usr/bin/clang -> $(readlink -f /usr/bin/clang) ($(/usr/bin/clang --version 2>/dev/null | head -1)); wanted LLVM_RELEASE=${_want_llvm:-<unset>}"
     fi
 }
 

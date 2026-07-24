@@ -159,16 +159,19 @@ main() {
     run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
   fi
 
-  if [ "${CREATE_MANIFEST}" -eq 1 ]; then
-    create_manifest
-  fi
-
   # Host-side runtime-image boot smoke: run each freshly built wrapper via
   # nerdctl and verify it starts and its entrypoint/HEALTHCHECK/user/paths are
   # sane. Validates the ACTUAL published image, complementing the in-image
   # wrapper-smoke stage. This was COPY'd into the package image but never run
   # anywhere. Cross arches boot under binfmt/qemu; set RUNTIME_IMAGE_SMOKE=0 to
   # skip (e.g. a host without qemu for a foreign arch).
+  #
+  # GATE: run the smoke BEFORE creating/pushing the multi-arch manifest. The
+  # per-arch wrapper tags are already pushed by the build, so the smoke can pull
+  # and boot them here; a failure aborts (set -e via `run`) BEFORE the manifest
+  # index goes live, so a broken image (e.g. clang != LLVM_RELEASE) can never be
+  # published as :latest-cross. Previously the smoke ran after the push, which
+  # reported the failure but left the bad manifest live on the registry.
   if [ "${BUILD_IMAGES}" -eq 1 ] && [ "${RUNTIME_IMAGE_SMOKE:-1}" = "1" ]; then
     # Foreign-arch runtime smokes execute inside the image under QEMU/binfmt.
     # Register the emulators up-front WITHOUT sudo (rootless containerd/BuildKit
@@ -186,6 +189,12 @@ main() {
       run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
       run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
     done
+  fi
+
+  # Only now that every per-arch image passed its boot/clang smoke do we publish
+  # the multi-arch manifest.
+  if [ "${CREATE_MANIFEST}" -eq 1 ]; then
+    create_manifest
   fi
 }
 
