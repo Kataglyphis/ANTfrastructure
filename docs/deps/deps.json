@@ -191,6 +191,53 @@
       ]
     },
     {
+      "title": "Documentation Image",
+      "tag": "pandoc_all",
+      "subsections": [
+        {
+          "title": "Document Toolchain",
+          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "entries": [
+            {"name": "Ubuntu", "var": "UBUNTU_VERSION", "url": "https://ubuntu.com/", "license": "GPLv2 / various (individual packages)"},
+            {"name": "Pandoc", "var": "PANDOC_VERSION", "url": "https://github.com/jgm/pandoc", "license": "GPLv2+"},
+            {"name": "TeX Live (texlive-full)", "var": null, "version_fixed": "Ubuntu apt", "url": "https://tug.org/texlive/", "license": "Collection; per package LPPL / GPL / X11 / modified BSD"},
+            {"name": "Latin Modern fonts (lmodern)", "var": null, "version_fixed": "Ubuntu apt", "url": "http://www.gust.org.pl/projects/e-foundry/latin-modern", "license": "GUST Font License (LPPL-style)"},
+            {"name": "Ghostscript", "var": null, "version_fixed": "Ubuntu apt", "url": "https://www.ghostscript.com/", "license": "AGPLv3+"},
+            {"name": "ImageMagick", "var": null, "version_fixed": "Ubuntu apt", "url": "https://imagemagick.org/", "license": "ImageMagick License (Apache 2.0-style)"}
+          ]
+        },
+        {
+          "title": "Python",
+          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "entries": [
+            {"name": "Python", "var": null, "version_fixed": "Ubuntu apt (python3-full)", "url": "https://python.org/", "license": "PSF License"},
+            {"name": "uv", "var": "UV_VERSION", "url": "https://github.com/astral-sh/uv", "license": "Apache 2.0 / MIT"},
+            {"name": "Pygments", "var": null, "version_fixed": "pinned by uv.lock", "url": "https://pygments.org/", "license": "BSD 2-Clause"}
+          ]
+        },
+        {
+          "title": "Base Utilities",
+          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "entries": [
+            {"name": "GNU C Library locales (locales)", "var": null, "version_fixed": "Ubuntu apt", "url": "https://www.gnu.org/software/libc/", "license": "LGPLv2.1+"},
+            {"name": "curl", "var": null, "version_fixed": "Ubuntu apt", "url": "https://curl.se/", "license": "curl (MIT/X-style)"},
+            {"name": "GNU Wget", "var": null, "version_fixed": "Ubuntu apt", "url": "https://www.gnu.org/software/wget/", "license": "GPLv3+"},
+            {"name": "ca-certificates", "var": null, "version_fixed": "Ubuntu apt", "url": "https://packages.ubuntu.com/ca-certificates", "license": "MPL-2.0 (CA bundle) / GPLv2+ (packaging)"},
+            {"name": "less", "var": null, "version_fixed": "Ubuntu apt", "url": "https://www.greenwoodsoftware.com/less/", "license": "GPLv3+ or Less License"},
+            {"name": "sudo", "var": null, "version_fixed": "Ubuntu apt", "url": "https://www.sudo.ws/", "license": "ISC (with BSD-2/3-Clause parts)"}
+          ]
+        },
+        {
+          "title": "Vendored LaTeX Themes",
+          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "entries": [
+            {"name": "awesome-beamer (fork of LukasPietzschmann/awesome-beamer)", "var": null, "version_fixed": "git submodule", "url": "https://github.com/Kataglyphis/awesome-beamer", "license": "BSD 3-Clause"},
+            {"name": "smile (fork of LukasPietzschmann/smile)", "var": null, "version_fixed": "git submodule", "url": "https://github.com/Kataglyphis/smile", "license": "BSD 3-Clause"}
+          ]
+        }
+      ]
+    },
+    {
       "title": "Host Build Infrastructure (runs on the build host, not inside any image)",
       "subsections": [
         {

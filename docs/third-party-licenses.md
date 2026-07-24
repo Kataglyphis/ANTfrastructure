@@ -174,6 +174,46 @@ images).  Each upstream component carries its own license terms.
 | vcpkg packages (zlib, protobuf — linked into builds) | vcpkg baseline | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | Zlib / BSD 3-Clause |
 
 
+## Documentation Image (`pandoc_all`)
+
+### Document Toolchain (`external/Kataglyphis-DocumANTation/Dockerfile`)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
+| Pandoc | 3.10 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
+| TeX Live (texlive-full) | Ubuntu apt | [tug.org/texlive](https://tug.org/texlive/) | Collection; per package LPPL / GPL / X11 / modified BSD |
+| Latin Modern fonts (lmodern) | Ubuntu apt | [www.gust.org.pl/projects/e-foundry/latin-modern](http://www.gust.org.pl/projects/e-foundry/latin-modern) | GUST Font License (LPPL-style) |
+| Ghostscript | Ubuntu apt | [www.ghostscript.com](https://www.ghostscript.com/) | AGPLv3+ |
+| ImageMagick | Ubuntu apt | [imagemagick.org](https://imagemagick.org/) | ImageMagick License (Apache 2.0-style) |
+
+### Python (`external/Kataglyphis-DocumANTation/Dockerfile`)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
+| uv | 0.11.25 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
+
+### Base Utilities (`external/Kataglyphis-DocumANTation/Dockerfile`)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| GNU C Library locales (locales) | Ubuntu apt | [www.gnu.org/software/libc](https://www.gnu.org/software/libc/) | LGPLv2.1+ |
+| curl | Ubuntu apt | [curl.se](https://curl.se/) | curl (MIT/X-style) |
+| GNU Wget | Ubuntu apt | [www.gnu.org/software/wget](https://www.gnu.org/software/wget/) | GPLv3+ |
+| ca-certificates | Ubuntu apt | [packages.ubuntu.com/ca-certificates](https://packages.ubuntu.com/ca-certificates) | MPL-2.0 (CA bundle) / GPLv2+ (packaging) |
+| less | Ubuntu apt | [www.greenwoodsoftware.com/less](https://www.greenwoodsoftware.com/less/) | GPLv3+ or Less License |
+| sudo | Ubuntu apt | [www.sudo.ws](https://www.sudo.ws/) | ISC (with BSD-2/3-Clause parts) |
+
+### Vendored LaTeX Themes (`external/Kataglyphis-DocumANTation/Dockerfile`)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| awesome-beamer (fork of LukasPietzschmann/awesome-beamer) | git submodule | [github.com/Kataglyphis/awesome-beamer](https://github.com/Kataglyphis/awesome-beamer) | BSD 3-Clause |
+| smile (fork of LukasPietzschmann/smile) | git submodule | [github.com/Kataglyphis/smile](https://github.com/Kataglyphis/smile) | BSD 3-Clause |
+
+
 ## Host Build Infrastructure (runs on the build host, not inside any image)
 
 ### Container Engines & Builders

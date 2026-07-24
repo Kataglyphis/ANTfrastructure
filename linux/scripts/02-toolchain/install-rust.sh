@@ -46,6 +46,13 @@ try_rustup() {
 
 try_rustup rustup component add clippy
 
+# The browser build target, on the DEFAULT (stable) toolchain: consumer CI
+# lanes run `cargo check --target wasm32-unknown-unknown` on stable, and the
+# runtime containers have no rustup on PATH to add it themselves - without
+# this the RustProjectTemplate wasm gate can only skip (found 2026-07-22).
+# Not optional (no try_): if the wasm target is missing the gate is dead.
+rustup target add wasm32-unknown-unknown
+
 # Pinned nightly (a bare "nightly" floats to today's build).
 : "${RUST_NIGHTLY_TOOLCHAIN:=nightly-2026-06-28}"
 nightly_toolchain="${RUST_NIGHTLY_TOOLCHAIN}-${host_rust_target}"

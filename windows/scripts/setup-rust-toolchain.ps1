@@ -112,10 +112,10 @@ Invoke-DownloadWithRetry -Url 'https://static.rust-lang.org/dist/channel-rust-st
 
 $manifest = Get-Content -Path $manifestPath -Raw
 $componentUrls = @([regex]::Matches($manifest, 'xz_url\s*=\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value } |
-    Where-Object { $_ -match "/(rustc|rust-std|cargo)-\d[^/]*-$([regex]::Escape($targetTriple))\.tar\.xz$" } |
+    Where-Object { $_ -match "/(rustc|rust-std|cargo|rustfmt|clippy)-\d[^/]*-$([regex]::Escape($targetTriple))\.tar\.xz$" } |
     Sort-Object -Unique)
 if ($componentUrls.Count -lt 3) {
-    throw "expected the rustc/rust-std/cargo $targetTriple tarball URLs in the channel manifest, found $($componentUrls.Count)"
+    throw "expected at least the rustc/rust-std/cargo $targetTriple tarball URLs in the channel manifest, found $($componentUrls.Count)"
 }
 foreach ($url in $componentUrls) {
     $relative = ($url -replace '^https://static\.rust-lang\.org/dist/', '') -replace '/', '\'
