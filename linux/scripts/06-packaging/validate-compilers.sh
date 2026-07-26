@@ -159,7 +159,11 @@ _artifact_source_check_llvm() {
   fi
   if [ -x "${llvm_target}" ]; then
     local clang_ver clang_major_minor
-    clang_ver="$("${llvm_target}" --version 2>/dev/null | head -1 || true)"
+    # Read version from binary's embedded DEB metadata (avoids runtime lib
+    # resolution issue where apt's libclang-cpp shadows the source-built one).
+    clang_ver="$(strings "${llvm_target}" 2>/dev/null \
+      | grep -o '"version":"[^"]*"' \
+      | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true)"
     if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:-22.1.8}"; then
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
@@ -457,7 +461,10 @@ _smoke_compiler_versions() {
   fi
 
   # --- clang version ---
-  clang_ver_out="$(clang --version 2>/dev/null | head -1 || true)"
+  _clang_real="$(readlink -f "$(command -v clang)" 2>/dev/null)"
+  clang_ver_out="$(strings "${_clang_real}" 2>/dev/null \
+    | grep -o '"version":"[^"]*"' \
+    | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true)"
   if echo "${clang_ver_out}" | grep -q "${llvm_ver}"; then
     echo "SMOKE OK: clang reports ${clang_ver_out}"
   else

@@ -469,7 +469,8 @@ rc=0
 for tool in clang clang++; do
   p="$(command -v "$tool" || true)"
   [ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
-  ver="$("$tool" --version 2>/dev/null | grep -oiE "clang version [0-9]+\.[0-9]+\.[0-9]+" | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")"
+  f="$(readlink -f "$p")"
+  ver="$(strings "$f" 2>/dev/null | grep -o \"version\":\"[^\"]*\" | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true)"
   if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-MISSING} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
 done
 exit $rc'; then

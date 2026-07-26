@@ -127,9 +127,21 @@ select_and_install_dev_packages() {
     fi
     _llvm_major="${_want_llvm%%.*}"
     _clang_ver() {
-        "$1" --version 2>/dev/null \
+        local _bin="$1" _ver=""
+        # The binary's --version reports the RUNTIME libclang-cpp version, not
+        # the binary's own built-in version. The apt clang-<major> package ships
+        # libclang-cpp.so at /usr/lib which shadows the source-built lib at the
+        # toolchain's own lib/ dir.  Read the version from the binary's embedded
+        # DEB package metadata instead — it reflects the source-built version.
+        _ver="$( strings "${_bin}" 2>/dev/null \
+            | grep -o '"version":"[^"]*"' \
+            | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true )"
+        [ -n "${_ver}" ] && printf '%s' "${_ver}" && return 0
+        # Fallback: try --version with LD_LIBRARY_PATH if strings found nothing.
+        _ver="$( "${_bin}" --version 2>/dev/null \
             | grep -oiE 'clang version [0-9]+\.[0-9]+\.[0-9]+' \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 )"
+        printf '%s' "${_ver}"
     }
     for _cand in /usr/local/llvm-target "/usr/lib/llvm-${_llvm_major}"; do
         [ -x "${_cand}/bin/clang" ] || continue
