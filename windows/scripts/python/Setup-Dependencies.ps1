@@ -19,6 +19,6 @@ winget install --accept-source-agreements --accept-package-agreements --id=Ninja
 
 # NOTE: Standard uv install pattern -- downloads and executes script without checksum verification
 Write-Host "Installing Astral UV..."
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+pwsh -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
 Write-Host "=== Dependency installation completed ==="

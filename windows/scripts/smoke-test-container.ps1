@@ -26,7 +26,7 @@
     - FFmpeg (source-built with DNN/ONNX integration)
 
 .EXAMPLE
-    powershell -File smoke-test-container.ps1
+    pwsh -File smoke-test-container.ps1
 #>
 
 param(
@@ -1305,7 +1305,7 @@ $torchAppScript = Join-Path $PSScriptRoot 'assemble-torch-app.ps1'
 if ($torchAppDir -and (Test-Path $torchAppDir) -and (Test-Path $torchAppScript)) {
     Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
     Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree)" -Condition {
-        $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
+        $out = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'torch-app-env OK')
     } -FailMessage "assemble-torch-app.ps1 -Mode verify failed (baked venv broken or local wheels lost)"
 } else {

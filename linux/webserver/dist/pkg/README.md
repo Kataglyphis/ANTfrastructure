@@ -215,22 +215,22 @@ Voraussetzungen:
 
 MSIX bauen (inkl. Release-Build):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1
+```pwsh
+pwsh -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1
 ```
 
 MSIX bauen und mit einer vorhandenen PFX signieren:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1 `
+```pwsh
+pwsh -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1 `
   -CertificatePath .\certs\my-signing-cert.pfx `
   -CertificatePassword "<PASSWORD>"
 ```
 
 MSIX bauen und Testzertifikat automatisch erzeugen:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1 `
+```pwsh
+pwsh -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1 `
   -CreateTestCertificate `
   -CertificatePassword "<TEST_CERT_PASSWORD>"
 ```
@@ -252,7 +252,7 @@ MSIX installieren (mit Testzertifikat):
 2. Zertifikat in vertrauenswürdige Stores importieren.
 3. Paket installieren.
 
-```powershell
+```pwsh
 $certPath = "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate.testcert.pfx"
 $msixPath = "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate_0.1.0.0_x64.msix"
 $pwd = ConvertTo-SecureString "<TEST_CERT_PASSWORD>" -AsPlainText -Force
@@ -265,7 +265,7 @@ Add-AppxPackage -Path $msixPath
 
 Installationsprüfung:
 
-```powershell
+```pwsh
 Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate" | Select-Object Name, PackageFullName, Status
 ```
 
@@ -274,7 +274,7 @@ Troubleshooting:
 - `Import-PfxCertificate: Zugriff verweigert`: PowerShell nicht als Administrator gestartet.
 - Details zum letzten Deploy-Fehler anzeigen:
 
-```powershell
+```pwsh
 Get-AppxLog -ActivityID <ACTIVITY_ID>
 ```
 
@@ -283,7 +283,7 @@ App nach Installation starten:
 - Über das Startmenü nach `Kataglyphis RustProjectTemplate` suchen und starten.
 - Oder per PowerShell:
 
-```powershell
+```pwsh
 $pkg = Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate"
 Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!App"
 ```
@@ -293,13 +293,13 @@ MSIX Update / Reinstall:
 - Neue Version mit höherer `-Version` bauen und signieren.
 - Dann erneut installieren:
 
-```powershell
+```pwsh
 Add-AppxPackage -Path "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate_<NEW_VERSION>_x64.msix"
 ```
 
 MSIX deinstallieren:
 
-```powershell
+```pwsh
 Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate" | Remove-AppxPackage
 ```
 

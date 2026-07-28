@@ -113,7 +113,7 @@ $encode = { param($s) [Convert]::ToBase64String([Text.Encoding]::Unicode.GetByte
 
 # --- 1. CONTROL: rename in a FRESH (sandbox-created) dir (expected: PASS) ---
 Write-Head 'CONTROL: create+rename in a fresh directory (expected: PASS)'
-$runOut = & $Docker run --rm --isolation process $Base powershell -NoProfile -EncodedCommand (& $encode $controlCmd) 2>&1
+$runOut = & $Docker run --rm --isolation process $Base pwsh -NoProfile -EncodedCommand (& $encode $controlCmd) 2>&1
 $runExit = $LASTEXITCODE
 $runOut | Write-Host
 $controlPass = ($runExit -eq 0 -and ($runOut -join "`n") -match 'control-ok')
@@ -122,7 +122,7 @@ Write-Host ("CONTROL: {0}" -f $(if ($controlPass) { 'PASS (fresh dirs unaffected
 
 # --- 2. VERDICT: rename loop in an image-LAYER dir (fails while bug present) ---
 Write-Head ("VERDICT: {0}x create+rename in C:\Windows\Temp (SUCCESS => bug is GONE)" -f $Count)
-$probeOut = & $Docker run --rm --isolation process $Base powershell -NoProfile -EncodedCommand (& $encode $verdictCmd) 2>&1
+$probeOut = & $Docker run --rm --isolation process $Base pwsh -NoProfile -EncodedCommand (& $encode $verdictCmd) 2>&1
 $probeExit = $LASTEXITCODE
 $probeOut | Write-Host
 $joined = ($probeOut -join "`n")

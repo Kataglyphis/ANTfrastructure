@@ -1,4 +1,4 @@
-﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # PS 5.1 turns native stderr under $ErrorActionPreference='Stop' into terminating
@@ -507,7 +507,7 @@ function Invoke-RunCommitStage {
 }
 
 function Get-MediaRunCommand {
-    # The `powershell -File C:\temp\scripts\<script> [extra args]` invocation array for a run+commit
+    # The `pwsh -File C:\temp\scripts\<script> [extra args]` invocation array for a run+commit
     # container (media branches, toolchain, and the GStreamer merge all use this exact prefix).
     param(
         [Parameter(Mandatory)] [string]$Script,

@@ -21,7 +21,7 @@ loop pattern. Lets any project set up an autonomous coding loop with:
 
 Place the module in your repository's module path, then import it:
 
-```powershell
+```pwsh
 # If using Kataglyphis-ContainerHub as a submodule:
 $modulePath = Resolve-Path 'ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/WindowsAgenticLoop.Common.psm1'
 Import-Module $modulePath -Force
@@ -33,7 +33,7 @@ Or vendor it directly into `Scripts/Windows/modules/` and import by name.
 
 Create a `Run-AgenticLoop.ps1` script in your project:
 
-```powershell
+```pwsh
 # Scripts/AgenticLoop/Run-AgenticLoop.ps1
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $configPath = Join-Path $PSScriptRoot 'AgenticLoop.config.json'
@@ -50,7 +50,7 @@ $buildConfigs = if ($onWindows) { $config.buildConfigurations.windows } else { $
 $buildFunc = {
     param($configName)
     if (Test-IsWindows) {
-        "powershell -ExecutionPolicy Bypass -File `"$repoRoot\Scripts\Windows\Build-Windows-Container.ps1`" -Configurations `"$configName`" -SkipTests"
+        "pwsh -ExecutionPolicy Bypass -File `"$repoRoot\Scripts\Windows\Build-Windows-Container.ps1`" -Configurations `"$configName`" -SkipTests"
     } else {
         "bash `"$repoRoot/Scripts/Linux/cmake-configure-build.sh`" --preset `"$configName`" --build-dir build"
     }
@@ -190,7 +190,7 @@ Windows versions.
 
 ### Basic loop (with config file)
 
-```powershell
+```pwsh
 Import-Module WindowsAgenticLoop.Common -Force
 Initialize-AgenticLoop -ConfigPath 'AgenticLoop.config.json'
 # ... configure and call Invoke-AgenticLoop ...
@@ -199,19 +199,19 @@ Complete-AgenticLoop
 
 ### Dry run to test configuration
 
-```powershell
+```pwsh
 Initialize-AgenticLoop -ConfigPath 'AgenticLoop.config.json' -DryRun
 Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -BuildCommandFunc $buildFunc
 ```
 
 ### Planner only (add tasks without executing)
 
-```powershell
+```pwsh
 Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -PlannerOnly
 ```
 
 ### Executor only (drain existing queue)
 
-```powershell
+```pwsh
 Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -ExecutorOnly
 ```

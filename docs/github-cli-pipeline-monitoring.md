@@ -9,7 +9,7 @@ be answered from a shell, on a schedule, without a human looking at anything.
 
 Installed via winget:
 
-```powershell
+```pwsh
 winget install --id GitHub.cli
 ```
 
@@ -29,7 +29,7 @@ even in a fresh shell. **Prefer PowerShell for `gh`.**
 
 Verify:
 
-```powershell
+```pwsh
 gh --version
 gh auth status
 ```
@@ -43,7 +43,7 @@ mention scopes.
 
 Run from inside the repository — `gh` infers the repo from the git remote.
 
-```powershell
+```pwsh
 # What ran recently, and what did it conclude?
 gh run list --limit 10
 
@@ -73,7 +73,7 @@ apt-get cleanup echoes. It will fill a context window and tell you nothing.
 
 **Start by asking which step failed:**
 
-```powershell
+```pwsh
 gh run view <run-id> --json jobs --jq '.jobs[] | .name + " => " + .conclusion, (.steps[] | select(.conclusion=="failure") | "   FAILED STEP: " + .name)'
 ```
 
@@ -83,7 +83,7 @@ with a pattern that matches the actual failure rather than the word "error".
 
 Only then go to the log, filtered:
 
-```powershell
+```pwsh
 $log = gh run view <run-id> --log-failed | Out-String
 $log -split "`n" | Select-String "SUMMARY:|FAILED|Fatal" | Select-Object -Last 20
 ```
@@ -100,7 +100,7 @@ not. ASan/UBSan fuzzing runs there and not here, so a class of bug exists that
 is *only* observable through CI. A green local `commitTestSuite.exe` is not
 evidence that the pipeline is green.
 
-```powershell
+```pwsh
 # Did my last push survive?
 gh run list --limit 5 --json conclusion,name,headBranch,displayTitle --jq '.[] | .conclusion + "  " + .name'
 ```
