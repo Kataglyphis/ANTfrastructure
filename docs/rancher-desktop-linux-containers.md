@@ -11,13 +11,13 @@ The two coexist: different runtimes, different images, different jobs.
 
 ## Install
 
-```powershell
+```pwsh
 winget install -e --id SUS.RancherDesktop
 ```
 
 Verify it is up:
 
-```powershell
+```pwsh
 & "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\rdctl.exe" version
 ```
 
@@ -32,7 +32,7 @@ containerd is `nerdctl`. This is the single most common thing to get wrong here,
 because `docker.exe` also ships in the same directory and *appears* to work
 while talking to a completely different engine.
 
-```powershell
+```pwsh
 $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdctl.exe"
 & $nerdctl --namespace default run --rm alpine:3.20 uname -a
 # Linux ... 6.18.33.2-microsoft-standard-WSL2 ... x86_64 Linux
@@ -82,7 +82,7 @@ properly reproducible and is worth doing; it is not done yet.
 The Linux workflow mounts the repository at `/workspace` and runs the scripts in
 `Scripts/Linux/`. The same shape works locally:
 
-```powershell
+```pwsh
 $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdctl.exe"
 $image   = "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
 

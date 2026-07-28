@@ -83,27 +83,65 @@ function Test-IsWindows { return (Get-AgenticPlatform) -eq 'windows' }
 
 # -- OpenCode invocation --------------------------------------------------
 function Invoke-OpenCode {
-    param([string]$Agent, [string]$Model, [string]$Message)
+    param([string]$Agent, [string]$Model, [string]$Message, [int]$TimeoutSeconds = 300)
     if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] opencode run --agent $Agent --model $Model"; return '[DRY RUN]' }
     if (-not (Get-Command 'opencode' -ErrorAction SilentlyContinue)) {
         Write-AgenticLog 'opencode not found on PATH.' 'FATAL'; $script:AgenticExitCode = 1; return $null
     }
-    Write-AgenticLog "Invoking opencode: agent=$Agent model=$Model"
-    $exit = 0; $output = $null
+    Write-AgenticLog "Invoking opencode: agent=$Agent model=$Model (timeout=${TimeoutSeconds}s)"
+    $exitCode = 0; $outStr = ''; $errStr = ''
     $tmpFile = [System.IO.Path]::GetTempFileName()
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    $logFile = $script:AgenticLogFile
     try {
         [System.IO.File]::WriteAllText($tmpFile, $Message, [System.Text.Encoding]::UTF8)
-        $output = Get-Content $tmpFile -Raw | & opencode run --agent $Agent --model $Model
-        $exit = $LASTEXITCODE
-    } catch { Write-AgenticLog "opencode failed: $($_.Exception.Message)" 'ERROR'; $exit = 1
-    } finally { if (Test-Path $tmpFile) { Remove-Item $tmpFile -Force } }
-    $outStr = $output -join "`n"
-    $outLen = if ($outStr) { $outStr.Length } else { 0 }
-    Write-AgenticLog "opencode: ${outLen} chars, exit $exit"
-    if ($outLen -gt 0 -and $script:AgenticLogFile) {
-        Add-Content $script:AgenticLogFile -Value '--- opencode output start ---'
-        Add-Content $script:AgenticLogFile -Value $outStr
-        Add-Content $script:AgenticLogFile -Value '--- opencode output end ---'
+        # Redirect stderr to a file (not 2>&1 which crashes in PS 5.1)
+        # Read stdout line by line for streaming output
+        $opencodeExe = (Get-Command 'opencode').Source
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $opencodeExe
+        $psi.Arguments = "run --agent $Agent --model $Model"
+        $psi.RedirectStandardInput = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $false
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $p = New-Object System.Diagnostics.Process
+        $p.StartInfo = $psi
+        $p.Start() | Out-Null
+        # Feed stdin
+        $stdin = $p.StandardInput
+        $stdin.Write((Get-Content $tmpFile -Raw))
+        $stdin.Close()
+        # Stream stdout line by line in real-time
+        $outLines = [System.Collections.ArrayList]::new()
+        $reader = $p.StandardOutput
+        while (-not $reader.EndOfStream) {
+            $line = $reader.ReadLine()
+            if ($line) {
+                [void]$outLines.Add($line)
+                Write-Host $line
+                if ($logFile) { Add-Content $logFile -Value $line }
+            }
+        }
+        $completed = $p.WaitForExit($TimeoutSeconds * 1000)
+        if (-not $completed) { $p.Kill(); Write-AgenticLog "opencode timed out" 'ERROR'; $exitCode = -1 }
+        else { $exitCode = $p.ExitCode }
+        # Read stderr from file
+        if (Test-Path $stderrFile) { $errStr = Get-Content $stderrFile -Raw; Remove-Item $stderrFile -Force }
+        $outStr = $outLines -join "`n"
+    } catch { Write-AgenticLog "opencode failed: $($_.Exception.Message)" 'ERROR'; $exitCode = 1
+    } finally {
+        if (Test-Path $tmpFile) { Remove-Item $tmpFile -Force }
+        if (Test-Path $stderrFile) { Remove-Item $stderrFile -Force }
+        if ($p -and -not $p.HasExited) { $p.Kill() }
+        if ($p) { $p.Dispose() }
+    }
+    $outLen = $outStr.Length
+    Write-AgenticLog "opencode: ${outLen} chars, exit $exitCode"
+    if ($errStr) {
+        Write-AgenticLog 'opencode had stderr output' 'WARN'
+        if ($logFile) { Add-Content $logFile -Value '--- stderr ---'; Add-Content $logFile -Value $errStr; Add-Content $logFile -Value '--- stderr end ---' }
     }
     return $outStr
 }
@@ -132,11 +170,15 @@ function Invoke-BuildCommand {
     Write-AgenticSection "BUILD: $Configuration"
     Write-AgenticLog "Command: $Command"
     if ($script:AgenticDryRun) { return $true }
-    $output = Invoke-Expression $Command 2>&1
-    $outStr = $output -join "`n"
     $logFile = Get-AgenticLogFile
-    if ($logFile) { Add-Content $logFile -Value '--- build start ---'; Add-Content $logFile -Value $outStr; Add-Content $logFile -Value '--- build end ---' }
-    if ($LASTEXITCODE -ne 0) { Write-AgenticLog "BUILD FAILED (exit $LASTEXITCODE)" 'ERROR'; return $false }
+    Write-Host '--- build output ---'
+    Invoke-Expression $Command 2>&1 | ForEach-Object {
+        Write-Host $_
+        if ($logFile) { Add-Content $logFile -Value $_ }
+    }
+    Write-Host '--- build end ---'
+    $ec = if ($LASTEXITCODE -eq $null -or $LASTEXITCODE -eq '') { 0 } else { $LASTEXITCODE }
+    if ($ec -ne 0) { Write-AgenticLog "BUILD FAILED (exit $ec)" 'ERROR'; return $false }
     Write-AgenticLog 'BUILD PASSED'; return $true
 }
 
@@ -145,13 +187,17 @@ function Invoke-TestCommand {
     Write-AgenticSection 'TESTS'
     Write-AgenticLog "Command: $Command"
     if ($script:AgenticDryRun) { return $true }
+    $logFile = Get-AgenticLogFile
     Push-Location $RepoRoot
     try {
-        $output = Invoke-Expression $Command 2>&1
-        $outStr = $output -join "`n"
-        $logFile = Get-AgenticLogFile
-        if ($logFile) { Add-Content $logFile -Value '--- test start ---'; Add-Content $logFile -Value $outStr; Add-Content $logFile -Value '--- test end ---' }
-        if ($LASTEXITCODE -ne 0) { Write-AgenticLog "TESTS FAILED (exit $LASTEXITCODE)" 'ERROR'; return $false }
+        Write-Host '--- test output ---'
+        Invoke-Expression $Command 2>&1 | ForEach-Object {
+            Write-Host $_
+            if ($logFile) { Add-Content $logFile -Value $_ }
+        }
+        Write-Host '--- test end ---'
+        $ec = if ($LASTEXITCODE -eq $null -or $LASTEXITCODE -eq '') { 0 } else { $LASTEXITCODE }
+        if ($ec -ne 0) { Write-AgenticLog "TESTS FAILED (exit $ec)" 'ERROR'; return $false }
         Write-AgenticLog 'TESTS PASSED'; return $true
     } finally { Pop-Location }
 }
@@ -161,11 +207,15 @@ function Invoke-QualityCommand {
     Write-AgenticSection 'QUALITY'
     Write-AgenticLog "Command: $Command"
     if ($script:AgenticDryRun) { return }
+    $logFile = Get-AgenticLogFile
     Push-Location $RepoRoot
     try {
-        $output = Invoke-Expression $Command 2>&1
-        $logFile = Get-AgenticLogFile
-        if ($logFile) { Add-Content $logFile -Value '--- quality start ---'; Add-Content $logFile -Value ($output -join "`n"); Add-Content $logFile -Value '--- quality end ---' }
+        Write-Host '--- quality output ---'
+        Invoke-Expression $Command 2>&1 | ForEach-Object {
+            Write-Host $_
+            if ($logFile) { Add-Content $logFile -Value $_ }
+        }
+        Write-Host '--- quality end ---'
     } finally { Pop-Location }
 }
 
@@ -184,6 +234,11 @@ function Invoke-AgenticLoop {
     $qualityEveryN = $Config.intervals.qualityEveryNTasks
     $refactorEveryN = $Config.intervals.refactorEveryNIterations
     $maxIter = if ($MaxIterations -ge 0) { $MaxIterations } else { $Config.intervals.maxIterations }
+    # Dry-run safety cap: when nothing was explicitly set, run at most 1 iteration
+    if ($script:AgenticDryRun -and $MaxIterations -lt 0 -and ($Config.intervals.maxIterations -eq 0 -or -not $Config.intervals.maxIterations)) {
+        $maxIter = 1
+        Write-AgenticLog 'Dry-run: maxIterations capped to 1 (config had 0 = unlimited)' 'WARN'
+    }
     $maxRetries = $Config.intervals.maxExecutorRetries
     $loopDelay = $Config.intervals.loopDelaySeconds
     $autoCommit = if ($Config.git) { $Config.git.autoCommit } else { $true }
@@ -196,12 +251,12 @@ function Invoke-AgenticLoop {
 
     function LocalPlanner { param([switch]$Refactor)
         Write-AgenticSection 'PLANNER PHASE'
-        Invoke-OpenCode -Agent 'planner' -Model $plannerModel -Message $(if ($Refactor) { $ExecutorPrompt } else { $PlannerPrompt })
+        $null = Invoke-OpenCode -Agent 'planner' -Model $plannerModel -Message $(if ($Refactor) { $ExecutorPrompt } else { $PlannerPrompt })
         Write-AgenticLog 'Planner complete'
     }
     function LocalExecutor {
         Write-AgenticSection 'EXECUTOR PHASE'
-        Invoke-OpenCode -Agent 'executor' -Model $executorModel -Message $ExecutorPrompt
+        $null = Invoke-OpenCode -Agent 'executor' -Model $executorModel -Message $ExecutorPrompt
         Write-AgenticLog 'Executor complete'
     }
 
@@ -209,7 +264,7 @@ function Invoke-AgenticLoop {
     if ($ExecutorOnly) {
         $u = Get-UncheckedTaskCount
         while ($u -gt 0) { LocalExecutor; $tasksDone++; $u = Get-UncheckedTaskCount
-            if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { $cfg = $BuildConfigs[$buildIdx++ % $BuildConfigs.Count]; $ok = Invoke-BuildCommand -Command $(if ($OnWindows) { "powershell -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot 'Scripts/Windows/Build-Windows-Container.ps1')`" -Configurations `"$cfg`" -SkipTests" } else { "bash `"$(Join-Path $RepoRoot 'Scripts/Linux/cmake-configure-build.sh')`" --preset `"$cfg`" --build-dir build" }) -Configuration $cfg
+            if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { $cfg = $BuildConfigs[$buildIdx++ % $BuildConfigs.Count]; $ok = Invoke-BuildCommand -Command $(if ($OnWindows) { "pwsh -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot 'Scripts/Windows/Build-Windows-Container.ps1')`" -Configurations `"$cfg`" -SkipTests" } else { "bash `"$(Join-Path $RepoRoot 'Scripts/Linux/cmake-configure-build.sh')`" --preset `"$cfg`" --build-dir build" }) -Configuration $cfg
                 if ($ok -and (-not $SkipTests) -and $testCmd) { Invoke-TestCommand -Command $testCmd -RepoRoot $RepoRoot } }
             if (-not $SkipQuality -and ($qualityEveryN -gt 0) -and ($tasksDone % $qualityEveryN -eq 0) -and $qualityCmd) { Invoke-QualityCommand -Command $qualityCmd -RepoRoot $RepoRoot }
         }
@@ -230,7 +285,7 @@ function Invoke-AgenticLoop {
                 Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit
                 if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) {
                     $cfg = $BuildConfigs[$buildIdx++ % $BuildConfigs.Count]
-                    $buildCmd = if ($OnWindows) { "powershell -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot 'Scripts/Windows/Build-Windows-Container.ps1')`" -Configurations `"$cfg`" -SkipTests" } else { "bash `"$(Join-Path $RepoRoot 'Scripts/Linux/cmake-configure-build.sh')`" --preset `"$cfg`" --build-dir build" }
+                    $buildCmd = if ($OnWindows) { "pwsh -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot 'Scripts/Windows/Build-Windows-Container.ps1')`" -Configurations `"$cfg`" -SkipTests" } else { "bash `"$(Join-Path $RepoRoot 'Scripts/Linux/cmake-configure-build.sh')`" --preset `"$cfg`" --build-dir build" }
                     $ok = Invoke-BuildCommand -Command $buildCmd -Configuration $cfg
                     if ($ok -and (-not $SkipTests) -and $testCmd) { Invoke-TestCommand -Command $testCmd -RepoRoot $RepoRoot }
                 }

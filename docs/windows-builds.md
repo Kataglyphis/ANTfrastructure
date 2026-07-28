@@ -62,7 +62,7 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 
 Install [Stevedore](https://github.com/slonopotamus/stevedore):
 
-```powershell
+```pwsh
 # WinGet (recommended)
 winget install stevedore
 
@@ -95,7 +95,7 @@ Use the driver script from the repository root. It parses `linux/scripts/01-core
 and passes every version as `--build-arg` (the Dockerfile ARG defaults are only
 fallbacks), builds the stages in order, and applies the correct tags:
 
-```powershell
+```pwsh
 # CPU lane (default): base -> tag sdk -> toolchain -> media -> final
 .\windows\build.ps1
 
@@ -154,7 +154,7 @@ container commits fine via `docker commit`. So `build.ps1` builds media-core as:
    toolchain + all media-core scripts/patches, no heavy RUN, so its cheap COPY
    layers commit fine under Hyper-V.
 2. `docker run --isolation hyperv --cpu-count $MediaCoreCpus --memory
-   ${MediaMemoryGb}g <builder> powershell -File build-media-core-all.ps1` — runs
+   ${MediaMemoryGb}g <builder> pwsh -File build-media-core-all.ps1` — runs
    the whole ONNX → GenAI → OpenCV → FFmpeg chain in one container at the full
    CPU count. `Get-BuildJobCount` sees `--cpu-count` as `ProcessorCount`, so ONNX
    compiles at `min(cpu-count, memGB/4)` (e.g. `-j14` at `-MediaCoreCpus 16
@@ -230,7 +230,7 @@ it can, the *entire* Windows build (not just media-core) could run at full CPU
 count and the run+commit workaround could be retired. A durable, self-contained
 probe lives under `windows/diagnostics/`:
 
-```powershell
+```pwsh
 .\windows\diagnostics\test-process-isolation-commit.ps1
 ```
 
@@ -290,7 +290,7 @@ The run-side variant has its own "is the bug gone yet?" probe, mirroring the
 commit-side one — re-run it after any Docker / containerd / hcsshim / Windows /
 base-image upgrade:
 
-```powershell
+```pwsh
 .\windows\diagnostics\test-layer-rename.ps1
 ```
 
@@ -341,7 +341,7 @@ directly on the bare host and the `DmlExecutionProvider` selects the RX 9070 XT.
 Re-check after any Docker / containerd / hcsshim / Windows / base-image / GPU-driver
 upgrade with the self-contained probe under `windows/diagnostics/`:
 
-```powershell
+```pwsh
 .\windows\diagnostics\test-gpu-passthrough.ps1
 ```
 
@@ -471,7 +471,7 @@ layer, so sccache stays **disabled unless a remote backend is configured**.
 To enable a cross-build cache, run a small WebDAV server on the host and pass
 its endpoint:
 
-```powershell
+```pwsh
 # one-time host setup (any WebDAV-capable server works; dufs is a single binary)
 scoop install dufs
 mkdir C:\sccache-cache
@@ -497,7 +497,7 @@ After installing Stevedore, apply these post-install fixes. They are the canonic
 
 If Docker Desktop was previously installed, its daemon config at `C:\ProgramData\docker\config\daemon.json` may specify a hosts pipe (`docker_engine_windows`) that conflicts with Stevedore's `docker_engine` pipe. Remove it:
 
-```powershell
+```pwsh
 if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\ProgramData\docker\config\daemon.json" }
 ```
 
@@ -505,13 +505,13 @@ if (Test-Path "C:\ProgramData\docker\config\daemon.json") { Remove-Item "C:\Prog
 
 Stevedore's service defaults to the `com.docker.hcsshim.v1` runtime, but only the `io.containerd.runhcs.v1` shim binary (`containerd-shim-runhcs-v1.exe`) ships with Stevedore. Update the service binary path:
 
-```powershell
+```pwsh
 sc config stevedore binPath="\"C:\Program Files\Stevedore\dockerd.exe\" --run-service --service-name stevedore --group docker-users --host npipe:////./pipe/dockerDesktopWindowsEngine --host npipe:////./pipe/docker_engine --containerd=npipe:////./pipe/containerd-containerd --default-runtime=io.containerd.runhcs.v1"
 ```
 
 Then restart:
 
-```powershell
+```pwsh
 net stop stevedore /y
 net start stevedore
 ```
@@ -520,7 +520,7 @@ net start stevedore
 
 Add exclusions for containerd's snapshot directories (prevents hcsshim layer commit errors — `hcsshim::ActivateLayer failed (0x20)`):
 
-```powershell
+```pwsh
 Add-MpPreference -ExclusionPath "C:\ProgramData\containerd"
 Add-MpPreference -ExclusionPath "C:\ProgramData\nerdctl"
 Add-MpPreference -ExclusionPath "C:\temp"
@@ -533,7 +533,7 @@ Always use Stevedore's `docker.exe` — `nerdctl build` lacks DNS resolution, an
 installed (`failed to create default network: needs CNI plugin "nat" to be
 installed in CNI_PATH`). `docker.exe` needs no CNI plugin:
 
-```powershell
+```pwsh
 "D:\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
 ```
 
@@ -544,7 +544,7 @@ isolation, the Windows default, exposes only 2 logical CPUs). Process isolation
 is allowed here because the host build (26200) is ≥ the container base build
 (`servercore:ltsc2025`, 26100):
 
-```powershell
+```pwsh
 & "D:\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
 ```
@@ -556,11 +556,11 @@ but capped at 2 CPUs on this host). NAT networking and DNS work in both modes.
 
 After building, run the container smoke test to verify all components:
 
-```powershell
+```pwsh
 # Run smoke tests inside the built container
 & "C:\Program Files\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
-  powershell -File C:\temp\scripts\smoke-test-container.ps1
+  pwsh -File C:\temp\scripts\smoke-test-container.ps1
 ```
 
 The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 167 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).

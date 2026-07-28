@@ -98,7 +98,7 @@ function Invoke-BuildCodeQL {
         elseif ($pair.Value -is [bool] -and $pair.Value) { $innerParamList += "-$($pair.Key)" }
         elseif ($pair.Value -isnot [switch] -and $pair.Value -isnot [bool]) { $innerParamList += "-$($pair.Key)", "$($pair.Value)" }
     }
-    $innerCommand = @('cmd', '/c', 'powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BuildScriptPath) + $innerParamList
+    $innerCommand = @('cmd', '/c', 'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BuildScriptPath) + $innerParamList
 
     $dbClusterDir = Join-Path $Workspace 'codeql-db-cluster'
     $shouldCreateDbCluster = $true
@@ -200,4 +200,5 @@ function Invoke-BuildCodeQL {
 Export-ModuleMember -Function @(
     'Invoke-BuildCodeQL'
 )
+
 

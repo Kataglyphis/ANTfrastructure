@@ -9,7 +9,7 @@
 # `docker commit`. LiteRT-LM depends on LiteRT's install, so the two stay sequential.
 #
 # It is baked into windows-media-litert-builder (see Dockerfile.media-builder --target media-litert)
-# and invoked as: powershell -NoProfile -ExecutionPolicy Bypass -File <thisscript>.
+# and invoked as: pwsh -NoProfile -ExecutionPolicy Bypass -File <thisscript>.
 # Version/config come from environment variables baked into the builder image.
 
 [CmdletBinding()]

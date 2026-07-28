@@ -60,7 +60,7 @@ Rules of thumb:
 Works everywhere, including Dev Drive hosts with default settings, because it
 never asks the filesystem to attach anything.
 
-```powershell
+```pwsh
 # in:  sources only, excluding .git and build trees
 tar -cf - --exclude .git -C $repoRoot . | docker exec -i $c tar -xf - -C C:\ws
 # out: only what the host runs, selected by EXCLUSION (tar does not expand globs)
@@ -76,7 +76,7 @@ A Dev Drive refuses bind mounts by default — the minifilter cannot attach
 ("Der Dateisystem-Minifilter kann nicht an das Entwicklervolume angefügt
 werden"). Allow-list the two filters, **elevated**:
 
-```powershell
+```pwsh
 fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"
 ```
 
@@ -98,7 +98,7 @@ Four things that cost time here:
 
 Verify — allow-list, then an actual mount:
 
-```powershell
+```pwsh
 fsutil devdrv query D:        # expect: bindFlt, wcifs under "allowed"
 docker run --rm --isolation process `
   --mount "type=bind,source=$repoRoot,target=C:\ws" `
@@ -108,7 +108,7 @@ docker run --rm --isolation process `
 Revert (a Dev Drive is fast *because* filters do not attach — allow-listing
 them slows general I/O on that volume, not just container builds):
 
-```powershell
+```pwsh
 fsutil devdrv clearFiltersAllowed /volume D:   # + reboot
 ```
 
@@ -149,7 +149,7 @@ Create a **single long-lived container** instead of one per build. The build
 tree never leaves it, so ninja's dependency graph, C++23 module BMIs and
 object files are all still there next time.
 
-```powershell
+```pwsh
 # reuse if running; start if stopped; recreate if the image changed
 $state = docker inspect -f '{{.State.Running}}|{{.Image}}' $name 2>$null
 ```
@@ -273,7 +273,7 @@ ordinary directory for the operations CMake's compiler test performs.
   sets up the VS developer environment and the clang-cl ASAN runtime DLL
   directory never runs. Invoke it explicitly:
 
-  ```powershell
+  ```pwsh
   docker exec -w C:\ws $container cmd /S /C C:	emp\scripts\entrypoint.cmd @buildArgs
   ```
 

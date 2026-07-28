@@ -86,7 +86,7 @@ pipeline round trips. It does not replace the Windows lane — Windows container
 still go through Stevedore's `docker.exe`. Full details:
 [`docs/rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md).
 
-```powershell
+```pwsh
 $nerdctl = "C:\Program Files\Rancher Desktop
 esources
 esources\win32in
@@ -127,7 +127,7 @@ git commit -m "build: check every target [build-win][build-arm]"
 work.** `gh` is installed (winget) and authenticated; see
 [`docs/github-cli-pipeline-monitoring.md`](docs/github-cli-pipeline-monitoring.md).
 
-```powershell
+```pwsh
 gh run list --limit 10
 gh run view <run-id> --json jobs --jq '.jobs[] | .name + " => " + .conclusion, (.steps[] | select(.conclusion=="failure") | "   FAILED STEP: " + .name)'
 ```

@@ -70,7 +70,7 @@ nerdctl compose -f linux/llm-stack/docker-compose.yml up -d
 
 To access services from other devices on your network, open the required ports in Windows Firewall:
 
-```powershell
+```pwsh
 New-NetFirewallRule -DisplayName "Allow OpenWebUI Port 3000" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3000
 New-NetFirewallRule -DisplayName "Allow Ollama API Port 11434" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 11434
 New-NetFirewallRule -DisplayName "Allow Glances Port 61208" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 61208

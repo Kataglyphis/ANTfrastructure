@@ -66,7 +66,7 @@ runs the exact `git apply --check -p1 --ignore-whitespace` the build uses — no
 it after bumping a version in `versions.env`; any `FAIL` means that patch must be regenerated against
 the new tree.
 
-```powershell
+```pwsh
 pwsh -File windows/scripts/tests/Test-PatchesApplyClean.ps1
 # override a pin without editing the script:
 pwsh -File windows/scripts/tests/Test-PatchesApplyClean.ps1 -Versions @{ ONNXRUNTIME = 'v1.28.0' }

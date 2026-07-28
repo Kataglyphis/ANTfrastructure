@@ -122,7 +122,7 @@ Set-Content "$d\b.bat" "call `"$($vs.FullName)`" -arch=amd64 -host_arch=amd64 >n
 if(Test-Path "$d\e.exe"){& "$d\e.exe"}else{Write-Host 'PROBE_COMPILE_FAILED'}
 '@
 $gpuOut = & $Docker run --rm --isolation process --device $GpuDeviceClass $Image `
-    powershell -NoProfile -ExecutionPolicy Bypass -Command $probe 2>&1
+    pwsh -NoProfile -ExecutionPolicy Bypass -Command $probe 2>&1
 $gpuRc = $LASTEXITCODE
 $gpuText = ($gpuOut | Out-String)
 $gpuOut | ForEach-Object { Write-Host "  $_" }

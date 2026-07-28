@@ -10,7 +10,7 @@
 # Dockerfile.media-core used to contain.
 #
 # It is baked into windows-media-core-builder (see Dockerfile.media-builder --target media-core)
-# and invoked as: powershell -NoProfile -ExecutionPolicy Bypass -File <thisscript>.
+# and invoked as: pwsh -NoProfile -ExecutionPolicy Bypass -File <thisscript>.
 # Version/config come from environment variables baked into the builder image.
 #
 # NOTE: unlike a multi-RUN `docker build`, a single `docker run` has no per-stage
