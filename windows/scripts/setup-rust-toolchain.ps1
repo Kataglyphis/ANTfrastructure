@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -187,3 +189,4 @@ foreach ($cacheDir in @('registry', 'git')) {
     $p = Join-Path $env:USERPROFILE ".cargo\$cacheDir"
     if (Test-Path $p) { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue }
 }
+

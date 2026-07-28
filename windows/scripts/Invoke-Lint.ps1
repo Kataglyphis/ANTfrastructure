@@ -10,6 +10,8 @@
 # diagnostic at the configured severity) is found. Run it before build.ps1 and in CI.
 [CmdletBinding()]
 param(
+#requires -Version 7.0
+
     # Also fail the run on PSScriptAnalyzer findings (default: analyzer is advisory).
     [switch]$FailOnAnalyzer
 )
@@ -80,3 +82,4 @@ if ($FailOnAnalyzer -and (@($analyzerFindings | Where-Object { $_.Severity -eq '
 if ($fail) { Write-Host "`nLINT FAILED" -ForegroundColor Red; exit 1 }
 Write-Host "`nLINT OK" -ForegroundColor Green
 exit 0
+

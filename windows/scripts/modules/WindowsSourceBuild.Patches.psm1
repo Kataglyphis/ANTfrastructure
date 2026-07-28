@@ -7,6 +7,8 @@
 # drift — upstream version bumps should not break the build).
 
 Set-StrictMode -Version Latest
+#requires -Version 7.0
+
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 Import-Module $sharedPath -Force
@@ -224,3 +226,4 @@ Export-ModuleMember -Function @(
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry'
 )
+

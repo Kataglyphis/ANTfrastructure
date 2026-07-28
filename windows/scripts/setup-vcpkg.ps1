@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 param(
     [string]$VcpkgDir = 'C:\vcpkg',
     [string]$VcpkgRef = ''
@@ -58,3 +60,4 @@ foreach ($sub in @('buildtrees', 'packages', 'downloads')) {
     if (Test-Path $path) { Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue }
 }
 Write-Host 'vcpkg setup complete.'
+

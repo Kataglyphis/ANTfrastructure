@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 param(
     [string]$SourceDir = 'C:\temp\onnx-genai-src',
     [string]$InstallDir = '',
@@ -213,5 +215,6 @@ Remove-SourceBuildTree -Path $SourceDir
 
 Write-Host '=== ONNX Runtime GenAI source build completed ==='
 Write-Host "Artifacts at: $genaiInstallDir"
+
 
 

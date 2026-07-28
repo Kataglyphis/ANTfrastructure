@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 <#
 .SYNOPSIS
     Test whether the host GPU can be passed through to a process-isolated Windows
@@ -143,3 +145,4 @@ if ($gpuRc -ne 0 -and $gpuText -match 'cannot find the path specified|CreateComp
 } else {
     Write-Host "  INCONCLUSIVE -- inspect the probe output above (rc=$gpuRc)." -ForegroundColor Yellow
 }
+

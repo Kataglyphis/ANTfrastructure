@@ -3,6 +3,8 @@
 # Comprehensive Docker HEALTHCHECK for Windows developer image.
 # Exits 0 if all critical components respond, 1 otherwise.
 
+#requires -Version 7.0
+
 $ErrorActionPreference = 'Continue'
 $failed = $false
 
@@ -92,3 +94,4 @@ Check "clang-cl --version" {
 
 if ($failed) { exit 1 }
 exit 0
+

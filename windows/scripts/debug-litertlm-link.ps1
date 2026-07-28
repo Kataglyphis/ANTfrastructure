@@ -7,6 +7,8 @@
 # missing/empty archives, and nm scans for the recurring undefined/duplicate symbols.
 
 param(
+#requires -Version 7.0
+
     [Parameter(Mandatory)]
     [string]$SourceDir
 )
@@ -72,3 +74,4 @@ if ($nmExe -and $rsp) {
     if ($logFlagArch) { Write-Host "  absl_log_flags-named archives in rsp:"; $logFlagArch | ForEach-Object { Write-Host "    $_" } }
 } else { Write-Host '  (need llvm-nm + rsp)' }
 Write-Host '===DIAG END==='
+

@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 param(
     [string]$TempDir = 'C:\temp',
     # Default derived below from versions.env's GIT_VERSION (baked by load-versions.ps1);
@@ -111,3 +113,4 @@ if ([string]::IsNullOrWhiteSpace($CMakeVersion)) {
 # already unpacked into the apps dir and only bloat this (large) layer otherwise.
 Write-Host 'Clearing scoop download cache...'
 scoop cache rm * 2>&1 | Out-Null
+

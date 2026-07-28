@@ -9,6 +9,8 @@
 .DESCRIPTION
     The Windows source-build patches are pinned to specific upstream versions (onnxruntime v1.27.0,
     gstreamer 1.29.2, ...). When you bump a version you must re-verify the committed patches still
+#requires -Version 7.0
+
     apply -- otherwise the build silently falls back to the inline patchers (or fails). This tool
     automates that check WITHOUT a container rebuild:
 
@@ -164,3 +166,4 @@ if ($failed.Count -gt 0) {
     exit 1
 }
 Write-Host "All mapped patches apply cleanly." -ForegroundColor Green
+

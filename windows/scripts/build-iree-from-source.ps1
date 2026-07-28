@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 param(
     [string]$SourceDir = 'C:\temp\iree-src',
     [string]$InstallDir = '',
@@ -179,3 +181,4 @@ Write-SccacheStats -Label 'media-iree'
 
 Write-Host '=== IREE source build completed ==='
 Write-Host "Artifacts at: $ireeInstallDir"
+

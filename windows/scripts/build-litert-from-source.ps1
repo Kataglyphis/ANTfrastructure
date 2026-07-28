@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 param(
     [string]$SourceDir = 'C:\temp\litert-src',
     [string]$InstallDir = '',
@@ -115,6 +117,7 @@ Write-Host 'LiteRT manual install completed'
 Remove-SourceBuildTree -Path $SourceDir
 
 Write-Host '=== LiteRT source build completed ==='
+
 
 
 

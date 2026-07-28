@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 <#
 .SYNOPSIS
     Host resource sampler + analyzer for the Windows container build
@@ -96,3 +98,4 @@ while ($true) {
     }
     Start-Sleep -Seconds $IntervalSeconds
 }
+

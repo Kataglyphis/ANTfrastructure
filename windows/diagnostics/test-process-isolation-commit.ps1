@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 <#
 .SYNOPSIS
     Re-test whether the Windows process-isolation LAYER-COMMIT bug still exists
@@ -124,3 +126,4 @@ else {
     Write-Host ("BUILD FAILED (exit {0}) but NOT with the known signature -- investigate; do not assume the bug is fixed." -f $buildExit) -ForegroundColor Red
     exit 2
 }
+

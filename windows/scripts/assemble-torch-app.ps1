@@ -10,6 +10,8 @@
 # (platform tag + native DLL dirs) are staged into the venv, mirroring the
 # linux staged-OpenCV5 handling. GUI extra (wxPython) excluded, like linux.
 param(
+#requires -Version 7.0
+
     [string]$AppRef = '',
     [string]$AppDir = 'C:\opt\Kataglyphis-Orchestr-ANT-ion',
     [string]$WheelDir = 'C:\runtime\wheels',
@@ -188,3 +190,4 @@ print('torch-app-env OK')
 
 if ($Mode -in @('install', 'all')) { Install-TorchAppEnvironment }
 if ($Mode -in @('verify', 'all')) { Test-TorchAppEnvironment }
+

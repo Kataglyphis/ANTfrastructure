@@ -3,6 +3,8 @@
 #
 # Toolchain run+commit entrypoint (windows/build.ps1 Invoke-RunCommitStage). The
 # thin builder (Dockerfile.toolchain-builder) already cloned CPython and wrote
+#requires -Version 7.0
+
 # Directory.Build.props; this runs the CPU-bound `PCbuild\build.bat` at the
 # container's full --cpu-count, then trims build artifacts and verifies. Moving the
 # compile out of `docker build` (2-CPU-capped on this host) into `docker run
@@ -52,3 +54,4 @@ if (-not (Test-Path $pyExe)) { $pyExe = "$src\PCbuild\amd64\python_d.exe" }
 if (-not (Test-Path $pyExe)) { throw 'Python build failed - interpreter not found' }
 & $pyExe --version
 Write-Host "Python built at: $pyExe"
+

@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 param(
     [string]$SourceDir = 'C:\temp\onnx-src',
     [string]$InstallDir = '',
@@ -318,5 +320,6 @@ Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $buildDir 'dist') -M
 
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='
+
 
 

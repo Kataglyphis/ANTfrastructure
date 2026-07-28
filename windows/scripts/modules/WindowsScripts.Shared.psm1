@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 Set-StrictMode -Version Latest
 
 # Common helper functions for Windows build scripts
@@ -304,4 +306,5 @@ function Resolve-NormalizedPath {
 }
 
 Export-ModuleMember -Function Resolve-WorkspacePath, Resolve-NormalizedPath
+
 

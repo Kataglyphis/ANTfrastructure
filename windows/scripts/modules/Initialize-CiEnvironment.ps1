@@ -3,6 +3,8 @@
 #
 # Shared bootstrap for the CI entry scripts (windows/scripts/python/Invoke-Ci*.ps1,
 # windows/scripts/rust/*.ps1): resolves and imports the requested ContainerHub
+#requires -Version 7.0
+
 # modules and optionally enters the consumer repo root.
 #
 # Deliberately a dot-sourced SCRIPT, not a .psm1: the Import-Module calls must run
@@ -40,3 +42,4 @@ function Initialize-CiEnvironment {
         return $repoRoot
     }
 }
+

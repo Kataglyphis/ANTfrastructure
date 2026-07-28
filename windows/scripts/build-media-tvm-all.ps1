@@ -13,6 +13,8 @@
 
 [CmdletBinding()]
 param(
+#requires -Version 7.0
+
     [string]$InstallDir = 'C:\runtime',
     [string]$ScriptDir  = 'C:\temp\scripts'
 )
@@ -34,3 +36,4 @@ $stages = @(
 Invoke-SourceBuildChain -Label 'media-tvm' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir
 
 Write-Host "`n=== media-tvm chain completed ==="
+

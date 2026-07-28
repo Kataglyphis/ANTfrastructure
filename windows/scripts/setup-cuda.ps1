@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 param(
     [string]$TempDir = 'C:\temp',
     [string]$CudaVersion = '',
@@ -148,3 +150,4 @@ Write-Host 'cuDNN installation complete.'
 # Final push to release any lingering file handles before layer commit.
 # (The installer/archive files themselves were already removed right after use above.)
 Clear-PendingFileHandle
+

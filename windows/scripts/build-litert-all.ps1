@@ -14,6 +14,8 @@
 
 [CmdletBinding()]
 param(
+#requires -Version 7.0
+
     [string]$InstallDir = 'C:\runtime',
     [string]$ScriptDir  = 'C:\temp\scripts'
 )
@@ -36,3 +38,4 @@ Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $Insta
 Write-SccacheStats -Label 'media-litert'
 
 Write-Host "`n=== media-litert chain completed ==="
+

@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 <#
 .SYNOPSIS
     Re-test whether the RUN-SIDE wcifs rename bug still exists on this host:
@@ -145,3 +147,4 @@ else {
     Write-Host ("PROBE FAILED (exit {0}) but NOT with the known signature -- investigate; do not assume either way." -f $probeExit) -ForegroundColor Red
     exit 2
 }
+

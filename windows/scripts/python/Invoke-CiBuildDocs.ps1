@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 <#
 .SYNOPSIS
     Generic Python documentation builder for Windows
@@ -110,3 +112,4 @@ try {
     Write-BuildSummary -Context $script:BuildContext
     Close-BuildLog -Context $script:BuildContext
 }
+

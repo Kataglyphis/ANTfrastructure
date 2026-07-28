@@ -9,6 +9,8 @@
 # future sweep of windows/scripts/modules/.
 
 Set-StrictMode -Version Latest
+#requires -Version 7.0
+
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
@@ -198,3 +200,4 @@ function Invoke-BuildCodeQL {
 Export-ModuleMember -Function @(
     'Invoke-BuildCodeQL'
 )
+

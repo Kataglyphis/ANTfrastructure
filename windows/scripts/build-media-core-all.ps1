@@ -19,6 +19,8 @@
 
 [CmdletBinding()]
 param(
+#requires -Version 7.0
+
     [string]$InstallDir = 'C:\runtime',
     [string]$ScriptDir  = 'C:\temp\scripts'
 )
@@ -47,3 +49,4 @@ Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $Install
 Write-SccacheStats -Label 'media-core'
 
 Write-Host "`n=== media-core chain completed ==="
+

@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 <#
 .SYNOPSIS
   Generic MSIX packaging script for Rust desktop applications.
@@ -309,3 +311,4 @@ try {
 } finally {
     Close-BuildLog -Context $Context
 }
+

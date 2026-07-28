@@ -1,5 +1,7 @@
-﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
+#requires -Version 7.0
 
 param(
     [string]$SourceDir = 'C:\temp\ffmpeg-src',
@@ -419,6 +421,7 @@ try {
 Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
 Remove-SourceBuildTree -Path $pyavSrcRoot
 Write-Host '=== PyAV wheel build completed ==='
+
 
 
 

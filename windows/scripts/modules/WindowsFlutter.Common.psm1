@@ -3,6 +3,8 @@
 #
 # NOTE (downstream consumers -- do NOT remove as "dead code"): this module has no
 # callers inside THIS repo, but Kataglyphis-Inference-Engine's
+#requires -Version 7.0
+
 # scripts/windows/Build-Windows.ps1 imports it from its ContainerHub submodule at
 # ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/. It was deleted
 # once in 5be9b1e and restored (2026-07-15) -- grep known consumers before any
@@ -201,3 +203,4 @@ function Sync-FastLocalArtifactsToHost {
 }
 
 Export-ModuleMember -Function Clean-FlutterPluginSymlinks, Fix-FlutterPluginSymlinks, Patch-PermissionHandlerWindows, Sync-FastLocalArtifactsToHost
+

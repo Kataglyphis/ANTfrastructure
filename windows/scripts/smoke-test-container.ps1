@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 <#
 .SYNOPSIS
     Comprehensive smoke test for the Windows Kataglyphis container image.
@@ -1390,3 +1392,4 @@ if ($script:failed -gt 0) {
     Write-Host "`nAll smoke tests passed!" -ForegroundColor Green
     exit 0
 }
+

@@ -1,5 +1,7 @@
-﻿# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
+#requires -Version 7.0
 
 Set-StrictMode -Version Latest
 
@@ -681,3 +683,4 @@ Export-ModuleMember -Function @(
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry'
 )
+

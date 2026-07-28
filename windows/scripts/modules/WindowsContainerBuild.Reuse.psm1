@@ -12,6 +12,8 @@
 # docs/windows-container-build-performance.md.
 
 Set-StrictMode -Version Latest
+#requires -Version 7.0
+
 
 <#
 .SYNOPSIS
@@ -281,3 +283,4 @@ Export-ModuleMember -Function @(
     'Test-ContainerBindMount',
     'Remove-BuildContainerSafe'
 )
+

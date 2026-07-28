@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 <#
 .SYNOPSIS
   Build script for running inside the Windows container, using the Kataglyphis-ContainerHub build framework.
@@ -141,3 +143,4 @@ try {
 } finally {
     Close-BuildLog -Context $Context
 }
+

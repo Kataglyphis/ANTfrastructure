@@ -1,6 +1,8 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+#requires -Version 7.0
+
 Set-StrictMode -Version Latest
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
@@ -126,3 +128,4 @@ Export-ModuleMember -Function @(
     'Invoke-DownloadWithRetry',
     'Expand-ArchiveSubdirectory'
 )
+

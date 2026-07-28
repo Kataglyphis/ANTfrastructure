@@ -3,6 +3,8 @@ $passwordString = "YOUR_TOP_SECRET_PW"
 $pfxPath = "C:\\Users\\XXX\\Documents\\MSIX_Cert.pfx"
 
 # 1. Generate a modern self-signed certificate using a modern KSP
+#requires -Version 7.0
+
 $cert = New-SelfSignedCertificate `
     -Type Custom `
     -Subject $publisher `
