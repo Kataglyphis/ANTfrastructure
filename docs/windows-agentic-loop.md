@@ -43,40 +43,17 @@ Import-Module (Join-Path $repoRoot 'ExternalLib/Kataglyphis-ContainerHub/windows
 
 Initialize-AgenticLoop -ConfigPath $configPath -RepoRoot $repoRoot
 
-# Project-specific build/test/quality commands
+# Select build matrix for this platform (prefers buildMatrix, falls back to buildConfigurations)
 $onWindows = Test-IsWindows
-$buildConfigs = if ($onWindows) { $config.buildConfigurations.windows } else { $config.buildConfigurations.linux }
+$buildConfigs = if ($config.buildMatrix) {
+    if ($onWindows) { $config.buildMatrix.windows } else { $config.buildMatrix.linux }
+} elseif ($config.buildConfigurations) {
+    if ($onWindows) { $config.buildConfigurations.windows } else { $config.buildConfigurations.linux }
+} else { $null }
 
-$buildFunc = {
-    param($configName)
-    if (Test-IsWindows) {
-        "pwsh -ExecutionPolicy Bypass -File `"$repoRoot\Scripts\Windows\Build-Windows-Container.ps1`" -Configurations `"$configName`" -SkipTests"
-    } else {
-        "bash `"$repoRoot/Scripts/Linux/cmake-configure-build.sh`" --preset `"$configName`" --build-dir build"
-    }
-}
+Invoke-AgenticLoop -Config $config -PlannerPrompt "Analyze the codebase and add tasks to BACKLOG.md..." -ExecutorPrompt "Read BACKLOG.md, execute the next unchecked task..." -BuildConfigs $buildConfigs -OnWindows $onWindows -RepoRoot $repoRoot
 
-Invoke-AgenticLoop `
-    -Config @{
-        plannerModel = $config.models.planner
-        executorModel = $config.models.executor
-        buildEveryNTasks = $config.intervals.buildEveryNTasks
-        qualityEveryNTasks = $config.intervals.qualityEveryNTasks
-        refactorEveryNIterations = $config.intervals.refactorEveryNIterations
-        maxIterations = $config.intervals.maxIterations
-        maxExecutorRetries = $config.intervals.maxExecutorRetries
-        loopDelaySeconds = $config.intervals.loopDelaySeconds
-        buildConfigurations = $buildConfigs
-        autoCommit = $config.git.autoCommit
-        commitPrefix = $config.git.commitPrefix
-    } `
-    -PlannerPrompt "Analyze the codebase and add tasks to BACKLOG.md..." `
-    -ExecutorPrompt "Read BACKLOG.md, execute the next unchecked task..." `
-    -BuildCommandFunc $buildFunc `
-    -TestCommand (if ($onWindows) { $config.build.windowsTestCommand } else { $config.build.linuxTestCommand }) `
-    -RepoRoot $repoRoot
-
-Complete-AgenticLoop -Iteration $iteration -TasksCompleted $tasksCompleted
+Complete-AgenticLoop
 ```
 
 ## Module API
@@ -124,46 +101,64 @@ Complete-AgenticLoop -Iteration $iteration -TasksCompleted $tasksCompleted
 | `Invoke-TestCommand -Command <string> [-RepoRoot <path>]` | Execute a test command, log output, return `$true`/`$false`. |
 | `Invoke-QualityCommand -Command <string> [-RepoRoot <path>]` | Execute a quality gate, log output. |
 
+### Build Matrix & Sanitizer-Aware Testing
+
+| Function | Purpose |
+|----------|---------|
+| `Resolve-BuildMatrixEntry -Entry <object>` | Normalize a string or JSON object to a hashtable with `Name`, `Sanitizer`, `TestCommand`, `BuildDir`, `BuildType`. |
+| `Get-SanitizerEnvVars -Sanitizer <string>` | Return a hashtable of env vars for the given sanitizer (`asan`, `tsan`, or `none`). |
+| `Invoke-SanitizerTestCommand -Command <string> -Sanitizer <string> -RepoRoot <string>` | Set sanitizer env vars, run tests, restore env. |
+
+See [`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md) for the
+full build matrix documentation.
+
 ### High-Level Loop
 
 | Function | Purpose |
 |----------|---------|
-| `Invoke-AgenticLoop -Config <hashtable> -PlannerPrompt <string> -ExecutorPrompt <string> -BuildCommandFunc <scriptblock> [...]` | Full planner/executor loop with build cycling, tests, and quality gates. See detailed docs below. |
+| `Invoke-AgenticLoop -Config <object> -PlannerPrompt <string> -ExecutorPrompt <string> -BuildConfigs <array> -OnWindows <bool> [...]` | Full planner/executor loop with build matrix cycling, sanitizer-aware tests, full matrix sweeps, and quality gates. |
 
 ## `Invoke-AgenticLoop` Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `Config` | `[hashtable]` | Configuration values (models, intervals, etc.) |
+| `Config` | `[object]` | Configuration object (from JSON: models, intervals, build, git, logging) |
 | `PlannerPrompt` | `[string]` | Prompt message for the planner agent |
 | `ExecutorPrompt` | `[string]` | Prompt message for the executor agent |
-| `BuildCommandFunc` | `[scriptblock]` | `{ param($configName) return "command string" }` |
-| `TestCommand` | `[string]` | Shell command to run tests |
-| `QualityCommand` | `[string]` | Shell command to run quality gates |
+| `BuildConfigs` | `[array]` | Build matrix entries (string[] or object[] with name, sanitizer, testCommand, buildDir, buildType) |
+| `OnWindows` | `[bool]` | `$true` on Windows, `$false` on Linux — selects build script and test command |
 | `RepoRoot` | `[string]` | Repository root directory |
-| `BacklogPath` | `[string]` | Path to BACKLOG.md |
-| `MaxIterations` | `[int]` | Override max iterations (0 = unlimited) |
+| `MaxIterations` | `[int]` | Override max iterations (-1 = use config, 0 = unlimited) |
 | `SkipBuild` | `[switch]` | Skip builds |
 | `SkipTests` | `[switch]` | Skip tests |
 | `SkipQuality` | `[switch]` | Skip quality gates |
 | `PlannerOnly` | `[switch]` | Run planner once and exit |
 | `ExecutorOnly` | `[switch]` | Drain the queue and exit |
 
-### Config Hashtable Keys
+### Config JSON Keys
+
+The config is read from `AgenticLoop.config.json`. Key sections:
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `plannerModel` | `[string]` | `opencode-go/glm-5.2` | Model ID for the planner agent |
-| `executorModel` | `[string]` | `opencode-go/deepseek-v4-flash` | Model ID for the executor agent |
-| `buildEveryNTasks` | `[int]` | 3 | Build after every N completed tasks |
-| `qualityEveryNTasks` | `[int]` | 5 | Quality gate every M tasks |
-| `refactorEveryNIterations` | `[int]` | 3 | Refactor focus every R iterations |
-| `maxIterations` | `[int]` | 0 | Max loop iterations (0 = unlimited) |
-| `maxExecutorRetries` | `[int]` | 3 | Retries before skipping a stuck task |
-| `loopDelaySeconds` | `[int]` | 10 | Delay between loop iterations |
-| `buildConfigurations` | `[string[]]` | `['clangcl-debug']` | Array of build configs to cycle through |
-| `autoCommit` | `[bool]` | `$true` | Auto-commit after each completed task |
-| `commitPrefix` | `[string]` | `agentic-loop` | Prefix for auto-commit messages |
+| `models.planner` | `[string]` | `opencode-go/glm-5.2` | Model ID for the planner agent |
+| `models.executor` | `[string]` | `opencode-go/deepseek-v4-flash` | Model ID for the executor agent |
+| `intervals.buildEveryNTasks` | `[int]` | 3 | Build after every N completed tasks |
+| `intervals.qualityEveryNTasks` | `[int]` | 5 | Quality gate every M tasks |
+| `intervals.refactorEveryNIterations` | `[int]` | 3 | Refactor focus every R iterations |
+| `intervals.fullMatrixEveryNIterations` | `[int]` | 0 | Full matrix sweep every N iterations (0 = disabled) |
+| `intervals.maxIterations` | `[int]` | 0 | Max loop iterations (0 = unlimited) |
+| `intervals.maxExecutorRetries` | `[int]` | 3 | Retries before skipping a stuck task |
+| `intervals.loopDelaySeconds` | `[int]` | 10 | Delay between loop iterations |
+| `intervals.timeoutSeconds` | `[int]` | 600 | OpenCode invocation timeout |
+| `buildMatrix.windows` | `[array]` | — | Windows build matrix entries (objects with name, sanitizer, buildDir, buildType, testCommand) |
+| `buildMatrix.linux` | `[array]` | — | Linux build matrix entries |
+| `build.windowsTestCommand` | `[string]` | — | Fallback test command for Windows |
+| `build.linuxTestCommand` | `[string]` | — | Fallback test command for Linux |
+| `build.windowsQualityCommand` | `[string]` | — | Quality command for Windows |
+| `build.linuxQualityCommand` | `[string]` | — | Quality command for Linux |
+| `git.autoCommit` | `[bool]` | `true` | Auto-commit after each completed task |
+| `git.commitPrefix` | `[string]` | `agentic-loop` | Prefix for auto-commit messages |
 
 ## Usage Examples
 
@@ -180,17 +175,17 @@ Complete-AgenticLoop
 
 ```pwsh
 Initialize-AgenticLoop -ConfigPath 'AgenticLoop.config.json' -DryRun
-Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -BuildCommandFunc $buildFunc
+Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -BuildConfigs $buildConfigs -OnWindows $true -RepoRoot $repoRoot
 ```
 
 ### Planner only (add tasks without executing)
 
 ```pwsh
-Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -PlannerOnly
+Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -BuildConfigs $buildConfigs -OnWindows $true -RepoRoot $repoRoot -PlannerOnly
 ```
 
 ### Executor only (drain existing queue)
 
 ```pwsh
-Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -ExecutorOnly
+Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -BuildConfigs $buildConfigs -OnWindows $true -RepoRoot $repoRoot -ExecutorOnly
 ```

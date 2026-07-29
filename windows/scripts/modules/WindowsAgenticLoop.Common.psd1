@@ -21,6 +21,9 @@ FunctionsToExport = @(
     'Invoke-BuildCommand',
     'Invoke-TestCommand',
     'Invoke-QualityCommand',
+    'Resolve-BuildMatrixEntry',
+    'Get-SanitizerEnvVars',
+    'Invoke-SanitizerTestCommand',
     'Invoke-AgenticLoop'
 )
 }

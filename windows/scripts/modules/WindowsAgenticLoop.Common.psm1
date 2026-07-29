@@ -247,11 +247,71 @@ function Invoke-QualityCommand {
     } finally { Pop-Location }
 }
 
+# -- Build matrix helpers -------------------------------------------------
+function Resolve-BuildMatrixEntry {
+    <#
+    .SYNOPSIS
+      Normalize a build config entry (string or object) to a hashtable with
+      Name, Sanitizer, TestCommand, BuildDir, BuildType.
+    #>
+    param($Entry)
+    if ($Entry -is [string]) {
+        return @{ Name = $Entry; Sanitizer = 'none'; TestCommand = $null; BuildDir = $null; BuildType = $null }
+    }
+    return @{
+        Name        = $Entry.name
+        Sanitizer   = if ($Entry.sanitizer)   { $Entry.sanitizer }   else { 'none' }
+        TestCommand = if ($Entry.testCommand) { $Entry.testCommand } else { $null }
+        BuildDir    = if ($Entry.buildDir)    { $Entry.buildDir }    else { $null }
+        BuildType   = if ($Entry.buildType)   { $Entry.buildType }   else { $null }
+    }
+}
+
+function Get-SanitizerEnvVars {
+    <#
+    .SYNOPSIS
+      Return a hashtable of environment variables for the given sanitizer type.
+      Used to configure ASAN_OPTIONS / TSAN_OPTIONS before running tests.
+    #>
+    param([string]$Sanitizer)
+    switch ($Sanitizer) {
+        'asan' { return @{ ASAN_OPTIONS = 'detect_leaks=1:halt_on_error=1:abort_on_error=1:allocator_may_return_null=1' } }
+        'tsan' { return @{ TSAN_OPTIONS = 'halt_on_error=1:abort_on_error=1:second_deadlock_stack=1' } }
+        default { return @{} }
+    }
+}
+
+function Invoke-SanitizerTestCommand {
+    <#
+    .SYNOPSIS
+      Set sanitizer env vars, run the test command, then restore the original
+      environment. If the sanitizer is 'none', behaves like Invoke-TestCommand.
+    #>
+    param([string]$Command, [string]$Sanitizer, [string]$RepoRoot)
+    if ($Sanitizer -eq 'none' -or -not $Sanitizer) {
+        return Invoke-TestCommand -Command $Command -RepoRoot $RepoRoot
+    }
+    $envVars = Get-SanitizerEnvVars -Sanitizer $Sanitizer
+    $savedVars = @{}
+    foreach ($key in $envVars.Keys) {
+        $savedVars[$key] = [Environment]::GetEnvironmentVariable($key)
+        [Environment]::SetEnvironmentVariable($key, $envVars[$key])
+    }
+    Write-AgenticLog "Sanitizer: $Sanitizer — env vars set ($($envVars.Keys -join ', '))"
+    try {
+        return Invoke-TestCommand -Command $Command -RepoRoot $RepoRoot
+    } finally {
+        foreach ($key in $savedVars.Keys) {
+            [Environment]::SetEnvironmentVariable($key, $savedVars[$key])
+        }
+    }
+}
+
 # -- Main loop ------------------------------------------------------------
 function Invoke-AgenticLoop {
     param(
         $Config, [string]$PlannerPrompt, [string]$ExecutorPrompt,
-        [string[]]$BuildConfigs, [bool]$OnWindows, [string]$RepoRoot = (Get-Location).Path,
+        $BuildConfigs, [bool]$OnWindows, [string]$RepoRoot = (Get-Location).Path,
         [int]$MaxIterations = -1, [switch]$SkipBuild, [switch]$SkipTests, [switch]$SkipQuality,
         [switch]$PlannerOnly, [switch]$ExecutorOnly
     )
@@ -275,7 +335,51 @@ function Invoke-AgenticLoop {
     $testCmd = if ($OnWindows) { $Config.build.windowsTestCommand } else { $Config.build.linuxTestCommand }
     $qualityCmd = if ($OnWindows) { $Config.build.windowsQualityCommand } else { $Config.build.linuxQualityCommand }
 
-    $iteration = 0; $tasksDone = 0; $buildIdx = 0
+    # Full matrix sweep: every N iterations, run ALL configs instead of one.
+    # 0 = disabled (cycle one config per build trigger, the original behaviour).
+    $fullMatrixEveryN = if ($Config.intervals.fullMatrixEveryNIterations) { [int]$Config.intervals.fullMatrixEveryNIterations } else { 0 }
+
+    # Normalize build configs to matrix entries (supports both string[] and object[])
+    $matrix = @()
+    foreach ($entry in $BuildConfigs) { $matrix += Resolve-BuildMatrixEntry -Entry $entry }
+    if ($matrix.Count -eq 0) { Write-AgenticLog 'No build configs in matrix' 'FATAL'; return }
+    Write-AgenticLog "Build matrix: $($matrix.Count) entries — $($matrix.Name -join ', ')"
+    if ($fullMatrixEveryN -gt 0) { Write-AgenticLog "Full matrix sweep every $fullMatrixEveryN iterations" }
+
+    $iteration = 0; $tasksDone = 0; $script:buildIdx = 0
+
+    # Helper: build + test for a single matrix entry
+    # Uses script-scope vars: $OnWindows, $RepoRoot, $testCmd, $SkipTests
+    function Invoke-BuildAndTestForEntry {
+        param($Entry)
+        $cfg = $Entry.Name
+        $buildCmd = if ($OnWindows) {
+            "pwsh -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot 'Scripts/Windows/Build-Windows-Container.ps1')`" -Configurations `"$cfg`" -SkipTests"
+        } else {
+            $buildDir = if ($Entry.BuildDir) { $Entry.BuildDir } else { 'build' }
+            "bash `"$(Join-Path $RepoRoot 'Scripts/Linux/cmake-configure-build.sh')`" --preset `"$cfg`" --build-dir `"$buildDir`""
+        }
+        $ok = Invoke-BuildCommand -Command $buildCmd -Configuration $cfg
+        if ($ok -and (-not $SkipTests)) {
+            $entryTestCmd = if ($Entry.TestCommand) { $Entry.TestCommand } else { $testCmd }
+            if ($entryTestCmd) {
+                Invoke-SanitizerTestCommand -Command $entryTestCmd -Sanitizer $Entry.Sanitizer -RepoRoot $RepoRoot
+            }
+        }
+        return $ok
+    }
+
+    # Helper: run the build phase (single config or full matrix sweep)
+    function Invoke-BuildPhase {
+        if ($fullMatrixEveryN -gt 0 -and ($iteration % $fullMatrixEveryN -eq 0) -and $iteration -gt 0) {
+            Write-AgenticSection "FULL MATRIX SWEEP (iteration $iteration)"
+            foreach ($entry in $matrix) { Invoke-BuildAndTestForEntry -Entry $entry }
+        } else {
+            $entry = $matrix[$script:buildIdx % $matrix.Count]
+            Invoke-BuildAndTestForEntry -Entry $entry
+            $script:buildIdx++
+        }
+    }
 
     function LocalPlanner { param([switch]$Refactor)
         Write-AgenticSection 'PLANNER PHASE'
@@ -292,8 +396,7 @@ function Invoke-AgenticLoop {
     if ($ExecutorOnly) {
         $u = Get-UncheckedTaskCount
         while ($u -gt 0) { LocalExecutor; $tasksDone++; $u = Get-UncheckedTaskCount
-            if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { $cfg = $BuildConfigs[$buildIdx++ % $BuildConfigs.Count]; $ok = Invoke-BuildCommand -Command $(if ($OnWindows) { "pwsh -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot 'Scripts/Windows/Build-Windows-Container.ps1')`" -Configurations `"$cfg`" -SkipTests" } else { "bash `"$(Join-Path $RepoRoot 'Scripts/Linux/cmake-configure-build.sh')`" --preset `"$cfg`" --build-dir build" }) -Configuration $cfg
-                if ($ok -and (-not $SkipTests) -and $testCmd) { Invoke-TestCommand -Command $testCmd -RepoRoot $RepoRoot } }
+            if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { Invoke-BuildPhase }
             if (-not $SkipQuality -and ($qualityEveryN -gt 0) -and ($tasksDone % $qualityEveryN -eq 0) -and $qualityCmd) { Invoke-QualityCommand -Command $qualityCmd -RepoRoot $RepoRoot }
         }
         return
@@ -311,12 +414,7 @@ function Invoke-AgenticLoop {
             if ($nu -ge $u) { $retries++; if ($retries -ge $maxRetries) { break } } else {
                 $retries = 0; $tasksDone++; $u = $nu
                 Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit
-                if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) {
-                    $cfg = $BuildConfigs[$buildIdx++ % $BuildConfigs.Count]
-                    $buildCmd = if ($OnWindows) { "pwsh -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot 'Scripts/Windows/Build-Windows-Container.ps1')`" -Configurations `"$cfg`" -SkipTests" } else { "bash `"$(Join-Path $RepoRoot 'Scripts/Linux/cmake-configure-build.sh')`" --preset `"$cfg`" --build-dir build" }
-                    $ok = Invoke-BuildCommand -Command $buildCmd -Configuration $cfg
-                    if ($ok -and (-not $SkipTests) -and $testCmd) { Invoke-TestCommand -Command $testCmd -RepoRoot $RepoRoot }
-                }
+                if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { Invoke-BuildPhase }
                 if (-not $SkipQuality -and ($qualityEveryN -gt 0) -and ($tasksDone % $qualityEveryN -eq 0) -and $qualityCmd) { Invoke-QualityCommand -Command $qualityCmd -RepoRoot $RepoRoot }
             }
         }
