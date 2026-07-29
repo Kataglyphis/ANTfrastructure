@@ -20,6 +20,7 @@ $script:AgenticLogToConsole = $true
 $script:AgenticExitCode = 0
 $script:AgenticStartTime = $null
 $script:AgenticDryRun = $false
+$script:AgenticTimeoutSeconds = $null
 
 # -- Logging --------------------------------------------------------------
 function Write-AgenticLog {
@@ -41,10 +42,11 @@ function Get-AgenticLogFile { return $script:AgenticLogFile }
 
 # -- Initialization -------------------------------------------------------
 function Initialize-AgenticLoop {
-    param([string]$ConfigPath, [string]$RepoRoot = (Get-Location).Path, [switch]$DryRun)
+    param([string]$ConfigPath, [string]$RepoRoot = (Get-Location).Path, [switch]$DryRun, [int]$TimeoutSeconds = 0)
     $script:AgenticDryRun = $DryRun
     $script:AgenticExitCode = 0
     $script:AgenticStartTime = Get-Date
+    if ($TimeoutSeconds -gt 0) { $script:AgenticTimeoutSeconds = $TimeoutSeconds }
 
     $logDir = Join-Path $RepoRoot 'logs/agentic-loop'
     if ($ConfigPath -and (Test-Path $ConfigPath)) {
@@ -83,7 +85,13 @@ function Test-IsWindows { return (Get-AgenticPlatform) -eq 'windows' }
 
 # -- OpenCode invocation --------------------------------------------------
 function Invoke-OpenCode {
+    <#
+    .SYNOPSIS
+      Invoke opencode with a prompt via stdin. Both stdout and stderr are
+      streamed to the console AND the agentic log file in real time.
+    #>
     param([string]$Agent, [string]$Model, [string]$Message, [int]$TimeoutSeconds = 300)
+    if ($script:AgenticTimeoutSeconds -gt 0) { $TimeoutSeconds = $script:AgenticTimeoutSeconds }
     if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] opencode run --agent $Agent --model $Model"; return '[DRY RUN]' }
     if (-not (Get-Command 'opencode' -ErrorAction SilentlyContinue)) {
         Write-AgenticLog 'opencode not found on PATH.' 'FATAL'; $script:AgenticExitCode = 1; return $null
@@ -91,49 +99,69 @@ function Invoke-OpenCode {
     Write-AgenticLog "Invoking opencode: agent=$Agent model=$Model (timeout=${TimeoutSeconds}s)"
     $exitCode = 0; $outStr = ''; $errStr = ''
     $tmpFile = [System.IO.Path]::GetTempFileName()
-    $stderrFile = [System.IO.Path]::GetTempFileName()
     $logFile = $script:AgenticLogFile
     try {
         [System.IO.File]::WriteAllText($tmpFile, $Message, [System.Text.Encoding]::UTF8)
-        # Redirect stderr to a file (not 2>&1 which crashes in PS 5.1)
-        # Read stdout line by line for streaming output
         $opencodeExe = (Get-Command 'opencode').Source
         $psi = New-Object System.Diagnostics.ProcessStartInfo
         $psi.FileName = $opencodeExe
         $psi.Arguments = "run --agent $Agent --model $Model"
         $psi.RedirectStandardInput = $true
         $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $false
+        $psi.RedirectStandardError = $true   # capture stderr too
         $psi.UseShellExecute = $false
         $psi.CreateNoWindow = $true
         $p = New-Object System.Diagnostics.Process
         $p.StartInfo = $psi
         $p.Start() | Out-Null
+
         # Feed stdin
         $stdin = $p.StandardInput
         $stdin.Write((Get-Content $tmpFile -Raw))
         $stdin.Close()
-        # Stream stdout line by line in real-time
-        $outLines = [System.Collections.ArrayList]::new()
-        $reader = $p.StandardOutput
-        while (-not $reader.EndOfStream) {
-            $line = $reader.ReadLine()
-            if ($line) {
-                [void]$outLines.Add($line)
-                Write-Host $line
-                if ($logFile) { Add-Content $logFile -Value $line }
-            }
+
+        # Read stdout + stderr concurrently via Start-ThreadJob to avoid deadlock.
+        # Each line is written to console AND appended to the agentic log file.
+        # Uses -ArgumentList for explicit variable passing (avoids PS closure bugs with Task.Run).
+        $outLines = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+        $errLines = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+        $stdoutJob = Start-ThreadJob -Name "oc-stdout-$Agent" -ArgumentList $p, $logFile, $outLines -ScriptBlock {
+            param($p, $logFile, $outLines)
+            $r = $p.StandardOutput
+            try {
+                while (($line = $r.ReadLine()) -ne $null) {
+                    $outLines.Add($line)
+                    Write-Host $line
+                    if ($logFile) { Add-Content $logFile -Value $line }
+                }
+            } catch { <# stream closed #> }
         }
+        $stderrJob = Start-ThreadJob -Name "oc-stderr-$Agent" -ArgumentList $p, $logFile, $errLines -ScriptBlock {
+            param($p, $logFile, $errLines)
+            $r = $p.StandardError
+            try {
+                while (($line = $r.ReadLine()) -ne $null) {
+                    $errLines.Add($line)
+                    Write-Host $line
+                    if ($logFile) { Add-Content $logFile -Value $line }
+                }
+            } catch { <# stream closed #> }
+        }
+
+        # Wait for the process to finish (timeout-aware)
         $completed = $p.WaitForExit($TimeoutSeconds * 1000)
         if (-not $completed) { $p.Kill(); Write-AgenticLog "opencode timed out" 'ERROR'; $exitCode = -1 }
         else { $exitCode = $p.ExitCode }
-        # Read stderr from file
-        if (Test-Path $stderrFile) { $errStr = Get-Content $stderrFile -Raw; Remove-Item $stderrFile -Force }
+
+        # Drain readers
+        Receive-Job -Job $stdoutJob -Wait -ErrorAction SilentlyContinue | Out-Null
+        Receive-Job -Job $stderrJob -Wait -ErrorAction SilentlyContinue | Out-Null
+
         $outStr = $outLines -join "`n"
+        $errStr = $errLines -join "`n"
     } catch { Write-AgenticLog "opencode failed: $($_.Exception.Message)" 'ERROR'; $exitCode = 1
     } finally {
         if (Test-Path $tmpFile) { Remove-Item $tmpFile -Force }
-        if (Test-Path $stderrFile) { Remove-Item $stderrFile -Force }
         if ($p -and -not $p.HasExited) { $p.Kill() }
         if ($p) { $p.Dispose() }
     }
