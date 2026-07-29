@@ -156,7 +156,8 @@ Consumer projects are expected to push reusable work upstream rather than keep
 local copies (BeschleunigerBallett's AGENTS.md states this as a rule). When
 adding here:
 
-- PowerShell goes in `windows/scripts/modules/` with `Export-ModuleMember`, and
+- PowerShell 7 (pwsh) is the standard shell. All `.ps1` scripts require `#Requires -Version 7.0`. Windows containers use pwsh as the default SHELL.
+- PowerShell scripts go in `windows/scripts/modules/` with `Export-ModuleMember`, and
   consumers resolve it ContainerHub-first with a vendored fallback.
 - Document the **symptom**, not just the fix — platform traps here are found by
   recognising an error message, not by reading code.

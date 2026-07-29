@@ -24,7 +24,7 @@ FROM ${BASE_IMAGE} AS trt-extract
 ARG TENSORRT_VERSION=11.1.0.106
 ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
-SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 COPY scripts\setup-tensorrt.ps1 C:\temp\scripts\
 COPY downloads C:\temp\downloads
@@ -45,7 +45,7 @@ ARG CUDA_VERSION_MAJOR_MINOR=13.3
 ARG CUDNN_VERSION=9.23.2.1
 ARG TENSORRT_VERSION=11.1.0.106
 
-SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 # Narrow COPY — only the script this stage runs (a wildcard `scripts` would bust
 # the CUDA layer on every unrelated script edit). Modules were already populated

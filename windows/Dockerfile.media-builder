@@ -11,7 +11,7 @@
 # so layers commit reliably under Hyper-V `docker build`. The heavy compile
 # runs via:
 #   docker run --isolation hyperv --cpu-count N --memory Mg <--target image> \
-#       powershell -File C:\temp\scripts\<build-*-all.ps1>
+#       pwsh -File C:\temp\scripts\<build-*-all.ps1>
 #   docker commit <container> local/kataglyphis:windows-media-<branch>
 # because `docker build` on this host is capped at 2 CPUs and process isolation
 # cannot commit layers (see build.ps1 CPU note).
@@ -27,7 +27,7 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
 
-SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 # Refresh C:\temp\versions.env — base bakes a copy + runs load-versions.ps1 to
 # set Machine env. Build scripts re-run load-versions.ps1 at run time, which reads

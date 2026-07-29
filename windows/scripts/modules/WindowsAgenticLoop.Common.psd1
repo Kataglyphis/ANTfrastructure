@@ -6,7 +6,7 @@ Author = 'Kataglyphis'
 CompanyName = 'Kataglyphis'
 Copyright = '(c) 2026 Kataglyphis. All rights reserved.'
 Description = 'Reusable building blocks for the OpenCode agentic loop pattern.'
-PowerShellVersion = '5.1'
+PowerShellVersion = '7.0'
 FunctionsToExport = @(
     'Initialize-AgenticLoop',
     'Complete-AgenticLoop',

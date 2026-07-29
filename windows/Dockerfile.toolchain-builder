@@ -7,7 +7,7 @@
 # cheap/IO-bound layers that Hyper-V `docker build` commits reliably — but runs NO
 # heavy compile. The CPU-bound `PCbuild\build.bat` then runs via:
 #   docker run --isolation hyperv --cpu-count N --memory Mg <this image> `
-#       powershell -File C:\temp\scripts\build-toolchain-all.ps1
+#       pwsh -File C:\temp\scripts\build-toolchain-all.ps1
 #   docker commit <container> local/kataglyphis:windows-toolchain
 # because `docker build` on this host is capped at 2 CPUs and process isolation
 # cannot commit layers (see windows/build.ps1 CPU note). The committed image is a
@@ -36,7 +36,7 @@ RUN cd /d C:\temp\cpython && `
     echo ^</Project^> >> PCbuild\Directory.Build.props
 
 # The run+commit compile entrypoint (does the heavy build.bat at full --cpu-count).
-SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 # Shared module for build-toolchain-all.ps1's nuget pre-seed (Invoke-DownloadWithRetry).
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build-toolchain-all.ps1 C:\temp\scripts\

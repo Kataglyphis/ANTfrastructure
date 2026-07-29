@@ -13,7 +13,7 @@ loop pattern. Lets any project set up an autonomous coding loop with:
 ## Prerequisites
 
 - [OpenCode](https://opencode.ai) CLI installed and authenticated
-- PowerShell 5.1+ (Windows) or PowerShell 7+ (Linux/macOS)
+- PowerShell 7+ (cross-platform)
 - A `BACKLOG.md` file in the repository root (task format: `- [ ] Title`)
 - `jq` on Linux (for config parsing in the Bash equivalent)
 
@@ -100,14 +100,14 @@ Complete-AgenticLoop -Iteration $iteration -TasksCompleted $tasksCompleted
 
 | Function | Purpose |
 |----------|---------|
-| `Get-AgenticPlatform` | Returns `'windows'` or `'linux'`. Safe in PS 5.1 (no `$PSVersionTable.Platform`). |
+| `Get-AgenticPlatform` | Returns `'windows'` or `'linux'`. Works on all supported PowerShell versions. |
 | `Test-IsWindows` | `$true` on Windows, `$false` otherwise. |
 
 ### OpenCode Invocation
 
 | Function | Purpose |
 |----------|---------|
-| `Invoke-OpenCode -Agent <string> -Model <string> -Message <string>` | Passes message via stdin to `opencode run`. Avoids `2>&1` (crash in PS 5.1). Captures stdout. |
+| `Invoke-OpenCode -Agent <string> -Model <string> -Message <string>` | Passes message via stdin to `opencode run`. Captures stdout (avoids `2>&1` pattern). |
 
 ### Utility
 
@@ -164,27 +164,6 @@ Complete-AgenticLoop -Iteration $iteration -TasksCompleted $tasksCompleted
 | `buildConfigurations` | `[string[]]` | `['clangcl-debug']` | Array of build configs to cycle through |
 | `autoCommit` | `[bool]` | `$true` | Auto-commit after each completed task |
 | `commitPrefix` | `[string]` | `agentic-loop` | Prefix for auto-commit messages |
-
-## Known PS 5.1 Issues
-
-### `2>&1` + `$ErrorActionPreference='Stop'` = Crash
-
-In Windows PowerShell 5.1, merging stderr into stdout with `2>&1` while
-`$ErrorActionPreference='Stop'` is active causes a silent crash (empty
-exception message). The stderr bytes from external processes are converted
-to `ErrorRecord` objects by the redirection; under `'Stop'`, these become
-terminating errors.
-
-**The module avoids this entirely** by never using `2>&1`. Instead,
-`Invoke-OpenCode` writes the message to a temp file and pipes it through
-stdin, capturing stdout only. Stderr output from opencode is not captured
-(this is acceptable because opencode sends its responses to stdout).
-
-### `$PSVersionTable.Platform`
-
-PowerShell 5.1 does not have the `Platform` property on `$PSVersionTable`.
-The module uses `$env:OS -eq 'Windows_NT'` instead, which works on all
-Windows versions.
 
 ## Usage Examples
 

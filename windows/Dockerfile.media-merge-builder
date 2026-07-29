@@ -9,7 +9,7 @@
 # COPY --from) and is only IO, so 2 CPUs is fine. The CPU-bound GStreamer build then
 # runs via:
 #   docker run --isolation hyperv --cpu-count N --memory Mg <this image> `
-#       powershell -File C:\temp\scripts\build-gstreamer-from-source.ps1 -InstallDir C:\runtime -LogDir C:\temp\logs
+#       pwsh -File C:\temp\scripts\build-gstreamer-from-source.ps1 -InstallDir C:\runtime -LogDir C:\temp\logs
 #   docker commit <container> local/kataglyphis:windows-media
 # `docker commit` preserves the ENV set below. This file IS the former
 # Dockerfile.media (since removed) minus the final GStreamer RUN, which moved to
@@ -51,7 +51,7 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     TVM_REF="${TVM_REF}" `
     IREE_VERSION="${IREE_VERSION}"
 
-SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
 # ── Fan-in: merge the branch install trees ───────────────────────────────────
 # Branch A carries the largest tree (ORT, GenAI, OpenCV, FFmpeg) — copy it first,

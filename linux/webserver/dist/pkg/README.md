@@ -211,7 +211,7 @@ cargo run --features gui_windows -- gui --backend primary
 
 Voraussetzungen:
 - Windows SDK (inkl. `makeappx` und `signtool`)
-- PowerShell 5.1+ oder PowerShell 7+
+- PowerShell 7+
 
 MSIX bauen (inkl. Release-Build):
 

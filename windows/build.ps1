@@ -513,7 +513,7 @@ function Get-MediaRunCommand {
         [Parameter(Mandatory)] [string]$Script,
         [string[]]$ExtraArgs = @()
     )
-    return @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$Script") + $ExtraArgs
+    return @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$Script") + $ExtraArgs
 }
 
 function Invoke-MediaBranchRunCommit {
@@ -595,6 +595,7 @@ try {
             WINDOWS_LTSC      = Get-Ver 'WINDOWS_LTSC'
             VULKAN_VERSION    = Get-Ver 'VULKAN_VERSION'
             CMAKE_VERSION     = Get-Ver 'CMAKE_VERSION'
+            PWSH_VERSION      = Get-Ver 'PWSH_VERSION'
             # As a --build-arg (not versions.env-baked env): setup-vs runs BEFORE load-versions
             # by design (protects the VS layer from versions.env bumps), so the SDK pin must
             # reach it via ARG -- and changing it SHOULD bust the VS layer.

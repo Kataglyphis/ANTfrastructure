@@ -1,6 +1,6 @@
 @echo off
 rem Container entrypoint: load the VS developer environment, then run the given
-rem command (or an interactive PowerShell when none is given). A launcher script
+rem command (or an interactive pwsh (PowerShell 7) when none is given). A launcher script
 rem avoids the exec-form quoting hell around the spaces in the VS install path.
 rem VS major from the baked VISUAL_STUDIO_VERSION Machine env (load-versions.ps1 /
 rem versions.env); fall back to 18 for images from older bases without the key.
@@ -15,7 +15,7 @@ rem carry (the version floats with scoop's llvm). Resolve it dynamically so
 rem ASAN-instrumented exes run instead of dying STATUS_ENTRYPOINT_NOT_FOUND.
 for /d %%v in ("C:\Users\ContainerAdministrator\scoop\apps\llvm\current\lib\clang\*") do if exist "%%v\lib\windows" set "PATH=%%v\lib\windows;%PATH%"
 if "%~1"=="" (
-  powershell.exe -NoLogo -ExecutionPolicy Bypass
+  pwsh.exe -NoLogo -ExecutionPolicy Bypass
 ) else (
   %*
 )

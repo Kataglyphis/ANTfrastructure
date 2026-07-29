@@ -40,7 +40,7 @@ COPY windows\scripts\modules C:\temp\scripts\modules
 # win -- everything else from PyPI / the pytorch-cpu index. Network-bound RUN;
 # fine at the classic builder's 2 CPUs.
 ARG APP_REF=v0.0.27
-SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 COPY windows\scripts\assemble-torch-app.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -Mode all
 ENV TORCH_APP_DIR="C:\opt\Kataglyphis-Orchestr-ANT-ion"
@@ -50,7 +50,7 @@ VOLUME ["C:\\workspace"]
 
 # Dev image: a relaxed interval keeps the healthcheck from burning cycles every 30s.
 HEALTHCHECK --interval=5m --timeout=15s --start-period=60s --retries=3 `
-  CMD powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\scripts\healthcheck.ps1
+  CMD pwsh -NoProfile -ExecutionPolicy Bypass -File C:\temp\scripts\healthcheck.ps1
 
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
       org.opencontainers.image.description="Windows developer image with ONNX Runtime, OpenCV, LiteRT, LiteRT-LM, TVM, GStreamer, FFmpeg" `
@@ -65,6 +65,6 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
 # Launcher script instead of inline cmd: exec-form re-quoting mangles embedded
 # quotes around the spaces-in-path VsDevCmd.bat (literal \" reaches cmd.exe).
 # entrypoint.cmd loads VsDevCmd then runs the container command (or interactive
-# PowerShell when none is given).
+# pwsh (PowerShell 7) when none is given).
 COPY windows\scripts\entrypoint.cmd C:\temp\scripts\entrypoint.cmd
 ENTRYPOINT ["cmd","/S","/C","C:\\temp\\scripts\\entrypoint.cmd"]

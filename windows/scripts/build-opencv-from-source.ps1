@@ -42,7 +42,7 @@ if (-not $contribOk) { $contribSrc = ''; Write-Host 'Continuing without contrib 
 #       CV_64U/CV_64S GpuMat conversions compile on Windows LLP64 (int64_t/uint64_t
 #       are long long / unsigned long long, not long / ulong as on Unix LP64).
 $patchDir = Join-Path $PSScriptRoot 'patches'
-Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\001-cmake-clang-cl-compat.patch') -SourceDir $mainSrc -Description 'opencv: cmake clang-cl/CUDA compat'
+Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\001-cmake-clang-cl-compat.patch') -SourceDir $mainSrc -Description 'opencv: cmake clang-cl/CUDA compat' -IgnoreWhitespace
 if ($contribSrc) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\001-cudev-windows-llp64.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudev Windows LLP64 64-bit VecTraits'
 }
@@ -129,6 +129,8 @@ $cmakeExtra = @(
     # (queried from the interpreter); the media merge fans site-packages into the
     # shipped image. numpy include dir resolved above.
     '-DBUILD_opencv_python3=ON', '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
+    # opencv_contrib dnn_superres references ENGINE_CLASSIC removed in OpenCV 5.x DNN
+    '-DBUILD_opencv_dnn_superres=OFF',
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
     # WITH_OPENGL=OFF: WITH_OPENGL=ON makes opencv_core*.dll hard-import OPENGL32.dll,
     # which the Windows Server Core base image lacks -> every OpenCV DLL fails to load

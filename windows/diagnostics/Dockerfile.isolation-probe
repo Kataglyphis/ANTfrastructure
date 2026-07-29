@@ -11,7 +11,7 @@ ARG BASE=mcr.microsoft.com/windows/servercore:ltsc2025
 FROM ${BASE}
 ARG COUNT=50
 ENV COUNT=${COUNT}
-SHELL ["powershell","-NoProfile","-ExecutionPolicy","Bypass","-Command","$ErrorActionPreference='Stop';"]
+SHELL ["pwsh","-NoProfile","-ExecutionPolicy","Bypass","-Command","$ErrorActionPreference='Stop';"]
 RUN $d='C:\isolation-probe'; New-Item $d -ItemType Directory -Force | Out-Null; \
     $buf = New-Object byte[] (2097152); \
     for ($i=0; $i -lt [int]$env:COUNT; $i++) { [IO.File]::WriteAllBytes(\"$d\obj_$i.bin\", $buf) }; \

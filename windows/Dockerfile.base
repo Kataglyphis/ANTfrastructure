@@ -9,6 +9,10 @@ ARG WINDOWS_LTSC=2025
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
 ARG VULKAN_VERSION=1.4.341.1
 ARG CMAKE_VERSION=4.4.0
+# PowerShell 7 (pwsh) version — single source of truth is versions.env, forwarded
+# by build.ps1 as --build-arg. Installed early so all subsequent layers use pwsh
+# as the default container shell instead of Windows PowerShell 5.1.
+ARG PWSH_VERSION=7.6.4
 
 # GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 ENV TEMP_DIR="C:\temp"
@@ -16,6 +20,23 @@ LABEL maintainer="contact@jonasheinle.de"
 
 # NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# ── Install PowerShell 7 (pwsh) as the default shell ─────────────────────────
+# ZIP install avoids MSI dependency issues in containers. The version is pinned
+# via ARG PWSH_VERSION (from versions.env). After this, SHELL is switched to pwsh
+# for all subsequent layers.
+RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null; $u = 'https://github.com/PowerShell/PowerShell/releases/download/v' + $env:PWSH_VERSION + '/PowerShell-' + $env:PWSH_VERSION + '-win-x64.zip'; $z = $env:TEMP_DIR + '\pwsh.zip'; $d = 'C:\Program Files\PowerShell\7'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $u -OutFile $z -UseBasicParsing; Expand-Archive -Path $z -DestinationPath $d -Force; Remove-Item $z -Force; $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine'); if ($mp -notlike '*PowerShell\7*') { [Environment]::SetEnvironmentVariable('Path', $mp + ';' + $d, 'Machine') }
+
+# Ensure pwsh and the base Windows paths are on PATH for the SHELL switch below and all
+# subsequent RUN instructions. The base image's PATH is NOT inherited by Docker ENV
+# when the escape character is backtick, so we set a minimal WIN_BASE_PATH here explicitly.
+# (The full WIN_BASE_PATH with scoop-installed tool dirs is set later after load-versions.)
+ENV PWSH_PATH="C:\Program Files\PowerShell\7"
+ENV WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH
+ENV PATH=$PWSH_PATH;$WIN_BASE_PATH
+
+# Switch the default container shell to pwsh (PowerShell 7) for all subsequent RUN instructions.
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandErrorActionPreference = $false;"]
 
 # COPY-immediately-before-RUN throughout this file: each input lands in the layer
 # right before the step that consumes it, so editing a LATER script (or versions.env)
@@ -73,7 +94,7 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     CARGO_HOME=C:\Users\ContainerAdministrator\.cargo `
     CARGO_BIN=C:\Users\ContainerAdministrator\.cargo\bin
 
-ENV PATH=$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
 # Tail scripts land here (not at the top) so editing them only rebuilds from this
 # point. verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
