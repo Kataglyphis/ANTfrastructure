@@ -214,8 +214,10 @@ function Invoke-AgentProcess {
         $renderStream = [bool]$RenderClaudeStream
         $stdoutJob = Start-ThreadJob -Name "agent-stdout-$Label" -ArgumentList $p, $logFile, $outLines, $renderStream -ScriptBlock {
             param($p, $logFile, $outLines, $renderStream)
-            # Emit a line to console + log
-            $emit = { param($text) Write-Host $text; if ($logFile) { Add-Content $logFile -Value $text } }
+            # Emit a line to console + log. [Console]::Out (not Write-Host):
+            # thread-job host output is buffered until Receive-Job, which
+            # would defeat live streaming in the terminal.
+            $emit = { param($text) [Console]::Out.WriteLine($text); if ($logFile) { Add-Content $logFile -Value $text } }
             $r = $p.StandardOutput
             try {
                 while (($line = $r.ReadLine()) -ne $null) {
@@ -274,7 +276,7 @@ function Invoke-AgentProcess {
             try {
                 while (($line = $r.ReadLine()) -ne $null) {
                     $errLines.Add($line)
-                    Write-Host $line
+                    [Console]::Error.WriteLine($line)
                     if ($logFile) { Add-Content $logFile -Value $line }
                 }
             } catch { <# stream closed #> }
