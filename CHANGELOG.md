@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-30 — Agentic loop: backlog-driven planner skip + completed-task pruning
+
+- **Skip planner when tasks are pending** (`backlog.skipPlannerWhenTasksPending`,
+  default `true`): while `BACKLOG.md` still has unchecked tasks, iterations go
+  straight to the executor instead of paying for a planning pass.
+- **Completed tasks are deleted from the backlog**
+  (`backlog.deleteCompletedTasks`, default `true`): executor prompts now
+  instruct deleting the finished entry (summary goes into the commit message),
+  and a deterministic pruner (`remove_checked_tasks` /
+  `Remove-CheckedBacklogTasks`) removes any lingering `- [x]`/`- [X]` blocks
+  (title + indented body) before each auto-commit and at drain start.
+  Completed work stays visible in git history instead of growing the file.
+
 ## 2026-07-30 — Agentic loop: live streaming output
 
 - **Claude engine streams by default**: `claude -p` now runs with

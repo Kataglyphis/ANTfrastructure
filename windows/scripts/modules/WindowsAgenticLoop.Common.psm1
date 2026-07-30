@@ -447,6 +447,39 @@ function Get-UncheckedTaskCount {
     return [regex]::Matches($content, '(?m)^- \[ \]').Count
 }
 
+function Remove-CheckedBacklogTasks {
+    <#
+    .SYNOPSIS
+      Remove completed (- [x]) task blocks from the backlog: the checked
+      title line plus its indented / blank body lines, up to the next
+      non-indented line (next task, heading, or plain text). Completed work
+      stays visible in git history instead of accumulating in the file.
+      Returns the number of removed task blocks.
+    #>
+    param([string]$BacklogPath = (Join-Path (Get-Location).Path 'BACKLOG.md'))
+    if (-not (Test-Path $BacklogPath)) { return 0 }
+    $lines = @(Get-Content $BacklogPath)
+    $checked = @($lines | Where-Object { $_ -match '^- \[[xX]\]' }).Count
+    if ($checked -eq 0) { return 0 }
+    if ($script:AgenticDryRun) {
+        Write-AgenticLog "[DRY RUN] would remove $checked completed task(s) from $(Split-Path -Leaf $BacklogPath)"
+        return 0
+    }
+    $out = [System.Collections.Generic.List[string]]::new()
+    $skip = $false
+    foreach ($line in $lines) {
+        if ($line -match '^- \[[xX]\]') { $skip = $true; continue }
+        if ($skip) {
+            if ($line -match '^\s' -or $line -match '^\s*$') { continue }
+            $skip = $false
+        }
+        $out.Add($line)
+    }
+    Set-Content -Path $BacklogPath -Value $out
+    Write-AgenticLog "Removed $checked completed task(s) from $(Split-Path -Leaf $BacklogPath)"
+    return $checked
+}
+
 # -- Git helpers ----------------------------------------------------------
 function Invoke-GitAutoCommit {
     param([string]$Message, [string]$RepoRoot = (Get-Location).Path, [bool]$Enabled = $true)
@@ -626,6 +659,9 @@ function Invoke-AgenticLoop {
     $gitCfg = Get-AgenticConfigValue $Config 'git' $null
     $autoCommit = [bool](Get-AgenticConfigValue $gitCfg 'autoCommit' $true)
     $commitPrefix = Get-AgenticConfigValue $gitCfg 'commitPrefix' 'agentic-loop'
+    $backlogCfg = Get-AgenticConfigValue $Config 'backlog' $null
+    $skipPlannerWhenPending = [bool](Get-AgenticConfigValue $backlogCfg 'skipPlannerWhenTasksPending' $true)
+    $deleteCompleted = [bool](Get-AgenticConfigValue $backlogCfg 'deleteCompletedTasks' $true)
 
     $buildCfg = Get-AgenticConfigValue $Config 'build' $null
     $testCmd = if ($OnWindows) { Get-AgenticConfigValue $buildCfg 'windowsTestCommand' $null } else { Get-AgenticConfigValue $buildCfg 'linuxTestCommand' $null }
@@ -718,6 +754,7 @@ function Invoke-AgenticLoop {
     if ($PlannerOnly) { Invoke-PlannerPhase -Refactor:$((($iteration+1) % $refactorEveryN -eq 0)); return }
     if ($ExecutorOnly) {
         $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
+        if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
         $u = Get-UncheckedTaskCount -BacklogPath $backlogPath
         $retries = 0
         while ($u -gt 0) {
@@ -728,6 +765,7 @@ function Invoke-AgenticLoop {
                 if ($retries -ge $maxRetries -or $script:AgenticDryRun) { break }
             } else {
                 $retries = 0; $tasksDone++; $u = $nu
+                if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
                 if (-not (Invoke-AfterTaskPhases)) { Write-AgenticLog 'Too many consecutive build failures — stopping' 'ERROR'; break }
             }
         }
@@ -738,9 +776,17 @@ function Invoke-AgenticLoop {
         $iteration++
         if ($maxIter -gt 0 -and $iteration -gt $maxIter) { break }
         Write-AgenticSection "ITERATION $iteration"
-        Invoke-PlannerPhase -Refactor:$($iteration % $refactorEveryN -eq 0)
 
+        # Phase 1: Planner — skipped while the queue still has pending tasks
         $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
+        $pending = Get-UncheckedTaskCount -BacklogPath $backlogPath
+        if ($skipPlannerWhenPending -and $pending -gt 0) {
+            Write-AgenticLog "Skipping planner: $pending task(s) still pending in BACKLOG.md"
+        } else {
+            Invoke-PlannerPhase -Refactor:$($iteration % $refactorEveryN -eq 0)
+        }
+
+        if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
         $u = Get-UncheckedTaskCount -BacklogPath $backlogPath
         $retries = 0
         $stop = $false
@@ -752,6 +798,8 @@ function Invoke-AgenticLoop {
                 if ($retries -ge $maxRetries -or $script:AgenticDryRun) { break }
             } else {
                 $retries = 0; $tasksDone++; $u = $nu
+                # Prune any leftover checked entries before the auto-commit
+                if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
                 if (-not (Invoke-AfterTaskPhases)) {
                     Write-AgenticLog 'Too many consecutive build failures — stopping loop' 'ERROR'
                     $script:AgenticExitCode = 1

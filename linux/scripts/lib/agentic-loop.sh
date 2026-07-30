@@ -328,6 +328,34 @@ unchecked_task_count() {
     grep -c '^- \[ \]' "$backlog" 2>/dev/null || echo 0
 }
 
+# Remove completed (- [x]) task blocks from the backlog: the checked title
+# line plus its indented / blank body lines, up to the next non-indented
+# line (next task, heading, or plain text).  Completed work stays visible
+# in git history instead of accumulating in the file.
+remove_checked_tasks() {
+    local backlog="${1:-BACKLOG.md}"
+    [[ -f "$backlog" ]] || return 0
+    local checked
+    checked=$(grep -c '^- \[[xX]\]' "$backlog" 2>/dev/null || echo 0)
+    [[ "$checked" -eq 0 ]] && return 0
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log "[DRY RUN] would remove $checked completed task(s) from $(basename "$backlog")"
+        return 0
+    fi
+    local tmp="${backlog}.prune.$$"
+    awk '
+        /^- \[[xX]\]/ { skip = 1; next }
+        {
+            if (skip) {
+                if ($0 ~ /^[ \t]/ || $0 ~ /^[ \t]*$/) next
+                skip = 0
+            }
+            print
+        }
+    ' "$backlog" > "$tmp" && mv "$tmp" "$backlog"
+    log "Removed $checked completed task(s) from $(basename "$backlog")"
+}
+
 # ── Build / Test / Quality ──────────────────────────────────────────────
 invoke_build() {
     local cmd="$1" config_name="$2"
@@ -447,7 +475,7 @@ default_refactor_planner_prompt() {
 }
 
 default_executor_prompt() {
-    echo "Read BACKLOG.md and find the first unchecked task (- [ ]). Implement it fully: make the code changes, add or update tests, and build with the appropriate preset. Once the task is complete and the build passes, mark it as checked (- [x]) in BACKLOG.md with a brief summary. Then commit the changes."
+    echo "Read BACKLOG.md and find the first unchecked task (- [ ]). Implement it fully: make the code changes, add or update tests, and build with the appropriate preset. Once the task is complete and the build passes, DELETE the completed task entry (the '- [ ]' title line and its indented body) from BACKLOG.md — do not just mark it checked. Then commit the changes with a message that summarizes what was done."
 }
 
 # ── Main loop ───────────────────────────────────────────────────────────
@@ -483,6 +511,9 @@ run_agentic_loop() {
     full_matrix_every_n=$(jq -r '.intervals.fullMatrixEveryNIterations // 0' "$config_json")
     fix_build_failures=$(jq -r '.intervals.fixBuildFailures // true' "$config_json")
     max_consecutive_build_failures=$(jq -r '.intervals.maxConsecutiveBuildFailures // 3' "$config_json")
+    local skip_planner_when_pending delete_completed
+    skip_planner_when_pending=$(jq -r '.backlog.skipPlannerWhenTasksPending // true' "$config_json")
+    delete_completed=$(jq -r '.backlog.deleteCompletedTasks // true' "$config_json")
     test_cmd=$(jq -r ".build.${platform}TestCommand // .build.linuxTestCommand // empty" "$config_json")
     quality_cmd=$(jq -r ".build.${platform}QualityCommand // .build.linuxQualityCommand // empty" "$config_json")
     build_script=$(jq -r ".build.${platform}Script // .build.linuxScript // empty" "$config_json")
@@ -570,6 +601,7 @@ run_agentic_loop() {
     drain_executor_queue() {
         local backlog="${repo_root}/BACKLOG.md"
         local unchecked retries=0
+        [[ "$delete_completed" == "true" ]] && remove_checked_tasks "$backlog"
         unchecked=$(unchecked_task_count "$backlog")
         log "Tasks in queue: $unchecked"
         while [[ "$unchecked" -gt 0 ]]; do
@@ -584,6 +616,8 @@ run_agentic_loop() {
             else
                 retries=0; tasks_completed=$((tasks_completed + 1)); unchecked=$nu
                 log "Task complete. Total: $tasks_completed | Remaining: $unchecked"
+                # Prune any leftover checked entries before the auto-commit
+                [[ "$delete_completed" == "true" ]] && remove_checked_tasks "$backlog"
                 after_task_phases
                 if [[ "$consecutive_build_failures" -ge "$max_consecutive_build_failures" ]]; then
                     log "Too many consecutive build failures — stopping queue drain" "ERROR"
@@ -614,16 +648,22 @@ run_agentic_loop() {
         if [[ "$max_iterations" -gt 0 && "$iteration" -gt "$max_iterations" ]]; then break; fi
         section "ITERATION $iteration"
 
-        # Phase 1: Planner
-        section "PLANNER PHASE"
-        local planner_msg
-        if [[ $(( iteration % refactor_every_n )) -eq 0 ]]; then
-            log "Refactor-focused planning cycle"
-            planner_msg="$(default_refactor_planner_prompt)"
+        # Phase 1: Planner — skipped while the queue still has pending tasks
+        local pending
+        pending=$(unchecked_task_count "${repo_root}/BACKLOG.md")
+        if [[ "$skip_planner_when_pending" == "true" && "$pending" -gt 0 ]]; then
+            log "Skipping planner: $pending task(s) still pending in BACKLOG.md"
         else
-            planner_msg="$(default_planner_prompt)"
+            section "PLANNER PHASE"
+            local planner_msg
+            if [[ $(( iteration % refactor_every_n )) -eq 0 ]]; then
+                log "Refactor-focused planning cycle"
+                planner_msg="$(default_refactor_planner_prompt)"
+            else
+                planner_msg="$(default_planner_prompt)"
+            fi
+            invoke_agent "planner" "$planner_msg" || true
         fi
-        invoke_agent "planner" "$planner_msg" || true
 
         # Phase 2: Executor
         if ! drain_executor_queue; then

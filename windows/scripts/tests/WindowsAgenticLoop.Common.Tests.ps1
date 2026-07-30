@@ -165,6 +165,74 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
+    # -- Backlog pruning ---------------------------------------------------
+
+    Context 'Remove-CheckedBacklogTasks' {
+        # Note: the module is initialized with -DryRun in BeforeAll, so these
+        # tests verify content via a temporary non-dry-run window.
+        BeforeAll {
+            $script:pruneBacklog = Join-Path $script:testDir 'prune-backlog.md'
+            Set-Content $script:pruneBacklog @'
+# BACKLOG
+
+## Section A
+
+- [ ] **(S) Open task one** — keep me.
+
+  **Steps:**
+  1. Do something
+
+- [x] **(M) Done task** — remove me.
+
+  **Steps:**
+  1. Was done
+  Completed: everything went fine.
+
+- [ ] **(L) Open task two** — keep me too.
+
+## Section B
+
+- [X] Uppercase done task
+  body line
+Plain text after the block.
+'@
+        }
+
+        It 'reports the would-be removals in dry-run mode without changing the file' {
+            $before = (Get-Content $script:pruneBacklog -Raw)
+            $removed = Remove-CheckedBacklogTasks -BacklogPath $script:pruneBacklog
+            $removed | Should Be 0
+            (Get-Content $script:pruneBacklog -Raw) | Should Be $before
+        }
+
+        It 'removes checked blocks (title + indented body) and keeps everything else' {
+            # Temporarily leave dry-run mode for a real prune
+            Initialize-AgenticLoop -RepoRoot $script:testDir
+            try {
+                $removed = Remove-CheckedBacklogTasks -BacklogPath $script:pruneBacklog
+                $removed | Should Be 2
+                $content = Get-Content $script:pruneBacklog -Raw
+                $content | Should Match 'Open task one'
+                $content | Should Match 'Open task two'
+                $content | Should Match 'Section B'
+                $content | Should Match 'Plain text after the block'
+                $content.Contains('Done task') | Should Be $false
+                $content.Contains('Uppercase done task') | Should Be $false
+                $content.Contains('Completed: everything went fine') | Should Be $false
+            } finally {
+                Initialize-AgenticLoop -RepoRoot $script:testDir -DryRun
+            }
+        }
+
+        It 'returns 0 for a file with no checked tasks' {
+            Remove-CheckedBacklogTasks -BacklogPath $script:pruneBacklog | Should Be 0
+        }
+
+        It 'returns 0 for a missing file' {
+            Remove-CheckedBacklogTasks -BacklogPath (Join-Path $script:testDir 'no-such.md') | Should Be 0
+        }
+    }
+
     # -- Git helpers -------------------------------------------------------
 
     Context 'Invoke-GitAutoCommit' {

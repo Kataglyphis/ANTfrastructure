@@ -211,6 +211,8 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `build.linuxQualityCommand` | `[string]` | — | Quality command for Linux |
 | `git.autoCommit` | `[bool]` | `true` | Auto-commit after each completed task |
 | `git.commitPrefix` | `[string]` | `agentic-loop` | Prefix for auto-commit messages |
+| `backlog.skipPlannerWhenTasksPending` | `[bool]` | `true` | Skip the planner phase while `BACKLOG.md` still has unchecked tasks |
+| `backlog.deleteCompletedTasks` | `[bool]` | `true` | Prune completed (`- [x]`) task blocks from `BACKLOG.md` after each task (history lives in git) |
 
 ## Usage Examples
 
