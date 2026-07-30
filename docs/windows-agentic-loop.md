@@ -186,6 +186,7 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `engines.claude.plannerAllowedTools` | `[string]` | — | Space-separated `--allowed-tools` list sandboxing the planner |
 | `engines.claude.permissionMode` | `[string]` | `bypassPermissions` | Executor permission mode (`bypassPermissions` maps to `--dangerously-skip-permissions`) |
 | `engines.claude.extraArgs` | `[string]` | — | Extra CLI args appended to every claude invocation |
+| `engines.claude.streamOutput` | `[bool]` | `true` | Stream live progress (tool calls, per-turn text, final cost) via `stream-json`; `false` = silent until completion |
 | `models.planner` | `[string]` | `opencode-go/glm-5.2` | Legacy fallback model ID for the planner agent |
 | `models.executor` | `[string]` | `opencode-go/deepseek-v4-flash` | Legacy fallback model ID for the executor agent |
 | `intervals.buildEveryNTasks` | `[int]` | 3 | Build after every N completed tasks |

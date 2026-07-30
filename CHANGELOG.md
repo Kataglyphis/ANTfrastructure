@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-30 — Agentic loop: live streaming output
+
+- **Claude engine streams by default**: `claude -p` now runs with
+  `--output-format stream-json --verbose` (config
+  `engines.claude.streamOutput`, default `true`) and both libraries render
+  the events live to console + log: session start, one line per tool call,
+  assistant text per turn, tool errors, and a final
+  `turns / duration / cost` summary. Set `streamOutput: false` to return to
+  the silent text mode.
+- **Bash opencode invocation streams too**: output is echoed line-by-line to
+  console + log as it arrives instead of being buffered until exit (the
+  PowerShell module already streamed).
+
 ## 2026-07-30 — Agentic loop: Claude Code engine + robustness
 
 - **Engine abstraction** in both agentic-loop libraries

@@ -76,6 +76,7 @@ load_engine_config() {
     CLAUDE_PERMISSION_MODE=$(jq -r '.engines.claude.permissionMode // "bypassPermissions"' "$config_json")
     CLAUDE_PLANNER_ALLOWED_TOOLS=$(jq -r '.engines.claude.plannerAllowedTools // empty' "$config_json")
     CLAUDE_EXTRA_ARGS=$(jq -r '.engines.claude.extraArgs // empty' "$config_json")
+    CLAUDE_STREAM_OUTPUT=$(jq -r '.engines.claude.streamOutput // true' "$config_json")
 
     # Prompt files are stored repo-relative in the config
     if [[ -n "$CLAUDE_PLANNER_PROMPT_FILE" && "$CLAUDE_PLANNER_PROMPT_FILE" != /* ]]; then
@@ -109,6 +110,58 @@ agent_timeout_for_role() {
     echo "${AGENT_TIMEOUT:-0}"
 }
 
+# ── Streaming helpers ───────────────────────────────────────────────────
+# Echo every line to the console AND the log file as it arrives.
+agent_stream_passthrough() {
+    local line
+    while IFS= read -r line; do
+        echo "$line"
+        echo "$line" >> "$LOG_FILE"
+    done
+}
+
+# Render claude stream-json events into compact human-readable progress
+# lines (tool calls, assistant text, tool errors, final result + cost),
+# written live to console + log.  Non-JSON lines pass through unchanged.
+claude_stream_render() {
+    local line rendered r
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        case "$line" in
+            '{'*) ;;
+            *) echo "$line"; echo "$line" >> "$LOG_FILE"; continue ;;
+        esac
+        rendered=$(printf '%s\n' "$line" | jq -r '
+            if .type == "system" and .subtype == "init" then
+                "[claude] session started (model: " + (.model // "?") + ")"
+            elif .type == "assistant" then
+                (.message.content // [])[] |
+                if .type == "tool_use" then
+                    "  -> " + .name + ": " + ((.input.file_path // .input.command // .input.pattern // .input.description // .input.prompt // "") | tostring | gsub("\n"; " ") | .[0:160])
+                elif .type == "text" then .text
+                else empty end
+            elif .type == "user" then
+                (.message.content // []) |
+                if type == "array" then
+                    .[] | if .type == "tool_result" and (.is_error // false) then
+                        "  !! tool error: " + ((.content // "") | tostring | gsub("\n"; " ") | .[0:200])
+                    else empty end
+                else empty end
+            elif .type == "result" then
+                ("[claude] result: " + ((.num_turns // 0) | tostring) + " turns, "
+                    + (((.duration_ms // 0) / 1000) | tostring) + "s, $"
+                    + ((.total_cost_usd // 0) | tostring)),
+                (.result // empty)
+            else empty end' 2>/dev/null)
+        if [[ -n "$rendered" ]]; then
+            while IFS= read -r r; do
+                echo "$r"
+                echo "$r" >> "$LOG_FILE"
+            done <<< "$rendered"
+        fi
+    done
+}
+
 # ── OpenCode invocation ─────────────────────────────────────────────────
 invoke_opencode() {
     local agent="$1" model="$2" message="$3"
@@ -123,25 +176,22 @@ invoke_opencode() {
     local timeout_s
     timeout_s=$(agent_timeout_for_role "$agent")
     log "Invoking opencode: agent=$agent model=$model timeout=${timeout_s}s"
-    local exit_code=0 output
+    local exit_code=0
     if [[ "$timeout_s" -gt 0 ]] && command -v timeout &>/dev/null; then
-        output=$(printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" opencode run --agent "$agent" --model "$model" 2>&1) || exit_code=$?
+        printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" opencode run --agent "$agent" --model "$model" 2>&1 | agent_stream_passthrough
+        exit_code=${PIPESTATUS[1]}
     else
-        output=$(printf '%s' "$message" | opencode run --agent "$agent" --model "$model" 2>&1) || exit_code=$?
+        printf '%s' "$message" | opencode run --agent "$agent" --model "$model" 2>&1 | agent_stream_passthrough
+        exit_code=${PIPESTATUS[1]}
     fi
-    {
-        echo "--- opencode output start ---"
-        echo "$output"
-        echo "--- opencode output end ---"
-    } >> "$LOG_FILE"
     if [[ $exit_code -eq 124 ]]; then
         log "opencode timed out after ${timeout_s}s (agent=$agent)" "ERROR"
     elif [[ $exit_code -ne 0 ]]; then
         log "opencode exited with code $exit_code (agent=$agent)" "WARN"
-        if echo "$output" | grep -qiE "model.*not found|invalid model|unknown model"; then
+        if tail -n 50 "$LOG_FILE" | grep -qiE "model.*not found|invalid model|unknown model"; then
             log "Model '$model' was rejected. Run 'opencode models' to list valid IDs." "ERROR"
         fi
-        if echo "$output" | grep -qiE "API key|unauthorized|401|403"; then
+        if tail -n 50 "$LOG_FILE" | grep -qiE "API key|unauthorized|401|403"; then
             log "Authentication error. Run 'opencode auth login'." "ERROR"
         fi
     fi
@@ -166,7 +216,14 @@ invoke_claude() {
         return 1
     fi
 
-    local args=(-p --model "$model" --output-format text)
+    local args=(-p --model "$model")
+    if [[ "${CLAUDE_STREAM_OUTPUT:-true}" == "true" ]]; then
+        # stream-json emits an event per assistant turn / tool call, so the
+        # console and log show live progress instead of silence-until-done.
+        args+=(--output-format stream-json --verbose)
+    else
+        args+=(--output-format text)
+    fi
 
     local prompt_file=""
     case "$role" in
@@ -204,25 +261,24 @@ invoke_claude() {
     local timeout_s
     timeout_s=$(agent_timeout_for_role "$role")
     log "Invoking claude: role=$role model=$model timeout=${timeout_s}s"
-    local exit_code=0 output
+    local renderer="agent_stream_passthrough"
+    [[ "${CLAUDE_STREAM_OUTPUT:-true}" == "true" ]] && renderer="claude_stream_render"
+    local exit_code=0
     if [[ "$timeout_s" -gt 0 ]] && command -v timeout &>/dev/null; then
-        output=$(printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" claude "${args[@]}" 2>&1) || exit_code=$?
+        printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" claude "${args[@]}" 2>&1 | "$renderer"
+        exit_code=${PIPESTATUS[1]}
     else
-        output=$(printf '%s' "$message" | claude "${args[@]}" 2>&1) || exit_code=$?
+        printf '%s' "$message" | claude "${args[@]}" 2>&1 | "$renderer"
+        exit_code=${PIPESTATUS[1]}
     fi
-    {
-        echo "--- claude output start (role=$role) ---"
-        echo "$output"
-        echo "--- claude output end ---"
-    } >> "$LOG_FILE"
     if [[ $exit_code -eq 124 ]]; then
         log "claude timed out after ${timeout_s}s (role=$role)" "ERROR"
     elif [[ $exit_code -ne 0 ]]; then
         log "claude exited with code $exit_code (role=$role)" "WARN"
-        if echo "$output" | grep -qiE "not logged in|invalid api key|401|403"; then
+        if tail -n 50 "$LOG_FILE" | grep -qiE "not logged in|invalid api key|401|403"; then
             log "Authentication error. Run 'claude' interactively once to log in." "ERROR"
         fi
-        if echo "$output" | grep -qiE "model.*not found|invalid model"; then
+        if tail -n 50 "$LOG_FILE" | grep -qiE "model.*not found|invalid model"; then
             log "Model '$model' was rejected by claude. Check the model ID." "ERROR"
         fi
     fi

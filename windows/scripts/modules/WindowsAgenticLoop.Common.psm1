@@ -155,6 +155,7 @@ function Resolve-AgenticEngine {
         PermissionMode         = Get-AgenticConfigValue $engineCfg 'permissionMode' 'bypassPermissions'
         PlannerAllowedTools    = Get-AgenticConfigValue $engineCfg 'plannerAllowedTools' $null
         ExtraArgs              = Get-AgenticConfigValue $engineCfg 'extraArgs' $null
+        StreamOutput           = [bool](Get-AgenticConfigValue $engineCfg 'streamOutput' $true)
         TimeoutSeconds         = [int](Get-AgenticConfigValue $intervals 'timeoutSeconds' 0)
         PlannerTimeoutSeconds  = [int](Get-AgenticConfigValue $intervals 'plannerTimeoutSeconds' 0)
         ExecutorTimeoutSeconds = [int](Get-AgenticConfigValue $intervals 'executorTimeoutSeconds' 0)
@@ -179,7 +180,7 @@ function Invoke-AgentProcess {
       time. Returns @{ ExitCode; Output }.  TimeoutSeconds 0 = no timeout.
     #>
     param([string]$Executable, [string[]]$ArgumentList, [string]$Message,
-          [int]$TimeoutSeconds = 0, [string]$Label = 'agent')
+          [int]$TimeoutSeconds = 0, [string]$Label = 'agent', [switch]$RenderClaudeStream)
     $cmdInfo = Get-Command $Executable -ErrorAction SilentlyContinue
     if (-not $cmdInfo) {
         Write-AgenticLog "$Executable not found on PATH." 'FATAL'
@@ -210,14 +211,60 @@ function Invoke-AgentProcess {
         # Read stdout + stderr concurrently via Start-ThreadJob to avoid deadlock.
         $outLines = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
         $errLines = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
-        $stdoutJob = Start-ThreadJob -Name "agent-stdout-$Label" -ArgumentList $p, $logFile, $outLines -ScriptBlock {
-            param($p, $logFile, $outLines)
+        $renderStream = [bool]$RenderClaudeStream
+        $stdoutJob = Start-ThreadJob -Name "agent-stdout-$Label" -ArgumentList $p, $logFile, $outLines, $renderStream -ScriptBlock {
+            param($p, $logFile, $outLines, $renderStream)
+            # Emit a line to console + log
+            $emit = { param($text) Write-Host $text; if ($logFile) { Add-Content $logFile -Value $text } }
             $r = $p.StandardOutput
             try {
                 while (($line = $r.ReadLine()) -ne $null) {
                     $outLines.Add($line)
-                    Write-Host $line
-                    if ($logFile) { Add-Content $logFile -Value $line }
+                    if ($renderStream -and $line.StartsWith('{')) {
+                        # Render claude stream-json events as compact progress lines
+                        $evt = $null
+                        try { $evt = $line | ConvertFrom-Json } catch {}
+                        if ($evt -and $evt.PSObject.Properties['type']) {
+                            switch ($evt.type) {
+                                'system' {
+                                    if ($evt.subtype -eq 'init') { & $emit "[claude] session started (model: $($evt.model))" }
+                                }
+                                'assistant' {
+                                    foreach ($c in @($evt.message.content)) {
+                                        if ($c.type -eq 'tool_use') {
+                                            $detail = $c.input.file_path
+                                            if (-not $detail) { $detail = $c.input.command }
+                                            if (-not $detail) { $detail = $c.input.pattern }
+                                            if (-not $detail) { $detail = $c.input.description }
+                                            if (-not $detail) { $detail = $c.input.prompt }
+                                            $detail = "$detail" -replace "`r?`n", ' '
+                                            if ($detail.Length -gt 160) { $detail = $detail.Substring(0, 160) + '...' }
+                                            & $emit "  -> $($c.name): $detail"
+                                        } elseif ($c.type -eq 'text' -and $c.text) {
+                                            & $emit $c.text
+                                        }
+                                    }
+                                }
+                                'user' {
+                                    foreach ($c in @($evt.message.content)) {
+                                        if ($c.type -eq 'tool_result' -and $c.is_error) {
+                                            $txt = "$($c.content)" -replace "`r?`n", ' '
+                                            if ($txt.Length -gt 200) { $txt = $txt.Substring(0, 200) + '...' }
+                                            & $emit "  !! tool error: $txt"
+                                        }
+                                    }
+                                }
+                                'result' {
+                                    $dur = [math]::Round(($evt.duration_ms / 1000), 1)
+                                    $cost = [math]::Round(($evt.total_cost_usd), 4)
+                                    & $emit "[claude] result: $($evt.num_turns) turns, ${dur}s, `$$cost"
+                                    if ($evt.result) { & $emit $evt.result }
+                                }
+                            }
+                            continue
+                        }
+                    }
+                    & $emit $line
                 }
             } catch { <# stream closed #> }
         }
@@ -303,7 +350,14 @@ function Invoke-ClaudeCode {
     }
 
     $argList = [System.Collections.Generic.List[string]]::new()
-    $argList.AddRange([string[]]@('-p', '--model', $Model, '--output-format', 'text'))
+    $argList.AddRange([string[]]@('-p', '--model', $Model))
+    if ($EngineConfig.StreamOutput) {
+        # stream-json emits an event per assistant turn / tool call, so the
+        # console and log show live progress instead of silence-until-done.
+        $argList.AddRange([string[]]@('--output-format', 'stream-json', '--verbose'))
+    } else {
+        $argList.AddRange([string[]]@('--output-format', 'text'))
+    }
 
     $promptFile = if ($Role -eq 'planner') { $EngineConfig.PlannerPromptFile } else { $EngineConfig.ExecutorPromptFile }
     if ($promptFile) {
@@ -332,7 +386,8 @@ function Invoke-ClaudeCode {
 
     Write-AgenticLog "Invoking claude: role=$Role model=$Model (timeout=${timeoutSeconds}s)"
     $result = Invoke-AgentProcess -Executable 'claude' -ArgumentList $argList.ToArray() `
-        -Message $Message -TimeoutSeconds $timeoutSeconds -Label "claude-$Role"
+        -Message $Message -TimeoutSeconds $timeoutSeconds -Label "claude-$Role" `
+        -RenderClaudeStream:$EngineConfig.StreamOutput
     if ($result.ExitCode -ne 0 -and $result.ExitCode -ne 127) {
         Write-AgenticLog "claude exited with code $($result.ExitCode) (role=$Role)" 'WARN'
         if ($result.Output -match '(?i)not logged in|invalid api key') {
