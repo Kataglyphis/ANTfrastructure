@@ -1,21 +1,50 @@
 # Agentic Loop Module (`WindowsAgenticLoop.Common.psm1`)
 
-A reusable PowerShell module for the OpenCode-based planner/executor agentic
-loop pattern. Lets any project set up an autonomous coding loop with:
+A reusable PowerShell module for the planner/executor agentic loop pattern.
+Lets any project set up an autonomous coding loop with:
 
-1. A **planner** (expensive model, e.g. GLM 5.2) that analyzes the codebase
-   and writes tasks to `BACKLOG.md`.
-2. An **executor** (cheap model, e.g. DeepSeek v4 Flash) that drains the queue
-   one task at a time, building and testing as it goes.
+1. A **planner** (expensive model, e.g. Claude Fable 5 or GLM 5.2) that
+   analyzes the codebase and writes tasks to `BACKLOG.md`.
+2. An **executor** (cheaper model, e.g. Claude Sonnet or DeepSeek v4 Flash)
+   that drains the queue one task at a time, building and testing as it goes.
 3. Builds, tests, and quality gates on configurable intervals, cycling through
    different build configurations.
+4. A **build fixer**: when a periodic build fails, the executor-tier model is
+   dispatched with the build log tail to fix it, and the loop stops after N
+   consecutive unfixable failures.
+
+## Engines
+
+Two agent CLI backends are supported; select via config `engine`,
+`$env:AGENTIC_ENGINE`, or the `-Engine` parameter of `Invoke-AgenticLoop`:
+
+| Engine | Invocation | Role prompts | Permissions |
+|--------|-----------|--------------|-------------|
+| `opencode` | `opencode run --agent <role> --model <model>` | `.opencode/agents/<role>.md` (resolved by opencode) | Configured in `opencode.json` |
+| `claude` | `claude -p --model <model>` (Claude Code CLI) | `--append-system-prompt-file` from config `engines.claude.<role>PromptFile` | Planner sandboxed via `--allowed-tools` (e.g. `Read Glob Grep Edit(BACKLOG.md)`); executor uses `permissionMode` (default `bypassPermissions` — intended for trusted repos/sandboxes) |
+
+For `claude`, `engines.claude.plannerFallbackModel` maps to
+`--fallback-model` so an overloaded planner model (e.g. `claude-fable-5`)
+falls back automatically (e.g. to `claude-opus-4-8`).
+
+Model resolution precedence: `$env:AGENTIC_PLANNER_MODEL` /
+`$env:AGENTIC_EXECUTOR_MODEL` > `engines.<engine>.plannerModel/executorModel`
+> legacy `models.planner/executor`.
+
+Agent invocations retry with linear backoff (`agentRetries` ×
+`agentRetryDelaySeconds`) and honor per-role timeouts
+(`plannerTimeoutSeconds` / `executorTimeoutSeconds`, falling back to
+`timeoutSeconds`; 0 = no timeout).
 
 ## Prerequisites
 
-- [OpenCode](https://opencode.ai) CLI installed and authenticated
+- [OpenCode](https://opencode.ai) CLI and/or
+  [Claude Code](https://claude.com/claude-code) CLI installed and authenticated
 - PowerShell 7+ (cross-platform)
 - A `BACKLOG.md` file in the repository root (task format: `- [ ] Title`)
-- `jq` on Linux (for config parsing in the Bash equivalent)
+- `jq` on Linux (for config parsing in the Bash equivalent,
+  `linux/scripts/lib/agentic-loop.sh`, which mirrors this module's engine
+  support)
 
 ## Installation
 
@@ -80,11 +109,18 @@ Complete-AgenticLoop
 | `Get-AgenticPlatform` | Returns `'windows'` or `'linux'`. Works on all supported PowerShell versions. |
 | `Test-IsWindows` | `$true` on Windows, `$false` otherwise. |
 
-### OpenCode Invocation
+### Agent Invocation
 
 | Function | Purpose |
 |----------|---------|
-| `Invoke-OpenCode -Agent <string> -Model <string> -Message <string>` | Passes message via stdin to `opencode run`. Captures stdout (avoids `2>&1` pattern). |
+| `Resolve-AgenticEngine -Config <object> [-RepoRoot <path>] [-EngineOverride <string>]` | Resolve engine + models + prompt files + timeouts into a flat hashtable. |
+| `Invoke-AgenticAgent -Role <planner\|executor\|fixer> -Message <string> -EngineConfig <hashtable>` | Engine dispatcher with retry + linear backoff. Returns `$true` on success. |
+| `Invoke-OpenCode -Agent <string> -Model <string> -Message <string>` | Passes message via stdin to `opencode run`. |
+| `Invoke-ClaudeCode -Role <string> -Model <string> -Message <string> -EngineConfig <hashtable>` | Headless `claude -p` run with role system prompt, tool sandbox, and fallback model. |
+| `Invoke-AgentProcess -Executable <string> -ArgumentList <string[]> -Message <string> [-TimeoutSeconds <int>]` | Low-level process runner (stdin prompt, streamed stdout/stderr, timeout). |
+| `Invoke-BuildFixer -ConfigurationName <string> -EngineConfig <hashtable>` | Dispatch the fixer role with the tail of the loop log after a build failure. |
+| `Get-AgenticConfigValue -Object <object> -Name <string> [-Default <object>]` | StrictMode-safe config lookup (hashtable or PSCustomObject). |
+| `Get-AgentTimeoutForRole -EngineConfig <hashtable> -Role <string>` | Per-role timeout resolution. |
 
 ### Utility
 
@@ -141,8 +177,17 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `models.planner` | `[string]` | `opencode-go/glm-5.2` | Model ID for the planner agent |
-| `models.executor` | `[string]` | `opencode-go/deepseek-v4-flash` | Model ID for the executor agent |
+| `engine` | `[string]` | `opencode` | Agent CLI backend: `opencode` or `claude` |
+| `engines.<engine>.plannerModel` | `[string]` | — | Model ID for the planner (per engine) |
+| `engines.<engine>.executorModel` | `[string]` | — | Model ID for the executor (per engine) |
+| `engines.claude.plannerFallbackModel` | `[string]` | — | `--fallback-model` for the planner (used when the primary is overloaded) |
+| `engines.claude.plannerPromptFile` | `[string]` | — | Repo-relative role prompt appended via `--append-system-prompt-file` |
+| `engines.claude.executorPromptFile` | `[string]` | — | Repo-relative role prompt for executor/fixer |
+| `engines.claude.plannerAllowedTools` | `[string]` | — | Space-separated `--allowed-tools` list sandboxing the planner |
+| `engines.claude.permissionMode` | `[string]` | `bypassPermissions` | Executor permission mode (`bypassPermissions` maps to `--dangerously-skip-permissions`) |
+| `engines.claude.extraArgs` | `[string]` | — | Extra CLI args appended to every claude invocation |
+| `models.planner` | `[string]` | `opencode-go/glm-5.2` | Legacy fallback model ID for the planner agent |
+| `models.executor` | `[string]` | `opencode-go/deepseek-v4-flash` | Legacy fallback model ID for the executor agent |
 | `intervals.buildEveryNTasks` | `[int]` | 3 | Build after every N completed tasks |
 | `intervals.qualityEveryNTasks` | `[int]` | 5 | Quality gate every M tasks |
 | `intervals.refactorEveryNIterations` | `[int]` | 3 | Refactor focus every R iterations |
@@ -150,7 +195,13 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `intervals.maxIterations` | `[int]` | 0 | Max loop iterations (0 = unlimited) |
 | `intervals.maxExecutorRetries` | `[int]` | 3 | Retries before skipping a stuck task |
 | `intervals.loopDelaySeconds` | `[int]` | 10 | Delay between loop iterations |
-| `intervals.timeoutSeconds` | `[int]` | 600 | OpenCode invocation timeout |
+| `intervals.timeoutSeconds` | `[int]` | 0 | Generic agent invocation timeout (0 = none) |
+| `intervals.plannerTimeoutSeconds` | `[int]` | 0 | Planner timeout override |
+| `intervals.executorTimeoutSeconds` | `[int]` | 0 | Executor/fixer timeout override |
+| `intervals.agentRetries` | `[int]` | 2 | Retries per agent invocation (linear backoff) |
+| `intervals.agentRetryDelaySeconds` | `[int]` | 20 | Base backoff delay between agent retries |
+| `intervals.fixBuildFailures` | `[bool]` | `true` | Dispatch the fixer agent after a failed build, then rebuild once |
+| `intervals.maxConsecutiveBuildFailures` | `[int]` | 3 | Stop the loop after N consecutive failed build phases |
 | `buildMatrix.windows` | `[array]` | — | Windows build matrix entries (objects with name, sanitizer, buildDir, buildType, testCommand) |
 | `buildMatrix.linux` | `[array]` | — | Linux build matrix entries |
 | `build.windowsTestCommand` | `[string]` | — | Fallback test command for Windows |

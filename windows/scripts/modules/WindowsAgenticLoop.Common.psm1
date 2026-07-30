@@ -1,14 +1,16 @@
 # Copyright (c) 2026 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Reusable building blocks for an OpenCode agentic loop.
+# Reusable building blocks for a planner/executor agentic loop.
 # Requires PowerShell 7+ (Core). Not compatible with PS 5.1's parser.
 #
-# PS 5.1 NOTE: The parser in Windows PowerShell 5.1 has trouble with certain
-# string-interpolation patterns in scripts exceeding ~250 lines. This module
-# works around that by running inside Import-Module's parser context.
-# However, the CONSUMING script should be kept short (<200 lines) or run
-# via pwsh (PowerShell 7).
+# Supports two engines:
+#   opencode — invokes `opencode run --agent <role> --model <model>`
+#   claude   — invokes `claude -p --model <model>` (Claude Code CLI) with a
+#              role system prompt appended from a prompt file
+#
+# Engine selection: $env:AGENTIC_ENGINE > config .engine > 'opencode'.
+# Model overrides:  $env:AGENTIC_PLANNER_MODEL / $env:AGENTIC_EXECUTOR_MODEL.
 
 Set-StrictMode -Version Latest
 #requires -Version 7.0
@@ -52,7 +54,9 @@ function Initialize-AgenticLoop {
     if ($ConfigPath -and (Test-Path $ConfigPath)) {
         try {
             $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-            if ($cfg.logging -and $cfg.logging.logDir) { $logDir = Join-Path $RepoRoot $cfg.logging.logDir }
+            $logging = Get-AgenticConfigValue $cfg 'logging' $null
+            $cfgLogDir = Get-AgenticConfigValue $logging 'logDir' $null
+            if ($cfgLogDir) { $logDir = Join-Path $RepoRoot $cfgLogDir }
         } catch { Write-Host "[AgenticLoop] Using default log dir" }
     }
     if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force $logDir | Out-Null }
@@ -83,32 +87,115 @@ function Complete-AgenticLoop {
 function Get-AgenticPlatform { if ($env:OS -eq 'Windows_NT') { 'windows' } else { 'linux' } }
 function Test-IsWindows { return (Get-AgenticPlatform) -eq 'windows' }
 
-# -- OpenCode invocation --------------------------------------------------
-function Invoke-OpenCode {
+# -- Config helpers -------------------------------------------------------
+function Get-AgenticConfigValue {
     <#
     .SYNOPSIS
-      Invoke opencode with a prompt via stdin. Both stdout and stderr are
-      streamed to the console AND the agentic log file in real time.
+      StrictMode-safe property lookup that works for both hashtables (tests)
+      and PSCustomObjects (ConvertFrom-Json). Returns $Default when the key
+      is absent or null.
     #>
-    param([string]$Agent, [string]$Model, [string]$Message, [int]$TimeoutSeconds = 300)
-    if ($script:AgenticTimeoutSeconds -gt 0) { $TimeoutSeconds = $script:AgenticTimeoutSeconds }
-    if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] opencode run --agent $Agent --model $Model"; return '[DRY RUN]' }
-    if (-not (Get-Command 'opencode' -ErrorAction SilentlyContinue)) {
-        Write-AgenticLog 'opencode not found on PATH.' 'FATAL'; $script:AgenticExitCode = 1; return $null
+    param($Object, [string]$Name, $Default = $null)
+    if ($null -eq $Object) { return $Default }
+    if ($Object -is [hashtable]) {
+        if ($Object.ContainsKey($Name) -and $null -ne $Object[$Name]) { return $Object[$Name] }
+        return $Default
     }
-    Write-AgenticLog "Invoking opencode: agent=$Agent model=$Model (timeout=${TimeoutSeconds}s)"
-    $exitCode = 0; $outStr = ''; $errStr = ''
-    $tmpFile = [System.IO.Path]::GetTempFileName()
+    $prop = $Object.PSObject.Properties[$Name]
+    if ($prop -and $null -ne $prop.Value) { return $prop.Value }
+    return $Default
+}
+
+function Resolve-AgenticEngine {
+    <#
+    .SYNOPSIS
+      Resolve the engine configuration (opencode | claude) from the loop
+      config into a flat hashtable consumed by Invoke-AgenticAgent.
+      Precedence: -EngineOverride > $env:AGENTIC_ENGINE > config .engine.
+      Models: env override > .engines.<engine>.* > legacy .models.*.
+    #>
+    param($Config, [string]$RepoRoot = (Get-Location).Path, [string]$EngineOverride = '')
+    $engine = if ($EngineOverride) { $EngineOverride }
+              elseif ($env:AGENTIC_ENGINE) { $env:AGENTIC_ENGINE }
+              else { Get-AgenticConfigValue $Config 'engine' 'opencode' }
+    if ($engine -notin @('opencode', 'claude')) {
+        throw "Unknown agentic engine: '$engine' (expected opencode|claude)"
+    }
+
+    $engines = Get-AgenticConfigValue $Config 'engines' $null
+    $engineCfg = if ($engines) { Get-AgenticConfigValue $engines $engine $null } else { $null }
+    $legacyModels = Get-AgenticConfigValue $Config 'models' $null
+
+    $plannerModel = if ($env:AGENTIC_PLANNER_MODEL) { $env:AGENTIC_PLANNER_MODEL }
+                    else { Get-AgenticConfigValue $engineCfg 'plannerModel' (Get-AgenticConfigValue $legacyModels 'planner' $null) }
+    $executorModel = if ($env:AGENTIC_EXECUTOR_MODEL) { $env:AGENTIC_EXECUTOR_MODEL }
+                     else { Get-AgenticConfigValue $engineCfg 'executorModel' (Get-AgenticConfigValue $legacyModels 'executor' $null) }
+    if (-not $plannerModel -or -not $executorModel) {
+        throw "No planner/executor model configured for engine '$engine' (need .engines.$engine.plannerModel/executorModel or legacy .models.*)"
+    }
+
+    # Prompt files are stored repo-relative in the config
+    $plannerPromptFile = Get-AgenticConfigValue $engineCfg 'plannerPromptFile' $null
+    $executorPromptFile = Get-AgenticConfigValue $engineCfg 'executorPromptFile' $null
+    if ($plannerPromptFile -and -not [System.IO.Path]::IsPathRooted($plannerPromptFile)) {
+        $plannerPromptFile = Join-Path $RepoRoot $plannerPromptFile
+    }
+    if ($executorPromptFile -and -not [System.IO.Path]::IsPathRooted($executorPromptFile)) {
+        $executorPromptFile = Join-Path $RepoRoot $executorPromptFile
+    }
+
+    $intervals = Get-AgenticConfigValue $Config 'intervals' $null
+    return @{
+        Engine                 = $engine
+        PlannerModel           = $plannerModel
+        ExecutorModel          = $executorModel
+        PlannerFallbackModel   = Get-AgenticConfigValue $engineCfg 'plannerFallbackModel' $null
+        PlannerPromptFile      = $plannerPromptFile
+        ExecutorPromptFile     = $executorPromptFile
+        PermissionMode         = Get-AgenticConfigValue $engineCfg 'permissionMode' 'bypassPermissions'
+        PlannerAllowedTools    = Get-AgenticConfigValue $engineCfg 'plannerAllowedTools' $null
+        ExtraArgs              = Get-AgenticConfigValue $engineCfg 'extraArgs' $null
+        TimeoutSeconds         = [int](Get-AgenticConfigValue $intervals 'timeoutSeconds' 0)
+        PlannerTimeoutSeconds  = [int](Get-AgenticConfigValue $intervals 'plannerTimeoutSeconds' 0)
+        ExecutorTimeoutSeconds = [int](Get-AgenticConfigValue $intervals 'executorTimeoutSeconds' 0)
+        AgentRetries           = [int](Get-AgenticConfigValue $intervals 'agentRetries' 2)
+        AgentRetryDelaySeconds = [int](Get-AgenticConfigValue $intervals 'agentRetryDelaySeconds' 20)
+    }
+}
+
+function Get-AgentTimeoutForRole {
+    param([hashtable]$EngineConfig, [string]$Role)
+    if ($Role -eq 'planner' -and $EngineConfig.PlannerTimeoutSeconds -gt 0) { return $EngineConfig.PlannerTimeoutSeconds }
+    if ($Role -ne 'planner' -and $EngineConfig.ExecutorTimeoutSeconds -gt 0) { return $EngineConfig.ExecutorTimeoutSeconds }
+    return $EngineConfig.TimeoutSeconds
+}
+
+# -- Generic agent process runner -----------------------------------------
+function Invoke-AgentProcess {
+    <#
+    .SYNOPSIS
+      Run a CLI agent process with the prompt piped via stdin. Stdout and
+      stderr are streamed to the console AND the agentic log file in real
+      time. Returns @{ ExitCode; Output }.  TimeoutSeconds 0 = no timeout.
+    #>
+    param([string]$Executable, [string[]]$ArgumentList, [string]$Message,
+          [int]$TimeoutSeconds = 0, [string]$Label = 'agent')
+    $cmdInfo = Get-Command $Executable -ErrorAction SilentlyContinue
+    if (-not $cmdInfo) {
+        Write-AgenticLog "$Executable not found on PATH." 'FATAL'
+        $script:AgenticExitCode = 1
+        return @{ ExitCode = 127; Output = '' }
+    }
     $logFile = $script:AgenticLogFile
+    $exitCode = 0; $outStr = ''
+    $p = $null
     try {
-        [System.IO.File]::WriteAllText($tmpFile, $Message, [System.Text.Encoding]::UTF8)
-        $opencodeExe = (Get-Command 'opencode').Source
         $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $opencodeExe
-        $psi.Arguments = "run --agent $Agent --model $Model"
+        $psi.FileName = $cmdInfo.Source
+        foreach ($a in $ArgumentList) { $psi.ArgumentList.Add($a) }
         $psi.RedirectStandardInput = $true
         $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true   # capture stderr too
+        $psi.RedirectStandardError = $true
         $psi.UseShellExecute = $false
         $psi.CreateNoWindow = $true
         $p = New-Object System.Diagnostics.Process
@@ -117,15 +204,13 @@ function Invoke-OpenCode {
 
         # Feed stdin
         $stdin = $p.StandardInput
-        $stdin.Write((Get-Content $tmpFile -Raw))
+        $stdin.Write($Message)
         $stdin.Close()
 
         # Read stdout + stderr concurrently via Start-ThreadJob to avoid deadlock.
-        # Each line is written to console AND appended to the agentic log file.
-        # Uses -ArgumentList for explicit variable passing (avoids PS closure bugs with Task.Run).
         $outLines = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
         $errLines = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
-        $stdoutJob = Start-ThreadJob -Name "oc-stdout-$Agent" -ArgumentList $p, $logFile, $outLines -ScriptBlock {
+        $stdoutJob = Start-ThreadJob -Name "agent-stdout-$Label" -ArgumentList $p, $logFile, $outLines -ScriptBlock {
             param($p, $logFile, $outLines)
             $r = $p.StandardOutput
             try {
@@ -136,7 +221,7 @@ function Invoke-OpenCode {
                 }
             } catch { <# stream closed #> }
         }
-        $stderrJob = Start-ThreadJob -Name "oc-stderr-$Agent" -ArgumentList $p, $logFile, $errLines -ScriptBlock {
+        $stderrJob = Start-ThreadJob -Name "agent-stderr-$Label" -ArgumentList $p, $logFile, $errLines -ScriptBlock {
             param($p, $logFile, $errLines)
             $r = $p.StandardError
             try {
@@ -148,10 +233,17 @@ function Invoke-OpenCode {
             } catch { <# stream closed #> }
         }
 
-        # Wait for the process to finish (timeout-aware)
-        $completed = $p.WaitForExit($TimeoutSeconds * 1000)
-        if (-not $completed) { $p.Kill(); Write-AgenticLog "opencode timed out" 'ERROR'; $exitCode = -1 }
-        else { $exitCode = $p.ExitCode }
+        if ($TimeoutSeconds -gt 0) {
+            $completed = $p.WaitForExit($TimeoutSeconds * 1000)
+            if (-not $completed) {
+                $p.Kill($true)
+                Write-AgenticLog "$Label timed out after ${TimeoutSeconds}s" 'ERROR'
+                $exitCode = -1
+            } else { $exitCode = $p.ExitCode }
+        } else {
+            $p.WaitForExit()
+            $exitCode = $p.ExitCode
+        }
 
         # Drain readers
         Receive-Job -Job $stdoutJob -Wait -ErrorAction SilentlyContinue | Out-Null
@@ -159,19 +251,135 @@ function Invoke-OpenCode {
 
         $outStr = $outLines -join "`n"
         $errStr = $errLines -join "`n"
-    } catch { Write-AgenticLog "opencode failed: $($_.Exception.Message)" 'ERROR'; $exitCode = 1
+        if ($errStr) {
+            Write-AgenticLog "$Label had stderr output" 'WARN'
+            if ($logFile) { Add-Content $logFile -Value '--- stderr ---'; Add-Content $logFile -Value $errStr; Add-Content $logFile -Value '--- stderr end ---' }
+        }
+    } catch {
+        Write-AgenticLog "$Label failed: $($_.Exception.Message)" 'ERROR'
+        $exitCode = 1
     } finally {
-        if (Test-Path $tmpFile) { Remove-Item $tmpFile -Force }
-        if ($p -and -not $p.HasExited) { $p.Kill() }
+        if ($p -and -not $p.HasExited) { $p.Kill($true) }
         if ($p) { $p.Dispose() }
     }
-    $outLen = $outStr.Length
-    Write-AgenticLog "opencode: ${outLen} chars, exit $exitCode"
-    if ($errStr) {
-        Write-AgenticLog 'opencode had stderr output' 'WARN'
-        if ($logFile) { Add-Content $logFile -Value '--- stderr ---'; Add-Content $logFile -Value $errStr; Add-Content $logFile -Value '--- stderr end ---' }
+    Write-AgenticLog "${Label}: $($outStr.Length) chars, exit $exitCode"
+    return @{ ExitCode = $exitCode; Output = $outStr }
+}
+
+# -- OpenCode invocation --------------------------------------------------
+function Invoke-OpenCode {
+    <#
+    .SYNOPSIS
+      Invoke opencode with a prompt via stdin. Returns the captured stdout
+      string ($null when opencode is missing).
+    #>
+    param([string]$Agent, [string]$Model, [string]$Message, [int]$TimeoutSeconds = 300)
+    if ($script:AgenticTimeoutSeconds -gt 0) { $TimeoutSeconds = $script:AgenticTimeoutSeconds }
+    if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] opencode run --agent $Agent --model $Model"; return '[DRY RUN]' }
+    Write-AgenticLog "Invoking opencode: agent=$Agent model=$Model (timeout=${TimeoutSeconds}s)"
+    $result = Invoke-AgentProcess -Executable 'opencode' `
+        -ArgumentList @('run', '--agent', $Agent, '--model', $Model) `
+        -Message $Message -TimeoutSeconds $TimeoutSeconds -Label "opencode-$Agent"
+    if ($result.ExitCode -eq 127) { return $null }
+    if ($result.ExitCode -ne 0) { Write-AgenticLog "opencode exited with code $($result.ExitCode) (agent=$Agent)" 'WARN' }
+    return $result.Output
+}
+
+# -- Claude Code invocation -----------------------------------------------
+function Invoke-ClaudeCode {
+    <#
+    .SYNOPSIS
+      Headless Claude Code run (`claude -p`) with the task message via stdin
+      and the role system prompt appended from a file. The planner is
+      sandboxed via --allowed-tools; the executor runs with the configured
+      permission mode (default bypassPermissions — intended for trusted
+      repos / sandboxes). Returns @{ ExitCode; Output }.
+    #>
+    param([string]$Role, [string]$Model, [string]$Message, [hashtable]$EngineConfig)
+    $timeoutSeconds = Get-AgentTimeoutForRole -EngineConfig $EngineConfig -Role $Role
+    if ($script:AgenticDryRun) {
+        Write-AgenticLog "[DRY RUN] claude -p --model $Model (role=$Role)"
+        return @{ ExitCode = 0; Output = '[DRY RUN]' }
     }
-    return $outStr
+
+    $argList = [System.Collections.Generic.List[string]]::new()
+    $argList.AddRange([string[]]@('-p', '--model', $Model, '--output-format', 'text'))
+
+    $promptFile = if ($Role -eq 'planner') { $EngineConfig.PlannerPromptFile } else { $EngineConfig.ExecutorPromptFile }
+    if ($promptFile) {
+        if (Test-Path $promptFile) { $argList.AddRange([string[]]@('--append-system-prompt-file', $promptFile)) }
+        else { Write-AgenticLog "Prompt file not found: $promptFile (continuing without role prompt)" 'WARN' }
+    }
+
+    if ($Role -eq 'planner' -and $EngineConfig.PlannerAllowedTools) {
+        # Planner sandbox: only the listed tools are allowed; everything else
+        # is denied in -p mode (no interactive prompt to approve).
+        $argList.Add('--allowed-tools')
+        foreach ($tool in ($EngineConfig.PlannerAllowedTools -split '\s+' | Where-Object { $_ })) { $argList.Add($tool) }
+    } elseif ($EngineConfig.PermissionMode -eq 'bypassPermissions') {
+        $argList.Add('--dangerously-skip-permissions')
+    } else {
+        $argList.AddRange([string[]]@('--permission-mode', $EngineConfig.PermissionMode))
+    }
+
+    if ($Role -eq 'planner' -and $EngineConfig.PlannerFallbackModel) {
+        $argList.AddRange([string[]]@('--fallback-model', $EngineConfig.PlannerFallbackModel))
+    }
+
+    if ($EngineConfig.ExtraArgs) {
+        foreach ($extra in ($EngineConfig.ExtraArgs -split '\s+' | Where-Object { $_ })) { $argList.Add($extra) }
+    }
+
+    Write-AgenticLog "Invoking claude: role=$Role model=$Model (timeout=${timeoutSeconds}s)"
+    $result = Invoke-AgentProcess -Executable 'claude' -ArgumentList $argList.ToArray() `
+        -Message $Message -TimeoutSeconds $timeoutSeconds -Label "claude-$Role"
+    if ($result.ExitCode -ne 0 -and $result.ExitCode -ne 127) {
+        Write-AgenticLog "claude exited with code $($result.ExitCode) (role=$Role)" 'WARN'
+        if ($result.Output -match '(?i)not logged in|invalid api key') {
+            Write-AgenticLog "Authentication error. Run 'claude' interactively once to log in." 'ERROR'
+        }
+    }
+    return $result
+}
+
+# -- Engine dispatcher with retry/backoff ---------------------------------
+function Invoke-AgenticAgent {
+    <#
+    .SYNOPSIS
+      Dispatch a role (planner | executor | fixer) to the configured engine
+      with retry + linear backoff. The fixer role uses the executor model.
+      Returns $true on success.
+    #>
+    param([string]$Role, [string]$Message, [hashtable]$EngineConfig)
+    $model = if ($Role -eq 'planner') { $EngineConfig.PlannerModel } else { $EngineConfig.ExecutorModel }
+    $retries = $EngineConfig.AgentRetries
+    $delay = $EngineConfig.AgentRetryDelaySeconds
+    $attempt = 0
+    while ($true) {
+        $exitCode = 0
+        switch ($EngineConfig.Engine) {
+            'claude' {
+                $result = Invoke-ClaudeCode -Role $Role -Model $model -Message $Message -EngineConfig $EngineConfig
+                $exitCode = $result.ExitCode
+            }
+            'opencode' {
+                $ocAgent = if ($Role -eq 'fixer') { 'executor' } else { $Role }
+                $timeoutSeconds = Get-AgentTimeoutForRole -EngineConfig $EngineConfig -Role $Role
+                $out = Invoke-OpenCode -Agent $ocAgent -Model $model -Message $Message -TimeoutSeconds $timeoutSeconds
+                $exitCode = if ($null -eq $out) { 1 } else { 0 }
+            }
+            default { Write-AgenticLog "Unknown engine: $($EngineConfig.Engine)" 'FATAL'; return $false }
+        }
+        if ($exitCode -eq 0) { return $true }
+        $attempt++
+        if ($attempt -gt $retries) {
+            Write-AgenticLog "Agent failed after $attempt attempt(s) (role=$Role, exit=$exitCode)" 'ERROR'
+            return $false
+        }
+        $sleepS = $delay * $attempt
+        Write-AgenticLog "Agent failed (exit=$exitCode). Retry $attempt/$retries in ${sleepS}s..." 'WARN'
+        if (-not $script:AgenticDryRun) { Start-Sleep -Seconds $sleepS }
+    }
 }
 
 # -- BACKLOG helpers ------------------------------------------------------
@@ -247,6 +455,30 @@ function Invoke-QualityCommand {
     } finally { Pop-Location }
 }
 
+# -- Build-failure fixer --------------------------------------------------
+function Invoke-BuildFixer {
+    <#
+    .SYNOPSIS
+      Hand the tail of the loop log (which contains the build output) to the
+      executor-tier model with a focused "fix the build" prompt.
+    #>
+    param([string]$ConfigurationName, [hashtable]$EngineConfig, [int]$LogTailLines = 150)
+    Write-AgenticSection "BUILD FIXER: $ConfigurationName"
+    $logTail = ''
+    $logFile = Get-AgenticLogFile
+    if ($logFile -and (Test-Path $logFile)) {
+        $logTail = (Get-Content $logFile -Tail $LogTailLines) -join "`n"
+    }
+    $message = @"
+The build for preset '$ConfigurationName' just failed in the agentic loop. Diagnose the failure from the build log below, fix the root cause in the code or build system, and rebuild with the same preset to verify the fix. Do not delete tests or disable warnings to force a green build. Commit the fix once the build passes.
+
+--- build log (last $LogTailLines lines) ---
+$logTail
+--- end build log ---
+"@
+    return Invoke-AgenticAgent -Role 'fixer' -Message $message -EngineConfig $EngineConfig
+}
+
 # -- Build matrix helpers -------------------------------------------------
 function Resolve-BuildMatrixEntry {
     <#
@@ -313,58 +545,83 @@ function Invoke-AgenticLoop {
         $Config, [string]$PlannerPrompt, [string]$ExecutorPrompt,
         $BuildConfigs, [bool]$OnWindows, [string]$RepoRoot = (Get-Location).Path,
         [int]$MaxIterations = -1, [switch]$SkipBuild, [switch]$SkipTests, [switch]$SkipQuality,
-        [switch]$PlannerOnly, [switch]$ExecutorOnly
+        [switch]$PlannerOnly, [switch]$ExecutorOnly,
+        [string]$RefactorPlannerPrompt = '', [string]$Engine = ''
     )
-    $plannerModel = $Config.models.planner; $executorModel = $Config.models.executor
-    $env:OPENCODE_PLANNER_MODEL = $plannerModel; $env:OPENCODE_EXECUTOR_MODEL = $executorModel
+    $engineConfig = Resolve-AgenticEngine -Config $Config -RepoRoot $RepoRoot -EngineOverride $Engine
+    if (-not $RefactorPlannerPrompt) { $RefactorPlannerPrompt = $PlannerPrompt }
 
-    $buildEveryN = $Config.intervals.buildEveryNTasks
-    $qualityEveryN = $Config.intervals.qualityEveryNTasks
-    $refactorEveryN = $Config.intervals.refactorEveryNIterations
-    $maxIter = if ($MaxIterations -ge 0) { $MaxIterations } else { $Config.intervals.maxIterations }
+    $intervals = Get-AgenticConfigValue $Config 'intervals' $null
+    $buildEveryN = [int](Get-AgenticConfigValue $intervals 'buildEveryNTasks' 3)
+    $qualityEveryN = [int](Get-AgenticConfigValue $intervals 'qualityEveryNTasks' 5)
+    $refactorEveryN = [int](Get-AgenticConfigValue $intervals 'refactorEveryNIterations' 3)
+    $cfgMaxIter = [int](Get-AgenticConfigValue $intervals 'maxIterations' 0)
+    $maxIter = if ($MaxIterations -ge 0) { $MaxIterations } else { $cfgMaxIter }
     # Dry-run safety cap: when nothing was explicitly set, run at most 1 iteration
-    if ($script:AgenticDryRun -and $MaxIterations -lt 0 -and ($Config.intervals.maxIterations -eq 0 -or -not $Config.intervals.maxIterations)) {
+    if ($script:AgenticDryRun -and $MaxIterations -lt 0 -and $cfgMaxIter -eq 0) {
         $maxIter = 1
         Write-AgenticLog 'Dry-run: maxIterations capped to 1 (config had 0 = unlimited)' 'WARN'
     }
-    $maxRetries = $Config.intervals.maxExecutorRetries
-    $loopDelay = $Config.intervals.loopDelaySeconds
-    $autoCommit = if ($Config.git) { $Config.git.autoCommit } else { $true }
-    $commitPrefix = if ($Config.git) { $Config.git.commitPrefix } else { 'agentic-loop' }
+    $maxRetries = [int](Get-AgenticConfigValue $intervals 'maxExecutorRetries' 3)
+    $loopDelay = [int](Get-AgenticConfigValue $intervals 'loopDelaySeconds' 0)
+    $fixBuildFailures = [bool](Get-AgenticConfigValue $intervals 'fixBuildFailures' $true)
+    $maxConsecutiveBuildFailures = [int](Get-AgenticConfigValue $intervals 'maxConsecutiveBuildFailures' 3)
+    $gitCfg = Get-AgenticConfigValue $Config 'git' $null
+    $autoCommit = [bool](Get-AgenticConfigValue $gitCfg 'autoCommit' $true)
+    $commitPrefix = Get-AgenticConfigValue $gitCfg 'commitPrefix' 'agentic-loop'
 
-    $testCmd = if ($OnWindows) { $Config.build.windowsTestCommand } else { $Config.build.linuxTestCommand }
-    $qualityCmd = if ($OnWindows) { $Config.build.windowsQualityCommand } else { $Config.build.linuxQualityCommand }
+    $buildCfg = Get-AgenticConfigValue $Config 'build' $null
+    $testCmd = if ($OnWindows) { Get-AgenticConfigValue $buildCfg 'windowsTestCommand' $null } else { Get-AgenticConfigValue $buildCfg 'linuxTestCommand' $null }
+    $qualityCmd = if ($OnWindows) { Get-AgenticConfigValue $buildCfg 'windowsQualityCommand' $null } else { Get-AgenticConfigValue $buildCfg 'linuxQualityCommand' $null }
+    $windowsBuildScript = Get-AgenticConfigValue $buildCfg 'windowsScript' 'Scripts/Windows/Build-Windows-Container.ps1'
+    $linuxBuildScript = Get-AgenticConfigValue $buildCfg 'linuxScript' 'Scripts/Linux/cmake-configure-build.sh'
 
     # Full matrix sweep: every N iterations, run ALL configs instead of one.
-    # 0 = disabled (cycle one config per build trigger, the original behaviour).
-    $fullMatrixEveryN = if ($Config.intervals.fullMatrixEveryNIterations) { [int]$Config.intervals.fullMatrixEveryNIterations } else { 0 }
+    # 0 = disabled (cycle one config per build trigger).
+    $fullMatrixEveryN = [int](Get-AgenticConfigValue $intervals 'fullMatrixEveryNIterations' 0)
 
     # Normalize build configs to matrix entries (supports both string[] and object[])
     $matrix = @()
     foreach ($entry in $BuildConfigs) { $matrix += Resolve-BuildMatrixEntry -Entry $entry }
     if ($matrix.Count -eq 0) { Write-AgenticLog 'No build configs in matrix' 'FATAL'; return }
+    Write-AgenticLog "Engine: $($engineConfig.Engine)"
+    Write-AgenticLog "Planner model: $($engineConfig.PlannerModel)"
+    Write-AgenticLog "Executor model: $($engineConfig.ExecutorModel)"
     Write-AgenticLog "Build matrix: $($matrix.Count) entries — $($matrix.Name -join ', ')"
     if ($fullMatrixEveryN -gt 0) { Write-AgenticLog "Full matrix sweep every $fullMatrixEveryN iterations" }
+    Write-AgenticLog "Build-failure fixing: $fixBuildFailures (stop after $maxConsecutiveBuildFailures consecutive failures)"
 
-    $iteration = 0; $tasksDone = 0; $script:buildIdx = 0
+    $iteration = 0; $tasksDone = 0
+    $script:buildIdx = 0
+    $script:consecutiveBuildFailures = 0
 
-    # Helper: build + test for a single matrix entry
-    # Uses script-scope vars: $OnWindows, $RepoRoot, $testCmd, $SkipTests
+    # Helper: build + test for a single matrix entry. On build failure,
+    # optionally dispatches the fixer agent and retries the build once.
     function Invoke-BuildAndTestForEntry {
         param($Entry)
         $cfg = $Entry.Name
         $buildCmd = if ($OnWindows) {
-            "pwsh -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot 'Scripts/Windows/Build-Windows-Container.ps1')`" -Configurations `"$cfg`" -SkipTests"
+            "pwsh -ExecutionPolicy Bypass -File `"$(Join-Path $RepoRoot $windowsBuildScript)`" -Configurations `"$cfg`" -SkipTests"
         } else {
             $buildDir = if ($Entry.BuildDir) { $Entry.BuildDir } else { 'build' }
-            "bash `"$(Join-Path $RepoRoot 'Scripts/Linux/cmake-configure-build.sh')`" --preset `"$cfg`" --build-dir `"$buildDir`""
+            "bash `"$(Join-Path $RepoRoot $linuxBuildScript)`" --preset `"$cfg`" --build-dir `"$buildDir`""
         }
         $ok = Invoke-BuildCommand -Command $buildCmd -Configuration $cfg
-        if ($ok -and (-not $SkipTests)) {
-            $entryTestCmd = if ($Entry.TestCommand) { $Entry.TestCommand } else { $testCmd }
-            if ($entryTestCmd) {
-                Invoke-SanitizerTestCommand -Command $entryTestCmd -Sanitizer $Entry.Sanitizer -RepoRoot $RepoRoot
+        if (-not $ok -and $fixBuildFailures -and -not $script:AgenticDryRun) {
+            $null = Invoke-BuildFixer -ConfigurationName $cfg -EngineConfig $engineConfig
+            $ok = Invoke-BuildCommand -Command $buildCmd -Configuration "$cfg (after fixer)"
+        }
+        if ($ok) {
+            $script:consecutiveBuildFailures = 0
+            if (-not $SkipTests) {
+                $entryTestCmd = if ($Entry.TestCommand) { $Entry.TestCommand } else { $testCmd }
+                if ($entryTestCmd) {
+                    Invoke-SanitizerTestCommand -Command $entryTestCmd -Sanitizer $Entry.Sanitizer -RepoRoot $RepoRoot
+                }
             }
+        } else {
+            $script:consecutiveBuildFailures++
+            Write-AgenticLog "Consecutive build failures: $script:consecutiveBuildFailures/$maxConsecutiveBuildFailures" 'WARN'
         }
         return $ok
     }
@@ -373,51 +630,80 @@ function Invoke-AgenticLoop {
     function Invoke-BuildPhase {
         if ($fullMatrixEveryN -gt 0 -and ($iteration % $fullMatrixEveryN -eq 0) -and $iteration -gt 0) {
             Write-AgenticSection "FULL MATRIX SWEEP (iteration $iteration)"
-            foreach ($entry in $matrix) { Invoke-BuildAndTestForEntry -Entry $entry }
+            foreach ($entry in $matrix) { $null = Invoke-BuildAndTestForEntry -Entry $entry }
         } else {
             $entry = $matrix[$script:buildIdx % $matrix.Count]
-            Invoke-BuildAndTestForEntry -Entry $entry
+            $null = Invoke-BuildAndTestForEntry -Entry $entry
             $script:buildIdx++
         }
     }
 
-    function LocalPlanner { param([switch]$Refactor)
+    function Invoke-PlannerPhase { param([switch]$Refactor)
         Write-AgenticSection 'PLANNER PHASE'
-        $null = Invoke-OpenCode -Agent 'planner' -Model $plannerModel -Message $(if ($Refactor) { $ExecutorPrompt } else { $PlannerPrompt })
+        $msg = if ($Refactor) { $RefactorPlannerPrompt } else { $PlannerPrompt }
+        $null = Invoke-AgenticAgent -Role 'planner' -Message $msg -EngineConfig $engineConfig
         Write-AgenticLog 'Planner complete'
     }
-    function LocalExecutor {
+    function Invoke-ExecutorPhase {
         Write-AgenticSection 'EXECUTOR PHASE'
-        $null = Invoke-OpenCode -Agent 'executor' -Model $executorModel -Message $ExecutorPrompt
+        $null = Invoke-AgenticAgent -Role 'executor' -Message $ExecutorPrompt -EngineConfig $engineConfig
         Write-AgenticLog 'Executor complete'
     }
+    # Helper: after-task phases (commit, build, quality). Returns $false when
+    # the consecutive-build-failure cap is hit.
+    function Invoke-AfterTaskPhases {
+        Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit
+        if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { Invoke-BuildPhase }
+        if (-not $SkipQuality -and ($qualityEveryN -gt 0) -and ($tasksDone % $qualityEveryN -eq 0) -and $qualityCmd) { Invoke-QualityCommand -Command $qualityCmd -RepoRoot $RepoRoot }
+        return ($script:consecutiveBuildFailures -lt $maxConsecutiveBuildFailures)
+    }
 
-    if ($PlannerOnly) { LocalPlanner -Refactor:$((($iteration+1) % $refactorEveryN -eq 0)); return }
+    if ($PlannerOnly) { Invoke-PlannerPhase -Refactor:$((($iteration+1) % $refactorEveryN -eq 0)); return }
     if ($ExecutorOnly) {
-        $u = Get-UncheckedTaskCount
-        while ($u -gt 0) { LocalExecutor; $tasksDone++; $u = Get-UncheckedTaskCount
-            if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { Invoke-BuildPhase }
-            if (-not $SkipQuality -and ($qualityEveryN -gt 0) -and ($tasksDone % $qualityEveryN -eq 0) -and $qualityCmd) { Invoke-QualityCommand -Command $qualityCmd -RepoRoot $RepoRoot }
+        $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
+        $u = Get-UncheckedTaskCount -BacklogPath $backlogPath
+        $retries = 0
+        while ($u -gt 0) {
+            Invoke-ExecutorPhase
+            $nu = Get-UncheckedTaskCount -BacklogPath $backlogPath
+            if ($nu -ge $u) {
+                $retries++
+                if ($retries -ge $maxRetries -or $script:AgenticDryRun) { break }
+            } else {
+                $retries = 0; $tasksDone++; $u = $nu
+                if (-not (Invoke-AfterTaskPhases)) { Write-AgenticLog 'Too many consecutive build failures — stopping' 'ERROR'; break }
+            }
         }
         return
     }
 
     while ($true) {
         $iteration++
-        Write-AgenticSection "ITERATION $iteration"
         if ($maxIter -gt 0 -and $iteration -gt $maxIter) { break }
-        LocalPlanner -Refactor:$($iteration % $refactorEveryN -eq 0)
+        Write-AgenticSection "ITERATION $iteration"
+        Invoke-PlannerPhase -Refactor:$($iteration % $refactorEveryN -eq 0)
 
-        $u = Get-UncheckedTaskCount; $retries = 0
+        $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
+        $u = Get-UncheckedTaskCount -BacklogPath $backlogPath
+        $retries = 0
+        $stop = $false
         while ($u -gt 0) {
-            LocalExecutor; $nu = Get-UncheckedTaskCount
-            if ($nu -ge $u) { $retries++; if ($retries -ge $maxRetries) { break } } else {
+            Invoke-ExecutorPhase
+            $nu = Get-UncheckedTaskCount -BacklogPath $backlogPath
+            if ($nu -ge $u) {
+                $retries++
+                if ($retries -ge $maxRetries -or $script:AgenticDryRun) { break }
+            } else {
                 $retries = 0; $tasksDone++; $u = $nu
-                Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit
-                if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { Invoke-BuildPhase }
-                if (-not $SkipQuality -and ($qualityEveryN -gt 0) -and ($tasksDone % $qualityEveryN -eq 0) -and $qualityCmd) { Invoke-QualityCommand -Command $qualityCmd -RepoRoot $RepoRoot }
+                if (-not (Invoke-AfterTaskPhases)) {
+                    Write-AgenticLog 'Too many consecutive build failures — stopping loop' 'ERROR'
+                    $script:AgenticExitCode = 1
+                    $stop = $true
+                    break
+                }
             }
         }
+        if ($stop) { break }
         if ($loopDelay -gt 0 -and -not $script:AgenticDryRun) { Write-AgenticLog "Sleeping ${loopDelay}s..."; Start-Sleep $loopDelay }
     }
 }

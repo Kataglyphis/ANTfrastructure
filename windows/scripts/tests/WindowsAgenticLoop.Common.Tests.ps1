@@ -59,7 +59,9 @@ Describe 'WindowsAgenticLoop.Common' {
     Context 'Platform detection' {
         It 'Get-AgenticPlatform returns a known platform' {
             $platform = Get-AgenticPlatform
-                        @('windows', 'linux') | Should Contain $platform
+            # -contains instead of Should Contain: Pester 3.x treats the
+            # piped value as a file path, not an array
+            (@('windows', 'linux') -contains $platform) | Should Be $true
         }
 
         It 'Test-IsWindows is consistent with the environment' {
@@ -199,6 +201,149 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
+    # -- Config helpers ----------------------------------------------------
+
+    Context 'Get-AgenticConfigValue' {
+        It 'reads a hashtable key' {
+            Get-AgenticConfigValue @{ foo = 'bar' } 'foo' 'x' | Should Be 'bar'
+        }
+
+        It 'returns the default for a missing hashtable key' {
+            Get-AgenticConfigValue @{ foo = 'bar' } 'baz' 'fallback' | Should Be 'fallback'
+        }
+
+        It 'reads a PSCustomObject property (StrictMode-safe)' {
+            $obj = '{"foo": "bar"}' | ConvertFrom-Json
+            Get-AgenticConfigValue $obj 'foo' 'x' | Should Be 'bar'
+            Get-AgenticConfigValue $obj 'missing' 'fallback' | Should Be 'fallback'
+        }
+
+        It 'returns the default for a null object' {
+            Get-AgenticConfigValue $null 'foo' 'fallback' | Should Be 'fallback'
+        }
+    }
+
+    # -- Engine resolution -------------------------------------------------
+
+    Context 'Resolve-AgenticEngine' {
+        BeforeAll {
+            $script:engineConfig = @{
+                engine = 'claude'
+                engines = @{
+                    claude = @{
+                        plannerModel = 'claude-fable-5'
+                        plannerFallbackModel = 'claude-opus-4-8'
+                        executorModel = 'claude-sonnet-5'
+                        plannerPromptFile = 'prompts/planner.md'
+                        executorPromptFile = 'prompts/executor.md'
+                        permissionMode = 'bypassPermissions'
+                        plannerAllowedTools = 'Read Glob Grep Edit(BACKLOG.md)'
+                    }
+                    opencode = @{
+                        plannerModel = 'opencode-go/glm-5.2'
+                        executorModel = 'opencode-go/deepseek-v4-flash'
+                    }
+                }
+                intervals = @{ timeoutSeconds = 600; plannerTimeoutSeconds = 900; executorTimeoutSeconds = 1800; agentRetries = 1; agentRetryDelaySeconds = 5 }
+            }
+            # Ensure env overrides do not leak into these tests
+            $script:savedEngineEnv = $env:AGENTIC_ENGINE
+            $script:savedPlannerEnv = $env:AGENTIC_PLANNER_MODEL
+            $script:savedExecutorEnv = $env:AGENTIC_EXECUTOR_MODEL
+            $env:AGENTIC_ENGINE = $null
+            $env:AGENTIC_PLANNER_MODEL = $null
+            $env:AGENTIC_EXECUTOR_MODEL = $null
+        }
+
+        AfterAll {
+            $env:AGENTIC_ENGINE = $script:savedEngineEnv
+            $env:AGENTIC_PLANNER_MODEL = $script:savedPlannerEnv
+            $env:AGENTIC_EXECUTOR_MODEL = $script:savedExecutorEnv
+        }
+
+        It 'resolves the claude engine from config' {
+            $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir
+            $ec.Engine | Should Be 'claude'
+            $ec.PlannerModel | Should Be 'claude-fable-5'
+            $ec.PlannerFallbackModel | Should Be 'claude-opus-4-8'
+            $ec.ExecutorModel | Should Be 'claude-sonnet-5'
+        }
+
+        It 'resolves repo-relative prompt files to absolute paths' {
+            $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir
+            $ec.PlannerPromptFile | Should Be (Join-Path $script:testDir 'prompts/planner.md')
+        }
+
+        It 'resolves per-role timeouts' {
+            $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir
+            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'planner') | Should Be 900
+            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'executor') | Should Be 1800
+            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'fixer') | Should Be 1800
+        }
+
+        It 'honors the EngineOverride parameter' {
+            $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir -EngineOverride 'opencode'
+            $ec.Engine | Should Be 'opencode'
+            $ec.PlannerModel | Should Be 'opencode-go/glm-5.2'
+        }
+
+        It 'honors the AGENTIC_ENGINE env override' {
+            $env:AGENTIC_ENGINE = 'opencode'
+            try {
+                $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir
+                $ec.Engine | Should Be 'opencode'
+            } finally { $env:AGENTIC_ENGINE = $null }
+        }
+
+        It 'falls back to legacy .models when no engines block exists' {
+            $legacy = @{ models = @{ planner = 'p-model'; executor = 'e-model' } }
+            $ec = Resolve-AgenticEngine -Config $legacy -RepoRoot $script:testDir
+            $ec.Engine | Should Be 'opencode'
+            $ec.PlannerModel | Should Be 'p-model'
+            $ec.ExecutorModel | Should Be 'e-model'
+        }
+
+        It 'throws for an unknown engine' {
+            # try/catch instead of Should Throw: Pester 3.x misses exceptions
+            # thrown from module-scoped advanced functions
+            $threw = $false
+            try { $null = Resolve-AgenticEngine -Config @{ engine = 'bogus'; models = @{ planner = 'p'; executor = 'e' } } -RepoRoot $script:testDir } catch { $threw = $true }
+            $threw | Should Be $true
+        }
+
+        It 'throws when no models are configured' {
+            $threw = $false
+            try { $null = Resolve-AgenticEngine -Config @{ engine = 'claude' } -RepoRoot $script:testDir } catch { $threw = $true }
+            $threw | Should Be $true
+        }
+    }
+
+    # -- Claude invocation + dispatcher (dry-run) --------------------------
+
+    Context 'Invoke-ClaudeCode / Invoke-AgenticAgent' {
+        BeforeAll {
+            $script:claudeEc = Resolve-AgenticEngine -Config @{
+                engine = 'claude'
+                engines = @{ claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' } }
+                intervals = @{ agentRetries = 0; agentRetryDelaySeconds = 1 }
+            } -RepoRoot $script:testDir
+        }
+
+        It 'Invoke-ClaudeCode returns DRY RUN in dry-run mode' {
+            $result = Invoke-ClaudeCode -Role 'executor' -Model 'claude-sonnet-5' -Message 'hello' -EngineConfig $script:claudeEc
+            $result.ExitCode | Should Be 0
+            $result.Output | Should Match 'DRY RUN'
+        }
+
+        It 'Invoke-AgenticAgent dispatches planner to claude in dry-run mode' {
+            Invoke-AgenticAgent -Role 'planner' -Message 'plan' -EngineConfig $script:claudeEc | Should Be $true
+        }
+
+        It 'Invoke-AgenticAgent dispatches fixer to the executor model' {
+            Invoke-AgenticAgent -Role 'fixer' -Message 'fix' -EngineConfig $script:claudeEc | Should Be $true
+        }
+    }
+
     # -- Main loop (smoke test) --------------------------------------------
 
     Context 'Invoke-AgenticLoop' {
@@ -231,6 +376,41 @@ Describe 'WindowsAgenticLoop.Common' {
         It 'full loop completes without error (max 1 iteration)' {
             { Invoke-AgenticLoop -Config $script:mockConfig -PlannerPrompt 'test' -ExecutorPrompt 'test' `
                 -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality } `
+                | Should Not Throw
+        }
+
+        It 'full loop works with the claude engine (dry-run, max 1 iteration)' {
+            $claudeCfg = @{
+                engine = 'claude'
+                engines = @{ claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' } }
+                intervals = @{
+                    buildEveryNTasks = 3; qualityEveryNTasks = 5; refactorEveryNIterations = 3
+                    maxIterations = 1; maxExecutorRetries = 1; loopDelaySeconds = 0
+                }
+                git = @{ autoCommit = $false; commitPrefix = 'test' }
+                build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok' }
+            }
+            { Invoke-AgenticLoop -Config $claudeCfg -PlannerPrompt 'test' -ExecutorPrompt 'test' `
+                -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality } `
+                | Should Not Throw
+        }
+
+        It 'full loop works with an engine override to opencode' {
+            $claudeCfg = @{
+                engine = 'claude'
+                engines = @{
+                    claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' }
+                    opencode = @{ plannerModel = 'oc-planner'; executorModel = 'oc-executor' }
+                }
+                intervals = @{
+                    buildEveryNTasks = 3; qualityEveryNTasks = 5; refactorEveryNIterations = 3
+                    maxIterations = 1; maxExecutorRetries = 1; loopDelaySeconds = 0
+                }
+                git = @{ autoCommit = $false; commitPrefix = 'test' }
+                build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok' }
+            }
+            { Invoke-AgenticLoop -Config $claudeCfg -PlannerPrompt 'test' -ExecutorPrompt 'test' `
+                -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality -Engine 'opencode' } `
                 | Should Not Throw
         }
     }
