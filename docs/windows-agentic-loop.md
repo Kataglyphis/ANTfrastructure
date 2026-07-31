@@ -128,6 +128,7 @@ Complete-AgenticLoop
 |----------|---------|
 | `Get-UncheckedTaskCount [-BacklogPath <path>]` | Count actionable `- [ ]` lines in BACKLOG.md (blocked `- [b]` entries excluded). |
 | `Get-BlockedTaskCount [-BacklogPath <path>]` | Count blocked `- [b]` lines in BACKLOG.md. |
+| `Get-UsageLimitWaitSeconds -Output <string>` | Detect a Claude usage/session-limit failure and return seconds to sleep until the stated reset (0 = not a limit failure). |
 | `Invoke-GitAutoCommit -Message <string> [-RepoRoot <path>] [-Enabled <bool>]` | `git add -A && git commit` with a message. |
 
 ### Build / Test / Quality Wrappers
@@ -204,6 +205,7 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `intervals.agentRetryDelaySeconds` | `[int]` | 20 | Base backoff delay between agent retries |
 | `intervals.fixBuildFailures` | `[bool]` | `true` | Dispatch the fixer agent after a failed build, then rebuild once |
 | `intervals.maxConsecutiveBuildFailures` | `[int]` | 3 | Stop the loop after N consecutive failed build phases |
+| `intervals.waitForUsageLimitReset` | `[bool]` | `true` | When an agent fails because the Claude usage/session limit was hit, sleep until the reset time stated in the message (+2 min) and retry without burning a retry attempt (capped at 10 waits per invocation) |
 | `buildMatrix.windows` | `[array]` | — | Windows build matrix entries (objects with name, sanitizer, buildDir, buildType, testCommand) |
 | `buildMatrix.linux` | `[array]` | — | Linux build matrix entries |
 | `build.windowsTestCommand` | `[string]` | — | Fallback test command for Windows |

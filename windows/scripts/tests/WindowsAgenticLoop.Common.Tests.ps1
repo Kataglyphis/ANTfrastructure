@@ -193,6 +193,32 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
+    Context 'Get-UsageLimitWaitSeconds' {
+        It 'returns 0 for unrelated output' {
+            Get-UsageLimitWaitSeconds -Output 'BUILD PASSED, all tests green' | Should Be 0
+        }
+
+        It 'returns 0 for empty output' {
+            Get-UsageLimitWaitSeconds -Output '' | Should Be 0
+        }
+
+        It 'returns the 30-minute default when the limit is hit but no reset time is given' {
+            Get-UsageLimitWaitSeconds -Output "You've hit your usage limit for now" | Should Be 1800
+        }
+
+        It 'parses a pm reset time into a positive wait no longer than a day' {
+            $wait = Get-UsageLimitWaitSeconds -Output "You've hit your session limit · resets 11pm (Europe/Berlin)"
+            $wait | Should BeGreaterThan 0
+            ($wait -le (24 * 3600 + 120)) | Should Be $true
+        }
+
+        It 'parses a reset time with minutes' {
+            $wait = Get-UsageLimitWaitSeconds -Output "You've hit your session limit · resets 6:30am (Europe/Berlin)"
+            $wait | Should BeGreaterThan 0
+            ($wait -le (24 * 3600 + 120)) | Should Be $true
+        }
+    }
+
     # -- Backlog pruning ---------------------------------------------------
 
     Context 'Remove-CheckedBacklogTasks' {

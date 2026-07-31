@@ -167,7 +167,34 @@ function Resolve-AgenticEngine {
         ExecutorTimeoutSeconds = [int](Get-AgenticConfigValue $intervals 'executorTimeoutSeconds' 0)
         AgentRetries           = [int](Get-AgenticConfigValue $intervals 'agentRetries' 2)
         AgentRetryDelaySeconds = [int](Get-AgenticConfigValue $intervals 'agentRetryDelaySeconds' 20)
+        WaitForUsageLimitReset = [bool](Get-AgenticConfigValue $intervals 'waitForUsageLimitReset' $true)
     }
+}
+
+function Get-UsageLimitWaitSeconds {
+    <#
+    .SYNOPSIS
+      Detect a Claude usage/session-limit failure in agent output and return
+      how many seconds to sleep until the stated reset (plus a 2-minute
+      buffer). Returns 0 when the output is not a usage-limit failure, and
+      30 minutes when the limit is detected but the reset time can't be
+      parsed. The reset time in the message ("resets 11pm (Europe/Berlin)")
+      is interpreted in local time.
+    #>
+    param([string]$Output)
+    if (-not $Output) { return 0 }
+    if ($Output -notmatch "(?i)hit your (session|usage|weekly|5-hour) limit|usage limit reached") { return 0 }
+    $m = [regex]::Match($Output, '(?i)resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)')
+    if (-not $m.Success) { return 1800 }
+    $hour = [int]$m.Groups[1].Value
+    $minute = if ($m.Groups[2].Success) { [int]$m.Groups[2].Value } else { 0 }
+    $ampm = $m.Groups[3].Value.ToLowerInvariant()
+    if ($ampm -eq 'pm' -and $hour -ne 12) { $hour += 12 }
+    if ($ampm -eq 'am' -and $hour -eq 12) { $hour = 0 }
+    $now = Get-Date
+    $reset = Get-Date -Hour $hour -Minute $minute -Second 0 -Millisecond 0
+    if ($reset -le $now) { $reset = $reset.AddDays(1) }
+    return [int](($reset - $now).TotalSeconds) + 120
 }
 
 function Get-AgentTimeoutForRole {
@@ -418,22 +445,37 @@ function Invoke-AgenticAgent {
     $retries = $EngineConfig.AgentRetries
     $delay = $EngineConfig.AgentRetryDelaySeconds
     $attempt = 0
+    $limitWaits = 0
     while ($true) {
         $exitCode = 0
+        $outputText = ''
         switch ($EngineConfig.Engine) {
             'claude' {
                 $result = Invoke-ClaudeCode -Role $Role -Model $model -Message $Message -EngineConfig $EngineConfig
                 $exitCode = $result.ExitCode
+                $outputText = $result.Output
             }
             'opencode' {
                 $ocAgent = if ($Role -eq 'fixer') { 'executor' } else { $Role }
                 $timeoutSeconds = Get-AgentTimeoutForRole -EngineConfig $EngineConfig -Role $Role
                 $out = Invoke-OpenCode -Agent $ocAgent -Model $model -Message $Message -TimeoutSeconds $timeoutSeconds
                 $exitCode = if ($null -eq $out) { 1 } else { 0 }
+                $outputText = "$out"
             }
             default { Write-AgenticLog "Unknown engine: $($EngineConfig.Engine)" 'FATAL'; return $false }
         }
         if ($exitCode -eq 0) { return $true }
+        # Usage/session-limit failures are not real errors: sleep until the
+        # stated reset and try again without burning a retry. Capped so a
+        # stuck limit can't spin forever (each pass sleeps >= 30 min anyway).
+        $limitWait = Get-UsageLimitWaitSeconds -Output $outputText
+        if ($limitWait -gt 0 -and $EngineConfig.WaitForUsageLimitReset -and $limitWaits -lt 10 -and -not $script:AgenticDryRun) {
+            $limitWaits++
+            $until = (Get-Date).AddSeconds($limitWait).ToString('HH:mm')
+            Write-AgenticLog "Usage limit hit (role=$Role). Waiting $([math]::Round($limitWait/60,1)) min until reset (~$until, wait $limitWaits/10) — not counted against retries." 'WARN'
+            Start-Sleep -Seconds $limitWait
+            continue
+        }
         $attempt++
         if ($attempt -gt $retries) {
             Write-AgenticLog "Agent failed after $attempt attempt(s) (role=$Role, exit=$exitCode)" 'ERROR'

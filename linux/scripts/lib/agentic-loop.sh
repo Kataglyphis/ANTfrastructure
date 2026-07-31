@@ -91,6 +91,7 @@ load_engine_config() {
     AGENT_EXECUTOR_TIMEOUT=$(jq -r '.intervals.executorTimeoutSeconds // 0' "$config_json")
     AGENT_RETRIES=$(jq -r '.intervals.agentRetries // 2' "$config_json")
     AGENT_RETRY_DELAY=$(jq -r '.intervals.agentRetryDelaySeconds // 20' "$config_json")
+    WAIT_FOR_USAGE_LIMIT_RESET=$(jq -r '.intervals.waitForUsageLimitReset // true' "$config_json")
 
     log "Engine: $AGENTIC_ENGINE"
     log "Planner model: $PLANNER_MODEL"
@@ -286,6 +287,29 @@ invoke_claude() {
     return $exit_code
 }
 
+# ── Usage-limit handling ────────────────────────────────────────────────
+# Detect a Claude usage/session-limit failure in the log tail and return the
+# seconds to sleep until the stated reset (+ 2 min buffer) on stdout.
+# Prints 0 when the recent output is not a usage-limit failure, and 1800
+# when the limit is detected but the reset time can't be parsed. The reset
+# time in the message ("resets 11pm (Europe/Berlin)") is taken as local time.
+usage_limit_wait_seconds() {
+    local tail_text
+    tail_text=$(tail -n 30 "$LOG_FILE" 2>/dev/null)
+    if ! echo "$tail_text" | grep -qiE "hit your (session|usage|weekly|5-hour) limit|usage limit reached"; then
+        echo 0; return
+    fi
+    local t
+    t=$(echo "$tail_text" | grep -oiE 'resets?[[:space:]]+(at[[:space:]]+)?[0-9]{1,2}(:[0-9]{2})?[[:space:]]*(am|pm)' \
+        | tail -n 1 | grep -oiE '[0-9]{1,2}(:[0-9]{2})?[[:space:]]*(am|pm)')
+    [[ -z "$t" ]] && { echo 1800; return; }
+    local target now
+    target=$(date -d "today $t" +%s 2>/dev/null) || { echo 1800; return; }
+    now=$(date +%s)
+    (( target <= now )) && target=$(date -d "tomorrow $t" +%s)
+    echo $(( target - now + 120 ))
+}
+
 # ── Engine dispatcher with retry/backoff ────────────────────────────────
 # Roles: planner | executor | fixer (fixer maps to the executor model/agent).
 invoke_agent() {
@@ -296,7 +320,7 @@ invoke_agent() {
         *)       model="${EXECUTOR_MODEL:?EXECUTOR_MODEL not set — call load_engine_config first}" ;;
     esac
     local retries="${AGENT_RETRIES:-2}" delay="${AGENT_RETRY_DELAY:-20}"
-    local attempt=0 rc=0
+    local attempt=0 rc=0 limit_waits=0
     while true; do
         rc=0
         case "${AGENTIC_ENGINE:-opencode}" in
@@ -311,6 +335,19 @@ invoke_agent() {
                 return 1 ;;
         esac
         [[ $rc -eq 0 ]] && return 0
+        # Usage/session-limit failures are not real errors: sleep until the
+        # stated reset and try again without burning a retry. Capped so a
+        # stuck limit can't spin forever (each pass sleeps >= 30 min anyway).
+        if [[ "${WAIT_FOR_USAGE_LIMIT_RESET:-true}" == "true" && "${DRY_RUN:-false}" != "true" && "$limit_waits" -lt 10 ]]; then
+            local limit_wait
+            limit_wait=$(usage_limit_wait_seconds)
+            if (( limit_wait > 0 )); then
+                limit_waits=$((limit_waits + 1))
+                log "Usage limit hit (role=$role). Waiting $(( limit_wait / 60 )) min until reset (wait $limit_waits/10) — not counted against retries." "WARN"
+                sleep "$limit_wait"
+                continue
+            fi
+        fi
         attempt=$((attempt + 1))
         if (( attempt > retries )); then
             log "Agent failed after $attempt attempt(s) (role=$role, exit=$rc)" "ERROR"

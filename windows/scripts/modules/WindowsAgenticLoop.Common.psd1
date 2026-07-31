@@ -25,6 +25,7 @@ FunctionsToExport = @(
     'Invoke-BuildFixer',
     'Get-UncheckedTaskCount',
     'Get-BlockedTaskCount',
+    'Get-UsageLimitWaitSeconds',
     'Remove-CheckedBacklogTasks',
     'Invoke-GitAutoCommit',
     'Invoke-BuildCommand',
