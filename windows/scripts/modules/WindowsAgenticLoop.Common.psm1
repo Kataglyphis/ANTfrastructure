@@ -67,7 +67,13 @@ function Initialize-AgenticLoop {
 }
 
 function Complete-AgenticLoop {
-    param([int]$Iteration = 0, [int]$TasksCompleted = 0, [int]$ExitCode = $script:AgenticExitCode)
+    # Defaults come from the counters Invoke-AgenticLoop maintains in script
+    # scope, so argless callers still report the real totals.
+    param(
+        [int]$Iteration = [int]$script:AgenticIterations,
+        [int]$TasksCompleted = [int]$script:AgenticTasksCompleted,
+        [int]$ExitCode = $script:AgenticExitCode
+    )
     $elapsed = if ($script:AgenticStartTime) { [math]::Round(((Get-Date) - $script:AgenticStartTime).TotalMinutes, 1) } else { 'N/A' }
     Write-AgenticSection 'Agentic Loop Finished'
     Write-AgenticLog "Exit code: $ExitCode"
@@ -447,6 +453,19 @@ function Get-UncheckedTaskCount {
     return [regex]::Matches($content, '(?m)^- \[ \]').Count
 }
 
+function Get-BlockedTaskCount {
+    <#
+    .SYNOPSIS
+      Count blocked (- [b]) tasks. Blocked tasks are deliberately excluded
+      from Get-UncheckedTaskCount so a backlog containing only blocked
+      entries reads as an empty queue and lets the planner run again.
+    #>
+    param([string]$BacklogPath = (Join-Path (Get-Location).Path 'BACKLOG.md'))
+    if (-not (Test-Path $BacklogPath)) { return 0 }
+    $content = Get-Content $BacklogPath -Raw
+    return [regex]::Matches($content, '(?m)^- \[[bB]\]').Count
+}
+
 function Remove-CheckedBacklogTasks {
     <#
     .SYNOPSIS
@@ -685,6 +704,9 @@ function Invoke-AgenticLoop {
     Write-AgenticLog "Build-failure fixing: $fixBuildFailures (stop after $maxConsecutiveBuildFailures consecutive failures)"
 
     $iteration = 0; $tasksDone = 0
+    # Mirrored into script scope so Complete-AgenticLoop reports real totals
+    $script:AgenticIterations = 0
+    $script:AgenticTasksCompleted = 0
     $script:buildIdx = 0
     $script:consecutiveBuildFailures = 0
 
@@ -765,6 +787,7 @@ function Invoke-AgenticLoop {
                 if ($retries -ge $maxRetries -or $script:AgenticDryRun) { break }
             } else {
                 $retries = 0; $tasksDone++; $u = $nu
+                $script:AgenticTasksCompleted = $tasksDone
                 if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
                 if (-not (Invoke-AfterTaskPhases)) { Write-AgenticLog 'Too many consecutive build failures — stopping' 'ERROR'; break }
             }
@@ -772,24 +795,36 @@ function Invoke-AgenticLoop {
         return
     }
 
+    $forcePlanner = $false
     while ($true) {
         $iteration++
         if ($maxIter -gt 0 -and $iteration -gt $maxIter) { break }
+        $script:AgenticIterations = $iteration
         Write-AgenticSection "ITERATION $iteration"
 
-        # Phase 1: Planner — skipped while the queue still has pending tasks
+        # Phase 1: Planner — skipped while the queue still has actionable
+        # (- [ ]) tasks. Blocked (- [b]) tasks do not count, and the
+        # starvation guard forces a planner run after a zero-progress
+        # iteration, so a backlog of blocked entries cannot stall the loop.
         $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
         $pending = Get-UncheckedTaskCount -BacklogPath $backlogPath
-        if ($skipPlannerWhenPending -and $pending -gt 0) {
-            Write-AgenticLog "Skipping planner: $pending task(s) still pending in BACKLOG.md"
+        $blocked = Get-BlockedTaskCount -BacklogPath $backlogPath
+        $plannerRan = $false
+        if ($skipPlannerWhenPending -and $pending -gt 0 -and -not $forcePlanner) {
+            Write-AgenticLog "Skipping planner: $pending actionable task(s) pending in BACKLOG.md ($blocked blocked)"
         } else {
+            if ($forcePlanner) {
+                Write-AgenticLog "Starvation guard: no progress last iteration — running planner despite $pending pending task(s) ($blocked blocked)" 'WARN'
+            }
             Invoke-PlannerPhase -Refactor:$($iteration % $refactorEveryN -eq 0)
+            $plannerRan = $true
         }
 
         if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
         $u = Get-UncheckedTaskCount -BacklogPath $backlogPath
         $retries = 0
         $stop = $false
+        $iterTasks = 0
         while ($u -gt 0) {
             Invoke-ExecutorPhase
             $nu = Get-UncheckedTaskCount -BacklogPath $backlogPath
@@ -797,7 +832,8 @@ function Invoke-AgenticLoop {
                 $retries++
                 if ($retries -ge $maxRetries -or $script:AgenticDryRun) { break }
             } else {
-                $retries = 0; $tasksDone++; $u = $nu
+                $retries = 0; $tasksDone++; $iterTasks++; $u = $nu
+                $script:AgenticTasksCompleted = $tasksDone
                 # Prune any leftover checked entries before the auto-commit
                 if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
                 if (-not (Invoke-AfterTaskPhases)) {
@@ -809,6 +845,16 @@ function Invoke-AgenticLoop {
             }
         }
         if ($stop) { break }
+        if ($iterTasks -eq 0) {
+            if ($plannerRan) {
+                Write-AgenticLog 'No executor progress even after running the planner — stopping loop (no actionable tasks left)' 'WARN'
+                break
+            }
+            Write-AgenticLog 'No executor progress this iteration — planner will run next iteration' 'WARN'
+            $forcePlanner = $true
+        } else {
+            $forcePlanner = $false
+        }
         if ($loopDelay -gt 0 -and -not $script:AgenticDryRun) { Write-AgenticLog "Sleeping ${loopDelay}s..."; Start-Sleep $loopDelay }
     }
 }

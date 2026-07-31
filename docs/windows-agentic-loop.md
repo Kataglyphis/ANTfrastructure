@@ -41,7 +41,7 @@ Agent invocations retry with linear backoff (`agentRetries` ×
 - [OpenCode](https://opencode.ai) CLI and/or
   [Claude Code](https://claude.com/claude-code) CLI installed and authenticated
 - PowerShell 7+ (cross-platform)
-- A `BACKLOG.md` file in the repository root (task format: `- [ ] Title`)
+- A `BACKLOG.md` file in the repository root (task format: `- [ ] Title` for actionable tasks, `- [b] Title` for blocked/parked ones the executor must skip)
 - `jq` on Linux (for config parsing in the Bash equivalent,
   `linux/scripts/lib/agentic-loop.sh`, which mirrors this module's engine
   support)
@@ -126,7 +126,8 @@ Complete-AgenticLoop
 
 | Function | Purpose |
 |----------|---------|
-| `Get-UncheckedTaskCount [-BacklogPath <path>]` | Count `- [ ]` lines in BACKLOG.md. |
+| `Get-UncheckedTaskCount [-BacklogPath <path>]` | Count actionable `- [ ]` lines in BACKLOG.md (blocked `- [b]` entries excluded). |
+| `Get-BlockedTaskCount [-BacklogPath <path>]` | Count blocked `- [b]` lines in BACKLOG.md. |
 | `Invoke-GitAutoCommit -Message <string> [-RepoRoot <path>] [-Enabled <bool>]` | `git add -A && git commit` with a message. |
 
 ### Build / Test / Quality Wrappers
@@ -211,7 +212,7 @@ The config is read from `AgenticLoop.config.json`. Key sections:
 | `build.linuxQualityCommand` | `[string]` | — | Quality command for Linux |
 | `git.autoCommit` | `[bool]` | `true` | Auto-commit after each completed task |
 | `git.commitPrefix` | `[string]` | `agentic-loop` | Prefix for auto-commit messages |
-| `backlog.skipPlannerWhenTasksPending` | `[bool]` | `true` | Skip the planner phase while `BACKLOG.md` still has unchecked tasks |
+| `backlog.skipPlannerWhenTasksPending` | `[bool]` | `true` | Skip the planner phase while `BACKLOG.md` still has actionable `- [ ]` tasks. Blocked `- [b]` entries don't count, and a zero-progress iteration forces the planner to run next iteration (starvation guard); if the planner ran and the executor still made no progress, the loop stops |
 | `backlog.deleteCompletedTasks` | `[bool]` | `true` | Prune completed (`- [x]`) task blocks from `BACKLOG.md` after each task (history lives in git) |
 
 ## Usage Examples

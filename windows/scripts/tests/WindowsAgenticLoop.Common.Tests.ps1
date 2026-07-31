@@ -163,6 +163,34 @@ Describe 'WindowsAgenticLoop.Common' {
             $count = Get-UncheckedTaskCount -BacklogPath $mixedPath
             $count | Should Be 1  # only the lowercase x is counted by the regex
         }
+
+        It 'does not count blocked - [b] tasks as unchecked' {
+            $blockedPath = Join-Path $script:testDir 'with-blocked.md'
+            @('- [ ] Actionable task', '- [b] Blocked task', '- [B] Also blocked') | Set-Content $blockedPath
+            $count = Get-UncheckedTaskCount -BacklogPath $blockedPath
+            $count | Should Be 1
+        }
+    }
+
+    Context 'Get-BlockedTaskCount' {
+        It 'counts - [b] and - [B] tasks, ignoring open and checked ones' {
+            $blockedPath = Join-Path $script:testDir 'blocked-count.md'
+            @('- [ ] Open task', '- [b] Blocked one', '- [B] Blocked two', '- [x] Done task') | Set-Content $blockedPath
+            $count = Get-BlockedTaskCount -BacklogPath $blockedPath
+            $count | Should Be 2
+        }
+
+        It 'returns 0 for a missing file' {
+            $count = Get-BlockedTaskCount -BacklogPath (Join-Path $script:testDir 'nonexistent-blocked.md')
+            $count | Should Be 0
+        }
+
+        It 'returns 0 when no tasks are blocked' {
+            $nonePath = Join-Path $script:testDir 'no-blocked.md'
+            @('- [ ] Open task', '- [x] Done task') | Set-Content $nonePath
+            $count = Get-BlockedTaskCount -BacklogPath $nonePath
+            $count | Should Be 0
+        }
     }
 
     # -- Backlog pruning ---------------------------------------------------

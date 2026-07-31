@@ -325,7 +325,21 @@ invoke_agent() {
 # ── BACKLOG helpers ─────────────────────────────────────────────────────
 unchecked_task_count() {
     local backlog="${1:-BACKLOG.md}"
-    grep -c '^- \[ \]' "$backlog" 2>/dev/null || echo 0
+    # grep -c prints "0" AND exits non-zero on zero matches, so `|| echo 0`
+    # would emit "0\n0" — capture first, then default only if empty.
+    local n
+    n=$(grep -c '^- \[ \]' "$backlog" 2>/dev/null) || true
+    echo "${n:-0}"
+}
+
+# Count blocked (- [b]) tasks.  Blocked tasks are deliberately excluded from
+# unchecked_task_count so a backlog containing only blocked entries reads as
+# an empty queue and lets the planner run again.
+blocked_task_count() {
+    local backlog="${1:-BACKLOG.md}"
+    local n
+    n=$(grep -c '^- \[[bB]\]' "$backlog" 2>/dev/null) || true
+    echo "${n:-0}"
 }
 
 # Remove completed (- [x]) task blocks from the backlog: the checked title
@@ -336,7 +350,8 @@ remove_checked_tasks() {
     local backlog="${1:-BACKLOG.md}"
     [[ -f "$backlog" ]] || return 0
     local checked
-    checked=$(grep -c '^- \[[xX]\]' "$backlog" 2>/dev/null || echo 0)
+    checked=$(grep -c '^- \[[xX]\]' "$backlog" 2>/dev/null) || true
+    checked="${checked:-0}"
     [[ "$checked" -eq 0 ]] && return 0
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
         log "[DRY RUN] would remove $checked completed task(s) from $(basename "$backlog")"
@@ -467,7 +482,7 @@ get_matrix_entry_name() {
 
 # ── Default phase prompts ───────────────────────────────────────────────
 default_planner_prompt() {
-    echo "Analyze the current state of the codebase. Review BACKLOG.md for existing open tasks. Identify new work opportunities: bugs, improvements, missing tests, technical debt, performance issues. Write detailed, actionable task entries to BACKLOG.md following the existing format. Do NOT duplicate existing tasks. Add at most 5 new tasks. Each task must include: size (S/M/L/XL), title, files to read, numbered implementation steps, test guidance, and build preset."
+    echo "Analyze the current state of the codebase. Review BACKLOG.md for existing open tasks. Identify new work opportunities: bugs, improvements, missing tests, technical debt, performance issues. Write detailed, actionable task entries to BACKLOG.md following the existing format. Do NOT duplicate existing tasks, including blocked ones marked '- [b]' — only flip a '- [b]' entry back to '- [ ]' if you verified its blocker is gone. Add at most 5 new tasks. Each task must include: size (S/M/L/XL), title, files to read, numbered implementation steps, test guidance, and build preset."
 }
 
 default_refactor_planner_prompt() {
@@ -475,7 +490,7 @@ default_refactor_planner_prompt() {
 }
 
 default_executor_prompt() {
-    echo "Read BACKLOG.md and find the first unchecked task (- [ ]). Implement it fully: make the code changes, add or update tests, and build with the appropriate preset. Once the task is complete and the build passes, DELETE the completed task entry (the '- [ ]' title line and its indented body) from BACKLOG.md — do not just mark it checked. Then commit the changes with a message that summarizes what was done."
+    echo "Read BACKLOG.md and find the first unchecked task (- [ ]). Skip tasks marked '- [b]' (blocked) entirely — do not audit or re-verify them. Implement the task fully: make the code changes, add or update tests, and build with the appropriate preset. Once the task is complete and the build passes, DELETE the completed task entry (the '- [ ]' title line and its indented body) from BACKLOG.md — do not just mark it checked. If a task turns out to be blocked (missing prerequisite, owner decision needed, untestable), change its checkbox from '- [ ]' to '- [b]' and note the blocker in the entry body, then move on to the next '- [ ]' task. Then commit the changes with a message that summarizes what was done."
 }
 
 # ── Main loop ───────────────────────────────────────────────────────────
@@ -643,18 +658,27 @@ run_agentic_loop() {
     fi
 
     # ── Full loop ───────────────────────────────────────────────────────
+    local force_planner=false iterations_done=0
     while true; do
         iteration=$((iteration + 1))
         if [[ "$max_iterations" -gt 0 && "$iteration" -gt "$max_iterations" ]]; then break; fi
+        iterations_done=$iteration
         section "ITERATION $iteration"
 
-        # Phase 1: Planner — skipped while the queue still has pending tasks
-        local pending
+        # Phase 1: Planner — skipped while the queue still has actionable
+        # (- [ ]) tasks.  Blocked (- [b]) tasks do not count, and the
+        # starvation guard forces a planner run after a zero-progress
+        # iteration, so a backlog of blocked entries cannot stall the loop.
+        local pending blocked planner_ran=false
         pending=$(unchecked_task_count "${repo_root}/BACKLOG.md")
-        if [[ "$skip_planner_when_pending" == "true" && "$pending" -gt 0 ]]; then
-            log "Skipping planner: $pending task(s) still pending in BACKLOG.md"
+        blocked=$(blocked_task_count "${repo_root}/BACKLOG.md")
+        if [[ "$skip_planner_when_pending" == "true" && "$pending" -gt 0 && "$force_planner" != "true" ]]; then
+            log "Skipping planner: $pending actionable task(s) pending in BACKLOG.md ($blocked blocked)"
         else
             section "PLANNER PHASE"
+            if [[ "$force_planner" == "true" ]]; then
+                log "Starvation guard: no progress last iteration — running planner despite $pending pending task(s) ($blocked blocked)" "WARN"
+            fi
             local planner_msg
             if [[ $(( iteration % refactor_every_n )) -eq 0 ]]; then
                 log "Refactor-focused planning cycle"
@@ -663,12 +687,25 @@ run_agentic_loop() {
                 planner_msg="$(default_planner_prompt)"
             fi
             invoke_agent "planner" "$planner_msg" || true
+            planner_ran=true
         fi
 
         # Phase 2: Executor
+        local tasks_before=$tasks_completed
         if ! drain_executor_queue; then
             log "Stopping loop due to persistent build failures" "ERROR"
             return 1
+        fi
+
+        if [[ "$tasks_completed" -eq "$tasks_before" ]]; then
+            if [[ "$planner_ran" == "true" ]]; then
+                log "No executor progress even after running the planner — stopping loop (no actionable tasks left)" "WARN"
+                break
+            fi
+            log "No executor progress this iteration — planner will run next iteration" "WARN"
+            force_planner=true
+        else
+            force_planner=false
         fi
 
         if [[ "$loop_delay" -gt 0 && "${DRY_RUN:-false}" != "true" ]]; then
@@ -677,6 +714,6 @@ run_agentic_loop() {
         fi
     done
 
-    section "Agentic Loop Complete ($tasks_completed tasks, $((iteration - 1)) iterations)"
+    section "Agentic Loop Complete ($tasks_completed tasks, $iterations_done iterations)"
     return 0
 }

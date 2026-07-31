@@ -24,6 +24,7 @@ FunctionsToExport = @(
     'Invoke-AgenticAgent',
     'Invoke-BuildFixer',
     'Get-UncheckedTaskCount',
+    'Get-BlockedTaskCount',
     'Remove-CheckedBacklogTasks',
     'Invoke-GitAutoCommit',
     'Invoke-BuildCommand',
