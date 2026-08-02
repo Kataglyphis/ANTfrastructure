@@ -16,6 +16,13 @@ Set-StrictMode -Version Latest
 $buildCommonPath = Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1'
 Import-Module $buildCommonPath
 
+# Shared, sink-agnostic helpers: Get-SccacheStatsText (used by the pre/post-build
+# diagnostics below) and Get-VisualStudioInstallPath/Get-MsvcToolsRoots (used by
+# Get-SanitizerRuntimeDlls). WindowsBuild.Common does not re-export them, and the
+# same no -Force rule as above applies.
+$sharedCommonPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+Import-Module $sharedCommonPath
+
 # Returns the path of the build tree's compile_commands.json, generating it from
 # the ninja build graph when CMake did not emit one (the input database for
 # clang-tidy/clangd). Project-agnostic: only the build root is needed.
@@ -80,18 +87,13 @@ function Get-SanitizerRuntimeDlls {
     }
   }
 
-  # Near-duplicate of Get-VsInstallPath (WindowsSourceBuild.Common.psm1), kept
-  # inline because this probe must NOT throw when VS is absent - a missing VS
-  # install just means one fewer clang_rt root to search. Merge candidate.
-  $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-  if (Test-Path $vswhere) {
-    $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if ($vsPath) {
-      $vcToolsPath = Get-ChildItem -Path "$vsPath\VC\Tools\MSVC\*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-      if ($vcToolsPath -and -not $clangRootPaths.Contains($vcToolsPath.FullName)) {
-        $clangRootPaths.Add($vcToolsPath.FullName)
-      }
-    }
+  # Shared vswhere discovery (WindowsScripts.Shared.psm1), the same helper
+  # WindowsSourceBuild.Common's Get-VsInstallPath/Get-MsvcToolsRoot use.
+  # -AllowMissing is what keeps this probe non-throwing: a missing VS install
+  # just means one fewer clang_rt root to search. Newest toolset first.
+  $vcToolsPath = @(Get-MsvcToolsRoots -AllowMissing) | Select-Object -First 1
+  if ($vcToolsPath -and -not $clangRootPaths.Contains($vcToolsPath)) {
+    $clangRootPaths.Add($vcToolsPath)
   }
 
   foreach ($rootPath in $clangRootPaths) {
@@ -322,30 +324,21 @@ function Invoke-CmakeConfigureAndBuild {
       Write-BuildLog -Context $Context -Message "DEBUG: sccache server already running or failed to start"
     }
 
-    # Get full sccache stats
-    # Near-duplicate of Show-SccacheStats (WindowsBuild.Common.psm1) and
-    # Write-SccacheStats (WindowsSourceBuild.Common.psm1); this variant logs via
-    # the build context without adding a pipeline step or gating on a remote
-    # backend - merge candidate.
+    # Get full sccache stats.
+    # The reader is Get-SccacheStatsText (WindowsScripts.Shared), shared with
+    # Show-SccacheStats (WindowsBuild.Common) and Write-SccacheStats
+    # (WindowsSourceBuild.Common). This call site keeps its own sink -- the build
+    # context log, no pipeline step -- and deliberately omits -RequireRemote:
+    # these diagnostics are wanted for a container-local cache too.
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache stats (full) ---"
-    try {
-      $sccacheStats = & sccache --show-stats 2>&1
-      foreach ($line in $sccacheStats) {
-        Write-BuildLog -Context $Context -Message "DEBUG:   $line"
-      }
-    } catch {
-      Write-BuildLog -Context $Context -Message "DEBUG: Could not get sccache stats: $($_.Exception.Message)"
+    foreach ($line in @(Get-SccacheStatsText | Where-Object { $null -ne $_ })) {
+      Write-BuildLog -Context $Context -Message "DEBUG:   $line"
     }
 
     # Try to get advanced stats if available
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache internal stats ---"
-    try {
-      $sccacheInternalStats = & sccache --show-adv-stats 2>&1
-      foreach ($line in $sccacheInternalStats) {
-        Write-BuildLog -Context $Context -Message "DEBUG:   $line"
-      }
-    } catch {
-      Write-BuildLog -Context $Context -Message "DEBUG: Advanced stats not available"
+    foreach ($line in @(Get-SccacheStatsText -Advanced | Where-Object { $null -ne $_ })) {
+      Write-BuildLog -Context $Context -Message "DEBUG:   $line"
     }
   } else {
     Write-BuildLog -Context $Context -Message "DEBUG: sccache not found on PATH"
@@ -444,13 +437,8 @@ function Invoke-CmakeConfigureAndBuild {
   # Log sccache stats after build
   Write-BuildLog -Context $Context -Message "DEBUG: ========== SCCACHE DIAGNOSTICS (AFTER BUILD) =========="
   if ($sccachePath) {
-    try {
-      $sccacheStatsAfter = & sccache --show-stats 2>&1
-      foreach ($line in $sccacheStatsAfter) {
-        Write-BuildLog -Context $Context -Message "DEBUG:   $line"
-      }
-    } catch {
-      Write-BuildLog -Context $Context -Message "DEBUG: Could not get sccache stats after build"
+    foreach ($line in @(Get-SccacheStatsText | Where-Object { $null -ne $_ })) {
+      Write-BuildLog -Context $Context -Message "DEBUG:   $line"
     }
   }
 }

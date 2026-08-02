@@ -638,6 +638,13 @@ function Remove-BuildRoot {
 }
 
 function Show-SccacheStats {
+    # The pipeline-step face of the shared sccache reader. Only the sink (a named
+    # build step writing through Write-BuildLog) is local; the invocation is
+    # Get-SccacheStatsText (WindowsScripts.Shared), shared with
+    # WindowsSourceBuild.Common's Write-SccacheStats and WindowsCMake.Common's
+    # pre/post-build dumps. Unlike the former Invoke-BuildExternal call, a
+    # non-zero sccache exit no longer fails the step -- stats are diagnostics,
+    # not a gate, which is what the other two call sites already assumed.
     param(
         [Parameter(Mandatory=$true)]
         [pscustomobject]$Context
@@ -645,7 +652,12 @@ function Show-SccacheStats {
 
     if (Get-Command "sccache" -ErrorAction SilentlyContinue) {
         Invoke-BuildStep -Context $Context -StepName "Sccache Statistics" -Script {
-            Invoke-BuildExternal -Context $Context -File "sccache" -Parameters @("--show-stats")
+            $statsLines = Get-SccacheStatsText
+            if ($null -ne $statsLines) {
+                foreach ($line in $statsLines) {
+                    Write-BuildLog -Context $Context -Message $line
+                }
+            }
         }
     }
 }

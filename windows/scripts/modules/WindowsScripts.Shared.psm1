@@ -269,13 +269,171 @@ function Expand-ArchiveSubdirectory {
     return $null
 }
 
+# --------------------------------------------------------------------------
+# sccache -- single implementation of "read the counters without ever failing".
+#
+# This lives here, in the module both WindowsBuild.Common and
+# WindowsSourceBuild.Common already import, because the three former copies
+# (WindowsCMake.Common's inline pre/post-build dumps, WindowsBuild.Common's
+# Show-SccacheStats and WindowsSourceBuild.Common's Write-SccacheStats) sat in
+# modules with no import edge between them. Only the *sink* differs per caller
+# (build-log + Context / pipeline step / Write-Host), so the sink stays with the
+# caller and only the invocation is shared.
+# --------------------------------------------------------------------------
+
+function Test-SccacheRemoteConfigured {
+    # True when any sccache remote backend is configured. Shared by the cmake
+    # launcher wiring (Invoke-CmakeConfigure) and the end-of-build stats dump --
+    # without a remote there is no cache, so neither should activate.
+    return (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT)) -or
+        (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET)) -or
+        (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT))
+}
+
+function Get-SccacheStatsText {
+    <#
+    .SYNOPSIS
+        Returns sccache's counter dump as string lines, or $null when there is
+        nothing to read. Never throws and never fails a build: stats are
+        diagnostics, not a gate.
+    .PARAMETER Advanced
+        Query --show-adv-stats instead of --show-stats.
+    .PARAMETER RequireRemote
+        Return $null unless a remote backend is configured. Without a remote
+        there is no cache worth reporting, and querying would spawn a local
+        sccache server as a side effect.
+    .OUTPUTS
+        [string[]] when sccache ran (possibly empty), $null when it was skipped.
+    #>
+    param(
+        [switch]$Advanced,
+        [switch]$RequireRemote
+    )
+
+    if ($RequireRemote -and -not (Test-SccacheRemoteConfigured)) { return $null }
+
+    $sccacheCmd = Get-Command 'sccache.exe' -ErrorAction SilentlyContinue
+    if (-not $sccacheCmd) { $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue }
+    if (-not $sccacheCmd) { return $null }
+
+    $flag = if ($Advanced) { '--show-adv-stats' } else { '--show-stats' }
+    $lines = [System.Collections.Generic.List[string]]::new()
+    try {
+        # cmd.exe routing: sccache may write diagnostics to stderr, which PS 5.1 under
+        # EAP=Stop escalates into a terminating NativeCommandError even through 2>&1.
+        $global:LASTEXITCODE = 0
+        cmd.exe /c """$($sccacheCmd.Source)"" $flag 2>&1" | ForEach-Object { $lines.Add([string]$_) }
+        if ($LASTEXITCODE -ne 0) { $lines.Add("(sccache $flag exited $LASTEXITCODE -- stats unavailable)") }
+    } catch {
+        $lines.Add("(sccache $flag failed: $($_.Exception.Message))")
+    }
+
+    return @($lines)
+}
+
+# --------------------------------------------------------------------------
+# Visual Studio / MSVC discovery -- single vswhere-based implementation.
+#
+# Replaces the copy that WindowsCMake.Common's Get-SanitizerRuntimeDlls kept
+# inline (flagged "Near-duplicate of Get-VsInstallPath ... Merge candidate")
+# alongside WindowsSourceBuild.Common's Get-VsInstallPath/Get-MsvcToolsRoot.
+# The throwing-vs-silent split between those two callers is load-bearing and is
+# preserved as the -AllowMissing switch, NOT resolved in favour of either:
+#   * source builds need the hard failure (no VS means no build),
+#   * the sanitizer-DLL probe must degrade quietly (a missing VS install just
+#     means one fewer clang_rt root to search).
+# --------------------------------------------------------------------------
+
+function Get-VisualStudioInstallPath {
+    <#
+    .SYNOPSIS
+        Returns the Visual Studio installation path(s) with VC Tools x86/x64.
+    .PARAMETER AllowMissing
+        Return $null (or an empty array with -All) instead of throwing when
+        vswhere.exe or a qualifying VS installation is absent.
+    .PARAMETER All
+        Return every qualifying installation instead of only the latest.
+    #>
+    param(
+        [switch]$AllowMissing,
+        [switch]$All
+    )
+
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        if ($AllowMissing) { if ($All) { return @() } else { return $null } }
+        throw "vswhere.exe not found at $vswhere - Visual Studio Installer missing"
+    }
+
+    # -nologo suppresses the "Visual Studio Locator version ..." banner vswhere
+    # prints on stdout ahead of the value. Without it the banner comes back as
+    # the first "installation path" -- which is how the pre-consolidation
+    # Get-VsInstallPath could return a banner string that then produced
+    # "No MSVC toolchain found under Visual Studio Locator version ...\VC\Tools\MSVC".
+    # The Test-Path filter is the belt-and-braces half: only real directories survive.
+    $selector = if ($All) { @() } else { @('-latest') }
+    $vsPaths = @(& $vswhere -nologo @selector -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+
+    if ($vsPaths.Count -eq 0) {
+        if ($AllowMissing) { if ($All) { return @() } else { return $null } }
+        throw 'No Visual Studio installation with VC Tools x86/x64 found via vswhere'
+    }
+
+    if ($All) { return $vsPaths }
+    return $vsPaths[0]
+}
+
+function Get-MsvcToolsRoots {
+    <#
+    .SYNOPSIS
+        Returns the VC\Tools\MSVC\<version> directories of the discovered Visual
+        Studio installation(s), newest version first.
+    .PARAMETER AllowMissing
+        Return an empty array instead of throwing when nothing is found.
+    .PARAMETER All
+        Search every qualifying VS installation, not just the latest.
+    #>
+    param(
+        [switch]$AllowMissing,
+        [switch]$All
+    )
+
+    $vsPaths = @(Get-VisualStudioInstallPath -AllowMissing:$AllowMissing -All:$All)
+    $roots = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($vsPath in $vsPaths) {
+        if ([string]::IsNullOrWhiteSpace($vsPath)) { continue }
+        $msvcRoot = Join-Path $vsPath 'VC\Tools\MSVC'
+        # Sorted descending so callers taking the first entry get the NEWEST
+        # toolset. Get-SanitizerRuntimeDlls previously took an unsorted
+        # "-First 1" here, i.e. the alphabetically oldest toolset.
+        foreach ($dir in @(Get-ChildItem -Path $msvcRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+            $roots.Add($dir.FullName)
+        }
+    }
+
+    if ($roots.Count -eq 0 -and -not $AllowMissing) {
+        $firstVsPath = @($vsPaths) | Select-Object -First 1
+        throw "No MSVC toolchain found under $firstVsPath\VC\Tools\MSVC"
+    }
+
+    return @($roots)
+}
+
 Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry',
     'ConvertFrom-VersionsEnv',
-    'Expand-ArchiveSubdirectory'
+    'Expand-ArchiveSubdirectory',
+    'Test-SccacheRemoteConfigured',
+    'Get-SccacheStatsText',
+    'Get-VisualStudioInstallPath',
+    'Get-MsvcToolsRoots'
 )
 
 

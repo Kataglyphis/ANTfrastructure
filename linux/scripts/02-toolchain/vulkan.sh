@@ -116,34 +116,41 @@ sanitize_vulkan_sdk_env() {
   fi
 }
 
+# The resolve-and-source half of source_vulkan_sdk_env now lives in
+# 01-core/vulkan-env.sh, so dev-side launchers can reuse it (with the opposite,
+# non-strict miss contract) without sourcing this 23 KB SDK installer and
+# inheriting its file-scope `set -euo pipefail`. Load it exactly the way
+# downloads.sh is loaded above: via the sibling 01-core dir in a repo checkout,
+# or /opt/scripts/core in an image. Every image that ships
+# /opt/scripts/toolchain/vulkan.sh (or the /usr/local/bin/vulkan.sh copy made by
+# Dockerfile.torch) also ships the whole 01-core tree under /opt/scripts/core.
+if ! declare -F vulkan_env_source >/dev/null 2>&1; then
+  for _vulkan_env_mod in \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/vulkan-env.sh" \
+    "/opt/scripts/core/vulkan-env.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/vulkan-env.sh"; do
+    if [ -f "${_vulkan_env_mod}" ]; then
+      # shellcheck disable=SC1090
+      source "${_vulkan_env_mod}"
+      break
+    fi
+  done
+  unset _vulkan_env_mod
+fi
+
 source_vulkan_sdk_env() {
   local prefix="${1:-${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT}}}"
   local sanitize_mode="${2:-keep-libs}"
-  local setup_path=""
-  local candidate
 
-  if [ -n "${VULKAN_VERSION:-}" ] && [ -r "${prefix}/${VULKAN_VERSION}/setup-env.sh" ]; then
-    setup_path="${prefix}/${VULKAN_VERSION}/setup-env.sh"
-  else
-    for candidate in "${prefix}"/*/setup-env.sh; do
-      [ -r "${candidate}" ] || continue
-      setup_path="${candidate}"
-      break
-    done
-  fi
+  # Without the module there is nothing to probe with; report a miss so the
+  # callers below take their own fallback path instead of dying on exit 127.
+  declare -F vulkan_env_source >/dev/null 2>&1 || return 1
 
-  [ -n "${setup_path}" ] || return 1
-
-  # setup-env.sh may inspect $1/$2, so clear this helper's function args first.
-  set --
-  # shellcheck disable=SC1090,SC1091
-  source "${setup_path}"
-  case "${sanitize_mode}" in
-    sanitize-libs)
-      sanitize_vulkan_sdk_env "${prefix}/"
-      ;;
-  esac
-  return 0
+  # strict=1 is passed explicitly (not left to ${VULKAN_ENV_STRICT}) because the
+  # callers of THIS function gate on the `return 1`: 04-runtime/entrypoint.sh,
+  # 05-frameworks/tvm-detect.sh::try_source_vulkan_env,
+  # 03-media/build/gstreamer/install-deps.sh and .../common/pre-setup.sh.
+  vulkan_env_source "${prefix}" "${sanitize_mode}" 1
 }
 
 _vulkan_setup_gcc_runtime() {

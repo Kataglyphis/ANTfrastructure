@@ -144,14 +144,9 @@ function Invoke-CmakeConfigure {
     return $true
 }
 
-function Test-SccacheRemoteConfigured {
-    # True when any sccache remote backend is configured. Shared by the cmake
-    # launcher wiring (Invoke-CmakeConfigure) and the end-of-build stats dump --
-    # without a remote there is no cache, so neither should activate.
-    return (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT)) -or
-        (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET)) -or
-        (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT))
-}
+# Test-SccacheRemoteConfigured now lives in WindowsScripts.Shared.psm1 (imported
+# above) so WindowsCMake.Common/WindowsBuild.Common can gate on the same check;
+# it is still re-exported from this module for existing consumers.
 
 function Write-SccacheStats {
     # Dump sccache's hit/miss counters into the build log. The counters live in the
@@ -160,15 +155,16 @@ function Write-SccacheStats {
     # after the run. Tee'd run output lands them in the host-side branch log, where
     # they answer "is the remote cache actually hitting or are we compiling cold?".
     # Never fails the build: stats are diagnostics, not a gate.
+    #
+    # Only the Write-Host sink is local; reading the counters is
+    # Get-SccacheStatsText (WindowsScripts.Shared). -RequireRemote keeps the
+    # "silent no-op without a remote backend" contract -- querying would spawn a
+    # local sccache server as a side effect.
     param([string]$Label = 'build')
-    if (-not (Test-SccacheRemoteConfigured)) { return }
-    $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
-    if (-not $sccacheCmd) { return }
+    $lines = Get-SccacheStatsText -RequireRemote
+    if ($null -eq $lines) { return }
     Write-Host "`n=== sccache stats ($Label) ==="
-    # cmd.exe routing: sccache may write diagnostics to stderr, which PS 5.1 under
-    # EAP=Stop escalates into a terminating NativeCommandError even through 2>&1.
-    cmd.exe /c """$($sccacheCmd.Source)"" --show-stats 2>&1" | ForEach-Object { Write-Host $_ }
-    if ($LASTEXITCODE -ne 0) { Write-Host "(sccache --show-stats exited $LASTEXITCODE -- stats unavailable)" }
+    $lines | ForEach-Object { Write-Host $_ }
 }
 
 function Enter-VsDevCmdEnvironment {
@@ -191,20 +187,17 @@ function Enter-VsDevCmdEnvironment {
     }
 }
 
+# Both of these are the throwing face of the shared vswhere discovery in
+# WindowsScripts.Shared.psm1 (Get-VisualStudioInstallPath / Get-MsvcToolsRoots).
+# Source builds want the hard failure: no Visual Studio means no build, and the
+# callers (build-onnx-genai-from-source.ps1, build-litert-lm-from-source.ps1)
+# either propagate it or wrap it in their own try/catch.
 function Get-VsInstallPath {
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere - Visual Studio Installer missing" }
-    $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if ([string]::IsNullOrWhiteSpace($vsPath)) { throw 'No Visual Studio installation with VC Tools x86/x64 found via vswhere' }
-    return $vsPath
+    return Get-VisualStudioInstallPath
 }
 
 function Get-MsvcToolsRoot {
-    $vsPath = Get-VsInstallPath
-    $msvcRoot = Join-Path $vsPath 'VC\Tools\MSVC'
-    $dirs = Get-ChildItem -Path $msvcRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
-    if (-not $dirs) { throw "No MSVC toolchain found under $msvcRoot" }
-    return $dirs[0].FullName
+    return (Get-MsvcToolsRoots)[0]
 }
 
 function Resolve-LlvmArchiver {
