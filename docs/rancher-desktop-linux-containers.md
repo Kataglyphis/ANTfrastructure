@@ -114,3 +114,43 @@ Notes that will save time:
   ASan/UBSan fuzzing that the Windows box does not, so a class of bug is only
   ever observable there.
 - Verifying a fix before pushing, rather than after.
+
+## Persisting the cargo cache
+
+The `:latest-cross` image runs as uid 1001 with `/usr/local/cargo` owned by
+root, so cargo falls back to a container-local `CARGO_HOME` and every fresh
+container rebuilds all Rust dependencies from scratch. Point it at a named
+volume instead:
+
+```bash
+nerdctl volume create cargo-cache        # once
+
+MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rdctl shell nerdctl run --rm --user root \
+  -v cargo-cache:/cargo-cache \
+  -v /mnt/d/path/to/repo:/workspace -w /workspace \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  bash -c 'bash Scripts/Linux/cmake-configure-build.sh \
+     --preset linux-debug-clang --build-dir /tmp/build --cargo-cache-dir /cargo-cache'
+```
+
+Three details that are easy to get wrong:
+
+- **`--build-dir` must be container-native** (`/tmp/...`), not a path on the
+  bind-mounted host tree. CMake's FetchContent `file RENAME` and cargo's
+  temp-file cleanup both fail on that filesystem — the build dies partway
+  through with a permission error on a stale artifact.
+- The build driver also redirects `CARGO_TARGET_DIR` onto the same volume, so
+  compiled artifacts stay off the host mount for the same reason.
+- `--user root` sidesteps volume ownership. To avoid it, chown the volume to
+  the image's uid once:
+  ```bash
+  rdctl shell nerdctl run --rm --user root -v cargo-cache:/cargo-cache \
+    alpine:3.20 chown -R 1001:1001 /cargo-cache
+  ```
+
+The `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` prefix is required when
+invoking nerdctl from Git Bash — without it the `-v` argument is rewritten
+into a Windows path and the run fails with "expected an absolute path".
+
+After the first build the registry and compiled dependencies are reused and
+subsequent runs are dramatically faster.
