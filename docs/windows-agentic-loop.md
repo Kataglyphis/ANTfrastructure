@@ -152,7 +152,7 @@ and both loops pick it up.
 | `Get-UncheckedTaskCount [-BacklogPath <path>]` | Count actionable `- [ ]` lines in BACKLOG.md (blocked `- [b]` entries excluded). |
 | `Get-BlockedTaskCount [-BacklogPath <path>]` | Count blocked `- [b]` lines in BACKLOG.md. |
 | `Get-UsageLimitWaitSeconds -Output <string>` | Detect a Claude usage/session-limit failure and return seconds to sleep until the stated reset (0 = not a limit failure). |
-| `Invoke-GitAutoCommit -Message <string> [-RepoRoot <path>] [-Enabled <bool>]` | `git add -A && git commit` with a message. |
+| `Invoke-GitAutoCommit -Message <string> [-RepoRoot <path>] [-Enabled <bool>]` | `git add -A && git commit` with a message. Bash counterpart: `invoke_git_auto_commit <message> [repo_root] [enabled]`. |
 
 ### Build / Test / Quality Wrappers
 

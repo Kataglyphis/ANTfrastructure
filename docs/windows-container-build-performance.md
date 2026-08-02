@@ -292,7 +292,13 @@ ordinary directory for the operations CMake's compiler test performs.
 The pattern is implemented here so consumers do not copy it:
 `windows/scripts/modules/WindowsContainerBuild.Reuse.psm1`
 (`Get-ReusableBuildContainer`, `Copy-IntoBuildContainer`,
-`Copy-FromBuildContainer`). Import it via the consumer's module resolver.
+`Copy-FromBuildContainer`, `Initialize-ContainerPwsh`,
+`Remove-StaleContainerSources`, `Test-BuildArtifactsDelivered`,
+`Remove-BuildContainerSafe`). Import it via the consumer's module
+resolver. The last three are the safety rails of the reusable-container
+pattern as functions: prune stale sources on reuse (tar never deletes),
+ensure pwsh exists in the image, and verify every built executable
+actually reached the host before trusting a green build.
 
 ## Applying this elsewhere
 

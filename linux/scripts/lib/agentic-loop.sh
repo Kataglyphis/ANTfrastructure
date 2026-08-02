@@ -557,6 +557,16 @@ default_planner_prompt() { _default_prompt planner; }
 default_refactor_planner_prompt() { _default_prompt refactor-planner; }
 default_executor_prompt() { _default_prompt executor; }
 
+# ── Git auto-commit ─────────────────────────────────────────────────────
+# Bash counterpart of the PS module's Invoke-GitAutoCommit.  No-op when
+# disabled or in dry-run; never fails the loop over a commit error.
+invoke_git_auto_commit() {
+    local message="$1" repo_root="${2:-$(pwd)}" enabled="${3:-true}"
+    [[ "$enabled" != "true" || "${DRY_RUN:-false}" == "true" ]] && return 0
+    git -C "$repo_root" add -A 2>/dev/null || true
+    git -C "$repo_root" commit -m "$message" 2>/dev/null || true
+}
+
 # ── Main loop ───────────────────────────────────────────────────────────
 # Full planner/executor loop with engine dispatch, build matrix cycling,
 # sanitizer-aware tests, build-failure fixing, and quality gates.  Reads all
@@ -664,10 +674,7 @@ run_agentic_loop() {
 
     # Helper: after-task phases (commit, build, quality)
     after_task_phases() {
-        if [[ "$auto_commit" == "true" && "${DRY_RUN:-false}" != "true" ]]; then
-            git -C "$repo_root" add -A 2>/dev/null || true
-            git -C "$repo_root" commit -m "$commit_prefix: task #$tasks_completed" 2>/dev/null || true
-        fi
+        invoke_git_auto_commit "$commit_prefix: task #$tasks_completed" "$repo_root" "$auto_commit"
         if [[ "${SKIP_BUILD:-false}" != "true" && $((tasks_completed % build_every_n)) -eq 0 ]]; then
             invoke_build_phase
         fi
