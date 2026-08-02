@@ -158,10 +158,15 @@ wasm_opt_ensure() {
     mkdir -p "${cache_root}" || err "Cannot create binaryen cache directory ${cache_root}"
     local tmp_dir
     tmp_dir="$(mktemp -d)" || err "mktemp -d failed"
-    download_verified_file \
+    # Stop at a failed/failing-checksum download rather than falling through to
+    # tar, which would only report "cannot open" and bury the real cause.
+    if ! download_verified_file \
       "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/${asset}" \
       "${expected_sha}" \
-      "${tmp_dir}/${asset}"
+      "${tmp_dir}/${asset}"; then
+      rm -rf "${tmp_dir}"
+      err "Verified download of ${asset} failed (checksum mismatch or network error)."
+    fi
     # Extract into the cache root: the tarball's top-level directory is already
     # binaryen-${BINARYEN_VERSION}, i.e. exactly ${install_dir}.
     tar -xzf "${tmp_dir}/${asset}" -C "${cache_root}" || { rm -rf "${tmp_dir}"; err "Extracting ${asset} failed"; }
