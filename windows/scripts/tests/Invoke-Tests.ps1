@@ -20,11 +20,34 @@ Import-Module (Join-Path $modDir 'WindowsScripts.Shared.psm1') -Force -DisableNa
 
 Reset-TestState
 
+# This directory holds two kinds of suite: zero-dependency ones written
+# against TestHarness.psm1 (dot-sourced below) and Pester-style ones using
+# Describe/BeforeAll. Dot-sourcing the latter throws "The BeforeAll command
+# may only be used inside a Describe block" and aborts the whole run, so
+# they are detected and handed to Pester instead. Without this the runner
+# breaks the moment anyone adds a Pester suite next to a harness suite.
+$pesterFailures = 0
 $testFiles = Get-ChildItem -Path $here -Filter '*.Tests.ps1' | Sort-Object Name
 foreach ($f in $testFiles) {
     Write-Host ''
     Write-Host "== $($f.Name) ==" -ForegroundColor Yellow
-    . $f.FullName
+
+    $isPesterStyle = (Get-Content $f.FullName -Raw) -match '(?m)^\s*Describe\s'
+    if (-not $isPesterStyle) {
+        . $f.FullName
+        continue
+    }
+
+    if (-not (Get-Module -ListAvailable -Name Pester)) {
+        Write-Host '   SKIPPED (Pester-style suite; Pester is not installed)' -ForegroundColor Yellow
+        continue
+    }
+
+    Import-Module Pester -ErrorAction Stop
+    $pesterRun = Invoke-Pester -Path $f.FullName -PassThru -Quiet
+    Write-Host ("   Pester: {0}/{1} passed" -f $pesterRun.PassedCount, $pesterRun.TotalCount) `
+        -ForegroundColor $(if ($pesterRun.FailedCount -gt 0) { 'Red' } else { 'Green' })
+    $pesterFailures += $pesterRun.FailedCount
 }
 
 $results = @(Get-TestResult)
@@ -41,5 +64,9 @@ foreach ($x in $failed) {
     Write-Host "       $($x.Err)" -ForegroundColor Red
 }
 
-if ($failed.Count -gt 0) { exit 1 }
+if ($pesterFailures -gt 0) {
+    Write-Host "  $pesterFailures Pester test(s) failed (see the per-file lines above)" -ForegroundColor Red
+}
+
+if ($failed.Count -gt 0 -or $pesterFailures -gt 0) { exit 1 }
 exit 0
