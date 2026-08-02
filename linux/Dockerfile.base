@@ -62,6 +62,15 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all \
     CCACHE_MAXSIZE=30G \
     SCCACHE_DIR=/var/cache/sccache
 
+# The cache dirs must be writable at RUNTIME for non-root users too — the
+# BuildKit cache mounts only make them writable during image builds. Without
+# this, any consumer running the image as a non-root user gets a fatal
+# "sccache: failed to create directory /var/cache/sccache" on every compile
+# (held the BeschleunigerBallett Linux CI lane red 2026-07-28..08-02).
+# 1777 = world-writable with sticky bit, same trust model as /tmp.
+RUN mkdir -p /var/cache/ccache /var/cache/sccache \
+    && chmod 1777 /var/cache/ccache /var/cache/sccache
+
 WORKDIR /workspace
 
 # ==============================================================================
