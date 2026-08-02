@@ -175,6 +175,15 @@ container-reuse pattern so consumers do not each reinvent it:
 - `Copy-IntoBuildContainer` / `Copy-FromBuildContainer` - tar-pipe transfers
   with exclusion support (mandatory for deep paths; one over-long path aborts
   the whole transfer).
+- `Remove-StaleContainerSources` - prune non-build directories from a reused
+  workspace (tar extracts over the tree but never deletes).
+- `Initialize-ContainerPwsh` - ensure PS 7 exists in a running container
+  (scoop install fallback).
+- `Test-BuildArtifactsDelivered` - throw when a green build produced no
+  executables or the outbound transfer silently delivered nothing.
+- `Resolve-DockerExe`, `Get-ContainerIsolationArgs`, `Test-ContainerBindMount`,
+  `Remove-BuildContainerSafe` - docker discovery, isolation args, bind-mount
+  probing, wcifs-tolerant removal.
 
 Consumers resolve it ContainerHub-first with a vendored fallback (see
 BeschleunigerBallett's `Scripts/Windows/Resolve-BuildModule.ps1`).
@@ -394,6 +403,18 @@ linux/scripts/
 
 Top-level orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `build-cross-stage.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`. Verification: `verify-cross-chain.sh`, `verify-critical-fixes.sh`, `verify-artifact-copy-parity.sh`.
 
+Beyond `linux/scripts/`:
+
+```
+linux/scripts/lib/       consumer-facing bash libraries (agentic-loop.sh)
+windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
+                         modules/*.psm1 (reusable PS modules), tests/ (Pester)
+shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
+                         for the default planner/refactor-planner/executor task
+                         prompts read by BOTH WindowsAgenticLoop.Common.psm1
+                         and linux/scripts/lib/agentic-loop.sh
+```
+
 `out/`: generated build artifacts (OCI layouts, rootfs exports). Excluded from Docker context via `.dockerignore`.
 
 ## Code Organization (key shared utilities)
@@ -509,17 +530,7 @@ base ─┬─ onnxruntime ───────┐
 - Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.1.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
 
-## Host Constraints
-
-| Symptom | Fix |
-|---------|-----|
-| `exec format error` | `sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all` |
-| `no space left on device` | `nerdctl system prune -a -f && rm -rf out/local-*` |
-| Stale downstream images | `--verify-chain` or rebuild from replaced stage |
-| `registry_pin_ref` fails on fresh push | Uses `retry()` with 5 attempts; wait and retry |
-| nerdctl DNS failure (Windows BuildKit) | Use Stevedore's `docker.exe build` instead |
-
-### Common Failure Modes
+## Common Failure Modes
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|

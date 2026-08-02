@@ -295,10 +295,13 @@ The pattern is implemented here so consumers do not copy it:
 `Copy-FromBuildContainer`, `Initialize-ContainerPwsh`,
 `Remove-StaleContainerSources`, `Test-BuildArtifactsDelivered`,
 `Remove-BuildContainerSafe`). Import it via the consumer's module
-resolver. The last three are the safety rails of the reusable-container
-pattern as functions: prune stale sources on reuse (tar never deletes),
-ensure pwsh exists in the image, and verify every built executable
-actually reached the host before trusting a green build.
+resolver. `Initialize-ContainerPwsh`, `Remove-StaleContainerSources` and
+`Test-BuildArtifactsDelivered` are the safety rails of the
+reusable-container pattern as functions: ensure pwsh exists in the image,
+prune stale sources on reuse (tar never deletes), and verify every built
+executable actually reached the host before trusting a green build.
+`Remove-BuildContainerSafe` removes a container while tolerating the wcifs
+teardown lock.
 
 ## Applying this elsewhere
 

@@ -665,3 +665,20 @@ Fix (common.sh, append_onnx_optional_lto_webgpu_args): when WebGPU is enabled, i
 VALIDATED via a targeted onnxruntime-stage diagnostic (ORT_ENABLE_WEBGPU=true): 0
 invalid-constexpr errors, onnxruntime CPU build + WebGPU EP "Build complete", all artifact
 checks pass. Re-enabled ORT_ENABLE_WEBGPU=true (amd64; ALLOW_CROSS stays false).
+
+## 2026-08-02 — AGENTS.md/README/overview doc dedup, remaining items
+
+Done in this pass: Host Constraints table removed from AGENTS.md (it was a
+strict subset of Common Failure Modes); WindowsContainerBuild.Reuse function
+list in AGENTS.md updated 3 -> 10; README's 01-core module enumeration now
+defers to AGENTS.md's Repo Map (the two lists had already drifted); Repo Map
+gained windows/ and shared/agentic-loop/prompts/ entries.
+
+Still open (needs a careful row-by-row equivalence check before deleting):
+- AGENTS.md's "per-library build notes" and "Windows Scripts" tables largely
+  restate docs/windows-builds.md, which AGENTS.md links right below them.
+  Decide the single home (windows-builds.md) and collapse the AGENTS.md
+  tables to a pointer — but only after verifying every row-level fact
+  (patch names, memory caps, EP flags) survives in the doc.
+- docs/overview.md carries a third, coarser copy of the script-tree /
+  build-chain description; align it with the Repo Map or trim to links.
