@@ -165,3 +165,18 @@ nerdctl build --platform linux/amd64 \
 ```
 
 For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` with digest-pinned stage handoff. See `docs/linux-cross-builds.md` for the full pipeline and `AGENTS.md` for the stage handoff rules.
+
+## Consumer bash libraries (`linux/scripts/lib/`)
+
+Reusable libraries consumer repos source directly from the submodule:
+
+- `agentic-loop.sh` — planner/executor loop core (see
+  `docs/windows-agentic-loop.md` for the config contract; the bash side is
+  its parity twin and reads the same `shared/agentic-loop/prompts/`).
+- `app-runner.sh` — generic application launcher: `--exe-name/--build-dir/
+  --build-type` arg parsing, executable discovery (candidate ladder +
+  bounded find fallback), `LD_LIBRARY_PATH` export, and caller hooks
+  (`app_runner_post_vulkan_hook`, `app_runner_env_hook`,
+  `APP_RUNNER_ENABLE_SHADER_CLEAN`). Consumers keep only per-profile
+  wrappers (defaults + hooks); see BeschleunigerBallett
+  `Scripts/Linux/run-{debug,profile,release}.sh` for the pattern.

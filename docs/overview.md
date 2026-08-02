@@ -2,7 +2,7 @@
 
 ## About The Project
 
-This project ships ready-to-build Dockerfiles for multiple targets in a single repo.
+This project ships ready-to-build Dockerfiles for multiple targets in a single repo — plus the reusable tooling consumer projects build on: PowerShell modules (`windows/scripts/modules/`), bash libraries (`linux/scripts/lib/`: agentic-loop, app-runner), cross-platform shared data (`shared/agentic-loop/prompts/`), and CI composite actions (`.github/actions/`, see its README). The AGENTS.md Repo Map is the authoritative index of that half of the repo.
 
 Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/pkgs/container/kataglyphis_beschleuniger) — published multi-arch images (Linux base, Torch add-on, webserver) and Windows build image.
 

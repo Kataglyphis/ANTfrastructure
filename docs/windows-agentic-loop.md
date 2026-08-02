@@ -56,7 +56,9 @@ $modulePath = Resolve-Path 'ExternalLib/Kataglyphis-ContainerHub/windows/scripts
 Import-Module $modulePath -Force
 ```
 
-Or vendor it directly into `Scripts/Windows/modules/` and import by name.
+Do not vendor a copy into the consumer repo — resolve it ContainerHub-first
+(e.g. BeschleunigerBallett's `Resolve-BuildModule.ps1`); vendored duplicates
+are exactly the drift the 2026-08-02 dedup pass removed.
 
 ## Quick Start
 

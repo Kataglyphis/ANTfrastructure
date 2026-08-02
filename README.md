@@ -103,6 +103,9 @@ If foreign-architecture builds fail with `exec format error`, run `nerdctl run -
 | NVIDIA / AMD / Torch variants | [docs/linux-accelerator-images.md](docs/linux-accelerator-images.md) |
 | Webserver, display forwarding, WebRTC | [docs/runtime-services.md](docs/runtime-services.md) |
 | Windows containers | [docs/windows-builds.md](docs/windows-builds.md) |
+| Building consumer projects inside the Windows image (reuse pattern, transports) | [docs/windows-container-build-performance.md](docs/windows-container-build-performance.md) |
+| Reusable CI composite actions (run-in-*-container, cleanup-disk-space) | [.github/actions/README.md](.github/actions/README.md) |
+| MSIX certificates: generation, import, WebDAV retrieval | [windows/scripts/certificates/README.md](windows/scripts/certificates/README.md) |
 | Prerequisites, tests, troubleshooting | [docs/project-info.md](docs/project-info.md) |
 | Third-party licenses | [docs/third-party-licenses.md](docs/third-party-licenses.md) |
 

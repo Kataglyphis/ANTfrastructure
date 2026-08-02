@@ -406,13 +406,27 @@ Top-level orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `bui
 Beyond `linux/scripts/`:
 
 ```
-linux/scripts/lib/       consumer-facing bash libraries (agentic-loop.sh)
+linux/scripts/lib/       consumer-facing bash libraries: agentic-loop.sh,
+                         app-runner.sh (generic app launcher: arg parse, exe
+                         discovery, LD_LIBRARY_PATH, per-profile hooks)
 windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
-                         modules/*.psm1 (reusable PS modules), tests/ (Pester)
+                         cargo-retry.cmd (transient file-lock retry wrapper),
+                         certificates/ (MSIX cert generation + WebDAV
+                         download_webdav_files.py — see its README.md),
+                         modules/*.psm1 (reusable PS modules: SourceBuild,
+                         Build.Common, ContainerBuild.Reuse, AgenticLoop,
+                         CMake, Config, Formatting, Msix.{Common,Signing},
+                         WebDav, Uv, Scripts.Shared, Toolchain, CodeQL,
+                         ContainerImage, Flutter, Installer),
+                         tests/ (harness + suites), shims/, diagnostics/
 shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
                          and linux/scripts/lib/agentic-loop.sh
+.github/actions/         composite actions consumers call @main:
+                         cleanup-disk-space (Windows runners),
+                         run-in-linux-container, run-in-windows-container
+                         (see .github/actions/README.md)
 ```
 
 `out/`: generated build artifacts (OCI layouts, rootfs exports). Excluded from Docker context via `.dockerignore`.
