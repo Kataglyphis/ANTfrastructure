@@ -16,7 +16,51 @@ inputs:
       an environment variable - never string-interpolated into this action's
       own script - so quotes and dollar signs inside it are taken literally by
       the host and interpreted only by the container's pwsh.
-    required: true
+      Mutually exclusive with `file`; exactly one of the two is required.
+    required: false
+    default: ''
+  file:
+    description: >-
+      Path (inside the container) of a PowerShell script executed via
+      `pwsh -NoProfile -ExecutionPolicy Bypass -File`, with `file-args`
+      appended as its arguments. Mutually exclusive with `command`.
+      Use this - not `command` - whenever the payload is "a script plus an
+      argument vector": under `-File` every element of `file-args` reaches the
+      script as a LITERAL argument, so no PowerShell parsing/quoting is applied
+      to argument values. Rewriting such a call as `-Command` would put those
+      values back through the PowerShell parser, which changes quoting
+      semantics for anything containing quotes, `$`, backticks or spaces -
+      exactly the reason secret-bearing `-File` steps could not be migrated to
+      this action before.
+    required: false
+    default: ''
+  file-args:
+    description: >-
+      Arguments for `file`, ONE PER LINE. Each line becomes exactly one argv
+      element, verbatim - no splitting on spaces, no quote removal, no
+      PowerShell parsing. A trailing CR is stripped (the runner may check the
+      YAML out with autocrlf) and the single trailing empty line a YAML `|`
+      block scalar always produces is dropped; every other line is kept, empty
+      ones included, so an unset secret still occupies its own argv slot. The
+      only value that cannot be expressed is one CONTAINING A NEWLINE.
+      Delivered through an environment variable exactly like `command`, so
+      secret values interpolated into this input by the caller never appear in
+      this action's own script text.
+      Ignored when `file` is empty.
+    required: false
+    default: ''
+  extra-args:
+    description: >-
+      Optional extra `docker run` arguments, inserted immediately before the
+      mount/workdir arguments - the same position the sibling
+      `run-in-linux-container` action splices its `extra-args` into. ONE
+      ARGUMENT PER LINE (the Linux action can substitute a shell fragment
+      verbatim because its docker call is a shell command line; this one builds
+      an argv array, so `-e` and `VAR=value` are two lines). Same delivery and
+      same limitations as `file-args`: env-var delivered, trailing CR stripped,
+      one trailing empty line dropped, no newlines inside a value.
+    required: false
+    default: ''
   cpus:
     description: >-
       --cpus value for the container. Empty (the default) gives the container
@@ -46,6 +90,9 @@ runs:
       env:
         RUN_IN_CONTAINER_IMAGE: ${{ inputs.image }}
         RUN_IN_CONTAINER_COMMAND: ${{ inputs.command }}
+        RUN_IN_CONTAINER_FILE: ${{ inputs.file }}
+        RUN_IN_CONTAINER_FILE_ARGS: ${{ inputs.file-args }}
+        RUN_IN_CONTAINER_EXTRA_ARGS: ${{ inputs.extra-args }}
         RUN_IN_CONTAINER_CPUS: ${{ inputs.cpus }}
         RUN_IN_CONTAINER_MEMORY: ${{ inputs.memory }}
         RUN_IN_CONTAINER_MOUNT_SOURCE: ${{ inputs.mount-source }}
@@ -65,16 +112,56 @@ runs:
         }
         Write-Host "Runner logical processors: $cores (container gets --cpus $cores)"
 
+        # Multi-value inputs are newline-delimited argv lists. Split on LF only
+        # and TrimEnd the CR afterwards rather than splitting on a CRLF regex:
+        # that also copes with a lone trailing CR, and it never touches
+        # significant leading/trailing SPACES inside an argument.
+        function ConvertTo-ArgList([string]$Text) {
+          if ([string]::IsNullOrEmpty($Text)) { return @() }
+          $lines = @($Text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })
+          # A YAML `|` block scalar always ends in exactly ONE newline (clip
+          # mode), which -split turns into one trailing empty element. Drop that
+          # single artifact - and nothing else. Interior empty lines are KEPT on
+          # purpose: an argument whose value is an empty or unset secret must
+          # still occupy its own argv slot, otherwise the flag before it would
+          # silently swallow the NEXT flag as its value.
+          if ($lines[-1] -eq '') {
+            if ($lines.Count -eq 1) { return @() }
+            $lines = $lines[0..($lines.Count - 2)]
+          }
+          return @($lines)
+        }
+        $extraArgs = ConvertTo-ArgList $env:RUN_IN_CONTAINER_EXTRA_ARGS
+
+        # Entrypoint: `-Command <script text>` or `-File <script> <args...>`.
+        # `-File` exists so that callers whose payload is a script plus an argv
+        # (typically because some elements are secrets) keep literal argument
+        # semantics instead of being re-parsed by PowerShell.
+        $file = $env:RUN_IN_CONTAINER_FILE
+        $command = $env:RUN_IN_CONTAINER_COMMAND
+        if ($file -and $command) {
+          throw "run-in-windows-container: 'command' and 'file' are mutually exclusive; pass exactly one."
+        }
+        if (-not $file -and -not $command) {
+          throw "run-in-windows-container: one of 'command' or 'file' is required."
+        }
+        if ($file) {
+          $entryArgs = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $file) +
+                       (ConvertTo-ArgList $env:RUN_IN_CONTAINER_FILE_ARGS)
+        } else {
+          $entryArgs = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command)
+        }
+
         # Args as a splatted array, NOT backtick line-continuations: the runner
         # checks out this YAML with autocrlf, and a PowerShell backtick before
         # CRLF escapes the CR instead of the newline, breaking the continuation
         # ("Missing expression after unary operator '--'"). An @(...) array spans
         # newlines with no continuation char, so it is CRLF-safe.
         $runArgs = @(
-          'run', '--rm', '--memory', $env:RUN_IN_CONTAINER_MEMORY, '--cpus', "$cores",
+          'run', '--rm', '--memory', $env:RUN_IN_CONTAINER_MEMORY, '--cpus', "$cores"
+        ) + $extraArgs + @(
           '--mount', ('type=bind,source=' + $env:RUN_IN_CONTAINER_MOUNT_SOURCE + ',target=' + $env:RUN_IN_CONTAINER_MOUNT_TARGET),
           '-w', $env:RUN_IN_CONTAINER_MOUNT_TARGET,
-          $image,
-          'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $env:RUN_IN_CONTAINER_COMMAND
-        )
+          $image
+        ) + $entryArgs
         docker @runArgs
