@@ -115,7 +115,10 @@ Reusable core, already written:
   — the single source both platforms read. Never hard-code prompt text in a
   consumer wrapper; that is precisely how the two platforms drifted apart.
 
-A consumer supplies four things:
+Start from the copy-and-edit templates in
+[`shared/agentic-loop/templates/`](../shared/agentic-loop/templates/README.md)
+(config with every project-specific field marked `TODO`, plus both runner
+wrappers). A consumer supplies four things:
 
 1. **`BACKLOG.md`** with the checkbox protocol: `- [ ]` actionable, `- [b]`
    blocked (skipped, and excluded from the pending count so a blocked-only
