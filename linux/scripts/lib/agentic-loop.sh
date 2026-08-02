@@ -29,15 +29,38 @@
 # ── Logging ─────────────────────────────────────────────────────────────
 LOG_FILE=""
 LOOP_NAME=""
+AGENTIC_START_TIME=0
 
 init_agentic_loop() {
     local name="$1" repo_root="${2:-$(pwd)}"
     LOOP_NAME="$name"
+    AGENTIC_START_TIME=$(date +%s)
     local log_dir="${repo_root}/logs/agentic-loop"
     mkdir -p "$log_dir"
     LOG_FILE="${log_dir}/agentic-loop_$(date '+%Y-%m-%d_%H-%M-%S').log"
     log "Agentic Loop: $LOOP_NAME"
     log "Log file: $LOG_FILE"
+}
+
+# Bash counterpart of the PS module's Complete-AgenticLoop: final summary +
+# troubleshooting hints.  Call from the wrapper's EXIT trap with the exit
+# code; does not exit itself (the trap owns that).
+complete_agentic_loop() {
+    local exit_code="${1:-0}"
+    local elapsed=$(( $(date +%s) - AGENTIC_START_TIME ))
+    section "Agentic Loop Finished"
+    log "Exit code: $exit_code"
+    log "Elapsed time: $(( elapsed / 60 ))min"
+    log "Log file: $LOG_FILE"
+    if [[ "$exit_code" -ne 0 ]]; then
+        log "The loop exited with errors. Check sections above marked [ERROR] or [FATAL]." "WARN"
+        log "Common fixes:" "WARN"
+        log "  1. claude engine: run 'claude' once interactively to log in" "WARN"
+        log "  2. opencode engine: run 'opencode auth login' and 'opencode models'" "WARN"
+        log "  3. Verify model IDs in the loop config JSON" "WARN"
+        log "  4. Run with --dry-run to test the configuration without executing" "WARN"
+        log "  5. Run with --max-iterations 1 to test a single iteration" "WARN"
+    fi
 }
 
 log() {
@@ -518,17 +541,21 @@ get_matrix_entry_name() {
 }
 
 # ── Default phase prompts ───────────────────────────────────────────────
-default_planner_prompt() {
-    echo "Analyze the current state of the codebase. Review BACKLOG.md for existing open tasks. Identify new work opportunities: bugs, improvements, missing tests, technical debt, performance issues. Write detailed, actionable task entries to BACKLOG.md following the existing format. Do NOT duplicate existing tasks, including blocked ones marked '- [b]' — only flip a '- [b]' entry back to '- [ ]' if you verified its blocker is gone. Add at most 5 new tasks. Each task must include: size (S/M/L/XL), title, files to read, numbered implementation steps, test guidance, and build preset."
+# Single source of truth shared with WindowsAgenticLoop.Common.psm1:
+# shared/agentic-loop/prompts/*.md at the repo root.
+_default_prompt() {
+    local lib_dir; lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local f="${lib_dir}/../../../shared/agentic-loop/prompts/$1.md"
+    if [[ ! -f "$f" ]]; then
+        echo "FATAL: default agentic prompt missing: $f" >&2
+        return 1
+    fi
+    cat "$f"
 }
 
-default_refactor_planner_prompt() {
-    echo "Analyze the codebase for refactoring opportunities. Focus on dead code, API consolidation, test coverage gaps, documentation drift, performance issues, and modernization. Read BACKLOG.md first to avoid duplicates. Add at most 3 refactor tasks marked with (refactor) in the title. Each task must include file paths, numbered steps, test guidance, and build instructions."
-}
-
-default_executor_prompt() {
-    echo "Read BACKLOG.md and find the first unchecked task (- [ ]). Skip tasks marked '- [b]' (blocked) entirely — do not audit or re-verify them. Implement the task fully: make the code changes, add or update tests, and build with the appropriate preset. Once the task is complete and the build passes, DELETE the completed task entry (the '- [ ]' title line and its indented body) from BACKLOG.md — do not just mark it checked. If a task turns out to be blocked (missing prerequisite, owner decision needed, untestable), change its checkbox from '- [ ]' to '- [b]' and note the blocker in the entry body, then move on to the next '- [ ]' task. Then commit the changes with a message that summarizes what was done. IMPORTANT: you run as a one-shot headless session — run builds and tests in the FOREGROUND and wait for them to finish before responding further; never end your reply while a build you started is still running (backgrounded work is orphaned when the session ends)."
-}
+default_planner_prompt() { _default_prompt planner; }
+default_refactor_planner_prompt() { _default_prompt refactor-planner; }
+default_executor_prompt() { _default_prompt executor; }
 
 # ── Main loop ───────────────────────────────────────────────────────────
 # Full planner/executor loop with engine dispatch, build matrix cycling,

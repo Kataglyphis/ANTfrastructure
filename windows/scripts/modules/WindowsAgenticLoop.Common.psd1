@@ -16,6 +16,8 @@ FunctionsToExport = @(
     'Get-AgenticPlatform',
     'Test-IsWindows',
     'Get-AgenticConfigValue',
+    'Get-AgenticBuildConfigs',
+    'Get-AgenticDefaultPrompt',
     'Resolve-AgenticEngine',
     'Get-AgentTimeoutForRole',
     'Invoke-AgentProcess',

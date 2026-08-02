@@ -135,7 +135,10 @@ function Copy-IntoBuildContainer {
 .DESCRIPTION
   With a reusable container the host copy is no longer the incremental seed,
   so copy back only what the host actually runs (executables, debug info,
-  compile database, logs) instead of the whole build tree.
+  compile database, logs) instead of the whole build tree. tar does NOT
+  expand globs in item arguments (it reports "Cannot stat" and produces an
+  empty archive), so pass literal paths in -Items and select by -Exclude to
+  drop heavy intermediates.
 #>
 function Copy-FromBuildContainer {
     [CmdletBinding()]
@@ -144,11 +147,15 @@ function Copy-FromBuildContainer {
         [Parameter(Mandatory)][string]$Container,
         [Parameter(Mandatory)][string]$SourcePath,
         [Parameter(Mandatory)][string]$TargetRoot,
-        [Parameter(Mandatory)][string[]]$Patterns
+        [Parameter(Mandatory)][string[]]$Items,
+        [string[]]$Exclude = @()
     )
 
-    $patternArgs = ($Patterns -join ' ')
-    $command = "`"$DockerExe`" exec $Container cmd /c `"cd /d $SourcePath && tar -cf - $patternArgs`" | tar -xf - -C `"$TargetRoot`""
+    $excludeArgs = ($Exclude | ForEach-Object { "--exclude `"$_`"" }) -join ' '
+    $itemArgs = ($Items -join ' ')
+    # tar's -C avoids a nested cmd /c inside the container, which would need
+    # quote-in-quote escaping for the exclude patterns.
+    $command = "`"$DockerExe`" exec $Container tar -cf - $excludeArgs -C $SourcePath $itemArgs | tar -xf - -C `"$TargetRoot`""
     cmd /c $command
     return ($LASTEXITCODE -eq 0)
 }

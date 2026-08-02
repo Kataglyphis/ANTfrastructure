@@ -112,6 +112,27 @@ function Get-AgenticConfigValue {
     return $Default
 }
 
+function Get-AgenticBuildConfigs {
+    <#
+    .SYNOPSIS
+      Resolve the per-platform build configuration list from the loop config.
+      Prefers buildMatrix (richer: per-config sanitizer, testCommand,
+      buildDir); falls back to legacy buildConfigurations (string arrays).
+      Returns $null when neither is present.
+    #>
+    param($Config, [bool]$OnWindows = (Test-IsWindows))
+    $platform = if ($OnWindows) { 'windows' } else { 'linux' }
+    foreach ($key in @('buildMatrix', 'buildConfigurations')) {
+        $section = Get-AgenticConfigValue $Config $key $null
+        if ($section) {
+            $configs = Get-AgenticConfigValue $section $platform $null
+            # ',' keeps a single-entry list an array through return unrolling.
+            if ($configs) { return ,@($configs) }
+        }
+    }
+    return $null
+}
+
 function Resolve-AgenticEngine {
     <#
     .SYNOPSIS
@@ -487,6 +508,19 @@ function Invoke-AgenticAgent {
     }
 }
 
+# -- Default phase prompts ------------------------------------------------
+# Single source of truth shared with linux/scripts/lib/agentic-loop.sh:
+# shared/agentic-loop/prompts/*.md at the repo root.
+function Get-AgenticDefaultPrompt {
+    param([Parameter(Mandatory)][ValidateSet('planner', 'refactor-planner', 'executor')][string]$Role)
+    $path = Join-Path $PSScriptRoot "..\..\..\shared\agentic-loop\prompts\$Role.md"
+    if (-not (Test-Path $path)) {
+        Write-AgenticLog "Default agentic prompt missing: $path" 'FATAL'
+        throw "Default agentic prompt missing: $path"
+    }
+    (Get-Content $path -Raw).Trim()
+}
+
 # -- BACKLOG helpers ------------------------------------------------------
 function Get-UncheckedTaskCount {
     param([string]$BacklogPath = (Join-Path (Get-Location).Path 'BACKLOG.md'))
@@ -694,12 +728,22 @@ function Invoke-SanitizerTestCommand {
 function Invoke-AgenticLoop {
     param(
         $Config, [string]$PlannerPrompt, [string]$ExecutorPrompt,
-        $BuildConfigs, [bool]$OnWindows, [string]$RepoRoot = (Get-Location).Path,
+        $BuildConfigs = $null, [bool]$OnWindows = (Test-IsWindows), [string]$RepoRoot = (Get-Location).Path,
         [int]$MaxIterations = -1, [switch]$SkipBuild, [switch]$SkipTests, [switch]$SkipQuality,
         [switch]$PlannerOnly, [switch]$ExecutorOnly,
         [string]$RefactorPlannerPrompt = '', [string]$Engine = ''
     )
     $engineConfig = Resolve-AgenticEngine -Config $Config -RepoRoot $RepoRoot -EngineOverride $Engine
+    if (-not $BuildConfigs) { $BuildConfigs = Get-AgenticBuildConfigs -Config $Config -OnWindows $OnWindows }
+    if (-not $BuildConfigs) {
+        Write-AgenticLog 'No build configs (need buildMatrix or buildConfigurations in config)' 'FATAL'
+        throw 'No build configs (need buildMatrix or buildConfigurations in config)'
+    }
+    if (-not $PlannerPrompt) {
+        $PlannerPrompt = Get-AgenticDefaultPrompt -Role 'planner'
+        if (-not $RefactorPlannerPrompt) { $RefactorPlannerPrompt = Get-AgenticDefaultPrompt -Role 'refactor-planner' }
+    }
+    if (-not $ExecutorPrompt) { $ExecutorPrompt = Get-AgenticDefaultPrompt -Role 'executor' }
     if (-not $RefactorPlannerPrompt) { $RefactorPlannerPrompt = $PlannerPrompt }
 
     $intervals = Get-AgenticConfigValue $Config 'intervals' $null

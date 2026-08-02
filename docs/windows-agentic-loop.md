@@ -72,18 +72,17 @@ Import-Module (Join-Path $repoRoot 'ExternalLib/Kataglyphis-ContainerHub/windows
 
 Initialize-AgenticLoop -ConfigPath $configPath -RepoRoot $repoRoot
 
-# Select build matrix for this platform (prefers buildMatrix, falls back to buildConfigurations)
-$onWindows = Test-IsWindows
-$buildConfigs = if ($config.buildMatrix) {
-    if ($onWindows) { $config.buildMatrix.windows } else { $config.buildMatrix.linux }
-} elseif ($config.buildConfigurations) {
-    if ($onWindows) { $config.buildConfigurations.windows } else { $config.buildConfigurations.linux }
-} else { $null }
-
-Invoke-AgenticLoop -Config $config -PlannerPrompt "Analyze the codebase and add tasks to BACKLOG.md..." -ExecutorPrompt "Read BACKLOG.md, execute the next unchecked task..." -BuildConfigs $buildConfigs -OnWindows $onWindows -RepoRoot $repoRoot
+Invoke-AgenticLoop -Config $config -RepoRoot $repoRoot
 
 Complete-AgenticLoop
 ```
+
+That is the whole wrapper: build configs are selected from the config's
+platform-appropriate `buildMatrix` (legacy `buildConfigurations` fallback)
+and the planner / refactor-planner / executor task prompts default to the
+shared prompt files (see [Default Task Prompts](#default-task-prompts)).
+Pass `-BuildConfigs` / `-PlannerPrompt` / `-ExecutorPrompt` /
+`-RefactorPlannerPrompt` only to override.
 
 ## Module API
 
@@ -122,6 +121,30 @@ Complete-AgenticLoop
 | `Get-AgenticConfigValue -Object <object> -Name <string> [-Default <object>]` | StrictMode-safe config lookup (hashtable or PSCustomObject). |
 | `Get-AgentTimeoutForRole -EngineConfig <hashtable> -Role <string>` | Per-role timeout resolution. |
 
+### Default Task Prompts
+
+The per-phase TASK prompts (the message piped to each agent invocation —
+not the engine role/system prompts, which stay project-owned) are
+single-sourced as Markdown files in this repository:
+
+```
+shared/agentic-loop/prompts/planner.md
+shared/agentic-loop/prompts/refactor-planner.md
+shared/agentic-loop/prompts/executor.md
+```
+
+| Function | Purpose |
+|----------|---------|
+| `Get-AgenticDefaultPrompt -Role <planner\|refactor-planner\|executor>` | Read the shared default prompt for a role (throws if the file is missing). |
+
+`Invoke-AgenticLoop`'s `-PlannerPrompt`, `-RefactorPlannerPrompt`, and
+`-ExecutorPrompt` parameters are optional and default to these files, so
+project wrappers do not need to hard-code prompt text. The Bash library's
+`default_planner_prompt` / `default_refactor_planner_prompt` /
+`default_executor_prompt` (in `linux/scripts/lib/agentic-loop.sh`) read the
+same files, keeping both platforms in lockstep — edit the prompt file once
+and both loops pick it up.
+
 ### Utility
 
 | Function | Purpose |
@@ -154,16 +177,18 @@ full build matrix documentation.
 
 | Function | Purpose |
 |----------|---------|
-| `Invoke-AgenticLoop -Config <object> -PlannerPrompt <string> -ExecutorPrompt <string> -BuildConfigs <array> -OnWindows <bool> [...]` | Full planner/executor loop with build matrix cycling, sanitizer-aware tests, full matrix sweeps, and quality gates. |
+| `Invoke-AgenticLoop -Config <object> [-PlannerPrompt <string>] [-ExecutorPrompt <string>] [-BuildConfigs <array>] [...]` | Full planner/executor loop with build matrix cycling, sanitizer-aware tests, full matrix sweeps, and quality gates. |
 
 ## `Invoke-AgenticLoop` Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `Config` | `[object]` | Configuration object (from JSON: models, intervals, build, git, logging) |
-| `PlannerPrompt` | `[string]` | Prompt message for the planner agent |
-| `ExecutorPrompt` | `[string]` | Prompt message for the executor agent |
-| `BuildConfigs` | `[array]` | Build matrix entries (string[] or object[] with name, sanitizer, testCommand, buildDir, buildType) |
+| `Engine` | `[string]` | Engine override (`claude` / `opencode`); empty = config `engine` / `$env:AGENTIC_ENGINE` |
+| `PlannerPrompt` | `[string]` | Optional prompt message for the planner agent; defaults to the shared `planner.md` (see [Default Task Prompts](#default-task-prompts)) |
+| `RefactorPlannerPrompt` | `[string]` | Optional prompt for refactor-focus iterations; defaults to the shared `refactor-planner.md` |
+| `ExecutorPrompt` | `[string]` | Optional prompt message for the executor agent; defaults to the shared `executor.md` |
+| `BuildConfigs` | `[array]` | Build matrix entries (string[] or object[] with name, sanitizer, testCommand, buildDir, buildType); optional — defaults to the platform's `buildMatrix` entries from `Config` |
 | `OnWindows` | `[bool]` | `$true` on Windows, `$false` on Linux — selects build script and test command |
 | `RepoRoot` | `[string]` | Repository root directory |
 | `MaxIterations` | `[int]` | Override max iterations (-1 = use config, 0 = unlimited) |
@@ -232,17 +257,17 @@ Complete-AgenticLoop
 
 ```pwsh
 Initialize-AgenticLoop -ConfigPath 'AgenticLoop.config.json' -DryRun
-Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -BuildConfigs $buildConfigs -OnWindows $true -RepoRoot $repoRoot
+Invoke-AgenticLoop -Config $cfg -RepoRoot $repoRoot
 ```
 
 ### Planner only (add tasks without executing)
 
 ```pwsh
-Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -BuildConfigs $buildConfigs -OnWindows $true -RepoRoot $repoRoot -PlannerOnly
+Invoke-AgenticLoop -Config $cfg -RepoRoot $repoRoot -PlannerOnly
 ```
 
 ### Executor only (drain existing queue)
 
 ```pwsh
-Invoke-AgenticLoop -Config $cfg -PlannerPrompt "..." -ExecutorPrompt "..." -BuildConfigs $buildConfigs -OnWindows $true -RepoRoot $repoRoot -ExecutorOnly
+Invoke-AgenticLoop -Config $cfg -RepoRoot $repoRoot -ExecutorOnly
 ```

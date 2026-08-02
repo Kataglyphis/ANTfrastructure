@@ -168,12 +168,11 @@ platform it's running on:
 
 ### PowerShell (`WindowsAgenticLoop.Common.psm1`)
 
-| Function | Purpose |
-|----------|---------|
-| `Resolve-BuildMatrixEntry -Entry <object>` | Normalize a string or JSON object to a hashtable with `Name`, `Sanitizer`, `TestCommand`, `BuildDir`, `BuildType` |
-| `Get-SanitizerEnvVars -Sanitizer <string>` | Return a hashtable of env vars for the given sanitizer |
-| `Invoke-SanitizerTestCommand -Command <string> -Sanitizer <string> -RepoRoot <string>` | Set sanitizer env vars, run tests, restore env |
-| `Invoke-AgenticLoop -Config <object> -BuildConfigs <array> ...` | Full loop with build matrix cycling, sanitizer-aware tests, and full matrix sweeps |
+The PowerShell functions implementing this behaviour
+(`Resolve-BuildMatrixEntry`, `Get-SanitizerEnvVars`,
+`Invoke-SanitizerTestCommand`, and the high-level `Invoke-AgenticLoop`)
+are documented in the module API reference,
+[`windows-agentic-loop.md`](windows-agentic-loop.md).
 
 ### Bash (`agentic-loop.sh`)
 

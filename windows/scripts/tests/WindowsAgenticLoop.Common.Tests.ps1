@@ -537,6 +537,52 @@ Plain text after the block.
         }
     }
 
+    # -- Get-AgenticDefaultPrompt -------------------------------------------
+
+    Context 'Get-AgenticDefaultPrompt' {
+        It 'returns non-empty prompts for every role' {
+            foreach ($role in @('planner', 'refactor-planner', 'executor')) {
+                (Get-AgenticDefaultPrompt -Role $role).Length | Should BeGreaterThan 50
+            }
+        }
+
+        It 'keeps the blocked-task protocol in the executor prompt' {
+            Get-AgenticDefaultPrompt -Role 'executor' | Should Match '\- \[b\]'
+        }
+
+        It 'keeps the foreground-build discipline in the executor prompt' {
+            Get-AgenticDefaultPrompt -Role 'executor' | Should Match 'FOREGROUND'
+        }
+
+        It 'keeps the blocked-task rule in the planner prompt' {
+            Get-AgenticDefaultPrompt -Role 'planner' | Should Match '\- \[b\]'
+        }
+
+        It 'reads from the shared single-source files' {
+            $shared = Join-Path $repoRoot '..\..\shared\agentic-loop\prompts\executor.md'
+            (Get-Content $shared -Raw).Trim() | Should Be (Get-AgenticDefaultPrompt -Role 'executor')
+        }
+    }
+
+    # -- Get-AgenticBuildConfigs --------------------------------------------
+
+    Context 'Get-AgenticBuildConfigs' {
+        It 'prefers buildMatrix for the requested platform' {
+            $cfg = @{ buildMatrix = @{ windows = @(@{ name = 'w' }); linux = @(@{ name = 'l' }) } }
+            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $true)[0].name | Should Be 'w'
+            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $false)[0].name | Should Be 'l'
+        }
+
+        It 'falls back to legacy buildConfigurations' {
+            $cfg = @{ buildConfigurations = @{ windows = @('debug'); linux = @('linux-debug') } }
+            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $true) | Should Be @('debug')
+        }
+
+        It 'returns $null when neither key is present' {
+            Get-AgenticBuildConfigs -Config @{} -OnWindows $true | Should BeNullOrEmpty
+        }
+    }
+
     # -- Complete-AgenticLoop -----------------------------------------------
 
     Context 'Complete-AgenticLoop' {
