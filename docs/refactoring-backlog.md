@@ -682,3 +682,10 @@ Still open (needs a careful row-by-row equivalence check before deleting):
   (patch names, memory caps, EP flags) survives in the doc.
 - docs/overview.md carries a third, coarser copy of the script-tree /
   build-chain description; align it with the Repo Map or trim to links.
+
+## 2026-08-02 — repo has no LICENSE file
+
+Surfaced by the BeschleunigerBallett third-party-license audit: this
+repository contains no LICENSE/COPYING anywhere, so consumers cannot state
+its terms (the audit had to list it as "unverified"). Owner decision needed:
+pick a license (the sibling Kataglyphis repos use MIT) and add the file.

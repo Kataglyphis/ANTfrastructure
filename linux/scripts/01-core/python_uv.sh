@@ -3,6 +3,9 @@
 #
 # Exposes:
 #   uv_venv_create <path> [python_version]     - Create a uv virtual environment
+#                                                 (pass "" to let uv/UV_PYTHON pick)
+#   uv_pip_install_requirements [venv] [reqs]   - pip install -r into a venv
+#                                                 (pins --python; see comment)
 #   uv_venv_activate <path>                     - Activate a virtual environment
 #   uv_venv_deactivate                          - Deactivate current venv
 #   uv_venv_remove <path>                       - Remove a virtual environment
@@ -108,24 +111,54 @@ uv_ensure_python_available() {
 
 uv_venv_create() {
   local venv_path="$1"
-  local python_version="${2:-$DEFAULT_PYTHON_VERSION}"
+  # Pass an explicit empty string as python_version to skip the --python pin
+  # and let uv resolve the interpreter itself (this honours UV_PYTHON, which
+  # the CI container images export to point at their system interpreter).
+  # Omitting the argument keeps the historical DEFAULT_PYTHON_VERSION pin.
+  local python_version="${2-$DEFAULT_PYTHON_VERSION}"
   local clear_flag="${3:---clear}"
-  
-  info "Creating virtual environment at: $venv_path (Python $python_version)"
-  
+
+  info "Creating virtual environment at: $venv_path (Python ${python_version:-<uv default>})"
+
   if [ -d "$venv_path" ]; then
     info "Removing existing virtual environment"
     rm -rf "$venv_path"
   fi
-  
-  # Try to ensure requested Python is available via uv (if possible) before
-  # creating the venv. If uv cannot provide the interpreter, uv venv will
-  # still attempt to create the venv with whatever python is available and
-  # may fail; callers can override by passing an explicit python path.
-  uv_ensure_python_available "$python_version" || true
 
-  uv venv --seed "$venv_path" --python="$python_version" $clear_flag
+  local uv_args=(venv --seed "$venv_path")
+  if [ -n "$python_version" ]; then
+    # Try to ensure requested Python is available via uv (if possible) before
+    # creating the venv. If uv cannot provide the interpreter, uv venv will
+    # still attempt to create the venv with whatever python is available and
+    # may fail; callers can override by passing an explicit python path.
+    uv_ensure_python_available "$python_version" || true
+    uv_args+=("--python=$python_version")
+  fi
+
+  uv "${uv_args[@]}" $clear_flag
   _CURRENT_VENV_PATH="$venv_path"
+}
+
+# Install a requirements file into a specific venv. The --python pin is
+# deliberate and load-bearing: uv honours UV_PYTHON OVER the activated venv,
+# and the CI container images export UV_PYTHON=/opt/venv/bin/python (a
+# root-owned system venv) - so a plain `uv pip install` inside an activated
+# .venv still targets /opt/venv and dies with "Permission denied (os error
+# 13)" for the non-root CI user (uid 1001). --python forces the writable
+# local environment. Reproduced and verified in the :latest-cross image.
+uv_pip_install_requirements() {
+  local venv_path="${1:-.venv}"
+  local requirements_file="${2:-requirements.txt}"
+
+  if [ ! -x "$venv_path/bin/python" ]; then
+    die "No usable venv at $venv_path (missing bin/python) - create it first with uv_venv_create"
+  fi
+  if [ ! -f "$requirements_file" ]; then
+    die "Requirements file not found: $requirements_file"
+  fi
+
+  info "Installing $requirements_file into $venv_path"
+  uv pip install --python "$venv_path/bin/python" -r "$requirements_file"
 }
 
 uv_venv_activate() {

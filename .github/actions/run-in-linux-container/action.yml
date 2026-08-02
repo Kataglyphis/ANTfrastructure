@@ -1,0 +1,64 @@
+name: 'Run in Linux container'
+description: >-
+  Runs a single command inside the CI container image via `docker run`,
+  bind-mounting the GitHub workspace, optionally teeing combined
+  stdout/stderr to a log file in the workspace.
+
+inputs:
+  image:
+    description: 'Container image reference to run.'
+    required: true
+  script:
+    description: >-
+      The command line to execute inside the container, e.g.
+      `bash ./Scripts/Linux/foo.sh --flag "value"`. It is substituted verbatim
+      into the `docker run` command line, so shell quoting inside it behaves
+      exactly as it did when the command was written inline in a workflow
+      `run:` block.
+    required: true
+  workdir:
+    description: >-
+      Bind-mount target for the GitHub workspace inside the container; also
+      used as the container working directory (-w).
+    required: false
+    default: '/workspace'
+  log-file:
+    description: >-
+      Optional log file (relative to the workspace) to `tee` the container
+      command's combined stdout/stderr into. Empty disables the tee entirely.
+    required: false
+    default: ''
+  extra-args:
+    description: >-
+      Optional extra `docker run` arguments (e.g. `-e VAR="value"`),
+      substituted verbatim before the mount/workdir arguments.
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: docker run
+      # An EXPLICIT `shell: bash` runs as `bash -e -o pipefail {0}` - identical
+      # to what the calling Linux workflow gets from its
+      # `defaults.run.shell: bash`. pipefail is load-bearing here: without it
+      # the `| tee` pipeline below reports tee's exit code and masks docker's,
+      # which hid failed configures/builds for months (see the Linux workflow
+      # header comment in Kataglyphis-BeschleunigerBallett).
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.log-file }}" ]; then
+          docker run --rm \
+            ${{ inputs.extra-args }} \
+            -v ${{ github.workspace }}:${{ inputs.workdir }} \
+            -w ${{ inputs.workdir }} \
+            "${{ inputs.image }}" \
+            ${{ inputs.script }} 2>&1 | tee "${{ inputs.log-file }}"
+        else
+          docker run --rm \
+            ${{ inputs.extra-args }} \
+            -v ${{ github.workspace }}:${{ inputs.workdir }} \
+            -w ${{ inputs.workdir }} \
+            "${{ inputs.image }}" \
+            ${{ inputs.script }}
+        fi

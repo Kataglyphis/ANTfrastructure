@@ -1,0 +1,80 @@
+name: 'Run in Windows container'
+description: >-
+  Runs a PowerShell command inside the CI Windows container image via
+  `docker run`, bind-mounting the short-path workspace clone and executing
+  the command with `pwsh -NoProfile -ExecutionPolicy Bypass -Command`.
+
+inputs:
+  image:
+    description: 'Container image reference to run.'
+    required: true
+  command:
+    description: >-
+      PowerShell script text executed inside the container via
+      `pwsh -NoProfile -ExecutionPolicy Bypass -Command`. Passed to docker as
+      a single argument (it may span multiple lines). It is delivered through
+      an environment variable - never string-interpolated into this action's
+      own script - so quotes and dollar signs inside it are taken literally by
+      the host and interpreted only by the container's pwsh.
+    required: true
+  cpus:
+    description: >-
+      --cpus value for the container. Empty (the default) gives the container
+      every logical processor the runner has, clamped to a minimum of 2.
+    required: false
+    default: ''
+  memory:
+    description: '--memory value for the container.'
+    required: false
+    default: '16g'
+  mount-source:
+    description: 'Host path bind-mounted into the container.'
+    required: false
+    default: 'D:\ws'
+  mount-target:
+    description: >-
+      Bind-mount target inside the container; also used as the container
+      working directory (-w).
+    required: false
+    default: 'C:\ws'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: docker run
+      shell: pwsh
+      env:
+        RUN_IN_CONTAINER_IMAGE: ${{ inputs.image }}
+        RUN_IN_CONTAINER_COMMAND: ${{ inputs.command }}
+        RUN_IN_CONTAINER_CPUS: ${{ inputs.cpus }}
+        RUN_IN_CONTAINER_MEMORY: ${{ inputs.memory }}
+        RUN_IN_CONTAINER_MOUNT_SOURCE: ${{ inputs.mount-source }}
+        RUN_IN_CONTAINER_MOUNT_TARGET: ${{ inputs.mount-target }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $image = $env:RUN_IN_CONTAINER_IMAGE
+        # Give the container every logical processor the runner has. This was
+        # pinned at 4, which throttled the 3-config clang-cl build on any
+        # runner with more cores. NUMBER_OF_PROCESSORS is what Windows reports
+        # to the host shell; the value is echoed so the log shows what we got.
+        if ($env:RUN_IN_CONTAINER_CPUS) {
+          $cores = [int]$env:RUN_IN_CONTAINER_CPUS
+        } else {
+          $cores = [int]$env:NUMBER_OF_PROCESSORS
+          if ($cores -lt 1) { $cores = 2 }
+        }
+        Write-Host "Runner logical processors: $cores (container gets --cpus $cores)"
+
+        # Args as a splatted array, NOT backtick line-continuations: the runner
+        # checks out this YAML with autocrlf, and a PowerShell backtick before
+        # CRLF escapes the CR instead of the newline, breaking the continuation
+        # ("Missing expression after unary operator '--'"). An @(...) array spans
+        # newlines with no continuation char, so it is CRLF-safe.
+        $runArgs = @(
+          'run', '--rm', '--memory', $env:RUN_IN_CONTAINER_MEMORY, '--cpus', "$cores",
+          '--mount', ('type=bind,source=' + $env:RUN_IN_CONTAINER_MOUNT_SOURCE + ',target=' + $env:RUN_IN_CONTAINER_MOUNT_TARGET),
+          '-w', $env:RUN_IN_CONTAINER_MOUNT_TARGET,
+          $image,
+          'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $env:RUN_IN_CONTAINER_COMMAND
+        )
+        docker @runArgs
