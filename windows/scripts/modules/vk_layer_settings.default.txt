@@ -1,0 +1,30 @@
+# Default Vulkan explicit layer settings for the khronos_validation layer,
+# staged by WindowsVulkanValidation.Common's Invoke-VulkanValidationRun when the
+# caller passes no -SettingsPath.
+#
+# The Vulkan loader reads this file from the CURRENT WORKING DIRECTORY or from
+# the directory containing the running executable - there is no environment
+# variable that points it at an arbitrary path. That is why the module copies
+# it next to the target executable for the duration of a single run and deletes
+# it afterwards, rather than having projects check a permanent copy in next to
+# their binaries (which would silently enable sync validation, with its extra
+# overhead, on every run).
+#
+# Projects that want to document or extend these settings keep their own copy
+# in-tree and pass -SettingsPath; this file is the zero-configuration fallback
+# and should stay minimal.
+#
+# Reference: https://vulkan.lunarg.com/doc/sdk/latest/windows/khronos_validation_layer.html
+
+# Standard core + error/warning validation - the same class of checks a debug
+# build with the validation layer enabled already runs; listed explicitly here
+# so this file is a complete, self-contained configuration.
+khronos_validation.validate_core = true
+khronos_validation.report_flags = error,warn
+khronos_validation.debug_action = VK_DBG_LAYER_ACTION_LOG_MSG
+
+# Synchronization validation - NOT part of core validation, off by default
+# because it is expensive. Catches missing or incorrect barriers between GPU
+# commands that read or write the same resource (WRITE-AFTER-WRITE,
+# READ-AFTER-WRITE, WRITE-AFTER-READ) that core validation does not check.
+khronos_validation.validate_sync = true
