@@ -6,7 +6,7 @@ logic lives in `windows/scripts/modules/WindowsAgenticLoop.Common.psm1` and
 
 | File | Copy to | Then |
 |---|---|---|
-| `AgenticLoop.config.template.json` | `Scripts/AgenticLoop/AgenticLoop.config.json` | Replace every `TODO`: the build matrix entries and the build/test/quality commands. |
+| `AgenticLoop.config.template.json` | `Scripts/AgenticLoop/AgenticLoop.config.json` | Replace every `TODO`: the build matrix entries and the build/test/quality commands. The loop refuses to start while any remain, naming each one — so you cannot silently run a half-filled template. |
 | `Run-AgenticLoop.ps1` | `Scripts/AgenticLoop/Run-AgenticLoop.ps1` | Nothing, unless your submodule path differs. |
 | `Run-AgenticLoop.sh` | `Scripts/AgenticLoop/Run-AgenticLoop.sh` | Same. `chmod +x`. |
 
