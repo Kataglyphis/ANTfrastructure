@@ -153,8 +153,13 @@ Fix what failed — do not edit the workflow to silence it.
 ### Contributing Reusable Work Here
 
 Consumer projects are expected to push reusable work upstream rather than keep
-local copies (BeschleunigerBallett's AGENTS.md states this as a rule). When
-adding here:
+local copies (BeschleunigerBallett's AGENTS.md states this as a rule).
+Wiring a NEW project to this repo — submodule, module resolver, Windows and
+Linux container builds, the agentic loop, launchers, CI actions — is a
+checklist in [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md);
+read it before hand-rolling any of that in a consumer.
+
+When adding here:
 
 - PowerShell 7 (pwsh) is the standard shell. All `.ps1` scripts require `#Requires -Version 7.0`. Windows containers use pwsh as the default SHELL.
 - PowerShell scripts go in `windows/scripts/modules/` with `Export-ModuleMember`, and

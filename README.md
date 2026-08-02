@@ -97,6 +97,7 @@ If foreign-architecture builds fail with `exec format error`, run `nerdctl run -
 
 | Topic | Doc |
 |-------|-----|
+| **Wiring a new project to this repo (start here)** | [docs/adopting-in-a-new-project.md](docs/adopting-in-a-new-project.md) |
 | Published images, feature snapshot | [docs/overview.md](docs/overview.md) |
 | Local runs, multi-arch, buildx, mirrors | [docs/linux-build-basics.md](docs/linux-build-basics.md) |
 | Cross-compiler lane, artifacts, manifest publishing | [docs/linux-cross-builds.md](docs/linux-cross-builds.md) |
