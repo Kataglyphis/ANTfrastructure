@@ -20,6 +20,14 @@ Set-StrictMode -Version Latest
 $script:AgenticLogFile = $null
 $script:AgenticLogToConsole = $true
 $script:AgenticExitCode = 0
+# Seeded here, not only inside Invoke-AgenticLoop: consumers call
+# Complete-AgenticLoop from a finally block, and its defaults read these. If
+# Invoke-AgenticLoop throws BEFORE setting them (bad config, missing build
+# matrix), StrictMode turns the teardown into "the variable
+# $script:AgenticIterations cannot be retrieved", which masks the real error
+# the user needs to see.
+$script:AgenticIterations = 0
+$script:AgenticTasksCompleted = 0
 $script:AgenticStartTime = $null
 $script:AgenticDryRun = $false
 $script:AgenticTimeoutSeconds = $null
@@ -30,6 +38,11 @@ function Write-AgenticLog {
     $line = "[$(Get-Date -Format 'HH:mm:ss')] [$Level] $Message"
     if ($script:AgenticLogFile) { Add-Content -Path $script:AgenticLogFile -Value $line }
     if ($script:AgenticLogToConsole) { Write-Host $line }
+    # A FATAL must survive into the process exit code. Consumers call
+    # Complete-AgenticLoop from a finally block, and it exits with
+    # $script:AgenticExitCode - which stayed 0 even after a fatal config
+    # error, so an unattended run reported success while having done nothing.
+    if ($Level -eq 'FATAL') { $script:AgenticExitCode = 1 }
 }
 
 function Write-AgenticSection {
@@ -738,6 +751,29 @@ function Invoke-AgenticLoop {
     if (-not $BuildConfigs) {
         Write-AgenticLog 'No build configs (need buildMatrix or buildConfigurations in config)' 'FATAL'
         throw 'No build configs (need buildMatrix or buildConfigurations in config)'
+    }
+
+    # Catch an unfinished copy of the config template. Without this the loop
+    # starts happily and only fails later, deep in a build step, with an error
+    # about a preset named "TODO-debug" - which reads like a broken toolchain
+    # rather than "you did not fill in the template". Found by adopting the
+    # templates into a scratch project and running them as a new user would.
+    # '@(...)' around the whole pipeline is required, not cosmetic: a pipeline
+    # yielding nothing returns $null, and $null.Count throws under StrictMode.
+    $unfilled = @(@($BuildConfigs | ForEach-Object {
+        $entryName = if ($_ -is [string]) { $_ } else { Get-AgenticConfigValue $_ 'name' '' }
+        if ("$entryName" -match 'TODO') { "buildMatrix entry '$entryName'" }
+    }) + @(
+        foreach ($key in 'windowsTestCommand', 'linuxTestCommand', 'windowsQualityCommand', 'linuxQualityCommand') {
+            $value = Get-AgenticConfigValue (Get-AgenticConfigValue $Config 'build' $null) $key ''
+            if ("$value" -match 'TODO') { "build.$key" }
+        }
+    ) | Where-Object { $_ })
+    if ($unfilled.Count -gt 0) {
+        $message = "Config still contains template placeholders: $($unfilled -join ', '). " +
+                   'Fill in the TODO values from shared/agentic-loop/templates/AgenticLoop.config.template.json.'
+        Write-AgenticLog $message 'FATAL'
+        throw $message
     }
     if (-not $PlannerPrompt) {
         $PlannerPrompt = Get-AgenticDefaultPrompt -Role 'planner'
