@@ -60,13 +60,6 @@ KNOWN_BASE_PROVIDED: dict[str, list[str]] = {
     "Dockerfile.media": [
         "/opt/scripts/toolchain/vulkan.sh",
     ],
-    # smoke-*.sh are copied in via `cp -av /tmp/scripts/06-packaging/smoke-*.sh
-    # /opt/scripts/packaging/` from a linux/scripts -> /tmp/scripts bind mount.
-    "Dockerfile.toolchain": [
-        "/opt/scripts/packaging/smoke-common.sh",
-        "/opt/scripts/packaging/smoke-cross-all-arches.sh",
-        "/opt/scripts/packaging/smoke-toolchain.sh",
-    ],
 }
 
 OPT = "/opt/scripts/"
@@ -85,15 +78,24 @@ def read(path: Path) -> str:
 
 def join_continuations(text: str) -> list[str]:
     """Collapse backslash-newline line continuations into logical lines."""
-    out, buf = [], ""
-    for line in text.splitlines():
+    return [line for _, line in join_continuations_numbered(text)]
+
+
+def join_continuations_numbered(text: str) -> list[tuple[int, str]]:
+    """Like join_continuations, but each logical line carries its 1-based
+    starting line number (for --report-core-usage output)."""
+    out: list[tuple[int, str]] = []
+    buf, start = "", 0
+    for i, line in enumerate(text.splitlines(), start=1):
         if line.rstrip().endswith("\\"):
+            if not buf:
+                start = i
             buf += line.rstrip()[:-1] + " "
         else:
-            out.append(buf + line)
+            out.append((start if buf else i, buf + line))
             buf = ""
     if buf:
-        out.append(buf)
+        out.append((start, buf))
     return out
 
 
@@ -200,7 +202,57 @@ def check_dockerfile(dockerfile: Path) -> list[str]:
     return missing
 
 
+def report_core_usage() -> int:
+    """--report-core-usage: for every RUN that bind-mounts the WHOLE 01-core
+    directory, print which core files its entry script(s) transitively use.
+
+    Rationale: a whole-directory mount makes the RUN's cache key cover all of
+    01-core (~55 scripts) — an edit to ANY of them invalidates the layer. This
+    report quantifies, per RUN, how few files are actually needed, i.e. the
+    payoff of narrowing that mount to single-file mounts (the pattern already
+    used at Dockerfile.android's apply-patch.sh mount). Read-only: never fails.
+
+    CAVEAT — the counts are a LOWER BOUND: only absolute /opt/scripts/*.sh
+    references are traced, so entries invoked via the mount target itself
+    (/tmp/core-scripts/...), ${VAR}-composed paths, and relative sourcing are
+    invisible. Before narrowing a mount, grep the entry scripts for their real
+    core usage and rebuild the stage locally; do NOT narrow on this report alone."""
+    core_dir = SCRIPTS_SRC / "01-core"
+    core_total = len(list(core_dir.rglob("*.sh")))
+    for df in sorted((REPO_ROOT / "linux").glob("Dockerfile.*")):
+        provided = build_provided(df)
+        rows = []
+        for lineno, line in join_continuations_numbered(read(df)):
+            s = line.strip()
+            if not s.upper().startswith("RUN "):
+                continue
+            targets = []
+            for m in MOUNT_RE.findall(s):
+                kv = dict(KV_RE.findall(m))
+                if kv.get("source", "").rstrip("/") == "linux/scripts/01-core" and "target" in kv:
+                    targets.append(kv["target"].rstrip("/"))
+            if not targets:
+                continue
+            seen: set[str] = set()
+            refs: set[str] = set()
+            for entry in REF_RE.findall(s):
+                collect_refs(entry, provided, seen, refs)
+            for target in targets:
+                used = sorted(r[len(target) + 1:] for r in refs if r.startswith(target + "/"))
+                rows.append((lineno, target, used))
+        if not rows:
+            continue
+        print(f"\n{df.name}: {len(rows)} whole-01-core bind mount(s)")
+        for lineno, target, used in rows:
+            print(f"  L{lineno} -> {target}: uses {len(used)}/{core_total} core scripts")
+            for u in used:
+                print(f"      {u}")
+    return 0
+
+
 def main() -> int:
+    if "--report-core-usage" in sys.argv[1:]:
+        return report_core_usage()
     dockerfiles = sorted((REPO_ROOT / "linux").glob("Dockerfile.*"))
     if not dockerfiles:
         print("no Dockerfiles found", file=sys.stderr)

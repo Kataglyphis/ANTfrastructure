@@ -1,19 +1,22 @@
 name: "Install deps"
-description: "Shared install deps logic used by workflow jobs"
+description: "Shared install deps logic used by consumer-repo workflow jobs"
 
 inputs:
   vulkan-version:
-    description: 'Vulkan SDK version (e.g. 1.4.321.1)'
+    # Composite actions cannot read this repo's versions.env at default time, so
+    # this default CAN drift from the canonical VULKAN_VERSION pin — consumers
+    # should pass it explicitly (e.g. from their own versions file).
+    description: 'Vulkan SDK version (e.g. 1.4.350.0); pass explicitly to avoid relying on this default'
     required: false
-    default: '1.4.321.1'
+    default: '1.4.350.0'
   run-setup-script:
-    description: 'If "true", chmod +x and run Scripts/Linux/setup-dependencies.sh'
+    description: 'If "true", chmod +x and run the CONSUMER repo''s Scripts/Linux/setup-dependencies.sh'
     required: false
     default: 'false'
-  # install-uv:
-  #   description: 'If "true", install Astral uv package manager'
-  #   required: false
-  #   default: 'true'
+  install-uv:
+    description: 'If "true", install the Astral uv package manager'
+    required: false
+    default: 'false'
 
 runs:
   using: "composite"
@@ -40,36 +43,33 @@ runs:
           export PATH="$HOME/.cargo/bin:$PATH"
         fi
 
-        # # Optionally run the repository's setup script (release job used this previously)
-        # if [ "$RUN_SETUP_SCRIPT" = "true" ]; then
-        #   if [ -f "Scripts/Linux/setup-dependencies.sh" ]; then
-        #     sudo chmod +x Scripts/Linux/setup-dependencies.sh
-        #     sudo ./Scripts/Linux/setup-dependencies.sh "${VULKAN_VERSION}"
-        #   else
-        #     echo "Warning: Scripts/Linux/setup-dependencies.sh not found, skipping."
-        #   fi
-        # fi
+        # Optionally run the CONSUMER repo's setup script (path is theirs, not
+        # ContainerHub's — the skip branch keeps this action usable everywhere).
+        if [ "$RUN_SETUP_SCRIPT" = "true" ]; then
+          if [ -f "Scripts/Linux/setup-dependencies.sh" ]; then
+            sudo chmod +x Scripts/Linux/setup-dependencies.sh
+            sudo ./Scripts/Linux/setup-dependencies.sh "${VULKAN_VERSION}"
+          else
+            echo "Warning: Scripts/Linux/setup-dependencies.sh not found, skipping."
+          fi
+        fi
 
-        # # Optionally install Astral uv package manager
-        # if [ "$INSTALL_UV" = "true" ]; then
-        #   echo "Installing Astral uv package manager..."
-        #   curl -LsSf https://astral.sh/uv/install.sh | sh
-          
-        #   # Add uv to PATH
-        #   if [ -d "$HOME/.local/bin" ]; then
-        #     echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        #     export PATH="$HOME/.local/bin:$PATH"
-        #   fi
-          
-        #   # Verify installation
-        #   if command -v uv >/dev/null 2>&1; then
-        #     echo "uv installed successfully"
-        #     uv --version
-        #   else
-        #     echo "ERROR: uv installation failed" >&2
-        #     exit 1
-        #   fi
-        # fi
+        # Optionally install the Astral uv package manager
+        if [ "$INSTALL_UV" = "true" ]; then
+          echo "Installing Astral uv package manager..."
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          if [ -d "$HOME/.local/bin" ]; then
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.local/bin:$PATH"
+          fi
+          if command -v uv >/dev/null 2>&1; then
+            echo "uv installed successfully"
+            uv --version
+          else
+            echo "ERROR: uv installation failed" >&2
+            exit 1
+          fi
+        fi
 
         # ensure rustup has a default toolchain
         if command -v rustup >/dev/null 2>&1; then
@@ -101,11 +101,10 @@ runs:
         fi
 
         echo "/opt/vulkan/${VULKAN_VERSION}/${SDK_ARCH}/bin" >> "$GITHUB_PATH"
-        
+
         # quick checks
         command -v cargo || true
         cargo --version || true
         echo "PATH (this step): $PATH"
 
-        sudo apt-get update 
         sudo apt-get update && sudo apt-get install -y file dpkg-dev fakeroot binutils

@@ -10,7 +10,9 @@ SHELL ["bash", "-lc"]
 # — good for cache stability, but a script-only fix requires --no-cache. Downstream
 # Dockerfiles use COPY for scripts (script changes DO invalidate), creating an
 # intentional asymmetry: toolchain stays cached through script updates, while sdk,
-# media, and later stages rebuild when their scripts change.
+# media, and later stages rebuild when their scripts change. The /opt/scripts
+# bundle at the END of this file is plain COPY too (content-keyed, cheap tail),
+# so a script edit re-copies the bundle without touching the compiler layers.
 
 ARG LLVM_RELEASE=22.1.8
 ARG GCC_VERSION=16.1.0
@@ -133,9 +135,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 # Install the host Rust toolchain in the compiler layer and add the target stdlibs
 # plus Cargo linker hints needed by the amd64-hosted cross build lane.
 # Pins from versions.env (auto-forwarded as build args by the orchestrator).
-ARG RUST_VERSION
-ARG CARGO_C_VERSION
-ARG RUST_NIGHTLY_TOOLCHAIN
+ARG RUST_VERSION=1.96.0
+ARG CARGO_C_VERSION=0.10.23
+ARG RUST_NIGHTLY_TOOLCHAIN=nightly-2026-06-28
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
@@ -169,20 +171,25 @@ ENV VIRTUAL_ENV=/opt/python/.venv \
     UV_PYTHON=/opt/python/.venv/bin/python \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python
 
-RUN --mount=type=bind,source=linux/scripts,target=/tmp/scripts,ro \
-    set -euo pipefail; \
-    echo "bundle v5"; \
-    mkdir -p /opt/scripts/core /opt/scripts/toolchain /opt/scripts/python; \
-    cp -av /tmp/scripts/01-core/. /opt/scripts/core/; \
-    cp -av /tmp/scripts/02-toolchain/. /opt/scripts/toolchain/; \
-    cp -av /tmp/scripts/02-toolchain/python/build_python.sh /opt/scripts/python/build_python.sh; \
-    cp -av /tmp/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh; \
-    mkdir -p /opt/scripts/packaging; \
-    cp -av /tmp/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh; \
-    cp -av /tmp/scripts/06-packaging/smoke-toolchain.sh /opt/scripts/packaging/smoke-toolchain.sh; \
-    cp -av /tmp/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh; \
-    chmod 755 /opt/scripts -R; \
-    find /opt/scripts -name '*.sh' -type f -print0 | while IFS= read -r -d '' f; do chmod 755 "$f" && bash -n "$f"; done; \
+# Script bundle for downstream stages, as plain COPYs: each layer's cache key
+# is the CONTENT of exactly the paths it copies, so an unrelated linux/scripts
+# edit no longer invalidates the bundle and the old manual `echo "bundle vN"`
+# cache-buster is obsolete (bump-forgetting was a real foot-gun). The compiler
+# layers above are untouched either way.
+COPY --chmod=755 linux/scripts/01-core/ /opt/scripts/core/
+COPY --chmod=755 linux/scripts/02-toolchain/ /opt/scripts/toolchain/
+COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh \
+                 linux/scripts/02-toolchain/python/fix-staged-python-pc.sh \
+                 /opt/scripts/python/
+COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh \
+                 linux/scripts/06-packaging/smoke-toolchain.sh \
+                 linux/scripts/06-packaging/smoke-cross-all-arches.sh \
+                 /opt/scripts/packaging/
+
+# Same validation the old bundle RUN performed: every script parses, the
+# toolchain installer answers --help, and the staged-python .pc fixup runs.
+RUN set -euo pipefail; \
+    find /opt/scripts -name '*.sh' -type f -print0 | while IFS= read -r -d '' f; do bash -n "$f"; done; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null; \
     bash /opt/scripts/python/fix-staged-python-pc.sh
 

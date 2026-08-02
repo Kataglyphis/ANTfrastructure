@@ -61,7 +61,7 @@ ARG BUILD_MODE=native
 ARG BUILD_MEM_DIVISOR=1
 ARG TARGET_ARCH
 ARG TARGETARCH
-ARG GCC_VERSION
+ARG GCC_VERSION=16.1.0
 ARG TARGETPLATFORM
 ARG BUILDARCH
 ARG BUILDPLATFORM
@@ -313,8 +313,8 @@ FROM base AS litert
 
 ARG LITERT_VERSION
 ARG LITERT_OUTPUT_DIR=/usr/local
-ARG LITERTJS_VERSION
-ARG MEDIAPIPE_GENAI_VERSION
+ARG LITERTJS_VERSION=2.5.3
+ARG MEDIAPIPE_GENAI_VERSION=0.10.29
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
@@ -360,7 +360,7 @@ RUN --mount=type=tmpfs,target=/tmp \
 # ==============================================================================
 FROM base AS tvm
 
-ARG TVM_REF
+ARG TVM_REF=v0.25.0
 ARG TARGET_ARCH
 ARG TARGETARCH
 
@@ -603,7 +603,7 @@ ARG GSTREAMER_PREFIX=/opt/gstreamer
 ARG TARGET_ARCH
 ARG TARGETARCH
 ARG BUILD_MODE
-ARG GCC_VERSION
+ARG GCC_VERSION=16.1.0
 
 ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     GSTREAMER_VERSION=${GSTREAMER_VERSION} \
@@ -688,8 +688,8 @@ ARG LITERT_OUTPUT_DIR=/usr/local
 ARG GSTREAMER_PREFIX=/opt/gstreamer
 ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
-ARG GCC_VERSION
-ARG PYTHON_VERSION
+ARG GCC_VERSION=16.1.0
+ARG PYTHON_VERSION=3.14.6
 # Derived — versions.env only defines PYTHON_VERSION (empty PYTHON_VERSION falls
 # through to the :-3.14 defaults below, matching the previous behavior)
 ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}

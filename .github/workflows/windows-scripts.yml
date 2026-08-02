@@ -1,0 +1,45 @@
+# .github/workflows/windows-scripts.yml
+# Source-level gate for the Windows build tooling: PowerShell parse/analyzer
+# lint plus the windows/scripts/tests suites. Deliberately builds NO container
+# images (the image chain is built locally; see docs/windows-builds.md).
+#
+# Runner is windows-latest because several suites exercise Windows-shaped
+# fixtures (C:\ paths, vswhere output, cmd.exe guards); running everything on
+# one Windows runner avoids a per-suite OS matrix. pwsh 7 and Pester v5 are
+# preinstalled on the hosted image.
+name: Windows Scripts
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - 'linux/scripts/01-core/versions.env'
+      - '.github/workflows/windows-scripts.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - 'linux/scripts/01-core/versions.env'
+      - '.github/workflows/windows-scripts.yml'
+
+jobs:
+  lint-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Force -Scope CurrentUser
+
+      # Parse gate is enforced; analyzer findings are advisory until the
+      # backlog of findings across the 24 modules is triaged — then add
+      # -FailOnAnalyzer to also fail on analyzer errors.
+      - name: Lint (parse gate + PSScriptAnalyzer)
+        shell: pwsh
+        run: pwsh -NoProfile -File windows/scripts/Invoke-Lint.ps1
+
+      - name: Run test suites
+        shell: pwsh
+        run: pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1

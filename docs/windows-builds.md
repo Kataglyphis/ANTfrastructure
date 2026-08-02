@@ -109,6 +109,16 @@ fallbacks), builds the stages in order, and applies the correct tags:
 # Deliberate clean rebuild (only when you really need it — this discards ALL layer
 # caching and rebuilds everything from scratch, which takes many hours):
 .\windows\build.ps1 -Gpu -NoCache
+
+# Orchestr-ANT-ion app stage (windows/Dockerfile.torch, mirror of linux/Dockerfile.torch):
+# a chain stage between media and final (media -> torch -> final) — it assembles the
+# app env at APP_REF on windows-media, and the final image builds FROM it. An APP_REF
+# bump therefore rebuilds torch + the cheap final tail only (minutes, network-bound):
+.\windows\build.ps1 -Stages torch,final               # versions.env APP_REF pin
+.\windows\build.ps1 -Stages torch,final -LatestApp    # newest release tag
+# On a host WITHOUT local chain images, iterate on the published image instead:
+.\windows\build.ps1 -Stages torch,final -TorchBaseImage ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+# Tags: torch -> local/kataglyphis:windows-torch (-TorchTag overrides; final builds FROM it).
 ```
 
 Docker layer caching is **on by default**: the Dockerfiles are ordered so that
@@ -122,11 +132,28 @@ bloat the image layers.
 
 ### Build isolation and CPU parallelism
 
-Hyper-V-isolated build containers (the Windows default) are given only **2
-logical CPUs**, so `Get-BuildJobCount` — `min(ProcessorCount, memGB / memPerJob)`
-— pins every in-container `ninja -j` to 2 no matter how many cores the host has.
-That is the difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the
-heavy **media-core** stage does **not** use `docker build` at all.
+**Policy (build.ps1 `-Isolation`, default `auto`): process isolation is always
+preferred and used automatically wherever the host can support it.** `auto`
+runs the ~10s commit probe (`windows/diagnostics/test-process-isolation-commit.ps1`)
+once per (host build, docker version) — verdict cached in
+`out\windows-build-logs\isolation-probe-cache.json` — and:
+
+- **probe passes** → every `docker build` and `docker run` gets
+  `--isolation process`: full host CPUs everywhere, no 2-CPU cap. (This is the
+  normal state on a Windows **Server** host whose build matches the base image
+  — the recommended build environment.)
+- **probe fails** (the wcifs layer-commit bug, present on client-build hosts
+  mismatched against the Server base image) → falls back to `hyperv` with a
+  loud warning, and everything below applies.
+
+`-Isolation process|hyperv` forces either mode (forcing `process` on a host
+where the probe fails will kill every stage at its first layer commit).
+
+Under Hyper-V, build containers are given only **2 logical CPUs**, so
+`Get-BuildJobCount` — `min(ProcessorCount, memGB / memPerJob)` — pins every
+in-container `ninja -j` to 2 no matter how many cores the host has. That is the
+difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the heavy
+**media-core** stage does **not** use `docker build` at all.
 
 **Why `docker build` can't be fixed on this host.** The classic Windows builder
 offers no working CPU lever, all verified with a ~6-second repro (a Dockerfile
@@ -199,11 +226,30 @@ exceed 2 CPUs — they're network/install-bound (no benefit from more).
 > not cores.**
 
 **Trade-off:** a single `docker run` has no per-stage layer cache, so a mid-chain
-failure re-runs the whole chain (unlike a multi-`RUN` `docker build`, where each
-completed step is cached). The persistent **sccache** remote (below) covers the
+failure used to re-run the whole chain (unlike a multi-`RUN` `docker build`, where
+each completed step is cached). The persistent **sccache** remote (below) covers
 recompilation, so in practice only uncached objects rebuild. Regression symptom
 for the whole mechanism: `ninja -j2` in `out\windows-build-logs\media-core.log`,
 or an `ActivateLayer` error on any commit.
+
+**Resume after a mid-chain failure:** on a non-transient run failure, build.ps1
+now PRESERVES the container (it holds every completed stage's output in
+`C:\runtime`) and prints the recovery recipe:
+
+```powershell
+docker commit <container> <result-tag>-partial
+docker container rm -f <container>
+docker run --isolation hyperv --cpu-count <N> --memory <M>g --name <container> `
+    <result-tag>-partial pwsh -NoProfile -ExecutionPolicy Bypass `
+    -File C:\temp\scripts\<payload>.ps1 -ResumeFrom '<failed stage>'
+docker commit <container> <result-tag> ; docker container rm -f <container>
+```
+
+`-ResumeFrom` (all three `build-*-all.ps1` payloads → `Invoke-SourceBuildChain
+-StartAt`) skips the stages before the named one; an unknown name throws instead
+of silently rebuilding from scratch. Pick the stage from the last
+`=== <label> stage: ... ===` banner in the run log. Do NOT `docker start` the
+failed container — that re-runs the original chain command from the beginning.
 
 **Root cause (fully diagnosed).** The commit failure is the **`wcifs`** minifilter
 (Windows Container Isolation FS) refusing to detach the process-isolation layer on
@@ -467,9 +513,11 @@ run later with
 ### Persistent compile cache (sccache)
 
 Without BuildKit cache mounts a container-local sccache cache dies with the
-layer, so sccache stays **disabled unless a remote backend is configured**.
-To enable a cross-build cache, run a small WebDAV server on the host and pass
-its endpoint:
+layer, so the WebDAV remote is the only compile cache that survives a
+container. **sccache is therefore REQUIRED by default for the compile stages
+(toolchain/media): build.ps1 fails fast when no reachable endpoint is
+configured** (`-NoSccache` opts into a deliberate cache-less build). One-time
+host setup:
 
 ```pwsh
 # one-time host setup (any WebDAV-capable server works; dufs is a single binary)

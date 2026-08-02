@@ -8,7 +8,7 @@
 
 <#
 .SYNOPSIS
-    Builds the Windows container image chain: base -> [nvidia] -> toolchain -> media -> final.
+    Builds the Windows container image chain: base -> [nvidia] -> toolchain -> media -> torch -> final.
 
 .DESCRIPTION
     Single driver for the staged Windows build (see docs/windows-builds.md).
@@ -39,7 +39,20 @@
     Pass --no-cache to every docker build (full rebuild).
 
 .PARAMETER Stages
-    Subset of stages to build (default: all, in order): base, sdk, toolchain, media, final.
+    Subset of stages to build (default: all, in order): base, sdk, toolchain,
+    media, torch, final. 'torch' (windows/Dockerfile.torch) assembles the
+    Orchestr-ANT-ion app env on the media image; 'final' builds FROM the torch
+    image. App-only iteration: `-Stages torch,final` — an APP_REF bump costs
+    minutes, never a compile-chain rebuild.
+
+.PARAMETER TorchBaseImage
+    Base image for the torch app stage. Default: the local windows-media image.
+    Point it at the published :winamd64 ref to iterate the app on a host without
+    local chain images (docker pulls it automatically).
+
+.PARAMETER TorchTag
+    Tag for the torch app image. Default: the local windows-torch tag, which the
+    'final' stage then builds FROM.
 
 .PARAMETER MediaBranches
     Subset of the media fan-out to (re)build within the 'media' stage (default: all
@@ -106,12 +119,20 @@
     # rebuild ONLY the litert branch (full cores via run+commit), re-merge, re-final
 .EXAMPLE
     .\windows\build.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
+.EXAMPLE
+    .\windows\build.ps1 -Stages torch,final -LatestApp
+    # app-only iteration: reassemble Orchestr-ANT-ion at the newest tag + re-final
 #>
 param(
     [switch]$Gpu,
     [switch]$NoCache,
-    [ValidateSet('base', 'sdk', 'toolchain', 'media', 'final')]
-    [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'final'),
+    # Chain order (stage blocks run in script order regardless of the order given
+    # here): base -> sdk -> toolchain -> media -> torch -> final. 'torch'
+    # (windows/Dockerfile.torch) assembles the Orchestr-ANT-ion app env on the
+    # media image; 'final' builds FROM the torch image and adds the dev trimmings.
+    # App-only iteration: -Stages torch,final (the compile chain stays untouched).
+    [ValidateSet('base', 'sdk', 'toolchain', 'media', 'torch', 'final')]
+    [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'torch', 'final'),
     # ValidateSet must be literal; keep in lockstep with Get-MediaBranchSpecs -Name values
     [ValidateSet('media-core', 'media-litert', 'media-tvm')]
     [string[]]$MediaBranches = @('media-core', 'media-litert', 'media-tvm'),
@@ -126,6 +147,32 @@ param(
     # without paying to recompile the whole branch. All three branch images must already exist.
     [switch]$SkipMediaBranches,
     [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT,
+    # Container isolation policy. 'auto' (default) PREFERS process isolation —
+    # full host CPUs for docker build AND docker run, no 2-CPU Hyper-V cap — and
+    # decides by running the ~10s commit probe
+    # (windows/diagnostics/test-process-isolation-commit.ps1, verdict cached per
+    # host build + docker version): process when the wcifs layer-commit bug is
+    # absent, else hyperv with a loud warning. 'process'/'hyperv' force it.
+    [ValidateSet('auto', 'process', 'hyperv')]
+    [string]$Isolation = 'auto',
+    # sccache is REQUIRED by default for the compile stages (toolchain/media):
+    # it is the only cross-attempt cache the run+commit path has. The build
+    # fails fast when no reachable -SccacheEndpoint is configured; pass
+    # -NoSccache for a deliberate cache-less build.
+    [switch]$NoSccache,
+    # Resolve the torch-app ref for the final stage from the app repo's LATEST
+    # release tag (live `git ls-remote` at build time). Default OFF: the same
+    # commit then always builds the same final image from the versions.env
+    # APP_REF pin — bump the pin (or pass this switch) to move the app.
+    [switch]$LatestApp,
+    # Base image for the torch app stage. Default '' = local windows-media (the
+    # in-chain parent). Point it at the published image to iterate the app on a
+    # host without local chain images (docker pulls it automatically), e.g.
+    # -TorchBaseImage ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64.
+    [string]$TorchBaseImage = '',
+    # Tag for the torch app image. Default '' = local windows-torch (the tag the
+    # 'final' stage builds FROM).
+    [string]$TorchTag = '',
     # Disable the per-run host resource log (CPU/RAM/commit/vmmem sampled every 20s into
     # out\windows-build-logs\resources-<ts>.csv, tagged with the current build phase, plus an
     # end-of-run per-phase exhaustion summary). On by default -- the cost is one idle pwsh.
@@ -212,6 +259,95 @@ if ([string]::IsNullOrWhiteSpace($FinalTag)) {
     $FinalTag = (Get-Ver 'IMAGE_REGISTRY_PREFIX') + ':winamd64'
 }
 
+# Single source of truth for the LOCAL intermediate tags (the published tag is
+# $FinalTag above). Every stage invocation and BASE_IMAGE hand-off below reads
+# from here — the same tag string must never be typed twice. Dockerfile ARG
+# BASE_IMAGE defaults deliberately stay as-is (they are overridden on every
+# invocation; rewriting them would bust layers for cosmetics).
+$script:ImageTag = @{
+    base              = 'local/kataglyphis:windows-base'
+    sdk               = 'local/kataglyphis:windows-sdk'
+    toolchainBuilder  = 'local/kataglyphis:windows-toolchain-builder'
+    toolchain         = 'local/kataglyphis:windows-toolchain'
+    mediaMergeBuilder = 'local/kataglyphis:windows-media-merge-builder'
+    media             = 'local/kataglyphis:windows-media'
+    torch             = 'local/kataglyphis:windows-torch'
+}
+
+function Get-MediaBranchTag {
+    # local/kataglyphis:windows-<branch>[-builder] — the media fan-out naming rule.
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [switch]$Builder
+    )
+    if ($Builder) { return "local/kataglyphis:windows-$Name-builder" }
+    return "local/kataglyphis:windows-$Name"
+}
+
+# ── Isolation policy ──────────────────────────────────────────────────────────
+# PROCESS isolation is always preferred (full host CPUs for docker build AND
+# docker run — no 2-CPU Hyper-V build cap, no --cpu-count juggling), but it can
+# only be used when the host can COMMIT process-isolated layers: on hosts with
+# the wcifs skew bug (client build vs Server base image) every stage would die
+# at its first commit. 'auto' therefore runs the ~10s commit probe and caches
+# the verdict per (host build, docker version); a Windows update or Docker
+# upgrade re-probes automatically.
+function Resolve-BuildIsolation {
+    if ($Isolation -ne 'auto') {
+        Write-Host "Isolation: $Isolation (forced via -Isolation)" -ForegroundColor Cyan
+        return $Isolation
+    }
+    $hostInfo = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+    $dockerVer = (& $Docker version --format '{{.Server.Version}}' 2>$null | Select-Object -First 1)
+    $cacheKey = '{0}.{1}|{2}' -f $hostInfo.CurrentBuildNumber, $hostInfo.UBR, $dockerVer
+    $cacheFile = Join-Path $script:LogDir 'isolation-probe-cache.json'
+    if (Test-Path $cacheFile) {
+        try {
+            $cached = Get-Content $cacheFile -Raw | ConvertFrom-Json
+            if ($cached.key -eq $cacheKey) {
+                Write-Host ("Isolation: {0} (cached commit-probe verdict for {1})" -f $cached.isolation, $cacheKey) -ForegroundColor Cyan
+                return $cached.isolation
+            }
+        } catch { }
+    }
+    Write-Host 'Isolation: auto — running the process-isolation commit probe (~10s, verdict cached)...' -ForegroundColor Cyan
+    $probeLog = Join-Path $script:LogDir 'isolation-probe.log'
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'diagnostics\test-process-isolation-commit.ps1') -Docker $Docker *> $probeLog
+    $verdict = $LASTEXITCODE
+    $resolved = if ($verdict -eq 0) { 'process' } else { 'hyperv' }
+    if ($resolved -eq 'process') {
+        Write-Host 'Isolation: PROCESS — commit probe passed; full host CPUs for docker build and docker run.' -ForegroundColor Green
+    } else {
+        Write-Warning ("process isolation cannot commit layers on this host (probe exit ${verdict}, log: $probeLog) — using hyperv. " +
+            'Real fix: build on a Windows Server host whose build matches the base image (see docs/windows-builds.md § Build isolation).')
+    }
+    @{ key = $cacheKey; isolation = $resolved } | ConvertTo-Json -Compress | Set-Content $cacheFile
+    return $resolved
+}
+$script:BuildIsolation = Resolve-BuildIsolation
+
+# ── sccache policy (required by default for the compile stages) ──────────────
+# Without BuildKit cache mounts, sccache's WebDAV remote is the ONLY compile
+# cache that survives a container; building toolchain/media without it means a
+# mid-chain failure re-pays every object file. Fail fast, not hours in.
+$compileStages = @('toolchain', 'media')
+if (-not $NoSccache -and @($Stages | Where-Object { $compileStages -contains $_ }).Count -gt 0) {
+    if ([string]::IsNullOrWhiteSpace($SccacheEndpoint)) {
+        throw ('sccache is required for the toolchain/media stages (the only cross-attempt compile cache on the run+commit path). ' +
+            'One-time host setup: scoop install dufs; mkdir C:\sccache-cache; dufs C:\sccache-cache -A -p 5000 — then pass ' +
+            '-SccacheEndpoint http://<host-lan-ip>:5000 or set SCCACHE_WEBDAV_ENDPOINT machine-wide. ' +
+            'Pass -NoSccache only for a deliberate cache-less build.')
+    }
+    try {
+        Invoke-WebRequest -Uri $SccacheEndpoint -Method Head -TimeoutSec 5 -UseBasicParsing | Out-Null
+        Write-Host "sccache endpoint reachable: $SccacheEndpoint" -ForegroundColor Cyan
+    } catch {
+        throw ("sccache endpoint '$SccacheEndpoint' is not reachable from the host ($($_.Exception.Message)). " +
+            'Start the WebDAV server and use a LAN IP reachable from inside containers (not localhost). ' +
+            'Pass -NoSccache only for a deliberate cache-less build.')
+    }
+}
+
 function Get-DockerBuildArgList {
     param(
         [Parameter(Mandatory)] [string]$Dockerfile,
@@ -226,14 +362,13 @@ function Get-DockerBuildArgList {
     # Windows Containers) rejects it.
     $dockerArgs = @('build')
     if ($NoCache) { $dockerArgs += '--no-cache' }
-    # NB: we deliberately do NOT pass --isolation process. On this host process
-    # isolation cannot commit ANY file-writing layer: hcsshim::ActivateLayer fails
-    # 0x20 ("file used by another process"), reproduced even for a 100 MB dummy
-    # layer and NOT caused by Defender/Search/SysMain (all ruled out). Hyper-V
-    # isolation (the default) commits reliably but is hard-capped at 2 CPUs for
-    # `docker build` (--cpu-count is rejected, --cpuset-cpus fails). Getting >2 CPUs
-    # needs a `docker run --cpu-count N` + `docker commit` path, not a build flag.
-    # See docs/windows-builds.md § Build isolation and CPU parallelism.
+    # Isolation comes from the probe-gated policy ($script:BuildIsolation):
+    # PROCESS whenever the host can commit process-isolated layers (full host
+    # CPUs — no 2-CPU Hyper-V build cap), HYPERV otherwise (on wcifs-skew hosts
+    # process isolation fails every file-writing layer with
+    # hcsshim::ActivateLayer 0x20; reproduced at 100 MB, not Defender/Search/
+    # SysMain). See docs/windows-builds.md § Build isolation and CPU parallelism.
+    $dockerArgs += '--isolation', $script:BuildIsolation
     foreach ($key in ($BuildArgs.Keys | Sort-Object)) {
         $value = $BuildArgs[$key]
         if ($null -ne $value -and "$value" -ne '') { $dockerArgs += '--build-arg', "$key=$value" }
@@ -303,7 +438,14 @@ function Invoke-DockerWithRetry {
         [string]$LogFile,
         [int]$TailLines = 10,
         [scriptblock]$OnSuccess,
+        # Per-attempt cleanup, run ONLY when a transient retry will actually re-run
+        # the action (e.g. `container rm` before the next `docker run`). It no longer
+        # fires on the FINAL failure — a run+commit container holding hours of
+        # finished stages must survive a non-transient compile failure for resume.
         [scriptblock]$OnFailedAttempt,
+        # Runs once before the terminal throw (no retry left / non-transient error),
+        # e.g. to print a recovery recipe for the preserved container.
+        [scriptblock]$OnFinalFailure,
         [int]$MaxAttempts = 3
     )
     foreach ($attempt in 1..$MaxAttempts) {
@@ -316,8 +458,14 @@ function Invoke-DockerWithRetry {
             return
         }
         $tail = if ($LogFile -and (Test-Path $LogFile)) { Get-Content $LogFile -Tail $TailLines | Out-String } else { '' }
-        if ($OnFailedAttempt) { & $OnFailedAttempt }
-        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label) { continue }
+        if ($attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $tail)) {
+            if ($OnFailedAttempt) { & $OnFailedAttempt }
+            # Invoke-TransientCooldown re-tests the same condition and sleeps; it is
+            # guaranteed $true here (kept as the single owner of the message + delay).
+            Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label | Out-Null
+            continue
+        }
+        if ($OnFinalFailure) { & $OnFinalFailure }
         throw "[$Label] docker step failed (exit $exitCode)"
     }
 }
@@ -378,12 +526,12 @@ function Get-MediaBranchSpecs {
     @(
         New-MediaBranchSpec -Name 'media-core' `
             -BuilderDockerfile $builderDf `
-            -BuilderTag 'local/kataglyphis:windows-media-core-builder' `
+            -BuilderTag (Get-MediaBranchTag 'media-core' -Builder) `
             -ContainerName 'kataglyphis-media-core-build' `
             -RunScript 'build-media-core-all.ps1' `
-            -Tag 'local/kataglyphis:windows-media-core' `
+            -Tag (Get-MediaBranchTag 'media-core') `
             -BuildArgs (@{
-                BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
+                BASE_IMAGE                = $script:ImageTag.toolchain
                 ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
                 ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
                 OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
@@ -395,24 +543,24 @@ function Get-MediaBranchSpecs {
             } + $sccache)
         New-MediaBranchSpec -Name 'media-litert' `
             -BuilderDockerfile $builderDf `
-            -BuilderTag 'local/kataglyphis:windows-media-litert-builder' `
+            -BuilderTag (Get-MediaBranchTag 'media-litert' -Builder) `
             -ContainerName 'kataglyphis-media-litert-build' `
             -RunScript 'build-litert-all.ps1' `
-            -Tag 'local/kataglyphis:windows-media-litert' `
+            -Tag (Get-MediaBranchTag 'media-litert') `
             -BuildArgs (@{
-                BASE_IMAGE        = 'local/kataglyphis:windows-toolchain'
+                BASE_IMAGE        = $script:ImageTag.toolchain
                 LITERT_VERSION    = Get-Ver 'LITERT_VERSION'
                 LITERT_LM_VERSION = Get-Ver 'LITERT_LM_VERSION'
                 MEMORY_LIMIT_GB   = $MediaMemoryGb
             } + $sccache)
         New-MediaBranchSpec -Name 'media-tvm' `
             -BuilderDockerfile $builderDf `
-            -BuilderTag 'local/kataglyphis:windows-media-tvm-builder' `
+            -BuilderTag (Get-MediaBranchTag 'media-tvm' -Builder) `
             -ContainerName 'kataglyphis-media-tvm-build' `
             -RunScript 'build-media-tvm-all.ps1' `
-            -Tag 'local/kataglyphis:windows-media-tvm' `
+            -Tag (Get-MediaBranchTag 'media-tvm') `
             -BuildArgs (@{
-                BASE_IMAGE      = 'local/kataglyphis:windows-toolchain'
+                BASE_IMAGE      = $script:ImageTag.toolchain
                 TVM_REF         = Get-Ver 'TVM_REF'
                 IREE_VERSION    = Get-Ver 'IREE_VERSION'
                 MEMORY_LIMIT_GB = $MediaMemoryGb
@@ -458,8 +606,12 @@ function Invoke-RunCommitStage {
 
     # 2. Heavy work via docker run, then commit; retry the run only on transient infra errors.
     #    -Action runs the (pre-clean + run) each attempt; -OnSuccess commits + verifies + cleans up;
-    #    -OnFailedAttempt removes the container before the cool-down. Closures capture $runArgs etc.
-    $runArgs = @('run', '--isolation', 'hyperv', '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
+    #    -OnFailedAttempt removes the container ONLY before a transient re-run; on the final
+    #    failure -OnFinalFailure preserves it and prints the -ResumeFrom recovery recipe.
+    # Isolation from the probe-gated policy: process (preferred; full CPUs
+    # natively, commit verified by the probe) or hyperv (where --cpu-count is
+    # what grants the cores). --cpu-count/--memory apply under both.
+    $runArgs = @('run', '--isolation', $script:BuildIsolation, '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
         '--name', $ContainerName, $BuilderTag) + $RunCommand
     $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker
     # Script FUNCTIONS need the same treatment as $Docker: a .GetNewClosure() block
@@ -474,7 +626,7 @@ function Invoke-RunCommitStage {
         param($attempt)
         & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
         & $setBuildPhase "run:$Label"
-        Write-Host "`n==> [$Label] docker run --isolation hyperv --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
+        Write-Host "`n==> [$Label] docker run --isolation $($script:BuildIsolation) --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
         & $dockerExe @runArgs 2>&1 | Tee-Object -FilePath $OutLog
     }.GetNewClosure()
     $onSuccess = {
@@ -502,8 +654,22 @@ function Invoke-RunCommitStage {
         Write-Host "$Label built via run+commit ($Cpus CPUs) -> $ResultTag" -ForegroundColor Green
     }.GetNewClosure()
     $onFailedAttempt = { & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null }.GetNewClosure()
+    # Final (non-transient) run failure: PRESERVE the container — it holds every
+    # completed stage's output in C:\runtime — and print the resume recipe.
+    # NB: `docker start` would re-run the original chain command from scratch;
+    # the correct resume is commit-partial → run a NEW container with -ResumeFrom.
+    $runCommand = $RunCommand
+    $onFinalFailure = {
+        Write-Host ("`n[$Label] run FAILED (non-transient) — container '$ContainerName' PRESERVED with all completed stages." ) -ForegroundColor Yellow
+        Write-Host ("[$Label] Resume (check $OutLog for the last '=== ... stage:' banner to pick <stage>):") -ForegroundColor Yellow
+        Write-Host ("    docker commit $ContainerName ${ResultTag}-partial")
+        Write-Host ("    docker container rm -f $ContainerName")
+        Write-Host ("    docker run --isolation $($script:BuildIsolation) --cpu-count $Cpus --memory ${MemoryGb}g --name $ContainerName ${ResultTag}-partial " + ($runCommand -join ' ') + " -ResumeFrom '<stage>'")
+        Write-Host ("    docker commit $ContainerName $ResultTag ; docker container rm -f $ContainerName")
+        Write-Host ("[$Label] Or discard: docker container rm -f $ContainerName") -ForegroundColor Yellow
+    }.GetNewClosure()
     Invoke-DockerWithRetry -Action $action -OnSuccess $onSuccess -OnFailedAttempt $onFailedAttempt `
-        -Label $Label -LogFile $OutLog -TailLines 15
+        -OnFinalFailure $onFinalFailure -Label $Label -LogFile $OutLog -TailLines 15
 }
 
 function Get-MediaRunCommand {
@@ -591,11 +757,15 @@ $started = Get-Date
 
 try {
     if ($Stages -contains 'base') {
-        Invoke-Stage -Dockerfile 'windows/Dockerfile.base' -Tag 'local/kataglyphis:windows-base' -BuildArgs @{
+        Invoke-Stage -Dockerfile 'windows/Dockerfile.base' -Tag $script:ImageTag.base -BuildArgs @{
             WINDOWS_LTSC      = Get-Ver 'WINDOWS_LTSC'
+            WINDOWS_BASE_DIGEST = Get-Ver 'WINDOWS_BASE_DIGEST'
             VULKAN_VERSION    = Get-Ver 'VULKAN_VERSION'
             CMAKE_VERSION     = Get-Ver 'CMAKE_VERSION'
             PWSH_VERSION      = Get-Ver 'PWSH_VERSION'
+            # SHA256 pin for the pwsh zip: the bootstrap RUN predates load-versions
+            # baking, so the hash must travel as an ARG like the version itself.
+            PWSH_ZIP_SHA256   = Get-Ver 'PWSH_ZIP_SHA256'
             # As a --build-arg (not versions.env-baked env): setup-vs runs BEFORE load-versions
             # by design (protects the VS layer from versions.env bumps), so the SDK pin must
             # reach it via ARG -- and changing it SHOULD bust the VS layer.
@@ -608,8 +778,8 @@ try {
         if ($Gpu) {
             # Context `windows` (not the repo root): the TensorRT zip is consumed only here, and
             # the root .dockerignore excludes it so no OTHER build uploads the ~2 GB context.
-            Invoke-Stage -Dockerfile 'windows/Dockerfile.nvidia' -Context 'windows' -Tag 'local/kataglyphis:windows-sdk' -BuildArgs @{
-                BASE_IMAGE               = 'local/kataglyphis:windows-base'
+            Invoke-Stage -Dockerfile 'windows/Dockerfile.nvidia' -Context 'windows' -Tag $script:ImageTag.sdk -BuildArgs @{
+                BASE_IMAGE               = $script:ImageTag.base
                 CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
                 CUDA_VERSION_MAJOR_MINOR = $cudaMajorMinor
                 CUDNN_VERSION            = Get-Ver 'CUDNN_VERSION'
@@ -617,7 +787,7 @@ try {
             }
         } else {
             Write-Host "`n==> CPU lane: tagging windows-base as windows-sdk (no GPU layer)" -ForegroundColor Cyan
-            & $Docker tag local/kataglyphis:windows-base local/kataglyphis:windows-sdk
+            & $Docker tag $script:ImageTag.base $script:ImageTag.sdk
             if ($LASTEXITCODE -ne 0) { throw 'docker tag failed' }
         }
     }
@@ -629,13 +799,13 @@ try {
         $tcLog = Join-Path $script:LogDir 'toolchain.log'
         Invoke-RunCommitStage `
             -BuilderDockerfile 'windows/Dockerfile.toolchain-builder' `
-            -BuilderTag    'local/kataglyphis:windows-toolchain-builder' `
-            -ResultTag     'local/kataglyphis:windows-toolchain' `
+            -BuilderTag    $script:ImageTag.toolchainBuilder `
+            -ResultTag     $script:ImageTag.toolchain `
             -ContainerName 'kataglyphis-toolchain-build' `
             -RunCommand    (Get-MediaRunCommand 'build-toolchain-all.ps1') `
             -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
             -BuildArgs @{
-                BASE_IMAGE     = 'local/kataglyphis:windows-sdk'
+                BASE_IMAGE     = $script:ImageTag.sdk
                 PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
             } `
             -Label 'toolchain' -OutLog $tcLog
@@ -655,63 +825,94 @@ try {
         # run+commit path (Dockerfile.media-merge-builder carries the merged tree +
         # env + GStreamer scripts but does NOT run the compile; the run does).
         $gstLog = Join-Path $script:LogDir 'gstreamer.log'
-        # Branch result tags come from the specs (single source of truth) so a
-        # renamed -Tag cannot leave the merge COPY --from pointing at the old name.
+        # Branch result tags AND component-version args come from the specs
+        # (single source of truth): a renamed -Tag cannot leave the merge
+        # COPY --from pointing at the old name, and a version arg added to a
+        # branch automatically reaches the merge image's canonical version env.
         $branchTag = @{}
-        foreach ($spec in Get-MediaBranchSpecs) { $branchTag[$spec.Name] = $spec.Tag }
+        $mergeArgs = @{}
+        # Branch-scoped keys that must NOT ride into the merge build: the merge
+        # gets its own BASE_IMAGE/MEMORY_LIMIT_GB below, sccache stays run-side,
+        # and NV_CODEC_HEADERS_REF/CUDA_ARCHITECTURES are compile inputs of the
+        # core branch only (Dockerfile.media-merge-builder declares no such ARG —
+        # forwarding them would just add classic-builder unconsumed-arg warnings).
+        $branchOnly = @('BASE_IMAGE', 'MEMORY_LIMIT_GB', 'SCCACHE_WEBDAV_ENDPOINT',
+            'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES')
+        foreach ($spec in Get-MediaBranchSpecs) {
+            $branchTag[$spec.Name] = $spec.Tag
+            foreach ($k in $spec.BuildArgs.Keys) {
+                if ($branchOnly -notcontains $k) { $mergeArgs[$k] = $spec.BuildArgs[$k] }
+            }
+        }
+        $mergeArgs += @{
+            BASE_IMAGE        = $script:ImageTag.toolchain
+            CORE_IMAGE        = $branchTag['media-core']
+            LITERT_IMAGE      = $branchTag['media-litert']
+            TVM_IMAGE         = $branchTag['media-tvm']
+            GSTREAMER_VERSION = Get-Ver 'GSTREAMER_VERSION'
+            MEMORY_LIMIT_GB   = $MediaMemoryGb
+        }
         Invoke-RunCommitStage `
             -BuilderDockerfile 'windows/Dockerfile.media-merge-builder' `
-            -BuilderTag    'local/kataglyphis:windows-media-merge-builder' `
-            -ResultTag     'local/kataglyphis:windows-media' `
+            -BuilderTag    $script:ImageTag.mediaMergeBuilder `
+            -ResultTag     $script:ImageTag.media `
             -ContainerName 'kataglyphis-media-merge-build' `
             -RunCommand    (Get-MediaRunCommand 'build-gstreamer-from-source.ps1' -ExtraArgs @('-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs')) `
             -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
-            -BuildArgs @{
-                BASE_IMAGE                = 'local/kataglyphis:windows-toolchain'
-                CORE_IMAGE                = $branchTag['media-core']
-                LITERT_IMAGE              = $branchTag['media-litert']
-                TVM_IMAGE                 = $branchTag['media-tvm']
-                GSTREAMER_VERSION         = Get-Ver 'GSTREAMER_VERSION'
-                ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
-                ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
-                OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
-                FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
-                PYAV_VERSION              = Get-Ver 'PYAV_VERSION'
-                LITERT_VERSION            = Get-Ver 'LITERT_VERSION'
-                LITERT_LM_VERSION         = Get-Ver 'LITERT_LM_VERSION'
-                TVM_REF                   = Get-Ver 'TVM_REF'
-                IREE_VERSION              = Get-Ver 'IREE_VERSION'
-                MEMORY_LIMIT_GB           = $MediaMemoryGb
-            } `
+            -BuildArgs $mergeArgs `
             -Label 'media-merge+gstreamer' -OutLog $gstLog
     }
 
-    if ($Stages -contains 'final') {
-        $vcsRef = ''
-        # VCS ref is best-effort provenance metadata: any failure (no git, not a repo) -> empty, never fatal.
-        try { $vcsRef = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $vcsRef = '' } } catch { $vcsRef = '' }
-        # Orchestr-ANT-ion ref for the torch-app stage: LATEST tag by design
-        # (per-build resolution keeps the app current and busts the layer only
-        # when a new tag lands); offline/failed resolution falls back to the
-        # versions.env APP_REF pin.
-        $appRef = ''
-        try {
-            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
-            if ($LASTEXITCODE -eq 0 -and $tagRaw) {
-                $appRef = @($tagRaw | ForEach-Object { ($_ -split "`t")[1] } |
-                        Where-Object { $_ -and $_ -notmatch '\^\{\}$' } |
-                        ForEach-Object { $_ -replace '^refs/tags/', '' } |
-                        Where-Object { $_ -match '^v?\d+(\.\d+)*$' } |
-                        Sort-Object { [version]($_ -replace '^v', '') })[-1]
-            }
-        } catch { $appRef = '' }
-        if ([string]::IsNullOrWhiteSpace($appRef)) { $appRef = Get-Ver 'APP_REF' }
-        Write-Host "Orchestr-ANT-ion ref for torch-app stage: $appRef"
-        Invoke-Stage -Dockerfile 'windows/Dockerfile' -Tag $FinalTag -BuildArgs @{
-            BASE_IMAGE = 'local/kataglyphis:windows-media'
+    # Provenance/app-ref helpers shared by the 'final' and 'torch' stages.
+    # VCS ref is best-effort metadata: any failure (no git, not a repo) -> empty, never fatal.
+    function Get-BuildVcsRef {
+        try { $r = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { return '' } else { return $r } }
+        catch { return '' }
+    }
+    # Orchestr-ANT-ion ref: DETERMINISTIC by default (versions.env APP_REF pin, so
+    # the same commit always produces the same image). -LatestApp opts into
+    # resolving the app repo's newest release tag at build time (the old
+    # always-on behavior), falling back to the pin when offline / no tags match.
+    function Get-TorchAppRef {
+        $ref = Get-Ver 'APP_REF'
+        if ($LatestApp) {
+            try {
+                $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
+                if ($LASTEXITCODE -eq 0 -and $tagRaw) {
+                    $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
+                    if (-not [string]::IsNullOrWhiteSpace($latest)) { $ref = $latest }
+                }
+            } catch { }
+            Write-Host "-LatestApp: resolved Orchestr-ANT-ion ref: $ref (versions.env pin: $(Get-Ver 'APP_REF'))"
+        }
+        return $ref
+    }
+
+    # Orchestr-ANT-ion app stage (windows/Dockerfile.torch) — AFTER toolchain and
+    # media, BEFORE final: 'final' builds FROM this image, so the app-assembly
+    # logic lives here alone and an APP_REF bump rebuilds torch + the cheap
+    # final tail only. -TorchBaseImage swaps the parent (e.g. the published
+    # :winamd64 image on a host without local chain images).
+    if ($Stages -contains 'torch') {
+        $torchBase = if ($TorchBaseImage) { $TorchBaseImage } else { $script:ImageTag.media }
+        $torchTagResolved = if ($TorchTag) { $TorchTag } else { $script:ImageTag.torch }
+        $appRef = Get-TorchAppRef
+        Write-Host "Orchestr-ANT-ion app stage: $torchBase + $appRef -> $torchTagResolved"
+        Invoke-Stage -Dockerfile 'windows/Dockerfile.torch' -Tag $torchTagResolved -BuildArgs @{
+            BASE_IMAGE = $torchBase
             BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-            VCS_REF    = $vcsRef
+            VCS_REF    = Get-BuildVcsRef
             APP_REF    = $appRef
+        }
+    }
+
+    if ($Stages -contains 'final') {
+        # FROM the torch image: the windows-torch tag must exist (built above, or
+        # in an earlier run when iterating with -Stages final alone).
+        Invoke-Stage -Dockerfile 'windows/Dockerfile' -Tag $FinalTag -BuildArgs @{
+            BASE_IMAGE = if ($TorchTag) { $TorchTag } else { $script:ImageTag.torch }
+            BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            VCS_REF    = Get-BuildVcsRef
         }
     }
 

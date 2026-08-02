@@ -22,10 +22,31 @@ Docker, then prints per-drive free space before and after. Fully self-contained
 individual removals never fail the job (`exit 0`).
 
 ### `install-deps`
-Installs the Vulkan SDK (input `vulkan-version`, default `1.4.321.1`) and,
-optionally (`run-setup-script: true`), runs the consuming repo's
-`Scripts/Linux/setup-dependencies.sh`. The setup-script step is repo-specific;
-leave it off for repos that don't ship that script.
+Prepares a Linux runner's toolchain PATH: cargo/rustup (installs a stable
+default toolchain when missing), the Vulkan SDK bin dir (input
+`vulkan-version` — pass it explicitly; the default can drift from
+ContainerHub's `versions.env`, which composite actions cannot read), plus
+packaging utilities. Optional: `run-setup-script: true` runs the consuming
+repo's `Scripts/Linux/setup-dependencies.sh` (skipped with a warning when
+absent); `install-uv: true` installs the Astral uv package manager.
+
+### `run-in-linux-container`
+Runs a bash command inside a Linux container image (`docker run --rm`).
+Inputs: `image` (required), `script` (bash fragment, verbatim), `workdir`,
+`log-file` (tee target), `extra-args` (verbatim extra `docker run` args).
+Used by consumer repos to run their build/test steps inside the published
+`:latest-cross` images.
+
+### `run-in-windows-container`
+Runs PowerShell inside a Windows container image. Exactly one of `command`
+(pwsh `-Command`) or `file` (pwsh `-File`, with `file-args` — ONE argv element
+per line) must be set; the payload travels via `env:` so secret values never
+pass through the PowerShell parser (an apostrophe in a secret used to be a
+`ParserError`). `extra-args` is also one-argv-per-line (unlike the Linux
+sibling's verbatim fragment — Windows argv must stay literal). Other inputs:
+`cpus` (default: all runner CPUs, min 2), `memory` (default `16g`),
+`mount-source`/`mount-target` (default `D:\ws` → `C:\ws`). Values containing
+newlines cannot be expressed in the per-line inputs.
 
 ## Adding a new reusable action
 Create `.github/actions/<name>/action.yml` here, keep it self-contained (no

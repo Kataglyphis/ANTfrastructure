@@ -1,5 +1,12 @@
 # CI Build Triggers (commit-message opt-ins)
 
+> **These lanes live in CONSUMER repos, not here.** ContainerHub's own CI is
+> `ubuntu24.04.yml` (preflight + docs), `windows-scripts.yml` (PowerShell
+> lint/tests), and two scheduled housekeeping workflows — none of them builds a
+> container image, and none reacts to the tokens below. This page documents the
+> convention the *consuming* application repos use with the images published
+> from here.
+
 Not every CI lane runs on every push. The heavier lanes are **opt-in per
 commit** via magic tokens in the commit message, so routine work does not spend
 Windows-runner minutes or cross-compile time it does not need. The token is

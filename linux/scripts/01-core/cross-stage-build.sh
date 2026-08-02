@@ -147,9 +147,14 @@ _cross_stage_build_impl() {
     if [ -s "${_cache_dir}/${_cache_slug}/index.json" ]; then
       build_cmd+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
     fi
-    build_cmd+=(
-      --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
-    )
+    # CROSS_NO_LOCAL_CACHE_EXPORT is set by the chain disk-guard when even
+    # LRU-pruning could not clear the free-space threshold: stop WRITING new
+    # local exports (the disk cost) while still READING whatever survived.
+    if [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ]; then
+      build_cmd+=(
+        --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
+      )
+    fi
     # When pushing, also ride an inline cache inside the image (mode=min,
     # embedded in the image config -> no separate blob, so no 400) and read it
     # back from the tag itself, letting other hosts warm-start from the

@@ -85,6 +85,18 @@ if (-not $trtZip -or -not (Test-Path $trtZip)) {
     return
 }
 
+# Optional integrity pin: TENSORRT_ZIP_SHA256 (versions.env) is empty by default
+# because the zip is an EULA-gated manual download; when set, the zip we are
+# about to extract must match it regardless of which lookup tier found it.
+$trtSha = Resolve-ContainerImageValue -EnvironmentVariable 'TENSORRT_ZIP_SHA256' -DefaultValue ''
+if ($trtSha) {
+    $actual = (Get-FileHash -Algorithm SHA256 -Path $trtZip).Hash
+    if (-not [string]::Equals($actual, $trtSha, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "TensorRT zip SHA256 mismatch for ${trtZip}: expected $trtSha but got $actual"
+    }
+    Write-Host "TensorRT zip SHA256 verified."
+}
+
 Write-Host "Extracting TensorRT to $TensorRtRoot..."
 # $null result = flat-layout zip (no TensorRT-* subdir), a legitimate NVIDIA packaging.
 $trtDir = Expand-ArchiveSubdirectory -ArchivePath $trtZip -DestinationPath $TensorRtRoot -Filter 'TensorRT-*'

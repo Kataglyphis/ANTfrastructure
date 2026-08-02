@@ -1,0 +1,12 @@
+# Context filter for builds whose context is linux/ (currently the webserver
+# image via linux/docker-compose.yml). The ROOT .dockerignore does not apply to
+# this context, so without this file the entire linux/ tree — scripts,
+# llm-stack, vulkan, nvidia-local-debs — uploads as build context.
+#
+# NOTE: webserver/dist MUST stay included here. The root .dockerignore excludes
+# **/dist/ for root-context builds; do not copy that rule into this file.
+*
+!webserver/nginx.conf
+!webserver/entrypoint.sh
+!webserver/dist/
+!webserver/license-assets/

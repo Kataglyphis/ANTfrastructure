@@ -47,4 +47,47 @@ Describe 'Invoke-SourceBuildChain' {
             Assert-False ($ran -contains 'never') 'the stage after the failure did NOT run'
         }
     }
+
+    It '-StartAt skips the stages before the named one (resume path)' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'resume.log'
+            $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value `$SourceDir"
+            foreach ($s in 'a', 'b', 'c') { Set-Content -LiteralPath (Join-Path $dir "$s.ps1") -Value $body -Encoding ASCII }
+            $stages = @(
+                @{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'src-a' }
+                @{ Name = 'B'; Script = 'b.ps1'; SourceDir = 'src-b' }
+                @{ Name = 'C'; Script = 'c.ps1'; SourceDir = 'src-c' }
+            )
+            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'B'
+
+            $ran = @(Get-Content -LiteralPath $log)
+            Assert-Equal 2 $ran.Count 'exactly the resumed suffix ran'
+            Assert-Equal 'src-b' $ran[0] 'resume starts AT the named stage'
+            Assert-Equal 'src-c' $ran[1] 'later stages still run'
+        }
+    }
+
+    It '-StartAt with an unknown stage name throws before running anything' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'none.log'
+            Set-Content -LiteralPath (Join-Path $dir 'a.ps1') -Value "param(`$SourceDir,`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value 'ran'" -Encoding ASCII
+            $stages = @(@{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'x' })
+            Assert-Throws { Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'TYPO' } 'unknown -StartAt must throw (a typo must not rebuild from scratch)'
+            Assert-False (Test-Path $log) 'no stage ran'
+        }
+    }
+
+    It 'empty -StartAt runs the full chain (default behavior unchanged)' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'full.log'
+            $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value `$SourceDir"
+            foreach ($s in 'a', 'b') { Set-Content -LiteralPath (Join-Path $dir "$s.ps1") -Value $body -Encoding ASCII }
+            $stages = @(
+                @{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'src-a' }
+                @{ Name = 'B'; Script = 'b.ps1'; SourceDir = 'src-b' }
+            )
+            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt ''
+            Assert-Equal 2 @(Get-Content -LiteralPath $log).Count 'all stages ran'
+        }
+    }
 }

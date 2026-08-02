@@ -1,11 +1,14 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# Final Windows developer image built on top of the cached media image.
+# Final Windows developer image built on top of the torch app image
+# (media -> torch -> final; the Orchestr-ANT-ion app env is assembled by
+# windows/Dockerfile.torch, this stage adds only the cheap dev trimmings).
 # Contains: VS Build Tools, LLVM/clang-cl, CUDA/cuDNN, CPython 3.14,
-# ONNX Runtime + GenAI, OpenCV 5, LiteRT, LiteRT-LM, TVM, FFmpeg, GStreamer.
+# ONNX Runtime + GenAI, OpenCV 5, LiteRT, LiteRT-LM, TVM, FFmpeg, GStreamer,
+# plus the app env at C:\opt\Kataglyphis-Orchestr-ANT-ion.
 
-ARG BASE_IMAGE=local/kataglyphis:windows-media
+ARG BASE_IMAGE=local/kataglyphis:windows-torch
 FROM ${BASE_IMAGE}
 
 ARG BUILD_DATE=""
@@ -32,18 +35,10 @@ COPY windows\scripts\smoke-test-container.ps1 C:\temp\scripts\smoke-test-contain
 # the base or media layers.
 COPY windows\scripts\modules C:\temp\scripts\modules
 
-# ── Orchestr-ANT-ion app environment (the Windows "torch step") ──────────────
-# Mirror of the linux assemble-torch-app stage: clone the runtime orchestrator
-# at APP_REF (build.ps1 resolves the LATEST tag at build time; the ARG default
-# mirrors versions.env's pin), uv sync it on the source CPython, and reconcile
-# so this lane's wheels (onnxruntime/genai/tvm from C:\runtime\wheels) always
-# win -- everything else from PyPI / the pytorch-cpu index. Network-bound RUN;
-# fine at the classic builder's 2 CPUs.
-ARG APP_REF=v0.0.27
-SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
-COPY windows\scripts\assemble-torch-app.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -Mode all
-ENV TORCH_APP_DIR="C:\opt\Kataglyphis-Orchestr-ANT-ion"
+# The Orchestr-ANT-ion app environment (the Windows "torch step") is INHERITED
+# from the base: windows/Dockerfile.torch assembles it at APP_REF and sets
+# TORCH_APP_DIR. Keeping the assembly out of this stage means an app bump
+# rebuilds torch + this cheap tail only, and the logic exists in one place.
 
 WORKDIR C:\workspace
 VOLUME ["C:\\workspace"]

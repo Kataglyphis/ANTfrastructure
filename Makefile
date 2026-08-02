@@ -41,7 +41,7 @@ SCRIPTS := linux/scripts
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight lint cross-build cross-stage verify-chain describe-chain smoke
+.PHONY: help preflight lint lint-dockerfiles test-linux-scripts cross-build cross-stage verify-chain describe-chain smoke
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -54,6 +54,12 @@ preflight: ## Fast no-build gate (shellcheck + verify-* suite)
 
 lint: ## shellcheck the whole tree at -S error
 	bash $(SCRIPTS)/lint-shell.sh
+
+lint-dockerfiles: ## hadolint all Dockerfiles (policy: .hadolint.yaml)
+	bash $(SCRIPTS)/lint-dockerfiles.sh
+
+test-linux-scripts: ## Unit tests for linux/scripts (tag naming, forwarding, disk guard)
+	bash $(SCRIPTS)/tests/run-tests.sh
 
 cross-build: ## Full base -> :latest-cross for ARCHES
 	bash $(SCRIPTS)/build-cross-chain.sh --target-arches $(ARCHES) --log-dir $(LOG_DIR)

@@ -6,13 +6,19 @@
 # Build scripts live in the media layer.
 
 ARG WINDOWS_LTSC=2025
-FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}
-ARG VULKAN_VERSION=1.4.341.1
-ARG CMAKE_VERSION=4.4.0
+# Digest pin (versions.env WINDOWS_BASE_DIGEST): the :ltsc tag floats with
+# Microsoft's monthly patch releases; the digest makes a from-base rebuild
+# reproducible and base OS revisions deliberate (they matter here — the wcifs
+# commit bug is version-skew-sensitive). The digest wins over the tag.
+ARG WINDOWS_BASE_DIGEST=sha256:d5bbb83057f6bc2b6aeba5d01ec80a53003aba9bc84a6b1ebe780570cd52558a
+FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}@${WINDOWS_BASE_DIGEST}
 # PowerShell 7 (pwsh) version — single source of truth is versions.env, forwarded
 # by build.ps1 as --build-arg. Installed early so all subsequent layers use pwsh
 # as the default container shell instead of Windows PowerShell 5.1.
+# The zip's SHA256 rides along as an ARG because this bootstrap runs before any
+# shared module (Invoke-DownloadWithRetry) or versions.env baking is available.
 ARG PWSH_VERSION=7.6.4
+ARG PWSH_ZIP_SHA256=80832551c52809301e6071c8bac977beb5a2f1ec953eb4db9f94deb953333793
 
 # GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 ENV TEMP_DIR="C:\temp"
@@ -25,7 +31,7 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 # ZIP install avoids MSI dependency issues in containers. The version is pinned
 # via ARG PWSH_VERSION (from versions.env). After this, SHELL is switched to pwsh
 # for all subsequent layers.
-RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null; $u = 'https://github.com/PowerShell/PowerShell/releases/download/v' + $env:PWSH_VERSION + '/PowerShell-' + $env:PWSH_VERSION + '-win-x64.zip'; $z = $env:TEMP_DIR + '\pwsh.zip'; $d = 'C:\Program Files\PowerShell\7'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $u -OutFile $z -UseBasicParsing; Expand-Archive -Path $z -DestinationPath $d -Force; Remove-Item $z -Force; $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine'); if ($mp -notlike '*PowerShell\7*') { [Environment]::SetEnvironmentVariable('Path', $mp + ';' + $d, 'Machine') }
+RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null; $u = 'https://github.com/PowerShell/PowerShell/releases/download/v' + $env:PWSH_VERSION + '/PowerShell-' + $env:PWSH_VERSION + '-win-x64.zip'; $z = $env:TEMP_DIR + '\pwsh.zip'; $d = 'C:\Program Files\PowerShell\7'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $u -OutFile $z -UseBasicParsing; if ($env:PWSH_ZIP_SHA256) { $h = (Get-FileHash -Algorithm SHA256 -Path $z).Hash; if ($h -ne $env:PWSH_ZIP_SHA256) { throw ('pwsh zip SHA256 mismatch: expected ' + $env:PWSH_ZIP_SHA256 + ' but got ' + $h) } }; Expand-Archive -Path $z -DestinationPath $d -Force; Remove-Item $z -Force; $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine'); if ($mp -notlike '*PowerShell\7*') { [Environment]::SetEnvironmentVariable('Path', $mp + ';' + $d, 'Machine') }
 
 # Ensure pwsh and the base Windows paths are on PATH for the SHELL switch below and all
 # subsequent RUN instructions. The base image's PATH is NOT inherited by Docker ENV
@@ -70,6 +76,12 @@ COPY linux\scripts\01-core\versions.env C:\temp\
 RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 
 # Needs load-versions first: pins scoop's llvm/git installs (LLVM_RELEASE/GIT_VERSION).
+# The Vulkan/CMake pins are declared HERE (not at the top): every RUN after an
+# ARG declaration keys its cache on the ARG's value, so declaring them above the
+# VS layer made a Vulkan/CMake bump re-pay the VS Build Tools install. Declared
+# here they can only invalidate scoop and the tail (their sole consumers).
+ARG VULKAN_VERSION=1.4.350.0
+ARG CMAKE_VERSION=4.4.0
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION
 

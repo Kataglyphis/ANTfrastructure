@@ -1,0 +1,51 @@
+# hadolint policy for linux/scripts/lint-dockerfiles.sh (preflight + CI + hook).
+#
+# Deliberately permissive at adoption: every byte changed in a Dockerfile to
+# satisfy a lint rule invalidates build layers that take hours to rebuild, so
+# rules the codebase knowingly violates are ignored HERE instead of "fixed"
+# in the Dockerfiles. Tighten incrementally when the affected layer is being
+# rebuilt anyway.
+failure-threshold: warning
+
+ignored:
+  # Unpinned apt packages: the repo pins toolchain versions via versions.env +
+  # source builds; OS package pinning is deliberately left to the Ubuntu
+  # digest-pinned base (UBUNTU_DIGEST) instead of per-package pins.
+  - DL3008
+  # `cd` inside RUN: build scripts (not Dockerfiles) own directory handling;
+  # the few RUN-level cds are inside subshell-scoped one-liners.
+  - DL3003
+  # set -o pipefail: install scripts set their own strict modes; RUN lines
+  # here mostly exec a single script.
+  - DL4006
+  # ARG-driven FROM (BASE_IMAGE pattern) — the chain wires stages together via
+  # --build-arg BASE_IMAGE=<digest-pinned ref>; hadolint cannot see that.
+  - DL3006
+  # :latest / floating default in ARG-driven FROMs (same BASE_IMAGE pattern).
+  - DL3007
+  # Shell-form ENTRYPOINT/CMD is intentional (entrypoint scripts need env/PATH
+  # expansion; the Windows image execs entrypoint.cmd through cmd /S /C).
+  - DL3025
+  # False positive on Windows Dockerfiles: multi-source COPY to C:\dest —
+  # hadolint only accepts a trailing forward slash, Windows paths end in `\`.
+  - DL3021
+  # PowerShell RUN lines (SHELL ["pwsh",...] + `# escape=\``) are not sh;
+  # hadolint's embedded shellcheck misparses backtick continuations.
+  - SC1133
+  # Linux RUN one-liners use bash/dash features (pipefail, arrays, read -d,
+  # source) that shellcheck's POSIX-sh persona flags; the builds run them fine.
+  - SC3040
+  - SC3045
+  - SC3046
+  - SC3054
+  # RUN heredocs deliberately use `#!/usr/bin/env bash` shebangs.
+  - SC2239
+  # Incremental ENV layering (ENV PATH=/new:${PATH} style within one statement)
+  # is the chain's documented pattern for stacking tool paths per stage.
+  - DL3044
+  # FROM --platform=${ARTIFACT_PLATFORM} is the Dockerfile.package
+  # artifact-source handoff mechanism (see verify-artifact-copy-parity.sh).
+  - DL3029
+  # pip installs are orchestrated by build scripts with their own pinning
+  # (wheelhouse + versions.env); the one inline pip RUN bootstraps that.
+  - DL3013

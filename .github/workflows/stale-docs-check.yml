@@ -22,25 +22,16 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Check version consistency
+      # Subset of the canonical gate list in linux/scripts/preflight.sh —
+      # version snapshot (also covers inline markers, deps table, Dockerfile
+      # ARGs, website license files), ARG consistency, mirror consistency.
+      - name: Check version/docs consistency
         id: check
         continue-on-error: true
-        run: python3 docs/scripts/sync_versions.py --check
-        # This also checks inline markers, deps table, Dockerfile ARGs,
-        # and website license files (delegates to generate-website-licenses.py --check).
-
-      - name: Check ARG consistency
-        id: argcheck
-        continue-on-error: true
-        run: bash linux/scripts/01-core/verify-arg-consistency.sh
-
-      - name: Check Ubuntu mirror consistency
-        id: mirrorcheck
-        continue-on-error: true
-        run: bash linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh
+        run: PREFLIGHT_ONLY=version-snapshot,arg-consistency,mirror-consistency bash linux/scripts/preflight.sh
 
       - name: Create issue if stale
-        if: steps.check.outcome != 'success' || steps.argcheck.outcome != 'success' || steps.mirrorcheck.outcome != 'success'
+        if: steps.check.outcome != 'success'
         uses: actions/github-script@v9.0.0
         with:
           script: |

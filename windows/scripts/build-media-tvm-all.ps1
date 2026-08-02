@@ -16,7 +16,10 @@ param(
 #requires -Version 7.0
 
     [string]$InstallDir = 'C:\runtime',
-    [string]$ScriptDir  = 'C:\temp\scripts'
+    [string]$ScriptDir  = 'C:\temp\scripts',
+    # Resume inside a preserved container after a mid-chain failure: skip the
+    # stages before the named one (see build.ps1's recovery recipe on failure).
+    [string]$ResumeFrom = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,7 +36,7 @@ $stages = @(
     @{ Name = 'IREE'; Script = 'build-iree-from-source.ps1'; SourceDir = 'C:\temp\iree-src' }
 )
 
-Invoke-SourceBuildChain -Label 'media-tvm' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir
+Invoke-SourceBuildChain -Label 'media-tvm' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom
 
 Write-Host "`n=== media-tvm chain completed ==="
 

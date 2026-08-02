@@ -14,24 +14,12 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 
 cd "$REPO_ROOT"
 
-# 1. Version consistency (snapshots, inline markers, deps table, Dockerfile ARGs)
-echo "=== sync_versions.py --check ==="
-python3 docs/scripts/sync_versions.py --check && pass "version snapshot check" || fail "sync_versions.py --check failed"
-
-# 2. ARG name coverage + value match
-echo ""
-echo "=== verify-arg-consistency.sh ==="
-bash linux/scripts/01-core/verify-arg-consistency.sh && pass "ARG consistency" || fail "ARG consistency failed"
-
-# 3. Five Critical Fixes source integrity
-echo ""
-echo "=== verify-critical-fixes.sh ==="
-bash linux/scripts/verify-critical-fixes.sh && pass "critical fixes" || fail "critical fixes failed"
-
-# 3b. Sourced/COPY'd scripts are present in each image stage
-echo ""
-echo "=== verify-script-copy-coverage.py ==="
-python3 linux/scripts/verify-script-copy-coverage.py && pass "script COPY coverage" || fail "a referenced /opt/scripts path is not provided in its image"
+# 1. Fast subset of the canonical gate list in linux/scripts/preflight.sh
+#    (version snapshot, ARG consistency, critical fixes, script COPY coverage).
+#    shellcheck runs below on staged files only; the full gate runs in CI.
+echo "=== preflight subset ==="
+PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage \
+  bash linux/scripts/preflight.sh && pass "preflight subset" || fail "preflight subset failed"
 
 # 4. Shell syntax + shellcheck gate on changed .sh files
 echo ""
@@ -45,6 +33,18 @@ if [ -n "$STAGED_SH" ]; then
   bash linux/scripts/lint-shell.sh $STAGED_SH && pass "staged shellcheck gate" || fail "shellcheck -S error findings in staged .sh files"
 else
   pass "no staged .sh files to check"
+fi
+
+# 4b. Dockerfile lint on staged Dockerfiles (skips silently if the bootstrap
+#     cannot run, matching the sphinx block's tolerance below).
+echo ""
+echo "=== dockerfile lint (staged Dockerfiles) ==="
+STAGED_DF=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)Dockerfile[^/]*$' || true)
+if [ -n "$STAGED_DF" ]; then
+  # shellcheck disable=SC2086
+  bash linux/scripts/lint-dockerfiles.sh $STAGED_DF && pass "staged Dockerfile lint" || fail "hadolint findings in staged Dockerfiles"
+else
+  pass "no staged Dockerfiles to check"
 fi
 
 # 5. Sphinx docs build (if deps are installed)

@@ -17,7 +17,10 @@ param(
 #requires -Version 7.0
 
     [string]$InstallDir = 'C:\runtime',
-    [string]$ScriptDir  = 'C:\temp\scripts'
+    [string]$ScriptDir  = 'C:\temp\scripts',
+    # Resume inside a preserved container after a mid-chain failure: skip the
+    # stages before the named one (see build.ps1's recovery recipe on failure).
+    [string]$ResumeFrom = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,7 +35,7 @@ $stages = @(
     @{ Name = 'LiteRT-LM'; Script = 'build-litert-lm-from-source.ps1'; SourceDir = 'C:\temp\litert-lm-src' }
 )
 
-Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir
+Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom
 
 # Hit/miss counters die with this container -- dump them into the run log now.
 Write-SccacheStats -Label 'media-litert'

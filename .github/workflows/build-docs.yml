@@ -41,22 +41,12 @@ jobs:
           source .venv/bin/activate
           uv pip install -r requirements.txt
 
-      # These scripts read this repo's Dockerfiles and versions.env, so they
-      # live here rather than in the DocumANTation submodule -- only the shared
-      # theme and templates do. sync_versions.py --check also checks the website
-      # licence files.
-      - name: Check generated version snapshot (also checks website licenses)
-        run: python docs/scripts/sync_versions.py --check
-
-
-      - name: Verify version ARG consistency
-        run: bash linux/scripts/01-core/verify-arg-consistency.sh
-
-      - name: Verify Ubuntu mirror consistency
-        run: bash linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh
-
-      - name: Verify Five Critical Fixes (source integrity)
-        run: bash linux/scripts/verify-critical-fixes.sh
+      # The verification list lives in preflight.sh (single source of the gate
+      # list — the same one ubuntu24.04.yml runs in full and .githooks/pre-commit
+      # subsets). shellcheck is skipped here: it is not installed on this runner
+      # and the full gate already runs it in the preflight job.
+      - name: Run preflight verification (minus shellcheck)
+        run: PREFLIGHT_SKIP=shellcheck bash linux/scripts/preflight.sh
 
       - name: Check shell script syntax
         run: find linux/scripts -name '*.sh' -exec bash -n {} +

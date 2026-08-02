@@ -586,10 +586,31 @@ function Invoke-SourceBuildChain {
         [Parameter(Mandatory)][string]$Label,
         [Parameter(Mandatory)][object[]]$Stages,
         [string]$InstallDir = 'C:\runtime',
-        [string]$ScriptDir  = 'C:\temp\scripts'
+        [string]$ScriptDir  = 'C:\temp\scripts',
+        # Resume support: skip every stage BEFORE the named one. Used to re-enter a
+        # preserved run+commit container after a mid-chain failure (the completed
+        # stages' output is already in $InstallDir) instead of re-paying hours of
+        # compile. Unknown names throw immediately — a typo must not silently
+        # rebuild from the start.
+        [string]$StartAt = ''
     )
     $ErrorActionPreference = 'Stop'
+    if ($StartAt) {
+        $names = @($Stages | ForEach-Object { $_.Name })
+        if ($names -notcontains $StartAt) {
+            throw "Invoke-SourceBuildChain: -StartAt '$StartAt' is not a stage of '$Label' (stages: $($names -join ', '))"
+        }
+    }
+    $skipping = [bool]$StartAt
     foreach ($stage in $Stages) {
+        if ($skipping) {
+            if ($stage.Name -eq $StartAt) {
+                $skipping = $false
+            } else {
+                Write-Host "`n=== $Label stage: $($stage.Name) — SKIPPED (resuming at $StartAt) ==="
+                continue
+            }
+        }
         Write-Host "`n=== $Label stage: $($stage.Name) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
         & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
         $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }

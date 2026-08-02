@@ -9,6 +9,13 @@
 # exits non-zero if any failed (so CI/automation sees a single verdict).
 #
 # Usage: linux/scripts/preflight.sh
+#
+# Subset selection (so CI workflows and git hooks reuse THIS list instead of
+# copy-pasting their own): each check has a stable slug, and
+#   PREFLIGHT_ONLY=slug1,slug2   runs only the named checks
+#   PREFLIGHT_SKIP=slug1,slug2   runs everything except the named checks
+# Unset (the default) runs the full gate. Unknown slugs are an error so a
+# renamed check cannot silently drop out of a caller's subset.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -17,8 +24,47 @@ cd "${REPO_ROOT}"
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; BOLD='\033[1m'; NC='\033[0m'
 FAILED=()
 
+# Interpreter for the Python-based checks. Overridable for hosts where plain
+# python3 is unusable (e.g. the Windows Store stub under Git Bash):
+#   PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh
+PREFLIGHT_PYTHON="${PREFLIGHT_PYTHON:-python3}"
+# The Python checks print ✓/✗; on Windows consoles the default cp1252 codec
+# dies on those. Force UTF-8 mode (no-op on Linux).
+export PYTHONUTF8=1
+
+KNOWN_SLUGS=(shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
+             arg-consistency version-snapshot mirror-consistency runtime-paths \
+             dockerfile-lint workflow-lint android-parity script-tests)
+
+_in_csv() {  # _in_csv needle csv
+  local needle="$1" csv="$2" item
+  IFS=',' read -ra _items <<< "${csv}"
+  for item in "${_items[@]}"; do [ "${item}" = "${needle}" ] && return 0; done
+  return 1
+}
+
+for _sel in ${PREFLIGHT_ONLY:-} ${PREFLIGHT_SKIP:-}; do
+  IFS=',' read -ra _slugs <<< "${_sel}"
+  for _slug in "${_slugs[@]}"; do
+    _known=1
+    for _k in "${KNOWN_SLUGS[@]}"; do [ "${_k}" = "${_slug}" ] && _known=0; done
+    if [ "${_known}" -ne 0 ]; then
+      printf "${RED}Unknown preflight slug: %s${NC} (known: %s)\n" "${_slug}" "${KNOWN_SLUGS[*]}" >&2
+      exit 2
+    fi
+  done
+done
+
+check_selected() {  # check_selected slug -> 0 if this check should run
+  local slug="$1"
+  if [ -n "${PREFLIGHT_ONLY:-}" ]; then _in_csv "${slug}" "${PREFLIGHT_ONLY}" && return 0 || return 1; fi
+  if [ -n "${PREFLIGHT_SKIP:-}" ]; then _in_csv "${slug}" "${PREFLIGHT_SKIP}" && return 1 || return 0; fi
+  return 0
+}
+
 run_check() {
-  local name="$1"; shift
+  local slug="$1" name="$2"; shift 2
+  check_selected "${slug}" || return 0
   printf "\n${BOLD}== %s ==${NC}\n" "${name}"
   if "$@"; then
     printf "${GREEN}✓ %s${NC}\n" "${name}"
@@ -29,38 +75,51 @@ run_check() {
 }
 
 # 1. Shell lint gate (shellcheck -S error across all scripts).
-run_check "shellcheck gate"            bash linux/scripts/lint-shell.sh
+run_check shellcheck "shellcheck gate"            bash linux/scripts/lint-shell.sh
 
 # 2. Every referenced /opt/scripts path is COPY'd/mounted into its image.
-run_check "script COPY coverage"       python3 linux/scripts/verify-script-copy-coverage.py
+run_check copy-coverage "script COPY coverage"    ${PREFLIGHT_PYTHON} linux/scripts/verify-script-copy-coverage.py
 
 # 3. Critical-fix source integrity (incl. fix6: native-GCC system paths, bugs D/E).
-run_check "critical fixes"             bash linux/scripts/verify-critical-fixes.sh
+run_check critical-fixes "critical fixes"         bash linux/scripts/verify-critical-fixes.sh
 
 # 3b. Patch files are well-formed unified diffs AND still referenced (no orphans).
-run_check "patch integrity"            bash linux/scripts/verify-patch-integrity.sh
+run_check patch-integrity "patch integrity"       bash linux/scripts/verify-patch-integrity.sh
 
 # 3c. Dockerfile.package artifact COPY lane: artifact-source stage exists and
 #     src/dst paths stay canonical (undocumented relocations fail).
-run_check "artifact copy parity"       bash linux/scripts/verify-artifact-copy-parity.sh
+run_check artifact-parity "artifact copy parity"  bash linux/scripts/verify-artifact-copy-parity.sh
 
 # 4. Dockerfile ARG names/values agree with versions.env + forwarding.
-run_check "ARG consistency"            bash linux/scripts/01-core/verify-arg-consistency.sh
+run_check arg-consistency "ARG consistency"       bash linux/scripts/01-core/verify-arg-consistency.sh
 
 # 5. Version snapshots / inline markers / deps table are in sync.
 if [ -f docs/scripts/sync_versions.py ]; then
-  run_check "version snapshot"         python3 docs/scripts/sync_versions.py --check
+  run_check version-snapshot "version snapshot"   ${PREFLIGHT_PYTHON} docs/scripts/sync_versions.py --check
 fi
 
 # 6. Canonical Ubuntu mirror ARGs present across Dockerfiles.
 if [ -f linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh ]; then
-  run_check "ubuntu mirror consistency" bash linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh
+  run_check mirror-consistency "ubuntu mirror consistency" bash linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh
 fi
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then
-  run_check "runtime path consistency"  bash linux/scripts/04-runtime/verify-runtime-paths.sh
+  run_check runtime-paths "runtime path consistency" bash linux/scripts/04-runtime/verify-runtime-paths.sh
 fi
+
+# 8. Dockerfile lint (hadolint, policy in .hadolint.yaml; bootstraps a pinned,
+#    SHA-verified hadolint when none is on PATH).
+run_check dockerfile-lint "dockerfile lint (hadolint)" bash linux/scripts/lint-dockerfiles.sh
+
+# 9. Workflow/composite-action lint (actionlint, same bootstrap pattern).
+run_check workflow-lint "workflow lint (actionlint)" bash linux/scripts/lint-workflows.sh
+
+# 10. The five parallel Android library stages stay identical modulo ANDROID_LIB.
+run_check android-parity "android stage parity" bash linux/scripts/01-core/verify-android-stage-parity.sh
+
+# 11. Unit tests for the tag/build-arg/disk-guard logic in linux/scripts.
+run_check script-tests "linux script unit tests" bash linux/scripts/tests/run-tests.sh
 
 printf "\n${BOLD}=== preflight summary ===${NC}\n"
 if [ "${#FAILED[@]}" -eq 0 ]; then

@@ -19,6 +19,12 @@ Assert-ContainerCommandAvailable -Name 'clang-cl' | Out-Null
 Assert-ContainerCommandAvailable -Name 'lld-link' | Out-Null
 Assert-ContainerCommandAvailable -Name 'cmake' | Out-Null
 
+# LLVM is DELIBERATELY unpinned on Windows (scoop latest; versions.env's
+# LLVM_RELEASE pins only the Linux lane) — log the resolved version into the
+# build output as provenance so a "worked last rebuild" regression is
+# attributable to a concrete clang-cl version instead of a guess.
+Write-Host ("clang-cl (provenance): {0}" -f ((& clang-cl --version | Select-Object -First 1)))
+
 # CMake is pinned (scoop main/cmake@CMAKE_VERSION from versions.env, baked by
 # load-versions.ps1) -- fail the base build here on a pin mismatch instead of
 # surfacing it hours later in a media build or the smoke test.

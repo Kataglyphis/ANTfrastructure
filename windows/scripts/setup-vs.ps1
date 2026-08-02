@@ -75,12 +75,20 @@ $installer = Join-Path $TempDir 'vs_buildtools.exe'
 
 try {
     Write-Host 'Downloading Visual Studio Build Tools Installer...'
+    # Major-pinned channel (aka.ms/vs/<major>/release) instead of the fully floating
+    # aka.ms/vs/stable: a VS major bump can then never ride in silently — it must come
+    # through versions.env VISUAL_STUDIO_VERSION. A hard SHA256 pin is deliberately NOT
+    # used here: Microsoft refreshes the bootstrapper within a channel every few weeks,
+    # so a hash pin would break constantly; instead the actual hash is LOGGED below for
+    # provenance (compare across builds / against a known-good log when in doubt).
+    $vsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
     # Shared hardened download (retry + backoff + redirect-following). -ExpectSignature MZ
-    # rejects-and-retries the flaky aka.ms/vs/stable redirect's HTML error pages (same class
+    # rejects-and-retries the flaky aka.ms redirect's HTML error pages (same class
     # as the nuget aka.ms bug) -- this replaces a 30-line hand-rolled curl/BITS/IWR fallback
     # chain plus a manual PE-signature check with the one helper every other setup script uses.
-    Invoke-DownloadWithRetry -Url 'https://aka.ms/vs/stable/vs_buildtools.exe' -DestinationPath $installer `
-        -Description 'VS Build Tools installer' -ExpectSignature MZ
+    Invoke-DownloadWithRetry -Url "https://aka.ms/vs/$vsMajor/release/vs_buildtools.exe" -DestinationPath $installer `
+        -Description "VS Build Tools $vsMajor installer" -ExpectSignature MZ
+    Write-Host ("VS Build Tools bootstrapper SHA256 (provenance): {0}" -f (Get-FileHash -Algorithm SHA256 -Path $installer).Hash)
 
     $installerArgs = @(
         '--quiet',

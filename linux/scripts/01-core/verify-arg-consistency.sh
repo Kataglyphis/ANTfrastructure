@@ -93,6 +93,36 @@ else
 fi
 
 echo ""
+echo "=== ARG safety-net default presence check ==="
+# A default-less `ARG NAME` whose name is a forwarded versions.env variable is
+# only safe when the SAME file also declares `ARG NAME=<default>` somewhere
+# (stage-level re-declarations inherit the pre-FROM global default). A file
+# with no defaulted declaration at all silently builds with an EMPTY value on
+# any non-orchestrated `docker build` — the LITERTJS_VERSION failure class.
+DEFAULTLESS_ERRORS=0
+for name in "${DOCKERFILES[@]}"; do
+  df="linux/Dockerfile.${name}"
+  df_path="${REPO_ROOT}/${df}"
+  [ -f "$df_path" ] || continue
+  while IFS= read -r var; do
+    [ -n "$var" ] || continue
+    [ -n "${_version_values[$var]:-}" ] || continue
+    if ! grep -qP "^\s*ARG\s+${var}=" "$df_path"; then
+      echo "  ERROR: ${df} declares ARG ${var} with no default anywhere in the file"
+      echo "         (a plain 'docker build' silently gets an empty value; add ARG ${var}=<versions.env value>)"
+      DEFAULTLESS_ERRORS=$((DEFAULTLESS_ERRORS + 1))
+    fi
+  done < <(grep -oP '^\s*ARG\s+\K[A-Z][A-Z0-9_]*\s*$' "$df_path" | sort -u || true)
+done
+
+if [ "$DEFAULTLESS_ERRORS" -gt 0 ]; then
+  echo "ERROR: ${DEFAULTLESS_ERRORS} versions.env-named ARG(s) lack a safety-net default"
+  exit 1
+else
+  echo "All versions.env-named ARGs have a safety-net default in their file"
+fi
+
+echo ""
 echo "=== Script :- default drift check (advisory) ==="
 # Many build scripts embed a hardcoded fallback for a versions.env variable as
 # ${VAR:-literal} (a "third channel": the value is neither an ARG default nor
@@ -104,8 +134,14 @@ echo "=== Script :- default drift check (advisory) ==="
 #     versions.env pins the built ref.
 #   * PYTHON_VERSION: CI tooling defaults to a MAJOR.MINOR (3.14) to name the
 #     interpreter, not the full patch version.
+#   * FFMPEG_ENABLE_X265 / ORT_ENABLE_WEBGPU / ORT_WEBGPU_ALLOW_CROSS: scripts
+#     deliberately default conservative (feature off) for standalone runs;
+#     versions.env opts the orchestrated image builds in.
 # Add such intentional cases to SCRIPT_DEFAULT_DRIFT_ALLOW below.
-declare -A SCRIPT_DEFAULT_DRIFT_ALLOW=( [TVM_REF]=1 [PYTHON_VERSION]=1 )
+declare -A SCRIPT_DEFAULT_DRIFT_ALLOW=(
+  [TVM_REF]=1 [PYTHON_VERSION]=1
+  [FFMPEG_ENABLE_X265]=1 [ORT_ENABLE_WEBGPU]=1 [ORT_WEBGPU_ALLOW_CROSS]=1
+)
 DRIFT_WARN=0
 while IFS= read -r hit; do
   # hit is "path:${VAR:-literal}"

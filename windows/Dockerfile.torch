@@ -1,0 +1,56 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Windows mirror of linux/Dockerfile.torch: assembles the
+# Kataglyphis-Orchestr-ANT-ion app environment as its OWN chain stage between
+# media and final (media -> torch -> final; windows/Dockerfile builds FROM this
+# image and adds only the cheap dev-image trimmings). An APP_REF bump therefore
+# rebuilds torch + final — minutes, network-bound — never the compile chain.
+#
+# In-chain (default): .\windows\build.ps1        (torch is in the default stages)
+# App-only iteration:  .\windows\build.ps1 -Stages torch,final
+# On the PUBLISHED image instead of a local chain (any host that can pull it):
+#   .\windows\build.ps1 -Stages torch,final -TorchBaseImage ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+#
+# The assembly script deletes + reclones C:\opt\Kataglyphis-Orchestr-ANT-ion
+# wholesale, so re-running on a base that already carries an older app env
+# (e.g. the published image) is safe and total.
+
+ARG BASE_IMAGE=local/kataglyphis:windows-media
+FROM ${BASE_IMAGE}
+
+ARG BUILD_DATE=""
+ARG VCS_REF=""
+# Kept in sync with versions.env by sync_versions.py; build.ps1 overrides it
+# (versions.env pin, or the latest release tag with -LatestApp).
+ARG APP_REF=v0.0.27
+# Torch BACKEND extra from the app's pyproject: pytorch-cpu (default),
+# pytorch-cu130, ... 'none' disables (torch is only declared inside the extras).
+ARG PYTORCH_EXTRA=pytorch-cpu
+
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Fresh copy from the build context (NOT the baked one): app-assembly fixes must
+# reach this leaf without waiting for a full base republish.
+COPY windows\scripts\assemble-torch-app.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
+
+ENV TORCH_APP_DIR="C:\opt\Kataglyphis-Orchestr-ANT-ion"
+
+# Healthcheck: exercise the APP venv's onnxruntime import (mirror of
+# linux/Dockerfile.torch's healthcheck). windows/Dockerfile (final) overrides
+# this with the broader dev-image probe; this one stands when the torch image
+# is run directly. WORKDIR/VOLUME/ENTRYPOINT come from the final stage.
+HEALTHCHECK --interval=5m --timeout=30s --start-period=60s --retries=3 `
+  CMD ["C:\\opt\\Kataglyphis-Orchestr-ANT-ion\\.venv\\Scripts\\python.exe", "-c", "import onnxruntime"]
+
+LABEL org.opencontainers.image.title="kataglyphis_beschleuniger torch app" `
+      org.opencontainers.image.description="Orchestr-ANT-ion app environment on the Windows developer image (ONNX Runtime, GenAI, OpenCV 5, TVM, PyTorch)" `
+      org.opencontainers.image.version="${APP_REF}" `
+      org.opencontainers.image.revision="${VCS_REF}" `
+      org.opencontainers.image.created="${BUILD_DATE}" `
+      org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" `
+      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
+      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
+      org.opencontainers.image.licenses="Apache-2.0"

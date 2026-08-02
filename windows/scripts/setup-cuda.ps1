@@ -35,7 +35,9 @@ Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaV
 $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/cuda_$CudaVersion`_windows.exe"
 Write-Host "Download URL: $cudaUrl"
 $cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
-Invoke-DownloadWithRetry -Url $cudaUrl -DestinationPath $cudaInstaller -Description "CUDA Toolkit $CudaVersion installer" -ExpectSignature MZ
+# SHA256 pin from versions.env (CUDA_INSTALLER_SHA256, baked env); empty skips.
+$cudaSha = Resolve-ContainerImageValue -EnvironmentVariable 'CUDA_INSTALLER_SHA256' -DefaultValue ''
+Invoke-DownloadWithRetry -Url $cudaUrl -DestinationPath $cudaInstaller -Description "CUDA Toolkit $CudaVersion installer" -ExpectSignature MZ -ExpectedSha256 $cudaSha
 Write-Host 'Installing CUDA Toolkit (full silent install, no driver)...'
 $proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-download-driver' -Wait -PassThru
 $proc.WaitForExit()
@@ -125,7 +127,9 @@ $cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/wi
 Write-Host ('Download URL: {0}' -f $cudnnUrl)
 $cudnnArchive = Join-Path $TempDir 'cudnn.zip'
 $cudnnExtracted = Join-Path $TempDir 'cudnn_extracted'
-Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive" -ExpectSignature PK
+# SHA256 from NVIDIA's redist manifest, pinned in versions.env (CUDNN_ZIP_SHA256).
+$cudnnSha = Resolve-ContainerImageValue -EnvironmentVariable 'CUDNN_ZIP_SHA256' -DefaultValue ''
+Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive" -ExpectSignature PK -ExpectedSha256 $cudnnSha
 Write-Host 'Extracting cuDNN...'
 $cudnnDir = Expand-ArchiveSubdirectory -ArchivePath $cudnnArchive -DestinationPath $cudnnExtracted
 if (-not $cudnnDir) {

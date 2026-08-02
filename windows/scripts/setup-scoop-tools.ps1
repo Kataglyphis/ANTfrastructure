@@ -44,7 +44,10 @@ $GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -Environm
     -DefaultValue "https://github.com/git-for-windows/git/releases/download/v$gitVer.windows.1/Git-$gitVer-64-bit.exe"
 
 $gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
-Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer' -ExpectSignature MZ
+# SHA256 pin from versions.env (GIT_WINDOWS_INSTALLER_SHA256, baked env). Empty
+# (e.g. a -GitInstallerUrl override for a respun release) skips the hash check.
+$gitSha = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_WINDOWS_INSTALLER_SHA256' -DefaultValue ''
+Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer' -ExpectSignature MZ -ExpectedSha256 $gitSha
 Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait
 Remove-Item $gitInstaller -Force
 Sync-ContainerProcessPath -AdditionalPaths @(
@@ -63,8 +66,11 @@ dotnet tool install --tool-path C:\WiX wix --version $WixVersion
 Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
 # Hardened fetch (retry + TLS) instead of a bare one-shot irm -- a transient blip here
-# killed the whole base build.
-Invoke-DownloadWithRetry -Url 'https://get.scoop.sh' -DestinationPath $scoopInstallScript -Description 'scoop installer script'
+# killed the whole base build. Hash-pinned (SCOOP_INSTALLER_SHA256): this script is
+# EXECUTED, so we only run the exact bytes that were reviewed when the pin was set.
+# Scoop revving the installer surfaces as a mismatch -- re-review and bump the pin.
+$scoopSha = Resolve-ContainerImageValue -EnvironmentVariable 'SCOOP_INSTALLER_SHA256' -DefaultValue ''
+Invoke-DownloadWithRetry -Url 'https://get.scoop.sh' -DestinationPath $scoopInstallScript -Description 'scoop installer script' -ExpectedSha256 $scoopSha
 & $scoopInstallScript -RunAsAdmin
 Sync-ContainerProcessPath -AdditionalPaths @(
     'C:\Users\ContainerAdministrator\scoop\shims',
@@ -113,4 +119,15 @@ if ([string]::IsNullOrWhiteSpace($CMakeVersion)) {
 # already unpacked into the apps dir and only bloat this (large) layer otherwise.
 Write-Host 'Clearing scoop download cache...'
 scoop cache rm * 2>&1 | Out-Null
+
+# Same-layer cleanup for the other caches this script fills: the WiX dotnet-tool
+# install leaves its nupkgs in the NuGet cache (the tool is fully materialized at
+# C:\WiX) and installers drop temp files. Must happen HERE, not in a later stage:
+# the classic builder cannot shrink an already-committed layer from a later one.
+foreach ($d in @("$env:USERPROFILE\.nuget\packages", "$env:LOCALAPPDATA\Temp")) {
+    if (Test-Path $d) {
+        Write-Host "Clearing $d ..."
+        Remove-Item "$d\*" -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 

@@ -74,7 +74,33 @@ nerdctl run --rm --privileged tonistiigi/binfmt --install all
 
 All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). Use Stevedore's `docker.exe` for builds (nerdctl has DNS issues in BuildKit on Windows).
 
+**Isolation policy: process isolation is always preferred** — build.ps1's `-Isolation auto` (default) runs the ~10s commit probe (`windows/diagnostics/test-process-isolation-commit.ps1`, verdict cached per host build + docker version) and uses `--isolation process` for every `docker build`/`docker run` when the host can commit process-isolated layers (full CPUs everywhere); it falls back to `hyperv` with a warning on wcifs-skew hosts. **sccache is required by default for toolchain/media** (fail-fast when `-SccacheEndpoint`/`SCCACHE_WEBDAV_ENDPOINT` is missing or unreachable; `-NoSccache` overrides). The paragraph below describes the HYPERV fallback state:
+
 **`docker build` is capped at 2 CPUs on this host — the heavy media-core stage builds via `docker run --cpu-count N` + `docker commit` instead.** Hyper-V-isolated build containers get only **2 logical CPUs** (pinning `ninja -j` to 2, `Get-BuildJobCount = min(ProcessorCount, memGB/perJob)`), and `docker build` has **no working lever** to raise it: `--cpu-count` is rejected, `--cpuset-cpus` fails the build, and `--isolation process` exposes all CPUs but **cannot commit any layer** here (`hcsshim::ActivateLayer 0x20 "file used by another process"`, reproduced even for a 100 MB dummy layer; not Defender/Search/SysMain). `docker run`, however, **does** honor `--cpu-count` under Hyper-V (verified `NPROC=32`) and commits fine — so `build.ps1` builds every **CPU-bound** stage via a generic run+commit path (`Invoke-RunCommitStage`): **media-core** (`Dockerfile.media-builder --target media-core` + `build-media-core-all.ps1`), **toolchain**/CPython (`Dockerfile.toolchain-builder` + `build-toolchain-all.ps1`), and the **media merge / GStreamer** stage (`Dockerfile.media-merge-builder` + `build-gstreamer-from-source.ps1`; the fan-in `COPY --from` stays a `docker build` since `docker run` can't `COPY --from`, but the GStreamer compile runs+commits). `-MediaCoreCpus` defaults to `[Environment]::ProcessorCount` (32 here) — but parallelism is **memory-bound**: `min(cpu-count, memGB/perJob)`, so ONNX stays `~j12` at 48 GB regardless of cores. `base`/`sdk` stay at 2 CPUs by design (network/install-bound). The `litert`/`tvm` aux branches also run+commit at `-MediaCoreCpus` (`Dockerfile.media-builder --target media-litert` + `build-litert-all.ps1`; `--target media-tvm` + `build-tvm-from-source.ps1`) — media-core is already committed then, so the full CPU/RAM budget is free (`~j2`→`~j19`, still memory-bound). All three branch builders are targets of the ONE consolidated `Dockerfile.media-builder`, and the schedule is strictly sequential (a former `-ConcurrentMedia` overlap mode was removed — overlapping starved the media-core long pole).
+
+**Mid-chain failure recovery (run+commit):** a non-transient failure inside a
+run+commit stage now PRESERVES the container (only transient retries clean it
+up) and prints a resume recipe: `docker commit <container> <tag>-partial`, then
+re-run the payload from the partial image with `-ResumeFrom '<stage>'`
+(`Invoke-SourceBuildChain -StartAt` skips the completed stages), then commit to
+the real tag. Do NOT `docker start` the failed container — that re-runs the
+whole chain from scratch.
+
+**Determinism:** the final stage uses the versions.env `APP_REF` pin by
+default; pass `-LatestApp` to build.ps1 to resolve the app repo's newest
+release tag at build time (the old always-on behavior). All local intermediate
+tags come from the `$script:ImageTag` table / `Get-MediaBranchTag` at the top
+of build.ps1 — never type a `local/kataglyphis:windows-*` literal elsewhere.
+
+**Orchestr-ANT-ion app stage (`windows/Dockerfile.torch`):** the Windows mirror
+of `linux/Dockerfile.torch`, a real chain stage between media and final
+(`media -> torch -> final`): it assembles the app env at `APP_REF` on the
+windows-media image (tag `local/kataglyphis:windows-torch`, app-venv
+healthcheck), and `windows/Dockerfile` (final) builds FROM it — the assembly
+logic lives in exactly one place. App-only iteration:
+`.\windows\build.ps1 -Stages torch,final` (minutes, never a compile-chain
+rebuild); `-TorchBaseImage ghcr.io/...:winamd64` iterates on the published
+image on hosts without local chain images.
 
 See `docs/windows-builds.md` § Build Commands for the full 5-stage Windows build sequence and `docs/windows-builds.md` § Stevedore Setup Fixes for post-install fixes.
 
@@ -545,6 +571,17 @@ base ─┬─ onnxruntime ───────┐
 
 ## Validation
 
+- **`bash linux/scripts/preflight.sh` is the single source of the no-build gate
+  list** (shellcheck, script COPY coverage, critical fixes, patch integrity,
+  artifact parity, ARG consistency, version snapshot, mirror consistency,
+  runtime paths, Dockerfile lint via hadolint, workflow lint via actionlint,
+  android stage parity, linux script unit tests). CI workflows and
+  `.githooks/pre-commit` run SUBSETS of it via `PREFLIGHT_ONLY=<slugs>` /
+  `PREFLIGHT_SKIP=<slugs>` — never copy the check list into a new caller.
+  On Windows hosts: `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`.
+- PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` +
+  `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
+  `.github/workflows/windows-scripts.yml` on windows-latest).
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
 - Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.1.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
@@ -579,11 +616,22 @@ base ─┬─ onnxruntime ───────┐
 `common.sh` and `artifact-common.sh` source `versions.env` at load time with `set -a`. Per-Dockerfile ARG defaults are safety nets and should match.
 
 After changing versions:
-1. `python3 docs/scripts/sync_versions.py --check` (run `--write` if drift)
+1. `python3 docs/scripts/sync_versions.py --write` (one pass now syncs Dockerfile
+   ARGs BEFORE regenerating the snapshot — no second pass needed; `--check` to verify)
 2. `python3 docs/scripts/generate-website-licenses.py --write` (regenerate website /openSourceLicenses page)
-3. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
-4. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
-5. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
+3. **Refresh the matching `*_SHA256` pins in versions.env** (pwsh zip / git installer /
+   nuget / CUDA / cuDNN / ollama / binaryen / hadolint / actionlint — each key's comment
+   documents its fetch command; GitHub releases expose per-asset digests on
+   `https://api.github.com/repos/<owner>/<repo>/releases/tags/<tag>`)
+4. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
+5. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
+   (also enforces that every versions.env-named ARG has a safety-net default in its file)
+6. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
+
+Windows layer-cost note: `windows/Dockerfile.base` declares `VULKAN_VERSION`/
+`CMAKE_VERSION` just above the scoop step (NOT at the top) so bumping them
+re-runs scoop, never the hours-long VS Build Tools layer. Keep new version ARGs
+below the VS layer unless they are consumed above it.
 
 GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `resolute`/26.04). MIGraphX packages currently come from the AMD ROCm noble (24.04) repo since no resolute builds exist yet.
 
@@ -608,6 +656,12 @@ Windows build contexts are sufficiently small already (they only reference
 `windows/`). If the Windows lane needs a smaller context, add specific excludes
 for large directories under `linux/` (e.g., `linux/out/`, `linux/build/`) rather
 than blocking `linux/` itself.
+
+`linux/.dockerignore` is a SEPARATE allowlist for builds whose context is
+`linux/` (the compose-built webserver image): it admits only
+`webserver/{nginx.conf,entrypoint.sh,dist/,license-assets/}`. `webserver/dist`
+must stay INCLUDED there — the root file's `**/dist/` exclusion applies only to
+root-context builds and must not be copied over.
 
 ## Reusable Sphinx Theme Package
 

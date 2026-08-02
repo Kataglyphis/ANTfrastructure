@@ -269,7 +269,7 @@ _chain_run_build_loop() {
     esac
     # Reclaim regenerable cache between stages if the host is running low, so the
     # next (heavier) stage doesn't ENOSPC. No-op above CROSS_DISK_GUARD_GB free.
-    _chain_stage_disk_guard
+    _chain_stage_disk_guard "${stage}"
   done
 }
 
@@ -308,20 +308,48 @@ _chain_disk_preflight() {
 # OCI-worker cache cannot be pruned mid-run (its records pin as non-reclaimable),
 # and deleting an intermediate image tag frees ~nothing because the child stage
 # shares its layers. The ONE regenerable space is the --cache-to local export.
-# After each stage, if free space has dropped below CROSS_DISK_GUARD_GB, clear it
-# to buy headroom for the next (heavier) stage. Off with CROSS_DISK_GUARD_GB=0.
+#
+# Policy (replaces the old wholesale `rm -rf ${bc_dir}/*`, which destroyed the
+# very slugs the NEXT stage would have warm-started from):
+#   1. Slugs belonging to stages still to run in THIS chain are protected.
+#   2. Unprotected slugs are pruned oldest-mtime-first (LRU) only until free
+#      space clears CROSS_DISK_GUARD_GB.
+#   3. If pruning every prunable slug still leaves us short, stop paying for
+#      NEW local cache exports for the rest of the run (skipping future exports
+#      beats deleting past ones) via CROSS_NO_LOCAL_CACHE_EXPORT=1.
+# Off with CROSS_DISK_GUARD_GB=0.
+
+# Pure helpers (_disk_guard_pick_victim, _disk_guard_protected_slugs) live in
+# 01-core/disk-guard.sh so linux/scripts/tests can unit-test them.
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/disk-guard.sh"
+
 _chain_stage_disk_guard() {
+  local completed_stage="${1:-}"
   local threshold="${CROSS_DISK_GUARD_GB:-40}"
   [ "${threshold}" -gt 0 ] 2>/dev/null || return 0
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local free_gb
   free_gb="$(df -BG --output=avail "${bc_dir%/*}" 2>/dev/null | tail -1 | tr -dc '0-9')"
   [ -n "${free_gb}" ] || return 0
-  if [ "${free_gb}" -lt "${threshold}" ]; then
-    log "[disk-guard] ${free_gb}G free < ${threshold}G after stage — clearing regenerable cache export ${bc_dir}"
-    [ -d "${bc_dir}" ] && rm -rf "${bc_dir:?}/"* 2>/dev/null || true
+  [ "${free_gb}" -lt "${threshold}" ] || return 0
+
+  local protected victim
+  protected="$(_disk_guard_protected_slugs "${completed_stage}")"
+  log "[disk-guard] ${free_gb}G free < ${threshold}G after stage ${completed_stage:-?} — LRU-pruning cache exports in ${bc_dir} (protected: ${protected:-none})"
+  while [ "${free_gb}" -lt "${threshold}" ]; do
+    victim="$(_disk_guard_pick_victim "${bc_dir}" "${protected}")"
+    [ -n "${victim}" ] || break
+    log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
+    rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
     free_gb="$(df -BG --output=avail "${bc_dir%/*}" 2>/dev/null | tail -1 | tr -dc '0-9')"
-    log "[disk-guard] after clear: ${free_gb}G free"
+    [ -n "${free_gb}" ] || return 0
+  done
+  if [ "${free_gb}" -lt "${threshold}" ]; then
+    log "[disk-guard] still ${free_gb}G free after pruning — skipping local cache exports for remaining stages (CROSS_NO_LOCAL_CACHE_EXPORT=1)"
+    export CROSS_NO_LOCAL_CACHE_EXPORT=1
+  else
+    log "[disk-guard] after pruning: ${free_gb}G free"
   fi
 }
 

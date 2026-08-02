@@ -20,7 +20,7 @@ its own license terms.
 | CMake | 4.4.0 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Node.js | 26.4.0 | [nodejs.org](https://nodejs.org/) | MIT |
 | uv | 0.11.25 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
-| Vulkan SDK | 1.4.341.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
+| Vulkan SDK | 1.4.350.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
 
@@ -138,7 +138,7 @@ its own license terms.
 | Python (source-built, ClangCL) | 3.14.6 | [python.org](https://python.org/) | PSF License |
 | CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) | bundled with Python | [github.com/python/cpython-source-deps](https://github.com/python/cpython-source-deps) | various (Apache 2.0, MIT, PD, …) |
 | CMake | 4.4.0 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Vulkan SDK | 1.4.341.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
+| Vulkan SDK | 1.4.350.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
 | Flutter SDK | 3.44.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |

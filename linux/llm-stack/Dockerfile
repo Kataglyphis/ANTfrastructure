@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1.24.0
+# Digest-pinned like linux/Dockerfile.base: this image builds standalone (no
+# orchestrator forwarding), so the ARG defaults are load-bearing and are kept
+# synced to versions.env by sync_versions.py.
 ARG UBUNTU_VERSION=26.04
-FROM ubuntu:${UBUNTU_VERSION} AS base
+ARG UBUNTU_DIGEST=sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
+FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST} AS base
 
 # The Ollama tarball is downloaded OUTSIDE the build by scripts/download-ollama.sh
 # (which owns the version default) and COPY'd in below — no version ARG here.

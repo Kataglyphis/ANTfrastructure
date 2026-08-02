@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1.24.0
 
-ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-package-amd64"
+# BuildKit populates TARGETARCH in the global scope, so a plain `docker build`
+# defaults to the CURRENT platform's package image instead of silently producing
+# a wrong-arch wrapper (the orchestrator always overrides BASE_IMAGE anyway).
+ARG TARGETARCH
+ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-package-${TARGETARCH}"
 FROM ${BASE_IMAGE} AS torch
 
 SHELL ["bash", "-lc"]

@@ -10,6 +10,10 @@ __pycache__/
 *.pyc
 *.deb
 windows/downloads/*
+# Keep the README so a fresh clone has the directory: Dockerfile.nvidia does an
+# unconditional `COPY downloads C:\temp\downloads` that FAILS when the (otherwise
+# fully gitignored) directory is absent from the build context.
+!windows/downloads/README.md
 linux/llm-stack/ollama-binary.tar.zst
 linux/llm-stack/.env
 linux/llm-stack/benchmark_results/

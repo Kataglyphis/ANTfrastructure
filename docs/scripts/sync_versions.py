@@ -438,6 +438,12 @@ def dockerfile_target_files() -> list[Path]:
         p = REPO_ROOT / f"linux/Dockerfile.{name}"
         if p.exists():
             result.append(p)
+    # Standalone service images build without orchestrator --build-arg forwarding,
+    # so their ARG defaults (incl. the UBUNTU_DIGEST pin) are load-bearing.
+    for rel in ['linux/webserver/Dockerfile', 'linux/llm-stack/Dockerfile']:
+        p = REPO_ROOT / rel
+        if p.exists():
+            result.append(p)
     # Windows Dockerfiles carry the same versions.env-named ARG defaults (build.ps1
     # overrides them with --build-arg, but the defaults must not drift). ARGs whose
     # names are not versions.env keys (BASE_IMAGE, CUDA_VERSION_MAJOR_MINOR,
@@ -453,8 +459,20 @@ def dockerfile_target_files() -> list[Path]:
     return result
 
 
+# ARG names that carry a versions.env value under a different name. Without an
+# alias entry, name-matching skips them and their defaults can drift silently.
+_ARG_NAME_ALIASES: dict[str, str] = {
+    "OPENCV_SOURCE_VERSION": "OPENCV_VERSION",
+}
+
+
 def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
     """Return True if file needs updating (or was updated when not dry_run)."""
+    versions = {**versions, **{
+        alias: versions[key]
+        for alias, key in _ARG_NAME_ALIASES.items()
+        if key in versions
+    }}
     version_vars = set(versions.keys())
     # newline='' preserves each line's own terminator through the round-trip: the repo
     # freezes per-file line endings (-text; windows Dockerfiles are CRLF, linux LF), so
@@ -666,10 +684,9 @@ def main() -> int:
         return 2
 
     versions = parse_versions_env()
-    snapshot = render_snapshot()
 
     if mode == "check":
-        result = check_snapshot(snapshot)
+        result = check_snapshot(render_snapshot())
         result |= check_inline_markers(versions)
         result |= check_deps_table(versions)
         result |= check_dockerfile_args(versions)
@@ -683,11 +700,14 @@ def main() -> int:
             print(lic_result.stderr, file=sys.stderr)
         return result
 
-    result = write_snapshot(snapshot)
+    # Sync Dockerfile ARG defaults BEFORE rendering the snapshot: the snapshot
+    # extracts versions from the Dockerfiles, so writing it first would leave a
+    # freshly-bumped versions.env needing a second --write pass.
+    result = write_dockerfile_args(versions)
+    result |= write_script_defaults(versions)
+    result |= write_snapshot(render_snapshot())
     result |= write_inline_markers(versions)
     result |= write_deps_table(versions)
-    result |= write_dockerfile_args(versions)
-    result |= write_script_defaults(versions)
     # Auto-regenerate website license files so they never go stale.
     import subprocess
     lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"

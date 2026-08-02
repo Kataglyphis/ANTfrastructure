@@ -149,6 +149,12 @@ function Invoke-DownloadWithRetry {
         whose first bytes don't match (e.g. an HTML error page served by a flaky aka.ms/CDN
         redirect in place of the binary) is rejected and RETRIED like any transient failure --
         the exact HTML-instead-of-binary class that broke CPython's nuget bootstrap.
+    .PARAMETER ExpectedSha256
+        Optional full-content SHA256 pin (hex, case-insensitive; canonical values live in
+        linux/scripts/01-core/versions.env *_SHA256 keys). A mismatch is treated like any
+        transient failure and retried (CDN truncation IS transient); a mismatch on the final
+        attempt throws with both hashes in the message. Empty = no content verification
+        beyond ExpectSignature, preserving existing call sites unchanged.
     #>
     param(
         [Parameter(Mandatory)][string]$Url,
@@ -157,7 +163,8 @@ function Invoke-DownloadWithRetry {
         [int]$InitialDelaySeconds = 3,
         [hashtable]$Headers = @{},
         [string]$Description = '',
-        [ValidateSet('', 'MZ', 'PK')][string]$ExpectSignature = ''
+        [ValidateSet('', 'MZ', 'PK')][string]$ExpectSignature = '',
+        [string]$ExpectedSha256 = ''
     )
     $label = if ([string]::IsNullOrWhiteSpace($Description)) { $Url } else { $Description }
     $destDir = Split-Path -Parent $DestinationPath
@@ -181,6 +188,12 @@ function Invoke-DownloadWithRetry {
                         'PK' { ($b0 -eq 0x50) -and ($b1 -eq 0x4B) }   # ZIP container (.zip)
                     }
                     if (-not $sigOk) { throw "expected a $ExpectSignature-signature file but got first bytes ${b0},${b1} (likely an HTML error page served in place of the binary)" }
+                }
+                if ($ExpectedSha256) {
+                    $actual = (Get-FileHash -Algorithm SHA256 -Path $DestinationPath).Hash
+                    if (-not [string]::Equals($actual, $ExpectedSha256, [StringComparison]::OrdinalIgnoreCase)) {
+                        throw "SHA256 mismatch: expected $ExpectedSha256 but got $actual (truncated/tampered download)"
+                    }
                 }
                 if ($attempt -gt 1) { Write-Host "  download OK on attempt ${attempt}: $label" }
                 return
@@ -423,6 +436,30 @@ function Get-MsvcToolsRoots {
     return @($roots)
 }
 
+function Resolve-LatestVersionTag {
+    <#
+    .SYNOPSIS
+        Picks the highest semantic version tag out of `git ls-remote --tags` output.
+    .DESCRIPTION
+        Extracted from build.ps1's final-stage app-ref resolution so the tag
+        filtering/sorting is unit-testable with canned ls-remote text: dereference
+        markers (^{}) are dropped, refs/tags/ is stripped, only plain v?N(.N)* tags
+        are considered, and the highest [version] wins. Returns '' (never throws)
+        when nothing matches — callers fall back to their pinned ref.
+    .PARAMETER LsRemoteOutput
+        Raw `git ls-remote --tags <repo>` output lines ("<sha>\t<ref>" per line).
+    #>
+    param([string[]]$LsRemoteOutput)
+    if (-not $LsRemoteOutput) { return '' }
+    $tags = @($LsRemoteOutput | ForEach-Object { ($_ -split "`t")[1] } |
+            Where-Object { $_ -and $_ -notmatch '\^\{\}$' } |
+            ForEach-Object { $_ -replace '^refs/tags/', '' } |
+            Where-Object { $_ -match '^v?\d+(\.\d+)*$' } |
+            Sort-Object { [version]($_ -replace '^v', '') })
+    if ($tags.Count -eq 0) { return '' }
+    return $tags[-1]
+}
+
 Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
@@ -433,7 +470,8 @@ Export-ModuleMember -Function @(
     'Test-SccacheRemoteConfigured',
     'Get-SccacheStatsText',
     'Get-VisualStudioInstallPath',
-    'Get-MsvcToolsRoots'
+    'Get-MsvcToolsRoots',
+    'Resolve-LatestVersionTag'
 )
 
 

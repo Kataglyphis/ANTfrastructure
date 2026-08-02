@@ -66,4 +66,40 @@ Describe 'Invoke-DownloadWithRetry' {
             Assert-True (Test-Path $dest) 'a valid PK/ZIP file passed the signature guard'
         }
     }
+
+    It 'accepts a download whose SHA256 matches -ExpectedSha256 (case-insensitive)' {
+        Invoke-InTestDir { param($dir)
+            $src = Join-Path $dir 'src.bin'
+            Set-Content -LiteralPath $src -Value 'hash-me' -Encoding ASCII
+            $sha = (Get-FileHash -Algorithm SHA256 -Path $src).Hash.ToLowerInvariant()
+            $dest = Join-Path $dir 'out.bin'
+            Invoke-DownloadWithRetry -Url ([Uri]$src).AbsoluteUri -DestinationPath $dest -InitialDelaySeconds 0 -ExpectedSha256 $sha
+            Assert-True (Test-Path $dest) 'a matching SHA256 (lowercase pin) passed the hash guard'
+        }
+    }
+
+    It 'rejects (and cleans up) a download whose SHA256 does not match the pin' {
+        Invoke-InTestDir { param($dir)
+            $src = Join-Path $dir 'src.bin'
+            Set-Content -LiteralPath $src -Value 'tampered-content' -Encoding ASCII
+            $dest = Join-Path $dir 'out.bin'
+            $wrong = 'deadbeef' * 8
+            Assert-Throws { Invoke-DownloadWithRetry -Url ([Uri]$src).AbsoluteUri -DestinationPath $dest -MaxAttempts 2 -InitialDelaySeconds 0 -ExpectedSha256 $wrong } 'a SHA256 mismatch must be rejected after retries'
+            Assert-False (Test-Path $dest) 'the mismatching partial is cleaned up'
+        }
+    }
+
+    It 'applies signature and SHA256 guards together (both must pass)' {
+        Invoke-InTestDir { param($dir)
+            $src = Join-Path $dir 'ok.exe'
+            [System.IO.File]::WriteAllBytes($src, [byte[]]@(0x4D, 0x5A, 0x90, 0x00))
+            $sha = (Get-FileHash -Algorithm SHA256 -Path $src).Hash
+            $dest = Join-Path $dir 'out.exe'
+            Invoke-DownloadWithRetry -Url ([Uri]$src).AbsoluteUri -DestinationPath $dest -InitialDelaySeconds 0 -ExpectSignature MZ -ExpectedSha256 $sha
+            Assert-True (Test-Path $dest) 'MZ signature + matching SHA256 passed together'
+            # Right signature, wrong hash: still rejected.
+            $dest2 = Join-Path $dir 'out2.exe'
+            Assert-Throws { Invoke-DownloadWithRetry -Url ([Uri]$src).AbsoluteUri -DestinationPath $dest2 -MaxAttempts 1 -InitialDelaySeconds 0 -ExpectSignature MZ -ExpectedSha256 ('ab' * 32) } 'valid signature must not bypass the hash guard'
+        }
+    }
 }

@@ -22,7 +22,10 @@ param(
 #requires -Version 7.0
 
     [string]$InstallDir = 'C:\runtime',
-    [string]$ScriptDir  = 'C:\temp\scripts'
+    [string]$ScriptDir  = 'C:\temp\scripts',
+    # Resume inside a preserved container after a mid-chain failure: skip the
+    # stages before the named one (see build.ps1's recovery recipe on failure).
+    [string]$ResumeFrom = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,7 +42,7 @@ $stages = @(
     @{ Name = 'FFmpeg';       Script = 'build-ffmpeg-from-source.ps1';     SourceDir = 'C:\temp\ffmpeg-src' }
 )
 
-Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir
+Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom
 
 # (FFmpeg import-lib normalization now lives INSIDE build-ffmpeg-from-source.ps1
 # — it harvests .lib/.def from prefix+build tree and regenerates from .def; the
