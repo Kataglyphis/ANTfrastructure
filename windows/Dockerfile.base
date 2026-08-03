@@ -80,8 +80,8 @@ RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 # ARG declaration keys its cache on the ARG's value, so declaring them above the
 # VS layer made a Vulkan/CMake bump re-pay the VS Build Tools install. Declared
 # here they can only invalidate scoop and the tail (their sole consumers).
-ARG VULKAN_VERSION=1.4.350.0
-ARG CMAKE_VERSION=4.4.0
+ARG VULKAN_VERSION=1.4.357.0
+ARG CMAKE_VERSION=4.4.2
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION
 

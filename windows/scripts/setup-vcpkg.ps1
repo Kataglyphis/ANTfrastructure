@@ -20,7 +20,7 @@ Import-Module $installerModulePath -Force
 # must stay >= 2026.06 -- older snapshots pin a vcpkg-tool that cannot see VS 18's
 # v145 toolset ("Unable to find a valid Visual Studio instance").
 if ([string]::IsNullOrWhiteSpace($VcpkgRef)) {
-    $VcpkgRef = if ($env:VCPKG_REF) { $env:VCPKG_REF } else { '2026.06.24' }
+    $VcpkgRef = if ($env:VCPKG_REF) { $env:VCPKG_REF } else { '2026.07.29' }
 }
 
 Write-Host "Setting up vcpkg ($VcpkgRef) at $VcpkgDir..."
@@ -43,10 +43,15 @@ if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
 }
 
 Write-Host 'Installing dependencies via vcpkg...'
-foreach ($pkg in @('zlib:x64-windows', 'protobuf:x64-windows')) {
+# protobuf was removed 2026-08-03: NOTHING consumed it. Every source build brings its
+# own protobuf (ONNX _deps, LiteRT-LM's protobuf_external + downloaded version-matched
+# protoc), and LiteRT-LM even had to HIDE vcpkg's protobuf headers to avoid version
+# skew. It only cost ~15 min of vcpkg compile in the base image. zlib stays: it feeds
+# protobuf_external's HAVE_ZLIB via CMAKE_PREFIX_PATH in the LiteRT-LM build.
+foreach ($pkg in @('zlib:x64-windows')) {
     Write-Host "  Installing $pkg..."
     & "$VcpkgDir\vcpkg.exe" install $pkg --triplet x64-windows 2>&1 | Out-Null
-    # Fail loudly: a silently-missing protobuf/zlib surfaces much later as an
+    # Fail loudly: a silently-missing zlib surfaces much later as an
     # opaque link error deep in a media build.
     if ($LASTEXITCODE -ne 0) { throw "vcpkg install $pkg failed (exit $LASTEXITCODE)" }
     Write-Host "  $pkg installed successfully"

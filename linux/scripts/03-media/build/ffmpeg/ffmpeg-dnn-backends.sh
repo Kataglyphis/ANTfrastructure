@@ -58,7 +58,7 @@ ffmpeg_probe_libonnxruntime() {
 ensure_tensorflow_c_sdk() {
     local cache_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
     local tf_dir="${cache_dir}/tensorflow-c"
-    local tf_version="${TENSORFLOW_C_VERSION:-2.16.1}"
+    local tf_version="${TENSORFLOW_C_VERSION:-2.21.0}"
     local tf_archive
 
     if [ -f "${tf_dir}/lib/libtensorflow.so" ] && [ -f "${tf_dir}/include/tensorflow/c/c_api.h" ]; then
@@ -135,7 +135,7 @@ ffmpeg_probe_libtensorflow() {
     done
     if [ -n "${tf_base}" ] && ffmpeg_enable_via_synth_pkgconfig "libtensorflow" "tensorflow" \
         "tensorflow/c/c_api.h" "TF_Version TF_NewGraph" "${tf_base}" \
-        "-I${tf_base}/include" "-L${tf_base}/lib -ltensorflow" "${TENSORFLOW_C_VERSION:-2.16.1}"; then
+        "-I${tf_base}/include" "-L${tf_base}/lib -ltensorflow" "${TENSORFLOW_C_VERSION:-2.21.0}"; then
         echo "TensorFlow C SDK enabled via synthesized pkg-config at ${tf_base}."
         return 0
     fi
@@ -178,7 +178,7 @@ ffmpeg_probe_libopenvino() {
     [ -d "${ov_base}/runtime/lib" ] && ov_lib_dir="${ov_base}/runtime/lib" || ov_lib_dir="${ov_base}/lib"
     if ffmpeg_enable_via_synth_pkgconfig "libopenvino" "openvino" \
         "openvino/c/openvino.h" "ov_get_openvino_version" "${ov_base}" \
-        "-I${ov_base}/runtime/include" "-L${ov_lib_dir} -lopenvino" "${OPENVINO_VERSION:-2024.0}"; then
+        "-I${ov_base}/runtime/include" "-L${ov_lib_dir} -lopenvino" "${OPENVINO_VERSION:-2026.2.1}"; then
         return 0
     fi
 

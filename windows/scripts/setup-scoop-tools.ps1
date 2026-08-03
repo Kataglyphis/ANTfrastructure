@@ -96,7 +96,15 @@ if ([string]::IsNullOrWhiteSpace($VulkanVersion)) {
     scoop install "main/vulkan@$VulkanVersion"
 }
 
-scoop install --global extras/flutter
+# Flutter pinned to versions.env FLUTTER_VERSION (baked env) — previously the
+# ONLY versions.env-managed tool installed floating here, so the Windows image
+# could silently diverge from the Linux lane's Flutter. Empty env falls back to
+# scoop's current manifest (standalone runs), same pattern as vulkan/cmake.
+if ([string]::IsNullOrWhiteSpace($env:FLUTTER_VERSION)) {
+    scoop install --global extras/flutter
+} else {
+    scoop install --global "extras/flutter@$($env:FLUTTER_VERSION)"
+}
 # llvm DELIBERATELY UNPINNED (Windows tracks scoop's latest; versions.env's LLVM_RELEASE
 # pins only the Linux lane -- the smoke test asserts a well-formed clang-cl version, not
 # that value).

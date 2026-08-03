@@ -176,9 +176,11 @@ print("iree python gate OK: abs(-5) =", value)
 
 Remove-SourceBuildTree -Path $SourceDir
 
-# Hit/miss counters die with this container -- dump them into the run log now.
-Write-SccacheStats -Label 'media-iree'
 
 Write-Host '=== IREE source build completed ==='
 Write-Host "Artifacts at: $ireeInstallDir"
 
+# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
+# code otherwise -- a best-effort cleanup once failed a fully green stage with
+# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+exit 0

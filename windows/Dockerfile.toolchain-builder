@@ -14,7 +14,7 @@
 # drop-in replacement for the old Dockerfile.toolchain output.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-sdk
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS builder
 
 ARG PYTHON_VERSION=3.14.6
 # Baked as ENV so the run+commit compile script sees the canonical version.
@@ -46,3 +46,11 @@ COPY windows\scripts\build-toolchain-all.ps1 C:\temp\scripts\
 # produced by the run step, but ENV is metadata and is carried over by the commit).
 ENV PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
 ENV PATH=$PYTHON_BUILD_BIN;$PATH
+
+# ── BuildKit lane (buildctl --opt target=built) ──────────────────────────────
+# Under buildkitd/containerd this host commits PROCESS-isolated layers and RUN
+# steps see all host CPUs, so the heavy compile can be a plain LAYER — no
+# run+commit. The classic docker lane builds `--target builder` (build.ps1 pins
+# it, since docker defaults to the LAST stage) and never executes this RUN.
+FROM builder AS built
+RUN & 'C:\temp\scripts\build-toolchain-all.ps1'

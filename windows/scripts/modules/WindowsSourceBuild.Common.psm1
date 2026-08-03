@@ -197,7 +197,12 @@ function Get-VsInstallPath {
 }
 
 function Get-MsvcToolsRoot {
-    return (Get-MsvcToolsRoots)[0]
+    # @() re-wrap is LOAD-BEARING: PowerShell flattens a single-element array on
+    # return, so with exactly ONE installed toolset `(...)[0]` indexed a STRING
+    # and returned 'C' — which sent the GenAI yvals_core.h clang patch at
+    # 'C\include\yvals_core.h' (a silent no-op) and let STL1009 kill the build.
+    # Old VS images had several toolsets, masking this since the consolidation.
+    return @(Get-MsvcToolsRoots)[0]
 }
 
 function Resolve-LlvmArchiver {
@@ -261,6 +266,16 @@ function Get-WindowsX86SimdFlags {
 }
 
 function Get-WindowsX86Avx512Flags {
+    # NEVER put these in global CXX flags. Field-proven on 2026-08-03 (ORT
+    # v1.28, AVX2-only 5950X): globally, clang may emit AVX-512 anywhere — the
+    # in-tree protoc AND onnxruntime.dll's static initializers both crashed at
+    # RUN/LOAD time with STATUS_ILLEGAL_INSTRUCTION. But entirely without them
+    # MLAS's arch TUs (qgemm_kernel_amx, intrinsics/avx512/*) fail to COMPILE:
+    # clang-cl gates intrinsics behind target features and ORT's mlas.cmake
+    # adds no per-file -m flags on its MSVC branch. The settled design:
+    # build-onnx-from-source.ps1 appends this string per-TU to exactly those
+    # MLAS FLAGS lines in build.ninja post-configure — the only place the
+    # features may be assumed, because those kernels are runtime-dispatched.
     return '/clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16'
 }
 
@@ -340,6 +355,9 @@ function Remove-SourceBuildTree {
     )
     if ($env:KEEP_BUILD_ARTIFACTS -eq '1') {
         Write-Host "KEEP_BUILD_ARTIFACTS=1 - keeping: $($Path -join ', ')"
+        # Same contract as the normal exit below: this call never carries an
+        # exit code, on ANY path (the early return must not leak a stale one).
+        $global:LASTEXITCODE = 0
         return
     }
     foreach ($p in $Path) {
@@ -349,6 +367,12 @@ function Remove-SourceBuildTree {
         & cmd.exe /c "rd /s /q ""$p""" 2>$null
         if (Test-Path $p) { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    # Cleanup is best-effort by design; its exit code must NEVER outlive this
+    # function. `rd` exiting 145 (ERROR_DIR_NOT_EMPTY, lingering AV/compiler
+    # handle) once made Invoke-SourceBuildChain declare a fully green LiteRT-LM
+    # stage "failed (exit 145)" — the chain reads the AMBIENT $LASTEXITCODE
+    # after each in-process stage, and stage scripts routinely end on this call.
+    $global:LASTEXITCODE = 0
 }
 
 function Get-BuildJobCount {
@@ -516,8 +540,13 @@ function Test-PythonImport {
     # getattr fallback: not every binding exposes __version__ (iree.compiler
     # does not) and the assert is about IMPORTABILITY, not version metadata.
     # Single quotes only -- PS 5.1 strips embedded double quotes in -c strings.
+    # -I (isolated mode): drop CWD from sys.path. The callers sit inside the
+    # SOURCE tree when this runs, and a source dir named like the module (e.g.
+    # C:\temp\onnx-src\onnxruntime\) SHADOWS the installed wheel — the assert
+    # then fails against the source stub while the install is perfectly fine
+    # (bit ORT v1.28 first). Isolated mode asserts the INSTALLED module only.
     if (-not $VersionExpression) { $VersionExpression = "getattr($ModuleName, '__version__', 'imported')" }
-    $out = cmd.exe /c """$($Python.Exe)"" -c ""import $ModuleName; print($VersionExpression)"" 2>&1"
+    $out = cmd.exe /c """$($Python.Exe)"" -I -c ""import $ModuleName; print($VersionExpression)"" 2>&1"
     $code = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     $tail = if ($out) { (@($out) | Select-Object -Last 1).ToString().Trim() } else { '' }
     if ($code -ne 0) { throw "import $ModuleName failed right after install (exit $code): $tail" }
@@ -592,14 +621,20 @@ function Invoke-SourceBuildChain {
         # stages' output is already in $InstallDir) instead of re-paying hours of
         # compile. Unknown names throw immediately — a typo must not silently
         # rebuild from the start.
-        [string]$StartAt = ''
+        [string]$StartAt = '',
+        # Stop AFTER the named stage (inclusive). Lets the BuildKit lane split one
+        # chain across multiple RUN layers (-Until 'X' in layer 1, -StartAt '<next>'
+        # in layer 2): smaller layers finalize more reliably and cache per-half.
+        # Unknown names throw, same rationale as -StartAt.
+        [string]$Until = ''
     )
     $ErrorActionPreference = 'Stop'
-    if ($StartAt) {
-        $names = @($Stages | ForEach-Object { $_.Name })
-        if ($names -notcontains $StartAt) {
-            throw "Invoke-SourceBuildChain: -StartAt '$StartAt' is not a stage of '$Label' (stages: $($names -join ', '))"
-        }
+    $names = @($Stages | ForEach-Object { $_.Name })
+    if ($StartAt -and ($names -notcontains $StartAt)) {
+        throw "Invoke-SourceBuildChain: -StartAt '$StartAt' is not a stage of '$Label' (stages: $($names -join ', '))"
+    }
+    if ($Until -and ($names -notcontains $Until)) {
+        throw "Invoke-SourceBuildChain: -Until '$Until' is not a stage of '$Label' (stages: $($names -join ', '))"
     }
     $skipping = [bool]$StartAt
     foreach ($stage in $Stages) {
@@ -615,7 +650,16 @@ function Invoke-SourceBuildChain {
         & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
         $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
         if ($exitCode) { throw "$($stage.Name) build failed (exit $exitCode)" }
+        if ($Until -and ($stage.Name -eq $Until)) {
+            Write-Host "`n=== $Label chain: stopped after '$Until' (-Until) — remaining stages run in a later layer ==="
+            break
+        }
     }
+    # ONE stats dump per chain run, here — leaf scripts and wrappers used to
+    # each call Write-SccacheStats themselves (tvm branch reported twice, litert
+    # once, media-tvm-all not at all). Counters die with the container, so this
+    # is the last chance to get them into the run log.
+    Write-SccacheStats -Label $Label
 }
 
 function Copy-SidecarDll {

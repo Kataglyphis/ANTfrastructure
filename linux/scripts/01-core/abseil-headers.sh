@@ -32,7 +32,7 @@ fi
 # Returns: 0 on success (or skip), 1 on hard failure (caller decides to err/warn).
 install_abseil_headers() {
   local dest_dir="${1:-/usr/local/include}"
-  local absl_tag="${2:-${ABSEIL_VERSION:-20240722.0}}"
+  local absl_tag="${2:-${ABSEIL_VERSION:-20260526.0}}"
   local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_tag}.tar.gz"
   local absl_tar="/tmp/abseil-${absl_tag}-$$.tar.gz"
   local marker="${dest_dir}/absl/types/span.h"

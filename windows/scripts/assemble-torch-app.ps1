@@ -45,7 +45,14 @@ function Invoke-TorchAppNative {
     cmd.exe /s /c " $CommandLine 2>&1"
     $code = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     if ($code -ne 0) {
-        if ($Optional) { Write-Warning "$Label failed (exit $code) -- continuing"; return }
+        if ($Optional) {
+            Write-Warning "$Label failed (exit $code) -- continuing"
+            # -Optional swallows the throw; it must swallow the exit code too,
+            # or an optional step's failure leaks out as the SCRIPT's exit code
+            # (docker build then fails a green torch stage).
+            $global:LASTEXITCODE = 0
+            return
+        }
         throw "$Label failed (exit $code)"
     }
 }
@@ -191,3 +198,6 @@ print('torch-app-env OK')
 if ($Mode -in @('install', 'all')) { Install-TorchAppEnvironment }
 if ($Mode -in @('verify', 'all')) { Test-TorchAppEnvironment }
 
+# Explicit success: pwsh -File (and docker RUN) propagate the LAST native exit
+# code otherwise. Real failures throw above; reaching EOF IS success.
+exit 0

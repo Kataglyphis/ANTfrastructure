@@ -146,12 +146,13 @@ if (Test-Path $onnxRuntimeDir) {
     if ($header) {
         $ffCompatInc = Join-Path $srcDir 'compat\onnx'
         New-Item -Path $ffCompatInc -ItemType Directory -Force | Out-Null
-        Copy-Item $header.FullName "$ffCompatInc\" -Force
-        $cxxHeader = Join-Path $header.Directory 'onnxruntime_cxx_api.h'
-        if (Test-Path $cxxHeader) { Copy-Item $cxxHeader "$ffCompatInc\" -Force }
-        $epHeader = Join-Path $header.Directory 'onnxruntime_ep_c_api.h'
-        if (Test-Path $epHeader) { Copy-Item $epHeader "$ffCompatInc\" -Force }
-        Write-Host "Copied ONNX headers to: $ffCompatInc"
+        # Mirror the WHOLE staged include dir, not a hand-picked header list:
+        # ORT 1.28 split the C API across new siblings (onnxruntime_error_code.h)
+        # and the old c/cxx/ep cherry-pick made configure's probe fail with
+        # 'file not found'. Copying everything is drift-proof.
+        $ortHeaders = @(Get-ChildItem $header.Directory -File)
+        $ortHeaders | Copy-Item -Destination $ffCompatInc -Force
+        Write-Host "Copied $($ortHeaders.Count) ONNX header(s) to: $ffCompatInc"
         $onnxHeaderCopied = $true
     } else {
         Write-Warning "ONNX Runtime header onnxruntime_c_api.h not found under $onnxRuntimeDir"
@@ -422,6 +423,7 @@ Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -Mo
 Remove-SourceBuildTree -Path $pyavSrcRoot
 Write-Host '=== PyAV wheel build completed ==='
 
-
-
-
+# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
+# code otherwise -- a best-effort cleanup once failed a fully green stage with
+# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+exit 0

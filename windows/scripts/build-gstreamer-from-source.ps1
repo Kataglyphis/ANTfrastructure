@@ -590,4 +590,7 @@ int _isatty(int);
     Stop-StructuredLogging -Context $logContext
 }
 
-
+# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
+# code otherwise -- a best-effort cleanup once failed a fully green stage with
+# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+exit 0

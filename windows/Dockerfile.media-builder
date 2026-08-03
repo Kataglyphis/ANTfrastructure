@@ -24,8 +24,8 @@ FROM ${BASE_IMAGE} AS common
 ARG MEMORY_LIMIT_GB=""
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 
-ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
-ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
+    SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
@@ -45,21 +45,24 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
 # ── media-core builder (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg) ───────────
 FROM common AS media-core
 
-ARG ONNXRUNTIME_VERSION=v1.27.0
-ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
+ARG ONNXRUNTIME_VERSION=v1.28.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.15.0
 ARG OPENCV_SOURCE_VERSION=5.x
 ARG FFMPEG_VERSION=master
 ARG PYAV_VERSION=18.0.0
-ARG NV_CODEC_HEADERS_REF=n13.0.19.0
+ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 ARG CUDA_ARCHITECTURES="80;86;89;90"
 
-ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}"
-ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
-ENV OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}"
-ENV FFMPEG_VERSION="${FFMPEG_VERSION}"
-ENV PYAV_VERSION="${PYAV_VERSION}"
-ENV NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}"
-ENV CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
+# ONE ENV instruction: the classic builder pays a layer per instruction and the
+# chain runs against Docker's 125-layer cap (see docs/windows-builds.md § layer
+# budget). Plain ARG passthroughs, no interdependency.
+ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
+    ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
+    OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
+    FFMPEG_VERSION="${FFMPEG_VERSION}" `
+    PYAV_VERSION="${PYAV_VERSION}" `
+    NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
+    CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
 
 COPY windows\scripts\patches\onnxruntime     C:\temp\scripts\patches\onnxruntime
 COPY windows\scripts\patches\opencv          C:\temp\scripts\patches\opencv
@@ -77,10 +80,10 @@ COPY windows\scripts\build-onnx-from-source.ps1 `
 FROM common AS media-litert
 
 ARG LITERT_VERSION=v2.1.6
-ARG LITERT_LM_VERSION=0.13.1
+ARG LITERT_LM_VERSION=0.14.0
 
-ENV LITERT_VERSION="${LITERT_VERSION}"
-ENV LITERT_LM_VERSION="${LITERT_LM_VERSION}"
+ENV LITERT_VERSION="${LITERT_VERSION}" `
+    LITERT_LM_VERSION="${LITERT_LM_VERSION}"
 
 # LiteRT-LM's Windows shims (POSIX headers + CRT-compat source) and CMake patch
 # snippets -- the build script stages them from these $PSScriptRoot-relative dirs.
@@ -99,8 +102,8 @@ FROM common AS media-tvm
 ARG TVM_REF=v0.25.0
 ARG IREE_VERSION=v3.11.0
 
-ENV TVM_REF="${TVM_REF}"
-ENV IREE_VERSION="${IREE_VERSION}"
+ENV TVM_REF="${TVM_REF}" `
+    IREE_VERSION="${IREE_VERSION}"
 
 COPY windows\scripts\patches\iree C:\temp\scripts\patches\iree
 
@@ -108,3 +111,28 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
      windows\scripts\build-iree-from-source.ps1 `
      windows\scripts\build-media-tvm-all.ps1 `
      C:\temp\scripts\
+
+# ── BuildKit lane (buildctl --opt target=media-<branch>-built) ───────────────
+# Under buildkitd/containerd this host commits PROCESS-isolated layers and RUN
+# steps see all host CPUs, so each branch compile is a plain LAYER — no
+# run+commit. The classic docker lane always passes --target media-<branch>
+# (build.ps1 Get-MediaBranchSpecs) and never executes these RUNs. MEMORY note:
+# process isolation exposes host RAM; MEMORY_LIMIT_GB (baked as ENV above per
+# branch) is what Get-BuildJobCount caps parallelism with — same budget model
+# as the run+commit path.
+FROM media-core AS media-core-built
+# PER-LIBRARY RUN layers, not one monolith: a single ~25 GB media-core layer
+# deterministically failed snapshot finalize on this host (hcsshim::ExportLayer
+# 0x3 "path not found" during buildkit's reimport, 2026-08-03) — and per-lib
+# layers cache independently (an FFmpeg fix recompiles NOTHING else). The
+# -Until/-StartAt partition semantics are unit-tested (SourceBuild.Chain).
+RUN & 'C:\temp\scripts\build-media-core-all.ps1' -Until 'ONNX Runtime'
+RUN & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI'
+RUN & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV'
+RUN & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'FFmpeg'
+
+FROM media-litert AS media-litert-built
+RUN & 'C:\temp\scripts\build-litert-all.ps1'
+
+FROM media-tvm AS media-tvm-built
+RUN & 'C:\temp\scripts\build-media-tvm-all.ps1'

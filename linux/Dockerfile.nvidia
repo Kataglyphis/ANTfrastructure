@@ -37,8 +37,8 @@ FROM ${BASE_IMAGE}
 # platforms pin the exact same NVIDIA releases.
 # ------------------------------------------------------------------------------
 # CUDA 13.3 requires driver >= 590.44.01 (Linux)
-ARG CUDA_VERSION=13.3.0
-ARG CUDNN_VERSION=9.23.2.1
+ARG CUDA_VERSION=13.3.1
+ARG CUDNN_VERSION=9.25.0.15
 ARG TENSORRT_VERSION=11.1.0.106
 # Apt package-name forms derived from the shared semvers:
 #   13.3.0 → 13.3 (repo paths) → 13-3 (apt package suffix); 9.23.2.1 → 9 (cuDNN major)

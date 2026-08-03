@@ -146,6 +146,23 @@ param(
     # out-of-band (e.g. an incremental component rebuild committed straight onto windows-media-core)
     # without paying to recompile the whole branch. All three branch images must already exist.
     [switch]$SkipMediaBranches,
+    # ── Scripted resume of a preserved run+commit container ──────────────────
+    # After a non-transient mid-chain failure, Invoke-RunCommitStage PRESERVES
+    # the container and prints a manual recipe. These parameters EXECUTE that
+    # recipe instead of hand-typing it (it was hand-typed 5x on 2026-08-03):
+    #   .\windows\build.ps1 -ResumeStage media-litert -ResumeFrom 'LiteRT-LM' `
+    #        -CopyFix windows\scripts\build-litert-lm-from-source.ps1
+    # Flow: [docker cp each -CopyFix into C:\temp\scripts\] -> commit
+    # <tag>-partial -> rm container -> run from the partial with -ResumeFrom ->
+    # commit <tag> -> cleanup. Runs INSTEAD of the normal stage chain.
+    [ValidateSet('media-core', 'media-litert', 'media-tvm')]
+    [string]$ResumeStage = '',
+    # Stage name inside the branch chain to resume AT (see the '=== <label>
+    # stage: X ===' banners in the stage log). Required with -ResumeStage.
+    [string]$ResumeFrom = '',
+    # Host-side script files to docker cp into the container's C:\temp\scripts\
+    # BEFORE the partial commit (the fix that makes the resume worth running).
+    [string[]]$CopyFix = @(),
     [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT,
     # Container isolation policy. 'auto' (default) PREFERS process isolation —
     # full host CPUs for docker build AND docker run, no 2-CPU Hyper-V cap — and
@@ -227,7 +244,9 @@ $script:TransientPattern = 'ttrpc: closed|failed to create shim task|failed to c
 # `docker build` stages run at 2 CPUs. Raising this requires a docker-run+commit
 # path (docker run --cpu-count N does honor the flag under Hyper-V).
 
-# ---- resolve docker CLI (Stevedore's docker.exe preferred; nerdctl build has broken DNS) ----
+# ---- resolve docker CLI (Stevedore's docker.exe; nerdctl needs an elevated shell for
+# containerd's pipe, and buildctl/buildkitd — see build-buildkit.ps1 — covers the
+# CNI-networked BuildKit path that nerdctl's missing-DNS symptom actually pointed at) ----
 if ([string]::IsNullOrWhiteSpace($Docker)) {
     $candidates = @(
         $env:DOCKER_EXE,
@@ -610,8 +629,11 @@ function Invoke-RunCommitStage {
     #    failure -OnFinalFailure preserves it and prints the -ResumeFrom recovery recipe.
     # Isolation from the probe-gated policy: process (preferred; full CPUs
     # natively, commit verified by the probe) or hyperv (where --cpu-count is
-    # what grants the cores). --cpu-count/--memory apply under both.
-    $runArgs = @('run', '--isolation', $script:BuildIsolation, '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
+    # what grants the cores). --cpu-count/--memory apply under both. Captured
+    # as a LOCAL because the .GetNewClosure() blocks below cannot resolve
+    # $script: scope (the empty "--isolation " in the first resume recipe).
+    $isolation = $script:BuildIsolation
+    $runArgs = @('run', '--isolation', $isolation, '--cpu-count', "$Cpus", '--memory', "${MemoryGb}g",
         '--name', $ContainerName, $BuilderTag) + $RunCommand
     $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker
     # Script FUNCTIONS need the same treatment as $Docker: a .GetNewClosure() block
@@ -626,7 +648,7 @@ function Invoke-RunCommitStage {
         param($attempt)
         & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
         & $setBuildPhase "run:$Label"
-        Write-Host "`n==> [$Label] docker run --isolation $($script:BuildIsolation) --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
+        Write-Host "`n==> [$Label] docker run --isolation $isolation --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
         & $dockerExe @runArgs 2>&1 | Tee-Object -FilePath $OutLog
     }.GetNewClosure()
     $onSuccess = {
@@ -664,7 +686,7 @@ function Invoke-RunCommitStage {
         Write-Host ("[$Label] Resume (check $OutLog for the last '=== ... stage:' banner to pick <stage>):") -ForegroundColor Yellow
         Write-Host ("    docker commit $ContainerName ${ResultTag}-partial")
         Write-Host ("    docker container rm -f $ContainerName")
-        Write-Host ("    docker run --isolation $($script:BuildIsolation) --cpu-count $Cpus --memory ${MemoryGb}g --name $ContainerName ${ResultTag}-partial " + ($runCommand -join ' ') + " -ResumeFrom '<stage>'")
+        Write-Host ("    docker run --isolation $isolation --cpu-count $Cpus --memory ${MemoryGb}g --name $ContainerName ${ResultTag}-partial " + ($runCommand -join ' ') + " -ResumeFrom '<stage>'")
         Write-Host ("    docker commit $ContainerName $ResultTag ; docker container rm -f $ContainerName")
         Write-Host ("[$Label] Or discard: docker container rm -f $ContainerName") -ForegroundColor Yellow
     }.GetNewClosure()
@@ -738,6 +760,51 @@ function Invoke-MediaBranches {
     Write-Host 'All media branches built.' -ForegroundColor Green
 }
 
+function Invoke-ResumeRunCommit {
+    # Scripted version of the manual recovery recipe Invoke-RunCommitStage
+    # prints on a final failure. The container invariant is identical: it is
+    # NEVER removed before a successful commit (it holds hours of compile).
+    $spec = @(Get-MediaBranchSpecs) | Where-Object { $_.Name -eq $ResumeStage } | Select-Object -First 1
+    if (-not $spec) { throw "-ResumeStage '$ResumeStage' has no branch spec" }
+    if (-not $ResumeFrom) { throw "-ResumeStage requires -ResumeFrom '<stage name>' (see the '=== $($spec.Name) stage: X ===' banners in the stage log)" }
+    $container = $spec.ContainerName
+    $state = & $Docker inspect $container --format '{{.State.Status}}' 2>$null
+    if ($LASTEXITCODE -ne 0) { throw "container '$container' not found — nothing to resume (was it discarded?)" }
+    if ($state -ne 'exited') { throw "container '$container' is '$state' — resume needs it exited (docker cp cannot touch a running Hyper-V container)" }
+
+    foreach ($fix in $CopyFix) {
+        if (-not (Test-Path $fix)) { throw "-CopyFix file not found: $fix" }
+        $leaf = Split-Path $fix -Leaf
+        & $Docker cp $fix "${container}:C:\temp\scripts\$leaf"
+        if ($LASTEXITCODE -ne 0) { throw "docker cp '$fix' into $container failed" }
+        Write-Host "[resume:$ResumeStage] injected fix: $leaf" -ForegroundColor Cyan
+    }
+
+    $partial = "$($spec.Tag)-partial"
+    Write-Host "[resume:$ResumeStage] committing preserved container -> $partial" -ForegroundColor Cyan
+    & $Docker commit $container $partial | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "partial commit failed — container '$container' left untouched" }
+    & $Docker container rm -f $container | Out-Null
+
+    $isolation = $script:BuildIsolation
+    $outLog = Join-Path $script:LogDir "$($spec.Name).log"
+    $runCmd = (Get-MediaRunCommand $spec.RunScript) + @('-ResumeFrom', $ResumeFrom)
+    Write-Host "[resume:$ResumeStage] docker run --isolation $isolation --cpu-count $MediaCoreCpus --memory ${MediaMemoryGb}g -ResumeFrom '$ResumeFrom'" -ForegroundColor Cyan
+    & $Docker run --isolation $isolation --cpu-count $MediaCoreCpus --memory "${MediaMemoryGb}g" --name $container $partial @runCmd 2>&1 | Tee-Object -FilePath $outLog
+    if ($LASTEXITCODE -ne 0) {
+        throw ("[resume:$ResumeStage] run FAILED (exit $LASTEXITCODE) — container '$container' PRESERVED again; " +
+               "fix forward and re-run: .\windows\build.ps1 -ResumeStage $ResumeStage -ResumeFrom '<stage>' [-CopyFix <file>]")
+    }
+    Write-Host "[resume:$ResumeStage] committing -> $($spec.Tag)" -ForegroundColor Cyan
+    & $Docker commit $container $spec.Tag | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "[resume:$ResumeStage] FINAL commit failed — container '$container' PRESERVED (recover: docker commit $container $($spec.Tag))"
+    }
+    & $Docker container rm -f $container 2>&1 | Out-Null
+    & $Docker image rm -f $partial 2>&1 | Out-Null
+    Write-Host "[resume:$ResumeStage] COMMITTED $($spec.Tag) — continue the chain with e.g. -Stages media,torch,final -SkipMediaBranches (or -MediaBranches for remaining branches)" -ForegroundColor Green
+}
+
 # -MediaMemoryGb 0 = auto-detect from host RAM (usable minus host reserve).
 # Sequential is the only schedule (media-core runs first with the full budget,
 # then aux branches also get full RAM since media-core already committed).
@@ -756,6 +823,14 @@ if ($MediaMemoryGb -le 0) {
 $started = Get-Date
 
 try {
+    if ($ResumeStage) {
+        # Scripted recovery mode: runs INSTEAD of the stage chain (continue the
+        # chain afterwards with -Stages media,torch,final -SkipMediaBranches /
+        # -MediaBranches as the success message suggests).
+        Invoke-ResumeRunCommit
+        Write-Host ("`nDone in {0:hh\:mm\:ss}. Resume of {1} completed." -f ((Get-Date) - $started), $ResumeStage) -ForegroundColor Green
+        return
+    }
     if ($Stages -contains 'base') {
         Invoke-Stage -Dockerfile 'windows/Dockerfile.base' -Tag $script:ImageTag.base -BuildArgs @{
             WINDOWS_LTSC      = Get-Ver 'WINDOWS_LTSC'
@@ -784,6 +859,10 @@ try {
                 CUDA_VERSION_MAJOR_MINOR = $cudaMajorMinor
                 CUDNN_VERSION            = Get-Ver 'CUDNN_VERSION'
                 TENSORRT_VERSION         = Get-Ver 'TENSORRT_VERSION'
+                # Hashes as ARGs: the base image's baked versions.env is stale
+                # right after a bump — these must move WITH the version pins.
+                CUDA_INSTALLER_SHA256    = Get-Ver 'CUDA_INSTALLER_SHA256'
+                CUDNN_ZIP_SHA256         = Get-Ver 'CUDNN_ZIP_SHA256'
             }
         } else {
             Write-Host "`n==> CPU lane: tagging windows-base as windows-sdk (no GPU layer)" -ForegroundColor Cyan
@@ -808,6 +887,7 @@ try {
                 BASE_IMAGE     = $script:ImageTag.sdk
                 PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
             } `
+            -BuilderExtraFlags @('--target', 'builder') `
             -Label 'toolchain' -OutLog $tcLog
     }
 
@@ -860,6 +940,7 @@ try {
             -RunCommand    (Get-MediaRunCommand 'build-gstreamer-from-source.ps1' -ExtraArgs @('-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs')) `
             -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
             -BuildArgs $mergeArgs `
+            -BuilderExtraFlags @('--target', 'merge') `
             -Label 'media-merge+gstreamer' -OutLog $gstLog
     }
 

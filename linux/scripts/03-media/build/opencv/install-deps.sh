@@ -80,7 +80,7 @@ if is_cross && [ "$(cross_target_arch)" != "amd64" ]; then
     fi
     # If still not installed (package not available), cross-compile freetype from source.
     _ft_triplet="$(cross_target_triplet 2>/dev/null || true)"
-    _ft_ver="${FREETYPE_VERSION:-2.14.2}"
+    _ft_ver="${FREETYPE_VERSION:-2.14.3}"
     if [ -n "${_ft_triplet}" ]; then
         cross_compile_cmake_lib_from_source freetype \
           "https://github.com/freetype/freetype/archive/refs/tags/VER-${_ft_ver//./-}.tar.gz" \
@@ -106,7 +106,7 @@ fi
 # frequently broken, so we build from source not apt.
 if is_cross && [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
     _png_triplet="$(cross_target_triplet 2>/dev/null || true)"
-    _png_ver="${LIBPNG_VERSION:-1.6.44}"
+    _png_ver="${LIBPNG_VERSION:-1.6.58}"
     if [ -n "${_png_triplet}" ]; then
         # Mirrors tried in order by cross_compile_cmake_lib_from_source. curl to
         # codeload.github.com / downloads.sourceforge.net FAILS inside the buildkit

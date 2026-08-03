@@ -25,7 +25,12 @@ param(
     [string]$ScriptDir  = 'C:\temp\scripts',
     # Resume inside a preserved container after a mid-chain failure: skip the
     # stages before the named one (see build.ps1's recovery recipe on failure).
-    [string]$ResumeFrom = ''
+    [string]$ResumeFrom = '',
+    # Stop after the named stage (inclusive). The BuildKit lane splits this chain
+    # across two RUN layers (ONNX+GenAI, then OpenCV+FFmpeg): a single ~25 GB
+    # layer failed hcsshim ExportLayer at snapshot finalize (2026-08-03), and the
+    # split also gives per-half layer caching.
+    [string]$Until = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,14 +47,16 @@ $stages = @(
     @{ Name = 'FFmpeg';       Script = 'build-ffmpeg-from-source.ps1';     SourceDir = 'C:\temp\ffmpeg-src' }
 )
 
-Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom
+Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom -Until $Until
 
 # (FFmpeg import-lib normalization now lives INSIDE build-ffmpeg-from-source.ps1
 # — it harvests .lib/.def from prefix+build tree and regenerates from .def; the
 # bin\->lib\ copy that used to sit here would silently mask a regression there.)
 
-# Hit/miss counters die with this container -- dump them into the run log now.
-Write-SccacheStats -Label 'media-core'
 
 Write-Host "`n=== media-core chain completed ==="
 
+# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
+# code otherwise -- a best-effort cleanup once failed a fully green stage with
+# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+exit 0

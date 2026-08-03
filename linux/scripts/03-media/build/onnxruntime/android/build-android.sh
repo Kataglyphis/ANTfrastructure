@@ -12,7 +12,7 @@ case "${TARGET_ARCH}" in
     ;;
 esac
 
-ORT_VERSION="${1:-${ONNXRUNTIME_VERSION:-v1.27.0}}"
+ORT_VERSION="${1:-${ONNXRUNTIME_VERSION:-v1.28.0}}"
 INSTALL_DIR="${ONNXRUNTIME_ROOT_ANDROID:-/opt/android/onnxruntime}"
 
 apt-get update && apt-get install -y --no-install-recommends \

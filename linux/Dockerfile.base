@@ -11,17 +11,17 @@
 # their own platform manifest. Refresh UBUNTU_DIGEST in versions.env whenever
 # UBUNTU_VERSION is bumped (verify-arg-consistency.sh polices the pair).
 ARG UBUNTU_VERSION=26.04
-ARG UBUNTU_DIGEST=sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
+ARG UBUNTU_DIGEST=sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb
 FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST}
 
 ARG TARGETARCH
-ARG VULKAN_VERSION=1.4.350.0
+ARG VULKAN_VERSION=1.4.357.0
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
-ARG CMAKE_VERSION=4.4.0
-ARG NODE_VERSION=26.4.0
-ARG UV_VERSION=0.11.25
+ARG CMAKE_VERSION=4.4.2
+ARG NODE_VERSION=26.5.1
+ARG UV_VERSION=0.12.1
 
 # ------------------------------------------------------------------------------
 # Shell

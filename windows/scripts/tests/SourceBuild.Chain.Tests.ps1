@@ -77,6 +77,54 @@ Describe 'Invoke-SourceBuildChain' {
         }
     }
 
+    It '-Until stops AFTER the named stage (inclusive) — the BK split-layer path' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'until.log'
+            $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value `$SourceDir"
+            foreach ($s in 'a', 'b', 'c') { Set-Content -LiteralPath (Join-Path $dir "$s.ps1") -Value $body -Encoding ASCII }
+            $stages = @(
+                @{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'src-a' }
+                @{ Name = 'B'; Script = 'b.ps1'; SourceDir = 'src-b' }
+                @{ Name = 'C'; Script = 'c.ps1'; SourceDir = 'src-c' }
+            )
+            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'B'
+
+            $ran = @(Get-Content -LiteralPath $log)
+            Assert-Equal 2 $ran.Count 'exactly the prefix through -Until ran'
+            Assert-Equal 'src-b' $ran[1] 'the -Until stage itself DID run (inclusive)'
+        }
+    }
+
+    It '-Until layer 1 + -StartAt layer 2 partition the chain without overlap or gap' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'split.log'
+            $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value `$SourceDir"
+            foreach ($s in 'a', 'b', 'c', 'd') { Set-Content -LiteralPath (Join-Path $dir "$s.ps1") -Value $body -Encoding ASCII }
+            $stages = @(
+                @{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'src-a' }
+                @{ Name = 'B'; Script = 'b.ps1'; SourceDir = 'src-b' }
+                @{ Name = 'C'; Script = 'c.ps1'; SourceDir = 'src-c' }
+                @{ Name = 'D'; Script = 'd.ps1'; SourceDir = 'src-d' }
+            )
+            # exactly how Dockerfile.media-builder's two RUN layers call the wrapper
+            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'B'
+            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'C'
+
+            $ran = @(Get-Content -LiteralPath $log)
+            Assert-Equal 'src-a src-b src-c src-d' ($ran -join ' ') 'every stage exactly once, in order'
+        }
+    }
+
+    It '-Until with an unknown stage name throws before running anything' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'noneu.log'
+            Set-Content -LiteralPath (Join-Path $dir 'a.ps1') -Value "param(`$SourceDir,`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value 'ran'" -Encoding ASCII
+            $stages = @(@{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'x' })
+            Assert-Throws { Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'TYPO' } 'unknown -Until must throw (a typo must not silently run the whole chain)'
+            Assert-False (Test-Path $log) 'no stage ran'
+        }
+    }
+
     It 'empty -StartAt runs the full chain (default behavior unchanged)' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'full.log'

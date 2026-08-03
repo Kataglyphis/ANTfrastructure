@@ -245,7 +245,7 @@ setup_gi_cross_wrappers() {
     gi_libdir="/usr/lib/${build_triplet}"
   fi
   if [ -z "${gi_version}" ]; then
-    gi_version="${GOBJECT_INTROSPECTION_VERSION:-1.80.1}"
+    gi_version="${GOBJECT_INTROSPECTION_VERSION:-1.86.0}"
   fi
   if [ -z "${gi_host_ldd}" ]; then
     gi_host_ldd="/usr/bin/ldd"

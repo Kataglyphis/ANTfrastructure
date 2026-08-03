@@ -59,7 +59,7 @@ linux/
 
 **Cross lane** (`linux/amd64` host, cross-compiles all arches): `base → compiler → sdk → media → android → package → torch`
 **Runtime lane** (native/QEMU per arch): `base → package → wrapper`
-**Windows lane** (native Windows Containers): `base → sdk → toolchain → media → final`
+**Windows lane** (native Windows Containers): `base → sdk → toolchain → media → torch → final` — built via **BuildKit + containerd with process isolation** (the preferred lane since 2026-08: full host CPUs, real layer caching; `windows/build-buildkit.ps1`), with the docker-classic Hyper-V run+commit lane (`windows/build.ps1`) as fallback.
 
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows: `windows/amd64`.
 
@@ -119,10 +119,10 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 | Target | Source-controlled defaults |
 | --- | --- |
-| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.0, Vulkan SDK 1.4.350.0 |
+| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.2, Vulkan SDK 1.4.357.0 |
 | Android layer | Android SDK 14742923, NDK 29.0.14206865, CMake 4.1.2 |
 | Webserver image | Ubuntu 26.04 |
-| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.350.0, GStreamer 1.29.2, CUDA 13.3.0, ONNX Runtime v1.27.0 |
+| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.357.0, GStreamer 1.29.2, CUDA 13.3.1, ONNX Runtime v1.28.0 |
 <!-- generated:version-snapshot:end -->
 
 ## Quick Start 🏁
@@ -140,7 +140,13 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 
 ### Windows 🪟
 
-Windows build commands are in [Windows Build Image](docs/windows-builds.md) § Build Commands.
+Preferred (BuildKit/containerd, process isolation — full CPUs + layer caching; one-time setup in [Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane):
+
+```pwsh
+.\windows\build-buildkit.ps1 -Gpu
+```
+
+Fallback (docker classic, Hyper-V run+commit) and all further commands: [Windows Build Image](docs/windows-builds.md) § Build Commands.
 
 ### Clone The Repository
 

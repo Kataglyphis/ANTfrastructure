@@ -67,7 +67,7 @@ EOF
 }
 
 init_defaults() {
-  ORT_VERSION="${ORT_VERSION:-${ONNXRUNTIME_VERSION:-v1.27.0}}"
+  ORT_VERSION="${ORT_VERSION:-${ONNXRUNTIME_VERSION:-v1.28.0}}"
   ORT_REPO="${ORT_REPO:-https://github.com/microsoft/onnxruntime.git}"
   ORT_SRC_DIR="${ORT_SRC_DIR:-/opt/onnxruntime}"
 
@@ -85,7 +85,7 @@ init_defaults() {
   BUILD_XNNPACK_EP="${BUILD_XNNPACK_EP:-true}"
 
   BUILD_GENAI="${BUILD_GENAI:-true}"
-  GENAI_VERSION="${GENAI_VERSION:-${ONNXRUNTIME_GENAI_VERSION:-v0.14.0}}"
+  GENAI_VERSION="${GENAI_VERSION:-${ONNXRUNTIME_GENAI_VERSION:-v0.15.0}}"
   GENAI_REPO="${GENAI_REPO:-https://github.com/microsoft/onnxruntime-genai.git}"
   GENAI_SRC_DIR="${GENAI_SRC_DIR:-${ORT_SRC_DIR}-genai}"
   GENAI_BUILD_DIR="${GENAI_BUILD_DIR:-${GENAI_SRC_DIR}/build}"
