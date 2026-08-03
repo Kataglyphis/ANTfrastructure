@@ -312,8 +312,17 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 Remaining gotchas (why the classic lane still exists): images land in the
 CONTAINERD store (`docker.io/local/kataglyphis:bk-*`) and are invisible to
 docker's windowsfilter store — running/pushing via docker needs the `-FinalTar`
-export (or buildctl registry push once auth is wired); `nerdctl` can't be used
-to inspect them without an elevated shell (containerd's pipe is admin-only).
+export (or buildctl registry push once auth is wired). **Inspecting/running
+them directly works via Stevedore's nerdctl in an ELEVATED shell** (verified
+2026-08-03 — the images list fine; containerd's pipe has no `--group` option
+upstream, so non-admin nerdctl stays impossible; don't attempt pipe-ACL hacks):
+
+```powershell
+# admin shell; buildkit's containerd namespace holds the bk-* images
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit images
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit run --rm docker.io/local/kataglyphis:bk-windows-media-core pwsh -c "python -c 'import onnxruntime'"
+```
+
 When validating lane parity, compare each `bk-*` image's payload against the
 classic tag (the same scripts and Dockerfile targets run in both lanes).
 
