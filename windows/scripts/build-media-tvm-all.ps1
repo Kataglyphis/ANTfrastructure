@@ -1,5 +1,7 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
+#requires -Version 7.0
 #
 # Orchestrates the media-tvm source-build chain (TVM -> IREE) inside ONE
 # container -- the run+commit payload for windows/build.ps1 (docker build is
@@ -13,7 +15,6 @@
 
 [CmdletBinding()]
 param(
-#requires -Version 7.0
 
     [string]$InstallDir = 'C:\runtime',
     [string]$ScriptDir  = 'C:\temp\scripts',

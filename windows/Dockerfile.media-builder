@@ -92,6 +92,7 @@ COPY windows\scripts\patches\litert-lm C:\temp\scripts\patches\litert-lm
 
 COPY windows\scripts\build-litert-from-source.ps1 `
      windows\scripts\build-litert-lm-from-source.ps1 `
+     windows\scripts\litert-lm-export-bridge.ps1 `
      windows\scripts\build-litert-all.ps1 `
      windows\scripts\debug-litertlm-link.ps1 `
      C:\temp\scripts\

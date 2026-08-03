@@ -1,5 +1,7 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
+#requires -Version 7.0
 #
 # Orchestrates the media-litert chain (LiteRT -> LiteRT-LM) inside ONE container.
 # This is the payload for the run+commit path in windows/build.ps1 (sequential mode):
@@ -14,7 +16,6 @@
 
 [CmdletBinding()]
 param(
-#requires -Version 7.0
 
     [string]$InstallDir = 'C:\runtime',
     [string]$ScriptDir  = 'C:\temp\scripts',

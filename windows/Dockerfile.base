@@ -21,8 +21,10 @@ ARG PWSH_VERSION=7.6.4
 ARG PWSH_ZIP_SHA256=80832551c52809301e6071c8bac977beb5a2f1ec953eb4db9f94deb953333793
 
 # GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
+# TEMP_DIR must sit above the VS layer (the pwsh bootstrap RUN below reads it);
+# the maintainer LABEL used to sit here too and cost a full VS rebuild per
+# metadata tweak — it now lives at the tail of this file.
 ENV TEMP_DIR="C:\temp"
-LABEL maintainer="contact@jonasheinle.de"
 
 # NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
@@ -35,10 +37,12 @@ RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null; $u = 'ht
 
 # Ensure pwsh and the base Windows paths are on PATH for the SHELL switch below and all
 # subsequent RUN instructions. The base image's PATH is NOT inherited by Docker ENV
-# when the escape character is backtick, so we set a minimal WIN_BASE_PATH here explicitly.
-# (The full WIN_BASE_PATH with scoop-installed tool dirs is set later after load-versions.)
-ENV PWSH_PATH="C:\Program Files\PowerShell\7"
-ENV WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH
+# when the escape character is backtick, so WIN_BASE_PATH is set here explicitly.
+# This is the ONLY definition (a second one in the big tail ENV block used to
+# redefine it with nothing but a trailing-backslash drift — removed 2026-08-03);
+# PATH stays a separate instruction because it references both keys.
+ENV PWSH_PATH="C:\Program Files\PowerShell\7" `
+    WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH
 ENV PATH=$PWSH_PATH;$WIN_BASE_PATH
 
 # Switch the default container shell to pwsh (PowerShell 7) for all subsequent RUN instructions.
@@ -101,7 +105,6 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     WIX=C:\WiX `
     LLVM_USER_BIN=C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin `
     CMAKE_BIN=C:\Users\ContainerAdministrator\scoop\apps\cmake\current\bin `
-    WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH `
     USERPROFILE=C:\Users\ContainerAdministrator `
     CARGO_HOME=C:\Users\ContainerAdministrator\.cargo `
     CARGO_BIN=C:\Users\ContainerAdministrator\.cargo\bin
@@ -116,6 +119,13 @@ COPY windows\scripts\verify-toolchain.ps1 `
      windows\scripts\setup-rust-toolchain.ps1 `
      windows\scripts\finalize-container.ps1 `
      C:\temp\scripts\
-RUN & 'C:\temp\scripts\verify-toolchain.ps1'
-RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
+# verify-toolchain is a pure assertion pass (no filesystem mutation) — merged
+# into the rust RUN so it doesn't spend one of the 125 layers on an empty
+# layer. finalize-container stays separate: it's the layer-trimming step and
+# benefits from its own cache boundary.
+RUN & 'C:\temp\scripts\verify-toolchain.ps1'; & 'C:\temp\scripts\setup-rust-toolchain.ps1'
 RUN & 'C:\temp\scripts\finalize-container.ps1'
+
+# Metadata-only: lives at the tail so a maintainer/label tweak never rebuilds
+# anything above it (it used to sit ABOVE the VS Build Tools layer).
+LABEL maintainer="contact@jonasheinle.de"

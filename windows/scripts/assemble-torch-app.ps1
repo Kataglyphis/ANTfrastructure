@@ -1,5 +1,7 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
+#requires -Version 7.0
 #
 # Windows mirror of linux/scripts/03-media/runtime/assemble-torch-app.sh:
 # clone Kataglyphis-Orchestr-ANT-ion at $AppRef, `uv sync` its environment on the
@@ -10,7 +12,6 @@
 # (platform tag + native DLL dirs) are staged into the venv, mirroring the
 # linux staged-OpenCV5 handling. GUI extra (wxPython) excluded, like linux.
 param(
-#requires -Version 7.0
 
     [string]$AppRef = '',
     [string]$AppDir = 'C:\opt\Kataglyphis-Orchestr-ANT-ion',

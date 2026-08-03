@@ -170,7 +170,9 @@ def collect_versions() -> dict[str, str]:
         # the `$vsMajor = ... else { '<major>' }` fallback, which must stay in
         # sync with versions.env's VISUAL_STUDIO_VERSION.
         "windows_vs": extract(
-            r"\$vsMajor\s*=.*'([0-9]+)'",
+            # setup-vs.ps1 hoisted the assignment to $script:VsMajor (2026-08-03);
+            # accept both the old local and the new script-scoped spelling.
+            r"\$(?:script:)?[Vv]sMajor\s*=.*'([0-9]+)'",
             windows_vs,
             "Visual Studio Build Tools major version",
         ),

@@ -28,6 +28,27 @@ function ConvertTo-MsysPath([string]$Path) {
     return '/' + $Path.Substring(0, 1).ToLower() + ($Path.Substring(2) -replace '\\', '/')
 }
 
+# FFmpeg-only Makefile fixup (moved here from WindowsSourceBuild.Common.psm1 on
+# 2026-08-03 — this script was its only consumer, ever, and hosting it in the
+# shared module rebuilt all three media branches whenever it changed): strips
+# MSVC's -showIncludes + the awk dep-file pipelines from configure-generated
+# *.mak files (clang-cl emits GNU-style deps; the awk pass both breaks and
+# is superseded).
+function Remove-MakefileShowIncludes {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$StripWildcardInclude
+    )
+    if (-not (Test-Path $Path)) { return }
+    $c = [System.IO.File]::ReadAllText($Path)
+    $c = $c -replace '-showIncludes', ''
+    $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
+    $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
+    $c = $c -replace '\s*\|\s*awk.*', ''
+    if ($StripWildcardInclude) { $c = $c -replace '-include\s+\$\(wildcard\s+\*\.d\).*', '' }
+    [System.IO.File]::WriteAllText($Path, $c)
+}
+
 Write-Host "=== FFmpeg source build ($FfmpegVersion, clang-cl+lld-link default; FFMPEG_TOOLCHAIN=msvc to override) ==="
 
 if (Test-Path "$ffmpegDir\ffmpeg.exe") {

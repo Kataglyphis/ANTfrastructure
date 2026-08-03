@@ -48,7 +48,10 @@ $gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
 # (e.g. a -GitInstallerUrl override for a respun release) skips the hash check.
 $gitSha = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_WINDOWS_INSTALLER_SHA256' -DefaultValue ''
 Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer' -ExpectSignature MZ -ExpectedSha256 $gitSha
-Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait
+# Exit-code gate (was missing — a failed Git install surfaced only much later
+# as "git not recognized" deep inside a media build).
+$gitProc = Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait -PassThru
+if ($gitProc.ExitCode -ne 0) { throw "Git for Windows installer failed (exit $($gitProc.ExitCode))" }
 Remove-Item $gitInstaller -Force
 Sync-ContainerProcessPath -AdditionalPaths @(
     'C:\Program Files\Git\cmd',

@@ -1,10 +1,10 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Toolchain run+commit entrypoint (windows/build.ps1 Invoke-RunCommitStage). The
-# thin builder (Dockerfile.toolchain-builder) already cloned CPython and wrote
+
 #requires -Version 7.0
 
+# Toolchain run+commit entrypoint (windows/build.ps1 Invoke-RunCommitStage). The
+# thin builder (Dockerfile.toolchain-builder) already cloned CPython and wrote
 # Directory.Build.props; this runs the CPU-bound `PCbuild\build.bat` at the
 # container's full --cpu-count, then trims build artifacts and verifies. Moving the
 # compile out of `docker build` (2-CPU-capped on this host) into `docker run

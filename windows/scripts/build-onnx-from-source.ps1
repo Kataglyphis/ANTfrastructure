@@ -387,17 +387,15 @@ Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
 # --wheel_name_suffix: our CUDA+TensorRT+DML combo matches no upstream package
 # split, so it ships as plain `onnxruntime`. Must run BEFORE Remove-SourceBuildTree.
 Write-Host 'Building onnxruntime python wheel...'
-Push-Location $buildDir
-try {
-    cmd.exe /c """$($py.Exe)"" ""$SourceDir\setup.py"" bdist_wheel 2>&1"
-    if ($LASTEXITCODE -ne 0) { throw "onnxruntime setup.py bdist_wheel failed (exit $LASTEXITCODE)" }
-} finally { Pop-Location }
-# Stage + install (WITH pypi deps) + import-assert via the shared helper, so the
-# shipped image can `import onnxruntime` out of the box (the media merge fans
-# CPython's site-packages into the image). The helper encapsulates the
+# Shared wheel-build shape (was duplicated verbatim with the GenAI script):
+# stage + install (WITH pypi deps) + import-assert, so the shipped image can
+# `import onnxruntime` out of the box (the media merge fans CPython's
+# site-packages into the image). The helper also encapsulates the
 # single-element array-unwrap footgun (the c-0.0.1 incident) and the
 # EAP=Stop-safe import check.
-Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $buildDir 'dist') -ModuleName 'onnxruntime' | Out-Null
+Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
+    -Arguments """$SourceDir\setup.py"" bdist_wheel" `
+    -ModuleName 'onnxruntime' | Out-Null
 
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='

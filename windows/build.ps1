@@ -434,9 +434,16 @@ function Invoke-TransientCooldown {
         [Parameter(Mandatory)] [int]$Attempt,
         [int]$MaxAttempts = 3,
         [string]$Label = '',
-        [int]$CooldownSeconds = 60
+        [int]$CooldownSeconds = 60,
+        # Caller already classified the failure as transient (e.g.
+        # Invoke-DockerWithRetry, which gates its retry branch on
+        # Test-TransientDockerFailure itself) — skip the re-test so the
+        # condition is expressed exactly ONCE per call path. Without this the
+        # same predicate ran twice and a future edit to one copy would be a
+        # live bug.
+        [switch]$AssumeTransient
     )
-    if ($Attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $Tail)) {
+    if ($Attempt -lt $MaxAttempts -and ($AssumeTransient -or (Test-TransientDockerFailure -Tail $Tail))) {
         Write-Host "[$Label] transient container-infrastructure failure — retry $Attempt/$($MaxAttempts - 1) in ${CooldownSeconds}s" -ForegroundColor Yellow
         Start-Sleep -Seconds $CooldownSeconds
         return $true
@@ -479,9 +486,9 @@ function Invoke-DockerWithRetry {
         $tail = if ($LogFile -and (Test-Path $LogFile)) { Get-Content $LogFile -Tail $TailLines | Out-String } else { '' }
         if ($attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $tail)) {
             if ($OnFailedAttempt) { & $OnFailedAttempt }
-            # Invoke-TransientCooldown re-tests the same condition and sleeps; it is
-            # guaranteed $true here (kept as the single owner of the message + delay).
-            Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label | Out-Null
+            # -AssumeTransient: this branch IS the classification; the cooldown
+            # helper only owns the message + delay here.
+            Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label -AssumeTransient | Out-Null
             continue
         }
         if ($OnFinalFailure) { & $OnFinalFailure }
@@ -704,6 +711,32 @@ function Get-MediaRunCommand {
     return @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "C:\temp\scripts\$Script") + $ExtraArgs
 }
 
+# Provenance/app-ref helpers shared by the 'final' and 'torch' stages. (Moved out
+# of the try-block stage chain where they sat mid-flow between two stage blocks.)
+# VCS ref is best-effort metadata: any failure (no git, not a repo) -> empty, never fatal.
+function Get-BuildVcsRef {
+    try { $r = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { return '' } else { return $r } }
+    catch { return '' }
+}
+# Orchestr-ANT-ion ref: DETERMINISTIC by default (versions.env APP_REF pin, so
+# the same commit always produces the same image). -LatestApp opts into
+# resolving the app repo's newest release tag at build time (the old
+# always-on behavior), falling back to the pin when offline / no tags match.
+function Get-TorchAppRef {
+    $ref = Get-Ver 'APP_REF'
+    if ($LatestApp) {
+        try {
+            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
+            if ($LASTEXITCODE -eq 0 -and $tagRaw) {
+                $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
+                if (-not [string]::IsNullOrWhiteSpace($latest)) { $ref = $latest }
+            }
+        } catch { }
+        Write-Host "-LatestApp: resolved Orchestr-ANT-ion ref: $ref (versions.env pin: $(Get-Ver 'APP_REF'))"
+    }
+    return $ref
+}
+
 function Invoke-MediaBranchRunCommit {
     # Build one media branch via the run+commit path at full cores and the full
     # $MediaMemoryGb budget (sequential schedule: every branch gets all the RAM).
@@ -722,20 +755,6 @@ function Invoke-MediaBranchRunCommit {
         -Label $Spec.Name -OutLog $OutLog
 }
 
-function Invoke-MediaSequential {
-    # Sequential fan-out: media-core first (whole RAM budget -> most ONNX jobs), then each aux branch,
-    # ALL via run+commit at full cores. Invoke-RunCommitStage throws on failure, so a failed branch
-    # aborts the chain directly. media-core is already committed before the aux branches run, so aux
-    # compiles get the full MediaMemoryGb budget (parallelism is memory-bound).
-    param($CoreSpec, $AuxSpecs, $CoreLog, $LogDir)
-    if ($CoreSpec) {
-        Invoke-MediaBranchRunCommit -Spec $CoreSpec -OutLog $CoreLog
-    }
-    foreach ($spec in $AuxSpecs) {
-        Invoke-MediaBranchRunCommit -Spec $spec -OutLog (Join-Path $LogDir "$($spec.Name).log")
-    }
-}
-
 function Invoke-MediaBranches {
     # Resolve + subset the branch specs, then build sequentially (media-core first
     # with full RAM, then aux branches also at full RAM since media-core committed).
@@ -751,12 +770,19 @@ function Invoke-MediaBranches {
         Assert-ImageExists -Tags @($unselected | ForEach-Object { $_.Tag }) `
             -Context "media merge (unselected branch(es): $(@($unselected | ForEach-Object { $_.Name }) -join ', '))"
     }
+    # Sequential fan-out: media-core first (whole RAM budget -> most ONNX jobs),
+    # then each aux branch, ALL via run+commit at full cores.
+    # Invoke-RunCommitStage throws on failure, so a failed branch aborts the
+    # chain directly; media-core is committed before the aux branches run, so
+    # aux compiles get the full MediaMemoryGb budget (parallelism is memory-bound).
     $coreSpec = $specs | Where-Object { $_.Name -eq 'media-core' } | Select-Object -First 1
     $auxSpecs = @($specs | Where-Object { $_.Name -ne 'media-core' })
-    $logDir   = $script:LogDir
-    $coreLog  = Join-Path $logDir 'media-core.log'
-
-    Invoke-MediaSequential -CoreSpec $coreSpec -AuxSpecs $auxSpecs -CoreLog $coreLog -LogDir $logDir
+    if ($coreSpec) {
+        Invoke-MediaBranchRunCommit -Spec $coreSpec -OutLog (Join-Path $script:LogDir 'media-core.log')
+    }
+    foreach ($spec in $auxSpecs) {
+        Invoke-MediaBranchRunCommit -Spec $spec -OutLog (Join-Path $script:LogDir "$($spec.Name).log")
+    }
     Write-Host 'All media branches built.' -ForegroundColor Green
 }
 
@@ -942,31 +968,6 @@ try {
             -BuildArgs $mergeArgs `
             -BuilderExtraFlags @('--target', 'merge') `
             -Label 'media-merge+gstreamer' -OutLog $gstLog
-    }
-
-    # Provenance/app-ref helpers shared by the 'final' and 'torch' stages.
-    # VCS ref is best-effort metadata: any failure (no git, not a repo) -> empty, never fatal.
-    function Get-BuildVcsRef {
-        try { $r = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { return '' } else { return $r } }
-        catch { return '' }
-    }
-    # Orchestr-ANT-ion ref: DETERMINISTIC by default (versions.env APP_REF pin, so
-    # the same commit always produces the same image). -LatestApp opts into
-    # resolving the app repo's newest release tag at build time (the old
-    # always-on behavior), falling back to the pin when offline / no tags match.
-    function Get-TorchAppRef {
-        $ref = Get-Ver 'APP_REF'
-        if ($LatestApp) {
-            try {
-                $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
-                if ($LASTEXITCODE -eq 0 -and $tagRaw) {
-                    $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
-                    if (-not [string]::IsNullOrWhiteSpace($latest)) { $ref = $latest }
-                }
-            } catch { }
-            Write-Host "-LatestApp: resolved Orchestr-ANT-ion ref: $ref (versions.env pin: $(Get-Ver 'APP_REF'))"
-        }
-        return $ref
     }
 
     # Orchestr-ANT-ion app stage (windows/Dockerfile.torch) — AFTER toolchain and

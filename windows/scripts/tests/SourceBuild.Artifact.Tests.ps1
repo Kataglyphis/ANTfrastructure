@@ -51,6 +51,17 @@ Describe 'Copy-BuildArtifact' {
 }
 
 Describe 'Remove-MakefileShowIncludes' {
+    # The function moved from WindowsSourceBuild.Common.psm1 into its only
+    # consumer, build-ffmpeg-from-source.ps1 (2026-08-03, layer economics).
+    # These tests keep pinning the PRODUCTION definition: extract exactly the
+    # function's AST from the script (dot-sourcing the whole script would start
+    # a build) and load it into this scope.
+    $ffmpegScript = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'build-ffmpeg-from-source.ps1'
+    $tokens = $null; $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($ffmpegScript, [ref]$tokens, [ref]$errors)
+    $fnAst = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Remove-MakefileShowIncludes' }, $true) | Select-Object -First 1
+    if (-not $fnAst) { throw "Remove-MakefileShowIncludes not found in $ffmpegScript — did it move again? Update this suite." }
+    . ([scriptblock]::Create($fnAst.Extent.Text))
 
     It 'strips /showIncludes and the awk dep pipeline, keeping unrelated lines' {
         Invoke-InTestDir { param($dir)

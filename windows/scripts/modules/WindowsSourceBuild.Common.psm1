@@ -192,10 +192,6 @@ function Enter-VsDevCmdEnvironment {
 # Source builds want the hard failure: no Visual Studio means no build, and the
 # callers (build-onnx-genai-from-source.ps1, build-litert-lm-from-source.ps1)
 # either propagate it or wrap it in their own try/catch.
-function Get-VsInstallPath {
-    return Get-VisualStudioInstallPath
-}
-
 function Get-MsvcToolsRoot {
     # @() re-wrap is LOAD-BEARING: PowerShell flattens a single-element array on
     # return, so with exactly ONE installed toolset `(...)[0]` indexed a STRING
@@ -333,19 +329,30 @@ function Copy-BuildArtifact {
     }
 }
 
-function Remove-MakefileShowIncludes {
+# (Remove-MakefileShowIncludes moved into build-ffmpeg-from-source.ps1 on
+# 2026-08-03: FFmpeg was its only consumer, ever, and keeping it here forced
+# all three media branches to rebuild whenever the FFmpeg-specific fixup moved.)
+
+function Invoke-PythonWheelBuild {
+    # Shared wheel-build shape used by the ONNX + GenAI scripts (was duplicated
+    # verbatim): cd into the source dir, run python through the cmd.exe stderr
+    # shield (setup.py/pip log to stderr under EAP=Stop), gate on the exit code,
+    # then install the freshest wheel from the dist dir via the staged-wheel path.
     param(
-        [Parameter(Mandatory)][string]$Path,
-        [switch]$StripWildcardInclude
+        [Parameter(Mandatory)] $Python,           # Get-SourceBuildPython object
+        [Parameter(Mandatory)] [string]$WorkingDir,
+        [Parameter(Mandatory)] [string]$Arguments, # e.g. 'setup.py bdist_wheel'
+        [Parameter(Mandatory)] [string]$ModuleName,
+        [string]$DistDir = '',
+        [switch]$NoDeps
     )
-    if (-not (Test-Path $Path)) { return }
-    $c = [System.IO.File]::ReadAllText($Path)
-    $c = $c -replace '-showIncludes', ''
-    $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
-    $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
-    $c = $c -replace '\s*\|\s*awk.*', ''
-    if ($StripWildcardInclude) { $c = $c -replace '-include\s+\$\(wildcard\s+\*\.d\).*', '' }
-    [System.IO.File]::WriteAllText($Path, $c)
+    if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
+    Push-Location $WorkingDir
+    try {
+        cmd.exe /c """$($Python.Exe)"" $Arguments 2>&1"
+        if ($LASTEXITCODE -ne 0) { throw "python wheel build failed (exit $LASTEXITCODE): $Arguments" }
+    } finally { Pop-Location }
+    return Install-StagedPythonWheel -Python $Python -SourceDir $DistDir -ModuleName $ModuleName -NoDeps:$NoDeps
 }
 
 function Remove-SourceBuildTree {
@@ -690,6 +697,13 @@ function Copy-SidecarDll {
     }
 }
 
+# Export surface trimmed 2026-08-03 (audit): Get-VsInstallPath deleted (dead
+# 4-line passthrough to Shared's Get-VisualStudioInstallPath, zero callers);
+# Remove-MakefileShowIncludes moved into build-ffmpeg-from-source.ps1 (its only
+# consumer, ever — hosting it here rebuilt all three media branches on change).
+# NB the test suites ARE consumers of this export list (first trim pass broke
+# Resolve/Artifact suites) — Save-PythonWheel/Get-CudaRoot/Resolve-TensorRtRoot/
+# sccache helpers stay exported for them.
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
     'Invoke-SourceBuildChain',
@@ -697,8 +711,10 @@ Export-ModuleMember -Function @(
     'Invoke-CmakeConfigure',
     'Test-SccacheRemoteConfigured',
     'Write-SccacheStats',
+    'Save-PythonWheel',
+    'Get-CudaRoot',
+    'Resolve-TensorRtRoot',
     'Enter-VsDevCmdEnvironment',
-    'Get-VsInstallPath',
     'Get-MsvcToolsRoot',
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
@@ -712,8 +728,6 @@ Export-ModuleMember -Function @(
     'Expand-SourceTarball',
     'Initialize-ExtractedGitRepo',
     'Import-CanonicalVersions',
-    'Get-CudaRoot',
-    'Resolve-TensorRtRoot',
     'Get-GpuEnvironment',
     'Get-CudaArchitectureList',
     'Get-CudaToolkitRootArg',
@@ -723,8 +737,8 @@ Export-ModuleMember -Function @(
     'Initialize-SourceBuildScript',
     'Initialize-ToolchainPythonEnvironment',
     'Initialize-PythonPlatformTag',
-    'Save-PythonWheel',
     'Install-StagedPythonWheel',
+    'Invoke-PythonWheelBuild',
     'Test-PythonImport',
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
@@ -732,7 +746,6 @@ Export-ModuleMember -Function @(
     'Invoke-CpythonPip',
     'Copy-BuildArtifact',
     'Copy-SidecarDll',
-    'Remove-MakefileShowIncludes',
     'Get-NvccCudaCmakeArgs',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',

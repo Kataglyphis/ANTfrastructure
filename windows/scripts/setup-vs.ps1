@@ -21,7 +21,11 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Write-Error 'Please run PowerShell as Administrator.'; exit 1
 }
 
-function Dump-InstallerLogs {
+# Single source for the VS major: previously computed twice, 100 lines apart,
+# with the same '18' fallback — a drift between the two was a live bug waiting.
+$script:VsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
+
+function Write-InstallerLogDump {
     param([string]$TempDir)
 
 
@@ -82,9 +86,8 @@ try {
     # major sanity check below still catches a silent stable->19 flip. A hard SHA256
     # pin is deliberately NOT used (the bootstrapper refreshes within a channel every
     # few weeks); the actual hash is LOGGED for provenance instead.
-    $vsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
-    $vsUrls = @(
-        "https://aka.ms/vs/$vsMajor/release/vs_buildtools.exe",
+        $vsUrls = @(
+        "https://aka.ms/vs/$script:VsMajor/release/vs_buildtools.exe",
         'https://aka.ms/vs/stable/vs_buildtools.exe'
     )
     $vsDownloaded = $false
@@ -97,7 +100,7 @@ try {
                 -Description "VS Build Tools installer ($vsUrl)" -ExpectSignature MZ -MaxAttempts $attempts
             $vsDownloaded = $true
             if ($vsUrl -match 'stable') {
-                Write-Warning "major-pinned VS alias unavailable — used floating 'stable' channel (currently VS $vsMajor; the VsDevCmd check below fails the build if it ever is not)."
+                Write-Warning "major-pinned VS alias unavailable — used floating 'stable' channel (currently VS $script:VsMajor; the VsDevCmd check below fails the build if it ever is not)."
             }
             break
         } catch {
@@ -169,7 +172,7 @@ try {
     }
     catch {
         Write-Host "Start-Process Exception: $($_.Exception.Message)"
-        Dump-InstallerLogs -TempDir $TempDir
+        Write-InstallerLogDump -TempDir $TempDir
         throw
     }
 
@@ -177,7 +180,7 @@ try {
 
     if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
         Write-Host 'Installation failed -- printing logs:'
-        Dump-InstallerLogs -TempDir $TempDir
+        Write-InstallerLogDump -TempDir $TempDir
         throw "Build Tools Setup failed (ExitCode $($proc.ExitCode))."
     }
 
@@ -189,14 +192,13 @@ try {
 
     # VS major from versions.env's VISUAL_STUDIO_VERSION (reaches this pre-load-versions
     # layer as a --build-arg, same route as WINDOWS_SDK_BUILD above).
-    $vsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
-    if (Test-Path "C:\Program Files\Microsoft Visual Studio\$vsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
+        if (Test-Path "C:\Program Files\Microsoft Visual Studio\$script:VsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
         Write-Host 'VsDevCmd found.'
-    } elseif (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\$vsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
+    } elseif (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\$script:VsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
         Write-Host 'VsDevCmd (x86) found, path adjusted.'
     } else {
         Write-Host 'VsDevCmd not found -- printing logs.'
-        Dump-InstallerLogs -TempDir $TempDir
+        Write-InstallerLogDump -TempDir $TempDir
         throw 'VS Build Tools not installed. Check dd_bootstrapper*.log and dd_setup_*.log under %TEMP%.'
     }
 }

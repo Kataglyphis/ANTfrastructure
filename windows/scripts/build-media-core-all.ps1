@@ -1,5 +1,7 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
+#requires -Version 7.0
 #
 # Orchestrates the media-core source-build chain (ONNX Runtime -> ONNX GenAI ->
 # OpenCV -> FFmpeg) inside ONE container. This is the payload for the run+commit
@@ -19,7 +21,6 @@
 
 [CmdletBinding()]
 param(
-#requires -Version 7.0
 
     [string]$InstallDir = 'C:\runtime',
     [string]$ScriptDir  = 'C:\temp\scripts',
