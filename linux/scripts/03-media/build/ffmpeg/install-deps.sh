@@ -105,7 +105,7 @@ done
 
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     echo "Installing nv-codec-headers for FFmpeg NVIDIA acceleration..."
-    nv_codec_ref="${NV_CODEC_HEADERS_REF:-n13.0.19.0}"
+    nv_codec_ref="${NV_CODEC_HEADERS_REF:-n13.1.15.0}"
     git clone --branch "${nv_codec_ref}" --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers
     cd /tmp/nv-codec-headers
     make install

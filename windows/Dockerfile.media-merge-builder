@@ -24,24 +24,29 @@ FROM ${CORE_IMAGE} AS media-core
 FROM ${LITERT_IMAGE} AS media-litert
 FROM ${TVM_IMAGE} AS media-tvm
 
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS merge
 
 ARG GSTREAMER_VERSION=1.29.2
 ARG MEMORY_LIMIT_GB=""
 # Component versions are consumed by the branch builds; re-declared here only so the
 # image carries the canonical version env vars (sync_versions.py verifies them).
-ARG ONNXRUNTIME_VERSION=v1.27.0
-ARG ONNXRUNTIME_GENAI_VERSION=v0.14.0
+ARG ONNXRUNTIME_VERSION=v1.28.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.15.0
 ARG OPENCV_SOURCE_VERSION=5.x
 ARG FFMPEG_VERSION=master
 ARG PYAV_VERSION=18.0.0
 ARG LITERT_VERSION=v2.1.6
-ARG LITERT_LM_VERSION=0.13.1
+ARG LITERT_LM_VERSION=0.14.0
 ARG TVM_REF=v0.25.0
 ARG IREE_VERSION=v3.11.0
 
-ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}"
-ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
+# ONE ENV instruction for everything below PATH: the classic builder emits a
+# layer PER INSTRUCTION (even metadata), and windows-torch hit Docker's hard
+# 125-layer cap on 2026-08-03 ("max depth exceeded" in the final stage) with
+# ~28 separate ENV lines here as the main cost. Same-instruction ${} refs don't
+# resolve, so derived paths are written out literally (layouts documented below).
+ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
+    ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
     OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
     FFMPEG_VERSION="${FFMPEG_VERSION}" `
@@ -49,7 +54,33 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     LITERT_VERSION="${LITERT_VERSION}" `
     LITERT_LM_VERSION="${LITERT_LM_VERSION}" `
     TVM_REF="${TVM_REF}" `
-    IREE_VERSION="${IREE_VERSION}"
+    IREE_VERSION="${IREE_VERSION}" `
+    GSTREAMER_VERSION="${GSTREAMER_VERSION}" `
+    GSTREAMER_BIN="C:\runtime\bin" `
+    ONNX_ROOT="C:\runtime\lib\onnxruntime-source" `
+    ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source" `
+    ONNX_VERSION="${ONNXRUNTIME_VERSION}" `
+    ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
+    ONNX_GPU_VARIANT="${GPU_TYPE}" `
+    LITERT_ROOT="C:\runtime\lib\litert" `
+    LITERT_INCLUDE="C:\runtime\lib\litert\include" `
+    LITERT_LIB="C:\runtime\lib\litert\lib" `
+    LITERT_BIN="C:\runtime\lib\litert\bin" `
+    LITERT_LM_ROOT="C:\runtime\lib\litert-lm" `
+    LITERT_LM_INCLUDE="C:\runtime\lib\litert-lm\include" `
+    LITERT_LM_LIB="C:\runtime\lib\litert-lm\lib" `
+    OPENCV_ROOT="C:\runtime\lib\opencv5" `
+    OPENCV_INCLUDE="C:\runtime\lib\opencv5\include" `
+    OPENCV_LIB="C:\runtime\lib\opencv5\x64\vc18\lib" `
+    OPENCV_BIN="C:\runtime\lib\opencv5\x64\vc18\bin" `
+    FFMPEG_ROOT="C:\runtime\ffmpeg" `
+    FFMPEG_BIN="C:\runtime\ffmpeg\bin" `
+    FFMPEG_LIB="C:\runtime\ffmpeg\lib" `
+    TVM_ROOT="C:\runtime\lib\tvm" `
+    TVM_LIBRARY_PATH="C:\runtime\lib\tvm\lib" `
+    IREE_ROOT="C:\runtime\iree" `
+    IREE_BIN="C:\runtime\iree\bin" `
+    PYTHON_WHEELS="C:\runtime\wheels"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
@@ -75,72 +106,16 @@ COPY --from=media-tvm C:\runtime\wheels C:\runtime\wheels
 # script bootstraps pip itself if this copy ever lacks it.
 COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 
-# ── Canonical component layout for downstream consumers and verification ────
-# build-gstreamer-from-source.ps1 reads GSTREAMER_VERSION.
-ENV GSTREAMER_VERSION="${GSTREAMER_VERSION}"
-ENV GSTREAMER_BIN="C:\runtime\bin"
-ENV ONNX_ROOT="C:\runtime\lib\onnxruntime-source"
-ENV ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source"
-
-# Canonical version aliases (values propagate from the branch images' ARGs via
-# build.ps1 — kept as plain env vars here for verification scripts).
-ENV ONNX_VERSION="${ONNXRUNTIME_VERSION}"
-ENV ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
-
-# GPU variant: CUDA detected from SDK layer (set by Dockerfile.nvidia; empty = CPU-only)
-ENV ONNX_GPU_VARIANT="${GPU_TYPE}"
-
-# LiteRT layout
-ENV LITERT_ROOT="C:\runtime\lib\litert"
-ENV LITERT_INCLUDE="${LITERT_ROOT}\include"
-ENV LITERT_LIB="${LITERT_ROOT}\lib"
-ENV LITERT_BIN="${LITERT_ROOT}\bin"
-
-# LiteRT-LM layout
-ENV LITERT_LM_ROOT="C:\runtime\lib\litert-lm"
-ENV LITERT_LM_INCLUDE="${LITERT_LM_ROOT}\include"
-ENV LITERT_LM_LIB="${LITERT_LM_ROOT}\lib"
-
-# OpenCV layout. bin/lib live under the MSVC-style x64\vc18 subtree that
-# OpenCV's Windows install emits — pointing at <root>\bin|lib (which do not
-# exist) forced the final Dockerfile to re-point these for months; fixed at
-# the source now, final carries no override.
-ENV OPENCV_ROOT="C:\runtime\lib\opencv5"
-ENV OPENCV_INCLUDE="${OPENCV_ROOT}\include"
-ENV OPENCV_LIB="${OPENCV_ROOT}\x64\vc18\lib"
-ENV OPENCV_BIN="${OPENCV_ROOT}\x64\vc18\bin"
-
-# FFmpeg layout
-ENV FFMPEG_ROOT="C:\runtime\ffmpeg"
-ENV FFMPEG_BIN="${FFMPEG_ROOT}\bin"
-ENV FFMPEG_LIB="${FFMPEG_ROOT}\lib"
-
-# TVM layout — TVM_LIBRARY_PATH lets the installed Python wheel locate tvm.dll
-# (the C:\temp\tvm-src build tree is removed after install to keep layers small).
-ENV TVM_ROOT="C:\runtime\lib\tvm"
-ENV TVM_LIBRARY_PATH="${TVM_ROOT}\lib"
-
-# IREE layout — native compiler/runtime tools (iree-compile, iree-run-module);
-# the python bindings ship as self-contained wheels in PYTHON_WHEELS.
-ENV IREE_ROOT="C:\runtime\iree"
-ENV IREE_BIN="${IREE_ROOT}\bin"
-
-# Central store for the python wheels built by the media branches
-# (onnxruntime, onnxruntime-genai, tvm). cv2 ships installed-in-place instead
-# (OpenCV has no in-repo wheel machinery; opencv-python is a separate project).
-ENV PYTHON_WHEELS="C:\runtime\wheels"
-
-ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH
-
-# PKG_CONFIG_PATH for GStreamer to auto-detect FFmpeg and OpenCV.
-# FFMPEG_LIB\pkgconfig carries the libav*.pc files (enables gst-libav).
-# LiteRT is excluded (TFLITE_ENABLE_INSTALL=OFF — no .pc files generated).
-# ONNX Runtime is excluded too: its source install ships NO .pc files at all
-# (verified in the built media-core image), so the former $ONNX_ROOT\runtime\lib\pkgconfig
-# entry pointed at a nonexistent dir — GStreamer's onnx plugin cannot be found via
-# pkg-config regardless.
-# GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
-ENV PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
+# ── Canonical component layout: see the single consolidated ENV above ────────
+# (GSTREAMER/ONNX/LITERT/LITERT_LM/OPENCV/FFMPEG/TVM/IREE roots + version
+# aliases + PYTHON_WHEELS all live there; OpenCV bin/lib deliberately point at
+# the MSVC-style x64\vc18 subtree its Windows install emits.)
+#
+# PATH references the vars above, and PKG_CONFIG_PATH lets GStreamer auto-detect
+# FFmpeg + OpenCV (libav*.pc enables gst-libav; LiteRT and ONNX Runtime ship no
+# .pc files). GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
+ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH `
+    PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
 
 # ── GStreamer scripts (the compile itself runs in the run+commit step, NOT here) ──
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
@@ -155,3 +130,10 @@ COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
 # Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).
 # See the identical pattern in Dockerfile.media-builder (common stage).
 COPY linux\scripts\01-core\versions.env C:\temp\versions.env
+
+# ── BuildKit lane (buildctl --opt target=built) ──────────────────────────────────────────────
+# The GStreamer compile as a plain process-isolated LAYER (full host CPUs).
+# The classic docker lane always passes --target merge (build.ps1) and never
+# executes this RUN — it keeps the run+commit path instead.
+FROM merge AS built
+RUN & 'C:	emp\scriptsuild-gstreamer-from-source.ps1' -InstallDir 'C:untime' -LogDir 'C:	emp\logs'

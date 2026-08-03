@@ -135,8 +135,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 # Install the host Rust toolchain in the compiler layer and add the target stdlibs
 # plus Cargo linker hints needed by the amd64-hosted cross build lane.
 # Pins from versions.env (auto-forwarded as build args by the orchestrator).
-ARG RUST_VERSION=1.96.0
-ARG CARGO_C_VERSION=0.10.23
+ARG RUST_VERSION=1.97.1
+ARG CARGO_C_VERSION=0.10.24
 ARG RUST_NIGHTLY_TOOLCHAIN=nightly-2026-06-28
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \

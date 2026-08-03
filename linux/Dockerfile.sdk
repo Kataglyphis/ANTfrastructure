@@ -10,7 +10,7 @@ ARG BUILD_MODE=native
 # Divide usable RAM by this in parallelism.sh so N concurrent per-arch builds
 # (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
 ARG BUILD_MEM_DIVISOR=1
-ARG VULKAN_VERSION=1.4.350.0
+ARG VULKAN_VERSION=1.4.357.0
 ARG LLVM_RELEASE=22.1.8
 ARG TARGET_ARCH
 ARG TARGETARCH
@@ -121,7 +121,7 @@ ARG TVM_USE_VULKAN=1
 ARG TVM_USE_CUDA=0
 ARG TVM_USE_OPENCL=0
 ARG TVM_INSTALL_PYTHON=1
-ARG FLUTTER_VERSION=3.44.4
+ARG FLUTTER_VERSION=3.44.8
 
 ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \

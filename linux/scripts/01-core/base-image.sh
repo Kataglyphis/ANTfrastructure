@@ -19,9 +19,9 @@ source_module common.sh
 source_module package-lists.sh
 source_module cmake.sh
 
-BASE_IMAGE_CMAKE_VERSION="${CMAKE_VERSION:-4.4.0}"
-BASE_IMAGE_NODE_VERSION="${NODE_VERSION:-26.4.0}"
-BASE_IMAGE_UV_VERSION="${UV_VERSION:-0.11.25}"
+BASE_IMAGE_CMAKE_VERSION="${CMAKE_VERSION:-4.4.2}"
+BASE_IMAGE_NODE_VERSION="${NODE_VERSION:-26.5.1}"
+BASE_IMAGE_UV_VERSION="${UV_VERSION:-0.12.1}"
 BASE_IMAGE_VULKAN_VERSION="${VULKAN_VERSION}"
 BASE_IMAGE_CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-30G}"
 
@@ -287,11 +287,11 @@ install_nodejs() {
   case "${arch}" in
     amd64|x86_64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-x64.tar.xz"
-      node_sha256="${NODE_AMD64_SHA256:-5c4286dcd5bbd5acb1ccc7eb0e088bd5eb1e3affad671ee9364004f8f6a4a431}"
+      node_sha256="${NODE_AMD64_SHA256:-cc7b3484ade63bd203a9d304f21ec37a3b622b988d7bdecf1dc4d68fc44a91b7}"
       ;;
     arm64|aarch64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-arm64.tar.xz"
-      node_sha256="${NODE_ARM64_SHA256:-f6d8eedc52170667d45730ac2f413c4aa1e7cd2165c9cac5746ef3cb0f4ec45a}"
+      node_sha256="${NODE_ARM64_SHA256:-0b6b0cc2a1eecbe736f9918de8b5a6c9a48d286b88bec1298a3c1e3376182ea8}"
       ;;
     riscv64)
       # RISC-V: no official Node.js tarball. Pin to a known version from distro packages.
@@ -354,15 +354,15 @@ install_uv() {
   case "${arch}" in
     amd64|x86_64)
       uv_asset="uv-x86_64-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_AMD64_SHA256:-1db18b5e76fa645a7f3865773139bdec8e2d46adbdbb35e7410b34fa8015ccd2}"
+      uv_sha256="${UV_AMD64_SHA256:-90b2f223fb69d19db49e117da601f64978593417988530aa733d456141b4bcbb}"
       ;;
     arm64|aarch64)
       uv_asset="uv-aarch64-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_ARM64_SHA256:-e0e9d73f74e06a7dcd53910d5962146ab48f0af9c92cc8df33a37baa0121014d}"
+      uv_sha256="${UV_ARM64_SHA256:-769d373e146692c639b5fbaae33b331c297a32e03d30448772051902df52bbf4}"
       ;;
     riscv64)
       uv_asset="uv-riscv64gc-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_RISCV64_SHA256:-29e74713e89242c6bf0971b28e904836298a04fb7e0d83262c7bd5aff695ae33}"
+      uv_sha256="${UV_RISCV64_SHA256:-dda637a8f2f11b73a3e8da35c7909772beb49799aea61bacb04c2e7d2455b939}"
       ;;
     *)
       die "Unsupported uv architecture: ${arch}"

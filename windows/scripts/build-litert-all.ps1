@@ -37,8 +37,10 @@ $stages = @(
 
 Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom
 
-# Hit/miss counters die with this container -- dump them into the run log now.
-Write-SccacheStats -Label 'media-litert'
 
 Write-Host "`n=== media-litert chain completed ==="
 
+# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
+# code otherwise -- a best-effort cleanup once failed a fully green stage with
+# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+exit 0

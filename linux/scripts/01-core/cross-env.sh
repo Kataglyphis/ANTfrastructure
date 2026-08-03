@@ -393,7 +393,7 @@ _cross_env_resolve_identifiers() {
   _eri_out[rust_env_lower]="$(cross_target_lower_rust)"
   _eri_out[build_rust_lower]="$(cross_build_lower_rust 2>/dev/null || true)"
   _eri_out[gcc_prefix]="$(gcc_toolchain_prefix)"
-  _eri_out[gcc_major]="${GCC_WANTED:-${GCC_VERSION:-16}}"
+  _eri_out[gcc_major]="${GCC_WANTED:-${GCC_VERSION:-16.1.0}}"
   _eri_out[gcc_major]="$(version_major "${_eri_out[gcc_major]}")"
   _eri_out[runtime_libdir]="${_eri_out[gcc_prefix]}/lib/gcc/${_eri_out[triplet]}/${_eri_out[gcc_major]}"
 }

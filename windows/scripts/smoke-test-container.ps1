@@ -1186,15 +1186,20 @@ foreach ($envPointer in $envPointerNames) {
     }.GetNewClosure() -FailMessage "$envPointer is unset or points at a nonexistent path (stale Dockerfile ENV?)"
 }
 
-# vcpkg's protoc must RUN, not just exist -- media builds shell out to it, and a
-# broken vcpkg surfaces hours into a media compile otherwise (see the VCPKG_REF
-# >= 2026.06 note in versions.env).
-Assert-Test -Name "vcpkg protoc runs (media-build toolchain dependency)" -Condition {
+# vcpkg zlib is the one vcpkg artifact media builds still consume (LiteRT-LM's
+# protobuf_external HAVE_ZLIB via CMAKE_PREFIX_PATH). vcpkg protobuf was removed
+# from the base image 2026-08-03 (nothing consumed it; every source build brings
+# its own protobuf) -- if protoc is still present (pre-removal base image), it
+# must at least run, else the vcpkg tree is corrupt.
+Assert-Test -Name "vcpkg zlib present (media-build dependency)" -Condition {
+    Test-Path 'C:\vcpkg\installed\x64-windows\lib\zlib.lib'
+} -FailMessage "vcpkg zlib.lib missing (vcpkg install broken in the base image)"
+Assert-Test -Name "vcpkg protoc runs IF present (legacy base images only)" -Condition {
     $protoc = 'C:\vcpkg\installed\x64-windows\tools\protobuf\protoc.exe'
-    if (-not (Test-Path $protoc)) { return $false }
+    if (-not (Test-Path $protoc)) { return $true }
     & $protoc --version 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
-} -FailMessage "vcpkg protoc.exe missing or fails to run (vcpkg install broken in the base image)"
+} -FailMessage "vcpkg protoc.exe exists but fails to run (vcpkg tree corrupt)"
 
 # ============================================================================
 Write-TestHeader '20. Python bindings (wheels + imports + inference)'

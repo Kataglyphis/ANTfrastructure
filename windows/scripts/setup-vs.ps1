@@ -75,19 +75,36 @@ $installer = Join-Path $TempDir 'vs_buildtools.exe'
 
 try {
     Write-Host 'Downloading Visual Studio Build Tools Installer...'
-    # Major-pinned channel (aka.ms/vs/<major>/release) instead of the fully floating
-    # aka.ms/vs/stable: a VS major bump can then never ride in silently — it must come
-    # through versions.env VISUAL_STUDIO_VERSION. A hard SHA256 pin is deliberately NOT
-    # used here: Microsoft refreshes the bootstrapper within a channel every few weeks,
-    # so a hash pin would break constantly; instead the actual hash is LOGGED below for
-    # provenance (compare across builds / against a known-good log when in doubt).
+    # Prefer the major-pinned channel (aka.ms/vs/<major>/release) so a VS major bump
+    # can never ride in silently — but Microsoft publishes that alias LATE for new
+    # majors (for 18 it still bounces to a Bing HTML page, which the MZ guard
+    # rejects), so fall back to aka.ms/vs/stable with a loud warning. The VsDevCmd
+    # major sanity check below still catches a silent stable->19 flip. A hard SHA256
+    # pin is deliberately NOT used (the bootstrapper refreshes within a channel every
+    # few weeks); the actual hash is LOGGED for provenance instead.
     $vsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
-    # Shared hardened download (retry + backoff + redirect-following). -ExpectSignature MZ
-    # rejects-and-retries the flaky aka.ms redirect's HTML error pages (same class
-    # as the nuget aka.ms bug) -- this replaces a 30-line hand-rolled curl/BITS/IWR fallback
-    # chain plus a manual PE-signature check with the one helper every other setup script uses.
-    Invoke-DownloadWithRetry -Url "https://aka.ms/vs/$vsMajor/release/vs_buildtools.exe" -DestinationPath $installer `
-        -Description "VS Build Tools $vsMajor installer" -ExpectSignature MZ
+    $vsUrls = @(
+        "https://aka.ms/vs/$vsMajor/release/vs_buildtools.exe",
+        'https://aka.ms/vs/stable/vs_buildtools.exe'
+    )
+    $vsDownloaded = $false
+    foreach ($vsUrl in $vsUrls) {
+        try {
+            # -ExpectSignature MZ rejects-and-retries HTML pages served in place of the
+            # binary (missing alias / flaky aka.ms redirect — same class as the nuget bug).
+            $attempts = if ($vsUrl -match 'stable') { 4 } else { 2 }
+            Invoke-DownloadWithRetry -Url $vsUrl -DestinationPath $installer `
+                -Description "VS Build Tools installer ($vsUrl)" -ExpectSignature MZ -MaxAttempts $attempts
+            $vsDownloaded = $true
+            if ($vsUrl -match 'stable') {
+                Write-Warning "major-pinned VS alias unavailable — used floating 'stable' channel (currently VS $vsMajor; the VsDevCmd check below fails the build if it ever is not)."
+            }
+            break
+        } catch {
+            Write-Warning "VS bootstrapper URL failed: $vsUrl -- $($_.Exception.Message)"
+        }
+    }
+    if (-not $vsDownloaded) { throw 'VS Build Tools bootstrapper unavailable from every candidate URL' }
     Write-Host ("VS Build Tools bootstrapper SHA256 (provenance): {0}" -f (Get-FileHash -Algorithm SHA256 -Path $installer).Hash)
 
     $installerArgs = @(

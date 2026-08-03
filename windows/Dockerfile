@@ -26,13 +26,15 @@ ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 # resolve no toolchain). flutter_rust_bridge_codegen is baked alongside. Ships with
 # the next base rebuild; images from older (scoop-rust) bases lack rustup entirely.
 
-COPY windows\scripts\healthcheck.ps1 C:\temp\scripts\healthcheck.ps1
-# Smoke test is documented to run from inside the container (docs/windows-builds.md)
-COPY windows\scripts\smoke-test-container.ps1 C:\temp\scripts\smoke-test-container.ps1
+# One COPY for the flat scripts (healthcheck; the in-container smoke test, see
+# docs/windows-builds.md; the entrypoint launcher used by ENTRYPOINT below) — the
+# classic builder pays a LAYER per instruction and the chain runs close to
+# Docker's 125-layer cap (hit 2026-08-03). Modules dir COPY stays separate
+# (different dest). Copied here — the cheapest, last stage — so script edits
+# never invalidate the base or media layers.
+COPY windows\scripts\healthcheck.ps1 windows\scripts\smoke-test-container.ps1 windows\scripts\entrypoint.cmd C:\temp\scripts\
 # Full module set for in-container CI tooling (WindowsBuild/WindowsUv/... are
 # imported from this path by downstream Invoke-Ci* / rust build scripts).
-# Copied here — the cheapest, last stage — so module edits never invalidate
-# the base or media layers.
 COPY windows\scripts\modules C:\temp\scripts\modules
 
 # The Orchestr-ANT-ion app environment (the Windows "torch step") is INHERITED
@@ -59,7 +61,6 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
 
 # Launcher script instead of inline cmd: exec-form re-quoting mangles embedded
 # quotes around the spaces-in-path VsDevCmd.bat (literal \" reaches cmd.exe).
-# entrypoint.cmd loads VsDevCmd then runs the container command (or interactive
-# pwsh (PowerShell 7) when none is given).
-COPY windows\scripts\entrypoint.cmd C:\temp\scripts\entrypoint.cmd
+# entrypoint.cmd (copied with the flat scripts above) loads VsDevCmd then runs
+# the container command (or interactive pwsh (PowerShell 7) when none is given).
 ENTRYPOINT ["cmd","/S","/C","C:\\temp\\scripts\\entrypoint.cmd"]

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_common_init "${SCRIPT_DIR}"
 
-ARMNN_VERSION="${ARMNN_VERSION:-v25.11}"
+ARMNN_VERSION="${ARMNN_VERSION:-v26.07}"
 ARMNN_REPO="${ARMNN_REPO:-https://github.com/ARM-software/armnn.git}"
 ARMNN_SRC_DIR="${ARMNN_SRC_DIR:-/tmp/armnn-src}"
 ARMNN_INSTALL_DIR="${ARMNN_INSTALL_DIR:-/opt/armnn}"

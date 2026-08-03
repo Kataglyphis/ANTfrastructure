@@ -384,11 +384,38 @@ function Get-VisualStudioInstallPath {
     # Get-VsInstallPath could return a banner string that then produced
     # "No MSVC toolchain found under Visual Studio Locator version ...\VC\Tools\MSVC".
     # The Test-Path filter is the belt-and-braces half: only real directories survive.
+    #
+    # RETRY + FALLBACK (2026-08-03): in a freshly booted container, vswhere can
+    # transiently return NOTHING (installer state under ProgramData not readable
+    # yet ~seconds after boot) — reproduced once ~24s into a media-core run and
+    # never again in warm containers (6/6 probes clean). Retry briefly, then fall
+    # back to filesystem discovery of <PF>\Microsoft Visual Studio\<major>\<sku>
+    # with VC\Tools\MSVC present, so a boot race costs seconds, not the stage.
     $selector = if ($All) { @() } else { @('-latest') }
-    $vsPaths = @(& $vswhere -nologo @selector -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-        ForEach-Object { $_.Trim() } |
-        Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+    $vsPaths = @()
+    foreach ($attempt in 1..3) {
+        $vsPaths = @(& $vswhere -nologo @selector -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+        if ($vsPaths.Count -gt 0) { break }
+        if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+    }
+    if ($vsPaths.Count -eq 0) {
+        $globbed = @(Get-ChildItem -Path @(
+                "$env:ProgramFiles\Microsoft Visual Studio",
+                "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
+            ) -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^\d+$' } |
+            Get-ChildItem -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName 'VC\Tools\MSVC') -PathType Container } |
+            Sort-Object FullName -Descending |
+            Select-Object -ExpandProperty FullName)
+        if ($globbed.Count -gt 0) {
+            Write-Warning "vswhere returned no installation; using filesystem fallback: $($globbed[0])"
+            $vsPaths = $globbed
+        }
+    }
 
     if ($vsPaths.Count -eq 0) {
         if ($AllowMissing) { if ($All) { return @() } else { return $null } }

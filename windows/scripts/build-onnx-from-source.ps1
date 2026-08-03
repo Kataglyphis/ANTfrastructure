@@ -15,7 +15,7 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.27.0' -StripVPrefix
+$OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.28.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 
@@ -178,7 +178,13 @@ Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setup
 # ONNX-specific CPU feature flags added on top of the shared SIMD base.
 # mwaitpkg is required by spin_pause.cc (_tpause intrinsic); aes/pclmul are
 # used by CUDA provider crc64; f16c accelerates float16 on Haswell+.
-$cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c $(Get-WindowsX86Avx512Flags) /clang:-Wno-invalid-specialization"
+# AVX-512/AMX deliberately NOT in the global flags: with them, clang may emit
+# AVX-512 anywhere — including onnxruntime.dll's static initializers, which
+# run unconditionally at LOAD time and crashed with STATUS_ILLEGAL_INSTRUCTION
+# on this AVX2-only host (ORT 1.28; ctypes/pybind load both die). The MLAS
+# arch-specific TUs that REQUIRE those features get them per-TU via the
+# build.ninja add-pass after configure — they are runtime-dispatched and safe.
+$cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c /clang:-Wno-invalid-specialization"
 
 # -- GPU detection (single shot via Get-GpuEnvironment; ONNX-specific flag names stay local) --
 # ONNX_FORCE_CPU=1 forces a CPU-only ONNX (skips the ~1h CUDA/TensorRT kernel compiles) so the DirectML
@@ -253,8 +259,50 @@ $cmakeArgs = @(
 ) + $gpuArgs
 Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs | Out-Null
 
-# -- Post-configure patches (NVIDIA CUDA + CUTLASS) --
-# Inline patches (kept inline, NOT .patch files):
+# -- Post-configure patches (fetched _deps trees; inline, NOT .patch files —
+# static patches against CMake-fetched deps rot when ORT's dep pointer moves) --
+
+# onnx (bundled proto library, ORT >= 1.28): scoped_resource.h declares
+#   using ScopedHandle = ScopedResource<INVALID_HANDLE_VALUE, close_handle>;
+# INVALID_HANDLE_VALUE is ((HANDLE)(LONG_PTR)-1) — a reinterpret_cast, which is
+# NOT a valid non-type template argument under clang (MSVC accepts it as an
+# extension). Replace the alias with an interface-identical RAII class holding
+# the sentinel at runtime. (checker.cc uses ctor/get/release only.)
+$scopedHandleFix = @'
+// [clang-cl compat, ContainerHub] INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
+// is not a valid non-type template argument under clang (reinterpret_cast in a
+// constant expression; MSVC permits it as an extension). Interface-identical
+// RAII type with the sentinel held at runtime instead.
+class ScopedHandle {
+  HANDLE val_;
+
+ public:
+  explicit ScopedHandle(HANDLE v) : val_(v) {}
+  ~ScopedHandle() {
+    if (val_ != INVALID_HANDLE_VALUE) {
+      close_handle(val_);
+    }
+  }
+  HANDLE get() const {
+    return val_;
+  }
+  HANDLE release() {
+    HANDLE tmp = val_;
+    val_ = INVALID_HANDLE_VALUE;
+    return tmp;
+  }
+  ScopedHandle(const ScopedHandle&) = delete;
+  ScopedHandle& operator=(const ScopedHandle&) = delete;
+};
+'@
+$onnxScoped = "$buildDir\_deps\onnx-src\onnx\common\scoped_resource.h"
+if (Test-Path $onnxScoped) {
+    Invoke-InlineRegexPatch -Path $onnxScoped `
+        -Pattern 'using ScopedHandle = ScopedResource<INVALID_HANDLE_VALUE, close_handle>;' `
+        -Replacement $scopedHandleFix `
+        -WarnMessage "onnx scoped_resource.h: ScopedHandle alias not found — upstream may have fixed or reshaped it; verify clang-cl still compiles checker.cc." | Out-Null
+}
+
 #   * CUTLASS is a CMake-fetched third-party dep; the fetched version's SHA varies
 #     with onnxruntime's `cutlass-src` ExternalProject pointer. A static .patch
 #     against a pinned tag would silently rot when the pinned SHA changes, so
@@ -282,6 +330,39 @@ Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
     '(?<!-Xcompiler\s)/bigobj',
     '--threads \d+'
 )
+
+# ADD AVX-512/AMX per-TU to MLAS's arch-specific objects in build.ninja.
+# Polarity settled 2026-08-03 after three field failures:
+#   * global flags  -> _deps protoc AND onnxruntime.dll static init execute
+#                      AVX-512 on this AVX2-only host (load-time crash);
+#   * no flags      -> MLAS's avx512/amx TUs fail to COMPILE (clang-cl gates
+#                      intrinsics behind target features; ORT's mlas.cmake
+#                      takes the MSVC branch under clang-cl and adds none).
+# So: nothing gets the features globally; ONLY the MLAS TUs whose object paths
+# name avx512/amx receive them — those kernels are runtime-dispatched and are
+# never executed on CPUs without the features.
+$mlasArchFlags = Get-WindowsX86Avx512Flags
+$ninjaFile = "$buildDir\build.ninja"
+$ninjaLines = Get-Content $ninjaFile
+$inMlasArch = $false
+$mlasTagged = 0
+for ($i = 0; $i -lt $ninjaLines.Count; $i++) {
+    $line = $ninjaLines[$i]
+    if ($line -match '^build ') {
+        $inMlasArch = ($line -match 'onnxruntime_mlas\.dir' -and $line -match '(avx512|_amx|amx_|sqnbitgemm|qgemm_kernel_amx)')
+    } elseif ($inMlasArch -and $line -match '^\s+FLAGS = ') {
+        if ($line -notmatch 'avx512') {
+            $ninjaLines[$i] = $line + ' ' + $mlasArchFlags
+            $mlasTagged++
+        }
+    }
+}
+if ($mlasTagged -gt 0) {
+    Set-Content -Path $ninjaFile -Value $ninjaLines
+    Write-Host "build.ninja: added AVX-512/AMX flags to $mlasTagged MLAS arch TU FLAGS line(s) (runtime-dispatched kernels)"
+} else {
+    Write-Warning 'build.ninja: no MLAS avx512/amx FLAGS lines found to tag — if MLAS arch TUs fail to compile, the ninja layout no longer matches this pass.'
+}
 
 # Memory-scaled parallelism: AVX-512/CUDA TUs under clang-cl peak at several GB each,
 # so full -j<cores> can OOM the container. jobs = min(cores, memGB/4), floor 2
@@ -321,5 +402,7 @@ Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $buildDir 'dist') -M
 Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime source build completed ==='
 
-
-
+# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
+# code otherwise -- a best-effort cleanup once failed a fully green stage with
+# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+exit 0

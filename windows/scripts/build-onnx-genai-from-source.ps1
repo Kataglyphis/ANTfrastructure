@@ -16,7 +16,7 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.14.0' -StripVPrefix
+$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.15.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime GenAI source build (v$OnnxGenAiVersion, Ninja+clang-cl) ==="
 Write-Host "SourceDir: $SourceDir"
@@ -96,6 +96,11 @@ $cmakeExtraGenAi = @(
     # copies onnxruntime_genai.pyd + embed libs (incl. D3D12Core) into build\wheel;
     # the wheel itself is packed after the build below.
     '-DENABLE_JAVA=OFF', '-DBUILD_WHEEL=ON', '-DUSE_GUIDANCE=OFF'
+    # GenAI 0.15 turned Microsoft 1DS telemetry (cpp_client_telemetry) ON by
+    # default. OFF for two reasons: (a) its bundled zlib feeds GNU-style
+    # `-std=c11` to clang-cl under -Werror -> hard build break; (b) we do not
+    # want phone-home telemetry compiled into the shipped image at all.
+    '-DENABLE_TELEMETRY=OFF'
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
     "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE"
@@ -216,5 +221,7 @@ Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== ONNX Runtime GenAI source build completed ==='
 Write-Host "Artifacts at: $genaiInstallDir"
 
-
-
+# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
+# code otherwise -- a best-effort cleanup once failed a fully green stage with
+# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+exit 0

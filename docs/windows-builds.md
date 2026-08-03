@@ -30,6 +30,26 @@ This repository applies a **patch-first** policy to upstream sources on the Wind
 6. **Single-file regex edits on aggressively-changing generated-as-schema upstream files** — The OpenCV `add_extra_compiler_option(-include cstring)` removal (plus surrounding CMake add-to-flags lines on `cmake/OpenCVCompilerOptions.cmake`) is kept inline *not* because a `.patch` couldn't be authored today, but because the upstream context drifts enough between minor releases that a static `.patch` would need re-generation on every tag bump:
    - `build-opencv-from-source.ps1` — `cmake/OpenCVCompilerOptions.cmake` `-include cstring` removal
 
+7. **Upstream export-gap bridges (LiteRT-LM v0.14.0)** — Google ships LiteRT-LM
+   tags whose CMake layer lags the source restructure (v0.14.0's was never
+   buildable anywhere: it references the deleted `constrained_decoding`
+   component, pins a LiteRT from *before* the `support/` tree its own shim
+   headers `#include " from @litert"`, and compiles none of the new
+   `logits_processor`/support subsystems). `build-litert-lm-from-source.ps1`
+   bridges this with condition-gated blocks (`[LiteRTLM-winfix export-stubs]`,
+   `[LiteRTLM-winfix support-graft]`, the v0.14-orphans + v0.14-deps blocks):
+   stub CMakeLists are *generated*, the `support/` tree is *sparse-cloned from
+   LiteRT at the version this container already ships* (`LITERT_VERSION`), and
+   orphaned sources are injected into the engine lib. Static `.patch` files
+   cannot express "graft a tree from another repo at a configurable tag" or
+   "only when the referenced dir is missing" — and every block is gated on the
+   breakage itself, so a future tag with a fixed export takes upstream's files
+   untouched and the bridge self-retires. The Gemma constraint provider is
+   upstream's prebuilt-only DLL component: its import lib is linked on the exe
+   and the DLL staged beside `litert_lm_main.exe` (with `z.dll` +
+   `kissfft-float.dll`, found via `llvm-objdump -p` after the exe died
+   0xC0000135 without them).
+
 Every inline substitution in a build script carries a `# Inline patch (kept inline, NOT a .patch file):` block comment explaining the canonical-form rationale. The current `.patch` inventory:
 
 | Component | Patch | Upstream target | Purpose |
@@ -90,6 +110,13 @@ networking natively, so both `docker build` and `docker run` just work.
 | `nerdctl` | ❌ Broken DNS | ❌ Fails: missing CNI `nat` plugin |
 
 ## Build Commands
+
+> **Preferred since 2026-08: the BuildKit/containerd lane** —
+> `.\windows\build-buildkit.ps1 -Gpu` builds the same Dockerfiles with **process
+> isolation** (full host CPUs, no Hyper-V 2-CPU cap, no run+commit) and real
+> per-stage layer caching. One-time host setup + launch: see § BuildKit/containerd
+> lane below. The `build.ps1` commands here are the docker-classic fallback lane
+> (Hyper-V + run+commit) and remain fully supported.
 
 Use the driver script from the repository root. It parses `linux/scripts/01-core/versions.env`
 and passes every version as `--build-arg` (the Dockerfile ARG defaults are only
@@ -154,6 +181,215 @@ Under Hyper-V, build containers are given only **2 logical CPUs**, so
 in-container `ninja -j` to 2 no matter how many cores the host has. That is the
 difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the heavy
 **media-core** stage does **not** use `docker build` at all.
+
+### BuildKit/containerd lane (PREFERRED, `windows/build-buildkit.ps1`)
+
+**This is the lane to use from 2026-08 on** — full host CPUs on every stage,
+process-isolated layer commits, and real per-stage layer caching, with the
+docker-classic run+commit lane kept as the always-working fallback. Probes on
+2026-08-03 established that BOTH docker-classic limits are absent on the
+buildkitd+containerd path on this same host (and the chain was then rebuilt
+from base on this lane the same day — VS2026, CUDA, CPython and the media
+compiles all ran as plain process-isolated layers):
+
+| Probe | Result |
+|---|---|
+| process-isolated RUN + layer commit via buildctl | **works** (the wcifs `ActivateLayer 0x20` bug is a docker-writer artifact) |
+| CPUs visible in a buildkit RUN step | **NPROC=32** (no 2-CPU cap) |
+| container networking | none by default → **works after installing the CNI nat conf** (`C:\Program Files\containerd\cni\conf\0-containerd-nat.conf`; `nat.exe` ships in `...\cni\bin`) |
+| stage handoff (`FROM` a locally built image) | **works** with fully-qualified store names (`docker.io/local/...`) + `--opt image-resolve-mode=local` (buildkit normalizes bare names to docker.io/ and otherwise tries the real registry) |
+
+Consequences: every stage can be a plain build — the heavy compiles run as
+`*-built` Dockerfile targets (toolchain-builder `built`, media-builder
+`media-<branch>-built`, merge-builder `built`) with real per-stage layer
+caching, and the run+commit machinery is unnecessary on this lane. The classic
+lane is untouched: `build.ps1` pins `--target builder` / `--target merge`, so
+docker never executes those targets.
+
+#### Getting it going — Stevedore + BuildKit host setup (from scratch)
+
+[Stevedore](https://github.com/slonopotamus/stevedore) ships the whole engine
+family in one install: `docker.exe`/`buildctl.exe` under
+`C:\Program Files\Stevedore\bin\`, plus the `stevedore` (dockerd), `containerd`
+and `buildkitd` services. Everything below is one-time, admin unless noted.
+
+0. **Install Stevedore** (MSI from the releases page) and put yourself in the
+   **`docker-users`** local group (log out/in afterwards) — dockerd's and
+   buildkitd's named pipes are ACL'd to that group, which is what makes
+   non-admin builds possible. containerd's own pipe stays admin-only (only
+   `nerdctl` needs it; `docker`/`buildctl` don't).
+
+1. **Services**: all three must run; set them to delayed-auto so reboots
+   self-heal:
+
+   ```powershell
+   Get-Service stevedore, containerd, buildkitd | Set-Service -StartupType AutomaticDelayedStart
+   Start-Service stevedore, containerd, buildkitd
+   ```
+
+   buildkitd's service must carry `--group docker-users` in its ImagePath
+   (Stevedore's default registration does:
+   `buildkitd.exe --run-service --service-name buildkitd --group docker-users`).
+
+   **Known dockerd boot-failure pitfall:** a stale
+   `C:\ProgramData\docker\config\daemon.json` whose `hosts` entry conflicts
+   with the service's `--host` flags prevents the `stevedore` service from
+   starting at all (took a debugging session to find, 2026-08-03). If dockerd
+   won't start, rename that file first.
+
+2. **CNI networking** (without it every RUN that downloads anything fails with
+   "remote name could not be resolved"): `nat.exe` already ships in
+   `C:\Program Files\containerd\cni\bin`; install the conf (admin):
+
+   ```jsonc
+   // C:\Program Files\containerd\cni\conf\0-containerd-nat.conf
+   {
+       "cniVersion": "0.3.0",
+       "name": "nat",
+       "type": "nat",
+       "master": "Ethernet",
+       "ipam": {
+           "subnet": "<subnet of the vEthernet (nat) adapter>",   // e.g. 172.31.32.0/20
+           "routes": [ { "GW": "<that adapter's IPv4>" } ]        // e.g. 172.31.32.1
+       },
+       "capabilities": { "portMappings": true, "dns": true }
+   }
+   ```
+
+   **Subnet drift warning:** dockerd recreates the `nat` HNS network with a NEW
+   subnet on service restarts, silently orphaning this conf (containers then get
+   unroutable IPs). `build-buildkit.ps1` fail-fasts on the mismatch at preflight
+   with the exact fix; re-sync the conf to `ipconfig`'s `vEthernet (nat)` values
+   and `Restart-Service buildkitd -Force` (plain `Restart-Service` refuses when
+   dependent services exist).
+3. **Windows Defender exclusions** for `C:\ProgramData\containerd` (and the
+   buildkit state dir) — layer extraction races the scanner otherwise.
+4. **REQUIRED for the compile stages: disable the per-step log limit.**
+   buildkitd clips each RUN step's log at 2 MiB (`[output clipped, log limit
+   2MiB reached]`) — and on Windows buildkitd v0.32 this is not cosmetic: after
+   the clip the container's stdio pipe stops being drained, every process
+   blocks on its next write, and the step **deadlocks silently** (reproduced
+   twice on 2026-08-03: media-core froze ~3 min in, right at the clip, with two
+   zombie ninja processes at 0 % CPU). ONNX's warning flood alone exceeds 2 MiB
+   in minutes, so heavy stages cannot survive the default. One-time (admin; do
+   it while no build is running — the restart kills in-flight solves, though
+   buildkitd's layer cache survives):
+
+   ```powershell
+   Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd `
+     -Name Environment -Type MultiString `
+     -Value @('BUILDKIT_STEP_LOG_MAX_SIZE=-1','BUILDKIT_STEP_LOG_MAX_SPEED=-1')
+   Restart-Service buildkitd -Force
+   ```
+
+   (`-1` = unlimited; the driver tees everything to per-stage files under
+   `out\windows-build-logs\` anyway, so disk is the only cost.)
+5. **sccache** (non-admin): serve a cache dir over WebDAV — e.g.
+   [dufs](https://github.com/sigoden/dufs): `dufs C:\sccache-cache -p 5000 -A`
+   — and export `SCCACHE_WEBDAV_ENDPOINT=http://<host-LAN-IP>:5000`; the
+   compile scripts pick it up inside RUN steps (same endpoint serves both
+   lanes, so the classic chain pre-warms BK builds and vice versa). Verified:
+   BK's NAT'd containers reach the host's LAN IP fine.
+
+6. **Verify** before the first long build (non-admin):
+
+   ```pwsh
+   & "$env:ProgramFiles\Stevedore\bin\buildctl.exe" --addr npipe:////./pipe/buildkitd debug workers   # worker: windows/amd64
+   # network smoke: any tiny Dockerfile whose RUN resolves a hostname; or just start
+   # the chain - build-buildkit.ps1's preflight guards (buildkitd reachability +
+   # CNI subnet drift) fail fast with the exact fix if something is off.
+   ```
+
+Launch:
+
+```pwsh
+$env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
+.\windows\build-buildkit.ps1 -Gpu                        # full chain from base
+.\windows\build-buildkit.ps1 -Stages toolchain           # one stage
+.\windows\build-buildkit.ps1 -Gpu -FinalTar out\bk-winamd64.tar  # + docker-loadable export
+```
+
+Remaining gotchas (why the classic lane still exists): images land in the
+CONTAINERD store (`docker.io/local/kataglyphis:bk-*`) and are invisible to
+docker's windowsfilter store — running/pushing via docker needs the `-FinalTar`
+export (or buildctl registry push once auth is wired). **Inspecting/running
+them directly works via Stevedore's nerdctl in an ELEVATED shell** (verified
+2026-08-03 — the images list fine; containerd's pipe has no `--group` option
+upstream, so non-admin nerdctl stays impossible; don't attempt pipe-ACL hacks):
+
+```powershell
+# admin shell; buildkit's containerd namespace holds the bk-* images
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit images
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit run --rm docker.io/local/kataglyphis:bk-windows-media-core pwsh -c "python -c 'import onnxruntime'"
+```
+
+When validating lane parity, compare each `bk-*` image's payload against the
+classic tag (the same scripts and Dockerfile targets run in both lanes).
+
+Housekeeping and sharing:
+
+- **Store GC**: buildkitd's store (`C:\ProgramData\buildkitd`) grows unbounded
+  by default (>130 GB observed after one chain). Configure GC in
+  `buildkitd.toml` (verify the config path for your service registration with
+  `buildkitd --help`; Stevedore's service takes `--config` if you re-register):
+
+  ```toml
+  [worker.containerd]
+    gc = true
+    gckeepstorage = 200000000000   # ~200 GB
+  ```
+
+  Until that's wired, prune manually between chains:
+  `buildctl --addr npipe:////./pipe/buildkitd prune --keep-storage 200gb`.
+- **Cross-host / CI cache**: `build-buildkit.ps1 -ExportCacheRef <registry-ref>`
+  / `-ImportCacheRef <ref>` wire buildkit's registry cache (`mode=max`) once
+  registry auth works from buildkitd — a second machine then rebuilds the chain
+  from cache instead of from source.
+
+Roadmap (**mounts PROBED WORKING on Windows buildkitd v0.32, 2026-08-03** —
+both `--mount=type=bind` and `--mount=type=cache` execute correctly in RUN
+steps; the remaining work is the Dockerfile surgery):
+
+- **`RUN --mount=type=bind` for build scripts** instead of COPY (the Linux
+  lane's pattern): script edits would stop cascading stage rebuilds — the
+  2026-08-03 exit-code fix wave re-ran sdk→toolchain→media only because the
+  scripts travel as COPY layers. Design constraint: the classic builder does
+  NOT understand `--mount`, so the COPY layers must stay for the classic
+  targets — the win requires the `*-built` BK targets to stop inheriting the
+  script COPYs (own mount-based stage lineage).
+- **`RUN --mount=type=cache` for a local sccache dir** (WebDAV stays as the
+  cross-lane L2): kills the HTTP round-trip on ~5000 compiles per stage.
+  Probed working; wiring = set SCCACHE_DIR to the cache mount in the `*-built`
+  RUNs.
+- **Per-library media-core split**: DONE (4 RUN layers via `-Until`/`-StartAt`,
+  see Dockerfile.media-builder) — an FFmpeg-only change never recompiles
+  ONNX/GenAI/OpenCV.
+- **Concurrent branch solves** (litert + tvm in parallel buildctl calls) —
+  RAM-gated; both branches are memory-bound, so measure before enabling.
+
+### The 125-layer budget (classic lane)
+
+Docker's layer-chain depth is hard-capped at **125**; exceeding it fails with
+`max depth exceeded` when the FIRST container of the next stage is created —
+i.e. the failure lands one stage *after* the image that overspent. The classic
+builder emits a layer **per instruction, metadata included** (28 separate `ENV`
+lines in the merge Dockerfile cost 28 layers; consolidating them into one big
+`ENV` took the merge builder from 114 → 86 layers on 2026-08-03, and the final
+image from a 125 cap-hit to ~108).
+
+Rules of thumb:
+
+- One consolidated `ENV` per Dockerfile stage (same-instruction `${}` refs
+  don't resolve — write derived paths as literals).
+- Batch flat-file `COPY`s with multi-source form when the destination matches.
+- After adding instructions anywhere in the chain, audit headroom:
+
+  ```pwsh
+  docker inspect <tag> --format '{{len .RootFS.Layers}}'   # per chain image
+  ```
+
+The BuildKit lane is far less exposed (metadata instructions are config-only
+there), but the exported images still obey the cap when loaded into docker.
 
 **Why `docker build` can't be fixed on this host.** The classic Windows builder
 offers no working CPU lever, all verified with a ~6-second repro (a Dockerfile
