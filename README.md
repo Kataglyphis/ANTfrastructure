@@ -140,13 +140,24 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 
 ### Windows 🪟
 
-Preferred (BuildKit/containerd, process isolation — full CPUs + layer caching; one-time setup in [Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane):
+The Windows toolchain is **containerd + BuildKit + nerdctl** (process isolation,
+full host CPUs, real layer caching — one-time setup in
+[Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane):
 
 ```pwsh
+# BUILD (non-admin shell; buildctl against buildkitd):
 .\windows\build-buildkit.ps1 -Gpu
+
+# INSPECT / RUN the built images (ADMIN shell; nerdctl against containerd —
+# containerd's pipe is admin-only upstream, build stays non-admin):
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit images
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit run --rm `
+    docker.io/local/kataglyphis:bk-windows-media-core pwsh -c "python -c 'import onnxruntime'"
 ```
 
-Fallback (docker classic, Hyper-V run+commit) and all further commands: [Windows Build Image](docs/windows-builds.md) § Build Commands.
+Fallback (docker classic, Hyper-V run+commit — for hosts without the BuildKit
+setup) and all further commands: [Windows Build Image](docs/windows-builds.md)
+§ Build Commands.
 
 ### Clone The Repository
 

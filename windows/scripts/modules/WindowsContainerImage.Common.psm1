@@ -43,9 +43,18 @@ function Clear-PendingFileHandle {
     # GC + finalizer drain + a no-op child process to flush lingering async file
     # handles before a docker layer commit (the CUDA installer leaves handles
     # behind that otherwise make the immediately-following Remove-Item/commit flaky).
+    # BEST-EFFORT by contract: this flush must NEVER fail a build. A transient
+    # process-spawn flake once surfaced as "'cmd.exe' is not recognized" under
+    # EAP=Stop and killed a green sdk stage 4.5 min in (2026-08-03; cmd.exe and
+    # PATH were verified healthy) — hence the full path + try/catch.
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()
-    & cmd.exe /c 'ver > nul' 2>&1 | Out-Null
+    try {
+        & (Join-Path $env:SystemRoot 'System32\cmd.exe') /c 'ver > nul' 2>&1 | Out-Null
+    } catch {
+        Write-Warning "Clear-PendingFileHandle: no-op child spawn failed ($($_.Exception.Message)) — continuing (best-effort flush)"
+    }
+    $global:LASTEXITCODE = 0
 }
 
 function Sync-ContainerProcessPath {

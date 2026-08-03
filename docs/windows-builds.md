@@ -72,8 +72,8 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 - `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.23 + TensorRT 11.1.0.106 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build.ps1` handles this automatically via its `-Gpu` switch.
 - The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `build-toolchain-all.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
 - The **media stage fans out into three branch images** by `windows/build.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
-  - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.27.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.14.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `master` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
-  - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 → LiteRT-LM 0.13.1 (independent of ONNX).
+  - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.28.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.15.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`, telemetry off) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `master` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
+  - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 → LiteRT-LM 0.14.0 (independent of ONNX; v0.14.0's broken OSS CMake export is bridged by `litert-lm-export-bridge.ps1`, see § Source Patch Policy #7).
   - **media-tvm** (`--target media-tvm` + `build-media-tvm-all.ps1`) — TVM 0.25.0 → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
   - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, then GStreamer 1.29.2 built via `build-gstreamer-from-source.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
 - `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).
@@ -328,10 +328,23 @@ classic tag (the same scripts and Dockerfile targets run in both lanes).
 
 Housekeeping and sharing:
 
-- **Store GC**: buildkitd's store (`C:\ProgramData\buildkitd`) grows unbounded
-  by default (>130 GB observed after one chain). Configure GC in
-  `buildkitd.toml` (verify the config path for your service registration with
-  `buildkitd --help`; Stevedore's service takes `--config` if you re-register):
+- **Store GC — treat as MANDATORY OPS, not housekeeping.** buildkitd's store
+  grows unbounded by default; iterating on the chain stacks full image
+  generations (30–40 GB each) in the containerd store on every rebuild cycle.
+  On 2026-08-03 disk exhaustion sabotaged one day THREE ways, each wearing a
+  different costume: `hcsshim::ExportLayer 0x3` ("path not found") at snapshot
+  finalize, a process-spawn flake surfacing as `'cmd.exe' is not recognized`,
+  and finally an honest `ExportLayer 0x70` (disk full) — only the last one
+  names the disease. If a Windows BK build fails in ANY weird hcsshim way,
+  **check free disk first.** Cleanup levers, non-admin first:
+  `buildctl prune --all` (build cache only), `docker image prune -f` (the
+  classic lane's dangling generations — 91 GB reclaimed that day); the bk-*
+  image generations themselves need admin (`nerdctl --namespace buildkit rmi`,
+  or stop buildkitd+containerd and delete their state dirs for a full reset —
+  dockerd may stop with containerd: `Start-Service stevedore` afterwards).
+  Configure GC in `buildkitd.toml` (verify the config path for your service
+  registration with `buildkitd --help`; Stevedore's service takes `--config`
+  if you re-register):
 
   ```toml
   [worker.containerd]

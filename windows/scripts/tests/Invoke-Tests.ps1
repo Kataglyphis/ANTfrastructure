@@ -17,6 +17,7 @@ Import-Module (Join-Path $here 'TestHarness.psm1') -Force -DisableNameChecking
 # from the top level. Importing Shared last restores them (same fix build-gstreamer uses).
 Import-Module (Join-Path $modDir 'WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsBuildKit.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $modDir 'WindowsBuildDriver.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsScripts.Shared.psm1') -Force -DisableNameChecking
 
 Reset-TestState

@@ -230,11 +230,10 @@ if (-not $NoResourceLog) {
     Write-Host "Resource log: $script:ResourceCsv (20s samples, phase-tagged; disable with -NoResourceLog)"
 }
 
-# Transient hcsshim/containerd failures ("failed to create shim task: ttrpc:
-# closed") intermittently kill container creation, typically right after a big
-# layer commit. Both Invoke-Stage and the media fan-out classify failures against
-# this single pattern.
-$script:TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
+# Transient-failure classification, retry engine, build-arg shaping, image
+# preflight and the isolation probe live in WindowsBuildDriver.Common.psm1
+# (extracted 2026-08-03; unit-tested with a fake docker in
+# BuildDriver.Retry.Tests.ps1). Initialized right after docker resolution below.
 
 # CPU note: Hyper-V-isolated build containers get only 2 CPUs, pinning every
 # in-container `ninja -j` to 2 (Get-BuildJobCount = min(ProcessorCount, memGB/perJob)).
@@ -259,6 +258,8 @@ Write-Host "Using docker: $Docker"
 
 # ---- load canonical versions (single source of truth) ----
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Shared.psm1') -Force
+Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.Common.psm1') -Force
+Initialize-BuildDriverContext -Docker $Docker -LogDir $script:LogDir -NoCache:$NoCache
 $versionsFile = Join-Path $repoRoot 'linux\scripts\01-core\versions.env'
 if (-not (Test-Path $versionsFile)) { throw "versions.env not found at $versionsFile" }
 $versions = ConvertFrom-VersionsEnv -Path $versionsFile
@@ -311,39 +312,8 @@ function Get-MediaBranchTag {
 # at its first commit. 'auto' therefore runs the ~10s commit probe and caches
 # the verdict per (host build, docker version); a Windows update or Docker
 # upgrade re-probes automatically.
-function Resolve-BuildIsolation {
-    if ($Isolation -ne 'auto') {
-        Write-Host "Isolation: $Isolation (forced via -Isolation)" -ForegroundColor Cyan
-        return $Isolation
-    }
-    $hostInfo = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
-    $dockerVer = (& $Docker version --format '{{.Server.Version}}' 2>$null | Select-Object -First 1)
-    $cacheKey = '{0}.{1}|{2}' -f $hostInfo.CurrentBuildNumber, $hostInfo.UBR, $dockerVer
-    $cacheFile = Join-Path $script:LogDir 'isolation-probe-cache.json'
-    if (Test-Path $cacheFile) {
-        try {
-            $cached = Get-Content $cacheFile -Raw | ConvertFrom-Json
-            if ($cached.key -eq $cacheKey) {
-                Write-Host ("Isolation: {0} (cached commit-probe verdict for {1})" -f $cached.isolation, $cacheKey) -ForegroundColor Cyan
-                return $cached.isolation
-            }
-        } catch { }
-    }
-    Write-Host 'Isolation: auto — running the process-isolation commit probe (~10s, verdict cached)...' -ForegroundColor Cyan
-    $probeLog = Join-Path $script:LogDir 'isolation-probe.log'
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'diagnostics\test-process-isolation-commit.ps1') -Docker $Docker *> $probeLog
-    $verdict = $LASTEXITCODE
-    $resolved = if ($verdict -eq 0) { 'process' } else { 'hyperv' }
-    if ($resolved -eq 'process') {
-        Write-Host 'Isolation: PROCESS — commit probe passed; full host CPUs for docker build and docker run.' -ForegroundColor Green
-    } else {
-        Write-Warning ("process isolation cannot commit layers on this host (probe exit ${verdict}, log: $probeLog) — using hyperv. " +
-            'Real fix: build on a Windows Server host whose build matches the base image (see docs/windows-builds.md § Build isolation).')
-    }
-    @{ key = $cacheKey; isolation = $resolved } | ConvertTo-Json -Compress | Set-Content $cacheFile
-    return $resolved
-}
-$script:BuildIsolation = Resolve-BuildIsolation
+$script:BuildIsolation = Resolve-BuildIsolation -Isolation $Isolation -Docker $Docker -LogDir $script:LogDir -ProbeScript (Join-Path $PSScriptRoot 'diagnostics\test-process-isolation-commit.ps1')
+Set-BuildDriverIsolation -Isolation $script:BuildIsolation
 
 # ── sccache policy (required by default for the compile stages) ──────────────
 # Without BuildKit cache mounts, sccache's WebDAV remote is the ONLY compile
@@ -367,134 +337,8 @@ if (-not $NoSccache -and @($Stages | Where-Object { $compileStages -contains $_ 
     }
 }
 
-function Get-DockerBuildArgList {
-    param(
-        [Parameter(Mandatory)] [string]$Dockerfile,
-        [Parameter(Mandatory)] [string]$Tag,
-        [hashtable]$BuildArgs = @{},
-        [string[]]$ExtraFlags = @(),
-        # Build-context directory. Default repo root; Dockerfile.nvidia passes `windows` so the
-        # ~2 GB TensorRT zip (root-.dockerignore'd) rides ONLY in that one build's context.
-        [string]$Context = '.'
-    )
-    # NB: no --progress flag — Stevedore's classic builder (no BuildKit on
-    # Windows Containers) rejects it.
-    $dockerArgs = @('build')
-    if ($NoCache) { $dockerArgs += '--no-cache' }
-    # Isolation comes from the probe-gated policy ($script:BuildIsolation):
-    # PROCESS whenever the host can commit process-isolated layers (full host
-    # CPUs — no 2-CPU Hyper-V build cap), HYPERV otherwise (on wcifs-skew hosts
-    # process isolation fails every file-writing layer with
-    # hcsshim::ActivateLayer 0x20; reproduced at 100 MB, not Defender/Search/
-    # SysMain). See docs/windows-builds.md § Build isolation and CPU parallelism.
-    $dockerArgs += '--isolation', $script:BuildIsolation
-    foreach ($key in ($BuildArgs.Keys | Sort-Object)) {
-        $value = $BuildArgs[$key]
-        if ($null -ne $value -and "$value" -ne '') { $dockerArgs += '--build-arg', "$key=$value" }
-    }
-    $dockerArgs += $ExtraFlags
-    $dockerArgs += '-t', $Tag, '-f', $Dockerfile, $Context
-    return $dockerArgs
-}
-
-function Test-TransientDockerFailure {
-    # Single source of truth for the "is this a transient container-infrastructure failure?"
-    # decision (ttrpc/shim/hcsshim/pipe — see $script:TransientPattern).
-    param([string]$Tail)
-    return [bool]($Tail -and ($Tail -match $script:TransientPattern))
-}
-
-function Assert-ImageExists {
-    # Pre-flight guard for stages that consume images built in EARLIER runs (e.g. a -MediaBranches
-    # subset: the merge fans in the unselected branches from their existing windows-media-<branch>
-    # images). Without this, a missing prerequisite only surfaces at the merge's COPY --from --
-    # AFTER hours of branch compile. Fail fast instead.
-    param(
-        [Parameter(Mandatory)] [string[]]$Tags,
-        [Parameter(Mandatory)] [string]$Context
-    )
-    $missing = @($Tags | Where-Object {
-            & $Docker image inspect $_ 2>&1 | Out-Null
-            $LASTEXITCODE -ne 0
-        })
-    if ($missing.Count -gt 0) {
-        throw "$Context requires existing image(s) not found locally: $($missing -join ', ') -- build them first (see -Stages / -MediaBranches / -SkipMediaBranches in the help)"
-    }
-}
-
-function Invoke-TransientCooldown {
-    # Shared transient-failure decision for the docker retry loops (Invoke-Stage +
-    # Invoke-RunCommitStage). Returns $true when the captured tail looks like a transient
-    # container-infrastructure failure AND a retry remains -- after sleeping the cooldown --
-    # so the caller can `continue`; $false means treat it as a hard failure (throw). The
-    # divergent success/cleanup paths stay in each caller; only the transient-detect +
-    # message + cooldown policy is centralized here.
-    param(
-        [Parameter(Mandatory)] [string]$Tail,
-        [Parameter(Mandatory)] [int]$Attempt,
-        [int]$MaxAttempts = 3,
-        [string]$Label = '',
-        [int]$CooldownSeconds = 60,
-        # Caller already classified the failure as transient (e.g.
-        # Invoke-DockerWithRetry, which gates its retry branch on
-        # Test-TransientDockerFailure itself) — skip the re-test so the
-        # condition is expressed exactly ONCE per call path. Without this the
-        # same predicate ran twice and a future edit to one copy would be a
-        # live bug.
-        [switch]$AssumeTransient
-    )
-    if ($Attempt -lt $MaxAttempts -and ($AssumeTransient -or (Test-TransientDockerFailure -Tail $Tail))) {
-        Write-Host "[$Label] transient container-infrastructure failure — retry $Attempt/$($MaxAttempts - 1) in ${CooldownSeconds}s" -ForegroundColor Yellow
-        Start-Sleep -Seconds $CooldownSeconds
-        return $true
-    }
-    return $false
-}
-
-function Invoke-DockerWithRetry {
-    # Shared docker retry skeleton behind Invoke-Stage (build) and Invoke-RunCommitStage (run+commit).
-    # Runs -Action (returns the exit code to test); on 0 runs -OnSuccess and returns; otherwise reads
-    # the -LogFile tail, runs -OnFailedAttempt (per-attempt cleanup, e.g. `container rm`), then either
-    # cools down + retries (transient) or throws. Callers build -Action/-OnSuccess with
-    # .GetNewClosure() so the scriptblocks capture their function-local vars ($dockerArgs, $runArgs,
-    # $ContainerName, ...) when invoked from here -- a plain scriptblock would not see them.
-    param(
-        [Parameter(Mandatory)] [scriptblock]$Action,   # param($attempt); runs docker, its output streams to the log
-        [Parameter(Mandatory)] [string]$Label,
-        [string]$LogFile,
-        [int]$TailLines = 10,
-        [scriptblock]$OnSuccess,
-        # Per-attempt cleanup, run ONLY when a transient retry will actually re-run
-        # the action (e.g. `container rm` before the next `docker run`). It no longer
-        # fires on the FINAL failure — a run+commit container holding hours of
-        # finished stages must survive a non-transient compile failure for resume.
-        [scriptblock]$OnFailedAttempt,
-        # Runs once before the terminal throw (no retry left / non-transient error),
-        # e.g. to print a recovery recipe for the preserved container.
-        [scriptblock]$OnFinalFailure,
-        [int]$MaxAttempts = 3
-    )
-    foreach ($attempt in 1..$MaxAttempts) {
-        # Do NOT capture -- let the action's docker output stream through to the console/log (as the
-        # inline loops did); read the native exit code from the global $LASTEXITCODE the docker call set.
-        & $Action $attempt
-        $exitCode = $LASTEXITCODE
-        if ($exitCode -eq 0) {
-            if ($OnSuccess) { & $OnSuccess }
-            return
-        }
-        $tail = if ($LogFile -and (Test-Path $LogFile)) { Get-Content $LogFile -Tail $TailLines | Out-String } else { '' }
-        if ($attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $tail)) {
-            if ($OnFailedAttempt) { & $OnFailedAttempt }
-            # -AssumeTransient: this branch IS the classification; the cooldown
-            # helper only owns the message + delay here.
-            Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label -AssumeTransient | Out-Null
-            continue
-        }
-        if ($OnFinalFailure) { & $OnFinalFailure }
-        throw "[$Label] docker step failed (exit $exitCode)"
-    }
-}
+# (Get-DockerBuildArgList / Test-TransientDockerFailure / Assert-ImageExists /
+# Invoke-TransientCooldown / Invoke-DockerWithRetry: WindowsBuildDriver.Common.psm1)
 
 function Invoke-Stage {
     param(
