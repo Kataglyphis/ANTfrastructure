@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
 $sharedModulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
@@ -74,15 +75,17 @@ if (-not $trtZip -and $TensorRtVersion) {
         catch { Write-Host "  Failed: $($_.Exception.Message)" }
     }
     if (-not $downloaded) {
-        Write-Host 'WARNING: Could not download TensorRT. TensorRT EP will be disabled.'
-        return
+        # Fail HERE, not hours later: the smoke test asserts TENSORRT_ROOT
+        # unconditionally on the nvidia lane, so exiting 0 without TensorRT only
+        # trades this clear message for a late, misleading smoke-test failure.
+        throw ('Could not download TensorRT {0} (the NVIDIA zip is EULA-gated and usually needs an authenticated manual download). Place tensorrt-*.zip in windows\downloads\ (mounted at C:\temp\downloads) or pass -LocalZipPath / set TENSORRT_ZIP_PATH.' -f $TensorRtVersion)
     }
 }
 
 if (-not $trtZip -or -not (Test-Path $trtZip)) {
-    Write-Host 'WARNING: No TensorRT zip found. TensorRT EP will be disabled.'
-    Write-Host 'Place tensorrt-*.zip in: windows/downloads/ or set TENSORRT_ZIP_PATH env var.'
-    return
+    # Same rationale as above: a missing zip must fail this layer with a clear
+    # pointer instead of producing an image the nvidia-lane smoke test rejects.
+    throw 'No TensorRT zip found. Download the EULA-gated tensorrt-*.zip manually from NVIDIA and place it in windows\downloads\ (mounted at C:\temp\downloads), or pass -LocalZipPath / set TENSORRT_ZIP_PATH.'
 }
 
 # Optional integrity pin: TENSORRT_ZIP_SHA256 (versions.env) is empty by default
@@ -102,6 +105,9 @@ Write-Host "Extracting TensorRT to $TensorRtRoot..."
 $trtDir = Expand-ArchiveSubdirectory -ArchivePath $trtZip -DestinationPath $TensorRtRoot -Filter 'TensorRT-*'
 if ($trtZip -ne $LocalZipPath -and $trtZip -notlike (Join-Path $env:TEMP_DIR 'downloads\*')) { Remove-Item $trtZip -Force -ErrorAction SilentlyContinue }
 
+# NOTE: process-scope only — these help later commands within THIS RUN step.
+# They do NOT persist into the image; the durable TENSORRT_ROOT comes from the
+# Dockerfile ENV line, which must stay in sync with the layout produced here.
 if ($trtDir) {
     Write-Host "TensorRT installed at: $trtDir"
     [Environment]::SetEnvironmentVariable('TENSORRT_ROOT', $trtDir, 'Process')

@@ -35,17 +35,24 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
 $script:passed = 0
 $script:failed = 0
 $script:skipped = 0
 $script:failureDetails = @()
+# -ExitOnFirstFailure no longer throws (a throw here used to blow straight past the
+# SUMMARY / FAILURE DETAILS dump at the bottom). Instead the first failure sets this
+# flag and every later assert/skip short-circuits, so the run still ends with the
+# full summary and a non-zero exit.
+$script:abortRun = $false
 
 function Skip-Test {
     # One-liner for the repeated [SKIP]-print + counter idiom (was hand-rolled at 15 sites,
     # where forgetting $script:skipped++ silently under-counted skips).
     param([Parameter(Mandatory)][string]$Reason)
+    if ($script:abortRun) { return }
     Write-Host "  [SKIP] $Reason" -ForegroundColor Yellow
     $script:skipped++
 }
@@ -70,6 +77,7 @@ function Assert-Test {
         [string]$FailMessage = 'Assertion failed'
     )
 
+    if ($script:abortRun) { return }
     try {
         $result = & $Condition
         if ($result) {
@@ -79,14 +87,19 @@ function Assert-Test {
             Write-Host "  [FAIL] $Name : $FailMessage" -ForegroundColor Red
             $script:failed++
             $script:failureDetails += "[FAIL] $Name : $FailMessage"
-            if ($ExitOnFirstFailure) { throw "Smoke test failed: $Name" }
+            if ($ExitOnFirstFailure) { Request-SmokeAbort }
         }
     } catch {
         Write-Host "  [FAIL] $Name : $($_.Exception.Message)" -ForegroundColor Red
         $script:failed++
         $script:failureDetails += "[FAIL] $Name : $($_.Exception.Message)"
-        if ($ExitOnFirstFailure) { throw "Smoke test failed: $Name" }
+        if ($ExitOnFirstFailure) { Request-SmokeAbort }
     }
+}
+
+function Request-SmokeAbort {
+    Write-Host '  [ABORT] -ExitOnFirstFailure: short-circuiting all remaining tests (summary follows)' -ForegroundColor Red
+    $script:abortRun = $true
 }
 
 function Assert-CommandExists {
@@ -273,12 +286,60 @@ if ((Test-Path $repoVersions) -and (Test-Path $sharedModule)) {
     Import-Module $sharedModule -Force
     $script:versionsFromFile = ConvertFrom-VersionsEnv -Path $repoVersions
 }
+
+# Shared value/version helpers (Resolve-ContainerImageValue -TrimVPrefix,
+# Resolve-VsBuildToolsRoot). Import is conditional with minimal local fallbacks so
+# the smoke test stays runnable standalone inside an image whose modules directory
+# is broken or absent (same tolerance as the versions.env block above). The
+# fallbacks mirror the module functions exactly -- keep them in sync.
+$containerImageModule = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
+if (Test-Path $containerImageModule) {
+    Import-Module $containerImageModule -Force
+}
+if (-not (Get-Command Resolve-ContainerImageValue -ErrorAction SilentlyContinue)) {
+    function Resolve-ContainerImageValue {
+        param(
+            [AllowEmptyString()][string]$Value = '',
+            [string]$EnvironmentVariable = '',
+            [AllowEmptyString()][string]$DefaultValue = '',
+            [switch]$TrimVPrefix
+        )
+        $resolved = $DefaultValue
+        if (-not [string]::IsNullOrWhiteSpace($Value)) {
+            $resolved = $Value
+        } elseif (-not [string]::IsNullOrWhiteSpace($EnvironmentVariable)) {
+            $environmentValue = [Environment]::GetEnvironmentVariable($EnvironmentVariable)
+            if (-not [string]::IsNullOrWhiteSpace($environmentValue)) { $resolved = $environmentValue }
+        }
+        if ($TrimVPrefix -and $null -ne $resolved) { $resolved = ([string]$resolved).TrimStart('v') }
+        return $resolved
+    }
+}
+if (-not (Get-Command Resolve-VsBuildToolsRoot -ErrorAction SilentlyContinue)) {
+    function Resolve-VsBuildToolsRoot {
+        param([string]$VsMajor = '')
+        if ([string]::IsNullOrWhiteSpace($VsMajor)) {
+            $VsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
+        }
+        foreach ($programFiles in @('C:\Program Files', 'C:\Program Files (x86)')) {
+            $candidate = Join-Path $programFiles ("Microsoft Visual Studio\{0}\BuildTools" -f $VsMajor)
+            if (Test-Path (Join-Path $candidate 'Common7\Tools\VsDevCmd.bat')) { return $candidate }
+        }
+        return $null
+    }
+}
+
 function Get-ExpectedVersion {
+    # Thin wrapper over the shared Resolve-ContainerImageValue (-TrimVPrefix) so this
+    # gate and the setup-/verify-time gates normalize a tag-style leading 'v' through
+    # the SAME code path and always compare identical strings. Precedence stays:
+    # baked env var (authoritative in-container) > repo versions.env (host runs) >
+    # literal fallback.
     param([string]$Key, [string]$Fallback)
-    $v = [Environment]::GetEnvironmentVariable($Key)
-    if ([string]::IsNullOrWhiteSpace($v)) { $v = $script:versionsFromFile[$Key] }
-    if ([string]::IsNullOrWhiteSpace($v)) { return $Fallback }
-    return $v.TrimStart('v')
+    $fileValue = ''
+    if ($script:versionsFromFile.ContainsKey($Key)) { $fileValue = [string]$script:versionsFromFile[$Key] }
+    $default = if (-not [string]::IsNullOrWhiteSpace($fileValue)) { $fileValue } else { $Fallback }
+    return Resolve-ContainerImageValue -EnvironmentVariable $Key -DefaultValue $default -TrimVPrefix
 }
 
 # ============================================================================
@@ -316,13 +377,17 @@ if ($cmakeExpected) {
 Write-TestHeader '2. Python (source-built)'
 # ============================================================================
 Assert-CommandExists 'python'
-$pyMajorMinor = ((Get-ExpectedVersion 'PYTHON_VERSION' '3.14') -split '\.')[0..1] -join '.'
+# Select-Object -First 2, not [0..1]: a single-part version would make the range
+# index pad with $null and yield '3.' instead of '3'.
+$pyMajorMinor = ((Get-ExpectedVersion 'PYTHON_VERSION' '3.14') -split '\.' | Select-Object -First 2) -join '.'
 Assert-Test -Name "Python is $pyMajorMinor.x" -Condition {
     $ver = & python --version 2>&1
     return $ver -match ([regex]::Escape($pyMajorMinor) + '\.')
 } -FailMessage "Python version is not $pyMajorMinor.x"
 
-$cpythonDir = Join-Path $env:TEMP_DIR 'cpython'
+# TEMP_DIR is baked in-container but typically unset on a build host -- a bare
+# Join-Path $env:TEMP_DIR would throw there before any test ran.
+$cpythonDir = Join-Path ($env:TEMP_DIR ?? 'C:\temp') 'cpython'
 Assert-Test -Name "Python source-built from $cpythonDir" -Condition {
     (Test-Path "$cpythonDir\PCbuild\amd64\python.exe") -or
     (Test-Path "$cpythonDir\PCbuild\amd64\python3.dll")
@@ -425,8 +490,15 @@ Write-TestHeader '5. Visual Studio Build Tools'
 # ============================================================================
 $vsVer = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
 $msvcPlatformToolset = "v$($vsVer)0"
-$vsDevCmd = "C:\Program Files (x86)\Microsoft Visual Studio\$vsVer\BuildTools\Common7\Tools\VsDevCmd.bat"
-Assert-FileExists -Path $vsDevCmd -Description 'VsDevCmd.bat'
+# Shared probe (Resolve-VsBuildToolsRoot): setup-vs.ps1 accepts BOTH Program Files
+# roots, and this test used to hardcode (x86) only -- a divergence that failed a
+# perfectly good 64-bit-rooted install.
+$vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $vsVer
+if ($vsBuildToolsRoot) {
+    Assert-FileExists -Path (Join-Path $vsBuildToolsRoot 'Common7\Tools\VsDevCmd.bat') -Description 'VsDevCmd.bat'
+} else {
+    Assert-Test -Name 'VsDevCmd.bat' -Condition { $false } -FailMessage "VS Build Tools $vsVer not found under either Program Files root"
+}
 
 Assert-Test -Name "MSBuild works (ClangCL toolset available)" -Condition {
     $msbuildOutput = & msbuild /version 2>&1 | Out-String
@@ -436,8 +508,12 @@ Assert-Test -Name "MSBuild works (ClangCL toolset available)" -Condition {
 Assert-EnvVarSet -Name 'VCToolsInstallDir'
 
 # Verify ClangCL platform toolset is available
-$clangClToolsetPath = "C:\Program Files (x86)\Microsoft Visual Studio\$vsVer\BuildTools\MSBuild\Microsoft\VC\$msvcPlatformToolset\Platforms\x64\PlatformToolsets\ClangCL"
-Assert-DirectoryExists -Path $clangClToolsetPath -Description 'ClangCL MSBuild toolset'
+if ($vsBuildToolsRoot) {
+    $clangClToolsetPath = Join-Path $vsBuildToolsRoot "MSBuild\Microsoft\VC\$msvcPlatformToolset\Platforms\x64\PlatformToolsets\ClangCL"
+    Assert-DirectoryExists -Path $clangClToolsetPath -Description 'ClangCL MSBuild toolset'
+} else {
+    Assert-Test -Name 'ClangCL MSBuild toolset' -Condition { $false } -FailMessage "VS Build Tools $vsVer not found, so the ClangCL toolset cannot exist"
+}
 
 # ============================================================================
 Write-TestHeader '6. Vulkan SDK'
@@ -463,9 +539,11 @@ Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
 # ============================================================================
 Write-TestHeader '7. CUDA Toolkit + cuDNN'
 # ============================================================================
-if (-not $SkipCudaTests) {
+# Gate on $script:gpuNvidia (CUDA_ROOT baked => nvidia lane), not just -SkipCudaTests:
+# a CPU-only image legitimately has no nvcc/cuDNN and used to FAIL this whole section.
+if ($script:gpuNvidia) {
     Assert-CommandExists 'nvcc'
-    $cudaMajorMinor = ((Get-ExpectedVersion 'CUDA_VERSION' '13.3') -split '\.')[0..1] -join '.'
+    $cudaMajorMinor = ((Get-ExpectedVersion 'CUDA_VERSION' '13.3') -split '\.' | Select-Object -First 2) -join '.'
     Assert-Test -Name "nvcc version is $cudaMajorMinor.x" -Condition {
         $ver = & nvcc --version 2>&1 | Out-String
         return $ver -match [regex]::Escape($cudaMajorMinor)
@@ -482,10 +560,11 @@ if (-not $SkipCudaTests) {
     $cudnnRoot = [Environment]::GetEnvironmentVariable('CUDNN_ROOT')
     Assert-DirectoryExists -Path $cudnnRoot -Description "CUDNN_ROOT directory"
 
-    # Check cuDNN headers/libs/DLLs recursively as they may be in subdirs
-    $cudnnHeaders = Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.h' -Recurse -ErrorAction SilentlyContinue
-    $cudnnLibs = Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue
-    $cudnnDlls = Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue
+    # Check cuDNN headers/libs/DLLs recursively as they may be in subdirs.
+    # @(...) so a single-FileInfo result still exposes .Count (scalar trap).
+    $cudnnHeaders = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.h' -Recurse -ErrorAction SilentlyContinue)
+    $cudnnLibs = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue)
+    $cudnnDlls = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue)
 
     Assert-Test -Name "cuDNN headers (cudnn*.h)" -Condition { $cudnnHeaders.Count -gt 0 } -FailMessage "No cuDNN headers found"
     Assert-Test -Name "cuDNN libs (cudnn*.lib)" -Condition { $cudnnLibs.Count -gt 0 } -FailMessage "No cuDNN libs found"
@@ -525,7 +604,7 @@ int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
         Skip-Test 'cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)'
     }
 } else {
-    Skip-Test 'CUDA/cuDNN tests skipped (--SkipCudaTests)'
+    Skip-Test 'CUDA/cuDNN tests skipped (-SkipCudaTests, or CPU-only image without CUDA_ROOT)'
 }
 
 # ============================================================================
@@ -668,8 +747,9 @@ Write-TestHeader '9. ONNX Runtime GenAI (source-built)'
 $genaiRoot = [Environment]::GetEnvironmentVariable('ONNX_GENAI_ROOT')
 if ($genaiRoot) {
     Assert-DirectoryExists -Path $genaiRoot -Description "ONNX_GENAI_ROOT"
-    $genaiHdr = Get-ChildItem -Path $genaiRoot -Filter 'ort_genai*.h' -Recurse -ErrorAction SilentlyContinue
-    if (-not $genaiHdr) { $genaiHdr = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.h' -Recurse -ErrorAction SilentlyContinue }
+    # @(...) so a single-FileInfo result still exposes .Count (scalar trap).
+    $genaiHdr = @(Get-ChildItem -Path $genaiRoot -Filter 'ort_genai*.h' -Recurse -ErrorAction SilentlyContinue)
+    if ($genaiHdr.Count -eq 0) { $genaiHdr = @(Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.h' -Recurse -ErrorAction SilentlyContinue) }
     Assert-Test -Name 'ONNX GenAI header' -Condition { $genaiHdr.Count -gt 0 } -FailMessage "No GenAI header (ort_genai*.h / onnxruntime-genai.h) found under $genaiRoot"
     Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.lib' -Description 'ONNX GenAI lib files'
     Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.dll' -Description 'ONNX GenAI DLL files'
@@ -679,7 +759,13 @@ if ($genaiRoot) {
     # chain loads, catching a missing/mismatched onnxruntime.dll that file checks can't see.
     $genaiDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     $onnxRootForGenai = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
-    $onnxDepDir = if ($onnxRootForGenai) { (Get-ChildItem -Path $onnxRootForGenai -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName } else { $null }
+    # Capture-then-guard: .DirectoryName on an empty Get-ChildItem result is a null
+    # deref (throws under StrictMode, silently $null otherwise).
+    $onnxDepDir = $null
+    if ($onnxRootForGenai) {
+        $onnxDllForGenai = Get-ChildItem -Path $onnxRootForGenai -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($onnxDllForGenai) { $onnxDepDir = $onnxDllForGenai.DirectoryName }
+    }
     if ($genaiDll) {
         $genaiDepDirs = if ($onnxDepDir) { @($onnxDepDir) } else { @() }
         Assert-DllLoads -Name 'ONNX GenAI DLL loads + C API resolves (OgaConfigClearProviders)' -DllPath $genaiDll.FullName -DependencyDirs $genaiDepDirs -Export 'OgaConfigClearProviders' -FailMessage 'onnxruntime-genai.dll failed to load or its C API symbol is missing (dependent onnxruntime.dll not resolved?)'
@@ -692,7 +778,12 @@ if ($genaiRoot) {
             $genaiCudaDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai-cuda.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($genaiCudaDll) {
                 $cudaBin  = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT 'bin' } else { $null }
-                $cudnnBin = if ($env:CUDNN_ROOT) { (Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName } else { $null }
+                # Capture-then-guard (same null-deref trap as $onnxDepDir above).
+                $cudnnBin = $null
+                if ($env:CUDNN_ROOT) {
+                    $cudnnDepDll = Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($cudnnDepDll) { $cudnnBin = $cudnnDepDll.DirectoryName }
+                }
                 $genaiCudaDeps = @($onnxDepDir, $cudaBin, $cudnnBin) | Where-Object { $_ }
                 Assert-DllLoads -Name 'ONNX GenAI CUDA DLL loads (CUDA runtime + onnxruntime chain resolves)' -DllPath $genaiCudaDll.FullName -DependencyDirs $genaiCudaDeps -FailMessage 'onnxruntime-genai-cuda.dll failed to load -- a dependent DLL (cudart/cublas/cudnn/onnxruntime) did not resolve'
             }
@@ -1191,9 +1282,13 @@ foreach ($envPointer in $envPointerNames) {
 # from the base image 2026-08-03 (nothing consumed it; every source build brings
 # its own protobuf) -- if protoc is still present (pre-removal base image), it
 # must at least run, else the vcpkg tree is corrupt.
+# Derive the root from VCPKG_ROOT (the env var vcpkg tooling and CMake toolchains
+# honor); 'C:\vcpkg' is only the conventional default install dir used by
+# setup-vcpkg.ps1 when no override is baked.
+$vcpkgRoot = $env:VCPKG_ROOT ?? 'C:\vcpkg'
 Assert-Test -Name "vcpkg zlib present (media-build dependency)" -Condition {
-    Test-Path 'C:\vcpkg\installed\x64-windows\lib\zlib.lib'
-} -FailMessage "vcpkg zlib.lib missing (vcpkg install broken in the base image)"
+    Test-Path (Join-Path $vcpkgRoot 'installed\x64-windows\lib\zlib.lib')
+} -FailMessage "vcpkg zlib.lib missing under $vcpkgRoot (vcpkg install broken in the base image)"
 # (A "vcpkg protoc runs IF present" assertion lived here for legacy base
 # images; vcpkg has shipped zlib-only since 2026-08-03 and every image in the
 # chain builds from that base, so the test could only ever pass vacuously —
@@ -1384,6 +1479,9 @@ Write-Host "  Passed:  $($script:passed)" -ForegroundColor Green
 Write-Host "  Failed:  $($script:failed)" -ForegroundColor Red
 Write-Host "  Skipped: $($script:skipped)" -ForegroundColor Yellow
 Write-Host "  Total:   $total" -ForegroundColor Cyan
+if ($script:abortRun) {
+    Write-Host '  NOTE: -ExitOnFirstFailure aborted the run at the first failure; remaining tests were not executed.' -ForegroundColor Yellow
+}
 
 if ($script:failed -gt 0) {
     Write-Host "`n--- FAILURE DETAILS ---" -ForegroundColor Red

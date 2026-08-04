@@ -326,7 +326,10 @@ function Assert-SccacheEndpoint {
         [string]$SccacheEndpoint = '',
         [switch]$NoSccache
     )
-    $compileStages = @('toolchain', 'media')
+    # 'media' only: the toolchain stage (MSBuild/ClangCL CPython) has no
+    # sccache wiring — gating it on the endpoint blocked toolchain-only builds
+    # for a cache they never used.
+    $compileStages = @('media')
     if ($NoSccache -or @($Stages | Where-Object { $compileStages -contains $_ }).Count -eq 0) { return }
     if ([string]::IsNullOrWhiteSpace($SccacheEndpoint)) {
         throw ('sccache is required for the toolchain/media stages (the only cross-attempt compile cache). ' +

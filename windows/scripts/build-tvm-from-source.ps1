@@ -24,9 +24,11 @@ Write-Host "=== TVM source build ($TvmVersion, Ninja+clang-cl) ==="
 
 Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive | Out-Null
 
-# TVM requires VsDevCmd for MSVC STL headers (but does not consume the source-built CPython directly
-# -- TVM builds its own Python wheel against the system Python), so do VsDevCmd alone, not the full
-# Initialize-ToolchainPythonEnvironment preamble.
+# TVM requires VsDevCmd for MSVC STL headers. The C++ configure/build does not
+# consume CPython, so VsDevCmd alone suffices HERE; the python-wheel block below
+# DOES use the source-built CPython (Get-SourceBuildPython + pip) and runs its
+# own Initialize-PythonPlatformTag there -- no full
+# Initialize-ToolchainPythonEnvironment preamble needed up front.
 Enter-VsDevCmdEnvironment
 
 $buildDir = Join-Path $SourceDir 'build'
@@ -61,8 +63,9 @@ if ($useCuda -eq 'ON' -and $gpuEnv.CudnnRoot -and (Test-Path (Join-Path $gpuEnv.
     }
 }
 
-# Auto-detect Vulkan SDK
-$vulkanSdk = if ($env:VULKAN_SDK) { $env:VULKAN_SDK } else { $null }
+# Auto-detect Vulkan SDK ($useVulkan is the single gate; the include/lib args
+# below branch on it too instead of re-evaluating the env+Test-Path pair).
+$vulkanSdk = Get-SourceBuildVersion -EnvironmentVariables @('VULKAN_SDK') -DefaultValue ''
 $useVulkan = 'OFF'
 if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     Write-Host "Vulkan SDK detected at: $vulkanSdk - enabling TVM Vulkan support"
@@ -96,7 +99,7 @@ $cmakeExtra = @(
 $cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv -ForwardSlash
 $cmakeExtra += $cudnnArgs
 
-if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
+if ($useVulkan -eq 'ON') {
     $cmakeExtra += "-DVulkan_INCLUDE_DIR=$(Join-Path $vulkanSdk 'Include')"
     $vulkanLib = Join-Path $vulkanSdk 'Lib'
     if (Test-Path $vulkanLib) {
@@ -130,31 +133,42 @@ Copy-SidecarDll -SidecarName 'tvm_ffi.dll' -SearchDir $buildDir `
 # trips, fall back to a fresh tree (full ~25 min recompile, still correct).
 if ($pythonModule -eq 'ON') {
     $py = Get-SourceBuildPython
-    if (Test-Path $py.Exe) {
-        # Bootstrap pip if missing — this script can no longer rely on the GenAI
-        # build having installed it first (parallel media branches).
-        Install-CpythonPip -Python $py
-        # 64-bit platform tag BEFORE any pip resolution (clang-built CPython
-        # self-reports win32 and pulls 32-bit wheels otherwise).
-        Initialize-PythonPlatformTag | Out-Null
-        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'scikit-build-core', 'setuptools-scm', 'wheel')
-        # The DNS-workaround clone may lack git tags -- pin the scm version directly.
-        $env:SETUPTOOLS_SCM_PRETEND_VERSION = ($TvmVersion -replace '^v', '')
-        $wheelOut = Join-Path $SourceDir 'dist'
-        Write-Host 'Building TVM python wheel (scikit-build-core, reusing the ninja build dir)...'
-        Push-Location $SourceDir
-        try {
-            Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut, "--config-settings=build-dir=$buildDir") -Optional
-            if (-not (Test-Path (Join-Path $wheelOut '*.whl'))) {
-                Write-Warning 'build-dir reuse produced no wheel -- retrying with a fresh scikit-build tree (full recompile)'
-                Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut)
-            }
-        } finally { Pop-Location }
-        # Stage + install (WITH deps -- apache-tvm-ffi must resolve) +
-        # import-assert via the shared helper (EAP=Stop-safe: tvm warns to
-        # stderr on successful imports, which killed the first e2e run).
-        Install-StagedPythonWheel -Python $py -SourceDir $wheelOut -ModuleName 'tvm' | Out-Null
+    # The tvm wheel is EXPECTED on this lane: a missing interpreter must fail
+    # loudly, not silently ship an image without `import tvm` (only an explicit
+    # -SkipPython legitimately drops the wheel).
+    if (-not (Test-Path $py.Exe)) {
+        throw "TVM python module expected but source-built CPython is missing at $($py.Exe) (toolchain layer incomplete? pass -SkipPython for a deliberate no-python build)"
     }
+    # Bootstrap pip if missing — this script can no longer rely on the GenAI
+    # build having installed it first (parallel media branches).
+    Install-CpythonPip -Python $py
+    # 64-bit platform tag BEFORE any pip resolution (clang-built CPython
+    # self-reports win32 and pulls 32-bit wheels otherwise).
+    Initialize-PythonPlatformTag | Out-Null
+    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'scikit-build-core', 'setuptools-scm', 'wheel')
+    # The DNS-workaround clone may lack git tags -- pin the scm version directly.
+    # Save/restore: stages run in-process, and a leaked pretend-version would
+    # mis-stamp the NEXT stage's setuptools-scm build (e.g. IREE).
+    $prevScmPretendVersion = $env:SETUPTOOLS_SCM_PRETEND_VERSION
+    $env:SETUPTOOLS_SCM_PRETEND_VERSION = ($TvmVersion -replace '^v', '')
+    $wheelOut = Join-Path $SourceDir 'dist'
+    Write-Host 'Building TVM python wheel (scikit-build-core, reusing the ninja build dir)...'
+    Push-Location $SourceDir
+    try {
+        Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut, "--config-settings=build-dir=$buildDir") -Optional
+        if (-not (Test-Path (Join-Path $wheelOut '*.whl'))) {
+            Write-Warning 'build-dir reuse produced no wheel -- retrying with a fresh scikit-build tree (full recompile)'
+            Invoke-CpythonPip -Python $py -Arguments @('wheel', '.', '--no-deps', '--no-build-isolation', '-w', $wheelOut)
+        }
+    } finally {
+        Pop-Location
+        if ($null -ne $prevScmPretendVersion) { $env:SETUPTOOLS_SCM_PRETEND_VERSION = $prevScmPretendVersion }
+        else { Remove-Item Env:\SETUPTOOLS_SCM_PRETEND_VERSION -ErrorAction SilentlyContinue }
+    }
+    # Stage + install (WITH deps -- apache-tvm-ffi must resolve) +
+    # import-assert via the shared helper (EAP=Stop-safe: tvm warns to
+    # stderr on successful imports, which killed the first e2e run).
+    Install-StagedPythonWheel -Python $py -SourceDir $wheelOut -ModuleName 'tvm' | Out-Null
 }
 
 Remove-SourceBuildTree -Path $SourceDir

@@ -354,17 +354,24 @@ Housekeeping and sharing:
   image generations themselves need admin (`nerdctl --namespace buildkit rmi`,
   or stop buildkitd+containerd and delete their state dirs for a full reset —
   dockerd may stop with containerd: `Start-Service stevedore` afterwards).
-  Configure GC in `buildkitd.toml` (verify the config path for your service
-  registration with `buildkitd --help`; Stevedore's service takes `--config`
-  if you re-register):
-
-  ```toml
-  [worker.containerd]
-    gc = true
-    gckeepstorage = 200000000000   # ~200 GB
-  ```
-
-  Until that's wired, prune manually between chains:
+  **WIRED 2026-08-04** after GC evicted the VS Build Tools layer between two
+  runs (root cause, from `buildctl debug workers -v`: with no config file
+  buildkitd runs computed defaults — `maxUsedSpace 100GB`, `minFreeSpace
+  187GB`; the warm chain's cache is ~237GB on a 91%-full disk, so BOTH
+  triggers fired on every GC pass and everything reclaimable — including the
+  multi-hour VS layer — was evicted the moment a build's references dropped).
+  The policy lives in the repo at `windows/buildkitd.toml` (three tiers; the
+  load-bearing knob is `reservedSpace = 200GB`, below which GC never prunes —
+  that is what protects the ~35GB VS-class layers; v0.32 key names are
+  `reservedSpace`/`maxUsedSpace`/`minFreeSpace`, NOT the legacy
+  `gckeepstorage`). Deploy/refresh it with
+  `windows\scripts\apply-buildkitd-gcpolicy.ps1` from an ADMIN shell — it
+  copies the toml to `C:\ProgramData\buildkitd\`, re-registers the service
+  with `--config` (keeping `--debug`) and restarts buildkitd, so NEVER run it
+  while a build is solving (it refuses when it sees a live buildctl unless
+  `-Force`). Verify with `buildctl debug workers -v`. Keep real disk headroom
+  by pruning the classic docker lane (`docker image prune -f`), not by
+  shrinking `reservedSpace`. Manual fallback between chains:
   `buildctl --addr npipe:////./pipe/buildkitd prune --keep-storage 200gb`.
 - **Cross-host / CI cache**: `build-buildkit.ps1 -ExportCacheRef <registry-ref>`
   / `-ImportCacheRef <ref>` wire buildkit's registry cache (`mode=max`) once
@@ -381,14 +388,25 @@ steps; the remaining work is the Dockerfile surgery):
   script/patch COPY layers — every RUN bind-mounts exactly its transitive
   script closure at `C:\bkmnt` and passes `-ScriptDir C:\bkmnt`. Editing a
   build script now re-runs ONLY the RUNs that mount it (an OpenCV fix no
-  longer re-pays the 75-minute ONNX layer); module edits still invalidate all
-  mounting RUNs (correct — everything consumes them). The classic targets
-  keep their baked COPYs (classic docker cannot `--mount`).
+  longer re-pays the 75-minute ONNX layer). Modules are mounted PER FILE too
+  (2026-08-04): the in-container closure is exactly SourceBuild.Common +
+  Shared + SourceBuild.Patches + SourceBuild.Cuda + Native.Common (plus
+  Installer.Common for GStreamer) — the earlier whole-dir `modules/` mount
+  let edits to the 24 host-only modules (BuildDriver, BuildKit, Flutter, …)
+  bust every compile RUN. `load-versions.ps1` is mounted into every build RUN
+  so the freshly COPY'd versions.env is re-read instead of the base image's
+  baked (possibly stale) Machine env. The classic targets keep their baked
+  COPYs (classic docker cannot `--mount`).
 - **Concurrent aux branch solves**: available OPT-IN via
   `build-buildkit.ps1 -ConcurrentAux` (2026-08-04) — media-core stays the
   sequential long pole, then litert + tvm build side by side via child
   drivers on half the media memory budget each. Measure host RAM headroom
-  before making it the default.
+  before making it the default. Two costs to know: (a) children run a single
+  media branch, so the GStreamer merge is gated on all three branches being
+  requested and runs only in the parent (children print `[bk:merge] skipped`);
+  (b) `MEMORY_LIMIT_GB` is baked as ENV in the media `common` stage, so
+  TOGGLING -ConcurrentAux (which halves the aux budget) changes that ENV and
+  invalidates the aux branches' compile RUNs — pick a mode and stay in it.
 - **Registry push**: available via `build-buildkit.ps1 -PushRef <ref>`
   (2026-08-04) — re-solves the final image from cache with a push exporter;
   needs a prior `docker login` in the invoking shell (buildctl forwards the

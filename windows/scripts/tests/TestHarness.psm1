@@ -7,6 +7,8 @@
 # These ~5 primitives (Describe/It/Assert-*) run identically on 5.1 and 7.x with nothing
 # installed, so `Invoke-Tests.ps1` is a hard pre-flight gate before any multi-hour build.
 
+Set-StrictMode -Version Latest
+
 $script:Results = New-Object System.Collections.ArrayList
 $script:CurrentGroup = ''
 
@@ -82,6 +84,8 @@ function Invoke-WithEnv {
 }
 
 # Fresh throwaway directory for filesystem cases; caller removes it (usually in finally).
+# No in-repo callers remain (Invoke-InTestDir superseded it) — retained as an exported
+# API for external consumers of this harness.
 function New-TestDir {
     $d = Join-Path ([System.IO.Path]::GetTempPath()) ("wbt-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $d | Out-Null

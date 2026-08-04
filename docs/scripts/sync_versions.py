@@ -448,8 +448,9 @@ def dockerfile_target_files() -> list[Path]:
             result.append(p)
     # Windows Dockerfiles carry the same versions.env-named ARG defaults (build.ps1
     # overrides them with --build-arg, but the defaults must not drift). ARGs whose
-    # names are not versions.env keys (BASE_IMAGE, CUDA_VERSION_MAJOR_MINOR,
-    # OPENCV_SOURCE_VERSION, ...) are untouched by name-matching.
+    # names are not versions.env keys (BASE_IMAGE, ...) are untouched by
+    # name-matching; derived/renamed ones (OPENCV_SOURCE_VERSION,
+    # CUDA_VERSION_MAJOR_MINOR) are covered via _ARG_NAME_ALIASES below.
     result.extend(sorted(REPO_ROOT.glob("windows/Dockerfile*")))
     # The documentation image lives in a submodule and is built on its own rather
     # than by the cross chain, so its PANDOC_*/UV_VERSION pins are `# noforward`.
@@ -461,18 +462,31 @@ def dockerfile_target_files() -> list[Path]:
     return result
 
 
-# ARG names that carry a versions.env value under a different name. Without an
-# alias entry, name-matching skips them and their defaults can drift silently.
-_ARG_NAME_ALIASES: dict[str, str] = {
-    "OPENCV_SOURCE_VERSION": "OPENCV_VERSION",
+# ARG names that carry a versions.env value under a different name (optionally
+# transformed — same transform vocabulary as the inline markers). Without an
+# alias entry, name-matching skips them and their defaults can drift silently
+# (windows CUDA_VERSION_MAJOR_MINOR's default sat stale at the pre-bump value
+# because a CUDA_VERSION bump never touched it).
+_ARG_NAME_ALIASES: dict[str, tuple[str, str]] = {
+    "OPENCV_SOURCE_VERSION": ("OPENCV_VERSION", "raw"),
+}
+# Windows-only aliases: linux/Dockerfile.nvidia DERIVES the same ARG names via
+# shell parameter expansion (13.3.0 → 13.3 → apt form 13-3) — a literal there
+# would clobber the deliberate `${CUDA_VERSION_DOT/./-}` default. Windows
+# Dockerfiles have no substitution defaults, so theirs must be literal+synced.
+_ARG_NAME_ALIASES_WINDOWS: dict[str, tuple[str, str]] = {
+    "CUDA_VERSION_MAJOR_MINOR": ("CUDA_VERSION", "major_minor"),
 }
 
 
 def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
     """Return True if file needs updating (or was updated when not dry_run)."""
+    aliases = dict(_ARG_NAME_ALIASES)
+    if "windows" in file_path.parts:
+        aliases.update(_ARG_NAME_ALIASES_WINDOWS)
     versions = {**versions, **{
-        alias: versions[key]
-        for alias, key in _ARG_NAME_ALIASES.items()
+        alias: transform_value(versions[key], tf)
+        for alias, (key, tf) in aliases.items()
         if key in versions
     }}
     version_vars = set(versions.keys())

@@ -269,6 +269,15 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   Directory.Build.props lost its XML attribute quotes → MSB4024). Use single
   quotes / `''`-doubling / string concatenation instead; XML attributes may
   legally use single quotes.
+- **Never splat a string ARRAY containing `-Param`-shaped tokens onto a
+  PowerShell script/function — array splatting binds strictly BY POSITION.**
+  `& $script @('-ResumeFrom','OpenCV')` delivers `-ResumeFrom` as the VALUE of
+  parameter 1 (silently wrong without CmdletBinding, "positional parameter
+  cannot be found" with it) — this killed the opencv warm solve on 2026-08-04
+  and reproduces identically on host pwsh 7.6. Route such argv through a child
+  process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
+  re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
+  HASHTABLE. Splatting arrays onto native executables stays fine.
 - **The "unreferenced" `windows/scripts` modules are EXTERNAL-CONSUMER API —
   never delete (owner decision 2026-08-04).** Flutter/CMake/CodeQL/MSIX/
   Slang/Vulkan/PerfBaseline/WasmOpt/AppRunner/ContainerBuild.Reuse/Uv/

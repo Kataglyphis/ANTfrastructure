@@ -39,7 +39,15 @@ function Invoke-ShieldedNative {
         [switch]$Quiet
     )
     if (-not $Label) { $Label = ($CommandLine -split '\s+')[0] }
-    $out = & cmd.exe /c "$CommandLine 2>&1"
+    # /s + a leading space (the exact form proven by assemble-torch-app's
+    # Invoke-TorchAppNative, now migrated here): /s forces cmd's deterministic
+    # "strip first and last quote" rule, and the leading space keeps a command
+    # line that STARTS with a quoted exe path (e.g. "C:\...\python.exe" args)
+    # from being re-interpreted under cmd's two-quote heuristic. Behavior-neutral
+    # for the pre-existing callers (ffmpeg/iree/litert-lm sites all carry more
+    # than two quote chars once PowerShell wraps the argument, so they already
+    # took the strip-first-and-last path).
+    $out = & cmd.exe /s /c " $CommandLine 2>&1"
     $code = $LASTEXITCODE
     if (-not $Quiet) { $out | ForEach-Object { Write-Host $_ } }
     if ($code -ne 0) {

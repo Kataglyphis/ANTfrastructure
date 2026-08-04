@@ -174,11 +174,20 @@ if (Test-Path $genaiBuildDir) {
         @{ Filter = '*.h'; Dest = 'include' }
         @{ Filter = @('*.lib', '*.dll', '*.pyd'); Dest = 'lib' }
     )
+} else {
+    # Should be unreachable (ninja just built there), but a silent skip would
+    # ship an empty $genaiInstallDir while the stage reports green.
+    Write-Warning "genai build dir missing at $genaiBuildDir -- NO artifacts staged to $genaiInstallDir"
 }
-# Also check alternate output dirs
+# Also check alternate output dirs (optional layout variant -- absence is normal,
+# but a FAILED copy from an existing dir must not be silent).
 $altOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Windows\Release'
 if (Test-Path $altOutDir) {
-    Copy-Item -Path (Join-Path $altOutDir '*') -Destination "$genaiInstallDir\lib" -Recurse -Force -ErrorAction SilentlyContinue
+    try {
+        Copy-Item -Path (Join-Path $altOutDir '*') -Destination "$genaiInstallDir\lib" -Recurse -Force -ErrorAction Stop
+    } catch {
+        Write-Warning "copy from alternate output dir $altOutDir failed: $_"
+    }
 }
 
 # DML: the D3D12 Agility SDK core DLL is NOT auto-copied when BUILD_WHEEL=OFF (ortgenai_embed_libs
@@ -211,7 +220,9 @@ if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
         -Arguments '-m pip wheel . --no-deps --no-build-isolation -w dist' `
         -ModuleName 'onnxruntime_genai' -NoDeps | Out-Null
 } else {
-    Write-Warning "genai wheel dir has no setup.py under $genaiWheelDir -- BUILD_WHEEL layout changed? Wheel NOT staged."
+    # Hard gate: BUILD_WHEEL=ON is set above, so a missing configured setup.py
+    # means the wheel (and its embed libs) silently vanish from the image.
+    throw "genai wheel dir has no setup.py under $genaiWheelDir although BUILD_WHEEL=ON -- BUILD_WHEEL layout changed? Wheel would NOT be staged."
 }
 
 Remove-SourceBuildTree -Path $SourceDir

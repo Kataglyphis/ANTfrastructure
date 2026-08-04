@@ -6,9 +6,9 @@
 # tree). Dumps the link rsp, WHOLEARCHIVE/FORCE:MULTIPLE presence, built abseil libs,
 # missing/empty archives, and nm scans for the recurring undefined/duplicate symbols.
 
-param(
 #requires -Version 7.0
 
+param(
     [Parameter(Mandatory)]
     [string]$SourceDir
 )
@@ -39,7 +39,8 @@ Write-Host '===DIAG=== which built lib DEFINES the leftover undefined symbols (n
 $nmExe = (Get-Command 'llvm-nm.exe' -ErrorAction SilentlyContinue).Source
 if ($nmExe) {
     $fragments = @('ClassicLocale', 'MixingHashState', 'combine_raw', 'HashStateBase')
-    $libs = Get-ChildItem $innerBuild -Recurse -File -Include '*.a', '*.lib' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'flatbuffers|absl_hash|absl_city|absl_low_level_hash|tensorflow|tflite' }
+    # @(...) is load-bearing: an empty pipeline yields AutomationNull, whose .Count throws under the caller's inherited StrictMode.
+    $libs = @(Get-ChildItem $innerBuild -Recurse -File -Include '*.a', '*.lib' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'flatbuffers|absl_hash|absl_city|absl_low_level_hash|tensorflow|tflite' })
     Write-Host "  candidate libs found: $($libs.Count)"
     $libs | ForEach-Object { Write-Host "    lib: $($_.Name)  ($([math]::Round($_.Length/1KB))KB)" }
     foreach ($lib in $libs) {
@@ -59,9 +60,10 @@ if ($nmExe) {
 } else { Write-Host '  llvm-nm not found' }
 Write-Host '===DIAG=== abseil DUPLICATE-flag scan: which rsp archives DEFINE minloglevel (>1 = the ODR culprit):'
 if ($nmExe -and $rsp) {
-    $rspLibs2 = (Get-Content -Raw $rsp.FullName) -split '\s+' | Where-Object { $_ -match '\.(a|lib)$' } |
+    # @(...) is load-bearing: an empty pipeline yields AutomationNull, whose .Count throws under the caller's inherited StrictMode.
+    $rspLibs2 = @((Get-Content -Raw $rsp.FullName) -split '\s+' | Where-Object { $_ -match '\.(a|lib)$' } |
         ForEach-Object { if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $innerBuild $_ } } |
-        Where-Object { Test-Path $_ } | Sort-Object -Unique
+        Where-Object { Test-Path $_ } | Sort-Object -Unique)
     Write-Host "  rsp archives to scan: $($rspLibs2.Count)"
     $mllHits = @()
     foreach ($lp in $rspLibs2) {
@@ -74,4 +76,9 @@ if ($nmExe -and $rsp) {
     if ($logFlagArch) { Write-Host "  absl_log_flags-named archives in rsp:"; $logFlagArch | ForEach-Object { Write-Host "    $_" } }
 } else { Write-Host '  (need llvm-nm + rsp)' }
 Write-Host '===DIAG END==='
+
+# Diagnostics-only script: llvm-nm legitimately exits non-zero on the malformed/
+# empty archives this hunts for, and that exit code must never outlive us (the
+# caller reads the ambient $LASTEXITCODE; standalone pwsh -File propagates it).
+exit 0
 

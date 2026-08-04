@@ -34,40 +34,40 @@ Describe 'WindowsVulkanValidation.Common' {
   Context 'Get-VulkanValidationHazard' {
     It 'returns the SYNC-HAZARD lines of a hazardous log' {
       $hazards = @(Get-VulkanValidationHazard -LogPath $script:hazardLog)
-      $hazards.Count | Should Be 1
-      $hazards[0].Line | Should Match 'SYNC-HAZARD-WRITE_AFTER_WRITE'
+      $hazards.Count | Should -Be 1
+      $hazards[0].Line | Should -Match 'SYNC-HAZARD-WRITE_AFTER_WRITE'
     }
 
     It 'returns nothing for a clean log' {
-      @(Get-VulkanValidationHazard -LogPath $script:cleanLog).Count | Should Be 0
+      @(Get-VulkanValidationHazard -LogPath $script:cleanLog).Count | Should -Be 0
     }
 
     It 'honours a custom pattern list' {
-      @(Get-VulkanValidationHazard -LogPath $script:cleanLog -Pattern @('GoldenRender')).Count | Should Be 2
+      @(Get-VulkanValidationHazard -LogPath $script:cleanLog -Pattern @('GoldenRender')).Count | Should -Be 2
     }
 
     It 'throws when the log does not exist' {
       $threw = $false
       try { Get-VulkanValidationHazard -LogPath (Join-Path $script:root 'nope.log') } catch { $threw = $true }
-      $threw | Should Be $true
+      $threw | Should -Be $true
     }
   }
 
   Context 'Test-VulkanValidationLog' {
     It 'is false for a hazardous log' {
-      (Test-VulkanValidationLog -LogPath $script:hazardLog) | Should Be $false
+      (Test-VulkanValidationLog -LogPath $script:hazardLog) | Should -Be $false
     }
 
     It 'is true for a clean log' {
-      (Test-VulkanValidationLog -LogPath $script:cleanLog -Quiet) | Should Be $true
+      (Test-VulkanValidationLog -LogPath $script:cleanLog -Quiet) | Should -Be $true
     }
   }
 
   Context 'vk_layer_settings staging' {
     It 'ships a default settings file that enables sync validation' {
       $default = Get-VulkanLayerSettingsDefaultPath
-      Test-Path $default | Should Be $true
-      (Get-Content $default -Raw) | Should Match 'khronos_validation\.validate_sync\s*=\s*true'
+      Test-Path $default | Should -Be $true
+      (Get-Content $default -Raw) | Should -Match 'khronos_validation\.validate_sync\s*=\s*true'
     }
 
     It 'stages the settings file next to the executable and removes it again' {
@@ -75,12 +75,12 @@ Describe 'WindowsVulkanValidation.Common' {
       $staging = Copy-VulkanLayerSettings -SettingsPath (Get-VulkanLayerSettingsDefaultPath) -TargetDirectory $exeDir
       $staged = Join-Path $exeDir 'vk_layer_settings.txt'
 
-      Test-Path $staged | Should Be $true
-      $staging.StagedPath | Should Be $staged
-      ($null -eq $staging.BackupPath) | Should Be $true
+      Test-Path $staged | Should -Be $true
+      $staging.StagedPath | Should -Be $staged
+      ($null -eq $staging.BackupPath) | Should -Be $true
 
       Restore-VulkanLayerSettings -Staging $staging
-      Test-Path $staged | Should Be $false
+      Test-Path $staged | Should -Be $false
     }
 
     It 'backs up and restores a pre-existing vk_layer_settings.txt' {
@@ -89,17 +89,17 @@ Describe 'WindowsVulkanValidation.Common' {
       Set-Content -Path $staged -Value 'khronos_validation.validate_core = true' -NoNewline
 
       $staging = Copy-VulkanLayerSettings -SettingsPath (Get-VulkanLayerSettingsDefaultPath) -TargetDirectory $exeDir
-      ($null -ne $staging.BackupPath) | Should Be $true
-      (Get-Content $staged -Raw) | Should Match 'validate_sync'
+      ($null -ne $staging.BackupPath) | Should -Be $true
+      (Get-Content $staged -Raw) | Should -Match 'validate_sync'
 
       Restore-VulkanLayerSettings -Staging $staging
-      Test-Path $staged | Should Be $true
-      (Get-Content $staged -Raw) | Should Be 'khronos_validation.validate_core = true'
-      Test-Path $staging.BackupPath | Should Be $false
+      Test-Path $staged | Should -Be $true
+      (Get-Content $staged -Raw) | Should -Be 'khronos_validation.validate_core = true'
+      Test-Path $staging.BackupPath | Should -Be $false
     }
 
     It 'ignores a null staging handle so finally blocks are safe' {
-      { Restore-VulkanLayerSettings -Staging $null } | Should Not Throw
+      { Restore-VulkanLayerSettings -Staging $null } | Should -Not -Throw
     }
 
     It 'throws when the settings source does not exist' {
@@ -107,7 +107,7 @@ Describe 'WindowsVulkanValidation.Common' {
       try {
         Copy-VulkanLayerSettings -SettingsPath (Join-Path $script:root 'missing.txt') -TargetDirectory $script:root
       } catch { $threw = $true }
-      $threw | Should Be $true
+      $threw | Should -Be $true
     }
   }
 }

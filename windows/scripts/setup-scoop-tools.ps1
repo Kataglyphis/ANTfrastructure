@@ -13,7 +13,41 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
+
+# Local wrappers, ON PURPOSE not module exports: setup-* scripts may only rely on
+# the three modules COPY'd before them in Dockerfile.base (Shared, ContainerImage,
+# Installer), and these helpers are specific to this provisioning script anyway.
+
+# Runs one provisioning step and throws on a non-zero native exit code. Scoop and
+# dotnet failures previously just scrolled past ($ErrorActionPreference does not
+# see native exit codes), letting the layer commit with tools silently missing.
+function Invoke-ScoopStep {
+    param(
+        [Parameter(Mandatory)][string]$Description,
+        [Parameter(Mandatory)][scriptblock]$Command
+    )
+    Write-Host "==> $Description"
+    $global:LASTEXITCODE = 0    # clear stale exit codes from earlier native calls
+    & $Command
+    if ($LASTEXITCODE -ne 0) { throw "$Description failed (exit code $LASTEXITCODE)" }
+}
+
+# Collapses the repeated `if ($version) { pkg@ver } else { pkg }` idiom and routes
+# every install through the exit-code gate above.
+function Install-ScoopPackage {
+    param(
+        [Parameter(Mandatory)][string]$Package,
+        [string]$Version = '',
+        [switch]$Global
+    )
+    $spec = if ([string]::IsNullOrWhiteSpace($Version)) { $Package } else { "$Package@$Version" }
+    $flags = @(if ($Global) { '--global' })
+    Invoke-ScoopStep -Description "scoop install $($flags -join ' ') $spec".Replace('  ', ' ') -Command {
+        scoop install @flags $spec
+    }.GetNewClosure()
+}
 
 $sharedModulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $sharedModulePath)) {
@@ -50,7 +84,7 @@ $gitSha = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_WINDOWS_INSTALLE
 Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer' -ExpectSignature MZ -ExpectedSha256 $gitSha
 # Exit-code gate (was missing — a failed Git install surfaced only much later
 # as "git not recognized" deep inside a media build).
-$gitProc = Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait -PassThru
+$gitProc = Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait -NoNewWindow -PassThru
 if ($gitProc.ExitCode -ne 0) { throw "Git for Windows installer failed (exit $($gitProc.ExitCode))" }
 Remove-Item $gitInstaller -Force
 Sync-ContainerProcessPath -AdditionalPaths @(
@@ -63,8 +97,12 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 # verify-toolchain.ps1 assert); defaults keep the script runnable standalone.
 $WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '4.0.6'
 $WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.4'
-dotnet tool install --tool-path C:\WiX wix --version $WixVersion
-& 'C:\WiX\wix.exe' extension add --global "WixToolset.UI.wixext/$WixUiExtVersion"
+Invoke-ScoopStep -Description "dotnet tool install wix $WixVersion" -Command {
+    dotnet tool install --tool-path C:\WiX wix --version $WixVersion
+}
+Invoke-ScoopStep -Description "wix extension add WixToolset.UI.wixext/$WixUiExtVersion" -Command {
+    & 'C:\WiX\wix.exe' extension add --global "WixToolset.UI.wixext/$WixUiExtVersion"
+}
 
 Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
@@ -81,11 +119,11 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 ) | Out-Null
 Assert-ContainerCommandAvailable -Name 'git' | Out-Null
 Assert-ContainerCommandAvailable -Name 'scoop' | Out-Null
-scoop bucket add main
-scoop bucket add extras
-scoop bucket add versions
-scoop install main/7zip
-scoop config use_external_7zip true
+foreach ($bucket in @('main', 'extras', 'versions')) {
+    Invoke-ScoopStep -Description "scoop bucket add $bucket" -Command { scoop bucket add $bucket }.GetNewClosure()
+}
+Install-ScoopPackage -Package 'main/7zip'
+Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { scoop config use_external_7zip true }
 
 # Rust is provisioned by setup-rust-toolchain.ps1 via rustup WITH a default
 # toolchain (single provider; Flutter's Cargokit hard-requires rustup). We
@@ -93,21 +131,13 @@ scoop config use_external_7zip true
 # proxies in CARGO_BIN, and a toolchain-LESS rustup would drop proxy shims that
 # resolve no toolchain (the failure the old "never rustup" rule guarded against).
 
-if ([string]::IsNullOrWhiteSpace($VulkanVersion)) {
-    scoop install main/vulkan
-} else {
-    scoop install "main/vulkan@$VulkanVersion"
-}
+Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 
 # Flutter pinned to versions.env FLUTTER_VERSION (baked env) — previously the
 # ONLY versions.env-managed tool installed floating here, so the Windows image
 # could silently diverge from the Linux lane's Flutter. Empty env falls back to
 # scoop's current manifest (standalone runs), same pattern as vulkan/cmake.
-if ([string]::IsNullOrWhiteSpace($env:FLUTTER_VERSION)) {
-    scoop install --global extras/flutter
-} else {
-    scoop install --global "extras/flutter@$($env:FLUTTER_VERSION)"
-}
+Install-ScoopPackage -Package 'extras/flutter' -Version ([string]$env:FLUTTER_VERSION) -Global
 # llvm DELIBERATELY UNPINNED (Windows tracks scoop's latest; versions.env's LLVM_RELEASE
 # pins only the Linux lane -- the smoke test asserts a well-formed clang-cl version, not
 # that value).
@@ -115,16 +145,13 @@ if ([string]::IsNullOrWhiteSpace($env:FLUTTER_VERSION)) {
 # the BINARY -- the image bakes PKG_CONFIG_PATH and the .pc files, but the source-built
 # GStreamer (unlike the old MSI) ships no pkg-config tool. NOTE: scoop main has no
 # `pkgconf` manifest; the package name is `pkg-config`.
-scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib main/nasm main/openssl main/pkg-config
+Invoke-ScoopStep -Description 'scoop install core toolset (llvm, nano, cppcheck, sccache, ninja, nsis, uv, nuget, zlib, nasm, openssl, pkg-config)' -Command {
+    scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib main/nasm main/openssl main/pkg-config
+}
 
 # CMake stable release via scoop (replaces the old cmake.org MSI download); the
 # shim lands on the scoop user-shims PATH like every other tool installed here.
-if ([string]::IsNullOrWhiteSpace($CMakeVersion)) {
-    scoop install main/cmake
-} else {
-    Write-Host ('Installing CMake {0} (stable) via scoop...' -f $CMakeVersion)
-    scoop install "main/cmake@$CMakeVersion"
-}
+Install-ScoopPackage -Package 'main/cmake' -Version $CMakeVersion
 
 # Drop scoop's download cache — the installers (LLVM, Flutter, Vulkan SDK, ...) are
 # already unpacked into the apps dir and only bloat this (large) layer otherwise.

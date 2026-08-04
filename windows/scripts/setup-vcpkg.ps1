@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
 $installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
@@ -31,14 +32,26 @@ if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
     Invoke-DownloadWithRetry -Url "https://github.com/microsoft/vcpkg/archive/refs/tags/$VcpkgRef.zip" -DestinationPath $vcpkgZip -Description "vcpkg (pinned tag $VcpkgRef)"
     $extracted = Expand-ArchiveSubdirectory -ArchivePath $vcpkgZip -DestinationPath $env:TEMP -Filter 'vcpkg-*'
     if (-not $extracted) { throw 'Failed to locate extracted vcpkg directory' }
+    # If a previous half-finished run left $VcpkgDir behind (dir exists but no
+    # vcpkg.exe, or we would not be here), Move-Item would NEST the source under
+    # it instead of replacing it — clear the target first.
+    if (Test-Path $VcpkgDir) { Remove-Item -Recurse -Force $VcpkgDir -ErrorAction SilentlyContinue }
     Move-Item -Path $extracted -Destination $VcpkgDir -Force
     Remove-Item $vcpkgZip -Force -ErrorAction SilentlyContinue
 
     Push-Location $VcpkgDir
-    Write-Host 'Bootstrapping vcpkg...'
-    .\bootstrap-vcpkg.bat 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
-    Pop-Location
+    try {
+        Write-Host 'Bootstrapping vcpkg...'
+        # Capture instead of discarding: the transcript is only emitted on failure,
+        # where it is the sole diagnostic.
+        $bootstrapOut = .\bootstrap-vcpkg.bat 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $bootstrapOut | ForEach-Object { Write-Host $_ }
+            throw "vcpkg bootstrap failed (exit $LASTEXITCODE)"
+        }
+    } finally {
+        Pop-Location
+    }
     Write-Host 'vcpkg installed successfully'
 }
 
@@ -50,10 +63,14 @@ Write-Host 'Installing dependencies via vcpkg...'
 # protobuf_external's HAVE_ZLIB via CMAKE_PREFIX_PATH in the LiteRT-LM build.
 foreach ($pkg in @('zlib:x64-windows')) {
     Write-Host "  Installing $pkg..."
-    & "$VcpkgDir\vcpkg.exe" install $pkg --triplet x64-windows 2>&1 | Out-Null
+    $installOut = & "$VcpkgDir\vcpkg.exe" install $pkg --triplet x64-windows 2>&1
     # Fail loudly: a silently-missing zlib surfaces much later as an
-    # opaque link error deep in a media build.
-    if ($LASTEXITCODE -ne 0) { throw "vcpkg install $pkg failed (exit $LASTEXITCODE)" }
+    # opaque link error deep in a media build. Emit the captured transcript
+    # only on failure (success output is multi-hundred-line noise).
+    if ($LASTEXITCODE -ne 0) {
+        $installOut | ForEach-Object { Write-Host $_ }
+        throw "vcpkg install $pkg failed (exit $LASTEXITCODE)"
+    }
     Write-Host "  $pkg installed successfully"
 }
 

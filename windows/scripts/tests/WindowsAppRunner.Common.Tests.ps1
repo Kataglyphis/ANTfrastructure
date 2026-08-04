@@ -27,17 +27,17 @@ Describe 'WindowsAppRunner.Common' {
   Context 'Resolve-AppExecutablePath' {
     It 'finds the executable in a per-configuration bin subdirectory' {
       $resolved = Resolve-AppExecutablePath -BuildRoot $script:buildRoot -ExecutableName $script:appName -Configurations @('Release')
-      $resolved | Should Be (Join-Path $script:buildRoot ('bin\Release\' + $script:appName))
+      $resolved | Should -Be (Join-Path $script:buildRoot ('bin\Release\' + $script:appName))
     }
 
     It 'falls back to a recursive search when no candidate path matches' {
       $resolved = Resolve-AppExecutablePath -BuildRoot $script:buildRoot -ExecutableName $script:appName -Configurations @('Debug')
-      $resolved | Should Be (Join-Path $script:buildRoot ('bin\Release\' + $script:appName))
+      $resolved | Should -Be (Join-Path $script:buildRoot ('bin\Release\' + $script:appName))
     }
 
     It 'returns null when the executable does not exist' {
       $resolved = Resolve-AppExecutablePath -BuildRoot $script:buildRoot -ExecutableName 'not-there.exe' -Configurations @('Release')
-      ($null -eq $resolved) | Should Be $true
+      ($null -eq $resolved) | Should -Be $true
     }
   }
 
@@ -50,8 +50,8 @@ Describe 'WindowsAppRunner.Common' {
         $message = $_.Exception.Message
       }
 
-      $message | Should Match "not-there.exe"
-      $message | Should Match "Build it first."
+      $message | Should -Match "not-there.exe"
+      $message | Should -Match "Build it first."
     }
 
     It 'runs the executable in the working directory, applies the env hook and reports the exit code' {
@@ -68,9 +68,9 @@ Describe 'WindowsAppRunner.Common' {
       }
 
       $joined = ($output -join "`n")
-      $joined | Should Match ([regex]::Escape("CWD=$script:workDir"))
-      $joined | Should Match 'HOOK=hooked'
-      $exitCode | Should Be 3
+      $joined | Should -Match ([regex]::Escape("CWD=$script:workDir"))
+      $joined | Should -Match 'HOOK=hooked'
+      $exitCode | Should -Be 3
     }
   }
 }

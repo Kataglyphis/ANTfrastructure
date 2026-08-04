@@ -1,10 +1,10 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Shared bootstrap for the CI entry scripts (windows/scripts/python/Invoke-Ci*.ps1,
-# windows/scripts/rust/*.ps1): resolves and imports the requested ContainerHub
+
 #requires -Version 7.0
 
+# Shared bootstrap for the CI entry scripts (windows/scripts/python/Invoke-Ci*.ps1,
+# windows/scripts/rust/*.ps1): resolves and imports the requested ContainerHub
 # modules and optionally enters the consumer repo root.
 #
 # Deliberately a dot-sourced SCRIPT, not a .psm1: the Import-Module calls must run
@@ -23,7 +23,9 @@ function Initialize-CiEnvironment {
         [string[]]$Modules = @('WindowsBuild.Common'),
         # Resolve the consumer repo root (three levels above the calling script, i.e.
         # the parent of the ContainerHub checkout) and Set-Location into it; the
-        # resolved path is returned.
+        # resolved path is returned as a [string]. WITHOUT this switch the function
+        # returns nothing at all -- that contract is kept as-is for the external
+        # consumers of this script.
         [switch]$EnterRepoRoot
     )
 
@@ -37,7 +39,10 @@ function Initialize-CiEnvironment {
     }
 
     if ($EnterRepoRoot) {
-        $repoRoot = Resolve-Path (Join-Path $ScriptRoot '..\..\..')
+        # [string]: Resolve-Path yields a PathInfo object; callers treat the return
+        # value as a plain path string, so hand them exactly that (same textual
+        # value -- only the wrapper type changes).
+        $repoRoot = [string](Resolve-Path (Join-Path $ScriptRoot '..\..\..'))
         Set-Location $repoRoot
         return $repoRoot
     }

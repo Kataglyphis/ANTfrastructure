@@ -20,8 +20,6 @@
 ARG BASE_IMAGE=local/kataglyphis:windows-media
 FROM ${BASE_IMAGE}
 
-ARG BUILD_DATE=""
-ARG VCS_REF=""
 # Kept in sync with versions.env by sync_versions.py; build.ps1 overrides it
 # (versions.env pin, or the latest release tag with -LatestApp).
 ARG APP_REF=v0.0.27
@@ -37,6 +35,14 @@ COPY windows\scripts\assemble-torch-app.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
 
 ENV TORCH_APP_DIR="C:\opt\Kataglyphis-Orchestr-ANT-ion"
+
+# Provenance stamps DELIBERATELY declared below the assembly RUN: ARGs enter
+# the env (and thus the cache key) of every later instruction, and the drivers
+# pass a fresh timestamp on every invocation — declared above the RUN they
+# forced the minutes-long, network-bound app assembly to re-execute on every
+# chain run even with zero changes. Down here they only re-stamp the LABEL.
+ARG BUILD_DATE=""
+ARG VCS_REF=""
 
 # Healthcheck: exercise the APP venv's onnxruntime import (mirror of
 # linux/Dockerfile.torch's healthcheck). windows/Dockerfile (final) overrides

@@ -6,6 +6,9 @@
 #requires -Version 7.0
 
 $ErrorActionPreference = 'Continue'
+# StrictMode is safe here: the script stays standalone (no module imports) and every
+# variable/property read below is guarded. Parses fine under PS 5.1 as well.
+Set-StrictMode -Version Latest
 $failed = $false
 
 function Check {
@@ -30,7 +33,11 @@ function Resolve-ToolPath {
     )
     $binDir = if ($BinEnvVar) { [Environment]::GetEnvironmentVariable($BinEnvVar) } else { $null }
     if ($binDir) { return (Join-Path $binDir $ExeName) }
-    return (Get-Command $ExeName -ErrorAction SilentlyContinue).Source
+    # The PATH miss is a designed outcome: capture first so the .Source read never
+    # dereferences $null (which throws under StrictMode).
+    $cmd = Get-Command $ExeName -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    return $null
 }
 
 # ONNX Runtime (source-built C/C++ runtime; ENABLE_PYTHON=OFF so no Python module)
@@ -52,7 +59,9 @@ Check "python --version" {
 Check "ffmpeg --version" {
     $ffmpegExe = Resolve-ToolPath -BinEnvVar 'FFMPEG_BIN' -ExeName 'ffmpeg.exe'
     if (-not $ffmpegExe) { throw 'ffmpeg.exe not found (FFMPEG_BIN env var unset and ffmpeg.exe not on PATH)' }
-    $v = & $ffmpegExe -version 2>&1 | Select-Object -First 1
+    $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop below
+    $v = & $ffmpegExe -version 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "ffmpeg -version failed (exit code [$LASTEXITCODE]): $v" }
     if (-not $v) { throw "ffmpeg not found or failed" }
 }
 
@@ -60,7 +69,9 @@ Check "ffmpeg --version" {
 Check "gst-launch-1.0 --version" {
     $gstLaunch = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-launch-1.0.exe'
     if (-not $gstLaunch) { throw 'gst-launch-1.0.exe not found (GSTREAMER_BIN env var unset and gst-launch-1.0.exe not on PATH)' }
-    $v = & $gstLaunch --version 2>&1 | Select-Object -First 1
+    $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop below
+    $v = & $gstLaunch --version 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "gst-launch-1.0 --version failed (exit code [$LASTEXITCODE]): $v" }
     if (-not $v) { throw "gst-launch-1.0 not found or failed" }
 }
 
@@ -82,13 +93,17 @@ foreach ($gstPlugin in @('opencv', 'tensorfilter', 'libav')) {
 
 # CMake
 Check "cmake --version" {
-    $v = & cmake --version 2>&1 | Select-Object -First 1
+    $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop above
+    $v = & cmake --version 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "cmake --version failed (exit code [$LASTEXITCODE]): $v" }
     if (-not $v) { throw "cmake not found" }
 }
 
 # clang-cl
 Check "clang-cl --version" {
-    $v = & clang-cl --version 2>&1 | Select-Object -First 1
+    $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop above
+    $v = & clang-cl --version 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "clang-cl --version failed (exit code [$LASTEXITCODE]): $v" }
     if (-not $v) { throw "clang-cl not found" }
 }
 

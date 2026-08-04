@@ -128,7 +128,11 @@ function Invoke-LiteRtLmSupportGraft {
         -not (Test-Path (Join-Path $SourceDir 'support\util\memory_mapped_file.h')))) {
         return
     }
-    $litertRef = if ($env:LITERT_VERSION) { $env:LITERT_VERSION } else { 'v2.1.6' }
+    # LITERT REF SYNC: same resolution chain as build-litert-from-source.ps1
+    # (LITERT_VERSION env, fallback 'v2.1.6'). The AUTHORITATIVE default lives
+    # there -- when bumping LiteRT, update BOTH defaults (a mismatched graft
+    # pulls a support/ tree from a different LiteRT than the one built).
+    $litertRef = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.1.6'
     $supportClone = 'C:\temp\litert-support-src'
     if (Test-Path $supportClone) { Remove-Item $supportClone -Recurse -Force }
     Write-Host "[LiteRTLM-winfix support-graft] sparse-cloning LiteRT $litertRef support/ tree..."
@@ -167,12 +171,15 @@ function Invoke-LiteRtLmSupportGraft {
         }
     }
     # Stage support/** into GENERATED_SRC_DIR via the same glob pipeline as runtime/**.
-    # Both modules carry identical glob blocks; patch whichever exists.
+    # Both modules carry identical glob blocks; patch whichever exists. Track how
+    # many modules end up wired -- zero means the grafted support/ tree never
+    # reaches GENERATED_SRC_DIR and the build dies later on support/ includes.
+    $wiredModules = 0
     foreach ($modRel in @('cmake\modules\generators.cmake', 'cmake\modules\setup_generated_src_files.cmake')) {
         $modPath = Join-Path $SourceDir $modRel
         if (-not (Test-Path $modPath)) { continue }
         $modText = [System.IO.File]::ReadAllText($modPath)
-        if ($modText -match 'SUPPORT_SRC_FILES') { continue }  # idempotent
+        if ($modText -match 'SUPPORT_SRC_FILES') { $wiredModules++; continue }  # idempotent (already wired)
         $oldSrcLine = 'list(APPEND ALL_SOURCE_FILES ${C_SRC_FILES} ${RUNTIME_SRC_FILES} ${SCHEMA_SRC_FILES})'
         $oldHdrLine = 'list(APPEND ALL_HEADER_FILES ${C_HDR_FILES} ${RUNTIME_HDR_FILES} ${SCHEMA_HDR_FILES})'
         if (-not $modText.Contains($oldSrcLine)) {
@@ -189,7 +196,11 @@ function Invoke-LiteRtLmSupportGraft {
         $modText = $modText.Replace($oldSrcLine, $newSrcLine)
         $modText = $modText.Replace($oldHdrLine, 'list(APPEND ALL_HEADER_FILES ${C_HDR_FILES} ${RUNTIME_HDR_FILES} ${SCHEMA_HDR_FILES} ${SUPPORT_HDR_FILES})')
         [System.IO.File]::WriteAllText($modPath, $modText)
+        $wiredModules++
         Write-Host "[LiteRTLM-winfix support-graft] wired support/ globs into $modRel"
+    }
+    if ($wiredModules -eq 0) {
+        Write-Warning '[LiteRTLM-winfix support-graft] NO generators.cmake/setup_generated_src_files.cmake module was found+wired -- support/ staging is NOT hooked up and the build will fail on support/ includes'
     }
     # litert::Model::CreateFromFd(fd, offset, size) postdates the litert_external
     # pin (2026-03) -- the one caller is the NEW file-backed loading fast path, and
@@ -258,9 +269,14 @@ function Add-LiteRtLmV014OrphanSources {
             '../../support/preprocessor/stb_image_preprocessor.cc'
             '../conversation/model_data_processor/multimodal_processor_helper.cc'
         )
+        $engineBefore = $engineTxt
         $engineTxt = $engineTxt.Replace('../util/log_tensor_buffer.cc',
             "../util/log_tensor_buffer.cc`n  " + ($newOrphans -join "`n  ") + "  # [LiteRTLM-winfix v0.14 orphans]")
-        Write-Host "[LiteRTLM-winfix orphans] added $($newOrphans.Count) v0.14 subsystem sources (logits_processor + support impls) to the engine lib"
+        if ($engineTxt -ne $engineBefore) {
+            Write-Host "[LiteRTLM-winfix orphans] added $($newOrphans.Count) v0.14 subsystem sources (logits_processor + support impls) to the engine lib"
+        } else {
+            Write-Warning '[LiteRTLM-winfix orphans] anchor ../util/log_tensor_buffer.cc NOT found in the engine CMakeLists -- v0.14 subsystem sources were NOT added (expect undefined MelFilterbank/ConstrainedDecoder symbols at link)'
+        }
         if ($engineTxt -notmatch 'LiteRTLM-winfix v0\.14-deps') {
             $engineTxt += @'
 

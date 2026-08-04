@@ -62,15 +62,42 @@ if (Test-Path $mlasSrcDir) {
     Write-Host 'Patched mlas sources for clang-cl (added <cstring> include)'
 }
 
+# Canonical toolchain preamble: VsDevCmd (MSVC/SDK INCLUDE+LIB env — OpenCV
+# needs them even without CUDA), pyconfig.h into Include\ (in-tree Windows
+# CPython keeps it at PC\pyconfig.h; cv2's Python.h include chain needs it and
+# earlier stages only HAPPENED to copy it), the win-amd64 platform-tag shim
+# (must exist BEFORE pip runs so a 64-bit numpy is resolved), and the
+# source-built python handle.
+$ocvPy = Initialize-ToolchainPythonEnvironment
+if (-not (Test-Path $ocvPy.Exe)) { throw "Source-built CPython not found at $($ocvPy.Exe) (toolchain layer missing?)" }
+
+# EAP=Stop/StrictMode-safe interpreter query: capture output, gate on exit code
+# and non-empty result, surface the full output on failure (a bare .ToString()
+# on an error line used to feed garbage straight into the cmake args).
+function Get-OcvPythonQueryResult {
+    param(
+        [Parameter(Mandatory)][string]$PythonExe,
+        [Parameter(Mandatory)][string]$Code,
+        [Parameter(Mandatory)][string]$Label
+    )
+    $out = @(& $PythonExe -c $Code 2>&1)
+    $exit = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    $last = if ($out.Count -gt 0) { $out[-1].ToString().Trim() } else { '' }
+    if ($exit -ne 0 -or [string]::IsNullOrWhiteSpace($last)) {
+        throw "python query '$Label' failed (exit $exit): $(($out -join [Environment]::NewLine))"
+    }
+    return $last
+}
+
 # Create FindPythonInterp.cmake stub directly in OpenCV's cmake dir so
 # find_host_package(PythonInterp ...) finds it (CMAKE_MODULE_PATH is overridden
 # by OpenCV's internal cmake scripts — placing it in the source tree avoids that).
 $pythonModuleDir = Join-Path $mainSrc 'cmake'
-$ocvPy = Get-SourceBuildPython
-$pyExePath = if (Test-Path $ocvPy.Exe) { $ocvPy.Exe -replace '\\', '/' } else { 'C:/temp/cpython/PCbuild/amd64/python.exe' }
+$pyExePath = $ocvPy.Exe -replace '\\', '/'
 # Version derived from canonical PYTHON_VERSION (versions.env via load-versions/ENV)
 $pyVersion = if (-not [string]::IsNullOrWhiteSpace($env:PYTHON_VERSION)) { $env:PYTHON_VERSION } else { '3.14.6' }
 $pyParts = $pyVersion -split '\.'
+if ($pyParts.Count -lt 2) { throw "PYTHON_VERSION '$pyVersion' is not MAJOR.MINOR[.PATCH] -- cannot derive PYTHON_VERSION_MAJOR/MINOR" }
 $findPythonInterpStub = @"
 # Stub FindPythonInterp.cmake — CMake 4.x removed the original module.
 set(PYTHONINTERP_FOUND TRUE)
@@ -84,22 +111,19 @@ mark_as_advanced(PYTHONINTERP_FOUND PYTHON_EXECUTABLE)
 Set-Content -Path (Join-Path $pythonModuleDir 'FindPythonInterp.cmake') -Value $findPythonInterpStub
 Write-Host "Created FindPythonInterp.cmake stub for Python $pyVersion"
 
-# Python bindings (cv2): numpy is required at configure + compile time. The
-# platform-tag shim must exist BEFORE pip runs so a 64-bit numpy is resolved
-# (clang-built CPython otherwise self-reports win32 and pip grabs a 32-bit wheel).
-Initialize-PythonPlatformTag | Out-Null
+# Python bindings (cv2): numpy is required at configure + compile time (the
+# platform-tag shim was written by Initialize-ToolchainPythonEnvironment above,
+# before this pip run resolves wheels).
 Install-CpythonPip -Python $ocvPy
 Invoke-CpythonPip -Python $ocvPy -Arguments @('install', '--quiet', 'numpy')
-$numpyInclude = (& $ocvPy.Exe -c 'import numpy; print(numpy.get_include())' 2>&1 | Select-Object -Last 1).ToString().Trim() -replace '\\', '/'
+$numpyInclude = (Get-OcvPythonQueryResult -PythonExe $ocvPy.Exe -Code 'import numpy; print(numpy.get_include())' -Label 'numpy include dir') -replace '\\', '/'
 if (-not (Test-Path $numpyInclude)) { throw "numpy include dir not resolved (got '$numpyInclude')" }
 Write-Host "numpy include: $numpyInclude"
 
 $buildDir = Join-Path $SourceDir 'build'
 $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 
-# Load MSVC SDK paths unconditionally (every other build script does this).
-# OpenCV needs INCLUDE/LIB env vars even without CUDA (for SDK headers).
-Enter-VsDevCmdEnvironment
+# (MSVC/SDK INCLUDE+LIB env vars were loaded by the toolchain preamble above.)
 
 # Pre-create the bin/ directory so OpenCV's cmake file(COPY ...) for the bundled
 # ONNX Runtime download has a valid destination (avoids "Invalid argument" error
@@ -168,7 +192,7 @@ $cmakeExtra = @(
 # of the module list (cost one rebuild to learn, 2026-07-12). find_python() is
 # wrapped in `if(NOT PYTHON3INTERP_FOUND)`, so preset EVERY output it would
 # produce and skip detection wholesale (forward slashes for CMake).
-$numpyVersion = (& $ocvPy.Exe -c 'import numpy; print(numpy.__version__)' 2>&1 | Select-Object -Last 1).ToString().Trim()
+$numpyVersion = Get-OcvPythonQueryResult -PythonExe $ocvPy.Exe -Code 'import numpy; print(numpy.__version__)' -Label 'numpy version'
 $pyLibFwd = ($ocvPy.Lib) -replace '\\', '/'
 $pyIncFwd = ($ocvPy.Include) -replace '\\', '/'
 $cmakeExtra += '-DPYTHON3INTERP_FOUND=TRUE'
@@ -182,12 +206,16 @@ $cmakeExtra += "-DPYTHON3_LIBRARY=$pyLibFwd"
 $cmakeExtra += "-DPYTHON3_LIBRARIES=$pyLibFwd"
 $cmakeExtra += "-DPYTHON3_INCLUDE_DIR=$pyIncFwd"
 $cmakeExtra += "-DPYTHON3_INCLUDE_PATH=$pyIncFwd"
-$cmakeExtra += '-DPYTHON3_PACKAGES_PATH=C:/temp/cpython/Lib/site-packages'
+# site-packages derived from the python handle (Include = <cpython>\Include),
+# not hardcoded to C:/temp -- the cpython tree location is owned by the toolchain.
+$pySitePackagesFwd = (Join-Path (Split-Path $ocvPy.Include -Parent) 'Lib\site-packages') -replace '\\', '/'
+$cmakeExtra += "-DPYTHON3_PACKAGES_PATH=$pySitePackagesFwd"
 $cmakeExtra += "-DPYTHON3_NUMPY_INCLUDE_DIRS=$numpyInclude"
 $cmakeExtra += "-DPYTHON3_NUMPY_VERSION=$numpyVersion"
 
-# Provide our source-built ONNX Runtime root so FindONNX.cmake finds it.
-$ortRoot = 'C:/runtime/lib/onnxruntime-source'
+# Provide our source-built ONNX Runtime root so FindONNX.cmake finds it
+# (derived from $InstallDir -- forward slashes for the cmake arg).
+$ortRoot = (Join-Path $InstallDir 'lib\onnxruntime-source') -replace '\\', '/'
 if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
     $cmakeExtra += "-DONNXRT_ROOT_DIR=$ortRoot"
     Write-Host "ONNX Runtime found at $ortRoot"

@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Runs every *.Tests.ps1 in this directory against the shared modules and exits non-zero
-# on any failure. Zero external dependencies (see TestHarness.psm1) — safe to run on the
-# PS 5.1 container and the PS 7.x host alike, and as a CI/pre-build gate.
+# on any failure. Harness-style suites need nothing installed (see TestHarness.psm1);
+# Pester-style suites require Pester >= 5, and the run FAILS (never silently skips) when
+# it is missing, so CI can't go green on "0 tests".
 [CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $modDir = Join-Path (Split-Path $here -Parent) 'modules'
 
@@ -24,33 +26,62 @@ Reset-TestState
 
 # This directory holds two kinds of suite: zero-dependency ones written
 # against TestHarness.psm1 (dot-sourced below) and Pester-style ones using
-# Describe/BeforeAll. Dot-sourcing the latter throws "The BeforeAll command
+# BeforeAll/Context. Dot-sourcing the latter throws "The BeforeAll command
 # may only be used inside a Describe block" and aborts the whole run, so
-# they are detected and handed to Pester instead. Without this the runner
-# breaks the moment anyone adds a Pester suite next to a harness suite.
+# they are detected and handed to Pester instead. Detection keys on
+# Pester-only block keywords (BeforeAll/BeforeEach/AfterAll/AfterEach/
+# Context) — NOT on Describe, which TestHarness.psm1 also exports, so a
+# Describe-based discriminator would misroute every harness suite to Pester.
 $pesterFailures = 0
 $pesterPassed = 0
 $pesterTotal = 0
+$skippedSuites = @()
+$pesterMinVersion = [version]'5.0'
+$pesterAvailable = $null -ne (Get-Module -ListAvailable -Name Pester |
+        Where-Object { $_.Version -ge $pesterMinVersion } | Select-Object -First 1)
 $testFiles = Get-ChildItem -Path $here -Filter '*.Tests.ps1' | Sort-Object Name
+$harnessFiles = @()
+$pesterFiles = @()
 foreach ($f in $testFiles) {
+    $isPesterStyle = (Get-Content $f.FullName -Raw) -match '(?m)^\s*(BeforeAll|BeforeEach|AfterAll|AfterEach|Context)\s'
+    if ($isPesterStyle) { $pesterFiles += $f } else { $harnessFiles += $f }
+}
+
+# Pass 1: harness suites, dot-sourced. This MUST happen before Pester is ever
+# imported into this session: Pester also exports Describe/It, and once imported
+# it would shadow the harness functions, silently rerouting dot-sourced suites
+# through Pester's standalone-Describe path (whose failures do not reach $results
+# and therefore never fail the run).
+foreach ($f in $harnessFiles) {
+    Write-Host ''
+    Write-Host "== $($f.Name) ==" -ForegroundColor Yellow
+    . $f.FullName
+}
+
+# Pass 2: Pester suites.
+foreach ($f in $pesterFiles) {
     Write-Host ''
     Write-Host "== $($f.Name) ==" -ForegroundColor Yellow
 
-    $isPesterStyle = (Get-Content $f.FullName -Raw) -match '(?m)^\s*Describe\s'
-    if (-not $isPesterStyle) {
-        . $f.FullName
+    if (-not $pesterAvailable) {
+        Write-Host "   SKIPPED (Pester-style suite; Pester >= $pesterMinVersion is not installed)" -ForegroundColor Yellow
+        $skippedSuites += $f.Name
         continue
     }
 
-    if (-not (Get-Module -ListAvailable -Name Pester)) {
-        Write-Host '   SKIPPED (Pester-style suite; Pester is not installed)' -ForegroundColor Yellow
-        continue
-    }
-
-    Import-Module Pester -ErrorAction Stop
-    $pesterRun = Invoke-Pester -Path $f.FullName -PassThru -Quiet
+    Import-Module Pester -MinimumVersion $pesterMinVersion -ErrorAction Stop
+    # Pester 5+ configuration object (-Quiet is Pester 3/4 legacy; Output.Verbosity
+    # 'None' is its replacement and works on both Pester 5.x and 6.x).
+    $pesterConf = New-PesterConfiguration
+    $pesterConf.Run.Path = $f.FullName
+    $pesterConf.Run.PassThru = $true
+    $pesterConf.Output.Verbosity = 'None'
+    $pesterRun = Invoke-Pester -Configuration $pesterConf
     Write-Host ("   Pester: {0}/{1} passed" -f $pesterRun.PassedCount, $pesterRun.TotalCount) `
         -ForegroundColor $(if ($pesterRun.FailedCount -gt 0) { 'Red' } else { 'Green' })
+    foreach ($ft in @($pesterRun.Failed)) {
+        Write-Host "   FAIL $($ft.ExpandedPath)" -ForegroundColor Red
+    }
     $pesterFailures += $pesterRun.FailedCount
     $pesterPassed += $pesterRun.PassedCount
     $pesterTotal += $pesterRun.TotalCount
@@ -76,5 +107,14 @@ if ($pesterFailures -gt 0) {
     Write-Host "  $pesterFailures Pester test(s) failed (see the per-file lines above)" -ForegroundColor Red
 }
 
-if ($failed.Count -gt 0 -or $pesterFailures -gt 0) { exit 1 }
+# A skipped suite is a FAILED gate: silently dropping suites previously produced a
+# green "0 tests" run on hosts without Pester, which is exactly what this pre-build
+# gate exists to prevent.
+if ($skippedSuites.Count -gt 0) {
+    Write-Host "  $($skippedSuites.Count) suite(s) SKIPPED (Pester >= $pesterMinVersion required):" -ForegroundColor Red
+    foreach ($s in $skippedSuites) { Write-Host "    $s" -ForegroundColor Red }
+    Write-Host '  Install it with: Install-Module Pester -MinimumVersion 5.7 -Scope CurrentUser -Force -SkipPublisherCheck' -ForegroundColor Red
+}
+
+if ($failed.Count -gt 0 -or $pesterFailures -gt 0 -or $skippedSuites.Count -gt 0) { exit 1 }
 exit 0

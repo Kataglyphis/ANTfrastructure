@@ -4,6 +4,7 @@
 #requires -Version 7.0
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
@@ -40,7 +41,13 @@ function Invoke-NativeRustStep {
     $previousEap = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
+        # A CommandNotFoundException under this local EAP=Continue does NOT abort
+        # the step but leaves $LASTEXITCODE stale from an earlier native call --
+        # null it first and treat "still null" as failure, so a missing binary can
+        # never ride a stale 0 into a green step.
+        $global:LASTEXITCODE = $null
         & $Command 2>&1 | ForEach-Object { "$_" } | Out-Host
+        if ($null -eq $LASTEXITCODE) { throw "$Description failed: command missing or produced no exit code" }
         if ($LASTEXITCODE -ne 0) { throw "$Description failed (exit $LASTEXITCODE)" }
     } finally {
         $ErrorActionPreference = $previousEap
@@ -69,7 +76,7 @@ function Invoke-RustProcessWithHeartbeat {
     $logBase = Join-Path $env:TEMP ("rust-{0}" -f ($Description -replace '[^A-Za-z0-9]', '-'))
     $outLog = "$logBase.out.log"; $errLog = "$logBase.err.log"
     $p = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -PassThru `
-        -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+        -RedirectStandardOutput "$outLog" -RedirectStandardError "$errLog"
     # PS 5.1 trap: without touching .Handle, the Process object never acquires a
     # handle and $p.ExitCode stays $null after exit (a completed rustup-init then
     # "fails (exit )"). Cache it now; argless WaitForExit() after the loop flushes
@@ -80,6 +87,17 @@ function Invoke-RustProcessWithHeartbeat {
         $elapsed += 30
         Write-Host ("[{0}] running... {1}s elapsed" -f $Description, $elapsed)
         if ($elapsed -ge $TimeoutSec) {
+            # Kill the wedged child BEFORE throwing: the HOST QUIRK above is exactly
+            # a kernel-stuck child, and leaving it alive keeps its handles (and the
+            # RUN step) wedged long after this step has nominally failed. Guarded:
+            # a kernel-stuck process may refuse Kill, and that must not mask the
+            # timeout diagnostic below.
+            try {
+                $p.Kill($true)
+                $p.Dispose()
+            } catch {
+                Write-Host ("[{0}] could not kill/dispose timed-out process: {1}" -f $Description, $_.Exception.Message)
+            }
             throw ("{0} timed out after {1}s (see {2} / {3})" -f $Description, $TimeoutSec, $outLog, $errLog)
         }
     }
@@ -91,6 +109,10 @@ function Invoke-RustProcessWithHeartbeat {
         }
     }
     if ($p.ExitCode -ne 0) { throw ("{0} failed (exit {1})" -f $Description, $p.ExitCode) }
+    # Success: the logs were only diagnostics (their tails are already echoed above)
+    # -- drop them so they do not ride into the layer. On failure they are kept and
+    # referenced by the throw messages.
+    Remove-Item $outLog, $errLog -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host 'Installing Rust via rustup (stable default toolchain; single provider)...'
@@ -140,12 +162,18 @@ $env:RUSTUP_IO_THREADS = '1'
 
 # --no-modify-path: we don't need rustup's PATH edit (Dockerfile.base already puts
 # CARGO_BIN on the baked PATH).
-Invoke-RustProcessWithHeartbeat -Description 'rustup-init' -FilePath $rustupInit `
-    -ArgumentList @('-y', '--no-modify-path', '--default-toolchain', 'stable', '--profile', 'minimal') `
-    -TimeoutSec 900
-Remove-Item $rustupInit -Force -ErrorAction SilentlyContinue
-Remove-Item $mirrorRoot -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item Env:\RUSTUP_DIST_SERVER -ErrorAction SilentlyContinue
+# try/finally: the multi-GB mirror, the installer and the env override must go away
+# on the FAILURE path too (previously success-path-only, so a failed install left
+# them behind for the layer / the next diagnostic run).
+try {
+    Invoke-RustProcessWithHeartbeat -Description 'rustup-init' -FilePath $rustupInit `
+        -ArgumentList @('-y', '--no-modify-path', '--default-toolchain', 'stable', '--profile', 'minimal') `
+        -TimeoutSec 900
+} finally {
+    Remove-Item $rustupInit -Force -ErrorAction SilentlyContinue
+    Remove-Item $mirrorRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item Env:\RUSTUP_DIST_SERVER -ErrorAction SilentlyContinue
+}
 
 # CARGO_HOME (Dockerfile.base) already points at C:\Users\ContainerAdministrator\.cargo,
 # so the rustup proxies land in CARGO_BIN, which the persistent PATH already carries

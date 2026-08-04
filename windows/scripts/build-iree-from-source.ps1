@@ -28,7 +28,10 @@ Write-Host "=== IREE source build ($IreeVersion, Ninja+clang-cl) ==="
 # which turns a ~4 GB llvm-project history into a ~600 MB checkout.
 # Invoke-GitClone is not used because its -Recursive maps to `--recursive`
 # WITHOUT `--shallow-submodules`.
-if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
+# Mount-safe reset (shared helper): a plain Remove-Item dies with "used by
+# another process" when $SourceDir is a BuildKit cache-mount target -- the
+# helper falls back to clearing the CONTENTS (git clones into an empty dir fine).
+Reset-SourceBuildDirectory -Path $SourceDir
 $env:GIT_TERMINAL_PROMPT = '0'
 [void](Invoke-ShieldedNative -Label "IREE clone $IreeVersion" -CommandLine "git clone --depth 1 --branch $IreeVersion --shallow-submodules --recurse-submodules --jobs 4 https://github.com/iree-org/iree.git `"$SourceDir`"")
 if (-not (Test-Path (Join-Path $SourceDir 'third_party\llvm-project\llvm\CMakeLists.txt'))) {
@@ -44,7 +47,13 @@ $buildDir = Join-Path $SourceDir 'build'
 $ireeInstallDir = Join-Path $InstallDir 'iree'
 
 $pythonBindings = 'OFF'
-if (-not $SkipPython -and (Test-Path $py.Exe)) {
+if (-not $SkipPython) {
+    # Python bindings are EXPECTED on this lane: a missing interpreter must fail
+    # loudly, not silently ship an image without iree.compiler/iree.runtime
+    # (only an explicit -SkipPython legitimately turns the bindings off).
+    if (-not (Test-Path $py.Exe)) {
+        throw "IREE python bindings expected but source-built CPython is missing at $($py.Exe) (toolchain layer incomplete? pass -SkipPython for a deliberate no-python build)"
+    }
     $pythonBindings = 'ON'
     Install-CpythonPip -Python $py
     # numpy: required by the runtime bindings at import; nanobind is vendored.

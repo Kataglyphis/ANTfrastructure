@@ -16,6 +16,9 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
+# LITERT REF SYNC: this 'v2.1.6' is the AUTHORITATIVE default. The v0.14
+# support-graft in litert-lm-export-bridge.ps1 resolves the same LITERT_VERSION
+# env with the same fallback -- a LiteRT bump must update BOTH defaults.
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.1.6'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
@@ -51,9 +54,11 @@ add_library($targetName INTERFACE)
 }
 
 $buildDir = Join-Path $SourceDir 'build'
-# Clean any stale build artifacts (CMake pkgRedirects path casing issues)
-if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force -ErrorAction SilentlyContinue }
-if (Test-Path (Join-Path $SourceDir 'BUILD')) { Remove-Item (Join-Path $SourceDir 'BUILD') -Recurse -Force -ErrorAction SilentlyContinue }
+# Clean any stale build artifacts (CMake pkgRedirects path casing issues).
+# -ErrorAction Stop: this cleanup EXISTS to prevent stale caches -- silently
+# leaving residue behind defeats its purpose, so a failed delete must be loud.
+if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force -ErrorAction Stop }
+if (Test-Path (Join-Path $SourceDir 'BUILD')) { Remove-Item (Join-Path $SourceDir 'BUILD') -Recurse -Force -ErrorAction Stop }
 
 # Detect GPU environment via the canonical helper (single source of truth for CUDA/cuDNN/TRT).
 $gpuEnv = Get-GpuEnvironment
@@ -113,6 +118,12 @@ Get-ChildItem -Path $tfliteSrc -Filter '*.h' -Recurse -ErrorAction SilentlyConti
     $headerCount++
 }
 Write-Host "Copied $headerCount headers to $includeRoot"
+# Hard gates on the manual install (Copy-BuildArtifact is silent-by-design):
+# an empty header tree or a lib\ without a single .lib means the litert-lm
+# stage would only fail hours later against a hollow install dir.
+if ($headerCount -eq 0) { throw "LiteRT manual install copied 0 headers to $includeRoot (source tree layout changed?)" }
+$installedLibs = @(Get-ChildItem -Path (Join-Path $litertInstallDir 'lib') -Filter '*.lib' -File -ErrorAction SilentlyContinue)
+if ($installedLibs.Count -lt 1) { throw "LiteRT manual install staged no .lib files into $(Join-Path $litertInstallDir 'lib') (build produced none under $buildDir?)" }
 Write-Host 'LiteRT manual install completed'
 
 Remove-SourceBuildTree -Path $SourceDir

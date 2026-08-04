@@ -51,35 +51,35 @@ Describe 'WindowsSlang.Common' {
   Context 'Test-WgslVaryingsAreLocated' {
     It 'names the file line of a varying member without @builtin/@location' {
       $offenders = Test-WgslVaryingsAreLocated -Path $script:badWgsl
-      $offenders.Count | Should Be 1
-      $offenders[0] | Should Match '^4: struct VertexOut: uv_0'
+      $offenders.Count | Should -Be 1
+      $offenders[0] | Should -Match '^4: struct VertexOut: uv_0'
     }
 
     It 'accepts a struct whose every member is attributed' {
-      (Test-WgslVaryingsAreLocated -Path $script:goodWgsl).Count | Should Be 0
+      (Test-WgslVaryingsAreLocated -Path $script:goodWgsl).Count | Should -Be 0
     }
 
     It 'ignores plain data structs (no @builtin/@location member at all)' {
       $plain = Join-Path $script:root 'plain.wgsl'
       Set-Content -Path $plain -Encoding utf8 -Value @('struct Params', '{', '    a : f32,', '    b : vec4<f32>,', '};')
-      (Test-WgslVaryingsAreLocated -Path $plain).Count | Should Be 0
+      (Test-WgslVaryingsAreLocated -Path $plain).Count | Should -Be 0
     }
   }
 
   Context 'Test-SlangcVersionAtLeast' {
     It 'rejects the slangc whose combined WGSL emit drops @location' {
-      Test-SlangcVersionAtLeast -Have '2026.1-52-gc8ddf20bb' -Want '2026.8' | Should Be $false
+      Test-SlangcVersionAtLeast -Have '2026.1-52-gc8ddf20bb' -Want '2026.8' | Should -Be $false
     }
 
     It 'accepts the floor itself and anything newer' {
-      Test-SlangcVersionAtLeast -Have '2026.8' -Want '2026.8' | Should Be $true
-      Test-SlangcVersionAtLeast -Have '2026.9' -Want '2026.8' | Should Be $true
-      Test-SlangcVersionAtLeast -Have '2027.0' -Want '2026.8' | Should Be $true
+      Test-SlangcVersionAtLeast -Have '2026.8' -Want '2026.8' | Should -Be $true
+      Test-SlangcVersionAtLeast -Have '2026.9' -Want '2026.8' | Should -Be $true
+      Test-SlangcVersionAtLeast -Have '2027.0' -Want '2026.8' | Should -Be $true
     }
 
     It 'treats an unparseable version as new enough (the emit guard is the backstop)' {
-      Test-SlangcVersionAtLeast -Have 'some-dev-build' -Want '2026.8' | Should Be $true
-      Test-SlangcVersionAtLeast -Have '2026.8' -Want '' | Should Be $true
+      Test-SlangcVersionAtLeast -Have 'some-dev-build' -Want '2026.8' | Should -Be $true
+      Test-SlangcVersionAtLeast -Have '2026.8' -Want '' | Should -Be $true
     }
   }
 
@@ -90,10 +90,10 @@ Describe 'WindowsSlang.Common' {
       New-Item -ItemType Directory -Force -Path (Join-Path $tree 'forward') | Out-Null
 
       $argv = Get-SlangIncludeArgument -SourceRoot $tree -SourceDirectory (Join-Path $tree 'forward')
-      @($argv | Where-Object { $_ -eq '-I' }).Count | Should Be 4
-      ($argv -contains $tree) | Should Be $true
-      ($argv -contains (Join-Path $tree 'common')) | Should Be $true
-      ($argv -contains (Join-Path $tree 'forward')) | Should Be $true
+      @($argv | Where-Object { $_ -eq '-I' }).Count | Should -Be 4
+      ($argv -contains $tree) | Should -Be $true
+      ($argv -contains (Join-Path $tree 'common')) | Should -Be $true
+      ($argv -contains (Join-Path $tree 'forward')) | Should -Be $true
     }
   }
 
@@ -106,7 +106,7 @@ Describe 'WindowsSlang.Common' {
       $saved = $env:VULKAN_SDK
       try {
         $env:VULKAN_SDK = $sdk
-        Resolve-Slangc | Should Be (Join-Path $sdk 'Bin\slangc.exe')
+        Resolve-Slangc | Should -Be (Join-Path $sdk 'Bin\slangc.exe')
       } finally {
         $env:VULKAN_SDK = $saved
       }

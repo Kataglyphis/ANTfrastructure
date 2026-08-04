@@ -14,17 +14,27 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $ProgressPreference    = 'SilentlyContinue'
 
 $installerModulePath = Join-Path $PSScriptRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
 
+# For Resolve-VsBuildToolsRoot (shared VsDevCmd probe, also used by the smoke test).
+# Allowed here: WindowsContainerImage.Common is one of the three modules COPY'd
+# into Dockerfile.base BEFORE the setup-* scripts run.
+$containerImageModulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
+if (-not (Test-Path $containerImageModulePath)) { throw "Required module not found: $containerImageModulePath" }
+Import-Module $containerImageModulePath -Force
+
 # Admin-Check
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Error 'Please run PowerShell as Administrator.'; exit 1
+    # throw, not Write-Error+exit: under EAP=Stop Write-Error is itself terminating,
+    # which made the old `exit 1` dead code.
+    throw 'Please run PowerShell as Administrator.'
 }
 
 # Single source for the VS major: previously computed twice, 100 lines apart,
@@ -82,6 +92,11 @@ New-Item -Path $TempDir -ItemType Directory -Force | Out-Null
 $installer = Join-Path $TempDir 'vs_buildtools.exe'
 
 # Optionale ENV-Variablen analog Dockerfile
+
+# Pre-declare: the finally below reads $proc, and a failure before Start-Process
+# (download, arg building) would otherwise leave it unset — under StrictMode the
+# finally would then throw and REPLACE the real exception.
+$proc = $null
 
 try {
     Write-Host 'Downloading Visual Studio Build Tools Installer...'
@@ -197,11 +212,12 @@ try {
     }
 
     # VS major from versions.env's VISUAL_STUDIO_VERSION (reaches this pre-load-versions
-    # layer as a --build-arg, same route as WINDOWS_SDK_BUILD above).
-        if (Test-Path "C:\Program Files\Microsoft Visual Studio\$script:VsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
-        Write-Host 'VsDevCmd found.'
-    } elseif (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\$script:VsMajor\BuildTools\Common7\Tools\VsDevCmd.bat") {
-        Write-Host 'VsDevCmd (x86) found, path adjusted.'
+    # layer as a --build-arg, same route as WINDOWS_SDK_BUILD above). Probe via the
+    # shared Resolve-VsBuildToolsRoot so this check and the smoke test can never
+    # diverge on which Program Files roots they accept.
+    $vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $script:VsMajor
+    if ($vsBuildToolsRoot) {
+        Write-Host "VsDevCmd found ($vsBuildToolsRoot)."
     } else {
         Write-Host 'VsDevCmd not found -- printing logs.'
         Write-InstallerLogDump -TempDir $TempDir

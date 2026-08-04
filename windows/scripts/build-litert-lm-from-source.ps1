@@ -43,14 +43,47 @@ Invoke-LiteRtLmSupportGraft -SourceDir $SourceDir
 
 #region Phase 2 | Toolchain acquisition (vcpkg + host protoc 31.1 + Temurin JRE)
 # vcpkg paths: prefer -VcpkgRoot param, then $env:VCPKG_ROOT, then the container default.
-if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
-    $VcpkgRoot = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { 'C:\vcpkg' }
-}
+$VcpkgRoot = Get-SourceBuildVersion -Value $VcpkgRoot -EnvironmentVariables @('VCPKG_ROOT') -DefaultValue 'C:\vcpkg'
 $vcpkgInstalledX64 = Join-Path $VcpkgRoot 'installed\x64-windows'
+
+# ENV HYGIENE: media-chain stages run IN-PROCESS (Invoke-SourceBuildChain), so
+# every process-env mutation below -- the CMAKE_PREFIX_PATH prepend here, the
+# $env:LIB overwrite and CXXFLAGS / CCC_OVERRIDE_OPTIONS / CXXFLAGS_<target>
+# injections in Phases 3-4 -- would otherwise leak into the NEXT stage's
+# compiles. Snapshot them now; the matching finally at the end of the main work
+# restores each (null snapshot = variable removed again).
+$litertLmEnvSnapshot = @{}
+foreach ($envName in @('CMAKE_PREFIX_PATH', 'LIB', 'CXXFLAGS', 'CCC_OVERRIDE_OPTIONS', 'CXXFLAGS_x86_64_pc_windows_msvc')) {
+    $litertLmEnvSnapshot[$envName] = [Environment]::GetEnvironmentVariable($envName)
+}
+try {
+
 $env:CMAKE_PREFIX_PATH = "$vcpkgInstalledX64;$env:CMAKE_PREFIX_PATH"
 $protobufTools = Join-Path $vcpkgInstalledX64 'tools\protobuf'
-$vcpkgDir = $VcpkgRoot
 if (Test-Path $protobufTools) { $env:PATH = "$protobufTools;$env:PATH" }
+
+# Shared shape for the two portable zip-tool fetches below (protoc + JRE): probe
+# first, download with a PK magic-byte guard (an HTML error page served in place
+# of the zip used to surface hours later as a cryptic Expand-Archive failure),
+# extract, re-probe, throw when the expected file still is not there.
+function Install-PortableZipTool {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$ZipPath,
+        [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][string]$Description,
+        # Returns the tool's path/item when present, $null/empty otherwise.
+        [Parameter(Mandatory)][scriptblock]$Probe
+    )
+    $found = & $Probe
+    if ($found) { return $found }
+    Write-Host "Downloading $Description from $Url"
+    Invoke-DownloadWithRetry -Url $Url -DestinationPath $ZipPath -Description $Description -ExpectSignature PK
+    Expand-Archive -Path $ZipPath -DestinationPath $Destination -Force
+    $found = & $Probe
+    if (-not $found) { throw "Failed to obtain $Description under $Destination" }
+    return $found
+}
 
 # (The vcpkg-protobuf header hide/restore dance was DELETED 2026-08-03: vcpkg
 # ships zlib-only since the same date — setup-vcpkg.ps1 — and every image in
@@ -65,35 +98,25 @@ if (Test-Path $protobufTools) { $env:PATH = "$protobufTools;$env:PATH" }
 # Building a matching 6.31.1 protoc from source fails to link (abseil under clang++/lld-
 # link), so fetch the official prebuilt protoc for release v31.1 (== runtime 6.31.1) and
 # use it for every codegen step below (litert-lm protos, sentencepiece, WITH_PROTOC import).
-$protocVer = if ($env:PROTOC_VERSION) { $env:PROTOC_VERSION } else { '31.1' }
+$protocVer = Get-SourceBuildVersion -EnvironmentVariables @('PROTOC_VERSION') -DefaultValue '31.1'
 $hostProtocDir = "C:\temp\protoc-$protocVer"
 $hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
-if (-not (Test-Path $hostProtoc)) {
-    $protocZip = "C:\temp\protoc-$protocVer-win64.zip"
-    $protocUrl = "https://github.com/protocolbuffers/protobuf/releases/download/v$protocVer/protoc-$protocVer-win64.zip"
-    Write-Host "Downloading version-matched protoc (v$protocVer) from $protocUrl"
-    Invoke-DownloadWithRetry -Url $protocUrl -DestinationPath $protocZip -Description "version-matched protoc v$protocVer"
-    Expand-Archive -Path $protocZip -DestinationPath $hostProtocDir -Force
-    if (-not (Test-Path $hostProtoc)) { throw "Failed to obtain prebuilt protoc $protocVer at $hostProtoc" }
-}
+[void](Install-PortableZipTool -Url "https://github.com/protocolbuffers/protobuf/releases/download/v$protocVer/protoc-$protocVer-win64.zip" `
+        -ZipPath "C:\temp\protoc-$protocVer-win64.zip" -Destination $hostProtocDir `
+        -Description "version-matched protoc v$protocVer" `
+        -Probe { if (Test-Path $hostProtoc) { $hostProtoc } })
 Write-Host "Using version-matched host protoc: $hostProtoc ($(& $hostProtoc --version))"
 
 # litert-lm generates its tool-call JSON parser at build time by running the ANTLR jar
 # (java -jar antlr-4.13.2-complete.jar ...), so the build needs a JRE. The media base image
 # doesn't ship Java, so fetch a portable Temurin JRE and put java.exe on PATH. (No JDK
 # needed -- ANTLR only runs the prebuilt jar.)
-$jreVer = if ($env:JRE_VERSION) { $env:JRE_VERSION } else { '21' }
+$jreVer = Get-SourceBuildVersion -EnvironmentVariables @('JRE_VERSION') -DefaultValue '21'
 $jreDir = 'C:\temp\jre'
-$javaExe = Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $javaExe) {
-    $jreZip = 'C:\temp\temurin-jre.zip'
-    $jreUrl = "https://api.adoptium.net/v3/binary/latest/$jreVer/ga/windows/x64/jre/hotspot/normal/eclipse"
-    Write-Host "Downloading Temurin $jreVer JRE (for ANTLR codegen) from $jreUrl"
-    Invoke-DownloadWithRetry -Url $jreUrl -DestinationPath $jreZip -Description "Temurin $jreVer JRE"
-    Expand-Archive -Path $jreZip -DestinationPath $jreDir -Force
-    $javaExe = Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $javaExe) { throw "Failed to obtain a JRE (java.exe) under $jreDir" }
-}
+$javaExe = Install-PortableZipTool -Url "https://api.adoptium.net/v3/binary/latest/$jreVer/ga/windows/x64/jre/hotspot/normal/eclipse" `
+    -ZipPath 'C:\temp\temurin-jre.zip' -Destination $jreDir `
+    -Description "Temurin $jreVer JRE (for ANTLR codegen)" `
+    -Probe { Get-ChildItem -Path $jreDir -Recurse -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1 }
 $env:PATH = "$($javaExe.Directory.FullName);$env:PATH"
 Write-Host "Using Java for ANTLR codegen: $($javaExe.FullName)"
 
@@ -113,7 +136,12 @@ $stubLibDir = 'C:\temp\winstublibs'
 New-Item -ItemType Directory -Force $stubLibDir | Out-Null
 $llvmLib = (Get-Command llvm-lib.exe -ErrorAction Stop).Source
 foreach ($stub in @('rt', 'pthread', 'dl')) {
-    & $llvmLib "/out:$stubLibDir\$stub.lib" /llvmlibempty 2>&1 | Out-Null
+    $stubLibPath = Join-Path $stubLibDir "$stub.lib"
+    $stubOut = & $llvmLib "/out:$stubLibPath" /llvmlibempty 2>&1
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $stubLibPath)) {
+        # A missing stub only surfaces much later as 'lld-link: could not open <stub>.lib'.
+        throw "llvm-lib failed to create link-lib stub $stub.lib (exit $LASTEXITCODE): $(@($stubOut) -join [Environment]::NewLine)"
+    }
 }
 $vcpkgZlib = Join-Path $vcpkgInstalledX64 'lib\z.lib'
 if (Test-Path $vcpkgZlib) { Copy-Item $vcpkgZlib (Join-Path $stubLibDir 'z.lib') -Force }
@@ -150,9 +178,15 @@ $sysLibGlobs = @(
     (Join-Path $clangHome 'lib\clang\*\lib\x86_64-pc-windows-msvc'),
     (Join-Path $clangHome 'lib\clang\*\lib\windows')
 )
-$sysLibDirs = foreach ($g in $sysLibGlobs) {
+$sysLibDirs = @(foreach ($g in $sysLibGlobs) {
     $d = Get-ChildItem $g -Directory -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
     if ($d) { $d.FullName }
+})
+# LIB must carry MSVC + SDK (ucrt/um) + clang runtime dirs or every link -- even
+# the configure compiler check -- dies on missing kernel32.lib/libcmt.lib. Fail
+# NOW with the glob list instead of hours later inside the ExternalProject.
+if ($sysLibDirs.Count -lt 3) {
+    throw "resolved only $($sysLibDirs.Count) MSVC/SDK/clang system lib dir(s) for LIB (need MSVC + ucrt + um at minimum); globs: $($sysLibGlobs -join ' | ')"
 }
 $env:LIB = (@($stubLibDir) + $sysLibDirs) -join ';'
 Write-Host "Created Windows link-lib shims (rt/pthread/dl empty; z=vcpkg zlib); LIB = shim + $(@($sysLibDirs).Count) MSVC/SDK/clang lib dirs"
@@ -722,7 +756,12 @@ if ((Test-Path $cleanCml) -and ((Get-Content -Raw $cleanCml) -notmatch 'LiteRTLM
     $emptyCc = Join-Path $SourceDir 'winfix_empty.cc'
     $emptyObj = Join-Path $SourceDir 'winfix_empty.obj'
     Set-Content -Path $emptyCc -Value '// [LiteRTLM-winfix] intentionally empty' -Encoding ASCII
-    & (Get-Command clang++.exe).Source -c $emptyCc -o $emptyObj 2>&1 | Out-Null
+    # Gate the compile: this obj feeds the CMake PRE_LINK llvm-ar neutralize below;
+    # a missing obj would only surface there as an opaque archive error.
+    $emptyCompileOut = & (Get-Command clang++.exe).Source -c $emptyCc -o $emptyObj 2>&1
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $emptyObj)) {
+        throw "clang++ failed to compile the winfix empty object $emptyObj (exit $LASTEXITCODE): $(@($emptyCompileOut) -join [Environment]::NewLine)"
+    }
     $emptyObjFwd = $emptyObj -replace '\\', '/'
     $llvmArFwd = ((Get-Command llvm-ar.exe).Source) -replace '\\', '/'
     # (c) inject sources + CRT alternatenames + PRE_LINK neutralize into the litert_lm_main target
@@ -828,7 +867,9 @@ foreach ($abslCmakeRel in @('cmake\packages\absl\absl_import_static_lib.cmake', 
 # both .lib exist) but only stages libcxxbridge1.a. Append staging of the other two under the GNU
 # names the aggregate expects (byte-for-byte, so lld-link reads them despite the .a extension).
 $findCopy = Get-ChildItem $SourceDir -Recurse -Filter 'find_and_copy_cxxbridge.cmake' -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($findCopy -and ((Get-Content -Raw $findCopy.FullName) -notmatch 'LiteRTLM-winfix rust-lib-stage')) {
+if (-not $findCopy) {
+    Write-Warning 'find_and_copy_cxxbridge.cmake not found under the source tree -- rust cxx-bridge libs will NOT be staged as lib*.a (expect undefined rust::cxxbridge1 symbols at the litert_lm_main link)'
+} elseif ((Get-Content -Raw $findCopy.FullName) -notmatch 'LiteRTLM-winfix rust-lib-stage') {
     Add-Content -LiteralPath $findCopy.FullName -Value (Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\rust-lib-stage.cmake'))
     Write-Host 'Patched find_and_copy_cxxbridge.cmake: stage rust litert_lm_deps.lib + litertlm_cxx_bridge.lib as lib*.a'
 }
@@ -918,7 +959,10 @@ foreach ($outSubDir in @('proto', 'protobuf')) {
     New-Item -Path $protoOutDir -ItemType Directory -Force | Out-Null
     if ((Test-Path $hostProtoc) -and (Test-Path $protoDir)) {
         Get-ChildItem -Path $protoDir -Filter '*.proto' | ForEach-Object {
-            & $hostProtoc --proto_path="$SourceDir" --cpp_out="$protoOutDir" $_.FullName 2>&1
+            $protocOut = & $hostProtoc --proto_path="$SourceDir" --cpp_out="$protoOutDir" $_.FullName 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "protoc codegen failed for $($_.Name) (exit $LASTEXITCODE): $(@($protocOut) -join [Environment]::NewLine)"
+            }
         }
         Write-Host "Generated proto files to $protoOutDir"
     }
@@ -929,9 +973,8 @@ Copy-Item $hostProtoc (Join-Path $protoInstallBin 'protoc.exe') -Force
 Copy-Item $hostProtoc (Join-Path $protoInstallBin 'protoc') -Force
 # (The vcpkg include\* copy into the protobuf-external install tree was DELETED
 # 2026-08-03: with vcpkg reduced to zlib-only it copied zlib headers into a
-# protobuf include dir — vestigial since the protobuf-header days.)
-$protoInstallInclude = Join-Path $SourceDir 'build_ninja\prebuild\build\external\protobuf\install\include'
-New-Item -Path $protoInstallInclude -ItemType Directory -Force | Out-Null
+# protobuf include dir — vestigial since the protobuf-header days. The
+# $protoInstallInclude dir pre-create that fed it was removed 2026-08-04.)
 
 #endregion
 
@@ -942,17 +985,22 @@ $ninja = (Get-Command ninja.exe -ErrorAction Stop).Source
 
 Write-Host 'Running ExternalProject steps 1-4 (mkdir/download/update/patch)...'
 & $ninja -C $buildDir litert_lm/stamps/litert_lm-mkdir litert_lm/stamps/litert_lm-download litert_lm/stamps/litert_lm-update litert_lm/stamps/litert_lm-patch 2>&1
-if ($LASTEXITCODE -ne 0) { Write-Host 'WARNING: mkdir/download/update/patch had warnings' }
+# Warning (not throw) is safe ONLY because the configure gate right below is a
+# hard throw: ninja re-drives any failed earlier stamp when asked for
+# litert_lm-configure, so a real mkdir/download/patch failure fails THERE.
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: mkdir/download/update/patch step exited $LASTEXITCODE (the configure gate below will fail if this was real)" }
 
 Write-Host 'Running ExternalProject step 5 (configure)...'
 & $ninja -C $buildDir litert_lm/stamps/litert_lm-configure 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host 'Inner configure OK (expected minor warnings with clang-on-Windows)'
-    Write-Host 'Proceeding with build...'
+    # Hard gate: a failed inner configure means NOTHING below can build; the old
+    # inverted check here printed "configure OK" on failure and swallowed it.
+    throw "inner litert_lm configure failed (exit $LASTEXITCODE)"
 }
 
 $buildNinjaFile = Join-Path $litertBuildDir 'build.ninja'
 $stubCount = 0
+$stubFailCount = 0
 if (Test-Path $buildNinjaFile) {
     Get-Content $buildNinjaFile | ForEach-Object {
         [regex]::Matches($_, "[\x27""]?([^\x27""\s]+\.(?:a|lib))[\x27""]?") | ForEach-Object {
@@ -973,14 +1021,20 @@ if (Test-Path $buildNinjaFile) {
                 if (-not [string]::IsNullOrWhiteSpace($parent) -and -not (Test-Path $parent)) {
                     try { $null = New-Item -Path $parent -ItemType Directory -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "stub parent dir best-effort skip: $_" }
                 }
-                try {
-                    $null = & $llvmAr rcs $aPath -- 2>&1
+                # Native non-zero exit never raises a PS exception, so gate on the
+                # exit code + produced file (the old try/catch could never fire).
+                $null = & $llvmAr rcs $aPath -- 2>&1
+                if ($LASTEXITCODE -eq 0 -and (Test-Path $aPath)) {
                     $stubCount++
-                } catch { Write-Verbose "stub archive best-effort skip: $_" }
+                } else {
+                    $stubFailCount++
+                    Write-Verbose "stub archive creation failed (exit $LASTEXITCODE): $aPath"
+                }
             }
         }
     }
-    Write-Host "Created $stubCount ExternalProject lib stubs (.a/.lib referenced by the aggregate but not yet built)"
+    Write-Host "Created $stubCount ExternalProject lib stubs (.a/.lib referenced by the aggregate but not yet built); $stubFailCount failed"
+    if ($stubFailCount -gt 0) { Write-Warning "$stubFailCount lib stub(s) could not be created -- lld-link may fail with 'could not open' on those paths" }
 }
 
 Write-Host 'Running ExternalProject step 6 (build)...'
@@ -1034,7 +1088,7 @@ if (Test-Path $mainExe) {
     # (upstream fetches kissfft with KISS_FFT_SHARED). Both must sit next to the
     # exe; the kissfft copy MUST happen before Remove-SourceBuildTree.
     foreach ($rt in @(
-            'C:\vcpkg\installed\x64-windows\bin\z.dll',
+            (Join-Path $vcpkgInstalledX64 'bin\z.dll'),
             (Join-Path $buildDir 'litert_lm\build\_deps\kissfft_lib-build\kissfft-float.dll'))) {
         if (Test-Path $rt) {
             Copy-Item $rt $binOut -Force
@@ -1057,7 +1111,7 @@ if (Test-Path $mainExe) {
             elseif ($msvcRoot) { $found = Get-ChildItem $msvcRoot -Recurse -Filter $d -File -ErrorAction SilentlyContinue | Select-Object -First 1; if ($found) { Copy-Item $found.FullName $binOut -Force -ErrorAction SilentlyContinue } }
         }
     }
-    $vcpkgBin = Join-Path $vcpkgDir 'installed\x64-windows\bin'
+    $vcpkgBin = Join-Path $vcpkgInstalledX64 'bin'
     if (Test-Path $vcpkgBin) { Copy-Item (Join-Path $vcpkgBin '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
     # Co-locate any REAL imported DLL built inside the tree (kissfft-float.dll, z.dll, ...). api-ms-win-*
     # are UCRT API-set forwarders (virtual, loader-resolved to ucrtbase.dll -- never physical files) -> skip.
@@ -1123,13 +1177,33 @@ else {
 
 Write-Host 'Installing...'
 & cmake --install $buildDir --config Release 2>&1
-if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: cmake --install had errors (exit $LASTEXITCODE)" }
+if ($LASTEXITCODE -ne 0) {
+    # Hard gate: a failed install means headers/libs are missing from
+    # $litertLmInstallDir while the stage would otherwise report green. Under the
+    # KEEP_BUILD_TREE debug escape hatch only warn, so the link diagnostics below
+    # still run against the kept tree.
+    if ($env:LITERTLM_KEEP_BUILD_TREE) {
+        Write-Warning "cmake --install failed (exit $LASTEXITCODE) -- continuing under LITERTLM_KEEP_BUILD_TREE for diagnostics"
+    } else {
+        throw "cmake --install failed (exit $LASTEXITCODE) -- headers/libs missing from $litertLmInstallDir"
+    }
+}
 
 if ($env:LITERTLM_KEEP_BUILD_TREE) {
     Write-Host 'LITERTLM_KEEP_BUILD_TREE set: dumping litert_lm_main link diagnostics (and KEEPING the tree)'
     & (Join-Path $PSScriptRoot 'debug-litertlm-link.ps1') -SourceDir $SourceDir
 }
 else { Remove-SourceBuildTree -Path $SourceDir }
+
+#endregion
+
+} finally {
+    # Restore the process env snapshot taken in Phase 2 (stages run in-process;
+    # a $null snapshot value removes the variable again).
+    foreach ($envName in @($litertLmEnvSnapshot.Keys)) {
+        [Environment]::SetEnvironmentVariable($envName, $litertLmEnvSnapshot[$envName])
+    }
+}
 
 Write-Host '=== LiteRT-LM source build completed ==='
 # Explicit success: without this, pwsh -File propagates the LAST native exit code.
@@ -1138,8 +1212,4 @@ Write-Host '=== LiteRT-LM source build completed ==='
 # wrapper declared "build failed (exit 145)" on a green build. Every real failure
 # above throws (EAP=Stop + explicit gates), so reaching this line IS success.
 exit 0
-
-
-
-#endregion
 

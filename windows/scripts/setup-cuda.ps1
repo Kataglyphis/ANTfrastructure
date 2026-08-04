@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
 $sharedModulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
@@ -44,10 +45,15 @@ $proc.WaitForExit()
 $exitCode = $proc.ExitCode
 $proc.Dispose()
 Clear-PendingFileHandle
-Remove-Item $cudaInstaller -Force
+# Check the exit code BEFORE removing the installer: on failure keep it for
+# analysis (same deliberate preservation as setup-vs.ps1's finally block).
 if ($exitCode -ne 0) {
+    Write-Host "Installer was not deleted (left for analysis at $cudaInstaller)."
     throw ('CUDA installation failed with exit code: {0}' -f $exitCode)
 }
+# -ErrorAction SilentlyContinue: the installer occasionally still holds its own
+# file handle for a moment after exit; a failed cleanup must not fail the layer.
+Remove-Item $cudaInstaller -Force -ErrorAction SilentlyContinue
 Write-Host 'CUDA Toolkit installation complete. Waiting for files to settle...'
 Start-Sleep -Seconds 5
 Clear-PendingFileHandle
@@ -84,7 +90,9 @@ $ccclDir = Join-Path $cudaIncludeDir 'cccl'
 if (Test-Path (Join-Path $ccclDir 'cub\cub.cuh')) {
     Write-Host 'CCCL headers verified present (cub/cub.cuh found).'
 } else {
-    Write-Host 'WARNING: CCCL cub/cub.cuh not found -- CUDA installer may not have included CCCL.'
+    # CCCL presence is the whole reason the full installer is used over Scoop
+    # (see the comment at the top of this script) -- missing CCCL is fatal.
+    throw "CCCL cub/cub.cuh not found under $ccclDir -- the full CUDA installer did not deliver CCCL; downstream CUB/Thrust builds would fail hours later."
 }
 
 # nv/target.h: the full installer provides a proper version that handles both
@@ -142,9 +150,10 @@ Remove-Item $cudnnExtracted -Recurse -Force
 
 # Verify cuDNN installation
 Write-Host 'Verifying cuDNN installation...'
-$cudnnHeaders = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue
-$cudnnLibs = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue
-$cudnnDlls = Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue
+# @(...) so a single FileInfo result still exposes .Count (scalar trap).
+$cudnnHeaders = @(Get-ChildItem -Path $CudnnRoot -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue)
+$cudnnLibs = @(Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue)
+$cudnnDlls = @(Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue)
 if (-not $cudnnHeaders) { throw "cuDNN headers (cudnn.h) not found under $CudnnRoot" }
 if (-not $cudnnLibs) { throw "cuDNN import libs (cudnn*.lib) not found under $CudnnRoot" }
 if (-not $cudnnDlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $CudnnRoot" }

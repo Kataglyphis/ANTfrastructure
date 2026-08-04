@@ -7,12 +7,13 @@
 #   2. PSScriptAnalyzer (optional) — runs only if the module is installed; skipped with
 #      a note otherwise, so the gate is always usable on an offline/bare host.
 # Exit code is non-zero if any parse error (or, with -FailOnAnalyzer, any analyzer
-# diagnostic at the configured severity) is found. Run it before build.ps1 and in CI.
+# finding of Warning or Error severity) is found. Run it before build.ps1 and in CI.
 #requires -Version 7.0
 
 [CmdletBinding()]
 param(
-    # Also fail the run on PSScriptAnalyzer findings (default: analyzer is advisory).
+    # Also fail the run on PSScriptAnalyzer findings of Warning or Error severity
+    # (default: analyzer is advisory).
     [switch]$FailOnAnalyzer
 )
 
@@ -55,6 +56,8 @@ if ($parseErrors.Count -gt 0) {
 
 # ---- Pass 2: PSScriptAnalyzer (optional) ----
 $analyzerFindings = @()
+$errs = @()
+$warns = @()
 $analyzerModule = Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
 if ($analyzerModule) {
     Import-Module PSScriptAnalyzer -Force
@@ -79,7 +82,9 @@ if ($analyzerModule) {
 
 # ---- Verdict ----
 $fail = $parseErrors.Count -gt 0
-if ($FailOnAnalyzer -and (@($analyzerFindings | Where-Object { $_.Severity -eq 'Error' }).Count -gt 0)) { $fail = $true }
+# -FailOnAnalyzer treats Warning as well as Error findings as fatal, matching the
+# "findings" wording in the help text.
+if ($FailOnAnalyzer -and ($errs.Count -gt 0 -or $warns.Count -gt 0)) { $fail = $true }
 if ($fail) { Write-Host "`nLINT FAILED" -ForegroundColor Red; exit 1 }
 Write-Host "`nLINT OK" -ForegroundColor Green
 exit 0

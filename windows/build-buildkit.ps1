@@ -116,7 +116,7 @@ $cniDrift = Get-CniNatSubnetDrift
 if ($cniDrift) { throw $cniDrift }
 
 # Transient-retry engine context (see the import note above for the pattern).
-Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::ActivateLayer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect'
+Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable'
 
 # --- versions (single source of truth) ---
 $versions = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
@@ -241,10 +241,13 @@ if ($Stages -contains 'sdk') {
 }
 
 if ($Stages -contains 'toolchain') {
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile.toolchain-builder' -Target 'built' -Tag (Get-BkTag 'windows-toolchain') -BuildArgs (@{
+    # No $sccache here: Dockerfile.toolchain-builder declares no such ARG and
+    # build-toolchain-all.ps1 has no sccache wiring (MSBuild/ClangCL toolset) —
+    # forwarding it only produced an "unused build-arg" frontend warning.
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.toolchain-builder' -Target 'built' -Tag (Get-BkTag 'windows-toolchain') -BuildArgs @{
         BASE_IMAGE     = Get-BkTag 'windows-sdk'
         PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
-    } + $sccache)
+    }
 }
 
 if ($Stages -contains 'media') {
@@ -301,6 +304,12 @@ if ($Stages -contains 'media') {
                 '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem)
             if ($Gpu) { $auxArgs += '-Gpu' }
             if ($SccacheEndpoint) { $auxArgs += @('-SccacheEndpoint', $SccacheEndpoint) }
+            # Children inherit the cache/tooling knobs — without these a
+            # -NoCache parent quietly built its aux branches FROM cache.
+            if ($NoCache) { $auxArgs += '-NoCache' }
+            if ($ImportCacheRef) { $auxArgs += @('-ImportCacheRef', $ImportCacheRef) }
+            if ($ExportCacheRef) { $auxArgs += @('-ExportCacheRef', $ExportCacheRef) }
+            if ($BuildCtl) { $auxArgs += @('-BuildCtl', $BuildCtl) }
             $auxProcs += Start-Process -FilePath 'pwsh' -ArgumentList $auxArgs -PassThru -NoNewWindow
         }
         $auxProcs | Wait-Process
@@ -309,44 +318,63 @@ if ($Stages -contains 'media') {
         }
         Write-Host '[bk:aux] litert + tvm OK' -ForegroundColor Green
     }
-    # Canonical merge version env (WindowsBuildDriver.Common) + BK tag wiring.
-    $mergeArgs = (Get-MediaMergeVersionArg -VersionTable $versions) + @{
-        BASE_IMAGE      = Get-BkTag 'windows-toolchain'
-        CORE_IMAGE      = Get-BkTag 'windows-media-core'
-        LITERT_IMAGE    = Get-BkTag 'windows-media-litert'
-        TVM_IMAGE       = Get-BkTag 'windows-media-tvm'
-        MEMORY_LIMIT_GB = $MediaMemoryGb
+    # Merge fan-in needs ALL THREE branch images — and must run exactly ONCE.
+    # -ConcurrentAux children are spawned with a single -MediaBranches entry,
+    # so this gate keeps them out of the merge (previously every child ALSO
+    # ran it: 3 merge runs, 2 concurrent, racing the same gstreamer.tar
+    # handoff and referencing branch tags that might not exist yet).
+    $allBranches = @('media-core', 'media-litert', 'media-tvm')
+    $runMerge = @($allBranches | Where-Object { $_ -notin $MediaBranches }).Count -eq 0
+    if ($runMerge) {
+        # Canonical merge version env (WindowsBuildDriver.Common) + BK tag wiring.
+        $mergeArgs = (Get-MediaMergeVersionArg -VersionTable $versions) + @{
+            BASE_IMAGE      = Get-BkTag 'windows-toolchain'
+            CORE_IMAGE      = Get-BkTag 'windows-media-core'
+            LITERT_IMAGE    = Get-BkTag 'windows-media-litert'
+            TVM_IMAGE       = Get-BkTag 'windows-media-tvm'
+            MEMORY_LIMIT_GB = $MediaMemoryGb
+        }
+        # Warm/materialize pair (GStreamer is heavy-churn — same platform-defect
+        # workaround as the media-core libraries, see Dockerfile.media-builder).
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'warm' -NoOutput -BuildArgs ($mergeArgs + $sccache)
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs ($mergeArgs + $sccache)
+    } else {
+        Write-Host "[bk:merge] skipped (needs all three media branches; got: $($MediaBranches -join ', '))" -ForegroundColor Yellow
     }
-    # Warm/materialize pair (GStreamer is heavy-churn — same platform-defect
-    # workaround as the media-core libraries, see Dockerfile.media-builder).
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'warm' -NoOutput -BuildArgs ($mergeArgs + $sccache)
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs ($mergeArgs + $sccache)
+}
+
+# Provenance stamps: computed ONCE so the final solve and its FinalTar/PushRef
+# re-solves share identical build-args (previously the re-solves dropped
+# BUILD_DATE/VCS_REF and regenerated the LABEL layer with empty values — the
+# pushed artifact was not the locally exported image).
+$stampArgs = @{
+    BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    VCS_REF    = Get-BuildVcsRef
 }
 
 if ($Stages -contains 'torch') {
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile.torch' -Tag (Get-BkTag 'windows-torch') -BuildArgs @{
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.torch' -Tag (Get-BkTag 'windows-torch') -BuildArgs ($stampArgs + @{
         BASE_IMAGE = Get-BkTag 'windows-media'
         APP_REF    = Resolve-TorchAppRef -VersionTable $versions -LatestApp:$LatestApp
-        BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        VCS_REF    = Get-BuildVcsRef
-    }
+        # Backend extra from the app's pyproject — without this a -Gpu chain
+        # shipped CPU torch in a CUDA image (Dockerfile default: pytorch-cpu).
+        PYTORCH_EXTRA = $(if ($Gpu) { 'pytorch-cu130' } else { 'pytorch-cpu' })
+    })
 }
 
 if ($Stages -contains 'final') {
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Tag (Get-BkTag 'winamd64') -BuildArgs @{
-        BASE_IMAGE = Get-BkTag 'windows-torch'
-        BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        VCS_REF    = Get-BuildVcsRef
-    }
+    $finalArgs = $stampArgs + @{ BASE_IMAGE = Get-BkTag 'windows-torch' }
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Tag (Get-BkTag 'winamd64') -BuildArgs $finalArgs
     # FinalTar / PushRef: the same final solve from cache, different exporter —
     # via Invoke-BkStage so both get the transient retry + stage log for free.
+    # Same $finalArgs so the re-solve is a pure cache hit of the export above.
     # Push auth: buildctl forwards THIS shell's docker credential store — run
     # `docker login <registry>` here first.
     if ($FinalTar) {
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-tar' -OutputSpec "type=docker,name=local/kataglyphis:winamd64,dest=$FinalTar" -BuildArgs @{ BASE_IMAGE = Get-BkTag 'windows-torch' }
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-tar' -OutputSpec "type=docker,name=local/kataglyphis:winamd64,dest=$FinalTar" -BuildArgs $finalArgs
     }
     if ($PushRef) {
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-push' -OutputSpec "type=image,name=$PushRef,push=true" -BuildArgs @{ BASE_IMAGE = Get-BkTag 'windows-torch' }
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-push' -OutputSpec "type=image,name=$PushRef,push=true" -BuildArgs $finalArgs
         Write-Host "[bk] pushed $PushRef" -ForegroundColor Green
     }
 }

@@ -51,6 +51,34 @@ function Get-SourceBuildVersion {
     return $resolved
 }
 
+function Reset-SourceBuildDirectory {
+    # MOUNT-FRIENDLY reset: when $Path is a BuildKit cache-mount target
+    # (RUN --mount=type=cache,target=<Path> — the BK lane puts the heavy
+    # source/build churn there so the container scratch stays calm, see
+    # docs/windows-builds.md § BuildKit/containerd lane), the directory ITSELF
+    # cannot be removed ("used by another process"). Clear its CONTENTS then;
+    # git can clone into an existing empty directory. A non-empty leftover
+    # tree (previous run, KEEP_BUILD_ARTIFACTS) is wiped either way — callers
+    # that want incremental reuse skip the reset. Extracted from Invoke-GitClone
+    # (2026-08-04) so clone-less callers (build-iree's hand-rolled shallow
+    # submodule clone) get the same mount-safe behavior.
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+    if (-not (Test-Path $Path)) { return }
+    try {
+        Remove-Item $Path -Recurse -Force -ErrorAction Stop
+    } catch {
+        Write-Host "Reset-SourceBuildDirectory: cannot remove $Path (mount point?) - clearing contents instead"
+        Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        if (@(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue).Count -ne 0) {
+            throw "Reset-SourceBuildDirectory: $Path could be neither removed nor emptied"
+        }
+    }
+}
+
 function Invoke-GitClone {
     param(
         [Parameter(Mandatory)]
@@ -64,26 +92,8 @@ function Invoke-GitClone {
         [int]$Depth = 1
     )
 
-    # MOUNT-FRIENDLY reset: when $SourceDir is a BuildKit cache-mount target
-    # (RUN --mount=type=cache,target=<SourceDir> — the BK lane puts the heavy
-    # source/build churn there so the container scratch stays calm, see
-    # docs/windows-builds.md § BuildKit/containerd lane), the directory ITSELF
-    # cannot be removed ("used by another process"). Clear its CONTENTS then;
-    # git can clone into an existing empty directory. A non-empty leftover
-    # tree (previous run, KEEP_BUILD_ARTIFACTS) is wiped either way — callers
-    # that want incremental reuse skip the clone before calling this.
-    if (Test-Path $SourceDir) {
-        try {
-            Remove-Item $SourceDir -Recurse -Force -ErrorAction Stop
-        } catch {
-            Write-Host "Invoke-GitClone: cannot remove $SourceDir (mount point?) - clearing contents instead"
-            Get-ChildItem -LiteralPath $SourceDir -Force -ErrorAction SilentlyContinue |
-                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-            if (@(Get-ChildItem -LiteralPath $SourceDir -Force -ErrorAction SilentlyContinue).Count -ne 0) {
-                throw "Invoke-GitClone: $SourceDir could be neither removed nor emptied"
-            }
-        }
-    }
+    # Mount-safe wipe of any leftover tree (see Reset-SourceBuildDirectory).
+    Reset-SourceBuildDirectory -Path $SourceDir
 
     $ref = if ($Tag) { $Tag } else { $Branch }
     if ([string]::IsNullOrWhiteSpace($ref)) { throw 'Either -Branch or -Tag is required' }
@@ -917,6 +927,7 @@ Export-ModuleMember -Function @(
     'Clear-BuildScratch',
     'Invoke-ShieldedNative',
     'Invoke-GitClone',
+    'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
     'Test-SccacheRemoteConfigured',
     'Write-SccacheStats',

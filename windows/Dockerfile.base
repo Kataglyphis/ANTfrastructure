@@ -121,8 +121,9 @@ COPY windows\scripts\verify-toolchain.ps1 `
      C:\temp\scripts\
 # verify-toolchain is a pure assertion pass (no filesystem mutation) — merged
 # into the rust RUN so it doesn't spend one of the 125 layers on an empty
-# layer. finalize-container stays separate: it's the layer-trimming step and
-# benefits from its own cache boundary.
+# layer. finalize-container stays separate: it sets image-wide git/registry
+# config (safe.directory, longpaths) and its own cache boundary keeps a
+# config tweak from re-paying the rust toolchain install above.
 RUN & 'C:\temp\scripts\verify-toolchain.ps1'; & 'C:\temp\scripts\setup-rust-toolchain.ps1'
 RUN & 'C:\temp\scripts\finalize-container.ps1'
 

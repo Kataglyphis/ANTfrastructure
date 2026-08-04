@@ -784,6 +784,9 @@ try {
             BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
             VCS_REF    = Get-BuildVcsRef
             APP_REF    = $appRef
+            # Backend extra from the app's pyproject — without this a -Gpu chain
+            # shipped CPU torch in a CUDA image (Dockerfile default: pytorch-cpu).
+            PYTORCH_EXTRA = $(if ($Gpu) { 'pytorch-cu130' } else { 'pytorch-cpu' })
         }
     }
 

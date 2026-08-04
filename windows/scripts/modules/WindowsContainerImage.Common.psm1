@@ -14,21 +14,54 @@ function Resolve-ContainerImageValue {
         [string]$Value = '',
         [string]$EnvironmentVariable = '',
         [AllowEmptyString()]
-        [string]$DefaultValue = ''
+        [string]$DefaultValue = '',
+        # Strip a single leading 'v' (tag style, e.g. 'v1.2.3' -> '1.2.3') from the
+        # RESOLVED value. ADDITIVE: default behavior is unchanged; this exists so
+        # every version gate (e.g. smoke-test's Get-ExpectedVersion) normalizes tags
+        # through the same code path instead of re-implementing the trim.
+        [switch]$TrimVPrefix
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($Value)) {
-        return $Value
-    }
+    $resolved = $DefaultValue
 
-    if (-not [string]::IsNullOrWhiteSpace($EnvironmentVariable)) {
+    if (-not [string]::IsNullOrWhiteSpace($Value)) {
+        $resolved = $Value
+    } elseif (-not [string]::IsNullOrWhiteSpace($EnvironmentVariable)) {
         $environmentValue = [Environment]::GetEnvironmentVariable($EnvironmentVariable)
         if (-not [string]::IsNullOrWhiteSpace($environmentValue)) {
-            return $environmentValue
+            $resolved = $environmentValue
         }
     }
 
-    return $DefaultValue
+    if ($TrimVPrefix -and $null -ne $resolved) {
+        $resolved = ([string]$resolved).TrimStart('v')
+    }
+
+    return $resolved
+}
+
+# Single source for the VS Build Tools root: setup-vs.ps1 and the smoke test each
+# probed for VsDevCmd.bat with their own (divergent) Program Files lists. Probes
+# both PF roots, keyed on the file every caller actually needs (VsDevCmd.bat);
+# honors VISUAL_STUDIO_VERSION with the same '18' fallback as setup-vs.ps1.
+# Returns the BuildTools root (string) or $null when not installed. ADDITIVE export.
+function Resolve-VsBuildToolsRoot {
+    param(
+        [string]$VsMajor = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace($VsMajor)) {
+        $VsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
+    }
+
+    foreach ($programFiles in @('C:\Program Files', 'C:\Program Files (x86)')) {
+        $candidate = Join-Path $programFiles ("Microsoft Visual Studio\{0}\BuildTools" -f $VsMajor)
+        if (Test-Path (Join-Path $candidate 'Common7\Tools\VsDevCmd.bat')) {
+            return $candidate
+        }
+    }
+
+    return $null
 }
 
 function Initialize-ContainerImageTempDirectory {
@@ -125,6 +158,7 @@ function Assert-ContainerCommandAvailable {
 
 Export-ModuleMember -Function @(
     'Resolve-ContainerImageValue',
+    'Resolve-VsBuildToolsRoot',
     'Initialize-ContainerImageTempDirectory',
     'Clear-PendingFileHandle',
     'Sync-ContainerProcessPath',

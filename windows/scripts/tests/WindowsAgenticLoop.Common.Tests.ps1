@@ -61,17 +61,17 @@ Describe 'WindowsAgenticLoop.Common' {
             $platform = Get-AgenticPlatform
             # -contains instead of Should Contain: Pester 3.x treats the
             # piped value as a file path, not an array
-            (@('windows', 'linux') -contains $platform) | Should Be $true
+            (@('windows', 'linux') -contains $platform) | Should -Be $true
         }
 
         It 'Test-IsWindows is consistent with the environment' {
             $expected = ($env:OS -eq 'Windows_NT')
-            Test-IsWindows | Should Be $expected
+            Test-IsWindows | Should -Be $expected
         }
 
         It 'Platform detection is safe under StrictMode' {
             # The function must not access $PSVersionTable.Platform (PS 5.1 crash)
-            { Get-AgenticPlatform } | Should Not Throw
+            { Get-AgenticPlatform } | Should -Not -Throw
         }
     }
 
@@ -82,11 +82,11 @@ Describe 'WindowsAgenticLoop.Common' {
             $logFile = Get-AgenticLogFile
             Write-AgenticLog 'Test message' 'DEBUG'
             # Log file is written at initialization time -- verify it exists
-            $logFile | Should Not BeNullOrEmpty
+            $logFile | Should -Not -BeNullOrEmpty
         }
 
         It 'Write-AgenticSection produces a decorated header' {
-            { Write-AgenticSection 'TEST SECTION' } | Should Not Throw
+            { Write-AgenticSection 'TEST SECTION' } | Should -Not -Throw
         }
     }
 
@@ -105,16 +105,16 @@ Describe 'WindowsAgenticLoop.Common' {
 
         It 'returns DRY RUN message when initialized with -DryRun' {
             $result = Invoke-OpenCode -Agent 'planner' -Model 'test-model' -Message 'hello'
-            $result | Should Match 'DRY RUN'
+            $result | Should -Match 'DRY RUN'
         }
 
         It 'does not throw on empty message' {
-            { Invoke-OpenCode -Agent 'planner' -Model 'test-model' -Message '' } | Should Not Throw
+            { Invoke-OpenCode -Agent 'planner' -Model 'test-model' -Message '' } | Should -Not -Throw
         }
 
         It 'handles long multi-line messages gracefully' {
             $longMsg = "Line 1`nLine 2`nLine 3`n" + ('x' * 1000)
-            { Invoke-OpenCode -Agent 'executor' -Model 'test-model' -Message $longMsg } | Should Not Throw
+            { Invoke-OpenCode -Agent 'executor' -Model 'test-model' -Message $longMsg } | Should -Not -Throw
         }
     }
 
@@ -135,40 +135,40 @@ Describe 'WindowsAgenticLoop.Common' {
 
         It 'counts unchecked tasks correctly' {
             $count = Get-UncheckedTaskCount -BacklogPath (Join-Path $script:testDir 'BACKLOG.md')
-            $count | Should Be 4
+            $count | Should -Be 4
         }
 
         It 'returns 0 for a missing file' {
             $count = Get-UncheckedTaskCount -BacklogPath (Join-Path $script:testDir 'nonexistent.md')
-            $count | Should Be 0
+            $count | Should -Be 0
         }
 
         It 'returns 0 for an empty file' {
             $emptyPath = Join-Path $script:testDir 'empty.md'
             '' | Set-Content $emptyPath
             $count = Get-UncheckedTaskCount -BacklogPath $emptyPath
-            $count | Should Be 0
+            $count | Should -Be 0
         }
 
         It 'returns 0 for a file with only checked tasks' {
             $donePath = Join-Path $script:testDir 'all-done.md'
             @('- [x] Done 1', '- [x] Done 2') | Set-Content $donePath
             $count = Get-UncheckedTaskCount -BacklogPath $donePath
-            $count | Should Be 0
+            $count | Should -Be 0
         }
 
         It 'does not count - [X] (uppercase) as unchecked' {
             $mixedPath = Join-Path $script:testDir 'mixed-case.md'
             @('- [ ] Task', '- [X] DONE', '- [x] done') | Set-Content $mixedPath
             $count = Get-UncheckedTaskCount -BacklogPath $mixedPath
-            $count | Should Be 1  # only the lowercase x is counted by the regex
+            $count | Should -Be 1  # only the lowercase x is counted by the regex
         }
 
         It 'does not count blocked - [b] tasks as unchecked' {
             $blockedPath = Join-Path $script:testDir 'with-blocked.md'
             @('- [ ] Actionable task', '- [b] Blocked task', '- [B] Also blocked') | Set-Content $blockedPath
             $count = Get-UncheckedTaskCount -BacklogPath $blockedPath
-            $count | Should Be 1
+            $count | Should -Be 1
         }
     }
 
@@ -177,45 +177,45 @@ Describe 'WindowsAgenticLoop.Common' {
             $blockedPath = Join-Path $script:testDir 'blocked-count.md'
             @('- [ ] Open task', '- [b] Blocked one', '- [B] Blocked two', '- [x] Done task') | Set-Content $blockedPath
             $count = Get-BlockedTaskCount -BacklogPath $blockedPath
-            $count | Should Be 2
+            $count | Should -Be 2
         }
 
         It 'returns 0 for a missing file' {
             $count = Get-BlockedTaskCount -BacklogPath (Join-Path $script:testDir 'nonexistent-blocked.md')
-            $count | Should Be 0
+            $count | Should -Be 0
         }
 
         It 'returns 0 when no tasks are blocked' {
             $nonePath = Join-Path $script:testDir 'no-blocked.md'
             @('- [ ] Open task', '- [x] Done task') | Set-Content $nonePath
             $count = Get-BlockedTaskCount -BacklogPath $nonePath
-            $count | Should Be 0
+            $count | Should -Be 0
         }
     }
 
     Context 'Get-UsageLimitWaitSeconds' {
         It 'returns 0 for unrelated output' {
-            Get-UsageLimitWaitSeconds -Output 'BUILD PASSED, all tests green' | Should Be 0
+            Get-UsageLimitWaitSeconds -Output 'BUILD PASSED, all tests green' | Should -Be 0
         }
 
         It 'returns 0 for empty output' {
-            Get-UsageLimitWaitSeconds -Output '' | Should Be 0
+            Get-UsageLimitWaitSeconds -Output '' | Should -Be 0
         }
 
         It 'returns the 30-minute default when the limit is hit but no reset time is given' {
-            Get-UsageLimitWaitSeconds -Output "You've hit your usage limit for now" | Should Be 1800
+            Get-UsageLimitWaitSeconds -Output "You've hit your usage limit for now" | Should -Be 1800
         }
 
         It 'parses a pm reset time into a positive wait no longer than a day' {
             $wait = Get-UsageLimitWaitSeconds -Output "You've hit your session limit · resets 11pm (Europe/Berlin)"
-            $wait | Should BeGreaterThan 0
-            ($wait -le (24 * 3600 + 120)) | Should Be $true
+            $wait | Should -BeGreaterThan 0
+            ($wait -le (24 * 3600 + 120)) | Should -Be $true
         }
 
         It 'parses a reset time with minutes' {
             $wait = Get-UsageLimitWaitSeconds -Output "You've hit your session limit · resets 6:30am (Europe/Berlin)"
-            $wait | Should BeGreaterThan 0
-            ($wait -le (24 * 3600 + 120)) | Should Be $true
+            $wait | Should -BeGreaterThan 0
+            ($wait -le (24 * 3600 + 120)) | Should -Be $true
         }
     }
 
@@ -255,8 +255,8 @@ Plain text after the block.
         It 'reports the would-be removals in dry-run mode without changing the file' {
             $before = (Get-Content $script:pruneBacklog -Raw)
             $removed = Remove-CheckedBacklogTasks -BacklogPath $script:pruneBacklog
-            $removed | Should Be 0
-            (Get-Content $script:pruneBacklog -Raw) | Should Be $before
+            $removed | Should -Be 0
+            (Get-Content $script:pruneBacklog -Raw) | Should -Be $before
         }
 
         It 'removes checked blocks (title + indented body) and keeps everything else' {
@@ -264,26 +264,26 @@ Plain text after the block.
             Initialize-AgenticLoop -RepoRoot $script:testDir
             try {
                 $removed = Remove-CheckedBacklogTasks -BacklogPath $script:pruneBacklog
-                $removed | Should Be 2
+                $removed | Should -Be 2
                 $content = Get-Content $script:pruneBacklog -Raw
-                $content | Should Match 'Open task one'
-                $content | Should Match 'Open task two'
-                $content | Should Match 'Section B'
-                $content | Should Match 'Plain text after the block'
-                $content.Contains('Done task') | Should Be $false
-                $content.Contains('Uppercase done task') | Should Be $false
-                $content.Contains('Completed: everything went fine') | Should Be $false
+                $content | Should -Match 'Open task one'
+                $content | Should -Match 'Open task two'
+                $content | Should -Match 'Section B'
+                $content | Should -Match 'Plain text after the block'
+                $content.Contains('Done task') | Should -Be $false
+                $content.Contains('Uppercase done task') | Should -Be $false
+                $content.Contains('Completed: everything went fine') | Should -Be $false
             } finally {
                 Initialize-AgenticLoop -RepoRoot $script:testDir -DryRun
             }
         }
 
         It 'returns 0 for a file with no checked tasks' {
-            Remove-CheckedBacklogTasks -BacklogPath $script:pruneBacklog | Should Be 0
+            Remove-CheckedBacklogTasks -BacklogPath $script:pruneBacklog | Should -Be 0
         }
 
         It 'returns 0 for a missing file' {
-            Remove-CheckedBacklogTasks -BacklogPath (Join-Path $script:testDir 'no-such.md') | Should Be 0
+            Remove-CheckedBacklogTasks -BacklogPath (Join-Path $script:testDir 'no-such.md') | Should -Be 0
         }
     }
 
@@ -291,12 +291,12 @@ Plain text after the block.
 
     Context 'Invoke-GitAutoCommit' {
         It 'does nothing when disabled' {
-            { Invoke-GitAutoCommit -Message 'test' -RepoRoot $script:testDir -Enabled:$false } | Should Not Throw
+            { Invoke-GitAutoCommit -Message 'test' -RepoRoot $script:testDir -Enabled:$false } | Should -Not -Throw
         }
 
         It 'logs DRY RUN when in dry-run mode' {
             # Should not throw; under dry-run it logs and returns.
-            { Invoke-GitAutoCommit -Message 'test commit' -RepoRoot $script:testDir -Enabled:$true } | Should Not Throw
+            { Invoke-GitAutoCommit -Message 'test commit' -RepoRoot $script:testDir -Enabled:$true } | Should -Not -Throw
         }
     }
 
@@ -305,20 +305,20 @@ Plain text after the block.
     Context 'Invoke-BuildCommand' {
         It 'returns true in dry-run mode' {
             $result = Invoke-BuildCommand -Command 'echo hello' -Configuration 'test'
-            $result | Should Be $true
+            $result | Should -Be $true
         }
     }
 
     Context 'Invoke-TestCommand' {
         It 'returns true in dry-run mode' {
             $result = Invoke-TestCommand -Command 'echo test' -RepoRoot $script:testDir
-            $result | Should Be $true
+            $result | Should -Be $true
         }
     }
 
     Context 'Invoke-QualityCommand' {
         It 'does not throw in dry-run mode' {
-            { Invoke-QualityCommand -Command 'echo lint' -RepoRoot $script:testDir } | Should Not Throw
+            { Invoke-QualityCommand -Command 'echo lint' -RepoRoot $script:testDir } | Should -Not -Throw
         }
     }
 
@@ -326,21 +326,21 @@ Plain text after the block.
 
     Context 'Get-AgenticConfigValue' {
         It 'reads a hashtable key' {
-            Get-AgenticConfigValue @{ foo = 'bar' } 'foo' 'x' | Should Be 'bar'
+            Get-AgenticConfigValue @{ foo = 'bar' } 'foo' 'x' | Should -Be 'bar'
         }
 
         It 'returns the default for a missing hashtable key' {
-            Get-AgenticConfigValue @{ foo = 'bar' } 'baz' 'fallback' | Should Be 'fallback'
+            Get-AgenticConfigValue @{ foo = 'bar' } 'baz' 'fallback' | Should -Be 'fallback'
         }
 
         It 'reads a PSCustomObject property (StrictMode-safe)' {
             $obj = '{"foo": "bar"}' | ConvertFrom-Json
-            Get-AgenticConfigValue $obj 'foo' 'x' | Should Be 'bar'
-            Get-AgenticConfigValue $obj 'missing' 'fallback' | Should Be 'fallback'
+            Get-AgenticConfigValue $obj 'foo' 'x' | Should -Be 'bar'
+            Get-AgenticConfigValue $obj 'missing' 'fallback' | Should -Be 'fallback'
         }
 
         It 'returns the default for a null object' {
-            Get-AgenticConfigValue $null 'foo' 'fallback' | Should Be 'fallback'
+            Get-AgenticConfigValue $null 'foo' 'fallback' | Should -Be 'fallback'
         }
     }
 
@@ -384,44 +384,44 @@ Plain text after the block.
 
         It 'resolves the claude engine from config' {
             $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir
-            $ec.Engine | Should Be 'claude'
-            $ec.PlannerModel | Should Be 'claude-fable-5'
-            $ec.PlannerFallbackModel | Should Be 'claude-opus-4-8'
-            $ec.ExecutorModel | Should Be 'claude-sonnet-5'
+            $ec.Engine | Should -Be 'claude'
+            $ec.PlannerModel | Should -Be 'claude-fable-5'
+            $ec.PlannerFallbackModel | Should -Be 'claude-opus-4-8'
+            $ec.ExecutorModel | Should -Be 'claude-sonnet-5'
         }
 
         It 'resolves repo-relative prompt files to absolute paths' {
             $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir
-            $ec.PlannerPromptFile | Should Be (Join-Path $script:testDir 'prompts/planner.md')
+            $ec.PlannerPromptFile | Should -Be (Join-Path $script:testDir 'prompts/planner.md')
         }
 
         It 'resolves per-role timeouts' {
             $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir
-            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'planner') | Should Be 900
-            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'executor') | Should Be 1800
-            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'fixer') | Should Be 1800
+            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'planner') | Should -Be 900
+            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'executor') | Should -Be 1800
+            (Get-AgentTimeoutForRole -EngineConfig $ec -Role 'fixer') | Should -Be 1800
         }
 
         It 'honors the EngineOverride parameter' {
             $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir -EngineOverride 'opencode'
-            $ec.Engine | Should Be 'opencode'
-            $ec.PlannerModel | Should Be 'opencode-go/glm-5.2'
+            $ec.Engine | Should -Be 'opencode'
+            $ec.PlannerModel | Should -Be 'opencode-go/glm-5.2'
         }
 
         It 'honors the AGENTIC_ENGINE env override' {
             $env:AGENTIC_ENGINE = 'opencode'
             try {
                 $ec = Resolve-AgenticEngine -Config $script:engineConfig -RepoRoot $script:testDir
-                $ec.Engine | Should Be 'opencode'
+                $ec.Engine | Should -Be 'opencode'
             } finally { $env:AGENTIC_ENGINE = $null }
         }
 
         It 'falls back to legacy .models when no engines block exists' {
             $legacy = @{ models = @{ planner = 'p-model'; executor = 'e-model' } }
             $ec = Resolve-AgenticEngine -Config $legacy -RepoRoot $script:testDir
-            $ec.Engine | Should Be 'opencode'
-            $ec.PlannerModel | Should Be 'p-model'
-            $ec.ExecutorModel | Should Be 'e-model'
+            $ec.Engine | Should -Be 'opencode'
+            $ec.PlannerModel | Should -Be 'p-model'
+            $ec.ExecutorModel | Should -Be 'e-model'
         }
 
         It 'throws for an unknown engine' {
@@ -429,13 +429,13 @@ Plain text after the block.
             # thrown from module-scoped advanced functions
             $threw = $false
             try { $null = Resolve-AgenticEngine -Config @{ engine = 'bogus'; models = @{ planner = 'p'; executor = 'e' } } -RepoRoot $script:testDir } catch { $threw = $true }
-            $threw | Should Be $true
+            $threw | Should -Be $true
         }
 
         It 'throws when no models are configured' {
             $threw = $false
             try { $null = Resolve-AgenticEngine -Config @{ engine = 'claude' } -RepoRoot $script:testDir } catch { $threw = $true }
-            $threw | Should Be $true
+            $threw | Should -Be $true
         }
     }
 
@@ -452,16 +452,16 @@ Plain text after the block.
 
         It 'Invoke-ClaudeCode returns DRY RUN in dry-run mode' {
             $result = Invoke-ClaudeCode -Role 'executor' -Model 'claude-sonnet-5' -Message 'hello' -EngineConfig $script:claudeEc
-            $result.ExitCode | Should Be 0
-            $result.Output | Should Match 'DRY RUN'
+            $result.ExitCode | Should -Be 0
+            $result.Output | Should -Match 'DRY RUN'
         }
 
         It 'Invoke-AgenticAgent dispatches planner to claude in dry-run mode' {
-            Invoke-AgenticAgent -Role 'planner' -Message 'plan' -EngineConfig $script:claudeEc | Should Be $true
+            Invoke-AgenticAgent -Role 'planner' -Message 'plan' -EngineConfig $script:claudeEc | Should -Be $true
         }
 
         It 'Invoke-AgenticAgent dispatches fixer to the executor model' {
-            Invoke-AgenticAgent -Role 'fixer' -Message 'fix' -EngineConfig $script:claudeEc | Should Be $true
+            Invoke-AgenticAgent -Role 'fixer' -Message 'fix' -EngineConfig $script:claudeEc | Should -Be $true
         }
     }
 
@@ -483,7 +483,7 @@ Plain text after the block.
         It 'runs planner-only mode without error' {
             { Invoke-AgenticLoop -Config $script:mockConfig -PlannerPrompt 'test' -ExecutorPrompt 'test' `
                 -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -PlannerOnly -MaxIterations 1 } `
-                | Should Not Throw
+                | Should -Not -Throw
         }
 
         It 'runs executor-only mode without error' {
@@ -491,13 +491,13 @@ Plain text after the block.
             Set-Content (Join-Path $script:testDir 'BACKLOG.md') '- [ ] Test task'
             { Invoke-AgenticLoop -Config $script:mockConfig -PlannerPrompt 'test' -ExecutorPrompt 'test' `
                 -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -ExecutorOnly -MaxIterations 1 } `
-                | Should Not Throw
+                | Should -Not -Throw
         }
 
         It 'full loop completes without error (max 1 iteration)' {
             { Invoke-AgenticLoop -Config $script:mockConfig -PlannerPrompt 'test' -ExecutorPrompt 'test' `
                 -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality } `
-                | Should Not Throw
+                | Should -Not -Throw
         }
 
         It 'full loop works with the claude engine (dry-run, max 1 iteration)' {
@@ -513,7 +513,7 @@ Plain text after the block.
             }
             { Invoke-AgenticLoop -Config $claudeCfg -PlannerPrompt 'test' -ExecutorPrompt 'test' `
                 -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality } `
-                | Should Not Throw
+                | Should -Not -Throw
         }
 
         It 'full loop works with an engine override to opencode' {
@@ -532,7 +532,7 @@ Plain text after the block.
             }
             { Invoke-AgenticLoop -Config $claudeCfg -PlannerPrompt 'test' -ExecutorPrompt 'test' `
                 -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality -Engine 'opencode' } `
-                | Should Not Throw
+                | Should -Not -Throw
         }
     }
 
@@ -541,25 +541,25 @@ Plain text after the block.
     Context 'Get-AgenticDefaultPrompt' {
         It 'returns non-empty prompts for every role' {
             foreach ($role in @('planner', 'refactor-planner', 'executor')) {
-                (Get-AgenticDefaultPrompt -Role $role).Length | Should BeGreaterThan 50
+                (Get-AgenticDefaultPrompt -Role $role).Length | Should -BeGreaterThan 50
             }
         }
 
         It 'keeps the blocked-task protocol in the executor prompt' {
-            Get-AgenticDefaultPrompt -Role 'executor' | Should Match '\- \[b\]'
+            Get-AgenticDefaultPrompt -Role 'executor' | Should -Match '\- \[b\]'
         }
 
         It 'keeps the foreground-build discipline in the executor prompt' {
-            Get-AgenticDefaultPrompt -Role 'executor' | Should Match 'FOREGROUND'
+            Get-AgenticDefaultPrompt -Role 'executor' | Should -Match 'FOREGROUND'
         }
 
         It 'keeps the blocked-task rule in the planner prompt' {
-            Get-AgenticDefaultPrompt -Role 'planner' | Should Match '\- \[b\]'
+            Get-AgenticDefaultPrompt -Role 'planner' | Should -Match '\- \[b\]'
         }
 
         It 'reads from the shared single-source files' {
             $shared = Join-Path $repoRoot '..\..\shared\agentic-loop\prompts\executor.md'
-            (Get-Content $shared -Raw).Trim() | Should Be (Get-AgenticDefaultPrompt -Role 'executor')
+            (Get-Content $shared -Raw).Trim() | Should -Be (Get-AgenticDefaultPrompt -Role 'executor')
         }
     }
 
@@ -568,17 +568,17 @@ Plain text after the block.
     Context 'Get-AgenticBuildConfigs' {
         It 'prefers buildMatrix for the requested platform' {
             $cfg = @{ buildMatrix = @{ windows = @(@{ name = 'w' }); linux = @(@{ name = 'l' }) } }
-            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $true)[0].name | Should Be 'w'
-            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $false)[0].name | Should Be 'l'
+            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $true)[0].name | Should -Be 'w'
+            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $false)[0].name | Should -Be 'l'
         }
 
         It 'falls back to legacy buildConfigurations' {
             $cfg = @{ buildConfigurations = @{ windows = @('debug'); linux = @('linux-debug') } }
-            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $true) | Should Be @('debug')
+            (Get-AgenticBuildConfigs -Config $cfg -OnWindows $true) | Should -Be @('debug')
         }
 
         It 'returns $null when neither key is present' {
-            Get-AgenticBuildConfigs -Config @{} -OnWindows $true | Should BeNullOrEmpty
+            Get-AgenticBuildConfigs -Config @{} -OnWindows $true | Should -BeNullOrEmpty
         }
     }
 
@@ -586,11 +586,15 @@ Plain text after the block.
 
     Context 'Complete-AgenticLoop' {
         It 'completes and exits cleanly with exit code 0' {
-            # This function calls exit -- we wrap it to avoid terminating the test runner
-            try { Complete-AgenticLoop -Iteration 1 -TasksCompleted 5 -ExitCode 0 } catch {
-                # exit throws System.Management.Automation.ExitException in newer PS versions
-                $_.Exception.Message | Should Match 'exit|0'
-            }
+            # Complete-AgenticLoop calls `exit`, which PowerShell flow control cannot
+            # be caught in-process (a try/catch around it silently terminates the whole
+            # host with that exit code -- which used to end the test run early and green).
+            # Assert the exit-code contract from a child pwsh instead.
+            $childCmd = "Import-Module '$modulePath' -Force -DisableNameChecking; " +
+                "Initialize-AgenticLoop -RepoRoot '$($script:testDir)' -DryRun; " +
+                'Complete-AgenticLoop -Iteration 1 -TasksCompleted 5 -ExitCode 0'
+            $null = & pwsh -NoProfile -NonInteractive -Command $childCmd 2>&1
+            $LASTEXITCODE | Should -Be 0
         }
     }
 }

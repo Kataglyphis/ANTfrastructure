@@ -1,0 +1,46 @@
+# buildkitd worker GC policy for the Windows BK lane host.
+# Deployed to C:\ProgramData\buildkitd\buildkitd.toml by
+# windows\scripts\apply-buildkitd-gcpolicy.ps1 (admin; restarts buildkitd —
+# NEVER while a build is running).
+#
+# Why this exists (2026-08-04 incident): with no config file buildkitd runs on
+# computed defaults — maxUsedSpace 100GB, minFreeSpace 187GB. The warm chain's
+# cache is ~237GB on a 999GB disk with ~92GB free, so BOTH triggers fired on
+# every GC pass: the moment a build finished and its references dropped, GC
+# evicted everything reclaimable, INCLUDING the multi-hour VS Build Tools
+# layer — every following run re-paid the full base rebuild.
+#
+# The load-bearing knob is reservedSpace: GC never prunes the cache below it,
+# which is what actually protects the ~35GB VS-class layers. minFreeSpace
+# drops to 25-30GB so GC stops fighting the mostly-full disk (free real space
+# by pruning the classic docker lane instead). Warm-solve scratch (the
+# never-finalized snapshots of the ExportLayer-0x3 workaround) needs no
+# special rule — the keepDuration tier ages it out.
+#
+# v0.32 key names: reservedSpace / maxUsedSpace / minFreeSpace
+# (docs/windows-builds.md's older gckeepstorage snippet was the legacy form).
+
+[worker.containerd]
+  gc = true
+
+  # Tier 0: local sources, git checkouts and cache mounts (C:\bkhandoff etc).
+  # The default caps these at 512MB/48h — far too small for a week of chain
+  # iterations over multi-GB handoffs.
+  [[worker.containerd.gcpolicy]]
+    filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
+    keepDuration = "168h"
+    maxUsedSpace = "20GB"
+
+  # Tier 1: anything unused for >30 days goes first.
+  [[worker.containerd.gcpolicy]]
+    keepDuration  = "720h"
+    reservedSpace = "200GB"
+    maxUsedSpace  = "300GB"
+    minFreeSpace  = "30GB"
+
+  # Tier 2: hard ceiling.
+  [[worker.containerd.gcpolicy]]
+    all = true
+    reservedSpace = "200GB"
+    maxUsedSpace  = "320GB"
+    minFreeSpace  = "25GB"
