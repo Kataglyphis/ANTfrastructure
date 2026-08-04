@@ -60,7 +60,11 @@ $errs = @()
 $warns = @()
 $analyzerModule = Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
 if ($analyzerModule) {
-    Import-Module PSScriptAnalyzer -Force
+    # Import the DISCOVERED module object, not the bare name: a name import
+    # resolves independently and can load a different (newest) installation,
+    # shadowing CI's pinned install - the version reported below must be the
+    # version that actually ran.
+    Import-Module $analyzerModule -Force
     # Invoke-ScriptAnalyzer -Path takes a SINGLE path (an array throws "cannot convert Object[] to
     # String"), so analyze each target file and aggregate.
     foreach ($t in $targets) {

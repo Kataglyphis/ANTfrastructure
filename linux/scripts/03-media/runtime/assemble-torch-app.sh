@@ -24,8 +24,24 @@ activate_project_environment() {
 }
 
 prepare_project_tree() {
+  local _attempt
   rm -rf "${APP_DIR}"
-  git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git "${APP_DIR}"
+  # Inline retry (3 attempts, 10s apart): this clone runs hours into the
+  # runtime chain and a transient network/GitHub hiccup must not discard the
+  # whole build. Inlined rather than 01-core's retry(): this script ships
+  # standalone into images (e.g. Dockerfile.torch) that carry no 01-core.
+  for _attempt in 1 2 3; do
+    if git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git "${APP_DIR}"; then
+      break
+    fi
+    rm -rf "${APP_DIR}"
+    if [ "${_attempt}" -eq 3 ]; then
+      echo "ERROR: git clone of Kataglyphis-Orchestr-ANT-ion (${APP_REF}) failed after 3 attempts" >&2
+      return 1
+    fi
+    echo "WARNING: git clone attempt ${_attempt}/3 failed; retrying in 10s..." >&2
+    sleep 10
+  done
 
   # riscv64: the app's pyproject `[tool.uv] environments` list deliberately
   # EXCLUDES riscv64 (`sys_platform == 'linux' and platform_machine != 'riscv64'`)

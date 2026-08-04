@@ -112,6 +112,26 @@ clone_or_update_repo() {
     git -C "${dest_dir}" fetch --depth 1 origin "${branch}" 2>/dev/null || git -C "${dest_dir}" fetch --depth 1 --tags 2>/dev/null || true
     if [ -n "${branch}" ]; then
       git -C "${dest_dir}" checkout "${branch}" 2>/dev/null || true
+      # The fetch||fetch||true + checkout||true above is deliberately tolerant
+      # (reusing a source cache to build slightly-stale is sometimes intended),
+      # but a silent miss produced builds from an unknown ref. Verify that the
+      # requested ref actually checked out, and be LOUD when it did not.
+      local _want _have _have_desc
+      _want="$(git -C "${dest_dir}" rev-parse --verify --quiet "${branch}^{commit}" 2>/dev/null || true)"
+      _have="$(git -C "${dest_dir}" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
+      if [ -z "${_want}" ] || [ "${_want}" != "${_have}" ]; then
+        _have_desc="$(git -C "${dest_dir}" describe --tags --always 2>/dev/null || echo '?')"
+        {
+          echo "=================================================================="
+          echo "WARNING: STALE CHECKOUT in ${dest_dir}"
+          echo "  requested ref: ${branch} (${_want:-not resolvable locally; fetch failed?})"
+          echo "  actual HEAD:   ${_have:-<none>} (${_have_desc})"
+          echo "  Continuing on purpose: the build will use the ACTUAL HEAD above,"
+          echo "  which is NOT the requested ref. Delete ${dest_dir} to force a"
+          echo "  fresh clone if this is not intended."
+          echo "=================================================================="
+        } >&2
+      fi
     fi
     return 0
   fi

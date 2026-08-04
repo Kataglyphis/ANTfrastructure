@@ -14,7 +14,21 @@ Set-StrictMode -Version Latest
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-Import-Module $sharedPath -Force
+# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
+# nested re-import rebinds the dependency into THIS module's private scope and
+# unloads the caller's top-level import — the PS module-scoping trap that broke
+# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
+# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
+# must Remove-Module/reimport manually; containers always start fresh.
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+
+# Invoke-BuildExternal and Write-BuildLogWarning (used inside this module's own
+# catch handler!) come from the sibling WindowsBuild.Common module; without this
+# import a standalone consumer hits CommandNotFound at runtime. Guarded,
+# WITHOUT -Force, for the same nested-import rule as above.
+if (-not (Get-Module -Name 'WindowsBuild.Common')) {
+    Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
+}
 
 function Invoke-ToolchainChecks {
     param(

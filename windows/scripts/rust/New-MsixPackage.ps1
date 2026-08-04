@@ -139,7 +139,9 @@ function Import-CertificateAndSign {
         $thumb = $thumbprint
         Write-BuildLog -Context $Context -Message "Imported certificate thumbprint: $thumb"
 
-        for ($i = 0; $i -lt 6; $i++) { Start-Sleep -Milliseconds 300 }
+        # Give the certificate store a moment to settle before signtool reads it
+        # (previously a decorated 6x300ms sleep loop).
+        Start-Sleep -Milliseconds 1800
 
         try {
             $storeOut = & certutil -store My $thumb 2>&1
@@ -155,14 +157,31 @@ function Import-CertificateAndSign {
         $exit = $LASTEXITCODE
         Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
         if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+        # A non-zero signtool exit must not pass silently: throw so the catch
+        # below attempts the direct-invocation fallback (and the fallback's own
+        # failure propagates to the critical build step).
+        if ($exit -ne 0) {
+            throw "signtool sign (by thumbprint) failed with exit code $exit"
+        }
     } catch {
         Write-BuildLogWarning -Context $Context -Message "Import/sign by thumbprint failed, falling back to direct signtool invocation. Details: $($_.Exception.Message)"
         $signArgs = @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, "/v", $PackageFile)
-        Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $SigntoolExe $($signArgs -join ' ')"
+        # Display copy only: never log the PFX password. The element after '/p'
+        # is masked; $signArgs itself stays intact for execution.
+        $displayArgs = @($signArgs)
+        $pIndex = [Array]::IndexOf($displayArgs, '/p')
+        if ($pIndex -ge 0 -and ($pIndex + 1) -lt $displayArgs.Count) { $displayArgs[$pIndex + 1] = '<redacted>' }
+        Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $SigntoolExe $($displayArgs -join ' ')"
         $sigOut = & $SigntoolExe @signArgs 2>&1
         $exit = $LASTEXITCODE
         Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
         if ($sigOut) { Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
+        # Fallback failed too: fail the signing step. This propagates through
+        # the critical "Sign MSIX" build step (Context has -StopOnError) into
+        # the script's exit 1 path instead of shipping an unsigned package.
+        if ($exit -ne 0) {
+            throw "signtool sign (fallback, direct PFX) failed with exit code $exit"
+        }
     } finally {
         try {
             if ($thumbprint) {

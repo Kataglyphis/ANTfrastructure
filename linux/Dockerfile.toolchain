@@ -5,14 +5,19 @@ FROM ${BASE_IMAGE}
 
 SHELL ["bash", "-lc"]
 
-# NOTE: Build scripts for GCC/LLVM/Rust RUNs are bind-mounted (--mount=type=bind)
-# rather than COPYed. Script changes do NOT invalidate GCC/LLVM/Rust build cache
-# — good for cache stability, but a script-only fix requires --no-cache. Downstream
-# Dockerfiles use COPY for scripts (script changes DO invalidate), creating an
-# intentional asymmetry: toolchain stays cached through script updates, while sdk,
-# media, and later stages rebuild when their scripts change. The /opt/scripts
-# bundle at the END of this file is plain COPY too (content-keyed, cheap tail),
-# so a script edit re-copies the bundle without touching the compiler layers.
+# NOTE: Build scripts for the heavy compiler RUNs are bind-mounted
+# (--mount=type=bind) rather than COPYed. Unlike COPY, a bind mount does NOT
+# create an image layer — but its CONTENT still enters the RUN's cache key, so
+# mounting the whole 01-core/02-toolchain trees would let ANY of ~100 script
+# edits (including host-only orchestrator modules) invalidate the multi-hour
+# GCC/LLVM/Rust/Python layers. The heavy RUNs below therefore bind-mount ONLY
+# the per-file transitive source-closure of their entrypoint script (traced via
+# verify-script-copy-coverage.py --report-core-usage plus manual source/exec
+# tracing): editing an unmounted script leaves the compiler layers cached, while
+# editing a mounted file rebuilds exactly the RUNs that consume it. Cheap RUNs
+# (3b/3c) keep whole-dir mounts. The /opt/scripts bundle at the END of this file
+# is plain COPY (content-keyed, cheap tail), so downstream stages still see the
+# full script set without touching the compiler layers.
 
 ARG LLVM_RELEASE=22.1.8
 ARG GCC_VERSION=16.1.0
@@ -58,12 +63,47 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # ------------------------------------------------------------------------------
 # 1. GCC (Heavy Layer)
 # If this succeeds, it is cached forever unless GCC_VERSION changes.
+# Per-file bind mounts = the transitive source-closure of setup-dependencies.sh
+# (identical for the GCC, LLVM, and target-clang RUNs — keep the three lists in
+# sync). versions.env is mounted because common.sh load_versions_env()-reads it
+# at runtime (env/ARG values still win; the file is only the fallback).
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/opt/scripts/core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/build-helpers.sh,target=/opt/scripts/core/build-helpers.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/vulkan-env.sh,target=/opt/scripts/core/vulkan-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/opt/scripts/toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-cross.sh,target=/opt/scripts/toolchain/llvm-cross.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-validate.sh,target=/opt/scripts/toolchain/llvm-validate.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm.sh,target=/opt/scripts/toolchain/llvm.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/vulkan.sh,target=/opt/scripts/toolchain/vulkan.sh,ro \
     --mount=type=tmpfs,target=/tmp \
     --mount=type=tmpfs,target=/var/tmp \
     set -euo pipefail; \
@@ -82,10 +122,42 @@ ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
 
 # 3. LLVM / CLANG (Heavy Layer)
 # If this fails, Docker restores the image state at 'Step 2' instantly.
+# Per-file bind mounts: same setup-dependencies.sh closure as the GCC RUN above.
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/opt/scripts/core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/build-helpers.sh,target=/opt/scripts/core/build-helpers.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/vulkan-env.sh,target=/opt/scripts/core/vulkan-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/opt/scripts/toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-cross.sh,target=/opt/scripts/toolchain/llvm-cross.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-validate.sh,target=/opt/scripts/toolchain/llvm-validate.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm.sh,target=/opt/scripts/toolchain/llvm.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/vulkan.sh,target=/opt/scripts/toolchain/vulkan.sh,ro \
     --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     --mount=type=tmpfs,target=/var/tmp \
@@ -113,13 +185,45 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
 # Cross-compile a native clang 22.1.8 for each target arch so the final
 # runtime image ships with clang on every architecture.
 # Uses the LLVM source cache from the host LLVM build above.
+# Per-file bind mounts: same setup-dependencies.sh closure as the GCC RUN above.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
-    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/opt/scripts/core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/build-helpers.sh,target=/opt/scripts/core/build-helpers.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/vulkan-env.sh,target=/opt/scripts/core/vulkan-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/opt/scripts/toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-cross.sh,target=/opt/scripts/toolchain/llvm-cross.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-validate.sh,target=/opt/scripts/toolchain/llvm-validate.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/llvm.sh,target=/opt/scripts/toolchain/llvm.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/vulkan.sh,target=/opt/scripts/toolchain/vulkan.sh,ro \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     apt-get update -qq && \
@@ -138,10 +242,22 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
 ARG RUST_VERSION=1.97.1
 ARG CARGO_C_VERSION=0.10.24
 ARG RUST_NIGHTLY_TOOLCHAIN=nightly-2026-06-28
+# Per-file bind mounts = the transitive source-closure of install-rust.sh
+# (platform.sh + cross-env.sh and the cross-* modules cross-env.sh pulls in).
+# versions.env is mounted so install-rust.sh can pick up the optional
+# RUSTUP_INIT_SHA256 pin (noforward key, so it never arrives as a build arg).
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
-    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/install-rust.sh,target=/opt/scripts/toolchain/install-rust.sh,ro \
     --mount=type=cache,target=/root/.cache/rustup,id=rustup-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/toolchain/install-rust.sh
@@ -149,7 +265,20 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
 # 5. PYTHON (Source-Built Interpreter)
 # Keep the interpreter in the shared compiler layer so downstream images only
 # create their own venvs on top of a single source-built CPython install.
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
+# Per-file bind mounts = the transitive source-closure of build_python.sh
+# (modules.sh bootstrap + the source_module'd 01-core leaves).
+RUN --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/build_python.sh,target=/opt/scripts/python/build_python.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/fix-staged-python-pc.sh,target=/opt/scripts/python/fix-staged-python-pc.sh,ro \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \

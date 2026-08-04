@@ -1004,10 +1004,13 @@ but capped at 2 CPUs on this host). NAT networking and DNS work in both modes.
 After building, run the container smoke test to verify all components:
 
 ```pwsh
-# Run smoke tests inside the built container
+# Run smoke tests inside the built container. On a GPU (nvidia-lane) image,
+# ALWAYS pass -ExpectGpu: without it a broken/missing CUDA_ROOT env silently
+# SKIPS the whole CUDA section instead of failing it (the gate otherwise
+# cannot distinguish a legitimate CPU-only image from a damaged GPU image).
 & "C:\Program Files\Stevedore\bin\docker.exe" run --memory 48g -it --rm --isolation process `
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 `
-  pwsh -File C:\temp\scripts\smoke-test-container.ps1
+  pwsh -File C:\temp\scripts\smoke-test-container.ps1 -ExpectGpu
 ```
 
 The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 167 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).

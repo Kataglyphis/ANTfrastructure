@@ -183,7 +183,7 @@ RUN set -euo pipefail; \
     if [ -d /usr/local/llvm-target/lib/clang ] && [ ! -e /usr/lib/clang ]; then \
         ln -s /usr/local/llvm-target/lib/clang /usr/lib/clang; \
     fi; \
-    bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" 2>/dev/null || true
+    bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" || true
 
 # Redirect this stage's apt sources off ports.ubuntu.com onto the configured
 # fast ports mirror (leaseweb) BEFORE setup-package-image.sh runs apt. The

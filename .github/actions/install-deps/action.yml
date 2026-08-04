@@ -6,9 +6,20 @@ inputs:
     # Composite actions cannot read this repo's versions.env at default time, so
     # this default CAN drift from the canonical VULKAN_VERSION pin — consumers
     # should pass it explicitly (e.g. from their own versions file).
-    description: 'Vulkan SDK version (e.g. 1.4.350.0); pass explicitly to avoid relying on this default'
+    # It HAS drifted before (sat at 1.4.350.0 while versions.env moved to
+    # 1.4.357.0) and it WILL go stale again after the next VULKAN_VERSION bump:
+    # nothing regenerates this literal. Treat the default as a last-resort
+    # fallback only.
+    description: 'Vulkan SDK version (e.g. 1.4.357.0); pass explicitly to avoid relying on this default'
     required: false
-    default: '1.4.350.0'
+    default: '1.4.357.0'
+  require-rust:
+    description: >-
+      If "true" (default), fail when no rustc is available after setup.
+      Set to "false" for uv-only consumers: the Rust toolchain block is then
+      skipped gracefully with a notice instead of exiting 1.
+    required: false
+    default: 'true'
   run-setup-script:
     description: 'If "true", chmod +x and run the CONSUMER repo''s Scripts/Linux/setup-dependencies.sh'
     required: false
@@ -26,6 +37,7 @@ runs:
         set -euo pipefail
 
         VULKAN_VERSION="${{ inputs.vulkan-version }}"
+        REQUIRE_RUST="${{ inputs.require-rust }}"
         RUN_SETUP_SCRIPT="${{ inputs.run-setup-script }}"
         INSTALL_UV="${{ inputs.install-uv }}"
 
@@ -71,22 +83,27 @@ runs:
           fi
         fi
 
-        # ensure rustup has a default toolchain
-        if command -v rustup >/dev/null 2>&1; then
-          if ! rustup show active-toolchain >/dev/null 2>&1; then
-            rustup toolchain install stable
-            rustup default stable
+        # Rust toolchain block — skippable for uv-only consumers.
+        if [ "$REQUIRE_RUST" = "true" ]; then
+          # ensure rustup has a default toolchain
+          if command -v rustup >/dev/null 2>&1; then
+            if ! rustup show active-toolchain >/dev/null 2>&1; then
+              rustup toolchain install stable
+              rustup default stable
+            fi
           fi
-        fi
 
-        # expose rustc path for later use in the workflow
-        RUSTC_PATH=$(command -v rustc || true)
-        if [ -n "$RUSTC_PATH" ]; then
-          echo "Rust_COMPILER=$RUSTC_PATH" >> "$GITHUB_ENV"
-          echo "Found rustc at: $RUSTC_PATH"
+          # expose rustc path for later use in the workflow
+          RUSTC_PATH=$(command -v rustc || true)
+          if [ -n "$RUSTC_PATH" ]; then
+            echo "Rust_COMPILER=$RUSTC_PATH" >> "$GITHUB_ENV"
+            echo "Found rustc at: $RUSTC_PATH"
+          else
+            echo "ERROR: rustc still not found after installation" >&2
+            exit 1
+          fi
         else
-          echo "ERROR: rustc still not found after installation" >&2
-          exit 1
+          echo "NOTICE: require-rust=false — skipping Rust toolchain setup and the rustc presence check."
         fi
 
         # Add Vulkan SDK bin dir (auto-detect arch)

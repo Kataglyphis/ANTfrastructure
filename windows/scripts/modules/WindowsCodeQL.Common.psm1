@@ -12,9 +12,23 @@ Set-StrictMode -Version Latest
 #requires -Version 7.0
 
 
-# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
+# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, Invoke-DownloadWithRetry, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-Import-Module $sharedPath -Force
+# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
+# nested re-import rebinds the dependency into THIS module's private scope and
+# unloads the caller's top-level import — the PS module-scoping trap that broke
+# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
+# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
+# must Remove-Module/reimport manually; containers always start fresh.
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+
+# Logging/build primitives (Write-BuildLog*, Write-BuildLogWarning/Error/Success)
+# come from the sibling WindowsBuild.Common module; without this import a
+# standalone consumer of this module hits CommandNotFound at runtime. Guarded,
+# WITHOUT -Force, for the same nested-import rule as above.
+if (-not (Get-Module -Name 'WindowsBuild.Common')) {
+    Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
+}
 
 function Get-ForwardSwitchValue {
     param(
@@ -57,15 +71,25 @@ function Invoke-BuildCodeQL {
     Write-BuildLog -Context $Context -Message "CodeQL cleanup enabled: $cleanCodeQLDb"
     Write-BuildLog -Context $Context -Message "CodeQL download enabled: $codeQLDownload"
 
-    $codeQLUrl = 'https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-win64.zip'
+    # Optional version pin via $env:CODEQL_VERSION (a codeql-cli-binaries
+    # release tag, e.g. 'v2.18.4'); default keeps the previous latest-release
+    # behavior. Deliberately NOT a versions.env key - that file has its own
+    # process - just an overridable seam.
+    $codeQLUrl = if (-not [string]::IsNullOrWhiteSpace($env:CODEQL_VERSION)) {
+        "https://github.com/github/codeql-cli-binaries/releases/download/$($env:CODEQL_VERSION)/codeql-win64.zip"
+    } else {
+        'https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-win64.zip'
+    }
     $codeQLDir = Join-Path $Workspace 'codeql-cli'
     $codeQLExe = Join-Path $codeQLDir 'codeql\codeql.exe'
 
     if (-not (Test-Path $codeQLExe)) {
-        Write-BuildLog -Context $Context -Message 'Downloading CodeQL CLI...'
+        Write-BuildLog -Context $Context -Message "Downloading CodeQL CLI from $codeQLUrl ..."
         New-Item -ItemType Directory -Force -Path $codeQLDir | Out-Null
         $zipPath = Join-Path $codeQLDir 'codeql.zip'
-        Invoke-WebRequest -Uri $codeQLUrl -OutFile $zipPath
+        # Retry-safe download (Shared helper) instead of raw Invoke-WebRequest;
+        # the PK signature guard rejects HTML error pages served as the asset.
+        Invoke-DownloadWithRetry -Url $codeQLUrl -DestinationPath $zipPath -ExpectSignature 'PK' -Description 'CodeQL CLI (codeql-win64.zip)'
         Expand-Archive -Path $zipPath -DestinationPath $codeQLDir -Force
     }
 
@@ -98,7 +122,14 @@ function Invoke-BuildCodeQL {
         elseif ($pair.Value -is [bool] -and $pair.Value) { $innerParamList += "-$($pair.Key)" }
         elseif ($pair.Value -isnot [switch] -and $pair.Value -isnot [bool]) { $innerParamList += "-$($pair.Key)", "$($pair.Value)" }
     }
-    $innerCommand = @('cmd', '/c', 'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BuildScriptPath) + $innerParamList
+    # --command takes ONE string that CodeQL tokenizes itself. Interpolating a
+    # PowerShell array would space-join the elements and lose all quoting, so
+    # build the command line explicitly, quoting every element that contains
+    # whitespace or quotes (embedded quotes are backslash-escaped).
+    $innerCommandParts = @('cmd', '/c', 'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BuildScriptPath) + $innerParamList
+    $innerCommand = ($innerCommandParts | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { "$_" }
+    }) -join ' '
 
     $dbClusterDir = Join-Path $Workspace 'codeql-db-cluster'
     $shouldCreateDbCluster = $true
@@ -145,6 +176,11 @@ function Invoke-BuildCodeQL {
     $resultsDir = Join-Path $Workspace 'codeql-results'
     New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 
+    # Languages whose analysis failed even on the fallback query pack. Collected
+    # so the loop still analyzes the remaining languages, but the function no
+    # longer reports success when any of them failed.
+    $failedLanguages = @()
+
     foreach ($lang in $Languages) {
         Write-BuildLog -Context $Context -Message ''
         Write-BuildLog -Context $Context -Message '------------------------------------------------'
@@ -185,11 +221,16 @@ function Invoke-BuildCodeQL {
             & $codeQLExe @fallbackArgs
             if ($LASTEXITCODE -ne 0) {
                 Write-BuildLogError -Context $Context -Message "Analysis failed for $lang even with basic query pack"
+                $failedLanguages += $lang
                 continue
             }
         }
 
         Write-BuildLogSuccess -Context $Context -Message "Analysis completed for $lang. Results saved to: $sarifOutput"
+    }
+
+    if (@($failedLanguages).Count -gt 0) {
+        throw "CodeQL analysis failed for language(s): $($failedLanguages -join ', '). See log above; partial results in: $resultsDir"
     }
 
     Write-BuildLog -Context $Context -Message ''

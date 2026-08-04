@@ -144,10 +144,12 @@ declare -A SCRIPT_DEFAULT_DRIFT_ALLOW=(
 )
 DRIFT_WARN=0
 while IFS= read -r hit; do
-  # hit is "path:${VAR:-literal}"
+  # hit is "path:${VAR:-literal}" or "path:${VAR:=literal}" — the := assign
+  # form (used by `: "${VAR:=x}"` pins) is the same third channel and drifts
+  # just as silently, so both separators are gated.
   file="${hit%%:*}"; match="${hit#*:}"
-  var="${match#\$\{}"; var="${var%%:-*}"
-  lit="${match#*:-}"; lit="${lit%\}}"
+  var="${match#\$\{}"; var="${var%%:[-=]*}"
+  lit="${match#*:[-=]}"; lit="${lit%\}}"
   # Only versions.env variables with a non-empty value are comparable.
   env_val="${_version_values[$var]:-}"
   [ -n "$env_val" ] || continue
@@ -157,11 +159,11 @@ while IFS= read -r hit; do
   case "$lit" in ''|unset|*'$'*|*'('*|*'`'*) continue ;; esac
   env_val="${env_val%\"}"; env_val="${env_val#\"}"   # strip surrounding quotes
   if [ "$lit" != "$env_val" ]; then
-    echo "  WARN drift: ${file}  \${${var}:-${lit}}  ≠  versions.env ${var}=${env_val}"
+    echo "  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}"
     DRIFT_WARN=$((DRIFT_WARN + 1))
   fi
-done < <(grep -rloP '\$\{[A-Z][A-Z0-9_]*:-[^}]*\}' "${REPO_ROOT}/linux/scripts" --include='*.sh' 2>/dev/null \
-         | while read -r f; do grep -oP '\$\{[A-Z][A-Z0-9_]*:-[^}]*\}' "$f" | sed "s|^|${f}:|"; done)
+done < <(grep -rloP '\$\{[A-Z][A-Z0-9_]*:[-=][^}]*\}' "${REPO_ROOT}/linux/scripts" --include='*.sh' 2>/dev/null \
+         | while read -r f; do grep -oP '\$\{[A-Z][A-Z0-9_]*:[-=][^}]*\}' "$f" | sed "s|^|${f}:|"; done)
 if [ "$DRIFT_WARN" -gt 0 ]; then
   echo "NOTE: ${DRIFT_WARN} script default(s) differ from versions.env (advisory only)."
   echo "If intentional, add the variable to SCRIPT_DEFAULT_DRIFT_ALLOW in this script."

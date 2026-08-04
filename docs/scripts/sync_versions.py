@@ -224,7 +224,9 @@ def update_marked_block(file_path: Path, replacement: str) -> bool:
     pattern = re.compile(re.escape(START_MARKER) + r".*?" + re.escape(END_MARKER), re.DOTALL)
     if not pattern.search(original):
         raise ValueError(f"Markers not found in {file_path}")
-    updated = pattern.sub(replacement, original, count=1)
+    # Lambda replacement: a plain string would be a re.sub TEMPLATE, so any
+    # backslash in the rendered content would be (mis)interpreted.
+    updated = pattern.sub(lambda _m: replacement, original, count=1)
     if updated == original:
         return False
     file_path.write_text(updated, encoding="utf-8")
@@ -236,7 +238,7 @@ def is_marked_block_current(file_path: Path, replacement: str) -> bool:
     pattern = re.compile(re.escape(START_MARKER) + r".*?" + re.escape(END_MARKER), re.DOTALL)
     if not pattern.search(original):
         raise ValueError(f"Markers not found in {file_path}")
-    updated = pattern.sub(replacement, original, count=1)
+    updated = pattern.sub(lambda _m: replacement, original, count=1)
     return updated == original
 
 
@@ -284,6 +286,51 @@ def check_inline_markers(versions: dict[str, str]) -> int:
         print("Run: python3 docs/scripts/sync_versions.py --write", file=sys.stderr)
         return 1
     print("Inline version markers are up to date.")
+    return 0
+
+
+# Any HTML-comment token that names an inline marker: the opener OR the closer,
+# with tolerant whitespace. Deliberately restricted to \w+ names so that
+#   * the block markers (generated:version-snapshot:start / :end and
+#     generated:deps-table:start / :end) never match ('-'/':' break \w+ ... -->)
+#   * prose mentions like "<!-- generated:... -->" never match.
+_MARKER_TOKEN_RE = re.compile(r"<!--\s*/?\s*generated:(\w+)\s*-->")
+
+
+def validate_inline_marker_tokens() -> int:
+    """Error on typo'd or malformed inline markers.
+
+    Without this pass, a marker with an unknown name (e.g. generated:cudda) or
+    a missing/malformed closing tag is silently skipped by the updater and
+    stays stale forever. Two failure classes:
+      1. a well-formed pair whose name is not in INLINE_MARKER_MAP
+      2. a generated:NAME token that is not part of a well-formed
+         `<!-- generated:X -->value<!-- /generated:X -->` pair
+    """
+    problems: list[str] = []
+    for path in inline_marker_target_files():
+        text = path.read_text(encoding="utf-8")
+        rel = str(path.relative_to(REPO_ROOT))
+        for m in INLINE_MARKER_RE.finditer(text):
+            if m.group(1) not in INLINE_MARKER_MAP:
+                problems.append(
+                    f"{rel}: unknown inline marker name 'generated:{m.group(1)}'"
+                    " (not in INLINE_MARKER_MAP — typo, or add a mapping)"
+                )
+        # Remove every well-formed pair, then any surviving marker token is
+        # unpaired or malformed (bad spacing, missing closer, mismatched name).
+        residual = INLINE_MARKER_RE.sub("", text)
+        for m in _MARKER_TOKEN_RE.finditer(residual):
+            problems.append(
+                f"{rel}: marker token '{m.group(0)}' has no well-formed"
+                " `<!-- generated:X -->value<!-- /generated:X -->` pair"
+            )
+    if problems:
+        print("Inline marker validation FAILED:", file=sys.stderr)
+        for p in problems:
+            print(f"- {p}", file=sys.stderr)
+        return 1
+    print("Inline marker tokens are well-formed and known.")
     return 0
 
 
@@ -378,7 +425,8 @@ def update_deps_table(file_path: Path, replacement: str) -> bool:
     pattern = _deps_marker_pattern()
     if not pattern.search(original):
         raise ValueError(f"Deps table markers not found in {file_path}")
-    updated = pattern.sub(replacement, original, count=1)
+    # Lambda replacement: avoid re.sub backslash-template interpretation.
+    updated = pattern.sub(lambda _m: replacement, original, count=1)
     if updated == original:
         return False
     file_path.write_text(updated, encoding="utf-8")
@@ -390,7 +438,7 @@ def is_deps_table_current(file_path: Path, replacement: str) -> bool:
     pattern = _deps_marker_pattern()
     if not pattern.search(original):
         raise ValueError(f"Deps table markers not found in {file_path}")
-    updated = pattern.sub(replacement, original, count=1)
+    updated = pattern.sub(lambda _m: replacement, original, count=1)
     return updated == original
 
 
@@ -508,6 +556,13 @@ def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry
         var_name = m.group(2)
         if var_name not in version_vars:
             continue
+        # Never rewrite substitution defaults (ARG X=${Y%...}): those are
+        # computed in-Dockerfile from another ARG, and a literal would clobber
+        # the derivation. Belt+braces against a future versions.env key
+        # colliding with such an ARG name (mirrors verify-arg-consistency.sh's
+        # '${'* skip).
+        if m.group(3).startswith("${"):
+            continue
         env_val = versions[var_name]
         # versions.env values may carry surrounding quotes (e.g. CUDA_ARCHITECTURES);
         # strip them so the quote style below comes from the ARG line alone --
@@ -524,8 +579,10 @@ def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry
         if old_raw == formatted:
             continue
         if not dry_run:
-            eol = "\r\n" if line.endswith("\r\n") else ("\n" if line.endswith("\n") else "")
-            lines[i] = f"{m.group(1)}{var_name}={formatted}{eol}"
+            # Splice only the value; line[m.end(3):] preserves everything after
+            # it — a trailing `# comment`, trailing whitespace, and the line's
+            # own EOL (CRLF or LF) — instead of dropping the tail.
+            lines[i] = f"{m.group(1)}{var_name}={formatted}{line[m.end(3):]}"
         changed = True
     if not dry_run and changed:
         with open(file_path, "w", encoding="utf-8", newline="") as fh:
@@ -707,6 +764,7 @@ def main() -> int:
 
     if mode == "check":
         result = check_snapshot(render_snapshot())
+        result |= validate_inline_marker_tokens()
         result |= check_inline_markers(versions)
         result |= check_deps_table(versions)
         result |= check_dockerfile_args(versions)
@@ -726,6 +784,9 @@ def main() -> int:
     result = write_dockerfile_args(versions)
     result |= write_script_defaults(versions)
     result |= write_snapshot(render_snapshot())
+    # A typo'd/malformed marker must fail --write too (the updater silently
+    # skips such markers, so without this the error would stay invisible).
+    result |= validate_inline_marker_tokens()
     result |= write_inline_markers(versions)
     result |= write_deps_table(versions)
     # Auto-regenerate website license files so they never go stale.
@@ -733,12 +794,14 @@ def main() -> int:
     lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
     lic_result = subprocess.run([sys.executable, str(lic_script), "--write"], capture_output=True, text=True)
     if lic_result.returncode:
-        print("WARNING: generate-website-licenses.py --write failed:", file=sys.stderr)
+        print("ERROR: generate-website-licenses.py --write failed:", file=sys.stderr)
         print(lic_result.stderr, file=sys.stderr)
+        # Propagate the failure: --check ORs the generator's returncode in, and
+        # --write must not exit 0 when the license files could not be written.
+        result |= 1
     else:
         for line in lic_result.stdout.strip().splitlines():
             print(line)
-        result |= lic_result.returncode
     return result
 
 

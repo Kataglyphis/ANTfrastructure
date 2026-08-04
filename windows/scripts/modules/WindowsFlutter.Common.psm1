@@ -13,6 +13,15 @@
 # WindowsFlutter.Common.psm1
 # Reusable functions for building and patching Flutter Windows applications in a containerized environment.
 
+# Write-BuildLog / Write-BuildLogWarning come from the sibling
+# WindowsBuild.Common module; without this import a standalone consumer hits
+# CommandNotFound at runtime. Guarded, WITHOUT -Force (repo-wide nested-import
+# rule, 2026-08-04): a forced nested re-import would pull a caller's top-level
+# import out of the global session state.
+if (-not (Get-Module -Name 'WindowsBuild.Common')) {
+    Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
+}
+
 function Clear-FlutterPluginSymlink {
     [CmdletBinding()]
     param(
@@ -183,7 +192,16 @@ function Sync-FastLocalArtifactsToHost {
         "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul"
     )
     & robocopy.exe $robocopyArgs > $null 2>&1
-    
+    # Robocopy exit codes 0-7 are success variants (1 = files copied); >= 8
+    # means at least one copy failed. Sync-back is best-effort, so a failure
+    # warns instead of throwing - but it must not pass silently.
+    $robocopyExit = $LASTEXITCODE
+    if ($robocopyExit -ge 8) {
+        Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of build artifacts to '$OriginalBuildRoot' failed (exit code $robocopyExit); host copy may be incomplete."
+    }
+    # Reset so robocopy's non-zero success codes (1-7) never trip callers' exit-code gates.
+    $global:LASTEXITCODE = 0
+
     if (-not [string]::IsNullOrEmpty($CargoTargetDir) -and -not [string]::IsNullOrEmpty($HostRustTargetDir)) {
         Write-BuildLog -Context $Context -Message "Syncing fast local Rust artifacts ($CargoTargetDir) back to host ($HostRustTargetDir)..."
         if (-not (Test-Path $HostRustTargetDir)) {
@@ -199,6 +217,13 @@ function Sync-FastLocalArtifactsToHost {
             "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul"
         )
         & robocopy.exe $robocopyRustArgs > $null 2>&1
+        # Same exit-code contract as the artifact sync above: >= 8 is a real
+        # failure (warn, best-effort), 1-7 are success variants (reset).
+        $robocopyRustExit = $LASTEXITCODE
+        if ($robocopyRustExit -ge 8) {
+            Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of Rust artifacts to '$HostRustTargetDir' failed (exit code $robocopyRustExit); host copy may be incomplete."
+        }
+        $global:LASTEXITCODE = 0
     }
 }
 

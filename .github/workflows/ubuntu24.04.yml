@@ -7,17 +7,26 @@ on:
   pull_request:
     branches: [main]
 
+# One run per ref: a force-push/new push supersedes the in-flight run instead
+# of burning runner minutes next to it. The called build-docs job additionally
+# carries its own job-level docs-deploy concurrency group
+# (cancel-in-progress: false) so two runs can never FTP-sync concurrently.
+concurrency:
+  group: ubuntu24-04-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
   # Fast, no-build gate: shellcheck + the verify-* suite (script-COPY coverage,
-  # critical-fixes, ARG consistency, version snapshot, mirror + runtime-path
-  # consistency). Catches the failure classes that otherwise only surface hours
-  # into a multi-arch build. Mirrors the local .githooks/pre-commit gate, which
-  # is opt-in and silently skipped by contributors who don't enable it.
+  # critical-fixes, ARG consistency, version snapshot, mirror consistency;
+  # the runtime-path check also runs but is advisory-only — it prints WARNs
+  # and never fails). Catches the failure classes that otherwise only surface
+  # hours into a multi-arch build. Mirrors the local .githooks/pre-commit gate,
+  # which is opt-in and silently skipped by contributors who don't enable it.
   preflight:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Run preflight checks

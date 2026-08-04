@@ -4,6 +4,14 @@ description: >-
   bind-mounting the GitHub workspace, optionally teeing combined
   stdout/stderr to a log file in the workspace.
 
+  SECURITY WARNING: `script`, `extra-args` and `log-file` are interpolated
+  VERBATIM into this action's `run:` block (that verbatim substitution is the
+  documented contract — quoting behaves as if the command were written inline
+  in the workflow). That makes them a script-injection surface: NEVER feed
+  untrusted text (PR titles, issue bodies, fork branch names, ...) into these
+  inputs. The Windows sibling action delivers its payload via environment
+  variables instead and does not have this surface.
+
 inputs:
   image:
     description: 'Container image reference to run.'

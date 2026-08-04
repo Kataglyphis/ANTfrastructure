@@ -22,16 +22,25 @@ on:
       - 'linux/scripts/01-core/versions.env'
       - '.github/workflows/windows-scripts.yml'
 
+permissions:
+  contents: read
+
+# One run per ref: a force-push supersedes the in-flight run instead of
+# burning Windows runner minutes next to it.
+concurrency:
+  group: windows-scripts-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-and-test:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
-        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Force -Scope CurrentUser
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
 
       # Parse gate is enforced; analyzer findings are advisory until the
       # backlog of findings across the 24 modules is triaged — then add
@@ -39,6 +48,15 @@ jobs:
       - name: Lint (parse gate + PSScriptAnalyzer)
         shell: pwsh
         run: pwsh -NoProfile -File windows/scripts/Invoke-Lint.ps1
+
+      # Hermetic Pester floor: the suites need Pester v5; the hosted image
+      # currently ships 5.9.0 (so this is a fast no-op-ish install), but
+      # runner-image updates have swapped preinstalled module versions before.
+      # Installing our own pinned floor keeps the test run independent of
+      # whatever the image happens to carry.
+      - name: Ensure Pester >= 5.7
+        shell: pwsh
+        run: Install-Module Pester -MinimumVersion 5.7 -Scope CurrentUser -Force -SkipPublisherCheck
 
       - name: Run test suites
         shell: pwsh

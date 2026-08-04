@@ -17,7 +17,7 @@ bash "${_SETUP_ROCM_DIR}/use-fast-ubuntu-mirror.sh"
 
 apt-get update && apt-get install -y --no-install-recommends wget gpg
 mkdir -p /etc/apt/keyrings
-wget -qO- https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg
+wget -q --tries=3 --waitretry=5 -O- https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg
 # ==========================================================================
 # HARDCODED amd64-ONLY: the ROCm apt line below pins `arch=amd64`, so this
 # AMD/MIGraphX layer can ONLY be built for linux/amd64.  AMD publishes no

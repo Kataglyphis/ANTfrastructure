@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # pre-commit — run CI-consistent checks before each commit.
 # Activate with: git config core.hooksPath .githooks
+#
+# Windows note: the preflight subset below runs Python-based checks with
+# plain `python3`, which on Windows hosts is often the Microsoft Store stub
+# (prints an install hint and exits non-zero under Git Bash). Point
+# PREFLIGHT_PYTHON at a real interpreter if needed, e.g.:
+#   PREFLIGHT_PYTHON="$HOME/.local/bin/python3.14.exe" git commit ...
+# or export it from your shell profile (see linux/scripts/preflight.sh).
 set -euo pipefail
 
 GREEN='\033[0;32m'
@@ -14,6 +21,20 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
 
 cd "$REPO_ROOT"
 
+# Collect staged files once, NUL-delimited so paths with spaces (or other
+# shell metacharacters) survive as single array elements — an unquoted
+# $STAGED word-split used to break on them.
+STAGED_SH=()
+STAGED_DF=()
+while IFS= read -r -d '' f; do
+  case "$f" in
+    *.sh) STAGED_SH+=("$f") ;;
+  esac
+  case "${f##*/}" in
+    Dockerfile*) STAGED_DF+=("$f") ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACM -z)
+
 # 1. Fast subset of the canonical gate list in linux/scripts/preflight.sh
 #    (version snapshot, ARG consistency, critical fixes, script COPY coverage).
 #    shellcheck runs below on staged files only; the full gate runs in CI.
@@ -21,33 +42,29 @@ echo "=== preflight subset ==="
 PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage \
   bash linux/scripts/preflight.sh && pass "preflight subset" || fail "preflight subset failed"
 
-# 4. Shell syntax + shellcheck gate on changed .sh files
+# 2. Shell syntax + shellcheck gate on changed .sh files
 echo ""
 echo "=== shell syntax (staged .sh files) ==="
-STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || true)
-if [ -n "$STAGED_SH" ]; then
-  bash -n $STAGED_SH && pass "staged shell scripts parse OK" || fail "shell syntax error in staged .sh files"
+if [ "${#STAGED_SH[@]}" -gt 0 ]; then
+  bash -n "${STAGED_SH[@]}" && pass "staged shell scripts parse OK" || fail "shell syntax error in staged .sh files"
   echo ""
   echo "=== shellcheck -S error (staged .sh files) ==="
-  # shellcheck disable=SC2086
-  bash linux/scripts/lint-shell.sh $STAGED_SH && pass "staged shellcheck gate" || fail "shellcheck -S error findings in staged .sh files"
+  bash linux/scripts/lint-shell.sh "${STAGED_SH[@]}" && pass "staged shellcheck gate" || fail "shellcheck -S error findings in staged .sh files"
 else
   pass "no staged .sh files to check"
 fi
 
-# 4b. Dockerfile lint on staged Dockerfiles (skips silently if the bootstrap
-#     cannot run, matching the sphinx block's tolerance below).
+# 3. Dockerfile lint on staged Dockerfiles (skips silently if the bootstrap
+#    cannot run, matching the sphinx block's tolerance below).
 echo ""
 echo "=== dockerfile lint (staged Dockerfiles) ==="
-STAGED_DF=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)Dockerfile[^/]*$' || true)
-if [ -n "$STAGED_DF" ]; then
-  # shellcheck disable=SC2086
-  bash linux/scripts/lint-dockerfiles.sh $STAGED_DF && pass "staged Dockerfile lint" || fail "hadolint findings in staged Dockerfiles"
+if [ "${#STAGED_DF[@]}" -gt 0 ]; then
+  bash linux/scripts/lint-dockerfiles.sh "${STAGED_DF[@]}" && pass "staged Dockerfile lint" || fail "hadolint findings in staged Dockerfiles"
 else
   pass "no staged Dockerfiles to check"
 fi
 
-# 5. Sphinx docs build (if deps are installed)
+# 4. Sphinx docs build (if deps are installed)
 echo ""
 echo "=== sphinx-build ==="
 if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then

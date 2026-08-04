@@ -759,7 +759,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/
     bash /opt/scripts/03-media/runtime/configure-runtime.sh && \
     bash /opt/scripts/03-media/runtime/repair-wheels.sh && \
     bash /opt/scripts/03-media/runtime/verify-wheels.sh && \
-    { uv pip install --no-deps /opt/wheels/*.whl || echo "WARNING: uv pip install of collected wheels failed (expected for cross-arch wheels)" >&2; } && \
+    { uv pip install --no-deps /opt/wheels/*.whl || { [ "${TARGET_ARCH:-amd64}" != "amd64" ] || { echo "ERROR: uv pip install of collected wheels failed on amd64 — native wheels must install" >&2; exit 1; }; echo "WARNING: uv pip install of collected wheels failed (tolerated for cross-arch ${TARGET_ARCH} wheels)" >&2; }; } && \
     bash /opt/scripts/03-media/runtime/validate-media-runtime.sh && \
     PYTHONPATH="$(echo /opt/opencv5/lib/python*/site-packages 2>/dev/null):${PYTHONPATH:-}" \
     bash /opt/scripts/packaging/smoke-media.sh

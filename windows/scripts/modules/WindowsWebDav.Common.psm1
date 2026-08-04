@@ -89,7 +89,10 @@ function Invoke-EarlyWebDavDownload {
   }
 
   Write-BuildLog -Context $Context -Message "DEBUG: Invoking early WebDAV download with: $($uvCmd.Source) run $earlyScript $WebDavHost $WebDavUser <redacted> $WebDavRemote $WebDavLocal --extension .pfx"
-  Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('run', $earlyScript, $WebDavHost, $WebDavUser, $WebDavPass, $WebDavRemote, $WebDavLocal, '--extension', '.pfx') -IgnoreExitCode
+  # -RedactParameterValues keeps the password out of Invoke-BuildExternal's own
+  # "CMD: ..." log line (which would otherwise print every parameter verbatim,
+  # defeating the <redacted> DEBUG line above).
+  Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('run', $earlyScript, $WebDavHost, $WebDavUser, $WebDavPass, $WebDavRemote, $WebDavLocal, '--extension', '.pfx') -IgnoreExitCode -RedactParameterValues @($WebDavPass)
 }
 
 Export-ModuleMember -Function @(

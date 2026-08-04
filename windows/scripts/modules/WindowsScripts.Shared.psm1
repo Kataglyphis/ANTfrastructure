@@ -485,7 +485,10 @@ function Resolve-LatestVersionTag {
             ForEach-Object { ($_ -split "`t")[1] } |
             Where-Object { $_ -and $_ -notmatch '\^\{\}$' } |
             ForEach-Object { $_ -replace '^refs/tags/', '' } |
-            Where-Object { $_ -match '^v?\d+(\.\d+)*$' } |
+            # At least one dot required: single-component release tags (e.g. 'v5')
+            # are not semver and are deliberately ignored - [version]'5' throws
+            # inside Sort-Object, which would violate the never-throws contract.
+            Where-Object { $_ -match '^v?\d+(\.\d+)+$' } |
             Sort-Object { [version]($_ -replace '^v', '') })
     if ($tags.Count -eq 0) { return '' }
     return $tags[-1]

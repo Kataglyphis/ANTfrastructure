@@ -23,7 +23,7 @@ case "${ARCH}" in
 esac
 KEYRING_PKG="cuda-keyring_1.1-1_all.deb"
 KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_CODENAME}/${CUDA_ARCH}/${KEYRING_PKG}"
-curl -fSsL "${KEYRING_URL}" -o "/tmp/${KEYRING_PKG}"
+curl -fSsL --retry 3 "${KEYRING_URL}" -o "/tmp/${KEYRING_PKG}"
 dpkg -i "/tmp/${KEYRING_PKG}"
 rm "/tmp/${KEYRING_PKG}"
 apt-get update -qq

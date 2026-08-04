@@ -71,14 +71,17 @@ _CTEST_RUN_BUILTIN_ARGS=(
   --output-on-failure
 )
 
+# NOTE: keep this heredoc free of apostrophes and inner single quotes:
+# ShellCheck 0.11 mis-parses ${VAR:-} expansions combined with apostrophes
+# inside heredocs (SC1073/SC1072 parser errors).
 ctest_run_usage() {
   cat <<EOF
 Usage: $(basename "$0") [options] [-- ctest args...]
 
-${CTEST_RUN_USAGE_INTRO:-Runs a CMake project's ctest suite.} Options:
+${CTEST_RUN_USAGE_INTRO:-Runs the ctest suite of a CMake project.} Options:
   --build-dir DIR          build tree to run ctest in (default: ${CTEST_RUN_DEFAULT_BUILD_DIR:-build})
-  --build-type CONFIG      value for 'ctest -C' (default: ${CTEST_RUN_DEFAULT_BUILD_TYPE:-Debug})
-  --ctest-exclude REGEX    value for 'ctest -E' (default: ${CTEST_RUN_DEFAULT_EXCLUDE:-<none>})
+  --build-type CONFIG      value for ctest -C (default: ${CTEST_RUN_DEFAULT_BUILD_TYPE:-Debug})
+  --ctest-exclude REGEX    value for ctest -E (default: ${CTEST_RUN_DEFAULT_EXCLUDE:-<none>})
   --vulkan-version VER     Vulkan SDK version to source
   --vulkan-setup-script P  explicit Vulkan setup-env.sh to source
   --vulkan-sdk DIR         Vulkan SDK root whose setup-env.sh is sourced

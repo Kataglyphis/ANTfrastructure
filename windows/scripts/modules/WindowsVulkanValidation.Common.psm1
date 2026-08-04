@@ -316,6 +316,11 @@ function Invoke-VulkanValidationTimedProcess {
             $process.WaitForExit()
             $exitCode = 124
         } else {
+            # Documented .NET race: WaitForExit(milliseconds) can return true
+            # before the process state (incl. ExitCode) is fully settled. The
+            # parameterless overload blocks until it is - call it before
+            # reading .ExitCode.
+            $process.WaitForExit()
             $exitCode = $process.ExitCode
         }
 

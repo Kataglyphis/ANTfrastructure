@@ -27,7 +27,13 @@ Set-StrictMode -Version Latest
 
 # Import shared helpers (ConvertFrom-VersionsEnv, Invoke-DownloadWithRetry).
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-Import-Module $sharedPath -Force
+# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
+# nested re-import rebinds the dependency into THIS module's private scope and
+# unloads the caller's top-level import — the PS module-scoping trap that broke
+# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
+# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
+# must Remove-Module/reimport manually; containers always start fresh.
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
 # The wasm features wgpu/naga-style codegen emits: bulk-memory,
 # nontrapping-float-to-int, sign-extension and simd instructions among them.

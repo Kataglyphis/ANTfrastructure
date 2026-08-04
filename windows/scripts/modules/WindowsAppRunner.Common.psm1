@@ -110,14 +110,22 @@ function Invoke-AppRun {
       & $EnvHook
     }
 
-    Set-Location -Path $WorkingDirectory
-    if ($null -ne $ExeArgs -and $ExeArgs.Count -gt 0) {
-      & $exePath @ExeArgs
-    } else {
-      & $exePath
+    # Push-/Pop-Location instead of a bare Set-Location: app-runner.sh runs in
+    # its own process, so its cd dies with the script - but this module runs in
+    # the CALLER'S session, where a bare Set-Location would permanently change
+    # the caller's working directory.
+    Push-Location -Path $WorkingDirectory
+    try {
+      if ($null -ne $ExeArgs -and $ExeArgs.Count -gt 0) {
+        & $exePath @ExeArgs
+      } else {
+        & $exePath
+      }
+      $exitCode = $LASTEXITCODE
+    } finally {
+      Pop-Location
     }
 
-    $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
       Write-Warning "Process failed with exit code $exitCode"
     }

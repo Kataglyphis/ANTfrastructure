@@ -87,7 +87,11 @@ function Expand-XmlTemplateTokens {
 
   $expanded = $Template
   foreach ($token in $TokenMap.Keys) {
-    $expanded = $expanded -replace $token, (ConvertTo-XmlEscapedText ([string]$TokenMap[$token]))
+    # Ordinal [string].Replace, NOT -replace: -replace treats the token as a
+    # regex and the value as a substitution template, so a value containing
+    # '$&' or '$1' (or a token containing regex metacharacters) would corrupt
+    # the output. Behavior is identical for the plain __TOKEN__ inputs used today.
+    $expanded = $expanded.Replace([string]$token, (ConvertTo-XmlEscapedText ([string]$TokenMap[$token])))
   }
 
   return $expanded

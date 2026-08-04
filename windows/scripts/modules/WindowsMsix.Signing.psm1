@@ -8,6 +8,23 @@ Set-StrictMode -Version Latest
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
+# Get-OrDefault (used by Invoke-MsixSign for the env-var fallbacks) lives in
+# WindowsConfig.Common. Without this import, Invoke-MsixSign hit
+# CommandNotFound inside its try block, the blanket catch degraded that to a
+# warning, and the package shipped silently UNSIGNED.
+if (-not (Get-Module -Name 'WindowsConfig.Common')) {
+  Import-Module (Join-Path $PSScriptRoot 'WindowsConfig.Common.psm1')
+}
+
+# Invoke-BuildExternal / Write-BuildLog* come from the sibling
+# WindowsBuild.Common module; without this import a standalone consumer hits
+# CommandNotFound at runtime. Guarded, WITHOUT -Force (repo-wide nested-import
+# rule, 2026-08-04): a forced nested re-import would pull a caller's top-level
+# import out of the global session state.
+if (-not (Get-Module -Name 'WindowsBuild.Common')) {
+  Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
+}
+
 function Test-Administrator {
   try {
     return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -99,7 +116,15 @@ function Invoke-MsixSign {
     } else {
       Write-BuildLogWarning -Context $Context -Message 'No .pfx found at repository root; MSIX will not be signed.'
     }
+  } catch [System.Management.Automation.CommandNotFoundException] {
+    # A missing function/command is a BUG (broken import graph), not a
+    # signing-environment condition - never swallow it into a warning, or the
+    # package ships silently unsigned.
+    throw
   } catch {
+    # Genuine signing failures stay best-effort by contract (matching the
+    # signtool-not-found and no-.pfx-found warning paths above): dev/CI builds
+    # without signing material still produce a usable, unsigned package.
     Write-BuildLogWarning -Context $Context -Message ("MSIX signing step failed: $($_.Exception.Message)")
   }
 }

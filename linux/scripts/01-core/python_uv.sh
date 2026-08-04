@@ -63,9 +63,27 @@ is_experimental_python() {
 }
 
 uv_ensure_installed() {
+  local uv_install_sh uv_install_sha
   if ! command -v uv >/dev/null 2>&1; then
     info "Installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # Download the installer to a file (never pipe curl into sh: a truncated
+    # stream would execute a partial script), then optionally pin it via the
+    # UV_INSTALL_SH_SHA256 env var / versions.env key (empty = skip; upstream
+    # rotates the script — see the key's comment in versions.env).
+    uv_install_sha="${UV_INSTALL_SH_SHA256:-}"
+    if [ -z "$uv_install_sha" ] && [ -f "$_MODULE_DIR/versions.env" ]; then
+      uv_install_sha="$(sed -n 's/^UV_INSTALL_SH_SHA256=//p' "$_MODULE_DIR/versions.env")"
+    fi
+    uv_install_sh="$(mktemp "${TMPDIR:-/tmp}/uv-install-XXXXXX.sh")"
+    curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$uv_install_sh" https://astral.sh/uv/install.sh
+    if [ -n "$uv_install_sha" ]; then
+      printf '%s  %s\n' "$uv_install_sha" "$uv_install_sh" | sha256sum -c - || {
+        rm -f "$uv_install_sh"
+        die "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)"
+      }
+    fi
+    sh "$uv_install_sh"
+    rm -f "$uv_install_sh"
     export PATH="$HOME/.local/bin:$PATH"
   fi
   info "uv version: $(uv --version)"

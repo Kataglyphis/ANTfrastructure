@@ -5,15 +5,23 @@ set -euo pipefail
 # order, so sibling paths like /opt/tvm-wheels vs /opt/tvm/lib make comm abort
 # with "file N is not in sorted order" and fail the whole check spuriously.
 export LC_ALL=C
-# verify-runtime-paths.sh - Verify that PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH
-# components in Dockerfiles match the canonical runtime-paths.env reference.
+# verify-runtime-paths.sh - Compare PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH
+# components in Dockerfiles against the canonical runtime-paths.env reference.
+#
+# ADVISORY ONLY — this script NEVER fails (always exits 0). Its extraction is
+# heuristic (awk over ENV blocks + token grep), which produces WARN lines even
+# on a healthy tree: paths composed from build ARGs are invisible to the
+# scrape, ${GCC_VERSION}-style refs may not expand outside the build, and
+# Dockerfile.package vs Dockerfile.media legitimately diverge in their /opt
+# inventories. Treat the output as a diff-review aid when touching ENV blocks,
+# not as a gate. (It previously carried an errors counter and an `exit 1`
+# branch that could never trigger — that pretend-gate has been removed.)
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 PATHS_ENV="${REPO_ROOT}/linux/scripts/04-runtime/runtime-paths.env"
 VERSIONS_ENV="${REPO_ROOT}/linux/scripts/01-core/versions.env"
-errors=0
 
-echo "=== Runtime paths consistency check ==="
+echo "=== Runtime paths consistency check (ADVISORY — never fails) ==="
 
 # Load version defaults from the single source of truth so variable references
 # (${GCC_VERSION}, ${OPENCV_OUTPUT_DIR}, etc.) can be expanded dynamically.
@@ -101,8 +109,4 @@ if [ -n "$media_only_opt" ]; then
   echo "  paths only in Dockerfile.media: $(echo "$media_only_opt" | tr '\n' ' ')"
 fi
 
-if [ "$errors" -gt 0 ]; then
-  echo "FAILED: ${errors} path consistency errors" >&2
-  exit 1
-fi
-echo "PASSED: runtime paths consistency OK"
+echo "ADVISORY: runtime paths comparison done (informational only — WARN lines above never gate)"

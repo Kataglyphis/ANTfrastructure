@@ -7,7 +7,13 @@ Set-StrictMode -Version Latest
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, ConvertTo-ParameterList, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-Import-Module $sharedPath -Force
+# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
+# nested re-import rebinds the dependency into THIS module's private scope and
+# unloads the caller's top-level import — the PS module-scoping trap that broke
+# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
+# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
+# must Remove-Module/reimport manually; containers always start fresh.
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
 # -- Logging primitives (module-internal; formerly WindowsLogging.Common.psm1, whose
 # only consumer was this module). Scripts use the Write-BuildLog* wrappers below. --
@@ -237,7 +243,13 @@ function Invoke-BuildExternal {
         [Parameter(Mandatory)]
         [string]$File,
         [object]$Parameters,
-        [switch]$IgnoreExitCode
+        [switch]$IgnoreExitCode,
+        # Secret VALUES (passwords, tokens) that must never reach the log: any
+        # parameter that exactly matches one of these strings is shown as
+        # '<redacted>' in the logged/thrown command line. Execution is
+        # unaffected - the real values are still passed to the process.
+        # Optional and additive: existing callers are unchanged.
+        [string[]]$RedactParameterValues
     )
 
     $parameterList = ConvertTo-ParameterList -Value $Parameters
@@ -247,7 +259,16 @@ function Invoke-BuildExternal {
     # 'Count' cannot be found on this object." when callers pass strings.
     $parameterList = @($parameterList)
 
-    $cmdLine = if ($parameterList -and $parameterList.Count) { "$File $($parameterList -join ' ')" } else { $File }
+    # Display copy of the parameter list for logging/error messages only.
+    $logParameterList = $parameterList
+    $secretValues = @($RedactParameterValues | Where-Object { -not [string]::IsNullOrEmpty($_) })
+    if ($secretValues.Count -gt 0) {
+        $logParameterList = @($parameterList | ForEach-Object {
+                if ($secretValues -ccontains $_) { '<redacted>' } else { $_ }
+            })
+    }
+
+    $cmdLine = if ($logParameterList -and $logParameterList.Count) { "$File $($logParameterList -join ' ')" } else { $File }
     Write-BuildLog -Context $Context -Message "CMD: $cmdLine"
 
     $previousErrorActionPreference = $ErrorActionPreference

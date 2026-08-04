@@ -19,7 +19,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "${REPO_ROOT}"
+cd "${REPO_ROOT}" || exit 1
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; BOLD='\033[1m'; NC='\033[0m'
 FAILED=()
@@ -32,7 +32,7 @@ PREFLIGHT_PYTHON="${PREFLIGHT_PYTHON:-python3}"
 # dies on those. Force UTF-8 mode (no-op on Linux).
 export PYTHONUTF8=1
 
-KNOWN_SLUGS=(shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
+KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths \
              dockerfile-lint workflow-lint android-parity script-tests)
 
@@ -73,6 +73,22 @@ run_check() {
     FAILED+=("${name}")
   fi
 }
+
+# 0. Working-tree CRLF guard: a *.sh that is LF in the index but CRLF in the
+#    working tree (e.g. a checkout under core.autocrlf=true) breaks bash inside
+#    the containers ("$'\r': command not found") long before any build runs.
+check_crlf_guard() {
+  local offenders
+  offenders="$(git ls-files --eol -- '*.sh' | awk -F'\t' '$1 ~ /w\/crlf/ {print $2}')"
+  if [ -n "${offenders}" ]; then
+    printf 'CRLF working-tree line endings detected in tracked *.sh file(s):\n'
+    printf '  %s\n' ${offenders}
+    printf 'Fix (re-materialize LF from the index): rm <file> && git checkout -- <file>\n'
+    return 1
+  fi
+  printf 'no w/crlf *.sh files in the working tree\n'
+}
+run_check crlf-guard "working-tree CRLF guard"    check_crlf_guard
 
 # 1. Shell lint gate (shellcheck -S error across all scripts).
 run_check shellcheck "shellcheck gate"            bash linux/scripts/lint-shell.sh

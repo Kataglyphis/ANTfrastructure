@@ -108,7 +108,8 @@ runs:
           $cores = [int]$env:RUN_IN_CONTAINER_CPUS
         } else {
           $cores = [int]$env:NUMBER_OF_PROCESSORS
-          if ($cores -lt 1) { $cores = 2 }
+          # Clamp to the documented minimum of 2 (also covers 0/unset).
+          if ($cores -lt 2) { $cores = 2 }
         }
         Write-Host "Runner logical processors: $cores (container gets --cpus $cores)"
 

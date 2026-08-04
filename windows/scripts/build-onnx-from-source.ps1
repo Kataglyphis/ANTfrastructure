@@ -324,7 +324,9 @@ if ($env:GPU_TYPE -eq 'nvidia') {
 
 # Strip MSVC-only flags from build.ninja
 Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
-    '--compiler-options /experimental:external\s*',
+    # [ \t]* not \s*: \s eats the line's own CR/LF when the flag terminates a
+    # line, merging it with the next ninja statement (probed 2026-08-04).
+    '--compiler-options /experimental:external[ \t]*',
     '(?<=\s)/experimental:external(?=\s)',
     '(?<=\s)-WX(?=\s)',
     '/arch:\S+',

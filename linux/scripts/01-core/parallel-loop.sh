@@ -18,7 +18,9 @@ run_parallel_arch_loop() {
   local arch running failed=0
   local _flagdir
   _flagdir="$(mktemp -d "${flagdir_prefix}.XXXXXX")"
-  trap "rm -rf ${_flagdir}" RETURN
+  # Single-quoted on purpose (SC2064): expand ${_flagdir} when the trap FIRES,
+  # not when it is set — the RETURN trap still sees the function's local.
+  trap 'rm -rf "${_flagdir}"' RETURN
   # Background workers are SUBSHELLS: variables they set (digest pins,
   # built-this-run flags) are silently lost to the parent. Publish the flag
   # dir so workers can persist small results as files, harvested after the

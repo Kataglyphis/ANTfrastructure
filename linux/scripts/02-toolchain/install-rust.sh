@@ -31,9 +31,28 @@ fi
 # Pin the toolchain: an unpinned `rustup | sh` installs TODAY's stable, so a
 # rebuild produced a different rustc/cargo than the shipped images (found in
 # the 2026-07 chain review). Pins live in versions.env; env wins if set.
-: "${RUST_VERSION:=1.96.0}"
-: "${CARGO_C_VERSION:=0.10.23}"
-curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION}"
+: "${RUST_VERSION:=1.97.1}"
+: "${CARGO_C_VERSION:=0.10.24}"
+
+# Download rustup-init to a file (never pipe curl into sh: a truncated stream
+# would execute a partial script), then optionally pin it: RUSTUP_INIT_SHA256
+# comes from the environment, falling back to the versions.env key when the
+# core mount is present. Empty = skip (upstream rotates the script; see the
+# key's comment in versions.env).
+if [ -z "${RUSTUP_INIT_SHA256:-}" ] && [ -f /opt/scripts/core/versions.env ]; then
+  RUSTUP_INIT_SHA256="$(sed -n 's/^RUSTUP_INIT_SHA256=//p' /opt/scripts/core/versions.env)"
+fi
+rustup_init="$(mktemp "${TMPDIR:-/tmp}/rustup-init-XXXXXX.sh")"
+curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "${rustup_init}" https://sh.rustup.rs
+if [ -n "${RUSTUP_INIT_SHA256:-}" ]; then
+  printf '%s  %s\n' "${RUSTUP_INIT_SHA256}" "${rustup_init}" | sha256sum -c - || {
+    echo "ERROR: rustup-init script does not match pinned RUSTUP_INIT_SHA256 (upstream rotated it, or tampering)" >&2
+    rm -f "${rustup_init}"
+    exit 1
+  }
+fi
+sh "${rustup_init}" -y --profile minimal --default-toolchain "${RUST_VERSION}"
+rm -f "${rustup_init}"
 rustc --version
 cargo --version
 

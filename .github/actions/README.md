@@ -25,8 +25,11 @@ individual removals never fail the job (`exit 0`).
 Prepares a Linux runner's toolchain PATH: cargo/rustup (installs a stable
 default toolchain when missing), the Vulkan SDK bin dir (input
 `vulkan-version` — pass it explicitly; the default can drift from
-ContainerHub's `versions.env`, which composite actions cannot read), plus
-packaging utilities. Optional: `run-setup-script: true` runs the consuming
+ContainerHub's `versions.env`, which composite actions cannot read, and has
+drifted before), plus packaging utilities. `require-rust` (default `'true'`)
+controls the rustc gate: with `'false'` the Rust toolchain block is skipped
+with a notice instead of failing, so uv-only consumers can use the action on
+runners without Rust. Optional: `run-setup-script: true` runs the consuming
 repo's `Scripts/Linux/setup-dependencies.sh` (skipped with a warning when
 absent); `install-uv: true` installs the Astral uv package manager.
 
@@ -36,6 +39,13 @@ Inputs: `image` (required), `script` (bash fragment, verbatim), `workdir`,
 `log-file` (tee target), `extra-args` (verbatim extra `docker run` args).
 Used by consumer repos to run their build/test steps inside the published
 `:latest-cross` images.
+
+> **Warning — script injection surface:** `script`, `extra-args` and
+> `log-file` are substituted **verbatim** into the action's `run:` block.
+> Never feed untrusted text (PR titles/bodies, fork branch names, issue
+> content, ...) into these inputs — it would execute as shell on the runner.
+> The Windows sibling delivers its payload via environment variables and does
+> not share this surface.
 
 ### `run-in-windows-container`
 Runs PowerShell inside a Windows container image. Exactly one of `command`

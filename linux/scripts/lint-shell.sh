@@ -6,20 +6,31 @@
 # multi-hour QEMU cross build. The tree is kept clean at -S error; warnings are
 # reported but non-fatal (48 files still carry warning-level lint).
 #
+# The shellcheck binary is bootstrapped on demand: PATH copy is used when
+# present, otherwise the pinned release (SHELLCHECK_VERSION / SHELLCHECK_*_SHA256 in
+# versions.env) is downloaded once into a version-keyed cache dir and
+# SHA256-verified — the same pattern as lint-dockerfiles.sh /
+# lint-workflows.sh. A failed bootstrap FAILS the gate (no silent skip: a
+# skipped lint gate reads as green while checking nothing).
+#
 # Usage:
 #   lint-shell.sh                 # check ALL bash under linux/{scripts,llm-stack,webserver} at -S error
 #   lint-shell.sh a.sh b.sh ...   # check only the given files (pre-commit staged mode)
 #   lint-shell.sh --warning ...   # additionally print warning-level findings (non-fatal)
 #
-# Exit status: non-zero iff any error-level finding exists (the gate).
+# Exit status: non-zero iff any error-level finding exists (the gate) or
+# bootstrapping shellcheck fails.
 set -euo pipefail
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
 pass() { printf "${GREEN}✓${NC} %s\n" "$1"; }
 fail() { printf "${RED}✗${NC} %s\n" "$1"; }
 info() { printf "  %s\n" "$1"; }
+err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
 SHOW_WARNINGS=0
 FILES=()
@@ -30,10 +41,62 @@ for arg in "$@"; do
   esac
 done
 
-if ! command -v shellcheck >/dev/null 2>&1; then
-  printf "${YELLOW}!${NC} shellcheck not installed — skipping (install shellcheck to enable this gate)\n"
-  exit 0
-fi
+# ---------------------------------------------------------------------------
+# Bootstrap of shellcheck (PATH copy preferred; else pinned, SHA-verified download)
+# ---------------------------------------------------------------------------
+shellcheck_asset_and_sha() {
+  case "$(uname -s)/$(uname -m)" in
+    Linux/x86_64|Linux/amd64)
+      printf 'shellcheck-%s.linux.x86_64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_X86_64_SHA256:-}" ;;
+    MINGW*/x86_64|MSYS*/x86_64|CYGWIN*/x86_64)
+      # The plain .zip release asset is the Windows binary (shellcheck.exe).
+      printf 'shellcheck-%s.zip %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_WINDOWS_SHA256:-}" ;;
+    *) return 1 ;;
+  esac
+}
+
+shellcheck_ensure() {
+  if command -v shellcheck >/dev/null 2>&1; then
+    SHELLCHECK_BIN="$(command -v shellcheck)"
+    return 0
+  fi
+
+  # shellcheck source=01-core/load-versions-env.sh
+  source "${CORE_DIR}/load-versions-env.sh"
+  load_versions_env "${CORE_DIR}/versions.env"
+  [ -n "${SHELLCHECK_VERSION:-}" ] || err "SHELLCHECK_VERSION is not set (versions.env not found?)."
+
+  local asset expected_sha cache_root archive bin_name
+  read -r asset expected_sha < <(shellcheck_asset_and_sha) \
+    || err "Unsupported platform for shellcheck bootstrap ($(uname -s)/$(uname -m)); install shellcheck on PATH instead."
+  [ -n "${expected_sha}" ] || err "No pinned shellcheck SHA256 for ${asset}; add one to versions.env."
+
+  cache_root="${SHELLCHECK_CACHE_DIR:-${TMPDIR:-/tmp}}/shellcheck-${SHELLCHECK_VERSION}"
+  bin_name="shellcheck"; case "${asset}" in *.zip) bin_name="shellcheck.exe" ;; esac
+  SHELLCHECK_BIN="${cache_root}/${bin_name}"
+
+  if [ ! -x "${SHELLCHECK_BIN}" ]; then
+    # shellcheck source=01-core/downloads.sh
+    source "${CORE_DIR}/downloads.sh" || err "downloads.sh not available for verified shellcheck fetch"
+    mkdir -p "${cache_root}" || err "Cannot create shellcheck cache directory ${cache_root}"
+    archive="${cache_root}/${asset}"
+    download_verified_file \
+      "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${asset}" \
+      "${expected_sha}" \
+      "${archive}" \
+      || err "Verified download of ${asset} failed (checksum mismatch or network error)."
+    case "${asset}" in
+      *.tar.xz) tar -xJf "${archive}" -C "${cache_root}" --strip-components=1 \
+                  "shellcheck-${SHELLCHECK_VERSION}/${bin_name}" || err "Extraction of ${asset} failed." ;;
+      *.zip)    unzip -oq "${archive}" "${bin_name}" -d "${cache_root}" || err "Extraction of ${asset} failed." ;;
+    esac
+    rm -f "${archive}"
+    chmod +x "${SHELLCHECK_BIN}"
+  fi
+}
+
+shellcheck_ensure
+info "shellcheck: ${SHELLCHECK_BIN} ($("${SHELLCHECK_BIN}" --version | sed -n 's/^version: //p'))"
 
 # Default target set: every tracked .sh under linux/scripts plus the runtime
 # service scripts (llm-stack, webserver) that ship their own entrypoints.
@@ -59,14 +122,14 @@ fi
 # --- The gate: -S error must be clean. ---
 error_files=()
 for f in "${CHECK[@]}"; do
-  shellcheck -S error "${f}" >/dev/null 2>&1 || error_files+=("${f}")
+  "${SHELLCHECK_BIN}" -S error "${f}" >/dev/null 2>&1 || error_files+=("${f}")
 done
 
 if [ "${#error_files[@]}" -gt 0 ]; then
   fail "shellcheck -S error found ${#error_files[@]} file(s) with error-level findings:"
   for f in "${error_files[@]}"; do
     info "${f#"${REPO_ROOT}"/}"
-    shellcheck -S error "${f}" 2>&1 | sed 's/^/    /' || true
+    "${SHELLCHECK_BIN}" -S error "${f}" 2>&1 | sed 's/^/    /' || true
   done
   exit 1
 fi
@@ -76,7 +139,7 @@ pass "shellcheck -S error clean (${#CHECK[@]} file(s))"
 if [ "${SHOW_WARNINGS}" -eq 1 ]; then
   warn_files=()
   for f in "${CHECK[@]}"; do
-    shellcheck -S warning "${f}" >/dev/null 2>&1 || warn_files+=("${f}")
+    "${SHELLCHECK_BIN}" -S warning "${f}" >/dev/null 2>&1 || warn_files+=("${f}")
   done
   if [ "${#warn_files[@]}" -gt 0 ]; then
     printf "${YELLOW}!${NC} %s file(s) carry warning-level findings (non-fatal):\n" "${#warn_files[@]}"

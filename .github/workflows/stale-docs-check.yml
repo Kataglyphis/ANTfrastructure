@@ -7,18 +7,24 @@ on:
     - cron: "0 6 * * 1"  # every Monday 06:00 UTC
   workflow_dispatch:       # manual trigger
 
+# The github-script step files issues; the default token can be repo-configured
+# read-only, which would 403 the issue creation.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   stale-docs:
     name: Check for stale docs
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
       - name: Install Python
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
 
@@ -32,7 +38,7 @@ jobs:
 
       - name: Create issue if stale
         if: steps.check.outcome != 'success'
-        uses: actions/github-script@v9.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const title = '📋 Stale docs detected — run sync_versions.py --write';
