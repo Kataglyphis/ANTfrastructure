@@ -120,7 +120,18 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 Assert-ContainerCommandAvailable -Name 'git' | Out-Null
 Assert-ContainerCommandAvailable -Name 'scoop' | Out-Null
 foreach ($bucket in @('main', 'extras', 'versions')) {
-    Invoke-ScoopStep -Description "scoop bucket add $bucket" -Command { scoop bucket add $bucket }.GetNewClosure()
+    # NOT via Invoke-ScoopStep: `scoop bucket add` exits 2 when the bucket
+    # already exists (scoop's own installer pre-adds `main`), which the strict
+    # gate turned fatal on 2026-08-05 (first hard failure of the hardened
+    # base rebuild). Tolerate exactly that case; every real failure (bucket
+    # repo clone error, network) still throws.
+    Write-Host "==> scoop bucket add $bucket"
+    $global:LASTEXITCODE = 0
+    $bucketOut = @(scoop bucket add $bucket 2>&1)
+    $bucketOut | ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0 -and -not ($bucketOut -match 'already exists')) {
+        throw "scoop bucket add $bucket failed (exit code $LASTEXITCODE)"
+    }
 }
 Install-ScoopPackage -Package 'main/7zip'
 Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { scoop config use_external_7zip true }
