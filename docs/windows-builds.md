@@ -187,10 +187,11 @@ difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the heavy
 **This is the lane to use from 2026-08 on** — full host CPUs on every stage,
 process-isolated layer commits, and real per-stage layer caching, with the
 docker-classic run+commit lane kept as the always-working fallback. **Status
-2026-08-04: an OPEN snapshotter defect (`ExportLayer 0x3`, see the Roadmap
-section's OPEN DEFECT entry) blocks the GenAI/OpenCV/TVM layer commits on this
-lane; base/sdk/toolchain/ONNX/LiteRT export green, and the classic lane builds
-the complete chain in the meantime.** Probes on
+2026-08-04 (evening): GREEN end-to-end** — the host snapshotter defect
+(`ExportLayer 0x3`, full writeup in the Roadmap section's entry) is
+neutralized by the warm/materialize solve pattern; `bk-winamd64` builds in
+~44 min hot, and heavy RUN steps bind-mount their per-file script closures
+instead of inheriting COPY layers. Probes on
 2026-08-03 established that BOTH docker-classic limits are absent on the
 buildkitd+containerd path on this same host (and the chain was then rebuilt
 from base on this lane the same day — VS2026, CUDA, CPython and the media
