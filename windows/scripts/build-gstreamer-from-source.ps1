@@ -66,9 +66,20 @@ Import-Module $modulePath -Force
 $sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 Import-Module $sourceBuildModule -Force
-# (The historical "re-import Shared LAST" workaround is gone: every module's
-# nested Shared import is now guarded and un-Forced, so the top-level import
-# above survives — the scoping trap that required the double import is closed.)
+
+# Re-import Shared LAST — REINSTATED 2026-08-05 after a live failure. The
+# module-side guards (all nested module imports are un-Forced now) are NOT the
+# whole story: Import-CanonicalVersions `&`-invokes load-versions.ps1 FROM
+# MODULE SCOPE, and that script's own `Import-Module Shared -Force` unloads
+# the top-level Shared import (probed: caller-visible Resolve-DirectoryPath
+# goes CommandNotFound after the call — cost the merge-warm solve on
+# 2026-08-05). This script is the only one calling Shared exports directly at
+# top level after versions loading, hence the local re-import. ROOT FIX (make
+# load-versions.ps1's import guarded/un-Forced) is deferred: that file is
+# bind-mounted into every upstream build RUN, and editing it mid-chain would
+# re-pay the whole media chain — bundle it with the next planned rebuild,
+# then this block can go again.
+Import-Module $sharedPath -Force
 
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 

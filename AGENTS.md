@@ -269,6 +269,17 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   Directory.Build.props lost its XML attribute quotes → MSB4024). Use single
   quotes / `''`-doubling / string concatenation instead; XML attributes may
   legally use single quotes.
+- **`Import-Module X -Force` is safe ONLY at ENTRY-script top level — never in
+  a module, and never in a script that gets `&`-invoked FROM module scope.**
+  A forced re-import from module context unloads the caller's top-level copy
+  and rebinds it into the module's private session state (probed 2026-08-05:
+  `load-versions.ps1`'s `Import-Module Shared -Force`, run via
+  Import-CanonicalVersions, made `Resolve-DirectoryPath` CommandNotFound at
+  gstreamer top level and killed the merge-warm solve). Nested imports use the
+  guarded form `if (-not (Get-Module -Name 'X')) { Import-Module $path }`.
+  load-versions.ps1 still carries the -Force (bind-mounted into every build
+  RUN — fixing it mid-chain re-pays the media chain); until the next planned
+  rebuild bundles that root fix, build-gstreamer re-imports Shared LAST.
 - **Never splat a string ARRAY containing `-Param`-shaped tokens onto a
   PowerShell script/function — array splatting binds strictly BY POSITION.**
   `& $script @('-ResumeFrom','OpenCV')` delivers `-ResumeFrom` as the VALUE of
