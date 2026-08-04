@@ -119,19 +119,19 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 ) | Out-Null
 Assert-ContainerCommandAvailable -Name 'git' | Out-Null
 Assert-ContainerCommandAvailable -Name 'scoop' | Out-Null
+# Buckets: `scoop bucket add` exits 2 when the bucket already exists — and
+# scoop's own installer pre-adds `main`, so that is the NORMAL state. The
+# strict gate turned it fatal (2026-08-05), and output-sniffing for the WARN
+# text proved unreliable (the child shim's warning bypasses 2>&1 capture).
+# Deterministic check instead: a bucket IS a directory under <scoop>\buckets —
+# skip the add when it exists, gate strictly when we genuinely add.
+$scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
 foreach ($bucket in @('main', 'extras', 'versions')) {
-    # NOT via Invoke-ScoopStep: `scoop bucket add` exits 2 when the bucket
-    # already exists (scoop's own installer pre-adds `main`), which the strict
-    # gate turned fatal on 2026-08-05 (first hard failure of the hardened
-    # base rebuild). Tolerate exactly that case; every real failure (bucket
-    # repo clone error, network) still throws.
-    Write-Host "==> scoop bucket add $bucket"
-    $global:LASTEXITCODE = 0
-    $bucketOut = @(scoop bucket add $bucket 2>&1)
-    $bucketOut | ForEach-Object { Write-Host $_ }
-    if ($LASTEXITCODE -ne 0 -and -not ($bucketOut -match 'already exists')) {
-        throw "scoop bucket add $bucket failed (exit code $LASTEXITCODE)"
+    if (Test-Path (Join-Path $scoopRoot "buckets\$bucket")) {
+        Write-Host "==> scoop bucket add $bucket -- already present, skipped"
+        continue
     }
+    Invoke-ScoopStep -Description "scoop bucket add $bucket" -Command { scoop bucket add $bucket }.GetNewClosure()
 }
 Install-ScoopPackage -Package 'main/7zip'
 Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { scoop config use_external_7zip true }
