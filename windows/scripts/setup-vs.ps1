@@ -218,6 +218,14 @@ try {
     $vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $script:VsMajor
     if ($vsBuildToolsRoot) {
         Write-Host "VsDevCmd found ($vsBuildToolsRoot)."
+        # Success-path scrub: the installer leaves dd_setup_* / *vs_installer*.log
+        # behind in $TempDir, and they would otherwise ride along in the committed
+        # layer. Failure paths deliberately KEEP them — they are the evidence
+        # Write-InstallerLogDump prints (same pattern as preserving the installer).
+        Get-ChildItem -Path $TempDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'dd_setup_*' -or $_.Name -like '*vs_installer*.log' } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+        Write-Host 'Removed VS installer logs (dd_setup_* / *vs_installer*.log) from the success-path layer.'
     } else {
         Write-Host 'VsDevCmd not found -- printing logs.'
         Write-InstallerLogDump -TempDir $TempDir

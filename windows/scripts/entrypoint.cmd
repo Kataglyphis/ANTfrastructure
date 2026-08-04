@@ -5,7 +5,12 @@ rem avoids the exec-form quoting hell around the spaces in the VS install path.
 rem VS major from the baked VISUAL_STUDIO_VERSION Machine env (load-versions.ps1 /
 rem versions.env); fall back to 18 for images from older bases without the key.
 if not defined VISUAL_STUDIO_VERSION set VISUAL_STUDIO_VERSION=18
-call "C:\Program Files (x86)\Microsoft Visual Studio\%VISUAL_STUDIO_VERSION%\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=amd64 >nul
+rem Two-root probe, mirroring Resolve-VsBuildToolsRoot (WindowsContainerImage.Common.psm1):
+rem VS Build Tools can land under either Program Files root -- prefer the 64-bit
+rem root, fall back to (x86). Hardcoding only (x86) broke 64-bit-rooted installs.
+set "VSDEVCMD=C:\Program Files (x86)\Microsoft Visual Studio\%VISUAL_STUDIO_VERSION%\BuildTools\Common7\Tools\VsDevCmd.bat"
+if exist "%ProgramFiles%\Microsoft Visual Studio\%VISUAL_STUDIO_VERSION%\BuildTools\Common7\Tools\VsDevCmd.bat" set "VSDEVCMD=%ProgramFiles%\Microsoft Visual Studio\%VISUAL_STUDIO_VERSION%\BuildTools\Common7\Tools\VsDevCmd.bat"
+call "%VSDEVCMD%" -arch=amd64 >nul
 rem Fail loudly if the VS env did not load -- otherwise every downstream build fails
 rem confusingly with missing cl/link/msbuild instead of one clear message.
 if errorlevel 1 (echo [entrypoint] ERROR: VsDevCmd.bat failed with errorlevel %errorlevel% & exit /b 1)

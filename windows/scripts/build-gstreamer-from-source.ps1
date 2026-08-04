@@ -66,12 +66,9 @@ Import-Module $modulePath -Force
 $sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 Import-Module $sourceBuildModule -Force
-
-# Re-import Shared LAST: the nested `Import-Module ...Shared -Force` inside the two
-# modules above unloads the top-level Shared import (PS 5.1 module scoping) and
-# rebinds it into their private scopes, making Resolve-DirectoryPath & friends
-# invisible to this script. Verified in PS 5.1.
-Import-Module $sharedPath -Force
+# (The historical "re-import Shared LAST" workaround is gone: every module's
+# nested Shared import is now guarded and un-Forced, so the top-level import
+# above survives — the scoping trap that required the double import is closed.)
 
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
@@ -165,7 +162,6 @@ try {
     $env:PATH = "$pythonScripts;$env:PATH"
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
-    $script:mesonExe = $mesonExe
 
     # ---- 3. set clang-cl as the compiler ----
     log 'Setting CC/CXX to clang-cl...'
@@ -226,8 +222,12 @@ try {
         Remove-Item $tarFile -Force
     }
     Remove-Item $tarballPath -Force
-    # Locate the actual GStreamer source dir (skip cpython/)
-    $gstDirs = @(Get-ChildItem -Path $resolvedSrcDir -Directory -Filter 'gstreamer*')
+    # Locate the actual GStreamer source dir (skip cpython/). Require a
+    # meson.build at the candidate's root: with -KeepBuildArtifacts a stale
+    # sibling like gstreamer-old\ can survive here, and a bare name-prefix
+    # match would let it win over the freshly extracted tree.
+    $gstDirs = @(Get-ChildItem -Path $resolvedSrcDir -Directory -Filter 'gstreamer*' |
+        Where-Object { Test-Path (Join-Path $_.FullName 'meson.build') })
     if ($gstDirs.Count -ge 1) {
         $gstSrcDir = $gstDirs[0].FullName
         log "Source root: $gstSrcDir"
@@ -587,6 +587,14 @@ int _isatty(int);
     log "FATAL ERROR: $($_.Exception.Message)"
     if ($_.Exception.InnerException) {
         log "Inner: $($_.Exception.InnerException.Message)"
+    }
+    # Position + stack: without these a 60-min meson run died with a bare
+    # message and no line number to start from.
+    if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
+        log "Position: $($_.InvocationInfo.PositionMessage)"
+    }
+    if ($_.ScriptStackTrace) {
+        log "ScriptStackTrace: $($_.ScriptStackTrace)"
     }
     log "See structured log: $($logContext.StructuredLogFile)"
     exit 2

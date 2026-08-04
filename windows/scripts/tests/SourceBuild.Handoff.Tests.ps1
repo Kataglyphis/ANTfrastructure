@@ -43,6 +43,39 @@ Describe 'Export/Import-BuildHandoff round trip' {
         }
     }
 
+    It 'recreates the missing parent directory chain when the whole subtree is gone' {
+        Invoke-InTestDir { param($dir)
+            # Pins the bsdtar workaround in Import-BuildHandoff: the tar holds
+            # FILE entries only, and bsdtar's Windows long-path mode does NOT
+            # create missing parent chains — the import must pre-create every
+            # directory itself. The round-trip case above deletes only files
+            # (sub\ survives), so it can never catch a regression here.
+            $server = Join-Path $dir 'srv'
+            New-Item -ItemType Directory -Path (Join-Path $server 'bkhandoff') -Force | Out-Null
+            $endpoint = 'file:///' + ($server -replace '\\', '/')
+
+            $root = Join-Path $dir 'rootB'
+            $deepFile    = Join-Path $root 'sub\deep\nested.txt'
+            $shallowFile = Join-Path $root 'sub\shallow.txt'
+            New-Item -ItemType Directory -Path (Join-Path $root 'sub\deep') -Force | Out-Null
+            Set-Content $deepFile 'deep-payload'
+            Set-Content $shallowFile 'shallow-payload'
+
+            Export-BuildHandoff -Since (Get-Date).AddMinutes(-5) -Name 'wbt-tree' -Endpoint $endpoint -Roots @($root)
+
+            # Delete the WHOLE subtree — a fresh materialize container has no
+            # C:\runtime at all, so no parent of any tar entry exists.
+            Remove-Item $root -Recurse -Force
+            Assert-False (Test-Path $root) 'precondition: the entire root subtree is gone'
+
+            Import-BuildHandoff -Name 'wbt-tree' -Endpoint $endpoint
+            Assert-True (Test-Path $deepFile) 'import recreated the multi-level parent chain for the deep file'
+            Assert-Equal 'deep-payload' (Get-Content $deepFile -Raw).Trim() 'deep file content survived'
+            Assert-True (Test-Path $shallowFile) 'sibling at a shallower depth was restored too'
+            Assert-Equal 0 $LASTEXITCODE 'import clears the ambient exit code'
+        }
+    }
+
     It 'throws when there is nothing to hand off' {
         Invoke-InTestDir { param($dir)
             $root = Join-Path $dir 'emptyRoot'

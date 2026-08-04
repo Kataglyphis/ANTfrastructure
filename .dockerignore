@@ -59,3 +59,8 @@ sphinx-kataglyphis-theme/
 windows/scripts/rust/
 windows/scripts/python/
 windows/scripts/certificates/
+
+# DocumANTation submodule (~9 MB): built standalone from its own Dockerfile,
+# never COPY'd by any chain Dockerfile — keep it out of every root context
+# upload (~9 per full classic run).
+external/

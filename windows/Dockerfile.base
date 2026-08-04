@@ -111,21 +111,21 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
 
 ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
 
-# Tail scripts land here (not at the top) so editing them only rebuilds from this
-# point. verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
-# matched exactly this one file, but a future verify-* script would have silently
-# busted the layers above).
+# Tail scripts land here (not at the top) so editing them only rebuilds from
+# this point — and the EXPENSIVE one (rustup + frb-codegen, ~30 min) sits
+# FIRST so edits to the cheap assertion/config scripts below never re-pay it
+# (previously verify-toolchain shared the rust COPY+RUN and every tweak to the
+# assertion list cost a full rust reinstall).
+COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
+# verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
+# matched exactly this one file, but a future verify-* script would have
+# silently busted the layers above). Pure assertion pass + the tiny
+# finalize config step share one RUN (125-layer budget); both are seconds.
 COPY windows\scripts\verify-toolchain.ps1 `
-     windows\scripts\setup-rust-toolchain.ps1 `
      windows\scripts\finalize-container.ps1 `
      C:\temp\scripts\
-# verify-toolchain is a pure assertion pass (no filesystem mutation) — merged
-# into the rust RUN so it doesn't spend one of the 125 layers on an empty
-# layer. finalize-container stays separate: it sets image-wide git/registry
-# config (safe.directory, longpaths) and its own cache boundary keeps a
-# config tweak from re-paying the rust toolchain install above.
-RUN & 'C:\temp\scripts\verify-toolchain.ps1'; & 'C:\temp\scripts\setup-rust-toolchain.ps1'
-RUN & 'C:\temp\scripts\finalize-container.ps1'
+RUN & 'C:\temp\scripts\verify-toolchain.ps1'; & 'C:\temp\scripts\finalize-container.ps1'
 
 # Metadata-only: lives at the tail so a maintainer/label tweak never rebuilds
 # anything above it (it used to sit ABOVE the VS Build Tools layer).

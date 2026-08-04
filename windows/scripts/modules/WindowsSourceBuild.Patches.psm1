@@ -10,8 +10,11 @@ Set-StrictMode -Version Latest
 #requires -Version 7.0
 
 
+# Guarded, WITHOUT -Force (repo-wide nested-import rule): a forced nested
+# re-import rebinds Shared into this module's private scope and unloads the
+# caller's top-level import (the PS module-scoping trap).
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-Import-Module $sharedPath -Force
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
 function Edit-CppKeywordAlternatives {
     param(
@@ -34,12 +37,23 @@ function Update-NinjaFile {
         [string[]]$StripPatterns = @()
     )
     if (-not (Test-Path $NinjaFile)) { return }
-    $text = [System.IO.File]::ReadAllText($NinjaFile)
-    $original = $text
-    foreach ($pattern in $StripPatterns) {
-        $text = $text -replace $pattern, ''
+    $original = [System.IO.File]::ReadAllText($NinjaFile)
+    # Line-scoped: strip patterns + collapse the double-space residue ONLY on
+    # lines a pattern actually changed. The old global '  +' -> ' ' collapse
+    # rewrote every multi-space run in build.ninja (paths with consecutive
+    # spaces, aligned comments) — latent breakage far beyond the stripped flags.
+    $lines = $original -split '(?<=\n)'
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        $stripped = $line
+        foreach ($pattern in $StripPatterns) {
+            $stripped = $stripped -replace $pattern, ''
+        }
+        if ($stripped -ne $line) {
+            $lines[$i] = $stripped -replace '  +', ' '
+        }
     }
-    $text = $text -replace '  +', ' '
+    $text = -join $lines
     if ($text -ne $original) {
         [System.IO.File]::WriteAllText($NinjaFile, $text)
         Write-Host "Patched build.ninja for clang-cl compatibility: $NinjaFile"
@@ -100,8 +114,13 @@ function Invoke-SourcePatch {
         }
         $null = & $forwardCheck
         if ($LASTEXITCODE -eq 0) {
-            $null = & $applyPatch
-            if ($LASTEXITCODE -ne 0) { throw "$tool apply failed (exit $LASTEXITCODE): $PatchFile" }
+            # Capture the --verbose output it explicitly requests: on failure
+            # the hunk-level detail is the diagnosis, not the exit code.
+            $applyOut = @(& $applyPatch)
+            if ($LASTEXITCODE -ne 0) {
+                $tail = ($applyOut | Select-Object -Last 10) -join [Environment]::NewLine
+                throw "$tool apply failed (exit $LASTEXITCODE): $PatchFile`n$tail"
+            }
             Write-Host "  [OK] $Description applied via $tool"
             return
         }

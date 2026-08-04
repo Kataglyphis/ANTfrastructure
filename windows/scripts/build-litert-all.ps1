@@ -21,10 +21,15 @@ param(
     [string]$ScriptDir  = 'C:\temp\scripts',
     # Resume inside a preserved container after a mid-chain failure: skip the
     # stages before the named one (see build.ps1's recovery recipe on failure).
-    [string]$ResumeFrom = ''
+    [string]$ResumeFrom = '',
+    # Stop AFTER the named stage (inclusive) — same chain-partition contract
+    # as build-media-core-all.ps1 / build-media-tvm-all.ps1 (was asymmetrically
+    # missing here).
+    [string]$Until = ''
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $ProgressPreference    = 'SilentlyContinue'
 
 Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -Force
@@ -36,7 +41,7 @@ $stages = @(
     @{ Name = 'LiteRT-LM'; Script = 'build-litert-lm-from-source.ps1'; SourceDir = 'C:\temp\litert-lm-src' }
 )
 
-Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom
+Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom -Until $Until
 
 
 Write-Host "`n=== media-litert chain completed ==="

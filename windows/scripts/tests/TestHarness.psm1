@@ -29,12 +29,18 @@ function It {
     param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][scriptblock]$Body)
     try {
         & $Body
-        [void]$script:Results.Add([pscustomobject]@{ Group = $script:CurrentGroup; Name = $Name; Ok = $true; Err = $null })
+        [void]$script:Results.Add([pscustomobject]@{ Group = $script:CurrentGroup; Name = $Name; Ok = $true; Err = $null; Stack = $null })
         Write-Host "  [ ok ] $Name" -ForegroundColor DarkGreen
     } catch {
-        [void]$script:Results.Add([pscustomobject]@{ Group = $script:CurrentGroup; Name = $Name; Ok = $false; Err = $_.Exception.Message })
+        # ScriptStackTrace pinpoints the failing Assert-* call site (file:line);
+        # the exception message alone only says WHAT failed, not WHERE.
+        $stack = $_.ScriptStackTrace
+        [void]$script:Results.Add([pscustomobject]@{ Group = $script:CurrentGroup; Name = $Name; Ok = $false; Err = $_.Exception.Message; Stack = $stack })
         Write-Host "  [FAIL] $Name" -ForegroundColor Red
         Write-Host "         $($_.Exception.Message)" -ForegroundColor Red
+        foreach ($frame in @($stack -split "`r?`n")) {
+            if ($frame) { Write-Host "         $frame" -ForegroundColor DarkGray }
+        }
     }
 }
 
@@ -63,10 +69,21 @@ function Assert-Match {
     if ("$Actual" -notmatch $Pattern) { throw "Assert-Match: [$Actual] does not match /$Pattern/. $Message" }
 }
 function Assert-Throws {
-    param([Parameter(Mandatory)][scriptblock]$Body, [string]$Message = '')
+    # -MessagePattern (optional): the thrown exception's message must ALSO match
+    # this regex — pins WHICH failure fired, not just that something threw.
+    # Absent, the behavior is unchanged (any exception passes).
+    param(
+        [Parameter(Mandatory)][scriptblock]$Body,
+        [string]$Message = '',
+        [string]$MessagePattern = ''
+    )
     $threw = $false
-    try { & $Body } catch { $threw = $true }
+    $caught = $null
+    try { & $Body } catch { $threw = $true; $caught = $_.Exception.Message }
     if (-not $threw) { throw "Assert-Throws: expected an exception but none was thrown. $Message" }
+    if ($MessagePattern -and ("$caught" -notmatch $MessagePattern)) {
+        throw "Assert-Throws: exception message [$caught] does not match /$MessagePattern/. $Message"
+    }
 }
 
 # Run $Body with the given env vars set, restoring (or removing) each afterwards.

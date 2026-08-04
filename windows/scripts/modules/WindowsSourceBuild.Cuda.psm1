@@ -10,8 +10,11 @@ Set-StrictMode -Version Latest
 #requires -Version 7.0
 
 
+# Guarded, WITHOUT -Force (repo-wide nested-import rule): a forced nested
+# re-import rebinds Shared into this module's private scope and unloads the
+# caller's top-level import (the PS module-scoping trap).
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-Import-Module $sharedPath -Force
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
 function Get-CudaRoot {
     if ($env:CUDA_ROOT -and (Test-Path $env:CUDA_ROOT)) { return $env:CUDA_ROOT }

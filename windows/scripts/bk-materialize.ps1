@@ -16,8 +16,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
-Import-Module (Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+# No -DisableNameChecking: every exported function uses an approved verb (the
+# three build-*-all wrappers import this module bare and warn-free).
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1') -Force
 Import-BuildHandoff -Name $Name
 if ($Scrub) { Clear-BuildScratch }
 

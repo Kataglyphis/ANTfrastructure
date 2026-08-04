@@ -478,7 +478,11 @@ function Resolve-LatestVersionTag {
     #>
     param([string[]]$LsRemoteOutput)
     if (-not $LsRemoteOutput) { return '' }
-    $tags = @($LsRemoteOutput | ForEach-Object { ($_ -split "`t")[1] } |
+    # Tab filter FIRST: a tab-less line (warning banner, blank) would make the
+    # [1] index out-of-bounds — a StrictMode throw that violates the documented
+    # "never throws" contract.
+    $tags = @($LsRemoteOutput | Where-Object { $_ -match "`t" } |
+            ForEach-Object { ($_ -split "`t")[1] } |
             Where-Object { $_ -and $_ -notmatch '\^\{\}$' } |
             ForEach-Object { $_ -replace '^refs/tags/', '' } |
             Where-Object { $_ -match '^v?\d+(\.\d+)*$' } |

@@ -1,6 +1,7 @@
-# Tests for Invoke-SourceBuildChain — the shared *-all.ps1 orchestrator loop (media-core,
-# media-litert). A regression here breaks the run+commit chains: wrong stage order, a
-# swallowed non-zero stage exit, or a stage running after an earlier failure.
+# Tests for Invoke-SourceBuildChain — the shared *-all.ps1 orchestrator loop driving all
+# three media branches (media-core, media-litert, media-tvm) and the BK lane's split
+# layers (-StartAt/-Until). A regression here breaks the run+commit chains: wrong stage
+# order, a swallowed non-zero stage exit, or a stage running after an earlier failure.
 # Invoke-InTestDir zeroes $LASTEXITCODE, isolating each case from prior native exits.
 
 Describe 'Invoke-SourceBuildChain' {

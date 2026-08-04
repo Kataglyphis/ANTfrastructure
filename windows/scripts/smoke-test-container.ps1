@@ -31,6 +31,12 @@
 
 param(
     [switch]$SkipCudaTests,
+    # Callers that KNOW the image is on the nvidia lane pass this to make a
+    # missing CUDA_ROOT a loud FAILURE instead of a silent skip: gating the CUDA
+    # section on $script:gpuNvidia fixed CPU-only images, but weakened one case
+    # — an nvidia image that LOST its CUDA_ROOT env now skips instead of failing.
+    # Default off = exactly the previous behavior.
+    [switch]$ExpectGpu,
     [switch]$ExitOnFirstFailure
 )
 
@@ -603,8 +609,12 @@ int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
     } else {
         Skip-Test 'cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)'
     }
+} elseif ($ExpectGpu) {
+    # -ExpectGpu: the caller asserts this is an nvidia-lane image, so a missing
+    # CUDA_ROOT (or -SkipCudaTests) is a real defect here, not a CPU-only lane.
+    Assert-Test -Name 'CUDA section runs (-ExpectGpu)' -Condition { $false } -FailMessage 'caller passed -ExpectGpu but CUDA_ROOT is not set (or -SkipCudaTests was passed) -- nvidia image lost its baked CUDA env?'
 } else {
-    Skip-Test 'CUDA/cuDNN tests skipped (-SkipCudaTests, or CPU-only image without CUDA_ROOT)'
+    Skip-Test 'CUDA/cuDNN tests skipped (-SkipCudaTests, or CPU-only image without CUDA_ROOT; pass -ExpectGpu to fail loudly instead when the image should be on the nvidia lane)'
 }
 
 # ============================================================================

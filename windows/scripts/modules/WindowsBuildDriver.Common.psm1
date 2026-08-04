@@ -332,7 +332,7 @@ function Assert-SccacheEndpoint {
     $compileStages = @('media')
     if ($NoSccache -or @($Stages | Where-Object { $compileStages -contains $_ }).Count -eq 0) { return }
     if ([string]::IsNullOrWhiteSpace($SccacheEndpoint)) {
-        throw ('sccache is required for the toolchain/media stages (the only cross-attempt compile cache). ' +
+        throw ('sccache is required for the media stage (the only cross-attempt compile cache). ' +
             'One-time host setup: scoop install dufs; mkdir C:\sccache-cache; dufs C:\sccache-cache -A -p 5000 — then pass ' +
             '-SccacheEndpoint http://<host-lan-ip>:5000 or set SCCACHE_WEBDAV_ENDPOINT machine-wide. ' +
             'Pass -NoSccache only for a deliberate cache-less build.')

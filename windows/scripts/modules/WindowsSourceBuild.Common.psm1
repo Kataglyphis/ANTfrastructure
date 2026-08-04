@@ -6,21 +6,27 @@
 Set-StrictMode -Version Latest
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-Import-Module $sharedPath -Force
+# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
+# nested re-import rebinds the dependency into THIS module's private scope and
+# unloads the caller's top-level import — the PS module-scoping trap that broke
+# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
+# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
+# must Remove-Module/reimport manually; containers always start fresh.
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
 # Load sub-modules for patch and GPU utilities (split out to reduce this module's size).
 $patchesPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Patches.psm1'
 $cudaPath    = Join-Path $PSScriptRoot 'WindowsSourceBuild.Cuda.psm1'
 $nativePath  = Join-Path $PSScriptRoot 'WindowsNative.Common.psm1'
-if (Test-Path $patchesPath) { Import-Module $patchesPath -Force }
-if (Test-Path $cudaPath)    { Import-Module $cudaPath -Force }
+if ((Test-Path $patchesPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Patches')) { Import-Module $patchesPath }
+if ((Test-Path $cudaPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Cuda')) { Import-Module $cudaPath }
 # Canonical stderr-shield for native calls (Invoke-ShieldedNative) — imported
 # and re-exported here so every source-build script gets it with its usual
 # SourceBuild.Common import. Ship WindowsNative.Common.psm1 in every COPY
 # list that carries this module; the stub keeps the re-export valid and the
 # failure loud if a COPY list ever misses it.
 if (Test-Path $nativePath) {
-    Import-Module $nativePath -Force
+    if (-not (Get-Module -Name 'WindowsNative.Common')) { Import-Module $nativePath }
 } else {
     function Invoke-ShieldedNative {
         throw 'Invoke-ShieldedNative unavailable: WindowsNative.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 (incomplete modules COPY list)'
@@ -108,17 +114,20 @@ function Invoke-GitClone {
     $ErrorActionPreference = 'Continue'
     $env:GIT_TERMINAL_PROMPT = '0'
 
-    $null = & git @gitArgs 2>&1
+    # Capture, don't discard: a clone failure on a 2-hour chain must carry its
+    # diagnosis (auth error, 404 tag, DNS) instead of forcing a blind retry.
+    $cloneOut = @(& git @gitArgs 2>&1)
     $cloneExit = $LASTEXITCODE
 
     $ErrorActionPreference = $oldEAP
 
     if ($cloneExit -ne 0) {
+        $tail = ($cloneOut | Select-Object -Last 10) -join [Environment]::NewLine
         if ($SkipOnFailure) {
-            Write-Warning "git clone failed (exit $cloneExit) - skipped"
+            Write-Warning "git clone failed (exit $cloneExit) - skipped: $tail"
             return $false
         }
-        throw "git clone failed (exit $cloneExit): $RepoUrl $ref"
+        throw "git clone failed (exit $cloneExit): $RepoUrl $ref`n$tail"
     }
     return $true
 }
@@ -226,10 +235,26 @@ function Enter-VsDevCmdEnvironment {
     }
     if (-not (Test-Path $VsDevCmdPath)) { throw "VsDevCmd.bat not found at: $VsDevCmdPath" }
 
-    cmd /c """$VsDevCmdPath"" -arch=$Arch -host_arch=$HostArch && set" | ForEach-Object {
-        if ($_ -match '^(.*?)=(.*)$') {
+    # Capture-then-apply, with TWO gates: if VsDevCmd exits non-zero the `&& set`
+    # never runs, so previously this silently set NO env vars and the failure
+    # surfaced hours later as cryptic INCLUDE/LIB compile errors. Gate on the
+    # exit code AND on a sentinel var actually landing (VsDevCmd can also print
+    # an error banner and exit 0 in some misconfigurations).
+    $vsDevOut = @(cmd /c """$VsDevCmdPath"" -arch=$Arch -host_arch=$HostArch && set" 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        $tail = ($vsDevOut | Select-Object -Last 10) -join [Environment]::NewLine
+        throw "VsDevCmd.bat failed (exit $LASTEXITCODE): $tail"
+    }
+    $applied = 0
+    foreach ($line in $vsDevOut) {
+        if ($line -match '^(.*?)=(.*)$') {
             Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2] -ErrorAction SilentlyContinue
+            $applied++
         }
+    }
+    if ($applied -eq 0 -or [string]::IsNullOrWhiteSpace($env:VCToolsInstallDir)) {
+        $tail = ($vsDevOut | Select-Object -Last 10) -join [Environment]::NewLine
+        throw "VsDevCmd.bat produced no usable environment (parsed $applied vars, VCToolsInstallDir unset): $tail"
     }
 }
 
@@ -287,9 +312,7 @@ function Initialize-SourceBuildEnvironment {
     # two lines that used to sit here silently did nothing for callers while
     # LOOKING like they enforced strictness. Every build script must set its
     # own `Set-StrictMode -Version Latest` + `$ErrorActionPreference = 'Stop'`
-    # at top level (audit 2026-08-04: onnx-genai/litert/litert-lm/gstreamer
-    # still need StrictMode added — one per build cycle, latent unset-variable
-    # reads may surface).
+    # at top level (done across all build entrypoints as of 2026-08-04).
     if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
     return $InstallDir
 }
@@ -511,9 +534,20 @@ function Expand-SourceTarball {
         [Parameter(Mandatory)]
         [string]$Destination
     )
-    & 7z x "$Archive" -o"$Destination" -y -bd 2>&1 | Out-Null
+    # Gate BOTH 7z passes: a corrupt/truncated tarball previously surfaced as
+    # "Failed to locate extracted source directory" (or silently picked an
+    # unrelated pre-existing dir) instead of naming the extraction failure.
+    $pass1 = @(& 7z x "$Archive" -o"$Destination" -y -bd 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "7z extraction of '$Archive' failed (exit $LASTEXITCODE): $((($pass1 | Select-Object -Last 5) -join '; '))"
+    }
     $tarFile = Get-ChildItem -Path $Destination -Filter '*.tar' | Select-Object -First 1 -ExpandProperty FullName
-    if ($tarFile) { & 7z x "$tarFile" -o"$Destination" -y -bd 2>&1 | Out-Null }
+    if ($tarFile) {
+        $pass2 = @(& 7z x "$tarFile" -o"$Destination" -y -bd 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw "7z tar extraction of '$tarFile' failed (exit $LASTEXITCODE): $((($pass2 | Select-Object -Last 5) -join '; '))"
+        }
+    }
     $srcDir = Get-ChildItem -Path $Destination -Directory | Select-Object -First 1 -ExpandProperty FullName
     if (-not $srcDir) { throw "Failed to locate extracted source directory under $Destination" }
     return $srcDir
@@ -777,7 +811,11 @@ function Export-BuildHandoff {
     # remote host ("Cannot connect to C: resolve failed").
     & (Join-Path $env:SystemRoot 'System32\tar.exe') -cf $tarFile -C C:\ -T $listFile
     if ($LASTEXITCODE -ne 0) { throw "Export-BuildHandoff: tar failed (exit $LASTEXITCODE)" }
-    & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -T $tarFile "$Endpoint/bkhandoff/$Name.tar"
+    # --retry: this PUT is the ONLY copy of an hours-long warm build (the warm
+    # snapshot is never finalized by design) — a single LAN/WebDAV blip must
+    # not throw the whole solve away. --retry-all-errors extends the retries
+    # to transient HTTP 5xx, not just connect failures (System32 curl >= 8.x).
+    & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors -T $tarFile "$Endpoint/bkhandoff/$Name.tar"
     if ($LASTEXITCODE -ne 0) { throw "Export-BuildHandoff: upload to $Endpoint/bkhandoff/$Name.tar failed (exit $LASTEXITCODE)" }
     $sizeMb = [math]::Round((Get-Item $tarFile).Length / 1MB, 1)
     Remove-Item $tarFile, $listFile -Force -ErrorAction SilentlyContinue
@@ -797,7 +835,9 @@ function Import-BuildHandoff {
         throw 'Import-BuildHandoff: no -Endpoint and SCCACHE_WEBDAV_ENDPOINT is unset'
     }
     $tarFile = Join-Path $env:TEMP "handoff-$Name.tar"
-    & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -o $tarFile "$Endpoint/bkhandoff/$Name.tar"
+    # Same retry rationale as the Export upload: the download gates an entire
+    # materialize layer on one HTTP round-trip.
+    & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors -o $tarFile "$Endpoint/bkhandoff/$Name.tar"
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tarFile)) {
         throw "Import-BuildHandoff: download $Endpoint/bkhandoff/$Name.tar failed - did the warm solve run?"
     }
@@ -895,7 +935,13 @@ function Copy-SidecarDll {
     )
     if ($BesidePrimary) {
         $primary = Get-ChildItem -Path $InstallDir -Filter $BesidePrimary -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $primary) { return }
+        if (-not $primary) {
+            # Loud, like the missing-sidecar branch below: a missing PRIMARY
+            # means the install step upstream failed — silently no-oping here
+            # buried that signal (the DML staging case).
+            Write-Warning "Copy-SidecarDll: primary '$BesidePrimary' not found under $InstallDir -- skipping $SidecarName staging ($Reason)"
+            return
+        }
         $Destination = $primary.DirectoryName
     }
     if ([string]::IsNullOrWhiteSpace($Destination)) { throw 'Copy-SidecarDll: need -Destination or -BesidePrimary/-InstallDir' }

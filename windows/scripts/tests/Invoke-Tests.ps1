@@ -14,9 +14,10 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $modDir = Join-Path (Split-Path $here -Parent) 'modules'
 
 Import-Module (Join-Path $here 'TestHarness.psm1') -Force -DisableNameChecking
-# Import SourceBuild FIRST, then Shared LAST: every module nested-imports Shared with
-# -Force, which under PS 5.1 rebinds Shared into the nested scope and hides its exports
-# from the top level. Importing Shared last restores them (same fix build-gstreamer uses).
+# Ordering no longer matters: nested Shared imports inside the modules are now
+# guarded and un-Forced (repo-wide rule, 2026-08-04), so they can't unload a
+# top-level import. Shared stays explicitly imported for the suites that use
+# its exports directly; -Force everywhere gives dev sessions fresh code.
 Import-Module (Join-Path $modDir 'WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsBuildKit.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsBuildDriver.Common.psm1') -Force -DisableNameChecking

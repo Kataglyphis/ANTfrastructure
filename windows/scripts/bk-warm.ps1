@@ -21,6 +21,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
 $t0 = Get-Date
 # Child pwsh with -File, NOT `& $BuildScript @BuildArgs`: array splatting binds
@@ -31,7 +32,9 @@ $t0 = Get-Date
 $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
 if ($exitCode) { throw "bk-warm: build '$BuildScript' failed (exit $exitCode)" }
 
-Import-Module (Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+# No -DisableNameChecking: every exported function uses an approved verb (the
+# three build-*-all wrappers import this module bare and warn-free).
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1') -Force
 Export-BuildHandoff -Since $t0 -Name $Name
 
 # Reaching EOF IS success (same contract as every build script: pwsh -Command

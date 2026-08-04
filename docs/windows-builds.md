@@ -68,15 +68,15 @@ When bumping any upstream version, audit these `.patch` files before letting the
 
 The Windows container build uses [Stevedore](https://github.com/slonopotamus/stevedore) (a Docker distribution for Windows Containers) and is split into staged images:
 
-- `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.4.0, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
-- `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.23 + TensorRT 11.1.0.106 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build.ps1` handles this automatically via its `-Gpu` switch.
+- `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.4.2, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
+- `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.25.0.15 + TensorRT 11.1.0.106 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build.ps1` handles this automatically via its `-Gpu` switch.
 - The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `build-toolchain-all.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
 - The **media stage fans out into three branch images** by `windows/build.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
-  - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.28.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.15.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`, telemetry off) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `master` (MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
+  - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.28.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.15.0 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`, telemetry off) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `n9.0` (pinned release tag, `FFMPEG_VERSION` in versions.env since 2026-08-04; MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
   - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 → LiteRT-LM 0.14.0 (independent of ONNX; v0.14.0's broken OSS CMake export is bridged by `litert-lm-export-bridge.ps1`, see § Source Patch Policy #7).
   - **media-tvm** (`--target media-tvm` + `build-media-tvm-all.ps1`) — TVM 0.25.0 → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
   - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, then GStreamer 1.29.2 built via `build-gstreamer-from-source.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
-- `windows/Dockerfile` produces the final developer image from the media image (VsDevCmd entrypoint).
+- `windows/Dockerfile.torch` assembles the Orchestr-ANT-ion app env on the media image (`media → torch → final`; tag `local/kataglyphis:windows-torch`), and `windows/Dockerfile` produces the final developer image FROM that torch image (VsDevCmd entrypoint).
 
 ## Prerequisites
 
@@ -97,17 +97,22 @@ If you used a custom `INSTALLDIR`, substitute `D:\Stevedore\bin\docker.exe` for 
 
 Reboot after installation. This enables the Windows Containers feature and adds your user to the `docker-users` group.
 
-**Use Stevedore's bundled `docker.exe` for both builds and runs on this host.**
-`nerdctl build` has broken DNS in BuildKit containers, and `nerdctl run` fails
-before the container starts — it needs the Windows CNI `nat` plugin in
-`C:\Program Files\containerd\cni\bin`, which is not installed (Stevedore does not
-bundle it). `docker.exe` has no such dependency: Docker Engine provides NAT
-networking natively, so both `docker build` and `docker run` just work.
+**Tool roles on this host.** Stevedore's bundled `docker.exe` is the
+classic-lane tool for builds, runs and publishing: Docker Engine provides NAT
+networking natively, no CNI plugin needed. Since 2026-08-03 the CNI `nat`
+**conf** (`C:\Program Files\containerd\cni\conf\0-containerd-nat.conf`; the
+`nat.exe` binary always shipped in `...\cni\bin`) is installed on this host —
+see § Getting it going, step 2, including the subnet-drift trap — so
+containerd-side networking works too, and `nerdctl` runs the `bk-*` images
+fine. `nerdctl` needs an **admin** shell (containerd's pipe is admin-only
+upstream); the pre-conf state where `nerdctl run` failed with `needs CNI
+plugin "nat"` and `nerdctl build` had broken DNS is historical.
 
 | Tool | Build | Run |
 |------|-------|-----|
-| `"D:\Stevedore\bin\docker.exe"` | ✅ Working DNS | ✅ Works (NAT + DNS + process isolation) |
-| `nerdctl` | ❌ Broken DNS | ❌ Fails: missing CNI `nat` plugin |
+| `"D:\Stevedore\bin\docker.exe"` (non-admin) | ✅ classic lane | ✅ Works (NAT + DNS + process isolation) |
+| `buildctl` via `windows\build-buildkit.ps1` (non-admin) | ✅ preferred lane | n/a |
+| `nerdctl` (admin shell) | not used (build via buildctl) | ✅ Works since the CNI nat conf install (2026-08-03) |
 
 ## Build Commands
 
@@ -123,10 +128,10 @@ and passes every version as `--build-arg` (the Dockerfile ARG defaults are only
 fallbacks), builds the stages in order, and applies the correct tags:
 
 ```pwsh
-# CPU lane (default): base -> tag sdk -> toolchain -> media -> final
+# CPU lane (default): base -> tag sdk -> toolchain -> media -> torch -> final
 .\windows\build.ps1
 
-# GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> final
+# GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> torch -> final
 # Requires a TensorRT zip in windows/downloads/ (see AGENTS.md § TensorRT Setup).
 .\windows\build.ps1 -Gpu
 
@@ -324,7 +329,8 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 Remaining gotchas (why the classic lane still exists): images land in the
 CONTAINERD store (`docker.io/local/kataglyphis:bk-*`) and are invisible to
 docker's windowsfilter store — running/pushing via docker needs the `-FinalTar`
-export (or buildctl registry push once auth is wired). **Inspecting/running
+export (or push straight from the BK lane with `-PushRef <ref>`, which needs a
+prior `docker login` in the invoking shell). **Inspecting/running
 them directly works via Stevedore's nerdctl in an ELEVATED shell** (verified
 2026-08-03 — the images list fine; containerd's pipe has no `--group` option
 upstream, so non-admin nerdctl stays impossible; don't attempt pipe-ACL hacks):
@@ -430,8 +436,8 @@ steps; the remaining work is the Dockerfile surgery):
   `MEDIA_CORE_*_IMAGE` ARGs; build-buildkit.ps1 drives them in order). An
   FFmpeg-only change still recompiles nothing else — and each library's
   export is now independent of the others' finalize behavior.
-- **OPEN DEFECT — GenAI/OpenCV snapshot finalize (`ExportLayer 0x3`, disk
-  fine)**: those two layers deterministically fail BOTH finalize paths on
+- **SOLVED (2026-08-04, warm/materialize) — GenAI/OpenCV snapshot finalize
+  (`ExportLayer 0x3`, disk fine)**: those two layers deterministically fail BOTH finalize paths on
   buildkitd v0.32/containerd, on every fresh snapshot. A 17-probe bisection
   (2026-08-04) falsified: poisoned cache records, layer depth (14 stacked
   trivial layers export fine), defective ONNX parent (trivial layers on it
@@ -897,9 +903,13 @@ run later with
 
 Without BuildKit cache mounts a container-local sccache cache dies with the
 layer, so the WebDAV remote is the only compile cache that survives a
-container. **sccache is therefore REQUIRED by default for the compile stages
-(toolchain/media): build.ps1 fails fast when no reachable endpoint is
-configured** (`-NoSccache` opts into a deliberate cache-less build). One-time
+container. **sccache is therefore REQUIRED by default for the media stages:
+build.ps1 fails fast when a media stage is requested and no reachable endpoint
+is configured** (`-NoSccache` opts into a deliberate cache-less build). The
+gate is media-only (`Assert-SccacheEndpoint`, `$compileStages = @('media')` in
+`WindowsBuildDriver.Common.psm1`) — the toolchain stage (MSBuild/ClangCL
+CPython) has no sccache wiring, so toolchain-only builds are never blocked on
+an endpoint they would not use. One-time
 host setup:
 
 ```pwsh
@@ -914,9 +924,11 @@ dufs C:\sccache-cache -A -p 5000
 ```
 
 CMake-based builds (ONNX, GenAI, OpenCV, LiteRT, LiteRT-LM, TVM) then route
-clang-cl through sccache; FFmpeg (MSVC/make) and GStreamer (Meson) are not
-cached. The first build populates the cache; subsequent `--no-cache` rebuilds
-and version bumps reuse unchanged object files.
+clang-cl through sccache, and since 2026-08-04 GStreamer (Meson) is cached too
+(`build-gstreamer-from-source.ps1` sets `CC`/`CXX` to `'sccache clang-cl'`
+when the remote backend is configured). FFmpeg (MSVC/make) remains uncached.
+The first build populates the cache; subsequent `--no-cache` rebuilds and
+version bumps reuse unchanged object files.
 
 > **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (which use `linux/` context) but breaks Windows builds.
 
@@ -957,12 +969,16 @@ Add-MpPreference -ExclusionPath "C:\ProgramData\nerdctl"
 Add-MpPreference -ExclusionPath "C:\temp"
 ```
 
-### Fix 4: Use docker.exe for builds and runs (not nerdctl)
+### Fix 4: docker.exe vs nerdctl (historical — pre-CNI-conf state)
 
-Always use Stevedore's `docker.exe` — `nerdctl build` lacks DNS resolution, and
-`nerdctl run` fails on this host because the Windows CNI `nat` plugin is not
-installed (`failed to create default network: needs CNI plugin "nat" to be
-installed in CNI_PATH`). `docker.exe` needs no CNI plugin:
+Before the CNI `nat` conf was installed (2026-08-03), `nerdctl build` lacked
+DNS resolution and `nerdctl run` failed outright on this host (`failed to
+create default network: needs CNI plugin "nat" to be installed in CNI_PATH` —
+the conf, not the binary, was missing), so `docker.exe` was the only working
+tool. Current state: with `0-containerd-nat.conf` installed (see § Getting it
+going, step 2) `nerdctl` works from **admin** shells; builds go through
+`build-buildkit.ps1`/buildctl on the preferred lane. Stevedore's `docker.exe`
+remains the classic-lane tool and needs no CNI plugin:
 
 ```pwsh
 "D:\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
@@ -1021,10 +1037,12 @@ the source-built FFmpeg via `setup.py --ffmpeg-dir` — PyPI's own av wheel is
 structurally unloadable on Server Core because its bundled avdevice imports
 the desktop-only `AVICAP32.dll`; note the generic `h264` encoder alias
 resolves to `h264_d3d12va`, so headless code should request software codecs
-like `mpeg4`/`libx264` by name). Because `FFMPEG_VERSION=master` tracks a live
-branch, `build-ffmpeg-from-source.ps1` normalizes the import-lib layout after
-`make install` — an upstream drop moved `avformat.lib` et al. from `lib\` to
-`bin\` overnight (2026-07-13, PyAV died with LNK1181): every `.lib`/`.def` is
+like `mpeg4`/`libx264` by name). `FFMPEG_VERSION` is pinned to the release tag
+`n9.0` since 2026-08-04 (it previously tracked `master`, which is when an
+upstream drop moved `avformat.lib` et al. from `lib\` to `bin\` overnight —
+2026-07-13, PyAV died with LNK1181). `build-ffmpeg-from-source.ps1` still
+normalizes the import-lib layout after `make install` as a guard across tag
+bumps: every `.lib`/`.def` is
 harvested into `lib\`, missing import libs are regenerated from their `.def`
 via `lib.exe`, and the PyAV step logs the lib inventory up front so the next
 layout drift fails loudly with data. `cv2` ships installed into CPython's
@@ -1048,10 +1066,12 @@ The final image bakes the runtime orchestrator at
 `windows/scripts/assemble-torch-app.ps1` (mirror of the linux
 `assemble-torch-app.sh` stage) during the final `docker build`:
 
-- **Ref**: `build.ps1` resolves the app's **latest tag** per build
-  (`git ls-remote`), falling back to versions.env's `APP_REF` pin offline; the
-  resolved tag reaches the Dockerfile as the `APP_REF` build-arg, so a new
-  release busts exactly the torch-step layer.
+- **Ref**: `build.ps1` uses versions.env's **`APP_REF` pin by default** (the
+  same commit always builds the same final image); pass `-LatestApp` to opt
+  into resolving the app repo's newest release tag at build time via a live
+  `git ls-remote` (the old always-on behavior). The resolved ref reaches the
+  Dockerfile as the `APP_REF` build-arg, so moving the app busts exactly the
+  torch-step layer.
 - **Environment**: `uv sync` on the source-built CPython (extras `ml-ai`,
   `docs`, `pytorch-cpu`, `test`; the wxPython GUI extra excluded, like linux),
   then a reconcile so this lane's wheels always win: PyPI onnx/genai/opencv
@@ -1066,11 +1086,13 @@ The final image bakes the runtime orchestrator at
 - **Gates**: the docker build itself fails unless the venv passes the import
   battery (numpy/cv2/torch/onnxruntime with a CUDA-EP build assert/genai/tvm)
   **and the app's own wheel-smoke suite** (`python -m orchestr_ant_ion.smoke`
-  — real torch/torchvision/ORT-inference/OpenCV work; expected report on this
-  lane: 10/11 ok with one WARN for the litert skip on app v0.0.24/v0.0.25
-  (v0.0.23 added genai + tvm, v0.0.24 pyav), 11/12 once a tag ships the iree
-  check). Smoke section 21 re-runs the same verification offline on every
-  suite run.
+  — real torch/torchvision/ORT-inference/OpenCV work). The check inventory is
+  the app's per-tag choice, so the expected pass count moves with `APP_REF`;
+  the rule on this lane is: **all checks pass except a single WARN for the
+  litert skip** (the `ai-edge-litert` limitation above), plus any checks the
+  pinned app tag does not yet ship (e.g. an iree check counts only once a tag
+  includes it). Smoke section 21 re-runs the same verification offline on
+  every suite run.
 - **Usage**: `C:\opt\Kataglyphis-Orchestr-ANT-ion\.venv\Scripts\python.exe`
   (or `uv run` from `TORCH_APP_DIR`) is a ready environment where
   `import onnxruntime, onnxruntime_genai, cv2, tvm, torch` all resolve to the

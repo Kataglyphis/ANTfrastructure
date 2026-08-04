@@ -230,6 +230,7 @@ if ($Stages -contains 'sdk') {
             TENSORRT_VERSION         = Get-Ver 'TENSORRT_VERSION'
             CUDA_INSTALLER_SHA256    = Get-Ver 'CUDA_INSTALLER_SHA256'
             CUDNN_ZIP_SHA256         = Get-Ver 'CUDNN_ZIP_SHA256'
+            TENSORRT_ZIP_SHA256      = Get-Ver 'TENSORRT_ZIP_SHA256'
         }
     } else {
         # CPU lane: containerd has no unprivileged `tag`; re-export base under

@@ -11,7 +11,11 @@
 # --cpu-count N` is what lets CPython build on all cores. See docs/windows-builds.md
 # § Build isolation and CPU parallelism.
 
+[CmdletBinding()]
+param()
+
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $src = 'C:\temp\cpython'
 
 Write-Host "==> Building CPython from source at $src (NUMBER_OF_PROCESSORS=$env:NUMBER_OF_PROCESSORS)"
@@ -24,6 +28,22 @@ if (-not (Test-Path $src)) { throw "CPython source tree missing at $src (builder
 # the stable dist.nuget.org URL (via the resilient shared downloader): find_python's
 # `if NOT exist "%_Py_NUGET%"` guard then skips the flaky aka.ms fetch entirely.
 Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
+
+# Re-read versions.env if a fresh copy was COPY'd into the builder image
+# (Dockerfile.toolchain-builder): the NUGET_VERSION / NUGET_EXE_SHA256 env vars
+# below come from the BASE-BAKED Machine env, so a versions.env nuget bump would
+# silently lag until a base rebuild — a fresh COPY beats the baked env. Degrades
+# gracefully: file absent (older builder image) -> baked env, current behavior.
+if ($env:TEMP_DIR) {
+    $versionsEnvFile = Join-Path $env:TEMP_DIR 'versions.env'
+    if (Test-Path $versionsEnvFile) {
+        Write-Host "Overriding process env from fresh $versionsEnvFile (beats base-baked values)"
+        foreach ($entry in (ConvertFrom-VersionsEnv -Path $versionsEnvFile).GetEnumerator()) {
+            [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
+        }
+    }
+}
+
 $nugetExe = Join-Path $src 'externals\nuget.exe'
 # Versioned URL + SHA256 pin (NUGET_VERSION / NUGET_EXE_SHA256 in versions.env, baked
 # env) instead of the floating /latest/ URL, so the seeded binary is reproducible.
@@ -57,7 +77,11 @@ foreach ($d in @("$src\PCbuild\obj", "$src\externals", "$src\.git")) {
 $pyExe = "$src\PCbuild\amd64\python.exe"
 if (-not (Test-Path $pyExe)) { $pyExe = "$src\PCbuild\amd64\python_d.exe" }
 if (-not (Test-Path $pyExe)) { throw 'Python build failed - interpreter not found' }
-& $pyExe --version
+# Gate on the exit code: a clang-built python.exe that dies at startup used to
+# still commit as the toolchain image (Test-Path alone can't catch that).
+$pyVersionLine = & $pyExe --version 2>&1 | Select-Object -First 1
+if ($LASTEXITCODE -ne 0) { throw "source-built python failed to run (exit $LASTEXITCODE)" }
+Write-Host "Python version: $pyVersionLine"
 Write-Host "Python built at: $pyExe"
 
 # Explicit success: pwsh -File (and docker run) propagate the LAST native exit

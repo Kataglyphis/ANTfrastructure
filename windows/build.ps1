@@ -21,7 +21,7 @@
     rebuild.
 
     The media stage fans out into three branch images (media-core:
-    ONNX->GenAI->OpenCV->FFmpeg; media-litert: LiteRT->LiteRT-LM; media-tvm: TVM),
+    ONNX->GenAI->OpenCV->FFmpeg; media-litert: LiteRT->LiteRT-LM; media-tvm: TVM->IREE),
     built sequentially -- media-core first, so it alone gets the whole RAM budget,
     which maximizes ONNX parallelism -- then fans in via
     Dockerfile.media-merge-builder (merge + GStreamer).
@@ -172,7 +172,8 @@ param(
     # absent, else hyperv with a loud warning. 'process'/'hyperv' force it.
     [ValidateSet('auto', 'process', 'hyperv')]
     [string]$Isolation = 'auto',
-    # sccache is REQUIRED by default for the compile stages (toolchain/media):
+    # sccache is REQUIRED by default for the media stage (the only stage with
+    # sccache wiring — toolchain's MSBuild/ClangCL CPython build has none):
     # it is the only cross-attempt cache the run+commit path has. The build
     # fails fast when no reachable -SccacheEndpoint is configured; pass
     # -NoSccache for a deliberate cache-less build.
@@ -315,10 +316,11 @@ function Get-MediaBranchTag {
 $script:BuildIsolation = Resolve-BuildIsolation -Isolation $Isolation -Docker $Docker -LogDir $script:LogDir -ProbeScript (Join-Path $PSScriptRoot 'diagnostics\test-process-isolation-commit.ps1')
 Set-BuildDriverIsolation -Isolation $script:BuildIsolation
 
-# ── sccache policy (required by default for the compile stages) ──────────────
+# ── sccache policy (required by default for the media stage) ─────────────────
 # Without BuildKit cache mounts, sccache's WebDAV remote is the ONLY compile
-# cache that survives a container; building toolchain/media without it means a
-# mid-chain failure re-pays every object file. Fail fast, not hours in.
+# cache that survives a container; building media without it means a mid-chain
+# failure re-pays every object file. Fail fast, not hours in. (toolchain is
+# NOT gated: its MSBuild/ClangCL CPython build has no sccache wiring.)
 # Canonical fail-fast sccache gate (WindowsBuildDriver.Common, shared with the
 # BK lane).
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
@@ -615,11 +617,22 @@ function Invoke-ResumeRunCommit {
     $outLog = Join-Path $script:LogDir "$($spec.Name).log"
     $runCmd = (Get-MediaRunCommand $spec.RunScript) + @('-ResumeFrom', $ResumeFrom)
     Write-Host "[resume:$ResumeStage] docker run --isolation $isolation --cpu-count $MediaCoreCpus --memory ${MediaMemoryGb}g -ResumeFrom '$ResumeFrom'" -ForegroundColor Cyan
-    & $Docker run --isolation $isolation --cpu-count $MediaCoreCpus --memory "${MediaMemoryGb}g" --name $container $partial @runCmd 2>&1 | Tee-Object -FilePath $outLog
-    if ($LASTEXITCODE -ne 0) {
-        throw ("[resume:$ResumeStage] run FAILED (exit $LASTEXITCODE) — container '$container' PRESERVED again; " +
-               "fix forward and re-run: .\windows\build.ps1 -ResumeStage $ResumeStage -ResumeFrom '<stage>' [-CopyFix <file>]")
-    }
+    # Same transient-retry engine as the first attempt (ttrpc/shim flakes love
+    # long runs; the recovery run used to single-shot). Invariants mirror
+    # Invoke-RunCommitStage: transient retry removes the dead container and
+    # re-runs from $partial (the preserved state IS the partial image); a
+    # non-transient failure preserves the container for another resume round.
+    Invoke-DockerWithRetry -Label "resume:$ResumeStage" -LogFile $outLog -MaxAttempts 2 `
+        -Action {
+            & $Docker run --isolation $isolation --cpu-count $MediaCoreCpus --memory "${MediaMemoryGb}g" --name $container $partial @runCmd 2>&1 | Tee-Object -FilePath $outLog
+        }.GetNewClosure() `
+        -OnFailedAttempt {
+            & $Docker container rm -f $container 2>&1 | Out-Null
+        }.GetNewClosure() `
+        -OnFinalFailure {
+            Write-Host ("[resume:$ResumeStage] run FAILED — container '$container' PRESERVED again; " +
+                "fix forward and re-run: .\windows\build.ps1 -ResumeStage $ResumeStage -ResumeFrom '<stage>' [-CopyFix <file>]") -ForegroundColor Red
+        }.GetNewClosure()
     Write-Host "[resume:$ResumeStage] committing -> $($spec.Tag)" -ForegroundColor Cyan
     & $Docker commit $container $spec.Tag | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -633,14 +646,15 @@ function Invoke-ResumeRunCommit {
 # -MediaMemoryGb 0 = auto-detect from host RAM (usable minus host reserve).
 # Sequential is the only schedule (media-core runs first with the full budget,
 # then aux branches also get full RAM since media-core already committed).
+# Canonical math lives in WindowsBuildDriver.Common (shared with the BK lane —
+# this block used to hand-roll the identical reserve/floor-8 computation and
+# the pair had already drifted once before).
 if ($MediaMemoryGb -le 0) {
-    $usableGb = [int][math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-    $reserve  = $HostReserveGb
-    $MediaMemoryGb = [math]::Max(8, $usableGb - $reserve)
-    if (($usableGb - $reserve) -lt 8) {
-        Write-Warning "host RAM ${usableGb}GB minus reserve ${reserve}GB is below the 8GB floor -- using 8GB anyway; the HOST may be starved during the build (free RAM, or lower -HostReserveGb deliberately)."
+    $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveGb $HostReserveGb
+    if ($MediaMemoryGb -le 8) {
+        Write-Warning "media memory budget hit the 8GB floor (host RAM minus -HostReserveGb $HostReserveGb) -- the HOST may be starved during the build (free RAM, or lower -HostReserveGb deliberately)."
     }
-    Write-Host ("Auto-detected -MediaMemoryGb=${MediaMemoryGb}g (usable ${usableGb}GB - ${reserve}GB reserve; cores=$MediaCoreCpus)") -ForegroundColor Cyan
+    Write-Host ("Auto-detected -MediaMemoryGb=${MediaMemoryGb}g (host RAM - ${HostReserveGb}GB reserve; cores=$MediaCoreCpus)") -ForegroundColor Cyan
 } else {
     Write-Host ("-MediaMemoryGb=${MediaMemoryGb}g (explicit); cores=$MediaCoreCpus") -ForegroundColor Cyan
 }
@@ -688,6 +702,7 @@ try {
                 # right after a bump — these must move WITH the version pins.
                 CUDA_INSTALLER_SHA256    = Get-Ver 'CUDA_INSTALLER_SHA256'
                 CUDNN_ZIP_SHA256         = Get-Ver 'CUDNN_ZIP_SHA256'
+                TENSORRT_ZIP_SHA256      = Get-Ver 'TENSORRT_ZIP_SHA256'
             }
         } else {
             Write-Host "`n==> CPU lane: tagging windows-base as windows-sdk (no GPU layer)" -ForegroundColor Cyan
@@ -730,31 +745,23 @@ try {
         # run+commit path (Dockerfile.media-merge-builder carries the merged tree +
         # env + GStreamer scripts but does NOT run the compile; the run does).
         $gstLog = Join-Path $script:LogDir 'gstreamer.log'
-        # Branch result tags AND component-version args come from the specs
-        # (single source of truth): a renamed -Tag cannot leave the merge
-        # COPY --from pointing at the old name, and a version arg added to a
-        # branch automatically reaches the merge image's canonical version env.
+        # Branch result tags come from the specs (single source of truth): a
+        # renamed -Tag cannot leave the merge COPY --from pointing at the old
+        # name. The component-version union comes from the CANONICAL
+        # Get-MediaMergeVersionArg (WindowsBuildDriver.Common, shared with the
+        # BK lane) — this block used to re-derive it from spec BuildArgs with
+        # its own exclusion list, re-forming exactly the two-copies drift the
+        # module was created to end (the exclusion pair NV_CODEC_HEADERS_REF/
+        # CUDA_ARCHITECTURES lived in both).
         $branchTag = @{}
-        $mergeArgs = @{}
-        # Branch-scoped keys that must NOT ride into the merge build: the merge
-        # gets its own BASE_IMAGE/MEMORY_LIMIT_GB below, sccache stays run-side,
-        # and NV_CODEC_HEADERS_REF/CUDA_ARCHITECTURES are compile inputs of the
-        # core branch only (Dockerfile.media-merge-builder declares no such ARG —
-        # forwarding them would just add classic-builder unconsumed-arg warnings).
-        $branchOnly = @('BASE_IMAGE', 'MEMORY_LIMIT_GB', 'SCCACHE_WEBDAV_ENDPOINT',
-            'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES')
         foreach ($spec in Get-MediaBranchSpecs) {
             $branchTag[$spec.Name] = $spec.Tag
-            foreach ($k in $spec.BuildArgs.Keys) {
-                if ($branchOnly -notcontains $k) { $mergeArgs[$k] = $spec.BuildArgs[$k] }
-            }
         }
-        $mergeArgs += @{
+        $mergeArgs = (Get-MediaMergeVersionArg -VersionTable $versions) + @{
             BASE_IMAGE        = $script:ImageTag.toolchain
             CORE_IMAGE        = $branchTag['media-core']
             LITERT_IMAGE      = $branchTag['media-litert']
             TVM_IMAGE         = $branchTag['media-tvm']
-            GSTREAMER_VERSION = Get-Ver 'GSTREAMER_VERSION'
             MEMORY_LIMIT_GB   = $MediaMemoryGb
         }
         Invoke-RunCommitStage `

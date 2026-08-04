@@ -22,6 +22,11 @@ ARG BASE_IMAGE=local/kataglyphis:windows-base
 FROM ${BASE_IMAGE} AS trt-extract
 
 ARG TENSORRT_VERSION=11.1.0.106
+# Zip hash as ARG, same rationale as the CUDA/CUDNN hashes in stage 2: the
+# base-baked env value is stale after a pin bump; the ARG (forwarded from the
+# current versions.env by both drivers) always matches. Empty = no pin check
+# (the zip is an EULA-gated manual download whose exact file varies per user).
+ARG TENSORRT_ZIP_SHA256=""
 ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
@@ -29,13 +34,14 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 COPY scripts\setup-tensorrt.ps1 C:\temp\scripts\
 COPY downloads C:\temp\downloads
 
-# Extract to the space-free canonical root. If no zip is present the script skips
-# gracefully; the empty directory is created so COPY --from below always succeeds
-# (Resolve-TensorRtRoot treats an empty root as "not installed").
+# Extract to the space-free canonical root. FAIL-FAST CONTRACT (2026-08-04): a
+# missing zip makes setup-tensorrt.ps1 THROW — the smoke test asserts
+# TENSORRT_ROOT unconditionally on the nvidia lane, so failing here beats a
+# worse-explained failure hours later. Stage the EULA-gated zip in
+# windows\downloads\ before a -Gpu build.
 RUN $trtZip = Get-ChildItem 'C:\temp\downloads\*TensorRT*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1; `
     $trtPath = if ($trtZip) { $trtZip.FullName } else { '' }; `
-    & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'; `
-    if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }
+    & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'
 
 # ── Stage 2: CUDA + cuDNN + TensorRT ──────────────────────────────────────────
 FROM ${BASE_IMAGE}
@@ -69,14 +75,17 @@ ENV TENSORRT_VERSION="${TENSORRT_VERSION}" `
 # the installed CUDA binaries.
 RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
 
-# TensorRT: only the extracted tree from stage 1 (no zip layer). Empty when no
-# zip was provided — build scripts then skip the TensorRT EP gracefully.
+# TensorRT: only the extracted tree from stage 1 (no zip layer). Always
+# populated — stage 1 fails fast when no zip is staged (see its RUN comment).
 COPY --from=trt-extract C:\tensorrt C:\tensorrt
 
 # Signal to downstream layers that NVIDIA GPU is available. One ENV for the
 # roots (no interdependency — values written out literally where a same-
 # instruction ${} ref would not resolve); PATH stays separate because it
-# references the keys set here.
+# references the keys set here. NB the TensorRT PATH entry assumes the zip's
+# standard TensorRT-<version>\ top-level dir; setup-tensorrt tolerates a flat
+# zip layout, which this PATH would miss (accepted edge — standard NVIDIA
+# zips all carry the versioned dir).
 ENV GPU_TYPE="nvidia" `
     CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}" `
     CUDA_PATH="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}" `
