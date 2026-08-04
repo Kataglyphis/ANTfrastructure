@@ -319,23 +319,9 @@ Set-BuildDriverIsolation -Isolation $script:BuildIsolation
 # Without BuildKit cache mounts, sccache's WebDAV remote is the ONLY compile
 # cache that survives a container; building toolchain/media without it means a
 # mid-chain failure re-pays every object file. Fail fast, not hours in.
-$compileStages = @('toolchain', 'media')
-if (-not $NoSccache -and @($Stages | Where-Object { $compileStages -contains $_ }).Count -gt 0) {
-    if ([string]::IsNullOrWhiteSpace($SccacheEndpoint)) {
-        throw ('sccache is required for the toolchain/media stages (the only cross-attempt compile cache on the run+commit path). ' +
-            'One-time host setup: scoop install dufs; mkdir C:\sccache-cache; dufs C:\sccache-cache -A -p 5000 — then pass ' +
-            '-SccacheEndpoint http://<host-lan-ip>:5000 or set SCCACHE_WEBDAV_ENDPOINT machine-wide. ' +
-            'Pass -NoSccache only for a deliberate cache-less build.')
-    }
-    try {
-        Invoke-WebRequest -Uri $SccacheEndpoint -Method Head -TimeoutSec 5 -UseBasicParsing | Out-Null
-        Write-Host "sccache endpoint reachable: $SccacheEndpoint" -ForegroundColor Cyan
-    } catch {
-        throw ("sccache endpoint '$SccacheEndpoint' is not reachable from the host ($($_.Exception.Message)). " +
-            'Start the WebDAV server and use a LAN IP reachable from inside containers (not localhost). ' +
-            'Pass -NoSccache only for a deliberate cache-less build.')
-    }
-}
+# Canonical fail-fast sccache gate (WindowsBuildDriver.Common, shared with the
+# BK lane).
+Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
 
 # (Get-DockerBuildArgList / Test-TransientDockerFailure / Assert-ImageExists /
 # Invoke-TransientCooldown / Invoke-DockerWithRetry: WindowsBuildDriver.Common.psm1)
@@ -400,16 +386,9 @@ function Get-MediaBranchSpecs {
             -ContainerName 'kataglyphis-media-core-build' `
             -RunScript 'build-media-core-all.ps1' `
             -Tag (Get-MediaBranchTag 'media-core') `
-            -BuildArgs (@{
-                BASE_IMAGE                = $script:ImageTag.toolchain
-                ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
-                ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
-                OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
-                FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
-                PYAV_VERSION              = Get-Ver 'PYAV_VERSION'
-                NV_CODEC_HEADERS_REF      = Get-Ver 'NV_CODEC_HEADERS_REF'
-                CUDA_ARCHITECTURES        = Get-Ver 'CUDA_ARCHITECTURES'
-                MEMORY_LIMIT_GB           = $MediaMemoryGb
+            -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $versions) + @{
+                BASE_IMAGE      = $script:ImageTag.toolchain
+                MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
         New-MediaBranchSpec -Name 'media-litert' `
             -BuilderDockerfile $builderDf `
@@ -417,11 +396,9 @@ function Get-MediaBranchSpecs {
             -ContainerName 'kataglyphis-media-litert-build' `
             -RunScript 'build-litert-all.ps1' `
             -Tag (Get-MediaBranchTag 'media-litert') `
-            -BuildArgs (@{
-                BASE_IMAGE        = $script:ImageTag.toolchain
-                LITERT_VERSION    = Get-Ver 'LITERT_VERSION'
-                LITERT_LM_VERSION = Get-Ver 'LITERT_LM_VERSION'
-                MEMORY_LIMIT_GB   = $MediaMemoryGb
+            -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $versions) + @{
+                BASE_IMAGE      = $script:ImageTag.toolchain
+                MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
         New-MediaBranchSpec -Name 'media-tvm' `
             -BuilderDockerfile $builderDf `
@@ -429,10 +406,8 @@ function Get-MediaBranchSpecs {
             -ContainerName 'kataglyphis-media-tvm-build' `
             -RunScript 'build-media-tvm-all.ps1' `
             -Tag (Get-MediaBranchTag 'media-tvm') `
-            -BuildArgs (@{
+            -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-tvm' -VersionTable $versions) + @{
                 BASE_IMAGE      = $script:ImageTag.toolchain
-                TVM_REF         = Get-Ver 'TVM_REF'
-                IREE_VERSION    = Get-Ver 'IREE_VERSION'
                 MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
     )
@@ -558,28 +533,8 @@ function Get-MediaRunCommand {
 # Provenance/app-ref helpers shared by the 'final' and 'torch' stages. (Moved out
 # of the try-block stage chain where they sat mid-flow between two stage blocks.)
 # VCS ref is best-effort metadata: any failure (no git, not a repo) -> empty, never fatal.
-function Get-BuildVcsRef {
-    try { $r = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { return '' } else { return $r } }
-    catch { return '' }
-}
-# Orchestr-ANT-ion ref: DETERMINISTIC by default (versions.env APP_REF pin, so
-# the same commit always produces the same image). -LatestApp opts into
-# resolving the app repo's newest release tag at build time (the old
-# always-on behavior), falling back to the pin when offline / no tags match.
-function Get-TorchAppRef {
-    $ref = Get-Ver 'APP_REF'
-    if ($LatestApp) {
-        try {
-            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
-            if ($LASTEXITCODE -eq 0 -and $tagRaw) {
-                $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
-                if (-not [string]::IsNullOrWhiteSpace($latest)) { $ref = $latest }
-            }
-        } catch { }
-        Write-Host "-LatestApp: resolved Orchestr-ANT-ion ref: $ref (versions.env pin: $(Get-Ver 'APP_REF'))"
-    }
-    return $ref
-}
+# Get-BuildVcsRef + the Orchestr-ANT-ion ref resolution (Resolve-TorchAppRef)
+# now live in WindowsBuildDriver.Common — shared with build-buildkit.ps1.
 
 function Invoke-MediaBranchRunCommit {
     # Build one media branch via the run+commit path at full cores and the full
@@ -822,7 +777,7 @@ try {
     if ($Stages -contains 'torch') {
         $torchBase = if ($TorchBaseImage) { $TorchBaseImage } else { $script:ImageTag.media }
         $torchTagResolved = if ($TorchTag) { $TorchTag } else { $script:ImageTag.torch }
-        $appRef = Get-TorchAppRef
+        $appRef = Resolve-TorchAppRef -VersionTable $versions -LatestApp:$LatestApp
         Write-Host "Orchestr-ANT-ion app stage: $torchBase + $appRef -> $torchTagResolved"
         Invoke-Stage -Dockerfile 'windows/Dockerfile.torch' -Tag $torchTagResolved -BuildArgs @{
             BASE_IMAGE = $torchBase

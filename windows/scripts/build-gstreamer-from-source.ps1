@@ -369,21 +369,13 @@ int _isatty(int);
     # library's own guard: under clang-cl only the desktop path (mfvideosrc, the
     # webcam source) builds; the UWP app path is msvc-only and not needed here.
     $mfMeson = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\sys\mediafoundation\meson.build'
-    if (Test-Path $mfMeson) {
-        $mfContent = [System.IO.File]::ReadAllText($mfMeson)
-        $mfNeedle = "if runtimeobject_lib.found()`n"
-        $mfReplace = "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`n"
-        # normalize CRLF for the match, operate on the raw text
-        if ($mfContent -match [regex]::Escape("if runtimeobject_lib.found() and cxx.get_id() == 'msvc'")) {
-            log 'mediafoundation meson.build already gated on msvc'
-        } elseif ($mfContent -match "if runtimeobject_lib\.found\(\)\s*\r?\n") {
-            $mfContent = [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
-            [System.IO.File]::WriteAllText($mfMeson, $mfContent)
-            log 'Patched mediafoundation meson.build: gated winapi_app detection on msvc (clang-cl builds desktop path only)'
-        } else {
-            log 'WARNING: mediafoundation winapi_app guard not found; mediafoundation=enabled may fail if GstWinRt is unavailable under clang-cl'
-        }
-    }
+    [void](Edit-SourceFile -Path $mfMeson -Marker "if runtimeobject_lib\.found\(\) and cxx\.get_id\(\) == 'msvc'" `
+            -Description 'mediafoundation meson.build: gate winapi_app detection on msvc (clang-cl builds desktop path only)' `
+            -WarnMessage 'mediafoundation winapi_app guard not found; mediafoundation=enabled may fail if GstWinRt is unavailable under clang-cl' `
+            -Transform {
+            param($mfContent)
+            [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
+        })
 
     # ---- 6. meson setup (retry with wrap cleanup) ----
     $setupArgs = @(
@@ -501,19 +493,14 @@ int _isatty(int);
     # Excluding codecs that no longer exist is moot — drop those comparisons
     # (R210 sharing the V410 line still exists and is kept).
     foreach ($avFile in @('gstavvidenc.c', 'gstavviddec.c')) {
-        $avPath = Join-Path $gstSrcDir "subprojects\gst-libav\ext\libav\$avFile"
-        if (Test-Path $avPath) {
-            $avContent = [System.IO.File]::ReadAllText($avPath)
-            $avOrig = $avContent
-            $avContent = $avContent -replace '(?m)^\s*in_plugin->id == AV_CODEC_ID_V[34]08 \|\|\r?\n', ''
-            $avContent = $avContent -replace 'in_plugin->id == AV_CODEC_ID_V410 \|\| ', ''
-            if ($avContent -ne $avOrig) {
-                [System.IO.File]::WriteAllText($avPath, $avContent)
-                log "Patched ${avFile}: removed V308/V408/V410 exclusions (codec IDs dropped by FFmpeg master)"
-            } else {
-                log "WARNING: ${avFile} present but the V308/V408/V410 exclusion lines did not match the patterns; if the pinned FFmpeg has dropped these codec IDs, gst-libav will fail to compile with 'undeclared identifier AV_CODEC_ID_V308'. Verify the exclusion conditions in $avPath."
-            }
-        }
+        [void](Edit-SourceFile -Path (Join-Path $gstSrcDir "subprojects\gst-libav\ext\libav\$avFile") `
+                -Description "${avFile}: remove V308/V408/V410 exclusions (codec IDs dropped by FFmpeg)" `
+                -WarnMessage "${avFile} present but the V308/V408/V410 exclusion lines did not match; if the pinned FFmpeg has dropped these codec IDs, gst-libav will fail with 'undeclared identifier AV_CODEC_ID_V308'." `
+                -Transform {
+                param($avContent)
+                $avContent = $avContent -replace '(?m)^\s*in_plugin->id == AV_CODEC_ID_V[34]08 \|\|\r?\n', ''
+                $avContent -replace 'in_plugin->id == AV_CODEC_ID_V410 \|\| ', ''
+            })
     }
 
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
@@ -540,13 +527,9 @@ int _isatty(int);
                 } catch {
                     # Fallback to the previous inline form if the .patch context has drifted.
                     log "GES .patch did not apply cleanly, falling back to inline #define"
-                    $content = Get-Content $gesValidate -Raw
-                    $patch = '#define _commit ges__commit
-'
-                    if (-not ($content -match '#define _commit ges__commit')) {
-                        Set-Content -Path $gesValidate -Value ($patch + $content) -NoNewline
-                        log "Inline-patched: ges-validate.c (_commit -> ges__commit)"
-                    }
+                    [void](Add-FileBlockOnce -Path $gesValidate -Prepend -Marker '#define _commit ges__commit' `
+                            -Content "#define _commit ges__commit`n" `
+                            -Description 'ges-validate.c: _commit -> ges__commit (inline fallback)')
                 }
             }
         }

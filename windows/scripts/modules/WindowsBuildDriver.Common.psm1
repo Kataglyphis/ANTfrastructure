@@ -17,6 +17,15 @@
 
 Set-StrictMode -Version Latest
 
+# Resolve-LatestVersionTag (used by Resolve-TorchAppRef) lives in Shared.
+# Import WITHOUT -Force and only if absent: a forced nested re-import rebinds
+# Shared into this module's private scope and unloads the caller's top-level
+# import (the PS module-scoping trap documented in build-gstreamer's header;
+# it broke the BuildDriver test suite on 2026-08-04).
+if (-not (Get-Command Resolve-LatestVersionTag -ErrorAction SilentlyContinue)) {
+    Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -DisableNameChecking
+}
+
 # Transient hcsshim/containerd failures ("failed to create shim task: ttrpc:
 # closed") intermittently kill container creation, typically right after a big
 # layer commit. Every retry loop classifies failures against this ONE pattern.
@@ -195,7 +204,10 @@ function Resolve-BuildIsolation {
                 Write-Host ("Isolation: {0} (cached commit-probe verdict for {1})" -f $cached.isolation, $cacheKey) -ForegroundColor Cyan
                 return $cached.isolation
             }
-        } catch { }
+        } catch {
+            # Best-effort: an unreadable/corrupt verdict cache just re-probes.
+            Write-Verbose "isolation verdict cache unreadable, re-probing: $($_.Exception.Message)"
+        }
     }
     Write-Host 'Isolation: auto — running the process-isolation commit probe (~10s, verdict cached)...' -ForegroundColor Cyan
     $probeLog = Join-Path $LogDir 'isolation-probe.log'
@@ -212,6 +224,140 @@ function Resolve-BuildIsolation {
     return $resolved
 }
 
+# ── Lane-shared version/driver helpers (2026-08-04 dedup) ────────────────────
+# Both drivers (build.ps1 classic, build-buildkit.ps1 BK) used to carry hand-
+# copied twins of these; the per-branch version→build-arg maps had already
+# started drifting. ONE canonical definition lives here — a version pin added
+# for one lane can no longer silently miss the other.
+
+function Get-VersionTableValue {
+    param(
+        [Parameter(Mandatory)][hashtable]$VersionTable,
+        [Parameter(Mandatory)][string]$Key
+    )
+    if (-not $VersionTable.Contains($Key)) { throw "versions.env has no key $Key" }
+    return $VersionTable[$Key]
+}
+
+function Get-MediaBranchVersionArg {
+    # The version build-args of one media branch — VERSIONS ONLY (callers add
+    # BASE_IMAGE / MEMORY_LIMIT_GB / sccache themselves; those are lane-shaped).
+    param(
+        [Parameter(Mandatory)][ValidateSet('media-core', 'media-litert', 'media-tvm')][string]$Branch,
+        [Parameter(Mandatory)][hashtable]$VersionTable
+    )
+    switch ($Branch) {
+        'media-core' {
+            return @{
+                ONNXRUNTIME_VERSION       = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_VERSION'
+                ONNXRUNTIME_GENAI_VERSION = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_GENAI_VERSION'
+                OPENCV_SOURCE_VERSION     = Get-VersionTableValue $VersionTable 'OPENCV_VERSION'
+                FFMPEG_VERSION            = Get-VersionTableValue $VersionTable 'FFMPEG_VERSION'
+                PYAV_VERSION              = Get-VersionTableValue $VersionTable 'PYAV_VERSION'
+                NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
+                CUDA_ARCHITECTURES        = Get-VersionTableValue $VersionTable 'CUDA_ARCHITECTURES'
+            }
+        }
+        'media-litert' {
+            return @{
+                LITERT_VERSION    = Get-VersionTableValue $VersionTable 'LITERT_VERSION'
+                LITERT_LM_VERSION = Get-VersionTableValue $VersionTable 'LITERT_LM_VERSION'
+            }
+        }
+        'media-tvm' {
+            return @{
+                TVM_REF      = Get-VersionTableValue $VersionTable 'TVM_REF'
+                IREE_VERSION = Get-VersionTableValue $VersionTable 'IREE_VERSION'
+            }
+        }
+    }
+}
+
+function Get-MediaMergeVersionArg {
+    # The merge builder's canonical version env = union of all branch version
+    # args MINUS core-branch compile inputs its Dockerfile declares no ARG for,
+    # PLUS its own GStreamer pin.
+    param([Parameter(Mandatory)][hashtable]$VersionTable)
+    $merge = @{}
+    foreach ($branch in 'media-core', 'media-litert', 'media-tvm') {
+        $args_ = Get-MediaBranchVersionArg -Branch $branch -VersionTable $VersionTable
+        foreach ($k in $args_.Keys) {
+            if ($k -notin @('NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES')) { $merge[$k] = $args_[$k] }
+        }
+    }
+    $merge['GSTREAMER_VERSION'] = Get-VersionTableValue $VersionTable 'GSTREAMER_VERSION'
+    return $merge
+}
+
+function Get-BuildVcsRef {
+    try { $r = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { return '' } else { return $r } }
+    catch { return '' }
+}
+
+function Resolve-TorchAppRef {
+    # Orchestr-ANT-ion ref: DETERMINISTIC by default (versions.env APP_REF pin);
+    # -LatestApp opts into resolving the app repo's newest release tag at build
+    # time, falling back to the pin when offline / no tags match.
+    param(
+        [Parameter(Mandatory)][hashtable]$VersionTable,
+        [switch]$LatestApp
+    )
+    $ref = Get-VersionTableValue $VersionTable 'APP_REF'
+    if ($LatestApp) {
+        try {
+            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
+            if ($LASTEXITCODE -eq 0 -and $tagRaw) {
+                $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
+                if (-not [string]::IsNullOrWhiteSpace($latest)) { $ref = $latest }
+            }
+        } catch {
+            Write-Verbose "ls-remote tag resolution failed, using pinned APP_REF: $($_.Exception.Message)"
+        }
+        Write-Host "-LatestApp: resolved Orchestr-ANT-ion ref: $ref (versions.env pin: $(Get-VersionTableValue $VersionTable 'APP_REF'))"
+    }
+    return $ref
+}
+
+function Assert-SccacheEndpoint {
+    # Fail-fast sccache gate shared by both lanes: compile stages REQUIRE the
+    # remote cache unless -NoSccache is a deliberate choice.
+    param(
+        [Parameter(Mandatory)][string[]]$Stages,
+        [string]$SccacheEndpoint = '',
+        [switch]$NoSccache
+    )
+    $compileStages = @('toolchain', 'media')
+    if ($NoSccache -or @($Stages | Where-Object { $compileStages -contains $_ }).Count -eq 0) { return }
+    if ([string]::IsNullOrWhiteSpace($SccacheEndpoint)) {
+        throw ('sccache is required for the toolchain/media stages (the only cross-attempt compile cache). ' +
+            'One-time host setup: scoop install dufs; mkdir C:\sccache-cache; dufs C:\sccache-cache -A -p 5000 — then pass ' +
+            '-SccacheEndpoint http://<host-lan-ip>:5000 or set SCCACHE_WEBDAV_ENDPOINT machine-wide. ' +
+            'Pass -NoSccache only for a deliberate cache-less build.')
+    }
+    try {
+        Invoke-WebRequest -Uri $SccacheEndpoint -Method Head -TimeoutSec 5 -UseBasicParsing | Out-Null
+        Write-Host "sccache endpoint reachable: $SccacheEndpoint" -ForegroundColor Cyan
+    } catch {
+        throw ("sccache endpoint '$SccacheEndpoint' is not reachable from the host ($($_.Exception.Message)). " +
+            'Start the WebDAV server and use a LAN IP reachable from inside containers (not localhost). ' +
+            'Pass -NoSccache only for a deliberate cache-less build.')
+    }
+}
+
+function Get-MediaMemoryBudget {
+    # MEMORY_LIMIT_GB auto-detect shared by both lanes: host RAM minus reserve,
+    # floor 8 GB; an explicit request always wins.
+    param(
+        [int]$RequestedGb = 0,
+        [int]$HostReserveGb = 22
+    )
+    if ($RequestedGb -gt 0) { return $RequestedGb }
+    $usableGb = [int][math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+    return [math]::Max(8, $usableGb - $HostReserveGb)
+}
+
 Export-ModuleMember -Function Initialize-BuildDriverContext, Set-BuildDriverIsolation,
     Test-TransientDockerFailure, Invoke-TransientCooldown, Invoke-DockerWithRetry,
-    Get-DockerBuildArgList, Assert-ImageExists, Resolve-BuildIsolation
+    Get-DockerBuildArgList, Assert-ImageExists, Resolve-BuildIsolation,
+    Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
+    Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget

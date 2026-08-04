@@ -116,10 +116,10 @@ Describe 'Get-DockerBuildArgList' {
     It 'shapes the arg list deterministically: sorted build-args, isolation flag, tail order' {
         Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $env:TEMP
         Set-BuildDriverIsolation -Isolation 'hyperv'
-        $args = Get-DockerBuildArgList -Dockerfile 'windows/Dockerfile.base' -Tag 't:1' `
+        $argList = Get-DockerBuildArgList -Dockerfile 'windows/Dockerfile.base' -Tag 't:1' `
             -BuildArgs @{ ZED = '2'; ALPHA = '1'; EMPTY = ''; NULLED = $null } -ExtraFlags @('--target', 'x')
-        $joined = $args -join ' '
-        Assert-Equal 'build' $args[0] 'starts with build'
+        $joined = $argList -join ' '
+        Assert-Equal 'build' $argList[0] 'starts with build'
         Assert-Match '--isolation hyperv' $joined 'isolation from context'
         Assert-True ($joined.IndexOf('ALPHA=1') -lt $joined.IndexOf('ZED=2')) 'build-args sorted (cache-key stability)'
         Assert-False ($joined -match 'EMPTY=|NULLED=') 'empty/null build-args are dropped'

@@ -1194,12 +1194,10 @@ foreach ($envPointer in $envPointerNames) {
 Assert-Test -Name "vcpkg zlib present (media-build dependency)" -Condition {
     Test-Path 'C:\vcpkg\installed\x64-windows\lib\zlib.lib'
 } -FailMessage "vcpkg zlib.lib missing (vcpkg install broken in the base image)"
-Assert-Test -Name "vcpkg protoc runs IF present (legacy base images only)" -Condition {
-    $protoc = 'C:\vcpkg\installed\x64-windows\tools\protobuf\protoc.exe'
-    if (-not (Test-Path $protoc)) { return $true }
-    & $protoc --version 2>&1 | Out-Null
-    $LASTEXITCODE -eq 0
-} -FailMessage "vcpkg protoc.exe exists but fails to run (vcpkg tree corrupt)"
+# (A "vcpkg protoc runs IF present" assertion lived here for legacy base
+# images; vcpkg has shipped zlib-only since 2026-08-03 and every image in the
+# chain builds from that base, so the test could only ever pass vacuously —
+# removed 2026-08-04.)
 
 # ============================================================================
 Write-TestHeader '20. Python bindings (wheels + imports + inference)'

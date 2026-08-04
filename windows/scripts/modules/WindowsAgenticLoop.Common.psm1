@@ -246,6 +246,10 @@ function Invoke-AgentProcess {
       stderr are streamed to the console AND the agentic log file in real
       time. Returns @{ ExitCode; Output }.  TimeoutSeconds 0 = no timeout.
     #>
+    # PSSA false positive: the thread-job scriptblocks receive these variables
+    # via -ArgumentList + param() (the documented pattern for Start-ThreadJob);
+    # $using: is the alternative, not a requirement.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '', Justification = 'vars passed via -ArgumentList/param')]
     param([string]$Executable, [string[]]$ArgumentList, [string]$Message,
           [int]$TimeoutSeconds = 0, [string]$Label = 'agent', [switch]$RenderClaudeStream)
     $cmdInfo = Get-Command $Executable -ErrorAction SilentlyContinue
@@ -287,12 +291,14 @@ function Invoke-AgentProcess {
             $emit = { param($text) [Console]::Out.WriteLine($text); if ($logFile) { Add-Content $logFile -Value $text } }
             $r = $p.StandardOutput
             try {
-                while (($line = $r.ReadLine()) -ne $null) {
+                while ($null -ne ($line = $r.ReadLine())) {
                     $outLines.Add($line)
                     if ($renderStream -and $line.StartsWith('{')) {
                         # Render claude stream-json events as compact progress lines
+                        # Per-line JSON probe: non-JSON lines are expected and
+                        # fall through to the plain-text emit below.
                         $evt = $null
-                        try { $evt = $line | ConvertFrom-Json } catch {}
+                        try { $evt = $line | ConvertFrom-Json } catch { $evt = $null }
                         if ($evt -and $evt.PSObject.Properties['type']) {
                             switch ($evt.type) {
                                 'system' {
@@ -335,18 +341,18 @@ function Invoke-AgentProcess {
                     }
                     & $emit $line
                 }
-            } catch { <# stream closed #> }
+            } catch { Write-Verbose "stdout stream closed: $($_.Exception.Message)" }
         }
         $stderrJob = Start-ThreadJob -Name "agent-stderr-$Label" -ArgumentList $p, $logFile, $errLines -ScriptBlock {
             param($p, $logFile, $errLines)
             $r = $p.StandardError
             try {
-                while (($line = $r.ReadLine()) -ne $null) {
+                while ($null -ne ($line = $r.ReadLine())) {
                     $errLines.Add($line)
                     [Console]::Error.WriteLine($line)
                     if ($logFile) { Add-Content $logFile -Value $line }
                 }
-            } catch { <# stream closed #> }
+            } catch { Write-Verbose "stderr stream closed: $($_.Exception.Message)" }
         }
 
         if ($TimeoutSeconds -gt 0) {
@@ -599,19 +605,32 @@ function Invoke-GitAutoCommit {
 }
 
 # -- Build / Test / Quality wrappers --------------------------------------
+# One logged-execution core for the three wrappers (was three copies of the
+# same body around Invoke-Expression). The config-supplied command string runs
+# in a CHILD pwsh instead of in-process eval: same expressiveness for the
+# config author, cleaner exit-code semantics, no in-session state mutation.
+function Invoke-LoggedAgenticCommand {
+    param(
+        [Parameter(Mandatory)][string]$Command,
+        [Parameter(Mandatory)][string]$Label
+    )
+    $logFile = Get-AgenticLogFile
+    Write-Host "--- $Label output ---"
+    & pwsh -NoProfile -Command $Command 2>&1 | ForEach-Object {
+        Write-Host $_
+        if ($logFile) { Add-Content $logFile -Value $_ }
+    }
+    Write-Host "--- $Label end ---"
+    if ($null -eq $LASTEXITCODE -or $LASTEXITCODE -eq '') { return 0 }
+    return $LASTEXITCODE
+}
+
 function Invoke-BuildCommand {
     param([string]$Command, [string]$Configuration = 'default')
     Write-AgenticSection "BUILD: $Configuration"
     Write-AgenticLog "Command: $Command"
     if ($script:AgenticDryRun) { return $true }
-    $logFile = Get-AgenticLogFile
-    Write-Host '--- build output ---'
-    Invoke-Expression $Command 2>&1 | ForEach-Object {
-        Write-Host $_
-        if ($logFile) { Add-Content $logFile -Value $_ }
-    }
-    Write-Host '--- build end ---'
-    $ec = if ($LASTEXITCODE -eq $null -or $LASTEXITCODE -eq '') { 0 } else { $LASTEXITCODE }
+    $ec = Invoke-LoggedAgenticCommand -Command $Command -Label 'build'
     if ($ec -ne 0) { Write-AgenticLog "BUILD FAILED (exit $ec)" 'ERROR'; return $false }
     Write-AgenticLog 'BUILD PASSED'; return $true
 }
@@ -621,16 +640,9 @@ function Invoke-TestCommand {
     Write-AgenticSection 'TESTS'
     Write-AgenticLog "Command: $Command"
     if ($script:AgenticDryRun) { return $true }
-    $logFile = Get-AgenticLogFile
     Push-Location $RepoRoot
     try {
-        Write-Host '--- test output ---'
-        Invoke-Expression $Command 2>&1 | ForEach-Object {
-            Write-Host $_
-            if ($logFile) { Add-Content $logFile -Value $_ }
-        }
-        Write-Host '--- test end ---'
-        $ec = if ($LASTEXITCODE -eq $null -or $LASTEXITCODE -eq '') { 0 } else { $LASTEXITCODE }
+        $ec = Invoke-LoggedAgenticCommand -Command $Command -Label 'test'
         if ($ec -ne 0) { Write-AgenticLog "TESTS FAILED (exit $ec)" 'ERROR'; return $false }
         Write-AgenticLog 'TESTS PASSED'; return $true
     } finally { Pop-Location }
@@ -641,15 +653,9 @@ function Invoke-QualityCommand {
     Write-AgenticSection 'QUALITY'
     Write-AgenticLog "Command: $Command"
     if ($script:AgenticDryRun) { return }
-    $logFile = Get-AgenticLogFile
     Push-Location $RepoRoot
     try {
-        Write-Host '--- quality output ---'
-        Invoke-Expression $Command 2>&1 | ForEach-Object {
-            Write-Host $_
-            if ($logFile) { Add-Content $logFile -Value $_ }
-        }
-        Write-Host '--- quality end ---'
+        [void](Invoke-LoggedAgenticCommand -Command $Command -Label 'quality')
     } finally { Pop-Location }
 }
 

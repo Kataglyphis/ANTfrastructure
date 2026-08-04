@@ -44,7 +44,8 @@ function Invoke-ToolchainChecks {
                 $tools = $ToolArguments
             }
         } catch {
-            # If accessing Count fails, ignore and keep defaults
+            # If accessing Count fails, keep defaults.
+            Write-Verbose "ToolArguments count probe failed, keeping defaults: $($_.Exception.Message)"
         }
     }
 

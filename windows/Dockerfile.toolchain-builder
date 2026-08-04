@@ -29,8 +29,11 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 RUN if (-not (Test-Path 'C:\temp\cpython')) { git clone --branch v$env:PYTHON_VERSION --depth 1 https://github.com/python/cpython.git C:\temp\cpython 2>&1 | Write-Host }
 
 # Directory.Build.props (ClangCL PlatformToolset). Mirrors the old
-# Dockerfile.toolchain content, now written natively by pwsh.
-RUN Set-Content -Path 'C:\temp\cpython\PCbuild\Directory.Build.props' -Value @('<?xml version="1.0" encoding="utf-8"?>', '<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">', '  <PropertyGroup>', '    <PlatformToolset>ClangCL</PlatformToolset>', '  </PropertyGroup>', '</Project>')
+# Dockerfile.toolchain content, now written natively by pwsh. XML attributes
+# use SINGLE quotes (valid XML, MSBuild-accepted): the dockerfile frontend
+# strips embedded double quotes from shell-form RUN lines (same trap as the
+# 2026-08-04 handoff-scrub incident).
+RUN Set-Content -Path 'C:\temp\cpython\PCbuild\Directory.Build.props' -Value @('<?xml version=''1.0'' encoding=''utf-8''?>', '<Project xmlns=''http://schemas.microsoft.com/developer/msbuild/2003''>', '  <PropertyGroup>', '    <PlatformToolset>ClangCL</PlatformToolset>', '  </PropertyGroup>', '</Project>')
 # Shared module for build-toolchain-all.ps1's nuget pre-seed (Invoke-DownloadWithRetry).
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build-toolchain-all.ps1 C:\temp\scripts\

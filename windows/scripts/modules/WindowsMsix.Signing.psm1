@@ -17,6 +17,10 @@ function Test-Administrator {
 }
 
 function Invoke-MsixSign {
+  # PSSA suppression, justified: dev/test MSIX signing with a throwaway
+  # self-signed cert; the password arrives as a plain build parameter by
+  # design (same rationale as New-MsixPackage.ps1).
+  [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert')]
   param(
     [Parameter(Mandatory)] [pscustomobject]$Context,
     [Parameter(Mandatory)] [string]$WorkspacePath,
@@ -73,7 +77,7 @@ function Invoke-MsixSign {
             $imported = Import-PfxCertificate -FilePath $pfx -CertStoreLocation 'Cert:\\LocalMachine\\Root' -ErrorAction Stop
           }
 
-          if ($imported -ne $null) {
+          if ($null -ne $imported) {
             $thumbprints = @()
             if ($imported -is [System.Array]) { $thumbprints = $imported | ForEach-Object { $_.Thumbprint } }
             else { $thumbprints = @($imported.Thumbprint) }

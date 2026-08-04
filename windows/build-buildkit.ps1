@@ -85,6 +85,11 @@ Push-Location $repoRoot
 try {
 
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Shared.psm1') -Force
+# Shared transient-failure engine (unit-tested in BuildDriver.Retry.Tests) —
+# the BK lane classifies against its own pattern: ActivateLayer 0x20 snapshot
+# contention explicitly, NOT blanket 'hcsshim' (a genuine ExportLayer 0x3
+# platform-defect hit must fail loudly, not burn a pointless retry).
+Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.Common.psm1') -Force
 
 $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
@@ -110,6 +115,9 @@ Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildKit.Comm
 $cniDrift = Get-CniNatSubnetDrift
 if ($cniDrift) { throw $cniDrift }
 
+# Transient-retry engine context (see the import note above for the pattern).
+Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::ActivateLayer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect'
+
 # --- versions (single source of truth) ---
 $versions = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
 function Get-Ver([string]$Key) {
@@ -118,44 +126,18 @@ function Get-Ver([string]$Key) {
 }
 $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 
-# --- resource budget (same model as build.ps1) ---
-if ($MediaMemoryGb -le 0) {
-    $usableGb = [int][math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-    $MediaMemoryGb = [math]::Max(8, $usableGb - $HostReserveGb)
-}
+# --- resource budget + sccache gate (canonical, shared with build.ps1 via
+# WindowsBuildDriver.Common — the hand-copied twins had started drifting) ---
+$MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveGb $HostReserveGb
 Write-Host "BuildKit lane: process isolation, all CPUs; MEMORY_LIMIT_GB=$MediaMemoryGb (job-count cap)" -ForegroundColor Cyan
-
-# --- sccache policy (same as build.ps1) ---
-$compileStages = @('toolchain', 'media')
-if (-not $NoSccache -and @($Stages | Where-Object { $compileStages -contains $_ }).Count -gt 0) {
-    if ([string]::IsNullOrWhiteSpace($SccacheEndpoint)) {
-        throw 'sccache required for toolchain/media (see windows/build.ps1 for setup); -NoSccache overrides.'
-    }
-    Invoke-WebRequest -Uri $SccacheEndpoint -Method Head -TimeoutSec 5 -UseBasicParsing | Out-Null
-    Write-Host "sccache endpoint reachable: $SccacheEndpoint" -ForegroundColor Cyan
-}
+Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
 
 # --- tags: fully-qualified for containerd-store handoff; bk- namespaced so the
 # classic docker lane's local/kataglyphis:windows-* tags can never collide ---
 function Get-BkTag([string]$Name) { return "docker.io/local/kataglyphis:bk-$Name" }
 
-function Get-TorchAppRef {
-    $ref = Get-Ver 'APP_REF'
-    if ($LatestApp) {
-        try {
-            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
-            if ($LASTEXITCODE -eq 0 -and $tagRaw) {
-                $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
-                if ($latest) { $ref = $latest }
-            }
-        } catch { }
-    }
-    return $ref
-}
-function Get-BuildVcsRef {
-    try { $r = (& git rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { return '' } else { return $r } }
-    catch { return '' }
-}
+# Get-TorchAppRef / Get-BuildVcsRef now live in WindowsBuildDriver.Common
+# (Resolve-TorchAppRef / Get-BuildVcsRef) — shared with build.ps1.
 
 function Invoke-BkStage {
     param(
@@ -172,9 +154,13 @@ function Invoke-BkStage {
         # Artifacts leave the warm container via the C:\bkhandoff cache mount
         # (Export-BuildHandoff); the paired materialize target imports them
         # in a calm container and IS exported normally.
-        [switch]$NoOutput
+        [switch]$NoOutput,
+        # Raw --output spec override (e.g. docker-tar or push exporters); the
+        # FinalTar/PushRef re-solves use this instead of the default image
+        # output so they ride the same retry + log plumbing as every stage.
+        [string]$OutputSpec = ''
     )
-    if (-not $NoOutput -and -not $Tag) { throw 'Invoke-BkStage: -Tag is required unless -NoOutput' }
+    if (-not $NoOutput -and -not $Tag -and -not $OutputSpec) { throw 'Invoke-BkStage: need -Tag, -OutputSpec or -NoOutput' }
     if (-not $Label) { $Label = [IO.Path]::GetFileName($Dockerfile) + $(if ($Target) { ":$Target" } else { '' }) }
     $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
     $dfName = [IO.Path]::GetFileName($Dockerfile)
@@ -189,7 +175,8 @@ function Invoke-BkStage {
         '--opt', 'image-resolve-mode=local',
         '--progress', 'plain'
     )
-    if (-not $NoOutput) { $bkArgs += @('--output', "type=image,name=$Tag,unpack=true") }
+    if ($OutputSpec) { $bkArgs += @('--output', $OutputSpec) }
+    elseif (-not $NoOutput) { $bkArgs += @('--output', "type=image,name=$Tag,unpack=true") }
     if ($NoCache) { $bkArgs += @('--no-cache') }
     if ($Target) { $bkArgs += @('--opt', "target=$Target") }
     # Optional cross-host cache (mode=max also caches non-exported intermediate
@@ -202,21 +189,16 @@ function Invoke-BkStage {
     }
     $stageLog = Join-Path $script:LogDir ("bk-" + ($Label -replace '[:\\/]', '-') + ".log")
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
-    # ONE automatic retry on transient container-infrastructure failures —
-    # the same class the classic driver retries (WindowsBuildDriver.Common):
-    # ActivateLayer 0x20 is snapshot contention that clears in seconds (cost
-    # a manual re-run on 2026-08-04), ttrpc/shim errors are startup races.
-    $transient = 'hcsshim::ActivateLayer.*0x20|ttrpc: closed|failed to create shim task'
-    foreach ($attempt in 1, 2) {
+    # ONE automatic retry on transient container-infrastructure failures via
+    # the shared, unit-tested engine (WindowsBuildDriver.Common; pattern set
+    # in Initialize-BuildDriverContext above — ActivateLayer 0x20 snapshot
+    # contention + ttrpc/shim races; a manual 0x20 re-run cost us 2026-08-04).
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
         Write-Host "`n==> [bk:$Label] buildctl -> $dest$(if ($attempt -gt 1) { ' (retry)' })" -ForegroundColor Cyan
         & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog
         if ($LASTEXITCODE -eq 0) { break }
         $tail = if (Test-Path $stageLog) { (Get-Content $stageLog -Tail 40 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
-        if ($attempt -eq 1 -and $tail -match $transient) {
-            Write-Warning "[bk:$Label] transient infrastructure failure — retrying in 15s"
-            Start-Sleep -Seconds 15
-            continue
-        }
+        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts 2 -Label "bk:$Label" -CooldownSeconds 15) { continue }
         throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — log: $stageLog"
     }
     Write-Host "[bk:$Label] OK -> $dest" -ForegroundColor Green
@@ -266,24 +248,11 @@ if ($Stages -contains 'toolchain') {
 }
 
 if ($Stages -contains 'media') {
-    $branchArgs = @{
-        'media-core'   = @{
-            ONNXRUNTIME_VERSION       = Get-Ver 'ONNXRUNTIME_VERSION'
-            ONNXRUNTIME_GENAI_VERSION = Get-Ver 'ONNXRUNTIME_GENAI_VERSION'
-            OPENCV_SOURCE_VERSION     = Get-Ver 'OPENCV_VERSION'
-            FFMPEG_VERSION            = Get-Ver 'FFMPEG_VERSION'
-            PYAV_VERSION              = Get-Ver 'PYAV_VERSION'
-            NV_CODEC_HEADERS_REF      = Get-Ver 'NV_CODEC_HEADERS_REF'
-            CUDA_ARCHITECTURES        = Get-Ver 'CUDA_ARCHITECTURES'
-        }
-        'media-litert' = @{
-            LITERT_VERSION    = Get-Ver 'LITERT_VERSION'
-            LITERT_LM_VERSION = Get-Ver 'LITERT_LM_VERSION'
-        }
-        'media-tvm'    = @{
-            TVM_REF      = Get-Ver 'TVM_REF'
-            IREE_VERSION = Get-Ver 'IREE_VERSION'
-        }
+    # Canonical per-branch version args (WindowsBuildDriver.Common — shared
+    # with build.ps1; the hand-copied maps had already started drifting).
+    $branchArgs = @{}
+    foreach ($b in 'media-core', 'media-litert', 'media-tvm') {
+        $branchArgs[$b] = Get-MediaBranchVersionArg -Branch $b -VersionTable $versions
     }
     $loopBranches = $MediaBranches
     $auxProcs = @()
@@ -340,17 +309,14 @@ if ($Stages -contains 'media') {
         }
         Write-Host '[bk:aux] litert + tvm OK' -ForegroundColor Green
     }
-    $mergeArgs = @{
-        BASE_IMAGE        = Get-BkTag 'windows-toolchain'
-        CORE_IMAGE        = Get-BkTag 'windows-media-core'
-        LITERT_IMAGE      = Get-BkTag 'windows-media-litert'
-        TVM_IMAGE         = Get-BkTag 'windows-media-tvm'
-        GSTREAMER_VERSION = Get-Ver 'GSTREAMER_VERSION'
-        MEMORY_LIMIT_GB   = $MediaMemoryGb
+    # Canonical merge version env (WindowsBuildDriver.Common) + BK tag wiring.
+    $mergeArgs = (Get-MediaMergeVersionArg -VersionTable $versions) + @{
+        BASE_IMAGE      = Get-BkTag 'windows-toolchain'
+        CORE_IMAGE      = Get-BkTag 'windows-media-core'
+        LITERT_IMAGE    = Get-BkTag 'windows-media-litert'
+        TVM_IMAGE       = Get-BkTag 'windows-media-tvm'
+        MEMORY_LIMIT_GB = $MediaMemoryGb
     }
-    foreach ($t in $branchArgs.Values) { foreach ($k in $t.Keys) {
-        if ($k -notin @('NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES')) { $mergeArgs[$k] = $t[$k] }
-    } }
     # Warm/materialize pair (GStreamer is heavy-churn — same platform-defect
     # workaround as the media-core libraries, see Dockerfile.media-builder).
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'warm' -NoOutput -BuildArgs ($mergeArgs + $sccache)
@@ -360,7 +326,7 @@ if ($Stages -contains 'media') {
 if ($Stages -contains 'torch') {
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.torch' -Tag (Get-BkTag 'windows-torch') -BuildArgs @{
         BASE_IMAGE = Get-BkTag 'windows-media'
-        APP_REF    = Get-TorchAppRef
+        APP_REF    = Resolve-TorchAppRef -VersionTable $versions -LatestApp:$LatestApp
         BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
         VCS_REF    = Get-BuildVcsRef
     }
@@ -372,27 +338,15 @@ if ($Stages -contains 'final') {
         BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
         VCS_REF    = Get-BuildVcsRef
     }
+    # FinalTar / PushRef: the same final solve from cache, different exporter —
+    # via Invoke-BkStage so both get the transient retry + stage log for free.
+    # Push auth: buildctl forwards THIS shell's docker credential store — run
+    # `docker login <registry>` here first.
     if ($FinalTar) {
-        Write-Host "`n==> exporting final image to $FinalTar (docker-loadable)" -ForegroundColor Cyan
-        # Same solve from cache; only the export differs.
-        $dfDir = Join-Path $repoRoot 'windows'
-        & $BuildCtl build --frontend dockerfile.v0 --local "context=." --local "dockerfile=$dfDir" `
-            --opt filename=Dockerfile --opt image-resolve-mode=local `
-            --opt "build-arg:BASE_IMAGE=$(Get-BkTag 'windows-torch')" `
-            --output "type=docker,name=local/kataglyphis:winamd64,dest=$FinalTar" 2>&1 | Select-Object -Last 5
-        if ($LASTEXITCODE -ne 0) { throw "final tar export failed" }
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-tar' -OutputSpec "type=docker,name=local/kataglyphis:winamd64,dest=$FinalTar" -BuildArgs @{ BASE_IMAGE = Get-BkTag 'windows-torch' }
     }
     if ($PushRef) {
-        Write-Host "`n==> pushing final image to $PushRef" -ForegroundColor Cyan
-        # Same solve from cache; the push=true exporter uploads the blobs.
-        # Auth: buildctl forwards THIS shell's docker credential store —
-        # run `docker login <registry>` here first.
-        $dfDir = Join-Path $repoRoot 'windows'
-        & $BuildCtl build --frontend dockerfile.v0 --local "context=." --local "dockerfile=$dfDir" `
-            --opt filename=Dockerfile --opt image-resolve-mode=local `
-            --opt "build-arg:BASE_IMAGE=$(Get-BkTag 'windows-torch')" `
-            --output "type=image,name=$PushRef,push=true" 2>&1 | Select-Object -Last 5
-        if ($LASTEXITCODE -ne 0) { throw "registry push to $PushRef failed" }
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-push' -OutputSpec "type=image,name=$PushRef,push=true" -BuildArgs @{ BASE_IMAGE = Get-BkTag 'windows-torch' }
         Write-Host "[bk] pushed $PushRef" -ForegroundColor Green
     }
 }

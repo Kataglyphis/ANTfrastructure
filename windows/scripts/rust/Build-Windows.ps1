@@ -74,7 +74,7 @@ try {
         Write-BuildLog -Context $Context -Message "No EXTRA_CARGO_ARGS specified; proceeding without extra cargo args."
     }
 
-    function Combine-Params {
+    function Join-ParameterSet {
         param(
             [array]$Base,
             [array]$Extra
@@ -103,33 +103,33 @@ try {
     Invoke-BuildStep -Context $Context -StepName "Format Check (cargo fmt)" -Critical -Script {
         Invoke-BuildExternal -Context $Context -File "rustup" -Parameters @("component", "add", "rustfmt")
         $fmtParams = @("fmt", "--all", "--", "--check")
-        $fmtParams = Combine-Params -Base $fmtParams -Extra $ExtraCargoArgs
+        $fmtParams = Join-ParameterSet -Base $fmtParams -Extra $ExtraCargoArgs
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $fmtParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Linting (cargo clippy)" -Critical -Script {
         Invoke-BuildExternal -Context $Context -File "rustup" -Parameters @("component", "add", "clippy")
         $clippyParams = @("clippy", "--all-targets", "--all-features", "--", "-D", "warnings")
-        $clippyParams = Combine-Params -Base $clippyParams -Extra $ExtraCargoArgs
+        $clippyParams = Join-ParameterSet -Base $clippyParams -Extra $ExtraCargoArgs
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $clippyParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Unit Tests" -Critical -Script {
         $testParams = @("test", "--all", "--verbose")
-        $testParams = Combine-Params -Base $testParams -Extra $ExtraCargoArgs
+        $testParams = Join-ParameterSet -Base $testParams -Extra $ExtraCargoArgs
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $testParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Benchmarks" -Script {
         # Benchmarks might fail if not configured, leaving as non-critical
         $benchParams = @("bench")
-        $benchParams = Combine-Params -Base $benchParams -Extra $ExtraCargoArgs
+        $benchParams = Join-ParameterSet -Base $benchParams -Extra $ExtraCargoArgs
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $benchParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Release Build" -Critical -Script {
         $buildParams = @("build", "--release")
-        $buildParams = Combine-Params -Base $buildParams -Extra $ExtraCargoArgs
+        $buildParams = Join-ParameterSet -Base $buildParams -Extra $ExtraCargoArgs
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $buildParams
     }
 

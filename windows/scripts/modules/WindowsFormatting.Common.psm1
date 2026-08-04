@@ -33,6 +33,8 @@ function Get-ProjectCmakeFiles {
         return @($trackedPaths | Sort-Object -Unique)
       }
     } catch {
+      # Best-effort: fall through to the filesystem enumeration below.
+      Write-Verbose "git ls-files enumeration failed: $($_.Exception.Message)"
     }
   }
 
@@ -83,6 +85,8 @@ function Get-ProjectCppFiles {
         return @($trackedPaths | Sort-Object -Unique)
       }
     } catch {
+      # Best-effort: fall through to the filesystem enumeration below.
+      Write-Verbose "git ls-files enumeration failed: $($_.Exception.Message)"
     }
   }
 

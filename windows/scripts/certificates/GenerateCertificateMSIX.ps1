@@ -1,13 +1,30 @@
-$publisher = "CN=Jonas Heinle"
-$passwordString = "YOUR_TOP_SECRET_PW"
-$pfxPath = "C:\\Users\\XXX\\Documents\\MSIX_Cert.pfx"
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Generate a modern self-signed MSIX DEV-signing certificate (KSP provider)
+# and export it as a password-protected PFX. Template/utility script — run
+# manually with your own values.
 
-# 1. Generate a modern self-signed certificate using a modern KSP
 #requires -Version 7.0
 
+# PSSA suppression, justified: throwaway self-signed DEV certificate; the
+# password is a caller-supplied parameter of a local, manual utility (same
+# rationale as New-MsixPackage.ps1 / WindowsMsix.Signing.psm1).
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert; manual utility')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '', Justification = 'dev/test signing cert; manual utility')]
+param(
+    [Parameter(Mandatory)][string]$Password,
+    [string]$Publisher = 'CN=Jonas Heinle',
+    [string]$PfxPath = (Join-Path $env:USERPROFILE 'Documents\MSIX_Cert.pfx')
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# 1. Generate a modern self-signed certificate using a modern KSP
 $cert = New-SelfSignedCertificate `
     -Type Custom `
-    -Subject $publisher `
+    -Subject $Publisher `
     -KeyUsage DigitalSignature `
     -FriendlyName "My MSIX Signing Cert" `
     -CertStoreLocation "Cert:\CurrentUser\My" `
@@ -17,16 +34,14 @@ $cert = New-SelfSignedCertificate `
     -Provider "Microsoft Software Key Storage Provider" `
     -HashAlgorithm SHA256
 
-# 2. Convert your plain-text password to a SecureString
-$securePassword = ConvertTo-SecureString -String $passwordString -Force -AsPlainText
+# 2. Convert the password to a SecureString
+$securePassword = ConvertTo-SecureString -String $Password -Force -AsPlainText
 
 # 3. Export to a modern .pfx file
 Export-PfxCertificate `
     -Cert $cert `
-    -FilePath $pfxPath `
+    -FilePath $PfxPath `
     -Password $securePassword `
-    -CryptoAlgorithmOption AES256_SHA256 
-    # Note: -CryptoAlgorithmOption is available in newer PowerShell versions. 
-    # If it fails, just remove that line; the default on Win10/11 is still modern enough.
+    -CryptoAlgorithmOption AES256_SHA256
 
-Write-Host "Modern PFX generated successfully at $pfxPath"
+Write-Host "Modern PFX generated successfully at $PfxPath"

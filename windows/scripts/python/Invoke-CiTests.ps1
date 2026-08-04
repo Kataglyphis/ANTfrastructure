@@ -49,18 +49,18 @@ $script:CreatedUvEnvs = New-Object System.Collections.Generic.List[string]
 $script:Results = $script:BuildContext.Results
 
 function Close-Log { Close-BuildLog -Context $script:BuildContext }
-function Write-Log { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-function Write-LogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
+function Write-CiLog { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
+function Write-CiLogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
 function Write-LogError { param([string]$Message); Write-BuildLogError -Context $script:BuildContext -Message $Message }
 function Write-LogSuccess { param([string]$Message); Write-BuildLogSuccess -Context $script:BuildContext -Message $Message }
 
 Open-BuildLog -Context $script:BuildContext
 
-Write-Log "=== Python CI Test Matrix (Windows) ==="
-Write-Log "Repo root: $repoRoot"
-Write-Log "Package name: $PackageName"
-Write-Log "Python versions: $($PythonVersions -join ', ')"
-Write-Log "Logging all output to: $logPath"
+Write-CiLog "=== Python CI Test Matrix (Windows) ==="
+Write-CiLog "Repo root: $repoRoot"
+Write-CiLog "Package name: $PackageName"
+Write-CiLog "Python versions: $($PythonVersions -join ', ')"
+Write-CiLog "Logging all output to: $logPath"
 
 function New-UvEnvironment {
     param(
@@ -101,7 +101,7 @@ try {
         $allowFailure = Test-ExperimentalPython -Version $version
 
         Invoke-BuildStep -Context $script:BuildContext -StepName "Python $version - Tests" -AllowFailure:$allowFailure -Script {
-            Write-Log "--- Python $version ---"
+            Write-CiLog "--- Python $version ---"
             $envPath = New-UvEnvironment -PythonVersion $version -EnvName ".venv-$version"
 
             try {
@@ -139,7 +139,7 @@ try {
         } | Out-Null
     }
 
-    Write-Log "=== CI Tests completed ==="
+    Write-CiLog "=== CI Tests completed ==="
 
 } finally {
     foreach ($envPath in $script:CreatedUvEnvs) {

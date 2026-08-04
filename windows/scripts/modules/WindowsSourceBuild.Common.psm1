@@ -272,8 +272,14 @@ function Initialize-SourceBuildEnvironment {
     param(
         [string]$InstallDir = ''
     )
-    Set-StrictMode -Version Latest
-    $ErrorActionPreference = 'Stop'
+    # NOTE deliberately NO Set-StrictMode/$ErrorActionPreference here: setting
+    # them inside a module function only affects THIS function's scope — the
+    # two lines that used to sit here silently did nothing for callers while
+    # LOOKING like they enforced strictness. Every build script must set its
+    # own `Set-StrictMode -Version Latest` + `$ErrorActionPreference = 'Stop'`
+    # at top level (audit 2026-08-04: onnx-genai/litert/litert-lm/gstreamer
+    # still need StrictMode added — one per build cycle, latent unset-variable
+    # reads may surface).
     if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
     return $InstallDir
 }

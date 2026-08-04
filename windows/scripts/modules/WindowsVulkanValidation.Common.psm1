@@ -312,7 +312,7 @@ function Invoke-VulkanValidationTimedProcess {
         $process = Start-Process @startArgs
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             Write-Warning "Timeout after $TimeoutSeconds s - killing $ExecutablePath."
-            try { $process.Kill($true) } catch { }
+            try { $process.Kill($true) } catch { Write-Verbose "process kill race (already exited): $($_.Exception.Message)" }
             $process.WaitForExit()
             $exitCode = 124
         } else {

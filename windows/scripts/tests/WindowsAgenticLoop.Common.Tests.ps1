@@ -295,9 +295,8 @@ Plain text after the block.
         }
 
         It 'logs DRY RUN when in dry-run mode' {
-            $output = Invoke-GitAutoCommit -Message 'test commit' -RepoRoot $script:testDir -Enabled:$true
-            # Should not throw; under dry-run it logs and returns
-            $true | Should Be $true
+            # Should not throw; under dry-run it logs and returns.
+            { Invoke-GitAutoCommit -Message 'test commit' -RepoRoot $script:testDir -Enabled:$true } | Should Not Throw
         }
     }
 

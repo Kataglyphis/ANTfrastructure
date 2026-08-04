@@ -20,7 +20,10 @@ param(
     [string]$ScriptDir  = 'C:\temp\scripts',
     # Resume inside a preserved container after a mid-chain failure: skip the
     # stages before the named one (see build.ps1's recovery recipe on failure).
-    [string]$ResumeFrom = ''
+    [string]$ResumeFrom = '',
+    # Stop AFTER the named stage (inclusive) — same chain-partition contract
+    # as build-media-core-all.ps1 (was asymmetrically missing here).
+    [string]$Until = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,7 +40,7 @@ $stages = @(
     @{ Name = 'IREE'; Script = 'build-iree-from-source.ps1'; SourceDir = 'C:\temp\iree-src' }
 )
 
-Invoke-SourceBuildChain -Label 'media-tvm' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom
+Invoke-SourceBuildChain -Label 'media-tvm' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom -Until $Until
 
 Write-Host "`n=== media-tvm chain completed ==="
 

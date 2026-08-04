@@ -30,8 +30,8 @@ $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('Windo
 
 $script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir "logs"
 
-function Write-Log { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-function Write-LogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
+function Write-CiLog { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
+function Write-CiLogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
 
 $uvDelegates = New-UvBuildDelegates -Context $script:BuildContext
 $script:UvCommandRunner = $uvDelegates.CommandRunner
@@ -40,15 +40,15 @@ $script:UvLogWarning = $uvDelegates.LogWarning
 
 Open-BuildLog -Context $script:BuildContext
 
-Write-Log "Using Python version: $PythonVersion for docs build"
+Write-CiLog "Using Python version: $PythonVersion for docs build"
 
 $VENV_DIR = Join-Path $repoRoot ".venv-docs"
 
 try {
     if (Test-Path $VENV_DIR) {
-        Write-Log "Using existing docs venv at $VENV_DIR"
+        Write-CiLog "Using existing docs venv at $VENV_DIR"
     } else {
-        Write-Log "Creating docs venv at $VENV_DIR"
+        Write-CiLog "Creating docs venv at $VENV_DIR"
         New-UvProjectEnvironment -Workspace $repoRoot -PythonVersion $PythonVersion -EnvName ".venv-docs" -CommandRunner $script:UvCommandRunner -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning | Out-Null
     }
 
@@ -65,37 +65,37 @@ try {
     New-Item -ItemType Directory -Force $COVERAGE_DST | Out-Null
     New-Item -ItemType Directory -Force $TEST_RESULTS_DST | Out-Null
 
-    Write-Log "Looking for coverage HTML in $SRC ..."
+    Write-CiLog "Looking for coverage HTML in $SRC ..."
     $coverageHtmlDir = Join-Path $SRC "coverage-html-$PythonVersion"
     if (Test-Path $coverageHtmlDir) {
         Copy-Item "$coverageHtmlDir\*" $COVERAGE_DST -Recurse -Force
-        Write-Log "Copied $coverageHtmlDir -> $COVERAGE_DST"
+        Write-CiLog "Copied $coverageHtmlDir -> $COVERAGE_DST"
     } elseif (Test-Path (Join-Path $SRC "coverage")) {
         Copy-Item "$SRC\coverage\*" $COVERAGE_DST -Recurse -Force
-        Write-Log "Copied $SRC\coverage -> $COVERAGE_DST"
+        Write-CiLog "Copied $SRC\coverage -> $COVERAGE_DST"
     } elseif (Test-Path (Join-Path $SRC "htmlcov")) {
         Copy-Item "$SRC\htmlcov\*" $COVERAGE_DST -Recurse -Force
-        Write-Log "Copied $SRC\htmlcov -> $COVERAGE_DST"
+        Write-CiLog "Copied $SRC\htmlcov -> $COVERAGE_DST"
     }
 
     $coverageXml = Join-Path $SRC "coverage-$PythonVersion.xml"
     if (Test-Path $coverageXml) {
         Copy-Item $coverageXml (Join-Path $STATIC_DIR "coverage.xml") -Force
-        Write-Log "Copied coverage-$PythonVersion.xml -> coverage.xml"
+        Write-CiLog "Copied coverage-$PythonVersion.xml -> coverage.xml"
     } elseif (Test-Path (Join-Path $SRC "coverage.xml")) {
         Copy-Item (Join-Path $SRC "coverage.xml") (Join-Path $STATIC_DIR "coverage.xml") -Force
-        Write-Log "Copied coverage.xml"
+        Write-CiLog "Copied coverage.xml"
     }
 
-    Write-Log "Copying pytest HTML reports..."
+    Write-CiLog "Copying pytest HTML reports..."
     Get-ChildItem -Path $SRC -Filter "pytest-report-*.html" -ErrorAction SilentlyContinue | ForEach-Object {
         Copy-Item $_.FullName $TEST_RESULTS_DST -Force
-        Write-Log "Copied $($_.Name) to $TEST_RESULTS_DST"
+        Write-CiLog "Copied $($_.Name) to $TEST_RESULTS_DST"
     }
 
     Get-ChildItem -Path $SRC -Filter "report-*.xml" -ErrorAction SilentlyContinue | ForEach-Object {
         Copy-Item $_.FullName $TEST_RESULTS_DST -Force
-        Write-Log "Copied $($_.Name) to $TEST_RESULTS_DST"
+        Write-CiLog "Copied $($_.Name) to $TEST_RESULTS_DST"
     }
 
     Get-ChildItem -Path $SRC -Filter "pytest-report-*.md" -ErrorAction SilentlyContinue | ForEach-Object {
@@ -105,7 +105,7 @@ try {
     Set-Location (Join-Path $repoRoot "docs")
     Invoke-BuildExternal -Context $script:BuildContext -File "make" -Parameters @("html") | Out-Null
 
-    Write-Log "=== Docs build completed ==="
+    Write-CiLog "=== Docs build completed ==="
 
 } finally {
     Remove-UvProjectEnvironment -EnvPath $VENV_DIR -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning

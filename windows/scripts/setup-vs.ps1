@@ -3,6 +3,12 @@
 
 #requires -Version 7.0
 
+# PSSA suppression, justified: the Test-Connection below is a deliberate
+# network-reachability probe against a fixed public host before the multi-GB
+# VS Build Tools download — no system information is exposed. (This edit
+# rides in a base-layer window: setup-vs.ps1 is COPY'd before the VS layer,
+# so touching it re-pays the VS install.)
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingComputerNameHardcoded', '', Justification = 'reachability probe against a fixed public host')]
 param(
     [string]$TempDir       = 'C:\temp'
 )

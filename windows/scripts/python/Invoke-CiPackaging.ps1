@@ -30,8 +30,8 @@ $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('Windo
 
 $script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir "logs"
 
-function Write-Log { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-function Write-LogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
+function Write-CiLog { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
+function Write-CiLogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
 
 $uvDelegates = New-UvBuildDelegates -Context $script:BuildContext
 $script:UvCommandRunner = $uvDelegates.CommandRunner
@@ -40,11 +40,11 @@ $script:UvLogWarning = $uvDelegates.LogWarning
 
 Open-BuildLog -Context $script:BuildContext
 
-Write-Log "Using Python version: $PythonVersion"
+Write-CiLog "Using Python version: $PythonVersion"
 
 try {
     Invoke-BuildStep -Context $script:BuildContext -StepName "Packaging (source)" -Script {
-        Write-Log "=== Packaging (source) ==="
+        Write-CiLog "=== Packaging (source) ==="
         $envPath = Join-Path $repoRoot ".venv-packaging-sources"
         New-UvProjectEnvironment -Workspace $repoRoot -PythonVersion $PythonVersion -EnvName ".venv-packaging-sources" -CommandRunner $script:UvCommandRunner -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning | Out-Null
 
@@ -57,7 +57,7 @@ try {
     } | Out-Null
 
     Invoke-BuildStep -Context $script:BuildContext -StepName "Packaging (Windows binaries)" -Script {
-        Write-Log "=== Packaging (Windows binaries) ==="
+        Write-CiLog "=== Packaging (Windows binaries) ==="
         $env:CYTHONIZE = "True"
 
         $envPath = Join-Path $repoRoot ".venv-packaging-binaries"
@@ -71,7 +71,7 @@ try {
         }
     } | Out-Null
 
-    Write-Log "=== Packaging completed ==="
+    Write-CiLog "=== Packaging completed ==="
 
 } finally {
     Write-BuildSummary -Context $script:BuildContext

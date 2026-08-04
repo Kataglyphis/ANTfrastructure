@@ -46,6 +46,8 @@ function Stop-StructuredLogging {
         try {
             Stop-Transcript | Out-Null
         } catch {
+            # Best-effort: transcript may already be closed by a nested stop.
+            Write-Verbose "Stop-Transcript: $($_.Exception.Message)"
         }
     }
 }
@@ -70,6 +72,8 @@ function Enable-Tls12ForDownloads {
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     } catch {
+        # pwsh 7 defaults already include TLS 1.2+; failure here is cosmetic.
+        Write-Verbose "TLS12 opt-in failed (already default on pwsh 7): $($_.Exception.Message)"
     }
 }
 

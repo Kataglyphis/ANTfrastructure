@@ -17,6 +17,13 @@
   - Optionally signs the MSIX or generates a test certificate.
 #>
 
+# PSSA suppressions, justified: this script signs DEV/test MSIX packages with a
+# throwaway self-signed certificate. The password travels as a plain build
+# parameter by design (CI secret injection); converting the public parameter
+# surface to SecureString would break existing callers for no real secrecy
+# gain (the PFX and its password live in the same build workspace).
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert; see comment above')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '', Justification = 'dev/test signing cert; see comment above')]
 param(
     [Parameter(Mandatory)][string]$Workspace,
     [Parameter(Mandatory)][string]$Binary,
@@ -85,7 +92,7 @@ function Resolve-Executable([string]$Name) {
     return $null
 }
 
-function Normalize-Version([string]$RawVersion) {
+function ConvertTo-NormalizedVersion([string]$RawVersion) {
     $segments = @($RawVersion.Split('.'))
     if ($segments.Count -eq 3) { return "$RawVersion.0" }
     if ($segments.Count -ne 4) { throw "Version '$RawVersion' is invalid. Use Major.Minor.Build or Major.Minor.Build.Revision" }
@@ -142,17 +149,17 @@ function Import-CertificateAndSign {
             Write-BuildLogWarning -Context $Context -Message "certutil -store failed: $($_.Exception.Message)"
         }
 
-        $args = @("sign", "/fd", "SHA256", "/sha1", $thumb, "/v", $PackageFile)
-        Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $SigntoolExe $($args -join ' ')"
-        $sigOut = & $SigntoolExe @args 2>&1
+        $signArgs = @("sign", "/fd", "SHA256", "/sha1", $thumb, "/v", $PackageFile)
+        Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $SigntoolExe $($signArgs -join ' ')"
+        $sigOut = & $SigntoolExe @signArgs 2>&1
         $exit = $LASTEXITCODE
         Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
         if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
     } catch {
         Write-BuildLogWarning -Context $Context -Message "Import/sign by thumbprint failed, falling back to direct signtool invocation. Details: $($_.Exception.Message)"
-        $args = @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, "/v", $PackageFile)
-        Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $SigntoolExe $($args -join ' ')"
-        $sigOut = & $SigntoolExe @args 2>&1
+        $signArgs = @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, "/v", $PackageFile)
+        Write-BuildLog -Context $Context -Message "DEBUG: signtool command: $SigntoolExe $($signArgs -join ' ')"
+        $sigOut = & $SigntoolExe @signArgs 2>&1
         $exit = $LASTEXITCODE
         Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
         if ($sigOut) { Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
@@ -178,7 +185,7 @@ try {
     Write-BuildLog -Context $Context -Message "PackageName: $PackageName"
     
     $Workspace = (Resolve-Path $Workspace).Path
-    $Version = Normalize-Version $Version
+    $Version = ConvertTo-NormalizedVersion $Version
     
     $resolvedCargoTargetDir = Join-Path $Workspace $CargoTargetDir
     $env:CARGO_TARGET_DIR = $resolvedCargoTargetDir

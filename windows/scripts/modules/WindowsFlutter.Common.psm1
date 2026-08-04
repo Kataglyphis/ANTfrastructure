@@ -13,7 +13,7 @@
 # WindowsFlutter.Common.psm1
 # Reusable functions for building and patching Flutter Windows applications in a containerized environment.
 
-function Clean-FlutterPluginSymlinks {
+function Clear-FlutterPluginSymlink {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -31,7 +31,7 @@ function Clean-FlutterPluginSymlinks {
     }
 }
 
-function Fix-FlutterPluginSymlinks {
+function Repair-FlutterPluginSymlink {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -94,7 +94,7 @@ function Fix-FlutterPluginSymlinks {
     }
 }
 
-function Patch-PermissionHandlerWindows {
+function Update-PermissionHandlerWindows {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -202,5 +202,5 @@ function Sync-FastLocalArtifactsToHost {
     }
 }
 
-Export-ModuleMember -Function Clean-FlutterPluginSymlinks, Fix-FlutterPluginSymlinks, Patch-PermissionHandlerWindows, Sync-FastLocalArtifactsToHost
+Export-ModuleMember -Function Clear-FlutterPluginSymlink, Repair-FlutterPluginSymlink, Update-PermissionHandlerWindows, Sync-FastLocalArtifactsToHost
 

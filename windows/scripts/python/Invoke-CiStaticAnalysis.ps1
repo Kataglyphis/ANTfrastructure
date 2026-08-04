@@ -36,8 +36,8 @@ $PackageName = Get-PyprojectPackageName -RepoRoot $repoRoot -Default $PackageNam
 
 $script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir "logs"
 
-function Write-Log { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-function Write-LogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
+function Write-CiLog { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
+function Write-CiLogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
 
 $uvDelegates = New-UvBuildDelegates -Context $script:BuildContext
 $script:UvCommandRunner = $uvDelegates.CommandRunner
@@ -46,8 +46,8 @@ $script:UvLogWarning = $uvDelegates.LogWarning
 
 Open-BuildLog -Context $script:BuildContext
 
-Write-Log "Using Python version: $PythonVersion"
-Write-Log "Running static analysis for package: $PackageName"
+Write-CiLog "Using Python version: $PythonVersion"
+Write-CiLog "Running static analysis for package: $PackageName"
 
 $envPath = Join-Path $repoRoot ".venv-static-analysis"
 
@@ -91,7 +91,7 @@ try {
         Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @("run", "--active", "ty", "check") | Out-Null
     }
 
-    Write-Log "Static analysis completed"
+    Write-CiLog "Static analysis completed"
 
 } finally {
     Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning

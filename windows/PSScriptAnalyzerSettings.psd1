@@ -9,7 +9,11 @@
         'PSUseShouldProcessForStateChangingFunctions',
         'PSAvoidUsingPositionalParameters',
         'PSReviewUnusedParameter',
-        'PSUseBOMForUnicodeEncodedFile'
+        'PSUseBOMForUnicodeEncodedFile',
+        # Established API surface (Write-SccacheStats, Get-MsvcToolsRoots, ...):
+        # renaming exported functions for grammatical pedantry is churn across
+        # scripts, tests and external consumers with zero behavior value.
+        'PSUseSingularNouns'
     )
     Rules        = @{
         PSPlaceOpenBrace           = @{ Enable = $false }

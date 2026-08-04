@@ -68,6 +68,8 @@ function Close-LogWriter {
             $Context.LogWriter.Flush()
             $Context.LogWriter.Dispose()
         } catch {
+            # Best-effort: the writer may already be disposed on double-close.
+            Write-Verbose "log writer dispose: $($_.Exception.Message)"
         } finally {
             $Context.LogWriter = $null
         }

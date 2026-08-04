@@ -8,14 +8,15 @@
 #      a note otherwise, so the gate is always usable on an offline/bare host.
 # Exit code is non-zero if any parse error (or, with -FailOnAnalyzer, any analyzer
 # diagnostic at the configured severity) is found. Run it before build.ps1 and in CI.
-[CmdletBinding()]
-param(
 #requires -Version 7.0
 
+[CmdletBinding()]
+param(
     # Also fail the run on PSScriptAnalyzer findings (default: analyzer is advisory).
     [switch]$FailOnAnalyzer
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $scriptsDir = Split-Path -Parent $MyInvocation.MyCommand.Path      # windows/scripts
 $windowsDir = Split-Path -Parent $scriptsDir                        # windows

@@ -68,6 +68,8 @@ function Remove-UvProjectEnvironment {
             [GC]::Collect()
             [GC]::WaitForPendingFinalizers()
         } catch {
+            # Best-effort handle release before the retry; a GC failure is not actionable.
+            Write-Verbose "GC nudge failed: $($_.Exception.Message)"
         }
 
         $lastError = $null
