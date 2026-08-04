@@ -319,7 +319,7 @@ TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's 
 2. Place the zip in `windows/downloads/`
 3. It will be auto-detected during the `Dockerfile.nvidia` build
 
-The zip is **required on the `-Gpu` lane**: `setup-tensorrt.ps1` **throws** when no zip is staged (fail-fast — the smoke test asserts `TENSORRT_ROOT` unconditionally on nvidia images, so exiting 0 without TensorRT would only trade a clear early error for a late, misleading smoke-test failure). Stage the zip in `windows\downloads\` (mounted at `C:\temp\downloads`) or pass `-LocalZipPath`/`TENSORRT_ZIP_PATH`. The ORT build script auto-detects `$env:TENSORRT_ROOT` and enables the TensorRT EP when available.
+If no zip is found, the build **skips TensorRT gracefully** (CUDA + cuDNN still work; `setup-tensorrt.ps1` warns and returns, ORT auto-disables the TensorRT EP, and the smoke test's `TENSORRT_ROOT` pointer passes on the guaranteed-empty `C:\tensorrt`). This zip-less configuration is the NORMAL state of this host's GPU lane. Do NOT re-harden this into a fail-fast: a 2026-08-04 "fail-fast" variant (premised on the wrong claim that the smoke test would reject a TensorRT-less nvidia image) broke the first hardened `-Gpu` rebuild and was reverted on 2026-08-05. The ORT build script auto-detects `$env:TENSORRT_ROOT` and enables the TensorRT EP when available.
 
 ### Windows Build Notes
 

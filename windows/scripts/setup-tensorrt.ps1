@@ -75,17 +75,24 @@ if (-not $trtZip -and $TensorRtVersion) {
         catch { Write-Host "  Failed: $($_.Exception.Message)" }
     }
     if (-not $downloaded) {
-        # Fail HERE, not hours later: the smoke test asserts TENSORRT_ROOT
-        # unconditionally on the nvidia lane, so exiting 0 without TensorRT only
-        # trades this clear message for a late, misleading smoke-test failure.
-        throw ('Could not download TensorRT {0} (the NVIDIA zip is EULA-gated and usually needs an authenticated manual download). Place tensorrt-*.zip in windows\downloads\ (mounted at C:\temp\downloads) or pass -LocalZipPath / set TENSORRT_ZIP_PATH.' -f $TensorRtVersion)
+        # GRACEFUL SKIP — restored 2026-08-05 after the fail-fast variant broke
+        # the first hardened -Gpu rebuild. The fail-fast rationale ("the smoke
+        # test asserts TENSORRT_ROOT unconditionally") was WRONG: the pointer
+        # assert passes because Dockerfile.nvidia bakes TENSORRT_ROOT and the
+        # trt-extract stage guarantees the (possibly empty) directory — this
+        # host has ALWAYS built its GPU lane without the EULA-gated zip
+        # (windows\downloads holds only the README), and the ORT build script
+        # auto-skips the TensorRT EP when the root is empty. No zip = a
+        # deliberate, supported configuration, not an error.
+        Write-Warning ('TensorRT {0} not available (EULA-gated download; no zip staged in windows\downloads). Continuing WITHOUT TensorRT — CUDA + cuDNN still work, the ORT TensorRT EP stays disabled. To include it: place tensorrt-*.zip in windows\downloads\ or pass -LocalZipPath / set TENSORRT_ZIP_PATH.' -f $TensorRtVersion)
+        return
     }
 }
 
 if (-not $trtZip -or -not (Test-Path $trtZip)) {
-    # Same rationale as above: a missing zip must fail this layer with a clear
-    # pointer instead of producing an image the nvidia-lane smoke test rejects.
-    throw 'No TensorRT zip found. Download the EULA-gated tensorrt-*.zip manually from NVIDIA and place it in windows\downloads\ (mounted at C:\temp\downloads), or pass -LocalZipPath / set TENSORRT_ZIP_PATH.'
+    # Same graceful-skip contract as above.
+    Write-Warning 'No TensorRT zip found -- continuing WITHOUT TensorRT (CUDA + cuDNN still work). Stage the EULA-gated tensorrt-*.zip in windows\downloads\ to include it.'
+    return
 }
 
 # Optional integrity pin: TENSORRT_ZIP_SHA256 (versions.env) is empty by default

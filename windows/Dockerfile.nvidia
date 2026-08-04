@@ -34,14 +34,17 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 COPY scripts\setup-tensorrt.ps1 C:\temp\scripts\
 COPY downloads C:\temp\downloads
 
-# Extract to the space-free canonical root. FAIL-FAST CONTRACT (2026-08-04): a
-# missing zip makes setup-tensorrt.ps1 THROW — the smoke test asserts
-# TENSORRT_ROOT unconditionally on the nvidia lane, so failing here beats a
-# worse-explained failure hours later. Stage the EULA-gated zip in
-# windows\downloads\ before a -Gpu build.
+# Extract to the space-free canonical root. GRACEFUL-SKIP CONTRACT (restored
+# 2026-08-05, the original design): without the EULA-gated zip the script
+# warns and returns — CUDA + cuDNN still work, ORT auto-skips the TensorRT EP,
+# and the smoke test's TENSORRT_ROOT pointer passes because the (empty)
+# directory below always exists. This host's GPU lane has always built
+# zip-less; a 2026-08-04 fail-fast hardening briefly broke that and was
+# reverted after the first hardened rebuild died here.
 RUN $trtZip = Get-ChildItem 'C:\temp\downloads\*TensorRT*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1; `
     $trtPath = if ($trtZip) { $trtZip.FullName } else { '' }; `
-    & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'
+    & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'; `
+    if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }
 
 # ── Stage 2: CUDA + cuDNN + TensorRT ──────────────────────────────────────────
 FROM ${BASE_IMAGE}
@@ -75,8 +78,9 @@ ENV TENSORRT_VERSION="${TENSORRT_VERSION}" `
 # the installed CUDA binaries.
 RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
 
-# TensorRT: only the extracted tree from stage 1 (no zip layer). Always
-# populated — stage 1 fails fast when no zip is staged (see its RUN comment).
+# TensorRT: only the extracted tree from stage 1 (no zip layer). Empty when no
+# zip was provided — build scripts then skip the TensorRT EP gracefully
+# (Resolve-TensorRtRoot treats an empty root as "not installed").
 COPY --from=trt-extract C:\tensorrt C:\tensorrt
 
 # Signal to downstream layers that NVIDIA GPU is available. One ENV for the
