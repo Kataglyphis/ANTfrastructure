@@ -192,9 +192,23 @@ function Invoke-BkStage {
     }
     $stageLog = Join-Path $script:LogDir ("bk-" + ($Label -replace '[:\\/]', '-') + ".log")
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
-    Write-Host "`n==> [bk:$Label] buildctl -> $dest" -ForegroundColor Cyan
-    & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog
-    if ($LASTEXITCODE -ne 0) { throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — log: $stageLog" }
+    # ONE automatic retry on transient container-infrastructure failures —
+    # the same class the classic driver retries (WindowsBuildDriver.Common):
+    # ActivateLayer 0x20 is snapshot contention that clears in seconds (cost
+    # a manual re-run on 2026-08-04), ttrpc/shim errors are startup races.
+    $transient = 'hcsshim::ActivateLayer.*0x20|ttrpc: closed|failed to create shim task'
+    foreach ($attempt in 1, 2) {
+        Write-Host "`n==> [bk:$Label] buildctl -> $dest$(if ($attempt -gt 1) { ' (retry)' })" -ForegroundColor Cyan
+        & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog
+        if ($LASTEXITCODE -eq 0) { break }
+        $tail = if (Test-Path $stageLog) { (Get-Content $stageLog -Tail 40 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
+        if ($attempt -eq 1 -and $tail -match $transient) {
+            Write-Warning "[bk:$Label] transient infrastructure failure — retrying in 15s"
+            Start-Sleep -Seconds 15
+            continue
+        }
+        throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — log: $stageLog"
+    }
     Write-Host "[bk:$Label] OK -> $dest" -ForegroundColor Green
 }
 
@@ -274,10 +288,7 @@ if ($Stages -contains 'media') {
             # nothing ever finalizes them; the paired materialize solves import
             # the handoff from the C:\bkhandoff cache mount and export the tag.
             # ONNX never trips the defect and keeps its direct solve.
-            # TEMP (0x3 probes): solve 1 skipped — bk-windows-media-core-onnx is
-            # exported; module edits would force a needless 100-min ONNX rebuild.
-            # Restore for the first clean full rebuild after the probes conclude.
-            # Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs $branchBuildArgs
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs $branchBuildArgs
             $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
             $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }
             $ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = Get-BkTag 'windows-media-core-ffmpeg' }

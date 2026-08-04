@@ -175,6 +175,20 @@ try {
     }
     log "clang-cl found at: $($clangCheck.Source)"
 
+    # sccache: meson honors a space-separated launcher in CC/CXX (unlike the
+    # cmake builders, which use CMAKE_*_COMPILER_LAUNCHER). Until 2026-08-04
+    # this build ran completely uncached (~30 min hot) — the merge builder
+    # simply never wired the endpoint through. Same gate as everywhere else:
+    # remote backend only; a container-local cache would die with the layer.
+    if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
+        if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
+        $env:CC  = 'sccache clang-cl'
+        $env:CXX = 'sccache clang-cl'
+        log "sccache enabled for meson (remote backend, max $env:SCCACHE_MAX_JOBS jobs)"
+    } else {
+        log 'sccache disabled (no remote backend configured or sccache.exe missing)'
+    }
+
     # Prevent git from hanging/interactive prompts during meson subproject downloads.
     # GIT_SSL_NO_VERIFY is intentionally scoped to THIS ephemeral build container's meson
     # subproject git fetches (not a runtime/production trust boundary); the shared

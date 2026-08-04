@@ -292,7 +292,14 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    [dufs](https://github.com/sigoden/dufs): `dufs C:\sccache-cache -p 5000 -A`
    — and export `SCCACHE_WEBDAV_ENDPOINT=http://<host-LAN-IP>:5000`; the
    compile scripts pick it up inside RUN steps (same endpoint serves both
-   lanes, so the classic chain pre-warms BK builds and vice versa). Verified:
+   lanes, so the classic chain pre-warms BK builds and vice versa).
+   **dufs does NOT survive reboots** (cost a failed run on 2026-08-04, and
+   the warm/materialize handoff also rides this server — without it the BK
+   media solves fail fast). Make it logon-persistent once:
+   `schtasks /Create /TN dufs-sccache /TR "\"%USERPROFILE%\scoop\shims\dufs.exe\" C:\sccache-cache -A -p 5000" /SC ONLOGON`
+   — or restart manually after a reboot and verify
+   `(Invoke-WebRequest http://<host-LAN-IP>:5000 -Method Head).StatusCode`
+   returns 200. Verified:
    BK's NAT'd containers reach the host's LAN IP fine.
 
 6. **Verify** before the first long build (non-admin):
@@ -370,14 +377,25 @@ steps; the remaining work is the Dockerfile surgery):
 - **`RUN --mount=type=bind` for build scripts** instead of COPY (the Linux
   lane's pattern): script edits would stop cascading stage rebuilds — the
   2026-08-03 exit-code fix wave re-ran sdk→toolchain→media only because the
-  scripts travel as COPY layers. Design constraint: the classic builder does
+  scripts travel as COPY layers. Design constraints: the classic builder does
   NOT understand `--mount`, so the COPY layers must stay for the classic
-  targets — the win requires the `*-built` BK targets to stop inheriting the
-  script COPYs (own mount-based stage lineage).
+  targets; and a WHOLE-DIR mount hashes the entire directory into the RUN's
+  cache key (any script edit re-runs every mounting RUN — same coarseness as
+  today), so the real win requires PER-FILE mounts of each RUN's transitive
+  script closure. Deferred as major surgery (assessed 2026-08-04).
 - **`RUN --mount=type=cache` for a local sccache dir** (WebDAV stays as the
   cross-lane L2): kills the HTTP round-trip on ~5000 compiles per stage.
   Probed working; wiring = set SCCACHE_DIR to the cache mount in the `*-built`
-  RUNs.
+  RUNs. CAUTION (2026-08-04): cache mounts get CLONED whenever the record is
+  locked — fine for an L1 compile cache (worst case: cold clone, WebDAV L2
+  still hits), but never rely on two solves seeing the same instance.
+- **sccache for the merge/GStreamer builder**: DONE 2026-08-04 —
+  build-gstreamer-from-source.ps1 sets `CC/CXX='sccache clang-cl'` for meson
+  when the remote backend is configured (this build previously ran fully
+  uncached, ~30 min hot, because the merge builder never wired the endpoint).
+- **Automatic transient retry in the BK driver**: DONE 2026-08-04 —
+  Invoke-BkStage retries once on `ActivateLayer 0x20` / ttrpc / shim-task
+  failures (same class the classic driver retries).
 - **Per-library media-core split**: DONE, and escalated on 2026-08-04 from
   4 RUN layers to **4 chained SOLVES** (targets `media-core-built-onnx` →
   `-opencv` → `-ffmpeg` → `media-core-built`, image handoffs via the
