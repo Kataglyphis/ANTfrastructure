@@ -20,23 +20,17 @@ ARG PYTHON_VERSION=3.14.6
 # Baked as ENV so the run+commit compile script sees the canonical version.
 ENV PYTHON_VERSION="${PYTHON_VERSION}"
 
-# Clone CPython source at the canonical version (cheap, network-bound — fine at 2 CPUs).
-SHELL ["cmd", "/S", "/C"]
-RUN set "PYTHON_VERSION=%PYTHON_VERSION%" && if not exist "C:\temp\cpython\" git clone --branch v%PYTHON_VERSION% --depth 1 https://github.com/python/cpython.git C:\temp\cpython
-
-# Write Directory.Build.props (ClangCL PlatformToolset) via cmd.exe caret-escaped
-# echo — the canonical Windows form for a correct XML prolog (PowerShell ASCII
-# Set-Content produces XML MSBuild rejects). Mirrors the old Dockerfile.toolchain.
-RUN cd /d C:\temp\cpython && `
-    echo ^<?xml version="1.0" encoding="utf-8"?^> > PCbuild\Directory.Build.props && `
-    echo ^<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003"^> >> PCbuild\Directory.Build.props && `
-    echo   ^<PropertyGroup^> >> PCbuild\Directory.Build.props && `
-    echo     ^<PlatformToolset^>ClangCL^</PlatformToolset^> >> PCbuild\Directory.Build.props && `
-    echo ^</PropertyGroup^> >> PCbuild\Directory.Build.props && `
-    echo ^</Project^> >> PCbuild\Directory.Build.props
-
-# The run+commit compile entrypoint (does the heavy build.bat at full --cpu-count).
+# pwsh 7 everywhere (host policy 2026-08-04): the old cmd SHELL here existed
+# for caret-escaped XML echo — that was a PS 5.1 encoding problem; pwsh 7's
+# Set-Content default (UTF-8, no BOM) produces XML MSBuild accepts.
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Clone CPython source at the canonical version (cheap, network-bound — fine at 2 CPUs).
+RUN if (-not (Test-Path 'C:\temp\cpython')) { git clone --branch v$env:PYTHON_VERSION --depth 1 https://github.com/python/cpython.git C:\temp\cpython 2>&1 | Write-Host }
+
+# Directory.Build.props (ClangCL PlatformToolset). Mirrors the old
+# Dockerfile.toolchain content, now written natively by pwsh.
+RUN Set-Content -Path 'C:\temp\cpython\PCbuild\Directory.Build.props' -Value @('<?xml version="1.0" encoding="utf-8"?>', '<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">', '  <PropertyGroup>', '    <PlatformToolset>ClangCL</PlatformToolset>', '  </PropertyGroup>', '</Project>')
 # Shared module for build-toolchain-all.ps1's nuget pre-seed (Invoke-DownloadWithRetry).
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build-toolchain-all.ps1 C:\temp\scripts\

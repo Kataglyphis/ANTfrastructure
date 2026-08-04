@@ -232,7 +232,9 @@ function Remove-StaleContainerSources {
     $pruneTmp = [System.IO.Path]::GetTempFileName()
     try {
         Set-Content -Path $pruneTmp -Value $pruneLines -Encoding UTF8 -NoNewline
-        Get-Content $pruneTmp -Raw | & $DockerExe exec -i $Container powershell -NoProfile -Command -
+        # pwsh 7 everywhere (host policy 2026-08-04) — every image in this
+        # chain carries pwsh from the base layer on.
+        Get-Content $pruneTmp -Raw | & $DockerExe exec -i $Container pwsh -NoProfile -Command -
         $pruneExit = $LASTEXITCODE
     } finally {
         if (Test-Path $pruneTmp) { Remove-Item $pruneTmp -Force }
