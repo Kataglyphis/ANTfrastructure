@@ -31,6 +31,12 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 
 # Fresh copy from the build context (NOT the baked one): app-assembly fixes must
 # reach this leaf without waiting for a full base republish.
+# WindowsNative.Common must ride along explicitly: assemble-torch-app imports it
+# (Invoke-ShieldedNative), and the BK lane's parent lineage (merge-fanin ->
+# toolchain -> base) carries only Shared/ContainerImage/Installer in
+# C:\temp\scripts\modules — the merge stage's fuller module COPY is classic-lane
+# only, and the final image's whole-modules COPY comes one stage too late.
+COPY windows\scripts\modules\WindowsNative.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\assemble-torch-app.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
 

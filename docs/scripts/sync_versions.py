@@ -482,7 +482,11 @@ _ARG_NAME_ALIASES_WINDOWS: dict[str, tuple[str, str]] = {
 def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
     """Return True if file needs updating (or was updated when not dry_run)."""
     aliases = dict(_ARG_NAME_ALIASES)
-    if "windows" in file_path.parts:
+    # REPO-RELATIVE check: file_path is absolute, so `"windows" in .parts` would
+    # also match a CHECKOUT PATH containing a 'windows' directory and leak the
+    # windows-only aliases onto linux Dockerfiles (clobbering their deliberate
+    # shell-substitution defaults). All targets live under REPO_ROOT.
+    if file_path.relative_to(REPO_ROOT).parts[0] == "windows":
         aliases.update(_ARG_NAME_ALIASES_WINDOWS)
     versions = {**versions, **{
         alias: transform_value(versions[key], tf)
