@@ -262,6 +262,15 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   window). Never add `powershell`/`powershell.exe` invocations or `cmd`
   SHELL directives; `cmd.exe /c` may appear only inside
   `Invoke-ShieldedNative` and the documented bespoke sites.
+- **The "unreferenced" `windows/scripts` modules are EXTERNAL-CONSUMER API —
+  never delete (owner decision 2026-08-04).** Flutter/CMake/CodeQL/MSIX/
+  Slang/Vulkan/PerfBaseline/WasmOpt/AppRunner/ContainerBuild.Reuse/Uv/
+  Build.Common/WebDav/Toolchain/Config/Formatting plus `scripts/rust/` and
+  `scripts/python/` are the shared build framework other Kataglyphis repos
+  consume (this repo IS the upstream). Repo-internal reference audits will
+  flag them as dead — they are library surface. Keep them lint-clean; do not
+  rename exported functions without checking external consumers. Their
+  build-cache cost is zero (per-file bind mounts on the BK lane).
 
 - **media-core builds via run+commit for CPU parallelism — never re-add `--isolation process`.** `docker build` is 2-CPU-capped here and process isolation **cannot commit layers** (`hcsshim::ActivateLayer 0x20`, reproduced even for a 100 MB dummy). media-core builds via `docker run --isolation hyperv --cpu-count $MediaCoreCpus` + `docker commit` (`Invoke-RunCommitStage`), which is the only way to get >2 CPUs *and* a committable image. Regression symptoms: `-j2` in `out\windows-build-logs\media-core.log`, or `ActivateLayer` on any commit. Full rationale: `docs/windows-builds.md` § Build isolation and CPU parallelism. **Before assuming this is still needed after a Docker/Windows/base-image upgrade, re-check with `windows/diagnostics/test-process-isolation-commit.ps1`** — if it reports `BUG GONE`, process isolation for `docker build` is usable again and the workaround can be retired (see § Re-testing process isolation on new versions).
 - **Rust: scoop is the sole provider — never install rustup.** A toolchain-less rustup drops proxy shims into `CARGO_BIN` that shadow scoop's real `cargo`/`rustc` on PATH and fail with "no default toolchain configured". `setup-scoop-tools.ps1` installs no rustup, `setup-rust-toolchain.ps1` uses `scoop install main/rust`, and `Dockerfile.base` keeps `CARGO_BIN` off any rustup path. Do **not** re-add rustup to "fix" Rust.
