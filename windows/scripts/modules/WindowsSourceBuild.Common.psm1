@@ -791,6 +791,31 @@ function Import-BuildHandoff {
     $global:LASTEXITCODE = 0
 }
 
+function Clear-BuildScratch {
+    # Remove package-manager and temp scratch that heavy builds leave in the
+    # container profile — dead weight in an exported image. Best-effort by
+    # contract (locked files are skipped silently); called by the LAST
+    # materialize step of a chain (bk-materialize.ps1 -Scrub).
+    [CmdletBinding()]
+    param()
+    $targets = @(
+        ($env:TEMP + '\*'),
+        'C:\Windows\Temp\*',
+        'C:\ProgramData\Microsoft\VisualStudio\Telemetry',
+        ($env:LOCALAPPDATA + '\Microsoft\VSApplicationInsights'),
+        ($env:LOCALAPPDATA + '\pip\cache'),
+        ($env:LOCALAPPDATA + '\Microsoft\MSBuild'),
+        ($env:USERPROFILE + '\.nuget'),
+        ($env:LOCALAPPDATA + '\NuGet'),
+        ($env:LOCALAPPDATA + '\Microsoft\Windows\INetCache')
+    )
+    foreach ($p in $targets) {
+        if (Test-Path $p) { Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    Write-Host 'Clear-BuildScratch: scrubbed package/temp scratch'
+    $global:LASTEXITCODE = 0
+}
+
 function Stop-LingeringBuildProcess {
     # MSVC keeps helper daemons alive after the compiler exits (mspdbsrv serves
     # PDB writes, vctip phones telemetry home, VBCSCompiler is the managed
@@ -870,6 +895,7 @@ Export-ModuleMember -Function @(
     'Stop-LingeringBuildProcess',
     'Export-BuildHandoff',
     'Import-BuildHandoff',
+    'Clear-BuildScratch',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
     'Test-SccacheRemoteConfigured',

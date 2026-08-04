@@ -148,71 +148,51 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 FROM media-core AS media-core-built-onnx
 RUN & 'C:\temp\scripts\build-media-core-all.ps1' -Until 'ONNX Runtime'
 
+# Warm/materialize RUNs are one-liners via bk-warm.ps1 / bk-materialize.ps1
+# (they own the t0/export/import/scrub boilerplate). Each stage re-COPYs the
+# handoff scripts + module so fixes reach it without re-solving the (up to
+# 100-minute) handoff-image lineage it FROMs.
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-warm-opencv
+COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN `
-    $t0 = Get-Date; `
-    & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV'; `
-    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
-    Export-BuildHandoff -Since $t0 -Name 'opencv'; `
-    exit 0
+RUN & 'C:\temp\scripts\bk-warm.ps1' -Name opencv -BuildScript 'C:\temp\scripts\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'OpenCV', '-Until', 'OpenCV'
 
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
+COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN `
-    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
-    Import-BuildHandoff -Name 'opencv'; `
-    exit 0
+RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name opencv
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-warm-ffmpeg
+COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN `
-    $t0 = Get-Date; `
-    & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'FFmpeg'; `
-    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
-    Export-BuildHandoff -Since $t0 -Name 'ffmpeg'; `
-    exit 0
+RUN & 'C:\temp\scripts\bk-warm.ps1' -Name ffmpeg -BuildScript 'C:\temp\scripts\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'FFmpeg'
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
+COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN `
-    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
-    Import-BuildHandoff -Name 'ffmpeg'; `
-    exit 0
+RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name ffmpeg
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-warm-genai
+COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN `
-    $t0 = Get-Date; `
-    & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI'; `
-    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
-    Export-BuildHandoff -Since $t0 -Name 'genai'; `
-    exit 0
+RUN & 'C:\temp\scripts\bk-warm.ps1' -Name genai -BuildScript 'C:\temp\scripts\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'ONNX GenAI', '-Until', 'ONNX GenAI'
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
+COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN `
-    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
-    Import-BuildHandoff -Name 'genai'; `
-    foreach ($p in @(($env:TEMP + '\*'), 'C:\Windows\Temp\*', ($env:LOCALAPPDATA + '\pip\cache'), ($env:USERPROFILE + '\.nuget'), ($env:LOCALAPPDATA + '\NuGet'), ($env:LOCALAPPDATA + '\Microsoft\Windows\INetCache'))) { `
-        if (Test-Path $p) { Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue } }; `
-    exit 0
+RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name genai -Scrub
 
 FROM media-litert AS media-litert-built
 RUN & 'C:\temp\scripts\build-litert-all.ps1'
 
 # tvm trips the same platform defect (3x) — same warm/materialize pattern.
-# Both stages sit on the media-tvm COPY stage (cheap layers, finalize fine).
+# Both stages sit on the media-tvm COPY stage (cheap layers, finalize fine);
+# the handoff scripts arrive via the extra COPY below (media-tvm itself only
+# carries the tvm build scripts).
 FROM media-tvm AS media-tvm-warm
-RUN `
-    $t0 = Get-Date; `
-    & 'C:\temp\scripts\build-media-tvm-all.ps1'; `
-    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
-    Export-BuildHandoff -Since $t0 -Name 'tvm'; `
-    exit 0
+COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\bk-warm.ps1' -Name tvm -BuildScript 'C:\temp\scripts\build-media-tvm-all.ps1'
 
 FROM media-tvm AS media-tvm-built
-RUN `
-    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
-    Import-BuildHandoff -Name 'tvm'; `
-    exit 0
+COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name tvm

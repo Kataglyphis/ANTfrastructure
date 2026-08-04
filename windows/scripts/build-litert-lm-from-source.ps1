@@ -481,8 +481,8 @@ $execUtils = Join-Path $SourceDir 'runtime\executor\litert_compiled_model_execut
 # _WIN32 guard. The regex `\([^;]*\);` spans the multi-line call up to its terminating semicolon
 # ([^;] matches newlines in .NET regex), so exact indentation doesn't matter.
 $settingsUtils = Join-Path $SourceDir 'runtime\executor\llm_executor_settings_utils.cc'
-if ((Test-Path $settingsUtils) -and ((Get-Content -Raw $settingsUtils) -notmatch 'LiteRTLM-winfix')) {
-    $su = [System.IO.File]::ReadAllText($settingsUtils)
+[void](Edit-SourceFile -Path $settingsUtils -Marker 'LiteRTLM-winfix' -Description 'llm_executor_settings_utils.cc: guard Windows-absent GpuOptions/RuntimeOptions setters' -Transform {
+    param($su)
     foreach ($m in @('gpu_compilation_options.SetKernelBatchSize', 'runtime_options.SetDisableDelegateClustering')) {
         $pat = [regex]::Escape($m) + '\([^;]*\);'
         $su = [regex]::Replace($su, $pat, {
@@ -490,9 +490,8 @@ if ((Test-Path $settingsUtils) -and ((Get-Content -Raw $settingsUtils) -notmatch
             "#if !defined(_WIN32)  // [LiteRTLM-winfix] litert GpuOptions/RuntimeOptions setter absent on Windows`n      " + $mm.Value + "`n#endif"
         })
     }
-    [System.IO.File]::WriteAllText($settingsUtils, $su)
-    Write-Host 'Patched llm_executor_settings_utils.cc: guard Windows-absent GpuOptions/RuntimeOptions setters'
-}
+    $su
+})
 
 # runtime/executor/llm_litert_npu_compiled_model_executor.cc reads per-tensor quantization via
 # litert::SimpleTensor::HasQuantization()/PerTensorQuantization(), which the Windows litert build
@@ -501,8 +500,8 @@ if ((Test-Path $settingsUtils) -and ((Get-Content -Raw $settingsUtils) -notmatch
 # is exactly what the non-quantized/else path already does). Regex spans each block via [\s\S]*?
 # (non-greedy) to its distinctive terminating line, so exact indentation doesn't matter.
 $npuExec = Join-Path $SourceDir 'runtime\executor\llm_litert_npu_compiled_model_executor.cc'
-if ((Test-Path $npuExec) -and ((Get-Content -Raw $npuExec) -notmatch 'LiteRTLM-winfix')) {
-    $ne = [System.IO.File]::ReadAllText($npuExec)
+[void](Edit-SourceFile -Path $npuExec -Marker 'LiteRTLM-winfix' -Description 'llm_litert_npu_compiled_model_executor.cc: guard Windows-absent SimpleTensor quantization API' -Transform {
+    param($ne)
     $blocks = @(
         'if \(tensor_expected->HasQuantization\(\)\) \{[\s\S]*?q_params\.zero_point = pq\.zero_point;\s*\}',
         'if \(logits_tensor\.HasQuantization\(\)\) \{[\s\S]*?<< "\)\.";\s*\}'
@@ -513,9 +512,8 @@ if ((Test-Path $npuExec) -and ((Get-Content -Raw $npuExec) -notmatch 'LiteRTLM-w
             "#if !defined(_WIN32)  // [LiteRTLM-winfix] litert::SimpleTensor quantization API absent on Windows (NPU off)`n" + $mm.Value + "`n#endif"
         })
     }
-    [System.IO.File]::WriteAllText($npuExec, $ne)
-    Write-Host 'Patched llm_litert_npu_compiled_model_executor.cc: guard Windows-absent SimpleTensor quantization API'
-}
+    $ne
+})
 
 # runtime/executor/{vision,audio,...}_litert_compiled_model_executor.cc set the GoogleTensor NPU
 # performance mode: GetGoogleTensorOptions() then SetPerformanceMode(GoogleTensorOptions::
@@ -842,14 +840,12 @@ if ($findCopy -and ((Get-Content -Raw $findCopy.FullName) -notmatch 'LiteRTLM-wi
 # litert_lm_main link. Force the dynamic CRT for protobuf to match everything else. protobuf.cmake is
 # litert-lm's own ExternalProject definition (not the protobuf source), so patch it directly.
 $protoCmake = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf.cmake'
-if ((Test-Path $protoCmake) -and ((Get-Content -Raw $protoCmake) -notmatch 'protobuf_MSVC_STATIC_RUNTIME')) {
-    $pc = [System.IO.File]::ReadAllText($protoCmake)
-    $pc = $pc.Replace(
+[void](Edit-SourceFile -Path $protoCmake -Marker 'protobuf_MSVC_STATIC_RUNTIME' -Description 'protobuf.cmake: force protobuf dynamic CRT (protobuf_MSVC_STATIC_RUNTIME=OFF)' -Transform {
+    param($pc)
+    $pc.Replace(
         '-Dprotobuf_BUILD_TESTS=OFF',
         "-Dprotobuf_BUILD_TESTS=OFF`n        -Dprotobuf_MSVC_STATIC_RUNTIME=OFF`n        -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL  # [LiteRTLM-winfix] dynamic CRT to match the rest (lld-link /failifmismatch)")
-    [System.IO.File]::WriteAllText($protoCmake, $pc)
-    Write-Host 'Patched protobuf.cmake: force protobuf dynamic CRT (protobuf_MSVC_STATIC_RUNTIME=OFF)'
-}
+})
 
 # runtime_util_logging is declared INTERFACE (header-only) but logging.cc defines non-inline
 # SetMinLogSeverity(LogSeverity) -> undefined at the litert_lm_main link. Compile it as STATIC (its
@@ -869,14 +865,12 @@ if ((Test-Path $utilCmake) -and ((Get-Content -Raw $utilCmake) -match 'add_liter
 # Bazel target groups llg_fc_tool_calls.cc + llg_python_tool_calls.cc into it (they define
 # CreateLarkGrammarFor{Fc,Python}ToolCalls). Add them so those symbols resolve.
 $cdCmake = Join-Path $SourceDir 'runtime\components\constrained_decoding\CMakeLists.txt'
-if ((Test-Path $cdCmake) -and ((Get-Content -Raw $cdCmake) -notmatch 'llg_fc_tool_calls\.cc')) {
-    $cd = [System.IO.File]::ReadAllText($cdCmake)
-    $cd = [regex]::Replace($cd,
+[void](Edit-SourceFile -Path $cdCmake -Marker 'llg_fc_tool_calls\.cc' -Description 'constrained_decoding/CMakeLists.txt: add llg_fc_tool_calls.cc + llg_python_tool_calls.cc to llguidance_schema_utils' -Transform {
+    param($cd)
+    [regex]::Replace($cd,
         '(add_litertlm_library\(runtime_components_constrained_decoding_llguidance_schema_utils STATIC\s+llguidance_schema_utils\.cc)',
         "`$1`n  llg_fc_tool_calls.cc`n  llg_python_tool_calls.cc")
-    [System.IO.File]::WriteAllText($cdCmake, $cd)
-    Write-Host 'Patched constrained_decoding/CMakeLists.txt: added llg_fc_tool_calls.cc + llg_python_tool_calls.cc to llguidance_schema_utils'
-}
+})
 
 # The litert core (32 libs), sentencepiece, and tflite ExternalProjects all build MSVC-named *.lib but
 # their target maps hardcode GNU lib*.a -> all empty stubs -> undefined LiteRt*/litert::CompiledModel/
