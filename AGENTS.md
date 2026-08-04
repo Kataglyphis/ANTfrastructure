@@ -262,6 +262,13 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   window). Never add `powershell`/`powershell.exe` invocations or `cmd`
   SHELL directives; `cmd.exe /c` may appear only inside
   `Invoke-ShieldedNative` and the documented bespoke sites.
+- **Never put DOUBLE QUOTES inside shell-form RUN lines in the Windows
+  Dockerfiles.** The dockerfile frontend strips embedded `"` from the command
+  string before it reaches the pwsh SHELL (three incidents on 2026-08-04:
+  `"$env:TEMP\*"` became bare `$env:TEMP\*` → ParserError; the pwsh-written
+  Directory.Build.props lost its XML attribute quotes → MSB4024). Use single
+  quotes / `''`-doubling / string concatenation instead; XML attributes may
+  legally use single quotes.
 - **The "unreferenced" `windows/scripts` modules are EXTERNAL-CONSUMER API —
   never delete (owner decision 2026-08-04).** Flutter/CMake/CodeQL/MSIX/
   Slang/Vulkan/PerfBaseline/WasmOpt/AppRunner/ContainerBuild.Reuse/Uv/

@@ -47,6 +47,9 @@ param(
     [string[]]$MesonSetupArgs  = @()
 )
 
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
 # ---- module import (logging + build helpers + shared utilities) ----
 # NOTE: imports MUST precede any module-function call — Initialize-SourceBuildEnvironment
 # below used to be invoked before this block and died with CommandNotFoundException.

@@ -10,6 +10,7 @@ param(
     [string]$VcpkgRoot = ''
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'  # fail-fast before module import
 
 $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'

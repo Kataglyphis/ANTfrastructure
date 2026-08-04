@@ -3,12 +3,12 @@
 #
 # NOTE (downstream consumers -- do NOT remove as "dead code"): this module has no
 # callers inside THIS repo, but Kataglyphis-Inference-Engine's
-#requires -Version 7.0
-
 # scripts/windows/Build-Windows.ps1 imports it from its ContainerHub submodule at
 # ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/. It was deleted
 # once in 5be9b1e and restored (2026-07-15) -- grep known consumers before any
 # future sweep of windows/scripts/modules/.
+
+#requires -Version 7.0
 
 # WindowsFlutter.Common.psm1
 # Reusable functions for building and patching Flutter Windows applications in a containerized environment.
@@ -202,5 +202,13 @@ function Sync-FastLocalArtifactsToHost {
     }
 }
 
-Export-ModuleMember -Function Clear-FlutterPluginSymlink, Repair-FlutterPluginSymlink, Update-PermissionHandlerWindows, Sync-FastLocalArtifactsToHost
+# Back-compat aliases: the 2026-08-04 lint wave renamed these exports to
+# PSSA-approved verbs, but this module is EXTERNAL-CONSUMER API (see AGENTS.md
+# invariants) — other Kataglyphis repos may still call the old names.
+Set-Alias -Name Clean-FlutterPluginSymlinks -Value Clear-FlutterPluginSymlink
+Set-Alias -Name Fix-FlutterPluginSymlinks -Value Repair-FlutterPluginSymlink
+Set-Alias -Name Patch-PermissionHandlerWindows -Value Update-PermissionHandlerWindows
+
+Export-ModuleMember -Function Clear-FlutterPluginSymlink, Repair-FlutterPluginSymlink, Update-PermissionHandlerWindows, Sync-FastLocalArtifactsToHost `
+    -Alias Clean-FlutterPluginSymlinks, Fix-FlutterPluginSymlinks, Patch-PermissionHandlerWindows
 
