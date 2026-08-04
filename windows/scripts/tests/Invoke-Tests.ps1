@@ -29,6 +29,8 @@ Reset-TestState
 # they are detected and handed to Pester instead. Without this the runner
 # breaks the moment anyone adds a Pester suite next to a harness suite.
 $pesterFailures = 0
+$pesterPassed = 0
+$pesterTotal = 0
 $testFiles = Get-ChildItem -Path $here -Filter '*.Tests.ps1' | Sort-Object Name
 foreach ($f in $testFiles) {
     Write-Host ''
@@ -50,16 +52,20 @@ foreach ($f in $testFiles) {
     Write-Host ("   Pester: {0}/{1} passed" -f $pesterRun.PassedCount, $pesterRun.TotalCount) `
         -ForegroundColor $(if ($pesterRun.FailedCount -gt 0) { 'Red' } else { 'Green' })
     $pesterFailures += $pesterRun.FailedCount
+    $pesterPassed += $pesterRun.PassedCount
+    $pesterTotal += $pesterRun.TotalCount
 }
 
 $results = @(Get-TestResult)
 $failed = @($results | Where-Object { -not $_.Ok })
-$passed = $results.Count - $failed.Count
+$passed = $results.Count - $failed.Count + $pesterPassed
+$total = $results.Count + $pesterTotal
+$failCount = $failed.Count + $pesterFailures
 
 Write-Host ''
 Write-Host ('=' * 60)
-$color = if ($failed.Count -gt 0) { 'Red' } else { 'Green' }
-Write-Host " $($results.Count) tests | $passed passed | $($failed.Count) failed" -ForegroundColor $color
+$color = if ($failCount -gt 0) { 'Red' } else { 'Green' }
+Write-Host " $total tests | $passed passed | $failCount failed" -ForegroundColor $color
 Write-Host ('=' * 60)
 foreach ($x in $failed) {
     Write-Host "  FAIL [$($x.Group)] $($x.Name)" -ForegroundColor Red

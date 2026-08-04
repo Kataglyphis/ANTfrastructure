@@ -23,7 +23,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $t0 = Get-Date
-& $BuildScript @BuildArgs
+# Child pwsh with -File, NOT `& $BuildScript @BuildArgs`: array splatting binds
+# strictly BY POSITION, so a leading-dash element like '-ResumeFrom' arrives as
+# the VALUE of parameter 1 ("positional parameter cannot be found" under
+# CmdletBinding). -File re-parses the argv into named parameters.
+& pwsh -NoProfile -ExecutionPolicy Bypass -File $BuildScript @BuildArgs
 $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
 if ($exitCode) { throw "bk-warm: build '$BuildScript' failed (exit $exitCode)" }
 
