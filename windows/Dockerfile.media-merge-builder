@@ -24,7 +24,11 @@ FROM ${CORE_IMAGE} AS media-core
 FROM ${LITERT_IMAGE} AS media-litert
 FROM ${TVM_IMAGE} AS media-tvm
 
-FROM ${BASE_IMAGE} AS merge
+# Fan-in WITHOUT the script COPYs: the BK warm/built stages chain from here so
+# a GStreamer script edit re-runs only the RUN that bind-mounts it, never the
+# fan-in COPY layers. The classic `merge` target (fan-in + baked scripts for
+# the run+commit step) builds on top below.
+FROM ${BASE_IMAGE} AS merge-fanin
 
 ARG GSTREAMER_VERSION=1.29.2
 ARG MEMORY_LIMIT_GB=""
@@ -117,19 +121,23 @@ COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site
 ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH `
     PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
 
-# ── GStreamer scripts (the compile itself runs in the run+commit step, NOT here) ──
+# Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).
+# See the identical pattern in Dockerfile.media-builder (common stage).
+COPY linux\scripts\01-core\versions.env C:\temp\versions.env
+
+# ── Classic run+commit target: fan-in + baked GStreamer scripts ──────────────
+# (the compile itself runs in the run+commit step, NOT here; the BK lane's
+# warm/built stages chain from merge-fanin and bind-mount the scripts instead)
+FROM merge-fanin AS merge
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
+     windows\scripts\modules\WindowsNative.Common.psm1 `
      C:\temp\scripts\modules\
 COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
-
-# Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).
-# See the identical pattern in Dockerfile.media-builder (common stage).
-COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 
 # ── BuildKit lane (warm/materialize pair) ────────────────────────────────────
 # GStreamer is a heavy-churn build — same warm/materialize pattern as the
@@ -141,16 +149,20 @@ COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 # (The previous single-RUN `built` target additionally carried an escape-
 # mangled command — literal tab/backspace/CR bytes where \t, \b, \r were
 # meant — committed unnoticed because this target had never run.)
-FROM merge AS warm
+FROM merge-fanin AS warm
 # ARGs do not cross stage boundaries — redeclare for the handoff transport
 # (Export/Import-BuildHandoff default to this env var) and for sccache.
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\bk-warm.ps1' -Name gstreamer -BuildScript 'C:\temp\scripts\build-gstreamer-from-source.ps1' -BuildArgs '-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs'
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/gstreamer,target=C:\bkmnt\patches\gstreamer `
+    & 'C:\bkmnt\bk-warm.ps1' -Name gstreamer -BuildScript 'C:\bkmnt\build-gstreamer-from-source.ps1' -BuildArgs '-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs'
 
-FROM merge AS built
+FROM merge-fanin AS built
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name gstreamer
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name gstreamer

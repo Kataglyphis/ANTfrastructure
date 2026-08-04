@@ -374,15 +374,24 @@ Roadmap (**mounts PROBED WORKING on Windows buildkitd v0.32, 2026-08-03** —
 both `--mount=type=bind` and `--mount=type=cache` execute correctly in RUN
 steps; the remaining work is the Dockerfile surgery):
 
-- **`RUN --mount=type=bind` for build scripts** instead of COPY (the Linux
-  lane's pattern): script edits would stop cascading stage rebuilds — the
-  2026-08-03 exit-code fix wave re-ran sdk→toolchain→media only because the
-  scripts travel as COPY layers. Design constraints: the classic builder does
-  NOT understand `--mount`, so the COPY layers must stay for the classic
-  targets; and a WHOLE-DIR mount hashes the entire directory into the RUN's
-  cache key (any script edit re-runs every mounting RUN — same coarseness as
-  today), so the real win requires PER-FILE mounts of each RUN's transitive
-  script closure. Deferred as major surgery (assessed 2026-08-04).
+- **`RUN --mount=type=bind` for build scripts**: DONE 2026-08-04 (single-file
+  mounts probed working on WCOW buildkitd v0.32). The BK lane's `*-bk` stages
+  in Dockerfile.media-builder + the merge builder's warm/built stages carry NO
+  script/patch COPY layers — every RUN bind-mounts exactly its transitive
+  script closure at `C:\bkmnt` and passes `-ScriptDir C:\bkmnt`. Editing a
+  build script now re-runs ONLY the RUNs that mount it (an OpenCV fix no
+  longer re-pays the 75-minute ONNX layer); module edits still invalidate all
+  mounting RUNs (correct — everything consumes them). The classic targets
+  keep their baked COPYs (classic docker cannot `--mount`).
+- **Concurrent aux branch solves**: available OPT-IN via
+  `build-buildkit.ps1 -ConcurrentAux` (2026-08-04) — media-core stays the
+  sequential long pole, then litert + tvm build side by side via child
+  drivers on half the media memory budget each. Measure host RAM headroom
+  before making it the default.
+- **Registry push**: available via `build-buildkit.ps1 -PushRef <ref>`
+  (2026-08-04) — re-solves the final image from cache with a push exporter;
+  needs a prior `docker login` in the invoking shell (buildctl forwards the
+  client credential store).
 - **`RUN --mount=type=cache` for a local sccache dir** (WebDAV stays as the
   cross-lane L2): kills the HTTP round-trip on ~5000 compiles per stage.
   Probed working; wiring = set SCCACHE_DIR to the cache mount in the `*-built`

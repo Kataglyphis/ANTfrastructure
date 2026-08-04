@@ -11,8 +11,21 @@ Import-Module $sharedPath -Force
 # Load sub-modules for patch and GPU utilities (split out to reduce this module's size).
 $patchesPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Patches.psm1'
 $cudaPath    = Join-Path $PSScriptRoot 'WindowsSourceBuild.Cuda.psm1'
+$nativePath  = Join-Path $PSScriptRoot 'WindowsNative.Common.psm1'
 if (Test-Path $patchesPath) { Import-Module $patchesPath -Force }
 if (Test-Path $cudaPath)    { Import-Module $cudaPath -Force }
+# Canonical stderr-shield for native calls (Invoke-ShieldedNative) — imported
+# and re-exported here so every source-build script gets it with its usual
+# SourceBuild.Common import. Ship WindowsNative.Common.psm1 in every COPY
+# list that carries this module; the stub keeps the re-export valid and the
+# failure loud if a COPY list ever misses it.
+if (Test-Path $nativePath) {
+    Import-Module $nativePath -Force
+} else {
+    function Invoke-ShieldedNative {
+        throw 'Invoke-ShieldedNative unavailable: WindowsNative.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 (incomplete modules COPY list)'
+    }
+}
 
 function Get-SourceBuildVersion {
     param(
@@ -896,6 +909,7 @@ Export-ModuleMember -Function @(
     'Export-BuildHandoff',
     'Import-BuildHandoff',
     'Clear-BuildScratch',
+    'Invoke-ShieldedNative',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
     'Test-SccacheRemoteConfigured',

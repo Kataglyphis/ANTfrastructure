@@ -26,12 +26,10 @@ Write-Host "=== LiteRT-LM source build (v$LiteRtLmVersion, Ninja+clang-cl) ==="
 Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT-LM.git' -Tag "v$LiteRtLmVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 Write-Host 'Setting up git-lfs...'
-# Shield native git under the Dockerfile's PS 5.1 SHELL: `git lfs` writes progress to stderr, which
-# under $ErrorActionPreference='Stop' becomes a terminating NativeCommandError even with `2>&1` (5.1
-# merges the stream too late to prevent it). Route through cmd.exe so the stderr is consumed there and
-# never reaches PowerShell's pipeline -- same shield as Invoke-GitClone and build-ffmpeg's git clone.
-& cmd /c 'git lfs install --skip-repo 2>&1' | Out-Null
-& cmd /c "cd /d `"$SourceDir`" && git lfs pull 2>&1" | Out-Null
+# Canonical stderr-shield (git lfs writes progress to stderr; PS 5.1 EAP=Stop
+# would turn that into a terminating NativeCommandError even with 2>&1).
+[void](Invoke-ShieldedNative -Quiet -Label 'git lfs install' -CommandLine 'git lfs install --skip-repo')
+[void](Invoke-ShieldedNative -Quiet -Label 'git lfs pull' -CommandLine "cd /d `"$SourceDir`" && git lfs pull")
 
 # v0.14.0 OSS-export bridge (stubs for deleted components + LiteRT support/
 # graft) — extracted to litert-lm-export-bridge.ps1 so the version-scoped,

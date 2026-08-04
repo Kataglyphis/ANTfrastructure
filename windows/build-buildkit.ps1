@@ -64,7 +64,17 @@ param(
     # Registry auth must already be wired (docker login credentials are NOT
     # shared with buildkitd; use registry-hosted cache only once push works).
     [string]$ExportCacheRef = '',
-    [string]$ImportCacheRef = ''
+    [string]$ImportCacheRef = '',
+    # OPT-IN: build the two aux media branches (litert + tvm) CONCURRENTLY via
+    # child driver processes after media-core. Both branches are memory-bound;
+    # each child gets half the media memory budget. Measure before enabling on
+    # smaller hosts — the sequential default is the safe long-pole schedule.
+    [switch]$ConcurrentAux,
+    # Push the final image to a registry ref after the local export, e.g.
+    #   -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+    # buildctl forwards the CLIENT's docker credential store, so a prior
+    # `docker login <registry>` in this shell is sufficient.
+    [string]$PushRef = ''
 )
 
 Set-StrictMode -Version Latest
@@ -275,7 +285,17 @@ if ($Stages -contains 'media') {
             IREE_VERSION = Get-Ver 'IREE_VERSION'
         }
     }
-    foreach ($branch in $MediaBranches) {
+    $loopBranches = $MediaBranches
+    $auxProcs = @()
+    if ($ConcurrentAux -and ($MediaBranches -contains 'media-litert') -and ($MediaBranches -contains 'media-tvm')) {
+        # media-core (the long pole) runs sequentially below; litert + tvm run
+        # side by side afterwards via child drivers (each re-checks
+        # base/sdk/toolchain as cache hits and builds exactly one branch on
+        # half the memory budget — both branches are memory-bound).
+        $loopBranches = @($MediaBranches | Where-Object { $_ -notin @('media-litert', 'media-tvm') })
+        $auxMem = [Math]::Max(8, [int]($MediaMemoryGb / 2))
+    }
+    foreach ($branch in $loopBranches) {
         $branchBuildArgs = @{
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
             MEMORY_LIMIT_GB = $MediaMemoryGb
@@ -304,6 +324,21 @@ if ($Stages -contains 'media') {
         } else {
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target "$branch-built" -Tag (Get-BkTag "windows-$branch") -BuildArgs $branchBuildArgs
         }
+    }
+    if ($ConcurrentAux -and ($MediaBranches -contains 'media-litert') -and ($MediaBranches -contains 'media-tvm')) {
+        Write-Host "`n==> [bk:aux] concurrent litert + tvm child drivers ($auxMem GB memory budget each)" -ForegroundColor Cyan
+        foreach ($aux in 'media-litert', 'media-tvm') {
+            $auxArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath,
+                '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem)
+            if ($Gpu) { $auxArgs += '-Gpu' }
+            if ($SccacheEndpoint) { $auxArgs += @('-SccacheEndpoint', $SccacheEndpoint) }
+            $auxProcs += Start-Process -FilePath 'pwsh' -ArgumentList $auxArgs -PassThru -NoNewWindow
+        }
+        $auxProcs | Wait-Process
+        foreach ($p in $auxProcs) {
+            if ($p.ExitCode -ne 0) { throw "[bk:aux] concurrent branch driver (pid $($p.Id)) failed (exit $($p.ExitCode))" }
+        }
+        Write-Host '[bk:aux] litert + tvm OK' -ForegroundColor Green
     }
     $mergeArgs = @{
         BASE_IMAGE        = Get-BkTag 'windows-toolchain'
@@ -346,6 +381,19 @@ if ($Stages -contains 'final') {
             --opt "build-arg:BASE_IMAGE=$(Get-BkTag 'windows-torch')" `
             --output "type=docker,name=local/kataglyphis:winamd64,dest=$FinalTar" 2>&1 | Select-Object -Last 5
         if ($LASTEXITCODE -ne 0) { throw "final tar export failed" }
+    }
+    if ($PushRef) {
+        Write-Host "`n==> pushing final image to $PushRef" -ForegroundColor Cyan
+        # Same solve from cache; the push=true exporter uploads the blobs.
+        # Auth: buildctl forwards THIS shell's docker credential store —
+        # run `docker login <registry>` here first.
+        $dfDir = Join-Path $repoRoot 'windows'
+        & $BuildCtl build --frontend dockerfile.v0 --local "context=." --local "dockerfile=$dfDir" `
+            --opt filename=Dockerfile --opt image-resolve-mode=local `
+            --opt "build-arg:BASE_IMAGE=$(Get-BkTag 'windows-torch')" `
+            --output "type=image,name=$PushRef,push=true" 2>&1 | Select-Object -Last 5
+        if ($LASTEXITCODE -ne 0) { throw "registry push to $PushRef failed" }
+        Write-Host "[bk] pushed $PushRef" -ForegroundColor Green
     }
 }
 

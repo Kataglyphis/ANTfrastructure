@@ -132,9 +132,9 @@ function Invoke-LiteRtLmSupportGraft {
     $supportClone = 'C:\temp\litert-support-src'
     if (Test-Path $supportClone) { Remove-Item $supportClone -Recurse -Force }
     Write-Host "[LiteRTLM-winfix support-graft] sparse-cloning LiteRT $litertRef support/ tree..."
-    # cmd shield: git writes progress to stderr (same pattern as the clones in the main script)
-    & cmd /c "git clone --depth 1 --branch $litertRef --filter=blob:none --sparse https://github.com/google-ai-edge/LiteRT.git `"$supportClone`" 2>&1" | ForEach-Object { Write-Host $_ }
-    & cmd /c "cd /d `"$supportClone`" && git sparse-checkout set support 2>&1" | ForEach-Object { Write-Host $_ }
+    # Canonical stderr-shield (git writes progress to stderr).
+    [void](Invoke-ShieldedNative -Label "LiteRT $litertRef sparse clone" -CommandLine "git clone --depth 1 --branch $litertRef --filter=blob:none --sparse https://github.com/google-ai-edge/LiteRT.git `"$supportClone`"")
+    [void](Invoke-ShieldedNative -Label 'LiteRT sparse-checkout support' -CommandLine "cd /d `"$supportClone`" && git sparse-checkout set support")
     if (-not (Test-Path "$supportClone\support\util\memory_mapped_file.h")) {
         throw "[LiteRTLM-winfix support-graft] LiteRT $litertRef sparse clone produced no support/util -- cannot satisfy litert-lm's support/ shim includes"
     }

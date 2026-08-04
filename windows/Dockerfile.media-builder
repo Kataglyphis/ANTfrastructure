@@ -45,6 +45,7 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
+     windows\scripts\modules\WindowsNative.Common.psm1 `
      C:\temp\scripts\modules\
 
 # ── media-core builder (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg) ───────────
@@ -122,77 +123,128 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # Under buildkitd/containerd this host commits PROCESS-isolated layers and RUN
 # steps see all host CPUs, so each branch compile is a plain LAYER — no
 # run+commit. The classic docker lane always passes --target media-<branch>
-# (build.ps1 Get-MediaBranchSpecs) and never executes these RUNs. MEMORY note:
-# process isolation exposes host RAM; MEMORY_LIMIT_GB (baked as ENV above per
-# branch) is what Get-BuildJobCount caps parallelism with — same budget model
-# as the run+commit path.
-# ── media-core: WARM/MATERIALIZE solve pairs ─────────────────────────────────
-# HOST PLATFORM DEFECT (2026-08-04, ~20 probes + containerd debug log — full
-# writeup in docs/windows-builds.md § BuildKit/containerd lane): heavy-churn
-# containers (GenAI/OpenCV/TVM class) lose their HCS shutdown notification;
-# their snapshot can then NEVER be finalized (hcsshim::ExportLayer 0x3), on
-# every path, surviving even a host reboot. ONNX (100-min ninja) is the one
-# heavy build that never trips it. Workaround pattern, per heavy library:
-#   1. WARM solve (`media-core-warm-<lib>`, driver runs it with NO exporter):
-#      the build runs normally on the scratch; the artifact delta (C:\runtime
-#      + cpython site-packages, CreationTime-based) leaves as ONE tar via the
-#      sccache WebDAV server (Export-BuildHandoff). Not a cache mount:
-#      BuildKit clones cache mounts under lock, so warm and materialize are
-#      not guaranteed the same instance (bit us). Without an exporter or a
-#      child step the toxic snapshot is never finalized — defect never fires.
-#   2. MATERIALIZE solve (`media-core-built-<lib>`, exported as the handoff
-#      image): a calm, seconds-long container downloads + extracts the tar
-#      (Import-BuildHandoff) — clean teardown, clean finalize.
-# The chain stays four logical steps (onnx → opencv → ffmpeg → genai), each
-# still caching independently; ONNX keeps its direct (non-warm) layer.
-FROM media-core AS media-core-built-onnx
-RUN & 'C:\temp\scripts\build-media-core-all.ps1' -Until 'ONNX Runtime'
+# (build.ps1 Get-MediaBranchSpecs) and never executes these RUNs.
+#
+# BIND-MOUNTED SCRIPTS, NOT COPYs (2026-08-04): the *-bk stages below carry NO
+# script/patch COPY layers — every RUN bind-mounts exactly its transitive
+# script closure from the build context at C:\bkmnt (single-file mounts probed
+# working on WCOW buildkitd v0.32). Cache consequence: editing a build script
+# re-runs ONLY the RUNs that mount it — an OpenCV script fix no longer
+# invalidates the 75-minute ONNX layer (with COPY layers it invalidated every
+# RUN downstream of the COPY). Module edits still invalidate everything that
+# mounts modules/ — correct, every build consumes them. The wrappers receive
+# -ScriptDir C:\bkmnt so chain + leaf scripts resolve modules/patches/shims
+# via their usual $PSScriptRoot-relative paths inside the mount.
+#
+# WARM/MATERIALIZE pairs (host platform defect — heavy-churn containers lose
+# their HCS shutdown notification and their snapshot can never be finalized
+# (ExportLayer 0x3); full evidence + falsification matrix in
+# docs/windows-builds.md § BuildKit/containerd lane): the driver runs
+# media-core-warm-*/media-tvm-warm with NO exporter (never finalized, defect
+# never fires), artifacts travel as one tar over the sccache WebDAV
+# (bk-warm.ps1), and a calm materialize solve imports + exports the image
+# (bk-materialize.ps1). ONNX never trips the defect and keeps a direct solve.
 
-# Warm/materialize RUNs are one-liners via bk-warm.ps1 / bk-materialize.ps1
-# (they own the t0/export/import/scrub boilerplate). Each stage re-COPYs the
-# handoff scripts + module so fixes reach it without re-solving the (up to
-# 100-minute) handoff-image lineage it FROMs.
+# Version ENV twin of the classic media-core stage (the *-bk lineage must not
+# inherit the classic stage's script COPY layers). sync_versions.py keeps the
+# duplicated ARG defaults in lockstep.
+FROM common AS media-core-bk
+ARG ONNXRUNTIME_VERSION=v1.28.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.15.0
+ARG OPENCV_SOURCE_VERSION=5.x
+ARG FFMPEG_VERSION=n9.0
+ARG PYAV_VERSION=18.0.0
+ARG NV_CODEC_HEADERS_REF=n13.1.15.0
+ARG CUDA_ARCHITECTURES="80;86;89;90"
+ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
+    ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
+    OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
+    FFMPEG_VERSION="${FFMPEG_VERSION}" `
+    PYAV_VERSION="${PYAV_VERSION}" `
+    NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
+    CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
+
+FROM media-core-bk AS media-core-built-onnx
+RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
+    & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt'
+
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-warm-opencv
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN & 'C:\temp\scripts\bk-warm.ps1' -Name opencv -BuildScript 'C:\temp\scripts\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'OpenCV', '-Until', 'OpenCV'
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
+    --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
+    & 'C:\bkmnt\bk-warm.ps1' -Name opencv -BuildScript 'C:\bkmnt\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'OpenCV', '-Until', 'OpenCV', '-ScriptDir', 'C:\bkmnt'
 
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name opencv
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name opencv
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-warm-ffmpeg
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN & 'C:\temp\scripts\bk-warm.ps1' -Name ffmpeg -BuildScript 'C:\temp\scripts\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'FFmpeg'
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
+    & 'C:\bkmnt\bk-warm.ps1' -Name ffmpeg -BuildScript 'C:\bkmnt\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'FFmpeg', '-ScriptDir', 'C:\bkmnt'
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name ffmpeg
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name ffmpeg
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-warm-genai
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN & 'C:\temp\scripts\bk-warm.ps1' -Name genai -BuildScript 'C:\temp\scripts\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'ONNX GenAI', '-Until', 'ONNX GenAI'
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\bk-warm.ps1' -Name genai -BuildScript 'C:\bkmnt\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'ONNX GenAI', '-Until', 'ONNX GenAI', '-ScriptDir', 'C:\bkmnt'
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
-RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name genai -Scrub
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name genai -Scrub
 
-FROM media-litert AS media-litert-built
-RUN & 'C:\temp\scripts\build-litert-all.ps1'
+# litert: direct solve (bazel — never trips the defect), same mount pattern.
+FROM common AS media-litert-bk
+ARG LITERT_VERSION=v2.1.6
+ARG LITERT_LM_VERSION=0.14.0
+ENV LITERT_VERSION="${LITERT_VERSION}" `
+    LITERT_LM_VERSION="${LITERT_LM_VERSION}"
 
-# tvm trips the same platform defect (3x) — same warm/materialize pattern.
-# Both stages sit on the media-tvm COPY stage (cheap layers, finalize fine);
-# the handoff scripts arrive via the extra COPY below (media-tvm itself only
-# carries the tvm build scripts).
-FROM media-tvm AS media-tvm-warm
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\bk-warm.ps1' -Name tvm -BuildScript 'C:\temp\scripts\build-media-tvm-all.ps1'
+FROM media-litert-bk AS media-litert-built
+RUN --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
+    --mount=type=bind,source=windows/scripts/debug-litertlm-link.ps1,target=C:\bkmnt\debug-litertlm-link.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
+    --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
+    & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt'
 
-FROM media-tvm AS media-tvm-built
-COPY windows\scripts\bk-warm.ps1 windows\scripts\bk-materialize.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\bk-materialize.ps1' -Name tvm
+# tvm: warm/materialize (trips the defect), same mount pattern.
+FROM common AS media-tvm-bk
+ARG TVM_REF=v0.25.0
+ARG IREE_VERSION=v3.11.0
+ENV TVM_REF="${TVM_REF}" `
+    IREE_VERSION="${IREE_VERSION}"
+
+FROM media-tvm-bk AS media-tvm-warm
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
+    & 'C:\bkmnt\bk-warm.ps1' -Name tvm -BuildScript 'C:\bkmnt\build-media-tvm-all.ps1' -BuildArgs '-ScriptDir', 'C:\bkmnt'
+
+FROM media-tvm-bk AS media-tvm-built
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name tvm

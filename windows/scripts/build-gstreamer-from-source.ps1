@@ -591,6 +591,10 @@ int _isatty(int);
         Remove-SourceBuildTree -Path @($gstSrcDir, $resolvedBuildDir)
     }
 
+    # This script is not chain-run (no Invoke-SourceBuildChain tail), so dump
+    # the sccache counters itself — they die with the container otherwise.
+    Write-SccacheStats -Label 'gstreamer'
+
     log 'END - GStreamer source build completed successfully.'
 
 } catch {

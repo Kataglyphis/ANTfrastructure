@@ -30,10 +30,7 @@ Write-Host "=== IREE source build ($IreeVersion, Ninja+clang-cl) ==="
 # WITHOUT `--shallow-submodules`.
 if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
 $env:GIT_TERMINAL_PROMPT = '0'
-# cmd-shielded: git reports clone progress on stderr, which PS 5.1 under
-# EAP=Stop turns into a terminating NativeCommandError.
-& cmd /c "git clone --depth 1 --branch $IreeVersion --shallow-submodules --recurse-submodules --jobs 4 https://github.com/iree-org/iree.git `"$SourceDir`" 2>&1" | ForEach-Object { Write-Host $_ }
-if ($LASTEXITCODE -ne 0) { throw "IREE clone failed (exit $LASTEXITCODE): $IreeVersion" }
+[void](Invoke-ShieldedNative -Label "IREE clone $IreeVersion" -CommandLine "git clone --depth 1 --branch $IreeVersion --shallow-submodules --recurse-submodules --jobs 4 https://github.com/iree-org/iree.git `"$SourceDir`"")
 if (-not (Test-Path (Join-Path $SourceDir 'third_party\llvm-project\llvm\CMakeLists.txt'))) {
     throw 'IREE submodules incomplete: third_party/llvm-project missing after clone'
 }
@@ -109,11 +106,9 @@ func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
 $mlirPath = Join-Path $env:TEMP 'iree-gate.mlir'
 $vmfbPath = Join-Path $env:TEMP 'iree-gate.vmfb'
 $gateMlir | Set-Content -Path $mlirPath -Encoding ascii
-& cmd /c """$ireeCompile"" --iree-hal-target-backends=llvm-cpu ""$mlirPath"" -o ""$vmfbPath"" 2>&1" | ForEach-Object { Write-Host $_ }
-if ($LASTEXITCODE -ne 0) { throw "iree-compile gate failed (exit $LASTEXITCODE)" }
-$runOut = & cmd /c """$ireeRun"" --module=""$vmfbPath"" --device=local-task --function=abs --input=f32=-5 2>&1" | Out-String
-Write-Host $runOut
-if ($LASTEXITCODE -ne 0 -or $runOut -notmatch 'f32=5') { throw 'iree-run-module gate failed (abs(-5) != 5)' }
+[void](Invoke-ShieldedNative -Label 'iree-compile gate' -CommandLine """$ireeCompile"" --iree-hal-target-backends=llvm-cpu ""$mlirPath"" -o ""$vmfbPath""")
+$runOut = (Invoke-ShieldedNative -Label 'iree-run-module gate' -CommandLine """$ireeRun"" --module=""$vmfbPath"" --device=local-task --function=abs --input=f32=-5") | Out-String
+if ($runOut -notmatch 'f32=5') { throw 'iree-run-module gate failed (abs(-5) != 5)' }
 Write-Host 'iree native gate OK (llvm-cpu compile + local-task run, abs(-5)=5)'
 Remove-Item $mlirPath, $vmfbPath -Force -ErrorAction SilentlyContinue
 
@@ -169,8 +164,7 @@ value = float(module.abs(np.asarray(-5.0, dtype=np.float32)).to_host())
 assert value == 5.0, value
 print("iree python gate OK: abs(-5) =", value)
 "@ | Set-Content -Path $pyGate -Encoding ascii
-    cmd.exe /c """$($py.Exe)"" ""$pyGate"" 2>&1"
-    if ($LASTEXITCODE -ne 0) { throw "IREE python end-to-end gate failed (exit $LASTEXITCODE)" }
+    [void](Invoke-ShieldedNative -Label 'IREE python end-to-end gate' -CommandLine """$($py.Exe)"" ""$pyGate""")
     Remove-Item $pyGate -Force -ErrorAction SilentlyContinue
 }
 

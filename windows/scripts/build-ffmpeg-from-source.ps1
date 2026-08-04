@@ -131,13 +131,12 @@ if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path 
     $nvHdrPrefixFwd = $nvHdrPrefix -replace '\\', '/'
     if (Test-Path $nvHdrSrc)    { Remove-Item $nvHdrSrc -Recurse -Force }
     if (Test-Path $nvHdrPrefix) { Remove-Item $nvHdrPrefix -Recurse -Force }
-    # Shield via cmd.exe /c: git writes "Cloning into..." to stderr, which under the in-container
-    # PS 5.1 EAP=Stop would otherwise surface as a terminating NativeCommandError (2>&1 alone does
-    # NOT prevent it in 5.1). cmd merges the streams so PS sees plain stdout. Same pattern as the
-    # `make install` line below.
-    & cmd /c "git clone --branch $nvHdrRef --depth 1 https://github.com/FFmpeg/nv-codec-headers.git `"$nvHdrSrc`" 2>&1" | ForEach-Object { Write-Host $_ }
+    # Canonical stderr-shield (Invoke-ShieldedNative): git writes "Cloning into..." to stderr,
+    # which under the in-container PS 5.1 EAP=Stop would otherwise surface as a terminating
+    # NativeCommandError (2>&1 alone does NOT prevent it in 5.1).
+    [void](Invoke-ShieldedNative -Label 'nv-codec-headers clone' -CommandLine "git clone --branch $nvHdrRef --depth 1 https://github.com/FFmpeg/nv-codec-headers.git `"$nvHdrSrc`"")
     $nvHdrSrcCyg = ConvertTo-MsysPath $nvHdrSrc
-    & cmd /c "`"$bashExe`" -c `"cd $nvHdrSrcCyg && make install PREFIX=$nvHdrPrefixFwd`" 2>&1" | ForEach-Object { Write-Host $_ }
+    [void](Invoke-ShieldedNative -Label 'nv-codec-headers make install' -CommandLine "`"$bashExe`" -c `"cd $nvHdrSrcCyg && make install PREFIX=$nvHdrPrefixFwd`"")
     $nvPc = Join-Path $nvHdrPrefix 'lib\pkgconfig\ffnvcodec.pc'
     if (Test-Path $nvPc) {
         # Native (scoop) pkg-config reads a Windows-path PKG_CONFIG_PATH; the bash configure wrapper
@@ -298,11 +297,14 @@ Write-Host "Replaced compat/windows/makedef (glob-expanding, response-file-aware
 # library dependencies (libavutil -> libswscale) aren't fully linked before
 # consumers — the serial retry resolves those deterministically.
 $makeJobs = Get-BuildJobCount -MemGBPerJob 2
-& cmd /c "`"$bashExe`" -c `"cd $cygSrc && make -j$makeJobs`" 2>&1" | ForEach-Object { Write-Host $_ }
+# All three make calls are -Optional by design: a parallel-link race falls
+# through to the -j1 retry, and an incomplete build/install falls through to
+# the artifact verification + prebuilt fallback below (never throw here).
+[void](Invoke-ShieldedNative -Optional -Label "ffmpeg make -j$makeJobs" -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make -j$makeJobs`"")
 $builtFfmpeg = Join-Path $srcDir 'ffmpeg.exe'
 if (-not (Test-Path $builtFfmpeg)) {
     Write-Host 'Retrying with single job (resolves MSVC link races)...'
-    & cmd /c "`"$bashExe`" -c `"cd $cygSrc && make -j1`" 2>&1" | ForEach-Object { Write-Host $_ }
+    [void](Invoke-ShieldedNative -Optional -Label 'ffmpeg make -j1' -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make -j1`"")
 }
 # Source build may fail at link stage (EXTRALIBS config issue with MSVC/MSYS2).
 # Fall through to download a pre-built MSVC FFmpeg binary.
@@ -310,8 +312,7 @@ if (-not (Test-Path $builtFfmpeg)) {
     Write-Host 'Source build of FFmpeg did not produce ffmpeg.exe (link stage incomplete).'
 }
 Write-Host 'Attempting install from source if built...'
-& cmd /c "`"$bashExe`" -c `"cd $cygSrc && make install`" 2>&1" | ForEach-Object { Write-Host $_ }
-if ($LASTEXITCODE -ne 0) { Write-Warning "make install exited $LASTEXITCODE - verifying what landed..." }
+[void](Invoke-ShieldedNative -Optional -Label 'ffmpeg make install (verify below)' -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make install`"")
 
 # A --enable-shared build is only usable if the av*.dll runtime libraries were
 # installed next to the exes; exes alone die with STATUS_DLL_NOT_FOUND. Treat an
@@ -378,7 +379,7 @@ if (Test-Path "$ffmpegDir\ffmpeg.exe") {
         if (-not (Test-Path $libPath)) {
             Write-Host "regenerating $libName from $($defFile.Name)"
             # /name pins the DLL the import lib binds to (our makedef emits EXPORTS only)
-            & cmd /c "lib.exe /nologo /machine:x64 /def:`"$($defFile.FullName)`" /name:$($defFile.BaseName).dll /out:`"$libPath`" 2>&1" | ForEach-Object { Write-Host $_ }
+            [void](Invoke-ShieldedNative -Label "lib.exe /def $($defFile.Name)" -CommandLine "lib.exe /nologo /machine:x64 /def:`"$($defFile.FullName)`" /name:$($defFile.BaseName).dll /out:`"$libPath`"")
         }
     }
     # Single authoritative inventory + assertion: the PyAV step (and any other
@@ -431,14 +432,12 @@ New-Item -Path $pyavSrcRoot -ItemType Directory -Force | Out-Null
 Invoke-CpythonPip -Python $py -Arguments @('download', "av==$pyavVersion", '--no-binary', ':all:', '--no-deps', '--no-build-isolation', '-d', $pyavSrcRoot)
 $pyavSdist = Get-ChildItem $pyavSrcRoot -Filter 'av-*.tar.gz' | Select-Object -First 1
 if (-not $pyavSdist) { throw "PyAV sdist not downloaded to $pyavSrcRoot" }
-cmd.exe /c """$($py.Exe)"" -m tarfile -e ""$($pyavSdist.FullName)"" ""$pyavSrcRoot"" 2>&1"
-if ($LASTEXITCODE -ne 0) { throw 'PyAV sdist extraction failed' }
+[void](Invoke-ShieldedNative -Label 'PyAV sdist extract' -CommandLine """$($py.Exe)"" -m tarfile -e ""$($pyavSdist.FullName)"" ""$pyavSrcRoot""")
 $pyavDir = (Get-ChildItem $pyavSrcRoot -Directory | Select-Object -First 1).FullName
 $env:LIB = "$($py.LibDir);$env:LIB"
 Push-Location $pyavDir
 try {
-    cmd.exe /c """$($py.Exe)"" setup.py --ffmpeg-dir=""$prefix"" bdist_wheel 2>&1"
-    if ($LASTEXITCODE -ne 0) { throw "PyAV setup.py bdist_wheel failed (exit $LASTEXITCODE)" }
+    [void](Invoke-ShieldedNative -Label 'PyAV setup.py bdist_wheel' -CommandLine """$($py.Exe)"" setup.py --ffmpeg-dir=""$prefix"" bdist_wheel")
 } finally { Pop-Location }
 Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
 Remove-SourceBuildTree -Path $pyavSrcRoot
