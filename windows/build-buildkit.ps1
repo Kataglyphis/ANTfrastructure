@@ -150,12 +150,21 @@ function Get-BuildVcsRef {
 function Invoke-BkStage {
     param(
         [Parameter(Mandatory)][string]$Dockerfile,   # repo-relative
-        [Parameter(Mandatory)][string]$Tag,
+        [string]$Tag = '',
         [hashtable]$BuildArgs = @{},
         [string]$Target = '',
         [string]$Context = '.',
-        [string]$Label = ''
+        [string]$Label = '',
+        # WARM solve: run the build WITHOUT any exporter. Nothing ever
+        # finalizes the solve's snapshots, so the host's lost-HCS-shutdown-
+        # notification defect (ExportLayer 0x3 at finalize — see
+        # docs/windows-builds.md § BuildKit/containerd lane) never fires.
+        # Artifacts leave the warm container via the C:\bkhandoff cache mount
+        # (Export-BuildHandoff); the paired materialize target imports them
+        # in a calm container and IS exported normally.
+        [switch]$NoOutput
     )
+    if (-not $NoOutput -and -not $Tag) { throw 'Invoke-BkStage: -Tag is required unless -NoOutput' }
     if (-not $Label) { $Label = [IO.Path]::GetFileName($Dockerfile) + $(if ($Target) { ":$Target" } else { '' }) }
     $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
     $dfName = [IO.Path]::GetFileName($Dockerfile)
@@ -168,9 +177,9 @@ function Invoke-BkStage {
         # Stage handoff: resolve FROM refs against the local containerd store
         # (stored fully-qualified; without this buildkit goes to docker.io).
         '--opt', 'image-resolve-mode=local',
-        '--output', "type=image,name=$Tag,unpack=true",
         '--progress', 'plain'
     )
+    if (-not $NoOutput) { $bkArgs += @('--output', "type=image,name=$Tag,unpack=true") }
     if ($NoCache) { $bkArgs += @('--no-cache') }
     if ($Target) { $bkArgs += @('--opt', "target=$Target") }
     # Optional cross-host cache (mode=max also caches non-exported intermediate
@@ -182,10 +191,11 @@ function Invoke-BkStage {
         if ($null -ne $v -and "$v" -ne '') { $bkArgs += @('--opt', "build-arg:$k=$v") }
     }
     $stageLog = Join-Path $script:LogDir ("bk-" + ($Label -replace '[:\\/]', '-') + ".log")
-    Write-Host "`n==> [bk:$Label] buildctl -> $Tag" -ForegroundColor Cyan
+    $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
+    Write-Host "`n==> [bk:$Label] buildctl -> $dest" -ForegroundColor Cyan
     & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog
     if ($LASTEXITCODE -ne 0) { throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — log: $stageLog" }
-    Write-Host "[bk:$Label] OK -> $Tag" -ForegroundColor Green
+    Write-Host "[bk:$Label] OK -> $dest" -ForegroundColor Green
 }
 
 $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
@@ -252,10 +262,37 @@ if ($Stages -contains 'media') {
         }
     }
     foreach ($branch in $MediaBranches) {
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target "$branch-built" -Tag (Get-BkTag "windows-$branch") -BuildArgs (@{
+        $branchBuildArgs = @{
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
             MEMORY_LIMIT_GB = $MediaMemoryGb
-        } + $branchArgs[$branch] + $sccache)
+        } + $branchArgs[$branch] + $sccache
+        if ($branch -eq 'media-core') {
+            # WARM/MATERIALIZE solve pairs (host platform defect: heavy-churn
+            # containers lose the HCS shutdown notification and their snapshot
+            # can never be finalized — full evidence in Dockerfile.media-builder
+            # and docs/windows-builds.md). Warm solves run with -NoOutput so
+            # nothing ever finalizes them; the paired materialize solves import
+            # the handoff from the C:\bkhandoff cache mount and export the tag.
+            # ONNX never trips the defect and keeps its direct solve.
+            # TEMP (0x3 probes): solve 1 skipped — bk-windows-media-core-onnx is
+            # exported; module edits would force a needless 100-min ONNX rebuild.
+            # Restore for the first clean full rebuild after the probes conclude.
+            # Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs $branchBuildArgs
+            $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
+            $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }
+            $ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = Get-BkTag 'windows-media-core-ffmpeg' }
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-warm-opencv' -NoOutput -BuildArgs ($branchBuildArgs + $onnxArg)
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-opencv' -Tag (Get-BkTag 'windows-media-core-opencv') -BuildArgs ($branchBuildArgs + $onnxArg)
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-warm-ffmpeg' -NoOutput -BuildArgs ($branchBuildArgs + $opencvArg)
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-ffmpeg' -Tag (Get-BkTag 'windows-media-core-ffmpeg') -BuildArgs ($branchBuildArgs + $opencvArg)
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-warm-genai' -NoOutput -BuildArgs ($branchBuildArgs + $ffmpegArg)
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built' -Tag (Get-BkTag 'windows-media-core') -BuildArgs ($branchBuildArgs + $ffmpegArg)
+        } elseif ($branch -eq 'media-tvm') {
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-tvm-warm' -NoOutput -BuildArgs $branchBuildArgs
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-tvm-built' -Tag (Get-BkTag 'windows-media-tvm') -BuildArgs $branchBuildArgs
+        } else {
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target "$branch-built" -Tag (Get-BkTag "windows-$branch") -BuildArgs $branchBuildArgs
+        }
     }
     $mergeArgs = @{
         BASE_IMAGE        = Get-BkTag 'windows-toolchain'
@@ -268,6 +305,9 @@ if ($Stages -contains 'media') {
     foreach ($t in $branchArgs.Values) { foreach ($k in $t.Keys) {
         if ($k -notin @('NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES')) { $mergeArgs[$k] = $t[$k] }
     } }
+    # Warm/materialize pair (GStreamer is heavy-churn — same platform-defect
+    # workaround as the media-core libraries, see Dockerfile.media-builder).
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'warm' -NoOutput -BuildArgs ($mergeArgs + $sccache)
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs ($mergeArgs + $sccache)
 }
 

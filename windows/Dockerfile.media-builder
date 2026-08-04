@@ -17,6 +17,11 @@
 # cannot commit layers (see build.ps1 CPU note).
 
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
+# Solve-chain handoff images for the BuildKit media-core lane (see the
+# media-core-built-* stages below for why this is four solves, not one).
+ARG MEDIA_CORE_ONNX_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-onnx
+ARG MEDIA_CORE_OPENCV_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-opencv
+ARG MEDIA_CORE_FFMPEG_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-ffmpeg
 
 # ── Common base: shared boilerplate for all three builders ────────────────────
 FROM ${BASE_IMAGE} AS common
@@ -121,19 +126,93 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # process isolation exposes host RAM; MEMORY_LIMIT_GB (baked as ENV above per
 # branch) is what Get-BuildJobCount caps parallelism with — same budget model
 # as the run+commit path.
-FROM media-core AS media-core-built
-# PER-LIBRARY RUN layers, not one monolith: a single ~25 GB media-core layer
-# deterministically failed snapshot finalize on this host (hcsshim::ExportLayer
-# 0x3 "path not found" during buildkit's reimport, 2026-08-03) — and per-lib
-# layers cache independently (an FFmpeg fix recompiles NOTHING else). The
-# -Until/-StartAt partition semantics are unit-tested (SourceBuild.Chain).
+# ── media-core: WARM/MATERIALIZE solve pairs ─────────────────────────────────
+# HOST PLATFORM DEFECT (2026-08-04, ~20 probes + containerd debug log — full
+# writeup in docs/windows-builds.md § BuildKit/containerd lane): heavy-churn
+# containers (GenAI/OpenCV/TVM class) lose their HCS shutdown notification;
+# their snapshot can then NEVER be finalized (hcsshim::ExportLayer 0x3), on
+# every path, surviving even a host reboot. ONNX (100-min ninja) is the one
+# heavy build that never trips it. Workaround pattern, per heavy library:
+#   1. WARM solve (`media-core-warm-<lib>`, driver runs it with NO exporter):
+#      the build runs normally on the scratch; the artifact delta (C:\runtime
+#      + cpython site-packages, CreationTime-based) leaves as ONE tar via the
+#      sccache WebDAV server (Export-BuildHandoff). Not a cache mount:
+#      BuildKit clones cache mounts under lock, so warm and materialize are
+#      not guaranteed the same instance (bit us). Without an exporter or a
+#      child step the toxic snapshot is never finalized — defect never fires.
+#   2. MATERIALIZE solve (`media-core-built-<lib>`, exported as the handoff
+#      image): a calm, seconds-long container downloads + extracts the tar
+#      (Import-BuildHandoff) — clean teardown, clean finalize.
+# The chain stays four logical steps (onnx → opencv → ffmpeg → genai), each
+# still caching independently; ONNX keeps its direct (non-warm) layer.
+FROM media-core AS media-core-built-onnx
 RUN & 'C:\temp\scripts\build-media-core-all.ps1' -Until 'ONNX Runtime'
-RUN & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI'
-RUN & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV'
-RUN & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'FFmpeg'
+
+FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-warm-opencv
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
+RUN `
+    $t0 = Get-Date; `
+    & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV'; `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Export-BuildHandoff -Since $t0 -Name 'opencv'; `
+    exit 0
+
+FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
+RUN `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Import-BuildHandoff -Name 'opencv'; `
+    exit 0
+
+FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-warm-ffmpeg
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
+RUN `
+    $t0 = Get-Date; `
+    & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'FFmpeg'; `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Export-BuildHandoff -Since $t0 -Name 'ffmpeg'; `
+    exit 0
+
+FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
+RUN `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Import-BuildHandoff -Name 'ffmpeg'; `
+    exit 0
+
+FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-warm-genai
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
+RUN `
+    $t0 = Get-Date; `
+    & 'C:\temp\scripts\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI'; `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Export-BuildHandoff -Since $t0 -Name 'genai'; `
+    exit 0
+
+FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 C:\temp\scripts\modules\
+RUN `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Import-BuildHandoff -Name 'genai'; `
+    foreach ($p in @(($env:TEMP + '\*'), 'C:\Windows\Temp\*', ($env:LOCALAPPDATA + '\pip\cache'), ($env:USERPROFILE + '\.nuget'), ($env:LOCALAPPDATA + '\NuGet'), ($env:LOCALAPPDATA + '\Microsoft\Windows\INetCache'))) { `
+        if (Test-Path $p) { Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue } }; `
+    exit 0
 
 FROM media-litert AS media-litert-built
 RUN & 'C:\temp\scripts\build-litert-all.ps1'
 
+# tvm trips the same platform defect (3x) — same warm/materialize pattern.
+# Both stages sit on the media-tvm COPY stage (cheap layers, finalize fine).
+FROM media-tvm AS media-tvm-warm
+RUN `
+    $t0 = Get-Date; `
+    & 'C:\temp\scripts\build-media-tvm-all.ps1'; `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Export-BuildHandoff -Since $t0 -Name 'tvm'; `
+    exit 0
+
 FROM media-tvm AS media-tvm-built
-RUN & 'C:\temp\scripts\build-media-tvm-all.ps1'
+RUN `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Import-BuildHandoff -Name 'tvm'; `
+    exit 0

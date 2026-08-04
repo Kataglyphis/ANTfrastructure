@@ -59,7 +59,7 @@ linux/
 
 **Cross lane** (`linux/amd64` host, cross-compiles all arches): `base → compiler → sdk → media → android → package → torch`
 **Runtime lane** (native/QEMU per arch): `base → package → wrapper`
-**Windows lane** (native Windows Containers): `base → sdk → toolchain → media → torch → final` — built via **BuildKit + containerd with process isolation** (the preferred lane since 2026-08: full host CPUs, real layer caching; `windows/build-buildkit.ps1`), with the docker-classic Hyper-V run+commit lane (`windows/build.ps1`) as fallback.
+**Windows lane** (native Windows Containers): `base → sdk → toolchain → media → torch → final` — built via **BuildKit + containerd with process isolation** (the preferred lane since 2026-08: full host CPUs, real layer caching; `windows/build-buildkit.ps1`), with the docker-classic Hyper-V run+commit lane (`windows/build.ps1`) as fallback. Heavy media layers route around a host snapshotter defect via the warm/materialize solve pattern — see [`docs/windows-builds.md`](docs/windows-builds.md) § BuildKit/containerd lane.
 
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows: `windows/amd64`.
 

@@ -51,7 +51,26 @@ function Invoke-GitClone {
         [int]$Depth = 1
     )
 
-    if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
+    # MOUNT-FRIENDLY reset: when $SourceDir is a BuildKit cache-mount target
+    # (RUN --mount=type=cache,target=<SourceDir> — the BK lane puts the heavy
+    # source/build churn there so the container scratch stays calm, see
+    # docs/windows-builds.md § BuildKit/containerd lane), the directory ITSELF
+    # cannot be removed ("used by another process"). Clear its CONTENTS then;
+    # git can clone into an existing empty directory. A non-empty leftover
+    # tree (previous run, KEEP_BUILD_ARTIFACTS) is wiped either way — callers
+    # that want incremental reuse skip the clone before calling this.
+    if (Test-Path $SourceDir) {
+        try {
+            Remove-Item $SourceDir -Recurse -Force -ErrorAction Stop
+        } catch {
+            Write-Host "Invoke-GitClone: cannot remove $SourceDir (mount point?) - clearing contents instead"
+            Get-ChildItem -LiteralPath $SourceDir -Force -ErrorAction SilentlyContinue |
+                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            if (@(Get-ChildItem -LiteralPath $SourceDir -Force -ErrorAction SilentlyContinue).Count -ne 0) {
+                throw "Invoke-GitClone: $SourceDir could be neither removed nor emptied"
+            }
+        }
+    }
 
     $ref = if ($Tag) { $Tag } else { $Branch }
     if ([string]::IsNullOrWhiteSpace($ref)) { throw 'Either -Branch or -Tag is required' }
@@ -175,7 +194,11 @@ function Enter-VsDevCmdEnvironment {
     )
 
     if ([string]::IsNullOrWhiteSpace($VsDevCmdPath)) {
-        $vsPath = Get-VsInstallPath
+        # Direct call to Shared's finder (the old Get-VsInstallPath passthrough
+        # was deleted 2026-08-03 — NB it had this ONE module-internal caller,
+        # which the "zero callers" audit sweep missed and no test covers
+        # because Enter-VsDevCmdEnvironment needs a real VS install).
+        $vsPath = Get-VisualStudioInstallPath
         $VsDevCmdPath = Join-Path $vsPath 'Common7\Tools\VsDevCmd.bat'
     }
     if (-not (Test-Path $VsDevCmdPath)) { throw "VsDevCmd.bat not found at: $VsDevCmdPath" }
@@ -367,6 +390,17 @@ function Remove-SourceBuildTree {
         $global:LASTEXITCODE = 0
         return
     }
+    # Kill lingering compiler daemons BEFORE deleting the tree, not after: a
+    # daemon holding a handle into the tree (mspdbsrv on a PDB, an MSBuild
+    # node, vctip) turns every deleted-while-open file into a PENDING-DELETE
+    # zombie. Those zombies live until the container is torn down and then
+    # break the BuildKit snapshot finalize (hcsshim::ExportLayer 0x3 "path
+    # not found", 2026-08-04: killed the GenAI/OpenCV layers ~9x; ninja-only
+    # ONNX — whose toolchain exits before this call — never failed, and the
+    # never-deleted cpython tree in the toolchain image never failed either).
+    # The chain-tail call in Invoke-SourceBuildChain runs AFTER the leaf
+    # scripts' tree deletion, i.e. too late — this is the load-bearing one.
+    Stop-LingeringBuildProcess
     foreach ($p in $Path) {
         if ([string]::IsNullOrWhiteSpace($p) -or -not (Test-Path $p)) { continue }
         if ((Get-Location).Path -like "$p*") { Set-Location (Split-Path $p -Parent) }
@@ -667,6 +701,132 @@ function Invoke-SourceBuildChain {
     # once, media-tvm-all not at all). Counters die with the container, so this
     # is the last chance to get them into the run log.
     Write-SccacheStats -Label $Label
+    Stop-LingeringBuildProcess
+}
+
+# ── BuildKit warm/materialize handoff ────────────────────────────────────────
+# On this host, heavy-churn containers lose their HCS shutdown notification and
+# their snapshot can NEVER be finalized (hcsshim::ExportLayer 0x3 — see
+# docs/windows-builds.md § BuildKit/containerd lane). The workaround: run the
+# heavy build in a WARM solve with no exporter (nothing ever finalizes its
+# snapshot), hand the artifacts off through a cache mount, and materialize
+# them in a calm, short-lived container whose layer commits fine. Cache-mount
+# constraint (probed): directory RENAMES fail on the mount — these helpers
+# only ever CREATE files there.
+
+function Export-BuildHandoff {
+    # Tar everything the build wrote (CreationTime/LastWriteTime > -Since)
+    # under -Roots and PUT it to the WebDAV server (the same dufs instance
+    # that serves sccache — reachable from every RUN container). Transport is
+    # WebDAV, not a cache mount: BuildKit clones cache mounts whenever the
+    # record is locked, so warm and materialize solves are NOT guaranteed to
+    # see the same instance (bit us on 2026-08-04). Runs at the tail of a
+    # warm-solve RUN.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][datetime]$Since,
+        [Parameter(Mandatory)][string]$Name,
+        [string]$Endpoint = $env:SCCACHE_WEBDAV_ENDPOINT,
+        [string[]]$Roots = @('C:\runtime', 'C:\temp\cpython\Lib\site-packages')
+    )
+    if ([string]::IsNullOrWhiteSpace($Endpoint)) {
+        throw 'Export-BuildHandoff: no -Endpoint and SCCACHE_WEBDAV_ENDPOINT is unset'
+    }
+    $listFile = Join-Path $env:TEMP "handoff-$Name.list"
+    $tarFile  = Join-Path $env:TEMP "handoff-$Name.tar"
+    $entries = foreach ($root in $Roots) {
+        if (-not (Test-Path $root)) { continue }
+        Get-ChildItem -Path $root -Recurse -Force -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.CreationTime -gt $Since -or $_.LastWriteTime -gt $Since } |
+            ForEach-Object { ($_.FullName.Substring(3) -replace '\\', '/') }  # relative to C:\
+    }
+    $entries = @($entries)
+    if ($entries.Count -eq 0) { throw "Export-BuildHandoff: nothing to hand off for '$Name' (Since=$Since)" }
+    Set-Content -Path $listFile -Value $entries -Encoding UTF8
+    # System32 paths, NOT bare names: inside the builder containers scoop's
+    # git puts MSYS GNU tar/curl on PATH, and GNU tar parses "C:\" as a
+    # remote host ("Cannot connect to C: resolve failed").
+    & (Join-Path $env:SystemRoot 'System32\tar.exe') -cf $tarFile -C C:\ -T $listFile
+    if ($LASTEXITCODE -ne 0) { throw "Export-BuildHandoff: tar failed (exit $LASTEXITCODE)" }
+    & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -T $tarFile "$Endpoint/bkhandoff/$Name.tar"
+    if ($LASTEXITCODE -ne 0) { throw "Export-BuildHandoff: upload to $Endpoint/bkhandoff/$Name.tar failed (exit $LASTEXITCODE)" }
+    $sizeMb = [math]::Round((Get-Item $tarFile).Length / 1MB, 1)
+    Remove-Item $tarFile, $listFile -Force -ErrorAction SilentlyContinue
+    Write-Host "Export-BuildHandoff: $($entries.Count) files ($sizeMb MB) -> $Endpoint/bkhandoff/$Name.tar"
+    $global:LASTEXITCODE = 0
+}
+
+function Import-BuildHandoff {
+    # Materialize a warm solve's handoff: GET the tar from the WebDAV server
+    # and extract it over C:\. Runs as the ONLY work of a calm RUN layer.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [string]$Endpoint = $env:SCCACHE_WEBDAV_ENDPOINT
+    )
+    if ([string]::IsNullOrWhiteSpace($Endpoint)) {
+        throw 'Import-BuildHandoff: no -Endpoint and SCCACHE_WEBDAV_ENDPOINT is unset'
+    }
+    $tarFile = Join-Path $env:TEMP "handoff-$Name.tar"
+    & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -o $tarFile "$Endpoint/bkhandoff/$Name.tar"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tarFile)) {
+        throw "Import-BuildHandoff: download $Endpoint/bkhandoff/$Name.tar failed - did the warm solve run?"
+    }
+    # The tar holds FILE entries only (delta list) and bsdtar's Windows
+    # long-path mode does not create missing parent chains — pre-create every
+    # directory (C:\runtime does not even exist in a fresh materialize
+    # container).
+    $tarExe = Join-Path $env:SystemRoot 'System32\tar.exe'
+    & $tarExe -tf $tarFile |
+        ForEach-Object { Split-Path $_ -Parent } | Sort-Object -Unique |
+        ForEach-Object { if ($_) {
+            $abs = Join-Path 'C:\' $_
+            if (-not (Test-Path $abs)) { New-Item -ItemType Directory -Path $abs -Force | Out-Null }
+        } }
+    & $tarExe -xf $tarFile -C C:\
+    if ($LASTEXITCODE -ne 0) { throw "Import-BuildHandoff: tar extract failed (exit $LASTEXITCODE)" }
+    $sizeMb = [math]::Round((Get-Item $tarFile).Length / 1MB, 1)
+    Remove-Item $tarFile -Force -ErrorAction SilentlyContinue
+    Write-Host "Import-BuildHandoff: $Name.tar ($sizeMb MB) extracted to C:\"
+    $global:LASTEXITCODE = 0
+}
+
+function Stop-LingeringBuildProcess {
+    # MSVC keeps helper daemons alive after the compiler exits (mspdbsrv serves
+    # PDB writes, vctip phones telemetry home, VBCSCompiler is the managed
+    # equivalent). Inside a BuildKit RUN they MUST be dead before the step's
+    # entrypoint returns: HCS tears the container down around them while they
+    # still hold file handles in the sandbox, and the half-released files make
+    # the snapshot finalize fail (hcsshim::ExportLayer 0x3 "path not found" —
+    # killed the GenAI layer 3x on 2026-08-04; the ninja-only ONNX layer, which
+    # leaves no such daemons behind, finalized fine every time). sccache is
+    # deliberately NOT on the list: it lingered on the healthy ONNX layer too.
+    [CmdletBinding()]
+    param(
+        # Kill even outside a container (tests use this with fake process names).
+        [switch]$Force
+    )
+    # HOST GUARD: outside a Windows container this would kill a developer's
+    # live VS/MSBuild session (Remove-SourceBuildTree runs on the host in the
+    # test suite and in ad-hoc script runs). cexecsvc only exists inside
+    # Windows containers.
+    if (-not $Force -and -not (Get-Service -Name 'cexecsvc' -ErrorAction SilentlyContinue)) {
+        $global:LASTEXITCODE = 0
+        return
+    }
+    foreach ($name in 'mspdbsrv', 'vctip', 'VBCSCompiler', 'MSBuild', 'Tracker') {
+        foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+            try {
+                Write-Host "Stopping lingering build process: $name (pid $($proc.Id))"
+                $proc.Kill()
+                $null = $proc.WaitForExit(5000)
+            } catch {
+                Write-Warning "could not stop $name (pid $($proc.Id)): $_"
+            }
+        }
+    }
+    # best-effort contract: a failed kill or a race must not fail the build step
+    $global:LASTEXITCODE = 0
 }
 
 function Copy-SidecarDll {
@@ -707,6 +867,9 @@ function Copy-SidecarDll {
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
     'Invoke-SourceBuildChain',
+    'Stop-LingeringBuildProcess',
+    'Export-BuildHandoff',
+    'Import-BuildHandoff',
     'Invoke-GitClone',
     'Invoke-CmakeConfigure',
     'Test-SccacheRemoteConfigured',

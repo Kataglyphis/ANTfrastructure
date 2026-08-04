@@ -131,9 +131,32 @@ COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
 # See the identical pattern in Dockerfile.media-builder (common stage).
 COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 
-# ── BuildKit lane (buildctl --opt target=built) ──────────────────────────────────────────────
-# The GStreamer compile as a plain process-isolated LAYER (full host CPUs).
-# The classic docker lane always passes --target merge (build.ps1) and never
-# executes this RUN — it keeps the run+commit path instead.
+# ── BuildKit lane (warm/materialize pair) ────────────────────────────────────
+# GStreamer is a heavy-churn build — same warm/materialize pattern as the
+# media-core libraries (host platform defect: heavy containers lose the HCS
+# shutdown notification and their snapshot can never be finalized; see
+# Dockerfile.media-builder + docs/windows-builds.md). The driver runs `warm`
+# with no exporter, then exports `built`. The classic docker lane always
+# passes --target merge (build.ps1) and never executes these RUNs.
+# (The previous single-RUN `built` target additionally carried an escape-
+# mangled command — literal tab/backspace/CR bytes where \t, \b, \r were
+# meant — committed unnoticed because this target had never run.)
+FROM merge AS warm
+# ARGs do not cross stage boundaries — redeclare for the handoff transport
+# (Export/Import-BuildHandoff default to this env var) and for sccache.
+ARG SCCACHE_WEBDAV_ENDPOINT=""
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+RUN `
+    $t0 = Get-Date; `
+    & 'C:\temp\scripts\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs'; `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Export-BuildHandoff -Since $t0 -Name 'gstreamer'; `
+    exit 0
+
 FROM merge AS built
-RUN & 'C:	emp\scriptsuild-gstreamer-from-source.ps1' -InstallDir 'C:untime' -LogDir 'C:	emp\logs'
+ARG SCCACHE_WEBDAV_ENDPOINT=""
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+RUN `
+    Import-Module C:\temp\scripts\modules\WindowsSourceBuild.Common.psm1 -Force -DisableNameChecking; `
+    Import-BuildHandoff -Name 'gstreamer'; `
+    exit 0

@@ -186,7 +186,11 @@ difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the heavy
 
 **This is the lane to use from 2026-08 on** — full host CPUs on every stage,
 process-isolated layer commits, and real per-stage layer caching, with the
-docker-classic run+commit lane kept as the always-working fallback. Probes on
+docker-classic run+commit lane kept as the always-working fallback. **Status
+2026-08-04: an OPEN snapshotter defect (`ExportLayer 0x3`, see the Roadmap
+section's OPEN DEFECT entry) blocks the GenAI/OpenCV/TVM layer commits on this
+lane; base/sdk/toolchain/ONNX/LiteRT export green, and the classic lane builds
+the complete chain in the meantime.** Probes on
 2026-08-03 established that BOTH docker-classic limits are absent on the
 buildkitd+containerd path on this same host (and the chain was then rebuilt
 from base on this lane the same day — VS2026, CUDA, CPython and the media
@@ -374,9 +378,93 @@ steps; the remaining work is the Dockerfile surgery):
   cross-lane L2): kills the HTTP round-trip on ~5000 compiles per stage.
   Probed working; wiring = set SCCACHE_DIR to the cache mount in the `*-built`
   RUNs.
-- **Per-library media-core split**: DONE (4 RUN layers via `-Until`/`-StartAt`,
-  see Dockerfile.media-builder) — an FFmpeg-only change never recompiles
-  ONNX/GenAI/OpenCV.
+- **Per-library media-core split**: DONE, and escalated on 2026-08-04 from
+  4 RUN layers to **4 chained SOLVES** (targets `media-core-built-onnx` →
+  `-opencv` → `-ffmpeg` → `media-core-built`, image handoffs via the
+  `MEDIA_CORE_*_IMAGE` ARGs; build-buildkit.ps1 drives them in order). An
+  FFmpeg-only change still recompiles nothing else — and each library's
+  export is now independent of the others' finalize behavior.
+- **OPEN DEFECT — GenAI/OpenCV snapshot finalize (`ExportLayer 0x3`, disk
+  fine)**: those two layers deterministically fail BOTH finalize paths on
+  buildkitd v0.32/containerd, on every fresh snapshot. A 17-probe bisection
+  (2026-08-04) falsified: poisoned cache records, layer depth (14 stacked
+  trivial layers export fine), defective ONNX parent (trivial layers on it
+  export fine), file/dir content (a GenAI layer whose ENTIRE diff was deleted
+  before step end still fails), lingering compiler daemons, vctip, bare
+  .NET-Framework CLR (`MSBuild -version` layer exports clean), pending-delete
+  zombies, and build-tree deletion (`KEEP_BUILD_ARTIFACTS=1` still fails).
+  Clean under identical conditions: ONNX (ninja, 100-min layer), cpython
+  (MSBuild), LiteRT (bazel), every trivial probe. TVM+IREE joined the failing
+  set later the same morning (cmake+ninja like the clean ONNX — no build-system
+  pattern survives).
+
+  **Root-cause finding (containerd debug log, 2026-08-04 07:59):** the snapshot
+  commit RACES a failing container teardown. Timeline: task exits → shim
+  cleanup starts → an HCS operation inside that cleanup fails with
+  `HCS_E_INVALID_STATE` (0xC0370105, "Containervorgang ist im aktuellen
+  Zustand ungültig") → containerd logs `commit snapshot` **70 ms after** the
+  cleanup began → 13 s later `ExportLayer` fails 0x3. The scratch VHDX is
+  never cleanly released by the half-failed teardown, so the export finds no
+  layer paths. Fits the clean/toxic split: layers whose containers exit with
+  residual processes + heavy dirty IO (15–25-min compiles) hit the bad
+  teardown state; calm exits don't.
+
+  **How to capture the debug evidence again (admin):** set the service
+  ImagePaths via registry (sc.exe quoting mangles them in PowerShell):
+  `Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -Name
+  ImagePath -Value '"C:\Program Files\Stevedore\bin\containerd.exe"
+  --run-service --service-name containerd --log-level debug --log-file
+  C:\ProgramData\containerd\containerd-debug.log'` (analog `buildkitd` with
+  `--debug` before `--run-service`), `Restart-Service containerd -Force`,
+  `Start-Service buildkitd, stevedore`, and
+  `icacls <log> /grant "<user>:(R)"` to read it non-elevated. **Policy: debug
+  logging stays PERMANENTLY ON on this host** (owner decision 2026-08-04) so
+  the next snapshotter incident carries its evidence immediately. The log
+  grows unbounded — if it gets large, truncate it (admin:
+  `Clear-Content C:\ProgramData\containerd\containerd-debug.log`) rather than
+  disabling the flags.
+
+  **All host-level mitigations were exhausted (2026-08-04):** quiesce tail,
+  msdtc/WMI stops, and a **full host reboot with a fresh container** all hit
+  the identical double-timeout + 0x3 signature. Host processes show the
+  container's processes DO die — the HCS shutdown *notification* is what
+  never arrives (vmcompute → hcsshim callback), after which the scratch is
+  never cleanly released. buildkitd v0.32 has no Hyper-V isolation option.
+  **Genuine platform defect** (Win11 host 26200 + ltsc2025 + process
+  isolation + heavy-churn layers; GenAI/OpenCV/TVM/GStreamer-class builds
+  trip it — ONNX/cpython/LiteRT/torch never did). Worth reporting upstream:
+  hcsshim (lost shutdown notification) + buildkit (commit proceeds into a
+  known-failed teardown).
+
+  **WORKING SOLUTION — the warm/materialize pattern (BK lane is GREEN
+  end-to-end since 2026-08-04, `bk-winamd64` built in 44 min hot):** exploit
+  BuildKit's LAZY finalization — a snapshot is only finalized when a child
+  step or an exporter needs it. Per heavy library:
+  1. **Warm solve** (`media-core-warm-<lib>` / merge `warm`; driver runs it
+     via `Invoke-BkStage -NoOutput`): the build runs normally on the scratch;
+     the artifact delta (C:\runtime + cpython site-packages, CreationTime >
+     step start) leaves as ONE tar over the sccache dufs server
+     (`Export-BuildHandoff`). No exporter + no child step ⇒ the toxic
+     snapshot is never finalized ⇒ the defect never fires.
+  2. **Materialize solve** (`media-core-built-<lib>` / merge `built`,
+     exported as the handoff image): a calm seconds-long container downloads
+     + extracts the tar (`Import-BuildHandoff`) — clean teardown, clean
+     finalize, clean image export.
+  Hard-won transport constraints baked into the helpers
+  (WindowsSourceBuild.Common.psm1): cache mounts are NOT usable as the
+  handoff channel (BuildKit clones them under lock — warm and materialize
+  are not guaranteed the same instance; also directory RENAMES fail on
+  them); call System32 tar/curl by full path (scoop-git's MSYS GNU tar
+  resolves first and parses `C:\` as a hostname); pre-create every parent
+  directory before extracting (bsdtar's long-path mode does not, and
+  C:\runtime does not exist in a fresh materialize container); stage-local
+  `ARG SCCACHE_WEBDAV_ENDPOINT` + ENV in every warm/materialize stage (ARGs
+  do not cross FROM boundaries). ONNX/LiteRT keep their direct solves — they
+  never trip the defect. Re-test the direct path after host OS or
+  buildkitd/hcsshim upgrades: a 15-min tvm direct solve is the canary.
+  Upstream issue: ready-to-file draft + preserved debug-log evidence in
+  `docs/upstream/hcsshim-lost-shutdown-notification-issue.md` (+
+  `containerd-debug-evidence-2026-08-04.log`).
 - **Concurrent branch solves** (litert + tvm in parallel buildctl calls) —
   RAM-gated; both branches are memory-bound, so measure before enabling.
 
