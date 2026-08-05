@@ -105,6 +105,7 @@ Common development targets:
    linux-accelerator-images
    runtime-services
    windows-builds
+   windows-host-setup
    windows-container-build-performance
    github-cli-pipeline-monitoring
    ci-build-triggers

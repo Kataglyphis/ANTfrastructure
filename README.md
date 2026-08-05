@@ -104,6 +104,7 @@ If foreign-architecture builds fail with `exec format error`, run `nerdctl run -
 | NVIDIA / AMD / Torch variants | [docs/linux-accelerator-images.md](docs/linux-accelerator-images.md) |
 | Webserver, display forwarding, WebRTC | [docs/runtime-services.md](docs/runtime-services.md) |
 | Windows containers | [docs/windows-builds.md](docs/windows-builds.md) |
+| **New Windows machine? Ordered bring-up checklist (host + gates)** | [docs/windows-host-setup.md](docs/windows-host-setup.md) |
 | Building consumer projects inside the Windows image (reuse pattern, transports) | [docs/windows-container-build-performance.md](docs/windows-container-build-performance.md) |
 | Reusable CI composite actions (run-in-*-container, cleanup-disk-space) | [.github/actions/README.md](.github/actions/README.md) |
 | MSIX certificates: generation, import, WebDAV retrieval | [windows/scripts/certificates/README.md](windows/scripts/certificates/README.md) |
@@ -142,7 +143,8 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 
 The Windows toolchain is **containerd + BuildKit + nerdctl** (process isolation,
 full host CPUs, real layer caching — one-time setup in
-[Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane):
+[Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane;
+**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)**):
 
 ```pwsh
 # BUILD (non-admin shell; buildctl against buildkitd):

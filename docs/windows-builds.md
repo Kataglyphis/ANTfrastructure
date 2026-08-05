@@ -80,6 +80,12 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 
 ## Prerequisites
 
+> **Provisioning a FRESH machine?** Follow the ordered checklist in
+> [Fresh Windows Host Bring-Up](windows-host-setup.md) — it sequences
+> everything on this page (Stevedore install, CNI conf, debug flags, GC
+> policy, Defender exclusions, dufs/sccache, gate tooling) into one
+> admin/non-admin-marked path with a verify command per step.
+
 Install [Stevedore](https://github.com/slonopotamus/stevedore):
 
 ```pwsh
@@ -217,6 +223,10 @@ lane is untouched: `build.ps1` pins `--target builder` / `--target merge`, so
 docker never executes those targets.
 
 #### Getting it going — Stevedore + BuildKit host setup (from scratch)
+
+> The end-to-end fresh-machine sequence (including the GC-policy deploy, the
+> permanent debug flags, and the repo-gate tooling that this section does not
+> cover) lives in [Fresh Windows Host Bring-Up](windows-host-setup.md).
 
 [Stevedore](https://github.com/slonopotamus/stevedore) ships the whole engine
 family in one install: `docker.exe`/`buildctl.exe` under
