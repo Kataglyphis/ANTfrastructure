@@ -509,9 +509,12 @@ steps; the remaining work is the Dockerfile surgery):
   hang is HOST-side (silo/wcifs teardown of heavy-churn scratches), not
   anything running inside the container. Upstream fingerprint:
   microsoft/Windows-Containers#547 (ltsc2025 process isolation, ~10-min
-  shutdown, resources stay locked, closed unresolved). Aggravating local
-  fact: host build 26200 (Win11 25H2) vs image build 26100 (ltsc2025) —
-  process isolation across build numbers is officially unsupported.
+  shutdown, resources stay locked, closed unresolved). NOTE (corrected
+  2026-08-06): Win11 24H2+ hosts running ltsc2025 images process-isolated
+  is OFFICIALLY SUPPORTED per the version-compatibility doc (the strict
+  build-match rule was relaxed for this combination) — so this is a
+  reportable platform bug in a supported configuration, not an off-label
+  artifact; #547 saw the same hang on a matched-build 26100 host.
   CONSEQUENCE: warm/materialize is the standing architecture on this class
   of host, not a temporary workaround. Do NOT burn more canaries on
   in-container theories; the only genuine escape hatches are a platform fix
