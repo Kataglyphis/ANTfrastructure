@@ -63,7 +63,9 @@ if ($binPath -notmatch '--config') {
     Write-Host '--config already present in ImagePath; config file replaced in place.'
 }
 
-Restart-Service buildkitd
+# -Force: without it Restart-Service refuses when dependent services hang off
+# buildkitd (reported live 2026-08-05); -Force stops/restarts them along.
+Restart-Service buildkitd -Force
 Write-Host 'buildkitd restarted.' -ForegroundColor Green
 
 # Show the effective GC rules so the change is verifiable at a glance.
