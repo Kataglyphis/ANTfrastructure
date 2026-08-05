@@ -1,6 +1,10 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
+# RETIRED FROM THE DOCKERFILES (de-warming 2026-08-05) — kept as the tested
+# rollback path together with bk-warm.ps1; see bk-warm.ps1's header for the
+# full story and the canary that gates any return of the pattern.
+#
 # MATERIALIZE-solve payload for the BuildKit lane: restores a warm solve's
 # handoff (Import-BuildHandoff) inside a calm, seconds-long container whose
 # snapshot finalizes normally — the exported image carries the artifacts.
