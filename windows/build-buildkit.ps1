@@ -197,12 +197,16 @@ function Invoke-BkStage {
     # the shared, unit-tested engine (WindowsBuildDriver.Common; pattern set
     # in Initialize-BuildDriverContext above — ActivateLayer 0x20 snapshot
     # contention + ttrpc/shim races; a manual 0x20 re-run cost us 2026-08-04).
-    for ($attempt = 1; $attempt -le 2; $attempt++) {
+    # 3 attempts (was 2): the hcs-temp finalize flake family occasionally
+    # burns both under load (2026-08-05: mkdir access-denied THEN 0x20 on the
+    # retry, during a parallel canary export). Third attempt is cheap — the
+    # completed RUN vertices stay cached; only finalize/export re-runs.
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
         Write-Host "`n==> [bk:$Label] buildctl -> $dest$(if ($attempt -gt 1) { ' (retry)' })" -ForegroundColor Cyan
         & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog
         if ($LASTEXITCODE -eq 0) { break }
         $tail = if (Test-Path $stageLog) { (Get-Content $stageLog -Tail 40 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
-        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts 2 -Label "bk:$Label" -CooldownSeconds 15) { continue }
+        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts 3 -Label "bk:$Label" -CooldownSeconds 15) { continue }
         throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — log: $stageLog"
     }
     Write-Host "[bk:$Label] OK -> $dest" -ForegroundColor Green
