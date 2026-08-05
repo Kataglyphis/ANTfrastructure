@@ -280,8 +280,15 @@ lane, "Store GC" bullet. Verify:
 # must show reservedSpace=200GB tiers, NOT the computed defaults (maxUsedSpace 100GB / minFreeSpace 187GB)
 ```
 
-### C4. Windows Defender exclusions
+### C4. Windows Defender exclusions — LOAD-BEARING, not hygiene
 
+These exclusions are what makes heavy-churn container finalizes work AT ALL
+on this platform: without them the realtime scanner races container-exit
+file churn, the HCS shutdown notification times out, and every later
+finalize of that snapshot fails `ExportLayer 0x3` (the defect that once
+forced the whole warm/materialize architecture — canary-proven gone WITH
+the exclusions on 2026-08-05, see windows-builds.md § roadmap "DEFECT
+GONE"). Skipping this step on a new machine WILL resurrect the defect.
 The full set (the § Getting it going step-3 list plus the process exclusions
 added 2026-08-05 after the hcs-temp sharing-violation flake family):
 

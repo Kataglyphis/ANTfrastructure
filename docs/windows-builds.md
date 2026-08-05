@@ -468,7 +468,30 @@ steps; the remaining work is the Dockerfile surgery):
   `MEDIA_CORE_*_IMAGE` ARGs; build-buildkit.ps1 drives them in order). An
   FFmpeg-only change still recompiles nothing else — and each library's
   export is now independent of the others' finalize behavior.
-- **SOLVED (2026-08-04, warm/materialize) — GenAI/OpenCV snapshot finalize
+- **DEFECT GONE (2026-08-05, canary-proven) — root cause was Windows
+  Defender.** With the 2026-08-05 Defender exclusions active
+  (buildkitd/containerd processes + their ProgramData dirs, § Store GC /
+  host-setup C4), a fresh `--no-cache` heavy-churn TVM→IREE container
+  (34 min, 11.6k files churned) FINALIZED AND EXPORTED CLEAN — under
+  parallel-solve load (`docker.io/local/kataglyphis:bk-canary-0x3`). The
+  realtime scanner racing container-exit file churn drove the HCS
+  shutdown-notification timeouts; the 2026-08-04 falsification matrix
+  predates the exclusions and only tested content theories. CONSEQUENCE:
+  the warm/materialize pattern is retirable (de-warming to direct solves
+  planned); the handoff transport goes with it, dufs stays sccache-only.
+  **Canary recipe (repeat after any AV/OS/hcsshim change, BEFORE relying on
+  direct solves):** solve a heavy warm target WITH an exporter —
+  `buildctl build ... --opt filename=Dockerfile.media-builder --opt
+  target=media-tvm-warm --no-cache --output
+  type=image,name=docker.io/local/kataglyphis:bk-canary-0x3 --opt
+  build-arg:BASE_IMAGE=docker.io/local/kataglyphis:bk-windows-toolchain
+  --opt build-arg:MEMORY_LIMIT_GB=16 --opt
+  build-arg:SCCACHE_WEBDAV_ENDPOINT=<endpoint>` (plus the standard --local/
+  --opt image-resolve-mode=local flags). Clean export = defect absent;
+  `ExportLayer 0x3` at "exporting layers" = defect back, keep/restore
+  warm/materialize. Historical writeup below preserved for diagnosis value.
+- **HISTORICAL (2026-08-04, worked around via warm/materialize) —
+  GenAI/OpenCV snapshot finalize
   (`ExportLayer 0x3`, disk fine)**: those two layers deterministically fail BOTH finalize paths on
   buildkitd v0.32/containerd, on every fresh snapshot. A 17-probe bisection
   (2026-08-04) falsified: poisoned cache records, layer depth (14 stacked
