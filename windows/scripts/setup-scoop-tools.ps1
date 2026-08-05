@@ -171,6 +171,17 @@ Invoke-ScoopStep -Description 'scoop install core toolset (llvm, nano, cppcheck,
 # shim lands on the scoop user-shims PATH like every other tool installed here.
 Install-ScoopPackage -Package 'main/cmake' -Version $CMakeVersion
 
+# make + gawk BAKED INTO BASE (2026-08-05): build-ffmpeg-from-source.ps1 used
+# to install both at RUN time ("if absent -> scoop install") — but their
+# ezwinports manifests download from SourceForge, whose mirror-picker flakes
+# killed a proof-run ffmpeg-warm solve ("URL is not valid" -> make missing ->
+# nv-codec `make install` exit 127) after the SAME stage had passed twice
+# that day. Baking them here makes the ffmpeg stage's runtime install a
+# never-taken fallback: one SourceForge roulette per BASE build (cached),
+# zero per chain run.
+Install-ScoopPackage -Package 'main/make'
+Install-ScoopPackage -Package 'main/gawk'
+
 # Drop scoop's download cache — the installers (LLVM, Flutter, Vulkan SDK, ...) are
 # already unpacked into the apps dir and only bloat this (large) layer otherwise.
 Write-Host 'Clearing scoop download cache...'
