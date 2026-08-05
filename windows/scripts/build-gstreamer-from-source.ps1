@@ -66,20 +66,10 @@ Import-Module $modulePath -Force
 $sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 Import-Module $sourceBuildModule -Force
-
-# Re-import Shared LAST — REINSTATED 2026-08-05 after a live failure. The
-# module-side guards (all nested module imports are un-Forced now) are NOT the
-# whole story: Import-CanonicalVersions `&`-invokes load-versions.ps1 FROM
-# MODULE SCOPE, and that script's own `Import-Module Shared -Force` unloads
-# the top-level Shared import (probed: caller-visible Resolve-DirectoryPath
-# goes CommandNotFound after the call — cost the merge-warm solve on
-# 2026-08-05). This script is the only one calling Shared exports directly at
-# top level after versions loading, hence the local re-import. ROOT FIX (make
-# load-versions.ps1's import guarded/un-Forced) is deferred: that file is
-# bind-mounted into every upstream build RUN, and editing it mid-chain would
-# re-pay the whole media chain — bundle it with the next planned rebuild,
-# then this block can go again.
-Import-Module $sharedPath -Force
+# (No Shared re-import needed anymore: every nested import — including
+# load-versions.ps1's, the last -Force holdout that killed this script twice
+# on 2026-08-05 — is guarded/un-Forced now, so the top-level import above
+# survives the whole preamble. History in AGENTS.md § import invariant.)
 
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
@@ -120,18 +110,9 @@ function Expand-SubprojectArchive {
 }
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available
+# (its Shared import is guarded since the 2026-08-05 root fix — it can no
+# longer unload the top-level import from module scope).
 Import-CanonicalVersions -ScriptRoot $PSScriptRoot
-
-# Re-import Shared AGAIN, and it must be HERE — after Import-CanonicalVersions,
-# not only in the import block above: Import-CanonicalVersions `&`-invokes
-# load-versions.ps1 FROM MODULE SCOPE, and that script's own
-# `Import-Module Shared -Force` unloads the top-level Shared a SECOND time
-# (proved live 2026-08-05, twice: Resolve-DirectoryPath went CommandNotFound
-# at the first use below although the import block had already re-imported).
-# The 2026-08-04 green run never hit this because load-versions.ps1 was not
-# yet bind-mounted into the merge warm RUN — the M3 mount wave armed the path.
-# ROOT FIX stays the load-versions guard (bundled with the next rebuild).
-Import-Module $sharedPath -Force
 
 if ([string]::IsNullOrWhiteSpace($GstVersion)) {
     $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GSTREAMER_VERSION') -DefaultValue '1.29.2'

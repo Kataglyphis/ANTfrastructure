@@ -279,9 +279,11 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   Import-CanonicalVersions, made `Resolve-DirectoryPath` CommandNotFound at
   gstreamer top level and killed the merge-warm solve). Nested imports use the
   guarded form `if (-not (Get-Module -Name 'X')) { Import-Module $path }`.
-  load-versions.ps1 still carries the -Force (bind-mounted into every build
-  RUN — fixing it mid-chain re-pays the media chain); until the next planned
-  rebuild bundles that root fix, build-gstreamer re-imports Shared LAST.
+  The rule is REPO-COMPLETE since 2026-08-05: load-versions.ps1 — the last
+  holdout — is guarded, and build-gstreamer's historical Shared-re-import
+  workarounds are removed. Regression pin: import Shared→Installer→
+  SourceBuild.Common, run Import-CanonicalVersions, then
+  `Get-Command Resolve-DirectoryPath` must still resolve.
 - **Never splat a string ARRAY containing `-Param`-shaped tokens onto a
   PowerShell script/function — array splatting binds strictly BY POSITION.**
   `& $script @('-ResumeFrom','OpenCV')` delivers `-ResumeFrom` as the VALUE of
