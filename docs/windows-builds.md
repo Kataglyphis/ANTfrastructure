@@ -468,6 +468,30 @@ steps; the remaining work is the Dockerfile surgery):
   `MEDIA_CORE_*_IMAGE` ARGs; build-buildkit.ps1 drives them in order). An
   FFmpeg-only change still recompiles nothing else — and each library's
   export is now independent of the others' finalize behavior.
+- **🎯 DEFECT SOLVED (2026-08-06, patched runhcs shim).** ROOT CAUSE: the
+  entire ExportLayer-0x3 family was hcsshim's hardcoded
+  `const tearDownTimeout = 30 * time.Second` in
+  `cmd/containerd-shim-runhcs-v1/task_hcs.go` (`close()`: shutdown wait +
+  terminate wait; plus the 30 s "waiting for task to be closed" in
+  `DeleteExec`). Heavy-churn WCOW silo teardown needs MINUTES — measured
+  **117 s** for the OpenCV specimen (HcsShutDownComputeSystem 01:16:08 →
+  notification 01:18:05) — so the stock shim terminated mid-hive-flush and
+  left the scratch vhdx permanently unexportable. FIX DEPLOYED: shim built
+  from hcsshim@main (81e2e01) with the constants raised to 45 min/100 min
+  (zero cost on the happy path — the timer only matters when it would have
+  killed the build), installed to `C:\Program Files\Stevedore\bin\
+  containerd-shim-runhcs-v1.exe` (original preserved as `.exe.orig`;
+  replacement needs admin + no running shim processes; containerd itself
+  needs NO restart — the shim spawns per container). PROOF: first-ever
+  direct OpenCV finalize+export on this host (`bk-canary-shim-opencv`,
+  28.6 s export, no 0x3), confirmed per the 3× OPENCV canary rule.
+  **MAINTENANCE:** any Stevedore/containerd update overwrites the patched
+  shim — after every update compare the binary size (patched 25 329 664 vs
+  stock 23 279 616) and re-install if reverted; rebuild recipe: scoop go +
+  `git clone microsoft/hcsshim` + patch the two constants + `go build
+  .\cmd\containerd-shim-runhcs-v1`. Upstream: PR to make the timeout
+  configurable + Windows-Containers issue with the 117 s measurement.
+  The historical bullets below are preserved for diagnosis value.
 - **DEFECT PARTIALLY TAMED, NOT GONE (2026-08-05, de-warming attempted and
   ROLLED BACK same evening).** Sequence of record: (1) with the Defender
   exclusions active, a fresh `--no-cache` heavy TVM→IREE canary FINALIZED
