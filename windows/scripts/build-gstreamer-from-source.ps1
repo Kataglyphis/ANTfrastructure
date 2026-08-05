@@ -122,6 +122,17 @@ function Expand-SubprojectArchive {
 # Load canonical versions from linux/scripts/01-core/versions.env if available
 Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
+# Re-import Shared AGAIN, and it must be HERE — after Import-CanonicalVersions,
+# not only in the import block above: Import-CanonicalVersions `&`-invokes
+# load-versions.ps1 FROM MODULE SCOPE, and that script's own
+# `Import-Module Shared -Force` unloads the top-level Shared a SECOND time
+# (proved live 2026-08-05, twice: Resolve-DirectoryPath went CommandNotFound
+# at the first use below although the import block had already re-imported).
+# The 2026-08-04 green run never hit this because load-versions.ps1 was not
+# yet bind-mounted into the merge warm RUN — the M3 mount wave armed the path.
+# ROOT FIX stays the load-versions guard (bundled with the next rebuild).
+Import-Module $sharedPath -Force
+
 if ([string]::IsNullOrWhiteSpace($GstVersion)) {
     $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GSTREAMER_VERSION') -DefaultValue '1.29.2'
 }
