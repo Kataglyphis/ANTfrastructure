@@ -139,18 +139,23 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
 COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
 
-# ── BuildKit lane (direct solve, de-warmed 2026-08-05) ──────────────────────
-# GStreamer builds AND exports in one plain RUN. The former warm/materialize
-# pair existed for the ExportLayer-0x3 defect — root cause was Windows
-# Defender, canary-proven gone with the host-setup C4 exclusions (see
-# Dockerfile.media-builder's BK header + docs/windows-builds.md § roadmap
-# "DEFECT GONE"). The classic docker lane always passes --target merge
-# (build.ps1) and never executes this RUN.
-FROM merge-fanin AS built
-# ARGs do not cross stage boundaries — redeclare for sccache.
+# ── BuildKit lane (warm/materialize pair) ────────────────────────────────────
+# GStreamer is a heavy-churn build — same warm/materialize pattern as the
+# media-core libraries (host platform defect: heavy containers lose the HCS
+# shutdown notification and their snapshot can never be finalized; see
+# Dockerfile.media-builder + docs/windows-builds.md). The driver runs `warm`
+# with no exporter, then exports `built`. The classic docker lane always
+# passes --target merge (build.ps1) and never executes these RUNs.
+# (The previous single-RUN `built` target additionally carried an escape-
+# mangled command — literal tab/backspace/CR bytes where \t, \b, \r were
+# meant — committed unnoticed because this target had never run.)
+FROM merge-fanin AS warm
+# ARGs do not cross stage boundaries — redeclare for the handoff transport
+# (Export/Import-BuildHandoff default to this env var) and for sccache.
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
-RUN --mount=type=bind,source=windows/scripts/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
@@ -159,4 +164,15 @@ RUN --mount=type=bind,source=windows/scripts/build-gstreamer-from-source.ps1,tar
     --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsInstaller.Common.psm1,target=C:\bkmnt\modules\WindowsInstaller.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/gstreamer,target=C:\bkmnt\patches\gstreamer `
-    & 'C:\bkmnt\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs'
+    & 'C:\bkmnt\bk-warm.ps1' -Name gstreamer -BuildScript 'C:\bkmnt\build-gstreamer-from-source.ps1' -BuildArgs '-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs'
+
+FROM merge-fanin AS built
+ARG SCCACHE_WEBDAV_ENDPOINT=""
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name gstreamer

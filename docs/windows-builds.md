@@ -468,32 +468,33 @@ steps; the remaining work is the Dockerfile surgery):
   `MEDIA_CORE_*_IMAGE` ARGs; build-buildkit.ps1 drives them in order). An
   FFmpeg-only change still recompiles nothing else — and each library's
   export is now independent of the others' finalize behavior.
-- **DEFECT GONE (2026-08-05, canary-proven) — root cause was Windows
-  Defender.** With the 2026-08-05 Defender exclusions active
-  (buildkitd/containerd processes + their ProgramData dirs, § Store GC /
-  host-setup C4), a fresh `--no-cache` heavy-churn TVM→IREE container
-  (34 min, 11.6k files churned) FINALIZED AND EXPORTED CLEAN — under
-  parallel-solve load (`docker.io/local/kataglyphis:bk-canary-0x3`). The
-  realtime scanner racing container-exit file churn drove the HCS
-  shutdown-notification timeouts; the 2026-08-04 falsification matrix
-  predates the exclusions and only tested content theories. CONSEQUENCE —
-  EXECUTED same day (de-warming, 2026-08-05 evening): all library layers
-  build+export as plain DIRECT solves; the warm/materialize targets, the
-  WebDAV tar handoff and the driver's -NoOutput pair choreography are gone
-  from the Dockerfiles/driver. bk-warm.ps1/bk-materialize.ps1 and the
-  Export/Import-BuildHandoff helpers stay in-tree (tested) as the rollback
-  path; dufs serves sccache only. Rollback trigger: the canary below ever
-  failing with 0x3 again.
-  **Canary recipe (repeat after any AV/OS/hcsshim change, BEFORE relying on
-  direct solves):** solve a heavy warm target WITH an exporter —
+- **DEFECT PARTIALLY TAMED, NOT GONE (2026-08-05, de-warming attempted and
+  ROLLED BACK same evening).** Sequence of record: (1) with the Defender
+  exclusions active, a fresh `--no-cache` heavy TVM→IREE canary FINALIZED
+  AND EXPORTED CLEAN (`bk-canary-0x3` — a finalize class that used to fail);
+  (2) on that evidence the lane was de-warmed to direct solves; (3) the
+  FIRST direct OpenCV finalize failed `ExportLayer 0x3` with the original
+  signature, deterministic across retries → **OpenCV/GenAI-class churn
+  still trips the defect; TVM was the wrong canary specimen.** The Defender
+  exclusions remain load-bearing (they cured the hcs-temp finalize/export
+  FLAKE family and evidently moved TVM-class finalizes to reliable) but do
+  NOT cure the core defect. The warm/materialize pattern was RESTORED from
+  git history within minutes — the preserved rollback path worked exactly
+  as designed. LESSON: any future de-warming attempt must canary with
+  **OpenCV** (the deterministic trigger), not TVM: same recipe as below but
+  `--opt target=media-core-warm-opencv` + `--opt
+  build-arg:MEDIA_CORE_ONNX_IMAGE=<current onnx tag>`; clean export three
+  times in a row before touching the architecture.
+  **Canary recipe (after any AV/OS/hcsshim change):**
   `buildctl build ... --opt filename=Dockerfile.media-builder --opt
-  target=media-tvm-warm --no-cache --output
+  target=media-core-warm-opencv --no-cache --output
   type=image,name=docker.io/local/kataglyphis:bk-canary-0x3 --opt
   build-arg:BASE_IMAGE=docker.io/local/kataglyphis:bk-windows-toolchain
+  --opt build-arg:MEDIA_CORE_ONNX_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-onnx
   --opt build-arg:MEMORY_LIMIT_GB=16 --opt
   build-arg:SCCACHE_WEBDAV_ENDPOINT=<endpoint>` (plus the standard --local/
-  --opt image-resolve-mode=local flags). Clean export = defect absent;
-  `ExportLayer 0x3` at "exporting layers" = defect back, keep/restore
+  --opt image-resolve-mode=local flags). Clean export = that class is safe;
+  `ExportLayer 0x3` at "exporting layers" = defect present, keep
   warm/materialize. Historical writeup below preserved for diagnosis value.
 - **HISTORICAL (2026-08-04, worked around via warm/materialize) —
   GenAI/OpenCV snapshot finalize

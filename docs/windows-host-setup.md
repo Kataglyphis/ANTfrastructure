@@ -282,13 +282,13 @@ lane, "Store GC" bullet. Verify:
 
 ### C4. Windows Defender exclusions — LOAD-BEARING, not hygiene
 
-These exclusions are what makes heavy-churn container finalizes work AT ALL
-on this platform: without them the realtime scanner races container-exit
-file churn, the HCS shutdown notification times out, and every later
-finalize of that snapshot fails `ExportLayer 0x3` (the defect that once
-forced the whole warm/materialize architecture — canary-proven gone WITH
-the exclusions on 2026-08-05, see windows-builds.md § roadmap "DEFECT
-GONE"). Skipping this step on a new machine WILL resurrect the defect.
+These exclusions are load-bearing: without them the realtime scanner races
+container churn and finalize/export operations flake constantly (the
+hcs-temp sharing-violation family). They also tame — but do NOT cure — the
+`ExportLayer 0x3` heavy-churn finalize defect (TVM-class finalizes became
+reliable with them; OpenCV-class still trips it, which is why the
+warm/materialize pattern stays — full story: windows-builds.md § roadmap).
+Skipping this step on a new machine makes builds flaky across the board.
 The full set (the § Getting it going step-3 list plus the process exclusions
 added 2026-08-05 after the hcs-temp sharing-violation flake family):
 

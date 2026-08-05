@@ -143,15 +143,14 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # receive -ScriptDir C:\bkmnt so chain + leaf scripts resolve
 # modules/patches/shims via their usual $PSScriptRoot-relative paths.
 #
-# DIRECT SOLVES (de-warmed 2026-08-05): every library layer builds AND
-# exports in one plain RUN. The former warm/materialize pairs existed for
-# the ExportLayer-0x3 defect, whose root cause turned out to be Windows
-# Defender racing container-exit churn — canary-proven GONE with the
-# host-setup C4 exclusions (docs/windows-builds.md § roadmap "DEFECT GONE",
-# incl. the re-check recipe after AV/OS changes). If the canary ever 0x3s
-# again, restore the warm/materialize pattern from git history (pre-
-# 2026-08-05 evening) — bk-warm.ps1/bk-materialize.ps1 and the handoff
-# helpers remain in the tree for exactly that case.
+# WARM/MATERIALIZE pairs (host platform defect — heavy-churn containers lose
+# their HCS shutdown notification and their snapshot can never be finalized
+# (ExportLayer 0x3); full evidence + falsification matrix in
+# docs/windows-builds.md § BuildKit/containerd lane): the driver runs
+# media-core-warm-*/media-tvm-warm with NO exporter (never finalized, defect
+# never fires), artifacts travel as one tar over the sccache WebDAV
+# (bk-warm.ps1), and a calm materialize solve imports + exports the image
+# (bk-materialize.ps1). ONNX never trips the defect and keeps a direct solve.
 
 # Version ENV twin of the classic media-core stage (the *-bk lineage must not
 # inherit the classic stage's script COPY layers). sync_versions.py keeps the
@@ -184,8 +183,9 @@ RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
     & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt'
 
-FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
-RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-warm-opencv
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
@@ -195,10 +195,20 @@ RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\
     --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
     --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\bk-warm.ps1' -Name opencv -BuildScript 'C:\bkmnt\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'OpenCV', '-Until', 'OpenCV', '-ScriptDir', 'C:\bkmnt'
 
-FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
-RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name opencv
+
+FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-warm-ffmpeg
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
@@ -207,10 +217,20 @@ RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\bk-warm.ps1' -Name ffmpeg -BuildScript 'C:\bkmnt\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'FFmpeg', '-ScriptDir', 'C:\bkmnt'
 
-FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
-RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name ffmpeg
+
+FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-warm-genai
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
@@ -218,7 +238,16 @@ RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    & 'C:\bkmnt\bk-warm.ps1' -Name genai -BuildScript 'C:\bkmnt\build-media-core-all.ps1' -BuildArgs '-ResumeFrom', 'ONNX GenAI', '-Until', 'ONNX GenAI', '-ScriptDir', 'C:\bkmnt'
+
+FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name genai -Scrub
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM common AS media-litert-bk
@@ -243,15 +272,16 @@ RUN --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmn
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
     & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt'
 
-# tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
+# tvm: warm/materialize (trips the defect), same mount pattern.
 FROM common AS media-tvm-bk
 ARG TVM_REF=v0.25.0
 ARG IREE_VERSION=v3.11.0
 ENV TVM_REF="${TVM_REF}" `
     IREE_VERSION="${IREE_VERSION}"
 
-FROM media-tvm-bk AS media-tvm-built
-RUN --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
+FROM media-tvm-bk AS media-tvm-warm
+RUN --mount=type=bind,source=windows/scripts/bk-warm.ps1,target=C:\bkmnt\bk-warm.ps1 `
+    --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -261,4 +291,13 @@ RUN --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\b
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
-    & 'C:\bkmnt\build-media-tvm-all.ps1' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\bk-warm.ps1' -Name tvm -BuildScript 'C:\bkmnt\build-media-tvm-all.ps1' -BuildArgs '-ScriptDir', 'C:\bkmnt'
+
+FROM media-tvm-bk AS media-tvm-built
+RUN --mount=type=bind,source=windows/scripts/bk-materialize.ps1,target=C:\bkmnt\bk-materialize.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    & 'C:\bkmnt\bk-materialize.ps1' -Name tvm
