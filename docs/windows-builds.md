@@ -517,6 +517,13 @@ steps; the remaining work is the Dockerfile surgery):
   in-container theories; the only genuine escape hatches are a platform fix
   (Windows CU) or the containerd 2.x CimFS/UnionFS snapshotter lane (bypasses
   wcifs entirely — experimental for WCOW, unproven with the BuildKit worker).
+  UPDATE 2026-08-06: the CimFS lane was TESTED AND FALSIFIED on containerd
+  v2.3.3 (plugin+differ both "ok"): buildkitd with
+  `--containerd-worker-snapshotter=cimfs` dies on the FIRST build step with
+  `scratch snapshot without any parents isn't supported` — the cimfs
+  snapshotter cannot create parentless scratch snapshots, which BuildKit
+  needs even to load the Dockerfile context. CimFS is pull/run-only today;
+  do not retry until a containerd release notes BuildKit/build support.
   The teardown probe remains in `bk-warm.ps1` (harmless, ~1.5 s, keeps exits
   quiet and preserves the diagnostic exit dump; removing it would cache-bust
   every warm layer for zero gain).
