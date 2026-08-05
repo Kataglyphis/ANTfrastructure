@@ -1,5 +1,10 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# CACHE-BUST 2026-08-05 (2nd use of the documented sidestep, AGENTS.md
+# failure table): the toolchain RUN's snapshot commit died persistently on
+# identical chain-IDs (ActivateLayer 0x20) — debris from a finalize attempt
+# that raced the 0x3-canary's export. New file content -> new chain-IDs.
 
 #requires -Version 7.0
 
