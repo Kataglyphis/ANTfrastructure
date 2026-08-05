@@ -496,6 +496,30 @@ steps; the remaining work is the Dockerfile surgery):
   --opt image-resolve-mode=local flags). Clean export = that class is safe;
   `ExportLayer 0x3` at "exporting layers" = defect present, keep
   warm/materialize. Historical writeup below preserved for diagnosis value.
+- **IN-CONTAINER MITIGATIONS EXHAUSTED (2026-08-05 late night, two more
+  OpenCV canaries).** The shim injects `WaitToKillServiceTimeout=2147483647`
+  into every container; overriding it to 5 s at payload start (probe R1)
+  changed nothing — exit 0 is published instantly, `HcsShutDownComputeSystem`
+  returns in ms, and the shutdown AND terminate notifications are still lost
+  (30 s + 30 s timeouts in the containerd debug log), then `ExportLayer 0x3`.
+  Probe R2 additionally stopped/killed every non-baseline resident before
+  exit (sccache server, msdtc, AggregatorHost, SysMain, DiagTrack, UsoSvc,
+  WinRM + 7 more services — verified stopped in the exit dump): same loss,
+  same 0x3. Together with the earlier settle falsification this proves the
+  hang is HOST-side (silo/wcifs teardown of heavy-churn scratches), not
+  anything running inside the container. Upstream fingerprint:
+  microsoft/Windows-Containers#547 (ltsc2025 process isolation, ~10-min
+  shutdown, resources stay locked, closed unresolved). Aggravating local
+  fact: host build 26200 (Win11 25H2) vs image build 26100 (ltsc2025) —
+  process isolation across build numbers is officially unsupported.
+  CONSEQUENCE: warm/materialize is the standing architecture on this class
+  of host, not a temporary workaround. Do NOT burn more canaries on
+  in-container theories; the only genuine escape hatches are a platform fix
+  (Windows CU) or the containerd 2.x CimFS/UnionFS snapshotter lane (bypasses
+  wcifs entirely — experimental for WCOW, unproven with the BuildKit worker).
+  The teardown probe remains in `bk-warm.ps1` (harmless, ~1.5 s, keeps exits
+  quiet and preserves the diagnostic exit dump; removing it would cache-bust
+  every warm layer for zero gain).
 - **HISTORICAL (2026-08-04, worked around via warm/materialize) —
   GenAI/OpenCV snapshot finalize
   (`ExportLayer 0x3`, disk fine)**: those two layers deterministically fail BOTH finalize paths on
