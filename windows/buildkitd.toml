@@ -20,6 +20,15 @@
 # v0.32 key names: reservedSpace / maxUsedSpace / minFreeSpace
 # (docs/windows-builds.md's older gckeepstorage snippet was the legacy form).
 
+# Build-history retention: WITHOUT this, every build record (including failed
+# attempts) pins its cache refs INDEFINITELY — on 2026-08-05 the store sat at
+# 414 GB with "Reclaimable: 0B" because ~10 grind runs' histories held
+# everything; `buildctl prune-histories` released 289 GB in one stroke while
+# a build was running. This cap keeps the store self-cleaning.
+[history]
+  maxAge = 172800   # seconds (48h)
+  maxEntries = 10
+
 [worker.containerd]
   gc = true
 
