@@ -476,9 +476,14 @@ steps; the remaining work is the Dockerfile surgery):
   parallel-solve load (`docker.io/local/kataglyphis:bk-canary-0x3`). The
   realtime scanner racing container-exit file churn drove the HCS
   shutdown-notification timeouts; the 2026-08-04 falsification matrix
-  predates the exclusions and only tested content theories. CONSEQUENCE:
-  the warm/materialize pattern is retirable (de-warming to direct solves
-  planned); the handoff transport goes with it, dufs stays sccache-only.
+  predates the exclusions and only tested content theories. CONSEQUENCE —
+  EXECUTED same day (de-warming, 2026-08-05 evening): all library layers
+  build+export as plain DIRECT solves; the warm/materialize targets, the
+  WebDAV tar handoff and the driver's -NoOutput pair choreography are gone
+  from the Dockerfiles/driver. bk-warm.ps1/bk-materialize.ps1 and the
+  Export/Import-BuildHandoff helpers stay in-tree (tested) as the rollback
+  path; dufs serves sccache only. Rollback trigger: the canary below ever
+  failing with 0x3 again.
   **Canary recipe (repeat after any AV/OS/hcsshim change, BEFORE relying on
   direct solves):** solve a heavy warm target WITH an exporter —
   `buildctl build ... --opt filename=Dockerfile.media-builder --opt

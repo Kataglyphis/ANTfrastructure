@@ -282,25 +282,21 @@ if ($Stages -contains 'media') {
             MEMORY_LIMIT_GB = $MediaMemoryGb
         } + $branchArgs[$branch] + $sccache
         if ($branch -eq 'media-core') {
-            # WARM/MATERIALIZE solve pairs (host platform defect: heavy-churn
-            # containers lose the HCS shutdown notification and their snapshot
-            # can never be finalized — full evidence in Dockerfile.media-builder
-            # and docs/windows-builds.md). Warm solves run with -NoOutput so
-            # nothing ever finalizes them; the paired materialize solves import
-            # the handoff from the C:\bkhandoff cache mount and export the tag.
-            # ONNX never trips the defect and keeps its direct solve.
+            # DIRECT SOLVES (de-warmed 2026-08-05): every library layer builds
+            # and exports in one solve. The former warm/materialize pairs
+            # existed for the ExportLayer-0x3 defect — root cause was Windows
+            # Defender, canary-proven gone with the host-setup C4 exclusions
+            # (docs/windows-builds.md § roadmap "DEFECT GONE"; re-run the
+            # canary there after AV/OS changes). Per-library split retained:
+            # per-layer caching + an FFmpeg fix still never re-pays ONNX.
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs $branchBuildArgs
             $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
             $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }
             $ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = Get-BkTag 'windows-media-core-ffmpeg' }
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-warm-opencv' -NoOutput -BuildArgs ($branchBuildArgs + $onnxArg)
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-opencv' -Tag (Get-BkTag 'windows-media-core-opencv') -BuildArgs ($branchBuildArgs + $onnxArg)
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-warm-ffmpeg' -NoOutput -BuildArgs ($branchBuildArgs + $opencvArg)
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-ffmpeg' -Tag (Get-BkTag 'windows-media-core-ffmpeg') -BuildArgs ($branchBuildArgs + $opencvArg)
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-warm-genai' -NoOutput -BuildArgs ($branchBuildArgs + $ffmpegArg)
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built' -Tag (Get-BkTag 'windows-media-core') -BuildArgs ($branchBuildArgs + $ffmpegArg)
         } elseif ($branch -eq 'media-tvm') {
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-tvm-warm' -NoOutput -BuildArgs $branchBuildArgs
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-tvm-built' -Tag (Get-BkTag 'windows-media-tvm') -BuildArgs $branchBuildArgs
         } else {
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target "$branch-built" -Tag (Get-BkTag "windows-$branch") -BuildArgs $branchBuildArgs
@@ -343,9 +339,7 @@ if ($Stages -contains 'media') {
             TVM_IMAGE       = Get-BkTag 'windows-media-tvm'
             MEMORY_LIMIT_GB = $MediaMemoryGb
         }
-        # Warm/materialize pair (GStreamer is heavy-churn — same platform-defect
-        # workaround as the media-core libraries, see Dockerfile.media-builder).
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'warm' -NoOutput -BuildArgs ($mergeArgs + $sccache)
+        # Direct solve (de-warmed 2026-08-05 — see the media-core comment above).
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs ($mergeArgs + $sccache)
     } else {
         Write-Host "[bk:merge] skipped (needs all three media branches; got: $($MediaBranches -join ', '))" -ForegroundColor Yellow

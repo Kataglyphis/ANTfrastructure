@@ -1,13 +1,20 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# WARM-solve payload for the BuildKit lane (see docs/windows-builds.md
-# § BuildKit/containerd lane): runs a heavy build, then hands its artifact
-# delta off over WebDAV (Export-BuildHandoff). The driver runs the enclosing
-# solve with NO exporter, so this container's snapshot is never finalized and
-# the host's lost-shutdown-notification defect never fires. This script exists
-# so every warm RUN in the Dockerfiles is a one-liner instead of a repeated
-# five-statement pwsh block.
+# RETIRED FROM THE DOCKERFILES (de-warming 2026-08-05): the ExportLayer-0x3
+# defect this pattern routed around was root-caused to Windows Defender and is
+# canary-proven gone with the host-setup C4 exclusions — all solves are direct
+# now. KEPT (with bk-materialize.ps1 + the handoff helpers + their tests) as
+# the tested rollback path: if the canary (docs/windows-builds.md § roadmap
+# "DEFECT GONE") ever 0x3s again, restore the warm/materialize Dockerfile
+# targets from git history (pre-2026-08-05-evening) and these payloads work
+# unchanged.
+#
+# Original purpose — WARM-solve payload for the BuildKit lane: runs a heavy
+# build, then hands its artifact delta off over WebDAV (Export-BuildHandoff).
+# The driver runs the enclosing solve with NO exporter, so this container's
+# snapshot is never finalized and the lost-shutdown-notification defect never
+# fires.
 
 #requires -Version 7.0
 [CmdletBinding()]

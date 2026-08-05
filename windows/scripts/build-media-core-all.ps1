@@ -31,7 +31,13 @@ param(
     # across two RUN layers (ONNX+GenAI, then OpenCV+FFmpeg): a single ~25 GB
     # layer failed hcsshim ExportLayer at snapshot finalize (2026-08-03), and the
     # split also gives per-half layer caching.
-    [string]$Until = ''
+    [string]$Until = '',
+    # Run Clear-BuildScratch after the chain, INSIDE this process (the trailing
+    # `exit 0` ends the RUN's pwsh, so a scrub appended after the `&` call in a
+    # Dockerfile RUN would be dead code — and a scrub in a LATER layer would not
+    # shrink the exported one). Used by the LAST media-core direct-solve layer
+    # (de-warming 2026-08-05; replaces bk-materialize's -Scrub).
+    [switch]$ScrubAfter
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,6 +63,8 @@ Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $Install
 
 
 Write-Host "`n=== media-core chain completed ==="
+
+if ($ScrubAfter) { Clear-BuildScratch }
 
 # Explicit success: pwsh -File (and docker run) propagate the LAST native exit
 # code otherwise -- a best-effort cleanup once failed a fully green stage with
