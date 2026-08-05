@@ -20,6 +20,13 @@ $ProgressPreference = 'SilentlyContinue'
 # the three modules COPY'd before them in Dockerfile.base (Shared, ContainerImage,
 # Installer), and these helpers are specific to this provisioning script anyway.
 
+# CACHE-BUST 2026-08-05: content change forces a new COPY layer -> new snapshot
+# chain-IDs downstream, sidestepping a persistently corrupt half-committed
+# snapshot in the containerd windows-snapshotter (ImportLayer 0xb7 "already
+# exists" on the OLD chain's finalize, twice; the debris is not a reclaimable
+# BK cache record and its removal would need admin). Comment is load-bearing
+# history, not noise.
+#
 # Runs one provisioning step and throws on a non-zero native exit code. Scoop and
 # dotnet failures previously just scrolled past ($ErrorActionPreference does not
 # see native exit codes), letting the layer commit with tools silently missing.
