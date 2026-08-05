@@ -51,9 +51,29 @@ if ($exitCode) { throw "bk-warm: build '$BuildScript' failed (exit $exitCode)" }
 Import-Module (Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1') -Force
 Export-BuildHandoff -Since $t0 -Name $Name
 
-# Pre-exit diagnostics (best-effort): running services + non-baseline
-# processes at the moment of exit — the shutdown-hang culprit must be in
-# this list (compare a hanging exit's dump vs a clean one's).
+# 0x3 PROBE ROUND 2 (2026-08-05): the 5s WaitToKillServiceTimeout alone did
+# NOT fix the lost shutdown notification (canary bk-canary-0x3-fix: exit 0
+# published cleanly, HcsShutDownComputeSystem returned in ms, notification
+# still timed out 30s+30s, HCS_E_INVALID_STATE, ExportLayer 0x3). Round-1
+# dump named the exit-time residents: sccache server, msdtc, AggregatorHost
+# + non-essential services. Hypothesis: one of them holds kernel-side state
+# (open union-FS/network handles) that blocks host-side silo teardown.
+# Tear everything down explicitly BEFORE exit; if shutdown then completes,
+# bisect the bundle afterwards. All best-effort — never fail the build.
+try {
+    if (Get-Command sccache -ErrorAction SilentlyContinue) {
+        & sccache --stop-server 2>&1 | Out-Null
+        Write-Host 'bk-warm teardown: sccache server stopped'
+    }
+} catch { Write-Host "bk-warm teardown: sccache stop failed: $($_.Exception.Message)" }
+foreach ($p in 'AggregatorHost', 'msdtc') {
+    try { Get-Process -Name $p -ErrorAction Stop | Stop-Process -Force -ErrorAction Stop; Write-Host "bk-warm teardown: killed $p" } catch {}
+}
+foreach ($s in 'MSDTC', 'DiagTrack', 'SysMain', 'UsoSvc', 'WinRM', 'Schedule', 'TimeBrokerSvc', 'iphlpsvc', 'WinHttpAutoProxySvc', 'SENS', 'DispBrokerDesktopSvc') {
+    try { Stop-Service -Name $s -Force -ErrorAction Stop; Write-Host "bk-warm teardown: stopped service $s" } catch { Write-Host "bk-warm teardown: service $s not stopped: $($_.Exception.Message)" }
+}
+
+# Post-teardown dump: what is STILL alive at the true moment of exit.
 try {
     $svc = Get-Service | Where-Object { $_.Status -eq 'Running' } | Select-Object -ExpandProperty Name
     Write-Host ("bk-warm exit dump: running services: " + ($svc -join ', '))
