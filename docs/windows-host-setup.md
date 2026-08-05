@@ -262,6 +262,16 @@ history pinned a 414 GB store at `Reclaimable: 0B`. The repo policy
 pwsh -File windows\scripts\apply-buildkitd-gcpolicy.ps1    # admin; refuses while a build runs
 ```
 
+**Sizing on a different disk:** the toml's literals assume a ~930 GB C:.
+Reproduce the INVARIANTS, not the numbers — `reservedSpace` must exceed the
+fresh chain spine (~120–150 GB; rule of thumb 20–25 % of the disk, floor
+150 GB), `maxUsedSpace` ≈ 1.5× reservedSpace, `minFreeSpace` ≥ 25–30 GB
+always, `[history]` unchanged everywhere. The sizing rationale lives as a
+comment block in `windows/buildkitd.toml` itself. **Re-run the apply script
+after every repo-side toml change** — deploy is a copy, nothing syncs
+automatically (this host ran a stale copy for hours after the `[history]`
+section landed).
+
 Full story: [Windows Build Image](windows-builds.md) § BuildKit/containerd
 lane, "Store GC" bullet. Verify:
 

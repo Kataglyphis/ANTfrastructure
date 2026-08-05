@@ -19,6 +19,18 @@
 #
 # v0.32 key names: reservedSpace / maxUsedSpace / minFreeSpace
 # (docs/windows-builds.md's older gckeepstorage snippet was the legacy form).
+#
+# SIZING FOR OTHER MACHINES (values below assume this host's ~930 GB C:):
+# the invariants, not the literals, are what to reproduce —
+#   reservedSpace: must exceed the fresh chain spine (~120-150 GB: base incl.
+#     VS + sdk + toolchain + branch images) or GC evicts mid-chain layers;
+#     rule of thumb ~20-25% of the disk, floor 150 GB.
+#   maxUsedSpace: ~reservedSpace * 1.5, so scratch can churn above the spine.
+#   minFreeSpace: >= 25-30 GB ALWAYS (hcsshim finalize/export gets flaky below
+#     ~25 GB free long before a clean disk-full error).
+#   history tier: keep as-is on every machine (time/count-based, size-free).
+# A disk under ~400 GB cannot hold the full warm chain comfortably - expect
+# to prune between runs and keep reservedSpace >= 150 GB regardless.
 
 # Build-history retention: WITHOUT this, every build record (including failed
 # attempts) pins its cache refs INDEFINITELY — on 2026-08-05 the store sat at
