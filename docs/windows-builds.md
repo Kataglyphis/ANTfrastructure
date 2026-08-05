@@ -360,8 +360,16 @@ Housekeeping and sharing:
   image generations themselves need admin (`nerdctl --namespace buildkit rmi`,
   or stop buildkitd+containerd and delete their state dirs for a full reset —
   dockerd may stop with containerd: `Start-Service stevedore` afterwards).
-  **WIRED 2026-08-04** after GC evicted the VS Build Tools layer between two
-  runs (root cause, from `buildctl debug workers -v`: with no config file
+  **WIRED 2026-08-04, ACTIVE ON THIS HOST since 2026-08-05** (service
+  re-registered with `--config`, rules verified via `buildctl debug workers
+  -v`: reservedSpace ≈215 GB / minFree ≈27–32 GB / cachemount tier 21 GB/168h).
+  Same admin session also added Defender exclusions for `buildkitd.exe`,
+  `containerd.exe`, `C:\ProgramData\containerd` and `C:\ProgramData\buildkitd`
+  — the 2026-08-05 night grind traced a family of finalize/export sharing-
+  violation flakes to something racing the hcs scratch dirs (see the BK retry
+  bullet in the roadmap). Originally wired after GC evicted the VS Build
+  Tools layer between two runs (root cause, from `buildctl debug workers -v`:
+  with no config file
   buildkitd runs computed defaults — `maxUsedSpace 100GB`, `minFreeSpace
   187GB`; the warm chain's cache is ~237GB on a 91%-full disk, so BOTH
   triggers fired on every GC pass and everything reclaimable — including the
@@ -427,9 +435,23 @@ steps; the remaining work is the Dockerfile surgery):
   build-gstreamer-from-source.ps1 sets `CC/CXX='sccache clang-cl'` for meson
   when the remote backend is configured (this build previously ran fully
   uncached, ~30 min hot, because the merge builder never wired the endpoint).
-- **Automatic transient retry in the BK driver**: DONE 2026-08-04 —
-  Invoke-BkStage retries once on `ActivateLayer 0x20` / ttrpc / shim-task
-  failures (same class the classic driver retries).
+- **Automatic transient retry in the BK driver**: DONE 2026-08-04, extended
+  2026-08-05 — Invoke-BkStage retries once on `Activate/PrepareLayer 0x20` /
+  ttrpc / shim-task / `rpc Unavailable` failures AND on the hcs-temp
+  finalize/export flake family discovered in the 2026-08-05 night grind:
+  `failed to reimport snapshot` (GetFileAttributesEx not-found variant) and
+  `failed to write compressed diff` (SystemTemp\hcs* sharing violation — the
+  retry saved the sdk export live that night). Two hard-won caveats:
+  (a) `ImportLayer 0xb7 "already exists"` on IDENTICAL source/target
+  chain-IDs across attempts is NOT transient — it is persistent snapshotter
+  debris from an earlier low-disk finalize failure; non-admin remedy is a
+  deliberate CACHE-BUST of the layer above it (any content change to the
+  COPY'd/mounted file → new chain-IDs sidestep the debris; see
+  setup-scoop-tools.ps1's 2026-08-05 header comment for the live example).
+  (b) disk-full also surfaces as `failed to write compressed diff` — check
+  free space before trusting the transient classification. Root causes
+  addressed since: gcpolicy active + Defender exclusions for
+  buildkitd/containerd (below) + ≥40 GB free-disk discipline.
 - **Per-library media-core split**: DONE, and escalated on 2026-08-04 from
   4 RUN layers to **4 chained SOLVES** (targets `media-core-built-onnx` →
   `-opencv` → `-ffmpeg` → `media-core-built`, image handoffs via the
