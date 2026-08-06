@@ -358,8 +358,13 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    `(Get-PSDrive C).Free / 1GB` — below ~25 GB free, hcsshim gets "weird"
    *before* an honest disk-full error (`ExportLayer 0x3`/`0x70`, spawn
    flakes). Reclaim levers, non-admin first: `buildctl prune-histories`,
-   `buildctl prune`, `docker image prune -f`; the full playbook is
-   [Windows Build Image](windows-builds.md) § Store GC.
+   `buildctl prune --free-storage <MB>`, `docker image prune -f`; the full
+   playbook is [Windows Build Image](windows-builds.md) § Store GC. Two traps
+   that make the levers look broken: `--free-storage` is a **minimum-free
+   target**, so it deletes nothing once the disk is already above it (ask for
+   more free space than the disk has to drain everything unpinned), and a
+   **superseded lineage** of stage tags can pin whole duplicate copies of the
+   base spine — the biggest single reclaim measured on this host (266 GB).
    **If the checkout or the store lives on a dynamically-expanding VHDX**,
    the store levers cannot see the biggest pool: dead blocks in the VHDX
    itself (270 GB physical for 16 GB of data on the reference host). Check
@@ -371,8 +376,13 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
 
    Without `-ReportOnly` it stops the build services, compacts and restores
    the disk — **admin, and never while a build solves.** Read the ReFS
-   caveat in § Store GC first: on ReFS guests compaction reclaims ~nothing
-   and only a VHDX rebuild helps.
+   caveat in § Store GC first: on ReFS guests compaction reclaims ~nothing,
+   and the reclaim that does work is `rebuild-host-vhdx.ps1`, which rebuilds
+   the disk around its live data. Run its `-CopyOnly` phase whenever you like
+   — it touches nothing live — but the swap detaches the volume, so nothing
+   may hold a handle on it: no shell sitting in the checkout, no editor, no
+   agent session. Losing that volume mid-session is how a working session
+   died on 2026-08-06.
 4. **CNI subnet drift** — if dockerd/the host restarted since the last run,
    expect it; `build-buildkit.ps1`'s preflight fail-fasts with the exact fix
    (see Phase A5).
