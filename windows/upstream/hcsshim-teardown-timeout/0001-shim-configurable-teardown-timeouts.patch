@@ -1,11 +1,11 @@
-From 72d13dd0ea5a2dbcf604b8e0d65273c5e8b7c61d Mon Sep 17 00:00:00 2001
+From a3e6e4a0c6465744a2e39ef455cf1a67ffd1d6e7 Mon Sep 17 00:00:00 2001
 From: Jonas Heinle <jonasheinle@googlemail.com>
 Date: Thu, 6 Aug 2026 11:00:21 +0200
 Subject: [PATCH] shim: make container teardown timeouts configurable
 
 The shim gives a container 30s to shut down and another 30s to terminate
 before it stops waiting, and DeleteExec waits 30s for resource cleanup.
-Both limits are hardcoded.
+All three limits are hardcoded.
 
 Tearing a Windows Server (process isolated) container down is host-side
 work whose cost scales with how much the container touched the
@@ -26,16 +26,26 @@ verified by overriding WaitToKillServiceTimeout inside the payload and by
 a full pre-exit teardown of non-essential services, both of which lost
 the notification identically.
 
-Make the two limits configurable via environment variables, which the
-shim inherits from containerd:
+Make the limits configurable via environment variables, which the shim
+inherits from containerd, following the naming of the existing
+CONTAINERD_SHIM_RUNHCS_V1_WAIT_DEBUGGER:
 
-  HCSSHIM_TASK_TEARDOWN_TIMEOUT   each wait in hcsTask.close
-  HCSSHIM_TASK_CLOSE_TIMEOUT      the cleanup wait in hcsTask.DeleteExec
+  CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT     each wait in hcsTask.close
+  CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT   the hcsTask.DeleteExec wait
+
+The two are coupled, and the coupling is the reason the second knob is
+not simply independent: DeleteExec waits on the channel close() closes,
+so a task close timeout below close()'s worst case of 2*teardown abandons
+a teardown that is still progressing - precisely the outcome these knobs
+exist to prevent. Raising only the teardown timeout would therefore
+silently not help. When the task close timeout is not set explicitly and
+the teardown timeout has been raised above the default, the task close
+timeout is derived to cover close()'s worst case with room to spare.
 
 Defaults are unchanged at 30s, so behaviour is identical unless a host
-opts in. An unset, empty, unparseable or non-positive value falls back to
-the default rather than failing the shim, since parsing happens during
-package initialization before logging is available.
+opts in. An empty, unparseable or non-positive value is treated as unset,
+since resolution happens during package initialization, before logging is
+available, and a bad value must not stop the shim from starting.
 
 Also log how long a successful shutdown actually took. That duration is
 what is needed to size the timeout for a given workload and it was not
@@ -45,15 +55,18 @@ the failure above was hard to attribute.
 The 30s timer in the SIGKILL path is deliberately left alone: it guards
 the hosting UVM (ht.host != nil) and is not involved in process isolated
 teardown.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 ---
- cmd/containerd-shim-runhcs-v1/task_hcs.go | 68 ++++++++++++++++++++++-
- 1 file changed, 65 insertions(+), 3 deletions(-)
+ cmd/containerd-shim-runhcs-v1/task_hcs.go     | 92 ++++++++++++++++++-
+ .../task_hcs_test.go                          | 69 ++++++++++++++
+ 2 files changed, 158 insertions(+), 3 deletions(-)
 
 diff --git a/cmd/containerd-shim-runhcs-v1/task_hcs.go b/cmd/containerd-shim-runhcs-v1/task_hcs.go
-index afadc50..f235937 100644
+index afadc50..07d52fc 100644
 --- a/cmd/containerd-shim-runhcs-v1/task_hcs.go
 +++ b/cmd/containerd-shim-runhcs-v1/task_hcs.go
-@@ -51,6 +51,62 @@ import (
+@@ -51,6 +51,86 @@ import (
  	"google.golang.org/protobuf/types/known/timestamppb"
  )
  
@@ -75,48 +88,72 @@ index afadc50..f235937 100644
 +// shim inherits its environment from containerd.
 +const (
 +	// tearDownTimeoutEnvVar overrides defaultTearDownTimeout. The value is a Go
-+	// duration string, e.g. "5m".
-+	tearDownTimeoutEnvVar = "HCSSHIM_TASK_TEARDOWN_TIMEOUT"
-+	// taskCloseTimeoutEnvVar overrides defaultTaskCloseTimeout. The value is a
-+	// Go duration string, e.g. "11m".
-+	taskCloseTimeoutEnvVar = "HCSSHIM_TASK_CLOSE_TIMEOUT"
++	// duration string, e.g. "45m".
++	tearDownTimeoutEnvVar = "CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT"
++	// taskCloseTimeoutEnvVar overrides the task close timeout. The value is a Go
++	// duration string, e.g. "100m". When it is not set, the timeout is derived
++	// from tearDownTimeoutEnvVar; see [resolveTeardownTimeouts].
++	taskCloseTimeoutEnvVar = "CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT"
 +
 +	defaultTearDownTimeout  = 30 * time.Second
 +	defaultTaskCloseTimeout = 30 * time.Second
 +)
 +
-+var (
-+	// tearDownTimeout bounds each of the two waits in [hcsTask.close]: first for
-+	// a graceful shutdown to complete, then for a terminate.
-+	tearDownTimeout = durationFromEnv(tearDownTimeoutEnvVar, defaultTearDownTimeout)
-+	// taskCloseTimeout bounds the wait for container resource cleanup in
-+	// [hcsTask.DeleteExec]. It should exceed 2*tearDownTimeout, so that a slow
-+	// but ultimately successful teardown is awaited rather than abandoned.
-+	taskCloseTimeout = durationFromEnv(taskCloseTimeoutEnvVar, defaultTaskCloseTimeout)
++var tearDownTimeout, taskCloseTimeout = resolveTeardownTimeouts(
++	os.Getenv(tearDownTimeoutEnvVar),
++	os.Getenv(taskCloseTimeoutEnvVar),
 +)
 +
-+// durationFromEnv returns the duration parsed from the named environment
-+// variable, or def when it is unset, empty, unparseable or not positive.
++// resolveTeardownTimeouts computes the effective teardown timeouts from the raw
++// environment values.
 +//
-+// This runs during package initialization, before the shim's logging is set up,
-+// so an invalid value falls back to def rather than failing the shim. The
-+// effective value is logged wherever the timeout is used.
-+func durationFromEnv(name string, def time.Duration) time.Duration {
-+	v, ok := os.LookupEnv(name)
-+	if !ok {
-+		return def
++// tearDown bounds each of the two waits in [hcsTask.close]: first for a graceful
++// shutdown to complete, then for a terminate. taskClose bounds the wait for
++// container resource cleanup in [hcsTask.DeleteExec].
++//
++// The two are coupled: DeleteExec waits on the channel that [hcsTask.close]
++// closes, so a taskClose below close's worst case of 2*tearDown abandons a
++// teardown that is still making progress - exactly the outcome these knobs exist
++// to prevent. Raising only tearDown would therefore silently not help, so when
++// taskClose is not set explicitly and tearDown has been raised above the
++// default, taskClose is derived to cover close's worst case with room to spare.
++//
++// A raw value that is empty, unparseable or not positive is treated as unset.
++// This runs during package initialization, before the shim's logging exists, so
++// an invalid value must not keep the shim from starting; the effective values
++// are logged wherever they are used.
++func resolveTeardownTimeouts(tearDownRaw, taskCloseRaw string) (tearDown, taskClose time.Duration) {
++	tearDown = defaultTearDownTimeout
++	if d, ok := parsePositiveDuration(tearDownRaw); ok {
++		tearDown = d
 +	}
-+	d, err := time.ParseDuration(v)
++
++	if d, ok := parsePositiveDuration(taskCloseRaw); ok {
++		return tearDown, d
++	}
++	if tearDown <= defaultTearDownTimeout {
++		return tearDown, defaultTaskCloseTimeout
++	}
++	return tearDown, 2*tearDown + defaultTaskCloseTimeout
++}
++
++// parsePositiveDuration parses a Go duration string, reporting false when it is
++// empty, malformed or not positive.
++func parsePositiveDuration(s string) (time.Duration, bool) {
++	if s == "" {
++		return 0, false
++	}
++	d, err := time.ParseDuration(s)
 +	if err != nil || d <= 0 {
-+		return def
++		return 0, false
 +	}
-+	return d
++	return d, true
 +}
 +
  func newHcsStandaloneTask(ctx context.Context, events publisher, req *task.CreateTaskRequest, s *specs.Spec) (shimTask, error) {
  	log.G(ctx).WithField("tid", req.ID).Debug("newHcsStandaloneTask")
  
-@@ -536,7 +592,7 @@ func (ht *hcsTask) DeleteExec(ctx context.Context, eid string) (int, uint32, tim
+@@ -536,7 +616,7 @@ func (ht *hcsTask) DeleteExec(ctx context.Context, eid string) (int, uint32, tim
  		// If the shim exits before resources are cleaned up, those resources
  		// will remain locked and untracked, which leads to lingering sandboxes
  		// and container resources like base vhdx.
@@ -125,7 +162,7 @@ index afadc50..f235937 100644
  		entry.WithField(logfields.Timeout, timeout).Trace("waiting for task to be closed")
  		select {
  		case <-time.After(timeout):
-@@ -702,8 +758,6 @@ func (ht *hcsTask) close(ctx context.Context) {
+@@ -702,8 +782,6 @@ func (ht *hcsTask) close(ctx context.Context) {
  		// method or interface for ht.c operations that we can stub for
  		// testing.
  		if ht.c != nil {
@@ -134,7 +171,7 @@ index afadc50..f235937 100644
  			// Do our best attempt to tear down the container.
  			// TODO: unify timeout select statements and use [ht.c.WaitCtx] and [context.WithTimeout]
  			var werr error
-@@ -717,11 +771,19 @@ func (ht *hcsTask) close(ctx context.Context) {
+@@ -717,11 +795,19 @@ func (ht *hcsTask) close(ctx context.Context) {
  			if err != nil {
  				entry.WithError(err).Error("failed to shutdown container")
  			} else {
@@ -154,6 +191,83 @@ index afadc50..f235937 100644
  					if err != nil {
  						entry.WithError(err).Error("failed to wait for container shutdown")
  					}
+diff --git a/cmd/containerd-shim-runhcs-v1/task_hcs_test.go b/cmd/containerd-shim-runhcs-v1/task_hcs_test.go
+index d922d8e..4f8c4e3 100644
+--- a/cmd/containerd-shim-runhcs-v1/task_hcs_test.go
++++ b/cmd/containerd-shim-runhcs-v1/task_hcs_test.go
+@@ -550,3 +550,72 @@ func Test_hcsTask_updateWCOWContainerCPUAffinity_XenonNotImplemented(t *testing.
+ 		t.Fatalf("expected ErrNotImplemented for hypervisor-isolated container, got %v", err)
+ 	}
+ }
++
++func Test_resolveTeardownTimeouts(t *testing.T) {
++	for _, tc := range []struct {
++		name         string
++		tearDownRaw  string
++		taskCloseRaw string
++		tearDown     time.Duration
++		taskClose    time.Duration
++	}{
++		{
++			name:      "unset keeps the historical defaults",
++			tearDown:  30 * time.Second,
++			taskClose: 30 * time.Second,
++		},
++		{
++			name:        "raising teardown derives a task close that covers it",
++			tearDownRaw: "45m",
++			tearDown:    45 * time.Minute,
++			taskClose:   2*45*time.Minute + 30*time.Second,
++		},
++		{
++			name:         "explicit task close wins over the derived value",
++			tearDownRaw:  "45m",
++			taskCloseRaw: "100m",
++			tearDown:     45 * time.Minute,
++			taskClose:    100 * time.Minute,
++		},
++		{
++			name:         "task close alone is honoured",
++			taskCloseRaw: "5m",
++			tearDown:     30 * time.Second,
++			taskClose:    5 * time.Minute,
++		},
++		{
++			name:        "lowering teardown does not derive",
++			tearDownRaw: "10s",
++			tearDown:    10 * time.Second,
++			taskClose:   30 * time.Second,
++		},
++		{
++			name:         "malformed and negative values fall back",
++			tearDownRaw:  "soon",
++			taskCloseRaw: "-5m",
++			tearDown:     30 * time.Second,
++			taskClose:    30 * time.Second,
++		},
++		{
++			name:        "zero is not a positive duration",
++			tearDownRaw: "0s",
++			tearDown:    30 * time.Second,
++			taskClose:   30 * time.Second,
++		},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			tearDown, taskClose := resolveTeardownTimeouts(tc.tearDownRaw, tc.taskCloseRaw)
++			if tearDown != tc.tearDown {
++				t.Errorf("tearDown: expected %v, got %v", tc.tearDown, tearDown)
++			}
++			if taskClose != tc.taskClose {
++				t.Errorf("taskClose: expected %v, got %v", tc.taskClose, taskClose)
++			}
++			// The invariant the derivation exists to protect: DeleteExec must
++			// not give up while close() may still be making progress.
++			if tc.taskCloseRaw == "" && taskClose <= 2*tearDown && tearDown > defaultTearDownTimeout {
++				t.Errorf("derived taskClose %v does not cover close()'s worst case of 2*%v", taskClose, tearDown)
++			}
++		})
++	}
++}
 -- 
 2.55.0.windows.3
 

@@ -94,6 +94,33 @@ Ruled out with explicit experiments, so nobody repeats them:
   `Detached` state on dead `VhdHardDisk` volumes show the filter-stack teardown
   not completing cleanly.
 
+## Prior art
+
+Searched before filing. Nothing in this repo names `tearDownTimeout`. The
+closest reports:
+
+- [#1056](https://github.com/microsoft/hcsshim/issues/1056) *timeout waiting for
+  notification* (open since 2021) - same symptom family, but on
+  Docker/WS2019/Kubernetes and with no layer-level aftermath reported.
+- [#696](https://github.com/microsoft/hcsshim/issues/696) *docker build freeze at
+  exportLayer phase* - a hang in `os.RemoveAll` during export, a different
+  mechanism.
+- [Windows-Containers#547](https://github.com/microsoft/Windows-Containers/issues/547)
+  *Process Isolation ws2025 - container fails to shutdown gracefully* - the same
+  underlying phenomenon (ltsc2025 process isolation, ~10 min shutdown, resources
+  left locked, reboot required), reported as a slow-shutdown annoyance and
+  **closed unresolved**. It does not mention the shim timeout or the resulting
+  `ExportLayer 0x3`. It also reproduced with a matched 26100/26100 build, ruling
+  out a host/image build mismatch.
+- [#1488](https://github.com/microsoft/hcsshim/pull/1488) /
+  [#1554](https://github.com/microsoft/hcsshim/pull/1554) introduced the
+  terminate-after-shutdown-timeout fallback that this report is about. The path
+  was added deliberately; the fixed 30 s limit on it has not been revisited.
+
+What appears to be new here is the causal chain connecting them - slow teardown
+→ fixed 30 s → terminate mid-flush → permanently unexportable scratch - and the
+first actual measurement of the teardown duration.
+
 ## Fix
 
 Raising the two constants and rebuilding the shim resolves it completely:

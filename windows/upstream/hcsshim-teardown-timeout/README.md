@@ -43,10 +43,29 @@ go vet ./cmd/containerd-shim-runhcs-v1/
 Then open the issue from `ISSUE.md`, open the PR from `PR.md`, and cross-link
 them. Worth also commenting on microsoft/Windows-Containers#547 with the 117 s
 measurement - that report is closed unresolved and describes the same symptom
-family.
+family, and an independent second reporter gives the case weight.
 
-Verified before commit: builds clean against `81e2e01` with Go 1.26.5
-(`windows/amd64`), `gofmt` and `go vet` clean.
+**Open the PR as a draft** (the arrow next to *Create pull request* →
+*Create draft pull request*). It is not mergeable and requests no reviewers, but
+CI still runs - which is the cheapest way to get the repo's own golangci-lint,
+build and test matrix to confirm the patch. Flip it to *Ready for review* after.
+
+Microsoft uses a **CLA bot**, not DCO - no `Signed-off-by` needed; the bot
+comments on the PR and you accept once across all Microsoft repos. Note the
+commit carries a `Co-Authored-By: Claude` trailer, which will be publicly
+visible upstream; drop it with `git commit --amend` if you would rather it were
+not.
+
+Verified before commit, against `81e2e01` with Go 1.26.5 (`windows/amd64`):
+`go build` succeeds, `gofmt -l` and `go vet` clean,
+`golangci-lint run --config .golangci.yml ./cmd/containerd-shim-runhcs-v1/...`
+with the CI-pinned **v2.11** reports **0 issues**, and the new
+`Test_resolveTeardownTimeouts` (7 cases) passes. `git apply --check` is clean
+against pristine upstream.
+
+Known gap, stated in `PR.md` rather than hidden: the 117 s / four-canary
+measurements come from the constants-in-place build, not from this exact
+env-var build.
 
 ## If the PR is accepted
 
@@ -57,9 +76,14 @@ favour of configuration on the containerd service:
 # admin; the shim inherits containerd's environment
 Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\containerd `
   -Name Environment -Type MultiString `
-  -Value @('HCSSHIM_TASK_TEARDOWN_TIMEOUT=45m','HCSSHIM_TASK_CLOSE_TIMEOUT=100m')
+  -Value @('CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m')
 Restart-Service containerd -Force
 ```
+
+Setting the teardown timeout alone is enough: the patch derives the task-close
+timeout as `2*teardown + 30s` (here 90m30s, covering the 100 min the local patch
+sets by hand). Set `CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT` only to
+override that derivation.
 
 Until then the binary-size check after every Stevedore update stays mandatory.
 

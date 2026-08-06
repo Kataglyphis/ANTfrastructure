@@ -12,30 +12,45 @@ Patch: [`0001-shim-configurable-teardown-timeouts.patch`](0001-shim-configurable
 `cmd/containerd-shim-runhcs-v1/task_hcs.go` hardcodes three 30 second limits
 around container teardown:
 
-- `hcsTask.close()` waits 30s for a graceful shutdown, then 30s for a terminate
+- `hcsTask.close()` waits 30 s for a graceful shutdown, then 30 s for a terminate
   (`const tearDownTimeout`).
-- `hcsTask.DeleteExec()` waits 30s for container resource cleanup
+- `hcsTask.DeleteExec()` waits 30 s for container resource cleanup
   (`const timeout`, "waiting for task to be closed").
 
-This PR turns them into package-level values that can be overridden by
-environment variable, which the shim inherits from containerd:
+This PR makes them configurable via environment variables, which the shim
+inherits from containerd. The names follow the existing
+`CONTAINERD_SHIM_RUNHCS_V1_WAIT_DEBUGGER`:
 
 | Variable | Bounds | Default |
 |---|---|---|
-| `HCSSHIM_TASK_TEARDOWN_TIMEOUT` | each wait in `hcsTask.close` | `30s` |
-| `HCSSHIM_TASK_CLOSE_TIMEOUT` | the cleanup wait in `hcsTask.DeleteExec` | `30s` |
+| `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` | each wait in `hcsTask.close` | `30s` |
+| `CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT` | the wait in `hcsTask.DeleteExec` | `30s`, or derived |
 
-**Defaults are unchanged**, so behaviour is byte-for-byte identical unless a
-host opts in. Values are Go duration strings. An unset, empty, unparseable or
-non-positive value falls back to the default rather than failing the shim,
-because parsing happens during package initialization, before the shim's
-logging is available.
+**Defaults are unchanged**, so behaviour is identical unless a host opts in.
 
-The PR also logs how long a successful shutdown actually took. That duration is
-exactly what an operator needs to size the timeout for their workload, and it is
+### The two knobs are coupled on purpose
+
+`DeleteExec` waits on the channel that `close()` closes. A task close timeout
+below `close()`'s worst case of `2*teardown` therefore abandons a teardown that
+is *still making progress* - which is exactly the outcome these knobs exist to
+prevent. Raising only the teardown timeout would silently not help.
+
+So when the task close timeout is not set explicitly and the teardown timeout
+has been raised above the default, the task close timeout is derived as
+`2*teardown + 30s`. Setting it explicitly always wins. Leaving both unset
+reproduces today's behaviour exactly.
+
+An empty, unparseable or non-positive value is treated as unset: resolution
+happens during package initialization, before logging exists, so a bad value
+must not stop the shim from starting.
+
+### Also
+
+The PR logs how long a successful shutdown actually took. That duration is what
+an operator needs in order to size the timeout for their workload, and it is
 currently not observable at all.
 
-The 30s timer in the `SIGKILL` path is deliberately left alone: it guards the
+The 30 s timer in the `SIGKILL` path is deliberately left alone: it guards the
 hosting UVM (`ht.host != nil`) and plays no part in process isolated teardown.
 
 ## Why
@@ -59,8 +74,8 @@ of it fails with
 hcsshim::ExportLayer <path>: The system cannot find the path specified. (0x3)
 ```
 
-and the failure survives fresh snapshots and host reboots, because the
-unflushed hive deltas live inside `sandbox.vhdx` and are never completed.
+and the failure survives fresh snapshots and host reboots, because the unflushed
+hive deltas live inside `sandbox.vhdx` and are never completed.
 
 This is not a container-side problem. All silo processes do exit. Two
 independent in-container mitigations were tried and both failed identically:
@@ -77,22 +92,47 @@ eventually cleaned up - teardown arrives too late, not never), and 22 orphaned
 `bindflt` filter instances in `Detached` state on dead `VhdHardDisk` volumes,
 i.e. filter-stack teardown demonstrably not completing.
 
+### Why a fixed timeout is the wrong shape here
+
+Worth stating explicitly, because it is the difference from the Linux side of
+the same problem space: on Linux the analogous grace periods (`SIGTERM` → wait →
+`SIGKILL`) bound **the processes inside the container**, not a host-side storage
+operation. The writable layer is an overlayfs `upperdir` that is already on disk;
+there is no end-of-life serialization step, so `umount` costs the same whether
+the container touched three files or three million, and killing at the wrong
+moment cannot corrupt the layer.
+
+WCOW has no equivalent property: hive flush *is* a durability-critical
+serialization whose duration is unbounded in the workload. A fixed timeout on
+such an operation is either too short or is not really a timeout. Making it
+configurable is the smallest change that lets affected hosts stop losing data.
+
 ## Verification
 
-Built from this patch with Go 1.26.5, `windows/amd64`:
+Built and checked against `81e2e01` with Go 1.26.5, `windows/amd64`:
 
-- `gofmt -l` clean, `go vet ./cmd/containerd-shim-runhcs-v1/` clean,
-  `go build ./cmd/containerd-shim-runhcs-v1` succeeds.
-- Functionally verified on the reference host with the equivalent change
-  (constants raised in place rather than read from the environment, same code
-  paths): **four consecutive fresh `--no-cache` OpenCV container builds
-  finalized and exported directly**, exports 28.6 s / 28.6 s / 28.1 s / 27.1 s,
-  no `0x3`. Before the change, that host had never once produced a direct
-  OpenCV export - it needed a workaround that avoided finalizing the snapshot
-  at all.
-- The fourth run was performed after a service restart, a build-cache prune and
-  a detach/reattach of the disk holding the checkout, confirming the fix does
-  not depend on warm runtime state.
+- `go build ./cmd/containerd-shim-runhcs-v1` succeeds.
+- `gofmt -l` clean; `go vet ./cmd/containerd-shim-runhcs-v1/` clean.
+- `golangci-lint run --config .golangci.yml ./cmd/containerd-shim-runhcs-v1/...`
+  with the CI-pinned v2.11: **0 issues**.
+- New table-driven unit test `Test_resolveTeardownTimeouts` (7 cases: defaults,
+  derivation, explicit override, each knob alone, malformed/negative, zero)
+  passes, and asserts the coupling invariant directly.
+
+Functionally verified on the reference host with the equivalent change
+(constants raised in place rather than resolved from the environment - same code
+paths, same values as the derivation produces): **four consecutive fresh
+`--no-cache` OpenCV container builds finalized and exported directly**, exports
+28.6 s / 28.6 s / 28.1 s / 27.1 s, no `0x3`. Before the change that host had
+never once produced a direct OpenCV export; it needed a workaround that avoided
+finalizing the snapshot at all. The fourth run followed a service restart, a
+build-cache prune and a detach/reattach of the disk holding the checkout,
+confirming the fix does not depend on warm runtime state.
+
+**To be explicit about the gap:** the runtime measurements come from the
+constants-in-place build, not from this exact environment-variable build. The
+env-var build compiles, lints and passes its unit tests, but has not itself been
+run through a 117 s teardown yet.
 
 ## Host / repro environment
 
@@ -105,24 +145,50 @@ Built from this patch with Go 1.26.5, `windows/amd64`:
 | buildkitd | v0.32.0 (`f5d08d5`) |
 | Workload class | source builds (OpenCV, ONNX Runtime GenAI, TVM, GStreamer) |
 
-Note that Win11 24H2+ with `ltsc2025` images in process isolation is an
-officially supported combination per the Microsoft version-compatibility
-documentation, so this is not a host/image build mismatch.
+Win11 24H2+ with `ltsc2025` images in process isolation is an officially
+supported combination per the Microsoft version-compatibility documentation, so
+this is not a host/image build mismatch.
 
-## Related
+## Prior art
 
-- microsoft/Windows-Containers#547 - same symptom family (ltsc2025 process
-  isolation, ~10 min shutdown, locked resources); closed unresolved. That report
-  also saw it with a matched 26100/26100 build, which is why a build mismatch
-  can be ruled out as the cause.
+Nothing in this repo names `tearDownTimeout` or asks for it to be configurable -
+searched before filing. The neighbours, and how this differs:
+
+- **[#1488](https://github.com/microsoft/hcsshim/pull/1488)** /
+  **[#1554](https://github.com/microsoft/hcsshim/pull/1554)** *Call
+  container.Terminate() on shutdown timeouts* - introduced exactly the fallback
+  path this PR touches ("we weren't trying to force kill the container via
+  Terminate after if we timed out waiting for it to complete"). The path was
+  added deliberately; the fixed 30 s limit on it has not been revisited since,
+  and configurability was not discussed in review.
+- **[#1416](https://github.com/microsoft/hcsshim/pull/1416)** *wcow: support
+  graceful termination of servercore containers* - precedent for adjusting WCOW
+  termination timing to dodge a fixed platform timeout.
+- **[#1056](https://github.com/microsoft/hcsshim/issues/1056)** *timeout waiting
+  for notification* (open since 2021) - same symptom family, but on
+  Docker/WS2019/Kubernetes, with no layer-level aftermath reported.
+- **[#696](https://github.com/microsoft/hcsshim/issues/696)** *docker build
+  freeze at exportLayer phase* - a hang in `os.RemoveAll` during export; a
+  different mechanism, not a permanently unexportable scratch.
+- **[Windows-Containers#547](https://github.com/microsoft/Windows-Containers/issues/547)**
+  *Process Isolation ws2025 - container fails to shutdown gracefully* - the same
+  underlying phenomenon (ltsc2025 process isolation, ~10 min shutdown, resources
+  left locked, reboot required), reported as a slow-shutdown annoyance and
+  closed unresolved. It does not mention the shim timeout or `ExportLayer 0x3`.
+  That report also saw it with a matched 26100/26100 build, which is why a
+  host/image build mismatch can be ruled out.
+
+The contribution here is the causal chain none of them connect: slow ltsc2025
+process-isolated teardown → fixed 30 s → terminate mid-flush → permanently
+unexportable scratch - plus the first measurement of how long that teardown
+actually takes.
 
 ## Notes for reviewers
 
 - An environment variable was chosen over a `runhcsopts.Options` field to keep
-  the change small and avoid regenerating the proto. If you would rather have
-  this as a runtime option in containerd's config (or as an OCI annotation for
-  per-container control), say so and I will rework it - the mechanism is not the
-  point, the ability to not lose a scratch is.
-- Arguably the deeper fix is that expiry of these timers should not leave a
-  snapshot unrecoverable at all. Making the limits configurable is the smallest
-  change that lets affected hosts stop losing data today.
+  the change small and avoid regenerating the proto. If a runtime option in
+  containerd's config, or an OCI annotation for per-container control, is
+  preferred, say so and I will rework it - the mechanism is not the point.
+- Arguably the deeper fix is that expiry of these timers should not be able to
+  leave a snapshot unrecoverable at all. Making the limits configurable is the
+  smallest change that stops the data loss today.
