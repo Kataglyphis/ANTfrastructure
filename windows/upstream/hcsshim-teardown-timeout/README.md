@@ -117,10 +117,29 @@ cd hcsshim
 # Leave the 30s timer in the SIGKILL path alone - it guards the hosting UVM
 # (ht.host != nil) and is not part of process isolated teardown.
 go build .\cmd\containerd-shim-runhcs-v1
-# admin, and no shim process may be running:
-#   Stop-Service buildkitd, containerd
-#   copy the exe over C:\Program Files\Stevedore\bin\ (keep the .orig)
-#   Start-Service containerd, buildkitd
-# containerd does NOT need a restart for the swap itself - the shim is spawned
-# per container - but nothing may hold the file while you replace it.
 ```
+
+Then install it with the repo script (admin; it keeps `.orig` and a timestamped
+backup, and refuses while a build or a shim process is alive):
+
+```pwsh
+pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe
+
+# for a build made from the UPSTREAM patch, which is inert without the env var:
+pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe `
+     -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m
+
+pwsh -File windows\scripts\deploy-shim-patch.ps1 -ReportOnly     # what is installed?
+pwsh -File windows\scripts\deploy-shim-patch.ps1 -Restore .orig  # back to stock
+```
+
+containerd does NOT need a restart for the swap itself - the shim is spawned per
+container - but nothing may hold the file while you replace it, which is why the
+script stops the services.
+
+**Verification trap, learned 2026-08-06:** the shim logs its effective timeout at
+**Debug** level, and that does not reach containerd's log on this setup, so a
+quiet log proves nothing. `nerdctl run` is also not a usable probe here - it
+panics on the CNI `nat` network. The reliable check is behavioural: an OpenCV
+canary teardown takes ~117 s, so with a 30 s timeout it MUST fail with `0x3`;
+a clean finalize+export is therefore proof that the longer timeout is live.
