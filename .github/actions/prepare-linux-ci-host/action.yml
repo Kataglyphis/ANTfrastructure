@@ -1,0 +1,111 @@
+name: 'Prepare Linux CI host'
+description: >-
+  The prologue every containerised Linux CI job repeats: reclaim runner disk,
+  check the repository out, log in to the registry and pull the build image
+  with retries. Four steps and ~25 lines per job collapse to one `uses:`.
+
+  Written for fan-out. A pipeline that splits its builds across parallel jobs
+  pays this prologue once per job, so it stops being boilerplate in one place
+  and becomes boilerplate in ten - and any drift between those copies (a
+  different retry count, a missing submodule flag) turns into a failure that
+  only reproduces in one lane. Consumers: Kataglyphis-BeschleunigerBallett
+  Linux.yml.
+
+inputs:
+  image:
+    description: 'Container image to pull, e.g. ghcr.io/owner/name:tag.'
+    required: true
+  registry:
+    description: 'Registry to log in to.'
+    required: false
+    default: 'ghcr.io'
+  registry-username:
+    description: 'Registry username. Skips login when empty.'
+    required: false
+    default: ''
+  registry-password:
+    description: >-
+      Registry password/token. Login is SKIPPED when empty, which is what a
+      fork PR without secrets gets - a public image still pulls.
+    required: false
+    default: ''
+  fetch-depth:
+    description: >-
+      actions/checkout fetch-depth. Defaults to 0 (full history) because
+      version stamping and coverage tooling commonly need it; pass 1 for jobs
+      that only build.
+    required: false
+    default: '0'
+  submodules:
+    description: "actions/checkout submodules: 'recursive', 'true' or 'false'."
+    required: false
+    default: 'recursive'
+  checkout:
+    description: 'Set to false when the caller has already checked out.'
+    required: false
+    default: 'true'
+  free-disk-space:
+    description: >-
+      Reclaim runner disk before pulling. The images here are large enough
+      that a stock ubuntu runner cannot hold one plus several build trees.
+    required: false
+    default: 'true'
+  pull-attempts:
+    description: 'How many times to try `docker pull` before giving up.'
+    required: false
+    default: '3'
+  pull-timeout-seconds:
+    description: 'Per-attempt timeout for `docker pull`.'
+    required: false
+    default: '900'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Free disk space on host
+      if: inputs.free-disk-space == 'true'
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        # Keep docker images: the build image is the point of the job, and on
+        # a re-run the layers may already be local.
+        docker-images: false
+        swap-storage: true
+
+    - name: Checkout
+      if: inputs.checkout == 'true'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+        submodules: ${{ inputs.submodules }}
+
+    - name: Log in to the container registry
+      if: inputs.registry-password != ''
+      shell: bash
+      run: |
+        echo "${{ inputs.registry-password }}" \
+          | docker login "${{ inputs.registry }}" -u "${{ inputs.registry-username }}" --password-stdin
+
+    # Retried on purpose: pulling a multi-GB image over a shared runner network
+    # fails often enough that a single attempt makes the whole lane flaky, and
+    # the failure looks like an infrastructure problem rather than a bad
+    # commit. `timeout` bounds a hung pull so the retry actually happens
+    # instead of the job sitting until its job-level limit.
+    - name: Pull the container image
+      shell: bash
+      run: |
+        for attempt in $(seq 1 "${{ inputs.pull-attempts }}"); do
+          echo "Attempt ${attempt}/${{ inputs.pull-attempts }}: docker pull ${{ inputs.image }}"
+          if timeout "${{ inputs.pull-timeout-seconds }}" docker pull "${{ inputs.image }}"; then
+            echo "Pulled ${{ inputs.image }}"
+            exit 0
+          fi
+          echo "Pull failed; retrying in 30s"
+          sleep 30
+        done
+        echo "::error::Failed to pull ${{ inputs.image }} after ${{ inputs.pull-attempts }} attempts"
+        exit 1
