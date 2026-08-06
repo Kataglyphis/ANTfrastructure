@@ -78,7 +78,7 @@ runs:
 
     - name: Checkout
       if: inputs.checkout == 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7.0.1
       with:
         fetch-depth: ${{ inputs.fetch-depth }}
         submodules: ${{ inputs.submodules }}
