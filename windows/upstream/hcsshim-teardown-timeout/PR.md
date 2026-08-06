@@ -132,20 +132,35 @@ Built and checked against `81e2e01` with Go 1.26.5, `windows/amd64`:
   derivation, explicit override, each knob alone, malformed/negative, zero)
   passes, and asserts the coupling invariant directly.
 
-Functionally verified on the reference host with the equivalent change
-(constants raised in place rather than resolved from the environment - same code
-paths, same values as the derivation produces): **four consecutive fresh
-`--no-cache` OpenCV container builds finalized and exported directly**, exports
-28.6 s / 28.6 s / 28.1 s / 27.1 s, no `0x3`. Before the change that host had
-never once produced a direct OpenCV export; it needed a workaround that avoided
-finalizing the snapshot at all. The fourth run followed a service restart, a
-build-cache prune and a detach/reattach of the disk holding the checkout,
-confirming the fix does not depend on warm runtime state.
+Functionally verified on the reference host. **Five consecutive fresh
+`--no-cache` OpenCV container builds finalized and exported directly**, no `0x3`
+on any of them:
 
-**To be explicit about the gap:** the runtime measurements come from the
-constants-in-place build, not from this exact environment-variable build. The
-env-var build compiles, lints and passes its unit tests, but has not itself been
-run through a 117 s teardown yet.
+| Run | Build | Export |
+|---|---|---|
+| 1-3 | constants raised in place | 28.6 s / 28.6 s / 28.1 s |
+| 4 | constants raised in place, after a service restart, a build-cache prune and a disk detach/reattach | 27.1 s |
+| 5 | **this patch**, `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m` on the containerd service | 27.1 s |
+
+Before the change that host had never once produced a direct OpenCV export; it
+needed a workaround that avoided finalizing the snapshot at all, and direct
+attempts failed with `0x3` deterministically across retries. Run 4 shows the fix
+does not depend on warm runtime state. Run 5 exercises exactly the code in this
+PR, including the environment plumbing.
+
+Since the binary swap, containerd's log contains **no `timed out while waiting
+for container ...` entry at all**, where the same log carried four such pairs on
+the night before.
+
+**Two honest limits on that evidence.** First, run 5 is a single data point for
+the env-var path; a teardown that happened to complete under 30 s would look
+identical to a working timeout, and the prior determinism of the failure is what
+makes that unlikely rather than any direct measurement. Second, and more
+tellingly: **the teardown duration for these runs could not be measured at all.**
+The shim's shutdown path produces nothing in containerd's log at the levels this
+host captures. The only reason a 117 s number exists is that the failing case
+logged an error. That is precisely the gap the added duration log closes, and it
+is why sizing this timeout is currently guesswork for anyone hitting it.
 
 ## Host / repro environment
 
