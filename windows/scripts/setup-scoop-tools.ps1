@@ -1,5 +1,11 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# CACHE-BUST 2026-08-06: content change sidesteps persistent snapshotter
+# debris (`ImportLayer 0xb7 "already exists"` finalizing THIS RUN layer's
+# snapshot — identical commit IDs nbcn…→ubvb… across runs; the error is
+# REPORTED at the COPY step below it, busting that one was insufficient).
+# New content => new chain-IDs for this layer and everything after.
 
 #requires -Version 7.0
 
