@@ -1,0 +1,39 @@
+name: 'Run Pester suite'
+description: >-
+  Installs a pinned Pester version and runs a suite, failing the step on any
+  failed test and printing enough to act on: the Describe/Name, the assertion's
+  FailureMessage and its StackTrace.
+
+  The version is pinned because Pester 3.x and 5.x are not compatible dialects:
+  a suite written in 3.4's dash-less assertion syntax (`Should Be 0`) does not
+  parse under the Pester 5 that ships with the runner.
+
+inputs:
+  path:
+    description: 'Path to the suite (file or directory).'
+    required: true
+  version:
+    description: 'Exact Pester version to install and import.'
+    required: false
+    default: '3.4.0'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: pwsh
+      run: |
+        Install-Module Pester -RequiredVersion '${{ inputs.version }}' -Force -SkipPublisherCheck -Scope CurrentUser
+        Import-Module Pester -RequiredVersion '${{ inputs.version }}'
+        $r = Invoke-Pester -Path '${{ inputs.path }}' -PassThru -Quiet
+        Write-Host "TOTAL=$($r.TotalCount) PASSED=$($r.PassedCount) FAILED=$($r.FailedCount)"
+        if ($r.FailedCount -gt 0) {
+          # The test name alone is not enough to act on - which assertion, with
+          # which values? Without FailureMessage/StackTrace every failure costs
+          # another round trip just to find out what was actually compared.
+          $r.TestResult | Where-Object { -not $_.Passed } | ForEach-Object {
+            Write-Host "FAIL: $($_.Describe) / $($_.Name)"
+            if ($_.FailureMessage) { Write-Host "      $($_.FailureMessage)" }
+            if ($_.StackTrace)     { Write-Host "      $($_.StackTrace)" }
+          }
+          exit 1
+        }

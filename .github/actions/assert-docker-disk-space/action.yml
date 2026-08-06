@@ -1,0 +1,121 @@
+name: 'Assert Docker disk space'
+description: >-
+  Resolves the Docker daemon's data-root and fails FAST when the drive holding
+  it has less free space than a large image import needs - instead of letting
+  `docker pull` grind for ~40 minutes and die with hcsshim::ImportLayer
+  "not enough space on the disk (0x70)".
+
+  Windows-first (the multi-GB Windows images are what motivate it) but the
+  data-root probe works anywhere Docker runs.
+
+inputs:
+  required-free-gb:
+    description: >-
+      Minimum free GB required on the data-root drive. Measured on a Windows
+      runner 2026-07-21: a drive with 59.3 GB free still failed to import a
+      54 GB image, so budget real headroom over the image size, not parity.
+    required: true
+  fallback-data-root:
+    description: >-
+      Where to assume the data-root is when the daemon will not say. Defaults
+      to Docker-on-Windows' own default under the system drive.
+    required: false
+    default: ''
+  probe-attempts:
+    description: 'How many times to ask the daemon before giving up on it.'
+    required: false
+    default: '12'
+  probe-interval-seconds:
+    description: 'Delay between probes.'
+    required: false
+    default: '10'
+
+outputs:
+  data-root:
+    description: 'The resolved (or assumed) Docker data-root.'
+    value: ${{ steps.probe.outputs.data-root }}
+  free-gb:
+    description: 'Free GB on the data-root drive.'
+    value: ${{ steps.probe.outputs.free-gb }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: probe
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        $vols = Get-Volume | Where-Object DriveLetter | Sort-Object SizeRemaining -Descending
+        Write-Host '=== Free space per drive ==='
+        $vols | Format-Table DriveLetter,
+          @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}},
+          @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
+          FileSystemLabel -AutoSize | Out-String | Write-Host
+
+        # Asking the daemon where it puts layers is less reliable than it
+        # looks. On runner image win25-vs2026/20260728.188 `docker info
+        # --format '{{.DockerRootDir}}'` returns an EMPTY string and a NON-ZERO
+        # exit; on 20260714.173 the same call printed C:\ProgramData\docker.
+        # Two failures follow from a naive one-shot call, and a real pipeline
+        # died of the second on 2026-08-05:
+        #   - `2>$null` throws the reason away, leaving "data-root: " and no clue;
+        #   - the GitHub pwsh wrapper appends `exit $LASTEXITCODE`, so the failed
+        #     QUERY becomes the STEP's exit code even when the gate itself is
+        #     happy.
+        # So: keep stderr, retry while the daemon settles (a `docker system
+        # prune` beforehand can leave it briefly unavailable), fall back to the
+        # plain-text "Docker Root Dir:" line whose format has outlived several
+        # --format rewrites, and start the service if the runner left it stopped.
+        $root = $null
+        foreach ($attempt in 1..[int]'${{ inputs.probe-attempts }}') {
+          $out  = & docker info --format '{{.DockerRootDir}}' 2>&1
+          $code = $LASTEXITCODE
+          $text = ($out | Out-String).Trim()
+          if ($code -eq 0 -and $text) { $root = $text; break }
+          Write-Host "attempt ${attempt}: 'docker info --format' exited ${code}: ${text}"
+
+          $plain = & docker info 2>&1
+          $line  = $plain | Select-String -Pattern '^\s*Docker Root Dir:\s*(\S.*)$' | Select-Object -First 1
+          if ($line) {
+            $root = $line.Matches[0].Groups[1].Value.Trim()
+            Write-Host "attempt ${attempt}: recovered the data-root from plain 'docker info'"
+            break
+          }
+
+          $svc = Get-Service -Name docker -ErrorAction SilentlyContinue
+          if ($svc) {
+            Write-Host "attempt ${attempt}: docker service status = $($svc.Status)"
+            if ($svc.Status -ne 'Running') { Start-Service docker -ErrorAction SilentlyContinue }
+          } else {
+            Write-Host "attempt ${attempt}: no 'docker' service registered on this runner"
+          }
+          Start-Sleep -Seconds ([int]'${{ inputs.probe-interval-seconds }}')
+        }
+        # Nothing above may leak an exit code into this step: only the explicit
+        # `exit 1` below is allowed to fail it.
+        $global:LASTEXITCODE = 0
+
+        if (-not $root) {
+          $fallback = '${{ inputs.fallback-data-root }}'
+          if (-not $fallback) { $fallback = Join-Path $env:SystemDrive 'ProgramData\docker' }
+          $root = $fallback
+          Write-Host "::warning::Could not read Docker's data-root from the daemon; assuming $root for the space check."
+        }
+        Write-Host "Docker data-root: $root"
+
+        $rootLetter = $root.Substring(0,1)
+        $rootVol = $vols | Where-Object { $_.DriveLetter -eq $rootLetter } | Select-Object -First 1
+        $freeGB = $null
+        if ($rootVol) { $freeGB = [math]::Round($rootVol.SizeRemaining/1GB,1) }
+        Write-Host "Docker data-root drive ${rootLetter}: has $freeGB GB free."
+
+        "data-root=$root" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "free-gb=$freeGB" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+        $required = [double]'${{ inputs.required-free-gb }}'
+        $maxDrive  = ($vols | Select-Object -First 1).DriveLetter
+        $maxFreeGB = [math]::Round(($vols | Select-Object -First 1).SizeRemaining/1GB, 1)
+        if ($null -ne $freeGB -and $freeGB -lt $required) {
+          Write-Host "::error::Docker data-root drive ${rootLetter}: has only $freeGB GB free (< $required GB required). Largest drive is ${maxDrive}: with $maxFreeGB GB. Free more space, or slim the image."
+          exit 1
+        }
