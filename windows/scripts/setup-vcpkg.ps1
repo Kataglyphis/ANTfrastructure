@@ -1,5 +1,10 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# CACHE-BUST 2026-08-06: this comment block's content change sidesteps
+# persistent snapshotter debris (`ImportLayer 0xb7 "already exists"` at
+# finalize of the COPY layer for this file — identical chain-IDs across
+# retries; see AGENTS.md failure table). New content => new chain-IDs.
 
 #requires -Version 7.0
 
