@@ -198,11 +198,13 @@ difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the heavy
 **This is the lane to use from 2026-08 on** — full host CPUs on every stage,
 process-isolated layer commits, and real per-stage layer caching, with the
 docker-classic run+commit lane kept as the always-working fallback. **Status
-2026-08-04 (evening): GREEN end-to-end** — the host snapshotter defect
-(`ExportLayer 0x3`, full writeup in the Roadmap section's entry) is
-neutralized by the warm/materialize solve pattern; `bk-winamd64` builds in
-~44 min hot, and heavy RUN steps bind-mount their per-file script closures
-instead of inheriting COPY layers. Probes on
+2026-08-06: GREEN end-to-end and DE-WARMED** — the host snapshotter defect
+(`ExportLayer 0x3`) is fixed at the root by a patched runhcs shim, so the
+lane runs DIRECT solves everywhere and the warm/materialize pattern is
+retired (full writeup, proof and maintenance rule in the Roadmap section's
+entry; the shim is a LOCAL patch that every Stevedore update reverts).
+`bk-winamd64` builds in ~44 min hot, and heavy RUN steps bind-mount their
+per-file script closures instead of inheriting COPY layers. Probes on
 2026-08-03 established that BOTH docker-classic limits are absent on the
 buildkitd+containerd path on this same host (and the chain was then rebuilt
 from base on this lane the same day — VS2026, CUDA, CPython and the media
@@ -415,6 +417,18 @@ Housekeeping and sharing:
   buildctl --addr npipe:////./pipe/buildkitd prune --free-storage 240000    # MB
   ```
 
+- **`--free-storage` is a MINIMUM-FREE TARGET, not an amount to delete
+  (measured 2026-08-06/07 night).** The daemon prunes until the host has that
+  many MB free and then stops — so on a disk that ALREADY exceeds the target
+  it deletes nothing, however much is reclaimable. Measured: at 198.5 GB free
+  with 150.5 GB `Private` in the store, `prune --free-storage 200000` removed
+  **77 MB**; the identical command with `900000` (more than the disk can ever
+  offer) removed the full **150.48 GB**. This is also why the earlier runs
+  looked like the flag "stops at the Private slice" — they were hitting their
+  target, not a ceiling. **Rule: to drain everything unpinned, ask for more
+  free space than the disk physically has.** It cannot over-delete: `Shared`
+  records stay pinned regardless (next bullet), so an absurd target is safe.
+
 - **Prune can only ever take the `Private` slice — `Shared` is pinned by the
   image tags.** Same run: 445.61 GB → 371.77 GB, i.e. **exactly the 73.84 GB
   that `du` called `Private`**, and it stopped there (C: 31.6 → 93.3 GB free).
@@ -433,6 +447,42 @@ Housekeeping and sharing:
   Note also that a single chain generation is NOT waste — the "iterating
   stacks 30–40 GB generations" failure mode means DUPLICATE generations of
   the same stage tag; ten distinct stage tags of one chain are the asset.
+
+- **A SUPERSEDED lineage hides whole duplicate copies of your most expensive
+  layers — the single biggest reclaim on this host (266 GB, 2026-08-06/07
+  night).** After a cache-bust rebuilds `base`/`sdk`/`toolchain`, the older
+  stage tags downstream of the OLD base still exist and still pin their own
+  full copy of every layer beneath them. They look innocent (distinct tag
+  names, no duplicates in `nerdctl images`) because the duplication is one
+  level down, in the RECORDS. Measured with 10 tags and a 384 GB store:
+
+  ```text
+  setup-cuda.ps1          109.5 GB  in 3 copies
+  setup-scoop-tools.ps1    88.5 GB  in 3 copies
+  setup-vs.ps1             69.1 GB  in 2 copies
+  ```
+
+  One copy per cache-bust — 267 GB of the 384 GB was the base spine held
+  three times over. **Diagnose** by grouping the verbose record list by the
+  script each record ran and reading `Last used`: records from a superseded
+  lineage carry an older date than the current chain's rebuild.
+
+  ```pwsh
+  buildctl --addr npipe:////./pipe/buildkitd du -v     # group by Description, read "Last used"
+  ```
+
+  **Fix:** admin `nerdctl --namespace buildkit rmi` on the stage tags of the
+  superseded lineage, wait ~30 s for the containerd GC, then prune. Identify
+  them by lineage, not by age: a stage tag is dead when its ancestor stage was
+  rebuilt after it (compare image IDs against the current chain, and the stage
+  logs in `out\windows-build-logs\` for the rebuild times). Deleting them costs
+  nothing that a failed chain was not going to rebuild anyway. **Before
+  deleting a tagged FINAL image, verify the registry copy** —
+  `docker manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`
+  — so the local one is not the only one. Sequence that produced the 266 GB:
+  prune (42.4 GB) → drop canary tags + prune (15.7 GB) → drop the 6 superseded
+  stage tags + prune (109.7 GB) → prune with a target above disk capacity
+  (150.5 GB). C: 4.8 → 271.3 GB free, with the current lineage untouched.
 - **VHDX-backed checkouts — the reclaim lever that is NOT the store.** When the
   repo (or the store) lives on a dynamically-expanding VHDX, that file only
   ever grows: deleting data inside the guest leaves the blocks allocated in the
@@ -456,6 +506,29 @@ Housekeeping and sharing:
   The same run still freed **19.4 GB on C:** — from killing a wedged `buildctl`
   and stopping buildkitd/containerd, which released pinned scratch. That half
   works on any filesystem, which is why the script does both.
+
+  **When compaction returns ~nothing, rebuild instead:**
+  `windows\scripts\rebuild-host-vhdx.ps1` creates a fresh disk, mirrors the
+  live data into it, compares file count AND byte totals, and only then hands
+  over the drive letter. It runs in two phases on purpose, because they have
+  very different requirements:
+
+  ```pwsh
+  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -ReportOnly
+  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -CopyOnly    # safe with everything open
+  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -SwapOnly `
+       -VerifyPath D:\GitHub\Kataglyphis-ContainerHub -LogPath C:\rebuild.log -RetireOld
+  ```
+
+  The COPY phase touches nothing live. The SWAP phase detaches the volume and
+  therefore requires that NOTHING holds a handle on it — no shell whose current
+  directory is on it, no editor with the checkout open, no agent session. Run
+  it from a shell on another drive, and give it a `-LogPath` off the volume.
+  **This is not hypothetical:** an unattended `wsl --unmount`/detach on this
+  disk on 2026-08-06 pulled D: out from under a running session and killed it.
+  The script therefore refuses rather than forces the detach, and keeps the
+  verified copy for a later `-SwapOnly` run. The old disk is kept as `.old`
+  unless `-RetireOld` is passed — until it is deleted, NO space is reclaimed.
 - **Cross-host / CI cache**: `build-buildkit.ps1 -ExportCacheRef <registry-ref>`
   / `-ImportCacheRef <ref>` wire buildkit's registry cache (`mode=max`) once
   registry auth works from buildkitd — a second machine then rebuilds the chain
@@ -548,18 +621,38 @@ steps; the remaining work is the Dockerfile surgery):
   DE-WARMED since 2026-08-06: direct solves everywhere, warm/materialize
   retired (payload scripts kept in tree as the rollback path, c9586c1^).
   **MAINTENANCE:** any Stevedore/containerd update overwrites the patched
-  shim — after every update compare the binary size (patched 25 329 664 vs
-  stock 23 279 616) and re-install if reverted; rebuild recipe: scoop go +
-  `git clone microsoft/hcsshim` + patch the two constants + `go build
-  .\cmd\containerd-shim-runhcs-v1`. **Upstream submission is PREPARED and
-  in-tree** at `windows/upstream/hcsshim-teardown-timeout/`: issue text, PR
-  description and a `git format-patch` that makes both limits configurable
-  (`HCSSHIM_TASK_TEARDOWN_TIMEOUT` / `HCSSHIM_TASK_CLOSE_TIMEOUT`, defaults
-  unchanged at 30 s) — verified to build, `gofmt`/`go vet` clean, and to apply
-  cleanly to hcsshim `main` @ 81e2e01. Note the upstream patch is NOT the
-  deployed one: it keeps the 30 s defaults, so a shim built from it needs the
-  env vars set on the containerd service. Getting it merged is what retires
-  the binary-size check after every Stevedore update.
+  shim — after every update compare the binary size (patched 25 332 736 for
+  the env-var build currently deployed, 25 329 664 for the fixed-constant
+  build, vs stock 23 279 616) and re-install if reverted; use
+  `windows\scripts\deploy-shim-patch.ps1 -ReportOnly` for the check and the
+  same script to re-install. Rebuild recipe: scoop go + `git clone
+  microsoft/hcsshim` + apply the in-tree patch + `go build
+  .\cmd\containerd-shim-runhcs-v1`. **Upstream submission is FILED as a DRAFT
+  PR: [microsoft/hcsshim#2855](https://github.com/microsoft/hcsshim/pull/2855)**,
+  materials in-tree at `windows/upstream/hcsshim-teardown-timeout/` (issue
+  text, PR description, `git format-patch`). It makes all four fixed 30 s
+  limits in the binary configurable — the two in `task_hcs.go` plus the
+  crash-recovery wait in `delete.go` — with **defaults unchanged at 30 s**.
+
+  **ENV VAR NAMES — get these exactly right:**
+
+  ```text
+  CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT    e.g. 45m
+  CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT  optional; defaults to 2x teardown + 30s
+  ```
+
+  They follow the shim's existing house convention (`..._WAIT_DEBUGGER`). An
+  earlier draft of this document named them `HCSSHIM_TASK_*` — those were
+  INVENTED and never existed in any build. Setting a wrong name is silent:
+  the shim falls back to 30 s and the defect returns with no error anywhere.
+  Set them on the containerd SERVICE (the shim inherits its environment);
+  `deploy-shim-patch.ps1 -ServiceEnvironment` merges them in. Note the
+  upstream patch is NOT the same as a fixed-constant build: with the defaults
+  it behaves exactly like stock, so a shim built from it and no env var set
+  is a shim with the bug. Verify BEHAVIOURALLY with an OpenCV canary — the
+  shim logs its effective timeout at Debug level, which does not reach
+  containerd's log, so a quiet log proves nothing. Getting the PR merged is
+  what retires the binary-size check after every Stevedore update.
   The historical bullets below are preserved for diagnosis value.
 - **DEFECT PARTIALLY TAMED, NOT GONE (2026-08-05, de-warming attempted and
   ROLLED BACK same evening).** Sequence of record: (1) with the Defender
