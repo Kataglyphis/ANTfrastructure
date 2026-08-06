@@ -1,11 +1,12 @@
-From a3e6e4a0c6465744a2e39ef455cf1a67ffd1d6e7 Mon Sep 17 00:00:00 2001
+From 1cd294470d8f03cb87d4077ff20cfa601149cf08 Mon Sep 17 00:00:00 2001
 From: Jonas Heinle <jonasheinle@googlemail.com>
 Date: Thu, 6 Aug 2026 11:00:21 +0200
 Subject: [PATCH] shim: make container teardown timeouts configurable
 
 The shim gives a container 30s to shut down and another 30s to terminate
-before it stops waiting, and DeleteExec waits 30s for resource cleanup.
-All three limits are hardcoded.
+before it stops waiting, DeleteExec waits 30s for resource cleanup, and
+the delete command waits 30s for a leftover compute system to terminate.
+All of these limits are hardcoded.
 
 Tearing a Windows Server (process isolated) container down is host-side
 work whose cost scales with how much the container touched the
@@ -30,17 +31,23 @@ Make the limits configurable via environment variables, which the shim
 inherits from containerd, following the naming of the existing
 CONTAINERD_SHIM_RUNHCS_V1_WAIT_DEBUGGER:
 
-  CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT     each wait in hcsTask.close
+  CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT     each wait in hcsTask.close,
+                                                 and the delete command's
+                                                 wait for termination
   CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT   the hcsTask.DeleteExec wait
 
-The two are coupled, and the coupling is the reason the second knob is
-not simply independent: DeleteExec waits on the channel close() closes,
-so a task close timeout below close()'s worst case of 2*teardown abandons
-a teardown that is still progressing - precisely the outcome these knobs
+The first two are coupled, and the coupling is why the second knob is not
+simply independent: DeleteExec waits on the channel close() closes, so a
+task close timeout below close()'s worst case of 2*teardown abandons a
+teardown that is still progressing - precisely the outcome these knobs
 exist to prevent. Raising only the teardown timeout would therefore
 silently not help. When the task close timeout is not set explicitly and
 the teardown timeout has been raised above the default, the task close
 timeout is derived to cover close()'s worst case with room to spare.
+
+delete.go waits on the same host-side work as hcsTask.close and runs
+exactly when the shim died with a container still going down, so it takes
+the same bound rather than a knob of its own.
 
 Defaults are unchanged at 30s, so behaviour is identical unless a host
 opts in. An empty, unparseable or non-positive value is treated as unset,
@@ -52,16 +59,35 @@ what is needed to size the timeout for a given workload and it was not
 otherwise observable - the absence of this number is a large part of why
 the failure above was hard to attribute.
 
-The 30s timer in the SIGKILL path is deliberately left alone: it guards
-the hosting UVM (ht.host != nil) and is not involved in process isolated
-teardown.
+Deliberately left alone: the 30s timer in the SIGKILL path, which guards
+the hosting UVM (ht.host != nil) rather than process isolated teardown;
+cmd/runhcs, a separate binary that already allows 5 minutes; and
+cmd/containerd-shim-lcow-v2, which is a different shim.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 ---
+ cmd/containerd-shim-runhcs-v1/delete.go       |  6 +-
  cmd/containerd-shim-runhcs-v1/task_hcs.go     | 92 ++++++++++++++++++-
  .../task_hcs_test.go                          | 69 ++++++++++++++
- 2 files changed, 158 insertions(+), 3 deletions(-)
+ 3 files changed, 163 insertions(+), 4 deletions(-)
 
+diff --git a/cmd/containerd-shim-runhcs-v1/delete.go b/cmd/containerd-shim-runhcs-v1/delete.go
+index c1eb337..7029551 100644
+--- a/cmd/containerd-shim-runhcs-v1/delete.go
++++ b/cmd/containerd-shim-runhcs-v1/delete.go
+@@ -90,7 +90,11 @@ The delete command will be executed in the container's bundle as its cwd.
+ 			} else {
+ 				ch := make(chan error, 1)
+ 				go func() { ch <- sys.Wait() }()
+-				t := time.NewTimer(time.Second * 30)
++				// Same bound as the normal teardown path in [hcsTask.close]:
++				// this waits on the same host-side work, and it runs precisely
++				// when the shim died with a container still going down, so a
++				// filesystem-heavy container is if anything more likely here.
++				t := time.NewTimer(tearDownTimeout)
+ 				select {
+ 				case <-t.C:
+ 					sys.Close()
 diff --git a/cmd/containerd-shim-runhcs-v1/task_hcs.go b/cmd/containerd-shim-runhcs-v1/task_hcs.go
 index afadc50..07d52fc 100644
 --- a/cmd/containerd-shim-runhcs-v1/task_hcs.go

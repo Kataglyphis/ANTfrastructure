@@ -9,13 +9,14 @@ Patch: [`0001-shim-configurable-teardown-timeouts.patch`](0001-shim-configurable
 
 ## What this changes
 
-`cmd/containerd-shim-runhcs-v1/task_hcs.go` hardcodes three 30 second limits
-around container teardown:
+The shim hardcodes four 30 second limits around container teardown:
 
 - `hcsTask.close()` waits 30 s for a graceful shutdown, then 30 s for a terminate
-  (`const tearDownTimeout`).
+  (`const tearDownTimeout`, `task_hcs.go`).
 - `hcsTask.DeleteExec()` waits 30 s for container resource cleanup
-  (`const timeout`, "waiting for task to be closed").
+  (`const timeout`, "waiting for task to be closed", `task_hcs.go`).
+- The `delete` command waits 30 s for a leftover compute system to finish
+  terminating (`delete.go`).
 
 This PR makes them configurable via environment variables, which the shim
 inherits from containerd. The names follow the existing
@@ -23,10 +24,15 @@ inherits from containerd. The names follow the existing
 
 | Variable | Bounds | Default |
 |---|---|---|
-| `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` | each wait in `hcsTask.close` | `30s` |
+| `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` | each wait in `hcsTask.close`, and the `delete` command's wait | `30s` |
 | `CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT` | the wait in `hcsTask.DeleteExec` | `30s`, or derived |
 
 **Defaults are unchanged**, so behaviour is identical unless a host opts in.
+
+`delete.go` takes the same bound rather than a knob of its own: it waits on the
+same host-side work, and it runs precisely when the shim died with a container
+still going down - so if anything a filesystem-heavy container is *more* likely
+to be on the other end of that wait.
 
 ### The two knobs are coupled on purpose
 
@@ -50,8 +56,13 @@ The PR logs how long a successful shutdown actually took. That duration is what
 an operator needs in order to size the timeout for their workload, and it is
 currently not observable at all.
 
-The 30 s timer in the `SIGKILL` path is deliberately left alone: it guards the
-hosting UVM (`ht.host != nil`) and plays no part in process isolated teardown.
+### Deliberately out of scope
+
+- The 30 s timer in the `SIGKILL` path: it guards the hosting UVM
+  (`ht.host != nil`) and plays no part in process isolated teardown.
+- `cmd/runhcs` - a separate binary, and it already allows 5 minutes.
+- `cmd/containerd-shim-lcow-v2` - a different shim, though it carries the same
+  30 s pattern in its `manager.go` and may deserve the same treatment.
 
 ## Why
 
@@ -115,6 +126,8 @@ Built and checked against `81e2e01` with Go 1.26.5, `windows/amd64`:
 - `gofmt -l` clean; `go vet ./cmd/containerd-shim-runhcs-v1/` clean.
 - `golangci-lint run --config .golangci.yml ./cmd/containerd-shim-runhcs-v1/...`
   with the CI-pinned v2.11: **0 issues**.
+- `go test ./cmd/containerd-shim-runhcs-v1/` passes - the whole package, not
+  just the new test.
 - New table-driven unit test `Test_resolveTeardownTimeouts` (7 cases: defaults,
   derivation, explicit override, each knob alone, malformed/negative, zero)
   passes, and asserts the coupling invariant directly.
@@ -189,6 +202,15 @@ actually takes.
   the change small and avoid regenerating the proto. If a runtime option in
   containerd's config, or an OCI annotation for per-container control, is
   preferred, say so and I will rework it - the mechanism is not the point.
+- **Known limitation of that choice:** an environment variable is host-wide. It
+  fits a dedicated build host, which is the case this comes from, but on a node
+  running mixed workloads there is no way to grant the long timeout only to the
+  containers that need it. An OCI annotation would give per-container control
+  and is the natural answer if that matters to you.
+- The derivation of the task close timeout is a judgement call. The alternative
+  is to leave the two knobs independent and merely document that they are
+  coupled - but then raising only the obvious one silently does nothing, which
+  seemed like the worse failure mode. Happy to invert it if you disagree.
 - Arguably the deeper fix is that expiry of these timers should not be able to
   leave a snapshot unrecoverable at all. Making the limits configurable is the
   smallest change that stops the data loss today.
