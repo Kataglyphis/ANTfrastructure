@@ -1,13 +1,22 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# WARM-solve payload for the BuildKit lane (see docs/windows-builds.md
-# § BuildKit/containerd lane): runs a heavy build, then hands its artifact
-# delta off over WebDAV (Export-BuildHandoff). The driver runs the enclosing
-# solve with NO exporter, so this container's snapshot is never finalized and
-# the host's lost-shutdown-notification defect never fires. This script exists
-# so every warm RUN in the Dockerfiles is a one-liner instead of a repeated
-# five-statement pwsh block.
+# RETIRED FROM THE DOCKERFILES (de-warming 2026-08-06, round 2): the
+# ExportLayer-0x3 defect this pattern routed around was root-caused to the
+# runhcs shim's hardcoded 30s tearDownTimeout (real heavy-churn teardown:
+# ~117s measured) and is fixed by the patched shim in Stevedore\bin — all
+# solves are direct now. KEPT (with bk-materialize.ps1 + the handoff helpers
+# + their tests) as the tested rollback path: if the canary
+# (docs/windows-builds.md § roadmap "DEFECT SOLVED") ever 0x3s again (e.g.
+# a Stevedore update reverted the patched shim), restore the
+# warm/materialize Dockerfile targets from git history (c9586c1^) and these
+# payloads work unchanged.
+#
+# Original purpose — WARM-solve payload for the BuildKit lane: runs a heavy
+# build, then hands its artifact delta off over WebDAV (Export-BuildHandoff).
+# The driver runs the enclosing solve with NO exporter, so this container's
+# snapshot is never finalized and the lost-shutdown-notification defect never
+# fires.
 
 #requires -Version 7.0
 [CmdletBinding()]
@@ -23,20 +32,6 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# 0x3-ROOT-CAUSE PROBE (2026-08-05, best-effort): the shim injects
-# WaitToKillServiceTimeout=2147483647 (infinite) into every container —
-# containerd debug log shows heavy containers' HCS shutdown notifications
-# time out even after a settled exit, i.e. SOME in-container service hangs
-# shutdown forever. Override to 5s so shutdown force-kills laggard services
-# inside its 30s window; the pre-exit dump below names running services so
-# the culprit can be identified and stopped explicitly once known.
-try {
-    foreach ($cs in 'HKLM:\SYSTEM\CurrentControlSet\Control', 'HKLM:\SYSTEM\ControlSet001\Control') {
-        Set-ItemProperty -Path $cs -Name 'WaitToKillServiceTimeout' -Value '5000' -ErrorAction Stop
-    }
-    Write-Host 'bk-warm probe: WaitToKillServiceTimeout -> 5000ms'
-} catch { Write-Host "bk-warm probe: WaitToKillServiceTimeout override failed: $($_.Exception.Message)" }
-
 $t0 = Get-Date
 # Child pwsh with -File, NOT `& $BuildScript @BuildArgs`: array splatting binds
 # strictly BY POSITION, so a leading-dash element like '-ResumeFrom' arrives as
@@ -50,36 +45,6 @@ if ($exitCode) { throw "bk-warm: build '$BuildScript' failed (exit $exitCode)" }
 # three build-*-all wrappers import this module bare and warn-free).
 Import-Module (Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1') -Force
 Export-BuildHandoff -Since $t0 -Name $Name
-
-# 0x3 PROBE ROUND 2 (2026-08-05): the 5s WaitToKillServiceTimeout alone did
-# NOT fix the lost shutdown notification (canary bk-canary-0x3-fix: exit 0
-# published cleanly, HcsShutDownComputeSystem returned in ms, notification
-# still timed out 30s+30s, HCS_E_INVALID_STATE, ExportLayer 0x3). Round-1
-# dump named the exit-time residents: sccache server, msdtc, AggregatorHost
-# + non-essential services. Hypothesis: one of them holds kernel-side state
-# (open union-FS/network handles) that blocks host-side silo teardown.
-# Tear everything down explicitly BEFORE exit; if shutdown then completes,
-# bisect the bundle afterwards. All best-effort — never fail the build.
-try {
-    if (Get-Command sccache -ErrorAction SilentlyContinue) {
-        & sccache --stop-server 2>&1 | Out-Null
-        Write-Host 'bk-warm teardown: sccache server stopped'
-    }
-} catch { Write-Host "bk-warm teardown: sccache stop failed: $($_.Exception.Message)" }
-foreach ($p in 'AggregatorHost', 'msdtc') {
-    try { Get-Process -Name $p -ErrorAction Stop | Stop-Process -Force -ErrorAction Stop; Write-Host "bk-warm teardown: killed $p" } catch {}
-}
-foreach ($s in 'MSDTC', 'DiagTrack', 'SysMain', 'UsoSvc', 'WinRM', 'Schedule', 'TimeBrokerSvc', 'iphlpsvc', 'WinHttpAutoProxySvc', 'SENS', 'DispBrokerDesktopSvc') {
-    try { Stop-Service -Name $s -Force -ErrorAction Stop; Write-Host "bk-warm teardown: stopped service $s" } catch { Write-Host "bk-warm teardown: service $s not stopped: $($_.Exception.Message)" }
-}
-
-# Post-teardown dump: what is STILL alive at the true moment of exit.
-try {
-    $svc = Get-Service | Where-Object { $_.Status -eq 'Running' } | Select-Object -ExpandProperty Name
-    Write-Host ("bk-warm exit dump: running services: " + ($svc -join ', '))
-    $procs = Get-Process | Where-Object { $_.ProcessName -notin @('pwsh', 'Idle', 'System', 'smss', 'csrss', 'wininit', 'services', 'lsass', 'svchost', 'fontdrvhost', 'CExecSvc', 'conhost') } | Select-Object -ExpandProperty ProcessName -Unique
-    Write-Host ("bk-warm exit dump: non-baseline processes: " + ($procs -join ', '))
-} catch { Write-Host "bk-warm exit dump failed: $($_.Exception.Message)" }
 
 # Reaching EOF IS success (same contract as every build script: pwsh -Command
 # propagates the last native exit code otherwise).

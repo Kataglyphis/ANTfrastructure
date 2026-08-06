@@ -484,7 +484,10 @@ steps; the remaining work is the Dockerfile surgery):
   replacement needs admin + no running shim processes; containerd itself
   needs NO restart — the shim spawns per container). PROOF: first-ever
   direct OpenCV finalize+export on this host (`bk-canary-shim-opencv`,
-  28.6 s export, no 0x3), confirmed per the 3× OPENCV canary rule.
+  28.6 s export, no 0x3), confirmed per the 3× OPENCV canary rule
+  (`bk-canary-shim-opencv{,2,3}` all clean, --no-cache). The lane is
+  DE-WARMED since 2026-08-06: direct solves everywhere, warm/materialize
+  retired (payload scripts kept in tree as the rollback path, c9586c1^).
   **MAINTENANCE:** any Stevedore/containerd update overwrites the patched
   shim — after every update compare the binary size (patched 25 329 664 vs
   stock 23 279 616) and re-install if reverted; rebuild recipe: scoop go +
