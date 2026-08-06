@@ -360,6 +360,19 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    flakes). Reclaim levers, non-admin first: `buildctl prune-histories`,
    `buildctl prune`, `docker image prune -f`; the full playbook is
    [Windows Build Image](windows-builds.md) § Store GC.
+   **If the checkout or the store lives on a dynamically-expanding VHDX**,
+   the store levers cannot see the biggest pool: dead blocks in the VHDX
+   itself (270 GB physical for 16 GB of data on the reference host). Check
+   it — the report costs nothing and stops nothing:
+
+   ```pwsh
+   pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath <your.vhdx> -ReportOnly   # admin
+   ```
+
+   Without `-ReportOnly` it stops the build services, compacts and restores
+   the disk — **admin, and never while a build solves.** Read the ReFS
+   caveat in § Store GC first: on ReFS guests compaction reclaims ~nothing
+   and only a VHDX rebuild helps.
 4. **CNI subnet drift** — if dockerd/the host restarted since the last run,
    expect it; `build-buildkit.ps1`'s preflight fail-fasts with the exact fix
    (see Phase A5).

@@ -363,6 +363,7 @@ If no zip is found, the build **skips TensorRT gracefully** (CUDA + cuDNN still 
 | `verify-toolchain.ps1` | `windows/scripts/` | Verifies clang-cl, lld-link, WiX, Flutter are present after base setup |
 | `healthcheck.ps1` | `windows/scripts/` | Docker `HEALTHCHECK` script — verifies ONNX Runtime DLL, FFmpeg, GStreamer, CMake, clang-cl |
 | `smoke-test-container.ps1` | `windows/scripts/` | Comprehensive container validation (18 test categories) |
+| `compact-host-vhdx.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): reclaims disk when the checkout/store sits on a dynamically-expanding VHDX. Kills stale `buildctl`, stops the build services, detaches → compacts (`Optimize-VHD`) → reattaches read-write in a `finally`, restarts. `-ReportOnly` reports sizes/guest-fs/reclaim potential without touching anything. Machine-specific values are all parameters (`-VhdxPath` mandatory, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-LogPath`, `-Mode`). Warns on ReFS guests, where compaction reclaims ~nothing (measured: 0.2 GB of a possible 254 GB) — see `docs/windows-builds.md` § Store GC |
 
 For detailed build commands, see `docs/windows-builds.md`.
 

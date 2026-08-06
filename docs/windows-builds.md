@@ -396,7 +396,66 @@ Housekeeping and sharing:
   `-Force`). Verify with `buildctl debug workers -v`. Keep real disk headroom
   by pruning the classic docker lane (`docker image prune -f`), not by
   shrinking `reservedSpace`. Manual fallback between chains:
-  `buildctl --addr npipe:////./pipe/buildkitd prune --keep-storage 200gb`.
+  `buildctl --addr npipe:////./pipe/buildkitd prune --keep-storage 200000`.
+  **Unit trap (cost a command on 2026-08-06):** `--keep-storage` is a `float`
+  in **MB** and buildctl v0.32 accepts NO unit suffix — `200gb`/`250GB` die
+  with `invalid value ... strconv.ParseFloat: invalid syntax`. 200 GB is
+  `200000`. Same for `--keep-storage-min` and `--free-storage`. Confirm with
+  `buildctl prune --help` before scripting it.
+- **`--keep-storage` is the WRONG lever here — use `--free-storage`
+  (measured 2026-08-06).** On buildkitd v0.32/WCOW,
+  `prune --keep-storage 200000` against a 445.61 GB store returned
+  `Total: 0B` — nothing deleted at all, despite `du` reporting
+  `Reclaimable: 445.61GB` and every record `InUse: false`. The flags map to
+  the same knobs as the gcpolicy (`--keep-storage` → maxUsedSpace,
+  `--keep-storage-min` → reservedSpace, `--free-storage` → minFreeSpace) and
+  only **`--free-storage`** actually drove a prune. Working invocation:
+
+  ```pwsh
+  buildctl --addr npipe:////./pipe/buildkitd prune --free-storage 240000    # MB
+  ```
+
+- **Prune can only ever take the `Private` slice — `Shared` is pinned by the
+  image tags.** Same run: 445.61 GB → 371.77 GB, i.e. **exactly the 73.84 GB
+  that `du` called `Private`**, and it stopped there (C: 31.6 → 93.3 GB free).
+  The remaining 371.77 GB were all `Shared` — held by the ten `bk-*` stage
+  tags in the containerd namespace, not by each other. Freeing those means
+  `nerdctl --namespace buildkit rmi` (admin) FIRST, and that is not free
+  disk: those tags are the hot chain, so deleting them buys GB at the price
+  of a cold 5–6 h rebuild. Decide deliberately. Diagnose before pruning with
+
+  ```pwsh
+  buildctl --addr npipe:////./pipe/buildkitd du --format '{{json .}}'   # then sort by Size, read Shared/InUse
+  ```
+
+  A healthy store looks like this one did: `InUse: 0` everywhere (nothing
+  pinned by a live solve) but most bytes `Shared: true` (pinned by tags).
+  Note also that a single chain generation is NOT waste — the "iterating
+  stacks 30–40 GB generations" failure mode means DUPLICATE generations of
+  the same stage tag; ten distinct stage tags of one chain are the asset.
+- **VHDX-backed checkouts — the reclaim lever that is NOT the store.** When the
+  repo (or the store) lives on a dynamically-expanding VHDX, that file only
+  ever grows: deleting data inside the guest leaves the blocks allocated in the
+  host file. Measured on the reference host 2026-08-06: **270.1 GB physical for
+  16.1 GB of live data**, i.e. ~254 GB of dead blocks that no `buildctl prune`
+  can ever touch — while C: had silently fallen to **11.7 GB free**, deep
+  inside the "hcsshim gets weird before it admits disk-full" band. Lever
+  (ADMIN, never while a build solves):
+
+  ```pwsh
+  pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx -ReportOnly   # look first
+  pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx               # then act
+  ```
+
+  **ReFS caveat — measured, do not re-probe:** `Optimize-VHD -Mode Full` ran 42 s
+  on that disk, reported success, and reclaimed **0.2 GB**. Compaction can only
+  release blocks the guest reports free via UNMAP/TRIM; NTFS guests do that
+  reliably, ReFS guests essentially do not. The script detects the guest
+  filesystem and warns BEFORE spending the downtime. On ReFS the only reliable
+  reclaim is rebuilding the VHDX around its live data (12 GB copy on this host).
+  The same run still freed **19.4 GB on C:** — from killing a wedged `buildctl`
+  and stopping buildkitd/containerd, which released pinned scratch. That half
+  works on any filesystem, which is why the script does both.
 - **Cross-host / CI cache**: `build-buildkit.ps1 -ExportCacheRef <registry-ref>`
   / `-ImportCacheRef <ref>` wire buildkit's registry cache (`mode=max`) once
   registry auth works from buildkitd — a second machine then rebuilds the chain
