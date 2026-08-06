@@ -1,0 +1,59 @@
+name: 'Clone into a short path (Windows MAX_PATH)'
+description: >-
+  Clones the repository, submodules and all, into a SHORT directory such as
+  D:\ws, because actions/checkout cannot on Windows when the submodule chain is
+  deep.
+
+  The runner's workspace is D:\a\<repo>\<repo> - the repository name twice,
+  ~71 characters before any content. Add a transitive submodule chain and the
+  .git/modules/.../config path passes 260 characters, which core.longpaths does
+  NOT reliably bypass for those child clones. Cloning to a short root keeps the
+  same chain comfortably inside the limit.
+
+  It also rewrites SSH submodule URLs to token HTTPS. .gitmodules commonly pins
+  git@github.com: URLs and a hosted runner has no SSH key, so `git submodule
+  update` otherwise dies with "Permission denied (publickey)" on every one -
+  the same rewrite actions/checkout installs for itself.
+
+inputs:
+  target:
+    description: 'Destination path in git (MSYS) form, e.g. /d/ws.'
+    required: false
+    default: '/d/ws'
+  repository:
+    description: 'owner/name to clone. Defaults to the current repository.'
+    required: false
+    default: ''
+  ref:
+    description: 'Commit/ref to check out. Defaults to the triggering SHA.'
+    required: false
+    default: ''
+  token:
+    description: 'Token used for HTTPS clone and for the SSH->HTTPS rewrite.'
+    required: true
+  submodules:
+    description: 'Set to false to skip `submodule update --init --recursive`.'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TARGET: ${{ inputs.target }}
+        REPO: ${{ inputs.repository != '' && inputs.repository || github.repository }}
+        REF: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+        WANT_SUBMODULES: ${{ inputs.submodules }}
+      run: |
+        git config --global core.longpaths true
+        # .gitmodules pins git@github.com: (SSH) URLs and the runner has no SSH
+        # key; rewrite to token HTTPS as actions/checkout would.
+        git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "git@github.com:"
+        rm -rf "${TARGET}"
+        git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "${TARGET}"
+        git -C "${TARGET}" checkout --force "${REF}"
+        if [ "${WANT_SUBMODULES}" = "true" ]; then
+          git -C "${TARGET}" submodule update --init --recursive
+        fi

@@ -33,6 +33,36 @@ runners without Rust. Optional: `run-setup-script: true` runs the consuming
 repo's `Scripts/Linux/setup-dependencies.sh` (skipped with a warning when
 absent); `install-uv: true` installs the Astral uv package manager.
 
+### `assert-docker-disk-space`
+Resolves the Docker daemon's data-root and fails FAST when its drive has less
+free space than a large image import needs, instead of letting `docker pull`
+grind ~40 minutes into hcsshim::ImportLayer "not enough space on the disk
+(0x70)". Inputs: `required-free-gb` (required), `fallback-data-root`,
+`probe-attempts`, `probe-interval-seconds`. Outputs: `data-root`, `free-gb`.
+
+Do not simplify the probe back to a one-shot `docker info --format
+'{{.DockerRootDir}}' 2>$null`. On runner image win25-vs2026/20260728.188 that
+returns an empty string and a non-zero exit (it printed the path on
+20260714.173), `2>$null` hides the reason, and the GitHub pwsh wrapper's
+trailing `exit $LASTEXITCODE` turns the failed QUERY into the STEP's result -
+a real pipeline died of exactly that on 2026-08-05 with the gate itself happy.
+
+### `clone-into-short-path`
+Clones the repo and submodules into a short directory (default `/d/ws`) because
+actions/checkout cannot on Windows with a deep submodule chain: the workspace is
+`D:\<repo>\<repo>` before any content, and `.git/modules/.../config` then
+passes 260 characters, which `core.longpaths` does not reliably bypass for
+child clones. Also rewrites `git@github.com:` submodule URLs to token HTTPS,
+since a hosted runner has no SSH key. Inputs: `token` (required), `target`,
+`repository`, `ref`, `submodules`.
+
+### `run-pester-suite`
+Installs a PINNED Pester and runs a suite, printing Describe/Name plus the
+assertion's `FailureMessage` and `StackTrace` for every failure - the test name
+alone costs a round trip to learn what was compared. Pinning matters because
+Pester 3.x and 5.x are different dialects: a 3.4 suite (`Should Be 0`) does not
+parse under the Pester 5 on the runner. Inputs: `path` (required), `version`.
+
 ### `prepare-linux-ci-host`
 The prologue every containerised Linux job repeats: free runner disk, check
 out (submodules recursive, full history by default), log in to the registry
