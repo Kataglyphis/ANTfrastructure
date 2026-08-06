@@ -1,4 +1,4 @@
-From 1cd294470d8f03cb87d4077ff20cfa601149cf08 Mon Sep 17 00:00:00 2001
+From 6830a70e65f9de5826bfb2a52e87936fb7e9f555 Mon Sep 17 00:00:00 2001
 From: Jonas Heinle <jonasheinle@googlemail.com>
 Date: Thu, 6 Aug 2026 11:00:21 +0200
 Subject: [PATCH] shim: make container teardown timeouts configurable
@@ -65,6 +65,7 @@ cmd/runhcs, a separate binary that already allows 5 minutes; and
 cmd/containerd-shim-lcow-v2, which is a different shim.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Signed-off-by: Jonas Heinle <jonasheinle@googlemail.com>
 ---
  cmd/containerd-shim-runhcs-v1/delete.go       |  6 +-
  cmd/containerd-shim-runhcs-v1/task_hcs.go     | 92 ++++++++++++++++++-

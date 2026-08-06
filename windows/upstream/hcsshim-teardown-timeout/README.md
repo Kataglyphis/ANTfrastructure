@@ -1,5 +1,11 @@
 # Upstream submission: configurable hcsshim teardown timeouts
 
+> **FILED 2026-08-06 as a DRAFT:**
+> [microsoft/hcsshim#2855](https://github.com/microsoft/hcsshim/pull/2855)
+> from `Kataglyphis/hcsshim:feature/configurable-teardown-timeout`.
+> The issue from `ISSUE.md` is NOT filed yet, and neither is the comment on
+> Windows-Containers#547.
+
 Everything needed to file the `microsoft/hcsshim` issue and PR that would let
 this project retire its locally patched shim. Kept in-tree because the local
 patch is a maintenance liability: **every Stevedore/containerd update silently
@@ -50,11 +56,20 @@ family, and an independent second reporter gives the case weight.
 CI still runs - which is the cheapest way to get the repo's own golangci-lint,
 build and test matrix to confirm the patch. Flip it to *Ready for review* after.
 
-Microsoft uses a **CLA bot**, not DCO - no `Signed-off-by` needed; the bot
-comments on the PR and you accept once across all Microsoft repos. Note the
-commit carries a `Co-Authored-By: Claude` trailer, which will be publicly
-visible upstream; drop it with `git commit --amend` if you would rather it were
-not.
+**hcsshim enforces BOTH a CLA and DCO.** The README only advertises the
+Microsoft CLA bot, but the PR checks include a `DCO` gate that fails without a
+`Signed-off-by` trailer matching the commit author - confirmed the hard way on
+#2855, which went up red and needed an amend. Always commit with `-s`:
+
+```bash
+git commit -s ...          # or: git commit --amend --no-edit -s && git push --force-with-lease
+```
+
+The CLA bot comments separately; you accept once across all Microsoft repos.
+
+Note the commit also carries a `Co-Authored-By: Claude` trailer, publicly
+visible upstream. Drop it with an amend + force-push if you would rather it were
+not - fine to do while the PR is still a draft.
 
 Verified before commit, against `81e2e01` with Go 1.26.5 (`windows/amd64`):
 `go build` succeeds, `gofmt -l` and `go vet` clean,
