@@ -551,8 +551,15 @@ steps; the remaining work is the Dockerfile surgery):
   shim — after every update compare the binary size (patched 25 329 664 vs
   stock 23 279 616) and re-install if reverted; rebuild recipe: scoop go +
   `git clone microsoft/hcsshim` + patch the two constants + `go build
-  .\cmd\containerd-shim-runhcs-v1`. Upstream: PR to make the timeout
-  configurable + Windows-Containers issue with the 117 s measurement.
+  .\cmd\containerd-shim-runhcs-v1`. **Upstream submission is PREPARED and
+  in-tree** at `windows/upstream/hcsshim-teardown-timeout/`: issue text, PR
+  description and a `git format-patch` that makes both limits configurable
+  (`HCSSHIM_TASK_TEARDOWN_TIMEOUT` / `HCSSHIM_TASK_CLOSE_TIMEOUT`, defaults
+  unchanged at 30 s) — verified to build, `gofmt`/`go vet` clean, and to apply
+  cleanly to hcsshim `main` @ 81e2e01. Note the upstream patch is NOT the
+  deployed one: it keeps the 30 s defaults, so a shim built from it needs the
+  env vars set on the containerd service. Getting it merged is what retires
+  the binary-size check after every Stevedore update.
   The historical bullets below are preserved for diagnosis value.
 - **DEFECT PARTIALLY TAMED, NOT GONE (2026-08-05, de-warming attempted and
   ROLLED BACK same evening).** Sequence of record: (1) with the Defender

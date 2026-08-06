@@ -514,6 +514,11 @@ windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
                          WebDav, Uv, Scripts.Shared, Toolchain, CodeQL,
                          ContainerImage, Flutter, Installer),
                          tests/ (harness + suites), shims/, diagnostics/
+windows/upstream/        prepared upstream submissions (not build inputs):
+                         hcsshim-teardown-timeout/ = ISSUE.md + PR.md +
+                         format-patch making the shim teardown timeouts
+                         configurable, plus the deployed 45min local patch
+                         and the rebuild recipe (see its README.md)
 shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
