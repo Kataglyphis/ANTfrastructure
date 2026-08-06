@@ -462,4 +462,68 @@ function Test-ClangClThreadSanitizerSupport {
   return $true
 }
 
-Export-ModuleMember -Function Get-CompileCommandsDatabase, Remove-BuildRootSafe, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport
+
+# --- CTest metadata after a container build ----------------------------------
+# A build produced INSIDE the container records container paths; running its
+# tests on the HOST needs those rewritten. C:/workspace is this repo's own
+# image convention (windows/Dockerfile WORKDIR), so every consumer of these
+# images hits it.
+
+function Get-CMakeShareDir {
+    param([string]$CMakeExePath)
+
+    if ([string]::IsNullOrWhiteSpace($CMakeExePath)) {
+        return $null
+    }
+
+    $cmakeBinDir = Split-Path $CMakeExePath -Parent
+    $cmakeRoot = Split-Path $cmakeBinDir -Parent
+    $shareRoot = Join-Path $cmakeRoot 'share'
+    if (-not (Test-Path $shareRoot)) {
+        return $null
+    }
+
+    $shareDir = Get-ChildItem -Path $shareRoot -Directory -Filter 'cmake-*' -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending |
+        Select-Object -First 1
+
+    if (-not $shareDir) {
+        return $null
+    }
+
+    return $shareDir.FullName.Replace('\', '/')
+}
+
+function Update-CTestMetadataPaths {
+    param(
+        [Parameter(Mandatory)]
+        [string]$BuildRoot,
+        [Parameter(Mandatory)]
+        [string]$WorkspaceRoot,
+        [string]$CMakeShareDir
+    )
+
+    if (-not (Test-Path $BuildRoot)) {
+        return
+    }
+
+    $workspacePathUnix = $WorkspaceRoot.Replace('\', '/')
+    $files = Get-ChildItem -Path $BuildRoot -Recurse -File -Include 'CTestTestfile.cmake', 'DartConfiguration.tcl', '*_include.cmake', '*_discovery.cmake', '*_tests.cmake' -ErrorAction SilentlyContinue
+    $asciiEncoding = [System.Text.Encoding]::ASCII
+
+    foreach ($file in $files) {
+        $originalContent = [System.IO.File]::ReadAllText($file.FullName)
+        $updatedContent = $originalContent.Replace('C:/workspace', $workspacePathUnix)
+
+        if (-not [string]::IsNullOrWhiteSpace($CMakeShareDir)) {
+            $updatedContent = [regex]::Replace($updatedContent, 'C:/Program Files/CMake/share/cmake-[0-9.]+', $CMakeShareDir)
+            $updatedContent = [regex]::Replace($updatedContent, 'C:/Strawberry/c/share/cmake-[0-9.]+', $CMakeShareDir)
+        }
+
+        if ($updatedContent -cne $originalContent) {
+            [System.IO.File]::WriteAllText($file.FullName, $updatedContent, $asciiEncoding)
+        }
+    }
+}
+
+Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport

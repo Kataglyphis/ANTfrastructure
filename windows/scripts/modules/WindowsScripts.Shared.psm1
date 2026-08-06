@@ -494,7 +494,76 @@ function Resolve-LatestVersionTag {
     return $tags[-1]
 }
 
+
+# --- PATH and tool resolution ------------------------------------------------
+# Generic helpers every Windows build script re-invents: put a directory FIRST
+# on PATH (de-duplicating it), and pick a tool from explicit candidate paths
+# before falling back to whatever `Get-Command` finds. The ordering matters on
+# a CI runner where several CMake/LLVM installs coexist and the one on PATH is
+# not the one the build expects.
+
+function Add-DirectoryToPath {
+    param([string]$Directory)
+
+    if ([string]::IsNullOrWhiteSpace($Directory) -or -not (Test-Path $Directory)) {
+        return
+    }
+
+    $resolvedDirectory = (Resolve-Path $Directory).Path
+    $currentEntries = @($env:PATH -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $remainingEntries = @($currentEntries | Where-Object { $_ -ne $resolvedDirectory })
+    $env:PATH = (@($resolvedDirectory) + $remainingEntries) -join ';'
+}
+
+function Add-DirectoriesToPath {
+    param([string[]]$Directories)
+
+    foreach ($directory in $Directories) {
+        Add-DirectoryToPath $directory
+    }
+}
+
+function Get-PreferredToolPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$CommandName,
+        [string[]]$CandidatePaths = @()
+    )
+
+    foreach ($candidate in $CandidatePaths) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path $candidate)) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    $command = Get-Command $CommandName -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    return $null
+}
+
+function Resolve-PreferredTool {
+    param(
+        [Parameter(Mandatory)]
+        [string]$CommandName,
+        [string[]]$CandidatePaths = @()
+    )
+
+    $toolPath = Get-PreferredToolPath -CommandName $CommandName -CandidatePaths $CandidatePaths
+    if ($toolPath) {
+        Add-DirectoryToPath (Split-Path $toolPath -Parent)
+    }
+
+    return $toolPath
+}
+
 Export-ModuleMember -Function @(
+    'Add-DirectoryToPath',
+    'Add-DirectoriesToPath',
+    'Get-PreferredToolPath',
+    'Resolve-PreferredTool',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
