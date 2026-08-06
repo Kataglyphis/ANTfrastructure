@@ -7,11 +7,23 @@
 # downloaded once into a version-keyed cache dir and SHA256-verified — the same
 # pattern as lint-dockerfiles.sh / lib/wasm-opt.sh.
 #
-# Usage: linux/scripts/lint-workflows.sh
+# Usage:
+#   linux/scripts/lint-workflows.sh          # lint THIS repo's workflows
+#   linux/scripts/lint-workflows.sh <root>   # lint a CONSUMER repo's workflows
+#
+# The optional root exists so consumers can lint their workflows with the same
+# pinned, SHA-verified actionlint instead of bootstrapping their own. It is
+# needed because a submodule checkout puts this script INSIDE the consumer,
+# where the default root resolves to ContainerHub and would silently lint the
+# wrong tree - and a lint gate that checks nothing still reports green. The
+# bootstrap cache and versions.env always come from THIS repo regardless.
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "${REPO_ROOT}" || exit 1
+SCRIPT_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+LINT_ROOT="$(cd "${1:-${SCRIPT_REPO_ROOT}}" && pwd)" || exit 1
+REPO_ROOT="${SCRIPT_REPO_ROOT}"
+echo "== linting workflows under ${LINT_ROOT} =="
+cd "${LINT_ROOT}" || exit 1
 
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
