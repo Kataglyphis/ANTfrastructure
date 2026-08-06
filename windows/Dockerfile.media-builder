@@ -143,15 +143,18 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # receive -ScriptDir C:\bkmnt so chain + leaf scripts resolve
 # modules/patches/shims via their usual $PSScriptRoot-relative paths.
 #
-# DIRECT SOLVES (de-warmed 2026-08-05): every library layer builds AND
-# exports in one plain RUN. The former warm/materialize pairs existed for
-# the ExportLayer-0x3 defect, whose root cause turned out to be Windows
-# Defender racing container-exit churn — canary-proven GONE with the
-# host-setup C4 exclusions (docs/windows-builds.md § roadmap "DEFECT GONE",
-# incl. the re-check recipe after AV/OS changes). If the canary ever 0x3s
-# again, restore the warm/materialize pattern from git history (pre-
-# 2026-08-05 evening) — bk-warm.ps1/bk-materialize.ps1 and the handoff
-# helpers remain in the tree for exactly that case.
+# DIRECT SOLVES (de-warmed 2026-08-06, round 2): every library layer builds
+# AND exports in one plain RUN. The former warm/materialize pairs existed
+# for the ExportLayer-0x3 defect — ROOT CAUSE: the runhcs shim's hardcoded
+# 30s tearDownTimeout terminated the measured ~117s heavy-churn silo
+# teardown mid-hive-flush, permanently poisoning the scratch. FIXED by the
+# patched shim (45min timeouts) in Stevedore\bin — proven by 3x consecutive
+# direct OpenCV finalizes (docs/windows-builds.md § roadmap "DEFECT
+# SOLVED", incl. the maintenance rule: Stevedore updates overwrite the
+# patched binary). If the canary ever 0x3s again (e.g. shim reverted),
+# restore the warm/materialize pattern from git history (c9586c1^) —
+# bk-warm.ps1/bk-materialize.ps1 and the handoff helpers remain in the
+# tree for exactly that case.
 
 # Version ENV twin of the classic media-core stage (the *-bk lineage must not
 # inherit the classic stage's script COPY layers). sync_versions.py keeps the

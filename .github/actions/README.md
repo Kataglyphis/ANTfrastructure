@@ -33,6 +33,21 @@ runners without Rust. Optional: `run-setup-script: true` runs the consuming
 repo's `Scripts/Linux/setup-dependencies.sh` (skipped with a warning when
 absent); `install-uv: true` installs the Astral uv package manager.
 
+### `prepare-linux-ci-host`
+The prologue every containerised Linux job repeats: free runner disk, check
+out (submodules recursive, full history by default), log in to the registry
+and `docker pull` the image with retries and a per-attempt timeout.
+Inputs: `image` (required), `registry`, `registry-username`,
+`registry-password` (login is skipped when empty, so fork PRs without secrets
+still pull public images), `fetch-depth`, `submodules`, `checkout`,
+`free-disk-space`, `pull-attempts`, `pull-timeout-seconds`.
+
+Written for **fan-out**: a pipeline that splits its builds across parallel
+jobs pays this prologue once per job, so the four steps stop being
+boilerplate in one place and become boilerplate in ten - and drift between
+those copies (a different retry count, a missing submodule flag) produces
+failures that reproduce in only one lane.
+
 ### `run-in-linux-container`
 Runs a bash command inside a Linux container image (`docker run --rm`).
 Inputs: `image` (required), `script` (bash fragment, verbatim), `workdir`,

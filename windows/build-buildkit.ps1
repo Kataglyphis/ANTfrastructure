@@ -120,7 +120,11 @@ if ($cniDrift) { throw $cniDrift }
 # sharing-violation/debris flakes at finalize/export time (2026-08-05 night —
 # likely a realtime scanner racing the hcs scratch dirs; the completed RUN
 # vertices stay cached, so the retry only re-pays the finalize/export step).
-Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot|failed to write compressed diff|failed to extract layer'
+# NB 'failed to reimport snapshot(?!.*ExportLayer)': the reimport wrapper text
+# also surrounds a genuine ExportLayer-0x3 defect hit, which MUST fail loudly
+# (2026-08-05: two pointless retries of a deterministic 0x3 before the
+# negative lookahead was added).
+Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer'
 
 # --- versions (single source of truth) ---
 $versions = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
@@ -282,13 +286,17 @@ if ($Stages -contains 'media') {
             MEMORY_LIMIT_GB = $MediaMemoryGb
         } + $branchArgs[$branch] + $sccache
         if ($branch -eq 'media-core') {
-            # DIRECT SOLVES (de-warmed 2026-08-05): every library layer builds
-            # and exports in one solve. The former warm/materialize pairs
-            # existed for the ExportLayer-0x3 defect — root cause was Windows
-            # Defender, canary-proven gone with the host-setup C4 exclusions
-            # (docs/windows-builds.md § roadmap "DEFECT GONE"; re-run the
-            # canary there after AV/OS changes). Per-library split retained:
-            # per-layer caching + an FFmpeg fix still never re-pays ONNX.
+            # DIRECT SOLVES (de-warmed 2026-08-06, round 2): every library
+            # layer builds and exports in one solve. The former
+            # warm/materialize pairs existed for the ExportLayer-0x3 defect —
+            # ROOT CAUSE was the runhcs shim's hardcoded 30s tearDownTimeout
+            # terminating the ~2-min heavy-churn silo teardown mid-flush;
+            # FIXED by the patched shim (45min) in Stevedore\bin — see
+            # docs/windows-builds.md § roadmap "DEFECT SOLVED" incl. the
+            # maintenance rule (Stevedore updates overwrite the patch!) and
+            # the 3x OPENCV canary recipe after any shim/OS change.
+            # Per-library split retained: per-layer caching + an FFmpeg fix
+            # still never re-pays ONNX.
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs $branchBuildArgs
             $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
             $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }

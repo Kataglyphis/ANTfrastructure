@@ -1,0 +1,32 @@
+diff --git a/cmd/containerd-shim-runhcs-v1/task_hcs.go b/cmd/containerd-shim-runhcs-v1/task_hcs.go
+index afadc50..be8a299 100644
+--- a/cmd/containerd-shim-runhcs-v1/task_hcs.go
++++ b/cmd/containerd-shim-runhcs-v1/task_hcs.go
+@@ -536,7 +536,11 @@ func (ht *hcsTask) DeleteExec(ctx context.Context, eid string) (int, uint32, tim
+ 		// If the shim exits before resources are cleaned up, those resources
+ 		// will remain locked and untracked, which leads to lingering sandboxes
+ 		// and container resources like base vhdx.
+-		const timeout = 30 * time.Second
++		// PATCHED (Kataglyphis 2026-08-06): was 30s. Must exceed close()'s
++		// worst case (2x tearDownTimeout) so a slow-but-successful teardown
++		// is awaited instead of abandoned (see comment above about lingering
++		// sandboxes).
++		const timeout = 100 * time.Minute
+ 		entry.WithField(logfields.Timeout, timeout).Trace("waiting for task to be closed")
+ 		select {
+ 		case <-time.After(timeout):
+@@ -702,7 +706,13 @@ func (ht *hcsTask) close(ctx context.Context) {
+ 		// method or interface for ht.c operations that we can stub for
+ 		// testing.
+ 		if ht.c != nil {
+-			const tearDownTimeout = 30 * time.Second
++			// PATCHED (Kataglyphis 2026-08-06): was 30s. Heavy-churn WCOW
++			// process-isolated containers need MINUTES of host-side silo
++			// teardown (wcifs/bindflt/hive flush); terminating mid-teardown
++			// leaves the scratch vhdx permanently unexportable
++			// (hcsshim::ExportLayer 0x3). The timer costs nothing when the
++			// notification arrives promptly.
++			const tearDownTimeout = 45 * time.Minute
+ 
+ 			// Do our best attempt to tear down the container.
+ 			// TODO: unify timeout select statements and use [ht.c.WaitCtx] and [context.WithTimeout]

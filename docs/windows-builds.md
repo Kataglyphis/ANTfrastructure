@@ -396,7 +396,66 @@ Housekeeping and sharing:
   `-Force`). Verify with `buildctl debug workers -v`. Keep real disk headroom
   by pruning the classic docker lane (`docker image prune -f`), not by
   shrinking `reservedSpace`. Manual fallback between chains:
-  `buildctl --addr npipe:////./pipe/buildkitd prune --keep-storage 200gb`.
+  `buildctl --addr npipe:////./pipe/buildkitd prune --keep-storage 200000`.
+  **Unit trap (cost a command on 2026-08-06):** `--keep-storage` is a `float`
+  in **MB** and buildctl v0.32 accepts NO unit suffix — `200gb`/`250GB` die
+  with `invalid value ... strconv.ParseFloat: invalid syntax`. 200 GB is
+  `200000`. Same for `--keep-storage-min` and `--free-storage`. Confirm with
+  `buildctl prune --help` before scripting it.
+- **`--keep-storage` is the WRONG lever here — use `--free-storage`
+  (measured 2026-08-06).** On buildkitd v0.32/WCOW,
+  `prune --keep-storage 200000` against a 445.61 GB store returned
+  `Total: 0B` — nothing deleted at all, despite `du` reporting
+  `Reclaimable: 445.61GB` and every record `InUse: false`. The flags map to
+  the same knobs as the gcpolicy (`--keep-storage` → maxUsedSpace,
+  `--keep-storage-min` → reservedSpace, `--free-storage` → minFreeSpace) and
+  only **`--free-storage`** actually drove a prune. Working invocation:
+
+  ```pwsh
+  buildctl --addr npipe:////./pipe/buildkitd prune --free-storage 240000    # MB
+  ```
+
+- **Prune can only ever take the `Private` slice — `Shared` is pinned by the
+  image tags.** Same run: 445.61 GB → 371.77 GB, i.e. **exactly the 73.84 GB
+  that `du` called `Private`**, and it stopped there (C: 31.6 → 93.3 GB free).
+  The remaining 371.77 GB were all `Shared` — held by the ten `bk-*` stage
+  tags in the containerd namespace, not by each other. Freeing those means
+  `nerdctl --namespace buildkit rmi` (admin) FIRST, and that is not free
+  disk: those tags are the hot chain, so deleting them buys GB at the price
+  of a cold 5–6 h rebuild. Decide deliberately. Diagnose before pruning with
+
+  ```pwsh
+  buildctl --addr npipe:////./pipe/buildkitd du --format '{{json .}}'   # then sort by Size, read Shared/InUse
+  ```
+
+  A healthy store looks like this one did: `InUse: 0` everywhere (nothing
+  pinned by a live solve) but most bytes `Shared: true` (pinned by tags).
+  Note also that a single chain generation is NOT waste — the "iterating
+  stacks 30–40 GB generations" failure mode means DUPLICATE generations of
+  the same stage tag; ten distinct stage tags of one chain are the asset.
+- **VHDX-backed checkouts — the reclaim lever that is NOT the store.** When the
+  repo (or the store) lives on a dynamically-expanding VHDX, that file only
+  ever grows: deleting data inside the guest leaves the blocks allocated in the
+  host file. Measured on the reference host 2026-08-06: **270.1 GB physical for
+  16.1 GB of live data**, i.e. ~254 GB of dead blocks that no `buildctl prune`
+  can ever touch — while C: had silently fallen to **11.7 GB free**, deep
+  inside the "hcsshim gets weird before it admits disk-full" band. Lever
+  (ADMIN, never while a build solves):
+
+  ```pwsh
+  pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx -ReportOnly   # look first
+  pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx               # then act
+  ```
+
+  **ReFS caveat — measured, do not re-probe:** `Optimize-VHD -Mode Full` ran 42 s
+  on that disk, reported success, and reclaimed **0.2 GB**. Compaction can only
+  release blocks the guest reports free via UNMAP/TRIM; NTFS guests do that
+  reliably, ReFS guests essentially do not. The script detects the guest
+  filesystem and warns BEFORE spending the downtime. On ReFS the only reliable
+  reclaim is rebuilding the VHDX around its live data (12 GB copy on this host).
+  The same run still freed **19.4 GB on C:** — from killing a wedged `buildctl`
+  and stopping buildkitd/containerd, which released pinned scratch. That half
+  works on any filesystem, which is why the script does both.
 - **Cross-host / CI cache**: `build-buildkit.ps1 -ExportCacheRef <registry-ref>`
   / `-ImportCacheRef <ref>` wire buildkit's registry cache (`mode=max`) once
   registry auth works from buildkitd — a second machine then rebuilds the chain
@@ -468,33 +527,102 @@ steps; the remaining work is the Dockerfile surgery):
   `MEDIA_CORE_*_IMAGE` ARGs; build-buildkit.ps1 drives them in order). An
   FFmpeg-only change still recompiles nothing else — and each library's
   export is now independent of the others' finalize behavior.
-- **DEFECT GONE (2026-08-05, canary-proven) — root cause was Windows
-  Defender.** With the 2026-08-05 Defender exclusions active
-  (buildkitd/containerd processes + their ProgramData dirs, § Store GC /
-  host-setup C4), a fresh `--no-cache` heavy-churn TVM→IREE container
-  (34 min, 11.6k files churned) FINALIZED AND EXPORTED CLEAN — under
-  parallel-solve load (`docker.io/local/kataglyphis:bk-canary-0x3`). The
-  realtime scanner racing container-exit file churn drove the HCS
-  shutdown-notification timeouts; the 2026-08-04 falsification matrix
-  predates the exclusions and only tested content theories. CONSEQUENCE —
-  EXECUTED same day (de-warming, 2026-08-05 evening): all library layers
-  build+export as plain DIRECT solves; the warm/materialize targets, the
-  WebDAV tar handoff and the driver's -NoOutput pair choreography are gone
-  from the Dockerfiles/driver. bk-warm.ps1/bk-materialize.ps1 and the
-  Export/Import-BuildHandoff helpers stay in-tree (tested) as the rollback
-  path; dufs serves sccache only. Rollback trigger: the canary below ever
-  failing with 0x3 again.
-  **Canary recipe (repeat after any AV/OS/hcsshim change, BEFORE relying on
-  direct solves):** solve a heavy warm target WITH an exporter —
+- **🎯 DEFECT SOLVED (2026-08-06, patched runhcs shim).** ROOT CAUSE: the
+  entire ExportLayer-0x3 family was hcsshim's hardcoded
+  `const tearDownTimeout = 30 * time.Second` in
+  `cmd/containerd-shim-runhcs-v1/task_hcs.go` (`close()`: shutdown wait +
+  terminate wait; plus the 30 s "waiting for task to be closed" in
+  `DeleteExec`). Heavy-churn WCOW silo teardown needs MINUTES — measured
+  **117 s** for the OpenCV specimen (HcsShutDownComputeSystem 01:16:08 →
+  notification 01:18:05) — so the stock shim terminated mid-hive-flush and
+  left the scratch vhdx permanently unexportable. FIX DEPLOYED: shim built
+  from hcsshim@main (81e2e01) with the constants raised to 45 min/100 min
+  (zero cost on the happy path — the timer only matters when it would have
+  killed the build), installed to `C:\Program Files\Stevedore\bin\
+  containerd-shim-runhcs-v1.exe` (original preserved as `.exe.orig`;
+  replacement needs admin + no running shim processes; containerd itself
+  needs NO restart — the shim spawns per container). PROOF: first-ever
+  direct OpenCV finalize+export on this host (`bk-canary-shim-opencv`,
+  28.6 s export, no 0x3), confirmed per the 3× OPENCV canary rule
+  (`bk-canary-shim-opencv{,2,3}` all clean, --no-cache). The lane is
+  DE-WARMED since 2026-08-06: direct solves everywhere, warm/materialize
+  retired (payload scripts kept in tree as the rollback path, c9586c1^).
+  **MAINTENANCE:** any Stevedore/containerd update overwrites the patched
+  shim — after every update compare the binary size (patched 25 329 664 vs
+  stock 23 279 616) and re-install if reverted; rebuild recipe: scoop go +
+  `git clone microsoft/hcsshim` + patch the two constants + `go build
+  .\cmd\containerd-shim-runhcs-v1`. **Upstream submission is PREPARED and
+  in-tree** at `windows/upstream/hcsshim-teardown-timeout/`: issue text, PR
+  description and a `git format-patch` that makes both limits configurable
+  (`HCSSHIM_TASK_TEARDOWN_TIMEOUT` / `HCSSHIM_TASK_CLOSE_TIMEOUT`, defaults
+  unchanged at 30 s) — verified to build, `gofmt`/`go vet` clean, and to apply
+  cleanly to hcsshim `main` @ 81e2e01. Note the upstream patch is NOT the
+  deployed one: it keeps the 30 s defaults, so a shim built from it needs the
+  env vars set on the containerd service. Getting it merged is what retires
+  the binary-size check after every Stevedore update.
+  The historical bullets below are preserved for diagnosis value.
+- **DEFECT PARTIALLY TAMED, NOT GONE (2026-08-05, de-warming attempted and
+  ROLLED BACK same evening).** Sequence of record: (1) with the Defender
+  exclusions active, a fresh `--no-cache` heavy TVM→IREE canary FINALIZED
+  AND EXPORTED CLEAN (`bk-canary-0x3` — a finalize class that used to fail);
+  (2) on that evidence the lane was de-warmed to direct solves; (3) the
+  FIRST direct OpenCV finalize failed `ExportLayer 0x3` with the original
+  signature, deterministic across retries → **OpenCV/GenAI-class churn
+  still trips the defect; TVM was the wrong canary specimen.** The Defender
+  exclusions remain load-bearing (they cured the hcs-temp finalize/export
+  FLAKE family and evidently moved TVM-class finalizes to reliable) but do
+  NOT cure the core defect. The warm/materialize pattern was RESTORED from
+  git history within minutes — the preserved rollback path worked exactly
+  as designed. LESSON: any future de-warming attempt must canary with
+  **OpenCV** (the deterministic trigger), not TVM: same recipe as below but
+  `--opt target=media-core-warm-opencv` + `--opt
+  build-arg:MEDIA_CORE_ONNX_IMAGE=<current onnx tag>`; clean export three
+  times in a row before touching the architecture.
+  **Canary recipe (after any AV/OS/hcsshim change):**
   `buildctl build ... --opt filename=Dockerfile.media-builder --opt
-  target=media-tvm-warm --no-cache --output
+  target=media-core-warm-opencv --no-cache --output
   type=image,name=docker.io/local/kataglyphis:bk-canary-0x3 --opt
   build-arg:BASE_IMAGE=docker.io/local/kataglyphis:bk-windows-toolchain
+  --opt build-arg:MEDIA_CORE_ONNX_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-onnx
   --opt build-arg:MEMORY_LIMIT_GB=16 --opt
   build-arg:SCCACHE_WEBDAV_ENDPOINT=<endpoint>` (plus the standard --local/
-  --opt image-resolve-mode=local flags). Clean export = defect absent;
-  `ExportLayer 0x3` at "exporting layers" = defect back, keep/restore
+  --opt image-resolve-mode=local flags). Clean export = that class is safe;
+  `ExportLayer 0x3` at "exporting layers" = defect present, keep
   warm/materialize. Historical writeup below preserved for diagnosis value.
+- **IN-CONTAINER MITIGATIONS EXHAUSTED (2026-08-05 late night, two more
+  OpenCV canaries).** The shim injects `WaitToKillServiceTimeout=2147483647`
+  into every container; overriding it to 5 s at payload start (probe R1)
+  changed nothing — exit 0 is published instantly, `HcsShutDownComputeSystem`
+  returns in ms, and the shutdown AND terminate notifications are still lost
+  (30 s + 30 s timeouts in the containerd debug log), then `ExportLayer 0x3`.
+  Probe R2 additionally stopped/killed every non-baseline resident before
+  exit (sccache server, msdtc, AggregatorHost, SysMain, DiagTrack, UsoSvc,
+  WinRM + 7 more services — verified stopped in the exit dump): same loss,
+  same 0x3. Together with the earlier settle falsification this proves the
+  hang is HOST-side (silo/wcifs teardown of heavy-churn scratches), not
+  anything running inside the container. Upstream fingerprint:
+  microsoft/Windows-Containers#547 (ltsc2025 process isolation, ~10-min
+  shutdown, resources stay locked, closed unresolved). NOTE (corrected
+  2026-08-06): Win11 24H2+ hosts running ltsc2025 images process-isolated
+  is OFFICIALLY SUPPORTED per the version-compatibility doc (the strict
+  build-match rule was relaxed for this combination) — so this is a
+  reportable platform bug in a supported configuration, not an off-label
+  artifact; #547 saw the same hang on a matched-build 26100 host.
+  CONSEQUENCE: warm/materialize is the standing architecture on this class
+  of host, not a temporary workaround. Do NOT burn more canaries on
+  in-container theories; the only genuine escape hatches are a platform fix
+  (Windows CU) or the containerd 2.x CimFS/UnionFS snapshotter lane (bypasses
+  wcifs entirely — experimental for WCOW, unproven with the BuildKit worker).
+  UPDATE 2026-08-06: the CimFS lane was TESTED AND FALSIFIED on containerd
+  v2.3.3 (plugin+differ both "ok"): buildkitd with
+  `--containerd-worker-snapshotter=cimfs` dies on the FIRST build step with
+  `scratch snapshot without any parents isn't supported` — the cimfs
+  snapshotter cannot create parentless scratch snapshots, which BuildKit
+  needs even to load the Dockerfile context. CimFS is pull/run-only today;
+  do not retry until a containerd release notes BuildKit/build support.
+  The teardown probe remains in `bk-warm.ps1` (harmless, ~1.5 s, keeps exits
+  quiet and preserves the diagnostic exit dump; removing it would cache-bust
+  every warm layer for zero gain).
 - **HISTORICAL (2026-08-04, worked around via warm/materialize) —
   GenAI/OpenCV snapshot finalize
   (`ExportLayer 0x3`, disk fine)**: those two layers deterministically fail BOTH finalize paths on

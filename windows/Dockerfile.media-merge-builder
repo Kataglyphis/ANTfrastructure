@@ -139,12 +139,13 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
 COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
 
-# ── BuildKit lane (direct solve, de-warmed 2026-08-05) ──────────────────────
+# ── BuildKit lane (direct solve, de-warmed 2026-08-06 round 2) ──────────────
 # GStreamer builds AND exports in one plain RUN. The former warm/materialize
-# pair existed for the ExportLayer-0x3 defect — root cause was Windows
-# Defender, canary-proven gone with the host-setup C4 exclusions (see
+# pair existed for the ExportLayer-0x3 defect — root cause was the runhcs
+# shim's hardcoded 30s tearDownTimeout killing the minutes-long heavy-churn
+# silo teardown; fixed by the patched shim in Stevedore\bin (see
 # Dockerfile.media-builder's BK header + docs/windows-builds.md § roadmap
-# "DEFECT GONE"). The classic docker lane always passes --target merge
+# "DEFECT SOLVED"). The classic docker lane always passes --target merge
 # (build.ps1) and never executes this RUN.
 FROM merge-fanin AS built
 # ARGs do not cross stage boundaries — redeclare for sccache.

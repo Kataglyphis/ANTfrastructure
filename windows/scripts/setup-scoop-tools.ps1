@@ -1,5 +1,14 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# CACHE-BUST 2026-08-06 (round 2): content change sidesteps persistent
+# snapshotter debris finalizing THIS RUN layer's snapshot. Round 1 dodged
+# `ImportLayer 0xb7 "already exists"` (IDs nbcn…→ubvb…); the rebuilt
+# snapshot then died `ActivateLayer 0x20 sharing violation` (IDs
+# 16d9…→7d0i…) deterministically, SURVIVING a containerd+buildkitd
+# restart — same poisoned-snapshot family, different symptom. The error is
+# REPORTED at the COPY step below; busting that one is insufficient.
+# New content => new chain-IDs for this layer and everything after.
 
 #requires -Version 7.0
 
