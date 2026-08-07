@@ -356,26 +356,55 @@ function Assert-DiskHeadroom {
     # them. 2026-08-06: a full chain ran 2.5 h and died with the ninja symptom
     # at 4.8 GB free, and the two debris families it left cost another two
     # runs to sidestep. Two seconds of checking replaces all of that.
+    #
+    # CHECKS EVERY DRIVE THE BUILD TOUCHES, not just C:. The layer stores live on
+    # C:, but the build CONTEXT is the repo checkout — on the reference host a
+    # dynamically-expanding VHDX mounted at D:, which has its own reclaim trap
+    # (docs/windows-builds.md § VHDX-backed checkouts: 270 GB physical for 16 GB
+    # of live data, measured 2026-08-06) and fell to 11.7 GB free while a
+    # C:-only gate reported everything fine. A full context drive fails the same
+    # dishonest way a full store drive does.
     param(
-        [string]$Drive = 'C',
+        # Extra drive letters to gate on. C (the layer stores) is always checked;
+        # the drivers add their repo-root drive. Duplicates are harmless.
+        [string[]]$Drive = @('C'),
         # 40 GB is the Phase-D checklist figure: comfortably above the ~25 GB
         # misbehaviour band, with room for one heavy layer's scratch.
         [int]$MinFreeGb = 40,
         [switch]$Force
     )
-    $freeGb = [math]::Round((Get-PSDrive $Drive).Free / 1GB, 1)
-    if ($freeGb -ge $MinFreeGb) {
-        Write-Host "disk headroom OK: ${Drive}: ${freeGb} GB free (min ${MinFreeGb} GB)" -ForegroundColor Cyan
-        return
-    }
     $reclaim = 'Reclaim first (docs/windows-builds.md § Store GC): ' +
         'buildctl prune --free-storage <MB ABOVE total disk size, it is a minimum-free TARGET>; ' +
-        'then admin `nerdctl --namespace buildkit rmi` for superseded bk-* stage tags.'
+        'then admin `nerdctl --namespace buildkit rmi` for superseded bk-* stage tags. ' +
+        'For a VHDX-backed checkout the lever is a different one entirely: ' +
+        'windows\scripts\compact-host-vhdx.ps1 / rebuild-host-vhdx.ps1.'
+    # Normalize: accept 'C', 'C:', 'C:\' and full paths alike, dedupe, keep order.
+    $letters = [System.Collections.Generic.List[string]]::new()
+    foreach ($d in (@('C') + $Drive)) {
+        if ([string]::IsNullOrWhiteSpace($d)) { continue }
+        $letter = ($d.Trim() -replace '^([A-Za-z]).*$', '$1').ToUpperInvariant()
+        if ($letter -and -not $letters.Contains($letter)) { $letters.Add($letter) }
+    }
+    $short = @()
+    foreach ($letter in $letters) {
+        $psDrive = Get-PSDrive $letter -ErrorAction SilentlyContinue
+        # A drive that does not exist is not a failure: the repo may well sit on
+        # C: on another machine, in which case the list collapses to one entry.
+        if (-not $psDrive -or $null -eq $psDrive.Free) { continue }
+        $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
+        if ($freeGb -ge $MinFreeGb) {
+            Write-Host "disk headroom OK: ${letter}: ${freeGb} GB free (min ${MinFreeGb} GB)" -ForegroundColor Cyan
+            continue
+        }
+        $short += "${letter}: has ${freeGb} GB free"
+    }
+    if ($short.Count -eq 0) { return }
+    $detail = $short -join '; '
     if ($Force) {
-        Write-Warning "${Drive}: only ${freeGb} GB free (min ${MinFreeGb} GB) - continuing because -Force was passed. $reclaim"
+        Write-Warning "$detail (min ${MinFreeGb} GB) - continuing because -Force was passed. $reclaim"
         return
     }
-    throw ("${Drive}: has ${freeGb} GB free, below the ${MinFreeGb} GB floor this build needs. " +
+    throw ("$detail, below the ${MinFreeGb} GB floor this build needs. " +
         'Starting here does not fail fast - it fails in hours, with symptoms that look like anything but disk ' +
         "(vanished tools, ExportLayer/ImportLayer errors), and leaves debris that outlives the run. $reclaim " +
         'Pass -Force to override deliberately.')
@@ -416,6 +445,49 @@ function Assert-DockerDaemon {
         "mean a daemon is running. $advice Pass -Force to override.")
 }
 
+function Get-ShimPatchStatePath {
+    # Where deploy-shim-patch.ps1 records what it installed, and where
+    # Assert-ShimPatch reads it back. Host state, not repo state: it describes
+    # THIS machine's Stevedore install, so it must not travel with a checkout.
+    param([string]$StatePath = '')
+    if ($StatePath) { return $StatePath }
+    if ($env:KATAGLYPHIS_SHIM_STATE) { return $env:KATAGLYPHIS_SHIM_STATE }
+    $root = if ($env:ProgramData) { $env:ProgramData } else { 'C:\ProgramData' }
+    return (Join-Path $root 'kataglyphis\shim-patch.json')
+}
+
+function Write-ShimPatchState {
+    # Record the SHA256 of the shim that was just deployed. Called by
+    # deploy-shim-patch.ps1 after a successful swap; this hash is what
+    # Assert-ShimPatch checks the live binary against on every BK build.
+    param(
+        [Parameter(Mandatory)][string]$ShimPath,
+        [string]$StatePath = '',
+        # Free-text: which patch variant went in ('local-45min', 'upstream-env', …).
+        [string]$Variant = '',
+        # The stock binary deploy-shim-patch preserved, if any — lets the gate
+        # say "reverted to stock" instead of the vaguer "hash changed".
+        [string]$StockBackupPath = ''
+    )
+    $resolved = Get-ShimPatchStatePath -StatePath $StatePath
+    $stockSha = ''
+    if ($StockBackupPath -and (Test-Path $StockBackupPath)) {
+        $stockSha = (Get-FileHash -Algorithm SHA256 -Path $StockBackupPath).Hash
+    }
+    $state = [ordered]@{
+        schema     = 'kataglyphis/shim-patch-state@1'
+        shimPath   = $ShimPath
+        sha256     = (Get-FileHash -Algorithm SHA256 -Path $ShimPath).Hash
+        sizeBytes  = (Get-Item $ShimPath).Length
+        variant    = $Variant
+        stockSha256 = $stockSha
+        deployedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path $resolved -Parent) | Out-Null
+    $state | ConvertTo-Json -Depth 4 | Set-Content -Path $resolved -Encoding utf8
+    return $resolved
+}
+
 function Assert-ShimPatch {
     # BuildKit-lane gate: the patched containerd-shim-runhcs-v1 is a LOCAL
     # patch (upstream: microsoft/hcsshim#2855) and EVERY Stevedore/containerd
@@ -423,32 +495,83 @@ function Assert-ShimPatch {
     # tearDownTimeout is back, which means the first heavy media finalize dies
     # with ExportLayer 0x3 — hours in, after the compile is already paid for.
     #
-    # Detection is by SIZE because that is the only signal available without
-    # running the binary; the shim logs its effective timeout at Debug level,
-    # which does not reach containerd's log, so a quiet log proves nothing.
-    # Sizes rot as hcsshim moves, hence: a KNOWN-STOCK size is a hard failure,
-    # while an UNRECOGNISED size only warns (it is probably a newer patched
-    # build, and refusing to build on that would be worse than the risk).
+    # PRIMARY CHECK: SHA256 against what deploy-shim-patch.ps1 recorded when it
+    # installed the binary (2026-08-07). This repo pins every other downloaded
+    # input by hash — pwsh zip, git installer, scoop installer, CUDA, cuDNN,
+    # nuget — and the shim is the one binary whose reversion costs hours, so it
+    # gets the same treatment. The recorded hash refreshes when YOU deploy, so
+    # unlike a size table it cannot rot as hcsshim moves.
+    #
+    # FALLBACK (no state file yet): the original size heuristic. It exists only
+    # so an un-recorded host is not blocked; sizes are a weak signal, which is
+    # exactly why an unrecognised one warns rather than fails — and why the
+    # warning now tells you how to upgrade the host to the hash check.
+    #
+    # Behavioural verification is still the only PROOF the patch took effect
+    # (the shim logs its timeout at Debug level, which never reaches
+    # containerd's log): run the OpenCV canary after any shim or OS change.
     param(
         [string]$ShimPath = "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe",
         # Sizes measured on the reference host; extend as hcsshim moves.
         [long[]]$PatchedSize = @(25332736, 25329664),
         [long[]]$StockSize = @(23279616),
+        [string]$StatePath = '',
         [switch]$Force
     )
     if (-not (Test-Path $ShimPath)) {
         Write-Warning "shim not found at $ShimPath - skipping the patch check."
         return
     }
-    $size = (Get-Item $ShimPath).Length
-    if ($PatchedSize -contains $size) {
-        Write-Host "runhcs shim: patched build ($('{0:N0}' -f $size) bytes)" -ForegroundColor Cyan
-        return
-    }
     $advice = 'Re-install it before building: pwsh -File windows\scripts\deploy-shim-patch.ps1 ' +
         '-ShimPath <your build> (and -ServiceEnvironment for an upstream-patch build, which needs ' +
         'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT set or it silently keeps the 30s default). ' +
         'Recipe + patch: windows/upstream/hcsshim-teardown-timeout/.'
+    $size = (Get-Item $ShimPath).Length
+
+    $statePath = Get-ShimPatchStatePath -StatePath $StatePath
+    $state = $null
+    if (Test-Path $statePath) {
+        try { $state = Get-Content $statePath -Raw | ConvertFrom-Json }
+        catch { Write-Warning "shim state file $statePath is unreadable ($($_.Exception.Message)) - falling back to the size check." }
+    }
+    # A state file written for a DIFFERENT install path describes another
+    # binary; treat it as absent rather than comparing unrelated hashes.
+    if ($state -and $state.shimPath -and $state.shimPath -ne $ShimPath) {
+        Write-Warning "shim state file $statePath records '$($state.shimPath)', not '$ShimPath' - falling back to the size check."
+        $state = $null
+    }
+
+    if ($state -and $state.sha256) {
+        $live = (Get-FileHash -Algorithm SHA256 -Path $ShimPath).Hash
+        if ($live -eq $state.sha256) {
+            $variant = if ($state.variant) { ", variant $($state.variant)" } else { '' }
+            Write-Host "runhcs shim: hash matches the deployed patch (deployed $($state.deployedAt)$variant)" -ForegroundColor Cyan
+            return
+        }
+        $what = if ($state.stockSha256 -and $live -eq $state.stockSha256) {
+            'has been REVERTED TO THE STOCK BINARY'
+        } else {
+            'has CHANGED since the patch was deployed'
+        }
+        $detail = ("runhcs shim at $ShimPath $what (recorded $($state.sha256.Substring(0,12))… on " +
+            "$($state.deployedAt), live $($live.Substring(0,12))…, $('{0:N0}' -f $size) bytes) - " +
+            'most likely a Stevedore/containerd update. Heavy media layers WILL fail with ' +
+            "hcsshim::ExportLayer 0x3 after the compile is already paid for. $advice")
+        if ($Force) {
+            Write-Warning "$detail Continuing because -Force was passed."
+            return
+        }
+        throw "$detail Pass -Force to override."
+    }
+
+    # ── fallback: size heuristic (no recorded hash on this host yet) ──────────
+    $record = "Record the deployed binary's hash so this gate stops guessing: re-run " +
+        'windows\scripts\deploy-shim-patch.ps1 (it writes ' + $statePath + ' on a successful swap).'
+    if ($PatchedSize -contains $size) {
+        Write-Host "runhcs shim: patched build by SIZE ($('{0:N0}' -f $size) bytes; no recorded hash)" -ForegroundColor Cyan
+        Write-Warning $record
+        return
+    }
     if ($StockSize -contains $size) {
         if ($Force) {
             Write-Warning "runhcs shim is STOCK ($('{0:N0}' -f $size) bytes) - continuing because -Force was passed. Expect ExportLayer 0x3 on the first heavy media finalize. $advice"
@@ -458,8 +581,8 @@ function Assert-ShimPatch {
             'patch has been reverted, most likely by a Stevedore/containerd update. Heavy media layers WILL fail ' +
             "with hcsshim::ExportLayer 0x3 after the compile is already paid for. $advice Pass -Force to override.")
     }
-    Write-Warning ("runhcs shim size $('{0:N0}' -f $size) bytes is neither a known patched nor a known stock build. " +
-        "If this is a newer patched shim, add its size to Assert-ShimPatch -PatchedSize. $advice")
+    Write-Warning ("runhcs shim size $('{0:N0}' -f $size) bytes is neither a known patched nor a known stock build, " +
+        "and no deployed hash is recorded on this host. $record $advice")
 }
 
 function Get-MediaMemoryBudget {
@@ -479,4 +602,5 @@ Export-ModuleMember -Function Initialize-BuildDriverContext, Set-BuildDriverIsol
     Get-DockerBuildArgList, Assert-ImageExists, Resolve-BuildIsolation,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
     Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
-    Assert-DiskHeadroom, Assert-ShimPatch, Assert-DockerDaemon
+    Assert-DiskHeadroom, Assert-ShimPatch, Assert-DockerDaemon,
+    Get-ShimPatchStatePath, Write-ShimPatchState

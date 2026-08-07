@@ -155,7 +155,9 @@ Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoScca
 # disk shortage disguised as a missing ninja, and a Stevedore update can revert
 # the shim patch so the first heavy finalize fails with ExportLayer 0x3 after
 # the compile is already paid for. Two seconds here, hours saved there.
-Assert-DiskHeadroom -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
+# -Drive: repo checkout's drive on top of C: (see the same call in build.ps1) —
+# buildctl streams the local context from here on every solve.
+Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
 Assert-ShimPatch -Force:$SkipHostChecks
 
 # --- tags: fully-qualified for containerd-store handoff; bk- namespaced so the

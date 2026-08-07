@@ -1,0 +1,218 @@
+# Tests for the two host preflight gates in WindowsBuildDriver.Common.psm1 that
+# were hardened on 2026-08-07: Assert-DiskHeadroom (now multi-drive) and
+# Assert-ShimPatch (now SHA256-based, size only as a fallback).
+#
+# Both gates only ever run at the start of a multi-hour build, so a regression
+# in either is invisible until it costs a run: a disk gate that watches the
+# wrong volume passes a build straight into the "hcsshim fails weirdly" band,
+# and a shim gate that waves the stock binary through hands you ExportLayer 0x3
+# after the compile is already paid for.
+
+Describe 'Assert-DiskHeadroom (multi-drive)' {
+
+    It 'passes when every checked drive clears the floor' {
+        # MinFreeGb 0: no real drive can be below it, so this exercises the
+        # success path without depending on the machine's actual free space.
+        Assert-DiskHeadroom -MinFreeGb 0
+        Assert-DiskHeadroom -Drive @('C') -MinFreeGb 0
+    }
+
+    It 'accepts letter, colon and full-path forms for the same drive' {
+        # The drivers pass $repoRoot (a path); humans pass 'D:'. Both must
+        # normalize to one letter rather than blowing up in Get-PSDrive.
+        foreach ($form in @('C', 'C:', 'C:\', "$env:SystemRoot")) {
+            Assert-DiskHeadroom -Drive @($form) -MinFreeGb 0
+        }
+    }
+
+    It 'ignores a drive letter that does not exist on this host' {
+        # A repo checked out on C: collapses the list to one entry; a bogus
+        # letter must not be an error (the gate is about space, not topology).
+        Assert-DiskHeadroom -Drive @('Q', 'Z') -MinFreeGb 0
+    }
+
+    It 'throws below the floor and names the short drive' {
+        # 100 PB: below the floor on any host, so the failure path is testable.
+        Assert-Throws -MessagePattern 'C: has .* GB free' -Body {
+            Assert-DiskHeadroom -Drive @('C') -MinFreeGb 100000000
+        } -Message 'must fail loudly and say which drive is short'
+    }
+
+    It 'reports EVERY short drive, not just the first' {
+        # The whole point of the change: a full context drive next to a healthy
+        # store drive used to be invisible. Both must appear in one message.
+        $repoDrive = (Get-Item $PSScriptRoot).PSDrive.Name
+        $threw = $null
+        try { Assert-DiskHeadroom -Drive @($repoDrive) -MinFreeGb 100000000 } catch { $threw = $_.Exception.Message }
+        Assert-NotNull $threw 'must throw'
+        Assert-Match 'C:' $threw 'store drive must be reported'
+        Assert-Match "${repoDrive}:" $threw 'repo drive must be reported'
+    }
+
+    It '-Force downgrades the failure to a warning' {
+        Assert-DiskHeadroom -Drive @('C') -MinFreeGb 100000000 -Force -WarningAction SilentlyContinue
+    }
+}
+
+Describe 'Write-ShimPatchState / Get-ShimPatchStatePath' {
+
+    It 'records the hash, size and variant of the deployed binary' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            Set-Content -Path $shim -Value 'patched-shim-bytes' -NoNewline
+            $statePath = Join-Path $dir 'state.json'
+            $written = Write-ShimPatchState -ShimPath $shim -StatePath $statePath -Variant 'local-constant'
+            Assert-Equal $statePath $written 'returns the path it wrote'
+            $state = Get-Content $statePath -Raw | ConvertFrom-Json
+            Assert-Equal (Get-FileHash -Algorithm SHA256 -Path $shim).Hash $state.sha256 'records the live hash'
+            Assert-Equal 'local-constant' $state.variant 'records the variant'
+            Assert-Equal (Get-Item $shim).Length $state.sizeBytes 'records the size'
+        }
+    }
+
+    It 'records the stock backup hash when one is supplied' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            $stock = Join-Path $dir 'shim.exe.orig'
+            Set-Content -Path $shim -Value 'patched' -NoNewline
+            Set-Content -Path $stock -Value 'stock' -NoNewline
+            $statePath = Join-Path $dir 'state.json'
+            Write-ShimPatchState -ShimPath $shim -StatePath $statePath -StockBackupPath $stock | Out-Null
+            $state = Get-Content $statePath -Raw | ConvertFrom-Json
+            Assert-Equal (Get-FileHash -Algorithm SHA256 -Path $stock).Hash $state.stockSha256 'records the stock hash'
+        }
+    }
+
+    It 'prefers an explicit path, then the env override, then ProgramData' {
+        Assert-Equal 'C:\explicit.json' (Get-ShimPatchStatePath -StatePath 'C:\explicit.json')
+        Invoke-WithEnv @{ KATAGLYPHIS_SHIM_STATE = 'C:\from-env.json' } {
+            Assert-Equal 'C:\from-env.json' (Get-ShimPatchStatePath)
+        }
+        Invoke-WithEnv @{ KATAGLYPHIS_SHIM_STATE = '' } {
+            Assert-Match 'kataglyphis[\\/]shim-patch\.json$' (Get-ShimPatchStatePath) 'default lands under ProgramData'
+        }
+    }
+}
+
+Describe 'Assert-ShimPatch (hash gate)' {
+
+    It 'passes when the live binary matches the recorded hash' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            Set-Content -Path $shim -Value 'patched-shim-bytes' -NoNewline
+            $statePath = Join-Path $dir 'state.json'
+            Write-ShimPatchState -ShimPath $shim -StatePath $statePath -Variant 'local-constant' | Out-Null
+            # No -Force, no size in either table: the hash alone must satisfy it.
+            Assert-ShimPatch -ShimPath $shim -StatePath $statePath
+        }
+    }
+
+    It 'throws when the binary changed after deployment' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            Set-Content -Path $shim -Value 'patched-shim-bytes' -NoNewline
+            $statePath = Join-Path $dir 'state.json'
+            Write-ShimPatchState -ShimPath $shim -StatePath $statePath | Out-Null
+            # Simulate a Stevedore update overwriting the patched shim.
+            Set-Content -Path $shim -Value 'something-else-entirely' -NoNewline
+            Assert-Throws -MessagePattern 'CHANGED since the patch was deployed' -Body {
+                Assert-ShimPatch -ShimPath $shim -StatePath $statePath
+            }
+        }
+    }
+
+    It 'names a revert to stock specifically when the stock hash is known' {
+        # The operator-facing difference that matters: "reverted to stock" tells
+        # you a Stevedore update did it; "changed" leaves you guessing.
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            $stock = Join-Path $dir 'shim.exe.orig'
+            Set-Content -Path $shim -Value 'patched' -NoNewline
+            Set-Content -Path $stock -Value 'stock' -NoNewline
+            $statePath = Join-Path $dir 'state.json'
+            Write-ShimPatchState -ShimPath $shim -StatePath $statePath -StockBackupPath $stock | Out-Null
+            Copy-Item $stock $shim -Force
+            Assert-Throws -MessagePattern 'REVERTED TO THE STOCK BINARY' -Body {
+                Assert-ShimPatch -ShimPath $shim -StatePath $statePath
+            }
+        }
+    }
+
+    It '-Force downgrades a hash mismatch to a warning' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            Set-Content -Path $shim -Value 'patched' -NoNewline
+            $statePath = Join-Path $dir 'state.json'
+            Write-ShimPatchState -ShimPath $shim -StatePath $statePath | Out-Null
+            Set-Content -Path $shim -Value 'other' -NoNewline
+            Assert-ShimPatch -ShimPath $shim -StatePath $statePath -Force -WarningAction SilentlyContinue
+        }
+    }
+
+    It 'ignores a state file recorded for a DIFFERENT install path' {
+        # Comparing hashes across two unrelated binaries would be worse than no
+        # check at all, so the gate must fall back instead.
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            $other = Join-Path $dir 'elsewhere.exe'
+            Set-Content -Path $shim -Value 'patched' -NoNewline
+            Set-Content -Path $other -Value 'unrelated' -NoNewline
+            $statePath = Join-Path $dir 'state.json'
+            Write-ShimPatchState -ShimPath $other -StatePath $statePath | Out-Null
+            # Falls back to size: declare this file's size as patched -> passes.
+            Assert-ShimPatch -ShimPath $shim -StatePath $statePath `
+                -PatchedSize @((Get-Item $shim).Length) -WarningAction SilentlyContinue
+        }
+    }
+}
+
+Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
+
+    It 'accepts a known patched size and asks to record the hash' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            Set-Content -Path $shim -Value 'x' -NoNewline
+            Assert-ShimPatch -ShimPath $shim -StatePath (Join-Path $dir 'absent.json') `
+                -PatchedSize @((Get-Item $shim).Length) -WarningAction SilentlyContinue
+        }
+    }
+
+    It 'still fails hard on a known stock size' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            Set-Content -Path $shim -Value 'x' -NoNewline
+            # The patched sentinel must not collide with the fixture's real size
+            # (1 byte), or the patched branch wins and the stock check never runs.
+            Assert-Throws -MessagePattern 'STOCK binary' -Body {
+                Assert-ShimPatch -ShimPath $shim -StatePath (Join-Path $dir 'absent.json') `
+                    -PatchedSize @(999999) -StockSize @((Get-Item $shim).Length)
+            }
+        }
+    }
+
+    It 'warns (never throws) on an unrecognised size' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            Set-Content -Path $shim -Value 'x' -NoNewline
+            Assert-ShimPatch -ShimPath $shim -StatePath (Join-Path $dir 'absent.json') `
+                -PatchedSize @(999999) -StockSize @(999998) -WarningAction SilentlyContinue
+        }
+    }
+
+    It 'skips silently when no shim is installed at all' {
+        Invoke-InTestDir { param($dir)
+            Assert-ShimPatch -ShimPath (Join-Path $dir 'missing.exe') -WarningAction SilentlyContinue
+        }
+    }
+
+    It 'falls back to the size check when the state file is corrupt' {
+        Invoke-InTestDir { param($dir)
+            $shim = Join-Path $dir 'shim.exe'
+            Set-Content -Path $shim -Value 'x' -NoNewline
+            $statePath = Join-Path $dir 'state.json'
+            Set-Content -Path $statePath -Value 'not json at all {{{' -NoNewline
+            Assert-ShimPatch -ShimPath $shim -StatePath $statePath `
+                -PatchedSize @((Get-Item $shim).Length) -WarningAction SilentlyContinue
+        }
+    }
+}
