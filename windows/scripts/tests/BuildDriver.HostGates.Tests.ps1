@@ -216,3 +216,46 @@ Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
         }
     }
 }
+
+Describe 'Get-StageDiskFloorGb / Assert-StageDiskHeadroom (shared by both lanes)' {
+
+    # The floors were calibrated against a measured run after an estimated 80 GB
+    # media floor refused a legitimate rebuild at 72.3 GB free. They now live in
+    # the module so the classic lane — which had NO per-stage check at all —
+    # enforces the same numbers instead of a second copy that drifts.
+
+    It 'gives heavy stages a higher floor than trimmings' {
+        Assert-True ((Get-StageDiskFloorGb -Label 'Dockerfile.nvidia') -gt (Get-StageDiskFloorGb -Label 'Dockerfile.torch')) `
+            'CUDA must demand more headroom than the app stage'
+        Assert-True ((Get-StageDiskFloorGb -Label 'media-core') -gt (Get-StageDiskFloorGb -Label 'toolchain-builder')) `
+            'a media branch must demand more than the toolchain'
+    }
+
+    It 'matches BOTH lanes label shapes for the same stage' {
+        # BK labels look like 'Dockerfile.media-builder:media-core-built-onnx';
+        # classic ones like 'Dockerfile.media-builder-media-core'. A floor that
+        # only matched one shape would silently fall back to the default.
+        Assert-Equal (Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-onnx') `
+                     (Get-StageDiskFloorGb -Label 'Dockerfile.media-builder-media-core') `
+                     'the same stage must get the same floor in either lane'
+        Assert-Equal (Get-StageDiskFloorGb -Label 'Dockerfile.media-merge-builder:built') `
+                     (Get-StageDiskFloorGb -Label 'Dockerfile.media-merge-builder-merge') `
+                     'merge floors must agree across lanes'
+    }
+
+    It 'falls back to a sane default for an unknown label' {
+        Assert-Equal 40 (Get-StageDiskFloorGb -Label 'something-new') 'unknown stages still get a floor'
+        Assert-Equal 40 (Get-StageDiskFloorGb -Label '') 'an empty label must not throw'
+    }
+
+    It 'passes when the floor is clearable and throws when it is not' {
+        Assert-StageDiskHeadroom -Label 'test' -FloorGb 0     # 0 -> table lookup, real disk clears 40
+        Assert-Throws -MessagePattern 'REFUSING to start' -Body {
+            Assert-StageDiskHeadroom -Label 'test' -FloorGb 100000000
+        }
+    }
+
+    It '-Force downgrades the refusal to a warning' {
+        Assert-StageDiskHeadroom -Label 'test' -FloorGb 100000000 -Force -WarningAction SilentlyContinue
+    }
+}

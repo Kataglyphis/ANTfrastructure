@@ -924,7 +924,7 @@ are disjoint; cross builds already --skip-system-registration. Peak disk ~2×.
 - resource-monitor.sh:133: `pgrep -c` exits 1 on no match → sampler dies under
   errexit on an idle tick. `|| true` it. (01-core → still closure via bundle COPY.)
 =======
-### P8 — harvested from the litert/tvm stages of the same run (observability + log volume)
+### P8 — ✅ stub-names DONE; warning floods still open — harvested from the litert/tvm stages of the same run (observability + log volume)
 
 - **`WARNING: 5 lib stub(s) could not be created` names none of the five.**
   litert-lm pre-creates 319 ExternalProject `.a`/`.lib` stubs because the

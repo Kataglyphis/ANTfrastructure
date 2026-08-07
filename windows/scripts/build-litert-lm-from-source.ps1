@@ -1008,6 +1008,11 @@ if ($LASTEXITCODE -ne 0) {
 $buildNinjaFile = Join-Path $litertBuildDir 'build.ninja'
 $stubCount = 0
 $stubFailCount = 0
+# The PATHS, not just the tally. A count alone is unactionable: when lld-link
+# later dies with "could not open <path>", nothing connects that path back to
+# this step (measured 2026-08-07: "5 lib stub(s) could not be created" with the
+# five names only in Write-Verbose, i.e. invisible in a normal build log).
+$stubFailedPaths = [System.Collections.Generic.List[string]]::new()
 if (Test-Path $buildNinjaFile) {
     Get-Content $buildNinjaFile | ForEach-Object {
         [regex]::Matches($_, "[\x27""]?([^\x27""\s]+\.(?:a|lib))[\x27""]?") | ForEach-Object {
@@ -1035,13 +1040,21 @@ if (Test-Path $buildNinjaFile) {
                     $stubCount++
                 } else {
                     $stubFailCount++
+                    $stubFailedPaths.Add($aPath)
                     Write-Verbose "stub archive creation failed (exit $LASTEXITCODE): $aPath"
                 }
             }
         }
     }
     Write-Host "Created $stubCount ExternalProject lib stubs (.a/.lib referenced by the aggregate but not yet built); $stubFailCount failed"
-    if ($stubFailCount -gt 0) { Write-Warning "$stubFailCount lib stub(s) could not be created -- lld-link may fail with 'could not open' on those paths" }
+    if ($stubFailCount -gt 0) {
+        # Name them. Capped so a systemic failure cannot flood the log, but the
+        # cap is stated so nobody mistakes the list for the whole story.
+        $shown = @($stubFailedPaths | Select-Object -First 10)
+        $suffix = if ($stubFailCount -gt $shown.Count) { " (+$($stubFailCount - $shown.Count) more)" } else { '' }
+        Write-Warning ("$stubFailCount lib stub(s) could not be created -- lld-link may fail with 'could not open' on " +
+            "these paths${suffix}:`n  " + ($shown -join "`n  "))
+    }
 }
 
 Write-Host 'Running ExternalProject step 6 (build)...'
