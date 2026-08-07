@@ -20,7 +20,7 @@ SHELL ["bash", "-lc"]
 # full script set without touching the compiler layers.
 
 ARG LLVM_RELEASE=22.1.8
-ARG GCC_VERSION=16.1.0
+ARG GCC_VERSION=16.2.0
 ARG TARGETARCH
 ARG TARGETPLATFORM
 ARG BUILDARCH

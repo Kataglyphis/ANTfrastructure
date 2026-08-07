@@ -47,7 +47,7 @@ write_conf /etc/ld.so.conf.d/ffmpeg.conf "/opt/ffmpeg/lib"
 write_conf /etc/ld.so.conf.d/opencv.conf "/opt/opencv5/lib"
 write_conf /etc/ld.so.conf.d/onnxruntime.conf "/usr/local/lib/onnxruntime-cpu/lib" "/usr/local/lib/onnxruntime-genai/lib"
 write_conf /etc/ld.so.conf.d/litert.conf "/usr/local/lib"
-write_conf /etc/ld.so.conf.d/gcc.conf "/opt/gcc-${GCC_VERSION:-16.1.0}/lib64" "/opt/gcc-${GCC_VERSION:-16.1.0}/lib"
+write_conf /etc/ld.so.conf.d/gcc.conf "/opt/gcc-${GCC_VERSION:-16.2.0}/lib64" "/opt/gcc-${GCC_VERSION:-16.2.0}/lib"
 
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   write_conf /etc/ld.so.conf.d/cuda.conf "${CUDA_HOME:-/usr/local/cuda}/lib64"

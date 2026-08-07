@@ -81,7 +81,7 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
       esac
     fi
     if [ -n "${_fix_triplet}" ] && [ -L "/usr/lib/${_fix_triplet}/libstdc++.so" ]; then
-      _gcc_lib="/opt/gcc-${GCC_VERSION:-16.1.0}/${_fix_triplet}/lib64/libstdc++.so"
+      _gcc_lib="/opt/gcc-${GCC_VERSION:-16.2.0}/${_fix_triplet}/lib64/libstdc++.so"
       if [ -f "${_gcc_lib}" ]; then
         ln -sf "${_gcc_lib}" "/usr/lib/${_fix_triplet}/libstdc++.so"
       fi

@@ -24,7 +24,7 @@ Four-tier dependency chain with shared script tree:
 ```
 linux/
 ├── Dockerfile.base          ubuntu:26.04 + CMake/Node/uv
-├── Dockerfile.toolchain     GCC 16.1.0 + LLVM/Clang 22.1.8 + Python 3.14 (FROM base)
+├── Dockerfile.toolchain     GCC 16.2.0 + LLVM/Clang 22.1.8 + Python 3.14 (FROM base)
 ├── Dockerfile.sdk           Vulkan SDK + TVM (FROM toolchain)
 ├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera (FROM sdk)
 ├── Dockerfile.android       Android SDK/NDK + native GCC swap (FROM media)

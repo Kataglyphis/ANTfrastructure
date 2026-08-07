@@ -31,7 +31,7 @@ for _sve in /opt/scripts/core/load-versions-env.sh \
   fi
 done
 unset _sve _vef
-: "${GCC_VERSION:=16.1.0}"
+: "${GCC_VERSION:=16.2.0}"
 : "${LLVM_RELEASE:=22.1.8}"
 : "${PYTHON_VERSION:=3.14.6}"
 : "${PYTHON_MAJOR_MINOR:=3.14}"

@@ -17,8 +17,8 @@ set -euo pipefail
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
 
-: "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION:-16.1.0}}"
-: "${GCC_VERSION:=16.1.0}"
+: "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION:-16.2.0}}"
+: "${GCC_VERSION:=16.2.0}"
 
 # Load platform helpers (from 01-core or /opt/scripts/core) if available
 smoke_load_platform

@@ -12,7 +12,7 @@ fi
 _CROSS_GCC_LOADED=1
 
 gcc_toolchain_prefix() {
-  printf '%s' "/opt/gcc-${GCC_VERSION:-16.1.0}"
+  printf '%s' "/opt/gcc-${GCC_VERSION:-16.2.0}"
 }
 
 gcc_toolchain_bindir() {

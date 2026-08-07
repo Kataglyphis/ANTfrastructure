@@ -12,7 +12,7 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 VALIDATE_COMPILERS="/opt/scripts/packaging/validate-compilers.sh"
 
 main() {
-  local gcc_ver="${GCC_VERSION:-16.1.0}"
+  local gcc_ver="${GCC_VERSION:-16.2.0}"
   local llvm_ver="${LLVM_RELEASE:-22.1.8}"
   local target_arch
 

@@ -427,7 +427,7 @@ install_gcc() {
   local gcc_major="$(version_major "${GCC_WANTED}")"
   local default_full_version
   case "${gcc_major}" in
-    16) default_full_version="16.1.0" ;;
+    16) default_full_version="16.2.0" ;;
     15) default_full_version="15.2.0" ;;
     *) default_full_version="${gcc_major}.1.0" ;;
   esac

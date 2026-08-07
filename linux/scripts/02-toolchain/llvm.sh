@@ -294,7 +294,7 @@ llvm_cross_target_runtime_library_path() {
   prefix="$(llvm_cross_install_prefix "${target_label}")" || return 1
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || return 1
   gcc_prefix="$(gcc_toolchain_prefix 2>/dev/null || true)"
-  [ -n "${gcc_prefix}" ] || gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  [ -n "${gcc_prefix}" ] || gcc_prefix="/opt/gcc-${GCC_VERSION:-16.2.0}"
   gcc_major="${GCC_WANTED:-16}"
   gcc_major="$(version_major "${gcc_major}")"
   runtime_libdir="${gcc_prefix}/lib/gcc/${triplet}/${gcc_major}"

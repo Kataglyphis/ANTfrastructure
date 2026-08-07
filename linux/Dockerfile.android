@@ -189,7 +189,7 @@ FROM android-sdk AS final
 ARG TARGET_ARCH
 ARG TARGETARCH
 ARG BUILD_MODE
-ARG GCC_VERSION=16.1.0
+ARG GCC_VERSION=16.2.0
 
 COPY --link --from=android-gstreamer /opt/android/gstreamer /opt/android/gstreamer
 COPY --link --from=android-onnx /opt/android/onnxruntime /opt/android/onnxruntime

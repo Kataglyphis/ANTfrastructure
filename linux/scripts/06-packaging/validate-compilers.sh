@@ -48,7 +48,7 @@ _artifact_source_check_host_gcc() {
   if [ -x "${gcc_prefix}/bin/gcc" ]; then
     local host_ver host_elf
     host_ver="$("${gcc_prefix}/bin/gcc" --version 2>/dev/null | head -1 || true)"
-    if echo "${host_ver}" | grep -q "${GCC_VERSION:-16.1.0}"; then
+    if echo "${host_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
       echo "OK: host gcc ${gcc_prefix}/bin/gcc reports ${host_ver}"
     elif host_elf="$(readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1)"; then
       # Cross-built GCC binary (target-native) can't execute on build host.
@@ -58,10 +58,10 @@ _artifact_source_check_host_gcc() {
       if echo "${host_elf}" | grep -qi "${expected_machine}"; then
         echo "OK: host gcc ${gcc_prefix}/bin/gcc is cross-built ELF for ${target_arch} (${host_elf})"
       else
-        validate_fail "host-gcc" "${gcc_prefix}/bin/gcc --version: ${host_ver:-MISSING} (expected ${GCC_VERSION:-16.1.0}), ELF: ${host_elf}"
+        validate_fail "host-gcc" "${gcc_prefix}/bin/gcc --version: ${host_ver:-MISSING} (expected ${GCC_VERSION:-16.2.0}), ELF: ${host_elf}"
       fi
     else
-      validate_fail "host-gcc" "${gcc_prefix}/bin/gcc --version: ${host_ver:-MISSING} (expected ${GCC_VERSION:-16.1.0})"
+      validate_fail "host-gcc" "${gcc_prefix}/bin/gcc --version: ${host_ver:-MISSING} (expected ${GCC_VERSION:-16.2.0})"
     fi
   else
     validate_fail "host-gcc-missing" "${gcc_prefix}/bin/gcc not found"
@@ -85,7 +85,7 @@ _artifact_source_check_cross_compilers() {
     if [ -x "${cross_gcc}" ]; then
       if [ "${target_arch}" = "amd64" ]; then
         cross_ver="$("${cross_gcc}" --version 2>/dev/null | head -1 || true)"
-        if echo "${cross_ver}" | grep -q "${GCC_VERSION:-16.1.0}"; then
+        if echo "${cross_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
           echo "OK: cross ${cross_gcc} reports ${cross_ver}"
         else
           validate_fail "cross-gcc-${cross_arch}" "${cross_gcc} --version: ${cross_ver:-MISSING}"
@@ -102,11 +102,11 @@ _artifact_source_check_native_gcc() {
   local gcc_prefix="${_VCS_GCC_PREFIX}"
   # target-native GCC
   if [ "${target_arch}" != "amd64" ]; then
-    local native_gcc="/opt/gcc-${GCC_VERSION:-16.1.0}-native-${target_arch}"
+    local native_gcc="/opt/gcc-${GCC_VERSION:-16.2.0}-native-${target_arch}"
     if [ -d "${native_gcc}" ] && [ -x "${native_gcc}/bin/gcc" ]; then
       local native_ver native_elf expected_machine
       native_ver="$("${native_gcc}/bin/gcc" --version 2>/dev/null | head -1 || true)"
-      if echo "${native_ver}" | grep -q "${GCC_VERSION:-16.1.0}"; then
+      if echo "${native_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
         echo "OK: target-native ${native_gcc}/bin/gcc reports ${native_ver}"
       else
         native_elf="$(readelf -h "${native_gcc}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
@@ -195,7 +195,7 @@ validate_artifact_source() {
   local gcc_prefix
   _VCS_TARGET_ARCH="$(validate_resolve_arch)"
   echo "=== artifact-source: verifying compilers for target_arch=${_VCS_TARGET_ARCH} ==="
-  gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  gcc_prefix="/opt/gcc-${GCC_VERSION:-16.2.0}"
   _VCS_GCC_PREFIX="${gcc_prefix}"
   _VALIDATE_ERRORS=0
 
@@ -232,7 +232,7 @@ validate_package() {
   fi
 
   # --- wire GCC alternatives ---
-  gcc_prefix="/opt/gcc-${GCC_VERSION:-16.1.0}"
+  gcc_prefix="/opt/gcc-${GCC_VERSION:-16.2.0}"
   if [ -d "${gcc_prefix}" ]; then
     for tool in gcc g++ gcov; do
       candidate="${gcc_prefix}/bin/${tool}"
@@ -570,7 +570,7 @@ _smoke_optional_payloads() {
 }
 
 validate_smoke() {
-  local gcc_ver="${GCC_VERSION:-16.1.0}"
+  local gcc_ver="${GCC_VERSION:-16.2.0}"
   local llvm_ver="${LLVM_RELEASE:-22.1.8}"
   local target_arch
 

@@ -665,7 +665,7 @@ Rules:
 
 1. When ANY base image in the registry tag hierarchy is replaced, rebuild every
    downstream image from the replaced stage, OR verify the downstream images
-   already contain the new content (e.g. check `/opt/gcc-16.1.0-native-arm64`
+   already contain the new content (e.g. check `/opt/gcc-16.2.0-native-arm64`
    exists in the pinned sdk digest).
 2. `--from-stage` only controls where execution starts; it does NOT update the
    base image of the first stage. If the previous stage's tag was built from a
@@ -696,7 +696,7 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
 - Use `nerdctl` first on this host. `buildctl`/`ctr` commonly fail with permission errors.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all arches. Not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep source-built `clang 22.1.8` (not Ubuntu `clang 22.1.2`). Source-built `gcc 16.1.0` at `/opt/gcc-16.1.0` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
+- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep source-built `clang 22.1.8` (not Ubuntu `clang 22.1.2`). Source-built `gcc 16.1.0` at `/opt/gcc-16.2.0` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
 - Preserve optional runtime payloads and LLVM normalization in `Dockerfile.package`. Do not drop `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
 
 ## Dockerfile.media BuildKit Strategy
@@ -740,7 +740,7 @@ base ─┬─ onnxruntime ───────┐
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
   `.github/workflows/windows-scripts.yml` on windows-latest).
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
-- Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.1.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
+- Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.1.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
 
 ## Common Failure Modes

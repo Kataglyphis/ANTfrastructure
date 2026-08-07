@@ -362,8 +362,8 @@ verify_native_source_headers() {
 configure_foreign_arch_compiler_env() {
   local host_arch="$1"
   if [ "${host_arch}" != "x86_64" ]; then
-    export CC=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/gcc
-    export CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
+    export CC=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/gcc
+    export CXX=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/g++
     unset CC_LD CXX_LD RUSTC_WRAPPER SCCACHE_RECACHE
     echo "sccache bypass: CC=${CC} CXX=${CXX} (host ${host_arch})"
     # Abort now (seconds) rather than after a multi-minute source build if the
