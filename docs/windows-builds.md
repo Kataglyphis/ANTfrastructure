@@ -522,6 +522,43 @@ classic tag (the same scripts and Dockerfile targets run in both lanes).
 
 Housekeeping and sharing:
 
+- **Never kill a solve mid-finalize — and if a snapshot is already poisoned,
+  `-NoCache` the stage rather than editing the source (measured 2026-08-07).**
+  A chain was deliberately aborted (`Stop-Process buildctl`) at 23 GB free to
+  escape the disk danger band. The abort was the right call — the documented
+  alternative is a run that dies at 4.8 GB and leaves *two* poisoned snapshots —
+  but the kill itself left a **half-committed snapshot**, and the next run died
+  three times on it, deterministically, with identical IDs:
+
+  ```text
+  failed to commit 3p059m2d68o… to o47dumb0ovs4… during finalize:
+  failed to reimport snapshot: hcsshim::ImportLayer failed in Win32:
+  cannot create a file when that file already exists          ← 0xb7
+  ```
+
+  What does NOT work: the transient-retry engine (the failure is deterministic,
+  so it just burns all three attempts), and `buildctl prune` (495 MB returned —
+  this debris is not a reclaimable cache record, exactly as the `CACHE-BUST`
+  comments in `setup-scoop-tools.ps1` already noted).
+
+  What DOES work, and it is cheap:
+
+  ```pwsh
+  .\windows\build-buildkit.ps1 -Gpu -Stages sdk -NoCache   # the affected stage ONLY
+  ```
+
+  Re-running the RUN produces a new layer digest (its output is not
+  bit-identical), so every chain ID beneath it is fresh and the poisoned
+  snapshot is no longer in the path. The stage that had failed 3× exported
+  cleanly: `[bk:Dockerfile.nvidia] OK`, `Done in 00:17:10`, `exporting layers
+  346.1s`. **Prefer this over the in-file cache-bust technique** — identical
+  effect, costs one stage re-run, and leaves no comment archaeology in the
+  source. Reach for a source-level bust only when the debris sits in a layer
+  `-Stages` cannot isolate.
+
+  **Corollary worth internalising: let a doomed solve fail cleanly instead of
+  killing it.** A finalize that fails on its own leaves nothing behind; a kill
+  during finalize leaves this.
 - **Store GC — treat as MANDATORY OPS, not housekeeping.** buildkitd's store
   grows unbounded by default; iterating on the chain stacks full image
   generations (30–40 GB each) in the containerd store on every rebuild cycle.
