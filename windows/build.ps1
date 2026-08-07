@@ -365,6 +365,12 @@ function Invoke-Stage {
     # (base, nvidia, media-merge-builder) produce the plain `stage-<Dockerfile>.log`.
     $targetIdx = [array]::IndexOf($ExtraFlags, '--target')
     $targetSuffix = if ($targetIdx -ge 0 -and $targetIdx -lt $ExtraFlags.Count - 1) { '-' + $ExtraFlags[$targetIdx + 1] } else { '' }
+    # Per-stage disk gate — same calibrated floors as the BuildKit lane (they
+    # live in WindowsBuildDriver.Common). This lane is the documented
+    # "always-working fallback" and had NO per-stage check at all: the
+    # start-of-run one can pass with 160 GB free while a single heavy stage walks
+    # the disk into the band where hcsshim stops failing honestly.
+    Assert-StageDiskHeadroom -Label ([IO.Path]::GetFileName($Dockerfile) + $targetSuffix) -Force:$SkipHostChecks
     $stageLog = Join-Path $script:LogDir ("stage-" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix + ".log")
     Set-BuildPhase ("build:" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix)
     $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker

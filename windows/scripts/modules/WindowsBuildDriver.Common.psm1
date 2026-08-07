@@ -654,6 +654,65 @@ function Assert-ShimPatch {
         "and no deployed hash is recorded on this host. $record $advice")
 }
 
+function Get-StageDiskFloorGb {
+    # Free-space floor for ONE stage, keyed on its label. Stage-aware because the
+    # stages differ by an order of magnitude, and CALIBRATED against a measured
+    # run (2026-08-07) rather than guessed — an earlier 80 GB media floor refused
+    # a legitimate rebuild at 72 GB free, and a gate that blocks correct work is
+    # as useless as one that waves danger through. Observed consumption:
+    #
+    #   media-core (ONNX -> OpenCV -> FFmpeg -> GenAI):  118 -> 104 GB  (~15 GB)
+    #   media-litert:                                    104 ->  83 GB  (~20 GB)
+    #   media-tvm incl. export:                           83 ->  73 GB  (~10 GB)
+    #   merge fan-in:                                     73 ->  65 GB  (~ 8 GB)
+    #   sdk / CUDA:                                                     (~36 GB)
+    #
+    # Each floor is observed consumption plus runway to stay clear of the ~25 GB
+    # band where hcsshim stops failing honestly. Revisit with numbers, not
+    # intuition. Labels come from both lanes, so the patterns match BK stage
+    # labels ('Dockerfile.media-builder:media-core-built-onnx') and classic ones
+    # ('windows/Dockerfile.media-builder', 'media-core') alike.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Label)
+    switch -Regex ($Label) {
+        'nvidia|sdk'                       { return 60 }   # ~36 GB consumed + export headroom
+        'media-core|media-builder|media-litert|media-tvm' { return 55 }
+        'media-merge|merge'                { return 45 }
+        'toolchain'                        { return 40 }
+        default                            { return 40 }
+    }
+}
+
+function Assert-StageDiskHeadroom {
+    # Per-stage gate, shared by both lanes. The start-of-run Assert-DiskHeadroom
+    # passed at 164 GB free on 2026-08-07 and the chain still walked down to
+    # 23 GB INSIDE a heavy stage — into the band where hcsshim fails
+    # dishonestly. Escaping it meant killing the solve, and that kill poisoned a
+    # snapshot (three failed attempts plus a -NoCache rebuild). Refusing to
+    # ENTER a stage that cannot fit costs nothing while stopping is still free.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Label,
+        [string]$Drive = 'C',
+        [int]$FloorGb = 0,
+        [switch]$Force
+    )
+    if ($FloorGb -le 0) { $FloorGb = Get-StageDiskFloorGb -Label $Label }
+    $psDrive = Get-PSDrive $Drive -ErrorAction SilentlyContinue
+    if (-not $psDrive -or $null -eq $psDrive.Free) { return }
+    $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
+    if ($freeGb -ge $FloorGb) {
+        Write-Host "[$Label] disk OK: ${freeGb} GB free (stage floor ${FloorGb} GB)" -ForegroundColor DarkGray
+        return
+    }
+    $msg = ("[$Label] C: has ${freeGb} GB free, below the ${FloorGb} GB this stage needs. Entering it anyway walks " +
+        'into the band where hcsshim fails dishonestly, and the only escape (killing the solve) poisons a snapshot. ' +
+        'Reclaim first — docs/windows-builds.md § Store GC: admin `nerdctl --namespace buildkit rmi` on superseded ' +
+        'bk-* stage tags, then `buildctl prune --free-storage <MB above disk size>`.')
+    if ($Force) { Write-Warning "$msg Continuing because the host-check override was passed."; return }
+    throw "REFUSING to start: $msg"
+}
+
 function Get-MediaMemoryBudget {
     # MEMORY_LIMIT_GB auto-detect shared by both lanes: host RAM minus reserve,
     # floor 8 GB; an explicit request always wins.
@@ -672,4 +731,5 @@ Export-ModuleMember -Function Initialize-BuildDriverContext, Set-BuildDriverIsol
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
     Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
     Assert-DiskHeadroom, Assert-ShimPatch, Assert-DockerDaemon,
-    Get-ShimPatchStatePath, Write-ShimPatchState
+    Get-ShimPatchStatePath, Write-ShimPatchState,
+    Get-StageDiskFloorGb, Assert-StageDiskHeadroom

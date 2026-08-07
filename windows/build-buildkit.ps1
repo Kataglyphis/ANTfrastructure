@@ -233,39 +233,11 @@ function Invoke-BkStage {
     # attempts + a -NoCache rebuild). Checking BEFORE each stage refuses to enter
     # a stage that cannot fit, while stopping is still free.
     #
-    # Stage-aware, and CALIBRATED against a measured run (2026-08-07) rather than
-    # guessed. The first version used 80 GB for media and promptly refused a
-    # legitimate rebuild at 72 GB free — a gate that blocks correct work is as
-    # useless as one that waves danger through, so the numbers below come from
-    # observed consumption on this host:
-    #
-    #   media-core (ONNX -> OpenCV -> FFmpeg -> GenAI):  118 -> 104 GB   (~15 GB)
-    #   media-litert:                                    104 ->  83 GB   (~20 GB)
-    #   media-tvm (incl. export):                         83 ->  73 GB   (~10 GB)
-    #   merge fan-in attempts:                            73 ->  65 GB   (~ 8 GB)
-    #   sdk / CUDA (measured earlier):                                   (~36 GB)
-    #
-    # Floors are the observed consumption plus enough runway to stay clear of the
-    # ~25 GB band where hcsshim starts failing dishonestly — NOT a round number
-    # chosen for comfort. Revisit them with numbers, not intuition.
-    $stageFloorGb = switch -Regex ($Label) {
-        'Dockerfile\.nvidia'        { 60; break }   # ~36 GB consumed + export headroom
-        'media-core|media-builder'  { 55; break }   # ~20 GB consumed, largest single export ~25 GB
-        'media-merge'               { 45; break }   # ~8 GB consumed, but mounts three branch trees
-        'toolchain-builder'         { 40; break }
-        default                     { 40 }
-    }
-    $freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
-    if ($freeGb -lt $stageFloorGb -and $SkipHostChecks) {
-        Write-Warning "[bk:$Label] only ${freeGb} GB free (stage floor ${stageFloorGb} GB) - continuing because -SkipHostChecks was passed."
-    } elseif ($freeGb -lt $stageFloorGb) {
-        throw ("[bk:$Label] REFUSING to start: C: has ${freeGb} GB free, below the ${stageFloorGb} GB this stage needs. " +
-            'Entering it anyway walks into the band where hcsshim fails dishonestly, and the only escape (killing the ' +
-            'solve) poisons a snapshot. Reclaim first — docs/windows-builds.md § Store GC: admin ' +
-            '`nerdctl --namespace buildkit rmi` on superseded bk-* stage tags, then ' +
-            '`buildctl prune --free-storage <MB above disk size>`. Override with -SkipHostChecks.')
-    }
-    Write-Host "[bk:$Label] disk OK: ${freeGb} GB free (stage floor ${stageFloorGb} GB)" -ForegroundColor DarkGray
+    # Floors + message live in WindowsBuildDriver.Common so the CLASSIC lane —
+    # the documented "always-working fallback", which had no per-stage gate at
+    # all — enforces exactly the same numbers instead of a second copy that
+    # drifts.
+    Assert-StageDiskHeadroom -Label $Label -Force:$SkipHostChecks
     $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
     $dfName = [IO.Path]::GetFileName($Dockerfile)
     $bkArgs = @(
