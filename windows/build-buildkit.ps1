@@ -128,9 +128,11 @@ Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -Trans
 
 # --- versions (single source of truth) ---
 $versions = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
+# Thin lane-local alias over the canonical lookup in WindowsBuildDriver.Common
+# (see the same alias in build.ps1 — the two hand-copied bodies had already
+# drifted to different error messages).
 function Get-Ver([string]$Key) {
-    if (-not $versions.Contains($Key)) { throw "versions.env has no key $Key" }
-    return $versions[$Key]
+    return Get-VersionTableValue -VersionTable $versions -Key $Key
 }
 $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 

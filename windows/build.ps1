@@ -264,9 +264,12 @@ Initialize-BuildDriverContext -Docker $Docker -LogDir $script:LogDir -NoCache:$N
 $versionsFile = Join-Path $repoRoot 'linux\scripts\01-core\versions.env'
 if (-not (Test-Path $versionsFile)) { throw "versions.env not found at $versionsFile" }
 $versions = ConvertFrom-VersionsEnv -Path $versionsFile
+# Thin lane-local alias over the canonical lookup in WindowsBuildDriver.Common.
+# The body used to be a hand-copied twin of build-buildkit.ps1's — same check,
+# two different error messages, i.e. already drifting. Keep the short name
+# (many call sites below) but only one implementation.
 function Get-Ver([string]$Name) {
-    if (-not $versions.Contains($Name)) { throw "versions.env is missing $Name" }
-    return $versions[$Name]
+    return Get-VersionTableValue -VersionTable $versions -Key $Name
 }
 
 # NVIDIA versions are shared with Linux (full semvers in versions.env).

@@ -1,27 +1,38 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Guards the classic/BK twin-stage contract in Dockerfile.media-builder:
-# each media-<branch> stage has a media-<branch>-bk ENV twin that must declare
-# the SAME version-ARG set, and every ARG in a -bk twin must be mirrored into
-# ENV (the BK lane's build scripts read versions from the environment — an ARG
-# added to only one twin leaves the other lane silently building on the base
-# image's baked Machine env). sync_versions.py polices the VALUES line-by-line
-# but not the SETS — that's this suite's job.
+# Guards the version-env contract in Dockerfile.media-builder.
+#
+# HISTORY: until 2026-08-07 each classic media-<branch> stage had a
+# media-<branch>-bk ENV twin, and this suite existed to catch the two copies
+# drifting apart (sync_versions.py policed the VALUES, this suite the SETS).
+# The twins are gone: both lanes now descend from a single media-<branch>-env
+# ancestor, so drift is structurally impossible rather than policed.
+#
+# What is still worth asserting is what that refactor must never lose:
+#   1. the shared -env stage exists and declares the version ARGs,
+#   2. every ARG it declares is mirrored into ENV — the BK lane's build scripts
+#      read versions from the ENVIRONMENT, and an unmirrored ARG silently falls
+#      back to the base image's baked Machine env (i.e. a stale version),
+#   3. BOTH lanes descend from it — the classic builder stage and the BK
+#      compile stage — because that shared ancestry IS the anti-drift mechanism,
+#   4. nobody re-declares those ARGs in a descendant, which would reintroduce a
+#      twin by the back door.
 
 #requires -Version 7.0
 
 BeforeAll {
     $script:dfPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Dockerfile.media-builder'
 
-    # Minimal stage-aware Dockerfile scan: stage name -> @{ Args = [set]; EnvMirrored = [set] }
+    # Minimal stage-aware Dockerfile scan:
+    # stage name -> @{ Parent; Args = [set]; EnvMirrored = [set] }
     $script:stages = @{}
     $current = $null
     $inEnvContinuation = $false
     foreach ($line in (Get-Content $script:dfPath)) {
-        if ($line -match '^\s*FROM\s+\S+\s+AS\s+(\S+)') {
-            $current = $Matches[1]
-            $script:stages[$current] = @{ Args = @(); EnvMirrored = @() }
+        if ($line -match '^\s*FROM\s+(\S+)\s+AS\s+(\S+)') {
+            $current = $Matches[2]
+            $script:stages[$current] = @{ Parent = $Matches[1]; Args = @(); EnvMirrored = @() }
             $inEnvContinuation = $false
             continue
         }
@@ -37,51 +48,58 @@ BeforeAll {
             foreach ($m in [regex]::Matches($line, '([A-Za-z_][A-Za-z0-9_]*)="\$\{\1\}"')) {
                 $script:stages[$current].EnvMirrored += $m.Groups[1].Value
             }
-            if ($line -notmatch '`\s*$' -and $line -notmatch '^\s*ENV\s.*`\s*$') {
-                if ($line -notmatch '^\s*ENV\s') { $inEnvContinuation = $false }
-                elseif ($line -notmatch '`\s*$') { $inEnvContinuation = $false }
-            }
+            if ($line -notmatch '`\s*$') { $inEnvContinuation = $false }
         }
     }
 
-    $script:twinPairs = @(
-        @{ Classic = 'media-core';   Bk = 'media-core-bk' }
-        @{ Classic = 'media-litert'; Bk = 'media-litert-bk' }
-        @{ Classic = 'media-tvm';    Bk = 'media-tvm-bk' }
+    # branch -> the shared env stage, plus the two lanes that must descend from it.
+    $script:branches = @(
+        @{ Env = 'media-core-env';   Classic = 'media-core';   Bk = 'media-core-built-onnx' }
+        @{ Env = 'media-litert-env'; Classic = 'media-litert'; Bk = 'media-litert-built' }
+        @{ Env = 'media-tvm-env';    Classic = 'media-tvm';    Bk = 'media-tvm-built' }
     )
 }
 
-Describe 'Dockerfile.media-builder twin-stage parity' {
-    It 'parses all six twin stages' {
-        foreach ($p in $script:twinPairs) {
-            $script:stages.Keys | Should -Contain $p.Classic
-            $script:stages.Keys | Should -Contain $p.Bk
+Describe 'Dockerfile.media-builder version-env contract' {
+    It 'defines a shared version-env stage per media branch' {
+        foreach ($b in $script:branches) {
+            $script:stages.Keys | Should -Contain $b.Env
+            @($script:stages[$b.Env].Args).Count | Should -BeGreaterThan 0 `
+                -Because "$($b.Env) is the single place the branch's version ARGs are declared"
         }
     }
 
-    It 'declares identical ARG sets in each classic/-bk twin pair' {
-        foreach ($p in $script:twinPairs) {
-            $classicArgs = @($script:stages[$p.Classic].Args) | Sort-Object -Unique
-            $bkArgs      = @($script:stages[$p.Bk].Args) | Sort-Object -Unique
-            $onlyClassic = @($classicArgs | Where-Object { $_ -notin $bkArgs })
-            $onlyBk      = @($bkArgs | Where-Object { $_ -notin $classicArgs })
-            $onlyClassic | Should -BeNullOrEmpty -Because "$($p.Bk) is missing ARG(s) that $($p.Classic) declares: $($onlyClassic -join ', ')"
-            $onlyBk | Should -BeNullOrEmpty -Because "$($p.Classic) is missing ARG(s) that $($p.Bk) declares: $($onlyBk -join ', ')"
+    It 'mirrors every version ARG into ENV (NAME="${NAME}")' {
+        foreach ($b in $script:branches) {
+            $s = $script:stages[$b.Env]
+            $unmirrored = @($s.Args | Sort-Object -Unique | Where-Object { $_ -notin $s.EnvMirrored })
+            $unmirrored | Should -BeNullOrEmpty `
+                -Because "$($b.Env) ARG(s) without ENV mirror silently fall back to the base image's baked env: $($unmirrored -join ', ')"
         }
     }
 
-    It 'mirrors every -bk ARG into ENV (NAME="${NAME}")' {
-        foreach ($p in $script:twinPairs) {
-            $bk = $script:stages[$p.Bk]
-            $unmirrored = @($bk.Args | Sort-Object -Unique | Where-Object { $_ -notin $bk.EnvMirrored })
-            $unmirrored | Should -BeNullOrEmpty -Because "$($p.Bk) ARG(s) without ENV mirror: $($unmirrored -join ', ')"
+    It 'descends BOTH lanes from the shared env stage' {
+        foreach ($b in $script:branches) {
+            $script:stages.Keys | Should -Contain $b.Classic
+            $script:stages[$b.Classic].Parent | Should -Be $b.Env `
+                -Because 'the classic builder must inherit the shared version env, not restate it'
+
+            $script:stages.Keys | Should -Contain $b.Bk
+            # The BK head stage inherits directly; later partitions chain from
+            # handoff images (${MEDIA_CORE_*_IMAGE}) built off that same head.
+            $script:stages[$b.Bk].Parent | Should -Be $b.Env `
+                -Because 'the BK lane must inherit the shared version env, not restate it'
         }
     }
 
-    It 'declares a non-empty ARG set per twin (parser self-check)' {
-        foreach ($p in $script:twinPairs) {
-            @($script:stages[$p.Classic].Args).Count | Should -BeGreaterThan 0
-            @($script:stages[$p.Bk].Args).Count | Should -BeGreaterThan 0
+    It 'never re-declares a shared version ARG in a descendant stage' {
+        foreach ($b in $script:branches) {
+            $shared = @($script:stages[$b.Env].Args | Sort-Object -Unique)
+            foreach ($name in @($b.Classic, $b.Bk)) {
+                $redeclared = @($script:stages[$name].Args | Where-Object { $_ -in $shared })
+                $redeclared | Should -BeNullOrEmpty `
+                    -Because "$name re-declaring $($redeclared -join ', ') reintroduces the twin this refactor removed"
+            }
         }
     }
 }

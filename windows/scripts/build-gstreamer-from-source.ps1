@@ -44,6 +44,10 @@ param(
     [string]$LogDir            = 'C:\temp\logs',
     [string]$GitRepo           = 'https://github.com/gstreamer/gstreamer.git',
     [switch]$KeepBuildArtifacts,
+    # Scrub package/temp scratch INSIDE this process. This script IS its own
+    # layer in the BK lane (Dockerfile.media-merge-builder --target built), and
+    # layers are additive: a scrub in any later layer cannot shrink this one.
+    [switch]$ScrubAfter,
     [string[]]$MesonSetupArgs  = @()
 )
 
@@ -604,6 +608,8 @@ int _isatty(int);
 } finally {
     Stop-StructuredLogging -Context $logContext
 }
+
+if ($ScrubAfter) { Clear-BuildScratch }
 
 # Explicit success: pwsh -File (and docker run) propagate the LAST native exit
 # code otherwise -- a best-effort cleanup once failed a fully green stage with

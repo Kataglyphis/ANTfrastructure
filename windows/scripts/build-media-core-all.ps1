@@ -62,9 +62,7 @@ Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $Install
 # bin\->lib\ copy that used to sit here would silently mask a regression there.)
 
 
-Write-Host "`n=== media-core chain completed ==="
-
-if ($ScrubAfter) { Clear-BuildScratch }
+Complete-SourceBuildChain -Label 'media-core' -ScrubAfter:$ScrubAfter
 
 # Explicit success: pwsh -File (and docker run) propagate the LAST native exit
 # code otherwise -- a best-effort cleanup once failed a fully green stage with

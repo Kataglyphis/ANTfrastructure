@@ -25,7 +25,11 @@ param(
     # Stop AFTER the named stage (inclusive) — same chain-partition contract
     # as build-media-core-all.ps1 / build-media-tvm-all.ps1 (was asymmetrically
     # missing here).
-    [string]$Until = ''
+    [string]$Until = '',
+    # Scrub package/temp scratch INSIDE this process, i.e. inside the layer that
+    # created it — see Complete-SourceBuildChain for why a downstream scrub
+    # cannot shrink this layer.
+    [switch]$ScrubAfter
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,7 +48,7 @@ $stages = @(
 Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom -Until $Until
 
 
-Write-Host "`n=== media-litert chain completed ==="
+Complete-SourceBuildChain -Label 'media-litert' -ScrubAfter:$ScrubAfter
 
 # Explicit success: pwsh -File (and docker run) propagate the LAST native exit
 # code otherwise -- a best-effort cleanup once failed a fully green stage with

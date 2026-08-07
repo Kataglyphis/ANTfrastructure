@@ -964,9 +964,39 @@ function Copy-SidecarDll {
 # NB the test suites ARE consumers of this export list (first trim pass broke
 # Resolve/Artifact suites) — Save-PythonWheel/Get-CudaRoot/Resolve-TensorRtRoot/
 # sccache helpers stay exported for them.
+function Complete-SourceBuildChain {
+    # Shared epilogue for the build-*-all.ps1 chain wrappers: completion banner
+    # plus the in-layer scratch scrub. The three wrappers had hand-copied both.
+    #
+    # WHY THE SCRUB MUST HAPPEN HERE and not in a later layer: image layers are
+    # additive. Package-manager scratch (NuGet restore, pip cache, %TEMP%,
+    # INetCache) written by THIS chain is already committed into THIS layer;
+    # deleting it from a downstream layer only adds a whiteout entry and the
+    # bytes are still shipped. Until 2026-08-07 only the last media-core
+    # partition scrubbed, so the onnx/opencv/ffmpeg/litert/tvm/gstreamer layers
+    # each carried their own scratch forever.
+    #
+    # Safe against C:\temp: Clear-BuildScratch targets $env:TEMP, which is the
+    # container profile temp here. setup-vs.ps1 repoints $env:TEMP to C:\temp
+    # but only inside its own process, in a different (base) layer — so the
+    # cpython tree and the script/patch mounts under C:\temp are never touched.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [switch]$ScrubAfter
+    )
+    Write-Host "`n=== $Label chain completed ==="
+    if ($ScrubAfter) { Clear-BuildScratch }
+    # Callers still end with their own explicit `exit 0`: pwsh -File (and
+    # docker run) otherwise propagate the LAST native exit code, and a
+    # best-effort cleanup once failed a fully green stage with exit 145.
+    $global:LASTEXITCODE = 0
+}
+
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
     'Invoke-SourceBuildChain',
+    'Complete-SourceBuildChain',
     'Stop-LingeringBuildProcess',
     'Export-BuildHandoff',
     'Import-BuildHandoff',

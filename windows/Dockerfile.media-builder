@@ -48,8 +48,37 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
      C:\temp\scripts\modules\
 
-# ── media-core builder (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg) ───────────
-FROM common AS media-core
+# ── Mount source for the BK lane's module closure ────────────────────────────
+# Every compile RUN below needs the SAME five modules (the in-container closure
+# of the build scripts: SourceBuild.Common + its imports Shared, Patches, Cuda,
+# Native.Common). They used to be listed as five separate --mount lines in each
+# of six RUNs — 30 duplicated lines that had to be edited in lockstep.
+#
+# Cache behaviour is UNCHANGED by this collapse, which is the whole reason it is
+# safe: because all six RUNs mount all five files, editing any one of them
+# already invalidated all six. Keying them on one stage that contains exactly
+# those five files preserves the property that actually matters — edits to the
+# ~24 host-only modules (BuildDriver, BuildKit, Flutter, …) still touch nothing
+# here, which is why a whole-modules-dir mount remains wrong.
+#
+# Parent is BASE_IMAGE, not `common`: `common` also carries versions.env, and
+# there is no reason for a versions bump to key into this stage.
+FROM ${BASE_IMAGE} AS buildmods
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
+     windows\scripts\modules\WindowsNative.Common.psm1 `
+     C:\bkmods\
+
+# ── media-core version env — SHARED ANCESTOR of both lanes ───────────────────
+# The classic `media-core` stage and the BK compile stages used to declare this
+# ARG+ENV block twice (a `media-core-bk` twin), kept in step by sync_versions.py
+# and BuildKit.TwinParity.Tests.ps1. Declaring it ONCE and descending both lanes
+# from it makes divergence structurally impossible instead of policed.
+# The BK lane still must not inherit the classic stage's script/patch COPY
+# layers — hence a shared ANCESTOR rather than one lane building on the other.
+FROM common AS media-core-env
 
 ARG ONNXRUNTIME_VERSION=v1.28.0
 ARG ONNXRUNTIME_GENAI_VERSION=v0.15.0
@@ -70,6 +99,9 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
     CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
 
+# ── media-core builder, classic lane (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg)
+FROM media-core-env AS media-core
+
 COPY windows\scripts\patches\onnxruntime     C:\temp\scripts\patches\onnxruntime
 COPY windows\scripts\patches\opencv          C:\temp\scripts\patches\opencv
 COPY windows\scripts\patches\opencv_contrib  C:\temp\scripts\patches\opencv_contrib
@@ -82,14 +114,17 @@ COPY windows\scripts\build-onnx-from-source.ps1 `
      windows\scripts\build-media-core-all.ps1 `
      C:\temp\scripts\
 
-# ── media-litert builder (LiteRT -> LiteRT-LM) ───────────────────────────────
-FROM common AS media-litert
+# ── media-litert version env — SHARED ANCESTOR of both lanes (see media-core-env)
+FROM common AS media-litert-env
 
 ARG LITERT_VERSION=v2.1.6
 ARG LITERT_LM_VERSION=0.14.0
 
 ENV LITERT_VERSION="${LITERT_VERSION}" `
     LITERT_LM_VERSION="${LITERT_LM_VERSION}"
+
+# ── media-litert builder, classic lane (LiteRT -> LiteRT-LM) ─────────────────
+FROM media-litert-env AS media-litert
 
 # LiteRT-LM's Windows shims (POSIX headers + CRT-compat source) and CMake patch
 # snippets -- the build script stages them from these $PSScriptRoot-relative dirs.
@@ -103,14 +138,17 @@ COPY windows\scripts\build-litert-from-source.ps1 `
      windows\scripts\debug-litertlm-link.ps1 `
      C:\temp\scripts\
 
-# ── media-tvm builder (TVM -> IREE) ──────────────────────────────────────────
-FROM common AS media-tvm
+# ── media-tvm version env — SHARED ANCESTOR of both lanes (see media-core-env)
+FROM common AS media-tvm-env
 
 ARG TVM_REF=v0.25.0
 ARG IREE_VERSION=v3.11.0
 
 ENV TVM_REF="${TVM_REF}" `
     IREE_VERSION="${IREE_VERSION}"
+
+# ── media-tvm builder, classic lane (TVM -> IREE) ────────────────────────────
+FROM media-tvm-env AS media-tvm
 
 COPY windows\scripts\patches\iree C:\temp\scripts\patches\iree
 
@@ -156,112 +194,60 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # bk-warm.ps1/bk-materialize.ps1 and the handoff helpers remain in the
 # tree for exactly that case.
 
-# Version ENV twin of the classic media-core stage (the *-bk lineage must not
-# inherit the classic stage's script COPY layers). sync_versions.py keeps the
-# duplicated ARG defaults in lockstep.
-FROM common AS media-core-bk
-ARG ONNXRUNTIME_VERSION=v1.28.0
-ARG ONNXRUNTIME_GENAI_VERSION=v0.15.0
-ARG OPENCV_SOURCE_VERSION=5.x
-ARG FFMPEG_VERSION=n9.0
-ARG PYAV_VERSION=18.0.0
-ARG NV_CODEC_HEADERS_REF=n13.1.15.0
-ARG CUDA_ARCHITECTURES="80;86;89;90"
-ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
-    ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
-    OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
-    FFMPEG_VERSION="${FFMPEG_VERSION}" `
-    PYAV_VERSION="${PYAV_VERSION}" `
-    NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
-    CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
-
-FROM media-core-bk AS media-core-built-onnx
+# The BK compile stages descend from the SHARED media-core-env ancestor — the
+# former `media-core-bk` ENV twin (and the sync_versions.py bookkeeping it
+# required) is gone; see media-core-env above.
+FROM media-core-env AS media-core-built-onnx
 RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
-    & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
 RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
     --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
 RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
 RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
-FROM common AS media-litert-bk
-ARG LITERT_VERSION=v2.1.6
-ARG LITERT_LM_VERSION=0.14.0
-ENV LITERT_VERSION="${LITERT_VERSION}" `
-    LITERT_LM_VERSION="${LITERT_LM_VERSION}"
-
-FROM media-litert-bk AS media-litert-built
+FROM media-litert-env AS media-litert-built
 RUN --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
     --mount=type=bind,source=windows/scripts/debug-litertlm-link.ps1,target=C:\bkmnt\debug-litertlm-link.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
-    & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
-FROM common AS media-tvm-bk
-ARG TVM_REF=v0.25.0
-ARG IREE_VERSION=v3.11.0
-ENV TVM_REF="${TVM_REF}" `
-    IREE_VERSION="${IREE_VERSION}"
-
-FROM media-tvm-bk AS media-tvm-built
+FROM media-tvm-env AS media-tvm-built
 RUN --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
-    & 'C:\bkmnt\build-media-tvm-all.ps1' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\build-media-tvm-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
