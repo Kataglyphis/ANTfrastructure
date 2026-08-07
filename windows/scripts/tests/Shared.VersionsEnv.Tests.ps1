@@ -130,3 +130,41 @@ Describe 'Expand-ArchiveSubdirectory' {
         }
     }
 }
+
+Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026-08-07)' {
+
+    # These maps are now the ONLY channel by which current version values reach
+    # a branch's build scripts: the media stages no longer COPY versions.env,
+    # because that COPY made every pin edit invalidate all six media compiles.
+    # A key a script reads but that is missing here silently falls back to the
+    # value baked into the base image. The audit that produced these lists found
+    # five such gaps; these cases stop them coming back.
+
+    It 'passes every key the media-core scripts consume' {
+        $v = ConvertFrom-VersionsEnv -Path (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
+        $args_ = Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $v
+        foreach ($k in 'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_SOURCE_VERSION',
+                       'OPENCV_VERSION', 'FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF',
+                       'CUDA_ARCHITECTURES', 'PYTHON_VERSION') {
+            Assert-True ($args_.ContainsKey($k)) "media-core must forward $k"
+            Assert-True ([bool]$args_[$k]) "$k must not be empty"
+        }
+    }
+
+    It 'passes the litert keys INCLUDING the protoc/JRE pins' {
+        # PROTOC_VERSION must match LiteRT-LM's internal protobuf; a stale value
+        # emits gencode the pinned headers #error on.
+        $v = ConvertFrom-VersionsEnv -Path (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
+        $args_ = Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $v
+        foreach ($k in 'LITERT_VERSION', 'LITERT_LM_VERSION', 'PROTOC_VERSION', 'JRE_VERSION') {
+            Assert-True ($args_.ContainsKey($k)) "media-litert must forward $k"
+            Assert-True ([bool]$args_[$k]) "$k must not be empty"
+        }
+    }
+
+    It 'forwards values that actually match versions.env' {
+        $v = ConvertFrom-VersionsEnv -Path (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
+        $args_ = Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $v
+        Assert-Equal $v['PROTOC_VERSION'] $args_['PROTOC_VERSION'] 'forwarded value must be the canonical one'
+    }
+}

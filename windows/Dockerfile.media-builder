@@ -34,11 +34,24 @@ ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# Refresh C:\temp\versions.env — base bakes a copy + runs load-versions.ps1 to
-# set Machine env. Build scripts re-run load-versions.ps1 at run time, which reads
-# THIS file. Without this re-COPY, a versions.env change would silently use the
-# stale base copy (requiring a full base rebuild to take effect).
-COPY linux\scripts\01-core\versions.env C:\temp\versions.env
+# NO versions.env COPY HERE — deliberately removed 2026-08-07.
+#
+# It used to sit in this stage so the run-time `load-versions.ps1` would read
+# CURRENT values instead of the stale copy baked into the base image. The cost
+# was brutal and invisible: this stage is the ancestor of all three branch envs,
+# so ANY byte changed in versions.env invalidated all six media compiles — three
+# Windows-only toolchain pins triggered a full ~75-minute ONNX rebuild that day.
+#
+# Versions now arrive as build-args (Get-MediaBranchVersionArg, forwarded by both
+# drivers) and are declared as ARG+ENV in each `media-*-env` stage below, so a
+# pin only invalidates the branch that actually consumes it. The stale-file trap
+# is closed at the other end: `load-versions.ps1` now treats a value already
+# present in the process environment as authoritative and never overwrites it,
+# so the base-baked file can only fill gaps, never win.
+#
+# CONSEQUENCE FOR NEW BUILD SCRIPTS: whatever a script reads must be listed in
+# Get-MediaBranchVersionArg. Anything missing silently falls back to the
+# base-baked value — audit with the greps documented at that function.
 
 # Common modules for all builder images.
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
@@ -95,6 +108,11 @@ ARG FFMPEG_VERSION=n9.0
 ARG PYAV_VERSION=18.0.0
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 ARG CUDA_ARCHITECTURES="80;86;89;90"
+# Consumed by build-opencv-from-source.ps1 (bindings target + its own version
+# alias). Present here because the versions.env COPY is gone — see the `common`
+# stage comment; a key missing from this list silently uses the base-baked value.
+ARG OPENCV_VERSION=5.x
+ARG PYTHON_VERSION=3.14.6
 
 # ONE ENV instruction: the classic builder pays a layer per instruction and the
 # chain runs against Docker's 125-layer cap (see docs/windows-builds.md § layer
@@ -105,7 +123,9 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     FFMPEG_VERSION="${FFMPEG_VERSION}" `
     PYAV_VERSION="${PYAV_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
-    CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}"
+    CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
+    OPENCV_VERSION="${OPENCV_VERSION}" `
+    PYTHON_VERSION="${PYTHON_VERSION}"
 
 # ── media-core builder, classic lane (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg)
 FROM media-core-env AS media-core
@@ -127,9 +147,17 @@ FROM common AS media-litert-env
 
 ARG LITERT_VERSION=v2.1.6
 ARG LITERT_LM_VERSION=0.14.0
+# PROTOC_VERSION is NOT independent software: it must match the protobuf runtime
+# pinned inside LiteRT-LM (v0.14.0 -> 6.31.1 -> protoc 31.1). A stale value emits
+# gencode the pinned headers #error on (bit us 2026-08-03). JRE_VERSION feeds
+# Bazel. Both are here because the versions.env COPY is gone — see `common`.
+ARG PROTOC_VERSION=31.1
+ARG JRE_VERSION=21
 
 ENV LITERT_VERSION="${LITERT_VERSION}" `
-    LITERT_LM_VERSION="${LITERT_LM_VERSION}"
+    LITERT_LM_VERSION="${LITERT_LM_VERSION}" `
+    PROTOC_VERSION="${PROTOC_VERSION}" `
+    JRE_VERSION="${JRE_VERSION}"
 
 # ── media-litert builder, classic lane (LiteRT -> LiteRT-LM) ─────────────────
 FROM media-litert-env AS media-litert

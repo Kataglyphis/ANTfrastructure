@@ -270,21 +270,44 @@ function Get-MediaBranchVersionArg {
         [Parameter(Mandatory)][hashtable]$VersionTable
     )
     switch ($Branch) {
+        # COMPLETENESS IS LOAD-BEARING (2026-08-07). Since the media stages no
+        # longer COPY versions.env (that COPY made every pin edit invalidate the
+        # whole media chain), these maps are the ONLY channel by which current
+        # version values reach a branch's build scripts. A key that a script
+        # reads but that is missing here falls back to the value baked into the
+        # base image — silently, and possibly months old.
+        #
+        # The lists below were derived by auditing what the scripts actually
+        # read, both directly (`$env:X`) and indirectly (`Get-SourceBuildVersion
+        # -EnvironmentVariables`). Re-run that audit when adding a build script:
+        #   grep -ohE '\$env:[A-Z_]+' windows/scripts/build-*.ps1
+        #   grep -ohE "EnvironmentVariables?\s+@?\('[A-Z_, ']+" windows/scripts/build-*.ps1
         'media-core' {
             return @{
                 ONNXRUNTIME_VERSION       = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_VERSION'
                 ONNXRUNTIME_GENAI_VERSION = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_GENAI_VERSION'
                 OPENCV_SOURCE_VERSION     = Get-VersionTableValue $VersionTable 'OPENCV_VERSION'
+                # build-opencv reads OPENCV_VERSION as well as the SOURCE alias.
+                OPENCV_VERSION            = Get-VersionTableValue $VersionTable 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-VersionTableValue $VersionTable 'FFMPEG_VERSION'
                 PYAV_VERSION              = Get-VersionTableValue $VersionTable 'PYAV_VERSION'
                 NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
                 CUDA_ARCHITECTURES        = Get-VersionTableValue $VersionTable 'CUDA_ARCHITECTURES'
+                # build-opencv resolves the CPython it builds bindings against.
+                PYTHON_VERSION            = Get-VersionTableValue $VersionTable 'PYTHON_VERSION'
             }
         }
         'media-litert' {
             return @{
                 LITERT_VERSION    = Get-VersionTableValue $VersionTable 'LITERT_VERSION'
                 LITERT_LM_VERSION = Get-VersionTableValue $VersionTable 'LITERT_LM_VERSION'
+                # litert-lm pins host protoc to its internal protobuf runtime —
+                # a mismatch emits gencode the pinned headers #error on (bit us
+                # 2026-08-03: 35.1 vs 6.31.1). Losing this to a stale baked value
+                # would reintroduce exactly that.
+                PROTOC_VERSION    = Get-VersionTableValue $VersionTable 'PROTOC_VERSION'
+                # Bazel needs a JRE; litert-lm resolves it from this pin.
+                JRE_VERSION       = Get-VersionTableValue $VersionTable 'JRE_VERSION'
             }
         }
         'media-tvm' {
@@ -301,11 +324,23 @@ function Get-MediaMergeVersionArg {
     # args MINUS core-branch compile inputs its Dockerfile declares no ARG for,
     # PLUS its own GStreamer pin.
     param([Parameter(Mandatory)][hashtable]$VersionTable)
+    # BRANCH-ONLY keys: compile inputs the merge Dockerfile declares no ARG for.
+    # Forwarding them would only produce "unused build-arg" frontend warnings and
+    # put unrelated values into the merge stage's cache key. The list grew on
+    # 2026-08-07 when the branch maps gained the keys that used to arrive via the
+    # (now removed) versions.env COPY — a pre-existing test caught the leak
+    # immediately, which is why it is enumerated here rather than filtered by
+    # guesswork.
+    $branchOnly = @(
+        'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES',
+        'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
+        'PROTOC_VERSION', 'JRE_VERSION'       # media-litert: litert-lm toolchain pins
+    )
     $merge = @{}
     foreach ($branch in 'media-core', 'media-litert', 'media-tvm') {
         $args_ = Get-MediaBranchVersionArg -Branch $branch -VersionTable $VersionTable
         foreach ($k in $args_.Keys) {
-            if ($k -notin @('NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES')) { $merge[$k] = $args_[$k] }
+            if ($k -notin $branchOnly) { $merge[$k] = $args_[$k] }
         }
     }
     $merge['GSTREAMER_VERSION'] = Get-VersionTableValue $VersionTable 'GSTREAMER_VERSION'

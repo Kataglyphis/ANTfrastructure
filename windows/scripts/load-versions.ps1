@@ -31,13 +31,39 @@ if (-not (Test-Path $versionsFile)) {
     return
 }
 
+# PRECEDENCE (2026-08-07): a value already in the PROCESS environment WINS over
+# the file. In a container RUN the process environment is where Dockerfile
+# ARG/ENV values live — i.e. the values the driver just forwarded from the
+# CURRENT versions.env — while the file on disk may be the copy baked into the
+# base image at ITS build time. Overwriting unconditionally (the old behaviour)
+# meant the stale file silently beat the fresh args, which is exactly why every
+# media stage had to re-COPY versions.env, and that re-COPY is what made any pin
+# edit invalidate the whole media chain (~75 min of ONNX for a Windows-only
+# LLVM pin, measured today).
+#
+# With the file demoted to a gap-filler, the COPY can go and each branch gets
+# its versions as build-args instead — see Get-MediaBranchVersionArg.
+#
+# The BASE build is unaffected: nothing sets these in its process environment at
+# that point, so every key still gets baked into the Machine environment there.
+# An explicit override on the command line now also survives, which is the
+# behaviour one would expect anyway.
 Write-Host "Loading versions from: $versionsFile"
 $versions = ConvertFrom-VersionsEnv -Path $versionsFile
+$kept = 0
 foreach ($name in $versions.Keys) {
     $value = $versions[$name]
+    $fromEnvironment = [Environment]::GetEnvironmentVariable($name, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($fromEnvironment)) {
+        if ($fromEnvironment -ne $value) {
+            Write-Host "  $name = $fromEnvironment  (kept: build-arg/ENV beats the file's '$value')"
+        }
+        $kept++
+        continue
+    }
     [Environment]::SetEnvironmentVariable($name, $value, 'Machine')
     [Environment]::SetEnvironmentVariable($name, $value, 'Process')
     Write-Host "  $name = $value"
 }
-Write-Host 'versions.env loaded'
+Write-Host "versions.env loaded ($kept key(s) already provided by the environment and left untouched)"
 

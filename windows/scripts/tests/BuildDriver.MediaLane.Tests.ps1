@@ -27,6 +27,13 @@ function New-WbtFakeMediaVersionTable {
         GSTREAMER_VERSION         = 'gst-11'
         MEMORY_LIMIT_GB           = '999'
         BASE_IMAGE                = 'decoy/image:tag'
+        # Added 2026-08-07 with the removal of the media stages' versions.env
+        # COPY: these keys now travel as build-args (they used to reach the
+        # scripts through the copied file), so the branch maps read them and a
+        # fixture without them fails on the WRONG key.
+        PYTHON_VERSION            = 'py-12'
+        PROTOC_VERSION            = 'protoc-13'
+        JRE_VERSION               = 'jre-14'
     }
 }
 
@@ -42,15 +49,19 @@ Describe 'Get-MediaBranchVersionArg' {
                     ONNXRUNTIME_VERSION       = 'ort-1'
                     ONNXRUNTIME_GENAI_VERSION = 'genai-2'
                     OPENCV_SOURCE_VERSION     = 'cv-3'
+                    OPENCV_VERSION            = 'cv-3'
                     FFMPEG_VERSION            = 'ff-4'
                     PYAV_VERSION              = 'av-5'
                     NV_CODEC_HEADERS_REF      = 'nv-6'
                     CUDA_ARCHITECTURES        = '89-fake'
+                    PYTHON_VERSION            = 'py-12'
                 }
             }
             @{ Branch = 'media-litert'; Expected = @{
                     LITERT_VERSION    = 'lrt-7'
                     LITERT_LM_VERSION = 'lm-8'
+                    PROTOC_VERSION    = 'protoc-13'
+                    JRE_VERSION       = 'jre-14'
                 }
             }
             @{ Branch = 'media-tvm'; Expected = @{
