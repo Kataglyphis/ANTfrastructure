@@ -293,6 +293,17 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
   re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
   HASHTABLE. Splatting arrays onto native executables stays fine.
+- **In `RUN --mount=...,from=<stage>` the SOURCE path is Unix-style with NO
+  drive letter, even on Windows containers.** `source=C:\bkmods` is normalised
+  to `/C:/bkmods` and fails the solve with `failed to calculate checksum of ref
+  ...: "/C:/bkmods": not found` — it is a PARSE-time/cache-key failure, so it
+  dies the moment the stage is reached, not inside the container. Write
+  `source=/bkmods`; the COPY that populates the stage keeps the Windows form
+  (`C:\bkmods`), and `target=` stays Windows-shaped too. Only the from-stage
+  source is Unix. Cost a chain launch on 2026-08-07 (`buildmods` closure stage
+  in Dockerfile.media-builder / .media-merge-builder). Verify a from-stage
+  mount with a `Test-Path` assertion through it, NOT with `Get-ChildItem` — an
+  empty mount lists cleanly and exits 0, so a bare listing proves nothing.
 - **The "unreferenced" `windows/scripts` modules are EXTERNAL-CONSUMER API —
   never delete (owner decision 2026-08-04).** Flutter/CMake/CodeQL/MSIX/
   Slang/Vulkan/PerfBaseline/WasmOpt/AppRunner/ContainerBuild.Reuse/Uv/

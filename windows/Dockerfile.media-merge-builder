@@ -169,6 +169,6 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
 RUN --mount=type=bind,source=windows/scripts/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/gstreamer,target=C:\bkmnt\patches\gstreamer `
     & 'C:\bkmnt\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs' -ScrubAfter

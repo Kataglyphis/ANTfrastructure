@@ -63,6 +63,14 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
 #
 # Parent is BASE_IMAGE, not `common`: `common` also carries versions.env, and
 # there is no reason for a versions bump to key into this stage.
+#
+# PATH TRAP (cost a chain launch on 2026-08-07): in `--mount=...,from=<stage>`
+# the SOURCE is a Unix-style path inside that stage, with NO drive letter, even
+# on Windows containers. `source=C:\bkmods` is normalised to "/C:/bkmods" and
+# fails the solve with `failed to calculate checksum ... not found`. The COPY
+# destination below stays Windows-shaped (C:\bkmods); only the mount source is
+# `/bkmods`. Probed on this host before re-landing: a bare Test-Path assertion
+# through the mount returns the file content.
 FROM ${BASE_IMAGE} AS buildmods
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
@@ -201,7 +209,7 @@ FROM media-core-env AS media-core-built-onnx
 RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
     & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
@@ -209,7 +217,7 @@ FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
 RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
     --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
@@ -218,7 +226,7 @@ FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
 RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
@@ -226,7 +234,7 @@ FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
 RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
@@ -237,7 +245,7 @@ RUN --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmn
     --mount=type=bind,source=windows/scripts/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
     --mount=type=bind,source=windows/scripts/debug-litertlm-link.ps1,target=C:\bkmnt\debug-litertlm-link.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
     & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
@@ -248,6 +256,6 @@ RUN --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\b
     --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=C:\bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
     & 'C:\bkmnt\build-media-tvm-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
