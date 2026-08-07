@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Link diagnostics for a litert_lm_main build tree kept via LITERTLM_KEEP_BUILD_TREE=1
 # (build-litert-lm-from-source.ps1 invokes this; also runnable standalone against a kept

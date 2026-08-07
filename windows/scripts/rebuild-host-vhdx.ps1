@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Reclaims the dead blocks of a dynamically-expanding VHDX by REBUILDING it
 # around its live data, instead of compacting it. Use this when

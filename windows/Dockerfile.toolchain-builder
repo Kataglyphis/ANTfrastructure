@@ -1,6 +1,6 @@
 # escape=`
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Thin builder image for the toolchain run+commit path (windows/build.ps1
 # Invoke-RunCommitStage). It clones CPython and writes Directory.Build.props — both

@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # CACHE-BUST 2026-08-06: this comment block's content change sidesteps
 # persistent snapshotter debris (`ImportLayer 0xb7 "already exists"` at

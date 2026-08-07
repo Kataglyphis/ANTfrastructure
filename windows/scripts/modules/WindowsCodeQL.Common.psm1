@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # NOTE (downstream consumers -- do NOT remove as "dead code"): this module has no
 # callers inside THIS repo, but Kataglyphis-Inference-Engine's

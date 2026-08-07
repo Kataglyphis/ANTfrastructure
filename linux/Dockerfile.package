@@ -148,6 +148,33 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
 
+# Docker's ENV above is not enough for a LOGIN shell. CI steps run
+# `docker run ... bash -lc '<script>'`, and a login bash sources /etc/profile
+# (+ /etc/profile.d), which can rebuild PATH from the system default and drop
+# /usr/local/cargo/bin. The visible symptom is confusing rather than obvious:
+# `cargo` still resolves — to Ubuntu's /usr/bin/cargo, installed as a plain deb
+# by setup-package-image.sh — while `rustup` is not found at all, because that
+# deb ships none. A consumer's `rustup component add rustfmt` therefore died
+# with exit 127 on every build for months (Kataglyphis-RustProjectTemplate,
+# found 2026-08-07), and `continue-on-error: true` made it look green.
+#
+# Same mechanism the GCC (configure-gcc-env.sh) and Flutter (Dockerfile.sdk)
+# paths already rely on: export it from /etc/profile.d so login shells agree
+# with the image's ENV. Prepending puts the PINNED toolchain ahead of the deb.
+# POSIX sh, not bash: /etc/profile.d entries are sourced by whatever /bin/sh is.
+# The case guard keeps it idempotent - nested login shells would otherwise stack
+# duplicate PATH entries onto every image layered on top of this one.
+RUN printf '%s\n' \
+      'export RUSTUP_HOME=/usr/local/rustup' \
+      'export CARGO_HOME=/usr/local/cargo' \
+      'case ":${PATH}:" in' \
+      '  *":/usr/local/cargo/bin:"*) ;;' \
+      '  *) export PATH="/usr/local/cargo/bin:${PATH}" ;;' \
+      'esac' \
+      > /etc/profile.d/10-rust.sh \
+ && chmod 0644 /etc/profile.d/10-rust.sh \
+ && sh -n /etc/profile.d/10-rust.sh
+
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh

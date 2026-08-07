@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Fail-fast static gate for every Windows build script. Two passes:
 #   1. PARSE (mandatory, zero dependencies) — a syntax error in any build script is

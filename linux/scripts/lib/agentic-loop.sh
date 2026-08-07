@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Copyright (c) 2026 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Reusable agentic-loop building blocks for Linux / Rancher Desktop.
 # Source this file in your project's Run-AgenticLoop.sh.

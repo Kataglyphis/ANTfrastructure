@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Runs every *.Tests.ps1 in this directory against the shared modules and exits non-zero
 # on any failure. Harness-style suites need nothing installed (see TestHarness.psm1);

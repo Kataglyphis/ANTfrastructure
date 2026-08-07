@@ -1,6 +1,6 @@
 # escape=`
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Windows mirror of linux/Dockerfile.torch: assembles the
 # Kataglyphis-Orchestr-ANT-ion app environment as its OWN chain stage between
@@ -65,4 +65,4 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger torch app" `
       org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" `
       org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
       org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.licenses="MIT"

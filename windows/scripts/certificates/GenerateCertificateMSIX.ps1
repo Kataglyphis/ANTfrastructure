@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Generate a modern self-signed MSIX DEV-signing certificate (KSP provider)
 # and export it as a password-protected PFX. Template/utility script — run

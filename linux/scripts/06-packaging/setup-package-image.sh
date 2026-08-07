@@ -87,6 +87,16 @@ install_staged_target_python() {
 # extras) based on what's available, then install them.
 select_and_install_dev_packages() {
     local python_mm="$1" gcc_major="$2"
+    # NOTE: `cargo`/`rustc` here are Ubuntu's debs, and the deb set ships NO
+    # rustup. That matters because wire_cargo_symlinks() below links whatever
+    # `command -v` happens to find into ${CARGO_HOME}/bin — so when this stage's
+    # base has no rustup-installed toolchain, `cargo` silently resolves to
+    # /usr/bin/cargo and `rustup` resolves to nothing at all. A consumer then
+    # sees the confusing pair "cargo works, rustup: command not found"
+    # (Kataglyphis-RustProjectTemplate, 2026-08-07). report_rust_provenance()
+    # at the end of main() now prints which one actually won.
+    # (Nothing is added to this list here - see the note below the
+    # append_available_packages call about gstreamer/gtk4 dev packages.)
     local -a packages=(libtbb-dev python3-venv python3-pip cargo rustc)
 
     if [ ! -x "/usr/local/bin/python${python_mm}" ]; then
@@ -104,6 +114,18 @@ select_and_install_dev_packages() {
     append_available_packages packages clang-22 lld-22 llvm-22 llvm-22-dev \
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
 
+    # DO NOT add libgstreamer*-dev or libgtk-4-dev here. Both look like the
+    # obvious fix for a consumer whose `--features gstreamer` / `gui_linux`
+    # build cannot find headers, and both are wrong:
+    #   * GStreamer is SOURCE-BUILT into ${GSTREAMER_PREFIX} and its .pc files
+    #     are already on PKG_CONFIG_PATH. 03-media/runtime/install-deps.sh
+    #     deliberately `apt-get purge`s every distro gstreamer package; adding
+    #     the -dev deb back reintroduces exactly what that purge removes.
+    #   * libgtk-4-dev is excluded on purpose - see the comment above that same
+    #     purge: the foreign-arch GTK dev package drags in the GLib/GIR dev
+    #     chain, which pulls target-side Python and breaks cross builds on
+    #     python3-minimal's postinst.
+    # libssl-dev already arrives via package-lists.sh.
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
 
     # The shipped clang{,++} MUST equal LLVM_RELEASE (asserted by the runtime
@@ -251,6 +273,68 @@ create_runtime_venv() {
     fi
 }
 
+# Assert that the DEV surface this image intends to expose is actually
+# reachable through pkg-config, and fail the build here rather than in a
+# consumer's CI hours later. A consumer cannot repair any of this itself: the
+# runtime container runs as uid 1001, where `apt-get` dies with
+# "Permission denied".
+#
+# Only things the image genuinely promises are checked. GTK4 dev is absent BY
+# DESIGN (see select_and_install_dev_packages), so it is reported, not enforced
+# - asserting it would turn a deliberate policy into a build failure.
+verify_consumer_dev_surface() {
+    local missing=() mod
+    # gstreamer-*: the SOURCE-built stack under ${GSTREAMER_PREFIX}. If these
+    # stop resolving, either the prefix moved or PKG_CONFIG_PATH regressed -
+    # both silently break every consumer's `--features gstreamer`.
+    # openssl: openssl-sys (ort, and anything reqwest-shaped) needs it.
+    for mod in gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0 openssl; do
+        pkg-config --exists "${mod}" 2>/dev/null || missing+=("${mod}")
+    done
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "ERROR: the image's advertised dev surface is not reachable: ${missing[*]}" >&2
+        echo "       PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-<unset>}" >&2
+        echo "       GSTREAMER_PREFIX=${GSTREAMER_PREFIX:-<unset>}" >&2
+        return 1
+    fi
+    echo "OK: dev surface reachable (gstreamer-1.0/-app/-video from ${GSTREAMER_PREFIX:-?}, openssl)"
+
+    if pkg-config --exists gtk4 2>/dev/null; then
+        echo "NOTE: gtk4 dev files are present. They are normally excluded on purpose;"
+        echo "      if that was not deliberate, check whether the GLib/GIR dev chain"
+        echo "      came along and broke a cross build's python3-minimal postinst."
+    else
+        echo "NOTE: no gtk4 dev files (expected). Consumers cannot build gui_unix /"
+        echo "      gui_linux against this image; only gui_wgpu-style features work."
+    fi
+}
+
+# Diagnostic, deliberately non-fatal: print WHICH Rust the image ended up with.
+# Two can coexist — the pinned rustup toolchain under ${CARGO_HOME} and Ubuntu's
+# cargo/rustc debs — and the loser is invisible until a consumer's build picks
+# the wrong one. Not a hard gate, because whether rustup belongs in this image
+# is a policy call, not a build error.
+report_rust_provenance() {
+    echo "--- Rust provenance in the package image ---"
+    local tool path
+    for tool in cargo rustc rustup; do
+        path="$(command -v "${tool}" 2>/dev/null || true)"
+        if [ -z "${path}" ]; then
+            printf '  %-7s NOT FOUND\n' "${tool}"
+        else
+            printf '  %-7s %s -> %s (%s)\n' "${tool}" "${path}" \
+                "$(readlink -f "${path}" 2>/dev/null || echo '?')" \
+                "$("${tool}" --version 2>/dev/null | head -1 || echo 'no --version')"
+        fi
+    done
+    if ! command -v rustup >/dev/null 2>&1; then
+        echo "  NOTE: no rustup. Consumers must call cargo directly; ContainerHub's" >&2
+        echo "        own cargo_fmt_clippy.sh does 'rustup component add' and will" >&2
+        echo "        exit 127 against this image." >&2
+    fi
+    echo "--------------------------------------------"
+}
+
 main() {
     local python_mm="${PYTHON_MAJOR_MINOR:?PYTHON_MAJOR_MINOR is required}"
     local gcc_major="${GCC_VERSION%%.*}"
@@ -270,6 +354,12 @@ main() {
 
     bash /opt/scripts/03-media/final/configure-runtime.sh
     ldconfig
+
+    # Verify BEFORE the apt lists are wiped, so a failure can still be
+    # diagnosed with apt-cache inside a `docker run` on the failed layer.
+    verify_consumer_dev_surface
+    report_rust_provenance
+
     apt-get clean
     rm -rf /var/lib/apt/lists/*
 }

@@ -166,3 +166,12 @@ setup) and all further commands: [Windows Build Image](docs/windows-builds.md)
 ```bash
 git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
 ```
+
+### License
+
+MIT — see [`LICENSE`](LICENSE). Every source file carries a matching
+`SPDX-License-Identifier: MIT` header and the published images declare
+`org.opencontainers.image.licenses="MIT"`.
+
+Bundled upstream software keeps its own terms: see
+[docs/third-party-licenses.md](docs/third-party-licenses.md).

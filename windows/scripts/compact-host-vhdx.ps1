@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Reclaims host disk space when the repo checkout (or the container store)
 # lives on a dynamically-expanding VHDX: stops the build services so nothing
