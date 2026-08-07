@@ -354,7 +354,15 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    → 200. A reboot kills a manually-started dufs (cost a run on 2026-08-04).
 2. **Services running?** `Get-Service stevedore, containerd, buildkitd` → all
    `Running`.
-3. **Disk headroom ≥ 40 GB free.**
+3. **Disk headroom ≥ 40 GB free — now gated automatically.**
+   Both drivers refuse to start below the floor (`Assert-DiskHeadroom`;
+   override with `-SkipHostChecks`, raise/lower with `-MinFreeGb`), and the
+   BuildKit lane additionally verifies the patched runhcs shim is still
+   installed (`Assert-ShimPatch` — a Stevedore update silently restores the
+   stock binary, and the first heavy media finalize then dies with
+   `ExportLayer 0x3` hours into the run). Both were manual checks here until
+   2026-08-07; on 2026-08-06 a chain ran 2.5 h and died of a disk shortage
+   disguised as a missing `ninja`.
    `(Get-PSDrive C).Free / 1GB` — below ~25 GB free, hcsshim gets "weird"
    *before* an honest disk-full error (`ExportLayer 0x3`/`0x70`, spawn
    flakes). Reclaim levers, non-admin first: `buildctl prune-histories`,

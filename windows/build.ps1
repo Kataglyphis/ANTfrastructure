@@ -194,7 +194,11 @@ param(
     # Disable the per-run host resource log (CPU/RAM/commit/vmmem sampled every 20s into
     # out\windows-build-logs\resources-<ts>.csv, tagged with the current build phase, plus an
     # end-of-run per-phase exhaustion summary). On by default -- the cost is one idle pwsh.
-    [switch]$NoResourceLog
+    [switch]$NoResourceLog,
+    # Override the host disk preflight gate — see Assert-DiskHeadroom for why
+    # it refuses rather than warns.
+    [switch]$SkipHostChecks,
+    [int]$MinFreeGb = 40
 )
 
 Set-StrictMode -Version Latest
@@ -327,6 +331,12 @@ Set-BuildDriverIsolation -Isolation $script:BuildIsolation
 # Canonical fail-fast sccache gate (WindowsBuildDriver.Common, shared with the
 # BK lane).
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
+
+# Disk preflight (see Assert-DiskHeadroom): below the floor, hcsshim fails in
+# ways that do not look like a disk problem, hours into the run. The shim-patch
+# gate is BuildKit-lane only — this lane's run+commit path uses Hyper-V
+# isolation, where the teardown-timeout defect does not apply.
+Assert-DiskHeadroom -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
 
 # (Get-DockerBuildArgList / Test-TransientDockerFailure / Assert-ImageExists /
 # Invoke-TransientCooldown / Invoke-DockerWithRetry: WindowsBuildDriver.Common.psm1)

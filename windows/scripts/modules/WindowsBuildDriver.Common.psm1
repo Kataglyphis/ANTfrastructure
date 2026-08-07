@@ -347,6 +347,86 @@ function Assert-SccacheEndpoint {
     }
 }
 
+function Assert-DiskHeadroom {
+    # Fail-fast disk gate shared by both lanes. Below roughly 25 GB free,
+    # hcsshim stops failing honestly and starts failing WEIRDLY: vanished
+    # tools ("ninja is not recognized" mid-build), "failed to write compressed
+    # diff", ImportLayer 0xb7 / ActivateLayer 0x20 on snapshots that were fine
+    # an hour ago — and the poisoned snapshots outlive the build that made
+    # them. 2026-08-06: a full chain ran 2.5 h and died with the ninja symptom
+    # at 4.8 GB free, and the two debris families it left cost another two
+    # runs to sidestep. Two seconds of checking replaces all of that.
+    param(
+        [string]$Drive = 'C',
+        # 40 GB is the Phase-D checklist figure: comfortably above the ~25 GB
+        # misbehaviour band, with room for one heavy layer's scratch.
+        [int]$MinFreeGb = 40,
+        [switch]$Force
+    )
+    $freeGb = [math]::Round((Get-PSDrive $Drive).Free / 1GB, 1)
+    if ($freeGb -ge $MinFreeGb) {
+        Write-Host "disk headroom OK: ${Drive}: ${freeGb} GB free (min ${MinFreeGb} GB)" -ForegroundColor Cyan
+        return
+    }
+    $reclaim = 'Reclaim first (docs/windows-builds.md § Store GC): ' +
+        'buildctl prune --free-storage <MB ABOVE total disk size, it is a minimum-free TARGET>; ' +
+        'then admin `nerdctl --namespace buildkit rmi` for superseded bk-* stage tags.'
+    if ($Force) {
+        Write-Warning "${Drive}: only ${freeGb} GB free (min ${MinFreeGb} GB) - continuing because -Force was passed. $reclaim"
+        return
+    }
+    throw ("${Drive}: has ${freeGb} GB free, below the ${MinFreeGb} GB floor this build needs. " +
+        'Starting here does not fail fast - it fails in hours, with symptoms that look like anything but disk ' +
+        "(vanished tools, ExportLayer/ImportLayer errors), and leaves debris that outlives the run. $reclaim " +
+        'Pass -Force to override deliberately.')
+}
+
+function Assert-ShimPatch {
+    # BuildKit-lane gate: the patched containerd-shim-runhcs-v1 is a LOCAL
+    # patch (upstream: microsoft/hcsshim#2855) and EVERY Stevedore/containerd
+    # update silently restores the stock binary. Stock means the hardcoded 30s
+    # tearDownTimeout is back, which means the first heavy media finalize dies
+    # with ExportLayer 0x3 — hours in, after the compile is already paid for.
+    #
+    # Detection is by SIZE because that is the only signal available without
+    # running the binary; the shim logs its effective timeout at Debug level,
+    # which does not reach containerd's log, so a quiet log proves nothing.
+    # Sizes rot as hcsshim moves, hence: a KNOWN-STOCK size is a hard failure,
+    # while an UNRECOGNISED size only warns (it is probably a newer patched
+    # build, and refusing to build on that would be worse than the risk).
+    param(
+        [string]$ShimPath = "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe",
+        # Sizes measured on the reference host; extend as hcsshim moves.
+        [long[]]$PatchedSize = @(25332736, 25329664),
+        [long[]]$StockSize = @(23279616),
+        [switch]$Force
+    )
+    if (-not (Test-Path $ShimPath)) {
+        Write-Warning "shim not found at $ShimPath - skipping the patch check."
+        return
+    }
+    $size = (Get-Item $ShimPath).Length
+    if ($PatchedSize -contains $size) {
+        Write-Host "runhcs shim: patched build ($('{0:N0}' -f $size) bytes)" -ForegroundColor Cyan
+        return
+    }
+    $advice = 'Re-install it before building: pwsh -File windows\scripts\deploy-shim-patch.ps1 ' +
+        '-ShimPath <your build> (and -ServiceEnvironment for an upstream-patch build, which needs ' +
+        'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT set or it silently keeps the 30s default). ' +
+        'Recipe + patch: windows/upstream/hcsshim-teardown-timeout/.'
+    if ($StockSize -contains $size) {
+        if ($Force) {
+            Write-Warning "runhcs shim is STOCK ($('{0:N0}' -f $size) bytes) - continuing because -Force was passed. Expect ExportLayer 0x3 on the first heavy media finalize. $advice"
+            return
+        }
+        throw ("runhcs shim at $ShimPath is the STOCK binary ($('{0:N0}' -f $size) bytes) - the teardown-timeout " +
+            'patch has been reverted, most likely by a Stevedore/containerd update. Heavy media layers WILL fail ' +
+            "with hcsshim::ExportLayer 0x3 after the compile is already paid for. $advice Pass -Force to override.")
+    }
+    Write-Warning ("runhcs shim size $('{0:N0}' -f $size) bytes is neither a known patched nor a known stock build. " +
+        "If this is a newer patched shim, add its size to Assert-ShimPatch -PatchedSize. $advice")
+}
+
 function Get-MediaMemoryBudget {
     # MEMORY_LIMIT_GB auto-detect shared by both lanes: host RAM minus reserve,
     # floor 8 GB; an explicit request always wins.
@@ -363,4 +443,5 @@ Export-ModuleMember -Function Initialize-BuildDriverContext, Set-BuildDriverIsol
     Test-TransientDockerFailure, Invoke-TransientCooldown, Invoke-DockerWithRetry,
     Get-DockerBuildArgList, Assert-ImageExists, Resolve-BuildIsolation,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
-    Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget
+    Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
+    Assert-DiskHeadroom, Assert-ShimPatch

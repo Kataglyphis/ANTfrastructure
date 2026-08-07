@@ -74,7 +74,14 @@ param(
     #   -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
     # buildctl forwards the CLIENT's docker credential store, so a prior
     # `docker login <registry>` in this shell is sufficient.
-    [string]$PushRef = ''
+    [string]$PushRef = '',
+    # Override the host preflight gates (disk headroom + patched runhcs shim).
+    # Both refuse for good reason — see Assert-DiskHeadroom / Assert-ShimPatch —
+    # so this is for deliberate exceptions, not routine use.
+    [switch]$SkipHostChecks,
+    # Free-space floor for the preflight gate; below ~25 GB hcsshim misbehaves
+    # in ways that do not look like a disk problem.
+    [int]$MinFreeGb = 40
 )
 
 Set-StrictMode -Version Latest
@@ -142,6 +149,15 @@ $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveG
 Write-Host "BuildKit lane: process isolation, all CPUs; MEMORY_LIMIT_GB=$MediaMemoryGb (job-count cap)" -ForegroundColor Cyan
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
 
+# --- host preflight: the two failures that cost HOURS when discovered late ---
+# Both were manual checklist items in docs/windows-host-setup.md § D3 until
+# 2026-08-07, and both bit on 2026-08-06: a chain ran 2.5 h before dying of a
+# disk shortage disguised as a missing ninja, and a Stevedore update can revert
+# the shim patch so the first heavy finalize fails with ExportLayer 0x3 after
+# the compile is already paid for. Two seconds here, hours saved there.
+Assert-DiskHeadroom -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
+Assert-ShimPatch -Force:$SkipHostChecks
+
 # --- tags: fully-qualified for containerd-store handoff; bk- namespaced so the
 # classic docker lane's local/kataglyphis:windows-* tags can never collide ---
 function Get-BkTag([string]$Name) { return "docker.io/local/kataglyphis:bk-$Name" }
@@ -168,7 +184,15 @@ function Invoke-BkStage {
         # Raw --output spec override (e.g. docker-tar or push exporters); the
         # FinalTar/PushRef re-solves use this instead of the default image
         # output so they ride the same retry + log plumbing as every stage.
-        [string]$OutputSpec = ''
+        [string]$OutputSpec = '',
+        # Transient-failure budget. 3 suits every stage that touches ONE
+        # snapshot tree; the media MERGE stage is the exception — it fans in
+        # three branch images, so it does far more mount work than any other
+        # stage and flakes proportionally (2026-08-06: two `failed to mount
+        # {windows-layer}` failures in one run, green only on the third and
+        # last attempt). Retries are cheap here: completed RUN vertices stay
+        # cached, only the failed finalize/export re-runs.
+        [int]$MaxAttempts = 3
     )
     if (-not $NoOutput -and -not $Tag -and -not $OutputSpec) { throw 'Invoke-BkStage: need -Tag, -OutputSpec or -NoOutput' }
     if (-not $Label) { $Label = [IO.Path]::GetFileName($Dockerfile) + $(if ($Target) { ":$Target" } else { '' }) }
@@ -207,12 +231,12 @@ function Invoke-BkStage {
     # burns both under load (2026-08-05: mkdir access-denied THEN 0x20 on the
     # retry, during a parallel canary export). Third attempt is cheap — the
     # completed RUN vertices stay cached; only finalize/export re-runs.
-    for ($attempt = 1; $attempt -le 3; $attempt++) {
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         Write-Host "`n==> [bk:$Label] buildctl -> $dest$(if ($attempt -gt 1) { ' (retry)' })" -ForegroundColor Cyan
         & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog
         if ($LASTEXITCODE -eq 0) { break }
         $tail = if (Test-Path $stageLog) { (Get-Content $stageLog -Tail 40 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
-        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts 3 -Label "bk:$Label" -CooldownSeconds 15) { continue }
+        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label "bk:$Label" -CooldownSeconds 15) { continue }
         throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — log: $stageLog"
     }
     Write-Host "[bk:$Label] OK -> $dest" -ForegroundColor Green
@@ -350,7 +374,9 @@ if ($Stages -contains 'media') {
             MEMORY_LIMIT_GB = $MediaMemoryGb
         }
         # Direct solve (de-warmed 2026-08-05 — see the media-core comment above).
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs ($mergeArgs + $sccache)
+        # -MaxAttempts 5: the fan-in stage mounts three branch trees and is the
+        # only stage measured burning its whole 3-attempt budget (2026-08-06).
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs ($mergeArgs + $sccache) -MaxAttempts 5
     } else {
         Write-Host "[bk:merge] skipped (needs all three media branches; got: $($MediaBranches -join ', '))" -ForegroundColor Yellow
     }
