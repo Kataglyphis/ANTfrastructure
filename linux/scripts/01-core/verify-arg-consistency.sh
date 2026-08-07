@@ -171,4 +171,35 @@ else
   echo "No script :- default drift detected"
 fi
 
+echo ""
+echo "=== case-mapped version literal check ==="
+# Two version literals live in case/function mappings that neither the ARG
+# checks nor the ${VAR:-default} scan above can see; they drift silently on a
+# bump and then override or misreport the real version:
+#   * gcc.sh: `16) default_full_version="16.2.0"` (major -> full version)
+#   * common.sh llvm_release_version: `22) ... 22.1.8`
+LITERAL_ERRORS=0
+_gcc_full="${_version_values[GCC_VERSION]:-}"
+if [ -n "${_gcc_full}" ]; then
+  _gcc_major="${_gcc_full%%.*}"
+  if ! grep -qP "^\s*${_gcc_major}\)\s*default_full_version=\"${_gcc_full}\"" \
+       "${REPO_ROOT}/linux/scripts/02-toolchain/gcc.sh"; then
+    echo "  ERROR: gcc.sh case default for major ${_gcc_major} does not map to ${_gcc_full} (versions.env GCC_VERSION)"
+    LITERAL_ERRORS=$((LITERAL_ERRORS + 1))
+  fi
+fi
+_llvm_full="${_version_values[LLVM_RELEASE]:-}"
+if [ -n "${_llvm_full}" ]; then
+  if ! grep -q "${_llvm_full}" "${REPO_ROOT}/linux/scripts/01-core/common.sh"; then
+    echo "  ERROR: common.sh llvm_release_version mapping does not contain ${_llvm_full} (versions.env LLVM_RELEASE)"
+    LITERAL_ERRORS=$((LITERAL_ERRORS + 1))
+  fi
+fi
+if [ "${LITERAL_ERRORS}" -gt 0 ]; then
+  echo "ERROR: ${LITERAL_ERRORS} case-mapped version literal(s) drifted from versions.env"
+  exit 1
+else
+  echo "Case-mapped version literals match versions.env"
+fi
+
 echo "DONE: version ARG consistency check"

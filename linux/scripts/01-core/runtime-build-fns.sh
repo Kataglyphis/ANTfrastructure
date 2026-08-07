@@ -71,17 +71,19 @@ runtime_build_base_image() {
     return 0
   fi
 
+  # rc propagation: this runs under a disabled-errexit extent (see
+  # runtime_build_chain) — failures must be RETURNED, not assumed fatal.
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=true \
     --platform "linux/${arch}" \
     -t "${tag}" \
     -f "${BASE_DOCKERFILE_PATH}" \
     "${build_args[@]}" \
-    .
+    . || return 1
 
   if runtime_use_local_stage_context_outputs; then
     context_dir="$(runtime_stage_context_dir base "${arch}")"
-    _export_container_rootfs "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
+    _export_container_rootfs "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}" || return 1
     remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
     return 0
   fi
@@ -164,7 +166,7 @@ runtime_build_package_image() {
     -t "${tag}" \
     -f "${PACKAGE_DOCKERFILE_PATH}" \
     "${build_args[@]}" \
-    .
+    . || return 1
 
   _runtime_finish_stage package "${arch}" "${tag}" base
 }
@@ -197,7 +199,7 @@ _runtime_build_wrapper() {
     -t "${_wrapper_tag_out}" \
     -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
     "${_wrapper_build_args_out[@]}" \
-    .
+    . || return 1
 
   runtime_remove_stage_context package "${arch}"
 }
@@ -244,15 +246,20 @@ runtime_build_chain() {
   local arch="$1"
   local rootfs_dir="${2:-}"
 
-  runtime_build_base_image "${arch}"
-  runtime_build_package_image "${arch}"
+  # EXPLICIT `|| return 1` on every step (same hazard as cross_stage_run):
+  # this function is invoked via run_parallel_arch_loop's `if !`, which
+  # disables set -e for the whole call tree — without these, a failed base or
+  # package build fell through to the next step and the lane reported success
+  # with nothing built.
+  runtime_build_base_image "${arch}" || return 1
+  runtime_build_package_image "${arch}" || return 1
 
   if [ -n "${rootfs_dir}" ]; then
-    runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}"
+    runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}" || return 1
     return 0
   fi
 
-  runtime_build_wrapper_image "${arch}"
+  runtime_build_wrapper_image "${arch}" || return 1
 }
 
 runtime_write_artifact_metadata() {

@@ -43,7 +43,13 @@ llvm_repo_available() {
   case "$status" in
     200) return 0 ;;
     404) return 1 ;;
-    *) die "Failed to query apt.llvm.org for ${distro} (HTTP ${status:-unknown})" ;;
+    *)
+      # Transient server/network trouble (503, 429, timeout → 000) must NOT
+      # hard-fail a multi-hour layer: every caller has a working fallback — the
+      # LLVM source build — so degrade to "repo unavailable" with a warning.
+      warn "apt.llvm.org query for ${distro} returned HTTP ${status:-unknown}; treating the repo as unavailable (source-build fallback)"
+      return 1
+      ;;
   esac
 }
 

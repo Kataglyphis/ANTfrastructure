@@ -195,10 +195,29 @@ else
   JOBS="${JOBS_REQUESTED:-$(nproc || echo 1)}"
 fi
 
-if [ "${USE_CCACHE}" = "1" ] && [ -z "${HOST_TRIPLET}" ]; then
+# ccache wiring. Two paths:
+#  * host/cross builds (HOST_TRIPLET empty): GCC itself is compiled by the host
+#    gcc — classic "ccache gcc" works. On a bootstrapped host build only stage1
+#    goes through ccache (stages 2/3 are compiled by the just-built xgcc; GCC 16
+#    ships no bootstrap-ccache build config — verified against the 16.2.0
+#    tarball, so --with-build-config cannot route them either).
+#  * Canadian cross (HOST_TRIPLET set): the caller passes CC/CXX as the
+#    cross compilers; prefix them instead of replacing them. These are
+#    single-stage builds, so ccache covers effectively everything.
+# CCACHE_BASEDIR relativizes the per-target BUILD_DIRs out of the hash inputs —
+# without it, identical translation units from different target build dirs can
+# never hit. SLOPPINESS drops __DATE__/locale/mtime noise for the same reason.
+if [ "${USE_CCACHE}" = "1" ]; then
   ensure_ccache_env
-  export CC="ccache gcc"
-  export CXX="ccache g++"
+  if [ -n "${HOST_TRIPLET}" ]; then
+    export CC="ccache ${CC:-${HOST_TRIPLET}-gcc}"
+    export CXX="ccache ${CXX:-${HOST_TRIPLET}-g++}"
+  else
+    export CC="ccache gcc"
+    export CXX="ccache g++"
+  fi
+  export CCACHE_BASEDIR="${BUILD_DIR}"
+  export CCACHE_SLOPPINESS="locale,time_macros,include_file_mtime,include_file_ctime"
 fi
 
 TARBALL="gcc-${GCC_VERSION}.tar.xz"
@@ -600,7 +619,12 @@ if [ -n "${HOST_TRIPLET}" ]; then
   # `specs` target, AS/LD lookups), so without this the build dies with
   # "${HOST_TRIPLET}-gcc: command not found" (make Error 127). Put the cross
   # toolchain bin dir on PATH so every bare ${HOST_TRIPLET}-* tool resolves.
-  _cross_bin_dir="$(dirname "$(command -v "${CC}" 2>/dev/null || echo "${CC}")")"
+  # ${CC##* }: CC may be launcher-prefixed ("ccache <triplet>-gcc"); resolve the
+  # PATH dir from the compiler word, not the whole (multi-word) command —
+  # `command -v` on the full string fails and the dirname fallback would degrade
+  # to "." (prepending CWD to PATH instead of the cross toolchain dir).
+  _cross_cc_word="${CC##* }"
+  _cross_bin_dir="$(dirname "$(command -v "${_cross_cc_word}" 2>/dev/null || echo "${_cross_cc_word}")")"
   if [ -d "${_cross_bin_dir}" ]; then
     export PATH="${_cross_bin_dir}:${PATH}"
   fi

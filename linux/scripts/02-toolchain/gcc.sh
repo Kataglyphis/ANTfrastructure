@@ -175,7 +175,11 @@ build_host_gcc() {
   local full_version="$1"
   local prefix="$2"
   local scratch_root
-  local -a host_args=(--version "${full_version}")
+  # --ccache: the RUN's /var/cache/ccache mount was dead weight before this —
+  # nothing ever exec'd ccache, so from-scratch rebuilds got zero reuse. On a
+  # bootstrapped host build only stage1 is cacheable (stages 2/3 compile with
+  # the just-built xgcc); the cross/Canadian builds below cache fully.
+  local -a host_args=(--version "${full_version}" --ccache)
 
   scratch_root="$(gcc_cross_scratch_root)"
   case "${GCC_HOST_BOOTSTRAP:-1}" in
@@ -231,6 +235,7 @@ build_cross_gcc_for() {
       --sysroot / \
       --native-system-header-dir "/usr/${triplet}/include" \
       --disable-bootstrap \
+      --ccache \
       --skip-system-registration
 
   for tool in gcc g++ gcc-ar gcc-nm gcc-ranlib; do
@@ -315,6 +320,7 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
       --sysroot / \
       --native-system-header-dir "/usr/${triplet}/include" \
       --disable-bootstrap \
+      --ccache \
       --skip-system-registration
 
   [ -x "${native_prefix}/bin/gcc" ] || die "Expected native GCC not found: ${native_prefix}/bin/gcc"
@@ -359,7 +365,11 @@ _gcc_build_cross_target() {
   local normalized_target="$1"
   local triplet tool actual_tool actual_version
 
-  install_cross_gcc_sysroot_packages "${normalized_target}"
+  # Skipped when the parallel driver already ran its serial apt pre-pass:
+  # concurrent per-target callbacks would collide on the dpkg frontend lock.
+  if [ "${GCC_SYSROOT_PREINSTALLED:-0}" != "1" ]; then
+    install_cross_gcc_sysroot_packages "${normalized_target}"
+  fi
   triplet="$(arch_deb_multiarch_triplet_for "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
 
   if [ "${normalized_target}" = "amd64" ]; then
@@ -391,6 +401,75 @@ _gcc_build_cross_target() {
   fi
 }
 
+# Opt-in concurrent per-target builds (GCC_PARALLEL_TARGETS=1; default 0 keeps
+# the sequential flow byte-identical). The serial tails of each target's build
+# (configure, in-tree gmp/mpfr/mpc/isl, libstdc++'s poorly-parallel chunks)
+# overlap, worth roughly a third of the multi-target wall-clock.
+#
+# Constraints honored:
+#   * apt sysroot installs are hoisted into a serial pre-pass — two concurrent
+#     callbacks would collide on the dpkg frontend lock.
+#   * the build-arch target (amd64 on an amd64 host) is only symlinking against
+#     the host GCC; it runs serially first so the parallel slots are all real
+#     compiles.
+#   * JOBS is divided by the number of concurrent builds; without that each
+#     target would request the full nproc and oversubscribe the host 2-3x.
+#   * per-target output goes to its own log (interleaved make -j output from
+#     concurrent builds is unattributable on failure); the failing target's
+#     tail is replayed into the main log.
+# Reads full_version/prefix/requested_major from the caller's scope like the
+# sequential callback (bash dynamic scoping; subshells inherit copies).
+_gcc_build_cross_targets_parallel() {
+  local targets_csv="$1"
+  local -a all_targets=() par_targets=()
+  local t
+  IFS=',' read -r -a all_targets <<< "${targets_csv}"
+
+  log "GCC_PARALLEL_TARGETS=1: serial apt pre-pass, then concurrent target builds"
+  for_each_cross_target install_cross_gcc_sysroot_packages --include-amd64 "${targets_csv}"
+  # The callbacks below must not re-run apt (dpkg lock).
+  local GCC_SYSROOT_PREINSTALLED=1
+
+  local build_arch
+  build_arch="$(build_arch_oci 2>/dev/null || arch_oci)"
+  for t in "${all_targets[@]}"; do
+    [ -n "${t}" ] || continue
+    if [ "${t}" = "${build_arch}" ]; then
+      _gcc_build_cross_target "${t}"   # symlink-only, cheap, keep serial
+    else
+      par_targets+=("${t}")
+    fi
+  done
+  [ "${#par_targets[@]}" -gt 0 ] || return 0
+
+  local n="${#par_targets[@]}" total_jobs per_jobs
+  total_jobs="$(nproc 2>/dev/null || echo 4)"
+  per_jobs=$(( total_jobs / n )); [ "${per_jobs}" -ge 1 ] || per_jobs=1
+
+  local logdir
+  logdir="$(gcc_cross_scratch_root)/gcc-parallel-logs"
+  mkdir -p "${logdir}"
+
+  local -a pids=() pid_targets=()
+  for t in "${par_targets[@]}"; do
+    log "  [parallel] ${t}: JOBS=${per_jobs}, log ${logdir}/${t}.log"
+    ( JOBS="${per_jobs}" _gcc_build_cross_target "${t}" ) > "${logdir}/${t}.log" 2>&1 &
+    pids+=($!); pid_targets+=("${t}")
+  done
+
+  local i failed=0
+  for i in "${!pids[@]}"; do
+    if wait "${pids[$i]}"; then
+      log "  [parallel] ${pid_targets[$i]}: OK"
+    else
+      failed=1
+      warn "[parallel] target ${pid_targets[$i]} FAILED — last 100 log lines:"
+      tail -n 100 "${logdir}/${pid_targets[$i]}.log" >&2 || true
+    fi
+  done
+  [ "${failed}" -eq 0 ] || die "One or more parallel GCC target builds failed (full logs in ${logdir})"
+}
+
 build_source_cross_gcc_targets() {
   local full_version="$1"
   local targets_raw="${CROSS_TARGETS:-amd64,arm64,riscv64}"
@@ -412,8 +491,12 @@ build_source_cross_gcc_targets() {
   build_host_gcc "${full_version}" "${prefix}"
 
   log "Building cross GCC toolchains from source for ${targets_raw}"
-  # amd64 is included: on an amd64 host it is linked from the native host GCC.
-  for_each_cross_target _gcc_build_cross_target --include-amd64 "${targets_raw}"
+  if [ "${GCC_PARALLEL_TARGETS:-0}" = "1" ]; then
+    _gcc_build_cross_targets_parallel "${targets_raw}"
+  else
+    # amd64 is included: on an amd64 host it is linked from the native host GCC.
+    for_each_cross_target _gcc_build_cross_target --include-amd64 "${targets_raw}"
+  fi
 
   compat_prefix="/opt/gcc-${full_version}"
   if [ ! -d "${compat_prefix}/bin" ]; then

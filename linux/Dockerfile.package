@@ -126,6 +126,14 @@ ARG ENABLE_NVIDIA ENABLE_AMD
 ARG GCC_VERSION LLVM_RELEASE PYTHON_VERSION PYTHON_MAJOR_MINOR
 ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
 
+# NVIDIA_*/VULKAN_VERSION: normally inherited from Dockerfile.base, but the
+# local-context handoff exports base as a PLAIN ROOTFS (nerdctl export), which
+# drops the image config — every base ENV would silently vanish from the
+# shipped runtime image. Re-declare the runtime-relevant ones here.
+ENV NVIDIA_DRIVER_CAPABILITIES=all \
+    NVIDIA_VISIBLE_DEVICES=all
+ARG VULKAN_VERSION=1.4.357.0
+ENV VULKAN_VERSION=${VULKAN_VERSION}
 ENV BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
     TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \

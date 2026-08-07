@@ -130,7 +130,9 @@ _rm_sample_loop() {
     # active compiler/link processes (exact comm match, ERE alternation).
     # NOTE: `pgrep -c` prints "0" AND exits 1 on no match, so DON'T `|| echo 0`
     # (that would emit a second 0 and split the CSV row).
-    comp="$(pgrep -c -x 'cc1plus|cc1|clang|clang\+\+|rustc|lto1|cc1objplus|go|ld' 2>/dev/null)"
+    # `|| true` (not `|| echo 0`, see NOTE above): pgrep already printed the 0;
+    # the guard only stops the rc=1 from killing the sampler under errexit.
+    comp="$(pgrep -c -x 'cc1plus|cc1|clang|clang\+\+|rustc|lto1|cc1objplus|go|ld' 2>/dev/null || true)"
     [ -n "${comp}" ] || comp=0
     local active_log; active_log="$(_rm_active_log "${stage_log}" "${stage_log_dir}")"
     stage="$(_rm_stage "${active_log}" "${label}")"

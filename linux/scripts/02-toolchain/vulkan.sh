@@ -158,7 +158,12 @@ _vulkan_setup_gcc_runtime() {
   ${SUDO:-} mkdir -p "${ARCH_LIB_DIR}" /usr/lib
   if [[ -n "${LIBRARY_PATH:-}" ]]; then
     log "Setting up GCC runtime library symlinks for linking..."
-    for libdir in ${LIBRARY_PATH//:/ }; do
+    # IFS=':' read (scoped to the builtin): splits regardless of the caller's
+    # IFS — the ${var//:/ } spaces would not split under a strict IFS=$'\n\t'.
+    local -a _vk_libdirs=()
+    IFS=':' read -r -a _vk_libdirs <<< "${LIBRARY_PATH}"
+    for libdir in "${_vk_libdirs[@]}"; do
+      [ -n "${libdir}" ] || continue
       for lib in libgcc_s.so.1 libgcc_s.so libstdc++.so.6 libstdc++.so; do
         if [[ -f "${libdir}/${lib}" ]]; then
           if [[ ! -e "${ARCH_LIB_DIR}/${lib}" ]]; then

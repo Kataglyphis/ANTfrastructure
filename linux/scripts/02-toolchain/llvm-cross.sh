@@ -161,7 +161,10 @@ _llvm_cross_setup_and_build() {
         target_runtime_link_path="$(llvm_cross_target_runtime_library_path "${target_label}" || true)"
         linker_flags_init=""
         if [ -n "${target_runtime_link_path}" ]; then
-          for link_dir in ${target_runtime_link_path//:/ }; do
+          # IFS-scoped split (see vulkan.sh): survives strict-IFS callers.
+          local -a _lc_link_dirs=()
+          IFS=':' read -r -a _lc_link_dirs <<< "${target_runtime_link_path}"
+          for link_dir in "${_lc_link_dirs[@]}"; do
             [ -d "${link_dir}" ] || continue
             linker_flags_init="${linker_flags_init:+${linker_flags_init} }-Wl,-rpath-link,${link_dir}"
           done
