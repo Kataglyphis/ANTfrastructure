@@ -689,3 +689,83 @@ Surfaced by the BeschleunigerBallett third-party-license audit: this
 repository contains no LICENSE/COPYING anywhere, so consumers cannot state
 its terms (the audit had to list it as "unverified"). Owner decision needed:
 pick a license (the sibling Kataglyphis repos use MIT) and add the file.
+
+## 2026-08-07 — harvested during the from-base rebuild (Windows lane)
+
+All of these were observed live during one full chain rebuild, not reasoned
+about in the abstract. Ordered by value, not by effort.
+
+### P1 — `versions.env` invalidates the ENTIRE media chain
+
+`Dockerfile.media-builder`'s `common` stage does `COPY versions.env`, and all
+three branch envs descend from it, so **any** edit to that file re-runs all six
+media compiles (ONNX ~75 min, OpenCV, FFmpeg, GenAI, litert, tvm). Adding three
+Windows toolchain pins today therefore turned what should have been a one-hour
+merge-stage test into a full media rebuild — the cost was discovered only when
+the ONNX layer failed to cache-hit.
+
+This is the same class of problem the per-file module mounts already solve for
+scripts: the file is copied wholesale, but each branch consumes only a handful
+of keys. Options, cheapest first:
+
+- pass the branch's keys as `--build-arg` (the drivers already compute exactly
+  these — `Get-MediaBranchVersionArg`) and drop the `common` COPY entirely, so
+  a versions.env edit invalidates nothing it does not actually change;
+- or split the file per lane so a Windows-only pin cannot touch Linux stages;
+- or move the COPY below the per-branch ENV blocks so it keys into fewer stages.
+
+Note the scripts re-read `C:\temp\versions.env` at RUN time, so whatever is
+chosen must keep that contract (see the re-COPY comments in the media builders).
+
+### P2 — the transient-retry engine burns its budget on deterministic failures
+
+`ImportLayer 0xb7` failed three times today with **byte-identical snapshot IDs**
+(`3p059m2d68o… → o47dumb0ovs4…`). The pattern matched `failed to reimport
+snapshot`, so the engine treated it as a flake and paid two pointless retries
+plus cool-downs before failing. A flake changes; a poisoned snapshot does not.
+
+Suggested refinement in `Invoke-TransientCooldown` / `Invoke-BkStage`: remember
+the previous attempt's failure tail and **stop early when the new tail is
+identical** — "deterministic, not transient". Cheap to implement, saves ~10 min
+per occurrence, and the message can point straight at the `-NoCache` remedy.
+
+### P3 — the disk gate is start-time only, and that is how a snapshot got poisoned
+
+`Assert-DiskHeadroom` passed at 164 GB and the chain still walked down to 23 GB
+mid-run, into the band where hcsshim stops failing honestly. The rescue (killing
+the solve) is what left the half-committed snapshot that then cost three failed
+attempts and a `-NoCache` rebuild.
+
+A per-stage check would have prevented the whole sequence: `Invoke-BkStage`
+could refuse to START a stage below a floor and say which cleanup lever applies,
+instead of letting the chain discover the wall inside a heavy RUN. The floor
+wants to be stage-aware — CUDA needs ~36 GB, the media branches far more — so a
+rough per-stage cost table beats one global number.
+
+### P4 — CNI conf: presence is guarded, CONTENT drift is not
+
+`Get-CniConfFormIssue` (added today) checks that both `0-containerd-nat.conf`
+and `.conflist` exist, and `verify-host-setup.ps1` compares their `ipam.subnet`.
+Nothing keeps the rest of the two files in sync, and they are hand-maintained
+copies of each other — the classic two-copies-drift shape this repo eliminates
+everywhere else. Better: generate the `.conf` FROM the `.conflist` (unwrap
+`plugins[0]`) in `apply-containerd-config.ps1`, so one file is authored and the
+other is derived.
+
+Related, smaller: `Get-CniNatSubnetDrift` and `Get-CniConfFormIssue` are two
+functions for one concern. A single `Test-CniHealth` returning a list of issues
+would let the driver report every problem at once instead of the first.
+
+### P5 — small, safe, do them on a base rebuild that is already being paid for
+
+- `Dockerfile.base`'s tail `ENV PATH` carries `$SCOOP_HOME;$SCOOP_GLOBAL` — the
+  scoop *app roots*, which contain no executables. Two dead PATH entries in
+  every image.
+- `windows/BUILD-OBSERVATIONS.md` still opens with "NOT source; safe to delete",
+  but now holds the authoritative four-root-cause GStreamer analysis. Either
+  move that analysis into `docs/windows-builds.md` or drop the disclaimer.
+- `pwsh -File build-buildkit.ps1 -Stages a,b,c` passes the list as ONE string
+  and dies on the `ValidateSet` (hit today). Either document the call operator
+  form in the examples or accept a comma-separated string and split it.
+- `smoke-test-container.ps1` is ~1500 lines in one file; the section structure
+  is already there in comments and would split cleanly.
