@@ -336,7 +336,10 @@ Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoScca
 # ways that do not look like a disk problem, hours into the run. The shim-patch
 # gate is BuildKit-lane only — this lane's run+commit path uses Hyper-V
 # isolation, where the teardown-timeout defect does not apply.
-Assert-DiskHeadroom -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
+# -Drive: the repo checkout's drive on top of C: (the layer stores) — the build
+# context is uploaded from here on every `docker build`, and on this host it is a
+# VHDX with its own exhaustion mode.
+Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
 # This lane needs a live dockerd. On a Stevedore host that is the `stevedore`
 # service, which was found Stopped on 2026-08-07 — the "always-working
 # fallback" silently was not one.
@@ -507,14 +510,22 @@ function Invoke-RunCommitStage {
         # cannot exhaust silently: Invoke-TransientCooldown returns $false exactly when no
         # retry remains (or the failure is non-transient), which throws here.
         & $setBuildPhase "commit:$Label"
+        # --change 'CMD ["pwsh"]': `docker commit` captures the CONTAINER's config,
+        # and this container's Cmd is the build script argv from $runArgs above. Without
+        # the override, local/kataglyphis:windows-media (and windows-torch, which
+        # inherits it) ship a CMD that RE-RUNS the GStreamer build — so a debugging
+        # `docker run -it local/kataglyphis:windows-media` starts recompiling over
+        # C:\runtime instead of giving you a shell. The final image is unaffected
+        # either way (windows/Dockerfile's ENTRYPOINT resets an inherited CMD), which
+        # is exactly why this stayed invisible.
         foreach ($commitAttempt in 1..3) {
-            $commitOut = & $dockerExe commit $ContainerName $ResultTag 2>&1
+            $commitOut = & $dockerExe commit --change 'CMD ["pwsh"]' $ContainerName $ResultTag 2>&1
             $commitOut | ForEach-Object { Write-Host $_ }
             if ($LASTEXITCODE -eq 0) { break }
             $commitTail = ($commitOut | Select-Object -Last 15) -join "`n"
             if (-not (& $transientCooldown -Tail $commitTail -Attempt $commitAttempt -MaxAttempts 3 -Label "$Label commit")) {
                 throw ("$Label commit failed -- container '$ContainerName' PRESERVED (it holds the finished build). " +
-                    "Recover manually: docker commit $ContainerName $ResultTag ; docker container rm -f $ContainerName")
+                    "Recover manually: docker commit --change 'CMD [`"pwsh`"]' $ContainerName $ResultTag ; docker container rm -f $ContainerName")
             }
         }
         & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
@@ -532,7 +543,7 @@ function Invoke-RunCommitStage {
         Write-Host ("    docker commit $ContainerName ${ResultTag}-partial")
         Write-Host ("    docker container rm -f $ContainerName")
         Write-Host ("    docker run --isolation $isolation --cpu-count $Cpus --memory ${MemoryGb}g --name $ContainerName ${ResultTag}-partial " + ($runCommand -join ' ') + " -ResumeFrom '<stage>'")
-        Write-Host ("    docker commit $ContainerName $ResultTag ; docker container rm -f $ContainerName")
+        Write-Host ("    docker commit --change 'CMD [`"pwsh`"]' $ContainerName $ResultTag ; docker container rm -f $ContainerName")
         Write-Host ("[$Label] Or discard: docker container rm -f $ContainerName") -ForegroundColor Yellow
     }.GetNewClosure()
     Invoke-DockerWithRetry -Action $action -OnSuccess $onSuccess -OnFailedAttempt $onFailedAttempt `
@@ -564,10 +575,16 @@ function Invoke-MediaBranchRunCommit {
         [Parameter(Mandatory)] $Spec,
         [Parameter(Mandatory)] [string]$OutLog
     )
+    # -ScrubAfter: lane parity with the BK lane, which passes it on every compile
+    # RUN. Clear-BuildScratch drops the pip cache, ~\.nuget, %TEMP% and INetCache
+    # INSIDE the container before the commit — the classic lane cannot shrink an
+    # already-committed layer afterwards, so a scrub in any later stage is too
+    # late. (Source trees are already handled: each leaf build script calls
+    # Remove-SourceBuildTree itself. This is only the package-manager debris.)
     Invoke-RunCommitStage `
         -BuilderDockerfile $Spec.BuilderDockerfile -BuilderTag $Spec.BuilderTag `
         -ResultTag $Spec.Tag -ContainerName $Spec.ContainerName `
-        -RunCommand (Get-MediaRunCommand $Spec.RunScript) `
+        -RunCommand (Get-MediaRunCommand $Spec.RunScript -ExtraArgs @('-ScrubAfter')) `
         -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb -BuildArgs $Spec.BuildArgs `
         -BuilderExtraFlags @('--target', $Spec.Name) `
         -Label $Spec.Name -OutLog $OutLog
@@ -632,7 +649,9 @@ function Invoke-ResumeRunCommit {
 
     $isolation = $script:BuildIsolation
     $outLog = Join-Path $script:LogDir "$($spec.Name).log"
-    $runCmd = (Get-MediaRunCommand $spec.RunScript) + @('-ResumeFrom', $ResumeFrom)
+    # -ScrubAfter mirrors Invoke-MediaBranchRunCommit: a resumed branch must
+    # produce the same image shape as a first-pass one.
+    $runCmd = (Get-MediaRunCommand $spec.RunScript -ExtraArgs @('-ScrubAfter')) + @('-ResumeFrom', $ResumeFrom)
     Write-Host "[resume:$ResumeStage] docker run --isolation $isolation --cpu-count $MediaCoreCpus --memory ${MediaMemoryGb}g -ResumeFrom '$ResumeFrom'" -ForegroundColor Cyan
     # Same transient-retry engine as the first attempt (ttrpc/shim flakes love
     # long runs; the recovery run used to single-shot). Invariants mirror
@@ -651,9 +670,11 @@ function Invoke-ResumeRunCommit {
                 "fix forward and re-run: .\windows\build.ps1 -ResumeStage $ResumeStage -ResumeFrom '<stage>' [-CopyFix <file>]") -ForegroundColor Red
         }.GetNewClosure()
     Write-Host "[resume:$ResumeStage] committing -> $($spec.Tag)" -ForegroundColor Cyan
-    & $Docker commit $container $spec.Tag | Out-Null
+    # --change: same reason as Invoke-RunCommitStage's commit — without it the
+    # resumed branch image inherits the build-script argv as its CMD.
+    & $Docker commit --change 'CMD ["pwsh"]' $container $spec.Tag | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "[resume:$ResumeStage] FINAL commit failed — container '$container' PRESERVED (recover: docker commit $container $($spec.Tag))"
+        throw "[resume:$ResumeStage] FINAL commit failed — container '$container' PRESERVED (recover: docker commit --change 'CMD [`"pwsh`"]' $container $($spec.Tag))"
     }
     & $Docker container rm -f $container 2>&1 | Out-Null
     & $Docker image rm -f $partial 2>&1 | Out-Null
@@ -693,6 +714,12 @@ try {
             WINDOWS_BASE_DIGEST = Get-Ver 'WINDOWS_BASE_DIGEST'
             VULKAN_VERSION    = Get-Ver 'VULKAN_VERSION'
             CMAKE_VERSION     = Get-Ver 'CMAKE_VERSION'
+            # Compiled-output pins (2026-08-07): clang-cl compiles the whole media
+            # chain, ninja drives it, nasm assembles FFmpeg's SIMD. Unpinned they
+            # made the base image unreproducible; verify-toolchain.ps1 asserts them.
+            LLVM_WINDOWS_VERSION  = Get-Ver 'LLVM_WINDOWS_VERSION'
+            NINJA_WINDOWS_VERSION = Get-Ver 'NINJA_WINDOWS_VERSION'
+            NASM_WINDOWS_VERSION  = Get-Ver 'NASM_WINDOWS_VERSION'
             PWSH_VERSION      = Get-Ver 'PWSH_VERSION'
             # SHA256 pin for the pwsh zip: the bootstrap RUN predates load-versions
             # baking, so the hash must travel as an ARG like the version itself.
@@ -786,7 +813,7 @@ try {
             -BuilderTag    $script:ImageTag.mediaMergeBuilder `
             -ResultTag     $script:ImageTag.media `
             -ContainerName 'kataglyphis-media-merge-build' `
-            -RunCommand    (Get-MediaRunCommand 'build-gstreamer-from-source.ps1' -ExtraArgs @('-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs')) `
+            -RunCommand    (Get-MediaRunCommand 'build-gstreamer-from-source.ps1' -ExtraArgs @('-InstallDir', 'C:\runtime', '-LogDir', 'C:\temp\logs', '-ScrubAfter')) `
             -Cpus $MediaCoreCpus -MemoryGb $MediaMemoryGb `
             -BuildArgs $mergeArgs `
             -BuilderExtraFlags @('--target', 'merge') `

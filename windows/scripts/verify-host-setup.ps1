@@ -134,19 +134,49 @@ if ($confText) {
 
 # --- Phase C: shim, gcpolicy, service config ---------------------------------
 
+# Shim identity: SHA256 against what deploy-shim-patch.ps1 recorded at install
+# time, exactly like the BK driver's Assert-ShimPatch gate (2026-08-07). The
+# state path comes from the SHARED helper so there is one definition of where
+# that file lives. Size is only the fallback for a host that has not re-run the
+# deploy script since — and saying "still guessing" out loud is the point: this
+# script exists to hand a fresh machine a verdict, not a maybe.
 $shim = Join-Path $StevedoreBin 'containerd-shim-runhcs-v1.exe'
-if (Test-Path $shim) {
+$shimFix = 'pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath <build>  (admin)'
+if (-not (Test-Path $shim)) {
+    Write-Check FAIL "runhcs shim missing at $shim"
+} else {
     $size = (Get-Item $shim).Length
-    if ($PatchedShimSize -contains $size) { Write-Check PASS ('runhcs shim is PATCHED ({0:N0} bytes)' -f $size) }
-    elseif ($StockShimSize -contains $size) {
-        Write-Check FAIL ('runhcs shim is STOCK ({0:N0} bytes) - the teardown-timeout patch was reverted' -f $size) `
-            'heavy media layers WILL fail with hcsshim::ExportLayer 0x3, hours into a build' `
-            'pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath <build>  (admin)'
-    } else {
-        Write-Check WARN ('runhcs shim size {0:N0} is neither known-patched nor known-stock' -f $size) `
-            'probably a newer patched build; add its size to the parameter and to AGENTS.md'
+    $shimState = $null
+    try {
+        Import-Module (Join-Path $PSScriptRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
+        $shimStatePath = Get-ShimPatchStatePath
+        if (Test-Path $shimStatePath) { $shimState = Get-Content $shimStatePath -Raw | ConvertFrom-Json }
+    } catch {
+        Write-Check WARN 'could not read the recorded shim hash' $_.Exception.Message
     }
-} else { Write-Check FAIL "runhcs shim missing at $shim" }
+    if ($shimState -and $shimState.sha256 -and $shimState.shimPath -eq $shim) {
+        $liveHash = (Get-FileHash -Algorithm SHA256 -Path $shim).Hash
+        if ($liveHash -eq $shimState.sha256) {
+            Write-Check PASS ('runhcs shim matches the deployed patch (SHA256 {0}…, deployed {1})' -f $liveHash.Substring(0, 12), $shimState.deployedAt)
+        } elseif ($shimState.stockSha256 -and $liveHash -eq $shimState.stockSha256) {
+            Write-Check FAIL 'runhcs shim was REVERTED TO STOCK - the teardown-timeout patch is gone' `
+                'heavy media layers WILL fail with hcsshim::ExportLayer 0x3, hours into a build' $shimFix
+        } else {
+            Write-Check FAIL ('runhcs shim CHANGED since deployment (recorded {0}…, live {1}…)' -f $shimState.sha256.Substring(0, 12), $liveHash.Substring(0, 12)) `
+                'most likely a Stevedore/containerd update; the patch cannot be assumed present' $shimFix
+        }
+    } elseif ($PatchedShimSize -contains $size) {
+        Write-Check WARN ('runhcs shim looks PATCHED by SIZE only ({0:N0} bytes) - no recorded hash on this host' -f $size) `
+            'the size table rots as hcsshim moves; record the hash instead' `
+            'pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath <build>  (admin) - writes the hash state file'
+    } elseif ($StockShimSize -contains $size) {
+        Write-Check FAIL ('runhcs shim is STOCK ({0:N0} bytes) - the teardown-timeout patch was reverted' -f $size) `
+            'heavy media layers WILL fail with hcsshim::ExportLayer 0x3, hours into a build' $shimFix
+    } else {
+        Write-Check WARN ('runhcs shim size {0:N0} is neither known-patched nor known-stock, and no hash is recorded' -f $size) `
+            'probably a newer patched build; re-run deploy-shim-patch.ps1 to record its hash' $shimFix
+    }
+}
 
 $cEnv = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -ErrorAction SilentlyContinue).Environment
 if ($cEnv -and ($cEnv -join ';') -match 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=') {
@@ -171,12 +201,22 @@ if (Test-Path $buildctl) {
 
 # --- Phase D: runtime preconditions -------------------------------------------
 
-$freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
-if ($freeGb -ge $MinFreeGb) { Write-Check PASS "disk headroom ${freeGb} GB (min ${MinFreeGb})" }
-else {
-    Write-Check FAIL "disk headroom ${freeGb} GB is below ${MinFreeGb} GB" `
-        'below ~25 GB hcsshim fails in ways that do not look like a disk problem' `
-        'buildctl prune --free-storage <MB ABOVE total disk size - it is a minimum-free TARGET>'
+# Every drive the build uses, not just C: — the layer stores live on C:, but the
+# repo checkout (the build context) may sit on a VHDX-backed volume with its own
+# exhaustion mode, which a C:-only check cannot see. Mirrors Assert-DiskHeadroom.
+$repoDrive = (Get-Item (Split-Path $PSScriptRoot -Parent)).PSDrive.Name
+foreach ($driveLetter in (@('C', $repoDrive) | Select-Object -Unique)) {
+    $psDrive = Get-PSDrive $driveLetter -ErrorAction SilentlyContinue
+    if (-not $psDrive -or $null -eq $psDrive.Free) { continue }
+    $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
+    $role = if ($driveLetter -eq 'C') { 'layer stores' } else { 'repo/build context' }
+    if ($freeGb -ge $MinFreeGb) {
+        Write-Check PASS "disk headroom ${driveLetter}: ${freeGb} GB (min ${MinFreeGb}, ${role})"
+    } else {
+        Write-Check FAIL "disk headroom ${driveLetter}: ${freeGb} GB is below ${MinFreeGb} GB (${role})" `
+            'below ~25 GB hcsshim fails in ways that do not look like a disk problem' `
+            'buildctl prune --free-storage <MB ABOVE total disk size - it is a minimum-free TARGET>; for a VHDX-backed volume: windows\scripts\compact-host-vhdx.ps1'
+    }
 }
 
 if ($SccacheEndpoint) {

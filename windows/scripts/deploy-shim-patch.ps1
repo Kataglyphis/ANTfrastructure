@@ -13,6 +13,14 @@
 # EVERY Stevedore/containerd update silently overwrites the patched binary and
 # brings the defect back, so this script is run repeatedly, not once.
 #
+# IT ALSO ARMS THE BUILD GATE: on a successful swap it records the installed
+# binary's SHA256 to C:\ProgramData\kataglyphis\shim-patch.json, which is what
+# Assert-ShimPatch (build-buildkit.ps1 preflight) and verify-host-setup.ps1
+# compare the live binary against. Until this script has run at least once on a
+# host, both fall back to a file-size heuristic and say so. `-Restore .orig`
+# CLEARS the record instead of writing one - restoring stock must never teach
+# the gate that stock is acceptable.
+#
 # RUN FROM AN ADMIN SHELL, and NEVER while a build is running - the service
 # stop kills every in-flight solve, and the binary cannot be replaced while a
 # shim process holds it. The script refuses on both unless -Force is passed.
@@ -120,6 +128,25 @@ function Show-State {
         Write-Step 'backup    : none'
     }
 
+    # The hash the BK-lane gate (Assert-ShimPatch) checks against, and whether
+    # the live binary still matches it — the question -ReportOnly is run to answer.
+    try {
+        Import-Module (Join-Path $PSScriptRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
+        $statePath = Get-ShimPatchStatePath
+        if (Test-Path $statePath) {
+            $state = Get-Content $statePath -Raw | ConvertFrom-Json
+            $live = if (Test-Path $InstallPath) { (Get-FileHash -Algorithm SHA256 -Path $InstallPath).Hash } else { '' }
+            $verdict = if ($live -eq $state.sha256) { 'MATCHES live binary' } else { 'DOES NOT MATCH live binary' }
+            $color = if ($live -eq $state.sha256) { 'Green' } else { 'Red' }
+            Write-Step ('gate hash : {0} ({1}, recorded {2}, variant {3})' -f
+                $state.sha256.Substring(0, 12), $verdict, $state.deployedAt, $state.variant) $color
+        } else {
+            Write-Step "gate hash : none recorded ($statePath) - Assert-ShimPatch falls back to the size heuristic" 'Yellow'
+        }
+    } catch {
+        Write-Step ("gate hash : cannot read ({0})" -f $_.Exception.Message) 'Yellow'
+    }
+
     try {
         $current = (Get-ItemProperty $svcKey -ErrorAction Stop).Environment
         if ($current) {
@@ -213,6 +240,45 @@ try {
     Write-Step ('installed {0:N0} bytes' -f (Get-Item $InstallPath).Length) 'Green'
 } catch {
     Write-Step ('SWAP ERROR: {0}' -f $_.Exception.Message) 'Red'
+}
+
+# --- record what was installed ------------------------------------------------
+#
+# Assert-ShimPatch (WindowsBuildDriver.Common, the BK lane's preflight gate) used
+# to identify the patched shim by FILE SIZE, which rots every time hcsshim moves
+# and degrades to a warning exactly when something has changed. Recording the
+# SHA256 here makes the gate exact and self-maintaining: the expected hash is
+# whatever THIS script last installed, so a Stevedore update overwriting the
+# binary is a hard, unambiguous failure instead of a shrug. Matches how every
+# other downloaded input in this repo is pinned.
+#
+# Best-effort: a build gate losing its bookkeeping must never fail a swap that
+# already succeeded — the gate falls back to the size heuristic.
+if ($swapped) {
+    try {
+        Import-Module (Join-Path $PSScriptRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
+        $stockBackup = "$InstallPath.orig"
+        # `-Restore .orig` puts the STOCK binary back. Recording that as "the
+        # deployed patch" would teach the gate to wave the un-patched shim
+        # through — the exact failure it exists to catch. Clear the state
+        # instead, so the gate falls back to the size heuristic, which knows
+        # stock is a hard failure.
+        $isStock = (Test-Path $stockBackup) -and
+            ((Get-FileHash -Algorithm SHA256 -Path $InstallPath).Hash -eq (Get-FileHash -Algorithm SHA256 -Path $stockBackup).Hash)
+        if ($isStock) {
+            $statePath = Get-ShimPatchStatePath
+            if (Test-Path $statePath) { Remove-Item $statePath -Force }
+            Write-Step "installed binary IS the stock shim - cleared the gate's recorded hash ($statePath)" 'Yellow'
+        } else {
+            $variant = if ($Restore) { "restored$Restore" }
+                elseif ($ServiceEnvironment.Count -gt 0) { 'upstream-env' }
+                else { 'local-constant' }
+            $statePath = Write-ShimPatchState -ShimPath $InstallPath -Variant $variant -StockBackupPath $stockBackup
+            Write-Step "recorded deployed hash for the build gate: $statePath" 'Green'
+        }
+    } catch {
+        Write-Step ('STATE ERROR (gate falls back to the size check): {0}' -f $_.Exception.Message) 'Yellow'
+    }
 }
 
 # --- service environment -----------------------------------------------------

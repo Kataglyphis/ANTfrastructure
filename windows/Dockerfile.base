@@ -33,7 +33,15 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 # ZIP install avoids MSI dependency issues in containers. The version is pinned
 # via ARG PWSH_VERSION (from versions.env). After this, SHELL is switched to pwsh
 # for all subsequent layers.
-RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null; $u = 'https://github.com/PowerShell/PowerShell/releases/download/v' + $env:PWSH_VERSION + '/PowerShell-' + $env:PWSH_VERSION + '-win-x64.zip'; $z = $env:TEMP_DIR + '\pwsh.zip'; $d = 'C:\Program Files\PowerShell\7'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $u -OutFile $z -UseBasicParsing; if ($env:PWSH_ZIP_SHA256) { $h = (Get-FileHash -Algorithm SHA256 -Path $z).Hash; if ($h -ne $env:PWSH_ZIP_SHA256) { throw ('pwsh zip SHA256 mismatch: expected ' + $env:PWSH_ZIP_SHA256 + ' but got ' + $h) } }; Expand-Archive -Path $z -DestinationPath $d -Force; Remove-Item $z -Force; $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine'); if ($mp -notlike '*PowerShell\7*') { [Environment]::SetEnvironmentVariable('Path', $mp + ';' + $d, 'Machine') }
+#
+# RETRY (added 2026-08-07): this is the FIRST network fetch of the chain's most
+# expensive stage, and it was the last single-shot download left in the tree —
+# every other one goes through Invoke-DownloadWithRetry (which cannot be used
+# here: no module has been COPY'd yet, by design). A transient blip cost the
+# whole base build. Three attempts with a backoff, the hash check inside the
+# loop so a truncated/HTML body is retried rather than thrown on, and the
+# ORIGINAL exception rethrown when the budget is exhausted.
+RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null; $u = 'https://github.com/PowerShell/PowerShell/releases/download/v' + $env:PWSH_VERSION + '/PowerShell-' + $env:PWSH_VERSION + '-win-x64.zip'; $z = $env:TEMP_DIR + '\pwsh.zip'; $d = 'C:\Program Files\PowerShell\7'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ok = $false; $err = $null; foreach ($attempt in 1..3) { try { if (Test-Path $z) { Remove-Item $z -Force }; Invoke-WebRequest -Uri $u -OutFile $z -UseBasicParsing; if ($env:PWSH_ZIP_SHA256) { $h = (Get-FileHash -Algorithm SHA256 -Path $z).Hash; if ($h -ne $env:PWSH_ZIP_SHA256) { throw ('pwsh zip SHA256 mismatch: expected ' + $env:PWSH_ZIP_SHA256 + ' but got ' + $h) } }; $ok = $true; break } catch { $err = $_; Write-Host ('pwsh download attempt ' + $attempt + ' failed: ' + $_.Exception.Message); if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) } } }; if (-not $ok) { throw $err }; Expand-Archive -Path $z -DestinationPath $d -Force; Remove-Item $z -Force; $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine'); if ($mp -notlike '*PowerShell\7*') { [Environment]::SetEnvironmentVariable('Path', $mp + ';' + $d, 'Machine') }
 
 # Ensure pwsh and the base Windows paths are on PATH for the SHELL switch below and all
 # subsequent RUN instructions. The base image's PATH is NOT inherited by Docker ENV
@@ -82,19 +90,26 @@ RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 # Needs load-versions first: setup-scoop-tools reads GIT_VERSION (+ the
 # GIT_WINDOWS_INSTALLER_SHA256 pin) and FLUTTER_VERSION from the baked env.
 # Git is pinned, but NOT through scoop — the script builds the git-for-windows
-# release URL from GIT_VERSION and verifies the installer hash. LLVM is
-# DELIBERATELY UNPINNED (scoop's latest; versions.env's LLVM_RELEASE pins only
-# the Linux lane, and the smoke test asserts a well-formed clang-cl version
-# rather than that value) — see the comment at the call site in
-# setup-scoop-tools.ps1. This comment used to claim scoop pinned both.
-# The Vulkan/CMake pins are declared HERE (not at the top): every RUN after an
-# ARG declaration keys its cache on the ARG's value, so declaring them above the
-# VS layer made a Vulkan/CMake bump re-pay the VS Build Tools install. Declared
-# here they can only invalidate scoop and the tail (their sole consumers).
+# release URL from GIT_VERSION and verifies the installer hash.
+# LLVM/ninja/nasm are PINNED (versions.env LLVM_WINDOWS_VERSION /
+# NINJA_WINDOWS_VERSION / NASM_WINDOWS_VERSION, 2026-08-07): they produce or
+# shape compiled output, and an unpinned clang-cl made the base image — the
+# most expensive layer in the chain — unreproducible. versions.env's
+# LLVM_RELEASE still pins only the LINUX lane; the two are independent on
+# purpose. The remaining scoop tools stay floating (see setup-scoop-tools.ps1).
+# The pins are declared HERE (not at the top): every RUN after an ARG
+# declaration keys its cache on the ARG's value, so declaring them above the
+# VS layer made a Vulkan/CMake/LLVM bump re-pay the VS Build Tools install.
+# Declared here they can only invalidate scoop and the tail (their sole
+# consumers).
 ARG VULKAN_VERSION=1.4.357.0
 ARG CMAKE_VERSION=4.4.2
+ARG LLVM_WINDOWS_VERSION=22.1.8
+ARG NINJA_WINDOWS_VERSION=1.13.2
+ARG NASM_WINDOWS_VERSION=3.02
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION
+RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
+    -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION
 
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'

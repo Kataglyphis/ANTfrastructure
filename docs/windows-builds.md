@@ -168,6 +168,52 @@ Dockerfile) to keep the `C:\temp\*-src` build trees for debugging; by default
 each build script removes its source tree after installing so the trees don't
 bloat the image layers.
 
+### Toolchain pins and the provenance manifest
+
+Everything that **produces or shapes compiled output** is pinned in
+`versions.env` and asserted at base-build time by `verify-toolchain.ps1`:
+
+| Pin | Installs | Why it is pinned |
+|---|---|---|
+| `LLVM_WINDOWS_VERSION` | scoop `main/llvm` | clang-cl + lld-link compile the entire media chain, and five patches under `windows/scripts/patches/` are written against a specific clang-cl's diagnostics |
+| `NINJA_WINDOWS_VERSION` | scoop `main/ninja` | build-graph executor for every CMake source build |
+| `NASM_WINDOWS_VERSION` | scoop `main/nasm` | assembles FFmpeg's hand-written x86 SIMD — a bump changes shipped object code |
+| `CMAKE_VERSION`, `VULKAN_VERSION`, `FLUTTER_VERSION`, `GIT_VERSION` | scoop / installer | pre-existing pins, unchanged |
+
+The LLVM pin landed **2026-08-07** and closed a real hole: the OS base is
+digest-pinned (`WINDOWS_BASE_DIGEST`) for reproducibility, and the very next
+layer then installed whatever clang-cl scoop served that day. A base rebuild
+months later would swap the compiler silently, and the breakage surfaces ~2 h
+into media-core with no way to reproduce the image that worked. It was pinned
+to the version scoop was serving at the time, so it was a no-op for the next
+rebuild and a guarantee for every one after. **Bump deliberately**, then re-run
+`windows\scripts\tests\Test-PatchesApplyClean.ps1` against the rebuilt base.
+
+Everything else `setup-scoop-tools.ps1` installs (7zip, nano, cppcheck,
+sccache, nsis, uv, nuget, zlib, openssl, pkg-config, make, gawk) floats on
+purpose — the build only *invokes* those. Move a package into the pinned block
+the moment it starts linking into a shipped binary. Note `LLVM_RELEASE` is a
+SEPARATE pin for the Linux lane; the two lanes move independently.
+
+Two things still float by design and cannot be pinned the same way: the **MSVC
+toolset** inside VS major 18 (setup-vs.ps1 uses the `aka.ms/vs/18/release`
+channel, which refreshes within the major) and scoop's floating block. That is
+what the manifest is for:
+
+```pwsh
+# in any image built after 2026-08-07
+nerdctl --namespace buildkit run --rm --entrypoint pwsh <image> `
+  -NoProfile -Command "Get-Content C:\toolchain-manifest.json"
+```
+
+`finalize-container.ps1` writes `C:\toolchain-manifest.json` in the base tail
+layer: pinned inputs as `pin`/`resolved` pairs (so a mismatch is visible, not
+inferred), the floating ones as resolved values only, plus the OS base digest
+and a UTC timestamp. It answers "which compiler built this 49 GB image" from
+the artifact rather than from `out\windows-build-logs\`, and it turns
+classic-vs-BuildKit lane parity into a `diff` of two files. The smoke test
+asserts it exists and records a resolved clang-cl (SKIP on older images).
+
 ### Build isolation and CPU parallelism
 
 **Policy (build.ps1 `-Isolation`, default `auto`): process isolation is always
@@ -192,6 +238,27 @@ Under Hyper-V, build containers are given only **2 logical CPUs**, so
 in-container `ninja -j` to 2 no matter how many cores the host has. That is the
 difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the heavy
 **media-core** stage does **not** use `docker build` at all.
+
+Two properties of `docker commit` that the run+commit path has to correct for
+(both fixed 2026-08-07):
+
+- **`commit` captures the CONTAINER's config, including `Cmd`** — which here is
+  the build-script argv the stage was launched with. Left alone,
+  `local/kataglyphis:windows-media` (and `windows-torch`, which inherits it)
+  ship a `CMD` that RE-RUNS the GStreamer build, so a debugging
+  `docker run -it local/kataglyphis:windows-media` starts recompiling over
+  `C:\runtime` instead of giving you a shell. The driver now commits with
+  `--change 'CMD ["pwsh"]'`. The FINAL image was never affected — a Dockerfile
+  `ENTRYPOINT` resets an inherited `CMD` — which is exactly why it stayed
+  invisible for so long.
+- **A committed layer cannot be shrunk later**, so package-manager scratch has
+  to be cleared INSIDE the container before the commit. The classic lane now
+  passes `-ScrubAfter` to the media branch and merge/GStreamer runs, matching
+  what the BuildKit lane already did on every compile RUN (`Clear-BuildScratch`:
+  pip cache, `~\.nuget`, `%TEMP%`, INetCache). Source trees were never the
+  issue — each leaf build script removes its own via `Remove-SourceBuildTree`.
+  The toolchain stage is deliberately excluded on both lanes: its CPython tree
+  at `C:\temp\cpython` IS the deliverable.
 
 ### BuildKit/containerd lane (PREFERRED, `windows/build-buildkit.ps1`)
 
@@ -728,11 +795,17 @@ steps; the remaining work is the Dockerfile surgery):
   DE-WARMED since 2026-08-06: direct solves everywhere, warm/materialize
   retired (payload scripts kept in tree as the rollback path, c9586c1^).
   **MAINTENANCE:** any Stevedore/containerd update overwrites the patched
-  shim — after every update compare the binary size (patched 25 332 736 for
-  the env-var build currently deployed, 25 329 664 for the fixed-constant
-  build, vs stock 23 279 616) and re-install if reverted; use
-  `windows\scripts\deploy-shim-patch.ps1 -ReportOnly` for the check and the
-  same script to re-install. Rebuild recipe: scoop go + `git clone
+  shim — `build-buildkit.ps1`'s `Assert-ShimPatch` preflight catches it before
+  the build starts. Since 2026-08-07 the check is a **SHA256 comparison**
+  against the hash `deploy-shim-patch.ps1` recorded when it installed the
+  binary (`C:\ProgramData\kataglyphis\shim-patch.json`), which is exact and
+  cannot rot as hcsshim moves; the older size table (patched 25 332 736 for the
+  env-var build, 25 329 664 for the fixed-constant build, vs stock 23 279 616)
+  survives only as the fallback for a host that has not run the deploy script
+  since. **Run `deploy-shim-patch.ps1` once to record the hash** — until then
+  the gate warns that it is still guessing. `-ReportOnly` shows the recorded
+  hash, whether the live binary still matches, the backups and the service
+  environment; the same script re-installs. Rebuild recipe: scoop go + `git clone
   microsoft/hcsshim` + apply the in-tree patch + `go build
   .\cmd\containerd-shim-runhcs-v1`. **Upstream submission is FILED as a DRAFT
   PR: [microsoft/hcsshim#2855](https://github.com/microsoft/hcsshim/pull/2855)**,
@@ -1414,6 +1487,16 @@ a hard gate of the media build itself), FFmpeg (a real lavfi→null filter graph
 GStreamer (a live `videotestsrc ! videoconvert` pipeline), plus clang-cl /
 CMake+Ninja / MSBuild integration builds. Version pins (cmake, python, gstreamer)
 are asserted against versions.env to catch stale baked layers.
+
+The **toolchain** pins are asserted one layer earlier instead — clang-cl, ninja
+and nasm are checked against `versions.env` by `verify-toolchain.ps1` during the
+BASE build, where a mismatch costs seconds rather than surfacing two hours into
+media-core. This suite deliberately keeps only a well-formedness check on
+clang-cl (plus a non-fatal warning when the image's baked pin disagrees), because
+it also runs against PUBLISHED and older images whose compiler legitimately
+predates the current pin — failing those would make it useless as a regression
+gate. It does assert that `C:\toolchain-manifest.json` exists and records a
+resolved compiler, skipping on images built before the manifest existed.
 
 **Python bindings are built, shipped, and functionally verified (since
 2026-07-13).** The media branches build python bindings for every source-built

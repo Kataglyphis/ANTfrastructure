@@ -456,6 +456,17 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    `ExportLayer 0x3` hours into the run). Both were manual checks here until
    2026-08-07; on 2026-08-06 a chain ran 2.5 h and died of a disk shortage
    disguised as a missing `ninja`.
+   The disk gate checks **every drive the build uses** — C: (the layer stores)
+   plus the repo checkout's drive, which on a VHDX-backed checkout has its own
+   exhaustion mode that a C:-only check cannot see (§ VHDX-backed checkouts in
+   [windows-builds.md](windows-builds.md)).
+   The shim gate compares the live binary's **SHA256** against the hash
+   `deploy-shim-patch.ps1` recorded when it installed the patch (state file:
+   `C:\ProgramData\kataglyphis\shim-patch.json`); a Stevedore update overwriting
+   the binary is then an unambiguous hard failure. Hosts that have not yet
+   re-run the deploy script fall back to the older file-size heuristic and get a
+   warning telling them so — **run `deploy-shim-patch.ps1` once to record the
+   hash.** `-ReportOnly` prints the recorded hash and whether it still matches.
    `(Get-PSDrive C).Free / 1GB` — below ~25 GB free, hcsshim gets "weird"
    *before* an honest disk-full error (`ExportLayer 0x3`/`0x70`, spawn
    flakes). Reclaim levers, non-admin first: `buildctl prune --free-storage <MB>`
