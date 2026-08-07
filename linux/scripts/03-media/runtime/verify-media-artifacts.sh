@@ -74,7 +74,10 @@ verify_file_exists() {
 verify_pkgconfig() {
   local prefix="$1" pc_name="$2" label="$3" optional="${4:-}"
   local pc
-  pc="$(find "${prefix}" -name "${pc_name}" -type f 2>/dev/null | head -1)"
+  # `|| true` (like verify_shared_lib below): an absent prefix makes find exit
+  # non-zero, which must surface as this function's "not found" verdict — not
+  # as a set -e abort of the whole verifier.
+  pc="$(find "${prefix}" -name "${pc_name}" -type f 2>/dev/null | head -1 || true)"
   if [ -n "${pc}" ]; then
     pass_check "${label} pkg-config: ${pc}"
   elif [ "${optional}" = "optional" ]; then
@@ -207,8 +210,8 @@ case "${STAGE}" in
   libcamera)
     PREFIX="${PREFIX:-/opt/libcamera}"
     # libcamera binaries may be installed to different paths depending on meson config
-    cam_bin="$(find "${PREFIX}" -name "cam" -type f 2>/dev/null | head -1)"
-    lc_bin="$(find "${PREFIX}" -name "lc-compliance" -type f 2>/dev/null | head -1)"
+    cam_bin="$(find "${PREFIX}" -name "cam" -type f 2>/dev/null | head -1 || true)"
+    lc_bin="$(find "${PREFIX}" -name "lc-compliance" -type f 2>/dev/null | head -1 || true)"
     if [ -n "${cam_bin}" ] || [ -n "${lc_bin}" ]; then
       pass_check "libcamera binary: ${cam_bin:-${lc_bin}}"
     else

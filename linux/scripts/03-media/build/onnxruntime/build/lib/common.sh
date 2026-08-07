@@ -333,7 +333,9 @@ ensure_onnxruntime_symlink() {
   local output_dir="${1:?output dir required}"
   local onnx_lib=""
 
-  onnx_lib="$(find "${output_dir}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f | head -1)"
+  # Guarded: an absent lib dir must fall through to the warn below, not abort
+  # the caller via set -e/pipefail (the GPU call site passes an unchecked dir).
+  onnx_lib="$(find "${output_dir}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f 2>/dev/null | head -1 || true)"
   if [ -n "${onnx_lib}" ] && [ ! -e "${output_dir}/lib/libonnxruntime.so" ]; then
     ln -sf "$(basename "${onnx_lib}")" "${output_dir}/lib/libonnxruntime.so"
     info "Created symlink: libonnxruntime.so -> $(basename "${onnx_lib}")"

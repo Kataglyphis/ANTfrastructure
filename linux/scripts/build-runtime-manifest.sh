@@ -185,8 +185,15 @@ main() {
     for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
       wrapper_tag="$(runtime_wrapper_tag "${arch}")"
       log "Runtime-image smoke: ${wrapper_tag} (${arch})"
-      # Ensure the pushed image is present locally (build may not load it).
-      run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
+      # Ensure the image is present locally (the build may not have loaded it) —
+      # but only pull when it is actually MISSING. The old unconditional pull
+      # re-pointed the tag to the previously PUBLISHED image whenever that tag
+      # exists in the registry, so a --no-push validation run smoked the stale
+      # release instead of the wrapper it had just built (false green, plus a
+      # multi-GB download that --no-push exists to avoid).
+      if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
+        run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
+      fi
       run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
     done
   fi

@@ -314,7 +314,10 @@ if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
       [ -f "${so}" ] || continue
       _so_base="$(basename "${so}")"
       is_vendor_binary "${_so_base}" && continue
-      elf_machine="$(readelf -h "${so}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+      # `|| true`: readelf exits 1 on non-ELF *.so files (GNU-ld linker scripts
+      # live in these dirs) and pipefail would abort the whole validator; the
+      # `""` case arm below is the intended handler for exactly that.
+      elf_machine="$(readelf -h "${so}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1 || true)"
       case "${elf_machine}" in
         *"${elf_machine_grep}"*) ;;
         "") continue ;;

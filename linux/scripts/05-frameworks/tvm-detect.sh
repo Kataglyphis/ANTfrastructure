@@ -284,7 +284,11 @@ elf_matches_target() {
   local machine target_arch expected
 
   command -v readelf >/dev/null 2>&1 || return 0
-  machine="$(readelf -h "$file" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1)"
+  # `|| true`: callers invoke this in `if` conditions, so a readelf failure on
+  # a non-ELF file would not abort — but the failed assignment WOULD become the
+  # function's return value, silently reporting the file as mismatched. The
+  # docstring promises "conservatively return 0 when undeterminable".
+  machine="$(readelf -h "$file" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1 || true)"
   target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
   expected="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
   [ -n "${expected}" ] || return 0

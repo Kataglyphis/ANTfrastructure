@@ -473,11 +473,18 @@ emit_runtime_apt_manifest() {
         objdump -p "${_f}" 2>/dev/null | awk '/NEEDED/{print $2}'
     done | sort -u | while IFS= read -r _soname; do
         local _path _pkg
-        _path="$(find /usr/lib /lib -maxdepth 3 -name "${_soname}" 2>/dev/null | head -1)"
+        # `|| true` on both: `find | head -1` dies with SIGPIPE (rc 141) when
+        # more than one match exists, and `dpkg -S` exits 1 for any file no
+        # package owns. Under set -e either kills this while-subshell, pipefail
+        # fails the whole pipeline, and the "best-effort" promise above breaks
+        # AFTER a successful ffmpeg build.
+        _path="$(find /usr/lib /lib -maxdepth 3 -name "${_soname}" 2>/dev/null | head -1 || true)"
         [ -n "${_path}" ] || continue
         case "${_path}" in /opt/*) continue ;; esac   # our own payload, not apt
-        _pkg="$(dpkg -S "${_path}" 2>/dev/null | head -1 | cut -d: -f1)"
-        [ -n "${_pkg}" ] && printf '%s\n' "${_pkg}"
+        _pkg="$(dpkg -S "${_path}" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+        # `; :` tail: if _pkg is empty on the LAST soname, a bare AND-list here
+        # would make the while exit 1 and abort the pipeline the same way.
+        { [ -n "${_pkg}" ] && printf '%s\n' "${_pkg}"; } || :
     done | sort -u > "${tmp}"
 
     if [ -s "${tmp}" ]; then
@@ -613,7 +620,9 @@ main() {
     configure_ffmpeg
     build_ffmpeg
     install_ffmpeg
-    emit_runtime_apt_manifest
+    # Best-effort by declaration (see its header comment): a manifest problem
+    # must never fail an ffmpeg build that already succeeded.
+    emit_runtime_apt_manifest || true
 
     # Only write stamp and run smoke test for native builds
     if [ "${_is_native}" = "1" ]; then

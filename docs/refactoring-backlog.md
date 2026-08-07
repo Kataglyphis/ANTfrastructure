@@ -853,6 +853,7 @@ Also worth hardening: `Assert-PkgConfigModule` currently only runs
 minimum versions the consumers demand would move this failure from meson's
 configure output into the pre-flight, where it names itself.
 
+<<<<<<< HEAD
 ## 2026-08-07 — Linux toolchain closure audit (during the amd64 from-base run)
 
 Agent-audited while the compiler stage was building. Everything below touches
@@ -922,3 +923,39 @@ are disjoint; cross builds already --skip-system-registration. Peak disk ~2×.
   build-helpers.sh:54 doc comment that recommends the broken idiom.
 - resource-monitor.sh:133: `pgrep -c` exits 1 on no match → sampler dies under
   errexit on an idle tick. `|| true` it. (01-core → still closure via bundle COPY.)
+=======
+### P8 — harvested from the litert/tvm stages of the same run (observability + log volume)
+
+- **`WARNING: 5 lib stub(s) could not be created` names none of the five.**
+  litert-lm pre-creates 319 ExternalProject `.a`/`.lib` stubs because the
+  aggregate target references libraries that do not exist yet; five failed this
+  run and the build succeeded anyway, so they were harmless *this time*. But the
+  warning is unactionable as written: when lld-link eventually does fail with
+  `could not open <path>`, nothing connects it back to this line. One-line fix —
+  log the failed paths, not just the count. Cheap, and it turns a shrug into a
+  lead the next time the litert link breaks.
+
+- **16 % of the build log is upstream compiler warnings — 72 864 of 459 061
+  lines in one chain.** Measured, not estimated. The floods are a handful of
+  known-benign upstream constructs repeated a thousand times each:
+
+  | source | warning | count |
+  |---|---|---|
+  | OpenCV `core/matx.hpp` | deprecated implicit copy assignment (7 operators) | ~7 700 |
+  | ONNX `stream_handles.h` / `execution_provider.h` | `-Wunused-value` | ~2 460 |
+  | IREE / MLIR `BuiltinAttributes.h` | MSVC STL4037 `'complex' is deprecated` | 657 |
+  | TVM `tvm/ffi/reflection/accessor.h` | `-Wdocumentation-unknown-command` | ~900 |
+
+  This is not cosmetic. buildkitd clips each RUN step's log at 2 MiB and then
+  **deadlocks** the step (documented in windows-builds.md § BuildKit lane), which
+  is why `BUILDKIT_STEP_LOG_MAX_SIZE=-1` is a required host setting. Cutting the
+  floods would shrink the exposure and make the logs searchable again — a real
+  failure signal currently hides among ~73 000 warnings.
+
+  Fix direction: per-stage, TARGETED `-Wno-` flags for exactly these identified
+  upstream constructs (e.g. `-Wno-deprecated-copy-with-user-provided-copy` for
+  the OpenCV TU set, `-Wno-unused-value` for ONNX's headers), never a blanket
+  `-w` — the point is to silence known upstream noise, not our own diagnostics.
+  Each suppression should carry the count it removes, so a future reader can
+  judge whether it still earns its place.
+>>>>>>> b7c9751d65f74ab744bc499720d78ed622ed4a8a
