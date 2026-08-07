@@ -717,7 +717,7 @@ of keys. Options, cheapest first:
 Note the scripts re-read `C:\temp\versions.env` at RUN time, so whatever is
 chosen must keep that contract (see the re-COPY comments in the media builders).
 
-### P2 — the transient-retry engine burns its budget on deterministic failures
+### P2 — ✅ DONE (69b860e) — retry engine burned its budget on deterministic failures
 
 `ImportLayer 0xb7` failed three times today with **byte-identical snapshot IDs**
 (`3p059m2d68o… → o47dumb0ovs4…`). The pattern matched `failed to reimport
@@ -729,7 +729,7 @@ the previous attempt's failure tail and **stop early when the new tail is
 identical** — "deterministic, not transient". Cheap to implement, saves ~10 min
 per occurrence, and the message can point straight at the `-NoCache` remedy.
 
-### P3 — the disk gate is start-time only, and that is how a snapshot got poisoned
+### P3 — ✅ DONE (69b860e) — disk gate was start-time only, and that is how a snapshot got poisoned
 
 `Assert-DiskHeadroom` passed at 164 GB and the chain still walked down to 23 GB
 mid-run, into the band where hcsshim stops failing honestly. The rescue (killing
