@@ -887,3 +887,23 @@ configure output into the pre-flight, where it names itself.
   `-w` — the point is to silence known upstream noise, not our own diagnostics.
   Each suppression should carry the count it removes, so a future reader can
   judge whether it still earns its place.
+
+### P9 — the FFmpeg .pc gate is inline script code with no unit test
+
+Verifying it before the build reached it (2026-08-07) meant extracting the block
+out of `build-ffmpeg-from-source.ps1` by string offsets and executing it against
+fixtures. That worked — it confirmed the rewrite (5 files), the pass on a valid
+`.pc`, the rejection of `Version: ..` and the by-name report of a missing module
+— but the harness kept running into trailing statements needing unrelated script
+variables (`$ffmpegDir`, `$SourceDir`), and cutting more precisely unbalances the
+braces so the scriptblock will not parse.
+
+That friction IS the finding: gate logic worth trusting is worth extracting.
+`Assert-FfmpegPkgConfig -PkgConfigDir -WindowsPrefix -MsysPrefix` would be
+directly unit-testable next to the other gates.
+
+The obvious home, `WindowsSourceBuild.Common.psm1`, is the WRONG one: it sits in
+the media compile closure, so editing it re-runs all six media compiles. Put it
+in a merge/ffmpeg-scoped module the way `WindowsGstPlugins.Common.psm1` was
+carved out for exactly this reason, and add it to the ffmpeg stage's mount list
+only.
