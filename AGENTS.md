@@ -293,6 +293,26 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
   re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
   HASHTABLE. Splatting arrays onto native executables stays fine.
+- **Scratch must be scrubbed INSIDE the layer that created it — image layers
+  are additive.** Deleting package-manager scratch (NuGet restore, pip cache,
+  `%TEMP%`, INetCache) from a LATER layer only writes a whiteout; the bytes
+  still ship. Until 2026-08-07 only the last media-core partition scrubbed, so
+  the onnx/opencv/ffmpeg/litert/tvm/gstreamer layers each carried their own
+  forever. Every chain wrapper now takes `-ScrubAfter` and every heavy RUN in
+  the BK lane passes it; the shared epilogue is `Complete-SourceBuildChain`.
+  Safe because `Clear-BuildScratch` targets `$env:TEMP` (the container profile
+  temp) — `setup-vs.ps1` repoints `$env:TEMP` to `C:\temp` but only inside its
+  own process in the base layer, so `C:\temp\cpython` and the mounted
+  script/patch trees are never touched. **Check that before widening it
+  further**: a scrub of `C:\temp` would delete the CPython tree the merge stage
+  fans in.
+- **`Invoke-BkStage -MaxAttempts` defaults to 3; the media MERGE stage passes
+  5.** It fans in three branch images, so it does far more mount work than any
+  other stage and flakes proportionally — 2026-08-06 it burned its whole
+  3-attempt budget (two `failed to mount {windows-layer}` failures, green only
+  on the last try). Retries are cheap: completed RUN vertices stay cached, only
+  the failed finalize/export re-runs. Raise the per-stage budget rather than
+  the global default.
 - **BOTH lanes are supported: `buildctl` (NON-ADMIN) builds the chain, `nerdctl`
   (ADMIN, always) runs/inspects/administers — and can build too.** Verified
   2026-08-07: `nerdctl build` with `BUILDKIT_HOST=npipe:////./pipe/buildkitd`

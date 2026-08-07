@@ -263,20 +263,35 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    "remote name could not be resolved"): `nat.exe` already ships in
    `C:\Program Files\containerd\cni\bin`; install the conf (admin):
 
+   Install it as a **`.conflist`** (plugin-LIST form). containerd and BuildKit
+   read either form, but nerdctl cannot parse a bare `.conf` — it indexes
+   `plugins[0]` with no length check and PANICS (`index out of range [0] with
+   length 0`), so the single-plugin form silently costs you the whole nerdctl
+   lane. Measured and converted 2026-08-07; see § nerdctl lane.
+
    ```jsonc
-   // C:\Program Files\containerd\cni\conf\0-containerd-nat.conf
+   // C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist
    {
        "cniVersion": "0.3.0",
        "name": "nat",
-       "type": "nat",
-       "master": "Ethernet",
-       "ipam": {
-           "subnet": "<subnet of the vEthernet (nat) adapter>",   // e.g. 172.31.32.0/20
-           "routes": [ { "GW": "<that adapter's IPv4>" } ]        // e.g. 172.31.32.1
-       },
-       "capabilities": { "portMappings": true, "dns": true }
+       "plugins": [
+           {
+               "type": "nat",
+               "master": "Ethernet",
+               "ipam": {
+                   "subnet": "<subnet of the vEthernet (nat) adapter>",   // e.g. 172.31.32.0/20
+                   "routes": [ { "GW": "<that adapter's IPv4>" } ]        // e.g. 172.31.32.1
+               },
+               "capabilities": { "portMappings": true, "dns": true }
+           }
+       ]
    }
    ```
+
+   After writing it, verify with BOTH clients — a BuildKit RUN step that fetches
+   something, and `nerdctl --namespace buildkit run --rm --network nat
+   <image> cmd /c ipconfig` (admin). The second is the picky one and therefore
+   the better test of this file.
 
    **Subnet drift warning:** dockerd recreates the `nat` HNS network with a NEW
    subnet on service restarts, silently orphaning this conf (containers then get

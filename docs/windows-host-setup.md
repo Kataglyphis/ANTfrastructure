@@ -270,8 +270,27 @@ Debug logging stays PERMANENTLY ON on build hosts, so the next snapshotter
 incident carries its evidence immediately (owner decision 2026-08-04; if the
 log grows huge, truncate it — never disable the flags). Recipe and rationale:
 [Windows Build Image](windows-builds.md) § BuildKit/containerd lane ("How to
-capture the debug evidence again"). Set via registry — `sc.exe` quoting
-mangles these in PowerShell:
+capture the debug evidence again").
+
+**Use the script — it is the source of truth for the containerd side:**
+
+```pwsh
+pwsh -File windows\scripts\apply-containerd-config.ps1 -ReportOnly   # inspect, no admin needed
+pwsh -File windows\scripts\apply-containerd-config.ps1               # admin; restarts containerd
+```
+
+containerd runs with **no `config.toml`** here — every setting lives in the
+service's `ImagePath`/`Environment` registry values, which is why it needs a
+script to be reproducible at all (buildkitd has `buildkitd.toml` +
+`apply-buildkitd-gcpolicy.ps1`; this is the missing counterpart, added
+2026-08-07). It owns three things a fresh host must have: the debug flags
+below, `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits
+the SERVICE environment — a shim built from the upstream patch keeps its 30 s
+defaults and silently reverts to the `ExportLayer 0x3` defect without it), and
+the load-bearing Defender exclusions. Never run it while a build is solving.
+
+The manual equivalent, if you want to see what it does — set via registry,
+because `sc.exe` quoting mangles these in PowerShell:
 
 ```pwsh
 Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -Name ImagePath `
