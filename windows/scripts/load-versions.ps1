@@ -50,13 +50,26 @@ if (-not (Test-Path $versionsFile)) {
 # behaviour one would expect anyway.
 Write-Host "Loading versions from: $versionsFile"
 $versions = ConvertFrom-VersionsEnv -Path $versionsFile
+# DISCRIMINATOR (refined 2026-08-07, same day, after watching it run): "already
+# in the process environment" is NOT the same as "explicitly provided". The base
+# image bakes every versions.env key into the MACHINE environment, and a Windows
+# container inherits that into every process — so a naive process-env check kept
+# all 116 keys and silently disabled the refresh path for the ~106 that no
+# Dockerfile ARG covers.
+#
+# A Dockerfile ARG/ENV override is distinguishable: it makes the PROCESS value
+# differ from the MACHINE value. Inherited-but-not-overridden keys are identical
+# in both, and those the file may still refresh — which is what preserves the
+# original purpose of this script inside a container.
 $kept = 0
 foreach ($name in $versions.Keys) {
     $value = $versions[$name]
-    $fromEnvironment = [Environment]::GetEnvironmentVariable($name, 'Process')
-    if (-not [string]::IsNullOrWhiteSpace($fromEnvironment)) {
-        if ($fromEnvironment -ne $value) {
-            Write-Host "  $name = $fromEnvironment  (kept: build-arg/ENV beats the file's '$value')"
+    $fromProcess = [Environment]::GetEnvironmentVariable($name, 'Process')
+    $fromMachine = [Environment]::GetEnvironmentVariable($name, 'Machine')
+    $isExplicitOverride = (-not [string]::IsNullOrWhiteSpace($fromProcess)) -and ($fromProcess -ne $fromMachine)
+    if ($isExplicitOverride) {
+        if ($fromProcess -ne $value) {
+            Write-Host "  $name = $fromProcess  (kept: build-arg/ENV beats the file's '$value')"
         }
         $kept++
         continue
@@ -65,5 +78,5 @@ foreach ($name in $versions.Keys) {
     [Environment]::SetEnvironmentVariable($name, $value, 'Process')
     Write-Host "  $name = $value"
 }
-Write-Host "versions.env loaded ($kept key(s) already provided by the environment and left untouched)"
+Write-Host "versions.env loaded ($kept key(s) explicitly overridden by build-arg/ENV and left untouched)"
 
