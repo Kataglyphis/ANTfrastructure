@@ -47,9 +47,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Import ContainerHub build framework (relative to this script's location in ContainerHub)
+# Import ContainerHub build framework (relative to this script's location in ContainerHub).
+# WindowsScripts.Shared and WindowsMsix.Common are requested explicitly because
+# Initialize-CiEnvironment defaults to WindowsBuild.Common only -- which is why this
+# script used to carry its own copies of Assert-Command, ConvertTo-NormalizedVersion
+# and an SDK-tool lookup.
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
-Initialize-CiEnvironment -ScriptRoot $PSScriptRoot
+Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @(
+    'WindowsBuild.Common',
+    'WindowsScripts.Shared',
+    'WindowsMsix.Common'
+)
 
 # Initialize Build Context
 $logDir = Join-Path $Workspace "logs"
@@ -60,44 +68,13 @@ if (-not (Test-Path $logDir)) {
 $Context = New-BuildContext -Workspace $Workspace -LogDir $logDir -StopOnError
 Open-BuildLog -Context $Context
 
-function Assert-Command([string]$Name, [string]$InstallHint) {
-    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        throw "$Name not found. $InstallHint"
-    }
-}
-
-function Resolve-Executable([string]$Name) {
-    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($cmd) {
-        return $cmd.Source
-    }
-
-    $sdkRoots = @(
-        "C:/Program Files (x86)/Windows Kits/10/bin",
-        "C:/Program Files/Windows Kits/10/bin"
-    )
-
-    foreach ($root in $sdkRoots) {
-        if (-not (Test-Path $root)) { continue }
-        $candidates = Get-ChildItem -Path $root -Recurse -Filter ("{0}.exe" -f $Name) -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match "\\x64\\" -or $_.FullName -match "/x64/" } |
-            Sort-Object FullName -Descending
-
-        # Coerce to array to ensure .Count is available and indexing works
-        $candidates = @($candidates)
-        if ($candidates -and $candidates.Count -gt 0) { 
-            return $candidates[0].FullName
-        }
-    }
-    return $null
-}
-
-function ConvertTo-NormalizedVersion([string]$RawVersion) {
-    $segments = @($RawVersion.Split('.'))
-    if ($segments.Count -eq 3) { return "$RawVersion.0" }
-    if ($segments.Count -ne 4) { throw "Version '$RawVersion' is invalid. Use Major.Minor.Build or Major.Minor.Build.Revision" }
-    return $RawVersion
-}
+# Assert-Command and ConvertTo-NormalizedVersion now come from
+# WindowsScripts.Shared, and the SDK-tool lookup from WindowsMsix.Common's
+# Resolve-WindowsSdkToolPath. The local copies were behaviourally identical for
+# the first two; the third was strictly worse -- it only globbed the two
+# hardcoded "Windows Kits\10\bin" roots, while the shared one honours
+# WindowsSdkVerBinPath / WindowsSdkBinPath / WindowsSDKVersion first and accepts
+# an explicit override path. Same not-found contract either way: $null.
 
 function New-PasswordSecureString([string]$Password) {
     if ([string]::IsNullOrWhiteSpace($Password)) { throw "A non-empty -CertificatePassword is required" }
@@ -220,10 +197,12 @@ try {
     Invoke-BuildStep -Context $Context -StepName "Verify Dependencies" -Critical -Script {
         Assert-Command -Name "cargo" -InstallHint "Install Rust toolchain via rustup"
         
-        $script:makeappxExe = Resolve-Executable -Name "makeappx"
+        # Resolve-WindowsSdkToolPath joins the name onto candidate dirs verbatim,
+        # so it wants the ".exe" that the old local helper used to append.
+        $script:makeappxExe = Resolve-WindowsSdkToolPath -ToolName "makeappx.exe"
         if ([string]::IsNullOrWhiteSpace($makeappxExe)) { throw "makeappx not found. Install Windows SDK" }
-        
-        $script:signtoolExe = Resolve-Executable -Name "signtool"
+
+        $script:signtoolExe = Resolve-WindowsSdkToolPath -ToolName "signtool.exe"
         if ([string]::IsNullOrWhiteSpace($signtoolExe)) { throw "signtool not found. Install Windows SDK" }
         
         Write-BuildLog -Context $Context -Message "Using makeappx: $makeappxExe"
