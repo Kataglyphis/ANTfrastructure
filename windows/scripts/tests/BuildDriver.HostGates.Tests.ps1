@@ -259,3 +259,30 @@ Describe 'Get-StageDiskFloorGb / Assert-StageDiskHeadroom (shared by both lanes)
         Assert-StageDiskHeadroom -Label 'test' -FloorGb 100000000 -Force -WarningAction SilentlyContinue
     }
 }
+
+Describe 'Get-StageDiskFloorGb per SUB-stage (refined after a 1.5 GB false refusal)' {
+
+    # The first table lumped every media-* label at one floor, which applies
+    # ONNX's appetite to sub-stages an order of magnitude lighter — it refused
+    # the FFmpeg sub-stage at 53.5 GB free over a 55 GB floor. Blocking correct
+    # work is the same class of failure as waving danger through.
+
+    It 'gives ONNX the highest media floor and FFmpeg a lower one' {
+        $onnx = Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-onnx'
+        $ffm  = Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-ffmpeg'
+        Assert-True ($onnx -gt $ffm) 'the 25 GB ONNX image must demand more than the FFmpeg sub-stage'
+    }
+
+    It 'does not let the generic media rule swallow the specific sub-stages' {
+        # Ordering bug guard: a generic 'media-core' rule placed first would
+        # catch 'media-core-built-onnx' and silently under-protect it.
+        Assert-Equal 55 (Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-onnx')
+        Assert-Equal 45 (Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-opencv')
+    }
+
+    It 'still covers the branches and the merge' {
+        Assert-Equal 45 (Get-StageDiskFloorGb -Label 'media-litert-built')
+        Assert-Equal 40 (Get-StageDiskFloorGb -Label 'media-tvm-built')
+        Assert-Equal 45 (Get-StageDiskFloorGb -Label 'Dockerfile.media-merge-builder:built')
+    }
+}

@@ -674,12 +674,29 @@ function Get-StageDiskFloorGb {
     # ('windows/Dockerfile.media-builder', 'media-core') alike.
     [CmdletBinding()]
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Label)
+    # PER SUB-STAGE, not per branch (refined 2026-08-07 after the coarse version
+    # refused the FFmpeg sub-stage by 1.5 GB). Lumping every media-* label at one
+    # floor applies ONNX's appetite to sub-stages an order of magnitude lighter,
+    # which blocks correct work — the same failure mode as a floor that is too
+    # low, just in the other direction. Measured this run:
+    #
+    #   ONNX  (25 GB image, the heaviest):  63 -> 56 GB   (~8 GB net after GC)
+    #   OpenCV:                             56 -> 53.5 GB (~2.5 GB net)
+    #   FFmpeg / GenAI:                     lighter still
+    #
+    # Ordered most-specific first: 'media-core-built-onnx' must not be caught by
+    # the generic media rule below it.
     switch -Regex ($Label) {
-        'nvidia|sdk'                       { return 60 }   # ~36 GB consumed + export headroom
-        'media-core|media-builder|media-litert|media-tvm' { return 55 }
-        'media-merge|merge'                { return 45 }
-        'toolchain'                        { return 40 }
-        default                            { return 40 }
+        'nvidia|sdk'                { return 60 }   # CUDA ~36 GB + export headroom
+        'media-core-built-onnx'     { return 55 }   # the 25 GB image, the one that really needs room
+        'media-core-built-opencv'   { return 45 }
+        'media-core-built-ffmpeg'   { return 40 }
+        'media-litert'              { return 45 }
+        'media-tvm'                 { return 40 }
+        'media-merge|merge'         { return 45 }   # mounts three branch trees at once
+        'media-core|media-builder'  { return 40 }   # GenAI tail + classic-lane labels
+        'toolchain'                 { return 40 }
+        default                     { return 40 }
     }
 }
 
