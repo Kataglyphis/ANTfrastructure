@@ -670,24 +670,48 @@ function Get-RequiredGstPlugin {
     #     wanted, that is a new source-build stage, not a plugin gate entry.
     [CmdletBinding()]
     param()
+    # Detection tells the pre-flight HOW upstream looks the dependency up, which
+    # is not uniform: opencv/onnx/libav go through pkg-config, tflite does not
+    # use pkg-config at all (cc.find_library + cc.has_header). Checking the wrong
+    # way would either pass vacuously or demand a .pc that nothing consumes.
     return @(
         [pscustomobject]@{
-            Name     = 'libav'
-            Provides = 'avdec_* / avenc_* / avmux_* — the FFmpeg codec bridge'
-            NeedsPc  = @('libavcodec', 'libavformat', 'libavutil', 'libavfilter')
-            Why      = 'the single largest codec surface in the image; without it GStreamer decodes almost nothing this build claims to support'
+            Name      = 'libav'
+            Provides  = 'avdec_* / avenc_* / avmux_* — the FFmpeg codec bridge'
+            Detection = 'pkg-config'
+            NeedsPc   = @('libavcodec', 'libavformat', 'libavutil', 'libavfilter')
+            Why       = 'the single largest codec surface in the image; without it GStreamer decodes almost nothing this build claims to support'
         },
         [pscustomobject]@{
-            Name     = 'opencv'
-            Provides = 'cvtracker, cvdilate, cvlaplace, faceblur, … CV filter elements'
-            NeedsPc  = @('opencv4')
-            Why      = 'the reason OpenCV 5 is built from source into this image at all — the CV pipeline elements are the consumer'
+            Name      = 'opencv'
+            Provides  = 'cvtracker, cvdilate, cvlaplace, faceblur, … CV filter elements'
+            Detection = 'pkg-config'
+            NeedsPc   = @('opencv4')
+            Why       = 'the reason OpenCV 5 is built from source into this image at all — the CV pipeline elements are the consumer'
         },
         [pscustomobject]@{
-            Name     = 'onnx'
-            Provides = 'onnxinference — ONNX Runtime inference inside a pipeline'
-            NeedsPc  = @('libonnxruntime')
-            Why      = 'the inference path of the media stack; ORT is built with CUDA/DML/TensorRT EPs specifically so pipelines can use it'
+            Name      = 'onnx'
+            Provides  = 'onnxinference — ONNX Runtime inference inside a pipeline'
+            Detection = 'pkg-config'
+            NeedsPc   = @('libonnxruntime')
+            Why       = 'the inference path of the media stack; ORT is built with CUDA/DML/TensorRT EPs specifically so pipelines can use it'
+        },
+        [pscustomobject]@{
+            Name      = 'tflite'
+            Provides  = 'tfliteinference — TensorFlow Lite / LiteRT inference inside a pipeline'
+            Detection = 'compiler'
+            NeedsPc   = @()
+            # gst-plugins-bad ext/tflite probes the COMPILER, not pkg-config:
+            #   cc.find_library('tensorflowlite_c')  (fallback: 'tensorflow-lite')
+            #   cc.has_function('TfLiteInterpreterCreate', ...)
+            #   cc.has_header('tensorflow/lite/c/c_api.h', ...)
+            # The header path is the pre-rename TensorFlow one. LiteRT v2.x
+            # stages its headers under tflite/ (Google renamed TFLite → LiteRT),
+            # so an alias tree is required — see the pre-flight in
+            # build-gstreamer-from-source.ps1.
+            NeedsHeader = 'tensorflow/lite/c/c_api.h'
+            NeedsLib    = @('tensorflowlite_c', 'tensorflow-lite')
+            Why         = 'LiteRT is built from source into this image; without this plugin nothing in a GStreamer pipeline can use it'
         }
     )
 }

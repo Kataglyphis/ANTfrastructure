@@ -170,11 +170,11 @@ bloat the image layers.
 
 ### Mandatory GStreamer plugins (the contract)
 
-`libav`, `opencv` and `onnx` are **required** in a shipped image. They were
-absent from the published `winamd64` for months and nothing was red: meson's
-`auto` feature state means *skip silently when the dependency is missing*, the
-build logged `[INFO] not available`, and the healthcheck printed `[PASS]` for
-plugins that did not exist.
+`libav`, `opencv`, `onnx` and `tflite` are **required** in a shipped image. They
+were absent from the published `winamd64` for months and nothing was red:
+meson's `auto` feature state means *skip silently when the dependency is
+missing*, the build logged `[INFO] not available`, and the healthcheck printed
+`[PASS]` for plugins that did not exist.
 
 The set lives in **one** place — `Get-RequiredGstPlugin`
 (`windows/scripts/modules/WindowsScripts.Shared.psm1`) — and is enforced at four
@@ -202,6 +202,21 @@ Three unrelated root causes, diagnosed against gstreamer 1.29.2 sources:
   instead of the `n9.0` it had just built. Even succeeding would have shipped
   gst-libav linked against a different FFmpeg than the image's own `ffmpeg.exe`.
   The wrap is now moved aside before configure.
+- **tflite** — a fourth mechanism again: this plugin consults **no pkg-config
+  at all**. `ext/tflite/meson.build` probes the compiler directly with
+  `cc.find_library('tensorflowlite_c')` (fallback `tensorflow-lite`),
+  `cc.has_function('TfLiteInterpreterCreate')` and
+  `cc.has_header('tensorflow/lite/c/c_api.h')`. That header path is the
+  **pre-rename TensorFlow** one, while LiteRT v2.x ships the post-rename layout
+  — `build-litert-from-source.ps1` stages headers under `include\tflite\`, so
+  upstream's probe could never find them regardless of any `.pc` file. It is a
+  namespace mismatch, not a missing dependency, which is why it never looked
+  like the opencv/onnx problem. The pre-flight mirrors the header tree to
+  `include\tensorflow\lite\`, resolves the C API library by name (failing with
+  the list of what *is* staged if neither candidate exists), and puts the LiteRT
+  include/lib dirs on `INCLUDE`/`LIB` — the only mechanism `cc.find_library` and
+  `cc.has_header` actually consult — as well as into `c_args`/`cpp_args` and the
+  link args so the plugin's own compile and link succeed.
 
 Both `.pc` files are authored by the **merge** stage, not by the OpenCV/ONNX
 builds: those are the two most expensive layers in the chain (~30 and ~75

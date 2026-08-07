@@ -76,6 +76,19 @@ never explained it:
   `ffmpeg.exe` and `libav*` DLLs. Fixed by disabling the wrap so the four
   modules resolve from our install.
 
+- **`tflite`** (added to the mandatory set 2026-08-07) — a fourth mechanism:
+  it consults **no pkg-config at all**. `ext/tflite/meson.build` probes the
+  compiler with `cc.find_library('tensorflowlite_c')` (fallback
+  `tensorflow-lite`), `cc.has_function('TfLiteInterpreterCreate')` and
+  `cc.has_header('tensorflow/lite/c/c_api.h')`. That header path is the
+  **pre-rename TensorFlow** one; LiteRT v2.x ships the post-rename layout and
+  `build-litert-from-source.ps1` stages headers under `include\tflite\`, so the
+  probe could never succeed no matter what PKG_CONFIG_PATH said. Fixed by
+  mirroring a `tensorflow\lite\` alias tree, resolving the C API library by
+  name, and putting LiteRT's include/lib on `INCLUDE`/`LIB` (what
+  `cc.find_library`/`cc.has_header` actually consult) plus the meson
+  args/link args.
+
 **`tensorfilter` is NOT a GStreamer plugin** — it is an NNStreamer element, and
 this repo does not build NNStreamer. It only ever appeared in the probe lists
 because the lying healthcheck "found" it. It is deliberately excluded from the

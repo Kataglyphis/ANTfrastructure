@@ -11,12 +11,36 @@
 
 Describe 'Get-RequiredGstPlugin (the contract)' {
 
-    It 'names the three integrations the media stack is built around' {
+    It 'names the four integrations the media stack is built around' {
         $names = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
-        Assert-Equal 3 $names.Count 'the required set is libav, opencv, onnx'
-        foreach ($expected in 'libav', 'opencv', 'onnx') {
+        Assert-Equal 4 $names.Count 'the required set is libav, opencv, onnx, tflite'
+        foreach ($expected in 'libav', 'opencv', 'onnx', 'tflite') {
             Assert-True ($names -contains $expected) "'$expected' must be mandatory"
         }
+    }
+
+    It 'records HOW each dependency is detected, because it is not uniform' {
+        # opencv/onnx/libav go through pkg-config; tflite probes the compiler
+        # (cc.find_library + cc.has_header) and consults no .pc at all. Checking
+        # the wrong way would pass vacuously or demand a file nothing reads.
+        $byName = @{}
+        foreach ($p in @(Get-RequiredGstPlugin)) { $byName[$p.Name] = $p }
+        foreach ($n in 'libav', 'opencv', 'onnx') {
+            Assert-Equal 'pkg-config' $byName[$n].Detection "$n is resolved via pkg-config"
+        }
+        Assert-Equal 'compiler' $byName['tflite'].Detection 'tflite is resolved by compiler probes'
+        Assert-Equal 0 $byName['tflite'].NeedsPc.Count 'tflite must not claim pkg-config modules'
+    }
+
+    It 'pins the tflite probe details upstream actually uses' {
+        # The header is the PRE-RENAME TensorFlow path while LiteRT ships the
+        # post-rename tflite/ layout — the mismatch that kept this plugin out of
+        # the image. If upstream ever moves to tflite/, this test is the place
+        # that should fail first.
+        $tflite = @(Get-RequiredGstPlugin | Where-Object { $_.Name -eq 'tflite' })[0]
+        Assert-Equal 'tensorflow/lite/c/c_api.h' $tflite.NeedsHeader 'gst probes the old TensorFlow header path'
+        Assert-True ($tflite.NeedsLib -contains 'tensorflowlite_c') 'primary cc.find_library name'
+        Assert-True ($tflite.NeedsLib -contains 'tensorflow-lite') 'fallback cc.find_library name'
     }
 
     It 'does NOT require tensorfilter (an NNStreamer element this repo never builds)' {
@@ -26,11 +50,15 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         Assert-False ($names -contains 'tensorfilter') 'tensorfilter is not a GStreamer plugin'
     }
 
-    It 'carries the pkg-config modules and a rationale for every entry' {
+    It 'carries a resolvable dependency spec and a rationale for every entry' {
         foreach ($p in @(Get-RequiredGstPlugin)) {
-            Assert-True ($p.NeedsPc.Count -gt 0) "$($p.Name) must declare its pkg-config dependencies"
             Assert-True ([bool]$p.Why) "$($p.Name) must say WHY it is mandatory"
             Assert-True ([bool]$p.Provides) "$($p.Name) must say what it provides"
+            # Every entry must be checkable SOMEHOW — either it names pkg-config
+            # modules or it names the header/library the compiler probe needs.
+            # An entry with neither would sail through the pre-flight unchecked.
+            $checkable = ($p.NeedsPc.Count -gt 0) -or ([bool]$p.NeedsHeader -and $p.NeedsLib.Count -gt 0)
+            Assert-True $checkable "$($p.Name) must declare either pkg-config modules or a header+library probe"
         }
     }
 

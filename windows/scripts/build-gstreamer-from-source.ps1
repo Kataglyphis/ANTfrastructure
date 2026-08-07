@@ -429,6 +429,10 @@ int _isatty(int);
     # stage consumes the canonical env contract (OPENCV_ROOT / ONNX_ROOT / …)
     # that the merge image already defines, so nothing is hardcoded.
     $requiredPlugins = @(Get-RequiredGstPlugin)
+    # Declared before the branch so the meson args below can interpolate it
+    # unconditionally: with -SkipPluginGate no LiteRT include is added, and
+    # StrictMode would otherwise fault on an undefined variable.
+    $script:TfliteIncludeArg = ''
     if ($SkipPluginGate) {
         log 'WARNING: -SkipPluginGate — the mandatory GStreamer plugin contract is DISABLED for this build.'
         log "WARNING: the resulting image is NOT shippable. Required set: $(($requiredPlugins | ForEach-Object { $_.Name }) -join ', ')"
@@ -485,8 +489,72 @@ int _isatty(int);
             log 'Disabled subprojects/FFmpeg.wrap — gst-libav must link the FFmpeg this image ships, not a wrap-pinned 7.1.1.'
         }
 
+        # ── tflite: the one integration that does NOT use pkg-config ──────────
+        # gst-plugins-bad ext/tflite probes the compiler directly:
+        #   cc.find_library('tensorflowlite_c') / fallback 'tensorflow-lite'
+        #   cc.has_header('tensorflow/lite/c/c_api.h')
+        # That header path is the PRE-RENAME TensorFlow one. Google renamed
+        # TFLite to LiteRT, and build-litert-from-source.ps1 stages the headers
+        # the way LiteRT ships them — under include\tflite\ — so upstream's
+        # probe cannot find them no matter what PKG_CONFIG_PATH says. This is a
+        # namespace mismatch, not a missing dependency, which is why it never
+        # looked like the opencv/onnx problem.
+        #
+        # Fix: mirror the header tree under the name upstream probes for. The
+        # copies' own #includes stay `tflite/...`, which still resolve because
+        # the SAME include root is on the path.
+        $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { Join-Path $resolvedInstallDir 'lib\litert' }
+        $litertInclude = if ($env:LITERT_INCLUDE) { $env:LITERT_INCLUDE } else { Join-Path $litertRoot 'include' }
+        $litertLib = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $litertRoot 'lib' }
+        $tfliteHeaderTree = Join-Path $litertInclude 'tflite'
+        $tfAliasRoot = Join-Path $litertInclude 'tensorflow\lite'
+        $tfAliasProbe = Join-Path $litertInclude 'tensorflow\lite\c\c_api.h'
+        if (-not (Test-Path $tfAliasProbe)) {
+            if (-not (Test-Path (Join-Path $tfliteHeaderTree 'c\c_api.h'))) {
+                throw ("LiteRT headers not found: neither $tfAliasProbe nor $(Join-Path $tfliteHeaderTree 'c\c_api.h') exists. " +
+                    'The tflite plugin cannot be built without the TFLite C API headers — check that the media-litert ' +
+                    'branch image was fanned in (COPY --from=media-litert C:\runtime\lib\litert).')
+            }
+            New-Item -ItemType Directory -Force -Path (Split-Path $tfAliasRoot -Parent) | Out-Null
+            Copy-Item -Path $tfliteHeaderTree -Destination $tfAliasRoot -Recurse -Force
+            log "Staged tensorflow/lite/ header alias from $tfliteHeaderTree (LiteRT ships the post-rename tflite/ layout; gst probes the old path)."
+        }
+        if (-not (Test-Path $tfAliasProbe)) { throw "tensorflow/lite/c/c_api.h still missing at $tfAliasProbe after staging the alias tree." }
+
+        # The link name upstream asks for, in preference order. If LiteRT's build
+        # produced neither, say exactly what IS there — a bare "not found" here
+        # would send someone hunting PKG_CONFIG_PATH for a plugin that never
+        # consults it.
+        $tfliteLibName = $null
+        foreach ($candidate in @($requiredPlugins | Where-Object { $_.Name -eq 'tflite' }).NeedsLib) {
+            if (Test-Path (Join-Path $litertLib "$candidate.lib")) { $tfliteLibName = $candidate; break }
+        }
+        if (-not $tfliteLibName) {
+            $present = @(Get-LibraryLinkName -LibDir $litertLib)
+            throw ("neither tensorflowlite_c.lib nor tensorflow-lite.lib is present in $litertLib, so gst's " +
+                "cc.find_library() probe cannot succeed. Libraries actually staged there: $($present -join ', '). " +
+                'If LiteRT now emits the C API under a different name, add it to NeedsLib in Get-RequiredGstPlugin ' +
+                'rather than renaming the binary.')
+        }
+        log "TFLite C API library: $tfliteLibName.lib in $litertLib"
+
+        # cc.find_library / cc.has_header consult the COMPILER's search paths,
+        # not meson options, so INCLUDE/LIB is the mechanism that actually works
+        # here. Set for this process; the meson args below carry the same dirs so
+        # the plugin's own compile and link succeed too.
+        $env:INCLUDE = (@($litertInclude) + @($env:INCLUDE -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
+        $env:LIB = (@($litertLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
+        # Forward slashes inside the meson array literal: meson parses those
+        # strings with escape sequences, so a native C:\... path would mangle
+        # (\r, \t, ...). Same reason $rtFullPath above is converted.
+        $script:TfliteIncludeArg = '-I' + ($litertInclude -replace '\\', '/')
+        $linkArgElems = $linkArgElems + ",'/LIBPATH:$($litertLib -replace '\\', '/')'"
+        log "INCLUDE += $litertInclude ; LIB += $litertLib"
+
         # Everything the required set needs must resolve NOW, not after an hour.
-        Assert-PkgConfigModule -Module @($requiredPlugins | ForEach-Object { $_.NeedsPc } | Select-Object -Unique) `
+        $pcModules = @($requiredPlugins | Where-Object { $_.Detection -eq 'pkg-config' } |
+                ForEach-Object { $_.NeedsPc } | Select-Object -Unique)
+        Assert-PkgConfigModule -Module $pcModules `
             -Context ('mandatory GStreamer plugins: ' + (($requiredPlugins | ForEach-Object { $_.Name }) -join ', '))
         log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
     }
@@ -520,7 +588,12 @@ int _isatty(int);
         '-Drtsp_server=enabled',
         '-Dtools=enabled',
         # Provide stub unistd.h for Windows CRT compatibility
-        "-Dc_args=-I$env:TEMP_DIR\includes -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
+        # $script:TfliteIncludeArg carries the LiteRT include root (empty when the
+        # plugin gate is skipped). It rides in c_args AND cpp_args because the
+        # tflite plugin's has_header probe runs against the C compiler while the
+        # plugin sources themselves are C++.
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
+        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
         # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
         # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc +
         # MF device provider) required by the Rust capture path. Needs the GUID
@@ -565,7 +638,8 @@ int _isatty(int);
             @(
                 '-Dlibav=enabled',
                 '-Dgst-plugins-bad:opencv=enabled',
-                '-Dgst-plugins-bad:onnx=enabled'
+                '-Dgst-plugins-bad:onnx=enabled',
+                '-Dgst-plugins-bad:tflite=enabled'
             )
         }
     ) + $MesonSetupArgs
