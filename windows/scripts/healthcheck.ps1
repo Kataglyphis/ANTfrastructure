@@ -86,9 +86,9 @@ Check "gst-launch-1.0 --version" {
 # build gate and the smoke test are the enforcing layers. What changed is that
 # it can no longer report a plugin as present when it is not.
 $gstInspect = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-inspect-1.0.exe'
-$sharedModule = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
-$requiredGstPlugins = if (Test-Path $sharedModule) {
-    Import-Module $sharedModule -Force -DisableNameChecking
+$gstPluginModule = Join-Path $PSScriptRoot 'modules\WindowsGstPlugins.Common.psm1'
+$requiredGstPlugins = if (Test-Path $gstPluginModule) {
+    Import-Module $gstPluginModule -Force -DisableNameChecking
     @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
 } else {
     # Older image without the module: fall back to the literal contract rather

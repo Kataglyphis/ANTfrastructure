@@ -974,7 +974,7 @@ Assert-Test -Name "GStreamer real pipeline runs (videotestsrc ! videoconvert ! f
 # is the independent confirmation that what was built actually LOADS in the
 # shipped image — a plugin can compile and still fail to register if a sidecar
 # DLL is missing, which gst-inspect is the only way to catch.
-$requiredGstModule = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
+$requiredGstModule = Join-Path $PSScriptRoot 'modules\WindowsGstPlugins.Common.psm1'
 if (Test-Path $requiredGstModule) {
     Import-Module $requiredGstModule -Force -DisableNameChecking
     foreach ($plugin in @(Get-RequiredGstPlugin)) {
@@ -987,7 +987,7 @@ if (Test-Path $requiredGstModule) {
             "Needs pkg-config: $($plugin.NeedsPc -join ', ') at GStreamer build time.")
     }
 } else {
-    Skip-Test "mandatory gst-plugin assertions (WindowsScripts.Shared.psm1 not found at $requiredGstModule)"
+    Skip-Test "mandatory gst-plugin assertions (WindowsGstPlugins.Common.psm1 not found at $requiredGstModule -- image predates the contract)"
 }
 
 # ============================================================================

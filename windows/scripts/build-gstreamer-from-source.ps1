@@ -73,6 +73,14 @@ if (-not (Test-Path $modulePath)) {
 }
 Import-Module $modulePath -Force
 
+# The mandatory-plugin contract + pkg-config emitter. A separate module ON
+# PURPOSE: it is mounted by the merge builder only, so editing the plugin
+# contract cannot invalidate the six media compile RUNs that mount the other
+# five modules (see Dockerfile.media-merge-builder's buildmods comment).
+$gstPluginModule = Join-Path $PSScriptRoot 'modules\WindowsGstPlugins.Common.psm1'
+if (-not (Test-Path $gstPluginModule)) { throw "Required module not found: $gstPluginModule" }
+Import-Module $gstPluginModule -Force
+
 $sourceBuildModule = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 Import-Module $sourceBuildModule -Force

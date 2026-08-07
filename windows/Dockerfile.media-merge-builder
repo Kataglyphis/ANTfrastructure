@@ -28,9 +28,15 @@ FROM ${TVM_IMAGE} AS media-tvm
 # Same pattern (and same reasoning) as Dockerfile.media-builder's `buildmods`:
 # one stage holding exactly the in-container module closure, mounted as a single
 # --mount line instead of six that had to be kept in lockstep by hand. This
-# closure carries Installer.Common on top of the media-builder five — GStreamer's
-# script is the only consumer of it. Parent is BASE_IMAGE so the fan-in COPYs
-# (and therefore the three branch images) never key into it.
+# closure carries Installer.Common and GstPlugins.Common on top of the
+# media-builder five — GStreamer's script is the only consumer of both.
+# GstPlugins.Common (the mandatory-plugin contract + the pkg-config emitter)
+# exists as its OWN module precisely so it can live here and NOT in the
+# media-builder's five: those five are mounted into all six media compile RUNs,
+# so putting the plugin contract in Shared/SourceBuild.Common would make every
+# edit to it re-run ONNX (~75 min), OpenCV, FFmpeg, GenAI, litert and tvm — for
+# code none of them call. Parent is BASE_IMAGE so the fan-in COPYs (and
+# therefore the three branch images) never key into it.
 FROM ${BASE_IMAGE} AS buildmods
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
@@ -38,6 +44,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
+     windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
      C:\bkmods\
 
 # Fan-in WITHOUT the script COPYs: the BK warm/built stages chain from here so
@@ -151,6 +158,7 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
      C:\temp\scripts\modules\
 COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
