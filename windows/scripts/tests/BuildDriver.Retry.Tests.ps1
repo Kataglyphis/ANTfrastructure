@@ -126,3 +126,39 @@ Describe 'Get-DockerBuildArgList' {
         Assert-Match '--target x -t t:1 -f windows/Dockerfile.base \.$' $joined 'extra flags then -t/-f/context tail'
     }
 }
+
+Describe 'Invoke-TransientCooldown determinism gate' {
+
+    # 2026-08-07: ImportLayer 0xb7 failed three times with byte-identical
+    # snapshot IDs. The tail matched the transient pattern, so the engine paid
+    # two retries plus cool-downs before giving up. A flake changes between
+    # attempts; a poisoned snapshot does not.
+
+    It 'refuses to retry when the failure is byte-identical to the previous one' {
+        $tail = 'failed to commit 3p059m2d68o to o47dumb0ovs4 during finalize: failed to reimport snapshot: hcsshim::ImportLayer failed'
+        $r = Invoke-TransientCooldown -Tail $tail -PreviousTail $tail -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 't'
+        Assert-False $r 'an identical failure is deterministic, not transient'
+    }
+
+    It 'ignores buildkit timing prefixes when comparing (they differ every attempt)' {
+        # buildkit prefixes each line with "#<vertex> <elapsed> " — comparing raw
+        # would never match and the gate would never fire.
+        $a = "#9 627.3 failed to reimport snapshot: hcsshim::ImportLayer failed"
+        $b = "#9 1841.7 failed to reimport snapshot: hcsshim::ImportLayer failed"
+        $r = Invoke-TransientCooldown -Tail $b -PreviousTail $a -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 't'
+        Assert-False $r 'same failure with different elapsed times must still count as identical'
+    }
+
+    It 'still retries when the failure CHANGED between attempts (a real flake)' {
+        $a = 'ttrpc: closed'
+        $b = 'failed to create shim task'
+        $r = Invoke-TransientCooldown -Tail $b -PreviousTail $a -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 't'
+        Assert-True $r 'a differing transient tail must still be retried'
+    }
+
+    It 'behaves exactly as before when no previous tail is supplied' {
+        # Back-compat: every existing call site passes no -PreviousTail.
+        $r = Invoke-TransientCooldown -Tail 'ttrpc: closed' -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 't'
+        Assert-True $r 'the gate must not change the classic behaviour'
+    }
+}

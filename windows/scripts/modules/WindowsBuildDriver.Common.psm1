@@ -76,8 +76,31 @@ function Invoke-TransientCooldown {
         # Invoke-DockerWithRetry, which gates its retry branch on
         # Test-TransientDockerFailure itself) — skip the re-test so the
         # condition is expressed exactly ONCE per call path.
-        [switch]$AssumeTransient
+        [switch]$AssumeTransient,
+        # The PREVIOUS attempt's tail. When the new failure is byte-identical,
+        # the failure is DETERMINISTIC, not transient, and retrying is pure
+        # waste — see the determinism gate below.
+        [string]$PreviousTail = ''
     )
+    # DETERMINISM GATE (2026-08-07). A flake changes between attempts; a poisoned
+    # snapshot does not. `ImportLayer 0xb7` failed three times that day with
+    # byte-identical snapshot IDs — the pattern matched `failed to reimport
+    # snapshot`, so this function happily paid two retries and two cool-downs
+    # before the caller gave up. Comparing against the previous tail turns ~10
+    # wasted minutes into an immediate, correctly-named failure.
+    #
+    # Compared AFTER stripping timing noise: buildkit prefixes every line with
+    # elapsed seconds (`#9 627.3 …`), which differ between attempts even when the
+    # failure is identical.
+    if ($PreviousTail) {
+        $normalise = { param($t) (($t -replace '(?m)^#\d+\s+[\d.]+\s+', '') -replace '\s+', ' ').Trim() }
+        if ((& $normalise $Tail) -eq (& $normalise $PreviousTail)) {
+            Write-Host ("[$Label] IDENTICAL failure to the previous attempt — deterministic, not transient. " +
+                'Not retrying. If this is a poisoned snapshot (hcsshim ImportLayer/ExportLayer during finalize), ' +
+                "the fix is -NoCache on this stage alone, NOT a retry — see AGENTS.md Common Failure Modes.") -ForegroundColor Red
+            return $false
+        }
+    }
     if ($Attempt -lt $MaxAttempts -and ($AssumeTransient -or (Test-TransientDockerFailure -Tail $Tail))) {
         Write-Host "[$Label] transient container-infrastructure failure — retry $Attempt/$($MaxAttempts - 1) in ${CooldownSeconds}s" -ForegroundColor Yellow
         Start-Sleep -Seconds $CooldownSeconds

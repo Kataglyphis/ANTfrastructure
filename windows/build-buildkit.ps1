@@ -206,6 +206,35 @@ function Invoke-BkStage {
     )
     if (-not $NoOutput -and -not $Tag -and -not $OutputSpec) { throw 'Invoke-BkStage: need -Tag, -OutputSpec or -NoOutput' }
     if (-not $Label) { $Label = [IO.Path]::GetFileName($Dockerfile) + $(if ($Target) { ":$Target" } else { '' }) }
+
+    # PER-STAGE DISK GATE (2026-08-07). The start-of-run Assert-DiskHeadroom
+    # passed at 164 GB free and the chain still walked down to 23 GB inside a
+    # heavy stage — into the band where hcsshim stops failing honestly. Escaping
+    # it meant killing the solve, and that kill poisoned a snapshot (3 failed
+    # attempts + a -NoCache rebuild). Checking BEFORE each stage refuses to enter
+    # a stage that cannot fit, while stopping is still free.
+    #
+    # The floor is stage-aware because the stages differ by an order of
+    # magnitude: measured on this host, CUDA needs ~36 GB and a media branch far
+    # more, while torch/final are trimmings. Unknown labels get the default.
+    $stageFloorGb = switch -Regex ($Label) {
+        'Dockerfile\.nvidia'        { 60; break }   # CUDA ~36 GB + export headroom
+        'media-core|media-builder'  { 80; break }   # the largest trees in the chain
+        'media-merge'               { 60; break }   # fan-in of three branch trees
+        'toolchain-builder'         { 45; break }
+        default                     { 40 }
+    }
+    $freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
+    if ($freeGb -lt $stageFloorGb -and $SkipHostChecks) {
+        Write-Warning "[bk:$Label] only ${freeGb} GB free (stage floor ${stageFloorGb} GB) - continuing because -SkipHostChecks was passed."
+    } elseif ($freeGb -lt $stageFloorGb) {
+        throw ("[bk:$Label] REFUSING to start: C: has ${freeGb} GB free, below the ${stageFloorGb} GB this stage needs. " +
+            'Entering it anyway walks into the band where hcsshim fails dishonestly, and the only escape (killing the ' +
+            'solve) poisons a snapshot. Reclaim first — docs/windows-builds.md § Store GC: admin ' +
+            '`nerdctl --namespace buildkit rmi` on superseded bk-* stage tags, then ' +
+            '`buildctl prune --free-storage <MB above disk size>`. Override with -SkipHostChecks.')
+    }
+    Write-Host "[bk:$Label] disk OK: ${freeGb} GB free (stage floor ${stageFloorGb} GB)" -ForegroundColor DarkGray
     $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
     $dfName = [IO.Path]::GetFileName($Dockerfile)
     $bkArgs = @(
@@ -241,12 +270,19 @@ function Invoke-BkStage {
     # burns both under load (2026-08-05: mkdir access-denied THEN 0x20 on the
     # retry, during a parallel canary export). Third attempt is cheap — the
     # completed RUN vertices stay cached; only finalize/export re-runs.
+    $previousTail = ''
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         Write-Host "`n==> [bk:$Label] buildctl -> $dest$(if ($attempt -gt 1) { ' (retry)' })" -ForegroundColor Cyan
         & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog
         if ($LASTEXITCODE -eq 0) { break }
         $tail = if (Test-Path $stageLog) { (Get-Content $stageLog -Tail 40 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
-        if (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label "bk:$Label" -CooldownSeconds 15) { continue }
+        # -PreviousTail arms the determinism gate: an identical failure means a
+        # poisoned snapshot, not a flake, and retrying it just burns the budget
+        # (measured 2026-08-07: 3x ImportLayer 0xb7 on the same snapshot IDs).
+        if (Invoke-TransientCooldown -Tail $tail -PreviousTail $previousTail -Attempt $attempt -MaxAttempts $MaxAttempts -Label "bk:$Label" -CooldownSeconds 15) {
+            $previousTail = $tail
+            continue
+        }
         throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — log: $stageLog"
     }
     Write-Host "[bk:$Label] OK -> $dest" -ForegroundColor Green

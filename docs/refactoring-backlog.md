@@ -777,18 +777,21 @@ upstream noise, but two are worth a decision, and the ownership was checked
 rather than assumed (`grep` over `windows/` + `linux/`):
 
 - **`clang-cl: warning: argument unused during compilation: '/Zc:preprocessor'`
-  (307×) — WE inject this.** `WindowsSourceBuild.Cuda.psm1` builds the nvcc
-  preamble as
-  `-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor
-   -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING`
-  and forwards it to the host compiler. On this lane the host compiler is
-  clang-cl, whose preprocessor is already conformant, so the flag is inert —
-  which is exactly what the warning says. The load-bearing part is the
-  `-DCCCL_IGNORE_…` define, not the `/Zc:` pair.
-  **Do not just delete it**: verify first that no path lets nvcc use `cl.exe`
-  as host compiler (where CCCL genuinely needs it). If clang-cl is guaranteed,
-  dropping the two `/Zc:preprocessor` copies removes 307 warnings per ONNX
-  build and shrinks a log that already has to fight buildkitd's 2 MiB clip.
+  (307×) — NO ACTION. Retracted after checking the precondition.**
+  The first version of this entry claimed the flag was ours and inert. The
+  precondition it demanded be verified was then verified, and it **falsifies the
+  claim**: `WindowsSourceBuild.Cuda.psm1` sets
+  `-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$clExe` from
+  `(Get-Command cl.exe).Source`, i.e. **nvcc's host compiler on this lane IS
+  MSVC `cl.exe`, not clang-cl** — exactly the case where CCCL genuinely needs
+  `/Zc:preprocessor`. Our injection is load-bearing; removing it would break
+  CUDA compilation.
+  The 307 warnings come from clang-cl compilations (they are counted alongside
+  307 `-fdelayed-template-parsing` warnings, a clang-only flag `cl.exe` would
+  reject), so a different flag source — upstream ONNX's own CXX flags — puts
+  `/Zc:preprocessor` on the clang-cl command line, where it is ignored. Not
+  ours, not actionable, and now recorded so the next reader does not repeat the
+  investigation or "clean up" a flag the CUDA build depends on.
 - **`-fdelayed-template-parsing is deprecated after C++20` (307× in ONNX) —
   NOT ours in this stage.** We pass it only in
   `build-litert-lm-from-source.ps1` (with a matching `-Wno-…` right next to it);
