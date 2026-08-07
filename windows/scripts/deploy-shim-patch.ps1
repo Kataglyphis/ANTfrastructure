@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Installs a locally built containerd-shim binary over the one Stevedore ships,
 # keeping a timestamped backup, and optionally sets environment variables on the

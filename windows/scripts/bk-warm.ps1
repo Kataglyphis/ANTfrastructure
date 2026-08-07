@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # RETIRED FROM THE DOCKERFILES (de-warming 2026-08-06, round 2): the
 # ExportLayer-0x3 defect this pattern routed around was root-caused to the

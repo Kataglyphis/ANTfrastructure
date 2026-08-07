@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Deploys windows\buildkitd.toml to C:\ProgramData\buildkitd\buildkitd.toml,
 # re-registers the buildkitd service with an explicit --config flag (keeping

@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Covers the pure parts of WindowsVulkanValidation.Common: the log scan, the
 # hazard report, and the vk_layer_settings.txt staging/cleanup contract. The

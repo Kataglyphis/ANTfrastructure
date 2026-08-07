@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Tests for the pure, docker-free helpers of WindowsContainerBuild.Reuse.psm1.
 # Nothing here starts a container: the orchestration function is covered only

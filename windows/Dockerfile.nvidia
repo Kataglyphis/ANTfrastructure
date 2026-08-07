@@ -1,6 +1,6 @@
 # escape=`
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 # NVIDIA GPU layer — CUDA + cuDNN + TensorRT.
 # Optional stage between base and toolchain: build this (tagged windows-sdk) for a
 # GPU image, or skip it and tag windows-base as windows-sdk for a CPU-only image

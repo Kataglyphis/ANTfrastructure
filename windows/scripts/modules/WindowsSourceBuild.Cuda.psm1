@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # GPU/CUDA detection utilities for Windows container builds.
 # Extracted from WindowsSourceBuild.Common.psm1 to reduce module size.

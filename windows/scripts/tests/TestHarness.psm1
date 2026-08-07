@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Zero-dependency test harness for the Windows build scripts. Deliberately NOT Pester:
 # the container runs Windows PowerShell 5.1 (ships Pester 3.4, quirky) and the host runs

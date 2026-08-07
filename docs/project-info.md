@@ -173,9 +173,20 @@ When feeding locally saved runtime artifacts back into later builds:
 
 ## License
 
-The container images use OCI labels that declare the project license as `MIT`.
-See [Third-Party Licenses](third-party-licenses.md) for the licenses of bundled
-upstream software.
+This project's own code is licensed under the **MIT License** — see the
+[`LICENSE`](../LICENSE) file at the repository root. Every source file carries a
+matching `SPDX-License-Identifier: MIT` header, and the published container
+images declare `org.opencontainers.image.licenses="MIT"`.
+
+> Until 2026-08-07 the source headers and two of the three image labels said
+> `Apache-2.0` while `LICENSE` said MIT. That contradiction is resolved in
+> favour of MIT throughout; nothing about the terms was ever intended to differ
+> from `LICENSE`.
+
+Bundled upstream software keeps its own terms — see
+[Third-Party Licenses](third-party-licenses.md). Note in particular that
+`linux/webserver/dist/assets/NOTICES` is a generated third-party notices bundle:
+the licenses in it belong to those projects and are deliberately left untouched.
 
 ## Contact
 

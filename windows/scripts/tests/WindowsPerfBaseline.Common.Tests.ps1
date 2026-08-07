@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Covers the pure parts of WindowsPerfBaseline.Common: time_unit normalisation,
 # the comparison over two name->ns maps (including the "present in only one

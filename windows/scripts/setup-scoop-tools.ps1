@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # CACHE-BUST 2026-08-06 (round 2): content change sidesteps persistent
 # snapshotter debris finalizing THIS RUN layer's snapshot. Round 1 dodged

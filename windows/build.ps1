@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 
 # PS 5.1 turns native stderr under $ErrorActionPreference='Stop' into terminating
 # NativeCommandErrors mid-docker-run (a documented trap on this lane) -- require pwsh 7

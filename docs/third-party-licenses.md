@@ -4,8 +4,10 @@ The container images published by this project bundle several open-source and
 proprietary software components.  This document lists the major components,
 their versions, and their licenses.
 
-The project's own code is licensed under MIT (see OCI labels on the published
-images).  Each upstream component carries its own license terms.
+The project's own code is licensed under MIT — see the [`LICENSE`](../LICENSE)
+file, the `SPDX-License-Identifier: MIT` header on every source file, and the
+`org.opencontainers.image.licenses="MIT"` label on the published images.  Each
+upstream component below carries its own license terms.
 
 <!-- generated:deps-table:start -->
 

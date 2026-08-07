@@ -1,5 +1,5 @@
-# Copyright (c) 2026 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Reusable building blocks for a planner/executor agentic loop.
 # Requires PowerShell 7+ (Core). Not compatible with PS 5.1's parser.
@@ -174,14 +174,53 @@ function Resolve-AgenticEngine {
         throw "No planner/executor model configured for engine '$engine' (need .engines.$engine.plannerModel/executorModel or legacy .models.*)"
     }
 
-    # Prompt files are stored repo-relative in the config
+    # Prompt files are stored repo-relative in the config.
+    #
+    # TWO shapes, because only one file can be passed to
+    # --append-system-prompt-file:
+    #
+    #   plannerPromptFile / executorPromptFile
+    #       Full override. The shared default is NOT used. This is how it always
+    #       worked and is kept for compatibility, but it is the shape that made
+    #       every consumer keep a whole copy of the shared prompt just to add a
+    #       few project-specific paragraphs - and those copies then drifted from
+    #       the default AND from each other.
+    #
+    #   plannerPromptOverlayFile / executorPromptOverlayFile   (preferred)
+    #       Project DELTA. The shared default from shared/agentic-loop/prompts/
+    #       is used as the base and the overlay is appended to it, composed into
+    #       one temp file at startup. A consumer then owns only what is actually
+    #       specific to it, and improvements to the shared prompt reach every
+    #       project without a copy-paste round.
+    #
+    # An overlay wins over a full override when both are set, and that is
+    # logged - a config carrying both is almost always a half-finished
+    # migration from the old shape.
     $plannerPromptFile = Get-AgenticConfigValue $engineCfg 'plannerPromptFile' $null
     $executorPromptFile = Get-AgenticConfigValue $engineCfg 'executorPromptFile' $null
+    $plannerOverlay = Get-AgenticConfigValue $engineCfg 'plannerPromptOverlayFile' $null
+    $executorOverlay = Get-AgenticConfigValue $engineCfg 'executorPromptOverlayFile' $null
+
     if ($plannerPromptFile -and -not [System.IO.Path]::IsPathRooted($plannerPromptFile)) {
         $plannerPromptFile = Join-Path $RepoRoot $plannerPromptFile
     }
     if ($executorPromptFile -and -not [System.IO.Path]::IsPathRooted($executorPromptFile)) {
         $executorPromptFile = Join-Path $RepoRoot $executorPromptFile
+    }
+    if ($plannerOverlay -and -not [System.IO.Path]::IsPathRooted($plannerOverlay)) {
+        $plannerOverlay = Join-Path $RepoRoot $plannerOverlay
+    }
+    if ($executorOverlay -and -not [System.IO.Path]::IsPathRooted($executorOverlay)) {
+        $executorOverlay = Join-Path $RepoRoot $executorOverlay
+    }
+
+    if ($plannerOverlay) {
+        if ($plannerPromptFile) { Write-AgenticLog 'Both plannerPromptFile and plannerPromptOverlayFile set; the overlay wins.' 'WARN' }
+        $plannerPromptFile = New-AgenticComposedPrompt -Role 'planner' -OverlayPath $plannerOverlay
+    }
+    if ($executorOverlay) {
+        if ($executorPromptFile) { Write-AgenticLog 'Both executorPromptFile and executorPromptOverlayFile set; the overlay wins.' 'WARN' }
+        $executorPromptFile = New-AgenticComposedPrompt -Role 'executor' -OverlayPath $executorOverlay
     }
 
     $intervals = Get-AgenticConfigValue $Config 'intervals' $null
@@ -532,12 +571,90 @@ function Invoke-AgenticAgent {
 # shared/agentic-loop/prompts/*.md at the repo root.
 function Get-AgenticDefaultPrompt {
     param([Parameter(Mandatory)][ValidateSet('planner', 'refactor-planner', 'executor')][string]$Role)
+    $path = Get-AgenticDefaultPromptPath -Role $Role
+    (Get-Content $path -Raw).Trim()
+}
+
+function Get-AgenticDefaultPromptPath {
+    param([Parameter(Mandatory)][ValidateSet('planner', 'refactor-planner', 'executor')][string]$Role)
     $path = Join-Path $PSScriptRoot "..\..\..\shared\agentic-loop\prompts\$Role.md"
     if (-not (Test-Path $path)) {
         Write-AgenticLog "Default agentic prompt missing: $path" 'FATAL'
         throw "Default agentic prompt missing: $path"
     }
-    (Get-Content $path -Raw).Trim()
+    (Resolve-Path $path).Path
+}
+
+function Get-AgenticSystemPromptPath {
+    <#
+      .SYNOPSIS
+        Path to the shared, engine-agnostic ROLE prompt for $Role.
+      .DESCRIPTION
+        Deliberately a different directory from Get-AgenticDefaultPromptPath.
+        Those two are easy to confuse and are NOT interchangeable:
+
+          shared/agentic-loop/prompts/<role>.md
+              the short TASK MESSAGE handed to the agent as its -p prompt
+          shared/agentic-loop/system-prompts/<role>.md
+              the long ROLE prompt passed via --append-system-prompt-file
+
+        Composing one into the other produces an agent told to do its job twice
+        in two different voices, so they get separate resolvers.
+    #>
+    param([Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role)
+    $path = Join-Path $PSScriptRoot "..\..\..\shared\agentic-loop\system-prompts\$Role.md"
+    if (-not (Test-Path $path)) {
+        Write-AgenticLog "Shared system prompt missing: $path" 'FATAL'
+        throw "Shared system prompt missing: $path"
+    }
+    (Resolve-Path $path).Path
+}
+
+function New-AgenticComposedPrompt {
+    <#
+      .SYNOPSIS
+        Writes "shared role prompt + project overlay" to a temp file and returns
+        its path.
+      .DESCRIPTION
+        Exists because --append-system-prompt-file takes exactly one file. Rather
+        than making every consumer copy the whole role prompt to add a few
+        project paragraphs - which is how one consumer ended up with two
+        full copies that had drifted 271 lines apart - the two are concatenated
+        here at startup.
+
+        A missing overlay is a WARN and falls back to the shared prompt alone: an
+        agentic run losing its project context is bad, but not as bad as the loop
+        refusing to start at all.
+      .PARAMETER Role
+        planner | executor
+      .PARAMETER OverlayPath
+        Project-specific delta appended below the shared role prompt.
+    #>
+    param(
+        [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
+        [Parameter(Mandatory)][string]$OverlayPath
+    )
+
+    $defaultPath = Get-AgenticSystemPromptPath -Role $Role
+    if (-not (Test-Path $OverlayPath)) {
+        Write-AgenticLog "Prompt overlay not found: $OverlayPath (using the shared role prompt alone)" 'WARN'
+        return $defaultPath
+    }
+
+    $composed = Join-Path ([System.IO.Path]::GetTempPath()) "agentic-prompt-$Role-composed.md"
+    $body = @(
+        (Get-Content $defaultPath -Raw).TrimEnd()
+        ''
+        '---'
+        ''
+        "<!-- project overlay: $OverlayPath -->"
+        ''
+        (Get-Content $OverlayPath -Raw).Trim()
+    ) -join "`n"
+
+    Set-Content -LiteralPath $composed -Value $body -Encoding utf8
+    Write-AgenticLog "Composed $Role prompt: shared default + $(Split-Path $OverlayPath -Leaf)"
+    return $composed
 }
 
 # -- BACKLOG helpers ------------------------------------------------------

@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 #
 # Guards the classic/BK twin-stage contract in Dockerfile.media-builder:
 # each media-<branch> stage has a media-<branch>-bk ENV twin that must declare

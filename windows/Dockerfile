@@ -1,6 +1,6 @@
 # escape=`
-# Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
 # Final Windows developer image built on top of the torch app image
 # (media -> torch -> final; the Orchestr-ANT-ion app env is assembled by
 # windows/Dockerfile.torch, this stage adds only the cheap dev trimmings).
@@ -57,7 +57,7 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
       org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" `
       org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
       org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.licenses="MIT"
 
 # Launcher script instead of inline cmd: exec-form re-quoting mangles embedded
 # quotes around the spaces-in-path VsDevCmd.bat (literal \" reaches cmd.exe).
