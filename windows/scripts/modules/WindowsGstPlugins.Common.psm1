@@ -161,7 +161,13 @@ function Assert-PkgConfigModule {
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Module,
         [string]$PkgConfigPath = $env:PKG_CONFIG_PATH,
-        [string]$Context = 'GStreamer plugin integrations'
+        [string]$Context = 'GStreamer plugin integrations',
+        # module -> minimum version the CONSUMER demands. Checking presence alone
+        # is not enough: FFmpeg shipped seven .pc files whose `Version:` field was
+        # literally ".." (its configure found neither a VERSION file nor git
+        # tags), so `--exists` passed while every consumer constraint failed.
+        # That defect survived months precisely because the files were there.
+        [hashtable]$MinimumVersion = @{}
     )
     if ($Module.Count -eq 0) { return }
     $pkgConfig = Get-Command pkg-config -ErrorAction SilentlyContinue
@@ -170,11 +176,25 @@ function Assert-PkgConfigModule {
             'It is installed by setup-scoop-tools.ps1 into the base image; a missing binary here means the base is wrong.')
     }
     $missing = @()
+    $tooOld = @()
     foreach ($m in $Module) {
         $global:LASTEXITCODE = 0
         $null = & $pkgConfig.Source '--exists' $m 2>&1
-        if ($LASTEXITCODE -ne 0) { $missing += $m } else {
-            $ver = (& $pkgConfig.Source '--modversion' $m 2>&1 | Select-Object -First 1)
+        if ($LASTEXITCODE -ne 0) { $missing += $m; continue }
+        $ver = (& $pkgConfig.Source '--modversion' $m 2>&1 | Select-Object -First 1)
+        $wanted = $MinimumVersion[$m]
+        if ($wanted) {
+            # --atleast-version does the comparison pkg-config itself would do
+            # for the consumer, so a malformed version ('..') fails here rather
+            # than surfacing an hour later as a silently skipped meson feature.
+            $global:LASTEXITCODE = 0
+            $null = & $pkgConfig.Source "--atleast-version=$wanted" $m 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $tooOld += "$m (has '$ver', needs >= $wanted)"
+                continue
+            }
+            Write-Host "  pkg-config OK: $m ($ver >= $wanted)"
+        } else {
             Write-Host "  pkg-config OK: $m ($ver)"
         }
     }
@@ -182,6 +202,12 @@ function Assert-PkgConfigModule {
         throw ("pkg-config cannot resolve: $($missing -join ', ') — $Context WOULD BE SILENTLY SKIPPED by meson. " +
             "PKG_CONFIG_PATH=$PkgConfigPath. Fix the .pc emission (Write-PkgConfigFile) or the install layout; " +
             'do NOT relax the meson feature back to auto — that is what hid this for months.')
+    }
+    if ($tooOld.Count -gt 0) {
+        throw ("pkg-config resolves these, but NOT at the version the consumer demands: $($tooOld -join '; '). " +
+            "$Context would be silently skipped by meson. A version like '..' means the producing build never " +
+            "determined its own version (FFmpeg does this when configure finds neither a VERSION file nor git " +
+            'tags) — fix it at the producing stage, not by relaxing the constraint.')
     }
     $global:LASTEXITCODE = 0
 }

@@ -562,7 +562,19 @@ int _isatty(int);
         # Everything the required set needs must resolve NOW, not after an hour.
         $pcModules = @($requiredPlugins | Where-Object { $_.Detection -eq 'pkg-config' } |
                 ForEach-Object { $_.NeedsPc } | Select-Object -Unique)
-        Assert-PkgConfigModule -Module $pcModules `
+        # The version floors upstream actually applies. Presence alone is not
+        # enough: FFmpeg shipped .pc files declaring `Version: ..`, which passes
+        # --exists and fails every constraint, so gst-libav was skipped while the
+        # pre-flight reported everything fine (measured 2026-08-07).
+        $pcMinimum = @{
+            'libavcodec'     = '58.18.100'   # gst-libav/meson.build
+            'libavformat'    = '58.12.100'
+            'libavutil'      = '56.14.100'
+            'libavfilter'    = '7.16.100'
+            'opencv4'        = '4.0.0'       # gst-plugins-bad/gst-libs/gst/opencv
+            'libonnxruntime' = '1.16.1'      # gst-plugins-bad/ext/onnx
+        }
+        Assert-PkgConfigModule -Module $pcModules -MinimumVersion $pcMinimum `
             -Context ('mandatory GStreamer plugins: ' + (($requiredPlugins | ForEach-Object { $_.Name }) -join ', '))
         log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
     }

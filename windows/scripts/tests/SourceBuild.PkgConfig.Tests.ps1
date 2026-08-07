@@ -174,3 +174,49 @@ Describe 'Assert-PkgConfigModule' {
         }
     }
 }
+
+Describe 'Assert-PkgConfigModule version floors' {
+
+    # Presence alone was not enough: FFmpeg shipped seven .pc files whose
+    # Version: field was literally '..' because its configure found neither a
+    # VERSION file nor git tags. --exists passed on all of them while every
+    # consumer constraint failed, so gst-libav was skipped and the pre-flight
+    # reported everything fine (measured 2026-08-07).
+
+    $havePkgConfig = $null -ne (Get-Command pkg-config -ErrorAction SilentlyContinue)
+
+    It 'accepts a MinimumVersion table without changing the no-modules contract' {
+        # Empty module list stays a no-op regardless of the floors supplied.
+        Assert-PkgConfigModule -Module @() -MinimumVersion @{ 'libavcodec' = '58.18.100' }
+    }
+
+    It 'names the module, the version found and the version required' {
+        # The message has to carry all three or a build log cannot be acted on.
+        if ($havePkgConfig) {
+            Assert-Throws -MessagePattern 'definitely-not-real' -Body {
+                Assert-PkgConfigModule -Module @('definitely-not-real-xyz') `
+                    -MinimumVersion @{ 'definitely-not-real-xyz' = '1.0' } -Context 'test'
+            }
+        } else {
+            Assert-Throws -MessagePattern 'pkg-config is not on PATH' -Body {
+                Assert-PkgConfigModule -Module @('definitely-not-real-xyz') `
+                    -MinimumVersion @{ 'definitely-not-real-xyz' = '1.0' } -Context 'test'
+            }
+        }
+    }
+
+    It 'carries the floors gst actually demands at the call site' {
+        # Guards the numbers against drift from upstream's meson.build.
+        $script = Get-Content (Join-Path $PSScriptRoot '..\build-gstreamer-from-source.ps1') -Raw
+        foreach ($pair in @(
+                @{ M = 'libavcodec';     V = '58.18.100' },
+                @{ M = 'libavformat';    V = '58.12.100' },
+                @{ M = 'libavutil';      V = '56.14.100' },
+                @{ M = 'libavfilter';    V = '7.16.100' },
+                @{ M = 'opencv4';        V = '4.0.0' },
+                @{ M = 'libonnxruntime'; V = '1.16.1' })) {
+            Assert-True ($script -match [regex]::Escape("'$($pair.M)'") + "\s*=\s*'" + [regex]::Escape($pair.V) + "'") `
+                "the pre-flight must demand $($pair.M) >= $($pair.V)"
+        }
+    }
+}
