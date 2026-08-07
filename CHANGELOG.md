@@ -1,5 +1,79 @@
 # Changelog
 
+## 2026-08-07 — Windows lane: reproducibility, mandatory plugins, honest gates
+
+The theme is less the repairs than what they have in common: several things had
+been failing **silently** for months, so most of this work is about making
+failure loud and early.
+
+### Mandatory GStreamer plugins are a contract now
+
+`libav`, `opencv`, `onnx` and `tflite` were absent from the published
+`winamd64` image and nothing was ever red — meson's `auto` feature state means
+*skip silently*, and the healthcheck printed `[PASS]` for plugins that did not
+exist. Four **unrelated** root causes, diagnosed against gstreamer 1.29.2:
+
+- **opencv** — OpenCV ships no `.pc` at all (confirmed: zero files in the built
+  image). One is now authored, enumerating the import libraries from the real
+  install (64 of them) instead of a hand-kept list that would rot.
+- **onnx** — ONNX Runtime ships no `.pc` on any platform; one is emitted.
+- **libav** — `subprojects/FFmpeg.wrap` *provides* the libav\* modules pinned to
+  FFmpeg 7.1.1, and `-Dwrap_mode=forcefallback` **forced** meson onto it, so
+  pkg-config was never consulted: the build fetched a second, older FFmpeg
+  instead of the `n9.0` it had just built. The wrap is disabled before configure.
+- **tflite** — consults no pkg-config at all. It probes the compiler for
+  `tensorflow/lite/c/c_api.h`, the *pre-rename* path, while LiteRT ships the
+  post-rename `tflite/` layout; an alias tree is staged. Confirmed in the field
+  that upstream's first library name (`tensorflowlite_c`) does not exist here —
+  only its fallback `tensorflow-lite`.
+
+The set lives in `Get-RequiredGstPlugin` and is enforced at four points that
+previously disagreed: a pkg-config pre-flight (checking version **floors**, not
+just presence), meson features set to `enabled`, a post-install `gst-inspect`
+gate that throws, and smoke-test assertions. `tensorfilter` is deliberately
+excluded — it is an NNStreamer element this repo never builds.
+
+### FFmpeg's .pc files were unusable
+
+Found by probing the built image rather than waiting for the merge stage:
+`Version: ..` (configure found neither a VERSION file nor git tags, because the
+source is a GitHub auto-tarball) and MSYS-style `prefix=/c/…` paths that
+clang-cl cannot resolve. The empty version alone kept gst-libav out,
+independently of the wrap. Both fixed, and gated at the end of the FFmpeg stage.
+
+### Reproducibility
+
+- **LLVM, ninja and nasm pinned** (`LLVM_WINDOWS_VERSION`, …). The OS base was
+  digest-pinned while the very next layer installed whatever scoop served that
+  day — and five patches in this tree are written against a specific clang-cl.
+  Asserted at base-build time.
+- **`C:\toolchain-manifest.json`** records every pinned input as a pin/resolved
+  pair plus the floating ones, so *which compiler built this image* is answerable
+  from the artifact. It captures the MSVC toolset (14.51.36231) that floats
+  inside VS major 18 and was previously recorded nowhere.
+- **`versions.env` no longer invalidates the whole media chain.** It was COPY'd
+  into the stage all three branches descend from, so three Windows-only pins
+  re-ran all six media compiles (~90 min of ONNX among them). Versions now travel
+  as build-args; the file is demoted to a gap-filler by a precedence rule that
+  distinguishes a real build-arg override from a value merely inherited from the
+  base image's machine environment.
+
+### Gates that stop lying
+
+- **Disk** is checked per stage, with floors calibrated against measured
+  consumption, on every drive the build uses (not just `C:`), in **both** lanes.
+- **The runhcs shim** is identified by the SHA256 recorded at install time
+  instead of by file size; `deploy-shim-patch.ps1 -RecordCurrent` arms that
+  without a redeploy.
+- **The CNI conf must exist as BOTH `.conf` and `.conflist`** — buildkitd reads
+  one, nerdctl the other, and "converting" between them cost a launched chain.
+  The `.conf` is now *derived* from the `.conflist`.
+- **Retries** stop immediately when a failure repeats byte-for-byte (a poisoned
+  snapshot, whose remedy is `-NoCache` on that stage) but still retry
+  snapshot-mount contention, which repeats verbatim and clears anyway. The merge
+  stage's `-MaxAttempts 5` had been dead code, because its failure signature was
+  never in the transient pattern.
+
 ## 2026-07-30 — Agentic loop: backlog-driven planner skip + completed-task pruning
 
 - **Skip planner when tasks are pending** (`backlog.skipPlannerWhenTasksPending`,
