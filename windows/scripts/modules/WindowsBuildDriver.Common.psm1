@@ -80,7 +80,16 @@ function Invoke-TransientCooldown {
         # The PREVIOUS attempt's tail. When the new failure is byte-identical,
         # the failure is DETERMINISTIC, not transient, and retrying is pure
         # waste — see the determinism gate below.
-        [string]$PreviousTail = ''
+        [string]$PreviousTail = '',
+        # Failure classes that are genuinely worth retrying EVEN WHEN the tail
+        # repeats verbatim, i.e. the determinism gate must not judge them.
+        # Snapshot MOUNT contention is the measured case: the media merge mounts
+        # three branch trees at once and was recorded going green only on the
+        # third attempt (2026-08-06), with the same layer path named each time.
+        # Finalize/commit failures are the opposite — an identical
+        # ImportLayer/ExportLayer there means a poisoned snapshot that no number
+        # of retries will fix.
+        [string]$RetryDespiteIdenticalPattern = 'failed to mount \{windows-layer|failed to calculate checksum of ref'
     )
     # DETERMINISM GATE (2026-08-07). A flake changes between attempts; a poisoned
     # snapshot does not. `ImportLayer 0xb7` failed three times that day with
@@ -92,7 +101,9 @@ function Invoke-TransientCooldown {
     # Compared AFTER stripping timing noise: buildkit prefixes every line with
     # elapsed seconds (`#9 627.3 …`), which differ between attempts even when the
     # failure is identical.
-    if ($PreviousTail) {
+    if ($PreviousTail -and ($RetryDespiteIdenticalPattern -and $Tail -match $RetryDespiteIdenticalPattern)) {
+        Write-Host "[$Label] identical failure, but it is snapshot-mount contention — retrying anyway (measured to go green on a later attempt)." -ForegroundColor Yellow
+    } elseif ($PreviousTail) {
         $normalise = { param($t) (($t -replace '(?m)^#\d+\s+[\d.]+\s+', '') -replace '\s+', ' ').Trim() }
         if ((& $normalise $Tail) -eq (& $normalise $PreviousTail)) {
             Write-Host ("[$Label] IDENTICAL failure to the previous attempt — deterministic, not transient. " +

@@ -162,3 +162,38 @@ Describe 'Invoke-TransientCooldown determinism gate' {
         Assert-True $r 'the gate must not change the classic behaviour'
     }
 }
+
+Describe 'Mount contention: classified transient AND exempt from the determinism gate' {
+
+    # Two coupled defects found while the merge stage failed live (2026-08-07):
+    #
+    # 1. The media merge was given -MaxAttempts 5 on 2026-08-06 because
+    #    'failed to mount {windows-layer}' was measured going green only on the
+    #    third attempt — but that text was never in the transient pattern, so
+    #    the classifier said NON-transient and the retries never fired. The
+    #    raised attempt count was dead code for the failure it was raised for.
+    # 2. Once the pattern matches, the determinism gate would kill exactly those
+    #    retries, because the mount error names the same layer path each time.
+    #    Finalize failures are the opposite: identical there means poisoned.
+
+    It 'classifies a windows-layer mount failure as transient' {
+        Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir '.' `
+            -TransientPattern 'failed to mount \{windows-layer|failed to calculate checksum of ref'
+        $tail = 'ERROR: failed to calculate checksum of ref abc::def: failed to mount {windows-layer C:\ProgramData\containerd\...}'
+        Assert-True (Test-TransientDockerFailure -Tail $tail) 'mount contention must be retryable'
+    }
+
+    It 'retries mount contention even when the tail repeats verbatim' {
+        $tail = 'failed to mount {windows-layer C:\ProgramData\containerd\root\...\snapshots\2039 [ro parentLayerPaths=...]}'
+        $r = Invoke-TransientCooldown -Tail $tail -PreviousTail $tail -Attempt 1 -MaxAttempts 5 `
+            -CooldownSeconds 0 -Label 't' -AssumeTransient
+        Assert-True $r 'the determinism gate must not veto snapshot-mount contention'
+    }
+
+    It 'still vetoes an identical FINALIZE failure (the poisoned-snapshot case)' {
+        $tail = 'failed to commit abc to def during finalize: failed to reimport snapshot: hcsshim::ImportLayer failed'
+        $r = Invoke-TransientCooldown -Tail $tail -PreviousTail $tail -Attempt 1 -MaxAttempts 5 `
+            -CooldownSeconds 0 -Label 't' -AssumeTransient
+        Assert-False $r 'an identical finalize failure is deterministic and must not be retried'
+    }
+}

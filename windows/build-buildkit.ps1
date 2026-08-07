@@ -151,7 +151,14 @@ if ($cniForm) { throw $cniForm }
 # also surrounds a genuine ExportLayer-0x3 defect hit, which MUST fail loudly
 # (2026-08-05: two pointless retries of a deterministic 0x3 before the
 # negative lookahead was added).
-Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer'
+# 'failed to mount {windows-layer' / 'failed to calculate checksum of ref' ADDED
+# 2026-08-07: the media MERGE stage was given -MaxAttempts 5 back on 2026-08-06
+# precisely because this failure was measured going green only on the third
+# attempt — but the pattern never matched it, so the classifier returned
+# NON-transient and the retries never fired at all. The raised attempt count was
+# dead code for the exact failure it was raised for. Watched it hard-fail on the
+# first attempt today, which is what exposed the gap.
+Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer|failed to mount \{windows-layer|failed to calculate checksum of ref'
 
 # --- versions (single source of truth) ---
 $versions = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
