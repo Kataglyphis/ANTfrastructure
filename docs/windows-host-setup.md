@@ -8,6 +8,23 @@ checklist and the sections it links. Every step names its shell
 lives in [Windows Build Image](windows-builds.md); this page is the ordered
 path through it, not a replacement.
 
+> **Check yourself against the machine, not against this page.**
+> `windows/scripts/verify-host-setup.ps1` asserts every claim below and prints
+> a fix for each failure. Run it **first** (to see what a fresh box still
+> needs), **last** (to confirm bring-up), and after any host change:
+>
+> ```pwsh
+> pwsh -File windows\scripts\verify-host-setup.ps1 -SccacheEndpoint http://<lan-ip>:5000
+> ```
+>
+> It needs no admin (Defender exclusions are reported UNKNOWN rather than
+> skipped, so their absence cannot look like success) and exits 1 on any
+> failure. **This page and that script are two views of one contract — change
+> them together.** The reason it exists: until 2026-08-07 the CNI section here
+> handed fresh hosts a `.conf` template that silently broke the entire nerdctl
+> lane, and it read as authoritative for days. Prose cannot be executed; that
+> is the whole failure mode this guards.
+
 Phases:
 
 - **A** — one-time host provisioning **[admin]**
@@ -441,7 +458,8 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    disguised as a missing `ninja`.
    `(Get-PSDrive C).Free / 1GB` — below ~25 GB free, hcsshim gets "weird"
    *before* an honest disk-full error (`ExportLayer 0x3`/`0x70`, spawn
-   flakes). Reclaim levers, non-admin first: `buildctl prune-histories`,
+   flakes). Reclaim levers, non-admin first: `buildctl prune --free-storage <MB>`
+   (see the target trap below), then `buildctl prune-histories`,
    `buildctl prune --free-storage <MB>`, `docker image prune -f`; the full
    playbook is [Windows Build Image](windows-builds.md) § Store GC. Two traps
    that make the levers look broken: `--free-storage` is a **minimum-free

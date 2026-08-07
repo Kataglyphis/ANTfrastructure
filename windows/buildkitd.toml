@@ -26,8 +26,17 @@
 #     VS + sdk + toolchain + branch images) or GC evicts mid-chain layers;
 #     rule of thumb ~20-25% of the disk, floor 150 GB.
 #   maxUsedSpace: ~reservedSpace * 1.5, so scratch can churn above the spine.
-#   minFreeSpace: >= 25-30 GB ALWAYS (hcsshim finalize/export gets flaky below
-#     ~25 GB free long before a clean disk-full error).
+#   minFreeSpace: this is a TRIGGER, not a floor - GC starts evicting when free
+#     space reaches it, and a heavy media stage keeps consuming while GC works.
+#     Set it well ABOVE the danger band, not at it. Measured 2026-08-07 with
+#     minFreeSpace = 30GB: a full chain dipped to 25.1 GB and later 22.7 GB and
+#     needed MANUAL `buildctl prune --free-storage` twice mid-build, because a
+#     single media layer eats 6-10 GB faster than GC frees it. Below ~25 GB
+#     hcsshim finalize/export turns flaky long before a clean disk-full error
+#     (2026-08-06: a chain died with "ninja is not recognized" at 4.8 GB and
+#     left two poisoned snapshots). 60 GB gives GC roughly one heavy layer of
+#     runway. Cost: more cache eviction, so cold rebuilds are likelier - that
+#     is the right trade against an unattended run dying at 3 a.m.
 #   history tier: keep as-is on every machine (time/count-based, size-free).
 # A disk under ~400 GB cannot hold the full warm chain comfortably - expect
 # to prune between runs and keep reservedSpace >= 150 GB regardless.
@@ -57,7 +66,10 @@
     keepDuration  = "720h"
     reservedSpace = "200GB"
     maxUsedSpace  = "300GB"
-    minFreeSpace  = "30GB"
+    # 30GB -> 60GB (2026-08-07): 30 GB left GC no runway and forced two manual
+    # prunes mid-chain. Still far below reservedSpace, so the VS-class spine
+    # this tier protects is untouched by the change.
+    minFreeSpace  = "60GB"
 
   # Tier 2: hard ceiling.
   [[worker.containerd.gcpolicy]]

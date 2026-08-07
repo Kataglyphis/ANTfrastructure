@@ -1,0 +1,208 @@
+# Copyright (c) 2025 Kataglyphis. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Machine-checkable version of docs/windows-host-setup.md.
+#
+# WHY THIS EXISTS: that guide has never been walked cold on a second machine.
+# Everything in it was written by someone who already knew the answers, on the
+# host where the knowledge was built - and that is exactly how a setup guide
+# rots without anyone noticing. On 2026-08-07 its CNI section still handed a
+# fresh host the bare `.conf` template, i.e. the instructions silently cost you
+# the entire nerdctl lane, and it read as authoritative the whole time.
+#
+# Prose cannot catch that. A check can. Every assertion below corresponds to a
+# claim the guide makes, so a new machine gets a VERDICT instead of trust.
+# When you change the guide, change this script - they are two views of one
+# contract.
+#
+# Non-admin by design: everything here is readable unelevated except the
+# Defender exclusions, which are reported as UNKNOWN rather than skipped, so
+# their absence can never masquerade as success.
+#
+#   pwsh -File windows\scripts\verify-host-setup.ps1
+#   pwsh -File windows\scripts\verify-host-setup.ps1 -SccacheEndpoint http://<ip>:5000
+#
+# Exit codes: 0 = all required checks passed, 1 = at least one FAIL.
+
+#requires -Version 7.0
+[CmdletBinding()]
+param(
+    [string]$StevedoreBin = "$env:ProgramFiles\Stevedore\bin",
+    [string]$CniConfDir = 'C:\Program Files\containerd\cni\conf',
+    [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT,
+    [int]$MinFreeGb = 40,
+    # Patched runhcs shim sizes; extend as hcsshim moves (see AGENTS.md).
+    [long[]]$PatchedShimSize = @(25332736, 25329664),
+    [long[]]$StockShimSize = @(23279616)
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Continue'
+
+$script:Fail = 0
+$script:Warn = 0
+
+function Write-Check {
+    param(
+        [ValidateSet('PASS', 'FAIL', 'WARN', 'INFO')][string]$Status,
+        [string]$Name,
+        [string]$Detail = '',
+        [string]$Fix = ''
+    )
+    $color = switch ($Status) { 'PASS' { 'Green' } 'FAIL' { 'Red' } 'WARN' { 'Yellow' } default { 'Gray' } }
+    Write-Host ('[{0}] {1}' -f $Status.PadRight(4), $Name) -ForegroundColor $color
+    if ($Detail) { Write-Host ('       ' + $Detail) -ForegroundColor DarkGray }
+    if ($Fix -and $Status -ne 'PASS') { Write-Host ('       fix: ' + $Fix) -ForegroundColor Cyan }
+    if ($Status -eq 'FAIL') { $script:Fail++ }
+    if ($Status -eq 'WARN') { $script:Warn++ }
+}
+
+function Test-IpInCidr {
+    param([string]$Ip, [string]$Cidr)
+    if (-not $Ip -or $Cidr -notmatch '^(.+)/(\d+)$') { return $false }
+    $net = [Net.IPAddress]::Parse($Matches[1]); $bits = [int]$Matches[2]
+    $a = [BitConverter]::ToUInt32(($net.GetAddressBytes()[3..0]), 0)
+    $b = [BitConverter]::ToUInt32(([Net.IPAddress]::Parse($Ip).GetAddressBytes()[3..0]), 0)
+    $mask = if ($bits -eq 0) { 0 } else { [uint32]((0xFFFFFFFFL -shl (32 - $bits)) -band 0xFFFFFFFFL) }
+    return ($a -band $mask) -eq ($b -band $mask)
+}
+
+Write-Host ''
+Write-Host '=== Windows host setup verification (docs/windows-host-setup.md) ===' -ForegroundColor White
+Write-Host ''
+
+# --- Phase A: services + clients ---------------------------------------------
+
+foreach ($svc in 'containerd', 'buildkitd') {
+    $s = Get-Service $svc -ErrorAction SilentlyContinue
+    if ($s -and $s.Status -eq 'Running') { Write-Check PASS "service $svc running" }
+    elseif ($s) { Write-Check FAIL "service $svc is $($s.Status)" '' "Start-Service $svc  (admin)" }
+    else { Write-Check FAIL "service $svc not installed" '' 'Install Stevedore - see host-setup Phase A' }
+}
+
+# The classic lane's daemon. Stopped is survivable (the BuildKit lane does not
+# need it) but it means the documented fallback is unavailable, which is worth
+# knowing BEFORE you need it.
+$stev = Get-Service stevedore -ErrorAction SilentlyContinue
+if ($stev -and $stev.Status -eq 'Running') { Write-Check PASS 'service stevedore (dockerd / classic fallback lane) running' }
+elseif ($stev) {
+    Write-Check WARN "classic fallback lane unavailable - stevedore is $($stev.Status)" `
+        'stevedore IS dockerd; build.ps1 cannot run without it' `
+        'Start-Service stevedore (admin), THEN re-check the CNI subnet below - a dockerd start recreates the nat network'
+} else { Write-Check WARN 'stevedore service not installed - classic lane unavailable' }
+
+$buildctl = Join-Path $StevedoreBin 'buildctl.exe'
+if (Test-Path $buildctl) {
+    $null = & $buildctl debug workers 2>&1
+    if ($LASTEXITCODE -eq 0) { Write-Check PASS 'buildctl reaches buildkitd UNELEVATED (docker-users ACL)' }
+    else { Write-Check FAIL 'buildctl cannot reach buildkitd' '' 'buildkitd must run with --group docker-users, and you must be in that group (re-login after adding)' }
+} else { Write-Check FAIL "buildctl missing at $buildctl" }
+
+$nerdctl = Join-Path $StevedoreBin 'nerdctl.exe'
+if (Test-Path $nerdctl) { Write-Check PASS 'nerdctl present (admin-only by design - containerd pipe)' }
+else { Write-Check WARN "nerdctl missing at $nerdctl - run/inspect lane unavailable" }
+
+# --- Phase A5: CNI ------------------------------------------------------------
+
+$conflist = Join-Path $CniConfDir '0-containerd-nat.conflist'
+$bareConf = Join-Path $CniConfDir '0-containerd-nat.conf'
+if (Test-Path $conflist) {
+    Write-Check PASS 'CNI nat config is .conflist (nerdctl-compatible)'
+    $confText = Get-Content $conflist -Raw
+} elseif (Test-Path $bareConf) {
+    Write-Check FAIL 'CNI nat config is a bare .conf' `
+        'containerd/BuildKit read it, but nerdctl PANICS on it (index out of range [0] with length 0)' `
+        'convert to plugins[] conflist form - template in host-setup A5'
+    $confText = Get-Content $bareConf -Raw
+} else {
+    Write-Check FAIL 'no CNI nat config' 'RUN steps will have NO network' 'install the conflist - host-setup A5'
+    $confText = ''
+}
+
+if ($confText) {
+    $subnet = ([regex]::Match($confText, '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
+    $adapter = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.InterfaceAlias -match '^vEthernet \(nat\)$' } | Select-Object -First 1 -ExpandProperty IPAddress)
+    if (-not $adapter) { Write-Check WARN 'no vEthernet (nat) adapter - cannot judge subnet drift' }
+    elseif (Test-IpInCidr -Ip $adapter -Cidr $subnet) { Write-Check PASS "CNI subnet matches the live nat adapter ($subnet <- $adapter)" }
+    else {
+        Write-Check FAIL "CNI subnet drift: conf pins $subnet, adapter is $adapter" `
+            'containers get unroutable IPs - the first downloading RUN dies with "remote name could not be resolved"' `
+            'update ipam.subnet/GW to the adapter, then Restart-Service buildkitd -Force (admin)'
+    }
+}
+
+# --- Phase C: shim, gcpolicy, service config ---------------------------------
+
+$shim = Join-Path $StevedoreBin 'containerd-shim-runhcs-v1.exe'
+if (Test-Path $shim) {
+    $size = (Get-Item $shim).Length
+    if ($PatchedShimSize -contains $size) { Write-Check PASS ('runhcs shim is PATCHED ({0:N0} bytes)' -f $size) }
+    elseif ($StockShimSize -contains $size) {
+        Write-Check FAIL ('runhcs shim is STOCK ({0:N0} bytes) - the teardown-timeout patch was reverted' -f $size) `
+            'heavy media layers WILL fail with hcsshim::ExportLayer 0x3, hours into a build' `
+            'pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath <build>  (admin)'
+    } else {
+        Write-Check WARN ('runhcs shim size {0:N0} is neither known-patched nor known-stock' -f $size) `
+            'probably a newer patched build; add its size to the parameter and to AGENTS.md'
+    }
+} else { Write-Check FAIL "runhcs shim missing at $shim" }
+
+$cEnv = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -ErrorAction SilentlyContinue).Environment
+if ($cEnv -and ($cEnv -join ';') -match 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=') {
+    Write-Check PASS 'containerd service carries the shim teardown env var'
+} else {
+    Write-Check WARN 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT not set on the containerd service' `
+        'REQUIRED for a shim built from the upstream patch (its defaults stay 30s); harmless for a fixed-constant build' `
+        'pwsh -File windows\scripts\apply-containerd-config.ps1  (admin)'
+}
+
+$cImage = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -ErrorAction SilentlyContinue).ImagePath
+if ($cImage -match '--log-level\s+debug') { Write-Check PASS 'containerd debug logging on (owner policy)' }
+else { Write-Check WARN 'containerd debug logging OFF' 'the next snapshotter incident will carry no evidence' 'pwsh -File windows\scripts\apply-containerd-config.ps1  (admin)' }
+
+if (Test-Path $buildctl) {
+    $workers = & $buildctl debug workers -v 2>&1 | Out-String
+    if ($workers -match 'snapshotter:\s*windows') { Write-Check PASS 'buildkit worker uses the windows snapshotter' }
+    else { Write-Check WARN 'buildkit worker snapshotter is not "windows"' ($workers -split "`n" | Select-String 'snapshotter' | Select-Object -First 1) }
+    if ($workers -match 'Minimum free space') { Write-Check PASS 'gcpolicy active on the worker' }
+    else { Write-Check FAIL 'no gcpolicy on the worker - the store will grow until the disk dies' '' 'pwsh -File windows\scripts\apply-buildkitd-gcpolicy.ps1 -Force  (admin)' }
+}
+
+# --- Phase D: runtime preconditions -------------------------------------------
+
+$freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
+if ($freeGb -ge $MinFreeGb) { Write-Check PASS "disk headroom ${freeGb} GB (min ${MinFreeGb})" }
+else {
+    Write-Check FAIL "disk headroom ${freeGb} GB is below ${MinFreeGb} GB" `
+        'below ~25 GB hcsshim fails in ways that do not look like a disk problem' `
+        'buildctl prune --free-storage <MB ABOVE total disk size - it is a minimum-free TARGET>'
+}
+
+if ($SccacheEndpoint) {
+    try {
+        $code = (Invoke-WebRequest -Uri $SccacheEndpoint -Method Head -TimeoutSec 5 -UseBasicParsing).StatusCode
+        Write-Check PASS "sccache endpoint reachable ($SccacheEndpoint -> HTTP $code)"
+    } catch { Write-Check FAIL "sccache endpoint unreachable: $SccacheEndpoint" $_.Exception.Message 'dufs C:\sccache-cache -A -p 5000, and use a LAN IP (not localhost)' }
+} else { Write-Check WARN 'no sccache endpoint given' 'media builds require it unless -NoSccache is deliberate' 'pass -SccacheEndpoint or set SCCACHE_WEBDAV_ENDPOINT' }
+
+# Reported, never skipped: absence must not look like success.
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($isAdmin) {
+    $ex = @((Get-MpPreference).ExclusionPath)
+    $want = @('C:\ProgramData\containerd', 'C:\ProgramData\buildkitd')
+    $missing = @($want | Where-Object { $ex -notcontains $_ })
+    if ($missing.Count -eq 0) { Write-Check PASS 'Defender exclusions present' }
+    else { Write-Check WARN ('Defender exclusions MISSING: ' + ($missing -join ', ')) 'load-bearing for the hcs-temp finalize flake family' 'pwsh -File windows\scripts\apply-containerd-config.ps1  (admin)' }
+} else {
+    Write-Check INFO 'Defender exclusions UNKNOWN (needs admin to read)' 're-run elevated to verify - they are load-bearing'
+}
+
+Write-Host ''
+if ($script:Fail -gt 0) {
+    Write-Host ("VERDICT: {0} FAILED check(s), {1} warning(s) - this host is NOT ready." -f $script:Fail, $script:Warn) -ForegroundColor Red
+    exit 1
+}
+Write-Host ("VERDICT: all required checks passed ({0} warning(s))." -f $script:Warn) -ForegroundColor Green
+exit 0
