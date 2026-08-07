@@ -33,7 +33,15 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 # ZIP install avoids MSI dependency issues in containers. The version is pinned
 # via ARG PWSH_VERSION (from versions.env). After this, SHELL is switched to pwsh
 # for all subsequent layers.
-RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null; $u = 'https://github.com/PowerShell/PowerShell/releases/download/v' + $env:PWSH_VERSION + '/PowerShell-' + $env:PWSH_VERSION + '-win-x64.zip'; $z = $env:TEMP_DIR + '\pwsh.zip'; $d = 'C:\Program Files\PowerShell\7'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $u -OutFile $z -UseBasicParsing; if ($env:PWSH_ZIP_SHA256) { $h = (Get-FileHash -Algorithm SHA256 -Path $z).Hash; if ($h -ne $env:PWSH_ZIP_SHA256) { throw ('pwsh zip SHA256 mismatch: expected ' + $env:PWSH_ZIP_SHA256 + ' but got ' + $h) } }; Expand-Archive -Path $z -DestinationPath $d -Force; Remove-Item $z -Force; $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine'); if ($mp -notlike '*PowerShell\7*') { [Environment]::SetEnvironmentVariable('Path', $mp + ';' + $d, 'Machine') }
+#
+# RETRY (added 2026-08-07): this is the FIRST network fetch of the chain's most
+# expensive stage, and it was the last single-shot download left in the tree —
+# every other one goes through Invoke-DownloadWithRetry (which cannot be used
+# here: no module has been COPY'd yet, by design). A transient blip cost the
+# whole base build. Three attempts with a backoff, the hash check inside the
+# loop so a truncated/HTML body is retried rather than thrown on, and the
+# ORIGINAL exception rethrown when the budget is exhausted.
+RUN New-Item -Path $env:TEMP_DIR -ItemType Directory -Force | Out-Null; $u = 'https://github.com/PowerShell/PowerShell/releases/download/v' + $env:PWSH_VERSION + '/PowerShell-' + $env:PWSH_VERSION + '-win-x64.zip'; $z = $env:TEMP_DIR + '\pwsh.zip'; $d = 'C:\Program Files\PowerShell\7'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ok = $false; $err = $null; foreach ($attempt in 1..3) { try { if (Test-Path $z) { Remove-Item $z -Force }; Invoke-WebRequest -Uri $u -OutFile $z -UseBasicParsing; if ($env:PWSH_ZIP_SHA256) { $h = (Get-FileHash -Algorithm SHA256 -Path $z).Hash; if ($h -ne $env:PWSH_ZIP_SHA256) { throw ('pwsh zip SHA256 mismatch: expected ' + $env:PWSH_ZIP_SHA256 + ' but got ' + $h) } }; $ok = $true; break } catch { $err = $_; Write-Host ('pwsh download attempt ' + $attempt + ' failed: ' + $_.Exception.Message); if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) } } }; if (-not $ok) { throw $err }; Expand-Archive -Path $z -DestinationPath $d -Force; Remove-Item $z -Force; $mp = [Environment]::GetEnvironmentVariable('Path', 'Machine'); if ($mp -notlike '*PowerShell\7*') { [Environment]::SetEnvironmentVariable('Path', $mp + ';' + $d, 'Machine') }
 
 # Ensure pwsh and the base Windows paths are on PATH for the SHELL switch below and all
 # subsequent RUN instructions. The base image's PATH is NOT inherited by Docker ENV
