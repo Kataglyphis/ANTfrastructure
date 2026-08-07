@@ -126,7 +126,12 @@ verify_all_cross_target_versions() {
   [ -n "${targets_raw}" ] || return 0
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || return 0
 
-  for target in ${targets_raw//,/ }; do
+  # Split on commas via `IFS=',' read` (scoped to the builtin): this module is
+  # sourced into IFS=$'\n\t' scripts, where ${targets_raw//,/ } does not split
+  # and every cross target would be verified as one concatenated bogus arch.
+  local -a _verify_targets=()
+  IFS=',' read -r -a _verify_targets <<< "${targets_raw}"
+  for target in "${_verify_targets[@]}"; do
     ARCH="${target}"
     TARGETARCH="${target}"
     TARGET_ARCH="${target}"

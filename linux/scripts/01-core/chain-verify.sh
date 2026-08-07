@@ -39,6 +39,25 @@ _verify_link() {
     return 0
   fi
 
+  # Preferred path: a real verdict. Images built since ancestry.sh exists record
+  # the parent reference they were built FROM as a manifest annotation; comparing
+  # that against the parent tag's CURRENT digest answers "is this link stale?"
+  # directly instead of printing digests for the reader to eyeball.
+  if declare -F ancestry_recorded_parent >/dev/null 2>&1; then
+    local recorded
+    recorded="$(ancestry_recorded_parent "${child_tag}" 2>/dev/null || true)"
+    if [ -n "${recorded}" ]; then
+      if [ "${recorded##*@}" = "${parent_digest##*@}" ]; then
+        log "[verify] ${label}: FRESH (child was built from the parent's current digest)"
+      else
+        warn "[verify] ${label}: STALE — child built FROM ${recorded##*@}, parent now ${parent_digest##*@}"
+        warn "[verify] ${label}:   rebuild from stage '${label%%->*}' (or later ancestors stay stale)"
+      fi
+      return 0
+    fi
+  fi
+
+  # Fallback (image predates the ancestry annotation): informational digest dump.
   if ! command -v python3 >/dev/null 2>&1; then
     warn "[verify] ${label}: python3 not available, skipping base layer check"
     return 0
@@ -48,6 +67,7 @@ _verify_link() {
     | python3 "${_CHAIN_VERIFY_DIR:-${_ARTIFACT_COMMON_DIR}}/manifest-base-layer.py" 2>/dev/null || true)"
 
   if [ -n "${child_base_digest}" ]; then
+    log "[verify] ${label}: no ancestry annotation (predates the mechanism) — manual check:"
     log "[verify] ${label}: parent ${parent_digest}"
     log "[verify] ${label}: child  ${child_tag}"
     log "[verify] ${label}: child base layer ${child_base_digest}"

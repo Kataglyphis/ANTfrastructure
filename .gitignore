@@ -8,6 +8,10 @@ out/**/*
 .github/instructions/codacy.instructions.md
 __pycache__/
 *.pyc
+# resource-monitor.sh output: lands in the repo root whenever an orchestrator
+# runs without --log-dir (its --out-dir default is REPO_ROOT)
+resources-*.csv
+resources-*.summary.txt
 *.deb
 windows/downloads/*
 # Keep the README so a fresh clone has the directory: Dockerfile.nvidia does an

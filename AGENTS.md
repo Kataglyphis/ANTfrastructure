@@ -651,7 +651,8 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
 - **CC validation:** `validate-compilers.sh` → `_validate_cc_target()` (dumpmachine/ELF/cc1/link smoke).
 - **Cross-chain tags:** `tag-naming.sh` → `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, runtime tag functions. Never construct tags manually.
 - **Stage graph:** `stage-defs.sh` → `CROSS_STAGE_ORDER` (base→compiler→sdk→media→android→runtime), `RUNTIME_STAGE_ORDER` (base→package→wrapper). Pin init: `cross_stage_init_pins()`. Validation: `cross_stage_validate_graph()`. Cross→runtime handoff: `cross_stage_ensure_parent_available()`.
-- **Chain verification:** `chain-verify.sh` → `verify_cross_chain_staleness()`, `describe_cross_chain()`.
+- **Chain verification:** `chain-verify.sh` → `verify_cross_chain_staleness()`, `describe_cross_chain()`. Informational only — it prints digests, it does not gate a build.
+- **Stage ancestry (gating):** `ancestry.sh` → `ancestry_output_annotations()`, `ancestry_recorded_parent()`, `ancestry_assert_chain()`. Every pushed cross stage records the parent ref it was built FROM as the OCI manifest annotation `org.kataglyphis.parent-digest`; a run with `--from-stage` after `base` walks that chain and HARD-FAILS when a parent was re-pushed after the child that would be inherited. Read path: `manifest-annotation.py` (annotations live in the base64 `Raw` field of `manifest inspect --verbose`). Absent annotation = warn (predates the mechanism); present + mismatch = fail. Escape hatch: `--no-verify-ancestry` / `CROSS_VERIFY_ANCESTRY=0`.
 - **Cross-stage build:** `cross-stage-build.sh` → `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `cross_stage_assemble_runtime_helper_args()`.
 - **Runtime flow init:** `runtime-flow-common.sh` → `init_runtime_flow_defaults()` (sourced directly by the two runtime scripts).
 - **Retry logic:** `logging.sh` → `retry <max> <sleep> <desc> <cmd...>`.
@@ -667,7 +668,7 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
 ### Module Loading Order
 
 `artifact-common.sh` sources 01-core modules in dependency order:
-1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `build-helpers.sh` 7. `cross-stage-build.sh` 8. `context-management.sh` 9. `version-forwarding.sh` 10. `cli-parsers.sh` 11. `runtime-build-fns.sh` 12. `compiler-resolution.sh` 13. `parallel-loop.sh`.
+1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh`.
 
 `runtime-flow-common.sh` is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`).
 
@@ -685,6 +686,14 @@ quietly reuse the old `media`.
 
 Rules:
 
+0. **The chain now checks this for you.** A run starting after `base` asserts the
+   recorded ancestry of every stage it inherits (`01-core/ancestry.sh`) and
+   refuses to build on a parent that was re-pushed after its child. Rules 1-4
+   below describe what that check enforces and what its failure message asks you
+   to do — they are no longer yours alone to remember. Bypass only deliberately,
+   with `--no-verify-ancestry` / `CROSS_VERIFY_ANCESTRY=0`. Images built before
+   this mechanism carry no annotation and only warn, so a chain that predates it
+   still needs rules 1-4 applied by hand until each stage has been rebuilt once.
 1. When ANY base image in the registry tag hierarchy is replaced, rebuild every
    downstream image from the replaced stage, OR verify the downstream images
    already contain the new content (e.g. check `/opt/gcc-16.2.0-native-arm64`

@@ -161,7 +161,13 @@ for_each_cross_target() {
   }
 
   local target rc=0
-  for target in ${normalized//,/ }; do
+  # Split on commas via `IFS=',' read` (scoped to the builtin). This function is
+  # sourced into scripts that set IFS=$'\n\t' (all 02/03 build scripts), where a
+  # bare ${normalized//,/ } expansion does not split on spaces and the loop
+  # would run once with the whole list as a single bogus target.
+  local -a _fect_targets=()
+  IFS=',' read -r -a _fect_targets <<< "${normalized}"
+  for target in "${_fect_targets[@]}"; do
     case "${target}" in
       amd64)
         [ "${include_amd64}" -eq 1 ] || continue

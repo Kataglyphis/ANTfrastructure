@@ -18,9 +18,18 @@ run_parallel_arch_loop() {
   local arch running failed=0
   local _flagdir
   _flagdir="$(mktemp -d "${flagdir_prefix}.XXXXXX")"
-  # Single-quoted on purpose (SC2064): expand ${_flagdir} when the trap FIRES,
-  # not when it is set — the RETURN trap still sees the function's local.
-  trap 'rm -rf "${_flagdir}"' RETURN
+  # NO `trap ... RETURN` for cleanup here.
+  #
+  # A RETURN trap set inside a function is NOT scoped to that function: it stays
+  # armed and fires again on the CALLER's return, where ${_flagdir} — a local of
+  # this function — no longer exists. Under the orchestrator's `set -u` that
+  # aborted build-cross-chain.sh with a bare "_flagdir: unbound variable" the
+  # moment _chain_run_build_loop returned, i.e. AFTER every stage had already
+  # built successfully, turning a green run into exit 1.
+  #
+  # Cleanup is therefore explicit at the single exit point below. A fatal err()
+  # elsewhere leaks one small flag dir under $TMPDIR; that is strictly better
+  # than re-arming a trap that corrupts unrelated function returns.
   # Background workers are SUBSHELLS: variables they set (digest pins,
   # built-this-run flags) are silently lost to the parent. Publish the flag
   # dir so workers can persist small results as files, harvested after the
@@ -67,5 +76,6 @@ run_parallel_arch_loop() {
     fi
   fi
   unset PARALLEL_LOOP_FLAGDIR
+  rm -rf "${_flagdir}"
   return "${failed}"
 }

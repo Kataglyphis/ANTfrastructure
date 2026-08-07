@@ -42,17 +42,18 @@ _export_container_rootfs() {
   mkdir -p "${rootfs_dir}"
 
   cid="$("${nerdctl_bin}" create "${tag}" /bin/true)"
-  cleanup_container() {
-    if [ -n "${cid}" ]; then
-      "${nerdctl_bin}" rm -f "${cid}" >/dev/null 2>&1 || true
-    fi
-  }
-  trap cleanup_container RETURN
 
-  "${nerdctl_bin}" export "${cid}" | tar -xpf - -C "${rootfs_dir}"
+  # NO `trap ... RETURN` here (same leak as the one fixed in parallel-loop.sh):
+  # a RETURN trap set inside a function stays armed after an error-path return
+  # and fires again when the CALLER returns — where ${cid} is not in scope, so
+  # under `set -u` the second firing aborts the caller instead of cleaning up.
+  # Capturing the rc with `|| rc=$?` keeps set -e from returning early, so the
+  # explicit cleanup below runs on both the happy and the failure path.
+  local rc=0
+  "${nerdctl_bin}" export "${cid}" | tar -xpf - -C "${rootfs_dir}" || rc=$?
 
-  cleanup_container
-  trap - RETURN
+  "${nerdctl_bin}" rm -f "${cid}" >/dev/null 2>&1 || true
+  return "${rc}"
 }
 
 export_rootfs_from_image() {

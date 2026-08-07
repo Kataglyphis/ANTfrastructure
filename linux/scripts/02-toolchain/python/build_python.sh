@@ -429,7 +429,13 @@ stage_requested_cross_python_payloads() {
   rm -rf "${PYTHON_CROSS_STAGE_ROOT}"
   mkdir -p "${PYTHON_CROSS_STAGE_ROOT}"
 
-  for target_arch in ${normalized_targets//,/ }; do
+  # Split on commas via `IFS=',' read` (scoped to the builtin): this script sets
+  # IFS=$'\n\t', under which the previous `${normalized_targets//,/ }` expansion
+  # did NOT split on its spaces — the loop ran ONCE with all targets as a single
+  # bogus arch and cross staging failed for every multi-target compiler build.
+  local -a _staging_targets=()
+  IFS=',' read -r -a _staging_targets <<< "${normalized_targets}"
+  for target_arch in "${_staging_targets[@]}"; do
     if [ "${target_arch}" = "${build_arch}" ]; then
       stage_host_python_payload "${target_arch}"
     else

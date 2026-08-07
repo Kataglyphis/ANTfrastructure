@@ -289,13 +289,29 @@ _gcc_gpg_require_or_warn() {
   fi
 }
 
-# Optional GPG verification of the downloaded GCC tarball against the GCC Release
-# Signing Key. Flattened from a 5-level nested pyramid into guard clauses; the
-# policy is unchanged: no .sig on server → skip cleanly; .sig present but
-# undownloadable → fatal; verify FAILS with key present → fatal; otherwise
-# (no gpg / key unavailable) → _gcc_gpg_require_or_warn.
+# Optional GPG verification of the downloaded GCC tarball against the GCC
+# release signing keys. Policy: no .sig on server → skip cleanly; .sig present
+# but undownloadable → fatal; BAD signature with the signer's key present →
+# fatal; signer key unobtainable / gpg missing → _gcc_gpg_require_or_warn.
+#
+# GCC releases are signed by ONE OF several release managers' personal keys —
+# NOT a single project key. gcc-16.2.0 is signed by Richard Biener's key while
+# this script previously pinned only Jakub Jelinek's, so verification failed on
+# a perfectly genuine tarball (with SHA512 already OK). Worse, that failure was
+# gpg's "no public key" status, which the old code conflated with a BAD
+# signature and reported as possible tampering. The two conditions demand
+# opposite reactions:
+#   NO_PUBKEY / ERRSIG  → we LACK evidence      → the skipped-verification path
+#   BADSIG / EXPKEYSIG / REVKEYSIG → evidence of a WRONG signature → fatal
+# gpg's exit code cannot distinguish them; --status-fd can, so the verdict is
+# parsed from there.
+#
+# Override the accepted set with GCC_GPG_KEYS (space-separated fingerprints),
+# e.g. when a future release is signed by a manager not listed here.
 verify_gcc_gpg_signature() {
-  local key="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62"  # GCC Release Signing Key
+  # Fingerprints from https://gcc.gnu.org/mirrors.html ("release keys").
+  local default_keys="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62 7F74F97C103468EE5D750B583AB00996FC26A641 33C235A34C46AA3FFB293709A328C3A2C3C45C06 13975A70E63C361C73AE69EF6EEB81F8981C74C7"
+  local keys="${GCC_GPG_KEYS:-${default_keys}}"
 
   if ! wget -q --spider "${SIG_URL}"; then
     echo "No .sig found or accessible."
@@ -315,24 +331,59 @@ verify_gcc_gpg_signature() {
   fi
 
   echo "Attempting GPG verification..."
-  if ! gpg --list-keys "${key}" >/dev/null 2>&1; then
-    echo "Importing GCC release signing key..."
+  # This script sets IFS=$'\n\t' (line 3), so an unquoted ${keys} does NOT
+  # split on the spaces separating the fingerprints — the first build with the
+  # key SET iterated once over the whole string as a single bogus "key" and
+  # every import failed. `local IFS` scopes the default splitting to this
+  # function; it is restored automatically on return.
+  local IFS=$' \t\n'
+  local key
+  for key in ${keys}; do
+    gpg --list-keys "${key}" >/dev/null 2>&1 && continue
+    echo "Importing GCC release signing key ${key}..."
     gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "${key}" 2>/dev/null || \
     gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys "${key}" 2>/dev/null || \
-    echo "WARNING: could not import the GCC release signing key from any keyserver." >&2
+    echo "WARNING: could not import GCC release signing key ${key} from any keyserver." >&2
+  done
+
+  # Machine-readable verdict. gpg exits non-zero for BOTH "bad signature" and
+  # "signer's key not in keyring"; only the status lines tell them apart.
+  local status
+  status="$(gpg --status-fd 1 --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null || true)"
+
+  if printf '%s\n' "${status}" | grep -q "^\[GNUPG:\] GOODSIG "; then
+    # Good cryptographic signature — now require the signer to be in the
+    # accepted set, so a good signature from an arbitrary imported key cannot
+    # pass. VALIDSIG carries the signing-key fingerprint as its first field and
+    # the PRIMARY key's fingerprint as its last; releases may be signed with a
+    # subkey, so either one matching the accepted set is sufficient.
+    local signer_fpr primary_fpr
+    signer_fpr="$(printf '%s\n' "${status}" | awk '/^\[GNUPG:\] VALIDSIG /{print $3; exit}')"
+    primary_fpr="$(printf '%s\n' "${status}" | awk '/^\[GNUPG:\] VALIDSIG /{print $NF; exit}')"
+    case " ${keys} " in
+      *" ${signer_fpr} "*|*" ${primary_fpr} "*)
+        echo "GPG signature verified successfully (signer ${signer_fpr}, primary ${primary_fpr})."
+        return 0
+        ;;
+    esac
+    echo "ERROR: good signature, but signer ${signer_fpr:-unknown} (primary ${primary_fpr:-unknown}) is not an accepted GCC release key." >&2
+    echo "If this is a legitimate new release manager, extend GCC_GPG_KEYS." >&2
+    exit 1
   fi
 
-  # Key still unavailable → cannot verify; treat as skipped, not failed.
-  if ! gpg --list-keys "${key}" >/dev/null 2>&1; then
+  if printf '%s\n' "${status}" | grep -qE "^\[GNUPG:\] (NO_PUBKEY|ERRSIG) "; then
+    # The signer's public key is not in the keyring (e.g. all keyserver imports
+    # failed, or a new release manager not in the set). We cannot verify —
+    # which is the SKIPPED case by policy, not evidence of tampering.
+    local missing
+    missing="$(printf '%s\n' "${status}" | awk '/^\[GNUPG:\] NO_PUBKEY /{print $3; exit}')"
+    echo "WARNING: signature is by key ${missing:-unknown}, which could not be obtained." >&2
+    echo "         If this is a new GCC release manager, add the fingerprint to GCC_GPG_KEYS." >&2
     _gcc_gpg_require_or_warn
     return 0
   fi
 
-  if gpg --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null; then
-    echo "GPG signature verified successfully."
-    return 0
-  fi
-  echo "ERROR: GPG verification FAILED for ${TARBALL}." >&2
+  echo "ERROR: GPG verification FAILED for ${TARBALL} (BADSIG/expired/revoked)." >&2
   echo "The tarball may be corrupted or tampered with. Aborting." >&2
   exit 1
 }

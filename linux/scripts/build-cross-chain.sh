@@ -43,6 +43,11 @@ source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
 orchestrator_preamble
 
 FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
+# Set by --final-image so _chain_resolve_final_image can tell "user chose this"
+# from "still the default". Comparing FINAL_IMAGE against the default string
+# cannot distinguish the two, and silently overrode an explicit --final-image
+# that happened to equal the default whenever --image-repo was also passed.
+FINAL_IMAGE_SET=0
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 LOG_DIR="${LOG_DIR:-}"
@@ -114,6 +119,10 @@ Options:
   --vulkan-version VER     Vulkan SDK version for the sdk stage
   --log-dir DIR            Tee each stage build into DIR/<stage>[-<arch>].log
   --verify-chain           Resolve all upstream digests and warn if downstream images are stale
+  --no-verify-ancestry     Skip the stale-ancestor check that guards partial runs
+                           (--from-stage after base). By default the chain refuses
+                           to build on a parent that was re-pushed after the child
+                           it would inherit. Env: CROSS_VERIFY_ANCESTRY=0
   --describe-chain          Print the full stage graph with tag names (no builds)
   --dry-run                 Print build commands without executing them
   --no-push                 Build every stage LOCALLY and skip all ghcr pushes
@@ -184,7 +193,7 @@ _cross_per_arch_build() {
 _chain_extra_arg() {
   case "$1" in
     --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
-    --final-image) FINAL_IMAGE="$2"; _OARG_SHIFT=2 ;;
+    --final-image) FINAL_IMAGE="$2"; FINAL_IMAGE_SET=1; _OARG_SHIFT=2 ;;
     --from-stage) FROM_STAGE="$2"; _OARG_SHIFT=2 ;;
     --to-stage) TO_STAGE="$2"; _OARG_SHIFT=2 ;;
     --only) ONLY_STAGE="$2"; _OARG_SHIFT=2 ;;
@@ -192,6 +201,7 @@ _chain_extra_arg() {
     --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
     --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
     --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1 ;;
+    --no-verify-ancestry) CROSS_VERIFY_ANCESTRY=0; _OARG_SHIFT=1 ;;
     *) return 1 ;;
   esac
 }
@@ -211,9 +221,10 @@ _chain_parse_args() {
 
 _chain_resolve_final_image() {
   cd "${REPO_ROOT}"
-  # Default FINAL_IMAGE may reference the previous IMAGE_REPO default; recompute
-  # it if the user changed --image-repo but not --final-image.
-  if [ "${FINAL_IMAGE}" = "${IMAGE_REGISTRY_PREFIX}:latest-cross" ]; then
+  # The default FINAL_IMAGE was computed from the default IMAGE_REPO, so it must
+  # be recomputed when --image-repo moved the repo. An explicit --final-image
+  # always wins, even when it happens to equal the default.
+  if [ "${FINAL_IMAGE_SET}" -eq 0 ]; then
     FINAL_IMAGE="${IMAGE_REPO}:latest-cross"
   fi
 }
@@ -236,6 +247,32 @@ _chain_validate_stages() {
     verify_cross_chain_staleness "${TARGET_ARCHES}"
     exit 0
   fi
+}
+
+# Refuse to resume a chain on top of a stale ancestor.
+#
+# Digest pinning makes a SINGLE run internally consistent; it cannot see that
+# e.g. the compiler was re-pushed after the sdk that a `--from-stage media` run
+# is about to inherit. That case used to be guarded only by a rule in
+# docs/linux-cross-builds.md; ancestry.sh checks it against the registry instead.
+#
+# Free for the common cases: a full --from-stage base run has no prior stages to
+# verify and returns immediately.
+_chain_assert_ancestry() {
+  if [ "${CROSS_VERIFY_ANCESTRY:-1}" != "1" ]; then
+    log "ancestry verification disabled (CROSS_VERIFY_ANCESTRY=0)"
+    return 0
+  fi
+  # Nothing to check against: local-only runs never consult the registry, and a
+  # dry run builds nothing.
+  if [ "${CROSS_NO_PUSH:-0}" = "1" ]; then
+    return 0
+  fi
+  if is_dry_run; then
+    return 0
+  fi
+  ancestry_assert_chain "${FROM_STAGE}" "${TARGET_ARCHES}" \
+    || err "Stale ancestor — refusing to build on it (see the [ancestry] lines above). Restart from the oldest stage reported, or set CROSS_VERIFY_ANCESTRY=0 to accept it."
 }
 
 _chain_run_build_loop() {
@@ -282,13 +319,19 @@ _chain_disk_preflight() {
   [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local free_gb n_arch per_arch need_gb bc_gb
-  free_gb="$(df -BG --output=avail "${bc_dir%/*}" 2>/dev/null | tail -1 | tr -dc '0-9')"
-  [ -n "${free_gb}" ] || { free_gb="$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -dc '0-9')"; }
+  # Measure the cache dir's OWN filesystem (see _disk_guard_free_gb) — using the
+  # parent dir silently reads the wrong device when the cache is its own mount.
+  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+  [ -n "${free_gb}" ] || free_gb="$(_disk_guard_free_gb /)"
   [ -n "${free_gb}" ] || return 0
   n_arch="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"; [ "${n_arch}" -ge 1 ] || n_arch=1
   case "${FROM_STAGE}" in base|compiler|sdk) per_arch=60 ;; *) per_arch=40 ;; esac
   need_gb=$(( n_arch * per_arch )); [ "${need_gb}" -ge 60 ] || need_gb=60
-  bc_gb="$(du -sBG "${bc_dir}" 2>/dev/null | cut -f1 | tr -dc '0-9')"
+  # `|| true` is load-bearing: on a host that has never built (no cache dir yet)
+  # `du` exits non-zero, pipefail propagates it, and `set -e` aborted the whole
+  # orchestrator here with a bare exit 1 and no diagnostic — precisely on the
+  # first from-base run. The cache size is advisory (a prune hint), never fatal.
+  bc_gb="$(du -sBG "${bc_dir}" 2>/dev/null | cut -f1 | tr -dc '0-9' || true)"
   if [ "${free_gb}" -lt "${need_gb}" ]; then
     log "DISK PREFLIGHT: ${free_gb}G free < ~${need_gb}G recommended (${n_arch} arch(es), from-stage ${FROM_STAGE})."
     [ -n "${bc_gb}" ] && [ "${bc_gb}" -gt 40 ] && \
@@ -330,7 +373,7 @@ _chain_stage_disk_guard() {
   [ "${threshold}" -gt 0 ] 2>/dev/null || return 0
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local free_gb
-  free_gb="$(df -BG --output=avail "${bc_dir%/*}" 2>/dev/null | tail -1 | tr -dc '0-9')"
+  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
   [ -n "${free_gb}" ] || return 0
   [ "${free_gb}" -lt "${threshold}" ] || return 0
 
@@ -342,7 +385,7 @@ _chain_stage_disk_guard() {
     [ -n "${victim}" ] || break
     log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
     rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
-    free_gb="$(df -BG --output=avail "${bc_dir%/*}" 2>/dev/null | tail -1 | tr -dc '0-9')"
+    free_gb="$(_disk_guard_free_gb "${bc_dir}")"
     [ -n "${free_gb}" ] || return 0
   done
   if [ "${free_gb}" -lt "${threshold}" ]; then
@@ -374,6 +417,7 @@ main() {
   _chain_parse_args "$@"
   _chain_resolve_final_image
   _chain_validate_stages
+  _chain_assert_ancestry
   _chain_disk_preflight
   _chain_start_resource_monitor
   _chain_run_build_loop

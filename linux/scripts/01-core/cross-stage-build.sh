@@ -3,6 +3,7 @@
 #
 # Source this directly or through artifact-common.sh.
 # Depends on: build-helpers.sh, stage-defs.sh, digest-pinning.sh, logging.sh.
+# Optionally uses ancestry.sh (parent-digest annotations) when it is loaded.
 [ -n "${_CROSS_STAGE_BUILD_SH_LOADED:-}" ] && return 0
 _CROSS_STAGE_BUILD_SH_LOADED=1
 #
@@ -106,8 +107,18 @@ _cross_stage_build_impl() {
   )
 
   if [ "${push_flag}" -eq 1 ]; then
+    # Stamp the parent reference this build actually consumed onto the pushed
+    # manifest. Digest pinning keeps a single run honest; this annotation is what
+    # lets a LATER partial run prove it is not resuming on top of a stale
+    # ancestor (see ancestry.sh). Guarded so cross-stage-build.sh stays usable
+    # when sourced without ancestry.sh.
+    local _ancestry_ann=""
+    if declare -F ancestry_output_annotations >/dev/null 2>&1; then
+      _ancestry_ann="$(ancestry_output_annotations \
+        "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
+    fi
     build_cmd+=(
-      --output "type=image,name=${tag},push=true"
+      --output "type=image,name=${tag},push=true${_ancestry_ann}"
     )
     # Supply-chain attestations (opt-in via BUILD_ATTEST=1): SLSA provenance +
     # an SBOM attached to the pushed image as OCI referrers. Off by default
@@ -353,6 +364,10 @@ _cross_stage_run_resolve_parent() {
   local -n _csrrp_out="$1"
   local stage="$2" arch="$3" push_flag="$4" parent="$5"
   _CROSS_STAGE_PARENT_PIN=""
+  # Parent stage NAME travels alongside the pin so the recorded annotation is
+  # self-describing when read back by hand (the graph could have been reordered
+  # since the image was built).
+  _CROSS_STAGE_PARENT_STAGE="${parent}"
 
   if [ -z "${parent}" ]; then
     return 0

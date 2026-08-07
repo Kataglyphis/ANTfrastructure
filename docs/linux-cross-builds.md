@@ -230,7 +230,43 @@ images still pin the old digest. For example:
 4. The new media rebuild inherits from the stale sdk, and the new compiler
    content never reaches the final image.
 
-**How to avoid this:**
+**This is now checked automatically.** `linux/scripts/01-core/ancestry.sh` turns
+the rule below into a machine-enforced invariant, so a partial run can no longer
+silently build on a stale ancestor:
+
+- **Write:** every pushed cross stage records the digest-pinned reference it was
+  actually built `FROM` as an OCI manifest annotation
+  (`org.kataglyphis.parent-digest`, plus `org.kataglyphis.parent-stage`). This is
+  free — it rides along in the manifest the push already writes.
+- **Read:** `nerdctl manifest inspect --verbose` returns the verbatim registry
+  manifest in its base64 `Raw` field, so the annotation is readable without
+  pulling the image or fetching config blobs (`01-core/manifest-annotation.py`).
+- **Assert:** before a run with `--from-stage` after `base`, the orchestrator
+  walks the ancestor chain feeding that stage. For each `child → parent` link the
+  digest the child **records** must equal the digest the parent tag **currently**
+  resolves to. A mismatch aborts the run before anything is built, naming the
+  stage to restart from.
+
+Failure semantics are deliberately asymmetric:
+
+| situation | verdict | why |
+|---|---|---|
+| annotation present, digests match | pass | ancestry proven current |
+| annotation present, digests differ | **hard fail** | positive evidence of a stale ancestor |
+| annotation absent | warn | image predates the annotation; provenance unknown, not known-bad |
+| parent tag unresolvable | warn | that is the build's error to report, not an ancestry violation |
+
+Only the digest half of the reference is compared, so `--image-repo` may move the
+chain to another registry path without tripping the check.
+
+Escape hatch when you knowingly accept a stale ancestor:
+`--no-verify-ancestry`, or `CROSS_VERIFY_ANCESTRY=0`.
+
+A full `--from-stage base` run pays nothing for this: there are no prior stages
+that could be stale, so the check returns immediately.
+
+**The manual discipline this replaces** (still worth understanding, and still
+what the check tells you to do):
 
 - After replacing any base image (compiler, sdk, etc.), **rebuild from the
   replaced stage** — not a later one. E.g. after a compiler push, start from
@@ -243,6 +279,10 @@ images still pin the old digest. For example:
   your `--from-stage` inherits from a stale upstream, so will your rebuild.
 - For partial runs after a compiler update, always use `--from-stage sdk` as the
   minimum starting point.
+
+> Note the division of labour: **digest pinning** keeps a *single* orchestrator
+> run internally consistent; the **ancestry check** is the cross-run half. Neither
+> subsumes the other.
 
 ## Manual staged build (low-level reference)
 

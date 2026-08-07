@@ -7,6 +7,7 @@
 #   3. stage-defs.sh          (declarative cross-lane stage graph)
 #   4. digest-pinning.sh      (registry digest resolution)
 #   5. chain-verify.sh        (cross-chain staleness verification + describe)
+#   5b. ancestry.sh           (parent-digest annotations + stale-ancestor assert)
 #   6. build-helpers.sh       (nerdctl wrappers, build-arg helpers)
 #   7. cross-stage-build.sh   (cross-stage build orchestration: build, push, pin)
 #   8. context-management.sh  (runtime context, OCI export, stage handoff)
@@ -67,7 +68,7 @@ resolve_arch_list() {
 # shellcheck disable=SC1090,SC1091
 _ac_module=""
 for _ac_module in \
-  tag-naming.sh stage-defs.sh digest-pinning.sh chain-verify.sh \
+  tag-naming.sh stage-defs.sh digest-pinning.sh chain-verify.sh ancestry.sh \
   build-helpers.sh cross-stage-build.sh \
   context-management.sh version-forwarding.sh cli-parsers.sh \
   runtime-build-fns.sh compiler-resolution.sh parallel-loop.sh \

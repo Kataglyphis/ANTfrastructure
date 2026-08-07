@@ -77,7 +77,11 @@ _artifact_source_check_cross_compilers() {
   local cross_arches
   cross_arches="$(arch_list_csv_normalize "${CROSS_TARGETS:-amd64,arm64,riscv64}" 2>/dev/null || printf '%s' "${CROSS_TARGETS:-amd64,arm64,riscv64}")"
   local cross_arch triplet cross_gcc cross_ver
-  for cross_arch in ${cross_arches//,/ }; do
+  # Split on commas via `IFS=',' read` (scoped to the builtin): callers may run
+  # under IFS=$'\n\t', where ${cross_arches//,/ } does not split on spaces.
+  local -a _vcs_arches=()
+  IFS=',' read -r -a _vcs_arches <<< "${cross_arches}"
+  for cross_arch in "${_vcs_arches[@]}"; do
     [ "${cross_arch}" = "${target_arch}" ] && continue
     triplet="$(arch_deb_multiarch_triplet_for "${cross_arch}" 2>/dev/null || true)"
     [ -n "${triplet}" ] || continue
