@@ -82,6 +82,34 @@ Write-Host "Source at: $srcDir"
 # turns into a terminating NativeCommandError; the helper shields git output via cmd.exe.
 Initialize-ExtractedGitRepo -Path $srcDir
 
+# ── VERSION file: without it every generated .pc says "Version: .." ───────────
+# FFmpeg's configure derives its version from $source_path/VERSION, falling back
+# to `git describe`. NEITHER exists here: GitHub's auto-generated
+# archive/refs/tags tarballs carry no VERSION file (only ffmpeg.org release
+# tarballs do), and the git-init above creates a repo with no tags for describe
+# to find. Both probes come up empty, the major/minor/micro substitutions expand
+# to nothing, and every installed .pc ends up with a literal
+#
+#     Version: ..
+#
+# which no version constraint can satisfy. Measured 2026-08-07 by probing the
+# built image: that ALONE keeps gst-libav out of the final image, because it
+# demands libavcodec >= 58.18.100 and three siblings — a second, independent
+# cause on top of the FFmpeg.wrap trap. The files existed and looked plausible,
+# so nothing ever flagged it.
+#
+# FFMPEG_VERSION is a pinned release tag ('n9.0'), so the value is already at
+# hand; strip the tag's leading 'n' to get FFmpeg's own version string.
+$ffmpegVersionNumber = ([string]$FfmpegVersion) -replace '^n', ''
+if ($ffmpegVersionNumber -match '^\d+(\.\d+)*$') {
+    Set-Content -Path (Join-Path $srcDir 'VERSION') -Value $ffmpegVersionNumber -Encoding ascii -NoNewline
+    Write-Host "Wrote VERSION=$ffmpegVersionNumber (GitHub tarballs ship none; configure would emit 'Version: ..' in every .pc)"
+} else {
+    # A branch build ('master') has no meaningful release number — leave it to
+    # configure rather than inventing one, and say so.
+    Write-Warning "FFMPEG_VERSION '$FfmpegVersion' is not a release number; .pc Version fields may come out empty."
+}
+
 # Set up environment: VsDevCmd (MSVC tools) + Git Bash + Scoop make/gawk
 Enter-VsDevCmdEnvironment
 $scoopShims = "$env:USERPROFILE\scoop\shims"
@@ -343,6 +371,57 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
     Remove-Item "$env:TEMP\ffmpeg-extract" -Recurse -Force -ErrorAction SilentlyContinue
 } else {
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '1', 'Process')
+}
+
+# ── Make the installed .pc files usable by NATIVE Windows consumers ───────────
+# configure is run under MSYS bash and MUST get an MSYS --prefix (see
+# ConvertTo-MsysPath above) or `make install` lands in the wrong place. FFmpeg
+# then writes that same MSYS path into every generated .pc:
+#
+#     prefix=/c/runtime/ffmpeg
+#
+# pkg-config hands those through verbatim, and the consumers here are NATIVE
+# Windows tools — clang-cl and lld-link cannot resolve /c/... , so the emitted
+# -I/-L flags are unusable. (The nv-codec-headers block above already dodges
+# this by installing with a Windows-shaped prefix; FFmpeg's own install cannot,
+# hence this rewrite afterwards.) Same class of defect as the empty Version
+# field: the files exist and look fine, so nothing flags them.
+$ffPkgConfigDir = Join-Path $prefix 'lib\pkgconfig'
+if (Test-Path $ffPkgConfigDir) {
+    $winPrefix = ($prefix -replace '\\', '/')   # C:/runtime/ffmpeg
+    # Reuse the exact string configure was given ($cygPrefix, line ~183) rather
+    # than re-deriving it — a second conversion could drift from the first and
+    # then silently match nothing.
+    $msysPrefix = $cygPrefix -replace '\\', '/' # /c/runtime/ffmpeg
+    $rewritten = 0
+    foreach ($pc in Get-ChildItem -Path $ffPkgConfigDir -Filter '*.pc' -File) {
+        $text = Get-Content $pc.FullName -Raw
+        if ($text -notmatch [regex]::Escape($msysPrefix)) { continue }
+        Set-Content -Path $pc.FullName -Value ($text -replace [regex]::Escape($msysPrefix), $winPrefix) -Encoding ascii -NoNewline
+        $rewritten++
+    }
+    Write-Host "Rewrote MSYS prefixes to Windows form in $rewritten .pc file(s) under $ffPkgConfigDir"
+
+    # GATE: both defects were silent for months because the files were PRESENT.
+    # Assert what consumers actually need, so a regression fails this stage
+    # instead of surfacing as a mysteriously missing gst-libav an hour later.
+    # gst-libav constrains libavcodec >= 58.18.100, libavformat >= 58.12.100,
+    # libavutil >= 56.14.100, libavfilter >= 7.16.100.
+    foreach ($required in 'libavcodec', 'libavformat', 'libavutil', 'libavfilter') {
+        $pcPath = Join-Path $ffPkgConfigDir "$required.pc"
+        if (-not (Test-Path $pcPath)) { throw "FFmpeg install produced no $required.pc — consumers resolving it via pkg-config (gst-libav) cannot build." }
+        $pcText = Get-Content $pcPath -Raw
+        $version = ([regex]::Match($pcText, '(?m)^Version:\s*(.+)$')).Groups[1].Value.Trim()
+        if ($version -notmatch '^\d+(\.\d+)+$') {
+            throw ("$required.pc declares an unusable version '$version'. FFmpeg's configure found neither a VERSION " +
+                'file nor git tags, so its version substitutions expanded to nothing. No consumer version constraint ' +
+                "can match this — gst-libav would be silently skipped. Check the VERSION file written after extraction.")
+        }
+        if ($pcText -match '(?m)^prefix=/[a-z]/') {
+            throw "$required.pc still carries an MSYS prefix; native Windows consumers cannot use its -I/-L flags."
+        }
+    }
+    Write-Host 'FFmpeg .pc gate OK: libavcodec/libavformat/libavutil/libavfilter carry a real version and a Windows prefix.'
 }
 
 # ── Import-lib normalization (PyAV and other MSVC-style consumers link these) ──
