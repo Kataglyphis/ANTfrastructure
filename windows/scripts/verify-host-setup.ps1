@@ -104,19 +104,50 @@ else { Write-Check WARN "nerdctl missing at $nerdctl - run/inspect lane unavaila
 
 # --- Phase A5: CNI ------------------------------------------------------------
 
+# BOTH forms are required — corrected 2026-08-07 after this very check told a
+# host that conflist-only was healthy while buildkitd was giving containers NO
+# network adapter at all. It previously FAILED on a bare .conf and PASSED on
+# conflist-only, i.e. it actively drove hosts into the state that breaks the
+# production build lane. buildkitd needs the .conf; nerdctl needs the .conflist;
+# neither reads the other. See docs/windows-host-setup.md § A5.
 $conflist = Join-Path $CniConfDir '0-containerd-nat.conflist'
 $bareConf = Join-Path $CniConfDir '0-containerd-nat.conf'
-if (Test-Path $conflist) {
-    Write-Check PASS 'CNI nat config is .conflist (nerdctl-compatible)'
-    $confText = Get-Content $conflist -Raw
-} elseif (Test-Path $bareConf) {
-    Write-Check FAIL 'CNI nat config is a bare .conf' `
-        'containerd/BuildKit read it, but nerdctl PANICS on it (index out of range [0] with length 0)' `
-        'convert to plugins[] conflist form - template in host-setup A5'
+$haveList = Test-Path $conflist
+$haveConf = Test-Path $bareConf
+$confText = ''
+
+if ($haveConf) {
+    Write-Check PASS 'CNI .conf present (buildkitd reads this one)'
     $confText = Get-Content $bareConf -Raw
 } else {
-    Write-Check FAIL 'no CNI nat config' 'RUN steps will have NO network' 'install the conflist - host-setup A5'
-    $confText = ''
+    Write-Check FAIL 'CNI .conf MISSING - buildkitd containers get NO network adapter' `
+        'not a DNS fault: empty ipconfig, "unreachable network" on a raw TCP connect, no networking block in the HCS spec (measured 2026-08-07)' `
+        "Copy-Item '$conflist' '$bareConf' (then edit to the single-plugin form) ; Restart-Service buildkitd -Force  (admin)"
+}
+
+if ($haveList) {
+    Write-Check PASS 'CNI .conflist present (nerdctl reads this one)'
+    if (-not $confText) { $confText = Get-Content $conflist -Raw }
+} else {
+    # Not fatal for the build lane: the chain builds on the .conf alone. Only
+    # the nerdctl lane (image admin, run/exec) is lost.
+    Write-Check WARN 'CNI .conflist missing - nerdctl will PANIC (index out of range [0] with length 0)' `
+        'the buildctl chain still builds; only the nerdctl lane is unusable' `
+        'add the plugins[] conflist form alongside the .conf - template in host-setup A5'
+}
+
+if ($haveConf -and $haveList) {
+    # Presence is checked; CONTENT drift between the two is not, and nothing
+    # else checks it either. Cheap comparison of the load-bearing field.
+    $subnetConf = ([regex]::Match((Get-Content $bareConf -Raw), '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
+    $subnetList = ([regex]::Match((Get-Content $conflist -Raw), '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
+    if ($subnetConf -and $subnetList -and $subnetConf -ne $subnetList) {
+        Write-Check FAIL "CNI .conf and .conflist disagree on the subnet ($subnetConf vs $subnetList)" `
+            'the two clients would attach containers to different networks' `
+            'make both files carry the same ipam.subnet/GW, then Restart-Service buildkitd -Force  (admin)'
+    } else {
+        Write-Check PASS 'CNI .conf and .conflist agree on the subnet'
+    }
 }
 
 if ($confText) {
