@@ -18,7 +18,13 @@ param(
     # pass an explicit URL only for a git-for-windows respin (…windows.2 tag).
     [string]$GitInstallerUrl = '',
     [string]$CMakeVersion = '',
-    [string]$VulkanVersion = ''
+    [string]$VulkanVersion = '',
+    # Compiled-output pins (versions.env; forwarded as Dockerfile ARGs). Empty
+    # falls through to scoop's current manifest so a standalone run of this
+    # script still works — the Dockerfile always passes them.
+    [string]$LlvmVersion = '',
+    [string]$NinjaVersion = '',
+    [string]$NasmVersion = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -83,6 +89,10 @@ Import-Module $installerModulePath -Force
 # falls through to scoop's current stable manifest.
 $CMakeVersion = Resolve-ContainerImageValue -Value $CMakeVersion -EnvironmentVariable 'CMAKE_VERSION'
 $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentVariable 'VULKAN_VERSION'
+# Same resolution route for the compiled-output pins (param wins, then baked env).
+$LlvmVersion  = Resolve-ContainerImageValue -Value $LlvmVersion  -EnvironmentVariable 'LLVM_WINDOWS_VERSION'
+$NinjaVersion = Resolve-ContainerImageValue -Value $NinjaVersion -EnvironmentVariable 'NINJA_WINDOWS_VERSION'
+$NasmVersion  = Resolve-ContainerImageValue -Value $NasmVersion  -EnvironmentVariable 'NASM_WINDOWS_VERSION'
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
@@ -165,15 +175,32 @@ Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 # could silently diverge from the Linux lane's Flutter. Empty env falls back to
 # scoop's current manifest (standalone runs), same pattern as vulkan/cmake.
 Install-ScoopPackage -Package 'extras/flutter' -Version ([string]$env:FLUTTER_VERSION) -Global
-# llvm DELIBERATELY UNPINNED (Windows tracks scoop's latest; versions.env's LLVM_RELEASE
-# pins only the Linux lane -- the smoke test asserts a well-formed clang-cl version, not
-# that value).
+# ── PINNED: the three scoop packages that produce or shape compiled output ────
+# llvm was DELIBERATELY UNPINNED until 2026-08-07, which left the base image --
+# the most expensive layer in the chain -- unreproducible in its single most
+# load-bearing component: clang-cl compiles the entire media chain, and five of
+# the patches in windows/scripts/patches/ are written against a specific
+# clang-cl's diagnostics. A rebuild months later would swap the compiler
+# silently and fail ~2 h into media-core. Pins live in versions.env
+# (LLVM_WINDOWS_VERSION / NINJA_WINDOWS_VERSION / NASM_WINDOWS_VERSION) and
+# reach here as Dockerfile ARGs; verify-toolchain.ps1 asserts the resolved
+# clang-cl against the pin so a silent scoop fallback fails the base build
+# instead of the media build. versions.env's LLVM_RELEASE is a SEPARATE pin for
+# the Linux lane -- the two lanes move independently on purpose.
+Install-ScoopPackage -Package 'main/llvm'  -Version $LlvmVersion
+Install-ScoopPackage -Package 'main/ninja' -Version $NinjaVersion
+Install-ScoopPackage -Package 'main/nasm'  -Version $NasmVersion
+
+# ── FLOATING (deliberate): tools the build only INVOKES ───────────────────────
+# None of these enter the compiled artifacts, so tracking scoop's current
+# manifest costs nothing and saves a pin-bump treadmill. Move a package UP to
+# the pinned block the moment it starts linking into shipped binaries.
 # pkg-config: consumers' CMake `find_package(PkgConfig)` + `pkg_check_modules(...)` need
 # the BINARY -- the image bakes PKG_CONFIG_PATH and the .pc files, but the source-built
 # GStreamer (unlike the old MSI) ships no pkg-config tool. NOTE: scoop main has no
 # `pkgconf` manifest; the package name is `pkg-config`.
-Invoke-ScoopStep -Description 'scoop install core toolset (llvm, nano, cppcheck, sccache, ninja, nsis, uv, nuget, zlib, nasm, openssl, pkg-config)' -Command {
-    scoop install llvm nano cppcheck sccache main/ninja extras/nsis main/uv main/nuget extras/zlib main/nasm main/openssl main/pkg-config
+Invoke-ScoopStep -Description 'scoop install floating toolset (nano, cppcheck, sccache, nsis, uv, nuget, zlib, openssl, pkg-config)' -Command {
+    scoop install nano cppcheck sccache extras/nsis main/uv main/nuget extras/zlib main/openssl main/pkg-config
 }
 
 # CMake stable release via scoop (replaces the old cmake.org MSI download); the

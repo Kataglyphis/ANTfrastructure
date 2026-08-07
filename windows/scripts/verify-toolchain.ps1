@@ -20,13 +20,40 @@ Assert-ContainerCommandAvailable -Name 'clang-cl' | Out-Null
 Assert-ContainerCommandAvailable -Name 'lld-link' | Out-Null
 Assert-ContainerCommandAvailable -Name 'cmake' | Out-Null
 
-# LLVM is DELIBERATELY unpinned on Windows (scoop latest; versions.env's
-# LLVM_RELEASE pins only the Linux lane) — log the resolved version into the
-# build output as provenance so a "worked last rebuild" regression is
-# attributable to a concrete clang-cl version instead of a guess.
+# LLVM is PINNED on Windows since 2026-08-07 (versions.env LLVM_WINDOWS_VERSION,
+# forwarded through Dockerfile.base -> setup-scoop-tools.ps1). Assert it HERE, in
+# the base build: a silent scoop fallback to a different clang-cl otherwise
+# surfaces ~2 h into media-core as a patch that no longer applies. Same shape as
+# the cmake assert below. versions.env's LLVM_RELEASE pins the LINUX lane only.
 $clangOut = & clang-cl --version
 if ($LASTEXITCODE -ne 0) { throw "clang-cl --version failed (exit code $LASTEXITCODE)" }
-Write-Host ("clang-cl (provenance): {0}" -f ($clangOut | Select-Object -First 1))
+$clangBanner = $clangOut | Select-Object -First 1
+Write-Host ("clang-cl (provenance): {0}" -f $clangBanner)
+$expectedLlvm = Resolve-ContainerImageValue -EnvironmentVariable 'LLVM_WINDOWS_VERSION' -DefaultValue ''
+if ($expectedLlvm -and $clangBanner -notmatch [regex]::Escape($expectedLlvm)) {
+    throw ("clang-cl version mismatch: expected $expectedLlvm (versions.env LLVM_WINDOWS_VERSION), got '$clangBanner'. " +
+        'Either scoop could not serve the pinned manifest, or the pin was bumped without rebuilding this layer. ' +
+        'A version change here invalidates the clang-cl-shaped patches under windows/scripts/patches/ — ' +
+        're-run windows/scripts/tests/Test-PatchesApplyClean.ps1 after a deliberate bump.')
+}
+
+# ninja + nasm are pinned for the same reason (build-graph executor and FFmpeg's
+# SIMD assembler both shape what ships). Cheap asserts, same failure economics.
+foreach ($pinned in @(
+        @{ Tool = 'ninja'; Args = @('--version'); EnvVar = 'NINJA_WINDOWS_VERSION' },
+        @{ Tool = 'nasm';  Args = @('-v');        EnvVar = 'NASM_WINDOWS_VERSION' })) {
+    $expected = Resolve-ContainerImageValue -EnvironmentVariable $pinned.EnvVar -DefaultValue ''
+    if (-not $expected) { continue }
+    # Real splatting (@<var>), not an array subexpression: the latter only works
+    # for native commands by accident of PS argument flattening.
+    $toolArgs = $pinned.Args
+    $banner = (& $pinned.Tool @toolArgs 2>&1 | Select-Object -First 1)
+    if ($LASTEXITCODE -ne 0) { throw "$($pinned.Tool) $($toolArgs -join ' ') failed (exit code $LASTEXITCODE)" }
+    if ($banner -notmatch [regex]::Escape($expected)) {
+        throw "$($pinned.Tool) version mismatch: expected $expected (versions.env $($pinned.EnvVar)), got '$banner'"
+    }
+    Write-Host "$($pinned.Tool) OK: $banner"
+}
 
 # CMake is pinned (scoop main/cmake@CMAKE_VERSION from versions.env, baked by
 # load-versions.ps1) -- fail the base build here on a pin mismatch instead of

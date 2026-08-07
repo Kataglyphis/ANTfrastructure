@@ -82,19 +82,26 @@ RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 # Needs load-versions first: setup-scoop-tools reads GIT_VERSION (+ the
 # GIT_WINDOWS_INSTALLER_SHA256 pin) and FLUTTER_VERSION from the baked env.
 # Git is pinned, but NOT through scoop — the script builds the git-for-windows
-# release URL from GIT_VERSION and verifies the installer hash. LLVM is
-# DELIBERATELY UNPINNED (scoop's latest; versions.env's LLVM_RELEASE pins only
-# the Linux lane, and the smoke test asserts a well-formed clang-cl version
-# rather than that value) — see the comment at the call site in
-# setup-scoop-tools.ps1. This comment used to claim scoop pinned both.
-# The Vulkan/CMake pins are declared HERE (not at the top): every RUN after an
-# ARG declaration keys its cache on the ARG's value, so declaring them above the
-# VS layer made a Vulkan/CMake bump re-pay the VS Build Tools install. Declared
-# here they can only invalidate scoop and the tail (their sole consumers).
+# release URL from GIT_VERSION and verifies the installer hash.
+# LLVM/ninja/nasm are PINNED (versions.env LLVM_WINDOWS_VERSION /
+# NINJA_WINDOWS_VERSION / NASM_WINDOWS_VERSION, 2026-08-07): they produce or
+# shape compiled output, and an unpinned clang-cl made the base image — the
+# most expensive layer in the chain — unreproducible. versions.env's
+# LLVM_RELEASE still pins only the LINUX lane; the two are independent on
+# purpose. The remaining scoop tools stay floating (see setup-scoop-tools.ps1).
+# The pins are declared HERE (not at the top): every RUN after an ARG
+# declaration keys its cache on the ARG's value, so declaring them above the
+# VS layer made a Vulkan/CMake/LLVM bump re-pay the VS Build Tools install.
+# Declared here they can only invalidate scoop and the tail (their sole
+# consumers).
 ARG VULKAN_VERSION=1.4.357.0
 ARG CMAKE_VERSION=4.4.2
+ARG LLVM_WINDOWS_VERSION=22.1.8
+ARG NINJA_WINDOWS_VERSION=1.13.2
+ARG NASM_WINDOWS_VERSION=3.02
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION
+RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
+    -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION
 
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'

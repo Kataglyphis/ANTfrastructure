@@ -356,13 +356,35 @@ foreach ($tool in 'git', 'cmake', 'ninja', 'clang-cl', 'lld-link', 'llvm-lib', '
     Assert-CommandExists $tool
 }
 
-# clang-cl: assert a well-formed version only. The Windows lane installs scoop's LATEST
-# llvm deliberately (versions.env's LLVM_RELEASE pins the Linux lane), so asserting that
-# value here would fail the image's own smoke test on every scoop bump. Actual
-# functionality is proven by the compile/link/run probes in sections 14-16.
+# clang-cl: the Windows LLVM pin (versions.env LLVM_WINDOWS_VERSION, 2026-08-07 —
+# versions.env's LLVM_RELEASE pins the LINUX lane) is asserted at BASE BUILD time by
+# verify-toolchain.ps1, which is where a mismatch is cheap to fix. Here the check stays
+# a well-formedness assert on purpose: this smoke test also runs against PUBLISHED and
+# older images, whose clang legitimately predates the current pin, and failing those on
+# a pin bump would make the suite useless as a regression gate. When the baked env
+# carries the pin AND disagrees, say so as a WARNING — informative, never fatal.
 $clangVer = Get-CommandVersion 'clang-cl'
 Assert-Test -Name "clang-cl version" -Condition { $clangVer -ne $null } -FailMessage "Could not get clang-cl version"
 Assert-Test -Name "clang-cl version string" -Condition { $clangVer -match '\d+\.\d+' } -FailMessage "clang-cl did not report a well-formed version"
+if ($env:LLVM_WINDOWS_VERSION -and $clangVer -and ("$clangVer" -notmatch [regex]::Escape($env:LLVM_WINDOWS_VERSION))) {
+    Write-Warning ("clang-cl reports '$clangVer' but this image's LLVM_WINDOWS_VERSION pin is " +
+        "'$env:LLVM_WINDOWS_VERSION' - expected for an image built before the pin moved; " +
+        'unexpected for a fresh base build (verify-toolchain.ps1 would have failed it).')
+}
+
+# Toolchain provenance manifest (finalize-container.ps1, base tail, 2026-08-07):
+# the artifact's own record of which compiler built it. SKIP rather than fail on
+# images from an older base — the file is additive, and this suite must stay
+# usable against published images.
+$manifestPath = 'C:\toolchain-manifest.json'
+if (-not (Test-Path $manifestPath)) {
+    Skip-Test "toolchain provenance manifest ($manifestPath absent — image predates it)"
+} else {
+    Assert-Test -Name 'toolchain manifest is valid JSON with a resolved compiler' -Condition {
+        $m = Get-Content $manifestPath -Raw | ConvertFrom-Json
+        $m.schema -and $m.pinned -and $m.pinned.llvm -and $m.pinned.llvm.resolved
+    } -FailMessage "$manifestPath is unreadable or records no resolved clang-cl"
+}
 
 # Verify cmake version
 $cmakeVer = Get-CommandVersion 'cmake'

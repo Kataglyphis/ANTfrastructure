@@ -714,6 +714,12 @@ try {
             WINDOWS_BASE_DIGEST = Get-Ver 'WINDOWS_BASE_DIGEST'
             VULKAN_VERSION    = Get-Ver 'VULKAN_VERSION'
             CMAKE_VERSION     = Get-Ver 'CMAKE_VERSION'
+            # Compiled-output pins (2026-08-07): clang-cl compiles the whole media
+            # chain, ninja drives it, nasm assembles FFmpeg's SIMD. Unpinned they
+            # made the base image unreproducible; verify-toolchain.ps1 asserts them.
+            LLVM_WINDOWS_VERSION  = Get-Ver 'LLVM_WINDOWS_VERSION'
+            NINJA_WINDOWS_VERSION = Get-Ver 'NINJA_WINDOWS_VERSION'
+            NASM_WINDOWS_VERSION  = Get-Ver 'NASM_WINDOWS_VERSION'
             PWSH_VERSION      = Get-Ver 'PWSH_VERSION'
             # SHA256 pin for the pwsh zip: the bootstrap RUN predates load-versions
             # baking, so the hash must travel as an ARG like the version itself.

@@ -253,6 +253,10 @@ if ($Stages -contains 'base') {
         WINDOWS_BASE_DIGEST   = Get-Ver 'WINDOWS_BASE_DIGEST'
         VULKAN_VERSION        = Get-Ver 'VULKAN_VERSION'
         CMAKE_VERSION         = Get-Ver 'CMAKE_VERSION'
+        # Compiled-output pins — see the same block in build.ps1.
+        LLVM_WINDOWS_VERSION  = Get-Ver 'LLVM_WINDOWS_VERSION'
+        NINJA_WINDOWS_VERSION = Get-Ver 'NINJA_WINDOWS_VERSION'
+        NASM_WINDOWS_VERSION  = Get-Ver 'NASM_WINDOWS_VERSION'
         PWSH_VERSION          = Get-Ver 'PWSH_VERSION'
         PWSH_ZIP_SHA256       = Get-Ver 'PWSH_ZIP_SHA256'
         WINDOWS_SDK_BUILD     = Get-Ver 'WINDOWS_SDK_BUILD'
