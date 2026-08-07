@@ -247,6 +247,13 @@ Write-Host "Set CXXFLAGS_x86_64_pc_windows_msvc for the cxx/cc bridge: $($env:CX
 # include path isn't enough -- it has to be injected. -include also brings <io.h>'s close()/
 # access(). It's harmless where unused (include-guarded, static-inline). The Rust cxx/cc bridge
 # reads the target-scoped CXXFLAGS_<target> instead, so it is unaffected.
+# LLVM-BUMP TRIPWIRE (noted 2026-08-07): `-fdelayed-template-parsing` is
+# DEPRECATED after C++20 — clang already warns, which is why the matching
+# -Wno- rides along. Since versions.env now PINS the Windows clang
+# (LLVM_WINDOWS_VERSION), this is no longer a drifting risk but a SCHEDULED one:
+# whenever that pin moves, check here first. If the flag has been removed rather
+# than deprecated, this line stops the litert-lm build, and the fix is to drop
+# both flags and re-test the MSVC-like two-phase-lookup behaviour they restore.
 $env:CXXFLAGS = (@($env:CXXFLAGS, '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20', '-isystem C:/temp/winshims', '-DNOMINMAX', '-DNOGDI', '-include unistd.h', '-D_USE_MATH_DEFINES') | Where-Object { $_ }) -join ' '
 Write-Host "Set CXXFLAGS (delayed template parsing + dlfcn/unistd/alloca shim + NOMINMAX/NOGDI + force-include unistd.h) for CMake sub-builds: $env:CXXFLAGS"
 

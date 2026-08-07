@@ -42,6 +42,18 @@
     .\windows\build-buildkit.ps1 -Gpu
 .EXAMPLE
     .\windows\build-buildkit.ps1 -Stages toolchain -Verbose   # one stage
+.NOTES
+    INVOCATION TRAP (hit 2026-08-07): `pwsh -File .\windows\build-buildkit.ps1
+    -Stages sdk,toolchain,media` passes the list as ONE string and dies on the
+    ValidateSet ("sdk,toolchain,media does not belong to the set"). `-File`
+    argument parsing does not build arrays. Call the script directly, or use the
+    call operator with a real array when scripting it:
+
+        & .\windows\build-buildkit.ps1 -Gpu -Stages @('sdk','toolchain','media')
+        pwsh -Command "& .\windows\build-buildkit.ps1 -Stages @('sdk','media')"
+
+    The ValidateSet is kept deliberately — it gives tab-completion and a precise
+    error — so the fix is the call form, not a looser parameter.
 #>
 [CmdletBinding()]
 param(

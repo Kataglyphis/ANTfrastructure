@@ -1,8 +1,13 @@
 <!--
-  Build-observation tracker — suspicious signals seen during the Windows media+final rebuild.
-  NOT source; safe to delete. Each entry is a candidate for a FUTURE refactor/cleanup, with a
-  severity, whether it is a regression from the recent refactor pass or pre-existing, and a fix idea.
-  Generated/maintained by the build monitor on 2026-07-10 (rebuild-fixall-2026-07-10.log).
+  Build-observation tracker — suspicious signals seen during Windows chain rebuilds, each with a
+  severity, an origin (regression vs pre-existing) and a fix idea. Started by the build monitor on
+  2026-07-10 (rebuild-fixall-2026-07-10.log).
+
+  NO LONGER "safe to delete" (corrected 2026-08-07): the header used to say so, but this file now
+  carries the authoritative four-root-cause analysis of the missing GStreamer plugins — the meson
+  lookups, the version bounds and the FFmpeg.wrap trap — which nothing else records at that depth.
+  docs/windows-builds.md § Mandatory GStreamer plugins summarises it and links here for the detail.
+  Retire an entry by marking it RESOLVED, not by deleting the file.
 -->
 
 # Windows build — observations to refactor later

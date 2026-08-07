@@ -53,6 +53,11 @@ param(
         'C:\ProgramData\nerdctl'
     ),
     [switch]$SkipDefenderExclusions,
+    # CNI conf directory. The .conflist here is the AUTHORED file; the .conf is
+    # derived from it (see the CNI section below) so the two forms buildkitd and
+    # nerdctl each require cannot drift apart in content.
+    [string]$CniConfDir = 'C:\Program Files\containerd\cni\conf',
+    [switch]$SkipCniSync,
     [string[]]$BlockingProcess = @('buildctl', 'containerd-shim-runhcs-v1'),
     [switch]$ReportOnly,
     [switch]$Force
@@ -85,6 +90,54 @@ if (Test-Path $LogFile) {
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
+
+# --- CNI: the .conflist is AUTHORED, the .conf is DERIVED ---------------------
+# The host must carry both forms — buildkitd reads the .conf, nerdctl reads the
+# .conflist, and each breaks silently without its own (2026-08-07: a "conversion"
+# to conflist-only left BuildKit containers with no network adapter and cost a
+# launched chain). Keeping them as two hand-edited copies is the two-copies-drift
+# this repo eliminates everywhere else: Get-CniConfFormIssue guards PRESENCE, but
+# nothing stopped the CONTENT diverging, so a subnet edit applied to one file
+# would hand the two clients different networks.
+#
+# Deriving removes the failure mode instead of policing it. The conflist stays
+# the single authored file; this rewrites the .conf from it whenever they differ.
+if (-not $SkipCniSync) {
+    $cniModule = Join-Path $PSScriptRoot 'modules\WindowsBuildKit.Common.psm1'
+    if (-not (Test-Path $cniModule)) { throw "required module not found: $cniModule" }
+    Import-Module $cniModule -Force
+
+    $confListPath = Join-Path $CniConfDir '0-containerd-nat.conflist'
+    $confPath = Join-Path $CniConfDir '0-containerd-nat.conf'
+    if (-not (Test-Path $confListPath)) {
+        Write-Step "cni        : no $confListPath - nothing to derive from (see docs/windows-host-setup.md A5)" 'Yellow'
+    } else {
+        $derived = ConvertFrom-CniConfList -ConfListText (Get-Content $confListPath -Raw)
+        $existing = if (Test-Path $confPath) { (Get-Content $confPath -Raw) } else { '' }
+        # Compare CANONICALLY — sorted keys, no whitespace. The first version of
+        # this check compared `ConvertFrom-Json | ConvertTo-Json`, which
+        # preserves parse order, and duly reported the reference host as out of
+        # sync when the two files were identical apart from field order. A guard
+        # that cries wolf gets ignored.
+        $same = $false
+        if ($existing) {
+            try {
+                $same = ((ConvertTo-CanonicalJson -InputObject (ConvertFrom-Json $existing)) -eq
+                         (ConvertTo-CanonicalJson -InputObject (ConvertFrom-Json $derived)))
+            } catch { $same = $false }
+        }
+        if ($same) {
+            Write-Step 'cni        : .conf matches the .conflist (derived, in sync)'
+        } elseif ($ReportOnly) {
+            Write-Step "cni        : .conf is OUT OF SYNC with the .conflist - run without -ReportOnly to rewrite it" 'Yellow'
+        } elseif (-not $isAdmin) {
+            Write-Step "cni        : .conf out of sync but writing $CniConfDir needs admin" 'Yellow'
+        } elseif ($PSCmdlet.ShouldProcess($confPath, 'rewrite from the .conflist')) {
+            Set-Content -Path $confPath -Value $derived -Encoding ascii
+            Write-Step "cni        : rewrote $confPath from the .conflist - restart buildkitd to pick it up" 'Green'
+        }
+    }
+}
 
 if (-not $SkipDefenderExclusions) {
     if ($isAdmin) {

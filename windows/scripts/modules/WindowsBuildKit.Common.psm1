@@ -92,6 +92,90 @@ function Get-CniNatSubnetDrift {
             "$where to the adapter's subnet (e.g. gateway $AdapterIp), then Restart-Service buildkitd -Force.")
 }
 
+function ConvertFrom-CniConfList {
+    <#
+    .SYNOPSIS
+        Derives the single-plugin .conf form from a .conflist. Pure text in,
+        text out — no filesystem, so it is testable without admin.
+    .DESCRIPTION
+        The host must carry BOTH forms (buildkitd reads .conf, nerdctl reads
+        .conflist — see Get-CniConfFormIssue). Keeping them as two hand-edited
+        copies is the two-copies-drift shape this repo eliminates everywhere
+        else: presence is guarded, but nothing stops the CONTENT diverging, and
+        a subnet edit applied to only one file gives the two clients different
+        networks. So the .conflist is AUTHORED and the .conf is DERIVED.
+
+        A conflist wraps one or more plugins in `plugins[]` and carries the
+        network identity (cniVersion, name) at the top level; the .conf form is
+        that identity merged with the single plugin. Multi-plugin conflists
+        cannot be expressed as one .conf and are rejected rather than silently
+        truncated to plugins[0] — which is exactly the unchecked indexing that
+        makes nerdctl panic on the .conf form.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ConfListText)
+
+    $list = $ConfListText | ConvertFrom-Json
+    # Property-existence check, not a truthiness test: under Set-StrictMode
+    # -Version Latest, reading a missing property THROWS PropertyNotFound before
+    # `-not` ever sees it, so a plain `if (-not $list.plugins)` would surface a
+    # PowerShell internal error instead of this function's diagnosis.
+    if (-not ($list.PSObject.Properties.Name -contains 'plugins')) {
+        throw 'not a conflist: no plugins[] array present'
+    }
+    $plugins = @($list.plugins)
+    if ($plugins.Count -ne 1) {
+        throw ("conflist carries $($plugins.Count) plugins; the .conf form holds exactly one. " +
+            'Collapsing it would silently drop configuration — split the deployment by hand instead.')
+    }
+    # Network identity FIRST, then the plugin body — the conventional CNI field
+    # order and the one the hand-written file on this host already used, so a
+    # rewrite does not reshuffle a file an operator has to read.
+    $conf = [ordered]@{}
+    foreach ($key in 'cniVersion', 'name') {
+        if ($list.PSObject.Properties.Name -contains $key) { $conf[$key] = $list.$key }
+    }
+    # The plugin must not be able to override the identity fields above.
+    foreach ($p in $plugins[0].PSObject.Properties) {
+        if ($conf.Contains($p.Name)) { continue }
+        $conf[$p.Name] = $p.Value
+    }
+    return ($conf | ConvertTo-Json -Depth 10)
+}
+
+function ConvertTo-CanonicalJson {
+    <#
+    .SYNOPSIS
+        Order- and whitespace-independent JSON rendering, for COMPARING two
+        documents that mean the same thing.
+    .DESCRIPTION
+        Added after the first version of the CNI sync check reported the
+        reference host as "out of sync" when the two files were semantically
+        identical and differed only in property ORDER — `ConvertFrom-Json |
+        ConvertTo-Json` preserves the order it parsed. A guard that cries wolf
+        gets ignored, so the comparison sorts keys recursively instead.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$InputObject)
+
+    $canon = {
+        param($node)
+        if ($null -eq $node) { return $null }
+        if ($node -is [System.Management.Automation.PSCustomObject]) {
+            $ordered = [ordered]@{}
+            foreach ($name in ($node.PSObject.Properties.Name | Sort-Object)) {
+                $ordered[$name] = & $canon $node.$name
+            }
+            return $ordered
+        }
+        if ($node -is [System.Collections.IEnumerable] -and $node -isnot [string]) {
+            return @($node | ForEach-Object { & $canon $_ })
+        }
+        return $node
+    }
+    return ((& $canon $InputObject) | ConvertTo-Json -Depth 20 -Compress)
+}
+
 function Get-CniConfFormIssue {
     <#
     .SYNOPSIS
@@ -155,4 +239,5 @@ function Get-CniConfFormIssue {
     return $null
 }
 
-Export-ModuleMember -Function Test-IpInSubnet, Get-CniNatSubnetDrift, Get-CniConfFormIssue
+Export-ModuleMember -Function Test-IpInSubnet, Get-CniNatSubnetDrift, Get-CniConfFormIssue,
+    ConvertFrom-CniConfList, ConvertTo-CanonicalJson

@@ -742,7 +742,7 @@ instead of letting the chain discover the wall inside a heavy RUN. The floor
 wants to be stage-aware — CUDA needs ~36 GB, the media branches far more — so a
 rough per-stage cost table beats one global number.
 
-### P4 — CNI conf: presence is guarded, CONTENT drift is not
+### P4 — ✅ DONE (see below) — CNI conf: presence was guarded, CONTENT drift was not
 
 `Get-CniConfFormIssue` (added today) checks that both `0-containerd-nat.conf`
 and `.conflist` exist, and `verify-host-setup.ps1` compares their `ipam.subnet`.
