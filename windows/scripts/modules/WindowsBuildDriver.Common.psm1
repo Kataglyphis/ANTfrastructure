@@ -381,6 +381,41 @@ function Assert-DiskHeadroom {
         'Pass -Force to override deliberately.')
 }
 
+function Assert-DockerDaemon {
+    # Classic-lane gate. The docs call this lane the "always-working fallback",
+    # but on a Stevedore host the daemon is the `stevedore` SERVICE (it is
+    # dockerd: "...\Stevedore\dockerd.exe --run-service --service-name stevedore
+    # --host npipe:...dockerDesktopWindowsEngine --containerd=npipe:...").
+    # Found Stopped on the reference host 2026-08-07 while the BuildKit lane ran
+    # happily — i.e. the fallback was unavailable and nothing said so until you
+    # needed it. `docker.exe` on PATH proves nothing; only a reachable daemon does.
+    param(
+        [string]$Docker = 'docker.exe',
+        [string]$ServiceName = 'stevedore',
+        [switch]$Force
+    )
+    $null = & $Docker version --format '{{.Server.Version}}' 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host 'docker daemon reachable' -ForegroundColor Cyan
+        return
+    }
+    $svc = Get-Service $ServiceName -ErrorAction SilentlyContinue
+    $state = if ($svc) { "the '$ServiceName' service is $($svc.Status)" } else { "no '$ServiceName' service found" }
+    # Starting dockerd is NOT a safe reflex: it recreates the nat HNS network,
+    # which can move the subnet out from under
+    # C:\Program Files\containerd\cni\conf\0-containerd-nat.conf and leave
+    # BuildKit containers with unroutable IPs. Hence: instruct, do not auto-start.
+    $advice = "Start it deliberately (admin): Start-Service $ServiceName - then RE-CHECK the CNI subnet, " +
+        'because a dockerd start recreates the nat HNS network and can orphan ' +
+        '0-containerd-nat.conf (build-buildkit.ps1 fail-fasts on that drift with the exact fix).'
+    if ($Force) {
+        Write-Warning "docker daemon unreachable ($state) - continuing because -Force was passed. $advice"
+        return
+    }
+    throw ("docker daemon is not reachable ($state). This lane needs it; docker.exe being on PATH does not " +
+        "mean a daemon is running. $advice Pass -Force to override.")
+}
+
 function Assert-ShimPatch {
     # BuildKit-lane gate: the patched containerd-shim-runhcs-v1 is a LOCAL
     # patch (upstream: microsoft/hcsshim#2855) and EVERY Stevedore/containerd
@@ -444,4 +479,4 @@ Export-ModuleMember -Function Initialize-BuildDriverContext, Set-BuildDriverIsol
     Get-DockerBuildArgList, Assert-ImageExists, Resolve-BuildIsolation,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
     Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
-    Assert-DiskHeadroom, Assert-ShimPatch
+    Assert-DiskHeadroom, Assert-ShimPatch, Assert-DockerDaemon

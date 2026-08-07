@@ -337,6 +337,10 @@ Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoScca
 # gate is BuildKit-lane only — this lane's run+commit path uses Hyper-V
 # isolation, where the teardown-timeout defect does not apply.
 Assert-DiskHeadroom -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
+# This lane needs a live dockerd. On a Stevedore host that is the `stevedore`
+# service, which was found Stopped on 2026-08-07 — the "always-working
+# fallback" silently was not one.
+Assert-DockerDaemon -Docker $Docker -Force:$SkipHostChecks
 
 # (Get-DockerBuildArgList / Test-TransientDockerFailure / Assert-ImageExists /
 # Invoke-TransientCooldown / Invoke-DockerWithRetry: WindowsBuildDriver.Common.psm1)
