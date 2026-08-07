@@ -769,3 +769,36 @@ would let the driver report every problem at once instead of the first.
   form in the examples or accept a comma-separated string and split it.
 - `smoke-test-container.ps1` is ~1500 lines in one file; the section structure
   is already there in comments and would split cleanly.
+
+### P6 — harvested from the ONNX build log of the same run (compiler-flag noise)
+
+The ONNX CUDA compile emits a few warnings hundreds of times each. Most is
+upstream noise, but two are worth a decision, and the ownership was checked
+rather than assumed (`grep` over `windows/` + `linux/`):
+
+- **`clang-cl: warning: argument unused during compilation: '/Zc:preprocessor'`
+  (307×) — WE inject this.** `WindowsSourceBuild.Cuda.psm1` builds the nvcc
+  preamble as
+  `-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor
+   -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING`
+  and forwards it to the host compiler. On this lane the host compiler is
+  clang-cl, whose preprocessor is already conformant, so the flag is inert —
+  which is exactly what the warning says. The load-bearing part is the
+  `-DCCCL_IGNORE_…` define, not the `/Zc:` pair.
+  **Do not just delete it**: verify first that no path lets nvcc use `cl.exe`
+  as host compiler (where CCCL genuinely needs it). If clang-cl is guaranteed,
+  dropping the two `/Zc:preprocessor` copies removes 307 warnings per ONNX
+  build and shrinks a log that already has to fight buildkitd's 2 MiB clip.
+- **`-fdelayed-template-parsing is deprecated after C++20` (307× in ONNX) —
+  NOT ours in this stage.** We pass it only in
+  `build-litert-lm-from-source.ps1` (with a matching `-Wno-…` right next to it);
+  the ONNX occurrences come from upstream's own CMake. No action on ONNX, but
+  **the pin makes this a scheduled problem**: LLVM is now fixed at 22.1.8, and
+  a future bump can turn this deprecation into a removal, which would break
+  litert-lm's flag set. Worth a note at the litert-lm call site so the next
+  LLVM bump knows to look there.
+- `/Zc:lambda` (60×), the `-Wunused-value` floods from ONNX's own headers
+  (`stream_handles.h`, `execution_provider.h`, `data_types_internal.h`, 600×
+  each), and the DML `use 'template' keyword` / D3DX12 enum warnings are all
+  upstream. Known noise — the same category the existing
+  "Verified NOT problems" list in `windows/BUILD-OBSERVATIONS.md` records.
