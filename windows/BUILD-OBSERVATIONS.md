@@ -107,11 +107,48 @@ means *skip silently*), a post-install `gst-inspect` gate that **throws**, and
 smoke-test assertions that **fail**. The healthcheck reports `[FAIL]` instead of
 `[PASS]` for an absent plugin. `-SkipPluginGate` is the deliberate exception.
 
-**Still unproven:** whether `gst-libav` compiles against FFmpeg **9.0**. Upstream
-pins its wrap to 7.1.1, so 9.0 is untested territory and may need source
-patches — the version constraints have no upper bound, but API removals in
-FFmpeg 8/9 are a real risk. The first build will say so loudly instead of
-silently dropping the plugin, which is the whole point.
+### Field results — the gate's first real run (2026-08-07, 23:50Z)
+
+The pre-flight executed for the first time in a live merge stage. What had been
+reasoning is now measurement:
+
+```text
+--- mandatory plugin pre-flight ---
+Wrote pkg-config file: …\opencv5\x64\vc18\lib\pkgconfig\opencv4.pc (Version 5.0.0, 64 lib(s))
+Wrote pkg-config file: …\onnxruntime-source\lib\pkgconfig\libonnxruntime.pc (Version 1.28.0, 1 lib(s))
+Staged tensorflow/lite/ header alias from …\litert\include\tflite
+TFLite C API library: tensorflow-lite.lib in C:\runtime\lib\litert\lib
+  pkg-config OK: opencv4 (5.0.0 >= 4.0.0)
+  pkg-config OK: libonnxruntime (1.28.0 >= 1.16.1)
+FATAL ERROR: pkg-config resolves these, but NOT at the version the consumer
+  demands: libavcodec (has '..', needs >= 58.18.100); libavformat (has '..',
+  needs >= 58.12.100); libavutil (has '..', needs >= 56.14.100); libavfilter …
+```
+
+CONFIRMED by this run:
+
+- **OpenCV really ships no `.pc`** — the emitter had to author `opencv4.pc`, and
+  it enumerated **64** import libraries from the actual install rather than any
+  hardcoded list.
+- **The tflite namespace mismatch is real** and the alias staging fixes it:
+  LiteRT ships `tflite/`, gst probes `tensorflow/lite/`.
+- **The C API library is `tensorflow-lite`, NOT `tensorflowlite_c`** — upstream's
+  FIRST choice does not exist here, only its fallback. Listing both names in
+  `NeedsLib`, in upstream's order, was load-bearing rather than redundant.
+- **The FFmpeg `.pc` defect is exactly as diagnosed** (`Version: ..`) and the
+  version floors catch it in **54 seconds**, naming module, found and required
+  version — instead of a silently absent gst-libav in a shipped image.
+
+STILL UNPROVEN after this run:
+
+- Whether `gst-libav` compiles against FFmpeg **9.0** at all. The `.pc` fix
+  (VERSION file + prefix rewrite) is committed but had not run when the gate
+  fired, so the version check is the furthest anything has got. Upstream pins its
+  wrap to 7.1.1, so 9.0 remains untested territory and API removals in FFmpeg 8/9
+  are a real risk.
+- Whether `gstopencv` COMPILES against OpenCV 5. The `.pc` only makes it
+  *findable*; upstream dropped the old `< 4.x` upper bound, but nothing has yet
+  compiled a line of it against a 5.x header tree.
 
 <details>
 <summary>Original observation (2026-07-11) — kept for context</summary>
