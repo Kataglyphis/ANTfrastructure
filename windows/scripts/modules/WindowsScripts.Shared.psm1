@@ -560,18 +560,18 @@ function Resolve-PreferredTool {
 }
 
 # ── Tool guards ───────────────────────────────────────────────────────────────
-# These three lived as private copies inside windows/scripts/rust/
+# Assert-Command lived as a private copy in windows/scripts/rust/
 # New-MsixPackage.ps1, windows/scripts/smoke-test-container.ps1 and a
-# consumer's Build-Windows.ps1. The copies had already DIVERGED, each carrying
-# a fix the others lacked - which is the argument for having one:
-#   * the ContainerHub copies coerce the Get-ChildItem result with @(), because
-#     under PowerShell 5.1 a single match is not an array and `.Count` is then
-#     absent - indexing it silently yields nothing;
-#   * the consumer copy returned the 8.3 SHORT path, because the Windows Kit
-#     lives under "C:\Program Files (x86)\..." and callers splice the result
-#     into command lines where the spaces break argument parsing.
-# Both behaviours are kept here: the array coercion unconditionally, the short
-# path behind -ShortPath so existing callers keep getting the long path.
+# consumer's Build-Windows.ps1, all three identical. One home now.
+#
+# There is deliberately NO general Resolve-Executable here. Both the
+# ContainerHub scripts above and the consumer carried one, and all of them
+# `Get-ChildItem -Recurse` the whole Windows Kits tree to find an SDK tool.
+# WindowsMsix.Common's Resolve-WindowsSdkToolPath already does that job
+# properly - honouring an explicit override, then VsDevCmd's
+# WindowsSdkVerBinPath / WindowsSdkBinPath / WindowsSDKVersion, and only then
+# scanning, newest version first, without recursing. Adding a fourth variant
+# here would have been the opposite of consolidating; use that one.
 
 function Assert-Command {
     param(
@@ -581,42 +581,6 @@ function Assert-Command {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
         throw "$Name not found. $InstallHint"
     }
-}
-
-function Resolve-Executable {
-    param(
-        [Parameter(Mandatory)][string]$Name,
-        # Return the 8.3 short path instead of the full one. Use it whenever the
-        # result is interpolated into a command line rather than passed as a
-        # single argv element.
-        [switch]$ShortPath
-    )
-
-    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-
-    $sdkRoots = @(
-        "C:/Program Files (x86)/Windows Kits/10/bin",
-        "C:/Program Files/Windows Kits/10/bin"
-    )
-
-    foreach ($root in $sdkRoots) {
-        if (-not (Test-Path $root)) { continue }
-        # @() is load-bearing: PS 5.1 hands back a bare FileInfo for one match.
-        $candidates = @(
-            Get-ChildItem -Path $root -Recurse -Filter ("{0}.exe" -f $Name) -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match "\\x64\\" -or $_.FullName -match "/x64/" } |
-                Sort-Object FullName -Descending
-        )
-        if ($candidates.Count -gt 0) {
-            if ($ShortPath) {
-                $fso = New-Object -ComObject Scripting.FileSystemObject
-                return $fso.GetFile($candidates[0].FullName).ShortPath
-            }
-            return $candidates[0].FullName
-        }
-    }
-    return $null
 }
 
 # PowerShell twin of linux/scripts/02-toolchain/rust/version_util.sh
@@ -641,7 +605,6 @@ function ConvertTo-NormalizedVersion {
 
 Export-ModuleMember -Function @(
     'Assert-Command',
-    'Resolve-Executable',
     'ConvertTo-NormalizedVersion',
     'Add-DirectoryToPath',
     'Add-DirectoriesToPath',
