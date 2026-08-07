@@ -30,6 +30,10 @@
 #   # what is installed right now, which backups exist - changes nothing
 #   pwsh -File windows\scripts\deploy-shim-patch.ps1 -ReportOnly
 #
+#   # the patched shim is ALREADY installed and only the gate's bookkeeping is
+#   # missing: record its hash in place, no services touched, no elevation
+#   pwsh -File windows\scripts\deploy-shim-patch.ps1 -RecordCurrent
+#
 #   # deploy a build that hardcodes the longer timeouts
 #   pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath C:\src\hcsshim\containerd-shim-runhcs-v1.exe
 #
@@ -76,6 +80,15 @@ param(
 
     # Report installed binary, backups and service environment, then exit.
     [switch]$ReportOnly,
+
+    # Record the CURRENTLY installed binary's SHA256 as the expected patched
+    # hash, without stopping services or replacing anything. For the common case
+    # where the patched shim is already deployed (from before the gate existed)
+    # and only the bookkeeping is missing - a full re-deploy just to write a hash
+    # would cost a services restart and a build window for nothing. Refuses when
+    # the live binary matches the .orig stock backup, because recording THAT
+    # would teach the gate to accept an unpatched shim. Needs no elevation.
+    [switch]$RecordCurrent,
 
     # Skip the live-build and live-shim guards.
     [switch]$Force,
@@ -168,6 +181,29 @@ if ($ReportOnly) {
     Write-Step 'ReportOnly - nothing will be changed'
     if (-not $isAdmin) { Write-Step 'not elevated: the service environment may read as unavailable' 'Yellow' }
     Show-State
+    Save-Transcript
+    return
+}
+
+if ($RecordCurrent) {
+    if ($ShimPath -or $Restore) { throw 'Pass -RecordCurrent alone: it records what is already installed and changes nothing else.' }
+    if (-not (Test-Path $InstallPath)) { throw "no shim installed at $InstallPath - nothing to record." }
+    Import-Module (Join-Path $PSScriptRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
+    $stockBackup = "$InstallPath.orig"
+    if ((Test-Path $stockBackup) -and -not $Force) {
+        $liveHash = (Get-FileHash -Algorithm SHA256 -Path $InstallPath).Hash
+        if ($liveHash -eq (Get-FileHash -Algorithm SHA256 -Path $stockBackup).Hash) {
+            Save-Transcript
+            throw ("the installed binary is IDENTICAL to the stock backup $stockBackup - recording it would teach the " +
+                'build gate that an unpatched shim is acceptable. Deploy the patched build first (-ShimPath), or pass ' +
+                '-Force if you are certain the .orig backup is not actually stock.')
+        }
+    }
+    $statePath = Write-ShimPatchState -ShimPath $InstallPath -Variant 'recorded-in-place' -StockBackupPath $stockBackup
+    Write-Step "recorded the installed shim's hash for the build gate: $statePath" 'Green'
+    Show-State
+    Write-Step 'NOT a verification that the binary is actually patched - it records what is there.' 'Yellow'
+    Write-Step 'Only use this when you know the installed shim IS the patched build.' 'Yellow'
     Save-Transcript
     return
 }
