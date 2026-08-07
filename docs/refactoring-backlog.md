@@ -805,3 +805,50 @@ rather than assumed (`grep` over `windows/` + `linux/`):
   each), and the DML `use 'template' keyword` / D3DX12 enum warnings are all
   upstream. Known noise — the same category the existing
   "Verified NOT problems" list in `windows/BUILD-OBSERVATIONS.md` records.
+
+### P7 — 🔴 DEFECT: FFmpeg's installed .pc files are unusable (found by probing the built image, 2026-08-07)
+
+Probed `bk-windows-media-core-ffmpeg` directly rather than waiting for the merge
+stage. All seven `libav*.pc` / `libsw*.pc` files exist at
+`C:\runtime\ffmpeg\lib\pkgconfig`, but their content is broken in two
+independent ways:
+
+```text
+prefix=/c/runtime/ffmpeg            <- MSYS path, not a Windows path
+libdir=/c/runtime/ffmpeg/lib
+Version: ..                         <- version fields EMPTY
+Requires.private: libswresample >= .., libavutil >= ..
+Libs: -L${libdir}  -lavcodec
+```
+
+1. **`Version: ..`** — the major/minor/micro substitutions produced nothing, so
+   only the separating dots remain. Any consumer with a version constraint fails:
+   gst-libav asks for `libavcodec >= 58.18.100`, `libavformat >= 58.12.100`,
+   `libavutil >= 56.14.100`, `libavfilter >= 7.16.100`. **This alone keeps
+   gst-libav out of the image**, independently of the `FFmpeg.wrap` problem
+   already recorded — so `libav` had TWO separate causes, and fixing only the
+   wrap would not have been enough.
+2. **MSYS-style paths** (`/c/runtime/...`). pkg-config hands those to the
+   compiler verbatim, and clang-cl / lld-link cannot resolve them; a consumer
+   that gets past the version check still gets unusable `-I`/`-L` flags. Note
+   `build-ffmpeg-from-source.ps1` already knows this class of problem — it takes
+   care to give nv-codec-headers a forward-slashed *Windows* path (`C:/...`) so
+   `ffnvcodec.pc` comes out right — but FFmpeg's own `--prefix` evidently goes in
+   MSYS form.
+
+Likely cause for (1): FFmpeg derives its version from `git describe` and the
+build clones shallow (`--depth 1 --branch n9.0`); without tags in the clone the
+substitution yields empty strings. Worth checking whether configure logs a
+version-detection failure.
+
+Fix direction: pass a Windows-style `--prefix` (matching the ffnvcodec handling)
+and make the version explicit to configure rather than relying on git metadata —
+FFMPEG_VERSION is already pinned in versions.env, so the value is at hand. Then
+assert the generated `.pc` (non-empty `Version:`, `C:`-shaped `prefix`) at the
+end of the FFmpeg stage, because this failed silently for months: the files
+existed, so nothing looked wrong.
+
+Also worth hardening: `Assert-PkgConfigModule` currently only runs
+`pkg-config --exists`, which passes on these broken files. Teaching it the
+minimum versions the consumers demand would move this failure from meson's
+configure output into the pre-flight, where it names itself.
