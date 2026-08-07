@@ -131,6 +131,31 @@ The drift guard reads either name (`Get-CniNatSubnetDrift` checks `.conflist`
 then `.conf`) — note its contract is "file absent = nothing to judge", so a
 conf under any OTHER name turns the guard into a silent no-op.
 
+**Verify nerdctl works too** (ADMIN shell — nerdctl opens containerd's pipe,
+which is Administrator-only; `buildctl` stays non-admin because `buildkitd`
+has `--group docker-users` and containerd has no equivalent). This is the
+fastest confirmation that the conflist is correct, because nerdctl is the
+component that is picky about it:
+
+```pwsh
+nerdctl --namespace buildkit run --rm --network nat `
+    docker.io/local/kataglyphis:bk-windows-base cmd /c ipconfig
+```
+
+Expect an IPv4 address inside the conf's subnet with the nat gateway. Two
+warnings are normal and harmless (`default network named "nat" does not have an
+internal nerdctl ID`, and a `failed to remove hosts file` on exit). If instead
+you get `panic: runtime error: index out of range [0] with length 0`, the config
+is still in bare-`.conf` form.
+
+If `nerdctl` is "not recognized": `C:\Program Files\Stevedore\bin` is on the
+MACHINE path, so only shells opened AFTER the Stevedore install see it — open a
+new window rather than editing `$env:Path`.
+
+Full recipe set (interactive shell into an image, `nerdctl build`, the
+`ENTRYPOINT` trap, zombie cleanup): [Windows Build Image](windows-builds.md)
+§ nerdctl lane.
+
 ---
 
 ## Phase B — Repo checkout + gate tooling [non-admin]

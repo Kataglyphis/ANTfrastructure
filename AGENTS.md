@@ -293,6 +293,32 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
   re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
   HASHTABLE. Splatting arrays onto native executables stays fine.
+- **BOTH lanes are supported: `buildctl` (NON-ADMIN) builds the chain, `nerdctl`
+  (ADMIN, always) runs/inspects/administers — and can build too.** Verified
+  2026-08-07: `nerdctl build` with `BUILDKIT_HOST=npipe:////./pipe/buildkitd`
+  produced and stored an image; `nerdctl run --network nat` gets a routable IP.
+  **The admin requirement is upstream, not a misconfiguration** — nerdctl opens
+  `\\.\pipe\containerd-containerd` for EVERY subcommand (even
+  `build --output type=tar`), and containerd has no `--group` equivalent to
+  buildkitd's `--group docker-users`; checked against its full flag set and
+  default config, `--address` only moves the pipe. Do NOT attempt pipe-ACL
+  hacks (recreated on every restart; containerd access is machine-admin) and do
+  NOT re-litigate this — the legitimate route is an upstream containerd feature
+  request. The chain keeps using `buildctl` deliberately: `nerdctl build` is a
+  wrapper around the same buildkitd, does not expose the load-bearing
+  `--opt image-resolve-mode=local`, and would force every unattended build to
+  run elevated. Always pass `--namespace buildkit` (the `bk-*` images live
+  there). Recipes + traps: `docs/windows-builds.md` § nerdctl lane.
+- **Never pass a command to a nerdctl `run` of an image that has an
+  `ENTRYPOINT`** — it is appended as entrypoint ARGUMENTS, not substituted. On
+  `bk-winamd64` that exits `255` instantly and leaves a container whose
+  `rm -f` then BLOCKS for up to 45 minutes, because the patched shim waits for
+  a teardown instead of force-terminating (right for builds, painful
+  interactively). Use no command (the final image's `entrypoint.cmd` starts
+  pwsh itself) or `--entrypoint`. Zombie recovery, safe only when the container
+  did no real filesystem work:
+  `Get-Process containerd-shim-runhcs-v1,CExecSvc | Stop-Process -Force` then
+  `rm -f` again. Exit `3221225786` = `0xC000013A` = the container was Ctrl+C'd.
 - **The CNI nat config must be a `.conflist`, not a bare `.conf` — nerdctl
   PANICS on the single-plugin form.** containerd and BuildKit read either, so
   the legacy `.conf` looks fine right up until you touch nerdctl: it indexes

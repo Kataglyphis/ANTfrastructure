@@ -118,7 +118,7 @@ plugin "nat"` and `nerdctl build` had broken DNS is historical.
 |------|-------|-----|
 | `"D:\Stevedore\bin\docker.exe"` (non-admin) | ✅ classic lane | ✅ Works (NAT + DNS + process isolation) |
 | `buildctl` via `windows\build-buildkit.ps1` (non-admin) | ✅ preferred lane | n/a |
-| `nerdctl` (admin shell) | not used (build via buildctl) | ✅ Works since the CNI nat conf install (2026-08-03) |
+| `nerdctl` (**admin shell only**) | ✅ Works (verified 2026-08-07) — but the chain still uses `buildctl` on purpose, see § nerdctl lane | ✅ Works — needs the CNI nat **conflist**, see § nerdctl lane |
 
 ## Build Commands
 
@@ -342,16 +342,9 @@ Remaining gotchas (why the classic lane still exists): images land in the
 CONTAINERD store (`docker.io/local/kataglyphis:bk-*`) and are invisible to
 docker's windowsfilter store — running/pushing via docker needs the `-FinalTar`
 export (or push straight from the BK lane with `-PushRef <ref>`, which needs a
-prior `docker login` in the invoking shell). **Inspecting/running
-them directly works via Stevedore's nerdctl in an ELEVATED shell** (verified
-2026-08-03 — the images list fine; containerd's pipe has no `--group` option
-upstream, so non-admin nerdctl stays impossible; don't attempt pipe-ACL hacks):
-
-```powershell
-# admin shell; buildkit's containerd namespace holds the bk-* images
-& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit images
-& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit run --rm docker.io/local/kataglyphis:bk-windows-media-core pwsh -c "python -c 'import onnxruntime'"
-```
+prior `docker login` in the invoking shell). **Inspecting, running and even
+building them works via Stevedore's nerdctl in an ELEVATED shell** — the full
+recipe set is § nerdctl lane below.
 
 When validating lane parity, compare each `bk-*` image's payload against the
 classic tag (the same scripts and Dockerfile targets run in both lanes).
@@ -533,6 +526,105 @@ Housekeeping and sharing:
   / `-ImportCacheRef <ref>` wire buildkit's registry cache (`mode=max`) once
   registry auth works from buildkitd — a second machine then rebuilds the chain
   from cache instead of from source.
+
+## nerdctl lane (admin): run, inspect, build
+
+**Both possibilities exist and both are supported.** Verified end-to-end on the
+reference host 2026-08-07. Use whichever fits the job:
+
+| | `buildctl` (via `build-buildkit.ps1`) | `nerdctl` |
+|---|---|---|
+| Shell | **non-admin** | **admin, always** |
+| Builds the chain | ✅ this is the production lane | ✅ works, but see "why the chain still uses buildctl" |
+| Run / exec into an image | ✗ | ✅ the reason to reach for it |
+| Image store admin (`images`, `rmi`) | ✗ | ✅ only way to reach the containerd store |
+
+### One-time host requirements
+
+1. **The CNI nat config must be a `.conflist`** — see host-setup § A5. With a
+   bare `.conf`, nerdctl PANICS (`index out of range [0] with length 0`); it is
+   the single thing that made nerdctl unusable here until 2026-08-07.
+2. **Admin shell.** Not negotiable and not a configuration mistake: nerdctl
+   opens `\\.\pipe\containerd-containerd`, which is Administrator-only.
+   `buildkitd` ships `--group docker-users` (which is exactly why `buildctl`
+   runs unelevated); **containerd has no equivalent** — verified against its
+   full flag set and default config, `--address` only moves the pipe, it does
+   not change who may open it. nerdctl opens that client for *every* subcommand,
+   including `build --output type=tar`, so no output mode avoids it.
+   **Do not attempt pipe-ACL hacks**: the ACL is recreated on every containerd
+   restart, and containerd access is effectively machine-admin. The legitimate
+   route is an upstream containerd feature request.
+3. **A fresh shell.** `C:\Program Files\Stevedore\bin` is on the MACHINE PATH,
+   so shells opened before Stevedore was installed will not find `nerdctl`.
+   Reopen the window rather than patching `$env:Path`.
+4. **`--namespace buildkit` on every command.** The `bk-*` images live in
+   containerd's `buildkit` namespace; the default namespace looks empty.
+
+### Recipes
+
+```powershell
+# --- inspect the store -------------------------------------------------------
+nerdctl --namespace buildkit images
+nerdctl --namespace buildkit ps -a
+
+# --- interactive shell INSIDE a finished image (the main win) -----------------
+# NOTE: no trailing command. The final image's ENTRYPOINT (entrypoint.cmd) loads
+# VsDevCmd and then starts pwsh by itself.
+nerdctl --namespace buildkit run --rm -it --network nat docker.io/local/kataglyphis:bk-winamd64
+
+# once inside: verify what actually shipped
+#   python -c "import cv2, onnxruntime; print(cv2.__version__)"
+#   where.exe nvcc ; gst-inspect-1.0 --version
+
+# --- one-shot command in an image WITHOUT an entrypoint ----------------------
+nerdctl --namespace buildkit run --rm --network nat docker.io/local/kataglyphis:bk-windows-base cmd /c ipconfig
+
+# --- one-shot command in an image WITH an entrypoint: override it -------------
+nerdctl --namespace buildkit run --rm --entrypoint pwsh --network nat docker.io/local/kataglyphis:bk-winamd64 -NoProfile -Command "python -c 'import cv2; print(cv2.__version__)'"
+
+# --- build (admin) -----------------------------------------------------------
+# BUILDKIT_HOST is REQUIRED on Windows: nerdctl has no unix-socket default to
+# fall back to, and without it the build fails to reach buildkitd.
+$env:BUILDKIT_HOST = 'npipe:////./pipe/buildkitd'
+nerdctl --namespace buildkit build -t local/kataglyphis:my-tag --progress plain <context-dir>
+
+# --- housekeeping (the 266 GB lever) -----------------------------------------
+nerdctl --namespace buildkit rmi docker.io/local/kataglyphis:<obsolete-tag>
+```
+
+### Why the chain still uses `buildctl`
+
+`nerdctl build` is a wrapper that hands the solve to the same `buildkitd`. Using
+it for the chain would cost, and gain nothing:
+
+- **every build would need elevation** — the background/unattended runs this
+  project depends on are non-admin today;
+- **`--opt image-resolve-mode=local`** is load-bearing for stage handoff (the
+  `bk-*` tags resolve from the containerd store instead of attempting a registry
+  pull) and is not exposed by `nerdctl build`;
+- the driver's transient-retry engine, per-stage logs and preflight gates
+  (`Assert-DiskHeadroom`, `Assert-ShimPatch`) are keyed to `buildctl`.
+
+So: **`buildctl` builds the chain, nerdctl inspects and runs its results.**
+
+### Traps (each one cost time on 2026-08-07)
+
+- **Passing a command to an image that has an `ENTRYPOINT`** appends it as
+  entrypoint ARGUMENTS. On `bk-winamd64` that exits `255` immediately. Use no
+  command, or `--entrypoint`.
+- **A killed `nerdctl run` leaves a zombie**, and `nerdctl rm -f` on it can then
+  BLOCK for up to 45 minutes — the patched shim waits for teardown instead of
+  force-terminating (correct for builds, painful interactively). Recovery:
+  `Get-Process containerd-shim-runhcs-v1,CExecSvc | Stop-Process -Force`, then
+  `rm -f` again. Safe only when the container did no real filesystem work.
+- **Exit code `3221225786`** (`0xC000013A`) means the container was Ctrl+C'd,
+  not that the image is broken.
+- **Two harmless warnings** on every run: `default network named "nat" does not
+  have an internal nerdctl ID` (true — containerd created it) and
+  `failed to remove hosts file` at exit. Ignore both.
+- **Diagnosing a "hung" nerdctl**: check `containerd-debug.log` for the task's
+  exit Span before assuming the container is stuck — it has usually exited
+  already and only cleanup is blocked.
 
 Roadmap (**mounts PROBED WORKING on Windows buildkitd v0.32, 2026-08-03** —
 both `--mount=type=bind` and `--mount=type=cache` execute correctly in RUN
