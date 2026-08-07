@@ -47,14 +47,28 @@ function Get-CniNatSubnetDrift {
         against the live 'vEthernet (nat)' adapter address.
     #>
     param(
-        [string]$ConfPath = 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf',
+        # BOTH CNI forms, most-preferred first. The host standardises on the
+        # .conflist because nerdctl cannot parse a bare .conf: it indexes
+        # plugins[0] without a length check and PANICS (index out of range)
+        # on the single-plugin form — in `network create` (netutil_windows.go:40)
+        # and again in `run` (container_network_manager.go:857). containerd and
+        # BuildKit read either form, so converting costs them nothing.
+        # Checking both matters because this function's "file absent = nothing
+        # to judge" contract turns it into a silent no-op on the wrong name —
+        # exactly what happened on 2026-08-07 when the .conf was renamed.
+        [string[]]$ConfPath = @(
+            'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist',
+            'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf'
+        ),
         # Test seam: injected adapter IP / conf text override the live lookups.
         [string]$AdapterIp = '',
         [string]$ConfText = ''
     )
+    $confFile = ''
     if (-not $ConfText) {
-        if (-not (Test-Path $ConfPath)) { return $null }  # no conf = no drift to judge (network setup docs cover absence)
-        $ConfText = Get-Content -Raw $ConfPath
+        $confFile = @($ConfPath | Where-Object { Test-Path $_ }) | Select-Object -First 1
+        if (-not $confFile) { return $null }  # no conf = no drift to judge (network setup docs cover absence)
+        $ConfText = Get-Content -Raw $confFile
     }
     # Live lookup only when the caller did not bind -AdapterIp at all: an
     # explicitly passed empty value means "adapter absent" (test seam) and must
@@ -67,9 +81,10 @@ function Get-CniNatSubnetDrift {
     $confSubnet = ([regex]::Match($ConfText, '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
     if (-not $AdapterIp -or -not $confSubnet) { return $null }
     if (Test-IpInSubnet -Ip $AdapterIp -Cidr $confSubnet) { return $null }
+    $where = if ($confFile) { $confFile } else { 'the CNI nat conf' }
     return ("CNI nat subnet drift: conf pins $confSubnet but the live 'vEthernet (nat)' adapter is $AdapterIp. " +
             "BK containers would get unroutable IPs (no DNS/egress). Fix (admin): update the ipam.subnet/GW in " +
-            "$ConfPath to the adapter's subnet (e.g. gateway $AdapterIp), then Restart-Service buildkitd -Force.")
+            "$where to the adapter's subnet (e.g. gateway $AdapterIp), then Restart-Service buildkitd -Force.")
 }
 
 Export-ModuleMember -Function Test-IpInSubnet, Get-CniNatSubnetDrift

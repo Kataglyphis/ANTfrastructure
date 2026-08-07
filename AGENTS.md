@@ -293,6 +293,22 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
   re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
   HASHTABLE. Splatting arrays onto native executables stays fine.
+- **The CNI nat config must be a `.conflist`, not a bare `.conf` — nerdctl
+  PANICS on the single-plugin form.** containerd and BuildKit read either, so
+  the legacy `.conf` looks fine right up until you touch nerdctl: it indexes
+  `plugins[0]` with no length check and dies `index out of range [0] with
+  length 0`, in `network create` (`netutil_windows.go:40`) AND in `run`
+  (`container_network_manager.go:857`) — i.e. it panics while parsing the
+  config BuildKit is using happily. That is an upstream nerdctl bug (it should
+  return an error), worth reporting. Converted on this host 2026-08-07:
+  `0-containerd-nat.conf` → `0-containerd-nat.conflist` (same plugin, same
+  subnet, wrapped in `plugins[]`); `nerdctl run --network nat` then attached
+  cleanly (172.31.42.105, GW 172.31.32.1) and a BuildKit canary confirmed RUN
+  steps kept LAN + DNS (sccache HTTP 200, external resolve). ALWAYS re-run a
+  network canary after touching this file — it is load-bearing for every
+  media compile via sccache. NB `Get-CniNatSubnetDrift` reads `.conflist` then
+  `.conf`, and its "file absent = nothing to judge" contract means a conf
+  under any other name silently disables the drift guard.
 - **The classic docker lane's "always-working fallback" needs a RUNNING
   daemon, and on a Stevedore host that daemon is the `stevedore` SERVICE.**
   `stevedore` IS dockerd (`...\Stevedore\dockerd.exe --run-service

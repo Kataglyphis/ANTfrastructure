@@ -84,20 +84,52 @@ Verify: `& "$env:ProgramFiles\Stevedore\bin\docker.exe" info` succeeds.
 ### A5. CNI nat conf (required — RUN steps have NO network without it)
 
 `nat.exe` already ships in `C:\Program Files\containerd\cni\bin`; only the
-conf is missing on a fresh host. Install
-`C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` with the JSON
-template and the **subnet-drift warning** from
-[Windows Build Image](windows-builds.md) § Getting it going, step 2 — the
+conf is missing on a fresh host. Install it as a **`.conflist`** (plugin-list
+form), NOT a bare `.conf` — see the format note below — using the subnet from
+[Windows Build Image](windows-builds.md) § Getting it going, step 2. The
 `ipam.subnet`/`GW` values MUST match the live `vEthernet (nat)` adapter
 (`ipconfig`), and dockerd restarts can silently re-create that network on a
 new subnet (the driver's preflight fail-fasts on drift with the exact fix).
 
+```jsonc
+// C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist
+{
+    "cniVersion": "0.3.0",
+    "name": "nat",
+    "plugins": [
+        {
+            "type": "nat",
+            "master": "Ethernet",
+            "ipam": {
+                "subnet": "172.31.32.0/20",           // MUST match vEthernet (nat)
+                "routes": [ { "GW": "172.31.32.1" } ]
+            },
+            "capabilities": { "portMappings": true, "dns": true }
+        }
+    ]
+}
+```
+
+**Why conflist and not conf (measured 2026-08-07):** containerd and BuildKit
+read either form, but **nerdctl cannot parse a bare `.conf`** — it indexes
+`plugins[0]` with no length check and PANICS with `index out of range [0] with
+length 0`, both in `network create` (`netutil_windows.go:40`) and in `run`
+(`container_network_manager.go:857`). With the single-plugin form installed,
+`nerdctl run` is unusable on this host; converting the same config to conflist
+form fixed it immediately (container came up on `172.31.42.105`, gateway
+`172.31.32.1`) and a BuildKit network canary stayed green (sccache HTTP 200 +
+external DNS resolve from inside a RUN step). Use conflist on every machine.
+
 Verify:
 
 ```pwsh
-Test-Path 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf'   # True
-ipconfig | Select-String -Context 0,4 'vEthernet \(nat\)'                # subnet matches the conf
+Test-Path 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist'  # True
+ipconfig | Select-String -Context 0,4 'vEthernet \(nat\)'                   # subnet matches the conf
 ```
+
+The drift guard reads either name (`Get-CniNatSubnetDrift` checks `.conflist`
+then `.conf`) — note its contract is "file absent = nothing to judge", so a
+conf under any OTHER name turns the guard into a silent no-op.
 
 ---
 

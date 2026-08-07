@@ -56,6 +56,19 @@ Describe 'Get-CniNatSubnetDrift' {
         Assert-True ($r -like '*Restart-Service buildkitd -Force*') 'diagnosis carries the fix'
     }
 
+    It 'judges the .conflist form too (the host standardises on it for nerdctl)' {
+        # nerdctl panics on a bare single-plugin .conf, so 0-containerd-nat.conf
+        # was converted to conflist form on 2026-08-07. The drift guard must read
+        # the nested plugins[].ipam shape, or it silently stops guarding.
+        $conflist = '{ "cniVersion": "0.3.0", "name": "nat", "plugins": [ { "type": "nat", "ipam": { "subnet": "172.20.0.0/16" } } ] }'
+        $r = Get-CniNatSubnetDrift -ConfText $conflist -AdapterIp '172.31.32.1'
+        Assert-True ($null -ne $r) 'a drifted conflist must still report drift'
+        Assert-True ($r -like '*172.20.0.0/16*') 'diagnosis names the conflist subnet'
+
+        $healthy = '{ "cniVersion": "0.3.0", "name": "nat", "plugins": [ { "type": "nat", "ipam": { "subnet": "172.31.32.0/20" } } ] }'
+        Assert-True ($null -eq (Get-CniNatSubnetDrift -ConfText $healthy -AdapterIp '172.31.32.1')) 'healthy conflist must not report drift'
+    }
+
     It 'returns $null (not a throw) when the conf has no subnet or the adapter is absent' {
         Assert-True ($null -eq (Get-CniNatSubnetDrift -ConfText '{}' -AdapterIp '172.31.32.1')) 'no subnet key = no judgement'
         Assert-True ($null -eq (Get-CniNatSubnetDrift -ConfText '{ "ipam": { "subnet": "172.20.0.0/16" } }' -AdapterIp $null)) 'no adapter = no judgement'
