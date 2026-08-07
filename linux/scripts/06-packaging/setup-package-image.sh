@@ -333,6 +333,29 @@ report_rust_provenance() {
         echo "        exit 127 against this image." >&2
     fi
     echo "--------------------------------------------"
+
+    # HARD GATE. The image previously shipped Ubuntu's rustc while versions.env
+    # pinned a much newer one, because Dockerfile.package declared CARGO_HOME /
+    # RUSTUP_HOME / PATH for a toolchain it never COPY'd in. Nothing failed at
+    # build time; it surfaced only when a consumer's dependency demanded a
+    # newer rustc than the image happened to have, in a message that blamed
+    # the dependency. Never again silently: if the shipped rustc does not match
+    # RUST_VERSION, the image is wrong and this build stops.
+    local want="${RUST_VERSION:-}" got
+    if [ -z "${want}" ]; then
+        echo "  NOTE: RUST_VERSION unset; cannot verify the toolchain matches its pin." >&2
+        return 0
+    fi
+    got="$(rustc --version 2>/dev/null | awk '{print $2}')"
+    if [ "${got}" != "${want}" ]; then
+        echo "ERROR: shipped rustc is ${got:-<none>}, but versions.env pins RUST_VERSION=${want}." >&2
+        echo "       The pinned toolchain lives in /usr/local/{cargo,rustup} and must be" >&2
+        echo "       COPY'd into this stage; check those COPY lines in Dockerfile.package." >&2
+        echo "       Without them the ENV points at empty paths and wire_cargo_symlinks" >&2
+        echo "       falls back to the apt cargo/rustc debs." >&2
+        return 1
+    fi
+    echo "OK: shipped rustc ${got} matches the RUST_VERSION pin"
 }
 
 main() {
