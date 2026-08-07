@@ -959,3 +959,31 @@ are disjoint; cross builds already --skip-system-registration. Peak disk ~2×.
   Each suppression should carry the count it removes, so a future reader can
   judge whether it still earns its place.
 >>>>>>> b7c9751d65f74ab744bc499720d78ed622ed4a8a
+
+### 2026-08-08 — batch APPLIED (except the items below)
+
+The closure batch above was implemented on 2026-08-08 (ccache wiring for
+host/cross/Canadian GCC incl. CCACHE_BASEDIR/SLOPPINESS and the multi-word-CC
+PATH fix; LLVM RUN ccache/sccache mounts; LLVM_CROSS_SOURCE_ROOT honored by
+build-clang.sh; llvm_repo_available 5xx tolerance; cmake.sh SHA-vs-version
+guard; vulkan.sh/llvm-cross.sh IFS-scoped splits; resource-monitor pgrep guard;
+arch_list_to_words doc warning; case-mapped version literal check added to
+verify-arg-consistency.sh; R2 BUILT_THIS_RUN in the local build path; R3 error
+propagation through runtime_build_chain; Dockerfile.package ENV re-declaration;
+compiler-cache.sh consumer note). Parallel target-GCC landed GATED:
+`GCC_PARALLEL_TARGETS=1` (default 0 = sequential unchanged); serial apt
+pre-pass, per-target logs, divided JOBS.
+
+Two agent-report claims were DISPROVEN during implementation — kept here so
+they don't come back:
+- **`--with-build-config=bootstrap-ccache` does not exist in GCC 16.2.0**
+  (verified against the tarball's config/*.mk); on a bootstrapped host build
+  ccache covers stage1 only. Do not add that configure flag.
+- **`build-helpers.sh` is NOT mounted "solely for strip_elf_tree"** — it
+  defines `run()`, used by 11 toolchain scripts in-container. Dropping its
+  mounts would break every guarded command. Item withdrawn.
+
+Still open: riscv64 isa-spec on-device smoke (needs a riscv64 run);
+RUNTIME_CONTEXT_ROOT in the disk preflight (edit blocked while a chain run is
+live — build-cross-chain.sh is the running orchestrator's main file);
+parallelism.sh core-divisor (superseded for GCC by the driver's own JOBS split).

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # compiler-cache.sh - Configure ccache/sccache for faster rebuilds
 #
+# CONSUMERS: the 03-media build chain ONLY (media_common_init and the
+# onnxruntime build lib). The 02-toolchain GCC/LLVM builds do NOT source this
+# module — their ccache wiring lives in build-gcc.sh (--ccache flag) and
+# build-clang.sh (CMAKE_*_COMPILER_LAUNCHER). Do not read this file as the
+# toolchain caching story; that misread hid a dead ccache mount for months.
+#
 # Provides:
 #   setup_ccache       - Configure ccache for C/C++ compilation
 #   setup_sccache      - Configure sccache for Rust and C/C++ compilation

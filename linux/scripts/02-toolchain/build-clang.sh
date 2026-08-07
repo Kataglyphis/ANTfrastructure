@@ -145,7 +145,11 @@ info "LTO: ${ENABLE_LTO}, Assertions: OFF, Bootstrap: ${BOOTSTRAP}"
 
 # --- Initialization & WORKDIR FIX ---
 WD="$(pwd)"
-DEFAULT_LLVM_WORK_ROOT="${LLVM_BUILD_ROOT:-${HOME}/tmp2/llvm-build-root}"
+# LLVM_CROSS_SOURCE_ROOT: honored so the Dockerfile's /var/cache/llvm-src cache
+# mount actually backs this build's clone. Previously only llvm-cross.sh read
+# it — this RUN cloned ~2 GB into a throwaway dir while the mount sat empty,
+# and the target-clang RUN paid the same clone again.
+DEFAULT_LLVM_WORK_ROOT="${LLVM_BUILD_ROOT:-${LLVM_CROSS_SOURCE_ROOT:-${HOME}/tmp2/llvm-build-root}}"
 AUTO_WORKDIR="${DEFAULT_LLVM_WORK_ROOT}/llvm-work"
 
 if [ "${WD}" = "/" ]; then

@@ -490,6 +490,21 @@ cross_stage_run() {
 
   # Pin capture: only on push, and only when not a dry run
   if [ "${push_flag}" -eq 0 ]; then
+    # Record built-this-run even for LOCAL builds. The runtime handoff
+    # (cross_stage_ensure_parent_available) uses this flag to skip its registry
+    # pull of the parent image; without it a --no-push run pulled the STALE
+    # published cross-android tag over the image it had just built and silently
+    # validated last release's artifacts.
+    if ! is_dry_run && cross_stage_is_per_arch "${stage}"; then
+      local built_flag_varname="${stage^^}_BUILT_THIS_RUN"
+      if declare -p "${built_flag_varname}" &>/dev/null; then
+        local -n _local_built_flag="${built_flag_varname}"
+        _local_built_flag["${arch}"]=1
+      fi
+      if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
+        : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
+      fi
+    fi
     return 0
   fi
   if is_dry_run; then

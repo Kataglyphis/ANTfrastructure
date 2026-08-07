@@ -51,7 +51,12 @@ is_dry_run() {
 }
 
 # Convert a comma-separated architecture list to space-separated words.
-# Usage: for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do ...
+#
+# CAUTION: `for arch in $(arch_list_to_words ...)` relies on IFS containing a
+# space — it silently stops splitting in scripts that set IFS=$'\n\t' (most
+# 02/03 build scripts do). In any context that may run under a modified IFS,
+# split with the builtin-scoped idiom instead:
+#   IFS=',' read -r -a arches <<< "${TARGET_ARCHES}"
 arch_list_to_words() {
   printf '%s' "${1:-}" | tr ',' ' '
 }
