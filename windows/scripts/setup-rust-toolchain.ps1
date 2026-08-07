@@ -166,8 +166,24 @@ $env:RUSTUP_IO_THREADS = '1'
 # on the FAILURE path too (previously success-path-only, so a failed install left
 # them behind for the layer / the next diagnostic run).
 try {
+    # -c rustfmt -c clippy: install them HERE, while the local mirror still
+    # exists. The component tarballs are already fetched above (the URL regex
+    # includes both), but `--profile minimal` does not install them and the
+    # finally block then deletes the mirror. What survives is a cached channel
+    # manifest whose URLs were rewritten to file:///...\rustup-dist - a path
+    # that no longer exists - so a later `rustup component add rustfmt` fails
+    # with "could not download file from file:///... : file not found", offline
+    # and unfixable at runtime.
+    #
+    # That is not hypothetical: a consumer's Build-Windows.ps1 catches exactly
+    # that failure and logs "rustfmt unavailable in this image (offline
+    # rustup); skipping the format check", then reports the step as COMPLETED.
+    # Its format and clippy gates have therefore never run against this image -
+    # each finished in ~0.1s (measured 2026-08-07). Installing the components
+    # at image-build time is what makes those gates real.
     Invoke-RustProcessWithHeartbeat -Description 'rustup-init' -FilePath $rustupInit `
-        -ArgumentList @('-y', '--no-modify-path', '--default-toolchain', 'stable', '--profile', 'minimal') `
+        -ArgumentList @('-y', '--no-modify-path', '--default-toolchain', 'stable', '--profile', 'minimal',
+                        '-c', 'rustfmt', '-c', 'clippy') `
         -TimeoutSec 900
 } finally {
     Remove-Item $rustupInit -Force -ErrorAction SilentlyContinue
@@ -194,6 +210,14 @@ Assert-ContainerCommandAvailable -Name 'rustc' | Out-Null
 Invoke-NativeRustStep -Description 'rustup default stable' -Command { rustup default stable }
 Invoke-NativeRustStep -Description 'cargo --version' -Command { cargo --version }
 Invoke-NativeRustStep -Description 'rustc --version' -Command { rustc --version }
+
+# Assert the lint components at BUILD time. They cannot be added later: the dist
+# mirror is deleted a few lines up and the cached manifest points at file:///
+# paths that no longer resolve. A consumer that finds them missing degrades to
+# "skipping the format check" and still reports success, so the only place this
+# can be caught is here, while it is still fixable.
+Invoke-NativeRustStep -Description 'cargo fmt --version' -Command { cargo fmt --version }
+Invoke-NativeRustStep -Description 'cargo clippy --version' -Command { cargo clippy --version }
 
 # Cargokit-shaped asserts: these two calls are exactly what flutter_rust_bridge's
 # build_tool runs; failing here is cheaper than failing in every consumer build.
