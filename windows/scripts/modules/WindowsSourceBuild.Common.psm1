@@ -860,6 +860,103 @@ function Import-BuildHandoff {
     $global:LASTEXITCODE = 0
 }
 
+function Write-PkgConfigFile {
+    # Author a pkg-config .pc file for a CMake-installed library that ships none.
+    #
+    # WHY THIS EXISTS: GStreamer's meson finds optional integrations ONLY through
+    # pkg-config. Two of this image's headline libraries provide no .pc file at
+    # all — OpenCV's CMake install emits pkg-config only when
+    # OPENCV_GENERATE_PKGCONFIG is on (off by default, and its name would be
+    # opencv5.pc, which `dependency('opencv4')` does not look for), and ONNX
+    # Runtime ships none on any platform. So gst-plugins-bad silently skipped the
+    # opencv and onnx plugins, and the image shipped without them for months.
+    #
+    # Paths are emitted with FORWARD slashes: pkg-config treats a backslash as an
+    # escape character, so a Windows path written natively silently mangles into
+    # an unusable -I/-L flag.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Name,           # module name == <Name>.pc, what dependency() looks up
+        [Parameter(Mandatory)][string]$Version,        # must satisfy the consumer's constraint
+        [Parameter(Mandatory)][string]$Description,
+        [Parameter(Mandatory)][string[]]$IncludeDir,
+        [Parameter(Mandatory)][string]$LibDir,
+        [Parameter(Mandatory)][string[]]$Library,      # link names WITHOUT extension
+        [Parameter(Mandatory)][string]$PkgConfigDir,
+        [string[]]$ExtraCflags = @()
+    )
+    $fwd = { param($p) ($p -replace '\\', '/') }
+    New-Item -ItemType Directory -Force -Path $PkgConfigDir | Out-Null
+    $cflags = @($IncludeDir | Where-Object { $_ } | ForEach-Object { '-I' + (& $fwd $_) }) + $ExtraCflags
+    $libs = @('-L' + (& $fwd $LibDir)) + @($Library | ForEach-Object { '-l' + $_ })
+    $content = @(
+        "prefix=$(& $fwd $LibDir)",
+        '',
+        "Name: $Name",
+        "Description: $Description",
+        "Version: $Version",
+        "Cflags: $($cflags -join ' ')",
+        "Libs: $($libs -join ' ')"
+    )
+    $path = Join-Path $PkgConfigDir "$Name.pc"
+    Set-Content -Path $path -Value $content -Encoding ascii
+    Write-Host "Wrote pkg-config file: $path (Version $Version, $($Library.Count) lib(s))"
+    return $path
+}
+
+function Get-LibraryLinkName {
+    # The -l names for every import library in a directory, optionally filtered.
+    # Enumerated rather than hardcoded: OpenCV with BUILD_opencv_world=OFF emits
+    # one .lib per module and the SET changes with the enabled module list, so a
+    # hand-maintained list would rot into a link error on the next OpenCV bump.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$LibDir,
+        [string]$Filter = '*.lib',
+        # Drop debug-suffixed libs (…d.lib) — pkg-config has no config concept
+        # and linking both flavours is a duplicate-symbol trap.
+        [switch]$ExcludeDebug
+    )
+    if (-not (Test-Path $LibDir)) { return @() }
+    $libs = @(Get-ChildItem -Path $LibDir -Filter $Filter -File -ErrorAction SilentlyContinue |
+            ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) })
+    if ($ExcludeDebug) { $libs = @($libs | Where-Object { $_ -notmatch 'd$' -or $_ -match '\dd?$' }) }
+    return @($libs | Sort-Object -Unique)
+}
+
+function Assert-PkgConfigModule {
+    # Fail-fast gate: every named module must resolve through pkg-config BEFORE
+    # meson runs. A missing one otherwise surfaces as a silently-skipped plugin
+    # after a ~60-minute configure+compile, which is how the opencv/onnx/libav
+    # gap survived unnoticed. Seconds here, an hour there.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string[]]$Module,
+        [string]$PkgConfigPath = $env:PKG_CONFIG_PATH,
+        [string]$Context = 'GStreamer plugin integrations'
+    )
+    $pkgConfig = Get-Command pkg-config -ErrorAction SilentlyContinue
+    if (-not $pkgConfig) {
+        throw ("pkg-config is not on PATH, so $Context cannot be resolved at all. " +
+            'It is installed by setup-scoop-tools.ps1 into the base image; a missing binary here means the base is wrong.')
+    }
+    $missing = @()
+    foreach ($m in $Module) {
+        $global:LASTEXITCODE = 0
+        $null = & $pkgConfig.Source '--exists' $m 2>&1
+        if ($LASTEXITCODE -ne 0) { $missing += $m } else {
+            $ver = (& $pkgConfig.Source '--modversion' $m 2>&1 | Select-Object -First 1)
+            Write-Host "  pkg-config OK: $m ($ver)"
+        }
+    }
+    if ($missing.Count -gt 0) {
+        throw ("pkg-config cannot resolve: $($missing -join ', ') — $Context WOULD BE SILENTLY SKIPPED by meson. " +
+            "PKG_CONFIG_PATH=$PkgConfigPath. Fix the .pc emission (Write-PkgConfigFile) or the install layout; " +
+            'do NOT relax the meson feature back to auto — that is what hid this for months.')
+    }
+    $global:LASTEXITCODE = 0
+}
+
 function Clear-BuildScratch {
     # Remove package-manager and temp scratch that heavy builds leave in the
     # container profile — dead weight in an exported image. Best-effort by
@@ -1048,6 +1145,9 @@ Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
-    'Invoke-DownloadWithRetry'
+    'Invoke-DownloadWithRetry',
+    'Write-PkgConfigFile',
+    'Get-LibraryLinkName',
+    'Assert-PkgConfigModule'
 )
 

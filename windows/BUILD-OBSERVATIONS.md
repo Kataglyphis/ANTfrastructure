@@ -47,6 +47,57 @@ First rebuild after the code-health pass (commits `8fc1f8c` docs refresh, `5be9b
 
 Smoke test (process isolation, `smoke-postcleanup.log`): **104 passed / 0 failed / 1 skipped** — **identical** to the pre-cleanup baseline (the 1 skip = GPU/CUDA, passthrough blocked on this 26200 host). Final image `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` 49.4 GB tagged. Cleanup confirmed behaviour-preserving end-to-end.
 
+## ✅ RESOLVED (2026-08-07) — the gst-plugin gap has three distinct root causes, now fixed and gated
+
+Diagnosed against gstreamer **1.29.2** sources. The three plugins were missing for
+three unrelated reasons, which is why the single "PKG_CONFIG_PATH" theory below
+never explained it:
+
+- **`opencv`** — `gst-plugins-bad/gst-libs/gst/opencv/meson.build` resolves
+  `dependency('opencv4', version: '>= 4.0.0', required: opencv_opt)`. OpenCV's
+  CMake install emits **no** `.pc` at all unless `OPENCV_GENERATE_PKGCONFIG` is
+  set, and even then it would be named `opencv5.pc` — which that lookup never
+  considers. Good news: upstream **dropped the old `< 4.x` upper bound**, so
+  OpenCV 5 is version-acceptable. Fixed by emitting an `opencv4.pc` that
+  describes the OpenCV 5 install (link names enumerated from the actual
+  `x64\vc18\lib`, not hardcoded).
+- **`onnx`** — `ext/onnx/meson.build` resolves
+  `dependency('libonnxruntime', version: '>= 1.16.1', required: false)` and calls
+  `subdir_done()` when missing. ORT ships no `.pc` on any platform. Fixed by
+  emitting one (v1.28.0 clears the floor comfortably).
+- **`libav`** — the real trap, and nothing to do with `.pc` files. gstreamer
+  ships `subprojects/FFmpeg.wrap`, whose `[provide]` section supplies
+  libavcodec/libavformat/libavutil/libavfilter pinned to **FFmpeg 7.1.1**.
+  Combined with this build's `-Dwrap_mode=forcefallback`, meson was **forced**
+  to use that wrap and never consulted pkg-config — so the build was trying to
+  fetch and compile a second, older FFmpeg instead of using the `n9.0` it had
+  just built, and dropped gst-libav when that failed. Succeeding would have been
+  its own bug: gst-libav would link a different FFmpeg than the image's own
+  `ffmpeg.exe` and `libav*` DLLs. Fixed by disabling the wrap so the four
+  modules resolve from our install.
+
+**`tensorfilter` is NOT a GStreamer plugin** — it is an NNStreamer element, and
+this repo does not build NNStreamer. It only ever appeared in the probe lists
+because the lying healthcheck "found" it. It is deliberately excluded from the
+mandatory set; wanting it means adding an NNStreamer source-build stage.
+
+**Gating (the actual fix).** The contract is now data —
+`Get-RequiredGstPlugin` in `WindowsScripts.Shared.psm1` — enforced at four
+points that previously disagreed: a pre-flight that resolves every required
+pkg-config module in seconds, meson features set to `enabled` (not `auto`, which
+means *skip silently*), a post-install `gst-inspect` gate that **throws**, and
+smoke-test assertions that **fail**. The healthcheck reports `[FAIL]` instead of
+`[PASS]` for an absent plugin. `-SkipPluginGate` is the deliberate exception.
+
+**Still unproven:** whether `gst-libav` compiles against FFmpeg **9.0**. Upstream
+pins its wrap to 7.1.1, so 9.0 is untested territory and may need source
+patches — the version constraints have no upper bound, but API removals in
+FFmpeg 8/9 are a real risk. The first build will say so loudly instead of
+silently dropping the plugin, which is the whole point.
+
+<details>
+<summary>Original observation (2026-07-11) — kept for context</summary>
+
 ## Observation — gst plugins opencv/libav/tensorfilter are NOT in the shipped image (2026-07-11)
 Ground-truthed while fixing healthcheck.ps1's stale-`$LASTEXITCODE` false-PASS: `gst-inspect-1.0
 opencv|tensorfilter|libav` all exit -1 ("No such element or plugin") in `winamd64`. The old
@@ -59,3 +110,5 @@ plugins are wanted: make opencv/ffmpeg .pc files reach GStreamer's meson (and gi
 cmake-based detection path), then assert the plugins in the smoke test instead of the healthcheck.
 Pre-existing image state, not a regression — nothing except the (formerly lying) healthcheck ever
 claimed they existed.
+
+</details>

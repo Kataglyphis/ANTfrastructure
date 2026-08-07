@@ -75,9 +75,27 @@ Check "gst-launch-1.0 --version" {
     if (-not $v) { throw "gst-launch-1.0 not found or failed" }
 }
 
-# GStreamer plugin integrations (non-fatal -- auto-detected by meson at build time)
+# Mandatory GStreamer plugin integrations. The set is Get-RequiredGstPlugin's —
+# ONE definition shared with the build gate and the smoke test, because these
+# three disagreeing is exactly what let opencv/libav go missing from a shipped
+# image while this file printed [PASS] for them (2026-07-11). The old list also
+# probed `tensorfilter`, an NNStreamer element this repo never builds.
+#
+# A container healthcheck must stay CHEAP and must not flap a running container,
+# so a missing plugin is reported loudly here but does not fail the check — the
+# build gate and the smoke test are the enforcing layers. What changed is that
+# it can no longer report a plugin as present when it is not.
 $gstInspect = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-inspect-1.0.exe'
-foreach ($gstPlugin in @('opencv', 'tensorfilter', 'libav')) {
+$sharedModule = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
+$requiredGstPlugins = if (Test-Path $sharedModule) {
+    Import-Module $sharedModule -Force -DisableNameChecking
+    @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
+} else {
+    # Older image without the module: fall back to the literal contract rather
+    # than silently probing nothing.
+    @('libav', 'opencv', 'onnx')
+}
+foreach ($gstPlugin in $requiredGstPlugins) {
     # Guard the invoke: with $gstInspect null/missing, `& $null` throws a statement-terminating
     # error while $LASTEXITCODE keeps the PREVIOUS native call's 0 -- printing a false [PASS]
     # for a plugin that was never probed. Reset the exit code before each probe for the same reason.
@@ -88,7 +106,7 @@ foreach ($gstPlugin in @('opencv', 'tensorfilter', 'libav')) {
     $global:LASTEXITCODE = 1
     $null = & $gstInspect $gstPlugin 2>&1
     if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] gst-plugin $gstPlugin found" }
-    else { Write-Host "[SKIP] gst-plugin $gstPlugin not available" }
+    else { Write-Host "[FAIL] gst-plugin $gstPlugin MISSING - this image is incomplete (mandatory integration)" }
 }
 
 # CMake

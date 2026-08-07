@@ -966,6 +966,30 @@ Assert-Test -Name "GStreamer real pipeline runs (videotestsrc ! videoconvert ! f
     $LASTEXITCODE -eq 0
 } -FailMessage "videotestsrc pipeline failed (video plugin DLLs broken or missing)"
 
+# ── Mandatory plugin integrations: FATAL, not informational ──────────────────
+# These were absent from the published winamd64 image and NOTHING said so: the
+# meson features were `auto` (skip silently), the build logged [INFO], and the
+# healthcheck printed [PASS] for plugins that did not exist (2026-07-11). The
+# contract now lives in Get-RequiredGstPlugin and is enforced at build time; this
+# is the independent confirmation that what was built actually LOADS in the
+# shipped image — a plugin can compile and still fail to register if a sidecar
+# DLL is missing, which gst-inspect is the only way to catch.
+$requiredGstModule = Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1'
+if (Test-Path $requiredGstModule) {
+    Import-Module $requiredGstModule -Force -DisableNameChecking
+    foreach ($plugin in @(Get-RequiredGstPlugin)) {
+        Assert-Test -Name "gst-plugin '$($plugin.Name)' is present and loadable" -Condition {
+            $global:LASTEXITCODE = 0
+            & gst-inspect-1.0 $plugin.Name 2>&1 | Out-Null
+            $LASTEXITCODE -eq 0
+        } -FailMessage ("mandatory GStreamer plugin '$($plugin.Name)' is MISSING or fails to load. " +
+            "It provides $($plugin.Provides). $($plugin.Why). " +
+            "Needs pkg-config: $($plugin.NeedsPc -join ', ') at GStreamer build time.")
+    }
+} else {
+    Skip-Test "mandatory gst-plugin assertions (WindowsScripts.Shared.psm1 not found at $requiredGstModule)"
+}
+
 # ============================================================================
 Write-TestHeader '12. LiteRT (AI Edge runtime, source-built)'
 # ============================================================================

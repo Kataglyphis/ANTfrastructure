@@ -48,7 +48,13 @@ param(
     # layer in the BK lane (Dockerfile.media-merge-builder --target built), and
     # layers are additive: a scrub in any later layer cannot shrink this one.
     [switch]$ScrubAfter,
-    [string[]]$MesonSetupArgs  = @()
+    [string[]]$MesonSetupArgs  = @(),
+    # Escape hatch for the mandatory-plugin contract (Get-RequiredGstPlugin).
+    # The gate turns a silently-missing plugin into a build failure, which is the
+    # whole point — but while iterating on ONE plugin's toolchain problem you may
+    # need an image out of the door. Deliberate exception, never routine: an
+    # image built with this flag is by definition not shippable.
+    [switch]$SkipPluginGate
 )
 
 Set-StrictMode -Version Latest
@@ -387,6 +393,104 @@ int _isatty(int);
             [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
         })
 
+    # ---- 5c. MANDATORY PLUGIN PRE-FLIGHT ─────────────────────────────────────
+    # Everything below exists because of the 2026-07-11 finding: `gst-inspect-1.0
+    # opencv|libav` exited -1 in the SHIPPED winamd64 image. Nothing failed —
+    # meson auto-detected the integrations, found nothing, and skipped them, and
+    # the healthcheck then printed [PASS] for plugins that were not there.
+    #
+    # Three independent root causes, one per plugin:
+    #
+    #  opencv — gst-plugins-bad resolves `dependency('opencv4', '>= 4.0.0')`.
+    #    OpenCV's CMake install emits NO pkg-config file by default, and even
+    #    with OPENCV_GENERATE_PKGCONFIG it would be named opencv5.pc, which that
+    #    lookup does not consider. PKG_CONFIG_PATH pointed at a directory that
+    #    never existed. Fixed by emitting an opencv4.pc that describes the
+    #    OpenCV 5 install (upstream dropped the old `< 4.x` upper bound, so the
+    #    version itself is acceptable — verified against 1.29.2 sources).
+    #
+    #  onnx — gst-plugins-bad resolves `dependency('libonnxruntime', '>= 1.16.1')`
+    #    and calls subdir_done() when missing. ONNX Runtime ships no .pc on any
+    #    platform. Fixed by emitting one.
+    #
+    #  libav — the real trap. gstreamer ships subprojects/FFmpeg.wrap, which
+    #    PROVIDES libavcodec/libavformat/libavutil/libavfilter pinned to
+    #    FFmpeg 7.1.1. Combined with -Dwrap_mode=forcefallback below, meson is
+    #    FORCED to use that wrap and never looks at pkg-config — so this build
+    #    was trying to fetch and build a second, older FFmpeg instead of using
+    #    the n9.0 it had just built, and gst-libav was dropped when that failed.
+    #    Even succeeding would have been wrong: gst-libav would link a different
+    #    FFmpeg than the image's own ffmpeg.exe and libav* DLLs. Fixed by
+    #    neutralising the wrap so the four modules resolve from OUR install.
+    #
+    # The .pc files are authored HERE rather than by the OpenCV/ONNX builds on
+    # purpose: those are the two most expensive layers in the chain (~30 and ~75
+    # minutes), and emitting a text file is not worth invalidating them. This
+    # stage consumes the canonical env contract (OPENCV_ROOT / ONNX_ROOT / …)
+    # that the merge image already defines, so nothing is hardcoded.
+    $requiredPlugins = @(Get-RequiredGstPlugin)
+    if ($SkipPluginGate) {
+        log 'WARNING: -SkipPluginGate — the mandatory GStreamer plugin contract is DISABLED for this build.'
+        log "WARNING: the resulting image is NOT shippable. Required set: $(($requiredPlugins | ForEach-Object { $_.Name }) -join ', ')"
+    } else {
+        log '--- mandatory plugin pre-flight ---'
+
+        # opencv4.pc — describes the OpenCV 5 install under $OPENCV_ROOT.
+        $ocvRoot = if ($env:OPENCV_ROOT) { $env:OPENCV_ROOT } else { Join-Path $resolvedInstallDir 'lib\opencv5' }
+        $ocvLib = if ($env:OPENCV_LIB) { $env:OPENCV_LIB } else { Join-Path $ocvRoot 'x64\vc18\lib' }
+        # Header root = the directory CONTAINING opencv2/, found rather than
+        # assumed: OpenCV's Windows layout has moved between majors (include\
+        # vs include\opencv4\) and guessing wrong yields a .pc that resolves but
+        # cannot compile.
+        $ocvHeader = Get-ChildItem -Path $ocvRoot -Recurse -Filter 'opencv.hpp' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.DirectoryName -match 'opencv2$' } | Select-Object -First 1
+        if (-not $ocvHeader) { throw "opencv2/opencv.hpp not found under $ocvRoot — cannot describe the OpenCV install to pkg-config." }
+        $ocvInclude = Split-Path (Split-Path $ocvHeader.FullName -Parent) -Parent
+        $ocvLibs = @(Get-LibraryLinkName -LibDir $ocvLib)
+        if ($ocvLibs.Count -eq 0) { throw "no import libraries found in $ocvLib — the OpenCV install is incomplete." }
+        # Version: satisfies '>= 4.0.0' while naming the real OpenCV 5 release.
+        $ocvVersion = if ($env:OPENCV_SOURCE_VERSION -match '^(\d+)') { "$($Matches[1]).0.0" } else { '5.0.0' }
+        [void](Write-PkgConfigFile -Name 'opencv4' -Version $ocvVersion `
+                -Description 'OpenCV 5 (opencv4-named alias so gst-plugins-bad can resolve it)' `
+                -IncludeDir @($ocvInclude) -LibDir $ocvLib -Library $ocvLibs `
+                -PkgConfigDir (Join-Path $ocvLib 'pkgconfig'))
+
+        # libonnxruntime.pc — ORT ships none on any platform.
+        $ortRoot = if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }
+        $ortLib = Join-Path $ortRoot 'lib'
+        $ortInclude = Join-Path $ortRoot 'include'
+        if (-not (Test-Path (Join-Path $ortLib 'onnxruntime.lib'))) { throw "onnxruntime.lib not found in $ortLib — cannot describe ONNX Runtime to pkg-config." }
+        $ortVersion = ([string]$env:ONNX_VERSION).TrimStart('v')
+        if (-not $ortVersion) { $ortVersion = '1.28.0' }
+        # ORT's headers sit at include\ AND include\onnxruntime\core\session on
+        # some layouts; both are handed over so the plugin's #include resolves
+        # either way.
+        $ortIncludes = @($ortInclude, (Join-Path $ortInclude 'onnxruntime'),
+            (Join-Path $ortInclude 'onnxruntime\core\session')) | Where-Object { Test-Path $_ }
+        [void](Write-PkgConfigFile -Name 'libonnxruntime' -Version $ortVersion `
+                -Description 'ONNX Runtime (source build; ships no pkg-config file of its own)' `
+                -IncludeDir $ortIncludes -LibDir $ortLib -Library @('onnxruntime') `
+                -PkgConfigDir (Join-Path $ortLib 'pkgconfig'))
+
+        # Make the two new pkgconfig dirs visible to meson for THIS process.
+        $newPcDirs = @((Join-Path $ocvLib 'pkgconfig'), (Join-Path $ortLib 'pkgconfig'))
+        $env:PKG_CONFIG_PATH = (@($newPcDirs + ($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })) | Select-Object -Unique) -join ';'
+        log "PKG_CONFIG_PATH = $env:PKG_CONFIG_PATH"
+
+        # Neutralise FFmpeg.wrap so libav* resolve from OUR FFmpeg install rather
+        # than the wrap's pinned 7.1.1 (see the header comment above).
+        $ffmpegWrap = Join-Path $gstSrcDir 'subprojects\FFmpeg.wrap'
+        if (Test-Path $ffmpegWrap) {
+            Move-Item -Path $ffmpegWrap -Destination "$ffmpegWrap.disabled" -Force
+            log 'Disabled subprojects/FFmpeg.wrap — gst-libav must link the FFmpeg this image ships, not a wrap-pinned 7.1.1.'
+        }
+
+        # Everything the required set needs must resolve NOW, not after an hour.
+        Assert-PkgConfigModule -Module @($requiredPlugins | ForEach-Object { $_.NeedsPc } | Select-Object -Unique) `
+            -Context ('mandatory GStreamer plugins: ' + (($requiredPlugins | ForEach-Object { $_.Name }) -join ', '))
+        log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
+    }
+
     # ---- 6. meson setup (retry with wrap cleanup) ----
     $setupArgs = @(
         'setup', '--vsenv',
@@ -399,9 +503,14 @@ int _isatty(int);
         '-Dtests=disabled',
         '-Dexamples=disabled',
         # Enable all GStreamer plugin sets.
-        # Individual lib integrations (opencv, onnx, tflite) are auto-detected
-        # via PKG_CONFIG_PATH set in Dockerfile.media-merge-builder. If a
-        # dependency is not found, that plugin is simply skipped -- no build failure.
+        # Individual lib integrations used to be left at meson's `auto`, which
+        # means "skip silently if the dependency is missing" — that is precisely
+        # how opencv/onnx/libav went missing from a SHIPPED image without one
+        # line of red in the log (2026-07-11). The mandatory set is now `enabled`,
+        # so a missing dependency fails meson setup in SECONDS instead of
+        # producing a quietly incomplete image an hour later. The pre-flight
+        # above has already proven the .pc files resolve, so reaching a failure
+        # here means a genuine toolchain problem worth seeing.
         '-Dgpl=enabled',
         '-Dbase=enabled',
         '-Dgood=enabled',
@@ -448,6 +557,17 @@ int _isatty(int);
         # etc.); GUID import libs (see $guidLibs) for MF/WASAPI/DShow/KS symbols.
         "-Dc_link_args=[$linkArgElems]",
         "-Dcpp_link_args=[$linkArgElems]"
+    ) + $(
+        # The mandatory contract, expressed to meson. Held back behind the same
+        # switch as the pre-flight so -SkipPluginGate really does mean "let the
+        # build proceed without them" rather than failing at configure anyway.
+        if ($SkipPluginGate) { @() } else {
+            @(
+                '-Dlibav=enabled',
+                '-Dgst-plugins-bad:opencv=enabled',
+                '-Dgst-plugins-bad:onnx=enabled'
+            )
+        }
     ) + $MesonSetupArgs
 
     $setupArgsString = "meson $($setupArgs -join ' ')"
@@ -562,20 +682,47 @@ int _isatty(int);
         log 'Build may have completed but binaries may be elsewhere. Check logs.'
     }
 
-    # ---- 8b. verify plugin integrations (non-fatal) ----
+    # ---- 8b. MANDATORY PLUGIN GATE (fatal) ───────────────────────────────────
+    # This block used to log "[INFO] plugin not available" and carry on, which
+    # is how a shipped image ended up without opencv and libav. The repo rule is
+    # explicit — "a missing stage artifact is a THROW, not a warning" (AGENTS.md)
+    # — and a plugin the media stack is built around is a stage artifact.
+    #
+    # It is a SEPARATE check from the meson feature flags on purpose: `enabled`
+    # only guarantees the dependency was found at configure time. A plugin can
+    # still fail to build, or build and fail to load at runtime (a missing
+    # sidecar DLL is the classic Windows case), and gst-inspect is the only
+    # thing that proves what the image can actually USE.
     $gstInspect = Join-Path $resolvedInstallDir 'bin\gst-inspect-1.0.exe'
-    if (Test-Path $gstInspect) {
-        $integrationPlugins = @('opencv', 'onnx', 'tensorfilter', 'libav')
-        foreach ($p in $integrationPlugins) {
-            try {
-                $null = & $gstInspect $p 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    log "  [PASS] GStreamer plugin '$p' found"
-                } else {
-                    log "  [INFO] GStreamer plugin '$p' not available"
-                }
-            } catch { log "  [INFO] GStreamer plugin '$p' check skipped" }
+    if (-not (Test-Path $gstInspect)) {
+        throw "gst-inspect-1.0.exe missing at $gstInspect — cannot verify the mandatory plugin set."
+    }
+    $missingPlugins = @()
+    foreach ($plugin in @(Get-RequiredGstPlugin)) {
+        $global:LASTEXITCODE = 0
+        $null = & $gstInspect $plugin.Name 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' present ($($plugin.Provides))"
+        } else {
+            log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' MISSING — $($plugin.Why)"
+            $missingPlugins += $plugin
         }
+    }
+    $global:LASTEXITCODE = 0
+    if ($missingPlugins.Count -gt 0) {
+        $detail = ($missingPlugins | ForEach-Object { "$($_.Name) (needs pkg-config: $($_.NeedsPc -join ', '))" }) -join '; '
+        if ($SkipPluginGate) {
+            log "WARNING: mandatory plugins missing but -SkipPluginGate was passed: $detail"
+            log 'WARNING: this image is NOT shippable.'
+        } else {
+            throw ("mandatory GStreamer plugin(s) MISSING from the install: $detail. " +
+                'The build reached this point, so the dependency resolved at configure time and the plugin ' +
+                "failed to compile or to load — check meson-setup/compile logs in $resolvedLogDir for that plugin's " +
+                'subdir. Do NOT "fix" this by relaxing the meson feature back to auto; that is what shipped an ' +
+                'image without opencv and libav for months. Deliberate exception: -SkipPluginGate.')
+        }
+    } else {
+        log "All $(@(Get-RequiredGstPlugin).Count) mandatory GStreamer plugins verified present."
     }
 
     # ---- 9. cleanup ----

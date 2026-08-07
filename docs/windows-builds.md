@@ -168,6 +168,61 @@ Dockerfile) to keep the `C:\temp\*-src` build trees for debugging; by default
 each build script removes its source tree after installing so the trees don't
 bloat the image layers.
 
+### Mandatory GStreamer plugins (the contract)
+
+`libav`, `opencv` and `onnx` are **required** in a shipped image. They were
+absent from the published `winamd64` for months and nothing was red: meson's
+`auto` feature state means *skip silently when the dependency is missing*, the
+build logged `[INFO] not available`, and the healthcheck printed `[PASS]` for
+plugins that did not exist.
+
+The set lives in **one** place — `Get-RequiredGstPlugin`
+(`windows/scripts/modules/WindowsScripts.Shared.psm1`) — and is enforced at four
+points that used to disagree:
+
+| Where | What it does | On failure |
+|---|---|---|
+| pre-flight, `build-gstreamer-from-source.ps1` | emits the missing `.pc` files, disables `FFmpeg.wrap`, resolves every required pkg-config module | **throws in seconds**, before a ~1 h configure+compile |
+| meson setup | `-Dlibav=enabled`, `-Dgst-plugins-bad:opencv=enabled`, `-Dgst-plugins-bad:onnx=enabled` | configure fails loudly instead of skipping |
+| post-install gate | `gst-inspect-1.0 <plugin>` for the whole set | **throws** — proves the plugin loads, not just that it configured |
+| smoke test | same set, as assertions | **fails** the suite |
+
+Three unrelated root causes, diagnosed against gstreamer 1.29.2 sources:
+
+- **opencv** — `dependency('opencv4', '>= 4.0.0')`. OpenCV installs no `.pc`
+  unless `OPENCV_GENERATE_PKGCONFIG` is set, and it would be named `opencv5.pc`
+  anyway. Upstream dropped the old `< 4.x` upper bound, so OpenCV 5 is
+  version-acceptable — it just needs a file under the name meson looks up.
+- **onnx** — `dependency('libonnxruntime', '>= 1.16.1')` then `subdir_done()`.
+  ORT ships no `.pc` on any platform.
+- **libav** — nothing to do with `.pc` files. `subprojects/FFmpeg.wrap`
+  *provides* the four `libav*` modules pinned to **FFmpeg 7.1.1**, and
+  `-Dwrap_mode=forcefallback` **forces** meson to use it, so pkg-config was
+  never consulted: the build was fetching and compiling a second, older FFmpeg
+  instead of the `n9.0` it had just built. Even succeeding would have shipped
+  gst-libav linked against a different FFmpeg than the image's own `ffmpeg.exe`.
+  The wrap is now moved aside before configure.
+
+Both `.pc` files are authored by the **merge** stage, not by the OpenCV/ONNX
+builds: those are the two most expensive layers in the chain (~30 and ~75
+minutes) and emitting a text file is not worth invalidating them. The emitter
+reads the canonical env contract (`OPENCV_ROOT`, `OPENCV_LIB`, `ONNX_ROOT`,
+`ONNX_VERSION`) that the merge image already defines, finds the header root
+rather than assuming it, and enumerates link names from the actual `lib`
+directory so an OpenCV module-list change cannot rot into a link error.
+
+> **`tensorfilter` is not a GStreamer plugin.** It is an NNStreamer element and
+> this repo does not build NNStreamer; it appeared in the old probe lists purely
+> because the lying healthcheck "found" it. Requiring it would fail every build
+> forever. Wanting it means adding an NNStreamer source-build stage.
+
+> **Unproven until the next build:** whether `gst-libav` compiles against FFmpeg
+> **9.0**. Upstream pins its wrap to 7.1.1, so 9.0 is untested territory and API
+> removals in FFmpeg 8/9 may need source patches. The constraints have no upper
+> bound, so it is allowed to try — and it will now fail loudly rather than
+> silently dropping the plugin. `-SkipPluginGate` gets an image out while that
+> is iterated on; such an image is by definition not shippable.
+
 ### Toolchain pins and the provenance manifest
 
 Everything that **produces or shapes compiled output** is pinned in

@@ -650,6 +650,48 @@ function Resolve-NormalizedPath {
     return $resolved.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
 }
 
-Export-ModuleMember -Function Resolve-WorkspacePath, Resolve-NormalizedPath
+function Get-RequiredGstPlugin {
+    # THE contract for which GStreamer plugin integrations must exist in a
+    # shipped image. Lives in the universally-available module on purpose: the
+    # GStreamer build script gates on it, the smoke test asserts it, and the
+    # healthcheck reports it — three places that MUST agree. They previously did
+    # not, and the cost was 2026-07-11: `gst-inspect-1.0 opencv|libav` exited -1
+    # in the published winamd64 image while the healthcheck printed [PASS] for
+    # them. Nothing ever failed; the image simply shipped without the plugins.
+    #
+    # Each entry carries WHY it is mandatory and what supplies it, because a bare
+    # name gives a future maintainer no way to judge a removal request.
+    #
+    # NOT in this list, deliberately:
+    #   tensorfilter — an NNStreamer element, NOT a GStreamer plugin. This repo
+    #     does not build NNStreamer, so it was never going to exist; it appeared
+    #     in the old probe lists purely because the lying healthcheck "found" it.
+    #     Requiring it would make every build fail forever. If NNStreamer is
+    #     wanted, that is a new source-build stage, not a plugin gate entry.
+    [CmdletBinding()]
+    param()
+    return @(
+        [pscustomobject]@{
+            Name     = 'libav'
+            Provides = 'avdec_* / avenc_* / avmux_* — the FFmpeg codec bridge'
+            NeedsPc  = @('libavcodec', 'libavformat', 'libavutil', 'libavfilter')
+            Why      = 'the single largest codec surface in the image; without it GStreamer decodes almost nothing this build claims to support'
+        },
+        [pscustomobject]@{
+            Name     = 'opencv'
+            Provides = 'cvtracker, cvdilate, cvlaplace, faceblur, … CV filter elements'
+            NeedsPc  = @('opencv4')
+            Why      = 'the reason OpenCV 5 is built from source into this image at all — the CV pipeline elements are the consumer'
+        },
+        [pscustomobject]@{
+            Name     = 'onnx'
+            Provides = 'onnxinference — ONNX Runtime inference inside a pipeline'
+            NeedsPc  = @('libonnxruntime')
+            Why      = 'the inference path of the media stack; ORT is built with CUDA/DML/TensorRT EPs specifically so pipelines can use it'
+        }
+    )
+}
+
+Export-ModuleMember -Function Resolve-WorkspacePath, Resolve-NormalizedPath, Get-RequiredGstPlugin
 
 
