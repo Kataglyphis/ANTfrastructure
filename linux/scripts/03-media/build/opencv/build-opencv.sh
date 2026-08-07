@@ -113,7 +113,7 @@ configure_opencv_build_env() {
     # Resolve GCC version if not already set in the environment
     if [ -z "${GCC_VERSION:-}" ]; then
         local _gcc_dir
-        _gcc_dir="$(ls -d /opt/gcc-*/bin 2>/dev/null | sort -V | tail -1)"
+        _gcc_dir="$(ls -d /opt/gcc-*/bin 2>/dev/null | sort -V | tail -1 || true)"
         if [ -n "${_gcc_dir}" ]; then
             GCC_VERSION="${_gcc_dir#/opt/gcc-}"
             GCC_VERSION="${GCC_VERSION%/bin}"

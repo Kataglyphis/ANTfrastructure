@@ -339,6 +339,10 @@ append_common_cross_cmake_args() {
     [ -n "${target_python_library}" ] && out_args_ref+=("-DPython3_LIBRARY=${target_python_library}" "-DPYTHON_LIBRARY=${target_python_library}")
     [ -n "${host_numpy_include}" ] && out_args_ref+=("-DNUMPY_INCLUDE_DIR=${host_numpy_include}")
     [ -n "${qemu_runner}" ] && out_args_ref+=("-DCMAKE_CROSSCOMPILING_EMULATOR=${qemu_runner}")
+    # Explicit success: without it, an empty qemu_runner makes the AND-list
+    # above this function's exit status (1), and set -e in the callers turns
+    # "no emulator configured" into a bogus build failure.
+    return 0
 }
 
 git_clone_ref() {

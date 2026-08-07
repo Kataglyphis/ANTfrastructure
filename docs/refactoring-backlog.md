@@ -853,6 +853,77 @@ Also worth hardening: `Assert-PkgConfigModule` currently only runs
 minimum versions the consumers demand would move this failure from meson's
 configure output into the pre-flight, where it names itself.
 
+<<<<<<< HEAD
+## 2026-08-07 — Linux toolchain closure audit (during the amd64 from-base run)
+
+Agent-audited while the compiler stage was building. Everything below touches
+the compiler closure (per-file bind mounts + the 01-core/02-toolchain bundle
+COPY) unless marked otherwise — **apply as ONE batched commit before the next
+planned full rebuild**, never piecemeal: every closure touch = new compiler
+digest = full downstream rebuild. NOTE the bundle COPY makes the ENTIRE 01-core
+directory closure-relevant, including files like resource-monitor.sh that no
+RUN step mounts.
+
+### Headline: the ccache wiring is inverted — that's why rebuilds don't speed up
+
+- **GCC RUN mounts /var/cache/ccache but nothing ever execs ccache.** gcc.sh
+  never passes `--ccache` (host :192, cross :227, Canadian :310), so
+  build-gcc.sh's wiring block (gated `USE_CCACHE=1`) never fires. The cache is
+  mounted, empty in, empty out. — S · ★★★
+- **LLVM RUN wires ccache (CMAKE_*_COMPILER_LAUNCHER) but mounts NO cache dir**
+  (Dockerfile.toolchain:126-128) → zero reuse, and ccache writes land in the
+  image layer. Add the ccache+sccache cache mounts. — S · ★★★
+- **Host GCC bootstraps** (`--enable-bootstrap`): stages 2/3 are compiled by the
+  just-built xgcc, invisible to ccache. `--with-build-config=bootstrap-ccache`
+  keeps the self-check and routes stages 2/3 through ccache. — S · ★★
+- **Canadian path can never use ccache**: guard `[ -z "${HOST_TRIPLET}" ]` at
+  build-gcc.sh:199 excludes it, and CC is re-defaulted later at :600. Prefix
+  ccache at the defaulting site; set CC_FOR_BUILD too. — S · ★★★
+- **No CCACHE_BASEDIR / SLOPPINESS** → per-target BUILD_DIRs make identical TUs
+  hash differently; even a warm cache would mostly miss. — S · ★★
+- compiler-cache.sh (01-core) documents itself as the ccache entry point but is
+  sourced ONLY by 03-media — it has no bearing on the toolchain stage. Add a
+  header note naming its real consumers (signpost fix, prevents this misread).
+
+### Parallel per-target GCC builds (~30 % of the GCC RUN, ~1 h at 3 targets)
+
+Host GCC must stay first (alternatives registration). Then arm64 ∥ riscv64:
+1. Hoist `install_cross_gcc_sysroot_packages` (apt) into a serial pre-pass —
+   concurrent callbacks collide on the dpkg lock (hard blocker).
+2. Reuse run_parallel_arch_loop (parallel-loop.sh; add it to the three mount
+   lists) + per-target log files, else failures are unattributable.
+3. Fix the jobs math first: BUILD_MEM_DIVISOR divides RAM only; concurrent
+   targets each request full nproc (gcc.sh passes JOBS=$(nproc)) → CPU
+   oversubscription. Apply the divisor to cores in compute_jobs.
+GCC_TARBALL_CACHE_DIR is already concurrency-safe (atomic rename); BUILD_DIRs
+are disjoint; cross builds already --skip-system-registration. Peak disk ~2×.
+
+### Next-rebuild breakers / hardening
+
+- Dockerfile.toolchain:161,166: LLVM_CROSS_SOURCE_ROOT + llvm-src cache mount
+  are ignored by build-clang.sh (:148 uses LLVM_BUILD_ROOT) — the ~2 GB clone
+  is paid twice when the source path triggers. Honour it as the work root.
+- repos.sh:38-48 `llvm_repo_available` dies on any non-200/404 (503/timeout
+  kills a multi-hour layer). Treat 5xx/000 as "unavailable → source build".
+- cmake.sh:6,17,21: CMAKE_VERSION default AND both SHA256 fallbacks hardcoded,
+  invisible to verify-arg-consistency.sh → next CMake bump can fail as a bogus
+  "checksum mismatch". Fail loudly when version is set but SHA is not.
+- Shell-side version fallbacks drift silently (gcc.sh:429-433 "16.2.0"/"15.2.0",
+  common.sh llvm_release_version "22.1.8"): extend verify-arg-consistency.sh
+  (checker itself is closure-free) to diff these literals too.
+- build-gcc.sh:576-581: riscv64 `--with-isa-spec=20191213` still never validated
+  on real hardware — batch an on-device assemble smoke into the next rebuild.
+- build-helpers.sh sits in all three heavy mount lists solely for
+  strip_elf_tree (used once, build-clang.sh:304; bootstrap.sh already carries a
+  fallback). Move strip_elf_tree into bootstrap.sh, drop the three mounts →
+  host-orchestrator edits stop busting the GCC layer. (Bundling move, not dedup.)
+- Latent IFS class (safe today, both compiler-closure): vulkan.sh:161 and
+  llvm-cross.sh:164 iterate `${var//:/ }` — breaks if ever sourced from a
+  strict-IFS script. Switch to `IFS=':' read -r -a`. Also reword the
+  build-helpers.sh:54 doc comment that recommends the broken idiom.
+- resource-monitor.sh:133: `pgrep -c` exits 1 on no match → sampler dies under
+  errexit on an idle tick. `|| true` it. (01-core → still closure via bundle COPY.)
+=======
 ### P8 — harvested from the litert/tvm stages of the same run (observability + log volume)
 
 - **`WARNING: 5 lib stub(s) could not be created` names none of the five.**
@@ -887,23 +958,4 @@ configure output into the pre-flight, where it names itself.
   `-w` — the point is to silence known upstream noise, not our own diagnostics.
   Each suppression should carry the count it removes, so a future reader can
   judge whether it still earns its place.
-
-### P9 — the FFmpeg .pc gate is inline script code with no unit test
-
-Verifying it before the build reached it (2026-08-07) meant extracting the block
-out of `build-ffmpeg-from-source.ps1` by string offsets and executing it against
-fixtures. That worked — it confirmed the rewrite (5 files), the pass on a valid
-`.pc`, the rejection of `Version: ..` and the by-name report of a missing module
-— but the harness kept running into trailing statements needing unrelated script
-variables (`$ffmpegDir`, `$SourceDir`), and cutting more precisely unbalances the
-braces so the scriptblock will not parse.
-
-That friction IS the finding: gate logic worth trusting is worth extracting.
-`Assert-FfmpegPkgConfig -PkgConfigDir -WindowsPrefix -MsysPrefix` would be
-directly unit-testable next to the other gates.
-
-The obvious home, `WindowsSourceBuild.Common.psm1`, is the WRONG one: it sits in
-the media compile closure, so editing it re-runs all six media compiles. Put it
-in a merge/ffmpeg-scoped module the way `WindowsGstPlugins.Common.psm1` was
-carved out for exactly this reason, and add it to the ffmpeg stage's mount list
-only.
+>>>>>>> b7c9751d65f74ab744bc499720d78ed622ed4a8a

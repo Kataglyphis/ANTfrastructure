@@ -459,7 +459,9 @@ exit $rc'; then
       if [ -z "${_llvm_release}" ]; then
         local _venv
         _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
-        [ -f "${_venv}" ] && _llvm_release="$(grep -E '^LLVM_RELEASE=' "${_venv}" | head -1 | cut -d= -f2)"
+        # `|| true`: under set -euo pipefail an absent key would abort the whole
+        # smoke with no summary; the explicit fail below reports it instead.
+        [ -f "${_venv}" ] && _llvm_release="$(grep -E '^LLVM_RELEASE=' "${_venv}" | head -1 | cut -d= -f2 || true)"
       fi
       if [ -z "${_llvm_release}" ]; then
         fail "clang-version smoke: could not resolve LLVM_RELEASE (env or versions.env)"

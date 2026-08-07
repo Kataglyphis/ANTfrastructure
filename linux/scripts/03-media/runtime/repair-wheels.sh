@@ -43,7 +43,7 @@ echo "Running auditwheel repair on native wheels..."
 REPAIRED_WHEELS_DIR="${WHEELS_DIR}/repaired"
 
 uv pip install auditwheel patchelf
-runtime_ld_path="$(find /opt /usr/local -type d \( -name 'lib*' -o -name '*linux-gnu*' \) | sort -u | paste -sd ':' -)"
+runtime_ld_path="$(find /opt /usr/local -type d \( -name 'lib*' -o -name '*linux-gnu*' \) 2>/dev/null | sort -u | paste -sd ':' - || true)"
 export LD_LIBRARY_PATH="${runtime_ld_path}:${LD_LIBRARY_PATH:-}"
 
 mkdir -p "${REPAIRED_WHEELS_DIR}"
@@ -86,7 +86,14 @@ if [ "${#_aw_retag_skipped[@]}" -gt 0 ]; then
 fi
 
 rm -f "${WHEELS_DIR}"/*.whl
-shopt -s nullglob
-mv "${REPAIRED_WHEELS_DIR}"/*.whl "${WHEELS_DIR}/"
-shopt -u nullglob
+# Guard the glob explicitly: under nullglob a zero-match glob degenerates the
+# mv to one argument, which aborts the script right after it deleted the
+# original wheels.
+if compgen -G "${REPAIRED_WHEELS_DIR}/*.whl" > /dev/null; then
+  shopt -s nullglob
+  mv "${REPAIRED_WHEELS_DIR}"/*.whl "${WHEELS_DIR}/"
+  shopt -u nullglob
+else
+  echo "WARNING: no repaired wheels produced in ${REPAIRED_WHEELS_DIR}" >&2
+fi
 rmdir "${REPAIRED_WHEELS_DIR}" 2>/dev/null || true
