@@ -77,6 +77,23 @@ COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --link --from=artifact-source /opt/android /opt/android
 COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
+
+# The pinned Rust toolchain. install-rust.sh puts it in /usr/local/{cargo,rustup}
+# back in Dockerfile.toolchain, and the ENV block below already declares
+# CARGO_HOME, RUSTUP_HOME and /usr/local/cargo/bin on PATH - but nothing ever
+# copied the directories here, because every other artifact lives under /opt and
+# this pair does not. The ENV therefore pointed at empty paths.
+#
+# What that produced, measured in :latest-cross on 2026-08-07: no
+# /usr/local/rustup at all, /usr/local/cargo/bin/cargo a symlink to /bin/cargo,
+# and the image running Ubuntu's rustc 1.93.1 while versions.env pins
+# RUST_VERSION=1.97.1. wire_cargo_symlinks() did not cause it - it found no
+# toolchain at the configured location and linked the apt debs instead, which
+# is its documented fallback. A consumer then hit
+# "rustc 1.93.1 is not supported by ... requires rustc 1.95" on a dependency
+# whose floor the pinned toolchain clears easily.
+COPY --link --from=artifact-source /usr/local/rustup /usr/local/rustup
+COPY --link --from=artifact-source /usr/local/cargo /usr/local/cargo
 # The SDK stage cross-compiles a native Clang 22.1.8 toolchain for the
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.

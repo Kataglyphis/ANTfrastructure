@@ -559,7 +559,53 @@ function Resolve-PreferredTool {
     return $toolPath
 }
 
+# ── Tool guards ───────────────────────────────────────────────────────────────
+# Assert-Command lived as a private copy in windows/scripts/rust/
+# New-MsixPackage.ps1, windows/scripts/smoke-test-container.ps1 and a
+# consumer's Build-Windows.ps1, all three identical. One home now.
+#
+# There is deliberately NO general Resolve-Executable here. Both the
+# ContainerHub scripts above and the consumer carried one, and all of them
+# `Get-ChildItem -Recurse` the whole Windows Kits tree to find an SDK tool.
+# WindowsMsix.Common's Resolve-WindowsSdkToolPath already does that job
+# properly - honouring an explicit override, then VsDevCmd's
+# WindowsSdkVerBinPath / WindowsSdkBinPath / WindowsSDKVersion, and only then
+# scanning, newest version first, without recursing. Adding a fourth variant
+# here would have been the opposite of consolidating; use that one.
+
+function Assert-Command {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [string]$InstallHint
+    )
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        throw "$Name not found. $InstallHint"
+    }
+}
+
+# PowerShell twin of linux/scripts/02-toolchain/rust/version_util.sh
+# --normalize, with ONE deliberate difference: the bash side falls back to
+# 0.1.0.0 for anything it cannot parse (it runs unattended in an image build),
+# while this THROWS - a packaging step handed a malformed version should stop,
+# not silently ship 0.1.0.0.
+#
+# Named ConvertTo-* rather than the consumer's original Normalize-Version:
+# "Normalize" is not an approved PowerShell verb, and an unapproved one in a
+# SHARED module makes Import-Module warn in every consumer that loads it.
+function ConvertTo-NormalizedVersion {
+    param([Parameter(Mandatory)][string]$RawVersion)
+
+    $segments = $RawVersion.Split('.')
+    if ($segments.Count -eq 3) { return "$RawVersion.0" }
+    if ($segments.Count -ne 4) {
+        throw "Version '$RawVersion' is invalid. Use Major.Minor.Build or Major.Minor.Build.Revision"
+    }
+    return $RawVersion
+}
+
 Export-ModuleMember -Function @(
+    'Assert-Command',
+    'ConvertTo-NormalizedVersion',
     'Add-DirectoryToPath',
     'Add-DirectoriesToPath',
     'Get-PreferredToolPath',
