@@ -79,7 +79,14 @@ COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
 COPY linux\scripts\01-core\versions.env C:\temp\
 RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 
-# Needs load-versions first: pins scoop's llvm/git installs (LLVM_RELEASE/GIT_VERSION).
+# Needs load-versions first: setup-scoop-tools reads GIT_VERSION (+ the
+# GIT_WINDOWS_INSTALLER_SHA256 pin) and FLUTTER_VERSION from the baked env.
+# Git is pinned, but NOT through scoop — the script builds the git-for-windows
+# release URL from GIT_VERSION and verifies the installer hash. LLVM is
+# DELIBERATELY UNPINNED (scoop's latest; versions.env's LLVM_RELEASE pins only
+# the Linux lane, and the smoke test asserts a well-formed clang-cl version
+# rather than that value) — see the comment at the call site in
+# setup-scoop-tools.ps1. This comment used to claim scoop pinned both.
 # The Vulkan/CMake pins are declared HERE (not at the top): every RUN after an
 # ARG declaration keys its cache on the ARG's value, so declaring them above the
 # VS layer made a Vulkan/CMake bump re-pay the VS Build Tools install. Declared
