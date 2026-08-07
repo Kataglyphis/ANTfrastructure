@@ -318,11 +318,33 @@ function Invoke-BuildOptional {
         [string]$Name
     )
 
+    # Registers the step with $Context. The old body was a bare try/catch that
+    # never touched $Context.Results, so an optional step could not appear in
+    # the summary AT ALL -- not as succeeded, not as failed, not in the
+    # durations. A consumer run with a failing MSI step and a failing license
+    # check still reported "7 steps, 7 succeeded, 0 failed (100% success rate)".
+    #
+    # This mirrors Invoke-BuildStep -AllowFailure instead of calling it, on
+    # purpose: Invoke-BuildStep returns $true/$false, while this function has
+    # always returned nothing and passed the script block's own output straight
+    # through. Delegating would either inject a stray boolean into that output
+    # or, piped to Out-Null, swallow the tool output the caller wants to read.
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     try {
         & $Script
+        $stopwatch.Stop()
+        $Context.Results.Succeeded.Add($Name) | Out-Null
     } catch {
+        $stopwatch.Stop()
+        $Context.Results.Errors[$Name] = $_.Exception.Message
+        $Context.Results.AllowedFailures.Add($Name) | Out-Null
         Write-BuildLogWarning -Context $Context -Message "$Name failed, continuing. Details: $($_.Exception.Message)"
     }
+
+    if ($null -eq $Context.Results.Durations) {
+        $Context.Results.Durations = [ordered]@{}
+    }
+    $Context.Results.Durations[$Name] = $stopwatch.Elapsed.TotalSeconds
 }
 
 function Invoke-BuildStep {
@@ -430,9 +452,18 @@ function Write-BuildSummary {
     }
 
     Write-BuildLog -Context $Context -Message ""
-    $total = $Context.Results.Succeeded.Count + $Context.Results.Failed.Count
+    # Allowed failures MUST count towards the total. Leaving them out made the
+    # headline read "100% success rate" on runs where non-gating steps had
+    # failed -- the exact number someone skims instead of reading the log.
+    $allowedCount = if ($null -ne $Context.Results.AllowedFailures) { $Context.Results.AllowedFailures.Count } else { 0 }
+    $total = $Context.Results.Succeeded.Count + $Context.Results.Failed.Count + $allowedCount
     $successRate = if ($total -gt 0) { [math]::Round(($Context.Results.Succeeded.Count / $total) * 100, 1) } else { 0 }
-    Write-BuildLog -Context $Context -Message "Total: $total steps, $($Context.Results.Succeeded.Count) succeeded, $($Context.Results.Failed.Count) failed ($($successRate)% success rate)"
+    $summaryLine = "Total: $total steps, $($Context.Results.Succeeded.Count) succeeded, $($Context.Results.Failed.Count) failed"
+    if ($allowedCount -gt 0) {
+        $summaryLine += ", $allowedCount failed but allowed"
+    }
+    $summaryLine += " ($($successRate)% success rate)"
+    Write-BuildLog -Context $Context -Message $summaryLine
 
     if ($null -ne $Context.Results.Durations -and $Context.Results.Durations.Count -gt 0) {
         Write-BuildLog -Context $Context -Message ""
