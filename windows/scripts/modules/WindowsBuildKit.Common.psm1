@@ -47,15 +47,20 @@ function Get-CniNatSubnetDrift {
         against the live 'vEthernet (nat)' adapter address.
     #>
     param(
-        # BOTH CNI forms, most-preferred first. The host standardises on the
-        # .conflist because nerdctl cannot parse a bare .conf: it indexes
-        # plugins[0] without a length check and PANICS (index out of range)
-        # on the single-plugin form — in `network create` (netutil_windows.go:40)
-        # and again in `run` (container_network_manager.go:857). containerd and
-        # BuildKit read either form, so converting costs them nothing.
-        # Checking both matters because this function's "file absent = nothing
-        # to judge" contract turns it into a silent no-op on the wrong name —
-        # exactly what happened on 2026-08-07 when the .conf was renamed.
+        # BOTH CNI forms, most-preferred first. nerdctl cannot parse a bare
+        # .conf: it indexes plugins[0] without a length check and PANICS (index
+        # out of range) on the single-plugin form — in `network create`
+        # (netutil_windows.go:40) and again in `run`
+        # (container_network_manager.go:857).
+        # CORRECTION (measured 2026-08-07): the earlier claim here that "BuildKit
+        # reads either form" is FALSE. With only the .conflist present, buildkitd
+        # gave its containers NO network adapter at all. BOTH files must exist —
+        # see Get-CniConfFormIssue, which is the check for that; THIS function
+        # only judges subnet drift and passed happily while the lane had no
+        # network, because drift and absence are different failures.
+        # Checking both names still matters here: this function's "file absent =
+        # nothing to judge" contract would otherwise make it a silent no-op on
+        # whichever name happens to be missing.
         [string[]]$ConfPath = @(
             'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist',
             'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf'
@@ -87,4 +92,67 @@ function Get-CniNatSubnetDrift {
             "$where to the adapter's subnet (e.g. gateway $AdapterIp), then Restart-Service buildkitd -Force.")
 }
 
-Export-ModuleMember -Function Test-IpInSubnet, Get-CniNatSubnetDrift
+function Get-CniConfFormIssue {
+    <#
+    .SYNOPSIS
+        Detects a CNI conf present under the WRONG FILENAME for the buildctl
+        lane. Returns $null when healthy, else a ready-to-throw diagnosis.
+    .DESCRIPTION
+        MEASURED 2026-08-07, and it cost a launched chain: with ONLY
+        0-containerd-nat.conflist present, buildkitd gives its containers NO
+        NETWORK ADAPTER AT ALL. Not a DNS problem — a probe container showed an
+        empty `ipconfig`, and a raw TCP connect to a literal GitHub IP failed
+        with "unreachable network". The containerd debug log confirmed it: the
+        HcsCreateComputeSystem spec for buildkitsandbox carried Storage,
+        MappedDirectories and MappedPipes but no networking block. Restoring
+        0-containerd-nat.conf (keeping the .conflist) and restarting buildkitd
+        fixed it immediately: IPv4 172.31.44.107, gateway 172.31.32.1, DNS
+        192.168.188.1, github.com resolved.
+
+        So the two clients genuinely disagree, and the repo's earlier claim that
+        "containerd and BuildKit read either form" is FALSE:
+          * buildkitd needs the .conf  — it does not pick up a .conflist-only dir
+          * nerdctl needs the .conflist — it indexes plugins[0] with no length
+            check and PANICS on the single-plugin .conf form
+        Therefore BOTH files must exist. Keeping them in sync is the price of
+        having both lanes.
+
+        The subnet-drift guard cannot catch this: it checks whichever form it
+        finds and passed happily while the lane had no network at all. Different
+        failure, different check.
+    #>
+    param(
+        [string]$ConfDir = 'C:\Program Files\containerd\cni\conf',
+        [string]$BuildkitConfName = '0-containerd-nat.conf',
+        [string]$NerdctlConfName = '0-containerd-nat.conflist',
+        # Test seam: when set, these override the on-disk probes.
+        [Nullable[bool]]$BuildkitConfExists = $null,
+        [Nullable[bool]]$NerdctlConfExists = $null
+    )
+    $bkPath = Join-Path $ConfDir $BuildkitConfName
+    $ndPath = Join-Path $ConfDir $NerdctlConfName
+    $haveBk = if ($null -ne $BuildkitConfExists) { [bool]$BuildkitConfExists } else { Test-Path $bkPath }
+    $haveNd = if ($null -ne $NerdctlConfExists) { [bool]$NerdctlConfExists } else { Test-Path $ndPath }
+
+    if (-not $haveBk -and -not $haveNd) {
+        return ("No CNI nat conf found in $ConfDir. BuildKit RUN steps will have NO network adapter and the first " +
+            'downloading step dies with "Could not resolve host". Fix (admin): install both forms — see ' +
+            'docs/windows-builds.md § BuildKit/containerd lane, step 2.')
+    }
+    if (-not $haveBk) {
+        return ("CNI conf present as .conflist ONLY ($ndPath) — buildkitd does not pick that up and will give " +
+            "containers NO NETWORK ADAPTER (measured 2026-08-07: empty ipconfig, 'unreachable network' on a raw " +
+            "TCP connect, no networking block in the HCS spec). nerdctl needs the .conflist, so keep it and ADD " +
+            "the .conf. Fix (admin): Copy-Item '$ndPath' '$bkPath'  # or restore the .conf.disabled backup, then " +
+            'edit it back to the single-plugin form; then Restart-Service buildkitd -Force.')
+    }
+    if (-not $haveNd) {
+        # Not fatal for THIS lane — the buildctl chain works on the .conf alone.
+        # Reported so the nerdctl lane's absence is a known state, not a surprise
+        # the next time someone needs `nerdctl images`.
+        return $null
+    }
+    return $null
+}
+
+Export-ModuleMember -Function Test-IpInSubnet, Get-CniNatSubnetDrift, Get-CniConfFormIssue

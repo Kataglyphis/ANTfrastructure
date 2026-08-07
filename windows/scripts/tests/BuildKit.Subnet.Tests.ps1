@@ -74,3 +74,37 @@ Describe 'Get-CniNatSubnetDrift' {
         Assert-True ($null -eq (Get-CniNatSubnetDrift -ConfText '{ "ipam": { "subnet": "172.20.0.0/16" } }' -AdapterIp $null)) 'no adapter = no judgement'
     }
 }
+
+Describe 'Get-CniConfFormIssue (wrong-filename guard)' {
+
+    # 2026-08-07: the .conf was renamed to .conflist to stop nerdctl panicking,
+    # and buildkitd silently lost container networking — empty ipconfig,
+    # "unreachable network" on a raw TCP connect, no networking block in the HCS
+    # spec. The drift guard passed green throughout, because drift and absence
+    # are different failures. These cases pin the distinction.
+
+    It 'passes when BOTH forms are present (the only healthy state)' {
+        Assert-Null (Get-CniConfFormIssue -BuildkitConfExists $true -NerdctlConfExists $true) `
+            'both files present = both lanes work'
+    }
+
+    It 'FAILS on conflist-only — the exact 2026-08-07 shape' {
+        $issue = Get-CniConfFormIssue -BuildkitConfExists $false -NerdctlConfExists $true
+        Assert-NotNull $issue 'conflist-only must be reported'
+        Assert-Match 'NO NETWORK ADAPTER' $issue 'the message must name the actual symptom'
+        Assert-Match 'Restart-Service buildkitd' $issue 'the message must carry the fix'
+    }
+
+    It 'FAILS when no conf exists at all' {
+        $issue = Get-CniConfFormIssue -BuildkitConfExists $false -NerdctlConfExists $false
+        Assert-NotNull $issue 'a missing conf is fatal for this lane'
+        Assert-Match 'No CNI nat conf found' $issue
+    }
+
+    It 'does NOT fail the buildctl lane on conf-only (nerdctl absence is not this lane s problem)' {
+        # The chain builds fine on the .conf alone; only nerdctl breaks. Failing
+        # here would block builds for a tool the build does not use.
+        Assert-Null (Get-CniConfFormIssue -BuildkitConfExists $true -NerdctlConfExists $false) `
+            'conf-only must not block the buildctl lane'
+    }
+}

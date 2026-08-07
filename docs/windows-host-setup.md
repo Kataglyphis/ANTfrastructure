@@ -127,20 +127,34 @@ new subnet (the driver's preflight fail-fasts on drift with the exact fix).
 }
 ```
 
-**Why conflist and not conf (measured 2026-08-07):** containerd and BuildKit
-read either form, but **nerdctl cannot parse a bare `.conf`** — it indexes
-`plugins[0]` with no length check and PANICS with `index out of range [0] with
-length 0`, both in `network create` (`netutil_windows.go:40`) and in `run`
-(`container_network_manager.go:857`). With the single-plugin form installed,
-`nerdctl run` is unusable on this host; converting the same config to conflist
-form fixed it immediately (container came up on `172.31.42.105`, gateway
-`172.31.32.1`) and a BuildKit network canary stayed green (sccache HTTP 200 +
-external DNS resolve from inside a RUN step). Use conflist on every machine.
+**Install BOTH forms — conf AND conflist (corrected 2026-08-07, same day, after
+the conflist-only state cost a launched chain).** Same content, two filenames:
+
+- **`0-containerd-nat.conflist`** is required by **nerdctl**, which cannot parse
+  a bare `.conf` — it indexes `plugins[0]` with no length check and PANICS with
+  `index out of range [0] with length 0`, both in `network create`
+  (`netutil_windows.go:40`) and in `run` (`container_network_manager.go:857`).
+- **`0-containerd-nat.conf`** is required by **buildkitd**. With only the
+  conflist present, BuildKit RUN steps get **no network adapter at all**: a probe
+  container showed an empty `ipconfig`, DNS failed, and a raw TCP connect to a
+  literal GitHub IP returned *"unreachable network"*. The containerd debug log
+  showed the `HcsCreateComputeSystem` spec for `buildkitsandbox` with no
+  networking block. Restoring the `.conf` and `Restart-Service buildkitd -Force`
+  fixed it on the spot: IPv4 `172.31.44.107`, gateway `172.31.32.1`, DNS
+  `192.168.188.1`, `github.com` resolved.
+
+The earlier claim here that "containerd and BuildKit read either form" was
+wrong. The 2026-08-07 conversion fixed nerdctl and silently killed the buildctl
+lane; it went unnoticed because no chain build ran in between. Keep both files,
+and **when you edit one, edit both** — `build-buildkit.ps1` fail-fasts on a
+missing `.conf` (`Get-CniConfFormIssue`), but nothing detects the two drifting
+apart in content.
 
 Verify:
 
 ```pwsh
-Test-Path 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist'  # True
+Test-Path 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist'  # True (nerdctl)
+Test-Path 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf'      # True (buildkitd)
 ipconfig | Select-String -Context 0,4 'vEthernet \(nat\)'                   # subnet matches the conf
 ```
 

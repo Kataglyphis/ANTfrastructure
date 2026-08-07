@@ -121,6 +121,14 @@ if ($LASTEXITCODE -ne 0) { throw 'buildkitd not reachable (service running? user
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildKit.Common.psm1') -Force
 $cniDrift = Get-CniNatSubnetDrift
 if ($cniDrift) { throw $cniDrift }
+# Separate failure, separate check (added 2026-08-07 after it cost a launched
+# chain): the drift guard compares subnets of whatever conf it finds and passed
+# green while buildkitd was handing containers NO network adapter, because the
+# .conf had been renamed to .conflist for nerdctl's benefit. Both files must
+# exist; this catches the wrong-filename case in milliseconds instead of at the
+# first downloading RUN.
+$cniForm = Get-CniConfFormIssue
+if ($cniForm) { throw $cniForm }
 
 # Transient-retry engine context (see the import note above for the pattern).
 # 'failed to reimport snapshot' + 'failed to write compressed diff': hcs-temp

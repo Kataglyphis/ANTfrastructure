@@ -400,11 +400,30 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    "remote name could not be resolved"): `nat.exe` already ships in
    `C:\Program Files\containerd\cni\bin`; install the conf (admin):
 
-   Install it as a **`.conflist`** (plugin-LIST form). containerd and BuildKit
-   read either form, but nerdctl cannot parse a bare `.conf` — it indexes
-   `plugins[0]` with no length check and PANICS (`index out of range [0] with
-   length 0`), so the single-plugin form silently costs you the whole nerdctl
-   lane. Measured and converted 2026-08-07; see § nerdctl lane.
+   **Install BOTH forms — the two clients disagree and each one silently breaks
+   without its own.** Same content, two filenames:
+
+   | File | Needed by | Symptom when missing |
+   |---|---|---|
+   | `0-containerd-nat.conf` (single-plugin) | **buildkitd** | RUN steps get **no network adapter at all** — empty `ipconfig`, `Could not resolve host`, and a raw TCP connect to a literal IP fails with *unreachable network* |
+   | `0-containerd-nat.conflist` (plugin-LIST) | **nerdctl** | panics: indexes `plugins[0]` with no length check → `index out of range [0] with length 0`, in `network create` and again in `run` |
+
+   > **CORRECTION (measured 2026-08-07).** This guide previously claimed
+   > *"containerd and BuildKit read either form"*. **That is false**, and it cost
+   > a launched chain. Converting the `.conf` to a `.conflist` on 2026-08-07
+   > fixed nerdctl and silently killed buildkitd's container networking; nobody
+   > noticed because no chain build ran in between. A probe container showed an
+   > empty `ipconfig` and *unreachable network* on a raw TCP connect, and the
+   > containerd debug log confirmed the `HcsCreateComputeSystem` spec for
+   > `buildkitsandbox` carried Storage, MappedDirectories and MappedPipes but
+   > **no networking block**. Restoring the `.conf` and restarting buildkitd
+   > fixed it immediately (IPv4 `172.31.44.107`, gateway `172.31.32.1`, DNS
+   > `192.168.188.1`, `github.com` resolved).
+   >
+   > `build-buildkit.ps1` now fail-fasts on this in milliseconds
+   > (`Get-CniConfFormIssue`). Note the subnet-drift guard does **not** catch it:
+   > it compares subnets of whichever file it finds and passed green throughout.
+   > Different failure, different check. **When you edit one file, edit both.**
 
    ```jsonc
    // C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist
