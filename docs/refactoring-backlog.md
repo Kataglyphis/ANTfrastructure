@@ -1421,3 +1421,45 @@ task "apply the batched closure refactor". Design decided now:
    published images carry ancestry annotations.
 5. Explicit NON-goals: splitting the big build scripts without functional
    cause; touching the protected repetition.
+### 2026-08-08 (cont) — 🔴 ONNX's CUDA kernels are NOT cached, and never were
+
+Raised by the owner as "with the sccache change ONNX's CUDA code should be
+fully cached now". It is not, and the sccache change is not why.
+
+**`CMAKE_CUDA_COMPILER_LAUNCHER` appears nowhere in this repo.** Only the C and
+CXX launchers are wired, at three sites (`WindowsBuild.Common.psm1:631-632`,
+`WindowsCMake.Common.psm1:289-290`, `WindowsSourceBuild.Common.psm1:176-177`).
+So every `.cu` translation unit goes through nvcc uncached — before the
+two-tier change and after it. The two-tier wiring only accelerates what was
+already cacheable: the C/C++ TUs.
+
+Scale, from this repo's own source (`build-onnx-from-source.ps1:197`):
+
+> ONNX_FORCE_CPU=1 forces a CPU-only ONNX (skips the **~1h CUDA/TensorRT kernel
+> compiles**)
+
+That is very likely the single largest time sink in the chain, entirely
+uncached, every run.
+
+**Fixable — sccache supports nvcc.** Verified against mozilla/sccache's README:
+"sccache includes support for caching the compilation of Assembler, C/C++ code,
+Rust, as well as NVIDIA's CUDA using nvcc", with NVCC listed among the
+supported compilers alongside gcc/clang/MSVC/rustc/NVC++/hipcc.
+
+**Two risks to settle before wiring, both on the most fragile path here:**
+
+1. nvcc's host compiler in this image is `cl.exe`, and the repo already carries
+   a patch that strips clang-cl-only flags out of the `-Xcompiler` block
+   (`ocv_cuda_filter_options`; cl.exe rejects them with D8021). Inserting
+   sccache between CMake and nvcc adds a layer exactly there.
+2. `SCCACHE_CACHE_MULTIARCH` — ONNX builds `CUDA_ARCHITECTURES=80;86;89;90`,
+   i.e. several `-gencode` in one invocation. sccache's Configuration.md
+   mentions the variable in a single clause ("disable caching of multi
+   architecture builds") with no semantics, no default stated, and nothing
+   about correctness across multiple gencodes. Measure; do not assume.
+
+Deliberately NOT wired during the 2026-08-08 proof chain: that run exists to
+green the FFmpeg .pc gate, the four mandatory GStreamer plugins and the warning
+suppressions, and a CUDA-path failure would cost the media stage ~1h in and
+take the proof with it. Wire it immediately after, with sccache stats read
+before and after so the win is a number rather than a claim.
