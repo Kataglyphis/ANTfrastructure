@@ -24,10 +24,34 @@ cd "${REPO_ROOT}" || exit 1
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; BOLD='\033[1m'; NC='\033[0m'
 FAILED=()
 
-# Interpreter for the Python-based checks. Overridable for hosts where plain
-# python3 is unusable (e.g. the Windows Store stub under Git Bash):
+# Interpreter for the Python-based checks. Explicit override always wins:
 #   PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh
-PREFLIGHT_PYTHON="${PREFLIGHT_PYTHON:-python3}"
+#
+# Without one, plain `python3` is NOT trusted on sight. On Windows hosts under
+# Git Bash it is usually the Microsoft Store stub, which prints an install hint
+# and exits non-zero — so the Python-based checks fail for a reason that has
+# nothing to do with the commit. That is not a theoretical concern: it is why
+# the pre-commit hooks stayed unusable (and therefore disabled) on the primary
+# dev clone until 2026-08-08, letting an unresolved merge conflict reach main.
+#
+# So: probe candidates and take the first that can actually RUN something. The
+# stub fails `-c pass` in well under a second, so the cost is negligible.
+if [ -z "${PREFLIGHT_PYTHON:-}" ]; then
+  for _py in python3 python3.14 python3.13 python3.12 python "${HOME}/.local/bin/python3.14.exe"; do
+    if command -v "${_py}" >/dev/null 2>&1 && "${_py}" -c 'pass' >/dev/null 2>&1; then
+      PREFLIGHT_PYTHON="${_py}"
+      break
+    fi
+  done
+  unset _py
+fi
+if [ -z "${PREFLIGHT_PYTHON:-}" ]; then
+  printf "${RED}✗${NC} no working Python found for the Python-based checks.\n" >&2
+  printf "   Tried: python3, python3.14, python3.13, python3.12, python, ~/.local/bin/python3.14.exe\n" >&2
+  printf "   Set PREFLIGHT_PYTHON to a real interpreter, e.g.\n" >&2
+  printf "     PREFLIGHT_PYTHON=\"uv run --no-project python\"\n" >&2
+  exit 1
+fi
 # The Python checks print ✓/✗; on Windows consoles the default cp1252 codec
 # dies on those. Force UTF-8 mode (no-op on Linux).
 export PYTHONUTF8=1

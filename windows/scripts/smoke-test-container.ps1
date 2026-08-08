@@ -44,214 +44,23 @@ $ErrorActionPreference = 'Continue'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-$script:passed = 0
-$script:failed = 0
-$script:skipped = 0
-$script:failureDetails = @()
-# -ExitOnFirstFailure no longer throws (a throw here used to blow straight past the
-# SUMMARY / FAILURE DETAILS dump at the bottom). Instead the first failure sets this
-# flag and every later assert/skip short-circuits, so the run still ends with the
-# full summary and a non-zero exit.
-$script:abortRun = $false
+# Assertion harness (counters, Assert-*/Skip-Test/Write-TestHeader) lives in a
+# module so it can be unit-tested without a built image; the 22 test SECTIONS
+# below stay here, being a linear probe script against the final container.
+# Ships already: windows/Dockerfile COPYs the whole modules dir into the image.
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsSmokeTest.Common.psm1') -Force
 
-function Skip-Test {
-    # One-liner for the repeated [SKIP]-print + counter idiom (was hand-rolled at 15 sites,
-    # where forgetting $script:skipped++ silently under-counted skips).
-    param([Parameter(Mandatory)][string]$Reason)
-    if ($script:abortRun) { return }
-    Write-Host "  [SKIP] $Reason" -ForegroundColor Yellow
-    $script:skipped++
-}
+# Must precede the first assertion: this both zeroes the counters and hands the
+# module the -ExitOnFirstFailure switch. Assert-Test used to read that switch
+# out of this script's scope, which a module cannot see (see the module header).
+Initialize-SmokeTestRun -ExitOnFirstFailure:$ExitOnFirstFailure
+
 # GPU-lane discriminator. The NVIDIA execution-provider / codec probes below (ONNX CUDA + TensorRT
 # EP, GenAI-cuda, OpenCV DNN-CUDA, FFmpeg NVENC) only apply when the image was built on the nvidia
 # lane; without this guard they would FAIL on a legitimate CPU-only image. Keyed on CUDA_ROOT, which
 # the base image sets Machine-wide only on the nvidia lane, and honours -SkipCudaTests. (DirectML is
 # NOT gated here -- it is DX12-based and built unconditionally on Windows, so it is checked always.)
 $script:gpuNvidia = (-not $SkipCudaTests) -and (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('CUDA_ROOT')))
-
-function Write-TestHeader {
-    param([string]$Title)
-    Write-Host "`n========================================" -ForegroundColor Cyan
-    Write-Host "  $Title" -ForegroundColor Cyan
-    Write-Host "========================================" -ForegroundColor Cyan
-}
-
-function Assert-Test {
-    param(
-        [string]$Name,
-        [scriptblock]$Condition,
-        [string]$FailMessage = 'Assertion failed'
-    )
-
-    if ($script:abortRun) { return }
-    try {
-        $result = & $Condition
-        if ($result) {
-            Write-Host "  [PASS] $Name" -ForegroundColor Green
-            $script:passed++
-        } else {
-            Write-Host "  [FAIL] $Name : $FailMessage" -ForegroundColor Red
-            $script:failed++
-            $script:failureDetails += "[FAIL] $Name : $FailMessage"
-            if ($ExitOnFirstFailure) { Request-SmokeAbort }
-        }
-    } catch {
-        Write-Host "  [FAIL] $Name : $($_.Exception.Message)" -ForegroundColor Red
-        $script:failed++
-        $script:failureDetails += "[FAIL] $Name : $($_.Exception.Message)"
-        if ($ExitOnFirstFailure) { Request-SmokeAbort }
-    }
-}
-
-function Request-SmokeAbort {
-    Write-Host '  [ABORT] -ExitOnFirstFailure: short-circuiting all remaining tests (summary follows)' -ForegroundColor Red
-    $script:abortRun = $true
-}
-
-function Assert-CommandExists {
-    param([string]$Name)
-    # GetNewClosure: the scriptblock is invoked inside Assert-Test, whose own $Name
-    # parameter shadows this one under PowerShell's dynamic scoping — without the
-    # closure this evaluated Get-Command "Command 'git' on PATH" and always failed.
-    $commandName = $Name
-    Assert-Test -Name "Command '$Name' on PATH" -Condition { $null -ne (Get-Command $commandName -ErrorAction SilentlyContinue) }.GetNewClosure() -FailMessage "$Name not found on PATH"
-}
-
-function Assert-FileExists {
-    param([string]$Path, [string]$Description = $Path)
-    Assert-Test -Name $Description -Condition { Test-Path $Path -PathType Leaf } -FailMessage "File not found: $Path"
-}
-
-function Assert-DirectoryExists {
-    param([string]$Path, [string]$Description = $Path)
-    Assert-Test -Name $Description -Condition { Test-Path $Path -PathType Container } -FailMessage "Directory not found: $Path"
-}
-
-function Assert-ArtifactPresent {
-    # Assert >=1 file matching $Filter exists under $Root (optionally a $Subdir),
-    # recursively. Collapses the "Get-ChildItem -Recurse then Assert-Test count>0"
-    # idiom repeated across the native-library sections (ONNX/GenAI/OpenCV/LiteRT/
-    # LiteRT-LM/TVM). With -Informational a miss is a [SKIP] (yellow) not a [FAIL]
-    # -- for optional artifacts like LiteRT's DLLs (it builds static by default).
-    param(
-        [string]$Root,
-        [string]$Filter,
-        [string]$Description,
-        [string]$Subdir = '',
-        [switch]$Informational
-    )
-    $searchRoot = if ($Subdir) { Join-Path $Root $Subdir } else { $Root }
-    $count = @(Get-ChildItem -Path $searchRoot -Filter $Filter -Recurse -ErrorAction SilentlyContinue).Count
-    if ($Informational) {
-        if ($count -gt 0) {
-            Write-Host "  [PASS] $Description ($count found)" -ForegroundColor Green
-            $script:passed++
-        } else {
-            Skip-Test "$Description (none found -- optional)"
-        }
-        return
-    }
-    # GetNewClosure: $count is function-local, so Assert-Test's scope can't see it
-    # via dynamic scoping (unlike the script-scope vars used in inline conditions).
-    Assert-Test -Name $Description -Condition { $count -gt 0 }.GetNewClosure() -FailMessage "No file matching '$Filter' found under $searchRoot"
-}
-
-function Assert-NativeLinkRun {
-    # Compile + link + RUN a tiny C++ TU against a native library to prove its
-    # header + import lib + DLL actually work together at runtime. Existence checks
-    # are blind to missing dependent DLLs, CRT mismatches, and ABI breaks -- the
-    # exact 'links clean but is dead' class the litert_lm abseil-ODR bug taught us.
-    # Only meaningful in the final image, where clang-cl and the libs coexist.
-    param(
-        [string]$Name,
-        [string]$WorkName,        # unique temp-dir suffix
-        [string]$Source,          # C++ source text
-        [string[]]$IncludeDirs,
-        [string]$LibDir,
-        [string]$LibName,
-        [string]$DllDir,          # prepended to PATH so the DLL resolves at run
-        [string]$ExpectMatch,     # regex the program's stdout must match
-        [string]$FailMessage
-    )
-    $work = $WorkName; $body = $Source; $incs = $IncludeDirs
-    $ldir = $LibDir; $lname = $LibName; $ddir = $DllDir; $expect = $ExpectMatch
-    Assert-Test -Name $Name -Condition {
-        $d = Join-Path $env:TEMP "kataglyphis-smoke-$work"
-        New-Item -Path $d -ItemType Directory -Force | Out-Null
-        $src = Join-Path $d 'main.cpp'
-        Set-Content -Path $src -Value $body -Encoding ASCII
-        $exe = Join-Path $d 'main.exe'
-        $clangArgs = @($src, '/std:c++17', '/EHsc', '/nologo')
-        foreach ($i in $incs) { $clangArgs += "/I$i" }
-        $clangArgs += @("/Fe$exe", '/link', "/LIBPATH:$ldir", $lname)
-        & clang-cl @clangArgs 2>&1 | Out-Null
-        $ok = $false
-        if (($LASTEXITCODE -eq 0) -and (Test-Path $exe)) {
-            $prev = $env:PATH
-            $env:PATH = "$ddir;$env:PATH"
-            try { $out = (& $exe 2>&1 | Out-String); $code = $LASTEXITCODE } finally { $env:PATH = $prev }
-            $ok = ($code -eq 0) -and ($out -match $expect)
-        }
-        Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
-        return $ok
-    }.GetNewClosure() -FailMessage $FailMessage
-}
-
-function Assert-DllLoads {
-    # LoadLibrary a native DLL (with its own dir + any dependency dirs on PATH) and optionally
-    # GetProcAddress a known export. Proves the DLL AND its full dependent-DLL chain actually
-    # resolve at load time -- the header-agnostic complement to Assert-NativeLinkRun, for libs
-    # whose headers churn across releases (TVM) or whose C API is awkward to compile (GenAI).
-    # A successful LoadLibrary is the real signal (it catches a missing dependent DLL, the same
-    # 0xC0000135 class as the OpenCV/OpenGL defect); the export check is a bonus.
-    param(
-        [string]$Name,
-        [string]$DllPath,
-        [string[]]$DependencyDirs = @(),
-        [string]$Export = '',
-        [string]$FailMessage
-    )
-    $dllPath = $DllPath; $depDirs = $DependencyDirs; $export = $Export
-    Assert-Test -Name $Name -Condition {
-        if (-not ('KataNativeProbe' -as [type])) {
-            Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class KataNativeProbe {
-    [DllImport("kernel32", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr LoadLibraryW(string p);
-    [DllImport("kernel32", SetLastError=true)] public static extern bool FreeLibrary(IntPtr h);
-    [DllImport("kernel32", SetLastError=true)] public static extern IntPtr GetProcAddress(IntPtr h, string n);
-}
-'@
-        }
-        if (-not (Test-Path $dllPath)) { return $false }
-        $prev = $env:PATH
-        $env:PATH = ((@((Split-Path $dllPath)) + $depDirs) -join ';') + ';' + $env:PATH
-        try {
-            $h = [KataNativeProbe]::LoadLibraryW($dllPath)
-            if ($h -eq [IntPtr]::Zero) { return $false }
-            $ok = $true
-            if ($export) { $ok = ([KataNativeProbe]::GetProcAddress($h, $export) -ne [IntPtr]::Zero) }
-            [void][KataNativeProbe]::FreeLibrary($h)
-            return $ok
-        } finally { $env:PATH = $prev }
-    }.GetNewClosure() -FailMessage $FailMessage
-}
-
-function Assert-EnvVarSet {
-    param([string]$Name, [string]$ExpectedPrefix = '')
-    # GetNewClosure + renamed captures: Assert-Test's $Name parameter shadows this
-    # one at invocation time (dynamic scoping), so the env var that was actually
-    # queried used to be the test title — always failing.
-    $envName = $Name
-    $envPrefix = $ExpectedPrefix
-    Assert-Test -Name "Env var $Name" -Condition {
-        $val = [Environment]::GetEnvironmentVariable($envName)
-        if ([string]::IsNullOrWhiteSpace($val)) { return $false }
-        if ($envPrefix) { return $val -like "$envPrefix*" }
-        return $true
-    }.GetNewClosure() -FailMessage "$Name is not set or doesn't match expected prefix"
-}
 
 function Get-CommandVersion {
     param([string]$Name)
@@ -1306,9 +1115,11 @@ Write-TestHeader '19. Environment pointer integrity'
 # A stale pointer is exactly how the CMake MSI->scoop switch left CMAKE_BIN aimed
 # at the deleted 'C:\Program Files\CMake\bin' (caught 2026-07-12).
 # Deliberately NOT asserted: CARGO_HOME/CARGO_BIN (pre-provisioned for a future
-# `cargo install`; nonexistent until first use). LLVM_GLOBAL_BIN /
-# SCOOP_GLOBAL_SHIMS were REMOVED from the base image 2026-07-14 (they pointed
-# at never-created ProgramData dirs); tolerate them either way on old images.
+# `cargo install`; nonexistent until first use). LLVM_GLOBAL_BIN was REMOVED
+# from the base image 2026-07-14 (it pointed at a never-created ProgramData
+# dir); tolerate it either way on old images.
+# SCOOP_GLOBAL_SHIMS is asserted SOFTLY (skip when unset) because it was absent
+# between 2026-07-14 and 2026-08-08 -- see the block after this loop.
 $envPointerNames = @(
     'CMAKE_BIN', 'FLUTTER_BIN', 'VULKAN_SDK', 'WIX', 'LLVM_USER_BIN',
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
@@ -1331,6 +1142,25 @@ foreach ($envPointer in $envPointerNames) {
         $v = [Environment]::GetEnvironmentVariable($pointerName)
         (-not [string]::IsNullOrWhiteSpace($v)) -and (Test-Path $v -PathType Container)
     }.GetNewClosure() -FailMessage "$envPointer is unset or points at a nonexistent path (stale Dockerfile ENV?)"
+}
+
+# Global-scope scoop shims. flutter is installed `--global`, so scoop creates
+# C:\ProgramData\scoop\shims -- and between 2026-07-14 and 2026-08-08 that dir
+# was on NO PATH entry, which only stayed invisible because FLUTTER_BIN is baked
+# separately. Skip (don't fail) on images built in that window.
+$globalShims = $env:SCOOP_GLOBAL_SHIMS
+if ([string]::IsNullOrWhiteSpace($globalShims)) {
+    Skip-Test 'SCOOP_GLOBAL_SHIMS checks skipped (env var absent -- base image predates 2026-08-08)'
+} else {
+    Assert-Test -Name 'SCOOP_GLOBAL_SHIMS points at an existing directory' -Condition {
+        Test-Path $globalShims -PathType Container
+    }.GetNewClosure() -FailMessage "SCOOP_GLOBAL_SHIMS=$globalShims does not exist (did the --global flutter install move?)"
+    # The whole point of the var: a `scoop install --global` package must be
+    # resolvable by NAME, not only via a hand-baked *_BIN pointer.
+    Assert-Test -Name 'SCOOP_GLOBAL_SHIMS is on PATH' -Condition {
+        $entries = $env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
+        $entries -contains $globalShims.TrimEnd('\')
+    }.GetNewClosure() -FailMessage "$globalShims is not on PATH -- globally installed scoop packages resolve only through their app dirs"
 }
 
 # vcpkg zlib is the one vcpkg artifact media builds still consume (LiteRT-LM's
@@ -1530,18 +1360,22 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
 # ============================================================================
 Write-TestHeader '== SUMMARY =='
 # ============================================================================
-$total = $script:passed + $script:failed + $script:skipped
-Write-Host "  Passed:  $($script:passed)" -ForegroundColor Green
-Write-Host "  Failed:  $($script:failed)" -ForegroundColor Red
-Write-Host "  Skipped: $($script:skipped)" -ForegroundColor Yellow
-Write-Host "  Total:   $total" -ForegroundColor Cyan
-if ($script:abortRun) {
+# Read through the module, NOT as $script:passed: the counters live in the
+# harness module's scope now, and $script:passed here would silently resolve to
+# an unset variable in THIS script — reporting 0 passed / 0 failed and exiting
+# successfully no matter what the run actually did.
+$summary = Get-SmokeTestSummary
+Write-Host "  Passed:  $($summary.Passed)" -ForegroundColor Green
+Write-Host "  Failed:  $($summary.Failed)" -ForegroundColor Red
+Write-Host "  Skipped: $($summary.Skipped)" -ForegroundColor Yellow
+Write-Host "  Total:   $($summary.Total)" -ForegroundColor Cyan
+if ($summary.Aborted) {
     Write-Host '  NOTE: -ExitOnFirstFailure aborted the run at the first failure; remaining tests were not executed.' -ForegroundColor Yellow
 }
 
-if ($script:failed -gt 0) {
+if ($summary.Failed -gt 0) {
     Write-Host "`n--- FAILURE DETAILS ---" -ForegroundColor Red
-    foreach ($detail in $script:failureDetails) {
+    foreach ($detail in $summary.FailureDetails) {
         Write-Host "  $detail" -ForegroundColor Red
     }
     exit 1

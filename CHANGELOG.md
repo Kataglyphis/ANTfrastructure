@@ -1,5 +1,88 @@
 # Changelog
 
+## 2026-08-08 — Windows lane: backlog cleared before the from-toolchain rebuild
+
+The remaining four items, closed so the chain restarts against a tree with no
+known open work. Two of them turned out to be blocked only by a third.
+
+- **Warning floods cut at the source.** 16 % of a chain log (72 864 of 459 061
+  lines) was four upstream constructs repeated thousands of times, which matters
+  because buildkitd clips a RUN step's log at 2 MiB and then *deadlocks* it.
+  Targeted suppressions, never a blanket `-w`: `-Wno-deprecated-copy` (OpenCV
+  `matx.hpp`), `/clang:-Wno-unused-value` (ONNX), `-Wno-documentation-unknown-command`
+  (TVM), and — because STL4037 is emitted by the MSVC STL headers themselves and
+  no clang group can switch it off — `_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING`
+  for IREE/MLIR, at directory scope where it survives LLVM's `HandleLLVMOptions`
+  stripping. OpenCV's is safe for the CUDA path because the repo's own patch
+  strips `-W*` before nvcc's `cl.exe` host compiler sees it (verified against the
+  patch, not the comment above it). New `Measure-BuildWarnings.ps1` reports each
+  family against its pre-suppression baseline, so the next run PROVES each flag
+  still earns its place rather than it becoming folklore.
+- **Smoke test split**, 1 573 → 1 386 lines, harness into
+  `WindowsSmokeTest.Common.psm1` (no Dockerfile change — the final image already
+  COPYs the whole modules dir). The move had one hazard and both halves of it
+  fail silently: `Assert-Test` read `$ExitOnFirstFailure` out of the *calling
+  script's* scope, which a module cannot see (the switch would have quietly
+  stopped working), and the summary read `$script:passed`, which across a module
+  boundary would have reported 0 passed / 0 failed and exited 0 on any run.
+  Both are explicit state now. An AST inventory of every assertion call site is
+  194 before and 194 after, identical as a set; 11 new tests, suite at 412.
+- **Pre-commit hooks are enabled**, and the reason they were not is gone:
+  `preflight.sh` used bare `python3`, which on this host is the Microsoft Store
+  stub, so every commit would have failed for reasons unrelated to the commit.
+  It now probes for an interpreter that can actually execute code.
+- **Submodule pin drift** (`Kataglyphis-DocumANTation`, `UV_VERSION` 0.12.1 vs
+  0.12.3) kept the version-snapshot check red, which is what blocked the hooks.
+  Fixed and committed in that submodule; it still needs a push there plus a
+  pointer bump here, left explicit because it is a different repository.
+
+## 2026-08-08 — Windows lane: three gaps that could not fail loudly
+
+Landed in the window a concurrent `versions.env` pin bump opened: `PYTHON_VERSION`
+3.14.7 invalidates `Dockerfile.base` from its `COPY versions.env` down and every
+media stage under the toolchain, so these changes cost no rebuild that was not
+already owed. Each one is the same shape as the rest of this week's work — a
+check that was structurally incapable of reporting the failure it existed for.
+
+- **The FFmpeg `.pc` gate could not fail in its worst case.** It sat inside
+  `if (Test-Path $ffPkgConfigDir)`, so a *missing* `lib\pkgconfig` — the most
+  complete failure available — skipped every assertion without a word. Extracted
+  to `Assert-FfmpegPkgConfig`, which treats an absent directory as fatal, and
+  called outside that guard. Five unit tests, one per failure mode, reaching the
+  function by AST extraction so it stays out of the three media branches'
+  compile closure (the reason `Remove-MakefileShowIncludes` moved out of the
+  shared module on 2026-08-03).
+- **The base image's PATH had two dead entries and was missing a live one.**
+  `SCOOP_HOME`/`SCOOP_GLOBAL` are scoop app *roots* and hold no executables.
+  Meanwhile flutter is installed `--global`, so `C:\ProgramData\scoop\shims`
+  exists and was on no PATH entry at all — a 2026-07-14 comment had removed it
+  as a "never-created dir", which stopped being true the moment anything was
+  installed globally. Invisible only because `FLUTTER_BIN` is baked separately;
+  any future global package would have been unresolvable by name. Restored (user
+  shims keep priority) and asserted by the smoke test.
+- **An unresolved merge conflict had been committed** into
+  `docs/refactoring-backlog.md` and survived several commits: two sections were
+  appended concurrently and never merged. Markdown and shell lint both pass a
+  conflict marker, because it is valid text. Resolved (content verified
+  identical modulo the markers), and `.githooks/pre-commit` now greps the
+  *staged* content for `<<<<<<< ` / `>>>>>>> ` — verified to fire on the exact
+  commit that carried the bug. A bare `=======` is deliberately not matched: it
+  is a legitimate Markdown setext underline, and real conflicts carry the others.
+- **Nothing was linting the git hooks.** Writing that guard surfaced a live
+  `SC1072`/`SC1073` parse error already sitting in `.githooks/pre-commit`: a
+  comment starting with the word "shellcheck" reads as a malformed directive and
+  aborts ShellCheck's parse of the whole file. It survived because
+  `lint-shell.sh` filters to `*.sh` and a git hook cannot carry that suffix.
+  Comment reworded, and `lint-shell.sh` now also accepts explicitly-passed
+  extension-less files with a shell shebang — default sweep unchanged (223
+  files), staged-file coverage gained, and the hook now lints itself.
+
+Note: `core.hooksPath` is **unset** on the primary dev clone, so none of these
+hooks have been running there — the documented one-time
+`git config core.hooksPath .githooks` (AGENTS.md) is still pending, and is left
+to the owner because it changes commit behaviour for every process writing to
+that tree.
+
 ## 2026-08-08 — Linux cross lane: four bug classes, machine-checked ancestry, live caching
 
 Driven by a from-base amd64 rebuild of `:latest-cross`, fixing every failure as

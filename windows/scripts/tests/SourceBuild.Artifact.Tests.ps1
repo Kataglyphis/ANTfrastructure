@@ -95,6 +95,82 @@ Describe 'Remove-MakefileShowIncludes' {
     }
 }
 
+Describe 'Assert-FfmpegPkgConfig' {
+    # Same AST-extraction rationale as above: the gate lives in the FFmpeg script
+    # so it stays out of the three media branches' compile closure.
+    $ffmpegScript = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'build-ffmpeg-from-source.ps1'
+    $tokens = $null; $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($ffmpegScript, [ref]$tokens, [ref]$errors)
+    $fnAst = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Assert-FfmpegPkgConfig' }, $true) | Select-Object -First 1
+    if (-not $fnAst) { throw "Assert-FfmpegPkgConfig not found in $ffmpegScript — did it move? Update this suite." }
+    . ([scriptblock]::Create($fnAst.Extent.Text))
+
+    # Shape of a healthy file, as FFmpeg's configure emits it once the VERSION
+    # file exists and the MSYS prefix has been rewritten.
+    function New-TestPc {
+        param($Dir, $Name, $Version = '62.11.100', $Prefix = 'C:/runtime/ffmpeg')
+        Set-Content (Join-Path $Dir "$Name.pc") @"
+prefix=$Prefix
+exec_prefix=`${prefix}
+libdir=`${prefix}/lib
+includedir=`${prefix}/include
+
+Name: $Name
+Description: FFmpeg $Name library
+Version: $Version
+Libs: -L`${libdir} -l$Name
+Cflags: -I`${includedir}
+"@ -Encoding ASCII
+    }
+    $allFour = @('libavcodec', 'libavformat', 'libavutil', 'libavfilter')
+
+    It 'passes and reports versions when all four modules are well-formed' {
+        Invoke-InTestDir { param($dir)
+            $allFour | ForEach-Object { New-TestPc -Dir $dir -Name $_ }
+            $result = Assert-FfmpegPkgConfig -PkgConfigDir $dir
+            Assert-True ($result.Contains('libavcodec')) 'returns the parsed versions'
+            Assert-Match '62\.11\.100' $result['libavfilter'] 'version parsed off the Version: line'
+        }
+    }
+
+    It 'throws when the pkgconfig directory does not exist at all' {
+        # The regression this refactor closed: the gate used to sit inside an
+        # `if (Test-Path $dir)` in the caller, so the TOTAL failure was the one
+        # case that passed silently.
+        Invoke-InTestDir { param($dir)
+            Assert-Throws -Body { Assert-FfmpegPkgConfig -PkgConfigDir (Join-Path $dir 'nope') } `
+                -MessagePattern 'no pkgconfig directory' `
+                -Message 'a missing pkgconfig dir is a hard failure, not a skip'
+        }
+    }
+
+    It 'throws on the empty "Version: .." configure emits without a VERSION file' {
+        Invoke-InTestDir { param($dir)
+            $allFour | ForEach-Object { New-TestPc -Dir $dir -Name $_ }
+            New-TestPc -Dir $dir -Name 'libavcodec' -Version '..'
+            Assert-Throws -Body { Assert-FfmpegPkgConfig -PkgConfigDir $dir } `
+                -MessagePattern 'unusable version' -Message 'empty version rejected'
+        }
+    }
+
+    It 'throws when an MSYS prefix survived the rewrite' {
+        Invoke-InTestDir { param($dir)
+            $allFour | ForEach-Object { New-TestPc -Dir $dir -Name $_ }
+            New-TestPc -Dir $dir -Name 'libavutil' -Prefix '/c/runtime/ffmpeg'
+            Assert-Throws -Body { Assert-FfmpegPkgConfig -PkgConfigDir $dir } `
+                -MessagePattern 'MSYS prefix' -Message 'clang-cl cannot resolve /c/...'
+        }
+    }
+
+    It 'throws when one of the four modules is missing entirely' {
+        Invoke-InTestDir { param($dir)
+            @('libavcodec', 'libavformat', 'libavutil') | ForEach-Object { New-TestPc -Dir $dir -Name $_ }
+            Assert-Throws -Body { Assert-FfmpegPkgConfig -PkgConfigDir $dir } `
+                -MessagePattern 'no libavfilter\.pc' -Message 'missing module rejected'
+        }
+    }
+}
+
 Describe 'Get-SourceBuildVersion -StripVPrefix' {
 
     It 'strips a leading v only when the switch is set' {
