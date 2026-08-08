@@ -1383,3 +1383,41 @@ Deferred to the batch / follow-ups:
 - llm-stack: node:20-alpine vs NODE_VERSION=26.7.0 drift (unreachable by
   sync_versions — Dockerfile-ARG-only); ollama empty-SHA downgrade needs an
   explicit ALLOW_UNVERIFIED=1; ghcr-cleanup delete failures are warnings.
+
+## 2026-08-08 — sccache multi-tier design (Linux) + bash simplification plan
+
+Owner asked (a) whether the Windows lane's sccache multi-tier should come to
+Linux, (b) for bash simplification/dedup. Both are CLOSURE work → batch with
+task "apply the batched closure refactor". Design decided now:
+
+### Multi-tier compile caching (Linux) — differentiated, not a wholesale switch
+- C/C++: KEEP ccache (wired + populating since today; better direct-mode hit
+  rates than sccache for GCC). Add the REMOTE tier via ccache's own
+  `remote_storage` (>=4.4; Ubuntu resolute's ccache qualifies) pointed at a
+  host-local redis/http endpoint → survives buildkit cache-mount loss (see the
+  unexplained base cache-miss), shareable across runs/hosts.
+- Rust: THE gap. sccache is already INSTALLED in the images and
+  compiler-cache.sh::setup_sccache exists — but Dockerfile.toolchain:58 and
+  Dockerfile.package:157 hard-disable it (`RUSTC_WRAPPER=""`). gst-plugins-rs
+  + cargo-c + rust builds get zero compile caching today. Batch: find out WHY
+  it was disabled (git blame first), then enable RUSTC_WRAPPER=sccache with
+  SCCACHE_DIR on the existing mounts; optional SCCACHE_REDIS for the shared
+  tier. Same backend host can serve the Windows lane's sccache (no cross-OS
+  hits, shared infra).
+- Wire `ccache -z`/`-s` + `sccache --show-stats` to STDERR per RUN (survives
+  the log clip) so every tier's effectiveness is measured, not assumed.
+
+### Bash simplification (accidental complexity only; protected repetition stays)
+1. Named guard helpers in 01-core (bundling): `first_match` (find|head||true
+   — ~426 sites use the raw idiom), `probe` (cmd||true with comment-free
+   intent), `source_vendor` (the nounset-suspend window — 3 call sites),
+   `csv_each` (IFS-safe split). Migrate hot files; new code uses helpers.
+2. Unify the two parallel-loop implementations (gcc.sh's driver →
+   run_parallel_arch_loop; costs one mount-list line, batch anyway).
+3. cross-stage-build.sh push/local dual path collapses once the OCI-layout
+   local handoff lands — the single biggest orchestrator simplification;
+   design both together.
+4. chain-verify.sh's manual-inspection fallback shrinks to a stub once all
+   published images carry ancestry annotations.
+5. Explicit NON-goals: splitting the big build scripts without functional
+   cause; touching the protected repetition.
