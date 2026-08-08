@@ -17,6 +17,27 @@
 
 ---
 
+## Engineering principles
+
+This build system optimizes for three goals **at once** — never one at the
+expense of the others:
+
+- **Speed** — layered caching end-to-end (BuildKit layers with narrow cache
+  keys, local cache exports, ccache for GCC/LLVM/media, pinned buildkitd GC
+  budget) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
+  § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
+- **Stability** — digest-pinned stage handoffs, machine-checked cross-run
+  ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
+  version pins in a single source of truth (`linux/scripts/01-core/versions.env`),
+  and gates that fail loudly instead of passing on fallbacks.
+- **Tests** — unit suites (`linux/scripts/tests/`), lint gates (shellcheck,
+  IFS-safety, hadolint, actionlint), a fast preflight
+  (`linux/scripts/preflight.sh`) that catches error classes in seconds instead
+  of hours, and runtime smokes that assert real behavior against the pins.
+
+Rules an automated agent must follow live in [`AGENTS.md`](AGENTS.md)
+(§ Project priorities, § Shell safety conventions, § Caching discipline).
+
 ## Architecture
 
 Four-tier dependency chain with shared script tree:
@@ -85,11 +106,25 @@ ccache for GCC/LLVM/media, apt/cargo/uv mounts, shared source caches, and a
 pinned buildkitd GC budget) — see
 [`docs/linux-build-basics.md` § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where)
 for the full map and the one process rule that matters: freeze the toolchain
-closures between a `--no-push` validation run and its push run.
+closures between chain runs that should cache-hit each other. (Note:
+`--no-push` full-chain runs are broken on OCI-worker hosts — see
+[`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the correct
+push-mode flow.)
 
 ## Reinstall QEMU/binfmt After a Host Reboot
 
-If foreign-architecture builds fail with `exec format error`, run `nerdctl run --rm --privileged tonistiigi/binfmt --install all` (see [`docs/linux-build-basics.md`](docs/linux-build-basics.md)).
+If foreign-architecture builds fail with `exec format error`:
+
+- **Rootless hosts (this repo's primary dev host):** run
+  `linux/scripts/setup-rootless-binfmt.sh` (idempotent; `--install-service`
+  makes it persistent). A plain `nerdctl run --privileged tonistiigi/binfmt`
+  does **not** work rootless — it registers inside its own ephemeral user
+  namespace, which vanishes on exit. `build-runtime-manifest.sh` invokes the
+  helper automatically for non-native target arches.
+- **Rootful Docker/containerd hosts:** the classic
+  `docker run --rm --privileged tonistiigi/binfmt --install all` works.
+
+Details: [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Host prerequisite.
 
 ## CI
 

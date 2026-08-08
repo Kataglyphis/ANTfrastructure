@@ -12,6 +12,12 @@ ARTIFACTS=(
   "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg"
 )
 
+# _VMR_MA: Debian multiarch triplet — meson installs libcamera (and friends)
+# under lib/<triplet>/, which this list previously did NOT cover. The resolver
+# then declared the build's OWN libcamera libs "missing" and apt-installed
+# Ubuntu's older libcamera0.7 as a shadow copy next to the source-built one —
+# a false-positive "repair" that undercut the LIBCAMERA_VERSION pin.
+_VMR_MA="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || true)"
 LIB_DIRS=(
   "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib"
   "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch"
@@ -22,6 +28,15 @@ LIB_DIRS=(
   "/usr/local/lib"
   "/usr/local/lib/onnxruntime-cpu/lib"
 )
+if [ -n "${_VMR_MA}" ]; then
+  LIB_DIRS+=(
+    "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/${_VMR_MA}"
+    "${LIBCAMERA_PREFIX:-/opt/libcamera}/lib/${_VMR_MA}"
+    "${FFMPEG_PREFIX:-/opt/ffmpeg}/lib/${_VMR_MA}"
+    "/opt/opencv5/lib/${_VMR_MA}"
+    "/usr/local/lib/${_VMR_MA}"
+  )
+fi
 
 # Return 0 if <so_name> resolves under LIB_DIRS, the standard lib dirs, or the
 # ldconfig cache; 1 otherwise. DRYs the identical scan used by

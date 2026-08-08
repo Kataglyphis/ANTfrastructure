@@ -228,6 +228,20 @@ build_uv_sync_args() {
     fi
   fi
 
+  # The chain's own onnxruntime-genai wheel must beat the app lockfile.
+  # --find-links only OFFERS /opt/wheels; the app's uv.lock pins whatever
+  # version upstream locked (v0.0.27 locks 0.14.0), so the freshly built
+  # 0.15.2 wheel was silently ignored and the runtime image shipped a PyPI
+  # binary one minor release behind ONNXRUNTIME_GENAI_VERSION. Same
+  # pre-install + --no-install-package idiom as the locked wheels above.
+  local _genai_wheel
+  _genai_wheel="$(ls /opt/wheels/onnxruntime_genai-*.whl 2>/dev/null | head -1 || true)"
+  if [ -n "${_genai_wheel}" ]; then
+    printf 'Pinning local onnxruntime-genai wheel over the app lock: %s\n' "${_genai_wheel##*/}"
+    uv pip install --force-reinstall "${_genai_wheel}"
+    _sync_args+=(--no-install-package onnxruntime-genai)
+  fi
+
   if [ "${SKIP_TORCH_TEST_EXTRAS:-false}" != "true" ]; then
     _sync_args+=(--extra "test")
   fi

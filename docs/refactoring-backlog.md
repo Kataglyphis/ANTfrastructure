@@ -1270,62 +1270,53 @@ Committed **in the submodule** (`b0bffd5`); it still needs a push to that
 repository and a pointer bump here. That is a change to a different repo, so it
 is left explicit rather than done silently.
 
-## 2026-08-08 — caching audit of the WINDOWS chain (answering "is my caching good?")
+## 2026-08-08 — deep forensic audit of the live cross-build logs (2-agent sweep + verification)
 
-Asked while the from-base chain was running, so this is observation only —
-nothing here was changed, because editing a build script mid-chain is the exact
-move that killed a run earlier this session with zero container output.
+Fixed immediately (land in the foreign arches' media/runtime stages + the amd64 refresh):
+- assemble-torch-app.sh: the app uv.lock (v0.0.27 → genai 0.14.0) beat the
+  chain's freshly built onnxruntime-genai 0.15.2 wheel; now pre-installed with
+  --no-install-package like the other locked wheels.
+- validate-media-runtime.sh: LIB_DIRS lacked the lib/<multiarch> dirs meson
+  installs into → the validator declared the build's own libcamera "missing"
+  and apt-installed Ubuntu's 0.7.0 as a shadow copy (false-positive repair).
 
-### What is genuinely good
+Verified-corrected agent findings (do NOT chase):
+- "NVENC/ffnvcodec missing" is ENABLE_NVIDIA-gated by design in the CPU lane.
+- runtime Python 3.14.4 is Ubuntu's DISTRO CPython (venv base), not a stale
+  layer; decide deliberately: use the staged 3.14.7 or pin-assert the distro one.
+- "is not a commit!" clone warnings = annotated-tag peeling, cosmetic.
 
-- **Layer ordering is deliberate and it pays.** In this very run, 4 of the
-  base's 16 steps came back `CACHED` — and they are the expensive ones (VS
-  Build Tools, the pwsh install, the pre-VS module COPY). `Dockerfile.base`
-  puts `setup-vs.ps1` ABOVE the `versions.env` COPY on purpose, so a pin bump
-  cannot re-pay VS. Confirmed live: PYTHON_VERSION 3.14.7 et al. invalidated
-  everything from step 7 down, VS stayed cached.
-- **A full `buildctl prune` did NOT cost the VS layer** (predicted it would;
-  it did not). The prune only took what the deleted stage tags had pinned.
-- **versions.env no longer invalidates the whole media chain** (fixed
-  2026-08-07): it travels as build-args, with a precedence rule that
-  distinguishes a real override from a value inherited from the base image's
-  machine environment. Visible in this run's log: "versions.env loaded (4
-  key(s) explicitly overridden by build-arg/ENV and left untouched)".
-- **The in-container module closure is kept to five files** on purpose, so
-  editing one of the ~24 host-only modules cannot bust a compile layer.
-
-### Two levers that are documented, proven, and NOT wired
-
-1. **`RUN --mount=type=cache` as sccache's L1.** `docs/windows-builds.md:917`
-   already records it as **"probed working"** on WCOW (2026-08-04), with the
-   wiring spelled out (set `SCCACHE_DIR` to the mount in the `*-built` RUNs)
-   and the estimated win: "kills the HTTP round-trip on ~5000 compiles per
-   stage". Today WebDAV is the ONLY tier, so every one of those compiles pays
-   a network round trip. The documented caution stays valid and is not a
-   blocker for this use: BuildKit CLONES a cache mount when the record is
-   locked, so two solves may not see the same instance — worst case for an L1
-   compile cache is a cold clone with the WebDAV L2 still hitting.
-
-2. **Source fetches have NO cache at all.** `grep -c mount=type=cache` over
-   `windows/Dockerfile.{media-builder,toolchain-builder,media-merge-builder}`
-   returns **0, 0, 0** — against **77** in `linux/Dockerfile.media` alone. The
-   Windows chain has 34 `Invoke-GitClone` / `Invoke-DownloadWithRetry` sites
-   across 16 scripts (ffmpeg 5, rust 4, scoop 3, cuda 3, litert-lm 3, …), so
-   every stage bust re-fetches multi-GB sources over the network. The Linux
-   lane's own backlog already names the fix shape: version-keyed mounts
-   (`id=<lib>-src-${VERSION}`), which survive a code-only bust and are dropped
-   automatically when the pin moves.
-
-Sizing note before anyone wires (2): the GC policy's tier-0 rule caps
-`type==exec.cachemount` at **20GB / 168h**. The Windows source set will exceed
-that, so raise the tier-0 cap in the same change or the mounts will be evicted
-between chains and quietly buy nothing — the same class of mistake as sizing
-`reservedSpace` against total disk instead of available space.
-
-### Not a Windows-chain concern, though it looks like one
-
-`docs/windows-container-build-performance.md` measures CONSUMER projects built
-INSIDE the image (tar-pipe 9.6 s vs bind mount 32.7 s incremental, sccache
-0.00 % hit on C++23 modules). That 0 % figure is about `import`ed modules
-defeating sccache in a consumer build; it says nothing about the chain's own
-C++ compiles, which are ordinary TUs and do hit.
+Open findings, prioritized (closure batch unless noted):
+1. ccache launcher missing in LLVM's NESTED sub-builds (llvm-cross.sh:232
+   CROSS_TOOLCHAIN_FLAGS_NATIVE lacks *_COMPILER_LAUNCHER) — measured 0% gain
+   on 189 identical objects built twice. + emit `ccache -z/-s` to STDERR per
+   RUN (stderr survives the 2MiB clip; stdout does not — logging.sh routes
+   info() to stdout, warn/err to stderr, so [WARN]/[ERROR] streams are
+   complete evidence even in clipped steps).
+2. TVM ships broken (libtvm_runtime undefined symbol; built against DISTRO
+   llvm-config-22 = 22.1.2 not the pinned 22.1.8) + dual-LLVM in the image;
+   the "wanted 22.1.8, got 22.1.2" line prints at INFO. Promote + fix TVM's
+   LLVM selection.
+3. App-smoke inner warnings (pyav absent though PYAV_VERSION pinned; TVM
+   import failure) do not reach the outer PASS/FAIL. Propagate; also delete
+   the three "(import failed in build sandbox — will work at runtime)"
+   assertion-free PASSes and the stale "libx264 may not be available" skip
+   (x264 IS in the build).
+4. FFmpeg DNN backends: TF-C SDK download failed silently (TENSORFLOW_C pin
+   dead), OpenVINO pkg-config never resolvable (pin dead) — decide: make
+   fatal, fix source, or drop the pins.
+5. OpenCV configures at step #33 against DISTRO GStreamer 1.28.2/FFmpeg 62.x
+   because /opt/gstreamer + /opt/ffmpeg build at #48/#68 — stage-order or
+   PKG_CONFIG_PATH decision. Also OpenCV tree is "5.0.0-dirty" (patches) —
+   note for reproducibility; ONNX/VA/AVIF off in OpenCV's own config.
+6. GCC prereq inconsistency: passes 3+5 pull in-tree gmp/mpfr/mpc/isl (2×
+   download+build), passes 1/2/4 use system libs; cache sha512.sum/.sig next
+   to the tarball (5× refetch each, caused 3 of 4 transient retries);
+   LIBRARY_PATH leaks into NATIVE sub-build links; verify step never
+   exercises C/ASM cross paths; #12-vs-#15 duplicate-compile overlap worth
+   measuring once ccache stats exist.
+7. onnxruntime venv carries BOTH 1.28 (dnnl wheel) and 1.27.0 (PyPI) — dedupe;
+   [DONE 2026-08-08: onnxruntime-genai added to the smoke-torch-venv pin
+   assertion] python-version assertion still pending the distro-vs-staged
+   CPython decision;
+   APP_REF v0.0.27 reports stale __version__ 0.0.22 (upstream issue).
