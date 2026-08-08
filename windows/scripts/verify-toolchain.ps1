@@ -64,6 +64,32 @@ foreach ($pinned in @(
     Write-Host "$($pinned.Tool) OK: $banner"
 }
 
+# sccache must resolve to the CARGO-BUILT binary, not scoop's.
+#
+# This cannot be a version assert: sccache's main branch still reports package
+# version 0.17.0, so `--version` is IDENTICAL for the released build and the
+# source build carrying mozilla/sccache#2722. The only observable difference is
+# WHERE the binary comes from — CARGO_BIN precedes the scoop shims on PATH, so
+# a successful source build wins and a failed/skipped one silently does not.
+#
+# What is at stake: without #2722, wrapping nvcc on CUDA 13.3 does not merely
+# miss the cache, it FAILS the build (`fatbinary fatal: Could not open input
+# file '<tu>.compute_80.cubin'`) — an hour into the media stage. Catch it here,
+# in the base, in milliseconds.
+$sccacheResolved = (Get-Command sccache -ErrorAction SilentlyContinue)
+if (-not $sccacheResolved) {
+    throw 'sccache not found on PATH after the base build.'
+}
+$cargoBinDir = [string]$env:CARGO_BIN
+if ([string]::IsNullOrWhiteSpace($cargoBinDir)) { $cargoBinDir = Join-Path $env:USERPROFILE '.cargo\bin' }
+if ($sccacheResolved.Source -notlike (Join-Path $cargoBinDir '*')) {
+    throw ("sccache resolves to '$($sccacheResolved.Source)', not the cargo-built one under '$cargoBinDir'. " +
+        'The source build (setup-rust-toolchain.ps1, SCCACHE_GIT_REV) did not take, so nvcc caching would ' +
+        'fail the media stage with a fatbinary error ~1h in. Released sccache cannot wrap nvcc on CUDA 13.3 ' +
+        '(mozilla/sccache#2722, merged after v0.17.0 shipped).')
+}
+Write-Host "sccache source-build OK: $($sccacheResolved.Source)"
+
 # CMake is pinned (scoop main/cmake@CMAKE_VERSION from versions.env, baked by
 # load-versions.ps1) -- fail the base build here on a pin mismatch instead of
 # surfacing it hours later in a media build or the smoke test.

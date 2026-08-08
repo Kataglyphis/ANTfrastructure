@@ -236,6 +236,41 @@ Invoke-NativeRustStep -Description 'flutter_rust_bridge_codegen --version' -Comm
     flutter_rust_bridge_codegen --version
 }
 
+# ── sccache FROM SOURCE, overwriting the scoop baseline on PATH ───────────────
+# Released sccache cannot wrap nvcc on CUDA 13.3: it decomposes nvcc by parsing
+# `nvcc --dryrun`, and 13.3.33 moved `--simt-only` AFTER the input file, so the
+# positional parser took the flag as the input, mis-grouped the cicc/ptxas
+# device steps, and the per-arch .cubin files were never produced. The build
+# dies at the combine step with
+#   fatbinary fatal : Could not open input file '<tu>.compute_80.cubin'
+# (measured here 2026-08-08 on ONNX's CUDA provider). Upstream fix:
+# mozilla/sccache#2722, merged 2026-08-04 — five days AFTER v0.17.0 shipped, so
+# no release carries it yet. SCCACHE_GIT_REV pins that merge commit.
+#
+# This is what makes CMAKE_CUDA_COMPILER_LAUNCHER usable, i.e. what lets ~1h of
+# CUDA/TensorRT kernel compiles be cached instead of re-paid every run.
+#
+# Lands in CARGO_BIN, which sits BEFORE the scoop shims in Dockerfile.base's
+# PATH, so this binary wins. The scoop install stays as the version-pinned
+# baseline; verify-toolchain.ps1 asserts that the CARGO_BIN one is what
+# resolves, because `sccache --version` CANNOT tell them apart (main still
+# reports 0.17.0).
+#
+# Default features are `all`, which includes `webdav` — the L2 backend must not
+# quietly disappear from a source build.
+$sccacheRev = [string]$env:SCCACHE_GIT_REV
+if ([string]::IsNullOrWhiteSpace($sccacheRev)) {
+    throw 'SCCACHE_GIT_REV is not set (versions.env not loaded?) — refusing to build an unpinned sccache.'
+}
+Write-Host "Building sccache from source at $sccacheRev (CUDA 13.3 nvcc fix, mozilla/sccache#2722)..."
+Invoke-RustProcessWithHeartbeat -Description 'cargo-install-sccache' `
+    -FilePath (Join-Path $cargoBin 'cargo.exe') `
+    -ArgumentList @('install', 'sccache', '--locked', '--git', 'https://github.com/mozilla/sccache', '--rev', $sccacheRev) `
+    -TimeoutSec 3600
+Invoke-NativeRustStep -Description 'sccache --version (cargo build)' -Command {
+    & (Join-Path $cargoBin 'sccache.exe') --version
+}
+
 # Drop the registry/build intermediates -- only CARGO_BIN needs to ship in the layer.
 foreach ($cacheDir in @('registry', 'git')) {
     $p = Join-Path $env:USERPROFILE ".cargo\$cacheDir"
