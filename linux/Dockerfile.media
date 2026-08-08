@@ -246,6 +246,10 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     if [ "${ENABLE_NVIDIA}" = "true" ] || [ "${ENABLE_AMD}" = "true" ]; then \
         bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu; \
+        # Wire the verify that existed as a caller-less branch since its
+        # creation (audit round 2, F11): GPU-enabled images had NO gate on
+        # the GPU EP artifacts actually existing.
+        bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-gpu; \
     else \
         echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; \
     fi
@@ -519,7 +523,11 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
     case "${TARGET_ARCH:-${TARGETARCH:-}}" in \
         arm64|aarch64) \
             bash /opt/scripts/03-media/build/armnn/build-arm-compute-library.sh && \
-            bash /opt/scripts/03-media/build/armnn/build-armnn.sh ;; \
+            bash /opt/scripts/03-media/build/armnn/build-armnn.sh && \
+            # Wire the verify that existed as a caller-less branch since its
+            # creation (audit round 2, F11): a failed ACL/ArmNN build left
+            # empty /opt/armnn + /opt/acl dirs that shipped unexamined.
+            bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh armnn ;; \
         *) \
             echo "Skipping Arm NN build (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-}})"; \
             mkdir -p /opt/armnn /opt/acl ;; \

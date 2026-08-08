@@ -375,12 +375,20 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     # not that the loader dlopen()s at runtime. WARN-only: a headless CI container
     # has no GPU/ICD so device enumeration legitimately finds nothing -- we only
     # assert the loader library itself loads.
-    echo "--- Functional: Vulkan loader (informational) ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         /opt/venv/bin/python -c 'import ctypes; ctypes.CDLL("libvulkan.so.1")' >/dev/null 2>&1; then
+    # Three-way verdict instead of blanket WARN (audit round 2): a missing
+    # ICD/GPU does NOT stop ctypes.CDLL from loading the loader library — a
+    # load failure means the lib is missing/broken, and the runtime image
+    # ALWAYS installs the Vulkan runtime files (base-image
+    # install-vulkan-runtime-files). Only a container-infra error stays WARN.
+    echo "--- Functional: Vulkan loader ---"
+    _vk_out="$("${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         /opt/venv/bin/python -c 'import ctypes; ctypes.CDLL("libvulkan.so.1"); print("VKOK")' 2>&1)" || true
+    if printf '%s' "${_vk_out}" | grep -q "VKOK"; then
       echo "  OK  libvulkan.so.1 loads (${target_arch})"
+    elif printf '%s' "${_vk_out}" | grep -qiE "OSError|No such file|cannot open shared object|not found"; then
+      fail "libvulkan.so.1 missing/unloadable in ${target_arch} image (runtime always ships it): $(printf '%s' "${_vk_out}" | tail -1)"
     else
-      echo "  WARN libvulkan.so.1 did not load (${target_arch}) -- non-fatal (no ICD/GPU in CI)"
+      echo "  WARN vulkan load check inconclusive (container-infra error?) -- non-fatal: $(printf '%s' "${_vk_out}" | tail -1)"
     fi
     echo ""
 

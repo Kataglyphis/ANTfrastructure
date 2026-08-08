@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: audit round 2 leftovers cleared
+
+The verified-but-queued remainder of the four audit reports:
+
+- **Orphan verify branches wired** (Dockerfile.media): `onnxruntime-gpu` runs
+  after the GPU EP build (GPU-enabled images had NO gate on those artifacts)
+  and `armnn` runs after the arm64 ACL/ArmNN build (a failed build left empty
+  /opt/armnn + /opt/acl shipping unexamined). Both branches had existed
+  caller-less since creation.
+- **`make verify-chain` can now fail**: STALE links are counted and the
+  explicit `--verify-chain` path exits 2 when any exist — it used to warn and
+  exit 0, an explicit verification that could not fail. The automatic
+  partial-run protection (_chain_assert_ancestry, hard-fail) is unchanged.
+  Makefile help text updated.
+- **verify-parity.sh judges by rc, not sentinel**: `|| echo "FAILED"`
+  appended AFTER the captured traceback, so the first-word parse read
+  "Traceback" and an ImportError could never increment failures.
+- **Runtime Vulkan check three-way**: ctypes.CDLL of the loader does NOT need
+  an ICD/GPU — a load failure means the library is missing/broken, and the
+  runtime image always ships the Vulkan runtime files. Missing/unloadable is
+  now a FAIL; only container-infra errors stay WARN.
+
 ## 2026-08-08 (night) — Linux lane: audit round 2, Klasse C — test gaps closed
 
 - **Zero-assertion suites now FAIL**: `t_summary` treats `_T_RUN=0` as a

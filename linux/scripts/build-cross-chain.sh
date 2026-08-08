@@ -252,8 +252,16 @@ _chain_validate_stages() {
   fi
 
   if [ "${VERIFY_CHAIN_ONLY}" -eq 1 ]; then
-    verify_cross_chain_staleness "${TARGET_ARCHES}"
-    exit 0
+    # Exit non-zero on STALE links: `make verify-chain` used to exit 0 even
+    # when it had just DETECTED staleness — an explicit verification that
+    # cannot fail is not a verification (audit round 2, failure-path F20).
+    # (The automatic partial-run protection is separate and HARD:
+    # _chain_assert_ancestry refuses to build on stale ancestors.)
+    if verify_cross_chain_staleness "${TARGET_ARCHES}"; then
+      exit 0
+    else
+      exit 2
+    fi
   fi
 }
 

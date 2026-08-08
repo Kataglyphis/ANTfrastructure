@@ -9,7 +9,7 @@
 #   make preflight       fast, no-build gate (shellcheck + verify-* suite)
 #   make cross-build     full base -> :latest-cross for ARCHES
 #   make cross-stage     rebuild one STAGE for ARCHES
-#   make verify-chain    resolve digests, warn on stale downstream images
+#   make verify-chain    resolve digests; exit 2 if any downstream image is STALE
 #   make lint            shellcheck the tree at -S error
 #
 # Common variables (override on the command line, e.g. `make cross-build ARCHES=arm64`):
@@ -67,7 +67,7 @@ cross-build: ## Full base -> :latest-cross for ARCHES
 cross-stage: ## Rebuild a single STAGE for ARCHES
 	bash $(SCRIPTS)/build-cross-chain.sh --only $(STAGE) --target-arches $(ARCHES) --log-dir $(LOG_DIR)
 
-verify-chain: ## Resolve upstream digests, warn on stale downstream images
+verify-chain: ## Resolve upstream digests; exit 2 on stale downstream images
 	bash $(SCRIPTS)/build-cross-chain.sh --verify-chain --target-arches $(ARCHES)
 
 describe-chain: ## Print the full stage graph with tag names (no builds)
