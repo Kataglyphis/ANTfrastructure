@@ -717,10 +717,13 @@ lint-gates class 3. When writing or reviewing bash in this repo:
 Full map: `docs/linux-build-basics.md` § Caching Layers. The rules an agent
 must never violate:
 
-1. **Closure freeze between validation and push runs.** Editing ANY file in the
-   base/toolchain closure (all of `01-core/` and `02-toolchain/` — the bundle
-   COPY makes the WHOLE directories closure-relevant, including host-only
-   modules — plus `versions.env`, `python/build_python.sh`, the three bundled
+1. **Closure freeze between runs that should cache-hit.** Editing ANY file in
+   the base/toolchain closure (all of `01-core/` and `02-toolchain/` — worse
+   than the bundle COPY: **`Dockerfile.base` bind-mounts BOTH whole directories
+   into six RUNs**, so any of ~120 files, including host-only orchestrator
+   modules, busts BASE and cascades to the entire chain; narrowing this to the
+   ~14-file real closure is backlog item A1 and the planned enabler — plus
+   `versions.env`, `python/build_python.sh`, the three bundled
    `06-packaging/smoke-*` scripts, `Dockerfile.base`, `Dockerfile.toolchain`)
    changes the compiler image digest and forces sdk/media/android to rebuild
    from scratch on the next run. Batch such edits; apply them in ONE commit at
