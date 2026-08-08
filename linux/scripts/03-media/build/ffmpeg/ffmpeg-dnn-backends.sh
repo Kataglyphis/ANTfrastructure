@@ -58,7 +58,7 @@ ffmpeg_probe_libonnxruntime() {
 ensure_tensorflow_c_sdk() {
     local cache_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
     local tf_dir="${cache_dir}/tensorflow-c"
-    local tf_version="${TENSORFLOW_C_VERSION:-2.21.0}"
+    local tf_version="${TENSORFLOW_C_VERSION:-2.18.0}"
     local tf_archive
 
     if [ -f "${tf_dir}/lib/libtensorflow.so" ] && [ -f "${tf_dir}/include/tensorflow/c/c_api.h" ]; then
@@ -73,10 +73,14 @@ ensure_tensorflow_c_sdk() {
 
     case "$(uname -m)" in
         x86_64)
-            tf_archive="libtensorflow-cpu-linux-x86_64-${tf_version}.tar.gz"
+            tf_archive="libtensorflow-cpu-linux-x86_64.tar.gz"
             ;;
         aarch64|arm64)
-            tf_archive="libtensorflow-cpu-linux-aarch64-${tf_version}.tar.gz"
+            # Upstream ships NO aarch64 libtensorflow C build (verified
+            # 2026-08-08: neither GitHub releases nor the GCS mirror). Say so
+            # loudly instead of 404ing into the generic failure path.
+            echo "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)"
+            return 1
             ;;
         *)
             echo "Skipping TensorFlow C SDK: unsupported arch $(uname -m)"
@@ -85,9 +89,20 @@ ensure_tensorflow_c_sdk() {
     esac
 
     echo "Downloading TensorFlow C SDK ${tf_version}..."
-    # Download just the C library from the TF release
-    local tf_release_url="https://github.com/tensorflow/tensorflow/releases/download/v${tf_version}/${tf_archive}"
-    if     download_file "${tf_release_url}" "${cache_dir}/${tf_archive}" 3 30 300 2>/dev/null \
+    # GCS layout (supply-chain audit + 2026-08-08 forensics): the old GitHub
+    # releases URL has served 404 for EVERY version since 2.19 — upstream
+    # stopped attaching C-library assets, and the `2>/dev/null` here swallowed
+    # the 404, so ffmpeg silently shipped without its TF DNN backend while
+    # versions.env pinned a nonexistent 2.21.0. Last published build: 2.18.0.
+    local tf_release_url="https://storage.googleapis.com/tensorflow/versions/${tf_version}/${tf_archive}"
+    local _tf_fetch_ok=0
+    if [ -n "${TENSORFLOW_C_SHA256:-}" ]; then
+        download_verified_file "${tf_release_url}" "${TENSORFLOW_C_SHA256}" "${cache_dir}/${tf_archive}" && _tf_fetch_ok=1
+    else
+        echo "WARNING: TENSORFLOW_C_SHA256 unset — fetching libtensorflow UNVERIFIED (add the pin to versions.env)" >&2
+        download_file "${tf_release_url}" "${cache_dir}/${tf_archive}" 3 30 300 && _tf_fetch_ok=1
+    fi
+    if [ "${_tf_fetch_ok}" = "1" ] \
         && [ -s "${cache_dir}/${tf_archive}" ]; then
         tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}" 2>/dev/null || true
         # The tarball extracts to ./lib/ and ./include/ relative to cache_dir
@@ -135,7 +150,7 @@ ffmpeg_probe_libtensorflow() {
     done
     if [ -n "${tf_base}" ] && ffmpeg_enable_via_synth_pkgconfig "libtensorflow" "tensorflow" \
         "tensorflow/c/c_api.h" "TF_Version TF_NewGraph" "${tf_base}" \
-        "-I${tf_base}/include" "-L${tf_base}/lib -ltensorflow" "${TENSORFLOW_C_VERSION:-2.21.0}"; then
+        "-I${tf_base}/include" "-L${tf_base}/lib -ltensorflow" "${TENSORFLOW_C_VERSION:-2.18.0}"; then
         echo "TensorFlow C SDK enabled via synthesized pkg-config at ${tf_base}."
         return 0
     fi

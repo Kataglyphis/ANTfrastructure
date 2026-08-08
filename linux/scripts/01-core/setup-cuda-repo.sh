@@ -23,7 +23,25 @@ case "${ARCH}" in
 esac
 KEYRING_PKG="cuda-keyring_1.1-1_all.deb"
 KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_CODENAME}/${CUDA_ARCH}/${KEYRING_PKG}"
-curl -fSsL --retry 3 "${KEYRING_URL}" -o "/tmp/${KEYRING_PKG}"
+# VERIFIED fetch (supply-chain audit #1): this .deb installs the apt TRUST
+# ANCHOR for every CUDA/cuDNN/TensorRT package — with an attacker-supplied
+# key, apt's own signature checking is defeated for the whole NVIDIA lane.
+# shellcheck disable=SC1091
+source "${_SETUP_CUDA_DIR}/downloads.sh"
+case "${CUDA_ARCH}" in
+  x86_64) _cuda_keyring_sha="${CUDA_KEYRING_DEB_SHA256_X86_64:-}" ;;
+  sbsa)   _cuda_keyring_sha="${CUDA_KEYRING_DEB_SHA256_SBSA:-}" ;;
+  *)      _cuda_keyring_sha="" ;;
+esac
+if [ -z "${_cuda_keyring_sha}" ] && [ -f "${_SETUP_CUDA_DIR}/versions.env" ]; then
+  _cuda_keyring_sha="$(sed -n "s/^CUDA_KEYRING_DEB_SHA256_$(echo "${CUDA_ARCH}" | tr '[:lower:]' '[:upper:]')=//p" "${_SETUP_CUDA_DIR}/versions.env")"
+fi
+if [ -n "${_cuda_keyring_sha}" ]; then
+  download_verified_file "${KEYRING_URL}" "${_cuda_keyring_sha}" "/tmp/${KEYRING_PKG}"
+else
+  echo "WARNING: no CUDA keyring sha pin for ${CUDA_ARCH} — fetching the apt trust anchor UNVERIFIED" >&2
+  download_file "${KEYRING_URL}" "/tmp/${KEYRING_PKG}" 3
+fi
 dpkg -i "/tmp/${KEYRING_PKG}"
 rm "/tmp/${KEYRING_PKG}"
 apt-get update -qq

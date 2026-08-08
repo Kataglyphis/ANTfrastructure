@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: supply-chain hardening round 2 — pins for every trust anchor
+
+All computed from upstream (streamed sha256, gzip/manifest-verified) and
+wired with the warn-if-unset pattern:
+
+- **CUDA apt keyring deb pinned** (x86_64 + sbsa) — the apt trust anchor for
+  the whole NVIDIA lane was fetched with no hash; **ROCm apt signing key
+  pinned** (was TOFU via wget|gpg); **Android commandlinetools zip pinned**
+  (sdkmanager bootstraps the NDK cross compiler from it); **Flutter SDK
+  pinned** with Google's official sha256 from releases_linux.json;
+  **rustup/uv installer pins populated** (the fail-closed mechanism existed
+  with EMPTY keys — both effectively ran unverified remote scripts as root).
+- **TensorFlow C SDK: the pin was fiction.** Upstream stopped publishing
+  libtensorflow C builds after **2.18.0 (x86_64 only)** — the pinned 2.21.0
+  never existed as an artifact, the GitHub URL has 404'd since 2.19, and a
+  `2>/dev/null` swallowed it: ffmpeg silently shipped WITHOUT its TF DNN
+  backend while versions.env claimed otherwise. Now: 2.18.0 from the GCS
+  mirror, sha-pinned, aarch64 says loudly that no upstream build exists, and
+  the do-not-bump constraint is documented in versions.env.
+
+## 2026-08-08 (night) — Linux lane: supply-chain round 1 + safe complexity refactors
+
+(See commit 68bc11e: TLS redirect/wget hardening, CPython fail-closed,
+NodeSource/npmjs pipe-to-shell removal, npm ci lockfile-exact, verified
+Kitware/LLVM host-repo helpers, cerbero tag pinning, meson wrap-update
+removal; lib/ prelude drift + clang-extractor + cross-fallback parity with
+two new test suites.)
+
 ## 2026-08-08 (night) — Linux lane: smoke-depth round (audit round 3, lens 2)
 
 A capability×depth audit of every smoke layer found the deepest ML coverage

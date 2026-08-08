@@ -15,9 +15,26 @@ set -euo pipefail
 _SETUP_ROCM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "${_SETUP_ROCM_DIR}/use-fast-ubuntu-mirror.sh"
 
-apt-get update && apt-get install -y --no-install-recommends wget gpg
+apt-get update && apt-get install -y --no-install-recommends wget gpg curl ca-certificates
 mkdir -p /etc/apt/keyrings
-wget -q --tries=3 --waitretry=5 -O- https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg
+# VERIFIED fetch (supply-chain audit #2): this key signs every ROCm/MIGraphX
+# package — the old wget|gpg pipe installed it TOFU with no integrity check.
+# Same pattern repos.sh already uses for the Kitware and apt.llvm.org keys.
+# shellcheck disable=SC1091
+source "${_SETUP_ROCM_DIR}/downloads.sh"
+_rocm_key_sha="${ROCM_GPG_KEY_SHA256:-}"
+if [ -z "${_rocm_key_sha}" ] && [ -f "${_SETUP_ROCM_DIR}/versions.env" ]; then
+  _rocm_key_sha="$(sed -n 's/^ROCM_GPG_KEY_SHA256=//p' "${_SETUP_ROCM_DIR}/versions.env")"
+fi
+_rocm_key_tmp="$(mktemp)"
+if [ -n "${_rocm_key_sha}" ]; then
+  download_verified_file "https://repo.radeon.com/rocm/rocm.gpg.key" "${_rocm_key_sha}" "${_rocm_key_tmp}"
+else
+  echo "WARNING: ROCM_GPG_KEY_SHA256 unset — fetching the ROCm apt key UNVERIFIED" >&2
+  download_file "https://repo.radeon.com/rocm/rocm.gpg.key" "${_rocm_key_tmp}" 3
+fi
+gpg --dearmor < "${_rocm_key_tmp}" > /etc/apt/keyrings/rocm.gpg
+rm -f "${_rocm_key_tmp}"
 # ==========================================================================
 # HARDCODED amd64-ONLY: the ROCm apt line below pins `arch=amd64`, so this
 # AMD/MIGraphX layer can ONLY be built for linux/amd64.  AMD publishes no

@@ -90,7 +90,30 @@ if ! command -v download_and_extract >/dev/null 2>&1; then
   unset _flutter_dl
 fi
 
-download_and_extract "${URL}" "${INSTALL_DIR}"
+# VERIFIED fetch (supply-chain audit #9): this is the Dart/Flutter COMPILER
+# toolchain, executed at build time — Google publishes the official sha256 in
+# releases_linux.json; FLUTTER_SDK_SHA256 mirrors it (bump with FLUTTER_VERSION).
+# noforward pin: read it from the mounted versions.env when the env lacks it.
+if [ -z "${FLUTTER_SDK_SHA256:-}" ]; then
+  for _flutter_ve in /opt/scripts/core/versions.env \
+      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/versions.env"; do
+    if [ -f "${_flutter_ve}" ]; then
+      FLUTTER_SDK_SHA256="$(sed -n 's/^FLUTTER_SDK_SHA256=//p' "${_flutter_ve}")"
+      break
+    fi
+  done
+  unset _flutter_ve
+fi
+if [ -n "${FLUTTER_SDK_SHA256:-}" ]; then
+  _flutter_tmp="$(mktemp "${TMPDIR:-/tmp}/flutter-sdk-XXXXXX.tar.xz")"
+  download_verified_file "${URL}" "${FLUTTER_SDK_SHA256}" "${_flutter_tmp}"
+  mkdir -p "${INSTALL_DIR}"
+  tar -xJf "${_flutter_tmp}" -C "${INSTALL_DIR}"
+  rm -f "${_flutter_tmp}"
+else
+  echo "WARNING: FLUTTER_SDK_SHA256 unset — fetching the Flutter toolchain UNVERIFIED (official sha lives in releases_linux.json; pin it in versions.env)" >&2
+  download_and_extract "${URL}" "${INSTALL_DIR}"
+fi
 
 # Clean up unnecessary cache artifacts
 rm -rf "${FLUTTER_PATH}/bin/cache"

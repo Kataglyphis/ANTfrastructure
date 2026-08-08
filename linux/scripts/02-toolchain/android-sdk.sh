@@ -70,7 +70,20 @@ trap 'rm -rf "${tmpdir}"' EXIT
 
 cd "${tmpdir}"
 zip_name="commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip"
-download_file "https://dl.google.com/android/repository/${zip_name}" "${zip_name}"
+# VERIFIED fetch (supply-chain audit #8): the unzipped sdkmanager bootstraps
+# the NDK — the cross compiler for every Android artifact — and auto-accepts
+# all licenses; every downstream hash check rests on this binary's integrity.
+# The pin is noforward (not a build-arg): read it from the mounted versions.env
+# when the env doesn't carry it (same pattern as install-rust.sh).
+if [ -z "${ANDROID_CMDLINE_TOOLS_SHA256:-}" ] && [ -f /opt/scripts/core/versions.env ]; then
+  ANDROID_CMDLINE_TOOLS_SHA256="$(sed -n 's/^ANDROID_CMDLINE_TOOLS_SHA256=//p' /opt/scripts/core/versions.env)"
+fi
+if [ -n "${ANDROID_CMDLINE_TOOLS_SHA256:-}" ]; then
+  download_verified_file "https://dl.google.com/android/repository/${zip_name}" "${ANDROID_CMDLINE_TOOLS_SHA256}" "${zip_name}"
+else
+  echo "WARNING: ANDROID_CMDLINE_TOOLS_SHA256 unset — fetching sdkmanager UNVERIFIED (pin it in versions.env alongside ANDROID_SDK_VERSION)" >&2
+  download_file "https://dl.google.com/android/repository/${zip_name}" "${zip_name}"
+fi
 unzip -q "${zip_name}"
 
 # Ensure a clean install of 'latest' cmdline-tools.
