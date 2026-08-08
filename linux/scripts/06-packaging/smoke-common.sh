@@ -241,6 +241,44 @@ validate_compiler_for_target() {
   local cc_exe="${tmpdir}/smoke"
   if printf 'int main(void){return 0;}\n' | "${cc_path}" -x c - -o "${cc_exe}" 2>/dev/null; then
     pass "${label}: link smoke OK"
+    # Loader assertion (smoke-depth R8): compile+link succeed with a WRONG
+    # sysroot too — the classic escapees (bad dynamic-loader path, riscv64
+    # --with-isa-spec mismatch) all link cleanly and only die on the target.
+    # The requested ELF interpreter is readable on any host, no execution.
+    if command -v readelf >/dev/null 2>&1; then
+      local want_ld="" got_ld=""
+      case "${target_arch}" in
+        amd64)   want_ld="ld-linux-x86-64" ;;
+        arm64)   want_ld="ld-linux-aarch64" ;;
+        riscv64) want_ld="ld-linux-riscv64" ;;
+      esac
+      if [ -n "${want_ld}" ]; then
+        got_ld="$(readelf -l "${cc_exe}" 2>/dev/null | sed -n 's/.*interpreter: \(.*\)]/\1/p' | head -1 || true)"
+        case "${got_ld}" in
+          *"${want_ld}"*) pass "${label}: emitted ELF requests ${want_ld} (correct loader)" ;;
+          "") echo "  INFO: ${label}: no PT_INTERP found (static or unusual link) — loader not asserted" ;;
+          *) fail "${label}: emitted ELF requests '${got_ld}', expected *${want_ld}* (wrong sysroot?)" ;;
+        esac
+      fi
+    fi
+    # Opportunistic real-execution proof when a qemu-user binary is present
+    # (not installed in the toolchain/package images by default — the loader
+    # assertion above is the always-on gate).
+    local qemu_bin=""
+    qemu_bin="$(command -v "qemu-$(smoke_uname_name "${target_arch}" 2>/dev/null || true)-static" 2>/dev/null || true)"
+    [ -n "${qemu_bin}" ] || qemu_bin="$(command -v "qemu-$(smoke_uname_name "${target_arch}" 2>/dev/null || true)" 2>/dev/null || true)"
+    if [ -n "${qemu_bin}" ] && [ "${mode}" = "cross" ]; then
+      local q_exe="${tmpdir}/smoke-static"
+      if printf 'int main(void){return 42;}\n' | "${cc_path}" -x c - -static -o "${q_exe}" 2>/dev/null; then
+        local q_rc=0
+        "${qemu_bin}" "${q_exe}" >/dev/null 2>&1 || q_rc=$?
+        if [ "${q_rc}" -eq 42 ]; then
+          pass "${label}: static binary RUNS under ${qemu_bin##*/} (exit 42)"
+        else
+          fail "${label}: static binary built but ran wrong under ${qemu_bin##*/} (rc=${q_rc}, want 42)"
+        fi
+      fi
+    fi
   else
     fail "${label}: link smoke FAILED (missing crt/startup files?)"
   fi

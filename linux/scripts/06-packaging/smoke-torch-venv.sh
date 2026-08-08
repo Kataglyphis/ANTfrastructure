@@ -315,6 +315,70 @@ main() {
     fail "torch.from_numpy failed (numpy/torch ABI mismatch)"
   fi
 
+  # Compute battery (smoke-depth R5/R6): before this, the ONLY real torch/
+  # torchvision/onnxruntime compute exercise lived in an EXTERNAL repo's app
+  # smoke — zero in-repo functional coverage for the core ML stack. Gate with
+  # STV_COMPUTE=0 for callers that need the fast presence-only path.
+  # (~3 s native, ~8 s under qemu.)
+  if [ "${STV_COMPUTE:-1}" = "1" ]; then
+    if "${PY}" - <<'STV_PY' 2>/dev/null
+import torch
+torch.manual_seed(0)
+x = torch.randn(8, 4, requires_grad=True)
+m = torch.nn.Linear(4, 2)
+m(x).sum().backward()
+assert x.grad is not None and x.grad.shape == (8, 4)
+assert torch.allclose(torch.mm(torch.eye(3), torch.eye(3)), torch.eye(3))
+STV_PY
+    then pass "torch compute: forward+backward+mm OK"
+    else fail "torch compute FAILED (import works, so this is real)"
+    fi
+    if "${PY}" - <<'STV_PY' 2>/dev/null
+import torch
+from torchvision.ops import nms
+from torchvision.transforms import v2
+b = torch.tensor([[0.,0.,10.,10.],[1.,1.,11.,11.],[50.,50.,60.,60.]])
+assert nms(b, torch.tensor([0.9,0.8,0.7]), 0.5).numel() == 2   # exercises torchvision._C
+assert v2.Resize((8,8))(torch.zeros(3,16,16)).shape == (3,8,8)
+STV_PY
+    then pass "torchvision compute: nms (._C ext) + v2.Resize OK"
+    else fail "torchvision compute FAILED (the _C extension is the classic ABI-drift victim)"
+    fi
+    # Real InferenceSession: get_available_providers() is a capability LIST —
+    # it answers from a library that cannot actually load a graph. The model
+    # is generated in-process via torch.onnx.export (no fabricated bytes, no
+    # network); skipped cleanly when the exporter is unavailable.
+    if "${PY}" - <<'STV_PY' 2>/dev/null
+import io, sys
+import numpy as np, torch
+try:
+    import onnxruntime as ort
+except Exception:
+    sys.exit(3)
+buf = io.BytesIO()
+m = torch.nn.Linear(4, 2)
+m.eval()
+try:
+    torch.onnx.export(m, torch.zeros(1, 4), buf)
+except Exception:
+    sys.exit(3)
+s = ort.InferenceSession(buf.getvalue(), providers=["CPUExecutionProvider"])
+inp = s.get_inputs()[0].name
+out = s.run(None, {inp: np.zeros((1, 4), np.float32)})
+ref = m(torch.zeros(1, 4)).detach().numpy()
+assert np.allclose(out[0], ref, atol=1e-5), (out[0], ref)
+STV_PY
+    then pass "onnxruntime InferenceSession runs a real graph (torch.onnx.export -> ort, values match)"
+    else
+      _stv_rc=$?
+      if [ "${_stv_rc}" = "3" ]; then
+        echo "  SKIP ort InferenceSession check (onnxruntime or the onnx exporter unavailable)"
+      else
+        fail "onnxruntime InferenceSession FAILED on a trivial exported graph"
+      fi
+    fi
+  fi
+
   # Not just "importable" but "the CORRECT versions": assert each ML package
   # matches its pin (uv.lock for uv-resolved packages, versions.env for the ones
   # we build / force-reinstall from a local wheel).

@@ -79,7 +79,10 @@ check_vulkan_runtime() {
   # 4. Try to run vkEnumerateInstanceVersion via a dlopen test or vkvia
   echo "--- Vulkan runtime check ---"
   if command -v vkvia >/dev/null 2>&1; then
-    if vkvia 2>/dev/null | head -5; then
+    # rc of `cmd | head` is head's (always 0) — the old form was fail-open.
+    _vkvia_out="$(vkvia 2>/dev/null | head -5)" && [ -n "${_vkvia_out}" ] && _vkvia_ok=1 || _vkvia_ok=0
+    if [ "${_vkvia_ok}" = "1" ]; then
+      printf '%s\n' "${_vkvia_out}"
       pass "vkvia reports Vulkan instance version"
     else
       echo "  INFO: vkvia failed (expected in container without GPU)"

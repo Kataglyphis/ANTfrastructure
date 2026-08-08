@@ -331,6 +331,19 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     fi
     echo ""
 
+    # Mandatory-plugin GATE on the real target arch (smoke-depth R1). The
+    # Windows lane has a 4-point plugin contract; Linux shipped these four
+    # with only a WARN-only load-failure count. gst-inspect-1.0 <plugin>
+    # exits non-zero if the plugin is missing OR fails to dlopen.
+    echo "--- Functional: GStreamer mandatory plugins (libav opencv onnx tflite) ---"
+    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+         bash -lc 'gi="$(command -v gst-inspect-1.0 || echo /opt/gstreamer/bin/gst-inspect-1.0)"; missing=""; for p in libav opencv onnx tflite; do timeout 30 "$gi" "$p" >/dev/null 2>&1 || missing="$missing $p"; done; [ -z "$missing" ] || { echo "MISSING:$missing"; exit 1; }'; then
+      pass "GStreamer mandatory plugin set loads on ${target_arch}"
+    else
+      fail "GStreamer mandatory plugins missing/unloadable on ${target_arch} (see MISSING: line above)"
+    fi
+    echo ""
+
     echo "--- Functional: application import ---"
     # The actual deliverable: the Orchestr-ANT-ion app must import in the shipped
     # venv. A broken/incomplete app install (missing runtime dep) shipped silently
@@ -381,8 +394,18 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     # ALWAYS installs the Vulkan runtime files (base-image
     # install-vulkan-runtime-files). Only a container-infra error stays WARN.
     echo "--- Functional: Vulkan loader ---"
+    # vkEnumerateInstanceVersion works with ZERO ICDs and no GPU — a healthy
+    # loader cannot legitimately fail it (smoke-depth R12). AttributeError
+    # guard keeps a hypothetical 1.0 loader from false-failing.
     _vk_out="$("${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
-         /opt/venv/bin/python -c 'import ctypes; ctypes.CDLL("libvulkan.so.1"); print("VKOK")' 2>&1)" || true
+         /opt/venv/bin/python -c 'import ctypes
+l = ctypes.CDLL("libvulkan.so.1")
+try:
+    v = ctypes.c_uint32()
+    assert l.vkEnumerateInstanceVersion(ctypes.byref(v)) == 0
+    print("VKOK %d.%d.%d" % (v.value >> 22, (v.value >> 12) & 1023, v.value & 4095))
+except AttributeError:
+    print("VKOK (pre-1.1 loader)")' 2>&1)" || true
     if printf '%s' "${_vk_out}" | grep -q "VKOK"; then
       echo "  OK  libvulkan.so.1 loads (${target_arch})"
     elif printf '%s' "${_vk_out}" | grep -qiE "OSError|No such file|cannot open shared object|not found"; then

@@ -344,7 +344,10 @@ _python_cross_fixup_libdynload() {
   # Warn about missing optional extensions (depend on target dev packages).
   # _ctypes is intentionally disabled via ac_cv_header_ffi_h=no in the
   # config.site above; the warning is expected on cross builds.
-  local -a _optional_exts=(zlib _bz2 _lzma _ssl _hashlib _ctypes)
+  # _sqlite3 joined 2026-08-08: it was checked NOWHERE in linux/ although a
+  # from-source CPython silently drops it when libsqlite3-dev is absent at
+  # configure — and half the Python ecosystem imports sqlite3 transitively.
+  local -a _optional_exts=(zlib _bz2 _lzma _ssl _hashlib _ctypes _sqlite3)
   for _ext in "${_optional_exts[@]}"; do
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
        ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then

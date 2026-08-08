@@ -1,5 +1,55 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: smoke-depth round (audit round 3, lens 2)
+
+A capability×depth audit of every smoke layer found the deepest ML coverage
+living in an EXTERNAL repo's app smoke — torch, torchvision, onnxruntime
+inference and OpenCV imencode had zero in-repo functional coverage, and
+several capabilities had none anywhere. Presence checks upgraded to real
+execution (all device-less, no network, seconds each):
+
+- **GStreamer mandatory plugins** (libav/opencv/onnx/tflite) now GATE in the
+  runtime smoke on the real target arch under qemu, and in smoke-media's
+  native branch — a present-but-unloadable plugin (the observed
+  webrtcbin2/gtk4 class) was previously only a WARN-count. Plus a data
+  roundtrip (videoconvert!jpegenc → 4 real JPEG frames) beyond the
+  registry-only fakesink pipeline.
+- **Python stdlib battery** (ssl/sqlite3/lzma/bz2/zlib/hashlib/ctypes,
+  exercised not just imported) in smoke-toolchain — the textbook from-source
+  CPython failure; `_sqlite3` was checked NOWHERE in linux/ and joins
+  build_python.sh's staging warn-list too.
+- **torch forward+backward, torchvision nms/._C + v2.Resize, and a real
+  onnxruntime InferenceSession** (model generated in-process via
+  torch.onnx.export — no fabricated bytes) in smoke-torch-venv, gated
+  STV_COMPUTE=1 (default on).
+- **ffmpeg codec depth**: buildconf-vs-registration consistency for
+  x265/dav1d/svtav1/vpx/opus (build-ffmpeg probe-gates --enable-*, so a
+  silently-missed probe DROPS a codec while the build stays green) + real
+  encode/decode roundtrips for libx265/libvpx-vp9 — all inside the
+  binary-executes guard.
+- **Cross-compiler loader assertion**: the emitted ELF's PT_INTERP must
+  request the TARGET's dynamic loader (wrong-sysroot links succeed and only
+  die on target); opportunistic static-binary qemu-run (exit-42 proof) when
+  qemu-user is present.
+- **Rust**: version pinned against RUST_VERSION (the old check asserted
+  "rustc" appears in `rustc --version` — could never fail), host
+  compile+RUN, and per-target emit-obj (rustup lists targets whose std rlibs
+  are missing). **node/npm**: first coverage at all (version pin + JS
+  execution) — the LiteRT-web WASM gate silently self-disables without node.
+- **LiteRT**: `nm -D` symbol check (TfLiteInterpreterCreate/TfLiteModelCreate)
+  — works on foreign-arch ELF, so the cross branch gets it too; a 12-byte
+  stub used to pass `[ -f ]`. **nvcc**: device-less __global__ kernel
+  compile + the fail-open hole closed (ENABLE_NVIDIA=true with no nvcc now
+  fails). **GenAI**: shipped-but-unimportable is now FAIL, absent stays INFO.
+  **Vulkan runtime**: real vkEnumerateInstanceVersion call (works with zero
+  ICDs; a healthy loader cannot fail it). **Android NDK**: the compile smoke
+  its header promised since creation (per-target object + ELF-machine
+  assertion; the NDK clang is a host binary, runs on every branch).
+- Fail-open holes closed: absent cross-Python staging dir now FAILS for
+  requested foreign arches (ran zero checks before); smoke-media's hardcoded
+  "torch not installed" INFO replaced with a real venv probe (it was false in
+  the package image); smoke-vulkan's `vkvia | head` rc swallow fixed.
+
 ## 2026-08-08 (night) — Linux lane: orphan sweep (audit round 3, lens 1)
 
 A dedicated dead-weight audit (things wired to nothing), with every dynamic
