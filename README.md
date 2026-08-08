@@ -106,7 +106,10 @@ ccache for GCC/LLVM/media, apt/cargo/uv mounts, shared source caches, and a
 pinned buildkitd GC budget) — see
 [`docs/linux-build-basics.md` § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where)
 for the full map and the one process rule that matters: freeze the toolchain
-closures between a `--no-push` validation run and its push run.
+closures between chain runs that should cache-hit each other. (Note:
+`--no-push` full-chain runs are broken on OCI-worker hosts — see
+[`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the correct
+push-mode flow.)
 
 ## Reinstall QEMU/binfmt After a Host Reboot
 
