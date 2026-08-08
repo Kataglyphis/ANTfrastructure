@@ -104,8 +104,10 @@ require_sudo() {
   if [ "${EUID:-$(id -u)}" -ne 0 ]; then
     command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
     SUDO="sudo"
+    SUDO_WRAP="sudo"
   else
     SUDO=""
+    SUDO_WRAP=""
   fi
 }
 

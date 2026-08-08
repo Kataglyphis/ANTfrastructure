@@ -38,7 +38,7 @@ ARG GSTREAMER_VERSION="1.29.2"
 # Build Acceleration Arguments
 # Set AGGRESSIVE_PARALLELISM=true for faster builds on high-memory machines (16GB+)
 # Set USE_LLD=false to disable lld linker
-# Set USE_CCACHE=false to disable ccache
+# Set USE_CCACHE=0 (or false/no/off) to disable ccache
 ARG AGGRESSIVE_PARALLELISM=false
 ARG USE_LLD=true
 ARG USE_CCACHE=true

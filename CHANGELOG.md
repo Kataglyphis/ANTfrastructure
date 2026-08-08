@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: audit round 2, Klasse D — convention bugs
+
+- **`USE_CCACHE`/`USE_SCCACHE`/`USE_LLD` now accept both truthiness
+  spellings** (0/false/no/off, any case). Previously only the literal string
+  `"false"` disabled them — `USE_CCACHE=0`, the convention half the fleet
+  uses (and what `ENABLE_SCCACHE_*` expects), was silently ignored. Fixed in
+  compiler-cache.sh (+ shared `_flag_disabled` helper), cmake-cache-linker.sh,
+  build-ffmpeg.sh, onnxruntime lib/common.sh, ffmpeg-probe-framework.sh
+  (inline case in the standalone-bundled files, per bundling policy).
+  Verified live: `USE_CCACHE=0` now prints "ccache disabled".
+- **Bare `sudo` in the ONNX AMD/NVIDIA steps** (30-build-native-amd.sh,
+  30-build-native-nvidia.sh) replaced with the CPU sibling's guarded pattern
+  (command -v probe + SKIP_DEP_INSTALL honor) — they died rc 127 on images
+  without sudo while the CPU step degraded gracefully.
+- **common.sh's sudo fallback now sets `SUDO_WRAP` too** (it set only `SUDO`;
+  a `${SUDO_WRAP}` consumer reaching that path aborted under `set -u`).
+- verify-arg-consistency.sh no longer mixes `WARN:` and `WARNING:` prefixes.
+
 ## 2026-08-08 (night) — Linux lane: audit round 2, Klasse B — contract drift
 
 - **`CUDA_ARCHITECTURES` carried literal quote characters into CMake**: the

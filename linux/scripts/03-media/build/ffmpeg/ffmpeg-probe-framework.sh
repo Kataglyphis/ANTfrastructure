@@ -242,7 +242,7 @@ ffmpeg_try_link_probe() {
         # codec probe fails and the feature is dropped.
         ffmpeg_append_cross_search_flags cmd
     fi
-    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+    if command -v ld.lld >/dev/null 2>&1 && { case "${USE_LLD:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
         cmd+=("-fuse-ld=lld")
     fi
     cmd+=("${cflags[@]}" "${source_file}" "-o" "${output_file}" "${libs[@]}")
