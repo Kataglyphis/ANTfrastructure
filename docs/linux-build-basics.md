@@ -65,11 +65,12 @@ The chain caches at every level it can; know the map before "optimizing":
 | Sources | GCC tarball shared across host+targets (`GCC_TARBALL_CACHE_DIR`); LLVM source under `/var/cache/llvm-src`; ONNX-web + ffmpeg-sdks version-keyed mounts | The remaining media clones (opencv/gstreamer/ffmpeg/onnx) re-fetch on a cache bust — see the backlog item before adding mounts: `clone_or_update_repo` needs corrupt-dir hardening first, or a killed run poisons the shared source cache. |
 | GC budget | `~/.config/buildkit/buildkitd.toml` pins `gckeepstorage` | Without it, buildkit's DEFAULT GC decided whether the multi-hour layers survive between runs. Restart buildkitd BETWEEN runs only (`systemctl --user restart buildkit`) — never while a build solves. |
 
-**Process rule that beats every mechanism:** between a `--no-push` validation
-run and its push run, do not touch anything in the base/toolchain closures
+**Process rule that beats every mechanism:** between chain runs that should
+cache-hit each other, do not touch anything in the base/toolchain closures
 (01-core, 02-toolchain, versions.env, the bundled smoke scripts, the
-Dockerfiles) — identical context bytes are what turn the push run into a pure
-re-export with uploads.
+Dockerfiles) — identical context bytes are what turn the next run into a pure
+re-export. (`--no-push` full-chain runs are broken on OCI-worker hosts; see
+`docs/linux-cross-builds.md` for the correct push-mode flow.)
 
 ## Build
 
