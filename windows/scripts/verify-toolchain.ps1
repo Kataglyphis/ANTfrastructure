@@ -39,9 +39,18 @@ if ($expectedLlvm -and $clangBanner -notmatch [regex]::Escape($expectedLlvm)) {
 
 # ninja + nasm are pinned for the same reason (build-graph executor and FFmpeg's
 # SIMD assembler both shape what ships). Cheap asserts, same failure economics.
+#
+# sccache is here for a DIFFERENT reason and it is the important one to keep:
+# it shapes nothing that ships, but multi-tier caching
+# (SCCACHE_MULTILEVEL_CHAIN=disk,webdav, wired in Dockerfile.media-builder)
+# needs >= v0.16.0, and an older sccache ignores that variable SILENTLY. Without
+# this assert the local L0 tier could simply not exist -- every compile back to
+# a WebDAV round-trip, no error, nothing slower than "a bit slower than we
+# remember". That is unfalsifiable in a log, so it is asserted here instead.
 foreach ($pinned in @(
-        @{ Tool = 'ninja'; Args = @('--version'); EnvVar = 'NINJA_WINDOWS_VERSION' },
-        @{ Tool = 'nasm';  Args = @('-v');        EnvVar = 'NASM_WINDOWS_VERSION' })) {
+        @{ Tool = 'ninja';   Args = @('--version'); EnvVar = 'NINJA_WINDOWS_VERSION' },
+        @{ Tool = 'nasm';    Args = @('-v');        EnvVar = 'NASM_WINDOWS_VERSION' },
+        @{ Tool = 'sccache'; Args = @('--version'); EnvVar = 'SCCACHE_WINDOWS_VERSION' })) {
     $expected = Resolve-ContainerImageValue -EnvironmentVariable $pinned.EnvVar -DefaultValue ''
     if (-not $expected) { continue }
     # Real splatting (@<var>), not an array subexpression: the latter only works
