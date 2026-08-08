@@ -47,6 +47,7 @@ echo "[INFO] Using existing Python venv (expected at /opt/python/.venv)..."
 export PATH="${HOME}/.local/bin:${PATH}"
 
 # Ensure pip/build tooling is up-to-date
-uv pip install --upgrade pip setuptools wheel
-uv pip install cython pybind11
+# Executor pins per supply-chain audit #18 (inline defaults = versions.env).
+uv pip install --upgrade pip "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" "wheel==${PY_WHEEL_VERSION:-0.47.0}"
+uv pip install "cython==${PY_CYTHON_VERSION:-3.2.9}" "pybind11==${PY_PYBIND11_VERSION:-3.1.0}"
 uv pip install numpy

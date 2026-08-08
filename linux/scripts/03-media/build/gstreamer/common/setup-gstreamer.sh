@@ -481,8 +481,9 @@ ${SUDO_WRAP} chown -R "$(id -u):$(id -g)" "${GSTREAMER_PREFIX}"
 echo "Using existing Python venv (expected at /opt/python/.venv)..."
 
 # Install Meson/Ninja in the existing venv
-uv pip install -U pip setuptools wheel
-uv pip install -U meson ninja
+# Executor pins per supply-chain audit #18 (inline defaults = versions.env).
+uv pip install -U pip "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" "wheel==${PY_WHEEL_VERSION:-0.47.0}"
+uv pip install -U "meson==${PY_MESON_VERSION:-1.11.2}" "ninja==${PY_NINJA_VERSION:-1.13.0}"
 # pycairo is a host Python build dependency for pygobject fallback. Install it
 # only when Python bindings are enabled, since the cross-compiler CC/CXX env
 # vars leak into uv and cause Meson's "Could not invoke" in cross builds.

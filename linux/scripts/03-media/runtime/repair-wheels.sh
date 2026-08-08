@@ -42,7 +42,9 @@ fi
 echo "Running auditwheel repair on native wheels..."
 REPAIRED_WHEELS_DIR="${WHEELS_DIR}/repaired"
 
-uv pip install auditwheel patchelf
+# Executor pins per supply-chain audit #18 — auditwheel REWRITES the shipped
+# wheels' ELF headers; pinned so the same commit grafts the same RPATHs.
+uv pip install "auditwheel==${PY_AUDITWHEEL_VERSION:-6.7.0}" "patchelf==${PY_PATCHELF_VERSION:-0.19.1.0}"
 runtime_ld_path="$(find /opt /usr/local -type d \( -name 'lib*' -o -name '*linux-gnu*' \) 2>/dev/null | sort -u | paste -sd ':' - || true)"
 export LD_LIBRARY_PATH="${runtime_ld_path}:${LD_LIBRARY_PATH:-}"
 

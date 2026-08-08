@@ -214,8 +214,17 @@ prepare_build_environment() {
 
     BUILD_PYTHON="$(require_host_python)" || return 1
 
+    # Build-executor pins (supply-chain audit #18): setuptools/wheel/ninja
+    # EXECUTE code at build time and were resolved fresh from PyPI every run.
+    # setuptools keeps the documented <82 torch-compat ceiling — pinned to the
+    # newest release under it. Pure-python data deps (pyyaml, sympy, jinja2,
+    # ...) stay floating on purpose: they don't shape the emitted binaries.
     uv pip install --python "${BUILD_PYTHON}" -U \
-        "setuptools<82" wheel build cmake ninja numpy packaging pyyaml requests six typing-extensions \
+        "setuptools==${PY_SETUPTOOLS_LT82_VERSION:-81.0.0}" \
+        "wheel==${PY_WHEEL_VERSION:-0.47.0}" \
+        build cmake \
+        "ninja==${PY_NINJA_VERSION:-1.13.0}" \
+        numpy packaging pyyaml requests six typing-extensions \
         sympy filelock networkx jinja2
 }
 

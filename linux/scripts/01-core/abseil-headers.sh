@@ -33,7 +33,16 @@ fi
 install_abseil_headers() {
   local dest_dir="${1:-/usr/local/include}"
   local absl_tag="${2:-${ABSEIL_VERSION:-20260526.0}}"
-  local absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_tag}.tar.gz"
+  # Immutable /archive/<commit>.tar.gz form when the commit pin is set
+  # (supply-chain audit #15): the tag-tarball form is movable (tags can be
+  # re-pointed) and not byte-stable across GitHub compression changes.
+  local absl_commit="${ABSEIL_COMMIT:-}"
+  local absl_url
+  if [ -n "${absl_commit}" ]; then
+    absl_url="https://github.com/abseil/abseil-cpp/archive/${absl_commit}.tar.gz"
+  else
+    absl_url="https://github.com/abseil/abseil-cpp/archive/refs/tags/${absl_tag}.tar.gz"
+  fi
   local absl_tar="/tmp/abseil-${absl_tag}-$$.tar.gz"
   local marker="${dest_dir}/absl/types/span.h"
 
@@ -49,7 +58,12 @@ install_abseil_headers() {
   # warn-and-return-1 path as before instead of download_file's hard die().
   local absl_tar_resolved=""
   if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
-    if download_file "${absl_url}" "${absl_tar}" 2>/dev/null; then
+    if [ -n "${absl_commit}" ] && [ -n "${ABSEIL_TARBALL_SHA256:-}" ]; then
+      # Verified path: commit-pinned archive + sha (both in versions.env).
+      if download_verified_file "${absl_url}" "${ABSEIL_TARBALL_SHA256}" "${absl_tar}" 2>/dev/null; then
+        absl_tar_resolved="${absl_tar}"
+      fi
+    elif download_file "${absl_url}" "${absl_tar}" 2>/dev/null; then
       absl_tar_resolved="${absl_tar}"
     fi
   fi

@@ -96,7 +96,14 @@ echo "Using existing Astral uv venv (expected at /opt/python/.venv)"
 setup_host_python_environment
 
 # Install build tools into the uv venv
-uv pip install --upgrade pip setuptools wheel meson ninja jinja2 pyyaml ply pybind11
+# Executor pins per supply-chain audit #18 (inline defaults = versions.env).
+uv pip install --upgrade pip \
+  "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" \
+  "wheel==${PY_WHEEL_VERSION:-0.47.0}" \
+  "meson==${PY_MESON_VERSION:-1.11.2}" \
+  "ninja==${PY_NINJA_VERSION:-1.13.0}" \
+  jinja2 pyyaml ply \
+  "pybind11==${PY_PYBIND11_VERSION:-3.1.0}"
 UV_RUN_PREFIX=(uv run --)
 
 # Ensure GoogleTest is available

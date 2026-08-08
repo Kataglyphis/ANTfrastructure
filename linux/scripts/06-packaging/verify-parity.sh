@@ -401,71 +401,43 @@ check_imports() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-main() {
+# main() decomposed (complexity audit F-F): it carried five responsibilities
+# in 107 lines — parse, ensure images, banner, dispatch, report — while the
+# same file already demonstrated the clean per-function shape in its 18
+# check_* functions. main() now reads like validate-compilers.sh's.
+
+verify_parity_parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
-      --native)
-        NATIVE_IMAGE="$2"
-        shift 2
-        ;;
-      --cross)
-        CROSS_IMAGE="$2"
-        shift 2
-        ;;
-      --checks)
-        CHECKS="$2"
-        shift 2
-        ;;
-      --verbose)
-        VERBOSE=1
-        shift
-        ;;
-      --diff-tool)
-        DIFF_TOOL="$2"
-        shift 2
-        ;;
-      -h|--help)
-        usage
-        exit 0
-        ;;
-      *)
-        warn "Unknown option: $1"; usage >&2; exit 1
-        ;;
+      --native)    NATIVE_IMAGE="$2"; shift 2 ;;
+      --cross)     CROSS_IMAGE="$2";  shift 2 ;;
+      --checks)    CHECKS="$2";       shift 2 ;;
+      --verbose)   VERBOSE=1;         shift ;;
+      --diff-tool) DIFF_TOOL="$2";    shift 2 ;;
+      -h|--help)   usage; exit 0 ;;
+      *) warn "Unknown option: $1"; usage >&2; exit 1 ;;
     esac
   done
-
   if [ -z "${NATIVE_IMAGE}" ] || [ -z "${CROSS_IMAGE}" ]; then
     err "Both --native and --cross are required"
   fi
+}
 
-  WORKDIR="$(mktemp -d "${TMPDIR}/verify-parity.XXXXXX")"
-  cleanup() { rm -rf "${WORKDIR}"; }
-  trap cleanup EXIT
-
-  # Pre-flight: verify both images are runnable
-  if ! "${CONTAINER_BIN}" image inspect "${NATIVE_IMAGE}" >/dev/null 2>&1; then
-    log "Pulling native image: ${NATIVE_IMAGE}"
-    retry 3 10 "pulling ${NATIVE_IMAGE}" "${CONTAINER_BIN}" pull "${NATIVE_IMAGE}" || {
-      err "Cannot pull native image: ${NATIVE_IMAGE}"
+# Pull (when absent) and start-probe one image. Usage: _ensure_image <label> <ref>
+_ensure_image() {
+  local label="$1" image="$2"
+  if ! "${CONTAINER_BIN}" image inspect "${image}" >/dev/null 2>&1; then
+    log "Pulling ${label} image: ${image}"
+    retry 3 10 "pulling ${image}" "${CONTAINER_BIN}" pull "${image}" || {
+      err "Cannot pull ${label} image: ${image}"
     }
   fi
-
-  if ! "${CONTAINER_BIN}" image inspect "${CROSS_IMAGE}" >/dev/null 2>&1; then
-    log "Pulling cross image: ${CROSS_IMAGE}"
-    retry 3 10 "pulling ${CROSS_IMAGE}" "${CONTAINER_BIN}" pull "${CROSS_IMAGE}" || {
-      err "Cannot pull cross image: ${CROSS_IMAGE}"
-    }
+  if ! container_exec_strip "${image}" echo "ok" >/dev/null 2>&1; then
+    err "${label} image ${image} failed to start a container"
   fi
+}
 
-  # Quick sanity check that both containers can start
-  if ! container_exec_strip "${NATIVE_IMAGE}" echo "ok" >/dev/null 2>&1; then
-    err "Native image ${NATIVE_IMAGE} failed to start a container"
-  fi
-
-  if ! container_exec_strip "${CROSS_IMAGE}" echo "ok" >/dev/null 2>&1; then
-    err "Cross image ${CROSS_IMAGE} failed to start a container"
-  fi
-
+verify_parity_print_header() {
   printf '%b' "\033[1;37m"
   printf '╔══════════════════════════════════════════════════════════╗\n'
   printf '║         Container Image Parity Verification             ║\n'
@@ -474,12 +446,15 @@ main() {
   printf '║ Cross:  %-47s ║\n' "${CROSS_IMAGE:0:47}"
   printf '╚══════════════════════════════════════════════════════════╝\n'
   printf '%b\n' "\033[0m"
+}
 
-  IFS=',' read -ra CHECK_LIST <<< "${CHECKS}"
-
-  local total=0
-  local passed=0
+# Run the selected checks; returns "<passed> <total>" via namerefs.
+verify_parity_run_checks() {
+  local -n _vprc_passed=$1
+  local -n _vprc_total=$2
   local check_name
+  local -a CHECK_LIST=()
+  IFS=',' read -ra CHECK_LIST <<< "${CHECKS}"
 
   # Data-driven dispatch: each known check maps to its check_<name> function, so
   # adding a check is one set entry rather than another copy-pasted case arm.
@@ -487,26 +462,46 @@ main() {
     [packages]=1 [python]=1 [versions]=1 [files]=1 [libs]=1 [imports]=1
   )
 
+  _vprc_passed=0
+  _vprc_total=0
   for check_name in "${CHECK_LIST[@]}"; do
     check_name="$(trim "${check_name}")"
     if [ -z "${KNOWN_CHECKS[${check_name}]:-}" ]; then
       err "Unknown check: ${check_name}"   # err exits; no continue needed
     fi
-    ((total++)) || true
-    "check_${check_name}" && ((passed++)) || true
+    ((_vprc_total++)) || true
+    "check_${check_name}" && ((_vprc_passed++)) || true
   done
+}
 
+verify_parity_report() {
+  local passed="$1" total="$2"
   printf '\n%b' "\033[1;37m"
   printf '══════════════════════════════════════════════════════════════\n'
   if [ "${passed}" -eq "${total}" ]; then
     printf '  RESULT: %d/%d checks PASSED - images are equivalent\n' "${passed}" "${total}"
     printf '%b\n' "\033[0m"
-    exit 0
-  else
-    printf '  RESULT: %d/%d checks PASSED, %d FAILED\n' "${passed}" "${total}" "$((total - passed))"
-    printf '%b\n' "\033[0m"
-    exit 1
+    return 0
   fi
+  printf '  RESULT: %d/%d checks PASSED, %d FAILED\n' "${passed}" "${total}" "$((total - passed))"
+  printf '%b\n' "\033[0m"
+  return 1
+}
+
+main() {
+  verify_parity_parse_args "$@"
+
+  WORKDIR="$(mktemp -d "${TMPDIR}/verify-parity.XXXXXX")"
+  cleanup() { rm -rf "${WORKDIR}"; }
+  trap cleanup EXIT
+
+  _ensure_image "Native" "${NATIVE_IMAGE}"
+  _ensure_image "Cross" "${CROSS_IMAGE}"
+  verify_parity_print_header
+
+  local passed=0 total=0
+  verify_parity_run_checks passed total
+  verify_parity_report "${passed}" "${total}"
 }
 
 main "$@"

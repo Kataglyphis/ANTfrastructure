@@ -37,7 +37,16 @@ _tvm_wheel_setup() {
     export UV_PYTHON="${VIRTUAL_ENV}/bin/python" \
            MEDIA_HOST_PYTHON="${VIRTUAL_ENV}/bin/python"
 
-    uv pip install -U pip setuptools wheel build scikit-build-core cython setuptools-scm
+    # Build-executor pins (supply-chain audit #18): these packages EXECUTE code
+    # at build time; unpinned installs made every build resolve them fresh.
+    # Inline defaults mirror versions.env (safety-net convention).
+    uv pip install -U pip \
+      "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" \
+      "wheel==${PY_WHEEL_VERSION:-0.47.0}" \
+      build \
+      "scikit-build-core==${PY_SCIKIT_BUILD_CORE_VERSION:-1.0.3}" \
+      "cython==${PY_CYTHON_VERSION:-3.2.9}" \
+      "setuptools-scm==${PY_SETUPTOOLS_SCM_VERSION:-10.2.1}"
     uv pip install -U numpy cloudpickle decorator psutil scipy attrs
 
     TVM_WHEEL_DIR="${prefix}/wheels"

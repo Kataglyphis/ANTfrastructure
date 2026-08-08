@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: supply-chain round 3 — build executors frozen
+
+- **The ~20-site unpinned `uv pip install` surface is closed for every
+  binary-shaping package**: meson, ninja, cython, pybind11, setuptools,
+  wheel, scikit-build-core, setuptools-scm — and auditwheel/patchelf, which
+  REWRITE the shipped wheels' ELF headers — are pinned via a new
+  `PY_*_VERSION` family in versions.env (frozen to what builds were already
+  resolving; the torch wheelhouse keeps its documented setuptools<82 ceiling
+  via a dedicated pin). Pure-python data deps stay floating by design.
+  Wired at 8 install sites with the inline-default safety-net convention.
+- **abseil headers now fetch the immutable `/archive/<commit>.tar.gz`** form,
+  sha-verified (ABSEIL_COMMIT + ABSEIL_TARBALL_SHA256) — the tag-tarball form
+  is movable and not byte-stable.
+- **verify-parity.sh main() decomposed** (complexity F-F, zero blast radius):
+  five responsibilities → five functions matching the file's own check_*
+  shape; behavior verified (--help, missing-args, exit codes).
+- AGENTS.md: supply-chain discipline codified in Linux Build Rules; a
+  16.1.0/16.2.0 GCC version drift in the rules text fixed.
+
 ## 2026-08-08 (night) — Linux lane: supply-chain hardening round 2 — pins for every trust anchor
 
 All computed from upstream (streamed sha256, gzip/manifest-verified) and
