@@ -96,7 +96,7 @@
     # The "~20-25% of the disk" rule of thumb does NOT apply here: it assumes
     # the disk is mostly buildkit's, and on this host ~68 % is other content.
     # Size against FREE space, not total.
-    reservedSpace = "150GB"
+    reservedSpace = "40GB"
     maxUsedSpace  = "225GB"   # ~reservedSpace * 1.5, per the note above
     # 30GB -> 60GB (2026-08-07): 30 GB left GC no runway and forced two manual
     # prunes mid-chain. Still far below reservedSpace, so the VS-class spine
@@ -106,6 +106,6 @@
   # Tier 2: hard ceiling.
   [[worker.containerd.gcpolicy]]
     all = true
-    reservedSpace = "150GB"   # keep in step with tier 1 (see its note)
+    reservedSpace = "40GB"   # keep in step with tier 1 (see its note)
     maxUsedSpace  = "240GB"
     minFreeSpace  = "25GB"

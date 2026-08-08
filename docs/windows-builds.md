@@ -640,17 +640,22 @@ Housekeeping and sharing:
   `reservedSpace = 200GB` (= **214.75 GB**; the toml takes GiB); all 37 records
   read `Reclaimable: false` and **every** lever returned `Total: 0B`:
 
-  > **The mechanism below is NOT settled — read this first.** The obvious
-  > reading is "GC never prunes below `reservedSpace`, so everything under it
-  > is marked unreclaimable". Lowering the reserve to 150GB and restarting
-  > buildkitd DID unblock it (98.83 GB freed immediately, C: 85.1 → 139.1 GB),
-  > so the ACTION is right. But a later measurement the same day contradicts
-  > that explanation: store 145.35 GB against the new 161.06 GB reserve —
-  > again below it — reported `Reclaimable: 145.35GB`, i.e. everything
-  > reclaimable. Between the two, `nerdctl rmi` had removed eight stage tags
-  > and buildkitd had restarted. So the reserve is at most part of it, and
-  > tag-pinning (`Shared` records) or a restart-cleared lease is likely the
-  > other part. Treat the recipe as verified and the causal story as open.
+  > **SETTLED 2026-08-08, and it is NOT `reservedSpace`.** The cause is
+  > **`Shared: true`** — records pinned by containerd IMAGE TAGS, which prune
+  > can never take (see the `Private`/`Shared` bullet below; that note was
+  > right all along and got overlooked twice in one day). Decisive
+  > measurement: store 109.06 GB reporting `Reclaimable: 109.06GB` under a
+  > **42.95 GB** reserve — far ABOVE the reserve, everything nominally
+  > reclaimable — still pruned **0 B**, with `du -v` showing `Shared: true` on
+  > every record. `Reclaimable` reports the LEASE state, not what prune will
+  > hand back.
+  >
+  > Why the reserve looked causal: lowering it to 150GB coincided with an
+  > admin `nerdctl rmi` of eight stage tags, and *that* is what released
+  > 98.83 GB (C: 85.1 → 139.1 GB). Two changes, one observation, wrong one
+  > credited. **Check `du -v` for `Shared` before touching the GC policy** —
+  > the lever for `Shared` is `nerdctl rmi` / `image prune -f`, and it costs
+  > you the stage images, so decide deliberately.
 
   ```text
   buildctl prune                                        Total: 0B
