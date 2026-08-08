@@ -30,7 +30,17 @@ load_versions_env() {
     esac
     _ve_name="${_ve_line%%=*}"
     if [ -z "${!_ve_name:-}" ]; then
-      export "${_ve_name}=${_ve_line#*=}"
+      _ve_val="${_ve_line#*=}"
+      # Strip one pair of surrounding quotes. The file format is unquoted
+      # (values are inert data, never shell-evaluated), but a quoted value
+      # slipped in once and the quotes propagated as DATA all the way into
+      # CMake — CUDA_ARCHITECTURES became ["80;86;89;90"], silently defeating
+      # the 90→90a suffix transform. Defense in depth for the whole class.
+      case "${_ve_val}" in
+        \"*\") _ve_val="${_ve_val#\"}"; _ve_val="${_ve_val%\"}" ;;
+        \'*\') _ve_val="${_ve_val#\'}"; _ve_val="${_ve_val%\'}" ;;
+      esac
+      export "${_ve_name}=${_ve_val}"
     fi
   done < "${_ve_file}"
 }

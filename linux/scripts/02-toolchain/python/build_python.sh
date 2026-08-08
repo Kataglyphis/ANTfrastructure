@@ -24,7 +24,7 @@ source_module downloads.sh
 
 install_err_trap
 
-PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.6}}"
+PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.7}}"
 PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSION}")}"
 PYTHON_TARBALL="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-$$.tgz"
 PYTHON_SOURCE_DIR="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}"

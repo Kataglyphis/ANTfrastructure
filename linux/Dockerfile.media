@@ -172,8 +172,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 ENV NVIDIA_CODEC_HEADERS=auto \
     UV_PYTHON="/opt/python/.venv/bin/python" \
     VIRTUAL_ENV="/opt/python/.venv" \
-    CC=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/gcc \
-    CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
+    CC=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/gcc \
+    CXX=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/g++
 
 # ==============================================================================
 # ONNX Runtime stage
@@ -691,6 +691,11 @@ RUN --mount=type=tmpfs,target=/tmp \
 FROM media-inputs AS final
 
 ARG GSTREAMER_VERSION
+# OPENCV_VERSION rides the same ENV channel as GSTREAMER_VERSION below: the
+# android stages (FROM this image) mount no versions.env, so inherited ENV is
+# their only version source — without it, opencv/android/build-android.sh
+# fell back to the moving `5.x` branch while the chain ships tag 5.0.0.
+ARG OPENCV_VERSION
 ARG OPENCV_OUTPUT_DIR=/opt/opencv5
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
@@ -705,13 +710,14 @@ ARG PYTHON_VERSION=3.14.7
 ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    OPENCV_VERSION=${OPENCV_VERSION} \
     GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     GST_PLUGIN_PATH="" \
     GI_TYPELIB_PATH="" \
     OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
     FFMPEG_PREFIX=/opt/ffmpeg \
     LIBCAMERA_PREFIX=/opt/libcamera \
-    GCC_VERSION=${GCC_VERSION:-16.1.0} \
+    GCC_VERSION=${GCC_VERSION:-16.2.0} \
     PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR:-3.14} \
     PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python${PYTHON_MAJOR_MINOR:-3.14}/site-packages:${PYTHONPATH}"
 

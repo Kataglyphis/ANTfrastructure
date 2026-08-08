@@ -3,7 +3,7 @@ set -euo pipefail
 
 # smoke-toolchain.sh
 # Validates the compiler toolchain inside the cross-compiler image:
-#   - GCC 16.1.0 for all cross targets
+#   - GCC ${GCC_VERSION} (versions.env pin) for all cross targets
 #   - LLVM/Clang 22.1.8
 #   - Rust/Cargo
 #   - Python 3.14
@@ -33,7 +33,7 @@ done
 unset _sve _vef
 : "${GCC_VERSION:=16.2.0}"
 : "${LLVM_RELEASE:=22.1.8}"
-: "${PYTHON_VERSION:=3.14.6}"
+: "${PYTHON_VERSION:=3.14.7}"
 : "${PYTHON_MAJOR_MINOR:=3.14}"
 : "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION}}"
 

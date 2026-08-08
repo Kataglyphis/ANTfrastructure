@@ -6,7 +6,7 @@ _VVDEC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_VVDEC_DIR}/../../../core/common.sh"
 media_common_init "${_VVDEC_DIR}"
 
-VV_VERSION="${VV_VERSION:-${VVDEC_VERSION:-${1:-v3.1.0}}}"
+VV_VERSION="${VV_VERSION:-${VVDEC_VERSION:-${1:-v3.2.0}}}"
 TMPDIR="/tmp/vvdec-$$"
 PREFIX="/usr/local"
 

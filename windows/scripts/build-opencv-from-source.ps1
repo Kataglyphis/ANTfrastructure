@@ -95,7 +95,7 @@ function Get-OcvPythonQueryResult {
 $pythonModuleDir = Join-Path $mainSrc 'cmake'
 $pyExePath = $ocvPy.Exe -replace '\\', '/'
 # Version derived from canonical PYTHON_VERSION (versions.env via load-versions/ENV)
-$pyVersion = if (-not [string]::IsNullOrWhiteSpace($env:PYTHON_VERSION)) { $env:PYTHON_VERSION } else { '3.14.6' }
+$pyVersion = if (-not [string]::IsNullOrWhiteSpace($env:PYTHON_VERSION)) { $env:PYTHON_VERSION } else { '3.14.7' }
 $pyParts = $pyVersion -split '\.'
 if ($pyParts.Count -lt 2) { throw "PYTHON_VERSION '$pyVersion' is not MAJOR.MINOR[.PATCH] -- cannot derive PYTHON_VERSION_MAJOR/MINOR" }
 $findPythonInterpStub = @"

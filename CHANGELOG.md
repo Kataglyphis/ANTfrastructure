@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: audit round 2, Klasse B — contract drift
+
+- **`CUDA_ARCHITECTURES` carried literal quote characters into CMake**: the
+  only quoted value in versions.env, and `load_versions_env` exports values
+  verbatim — CMake received `"80` and `90"`, and the documented Hopper
+  `90→90a` suffix transform was a silent no-op (the string ends in `"`).
+  Value dequoted in versions.env (the file format is unquoted inert data, as
+  the loader header documents) AND the loader now strips one pair of
+  surrounding quotes — defense in depth for the class. Verified live: the
+  transform now yields `…;90a`.
+- **Android OpenCV built a different OpenCV than the chain**:
+  `OPENCV_VERSION="${1:-5.x}"` — the dispatcher passes no arguments and the
+  env was ignored, so every android image cloned the MOVING 5.x branch while
+  the chain ships tag 5.0.0. Now env-first with the 5.0.0 inline default
+  (sibling pattern), and Dockerfile.media's final stage exports
+  `ENV OPENCV_VERSION` so the android stages inherit the pin the same way
+  they already inherit GSTREAMER_VERSION.
+- **`Dockerfile.media` still fell back to `/opt/gcc-16.1.0`** in three
+  places — a path that no longer exists since the 16.2.0 bump (every
+  script-side fallback had been bumped; the Dockerfile inlines were invisible
+  to verify-arg-consistency, which only parses `ARG NAME=` lines).
+- **Stale nested fallbacks** (all invisible to the checker's `$`-containing
+  literal guard): GenAI `v0.15.0`→`v0.15.2`, VVdec `v3.1.0`→`v3.2.0`,
+  Python `3.14.6`→`3.14.7` ×2 (build_python.sh would have died on the 3.14.7
+  checksum with a misleading error) + the same stale 3.14.6 on the Windows
+  side (build-opencv-from-source.ps1).
+- **`ENABLE_NVIDIA`/`ENABLE_AMD` now reach the cross lane**: the runtime lane
+  honored them, `cross_stage_build_args` dropped them — a GPU-configured
+  runtime could sit on CPU-only media artifacts with no warning. Forwarded
+  (only when set) for the media stage.
+- **`install_vulkan_sdk` zero-arg call aborted "unbound variable"**: the
+  fallback referenced setup-dependencies.sh's flag-local
+  `VULKAN_VERSION_DEFAULT`; the chain now ends in the canonical
+  `VULKAN_VERSION` pin.
+- Four comments whose stated contract had drifted from the code they sit on
+  (abseil default, three GCC-16.1.0 claims) corrected.
+
 ## 2026-08-08 (night) — Linux lane: audit round 2, Klasse A — error-path masking
 
 Four-perspective audit (error paths, contracts, tests, conventions); this
