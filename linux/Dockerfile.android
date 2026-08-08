@@ -61,6 +61,11 @@ COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
 # android-sdk.sh here and by the gstreamer android build in downstream stages;
 # all android-* stages FROM android-sdk, so this one COPY covers them.
 COPY --chmod=755 linux/scripts/01-core/downloads.sh /opt/scripts/core/downloads.sh
+# compiler-resolution.sh: WITHOUT it the android lib stages fell back to their
+# inline resolvers — and IREE's bare `command -v gcc` resolved the CUSTOM CROSS
+# GCC from the inherited PATH (/opt/gcc-<ver>/bin) as its HOST compiler. The
+# canonical resolver prefers real host toolchains; self-contained, no deps.
+COPY --chmod=755 linux/scripts/01-core/compiler-resolution.sh /opt/scripts/core/compiler-resolution.sh
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \

@@ -31,19 +31,36 @@ SHELL ["bash", "-lc"]
 # Bootstrap CA roots before optionally rewriting apt sources to HTTPS mirrors.
 # NOTE: QEMU-emulated runs can fail with SHELL ["bash", "-lc"] because the
 # login shell profile may attempt unsupported syscalls.  Use explicit /bin/bash.
-# NOTE: base RUNs bind-mount only the script sub-trees base-image.sh uses --
-# 01-core (its own dir) plus 02-toolchain (source_module resolves cmake.sh, and
-# install-shared-build-tooling packaging-deps.sh, from there). Mounting the whole
-# linux/scripts tree would fold every media/android/packaging script's checksum
-# into this layer's cache key, so editing any unrelated script would bust the
-# entire base rebuild.
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/tmp/scripts/02-toolchain,ro \
+# NOTE: base RUNs bind-mount ONLY the per-file transitive source-closure of
+# base-image.sh (traced 2026-08-08; same discipline as Dockerfile.toolchain's
+# three lists — keep the six identical lists below in sync). The previous
+# whole-directory mounts folded ALL ~120 files of 01-core + 02-toolchain into
+# every base layer's cache key, so editing ANY of them — including host-only
+# orchestrator modules — rebuilt base and cascaded through the entire chain.
+# Closure: base-image.sh -> modules.sh -> common.sh (-> load-versions-env,
+# versions.env, logging, platform, arch-mapping, ubuntu-mirror, downloads,
+# parallelism) + package-lists.sh + 02-toolchain/{cmake,packaging-deps}.sh.
+RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core-scripts/use-fast-ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core-scripts/ubuntu-mirror.sh,ro \
     set -euo pipefail; \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
 
@@ -81,8 +98,21 @@ WORKDIR /workspace
 # Base packages + graphics + flutter deps + perf tools (combined for fewer layers)
 # BuildKit cache mounts handle apt caching efficiently.
 # ------------------------------------------------------------------------------
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/tmp/scripts/02-toolchain,ro \
+RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     bash /tmp/scripts/01-core/base-image.sh install-os-packages
@@ -92,8 +122,21 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,r
 # Shared build tooling (CMake, packaging prerequisites)
 # Keep this in the base image so compiler/toolchain builds inherit it directly.
 # ------------------------------------------------------------------------------
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/tmp/scripts/02-toolchain,ro \
+RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -104,8 +147,21 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,r
 # ------------------------------------------------------------------------------
 # Install Node.js (official tarballs, apt fallback for RISC-V)
 # ------------------------------------------------------------------------------
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/tmp/scripts/02-toolchain,ro \
+RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     bash /tmp/scripts/01-core/base-image.sh install-node \
@@ -115,8 +171,21 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,r
 # ------------------------------------------------------------------------------
 # Vulkan ICD/Layer-JSONs
 # ------------------------------------------------------------------------------
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/tmp/scripts/02-toolchain,ro \
+RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \
     --mount=type=bind,source=linux/vulkan,target=/tmp/vulkan,ro \
     bash /tmp/scripts/01-core/base-image.sh install-vulkan-runtime-files \
       --version "${VULKAN_VERSION}" \
@@ -125,8 +194,21 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,r
 # ------------------------------------------------------------------------------
 # uv install + compiler caches init
 # ------------------------------------------------------------------------------
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/scripts/01-core,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain,target=/tmp/scripts/02-toolchain,ro \
+RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
+    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \
+    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \

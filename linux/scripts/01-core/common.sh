@@ -44,9 +44,17 @@ if ! command -v cross_build_is_active >/dev/null 2>&1; then
   if command -v cross_build_enabled >/dev/null 2>&1; then
     cross_build_is_active() { cross_build_enabled; }
   else
+    # NORMALIZE both sides (platform.sh is sourced above): TARGET_ARCH is
+    # usually an OCI name (amd64/arm64) while `uname -m` yields machine names
+    # (x86_64/aarch64) — the raw comparison reported "cross active" on every
+    # NATIVE arm64 host. Same fix smoke-common.sh documented; this copy (and
+    # its two clones, now delegating here) had drifted without it.
     cross_build_is_active() {
-      [ "${BUILD_MODE:-native}" = "cross" ] && \
-      [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+      [ "${BUILD_MODE:-native}" = "cross" ] || return 1
+      local _t _b
+      _t="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}")"
+      _b="$(arch_normalize "${BUILDARCH:-$(uname -m)}" 2>/dev/null || printf '%s' "${BUILDARCH:-$(uname -m)}")"
+      [ -n "${_t}" ] && [ "${_t}" != "${_b}" ]
     }
   fi
 fi

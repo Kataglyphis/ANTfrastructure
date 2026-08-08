@@ -1514,3 +1514,39 @@ Interaction: gcc.sh↔parallel-loop unification requires adding parallel-loop.sh
 to all THREE protected mount lists (sync-maintenance, permitted) AND porting
 per-target logs + job-splitting into it first. Totals: ~350 LOC out, 3 drift
 bugs closed, one 459-line function decomposed, future 01-core edits ~free.
+
+### 2026-08-08 status — applied in commit 300230e (round 1, mid-foreign-chain)
+
+**DONE: A1, A2, A4, A5, B1, B2, B3, B4, B6.**
+
+- **A1** — Dockerfile.base's six whole-dir mount pairs replaced with the traced
+  15-file closure (13× 01-core + cmake.sh + packaging-deps.sh; the mirror RUN
+  mounts only its 2). Validated with a REAL from-scratch base build
+  (`local/kataglyphis:base-a1-test`, exit 0). The FIRST validation build failed
+  exit 127: the static trace missed `use-fast-ubuntu-mirror.sh`, which
+  bootstrap-ca `exec`s rather than sources — exec/`bash` call edges don't show
+  up in source-statement greps. That's the recorded lesson: **closure = source
+  edges + exec edges**, and a real build is the only trustworthy verifier.
+- **A2** — all raw `cross_build_is_active` fallback clones (01-core/common.sh,
+  03-media/core/common.sh, build-gstreamer-monorepo.sh) now normalize both
+  sides via `arch_normalize` before comparing, matching the canonical
+  cross-env.sh semantics.
+- **A4** — Dockerfile.android now COPYs compiler-resolution.sh into
+  /opt/scripts/core/; the IREE fallback prefers explicit /usr/bin compilers
+  (aligned with the litert copy). Fallbacks kept (standalone-bundling policy)
+  but are now normally dead code.
+- **A5** — Dockerfile.package's inline ports-sed replaced by a 2-file bind
+  mount running the canonical `use-fast-ubuntu-mirror.sh`; the leftover
+  if-false block deleted.
+- **B1** — smoke-wrapper.sh `git rm`'d; linux-cross-builds.md +
+  cross-build-verification.md corrected (they claimed wrapper-smoke runs it).
+- **B2** — vestigial smoke-runtime-image.sh COPY removed from
+  Dockerfile.package. **B3** — create_deb() (104 unreachable lines) removed
+  from package_archive.sh. **B4** — run_quiet() removed from build-helpers.sh.
+  **B6** — AGENTS.md no longer claims the nonexistent
+  `media_build_preamble_init` alias.
+
+**Still open: A3** (parse_options table), **A6** (dir-walker unification),
+**B5** (smoke-runtime-image main() decomposition), **B7** (micro). All three
+substantives touch files the running foreign chain bind-mounts mid-flight —
+deliberately deferred to the post-chain closure batch.

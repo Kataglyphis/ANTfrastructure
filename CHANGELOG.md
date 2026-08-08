@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-08-08 (evening) — Linux lane: structural round 1 (cache-key closure + drift bugs + dead code)
+
+### Dockerfile.base no longer cache-keys on ~120 files (A1)
+
+base's six RUNs bind-mounted **all of 01-core + 02-toolchain**, so editing any
+of ~120 files — including host-only orchestrator modules the image never
+executes — busted base and cascaded a rebuild through the entire chain,
+undoing the toolchain stage's careful per-file mount lists one tier up. The
+mounts are now the traced 15-file transitive closure of base-image.sh (mirror
+RUN: 2 files). Validated with a real from-scratch base build; the first
+attempt failed exit 127 because the static trace missed
+`use-fast-ubuntu-mirror.sh`, which bootstrap-ca **exec**s rather than sources
+— closure tracing must follow exec/`bash` edges, not just `source` lines.
+Marginal cost of a future 01-core edit drops from "full chain rebuild" to
+near zero.
+
+### Three drift bugs between intentional clones (A2, A4, A5)
+
+- `cross_build_is_active` existed 5× with 3 semantics; the documented
+  arch-normalization fix had reached 1 of 5 copies. The raw copies compared
+  OCI names against `uname -m` machine names and reported "cross active" on
+  native arm64 hosts. All fallbacks now normalize via `arch_normalize`.
+- `compiler-resolution.sh` never shipped to the android stages, so
+  IREE-android's fallback `command -v gcc` resolved the **custom cross GCC**
+  from the inherited toolchain PATH as its *host* compiler (live bug, masked
+  by best-effort gating). Dockerfile.android now COPYs the canonical script;
+  the fallback prefers explicit /usr/bin compilers like the litert copy.
+- Dockerfile.package hand-rolled the ports-mirror sed: it ignored the
+  `USE_FAST_UBUNTU_MIRROR` gate and never derived ports-from-archive. It now
+  runs the canonical `use-fast-ubuntu-mirror.sh`.
+
+### Dead code out (B1–B4, B6)
+
+smoke-wrapper.sh (orphaned; two docs falsely claimed wrapper-smoke runs it —
+both corrected), `create_deb()` (104 lines, zero callers, positioned after
+the script's outputs were written), `run_quiet()` (zero callers), the
+vestigial smoke-runtime-image.sh COPY in Dockerfile.package, and AGENTS.md's
+claim of a `media_build_preamble_init` alias that does not exist.
+
+Deferred to the post-chain batch (they touch files the running foreign chain
+bind-mounts): A3 parse-table, A6 dir-walker unification, B5 smoke-runtime
+decomposition. Full status in docs/refactoring-backlog.md.
+
 ## 2026-08-08 (afternoon) — Linux lane: the --no-push hole, and a forensic audit of "green"
 
 ### `--no-push` full-chain handoffs never worked on this host
