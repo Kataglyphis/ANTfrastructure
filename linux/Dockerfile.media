@@ -71,6 +71,10 @@ ARG ENABLE_AMD=false
 # cargo-c consumers, the riscv64 wheelhouse). Default OFF pending a controlled
 # cross-arch validation — see 03-media/core/common.sh for the full story.
 ARG ENABLE_SCCACHE_RUST=0
+# GPU compile caching via sccache (nvcc for CUDA, hipcc for HIP/ROCm — both
+# unreachable for ccache; with 4 CUDA archs every kernel compiles 4x, the
+# dominant cost of the GPU onnxruntime/opencv builds). Same gated pattern.
+ARG ENABLE_SCCACHE_CUDA=0
 ARG AGGRESSIVE_PARALLELISM
 ARG USE_LLD
 ARG USE_CCACHE
@@ -83,6 +87,7 @@ ARG UBUNTU_CODENAME=resolute
 ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
     ENABLE_AMD=${ENABLE_AMD} \
     ENABLE_SCCACHE_RUST=${ENABLE_SCCACHE_RUST} \
+    ENABLE_SCCACHE_CUDA=${ENABLE_SCCACHE_CUDA} \
     BUILD_MODE=${BUILD_MODE} \
     BUILD_MEM_DIVISOR=${BUILD_MEM_DIVISOR} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \

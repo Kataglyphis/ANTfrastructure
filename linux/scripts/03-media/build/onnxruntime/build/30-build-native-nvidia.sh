@@ -179,6 +179,15 @@ BUILD_ARGS+=(
   --use_external_dawn
 )
 
+# CUDA compile caching (sccache) — GATED like the Rust/OpenCV wiring. nvcc is
+# unreachable for ccache; sccache wraps it first-class. Every CUDA kernel here
+# compiles once per arch in ${ONNX_CUDA_ARCHS} — the dominant cost of this
+# multi-hour build. Validate with ENABLE_SCCACHE_CUDA=1, then flip the default.
+if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ] && command -v sccache >/dev/null 2>&1; then
+  info "sccache: wrapping nvcc via CMAKE_CUDA_COMPILER_LAUNCHER"
+  BUILD_ARGS+=(--cmake_extra_defines "CMAKE_CUDA_COMPILER_LAUNCHER=sccache")
+fi
+
 append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS
 

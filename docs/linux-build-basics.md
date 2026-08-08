@@ -91,9 +91,14 @@ blind spots; neither replaces the other:
   manifest without full preprocessing → higher hit rates and faster hits;
   broader flag tolerance. sccache's C/C++ path always preprocesses and
   silently declines to cache on unsupported flags.
-- **sccache is irreplaceable for Rust**: ccache cannot wrap rustc at all;
-  `RUSTC_WRAPPER=sccache` is the only compile cache for the media lane's
-  cargo builds (gst-plugins-rs, wheelhouse).
+- **sccache is irreplaceable for Rust AND the GPU compilers**: ccache cannot
+  wrap rustc, and nvcc's device compiles (plus hipcc for ROCm) are equally out
+  of its reach — sccache handles all three first-class. With
+  `CUDA_ARCHITECTURES="80;86;89;90"` every CUDA kernel compiles FOUR times;
+  for the GPU onnxruntime/opencv builds this is the single biggest cache
+  lever in the repo. Gates: `ENABLE_SCCACHE_RUST` (media rust),
+  `ENABLE_SCCACHE_CUDA` (one gate for nvcc + hipcc launchers in the ONNX
+  GPU/AMD builds and OpenCV's CUDA config).
 - Both need **measurement to stderr** (the stream the 2MiB step-log clip never
   cuts) — an unmeasured cache regresses invisibly (proved live: the launcher
   never reached LLVM's nested sub-builds, 0% gain on identical inputs).
