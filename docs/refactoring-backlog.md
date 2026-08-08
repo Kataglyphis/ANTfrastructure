@@ -1551,6 +1551,50 @@ bugs closed, one 459-line function decomposed, future 01-core edits ~free.
 substantives touch files the running foreign chain bind-mounts mid-flight —
 deliberately deferred to the post-chain closure batch.
 
+## 2026-08-08 (night) — audit round 3 (orphans, smoke depth, supply chain, complexity)
+
+Four more lenses applied same-day (commits f049aa4, d7c3fb1, 68bc11e,
+6c34131 + the round-3 leftovers commit). Deferred WITH intent:
+
+**Supply chain, remaining (ranked):**
+- **The unpinned `uv pip install` surface (~20 sites)** — the single largest
+  non-reproducibility hole: meson/ninja/cmake/cython/pybind11/setuptools are
+  build-time code EXECUTORS resolved fresh from PyPI every build. Plan: a
+  checked-in build-requirements lock per environment installed via
+  `uv pip sync` (or minimally, `==` pins for the executors in versions.env,
+  forwarded like every native pin). Needs a coordinated change across ~10
+  scripts — batch it, don't drip it.
+- Vulkan SDK + GStreamer android-universal tarball sha pins (hash computation
+  was still streaming when round 3 closed — wire via download_verified_file
+  like the others; the call sites are vulkan.sh:543 and
+  gstreamer/android/build-gstreamer.sh:38).
+- soundtouch TOFU-at-build-time (cerbero recipe rehash) — switch the recipe
+  to a git source at the immutable tag, or mirror the tarball; the current
+  form blesses whatever arrives at build time.
+- libpng/freetype mirror-list fetches: one sha pin covers all mirrors
+  (cross-env.sh `cross_compile_cmake_lib_from_source` needs an optional sha
+  param). abseil: use the immutable /archive/<40-hex>.tar.gz form + sha.
+  LiteRT-web npm tarballs: verify `dist.integrity` from the registry.
+- `LLVM_COMMIT` / `TVM_COMMIT` opt-in pins (movable-tag hardening for the two
+  compiler clones; the `*_COMMIT` convention already exists for OPENCV/FFMPEG).
+
+**Complexity, remaining (risk-tiered; T0/T1 = batch with base-closure work):**
+- T5 (free): verify-parity.sh main() decomposition (5 phases; the file's own
+  KNOWN_CHECKS dispatch is the model), agentic-loop run_agentic_loop
+  (17-jq config block + 4 nested closures → assoc-array config).
+- T3/T4: tvm-config append_tvm_cmake_args (15 positionals → assoc nameref;
+  both call stacks differ in ONE token), setup-package-image
+  select_and_install_dev_packages split, smoke-common
+  validate_compiler_for_target split, assemble-torch-app
+  reconcile_local_wheels split, pre-setup setup_gi_cross_wrappers (221 lines,
+  ZERO locals — needs a caller audit before the local conversion).
+- T2 (batch with toolchain edits): vulkan.sh _build_vulkan_targets stanzas,
+  llvm-cross _llvm_cross_setup_and_build 5× case-mode.
+- T1 trap (NOT free despite looking host-only): cross-stage-build.sh
+  _cross_stage_build_impl — 01-core whole-dir bind in 23 media RUNs; batch
+  with A3/A6/B5 in the base-closure window. iree build_iree_wheels split
+  (~1h rebuild cost) + its :844/:995 indent break.
+
 ## 2026-08-08 (night) — audit round 2 applied (4 perspectives, 4 commits)
 
 A four-agent audit with lenses ORTHOGONAL to the structural map (error-path
