@@ -630,6 +630,48 @@ Housekeeping and sharing:
   free space than the disk physically has.** It cannot over-delete: `Shared`
   records stay pinned regardless (next bullet), so an absurd target is safe.
 
+- **When the store sits just BELOW `reservedSpace`, NO prune lever works and
+  `du` reports `Reclaimable: 0B` (measured 2026-08-08).** GC never prunes the
+  cache below `reservedSpace` — that is the knob's whole purpose — and buildkit
+  marks every record non-reclaimable while the store is under it. With the
+  store at 207.63 GB against `reservedSpace = 200GB` (= **214.75 GB**; the toml
+  takes GiB), all 37 records read `Reclaimable: false` and **every** lever
+  returned `Total: 0B`:
+
+  ```text
+  buildctl prune                                        Total: 0B
+  buildctl prune --free-storage 950000                  Total: 0B   # > disk size
+  buildctl prune --all --keep-storage-min 0 ...         Total: 0B
+  buildctl prune-histories                              Total: 0B   # listed, freed nothing
+  ```
+
+  None of those is broken; the reserve simply forbade the work. **Check
+  `reservedSpace` against `du`'s Total BEFORE reaching for a prune flag** —
+  if Total < reservedSpace there is nothing any flag can do, and the only
+  levers are `nerdctl rmi` (frees the containerd image store, a *separate*
+  store — it took 66.5 → 85.0 GB here while buildkit's 207.63 GB did not
+  move by a byte) or editing the policy and restarting buildkitd.
+
+- **Size `reservedSpace` against FREE space, not total disk (2026-08-08).**
+  The "~20-25 % of the disk" rule of thumb assumes the disk is mostly
+  buildkit's. On a host where it is not, it produces an arithmetically
+  unsatisfiable policy:
+
+  ```text
+  disk 930.8 GB - non-buildkit content ~637 GB = ~294 GB available to buildkit
+  reservedSpace 214.75 GB                      =>  ~79 GB of working room
+  highest stage disk floor (sdk)                    60 GB
+  a heavy media layer's scratch, which GC may not touch   6-10 GB
+  ```
+
+  So the chain consumed room, GC was structurally unable to give any back, and
+  the stage gate refused at 53.5 GB mid-media — read at the time as a disk
+  problem, actually a policy one. `reservedSpace` is **150GB** now (the floor
+  this file and `buildkitd.toml` already prescribed), which still exceeds the
+  ~120-150 GB fresh chain spine it exists to protect and leaves ~144 GB of
+  working room. Note the invariant: **`reservedSpace` + the highest stage disk
+  floor must fit in the space actually available to buildkit.**
+
 - **Prune can only ever take the `Private` slice — `Shared` is pinned by the
   image tags.** Same run: 445.61 GB → 371.77 GB, i.e. **exactly the 73.84 GB
   that `du` called `Private`**, and it stopped there (C: 31.6 → 93.3 GB free).
@@ -1600,7 +1642,7 @@ After building, run the container smoke test to verify all components:
   pwsh -File C:\temp\scripts\smoke-test-container.ps1 -ExpectGpu
 ```
 
-The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 167 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).
+The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 167 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. **This number is known-stale and WILL rise:** the mandatory-plugin assertions (2026-08-07) and the `SCOOP_GLOBAL_SHIMS` checks (2026-08-08) were added after it, and no full run has been made since. Record the new figure here from the next green run rather than treating a higher count as a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).
 
 ### What is verified: native vs. Python
 
