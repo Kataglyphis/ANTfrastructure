@@ -20,7 +20,7 @@ _ARCH_MAPPING_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1090,SC1091
 [ -f "${_ARCH_MAPPING_SH_DIR}/platform.sh" ] && source "${_ARCH_MAPPING_SH_DIR}/platform.sh"
 
-# Full ELF machine name exactly as printed by `readelf -h` on the "Machine:"
+# Full ELF machine name exactly as printed by `LC_ALL=C readelf -h` on the "Machine:"
 # line. Note: arch_elf_machine_grep_for() (platform.sh) returns a *short grep
 # substring* ("X86-64"); this returns the *full* canonical name used by the
 # strict expected-machine checks in validate-compilers.sh.

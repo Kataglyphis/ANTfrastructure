@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-09 (early) — Linux lane: validator split + a locale bug the split's own probe caught
+
+- **validate_compiler_for_target decomposed** (complexity item 9): the
+  108-line monolith is now five independently-callable checks
+  (_cc_check_{dumpmachine,binary_elf,object,loader,qemu_exec}) with explicit
+  args — deliberately NOT the _VCS_* implicit-global convention.
+- **Locale bug found by the split's verification probe**: every readelf
+  parser in the tree matched the ENGLISH "Machine:"/"interpreter:" strings —
+  on a non-C-locale host (this one is de_DE) readelf localizes ("Maschine:")
+  and the ELF-machine checks failed spuriously; inside containers (LC=C) the
+  bug was invisible but latent. All parsed `readelf -h/-l/-d` calls across 7
+  files now run under LC_ALL=C. Host probe: 6/6 PASS.
+
 ## 2026-08-08 (night) — Linux lane: complexity F-G + TVM shallow/commit-pin clone
 
 - **setup-package-image's 102-line dual-purpose function split** (audit F-G):

@@ -89,7 +89,7 @@ check_ndk() {
           local ndk_tmp ndk_machine
           ndk_tmp="$(mktemp -d)"
           if printf 'int f(void){return 1;}\n' | "${cc}" -x c - -c -o "${ndk_tmp}/a.o" 2>/dev/null; then
-            ndk_machine="$(readelf -h "${ndk_tmp}/a.o" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1 || true)"
+            ndk_machine="$(LC_ALL=C readelf -h "${ndk_tmp}/a.o" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1 || true)"
             case "${target_arch}:${ndk_machine}" in
               aarch64:*AArch64*|x86_64:*X86-64*|riscv64:*RISC-V*)
                 pass "NDK clang ${target_arch}: compiles, object ELF machine=${ndk_machine}" ;;

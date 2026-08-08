@@ -93,7 +93,7 @@ smoke_deb_triplet() {
   fi
 }
 
-# readelf -h "Machine:" substring for a target arch (amd64 -> X86-64, …).
+# LC_ALL=C readelf -h "Machine:" substring for a target arch (amd64 -> X86-64, …).
 smoke_elf_machine_grep() {
   if command -v arch_elf_machine_grep_for >/dev/null 2>&1; then
     arch_elf_machine_grep_for "$1"
@@ -176,22 +176,15 @@ check_dumpmachine() {
 #   mode=cross            — the compiler is a cross compiler whose BINARY is
 #     host-arch (it merely emits target code), so the binary-ELF check is skipped;
 #     the produced object/exe ELF (checked below) is what must be target-arch.
-validate_compiler_for_target() {
-  local cc_path="$1"
-  local target_arch="$2"
-  local label="${3:-${cc_path}}"
-  local mode="${4:-native}"
-  local expected_pattern expected_machine cc_dump cc_machine tmpdir cc_obj
+# (Complexity audit item 9: the old 108-line monolith split into five
+# independent checks. fail() accumulates into the shared counter, so the
+# driver needs no return plumbing; each helper takes explicit args and is
+# callable in isolation — deliberately NOT the _VCS_* implicit-global
+# convention validate-compilers.sh uses.)
 
-  # `|| true` so the guard below is REACHABLE: smoke_uname_name returns 1 on an
-  # unknown arch, and under set -e the bare substitution killed the script
-  # before the intended "Unknown arch" fail could fire.
-  expected_pattern="$(smoke_uname_name "${target_arch}" 2>/dev/null || true)"
-  expected_machine="$(smoke_elf_machine_grep "${target_arch}" 2>/dev/null || true)"
-
-  [ -n "${expected_pattern}" ] || { fail "Unknown arch: ${target_arch}"; return 1; }
-
-  # dumpmachine check
+_cc_check_dumpmachine() {
+  local cc_path="$1" label="$2" expected_pattern="$3" target_arch="$4"
+  local cc_dump
   cc_dump="$("${cc_path}" -dumpmachine 2>/dev/null || true)"
   if [ -z "${cc_dump}" ]; then
     fail "${label}: -dumpmachine returned empty"
@@ -202,30 +195,37 @@ validate_compiler_for_target() {
   else
     fail "${label}: -dumpmachine=${cc_dump} != expected ${expected_pattern}"
   fi
+}
 
-  # ELF machine check of the compiler BINARY — native mode only. A cross
-  # compiler's binary is host-arch (it emits target code), so this check does
-  # not apply; the object/exe ELF checks below verify the emitted code instead.
-  if [ "${mode}" != "cross" ] && command -v readelf >/dev/null 2>&1; then
-    cc_machine="$(readelf -h "${cc_path}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
-    if [ -n "${cc_machine}" ]; then
-      case "${cc_machine}" in
-        *"${expected_machine}"*) pass "${label}: ELF machine=${cc_machine}" ;;
-        *) fail "${label}: ELF machine=${cc_machine} != expected ${expected_machine}" ;;
-      esac
-    else
-      fail "${label}: cannot read ELF machine type"
-    fi
+# ELF machine check of the compiler BINARY — native mode only. A cross
+# compiler's binary is host-arch (it emits target code), so this check does
+# not apply; the object/exe ELF checks verify the emitted code instead.
+_cc_check_binary_elf() {
+  local cc_path="$1" label="$2" expected_machine="$3"
+  command -v readelf >/dev/null 2>&1 || return 0
+  local cc_machine
+  cc_machine="$(LC_ALL=C readelf -h "${cc_path}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+  if [ -n "${cc_machine}" ]; then
+    case "${cc_machine}" in
+      *"${expected_machine}"*) pass "${label}: ELF machine=${cc_machine}" ;;
+      *) fail "${label}: ELF machine=${cc_machine} != expected ${expected_machine}" ;;
+    esac
+  else
+    fail "${label}: cannot read ELF machine type"
   fi
+}
 
-  # cc1 compile-to-object smoke
+# cc1 compile-to-object smoke + object ELF-machine assertion.
+_cc_check_object() {
+  local cc_path="$1" label="$2" expected_machine="$3"
+  local tmpdir cc_obj
   tmpdir="$(mktemp -d)"
   cc_obj="${tmpdir}/smoke.o"
   if printf 'int answer(void){return 42;}\n' | "${cc_path}" -x c - -c -o "${cc_obj}" 2>/dev/null; then
     pass "${label}: cc1 compile-to-object smoke OK"
     if command -v readelf >/dev/null 2>&1 && [ -f "${cc_obj}" ]; then
       local obj_machine
-      obj_machine="$(readelf -h "${cc_obj}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+      obj_machine="$(LC_ALL=C readelf -h "${cc_obj}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
       case "${obj_machine}" in
         *"${expected_machine}"*) pass "${label}: object ELF machine=${obj_machine}" ;;
         *) fail "${label}: object ELF machine=${obj_machine} != expected ${expected_machine}" ;;
@@ -235,50 +235,76 @@ validate_compiler_for_target() {
     fail "${label}: cc1 compile-to-object smoke FAILED"
   fi
   rm -rf "${tmpdir}"
+}
 
-  # link smoke
+# Loader assertion (smoke-depth R8): compile+link succeed with a WRONG
+# sysroot too — the classic escapees (bad dynamic-loader path, riscv64
+# --with-isa-spec mismatch) all link cleanly and only die on the target.
+# The requested ELF interpreter is readable on any host, no execution.
+_cc_check_loader() {
+  local cc_exe="$1" label="$2" target_arch="$3"
+  command -v readelf >/dev/null 2>&1 || return 0
+  local want_ld="" got_ld=""
+  case "${target_arch}" in
+    amd64)   want_ld="ld-linux-x86-64" ;;
+    arm64)   want_ld="ld-linux-aarch64" ;;
+    riscv64) want_ld="ld-linux-riscv64" ;;
+  esac
+  [ -n "${want_ld}" ] || return 0
+  got_ld="$(LC_ALL=C readelf -l "${cc_exe}" 2>/dev/null | sed -n 's/.*interpreter: \(.*\)]/\1/p' | head -1 || true)"
+  case "${got_ld}" in
+    *"${want_ld}"*) pass "${label}: emitted ELF requests ${want_ld} (correct loader)" ;;
+    "") echo "  INFO: ${label}: no PT_INTERP found (static or unusual link) — loader not asserted" ;;
+    *) fail "${label}: emitted ELF requests '${got_ld}', expected *${want_ld}* (wrong sysroot?)" ;;
+  esac
+}
+
+# Opportunistic real-execution proof when a qemu-user binary is present
+# (not installed in the toolchain/package images by default — the loader
+# assertion is the always-on gate).
+_cc_check_qemu_exec() {
+  local cc_path="$1" label="$2" target_arch="$3" tmpdir="$4"
+  local qemu_bin=""
+  qemu_bin="$(command -v "qemu-$(smoke_uname_name "${target_arch}" 2>/dev/null || true)-static" 2>/dev/null || true)"
+  [ -n "${qemu_bin}" ] || qemu_bin="$(command -v "qemu-$(smoke_uname_name "${target_arch}" 2>/dev/null || true)" 2>/dev/null || true)"
+  [ -n "${qemu_bin}" ] || return 0
+  local q_exe="${tmpdir}/smoke-static"
+  if printf 'int main(void){return 42;}\n' | "${cc_path}" -x c - -static -o "${q_exe}" 2>/dev/null; then
+    local q_rc=0
+    "${qemu_bin}" "${q_exe}" >/dev/null 2>&1 || q_rc=$?
+    if [ "${q_rc}" -eq 42 ]; then
+      pass "${label}: static binary RUNS under ${qemu_bin##*/} (exit 42)"
+    else
+      fail "${label}: static binary built but ran wrong under ${qemu_bin##*/} (rc=${q_rc}, want 42)"
+    fi
+  fi
+}
+
+validate_compiler_for_target() {
+  local cc_path="$1"
+  local target_arch="$2"
+  local label="${3:-${cc_path}}"
+  local mode="${4:-native}"
+  local expected_pattern expected_machine tmpdir
+
+  # `|| true` so the guard below is REACHABLE: smoke_uname_name returns 1 on an
+  # unknown arch, and under set -e the bare substitution killed the script
+  # before the intended "Unknown arch" fail could fire.
+  expected_pattern="$(smoke_uname_name "${target_arch}" 2>/dev/null || true)"
+  expected_machine="$(smoke_elf_machine_grep "${target_arch}" 2>/dev/null || true)"
+  [ -n "${expected_pattern}" ] || { fail "Unknown arch: ${target_arch}"; return 1; }
+
+  _cc_check_dumpmachine "${cc_path}" "${label}" "${expected_pattern}" "${target_arch}" || return 1
+  [ "${mode}" != "cross" ] && _cc_check_binary_elf "${cc_path}" "${label}" "${expected_machine}"
+  _cc_check_object "${cc_path}" "${label}" "${expected_machine}"
+
+  # link smoke, then the checks that need the linked exe
   tmpdir="$(mktemp -d)"
   local cc_exe="${tmpdir}/smoke"
   if printf 'int main(void){return 0;}\n' | "${cc_path}" -x c - -o "${cc_exe}" 2>/dev/null; then
     pass "${label}: link smoke OK"
-    # Loader assertion (smoke-depth R8): compile+link succeed with a WRONG
-    # sysroot too — the classic escapees (bad dynamic-loader path, riscv64
-    # --with-isa-spec mismatch) all link cleanly and only die on the target.
-    # The requested ELF interpreter is readable on any host, no execution.
-    if command -v readelf >/dev/null 2>&1; then
-      local want_ld="" got_ld=""
-      case "${target_arch}" in
-        amd64)   want_ld="ld-linux-x86-64" ;;
-        arm64)   want_ld="ld-linux-aarch64" ;;
-        riscv64) want_ld="ld-linux-riscv64" ;;
-      esac
-      if [ -n "${want_ld}" ]; then
-        got_ld="$(readelf -l "${cc_exe}" 2>/dev/null | sed -n 's/.*interpreter: \(.*\)]/\1/p' | head -1 || true)"
-        case "${got_ld}" in
-          *"${want_ld}"*) pass "${label}: emitted ELF requests ${want_ld} (correct loader)" ;;
-          "") echo "  INFO: ${label}: no PT_INTERP found (static or unusual link) — loader not asserted" ;;
-          *) fail "${label}: emitted ELF requests '${got_ld}', expected *${want_ld}* (wrong sysroot?)" ;;
-        esac
-      fi
-    fi
-    # Opportunistic real-execution proof when a qemu-user binary is present
-    # (not installed in the toolchain/package images by default — the loader
-    # assertion above is the always-on gate).
-    local qemu_bin=""
-    qemu_bin="$(command -v "qemu-$(smoke_uname_name "${target_arch}" 2>/dev/null || true)-static" 2>/dev/null || true)"
-    [ -n "${qemu_bin}" ] || qemu_bin="$(command -v "qemu-$(smoke_uname_name "${target_arch}" 2>/dev/null || true)" 2>/dev/null || true)"
-    if [ -n "${qemu_bin}" ] && [ "${mode}" = "cross" ]; then
-      local q_exe="${tmpdir}/smoke-static"
-      if printf 'int main(void){return 42;}\n' | "${cc_path}" -x c - -static -o "${q_exe}" 2>/dev/null; then
-        local q_rc=0
-        "${qemu_bin}" "${q_exe}" >/dev/null 2>&1 || q_rc=$?
-        if [ "${q_rc}" -eq 42 ]; then
-          pass "${label}: static binary RUNS under ${qemu_bin##*/} (exit 42)"
-        else
-          fail "${label}: static binary built but ran wrong under ${qemu_bin##*/} (rc=${q_rc}, want 42)"
-        fi
-      fi
-    fi
+    _cc_check_loader "${cc_exe}" "${label}" "${target_arch}"
+    [ "${mode}" = "cross" ] && _cc_check_qemu_exec "${cc_path}" "${label}" "${target_arch}" "${tmpdir}"
   else
     fail "${label}: link smoke FAILED (missing crt/startup files?)"
   fi

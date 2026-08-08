@@ -288,7 +288,7 @@ elf_matches_target() {
   # a non-ELF file would not abort — but the failed assignment WOULD become the
   # function's return value, silently reporting the file as mismatched. The
   # docstring promises "conservatively return 0 when undeterminable".
-  machine="$(readelf -h "$file" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1 || true)"
+  machine="$(LC_ALL=C readelf -h "$file" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1 || true)"
   target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
   expected="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
   [ -n "${expected}" ] || return 0

@@ -70,7 +70,7 @@ _artifact_source_check_host_gcc() {
     host_ver="$("${gcc_prefix}/bin/gcc" --version 2>/dev/null | head -1 || true)"
     if echo "${host_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
       echo "OK: host gcc ${gcc_prefix}/bin/gcc reports ${host_ver}"
-    elif host_elf="$(readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1)"; then
+    elif host_elf="$(LC_ALL=C readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1)"; then
       # Cross-built GCC binary (target-native) can't execute on build host.
       # Accept if the ELF machine matches the target arch.
       local expected_machine=""
@@ -133,7 +133,7 @@ _artifact_source_check_native_gcc() {
       if echo "${native_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
         echo "OK: target-native ${native_gcc}/bin/gcc reports ${native_ver}"
       else
-        native_elf="$(readelf -h "${native_gcc}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+        native_elf="$(LC_ALL=C readelf -h "${native_gcc}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
         expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
         if [ -n "${expected_machine}" ] && echo "${native_elf}" | grep -qi "${expected_machine}"; then
           echo "OK: target-native ${native_gcc}/bin/gcc is cross-built ELF for ${target_arch} (${native_elf})"
@@ -156,7 +156,7 @@ _artifact_source_check_native_gcc() {
       if [ -n "${expected_triple}" ] && [ "${main_gcc_dump}" = "${expected_triple}" ]; then
         echo "OK: main gcc already reports target-native triple ${main_gcc_dump} (swap completed)"
       elif [ -n "${expected_machine}" ]; then
-        main_gcc_elf="$(readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+        main_gcc_elf="$(LC_ALL=C readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
         if echo "${main_gcc_elf}" | grep -qi "${expected_machine}"; then
           echo "OK: main gcc is cross-built ELF for ${target_arch} (${main_gcc_elf}) - swap completed"
         else
@@ -196,7 +196,7 @@ _artifact_source_check_llvm() {
       else
         # Cross-built Clang can't execute on build host; check ELF arch instead
         local clang_elf
-        clang_elf="$(readelf -h "${llvm_target}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+        clang_elf="$(LC_ALL=C readelf -h "${llvm_target}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
         local expected_machine=""
         expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
         if [ -n "${expected_machine}" ] && echo "${clang_elf}" | grep -qi "${expected_machine}"; then
