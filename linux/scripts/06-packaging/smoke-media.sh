@@ -38,7 +38,13 @@ if 'CPUExecutionProvider' not in providers:
       fail "onnxruntime CPUExecutionProvider not available (get_available_providers failed or lacks CPU EP)"
     fi
   else
-    pass "onnxruntime library present at ${_ort_lib_dir} (import failed in build sandbox — will work at runtime)"
+    # Import can legitimately fail in the build sandbox — but then at least
+    # PROVE the library exists (the old branch claimed "present" unchecked).
+    if find "${_ort_lib_dir}" -name "libonnxruntime.so*" -type f 2>/dev/null | grep -q .; then
+      echo "  INFO: onnxruntime present but import fails in build sandbox — functional gate is the runtime smoke"
+    else
+      fail "onnxruntime import fails AND no libonnxruntime.so under ${_ort_lib_dir}"
+    fi
   fi
 fi
 
@@ -47,8 +53,10 @@ fi
 # ---------------------------------------------------------------------------
 echo "--- ONNX Runtime GenAI ---"
 if cross_build_is_active 2>/dev/null; then
-  if [ -d "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" ] || \
-     find /usr/local/lib -name "libonnxruntime_genai*" -type f 2>/dev/null | grep -q .; then
+  # NOT a bare `[ -d ]`: the producer mkdir -p's its output tree on every
+  # path, so an existing-but-empty dir is no evidence. Require a real file.
+  if find "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib \
+       -name "libonnxruntime*genai*" -type f 2>/dev/null | grep -q .; then
     pass "onnxruntime_genai library present (cross build — import skipped)"
   else
     echo "  INFO: onnxruntime_genai not built for this target (optional)"
@@ -179,6 +187,10 @@ gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 assert gray.shape == (64, 64), f'unexpected shape {gray.shape}'
 " 2>/dev/null; then
         pass "opencv functional: cvtColor+BGR2GRAY roundtrip OK"
+      else
+        # import succeeded, so execution demonstrably works here — a failing
+        # roundtrip is a real defect, not a sandbox artifact.
+        fail "opencv functional: cvtColor+BGR2GRAY roundtrip FAILED (import works, so this is real)"
       fi
     else
       pass "opencv Python bindings present at ${cv2_pkg} (import failed in build sandbox — will work at runtime)"
@@ -208,14 +220,24 @@ if [ -n "${_gst_inspect}" ]; then
     pass "gst-inspect-1.0 functional: ${gst_ver}"
   else
     # Binary exists but can't execute — likely missing GLIBCXX from source-built GCC
-    # in the BuildKit sandbox. This is expected during Docker build; the binary will
-    # work in the final container where ldconfig + ENV are properly set.
-    pass "gst-inspect-1.0 binary present at ${_gst_inspect} (execution failed in build sandbox — will work at runtime)"
+    # in the BuildKit sandbox. Expected during Docker build (ldconfig + ENV land in
+    # configure-runtime.sh) — but a broken binary must not count as a PASS: INFO,
+    # plus an ELF-magic assertion so corrupt/wrong-format binaries still fail.
+    if [ "$(head -c4 "${_gst_inspect}" 2>/dev/null | tail -c3 || true)" = "ELF" ]; then
+      echo "  INFO: gst-inspect-1.0 present but not executable in build sandbox — functional gate is the runtime smoke"
+    else
+      fail "gst-inspect-1.0 at ${_gst_inspect} is not an ELF binary"
+    fi
   fi
   if ! cross_build_is_active 2>/dev/null && "${_gst_inspect}" --version >/dev/null 2>&1; then
     _gst_launch="$(command -v gst-launch-1.0 2>/dev/null || echo "${_gst_bin}/gst-launch-1.0")"
     if "${_gst_launch}" videotestsrc num-buffers=1 ! fakesink 2>/dev/null; then
       pass "GStreamer pipeline: videotestsrc ! fakesink OK"
+    else
+      # gst-inspect --version already executed fine in this environment, so a
+      # failing pipeline is a real defect (missing coreelements etc.), not a
+      # sandbox artifact.
+      fail "GStreamer pipeline videotestsrc ! fakesink FAILED (gst-inspect executes, so this is real)"
     fi
   fi
 else
@@ -235,7 +257,15 @@ if [ -x "${_ffmpeg_bin}" ]; then
     if [ "${ffmpeg_ver}" != "?" ]; then
       pass "ffmpeg functional: ${ffmpeg_ver}"
     else
-      pass "ffmpeg binary present at ${_ffmpeg_bin} (execution failed in build sandbox — will work at runtime)"
+      # Execution can legitimately fail here (ldconfig/ENV land later in
+      # configure-runtime.sh) — but a broken binary must not count as a PASS.
+      # Downgrade to INFO and at least assert it is a real ELF, so a
+      # zero-byte/corrupt/wrong-format ffmpeg still fails the smoke.
+      if [ "$(head -c4 "${_ffmpeg_bin}" 2>/dev/null | tail -c3 || true)" = "ELF" ]; then
+        echo "  INFO: ffmpeg present but not executable in build sandbox (ld paths land in configure-runtime) — functional gate is the runtime smoke"
+      else
+        fail "ffmpeg at ${_ffmpeg_bin} is not an ELF binary"
+      fi
     fi
     tmpdir="$(mktemp -d)"
     if "${_ffmpeg_bin}" -y -f lavfi -i "testsrc=duration=1:size=32x32:rate=1" \
@@ -247,8 +277,12 @@ if [ -x "${_ffmpeg_bin}" ]; then
       else
         fail "ffmpeg H.264 decode failed"
       fi
+    elif [ "${ffmpeg_ver}" != "?" ] \
+         && "${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null | grep -q libx264; then
+      # ffmpeg executes AND advertises libx264 — a failed encode is real.
+      fail "ffmpeg H.264 encode FAILED (binary executes and libx264 encoder is advertised)"
     else
-      echo "  INFO: ffmpeg encode test skipped (libx264 may not be available)"
+      echo "  INFO: ffmpeg encode test skipped (binary not executable here, or libx264 not built)"
     fi
     rm -rf "${tmpdir}"
   fi

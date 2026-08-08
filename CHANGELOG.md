@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: audit round 2, Klasse A — error-path masking
+
+Four-perspective audit (error paths, contracts, tests, conventions); this
+entry is the error-path class. Every fix below closes a path where a real
+failure was reported as success:
+
+- **ELF wrong-arch gate was dead code** (`validate-media-runtime.sh`): the
+  clean-scan `exit 0` sat BEFORE the ELF architecture validation; NEEDED
+  sonames resolve by name, so a wrong-arch binary scanned clean and the gate
+  never ran. Now an `else` branch — ELF validation runs on every path.
+- **Stale-rootfs export on failed builds**: `_build_one_artifact`
+  (build-runtime-artifacts.sh) and `_sdk_arch_build` (build-sdk-artifacts.sh)
+  ran under `if !`-suppressed errexit with no `|| return 1` — a failed
+  `runtime_build_chain`/`cross_stage_run` fell through to
+  `export_rootfs_from_image`, which exported the previous run's tag and
+  reported green. Guards added.
+- **parallel-loop lost workers that die via `exit`**: `err()` terminates the
+  background subshell before `|| touch failed-flag` runs, and the join
+  discarded `wait`'s rc — a dead lane read as green under PARALLEL_ARCHS=1.
+  A nested `( )` layer now absorbs the exit into a return code.
+- **app-wheels gate was vacuous**: the Dockerfile's `.placeholder` (written
+  exactly when the wheelhouse build failed) satisfied "dir not empty". The
+  riscv64 verify now requires a real `*.whl`; `ALLOW_EMPTY_APP_WHEELS=1` is
+  the explicit escape hatch.
+- **verify-media-artifacts could not fail for litert / genai / opencv-core**:
+  litert checked `/usr/local/{include,lib}` (already filled by base's
+  CPython); genai checked dirs its own producer `mkdir -p`'s on every skip
+  path; opencv-core used INFO-only optional checks. All three now require
+  stage-specific artifacts (new side-effect-free `probe_lib`/`verify_any_lib`
+  helpers also fix the `verify_A || verify_B` idiom that counted A's failure
+  even when B passed). genai verify mirrors its producer's legitimate
+  cross-build skip instead of "verifying" pre-created empty dirs.
+- **smoke-media masking**: a non-executable ffmpeg/gst-inspect was a PASS
+  ("will work at runtime") — now INFO + ELF-magic assertion, with the
+  functional gate named; the OpenCV cvtColor roundtrip and GStreamer pipeline
+  checks had no else-branch (could not fail) — now fail when execution
+  demonstrably works; ffmpeg encode failure fails when the binary executes
+  and advertises libx264; onnxruntime import-failure now proves the library
+  exists instead of claiming presence unchecked.
+- **verify-cuda-stack.sh rewritten**: ` || true)` pasted inside three command
+  substitutions made the "not found" branches unreachable and hard-failed
+  healthy images under `set -e`. Now honest warn-only (stderr, no `-e`) with
+  `CUDA_STACK_STRICT=1` as the real gate for complete-stack images.
+- **base-image bootstrap fails fast**: the apt-update retry loop `break`ed
+  away its terminal failure and continued; ca-certificates install failure
+  was a log line. A broken mirror/CA store now aborts the bootstrap with the
+  culprit named instead of surfacing hours later as an opaque TLS error.
+
 ## 2026-08-08 (evening) — Linux lane: IREE tblgen Exec-format failure, and the binfmt registration that silently died
 
 ### media-arm64 failed: IREE's NATIVE tblgen was cross-compiled

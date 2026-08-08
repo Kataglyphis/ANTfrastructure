@@ -39,7 +39,12 @@ run_parallel_arch_loop() {
   for arch in "${arches[@]}"; do
     if _bool_truthy "${PARALLEL_ARCHS:-0}"; then
       {
-        "${fn_name}" "${arch}" || touch "${_flagdir}/failed-${arch}"
+        # The extra ( ) layer is load-bearing: workers that die via `exit`
+        # (err()/die in any sourced helper) would otherwise terminate this
+        # background subshell BEFORE `|| touch` runs — the failure flag never
+        # appears, the join below discards wait's rc, and a dead lane reads
+        # as green. The nested subshell absorbs the exit into a return code.
+        ( "${fn_name}" "${arch}" ) || touch "${_flagdir}/failed-${arch}"
       } &
       pids+=($!)
       running=$((running + 1))

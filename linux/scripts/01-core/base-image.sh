@@ -234,16 +234,30 @@ bootstrap_ca() {
   mkdir -p /etc/apt/apt.conf.d
   printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries
 
-  # Retry apt-get under QEMU emulation (network can be flaky)
+  # Retry apt-get under QEMU emulation (network can be flaky). After the last
+  # attempt, FAIL — the old `break` discarded the terminal rc, and a base image
+  # whose apt/mirror is broken only surfaces hours later as an opaque TLS or
+  # 404 failure deep in the chain. Failing fast here names the real culprit.
   local _retry=0 _max=3
   until apt-get update -qq; do
     _retry=$((_retry + 1))
-    [ "${_retry}" -ge "${_max}" ] && break
+    if [ "${_retry}" -ge "${_max}" ]; then
+      log "ERROR: apt-get update failed ${_max} times (mirror/network broken) — aborting bootstrap instead of building a base image with a broken apt"
+      return 1
+    fi
     log "apt-get update failed (attempt ${_retry}/${_max}), retrying..."
     sleep 5
   done
-  apt-get install -y --no-install-recommends ca-certificates || \
-    log "WARNING: ca-certificates install failed (non-fatal during emulated build)"
+  # ca-certificates: tolerate a failed (re)install ONLY if the package is
+  # already present — a base without a CA store breaks every later download.
+  apt-get install -y --no-install-recommends ca-certificates || {
+    if dpkg -s ca-certificates >/dev/null 2>&1; then
+      log "WARNING: ca-certificates reinstall failed but package already present (non-fatal)"
+    else
+      log "ERROR: ca-certificates install failed and package is absent — every TLS download downstream would fail"
+      return 1
+    fi
+  }
   update-ca-certificates || \
     log "WARNING: update-ca-certificates failed (non-fatal during emulated build)"
 }
