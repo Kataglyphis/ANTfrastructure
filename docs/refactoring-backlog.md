@@ -1463,3 +1463,54 @@ green the FFmpeg .pc gate, the four mandatory GStreamer plugins and the warning
 suppressions, and a CUDA-path failure would cost the media stage ~1h in and
 take the proof with it. Wire it immediately after, with sccache stats read
 before and after so the win is a number rather than a claim.
+
+## 2026-08-08 — structural refactoring map (verified agent sweep, base→final)
+
+### ★ A1 — THE structural finding: Dockerfile.base mounts ALL of 01-core +
+02-toolchain into 6 RUNs. Any edit to ~120 files (incl. host-only orchestrator
+modules) busts BASE → cascades to the entire chain. The toolchain's careful
+per-file lists are undone one tier up. Actual closure of base-image.sh ≈ 14
+files; verify-script-copy-coverage.py --report-core-usage already anticipates
+the fix. Narrowing this is the ENABLER: it drops the marginal cost of every
+future 01-core edit from "full chain" to ~nothing. Do FIRST in the batch.
+
+### Drift bugs found by clone comparison (fix in batch, guard helpers first)
+- A2: cross_build_is_active exists 5x with 3 semantics; the arch-normalization
+  fix (documented in smoke-common:22) reached 1 of 5 copies — the raw copies
+  report "cross active" on native arm64 hosts. Canonical: cross-env.sh.
+- A4: resolve_host_compiler forked 3x; compiler-resolution.sh never ships to
+  the android stages, and IREE-android's bare `command -v gcc` resolves the
+  CUSTOM CROSS GCC as host compiler (live, masked by best-effort gating). Fix:
+  COPY compiler-resolution.sh in Dockerfile.android + delete both fallbacks.
+- A5: Dockerfile.package hand-rolls the ports-mirror rewrite: ignores the
+  USE_FAST_UBUNTU_MIRROR gate and never derives ports-from-archive → package
+  stage stays on ports.ubuntu.com when only the archive mirror is set.
+- A3: base-image.sh parse_options 116→~40 lines (4 identical case blocks).
+- A6: two upward-dir-walkers (+ documented workaround hack) → one.
+
+### Free-anytime deletions (T4)
+- B1: smoke-wrapper.sh fully orphaned — and docs CLAIM wrapper-smoke runs it
+  (linux-cross-builds:625, cross-build-verification:70). Delete or wire; fix docs.
+- B2: smoke-runtime-image.sh COPY in Dockerfile.package is vestigial (runs
+  host-side; its own comment says so).
+- B3: create_deb() 104 lines, zero callers, positioned unreachably.
+- B4: run_quiet() zero callers (batch: lives in build-helpers).
+- B5: smoke-runtime-image main() 459 lines → per-check functions + driver
+  array (pattern exists in verify-parity). B6: AGENTS claims a
+  media_build_preamble_init alias that does not exist. B7: micro.
+
+### Do-not-do (recorded so nobody churns): usage texts/mount lists/ARG nets
+(policy); folding the 9 verify RUNs into build RUNs (their separation is what
+makes verification edits free); smoke-common arch fallbacks + path-helpers +
+assemble-torch-app retry + android-sdk retries (deliberate standalone
+bundling); is_cross alias rename (max closure cost, cosmetic gain — ride A2
+if ever); the 5 android-lib stages (repetition BUYS BuildKit parallelism);
+Dockerfile.base mount-preamble repetition (no macro exists — A1 changes
+content, not repetition). Irreducible-complexity list recorded (iree wheels,
+gi wrappers, pin assertions, llvm-cross, cross-stage impl).
+
+### Sequence: A1 → guard helpers → A2+A3+A6 (one commit) → A4+A5 → B*.
+Interaction: gcc.sh↔parallel-loop unification requires adding parallel-loop.sh
+to all THREE protected mount lists (sync-maintenance, permitted) AND porting
+per-target logs + job-splitting into it first. Totals: ~350 LOC out, 3 drift
+bugs closed, one 459-line function decomposed, future 01-core edits ~free.
