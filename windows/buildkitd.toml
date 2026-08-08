@@ -56,10 +56,21 @@
   # Tier 0: local sources, git checkouts and cache mounts (C:\bkhandoff etc).
   # The default caps these at 512MB/48h — far too small for a week of chain
   # iterations over multi-GB handoffs.
+  #
+  # 20GB -> 40GB (2026-08-08). This tier stopped being scratch on that date: the
+  # Windows chain gained real, load-bearing cache mounts, and they SHARE this
+  # one budget with local sources and git checkouts —
+  #   sccache L0  (id=sccache-winamd64)   SCCACHE_CACHE_SIZE = 15G
+  #   uv/pip      (id=uv-wheels-winamd64)                    ~10G
+  # which alone is 25G against the old 20GB cap. Left at 20GB the two caches
+  # would have evicted each other between chains and bought nothing, while every
+  # log still reported a cache hit rate — the silent-degradation shape this repo
+  # keeps designing against. Whoever grows either cache raises this number in
+  # the SAME change: the sizes and this cap are one decision, not two.
   [[worker.containerd.gcpolicy]]
     filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
     keepDuration = "168h"
-    maxUsedSpace = "20GB"
+    maxUsedSpace = "40GB"
 
   # Tier 1: anything unused for >30 days goes first.
   [[worker.containerd.gcpolicy]]
