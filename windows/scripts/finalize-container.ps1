@@ -108,6 +108,12 @@ $manifest = [ordered]@{
         llvm            = [ordered]@{ pin = [string]$env:LLVM_WINDOWS_VERSION;  resolved = (Get-ToolBanner -Exe 'clang-cl') }
         ninja           = [ordered]@{ pin = [string]$env:NINJA_WINDOWS_VERSION; resolved = (Get-ToolBanner -Exe 'ninja') }
         nasm            = [ordered]@{ pin = [string]$env:NASM_WINDOWS_VERSION;  resolved = (Get-ToolBanner -Exe 'nasm' -Arguments @('-v')) }
+        # Moved up from `floating` on 2026-08-08. It shapes nothing that ships;
+        # it is pinned because multi-tier caching needs >= v0.16.0 and an older
+        # sccache ignores the config silently. Recording pin-vs-resolved here
+        # makes "did this image actually get the two-tier cache?" answerable
+        # from the ARTIFACT, which a log cannot do once it ages out.
+        sccache         = [ordered]@{ pin = [string]$env:SCCACHE_WINDOWS_VERSION; resolved = (Get-ToolBanner -Exe 'sccache') }
         cmake           = [ordered]@{ pin = [string]$env:CMAKE_VERSION;         resolved = (Get-ToolBanner -Exe 'cmake') }
         vulkanSdk       = [ordered]@{ pin = [string]$env:VULKAN_VERSION;        resolved = $vulkanResolved }
         git             = [ordered]@{ pin = [string]$env:GIT_VERSION;           resolved = (Get-ToolBanner -Exe 'git') }
@@ -124,7 +130,6 @@ $manifest = [ordered]@{
         lldLink   = (Get-ToolBanner -Exe 'lld-link')
         rustc     = (Get-ToolBanner -Exe 'rustc')
         cargo     = (Get-ToolBanner -Exe 'cargo')
-        sccache   = (Get-ToolBanner -Exe 'sccache')
         uv        = (Get-ToolBanner -Exe 'uv')
         pwsh      = "$($PSVersionTable.PSVersion)"
         openssl   = (Get-ToolBanner -Exe 'openssl' -Arguments @('version'))

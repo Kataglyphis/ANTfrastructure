@@ -24,7 +24,10 @@ param(
     # script still works — the Dockerfile always passes them.
     [string]$LlvmVersion = '',
     [string]$NinjaVersion = '',
-    [string]$NasmVersion = ''
+    [string]$NasmVersion = '',
+    # Pinned 2026-08-08 for a FEATURE, not for output determinism: multi-tier
+    # caching needs sccache >= v0.16.0 and degrades silently below it.
+    [string]$SccacheVersion = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -190,6 +193,15 @@ Install-ScoopPackage -Package 'extras/flutter' -Version ([string]$env:FLUTTER_VE
 Install-ScoopPackage -Package 'main/llvm'  -Version $LlvmVersion
 Install-ScoopPackage -Package 'main/ninja' -Version $NinjaVersion
 Install-ScoopPackage -Package 'main/nasm'  -Version $NasmVersion
+# sccache is pinned for a DIFFERENT reason than the three above: it shapes no
+# compiled output whatsoever. It is here because multi-tier caching
+# (SCCACHE_MULTILEVEL_CHAIN=disk,webdav, wired in Dockerfile.media-builder)
+# requires >= v0.16.0, and an older sccache ignores that variable SILENTLY --
+# the local L0 tier would not exist, every compile would go back to a WebDAV
+# round-trip, and no gate anywhere would notice. A speed feature that can
+# vanish without a signal is exactly what this repo refuses to ship, so the
+# version it needs is asserted rather than assumed.
+Install-ScoopPackage -Package 'main/sccache' -Version $SccacheVersion
 
 # ── FLOATING (deliberate): tools the build only INVOKES ───────────────────────
 # None of these enter the compiled artifacts, so tracking scoop's current
@@ -199,8 +211,10 @@ Install-ScoopPackage -Package 'main/nasm'  -Version $NasmVersion
 # the BINARY -- the image bakes PKG_CONFIG_PATH and the .pc files, but the source-built
 # GStreamer (unlike the old MSI) ships no pkg-config tool. NOTE: scoop main has no
 # `pkgconf` manifest; the package name is `pkg-config`.
-Invoke-ScoopStep -Description 'scoop install floating toolset (nano, cppcheck, sccache, nsis, uv, nuget, zlib, openssl, pkg-config)' -Command {
-    scoop install nano cppcheck sccache extras/nsis main/uv main/nuget extras/zlib main/openssl main/pkg-config
+# sccache LEFT this list on 2026-08-08 -- see the pinned block above. It is the
+# one package here whose VERSION gates behaviour rather than output.
+Invoke-ScoopStep -Description 'scoop install floating toolset (nano, cppcheck, nsis, uv, nuget, zlib, openssl, pkg-config)' -Command {
+    scoop install nano cppcheck extras/nsis main/uv main/nuget extras/zlib main/openssl main/pkg-config
 }
 
 # CMake stable release via scoop (replaces the old cmake.org MSI download); the
