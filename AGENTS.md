@@ -49,12 +49,14 @@ bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-di
 bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
 bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./out/build-logs
 
-# Local validation run: build every stage WITHOUT pushing (skips the multi-GB
-# uploads; the chain resolves via the local image store). NOTE: under --no-push
-# the runtime stage's smokes are only meaningful since the 2026-08-08 fixes —
-# stop at android (--to-stage android) if unsure, and let the push run validate
-# the runtime lane.
-bash linux/scripts/build-cross-chain.sh --target-arches amd64 --no-push --log-dir ./out/build-logs
+# ⚠️ --no-push FULL-CHAIN runs are broken on OCI-worker hosts (this host):
+# the FROM handoff resolves against the REGISTRY, silently building each stage
+# on the last PUSHED parent (verified live 2026-08-08 — two runs lost). Use
+# --no-push ONLY for single-stage validation:
+bash linux/scripts/build-cross-chain.sh --only media --target-arches amd64 --no-push --log-dir ./out/build-logs
+# Correct full-chain flow: push mode to android, then the runtime lane with
+# --skip-manifest so a partial-arch run cannot clobber the public manifest —
+# see docs/linux-cross-builds.md § "The flow that is correct today".
 
 # Opt-in: build the per-target cross GCCs concurrently inside the compiler
 # stage (~30% off the GCC RUN at 3 targets; default 0 = sequential).
@@ -656,6 +658,60 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
 ```
 
 `out/`: generated build artifacts (OCI layouts, rootfs exports). Excluded from Docker context via `.dockerignore`.
+
+## Shell safety conventions (five bug classes, all found live 2026-08-08)
+
+Every one of these killed or falsified a real build before being fixed. The
+full stories are in `CHANGELOG.md` (2026-08-08); `tests/test-ifs-safety.sh`
+lint-gates class 3. When writing or reviewing bash in this repo:
+
+1. **No `trap … RETURN` inside functions** — the trap survives the function and
+   fires again on the CALLER's return, where the locals are gone (`set -u`
+   abort AFTER a green run). Capture rc with `|| rc=$?`, clean up explicitly.
+2. **Guard every pipeline whose empty result is legitimate** — `grep`/`find`/
+   `ls`/`du`/`pgrep`/`dpkg -S`/`readelf` in `$(...)` under `set -euo pipefail`
+   needs `|| true` when the code below handles the empty case. `find | head -1`
+   additionally dies of SIGPIPE (rc 141) on multiple matches.
+3. **Split comma lists with `IFS=',' read -r -a arr <<< "$list"`** — never
+   `${list//,/ }` or `$(... tr ',' ' ')`: under a script's `IFS=$'\n\t'` those
+   do not split and the loop runs once with the whole list as one bogus item.
+   Sourced 01-core functions run under the CALLER's IFS.
+4. **Source vendor scripts (SDK setup-env, venv activate) with nounset
+   suspended** — `case $- in *u*) …; set +u;; esac` … `set -u` after. LunarG's
+   setup-env.sh reads `$1` unguarded.
+5. **Never end a function with a bare `[ cond ] && action`** — the false case
+   becomes the function's return value 1; under `set -e` the HEALTHY path kills
+   the caller. End with `|| true`, `; return 0`, or an `if`.
+
+## Caching discipline (do not regress)
+
+Full map: `docs/linux-build-basics.md` § Caching Layers. The rules an agent
+must never violate:
+
+1. **Closure freeze between validation and push runs.** Editing ANY file in the
+   base/toolchain closure (all of `01-core/` and `02-toolchain/` — the bundle
+   COPY makes the WHOLE directories closure-relevant, including host-only
+   modules — plus `versions.env`, `python/build_python.sh`, the three bundled
+   `06-packaging/smoke-*` scripts, `Dockerfile.base`, `Dockerfile.toolchain`)
+   changes the compiler image digest and forces sdk/media/android to rebuild
+   from scratch on the next run. Batch such edits; apply them in ONE commit at
+   a planned rebuild boundary. Files in a not-yet-started stage's closure are
+   free to fix until that stage begins (each `nerdctl build` snapshots its
+   context at stage start).
+2. **`~/.config/buildkit/buildkitd.toml` pins the GC budget** (`gckeepstorage`)
+   so the multi-hour layers survive between runs. Restart buildkitd only
+   BETWEEN runs (`systemctl --user restart buildkit`), never while a build
+   solves. Do not delete this file.
+3. **ccache is wired, keep it wired**: GCC via `--ccache` in `gcc.sh`'s three
+   `build-gcc.sh` call sites, LLVM via cmake launchers + the ccache/sccache
+   cache mounts on BOTH heavy RUNs in `Dockerfile.toolchain`. The failure mode
+   this replaced (mount without wiring, wiring without mount) was invisible —
+   builds stayed green, just slow. When touching these paths, verify with
+   `grep -c ccache <stage>.log` on the next build.
+4. **Never edit a running orchestrator's main script** (`build-cross-chain.sh`
+   while a chain runs): bash reads it incrementally by byte offset; an edit can
+   corrupt the in-flight process. Sourced library files are safe to edit for
+   FUTURE runs (the running process holds them in memory) but see rule 1.
 
 ## Code Organization (key shared utilities)
 

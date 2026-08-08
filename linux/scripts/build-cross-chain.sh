@@ -125,9 +125,16 @@ Options:
                            it would inherit. Env: CROSS_VERIFY_ANCESTRY=0
   --describe-chain          Print the full stage graph with tag names (no builds)
   --dry-run                 Print build commands without executing them
-  --no-push                 Build every stage LOCALLY and skip all ghcr pushes
-                            (validation runs: saves the slow multi-GB uploads; the
-                            chain still resolves via the local image store)
+  --no-push                 Build every stage LOCALLY and skip all ghcr pushes.
+                            KNOWN LIMITATION (2026-08-08): on hosts where builds
+                            run on BuildKit's OCI worker (this host), the next
+                            stage's FROM does NOT see the locally built parent —
+                            the worker has its own store and resolves the mutable
+                            tag against the REGISTRY, silently building on the
+                            last PUSHED parent. Safe for --only/single-stage and
+                            script validation; NOT safe as a full-chain handoff
+                            until the oci-layout build-context fix lands (see
+                            docs/refactoring-backlog.md).
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
   --max-parallel-archs N    Max concurrent arch builds (default: 4)
 EOF
@@ -200,7 +207,8 @@ _chain_extra_arg() {
     --log-dir) LOG_DIR="$2"; _OARG_SHIFT=2 ;;
     --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
     --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
-    --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1 ;;
+    --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1
+      warn "--no-push: on OCI-worker hosts the FROM handoff resolves against the REGISTRY, not the local store — downstream stages may build on the last PUSHED parent (see usage). Verified live 2026-08-08." ;;
     --no-verify-ancestry) CROSS_VERIFY_ANCESTRY=0; _OARG_SHIFT=1 ;;
     *) return 1 ;;
   esac
@@ -317,6 +325,12 @@ _chain_run_build_loop() {
 # skips it entirely.
 _chain_disk_preflight() {
   [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
+  # The runtime stage additionally fills RUNTIME_CONTEXT_ROOT (full base rootfs
+  # + package OCI layout, tens of GB) — measure that filesystem too when it
+  # differs, so the preflight guards BOTH growth points.
+  local rt_root="${RUNTIME_CONTEXT_ROOT:-${XDG_CACHE_HOME:-${HOME:-/root}/.cache}/opencode/runtime-build-contexts}"
+  local rt_free_gb
+  rt_free_gb="$(_disk_guard_free_gb "${rt_root}")"
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local free_gb n_arch per_arch need_gb bc_gb
   # Measure the cache dir's OWN filesystem (see _disk_guard_free_gb) — using the
@@ -344,6 +358,16 @@ _chain_disk_preflight() {
     fi
   else
     log "disk preflight OK: ${free_gb}G free (>= ~${need_gb}G for ${n_arch} arch from-stage ${FROM_STAGE})."
+  fi
+
+  # Runtime-context filesystem (only warn when it is a DIFFERENT fs than the
+  # cache dir; same fs was already assessed above). ~30G per arch of rootfs +
+  # OCI layout during the runtime stage.
+  if [ -n "${rt_free_gb}" ] && [ "${rt_free_gb}" != "${free_gb}" ]; then
+    local rt_need=$(( n_arch * 30 ))
+    if [ "${rt_free_gb}" -lt "${rt_need}" ]; then
+      log "DISK PREFLIGHT (runtime contexts): ${rt_free_gb}G free on ${rt_root} < ~${rt_need}G for ${n_arch} arch(es) — the runtime stage may ENOSPC there."
+    fi
   fi
 }
 

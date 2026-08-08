@@ -152,6 +152,56 @@ directly after `artifact-common.sh`.
 
 See `AGENTS.md` § Quick Reference for standalone single-stage rebuild commands.
 
+### ⚠️ `--no-push` full-chain runs are BROKEN on OCI-worker hosts (2026-08-08)
+
+Verified live: on this host builds run on BuildKit's **OCI worker**, which has
+its own image store. `nerdctl build -t` loads results into **containerd's**
+store — which the next build's `FROM` never consults. The mutable parent tag
+resolves against the **registry**, so every downstream stage of a `--no-push`
+chain silently builds on the last PUSHED parent, not the one just built (two
+full runs were lost to sdk stages compiled on a months-old compiler before the
+digest trail exposed it — the freshly built compiler had `/opt/gcc-16.2.0`, the
+sdk image it "inherited from" had `/opt/gcc-16.1.0`).
+
+Until the fix lands (export each local stage as an OCI layout and override the
+parent ref via `--build-context <tag>=oci-layout://…`, the same mechanism the
+runtime lane already uses — see the backlog), treat `--no-push` as safe ONLY
+for single-stage validation (`--only <stage>`) or `--to-stage base`.
+
+### The flow that is correct today: push mode, manifest last
+
+```bash
+# Build and push every cross stage with digest-pinned handoffs; stop before the
+# runtime stage if you do not want to touch the published manifest yet:
+bash linux/scripts/build-cross-chain.sh --target-arches amd64 \
+  --to-stage android --log-dir ./out/build-logs
+
+# Runtime lane: build+push+smoke the per-arch wrappers WITHOUT recreating the
+# multi-arch :latest-cross manifest (so a single-arch run cannot clobber it):
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64 \
+  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
+  --artifact-build-mode cross --push --skip-manifest
+
+# When ALL arches' wrappers exist, publish the manifest in one shot:
+bash linux/scripts/build-runtime-manifest.sh --image ...:latest-cross \
+  --target-arches amd64,arm64,riscv64 --manifest-only
+```
+
+Push mode is also what arms the ancestry annotations — the machine-checked
+stale-ancestor guard exists only for pushed stages.
+
+### Opt-in: concurrent per-target GCC builds
+
+`GCC_PARALLEL_TARGETS=1` builds the arm64/riscv64 cross+Canadian GCCs
+concurrently inside the compiler stage (~30 % off that RUN at 3 targets).
+The driver runs a serial apt pre-pass first (dpkg lock), divides `JOBS`
+across the concurrent builds, and writes per-target logs (replayed on
+failure). Default `0` = the sequential flow, byte-identical. The host GCC
+always builds first (alternatives registration), and the build-arch target is
+symlink-only. See `gcc.sh::_gcc_build_cross_targets_parallel`.
+
 ### Stale-check (`--verify-chain` and `verify-cross-chain.sh`)
 
 Before a full build, verify whether downstream registry images are stale without
