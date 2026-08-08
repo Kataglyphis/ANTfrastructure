@@ -786,32 +786,45 @@ The rules an agent must never violate:
    corrupt the in-flight process. Sourced library files are safe to edit for
    FUTURE runs (the running process holds them in memory) but see rule 1.
 5. **The WINDOWS chain caches differently — do not assume rules 1-4 apply.**
-   Measured 2026-08-08: `grep -c mount=type=cache` over
-   `windows/Dockerfile.{media-builder,toolchain-builder,media-merge-builder}`
-   returns **0, 0, 0**, against 77 in `linux/Dockerfile.media` alone. What the
-   Windows lane relies on instead is (a) deliberate layer ORDERING —
-   `setup-vs.ps1` sits ABOVE the `versions.env` COPY in `Dockerfile.base` so a
-   pin bump cannot re-pay VS Build Tools (confirmed live: 4 of 16 base steps
-   CACHED through a PYTHON_VERSION bump, and they were the expensive ones), (b)
-   a five-file in-container module closure so host-only module edits cannot
-   bust a compile layer, and (c) sccache against a WebDAV remote. **Preserve
-   (a) and (b) in any Dockerfile edit** — moving a COPY above the VS layer, or
-   widening the module COPY, costs hours per bump.
+   It relies on (a) deliberate layer ORDERING — `setup-vs.ps1` sits ABOVE the
+   `versions.env` COPY in `Dockerfile.base` so a pin bump cannot re-pay VS
+   Build Tools (confirmed live 2026-08-08: 4 of 16 base steps CACHED through a
+   PYTHON_VERSION bump, and they were the expensive ones), (b) a five-file
+   in-container module closure so host-only module edits cannot bust a compile
+   layer, and (c) sccache. **Preserve (a) and (b) in any Dockerfile edit** —
+   moving a COPY above the VS layer, or widening the module COPY, costs hours
+   per bump.
 
-   Two levers are documented, verified available, and NOT wired (see
-   `docs/windows-builds.md` § BuildKit lane and the backlog). If you wire them,
-   both preconditions are load-bearing:
-   - **sccache multi-tier** (`SCCACHE_MULTILEVEL_CHAIN=disk,webdav` + a cache
-     mount for `SCCACHE_DIR`) requires sccache **>= v0.16.0**; on an older one
-     the chain variable is ignored **silently** and the local tier simply does
-     not exist. sccache currently sits in the FLOATING scoop block — pin it in
-     the same change. NB `SCCACHE_DIR` ALONE does nothing: without the chain
-     variable sccache stays in single-level legacy mode.
-   - **Source-fetch mounts** must cache the ARCHIVES/CLONES only, never the
-     working tree: directory RENAMES fail on cache mounts, and
-     `build-gstreamer-from-source.ps1` moves the extracted tree. Also raise the
-     tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` (20GB/168h
-     today) or the mounts get evicted between chains and buy nothing.
+   **Wired 2026-08-08** (this list said "not wired" the same morning — it is
+   current as of that afternoon):
+   - **sccache two-tier**, `SCCACHE_MULTILEVEL_CHAIN=disk,webdav` + a
+     `type=cache` mount for `SCCACHE_DIR`, on all seven compile RUNs
+     (`Dockerfile.media-builder` `common` stage + the merge builder, which is
+     not a descendant so the ENV is repeated). `SCCACHE_DIR` ALONE DOES
+     NOTHING — without the chain variable sccache stays in single-level legacy
+     mode and the disk backend is not in the chain at all.
+   - **sccache is BUILT FROM SOURCE** at `SCCACHE_GIT_REV`, not installed from
+     scoop, and this is load-bearing: released sccache cannot wrap nvcc on CUDA
+     13.3 — it parses `nvcc --dryrun` positionally, 13.3.33 moved `--simt-only`
+     after the input file, and the build DIES with `fatbinary fatal: Could not
+     open input file '<tu>.compute_80.cubin'` (mozilla/sccache#2722, merged
+     2026-08-04, five days AFTER v0.17.0 shipped). `verify-toolchain.ps1`
+     asserts sccache resolves from `CARGO_BIN`, because `--version` cannot tell
+     the fixed and broken builds apart — main still reports 0.17.0.
+   - **`CMAKE_CUDA_COMPILER_LAUNCHER`** on the back of that, which is what makes
+     ONNX's "~1h CUDA/TensorRT kernel compiles" cacheable at all.
+   - **uv/pip wheel cache** in `Dockerfile.torch`, set INSIDE the RUN (an `ENV`
+     would bake a build-only mount path into the shipped image).
+
+   Still NOT wired, with a measured reason: **source-fetch mounts.** The clones
+   are shallow (`Invoke-GitClone` passes `--depth`), so they cost minutes
+   against compiles that cost hours. If you do it, cache the ARCHIVES/CLONES
+   only, never the working tree — directory RENAMES fail on cache mounts and
+   `build-gstreamer-from-source.ps1` moves the extracted tree. Also raise the
+   tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` — it is
+   **shared** by every cache mount plus local sources and git checkouts, and
+   the sccache L0 (15G) and uv cache (10G) already claim most of it. Cache
+   sizes and that cap are ONE decision, not two.
 
 ## Code Organization (key shared utilities)
 

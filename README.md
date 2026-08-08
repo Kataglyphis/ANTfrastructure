@@ -27,10 +27,12 @@ expense of the others:
   sccache for Rust; layer cache and compiler cache multiply, they don't
   compete — pinned buildkitd GC budget) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
-  That map is the **Linux** lane; the Windows lane caches by deliberate layer
-  ordering and an sccache remote instead — it carries no `--mount=type=cache`
-  today, and the two levers that would change that are specced but unwired
-  ([`AGENTS.md` § Caching discipline](AGENTS.md) rule 5).
+  That map is the **Linux** lane. The **Windows** lane caches by deliberate
+  layer ordering plus a two-tier sccache (local `disk` L0 in front of the
+  WebDAV L2) covering C/C++ **and** CUDA, and a uv/pip wheel cache — see
+  [`AGENTS.md` § Caching discipline](AGENTS.md) rule 5, which also records why
+  sccache is built from source there (released builds cannot wrap `nvcc` on
+  CUDA 13.3).
 - **Stability** — digest-pinned stage handoffs, machine-checked cross-run
   ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
   version pins in a single source of truth (`linux/scripts/01-core/versions.env`),
