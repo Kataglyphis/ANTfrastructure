@@ -19,7 +19,23 @@ path through it, not a replacement.
 >
 > It needs no admin (Defender exclusions are reported UNKNOWN rather than
 > skipped, so their absence cannot look like success) and exits 1 on any
-> failure. **This page and that script are two views of one contract — change
+> failure.
+>
+> **`pwsh`, never `powershell`, and that includes the ADMIN window.** Every
+> script here carries `#requires -Version 7.0`; under Windows PowerShell 5.1
+> they refuse with a `#requires` message and change nothing. That refusal is
+> easy to miss: wrapped in a command that collects only the pipeline stream it
+> looks exactly like "the script ran and did nothing" — it cost two round trips
+> on 2026-08-08 against `apply-buildkitd-gcpolicy.ps1`, whose effect
+> (`reservedSpace` in the deployed toml) then silently stayed at the old value.
+> **Verify the effect, not the exit.**
+>
+> Do not hardcode a pwsh path. On this host pwsh 7 is the **MSIX/Store** build
+> under `C:\Program Files\WindowsApps\Microsoft.PowerShell_<version>_x64__…\`,
+> not the MSI at `C:\Program Files\PowerShell\7\` — the path carries the
+> version and moves on every update. Resolve it with `(Get-Command pwsh).Source`
+> (app-execution aliases occasionally fail to resolve under elevation; fall back
+> to a recursive search of `WindowsApps` for `Microsoft.PowerShell_*`). **This page and that script are two views of one contract — change
 > them together.** The reason it exists: until 2026-08-07 the CNI section here
 > handed fresh hosts a `.conf` template that silently broke the entire nerdctl
 > lane, and it read as authoritative for days. Prose cannot be executed; that
