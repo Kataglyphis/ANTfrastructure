@@ -13,7 +13,12 @@ set -euo pipefail
 _safe_source() {
   local f="$1"
   if [ -f "$f" ]; then
+    # Vendor scripts (LunarG setup-env.sh reads $1 unguarded) must be sourced
+    # with nounset suspended — same pattern as vulkan-env.sh. Restore after.
+    local _ss_had_u=0
+    case $- in *u*) _ss_had_u=1; set +u ;; esac
     source "$f"
+    [ "${_ss_had_u}" = "1" ] && set -u
     return 0
   fi
   return 1

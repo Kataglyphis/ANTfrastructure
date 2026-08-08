@@ -164,8 +164,17 @@ vulkan_env_source() {
     [ "${strict}" = "1" ] || _vulkan_env_log "Sourcing Vulkan env from ${setup_path}"
     # setup-env.sh may inspect $1/$2, so clear this helper's function args first.
     set --
+    # VENDOR SCRIPT under nounset: LunarG's setup-env.sh reads $1 UNGUARDED
+    # (line 14 in 1.4.357.0). With the args just cleared and a strict-mode
+    # caller (tvm.sh runs set -euo pipefail), that is a guaranteed
+    # "$1: unbound variable" abort — it killed the sdk stage's TVM step.
+    # Source vendor code with nounset suspended, restore afterwards (same
+    # pattern as sourcing profile.d or a venv activate).
+    local _vke_had_u=0
+    case $- in *u*) _vke_had_u=1; set +u ;; esac
     # shellcheck disable=SC1090,SC1091
     . "${setup_path}"
+    [ "${_vke_had_u}" = "1" ] && set -u
     case "${sanitize_mode}" in
       sanitize-libs)
         # sanitize_vulkan_sdk_env lives in 02-toolchain/vulkan.sh. This module

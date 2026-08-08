@@ -63,8 +63,11 @@ try_import() {
 _stv_vpin() {
   local file="$1" key="$2"
   [ -f "${file}" ] || return 0
+  # `|| true`: the doc contract above is "empty when the key is absent", but a
+  # zero-match grep exits 1 and pipefail would turn the bare assignment at the
+  # OPENCV_VERSION call site into a script abort instead of an empty pin.
   grep -E "^[[:space:]]*${key}=" "${file}" 2>/dev/null | tail -1 \
-    | sed -E "s/^[[:space:]]*${key}=//; s/[\"']//g; s/#.*//; s/[[:space:]]+$//; s/^v//"
+    | sed -E "s/^[[:space:]]*${key}=//; s/[\"']//g; s/#.*//; s/[[:space:]]+$//; s/^v//" || true
 }
 
 # Assert installed ML-stack versions match their pins. Two authorities, unioned

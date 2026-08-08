@@ -16,7 +16,7 @@
 ARG BASE_IMAGE=local/kataglyphis:windows-sdk
 FROM ${BASE_IMAGE} AS builder
 
-ARG PYTHON_VERSION=3.14.6
+ARG PYTHON_VERSION=3.14.7
 # Baked as ENV so the run+commit compile script sees the canonical version.
 ENV PYTHON_VERSION="${PYTHON_VERSION}"
 

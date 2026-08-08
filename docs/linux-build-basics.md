@@ -50,6 +50,26 @@ See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrato
 
 This host's rootless BuildKit is tuned for fast build-time downloads. The OCI worker runs with `--oci-worker-net=host` (via `~/.config/systemd/user/buildkit.service.d/override.conf`), so every `RUN` step (for example the LLVM `git fetch` in the cross-compiler build) uses host networking instead of the slow rootless bridge/slirp path. With this in place, a plain `nerdctl build` already uses host networking; you do not need `--network host`. Docker Hub pulls are mirrored through `mirror.gcr.io`, but mirrors only speed up `FROM ...` image pulls, not in-build `git`/`curl` downloads. See `docs/project-info.md` for the exact drop-in files and how to re-apply them. Do not regress these settings.
 
+## Caching Layers (what is cached where)
+
+The chain caches at every level it can; know the map before "optimizing":
+
+| Layer | Mechanism | Notes |
+|---|---|---|
+| Image layers | BuildKit layer cache (per RUN/COPY vertex) | The foundation. The expensive compiler RUNs bind-mount ONLY their per-file source closure so unrelated edits don't bust them. |
+| Cross-run stage cache | `--cache-to type=local` exports under `~/.cache/kata-buildcache/<stage-slug>` | Written by every chain stage; the between-stage disk guard LRU-prunes but PROTECTS slugs of stages still to run. |
+| Other hosts | inline registry cache (`--cache-to type=inline` on push) | Embedded in the image config — immune to ghcr's oversized-blob 400s. |
+| C/C++ objects | ccache: GCC via `build-gcc.sh --ccache` (+ `CCACHE_BASEDIR`/`SLOPPINESS`), LLVM via `CMAKE_*_COMPILER_LAUNCHER`, media via `compiler-cache.sh` | All three RUN groups mount `/var/cache/ccache`. Wired end-to-end since 2026-08-08 — before that the GCC mount saw zero traffic and LLVM wrote into the image layer. Host GCC bootstrap stages 2/3 are structurally uncacheable (GCC 16 has no `bootstrap-ccache` build config; `GCC_HOST_BOOTSTRAP=0` trades the self-check for full cacheability). |
+| Package managers | apt / cargo / uv / pip cache mounts | `sharing=locked` throughout. |
+| Sources | GCC tarball shared across host+targets (`GCC_TARBALL_CACHE_DIR`); LLVM source under `/var/cache/llvm-src`; ONNX-web + ffmpeg-sdks version-keyed mounts | The remaining media clones (opencv/gstreamer/ffmpeg/onnx) re-fetch on a cache bust — see the backlog item before adding mounts: `clone_or_update_repo` needs corrupt-dir hardening first, or a killed run poisons the shared source cache. |
+| GC budget | `~/.config/buildkit/buildkitd.toml` pins `gckeepstorage` | Without it, buildkit's DEFAULT GC decided whether the multi-hour layers survive between runs. Restart buildkitd BETWEEN runs only (`systemctl --user restart buildkit`) — never while a build solves. |
+
+**Process rule that beats every mechanism:** between a `--no-push` validation
+run and its push run, do not touch anything in the base/toolchain closures
+(01-core, 02-toolchain, versions.env, the bundled smoke scripts, the
+Dockerfiles) — identical context bytes are what turn the push run into a pure
+re-export with uploads.
+
 ## Build
 
 ```bash

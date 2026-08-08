@@ -29,7 +29,11 @@ fix1_python_pc() {
       fi
     fi
   done
-  [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch python-3.14.pc found (not in cross-compiler context)"
+  # `|| true`-terminated: as the function's LAST statement, a bare AND-list
+  # makes the HEALTHY case (found=1) return 1 — under set -e that killed the
+  # script right here, silently skipping fixes 2-9 and the summary whenever it
+  # ran where the staged payloads actually exist (i.e. inside the images).
+  { [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch python-3.14.pc found (not in cross-compiler context)"; } || true
 }
 
 fix2_abseil_span() {
@@ -85,7 +89,8 @@ fix3_libdynload_dangling() {
       fi
     fi
   done
-  [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch lib-dynload found (not in cross-compiler context)"
+  # Same class-5 guard as fix1 above: healthy case must not become exit 1.
+  { [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch lib-dynload found (not in cross-compiler context)"; } || true
 }
 
 fix4_cc_dumpmachine() {

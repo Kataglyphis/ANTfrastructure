@@ -70,10 +70,13 @@ fi
 # git.libcamera.org edge intermittently serves a Traefik default cert (TLS
 # verify fails); fall back to the official GitHub mirror when the primary is
 # unreachable so the cross build isn't blocked by an upstream outage.
-if ! retry 3 10 "libcamera git clone" clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}"; then
+# LIBCAMERA_VERSION (versions.env; tag/branch/commit): until 2026-08-08 this
+# clone was UNPINNED — the only media library tracking upstream master, so two
+# builds of the same chain could compile different libcamera code.
+if ! retry 3 10 "libcamera git clone" clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}" "${LIBCAMERA_VERSION:-}"; then
   echo "[WARN] libcamera primary remote ${LIBCAMERA_GIT} failed; falling back to mirror ${LIBCAMERA_GIT_MIRROR}"
   rm -rf "${LIBCAMERA_SRC}"
-  retry 3 10 "libcamera git clone (mirror)" clone_or_update_repo "${LIBCAMERA_GIT_MIRROR}" "${LIBCAMERA_SRC}"
+  retry 3 10 "libcamera git clone (mirror)" clone_or_update_repo "${LIBCAMERA_GIT_MIRROR}" "${LIBCAMERA_SRC}" "${LIBCAMERA_VERSION:-}"
 fi
 cd "${LIBCAMERA_SRC}"
 
@@ -225,13 +228,22 @@ if [ -n "${PYCAMERA_DIR}" ] && [ -d "${PYCAMERA_DIR}" ]; then
   WHEEL_DIR=$(mktemp -d)
   cp -r "${PYCAMERA_DIR}" "${WHEEL_DIR}/"
   
-  cat << 'EOF' > "${WHEEL_DIR}/setup.py"
+  # Wheel version derived from the pinned LIBCAMERA_VERSION (strip a leading v;
+  # a branch name or bare SHA falls back to 0.0.0+<ref>). Previously hardcoded
+  # "0.3.0" no matter which libcamera was actually built.
+  _lc_wheel_version="${LIBCAMERA_VERSION:-}"
+  _lc_wheel_version="${_lc_wheel_version#v}"
+  case "${_lc_wheel_version}" in
+    [0-9]*.[0-9]*) : ;;                                  # looks like a version
+    *) _lc_wheel_version="0.0.0+${_lc_wheel_version:-unpinned}" ;;
+  esac
+  cat << EOF > "${WHEEL_DIR}/setup.py"
 from setuptools import setup, Distribution
 class BinaryDistribution(Distribution):
     def has_ext_modules(self): return True
 setup(
     name="libcamera",
-    version="0.3.0",
+    version="${_lc_wheel_version}",
     packages=["libcamera"],
     package_data={"libcamera": ["*.so"]},
     include_package_data=True,

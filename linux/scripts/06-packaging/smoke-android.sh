@@ -15,9 +15,11 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
 
 : "${ANDROID_SDK_ROOT:=/opt/android-sdk}"
+# Fallback literals only — the image ENV (from versions.env via Dockerfile.android
+# ARGs) always wins. Keep them matching versions.env; they had drifted once.
 : "${ANDROID_NDK_VERSION:=29.0.14206865}"
 : "${ANDROID_API_LEVEL:=34}"
-: "${ANDROID_BUILD_TOOLS:=35.0.0}"
+: "${ANDROID_BUILD_TOOLS:=36.0.0}"
 
 check_sdk_root() {
   # 1. Android SDK root

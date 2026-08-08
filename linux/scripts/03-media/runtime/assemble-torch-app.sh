@@ -18,7 +18,12 @@ uv_uninstall_pip_opencv() {
 
 activate_project_environment() {
   # Verify-only runs may happen in a later image or on real hardware.
+  # Vendor sourcing under set -u: suspend nounset for the activate script
+  # (not guaranteed nounset-clean across venv generators), restore after.
+  local _ape_had_u=0
+  case $- in *u*) _ape_had_u=1; set +u ;; esac
   source "${VENV}/bin/activate"
+  [ "${_ape_had_u}" = "1" ] && set -u
   export UV_PYTHON="${VENV}/bin/python"
   export MEDIA_HOST_PYTHON="${VENV}/bin/python"
 }

@@ -20,8 +20,8 @@ ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 ARG CMAKE_VERSION=4.4.2
-ARG NODE_VERSION=26.5.1
-ARG UV_VERSION=0.12.1
+ARG NODE_VERSION=26.7.0
+ARG UV_VERSION=0.12.3
 
 # ------------------------------------------------------------------------------
 # Shell

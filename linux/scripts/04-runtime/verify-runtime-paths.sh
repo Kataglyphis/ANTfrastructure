@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# NO -e: this script's own contract is "ADVISORY ONLY — never fails" and
+# preflight.sh runs it as a gate; with errexit, any zero-match grep in the
+# collection pipelines below aborted it and failed the gate against contract
+# (same deliberate choice as preflight.sh and the lint-*.sh siblings).
+set -uo pipefail
 # Pin C collation so `sort` and `comm` below agree on byte order. Without this,
 # UTF-8 locales sort '-' (0x2d) and '/' (0x2f) differently from `comm`'s byte
 # order, so sibling paths like /opt/tvm-wheels vs /opt/tvm/lib make comm abort

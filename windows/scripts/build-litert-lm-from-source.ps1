@@ -18,7 +18,7 @@ Import-Module $modulePath -Force
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.14.0'
+$LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.15.0'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
 
 #region Phase 1 | Resolve version + clone LiteRT-LM (git-lfs)

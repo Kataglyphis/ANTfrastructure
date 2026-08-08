@@ -49,8 +49,24 @@ bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-di
 bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
 bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./out/build-logs
 
-# Verify chain freshness without building
+# Local validation run: build every stage WITHOUT pushing (skips the multi-GB
+# uploads; the chain resolves via the local image store). NOTE: under --no-push
+# the runtime stage's smokes are only meaningful since the 2026-08-08 fixes —
+# stop at android (--to-stage android) if unsure, and let the push run validate
+# the runtime lane.
+bash linux/scripts/build-cross-chain.sh --target-arches amd64 --no-push --log-dir ./out/build-logs
+
+# Opt-in: build the per-target cross GCCs concurrently inside the compiler
+# stage (~30% off the GCC RUN at 3 targets; default 0 = sequential).
+GCC_PARALLEL_TARGETS=1 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+
+# Verify chain freshness without building (real FRESH/STALE verdicts for images
+# that carry the org.kataglyphis.parent-digest ancestry annotation)
 bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+
+# Partial runs (--from-stage after base) auto-assert the ancestor chain against
+# the registry and REFUSE to build on a stale ancestor. Deliberate override:
+#   --no-verify-ancestry   (or CROSS_VERIFY_ANCESTRY=0)
 
 # Standalone quick chain verification (lighter, no orchestrator flags)
 bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64

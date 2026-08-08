@@ -164,7 +164,7 @@ _web_wasm_node_compile "onnxruntime-web" /usr/local/lib/onnxruntime-web
 # ---------------------------------------------------------------------------
 echo "--- OpenCV ---"
 if command -v python3 >/dev/null 2>&1; then
-  cv2_pkg="$(find /opt/opencv5 -path "*/site-packages" -type d 2>/dev/null | head -1)"
+  cv2_pkg="$(find /opt/opencv5 -path "*/site-packages" -type d 2>/dev/null | head -1 || true)"
   if [ -n "${cv2_pkg}" ]; then
     if cross_build_is_active 2>/dev/null; then
       pass "opencv Python bindings present at ${cv2_pkg} (cross build — import skipped)"

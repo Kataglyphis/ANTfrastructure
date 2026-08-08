@@ -987,3 +987,41 @@ Still open: riscv64 isa-spec on-device smoke (needs a riscv64 run);
 RUNTIME_CONTEXT_ROOT in the disk preflight (edit blocked while a chain run is
 live — build-cross-chain.sh is the running orchestrator's main file);
 parallelism.sh core-divisor (superseded for GCC by the driver's own JOBS split).
+
+### 2026-08-08 — accelerator/helper-lane audit (batch leftovers)
+
+Confirmed-latent items DEFERRED because their files sit in the toolchain
+bundle COPY (fixing now would bust the push run's compiler cache) or in the
+untouched NVIDIA lane — fold into the post-push closure batch:
+- smoke-common.sh:186 — smoke_uname_name unguarded under set -e makes the
+  "Unknown arch" guard at :189 unreachable (latent on amd64 hosts).
+- 01-core/install-tensorrt.sh:17 + 01-core/verify-cuda-stack.sh:14,21,28 —
+  unguarded find|head assignments (NVIDIA lane only; verify-cuda-stack is a
+  self-declared non-fatal banner that could abort).
+- Dockerfile.nvidia:88 — same shape, unreachable today (COPY-guaranteed dir).
+- smoke-cross-all-arches.sh:73 — cross_gpp missing from the local declaration.
+- verify-runtime-paths.sh — GCC_VERSION never expands for envsubst (tr strips
+  the escape BEFORE envsubst runs; var not exported) → permanent phantom
+  "/opt/gcc-\/bin" WARNs; fix when making the checker a real gate.
+- preflight.sh:41,47 (_in_csv leaks globals), :82 (failed git ls-files makes
+  the w/crlf check pass falsely); verify-patch-integrity.sh:59 no-op grep -qv;
+  verify-parity.sh:491 unreachable continue; lint-shell.sh:113 empty-array
+  expansion (bash<4.4 only).
+
+### 2026-08-08 — caching-coverage review (answering "cachen wir überall?")
+
+Two real gaps found, both safe to close only between runs:
+- **buildkitd runs with NO config file** (systemd unit passes only CLI flags) →
+  DEFAULT GC policy governs the layer store. Nothing pins how much of the
+  multi-hour GCC/LLVM/media layer cache survives between runs; an eviction
+  between the validation run and the push run would silently cost hours. Add
+  ~/.config/buildkit/buildkitd.toml with an explicit [worker.oci] gc policy
+  (keepstorage sized to the disk, e.g. 500GB) and restart buildkitd BETWEEN
+  runs, never during one. The local --cache-to exports (kata-buildcache) are
+  the existing second net, but re-importing is slower than layer hits.
+- **Media source trees are not cache-mounted**: opencv/gstreamer/ffmpeg/onnx
+  clones re-download inside their RUN on every cache bust (only onnx-web and
+  ffmpeg-sdks have dedicated mounts; llvm-src exists on the toolchain side).
+  Version-keyed cache mounts (id=<lib>-src-${VERSION}) would make
+  rebuild-after-bust skip the multi-GB fetches. Clones are minutes vs ccache's
+  hours, so this is the smaller lever — batch it with the closure work.

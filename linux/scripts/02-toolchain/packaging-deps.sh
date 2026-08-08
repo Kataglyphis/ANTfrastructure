@@ -223,7 +223,9 @@ install_flatpak_runtime() {
         return 1
     fi
 
-    local runtime_version="24.08"
+    # Overridable via versions.env (FLATPAK_RUNTIME_VERSION); was the last
+    # hardcoded version literal in the packaging lane.
+    local runtime_version="${FLATPAK_RUNTIME_VERSION:-24.08}"
 
     info "Adding Flathub repository (if not present)"
     if ! flatpak remote-list | grep -q flathub; then

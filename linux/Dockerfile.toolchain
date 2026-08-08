@@ -30,11 +30,11 @@ ARG BUILD_MODE=native
 # (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
 ARG BUILD_MEM_DIVISOR=1
 ARG CROSS_TARGETS=amd64,arm64,riscv64
-ARG PYTHON_VERSION=3.14.6
+ARG PYTHON_VERSION=3.14.7
 # SHA-256 of the CPython source tarball, mirrored from versions.env (enforced by
 # verify-arg-consistency.sh). MUST be declared + forwarded to the Python RUN
 # below, else build_python.sh sees it empty and downloads CPython UNVERIFIED.
-ARG PYTHON_TGZ_SHA256=74d0d71d0600e477651a077101d6e62d1e2e69b8e992ba18c993dd643b7ba222
+ARG PYTHON_TGZ_SHA256=62859805f6fdf25e2bcbf3fa3217801e1996887ca33e6a2af80674bdfa2dbe07
 ARG GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=0
 ARG GCC_HOST_BOOTSTRAP=1
 ARG USE_FAST_UBUNTU_MIRROR=false

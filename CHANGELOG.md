@@ -1,5 +1,81 @@
 # Changelog
 
+## 2026-08-08 — Linux cross lane: four bug classes, machine-checked ancestry, live caching
+
+Driven by a from-base amd64 rebuild of `:latest-cross`, fixing every failure as
+the chain hit it. The theme mirrors yesterday's: silent failure made loud.
+
+### Four bash bug classes found live, fixed repo-wide, and lint-gated
+
+1. **`trap … RETURN` leaks to the caller** — a RETURN trap set inside a
+   function fires again when the CALLER returns, where the function's locals
+   are gone; under `set -u` this killed `build-cross-chain.sh` AFTER every
+   stage had succeeded. Three instances (parallel-loop, context-management).
+2. **Unguarded pipelines under `set -euo pipefail`** — `du` on a
+   not-yet-created cache dir aborted the orchestrator on FIRST runs; `readelf`
+   on linker scripts, `dpkg -S` on unowned files, `find | head` SIGPIPE and
+   friends would have killed the media validators mid-stage. ~10 sites.
+3. **Comma-split loops break under `IFS=$'\n\t'`** — `for x in ${list//,/ }`
+   runs ONCE with the whole list as one bogus element in strict-IFS scripts.
+   Broke the GCC GPG key import AND would have killed the compiler stage's
+   multi-target Python staging. New lint suite (`test-ifs-safety.sh`) bans the
+   idiom; safe pattern is `IFS=',' read -r -a`.
+4. **Vendor scripts sourced under `set -u`** — LunarG's Vulkan `setup-env.sh`
+   reads `$1` unguarded and is sourced with explicitly cleared args; killed the
+   sdk stage's TVM step. Vendor sourcing now suspends nounset and restores it.
+
+### Cross-invocation ancestry is machine-checked now
+
+Digest pinning only ever protected a SINGLE run. Every pushed cross stage now
+records its parent's digest as an OCI manifest annotation
+(`org.kataglyphis.parent-digest`); partial runs (`--from-stage` after base)
+walk the recorded chain against the registry and hard-fail on a stale ancestor
+(`linux/scripts/01-core/ancestry.sh`). `--verify-chain` gives real FRESH/STALE
+verdicts from the same annotations. The old "after a compiler push start from
+sdk" rule is enforced by the machine, not the reader.
+
+### The GCC GPG failure was a key-rotation, not tampering
+
+gcc-16.2.0 is signed by Richard Biener's key; the script pinned only Jakub
+Jelinek's and reported the missing public key as possible tampering (with
+SHA512 already OK). Now: accepted key SET, verdict via `gpg --status-fd`
+(NO_PUBKEY → warn/skip per policy; BADSIG → fatal), signer checked against the
+set so an arbitrary imported key cannot pass.
+
+### Toolchain caching went from decorative to real
+
+The ccache wiring was inverted: the GCC RUN mounted the cache but never exec'd
+ccache; the LLVM RUN exec'd ccache but never mounted the cache. Fixed both,
+plus `CCACHE_BASEDIR`/`SLOPPINESS` (without which per-target build dirs made
+identical TUs never hit) and a multi-word-`CC` PATH fix for the Canadian path.
+`--with-build-config=bootstrap-ccache` was PROPOSED and REJECTED — GCC 16
+ships no such config (verified against the tarball). Per-target GCC builds can
+now run concurrently behind `GCC_PARALLEL_TARGETS=1` (serial apt pre-pass,
+divided JOBS, per-target logs; default off).
+
+### Version pins: complete and current
+
+`versions.env` audited for completeness (libcamera was the ONLY unpinned
+media library — now `LIBCAMERA_VERSION=v0.7.2`, and the generated wheel stops
+lying about its version) and currency (11 bumps incl. Python 3.14.7,
+Node 26.7.0, OpenCV `5.x`→`5.0.0` tag = last non-reproducible media pin
+closed; ROCm deliberately HELD — the new upstream releases 404 on the old apt
+path). All checksums fetched from official sources; a new checker section
+catches the case-mapped version literals the ARG checks could not see.
+
+### Also
+
+- `--no-push` validation runs no longer validate STALE registry images: the
+  wrapper smoke pulled the published tag over the freshly built one, and the
+  runtime handoff pulled `cross-android-<arch>` over the local build
+  (BUILT_THIS_RUN now set on the local path too). Runtime chain failures
+  propagate instead of reporting success.
+- Disk preflight measures the cache dir's own filesystem (not its parent's)
+  and survives first runs; `--final-image` is no longer silently overridden.
+- apt.llvm.org 5xx no longer kills a multi-hour layer (falls back to source).
+- Regression suites: `test-ancestry.sh`, `test-parallel-loop.sh`,
+  `test-ifs-safety.sh` — auto-discovered by the pre-commit `script-tests` gate.
+
 ## 2026-08-07 — Windows lane: reproducibility, mandatory plugins, honest gates
 
 The theme is less the repairs than what they have in common: several things had
