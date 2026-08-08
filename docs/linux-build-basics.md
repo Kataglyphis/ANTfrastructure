@@ -65,6 +65,51 @@ The chain caches at every level it can; know the map before "optimizing":
 | Sources | GCC tarball shared across host+targets (`GCC_TARBALL_CACHE_DIR`); LLVM source under `/var/cache/llvm-src`; ONNX-web + ffmpeg-sdks version-keyed mounts | The remaining media clones (opencv/gstreamer/ffmpeg/onnx) re-fetch on a cache bust — see the backlog item before adding mounts: `clone_or_update_repo` needs corrupt-dir hardening first, or a killed run poisons the shared source cache. |
 | GC budget | `~/.config/buildkit/buildkitd.toml` pins `gckeepstorage` | Without it, buildkit's DEFAULT GC decided whether the multi-hour layers survive between runs. Restart buildkitd BETWEEN runs only (`systemctl --user restart buildkit`) — never while a build solves. |
 
+### Why compiler caches AND BuildKit layer caching — the multiplication
+
+The two mechanisms work at different granularities and cover each other's
+blind spots; neither replaces the other:
+
+- **BuildKit layer cache** is binary at RUN-step granularity: hit = 0 seconds,
+  miss = the whole step re-executes. Its blind spot is precisely the moment
+  you pay — a one-character edit to any file in a step's mount closure re-runs
+  the entire multi-hour compile.
+- **Compiler caches** (ccache/sccache) work at translation-unit granularity:
+  when the layer MISSES, they turn a from-scratch compile into mostly cache
+  lookups — one changed file re-links, thousands of unchanged objects hit.
+- **They multiply:** layer cache is the fast path for "nothing changed";
+  the compiler cache is the amortizer for "something changed". A closure edit
+  that costs hours cold costs minutes warm.
+- **Defense in depth:** compiler caches live in `--mount=type=cache` volumes
+  that survive layer-cache loss (GC, evictions, worker resets — see the
+  2026-08-08 unexplained base cache-miss), and a remote tier survives even
+  cache-mount loss and extends across hosts.
+
+### Why the HYBRID (ccache for C/C++, sccache for Rust) beats all-sccache
+
+- **ccache wins C/C++ on GCC**: direct/depend mode hashes via an include
+  manifest without full preprocessing → higher hit rates and faster hits;
+  broader flag tolerance. sccache's C/C++ path always preprocesses and
+  silently declines to cache on unsupported flags.
+- **sccache is irreplaceable for Rust**: ccache cannot wrap rustc at all;
+  `RUSTC_WRAPPER=sccache` is the only compile cache for the media lane's
+  cargo builds (gst-plugins-rs, wheelhouse).
+- Both need **measurement to stderr** (the stream the 2MiB step-log clip never
+  cuts) — an unmeasured cache regresses invisibly (proved live: the launcher
+  never reached LLVM's nested sub-builds, 0% gain on identical inputs).
+- `compiler-cache.sh::setup_sccache` has documented this exact division of
+  labor all along; 2026-08-08 finally wired the Rust half (gated).
+
+**Roadmap to "everything cached" (all specced, closure-batched):** flip
+`ENABLE_SCCACHE_RUST` after a controlled cross-arch validation → ccache
+`remote_storage` + `SCCACHE_REDIS` against one host-local backend (shared
+infra with the Windows lane's sccache; no cross-OS hits, shared plumbing) →
+launcher forwarding into LLVM's nested sub-builds → version-keyed source-tree
+mounts once `clone_or_update_repo` is corrupt-dir-hardened → NDK download
+cache. Cache-mount coverage in the Dockerfiles is already complete where work
+happens (verified 2026-08-08: the thin-looking package/torch counts are
+symlink/validation steps with nothing to cache).
+
 **Process rule that beats every mechanism:** between chain runs that should
 cache-hit each other, do not touch anything in the base/toolchain closures
 (01-core, 02-toolchain, versions.env, the bundled smoke scripts, the

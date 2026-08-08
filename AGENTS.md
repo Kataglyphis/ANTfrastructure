@@ -731,9 +731,13 @@ must never violate:
    so the multi-hour layers survive between runs. Restart buildkitd only
    BETWEEN runs (`systemctl --user restart buildkit`), never while a build
    solves. Do not delete this file.
-3. **ccache is wired, keep it wired**: GCC via `--ccache` in `gcc.sh`'s three
-   `build-gcc.sh` call sites, LLVM via cmake launchers + the ccache/sccache
-   cache mounts on BOTH heavy RUNs in `Dockerfile.toolchain`. The failure mode
+3. **The compiler-cache HYBRID is doctrine, keep it wired**: ccache for C/C++
+   (GCC via `--ccache` in `gcc.sh`'s three `build-gcc.sh` call sites, LLVM via
+   cmake launchers + the ccache/sccache cache mounts on BOTH heavy RUNs in
+   `Dockerfile.toolchain`), sccache ONLY for Rust (`ENABLE_SCCACHE_RUST`,
+   gated until validated — ccache cannot wrap rustc; sccache's C/C++ path
+   loses to ccache's direct mode). Never "simplify" to a single tool; see
+   docs/linux-build-basics.md § Why the HYBRID. The failure mode
    this replaced (mount without wiring, wiring without mount) was invisible —
    builds stayed green, just slow. When touching these paths, verify with
    `grep -c ccache <stage>.log` on the next build.

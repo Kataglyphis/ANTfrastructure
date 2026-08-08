@@ -23,8 +23,9 @@ This build system optimizes for three goals **at once** — never one at the
 expense of the others:
 
 - **Speed** — layered caching end-to-end (BuildKit layers with narrow cache
-  keys, local cache exports, ccache for GCC/LLVM/media, pinned buildkitd GC
-  budget) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
+  keys, local cache exports, the ccache/sccache HYBRID — ccache for C/C++,
+  sccache for Rust; layer cache and compiler cache multiply, they don't
+  compete — pinned buildkitd GC budget) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
   That map is the **Linux** lane; the Windows lane caches by deliberate layer
   ordering and an sccache remote instead — it carries no `--mount=type=cache`
