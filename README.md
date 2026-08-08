@@ -33,7 +33,7 @@ linux/
 ├── Dockerfile.nvidia        optional CUDA/cuDNN/TensorRT layer (FROM sdk)
 ├── Dockerfile.amd           optional MIGraphX layer (FROM sdk)
 └── scripts/
-    ├── 01-core/             shared utilities (48 modules — the maintained list lives in AGENTS.md § Repo Map)
+    ├── 01-core/             shared utilities — the maintained list lives in AGENTS.md § Repo Map
     ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
     ├── 03-media/            media library build scripts
     │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
