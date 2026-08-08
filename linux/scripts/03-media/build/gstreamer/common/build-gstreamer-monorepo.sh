@@ -90,11 +90,18 @@ compute_gstreamer_meson_jobs() {
 
 _gst_monorepo_env_setup() {
   # cross_build_is_active is provided by cross-env.sh via media_common_init.
-  # Minimal fallback if the module chain didn't load it.
+  # Minimal fallback if the module chain didn't load it — normalizing both
+  # sides (the raw OCI-vs-uname comparison reported "cross active" on native
+  # arm64 hosts; this copy had drifted from the documented fix). NOTE: bash
+  # function definitions are global, so defining this inside the setup
+  # function still leaks — acceptable for a guarded fallback.
   if ! command -v cross_build_is_active >/dev/null 2>&1; then
     cross_build_is_active() {
-      [ "${BUILD_MODE:-native}" = "cross" ] && \
-      [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+      [ "${BUILD_MODE:-native}" = "cross" ] || return 1
+      local _t _b
+      _t="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}")"
+      _b="$(arch_normalize "${BUILDARCH:-$(uname -m)}" 2>/dev/null || printf '%s' "${BUILDARCH:-$(uname -m)}")"
+      [ -n "${_t}" ] && [ "${_t}" != "${_b}" ]
     }
   fi
 

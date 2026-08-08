@@ -4,7 +4,7 @@
 
 Optional NVIDIA GPU image chain (built by passing `--build-arg ENABLE_NVIDIA=true` to standard Dockerfiles):
 
-- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.25.0.15<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.1.0.106<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
+- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.25.0.15<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.2.1.2<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
 - `linux/Dockerfile.torch`: Torch/Python add-on on top of the Android NVIDIA layer.
@@ -23,7 +23,7 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.25.0.15<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.1.0.106<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
+| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.25.0.15<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.2.1.2<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the NVIDIA media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
@@ -124,7 +124,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 | --- | --- | --- |
 | CUDA Toolkit | Not installed | CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda --> |
 | cuDNN | Not installed | cuDNN 9 |
-| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.1.0.106<!-- /generated:tensorrt --> |
+| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.2.1.2<!-- /generated:tensorrt --> |
 | NCCL | Not installed | Installed |
 | cuBLAS/cuSPARSE/cuFFT | Not installed | Installed |
 | NVTX | Not installed | Installed |

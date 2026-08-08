@@ -75,7 +75,7 @@ its own license terms.
 | --- | --- | --- | --- |
 | CUDA Toolkit | 13.3.1 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.25.0.15 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
-| TensorRT | 11.1.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| TensorRT | 11.2.1.2 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Optional GPU — AMD (`Dockerfile.amd`)
 
@@ -149,7 +149,7 @@ its own license terms.
 | --- | --- | --- | --- |
 | CUDA | 13.3.1 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.25.0.15 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
-| TensorRT | 11.1.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| TensorRT | 11.2.1.2 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Media Layer
 

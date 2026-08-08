@@ -31,7 +31,21 @@ if [ "${_trt_ok}" -eq 0 ]; then
         echo "TensorRT: installed ${TENSORRT_VERSION} from NVIDIA apt repo"
         _trt_ok=1
     elif apt-get install -y --no-install-recommends tensorrt-dev tensorrt-libs 2>/dev/null; then
-        echo "TensorRT: installed from NVIDIA apt repo (unpinned; ${TENSORRT_VERSION} not available)"
+        # LOUD on purpose (2026-08-08). TENSORRT_VERSION is ONE pin for both
+        # lanes, and it tracks the zip staged for Windows — which may be an
+        # NVIDIA *Enterprise* build that the public apt repo does not carry. The
+        # fallback is deliberate and fine, but it silently UNPINS TensorRT on
+        # this lane, and the previous single `echo` was one line among thousands
+        # in a multi-hour log: nobody would ever see it.
+        _trt_actual="$(dpkg-query -W -f='${Version}' tensorrt-dev 2>/dev/null || echo 'unknown')"
+        echo "=============================================================" >&2
+        echo "WARNING: TensorRT is UNPINNED on this build." >&2
+        echo "  requested (versions.env TENSORRT_VERSION): ${TENSORRT_VERSION}" >&2
+        echo "  installed (newest in NVIDIA apt repo):     ${_trt_actual}" >&2
+        echo "  The pinned version is not served by apt — expected when the pin" >&2
+        echo "  tracks an Enterprise zip staged for the Windows lane." >&2
+        echo "=============================================================" >&2
+        echo "TensorRT: installed ${_trt_actual} from NVIDIA apt repo (UNPINNED — see warning above)"
         _trt_ok=1
     else
         echo "TensorRT: not available in any repo; skipping"

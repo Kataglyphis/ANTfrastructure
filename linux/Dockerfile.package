@@ -222,7 +222,6 @@ COPY --chmod=755 linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/script
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh
-COPY --chmod=755 linux/scripts/06-packaging/smoke-runtime-image.sh /opt/scripts/packaging/smoke-runtime-image.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-torch-venv.sh /opt/scripts/packaging/smoke-torch-venv.sh
 
 # Wire LLVM-target and Vulkan symlinks. LLVM-target was cross-compiled for the
@@ -245,16 +244,16 @@ RUN set -euo pipefail; \
 # unreachable and fails the whole runtime build. This is a host-only swap that
 # preserves the existing (already arch-correct) source layout; amd64 uses
 # archive.ubuntu.com and is untouched.
-RUN set -euo pipefail; \
-    if [ -n "${FAST_UBUNTU_PORTS_MIRROR_URL:-}" ]; then \
-        _m="${FAST_UBUNTU_PORTS_MIRROR_URL%/}"; \
-        find /etc/apt/sources.list.d -type f \( -name '*.sources' -o -name '*.list' \) 2>/dev/null | while read -r _f; do \
-            sed -i "s#https\\?://ports.ubuntu.com/ubuntu-ports#${_m}#g" "${_f}"; \
-        done; \
-        [ -f /etc/apt/sources.list ] && sed -i "s#https\\?://ports.ubuntu.com/ubuntu-ports#${_m}#g" /etc/apt/sources.list || true; \
-        echo "Rewrote ports.ubuntu.com -> ${_m} for package-stage apt"; \
-    fi
-
+# Canonical mirror rewrite (use-fast-ubuntu-mirror.sh) instead of the old
+# inline sed, which had TWO drifts from the canonical behavior: it ignored the
+# USE_FAST_UBUNTU_MIRROR gate entirely, and it never derived the ports URL
+# from the archive URL — so `--fast-ubuntu-mirror-url <mirror>` WITHOUT an
+# explicit ports URL left this stage on ports.ubuntu.com while base and media
+# had both moved to the mirror.
+RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core/use-fast-ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core/ubuntu-mirror.sh,ro \
+    set -euo pipefail; \
+    bash /tmp/core/use-fast-ubuntu-mirror.sh
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \

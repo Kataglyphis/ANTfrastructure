@@ -67,7 +67,7 @@ These validate a built/pulled image and also run during the build to fail fast:
   (classes 2/3) aborts in <1s instead of after a ~9-min numpy/pillow compile.
 - **Torch venv integrity** — `06-packaging/smoke-torch-venv.sh`: imports
   numpy/torch/torchvision/PIL/cv2/contourpy (+ torch↔numpy ABI bridge) from
-  `/opt/venv` (class 5). Wired into `smoke-wrapper.sh`; skips cleanly if no venv.
+  `/opt/venv` (class 5). Wired into `the wrapper-smoke target's smoke set (validate-compilers, smoke-media, smoke-torch-venv, smoke-cross-all-arches)`; skips cleanly if no venv.
   Run standalone: `VENV=/opt/venv smoke-torch-venv.sh`.
 - **Runtime-image boot + functional smoke** — `06-packaging/smoke-runtime-image.sh
   <image> <arch>`, run per-arch by `build-runtime-manifest.sh` against the freshly

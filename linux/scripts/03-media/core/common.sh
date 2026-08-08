@@ -158,9 +158,15 @@ media_common_init() {
     if command -v cross_build_enabled >/dev/null 2>&1; then
       cross_build_is_active() { cross_build_enabled; }
     else
+      # Last-resort clone of 01-core/common.sh's fallback. MUST normalize both
+      # arches (raw OCI-vs-uname comparison reported "cross active" on native
+      # arm64 hosts — this copy had drifted from the documented fix).
       cross_build_is_active() {
-        [ "${BUILD_MODE:-native}" = "cross" ] && \
-        [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "${BUILDARCH:-$(uname -m)}" ]
+        [ "${BUILD_MODE:-native}" = "cross" ] || return 1
+        local _t _b
+        _t="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}")"
+        _b="$(arch_normalize "${BUILDARCH:-$(uname -m)}" 2>/dev/null || printf '%s' "${BUILDARCH:-$(uname -m)}")"
+        [ -n "${_t}" ] && [ "${_t}" != "${_b}" ]
       }
     fi
   fi
