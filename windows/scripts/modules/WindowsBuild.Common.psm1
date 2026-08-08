@@ -630,6 +630,10 @@ function Initialize-BuildCacheEnvironment {
         Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
         $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
         $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
+        # CUDA added 2026-08-08: .cu files went through nvcc uncached until then.
+        # CMake ignores it when CUDA is not an enabled language. See the longer
+        # note in WindowsSourceBuild.Common.psm1's Invoke-CmakeConfigure.
+        $env:CMAKE_CUDA_COMPILER_LAUNCHER = $sccacheExe
         $env:RUSTC_WRAPPER = $sccacheExe
         $env:CC_WRAPPER = $sccacheExe
         $env:CXX_WRAPPER = $sccacheExe
