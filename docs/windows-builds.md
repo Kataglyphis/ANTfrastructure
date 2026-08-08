@@ -425,7 +425,7 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    > it compares subnets of whichever file it finds and passed green throughout.
    > Different failure, different check. **When you edit one file, edit both.**
 
-   ```jsonc
+   ```javascript
    // C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist
    {
        "cniVersion": "0.3.0",

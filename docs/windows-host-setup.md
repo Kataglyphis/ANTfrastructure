@@ -124,7 +124,7 @@ form), NOT a bare `.conf` — see the format note below — using the subnet fro
 (`ipconfig`), and dockerd restarts can silently re-create that network on a
 new subnet (the driver's preflight fail-fasts on drift with the exact fix).
 
-```jsonc
+```javascript
 // C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist
 {
     "cniVersion": "0.3.0",

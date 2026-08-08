@@ -54,7 +54,7 @@ upstream component below carries its own license terms.
 | VVdeC (VVC/H.266 decoder) | v3.2.0 | [github.com/fraunhoferhhi/vvdec](https://github.com/fraunhoferhhi/vvdec) | BSD-3-Clause-Clear |
 | ArmNN (arm64) | v26.07 | [github.com/ARM-software/armnn](https://github.com/ARM-software/armnn) | MIT |
 | Arm Compute Library (arm64) | v53.2.0 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
-| libcamera | git master | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
+| libcamera | v0.7.2 | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20260526.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 | FreeType | 2.14.3 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
 | nv-codec-headers | n13.1.15.0 | [git.videolan.org/git/ffmpeg/nv-codec-headers.git](https://git.videolan.org/git/ffmpeg/nv-codec-headers.git) | MIT |

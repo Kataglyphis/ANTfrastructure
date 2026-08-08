@@ -43,8 +43,13 @@ runs:
 
         echo "/usr/bin" >> "$GITHUB_PATH"
 
-        # Detect where cargo is installed and add that dir to PATH for subsequent steps
-        CARGO_BIN_DIR=$(dirname "$(command -v cargo 2>/dev/null || true)")
+        # Detect where cargo is installed and add that dir to PATH for subsequent steps.
+        # Two-step on purpose: dirname of an EMPTY string prints "." and exits 0,
+        # which put the current directory on GITHUB_PATH and made the
+        # $HOME/.cargo/bin fallback below unreachable.
+        CARGO_BIN=$(command -v cargo 2>/dev/null || true)
+        CARGO_BIN_DIR=""
+        [ -n "$CARGO_BIN" ] && CARGO_BIN_DIR=$(dirname "$CARGO_BIN")
         if [ -n "$CARGO_BIN_DIR" ]; then
           echo "Found cargo at: $CARGO_BIN_DIR"
           echo "$CARGO_BIN_DIR" >> "$GITHUB_PATH"

@@ -57,6 +57,24 @@ Two-agent sweep over ~12 MB of logs, each claim re-verified:
   (a decision, not a stale layer); "is not a commit!" clone warnings are
   annotated-tag peeling.
 
+### Also — periphery audit (workflows, hooks, tooling)
+
+A dedicated sweep over the never-audited edges. The flagship: the pre-commit
+hook's sphinx gate pointed at a nonexistent `docs/source/` with the real error
+swallowed — every commit on a hook-enabled clone failed; fixing the path then
+exposed 12 real docs warnings under `-W` (10 orphaned pages now in an
+"Operations & Reference" toctree, 2 unknown-lexer blocks) — the strict gate is
+green end-to-end for the first time. Also fixed: deps.json's libcamera entry
+now bound to `LIBCAMERA_VERSION` (the public license pages published
+"git master" past yesterday's pin), the install-deps action's
+dirname-of-empty-string putting `.` on GITHUB_PATH, a benchmark-viewer build
+that reported success over a failed `npm build`, three unreachable FAIL
+branches in the webserver flutter smoke, least-privilege `permissions:` on the
+two unpinned workflows, SHA-pins for the last two mutable action refs, rename
+coverage (`--diff-filter=ACMR`) and a loud git-grep failure mode in the hook,
+and the license generator now fails on unknown versions.env vars and defaults
+to check mode. Remaining periphery items are in the backlog.
+
 ### Also
 
 - Owner priorities codified: AGENTS.md § Project priorities (speed AND

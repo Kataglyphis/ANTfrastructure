@@ -1,6 +1,10 @@
 # .github/workflows/build-docs.yml
 name: Build Docs
 
+# Least privilege: docs build + FTP deploy need no repo write access.
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:

@@ -1355,3 +1355,31 @@ on the installed sccache VERSION, and on an older one the variable is ignored
 failure shape this repo spent the week eliminating. Pin sccache with
 llvm/ninja/nasm in the same change, or accept a speed feature that can vanish
 without a signal.
+
+### 2026-08-08 — periphery audit (workflows/Makefile/py-tools/hooks/services)
+
+Fixed immediately (all host/CI-side, zero build-closure impact): pre-commit
+sphinx root (broke EVERY commit on hook-enabled clones, error swallowed);
+deps.json libcamera now bound to LIBCAMERA_VERSION (license pages published
+"git master"); install-deps cargo dirname-of-empty put "." on GITHUB_PATH;
+build-viewer sh -euc + results-glob guard (failed npm build reported success);
+flutter smoke's three probe substitutions guarded (FAIL branches were
+unreachable); permissions: contents: read on ubuntu24.04 + build-docs;
+free-disk-space + checkout SHA-pinned; hook: --diff-filter=ACMR (renames
+bypassed all gates), git-grep rc>1 fails the conflict gate loudly;
+generate-website-licenses: unknown var raises, flagless default is CHECK.
+
+Deferred to the batch / follow-ups:
+- versions.env: renovate hints for LIBCAMERA_VERSION + FLATPAK_RUNTIME_VERSION
+  (closure file — batch); both currently have NO automated update path.
+- preflight [ -f ] guards: a renamed target silently vanishes from the gate;
+  fail when a PREFLIGHT_ONLY selection ran zero checks.
+- hook shebang probe reads the WORKTREE not the staged blob (git show ":$f").
+- bump_versions.py: failures counted but exit 0; write_env_values drops
+  no-matching-line keys silently + unescaped re.sub template.
+- actions: registry password via env not interpolation; clone-into-short-path
+  leaves a token in global gitconfig on self-hosted runners; workspace-path
+  quoting in run-in-linux-container.
+- llm-stack: node:20-alpine vs NODE_VERSION=26.7.0 drift (unreachable by
+  sync_versions — Dockerfile-ARG-only); ollama empty-SHA downgrade needs an
+  explicit ALLOW_UNVERIFIED=1; ghcr-cleanup delete failures are warnings.

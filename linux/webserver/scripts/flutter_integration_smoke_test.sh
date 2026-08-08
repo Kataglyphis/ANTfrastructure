@@ -13,8 +13,11 @@ echo "=== Integration Smoke Test ==="
 echo "Target: $BASE_URL"
 echo ""
 
+# `|| true` on the probe substitutions below: under set -euo pipefail an
+# unreachable server or a missing header killed the script BEFORE its own
+# FAIL diagnostics could print (the else-branches were unreachable).
 echo "--- Testing: index.html loads ---"
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/")
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/" || true)
 if [ "$STATUS" != "200" ]; then
   echo "FAIL: index.html returned HTTP $STATUS"
   exit 1
@@ -22,7 +25,7 @@ fi
 echo "PASS: index.html HTTP 200"
 
 echo "--- Testing: main.dart.wasm MIME type ---"
-WASM_MIME=$(curl -s -I "$BASE_URL/main.dart.wasm" | grep -i "content-type:" | tr -d '\r')
+WASM_MIME=$(curl -s -I "$BASE_URL/main.dart.wasm" | grep -i "content-type:" | tr -d '\r' || true)
 if printf '%s' "$WASM_MIME" | grep -q "application/wasm"; then
   echo "PASS: WASM MIME type correct"
 else
@@ -76,7 +79,7 @@ fi
 
 if [ -n "$REQUIRED_CSP_HOSTS" ]; then
   echo "--- Testing: CSP host allowlist ---"
-  CSP=$(printf '%s' "$HTML" | grep -o 'content="[^"]*Content-Security-Policy[^"]*"' || printf '%s' "$HTML" | grep -o 'content="[^"]*"')
+  CSP=$(printf '%s' "$HTML" | grep -o 'content="[^"]*Content-Security-Policy[^"]*"' || printf '%s' "$HTML" | grep -o 'content="[^"]*"' || true)
   for host in $REQUIRED_CSP_HOSTS; do
     if printf '%s' "$CSP" | grep -q "$host"; then
       echo "PASS: $host in CSP"
