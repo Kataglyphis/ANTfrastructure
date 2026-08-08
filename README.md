@@ -26,6 +26,10 @@ expense of the others:
   keys, local cache exports, ccache for GCC/LLVM/media, pinned buildkitd GC
   budget) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
+  That map is the **Linux** lane; the Windows lane caches by deliberate layer
+  ordering and an sccache remote instead — it carries no `--mount=type=cache`
+  today, and the two levers that would change that are specced but unwired
+  ([`AGENTS.md` § Caching discipline](AGENTS.md) rule 5).
 - **Stability** — digest-pinned stage handoffs, machine-checked cross-run
   ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
   version pins in a single source of truth (`linux/scripts/01-core/versions.env`),
