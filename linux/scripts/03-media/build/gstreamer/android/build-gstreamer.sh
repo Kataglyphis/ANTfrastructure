@@ -35,7 +35,17 @@ if [ -x /opt/scripts/03-media/gstreamer/android/build-android-from-source.sh ]; 
     --prefix="${GSTREAMER_ROOT_ANDROID}"
 else
   echo "No build script found; falling back to downloading prebuilt GStreamer Android universal"
-  download_and_extract \
-    "https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz" \
-    "${GSTREAMER_ROOT_ANDROID}"
+  _gst_univ_url="https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz"
+  # VERIFIED when the pin exists (supply-chain audit #11): these are prebuilt
+  # .so's shipped in the Android artifacts. Pin bumps with GSTREAMER_VERSION.
+  if [ -n "${GSTREAMER_ANDROID_UNIVERSAL_SHA256:-}" ]; then
+    _gst_univ_tmp="$(mktemp /tmp/gst-android-universal-XXXXXX.tar.xz)"
+    download_verified_file "${_gst_univ_url}" "${GSTREAMER_ANDROID_UNIVERSAL_SHA256}" "${_gst_univ_tmp}"
+    mkdir -p "${GSTREAMER_ROOT_ANDROID}"
+    tar -xJf "${_gst_univ_tmp}" -C "${GSTREAMER_ROOT_ANDROID}"
+    rm -f "${_gst_univ_tmp}"
+  else
+    echo "WARNING: GSTREAMER_ANDROID_UNIVERSAL_SHA256 unset — fetching prebuilt GStreamer UNVERIFIED" >&2
+    download_and_extract "${_gst_univ_url}" "${GSTREAMER_ROOT_ANDROID}"
+  fi
 fi

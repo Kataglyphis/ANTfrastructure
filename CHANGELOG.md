@@ -2,6 +2,10 @@
 
 ## 2026-08-08 (night) — Linux lane: supply-chain round 3 — build executors frozen
 
+- **Round-3 completion**: Vulkan SDK and GStreamer-Android-universal tarball
+  sha pins landed once their streamed hashes finished — the audit's entire
+  class-(d) (completely unverified fetch) list is now EMPTY.
+
 - **The ~20-site unpinned `uv pip install` surface is closed for every
   binary-shaping package**: meson, ninja, cython, pybind11, setuptools,
   wheel, scikit-build-core, setuptools-scm — and auditwheel/patchelf, which

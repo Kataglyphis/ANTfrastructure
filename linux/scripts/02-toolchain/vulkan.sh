@@ -540,7 +540,15 @@ install_vulkan_sdk() {
   local tarball="vulkansdk-linux-x86_64-${version}.tar.xz"
   local url="https://sdk.lunarg.com/sdk/download/${version}/linux/${tarball}"
   log "Downloading ${tarball} from ${url}"
-  download_file "$url" "$tarball" 3 30 || die "Failed to download Vulkan SDK"
+  # VERIFIED when the pin exists (supply-chain audit #7): the SDK ships
+  # glslang/spirv-tools — shader COMPILERS invoked during the media and SDK
+  # builds. VULKAN_SDK_SHA256 bumps together with VULKAN_VERSION.
+  if [ -n "${VULKAN_SDK_SHA256:-}" ]; then
+    download_verified_file "$url" "${VULKAN_SDK_SHA256}" "$tarball" || die "Failed to download/verify Vulkan SDK"
+  else
+    log "WARNING: VULKAN_SDK_SHA256 unset — fetching the Vulkan SDK UNVERIFIED (pin it in versions.env alongside VULKAN_VERSION)"
+    download_file "$url" "$tarball" 3 30 || die "Failed to download Vulkan SDK"
+  fi
   [ -s "$tarball" ] || die "Downloaded tarball is empty"
 
   log "Extracting Vulkan SDK to ${VULKAN_INSTALL_ROOT}/${version}..."
