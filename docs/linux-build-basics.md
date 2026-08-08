@@ -252,3 +252,11 @@ Reusable libraries consumer repos source directly from the submodule:
   `APP_RUNNER_ENABLE_SHADER_CLEAN`). Consumers keep only per-profile
   wrappers (defaults + hooks); see BeschleunigerBallett
   `Scripts/Linux/run-{debug,profile,release}.sh` for the pattern.
+- `ctest-run.sh` — ctest runner with a perf-baseline comparator (fails on
+  regression against a stored baseline).
+- `docs-build.sh` — Sphinx docs build helper (not to be confused with the
+  `02-toolchain/python/ci_build_docs.sh` CI helper).
+- `rust-toolchain.sh` — rustup/toolchain bootstrap for consumer repos.
+
+  (The last three were invisible until the 2026-08-08 orphan sweep: genuinely
+  useful, shipped into the images, referenced by nothing — including any doc.)

@@ -41,7 +41,7 @@ SCRIPTS := linux/scripts
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight lint lint-dockerfiles test-linux-scripts cross-build cross-stage verify-chain describe-chain smoke
+.PHONY: help preflight lint lint-dockerfiles lint-workflows test-linux-scripts cross-build cross-stage verify-chain describe-chain smoke
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -57,6 +57,9 @@ lint: ## shellcheck the whole tree at -S error
 
 lint-dockerfiles: ## hadolint all Dockerfiles (policy: .hadolint.yaml)
 	bash $(SCRIPTS)/lint-dockerfiles.sh
+
+lint-workflows: ## Lint GitHub workflows (actionlint)
+	bash $(SCRIPTS)/lint-workflows.sh
 
 test-linux-scripts: ## Unit tests for linux/scripts (tag naming, forwarding, disk guard)
 	bash $(SCRIPTS)/tests/run-tests.sh

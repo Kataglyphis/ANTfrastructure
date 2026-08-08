@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: orphan sweep (audit round 3, lens 1)
+
+A dedicated dead-weight audit (things wired to nothing), with every dynamic
+script-dispatch mechanism enumerated first so glob/variable-built paths could
+not produce false orphans:
+
+- **Real arm64 bug**: `wasm-opt.sh` built the aarch64 binaryen asset name but
+  versions.env pinned no `BINARYEN_LINUX_AARCH64_SHA256` — the download died
+  "No pinned SHA256" on any arm64 host. Pinned (sha computed from the
+  upstream `version_131` tarball, gzip verified).
+- **Dead legacy alias** `TVM_VULKAN_KEEP_SDK_LIBS` removed from vulkan.sh
+  (sole occurrence repo-wide; the canonical knob is VULKAN_KEEP_SDK_LIBS).
+- **Legacy flutter shims** (`setup-flutter-{arm64,x86-64}.sh`, kept for
+  external ExternalLib consumers) no longer carry a hardcoded `3.44.8`
+  fallback that had already drifted from the 3.44.9 pin — they now require
+  the versions.env value they load anyway.
+- **Deleted**: `02-toolchain/rust/Build-Linux.sh` (zero references AND a
+  duplicate re-implementation of its five cargo_* siblings) and
+  `06-packaging/package_archive.sh` (zero references, zero docs; its Windows
+  "twin" is equally unreferenced, so no parity obligation).
+- **Documented as consumer surface** (shipped into images, invoked by
+  external repos, previously invisible): `lib/{ctest-run,docs-build,
+  rust-toolchain}.sh` (now in the AGENTS.md + linux-build-basics.md
+  inventories alongside their already-documented siblings),
+  `02-toolchain/rust/cargo_*`, `02-toolchain/python/ci_*.sh`,
+  `01-core/setup-host-deps.sh`.
+- `make lint-workflows` target added (preflight ran it; the Makefile only
+  exposed lint-dockerfiles).
+- Clean bill elsewhere: zero dead Dockerfile ARG/ENVs, zero unreferenced
+  patches/data files (verify-patch-integrity already gates patches), zero
+  dead Makefile targets/workflow steps.
+
 ## 2026-08-08 (night) — Linux lane: audit round 2 leftovers cleared
 
 The verified-but-queued remainder of the four audit reports:

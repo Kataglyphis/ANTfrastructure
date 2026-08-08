@@ -668,7 +668,26 @@ Beyond `linux/scripts/`:
 ```
 linux/scripts/lib/       consumer-facing bash libraries: agentic-loop.sh,
                          app-runner.sh (generic app launcher: arg parse, exe
-                         discovery, LD_LIBRARY_PATH, per-profile hooks)
+                         discovery, LD_LIBRARY_PATH, per-profile hooks),
+                         cmake-build.sh, code-quality.sh, coverage.sh,
+                         slang-compile.sh, wasm-opt.sh, ctest-run.sh (ctest
+                         runner + perf-baseline comparator), docs-build.sh
+                         (Sphinx build helper), rust-toolchain.sh — the last
+                         three had NO doc entry anywhere until the 2026-08-08
+                         orphan sweep; nothing in-repo invokes lib/, it is a
+                         consumer surface shipped into the images
+linux/scripts/02-toolchain/rust/   cargo_* helpers (test/bench/fmt+clippy/
+                         security/coverage/release/update/doc via
+                         _cargo_wrapper.sh) — consumer surface COPY'd into the
+                         toolchain/sdk/package images; nothing in-repo calls
+                         them (the redundant zero-ref Build-Linux.sh duplicate
+                         was deleted 2026-08-08)
+linux/scripts/02-toolchain/python/ci_*.sh   Python CI helpers (tests, static
+                         analysis, packaging, docs) — same consumer-surface
+                         status as rust/
+linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
+                         nerdctl/buildkit prerequisites); intentionally not
+                         wired into CI or builds
 windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
                          cargo-retry.cmd (transient file-lock retry wrapper),
                          certificates/ (MSIX cert generation + WebDAV

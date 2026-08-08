@@ -101,7 +101,7 @@ filter_colon_list_excluding_prefix() {
 sanitize_vulkan_sdk_env() {
   local prefix="${1:-/opt/vulkan/}"
 
-  if [ "${VULKAN_KEEP_SDK_LIBS:-${TVM_VULKAN_KEEP_SDK_LIBS:-0}}" = "1" ]; then
+  if [ "${VULKAN_KEEP_SDK_LIBS:-0}" = "1" ]; then
     return 0
   fi
 
