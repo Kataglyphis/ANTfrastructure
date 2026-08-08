@@ -575,6 +575,142 @@ invoke_git_auto_commit() {
 #
 # Honors env flags: DRY_RUN, SKIP_BUILD, SKIP_TESTS, SKIP_QUALITY,
 # PLANNER_ONLY, EXECUTOR_ONLY, MAX_ITERATIONS_OVERRIDE.
+# ── Loop state ────────────────────────────────────────────────────────────────
+# (Complexity audit F-H: run_agentic_loop carried a 17-jq config block plus
+# FOUR nested function definitions closing over its locals via dynamic scope —
+# the closures were globally visible anyway once defined, so the nesting
+# bought implicit coupling and nothing else. Config + mutable loop state now
+# live in one associative array; the phase helpers are top-level and read it
+# explicitly.)
+declare -gA _AL=()
+
+# Populate _AL from the engine config. Usage: _agentic_load_loop_config <json> <repo_root> <platform>
+_agentic_load_loop_config() {
+    local config_json="$1" repo_root="$2" platform="$3"
+    _AL=()
+    _AL[config_json]="$config_json"
+    _AL[repo_root]="$repo_root"
+    _AL[platform]="$platform"
+    _AL[build_every_n]=$(jq -r '.intervals.buildEveryNTasks' "$config_json")
+    _AL[quality_every_n]=$(jq -r '.intervals.qualityEveryNTasks' "$config_json")
+    _AL[refactor_every_n]=$(jq -r '.intervals.refactorEveryNIterations' "$config_json")
+    _AL[max_iterations]=$(jq -r '.intervals.maxIterations' "$config_json")
+    _AL[max_retries]=$(jq -r '.intervals.maxExecutorRetries' "$config_json")
+    _AL[loop_delay]=$(jq -r '.intervals.loopDelaySeconds' "$config_json")
+    _AL[auto_commit]=$(jq -r '.git.autoCommit' "$config_json")
+    _AL[commit_prefix]=$(jq -r '.git.commitPrefix' "$config_json")
+    _AL[full_matrix_every_n]=$(jq -r '.intervals.fullMatrixEveryNIterations // 0' "$config_json")
+    _AL[fix_build_failures]=$(jq -r '.intervals.fixBuildFailures // true' "$config_json")
+    _AL[max_consecutive_build_failures]=$(jq -r '.intervals.maxConsecutiveBuildFailures // 3' "$config_json")
+    _AL[skip_planner_when_pending]=$(jq -r '.backlog.skipPlannerWhenTasksPending // true' "$config_json")
+    _AL[delete_completed]=$(jq -r '.backlog.deleteCompletedTasks // true' "$config_json")
+    _AL[test_cmd]=$(jq -r ".build.${platform}TestCommand // .build.linuxTestCommand // empty" "$config_json")
+    _AL[quality_cmd]=$(jq -r ".build.${platform}QualityCommand // .build.linuxQualityCommand // empty" "$config_json")
+    _AL[build_script]=$(jq -r ".build.${platform}Script // .build.linuxScript // empty" "$config_json")
+    if [[ -n "${MAX_ITERATIONS_OVERRIDE:-}" ]]; then
+        _AL[max_iterations]="$MAX_ITERATIONS_OVERRIDE"
+    fi
+    # mutable loop state
+    _AL[iteration]=0
+    _AL[tasks_completed]=0
+    _AL[build_cycle_index]=0
+    _AL[consecutive_build_failures]=0
+}
+
+# Build + test one matrix entry by index. On build failure, optionally
+# dispatches the fixer agent and retries the build once.
+_agentic_build_and_test_entry() {
+    local idx="$1"
+    resolve_build_matrix_entry "${_AL[config_json]}" "$idx" "${_AL[platform]}"
+    local cfg="$MATRIX_NAME" build_dir="$MATRIX_BUILD_DIR" sanitizer="$MATRIX_SANITIZER"
+    local entry_test_cmd="$MATRIX_TEST_CMD"
+    local script_path="${_AL[repo_root]}/${_AL[build_script]}"
+    local cmd="bash \"${script_path}\" --preset \"${cfg}\" --build-dir \"${build_dir}\""
+    local build_ok=true
+    if ! invoke_build "$cmd" "$cfg"; then
+        build_ok=false
+        if [[ "${_AL[fix_build_failures]}" == "true" && "${DRY_RUN:-false}" != "true" ]]; then
+            invoke_build_fixer "$cfg" || true
+            if invoke_build "$cmd" "$cfg (after fixer)"; then
+                build_ok=true
+            fi
+        fi
+    fi
+    if ! $build_ok; then
+        _AL[consecutive_build_failures]=$(( _AL[consecutive_build_failures] + 1 ))
+        log "Consecutive build failures: ${_AL[consecutive_build_failures]}/${_AL[max_consecutive_build_failures]}" "WARN"
+        return 0
+    fi
+    # Guard-clause test half (was depth-5 nesting, audit F-D)
+    _AL[consecutive_build_failures]=0
+    [[ "${SKIP_TESTS:-false}" == "true" ]] && return 0
+    local effective_test_cmd="${entry_test_cmd:-${_AL[test_cmd]}}"
+    [[ -n "$effective_test_cmd" ]] || return 0
+    invoke_sanitizer_tests "$effective_test_cmd" "$sanitizer"
+}
+
+# Run the build phase (single config or full matrix sweep).
+_agentic_build_phase() {
+    local matrix_count="$1"
+    if [[ "${_AL[full_matrix_every_n]}" -gt 0 && $(( _AL[iteration] % _AL[full_matrix_every_n] )) -eq 0 && "${_AL[iteration]}" -gt 0 ]]; then
+        section "FULL MATRIX SWEEP (iteration ${_AL[iteration]})"
+        local i
+        for ((i=0; i<matrix_count; i++)); do
+            _agentic_build_and_test_entry "$i"
+        done
+    else
+        _agentic_build_and_test_entry "$(( _AL[build_cycle_index] % matrix_count ))"
+        _AL[build_cycle_index]=$(( _AL[build_cycle_index] + 1 ))
+    fi
+}
+
+# After-task phases (commit, build, quality).
+_agentic_after_task_phases() {
+    local matrix_count="$1"
+    invoke_git_auto_commit "${_AL[commit_prefix]}: task #${_AL[tasks_completed]}" "${_AL[repo_root]}" "${_AL[auto_commit]}"
+    if [[ "${SKIP_BUILD:-false}" != "true" && $(( _AL[tasks_completed] % _AL[build_every_n] )) -eq 0 ]]; then
+        _agentic_build_phase "$matrix_count"
+    fi
+    if [[ "${SKIP_QUALITY:-false}" != "true" && $(( _AL[tasks_completed] % _AL[quality_every_n] )) -eq 0 && -n "${_AL[quality_cmd]}" ]]; then
+        invoke_quality "${_AL[quality_cmd]}"
+    fi
+}
+
+# Drain the executor queue. Returns non-zero when stopped by persistent
+# build failures; returns 0 when the queue is empty or stuck-at-max-retries.
+_agentic_drain_executor_queue() {
+    local matrix_count="$1"
+    local backlog="${_AL[repo_root]}/BACKLOG.md"
+    local unchecked retries=0
+    [[ "${_AL[delete_completed]}" == "true" ]] && remove_checked_tasks "$backlog"
+    unchecked=$(unchecked_task_count "$backlog")
+    log "Tasks in queue: $unchecked"
+    while [[ "$unchecked" -gt 0 ]]; do
+        invoke_agent "executor" "$(default_executor_prompt)" || true
+        local nu; nu=$(unchecked_task_count "$backlog")
+        if [[ "$nu" -ge "$unchecked" ]]; then
+            retries=$((retries + 1))
+            log "No progress detected. Retry $retries/${_AL[max_retries]}" "WARN"
+            if [[ "$retries" -ge "${_AL[max_retries]}" ]]; then log "Max retries reached" "ERROR"; break; fi
+            # Dry-run never mutates BACKLOG.md — bail out instead of spinning
+            [[ "${DRY_RUN:-false}" == "true" ]] && break
+        else
+            retries=0
+            _AL[tasks_completed]=$(( _AL[tasks_completed] + 1 ))
+            unchecked=$nu
+            log "Task complete. Total: ${_AL[tasks_completed]} | Remaining: $unchecked"
+            # Prune any leftover checked entries before the auto-commit
+            [[ "${_AL[delete_completed]}" == "true" ]] && remove_checked_tasks "$backlog"
+            _agentic_after_task_phases "$matrix_count"
+            if [[ "${_AL[consecutive_build_failures]}" -ge "${_AL[max_consecutive_build_failures]}" ]]; then
+                log "Too many consecutive build failures — stopping queue drain" "ERROR"
+                return 1
+            fi
+        fi
+    done
+    return 0
+}
+
 run_agentic_loop() {
     local config_json="$1"
     local repo_root="${2:-$(pwd)}"
@@ -583,33 +719,7 @@ run_agentic_loop() {
     if ! command -v jq &>/dev/null; then log "jq required" "FATAL"; return 1; fi
 
     load_engine_config "$config_json" "$repo_root" || return 1
-
-    local build_every_n quality_every_n refactor_every_n
-    local max_iterations max_retries loop_delay auto_commit commit_prefix
-    local full_matrix_every_n test_cmd quality_cmd build_script
-    local fix_build_failures max_consecutive_build_failures
-
-    build_every_n=$(jq -r '.intervals.buildEveryNTasks' "$config_json")
-    quality_every_n=$(jq -r '.intervals.qualityEveryNTasks' "$config_json")
-    refactor_every_n=$(jq -r '.intervals.refactorEveryNIterations' "$config_json")
-    max_iterations=$(jq -r '.intervals.maxIterations' "$config_json")
-    max_retries=$(jq -r '.intervals.maxExecutorRetries' "$config_json")
-    loop_delay=$(jq -r '.intervals.loopDelaySeconds' "$config_json")
-    auto_commit=$(jq -r '.git.autoCommit' "$config_json")
-    commit_prefix=$(jq -r '.git.commitPrefix' "$config_json")
-    full_matrix_every_n=$(jq -r '.intervals.fullMatrixEveryNIterations // 0' "$config_json")
-    fix_build_failures=$(jq -r '.intervals.fixBuildFailures // true' "$config_json")
-    max_consecutive_build_failures=$(jq -r '.intervals.maxConsecutiveBuildFailures // 3' "$config_json")
-    local skip_planner_when_pending delete_completed
-    skip_planner_when_pending=$(jq -r '.backlog.skipPlannerWhenTasksPending // true' "$config_json")
-    delete_completed=$(jq -r '.backlog.deleteCompletedTasks // true' "$config_json")
-    test_cmd=$(jq -r ".build.${platform}TestCommand // .build.linuxTestCommand // empty" "$config_json")
-    quality_cmd=$(jq -r ".build.${platform}QualityCommand // .build.linuxQualityCommand // empty" "$config_json")
-    build_script=$(jq -r ".build.${platform}Script // .build.linuxScript // empty" "$config_json")
-
-    if [[ -n "${MAX_ITERATIONS_OVERRIDE:-}" ]]; then
-        max_iterations="$MAX_ITERATIONS_OVERRIDE"
-    fi
+    _agentic_load_loop_config "$config_json" "$repo_root" "$platform"
 
     local matrix_count
     matrix_count=$(count_build_matrix "$config_json" "$platform")
@@ -617,102 +727,12 @@ run_agentic_loop() {
 
     section "Agentic Loop Starting ($LOOP_NAME)"
     log "Build matrix: $matrix_count entries"
-    if [[ "$full_matrix_every_n" -gt 0 ]]; then
-        log "Full matrix sweep every $full_matrix_every_n iterations"
+    if [[ "${_AL[full_matrix_every_n]}" -gt 0 ]]; then
+        log "Full matrix sweep every ${_AL[full_matrix_every_n]} iterations"
     fi
-    log "Build every N: $build_every_n  Quality every N: $quality_every_n  Refactor every N: $refactor_every_n"
-    log "Max iterations: $max_iterations (0 = unlimited)"
-    log "Build-failure fixing: $fix_build_failures (stop after $max_consecutive_build_failures consecutive failures)"
-
-    local iteration=0 tasks_completed=0 build_cycle_index=0 consecutive_build_failures=0
-
-    # Helper: build + test for a matrix entry by index.  On build failure,
-    # optionally dispatches the fixer agent and retries the build once.
-    invoke_build_and_test_for_entry() {
-        local idx="$1"
-        resolve_build_matrix_entry "$config_json" "$idx" "$platform"
-        local cfg="$MATRIX_NAME" build_dir="$MATRIX_BUILD_DIR" sanitizer="$MATRIX_SANITIZER"
-        local entry_test_cmd="$MATRIX_TEST_CMD"
-        local script_path="${repo_root}/${build_script}"
-        local cmd="bash \"${script_path}\" --preset \"${cfg}\" --build-dir \"${build_dir}\""
-        local build_ok=true
-        if ! invoke_build "$cmd" "$cfg"; then
-            build_ok=false
-            if [[ "$fix_build_failures" == "true" && "${DRY_RUN:-false}" != "true" ]]; then
-                invoke_build_fixer "$cfg" || true
-                if invoke_build "$cmd" "$cfg (after fixer)"; then
-                    build_ok=true
-                fi
-            fi
-        fi
-        if $build_ok; then
-            consecutive_build_failures=0
-            if [[ "${SKIP_TESTS:-false}" != "true" ]]; then
-                local effective_test_cmd="${entry_test_cmd:-$test_cmd}"
-                if [[ -n "$effective_test_cmd" ]]; then
-                    invoke_sanitizer_tests "$effective_test_cmd" "$sanitizer"
-                fi
-            fi
-        else
-            consecutive_build_failures=$((consecutive_build_failures + 1))
-            log "Consecutive build failures: $consecutive_build_failures/$max_consecutive_build_failures" "WARN"
-        fi
-    }
-
-    # Helper: run the build phase (single config or full matrix sweep)
-    invoke_build_phase() {
-        if [[ "$full_matrix_every_n" -gt 0 && $((iteration % full_matrix_every_n)) -eq 0 && $iteration -gt 0 ]]; then
-            section "FULL MATRIX SWEEP (iteration $iteration)"
-            for ((i=0; i<matrix_count; i++)); do
-                invoke_build_and_test_for_entry "$i"
-            done
-        else
-            invoke_build_and_test_for_entry "$((build_cycle_index % matrix_count))"
-            build_cycle_index=$((build_cycle_index + 1))
-        fi
-    }
-
-    # Helper: after-task phases (commit, build, quality)
-    after_task_phases() {
-        invoke_git_auto_commit "$commit_prefix: task #$tasks_completed" "$repo_root" "$auto_commit"
-        if [[ "${SKIP_BUILD:-false}" != "true" && $((tasks_completed % build_every_n)) -eq 0 ]]; then
-            invoke_build_phase
-        fi
-        if [[ "${SKIP_QUALITY:-false}" != "true" && $((tasks_completed % quality_every_n)) -eq 0 && -n "$quality_cmd" ]]; then
-            invoke_quality "$quality_cmd"
-        fi
-    }
-
-    # Helper: drain the executor queue.  Returns when empty or stuck.
-    drain_executor_queue() {
-        local backlog="${repo_root}/BACKLOG.md"
-        local unchecked retries=0
-        [[ "$delete_completed" == "true" ]] && remove_checked_tasks "$backlog"
-        unchecked=$(unchecked_task_count "$backlog")
-        log "Tasks in queue: $unchecked"
-        while [[ "$unchecked" -gt 0 ]]; do
-            invoke_agent "executor" "$(default_executor_prompt)" || true
-            local nu; nu=$(unchecked_task_count "$backlog")
-            if [[ "$nu" -ge "$unchecked" ]]; then
-                retries=$((retries + 1))
-                log "No progress detected. Retry $retries/$max_retries" "WARN"
-                if [[ "$retries" -ge "$max_retries" ]]; then log "Max retries reached" "ERROR"; break; fi
-                # Dry-run never mutates BACKLOG.md — bail out instead of spinning
-                [[ "${DRY_RUN:-false}" == "true" ]] && break
-            else
-                retries=0; tasks_completed=$((tasks_completed + 1)); unchecked=$nu
-                log "Task complete. Total: $tasks_completed | Remaining: $unchecked"
-                # Prune any leftover checked entries before the auto-commit
-                [[ "$delete_completed" == "true" ]] && remove_checked_tasks "$backlog"
-                after_task_phases
-                if [[ "$consecutive_build_failures" -ge "$max_consecutive_build_failures" ]]; then
-                    log "Too many consecutive build failures — stopping queue drain" "ERROR"
-                    return 1
-                fi
-            fi
-        done
-        return 0
-    }
+    log "Build every N: ${_AL[build_every_n]}  Quality every N: ${_AL[quality_every_n]}  Refactor every N: ${_AL[refactor_every_n]}"
+    log "Max iterations: ${_AL[max_iterations]} (0 = unlimited)"
+    log "Build-failure fixing: ${_AL[fix_build_failures]} (stop after ${_AL[max_consecutive_build_failures]} consecutive failures)"
 
     # ── Single-phase modes ──────────────────────────────────────────────
     if [[ "${PLANNER_ONLY:-false}" == "true" ]]; then
@@ -723,18 +743,18 @@ run_agentic_loop() {
     fi
     if [[ "${EXECUTOR_ONLY:-false}" == "true" ]]; then
         section "EXECUTOR PHASE (executor-only mode)"
-        drain_executor_queue || true
-        section "Agentic Loop Complete (executor-only, $tasks_completed tasks)"
+        _agentic_drain_executor_queue "$matrix_count" || true
+        section "Agentic Loop Complete (executor-only, ${_AL[tasks_completed]} tasks)"
         return 0
     fi
 
     # ── Full loop ───────────────────────────────────────────────────────
     local force_planner=false iterations_done=0
     while true; do
-        iteration=$((iteration + 1))
-        if [[ "$max_iterations" -gt 0 && "$iteration" -gt "$max_iterations" ]]; then break; fi
-        iterations_done=$iteration
-        section "ITERATION $iteration"
+        _AL[iteration]=$(( _AL[iteration] + 1 ))
+        if [[ "${_AL[max_iterations]}" -gt 0 && "${_AL[iteration]}" -gt "${_AL[max_iterations]}" ]]; then break; fi
+        iterations_done=${_AL[iteration]}
+        section "ITERATION ${_AL[iteration]}"
 
         # Phase 1: Planner — skipped while the queue still has actionable
         # (- [ ]) tasks.  Blocked (- [b]) tasks do not count, and the
@@ -743,7 +763,7 @@ run_agentic_loop() {
         local pending blocked planner_ran=false
         pending=$(unchecked_task_count "${repo_root}/BACKLOG.md")
         blocked=$(blocked_task_count "${repo_root}/BACKLOG.md")
-        if [[ "$skip_planner_when_pending" == "true" && "$pending" -gt 0 && "$force_planner" != "true" ]]; then
+        if [[ "${_AL[skip_planner_when_pending]}" == "true" && "$pending" -gt 0 && "$force_planner" != "true" ]]; then
             log "Skipping planner: $pending actionable task(s) pending in BACKLOG.md ($blocked blocked)"
         else
             section "PLANNER PHASE"
@@ -751,7 +771,7 @@ run_agentic_loop() {
                 log "Starvation guard: no progress last iteration — running planner despite $pending pending task(s) ($blocked blocked)" "WARN"
             fi
             local planner_msg
-            if [[ $(( iteration % refactor_every_n )) -eq 0 ]]; then
+            if [[ $(( _AL[iteration] % _AL[refactor_every_n] )) -eq 0 ]]; then
                 log "Refactor-focused planning cycle"
                 planner_msg="$(default_refactor_planner_prompt)"
             else
@@ -762,13 +782,13 @@ run_agentic_loop() {
         fi
 
         # Phase 2: Executor
-        local tasks_before=$tasks_completed
-        if ! drain_executor_queue; then
+        local tasks_before=${_AL[tasks_completed]}
+        if ! _agentic_drain_executor_queue "$matrix_count"; then
             log "Stopping loop due to persistent build failures" "ERROR"
             return 1
         fi
 
-        if [[ "$tasks_completed" -eq "$tasks_before" ]]; then
+        if [[ "${_AL[tasks_completed]}" -eq "$tasks_before" ]]; then
             if [[ "$planner_ran" == "true" ]]; then
                 log "No executor progress even after running the planner — stopping loop (no actionable tasks left)" "WARN"
                 break
@@ -779,12 +799,12 @@ run_agentic_loop() {
             force_planner=false
         fi
 
-        if [[ "$loop_delay" -gt 0 && "${DRY_RUN:-false}" != "true" ]]; then
-            log "Sleeping ${loop_delay}s..."
-            sleep "$loop_delay"
+        if [[ "${_AL[loop_delay]}" -gt 0 && "${DRY_RUN:-false}" != "true" ]]; then
+            log "Sleeping ${_AL[loop_delay]}s..."
+            sleep "${_AL[loop_delay]}"
         fi
     done
 
-    section "Agentic Loop Complete ($tasks_completed tasks, $iterations_done iterations)"
+    section "Agentic Loop Complete (${_AL[tasks_completed]} tasks, $iterations_done iterations)"
     return 0
 }
