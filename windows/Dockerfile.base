@@ -114,11 +114,18 @@ RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVers
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
 
-# LLVM_GLOBAL_BIN / SCOOP_GLOBAL_SHIMS removed 2026-07-14: llvm + shims are
-# user-scope installs; both pointed at never-created C:\ProgramData dirs.
+# LLVM_GLOBAL_BIN removed 2026-07-14: llvm is a user-scope install and it
+# pointed at a never-created C:\ProgramData dir.
+#
+# SCOOP_GLOBAL_SHIMS was removed in the same pass for the same reason, and
+# RESTORED 2026-08-08: flutter IS installed `--global` (setup-scoop-tools.ps1),
+# so scoop DOES create C:\ProgramData\scoop\shims. Only FLUTTER_BIN being on
+# PATH separately masked the gap -- any future global package would have been
+# silently unresolvable. User shims keep priority (listed first below).
 ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     SCOOP_GLOBAL=C:\ProgramData\scoop `
     SCOOP_USER_SHIMS=C:\Users\ContainerAdministrator\scoop\shims `
+    SCOOP_GLOBAL_SHIMS=C:\ProgramData\scoop\shims `
     GIT_CMD="C:\Program Files\Git\cmd" `
     GIT_BIN="C:\Program Files\Git\bin" `
     GIT_USRBIN="C:\Program Files\Git\usr\bin" `
@@ -131,7 +138,10 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     CARGO_HOME=C:\Users\ContainerAdministrator\.cargo `
     CARGO_BIN=C:\Users\ContainerAdministrator\.cargo\bin
 
-ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$SCOOP_HOME;$SCOOP_GLOBAL;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$WIN_BASE_PATH
+# SCOOP_HOME / SCOOP_GLOBAL are scoop's APP ROOTS -- they hold apps\, buckets\
+# and shims\ subdirectories but no executables of their own, so they were dead
+# weight on PATH (removed 2026-08-08). The shim dirs below are the real entries.
+ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$SCOOP_GLOBAL_SHIMS;$WIN_BASE_PATH
 
 # Tail scripts land here (not at the top) so editing them only rebuilds from
 # this point — and the EXPENSIVE one (rustup + frb-codegen, ~30 min) sits

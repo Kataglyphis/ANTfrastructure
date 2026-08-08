@@ -26,18 +26,57 @@ cd "$REPO_ROOT"
 # $STAGED word-split used to break on them.
 STAGED_SH=()
 STAGED_DF=()
+STAGED_ALL=()
 while IFS= read -r -d '' f; do
-  case "$f" in
+  STAGED_ALL+=("$f")
+  # Extension-less files with a shell shebang count as shell scripts, so a
+  # staged git hook (this file included) reaches the syntax + shellcheck gates.
+  # lint-shell.sh applies the same rule; the basename is what gets tested,
+  # because a directory component may carry a dot (".githooks/").
+  case "${f##*/}" in
     *.sh) STAGED_SH+=("$f") ;;
+    *.*)  ;;
+    *)
+      case "$(head -c 128 "$f" 2>/dev/null | head -n 1)" in
+        '#!'*ash|'#!'*ash\ *|'#!/bin/sh'|'#!/bin/sh '*|'#!'*env\ sh) STAGED_SH+=("$f") ;;
+      esac
+      ;;
   esac
   case "${f##*/}" in
     Dockerfile*) STAGED_DF+=("$f") ;;
   esac
 done < <(git diff --cached --name-only --diff-filter=ACM -z)
 
+# 0. Unresolved merge-conflict markers in the STAGED content.
+#    Added 2026-08-08 after docs/refactoring-backlog.md was committed with a
+#    live conflict (<<<<<<< / ======= / >>>>>>>) that survived several commits:
+#    two sections were appended concurrently and the merge was never finished.
+#    Markdown and shell lint both passed it, because a conflict marker is
+#    perfectly valid text.
+#    Deliberately matching ONLY the '<<<<<<< ' and '>>>>>>> ' forms: a bare
+#    '=======' line is a legitimate setext H1 underline in Markdown, and every
+#    real conflict carries the other two anyway.
+#    --cached searches the index, i.e. exactly what is about to be committed,
+#    not the working tree. -I skips binaries.
+echo "=== merge-conflict markers (staged content) ==="
+if [ "${#STAGED_ALL[@]}" -gt 0 ]; then
+  if CONFLICTED=$(git grep --cached -lIE '^(<{7}|>{7}) ' -- "${STAGED_ALL[@]}" 2>/dev/null) && [ -n "$CONFLICTED" ]; then
+    echo "$CONFLICTED" | sed 's/^/  /'
+    fail "unresolved merge-conflict markers in staged files (listed above)"
+  else
+    pass "no conflict markers in staged files"
+  fi
+else
+  pass "nothing staged to check for conflict markers"
+fi
+
 # 1. Fast subset of the canonical gate list in linux/scripts/preflight.sh
 #    (version snapshot, ARG consistency, critical fixes, script COPY coverage).
-#    shellcheck runs below on staged files only; the full gate runs in CI.
+#    The shellcheck gate below runs on staged files only; the full gate runs in
+#    CI. (Do not start this comment with the word "shellcheck" — ShellCheck
+#    parses `# shellcheck …` as a directive and SC1072/SC1073 then abort the
+#    parse of this whole file, which is how it stayed unlinted until 2026-08-08:
+#    lint-shell.sh only matches *.sh, and this file has no extension.)
 echo "=== preflight subset ==="
 PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage \
   bash linux/scripts/preflight.sh && pass "preflight subset" || fail "preflight subset failed"

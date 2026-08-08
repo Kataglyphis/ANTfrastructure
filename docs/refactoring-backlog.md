@@ -806,7 +806,22 @@ rather than assumed (`grep` over `windows/` + `linux/`):
   upstream. Known noise — the same category the existing
   "Verified NOT problems" list in `windows/BUILD-OBSERVATIONS.md` records.
 
-### P7 — 🔴 DEFECT: FFmpeg's installed .pc files are unusable (found by probing the built image, 2026-08-07)
+### P7 — ✅ DONE (2026-08-07/08): FFmpeg's installed .pc files were unusable (found by probing the built image)
+
+> **The fix direction proposed at the bottom of this entry was WRONG and was not
+> taken.** "Pass a Windows-style `--prefix`" is impossible: configure runs under
+> MSYS bash and `make install` puts the tree in the wrong place without an MSYS
+> prefix. The MSYS prefix is *required* going in and rewritten in the installed
+> `.pc` files afterwards. Cause (1) was also mis-guessed — see below.
+>
+> Shipped instead: a `VERSION` file written before configure (the real cause: the
+> source is a GitHub **auto-tarball**, which ships no VERSION file, and the
+> post-extraction `git init` carries no tags — so the guess about `--depth 1`
+> was close in spirit but wrong in mechanism), a post-install MSYS→Windows
+> prefix rewrite, and `Assert-FfmpegPkgConfig` at the end of the stage.
+> `Assert-PkgConfigModule` did get the suggested `-MinimumVersion` floors.
+> The gate is unit-tested (`SourceBuild.Artifact.Tests.ps1`) via AST extraction,
+> since it must stay OUT of the shared module's compile closure.
 
 Probed `bk-windows-media-core-ffmpeg` directly rather than waiting for the merge
 stage. All seven `libav*.pc` / `libsw*.pc` files exist at
@@ -853,7 +868,41 @@ Also worth hardening: `Assert-PkgConfigModule` currently only runs
 minimum versions the consumers demand would move this failure from meson's
 configure output into the pre-flight, where it names itself.
 
-<<<<<<< HEAD
+### P8 — ✅ stub-names DONE; warning floods still open — harvested from the litert/tvm stages of the same run (observability + log volume)
+
+- **`WARNING: 5 lib stub(s) could not be created` names none of the five.**
+  litert-lm pre-creates 319 ExternalProject `.a`/`.lib` stubs because the
+  aggregate target references libraries that do not exist yet; five failed this
+  run and the build succeeded anyway, so they were harmless *this time*. But the
+  warning is unactionable as written: when lld-link eventually does fail with
+  `could not open <path>`, nothing connects it back to this line. One-line fix —
+  log the failed paths, not just the count. Cheap, and it turns a shrug into a
+  lead the next time the litert link breaks.
+
+- **16 % of the build log is upstream compiler warnings — 72 864 of 459 061
+  lines in one chain.** Measured, not estimated. The floods are a handful of
+  known-benign upstream constructs repeated a thousand times each:
+
+  | source | warning | count |
+  |---|---|---|
+  | OpenCV `core/matx.hpp` | deprecated implicit copy assignment (7 operators) | ~7 700 |
+  | ONNX `stream_handles.h` / `execution_provider.h` | `-Wunused-value` | ~2 460 |
+  | IREE / MLIR `BuiltinAttributes.h` | MSVC STL4037 `'complex' is deprecated` | 657 |
+  | TVM `tvm/ffi/reflection/accessor.h` | `-Wdocumentation-unknown-command` | ~900 |
+
+  This is not cosmetic. buildkitd clips each RUN step's log at 2 MiB and then
+  **deadlocks** the step (documented in windows-builds.md § BuildKit lane), which
+  is why `BUILDKIT_STEP_LOG_MAX_SIZE=-1` is a required host setting. Cutting the
+  floods would shrink the exposure and make the logs searchable again — a real
+  failure signal currently hides among ~73 000 warnings.
+
+  Fix direction: per-stage, TARGETED `-Wno-` flags for exactly these identified
+  upstream constructs (e.g. `-Wno-deprecated-copy-with-user-provided-copy` for
+  the OpenCV TU set, `-Wno-unused-value` for ONNX's headers), never a blanket
+  `-w` — the point is to silence known upstream noise, not our own diagnostics.
+  Each suppression should carry the count it removes, so a future reader can
+  judge whether it still earns its place.
+
 ## 2026-08-07 — Linux toolchain closure audit (during the amd64 from-base run)
 
 Agent-audited while the compiler stage was building. Everything below touches
@@ -923,42 +972,6 @@ are disjoint; cross builds already --skip-system-registration. Peak disk ~2×.
   build-helpers.sh:54 doc comment that recommends the broken idiom.
 - resource-monitor.sh:133: `pgrep -c` exits 1 on no match → sampler dies under
   errexit on an idle tick. `|| true` it. (01-core → still closure via bundle COPY.)
-=======
-### P8 — ✅ stub-names DONE; warning floods still open — harvested from the litert/tvm stages of the same run (observability + log volume)
-
-- **`WARNING: 5 lib stub(s) could not be created` names none of the five.**
-  litert-lm pre-creates 319 ExternalProject `.a`/`.lib` stubs because the
-  aggregate target references libraries that do not exist yet; five failed this
-  run and the build succeeded anyway, so they were harmless *this time*. But the
-  warning is unactionable as written: when lld-link eventually does fail with
-  `could not open <path>`, nothing connects it back to this line. One-line fix —
-  log the failed paths, not just the count. Cheap, and it turns a shrug into a
-  lead the next time the litert link breaks.
-
-- **16 % of the build log is upstream compiler warnings — 72 864 of 459 061
-  lines in one chain.** Measured, not estimated. The floods are a handful of
-  known-benign upstream constructs repeated a thousand times each:
-
-  | source | warning | count |
-  |---|---|---|
-  | OpenCV `core/matx.hpp` | deprecated implicit copy assignment (7 operators) | ~7 700 |
-  | ONNX `stream_handles.h` / `execution_provider.h` | `-Wunused-value` | ~2 460 |
-  | IREE / MLIR `BuiltinAttributes.h` | MSVC STL4037 `'complex' is deprecated` | 657 |
-  | TVM `tvm/ffi/reflection/accessor.h` | `-Wdocumentation-unknown-command` | ~900 |
-
-  This is not cosmetic. buildkitd clips each RUN step's log at 2 MiB and then
-  **deadlocks** the step (documented in windows-builds.md § BuildKit lane), which
-  is why `BUILDKIT_STEP_LOG_MAX_SIZE=-1` is a required host setting. Cutting the
-  floods would shrink the exposure and make the logs searchable again — a real
-  failure signal currently hides among ~73 000 warnings.
-
-  Fix direction: per-stage, TARGETED `-Wno-` flags for exactly these identified
-  upstream constructs (e.g. `-Wno-deprecated-copy-with-user-provided-copy` for
-  the OpenCV TU set, `-Wno-unused-value` for ONNX's headers), never a blanket
-  `-w` — the point is to silence known upstream noise, not our own diagnostics.
-  Each suppression should carry the count it removes, so a future reader can
-  judge whether it still earns its place.
->>>>>>> b7c9751d65f74ab744bc499720d78ed622ed4a8a
 
 ### 2026-08-08 — batch APPLIED (except the items below)
 
@@ -1044,3 +1057,109 @@ child `--build-context <parent_tag>=oci-layout://<dir>@<digest>` so the FROM
 ref is overridden with the local content; delete the layout after the child
 consumes it. Until then: --no-push documented as single-stage-only (usage text,
 AGENTS quick-ref, cross-builds doc all updated); a warn fires at parse time.
+
+## 2026-08-08 — Windows lane: refactors landed in the pin-bump window
+
+Context worth recording, because it decided the *order* of this batch: another
+session bumped `PYTHON_VERSION` (3.14.7), `OPENCV_VERSION` (5.0.0),
+`ONNXRUNTIME_GENAI_VERSION` (v0.15.2) and `LITERT_LM_VERSION` (0.15.0). Since
+`Dockerfile.base` COPYs `versions.env` at line 87, everything below it — scoop,
+PATH, rust, verify, finalize — is invalidated, and `PYTHON_VERSION` invalidates
+the toolchain and every media stage under it. Changes that would each normally
+cost a rebuild were therefore FREE in this window, so they were batched here
+rather than deferred. Rule of thumb for the next time: hold cache-busting
+cleanups until a pin bump or a from-base run is already due, then land them
+together.
+
+### ✅ `Dockerfile.base` PATH held two dead entries AND was missing a live one
+
+`$SCOOP_HOME` and `$SCOOP_GLOBAL` are scoop's *app roots* (`apps\`, `buckets\`,
+`shims\` live under them; no executables of their own) — dead weight on PATH.
+The interesting half is what was absent: flutter is installed `--global`
+(`setup-scoop-tools.ps1`), so scoop DOES create `C:\ProgramData\scoop\shims`,
+and that directory was on no PATH entry at all. A 2026-07-14 comment justified
+removing `SCOOP_GLOBAL_SHIMS` as pointing at a "never-created ProgramData dir",
+which stopped being true once anything was installed globally. Only
+`FLUTTER_BIN` being baked separately kept the gap invisible; any *future*
+`--global` package would have been silently unresolvable by name. Restored, with
+user shims keeping priority, and now asserted by the smoke test (soft-skip on
+images built inside the 07-14…08-08 window).
+
+### ✅ The FFmpeg `.pc` gate could not fail in its worst case
+
+Extracted to `Assert-FfmpegPkgConfig` (P9). Doing so exposed a hole the original
+inline version had: the whole gate sat inside `if (Test-Path $ffPkgConfigDir)`,
+so a **missing** `lib\pkgconfig` directory — the most complete failure available
+— skipped every assertion silently. The function now treats an absent directory
+as a hard failure and is called outside that guard. Five unit tests, one per
+failure mode.
+
+Placement note for future readers: it deliberately does NOT live in
+`WindowsSourceBuild.Common.psm1`. That module is in the compile closure of all
+three media branches, so an FFmpeg-only helper there rebuilds all of them on
+every edit — the same reasoning that moved `Remove-MakefileShowIncludes` out of
+it on 2026-08-03. Tests reach the in-script function by AST extraction, which is
+the established pattern here.
+
+### 🔴 An unresolved merge conflict was committed into this file
+
+Lines 856/926/961 carried `<<<<<<< HEAD` / `=======` / `>>>>>>>` markers: the
+Linux closure-audit section and the Windows P8 section were appended
+concurrently and the merge was never finished. Both sides were wanted; P8 (a
+`###` under the Windows `##` heading) had landed *after* the Linux `##` section,
+which also broke the following "The closure batch **above**" reference.
+Resolved by reordering, content verified identical modulo the markers.
+
+Guard added: `.githooks/pre-commit` now greps the *staged* content (`git grep
+--cached`, so it sees exactly what is about to be committed) for `<<<<<<< ` and
+`>>>>>>> `. Verified to fire on the exact commit that carried the bug. A bare
+`=======` is deliberately NOT matched — it is a valid Markdown setext H1
+underline, and every real conflict carries the other two markers anyway.
+
+### ⚠️ The hooks are not enabled on this clone
+
+`git config core.hooksPath` is unset here, so `.githooks/pre-commit` has never
+run on this machine — which is how the conflict marker (and the `fix` / `hi` /
+`ja moin` auto-commits) got in unchecked. AGENTS.md §969 documents the one-time
+`git config core.hooksPath .githooks`. Not set automatically: it changes commit
+behaviour for every process committing into this tree, including the automated
+one, and that is the owner's call.
+
+Note for whoever enables it: the preflight subset needs `PREFLIGHT_PYTHON`
+pointed at a real interpreter on this host (`~/.local/bin/python3.14.exe`) —
+bare `python3` hits the Microsoft Store stub, which fails two Python-based
+checks for reasons that have nothing to do with the commit. The hook header
+documents this. With it set, one genuine failure remains and is NOT from the
+Windows lane: `external/Kataglyphis-DocumANTation` (a **submodule**) has stale
+Dockerfile ARG defaults after the concurrent pin bump. That fix belongs in that
+repository.
+
+### ✅ Nothing was linting the git hooks
+
+Found while shellchecking the hook above: `.githooks/pre-commit` carried a live
+`SC1072`/`SC1073` **parse error** — a comment beginning with the word
+"shellcheck" is read as a malformed directive and aborts ShellCheck's parse of
+the entire file. It had sat there unnoticed because `lint-shell.sh` filters to
+`*.sh` and a git hook cannot have that suffix, so no gate ever looked at it.
+
+Fixed both halves: the comment is reworded (with a warning not to reintroduce
+it), and `lint-shell.sh` now also accepts explicitly-passed extension-less files
+that carry a shell shebang. The default sweep is unchanged (still 223 files
+discovered as `*.sh`); only the staged-file path gains coverage, and the
+pre-commit hook feeds it such files, so the hook now lints itself.
+
+Subtlety worth remembering: the first version of that filter tested the whole
+path against `*.*`, which matched `.githooks/pre-commit` on the dot in the
+*directory* name and silently dropped it. Test `${f##*/}`, not `$f`.
+
+### Still open
+
+- **P8b — the warning floods** (72 864 of 459 061 log lines). Unblocked now that
+  nothing is building, and free in this window, but deliberately NOT taken in
+  this batch: a wrong `-Wno-` either breaks a compile or hides a real diagnostic,
+  and the counts in the P8 table need re-measuring against the bumped OpenCV
+  5.0.0 / ONNX v0.15.2 before choosing flags. Do it against a fresh log.
+- **Smoke-test split** (`smoke-test-container.ps1`, ~1600 lines). Still deferred
+  on purpose: it is the gate that has not yet run green end-to-end with the new
+  plugin assertions, and splitting a test file before you have seen it pass
+  removes the baseline you would compare against.

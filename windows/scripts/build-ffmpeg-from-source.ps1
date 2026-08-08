@@ -34,6 +34,62 @@ function ConvertTo-MsysPath([string]$Path) {
 # MSVC's -showIncludes + the awk dep-file pipelines from configure-generated
 # *.mak files (clang-cl emits GNU-style deps; the awk pass both breaks and
 # is superseded).
+function Assert-FfmpegPkgConfig {
+    # Gate on the .pc files `make install` produced. Both defects it guards were
+    # silent for MONTHS because the files were PRESENT and looked fine:
+    #
+    #   Version: ..          configure found neither a VERSION file nor git tags
+    #                        (GitHub auto-tarballs ship no VERSION, and the
+    #                        git-init done after extraction carries no tags), so
+    #                        its version substitutions expanded to nothing. No
+    #                        consumer version constraint can match that, and
+    #                        gst-libav is skipped without a word.
+    #   prefix=/c/runtime    configure MUST get an MSYS --prefix or `make install`
+    #                        lands in the wrong place, and FFmpeg copies that
+    #                        string into every .pc. clang-cl and lld-link cannot
+    #                        resolve /c/... , so the -I/-L flags are unusable.
+    #
+    # Lives in this script, not WindowsSourceBuild.Common.psm1: that module is in
+    # the compile closure of all three media branches, so an FFmpeg-only helper
+    # there rebuilds all of them on every edit. Same reasoning that moved
+    # Remove-MakefileShowIncludes down here. Tests reach it by AST extraction
+    # (SourceBuild.Artifact.Tests.ps1) rather than by importing a module.
+    param(
+        [Parameter(Mandatory)][string]$PkgConfigDir,
+        # gst-libav's own floors: libavcodec >= 58.18.100, libavformat >=
+        # 58.12.100, libavutil >= 56.14.100, libavfilter >= 7.16.100. Presence
+        # and well-formedness are checked here; the floors themselves are
+        # enforced where gst-libav is configured (Assert-PkgConfigModule).
+        [string[]]$RequiredModule = @('libavcodec', 'libavformat', 'libavutil', 'libavfilter')
+    )
+    if (-not (Test-Path $PkgConfigDir -PathType Container)) {
+        throw ("FFmpeg install produced no pkgconfig directory at $PkgConfigDir. " +
+            'Every pkg-config consumer (gst-libav above all) resolves FFmpeg through these files; ' +
+            'without them the merge stage silently drops the plugin. Did `make install` run?')
+    }
+    $versions = [ordered]@{}
+    foreach ($required in $RequiredModule) {
+        $pcPath = Join-Path $PkgConfigDir "$required.pc"
+        if (-not (Test-Path $pcPath)) {
+            throw "FFmpeg install produced no $required.pc — consumers resolving it via pkg-config (gst-libav) cannot build."
+        }
+        $pcText = Get-Content $pcPath -Raw
+        $version = ([regex]::Match($pcText, '(?m)^Version:\s*(.+)$')).Groups[1].Value.Trim()
+        if ($version -notmatch '^\d+(\.\d+)+$') {
+            throw ("$required.pc declares an unusable version '$version'. FFmpeg's configure found neither a VERSION " +
+                'file nor git tags, so its version substitutions expanded to nothing. No consumer version constraint ' +
+                "can match this — gst-libav would be silently skipped. Check the VERSION file written after extraction.")
+        }
+        if ($pcText -match '(?m)^prefix=/[a-z]/') {
+            throw "$required.pc still carries an MSYS prefix; native Windows consumers cannot use its -I/-L flags."
+        }
+        $versions[$required] = $version
+    }
+    $summary = ($versions.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ' '
+    Write-Host "FFmpeg .pc gate OK: $summary (real versions, Windows prefixes)"
+    return $versions
+}
+
 function Remove-MakefileShowIncludes {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -401,28 +457,13 @@ if (Test-Path $ffPkgConfigDir) {
         $rewritten++
     }
     Write-Host "Rewrote MSYS prefixes to Windows form in $rewritten .pc file(s) under $ffPkgConfigDir"
-
-    # GATE: both defects were silent for months because the files were PRESENT.
-    # Assert what consumers actually need, so a regression fails this stage
-    # instead of surfacing as a mysteriously missing gst-libav an hour later.
-    # gst-libav constrains libavcodec >= 58.18.100, libavformat >= 58.12.100,
-    # libavutil >= 56.14.100, libavfilter >= 7.16.100.
-    foreach ($required in 'libavcodec', 'libavformat', 'libavutil', 'libavfilter') {
-        $pcPath = Join-Path $ffPkgConfigDir "$required.pc"
-        if (-not (Test-Path $pcPath)) { throw "FFmpeg install produced no $required.pc — consumers resolving it via pkg-config (gst-libav) cannot build." }
-        $pcText = Get-Content $pcPath -Raw
-        $version = ([regex]::Match($pcText, '(?m)^Version:\s*(.+)$')).Groups[1].Value.Trim()
-        if ($version -notmatch '^\d+(\.\d+)+$') {
-            throw ("$required.pc declares an unusable version '$version'. FFmpeg's configure found neither a VERSION " +
-                'file nor git tags, so its version substitutions expanded to nothing. No consumer version constraint ' +
-                "can match this — gst-libav would be silently skipped. Check the VERSION file written after extraction.")
-        }
-        if ($pcText -match '(?m)^prefix=/[a-z]/') {
-            throw "$required.pc still carries an MSYS prefix; native Windows consumers cannot use its -I/-L flags."
-        }
-    }
-    Write-Host 'FFmpeg .pc gate OK: libavcodec/libavformat/libavutil/libavfilter carry a real version and a Windows prefix.'
 }
+
+# Called OUTSIDE the Test-Path guard above on purpose: until 2026-08-08 the gate
+# sat inside it, so a missing lib\pkgconfig directory — the most complete failure
+# of all — skipped every assertion and reported nothing. Assert-FfmpegPkgConfig
+# treats an absent directory as the hard failure it is.
+$null = Assert-FfmpegPkgConfig -PkgConfigDir $ffPkgConfigDir
 
 # ── Import-lib normalization (PyAV and other MSVC-style consumers link these) ──
 # `make install` places avformat.lib / avformat-63.def per configure's SHLIBDIR/

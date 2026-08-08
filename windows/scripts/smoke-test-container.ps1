@@ -1306,9 +1306,11 @@ Write-TestHeader '19. Environment pointer integrity'
 # A stale pointer is exactly how the CMake MSI->scoop switch left CMAKE_BIN aimed
 # at the deleted 'C:\Program Files\CMake\bin' (caught 2026-07-12).
 # Deliberately NOT asserted: CARGO_HOME/CARGO_BIN (pre-provisioned for a future
-# `cargo install`; nonexistent until first use). LLVM_GLOBAL_BIN /
-# SCOOP_GLOBAL_SHIMS were REMOVED from the base image 2026-07-14 (they pointed
-# at never-created ProgramData dirs); tolerate them either way on old images.
+# `cargo install`; nonexistent until first use). LLVM_GLOBAL_BIN was REMOVED
+# from the base image 2026-07-14 (it pointed at a never-created ProgramData
+# dir); tolerate it either way on old images.
+# SCOOP_GLOBAL_SHIMS is asserted SOFTLY (skip when unset) because it was absent
+# between 2026-07-14 and 2026-08-08 -- see the block after this loop.
 $envPointerNames = @(
     'CMAKE_BIN', 'FLUTTER_BIN', 'VULKAN_SDK', 'WIX', 'LLVM_USER_BIN',
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
@@ -1331,6 +1333,25 @@ foreach ($envPointer in $envPointerNames) {
         $v = [Environment]::GetEnvironmentVariable($pointerName)
         (-not [string]::IsNullOrWhiteSpace($v)) -and (Test-Path $v -PathType Container)
     }.GetNewClosure() -FailMessage "$envPointer is unset or points at a nonexistent path (stale Dockerfile ENV?)"
+}
+
+# Global-scope scoop shims. flutter is installed `--global`, so scoop creates
+# C:\ProgramData\scoop\shims -- and between 2026-07-14 and 2026-08-08 that dir
+# was on NO PATH entry, which only stayed invisible because FLUTTER_BIN is baked
+# separately. Skip (don't fail) on images built in that window.
+$globalShims = $env:SCOOP_GLOBAL_SHIMS
+if ([string]::IsNullOrWhiteSpace($globalShims)) {
+    Skip-Test 'SCOOP_GLOBAL_SHIMS checks skipped (env var absent -- base image predates 2026-08-08)'
+} else {
+    Assert-Test -Name 'SCOOP_GLOBAL_SHIMS points at an existing directory' -Condition {
+        Test-Path $globalShims -PathType Container
+    }.GetNewClosure() -FailMessage "SCOOP_GLOBAL_SHIMS=$globalShims does not exist (did the --global flutter install move?)"
+    # The whole point of the var: a `scoop install --global` package must be
+    # resolvable by NAME, not only via a hand-baked *_BIN pointer.
+    Assert-Test -Name 'SCOOP_GLOBAL_SHIMS is on PATH' -Condition {
+        $entries = $env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
+        $entries -contains $globalShims.TrimEnd('\')
+    }.GetNewClosure() -FailMessage "$globalShims is not on PATH -- globally installed scoop packages resolve only through their app dirs"
 }
 
 # vcpkg zlib is the one vcpkg artifact media builds still consume (LiteRT-LM's

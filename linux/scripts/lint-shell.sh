@@ -108,10 +108,32 @@ if [ "${#FILES[@]}" -eq 0 ]; then
     -name '*.sh' -type f | sort)
 fi
 
-# Keep only existing .sh files (a staged list may include deletions / non-sh).
+# Keep only existing shell scripts (a staged list may include deletions and
+# files of other types).
+#
+# Extension-less scripts count too, IF they carry a shell shebang: git hooks are
+# bash but cannot have a .sh suffix, so .githooks/pre-commit was checked by no
+# gate at all and sat with an SC1072/SC1073 parse error (a comment starting with
+# the word "shellcheck", read as a malformed directive) until 2026-08-08. The
+# shebang test is what keeps this from sweeping in READMEs and binaries.
+# Note this only affects EXPLICITLY passed files — the default sweep above still
+# discovers *.sh only, so the gate's default scope is unchanged.
 CHECK=()
 for f in "${FILES[@]}"; do
-  case "${f}" in *.sh) [ -f "${f}" ] && CHECK+=("${f}") ;; esac
+  [ -f "${f}" ] || continue
+  # Test the BASENAME, not the path: a directory component may carry a dot
+  # (".githooks/pre-commit" matched the "has an extension" arm otherwise).
+  case "${f##*/}" in
+    *.sh) CHECK+=("${f}") ;;
+    *.*)  ;;   # some other extension: not ours
+    *)
+      # No extension at all — admit it only on a shell shebang.
+      case "$(head -c 128 "${f}" 2>/dev/null | head -n 1)" in
+        '#!'*[bd]'ash'|'#!'*[bd]'ash '*|'#!/bin/sh'|'#!/bin/sh '*|'#!'*'env sh'|'#!'*'env '[bd]'ash')
+          CHECK+=("${f}") ;;
+      esac
+      ;;
+  esac
 done
 
 if [ "${#CHECK[@]}" -eq 0 ]; then

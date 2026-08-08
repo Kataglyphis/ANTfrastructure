@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-08-08 — Windows lane: three gaps that could not fail loudly
+
+Landed in the window a concurrent `versions.env` pin bump opened: `PYTHON_VERSION`
+3.14.7 invalidates `Dockerfile.base` from its `COPY versions.env` down and every
+media stage under the toolchain, so these changes cost no rebuild that was not
+already owed. Each one is the same shape as the rest of this week's work — a
+check that was structurally incapable of reporting the failure it existed for.
+
+- **The FFmpeg `.pc` gate could not fail in its worst case.** It sat inside
+  `if (Test-Path $ffPkgConfigDir)`, so a *missing* `lib\pkgconfig` — the most
+  complete failure available — skipped every assertion without a word. Extracted
+  to `Assert-FfmpegPkgConfig`, which treats an absent directory as fatal, and
+  called outside that guard. Five unit tests, one per failure mode, reaching the
+  function by AST extraction so it stays out of the three media branches'
+  compile closure (the reason `Remove-MakefileShowIncludes` moved out of the
+  shared module on 2026-08-03).
+- **The base image's PATH had two dead entries and was missing a live one.**
+  `SCOOP_HOME`/`SCOOP_GLOBAL` are scoop app *roots* and hold no executables.
+  Meanwhile flutter is installed `--global`, so `C:\ProgramData\scoop\shims`
+  exists and was on no PATH entry at all — a 2026-07-14 comment had removed it
+  as a "never-created dir", which stopped being true the moment anything was
+  installed globally. Invisible only because `FLUTTER_BIN` is baked separately;
+  any future global package would have been unresolvable by name. Restored (user
+  shims keep priority) and asserted by the smoke test.
+- **An unresolved merge conflict had been committed** into
+  `docs/refactoring-backlog.md` and survived several commits: two sections were
+  appended concurrently and never merged. Markdown and shell lint both pass a
+  conflict marker, because it is valid text. Resolved (content verified
+  identical modulo the markers), and `.githooks/pre-commit` now greps the
+  *staged* content for `<<<<<<< ` / `>>>>>>> ` — verified to fire on the exact
+  commit that carried the bug. A bare `=======` is deliberately not matched: it
+  is a legitimate Markdown setext underline, and real conflicts carry the others.
+- **Nothing was linting the git hooks.** Writing that guard surfaced a live
+  `SC1072`/`SC1073` parse error already sitting in `.githooks/pre-commit`: a
+  comment starting with the word "shellcheck" reads as a malformed directive and
+  aborts ShellCheck's parse of the whole file. It survived because
+  `lint-shell.sh` filters to `*.sh` and a git hook cannot carry that suffix.
+  Comment reworded, and `lint-shell.sh` now also accepts explicitly-passed
+  extension-less files with a shell shebang — default sweep unchanged (223
+  files), staged-file coverage gained, and the hook now lints itself.
+
+Note: `core.hooksPath` is **unset** on the primary dev clone, so none of these
+hooks have been running there — the documented one-time
+`git config core.hooksPath .githooks` (AGENTS.md) is still pending, and is left
+to the owner because it changes commit behaviour for every process writing to
+that tree.
+
 ## 2026-08-08 — Linux cross lane: four bug classes, machine-checked ancestry, live caching
 
 Driven by a from-base amd64 rebuild of `:latest-cross`, fixing every failure as
